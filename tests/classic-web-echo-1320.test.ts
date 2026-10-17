@@ -86,6 +86,7 @@ async function harness(opts: { aEcho?: boolean; bEcho?: boolean; bCollab?: boole
   s.topicCommands.handleInstanceCommand = vi.fn(async () => false);
   s.topicCommands.handleGeneralCommand = vi.fn(async () => false);
   s.emitSseEvent = vi.fn();
+  s.webMessageInChannel = vi.fn();                    // #1920 §5.2: called once a room got the copy
   const delivered: unknown[] = [];
   s.instanceIpcClients.set("classic-a", { connected: true, send: (m: any) => { delivered.push(m); return true; } });
   s.instanceIpcClients.set("classic-b", { connected: true, send: (m: any) => { delivered.push(m); return true; } });
@@ -110,9 +111,11 @@ function postSend(fm: FleetManager, instance: string, message = "hello") {
 describe("classic web echo opt-in (#1320 B)", () => {
   it("posts to the opted-in entry's own adapter with a neutralised prefix", async () => {
     const h = await harness({ aEcho: true });
-    expect((await postSend(h.fm, "classic-a", "hi <@222> everyone")).status).toBe(200);
+    const r = await postSend(h.fm, "classic-a", "hi <@222> everyone");
+    expect(r.status).toBe(200);
     await flush(); await flush();
     expect(h.sentA).toHaveLength(1);
+    expect(h.s.webMessageInChannel.mock.calls, "#1920: the room saw it").toEqual([["classic-a", r.body.messageId]]);
     expect(h.sentA[0].chatId).toBe(CHANNEL);
     expect(h.sentA[0].text.startsWith(WEB_ECHO_PREFIX)).toBe(true);
     expect(h.sentA[0].text).toContain("[mention: 222]");
@@ -138,6 +141,7 @@ describe("classic web echo opt-in (#1320 B)", () => {
       await flush(); await flush();
       expect(h.sentA, JSON.stringify(opts)).toHaveLength(0);
       expect(h.delivered.length).toBeGreaterThan(0);
+      expect(h.s.webMessageInChannel, "#1920: no copy, not the room's").not.toHaveBeenCalled();
     }
   });
 

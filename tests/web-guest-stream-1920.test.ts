@@ -82,10 +82,12 @@ describe("broadcastSseEvent: an admin's bytes unchanged; a guest's projected for
     handleWebRequest(greq as never, guestRes as never, new URL("/ui/events", "http://127.0.0.1:19280"), ctx);
     try {
       expect(clients.size).toBe(2);
-      // On connecting: the admin, the full status; the guest, its projection — and none of the ticks, prompts or Needs you.
+      // On connecting: the admin, the full status; the guest, its projection — no prompts or Needs you; (#1920 phase 2)
+      // only its own ticks, which here are none.
       expect(written.admin![0]).toContain(JSON.stringify(FULL));
       expect(written.guest!.join("")).toContain(`event: status\ndata: ${JSON.stringify(guestStatus(FULL, scope))}`);
-      expect(written.guest!.join("")).not.toMatch(/event: (deliveries|prompts|needs)\n/);
+      expect(written.guest!.join("")).not.toMatch(/event: (prompts|needs)\n/);
+      if (/event: deliveries\n/.test(written.guest!.join(""))) expect(written.guest!.join("")).toContain("event: deliveries\ndata: []\n");
       written.admin = []; written.guest = [];
       const msg = { instance: "a", sender: "a", text: "hello", role: "agent" };
       broadcastSseEvent(clients, "message", msg, undefined, "boot-7");
@@ -211,7 +213,8 @@ describe("live: the stream, the poll and a file for a guest scoped to `a`", () =
       expect(Object.keys(status)).toEqual(["instances"]);
       expect(status.instances.map((i: { name: string }) => i.name)).toEqual(["a"]);
       expect(Object.keys(status.instances[0]).filter((k) => ["model", "backend", "effort", "cost", "context_pct", "interaction", "description", "tags"].includes(k))).toEqual([]);
-      expect(first).not.toMatch(/event: (deliveries|prompts|needs)\n/);
+      expect(first).not.toMatch(/event: (prompts|needs)\n/);
+      expect(first, "#1920 phase 2: its own ticks only (none yet)").toContain("event: deliveries\ndata: []\n");
       g.chunks.length = 0; ad.chunks.length = 0;
       fm.emitSseEvent("message", { instance: "a", sender: "a", text: "a private note", ts: new Date().toISOString(), role: "agent" });
       fm.emitSseEvent("activity", { instance: "a", state: "working" });
@@ -257,12 +260,13 @@ describe("live: the stream, the poll and a file for a guest scoped to `a`", () =
       expect((await get("/auth/session", cookieOf(b))).status, "B still signs in").toBe(200);
     } finally { s.req.destroy(); }
   });
-  it("the poll: the projected status alone; an admin's poll unchanged", async () => {
+  it("the poll: the projected status, and only the chat it may see (an agent's web-only note is not); an admin's poll unchanged", async () => {
     vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
     fm.emitSseEvent("message", { instance: "a", sender: "a", text: "another private note", ts: new Date().toISOString(), role: "agent" });
     const g = JSON.parse((await get("/ui/poll", cookieOf(session("guest", ALICE)))).body);
     expect(Object.keys(g).sort()).toEqual(["cursor", "deliveries", "messages", "needs", "now", "prompts", "reply_buttons", "status"]);
-    expect([g.messages, g.deliveries, g.prompts, g.needs, g.cursor, g.status.instances.map((i: { name: string }) => i.name)]).toEqual([[], [], [], [], null, ["a"]]);
+    expect([g.messages, g.deliveries, g.prompts, g.needs, g.status.instances.map((i: { name: string }) => i.name)]).toEqual([[], [], [], [], ["a"]]);
+    expect(g.cursor, "#1920 phase 2: the poll's cursor, as everyone's").toBe(fm.webChatHistory.pollCursor());
     const a = JSON.parse((await get("/ui/poll", cookieOf(session("admin")))).body);
     expect(a.messages.some((m: { text: string }) => m.text === "another private note")).toBe(true);
     expect(a.status).toHaveProperty("uptime");

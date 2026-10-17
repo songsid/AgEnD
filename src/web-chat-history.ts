@@ -127,6 +127,22 @@ export interface WebChatMessage {
   ts: string;
   /** #1990: a status line's names that open another instance's chat — ranges of `text` with an in-app route. */
   links?: TextLink[];
+  /**
+   * #1920 §5.2: this message reached the instance's platform channel (its topic or room) — what a member of that channel
+   * already saw, so a guest may see it too. Set by the code path that knows (an inbound platform message; an agent reply
+   * that landed there; a web message once its channel copy was sent); absent: not shown to guests.
+   */
+  channel?: true;
+  /** #1920: the account that wrote it (`<connection id>:<user id>`), for a person's message — a guest sees its own. */
+  from?: string;
+}
+
+/** #1920: an account as a row names it — the connection id and the user id, one line. */
+const FROM = /^[^\s:]{1,64}:[^\s:]{1,128}$/;
+export function webChatFrom(adapterId: unknown, userId: unknown): string | undefined {
+  if (typeof adapterId !== "string" || typeof userId !== "string") return undefined;
+  const v = `${adapterId}:${userId}`;
+  return FROM.test(v) ? v : undefined;
 }
 
 export interface WebChatClick { label: string; of?: string }
@@ -168,6 +184,9 @@ export interface StoredWebChatMessage {
   click?: { label: string };
   /** #1990: a status line's links (validated again when read back). */
   links?: TextLink[];
+  /** #1920: reached the platform channel; and who wrote it (see WebChatMessage). */
+  channel?: true;
+  from?: string;
 }
 
 /** #1565: what the history needs of the file ledger (web-upload.ts). */
@@ -236,7 +255,8 @@ export class WebChatHistory {
 
   /** #1565: a message as kept on disk: no buttons, no delivery, no message id; a file with the path it is served from. */
   private stored(m: WebChatMessage): StoredWebChatMessage {
-    const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.click ? { click: { label: m.click.label } } : {}), ...(m.links ? { links: m.links } : {}) };
+    const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.click ? { click: { label: m.click.label } } : {}), ...(m.links ? { links: m.links } : {}),
+      ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}) };
     if (m.attachments?.length) {
       row.attachments = m.attachments.map((a) => {
         const base = { kind: a.kind, name: a.name, size: a.size, mime: a.mime };
@@ -320,7 +340,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; effectTrial?: unknown; links?: unknown }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; effectTrial?: unknown; links?: unknown; channel?: unknown; from?: unknown }): WebChatMessage {
     return this.recordEntry(msg, null);
   }
 
@@ -352,6 +372,9 @@ export class WebChatHistory {
     // #1990: only a status line (the server's own text) links; never an agent's or a person's message.
     const links = entry.role === "status" ? webTextLinks(msg.links, entry.text) : undefined;
     if (links) entry.links = links;
+    // #1920: only `true` marks a channel's message; only a person's message names its account.
+    if (msg.channel === true) entry.channel = true;
+    if (entry.role === "user" && typeof msg.from === "string" && FROM.test(msg.from)) entry.from = msg.from;
     let slot = this.byInstance.get(entry.instance);
     if (!slot) { slot = { messages: [], chars: 0 }; this.byInstance.set(entry.instance, slot); }
     slot.messages.push(entry);
@@ -385,6 +408,32 @@ export class WebChatHistory {
       m.buttons = next; this.persist(instance); return m;
     }
     return null;
+  }
+
+  /**
+   * #1920: a web message's channel copy was sent — it is now what the channel saw. Returns the message when this changed
+   * it (the caller tells the guests), null otherwise.
+   */
+  markChannel(instance: string, messageId: string): WebChatMessage | null {
+    const m = this.findByMessageId(instance, messageId);
+    if (!m || m.channel) return null;
+    m.channel = true;
+    this.persist(instance);
+    return m;
+  }
+
+  /** #1920: a kept message by the `message_id` the agent was given (a web message, a web click). */
+  findByMessageId(instance: string, messageId: string): WebChatMessage | undefined {
+    const messages = this.byInstance.get(instance)?.messages ?? [];
+    for (let i = messages.length - 1; i >= 0; i--) if (messages[i]!.messageId === messageId) return messages[i];
+    return undefined;
+  }
+
+  /** #1920: a kept reply by its buttons' set id. */
+  findByButtons(instance: string, buttonsId: string): WebChatMessage | undefined {
+    const messages = this.byInstance.get(instance)?.messages ?? [];
+    for (let i = messages.length - 1; i >= 0; i--) if (messages[i]!.buttons?.id === buttonsId) return messages[i];
+    return undefined;
   }
 
   /** #1266: every kept reply whose buttons have ended — what a polling page applies (a stream page hears it live). */
@@ -542,6 +591,9 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   if (click) message.click = { label: click.label };
   const links = role === "status" ? webTextLinks(r.links, message.text) : undefined;
   if (links) message.links = links;
+  // #1920: as recorded — a row from before these were written has neither, so a guest is never shown it.
+  if (r.channel === true) message.channel = true;
+  if (role === "user" && typeof r.from === "string" && FROM.test(r.from)) message.from = r.from;
   const files = !Array.isArray(r.attachments) ? [] : r.attachments.slice(0, 20).flatMap((a): RestoredFile[] => {
     if (!a || typeof a !== "object" || Array.isArray(a)) return [];
     const f = a as Record<string, unknown>;

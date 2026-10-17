@@ -96,6 +96,7 @@ async function harness(type: "telegram" | "discord", botId = "777") {
   s.topicCommands.handleInstanceCommand = vi.fn(async () => false); s.topicCommands.handleGeneralCommand = vi.fn(async () => false);
   s.logger = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() };
   s.emitSseEvent = vi.fn();
+  s.webMessageInChannel = vi.fn();                    // #1920 §5.2: called once the echo was sent
   s.instanceIpcClients.set("worker", { connected: true, send: (m: any) => { received.push(m); return true; } });
   const inbound: Promise<void>[] = [];
   adapter.on("message", msg => { ingress.push(msg); inbound.push(s.handleInboundMessage(msg)); });
@@ -239,14 +240,19 @@ describe("web echo review boundaries (#1325 r2)", () => {
 describe("fleet-topic web echo (#1320 A)", () => {
   for (const type of ["telegram", "discord"] as const) {
     it(`${type}: owning world/topic and receipt metadata, own echo never becomes agent input`, async () => {
-      const h = await harness(type); expect((await send(h.fm)).status).toBe(200); await flush();
+      const h = await harness(type); const r = await send(h.fm); expect(r.status).toBe(200); await flush();
       expect(h.sent).toEqual([{ chatId: h.chatId, topic: h.topic, text: formatWebChannelEcho("web-user", "hello") }]);
+      // #1920 §5.2: the message is the channel's once its copy was sent there — this one, by the id the agent got.
+      expect(h.s.webMessageInChannel.mock.calls).toEqual([["worker", r.body.messageId]]);
       expect(h.primary.sendText).not.toHaveBeenCalled();
       await h.s.handleInboundMessage({ source: type, adapterId: "primary", chatId: h.chatId, threadId: h.topic, messageId: "sibling-echo", userId: "777", username: "EchoBot", text: h.sent[0].text, isBotMessage: true, timestamp: new Date() });
       expect(h.received).toHaveLength(1);
       expect(h.received[0].meta).toMatchObject({ chat_id: h.chatId, thread_id: h.topic, adapter_id: "owner", source: "web" });
       await h.feed(h.sent[0].text); await h.feed("ordinary own message"); expect(h.ingress).toEqual([]); expect(h.received).toHaveLength(1);
       await h.feed("human control", "human"); await h.feed("peer bot control", "peer");
+      // #1920 §5.2: a person's platform message is the channel's, and names its account.
+      const said = h.s.emitSseEvent.mock.calls.find(([e, d]: [string, any]) => e === "message" && d.text === "human control");
+      expect(said?.[1]).toMatchObject({ channel: true, from: "owner:999" });
       // #1752: a sibling fleet bot's ordinary post reaches the adapter but is never input to a fleet topic.
       expect(h.ingress).toHaveLength(2); expect(h.received.filter(m => m.type === "fleet_inbound")).toHaveLength(2);
     });
@@ -256,13 +262,18 @@ describe("fleet-topic web echo (#1320 A)", () => {
       const ipc = h.s.instanceIpcClients.get("worker"); const original = ipc.send;
       ipc.send = (m: any) => { const result = original(m); if (m.type === "fleet_inbound") reply = h.reply(); return result; };
       expect((await send(h.fm)).status).toBe(200); await flush(); expect(h.sent).toEqual([]);
+      expect(h.s.webMessageInChannel, "not the channel's before its copy is sent").not.toHaveBeenCalled();
       gate.resolve(); await reply; await flush();
       expect(h.sent.map(m => m.text)).toEqual([formatWebChannelEcho("web-user", "hello"), "done"]);
+      expect(h.s.webMessageInChannel).toHaveBeenCalledOnce();
+      // #1920 §5.2: the agent's reply landed in the instance's own topic — its guests may see it.
+      expect(h.s.afterReplyRouted.mock.calls.at(-1)[4]).toBe(true);
     });
     for (const failure of ["throw", "reject"] as const) it(`${type}: ${failure} is logged, does not fail delivery or prevent the reply`, async () => {
       const h = await harness(type); h.fail(failure);
       expect((await send(h.fm)).status).toBe(200); await h.reply(); await flush();
       expect(h.sent.map(m => m.text)).toEqual(["done"]); expect(h.s.logger.warn).toHaveBeenCalledOnce();
+      expect(h.s.webMessageInChannel, "#1920: a copy that failed never makes it the channel's").not.toHaveBeenCalled();
       expect(h.received[0].type).toBe("fleet_inbound"); expect(h.s.webChannelEchoTails.size).toBe(0);
     });
   }

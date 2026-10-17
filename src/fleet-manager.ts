@@ -185,9 +185,9 @@ export function applyTaskListCap<T extends { updated_at: string }>(
   }
   return tasks;
 }
-import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
+import { handleWebRequest, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
-import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
+import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment } from "./web-chat-history.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { OPERATOR, WebPrefsStore } from "./web-prefs.js";
@@ -246,7 +246,7 @@ import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { recentChatContext } from "./log-tail.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
-import { ClassicChannelManager, classicWebEchoOn, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
+import { ClassicChannelManager, classicWebEchoOn, getClassicBackendChoices, inferClassicChannelType, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
@@ -1898,6 +1898,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.emitSseEvent("message", {
       instance: set.instance, sender: by.username, role: "user", text: content, ts, ...(web ? { messageId } : {}),
       click: { label: button.label, of: set.id },
+      // #1920: a platform click is seen in the channel (the buttons show what was chosen); a web click is the web's.
+      ...(web ? {} : { channel: true, from: webChatFrom(set.adapterId, by.userId) }),
     });
     return true;
   }
@@ -3931,6 +3933,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * already in flight may still land late — the contract permits that.
    */
   /** `sender` (#1827): the web person's name, as the room log records them ("web-user" when none). */
+  /**
+   * #1920 §5.2: a web message's channel copy was sent — it is now what the channel saw. Kept so (and on disk), and sent
+   * to the guests' streams only: an admin's page already has it, and nothing about it changed for them.
+   */
+  webMessageInChannel(instance: string, messageId: string): void {
+    const m = this.webChatHistory.markChannel(instance, messageId);
+    if (m) broadcastToGuests(this.sseClients, "message", m, (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting"));
+  }
+
   async sendClassicWebEcho(instance: string, text: string, sender = WEB_NAME_FALLBACK): Promise<number> {
     const guard = this.webChannelEchoGuards.get(instance);
     const handled = new Set<string>();
@@ -8938,6 +8949,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.emitSseEvent("message", {
             instance: generalInstance, sender: msg.username, role: "user",
             text: (text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
+            channel: true, from: webChatFrom(msg.adapterId, msg.userId),           // #1920: said in General's channel
           });
         } catch (err) {
           this.logger.warn({ err: (err as Error).message, instanceName: generalInstance }, "General wake/delivery failed");
@@ -9058,6 +9070,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.emitSseEvent("message", {
       instance: instanceName, sender: msg.username, role: "user",
       text: (text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
+      channel: true, from: webChatFrom(msg.adapterId, msg.userId),                 // #1920: said in its topic
     });
   }
 
@@ -9350,7 +9363,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // an agent cannot invent it to suppress the normal completion marker.
         if (!error && result != null && msg.statusOnly !== true) {
           try {
-            void this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView);
+            // #1920 §5.2: shown to the instance's guests only when it landed in the instance's own topic or room.
+            const inChannel = outAdapter !== WEB_ONLY_REPLY_SINK
+              && this.landedInOwnChannel(instanceName, contextAdapterId ?? this.getInstanceAdapterId(instanceName), result);
+            void this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView, inChannel);
           } catch (err) {
             this.logger.warn({ err, instanceName }, "Reply delivered but post-delivery bookkeeping failed");
           }
@@ -9406,7 +9422,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Resolves when the reply is in the web chat (#1770: after its files are copied); the caller need not wait. */
-  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null): Promise<void> {
+  /**
+   * #1920 §5.2: whether a platform send landed in the instance's own place — its ClassicBot room, or its topic in its
+   * connection's group — so its channel's members saw it. Anything else (another chat, a DM, a context left from General,
+   * an answer without the chat it went to) is not the channel's.
+   */
+  private landedInOwnChannel(instance: string, adapterId: string | undefined, sent: unknown): boolean {
+    const s = sent && typeof sent === "object" ? sent as { chatId?: unknown; threadId?: unknown } : {};
+    if (!adapterId || typeof s.chatId !== "string" || !s.chatId) return false;
+    const room = this.classicChannels?.getAll().find((r) => r.instanceName === instance);
+    if (room) return room.adapterId === adapterId && room.channelId === s.chatId;
+    const cfg = this.fleetConfig?.instances && Object.hasOwn(this.fleetConfig.instances, instance) ? this.fleetConfig.instances[instance] : undefined;
+    const world = this.worlds.get(adapterId);
+    if (!cfg || this.getInstanceAdapterId(instance) !== adapterId || !world?.groupId || s.chatId !== world.groupId) return false;
+    const thread = typeof s.threadId === "string" && s.threadId ? s.threadId : null;
+    return cfg.topic_id == null ? thread === null : thread === String(cfg.topic_id);
+  }
+
+  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false): Promise<void> {
     // A reply is NOT proof the turn is over (#410) — but it is not proof of
     // more work either. Split the difference: an instance that is clearly
     // idle loses the button now; one that looks busy keeps it (re-posted
@@ -9441,6 +9474,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ts,
         ...(attachments.length ? { attachments } : {}),
         ...(buttons ? { buttons } : {}),                 // #1266
+        ...(inChannel ? { channel: true } : {}),         // #1920 §5.2
       });
     };
     const before = this.webReplyOrder.get(instanceName);
@@ -15557,7 +15591,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -15566,6 +15600,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         buttons: m.buttons,
         click: m.click,
         links: m.links,
+        channel: m.channel,
+        from: m.from,
       });
       broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
       // #1629: live-only receipt after the recorded agent reply. Never persist/replay it or give it an SSE cursor.
@@ -16406,6 +16442,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.emitSseEvent("message", {
       instance: instanceName, sender: msg.username, role: "user",
       text: text.slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
+      channel: true, from: webChatFrom(msg.adapterId, msg.userId),                 // #1920: said in its room
     });
   }
 
@@ -20417,6 +20454,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return NO_GUEST_SCOPE;
   }
 
+  /** #1920 §5.2: whether this instance is the account's own Telegram private ClassicBot room (its chat id is the user id). */
+  private guestOwnRoom(owner: { readonly adapterId: string; readonly userId: string }, instance: string): boolean {
+    return (this.classicChannels?.getAll() ?? []).some((room) => room.instanceName === instance && room.adapterId === owner.adapterId
+      && room.channelId === owner.userId && inferClassicChannelType(room.channelId) === "telegram");
+  }
+
   /** Shared handler dispatcher; gateway admission is enforced by its separate listener. */
   private dispatchWebHttp(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, port: number, closing = false): void {
     try {
@@ -20492,7 +20535,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           // ask its scope anew each time.
           const admitted = decision.session;
           bindGuestRequest(req, { owner, scope: () => this.guestScope(owner),
-            current: () => !!this.webSessions && !!this.webToken && this.webSessions.isCurrent(admitted, tokenEpoch(this.webToken)) });
+            current: () => !!this.webSessions && !!this.webToken && this.webSessions.isCurrent(admitted, tokenEpoch(this.webToken)),
+            // #1920 §5.2: its own Telegram private room shows it everything; the kept messages place ticks and buttons.
+            ownRoom: (instance) => this.guestOwnRoom(owner, instance),
+            history: () => this.webChatHistory });
         }
       }
 
