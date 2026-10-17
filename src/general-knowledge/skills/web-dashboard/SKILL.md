@@ -335,14 +335,15 @@ Settings → **Web appearance**, card by card:
 - **Restore defaults** — resets this host's appearance settings (it lists what it resets first).
 
 **What an agent can change for the user.** Today each agent changes only its own look (the `web-appearance` tools);
-everything on this page is the person's. With #2056 (planned for 2.3.0-beta.3/4 — check the version) General gets
-tools for the host's appearance settings, through the same checks as the page: showing agents' themes, where colours
-show and turning them off, card sizes, one agent's identity colour and places, the sidebar widget, custom CSS (save
-and try, keep, revert, turn off, use an earlier version), reviewing/installing/dismissing a mod an agent proposed,
-applying an effect to a chat and the effect slots, lowering card limits (a raise still waits for a human admin), and
-Restore defaults. It stays the person's own action to choose files from their computer (import a mod, upload an
-effect folder or CSS assets), to use the per-browser switches (custom CSS off on this device, Pause/Resume), to
-download an exported mod and to confirm a raised limit. Other agents keep their own theme and can only propose mods.
+everything on this page is the person's. With #2056 (PR #2064 — check the running version) General, coordinators and
+full-profile instances get `get_web_settings` / `set_web_settings`, which go through the same checks as the page;
+workers don't. The `web-appearance` skill's **For the user** section has the details. In short: General can change
+the host's appearance settings, one agent's identity colour, mods (review, install, cancel, dismiss, uninstall),
+effects and the effect slots, card limits (a raise still waits for a human admin) and Restore defaults; for custom CSS
+it can only put a version **on trial**, revert the trial or turn CSS off. Still the person's own click on the page:
+keeping a CSS trial or switching to an earlier version (`custom_css_person_only`), choosing files from their computer
+(import a mod, upload an effect folder or CSS assets), the per-browser switches (custom CSS off on this device,
+Pause/Resume), downloading an exported mod, and confirming a raised limit.
 
 ## Troubleshooting
 
