@@ -6258,6 +6258,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return result;
   }
 
+  /** #1920 phase 3 (the app shell): a guest's chip — its web name, and its connection's platform (discord, telegram). */
+  guestBadge(owner: { adapterId: string; userId: string }): { name: string; platform: string } {
+    return { name: this.webPerson(owner).name, platform: this.worlds.get(owner.adapterId)?.adapter.type ?? owner.adapterId };
+  }
+
   /** #1920 step 4: whether a `/web` is a guest's — guest sign-in on, and not from a fleet admin (theirs runs as before). */
   isGuestWebAsk(adapterId: string | undefined, userId: string): boolean {
     return !!adapterId && this.fleetConfig?.web?.guests?.enabled === true && !this.isFleetAdmin(userId, adapterId);
