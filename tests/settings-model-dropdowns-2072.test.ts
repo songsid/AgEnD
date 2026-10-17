@@ -24,7 +24,7 @@ describe("the backend options", () => {
     ]);
   });
   it("the current value is never disabled (fail open), and a removed one stays first", () => {
-    expect(backendChoices(known, rows, "grok", words).find(o => o.value === "grok")).toEqual({ value: "grok", label: "grok — not installed", disabled: false });
+    expect(backendChoices(known, rows, "grok", words).find((o: any) => o.value === "grok")).toEqual({ value: "grok", label: "grok — not installed", disabled: false });
     expect(backendChoices(known, rows, "gemini-cli", words)[0]).toEqual({ value: "gemini-cli", label: "gemini-cli removed", disabled: false });
   });
   it("an older server's rows (installed / unknown, no state) still read right", () => {
@@ -43,7 +43,7 @@ describe("the model options", () => {
   });
   it("a current model the catalog does not list is shown, marked, before the catalog; a listed one is not repeated", () => {
     expect(modelChoices(catalog, "claude-legacy-9", w, "inherit").slice(0, 2)).toEqual([{ value: "", label: "inherit" }, { value: "claude-legacy-9", label: "claude-legacy-9 — not listed" }]);
-    expect(modelChoices(catalog, "opus", w).filter(o => o.value === "opus")).toHaveLength(1);
+    expect(modelChoices(catalog, "opus", w).filter((o: any) => o.value === "opus")).toHaveLength(1);
     expect(modelChoices([], "custom-x", w)).toEqual([{ value: "custom-x", label: "custom-x — not listed" }, { value: OTHER_MODEL, label: "Other…" }]);
   });
 });
