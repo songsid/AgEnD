@@ -3,6 +3,11 @@ title: 2.2 更新重點
 description: "從 AgEnD 2.1 升級會注意到的變化：網頁聊天、集中的等你處理清單、多個 Claude 帳號、自帶 Node，以及更順利的升級。"
 ---
 
+<p align="center">
+  <img class="dark:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-light.webp" width="880" alt="AgEnD 的網頁儀表板（示範資料）：側欄有六個 agent 和各自的狀態；與 agent Pixel 的對話裡有一張 bundle 大小的表格、一段程式碼、已選的「Ship it」回覆按鈕、一份附件報告，以及列出五個 AI 服務的用量面板。旁邊是一支手機的示意圖，呈現同一段對話，並附上 Discord 與 Telegram 的標誌。">
+  <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-dark.webp" width="880" alt="AgEnD 的網頁儀表板（示範資料）：側欄有六個 agent 和各自的狀態；與 agent Pixel 的對話裡有一張 bundle 大小的表格、一段程式碼、已選的「Ship it」回覆按鈕、一份附件報告，以及列出五個 AI 服務的用量面板。旁邊是一支手機的示意圖，呈現同一段對話，並附上 Discord 與 Telegram 的標誌。">
+</p>
+
 AgEnD 2.2 在 Telegram 和 Discord 之外，多了一個網頁 app。你可以從瀏覽器和 agent 對話，在同一個地方看到所有在等你處理的事，也可以用第二個 Claude 帳號。fleet 也會自帶 Node，在更多種主機上都能順利升級。這一頁寫給從 2.1.x 升級的人：列出你會注意到的變化，附上詳細說明的連結。
 
 ## 一步升級
@@ -13,6 +18,11 @@ AgEnD 2.2 在 Telegram 和 Discord 之外，多了一個網頁 app。你可以�
 
 ## 在瀏覽器和 agent 聊天
 
+<p align="center">
+  <img class="dark:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/chat-light.webp" width="760" alt="與 agent Atlas 的網頁聊天：端點延遲表格、一段 SQL 程式碼、已選的「Apply on staging」回覆按鈕、agent 傳來的延遲圖，以及輸入框上方兩個待送出的檔案。示範資料。">
+  <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/chat-dark.webp" width="760" alt="與 agent Atlas 的網頁聊天：端點延遲表格、一段 SQL 程式碼、已選的「Apply on staging」回覆按鈕、agent 傳來的延遲圖，以及輸入框上方兩個待送出的檔案。示範資料。">
+</p>
+
 - **用一次性登入碼登入。** 在 General 傳 `/web`。選 **💻 AgEnD 電腦**，可在執行 AgEnD 的那台電腦上登入；選 **🌐 其他裝置**，則透過臨時公開連結，從手機或另一台電腦登入。登入碼只能用一次，五分鐘內有效。連結不再帶任何密碼。
 - **和頻道是同一段對話。** 在網頁上寫的訊息，送到 agent 的方式和 Telegram 或 Discord 訊息完全一樣。fleet 頻道的聊天平台上也看得到；ClassicBot 聊天室則要設定 `web_echo: true` 才會同步。重新整理頁面或 fleet 重新啟動後，對話紀錄都還在。
 - **完整的聊天功能。** 支援 Markdown、表格和程式碼標色。可以傳任何類型的檔案，預設每個 50 MB、每則訊息合計 100 MB（`web.upload_max_file_mb` / `web.upload_max_total_mb`）；圖片和影音直接在頁面上預覽。看得到訊息送到哪一步、agent 正在處理，也有 **Stop** 按鈕可以中止。agent 提供的回覆按鈕和投票會照樣顯示，提及（mention）也和 Discord、Telegram 上的樣子一致。
@@ -20,18 +30,38 @@ AgEnD 2.2 在 Telegram 和 Discord 之外，多了一個網頁 app。你可以�
 - **手機也好用。** 滑動開關側邊欄，有淺色和深色主題，也支援鍵盤與螢幕報讀器。
 - **不需要聊天平台也能用。** fleet 可以只靠網頁 dashboard 運作。在瀏覽器裡就能設定：輸入 bot token、邀請 Discord bot。AgEnD 已經在跑一個連線時，再新增的連線不必重新啟動就會生效。
 
+<p align="center">
+  <img class="dark:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/preview-light.webp" width="760" alt="agent Quill 傳來的 HTML 頁面，在聊天旁的預覽面板中開啟：一份發佈檢查清單，四項已完成兩項。示範資料。">
+  <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/preview-dark.webp" width="760" alt="agent Quill 傳來的 HTML 頁面，在聊天旁的預覽面板中開啟：一份發佈檢查清單，四項已完成兩項。示範資料。">
+</p>
+
 詳見[網頁 dashboard 指南](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md)，或網站上的[網頁使用說明](/AgEnD/zh-tw/docs/web-guide/)。
 
 ## 等你處理的事，集中在一個清單
+
+<p align="center">
+  <img class="dark:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/needs-light.webp" width="680" alt="「等你處理」頁面：一個權限請求、一則傳送失敗、一個沒有回應的 agent（附 Restart 與 Keep waiting 按鈕）、一個等人登入而暫停的 agent，以及一個當掉的 agent。示範資料。">
+  <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/needs-dark.webp" width="680" alt="「等你處理」頁面：一個權限請求、一則傳送失敗、一個沒有回應的 agent（附 Restart 與 Keep waiting 按鈕）、一個等人登入而暫停的 agent，以及一個當掉的 agent。示範資料。">
+</p>
 
 **等你處理**（Needs you）會集中列出所有 bot 的提示、權限請求、登入、當掉的 agent，以及無法確認的投遞。它在 General 是一則即時更新的訊息，在網頁 app 裡是一個頁面。你在任何地方處理過的事（Discord、Telegram 或網頁），都會從每個清單上消失。詳見[等你處理](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md#等你處理uineeds)。
 
 ## 不只一個 Claude 帳號
 
+<p align="center">
+  <img class="dark:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/usage-light.webp" width="340" alt="用量面板：每個 Claude 帳號（work 與 personal）各一列，另有 Codex，各自顯示這次工作階段與每週的用量。示範資料。">
+  <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/usage-dark.webp" width="340" alt="用量面板：每個 Claude 帳號（work 與 personal）各一列，另有 Codex，各自顯示這次工作階段與每週的用量。示範資料。">
+</p>
+
 - **Claude Code 的多組登入（credential profile）。** 和 Codex、kiro-cli 一樣，instance 可以用 `backend_options.claude-code.credential_profile` 改用另一個 claude.ai 帳號。在聊天裡用 `/login claude-code <profile>` 讓這個 profile 登入。用量會每個 profile 各列一行；把 agent 換到別的 profile 時，對話會保留。詳見 [credential profiles](https://github.com/songsid/AgEnD/blob/main/docs/configuration.zh-TW.md#credential-profiles同一-backend-的多個帳號)。
 - **在聊天裡換 agent 的 CLI。** `/backend` 會把 instance 換到另一個 backend，再讓你選模型和 effort，只需重新啟動一次。
 
 ## 看得到 fleet 在做什麼
+
+<p align="center">
+  <img class="dark:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/org-light.webp" width="760" alt="組織圖：product 團隊（Pixel、Atlas、Quill）與 support 團隊（Sage、Orbit、Comet），每個 agent 都標出狀態。示範資料。">
+  <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/org-dark.webp" width="760" alt="組織圖：product 團隊（Pixel、Atlas、Quill）與 support 團隊（Sage、Orbit、Comet），每個 agent 都標出狀態。示範資料。">
+</p>
 
 - **用量。** 用量面板（◔）會顯示每個訂閱的剩餘額度，寬螢幕時放在右側。
 - **紀錄分頁**（需手動開啟，`web.log_tab: true`）。逐步顯示 instance 的提示、回覆和工具呼叫，秘密值會遮蔽，支援 Claude Code 和 Codex。

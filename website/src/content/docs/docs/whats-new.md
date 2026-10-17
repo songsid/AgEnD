@@ -3,6 +3,11 @@ title: "What's new in 2.2"
 description: "What changed for people coming from AgEnD 2.1: web chat, one list of what needs you, more than one Claude account, a bundled Node, and smoother upgrades."
 ---
 
+<p align="center">
+  <img class="dark:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-light.webp" width="880" alt="The AgEnD web dashboard, with made-up demo data: a sidebar of six agents with their status, a chat with the agent Pixel that shows a table of bundle sizes, a code block, a chosen “Ship it” reply button, an attached report and a usage panel with five AI providers. Beside it, an illustration of a phone showing the same conversation, with the Discord and Telegram logos.">
+  <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-dark.webp" width="880" alt="The AgEnD web dashboard, with made-up demo data: a sidebar of six agents with their status, a chat with the agent Pixel that shows a table of bundle sizes, a code block, a chosen “Ship it” reply button, an attached report and a usage panel with five AI providers. Beside it, an illustration of a phone showing the same conversation, with the Discord and Telegram logos.">
+</p>
+
 AgEnD 2.2 adds a web app next to Telegram and Discord. You can talk to your agents from a browser, see everything that is waiting on you in one place, and run a second Claude account. The fleet also brings its own Node and survives upgrades on more kinds of hosts. This page is for people coming from 2.1.x; it lists what you will notice, with links to the details.
 
 ## Upgrade in one step
@@ -13,6 +18,11 @@ AgEnD 2.2 adds a web app next to Telegram and Discord. You can talk to your agen
 
 ## Chat with your agents in the browser
 
+<p align="center">
+  <img class="dark:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/chat-light.webp" width="760" alt="The web chat with the agent Atlas: a table of endpoint latencies, an SQL code block, a chosen “Apply on staging” reply button, the latency chart the agent sent, and two files waiting above the message box. Made-up demo data.">
+  <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/chat-dark.webp" width="760" alt="The web chat with the agent Atlas: a table of endpoint latencies, an SQL code block, a chosen “Apply on staging” reply button, the latency chart the agent sent, and two files waiting above the message box. Made-up demo data.">
+</p>
+
 - **Sign in with a one-time code.** Send `/web` in General. Choose **💻 AgEnD computer** to sign in on the machine running AgEnD, or **🌐 Other device** for a phone or another computer through a temporary public link. A code works once, for five minutes. No link carries a password any more.
 - **The same conversation as your topic.** What you write on the web reaches the agent exactly as a Telegram or Discord message would. For a fleet topic the chat platform sees it too; a ClassicBot room does when `web_echo: true` is set. The history is still there after a reload or a fleet restart.
 - **A real chat.** It shows Markdown, tables and highlighted code. You can send files of any type, up to 50 MB each and 100 MB per message by default (`web.upload_max_file_mb` / `web.upload_max_total_mb`); images and media preview inline. It shows where each message got to, shows when the agent is working, and has a **Stop** button. It also shows reply buttons and polls the agent offers, and mentions the way Discord and Telegram show them.
@@ -20,18 +30,38 @@ AgEnD 2.2 adds a web app next to Telegram and Discord. You can talk to your agen
 - **Works on a phone.** Swipe to open the sidebar; light and dark themes; keyboard and screen-reader support.
 - **No chat platform needed.** A fleet can run from the web dashboard alone. Setup in the browser takes bot tokens and invites a Discord bot. Once AgEnD already runs one connection, it adds another without a restart.
 
+<p align="center">
+  <img class="dark:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/preview-light.webp" width="760" alt="An HTML page the agent Quill sent, open in the preview panel beside the chat: a release checklist with two of four steps ticked. Made-up demo data.">
+  <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/preview-dark.webp" width="760" alt="An HTML page the agent Quill sent, open in the preview panel beside the chat: a release checklist with two of four steps ticked. Made-up demo data.">
+</p>
+
 See the [web dashboard guide](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md), or the [Web Guide](/AgEnD/docs/web-guide/) on the website.
 
 ## Everything that needs you, in one list
+
+<p align="center">
+  <img class="dark:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/needs-light.webp" width="680" alt="The Needs you page: a permission request, a failed delivery, an agent that is not responding with Restart and Keep waiting buttons, an agent paused until someone signs in, and a crashed agent. Made-up demo data.">
+  <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/needs-dark.webp" width="680" alt="The Needs you page: a permission request, a failed delivery, an agent that is not responding with Restart and Keep waiting buttons, an agent paused until someone signs in, and a crashed agent. Made-up demo data.">
+</p>
 
 **Needs you** collects every prompt, permission request, sign-in, crashed agent and unconfirmed delivery across your bots. It is a live message in General, and a page in the web app. Something you handle anywhere, whether in Discord, Telegram or the web, leaves every list. See [Needs you](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md#needs-you-uineeds).
 
 ## More than one Claude account
 
+<p align="center">
+  <img class="dark:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/usage-light.webp" width="340" alt="The usage panel with one row for each Claude account (work and personal) and one for Codex, each with its session and weekly use. Made-up demo data.">
+  <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/usage-dark.webp" width="340" alt="The usage panel with one row for each Claude account (work and personal) and one for Codex, each with its session and weekly use. Made-up demo data.">
+</p>
+
 - **Credential profiles for Claude Code.** An instance can run on another claude.ai account with `backend_options.claude-code.credential_profile`, as Codex and kiro-cli can. Sign a profile in from chat with `/login claude-code <profile>`. Usage shows one row per profile, and switching an agent to another profile keeps its conversation. See [credential profiles](https://github.com/songsid/AgEnD/blob/main/docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend).
 - **Switch an agent's CLI from chat.** `/backend` moves an instance to another backend, then lets you pick the model and effort, with one restart.
 
 ## See what your fleet is doing
+
+<p align="center">
+  <img class="dark:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/org-light.webp" width="760" alt="The org chart: the product team (Pixel, Atlas, Quill) and the support team (Sage, Orbit, Comet), each agent with its state. Made-up demo data.">
+  <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.2/org-dark.webp" width="760" alt="The org chart: the product team (Pixel, Atlas, Quill) and the support team (Sage, Orbit, Comet), each agent with its state. Made-up demo data.">
+</p>
 
 - **Usage.** The usage panel (◔) shows the remaining quota of each subscription, on the right of a wide screen.
 - **Log tab** (opt-in, `web.log_tab: true`). It shows an instance's prompts, replies and tool calls step by step, with secret values masked, for Claude Code and Codex.

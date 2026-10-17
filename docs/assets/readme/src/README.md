@@ -1,7 +1,20 @@
-# README hero image
+# The docs' pictures of the web dashboard
 
-`../hero-light.webp` and `../hero-dark.webp` are the picture at the top of `README.md` and `README.zh-TW.md`. The README switches between them with `<picture>` and `prefers-color-scheme`.
+One script renders them all, each in light and dark:
+- **The README hero:** `../hero-light.webp` and `../hero-dark.webp`, at the top of `README.md` and `README.zh-TW.md` and of the "What's new in 2.2" pages.
+- **The "What's new in 2.2" shots** in `../../whats-new-2.2/`, each under its section of `docs/release-notes/2.2.0*.md` and the website's `whats-new` pages:
+  - `chat`: the web chat, with a table, code, reply buttons, a picture and two files waiting to be sent;
+  - `preview`: an HTML page in the preview panel;
+  - `needs`: the Needs you page;
+  - `usage`: the usage panel with two Claude accounts;
+  - `org`: the org chart.
+  The scenes are framed alike by `frame.html`.
 
+**How each page switches between light and dark:**
+- On GitHub, the docs switch with `<picture>` and `prefers-color-scheme`.
+- The website (Starlight) shows one of two `<img>`s by its own theme switch, using `dark:sl-hidden` / `light:sl-hidden`.
+
+**The hero has two halves:**
 - **Left:** a real render of the web dashboard's chat view. It's drawn by this repository's own code, with made-up demo data only.
 - **Right:** an illustrated phone in AgEnD's own style. It shows the same conversation as simple bubbles; it isn't a copy of any app's interface.
 
@@ -10,8 +23,12 @@
 - `render.mts` builds a FleetManager on a temporary AGEND_HOME and serves the dashboard on 127.0.0.1.
   - No fleet is started, no agent CLI runs, and nothing connects to Discord or Telegram.
   - It reads nothing from your own AgEnD home, and it removes its temporary folders when it's done.
-- Every name, message, number and file in the picture is in the `DEMO` section of `render.mts`. Edit it there.
-- Chromium screenshots the dashboard in light and dark at 2×. `hero.html` then composes the screenshot with the phone at 1280×720 CSS px (2560×1440 pixels), and Chromium encodes the result as WebP.
+- Every name, message, number and file in the pictures is in the `DEMO` section of `render.mts`. Edit it there.
+- Each scene sets what it shows just before it is drawn: the thread, Needs you, the usage rows, and who is working. One scene never changes another.
+- Chromium screenshots each page in light and dark at 2×, cropped to the panel where a scene says so.
+  - The hero goes into `hero.html` with the phone, at 1280×720 CSS px (2560×1440 pixels).
+  - The other scenes go into `frame.html`.
+  - Chromium then encodes the result as WebP.
 
 ## Regenerate
 
@@ -26,12 +43,13 @@ PW_DIR=~/pw CHROME=~/.cache/ms-playwright/chromium-*/chrome-linux64/chrome \
 ```
 
 Optional settings:
-- `OUT=<folder>` (default `docs/assets/readme`);
+- `SCENES=hero,chat,…` (default: all of them);
+- `OUT=<folder>` (default `docs/assets`);
 - `PORT=<n>` (default 47990);
 - `QUALITY=<0..1>` (WebP quality, default 0.86);
 - `MEASURE=1`, which prints where the usage rail and the thread sit, for laying out `hero.html`.
 
-Each image should stay under about 600 KB; a typical render is about 100 KB.
+Keep each image small: the hero under about 600 KB (a typical render is about 115 KB), and each shot under about 150 KB (about 30–70 KB).
 
 ## Credits
 
