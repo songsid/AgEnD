@@ -115,11 +115,11 @@ function get(path: string, cookie: string): Promise<{ status: number; body: stri
   });
 }
 /** Open a stream; collect what arrives. */
-function stream(cookie: string): { chunks: string[]; req: ClientRequest; ready: Promise<void> } {
+function stream(cookie: string, lastEventId?: string): { chunks: string[]; req: ClientRequest; ready: Promise<void> } {
   const chunks: string[] = [];
   let ready!: () => void;
   const readyP = new Promise<void>((r) => { ready = r; });
-  const req = request({ host: "127.0.0.1", port, method: "GET", path: "/ui/events", headers: { host: `127.0.0.1:${port}`, cookie, accept: "text/event-stream" } }, (res) => {
+  const req = request({ host: "127.0.0.1", port, method: "GET", path: "/ui/events", headers: { host: `127.0.0.1:${port}`, cookie, accept: "text/event-stream", ...(lastEventId ? { "last-event-id": lastEventId } : {}) } }, (res) => {
     res.on("data", (c: Buffer) => { chunks.push(c.toString()); ready(); });
   });
   req.on("error", () => {}); req.end();
@@ -169,6 +169,18 @@ describe("live: the stream, the poll and a file for a guest scoped to `a`", () =
       const got = g.chunks.join("");
       expect(got).toBe(sseFrame("activity", { instance: "a", state: "working" }));
       expect(ad.chunks.join("")).toContain("a private note");
+    } finally { g.req.destroy(); ad.req.destroy(); }
+  });
+  it("a reconnecting stream that says what it last saw: the admin's is caught up on chat; the guest's is not", async () => {
+    vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
+    fm.emitSseEvent("message", { instance: "a", sender: "a", text: "said while away", ts: new Date().toISOString(), role: "agent" });
+    const since = `${fm.webChatHistory.boot}-0`;
+    const g = stream(cookieOf(session("guest", ALICE)), since), ad = stream(cookieOf(session("admin")), since);
+    try {
+      await Promise.all([g.ready, ad.ready]);
+      await vi.waitFor(() => expect(ad.chunks.join("")).toContain("said while away"));
+      await new Promise((r) => setTimeout(r, 30));
+      expect(g.chunks.join("")).not.toContain("event: message");
     } finally { g.req.destroy(); ad.req.destroy(); }
   });
   it("the poll: the projected status alone; an admin's poll unchanged", async () => {
