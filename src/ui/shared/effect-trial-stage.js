@@ -35,6 +35,15 @@ export function watchEffectTrialStage(receipt, listener) {
   owner.listeners.add(listener);
   return () => owner.listeners.delete(listener);
 }
+/** Add one host lease veto before a frame exists. It can only reduce the original owner's permission. */
+export function constrainEffectTrialStage(receipt, current) {
+  const owner = receipts.get(receipt); return !!owner && owner.constrain(current) === true;
+}
+/** Retire through the issued owner; caller-supplied cleanup functions are never the physical boundary. */
+export function disposeEffectTrialStage(receipt) {
+  const owner = receipts.get(receipt); if (!owner) return false;
+  owner.invalidate("stopped"); return true;
+}
 /** Missing/forged/old receipts never turn the ordinary stock front flag on. */
 export function effectTrialStage(receipt, expected, stock) {
   try {
@@ -53,7 +62,7 @@ export function createEffectTrialStage({ window: host, panel, stage, binding: ra
   const own = binding(raw);
   if (!own || typeof current !== "function" || typeof ownerCss !== "function" || typeof onStop !== "function" || !host?.document || !panel || !stage || owners.has(stage)) return null;
   let sheet; try { sheet = effectHostStyle(host); if (!sheet || host.CSS?.supports("contain", "paint") !== true || host.CSS.supports("overflow", "clip") !== true) return null; } catch { return null; }
-  const receipt = Object.freeze(Object.create(null)), frames = new Set(), listeners = new Set(); let dead = false;
+  const receipt = Object.freeze(Object.create(null)), frames = new Set(), listeners = new Set(); let dead = false, constraint = null;
   const identity = Object.freeze({ key: own.key, id: own.id, instance: own.instance, generation: own.generation, serial: ++serial });
   const invalidate = reason => {
     if (dead) return; dead = true; receipts.delete(receipt); if (owners.get(stage) === receipt) owners.delete(stage);
@@ -67,7 +76,7 @@ export function createEffectTrialStage({ window: host, panel, stage, binding: ra
   function check(stock) {
     try {
       // This callback may reenter disposal or replace the owner. Recheck identity after it returns.
-      if (dead || current(own) !== true || dead || owners.get(stage) !== receipt || ownerCss() !== "off" || dead) return null;
+      if (dead || current(own) !== true || constraint !== null && constraint() !== true || dead || owners.get(stage) !== receipt || ownerCss() !== "off" || dead) return null;
       const proof = effectStockSnapshot(stock), doc = host.document;
       if (effectHostStyle(host) !== sheet) return null;
       // The own panel MUST still suppress ordinary foreground effects. Never synthesize front:true.
@@ -94,7 +103,7 @@ export function createEffectTrialStage({ window: host, panel, stage, binding: ra
       if ([...stage.children].some(child => ![...frames].some(f => f.element === child))) return null;
       const width = Math.floor(r.width), height = Math.floor(r.height);
       if (width < 1 || height < 1 || width > 4096 || height > 4096 || width * height > 8388608 || dead || owners.get(stage) !== receipt) return null;
-      if (current(own) !== true || dead || owners.get(stage) !== receipt || ownerCss() !== "off" || dead || stage.isConnected !== true || panel.parentElement !== split) return null;
+      if (current(own) !== true || constraint !== null && constraint() !== true || dead || owners.get(stage) !== receipt || ownerCss() !== "off" || dead || stage.isConnected !== true || panel.parentElement !== split) return null;
       return { x: r.x, y: r.y, width, height };
     } catch { return null; }
   }
@@ -132,7 +141,7 @@ export function createEffectTrialStage({ window: host, panel, stage, binding: ra
     } catch { remove(); invalidate("stage_unavailable"); return { ok: false }; }
     return handle;
   }
-  receipts.set(receipt, { identity, project, listeners }); owners.set(stage, receipt);
+  receipts.set(receipt, { identity, project, listeners, invalidate, constrain(fn) { if (dead || frames.size || constraint !== null || typeof fn !== "function") return false; constraint = fn; return true; } }); owners.set(stage, receipt);
   try { host.addEventListener("blur", blur); } catch { invalidate("unsupported"); return null; }
   return Object.freeze({ receipt, dispose: () => invalidate("stopped"), hide: () => { for (const f of frames) f.hide(); } });
 }
