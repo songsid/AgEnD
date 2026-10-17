@@ -73,6 +73,22 @@ Host memory pressure never posts a chat broadcast on any platform or level,
 including recovery. The Fleet dashboard indicator (`host_memory` in the status
 frame), `/health` and logs show the pressure. It does not change admission.
 
+While pressure is elevated or critical on Linux, the same three places also say
+**which processes hold the most memory, and whose they are** (#2015). That
+covers the top three in the fleet's service (its cgroup, else the fleet's
+descendants), each with its RSS and owner: an instance (found by walking the
+process's parents to a tmux pane), the fleet itself, or tmux. A runaway command
+an agent started is named, so a person can stop it before the kernel's OOM
+killer picks a victim.
+- **Log:** a "Host memory pressure — largest processes in the fleet" warning
+  with `topProcesses`, at most every 10 minutes per episode. The pressure line
+  also carries the latest list.
+- **`/health`:** `hostMemory.topProcesses` and `topProcessesAt`.
+- **Fleet dashboard header:** "Largest: python3 18.1 GB (dev-a) · …" next to the
+  indicator.
+
+The list is rescanned at most once a minute and cleared when pressure ends.
+
 When a user action actually reaches a critical admission hold, its original
 chat reply says that host memory is low and it will continue after recovery.
 This is once per pending action, not a General notice or a repeated retry alert.

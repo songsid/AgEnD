@@ -12,7 +12,7 @@ export const REST_KEY = "\u0000rest";
  * (each team: its slot, its header, its member cells unless folded), the tree lines (`tree`: SVG path data) and the
  * size of the whole. `narrow`: a phone's packing.
  */
-export function canvasLayout(view, folded = new Set(), { narrow = false } = {}) {
+export function canvasLayout(view, folded = new Set(), { narrow = false, label = (s, n) => `${n} ${s}` } = {}) {
   const { NW, NH, GAP, PAD, HEAD } = OC;
   const groups = [...view.teams.map((tm) => ({ key: tm.name, name: tm.name, loose: false, nodes: tm.nodes, counts: tm.counts })),
     ...(view.rest.nodes.length ? [{ key: REST_KEY, name: null, loose: true, nodes: view.rest.nodes, counts: view.rest.counts }] : [])];
@@ -33,8 +33,11 @@ export function canvasLayout(view, folded = new Set(), { narrow = false } = {}) 
     const slotH = Math.max(...r.map((b) => b.fullH));
     for (const b of r) {
       const isFolded = b.nodes.length > 0 && folded.has(b.key);
+      // Folded: its members' states in rows that fit the box (never wider; never taller than its open slot).
+      const summary = isFolded ? summaryRows(b.counts, b.w, label) : [];
       const box = { key: b.key, name: b.name, loose: b.loose, nodes: b.nodes, counts: b.counts, cols: b.cols, x: b.x, y, w: b.w,
-        h: isFolded ? OC.FOLDED : b.fullH, slotH, folded: isFolded, busY: y - OC.BUS, cells: [] };
+        h: isFolded ? Math.min(b.fullH, Math.max(OC.FOLDED, HEAD + 10 + summary.length * SUM_LINE)) : b.fullH, slotH, folded: isFolded, summary,
+        busY: y - OC.BUS, cells: [] };
       if (!isFolded) b.nodes.forEach((node, i) => box.cells.push({ node, key: `${b.key}/${node.name}`,
         x: b.x + PAD + (i % b.cols) * (NW + GAP), y: y + HEAD + PAD + Math.floor(i / b.cols) * (NH + GAP), w: NW, h: NH }));
       boxes.push(box);
@@ -47,6 +50,26 @@ export function canvasLayout(view, folded = new Set(), { narrow = false } = {}) 
   const tops = view.top.map((node, i) => ({ node, key: `\u0000top/${node.name}`, x: width / 2 - topW / 2 + i * (OC.LW + GAP), y: OC.TOP_Y, w: OC.LW, h: OC.LH }));
   const height = boxes.length ? y - OC.ROW_GAP : tops.length ? OC.TOP_Y + OC.LH : 0;
   return { tops, boxes, width, height, tree: treeLines(tops, boxes) };
+}
+
+/** A folded team's summary line height, and a label's width estimate (canvas units: wide for CJK, narrow otherwise). */
+export const SUM_LINE = 20;
+const textWidth = (s) => [...s].reduce((w, ch) => w + (ch.codePointAt(0) >= 0x2e80 ? 12 : 6.6), 0);
+/**
+ * A folded team's states as rows of { s, n, label, dx } that fit a box `w` wide (dx from the box's left), most pressing
+ * first; an item never splits, and one wider than a row has the row to itself.
+ */
+export function summaryRows(counts, w, label) {
+  const rows = [];
+  let row = [], x = 14;
+  for (const [s, n] of counts) {
+    const text = label(s, n), iw = 24 + textWidth(text);
+    if (row.length && x + iw > w - 14) { rows.push(row); row = []; x = 14; }
+    row.push({ s, n, label: text, dx: x });
+    x += iw;
+  }
+  if (row.length) rows.push(row);
+  return rows;
 }
 
 /** General's stem, a bus over each row of teams, the trunk joining the rows at the left, one drop per team. */
@@ -86,4 +109,3 @@ export function openingRegion(L) {
   const x0 = Math.min(...parts.map((p) => p.x)), y0 = Math.min(...parts.map((p) => p.y));
   return { x: x0, y: y0, w: Math.max(...parts.map((p) => p.x + p.w)) - x0, h: Math.max(...parts.map((p) => p.y + p.h)) - y0 };
 }
-
