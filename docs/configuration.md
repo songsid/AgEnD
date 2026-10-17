@@ -476,8 +476,14 @@ instances:
 
 - **How it's passed:** AgEnD sets `CLAUDE_CODE_PROMPT_CACHE_TTL` and `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL` to the value when it launches the instance. That covers the main conversation and its subagents.
 - **When it takes effect:** on the instance's next start or restart.
-- **What it costs:** a 1-hour cache write costs more than a 5-minute one (2× against 1.25× the base input price). It pays off only when an instance's idle gaps would otherwise expire the cache. **Fleet → cache** shows how often its gaps outlast the TTL and what that costs.
-- **Billing modes:** an explicit value applies whatever the account's billing, including extra usage.
+- **What it costs:** a 1-hour cache write costs more than a 5-minute one (2× against 1.25× the base input price). It pays off only when an instance's idle gaps would otherwise expire the cache.
+  - **Fleet → cache** shows how often its gaps outlast the TTL and what that costs.
+  - For a 5-minute cache, it also shows what the cache really lasts (**Behaves as**). When the cache measurably expires in 5–60 minute gaps, the card recommends `"1h"`.
+- **Billing modes:** an explicit value skips the CLI's own subscriber and extra-usage checks, so it applies whatever the account's billing. The limits below still apply.
+- **Limits:**
+  - It needs Claude Code 2.1.242 or later.
+  - `FORCE_PROMPT_CACHING_5M=1` in the fleet's environment overrides it and keeps 5 minutes.
+  - A 1-hour cache needs an API gateway or cloud provider that supports it. See Claude Code's [prompt-caching docs](https://code.claude.com/docs/en/prompt-caching#choose-the-ttl-yourself).
 
 ## Credential profiles (multiple subscriptions of one backend)
 

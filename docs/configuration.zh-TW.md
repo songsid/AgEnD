@@ -498,8 +498,14 @@ instances:
 
 - **如何傳入：** AgEnD 啟動 instance 時，會把 `CLAUDE_CODE_PROMPT_CACHE_TTL` 和 `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL` 設成這個值，涵蓋主對話與它的子代理。
 - **何時生效：** 在 instance 下次啟動或重新啟動時。
-- **費用：** 1 小時的快取寫入比 5 分鐘的貴（基本輸入價的 2 倍對 1.25 倍）。只有在 instance 的閒置空檔原本會讓快取過期時才划算；**Fleet → 快取** 會顯示它的空檔有多常超過 TTL，以及因此多花的費用。
-- **計費方式：** 明確設定的值不論帳號的計費方式都會套用，包括額外用量。
+- **費用：** 1 小時的快取寫入比 5 分鐘的貴（基本輸入價的 2 倍對 1.25 倍）。只有在 instance 的閒置空檔原本會讓快取過期時才划算。
+  - **Fleet → 快取** 會顯示它的空檔有多常超過 TTL，以及因此多花的費用。
+  - 對 5 分鐘快取，也會顯示它實際能撐多久（**實際存活**）。當快取在 5–60 分鐘的空檔中確實會過期時，卡片會建議設定 `"1h"`。
+- **計費方式：** 明確設定的值會略過 CLI 自己對訂閱與額外用量的檢查，因此不論帳號的計費方式都會套用。但下列限制仍然適用。
+- **限制：**
+  - 需要 Claude Code 2.1.242 或更新版本。
+  - fleet 環境中若有 `FORCE_PROMPT_CACHING_5M=1`，會蓋過這個設定，維持 5 分鐘。
+  - 1 小時快取需要支援它的 API gateway 或雲端供應商。請見 Claude Code 的[提示快取說明](https://code.claude.com/docs/en/prompt-caching#choose-the-ttl-yourself)。
 
 ## Credential profiles（同一 backend 的多個帳號）
 

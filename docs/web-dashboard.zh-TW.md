@@ -225,7 +225,7 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。�
   - **快取寫入 5 分 / 1 時：** 每個 Claude instance 會顯示以 5 分鐘 TTL 和以 1 小時 TTL 寫入的 token 各有多少（#2001）。
   - **實際存活（#2010）：** 5 分鐘快取實際能撐多久，依過去 7 天內 5 到 60 分鐘的請求空檔實測。
     - 很少被重寫（至少 10 個空檔中最多一成）：視為 1 小時，保溫也照 1 小時模擬。
-    - 大多被重寫（至少一半）：卡片會建議為該 instance 設定 `prompt_cache_ttl: "1h"`（見[設定](configuration.zh-TW.md)，#2010），而不是保溫；fleet 列會計算這類 instance 的數量。
+    - 大多被重寫（至少一半）：卡片會建議為該 instance 設定 `prompt_cache_ttl: "1h"`（見[設定](configuration.zh-TW.md#claude-提示快取-ttl)），而不是保溫；fleet 列會計算這類 instance 的數量。
     - 空檔太少：會說明這一點，數字也會標示為估算。
   - Agent 以 `get_cache_report` 讀取同一份報告。General、協調者與 full 權限的 instance 可以看到所有 instance，其他 agent 只能看到自己那一列。
 - **設定**：fleet 的頻道、存取權限與預設值。
