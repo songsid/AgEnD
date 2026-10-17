@@ -6283,10 +6283,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const guests = [...accounts.entries()].map(([k, a]) => {
       const owner = { adapterId: a.adapterId, userId: a.userId };
-      return { ...a, name: this.webPerson(owner).name, platform: this.worlds.get(a.adapterId)?.adapter.type ?? a.adapterId, scope: [...this.guestScope(owner)].sort(),
+      const badge = this.guestBadge(owner);
+      return { ...a, name: badge.name, platform: badge.platform, scope: [...this.guestScope(owner)].sort(),
         devices: devices.get(k) ?? 0, narrow: own(cfg?.narrow, `${a.adapterId}:${a.userId}`) ?? null };
     }).sort((x, y) => (y.lastSeen ?? -1) - (x.lastSeen ?? -1));
     return { enabled: cfg?.enabled === true, chat: cfg?.chat !== false, instances: Object.keys(this.fleetConfig?.instances ?? {}).sort(), connections, guests };
+  }
+
+  /** #1920 phase 3 (the app shell): a guest's chip — its web name, and its connection's platform (discord, telegram). */
+  guestBadge(owner: { adapterId: string; userId: string }): { name: string; platform: string } {
+    return { name: this.webPerson(owner).name, platform: this.worlds.get(owner.adapterId)?.adapter.type ?? owner.adapterId };
   }
 
   /** #1920 step 4: whether a `/web` is a guest's — guest sign-in on, and not from a fleet admin (theirs runs as before). */

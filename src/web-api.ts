@@ -2279,6 +2279,8 @@ export interface AppShellContext {
   readonly ownerCss?: OwnerCssStore;
   readonly webToken?: string | null;
   readonly webSessions?: WebApiContext["webSessions"];
+  /** #1920 phase 3: a guest's page says who it is signed in as (its web name and platform), for its "Guest" chip. */
+  guestBadge?(owner: WebAccount): { name: string; platform: string };
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -2353,14 +2355,14 @@ function serveMediaRange(req: IncomingMessage, res: ServerResponse, files: WebFi
  * or replays a tour already seen, a new device included. Only for the signed-in app (the public link reads what is in
  * force too); the anonymous View reader and the sign-in page keep the browser's own.
  */
-type PrefsViewer = { person: string | null; epoch: string | null; scope: "none" | "person" | "operator"; canWrite: boolean; via: string; guest?: boolean };
+type PrefsViewer = { person: string | null; epoch: string | null; scope: "none" | "person" | "operator"; canWrite: boolean; via: string; guest?: boolean; owner?: WebAccount };
 function prefsViewer(req: IncomingMessage, url: URL, ctx: Partial<Pick<WebApiContext, "webToken" | "webSessions">>): PrefsViewer | null {
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
   if (v.kind !== "allow") return null;
   // #1920: a guest is a guest on every listener. The public link's page and reads too — before, a guest signed in through
   // it (#2094) read the host's preferences unfiltered: the sidebar's order and favourites, naming instances out of its
-  // scope.
-  const guest = v.via === "session" && v.session?.tier === "guest" ? { guest: true } : {};
+  // scope. Its account (phase 3) names it on its page.
+  const guest = v.via === "session" && v.session?.tier === "guest" ? { guest: true, ...(v.session.owner ? { owner: v.session.owner } : {}) } : {};
   if (!gatewayRequestContext(req) && v.via === "session" && v.session) {
     const person = webPersonKey(v.session.owner);
     return { person, epoch: v.session.handle, scope: person === OPERATOR ? "operator" : "person", canWrite: v.session.tier === "admin", via: "session", ...guest };
@@ -2389,6 +2391,10 @@ function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVi
   return mode === "full" && viewer?.person !== null && viewer?.person !== undefined && ctx.ownerCss ? ctx.ownerCss.active(viewer.person) : null;
 }
 
+function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: string | null | undefined) => string): string {
+  const badge = ctx.guestBadge?.(owner);
+  return ` data-tier="guest"${badge ? ` data-guest-name="${attr(badge.name)}" data-guest-platform="${attr(badge.platform)}"` : ""}`;
+}
 function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   const p = shellPreview(req, ctx, mode);
   const ownerCss = shellOwnerCss(ctx, mode, viewer);
@@ -2404,8 +2410,8 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`
     // #1723: why the public link's preview tunnel failed (a fixed reason the page words), when it did.
     + `${p?.detail ? ` data-preview-detail="${attr(p.detail)}"` : ""}`
-    // #1523 N3: whether the fleet serves /api/ai-usage (web.usage_panel), for every page's ◔.
-    + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false ? "0" : "1"}"`
+    // #1523 N3: whether the fleet serves /api/ai-usage (web.usage_panel), for every page's ◔ — never to a guest (#1920).
+    + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false || viewer?.guest ? "0" : "1"}"`
     // #1218: whether the Log tab is on (web.log_tab; off by default): the tab says so and offers to turn it on.
     + ` data-log-tab="${ctx.fleetConfig?.web?.log_tab === true ? "1" : "0"}"`
     // #1937: the upload limits in force for this page (the config's; the public link's own cap on it) — what the chat
@@ -2416,7 +2422,9 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     // #1629 r4 §3: the person's owner CSS in force (a sha), linked by the page unless this device or this load says not.
     + ` data-owner-css-state="${ownerCssState}"${ownerCss ? ` data-owner-css="${attr(ownerCss)}"` : ""}`
     // #1589: the public link shows attachments as downloads only (no inline text or media): its scope is unchanged.
-    + `${gatewayRequestContext(req) ? ' data-public-link="1"' : ""}>`;
+    + `${gatewayRequestContext(req) ? ' data-public-link="1"' : ""}`
+    // #1920 phase 3: a guest's page — the shell shows only what a guest may use, and who it is signed in as.
+    + `${mode === "full" && viewer?.guest && viewer.owner ? guestBodyAttrs(ctx, viewer.owner, attr) : ""}>`;
 }
 /** The app shell page for one entry, under the panels' CSP; it may frame exactly <preview origin>/frame, and only
  *  when this load chose one. */

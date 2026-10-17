@@ -12,7 +12,7 @@ import { Shell, handleKey, showDialog, closeDrawer, openDrawer, shellStore, retr
 import { installSwipe } from "./app-swipe.js";
 import { startRouter, navStore, navigate } from "./app-nav.js";
 import { createStream } from "./app-stream.js";
-import { appStore, applyStatus, applyActivity } from "./app-store.js";
+import { appStore, applyStatus, applyActivity, guestPage } from "./app-store.js";
 import { chatPath } from "./app-route.js";
 import { startNeedsNotifier } from "./app-needs.js";
 import { toast } from "./ui-toast.js";
@@ -29,6 +29,9 @@ initUsageRail();
 // session-only panel, nothing under /ui/ is ever imported or read (#1408 §3).
 const mode = boot.mode === "view-only" ? "view-only" : "full";
 appStore.set({ viewOnly: mode === "view-only" });
+// #1920 phase 3: a guest's page has its chats and nothing else — no panel, notifier, theme list or owner CSS a guest
+// would be refused.
+const guest = guestPage();
 
 // A failed load can be retried (the panel's Retry): each retry asks for a fresh URL, since a browser may keep a failed
 // module import cached under the first one. boot() runs once, whichever attempt succeeds.
@@ -80,19 +83,22 @@ if (mode === "full") {
   // a boot import that failed before the Outlet first asked would be retried at once, depending on timing.)
   let chatLoads = 0;
   panels.set("chat", { load: () => (chatLoads++ === 0 ? chatBoot : loadChat()).then((m) => m.ChatPanel) });
-  panels.set("fleet", { load: () => loadFleet().then((m) => m.FleetPanel) });
-  panels.set("settings", { load: () => loadSettings().then((m) => m.SettingsPanel) });
-  panels.set("needs", { load: () => loadNeeds().then((m) => m.NeedsPanel) });
-  // #1523 N2: one instance's Details (/ui/fleet/agent/<name>).
-  panels.set("details", { load: () => loadDetails().then((m) => m.DetailsPanel) });
-  // #1218: one instance's Log (/ui/log/<name>).
-  panels.set("log", { load: () => loadLog().then((m) => m.LogPanel) });
-  // #1386 §6.3: desktop notifications for new "Needs you" items, in any panel, while this signed-in page is open.
-  startNeedsNotifier({ open: (instance) => navigate(chatPath(instance)) });
+  if (!guest) {
+    panels.set("fleet", { load: () => loadFleet().then((m) => m.FleetPanel) });
+    panels.set("settings", { load: () => loadSettings().then((m) => m.SettingsPanel) });
+    panels.set("needs", { load: () => loadNeeds().then((m) => m.NeedsPanel) });
+    // #1523 N2: one instance's Details (/ui/fleet/agent/<name>).
+    panels.set("details", { load: () => loadDetails().then((m) => m.DetailsPanel) });
+    // #1218: one instance's Log (/ui/log/<name>).
+    panels.set("log", { load: () => loadLog().then((m) => m.LogPanel) });
+    // #1386 §6.3: desktop notifications for new "Needs you" items, in any panel, while this signed-in page is open.
+    startNeedsNotifier({ open: (instance) => navigate(chatPath(instance)) });
+  }
   // #1665: this device's first upload of its own choices (once), then another device's changes at each status frame.
+  // A guest's page only reads them (prefsWritable is false there).
   bootPrefs();
-  // #1629: agents' themes, read when the status frame's themes_rev moves.
-  startThemes();
+  // #1629: agents' themes, read when the status frame's themes_rev moves (a guest's frames never carry it).
+  if (!guest) startThemes();
   onNewInstance = async () => {
     closeDrawer();                                 // on a phone the dialog opens from the drawer: the drawer goes first
     let m;
@@ -103,8 +109,9 @@ if (mode === "full") {
 } else appStore.set({ connection: "none" });
 
 startRouter(window);
-// #1629 r4 §3: the person's owner CSS (full app only; never on Settings, in safe mode or where this device turned it off).
-installOwnerCss();
+// #1629 r4 §3: the person's owner CSS (full app only; never on Settings, in safe mode or where this device turned it off;
+// never a guest's — owner CSS is an admin's).
+if (!guest) installOwnerCss();
 // /ui on its own opens the chat this browser had open last (an unknown name shows the panel's "not found").
 {
   const r = navStore.get().route;

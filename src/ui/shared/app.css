@@ -181,6 +181,13 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .side-foot > .session { position: static; }
 .side-foot .side-row span:not(.dot):not(.meta) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-foot .session .meta { display: none; }
+/* #1920 phase 3: a guest's page says who it is signed in as, beside its session. */
+.guest-chip { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s-1); margin: 0; padding: 6px var(--s-2); border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--text-2); font-size: var(--fs-sm); }
+.guest-chip .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Its own row: a name and a platform do not fit beside the session at sidebar widths. */
+.guest .side-foot { flex-wrap: wrap; }
+.guest .side-foot > .guest-chip { flex-basis: 100%; }
 .prefs-pop > summary { list-style: none; cursor: pointer; }
 .prefs-pop > summary::-webkit-details-marker { display: none; }
 .prefs.labelled { flex-direction: column; gap: var(--s-2); padding: 0; }
@@ -661,6 +668,8 @@ html.lb-open .scroller { overflow: hidden; }
 @media (max-width: 479px) { .btn-stop .stop-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; } }
 .btn-stop { background: var(--bg); }
 .hint { font-size: var(--fs-xs); color: var(--text-3); text-align: center; }
+/* #1920: a guest's note under the composer — on a phone too, where the key hints are hidden. */
+.guest-note { margin: 2px 0 0; font-size: var(--fs-xs); color: var(--text-3); text-align: center; }
 .pending-files { display: flex; flex-wrap: wrap; gap: var(--s-2); padding: var(--s-2) var(--s-2) 0; }
 .file-chip { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); padding: 4px var(--s-2); border-radius: var(--r-md); background: var(--bg); max-width: 320px; }
 .file-chip img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; }

@@ -18,7 +18,7 @@
 // - The status frame's prefs_rev: another device changed something; the host's values are read again and applied. A
 //   revision counts as seen only once its read succeeded (a failed one is tried again, at most every few seconds).
 import { deviceLanguage, lang, setLang } from "./app-i18n.js";
-import { appStore } from "./app-store.js";
+import { appStore, guestPage } from "./app-store.js";
 
 const SYNCED_FLAG = "agend_prefs_synced";
 const RETRY_MS = 5000;
@@ -88,9 +88,9 @@ if (host) {
   }
 }
 
-/** This page may change the host's preferences: the signed-in app, not over the public link. */
+/** This page may change the host's preferences: the signed-in app, not over the public link, not a guest's (#1920). */
 export function prefsWritable() {
-  return !!initial && !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1");
+  return !!initial && !guestPage() && !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1");
 }
 /**
  * The value in force for a key, in memory — never only in this browser's storage (a full storage must not bring back

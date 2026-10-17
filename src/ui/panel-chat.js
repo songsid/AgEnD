@@ -8,7 +8,7 @@
 // that apply to its state are offered (#1408 rough edges 4 and 7).
 import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
-import { appStore, useStore } from "/assets/app-store.js";
+import { appStore, guestPage, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { modelText, namesOf, namesStore } from "/assets/instance-nav.js";
 import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
@@ -116,7 +116,8 @@ export function boot({ stream, boot: bootData, deps = {} }) {
   }
   // #1604: the preview opt-in and Tour live in Settings → This device now (and on each preview card's menu).
   installTour();
-  startAppEffects({ store });
+  // #1920 phase 3: effects are an admin's to place (a guest's page reads none: each read would be refused).
+  if (!guestPage()) startAppEffects({ store });
   return store;
 }
 
@@ -278,13 +279,16 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, onSelect: () => setDialog("delete") },
   ];
   const cls = statusClass(inst, exec, awaiting);
+  // #1920 phase 3: a guest has this chat only — no Details, View or Log to switch to, no lifecycle, colour, theme,
+  // effects or delete (a guest's status frame carries no model or effort either, so those chips do not show).
+  const guest = guestPage();
   // #1269 quick actions: the model and effort it runs, each a way to /model or /effort (the same pick list).
   const pick = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
   const sub = html`<span class="status"><span class=${`dot ${cls}`} aria-hidden="true"></span>${statusLabel(inst, exec, awaiting)}</span>
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelText(inst)}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
-    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="chat" />`}><${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} /><${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onClose=${() => setDialog(null)} /><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
+    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`}><${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} />${guest ? null : html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onClose=${() => setDialog(null)} />`}<${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>
@@ -379,7 +383,8 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
       <button type="button" class="btn btn-primary btn-sm" onClick=${() => store.putBack(name)}>${t("chat.putBack")}</button>
       <button type="button" class="btn btn-sm" onClick=${() => store.discardFailed(name)}>${t("chat.discard")}</button></div>` : null}
     <${Composer} name=${name} lease=${lease} busy=${R().isBusy(exec)} />
-    <p class="hint" title=${t("chat.composerMore")}>${t("chat.composerHint")}</p>
+    <p class="hint" title=${t(guestPage() ? "chat.guestMore" : "chat.composerMore")}>${t("chat.composerHint")}</p>
+    ${guestPage() ? html`<p class="guest-note">${t("chat.guestNote")}</p>` : null}
   </div></div>`;
 }
 
@@ -456,8 +461,10 @@ function Composer({ name, lease, busy }) {
   const value = s.drafts[name] || "";
   const files = s.pendingFiles[name] || [];
   const content = !!value.trim() || files.length > 0;
-  // A file waiting: what goes is a message with its file, never a command (no palette, no command line).
-  const palette = files.length || closedFor === value ? null : paletteFor(value);
+  // A file waiting: what goes is a message with its file, never a command (no palette, no command line). A guest never
+  // runs one (#1920: the server refuses its slash text), so it has no palette either.
+  const guest = guestPage();
+  const palette = guest || files.length || closedFor === value ? null : paletteFor(value);
   const pick = palette && palette.length ? palette[Math.min(sel, palette.length - 1)] : null;
   // Grow with the text, up to a limit: set through the CSSOM, never a style attribute (#1300).
   useLayoutEffect(() => { const el = input.current; if (!el) return; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; }, [value]);
@@ -478,6 +485,8 @@ function Composer({ name, lease, busy }) {
       else complete(pick);
       return;
     }
+    // #1920: a guest's "/…" would be refused as a command — said here, the draft kept to edit.
+    if (guest && /^\s*\//.test(value)) { toast(t("chat.guestNoCommands"), false); return; }
     const cmd = files.length ? null : parseCommandLine(value);
     if (cmd && needsArgument(cmd.command) && !cmd.args) { setValue(`/${cmd.command} `); return; }
     if (cmd) { runLine(cmd); return; }

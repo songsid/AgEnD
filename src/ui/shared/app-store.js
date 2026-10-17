@@ -26,6 +26,20 @@ export function createStore(initial) {
 export const appStore = createStore({ ready: false, instances: [], uptime: 0, exec: {}, awaiting: {}, connection: "connecting", needs: [], connections: null,
   hydration: "none", retryHydration: null });
 
+/**
+ * #1920 phase 3: this page is a guest's — the server says so on <body> (data-tier="guest"). A guest sees only its own
+ * agents' chats: no fleet, Needs you, View, Settings, filters, commands or new agent, and nothing it may not read is asked
+ * for (each would be refused). The server checks every request regardless; this only keeps the page to what works.
+ */
+export function guestPage() {
+  return typeof document !== "undefined" && !!document.body && document.body.dataset.tier === "guest";
+}
+/** Who a guest's page is signed in as: its web name and its platform (the server's, on <body>). */
+export function guestBadge() {
+  const d = typeof document !== "undefined" && document.body ? document.body.dataset : {};
+  return { name: d.guestName || "", platform: d.guestPlatform || "" };
+}
+
 /** Fold one status frame (stream or poll) into the store. */
 export function applyStatus(d) {
   if (!d || !Array.isArray(d.instances)) return;

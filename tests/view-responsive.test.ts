@@ -88,7 +88,7 @@ describe("the page layout", () => {
     expect(panelSource).not.toMatch(/menuBtn|setDrawer/);
     // alpha.2 (N1): the roster is the shell's one list (instance-nav.js); a row's click is the shell's closeDrawer.
     expect(read("src", "ui", "shared", "instance-nav.js")).toContain("onClick=${onPick}");
-    expect(read("src", "ui", "shared", "app-shell.js").match(/onPick=\$\{closeDrawer\}/g)?.length, "both lists: full and view-only").toBe(2);
+    expect(read("src", "ui", "shared", "app-shell.js").match(/onPick=\$\{closeDrawer\}/g)?.length, "every list: full, guest (#1920) and view-only").toBe(3);
   });
 });
 

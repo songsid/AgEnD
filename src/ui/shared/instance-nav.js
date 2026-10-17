@@ -9,7 +9,7 @@
 // Public (/assets/): an anonymous View reader gets the same list, fed by View's roster read instead of status frames.
 import { html, useLayoutEffect, useRef, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
-import { appStore, createStore, useStore } from "./app-store.js";
+import { appStore, createStore, guestPage, useStore } from "./app-store.js";
 import { chatPath, detailsPath, logPath, viewPath } from "./app-route.js";
 import { Icon } from "./ui-icons.js";
 import { Skeleton } from "./ui-states.js";
@@ -391,10 +391,13 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const favs = nav.favorites.filter((n) => known.has(n));
   const favSet = new Set(favs);
   const canStar = !viewOnly && prefsWritable();
+  // #1920: a guest's list is to pick from — no reordering and no filters (one this device kept would hide rows with no
+  // way to clear it).
+  const guest = guestPage();
   const shownGroups = favs.length ? [FAV_GROUP, ...groupNames] : groupNames;
   const shownInsts = new Map([...instByGroup].map(([g, names]) => [g, names.filter((n) => !favSet.has(n))]));
   if (favs.length) shownInsts.set(FAV_GROUP, favs);
-  const f = nav.filter;
+  const f = guest ? { q: "", status: [], cli: [] } : nav.filter;
   const shown = filterSidebar(shownGroups, shownInsts, byName, f.q, backendLabel, { status: f.status, cli: f.cli, statusOf: facetOf });
   // #1936: while a filter is on, the instance you have open stays on top, pinned and marked "Current", whether or not
   // it matches; a match is not repeated below. "N / M" still counts the filter's matches (the pinned row counts only
@@ -408,7 +411,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const flip = (key, value) => { const cur = new Set(navStore.get().filter[key]); if (cur.has(value)) cur.delete(value); else cur.add(value); setNavFilter({ [key]: [...cur] }); };
   // Drag to reorder: only the full list (a filtered subset would be ambiguous), groups among groups, instances within
   // their group.
-  const dragProps = (item) => shown.active ? {} : {
+  const dragProps = (item) => shown.active || guest ? {} : {
     draggable: true,
     onDragStart: (e) => { drag.current = item; e.currentTarget.classList.add("dragging"); try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", item.name); } catch { /* Firefox needs data */ } },
     onDragEnd: (e) => { e.currentTarget.classList.remove("dragging"); drag.current = null; },
@@ -504,7 +507,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     })}
     ${loaded && shown.active && !shown.groups.length ? html`<p class="side-empty">${tn("filterNone")}</p>` : null}
     </div>
-    <div class="v-filter">
+    ${guest ? null : html`<div class="v-filter">
       <label class="v-filter-box"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("filterPh")}</span>
         <input ref=${filterRef} id="filterInput" type="text" autocomplete="off" spellcheck=${false} placeholder=${tn("filterPh")} value=${f.q}
           onInput=${(e) => setNavFilter({ q: e.target.value })}
@@ -520,7 +523,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
         </div>
         <p class="note nav-shown" aria-live="polite">${shown.shown} / ${shown.total}${shown.active ? ` ${tn("filterShown")}` : ""}</p>
       </div>
-    </div>
+    </div>`}
   </div>`;
 }
 

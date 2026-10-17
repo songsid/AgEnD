@@ -7,7 +7,7 @@ import { Toasts } from "./ui-toast.js";
 import { ConfirmHost } from "./ui-confirm.js";
 import { ColorDialogHost } from "./identity-color.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
-import { appStore, createStore, useStore } from "./app-store.js";
+import { appStore, createStore, guestBadge, guestPage, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
 import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, detailsPath, fleetPath } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
@@ -291,6 +291,22 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
       <${SidebarResize} />
     </aside>`;
   }
+  // #1920 phase 3: a guest's sidebar — its own agents to pick from, who it is signed in as, and its session; no fleet,
+  // Needs you, View, Settings, new agent or widget (each is an admin's, and the server refuses a guest them anyway).
+  if (guestPage()) {
+    return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
+      <div class="side-head" data-trust="navigation">
+        <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
+        <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
+      </div>
+      <${InstanceNav} route=${route} items=${app.instances} loaded=${app.ready !== false} exec=${app.exec} awaiting=${app.awaiting} onPick=${closeDrawer} />
+      <div class="side-foot" data-trust="navigation">
+        <${GuestChip} />
+        <${SessionMenu} />
+      </div>
+      <${SidebarResize} />
+    </aside>`;
+  }
   // #1675: the whole fleet, on its Org chart (#1389), from anywhere — top left, so at the top of a phone's drawer too. The
   // "Fleet" row under it goes to the open instance's Details (#1523 N2); this one is the Fleet panel, any of its tabs.
   const onFleet = !!route && route.panel === "fleet";
@@ -317,6 +333,17 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     </div>
     <${SidebarResize} />
   </aside>`;
+}
+
+/** #1920 phase 3: "Guest · <name> (<platform>)" — who this guest's page is signed in as; what a guest sees, in its title. */
+const PLATFORM_NAMES = { discord: "Discord", telegram: "Telegram" };
+function GuestChip() {
+  const { name, platform } = guestBadge();
+  const where = PLATFORM_NAMES[platform] || platform;
+  const label = name ? (where ? t("app.guestAsOn", name, where) : t("app.guestAs", name)) : t("app.guestChip");
+  // Inside .side-foot (a marked, stock-trusted element): no trust marker of its own — effect-stock-trust's closed inventory
+  // refuses any element it does not know, which would hide a guest's static effect posters (#2101 review).
+  return html`<p class="guest-chip" title=${t("app.guestHint")}><${Icon} name="user" size=${14} /><span class="grow">${label}</span></p>`;
 }
 
 /** #1629 r4-4: the person's own sidebar widget (their synced preference), with the fleet's counts. */
@@ -406,6 +433,8 @@ function BottomTabs({ route, viewOnly }) {
       ${tab(signInHref(), "user", t("app.signIn"), false)}
     </nav>`;
   }
+  // #1920: a guest has only its chats (the drawer lists them): no tabs to switch between.
+  if (guestPage()) return null;
   return html`<nav data-trust="navigation" class="tabs" aria-label=${t("app.menu")}>
     ${tab(chatHref, "chat", t("app.chat"), route && route.panel === "chat", anyAwaiting)}
     ${tab(NEEDS_PATH, "inbox", t("app.needsTab"), route && route.panel === "needs", (app.needs || []).length, t("app.needsCount", (app.needs || []).length))}
@@ -530,23 +559,24 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     vv.addEventListener("resize", onResize);
     return () => vv.removeEventListener("resize", onResize);
   }, []);
-  const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : ""].filter(Boolean).join(" ");
+  const guest = guestPage();             // #1920: a guest's page — no operations, usage, pending changes or owner CSS
+  const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");
   return html`<div class=${cls}>
     <a data-trust="navigation" class="skip" href="#main">${t("app.skip")}</a>
     <${Sidebar} route=${nav.route} onNewInstance=${onNewInstance} viewOnly=${viewOnly} />
     <div class="scrim" onClick=${closeDrawer} aria-hidden="true"></div>
     <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>
       <${ConnectionLine} />
-      ${viewOnly ? null : html`<${OperationLine} route=${nav.route} />`}
+      ${viewOnly || guest ? null : html`<${OperationLine} route=${nav.route} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>
-    <${UsageRail} route=${nav.route} />
+    ${guest ? null : html`<${UsageRail} route=${nav.route} />`}
     <${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
-    ${viewOnly || (nav.route && nav.route.panel === "settings") ? null : html`<${PendingChanges} />`}
+    ${viewOnly || guest || (nav.route && nav.route.panel === "settings") ? null : html`<${PendingChanges} />`}
     <${ConfirmHost} />
     <${ColorDialogHost} />
-    ${viewOnly ? null : html`<${OwnerCssKeepBar} />`}
+    ${viewOnly || guest ? null : html`<${OwnerCssKeepBar} />`}
     <${Toasts} />
   </div>`;
 }
