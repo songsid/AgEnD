@@ -162,7 +162,7 @@ export function createChatStore(deps) {
     // A prompt already held (being answered, or claimed from Needs you) keeps its busy/answered state: a repeat of it
     // only refreshes its text and buttons (#1463 review).
     if (!had) s.prompts[p.nonce] = { ...p, resolved: false, busy: false };
-    else if (!had.resolved) Object.assign(had, { text: p.text, actions: p.actions, expiresAt: p.expiresAt });
+    else if (!had.resolved) Object.assign(had, { text: p.text, links: p.links, actions: p.actions, expiresAt: p.expiresAt });
     if (p.instance === s.current) changed(p.instance);
     else if (fresh) deps.toast(tf("chat.promptFor", p.instance, p.text), false);
   }
@@ -174,7 +174,7 @@ export function createChatStore(deps) {
     for (const p of list) {
       const had = s.prompts[p.nonce];
       if (!had) s.prompts[p.nonce] = { ...p, resolved: false, busy: false };
-      else if (!had.resolved) Object.assign(had, { text: p.text, actions: p.actions, expiresAt: p.expiresAt });
+      else if (!had.resolved) Object.assign(had, { text: p.text, links: p.links, actions: p.actions, expiresAt: p.expiresAt });
     }
     for (const n of Object.keys(s.prompts)) if (!s.prompts[n].resolved && !open.has(n)) s.prompts[n].resolved = true;
     changed(null);

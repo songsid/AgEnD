@@ -4,7 +4,7 @@
  * instances and teams, General (general_topic), each instance's world and thread — and the live state is not here at
  * all: the page takes it from the stream it already follows (status, activity, `needs`).
  */
-import type { WorldPlace } from "./needs-you.js";
+import { topicUrl, type WorldPlace } from "./topic-link.js";
 
 export interface OrgInstanceConfig {
   description?: unknown;
@@ -51,26 +51,16 @@ export interface OrgChart {
   instances: Record<string, OrgInstance>;
 }
 
-const SNOWFLAKE = /^\d{5,25}$/;
 const MAX_DESCRIPTION = 500;
 const MAX_TAGS = 12;
 
 /**
- * A browser link to an instance's thread: Discord's channel URL, Telegram's topic link. Undefined when the place or
- * the id is not one a link can be built from (Telegram's General topic, 1, has no topic link).
+ * A browser link to an instance's thread: Discord's channel URL, Telegram's topic link (topic-link.ts, #1990).
+ * Undefined when the place or the id is not one a link can be built from (Telegram's General topic, 1, has no topic link).
  */
 export function threadUrl(place: WorldPlace | undefined, topicId: string | undefined): OrgThread | undefined {
-  if (!place || !topicId) return undefined;
-  if (place.type === "discord") {
-    if (!place.groupId || !SNOWFLAKE.test(place.groupId) || !SNOWFLAKE.test(topicId)) return undefined;
-    return { platform: "discord", url: `https://discord.com/channels/${place.groupId}/${topicId}` };
-  }
-  if (place.type === "telegram") {
-    const m = /^-100(\d+)$/.exec(place.groupId ?? "");
-    if (!m || !/^\d+$/.test(topicId) || topicId === "1") return undefined;
-    return { platform: "telegram", url: `https://t.me/c/${m[1]}/${topicId}` };
-  }
-  return undefined;
+  const url = topicUrl(place, topicId);
+  return url && place ? { platform: place.type === "discord" ? "discord" : "telegram", url } : undefined;
 }
 
 const text = (v: unknown): string | undefined => {

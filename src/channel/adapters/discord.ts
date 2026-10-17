@@ -55,6 +55,7 @@ import { downloadStickerImage } from "../sticker-download.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 import { splitTextFenceAware, truncatePreview, fenceBlock } from "../markdown-chunk.js";
+import { stripPlaceRefs } from "../../topic-link.js";
 import { CROSS_INSTANCE_VISIBILITY_MODES } from "../../cross-instance-notice.js";
 import { POLL_STATUS_CALLBACK, type PollRender } from "../../reply-polls.js";
 
@@ -1442,8 +1443,19 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     return out;
   }
 
+  /** #1990: whether `userId` is in the guild now (one member read; an unknown member or any error rejects). */
+  async isGroupMember(groupId: string, userId: string): Promise<boolean> {
+    if (!/^\d{5,25}$/.test(userId) || !groupId || groupId !== this.guildId) return false;
+    const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
+    // force: a read from Discord, never the member cache — without the GuildMembers intent a member who left can
+    // stay cached, and each ten-minute recheck would confirm them again.
+    await guild.members.fetch({ user: userId, force: true });
+    return true;
+  }
+
   /** Private delivery: a DM to the user (fails if the user disallows DMs from this server). */
   async sendDirect(userId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
+    text = stripPlaceRefs(text);
     const user = await this.client.users.fetch(userId);
     const dm = await user.createDM();
     const sent = await dm.send({ content: text, ...(opts?.disablePreview ? { flags: MessageFlags.SuppressEmbeds } : {}), ...(opts?.choices ? { components: buttonRows(opts.choices) } : {}), allowedMentions: { parse: [] } });
@@ -1451,6 +1463,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   async sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
+    text = stripPlaceRefs(text);
     const channelId = opts?.threadId ?? chatId;
     const channel = await this._fetchTextChannel(channelId);
     const chunkLimit = opts?.chunkLimit ?? DISCORD_MAX_LENGTH;
@@ -1525,6 +1538,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
   /** #1651: `_opts.format` changes nothing here — Discord always renders Markdown (as sendText ignores it too). */
   async editMessage(chatId: string, messageId: string, text: string, threadId?: string, _opts?: { format?: "html" | "markdown" }): Promise<void> {
+    text = stripPlaceRefs(text);
     // Prefer the exact channel (handles forum-topic threads, which a GuildText
     // scan misses). chatId is the guild id in the channels topology, so the
     // message actually lives in threadId (when set) or a specific text channel.
@@ -1583,6 +1597,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   async editMessageRemoveButtons(chatId: string, messageId: string, text: string, threadId?: string): Promise<void> {
+    text = stripPlaceRefs(text);
     // Prefer the exact channel (handles forum-topic threads, which a GuildText
     // scan misses); fall back to scanning top-level text channels.
     let exactError: unknown;
@@ -1981,7 +1996,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       const channelId = opts?.threadId ?? chatId;
       const channel = await this._fetchTextChannel(channelId);
 
-      const msg = await channel.send({ content: alert.message, components: buttonRows(alert.choices) });
+      const msg = await channel.send({ content: stripPlaceRefs(alert.message), components: buttonRows(alert.choices) });
       // The address this adapter's own callbacks report for these buttons
       // (guild + channel as thread), not the caller's spelling of it (#1131).
       // A native slash command addresses its channel as the chat; the button
@@ -2011,7 +2026,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     const channel = await this._fetchTextChannel(opts?.threadId ?? chatId);
     const msg = await channel.messages.fetch(messageId);
     await msg.edit({
-      content: truncatePreview(alert.message, DISCORD_MAX_LENGTH),
+      content: truncatePreview(stripPlaceRefs(alert.message), DISCORD_MAX_LENGTH),
       components: buttonRows(alert.choices ?? []),
     });
   }

@@ -62,6 +62,28 @@ export function routePath(route) {
   if (route.panel === "log") return logPath(route.instance);
   return route.instance ? chatPath(route.instance) : "/ui";
 }
+/**
+ * #1990: a text with the in-app links the server put on it (ranges of the text: { offset, length, url }) as segments —
+ * { text } or { text, href }. Only a route this table parses as an instance's chat or View becomes a link (its href
+ * rebuilt here); a range out of order, out of the text, or anything else stays text. No target: the router opens it.
+ */
+export function textLinkSegments(text, links) {
+  const s = String(text == null ? "" : text);
+  const out = [];
+  let at = 0;
+  for (const l of Array.isArray(links) ? links.slice(0, 16) : []) {
+    if (!l || !Number.isInteger(l.offset) || !Number.isInteger(l.length) || typeof l.url !== "string") continue;
+    if (l.offset < at || l.length < 1 || l.offset + l.length > s.length || !/^\/[^?#\s]*$/.test(l.url)) continue;
+    const route = parseRoute(l.url);
+    if (!route || !route.instance || (route.panel !== "chat" && route.panel !== "view")) continue;
+    if (l.offset > at) out.push({ text: s.slice(at, l.offset) });
+    out.push({ text: s.slice(l.offset, l.offset + l.length), href: routePath(route) });
+    at = l.offset + l.length;
+  }
+  if (at < s.length || !out.length) out.push({ text: s.slice(at) });
+  return out;
+}
+
 /** One string per route: a change of it is a new navigation (a new lease for the panel, §4). */
 export function routeKey(route) {
   if (!route) return "none";

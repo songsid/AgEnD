@@ -90,6 +90,8 @@ export interface FleetContext {
    * keep working (they fall back to the receiving adapter).
    */
   getInstanceAdapterId?(instanceName: string): string | undefined;
+  /** #1990: a message for world `worldId`'s group with its place tokens rendered (fleet-manager.ts renderPlaces). */
+  renderPlaces?(worldId: string | undefined, text: string, opts?: import("./channel/types.js").SendOpts): { text: string; opts?: import("./channel/types.js").SendOpts };
   changeInstancePauseState(name: string, action: "pause" | "wake"): Promise<"paused" | "awake" | "not_idle">;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   /** #1716: resolves whether the stop ended background work that was running. */

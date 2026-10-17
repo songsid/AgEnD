@@ -1,6 +1,7 @@
 import type { PaneContextSource } from "./pane-context-cache.js";
 import { AGENT_WHATS_NEW, agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, whatsNewNotice } from "./agent-whats-new.js";
 import { join, dirname, basename, resolve } from "node:path";
+import { checkoutTarget, readCheckouts, releaseCandidate, reposRoot, verifyWorktree, writeCheckouts } from "./repo-worktree-guard.js";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
 import { COMPACT_WATCH_TIMEOUT_MS, launchIdentity } from "./compact-watch.js";
 import { KIRO_COMPACT_PANE_LINES, KiroCompactPaneFollower } from "./kiro-compact-pane.js";
@@ -11981,17 +11982,25 @@ export class Daemon extends EventEmitter {
       return;
     }
 
-    const repoDir = join(this.instanceDir, "repos");
-    mkdirSync(repoDir, { recursive: true });
-    const safeName = `${basename(source)}-${branch.replace(/\//g, "-")}`;
-    const worktreePath = join(repoDir, safeName);
+    mkdirSync(join(this.instanceDir, "repos"), { recursive: true });
+    // Only a fresh direct child of a real repos/ directory (never through a symlinked repos/, never an existing path).
+    const target = checkoutTarget(this.instanceDir, source, branch);
+    if (!target.ok) { respond(null, `checkout_repo: ${target.reason}`); return; }
+    const worktreePath = target.path;
 
     try {
-      // Resolve branch/ref to verify it exists. Use `--` so git never treats
-      // branch as an option flag (defense in depth on top of the regex above).
-      await execFileAsync("git", ["rev-parse", "--verify", "--", branch], { cwd: source });
-      await execFileAsync("git", ["worktree", "add", "--detach", worktreePath, branch], { cwd: source });
+      // Resolve branch/ref to verify it exists. `--end-of-options` keeps git from ever reading branch as an option
+      // flag (defense in depth on top of the regex above). Not `--`: rev-parse then reads branch as a path, and
+      // `--verify` fails for every ref ("Needed a single revision"), which broke checkout_repo entirely.
+      await execFileAsync("git", ["rev-parse", "--verify", "--end-of-options", `${branch}^{commit}`], { cwd: source });
+      await execFileAsync("git", ["worktree", "add", "--detach", worktreePath, "--end-of-options", branch], { cwd: source });
       const { stdout: commitHash } = await execFileAsync("git", ["rev-parse", "--short", "HEAD"], { cwd: worktreePath });
+      // Recorded so release_repo can tell this instance's checkout of this repository from anything else.
+      try {
+        const { stdout: common } = await execFileAsync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: worktreePath });
+        const root = reposRoot(this.instanceDir);
+        if (root.ok) writeCheckouts(root.path, { ...readCheckouts(root.path), [worktreePath]: common.trim() });
+      } catch { /* unrecorded: release still requires a listed linked worktree */ }
       respond({ path: worktreePath, branch, source, commit: commitHash.trim() });
     } catch (err) {
       respond(null, `Failed to checkout: ${(err as Error).message}`);
@@ -12002,24 +12011,31 @@ export class Daemon extends EventEmitter {
     args: Record<string, unknown>,
     respond: (result: unknown, error?: string) => void,
   ): Promise<void> {
-    const repoPath = args.path as string;
-    const reposDir = join(this.instanceDir, "repos");
-
-    // Safety: only allow releasing paths under our repos/ directory
-    if (!repoPath.startsWith(reposDir)) {
-      respond(null, `Cannot release path outside instance repos directory`);
-      return;
-    }
+    // Containment first (real paths, strictly inside this instance's repos/), then proof it is a git worktree.
+    // Nothing that fails either check is ever removed.
+    const candidate = releaseCandidate(this.instanceDir, args.path);
+    if (!candidate.ok) { respond(null, `Cannot release: ${candidate.reason}`); return; }
+    const root = reposRoot(this.instanceDir);
+    if (!root.ok) { respond(null, `Cannot release: ${root.reason}`); return; }
+    const { execFile: execFileCb } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execFileAsync = promisify(execFileCb);
+    const git = async (gitArgs: string[], cwd: string) => (await execFileAsync("git", gitArgs, { cwd })).stdout;
+    const worktree = await verifyWorktree(root.path, candidate.path, git);
+    if (!worktree.ok) { respond(null, `Cannot release: ${worktree.reason}`); return; }
+    const repoPath = candidate.path;
 
     try {
-      const { execFile: execFileCb } = await import("node:child_process");
-      const { promisify } = await import("node:util");
-      const execFileAsync = promisify(execFileCb);
-      await execFileAsync("git", ["worktree", "remove", "--force", repoPath]);
+      await git(["--git-dir", worktree.commonDir, "worktree", "remove", "--force", repoPath], worktree.commonDir);
     } catch {
-      // Fallback: rm directly if git worktree remove fails
+      // Fallback for a verified worktree only: remove it, then let its repository forget it.
       try { rmSync(repoPath, { recursive: true, force: true }); } catch { /* best effort */ }
+      try { await git(["--git-dir", worktree.commonDir, "worktree", "prune"], worktree.commonDir); } catch { /* best effort */ }
     }
+    try {
+      const records = readCheckouts(root.path);
+      if (repoPath in records) { delete records[repoPath]; writeCheckouts(root.path, records); }
+    } catch { /* the worktree is gone; a stale record only refuses a later, different repo at this path */ }
     respond({ released: true, path: repoPath });
   }
 

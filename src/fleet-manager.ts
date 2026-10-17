@@ -246,6 +246,7 @@ import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { WEB_CHAT_NOTICE, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
+import { GENERAL_POINTING_REFUSALS, SNOWFLAKE, hasPlaceRefs, placeRef, webRoute, webTextLinks, placeSuffix, renderPlaceRefs, stripPlaceRefs, topicUrl, type PlaceLink, type PlaceTarget, worldPlaceOf } from "./topic-link.js";
 import { CacheService, WINDOWS, type CacheInstance, type CacheReport, type CacheWindow } from "./cache-service.js";
 import { runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
 import { CompactWatch, launchIdentity } from "./compact-watch.js";
@@ -650,7 +651,7 @@ interface NonceButtonEntry {
    * Set when the prompt is also offered in the web dashboard (web track C4): what the page shows. The same
    * nonce, the same single claim and the same expiry as the platform's buttons — whoever clicks first wins.
    */
-  web?: { text: string; actions: Array<{ id: string; label: string }>; expiresAt: number };
+  web?: { text: string; actions: Array<{ id: string; label: string }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] };
   /** When the prompt was offered (epoch ms): its age in "Needs you" (#1386). */
   createdAt?: number;
   /** interactive-assist only: the interaction wait it was raised for, so "Needs you" folds only the same wait (#1386 §3.2). */
@@ -4063,7 +4064,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const [key, ...args] = decision.reply;
       // A command off for want of fleet admins names where they go (`{0}` in its disabled reply).
       if (decision.reply === spec.disabled) args.push(this.adminListKey(adapterId));
-      await data.respond(t(key, ...args)).catch(() => { /* the interaction may already be gone */ });
+      // #1990: a refusal that sends the person to General links to it — not in a ClassicBot room, whose readers need
+      // not be in the fleet's guild.
+      const toGeneral = GENERAL_POINTING_REFUSALS.has(key) && scope !== "classic" && scope !== "none";
+      const reply = toGeneral ? this.renderPlaces(adapterId, t(key, ...args) + placeSuffix({ kind: "general" }, "General")).text : t(key, ...args);
+      await data.respond(reply).catch(() => { /* the interaction may already be gone */ });
       return;
     }
 
@@ -5602,7 +5607,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const owner = id ? this.dashboardOwner(msg.userId, id, msg.chatId, msg.threadId, msg.username) : null;
     if (!owner) {
       const adapter = id ? this.adapters.get(id) : undefined;
-      await adapter?.sendText(msg.chatId, t("dashboard.public_general"), { threadId: msg.threadId }); return;
+      const out = this.renderPlaces(id, t("dashboard.public_general") + placeSuffix({ kind: "general" }, "General"), { threadId: msg.threadId });
+      await adapter?.sendText(msg.chatId, out.text, out.opts); return;
     }
     if (!await this.showDashboardMenu(owner)) {
       await (owner.binding as ChannelAdapter).sendText(owner.chatId, t("dashboard.menu_failed"), { threadId: owner.threadId }).catch(() => undefined);
@@ -7775,6 +7781,44 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } finally {
       lease?.release(); this.adapterRestarting.delete(id);
     }
+  }
+
+  /**
+   * #1990: how a reader in world `worldId`'s group reaches a place token's target — undefined (plain text) for another
+   * world's instance, an instance without a fleet topic (a ClassicBot room may be anywhere), or an id no link is built
+   * from. Discord: the channel mention; Telegram: the topic URL (General's topic included).
+   */
+  private placeLink(worldId: string | undefined, target: PlaceTarget): PlaceLink | undefined {
+    const world = this.worlds.get(worldId ?? "");
+    if (!world) return undefined;
+    let topic: string | undefined;
+    if (target.kind === "general") {
+      const notice = this.fleetNoticeTarget(world.id);
+      if (!notice || notice.chatId !== world.groupId || notice.opts.threadId === undefined) return undefined;
+      topic = String(notice.opts.threadId);
+    } else {
+      if (this.getInstanceAdapterId(target.name) !== world.id) return undefined;
+      const topicId = this.fleetConfig?.instances[target.name]?.topic_id;
+      if (topicId == null) return undefined;
+      topic = String(topicId);
+    }
+    if (world.type === "discord") return SNOWFLAKE.test(topic) && SNOWFLAKE.test(world.groupId) ? { mention: `<#${topic}>` } : undefined;
+    const url = topicUrl(worldPlaceOf(world), topic, { general: target.kind === "general" });
+    return url ? { url } : undefined;
+  }
+
+  /** #1990: a message for world `worldId`'s group with its place tokens rendered (links as text or Telegram entities). */
+  renderPlaces(worldId: string | undefined, text: string, opts?: import("./channel/types.js").SendOpts): { text: string; opts?: import("./channel/types.js").SendOpts } {
+    if (!hasPlaceRefs(text)) return { text, opts };
+    const type = this.worlds.get(worldId ?? "")?.type;
+    const surface = type === "discord" ? "discord" : type === "telegram" ? "telegram" : "plain";
+    const out = renderPlaceRefs(text, surface, target => this.placeLink(worldId, target));
+    return { text: out.text, opts: out.textLinks.length ? { ...opts, textLinks: out.textLinks } : opts };
+  }
+
+  /** #1990: renderPlaces for the world that owns `instanceName`'s topic. */
+  renderPlacesFor(instanceName: string, text: string, opts?: import("./channel/types.js").SendOpts): { text: string; opts?: import("./channel/types.js").SendOpts } {
+    return this.renderPlaces(this.getInstanceAdapterId(instanceName), text, opts);
   }
 
   /** Handle inbound message — transcribe voice if present, then route */
@@ -11936,7 +11980,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Discord, so every such fallback failed inside the catch handler.
       const target = this.fleetNoticeTarget();
       if (this.adapter && target) {
-        this.adapter.sendText(target.chatId, body, target.opts)
+        const out = this.renderPlaces(this.getPrimaryAdapterId(), body, target.opts);
+        this.adapter.sendText(target.chatId, out.text, out.opts)
           .catch(err => this.logger.warn({ err }, "Failed to send fleet error notification"));
         dispatched = true;
       }
@@ -11949,7 +11994,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // also suppressed the next ten minutes of identical ones. Leaving the key
       // unspent lets the next caller, once an adapter is up, actually get
       // through. The counter is not reset either: nothing was shown.
-      this.logger.warn({ text: body },
+      this.logger.warn({ text: stripPlaceRefs(body) },
         "Fleet error could not be delivered (no adapter or no target yet) — not consuming the throttle window");
       return false;
     }
@@ -11990,8 +12035,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Fleet topic instance
     const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
+    const worldId = this.getInstanceAdapterId(instanceName);
     if (threadId != null && groupId) {
-      adapter.sendText(String(groupId), text, { threadId: String(threadId), ...extraOpts })
+      const out = this.renderPlaces(worldId, text, { threadId: String(threadId), ...extraOpts });
+      adapter.sendText(String(groupId), out.text, out.opts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send instance topic notification"));
       return true;
     }
@@ -11999,7 +12046,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Classic instance: find its channelId from the classic manager
     const classicChatId = this.classicChannels?.getChannelIdByInstance(instanceName);
     if (classicChatId) {
-      adapter.sendText(classicChatId, text, extraOpts)
+      // #1990: a ClassicBot room's readers need not be in the fleet's group, so its notices name places as plain text.
+      adapter.sendText(classicChatId, stripPlaceRefs(text), extraOpts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send classic notification"));
       return true;
     }
@@ -12007,9 +12055,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Fallback: the instance has neither a topic nor a classic channel, so post
     // where fleet-wide notices go. Not the bare group id: on Discord that is a
     // guild, and the send fails inside the catch handler.
-    const target = this.fleetNoticeTarget(this.getInstanceAdapterId(instanceName));
+    const target = this.fleetNoticeTarget(worldId);
     if (target) {
-      adapter.sendText(target.chatId, text, { ...target.opts, ...extraOpts })
+      const out = this.renderPlaces(worldId, text, { ...target.opts, ...extraOpts });
+      adapter.sendText(target.chatId, out.text, out.opts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send notification (no topic)"));
       return true;
     }
@@ -12098,12 +12147,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     try {
       const choices = opts.choices.map(c => ({ id: `${opts.prefix}${nonce}:${c.action}`, label: c.label }));
+      // #1990: place names link for the group the prompt is posted in; the dashboard's copy is plain (for now).
+      const posted = this.renderPlaces(opts.adapterId, opts.message, opts.threadId ? { threadId: opts.threadId } : undefined);
       const sent: PrivateSentMessage = opts.deliver ? await opts.deliver(choices) : await opts.adapter.notifyAlert(opts.chatId, {
         type: opts.alertType,
         instanceName: opts.instanceName,
-        message: opts.message,
+        message: posted.text,
         choices,
-      }, opts.threadId ? { threadId: opts.threadId } : undefined);
+      }, posted.opts);
       // Bind the nonce to the provider's canonical delivery address, not the
       // logical routing input. Telegram, for example, represents General as
       // AgEnD topic "1" on input but omits message_thread_id on the wire and in
@@ -12120,8 +12171,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Offered on the dashboard only once it is live on the platform (a failed post is disarmed above),
       // and only if nothing claimed or expired it meanwhile.
       if (WEB_MIRRORED_PROMPT_PREFIXES.has(opts.prefix) && this.pendingNonceButtons.get(nonce) === entry) {
+        // #1990: on the dashboard an instance's name opens its terminal View (where the prompt is answered by hand).
+        const web = renderPlaceRefs(opts.message, "web", target => {
+          const route = target.kind === "instance" && Object.hasOwn(this.fleetConfig?.instances ?? {}, target.name) ? webRoute("view", target.name) : undefined;
+          return route ? { url: route } : undefined;
+        });
+        const links = webTextLinks(web.textLinks, web.text);
         entry.web = {
-          text: opts.message,
+          text: web.text,
+          ...(links ? { links } : {}),
           actions: opts.choices.map(c => ({ id: c.action, label: c.label })),
           expiresAt: Date.now() + (opts.timeoutMs ?? NONCE_BUTTON_TIMEOUT_MS),
         };
@@ -12378,7 +12436,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       isClassic: name => classic.has(name),
       place: name => {
         const world = this.worlds.get(this.getInstanceAdapterId(name) ?? "");
-        return world ? { type: world.type, ...(world.groupId ? { groupId: world.groupId } : {}) } : undefined;
+        return world ? worldPlaceOf(world) : undefined;
       },
       // fleet.yaml's topic only. A ClassicBot room has none here, so no link: its channel may sit in any allowed
       // guild, not necessarily its world's group.
@@ -12538,9 +12596,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         finishedAt: Date.parse(d.finishedAt) || 0,
       })),
       ownerOf,
-      worlds: () => [...this.worlds.values()].map((w): NeedsYouWorld => ({
-        id: w.id, adapter: w.adapter, place: { type: w.type, ...(w.groupId ? { groupId: w.groupId } : {}) },
-      })),
+      worlds: () => [...this.worlds.values()].map((w): NeedsYouWorld => ({ id: w.id, adapter: w.adapter, place: worldPlaceOf(w) })),
       noticeTarget: world => {
         const target = this.fleetNoticeTarget(world);
         return target ? { chatId: target.chatId, ...(target.opts.threadId !== undefined ? { threadId: String(target.opts.threadId) } : {}) } : null;
@@ -12569,7 +12625,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The prompts open on the dashboard right now (a page that loads after one was posted asks for them). */
-  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string }>; expiresAt: number }> {
+  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] }> {
     const open: ReturnType<FleetManager["listWebPrompts"]> = [];
     for (const [nonce, e] of this.pendingNonceButtons) {
       if (e.web) open.push({ instance: e.instanceName, nonce, ...e.web });
@@ -13269,13 +13325,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the operator's. Keep the instance notice passive and put the action in the
    * same-world General topic where an administrator can make the choice. */
   async notifyNormalExit(instanceName: string): Promise<void> {
-    this.notifyInstanceTopic(instanceName, t("exit.instance_notice", instanceName));
+    this.notifyInstanceTopic(instanceName, t("exit.instance_notice", instanceName) + placeSuffix({ kind: "general" }, "General"));
 
     const web = this.webOnlyPromptPlace();
     if (web) {
       await this.postNonceButtonPrompt({
         prefix: EXIT_RESTART_CALLBACK_PREFIX, alertType: "exit_restart", instanceName, ...web,
-        message: t("exit.general_notice", instanceName),
+        message: t("exit.general_notice", placeRef({ kind: "instance", name: instanceName }, instanceName)),
         choices: [{ action: "restart", label: t("exit.restart") }, { action: "ignore", label: t("exit.ignore") }],
         expiredText: t("exit.expired", instanceName),
       });
@@ -13306,7 +13362,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapterId,
       chatId,
       threadId,
-      message: t("exit.general_notice", instanceName),
+      message: t("exit.general_notice", placeRef({ kind: "instance", name: instanceName }, instanceName)),
       choices: [
         { action: "restart", label: t("exit.restart") },
         { action: "ignore", label: t("exit.ignore") },
@@ -13384,7 +13440,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * contain usernames or secret-adjacent text and stays in daemon.log.
    */
   async notifyInteractivePrompt(instanceName: string, kind: string): Promise<void> {
-    this.notifyInstanceTopic(instanceName, t("interactive.instance_notice", instanceName));
+    this.notifyInstanceTopic(instanceName, t("interactive.instance_notice", instanceName) + placeSuffix({ kind: "general" }, "General"));
     // Multi-world fleets can have one General per bot/platform. Route the assist
     // request to the General bound to the same adapter as the blocked instance.
     const generalName = this.findGeneralInstance(this.getInstanceAdapterId(instanceName));
@@ -13395,7 +13451,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const label = this.interactivePromptLabel(kind);
     const prompt = {
       prefix: INTERACTIVE_ASSIST_CALLBACK_PREFIX, alertType: "interactive_prompt" as const, instanceName,
-      message: t("interactive.general_notice", instanceName, label),
+      message: t("interactive.general_notice", placeRef({ kind: "instance", name: instanceName }, instanceName), label),
       choices: [{ action: "confirm", label: t("interactive.confirm") }, { action: "cancel", label: t("interactive.cancel") }],
       expiredText: t("interactive.expired", instanceName),
       extra: { generalName, promptKind: kind, assistFor: this.interactionWaitKey(instanceName) },
@@ -15137,7 +15193,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -15145,6 +15201,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         role: typeof m.role === "string" ? m.role : undefined,
         buttons: m.buttons,
         click: m.click,
+        links: m.links,
       });
       broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
       return;
