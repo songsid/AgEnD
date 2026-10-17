@@ -1899,8 +1899,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.emitSseEvent("message", {
       instance: set.instance, sender: by.username, role: "user", text: content, ts, ...(web ? { messageId } : {}),
       click: { label: button.label, of: set.id },
-      // #1920: a platform click is seen in the channel (the buttons show what was chosen); a web click is the web's.
-      ...(web ? {} : { channel: true, from: webChatFrom(set.adapterId, by.userId) }),
+      // #1920: a platform click is its clicker's; it is the instance's channel's only when its buttons are there (the
+      // same rule as a reply's: a set sent to another topic or a DM is not). A web click is the web's.
+      ...(web ? {} : { from: webChatFrom(set.adapterId, by.userId), ...(this.clickInOwnChannel(set) ? { channel: true } : {}) }),
     });
     return true;
   }
@@ -9451,6 +9452,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!cfg || this.getInstanceAdapterId(instance) !== adapterId || !world?.groupId || s.chatId !== world.groupId) return false;
     const thread = typeof s.threadId === "string" && s.threadId ? s.threadId : null;
     return cfg.topic_id == null ? thread === null : thread === String(cfg.topic_id);
+  }
+
+  /** #1920 §5.2 (#2085 review): a platform click's buttons are in the instance's own place — else not its channel's. */
+  private clickInOwnChannel(set: { instance: string; adapterId: string; chatId: string; threadId: string }): boolean {
+    try { return this.landedInOwnChannel(set.instance, set.adapterId, { chatId: set.chatId, threadId: set.threadId || undefined }); } catch { return false; }
   }
 
   private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false): Promise<void> {

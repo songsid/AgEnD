@@ -153,10 +153,13 @@ export function guestSeesMessage(m: WebChatMessage, guest: GuestRequest, scope: 
  * person's message id and ticks; never an effect Try (effects stay admin-only).
  */
 export function guestMessage(m: WebChatMessage, guest: GuestRequest): Record<string, unknown> {
-  const { from, channel: _channel, messageId, delivery, effectTrial: _trial, ...rest } = m;
-  void _channel; void _trial;
+  const { from, channel: _channel, messageId, delivery, effectTrial: _trial, seenSeq: _seen, ...rest } = m;
+  void _channel; void _trial; void _seen;
   const mine = from === accountOf(guest.owner);
-  return { ...rest, ...(mine ? { mine: true } : {}), ...(mine && messageId ? { messageId } : {}), ...(mine && delivery ? { delivery } : {}) };
+  // #2085 review: a click's `text` is what the agent was given — the button's value too, which the platform never
+  // shows. A guest gets the label, as the channel showed it.
+  const click = rest.click ? { text: rest.click.label } : {};
+  return { ...rest, ...click, ...(mine ? { mine: true } : {}), ...(mine && messageId ? { messageId } : {}), ...(mine && delivery ? { delivery } : {}) };
 }
 const visibleList = (rows: readonly WebChatMessage[], guest: GuestRequest, scope: ReadonlySet<string>) =>
   rows.filter((m) => !m.effectTrial && guestSeesMessage(m, guest, scope)).map((m) => guestMessage(m, guest));
@@ -213,7 +216,7 @@ export function guestHistory(history: WebChatHistory, instance: string, limit: n
  * /ui/poll's answer for a guest: the projected status, and the chat it may see (the same rule as its stream) — with the
  * cursor every poll hands out. Never prompts or Needs you.
  */
-export function guestPollBody(status: unknown, scope: ReadonlySet<string>, now: number, guest?: GuestRequest, after?: string | null, replay?: (after: string | null) => WebChatMessage[]): Record<string, unknown> {
+export function guestPollBody(status: unknown, scope: ReadonlySet<string>, now: number, guest?: GuestRequest, after?: string | null, replay?: (after: string | null) => readonly WebChatMessage[]): Record<string, unknown> {
   const history = guest?.history?.() ?? null;
   if (!guest || !history || !replay) return { status: guestStatus(status, scope), messages: [], deliveries: [], reply_buttons: [], prompts: [], needs: [], cursor: null, now };
   return {

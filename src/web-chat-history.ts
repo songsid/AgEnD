@@ -135,6 +135,12 @@ export interface WebChatMessage {
   channel?: true;
   /** #1920: the account that wrote it (`<connection id>:<user id>`), for a person's message — a guest sees its own. */
   from?: string;
+  /**
+   * #1920 (#2085 review): when it became the channel's after it was recorded (its copy was sent later) — a sequence
+   * number from the ids' own counter, so a cursor handed out after that moves past it and a guest's next poll is sent
+   * the row it could not see before. Live only (a restart's guests read the history again).
+   */
+  seenSeq?: number;
 }
 
 /** #1920: an account as a row names it — the connection id and the user id, one line. */
@@ -418,8 +424,18 @@ export class WebChatHistory {
     const m = this.findByMessageId(instance, messageId);
     if (!m || m.channel) return null;
     m.channel = true;
+    if (m.boot === this.boot) m.seenSeq = this.nextId++;
     this.persist(instance);
     return m;
+  }
+
+  /**
+   * #1920 (#2085 review): the messages that became the channel's after this cursor (same boot) — what a guest's poll
+   * adds to its replay, since their ids are older than the cursor it was given.
+   */
+  seenAfter(cursor: { boot: string; id: number } | null): WebChatMessage[] {
+    if (!cursor || cursor.boot !== this.boot) return [];
+    return this.collect((m) => m.seenSeq !== undefined && m.seenSeq > cursor.id);
   }
 
   /** #1920: a kept message by the `message_id` the agent was given (a web message, a web click). */

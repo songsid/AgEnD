@@ -932,8 +932,14 @@ export function handleWebRequest(
     const after = url.searchParams.get("after");
     const fresh = after === null || after === "";              // a cursor that is not ours in shape still gets nothing
     if (guest) {
-      json(res, 200, guestPollBody(ctx.getUiStatus(), guest.scope(), Date.now(), guest, after,
-        () => (history ? (fresh ? history.after(0) : history.replayFor(parseLastEventId(after))) : [])));
+      // #2085 review: and what became the channel's after its cursor (an older row, its copy sent since), once each.
+      json(res, 200, guestPollBody(ctx.getUiStatus(), guest.scope(), Date.now(), guest, after, () => {
+        if (!history) return [];
+        if (fresh) return history.after(0);
+        const cursor = parseLastEventId(after);
+        const rows = [...history.replayFor(cursor), ...history.seenAfter(cursor)];
+        return rows.filter((m, i) => rows.findIndex((x) => x.boot === m.boot && x.id === m.id) === i);
+      }));
       return true;
     }
     json(res, 200, {
