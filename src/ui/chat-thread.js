@@ -10,6 +10,7 @@ import "./chat-render.js";
 import "./preview.js";
 import { loadHtmlAttachment } from "./html-attachment.js";
 import { chatTime, chatTimeFull, onDayChange } from "./chat-time.js";
+import { textLinkSegments } from "/assets/app-route.js";
 
 const R = () => globalThis.AgendChatRender;
 /** #1589: the public link shows attachments as downloads only (its page says so: <body data-public-link="1">). */
@@ -114,7 +115,9 @@ export function createThread(list, scroller, opts) {
       ? `<button type="button" class="st-more" data-act="toggleFold"${manyLines ? ` data-lines="${escAttr(lines)}"` : ""}>${escAttr(manyLines ? trf("chat.showAll", lines) : tr("chat.showMore"))}</button>`
       : "";
     const tools = `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
-    return `<div class="msg status-line${more ? " folded" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${escAttr(text)}</div>${more}</div>${tools}</div>`;
+    // #1990: the other instance's name opens its chat (an in-app link the router takes: no target).
+    const body = textLinkSegments(text, x.links).map(sg => sg.href ? `<a class="st-link" href="${escAttr(sg.href)}">${escAttr(sg.text)}</a>` : escAttr(sg.text)).join("");
+    return `<div class="msg status-line${more ? " folded" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${more}</div>${tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,

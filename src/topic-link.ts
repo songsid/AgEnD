@@ -96,7 +96,8 @@ export type PlaceLink = { mention: string } | { url: string };
 /** A Telegram `text_link` entity: UTF-16 offsets, which is what a JS string's indices are. */
 export interface TextLink { offset: number; length: number; url: string }
 
-export type PlaceSurface = "discord" | "telegram" | "plain";
+/** "web": like Telegram, the label carries the link (a range of the text), here an in-app route (webRoute). */
+export type PlaceSurface = "discord" | "telegram" | "web" | "plain";
 
 // Private-use code points: no normal text carries them, and a stray one is never taken for a token.
 const OPEN = "";
@@ -177,6 +178,40 @@ export function renderPlaceRefs(
   }
   out += text.slice(last);
   return { text: out, textLinks };
+}
+
+/**
+ * #1990: an in-app route of the web app for an instance — its chat, or its terminal View — as the web client parses it
+ * (src/ui/shared/app-route.js chatPath / viewPath). Undefined for a name no route takes.
+ */
+export function webRoute(panel: "chat" | "view", name: string): string | undefined {
+  if (!name || name.length > 128 || /[/\\\u0000-\u001f\u007f]/.test(name) || name === "." || name.includes("..")) return undefined;
+  return panel === "chat" ? `/ui/chat/${encodeURIComponent(name)}` : `/view/${encodeURIComponent(name)}`;
+}
+
+const WEB_ROUTE = /^\/(?:ui\/chat|view)\/[^/?#\s]+$/;
+export const WEB_TEXT_LINKS_MAX = 16;
+
+/**
+ * #1990: links as the web keeps them — on a status line or a prompt, ranges of its text that open an instance's chat
+ * or View in the app. Whatever is not exactly that (out of the text, overlapping, not such a route) is dropped; an
+ * empty result is undefined.
+ */
+export function webTextLinks(raw: unknown, text: string): TextLink[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: TextLink[] = [];
+  let end = 0;
+  for (const l of raw.slice(0, WEB_TEXT_LINKS_MAX)) {
+    if (!l || typeof l !== "object") continue;
+    const { offset, length, url } = l as Record<string, unknown>;
+    if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) || typeof url !== "string") continue;
+    const o = offset as number, n = length as number;
+    if (o < end || n < 1 || o + n > text.length || !WEB_ROUTE.test(url)) continue;
+    try { decodeURIComponent(url); } catch { continue; }
+    out.push({ offset: o, length: n, url });
+    end = o + n;
+  }
+  return out.length ? out : undefined;
 }
 
 /** Every token as its label, suffixes gone: what a surface that renders no links shows. */

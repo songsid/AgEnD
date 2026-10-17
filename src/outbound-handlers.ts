@@ -23,7 +23,7 @@ import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from ".
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileLogin, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import type { CarryResult } from "./backend/claude-carry.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "./kiro-engine-status.js";
-import { noPlaceMarkers, placeRef, stripPlaceRefs } from "./topic-link.js";
+import { noPlaceMarkers, placeRef, renderPlaceRefs, stripPlaceRefs, webRoute } from "./topic-link.js";
 import {
   formatCrossInstanceInboundMessage, type AgentMode,
   MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES,
@@ -597,11 +597,19 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   }
   // #1672: the same notices in each instance's web chat — a muted status line, never an agent's or a person's message.
   // Not gated on a topic or a chat platform (a web-only fleet, a topic-less instance); recorded in its history (#1565).
-  const webNotice = (instance: string, text: string) => ctx.emitSseEvent?.("message", {
-    instance, sender: displayLabel(senderLabel), role: "status", text, ts: new Date().toISOString(),
-  });
-  if (targetShown) webNotice(targetInstanceName, stripPlaceRefs(targetText!));
-  if (senderShown) webNotice(meta.instanceName, stripPlaceRefs(senderText!));
+  // #1990: on the web each line's other side opens that instance's chat (an in-app route; only fleet instances).
+  const webNotice = (instance: string, text: string) => {
+    const out = renderPlaceRefs(text, "web", target => {
+      const route = target.kind === "instance" && Object.hasOwn(instances, target.name) ? webRoute("chat", target.name) : undefined;
+      return route ? { url: route } : undefined;
+    });
+    ctx.emitSseEvent?.("message", {
+      instance, sender: displayLabel(senderLabel), role: "status", text: out.text, ts: new Date().toISOString(),
+      ...(out.textLinks.length ? { links: out.textLinks } : {}),
+    });
+  };
+  if (targetShown) webNotice(targetInstanceName, targetText!);
+  if (senderShown) webNotice(meta.instanceName, senderText!);
 
   // #856: the same line, now carrying the envelope's message_id and a short
   // content digest, so a disputed message can be matched to its outbox row

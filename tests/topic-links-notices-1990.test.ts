@@ -169,7 +169,7 @@ describe("instance notices point at General; General's notices name the instance
     expect(sent[0].text).toBe(t("fleet.dialog_parked", "beta", "a picker"));
     expect(linkTexts(sent[0])).toEqual([["beta", "https://t.me/c/1234567890/40"]]);
   });
-  it("the dashboard's copy of a prompt is plain text", async () => {
+  it("the dashboard's copy of a prompt has the same text, no markers (its View link: topic-links-web-1990)", async () => {
     const { fm } = fleet("telegram");
     const events: Array<{ event: string; data: any }> = [];
     fm.emitSseEvent = (event: string, data: unknown) => events.push({ event, data });
@@ -214,7 +214,7 @@ describe("cross-instance status lines: each topic's line links the other side", 
     return { posts, web };
   }
 
-  it("the target's line links the sender, the sender's line links the target; the web lines are plain", async () => {
+  it("the target's line links the sender, the sender's line links the target; the web lines have the same text (links: topic-links-web-1990)", async () => {
     const { posts, web } = await send("please look");
     const target = posts.find(p => p.opts.threadId === "22")!;
     const sender = posts.find(p => p.opts.threadId === "11")!;

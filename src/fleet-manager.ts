@@ -246,7 +246,7 @@ import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { WEB_CHAT_NOTICE, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
-import { GENERAL_POINTING_REFUSALS, SNOWFLAKE, hasPlaceRefs, placeRef, placeSuffix, renderPlaceRefs, stripPlaceRefs, topicUrl, type PlaceLink, type PlaceTarget, worldPlaceOf } from "./topic-link.js";
+import { GENERAL_POINTING_REFUSALS, SNOWFLAKE, hasPlaceRefs, placeRef, webRoute, webTextLinks, placeSuffix, renderPlaceRefs, stripPlaceRefs, topicUrl, type PlaceLink, type PlaceTarget, worldPlaceOf } from "./topic-link.js";
 import { CacheService, WINDOWS, type CacheInstance, type CacheReport, type CacheWindow } from "./cache-service.js";
 import { runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
 import { CompactWatch, launchIdentity } from "./compact-watch.js";
@@ -651,7 +651,7 @@ interface NonceButtonEntry {
    * Set when the prompt is also offered in the web dashboard (web track C4): what the page shows. The same
    * nonce, the same single claim and the same expiry as the platform's buttons — whoever clicks first wins.
    */
-  web?: { text: string; actions: Array<{ id: string; label: string }>; expiresAt: number };
+  web?: { text: string; actions: Array<{ id: string; label: string }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] };
   /** When the prompt was offered (epoch ms): its age in "Needs you" (#1386). */
   createdAt?: number;
   /** interactive-assist only: the interaction wait it was raised for, so "Needs you" folds only the same wait (#1386 §3.2). */
@@ -12170,8 +12170,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Offered on the dashboard only once it is live on the platform (a failed post is disarmed above),
       // and only if nothing claimed or expired it meanwhile.
       if (WEB_MIRRORED_PROMPT_PREFIXES.has(opts.prefix) && this.pendingNonceButtons.get(nonce) === entry) {
+        // #1990: on the dashboard an instance's name opens its terminal View (where the prompt is answered by hand).
+        const web = renderPlaceRefs(opts.message, "web", target => {
+          const route = target.kind === "instance" && Object.hasOwn(this.fleetConfig?.instances ?? {}, target.name) ? webRoute("view", target.name) : undefined;
+          return route ? { url: route } : undefined;
+        });
+        const links = webTextLinks(web.textLinks, web.text);
         entry.web = {
-          text: stripPlaceRefs(opts.message),
+          text: web.text,
+          ...(links ? { links } : {}),
           actions: opts.choices.map(c => ({ id: c.action, label: c.label })),
           expiresAt: Date.now() + (opts.timeoutMs ?? NONCE_BUTTON_TIMEOUT_MS),
         };
@@ -12617,7 +12624,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The prompts open on the dashboard right now (a page that loads after one was posted asks for them). */
-  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string }>; expiresAt: number }> {
+  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string }>; expiresAt: number; links?: import("./topic-link.js").TextLink[] }> {
     const open: ReturnType<FleetManager["listWebPrompts"]> = [];
     for (const [nonce, e] of this.pendingNonceButtons) {
       if (e.web) open.push({ instance: e.instanceName, nonce, ...e.web });
@@ -15185,7 +15192,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -15193,6 +15200,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         role: typeof m.role === "string" ? m.role : undefined,
         buttons: m.buttons,
         click: m.click,
+        links: m.links,
       });
       broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
       return;

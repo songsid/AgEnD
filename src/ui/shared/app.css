@@ -567,6 +567,9 @@ html.lb-open .scroller { overflow: hidden; }
 .prompt { padding: var(--s-3) var(--s-4); border-radius: var(--r-md); font-size: var(--fs-sm); background: var(--warn-bg); border: 1px solid var(--warn-line); }
 .prompt.done { background: transparent; border-style: dashed; color: var(--text-2); }
 .prompt .txt { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* #1990: a name in a status line or a prompt that opens that instance in the app. */
+.st-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.st-link:hover { text-decoration-thickness: 2px; }
 .prompt .acts { display: flex; gap: var(--s-2); margin-top: var(--s-2); align-items: center; flex-wrap: wrap; }
 .prompt .wait { font-size: var(--fs-xs); color: var(--text-3); }
 .work-bar { display: flex; gap: var(--s-2); align-items: center; padding: 0 var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }

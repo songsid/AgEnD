@@ -12,7 +12,7 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { namesOf, namesStore } from "/assets/instance-nav.js";
 import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
-import { detailsPath } from "/assets/app-route.js";
+import { detailsPath, textLinkSegments } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { navigate } from "/assets/app-nav.js";
@@ -348,7 +348,7 @@ function Prompts({ name }) {
   const list = store.promptsFor(name);
   if (!list.length) return null;
   return html`<div class="prompts" aria-live="polite">${list.map(p => html`<div key=${p.nonce} class=${`prompt${p.resolved ? " done" : ""}`} role="group" aria-label=${p.text}>
-    <div class="txt">${p.resolved ? (p.outcome || t("chat.promptGone")) : p.text}</div>
+    <div class="txt">${p.resolved ? (p.outcome || t("chat.promptGone")) : textLinkSegments(p.text, p.links).map(sg => sg.href ? html`<a class="st-link" href=${sg.href}>${sg.text}</a>` : sg.text)}</div>
     ${p.resolved ? null : html`<div class="acts">${p.actions.map(a => html`<button key=${a.id} type="button" class="btn" disabled=${!!p.busy} onClick=${() => store.answerPrompt(p, a.id)}>${a.label}</button>`)}
       ${p.busy ? html`<span class="wait">${t("chat.promptAnswering")}</span>` : null}</div>`}</div>`)}</div>`;
 }
