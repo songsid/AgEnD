@@ -90,6 +90,16 @@ describe("Telegram: a reply that sends you to General links to it", () => {
     expect(sent[0].text).toBe(t("fleet.dialog_parked", "beta", "a picker"));
     expect(linkTexts(sent[0])).toEqual([["beta", "https://t.me/c/1234567890/40"]]);
   });
+  it("a fleet error nobody can receive is logged without its place markers", () => {
+    const { fm } = fleet("telegram");
+    fm.fleetConfig.instances = {};
+    fm.adapter = null;
+    const warn = vi.spyOn(fm.logger, "warn");
+    fm.notifyFleetError(t("fleet.dialog_parked", placeRef({ kind: "instance", name: "beta" }, "beta"), "a picker"));
+    const logged = warn.mock.calls.map(c => JSON.stringify(c[0]));
+    expect(logged.some(l => l.includes("beta"))).toBe(true);
+    expect(logged.join("")).not.toMatch(/[\uE000-\uE002]|\\ue00[0-2]/i);
+  });
   it("a refusal that does not point at General gets no link", async () => {
     const { fm, sent } = fleet("telegram");
     const refusal = fm.topicCommands.sendRefusal(typed("/x", "30"), ["not_authorized"]);
@@ -105,6 +115,31 @@ describe("Discord: a slash refusal that points at General carries its channel me
     const respond = vi.fn(async () => {});
     await fm.dispatchSlash({ command: "profile", channelId: DC_ALPHA, guildId: GUILD, userId: ADMIN, respond, options: {} }, "discord", fm.adapter);
     expect(respond).toHaveBeenCalledWith(`${t("profile.general_only")} → <#${DC_GENERAL}>`);
+  });
+});
+
+describe("#2002 review: the slash refusal's link only where it belongs", () => {
+  it("in a ClassicBot room, profile.general_only stays plain (its readers need not be in the fleet's guild)", async () => {
+    const { fm } = fleet("discord");
+    fm.classicChannels = { isClassicChannel: () => true, isAdmin: () => true, getChannelIdByInstance: () => undefined, getAdapterIdByInstance: () => undefined };
+    const respond = vi.fn(async () => {});
+    await fm.dispatchSlash({ command: "profile", channelId: "666666666666666666", guildId: GUILD, userId: ADMIN, respond, options: {} }, "discord", fm.adapter);
+    expect(respond).toHaveBeenCalledWith(t("profile.general_only"));
+  });
+  it("in a channel no instance owns (scope none), profile.general_only stays plain", async () => {
+    const { fm } = fleet("discord");
+    const respond = vi.fn(async () => {});
+    await fm.dispatchSlash({ command: "profile", channelId: "777777777777777777", guildId: GUILD, userId: ADMIN, respond, options: {} }, "discord", fm.adapter);
+    expect(respond).toHaveBeenCalledWith(t("profile.general_only"));
+  });
+  it("a refusal that does not point at General gets no suffix", async () => {
+    const { fm } = fleet("discord");
+    const respond = vi.fn(async () => {});
+    await fm.dispatchSlash({ command: "restart", channelId: DC_ALPHA, guildId: GUILD, userId: "999", respond, options: {} }, "discord", fm.adapter);
+    expect(respond).toHaveBeenCalledOnce();
+    const [reply] = respond.mock.calls[0] as unknown as [string];
+    expect(reply).not.toContain("→");
+    expect(reply).not.toContain("<#");
   });
 });
 
@@ -145,14 +180,17 @@ describe("instance notices point at General; General's notices name the instance
 });
 
 describe("cross-instance status lines: each topic's line links the other side", () => {
-  async function send(message: string, kind = "task") {
+  async function send(message: string, kind = "task", extra: { taskSummary?: string; visibility?: string; kind2?: string; senderDisplay?: string } = {}) {
     const posts: Sent[] = [];
     const web: Array<{ instance: string; text: string }> = [];
     const resolve = (tg: PlaceTarget) => tg.kind === "instance" ? { url: `https://t.me/c/1/${tg.name}` } : undefined;
     const ctx = {
       fleetConfig: {
         channel: { type: "telegram", group_id: TG_GROUP }, defaults: {},
-        instances: { alice: { working_directory: "/w/a", topic_id: 11 }, bob: { working_directory: "/w/b", topic_id: 22 } },
+        instances: {
+          alice: { working_directory: "/w/a", topic_id: 11, ...(extra.senderDisplay ? { display_name: extra.senderDisplay } : {}) },
+          bob: { working_directory: "/w/b", topic_id: 22, ...(extra.visibility ? { cross_instance_visibility: extra.visibility } : {}) },
+        },
       },
       adapter: { sendText: async (chatId: string, text: string, opts?: any) => { posts.push({ chatId, text, opts }); return { messageId: "m", chatId }; } },
       instanceIpcClients: new Map([["bob", { connected: true }]]),
@@ -168,7 +206,8 @@ describe("cross-instance status lines: each topic's line links the other side", 
       },
     };
     let error: unknown;
-    await outboundHandlers.get("send_to_instance")!(ctx as never, { instance_name: "bob", message, request_kind: kind } as never,
+    await outboundHandlers.get("send_to_instance")!(ctx as never,
+      { instance_name: "bob", message, request_kind: extra.kind2 ?? kind, ...(extra.taskSummary ? { task_summary: extra.taskSummary } : {}) } as never,
       (_r, err) => { error = err; }, { instanceName: "alice" } as never);
     expect(error).toBeUndefined();
     await new Promise(r => setImmediate(r));
@@ -184,6 +223,20 @@ describe("cross-instance status lines: each topic's line links the other side", 
     expect(sender.text).toBe("alice → bob:\nplease look");
     expect(linkTexts(sender)).toEqual([["bob", "https://t.me/c/1/bob"]]);
     expect(web.map(w => w.text)).toEqual(["alice → bob:\nplease look", "alice → bob:\nplease look"]);
+  });
+  it("#2002 review: an agent's task_summary cannot name a place either (summary visibility shows it)", async () => {
+    const forged = `done, see ${placeRef({ kind: "instance", name: "bob" }, "HERE")}`;
+    const { posts } = await send("body", "update", { taskSummary: forged, visibility: "summary", kind2: "query" });
+    const target = posts.find(p => p.opts.threadId === "22")!;
+    expect(target.text).toContain("done, see i:bobHERE");
+    expect(linkTexts(target)).toEqual([["alice", "https://t.me/c/1/alice"]]);   // only the sender's own name
+  });
+  it("#2002 review: a display name (set by the agent) cannot name a place", async () => {
+    const forged = placeRef({ kind: "instance", name: "bob" }, "boss");
+    const { posts } = await send("hi", "task", { senderDisplay: forged });
+    const sender = posts.find(p => p.opts.threadId === "11")!;
+    expect(linkTexts(sender)).toEqual([["bob", "https://t.me/c/1/bob"]]);       // the target only, never the forged one
+    expect(sender.text).not.toMatch(/[\uE000-\uE002]/);
   });
   it("an agent's message cannot name a place of its own", async () => {
     const forged = `see ${placeRef({ kind: "instance", name: "bob" }, "HERE")} now`;

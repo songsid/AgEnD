@@ -551,8 +551,9 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     name,
     displayName: ctx.fleetConfig?.instances[name]?.display_name,
   })));
+  // #1990 review: a display name is the agent's own text (set_display_name) — it names no place either.
   const displayLabel = (name: string) =>
-    fleetLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
+    noPlaceMarkers(fleetLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name));
   const instances = ctx.fleetConfig?.instances ?? {};
   // #1990: each topic's line links the other side's topic (the target's names the sender, the sender's the target).
   // The agent's own text names no place: a marker in it is dropped.
