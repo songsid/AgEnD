@@ -408,7 +408,11 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     if (!globalAllowed() || context.hidden || context.modal || !proof || proof.front !== true) return false;
     try {
       const focused = host.document.activeElement;
-      return host.document.designMode !== "on" && !!focused && ["BODY", "BUTTON", "A"].includes(focused.tagName) && focused.isContentEditable === false && typeof focused.matches === "function" && !focused.matches("input,textarea,select,[contenteditable]:not([contenteditable='false'])");
+      // Native clicks on ordinary stock content focus its tabindex=-1 main ancestor.
+      // Recognize only that unique host root; unknown/editor focus remains a refusal.
+      const mains = focused?.tagName === "MAIN" ? host.document.querySelectorAll("#app > .shell > main#main.main[tabindex='-1']") : [];
+      const stockMain = focused?.isConnected === true && focused.ownerDocument === host.document && mains.length === 1 && mains[0] === focused;
+      return host.document.designMode !== "on" && !!focused && (["BODY", "BUTTON", "A"].includes(focused.tagName) || stockMain) && focused.isContentEditable === false && typeof focused.matches === "function" && !focused.matches("input,textarea,select,[contenteditable]:not([contenteditable='false'])");
     } catch { return false; }
   }
   function pointer(event) {

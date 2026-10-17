@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "kind": "effect",
+  "runtime": "canvas-worker-v1",
+  "worker": "worker.js",
+  "name": "click-sparks",
+  "title": "Click sparks",
+  "description": "Click for sparks; hold the primary button and move for a trail.",
+  "regions": ["chat", "page", "box"],
+  "layer": "front",
+  "box": { "anchor": "center", "width": 480, "height": 480, "offset": 0 },
+  "wants": ["pointer"]
+}

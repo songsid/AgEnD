@@ -1,4 +1,5 @@
 import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
+import { guestFrameData, guestPollBody, guestRequestOf, guestStatus, type GuestRequest } from "./web-guest-access.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { binaryProbe } from "./binary-probe.js";
 import type { CachedImage } from "./web-images.js";
@@ -122,6 +123,9 @@ const safeInstanceSegment = (name: string): boolean => /^[^\\/\x00]+$/.test(name
  * the eviction the dead entry leaks forever, and without the try/catch a
  * single dead client breaks delivery to every client iterated after it.
  */
+/** #1920 phase 1b: the open streams that are a guest's, and whose — each event is projected for them (guestFrameData). */
+const streamGuests = new WeakMap<ServerResponse, GuestRequest>();
+
 export function broadcastSseEvent(
   clients: Set<ServerResponse>,
   event: string,
@@ -133,6 +137,16 @@ export function broadcastSseEvent(
   const dead: ServerResponse[] = [];
   for (const client of clients) {
     try {
+      // An admin's stream gets these bytes; a guest's, the event as projected for its scope now, or nothing (no id: it
+      // never replays chat, so a cursor of the admin's stream is not its to hold).
+      const guest = streamGuests.get(client);
+      if (guest) {
+        // The exact session that opened it ended (revoked, expired, rotated away): nothing more, and the stream goes.
+        if (!guest.current()) { dead.push(client); continue; }
+        const shown = guestFrameData(event, data, guest.scope());
+        if (shown !== undefined) client.write(sseFrame(event, shown));
+        continue;
+      }
       client.write(payload);
     } catch (err) {
       dead.push(client);
@@ -886,6 +900,9 @@ export function handleWebRequest(
   // that arrived while the stream was silent is not skipped by the cursor this answer hands out (#1251
   // review). The page keeps one entry per boot+id, so what it already loaded from /ui/history is not doubled.
   if (method === "GET" && path === "/ui/poll") {
+    // #1920: a guest's poll is projected for its scope (web-guest-access.ts) — the same rule as its stream.
+    const guest = guestRequestOf(req);
+    if (guest) { json(res, 200, guestPollBody(ctx.getUiStatus(), guest.scope(), Date.now())); return true; }
     const history = ctx.webChatHistory;
     const after = url.searchParams.get("after");
     const fresh = after === null || after === "";              // a cursor that is not ours in shape still gets nothing
@@ -919,26 +936,33 @@ export function handleWebRequest(
     });
     // #1823 (#1830 review): with the status, the server's clock — now and with every heartbeat — that the page counts a
     // poll down by (one write: the frames a connect sends are unchanged in number).
-    res.write(`event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n${sseClock()}`);
+    // #1920: a guest's stream: its projected status now and with each heartbeat, then only what guestFrameData lets
+    // through — no replay, no ticks, prompts or Needs you.
+    const guest = guestRequestOf(req);
+    if (guest) streamGuests.set(res, guest);
+    const statusFrame = () => `event: status\ndata: ${JSON.stringify(guest ? guestStatus(ctx.getUiStatus(), guest.scope()) : ctx.getUiStatus())}\n\n`;
+    res.write(`${statusFrame()}${sseClock()}`);
     // An EventSource that reconnects says what it last saw: send what it missed, before anything new.
-    const lastSeen = parseLastEventId(req.headers["last-event-id"]);
+    const lastSeen = guest ? null : parseLastEventId(req.headers["last-event-id"]);
     if (lastSeen !== null && ctx.webChatHistory) {
       const history = ctx.webChatHistory;
       for (const m of history.replayFor(lastSeen)) res.write(sseFrame("message", m, history.cursorOf(m)));
     }
     // Ticks change messages already sent and carry no cursor: every (re)connect gets where each one is now, so a
     // report that fell into a gap is not lost until a reload (#1253 review). No id: it is not a message.
-    if (ctx.webChatHistory) res.write(`event: deliveries\ndata: ${JSON.stringify(ctx.webChatHistory.deliveries())}\n\n`);
+    if (!guest && ctx.webChatHistory) res.write(`event: deliveries\ndata: ${JSON.stringify(ctx.webChatHistory.deliveries())}\n\n`);
     // The same for the fleet prompts (C4): one posted, answered or expired during a gap is caught up here.
-    if (ctx.listWebPrompts) res.write(`event: prompts\ndata: ${JSON.stringify(ctx.listWebPrompts())}\n\n`);
+    if (!guest && ctx.listWebPrompts) res.write(`event: prompts\ndata: ${JSON.stringify(ctx.listWebPrompts())}\n\n`);
     // #1386: and "Needs you" as it is now; changes follow as `needs` events.
-    if (ctx.needsYouItems) res.write(`event: needs\ndata: ${JSON.stringify({ items: ctx.needsYouItems() })}\n\n`);
+    if (!guest && ctx.needsYouItems) res.write(`event: needs\ndata: ${JSON.stringify({ items: ctx.needsYouItems() })}\n\n`);
     ctx.sseClients.add(res);
     const interval = setInterval(() => {
       // A stream authorized once must not outlive the authorization. Re-checked
       // without counting as activity, or an open tab would keep an idle session
       // alive forever; a revoked, expired or rotated-away session ends here.
-      if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false })) {
+      // #2049 review: a guest's stream also needs the exact session that opened it — another cookie on the same request
+      // still authenticating does not keep a revoked device's stream (with its scope) alive.
+      if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false }) || (guest && !guest.current())) {
         // Close the connection too, not just the response: an ended response leaves the socket idle in
         // keep-alive, still held open by whoever's session just ended.
         const socket = req.socket;
@@ -948,7 +972,7 @@ export function handleWebRequest(
       }
       try {
         // Every open dashboard tab, every 10 s: the status of every instance, serialized on the fleet's loop (#1235).
-        res.write(measureSyncWork("web.sseStatus", () => `event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`) + sseClock());
+        res.write(measureSyncWork("web.sseStatus", statusFrame) + sseClock());
       } catch {
         cleanup();
       }
@@ -1038,6 +1062,13 @@ export function handleWebRequest(
   const fileMatch = path.match(/^\/ui\/file\/([^/]+)$/);
   if (method === "GET" && fileMatch) {
     const id = fileMatch[1]!;
+    // #1920: a guest gets a file only when its stored instance is in scope — "no such file" otherwise, like an unknown id
+    // (an id from another instance's chat is useless).
+    const guest = guestRequestOf(req);
+    if (guest) {
+      const served = isFileId(id) ? ctx.webFiles?.servedFile?.(id) ?? null : null;
+      if (!served || !guest.scope().has(served.instance)) { json(res, 404, { error: "No such file" }); return true; }
+    }
     // #1589: audio and video, played in the page — one byte range at a time (206), by id only, never a whole video in
     // memory. Every other type is answered exactly as before.
     const media = isFileId(id) ? ctx.webFiles?.mediaOf?.(id) ?? null : null;
