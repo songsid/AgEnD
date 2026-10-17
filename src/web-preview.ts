@@ -81,14 +81,18 @@ export interface PreviewAvailability {
   reason: string | null;
   /** The same reason as a stable code the page translates (#1554); null when enabled. */
   code: PreviewOffCode | null;
+  /** `listenFailed`: the port and the error ("19281: EADDRINUSE"), shown in the page's sentence. */
+  detail?: string;
 }
 
 /**
  * #1554: why previews are off for a load, for the page's own words (chat.pvServer_<code>). The first seven come from
  * previewAvailability; `publicLink` and `notOffered` from the app shell, which asks it for neither the public link nor
- * a page that is not the full app. One list: the page's dictionary is checked against it.
+ * a page that is not the full app; `listenFailed` (the preview port could not be opened — `detail` says which and why)
+ * and `notListening` (not listening yet) from the fleet, whose listener is on. One list: the page's dictionary is
+ * checked against it.
  */
-export const PREVIEW_OFF_CODES = ["fleetOff", "unchecked", "noPort", "notListed", "needOrigin", "needHttps", "sameOrigin", "publicLink", "publicLinkStarting", "publicLinkPreviewFailed", "notOffered"] as const;
+export const PREVIEW_OFF_CODES = ["fleetOff", "unchecked", "noPort", "notListed", "needOrigin", "needHttps", "sameOrigin", "publicLink", "publicLinkStarting", "publicLinkPreviewFailed", "notOffered", "listenFailed", "notListening"] as const;
 export type PreviewOffCode = typeof PREVIEW_OFF_CODES[number];
 
 const DEFAULT_PORT: Record<string, string> = { "http:": "80", "https:": "443" };

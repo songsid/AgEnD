@@ -10,7 +10,7 @@ AgEnD's web dashboard is three panels on one small web server that the fleet run
 |---|---|
 | **`/ui`**: the app | Talk to your agents (chat, files, Stop reply), see who is working, and manage instances, tasks, schedules and teams. Each chat has its own address, `/ui/chat/<name>`; Fleet is `/ui/fleet` (`/ui/fleet/schedules`, `…/teams`, `…/org`, `…/cache`, `…/config`); **Needs you** is `/ui/needs` |
 | **`/view`** | A read-mostly view of every agent: live terminal, roster, usage, and editing each agent's profile and avatar |
-| **`/settings`** | Fleet settings — agents, connections, ClassicBot, defaults, `fleet.yaml` — with apply and restart. Each section has its own address: `/settings/bots`, `…/classic`, `…/general`, `…/web`, `…/advanced` (`/settings` is Agents) |
+| **`/settings`** | Fleet settings — your preferences, web appearance, agents, connections, ClassicBot, defaults, `fleet.yaml` — with apply and restart. Each section has its own address: `/settings/device` (Preferences), `…/appearance`, `…/bots`, `…/classic`, `…/general`, `…/web`, `…/advanced` (`/settings` is Agents) |
 
 `/ui`, `/view` and `/settings` are one app with a sidebar: the instances, **Fleet**, **View**, **Settings** and the **Session** menu. Moving around inside it does not reload the page, and Back/Forward work. `/` opens `/ui`, which goes back to the chat you had open last. Old links of the form `/ui#instance=<name>` still work, also through signing in.
 
@@ -33,7 +33,7 @@ About the codes:
 - Five wrong tries use up a code. Enough wrong tries across codes pause sign-in for a few minutes. While no code has been issued, there is nothing to guess.
 - Local sign-ins are announced in General unless `web.notify_login: false`. Public sign-ins always require a confirmed public notice.
 
-**Send me a new code.** A browser that signed in before with a code from `/web` shows this button on the sign-in page, so you do not have to go back to chat. The new code goes by DM to the person who received that earlier code, never into a group, and only while they are still a fleet admin. The DM names the browser and whether it asked through the public link or the local network. Like any new code, it replaces the previous one, including one `/web` sent a moment ago. It can be asked for once a minute and five times an hour per browser (and a few times a minute for the whole fleet). It is not available while sign-in is paused after wrong codes. A code from `agend web` does not make a browser eligible. On a public link the button only works while that same link is open, and the sign-in is announced in General as usual. `/web revoke` and `agend web-token rotate` remove the button from every browser.
+**Send me a new code.** A browser that signed in before with a code from `/web` shows this button on the sign-in page, so you do not have to go back to chat. The new code goes by DM to the person who received that earlier code, never into a group, and only while they are still a fleet admin. The DM names the browser and whether it asked through the public link or the local network. Like any new code, it replaces the previous one, including one `/web` sent a moment ago. It can be asked for once a minute and five times an hour per browser (and once every 20 seconds, 20 times an hour, for the whole fleet). It is not available while sign-in is paused after wrong codes. A code from `agend web` does not make a browser eligible. On a public link the button only works while that same link is open, and the sign-in is announced in General as usual. `/web revoke` and `agend web-token rotate` remove the button from every browser.
 
 An old `?token=` link or bookmark (`/ui?token=…`, as older versions printed) is **not** a way in. It opens the sign-in page, and the token is removed from the address bar.
 
@@ -43,9 +43,9 @@ An old `?token=` link or bookmark (`/ui?token=…`, as older versions printed) i
 - Only what you do counts as use: opening a page or a chat, sending, changing something. What a page does on its own timer never does: the live stream (also when it reconnects), the polling fallback, and `/view`'s terminal, roster and usage refresh. So a tab left open, including `/view` with `web.view_access: session`, still ends after its idle limit (48 hours locally unless configured, 30 minutes for a public session).
 - When a session ends, the page says so once ("Your session has ended. Sign in again") and keeps what you were doing on screen.
 - **The Session menu** (at the bottom of the sidebar) shows:
-  - which browser you are signed in as, and when the session ends;
-  - every other signed-in device, each with **Sign out**;
-  - **Sign out everywhere**.
+  - which browser you are signed in as, and when the session ends (a time of day: "Ends by … at the latest, or after … unused");
+  - when more than one browser is signed in: every signed-in device (this one marked **This device**, the others with **Sign out**), and **Sign out everywhere**.
+- At most 8 sessions are kept; signing in a ninth drops the one used least recently.
 
 ### Signing every browser out (revoke)
 
@@ -63,7 +63,7 @@ If the server cannot save the change (a disk problem), the reply says so: everyo
 ## The chat (`/ui`)
 
 Pick an instance on the left to talk to it. The web chat is **the same conversation** as its Telegram/Discord topic:
-- A message you send from the web is echoed into the topic as `🌐 <your name>: …` (see *Who the agent sees* below).
+- A message you send from the web is echoed into the topic as `🌐 web · <your name>: …` (see *Who the agent sees* below).
 - The agent's reply goes to Telegram/Discord as usual and also appears here.
 - You can switch between the web and your phone mid-conversation.
 - **No chat platform at all?** With no `channel` / `channels` in `fleet.yaml`, the dashboard alone is enough: an agent's replies come to the web chat.
@@ -85,14 +85,14 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - **Discord server emoji** written as `<:name:id>` (or `<a:name:id>`) show as the emoji's picture when it belongs to a server the fleet's Discord bots are in; AgEnD fetches it once and the dashboard serves it, so the page never loads Discord. Any other one stays as written.
 - **Mentions** show as Discord does: `<@id>` (or `<@!id>`) becomes **@name**, a role `<@&id>` **@role name**, a channel `<#id>` **#channel**, with the id on hover. Names are the ones AgEnD already knows (the fleet's bots, people who wrote to it, the Discord servers its bots are in); an unknown one reads **@user** (or @role, #channel). A Telegram **@username** gets the same look. Nothing inside code is changed.
 - The view follows new messages only while you are at the bottom. Scrolled up to read, it stays where you are, and **↓ N new** takes you down.
-- The sidebar button at its top hides it (☰ brings it back); the choice is remembered. On a phone the sidebar is a drawer: ☰ opens it — or swipe right across the conversation — and choosing something, tapping outside it, swiping it left or Esc closes it. (A swipe that starts at the very left edge stays the browser's back gesture, and swipes on code, tables, the terminal or the message box are left to them.) A phone also has tabs along the bottom (Chat, Fleet, View, Settings); they make room while the keyboard is open.
-- The header shows the instance's name and state, the **Chat / View / Details** switch, **Text size** and **Usage** (the same two, in the same order, on Chat, View, Details and Fleet). **Text size** goes S → M → L and is one setting for this browser: chosen on any page, it is the size on every page and after a reload. **Usage** is AI subscription usage: on a wide screen (1200 px and up) it is a panel on the right beside the page, hidden until you open it: **Usage** (or the panel's ✕) shows or hides it, remembered on this device; on a narrower screen **Usage** opens it as a dialog. Its **⋯** menu holds **Instance details** (the Details page) and the instance's own actions, and only the ones that fit: **Start** for a stopped instance; **Restart** and **Stop instance** for a running one; **Delete** last, behind typing its name.
+- The sidebar button at its top hides it (☰ brings it back); the choice is remembered. On a phone the sidebar is a drawer: ☰ opens it — or swipe right across the conversation — and choosing something, tapping outside it, swiping it left or Esc closes it. (A swipe that starts at the very left edge stays the browser's back gesture, and swipes on code, tables, the terminal or the message box are left to them.) A phone also has tabs along the bottom (Chat, Needs you, Fleet, View, Settings); they make room while the keyboard is open.
+- The header shows the instance's name and state, the **Chat / View / Log / Details** switch, **Text size** and **Usage** (the same two, in the same order, on Chat, View, Log, Details and Fleet). **Text size** goes S → M → L and is one setting for this browser: chosen on any page, it is the size on every page and after a reload. **Usage** is AI subscription usage: on a wide screen (1200 px and up) it is a panel on the right beside the page, hidden until you open it: **Usage** (or the panel's ✕) shows or hides it, remembered on this device; on a narrower screen **Usage** opens it as a dialog. Its **⋯** menu holds **Instance details** (the Details page) and the instance's own actions, and only the ones that fit: **Start** for a stopped instance; **Restart** and **Stop instance** for a running one; **Delete** last, behind typing its name.
 - **Theme** and **Language** (**Settings → Preferences**; on `/view` without signing in, the ☀ button beside **Sign in**, for that browser only): *System* follows each device's light or dark setting; *Light* or *Dark* fixes it. The language applies to every panel.
 - **Each instance in the sidebar** is called by its display name, with its instance name on hover (and under the display name when two instances share one). Its picture is, in this order: the one uploaded in View (**Edit profile**), its own bot's avatar when it has a bot of its own (the General bot counts when General is the only one using it), else the avatar of the bot it talks through (usually the General bot), its persona emoji, or its first letter. Each instance has an [identity colour](#identity-colours), shown by default on its name, as a bar at the row's left edge and as a ring around its picture. The dot on the picture is its state — idle, working, looks stuck, paused (hollow), stopped, crashed or needs you — and says so to a screen reader too. Pictures and server emoji are fetched by AgEnD on this computer and served by the dashboard itself; the page never loads Discord or Telegram. The filter finds an instance by either name. While a filter is on, the instance you have open stays at the top under **Current**, whether it matches or not, so you never lose the one you're talking to; the count still counts only the matches, and clearing the filter puts it back in its place.
   - A display name set in View (**Edit profile**) wins over one the agent sets itself (`set_display_name`). Clearing it in View shows the agent's own name again (or the instance name).
-- The bottom of the sidebar is one row: **Settings** and **Session**. **Settings → Preferences** holds theme, language, HTML previews and the tour.
+- The bottom of the sidebar is one row: **Settings** and **Session**. **Settings → Preferences** holds your name, theme, language, whether nicknames or real names come first, HTML previews and the tour.
 - **Favorites (#1664).** Star an instance to pin it in **Favorites** at the top of the sidebar, in the order you starred them. On a desktop the ☆ appears when you hover over or focus a row, and stays on starred ones. On a phone, tap **Edit** above the list. **Edit** also shows ↑ ↓ to reorder favorites. A deleted instance drops out; a paused or stopped one stays. At most 50.
-- **Preferences follow you across devices (#1665).** Theme, language, the sidebar's order, folded groups, filter and favorites, and HTML previews are saved on the AgEnD host, so your phone and your desktop match. A change shows up on your other devices at once, or the next time they load. Each browser keeps a copy and the page arrives with your theme already applied, so nothing flashes. The first time a device loads after the update, it uploads its own choices for anything not saved yet; after that, what is saved on the host wins. The tour, text size, view fit, the sidebar shown or hidden, panel widths, code wrap and desktop notifications stay on each device. A public link can read your preferences but cannot change them.
+- **Preferences follow you across devices (#1665).** Theme, language, the name order, the sidebar's order, folded groups, filter and favorites, HTML previews, and the Web appearance choices (agents' themes shown, card size, your sidebar widget, identity colours) are saved on the AgEnD host, so your phone and your desktop match. A change shows up on your other devices at once, or the next time they load. Each browser keeps a copy and the page arrives with your theme already applied, so nothing flashes. The first time a device loads after the update, it uploads its own choices for anything not saved yet; after that, what is saved on the host wins. The tour, text size, view fit, the sidebar shown or hidden, panel widths, code wrap and desktop notifications stay on each device. A public link can read your preferences but cannot change them.
 - **On a phone** the on-screen keyboard resizes the page, so the composer stays above it, and the layout keeps clear of the notch and the home bar.
 
 ### Keyboard and screen readers
@@ -121,7 +121,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
   - The agent gets a path, so a file's size does not matter to AgEnD. Some agent CLIs may still refuse to read a very large text file.
 - Types: **any file**, as in Discord and Telegram. The type is read from the file itself, not from its name. PNG, JPEG, GIF and WebP are images; PDF and UTF-8 text are kept as such. Anything else (an archive, an office file, a program, HTML, SVG …) is stored under its own extension (lower-case letters and digits, else `.bin`), and in the chat it is only ever a download, never opened in the page.
 - The agent receives files exactly as from Telegram: the file lands in the instance's workspace inbox (`<AGEND_HOME>/workspaces/<instance>/inbox`), with an `[📷 Image: …]` / `[📎 File: …]` line.
-- Files the agent attaches to its reply show in the chat. Images show inline; anything else is a download, never opened in the page.
+- Files the agent attaches to its reply show in the chat. Images show inline, and video and audio play inline. Markdown, CSV/TSV, JSON, code and text files get a **Show** card (200 lines, then **Show all … lines**; over 1 MiB, download it to read it). Anything else is a download, never opened in the page. Over the temporary public link only images show inline.
 - The chat keeps its own copy of each reply file (`<AGEND_HOME>/workspaces/<instance>/web-files`), so the file still opens after the agent changes or deletes its original, or the fleet restarts. A symlink, a file over 50 MB, or a file inside the AgEnD state folder (other than inbox/) is not shown. A copy is deleted when its message leaves the chat history; each instance keeps at most 1 GiB of copies, and above that the oldest go first.
 - An attached file that is **not sent within 30 minutes** is deleted. After a fleet restart, any such file left over is removed at startup once it is 30 minutes old.
 - Files that were sent stay in the inbox for **7 days**, like files from Telegram.
@@ -130,7 +130,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 When an agent's reply contains a ` ```html ` block, or attaches a `.html` / `.htm` file, a card under it can run that HTML for you.
 - **Files and blocks work the same.** A file's card sits under the reply's files. Its HTML is read from the fleet only when you click **Preview** or **Open in panel**, and it runs in the same sandboxed frame as a block. The file is never opened on the dashboard's own address. **Download** is the file's own link above the card. A file the fleet no longer has (its copy was removed to stay within the limit, or it was sent before AgEnD kept copies) says so; ask the agent to send it again.
 - **Up to 1 MiB.** A block or a file over 1 MiB (as UTF-8) gets no preview. A file's listed size is checked before anything is read, and its bytes are checked again after. Files are read as UTF-8.
-- **Off until you turn it on.** Use **Allow HTML previews** in **Settings → Preferences**, or the card's **⋯** menu. It asks once and says what it means. The choice applies on every device where you are signed in (never on the public link). Turning it off stops every running preview.
+- **Off until you turn it on.** Use **Allow HTML previews** in **Settings → Preferences**, or the card's **⋯** menu. It asks once and says what it means. The choice is saved on the AgEnD host, so it applies on every device signed in to it (never on the public link). Turning it off stops every running preview.
 - **Click to run, every time.** **Preview** runs it in a frame under the card, with this banner: *"Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab."* **I understand** on the banner hides it until you next sign in. The amber border around the preview always stays. **Stop** closes it. One preview runs at a time.
 - **Download** saves a block's HTML as `reply.html` (a file keeps its own name). It is never opened in the dashboard.
 - **Open in panel** shows the block beside the conversation, with room to use it. On a phone it is a full-screen sheet; **←** goes back to the chat.
@@ -210,24 +210,28 @@ Type `/` at the start of the message box for the instance's own chat commands, t
 The fleet's shared work and its overview, one tab each. Every tab has its own address. **Docs** in the header opens the docs site's short Web Guide (in the dashboard's language) in a new tab.
 
 **One instance's Details** (`/ui/fleet/agent/<name>`) is the Fleet side of that instance: its runtime (backend, model, effort, cost, context, 5-hour and 7-day limits), its recent activity, and a read-only summary of its configuration (display name, description, directory, where it is bound, tags), with **Edit in Settings** to change it. Its ⋯ menu starts, restarts, stops, pauses or wakes it, with the same calls and confirmations as the chat's ⋯ menu and Settings; deleting an instance stays in the chat's ⋯ menu and Settings. A ClassicBot room's Details shows its room instead of a directory, offers only pause and wake (as Settings does), and **Edit in Settings** opens its ClassicBot settings. An instance with no connection of its own is shown on the fleet's first connection, where it is bound by default.
-- On an instance page, the header switches between its **Chat**, **View** and **Details** (tabs under the header on a phone); the instance stays the same. Someone reading View without signing in sees no switch.
-- With an instance open, the sidebar's **Fleet** (and the phone's Fleet tab) goes to that instance's Details; with none open, to Tasks. On Details, an instance in the sidebar opens its Details; on a Fleet tab (the overview, Tasks, …), its Chat.
-- **Tasks**, **Schedules** and **Teams**: the task board, cron schedules and teams. Create, claim and delete them here. A team's **Edit** changes its members and description (the same update as the `update_team` tool); a team cannot be renamed — create a new one and delete the old. Over the public link teams are read-only.
+- On an instance page, the header switches between its **Chat**, **View**, **Log** and **Details** (tabs under the header on a phone); the instance stays the same. Someone reading View without signing in sees no switch.
+- With an instance open, the sidebar's **Fleet** (and the phone's Fleet tab) goes to that instance's Details; with none open, to Tasks. On Details, an instance in the sidebar opens its Details (on View its View, on Log its Log); on a Fleet tab (the overview, Tasks, …), its Chat.
+- **Tasks**: the task board. **New task**, **Claim** an open one, **Done** for a claimed one. Tasks are not deleted here.
+- **Schedules**: every schedule, silent ones included, with when it runs in words and its next run. **New schedule** (Repeat with a cron expression, or Once at a date and time), **Edit** (its **Enabled** box is how you pause one) and **Delete**. There is no "run now", and whether a schedule is silent can't be set here. Over the public link schedules are read-only.
+- **Teams**: **New team**, **Edit** (members and description — the same update as the `update_team` tool) and **Delete**. A team cannot be renamed — create a new one and delete the old. Over the public link teams are read-only.
 - **Org chart** (`/ui/fleet/org`; **Fleet overview** at the top of the sidebar, or of the drawer on a phone, opens it from any page): General at the top, then the teams from `fleet.yaml`, then the instances in no team.
-  - Each instance shows its display name, what it does, its backend and model, and its live state (working, idle, needs you, looks stuck, paused, stopped or crashed).
-  - Each instance also links to its Discord thread or Telegram topic and to its chat.
-  - The chart is read-only: you act in Discord, or from the chat.
+  - **Canvas** (the default) or **List**, remembered on this device.
+  - The canvas: drag to pan, the wheel or a pinch to zoom, **Zoom in / Zoom out / Fit to screen**, and the keys `+`, `-`, `0` (fit) and the arrows. **Overview** (bottom right, not on a phone) shows the whole chart: click to move there. A team's header folds it (remembered on this device). **Find** dims what doesn't match; Enter unfolds and goes to the first match. A card shows the picture, state, name and backend; clicking it (or Enter) opens the chat.
+  - The list shows each instance's display name, what it does, its backend and model, its live state (working, idle, needs you, looks stuck, paused, stopped or crashed), a link to its Discord thread or Telegram topic, and **Open chat**.
+  - **Live** (on by default) draws messages between instances as they travel (#1918). **Key** explains the lines: the colour is the kind (delegate_task, send_to_instance, report_result, broadcast) — dotted while queued, moving while it is delivered, fading for 3 seconds once delivered. **×N** means several share a line; zoomed out, lines join whole teams. No message text is ever shown, and an instance with `cross_instance_visibility: hidden` is left out. On the public link it refreshes every 5 seconds.
+  - The chart only shows: you act in Discord, or from the chat.
 - **Cache** (`/ui/fleet/cache`): how often each Claude Code and Codex instance's prompt cache expires between requests over 24 hours, 7 days or 30 days, what rewriting it costs, and whether a keep-warm ping would pay off.
   - It reads the transcripts on the machine, never a vendor API, and keeps a small summary per instance (`cache-ledger.json`).
   - Costs are list prices from one table; the date they were checked is shown.
   - Where a transcript records cache writes, those are used. Where it does not (some Codex sessions), the rewrite is estimated from the uncached input, and the numbers are marked as estimates; so are they when the cache lifetime had to be assumed.
-  - Kiro and other CLIs show "not available".
+  - Kiro shows "Not available (credit-billed; no cache data)"; so do other CLIs AgEnD has no cache data from.
   - **Cache writes 5 min / 1 h:** each Claude instance shows how many tokens it wrote with a 5-minute TTL and how many with a 1-hour one (#2001).
   - **Behaves as (#2010):** what a 5-minute cache really lasts, measured from the last 7 days of gaps between requests of 5 to 60 minutes.
     - Rarely rewritten (at most 10% of at least 10 gaps): it counts as 1 hour, and keep-warm is simulated so.
     - Mostly rewritten (at least half): the card recommends setting `prompt_cache_ttl: "1h"` for that instance (see [configuration](configuration.md#claude-prompt-cache-ttl)) instead of keep-warm. The fleet row counts such instances.
     - Too few gaps: it says so, and the figures are marked as estimates.
-  - Agents read the same report with `get_cache_report`. General, coordinators and full-profile instances see every instance; any other agent sees only its own row.
+  - Agents read the same report with `get_cache_report`. General, coordinators and full-profile instances see every instance; any other agent with the tool sees only its own row (the `minimal` tool set has none).
 - **Config**: the fleet's channel, access and defaults.
 
 ## Needs you (`/ui/needs`)
@@ -237,6 +241,14 @@ Everything waiting on you, from every bot's world, in one list: a fleet prompt (
 - **Needs you** in the sidebar (and a tab on a phone) shows how many things are waiting; the browser tab's title starts with `(N)`.
 - The list is grouped by agent, oldest first. A prompt has its own buttons; a delivery has **Acknowledge**; every item has **Open chat**.
 - **Notify me on this device** shows a desktop notification when something new needs you while the tab is in the background (a terminal wait only once it has lasted 5 seconds). It is per browser, asks for permission when you turn it on, and needs a secure address: `127.0.0.1`/`localhost` or the HTTPS public link, not a plain-HTTP LAN address. It is not offered on phones: there, the Discord notification (a new post in General, and the optional DM) is the one to rely on.
+
+## Log (`/ui/log/<name>`)
+
+What an agent did, step by step: what it was asked, its replies (never its thinking), each tool call (Read, Edit, Search, Run, Web, MCP, Sub-agent, …, with **Show output**), errors, the end of each turn, compactions, and fleet events such as a crash and restart.
+- **All / Tools / Errors** filter it; **Live** shows while it updates.
+- It opens with the newest 200 steps; **Load older steps** adds 100 at a time, and the page keeps up to 1000.
+- It is off until a fleet admin turns it on: `web.log_tab` (**Settings → Web → Log tab: each agent's steps**), or **Turn on the Log** on the tab itself, which waits for a fleet admin's confirmation.
+- Claude Code shows everything, also after the instance stopped; Codex while it runs; kiro shows the fleet events only. Other CLIs say they have no transcript AgEnD can read. Secret values are masked.
 
 ## `/view`
 
@@ -262,13 +274,13 @@ Everything waiting on you, from every bot's world, in one list: a fleet prompt (
 
 ## `/settings`
 
-**Agents**, **Connections**, **ClassicBot**, **General**, **Web** and **Developer** (the whole `fleet.yaml` as YAML or JSON) are tabs, each with its own address. The search box filters agents, connections and ClassicBot rooms; **Setup wizard** runs the same four steps as `agend quickstart`; it always adds a connection, for a new agent or one you already have.
+**Preferences**, **Web appearance**, **Agents**, **Connections**, **ClassicBot**, **General**, **Web** and **Developer** (the whole `fleet.yaml` as YAML or JSON; **Edit**, **Copy**, **Download fleet.yaml**, and **Apply & save**, which applies at once without the bar) are tabs, each with its own address. The search box filters agents, connections and ClassicBot rooms; **Setup wizard** runs the same four steps as `agend quickstart`; it always adds a connection, for a new agent or one you already have.
 
 A fleet with no chat connection yet (web only) shows a card above the Agents and Connections tabs (not on Chat, which has one instruction: choose an agent, or create one): **Connect a chat app** opens the setup wizard, **Use the web only** hides the card in this browser.
 
-- **Changes are staged, then applied together.** An agent's or a connection's **Settings** dialog stages its changes when you press **Stage change**; General's or Web's **Review changes** does the same. The bar at the bottom counts them and says what applying them costs (immediately, a restart of that agent, or a restart of AgEnD); **Apply changes** applies them all, **Discard** drops them. Staged changes stay while you move between tabs; leaving Settings with any asks **Discard N pending changes?** first.
+- **Changes are staged, then applied together.** An agent's, a connection's or a ClassicBot room's **Settings** dialog stages its changes when you press **Stage change**; General's or Web's **Review changes** does the same. (A connection's new binding, **Delete this bot**, provider API keys and **New connection** apply directly; Preferences and Web appearance save at once.) The bar at the bottom counts them and says what applying them costs (immediately, a restart of that agent, or a restart of AgEnD); **Apply changes** applies them all, **Discard** drops them. Staged changes stay while you move between tabs; leaving Settings with any asks **Discard N pending changes?** first.
 - **Once you press Apply, it carries on without you.** You can open the chat or anything else: the writes, the reload and its progress go on, a line at the top says how it is going, and Settings shows the details when you come back. A second Apply waits until the first is done. When a change needs AgEnD itself restarted, **Restart AgEnD** is offered (with its own confirmation).
-- **Web** holds the dashboard's own settings: how long a sign-in lasts here and how long it may sit unused (`web.session.local.*`; empty = the default), the browser terminal `/login` opens (on or off, and its minutes), web echo and the public link's menu. A change that loosens access — a longer session or idle time, the browser terminal turned back on or given more minutes, the public link — waits for a fleet admin to confirm it in General (or `agend settings confirm <id>`, see [Confirming sensitive changes](#confirming-sensitive-changes)); one that tightens access applies at once. The other web settings are listed read-only: they decide what the dashboard listens on and exposes, so they are edited in `fleet.yaml` (then `agend reload`; `web.preview_port` and `web.preview_origin` take a restart). Over a temporary public link none of this can be changed: the section says so and the server refuses it.
+- **Web** holds the dashboard's own settings: how long a sign-in lasts here and how long it may sit unused (`web.session.local.*`; empty = the default), the browser terminal `/login` opens (on or off, and its minutes), web echo, the Log tab (`web.log_tab`) and the public link's menu. A change that loosens access — a longer session or idle time, the browser terminal turned back on or given more minutes, the public link — waits for a fleet admin to confirm it in General (or `agend settings confirm <id>`, see [Confirming sensitive changes](#confirming-sensitive-changes)); one that tightens access applies at once. The other web settings are listed read-only: they decide what the dashboard listens on and exposes, so they are edited in `fleet.yaml` (then `agend reload`; `web.preview_port` and `web.preview_origin` take a restart). Over a temporary public link none of this can be changed: the section says so and the server refuses it.
 - **New agent** is the same dialog as the sidebar's **+** (New instance).
 - **Bot tokens are entered here, not in `.env`.** **New connection** and the **Setup wizard** ask for the bot's token in a password field; **Verify** asks Telegram or Discord whose token it is and shows the bot ("This is @your_bot.") before anything is saved.
   - The token is stored on this computer in `~/.agend/.env`, under a name AgEnD generates (`AGEND_DISCORD_TOKEN`, `AGEND_DISCORD_2_TOKEN`, `AGEND_TELEGRAM_PERSONA1_TOKEN`…). **Advanced** shows it, read-only, for people who manage `.env` themselves; nobody has to type one.
@@ -292,11 +304,11 @@ Each agent has a colour you can find it by in the sidebar.
 - **This host's settings,** in **Settings → Web appearance → Identity colours:**
   - where colours show by default;
   - **Turn off colours**, which hides every identity colour on this host. The colours people picked are kept and come back when you turn colours on again.
-- **Restore defaults** (Settings → Web appearance) puts this host's appearance settings back to their defaults and turns your custom CSS off. It asks first and says what it resets. The colours people picked, installed mods, uploaded effects and the card limits stay.
+- **Restore defaults** (Settings → Web appearance): see [Restore defaults](#restore-defaults).
 
 ### Custom CSS (Settings → Web appearance)
 
-**Appearance** holds your own stylesheet. It applies only to your screens: every device where you are signed in, never anyone else's. It covers Chat, Fleet, Details, Needs you, Log and View.
+**Web appearance** holds your own stylesheet. It applies only to your screens: every device where you are signed in, never anyone else's. It covers Chat, Fleet, Details, Needs you, Log and View.
 
 - **Never on Settings.** Settings is always drawn without your CSS, so you can always undo a stylesheet that hides something.
 - **Never in these places either:**
@@ -339,7 +351,15 @@ Each agent can have an identity card: a portrait, a banner, a one-line tagline a
 - **Clear card** removes your tagline, bio, portrait and banner; the agent's own card shows again. A person's **Reset theme…** removes the agent's card and leaves yours. **Lock theme** stops the agent changing its card.
 - **Over a temporary public link** you can edit the card, as you can the profile and picture. Theme reset and lock, and the limits below, stay off it.
 - **How an agent sees itself.** `get_web_appearance` tells an agent how it appears now: its face and where it comes from (profile, theme, bot, emoji or initial), its ring colour, its identity colour and where that comes from (a person's pick, its theme's accent, its own bot's Discord role, or automatic), its card field by field (whose each field is), its theme per mode, whether it is locked, and its limits. `preview_web_appearance` draws that as an SVG per mode in its own working directory (`.agend/appearance/light.svg`, `dark.svg`), with the pictures it shows written beside it (`avatar.png`, `portrait.png`, …) — only its own. From a shell: `agend-agent appearance` and `agend-agent appearance preview [light|dark]`.
-- **Upload limits.** **Settings → Web appearance → Identity card upload limits** (or `web.appearance` in `fleet.yaml`) sets the largest portrait and banner and how many pictures each agent may keep. Defaults: portrait 1024×1536, 1.5 MiB; banner 1600×600, 768 KiB; 8 pictures, 4 MiB per agent. A lower limit applies at once; a higher one waits for a fleet admin's confirmation. A limit applies to new uploads only; pictures already stored stay.
+- **Upload limits:** see [Card upload limits](#card-upload-limits).
+
+### Card upload limits
+
+**Settings → Web appearance → Identity card upload limits** (or `web.appearance` in `fleet.yaml`) sets the largest portrait and banner anyone may upload and how many pictures each agent may keep.
+- Fields: portrait width, height (px) and size (KiB); banner width, height and size; pictures per agent; picture space per agent (MiB). Each shows the value in force and the allowed range; empty means the default (shown greyed).
+- Defaults: portrait 1024×1536, 1.5 MiB; banner 1600×600, 768 KiB; 8 pictures, 4 MiB per agent.
+- A lower limit applies at once; a higher one waits for a fleet admin's confirmation. A limit applies to new uploads only; pictures already stored stay.
+- Only a signed-in admin sees and changes these here; otherwise edit `web.appearance` in `fleet.yaml`.
 
 ### Widgets
 
@@ -367,7 +387,7 @@ A mod is one file, `<name>-<version>.agendmod.json`, that carries a look: an age
 - **Uninstall** removes the mod from the list, and its effects from your library unless something still uses them. What it applied stays until you reset it.
 - **Export a mod** makes a file from what is in force now: an agent's theme with its pictures and the effects it places, its card text and widgets, your sidebar widget, and your custom CSS with the files it names. An exported file imports as it is. **Only effects that are yours to carry away travel**: your own and ones a person shared. Someone else's private effect placed on that agent stays out, and the page says how many were left out. An agent's own export (`export_web_mod`) follows the same rule for the agent.
 - **Agents' mods.** An agent can export its own look as a mod file (`export_web_mod`, written in its working directory) and propose a mod for you to review (`propose_web_mod`). A proposal shows under **Proposed by agents**: **Review** opens it into the same two-step import, and **Dismiss** drops it. A mod an agent proposes can never carry custom CSS, and agents never import.
-- **Effects** in a mod need the effect runtime. Until this fleet has one, a mod that carries effects is refused with `effects_unavailable`.
+- **Effects** in a mod need the effect library (see [Effects](#effects)). Where it is unavailable, a mod that carries effects is refused with `effects_unavailable`.
 - Mods are a signed-in person's action, or General's when you ask it (below). They are never available over a temporary public link, and an ordinary agent can only propose one.
 
 ### Asking General to change it for you
@@ -378,11 +398,32 @@ General (and a coordinator or full-profile instance) can change **Settings → W
 - **Custom CSS:** it keeps its safe rules. General can put it on trial, revert the trial or turn it off. **Keeping** it, or switching to an earlier version, is your own click on your screen.
 - **What only you can do, on the page:** choosing a file from your computer (a mod file, an effect folder, a CSS asset, a card picture), this browser's own switches, downloading an export, and the card upload limits.
 
+### Effects
+
+A Canvas Worker effect is a small animation drawn by code in an isolated Worker, with no page or DOM of its own. **Settings → Web appearance → Effects** manages them; agents place their own with the `web-appearance` tools.
+- **The library.** **Upload an effect folder**: `effect.json` and `worker.js`, with optional raster pictures, up to 1 MiB after processing. Each effect lists **Your copy** or **Shared with you**. **Share your copy with agents and people on this fleet** lets them use it; **Delete your copy** removes an unused copy (other people's copies stay). **Profile history** shows how it ran on viewers' pages — reported observations, not proof of its cost. **Reload library** reads it again.
+- **For a chat.** Choose the **Chat**, set an effect's **Parameters**, then **Save for this chat** (it replaces that chat's parameters with these values) or **Remove from this chat**.
+- **Your effect choices.** One effect each for the **Sidebar**, **Header**, **Page** and **Box**, each with **Pause / Resume** and **Clear**, and a **Cursor**, which shows its state and has **Clear**. They follow this platform sign-in (a Discord and a Telegram account stay separate); a host-operator sign-in shares **Host-wide effect choices**.
+- **Playback needs consent.** Placed and saved effects play only with **Allow HTML previews** on, and never on the temporary public link (it shows a static poster at most). A **Try** sample is the exception: a local admin's click on its card consents to that one sample, with no global opt-in. The cursor uses a static picture and falls back to the normal cursors.
+- **The pause budget.** An effect that makes the page slow is paused to protect it ("Paused to protect page responsiveness"); **Resume** keeps the limit of three such pauses.
+- **Your switch** (**Show agents' themes, effects and widgets**) and `?safe=1` turn agents' effects off.
+
+### Restore defaults
+
+**Settings → Web appearance → Restore defaults** puts this host's appearance settings back to their defaults. It asks first and says what it resets:
+- whether agents' themes and effects are shown;
+- the card size, and each card's own size;
+- your sidebar widget;
+- where identity colours show, and whether colours are off;
+- your custom CSS is turned off (its versions are kept), and so is its switch on this device.
+
+It leaves alone the colours people picked for agents, installed mods, uploaded effects and the card upload limits.
+
 ## Reaching it from elsewhere
 
 ### Temporary public link from a phone
 
-In the owning General, an admin can choose **Open temporary public link** from `/web` (Discord native slash; Telegram typed). Nothing is downloaded or exposed until that click. The bot DMs the link and code; Discord has an awaited ephemeral fallback. Telegram users must `/start` the bot privately first. No code is posted in General.
+In the owning General, an admin can choose **🌐 Other device (temporary public)** from `/web` (Discord native slash; Telegram typed). Nothing is downloaded or exposed until that click. The bot DMs the link and code; Discord has an awaited ephemeral fallback. Telegram users must `/start` the bot privately first. No code is posted in General.
 
 While it starts, the menu you clicked shows each step with its seconds, updated at most every 2 s (3 s on Telegram):
 
@@ -428,7 +469,7 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | `web.view_access` | `open` | `session`: reading `/view` needs a sign-in too |
 | `web.allowed_hosts` | — | Extra `Host` names to answer to (behind a proxy, tunnel or port forward) |
 | `web.notify_login` | `true` | `false`: don't announce new local sign-ins in General; public sign-ins always require a notice |
-| `web.usage_panel` | `true` | `false`: no AI usage anywhere — no **Usage** button, no usage panel or dialog, and `/api/ai-usage` is not served |
+| `web.usage_panel` | `true` | `false`: no **Usage** button, panel or dialog on the dashboard, and `/api/ai-usage` is not served (the chat's `/usage` and the `get_usage` tool still work) |
 | `web.preview` | `true` | `false`: no HTML previews at all (cards show the code and Download only) |
 | `web.preview_port` | `health_port + 1` | The preview listener's port, on `127.0.0.1` |
 | `web.preview_origin` | — | A separate host name, mapped to the preview port, for previews through a tunnel or proxy |
@@ -437,12 +478,15 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | `web.public_link.ttl_minutes` | `120` | Fixed lifetime from consent, 1–480 minutes; no renewal of an existing link |
 | `web.public_link.protocol` | `http2` | cloudflared `http2`, `quic` or `auto` |
 | `web.echo_to_channel` | `true` | Copy web chat messages to the instance's own Telegram or Discord topic |
+| `web.log_tab` | `false` | Show each agent's steps in its **Log** tab |
+| `web.upload_max_file_mb` | `50` | Largest file in a web chat message, whole MB 1–500 |
+| `web.upload_max_total_mb` | `100` | Largest message (all its files), whole MB 1–500 |
 | `web.session.local.absolute_hours` | `48` | How long a sign-in at the dashboard's own address lasts, 1–720 hours |
 | `web.session.local.idle_hours` | `48` | How long it may sit unused, 1–720 hours and at most `absolute_hours` |
 | `web_terminal.enabled` | `true` | `false`: `/login` refuses (no browser terminal) |
 | `web_terminal.ttl_minutes` | `10` | How long a `/login` browser terminal stays open, 1–20 minutes |
 
-**Settings → Web** edits `web.echo_to_channel`, `web.public_link.*`, `web.session.local.*` and `web_terminal.enabled` / `ttl_minutes`; it lists the others read-only (with `web.provider_secrets`, `web_terminal.bind` and `web_terminal.tunnel`).
+**Settings → Web** edits `web.echo_to_channel`, `web.log_tab`, `web.public_link.*`, `web.session.local.*` and `web_terminal.enabled` / `ttl_minutes`; it lists the others read-only (with `web.provider_secrets`, `web_terminal.bind` and `web_terminal.tunnel`).
 
 Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli.md).
 
@@ -460,8 +504,8 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 |---|---|
 | **403** when opening the dashboard through a proxy or tunnel | Its `Host` is not allowed: add it to `web.allowed_hosts`. |
 | The sign-in page says the code is wrong | Codes are single-use and expire after 5 minutes, and only the newest works. Ask for a new one. |
-| "Your session has ended" | 48 hours without use or since sign-in (the defaults), or someone revoked. Sign in again. |
-| Updates arrive a few seconds late, with no live stream | The live stream is blocked on your path (or this is the public link), so the page polls every 5 seconds. Nothing to do — it is not shown as a problem. |
+| "Your session has ended" | 48 hours without use or since sign-in (the defaults); on a public link 4 hours, 30 minutes unused, or the link closed; or someone used `/web revoke`, **Sign out everywhere** or `agend web-token rotate`. Sign in again. |
+| Updates arrive a few seconds late, with no live stream | The live stream is blocked on your path (or this is the public link), so the page polls every 5 seconds; the Log tab may lag up to 30 seconds. Nothing to do — it is not shown as a problem. |
 | A page looks wrong or something is hidden after you saved custom CSS | Add `?safe=1` to the address to load it without your CSS. Settings → **Web appearance** is never styled by it: fix the CSS there, or turn it off. |
 | `/web` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |
 | The browser's developer tools show a red **401** for `/auth/session` on the sign-in page | Expected: the page checks whether you are already signed in, and "no" is a 401. Nothing to do. |
@@ -480,17 +524,17 @@ curl --noproxy '*' --max-time 5 -sS -o /dev/null -w '%{http_code}\n' http://127.
 curl.exe --noproxy "*" --max-time 5 -sS -o NUL -w "%{http_code}\n" http://127.0.0.1:19280/health
 ```
 
-Linux **200** with Windows **000** points to a forwarding/connectivity problem; a blank page alone does not establish that. Save the results and Windows/WSL versions. Repeated fleet restarts need not repair the forwarding layer.
+Any HTTP code from Linux (**200**, or **503** while the fleet is degraded) with Windows **000** points to a forwarding/connectivity problem; a blank page alone does not establish that. Save the results and Windows/WSL versions. Repeated fleet restarts need not repair the forwarding layer.
 
 AgEnD finishes SSE responses at shutdown, waits at most one second for ordinary HTTP work to drain, then closes remaining owned sockets. Updated pages receiving the shutdown hint wait 10–15 seconds before reconnecting and then use the normal capped backoff. Existing pages loaded before the update keep their previous retry policy until refreshed. This reduces open streams and retry traffic; it cannot guarantee recovery of a stuck Windows relay. The listener closes late, but the replacement still starts its instances before binding HTTP, so the entire outage can exceed one second. Abrupt exits cannot send the hint.
 
 For recovery without interrupting the fleet, use an **already available, trusted SSH route to WSL**, bypassing Windows localhost forwarding. For example, in Windows, replace `WSL_SSH_HOST` with that existing SSH destination:
 
 ```powershell
-ssh -N -L 127.0.0.1:19281:127.0.0.1:19280 WSL_SSH_HOST
+ssh -N -L 127.0.0.1:19290:127.0.0.1:19280 WSL_SSH_HOST
 ```
 
-Open `http://127.0.0.1:19281/signin` and obtain a fresh code with `/web` or `agend web`. The alternate port remains Windows-loopback-only; normal sign-in, Host and same-origin checks still apply. Close the tunnel when finished. An existing explicitly approved public link is another option. Do not expose the local listener to the LAN or disable authentication for this workaround. If no alternate route exists, keep using chat and ask the operator to plan maintenance; there is no guaranteed nondisruptive relay reset here.
+Open `http://127.0.0.1:19290/signin` and obtain a fresh code with `/web` or `agend web`. (19290 is just a free port: not 19281, which is the preview port; HTML previews are off at this alternate address.) The alternate port remains Windows-loopback-only; normal sign-in, Host and same-origin checks still apply. Close the tunnel when finished. An existing explicitly approved public link is another option. Do not expose the local listener to the LAN or disable authentication for this workaround. If no alternate route exists, keep using chat and ask the operator to plan maintenance; there is no guaranteed nondisruptive relay reset here.
 
 For prevention, `wslinfo --networking-mode` inside WSL can identify the active mode where that tool exists. Missing output is **unknown**. Microsoft documents NAT localhost forwarding through wslrelay and a different architecture for mirrored networking. On supported Windows 11 22H2+ hosts, an operator may choose `networkingMode=mirrored` under the existing `[wsl2]` section of `%USERPROFILE%\.wslconfig`. This affects all WSL2 distributions and firewall behavior, and takes effect after a **planned WSL restart**, which interrupts their workloads. AgEnD makes no Windows configuration changes or WSL restart. Mirrored mode is an option, not a guaranteed cure.
 

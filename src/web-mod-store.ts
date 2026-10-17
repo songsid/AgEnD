@@ -285,6 +285,12 @@ export class ModStore {
     const s = this.stages.get(person);
     return s ? { stage: s.id, plan: s.plan, plan_hash: s.planHash, expires_in_s: Math.max(0, Math.ceil((MOD_STAGE_MS - (this.clock() - s.at)) / 1000)) } : null;
   }
+  /** #2064 review: where the person's open review came from — an agent's proposal (its instance) or a file (null). */
+  stageOrigin(person: string): { stage: string; proposal: string | null } | null {
+    this.sweep();
+    const s = this.stages.get(person);
+    return s ? { stage: s.id, proposal: s.proposal ?? null } : null;
+  }
   /** A picture of this person's staged mod (its theme's), so the plan can show it before anything is applied. */
   stagedPicture(person: string, id: string): { bytes: Uint8Array; mime: string } | null {
     this.sweep();

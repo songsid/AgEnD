@@ -177,13 +177,21 @@ Say "the default login", not "no subscription".
 `get_usage` returns one row per subscription: `Kiro (work)` and
 `Kiro (personal)` rather than a single `Kiro`. Read them out separately — they
 are two quotas, and adding them together would give a number that is true of
-neither. An agent with no profile appears under the plain `Kiro` row. Codex works
-the same way: `Codex (<profile>)` rows next to the plain `Codex`.
+neither. An agent with no profile appears under the plain `Kiro` row (shown only
+while some instance still uses the default login). Codex works the same way:
+`Codex (<profile>)` rows next to `Codex (default)`.
 
 Claude Code also has a row per profile: `Claude (work)`, `Claude (personal)`,
-next to the plain `Claude` for the default login. A profile reads quota from its
-own login; a profile that is configured but has never been signed in shows
-**Not logged in — run `/login claude-code <profile>` to sign in**.
+next to the plain `Claude` for the default login (again only while some instance
+uses it). A profile reads quota from its own login; a profile that is configured
+but has never been signed in shows **Not logged in — sign in with
+`/login claude-code <profile>`** (in chat, it adds the host command too).
+
+On the web dashboard's usage card (#2014) the title line says just the
+provider — "Claude", "Codex", "Kiro" — with the plan badge, and the profile
+name sits on its own line under it; the full `Claude (work)` is the tooltip.
+`get_usage` and the chat's `/usage` still call the row `Claude (work)`, so name
+the profile the way the user sees it on the screen they are looking at.
 
 A kiro profile that is configured but has never been logged in still gets a row,
 reading **Signed out — run `kiro-cli` to log in**. That is the reminder to go
