@@ -1,5 +1,5 @@
 import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
-import { guestFrameData, guestPollBody, guestRequestOf, guestStatus, type GuestRequest } from "./web-guest-access.js";
+import { guestDeliveries, guestFrameData, guestHistory, guestMessages, guestPollBody, guestRequestOf, guestStatus, type GuestRequest } from "./web-guest-access.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { binaryProbe } from "./binary-probe.js";
 import type { CachedImage } from "./web-images.js";
@@ -126,6 +126,18 @@ const safeInstanceSegment = (name: string): boolean => /^[^\\/\x00]+$/.test(name
 /** #1920 phase 1b: the open streams that are a guest's, and whose — each event is projected for them (guestFrameData). */
 const streamGuests = new WeakMap<ServerResponse, GuestRequest>();
 
+/**
+ * #1920 §5.2: one event for the guests' streams only, each as projected for it — a message that has just become what
+ * its channel saw (an admin's page already has it, unchanged).
+ */
+export function broadcastToGuests(clients: Set<ServerResponse>, event: string, data: unknown, onError?: (err: unknown) => void): void {
+  const guests = [...clients].filter((c) => streamGuests.has(c));
+  if (!guests.length) return;
+  const live = new Set(guests);
+  broadcastSseEvent(live, event, data, onError);
+  for (const c of guests) if (!live.has(c)) clients.delete(c);     // the ones it ended (their session went)
+}
+
 export function broadcastSseEvent(
   clients: Set<ServerResponse>,
   event: string,
@@ -143,7 +155,7 @@ export function broadcastSseEvent(
       if (guest) {
         // The exact session that opened it ended (revoked, expired, rotated away): nothing more, and the stream goes.
         if (!guest.current()) { dead.push(client); continue; }
-        const shown = guestFrameData(event, data, guest.scope());
+        const shown = guestFrameData(event, data, guest.scope(), guest);
         if (shown !== undefined) client.write(sseFrame(event, shown));
         continue;
       }
@@ -224,6 +236,8 @@ export interface WebApiContext {
    * many channels were posted to. Never rejects the web send on failure.
    */
   sendClassicWebEcho?(instance: string, text: string, sender?: string): Promise<number>;
+  /** #1920 §5.2: a web message's channel copy was sent — guests of that channel may see it now. */
+  webMessageInChannel?(instance: string, messageId: string): void;
   /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
   deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<boolean | void>;
   deliverHumanToInstance?(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin, originalBody: string): Promise<boolean | void>;
@@ -914,10 +928,20 @@ export function handleWebRequest(
   if (method === "GET" && path === "/ui/poll") {
     // #1920: a guest's poll is projected for its scope (web-guest-access.ts) — the same rule as its stream.
     const guest = guestRequestOf(req);
-    if (guest) { json(res, 200, guestPollBody(ctx.getUiStatus(), guest.scope(), Date.now())); return true; }
     const history = ctx.webChatHistory;
     const after = url.searchParams.get("after");
     const fresh = after === null || after === "";              // a cursor that is not ours in shape still gets nothing
+    if (guest) {
+      // #2085 review: and what became the channel's after its cursor (an older row, its copy sent since), once each.
+      json(res, 200, guestPollBody(ctx.getUiStatus(), guest.scope(), Date.now(), guest, after, () => {
+        if (!history) return [];
+        if (fresh) return history.after(0);
+        const cursor = parseLastEventId(after);
+        const rows = [...history.replayFor(cursor), ...history.seenAfter(cursor)];
+        return rows.filter((m, i) => rows.findIndex((x) => x.boot === m.boot && x.id === m.id) === i);
+      }));
+      return true;
+    }
     json(res, 200, {
       status: ctx.getUiStatus(),
       messages: history ? (fresh ? history.after(0) : history.replayFor(parseLastEventId(after))) : [],
@@ -948,21 +972,29 @@ export function handleWebRequest(
     });
     // #1823 (#1830 review): with the status, the server's clock — now and with every heartbeat — that the page counts a
     // poll down by (one write: the frames a connect sends are unchanged in number).
-    // #1920: a guest's stream: its projected status now and with each heartbeat, then only what guestFrameData lets
-    // through — no replay, no ticks, prompts or Needs you.
+    // #1920: a guest's stream: its projected status now and with each heartbeat, its replay and ticks as it may see them
+    // (§5.2), then only what guestFrameData lets through — no prompts or Needs you.
     const guest = guestRequestOf(req);
     if (guest) streamGuests.set(res, guest);
     const statusFrame = () => `event: status\ndata: ${JSON.stringify(guest ? guestStatus(ctx.getUiStatus(), guest.scope()) : ctx.getUiStatus())}\n\n`;
     res.write(`${statusFrame()}${sseClock()}`);
     // An EventSource that reconnects says what it last saw: send what it missed, before anything new.
-    const lastSeen = guest ? null : parseLastEventId(req.headers["last-event-id"]);
+    const lastSeen = parseLastEventId(req.headers["last-event-id"]);
     if (lastSeen !== null && ctx.webChatHistory) {
       const history = ctx.webChatHistory;
-      for (const m of history.replayFor(lastSeen)) res.write(sseFrame("message", m, history.cursorOf(m)));
+      if (guest) {
+        // Its own projection, with no cursor: an admin's ids are not a guest's to hold (it reloads its history instead).
+        for (const m of guestMessages(history.replayFor(lastSeen), guest, guest.scope())) res.write(sseFrame("message", m));
+      } else {
+        for (const m of history.replayFor(lastSeen)) res.write(sseFrame("message", m, history.cursorOf(m)));
+      }
     }
     // Ticks change messages already sent and carry no cursor: every (re)connect gets where each one is now, so a
     // report that fell into a gap is not lost until a reload (#1253 review). No id: it is not a message.
-    if (!guest && ctx.webChatHistory) res.write(`event: deliveries\ndata: ${JSON.stringify(ctx.webChatHistory.deliveries())}\n\n`);
+    if (ctx.webChatHistory) {
+      const ticks = guest ? guestDeliveries(ctx.webChatHistory, guest, guest.scope()) : ctx.webChatHistory.deliveries();
+      res.write(`event: deliveries\ndata: ${JSON.stringify(ticks)}\n\n`);
+    }
     // The same for the fleet prompts (C4): one posted, answered or expired during a gap is caught up here.
     if (!guest && ctx.listWebPrompts) res.write(`event: prompts\ndata: ${JSON.stringify(ctx.listWebPrompts())}\n\n`);
     // #1386: and "Needs you" as it is now; changes follow as `needs` events.
@@ -1018,7 +1050,10 @@ export function handleWebRequest(
       json(res, 400, { error: "instance (1-128 chars) and limit (1-500) required" });
       return true;
     }
-    json(res, 200, { messages: ctx.webChatHistory?.list(instance, limit) ?? [], boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0 });
+    // #1920 §5.2: a guest gets what the channel showed of it, and its own messages (the gate checked the scope).
+    const guest = guestRequestOf(req);
+    const messages = !ctx.webChatHistory ? [] : guest ? guestHistory(ctx.webChatHistory, instance, limit, guest, guest.scope()) : ctx.webChatHistory.list(instance, limit);
+    json(res, 200, { messages, boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0 });
     return true;
   }
 
@@ -2017,14 +2052,17 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // the fleet-wide switch is off for a room that is unset) resolved at send time inside sendClassicWebEcho.
       const canClassicEcho = ctx.isClassicInstance?.(instance) === true && !!ctx.sendClassicWebEcho;
       const settleClassicEcho = canClassicEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
-        await ctx.sendClassicWebEcho!(instance, formatWebChannelEcho(person.name, preview, t("web.echo_full_text")), person.name);
+        const posted = await ctx.sendClassicWebEcho!(instance, formatWebChannelEcho(person.name, preview, t("web.echo_full_text")), person.name);
+        if (posted > 0) ctx.webMessageInChannel?.(instance, messageId);       // #1920 §5.2: the room saw it
       }) : undefined;
       const settleEcho = canEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
         // A replacement adapter or edited binding is not the route we reserved.
         if ((ctx.getAdapterForInstance ? ctx.getAdapterForInstance(instance) : ctx.adapter) !== syncAdapter
           || (ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "")) !== groupId
           || ctx.fleetConfig?.instances[instance]?.topic_id !== topicId) return;
-        return syncAdapter.sendText(String(groupId), formatWebChannelEcho(person.name, preview, t("web.echo_full_text")), { threadId: String(topicId), format: "text", allowedMentions: { parse: [] } });
+        const sent = await syncAdapter.sendText(String(groupId), formatWebChannelEcho(person.name, preview, t("web.echo_full_text")), { threadId: String(topicId), format: "text", allowedMentions: { parse: [] } });
+        ctx.webMessageInChannel?.(instance, messageId);                          // #1920 §5.2: the topic saw it
+        return sent;
       }) : undefined;
       let delivered: boolean | void;
       try {
@@ -2077,7 +2115,8 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       ctx.webFiles?.commit(files);
       ctx.lastInboundUser.set(instance, person.name);
       ctx.eventLog?.logActivity("message", person.name, (message || `[${files.length} file(s)]`).slice(0, 200), instance);
-      ctx.emitSseEvent("message", { instance, sender: person.name, role: "user", text: message, ts, attachments: files.map(publicAttachment), messageId });
+      // #1920: the account that wrote it (a guest sees its own); channel-visible once its copy was sent (above).
+      ctx.emitSseEvent("message", { instance, sender: person.name, role: "user", text: message, ts, attachments: files.map(publicAttachment), messageId, ...(person.bound ? { from: person.voterKey } : {}) });
       json(res, 200, { sent: true, messageId });
     } catch {
       json(res, 400, { error: "Invalid JSON" });

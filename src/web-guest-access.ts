@@ -15,6 +15,7 @@
  * caller about their own account only (auth-api.ts).
  */
 import { shellRoute } from "./web-shell-routes.js";
+import type { WebChatButtons, WebChatHistory, WebChatMessage, WebDeliveryState } from "./web-chat-history.js";
 
 export type GuestRouteState = "on" | "later";
 export interface GuestRoute {
@@ -50,7 +51,7 @@ export const GUEST_ROUTES: readonly GuestRoute[] = [
   { methods: ["GET"], pattern: /^\/ui\/file\/[^/]+$/, instance: null, state: "on", note: "a file, served only when its stored instance is in scope (the handler checks)" },
   { methods: ["GET"], pattern: /^\/ui\/effect-posters\/[0-9a-f]{32}\.png$/, instance: null, state: "later", note: "phase 1b: a poster bound to its instance" },
   // Opened by phase 2: what needs the guest's own identity, authority and the history rule.
-  { methods: ["GET"], pattern: /^\/ui\/history$/, instance: { query: "instance" }, state: "later", note: "phase 2: history rows as the channel showed them (#1920 §5.2)" },
+  { methods: ["GET"], pattern: /^\/ui\/history$/, instance: { query: "instance" }, state: "on", note: "an in-scope instance's history, as its channel showed it (guestHistory, #1920 §5.2)" },
   { methods: ["POST"], pattern: /^\/ui\/send$/, instance: null, state: "later", note: "phase 2: guest chat (web.guests.chat), authority none" },
   { methods: ["POST"], pattern: /^\/ui\/upload$/, instance: { query: "instance" }, state: "later", note: "phase 2: guest chat's uploads" },
   { methods: ["POST"], pattern: /^\/ui\/reply-button$/, instance: null, state: "later", note: "phase 2: reply buttons, as on the platform" },
@@ -101,7 +102,15 @@ type Owner = { readonly adapterId: string; readonly userId: string };
  * is the exact session that admitted it, still current (not revoked, expired or rotated away) — never "some cookie on the
  * request still authenticates": another device's session must not keep a revoked one's stream alive (#2049 review).
  */
-export interface GuestRequest { readonly owner: Owner; scope(): ReadonlySet<string>; current(): boolean }
+export interface GuestRequest {
+  readonly owner: Owner;
+  scope(): ReadonlySet<string>;
+  current(): boolean;
+  /** #1920 §5.2: an instance whose every message is this guest's to see — its own Telegram private room. */
+  ownRoom?(instance: string): boolean;
+  /** #1920 §5.2: the kept messages, to show a tick or a reply's buttons only on a message the guest may see. */
+  history?(): WebChatHistory | null;
+}
 const guestRequests = new WeakMap<object, GuestRequest>();
 /** Set by the one entry that admits a guest (FleetManager's gate); read by the handlers that answer per recipient. */
 export function bindGuestRequest(req: object, guest: GuestRequest): void { guestRequests.set(req, guest); }
@@ -127,22 +136,96 @@ export function guestStatus(status: unknown, scope: ReadonlySet<string>): { inst
   return { instances };
 }
 
+// ── Phase 2: the chat, as the channel showed it (#1920 §5.2) ──
+
+const accountOf = (o: Owner): string => `${o.adapterId}:${o.userId}`;
 /**
- * One stream event as a guest gets it, or undefined (not sent). Default deny: only the status (projected) and an
- * in-scope instance's activity. Chat messages, live replies, delivery ticks and reply buttons wait for phase 2's rule
- * (#1920 §5.2: only what reached the channel); prompts (their nonces answer them), Needs you, the Log's ticks, traffic
- * and apply progress are never a guest's.
+ * Whether a guest sees one kept message: an in-scope instance's message that reached its channel (what the channel's
+ * members already saw), the guest's own, or anything in its own private room. Never someone else's web-only exchange,
+ * a cross-instance notice, a fleet status line, or a row kept from before these were recorded (they have no mark).
  */
-export function guestFrameData(event: string, data: unknown, scope: ReadonlySet<string>): unknown {
+export function guestSeesMessage(m: WebChatMessage, guest: GuestRequest, scope: ReadonlySet<string>): boolean {
+  if (!scope.has(m.instance)) return false;
+  return m.channel === true || m.from === accountOf(guest.owner) || guest.ownRoom?.(m.instance) === true;
+}
+/**
+ * A message as a guest gets it: without whose account wrote it (`mine` says it was the guest), and without another
+ * person's message id and ticks; never an effect Try (effects stay admin-only).
+ */
+export function guestMessage(m: WebChatMessage, guest: GuestRequest): Record<string, unknown> {
+  const { from, channel: _channel, messageId, delivery, effectTrial: _trial, seenSeq: _seen, ...rest } = m;
+  void _channel; void _trial; void _seen;
+  const mine = from === accountOf(guest.owner);
+  // #2085 review: a click's `text` is what the agent was given — the button's value too, which the platform never
+  // shows. A guest gets the label, as the channel showed it.
+  const click = rest.click ? { text: rest.click.label } : {};
+  return { ...rest, ...click, ...(mine ? { mine: true } : {}), ...(mine && messageId ? { messageId } : {}), ...(mine && delivery ? { delivery } : {}) };
+}
+const visibleList = (rows: readonly WebChatMessage[], guest: GuestRequest, scope: ReadonlySet<string>) =>
+  rows.filter((m) => !m.effectTrial && guestSeesMessage(m, guest, scope)).map((m) => guestMessage(m, guest));
+
+/**
+ * One stream event as a guest gets it, or undefined (not sent). Default deny:
+ * - the status (projected) and an in-scope instance's activity;
+ * - a chat message it may see (§5.2), a tick on one of its own messages, the buttons of a reply it may see;
+ * - never: the live reply receipt (effects), prompts (their nonces answer them), Needs you, the Log's ticks, traffic or
+ *   apply progress.
+ * Without `guest` (no context) only the status and activity pass.
+ */
+export function guestFrameData(event: string, data: unknown, scope: ReadonlySet<string>, guest?: GuestRequest): unknown {
   if (event === "status") return guestStatus(data, scope);
-  if (event === "activity") {
-    const d = data && typeof data === "object" ? data as { instance?: unknown; state?: unknown } : {};
-    return typeof d.instance === "string" && scope.has(d.instance) ? { instance: d.instance, state: d.state ?? null } : undefined;
+  const d = data && typeof data === "object" ? data as Record<string, unknown> : {};
+  if (event === "activity") return typeof d.instance === "string" && scope.has(d.instance) ? { instance: d.instance, state: d.state ?? null } : undefined;
+  if (!guest) return undefined;
+  if (event === "message") {
+    const m = data as WebChatMessage;
+    return typeof m?.instance === "string" && guestSeesMessage(m, guest, scope) ? guestMessage(m, guest) : undefined;
+  }
+  const history = guest.history?.();
+  if (!history || typeof d.instance !== "string" || !scope.has(d.instance)) return undefined;
+  if (event === "delivery") {
+    const own = typeof d.messageId === "string" ? history.findByMessageId(d.instance, d.messageId) : undefined;
+    return own && own.from === accountOf(guest.owner) ? { instance: d.instance, messageId: d.messageId, delivery: d.delivery } : undefined;
+  }
+  if (event === "reply_buttons") {
+    const id = d.buttons && typeof d.buttons === "object" ? (d.buttons as { id?: unknown }).id : undefined;
+    const row = typeof id === "string" ? history.findByButtons(d.instance, id) : undefined;
+    return row && guestSeesMessage(row, guest, scope) ? { instance: d.instance, buttons: d.buttons } : undefined;
   }
   return undefined;
 }
 
-/** /ui/poll's answer for a guest: the projected status, and nothing else yet (the same rule as the stream). */
-export function guestPollBody(status: unknown, scope: ReadonlySet<string>, now: number): Record<string, unknown> {
-  return { status: guestStatus(status, scope), messages: [], deliveries: [], reply_buttons: [], prompts: [], needs: [], cursor: null, now };
+/** The ticks a guest is caught up with: its own messages' only. */
+export function guestDeliveries(history: WebChatHistory, guest: GuestRequest, scope: ReadonlySet<string>): Array<{ instance: string; messageId: string; delivery: WebDeliveryState }> {
+  return history.deliveries().filter((t) => scope.has(t.instance) && history.findByMessageId(t.instance, t.messageId)?.from === accountOf(guest.owner));
+}
+/** The ended (or open-poll) buttons a guest is caught up with: on replies it may see. */
+export function guestButtonStates(history: WebChatHistory, guest: GuestRequest, scope: ReadonlySet<string>): Array<{ instance: string; buttons: WebChatButtons }> {
+  return history.buttonStates().filter((b) => { const row = history.findByButtons(b.instance, b.buttons.id); return !!row && guestSeesMessage(row, guest, scope); });
+}
+/** A guest's replay (a reconnecting stream, a poll): what it may see of `rows`. */
+export function guestMessages(rows: readonly WebChatMessage[], guest: GuestRequest, scope: ReadonlySet<string>): Array<Record<string, unknown>> {
+  return visibleList(rows, guest, scope);
+}
+/** /ui/history for a guest: the newest `limit` messages of one instance that it may see. */
+export function guestHistory(history: WebChatHistory, instance: string, limit: number, guest: GuestRequest, scope: ReadonlySet<string>): Array<Record<string, unknown>> {
+  return visibleList(history.list(instance), guest, scope).slice(-limit);
+}
+
+/**
+ * /ui/poll's answer for a guest: the projected status, and the chat it may see (the same rule as its stream) — with the
+ * cursor every poll hands out. Never prompts or Needs you.
+ */
+export function guestPollBody(status: unknown, scope: ReadonlySet<string>, now: number, guest?: GuestRequest, after?: string | null, replay?: (after: string | null) => readonly WebChatMessage[]): Record<string, unknown> {
+  const history = guest?.history?.() ?? null;
+  if (!guest || !history || !replay) return { status: guestStatus(status, scope), messages: [], deliveries: [], reply_buttons: [], prompts: [], needs: [], cursor: null, now };
+  return {
+    status: guestStatus(status, scope),
+    messages: guestMessages(replay(after ?? null), guest, scope),
+    deliveries: guestDeliveries(history, guest, scope),
+    reply_buttons: guestButtonStates(history, guest, scope),
+    prompts: [], needs: [],
+    cursor: history.pollCursor(),
+    now,
+  };
 }

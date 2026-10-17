@@ -28,12 +28,12 @@ const u = (p: string) => new URL(p, "http://127.0.0.1:1");
 describe("guestRouteDecision (the table)", () => {
   const scope = new Set(["a"]);
   it("an `on` route: in scope → allow; out of scope, or not a name → 404", () => {
-    for (const p of ["/ui", "/ui/chat/a", "/ui/js/panel-chat.js", "/api/profile/a", "/api/avatar/a", "/api/card/a", "/api/card/a/banner",
+    for (const p of ["/ui", "/ui/chat/a", "/ui/js/panel-chat.js", "/ui/history?instance=a", "/api/profile/a", "/api/avatar/a", "/api/card/a", "/api/card/a/banner",
       "/ui/img/avatar/a", "/ui/img/bot/a", `/ui/img/theme/a/${"f".repeat(32)}`, "/ui/effect-posters?instance=a"]) {
       expect(guestRouteDecision("GET", u(p), scope).kind, p).toBe("allow");
     }
     expect(guestRouteDecision("HEAD", u("/ui/chat/a"), scope).kind).toBe("allow");
-    for (const p of ["/ui/chat/b", "/api/profile/b", "/api/card/b/portrait", "/ui/img/bot/b", "/ui/effect-posters?instance=b", "/ui/effect-posters",
+    for (const p of ["/ui/chat/b", "/ui/history?instance=b", "/ui/history", "/api/profile/b", "/api/card/b/portrait", "/ui/img/bot/b", "/ui/effect-posters?instance=b", "/ui/effect-posters",
       "/ui/chat/a%2Fb", "/api/profile/a%2Fb", "/ui/chat/%E0%A4%A", "/api/card/%ZZ"]) {
       expect(guestRouteDecision("GET", u(p), scope), p).toEqual({ kind: "deny", status: 404, error: "not found" });
     }
@@ -41,7 +41,7 @@ describe("guestRouteDecision (the table)", () => {
   });
   it("a `later` route and anything else → 403 guest_forbidden; a method not listed → 403", () => {
     // Phase 1b opened the stream, the poll and a file (answered per recipient: web-guest-stream-1920.test.ts).
-    const later = [`/ui/effect-posters/${"a".repeat(32)}.png`, "/ui/history?instance=a", "/ui/prefs", "/ui/profile"];
+    const later = [`/ui/effect-posters/${"a".repeat(32)}.png`, "/ui/prefs", "/ui/profile"];
     const admin = ["/status", "/api/fleet", "/api/profiles", "/api/pane/a", "/ui/org", "/ui/traffic", "/ui/cache", "/ui/teams", "/ui/tasks", "/ui/steps",
       "/ui/instance/a", "/ui/instances", "/ui/config", "/ui/themes", "/ui/emojis", "/ui/mentions", "/api/settings/fleet", "/api/ai-usage", "/ui/fleet", "/ui/needs",
       "/ui/fleet/agent/a", "/ui/log/a", "/settings", "/ui/img/emoji/x", "/ui/preview-status"];
@@ -133,11 +133,11 @@ describe("the gate, live: a guest scoped to `a`", () => {
       const [g, ad] = [await raw(port, "GET", p, { cookie: cookieOf(guest) }), await raw(port, "GET", p, { cookie: cookieOf(admin) })];
       expect([g.status, g.body.includes("guest_forbidden")], p).toEqual([ad.status, false]);
     }
-    for (const p of ["/ui/chat/b", "/api/profile/b", "/api/card/b"]) {
+    for (const p of ["/ui/chat/b", "/ui/history?instance=b", "/api/profile/b", "/api/card/b"]) {
       expect(await raw(port, "GET", p, { cookie: cookieOf(guest) }), p).toEqual({ status: 404, body: JSON.stringify({ error: "not found" }) });
       expect((await raw(port, "GET", p, { cookie: cookieOf(admin) })).status, `admin ${p}`).not.toBe(404);
     }
-    for (const p of ["/status", "/api/fleet", "/ui/org", "/ui/traffic", "/ui/history?instance=a", "/api/settings/fleet", "/ui/instance/a"]) {
+    for (const p of ["/status", "/api/fleet", "/ui/org", "/ui/traffic", "/api/settings/fleet", "/ui/instance/a"]) {
       expect(await raw(port, "GET", p, { cookie: cookieOf(guest) }), p).toEqual({ status: 403, body: JSON.stringify({ error: "guest_forbidden" }) });
     }
     const send = await raw(port, "POST", "/ui/send", write(guest, port), JSON.stringify({ instance: "a", text: "hi" }));

@@ -361,8 +361,8 @@ function Thread({ name, th }) {
   return html`<div class="scroller" ref=${scroller}>
     <div class="thread" ref=${list} role="log" aria-live="off" aria-label=${t("chat.conversationWith", name)}></div>
     ${empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} />` : null}
-    ${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
-      <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}
+    <div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
+      <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}</div>
   </div>`;
 }
 

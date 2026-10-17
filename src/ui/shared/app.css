@@ -614,8 +614,12 @@ html.lb-open .scroller { overflow: hidden; }
 .pv-menu[open] { z-index: 6; background: var(--surface); border-radius: var(--r-sm); padding: var(--s-1); box-shadow: var(--shadow-2); }
 .pv-menu[open] > .chip-btn { display: block; text-align: left; width: max-content; max-width: 260px; white-space: normal; }
 
+/* #2087: the pill takes no room in the thread — it was a sticky box in the flow, 38 px at the end of the scroll, so
+   hiding it 48 px from the bottom took that room away under a reader still scrolling — the wheel's last step was cut
+   short, or the view clamped back. Its dock is sticky and 0 px tall; the pill floats above it. */
+.jump-dock { position: sticky; bottom: 0; height: 0; z-index: 5; }
 .jump-latest {
-  position: sticky; bottom: var(--s-3); left: 50%; transform: translateX(-50%); z-index: 5; display: inline-flex; align-items: center; gap: var(--s-1);
+  position: absolute; bottom: var(--s-3); left: 50%; transform: translateX(-50%); white-space: nowrap; display: inline-flex; align-items: center; gap: var(--s-1);
   background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-full); box-shadow: var(--shadow-2);
   padding: 6px var(--s-4); font-size: var(--fs-xs); font-weight: var(--fw-semibold); cursor: pointer;
 }
