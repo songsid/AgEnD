@@ -185,6 +185,7 @@ describe("the open instance stays on top while a filter is on (#1936)", () => {
     const pg = await app("/ui/chat/web-dev");
     await typeFilter(pg, "web-d");
     expect([pinnedNames(pg), rowNames(pg), pg.root.querySelector("#instanceList .side-empty"), pg.root.querySelector(".v-filter .note")!.textContent]).toEqual([["web-dev"], [], null, "1 / 5 shown"]);
+    expect(groups(pg), "its group, empty without it, is not shown").toEqual(["Current"]);
   });
   it("no filter, or no instance open: nothing pinned; clearing the filter puts it back in its group", async () => {
     const pg = await app("/ui/chat/web-dev");
