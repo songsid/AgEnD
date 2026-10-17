@@ -19,8 +19,21 @@ export const CARD_SIZES = ["s", "m", "l"];
  * tallest height. So the band of the picture shown everywhere is (picture's aspect ÷ this) of its height, at the focus.
  */
 export const BANNER_MAX_ASPECT = 5;
+/**
+ * #2086 (#2089 review): the narrowest a card draws its banner — the L size's 9 : 4 (on screens 320 px and wider) — which
+ * crops a wide picture's sides. Every card is between this and BANNER_MAX_ASPECT, so the area shown on every screen is
+ * the narrowest box's width (centred) × the widest box's height (at the focus).
+ */
+export const BANNER_MIN_ASPECT = 9 / 4;
 /** The share of a picture's height a box of `boxAspect` shows (1: all of it; a narrower box crops the sides instead). */
 export const bannerShownHeight = (pictureAspect, boxAspect) => Math.min(1, pictureAspect / boxAspect);
+/** The share of a picture's width a box of `boxAspect` shows, centred (1: all of it). */
+export const bannerShownWidth = (pictureAspect, boxAspect) => Math.min(1, boxAspect / pictureAspect);
+/** The area every screen shows, as shares of the picture: { left, top, width, height } at focus `f`. */
+export function bannerSafeArea(pictureAspect, f) {
+  const width = bannerShownWidth(pictureAspect, BANNER_MIN_ASPECT), height = bannerShownHeight(pictureAspect, BANNER_MAX_ASPECT);
+  return { left: (1 - width) / 2, top: bannerBandTop(height, f), width, height };
+}
 /** That band's top, as a share of the picture's height, at focus `f` (0–100) — object-position's own rule. */
 export const bannerBandTop = (shown, f) => (1 - shown) * (f / 100);
 export const MAX_CARD_SIZES = 200;
@@ -180,7 +193,19 @@ export function IdentityCard({ name, card, compact = false, sizeControl = !compa
 }
 
 // ── #2086: the banner's focus, set in View's Edit profile — the whole picture, what each screen shows of it ──
-/** Phones draw a card's banner at about 3 : 1 (app.css, M at ≤479 px): the band a phone shows. */
+/**
+ * #2089 review: the picture the focus preview shows — a file just chosen (a blob URL this owns: released when another is
+ * chosen and when the dialog closes) or the banner drawn now (a server URL, never released).
+ */
+export function useBannerPreview() {
+  const [preview, setPreview] = useState(null);
+  useEffect(() => () => { if (preview && preview.blob) { try { URL.revokeObjectURL(preview.blob); } catch { /* already gone */ } } }, [preview]);
+  return [preview, {
+    fromFile(file) { let url = null; try { url = URL.createObjectURL(file); } catch { return; } setPreview({ src: url, blob: url }); },
+    fromSrc(src) { setPreview({ src }); },
+  }];
+}
+/** A phone draws an M card's banner at about 3 : 1 (app.css, ≤479 px) — a guide for that size, not every phone card. */
 export const BANNER_PHONE_ASPECT = 3;
 /**
  * The banner whole, with the band every screen shows at this focus (dashed; outside it shaded) and the band a phone
@@ -190,16 +215,18 @@ export function BannerFocusPreview({ src, focus }) {
   const [size, setSize] = useState(null);
   if (!src) return null;
   const ar = size ? size.w / size.h : null;
-  const place = (boxAspect) => (el) => {
+  const put = (el, a) => { for (const k of ["left", "top", "width", "height"]) el.style.setProperty(k, `${(a[k] * 100).toFixed(2)}%`); };
+  // Every screen: the safe area (both crops). The phone guide: an M card on a phone, as drawn there (both crops too).
+  const safe = (el) => { if (el && el.style && ar) put(el, bannerSafeArea(ar, focus)); };
+  const phone = (el) => {
     if (!el || !el.style || !ar) return;
-    const shown = bannerShownHeight(ar, boxAspect);
-    el.style.setProperty("top", `${(bannerBandTop(shown, focus) * 100).toFixed(2)}%`);
-    el.style.setProperty("height", `${(shown * 100).toFixed(2)}%`);
+    const width = bannerShownWidth(ar, BANNER_PHONE_ASPECT), height = bannerShownHeight(ar, BANNER_PHONE_ASPECT);
+    put(el, { left: (1 - width) / 2, top: bannerBandTop(height, focus), width, height });
   };
   return html`<div class="bf-wrap">
     <img class="bf-pic" src=${src} alt="" onLoad=${(e) => { const i = e.currentTarget; if (i.naturalWidth && i.naturalHeight) setSize({ w: i.naturalWidth, h: i.naturalHeight }); }} />
-    ${ar ? html`<div class="bf-band bf-phone" ref=${place(BANNER_PHONE_ASPECT)}><span>${t("card.bannerPhone")}</span></div>
-      <div class="bf-band bf-safe" ref=${place(BANNER_MAX_ASPECT)}><span>${t("card.bannerSafe")}</span></div>` : null}
+    ${ar ? html`<div class="bf-band bf-phone" ref=${phone}><span>${t("card.bannerPhone")}</span></div>
+      <div class="bf-band bf-safe" ref=${safe}><span>${t("card.bannerSafe")}</span></div>` : null}
   </div>`;
 }
 

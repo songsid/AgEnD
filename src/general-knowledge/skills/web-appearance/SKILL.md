@@ -146,12 +146,12 @@ their own version of any field; theirs is shown instead of yours.
 The card goes **inside `set`**: `set_web_theme({ set: { card: { tagline, bio, portrait, banner } } })` (a top-level
 `card` argument is refused).
 
-**Your banner is cropped, never drawn wider than 5 : 1** (on a wider screen it is centred over a blurred copy). Make it
-**1600×600** (the default limit) and keep faces and text inside the **safe band: 53% of its height — a 1600×320 strip**
-— which every screen shows; a phone shows 89%. `card.bannerFocus` (0 top … 100 bottom; default 50, the centre) says
-where that band sits: put a face near the top at `bannerFocus: 0`. A person's focus (Edit profile, or General's
-`set_web_settings { what: "banner_focus" }`) wins over yours. `preview_web_appearance` draws the banner cropped at its
-focus, as the page does.
+**Your banner is cropped: never drawn wider than 5 : 1** (on a wider screen it is centred over a blurred copy) **nor
+narrower than 9 : 4** (an L card crops the sides). Make it **1600×600** (the default limit) and keep faces and text
+inside the **safe area: the middle 84% of the width × 53% of the height — 1350×320** — which every card shows on screens
+320 px and wider. `card.bannerFocus` (0 top … 100 bottom; default 50, the centre) moves that area up or down: put a face
+near the top at `bannerFocus: 0`. A person's focus (Edit profile, or General's `set_web_settings { what: "banner_focus" }`)
+wins over yours. `preview_web_appearance` draws the banner cropped at its focus, as the page does (an M card).
 
 ## Your identity colour
 

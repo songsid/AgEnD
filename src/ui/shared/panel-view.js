@@ -27,7 +27,7 @@ import { Dialog } from "./ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "./ui-states.js";
 import { Icon } from "./ui-icons.js";
 import "./view-strings.js";
-import { BannerFocusPreview, checkCard, fitPicture, IdentityCard, useCard } from "./identity-card.js";
+import { BannerFocusPreview, checkCard, fitPicture, IdentityCard, useBannerPreview, useCard } from "./identity-card.js";
 import { confirmDialog } from "./ui-confirm.js";
 import { openColorDialog } from "./identity-color.js";
 
@@ -334,9 +334,9 @@ function EditProfile({ it, onClose }) {
   const pics = { portrait: useRef(null), banner: useRef(null) };
   // #2086: the banner's focus — this person's (null: follow the agent's, else the centre), and the picture to preview:
   // a newly chosen file, else the banner drawn now.
-  const [focus, setFocus] = useState({ value: 50, mine: null, start: null });
-  const [bannerPreview, setBannerPreview] = useState(null);
-  useEffect(() => () => { if (bannerPreview && bannerPreview.url) try { URL.revokeObjectURL(bannerPreview.url); } catch { /* gone */ } }, [bannerPreview]);
+  // `agent`: the agent's own focus (what "Follow the agent's" shows; else the centre).
+  const [focus, setFocus] = useState({ value: 50, mine: null, start: null, agent: null });
+  const [bannerPreview, preview] = useBannerPreview();
   useEffect(() => {
     let live = true;
     // The card's fields stay disabled until this read is in (#1889 review: a draft typed meanwhile was overwritten);
@@ -349,8 +349,10 @@ function EditProfile({ it, onClose }) {
       const mine = (k) => (resolved && resolved[k] && resolved[k].by === "human" ? resolved[k] : null);
       setCard({ mine: { tagline: mine("tagline"), bio: mine("bio"), portrait: mine("portrait"), banner: mine("banner") }, limits: body.limits || null });
       const bf = resolved && resolved.banner_focus;
-      setFocus({ value: bf ? bf.value : 50, mine: bf && bf.by === "human" ? bf.value : null, start: bf && bf.by === "human" ? bf.value : null });
-      if (resolved && resolved.banner) setBannerPreview({ src: resolved.banner.src });
+      const agent = Number.isInteger(body.banner_focus_agent) && body.banner_focus_agent >= 0 && body.banner_focus_agent <= 100 ? body.banner_focus_agent : null;
+      const mineFocus = bf && bf.by === "human" ? bf.value : null;
+      setFocus({ value: mineFocus ?? agent ?? 50, mine: mineFocus, start: mineFocus, agent });
+      if (resolved && resolved.banner) preview.fromSrc(resolved.banner.src);
       setCardText({ tagline: mine("tagline") ? mine("tagline").text : "", bio: mine("bio") ? mine("bio").text : "" });
     }).catch(() => { if (live && lease.current()) setCard(none); });
     return () => { live = false; };
@@ -432,7 +434,7 @@ function EditProfile({ it, onClose }) {
         <label class="field"><span>${tn("cardBio")}</span><textarea rows="4" value=${cardText.bio} onInput=${(e) => setCardText({ ...cardText, bio: e.target.value })}></textarea></label>
         ${["portrait", "banner"].map((slot) => html`<div key=${slot} class="form">
           <label class="field"><span>${tn(slot === "portrait" ? "cardPortrait" : "cardBanner")}</span><input ref=${pics[slot]} type="file" accept="image/png,image/jpeg,image/webp"
-            onChange=${slot === "banner" ? (e) => { const fl = e.currentTarget.files && e.currentTarget.files[0]; if (fl) { try { setBannerPreview({ src: URL.createObjectURL(fl), url: true }); } catch { /* no preview */ } } } : undefined} /></label>
+            onChange=${slot === "banner" ? (e) => { const fl = e.currentTarget.files && e.currentTarget.files[0]; if (fl) preview.fromFile(fl); } : undefined} /></label>
           ${card && card.mine && card.mine[slot] ? html`<div class="field-row"><button type="button" class="btn btn-sm" aria-pressed=${removeCard[slot] ? "true" : "false"}
             onClick=${() => setRemoveCard({ ...removeCard, [slot]: !removeCard[slot] })}>${tn(removeCard[slot] ? "cardKeep" : "cardRemove")}</button></div>` : null}
         </div>`)}
@@ -442,7 +444,7 @@ function EditProfile({ it, onClose }) {
           <input type="range" min="0" max="100" step="1" value=${focus.value} aria-label=${tn("cardBannerFocus")}
             onInput=${(e) => { const v = Number(e.currentTarget.value); setFocus({ ...focus, value: v, mine: v }); }} />
           <span class="note">${tn("cardBannerFocusNote")}</span>
-          ${focus.mine !== null ? html`<div class="field-row"><button type="button" class="btn btn-sm" onClick=${() => setFocus({ ...focus, value: 50, mine: null })}>${tn("cardFocusFollow")}</button></div>` : null}
+          ${focus.mine !== null ? html`<div class="field-row"><button type="button" class="btn btn-sm" onClick=${() => setFocus({ ...focus, value: focus.agent ?? 50, mine: null })}>${tn("cardFocusFollow")}</button></div>` : null}
         </div>` : null}
       </fieldset>
       <div class="field-row"><button type="button" class="btn btn-sm" aria-pressed=${clearCard ? "true" : "false"} onClick=${() => setClearCard(!clearCard)}>${tn(clearCard ? "keepCard" : "clearCard")}</button>

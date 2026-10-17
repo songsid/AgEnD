@@ -1352,14 +1352,14 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 /* #2086: Edit profile's banner focus — the picture whole, the band every screen shows (dashed, outside it shaded) and a phone's. */
 .bf-wrap { position: relative; max-width: 440px; overflow: hidden; border-radius: var(--r-sm); }
 .bf-pic { display: block; width: 100%; height: auto; }
-.bf-band { position: absolute; left: 0; right: 0; pointer-events: none; box-sizing: border-box; }
+.bf-band { position: absolute; pointer-events: none; box-sizing: border-box; }
 .bf-band span { position: absolute; right: 4px; top: 2px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: #fff; text-shadow: 0 1px 2px #000, 0 0 4px #000; }
 .bf-safe { border: 2px dashed #fff; box-shadow: 0 0 0 999px rgba(0, 0, 0, .45); }
 /* The phone's band over the shade, in its own colour (its label at its own top-left, never in the shaded part). */
 .bf-phone { z-index: 1; border: 2px solid #ffd54a; }
 .bf-phone span { right: auto; left: 8px; top: 5px; color: #ffd54a; }
 .bf-field input[type=range] { width: 100%; max-width: 440px; }
-.id-banner-fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% var(--id-focus, 50%); filter: blur(24px) saturate(.75) brightness(.7); transform: scale(1.4); opacity: .9; pointer-events: none; }
+.id-banner-fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% var(--id-focus, 50%); filter: blur(24px) saturate(0.75) brightness(0.7); transform: scale(1.4); opacity: .9; pointer-events: none; }
 /* Wider than the banner's cap (5 × the size's tallest height): its sides feather into the fill, so the sharp centre
    leads without a seam. One threshold per size (a container query cannot read a custom property). */
 @container idbanner (min-width: 750px) { .id-card.card-c.bs-s .id-banner { -webkit-mask-image: var(--id-feather); mask-image: var(--id-feather); } }

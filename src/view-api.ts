@@ -564,7 +564,9 @@ export function handleViewRequest(
       // The limits in force ride along, so View's editor can fit a picture before it is sent (r4.1 Q3 (b)).
       const limits = effectiveAppearanceLimits(ctx.fleetConfig?.web?.appearance).limits;
       const slot = (l: { maxWidth: number; maxHeight: number; maxBytes: number }) => ({ max_width: l.maxWidth, max_height: l.maxHeight, max_bytes: l.maxBytes });
-      json(res, 200, { ...resolveCard(name, store.get(name), ctx.themeStore?.get(name).theme.card), limits: { portrait: slot(limits.portrait), banner: slot(limits.banner) } });
+      // #2089 review: the agent's own banner focus too (not only the one drawn), so Edit profile's "Follow the agent's" shows it.
+      const agentCard = ctx.themeStore?.get(name).theme.card, agentFocus = bannerFocusOk(agentCard?.bannerFocus);
+      json(res, 200, { ...resolveCard(name, store.get(name), agentCard), ...(agentFocus !== null ? { banner_focus_agent: agentFocus } : {}), limits: { portrait: slot(limits.portrait), banner: slot(limits.banner) } });
       return true;
     }
     if (method === "GET" && slot) {

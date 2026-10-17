@@ -177,6 +177,29 @@ describe("stock trust/paint prerequisite", () => {
     expect(f.snapshot().rects).toContainEqual({ x: 5, y: 15, width: 110, height: 60 });
     f.composer.style.textShadow = "1px 1px blue"; expect(f.snapshot().ok).toBe(false);
   });
+  it("#2086: the banner fill's one stock filter — exact value, exact element, clipped by its box (its paint is the box); anything else refuses", async () => {
+    const f = await fixture();
+    expect(read("shared/app.css")).toContain(`filter: ${f.m.STOCK_BANNER_FILL_FILTER};`);
+    const card: any = f.node(), box: any = f.node({ overflowX: "hidden", overflowY: "hidden" }), fill: any = f.node({ filter: f.m.STOCK_BANNER_FILL_FILTER }), banner: any = f.node();
+    card.kind = "card"; card.r = { x: 0, y: 100, width: 800, height: 260 }; box.r = { x: 0, y: 100, width: 800, height: 200 };
+    fill.r = { x: -160, y: 60, width: 1120, height: 280 };                 // scaled up by its transform: beyond the box
+    banner.r = { x: 150, y: 100, width: 500, height: 200 };
+    fill.parentElement = box; fill.matches = (sel: string) => sel === ".id-banner-box > img.id-banner-fill";
+    card.children = [box, fill, banner];
+    const spec = f.m.STOCK_TRUST_INVENTORY.find((s: any) => s.kind === "card");
+    f.extra.set(spec.selector, [card]); f.marked.push(card);
+    expect(f.snapshot()).toMatchObject({ ok: true, rects: expect.arrayContaining([{ x: 0, y: 100, width: 800, height: 260 }]) });
+    for (const [what, change, undo] of [
+      ["another filter value", () => { fill.style.filter = "blur(25px) saturate(0.75) brightness(0.7)"; }, () => { fill.style.filter = f.m.STOCK_BANNER_FILL_FILTER; }],
+      ["a box that does not clip", () => { box.style.overflowY = "visible"; }, () => { box.style.overflowY = "hidden"; }],
+      ["a filter on another element", () => { fill.matches = () => false; }, () => { fill.matches = (sel: string) => sel === ".id-banner-box > img.id-banner-fill"; }],
+      ["a backdrop filter with it", () => { fill.style.backdropFilter = "blur(2px)"; }, () => { fill.style.backdropFilter = "none"; }],
+      ["the same filter on the banner itself", () => { banner.style.filter = f.m.STOCK_BANNER_FILL_FILTER; }, () => { banner.style.filter = "none"; }],
+    ] as Array<[string, () => void, () => void]>) {
+      change(); expect(f.snapshot(), what).toMatchObject({ ok: false, reason: "stock_paint_unknown" }); undo();
+    }
+    expect(f.snapshot().ok).toBe(true);
+  });
   it("never serializes DOMRect prototypes or unknown geometry", async () => {
     const f = await fixture(); f.composer.r.x = Number.NaN; expect(f.snapshot().ok).toBe(false);
     f.composer.r.x = 1e8; expect(f.snapshot().ok).toBe(false);

@@ -96,6 +96,7 @@ describe("through the page's route and General's tool", () => {
     expect(await focus()).toEqual({ value: 70, by: "agent" });
     expect((await call("POST", "/api/profile/alpha", JSON.stringify({ card_banner_focus: 15 }))).status).toBe(200);
     expect(await focus()).toEqual({ value: 15, by: "human" });
+    expect(JSON.parse((await call("GET", "/api/card/alpha")).body).banner_focus_agent, "the agent's own, for Follow").toBe(70);
     expect((await call("POST", "/api/profile/alpha", JSON.stringify({ card_banner_focus: 150, display_name: "Not saved" }))).status).toBe(400);
     expect(await focus(), "a bad value changes nothing").toEqual({ value: 15, by: "human" });
     expect(JSON.parse((await call("GET", "/api/profile/alpha")).body).display_name).toBeNull();
@@ -136,6 +137,64 @@ describe("the page: what it keeps, how wide it draws, where the bands are", () =
       const wide = bannerShownHeight(ar, 5), narrow = bannerShownHeight(ar, box);
       expect(bannerBandTop(narrow, f) <= bannerBandTop(wide, f) + 1e-9 && bannerBandTop(narrow, f) + narrow >= bannerBandTop(wide, f) + wide - 1e-9, `${f} ${box}`).toBe(true);
     }
+  });
+});
+
+describe("#2089 review: the safe area holds on both axes, for every card and phone size", () => {
+  it("a 1600×600 banner: the middle 84% of the width × 53% of the height, at the focus", async () => {
+    const { bannerSafeArea, BANNER_MIN_ASPECT, BANNER_MAX_ASPECT } = await import("/assets/identity-card.js");
+    const round = (a: Record<string, number>) => Object.fromEntries(Object.entries(a).map(([k, v]) => [k, +v.toFixed(4)]));
+    expect([BANNER_MIN_ASPECT, BANNER_MAX_ASPECT]).toEqual([2.25, 5]);
+    expect(round(bannerSafeArea(1600 / 600, 0))).toEqual({ left: 0.0781, top: 0, width: 0.8438, height: 0.5333 });
+    expect(round(bannerSafeArea(1600 / 600, 100))).toEqual({ left: 0.0781, top: 0.4667, width: 0.8438, height: 0.5333 });
+  });
+  it("any mark inside it — near a side or an edge — is shown by every box from 9:4 to 5:1 (S/M/L, phone S/M/L); one outside is not promised", async () => {
+    const { bannerSafeArea } = await import("/assets/identity-card.js");
+    const pic = { w: 1600, h: 600 }, ar = pic.w / pic.h;
+    // object-fit: cover, object-position: 50% f% — the part of the picture a box shows, in picture pixels.
+    const shown = (box: number, f: number) => {
+      const s = Math.max(box / pic.w, 1 / pic.h);       // box of width `box` and height 1, in units
+      const vw = box / s, vh = 1 / s;
+      return { x0: (pic.w - vw) / 2, x1: (pic.w + vw) / 2, y0: (pic.h - vh) * f / 100, y1: (pic.h - vh) * f / 100 + vh };
+    };
+    const boxes = [5, 4.5, 4, 3.5, 3, 2.7, 2.25];       // desktop chat/View caps … Details … phone S (4) / M (3) / L (9:4)
+    for (const f of [0, 20, 50, 80, 100]) {
+      const a = bannerSafeArea(ar, f);
+      const marks = [[a.left + 0.001, a.top + 0.001], [a.left + a.width - 0.001, a.top + a.height - 0.001], [a.left + 0.001, a.top + a.height / 2], [0.5, a.top + 0.001]];
+      for (const [mx, my] of marks) for (const box of boxes) {
+        const v = shown(box, f), x = mx * pic.w, y = my * pic.h;
+        expect(x >= v.x0 - 1e-6 && x <= v.x1 + 1e-6 && y >= v.y0 - 1e-6 && y <= v.y1 + 1e-6, `f${f} box ${box} mark ${mx.toFixed(3)},${my.toFixed(3)}`).toBe(true);
+      }
+    }
+    // Prism's example: a face at x=40, y=300 is not inside the safe area (an L card crops it away).
+    const a = bannerSafeArea(ar, 50);
+    expect(40 / pic.w < a.left).toBe(true);
+    expect(40 >= shown(2.25, 50).x0).toBe(false);
+  });
+});
+
+describe("#2089 review: the focus preview owns the blob URL of a chosen file, never a server URL", () => {
+  it("A then B releases A; closing releases B; a server URL is never released", async () => {
+    const { page, h, settle } = await import("./helpers/app-harness.js");
+    const pg = page({ url: "http://127.0.0.1:19280/view/a" });
+    const made: string[] = [], released: string[] = [];
+    const g = globalThis as any;
+    const real = { create: g.URL.createObjectURL, revoke: g.URL.revokeObjectURL };
+    g.URL.createObjectURL = (f: { name: string }) => { const u = `blob:${f.name}`; made.push(u); return u; };
+    g.URL.revokeObjectURL = (u: string) => { released.push(u); };
+    try {
+      const card = await import("/assets/identity-card.js");
+      let api: any = null, shown: any = null;
+      const Probe = () => { const [p, a] = card.useBannerPreview(); api = a; shown = p; return null; };
+      await pg.mount(h(Probe, {}));
+      api.fromSrc("/api/card/a/banner?v=" + "f".repeat(32)); await settle(2);
+      api.fromFile({ name: "A" }); await settle(2);
+      expect([shown.src, released]).toEqual(["blob:A", []]);
+      api.fromFile({ name: "B" }); await settle(2);
+      expect([shown.src, released]).toEqual(["blob:B", ["blob:A"]]);
+      await pg.unmount(); await settle(2);
+      expect([made, released]).toEqual([["blob:A", "blob:B"], ["blob:A", "blob:B"]]);
+    } finally { g.URL.createObjectURL = real.create; g.URL.revokeObjectURL = real.revoke; await pg.unmount().catch(() => {}); pg.restore(); }
   });
 });
 
