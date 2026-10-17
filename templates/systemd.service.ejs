@@ -47,6 +47,14 @@ KillMode=mixed
 # server and every CLI the fleet starts. LimitCORE=0 covers a file core_pattern.
 CoredumpFilter=0
 LimitCORE=0
+# One OOM-killed process must not take the fleet with it (#2015). With the
+# default OOMPolicy=stop, a kernel OOM kill of ANY process in this cgroup (an
+# agent's one-off script, 2026-10-17) stopped the whole unit: every CLI, tmux
+# and the fleet. With continue only that process dies: a killed CLI is a crash
+# the fleet restarts, a killed tool child is an error its CLI sees, and a killed
+# fleet process is a failed main process that Restart=on-failure brings back.
+# systemd before 243 does not know the key and ignores it (with a warning).
+OOMPolicy=continue
 StandardOutput=append:<%= logPath %>
 StandardError=append:<%= logPath %>
 

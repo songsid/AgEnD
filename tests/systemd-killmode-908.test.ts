@@ -35,7 +35,7 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "agend-908-")); dirs.push(d); return d; };
 /** A unit as AgEnD wrote it before #908: the same, with no KillMode. */
 const legacyUnit = () => renderSystemdUnit(vars).split("\n")
-  .filter(l => !/^(KillMode|CoredumpFilter|LimitCORE|StartLimitIntervalSec|StartLimitBurst)=/.test(l) && !/^#/.test(l))
+  .filter(l => !/^(KillMode|CoredumpFilter|LimitCORE|StartLimitIntervalSec|StartLimitBurst|OOMPolicy)=/.test(l) && !/^#/.test(l))
   .map(l => (/^TimeoutStartSec=/.test(l) ? "TimeoutStartSec=0" : /^TimeoutStopSec=/.test(l) ? "TimeoutStopSec=60" : l))
   .join("\n");
 const serviceSection = (unit: string) => unit.split(/^\[Install\]/m)[0]!.split(/^\[Service\]/m)[1]!;
@@ -43,6 +43,14 @@ const serviceSection = (unit: string) => unit.split(/^\[Install\]/m)[0]!.split(/
 describe("the unit stops the fleet process only (#908)", () => {
   it("a fresh install renders KillMode=mixed in [Service]", () => {
     expect(serviceSection(renderSystemdUnit(vars))).toMatch(/^KillMode=mixed$/m);
+  });
+});
+
+describe("#2015: one OOM-killed process does not stop the fleet", () => {
+  it("a fresh install renders OOMPolicy=continue in [Service], once", () => {
+    const service = serviceSection(renderSystemdUnit(vars));
+    expect(service.match(/^OOMPolicy=.*$/gm)).toEqual(["OOMPolicy=continue"]);
+    expect(renderSystemdUnit(vars).split(/^\[Service\]/m)[0]).not.toMatch(/OOMPolicy/);
   });
 });
 
@@ -109,15 +117,15 @@ describe("#1113: crash dumps, start timeout and start limit", () => {
     const result = ensureSystemdUnitHardening(path);
     expect(result).toEqual({ kind: "ok", directives: {
       StartLimitIntervalSec: "added", StartLimitBurst: "added", TimeoutStartSec: "upgraded", TimeoutStopSec: "upgraded",
-      KillMode: "added", CoredumpFilter: "added", LimitCORE: "added",
+      KillMode: "added", CoredumpFilter: "added", LimitCORE: "added", OOMPolicy: "added",
     } });
     const after = readFileSync(path, "utf8");
     expect(unitSection(after)).toMatch(/^StartLimitIntervalSec=30min\nStartLimitBurst=4$/m);
     expect(serviceSection(after)).toMatch(/^TimeoutStartSec=15min$/m);
-    expect(serviceSection(after)).toMatch(/^KillMode=mixed\nCoredumpFilter=0\nLimitCORE=0$/m);
+    expect(serviceSection(after)).toMatch(/^KillMode=mixed\nCoredumpFilter=0\nLimitCORE=0\nOOMPolicy=continue$/m);
     expect(after.split(/^\[Install\]/m)[1]).toBe(legacyUnit().split(/^\[Install\]/m)[1]);
     // Every pre-existing line survives, in order.
-    const kept = after.split("\n").filter(l => !/^(StartLimitIntervalSec|StartLimitBurst|KillMode|CoredumpFilter|LimitCORE)=/.test(l));
+    const kept = after.split("\n").filter(l => !/^(StartLimitIntervalSec|StartLimitBurst|KillMode|CoredumpFilter|LimitCORE|OOMPolicy)=/.test(l));
     expect(kept.join("\n")).toBe(legacyUnit().replace("TimeoutStartSec=0", "TimeoutStartSec=15min").replace("TimeoutStopSec=60", "TimeoutStopSec=300"));
     const again = ensureSystemdUnitHardening(path);
     expect(again.kind === "ok" && Object.values(again.directives).every(v => v === "present")).toBe(true);
@@ -128,17 +136,19 @@ describe("#1113: crash dumps, start timeout and start limit", () => {
     const path = join(tmp(), "u.service");
     const custom = legacyUnit()
       .replace("TimeoutStartSec=0", "TimeoutStartSec=5min")
-      .replace("TimeoutStopSec=60", "TimeoutStopSec=60\nCoredumpFilter=0x33\nLimitCORE=infinity")
+      .replace("TimeoutStopSec=60", "TimeoutStopSec=60\nCoredumpFilter=0x33\nLimitCORE=infinity\nOOMPolicy=stop")
       .replace("After=network.target", "After=network.target\nStartLimitBurst=10");
     writeFileSync(path, custom);
     const result = ensureSystemdUnitHardening(path);
     expect(result.kind === "ok" && result.directives).toMatchObject({
-      TimeoutStartSec: "custom", CoredumpFilter: "custom", LimitCORE: "custom", StartLimitBurst: "custom",
+      TimeoutStartSec: "custom", CoredumpFilter: "custom", LimitCORE: "custom", StartLimitBurst: "custom", OOMPolicy: "custom",
       StartLimitIntervalSec: "added", KillMode: "added",
     });
     const after = readFileSync(path, "utf8");
     expect(after).toContain("TimeoutStartSec=5min");
     expect(after).toContain("CoredumpFilter=0x33");
+    expect(after).toContain("OOMPolicy=stop");                     // #2015: the operator's, even systemd's default
+    expect(after).not.toContain("OOMPolicy=continue");
     expect(after).toContain("StartLimitBurst=10");
     expect(after).not.toMatch(/StartLimitBurst=4/);
   });
