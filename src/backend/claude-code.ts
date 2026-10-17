@@ -1504,10 +1504,11 @@ export class ClaudeCodeBackend implements CliBackend {
    * Any failure (no token, network, non-200) degrades to [] — the static
    * aliases from listModels() always remain available.
    */
-  async listApiModels(): Promise<import("./types.js").ModelOption[]> {
+  async listApiModels(storeHome?: string): Promise<import("./types.js").ModelOption[]> {
     try {
       const { getClaudeOAuthToken } = await import("../usage/providers.js");
-      const token = await getClaudeOAuthToken();
+      // #2072: a profile's own login (its store home), else the default one.
+      const token = await getClaudeOAuthToken(storeHome);
       if (!token) return [];
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), CLI_PROBE_LONGEST_LEAF_MS);
@@ -1535,12 +1536,12 @@ export class ClaudeCodeBackend implements CliBackend {
     }
   }
 
-  async probeCLIEnv() {
+  async probeCLIEnv(config?: CliBackendConfig) {
     const { probeCliVersion } = await import("./types.js");
     return {
       version: probeCliVersion(this.binaryPath),
       models: await this.listModels(),
-      apiModels: await this.listApiModels(),
+      apiModels: await this.listApiModels(config?.credentialStoreHome),
     };
   }
 
