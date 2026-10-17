@@ -138,33 +138,33 @@ describe("propose_web_mod", () => {
     expect(r).toMatchObject({ proposed: { name: "proposed", version: "1.0.0", title: "Proposed look" } });
     expect(s.mods.proposals()).toMatchObject([{ instance: "alpha", name: "proposed", title: "Proposed look" }]);
     expect(s.notices).toEqual([["alpha", "Proposed a mod: Proposed look (proposed 1.0.0). A person can review it in Settings → Web appearance → Mods."]]);
-    expect([s.limiter.remaining("alpha").uploads, s.changed(), s.themes.get("alpha").theme]).toEqual([2, 1, { v: 1 }]);
+    // The user's decision (2026-10-18): a proposal is not counted (no upload budget); nor is it a change.
+    expect([s.limiter.remaining("alpha"), s.changed(), s.themes.get("alpha").theme]).toEqual([{ changes: 10, retry_after_s: 0, widget_data: 180, widget_data_retry_after_s: 0 }, 1, { v: 1 }]);
   });
   it("custom CSS from an agent is refused by the path it came in by — before anything else is read, and nothing counts", () => {
     const s = setup();
     const css = bundle({ contents: { ownerCss: { css: "c.css" } }, files: { "c.css": file("a{}") } });
     expect(propose(s, css)).toMatchObject({ error: "owner_css_not_from_agent" });
     expect(propose(s, JSON.stringify({ ...JSON.parse(css), v: 7 })), "even with the file otherwise invalid").toMatchObject({ error: "owner_css_not_from_agent" });
-    expect([s.mods.proposals(), s.limiter.remaining("alpha").uploads]).toEqual([[], 3]);
+    expect([s.mods.proposals(), s.limiter.remaining("alpha").changes]).toEqual([[], 10]);
   });
   it("an invalid file: its problems, nothing kept, nothing counted", () => {
     const s = setup();
     expect(propose(s, bundle({ files: { "extra.txt": file("x") } }))).toMatchObject({ error: "mod_invalid", errors: [{ path: "files.extra.txt" }] });
     expect(propose(s, "\xff\xfe")).toMatchObject({ error: "mod_invalid" });
-    expect([s.mods.proposals(), s.limiter.remaining("alpha").uploads]).toEqual([[], 3]);
+    expect([s.mods.proposals(), s.limiter.remaining("alpha").changes]).toEqual([[], 10]);
   });
-  it("the fleet switch, a person's lock and the upload limit refuse it", () => {
+  it("the fleet switch and a person's lock refuse it; proposals are not counted (the user's decision)", () => {
     const s = setup({ agentEdit: false });
     expect(propose(s, bundle())).toMatchObject({ error: "theme_editing_off" });
     s.web.themes.agent_edit = true;
     s.themes.setLocked("alpha", true);
     expect(propose(s, bundle())).toMatchObject({ error: "locked" });
     s.themes.setLocked("alpha", false);
-    for (let i = 0; i < 3; i++) expect(propose(s, bundle({ name: `p${i}` }))).toHaveProperty("proposed");
-    expect(propose(s, bundle({ name: "p3" }))).toMatchObject({ error: "rate_limited" });
-    expect(s.mods.proposals().map(p => p.name), "one per agent: the newest").toEqual(["p2"]);
+    for (let i = 0; i < 5; i++) expect(propose(s, bundle({ name: `p${i}` })), `proposal ${i + 1}`).toHaveProperty("proposed");
+    expect(s.mods.proposals().map(p => p.name), "one per agent: the newest").toEqual(["p4"]);
     expect(propose(s, bundle({ name: "theirs" }), "beta")).toHaveProperty("proposed");
-    expect(s.mods.proposals().map(p => [p.instance, p.name]), "another agent's stays").toEqual([["alpha", "p2"], ["beta", "theirs"]]);
+    expect(s.mods.proposals().map(p => [p.instance, p.name]), "another agent's stays").toEqual([["alpha", "p4"], ["beta", "theirs"]]);
   });
   it("in parts: the same checks, at the first part and at the end", () => {
     const s = setup();
@@ -244,7 +244,7 @@ describe("propose in parts: every bound on what an agent sends (#1906 review)", 
     let last: any = first;
     for (let i = 1; i < Math.ceil(b.length / PART); i++) last = s.agent.handle("alpha", "propose_web_mod", { data_b64: wrong.subarray(i * PART, (i + 1) * PART).toString("base64"), part: { index: i, count: Math.ceil(b.length / PART), bytes: b.length, sha256: sha(b), upload: first.upload } });
     expect(last).toMatchObject({ error: "part", message: "The parts do not add up to the declared file." });
-    expect([s.mods.proposals(), s.limiter.remaining("alpha").uploads]).toEqual([[], 3]);
+    expect([s.mods.proposals(), s.limiter.remaining("alpha").changes]).toEqual([[], 10]);
   });
   it("more bytes than declared, a count that doesn't match the bytes, or over 8 MiB: refused", () => {
     const t = setup(); const b = payload();
@@ -274,7 +274,7 @@ describe("propose in parts: every bound on what an agent sends (#1906 review)", 
     for (let i = 1; i < Math.ceil(b.length / PART) - 1; i++) send(s, b, i, {}, undefined, first.upload);
     s.themes.setLocked("alpha", true);
     expect(send(s, b, Math.ceil(b.length / PART) - 1, {}, undefined, first.upload)).toMatchObject({ error: "locked" });
-    expect([s.mods.proposals(), s.limiter.remaining("alpha").uploads]).toEqual([[], 3]);
+    expect([s.mods.proposals(), s.limiter.remaining("alpha").changes]).toEqual([[], 10]);
     expect(send(s, b, 0), "and a new first part").toMatchObject({ error: "locked" });
     s.themes.setLocked("alpha", false);
     s.web.themes.agent_edit = false;

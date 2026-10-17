@@ -143,7 +143,7 @@ describe("#1629 real Fleet effect tool integration", () => {
     const f = await fixture(); writeFileSync(join(f.dir, file), "not JSON");
     const r = await sendEffectInParts(files(), args => f.op("own", "effect-upload", args));
     expect(r.error).toEqual(expect.any(String)); expect(f.fm.effectLibrary.list({ kind: "agent", id: "own" })).toMatchObject({ entries: [] });
-    expect(f.fm.webAppearance.limiter.remaining("own").uploads).toBe(3);
+    expect(f.fm.webAppearance.limiter.remaining("own").changes, "a refused upload costs nothing").toBe(10);
     // The library provider is an independent fence, including human/mod callers that do not use agent authorization.
     const staged = f.fm.effectLibrary.stage(files(), { kind: "human", id: OPERATOR }); expect(staged.ok).toBe(true);
     expect(f.fm.effectLibrary.commit(staged.stageId)).toMatchObject({ ok: false, error: "references_unreadable" });

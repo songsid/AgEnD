@@ -36,7 +36,10 @@ describe("the web-appearance skill", () => {
     expect(SKILL).toContain(`| \`avatar\` | png, jpeg, webp, gif | ${THEME_ASSET_LIMITS.avatar.maxBytes / 1024} KiB, ${THEME_ASSET_LIMITS.avatar.maxSide} px a side |`);
     expect(SKILL).toContain(`default ${APPEARANCE_DEFAULTS.portrait.max_width}×${APPEARANCE_DEFAULTS.portrait.max_height}, ${APPEARANCE_DEFAULTS.portrait.max_kib / 1024} MiB`);
     expect(SKILL).toContain(`default ${APPEARANCE_DEFAULTS.banner.max_width}×${APPEARANCE_DEFAULTS.banner.max_height}, ${APPEARANCE_DEFAULTS.banner.max_kib} KiB`);
-    expect(SKILL).toContain(`**${APPEARANCE_LIMITS.changeGapMs / 1000} s** between changes, at most **${APPEARANCE_LIMITS.changesPerHour} changes an hour**, at most **${APPEARANCE_LIMITS.uploadsPerHour} picture uploads an hour**`);
+    expect(SKILL).toContain(`**${APPEARANCE_LIMITS.changeGapMs / 1000} s** between changes, at most **${APPEARANCE_LIMITS.changesPerHour} changes an hour**`);
+    // The user's decision (2026-10-18): uploads are not counted — the skill never promises or warns of a count.
+    expect(SKILL).toContain("Uploads (pictures, effects, proposed mods) are not counted.");
+    expect(SKILL).not.toMatch(/uploads? an hour|3 an hour|three-uploads/);
     expect(SKILL).toContain(`\`card.tagline\` (one line, 1..${TAGLINE_MAX_GRAPHEMES} characters), \`card.bio\` (1..${BIO_MAX_GRAPHEMES} characters, at most ${BIO_MAX_BREAKS} line breaks)`);
     const pairs = (fg: string) => CONTRAST_PAIRS.filter(([f]) => f === fg);
     expect(pairs("text").map(([, b, r]) => [b, r])).toEqual([["bg", 4.5], ["surface", 4.5], ["agentBubble", 4.5], ["userBubble", 4.5]]);

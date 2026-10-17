@@ -108,12 +108,11 @@ export class AgentMods {
     return { data_b64: b.data.subarray(i * ASSET_PART_BYTES, (i + 1) * ASSET_PART_BYTES).toString("base64") };
   }
 
-  /** Why the caller may not propose now, or null: the fleet switch, a person's lock, the upload limit. */
+  /** Why the caller may not propose now, or null: the fleet switch, a person's lock (uploads are not counted: the user's decision). */
   private refusal(instance: string): Answer | null {
     if (!agentAppearanceEditAllowed(this.deps.webConfig())) return { error: "theme_editing_off", message: "Agent theme and effect changes are turned off for this fleet (web.themes.agent_edit: false)." };
     if (this.deps.themes.get(instance).locked) return { error: "locked", message: "Theme and effects are locked by a person." };
-    const limit = this.deps.limiter.check(instance, ["upload"]);
-    return limit.ok ? null : { ...limit, message: `Too many uploads; try again in ${limit.retry_after_s} s.` };
+    return null;
   }
 
   /** propose_web_mod: the bytes the daemon or agend-agent read on the agent's side — whole, or in parts. */
@@ -165,7 +164,6 @@ export class AgentMods {
     if (!checked.ok) return { error: "mod_invalid", errors: checked.problems };
     const w = this.deps.mods.propose(instance, text, checked.mod);
     if (!w.ok) return { error: w.error, ...(w.detail ? { detail: w.detail } : {}) };
-    this.deps.limiter.record(instance, ["upload"]);
     const m = checked.mod.manifest;
     this.deps.notice(instance, `Proposed a mod: ${m.title} (${m.name} ${m.version}). A person can review it in Settings → Web appearance → Mods.`);
     this.deps.changed();

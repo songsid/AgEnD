@@ -71,7 +71,7 @@ of this skill).
   (`avatar.png`, `portrait.png`, …), and returns both lists of paths. Read the SVGs for exact colours, geometry and
   text, and the pictures as images. Only your own pictures are there.
 - `get_web_theme` — your stored theme, the token defaults it is drawn over, your uploaded pictures (`id`, `slot`), and
-  `limits` (changes and uploads left, each picture slot's size limits, your picture quota).
+  `limits` (changes left, each picture slot's size limits, your picture quota).
 
 ## What wins over what
 
@@ -221,7 +221,7 @@ everything in a mod and ticks what to apply.
 - `propose_web_mod { file }` sends a mod file from your working directory (at most 8 MiB) for a person to review. It
   is checked whole and answers with its problems if it isn't valid. **A mod carrying custom CSS is refused**
   (`owner_css_not_from_agent`). A muted line in your chat says it was proposed. Nothing changes until a person
-  installs it. One proposal at a time: a new one replaces yours. It counts as an upload.
+  installs it. One proposal at a time: a new one replaces yours.
 - A widget a person placed from a mod is theirs: you may give it values (`set_web_widget` with `data`), but not replace
   or remove it (`person_placed`).
 
@@ -233,11 +233,14 @@ with the tools above, then `export_web_mod`.
 
 ## Limits
 
-- At least **30 s** between changes, at most **10 changes an hour**, at most **3 picture uploads an hour** — refused
-  with `rate_limited` and `retry_after_s`. Only an accepted change counts; a refused or invalid one costs nothing.
+- At least **30 s** between changes, at most **10 changes an hour** — refused with `rate_limited` and
+  `retry_after_s`. Only an accepted change counts; a refused or invalid one costs nothing.
+- Uploads (pictures, effects, proposed mods) are not counted. Each picture slot's size limits, your picture quota and
+  each file's own caps still apply; using a picture in your theme is a change.
 - Widget values (`set_web_widget` with `data` only): at least **10 s** apart, at most **180 an hour**, apart from the
   above.
-- Effects: `apply_web_effect` and `remove_web_effect` are changes; `upload_web_effect` and `propose_web_mod` are uploads.
+- Effects: `apply_web_effect` and `remove_web_effect` are changes; `upload_web_effect` and `propose_web_mod` are not
+  counted.
   At most 10 effects and 8 MiB of your own, at most two placed in your chat.
 - Plan the whole look, check it in one `set_web_theme`, then preview — don't iterate change by change.
 
@@ -302,7 +305,7 @@ smallest valid `effect.json`:
 
 **The tools:**
 
-- `upload_web_effect { dir }` → `{ id, warnings }`. It counts as an upload (3 an hour, shared with pictures and mods).
+- `upload_web_effect { dir }` → `{ id, warnings }`. Uploads are not counted; the effect's own size caps apply.
   **Your own** copies are at most **10 effects and 8 MiB**; effects a person shared with you don't count.
 - `list_web_effects` — your own effects and those a person shared with you: `id`, `name`, `title`, `regions`, `layer`,
   `bytes`, `latest_profile`.

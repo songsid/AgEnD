@@ -159,7 +159,7 @@ describe("pictures in parts (r4 §1: larger than one message)", () => {
     expect(answer).toEqual({ id: expect.stringMatching(ID) });
     expect(store.get("w").assets).toEqual([{ id: (answer as { id: string }).id, slot: "portrait", kind: "png", bytes: big.length - 19 }]);
     expect(store.asset("w", (answer as { id: string }).id)!.bytes.includes(Buffer.from("GPS:1,2"))).toBe(false);
-    expect(limiter.remaining("w").uploads).toBe(2);
+    expect(limiter.remaining("w").changes, "an upload is not a change (and uploads are not counted)").toBe(10);
   });
   it("refused: a part out of order, another upload's id, a gap over a minute, bytes that do not add up — none counts", () => {
     const { svc, limiter, at } = service();
@@ -180,13 +180,13 @@ describe("pictures in parts (r4 §1: larger than one message)", () => {
     expect(part(2, up, Buffer.alloc(chunks[2]!.length, 1))).toMatchObject({ error: "part", message: expect.stringContaining("do not add up") });
     expect(svc.handleTool("w", "set_web_theme_asset", { slot: "portrait", data_b64: chunks[0]!.toString("base64"), part: { index: 0, count: 2, bytes: big.length, sha256: meta.sha256 } })).toMatchObject({ error: "part" });
     expect(svc.handleTool("w", "set_web_theme_asset", { slot: "portrait", data_b64: chunks[0]!.toString("base64"), part: { index: 0, count: 9, bytes: 9 * 1024 * 1024, sha256: meta.sha256 } })).toMatchObject({ error: "asset_too_large" });
-    expect(limiter.remaining("w").uploads).toBe(3);
+    expect(limiter.remaining("w").changes).toBe(10);
   });
   it("a lock set during the upload refuses it at the end (nothing stored, nothing counted)", async () => {
     const { svc, store, limiter } = service();
     let n = 0;
     const answer = await sendAssetInParts("portrait", big, async (args) => { if (n++ === 1) store.setLocked("w", true); return svc.handleTool("w", "set_web_theme_asset", args); });
-    expect([answer, store.get("w").assets, limiter.remaining("w").uploads]).toEqual([expect.objectContaining({ error: "locked" }), [], 3]);
+    expect([answer, store.get("w").assets, limiter.remaining("w").changes]).toEqual([expect.objectContaining({ error: "locked" }), [], 10]);
   });
   it("the daemon reads a large picture and sends it in parts, each answered before the next", async () => {
     const ws = tmp("agend-card-ws-");

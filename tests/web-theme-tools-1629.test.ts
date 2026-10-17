@@ -1,6 +1,7 @@
 /**
  * #1629 B1 (first design §2, §4, §6, §9.3–7; r2 (a)–(c)): an agent's own theme, end to end on the host side.
- * - The one appearance limiter: 30 s apart (1 ms either side), 10 an hour, 3 uploads an hour; only accepted calls count.
+ * - The one appearance limiter: 30 s apart (1 ms either side), 10 an hour; only accepted calls count. Uploads are not
+ *   counted (the user's decision, 2026-10-18): what a picture may be is bounded by its slot's limits and the quota.
  * - The store: one record per instance, own keys ("__proto__" and "constructor" are names), an unreadable file refuses
  *   writes (never overwritten), pictures checked and stripped, assets the theme stops naming deleted.
  * - The service: the fleet switch, then the lock, then the limit; a person's reset keeps the lock; nothing is limited
@@ -24,7 +25,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:fs/promises")>();
   return { ...real, lstat: (path: string, ...rest: unknown[]) => (fsHook.lstat ? Promise.resolve(fsHook.lstat(path)) : (real.lstat as (...a: unknown[]) => unknown)(path, ...rest)) };
 });
-import { AppearanceLimiter } from "../src/web-appearance-policy.js";
+import { AppearanceLimiter, APPEARANCE_LIMITS } from "../src/web-appearance-policy.js";
 import { ThemeStore } from "../src/web-theme-store.js";
 import { WebAppearance } from "../src/web-appearance.js";
 import { readAgentFile } from "../src/agent-file-read.js";
@@ -58,15 +59,15 @@ describe("the appearance limiter (r2 (c))", () => {
     expect(!eleventh.ok && eleventh.retry_after_s).toBe(3600 - 300);
     expect(l.check("b", ["change"]).ok, "per instance").toBe(true);
   });
-  it("uploads: 3 an hour; checking alone counts nothing; forget clears an instance", () => {
+  it("no upload budget: nothing counts uploads, and what is left names only changes and widget data", () => {
     let now = 0;
     const l = new AppearanceLimiter(() => now);
-    for (let k = 0; k < 10; k++) expect(l.check("a", ["upload"]).ok).toBe(true);
-    for (let k = 0; k < 3; k++) l.record("a", ["upload"]);
-    expect(l.check("a", ["upload"]).ok).toBe(false);
-    expect(l.remaining("a")).toMatchObject({ uploads: 0, changes: 10 });
+    expect(Object.keys(APPEARANCE_LIMITS).sort()).toEqual(["changeGapMs", "changesPerHour", "dataGapMs", "dataPerHour"]);
+    expect(l.check("a", []).ok, "an upload asks no bucket").toBe(true);
+    expect(l.remaining("a")).toEqual({ changes: 10, retry_after_s: 0, widget_data: 180, widget_data_retry_after_s: 0 });
+    l.record("a", ["change"]);
     l.forget("a");
-    expect(l.check("a", ["upload"]).ok).toBe(true);
+    expect(l.check("a", ["change"]).ok, "forget clears an instance").toBe(true);
   });
   it("monotonic: the default clock is performance.now, so a wall-clock jump changes nothing", () => {
     const l = new AppearanceLimiter();
@@ -171,15 +172,18 @@ describe("the service: switch, then lock, then limit — only what is accepted c
     expect(a.humanLock("w", false)).toMatchObject({ ok: true, locked: false });
     expect(a.setTheme("w", { set: { font: "mono" } })).toMatchObject({ theme: { font: "mono" } });
   });
-  it("uploads: the 4th in an hour is refused; a refused picture costs nothing", () => {
+  it("uploads are not counted: a fourth and fifth picture in an hour are stored; the switch, the lock and the checks still refuse", () => {
     const { a } = svc();
     expect(a.setAsset("w", { slot: "avatar", data_b64: Buffer.from("not a picture").toString("base64") })).toMatchObject({ error: "asset_type" });
-    for (let k = 0; k < 3; k++) expect(a.setAsset("w", { slot: "avatar", data_b64: png(10 + k).toString("base64") })).toHaveProperty("id");
-    expect(a.setAsset("w", { slot: "avatar", data_b64: png(20).toString("base64") })).toMatchObject({ error: "rate_limited" });
+    for (let k = 0; k < 5; k++) expect(a.setAsset("w", { slot: "avatar", data_b64: png(10 + k).toString("base64") }), `picture ${k + 1}`).toHaveProperty("id");
+    expect((a.getTheme("w") as { limits: { changes: number } }).limits.changes, "an upload is not a change").toBe(10);
+    expect(a.humanLock("w", true)).toMatchObject({ ok: true, locked: true });
+    expect(a.setAsset("w", { slot: "avatar", data_b64: png(30).toString("base64") })).toMatchObject({ error: "locked" });
   });
   it("get_web_theme says what an agent needs: theme, defaults, assets, limits, lock", () => {
     const { a } = svc();
-    expect(a.getTheme("w")).toMatchObject({ theme: { v: 1 }, locked: false, agent_edit: true, defaults: { dark: { bg: "#212121" } }, assets: [], limits: { changes: 10, uploads: 3 } });
+    expect(a.getTheme("w")).toMatchObject({ theme: { v: 1 }, locked: false, agent_edit: true, defaults: { dark: { bg: "#212121" } }, assets: [], limits: { changes: 10 } });
+    expect(a.getTheme("w").limits, "no upload count (the user's decision)").not.toHaveProperty("uploads");
   });
 });
 
