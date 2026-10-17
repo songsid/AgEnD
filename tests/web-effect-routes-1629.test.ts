@@ -47,6 +47,8 @@ describe("#2017 a chat placement needs an effect that plays in chat (the person'
   const f=await fixture(),a=f.session();
   const header=(await f.call("POST","/ui/effects/upload",a.headers,input(["header"]))).body.id,chat=(await f.call("POST","/ui/effects/upload",a.headers,input(["chat"],"//chat"))).body.id;
   expect(f.themes.setPlacements("own",{effects:[header]},"human",()=>null).ok,"stored before #2017").toBe(true);
+  const bob=f.session("bob");
+  expect(await f.call("POST","/ui/effects/apply",bob.headers,JSON.stringify({instance:"own",id:header})),"placed here, but bob can't read it: not_found, never effect_region").toMatchObject({status:404,body:{error:"not_found"}});
   const read=await f.call("GET",`/ui/effects/placements?instance=own&ownerEpoch=${a.epoch}`,a.headers);
   expect([read.status,read.body.effects.map((p:{id:string})=>p.id)],"still readable, for cleanup").toEqual([200,[header]]);
   expect((await f.call("POST","/ui/effects/apply",a.headers,JSON.stringify({instance:"own",id:chat}))).status).toBe(200);
