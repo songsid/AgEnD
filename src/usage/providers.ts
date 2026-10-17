@@ -628,43 +628,105 @@ function agyOAuthClient(env: NodeJS.ProcessEnv = process.env): { id: string; sec
  * never written back — it belongs to agy; refresh tokens are reusable. */
 let agyTokenCache: { token: string; until: number } | null = null;
 
-interface AgyBucket { bucketId?: string; displayName?: string; remainingFraction?: number; resetTime?: string }
+/**
+ * One quota bucket of `retrieveUserQuotaSummary` (agy's proto: QuotaSummaryBucket). `group` is not on the wire: it is
+ * the display name of the QuotaSummaryGroup the bucket came in, copied on by agyQuotaBuckets.
+ */
+interface AgyBucket {
+  bucketId?: string; displayName?: string; window?: string; disabled?: boolean;
+  remainingFraction?: number; resetTime?: string; group?: string;
+}
+interface AgyQuotaSummary { groups?: { displayName?: string; buckets?: AgyBucket[] }[]; buckets?: AgyBucket[] }
+
+/** The summary's buckets, each tagged with its group's name. The top-level list (deprecated in the proto) only counts
+ * when no group carries any bucket. */
+export function agyQuotaBuckets(body: AgyQuotaSummary): AgyBucket[] {
+  const grouped = (body.groups ?? []).flatMap(g => (g.buckets ?? []).map(b => ({ ...b, group: g.displayName?.trim() || undefined })));
+  return grouped.length ? grouped : (body.buckets ?? []);
+}
+
+type AgyWindow = "session" | "weekly";
+const AGY_POOLED: Record<string, { pool: string; window: AgyWindow }> = {
+  "gemini-5h": { pool: "Gemini", window: "session" },
+  "gemini-weekly": { pool: "Gemini", window: "weekly" },
+  "3p-5h": { pool: "Claude & others", window: "session" },
+  "3p-weekly": { pool: "Claude & others", window: "weekly" },
+};
+
+/** The pool a bucket belongs to: its group when the summary names one (#1898), else a guess from the bucket id. */
+function agyPool(b: AgyBucket, id: string): string {
+  const pooled = AGY_POOLED[id];
+  if (pooled) return pooled.pool;
+  const group = b.group;
+  if (group) {
+    if (/gemini/i.test(group)) return "Gemini";
+    if (/claude|gpt|third.?party|\b3p\b/i.test(group)) return "Claude & others";
+    return group;
+  }
+  return id.startsWith("gemini") ? "Gemini" : "Claude & others";
+}
+
+/** The limit a bucket counts against ("Five Hour Limit", window "5h" …), or null for a per-model bucket. */
+function agyWindow(b: AgyBucket, id: string): AgyWindow | null {
+  const pooled = AGY_POOLED[id];
+  if (pooled) return pooled.window;
+  // One source at a time, the most specific first: the bucket's own window, then its id, then — only inside a named
+  // group, where a per-model name ("Gemini 2.5 High") cannot occur — its display name. A word that merely appears in an
+  // opaque id never overrides a window the bucket states.
+  for (const text of [b.window, id, b.group ? b.displayName : undefined]) {
+    const window = text ? agyWindowOf(text) : null;
+    if (window) return window;
+  }
+  return null;
+}
+
+/** "5h", "5 h", "5-hour", "5_hours", "Five Hour Limit", "session" → session; "weekly", "7d", "7 days" → weekly. */
+function agyWindowOf(text: string): AgyWindow | null {
+  if (/(^|[^0-9.])5[\s_-]*h(ours?|rs?)?\b|five[\s_-]*h(ours?|rs?)\b|\bsession\b/i.test(text)) return "session";
+  if (/week|(^|[^0-9.])7[\s_-]*d(ays?)?\b|seven[\s_-]*days?\b/i.test(text)) return "weekly";
+  return null;
+}
+
+function agyLabel(pool: string, window: AgyWindow | null): { text: string; i18n: UsageI18nRef } {
+  if (pool === "Claude & others") {
+    return window === "session" ? { text: "Claude & others (session)", i18n: i18n("usage.metric.agy_claude_others_session") }
+      : window === "weekly" ? { text: "Claude & others (weekly)", i18n: i18n("usage.metric.agy_claude_others_weekly") }
+      : { text: pool, i18n: i18n("usage.metric.agy_claude_others") };
+  }
+  return window === "session" ? { text: `${pool} (session)`, i18n: i18n("usage.metric.named_session", pool) }
+    : window === "weekly" ? { text: `${pool} (weekly)`, i18n: i18n("usage.metric.named_weekly", pool) }
+    : { text: pool, i18n: i18n("usage.metric.named", pool) };
+}
 
 /**
- * Pool the summary's buckets into at most four metrics.
+ * Pool the summary's buckets into one metric per pool and limit.
  *
- * Two payload shapes exist. Older accounts report pooled ids (`gemini-5h`,
- * `gemini-weekly`, `3p-5h`, `3p-weekly`), which map 1:1. This machine's live
- * response instead lists PER-MODEL buckets (`gemini-3.6-flash-high`,
- * `claude-sonnet-4-6`, `gpt-oss-120b-medium`, …) — those aggregate into a
- * Gemini pool and an everything-else pool, keeping each pool's WORST remaining
- * fraction, because eleven per-model meters is noise and the binding constraint
- * is the one that runs out first.
+ * Three payload shapes exist:
+ * - pooled ids (`gemini-5h`, `gemini-weekly`, `3p-5h`, `3p-weekly`), which map 1:1;
+ * - PER-MODEL buckets (`gemini-3.6-flash-high`, `claude-sonnet-4-6`, …), aggregated into a Gemini pool and an
+ *   everything-else pool;
+ * - (#1898, agy 2026-10) named groups ("Gemini Models", "Claude and GPT Models") whose buckets are the group's
+ *   five-hour and weekly limits. The group decides the pool; the bucket's window, id or name decides the limit.
+ *
+ * Every metric keeps the WORST remaining fraction of its buckets, because the binding constraint is the one that runs
+ * out first. Within one pool a bucket with a known limit is authoritative over per-model buckets; one pool never hides
+ * another. Disabled buckets (agy dims them, no number) are left out.
  */
 export function agyPoolMetrics(buckets: AgyBucket[]): UsageMetric[] {
-  const POOLED: Record<string, { text: string; i18n: UsageI18nRef }> = {
-    "gemini-5h": { text: "Gemini (session)", i18n: i18n("usage.metric.named_session", "Gemini") },
-    "gemini-weekly": { text: "Gemini (weekly)", i18n: i18n("usage.metric.named_weekly", "Gemini") },
-    "3p-5h": { text: "Claude & others (session)", i18n: i18n("usage.metric.agy_claude_others_session") },
-    "3p-weekly": { text: "Claude & others (weekly)", i18n: i18n("usage.metric.agy_claude_others_weekly") },
-  };
-  const direct: UsageMetric[] = [];
-  const pools = new Map<string, { fraction: number; resetsAt: string | null; models: number }>();
+  const entries = new Map<string, { pool: string; window: AgyWindow | null; fraction: number; resetsAt: string | null; models: number }>();
   for (const b of buckets) {
-    if (!b.bucketId || typeof b.remainingFraction !== "number" || !Number.isFinite(b.remainingFraction)) continue;
+    const id = b.bucketId?.trim() || (b.group ? b.displayName?.trim() : undefined);
+    if (!id || b.disabled === true || typeof b.remainingFraction !== "number" || !Number.isFinite(b.remainingFraction)) continue;
+    const pool = agyPool(b, id);
+    const window = agyWindow(b, id);
+    const key = `${pool}\u0000${window ?? ""}`;
     const reset = b.resetTime ?? null;
-    const pooledLabel = POOLED[b.bucketId];
-    if (pooledLabel) {
-      direct.push({ label: pooledLabel.text, labelI18n: pooledLabel.i18n, type: "percent", used: (1 - b.remainingFraction) * 100, resetsAt: reset });
-      continue;
-    }
-    const pool = b.bucketId.startsWith("gemini") ? "Gemini" : "Claude & others";
-    const existing = pools.get(pool);
+    const existing = entries.get(key);
     if (!existing) {
-      pools.set(pool, { fraction: b.remainingFraction, resetsAt: reset, models: 1 });
+      entries.set(key, { pool, window, fraction: b.remainingFraction, resetsAt: reset, models: 1 });
       continue;
     }
-    // Count every model in the pool; track the worst separately. Replacing the
+    // Count every bucket in the entry; track the worst separately. Replacing the
     // whole entry on a new worst would restart the count at that bucket.
     existing.models += 1;
     if (b.remainingFraction < existing.fraction) {
@@ -672,21 +734,24 @@ export function agyPoolMetrics(buckets: AgyBucket[]): UsageMetric[] {
       existing.resetsAt = reset;
     }
   }
-  if (direct.length) return direct;
-  return [...pools.entries()].map(([label, p]) => ({
-    label,
-    labelI18n: label === "Claude & others"
-      ? i18n("usage.metric.agy_claude_others")
-      : i18n("usage.metric.named", label),
-    type: "percent" as const,
-    used: (1 - p.fraction) * 100,
-    resetsAt: p.resetsAt,
-    // Which number this is: the highest usage across the pool's models. Without
-    // it a flat 0% right after a weekly rollover is indistinguishable from a
-    // broken reading — which is exactly how it was reported.
-    note: `busiest of ${p.models} model${p.models === 1 ? "" : "s"}`,
-    noteI18n: i18n(p.models === 1 ? "usage.note.busiest_model" : "usage.note.busiest_models", p.models),
-  }));
+  const limited = new Set([...entries.values()].filter(e => e.window).map(e => e.pool));
+  const order = (w: AgyWindow | null) => (w === "session" ? 0 : w === "weekly" ? 1 : 2);
+  const pools = [...new Set([...entries.values()].map(e => e.pool))];
+  return [...entries.values()]
+    .filter(e => e.window || !limited.has(e.pool))
+    .sort((a, b) => pools.indexOf(a.pool) - pools.indexOf(b.pool) || order(a.window) - order(b.window))
+    .map(e => {
+      const label = agyLabel(e.pool, e.window);
+      const metric: UsageMetric = { label: label.text, labelI18n: label.i18n, type: "percent", used: (1 - e.fraction) * 100, resetsAt: e.resetsAt };
+      // Which number this is: the highest usage across the pool's models. Without
+      // it a flat 0% right after a weekly rollover is indistinguishable from a
+      // broken reading — which is exactly how it was reported.
+      if (!e.window || e.models > 1) {
+        metric.note = `busiest of ${e.models} model${e.models === 1 ? "" : "s"}`;
+        metric.noteI18n = i18n(e.models === 1 ? "usage.note.busiest_model" : "usage.note.busiest_models", e.models);
+      }
+      return metric;
+    });
 }
 
 interface AgyStoredToken { access_token?: string; refresh_token?: string; expiry?: string; expiry_date?: number }
@@ -803,10 +868,9 @@ async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name
       return { status: "error", error: "Token rejected. Run `agy` once to refresh the login.", errorI18n: i18n("usage.error.token_rejected", "agy"), metrics: [] };
     }
     if (!res.ok) continue; // try the other base
-    let body: { groups?: { buckets?: AgyBucket[] }[] };
+    let body: AgyQuotaSummary;
     try { body = await res.json() as typeof body; } catch { continue; }
-    const buckets = (body.groups ?? []).flatMap(g => g.buckets ?? []);
-    const metrics = agyPoolMetrics(buckets);
+    const metrics = agyPoolMetrics(agyQuotaBuckets(body ?? {}));
     return metrics.length
       ? { status: "ok", plan: null, metrics }
       : { status: "ok", plan: null, hint: "No quota information reported for this account.", hintI18n: i18n("usage.hint.no_quota"), metrics: [] };

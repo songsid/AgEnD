@@ -12,7 +12,7 @@ import { createRequire } from "node:module";
 
 const execAsync = promisify(exec);
 import type { FleetContext } from "./fleet-context.js";
-import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
+import type { ChannelAdapter, InboundMessage, SendOpts } from "./channel/types.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { discordGeneralChannelId } from "./discord-general.js";
 import { formatCents } from "./cost-guard.js";
@@ -31,11 +31,13 @@ import {
 } from "./context-percent.js";
 import { isGeneralInstance } from "./general-instance.js";
 import { instanceSupportsSteer } from "./steer-capability.js";
+import { compareSemver } from "./update-check.js";
 import { SYSINFO_BACKEND_IDS, type BackendCliVersionSnapshot, type SysInfoBackendId } from "./backend/types.js";
 import { recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
 import { selfCommand } from "./cli-entry.js";
+import { GENERAL_POINTING_REFUSALS, placeSuffix } from "./topic-link.js";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
 export type { TokenContextRatio } from "./context-percent.js";
@@ -276,14 +278,6 @@ export function parsePauseWakeCommand(text: string): { action: "pause" | "wake";
   return { action: match[1] as "pause" | "wake", instance: match[2] };
 }
 
-/**
- * The in-session compact/context-reset command for a backend NAME (the fleet
- * process routes /compact via IPC and only has the backend string, not a
- * CliBackend instance). Keep in sync with each backend's getCompactCommand().
- * Most CLIs (claude-code, kiro-cli, codex, opencode) use "/compact".
- * Antigravity (agy) has NO summarizing compact — its only manual context-reset
- * is "/clear" (a full reset; it also auto-summarizes at a token threshold).
- */
 /** os.release(), guarded — purely informational, must never break /sysinfo. */
 function osRelease(): string {
   try { return release(); } catch { return "?"; }
@@ -328,9 +322,19 @@ function backendCliLines(versions?: BackendCliVersionSnapshot): string[] {
   ];
 }
 
-export function compactCommandForBackend(backend: string): string {
-  if (backend === "antigravity") return "/clear";
-  return "/compact";
+/**
+ * Board 0340ec89: agy's own `/compact` summarizes the conversation (verified live on 1.3.6: "Conversation compacted ·
+ * 5 steps summarized", tests/fixtures/agy-1.3.6-compact.pane.txt). agy's release notes add it in 1.3.5, and the 1.3.5
+ * binary registers it ("Compact the conversation now (summarize history to free up the context window)"), so 1.3.5 is
+ * the floor. AgEnD used to send `/clear` for an agy compact, which wiped the conversation instead. An agy known to be
+ * older than that is refused (null), never cleared; an agy whose version is not known yet gets `/compact` (a version
+ * without it ignores the line).
+ */
+export const AGY_COMPACT_MIN_VERSION = "1.3.5";
+export function compactCommandForBackend(backend: string, version?: string | null): string | null {
+  if (backend !== "antigravity") return "/compact";
+  const v = typeof version === "string" ? version.match(/\d+\.\d+\.\d+/)?.[0] : undefined;
+  return v && (compareSemver(v, AGY_COMPACT_MIN_VERSION) ?? 0) < 0 ? null : "/compact";
 }
 
 /**
@@ -343,7 +347,7 @@ export function compactCommandForBackend(backend: string): string {
  *    compact into a prompt, so it must never be appended.
  *  - grok 1.0.46: the binary answers "/compact takes no arguments."
  *  - opencode 1.18: `/compact` calls session.summarize with no text.
- *  - kiro-cli: takes none (audit); antigravity has no summarizing compact.
+ *  - kiro-cli: takes none (audit); antigravity's own /compact (1.3.5+, board 0340ec89) takes none either.
  *  - muse 1.4.2: accepts the line (empty session: "nothing to summarize") but
  *    no use of the text is verifiable — unsupported until shown otherwise.
  */
@@ -605,7 +609,16 @@ export class TopicCommands {
 
   private async sendRefusal(msg: InboundMessage, [key, ...args]: [string, ...unknown[]]): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
-    if (adapter) await adapter.sendText(msg.chatId, t(key, ...(args as never[])), { threadId: msg.threadId }).catch(() => {});
+    if (!adapter) return;
+    // #1990: a refusal that sends the person to General links to it.
+    const text = t(key, ...(args as never[])) + (GENERAL_POINTING_REFUSALS.has(key) ? placeSuffix({ kind: "general" }, "General") : "");
+    const out = this.placed(msg, text);
+    await adapter.sendText(msg.chatId, out.text, out.opts).catch(() => {});
+  }
+
+  /** #1990: a reply in the message's own chat, its place tokens rendered for the world it came from. */
+  private placed(msg: InboundMessage, text: string): { text: string; opts?: SendOpts } {
+    return this.ctx.renderPlaces?.(msg.adapterId, text, { threadId: msg.threadId }) ?? { text, opts: { threadId: msg.threadId } };
   }
 
   private getReplyAdapter(msg: InboundMessage): ChannelAdapter | null {
@@ -1136,6 +1149,15 @@ export class TopicCommands {
 
   /** Send the backend-appropriate compact command to an instance's tmux pane */
   async sendCompact(instanceName: string, instructions?: string): Promise<string> {
+    return this.compactInstance(instanceName, instructions).text;
+  }
+
+  /**
+   * sendCompact, saying whether the command was handed to the daemon (the web chat follows a sent one to its end,
+   * board 003648ac). `notify` runs only when it is about to be handed over; its id rides along so the daemon says when
+   * the command reached the pane (`raw_paste_written`). A write the IPC refuses is not sent.
+   */
+  compactInstance(instanceName: string, instructions?: string, notify?: () => string | null): { sent: boolean; text: string } {
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (ipc?.connected) {
       const classicBackend = this.ctx.classicChannels?.getChannelIdByInstance(instanceName)
@@ -1144,26 +1166,30 @@ export class TopicCommands {
       const backend = this.ctx.fleetConfig?.instances[instanceName]?.backend
         ?? classicBackend
         ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
-      const base = compactCommandForBackend(backend);
+      const agyVersion = backend === "antigravity" ? this.ctx.getBackendCliVersionSnapshot?.()?.antigravity?.version ?? null : null;
+      const base = compactCommandForBackend(backend, agyVersion);
+      if (base === null) return { sent: false, text: t("compact.unsupported_version", backend, agyVersion ?? "?", AGY_COMPACT_MIN_VERSION) };
       const custom = normalizeCompactInstructions(instructions);
       if (custom.length > COMPACT_INSTRUCTIONS_MAX) {
         // Refuse rather than cut: a truncated instruction is a different instruction.
-        return t("compact.instructions_too_long", String(COMPACT_INSTRUCTIONS_MAX));
+        return { sent: false, text: t("compact.instructions_too_long", String(COMPACT_INSTRUCTIONS_MAX)) };
       }
+      const id = notify?.() ?? null;
+      const paste = (content: string) => ipc.send({ type: "raw_paste", content, ...(id ? { notify_written: id } : {}) }) !== false;
       if (!custom) {
-        ipc.send({ type: "raw_paste", content: base });
-        return t("compact.sent", base);
+        if (!paste(base)) return { sent: false, text: t("compact.not_connected") };
+        return { sent: true, text: t("compact.sent", base) };
       }
       if (backendSupportsCompactInstructions(backend)) {
-        ipc.send({ type: "raw_paste", content: `${base} ${custom}` });
-        return t("compact.sent_with_instructions", base);
+        if (!paste(`${base} ${custom}`)) return { sent: false, text: t("compact.not_connected") };
+        return { sent: true, text: t("compact.sent_with_instructions", base) };
       }
       // Compact as asked, without the text, and say so — never send it (codex
       // would take it for a chat message) and never drop it unannounced.
-      ipc.send({ type: "raw_paste", content: base });
-      return `${t("compact.sent", base)}\n${t("compact.instructions_ignored", backend)}`;
+      if (!paste(base)) return { sent: false, text: t("compact.not_connected") };
+      return { sent: true, text: `${t("compact.sent", base)}\n${t("compact.instructions_ignored", backend)}` };
     }
-    return t("compact.not_connected");
+    return { sent: false, text: t("compact.not_connected") };
   }
 
   /** Whether the instance backend exposes a verified full-reset command. */
@@ -1252,20 +1278,25 @@ export class TopicCommands {
 
   /** Send the backend-appropriate full conversation reset through raw_paste. */
   async sendClear(instanceName: string): Promise<string> {
+    return this.clearInstance(instanceName).text;
+  }
+
+  /** sendClear, saying whether the command was handed to the daemon (board 003648ac: the web chat's card then leaves). */
+  clearInstance(instanceName: string): { sent: boolean; text: string } {
     const backend = this.effectiveBackend(instanceName);
     const cmd = clearCommandForBackend(backend);
-    if (!cmd) return t("clear.unsupported");
+    if (!cmd) return { sent: false, text: t("clear.unsupported") };
 
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (ipc?.connected) {
-      ipc.send({
+      const sent = ipc.send({
         type: "raw_paste",
         content: cmd,
         ...(backend === "kiro-cli" ? { confirm_clear: true } : {}),
-      });
-      return t("clear.sent", cmd);
+      }) !== false;
+      return sent ? { sent: true, text: t("clear.sent", cmd) } : { sent: false, text: t("clear.not_connected") };
     }
-    return t("clear.not_connected");
+    return { sent: false, text: t("clear.not_connected") };
   }
 
   /** Send a backend-appropriate session-save command to a fleet-topic instance. */
@@ -1770,11 +1801,8 @@ export class TopicCommands {
   async handleUnboundTopic(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter) return;
-    await adapter.sendText(
-      msg.chatId,
-      t("topic.unbound"),
-      { threadId: msg.threadId },
-    );
+    const out = this.placed(msg, t("topic.unbound") + placeSuffix({ kind: "general" }, "General"));
+    await adapter.sendText(msg.chatId, out.text, out.opts);
   }
 
   /**

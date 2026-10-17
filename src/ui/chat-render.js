@@ -489,8 +489,32 @@
     return draft ? failedText + "\n" + draft : failedText;
   }
 
-  /** The upload limits the server enforces (web-upload.ts UPLOAD_LIMITS); checked here first only to say so early. */
-  var FILE_LIMITS = { maxFileBytes: 10 * 1024 * 1024, maxFiles: 5, maxTotalBytes: 25 * 1024 * 1024 };
+  /** The defaults of the upload limits the server enforces (web-upload.ts UPLOAD_LIMITS), for a page that was given none. */
+  var FILE_LIMITS = { maxFileBytes: 50 * 1024 * 1024, maxFiles: 5, maxTotalBytes: 100 * 1024 * 1024 };
+  /**
+   * #1937: the limits in force for this page — the server's (web.upload_max_file_mb / _total_mb, and the public link's
+   * own cap), on <body data-upload-limits>. Checked here first only to say so early: the server checks every upload.
+   */
+  function fileLimits() {
+    try {
+      var raw = JSON.parse(document.body.dataset.uploadLimits || "null");
+      var ok = function (n) { return typeof n === "number" && isFinite(n) && n > 0; };
+      if (raw && ok(raw.maxFileBytes) && ok(raw.maxFiles) && ok(raw.maxTotalBytes)) {
+        return { maxFileBytes: raw.maxFileBytes, maxFiles: raw.maxFiles, maxTotalBytes: raw.maxTotalBytes, publicLinkCapped: raw.publicLinkCapped === true };
+      }
+    } catch (e) { /* no page, or no limits on it */ }
+    return { maxFileBytes: FILE_LIMITS.maxFileBytes, maxFiles: FILE_LIMITS.maxFiles, maxTotalBytes: FILE_LIMITS.maxTotalBytes, publicLinkCapped: false };
+  }
+  /** A size in MB as the limits are worded ("50", "2.5") — web-upload.ts mbText. */
+  function mbText(bytes) { return String(Math.round((bytes / 1024 / 1024) * 10) / 10); }
+  /** #1937: the words for a file checkFiles() refused — a chat string key and the numbers it says, from fileLimits(). */
+  function fileRejection(reason) {
+    var l = fileLimits();
+    if (reason === "too-large") return { key: l.publicLinkCapped ? "chat.file_too_large_public" : "chat.file_too_large", values: [mbText(l.maxFileBytes)] };
+    if (reason === "too-many") return { key: "chat.file_too_many", values: [l.maxFiles] };
+    if (reason === "too-much") return { key: "chat.file_too_much", values: [mbText(l.maxTotalBytes)] };
+    return { key: "chat.file_" + String(reason).replace(/-/g, "_"), values: [] };
+  }
 
   function formatSize(n) {
     var b = Number(n) || 0;
@@ -504,6 +528,7 @@
    * Returns the files kept (pending first, then the accepted new ones) and, for each refused one, why.
    */
   function checkFiles(pending, adding) {
+    var limits = fileLimits();
     var kept = (pending || []).slice();
     var total = 0;
     kept.forEach(function (f) { total += Number(f.size) || 0; });
@@ -511,9 +536,9 @@
     (adding || []).forEach(function (f) {
       var size = Number(f.size) || 0;
       if (size === 0) rejected.push({ name: f.name, reason: "empty" });
-      else if (size > FILE_LIMITS.maxFileBytes) rejected.push({ name: f.name, reason: "too-large" });
-      else if (kept.length >= FILE_LIMITS.maxFiles) rejected.push({ name: f.name, reason: "too-many" });
-      else if (total + size > FILE_LIMITS.maxTotalBytes) rejected.push({ name: f.name, reason: "too-much" });
+      else if (size > limits.maxFileBytes) rejected.push({ name: f.name, reason: "too-large" });
+      else if (kept.length >= limits.maxFiles) rejected.push({ name: f.name, reason: "too-many" });
+      else if (total + size > limits.maxTotalBytes) rejected.push({ name: f.name, reason: "too-much" });
       else { kept.push(f); total += size; }
     });
     return { kept: kept, rejected: rejected };
@@ -586,7 +611,7 @@
     renderMarkdown: renderMarkdown, escapeHtml: escapeHtml, mergeMessages: mergeMessages, applyReplyButtons: applyReplyButtons, composerKey: composerKey,
     pollRemaining: pollRemaining,
     settleFailedSend: settleFailedSend, putBack: putBack,
-    FILE_LIMITS: FILE_LIMITS, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml, isHtmlAttachment: isHtmlAttachment,
+    FILE_LIMITS: FILE_LIMITS, fileLimits: fileLimits, fileRejection: fileRejection, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml, isHtmlAttachment: isHtmlAttachment,
     nextDeliveryState: nextDeliveryState, applyDelivery: applyDelivery, deliveryHtml: deliveryHtml, isBusy: isBusy,
     isNearBottom: isNearBottom, CODE_FOLD_LINES: CODE_FOLD_LINES, lineCount: lineCount,
     LONG_PASTE_CHARS: LONG_PASTE_CHARS, isLongPaste: isLongPaste, formatElapsed: formatElapsed,

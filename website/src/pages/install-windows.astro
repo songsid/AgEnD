@@ -63,7 +63,7 @@ const zhHref = `${base}zh-tw/install-windows/`;
     </div>
     <div class="mb-14 rounded-xl border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
       <b class="text-text-primary">Tip:</b> keep your Bot Token handy in a notepad so you can paste it during setup.
-      On Telegram, quickstart finds your group and your user ID when you send <code class="font-mono text-accent">/start</code> in the group. On Discord, it asks for your user ID and the General channel's ID: see the <a href={`${base}setup-discord/`} class="text-accent hover:underline">Discord bot setup guide</a>.
+      On Telegram, quickstart finds your group and your user ID when you send <code class="font-mono text-accent">/start</code> in the group. On Discord, it detects your account from a server message or DM and asks you to confirm it, with a required valid-ID fallback; it also asks for the General channel ID: see the <a href={`${base}setup-discord/`} class="text-accent hover:underline">Discord bot setup guide</a>.
     </div>
 
     <!-- Steps -->
@@ -116,7 +116,7 @@ Unblock-File .\install-agend.ps1</pre>
           </li>
           <li><b class="text-text-primary">[3/5] Log in to each backend</b> — the script walks you through logging in to every backend you picked. Kiro shows a URL to open in your browser (sign in with AWS Builder ID / GitHub / Google); Claude / Antigravity / Codex each launch and redirect you to their sign-in on first run. Complete the auth and it continues.</li>
           <li><b class="text-text-primary">[4/5] Install AgEnD</b> — automatic (installs Node.js 22 LTS + tmux via the official installer).</li>
-          <li><b class="text-text-primary">[5/5] Connect your bot &amp; start</b> — runs <code class="font-mono text-accent">agend quickstart</code>: choose Discord or Telegram and paste your Bot Token. On Telegram, send <code class="font-mono text-accent">/start</code> in your group so quickstart finds it; on Discord, paste your user ID and the General channel ID. It writes the config, then offers to install the service and start it.</li>
+          <li><b class="text-text-primary">[5/5] Connect your bot &amp; start</b> — runs <code class="font-mono text-accent">agend quickstart</code>: choose Discord or Telegram and paste your Bot Token. On Telegram, send <code class="font-mono text-accent">/start</code> in your group so quickstart finds it; on Discord, confirm the account detected from your message (or enter a valid ID), and enter the General channel ID. It writes the config, then offers to install the service and start it.</li>
         </ol>
       </div>
     </div>

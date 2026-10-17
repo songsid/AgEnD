@@ -1,0 +1,40 @@
+
+  master /t/work-1.0.52-80/repo                      1.5K / 256K │ [Dashboard]
+
+
+     ❯ error turn e                                                  1:13 PM
+
+
+  ┃  Retry failed: rate_limit_error: Rate limit exceeded
+
+
+
+
+
+
+
+
+
+
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

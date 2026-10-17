@@ -37,7 +37,7 @@ Full guide: [web-dashboard.md](https://github.com/songsid/AgEnD/blob/main/docs/w
 
 ## Agents that talk to each other
 
-Every instance is a peer. Agents discover, wake, and message each other directly through MCP tools; General only routes what you send it.
+Every instance is a peer. Agents discover and message each other through their permitted MCP tools; orchestration actions such as waking require the corresponding tool profile; General only routes what you send it.
 
 Three tools do most of the work:
 
@@ -151,7 +151,7 @@ Manage them from the terminal with [`agend schedule`](/AgEnD/docs/cli/#schedules
 
 **Cancel.** When a message is delivered to an agent, a 🛑 Cancel button is posted in its topic or channel. It interrupts the generation and, after 30 seconds, also shows how long the agent has been working. `/cancel` does the same. The web chat has **Stop**.
 
-**Steer.** `/steer <message>` interjects into the agent's current turn instead of waiting for it to finish (Claude Code, Codex, Grok, Muse and Kiro's TUI); `/btw <message>` asks a side question without interrupting (Claude Code).
+**Steer.** `/steer <message>` interjects into the agent's current turn instead of waiting for it to finish (Claude Code, Codex, Grok, Muse and verified Kiro TUI versions; unsupported launches refuse `/steer`; send a normal message instead); `/btw <message>` asks a side question without interrupting (Claude Code).
 
 **Delivery status.** A reaction on your message shows where it got to. On Discord: 👀 received, ⏳ queued, ✅ delivered, ❌ failed. Telegram accepts fewer reactions, so it shows 👀 until delivery and 👎 if it fails. Both are configurable with `status_emojis`.
 
@@ -213,7 +213,7 @@ Every backend gets the full fleet instructions through its own route (a system-p
 
 - **Webhooks** — POST to your URL, with your own headers, on hangs, MCP or terminal failures, cost warnings and limits, deferred schedules, and model failover
 - **Health endpoint** — HTTP on `health_port`, default 19280
-- **External sessions** — a process outside the fleet can join over IPC and be messaged like any instance
+- **External sessions** — a process outside the fleet can register an IPC identity and use permitted tools; registration does not prove inbound delivery into its own CLI conversation
 - **Adapter plugins** — add a chat platform without changing AgEnD
 
 ## Limits

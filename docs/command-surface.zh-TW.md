@@ -2,7 +2,7 @@
 
 [English](command-surface.md) · [指令參考](commands.md) · [准入與憑證](permissions.md)
 
-以下表格區分選單可見、AgEnD 處理、拒絕與普通文字路由。已對照 main `572bf39f9a4d98ed0d1fa78b414d07c7c9f54295`；角色與命令路徑和下列固定版本來源相同。
+數量對照 main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`：28 條命令規則、Telegram fleet／Classic 選單 23／11 項、Discord 29 個 slash 名稱（含 web 別名）。下方固定連結保留原始授權稽核；目前數量取代當時的 27 與 21／10。
 
 ## 儲存格怎麼讀
 
@@ -18,7 +18,7 @@
 - `R(C)` / `R(F)`：未註冊 chat 的 handler 先檢查 C／F，再回沒有 agent；未註冊時 C 單獨不能通過 F-or-C helper。
 - `*`：不帶 mode 的 `/tips` 是資訊命令；變更設定的 mode 另需 F。
 
-✓ 是設定會註冊的選單，不是授權。所有 H 格仍受 backend 能力、參數、生命週期及來源限制。Telegram 選單註冊在整個 forum chat，因此 General 與 instance topic 共用建議。Discord 每個 bot 全域註冊全部 27 條；平台註冊失敗可能留下舊選單。
+✓ 是設定會註冊的選單，不是授權。所有 H 格仍受 backend 能力、參數、生命週期及來源限制。Telegram 選單註冊在整個 forum chat，因此 General 與 instance topic 共用建議。Discord 每個 bot 全域註冊 29 個 slash 名稱，包含 `/web` 別名；平台註冊失敗可能留下舊選單。
 
 ## Discord native slash
 
@@ -129,8 +129,8 @@ no-thread General suffix 與 callback 的 await 後 fence 拒絕已過期或無�
 
 ## 核對來源
 
-- [`src/command-table.ts:116`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/command-table.ts#L116) — 27 command rules / 27 條命令規則
-- [`src/command-table.ts:215`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/command-table.ts#L215) — 21/10 Telegram menus / Telegram 選單
+- [`src/command-table.ts:116`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/command-table.ts#L116) — Original audit: 27 command rules / 原始稽核 27 條命令規則
+- [`src/command-table.ts:215`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/command-table.ts#L215) — Original audit: 21/10 Telegram menus / 原始稽核 Telegram 選單
 - [`src/channel/adapters/discord.ts:1117`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/channel/adapters/discord.ts#L1117) — Discord global registration / 全域註冊
 - [`src/topic-commands.ts:1896`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/topic-commands.ts#L1896) — Telegram registration scopes / 註冊 scope
 - [`src/fleet-manager.ts:3347`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/fleet-manager.ts#L3347) — Discord door → table → handler

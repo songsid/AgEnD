@@ -7,7 +7,7 @@ import vm from "node:vm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
 import {
-  attachmentDelivery, displayName, MAX_SERVED_BYTES, sniffUpload, UPLOAD_LIMITS, UPLOAD_TTL_MS, WebFileLedger, type UploadEntry,
+  attachmentDelivery, displayName, MAX_SERVED_BYTES, sniffUpload, UPLOAD_LIMITS, UPLOAD_TTL_MS, uploadLimits, WebFileLedger, type UploadEntry,
 } from "../src/web-upload.js";
 import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
@@ -38,20 +38,25 @@ describe("sniffUpload: the type comes from the bytes", () => {
     ["pdf", PDF, "x.png", { kind: "document", mime: "application/pdf", ext: ".pdf" }],          // the name does not decide
     ["markdown", Buffer.from("# hi\n"), "notes.md", { kind: "document", mime: "text/plain; charset=utf-8", ext: ".md" }],
     ["utf-8 text, unknown extension", Buffer.from("你好"), "a.weird", { kind: "document", mime: "text/plain; charset=utf-8", ext: ".txt" }],
-    ["svg is only text here", Buffer.from("<svg onload=alert(1)>"), "x.svg", { kind: "document", mime: "text/plain; charset=utf-8", ext: ".txt" }],
+    // #1900: markup is never text the page might show — a download under its own extension.
+    ["svg is a download", Buffer.from("<svg onload=alert(1)>"), "x.svg", { kind: "document", mime: "application/octet-stream", ext: ".svg" }],
+    ["html is a download", Buffer.from("<script>alert(1)</script>"), "Page.HTML", { kind: "document", mime: "application/octet-stream", ext: ".html" }],
+    // #1900: any other bytes are taken as a document, stored under their own (sanitised) extension.
+    ["a Windows executable", Buffer.from("MZ\x90\x00\x03\x00\x00\x00", "latin1"), "setup.EXE", { kind: "document", mime: "application/octet-stream", ext: ".exe" }],
+    ["a zip", Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0]), "a.zip", { kind: "document", mime: "application/octet-stream", ext: ".zip" }],
+    ["binary with NUL", Buffer.from("abc\x00def"), "data", { kind: "document", mime: "application/octet-stream", ext: ".bin" }],
+    ["invalid UTF-8", Buffer.from([0xc3, 0x28, 0x41]), "x.dat", { kind: "document", mime: "application/octet-stream", ext: ".dat" }],
+    ["a WAV (RIFF, not WebP)", Buffer.concat([Buffer.from("RIFF"), Buffer.from([0, 0, 0, 0]), Buffer.from("WAVEfmt ")]), "a.wav", { kind: "document", mime: "application/octet-stream", ext: ".wav" }],
+    // A name claiming a type the bytes are not keeps none of it.
+    ["an executable named .png", Buffer.from("MZ\x90\x00", "latin1"), "x.png", { kind: "document", mime: "application/octet-stream", ext: ".bin" }],
+    ["an extension that is not plain", Buffer.from([0, 1]), "x.tar.g z", { kind: "document", mime: "application/octet-stream", ext: ".bin" }],
+    ["an extension too long", Buffer.from([0, 1]), "x.abcdefghijk", { kind: "document", mime: "application/octet-stream", ext: ".bin" }],
   ])("%s", (_n, bytes, name, expected) => {
     expect(sniffUpload(bytes, name)).toEqual(expected);
   });
 
-  it.each([
-    ["empty", Buffer.alloc(0)],
-    ["a Windows executable", Buffer.from("MZ\x90\x00\x03\x00\x00\x00", "latin1")],
-    ["a zip", Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0])],
-    ["binary with NUL", Buffer.from("abc\x00def")],
-    ["invalid UTF-8", Buffer.from([0xc3, 0x28, 0x41])],
-    ["RIFF that is not WebP (a WAV)", Buffer.concat([Buffer.from("RIFF"), Buffer.from([0, 0, 0, 0]), Buffer.from("WAVEfmt ")])],
-  ])("refuses %s", (_n, bytes) => {
-    expect(sniffUpload(bytes, "x.png")).toBeNull();
+  it("refuses only an empty file", () => {
+    expect(sniffUpload(Buffer.alloc(0), "x.png")).toBeNull();
   });
 });
 
@@ -140,15 +145,15 @@ describe("WebFileLedger", () => {
     }
   });
 
-  it("refuses more than 5 files, or more than 25 MB together, without marking any of them sent", () => {
-    const ledger = new WebFileLedger();
+  it("refuses more than 5 files, or more than the message's total (configured: 25 MB), without marking any of them sent", () => {
+    const ledger = new WebFileLedger({ limits: () => uploadLimits({ upload_max_total_mb: 25 }) });
     const inbox = join(dir, "inbox");
     const six = Array.from({ length: 6 }, (_, i) => ledger.storeUpload({ instance: "w", inboxDir: inbox, bytes: PNG, name: `${i}.png`, type: png }).id);
     expect(ledger.takeForMessage("w", six)).toEqual({ ok: false, error: "at most 5 files per message" });
     const big: Buffer = Buffer.concat([PNG, Buffer.alloc(9 * 1024 * 1024)]) as Buffer;
     const three = [0, 1, 2].map(i => ledger.storeUpload({ instance: "w", inboxDir: inbox, bytes: big, name: `${i}.png`, type: png }).id);
     const res = ledger.takeForMessage("w", three);
-    expect(res.ok).toBe(false);
+    expect(res).toEqual({ ok: false, error: "the files together are over 25 MB" });
     expect(ledger.takeForMessage("w", three.slice(0, 2)).ok, "nothing was used up by the refusal").toBe(true);
   });
 
@@ -257,13 +262,41 @@ describe("POST /ui/upload", () => {
     expect(() => readdirSync(join(dir, "workspaces"))).toThrow();
   });
 
-  it("refuses a type it cannot read from the bytes (415)", async () => {
+  it("refuses an empty file (415)", async () => {
     const { c } = ctx();
-    const r = await upload(c, "w", Buffer.from("MZ\x90\x00", "latin1"), "setup.png");
+    const r = await upload(c, "w", Buffer.alloc(0), "empty.txt");
     expect(r.status).toBe(415);
   });
 
-  it("refuses over 10 MB — by Content-Length before reading, and while streaming", async () => {
+  // #1900: any type is taken, as Discord and Telegram do; what is not an image, PDF or text is only ever a download.
+  it.each([
+    ["a zip", Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0, 0, 0]), "bundle.zip", ".zip"],
+    ["a docx", Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from("[Content_Types].xml\x00word/document.xml")]), "Report.DOCX", ".docx"],
+    ["an executable", Buffer.from("MZ\x90\x00\x03\x00\x00\x00\x04\x00", "latin1"), "setup.exe", ".exe"],
+    ["an HTML page", Buffer.from("<!doctype html><script>alert(document.cookie)</script>"), "page.html", ".html"],
+    ["an SVG", Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>'), "logo.svg", ".svg"],
+  ])("%s uploads, reaches the agent from the inbox, and comes back as a download only", async (_n, bytes, name, ext) => {
+    const { c } = ctx();
+    const up = await upload(c, "w", bytes, name);
+    expect(up.status).toBe(200);
+    expect(up.body).toMatchObject({ kind: "document", name, mime: "application/octet-stream", size: bytes.length });
+    const [stored] = readdirSync(join(dir, "workspaces", "w", "inbox"));
+    expect(stored).toMatch(new RegExp(`^web-pending-\\d+-[0-9a-f]{8}\\${ext}$`));
+    const got = call("GET", `/ui/file/${up.body.id}`, c);
+    await got.done();
+    expect(got.res.status).toBe(200);
+    expect(got.res.headers["content-type"]).toBe("application/octet-stream");
+    expect(got.res.headers["content-disposition"]).toBe(`attachment; filename*=UTF-8''${encodeURIComponent(name)}`);
+    expect(got.res.headers["x-content-type-options"]).toBe("nosniff");
+    expect(Buffer.compare(got.res.body, bytes)).toBe(0);
+    expect(c.webFiles!.mediaOf(up.body.id)).toBeNull();          // never played inline either
+    const taken = c.webFiles!.takeForMessage("w", [up.body.id]);
+    expect(taken.ok).toBe(true);
+    const entry = (taken as { entries: UploadEntry[] }).entries[0]!;
+    expect(attachmentDelivery("", [entry]).text).toContain(`[📎 File: ${name} → ${entry.path}]`);
+  });
+
+  it("refuses over the per-file limit — by Content-Length before reading, and while streaming", async () => {
     const { c } = ctx();
     expect((await upload(c, "w", PNG, "x.png", { "content-length": String(UPLOAD_LIMITS.maxFileBytes + 1) })).status).toBe(413);
     expect((await upload(c, "w", Buffer.concat([PNG, Buffer.alloc(UPLOAD_LIMITS.maxFileBytes)]), "x.png")).status).toBe(413);
@@ -500,8 +533,10 @@ describe("GET /ui/file/<id>", () => {
     const { c } = ctx();
     const html = (await upload(c, "w", Buffer.from("<script>alert(1)</script>"), "x.html")).body;
     const res = await get(c, html.id);
-    expect(res.headers["content-type"]).toBe("text/plain; charset=utf-8");
+    expect(res.headers["content-type"]).toBe("application/octet-stream");          // #1900: markup is never even text
     expect(String(res.headers["content-disposition"])).toMatch(/^attachment; filename\*=UTF-8''x\.html$/);
+    const txt = (await upload(c, "w", Buffer.from("plain"), "notes.md")).body;
+    expect((await get(c, txt.id)).headers["content-type"]).toBe("text/plain; charset=utf-8");
   });
 
   it("whatever type a file was registered with, only the four image types are ever served as themselves", async () => {
@@ -574,7 +609,8 @@ describe("chat-render.js: file helpers", () => {
 
   it("checkFiles keeps what fits and says why it refused the rest", () => {
     const MB = 1024 * 1024;
-    const r = R.checkFiles([f("a", 9 * MB)], [f("empty", 0), f("big", 11 * MB), f("b", 9 * MB), f("c", 9 * MB), f("d", 1 * MB)]);
+    // #1937: the defaults, 50 MB a file and 100 MB a message (no <body data-upload-limits> here).
+    const r = R.checkFiles([f("a", 40 * MB)], [f("empty", 0), f("big", 50 * MB + 1), f("b", 40 * MB), f("c", 40 * MB), f("d", 1 * MB)]);
     expect(r.kept.map((x: { name: string }) => x.name)).toEqual(["a", "b", "d"]);
     expect(r.rejected).toEqual([{ name: "empty", reason: "empty" }, { name: "big", reason: "too-large" }, { name: "c", reason: "too-much" }]);
     const six = R.checkFiles([], [1, 2, 3, 4, 5, 6].map(i => f(String(i), 10)));
@@ -706,9 +742,9 @@ describe("chat store: files in a send (chat-store.js, driven directly)", () => {
 
   it("addFiles refuses what does not fit and says why", async () => {
     const s = await chatStore();
-    s.store.addFiles("w", [{ name: "huge.bin", size: 11 * MB_BYTES }, { name: "ok.png", size: 5 }]);
+    s.store.addFiles("w", [{ name: "huge.bin", size: 50 * MB_BYTES + 1 }, { name: "ok.png", size: 5 }]);
     expect(s.store.state.pendingFiles.w.map((f: { name: string }) => f.name)).toEqual(["ok.png"]);
-    expect(s.toasts).toEqual(["huge.bin: over 10 MB"]);
+    expect(s.toasts).toEqual(["huge.bin: over 50 MB"]);
   });
 });
 
@@ -763,7 +799,7 @@ describe("the composer's paste (panel-chat.js, mounted)", () => {
 
   it.each([
     ["five files are already attached", () => [1, 2, 3, 4, 5].map(i => ({ name: `${i}.png`, size: 10 }))],
-    ["25 MB is already taken", () => [{ name: "a.pdf", size: 10 * MB_BYTES }, { name: "b.pdf", size: 10 * MB_BYTES }, { name: "c.pdf", size: 5 * MB_BYTES - 5_000 }]],
+    ["100 MB is already taken", () => [{ name: "a.pdf", size: 50 * MB_BYTES }, { name: "b.pdf", size: 45 * MB_BYTES }, { name: "c.pdf", size: 5 * MB_BYTES - 5_000 }]],
   ])("no room — %s: nothing is attached, the browser pastes the text as usual", async (_why, pending) => {
     const name = await freshChat();
     a.chat.state.pendingFiles[name] = pending();
@@ -773,10 +809,14 @@ describe("the composer's paste (panel-chat.js, mounted)", () => {
     expect(a.toasts).toEqual(["No room for another attachment: the long paste stays as text"]);
   });
 
-  it("a paste over 10 MB is never a file: the browser pastes it as text", async () => {
+  it("a paste over the per-file limit is never a file: the browser pastes it as text (#1937: the page's limit)", async () => {
     const name = await freshChat();
-    expect(paste("y".repeat(10 * MB_BYTES + 1))).toBe(false);
-    expect(names(name)).toEqual([]);
+    a.p.document.body.dataset.uploadLimits = JSON.stringify({ maxFileBytes: 64 * 1024, maxFiles: 5, maxTotalBytes: 128 * 1024 });
+    try {
+      expect(paste("y".repeat(64 * 1024 + 1))).toBe(false);
+      expect(names(name)).toEqual([]);
+      expect(paste("y".repeat(64 * 1024)), "exactly at the limit: attached").toBe(true);
+    } finally { delete a.p.document.body.dataset.uploadLimits; }
   });
 
   it("files sent along a send still in flight count too: no room beside them, the text pastes as usual", async () => {

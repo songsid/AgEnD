@@ -32,6 +32,12 @@ const COPY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill=
 /** Escapes & " ' < >: safe for text and inside a quoted attribute. */
 export function escAttr(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 export const msgKey = (x) => `${x.boot}-${x.id}`;
+/**
+ * Board 00ef2430: a thread opens with only its newest messages drawn — enough for a screen — so switching chats paints
+ * at once; the older ones are drawn after that, a chunk at a time between frames, the reader's place kept.
+ */
+export const THREAD_TAIL = 24;
+export const THREAD_CHUNK = 40;
 
 /**
  * Bind a renderer to `list` (the thread element) inside `scroller`. opts: { t, tf, isUser(x), onJump({show, unseen}),
@@ -48,6 +54,10 @@ export function createThread(list, scroller, opts) {
   // moves down or stays), and those must not count as the reader leaving the bottom. Reaching the bottom pins again.
   let pinned = true;
   let lastTop = 0;
+  // The oldest message drawn (by key): everything after it is drawn, so new messages never push the window. Null: none
+  // drawn yet — the next render draws the newest THREAD_TAIL and the rest follows (grow).
+  let firstKey = null;
+  let growTimer = null, growFrame = null, disposed = false;
   const cardRefresh = new WeakMap(); // card node → re-read availability (weak: a card that left takes its source with it)
   const tr = opts.t, trf = opts.tf;
   const stopIn = (node) => (P() ? P().stopIn(node) : []);
@@ -79,7 +89,20 @@ export function createThread(list, scroller, opts) {
     const ticks = u && x.delivery ? R().deliveryHtml(x.delivery, TICKS()) : "";
     const tools = u ? "" : `<div data-trust="thread-control" class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
-    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div><div class="body"><div class="md">${R().renderMarkdown(x.text, { htmlCards: x.role === "agent", emojis: opts.emojis, mentions: opts.mentions })}</div>${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
+    // A person's click on a reply button shows as the button's label, never the line the agent was given (its value).
+    const clicked = x.role === "user" && x.click && typeof x.click.label === "string";
+    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div><div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${R().renderMarkdown(x.text, { htmlCards: x.role === "agent", emojis: opts.emojis, mentions: opts.mentions })}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
+  }
+  /**
+   * A button click as a chip: 🔘 and the label (escaped: the label is the agent's text). With `of` (live, while its
+   * reply is in this thread) it is a button that shows that reply; restored from disk, plain.
+   */
+  function clickHtml(click) {
+    const inner = `<span class="click-mark" aria-hidden="true">🔘</span><span class="sr-only">${escAttr(tr("chat.clicked"))} </span>${escAttr(click.label)}`;
+    const of = typeof click.of === "string" && /^[0-9a-f]{32}$/.test(click.of) ? click.of : null;
+    return `<div class="click-chip">${of
+      ? `<button type="button" class="click-link" data-act="showButtons" data-arg="${escAttr(of)}" title="${escAttr(tr("chat.clickShow"))}">${inner}</button>`
+      : `<span class="click-text">${inner}</span>`}</div>`;
   }
   function trialNow() { try { const t = opts.serverNow ? opts.serverNow() : Date.now(); return Number.isFinite(t) ? t : Infinity; } catch { return Infinity; } }
   function trialHtml(offer, time, message) {
@@ -443,6 +466,44 @@ export function createThread(list, scroller, opts) {
   const ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
   if (ro) { ro.observe(list); ro.observe(scroller); }
 
+  /** Where drawing starts in `msgs`: at the oldest drawn message, or (none yet) the newest THREAD_TAIL. */
+  function startIndex() {
+    const i = firstKey === null ? -1 : msgs.findIndex((x) => msgKey(x) === firstKey);
+    // Whatever is drawn stays drawn: the list may have reordered (merged across fleet restarts) or lost its oldest to
+    // the cap — so the window starts at the earlier of the oldest drawn key and the first message still drawn.
+    const still = nodes.size ? msgs.findIndex((x) => nodes.has(msgKey(x))) : -1;
+    const at = [i, still].filter((n) => n >= 0);
+    return at.length ? Math.min(...at) : Math.max(0, msgs.length - THREAD_TAIL);
+  }
+  /** Draw the next chunk of older messages, keeping the reader where they were; then the next, until all are drawn. */
+  function grow() {
+    growTimer = growFrame = null;
+    if (disposed) return;                 // the chat left: nothing more is drawn
+    const at = startIndex();
+    if (at <= 0) return;
+    firstKey = msgKey(msgs[Math.max(0, at - THREAD_CHUNK)]);
+    const fromBottom = scroller.scrollHeight - scroller.scrollTop;
+    draw({ older: true });                // drawn above the reader: never "new below" (render alone counts those)
+    if (pinned) toBottom();
+    else { scroller.scrollTop = scroller.scrollHeight - fromBottom; lastTop = scroller.scrollTop; }
+    scheduleGrow();
+  }
+  /** After the next frame has painted (the click's own frame stays light), draw a chunk more. */
+  function scheduleGrow() {
+    if (growTimer !== null || growFrame !== null || startIndex() <= 0) return;
+    const later = () => { growFrame = null; growTimer = setTimeout(grow, 0); };
+    if (typeof requestAnimationFrame === "function") growFrame = requestAnimationFrame(later); else later();
+  }
+  /** Everything drawn now (a remembered scroll position, a message to show that is not drawn yet). */
+  function growAll() {
+    if (startIndex() <= 0) return;
+    if (growFrame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(growFrame);
+    if (growTimer !== null) clearTimeout(growTimer);
+    growTimer = growFrame = null;
+    firstKey = msgs.length ? msgKey(msgs[0]) : null;
+    draw({ older: true });
+  }
+
   /** Draw `next` (this instance's messages). `restore`: the scroll position to return to (null = the bottom). */
   function render(next, renderOpts = {}) {
     const stick = pinned || nearBottom();
@@ -451,31 +512,17 @@ export function createThread(list, scroller, opts) {
     if (!msgs.length) {
       for (const v of nodes.values()) stopIn(v.node);
       nodes.clear();
+      firstKey = null;
       armDay();
       list.textContent = "";
       opts.onEmpty(true);
       return;
     }
     opts.onEmpty(false);
-    const keep = new Set(msgs.map(msgKey));
-    for (const [k, v] of nodes) if (!keep.has(k)) { stopIn(v.node); v.node.remove(); nodes.delete(k); }
-    let prev = null, added = 0;
-    for (const x of msgs) {
-      const key = msgKey(x), html = msgHtml(x);
-      let have = nodes.get(key);
-      if (!have || have.html !== html) {
-        const stopped = have ? stopIn(have.node) : [];
-        const node = msgNode(html, x, stopped);
-        if (have) have.node.replaceWith(node); else added++;
-        have = { html, node, trialButton: node.querySelector(".effect-trial-offer > button.effect-trial-start") }; nodes.set(key, have);
-      } else timeLabel(have.node);
-      const want = prev ? prev.nextSibling : list.firstChild;
-      // A node already in the list is being moved: its preview stops first. A new node (still in its template) has none.
-      if (have.node !== want) { if (have.node.parentNode === list) stopIn(have.node); list.insertBefore(have.node, want); }
-      prev = have.node;
-    }
-    armDay();
-    armPolls();
+    // A position to return to that is not the bottom needs the messages above it: all of them, at once (as before).
+    if ("restore" in renderOpts && renderOpts.restore != null) firstKey = msgKey(msgs[0]);
+    const added = draw({});
+    if (firstKey === null || startIndex() > 0) { firstKey = msgKey(msgs[startIndex()]); scheduleGrow(); }
     if ("restore" in renderOpts) {
       unseen = 0;
       if (renderOpts.restore == null) toBottom();
@@ -483,6 +530,33 @@ export function createThread(list, scroller, opts) {
     } else if (stick) toBottom();
     else unseen += added;
     reportJump();
+  }
+  /** Put the messages from startIndex() on in the list (nodes reused when unchanged). Returns how many are new. */
+  function draw(drawOpts) {
+    const shown = msgs.slice(startIndex());
+    const keep = new Set(shown.map(msgKey));
+    for (const [k, v] of nodes) if (!keep.has(k)) { stopIn(v.node); v.node.remove(); nodes.delete(k); }
+    let prev = null, added = 0;
+    for (const x of shown) {
+      const key = msgKey(x);
+      let have = nodes.get(key);
+      // Filling in older messages: a node drawn from this very message object is current — not drawn again.
+      if (drawOpts.older && have && have.x === x) { prev = have.node; continue; }
+      const html = msgHtml(x);
+      if (!have || have.html !== html) {
+        const stopped = have ? stopIn(have.node) : [];
+        const node = msgNode(html, x, stopped);
+        if (have) have.node.replaceWith(node); else added++;
+        have = { html, node, x, trialButton: node.querySelector(".effect-trial-offer > button.effect-trial-start") }; nodes.set(key, have);
+      } else { have.x = x; timeLabel(have.node); }
+      const want = prev ? prev.nextSibling : list.firstChild;
+      // A node already in the list is being moved: its preview stops first. A new node (still in its template) has none.
+      if (have.node !== want) { if (have.node.parentNode === list) stopIn(have.node); list.insertBefore(have.node, want); }
+      prev = have.node;
+    }
+    armDay();
+    armPolls();
+    return added;
   }
 
   function onScroll() {
@@ -497,6 +571,7 @@ export function createThread(list, scroller, opts) {
   function jumpLatest() { toBottom(); unseen = 0; reportJump(); }
   /** Show one message (the panel's "from …" link, #1481): scrolled into view and briefly marked. */
   function reveal(key) {
+    if (!nodes.has(key) && msgs.some((x) => msgKey(x) === key)) growAll();     // an older message not drawn yet
     const have = nodes.get(key); if (!have) return false;
     if (typeof have.node.scrollIntoView === "function") have.node.scrollIntoView({ block: "center" });
     have.node.classList.add("flash");
@@ -552,11 +627,12 @@ export function createThread(list, scroller, opts) {
       if (PUBLIC_LINK() || e.defaultPrevented || e.isTrusted !== true || owner?.trialButton !== el || el.className !== "btn btn-sm effect-trial-start" || !node?.contains(el) || el.closest(".effect-trial-offer")?.getAttribute("data-trust") !== "thread-control"
         || !offer || trialNow() >= offer.expiresAt || opts.canTryEffect?.(row) !== true) return;
       opts.startEffectTrial?.(row);
-    }
+    } else if (act === "showButtons") { const x = msgs.find(y => y.buttons && y.buttons.id === el.dataset.arg); if (x) reveal(msgKey(x)); }
   }
 
   /** The thread goes (the chat left, or another instance opened): every preview in it stops first. */
   function dispose() {
+    disposed = true;
     if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
     if (ro) ro.disconnect();
     if (P()) P().stopAll("leave");

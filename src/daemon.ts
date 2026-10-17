@@ -1,7 +1,10 @@
 import type { PaneContextSource } from "./pane-context-cache.js";
 import { AGENT_WHATS_NEW, agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, whatsNewNotice } from "./agent-whats-new.js";
 import { join, dirname, basename, resolve } from "node:path";
+import { checkoutTarget, readCheckouts, releaseCandidate, reposRoot, verifyWorktree, writeCheckouts } from "./repo-worktree-guard.js";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
+import { COMPACT_WATCH_TIMEOUT_MS, launchIdentity } from "./compact-watch.js";
+import { KIRO_COMPACT_PANE_LINES, KiroCompactPaneFollower } from "./kiro-compact-pane.js";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { ensureInstanceDir } from "./private-dir.js";
@@ -158,7 +161,7 @@ export function buildInstructionReloadNotice(binaryName: string, instanceName: s
     : binaryName === "kiro-cli"
       ? `.kiro/steering/agend-${instanceName}.md`
       : binaryName === "agy"
-        ? ".agents/agents.md"
+        ? ".agents/AGENTS.md"
         : join(instanceDir, "fleet-instructions.md");
   return `[system] Your AgEnD instructions have been updated. Reload only ${source}; do not scan other instruction directories. Do not reply to this message.`;
 }
@@ -201,6 +204,8 @@ export const DEFAULT_STATE_IDLE_DEBOUNCE_MS = 2_000;
 export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
 /** Coalesce one cosmetic-redraw burst before comparing the visible pane. */
 export const PERIODIC_REDRAW_PROBE_MS = 25;
+/** Board 907c7899: how often a kiro /compact's pane is read (TUI V2's "too short" shows for about ten seconds). */
+const KIRO_COMPACT_PANE_POLL_MS = 1_000;
 /** Do not turn a streaming Codex turn into one capture-pane per burst. */
 export const STRUCTURED_IDLE_PROBE_MS = 500;
 /**
@@ -4041,6 +4046,33 @@ export class Daemon extends EventEmitter {
     this.logger.info({ deliveryEpoch: this.deliveryEpoch }, "Pending delivery queue cleared by user cancel");
   }
 
+  /** Board 907c7899: the layout a web /compact's end can be read from on this pane (kiro classic or TUI V2), or null. */
+  compactPaneUi(): "legacy" | "tui" | null {
+    return this.backend?.compactPaneUi?.() ?? null;
+  }
+
+  /**
+   * Board 907c7899: follow a /compact written to this pane until the pane says how it ended, then say so once
+   * (`compact_pane_result`). Bound to the launch it was written under: another launch, or no pane, ends the look
+   * silently (the fleet's watch sees the launch change and calls it lost); the fleet's deadline is the same.
+   */
+  private async followCompactPane(id: string, owner: string | null, follower: KiroCompactPaneFollower): Promise<void> {
+    const tmux = this.tmux;
+    if (!tmux || owner === null) return;
+    // Monotonic, and asked after every await: a result past the deadline is not said (the fleet's watch has timed out).
+    const deadline = performance.now() + COMPACT_WATCH_TIMEOUT_MS;
+    const standing = () => this.tmux === tmux && launchIdentity(this.interactionOwner()) === owner && performance.now() < deadline;
+    while (standing()) {
+      await new Promise<void>(resolve => { setTimeout(resolve, KIRO_COMPACT_PANE_POLL_MS).unref?.(); });
+      if (!standing()) return;
+      let pane: string;
+      try { pane = await tmux.capturePaneWithHistory(KIRO_COMPACT_PANE_LINES); } catch { continue; }
+      if (!standing()) return;
+      const outcome = follower.look(pane);
+      if (outcome) { this.ipcServer?.broadcast({ type: "compact_pane_result", id, owner, outcome }); return; }
+    }
+  }
+
   private captureDeliveryEpoch(value: unknown): number {
     const epoch = typeof value === "number" && Number.isSafeInteger(value) && value >= 0
       ? value
@@ -4059,19 +4091,45 @@ export class Daemon extends EventEmitter {
     confirmClear = false,
     durableAttempt?: DurableDeliveryAttempt,
     ownSwitch?: { id: string; kind: "model"; requested: string },
+    notifyWritten?: string,
   ): void {
     const reportSwitch = (result: OwnSwitchOutcome) => {
       if (!ownSwitch) return;
       this.ipcServer?.broadcast({ type: "runtime_switch_result", id: ownSwitch.id, ...result });
     };
+    // Board 003648ac: the fleet follows a web /compact from just before its paste is written: the transcript's end then
+    // (taken here, under this launch, before the write) and the launch it was written under ride with the notice — once.
+    // The checkpoint and the launch are taken together, right before the paste (each attempt takes them again); the
+    // notice carries those — never the launch at notice time, which a respawn in between would relabel.
+    let told = false;
+    let checkpoint: { path: string; ino: number; size: number } | null = null;
+    let owner: string | null = null;
+    // Board 907c7899: kiro says how a /compact ended only on its own pane; read from the pane just before this write.
+    let paneFollower: KiroCompactPaneFollower | null = null;
+    const tellWritten = (written: boolean) => {
+      if (!notifyWritten || told) return;
+      told = true;
+      this.ipcServer?.broadcast({ type: "raw_paste_written", id: notifyWritten, outcome: written ? "written" : "not_written",
+        ...(written ? { owner, checkpoint, ...(paneFollower ? { pane: true } : {}) } : {}) });
+      if (written && paneFollower) void this.followCompactPane(notifyWritten, owner, paneFollower);
+    };
+    const takeCheckpoint = () => {
+      owner = launchIdentity(this.interactionOwner());
+      const path = this.logTranscriptPath();
+      checkpoint = null;
+      if (!path) return;
+      try { const st = statSync(path); checkpoint = { path, ino: st.ino, size: st.size }; } catch { checkpoint = null; }
+    };
     if (!this.tmux || !this.isDeliveryEpochCurrent(deliveryEpoch)) {
       if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, "raw_paste target unavailable before pane queue");
       reportSwitch({ outcome: "not_sent" });
+      tellWritten(false);
       return;
     }
     this.pasteLock = this.pasteLock.then(async () => {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
         reportSwitch({ outcome: "not_sent" });
+        tellWritten(false);
         this.logger.info("Pending raw delivery dropped by user cancel");
         if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, "raw_paste epoch changed while queued");
         return;
@@ -4082,8 +4140,16 @@ export class Daemon extends EventEmitter {
         if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
           if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, "raw_paste epoch changed while waking");
           reportSwitch({ outcome: "not_sent" });   // #1690: cancelled before anything was typed — said at once, nothing saved
+          tellWritten(false);
           return;
         }
+        // Board 907c7899: the pane just before this attempt's paste — after its readiness wait, last capture and fence,
+        // under the paste lock (no other input lands in between). Each attempt looks again.
+        const lookBefore = async () => {
+          const ui = this.backend?.compactPaneUi?.() ?? null;
+          const before = ui ? await this.tmux?.capturePaneWithHistory(KIRO_COMPACT_PANE_LINES).catch(() => null) : null;
+          paneFollower = ui && typeof before === "string" ? new KiroCompactPaneFollower(ui, before) : null;
+        };
         const delivered = await this.deliverMessage(rawText, undefined, {
           deliveryEpoch,
           verdict,
@@ -4091,8 +4157,10 @@ export class Daemon extends EventEmitter {
           preserveExactBytes: true,
           // #1690: our own /model holds every other delivery from its write on — before the lock is released, so a steer
           // or /btw waiting on it cannot type into the gap before claude paints "Switch model?" (default cursor: Yes).
-          ...(ownSwitch ? { onPaneWritten: () => { this.ownSwitch = ownSwitch; } } : {}),
+          ...(ownSwitch || notifyWritten ? { onPaneWritten: () => { if (ownSwitch) this.ownSwitch = ownSwitch; tellWritten(true); } } : {}),
+          ...(notifyWritten ? { beforePaneWrite: takeCheckpoint, ...(this.backend?.compactPaneUi?.() ? { lookBeforePaneWrite: lookBefore } : {}) } : {}),
         });
+        tellWritten(false);                                                // never written (once told, this says nothing)
         if (delivered) this.finishDurableSubmission(durableAttempt ?? null, verdict);
         else if (durableAttempt && verdict.paneWriteStarted) {
           const unproven = `${verdict.phase ?? "raw-paste"}:${verdict.proof ?? "unverified"}`;
@@ -4118,6 +4186,7 @@ export class Daemon extends EventEmitter {
         else if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, (err as Error).message);
         this.logger.warn({ err: (err as Error).message }, "raw_paste delivery error");
         if (ownSwitch) { if (this.ownSwitch === ownSwitch) this.ownSwitch = null; reportSwitch({ outcome: "not_confirmed" }); }
+        tellWritten(false);
         return;
       }
       if (confirmClear) await this.confirmBackendClearDialog();
@@ -4151,12 +4220,14 @@ export class Daemon extends EventEmitter {
     const sw = msg.runtime_switch as { id?: unknown; kind?: unknown; requested?: unknown } | undefined;
     const ownSwitch = sw && typeof sw.id === "string" && sw.kind === "model" && typeof sw.requested === "string"
       ? { id: sw.id, kind: "model" as const, requested: sw.requested } : undefined;
+    const notifyWritten = typeof msg.notify_written === "string" && /^[0-9a-f]{16}$/.test(msg.notify_written) ? msg.notify_written : undefined;
     this.queueRawPaste(
       msg.content as string,
       this.captureDeliveryEpoch(msg.delivery_epoch),
       msg.confirm_clear === true,
       durableAttempt ? { ...durableAttempt, submissionMode: "raw_paste", silentSchedule: msg.silent_schedule === true } : undefined,
       ownSwitch,
+      notifyWritten,
     );
   }
 
@@ -7003,6 +7074,13 @@ export class Daemon extends EventEmitter {
       preserveExactBytes?: boolean;
       /** Called under the pane write lock the moment this delivery's write has begun (#1690: our switch's hold). */
       onPaneWritten?: () => void;
+      /** Board 003648ac: just before each paste of this message (after every wait and fence), synchronously. */
+      beforePaneWrite?: () => void;
+      /**
+       * Board 907c7899: each attempt's own look at the pane, awaited after that attempt's last capture and fence (a
+       * retry looks again); the fence is asked again after it, and only then is the paste written.
+       */
+      lookBeforePaneWrite?: () => Promise<void>;
     },
   ): Promise<boolean> {
     // The caller passes its own holder when it needs the answer; a system paste
@@ -7185,6 +7263,8 @@ export class Daemon extends EventEmitter {
           opts?.steer === true,
           writeCurrent,
           opts?.humanVerificationId,
+          opts?.beforePaneWrite,
+          opts?.lookBeforePaneWrite,
         );
         // #1690: still under the lock — whatever waits on it next must already see what this write started.
         if (verdict.paneWriteStarted) opts?.onPaneWritten?.();
@@ -8593,6 +8673,10 @@ export class Daemon extends EventEmitter {
     // first side effect. Stale means unwritten: false, with no failure verdict.
     stillCurrent?: () => boolean,
     humanVerificationId?: string,
+    // Board 003648ac: called synchronously right before each paste — after the last await and fence of that attempt.
+    beforePaste?: () => void,
+    // Board 907c7899: awaited each attempt after its last capture, begin and fence; the fence is asked again after it.
+    lookBeforePaste?: () => Promise<void>,
     // "handoff-box-unread": a hand-off's last capture had no readable box — nothing begun or written (#1169).
   ): Promise<boolean | KiroPendingDelivery | "handoff-box-unread"> {
     const signature = this.submissionSignature(formatted, humanVerificationId ?? submissionId, humanVerificationId !== undefined);
@@ -8695,6 +8779,11 @@ export class Daemon extends EventEmitter {
           }
         }
       }
+      if (lookBeforePaste) {
+        await lookBeforePaste();
+        // The look awaited: this attempt is still this write's — the same fence, tmux and launch — or nothing is written.
+        if (!steerCurrent()) { verdict.fenced = !verdict.durableBeginCommitted; return false; }
+      }
       if (rawPaste) {
         verdict.paneWriteStarted = true;
         // #1843: this write starts silent work even if its submission proof later stays uncertain.
@@ -8721,6 +8810,7 @@ export class Daemon extends EventEmitter {
       // same pane; the write-ahead Enter marker later separates safe pre-Enter
       // recovery from a possibly executed command.
       const pasteGeneration = this.spawnGeneration;
+      beforePaste?.();
       const pasted = await this.tmux!.pasteBuffer(formatted);
       if (pasted) this.rememberPaste(formatted, pasteGeneration);
       if (!pasted) {
@@ -12017,17 +12107,25 @@ export class Daemon extends EventEmitter {
       return;
     }
 
-    const repoDir = join(this.instanceDir, "repos");
-    mkdirSync(repoDir, { recursive: true });
-    const safeName = `${basename(source)}-${branch.replace(/\//g, "-")}`;
-    const worktreePath = join(repoDir, safeName);
+    mkdirSync(join(this.instanceDir, "repos"), { recursive: true });
+    // Only a fresh direct child of a real repos/ directory (never through a symlinked repos/, never an existing path).
+    const target = checkoutTarget(this.instanceDir, source, branch);
+    if (!target.ok) { respond(null, `checkout_repo: ${target.reason}`); return; }
+    const worktreePath = target.path;
 
     try {
-      // Resolve branch/ref to verify it exists. Use `--` so git never treats
-      // branch as an option flag (defense in depth on top of the regex above).
-      await execFileAsync("git", ["rev-parse", "--verify", "--", branch], { cwd: source });
-      await execFileAsync("git", ["worktree", "add", "--detach", worktreePath, branch], { cwd: source });
+      // Resolve branch/ref to verify it exists. `--end-of-options` keeps git from ever reading branch as an option
+      // flag (defense in depth on top of the regex above). Not `--`: rev-parse then reads branch as a path, and
+      // `--verify` fails for every ref ("Needed a single revision"), which broke checkout_repo entirely.
+      await execFileAsync("git", ["rev-parse", "--verify", "--end-of-options", `${branch}^{commit}`], { cwd: source });
+      await execFileAsync("git", ["worktree", "add", "--detach", worktreePath, "--end-of-options", branch], { cwd: source });
       const { stdout: commitHash } = await execFileAsync("git", ["rev-parse", "--short", "HEAD"], { cwd: worktreePath });
+      // Recorded so release_repo can tell this instance's checkout of this repository from anything else.
+      try {
+        const { stdout: common } = await execFileAsync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: worktreePath });
+        const root = reposRoot(this.instanceDir);
+        if (root.ok) writeCheckouts(root.path, { ...readCheckouts(root.path), [worktreePath]: common.trim() });
+      } catch { /* unrecorded: release still requires a listed linked worktree */ }
       respond({ path: worktreePath, branch, source, commit: commitHash.trim() });
     } catch (err) {
       respond(null, `Failed to checkout: ${(err as Error).message}`);
@@ -12038,24 +12136,31 @@ export class Daemon extends EventEmitter {
     args: Record<string, unknown>,
     respond: (result: unknown, error?: string) => void,
   ): Promise<void> {
-    const repoPath = args.path as string;
-    const reposDir = join(this.instanceDir, "repos");
-
-    // Safety: only allow releasing paths under our repos/ directory
-    if (!repoPath.startsWith(reposDir)) {
-      respond(null, `Cannot release path outside instance repos directory`);
-      return;
-    }
+    // Containment first (real paths, strictly inside this instance's repos/), then proof it is a git worktree.
+    // Nothing that fails either check is ever removed.
+    const candidate = releaseCandidate(this.instanceDir, args.path);
+    if (!candidate.ok) { respond(null, `Cannot release: ${candidate.reason}`); return; }
+    const root = reposRoot(this.instanceDir);
+    if (!root.ok) { respond(null, `Cannot release: ${root.reason}`); return; }
+    const { execFile: execFileCb } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execFileAsync = promisify(execFileCb);
+    const git = async (gitArgs: string[], cwd: string) => (await execFileAsync("git", gitArgs, { cwd })).stdout;
+    const worktree = await verifyWorktree(root.path, candidate.path, git);
+    if (!worktree.ok) { respond(null, `Cannot release: ${worktree.reason}`); return; }
+    const repoPath = candidate.path;
 
     try {
-      const { execFile: execFileCb } = await import("node:child_process");
-      const { promisify } = await import("node:util");
-      const execFileAsync = promisify(execFileCb);
-      await execFileAsync("git", ["worktree", "remove", "--force", repoPath]);
+      await git(["--git-dir", worktree.commonDir, "worktree", "remove", "--force", repoPath], worktree.commonDir);
     } catch {
-      // Fallback: rm directly if git worktree remove fails
+      // Fallback for a verified worktree only: remove it, then let its repository forget it.
       try { rmSync(repoPath, { recursive: true, force: true }); } catch { /* best effort */ }
+      try { await git(["--git-dir", worktree.commonDir, "worktree", "prune"], worktree.commonDir); } catch { /* best effort */ }
     }
+    try {
+      const records = readCheckouts(root.path);
+      if (repoPath in records) { delete records[repoPath]; writeCheckouts(root.path, records); }
+    } catch { /* the worktree is gone; a stale record only refuses a later, different repo at this path */ }
     respond({ released: true, path: repoPath });
   }
 

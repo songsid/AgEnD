@@ -113,8 +113,13 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 ### Files and images
 - Attach with **📎**, by pasting, or by dropping files onto the chat (it shows where they will go while you drag). Each file waits above the composer as a chip with its name and size, and **✕** removes it.
 - A paste longer than **4,000 characters** is attached as a text file instead of filling the composer. **As text** on its chip puts it back into the composer.
-- Limits: up to **5 files per message**, **10 MB each**, **25 MB together**.
-- Types: **PNG, JPEG, GIF, WebP, PDF and text files**. The type is read from the file itself, not from its name.
+- Limits: up to **5 files per message**, **50 MB each**, **100 MB together** by default.
+  - Change the two sizes with `web.upload_max_file_mb` and `web.upload_max_total_mb` in `fleet.yaml`: whole MB, 1–500. One file is never allowed more than a whole message. `agend reload` applies a change to the next upload; a page that is already open uses the new numbers after it reloads. `agend doctor` and the fleet's start warn about a value it cannot use.
+  - **Over the public link** a file is at most **95 MB**, whatever the config says: a Cloudflare quick tunnel carries about 100 MB per request, and each file is one upload. The refusal says so.
+  - The chat checks a file against these limits before sending it, and the server checks every upload again, by the bytes that actually arrive.
+  - A file uploads as it streams to disk, so big files do not use much memory. An upload that goes a minute without any data, or takes over 30 minutes, is dropped, and its partial file with it. Through the public link, the tunnel drops a connection that is silent for 15 seconds.
+  - The agent gets a path, so a file's size does not matter to AgEnD. Some agent CLIs may still refuse to read a very large text file.
+- Types: **any file**, as in Discord and Telegram. The type is read from the file itself, not from its name. PNG, JPEG, GIF and WebP are images; PDF and UTF-8 text are kept as such. Anything else (an archive, an office file, a program, HTML, SVG …) is stored under its own extension (lower-case letters and digits, else `.bin`), and in the chat it is only ever a download, never opened in the page.
 - The agent receives files exactly as from Telegram: the file lands in the instance's workspace inbox (`<AGEND_HOME>/workspaces/<instance>/inbox`), with an `[📷 Image: …]` / `[📎 File: …]` line.
 - Files the agent attaches to its reply show in the chat. Images show inline; anything else is a download, never opened in the page.
 - The chat keeps its own copy of each reply file (`<AGEND_HOME>/workspaces/<instance>/web-files`), so the file still opens after the agent changes or deletes its original, or the fleet restarts. A symlink, a file over 50 MB, or a file inside the AgEnD state folder (other than inbox/) is not shown. A copy is deleted when its message leaves the chat history; each instance keeps at most 1 GiB of copies, and above that the oldest go first.
@@ -189,6 +194,11 @@ Type `/` at the start of the message box for the instance's own chat commands, t
   - `/pause` and `/wake`
   - `/save <file>`
 - **Where the answer shows:** above the message box.
+  - `/clear` and `/cancel` say they were sent, and that answer leaves by itself after a few seconds. An answer to read, a list to choose from and a refusal (even one worded as plain text) stay until you close them.
+  - `/compact` says **Compacting…** from the moment the command reaches the agent until the agent's transcript records the compaction, then **Conversation compacted**, and leaves. This works for Claude Code and Codex, whose transcripts AgEnD reads.
+  - kiro (classic and the TUI's V2 engine) says on its own pane how a compaction ended, so the card follows that pane: **Conversation compacted**, or that kiro did not compact the conversation because it was too short or the compaction was stopped. On the TUI, Esc and Ctrl-C don't stop a compaction, and "compacted" means kiro's "Compacting conversation..." line came and went: a failure other than "too short" was never seen, so it can't be told apart.
+  - On other backends, kiro's V3 engine included, the card says their compaction end can't be detected, and leaves.
+  - With no record after 10 minutes it says so and stays. If the command never reached the agent, or the agent stopped, restarted or changed backend meanwhile, it says it can't follow the compaction any more.
 - **Not a command:** anything else starting with `/` is sent as an ordinary message, as before. So is a line typed with a file waiting beside it.
 - **Fleet-wide commands** (`/status`, `/restart`, `/update`, `/login`, …) stay in General.
 - **`/raw`** is not offered. Over the temporary public link a message starting with `/raw ` is refused, and so is `/save`.

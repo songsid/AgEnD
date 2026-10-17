@@ -385,6 +385,9 @@ function CommandCard({ name, lease }) {
         aria-label=${t("chat.cmdDismiss")} onClick=${() => store.dismissCommand(name)}><${Icon} name="close" size=${14} /></button>`}</div>
     ${c.error ? html`<p class="cmd-text">${c.error}</p>` : null}
     ${c.text ? html`<pre class="cmd-text">${c.text}</pre>` : null}
+    ${c.compact ? html`<p class="cmd-text cmd-phase">${c.compact === "running" ? t("chat.compactRunning")
+      : c.compact === "done" ? t("chat.compactDone") : c.compact === "timeout" ? t("chat.compactTimeout", "10")
+      : c.compact === "lost" ? t("chat.compactLost") : c.compact === "not_compacted" ? t("chat.compactNotCompacted") : t("chat.compactUnknown")}</p>` : null}
     ${c.choices && c.choices.prompt ? html`<pre class="cmd-text">${c.choices.prompt}</pre>` : null}
     ${c.choices ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdChoose")}>${c.choices.options.map((o) => html`<button key=${o.id} type="button"
       class=${`btn btn-sm${o.id === c.choices.current ? " current" : ""}`} aria-current=${o.id === c.choices.current ? "true" : undefined} onClick=${() => run(o.id)}>${o.label}</button>`)}</div>` : null}
@@ -499,7 +502,7 @@ function Composer({ name, lease, busy }) {
     ${files.length ? html`<div class="pending-files">${files.map((f, i) => html`<${FileChip} key=${`${f.name}-${i}`} f=${f} i=${i} name=${name} />`)}</div>` : null}
     <div class="composer">
       <button id="attachBtn" type="button" class="icon-btn" title=${t("chat.attachTitle")} aria-label=${t("chat.attachTitle")} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
-      <input ref=${fileIn} type="file" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.log,.yaml,.yml"
+      <input ref=${fileIn} type="file" multiple hidden
         onChange=${(e) => { store.addFiles(name, e.target.files); e.target.value = ""; }} />
       <textarea id="msgIn" ref=${input} rows="1" value=${value} placeholder=${t("chat.composerPlaceholder", name)} aria-label=${t("chat.composerPlaceholder", name)}
         autocomplete="off" aria-controls=${palette ? "cmdPalette" : undefined} aria-expanded=${palette ? "true" : "false"}

@@ -1,0 +1,40 @@
+
+  master /t/work-1.0.52-120/repo                                                             1.5K / 256K │ [Dashboard]
+
+
+     ❯ please stall a                                                                                        1:12 PM
+
+
+     mock reply r1                                                                                           1:12 PM
+
+     Worked for 8.1s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯ stall forever b                                                                                                │
+  ╰───────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Enter:send  │  Alt+Enter:newline  │  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

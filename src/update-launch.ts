@@ -24,13 +24,17 @@ export function updateLogPath(dataDir: string): string {
 
 /**
  * Extract a short human-readable cause from raw updater output.
- * Prefers the last `npm ERR!`/`npm error` summary line or the last `✗` line.
+ * #1947: AgEnD's own install refusal first — the postinstall's "AgEnD cannot be installed here: …" or the preinstall's
+ * "AgEnD 2.2 needs Node …" — which npm prints after its `code`/`path` lines (prefixed `npm error`), so it was never
+ * shown. Then the last `npm ERR!`/`npm error` summary line or the last `✗` line.
  * Falls back to the last non-blank line. Masks secrets and caps at ~300 chars.
  */
 export function extractUpdateCause(output: string): string | null {
   // Lines starting with --- are log headers, not updater output.
   const lines = output.split("\n").map(l => l.trimEnd()).filter(l => Boolean(l) && !l.startsWith("---"));
   if (!lines.length) return null;
+  const refusal = lines.map(l => /^(?:npm (?:ERR!|error)\s+)?\s*(AgEnD cannot be installed here: .+|AgEnD 2\.2 needs Node .+)$/i.exec(l)?.[1]).find(Boolean);
+  if (refusal) return maskSecrets(refusal).slice(0, 300);
   // npm ERR! ends with !, a non-word char: \b does not anchor here. Use (?:\s|$) instead.
   const npmErrRe = /^npm (ERR!|error)(?:\s|$)/i;
   const npmLines = lines.filter(l => npmErrRe.test(l));

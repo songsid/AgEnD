@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>AgEnD README hero</title>
+<!--
+  The README hero's composite (render.mts loads it with ?theme=light|dark&shot=<dashboard screenshot>).
+  Left: the real dashboard render. Right: an illustrated phone in AgEnD's own style — simple bubbles, not any app's UI.
+  The Discord and Telegram glyphs are Simple Icons 13.21.0 (CC0 1.0), inlined from icons/; the marks are their owners'.
+-->
+<style>
+  :root {
+    --bg-a: #eef4ff; --bg-b: #f7f1ff; --glow: rgba(10, 98, 194, .14);
+    --card-shadow: 0 30px 70px -20px rgba(22, 40, 80, .35), 0 8px 24px -8px rgba(22, 40, 80, .18);
+    --phone: #ffffff; --phone-edge: #d8deea; --phone-fg: #1d2330; --phone-muted: #6b7383;
+    --bubble-me: #0a62c2; --bubble-me-fg: #ffffff; --bubble-bot: #eef1f6; --bubble-bot-fg: #1d2330;
+    --chip: #e7effa; --chip-fg: #0a62c2; --badge: rgba(255, 255, 255, .9); --badge-fg: #2a3140; --badge-edge: rgba(20, 40, 80, .08);
+    --ok: #1a7f37; --ok-bg: #dcf3e2; --shot-edge: rgba(20, 40, 80, .10);
+  }
+  :root[data-theme="dark"] {
+    --bg-a: #0d1424; --bg-b: #1a1433; --glow: rgba(122, 183, 255, .16);
+    --card-shadow: 0 30px 80px -20px rgba(0, 0, 0, .7), 0 8px 24px -8px rgba(0, 0, 0, .5);
+    --phone: #1b1e25; --phone-edge: #4a5262; --phone-fg: #e8ebf1; --phone-muted: #9aa3b2;
+    --bubble-me: #2f6fb8; --bubble-me-fg: #ffffff; --bubble-bot: #2a2f39; --bubble-bot-fg: #e8ebf1;
+    --chip: #233247; --chip-fg: #9ccaff; --badge: rgba(32, 36, 45, .94); --badge-fg: #dfe4ec; --badge-edge: rgba(255, 255, 255, .14);
+    --ok: #56d364; --ok-bg: #1d3526; --shot-edge: rgba(255, 255, 255, .14);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; }
+  body {
+    font: 14px/1.4 -apple-system, "Segoe UI", system-ui, Roboto, "Noto Sans", "Noto Sans CJK TC", sans-serif;
+    background: radial-gradient(900px 520px at 18% 12%, var(--glow), transparent 70%), linear-gradient(135deg, var(--bg-a), var(--bg-b));
+    position: relative;
+  }
+  .shot {
+    position: absolute; left: 56px; top: 30px; width: 818px; border-radius: 16px; overflow: hidden;
+    box-shadow: var(--card-shadow); border: 1px solid var(--shot-edge);
+  }
+  .shot img { display: block; width: 100%; }
+  .phone {
+    position: absolute; left: 902px; top: 169px; width: 316px; height: 520px; border-radius: 42px; padding: 12px;
+    background: var(--phone-edge); box-shadow: var(--card-shadow), 0 0 0 1px var(--shot-edge);
+  }
+  .screen { width: 100%; height: 100%; border-radius: 32px; background: var(--phone); overflow: hidden; display: flex; flex-direction: column; }
+  .top { display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px; border-bottom: 1px solid var(--phone-edge); color: var(--phone-fg); }
+  .avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 19px; background: var(--chip); }
+  .who b { display: block; font-size: 15px; }
+  .who span { font-size: 12px; color: var(--phone-muted); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); margin-right: 5px; vertical-align: 1px; box-shadow: 0 0 0 3px var(--ok-bg); }
+  .typing { align-self: flex-start; display: flex; gap: 4px; padding: 11px 13px; border-radius: 18px; border-bottom-left-radius: 6px; background: var(--bubble-bot); }
+  .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--phone-muted); opacity: .7; }
+  .typing i:nth-child(2) { opacity: .45; } .typing i:nth-child(3) { opacity: .25; }
+  .msgs { flex: 1; padding: 12px 14px 22px; display: flex; flex-direction: column; gap: 8px; }
+  .b { max-width: 84%; padding: 9px 12px; border-radius: 18px; font-size: 13px; line-height: 1.35; }
+  .me { align-self: flex-end; background: var(--bubble-me); color: var(--bubble-me-fg); border-bottom-right-radius: 6px; }
+  .bot { align-self: flex-start; background: var(--bubble-bot); color: var(--bubble-bot-fg); border-bottom-left-radius: 6px; }
+  .bars { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; margin-top: 8px; font-size: 11px; }
+  .bar { height: 8px; border-radius: 4px; background: var(--chip-fg); opacity: .6; }
+  .btns { display: flex; gap: 6px; margin-top: 8px; }
+  .btn { flex: 1; text-align: center; padding: 6px 0; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--phone); color: var(--phone-muted); border: 1px solid var(--phone-edge); }
+  .btn.on { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+  .chip { align-self: flex-end; padding: 6px 12px; border-radius: 14px; font-size: 12.5px; background: var(--chip); color: var(--chip-fg); font-weight: 600; }
+  .compose { margin: 0 12px 14px; padding: 10px 14px; border-radius: 20px; border: 1px solid var(--phone-edge); color: var(--phone-muted); font-size: 12.5px; }
+  .file { display: flex; align-items: center; gap: 8px; margin-top: 7px; padding: 7px 9px; border-radius: 10px; background: var(--phone); font-size: 12px; }
+  .file i { font-style: normal; font-size: 17px; }
+  .file small { display: block; color: var(--phone-muted); font-size: 11px; }
+  .badges { position: absolute; left: 1060px; top: 108px; transform: translateX(-50%); display: flex; white-space: nowrap; gap: 9px; align-items: center; padding: 9px 12px; border-radius: 16px;
+    background: var(--badge); color: var(--badge-fg); font-size: 12px; line-height: 1.25; font-weight: 600; border: 1px solid var(--badge-edge); box-shadow: 0 6px 18px -8px rgba(0,0,0,.35); }
+  .badges .glyphs { display: flex; gap: 5px; }
+  .tag.demo { left: 56px; width: 818px; }
+  .badges svg { width: 18px; height: 18px; display: block; }
+  .tag { position: absolute; left: 902px; width: 316px; top: 695px; text-align: center; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--badge-fg); opacity: .8; letter-spacing: .02em; }
+</style>
+</head>
+<body>
+  <div class="shot"><img id="shot" alt=""></div>
+
+  <div class="badges" aria-hidden="true">
+    <div class="glyphs"><svg viewBox="0 0 24 24"><path fill="#5865F2" d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg>
+    <svg viewBox="0 0 24 24"><path fill="#26A5E4" d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg></div>
+    <span>The same chat,<br>on your phone</span>
+  </div>
+
+  <div class="phone" aria-hidden="true"><div class="screen">
+    <div class="top">
+      <div class="avatar">🎨</div>
+      <div class="who"><b>Pixel</b><span><i class="dot"></i>working</span></div>
+    </div>
+    <div class="msgs">
+      <div class="b me">Compare the bundle sizes before and after the refactor?</div>
+      <div class="b bot">Tests pass, and the full report is attached. Ship it?
+        <div class="bars"><span>main.js</span><div class="bar" style="width:100%"></div><span>after</span><div class="bar" style="width:65%"></div></div>
+        <div class="file"><i>📎</i><div>bundle-report.pdf<small>47 KB</small></div></div>
+        <div class="btns"><div class="btn on">✓ Ship it</div><div class="btn">Hold</div></div>
+      </div>
+      <div class="chip">🔘 Ship it</div>
+      <div class="typing"><i></i><i></i><i></i></div>
+    </div>
+    <div class="compose">Message…</div>
+  </div></div>
+
+  <div class="tag">Illustration</div>
+  <div class="tag demo">Demo data</div>
+
+<script>
+  const q = new URLSearchParams(location.search);
+  document.documentElement.dataset.theme = q.get("theme") === "dark" ? "dark" : "light";
+  const img = document.getElementById("shot");
+  img.onload = () => { document.fonts.ready.then(() => { window.heroReady = true; }); };
+  img.src = q.get("shot") || "";
+</script>
+</body>
+</html>

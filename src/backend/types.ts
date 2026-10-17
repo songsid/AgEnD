@@ -605,6 +605,11 @@ export interface CliBackend {
    */
   consumeLaunchWarning?(): string | null;
   /**
+   * Board 907c7899: the pane layout a /compact's end can be read from in this launch (kiro-compact-pane.ts), or null
+   * when it can't. Only kiro has one; every other backend's compaction is followed through its transcript or not at all.
+   */
+  compactPaneUi?(): "legacy" | "tui" | null;
+  /**
    * #1811: notes about the last buildCommand that go to daemon.log and the Log tab only, never to a channel (an effort
    * the launch could not pass, and why). Cleared on read.
    */

@@ -189,48 +189,9 @@ export function renderSignature(items: readonly NeedsYouItem[], nowMs: number): 
 }
 
 // ── Chat links (§5.1) ─────────────────────────────────────────────────────────────────────────────────────────
+// #1990: built in topic-link.ts, the one place every "go to that topic" link comes from.
 
-export interface WorldPlace {
-  type: "discord" | "telegram" | string;
-  /** Discord: the guild id. Telegram: the supergroup id (-100…). */
-  groupId?: string;
-}
-
-const SNOWFLAKE = /^\d{5,25}$/;
-
-/** A link to a message (a prompt's own buttons), or undefined when none can be built for this platform/place. */
-export function messageLink(place: WorldPlace, at: { chatId: string; threadId?: string; messageId?: string }): string | undefined {
-  if (!at.messageId) return undefined;
-  if (place.type === "discord") {
-    const channel = at.threadId ?? at.chatId;
-    if (!place.groupId || !SNOWFLAKE.test(place.groupId) || !SNOWFLAKE.test(channel) || !SNOWFLAKE.test(at.messageId)) return undefined;
-    return `https://discord.com/channels/${place.groupId}/${channel}/${at.messageId}`;
-  }
-  if (place.type === "telegram") {
-    const internal = telegramInternalId(at.chatId);
-    if (!internal || !/^\d+$/.test(at.messageId)) return undefined;
-    const topic = at.threadId && at.threadId !== "1" && /^\d+$/.test(at.threadId) ? `${at.threadId}/` : "";
-    return `https://t.me/c/${internal}/${topic}${at.messageId}`;
-  }
-  return undefined;
-}
-
-/** A way to the instance's own thread: Discord's channel mention (clickable in place), Telegram's topic link. */
-export function instanceLink(place: WorldPlace, topicId: string | undefined): string | undefined {
-  if (!topicId) return undefined;
-  if (place.type === "discord") return SNOWFLAKE.test(topicId) ? `<#${topicId}>` : undefined;
-  if (place.type === "telegram") {
-    const internal = telegramInternalId(place.groupId ?? "");
-    return internal && /^\d+$/.test(topicId) && topicId !== "1" ? `https://t.me/c/${internal}/${topicId}` : undefined;
-  }
-  return undefined;
-}
-
-/** t.me/c/ links take a supergroup's id without its -100 prefix; anything else has no such link. */
-function telegramInternalId(chatId: string): string | undefined {
-  const m = /^-100(\d+)$/.exec(chatId);
-  return m ? m[1] : undefined;
-}
+export { instanceLink, messageLink, type WorldPlace } from "./topic-link.js";
 
 // ── The live message's text (§5.1) ────────────────────────────────────────────────────────────────────────────
 

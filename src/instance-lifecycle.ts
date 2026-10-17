@@ -47,7 +47,12 @@ import {
   retireCapturedTargetWindows,
 } from "./delivery-reconciliation.js";
 
+import { noPlaceMarkers, placeRef } from "./topic-link.js";
+
 export { isFleetStartCommandLine } from "./fleet-lock.js";
+
+/** #1990: an instance's name in a fleet notice, linked to its topic where the notice is posted. */
+const instancePlace = (name: string): string => placeRef({ kind: "instance", name }, name);
 
 export interface BackendInstallationInfo {
   binary: string;
@@ -1133,9 +1138,10 @@ export class InstanceLifecycle {
       // #1691: a prompt no table knows — what it asks (one sanitised, bounded line from the daemon, never the pane), and
       // that AgEnD will not press anything.
       if (data.unrecognised) {
-        const asked = data.question ? t("inst.unrecognised_prompt_question", data.question) : "";
+        // #1990: the question is a pane line — it may not name a place of its own.
+        const asked = data.question ? t("inst.unrecognised_prompt_question", noPlaceMarkers(data.question)) : "";
         this.notifyIncident(name, "dialog_parked", t("inst.unrecognised_prompt", name, asked));
-        this.ctx.notifyFleetError?.(t("fleet.unrecognised_prompt", name, asked));
+        this.ctx.notifyFleetError?.(t("fleet.unrecognised_prompt", instancePlace(name), asked));
         return;
       }
       const category = data.kind && data.kind !== "dialog" ? interactionCategory(data.kind, data.backend) : null;
@@ -1143,7 +1149,8 @@ export class InstanceLifecycle {
         ? t("inst.dialog_parked_hold", name, data.description)
         : t("inst.dialog_parked_stuck", name, data.description);
       this.notifyIncident(name, "dialog_parked", text);
-      this.ctx.notifyFleetError?.(category ? t("fleet.interaction_parked", name, category) : t("fleet.dialog_parked", name, data.description));
+      // #1990: in General, the instance's name links to its topic.
+      this.ctx.notifyFleetError?.(category ? t("fleet.interaction_parked", instancePlace(name), category) : t("fleet.dialog_parked", instancePlace(name), data.description));
     }, this.ctx.logger, `daemon.dialog_parked[${name}]`));
 
     daemon.on("dialog_answer_ignored", safeHandler((data: { name: string; description: string; attempts: number; holdsDeliveries: boolean }) => {
@@ -1155,7 +1162,7 @@ export class InstanceLifecycle {
       if (this.ctx.isPlannedRestart()) return;
       const text = t(data.holdsDeliveries ? "inst.dialog_answer_ignored_held" : "inst.dialog_answer_ignored", name, data.description, String(data.attempts));
       this.notifyIncident(name, "dialog_answer_ignored", text);
-      this.ctx.notifyFleetError?.(t("fleet.dialog_answer_ignored", name, data.description, String(data.attempts)));
+      this.ctx.notifyFleetError?.(t("fleet.dialog_answer_ignored", instancePlace(name), data.description, String(data.attempts)));
     }, this.ctx.logger, `daemon.dialog_answer_ignored[${name}]`));
 
     daemon.on("instance_interaction", () => this.ctx.onAttentionChanged?.(name));

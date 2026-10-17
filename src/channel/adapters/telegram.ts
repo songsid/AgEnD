@@ -8,6 +8,7 @@ import { join, extname, basename } from "node:path";
 import { Bot, GrammyError, HttpError, InputFile } from "grammy";
 import type { Context, InlineKeyboard as InlineKeyboardType } from "grammy";
 import { InlineKeyboard } from "grammy";
+import { stripPlaceRefs, type TextLink } from "../../topic-link.js";
 import type { ChannelAdapter, ApprovalHandle, SendOpts, SentMessage, PermissionPrompt, Choice, AlertData, TopicPresence, TopicProbePolicy, StickerInfo, StickerList, StickerPreview, StickerTarget, ReplyButtonsOutcome } from "../types.js";
 import { downloadStickerImage } from "../sticker-download.js";
 import { isTelegramParseRefusal, markdownToTelegramHtml } from "../telegram-markdown.js";
@@ -168,6 +169,17 @@ function isDefiniteTelegramRejection(err: unknown): boolean {
 export function toThreadId(threadId: string | null | undefined): number | undefined {
   if (threadId == null || threadId === "1") return undefined;
   return Number(threadId);
+}
+
+/**
+ * #1990: `SendOpts.textLinks` as Telegram `text_link` entities, for a plain-text send (no parse mode) — undefined when
+ * there are none, the text is HTML/markdown, or a link does not lie inside the text.
+ */
+function plainTextLinks(text: string, opts?: SendOpts): Array<{ type: "text_link"; offset: number; length: number; url: string }> | undefined {
+  if (!opts?.textLinks?.length || (opts.format !== undefined && opts.format !== "text")) return undefined;
+  const fits = (l: TextLink) => Number.isInteger(l.offset) && Number.isInteger(l.length) && l.offset >= 0 && l.length > 0 && l.offset + l.length <= text.length && /^https:\/\/\S+$/.test(l.url);
+  if (!opts.textLinks.every(fits)) return undefined;
+  return opts.textLinks.map(l => ({ type: "text_link" as const, offset: l.offset, length: l.length, url: l.url }));
 }
 
 function threadOptions(threadId: string | null | undefined): { message_thread_id?: number } {
@@ -835,10 +847,13 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
    * id). Telegram rejects this until the user has messaged the bot once.
    */
   async sendDirect(userId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
+    text = stripPlaceRefs(text);
+    const links = plainTextLinks(text, opts);
     const msg = await this.bot.api.sendMessage(Number(userId), text, {
       ...(opts?.choices ? { reply_markup: { inline_keyboard: opts.choices.map(c => [{ text: c.label, callback_data: c.id }]) } } : {}),
       ...(opts?.format === "html" ? { parse_mode: "HTML" as const } : {}),
-      ...(opts?.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
+      ...(opts?.disablePreview || links ? { link_preview_options: { is_disabled: true } } : {}),
+      ...(links ? { entities: links } : {}),
     });
     return { messageId: String(msg.message_id), chatId: String(userId) };
   }
@@ -847,9 +862,19 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   get supportsReplyButtons(): boolean { return true; }
 
   async sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
+    text = stripPlaceRefs(text);
     if (opts?.replyPoll) return this.sendTextWithReplyButtons(chatId, text, opts, telegramPollKeyboard(opts.replyPoll, Date.now()));
     if (opts?.replyButtons?.length) return this.sendTextWithReplyButtons(chatId, text, opts, telegramReplyKeyboard(opts.replyButtons));
     if (opts?.urlButtons?.length) return this.sendTextWithUrlButtons(chatId, text, opts, opts.urlButtons);
+    // #1990: a notice whose place names are links — one plain message carrying them as entities (no parse mode, so
+    // nothing in the text needs escaping). A longer text is sent as below, without them.
+    const links = plainTextLinks(text, opts);
+    if (links && text.length <= (opts?.chunkLimit ?? 4096)) {
+      const msg = await this.bot.api.sendMessage(Number(chatId), text, {
+        ...threadOptions(opts?.threadId), entities: links, link_preview_options: { is_disabled: true },
+      });
+      return { messageId: String(msg.message_id), chatId, threadId: opts?.threadId };
+    }
     // Try rich message for content with tables, code blocks, headings, etc.
     if (this.needsRichMessage(text)) {
       const sendRichMessage = (this.bot.api as any).raw?.sendRichMessage;
@@ -1039,6 +1064,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
 
   /** #1651: render HTML/markdown like sendMessage, retaining the parse-refusal-only plain-text fallback. */
   async editMessage(chatId: string, messageId: string, text: string, _threadId?: string, opts?: { format?: "html" | "markdown" }): Promise<void> {
+    text = stripPlaceRefs(text);
     if (opts?.format === "markdown") {
       try {
         await this.editText(Number(chatId), Number(messageId), markdownToTelegramHtml(text), { parse_mode: "HTML" });
@@ -1054,6 +1080,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
 
   /** Edit text and drop the inline keyboard (omitting reply_markup clears it). */
   async editMessageRemoveButtons(chatId: string, messageId: string, text: string, _threadId?: string, urlButtons?: Array<{ label: string; url: string }>): Promise<void> {
+    text = stripPlaceRefs(text);
     await this.editText(Number(chatId), Number(messageId), text, {
       reply_markup: { inline_keyboard: urlButtons?.map(b => [{ text: b.label, url: b.url }]) ?? [] },
     });
@@ -1327,6 +1354,43 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   getChatId(): string | null { return this.lastChatId; }
   setChatId(chatId: string): void { this.lastChatId = chatId; }
 
+  // #1990: each group's public @username, as last read (null: it has none), and the reads in flight.
+  private readonly groupUsernames = new Map<string, { value: string | null; at: number }>();
+  private readonly groupUsernameReads = new Map<string, number>();
+  private static readonly GROUP_USERNAME_TTL_MS = 60 * 60_000;
+
+  /** #1990: the group's public @username as last read; a missing or stale one starts a background getChat. */
+  groupUsername(groupId: string): string | undefined {
+    const cached = this.groupUsernames.get(groupId);
+    const now = performance.now();
+    const reading = this.groupUsernameReads.get(groupId);
+    // A read that has not answered in a minute no longer holds the next one back.
+    if ((!cached || now - cached.at > TelegramAdapter.GROUP_USERNAME_TTL_MS) && (reading === undefined || now - reading > 60_000)) {
+      const chatId = Number(groupId);
+      if (Number.isSafeInteger(chatId) && groupId.startsWith("-100")) {
+        this.groupUsernameReads.set(groupId, now);
+        this.bot.api.getChat(chatId)
+          .then(chat => {
+            const name = "username" in chat && typeof chat.username === "string" ? chat.username : null;
+            this.groupUsernames.set(groupId, { value: name, at: performance.now() });
+          })
+          .catch(() => { /* not known: links use t.me/c/, which works for members */ })
+          .finally(() => { if (this.groupUsernameReads.get(groupId) === now) this.groupUsernameReads.delete(groupId); });
+      }
+    }
+    return cached?.value ?? undefined;
+  }
+
+  /** #1990: whether `userId` is in the group now (getChatMember; an error rejects). */
+  async isGroupMember(groupId: string, userId: string): Promise<boolean> {
+    const chatId = Number(groupId);
+    const user = Number(userId);
+    if (!Number.isSafeInteger(chatId) || !Number.isSafeInteger(user) || user <= 0) return false;
+    const member = await this.bot.api.getChatMember(chatId, user);
+    return member.status === "creator" || member.status === "administrator" || member.status === "member"
+      || (member.status === "restricted" && member.is_member === true);
+  }
+
   /**
    * Verify a prospective Telegram group/forum binding with the current bot
    * token.  This uses getChat/getMe/getChatMember only; it never starts a
@@ -1489,9 +1553,12 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       for (const choice of alert.choices) {
         keyboard.text(choice.label, choice.id);
       }
-      const msg = await this.bot.api.sendMessage(Number(chatId), alert.message, {
+      const message = stripPlaceRefs(alert.message);
+      const links = plainTextLinks(message, opts);
+      const msg = await this.bot.api.sendMessage(Number(chatId), message, {
         ...threadOptions(threadId),
         reply_markup: keyboard,
+        ...(links ? { entities: links, link_preview_options: { is_disabled: true } } : {}),
       });
       const deliveredThreadId = toThreadId(threadId);
       return {
@@ -1514,11 +1581,14 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
    * `editMessageRemoveButtons` works. Editing a cancel-button message with it would
    * delete the cancel button.
    */
-  async editAlert(chatId: string, messageId: string, alert: AlertData): Promise<void> {
+  async editAlert(chatId: string, messageId: string, alert: AlertData, opts?: SendOpts): Promise<void> {
     const keyboard = new InlineKeyboard();
     for (const choice of alert.choices ?? []) keyboard.text(choice.label, choice.id);
-    await this.editText(Number(chatId), Number(messageId), alert.message, {
+    const message = stripPlaceRefs(alert.message);
+    const links = plainTextLinks(message, opts);
+    await this.editText(Number(chatId), Number(messageId), message, {
       reply_markup: keyboard,
+      ...(links ? { entities: links, link_preview_options: { is_disabled: true } } : {}),
     });
   }
 

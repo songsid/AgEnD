@@ -37,7 +37,7 @@ Fleet 在 `127.0.0.1` 的 `health_port`（預設 19280）上提供一個儀表�
 
 ## Agent 之間會互相說話
 
-每個 instance 都是對等的。Agent 透過 MCP tools 直接互相發現、喚醒、傳訊；General 只負責轉送你送給它的訊息。
+每個 instance 都是對等的。Agent 透過允許的 MCP tools 互相發現、傳訊；喚醒等管理操作需要對應工具權限組；General 只負責轉送你送給它的訊息。
 
 主要靠三個工具：
 
@@ -151,7 +151,7 @@ Agent：→ create_schedule(cron: "0 9 * * *", …)
 
 **取消。** 訊息送到 agent 後，topic 或頻道裡會出現一個 🛑 Cancel 按鈕，按下就中斷生成；30 秒後它也會顯示 agent 已經做了多久。`/cancel` 效果一樣。Web 聊天則有 **Stop**。
 
-**插話。** `/steer <訊息>` 直接插進 agent 目前的回合，不用等它做完（Claude Code、Codex、Grok、Muse 與 Kiro 的 TUI）；`/btw <訊息>` 問個旁支問題而不打斷它（Claude Code）。
+**插話。** `/steer <訊息>` 直接插進 agent 目前的回合，不用等它做完（Claude Code、Codex、Grok、Muse 與經驗證的 Kiro TUI 版本；不支援的啟動模式會拒絕 `/steer`，請另送一般訊息）；`/btw <訊息>` 問個旁支問題而不打斷它（Claude Code）。
 
 **送達狀態。** 你的訊息上的反應會顯示它走到哪一步。Discord：👀 已接收、⏳ 排隊中、✅ 已送達、❌ 失敗。Telegram 能用的反應比較少，所以送達前都是 👀，失敗是 👎。兩邊都能用 `status_emojis` 自訂。
 
@@ -213,7 +213,7 @@ teams:
 
 - **Webhook** — 卡住、MCP 或終端機故障、花費警告與上限、排程延後、模型切換時 POST 到你的網址，可帶自訂 header
 - **Health endpoint** — 在 `health_port` 上開 HTTP，預設 19280
-- **外部 session** — fleet 以外的程序可以透過 IPC 加入，像一般 instance 一樣被傳訊
+- **外部 session** — fleet 以外的程序可登錄 IPC 身分並使用允許的工具；登錄不代表能將訊息投遞進它自己的 CLI 對話
 - **Adapter 外掛** — 不改 AgEnD 就能加新的聊天平台
 
 ## 限制
