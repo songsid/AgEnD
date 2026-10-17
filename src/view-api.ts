@@ -139,15 +139,14 @@ export function personIdentityColour(dataDir: string, name: string): { color: st
   return { color: pick.color ?? null, show: pick.show ? [...pick.show] : null };
 }
 /**
- * #2056: a person's colour for one instance — exactly POST /api/profile's colour fields: the same check before anything
- * is written, the table made first, the write in a profiles.db transaction. The caller announces (identityChanged).
+ * #2056: a person's colour for one instance — exactly POST /api/profile's colour fields: the store's own check (in set(),
+ * before anything is written), the table made first, the write in a profiles.db transaction. The caller announces
+ * (identityChanged).
  */
 export function setPersonIdentityColour(dataDir: string, name: string, identity: { color?: unknown; show?: unknown }):
   { ok: true } | { ok: false; status: number; error: string; detail?: string } {
   const store = colorStore({ dataDir });
-  const check = store.check(identity);
-  if (!check.ok) return check;
-  store.get(name);
+  store.get(name);                                    // set() checks the patch before it writes anything
   let refused: { ok: false; status: number; error: string; detail?: string } | null = null;
   const rollback = new Error("rollback");
   try {

@@ -52,6 +52,14 @@ describe("get_web_settings: the page in plain words", () => {
     expect(r.agents.map((a: { name: string }) => a.name)).toEqual(["general", "alpha", "beta"]);
     expect(r.page_only.join(" ")).toContain("card upload limits");
   });
+  it("a person who has signed in is named among the people, and their own custom CSS is theirs, not the operator's", () => {
+    const alice = "person:discord-main:111111111111111111";
+    fm.webPrefs.setPlatformName(alice, "Alice");
+    expect(fm.webSettings.read().people).toContainEqual({ person: alice, name: "Alice" });
+    expect(set({ what: "custom_css", action: "save", text: "body { outline: 1px solid #123456 }" }, alice)).toMatchObject({ ok: true, on_trial: true });
+    expect([fm.ownerCss.state(alice).pending !== null, fm.ownerCss.state(OPERATOR).pending]).toEqual([true, null]);
+    expect(set({ what: "custom_css", action: "revert" }, alice)).toMatchObject({ ok: true });
+  });
   it("an unknown person is refused, never invented", () => {
     expect(fm.webSettings.read("person:discord:999")).toEqual({ ok: false, error: "unknown_person", detail: "name one of get_web_settings' people" });
     expect(set({ what: "restore_defaults" }, "person:discord:999")).toMatchObject({ ok: false, error: "unknown_person" });
@@ -63,6 +71,7 @@ describe("set_web_settings: as the page changes it", () => {
     const status = vi.spyOn(fm, "emitSseEvent");
     expect(set({ what: "host", set: { themes_shown: false, card_size: "l", colours_off: true, colour_places: ["ring"] } })).toMatchObject({ ok: true });
     expect(host()).toMatchObject({ "fx.show": false, "card.size": "l", "color.off": true, "color.show": ["ring"] });
+    expect(fm.webSettings.read().summary.slice(0, 2)).toEqual(["Agents' themes, effects and widgets: hidden (every chat looks the same).", "Identity colours: turned off on this host."]);
     expect(status).toHaveBeenCalledWith("status", expect.anything());
     expect(set({ what: "host", set: { themes_shown: true, card_size: "m", colours_off: false, colour_places: [...DEFAULT_PLACEMENTS].reverse() } })).toMatchObject({ ok: true });
     expect(["fx.show", "card.size", "color.off", "color.show"].map((k) => Object.hasOwn(host(), k))).toEqual([false, false, false, false]);
@@ -130,7 +139,10 @@ describe("set_web_settings: as the page changes it", () => {
     const review = set({ what: "mod", action: "review", instance: "alpha" });
     expect(review).toMatchObject({ ok: true, stage: expect.any(String), plan_hash: expect.any(String) });
     expect(set({ what: "mod", action: "install", stage: review.stage, plan_hash: "0".repeat(64), include: { identity: true }, target: "alpha" }), "a plan that moved").toMatchObject({ ok: false });
+    const status = vi.spyOn(fm, "emitSseEvent");
     const installed = set({ what: "mod", action: "install", stage: review.stage, plan_hash: review.plan_hash, include: { identity: true }, target: "alpha" });
+    expect(status, "every page re-reads, as after the page's install").toHaveBeenCalledWith("status", expect.anything());
+    status.mockRestore();
     expect(installed).toMatchObject({ ok: true, applied: expect.arrayContaining(["identity"]) });
     expect(fm.webSettings.read().mods.installed.map((m: { name: string }) => m.name)).toEqual(["tagline"]);
     expect(set({ what: "mod", action: "uninstall", id: installed.id })).toMatchObject({ ok: true });
