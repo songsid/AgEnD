@@ -18,7 +18,7 @@ process.env.AGEND_HOME = home;                         // before the fleet's mod
 const { FleetManager } = await import("../src/fleet-manager.js");
 const { WEB_SESSION_COOKIE } = await import("../src/web-auth.js");
 const { tokenEpoch } = await import("../src/web-session.js");
-const { GuestRoomMembership, guestGroupRooms, GUEST_ROOM_STALE_MS, GUEST_ROOM_RECHECK_MS, GUEST_ROOM_RETRY_MS } = await import("../src/web-guest-rooms.js");
+const { GuestRoomMembership, guestGroupRooms, GUEST_ROOM_STALE_MS, GUEST_ROOM_RECHECK_MS } = await import("../src/web-guest-rooms.js");
 
 const ALICE = { adapterId: "dc", userId: "111111111111111111" };
 const DC_ROOM = "222222222222222222", TG_GROUP = "-1001234567890", TG_PRIVATE = "5550001";
@@ -77,26 +77,60 @@ describe("the membership answers", () => {
     tick(GUEST_ROOM_STALE_MS - GUEST_ROOM_RECHECK_MS + 1);
     expect(m.verified(R, ALICE.userId)).toBe(false);
   });
-  it("due: ten minutes after an answer, a minute after a failure; force: a minute after any read; one read shared", async () => {
-    let fail = false;
-    const { m, read, tick } = setup(() => (fail ? Promise.reject(new Error("x")) : Promise.resolve(true)));
+  it("due: ten minutes after an answer; force: a minute after any read; one read shared", async () => {
+    const { m, read, tick } = setup(() => Promise.resolve(true));
     await m.refresh(ALICE, [R]);
     tick(GUEST_ROOM_RECHECK_MS - 1); await m.refresh(ALICE, [R]);
     expect(read).toHaveBeenCalledTimes(1);
-    tick(1); fail = true; await m.refresh(ALICE, [R]);
-    expect(read).toHaveBeenCalledTimes(2);
-    tick(GUEST_ROOM_RETRY_MS - 1); await m.refresh(ALICE, [R]);
-    expect(read, "a failure is not retried before a minute").toHaveBeenCalledTimes(2);
     tick(1); await m.refresh(ALICE, [R]);
+    expect(read).toHaveBeenCalledTimes(2);
+    await m.refresh(ALICE, [R], { mode: "force" });
+    expect(read, "force waits a minute after the last read").toHaveBeenCalledTimes(2);
+    tick(MIN - 1); await m.refresh(ALICE, [R], { mode: "force" });
+    expect(read).toHaveBeenCalledTimes(2);
+    tick(1); await m.refresh(ALICE, [R], { mode: "force" });
     expect(read).toHaveBeenCalledTimes(3);
-    fail = false;
-    await m.refresh(ALICE, [R], { force: true });
-    expect(read, "force waits a minute after the last read").toHaveBeenCalledTimes(3);
-    tick(MIN); await m.refresh(ALICE, [R], { force: true });
-    expect(read).toHaveBeenCalledTimes(4);
     tick(GUEST_ROOM_RECHECK_MS);
-    await Promise.all([m.refresh(ALICE, [R]), m.refresh(ALICE, [R])]);
-    expect(read, "concurrent refreshes share one read").toHaveBeenCalledTimes(5);
+    await Promise.all([m.refresh(ALICE, [R]), m.refresh(ALICE, [R]), m.refresh(ALICE, [R], { mode: "triggered" }), m.refresh(ALICE, [R], { mode: "force" })]);
+    expect(read, "concurrent refreshes of every kind share one read").toHaveBeenCalledTimes(4);
+  });
+  it("leader's guard: failed reads back off 1, 2, 4, 8 … capped at 10 minutes, whoever asks; said once until an answer", async () => {
+    let fail = true;
+    let now = 0;
+    const read = vi.fn(() => (fail ? Promise.reject(new Error("bot lacks permission")) : Promise.resolve(true)));
+    const said: string[] = [];
+    const m = new GuestRoomMembership({ now: () => now, read, deadlineMs: 50,
+      onPersistentFailure: (room, failures) => said.push(`fail ${room.instance} ${failures}`), onRecovered: (room) => said.push(`ok ${room.instance}`) });
+    const at: number[] = [];
+    read.mockImplementation(() => { at.push(now / MIN); return fail ? Promise.reject(new Error("x")) : Promise.resolve(true); });
+    for (now = 0; now <= 60 * MIN; now += 15_000) {
+      // The tick, a pending guest's requests and a reconnecting stream, all every 15 s: none beats the backoff.
+      await m.refresh(ALICE, [R]); await m.refresh(ALICE, [R], { mode: "triggered" }); await m.refresh(ALICE, [R], { mode: "force" });
+    }
+    expect(at).toEqual([0, 1, 3, 7, 15, 25, 35, 45, 55]);
+    expect(said, "the persistent failure is said once").toEqual([`fail ${R.instance} 3`]);
+    fail = false; now += 10 * MIN; await m.refresh(ALICE, [R]);
+    expect(said.at(-1)).toBe(`ok ${R.instance}`);
+    expect(m.verified(R, ALICE.userId)).toBe(true);
+    // After an answer the count starts over: the next failures back off from a minute again, and are said again.
+    fail = true; at.length = 0;
+    for (const start = now + GUEST_ROOM_RECHECK_MS; now <= start + 8 * MIN; now += 15_000) await m.refresh(ALICE, [R]);
+    expect(at.map((t) => t - at[0]!)).toEqual([0, 1, 3, 7]);
+    expect(said.filter((x) => x.startsWith("fail"))).toHaveLength(2);
+  });
+  it("leader's guard: a pending guest's requests start at most one read per room in 30 s, whatever the volume", async () => {
+    let now = 0;
+    const read = vi.fn(() => Promise.resolve(true));
+    // A short recheck, so only the 30 s floor stands between a request and the platform.
+    const m = new GuestRoomMembership({ now: () => now, read, deadlineMs: 50, recheckMs: 5_000 });
+    await Promise.all(Array.from({ length: 50 }, () => m.refresh(ALICE, [R], { mode: "triggered" })));
+    expect(read, "single-flight").toHaveBeenCalledTimes(1);
+    for (now = 1_000; now < 30_000; now += 1_000) await m.refresh(ALICE, [R], { mode: "triggered" });
+    expect(read).toHaveBeenCalledTimes(1);
+    now = 30_000; await m.refresh(ALICE, [R], { mode: "triggered" });
+    expect(read).toHaveBeenCalledTimes(2);
+    now = 36_000; await m.refresh(ALICE, [R]);
+    expect(read, "the background pass keeps its own due time").toHaveBeenCalledTimes(3);
   });
 });
 
@@ -169,9 +203,17 @@ describe("live: a guest whose only scope is a ClassicBot room", () => {
   it("no answer for the whole stale window: fail closed — the session ends", async () => {
     const canViewChannel = vi.fn(() => Promise.reject(new Error("Discord is down")));
     const sid = live([room(DC_ROOM, "dc", "classic-room")], { canViewChannel });
+    const warn = vi.spyOn(fm.logger, "warn");
     await fm.refreshAllGuestRooms();
     expect((await raw(port, "/ui/prefs", cookie(sid))).status).toBe(503);
-    clock += GUEST_ROOM_STALE_MS - 1;
+    // Backing off (1, then 2 minutes): the third failure is persistent — said once, without the account's id.
+    clock += 60_000; await fm.refreshAllGuestRooms();
+    clock += 120_000; await fm.refreshAllGuestRooms(); await fm.refreshAllGuestRooms();
+    const said = warn.mock.calls.filter((c) => String(c[1]).includes("keeps failing"));
+    expect(said).toHaveLength(1);
+    expect(said[0]![0]).toEqual({ adapterId: "dc", instance: "classic-room", failures: 3 });
+    expect(canViewChannel).toHaveBeenCalledTimes(3);
+    clock += GUEST_ROOM_STALE_MS - 180_000 - 1;
     expect((await raw(port, "/ui/prefs", cookie(sid))).status).toBe(503);
     clock += 1;
     expect((await raw(port, "/ui/prefs", cookie(sid))).status).toBe(401);

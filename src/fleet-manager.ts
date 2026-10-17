@@ -235,7 +235,7 @@ import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScop
 import { crossInstanceVisibility, runVisibilityCommand } from "./cross-instance-notice.js";
 import { WebSettingsTools } from "./web-settings-tools.js";
 import { bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
-import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms } from "./web-guest-rooms.js";
+import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { TrafficLog, trafficItem, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
@@ -20586,7 +20586,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (owner && this.fleetConfig?.web?.guests?.enabled === true) {
       const members = this.guestRooms(), rooms = guestGroupRooms(this.classicChannels?.getAll() ?? [], owner);
       if (rooms.some((room) => members.pending(room, owner.userId))) {
-        void this.refreshGuestRooms(owner);
+        void this.refreshGuestRooms(owner, { mode: "triggered" });   // rate-limited per room (30 s), single-flight
         return "pending";
       }
     }
@@ -20604,11 +20604,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         const adapter = this.worlds.get(room.adapterId)?.adapter;
         return room.kind === "telegram" ? adapter?.isGroupMember?.(room.channelId, userId) : adapter?.canViewChannel?.(room.channelId, userId);
       },
+      // Said once per key while its reads keep failing (no user id: the room and connection are what an admin fixes).
+      onPersistentFailure: (room, failures) => this.logger.warn({ adapterId: room.adapterId, instance: room.instance, failures },
+        "Guest room membership keeps failing to read (the bot may lack the permission, or was removed); retrying with backoff up to 10 minutes"),
+      onRecovered: (room) => this.logger.info({ adapterId: room.adapterId, instance: room.instance }, "Guest room membership reads again"),
     });
     return this.guestRoomMembership;
   }
-  /** #1920 §3.2: read this guest's rooms that are due (`force`: a stream that connects — at most once a minute). */
-  private async refreshGuestRooms(owner: { readonly adapterId: string; readonly userId: string }, opts: { force?: boolean } = {}): Promise<void> {
+  /** #1920 §3.2: read this guest's rooms that are due (GuestRoomMembership.refresh says when each mode reads). */
+  private async refreshGuestRooms(owner: { readonly adapterId: string; readonly userId: string }, opts: { mode?: GuestRoomReadMode } = {}): Promise<void> {
     if (this.fleetConfig?.web?.guests?.enabled !== true) return;
     try { await this.guestRooms().refresh(owner, guestGroupRooms(this.classicChannels?.getAll() ?? [], owner), opts); }
     catch (err) { this.logger.warn({ err: (err as Error).message }, "Guest room membership could not be read"); }
@@ -20731,7 +20735,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
             // #1920 §5.2: its own Telegram private room shows it everything; the kept messages place ticks and buttons.
             ownRoom: (instance) => this.guestOwnRoom(owner, instance),
             // §3.2: a stream that connects reads its rooms again (in the background; at most once a minute).
-            streamOpened: () => { void this.refreshGuestRooms(owner, { force: true }); },
+            streamOpened: () => { void this.refreshGuestRooms(owner, { mode: "force" }); },
             history: () => this.webChatHistory,
             // #1920 §5.1: guests chat unless the host made them read-only (web.guests.chat: false).
             chat: () => this.fleetConfig?.web?.guests?.chat !== false });
