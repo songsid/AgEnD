@@ -6,6 +6,8 @@ Copy [effect.json](click-sparks/effect.json) and [worker.js](click-sparks/worker
 `upload_web_effect { "dir": "<that-directory>" }` and `apply_web_effect { "id": "<returned-id>" }`.
 A person can also select the uploaded effect in Web appearance's page or box slot. No assets or parameters are needed. The bitmap is at most 512 px per side; painting is capped at 30 fps and stops when the particles are gone. Pointer sampling has its own separate limit below.
 
+If the chat opens with focus in the composer, click an empty area and wait for playback to start before testing another click. Input is forwarded only to an already ready effect.
+
 - Click unprotected space or ordinary message text: a short particle burst.
 - Hold the primary mouse button and move: a trail. Plain movement draws nothing.
 - Composer, links, buttons, menus and dialogs: no pointer input. Focus in an editable field also blocks input until
