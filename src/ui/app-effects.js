@@ -40,7 +40,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
       }
     },
     trialStatus(message) {
-      const offer = safe(() => effectTrialMessage(message)), nav = navStore.get(), c = context();
+      const offer = safe(() => effectTrialMessage(message)), nav = navStore.get();
       const now = safe(() => host.Date.now());
       if (!offer || !Number.isFinite(now) || now >= offer.expiresAt) return "expired";
       if (trialHint === null && !entry.dead) return "checking";
@@ -48,16 +48,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
       if (!chatBinding || safe(() => chatBinding.current()) !== true || message.instance !== nav.route?.instance || nav.route?.panel !== "chat") return "chatChanged";
       const state = trialControl.snapshot();
       if (state.phase !== "idle" || state.busy) return "busy";
-      if (c.safe) return "safe";
-      if (!c.show) return "effectsOff";
-      if (c.reducedMotion) return "reducedMotion";
-      if (c.saveData) return "saveData";
-      if (!c.enabled) return "unsupported";
-      if (!c.trialReady) return "transport";
-      if (c.publicLink) return "localAdmin";
-      if (c.hidden || doc.hasFocus?.() !== true) return "inactive";
-      if (c.modal) return "dialog";
-      return "ready";
+      return trialPlaybackStatus();
     },
     canTry(message) { return entry.trialStatus(message) === "ready"; },
     stopTrial() { trialControl?.stop(); },
@@ -101,6 +92,20 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     return !entry.dead && host.document === doc && !!intent && !!intent.chat && chatBinding === intent.chat && intent.chat.current() === true && intent.name === name && nav.seq === intent.seq && nav.route?.panel === "chat" && nav.route.instance === name
       && (panelVersion() === intent.claim || intent.handle !== null && panelStore.get().open?.handle === intent.handle);
   }
+  // One priority order feeds both presentation and redraw identity: false→different-false must redraw.
+  function trialPlaybackStatus() {
+    const c = context();
+    if (c.safe) return "safe";
+    if (!c.show) return "effectsOff";
+    if (c.reducedMotion) return "reducedMotion";
+    if (c.saveData) return "saveData";
+    if (!c.enabled) return "unsupported";
+    if (!c.trialReady) return "transport";
+    if (c.publicLink) return "localAdmin";
+    if (c.hidden || doc.hasFocus?.() !== true) return "inactive";
+    if (c.modal) return "dialog";
+    return "ready";
+  }
   function trialAllowed() {
     const c = context();
     return !entry.dead && doc.visibilityState === "visible" && doc.hasFocus?.() === true
@@ -116,7 +121,8 @@ export function startAppEffects({ store, window: host = window, factories = {} }
       if (panelStore.get().open?.handle === handle) closePanel();
     };
     try {
-      openTrialPanel({ key: binding.key, instance: handle.instance, binding, handle, onStage(value) {
+      openTrialPanel({ key: binding.key, instance: handle.instance, binding, handle,
+        onStage(value) {
           stage = value;
           if (!handle.current()) { cleanup(); handle.stop(); return; }
           source = entry.api.attachTrial({ reply: handle.reply, offer: handle.reply.offer.offer, startedAt: handle.startedAt, stage,
@@ -129,7 +135,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
   }
   function notifyTrial() {
     if (entry.dead) return;
-    const nav = navStore.get(), next = JSON.stringify([trialHint, safe(() => chatBinding?.current()) === true, trialAllowed(), nav.route?.panel, nav.route?.instance, trialControl?.snapshot()]);
+    const nav = navStore.get(), next = JSON.stringify([trialHint, safe(() => chatBinding?.current()) === true, trialPlaybackStatus(), nav.route?.panel, nav.route?.instance, trialControl?.snapshot()]);
     if (next === trialStamp) return; trialStamp = next;
     for (const fn of [...trialUpdates]) safe(fn);
   }

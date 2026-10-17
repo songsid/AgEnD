@@ -229,6 +229,26 @@ describe("#1629 product Trial bridge with protocol core", () => {
       expect(await h.entry.startTrial(trialMessage())).toBe(true); const open = h.panel.panelStore.get().open, stage = { receipt: {}, dispose: vi.fn(), hide: vi.fn() }; open.onStage(stage); await trialFlush(); expect(stage.dispose).toHaveBeenCalled(); expect(h.panel.panelStore.get().open).toBeNull(); expect(h.host.fetch).toHaveBeenCalledTimes(2);
     } finally { h.entry.dispose(); await trialFlush(); }
   });
+  it("redraws the real card when a false gate changes reason, while unchanged priority remains deduplicated", async () => {
+    const h = await trialRig(), { installDom } = await import("./helpers/mini-dom.js"), dom = installDom({});
+    const { createThread } = await import("/ui/js/chat-thread.js"), { t, setLang } = await import("/assets/app-i18n.js"); await import("/ui/js/chat-strings.js"); setLang("en", { store:false });
+    const list = dom.document.createElement("div"), scroller = dom.document.createElement("div"); scroller.append(list); dom.document.body.append(scroller);
+    const row = { ...trialMessage(), boot:"aa", id:1, ts:"2026-10-17T00:00:00Z", text:"Host offer" };
+    const thread = createThread(list,scroller,{t,tf:t,isUser:()=>false,serverNow:()=>0,onJump(){},onEmpty(){},effectTrialStatus:(x:any)=>h.entry.trialStatus(x),canTryEffect:(x:any)=>h.entry.canTry(x),fixEffectTrial:vi.fn()});
+    const draw = vi.fn(()=>thread.render([row])), off = h.entry.subscribeTrial(draw);
+    try {
+      h.media.matches = true; h.host.navigator.connection.saveData = true; h.host.emit("resize");
+      expect(draw).toHaveBeenCalledTimes(1); expect(h.entry.canTry(row)).toBe(false); expect(list.textContent).toContain("Your device requests reduced motion.");
+      // Removing the higher-priority condition must redraw despite aggregate permission remaining false.
+      h.media.matches = false; h.media.emit("change"); expect(draw).toHaveBeenCalledTimes(2); expect(h.entry.canTry(row)).toBe(false);
+      expect(list.textContent).toContain("Your device requests reduced data use."); expect(list.textContent).not.toContain("reduced motion");
+      env.values["fx.show"] = false; for(const fn of env.prefs)fn(); expect(draw).toHaveBeenCalledTimes(3); expect(list.textContent).toContain("Turn on effects to Try.");
+      h.media.matches = true; h.media.emit("change"); expect(draw).toHaveBeenCalledTimes(3); // hidden lower-priority changes do not redraw
+      env.values["fx.show"] = true; for(const fn of env.prefs)fn(); expect(draw).toHaveBeenCalledTimes(4); expect(h.entry.canTry(row)).toBe(false);
+      expect(list.textContent).toContain("Your device requests reduced motion."); expect(list.textContent).not.toContain("Turn on effects");
+      for(let i=0;i<100;i++)h.options().onChange(); expect(draw).toHaveBeenCalledTimes(4);
+    } finally { off(); thread.dispose(); dom.restore(); h.entry.dispose(); await trialFlush(); }
+  });
   it("repeated runtime observations do not repaint Trial eligibility until its value changes", async () => {
     const h = await trialRig(), fn = vi.fn(); try { const off = h.entry.subscribeTrial(fn); for (let i = 0; i < 100; i++) h.options().onChange(); expect(fn).not.toHaveBeenCalled(); env.css.set({ state: "on" }); expect(fn).not.toHaveBeenCalled(); h.media.matches = true; h.host.emit("resize"); expect(fn).toHaveBeenCalledOnce(); off(); h.media.matches = false; h.host.emit("resize"); expect(fn).toHaveBeenCalledOnce(); } finally { h.entry.dispose(); }
   });
