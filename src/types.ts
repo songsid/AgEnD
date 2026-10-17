@@ -377,7 +377,7 @@ export interface WebConfig {
   /**
    * #1620: how long a web session lasts. Only the LOCAL surface (the dashboard reached directly — loopback, a LAN, a
    * tailnet) is configurable; a public-link session's limits stay fixed. Hours, 1 ≤ idle_hours ≤ absolute_hours ≤ 720;
-   * defaults 12 (absolute, from sign-in) and 2 (idle, since the last use). Shortening applies to existing sessions.
+   * defaults 48 (absolute, from sign-in) and 48 (idle, since the last use; #1670). Shortening applies to existing sessions.
    */
   session?: { local?: { absolute_hours?: number; idle_hours?: number } };
   /**

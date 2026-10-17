@@ -98,7 +98,7 @@ describe("#1767: what the person is told — never a timeout before the timeout"
       expect(t("dashboard.progress.fail.no-address"), `${locale} timeout keeps its words`).toMatch(/in time|及時/);
     }
     setLocale("en");
-    expect(t("dashboard.progress.fail.rate-limited")).toMatch(/limiting new temporary links.*LAN link still works/);
+    expect(t("dashboard.progress.fail.rate-limited")).toMatch(/limiting new temporary links.*the dashboard on this machine still works/);
   });
 });
 

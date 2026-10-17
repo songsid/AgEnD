@@ -100,7 +100,7 @@
       notify();
       return true;
     }
-    if (j && (j.code === "publicLinkPreviewFailed" || j.code === "publicLink" || j.code === "fleetOff")) {
+    if (j && (j.code === "publicLinkPreviewFailed" || j.code === "publicLink" || j.code === "fleetOff" || j.code === "listenFailed" || j.code === "notListening")) {
       cfg.reasonCode = j.code; cfg.reason = ""; cfg.detail = typeof j.detail === "string" ? j.detail : "";
       notify();
       return true;
@@ -191,7 +191,8 @@
     if (!cfg.previewOrigin || !cfg.boot) {
       // The server's reason, in the page's language when the server named it (a code), else as the server wrote it.
       // #1723: a failed public-link preview names why ({0} is the reason, in the page's words).
-      var arg = cfg.reasonCode === "publicLinkPreviewFailed" ? say("pvFail_" + (cfg.detail || "unknown"), Object.prototype.hasOwnProperty.call(FAIL_EN, cfg.detail) ? FAIL_EN[cfg.detail] : "an unexpected error") : cfg.dashboardOrigin;
+      var arg = cfg.reasonCode === "publicLinkPreviewFailed" ? say("pvFail_" + (cfg.detail || "unknown"), Object.prototype.hasOwnProperty.call(FAIL_EN, cfg.detail) ? FAIL_EN[cfg.detail] : "an unexpected error")
+        : cfg.reasonCode === "listenFailed" ? cfg.detail : cfg.dashboardOrigin;
       var english = cfg.reasonCode === "publicLinkPreviewFailed" ? "Previews are unavailable on this public link: {0}. The link itself keeps working."
         : cfg.reason || "Previews are not available here.";
       var server = cfg.reasonCode ? say("pvServer_" + cfg.reasonCode, english, arg) : "";
