@@ -307,6 +307,18 @@ describe("live: the stream, the poll and a file for a guest scoped to `a`", () =
       expect([own.includes("a reply only the web saw"), other.includes("a reply only the web saw")]).toEqual([true, false]);
     } finally { fm.classicChannels = rooms; }
   });
+  it("#2085 review, live: a web message whose copy is sent after a guest's poll reaches its next poll (after=<cursor>), once", async () => {
+    vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
+    const cookie = cookieOf(session("guest", ALICE));
+    fm.emitSseEvent("message", { instance: "a", sender: "bob", role: "user", text: "held echo note", ts: new Date().toISOString(), messageId: "web-held", from: `${BOB.adapterId}:${BOB.userId}` });
+    const first = JSON.parse((await get("/ui/poll", cookie)).body);
+    expect(first.messages.map((m: { text: string }) => m.text)).not.toContain("held echo note");
+    fm.webMessageInChannel("a", "web-held");
+    const next = JSON.parse((await get(`/ui/poll?after=${encodeURIComponent(first.cursor)}`, cookie)).body);
+    expect(next.messages.map((m: { text: string }) => m.text)).toEqual(["held echo note"]);
+    const again = JSON.parse((await get(`/ui/poll?after=${encodeURIComponent(next.cursor)}`, cookie)).body);
+    expect(again.messages.map((m: { text: string }) => m.text), "not sent twice").not.toContain("held echo note");
+  });
   it("the poll: the projected status, and only the chat it may see (an agent's web-only note is not); an admin's poll unchanged", async () => {
     vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
     fm.emitSseEvent("message", { instance: "a", sender: "a", text: "another private note", ts: new Date().toISOString(), role: "agent" });
