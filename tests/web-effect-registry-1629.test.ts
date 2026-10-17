@@ -624,3 +624,102 @@ describe("#1629 local Trial admission in the SAME registry (stage protocol model
   });
 
 });
+
+describe("#2055: a safety denial is named from the history's own read", () => {
+  it.each([["off", "safety_off"], ["paused", "paused"], ["interrupted", "interrupted"], ["unknown", "safety_unknown"], ["ok", "safety_unknown"]])("status %s → %s, and nothing mounts", async (state, reason) => {
+    const h = rig(); h.safety.allowed.mockReturnValue(false); (h.safety as any).status = vi.fn(() => ({ state, history: null }));
+    await h.admit();
+    expect(h.frames()).toHaveLength(0); expect(h.safety.begin).not.toHaveBeenCalled();
+    expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
+  });
+  it("an unreadable or missing status read stays unknown (still denied)", async () => {
+    for (const status of [() => { throw Error("unreadable"); }, undefined]) {
+      const h = rig(); h.safety.allowed.mockReturnValue(false); (h.safety as any).status = status;
+      await h.admit();
+      expect(h.frames()).toHaveLength(0); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "safety_unknown" });
+    }
+  });
+});
+
+describe("#2055: a sticky safety state outranks a waiting reason", () => {
+  it("an effect waiting behind a dialog reads safety_off when its history is off", async () => {
+    const h = rig(); h.safety.allowed.mockReturnValue(false); (h.safety as any).status = vi.fn(() => ({ state: "off", history: null }));
+    await h.admit(h.descriptors(1, { layer: "front" }), gates({ modal: true }));
+    expect(h.frames()).toHaveLength(0); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "safety_off" });
+  });
+  it("an ok history leaves the waiting reason alone", async () => {
+    const h = rig(); (h.safety as any).status = vi.fn(() => ({ state: "ok", history: null }));
+    await h.admit(h.descriptors(1, { layer: "front" }), gates({ modal: true }));
+    expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "modal" });
+  });
+});
+
+describe("#2055 R2: one display precedence through the real snapshot (Prism)", () => {
+  const withStatus = (h: any, fn: (id: string) => string) => { h.safety.status = vi.fn((id: string) => ({ state: fn(id), history: null })); };
+  it("a queued descriptor with an OFF history reads off, not waiting for a slot; an ordinary queue still queues", async () => {
+    const h = rig(), ds = h.descriptors(4); withStatus(h, id => (id === ds[3].id ? "off" : "ok"));
+    await h.admit(ds);
+    expect(h.frames()).toHaveLength(3);
+    expect(h.api.snapshot()[3]).toMatchObject({ verdict: "off", reason: "safety_off", queuePos: null, phase: null });
+    const q = rig(), qs = q.descriptors(4); withStatus(q, () => "ok"); await q.admit(qs);
+    expect(q.api.snapshot()[3]).toMatchObject({ verdict: "queued", reason: "frame_limit" });
+  });
+  it("the third automatic pause reads off in the same page; a pause that is not the third still reads paused", async () => {
+    for (const [after, reason] of [["off", "safety_off"], ["paused", "paused"]] as const) {
+      const h = rig(); let state = "ok"; withStatus(h, () => state); h.safety.pause.mockImplementation(() => { state = after; return true; });
+      await h.admit(); h.frames()[0].ready();
+      for (const t of [1000, 2000, 3000, 4000, 5000]) { h.frame(t); h.timer(t); }
+      expect(h.safety.pause).toHaveBeenCalledOnce(); expect(h.frames()[0].state().removed).toBe(true);
+      expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
+    }
+  });
+  it("another tab's OFF or interruption replaces safety_revoked; an unreadable history stays revoked (fail-closed)", async () => {
+    for (const [state, reason] of [["off", "safety_off"], ["interrupted", "interrupted"], ["throw", "safety_revoked"]] as const) {
+      const h = rig(); await h.admit(); h.frames()[0].ready();
+      h.safety.allowed.mockReturnValue(false);
+      (h.safety as any).status = vi.fn(() => { if (state === "throw") throw Error("unreadable"); return { state, history: null }; });
+      h.emit("storage"); await flush();
+      expect(h.frames()[0].state().removed).toBe(true);
+      expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
+    }
+  });
+  it.each([[{ reducedMotion: true }, "reduced_motion"], [{ saveData: true }, "save_data"], [{ show: false }, "disabled"], [{ optIn: false }, "preview_unavailable"],
+    [{ safe: true }, "safe_mode"], [{ publicLink: true }, "public_link"]])("a closed global gate %o is named %s", async (patch, reason) => {
+    const h = rig(), ds = await h.admit(); h.api.update(ds, gates(patch)); await flush();
+    expect(h.frames().every((f: any) => f.state().removed)).toBe(true); expect(h.api.snapshot()[0]).toMatchObject({ verdict: "off", reason });
+  });
+  it("unknown gates stay unknown", async () => {
+    const h = rig(), ds = await h.admit(); h.api.update(ds, { ...gates(), show: "maybe" } as any); await flush();
+    expect(h.api.snapshot()[0].reason).not.toMatch(/reduced_motion|save_data|disabled|preview_unavailable|safe_mode|public_link/);
+  });
+});
+
+describe("#2055 R3: a re-entered status read never writes a stale display reason (Prism)", () => {
+  it("a nested update for another device keeps its own reason; the outer read's OFF is dropped", async () => {
+    const h = rig(), ds = h.descriptors(1); let nested = false;
+    (h.safety as any).status = vi.fn((_id: string, device: string) => {
+      if (!nested && device === "standard") { nested = true; h.api.update(ds, gates({ constrained: true })); return { state: "off", history: null }; }
+      return { state: device === "constrained" ? "paused" : "off", history: null };
+    });
+    h.safety.allowed.mockReturnValue(false);
+    const view = h.api.update(ds, gates()); await flush();
+    expect(nested).toBe(true);
+    expect(view[0]).toMatchObject({ reason: "paused" }); expect(h.api.snapshot()[0]).toMatchObject({ reason: "paused" });
+  });
+  it("a stale ok read does not delete the nested current name", async () => {
+    const h = rig(), ds = h.descriptors(1); let nested = false;
+    (h.safety as any).status = vi.fn((_id: string, device: string) => {
+      if (!nested && device === "standard") { nested = true; h.api.update(ds, gates({ constrained: true })); return { state: "ok", history: null }; }
+      return { state: "off", history: null };
+    });
+    h.safety.allowed.mockReturnValue(false);
+    h.api.update(ds, gates()); await flush();
+    expect(h.api.snapshot()[0]).toMatchObject({ reason: "safety_off" });
+  });
+  it("a read that disposes the registry writes nothing and does not throw", async () => {
+    const h = rig(), ds = h.descriptors(1);
+    (h.safety as any).status = vi.fn(() => { h.api.dispose(); return { state: "off", history: null }; });
+    h.safety.allowed.mockReturnValue(false);
+    expect(() => h.api.update(ds, gates())).not.toThrow(); await flush();
+  });
+});

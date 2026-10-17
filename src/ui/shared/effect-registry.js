@@ -91,6 +91,26 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   const current = s => !dead && !blocked && slots.get(s.d.key) === s && s.live;
   const tell = () => { if (dead) return; const state = view(), stamp = JSON.stringify(state); if (stamp === lastView) return; lastView = stamp; try { onChange(state); } catch { /* a display callback cannot admit code */ } };
   const receipt = (fn, ...args) => { try { return Reflect.apply(fn, safety, args); } catch { return null; } };
+  // #2055: the history's own read names a denial; any other answer stays unknown (and denied).
+  const SAFETY_REASON = Object.freeze({ __proto__: null, off: "safety_off", paused: "paused", interrupted: "interrupted" });
+  // Display only: the sticky history state per descriptor, which outranks a waiting reason (a queue, a dialog, typing)
+  // because it is what Resume must answer. Admission, caps, latches and safety policy never read it.
+  const named = new Map();
+  // The read can re-enter (an update from a callback): only a pass still current, for the same device, may write.
+  const nameSafety = (d, dev = device()) => {
+    const proposed = revision;
+    const reason = d.trialStage ? null : SAFETY_REASON[receipt(safety.status, d.id, dev)?.state];
+    if (dead || proposed !== revision || dev !== device()) return false;
+    if (reason) named.set(d.key, { identity: signature(d), reason }); else named.delete(d.key);
+    return true;
+  };
+  // Display only: the closed global gate a row is waiting on, when the host knows it (else the caller's unknown).
+  const gateReason = () => {
+    if (!gatesKnown()) return null;
+    const c = context;
+    return c.safe ? "safe_mode" : c.publicLink ? "public_link" : c.reducedMotion ? "reduced_motion" : c.saveData ? "save_data"
+      : !(c.enabled && c.show) ? "disabled" : !(c.previewReady && c.optIn) ? "preview_unavailable" : null;
+  };
   const clearMarker = (s, why) => {
     if (!s.token) return true;
     const token = s.token; s.token = null;
@@ -110,6 +130,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       paused.set(s.d.key, signature(s.d));
       if (receipt(safety.pause, { id: s.d.id, device: s.device, reason: why, metrics: s.budget?.snapshot().metrics ?? null }) !== true) blocked = "safety_unknown";
     }
+    if (count || why === "safety_revoked") nameSafety(s.d, s.device);   // #2055: the third pause, or another tab's, says off now
     clearMarker(s, why);
     if (s.owner) { try { onRetire(s.owner, why); } catch { /* an observation cannot prevent physical cleanup */ } }
     if (blocked) for (const other of [...slots.values()]) retire(other, blocked);
@@ -134,11 +155,15 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   }
   const globalAllowed = (d = null) => eligible(d) && host.document.visibilityState === "visible";
   const signature = d => d.identity;
+  // A frame stopped because its gates closed is recorded as gates_unknown; when the host knows which gate, say it.
+  const shown = why => (why === "gates_unknown" && !eligible() && gateReason()) || why;
   function view() {
     return descriptors.map(d => {
-      const r = results.get(d.key) ?? { verdict: "off", reason: blocked ?? "unknown", queuePos: null }, s = slots.get(d.key);
-      return { key: d.key, id: d.id, ...r, phase: s?.frame ? s.ready ? "running" : "starting" : s ? "loading" : null,
-        quality: s?.budget?.snapshot().quality ?? null, reason: blocked ?? ((paused.get(d.key) === signature(d)) ? "paused" : failures.get(d.key)?.identity === signature(d) ? failures.get(d.key).reason : s && context?.hidden ? "hidden" : r.reason) };
+      const r = results.get(d.key) ?? { verdict: "off", reason: blocked ?? (!eligible() && gateReason()) ?? "unknown", queuePos: null }, s = slots.get(d.key);
+      // #2055 one display precedence: a global latch, then the sticky safety history, then this page's own pause/failure.
+      const n = named.get(d.key), sticky = n && n.identity === signature(d) ? n.reason : null;
+      return { key: d.key, id: d.id, ...r, ...(sticky && r.verdict === "queued" ? { verdict: "off", queuePos: null } : {}), phase: s?.frame ? s.ready ? "running" : "starting" : s ? "loading" : null,
+        quality: s?.budget?.snapshot().quality ?? null, reason: blocked ?? sticky ?? ((paused.get(d.key) === signature(d)) ? "paused" : failures.get(d.key)?.identity === signature(d) ? shown(failures.get(d.key).reason) : s && context?.hidden ? "hidden" : r.reason) };
     });
   }
   function schedule() {
@@ -172,7 +197,9 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     const stock = eligible() ? coverage() : null;
     if (blocked || !eligible() || !stock) {
       if (!stopAll(blocked ?? "gates_unknown")) return;
-      results.clear(); tell(); return;
+      results.clear();
+      if (!blocked) for (const d of descriptors) if (!nameSafety(d) || dead || proposal !== revision) return;
+      tell(); return;
     }
     // Hidden frames already owned may survive for <=10 s, but no new frame or load is admitted while hidden.
     const ctx = { ...context, hidden: false };
@@ -183,6 +210,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (dead || proposal !== revision) return;
       ds.push({ ...d, paused: !allowed || d.paused === true || paused.get(d.key) === signature(d) || failures.get(d.key)?.identity === signature(d) });
     }
+    for (const d of descriptors) if (!nameSafety(d) || dead || proposal !== revision) return;
     const allocation = allocateEffectFrames(ds, ctx); results.clear();
     for (const r of allocation) {
       const d = descriptors.find(d => d.key === r.key);
@@ -237,7 +265,13 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (slots.size >= max || loads.size >= max) break;
       const permitted = receipt(safety.allowed, d.id, device());
       if (proposal !== revision) return;
-      if (permitted !== true) { results.set(d.key, { verdict: "off", reason: "safety_unknown", queuePos: null }); continue; }
+      if (permitted !== true) {
+        // #2055: say which denial it is. Only the safety history's own read names it; anything else stays unknown (still denied).
+        const st = receipt(safety.status, d.id, device());
+        if (proposal !== revision) return;
+        const why = SAFETY_REASON[st?.state] ?? "safety_unknown";
+        results.set(d.key, { verdict: "off", reason: why, queuePos: null }); continue;
+      }
       if (slots.has(d.key) || slots.size >= max || loads.size >= max || !globalAllowed(d) || context.hidden || !coverage(d) || proposal !== revision || !descriptors.some(x => x.key === d.key && signature(x) === signature(d) && x.element === d.element)) break;
       const rect = position(d, coverage(d));
       if (dead || proposal !== revision) return;

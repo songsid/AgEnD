@@ -2,7 +2,7 @@
  * #1958 PR B2: identity colours on the page.
  * - The page's resolver (identity-color.js) is the server's (web-identity-palette.ts, web-identity-color.ts): the same
  *   palettes, places, shades and order — pinned here so the two never drift.
- * - The sidebar row: `idc` plus one class per place (default ring + bar), both modes' colours as custom properties set
+ * - The sidebar row: `idc` plus one class per place (#2056: by default all three), both modes' colours as custom properties set
  *   through the CSSOM; nothing when colours are off or shown nowhere; the agent's tier only while themes are shown.
  * - The Color dialog reads the person's choice, saves a colour and places, and Reset clears both.
  * - Settings → Web appearance: the default places and Turn off colours are host prefs (color.show / color.off), and
@@ -103,9 +103,9 @@ const prop = (name: string, k: string) => (row(name).style as any)[k] ?? row(nam
 
 describe("the sidebar row", () => {
   afterEach(async () => { await setHost({ "color.show": null, "color.off": null, "fx.show": null }); themes.setThemesShown(true); });
-  it("default places (ring + bar); a person's choice; the agent's; nowhere — and both modes' colours set through the CSSOM", async () => {
+  it("default places (#2056: all three); a person's choice; the agent's; nowhere — and both modes' colours set through the CSSOM", async () => {
     await mountNav();
-    expect(cls("alpha")).toEqual(["id-bar", "id-ring", "idc"]);
+    expect(cls("alpha")).toEqual(["id-bar", "id-name", "id-ring", "idc"]);
     expect([prop("alpha", "--id-light"), prop("alpha", "--id-dark")]).toEqual(["#3f7286", "#92c2d4"]);
     expect(cls("beta")).toEqual(["id-name", "idc"]);
     expect([prop("beta", "--id-light"), prop("beta", "--id-name-light")]).toEqual(["#cf222e", "#cf222e"]);
@@ -114,11 +114,13 @@ describe("the sidebar row", () => {
     expect(cls("delta"), "shown nowhere: nothing painted").toEqual([]);
     expect(prop("delta", "--id-light")).toBeFalsy();
   });
-  it("choosing ring + bar as the default unsets it (the built-in default, not a copy of it); another choice is kept", async () => {
+  it("choosing all three as the default unsets it (the built-in default, not a copy of it); another choice, ring + bar included, is kept", async () => {
     await mountNav();
     C.setDefaultPlaces(["name"]);
     expect(prefs.prefInForce("color.show")).toEqual({ value: ["name"] });
     C.setDefaultPlaces(["bar", "ring"]);
+    expect(prefs.prefInForce("color.show"), "#2056: the old default is now a choice of its own").toEqual({ value: ["bar", "ring"] });
+    C.setDefaultPlaces(["ring", "bar", "name"]);
     expect(prefs.prefInForce("color.show")).toEqual({ value: null });
     await flush(); await settle();
   });
@@ -138,7 +140,7 @@ describe("the sidebar row", () => {
     await mountNav();
     themes.setThemesShown(false);
     await settle(2);
-    expect(cls("gamma")).toEqual(["id-bar", "id-ring", "idc"]);
+    expect(cls("gamma")).toEqual(["id-bar", "id-name", "id-ring", "idc"]);
     expect(prop("gamma", "--id-light")).toBe("#123456");
   });
 });
@@ -165,7 +167,7 @@ describe("the Color dialog", () => {
     await settle();
     button(d, "Save").click();
     await settle(3);
-    expect(posts).toEqual([{ url: "/api/profile/alpha", body: { color: "preset:blue", color_show: ["bar"] } }]);
+    expect(posts).toEqual([{ url: "/api/profile/alpha", body: { color: "preset:blue", color_show: ["name", "bar"] } }]);   // all three by default, Ring unticked
     expect(pg!.root.querySelector("dialog"), "closed after saving").toBeFalsy();
   });
   it("a custom colour, and Reset clears the colour and the places", async () => {
@@ -204,11 +206,12 @@ describe("Settings → Web appearance", () => {
   it("the default places and Turn off colours are host prefs", async () => {
     const card = await mountSettings();
     const [name] = [...card.querySelectorAll(".idc-places input")];
+    expect([...card.querySelectorAll(".idc-places input")].map((i: any) => i.checked), "#2056: all three by default").toEqual([true, true, true]);
     name.dispatchEvent(new g.Event("change", { bubbles: true }));
     card.querySelector(".s-colors-off").checked = true;
     card.querySelector(".s-colors-off").dispatchEvent(new g.Event("change", { bubbles: true }));
     await flush(); await settle();
-    expect(host).toMatchObject({ "color.show": ["name", "bar", "ring"], "color.off": true });
+    expect(host).toMatchObject({ "color.show": ["bar", "ring"], "color.off": true });
   });
   it("Restore defaults puts the appearance settings back and turns this person's custom CSS off", async () => {
     await setHost({ "color.show": ["name"], "color.off": true, "fx.show": false, "card.size": "l", "card.sizeByInstance": { alpha: "s" },

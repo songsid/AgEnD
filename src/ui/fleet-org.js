@@ -11,6 +11,7 @@ import { t, register } from "/assets/app-i18n.js";
 import { chatPath } from "/assets/app-route.js";
 import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
+import { modelText } from "/assets/instance-nav.js";
 
 register("org", {
   en: {
@@ -100,7 +101,7 @@ function Sending({ list }) {
 function Node({ n, sending }) {
   const alias = n.i && typeof n.i.display_name === "string" && n.i.display_name.trim() && n.i.display_name.trim() !== n.name ? n.i.display_name.trim() : "";
   const thread = n.info.thread;
-  const model = n.i && n.i.model ? n.i.model : "";
+  const model = n.i && n.i.model ? modelText(n.i) : "";
   return html`<li class=${`org-node st-${n.state}`}>
     <div class="org-node-head">
       <span class=${`dot ${DOT[n.state]}`} aria-hidden="true"></span>
