@@ -205,7 +205,8 @@ describe("FleetManager: where a reply landed; the marks recorded; a copy that ma
     const fm: any = new FleetManager(home);
     fm.fleetConfig = { channels: [{ id: "dc", type: "discord" }, { id: "tg", type: "telegram" }], instances: { a: { channel_id: "dc", topic_id: "42" }, b: { channel_id: "tg", topic_id: "42" }, general: { general_topic: true, channel_id: "dc" } } };
     fm.worlds.set("dc", { id: "dc", groupId: "G" });
-    fm.classicChannels = { getAll: () => [{ instanceName: "room", adapterId: "tg", channelId: "5550001" }], getChannelIdByInstance: () => undefined, getAdapterIdByInstance: () => undefined };
+    fm.classicChannels = { getAll: () => [{ instanceName: "room", adapterId: "tg", channelId: "5550001" }],
+      getChannelIdByInstance: (n: string) => (n === "room" ? "5550001" : undefined), getAdapterIdByInstance: (n: string) => (n === "room" ? "tg" : undefined) };
     return fm;
   }
   it("landedInOwnChannel: its topic in its connection's group; its room; nothing else", () => {

@@ -9375,8 +9375,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!error && result != null && msg.statusOnly !== true) {
           try {
             // #1920 §5.2: shown to the instance's guests only when it landed in the instance's own topic or room.
-            const inChannel = outAdapter !== WEB_ONLY_REPLY_SINK
-              && this.landedInOwnChannel(instanceName, contextAdapterId ?? this.getInstanceAdapterId(instanceName), result);
+            let inChannel = false;
+            try {
+              inChannel = outAdapter !== WEB_ONLY_REPLY_SINK
+                && this.landedInOwnChannel(instanceName, contextAdapterId ?? this.getInstanceAdapterId(instanceName), result);
+            } catch { /* not known: not the channel's (fail closed), and the bookkeeping below still runs */ }
             void this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView, inChannel);
           } catch (err) {
             this.logger.warn({ err, instanceName }, "Reply delivered but post-delivery bookkeeping failed");
@@ -9441,8 +9444,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private landedInOwnChannel(instance: string, adapterId: string | undefined, sent: unknown): boolean {
     const s = sent && typeof sent === "object" ? sent as { chatId?: unknown; threadId?: unknown } : {};
     if (!adapterId || typeof s.chatId !== "string" || !s.chatId) return false;
-    const room = this.classicChannels?.getAll().find((r) => r.instanceName === instance);
-    if (room) return room.adapterId === adapterId && room.channelId === s.chatId;
+    const roomId = this.classicChannels?.getChannelIdByInstance(instance);
+    if (roomId !== undefined) return (this.classicChannels?.getAdapterIdByInstance(instance) ?? this.getPrimaryAdapterId()) === adapterId && roomId === s.chatId;
     const cfg = this.fleetConfig?.instances && Object.hasOwn(this.fleetConfig.instances, instance) ? this.fleetConfig.instances[instance] : undefined;
     const world = this.worlds.get(adapterId);
     if (!cfg || this.getInstanceAdapterId(instance) !== adapterId || !world?.groupId || s.chatId !== world.groupId) return false;
