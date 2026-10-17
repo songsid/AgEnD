@@ -120,6 +120,9 @@ export interface FleetContext {
    * restart may bring them back — the caller must say so, not report success).
    */
   revokeWebSessions?(): { count: number; durable: boolean };
+  /** #1920 step 4: a non-admin's `/web` while guest sign-in is on (decided synchronously), and its handling. */
+  isGuestWebAsk?(adapterId: string | undefined, userId: string): boolean;
+  guestWebCommand?(ask: { adapterId: string; userId: string; username?: string; arg: string; replyHere: (text: string) => Promise<unknown>; replyPrivately?: (text: string) => Promise<unknown> }): Promise<boolean>;
   /** Persist and edit one `/update` message across the fleet process restart. */
   beginUpdateProgress?(adapter: import("./channel/types.js").ChannelAdapter, chatId: string, threadId: string | undefined, messageId: string): void;
   failUpdateProgress?(message: string): void;

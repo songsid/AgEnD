@@ -655,6 +655,7 @@ export class TopicCommands {
     const text = msg.text?.trim();
     if (!text) return false;
     const command = typedCommand(GENERAL_FORMS, text, msg.source);
+    if (command === "dashboard" && this.ctx.isGuestWebAsk?.(msg.adapterId, msg.userId)) return this.guestWeb(msg);
     const refusal = this.tableRefusal(msg, command, "general");
     if (refusal) { await this.sendRefusal(msg, refusal); return true; }
 
@@ -765,6 +766,18 @@ export class TopicCommands {
   }
 
   /**
+   * #1920 step 4: a non-admin's typed `/web` while guest sign-in is on — in General or any topic of the fleet (the
+   * table keeps /web for fleet admins, so this runs before it). The code goes by DM; only a short line is posted here.
+   */
+  private async guestWeb(msg: InboundMessage): Promise<boolean> {
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter || !msg.adapterId || !this.ctx.guestWebCommand) return false;
+    const arg = (msg.text ?? "").trim().replace(/^\/(?:dashboard|web)(?:@\S+)?/i, "").trim().toLowerCase();
+    return this.ctx.guestWebCommand({ adapterId: msg.adapterId, userId: msg.userId, username: msg.username, arg,
+      replyHere: text => adapter.sendText(msg.chatId, text, { threadId: msg.threadId }) });
+  }
+
+  /**
    * /dashboard (TG): admin-only menu in General; codes are sent privately.
    * `/dashboard revoke` also closes the public link and signs browsers out.
    */
@@ -801,6 +814,7 @@ export class TopicCommands {
     // to General (#1148) instead of handing it to the agent. No branch below runs it.
     const command = typedCommand(INSTANCE_FORMS, text, msg.source)
       ?? (inGeneral ? undefined : typedCommand(GENERAL_FORMS, text, msg.source));
+    if (command === "dashboard" && this.ctx.isGuestWebAsk?.(msg.adapterId, msg.userId)) return this.guestWeb(msg);
     const refusal = this.tableRefusal(msg, command, inGeneral ? "general" : "fleet");
     if (refusal) { await this.sendRefusal(msg, refusal); return true; }
 

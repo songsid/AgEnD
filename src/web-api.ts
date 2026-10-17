@@ -2069,7 +2069,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // the fleet-wide switch is off for a room that is unset) resolved at send time inside sendClassicWebEcho.
       const canClassicEcho = ctx.isClassicInstance?.(instance) === true && !!ctx.sendClassicWebEcho;
       const settleClassicEcho = canClassicEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
-        const posted = await ctx.sendClassicWebEcho!(instance, formatWebChannelEcho(person.name, preview, t("web.echo_full_text")), person.name);
+        const posted = await ctx.sendClassicWebEcho!(instance, formatWebChannelEcho(person.name, preview, t("web.echo_full_text"), { guest: !!guest }), person.name);
         if (posted > 0) ctx.webMessageInChannel?.(instance, messageId);       // #1920 §5.2: the room saw it
       }) : undefined;
       const settleEcho = canEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
@@ -2077,7 +2077,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         if ((ctx.getAdapterForInstance ? ctx.getAdapterForInstance(instance) : ctx.adapter) !== syncAdapter
           || (ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "")) !== groupId
           || ctx.fleetConfig?.instances[instance]?.topic_id !== topicId) return;
-        const sent = await syncAdapter.sendText(String(groupId), formatWebChannelEcho(person.name, preview, t("web.echo_full_text")), { threadId: String(topicId), format: "text", allowedMentions: { parse: [] } });
+        const sent = await syncAdapter.sendText(String(groupId), formatWebChannelEcho(person.name, preview, t("web.echo_full_text"), { guest: !!guest }), { threadId: String(topicId), format: "text", allowedMentions: { parse: [] } });
         ctx.webMessageInChannel?.(instance, messageId);                          // #1920 §5.2: the topic saw it
         return sent;
       }) : undefined;

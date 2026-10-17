@@ -1737,6 +1737,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   sseHeartbeatMs = SSE_HEARTBEAT_MS;
   /** The dashboard's login codes. Memory only: a code that outlives the process is a code nobody can prove was not copied. */
   private webLoginCodes: WebLoginCodes | null = null;
+  /**
+   * #1920 step 4: guests' codes, apart from the admins' — one outstanding at a time, as there, but a guest's `/web`
+   * never withdraws an admin's code (or the reverse). Local sign-in only for now (audience "local").
+   */
+  private webGuestLoginCodes: WebLoginCodes | null = null;
+  /** #1920 step 4: when each account last got a guest code (monotonic) — one a minute, so `/web` is no DM flood. */
+  private readonly guestCodeAskedAt = new Map<string, number>();
   /** #1570: browsers that may ask the sign-in page for a fresh code, and how often they may. */
   private returningDevices: ReturningDevices | null = null;
   private readonly codeRequestLimiter = new CodeRequestLimiter();
@@ -4354,6 +4361,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     const scope = door.scope;
+    // #1920 step 4: a non-admin's /web while guest sign-in is on is theirs to sign in as a guest (or revoke their own)
+    // — before the table, which keeps /web for fleet admins. Per account: it touches no instance binding.
+    // Decided synchronously, so an admin's /web still reaches the table with no await after the door (#1399).
+    if (data.command === "dashboard" && this.isGuestWebAsk(adapterId, data.userId)) {
+      await this.guestWebCommand({ adapterId, userId: data.userId, username: data.username,
+        arg: String(data.options?.action ?? "").trim().toLowerCase(), replyHere: text => data.respond(text), replyPrivately: text => data.respond(text) });
+      return;
+    }
 
     const spec = commandSpec(data.command);
     if (!spec) {
@@ -5777,6 +5792,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         },
       });
     }
+    if (!this.webGuestLoginCodes) {
+      this.webGuestLoginCodes = new WebLoginCodes({
+        onEvent: event => {
+          if (event === "burned") this.logger.warn("A guest web login code was used up by wrong attempts");
+          else if (event === "breaker-open") this.logger.warn("Guest web sign-in paused: too many wrong login codes");
+        },
+      });
+    }
   }
 
   /**
@@ -6195,6 +6218,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.initializeWebSessions();
     void this.publicWebLink?.close("dashboard revoke");
     this.webLoginCodes!.revoke();
+    this.webGuestLoginCodes!.revoke();
     // #1570: no browser may ask the sign-in page for a code any more.
     const devices = this.returningDevices!.revokeAll();
     const sessions = this.webSessions!.revokeAll();
@@ -6202,6 +6226,98 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (result.durable) this.logger.info({ count: result.count, devices: devices.count }, "Web sessions revoked (all)");
     else this.logger.warn({ count: result.count }, "Web sessions revoked in memory only — the session file could not be updated or removed");
     return result;
+  }
+
+  /** #1920 step 4: whether a `/web` is a guest's — guest sign-in on, and not from a fleet admin (theirs runs as before). */
+  isGuestWebAsk(adapterId: string | undefined, userId: string): boolean {
+    return !!adapterId && this.fleetConfig?.web?.guests?.enabled === true && !this.isFleetAdmin(userId, adapterId);
+  }
+
+  /** #1920 step 4 (auth-api): a guest code's account may still sign in — guests on, and something in its scope now. */
+  guestSignInAllowed(account: { adapterId: string; userId: string }): boolean {
+    return this.fleetConfig?.web?.guests?.enabled === true && !this.isFleetAdmin(account.userId, account.adapterId) && this.guestScope(account).size > 0;
+  }
+
+  /**
+   * #1920 §5.4: a guest's own `/web revoke` — its sessions and its outstanding code; nobody else's (an admin's revokes
+   * everyone's, as before).
+   */
+  revokeGuestWebSessions(owner: { adapterId: string; userId: string }): { count: number; durable: boolean } {
+    this.initializeWebSessions();
+    this.webGuestLoginCodes!.revokeRecipient(owner.adapterId, owner.userId);
+    const ended = this.webSessions!.revokeAll(r => r.tier === "guest" && r.owner?.adapterId === owner.adapterId && r.owner.userId === owner.userId);
+    this.logger.info({ adapterId: owner.adapterId, count: ended.count, durable: ended.durable }, "Guest web sessions revoked by their account");
+    return ended;
+  }
+
+  /**
+   * #1920 §2.3 (step 4): `/web` from someone who is not a fleet admin, while guest sign-in is on. `revoke` ends their
+   * own guest sessions. Otherwise a guest code (tier guest, bound to this account) goes privately — a DM, else the
+   * slash command's ephemeral answer (`replyPrivately`) — once a minute at most, and only when their scope (from what
+   * they may already use in chat, rooms read at sign-in) holds something. The code itself is never posted where asked.
+   * Callers ask isGuestWebAsk first (synchronously); false here too when it is not a guest's.
+   */
+  async guestWebCommand(ask: {
+    adapterId: string; userId: string; username?: string; arg: string;
+    replyHere: (text: string) => Promise<unknown>;
+    replyPrivately?: (text: string) => Promise<unknown>;
+  }): Promise<boolean> {
+    if (!this.isGuestWebAsk(ask.adapterId, ask.userId)) return false;
+    const owner = { adapterId: ask.adapterId, userId: ask.userId };
+    const say = (text: string) => ask.replyHere(text).catch(() => undefined);
+    if (ask.arg === "revoke") {
+      const ended = this.revokeGuestWebSessions(owner);
+      await say(t(ended.durable ? "web.guest_revoked" : "web.guest_revoked_not_durable", ended.count));
+      return true;
+    }
+    const token = this.webToken;
+    const adapter = this.adapters.get(ask.adapterId);
+    if (this.shuttingDown || !token || !adapter) { await say(t("dashboard.starting")); return true; }
+    const key = `${owner.adapterId}\u0000${owner.userId}`, asked = this.guestCodeAskedAt.get(key);
+    if (asked !== undefined && performance.now() - asked < 60_000) { await say(t("web.guest_wait")); return true; }
+    // §3.2: its rooms are read at sign-in (bounded; never longer than the reads' own deadline).
+    await withinBudget(this.refreshGuestRooms(owner, { mode: "force" }), performance.now() + 6_000).catch(() => undefined);
+    const scope = this.guestScope(owner);
+    if (!scope.size) {
+      const open = this.worlds.get(owner.adapterId)?.accessManager.getMode() === "open";
+      await say(t(open ? "web.guest_not_set_up" : "web.guest_nothing"));
+      return true;
+    }
+    this.initializeWebSessions();
+    const codes = this.webGuestLoginCodes!;
+    if (codes.pausedForMs() > 0) { await say(t("web.guest_paused")); return true; }
+    this.guestCodeAskedAt.delete(key); this.guestCodeAskedAt.set(key, performance.now());
+    while (this.guestCodeAskedAt.size > 256) this.guestCodeAskedAt.delete(this.guestCodeAskedAt.keys().next().value as string);
+    const login = codes.issue({ tier: "guest", epoch: tokenEpoch(token), recipient: { adapterId: owner.adapterId, userId: owner.userId, ...(ask.username ? { username: ask.username } : {}) } });
+    const current = (): boolean => !this.shuttingDown && this.webToken === token && this.adapters.get(ask.adapterId) === adapter
+      && this.guestSignInAllowed(owner);
+    const privateText = `${t("web.guest_intro", scope.size)}\n${this.topicCommands.getDashboardText()}\n${t("dashboard.code", login.display, Math.round(LOGIN_CODE_TTL_MS / 60_000))}`;
+    const deadline = performance.now() + 10_000;
+    try {
+      let byDm = false;
+      try {
+        if (!adapter.sendDirect) throw new Error("DM unavailable");
+        await withinBudget(adapter.sendDirect(owner.userId, `${privateText}\n${t("dashboard.code_next")}`, { disablePreview: true }), Math.min(deadline, performance.now() + 5_000));
+        byDm = true;
+      } catch (err) {
+        this.logDashboardDmFailure(err);
+        if (!ask.replyPrivately || !current()) throw err;
+        const id = await withinBudget(ask.replyPrivately(privateText), deadline);   // a slash command's answer: ephemeral
+        if (!id) throw new Error("private delivery unconfirmed");
+      }
+      if (!current()) throw new Error("guest no longer admitted");
+      if (byDm) {
+        await this.sendCodeAlone((body, opts) => adapter.sendDirect!(owner.userId, body, opts), adapter.type, login.display);
+        if (!current()) throw new Error("guest no longer admitted");
+        await say(t("web.guest_sent"));
+      }
+    } catch (err) {
+      codes.revokeIfCurrent(login.issuanceId);
+      this.logger.info({ err: (err as Error)?.message, adapterId: owner.adapterId }, "Guest sign-in code was not delivered privately");
+      const start = adapter.type === "telegram" ? this.tgStartWebUrl(owner.adapterId) : null;
+      await say(start ? t("web.guest_dm_failed_link", start) : t("web.guest_dm_failed"));
+    }
+    return true;
   }
 
   /** #1570 (auth-api): this browser becomes a returning device of the code's owner. The cookie value, or null. */
@@ -6271,7 +6387,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Called by the sign-in endpoint: a login the operator did not make should be visible to them. */
-  onWebLogin(info: { label: string; surface: "local" | "gateway"; tier: string; handle: string }): void {
+  onWebLogin(info: { label: string; surface: "local" | "gateway"; tier: string; handle: string; owner?: { adapterId: string; userId: string } }): void {
+    // #1920 §2.3: a guest's sign-in is always said in General (web.notify_login is the operator's own sign-ins): who,
+    // and how many agents they now reach — admins stay aware of everyone who is not one of them.
+    if (info.tier === "guest" && info.owner) {
+      this.notifyFleetError(t("web.guest_login_notice", this.webPerson(info.owner).name, info.label, this.guestScope(info.owner).size, info.handle.slice(0, 8)));
+      return;
+    }
     if (this.fleetConfig?.web?.notify_login === false) return;
     // The session handle makes each notice distinct: notifyFleetError throttles by text, and a second
     // sign-in from the same kind of browser is exactly the one the operator most needs to hear about.

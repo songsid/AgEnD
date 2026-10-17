@@ -60,10 +60,14 @@ export interface AuthApiContext {
   readonly webToken: string | null;
   readonly webSessions: WebSessionStore | null;
   readonly webLoginCodes: WebLoginCodes | null;
+  /** #1920 step 4: guests' codes (local sign-in), redeemed when an admin's code does not match. */
+  readonly webGuestLoginCodes?: WebLoginCodes | null;
+  /** #1920 step 4: a guest code's account may still sign in (guests on, something in scope, not an admin). */
+  guestSignInAllowed?(account: { adapterId: string; userId: string }): boolean;
   readonly logger: Logger;
   /** Told after every successful sign-in, so the operator can be shown one they did not make. */
   confirmPublicWebLogin?(info: { label: string; handle: string; owner: LoginCodeOwner }, isCurrent: () => boolean): Promise<void>;
-  onWebLogin?(info: { label: string; surface: "local" | "gateway"; tier: SessionTier; handle: string }): void;
+  onWebLogin?(info: { label: string; surface: "local" | "gateway"; tier: SessionTier; handle: string; owner?: { adapterId: string; userId: string } }): void;
   /** #1570: record this browser as a returning device of the code's owner; the cookie value, or null when not kept. */
   rememberReturningDevice?(owner: LoginCodeOwner, input: { surface: "local" | "gateway"; label: string }): string | null;
   /** #1827: a sign-in as this account — its display name then is the web name it starts with. */
@@ -251,13 +255,22 @@ export function handleAuthRequest(
       const current = (): boolean => isWebRequestCurrent(req) && ctx.webToken === token
         && (!publicRequest || (!disconnected && !req.aborted && !(req.destroyed && !req.complete) && !res.destroyed && !res.writableEnded));
       if (!current()) { json(res, 401, { error: LOGIN_REFUSED_MESSAGE }); return; }
-      const result = codes.redeem(body.code, tokenEpoch(token), gateway?.exposureId ?? "local");
+      let result = codes.redeem(body.code, tokenEpoch(token), gateway?.exposureId ?? "local");
+      // #1920 step 4: not an admin's code — perhaps a guest's (its own store: a guest's /web never withdraws an admin's).
+      if (result.kind === "invalid" && ctx.webGuestLoginCodes) result = ctx.webGuestLoginCodes.redeem(body.code, tokenEpoch(token), gateway?.exposureId ?? "local");
       if (result.kind === "paused") {
         json(res, 429, { error: LOGIN_PAUSED_MESSAGE }, { "Retry-After": String(Math.ceil(result.retryAfterMs / 1000)) });
         return;
       }
       if (result.kind === "invalid") {
         ctx.logger.debug("web sign-in refused");
+        json(res, 401, { error: LOGIN_REFUSED_MESSAGE });
+        return;
+      }
+      // A guest code signs in only its account, and only while that account is still a guest with something to see
+      // (guest sign-in turned off, the account made an admin or out of scope since the code went out: refused).
+      if (result.tier === "guest" && (!result.recipient || !ctx.guestSignInAllowed?.(result.recipient))) {
+        ctx.logger.info("Guest web sign-in refused: the account is no longer admitted");
         json(res, 401, { error: LOGIN_REFUSED_MESSAGE });
         return;
       }
@@ -291,7 +304,7 @@ export function handleAuthRequest(
         }
       }
       ctx.logger.info({ handle: record.handle, label, tier: record.tier, surface: record.surface }, "Web sign-in");
-      try { if (!gateway) ctx.onWebLogin?.({ label, surface: record.surface, tier: record.tier, handle: record.handle }); } catch (err) { ctx.logger.debug({ err }, "web sign-in notice failed"); }
+      try { if (!gateway) ctx.onWebLogin?.({ label, surface: record.surface, tier: record.tier, handle: record.handle, ...(record.owner ? { owner: record.owner } : {}) }); } catch (err) { ctx.logger.debug({ err }, "web sign-in notice failed"); }
       // #1570: a code delivered privately to its owner makes this browser a returning device (a separate cookie; the
       // session id above is unrelated to it). A code with no owner (`agend web --code`) does not.
       let device: string | null = null;

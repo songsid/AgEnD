@@ -39,8 +39,12 @@ export function neutralizeWebEchoText(text: string): string {
   return result + neutralizeTokens(normalized.slice(offset));
 }
 
-export function formatWebChannelEcho(user: string, preview: string, fullTextNote = "full text in web chat"): string {
-  const label = clip(neutralizeWebEchoText(user).replace(/\s+/g, " "), 80) || "web-user";
+/**
+ * `guest` (#1920): the web person is a guest — the copy says so after the (clipped) name, so a name a guest chose can
+ * never pass for a member's or an admin's in the channel.
+ */
+export function formatWebChannelEcho(user: string, preview: string, fullTextNote = "full text in web chat", opts: { guest?: boolean } = {}): string {
+  const label = (clip(neutralizeWebEchoText(user).replace(/\s+/g, " "), 80) || "web-user") + (opts.guest ? " (guest)" : "");
   const header = `${WEB_ECHO_PREFIX}${label}: `;
   const body = neutralizeWebEchoText(preview);
   // Labels can expand short input dramatically. Keep one platform message:

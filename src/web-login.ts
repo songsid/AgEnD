@@ -150,6 +150,11 @@ export class WebLoginCodes {
     if (this.outstanding?.issuanceId === issuanceId) this.outstanding = null;
   }
 
+  /** #1920: withdraw the outstanding code if it went to this account (a guest's own `/web revoke`). */
+  revokeRecipient(adapterId: string, userId: string): void {
+    if (this.outstanding?.recipient?.adapterId === adapterId && this.outstanding.recipient.userId === userId) this.outstanding = null;
+  }
+
   revokeAudience(audience: string): void {
     if (this.outstanding?.audience === audience) this.outstanding = null;
   }
