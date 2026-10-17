@@ -52,7 +52,8 @@ export function startAppEffects({ store, window: host = window, factories = {} }
       if (!c.show) return "effectsOff";
       if (c.reducedMotion) return "reducedMotion";
       if (c.saveData) return "saveData";
-      if (!c.enabled || !c.trialReady) return "unsupported";
+      if (!c.enabled) return "unsupported";
+      if (!c.trialReady) return "transport";
       if (c.publicLink) return "localAdmin";
       if (c.hidden || doc.hasFocus?.() !== true) return "inactive";
       if (c.modal) return "dialog";

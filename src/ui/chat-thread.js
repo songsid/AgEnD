@@ -106,7 +106,7 @@ export function createThread(list, scroller, opts) {
       : `<span class="click-text">${inner}</span>`}</div>`;
   }
   function trialNow() { try { const t = opts.serverNow ? opts.serverNow() : Date.now(); return Number.isFinite(t) ? t : Infinity; } catch { return Infinity; } }
-  const trialReasons = new Set(["checking", "localAdmin", "chatChanged", "busy", "safe", "effectsOff", "reducedMotion", "saveData", "unsupported", "inactive", "dialog", "expired"]);
+  const trialReasons = new Set(["checking", "localAdmin", "chatChanged", "busy", "safe", "effectsOff", "reducedMotion", "saveData", "unsupported", "transport", "inactive", "dialog", "expired"]);
   function trialStatus(message) {
     const reason = opts.effectTrialStatus?.(message);
     return reason === "ready" || trialReasons.has(reason) ? reason : opts.canTryEffect?.(message) === true ? "ready" : "localAdmin";
