@@ -140,6 +140,65 @@ describe("#1629 CSSOM effect placement and trust holes", () => {
     expect(createEffectGeometry().ok).toBe(false); const h = fixture({ window: { document: {}, CSS: { supports: () => false } } }); expect(h.api.ok).toBe(false); expect(h.sheets[0].cssRules).toHaveLength(0);
   });
 });
+describe("#2057 unchanged presentation stays paintable with fresh evidence", () => {
+  it("checks actual styles and rect on every stable sync without rewriting CSS", () => {
+    const h = fixture(), b = h.bind(); expect(b.sync(rect, stock())).toBe(true);
+    h.style().setProperty.mockClear(); h.host.getComputedStyle.mockClear(); h.frame.getBoundingClientRect.mockClear();
+    for (let i = 0; i < 100; i++) expect(b.sync({ ...rect }, stock())).toBe(true);
+    expect(h.style().setProperty).not.toHaveBeenCalled();
+    expect(h.host.getComputedStyle.mock.calls.length).toBeGreaterThanOrEqual(100); expect(h.frame.getBoundingClientRect).toHaveBeenCalledTimes(100);
+  });
+  it.each(["add", "move", "remove"])("new %s holes hide before clip writes without an external hide", change => {
+    const h = fixture(), b = h.bind(); if (change !== "add") h.trusted.push(trust());
+    expect(b.sync(rect, h.proof())).toBe(true); const old = h.style().values.get("clip-path"); h.style().setProperty.mockClear();
+    if (change === "add") h.trusted.push(trust()); else if (change === "remove") h.trusted.length = 0; else h.trusted.splice(0, 1, trust({ x: 40, y: 35, width: 10, height: 10 }));
+    expect(b.sync(rect, h.proof())).toBe(true);
+    expect(h.style().setProperty.mock.calls[0]).toEqual(["visibility", "hidden", "important"]);
+    expect(h.style().values.get("clip-path")).not.toBe(old); expect(h.style().setProperty.mock.calls.at(-1)).toEqual(["visibility", "visible", "important"]);
+  });
+  it.each(["x", "y", "width", "height"])("changed requested %s hides before geometry writes", key => {
+    const h = fixture(), b = h.bind(); expect(b.sync(rect, stock())).toBe(true); h.style().setProperty.mockClear();
+    expect(b.sync({ ...rect, [key]: rect[key as keyof typeof rect] + 1 }, stock())).toBe(true);
+    expect(h.style().setProperty.mock.calls[0]).toEqual(["visibility", "hidden", "important"]);
+    expect(h.style().setProperty.mock.calls.at(-1)).toEqual(["visibility", "visible", "important"]);
+  });
+  it.each([null, { ok: true }, { ...stock(), front: false, agentFront: false }, { ...stock(), agentFront: false }])("stable geometry never replaces new permission evidence %s", proof => {
+    const h = fixture(), b = h.bind(); expect(b.sync(rect, stock())).toBe(true); expect(b.sync(rect, stock())).toBe(true); h.style().setProperty.mockClear();
+    expect(b.sync(rect, proof)).toBe(false); expect(h.style().values.get("visibility")).toBe("hidden");
+    expect(h.style().setProperty.mock.calls).toEqual([["visibility", "hidden", "important"]]);
+  });
+  it.each(["position", "pointerEvents", "visibility", "opacity", "zIndex", "clipPath"])("a newly drifted actual %s cannot pass stable verification", key => {
+    const h = fixture(), b = h.bind(); expect(b.sync(rect, stock())).toBe(true); const original = h.host.getComputedStyle.getMockImplementation()!;
+    h.host.getComputedStyle.mockImplementation(() => ({ ...original(), [key]: "unknown" }));
+    expect(b.sync(rect, stock())).toBe(false); expect(h.style().values.get("visibility")).toBe("hidden");
+  });
+  it.each(["x", "y", "width", "height"])("a newly drifted physical %s cannot pass stable verification", key => {
+    const h = fixture(), b = h.bind(); expect(b.sync(rect, stock())).toBe(true);
+    h.frame.getBoundingClientRect.mockReturnValue({ ...rect, [key]: rect[key as keyof typeof rect] + 1 });
+    expect(b.sync(rect, stock())).toBe(false); expect(h.style().values.get("visibility")).toBe("hidden");
+  });
+  it("a hidden binding must validate and reveal again, rather than returning a cached success", () => {
+    const h = fixture(), b = h.bind(); expect(b.sync(rect, stock())).toBe(true); b.hide(); h.style().setProperty.mockClear();
+    expect(b.sync(rect, stock())).toBe(true); expect(h.style().setProperty.mock.calls.at(-1)).toEqual(["visibility", "visible", "important"]);
+  });
+  it.each(["transform", "contain", "willChange", "zoom"])("fresh ancestor %s is checked even when the frame itself is unchanged", key => {
+    const h = fixture(), b = h.bind(); expect(b.sync(rect, stock())).toBe(true); const original = h.host.getComputedStyle.getMockImplementation()!;
+    h.host.getComputedStyle.mockImplementation(el => ({ ...original(el), ...(el === h.frame.parentElement ? { [key]: "unknown" } : {}) }));
+    expect(b.sync(rect, stock())).toBe(false); expect(h.style().values.get("visibility")).toBe("hidden");
+  });
+  it.each(["explicit", "denied", "changed"])("losing the hiding cascade on %s physically removes without geometry writes", action => {
+    const h = fixture(), b = h.bind(); expect(b.sync(rect, stock())).toBe(true); const original = h.host.getComputedStyle.getMockImplementation()!;
+    h.host.getComputedStyle.mockImplementation(() => ({ ...original(), visibility: "visible" })); h.frame.remove.mockImplementation(() => { h.frame.isConnected = false; }); h.style().setProperty.mockClear();
+    if (action === "explicit") b.hide(); else expect(b.sync(rect, action === "denied" ? null : stock([{ x: 20, y: 30, width: 10, height: 10 }]))).toBe(false);
+    expect(h.frame.remove).toHaveBeenCalledOnce(); expect(h.frame.isConnected).toBe(false);
+    expect(h.style().setProperty.mock.calls).toEqual([["visibility", "hidden", "important"]]);
+  });
+  it("a frame detached during the actual-rect read cannot retain a stable success", () => {
+    const h = fixture(), b = h.bind(); expect(b.sync(rect, stock())).toBe(true);
+    h.frame.getBoundingClientRect.mockImplementation(() => { h.frame.isConnected = false; return { ...rect }; });
+    expect(b.sync(rect, stock())).toBe(false);
+  });
+});
 describe("host rectangle snapshot", () => {
   it("rounds outward and never passes a DOMRect prototype into policy", () => {
     expect(hostEffectRect(trust({ x: 1.2, y: 2.8, width: 50.2, height: 30.3 }))).toEqual({ x: 1, y: 2, width: 51, height: 32 });

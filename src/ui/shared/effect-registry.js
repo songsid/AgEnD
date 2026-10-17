@@ -346,12 +346,17 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (changed) publishEnv(s, paint);
       if (s.ready) s.budget.frame();
       if (s.pointer) {
-        const packet = s.pointer; s.pointer = null;
+        const packet = s.pointer;
         const n = time(), b = s.budget.snapshot();
-        if (n !== null && n - packet.at <= 100 && permits(s.d, paint) && pointerGate(paint) && current(s) && b.forward && (s.lastPointer === null || n - s.lastPointer >= 1000 / b.pointerHz)) {
+        if (n === null || n - packet.at > 100 || !permits(s.d, paint) || !pointerGate(paint) || !current(s) || !b.forward) {
+          if (s.pointer === packet) s.pointer = null;
+        } else if (s.lastPointer === null || n - s.lastPointer >= 1000 / b.pointerHz) {
+          if (s.pointer === packet) s.pointer = null;
           const event = effectEvent("pointer", packet.fields, s.d.instance, packet.at);
           if (event && s.frame.send(event)) s.lastPointer = n;
         }
+        // Keep the latest fresh sample until the next eligible frame. An early rAF must
+        // not consume a click just because the preceding move used this rate interval.
       }
     }
     if (dead || proposal !== revision) return;

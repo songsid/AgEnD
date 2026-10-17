@@ -1,0 +1,1 @@
+fix: Keep unchanged Canvas Worker frame geometry paintable while checking fresh trust and actual geometry on every frame; retain a fresh coalesced pointer sample until its next permitted send interval.

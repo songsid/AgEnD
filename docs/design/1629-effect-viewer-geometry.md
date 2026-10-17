@@ -35,3 +35,13 @@ The future registry must hide immediately on relevant mutation/resize/scroll and
 ## Risk and rollback
 
 Conservative viewport/style rejection can hide a valid effect under unusual host CSS. Unknown capabilities remain unavailable instead of falling back to an unclipped frame. These files are unmounted and not in the static asset allowlist; reverting this PR removes the primitives without a data migration, configuration change or startup work. Future wiring must preserve that fail-closed behavior.
+
+## Product follow-up: unchanged presentation (#2057)
+
+After mounting, the registry calls `sync` every rAF. Repeatedly hiding a visible iframe, writing the same CSSOM geometry/clip and revealing it again invalidates WebKit presentation even when the Worker bitmap has already changed. A private headed Linux WebKit control observed delayed pixels in the native Xvfb framebuffer, independently of Playwright screenshots. This is a presentation defect, not evidence that the Worker failed to receive its input.
+
+`sync` may now leave an already revealed frame visible only after checking the new stock proof, current ancestor coordinate space, newly calculated clip, computed position/pointer behavior/visibility/opacity/layer and actual rectangle. It does not reuse a prior trust decision. If everything still matches, it performs no CSS writes. Changed holes, geometry, permissions, uncertain CSS or explicit invalidation still hide first; a lost hiding cascade physically removes the frame. Initial hidden binding and the pre-reveal checks remain required. Explicit `hide` clears the revealed state.
+
+The geometry unit suite pins repeated fresh checks with zero writes, new/moved/removed holes without a caller's preparatory hide, ancestor/physical/cascade drift and physical refusal. The native geometry recipe also checks 100 successive syncs, protected pixels, moved holes and an initially or subsequently hostile visibility cascade. Pointer-particle evidence and its per-case capture limitations are recorded separately in [the #2057 audit](2057-pointer-presentation.md).
+
+Rollback is a code revert, with no stored-data change. It restores the extra style writes and their presentation cost; it must not replace current trust checks with a cached permission.

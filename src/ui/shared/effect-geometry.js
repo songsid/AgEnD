@@ -70,36 +70,51 @@ export function createEffectGeometry({ window: host } = {}) {
       frame.remove();
       return { ok: false, reason: "geometry_unknown" };
     }
-    let dead = false;
+    let dead = false, shown = false;
     const hide = () => {
+      shown = false;
       try {
         rule.style.setProperty("visibility", "hidden", "important");
-        if (frame.isConnected === true && host.getComputedStyle(frame).visibility !== "hidden") frame.remove();
-      } catch { frame.remove(); }
+        if (frame.isConnected === true && host.getComputedStyle(frame).visibility !== "hidden") { frame.remove(); return false; }
+        return true;
+      } catch { frame.remove(); return false; }
     };
     const handle = { ok: true, hide,
       /** Same-turn host paint snapshot is mandatory, including behind/human placements. No DOM fallback. */
       sync(rect, stock) {
-        hide();
+        const refuse = () => { hide(); return false; };
         const proof = effectStockSnapshot(stock);
-        if (!effectStockAllows(proof, { layer, by })) return false;
-        if (dead || disposed || !hostEffectSpace(host, frame) || !rect || ![rect.x, rect.y, rect.width, rect.height].every(number) || ![rect.x, rect.y, rect.width, rect.height].every(Number.isInteger) || rect.width < 1 || rect.height < 1 || rect.width > 4096 || rect.height > 4096 || rect.width * rect.height > 8388608) { hide(); return false; }
+        if (!effectStockAllows(proof, { layer, by })) return refuse();
+        if (dead || disposed || !hostEffectSpace(host, frame) || !rect || ![rect.x, rect.y, rect.width, rect.height].every(number) || ![rect.x, rect.y, rect.width, rect.height].every(Number.isInteger) || rect.width < 1 || rect.height < 1 || rect.width > 4096 || rect.height > 4096 || rect.width * rect.height > 8388608) return refuse();
         let path = "none";
         if (layer === "front" && by !== "human") {
           const clipped = effectTrustClip(rect, proof.rects);
-          if (!clipped.ok) return false;
+          if (!clipped.ok) return refuse();
           path = clipped.path;
         }
 
         try {
+          const matches = visibility => {
+            const style = host.getComputedStyle(frame), actual = frame.getBoundingClientRect();
+            return style.position === "fixed" && style.pointerEvents === "none" && style.visibility === visibility
+              && style.opacity === (layer === "front" && by !== "human" ? "0.85" : "1") && style.zIndex === (layer === "front" ? "20" : "0")
+              && sameClip(path, rule.style.getPropertyValue("clip-path")) && sameClip(path, style.clipPath)
+              && ["x", "y", "width", "height"].every(key => number(actual[key]) && Math.abs(actual[key] - rect[key]) < 0.02)
+              && frame.isConnected === true && frame.ownerDocument === host.document;
+          };
+          // A fresh proof and actual viewport/clip are still checked every frame. Rewriting an
+          // already verified presentation makes WebKit repeatedly invalidate the iframe's paint.
+          if (shown && matches("visible")) return true;
+          // Changed or unproven geometry is hidden before writes and verified before reveal.
+          if (!hide()) return false;
           for (const key of ["x", "y", "width", "height"]) rule.style.setProperty(key === "x" ? "left" : key === "y" ? "top" : key, `${rect[key]}px`, "important");
           rule.style.setProperty("clip-path", path, "important");
           if (!sameClip(path, rule.style.getPropertyValue("clip-path"))) return false;
           // The stylesheet can lose the cascade to another host rule. Verify the actual viewport and clip
           // before revealing: holes expressed in planned coordinates cannot protect a transformed frame.
-          const style = host.getComputedStyle(frame), actual = frame.getBoundingClientRect();
-          if (style.position !== "fixed" || style.pointerEvents !== "none" || style.visibility !== "hidden" || style.opacity !== (layer === "front" && by !== "human" ? "0.85" : "1") || style.zIndex !== (layer === "front" ? "20" : "0") || !sameClip(path, style.clipPath) || !["x", "y", "width", "height"].every(key => number(actual[key]) && Math.abs(actual[key] - rect[key]) < 0.02)) return false;
+          if (!matches("hidden")) return false;
           rule.style.setProperty("visibility", "visible", "important");
+          shown = true;
           return true;
         } catch { hide(); return false; }
       },

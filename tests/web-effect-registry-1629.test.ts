@@ -309,6 +309,37 @@ describe("#1629 shared Canvas Worker registry", () => {
     expect(f.send).not.toHaveBeenCalled(); h.frame(17); expect(f.send).toHaveBeenCalledOnce(); expect(f.send.mock.calls[0]![0]).toEqual({ v: 1, type: "pointer", ts: 0, kind: "move", x: 9, y: 20, buttons: 0 });
     h.emit("pointermove", { isTrusted: true, clientX: 2, clientY: 20, buttons: 0 }); h.frame(20); expect(f.send).toHaveBeenCalledOnce();
   });
+  it.each([false, true])("#2057 an early rAF retains a fresh click at the %s degraded cap", async degraded => {
+    const h = rig(); await h.admit(); const f = h.frames()[0]; f.ready();
+    if (degraded) for (const t of [1000, 2000, 3000]) { h.frame(t); h.timer(t); }
+    f.send.mockClear(); const start = degraded ? 3000 : 0, period = 1000 / (degraded ? 30 : 60);
+    h.at(start + 1); h.emit("pointermove", { isTrusted: true, clientX: 10, clientY: 20, buttons: 0 }); h.frame(start + 17);
+    h.at(start + 18); h.emit("click", { isTrusted: true, clientX: 11, clientY: 20, buttons: 0 }); h.frame(start + 20); expect(f.send).toHaveBeenCalledOnce();
+    h.frame(start + 17 + period - 0.001); expect(f.send).toHaveBeenCalledOnce();
+    h.frame(start + 17 + period); expect(f.send).toHaveBeenCalledTimes(2);
+    expect(f.send.mock.calls[1][0]).toMatchObject({ type: "pointer", kind: "click", ts: start + 18, x: 11 });
+    h.frame(start + 100); expect(f.send).toHaveBeenCalledTimes(2);
+  });
+  it("#2057 a newer input replaces the retained sample instead of adding a queue", async () => {
+    const h = rig(); await h.admit(); const f = h.frames()[0]; f.ready(); f.send.mockClear();
+    h.emit("pointermove", { isTrusted: true, clientX: 10, clientY: 20, buttons: 0 }); h.frame(17);
+    h.at(18); h.emit("click", { isTrusted: true, clientX: 11, clientY: 20, buttons: 0 }); h.frame(20);
+    h.at(21); h.emit("pointermove", { isTrusted: true, clientX: 12, clientY: 20, buttons: 1 }); h.frame(25); expect(f.send).toHaveBeenCalledOnce(); h.frame(34);
+    expect(f.send.mock.calls[1][0]).toMatchObject({ kind: "move", ts: 21, x: 12, buttons: 1 }); h.frame(60); expect(f.send).toHaveBeenCalledTimes(2);
+  });
+  it.each([100, 100.001])("#2057 the retained packet keeps its original 100ms freshness bound (%s)", async age => {
+    const h = rig(); await h.admit(); const f = h.frames()[0]; f.ready(); f.send.mockClear();
+    h.emit("pointermove", { isTrusted: true, clientX: 10, clientY: 20, buttons: 0 }); h.frame(17);
+    h.at(18); h.emit("click", { isTrusted: true, clientX: 11, clientY: 20, buttons: 0 }); h.frame(20); h.frame(18 + age);
+    expect(f.send).toHaveBeenCalledTimes(age === 100 ? 2 : 1); h.frame(150); expect(f.send).toHaveBeenCalledTimes(age === 100 ? 2 : 1);
+  });
+  it.each(["focus", "stock"]) ("#2057 retained input is discarded on a new %s refusal, never replayed", async barrier => {
+    const h = rig(); await h.admit(); const f = h.frames()[0]; f.ready(); f.send.mockClear();
+    h.emit("pointermove", { isTrusted: true, clientX: 10, clientY: 20, buttons: 0 }); h.frame(17);
+    h.at(18); h.emit("click", { isTrusted: true, clientX: 11, clientY: 20, buttons: 0 }); h.frame(20);
+    if (barrier === "focus") { h.doc.activeElement = h.node("INPUT"); h.emit("focusin"); } else h.coverage.mockReturnValue(stock({ front: false, agentFront: false }));
+    h.frame(34); expect(f.send).toHaveBeenCalledOnce(); h.doc.activeElement = h.doc.body; h.coverage.mockReturnValue(stock()); h.frame(60); expect(f.send).toHaveBeenCalledOnce();
+  });
   it("stock main focus preserves native click and subsequent drag, clearing stale pre-focus down", async () => {
     const h = rig(); await h.admit(); const f = h.frames()[0]; f.ready(); f.send.mockClear();
     const main = h.node("MAIN"); main.isConnected = true;
