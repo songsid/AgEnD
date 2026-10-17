@@ -223,6 +223,20 @@ export class TmuxManager {
     } catch { return null; }
   }
 
+  /** #2015: every pane of the session as its shell's pid and its window's name (one read; empty on any failure). */
+  static async listPanePids(sessionName: string, timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<Array<{ pid: number; window: string }>> {
+    try {
+      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+        "list-panes", "-s", "-t", sessionName, "-F", "#{pane_pid}|||#{window_name}",
+      ]), { timeout: timeoutMs });
+      return stdout.trim().split("\n").filter(Boolean).flatMap(line => {
+        const [pid, window] = line.split("|||");
+        const n = Number.parseInt(pid, 10);
+        return Number.isSafeInteger(n) && n > 0 && window ? [{ pid: n, window }] : [];
+      });
+    } catch { return []; }
+  }
+
   // === Instance window methods ===
 
   private static portRead(port: TmuxReadPort, query: TmuxReadQuery, timeoutMs: number): Promise<string> {

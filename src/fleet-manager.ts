@@ -265,6 +265,7 @@ import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { WEB_CHAT_NOTICE, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
+import { topMemoryHogs, type MemoryHog } from "./memory-hogs.js";
 import { GENERAL_POINTING_REFUSALS, SNOWFLAKE, hasPlaceRefs, placeRef, webRoute, webTextLinks, placeSuffix, renderPlaceRefs, stripPlaceRefs, topicUrl, type PlaceLink, type PlaceTarget, worldPlaceOf } from "./topic-link.js";
 import { CacheService, cacheWindow, type CacheInstance, type CacheReport } from "./cache-service.js";
 import { runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
@@ -1234,6 +1235,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startedAt = 0;
   private stormOpenNotifyTimer: ReturnType<typeof setTimeout> | null = null;
   private memoryLogAt: number | null = null;
+  /**
+   * #2015: while host memory is elevated or critical, the processes holding the most in the fleet's service and whose
+   * they are (an instance, the fleet, tmux), for the pressure log, /health and the dashboard — never chat (#1712).
+   * Rescanned at most once a minute (async, one at a time); cleared when pressure ends.
+   */
+  private memoryTop: { at: string; processes: MemoryHog[] } | null = null;
+  private memoryTopScan: { at: number | null; inFlight: boolean; loggedAt: number | null } = { at: null, inFlight: false, loggedAt: null };
+  /** The scan (a seam for tests: they give it a fake /proc). */
+  private memoryHogScan: typeof topMemoryHogs = topMemoryHogs;
+  /** The fleet's own tmux session exists (only then are its panes read: a fleet that never started has none). */
+  private tmuxSessionEnsured = false;
   private memoryDebugAt: number | null = null;
   private memoryLogLevel: MemoryPressureSnapshot["level"] | null = null;
   /** #1685: the host_memory value the last status frame carried, so a change re-sends the frame. */
@@ -2372,16 +2384,50 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.info({ hostMemory: snapshot }, "Host memory recovered");
       }
       this.memoryLogLevel = snapshot.level;
+      if (this.memoryTop) { this.memoryTop = null; this.memoryTopScan.loggedAt = null; this.emitSseEvent("status", this.getUiStatus()); }
       return;
     }
+    if (snapshot.level === "elevated" || snapshot.level === "critical") this.refreshMemoryTop(snapshot);
     if (changed || this.memoryLogAt === null || now - this.memoryLogAt >= 10 * 60_000) {
       this.memoryLogAt = now;
-      this.logger.warn({ hostMemory: snapshot }, snapshot.level === "critical"
+      this.logger.warn({ hostMemory: snapshot, ...(this.memoryTop ? { topProcesses: this.memoryTop.processes } : {}) }, snapshot.level === "critical"
         ? "Host memory critical — deferring new CLI spawns"
         : snapshot.level === "elevated" ? "Host memory pressure — slowing new CLI spawns"
           : "Host memory sample unavailable — slowing new CLI spawns");
     }
     this.memoryLogLevel = snapshot.level;
+  }
+
+  /**
+   * #2015: rescan the largest processes (at most once a minute, one at a time). The first result of an episode, and
+   * then at most every 10 minutes, is logged with the pressure; /health and the dashboard read the latest. Never chat.
+   */
+  private refreshMemoryTop(snapshot: MemoryPressureSnapshot): void {
+    const scan = this.memoryTopScan;
+    const now = performance.now();
+    if (scan.inFlight || (scan.at !== null && now - scan.at < 60_000)) return;
+    scan.inFlight = true;
+    scan.at = now;
+    void (async () => {
+      const session = getTmuxSession();
+      const [tmuxServerPid, panes] = this.tmuxSessionEnsured
+        ? await Promise.all([TmuxManager.getServerPid(session), TmuxManager.listPanePids(session)])
+        : [null, []];
+      const processes = await this.memoryHogScan({
+        fleetPid: process.pid, tmuxServerPid, panes,
+        isInstance: name => this.daemons.has(name) || Object.hasOwn(this.fleetConfig?.instances ?? {}, name),
+      }, 3);
+      // Pressure may have ended while the scan ran: nothing is kept then.
+      if (this.shuttingDown || processes.length === 0 || this.hostMemoryIndicator() === null) return;
+      const before = JSON.stringify(this.memoryTop?.processes ?? null);
+      this.memoryTop = { at: new Date().toISOString(), processes };
+      if (scan.loggedAt === null || performance.now() - scan.loggedAt >= 10 * 60_000) {
+        scan.loggedAt = performance.now();
+        this.logger.warn({ hostMemory: snapshot, topProcesses: processes }, "Host memory pressure — largest processes in the fleet");
+      }
+      if (JSON.stringify(processes) !== before) this.emitSseEvent("status", this.getUiStatus());
+    })().catch(err => this.logger.debug({ err }, "Largest-process scan failed"))
+      .finally(() => { scan.inFlight = false; });
   }
 
   /** Wire the one fleet-wide storm into notification and recovery surfaces. */
@@ -6543,6 +6589,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     TmuxManager.setSocketName(getSocket());
 
     await TmuxManager.ensureSession(getTmuxSession());
+    this.tmuxSessionEnsured = true;
 
     // Pre-flight (advisory, fire-and-forget): warm the per-backend auth cache
     // before instances spawn, so a CLI that comes up on its sign-in screen gets
@@ -7370,7 +7417,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
      *  reported separately because they differ by ~60x and only one of them can
      *  show a fleet-manager leak. */
     memory: FleetMemory;
-    hostMemory: MemoryPressureSnapshot;
+    hostMemory: MemoryPressureSnapshot & { topProcesses?: MemoryHog[]; topProcessesAt?: string };
     problems: string[];
   } {
     const names = Object.keys(this.fleetConfig?.instances ?? {});
@@ -7421,7 +7468,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapters: { total: this.adapterState.size, connected, states, details },
       startupComplete: this.startupComplete,
       memory: readFleetMemory(),
-      hostMemory,
+      hostMemory: this.memoryTop && (hostMemory.level === "elevated" || hostMemory.level === "critical")
+        ? { ...hostMemory, topProcesses: this.memoryTop.processes, topProcessesAt: this.memoryTop.at } : hostMemory,
       problems,
     };
   }
@@ -20907,6 +20955,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // #1685: host memory pressure while it slows or holds new agents (the dashboard's indicator; macOS elevated is
       // shown here rather than in chat). null when normal, unknown or advisory.
       host_memory: this.hostMemoryIndicator(),
+      // #2015: the largest processes while it lasts (name, pid, RSS, and whose: an instance, the fleet or tmux).
+      ...(this.hostMemoryIndicator() && this.memoryTop ? { host_memory_top: this.memoryTop.processes } : {}),
     };
   }
 }

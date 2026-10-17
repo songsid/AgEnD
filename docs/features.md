@@ -1149,7 +1149,9 @@ One fleet-wide sampler reads host memory every 30 seconds and before every spawn
 
 Host memory pressure sends no chat broadcast, including recovery. The Fleet
 dashboard shows `host_memory`; logs and `/health` retain the measurements and
-trigger. A user action held by critical pressure gets the reason in its own
+trigger. On Linux the three also name the largest processes in the fleet and
+whose they are (an instance, the fleet, tmux) while pressure lasts (#2015), so a
+runaway command can be found and stopped. A user action held by critical pressure gets the reason in its own
 reply, or the web's HTTP 202 response, and continues when memory recovers.
 Healthy RAM with cold swap remains normal under the Linux policy.
 

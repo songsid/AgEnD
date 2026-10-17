@@ -42,7 +42,18 @@ export function applyStatus(d) {
     // #1629: the agents' themes' revision (app-themes.js re-reads them when it moves).
     themesRev: typeof d.themes_rev === "number" ? d.themes_rev : null,
     // #1685: host memory pressure slowing or holding new agents ("elevated" | "critical"), else null.
-    hostMemory: d.host_memory === "elevated" || d.host_memory === "critical" ? d.host_memory : null });
+    hostMemory: d.host_memory === "elevated" || d.host_memory === "critical" ? d.host_memory : null,
+    // #2015: while it lasts, the largest processes in the fleet and whose they are (at most 3; anything else dropped).
+    hostMemoryTop: hostMemoryTop(d.host_memory_top) });
+}
+
+/** #2015: the status frame's host_memory_top, as the dashboard keeps it: well-formed entries only, at most 3. */
+export function hostMemoryTop(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 3).flatMap(p => p && typeof p.name === "string" && Number.isSafeInteger(p.pid) && Number.isSafeInteger(p.rssBytes) && p.rssBytes >= 0
+    && ["fleet", "tmux", "instance", "other"].includes(p.owner)
+    ? [{ name: p.name.slice(0, 64), pid: p.pid, rssBytes: p.rssBytes, owner: p.owner, ...(p.owner === "instance" && typeof p.instance === "string" ? { instance: p.instance.slice(0, 128) } : {}) }]
+    : []);
 }
 
 /** One "activity" event: an instance started or stopped working. */
