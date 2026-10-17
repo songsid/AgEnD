@@ -490,7 +490,7 @@ No code, cookie, CSRF value or message text is logged; the receipt keeps the tex
 | A stolen cookie used from another machine on the same network (LAN, tailnet) | It can chat | **Accepted risk by default** (the user's decision, 2026-10-17): it can give ordinary authority, and step-ups only with the account's click or a revealed code. Turning on "Only this computer can authorize" (§3.4) stops it for new messages, and makes existing `lan` receipts and step-ups read as `none` (§10). The receipt and the audit log record `peer: lan` |
 | A stolen cookie used from outside the network | It can chat | **A deployment assumption, not an AgEnD barrier.** If the health listener is reachable only through the public link, outside requests arrive on the `gateway` surface, which never qualifies (§3.5). If the listener itself is exposed (a port forward, a changed bind, an ordinary reverse proxy), the classifier sees only "not loopback", calls it `lan`, and by default it qualifies. Turn on "Only this computer can authorize", or don't expose the health listener |
 | Public link | Recognition only | Never authority (§3.5) |
-| A reverse proxy in front of the health listener (forwarding headers or not) | Same as local | Classified `lan`, with or without forwarding headers (a header-stripping local proxy reads as loopback; see the next row). It qualifies by default, which is right only if everyone who can reach that proxy is trusted (the previous row). It never qualifies under "Only this computer can authorize" |
+| A reverse proxy in front of the health listener (forwarding headers or not) | Same as local | Classified `lan`, with or without forwarding headers (a header-stripping local proxy reads as loopback; see the next row). It qualifies by default, which is right only if everyone who can reach that proxy is trusted (the previous row). Under "Only this computer can authorize" it doesn't qualify, except for the case in the next row (a local proxy that strips forwarding headers), which can't be told apart from a local browser and is out of scope |
 | A local reverse proxy that strips forwarding headers | Same as local | Not supported for authority. Indistinguishable from a local browser, so out of scope like other local processes (§3.4) |
 | An agent asks the person to "just click" | Same on any platform | A reply button can never step up. A step-up needs the `/authorize` page plus the person's own click or DM code, and shows the exact action, target and executors |
 | A phishing page in an agent's HTML preview asks for the code | — | The page can't use the code itself (no cookie, no `/authorize/verify`), but the code can leave it, and whoever holds the session can redeem it. The DM says where to enter it. Both kinds ship; the Authorize page offers the click first |
@@ -526,9 +526,18 @@ These must hold, and a change to any of them needs a security review and a fresh
   goes through Settings confirmation. Each authority is stamped with the current `authority_epoch`.
 - **What revokes, and only what revokes.** `delivery_status` evaluates every web-session receipt against the
   revocation state *now*:
-  - **Turning the switch off,** or bumping `authority_epoch` (`/web revoke` bumps it; so does a Settings "Revoke web
-    authority"). From then on, every web-session receipt from an older epoch, step-ups included, reads as
-    `kind: "none"` with `downgraded: "revoked"`. While the switch is off, new web receipts are written as `none`.
+  - **Turning the switch off.** The change from `enabled: true` to `false` atomically bumps `authority_epoch`, in
+    the same write. While the switch is off:
+    - every web-session receipt reads as `kind: "none"`, whatever its epoch, step-ups included, with
+      `downgraded: "disabled"`;
+    - new web receipts are written as `none`.
+  - **Bumping `authority_epoch` without turning off.** `/web revoke` does this, and so does a Settings "Revoke web
+    authority". From then on, every web-session receipt from an older epoch, step-ups included, reads as `none` with
+    `downgraded: "revoked"`.
+  - **Turning it back on.** It goes through Settings confirmation. Only authority granted *after* that, under the
+    current (already bumped) epoch, counts. A receipt from before the switch was turned off can never come back,
+    whether it was ordinary or a step-up still before its `act_by`: its epoch is older than the current one, so it
+    stays `none`.
   - **Turning "Only this computer can authorize" on.** From then on, every web-session receipt whose
     `session.peer` is `lan` reads as `none` with `downgraded: "loopback_only"`, step-ups included. `loopback`
     receipts are unaffected. Turning it off again doesn't restore them: re-enabling requires Settings confirmation,
