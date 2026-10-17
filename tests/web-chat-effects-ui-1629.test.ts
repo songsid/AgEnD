@@ -63,16 +63,35 @@ describe("#1629 actual Effects component", () => {
   const ID = "a".repeat(32);
   it("the Effects dialog says it paused a running effect itself, in the past tense, never a cached Running", async () => {
     let clock = 1000; vi.spyOn(performance, "now").mockImplementation(() => clock);
-    const h = await fixture(); await h.publish();
-    // The ⋯ menu is a barrier too: the effect stops a moment before the dialog opens.
-    await h.publishRows([{ id: ID, phase: null, reason: "stock_overlay", verdict: "off" }]); clock += 800; await h.open();
+    const h = await fixture(); await h.publish();                 // running at t=1000, then no update while it keeps playing
+    clock = 20000;                                                 // the ⋯ menu: the first stopped update, long after the last running one
+    await h.publishRows([{ id: ID, phase: null, reason: "stock_overlay", verdict: "off" }]); clock = 20800; await h.open();
     expect(pg!.root.textContent).toContain("Was running; paused while this dialog is open.");
     expect(pg!.root.textContent).not.toContain("Running");
-    await h.close(); clock += 6000;
-    await h.publishRows([{ id: ID, phase: null, reason: "stock_overlay", verdict: "off" }]); await h.open();
-    expect(pg!.root.textContent).toContain("Paused while this dialog is open.");
+    vi.restoreAllMocks(); h.cleanup();
+  });
+  it("an effect that stopped long before the dialog opened is not called running", async () => {
+    let clock = 1000; vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const h = await fixture(); await h.publish();
+    clock = 2000; await h.publishRows([{ id: ID, phase: null, reason: "stock_overlay", verdict: "off" }]);
+    clock = 20000; await h.open();
+    expect(pg!.root.textContent).toContain("Paused while this dialog is open."); expect(pg!.root.textContent).not.toContain("Was running");
+    await h.close(); clock = 21000; await h.open();                 // reopening does not revive old evidence
     expect(pg!.root.textContent).not.toContain("Was running");
     vi.restoreAllMocks(); h.cleanup();
+  });
+  it("a new lease starts without the old evidence", async () => {
+    let clock = 1000; vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const h = await fixture(); await h.publish(); await h.nextLease();
+    await h.publishRows([{ id: ID, phase: null, reason: "stock_overlay", verdict: "off" }]); clock = 1500; await h.open();
+    expect(pg!.root.textContent).not.toContain("Was running");
+    vi.restoreAllMocks(); h.cleanup();
+  });
+  it("a queued row with an OFF or interrupted history says so, not waiting for a slot; an ordinary queue waits", async () => {
+    const { effectRowText } = await import("/ui/js/chat-effects.js").then(async m => { await fixture(); return m; });
+    expect(effectRowText({ id: ID, phase: null, verdict: "queued", reason: "safety_off" })).toContain("three automatic pauses");
+    expect(effectRowText({ id: ID, phase: null, verdict: "queued", reason: "interrupted" })).toContain("page closed");
+    expect(effectRowText({ id: ID, phase: null, verdict: "queued", reason: "frame_limit" })).toBe("Waiting for a slot");
   });
   it.each([["safety_off", "Turned off on this device after three automatic pauses."], ["paused", "Paused"], ["interrupted", "Stopped: the page closed while it was playing."],
     ["owner_css", "Off while your custom CSS is on."], ["reduced_motion", "Off: this device asks for reduced motion."], ["safety_unknown", "Stopped"]])("reason %s reads %s", async (reason, text) => {
@@ -98,4 +117,3 @@ describe("#1629 actual Effects component", () => {
     expect(effectRowText({ id: ID, phase: "running", reason: "paused" })).toBe("Paused");          // a pause outranks a stale phase
   });
 });
-

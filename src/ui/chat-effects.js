@@ -38,6 +38,8 @@ const REASON_KEY = { owner_css: "chatFx.cssOff", reduced_motion: "chatFx.reduced
 /** `ownOpen`: this Effects dialog is open; `wasRunning`: the effect was running when it opened (shown as past, never as current). */
 export function effectRowText(row, { ownOpen = false, wasRunning = false, doc = typeof document === "undefined" ? null : document } = {}) {
   if (!row) return t("chatFx.off");
+  // The sticky history first (it is what Resume answers), then a pause, then what is playing or queued.
+  if (row.reason === "safety_off" || row.reason === "interrupted") return t(REASON_KEY[row.reason]);
   if (row.reason === "paused" || row.reason === "host_budget") return t("chatFx.paused");
   if (row.phase === "running") return t("chatFx.running");
   if (row.phase) return t("chatFx.starting");
@@ -55,8 +57,9 @@ export function effectRowText(row, { ownOpen = false, wasRunning = false, doc = 
 export function ChatEffects({ name, lease, element, store, open, onClose }) {
   const cssLife = useStore(ownerCssLifecycle);
   // Which effects were running just before this dialog opened ("was running" is said in the past, never shown as
-  // current). The ⋯ menu that opens it is a barrier too, so "just before" spans the few seconds of opening it.
-  const before = useRef(null), wasOpen = useRef(false), lastRunning = useRef(new Map());
+  // current). The ⋯ menu that opens it is a barrier too, so "just before" is within RECENT_MS of the observed stop.
+  // Tracked where updates arrive (an unchanged snapshot is not republished while an effect keeps running).
+  const before = useRef(null), wasOpen = useRef(false), playing = useRef(new Map());
   const runtime = useRef(null), [state, setState] = useState(null), [canWrite, setCanWrite] = useState(false), [busy, setBusy] = useState(false);
   useLayoutEffect(() => {
     let live = true, api = null;
@@ -76,8 +79,19 @@ export function ChatEffects({ name, lease, element, store, open, onClose }) {
       const current = () => live && lease.current();
       if (!owner) { setState({ error: null, rows: [], effects: [], unavailable: true }); return cleanup; }
       releases.push(owner.onEnd(() => { if (current()) setState({ error: "resource_unavailable", rows: [], effects: [], unavailable: true }); }));
+      playing.current = new Map();   // evidence belongs to this name and lease only
+      const track = rows => {
+        const now = performance.now(), seen = new Set();
+        for (const r of Array.isArray(rows) ? rows : []) {
+          seen.add(r.id);
+          if (r.phase === "running") playing.current.set(r.id, null);
+          else if (playing.current.get(r.id) === null) playing.current.set(r.id, now);
+        }
+        for (const [id, at] of playing.current) if (!seen.has(id) && at === null) playing.current.set(id, now);
+      };
       const changed = value => {
         if (!current()) return;
+        track(value?.rows);
         const g = owner.gates();
         setState({ ...value, unavailable: !g.enabled || !g.show || !g.previewReady || !g.optIn || g.safe || g.publicLink || g.reducedMotion || g.saveData });
       };
@@ -95,9 +109,10 @@ export function ChatEffects({ name, lease, element, store, open, onClose }) {
     }
   }, [name, lease]);
   const rows = state?.rows ?? [], effects = state?.effects ?? [];
-  const now = performance.now();
-  for (const r of rows) if (r.phase === "running") lastRunning.current.set(r.id, now);
-  if (open && !wasOpen.current) before.current = new Map([...lastRunning.current].map(([id, at]) => [id, now - at < RECENT_MS]));
+  if (open && !wasOpen.current) {
+    const now = performance.now();
+    before.current = new Map([...playing.current].map(([id, stoppedAt]) => [id, stoppedAt === null || now - stoppedAt < RECENT_MS]));
+  }
   if (!open) before.current = null;
   wasOpen.current = open;
   const css = cssLife.state !== "off" && effects.some(p => p.by !== "human" && p.manifest.layer === "front");

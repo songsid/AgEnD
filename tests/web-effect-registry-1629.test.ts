@@ -653,3 +653,43 @@ describe("#2055: a sticky safety state outranks a waiting reason", () => {
     expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "modal" });
   });
 });
+
+describe("#2055 R2: one display precedence through the real snapshot (Prism)", () => {
+  const withStatus = (h: any, fn: (id: string) => string) => { h.safety.status = vi.fn((id: string) => ({ state: fn(id), history: null })); };
+  it("a queued descriptor with an OFF history reads off, not waiting for a slot; an ordinary queue still queues", async () => {
+    const h = rig(), ds = h.descriptors(4); withStatus(h, id => (id === ds[3].id ? "off" : "ok"));
+    await h.admit(ds);
+    expect(h.frames()).toHaveLength(3);
+    expect(h.api.snapshot()[3]).toMatchObject({ verdict: "off", reason: "safety_off", queuePos: null, phase: null });
+    const q = rig(), qs = q.descriptors(4); withStatus(q, () => "ok"); await q.admit(qs);
+    expect(q.api.snapshot()[3]).toMatchObject({ verdict: "queued", reason: "frame_limit" });
+  });
+  it("the third automatic pause reads off in the same page; a pause that is not the third still reads paused", async () => {
+    for (const [after, reason] of [["off", "safety_off"], ["paused", "paused"]] as const) {
+      const h = rig(); let state = "ok"; withStatus(h, () => state); h.safety.pause.mockImplementation(() => { state = after; return true; });
+      await h.admit(); h.frames()[0].ready();
+      for (const t of [1000, 2000, 3000, 4000, 5000]) { h.frame(t); h.timer(t); }
+      expect(h.safety.pause).toHaveBeenCalledOnce(); expect(h.frames()[0].state().removed).toBe(true);
+      expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
+    }
+  });
+  it("another tab's OFF or interruption replaces safety_revoked; an unreadable history stays revoked (fail-closed)", async () => {
+    for (const [state, reason] of [["off", "safety_off"], ["interrupted", "interrupted"], ["throw", "safety_revoked"]] as const) {
+      const h = rig(); await h.admit(); h.frames()[0].ready();
+      h.safety.allowed.mockReturnValue(false);
+      (h.safety as any).status = vi.fn(() => { if (state === "throw") throw Error("unreadable"); return { state, history: null }; });
+      h.emit("storage"); await flush();
+      expect(h.frames()[0].state().removed).toBe(true);
+      expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
+    }
+  });
+  it.each([[{ reducedMotion: true }, "reduced_motion"], [{ saveData: true }, "save_data"], [{ show: false }, "disabled"], [{ optIn: false }, "preview_unavailable"],
+    [{ safe: true }, "safe_mode"], [{ publicLink: true }, "public_link"]])("a closed global gate %o is named %s", async (patch, reason) => {
+    const h = rig(), ds = await h.admit(); h.api.update(ds, gates(patch)); await flush();
+    expect(h.frames().every((f: any) => f.state().removed)).toBe(true); expect(h.api.snapshot()[0]).toMatchObject({ verdict: "off", reason });
+  });
+  it("unknown gates stay unknown", async () => {
+    const h = rig(), ds = await h.admit(); h.api.update(ds, { ...gates(), show: "maybe" } as any); await flush();
+    expect(h.api.snapshot()[0].reason).not.toMatch(/reduced_motion|save_data|disabled|preview_unavailable|safe_mode|public_link/);
+  });
+});
