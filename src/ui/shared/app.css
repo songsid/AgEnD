@@ -119,7 +119,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .idc { --id: var(--id-light); --id-name: var(--id-name-light); } }
 :root[data-theme="light"] .idc { --id: var(--id-light); --id-name: var(--id-name-light); }
 .idc.id-ring .av { box-shadow: 0 0 0 2px var(--id); }
-.idc.id-bar { box-shadow: inset 3px 0 0 var(--id); }
+/* #2056: the bar is a plain straight line inside the row: no caps following the row's rounded corners (an inset shadow
+   did), and short of the corners, so the hover and selected highlight's radius is never crossed. */
+.idc.id-bar { position: relative; }
+.idc.id-bar::before { content: ""; position: absolute; left: 0; top: var(--s-2); bottom: var(--s-2); width: 3px; background: var(--id); pointer-events: none; }
 .idc.id-name .inst-name { color: var(--id-name); }
 .idc-swatches, .idc-places { border: 0; padding: 0; margin: 0 0 var(--s-3); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .idc-swatches legend, .idc-places legend { font-weight: var(--fw-semibold); margin-bottom: 6px; width: 100%; }

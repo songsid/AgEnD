@@ -17,7 +17,7 @@ import {
   ACCESS_MODES, AGENT_FIELDS, AGENT_MODES, BOT_FIELDS, CH_TYPES, CLASSIC_FIELDS, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
   VISIBILITY_MODES, accessConfirmations, agentForm, agentPatch, backendOptions, changedFields, channelId, channelsOf,
   chLabel, hasOwn, impactOf, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
-  webEchoIsGroup, worstImpact,
+  classicWebEchoEffective, worstImpact,
 } from "./settings-model.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -557,7 +557,7 @@ export function ClassicDialog({ room, ctx, onClose }) {
     backend: c.backend || inherited.backend, model: c.model || "",
     auto_pause_after: String(c.auto_pause_after ?? inherited.auto_pause_after), tool_progress: c.tool_progress ?? inherited.tool_progress,
     reply_completion_guard: c.reply_completion_guard ?? inherited.reply_completion_guard,
-    collab: !!c.collab, web_echo: !!c.web_echo, context_lines: String(c.context_lines ?? cd.context_lines ?? 5),
+    collab: !!c.collab, web_echo: classicWebEchoEffective(c, fleet), context_lines: String(c.context_lines ?? cd.context_lines ?? 5),
     inherit: { auto_pause_after: !hasOwn(c, "auto_pause_after"), tool_progress: !hasOwn(c, "tool_progress"), reply_completion_guard: !hasOwn(c, "reply_completion_guard") },
   }));
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
@@ -580,12 +580,9 @@ export function ClassicDialog({ room, ctx, onClose }) {
       auto_pause_after: hasOwn(c, "auto_pause_after") ? c.auto_pause_after : null,
       tool_progress: hasOwn(c, "tool_progress") ? c.tool_progress : null,
       reply_completion_guard: hasOwn(c, "reply_completion_guard") ? c.reply_completion_guard : null,
-      collab: !!c.collab, context_lines: c.context_lines ?? cd.context_lines ?? 5, web_echo: !!c.web_echo,
+      collab: !!c.collab, context_lines: c.context_lines ?? cd.context_lines ?? 5, web_echo: classicWebEchoEffective(c, fleet),
     });
     if (!Object.keys(patch).length) { onClose(); return; }
-    // #1320: turning web echo on for a group posts every web message where all its members can read it.
-    if (patch.web_echo === true && !c.web_echo && webEchoIsGroup(c.channelId)
-      && !(await ask(tn("webEchoGroupConfirm"), { confirmLabel: tn("webEchoEnable") }))) return;
     if (!lease.current()) return;
     ctx.stageClassic(c, patch);
     onClose();

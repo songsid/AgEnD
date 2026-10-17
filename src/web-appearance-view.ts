@@ -103,6 +103,55 @@ export function appearanceView(i: AppearanceInput): Record<string, unknown> {
 // of the width, held between 140 and 240 px, as `.id-card`'s --id-ar / --id-bmin / --id-bmax), a 56 px chat header
 // with a 32 px face, bubbles of the theme's radius and border.
 const W = 720, PAD = 16, PORTRAIT_H = 240, HEADER_H = 56;
+const BIO_LINES = 12;
+// #2050: the preview is a file that any viewer's fonts draw, so nothing can measure it: lines are laid out with an upper
+// bound of each grapheme's advance (measured in Chrome, sans-serif / serif / monospace, 400 and 600 weight: CJK and
+// fullwidth 1 em, Latin capitals up to 1 em, lowercase up to 0.89, other symbols up to 1.02), and the column is also
+// clipped in the SVG so a wider substitute font cannot draw past it.
+const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{20000}-\u{3fffd}]/u;
+const PICTO = /\p{Extended_Pictographic}|\p{Regional_Indicator}/u;
+function graphemeEm(g: string): number {
+  const cps = Array.from(g);
+  // An emoji sequence a font cannot join is drawn as its parts: each pictograph counts.
+  const pictos = cps.filter(c => PICTO.test(c)).length;
+  if (pictos) return 1.25 * pictos;
+  if (cps.some(c => WIDE.test(c))) return 1;
+  const c = cps[0];
+  return c === " " ? 0.35 : /[0-9]/.test(c) ? 0.6 : /[a-z]/.test(c) ? 0.95 : /[A-Z]/.test(c) ? 1 : 1.05;
+}
+const charPx = (g: string, size: number) => graphemeEm(g) * size;
+const SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+const graphemes = (s: string) => Array.from(SEGMENTER.segment(s), x => x.segment);
+/**
+ * Wrap `text` (its own line breaks kept) to `maxPx` at `size`, at most `maxLines` lines; what does not fit ends the last
+ * line with "…". Latin text breaks at a space when one is on the line; CJK breaks anywhere. Never splits a grapheme.
+ */
+export function fitLines(text: string, maxPx: number, size: number, maxLines: number): string[] {
+  const out: string[] = [];
+  const width = (gs: string[]) => gs.reduce((n, g) => n + charPx(g, size), 0);
+  let truncated = false;
+  paragraphs: for (const para of text.split("\n")) {
+    if (out.length >= maxLines) { truncated = true; break; }
+    let cur: string[] = [];
+    for (const g of graphemes(para)) {
+      if (cur.length && width(cur) + charPx(g, size) > maxPx) {
+        if (out.length >= maxLines - 1) { out.push(cur.join("")); truncated = true; break paragraphs; }
+        // Latin breaks after the last space on the line; CJK (or a line with no space) breaks here.
+        const space = WIDE.test(g) ? -1 : cur.lastIndexOf(" ");
+        out.push((space > 0 ? cur.slice(0, space) : cur).join("").trimEnd());
+        cur = space > 0 ? cur.slice(space + 1) : [];
+      }
+      cur.push(g);
+    }
+    out.push(cur.join(""));
+  }
+  if (truncated) {
+    const last = graphemes(out[out.length - 1]);
+    while (last.length && width(last) + charPx("…", size) > maxPx) last.pop();
+    out[out.length - 1] = `${last.join("").trimEnd()}…`;
+  }
+  return out;
+}
 export const PREVIEW_BANNER = { aspect: 3, min: 140, max: 240 } as const;
 const BANNER_H = Math.min(PREVIEW_BANNER.max, Math.max(PREVIEW_BANNER.min, Math.round(W / PREVIEW_BANNER.aspect)));
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -140,8 +189,13 @@ export function previewSvg(i: AppearanceInput, mode: ThemeMode, pics: PreviewPic
     let textX = PAD;
     if (i.card.portrait && pics.portrait) { out.push(img(pics.portrait, PAD, top, PORTRAIT_H * 0.75, PORTRAIT_H)); textX = PAD + PORTRAIT_H * 0.75 + PAD; }
     let ty = top + 18;
-    if (i.card.tagline) { out.push(`<text x="${textX}" y="${ty}" font-family="${font}" font-size="15" font-weight="600" fill="${t.text}">${esc(i.card.tagline.text)}</text>`); ty += 24; }
-    if (i.card.bio) for (const line of i.card.bio.text.split("\n")) { out.push(`<text x="${textX}" y="${ty}" font-family="${font}" font-size="13" fill="${t.text2}">${esc(line)}</text>`); ty += 18; }
+    // SVG text neither wraps nor clips: lay the card's text out to its column, as Details does (tagline: two lines).
+    const column = W - textX - PAD, textTop = ty - 18;
+    out.push(`<clipPath id="card-text"><rect x="${textX}" y="${textTop}" width="${column}" height="${(2 * 22 + 2 + BIO_LINES * 18) + 8}"/></clipPath><g clip-path="url(#card-text)">`);
+    if (i.card.tagline) for (const line of fitLines(i.card.tagline.text, column, 15, 2)) { out.push(`<text x="${textX}" y="${ty}" font-family="${font}" font-size="15" font-weight="600" fill="${t.text}">${esc(line)}</text>`); ty += 22; }
+    if (i.card.tagline) ty += 2;
+    if (i.card.bio) for (const line of fitLines(i.card.bio.text, column, 13, BIO_LINES)) { out.push(`<text x="${textX}" y="${ty}" font-family="${font}" font-size="13" fill="${t.text2}">${esc(line)}</text>`); ty += 18; }
+    out.push("</g>");
     y = Math.max(top + (i.card.portrait && pics.portrait ? PORTRAIT_H : 0), ty) + PAD;
   }
   // The chat header: the face (and its ring) and the name.

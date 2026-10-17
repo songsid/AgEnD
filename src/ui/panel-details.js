@@ -14,6 +14,7 @@ import { PanelHeader, setTitle, statusClass, statusLabel, openDrawer } from "/as
 import { navigate } from "/assets/app-nav.js";
 import { settingsPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
+import { modelText } from "/assets/instance-nav.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { Menu } from "/assets/ui-menu.js";
 import { themeMenuItems, themesStore } from "/assets/app-themes.js";
@@ -143,7 +144,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
           <button type="button" class="btn btn-sm d-edit-settings" onClick=${editInSettings}>${t("chat.dEditInSettings")}</button></div></section>
       <section class="card"><h3>${t("chat.dRuntime")}</h3>
         ${row(t("chat.dBackend"), d.backend || "--")}
-        ${row(t("chat.dModel"), `${d.model || sl.model?.display_name || "--"}${d.model_source === "live" ? "" : src(d.model_source)}`)}
+        ${row(t("chat.dModel"), `${(d.model && modelText(d)) || sl.model?.display_name || "--"}${d.model_source === "live" ? "" : src(d.model_source)}`)}
         ${d.effort ? row(t("chat.dEffort"), `${d.effort}${src(d.effort_source)}`) : null}
         ${row(t("chat.dCost"), `$${cost.toFixed(2)} ${t("chat.dCostNote")}`)}
         ${row(t("chat.dContext"), html`<span class="pct">${ctx != null ? `${Math.round(ctx)}%` : "--"}</span>${ctx != null ? bar(ctx, ctx > 80 ? "warn" : "") : null}`)}

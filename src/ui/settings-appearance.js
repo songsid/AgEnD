@@ -46,8 +46,8 @@ export function AppearanceSection() {
 }
 
 /**
- * #1958: identity colours on this host — where they show for an instance nobody chose for (ring and bar unless
- * changed), and a switch that turns them off everywhere while every pick is kept.
+ * #1958: identity colours on this host — where they show for an instance nobody chose for (#2056: name, bar and
+ * ring unless changed), and a switch that turns them off everywhere while every pick is kept.
  */
 function IdentityColorCard() {
   useIdentityColors();
