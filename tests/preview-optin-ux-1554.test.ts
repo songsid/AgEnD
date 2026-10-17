@@ -148,7 +148,7 @@ describe("preview.js's words", () => {
     // @ts-expect-error — a JS module of the app, with no types
     await import("../src/ui/chat-strings.js");
     strings.setLang("zh-TW");
-    for (const k of ["pvWhyOptin", "pvServer_needOrigin", "pvServer_notListed", "pvWhyOrigin"]) ZH[k] = strings.t(`chat.${k}`, "{0}", "{1}");
+    for (const k of ["pvWhyOptin", "pvServer_needOrigin", "pvServer_notListed", "pvWhyOrigin", "pvServer_listenFailed", "pvServer_notListening"]) ZH[k] = strings.t(`chat.${k}`, "{0}", "{1}");
     strings.setLang("en");
   });
   const text = (key: string, ...v: string[]) => {
@@ -175,6 +175,14 @@ describe("preview.js's words", () => {
     expect(P.availability().reason).toBe("server words");
     P.init({ dashboardOrigin: "https://x.example", previewOrigin: "", previewBoot: "", previewReason: "server words" }, { text });
     expect(P.availability().reason, "no code (an older server): its text").toBe("server words");
+  });
+  it("#2061 follow-up: a preview port the fleet could not open says so, with the port and the error — never \"turned off\"", () => {
+    const P = loadPreview({ agend_html_preview: "on" });
+    P.init({ dashboardOrigin: ORIGIN, previewOrigin: "", previewBoot: "", previewReason: "server words", previewReasonCode: "listenFailed", previewDetail: "19281: EADDRINUSE" }, { text });
+    expect(P.availability()).toMatchObject({ ok: false, why: "server", reason: ZH.pvServer_listenFailed!.replace("{0}", "19281: EADDRINUSE") });
+    expect(P.availability().reason).toContain("19281: EADDRINUSE");
+    P.init({ dashboardOrigin: ORIGIN, previewOrigin: "", previewBoot: "", previewReason: "server words", previewReasonCode: "notListening" }, { text });
+    expect(P.availability().reason).toBe(ZH.pvServer_notListening);
   });
   it("the origin mismatch, localized with both addresses", () => {
     // The page is at ORIGIN (127.0.0.1); the server believed localhost.

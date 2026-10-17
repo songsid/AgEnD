@@ -1208,6 +1208,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #1306: the preview listener (health_port + 1 by default), and whether it is listening. */
   private previewListener: PreviewListener | null = null;
   private previewListening = false;
+  /** The preview listener could not open its port: "<port>: <error code>", for the page (#2061 follow-up); null otherwise. */
+  private previewListenError: string | null = null;
   /** The ports the preview listener was started for, and the inputs it was built from (a reload compares them). */
   private previewPorts: { requested: number; bound: number } | null = null;
   private previewInputs = "";
@@ -20826,6 +20828,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.logger.warn({ code: err.code, port: settings.port }, "Preview listener unavailable; HTML previews are off");
       this.previewListening = false;
       this.previewListener = null;
+      this.previewListenError = `${settings.port}: ${err.code ?? err.message}`;
     });
     // An optional listener never takes the fleet down: a port Node refuses outright throws here, synchronously.
     try {
@@ -20834,6 +20837,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.logger.warn({ err: (err as Error).message, port: settings.port }, "Preview listener cannot listen; HTML previews are off");
       this.previewListening = false;
       this.previewListener = null;
+      this.previewListenError = `${settings.port}: ${(err as NodeJS.ErrnoException).code ?? (err as Error).message}`;
     }
   }
 
@@ -20856,6 +20860,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   private stopPreviewListener(): void {
     this.previewListening = false;
+    this.previewListenError = null;
     this.previewListener?.close();
     this.previewListener = null;
   }
@@ -20864,8 +20869,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   previewForUi(hostHeader: string | undefined, secure: boolean): PreviewAvailability & { boot: string | null } {
     const listener = this.previewListening ? this.previewListener : null;
     const decided = previewAvailability(listener ? listener.settings : null, hostHeader, secure, listener ? listener.origins : undefined);
-    if (!listener && this.fleetConfig?.web?.preview !== false) decided.reason = "Previews are not available on this fleet right now.";
+    // Previews are on, but no listener answers: say why — its port could not be opened (the error, never "turned off"),
+    // or it is not listening yet.
+    if (!listener && this.fleetConfig?.web?.preview !== false) Object.assign(decided, this.previewNotListening());
     return { ...decided, boot: listener ? listener.bootId : null };
+  }
+  private previewNotListening(): { code: PreviewOffCode; reason: string; detail?: string } {
+    const failed = this.previewListenError;
+    return failed
+      ? { code: "listenFailed", detail: failed, reason: `Previews are unavailable: the fleet could not open its preview port (${failed}). Another program may be using it — set web.preview_port, then restart AgEnD.` }
+      : { code: "notListening", reason: "Previews are not available on this fleet right now." };
   }
 
   /**
@@ -20881,7 +20894,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const configured = typeof web?.preview_origin === "string" ? normalizeOrigin(web.preview_origin) : null;
     if (configured) {
       const listener = this.previewListening ? this.previewListener : null;
-      if (!listener) return off("publicLink", "Previews are not available on this fleet right now.");
+      if (!listener) { const why = this.previewNotListening(); return off(why.code, why.reason, why.detail ? { detail: why.detail } : {}); }
       if (!configured.startsWith("https:")) return off("needHttps", "Previews need an https web.preview_origin when the dashboard is reached over https.");
       return { dashboardOrigin, previewOrigin: configured, reason: null, code: null, boot: listener.bootId, frameSrc: `${configured}/frame` };
     }
