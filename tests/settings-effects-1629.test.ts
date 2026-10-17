@@ -135,7 +135,7 @@ describe("Settings effect library", () => {
     await click(".s-fx-apply");
     expect(writes()[0]).toMatchObject({ url: "/ui/effects/apply", body: { instance: "worker", id: ID, params: { speed: 1.5, count: 3, enabled: false, shade: "#abcdef", mode: "rain" } } });
     await click(".s-fx-remove"); expect(writes()[1]).toMatchObject({ url: "/ui/effects/remove", body: { instance: "worker", id: ID } });
-    expect(p!.root.textContent).toContain("Saving replaces that chat’s parameters");
+    expect(p!.root.textContent).toContain("Your effect files, and which one a chat uses.");
   });
   it("refuses invalid params and a no-longer-known selection without a write", async () => {
     await mount(); await event($(".s-fx-target"), "change", "worker"); await event($("[data-param=speed]"), "input", "1.2"); await click(".s-fx-apply");

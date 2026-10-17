@@ -235,7 +235,7 @@ describe("Settings → Web appearance", () => {
       pg!.root.querySelector(".s-restore button").click();
       await settle(3); await flush(); await settle();
       expect(asked).toHaveLength(1);
-      expect(asked[0]).toContain("The colours people picked for agents, installed mods, uploaded effects and the card limits stay as they are.");
+      expect(asked[0]).toContain("Agents' own colours, mods, effects and card limits stay.");
       expect([host["color.off"], posts], "no: nothing reset").toEqual([true, []]);
       yes = true;
       pg!.root.querySelector(".s-restore button").click();

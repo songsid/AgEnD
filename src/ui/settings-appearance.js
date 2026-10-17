@@ -15,7 +15,8 @@ import { AgentWidget, checkWidget, fleetBinds, setSidebarWidget, sidebarWidgetRa
 import { confirmedWrite } from "./settings-confirm.js";
 import { savePref } from "/assets/app-prefs.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
-import { colorsOff, defaultPlaces, PLACEMENTS, setColorsOff, setDefaultPlaces, useIdentityColors } from "/assets/identity-color.js";
+import { colorsOff, defaultPlaces, identityClasses, identityOf, PLACEMENTS, paintIdentity, setColorsOff, setDefaultPlaces, useIdentityColors } from "/assets/identity-color.js";
+import { CardTitle } from "./settings-learn.js";
 import "./settings-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -42,7 +43,20 @@ function refusal(body) {
 export function AppearanceSection() {
   const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
   if (publicLink) return html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>`;
-  return html`<${ThemesCard} /><${IdentityColorCard} /><${CardSizeCard} /><${SidebarWidgetCard} /><${OwnerCssCard} /><${ModsCard} /><${EffectsCard} /><${DeviceCard} /><${CardLimitsCard} /><${RestoreDefaultsCard} />`;
+  const group = (key) => html`<h2 class="s-ap-group">${tn(key)}</h2>`;
+  return html`${group("groupLook")}<${ThemesCard} /><${IdentityColorCard} /><${CardSizeCard} />
+    ${group("groupLayout")}<${SidebarWidgetCard} />
+    ${group("groupCss")}<${OwnerCssCard} /><${DeviceCard} />
+    ${group("groupMods")}<${ModsCard} /><${EffectsCard} />
+    ${group("groupAdvanced")}<${CardLimitsCard} /><${RestoreDefaultsCard} />`;
+}
+
+/** #2056 B: a sample sidebar row in the host's default colour places, so the choice is seen rather than described. */
+const SAMPLE = { color: { person: "preset:teal" } };
+function ColorSample({ places, off }) {
+  const id = identityOf(SAMPLE, { hostDefault: places, off });
+  return html`<div class="idc-preview s-colors-sample" aria-hidden="true"><span class=${`inst v-inst ${identityClasses(id)}`} ref=${(el) => paintIdentity(el, id)}>
+    <span class="av"><span class="av-text">A</span></span><span class="inst-text"><span class="inst-name">${tn("colorSample")}</span></span></span></div>`;
 }
 
 /**
@@ -53,11 +67,14 @@ function IdentityColorCard() {
   useIdentityColors();
   const places = defaultPlaces(), off = colorsOff();
   const toggle = (p) => setDefaultPlaces(places.includes(p) ? places.filter((x) => x !== p) : [...places, p]);
-  return html`<section class="card s-appearance s-synced s-colors"><h3>${tn("colorTitle")}</h3>
+  return html`<section class="card s-appearance s-synced s-colors"><${CardTitle} title=${tn("colorTitle")} topic="colors" />
     <p class="sub">${tn("colorLead")}</p>
-    <fieldset class="idc-places" disabled=${off}><legend>${tn("colorPlaces")}</legend>
-      ${PLACEMENTS.map((p) => html`<label key=${p} class="check"><input type="checkbox" checked=${places.includes(p)} onChange=${() => toggle(p)} /> ${t(`color.place_${p}`)}</label>`)}
-    </fieldset>
+    <div class="s-colors-row">
+      <fieldset class="idc-places" disabled=${off}><legend>${tn("colorPlaces")}</legend>
+        ${PLACEMENTS.map((p) => html`<label key=${p} class="check"><input type="checkbox" checked=${places.includes(p)} onChange=${() => toggle(p)} /> ${t(`color.place_${p}`)}</label>`)}
+      </fieldset>
+      <${ColorSample} places=${places} off=${off} />
+    </div>
     <label class="check"><input type="checkbox" class="s-colors-off" checked=${off} onChange=${(e) => setColorsOff(e.target.checked)} /> <span>${tn("colorOff")}</span></label>
     <p class="sub">${tn("colorOffLead")}</p>
   </section>`;
@@ -88,7 +105,7 @@ function RestoreDefaultsCard() {
     setBusy(false);
     if (r.ok) toast(tn("restoreDone")); else toast(tn("restoreCssFailed", r.error), false);
   }
-  return html`<section class="card s-appearance s-restore"><h3>${tn("restoreTitle")}</h3>
+  return html`<section class="card s-appearance s-restore"><${CardTitle} title=${tn("restoreTitle")} topic="restore" />
     <p class="sub">${tn("restoreLead")}</p>
     <button type="button" class="btn" disabled=${busy} onClick=${go}>${tn("restoreTitle")}</button>
   </section>`;
@@ -98,7 +115,7 @@ function RestoreDefaultsCard() {
 function CardSizeCard() {
   useStore(cardSizeStore);
   const size = cardSizeDefault();
-  return html`<section class="card s-appearance s-synced"><h3>${tn("cardSizeTitle")}</h3>
+  return html`<section class="card s-appearance s-synced"><${CardTitle} title=${tn("cardSizeTitle")} topic="cards" />
     <div class="card-size" role="group" aria-label=${tn("cardSizeTitle")}>
       ${CARD_SIZES.map((s) => html`<button key=${s} type="button" class=${`seg-item${s === size ? " active" : ""}`} aria-pressed=${s === size ? "true" : "false"}
         onClick=${() => setCardSizeDefault(s)}>${t(`card.size${s.toUpperCase()}Name`)}</button>`)}
@@ -131,7 +148,7 @@ function CardLimitsCard() {
   };
   useEffect(() => { load(); }, []);
   if (!view) return null;
-  if (view.error) return html`<section class="card s-appearance"><h3>${tn("cardLimitsTitle")}</h3><p class="sub">${tn("cardLimitsUnavailable")}</p></section>`;
+  if (view.error) return html`<section class="card s-appearance"><${CardTitle} title=${tn("cardLimitsTitle")} topic="limits" /><p class="sub">${tn("cardLimitsUnavailable")}</p></section>`;
   const configured = (g, k) => (view.configured && view.configured[g] && typeof view.configured[g][k] === "number" ? view.configured[g][k] : null);
   const save = async () => {
     const body = {};
@@ -148,7 +165,7 @@ function CardLimitsCard() {
     if (r.ok) { setMsg(tn("cardLimitsSaved")); load(); } else setMsg(tn("cardLimitsFailed", (r.body && r.body.error) || r.status));
   };
   const warnings = Array.isArray(view.warnings) ? view.warnings : [];
-  return html`<section class="card s-appearance"><h3>${tn("cardLimitsTitle")}</h3>
+  return html`<section class="card s-appearance"><${CardTitle} title=${tn("cardLimitsTitle")} topic="limits" />
     <p class="sub">${tn("cardLimitsLead")}</p>
     <fieldset class="form" disabled=${busy}>
       ${["portrait", "banner", "instance_quota"].map((g) => html`<div key=${g} class="grid3">
@@ -170,7 +187,7 @@ function CardLimitsCard() {
 /** #1629 r2 (d): whether this person's screens show agents' themes (and, as they come, effects) — synced. */
 function ThemesCard() {
   const s = useStore(themesStore);
-  return html`<section class="card s-appearance s-synced"><h3>${tn("themesTitle")}</h3>
+  return html`<section class="card s-appearance s-synced"><${CardTitle} title=${tn("themesTitle")} topic="themes" />
     <label class="check"><input type="checkbox" checked=${s.shown} disabled=${safeMode()} onChange=${(e) => setThemesShown(e.target.checked)} />
       <span>${tn("themesShow")}</span></label>
     <p class="sub">${safeMode() ? tn("themesSafeMode") : tn("themesShowLead")}</p>
@@ -209,7 +226,7 @@ function SidebarWidgetCard() {
     toast(tn("widgetSaved"));
   };
   const remove = () => { setSidebarWidget(null); setText(""); setError(""); toast(tn("widgetRemoved")); };
-  return html`<section class="card s-appearance s-synced s-widget"><h3>${tn("widgetTitle")}</h3>
+  return html`<section class="card s-appearance s-synced s-widget"><${CardTitle} title=${tn("widgetTitle")} topic="widgets" />
     <p class="sub">${tn("widgetLead")}</p>
     <label class="field"><span class="sr-only">${tn("widgetTitle")}</span>
       <textarea class="s-widget-text" rows="10" spellcheck=${false} autocapitalize="off" autocomplete="off" value=${text}
@@ -240,8 +257,8 @@ function OwnerCssCard() {
   useEffect(() => { load(); }, []);
   // A trial answered (kept or reverted) changes what is in force: read it again, keeping the editor's text.
   useEffect(() => { if (state) load({ text: false }); }, [trial && trial.sha]);
-  if (!state) return html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">…</p></section>`;
-  if (state.failed) return html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="err">${tn("cssLoadFailed")}</p></section>`;
+  if (!state) return html`<section class="card s-appearance"><${CardTitle} title=${tn("cssTitle")} topic="css" /><p class="sub">…</p></section>`;
+  if (state.failed) return html`<section class="card s-appearance"><${CardTitle} title=${tn("cssTitle")} topic="css" /><p class="err">${tn("cssLoadFailed")}</p></section>`;
 
   const save = async () => {
     setBusy(true); setError("");
@@ -285,7 +302,7 @@ function OwnerCssCard() {
     ? (state.pending ? tn("cssOnTrial", short(state.active)) : tn("cssInForce", short(state.active)))
     : tn("cssNone");
   const assetBytes = state.assets.reduce((n, a) => n + a.bytes, 0);
-  return html`<section class="card s-appearance s-owner-css"><h3>${tn("cssTitle")}</h3>
+  return html`<section class="card s-appearance s-owner-css"><${CardTitle} title=${tn("cssTitle")} topic="css" />
     <p class="sub">${tn("cssLead")}</p>
     <p class="s-css-status" role="status">${inForce}</p>
     <label class="field"><span class="sr-only">${tn("cssTitle")}</span>
@@ -319,7 +336,6 @@ function DeviceCard() {
   return html`<section class="card s-appearance s-local"><h3>${tn("cssDeviceTitle")}</h3>
     <label class="check"><input type="checkbox" checked=${off} onChange=${(e) => { setOwnerCssOffHere(e.target.checked); setOff(ownerCssOffHere()); }} />
       <span>${tn("cssDeviceOff")}</span></label>
-    <p class="sub">${tn("cssDeviceOffLead")}</p>
     <p class="sub">${tn("cssSafe")}</p>
   </section>`;
 }

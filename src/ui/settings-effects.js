@@ -4,10 +4,11 @@ import { register, t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { OwnerEffects } from "./settings-owner-effects.js";
+import { CardTitle } from "./settings-learn.js";
 
 register("effectSettings", {
   en: {
-    title: "Effects", lead: "Manage effect files and save selections for a chat. Saving replaces that chat’s parameters with the values below.", folder: "Upload an effect folder", files: "Choose effect.json and worker.js, with optional raster assets. Up to 1 MiB after processing.",
+    title: "Effects", lead: "Your effect files, and which one a chat uses.", folder: "Upload an effect folder", files: "effect.json + worker.js (and pictures), up to 1 MiB.",
     inUse: "This effect is still in use and cannot be deleted.", quota: "Your library reached its 10-effect or 8 MiB limit. Delete unused copies first.", rateLimited: "Too many changes. Wait a moment, then try again.",
     loading: "Loading effects…", retry: "Reload library", empty: "No effects in your library.", failed: "Couldn't load the library. Try again.", actionFailed: "Couldn't save this change. Try again.", savedRefresh: "Saved. Reload the library to see the result.",
     uploadFailed: "Couldn't upload this folder. Check its files and size, then try again.", public: "Effect management isn't available on a temporary public link.", readOnly: "Read-only session: sign in as an admin to change effects.",
@@ -16,7 +17,7 @@ register("effectSettings", {
     fps: "Host FPS p50 / p10", tasks: "Host long task p95", noTasks: "Not observed", standard: "Standard device", constrained: "Constrained device", params: "Parameters", badParams: "Check the parameter values.", more: "Show more", count: "{0} effects", one: "1 effect", profileFailed: "Couldn't read profile history. Try again.",
   },
   "zh-TW": {
-    title: "效果", lead: "管理效果檔案，並儲存聊天的效果選擇。儲存時會以下方數值取代該聊天的效果參數。", folder: "上傳效果資料夾", files: "選擇 effect.json、worker.js，以及可選的點陣圖素材；處理後最多 1 MiB。",
+    title: "效果", lead: "你的效果檔案，以及每個聊天使用哪一個。", folder: "上傳效果資料夾", files: "effect.json + worker.js（可加圖片），最多 1 MiB。",
     inUse: "這個效果仍在使用中，無法刪除。", quota: "你的程式庫已達 10 個效果或 8 MiB 上限，請先刪除未使用的副本。", rateLimited: "變更太頻繁，請稍候再試。",
     loading: "正在載入效果…", retry: "重新載入程式庫", empty: "程式庫中還沒有效果。", failed: "無法載入程式庫，請重試。", actionFailed: "無法儲存變更，請重試。", savedRefresh: "已儲存，請重新載入程式庫查看結果。",
     uploadFailed: "無法上傳這個資料夾，請檢查檔案與大小後重試。", public: "臨時公開連結不提供效果管理。", readOnly: "目前為唯讀登入，請以管理員身分登入才能修改效果。",
@@ -180,7 +181,7 @@ export function EffectsCard() {
     if (!current(op.seq)) return; finish(op.seq);
     if (yes) await change(`/ui/effects/${id}`, undefined, "DELETE");
   };
-  return html`<section class="card s-appearance s-effects"><h3>${tn("title")}</h3><p class="sub">${tn("lead")}</p>
+  return html`<section class="card s-appearance s-effects"><${CardTitle} title=${tn("title")} topic="effects" /><p class="sub">${tn("lead")}</p>
     <div class="s-fx-actions"><button type="button" class="btn" disabled=${busy} onClick=${reload}>${tn("retry")}</button>
       ${view?.canWrite ? html`<button class="btn s-fx-choose" type="button" disabled=${busy} onClick=${() => uploadInput.current?.click()}>${tn("folder")}</button><input ref=${uploadInput} class="offscreen s-fx-upload" aria-label=${tn("folder")} tabindex="-1" type="file" webkitdirectory=${true} directory=${true} multiple disabled=${busy} onChange=${upload} />` : null}</div>
     ${busy ? html`<p class="sub" role="status">${tn("loading")}</p>` : null}${error ? html`<p class="err" role="status">${error}</p>` : null}${message ? html`<p class="sub" role="status">${message}</p>` : null}

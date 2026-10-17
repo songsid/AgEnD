@@ -135,6 +135,16 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .idc-hex { width: 9ch; font-family: var(--font-mono, monospace); }
 .dlg-actions .dlg-spacer { flex: 1 1 auto; }
 .idc-preview { padding: 6px; border-radius: 10px; background: var(--bg-sidebar); max-width: 260px; }
+/* #2056 B: Settings → Web appearance — plain group headings, a "?" per card to its docs section, and the colour card's sample row. */
+.s-ap-group { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text); margin: var(--s-4) 0 var(--s-2); }
+.s-ap-group:first-child { margin-top: 0; }
+.s-ap-title { display: flex; align-items: center; gap: var(--s-2); }
+.s-learn { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: var(--r-full); border: 1px solid var(--border);
+  color: var(--text-3); font-size: 11px; text-decoration: none; text-transform: none; letter-spacing: 0; line-height: 1; }
+.s-learn:hover, .s-learn:focus-visible { color: var(--text); border-color: var(--text-3); }
+.s-colors-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-bottom: var(--s-2); }
+.s-colors-row .idc-places { margin-bottom: 0; flex: 1 1 220px; }
+.s-colors-sample { flex: 0 1 220px; min-width: 0; }
 .av-text { overflow: hidden; }
 .av .av-dot { position: absolute; right: -2px; bottom: -2px; margin: 0; box-shadow: 0 0 0 2px var(--bg-sidebar); }
 /* #1722: the CLI as a letter on the avatar's top-left corner — monochrome (the #1630 ring keeps the colour), cut out like the dot */

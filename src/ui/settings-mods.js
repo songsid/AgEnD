@@ -12,6 +12,7 @@ import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { startOwnerCssTrial } from "/assets/owner-css.js";
 import { AgentWidget, checkWidget, fleetBinds, instanceBinds } from "/assets/agent-widget.js";
+import { CardTitle } from "./settings-learn.js";
 import "./settings-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -204,8 +205,8 @@ export function ModsCard() {
     setState(b && Array.isArray(b.mods) ? { mods: b.mods.filter((m) => m && typeof m.id === "string"), staged, proposals } : { failed: true });
   };
   useEffect(() => { load(); }, []);
-  if (!state) return html`<section class="card s-appearance s-mods"><h3>${tn("modsTitle")}</h3><p class="sub">…</p></section>`;
-  if (state.failed) return html`<section class="card s-appearance s-mods"><h3>${tn("modsTitle")}</h3><p class="err">${tn("modsLoadFailed")}</p></section>`;
+  if (!state) return html`<section class="card s-appearance s-mods"><${CardTitle} title=${tn("modsTitle")} topic="mods" /><p class="sub">…</p></section>`;
+  if (state.failed) return html`<section class="card s-appearance s-mods"><${CardTitle} title=${tn("modsTitle")} topic="mods" /><p class="err">${tn("modsLoadFailed")}</p></section>`;
   const stage = async () => {
     const f = file.current && file.current.files && file.current.files[0];
     if (!f) return;
@@ -238,7 +239,7 @@ export function ModsCard() {
     if (!r || !r.ok) { toast(tn("modFailed", r ? r.status : "network"), false); return; }
     download(await r.text(), `${m.name}-${m.version}.agendmod.json`);
   };
-  return html`<section class="card s-appearance s-mods"><h3>${tn("modsTitle")}</h3>
+  return html`<section class="card s-appearance s-mods"><${CardTitle} title=${tn("modsTitle")} topic="mods" />
     <p class="sub">${tn("modsLead")}</p>
     ${state.staged ? html`<${Plan} key=${state.staged.stage} staged=${state.staged} onDone=${load} />` : html`<div class="s-mod-import">
       <label class="btn"><${Icon} name="attach" size=${16} /><span>${tn("modChoose")}</span>

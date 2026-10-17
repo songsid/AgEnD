@@ -7,24 +7,24 @@ import { getAppEffects } from "./app-effects.js";
 import { ownerEffectsStore, watchOwnerEffects, refreshOwnerEffects, saveOwnerEffects } from "/assets/owner-effect-prefs.js";
 register("ownerEffects", {
   en: {
-    title: "Your effect choices", operatorTitle: "Host-wide effect choices", person: "These choices follow this platform sign-in. Discord and Telegram accounts stay separate.",
-    operator: "Host-wide choices: everyone signed in as the host operator shares these slots.",
+    title: "Your effect choices", operatorTitle: "Host-wide effect choices", person: "Follows your sign-in; Discord and Telegram are separate.",
+    operator: "Shared by everyone signed in as the host.",
     sidebar: "Sidebar", header: "Header", page: "Page", box: "Box", cursor: "Cursor", none: "None", savedChoice: "Saved choice",
     unknown: "Choices are unavailable. Reload to try again.", changed: "This page can no longer access these choices. Reload and sign in again.",
     unavailable: "No longer available", clear: "Clear", reload: "Reload choices", saved: "Saved.", failed: "Couldn't save. Reload choices and try again.",
     savedRefresh: "Saved, but the choices couldn't be refreshed. Reload to check.", readOnly: "Sign in as an admin to change these choices.",
-    playback: "Playback requires Effects and preview consent. The cursor follows the same consent and falls back to stock cursors when unavailable.",
-    pause: "Pause", resume: "Resume", running: "Running", cursorFailed: "The cursor could not be applied here. Clear or reload the choice to try again.", starting: "Starting", queued: "Waiting for a slot", paused: "Paused", off: "Playback is off or unavailable here.", budget: "Paused to protect page responsiveness. Resume keeps the three-pauses safety limit.", resumeFailed: "This effect cannot resume: the page or its safety history is not ready. Reload the page or choose another effect.",
+    playback: "Plays once Effects and previews are allowed.",
+    pause: "Pause", resume: "Resume", running: "Running", cursorFailed: "The cursor could not be applied here. Clear or reload the choice to try again.", starting: "Starting", queued: "Waiting for a slot", paused: "Paused", off: "Playback is off or unavailable here.", budget: "Paused to keep the page responsive.", resumeFailed: "This effect cannot resume: the page or its safety history is not ready. Reload the page or choose another effect.",
   },
   "zh-TW": {
-    title: "你的效果選擇", operatorTitle: "主機共用效果選擇", person: "選擇會跟隨這個平台的登入身分；Discord 與 Telegram 帳號各自獨立。",
-    operator: "主機共用選擇：所有以主機操作者身分登入的人，都會共用這些欄位。",
+    title: "你的效果選擇", operatorTitle: "主機共用效果選擇", person: "跟隨你的登入身分；Discord 與 Telegram 各自獨立。",
+    operator: "所有以主機身分登入的人共用。",
     sidebar: "側邊欄", header: "頁首", page: "頁面", box: "區塊", cursor: "游標", none: "無", savedChoice: "已儲存的選擇",
     unknown: "目前無法取得選擇，請重新載入再試。", changed: "這個頁面已無法存取選擇，請重新載入並登入。",
     unavailable: "已無法使用", clear: "清除", reload: "重新載入選擇", saved: "已儲存。", failed: "無法儲存，請重新載入選擇再試。",
     savedRefresh: "已儲存，但無法更新畫面；請重新載入確認。", readOnly: "請以管理員身分登入才能修改選擇。",
-    playback: "開啟效果並允許預覽後才會播放；游標也遵循相同的同意設定；無法使用時會還原一般游標。",
-    pause: "暫停", resume: "恢復", running: "播放中", cursorFailed: "這裡無法套用游標。可清除或重新載入選擇後再試。", starting: "啟動中", queued: "等待空位", paused: "已暫停", off: "這裡已關閉播放，或無法播放效果。", budget: "為維持頁面順暢，已暫停效果。恢復仍保留三次暫停的安全上限。", resumeFailed: "頁面或安全紀錄尚未就緒，無法恢復此效果。請重新載入頁面，或選擇其他效果。",
+    playback: "開啟效果並允許預覽後才會播放。",
+    pause: "暫停", resume: "恢復", running: "播放中", cursorFailed: "這裡無法套用游標。可清除或重新載入選擇後再試。", starting: "啟動中", queued: "等待空位", paused: "已暫停", off: "這裡已關閉播放，或無法播放效果。", budget: "為維持頁面順暢，已暫停。", resumeFailed: "頁面或安全紀錄尚未就緒，無法恢復此效果。請重新載入頁面，或選擇其他效果。",
   },
 });
 const text = key => t(`ownerEffects.${key}`);

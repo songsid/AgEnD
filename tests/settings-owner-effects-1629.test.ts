@@ -55,7 +55,7 @@ describe("owner effect selectors", () => {
     expect($('[data-owner-runtime="fx.page"]').textContent).toBe("Running"); calls = [];
     $('[data-owner-pause="fx.page"]').click(); await ticks(); expect(live.entry.api.pauseOwner).toHaveBeenCalledExactlyOnceWith("fx.page"); expect($('[data-owner-runtime="fx.page"]').textContent).toBe("Paused");
     $('[data-owner-resume="fx.page"]').click(); await ticks(); expect(live.entry.api.resumeOwner).toHaveBeenCalledExactlyOnceWith("fx.page"); expect(calls).toEqual([]); expect(p!.root.querySelectorAll("iframe,canvas")).toHaveLength(0);
-    live.snapshot.rows[0].reason = "host_budget"; live.changed(); await ticks(); expect(text()).toContain("Resume keeps the three-pauses safety limit.");
+    live.snapshot.rows[0].reason = "host_budget"; live.changed(); await ticks(); expect(text()).toContain("Paused to keep the page responsive.");
     live.entry.api.resumeOwner.mockReturnValueOnce(false); $('[data-owner-resume="fx.page"]').click(); await ticks(); expect(text()).toContain("This effect cannot resume");
     await p!.unmount(); expect(live.listeners.size).toBe(0); expect(live.ends.size).toBe(0);
   });
@@ -78,7 +78,7 @@ describe("owner effect selectors", () => {
   });
   it("shows five choices, platform scope and playback gates; saves only exact id and epoch", async () => {
     await mount(); expect(p!.root.querySelectorAll("[data-owner-slot]")).toHaveLength(5);
-    expect(text()).toContain("Discord and Telegram accounts stay separate."); expect(text()).toContain("Playback requires Effects and preview consent. The cursor follows the same consent and falls back to stock cursors when unavailable.");
+    expect(text()).toContain("Follows your sign-in; Discord and Telegram are separate."); expect(text()).toContain("Plays once Effects and previews are allowed.");
     await change("fx.page", A);
     const posts = calls.filter(c => c.init.method === "POST"); expect(posts).toHaveLength(1);
     expect(JSON.parse(posts[0]!.init.body)).toEqual({ set: { "fx.page": A }, ownerEpoch: E });
@@ -87,10 +87,10 @@ describe("owner effect selectors", () => {
     expect(p!.root.querySelectorAll("iframe, canvas")).toHaveLength(0);
   });
   it("explicit host operator scope is labelled shared, in both languages", async () => {
-    await mount({ operator: true }); expect(text()).toContain("Host-wide choices: everyone signed in as the host operator shares these slots.");
+    await mount({ operator: true }); expect(text()).toContain("Shared by everyone signed in as the host.");
     (await import("/assets/app-i18n.js")).setLang("zh-TW", { store: false });
     (await import("/assets/owner-effect-prefs.js")).ownerEffectsStore.set({ scope: "operator" }); await ticks();
-    expect(text()).toContain("主機共用選擇：所有以主機操作者身分登入的人，都會共用這些欄位。");
+    expect(text()).toContain("所有以主機身分登入的人共用。");
   });
   it("unavailable choices retain their id, show a clear action and clear only by explicit click", async () => {
     await mount({ slots: { ...empty(), "fx.page": { status: "unavailable", id: B } }, lang: "zh-TW" });
