@@ -1516,6 +1516,8 @@ export class DeliveryOutbox extends EventEmitter {
       return { result: "upgraded", cancelledNotice };
     });
     const { result, cancelledNotice } = transaction();
+    // #1918: the ordinary consumed mark changes no state, so it has an event of its own (the org canvas fades the line).
+    if (result === "marked") this.emit("consumed", { deliveryId });
     if (result === "upgraded") {
       this.emit("state", { deliveryId, state: "delivered" });
       if (cancelledNotice) this.emit("state", { deliveryId: cancelledNotice, state: "cancelled" });

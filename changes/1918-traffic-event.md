@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **Web: the fleet's cross-instance traffic, for the coming org canvas (#1918).** The dashboard's stream now carries a `traffic` event each time a message between instances is queued, starts being delivered, is delivered, is read by its receiver, or fails. It covers `send_to_instance`, `delegate_task`, `report_result`, `request_information` and `broadcast`. A new read, `GET /ui/traffic`, gives what is in flight plus what finished in the last two minutes, at most 200 items. The public link may read it too, since it has no stream. Each item holds only the two instance names, the kind, the state, a time and an opaque id: never the message, its ids or its text. Fleet notices aren't traffic, and an instance whose `cross_instance_visibility` is `hidden` never appears. The fleet adds no probe for this. It forwards what the delivery outbox already records, and it works out the read at most once every two seconds however often it's asked.
