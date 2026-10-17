@@ -287,7 +287,7 @@ import {
 import { authorizeSession, decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
 import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
-import { localSessionPolicy, tokenEpoch, WebSessionStore } from "./web-session.js";
+import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore } from "./web-session.js";
 import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
@@ -5740,6 +5740,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // #1620: fleet.yaml's web.session.local, read at every check — a Settings save or a reload applies at once
         // (shortening ends the sessions it now outlives). The public link's policy stays fixed.
         localPolicy: () => localSessionPolicy(this.fleetConfig?.web?.session?.local),
+        // #1920 §5.4: a guest's, from web.guests.session (never longer than the surface's own).
+        guestPolicy: () => guestSessionPolicy(this.fleetConfig?.web?.guests?.session),
       });
     }
     if (!this.returningDevices) {

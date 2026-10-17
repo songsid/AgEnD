@@ -6,7 +6,7 @@ import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } fro
 import { hostnameOf } from "./web-host-guard.js";
 import { mbText, PUBLIC_LINK_MAX_FILE_BYTES, UPLOAD_LIMITS, UPLOAD_MB_RANGE } from "./web-upload.js";
 import { previewOriginProblem } from "./web-preview.js";
-import { DEFAULT_SESSION_POLICY, LOCAL_SESSION_HOURS } from "./web-session.js";
+import { DEFAULT_SESSION_POLICY, GUEST_SESSION_BOUNDS, GUEST_SESSION_POLICY, LOCAL_SESSION_HOURS } from "./web-session.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { existsSync } from "node:fs";
 import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
@@ -28,7 +28,7 @@ export interface ValidationIssue {
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
 const WEB_KEYS = ["public_link", "echo_to_channel", "usage_panel", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
-  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb"] as const satisfies ReadonlyArray<keyof WebConfig>;
+  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
 
@@ -430,6 +430,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       if (problem) err("web.preview_origin", problem);
     }
     if (config.web.session !== undefined) validateWebSession(config.web.session, err);
+    if (config.web.guests !== undefined) validateWebGuests(config.web.guests, config, err, warn);
     validateUploadLimits(config.web, warn);
     if (config.web.allowed_hosts !== undefined) {
       if (!Array.isArray(config.web.allowed_hosts)) {
@@ -617,6 +618,45 @@ function validateUploadLimits(web: Record<string, unknown>, warn: (path: string,
   if (Math.min(fileMb, totalMb) > publicMb) {
     warn("web.upload_max_file_mb", `over the public link a file stays at ${publicMb} MB (a Cloudflare quick tunnel carries about 100 MB per request)`);
   }
+}
+
+/** #1920: `web.guests` — its switches, the instance lists (names of this fleet's instances) and the guest session. */
+function validateWebGuests(guests: unknown, config: Record<string, any>, err: (path: string, message: string) => void, warn: (path: string, message: string) => void): void {
+  if (!isObj(guests)) { err("web.guests", "must be a mapping"); return; }
+  const g = guests as Record<string, unknown>;
+  const KEYS = ["enabled", "chat", "open_instances", "narrow", "session"];
+  for (const key of Object.keys(g)) if (!KEYS.includes(key)) err(`web.guests.${key}`, `unknown key (${KEYS.join(", ")})`);
+  for (const key of ["enabled", "chat"]) if (g[key] !== undefined && typeof g[key] !== "boolean") err(`web.guests.${key}`, "must be a boolean");
+  const known = new Set(isObj(config.instances) ? Object.keys(config.instances) : []);
+  const lists = (key: "open_instances" | "narrow", keyOk: (k: string) => boolean, keyHint: string) => {
+    const v = g[key];
+    if (v === undefined) return;
+    if (!isObj(v)) { err(`web.guests.${key}`, "must be a mapping"); return; }
+    for (const [k, names] of Object.entries(v as Record<string, unknown>)) {
+      if (!keyOk(k)) { err(`web.guests.${key}.${k}`, `the key must be ${keyHint}`); continue; }
+      if (!Array.isArray(names) || !names.every((n) => typeof n === "string" && n.length > 0 && n.length <= 128)) { err(`web.guests.${key}.${k}`, "must be a list of instance names"); continue; }
+      for (const n of names as string[]) if (!known.has(n)) warn(`web.guests.${key}.${k}`, `"${n}" is not an instance of this fleet: it gives nothing`);
+    }
+  };
+  const ID = /^[A-Za-z0-9_.-]{1,64}$/;
+  lists("open_instances", (k) => ID.test(k), "a connection id");
+  lists("narrow", (k) => { const i = k.indexOf(":"); return i > 0 && ID.test(k.slice(0, i)) && /^[0-9A-Za-z_-]{1,64}$/.test(k.slice(i + 1)); }, "<connection id>:<user id>");
+  const session = g.session;
+  if (session === undefined) return;
+  if (!isObj(session)) { err("web.guests.session", "must be a mapping"); return; }
+  const sv = session as Record<string, unknown>;
+  for (const key of Object.keys(sv)) if (key !== "absolute_hours" && key !== "idle_minutes") err(`web.guests.session.${key}`, "unknown key (absolute_hours, idle_minutes)");
+  const { absoluteHours: a, idleMinutes: i } = GUEST_SESSION_BOUNDS;
+  const num = (key: string, min: number, max: number, unit: string): number | null => {
+    const v = sv[key];
+    if (v === undefined) return null;
+    if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max) { err(`web.guests.session.${key}`, `must be a number of ${unit} from ${min} to ${max}`); return NaN; }
+    return v;
+  };
+  const abs = num("absolute_hours", a.min, a.max, "hours"), idle = num("idle_minutes", i.min, i.max, "minutes");
+  if (Number.isNaN(abs) || Number.isNaN(idle) || idle === null) return;
+  const absolute = abs ?? GUEST_SESSION_POLICY.absoluteMs / 3_600_000;
+  if (idle > absolute * 60) err("web.guests.session.idle_minutes", `must not exceed absolute_hours (${idle} min > ${absolute} h${abs === null ? ", the default" : ""})`);
 }
 
 function validateWebSession(session: unknown, err: (path: string, message: string) => void): void {
