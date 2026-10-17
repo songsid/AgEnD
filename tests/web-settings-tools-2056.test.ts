@@ -99,7 +99,7 @@ describe("set_web_settings: as the page changes it", () => {
     expect(set({ what: "agent_colour", instance: "alpha", colour: null, places: null })).toMatchObject({ ok: true, color: null, show: null });
     expect(set({ what: "agent_colour", instance: "nobody", colour: "preset:teal" })).toEqual({ ok: false, error: "unknown_instance" });
   });
-  it("custom CSS: the same safe rules (no bypass); a tool puts it on trial, reverts or turns it off — keeping is the person's", () => {
+  it("custom CSS: the same safe rules (no bypass); a tool saves on trial, keeps or reverts it, uses an earlier version, turns it off", () => {
     const remote = "body { background: url(https://example.com/x.png) }";
     expect(checkOwnerCss(remote, new Set()).ok).toBe(false);
     expect(set({ what: "custom_css", action: "save", text: remote })).toMatchObject({ ok: false });
@@ -107,14 +107,21 @@ describe("set_web_settings: as the page changes it", () => {
     expect(set({ what: "custom_css", action: "save", text: "body { outline: 2px solid #ff0000 }" })).toMatchObject({ ok: true, on_trial: true });
     const trial = fm.ownerCss.state(OPERATOR).pending;
     expect(trial).not.toBeNull();
-    // Keeping it, or choosing an earlier version (which applies at once), is the person's own click — never a tool's.
-    for (const action of ["keep", "use"]) expect(set({ what: "custom_css", action, version: trial.sha })).toMatchObject({ ok: false, error: "custom_css_person_only" });
-    expect(fm.ownerCss.state(OPERATOR).pending).not.toBeNull();
+    // The user's decision (2026-10-18): General keeps it too — the page's Keep, the store's own check.
     expect(set({ what: "custom_css", action: "revert" })).toMatchObject({ ok: true, active: null });
     expect(fm.ownerCss.state(OPERATOR).pending).toBeNull();
-    // The person kept one on the page: a tool may turn it off.
+    expect(set({ what: "custom_css", action: "keep" }), "nothing on trial").toMatchObject({ ok: false, error: "trial" });
     set({ what: "custom_css", action: "save", text: "body { outline: 1px solid #0000ff }" });
-    expect(fm.ownerCss.keep(OPERATOR, fm.ownerCss.state(OPERATOR).pending.id)).toMatchObject({ ok: true });
+    const first = fm.ownerCss.state(OPERATOR).pending.sha;
+    expect(set({ what: "custom_css", action: "keep" })).toMatchObject({ ok: true, active: first });
+    expect(fm.ownerCss.state(OPERATOR)).toMatchObject({ active: first, pending: null });
+    set({ what: "custom_css", action: "save", text: "body { outline: 3px solid #00ff00 }" });
+    set({ what: "custom_css", action: "keep" });
+    // An earlier version: only one the person's store holds (each passed the safe rules when saved).
+    expect(set({ what: "custom_css", action: "use", version: first })).toMatchObject({ ok: true, active: first });
+    expect(set({ what: "custom_css", action: "use", version: "f".repeat(32) })).toMatchObject({ ok: false, error: "no_such_version" });
+    expect(set({ what: "custom_css", action: "use", version: "not a sha" })).toMatchObject({ ok: false, error: "sha" });
+    expect(fm.ownerCss.state(OPERATOR).active).toBe(first);
     expect(set({ what: "custom_css", action: "off" })).toMatchObject({ ok: true, active: null });
     expect(set({ what: "custom_css", action: "lasers" })).toMatchObject({ ok: false, error: "custom_css" });
   });

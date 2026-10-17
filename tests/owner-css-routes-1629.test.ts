@@ -264,8 +264,8 @@ describe("no agent path reaches it", () => {
         // web-mod-agent.ts (r4-5b): an agent's mod path names it only to refuse it (owner_css_not_from_agent), and its
         // export never carries it — both tested in web-mods-agent-1629.
         "web-mod-agent.ts",
-        // web-settings-tools.ts (#2056): General's tools change the user's Settings → Web appearance — for custom CSS only
-        // a trial (the store's own save, checkOwnerCss and all), its revert, or off; keeping it stays the person's (pinned below).
+        // web-settings-tools.ts (#2056): General's tools change the user's Settings → Web appearance — custom CSS through
+        // the store's own save (checkOwnerCss and all), keep, revert and restore (pinned below).
         "web-settings-tools.ts",
         // Try checks the host-supplied CSS lifecycle enum for a closed diagnostic value.
         // It neither imports the CSS store nor exposes its management routes (pinned below).
@@ -273,10 +273,12 @@ describe("no agent path reaches it", () => {
       if (/owner[-_ ]?css/i.test(readFileSync(join(src, f), "utf8"))) hits.push(f);
     }
     expect(hits, "no tool, CLI or agent route names it").toEqual([]);
-    // #2056: General's tools save on trial, revert it, or turn it off — never keep a trial or choose a version.
+    // #2056: General's tools save on trial and keep exactly the trial in force; a version comes back only through the
+    // store's restore (a sha its index holds); nothing writes the pointer or a version around the store.
     const tools = readFileSync(join(src, "web-settings-tools.ts"), "utf8");
-    expect(tools).not.toMatch(/\.keep\(/);
-    expect([...tools.matchAll(/store\.restore\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(["null"]);
+    expect([...tools.matchAll(/store\.keep\(person, (.*?)\); return/g)].map(m => m[1])).toEqual(["store.state(person).pending?.id"]);
+    expect([...tools.matchAll(/store\.restore\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(["null", "c.version"]);
+    expect(tools).not.toMatch(/setOwnerCss|writeIndex|ownerCssActive/);
     expect([...tools.matchAll(/ownerCss\.restore\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(["null"]);
     const trials = readFileSync(join(src, "web-effect-trials.ts"), "utf8");
     expect(trials).toContain('["off", "on", "loading", "unknown"].includes(d.ownerCss as string)');

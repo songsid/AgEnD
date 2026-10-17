@@ -395,7 +395,7 @@ A mod is one file, `<name>-<version>.agendmod.json`, that carries a look: an age
 General (and a coordinator or full-profile instance) can change **Settings → Web appearance** for you: just ask in chat.
 - **What it uses:** `get_web_settings` tells it every setting in plain words, and `set_web_settings` changes one through the page's own checks.
 - **What it can change:** agents' themes shown, identity colours and where they show, card sizes, the sidebar widget, one agent's colour, effects on a chat and your effect slots, an agent's proposed mod (it shows you the plan, then installs only what you asked for), and Restore defaults.
-- **Custom CSS:** it keeps its safe rules. General can put it on trial, revert the trial or turn it off. **Keeping** it, or switching to an earlier version, is your own click on your screen.
+- **Custom CSS:** it keeps its safe rules. General can put it on trial, keep or revert the trial, switch to an earlier saved version, or turn it off. It keeps a trial when you say you like it.
 - **What only you can do, on the page:** choosing a file from your computer (a mod file, an effect folder, a CSS asset, a card picture), this browser's own switches, downloading an export, and the card upload limits.
 
 ### Effects

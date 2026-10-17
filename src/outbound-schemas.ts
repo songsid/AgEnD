@@ -352,8 +352,9 @@ export const SetWebSettingsArgs = z.object({
       places: Places.nullable().optional().describe("Where that agent's colour shows ([] nowhere; null: back to the host's places)"),
     }).strict(),
     z.object({
-      what: z.literal("custom_css"), action: z.enum(["save", "revert", "off"]),
-      text: z.string().optional().describe("save: the stylesheet (same rules as the page: no remote URLs, assets as url(\"asset:<id>\"), at most 64 KiB). It goes on trial on their screens; keeping it is the person's own click."),
+      what: z.literal("custom_css"), action: z.enum(["save", "keep", "revert", "use", "off"]),
+      text: z.string().optional().describe("save: the stylesheet (same rules as the page: no remote URLs, assets as url(\"asset:<id>\"), at most 64 KiB). It goes on trial on their screens: keep it (keep) once they say they like it, or it goes back by itself."),
+      version: z.string().optional().describe("use: an earlier saved version's sha, from get_web_settings' custom_css.versions; it applies at once"),
     }).strict(),
     z.object({
       what: z.literal("mod"), action: z.enum(["review", "install", "cancel", "dismiss", "uninstall"]),
