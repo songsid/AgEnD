@@ -16,11 +16,11 @@ const AV = fm.themeStore.addAsset(LONG, "avatar", await fx.picture({ ...PICTURES
 const BG = fm.themeStore.addAsset(LONG, "background", await fx.picture({ w: 800, h: 500, hue: 230, label: "", mime: "image/jpeg", seed: 3 }));
 const P = fm.themeStore.addAsset(LONG, "portrait", await fx.picture(PICTURES.portrait));
 const B = fm.themeStore.addAsset(LONG, "banner", await fx.picture(PICTURES.bannerWide));
-const set = fm.themeStore.setTheme(LONG, { v: 1, accent: "#8b5cf6", colors: { dark: { bg: "#101018" }, light: { bg: "#f6f2ff" } }, bubble: { radius: 6, border: "accent" },
+const set = fx.seedTheme(LONG, { v: 1, accent: "#8b5cf6", colors: { dark: { bg: "#101018" }, light: { bg: "#f6f2ff" } }, bubble: { radius: 6, border: "accent" },
   font: "mono", avatar: AV.id, background: { image: BG.id, fit: "cover", opacity: 0.3 }, workingLabel: "Brewing",
-  card: { portrait: P.id, banner: B.id, tagline: TEXT.taglineCjk, bio: TEXT.bioCjk } }, "agent");
+  card: { portrait: P.id, banner: B.id, tagline: TEXT.taglineCjk, bio: TEXT.bioCjk } });
 // The unthemed neighbour with a long CJK name and a Latin tagline at the cap.
-fm.themeStore.setTheme(CJK, { v: 1, card: { tagline: TEXT.taglineLatin, bio: TEXT.bioLatin } }, "agent");
+fx.seedTheme(CJK, { v: 1, card: { tagline: TEXT.taglineLatin, bio: TEXT.bioLatin } });
 
 const results: any = { browser: fx.browser.version(), set: { av: AV.id ?? AV, bg: BG.id ?? BG, set } };
 const reset = `fetch("/ui/prefs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ set: { "fx.show": null } }) }).then((r) => r.status)`;

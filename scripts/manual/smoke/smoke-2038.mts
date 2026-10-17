@@ -28,7 +28,7 @@ const sizeOf = (surface: string, size: string, label: string) => `${label}-${siz
 for (const label of labels) {
   const B = fm.themeStore.addAsset(LONG, "banner", await fx.picture(BANNER_SPECS[label]));
   if (!B?.ok) { results.banners[label] = { refused: B }; continue; }
-  const set = fm.themeStore.setTheme(LONG, { v: 1, card: { portrait: P.id, banner: B.id, tagline: TEXT.taglineCjk, bio: TEXT.bioCjk } }, "agent");
+  const set = fx.seedTheme(LONG, { v: 1, card: { portrait: P.id, banner: B.id, tagline: TEXT.taglineCjk, bio: TEXT.bioCjk } });
   results.banners[label] = { set: set?.ok ?? set };
   for (const c of matrix()) {
     const { ctx, page, csp } = await fx.page(c, { storage: { agend_view_card_expanded: "1" } });

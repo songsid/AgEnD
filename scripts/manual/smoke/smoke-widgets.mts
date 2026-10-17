@@ -6,7 +6,7 @@
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> MATRIX=full npx --prefix <checkout> tsx scripts/manual/smoke/smoke-widgets.mts
 import { join, dirname } from "node:path";
 import { writeFileSync } from "node:fs";
-import { bootFixture, matrix, caseName, shotPath, seedAvatars, seedWidgets } from "../smoke-fixture/index.mts";
+import { bootFixture, matrix, caseName, shotPath, labelOf, seedAvatars, seedWidgets } from "../smoke-fixture/index.mts";
 
 const SMOKE = "smoke-widgets";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48410) });
@@ -51,7 +51,9 @@ for (const c of matrix()) {
   await page.screenshot({ path: shotPath(SMOKE, c, "details"), fullPage: true });
   // The person's sidebar widget, from Settings → Appearance.
   await page.goto(`${fx.base}/settings/appearance`); await page.waitForTimeout(1500);
-  const ex = page.locator('.s-widget button:has-text("Start from an example")').first(); if (await ex.isVisible()) { await ex.click(); await page.waitForTimeout(300); } else r.noExample = true;
+  // The example button must exist in every language: a missing control fails the case instead of skipping it.
+  const ex = page.locator(".s-widget button", { hasText: labelOf(c, { en: "Start from an example", zh: "從範例開始" }) }).first();
+  await ex.waitFor({ timeout: 5000 }); await ex.click(); await page.waitForTimeout(300);
   r.preview = await probe(page, ".s-widget-preview .aw");
   await page.locator(".s-widget").first().scrollIntoViewIfNeeded(); await page.waitForTimeout(200);
   await page.screenshot({ path: shotPath(SMOKE, c, "settings-widget") });

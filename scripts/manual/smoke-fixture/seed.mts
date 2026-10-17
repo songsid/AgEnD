@@ -44,8 +44,8 @@ export async function seedCards(fx: Fixture, names: string[]): Promise<Record<st
     const B = fx.fm.themeStore.addAsset(name, "banner", await fx.picture({ ...PICTURES.bannerWide, seed: i + 11, hue: (190 + i * 40) % 360 }));
     const cjk = i % 2 === 0;
     const t = (fx.fm.themeStore.get(name).theme ?? { v: 1 });
-    const set = fx.fm.themeStore.setTheme(name, { ...t, v: 1, card: { ...(P?.id ? { portrait: P.id } : {}), ...(B?.id ? { banner: B.id } : {}),
-      tagline: cjk ? TEXT.taglineCjk : TEXT.taglineLatin, bio: cjk ? TEXT.bioCjk : TEXT.bioLatin } }, "agent");
+    const set = fx.seedTheme(name, { ...t, v: 1, card: { ...(P?.id ? { portrait: P.id } : {}), ...(B?.id ? { banner: B.id } : {}),
+      tagline: cjk ? TEXT.taglineCjk : TEXT.taglineLatin, bio: cjk ? TEXT.bioCjk : TEXT.bioLatin } });
     out[name] = { portrait: P?.ok ?? P, banner: B?.ok ?? B, set: set?.ok ?? set };
   }
   return out;

@@ -3,7 +3,7 @@
 // (desk 1366 / phone 390, light / dark, en / zh-TW). The long Latin name carries the card; the CJK name is the second one.
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf npx --prefix <checkout> tsx scripts/manual/smoke/smoke-card.mts
 import { writeFileSync } from "node:fs";
-import { bootFixture, matrix, caseName, shotPath, PICTURES, TEXT } from "../smoke-fixture/index.mts";
+import { bootFixture, matrix, caseName, shotPath, labelOf, PICTURES, TEXT } from "../smoke-fixture/index.mts";
 
 const SMOKE = "smoke-card";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48340) });
@@ -13,10 +13,11 @@ const enc = encodeURIComponent;
 
 const P = fm.themeStore.addAsset(LONG, "portrait", await fx.picture(PICTURES.portrait));
 const B = fm.themeStore.addAsset(LONG, "banner", await fx.picture(PICTURES.bannerWide));
-const set = fm.themeStore.setTheme(LONG, { v: 1, card: { portrait: P.id, banner: B.id, tagline: "Reviews your PRs <b>fast</b> — " + TEXT.taglineLatin, bio: TEXT.bioLatin } }, "agent");
+// Escaped markup at the tagline cap: "<b>" must show as text.
+const set = fx.seedTheme(LONG, { v: 1, card: { portrait: P.id, banner: B.id, tagline: "Reviews your PRs <b>fast</b> — release trains, crash triage", bio: TEXT.bioLatin } });
 const P2 = fm.themeStore.addAsset(CJK, "portrait", await fx.picture({ ...PICTURES.portrait, seed: 5, hue: 120 }));
 const B2 = fm.themeStore.addAsset(CJK, "banner", await fx.picture({ ...PICTURES.bannerTall, mime: "image/jpeg" }));
-const set2 = fm.themeStore.setTheme(CJK, { v: 1, card: { portrait: P2.id, banner: B2.id, tagline: TEXT.taglineCjk, bio: TEXT.bioCjk } }, "agent");
+const set2 = fx.seedTheme(CJK, { v: 1, card: { portrait: P2.id, ...(B2?.ok ? { banner: B2.id } : {}), tagline: TEXT.taglineCjk, bio: TEXT.bioCjk } });
 // The tall 800×1200 banner is past the default 1600×600 banner cap: its refusal (not a missing picture) is what the CJK card shows.
 const results: any = { browser: fx.browser.version(), set: { P: P.id ?? P, B: B.id ?? B, set: set?.ok ?? set }, cjk: { set: set2?.ok ?? set2, tallBanner: B2?.ok ? "accepted" : B2 } };
 
@@ -56,11 +57,14 @@ for (const c of matrix()) {
   r.view = await probe(".v-id .id-card");
   await page.screenshot({ path: shotPath(SMOKE, c, "view") });
   // Edit profile: a person's tagline wins.
-  const edit = await page.$('.v-card .btn:has-text("Edit profile")');
-  if (edit) {
+  // Required in every language: a missing control fails the case instead of skipping it.
+  const edit = page.locator(".v-card .btn", { hasText: labelOf(c, { en: "Edit profile", zh: "編輯個人資料" }) }).first();
+  await edit.waitFor({ timeout: 5000 });
+  {
     await edit.click(); await page.waitForTimeout(800);
     await page.screenshot({ path: shotPath(SMOKE, c, "edit"), fullPage: true });
-    const tag = await page.$('dialog label:has-text("Tagline") input'); if (tag) await tag.fill("A person's tagline");
+    const tag = page.locator("dialog label", { hasText: labelOf(c, { en: "Tagline", zh: "標語" }) }).locator("input").first();
+    await tag.waitFor({ timeout: 5000 }); await tag.fill("A person's tagline");
     await page.click('dialog .btn-primary'); await page.waitForTimeout(1200);
     r.afterEdit = await page.evaluate(`fetch("/api/card/${enc(LONG)}").then((x) => x.json()).then((c) => ({ tagline: c.tagline, bio: c.bio && c.bio.by }))`);
     await page.evaluate(`fetch("/api/card/${enc(LONG)}", { method: "DELETE" }).then((x) => x.status)`);

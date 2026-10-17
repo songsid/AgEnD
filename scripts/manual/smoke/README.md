@@ -17,6 +17,14 @@ They use no account and no network, and never start a fleet. Each smoke builds a
 `AGEND_HOME`, stubs the lifecycle, serves the dashboard and its preview origin on its own ports, signs in with a login
 code, and drives Chromium through playwright-core.
 
+**Port ownership:** both ports (`HP`, `HP+1`) must be free, or the boot is refused. The fleet's own health and preview
+servers must be bound to them before any page opens, so a smoke never talks to a listener it didn't start, a live
+fleet included. The EADDRINUSE takeover is disabled.
+
+**Cleanup:** `fx.close()` releases the browser, both listeners and the scratch home. Each step runs on its own, and
+calling it twice is harmless. It also runs on an uncaught error, a rejection, SIGINT or SIGTERM, which then exit 1.
+`fixture-controls.mts` checks all of this.
+
 ## Run
 
 ```sh
@@ -26,7 +34,7 @@ PW_DIR=~/.cache/agend-smoke/pw MATRIX=full  scripts/manual/smoke/run.sh smoke-19
 
 **Settings:**
 - `PW_DIR`: a directory whose `node_modules` has playwright-core.
-- `CHROME`: optional; a Chrome to launch instead of playwright's own.
+- `CHROME`: optional; a Chrome to launch instead of playwright-core's own Chromium (`npx playwright-core install chromium` in `PW_DIR`).
 - `OUT`: where the logs and screenshots go (default `/tmp/smoke-out`).
 - `MATRIX` picks the cases:
   - `full`: desk 1366 and phone 390 × light and dark × en and zh-TW;
@@ -36,7 +44,8 @@ PW_DIR=~/.cache/agend-smoke/pw MATRIX=full  scripts/manual/smoke/run.sh smoke-19
 **Memory:** each smoke runs in a `systemd-run --user --scope -p MemoryMax=$MEM` scope (default 3G), `JOBS` at a
 time (default 2). The script refuses to start below 6 GB available. Anything an instance runs lives inside the fleet's
 cgroup, so an unbounded browser job can take the whole fleet down. `smoke-chat-switch` always runs alone, because it
-times renders.
+times renders. `run.sh` exits non-zero when any smoke fails: its own failure, a timeout (124), an OOM kill (137) or
+systemd-run itself. Every log is kept.
 
 To run one smoke by hand:
 
@@ -66,6 +75,7 @@ await fx.close(); process.exit(0);
 
 | seeder | what it adds |
 |---|---|
+| `fx.seedTheme(name, theme)` | a theme, with card text checked by the product's own canonical rules and read back. Throws on a refusal. `ThemeStore.setTheme` alone doesn't validate |
 | `seedPerson` | the person |
 | `seedAvatars` | avatars |
 | `seedCards` | portrait, banner, and tagline/bio at their caps |

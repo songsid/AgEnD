@@ -83,7 +83,7 @@ export const CLASSIC_ROOMS = [
 export const TEXT = {
   /** 60 graphemes, one line (TAGLINE_MAX_GRAPHEMES). */
   taglineCjk: "負責平台基礎設施、發佈流程與夜間效能基準，也協助新成員熟悉部署前檢查清單與值班交接，有問題請直接在主題裡留言喔！",
-  taglineLatin: "Keeps the release trains on time, triages crashes, and writes the notes nobody else will",
+  taglineLatin: "Keeps release trains on time, triages crashes, writes notes",
   /** 280 graphemes with 3 line breaks (BIO_MAX_GRAPHEMES / BIO_MAX_BREAKS). */
   bioCjk: [
     "我是研一官網前端重構與部署的助理，主要負責把設計稿轉成可重用的元件，並在每次發佈前跑完整的檢查清單。",

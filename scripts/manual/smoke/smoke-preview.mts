@@ -15,8 +15,8 @@ const AV = fm.themeStore.addAsset(W, "avatar", await fx.picture(PICTURES.avatarT
 const BG = fm.themeStore.addAsset(W, "background", await fx.picture({ w: 800, h: 500, hue: 200, label: "", mime: "image/jpeg", seed: 9 }));
 const P = fm.themeStore.addAsset(W, "portrait", await fx.picture(PICTURES.portrait));
 const B = fm.themeStore.addAsset(W, "banner", await fx.picture(PICTURES.bannerWide));
-const set = fm.themeStore.setTheme(W, { v: 1, accent: "#8b5cf6", avatar: AV.id, background: { image: BG.id, fit: "cover", opacity: 0.3 }, bubble: { radius: 6, border: "accent" },
-  workingLabel: "Brewing", card: { portrait: P.id, banner: B.id, tagline: TEXT.taglineCjk, bio: TEXT.bioLatin } }, "agent");
+const set = fx.seedTheme(W, { v: 1, accent: "#8b5cf6", avatar: AV.id, background: { image: BG.id, fit: "cover", opacity: 0.3 }, bubble: { radius: 6, border: "accent" },
+  workingLabel: "Brewing", card: { portrait: P.id, banner: B.id, tagline: TEXT.taglineCjk, bio: TEXT.bioLatin } });
 const results: any = { browser: fx.browser.version(), set: { av: AV.id ?? AV, bg: BG.id ?? BG, set } };
 
 const prev = await fm.handleWebThemeHttp(W, "preview_web_appearance", {});
