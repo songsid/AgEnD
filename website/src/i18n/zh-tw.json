@@ -14,7 +14,8 @@
     "subtitle": "Agent Engineering Daemon — 從 Telegram、Discord 或瀏覽器管理 AI 編碼 Agent。7 種後端、艦隊模式、Agent 協作、零維護。",
     "cta": "快速開始",
     "github": "GitHub",
-    "badges": "macOS · Linux · Windows (WSL) · MIT 授權"
+    "badges": "macOS · Linux · Windows (WSL) · MIT 授權",
+    "whatsNew": "2.2 新功能 →"
   },
   "terminal": {
     "cmd": "$ agend fleet start",
@@ -53,24 +54,44 @@
     "title": "管理 fleet 所需的一切",
     "items": [
       {
+        "icon": "monitor",
+        "name": "網頁聊天與儀表板",
+        "desc": "在瀏覽器裡和每個 agent 聊天。傳檔案、預覽 HTML、按 Stop 中止、點回覆按鈕——和聊天 app 的同一段對話。不需要聊天平台也能全靠儀表板操作。"
+      },
+      {
+        "icon": "check-square",
+        "name": "等你處理",
+        "desc": "所有等你的提示、權限和登入，集中在 General 和網頁的一個即時清單。在任一處處理，所有清單都消失。"
+      },
+      {
+        "icon": "users",
+        "name": "Credential Profile 與 /backend",
+        "desc": "讓 agent 跑在第二個 Claude、Codex 或 Kiro 帳號上。從聊天室下 /login 就能登入 Claude profile。/backend 一步切換到另一個 CLI。"
+      },
+      {
+        "icon": "zap",
+        "name": "一鍵 /update",
+        "desc": "在 General 傳 /update。AgEnD 自動下載、安裝、重啟——每個步驟都有進度訊息。在 Linux 和 macOS 上自帶 Node，不需要自己升級。"
+      },
+      {
         "icon": "rocket",
         "name": "Fleet Mode",
-        "desc": "N 個專案，每個都是一個 Telegram topic 或 Discord 頻道。獨立 session，crash 自動恢復。"
+        "desc": "N 個專案，每個都是一個 Telegram topic 或 Discord 頻道。獨立 session，crash 自動恢復並自動壓縮 context。"
       },
       {
         "icon": "shuffle",
         "name": "多 Backend",
-        "desc": "Claude Code、Codex、Antigravity、Kiro CLI、Grok、Meta Muse Code、OpenCode，自由切換或混用。"
+        "desc": "Claude Code、Codex、Antigravity、Kiro CLI、Grok、Meta Muse Code、OpenCode，自由切換或混用，也可以用同一個 backend 的第二個訂閱。"
       },
       {
         "icon": "users",
         "name": "Agent 協作",
-        "desc": "MCP tools 互相發現、委派任務、回報結果。"
+        "desc": "MCP tools 互相發現、委派任務、回報結果。General instance 自動路由任務並帶回結果。"
       },
       {
         "icon": "smartphone",
         "name": "手機操控",
-        "desc": "用 Telegram 或 Discord 的按鈕核准工具、重啟 session、管理 fleet。"
+        "desc": "用 Telegram 或 Discord 的按鈕核准工具、重啟 session、管理 fleet——或從手機開啟網頁儀表板。"
       },
       {
         "icon": "shield",
@@ -80,17 +101,12 @@
       {
         "icon": "clock",
         "name": "持久化排程",
-        "desc": "Cron 排程任務，SQLite 儲存，重啟不遺失。"
-      },
-      {
-        "icon": "monitor",
-        "name": "網頁聊天與儀表板",
-        "desc": "在瀏覽器和每個 agent 聊天：/web 登入、傳檔案、預覽 HTML、按 Stop 中止，還有每個終端機的即時 View。"
+        "desc": "Cron 排程任務，SQLite 儲存，重啟不遺失。也可以在網頁上編輯排程。"
       },
       {
         "icon": "settings",
         "name": "設定介面",
-        "desc": "網頁版 fleet 設定。以 agent 為中心設計，寫入前先驗證。"
+        "desc": "網頁版 fleet 設定。以 agent 為中心設計，寫入前先驗證，敏感變更需要確認。"
       },
       {
         "icon": "users",
@@ -108,11 +124,6 @@
         "desc": "agend validate —— 在設定錯誤搞垮 fleet 之前先抓出來。"
       },
       {
-        "icon": "zap",
-        "name": "Model Failover",
-        "desc": "被限速時自動切換備用 model，5 分鐘冷卻期。"
-      },
-      {
         "icon": "mic",
         "name": "語音訊息",
         "desc": "Groq Whisper 轉文字，用說的跟 agent 溝通。"
@@ -121,16 +132,6 @@
         "icon": "file-text",
         "name": "HTML 匯出",
         "desc": "把 session 匯出成獨立 HTML 檔，方便分享或存檔。"
-      },
-      {
-        "icon": "check-square",
-        "name": "等你處理",
-        "desc": "所有在等你的提示、權限和登入，集中在一個即時更新的清單，General 和網頁上都看得到。"
-      },
-      {
-        "icon": "users",
-        "name": "多組登入",
-        "desc": "讓 agent 改用第二個 Claude、Codex 或 Kiro 訂閱。Claude 的 profile 可以在聊天裡完成登入，用量也依帳號分開顯示。"
       }
     ]
   },
@@ -283,5 +284,43 @@
   "footer": {
     "license": "MIT 授權",
     "tagline": "AI coding agent 的運維層。"
+  },
+  "screenshots": {
+    "sectionLabel": "實際畫面",
+    "title": "所有功能都在瀏覽器裡",
+    "items": [
+      {
+        "name": "網頁聊天",
+        "desc": "在瀏覽器裡和每個 agent 對話——和你 Telegram 或 Discord 的同一段對話。傳檔案、點回覆按鈕、即時預覽 agent 發來的 HTML 頁面。手機也能用。",
+        "icon": "💬",
+        "imgLight": "chat-light.webp",
+        "imgDark": "chat-dark.webp",
+        "alt": "網頁聊天：Atlas 代理的延遲表、SQL 程式碼區塊、一個被選中的回覆按鈕，以及訊息框上方的兩個待上傳檔案。示範資料。"
+      },
+      {
+        "name": "等你處理",
+        "desc": "所有等你的權限請求、送達失敗、和等待中的 agent，集中在一個即時清單——General 和網頁都看得到。在任一處處理，所有清單都會消失。",
+        "icon": "🔔",
+        "imgLight": "needs-light.webp",
+        "imgDark": "needs-dark.webp",
+        "alt": "等你處理頁面：一個權限請求、一個送達失敗、一個沒有回應的 agent（附有重啟和繼續等待按鈕）、一個當機的 agent。示範資料。"
+      },
+      {
+        "name": "用量與訂閱",
+        "desc": "每個訂閱各一列。用 credential profile 讓 agent 跑在第二個 Claude 帳號上——從聊天室下 /login 就能登入，用量面板會分開顯示每個帳號。",
+        "icon": "📊",
+        "imgLight": "usage-light.webp",
+        "imgDark": "usage-dark.webp",
+        "alt": "用量面板：兩個 Claude 帳號（work 和 personal）各一列，再加上一列 Codex，每列顯示 session 和每週用量。示範資料。"
+      },
+      {
+        "name": "Fleet 總覽",
+        "desc": "組織圖顯示每個 agent 的即時狀態。在網頁上管理排程、team 和 agent 詳細設定。快取頁面顯示每個 agent 的 prompt cache 過期頻率。",
+        "icon": "🗺️",
+        "imgLight": "org-light.webp",
+        "imgDark": "org-dark.webp",
+        "alt": "組織圖：產品團隊（Pixel、Atlas、Quill）和支援團隊（Sage、Orbit、Comet），每個 agent 都顯示狀態。示範資料。"
+      }
+    ]
   }
 }

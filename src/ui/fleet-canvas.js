@@ -95,14 +95,20 @@ function save(key, value) { try { localStorage.setItem(key, value); } catch { /*
 
 const STATE_LABEL = (s) => t(`org.${s}`);
 // #2047: SVG text does not wrap or ellipsize, so names are shortened before they are drawn. A budget counts Latin-width
-// characters: a CJK, fullwidth or emoji character draws about 1.6 of them, and a code point is never split.
-const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{20000}-\u{3fffd}]|\p{Extended_Pictographic}/u;
-const charWidth = (ch) => (WIDE.test(ch) ? 1.6 : 1);
+// characters: a CJK or fullwidth character draws about 1.6 of them. A grapheme (an emoji sequence, a letter with its
+// marks) is never split; an emoji sequence a font cannot join is drawn as its parts, so each pictograph counts 2.
+const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{20000}-\u{3fffd}]/u;
+const PICTO = /\p{Extended_Pictographic}|\p{Regional_Indicator}/u;
+const charWidth = (g) => {
+  const cps = Array.from(g), pictos = cps.filter((c) => PICTO.test(c)).length;
+  return pictos ? 2 * pictos : cps.some((c) => WIDE.test(c)) ? 1.6 : 1;
+};
+const SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 export function clipText(s, n) {
-  const chars = Array.from(String(s));
-  if (chars.reduce((w, ch) => w + charWidth(ch), 0) <= n) return chars.join("");
+  const chars = Array.from(SEGMENTER.segment(String(s)), (x) => x.segment);
+  if (chars.reduce((w, g) => w + charWidth(g), 0) <= n) return chars.join("");
   let used = 1, out = "";   // the ellipsis takes one
-  for (const ch of chars) { if (used + charWidth(ch) > n) break; used += charWidth(ch); out += ch; }
+  for (const g of chars) { if (used + charWidth(g) > n) break; used += charWidth(g); out += g; }
   return `${out}…`;
 }
 const clip = clipText;

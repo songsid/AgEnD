@@ -61,7 +61,7 @@ The `channel_id` field explicitly binds a general to an adapter. Without it, mat
 
 The dashboard's web chat is one more way in, not a `channels:` entry: its messages reach an instance as
 `[user:… via web, …]` and are answered with `reply` like any other. By default each is also copied to the
-instance's own topic (`web.echo_to_channel: false` turns that off; ClassicBot rooms only with `web_echo: true`).
+instance's own topic (`web.echo_to_channel: false` turns that off; a ClassicBot room follows it unless its own `web_echo` is set — `false` keeps that room off).
 
 ## Single → Multi Migration
 
