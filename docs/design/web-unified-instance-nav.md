@@ -59,7 +59,7 @@ So there are two different lists with different data, dots, order and links. The
 └───────────────────────┴──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Clicking an instance in the sidebar from a Fleet tab opens **its Details** (the Fleet side of that instance). The Details header has the same switch (§3.2).
+Clicking an instance in the sidebar from a Fleet tab opens **its Chat** (#1917; originally its Details, per Q4 = A, changed to B on 2026-10-16). On a Details page it opens that instance's Details (the Fleet side of that instance). The Details header has the same switch (§3.2).
 
 ### 2.3 Phone (< 900 px)
 
@@ -173,7 +173,7 @@ Decided by the user on 2026-10-10 ("照建議"): Q1 = B, Q2 = A, Q4 = A. Q3 = A 
 | Q1 | What does **Details** (the Fleet side of one instance) show? | A: the current details dialog as a page (runtime + recent activity) · B: A + a read-only config summary (directory, binding, tags, description) with "Edit in Settings", + start/stop/pause actions · C: B + the full config editor inline | **B** |
 | Q2 | **Text size** steps, shared by Chat, View and Fleet | A: S / M / L everywhere; View also keeps "Fit" · B: View's current three (fit / comfortable / compact) everywhere · C: a slider (90–130 %) | **A** |
 | Q3 | **Groups** in the sidebar on every page (View's tag groups, collapse, drag), or a flat list with grouping as an option | A: groups everywhere (View's model) · B: flat by default, "Group by tag" toggle | **A** |
-| Q4 | A sidebar click while on a **Fleet tab** (Tasks, Org, …) | A: opens that instance's Details · B: opens Chat (as today) | **A** |
+| Q4 | A sidebar click while on a **Fleet tab** (Tasks, Org, …) | A: opens that instance's Details · B: opens Chat (as today) | ~~A~~ **B** since 2026-10-16 (#1917) |
 | Q5 | **Status chips**: which states | working · needs you · idle · stopped/paused · crashed (five) | as listed |
 
 ## 5. Pull requests
