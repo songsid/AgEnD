@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { readAgentFile, writeAgentFile } from "../src/agent-file-read.js";
 import { readAgentEffect, EffectUploads } from "../src/web-effect-upload.js";
 import { writeModFile, writePreview } from "../src/web-asset-parts.js";
@@ -40,6 +40,19 @@ describe("caller-owned state workspace", () => {
   it.each([undefined, "other", "..", "../other", "x/../../other", "/tmp", "a\\b", "a\0b"])("never infers ownership for caller %s", async instance => {
     const f = fixture(); expect((await f.read("asset.png", { instance })).ok).toBe(false);
     expect((await readAgentEffect("web-effects/demo", { ...f.opts, instance })).ok).toBe(false);
+  });
+  it.each(["x/..", "x/../..", "a\\b", "a\u0001b", ".", ".."])("invalid caller %j cannot widen the exception under a broad cwd", async instance => {
+    const f = fixture(), opts = { ...f.opts, workspace: f.stateDir, instance };
+    const other = join(f.stateDir, "workspaces/other"); mkdirSync(other, { recursive: true });
+    writeFileSync(join(f.stateDir, ".env"), "private"); writeFileSync(join(other, "asset.png"), "other");
+    // These paths exist, including POSIX names containing a backslash/control character. A missing
+    // realpath must not mask the caller-character fence. Traversal names resolve to the parent roots.
+    const normalized = resolve(f.stateDir, "workspaces", instance); mkdirSync(normalized, { recursive: true });
+    writeFileSync(join(normalized, "attempt.png"), "private"); f.effect(join(normalized, "attempt-effect"));
+    for (const file of [join(f.stateDir, ".env"), join(other, "asset.png"), join(normalized, "attempt.png")]) {
+      expect(await readAgentFile(file, { ...opts, maxBytes: 1024 }), file).toMatchObject({ ok: false });
+    }
+    expect(await readAgentEffect(join(normalized, "attempt-effect"), opts)).toMatchObject({ ok: false });
   });
   it.each(["workspaces/other", "workspaces/classic-測試-1234-other", "instances/a", "credential-profiles/a", "inbox/a", ".env", "fleet.db"])("refuses protected state %s, even with a broad cwd", async part => {
     const f = fixture(), target = join(f.stateDir, part), file = part.includes(".") && !part.startsWith("workspaces/");

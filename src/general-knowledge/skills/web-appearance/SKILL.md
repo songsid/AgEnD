@@ -226,10 +226,12 @@ From a shell: `agend-agent theme get|set key=value…|set --json '<patch>'|clear
 Asset uploads, effect directories and mod proposals must be inside your working directory. This includes your own
 AgEnD-managed workspace (`~/.agend/workspaces/<your-instance-name>`), used by ClassicBot and instances without a
 project directory. `web-assets/` and `web-effects/` are convenient staging folders, not required names. Paths are
-checked after resolving symlinks: another instance's workspace and all other AgEnD state remain forbidden, including
+checked after resolving symlinks: for the supplied caller identity, another instance's workspace and all other AgEnD
+state remain forbidden, including
 `.env`, databases, `instances/`, `credential-profiles/` and `inbox/`. Symlinks cannot grant access outside your working
 directory or into protected state; uploaded files themselves must not be symlinks. Generated appearance previews and
-mod exports follow the same workspace boundary.
+mod exports follow the same workspace boundary. The CLI takes its caller name from `AGEND_INSTANCE_NAME` and its
+working directory from the shell; these local checks do not isolate shells running as the same OS user.
 
 ## Effects
 
