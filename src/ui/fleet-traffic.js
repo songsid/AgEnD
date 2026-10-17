@@ -187,7 +187,6 @@ export function trafficEdges(items, L, { far = false, max = MAX_EDGES } = {}) {
   const bundled = new Set();
   for (const list of byOp.values()) if (far || list.length > BUNDLE_AT) for (const it of list) bundled.add(it.id);
   for (const it of items) {
-    if (teamKey(it.from) === undefined || teamKey(it.to) === undefined) continue;   // not on the canvas
     const phase = phaseOf(it), names = [it.from, it.to];
     if (far || bundled.has(it.id)) {
       const ta = teamKey(it.from), tb = teamKey(it.to);
@@ -204,7 +203,7 @@ export function trafficEdges(items, L, { far = false, max = MAX_EDGES } = {}) {
   }
   const list = [...groups.entries()].sort((x, y) => RANK[x[1].phase] - RANK[y[1].phase]).slice(0, max);
   return list.map(([key, g], i) => {
-    const o = ((i % 7) - 3) * 5;                                                    // neighbours 5 px apart
+    const o = ((i % 7) - 3) * 7;                                                    // neighbours 7 px apart (within the ±22 px bus lane)
     const pts = route(L, g.a, g.z, o);
     return { key, hue: g.hue, phase: g.phase, n: g.n, names: [...new Set(g.names)], d: pathOf(pts), pts, badge: g.n > 1 ? badgeAt(pts) : null };
   });

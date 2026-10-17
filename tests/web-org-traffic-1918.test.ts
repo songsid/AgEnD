@@ -244,6 +244,35 @@ describe("the page", () => {
     input.value = "nov"; input.dispatchEvent(Object.assign(new (globalThis as any).Event("input", { bubbles: true }))); await settle(2);
     expect(p.root.querySelectorAll(".oc-fl").map((g: any) => g.getAttribute("class"))).toEqual(["oc-fl dim", "oc-fl"]);
   });
+  it("Live turned off while the tab is open lets go of the stream at once; on again subscribes again and reads the snapshot", async () => {
+    await mount();
+    expect([subs.get("traffic")?.size, reads]).toEqual([1, 1]);
+    p.root.querySelector(".oc-live").click(); await settle(2);
+    expect([subs.get("traffic")?.size, subs.get("connection")?.size]).toEqual([0, 0]);
+    p.root.querySelector(".oc-live").click(); await settle(4);
+    expect([subs.get("traffic")?.size, reads]).toEqual([1, 2]);
+  });
+  it("the key: open on a desktop; each line starts at a dot and ends at an arrow of its colour", async () => {
+    await mount();
+    emit("traffic", it_(1, "atlas", "quill", "delivering")); await settle(2);
+    expect(p.root.querySelector(".oc-legend").open).toBe(true);
+    const f = p.root.querySelector(".oc-flow");
+    expect([f.getAttribute("marker-start"), f.getAttribute("marker-end")]).toEqual(["url(#oc-src-task)", "url(#oc-ah-task)"]);
+    expect(["oc-src-task", "oc-ah-task"].every((id) => !!p.root.querySelector(`#${id}`))).toBe(true);
+  });
+  it("the stream hands the page its traffic events (app-stream's named events)", async () => {
+    const { createStream } = await import("/assets/app-stream.js");
+    const handlers = new Map<string, (e: { data: string }) => void>();
+    class FakeSource { constructor(public url: string) {} addEventListener(n: string, fn: (e: { data: string }) => void) { handlers.set(n, fn); } close() {} }
+    const env = { EventSource: FakeSource, fetch: async () => ({ ok: true, json: async () => ({}) }), setInterval: () => 1, setTimeout: () => 2, clearInterval() {}, clearTimeout() {} };
+    const stream = createStream({ mode: "full", env });
+    const got: unknown[] = [];
+    stream.on("traffic", (d: unknown) => got.push(d));
+    stream.start();
+    handlers.get("traffic")!({ data: JSON.stringify(it_(1, "atlas", "quill")) });
+    expect(got).toEqual([it_(1, "atlas", "quill")]);
+    stream.close?.();
+  });
   it("leaving the tab lets go of the stream and the timers", async () => {
     await mount();
     expect(subs.get("traffic")?.size).toBe(1);

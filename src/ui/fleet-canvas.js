@@ -36,7 +36,7 @@ register("orgc", {
     expand: "Expand", collapse: "Collapse", members: "{0} members", member: "1 member", inFolded: "{0} found · expand", noMembers: "No members",
     openChat: "Open chat", minimap: "Overview: click to move there",
     live: "Live", liveOn: "Hide live traffic", liveOff: "Show live traffic", lgTask: "delegate_task", lgSend: "send_to_instance",
-    lgReport: "report_result", lgBroadcast: "broadcast", lgQueued: "queued", lgFading: "delivered", lgTeam: "between teams",
+    lgReport: "report_result", lgBroadcast: "broadcast", lgQueued: "queued", lgFading: "delivered", lgTeam: "between teams", legend: "Key",
   },
   "zh-TW": {
     view: "檢視", canvas: "畫布", list: "清單", find: "尋找 instance", findShort: "尋找", found: "找到 {0} 個", foundOne: "找到 1 個", noMatch: "沒有符合的",
@@ -45,7 +45,7 @@ register("orgc", {
     expand: "展開", collapse: "收合", members: "{0} 名成員", member: "1 名成員", inFolded: "找到 {0} 個 · 展開", noMembers: "沒有成員",
     openChat: "開啟聊天", minimap: "總覽：點一下移到那裡",
     live: "即時", liveOn: "隱藏即時往來", liveOff: "顯示即時往來", lgTask: "delegate_task", lgSend: "send_to_instance",
-    lgReport: "report_result", lgBroadcast: "broadcast", lgQueued: "排隊中", lgFading: "已送達", lgTeam: "team 之間",
+    lgReport: "report_result", lgBroadcast: "broadcast", lgQueued: "排隊中", lgFading: "已送達", lgTeam: "team 之間", legend: "圖例",
   },
 });
 const tc = (k, ...v) => t(`orgc.${k}`, ...v);
@@ -166,7 +166,7 @@ function TrafficLayer({ edges, q }) {
     const dim = q && !e.names.some((n) => n.toLowerCase().includes(q));
     return html`<g key=${e.key} class=${`oc-fl${dim ? " dim" : ""}`}>
       <path class="oc-flow-halo" d=${e.d} />
-      <path class=${`oc-flow h-${e.hue} ph-${e.phase}`} d=${e.d} marker-end=${`url(#oc-ah-${e.phase === "fading" ? "fading" : e.hue})`} />
+      <path class=${`oc-flow h-${e.hue} ph-${e.phase}`} d=${e.d} marker-start=${`url(#oc-src-${e.phase === "fading" ? "fading" : e.hue})`} marker-end=${`url(#oc-ah-${e.phase === "fading" ? "fading" : e.hue})`} />
       ${e.phase === "live" && !still ? html`<circle class=${`oc-pulse h-${e.hue}`} r="4"><animateMotion dur=${`${Math.max(1.6, e.pts.length * 0.3)}s`} repeatCount="indefinite" path=${e.d} /></circle>` : null}
       ${e.badge ? html`<g class="oc-badge" transform=${`translate(${e.badge.x - 14} ${e.badge.y - 10})`}><rect width="28" height="20" rx="10" /><text x="14" y="14" text-anchor="middle">${`×${e.n}`}</text></g>` : null}
     </g>`;
@@ -174,10 +174,12 @@ function TrafficLayer({ edges, q }) {
 }
 const ARROWS = ["task", "send", "report", "broadcast", "team", "fading"];
 
-function Legend() {
+/** The key to the lines: open on a desktop, folded on a phone (it would cover the canvas); a person's choice after. */
+function Legend({ narrow }) {
   const row = (cls, k) => html`<span class="oc-lg"><i class=${`oc-sw ${cls}`} aria-hidden="true"></i>${tc(k)}</span>`;
-  return html`<div class="oc-legend">${row("h-task", "lgTask")}${row("h-send", "lgSend")}${row("h-report", "lgReport")}${row("h-broadcast", "lgBroadcast")}
-    ${row("ph-queued", "lgQueued")}${row("ph-fading", "lgFading")}</div>`;
+  return html`<details class="oc-legend" open=${!narrow}><summary>${tc("legend")}</summary>
+    <div class="oc-lg-rows">${row("h-task", "lgTask")}${row("h-send", "lgSend")}${row("h-report", "lgReport")}${row("h-broadcast", "lgBroadcast")}
+    ${row("ph-queued", "lgQueued")}${row("ph-fading", "lgFading")}</div></details>`;
 }
 
 /**
@@ -358,7 +360,9 @@ function Canvas({ view, folded, onFold, q, jump, traffic }) {
       onPointerMove=${onPointerMove} onPointerUp=${onPointerUp} onPointerCancel=${onPointerUp} onKeyDown=${onKeyDown} onFocusIn=${onFocusIn} onClickCapture=${onClickCapture}>
       <defs><clipPath id="oc-clip-av" clipPathUnits="objectBoundingBox"><circle cx="0.5" cy="0.5" r="0.5" /></clipPath>
         ${ARROWS.map((a) => html`<marker key=${a} id=${`oc-ah-${a}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-          <path d="M0 0 L10 5 L0 10 z" class=${`oc-ah h-${a}`} /></marker>`)}</defs>
+          <path d="M0 0 L10 5 L0 10 z" class=${`oc-ah h-${a}`} /></marker>`)}
+        ${ARROWS.map((a) => html`<marker key=${`s-${a}`} id=${`oc-src-${a}`} viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5">
+          <circle cx="5" cy="5" r="4" class=${`oc-ah h-${a}`} /></marker>`)}</defs>
       <g ref=${worldRef} class="oc-world">
         <g class="oc-tree">${L.tree.map((d, i) => html`<path key=${i} d=${d} />`)}</g>
         <g class="oc-teams">${L.boxes.map((b) => html`<${TeamBox} key=${b.key} b=${b} q=${q} onFold=${onFold} />`)}</g>
@@ -369,7 +373,7 @@ function Canvas({ view, folded, onFold, q, jump, traffic }) {
         </g>
       </g>
     </svg>
-    ${traffic ? html`<${Legend} />` : null}
+    ${traffic ? html`<${Legend} narrow=${narrow} />` : null}
     <div class="oc-zoom" role="group" aria-label=${tc("view")}>
       <button type="button" class="icon-btn" aria-label=${tc("zoomIn")} title=${tc("zoomIn")} onClick=${() => zoomBy(1.25)}><${Icon} name="plus" size=${16} /></button>
       <button type="button" class="icon-btn" aria-label=${tc("zoomOut")} title=${tc("zoomOut")} onClick=${() => zoomBy(0.8)}><span aria-hidden="true">−</span></button>
@@ -461,7 +465,7 @@ export function OrgCanvas({ org, app, lease }) {
         <div class="seg-inline" role="group" aria-label=${tc("view")}>${modeBtn("canvas")}${modeBtn("list")}</div>
       </div>
     </div>
-    ${mode === "list" ? html`<${OrgChart} org=${org} app=${app} bare=${true} sending=${live ? sending : null} />`
+    ${mode === "list" ? html`<${OrgChart} org=${org} app=${app} bare=${true} sending=${sending} />`
       : html`<${Canvas} view=${view} folded=${folded} onFold=${onFold} q=${q} jump=${jump} traffic=${live ? traffic : null} />`}
   </div>`;
 }
