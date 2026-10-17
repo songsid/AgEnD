@@ -1,5 +1,5 @@
 /** #1629: caller-scoped effect operations. Host ingress supplies identity; no tool takes a target or holder. */
-import { resolveEffectParams } from "./web-effect.js";
+import { EFFECT_REGION, chatCompatible, resolveEffectParams } from "./web-effect.js";
 import { WebEffectLibrary } from "./web-effect-library.js";
 import { EffectUploads } from "./web-effect-upload.js";
 import type { AppearanceBucket, AppearanceLimiter } from "./web-appearance-policy.js";
@@ -49,6 +49,8 @@ export class WebEffectTools {
     const refused=this.deps.authorize(instance,["change"]);if(refused)return refused;
     if(Object.keys(args).some(k=>k!=="id"&&k!=="params")||typeof args.id!=="string"||!ID.test(args.id))return {error:"effect_args"};
     const entry=this.deps.library.read(args.id,this.principal(instance));if(!entry.ok)return {error:entry.error};
+    // #2017: a chat placement needs an effect that plays in chat — refused before anything is placed, written or counted.
+    if(!chatCompatible(entry.entry.manifest))return {...EFFECT_REGION};
     const params=resolveEffectParams(entry.entry.manifest,args.params===undefined?{}:args.params);if(!params.ok)return {error:"effect_params"};
     const previous=this.deps.placed(instance);
     const target:EffectPlacementInput={id:args.id,...(Object.keys(params.overrides).length?{params:params.overrides}:{})};

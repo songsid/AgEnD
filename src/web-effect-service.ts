@@ -1,7 +1,7 @@
 /** #1629: human-session effects and retained-placement runtime reads. No page is mounted here. */
 import { WebEffectLibrary } from "./web-effect-library.js";
 import { ThemeStore } from "./web-theme-store.js";
-import { WEB_EFFECT_ID, resolveEffectParams } from "./web-effect.js";
+import { EFFECT_REGION, WEB_EFFECT_ID, chatCompatible, resolveEffectParams } from "./web-effect.js";
 import { effectRasterAssets } from "./web-effect-bundle.js";
 import { staticEffectPoster, staticEffectCursor } from "./web-effect-poster.js";
 import { decodeEffectFiles } from "./web-effect-upload.js";
@@ -68,6 +68,7 @@ export class WebEffectService {
   apply(person: string, args: unknown): Answer {
     if (!fields(args, ["instance", "id", "params"]) || typeof args.instance !== "string" || !this.deps.known(args.instance) || typeof args.id !== "string") return fail("effect_args");
     const r = this.readable(person, args.id); if (!r.ok) return fail("not_found");
+    if (!chatCompatible(r.entry.manifest)) return { ...EFFECT_REGION };                 // #2017: the agent's rule, before any write
     const params = resolveEffectParams(r.entry.manifest, args.params === undefined ? {} : args.params); if (!params.ok) return fail("effect_params");
     if (!this.deps.themes.readable()) return fail("themes_unreadable");
     const before = this.deps.themes.get(args.instance).placements.effects;

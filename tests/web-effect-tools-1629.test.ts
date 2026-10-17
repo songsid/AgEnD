@@ -29,11 +29,30 @@ it("uploads real wire parts into the real scoped library, once",async()=>{
  expect(f.changed).toHaveBeenCalledTimes(1);
  expect(f.limiter.remaining("own").uploads).toBeDefined();
 });
-it("forces an owner-region manifest into the caller's own chat, using an explicit placement",async()=>{
- const f=fixture(),id=await upload(f,"own",files("agend.ready()",["page"]));
+it("places a chat effect in the caller's own chat, using an explicit placement",async()=>{
+ const f=fixture(),id=await upload(f,"own",files("agend.ready()",["chat","page"]));
  expect(f.tools.apply("own",{id})).toMatchObject({id,region:"chat"});
  expect(f.place).toHaveBeenCalledWith("own",[{id}]);
  expect(f.tools.apply("other",{id})).toMatchObject({error:"not_found"});
+});
+it("#2017: an effect whose regions lack chat is refused before any write, change count or notice; read access is checked first",async()=>{
+ const f=fixture(),page=await upload(f,"own",files("agend.ready()",["page","header"]));f.changed.mockClear();f.advance(30000);
+ expect(f.tools.apply("other",{id:page}),"unreadable stays not_found").toEqual({error:"not_found"});
+ for(let i=0;i<2;i++)expect(f.tools.apply("own",{id:page}),"refused again on a repeat").toEqual({error:"effect_region",message:"This effect's regions do not include chat."});
+ expect([f.place.mock.calls.length,f.changed.mock.calls.length,f.placed("own")]).toEqual([0,0,[]]);
+ const chat=await upload(f,"own",files("// chat"));f.changed.mockClear();
+ expect(f.tools.apply("own",{id:chat}),"no change was counted: the next apply is not rate-limited").toMatchObject({id:chat,region:"chat"});
+});
+it("#2017: an older placement without chat stays, is retained beside a new one and can be removed",async()=>{
+ const f=fixture(),page=await upload(f,"own",files("agend.ready()",["page"])),chat=await upload(f,"own",files("// chat"));
+ f.placements.set("own",[{id:page,params:{kept:true}}]);
+ expect(f.tools.apply("own",{id:chat})).toMatchObject({id:chat});
+ expect(f.place).toHaveBeenLastCalledWith("own",[page,{id:chat}]);
+ expect(f.placed("own")).toEqual([{id:page,params:{kept:true}},{id:chat}]);
+ f.advance(30000);
+ expect(f.tools.apply("own",{id:page}),"but never placed again explicitly").toMatchObject({error:"effect_region"});
+ expect(f.tools.remove("own",{id:page})).toMatchObject({removed:[page]});
+ expect(f.placed("own")).toEqual([{id:chat}]);
 });
 it("validates typed params and cannot accept a target/holder or invalid overrides",async()=>{
  const f=fixture(),id=await upload(f,"own",files("agend.ready()",["chat"],{size:{type:"number",min:1,max:10,default:2}}));

@@ -98,6 +98,16 @@ export function parseWebEffectManifest(value: unknown): {
     return { ok: false, error: "invalid_manifest" };
   }
 }
+/**
+ * #2017: whether an effect can be placed in a chat — its manifest's regions include `chat` (else it is saved but never
+ * plays there). Only a NEW chat placement is checked (agent tool, person's route, a mod's theme.effects); an older one
+ * stays as it is (filtered at run time) and can be removed. A non-chat effect stays a valid upload and personal choice.
+ */
+export function chatCompatible(manifest: { regions?: readonly string[] }): boolean {
+  return Array.isArray(manifest.regions) && manifest.regions.includes("chat");
+}
+export const EFFECT_REGION: Readonly<{ error: "effect_region"; message: string }> = Object.freeze({ error: "effect_region", message: "This effect's regions do not include chat." });
+
 /** Defaults and overrides are resolved together before a placement or mod commit can write. */
 export function resolveEffectParams(input: WebEffectManifest, overrides: unknown = {}): {
   ok: true;

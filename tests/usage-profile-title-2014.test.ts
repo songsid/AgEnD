@@ -6,7 +6,7 @@
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
-import { fetchAllUsage, providersForConfig, setUsageProvidersForTests } from "../src/usage/providers.js";
+import { fetchAllUsage, providersForConfig, setUsageProviderDeadlineForTests, setUsageProvidersForTests } from "../src/usage/providers.js";
 
 function configWith(profiles: Array<string | null>) {
   const instances: Record<string, unknown> = {};
@@ -20,7 +20,7 @@ function configWith(profiles: Array<string | null>) {
 }
 const BASE = [{ id: "claude", name: "Claude", fetch: async () => ({ status: "ok" as const, plan: "Team Premium (6.25x)", metrics: [] }) }];
 
-afterEach(() => setUsageProvidersForTests(null));
+afterEach(() => { setUsageProvidersForTests(null); setUsageProviderDeadlineForTests(null); });
 
 describe("the rows", () => {
   it("a profile row carries its profile; the API name is unchanged; the shared row has none", () => {
@@ -33,6 +33,12 @@ describe("the rows", () => {
     expect(providers.map(p => [p.id, p.name, p.profile, p.status])).toEqual([["claude", "Claude", undefined, "ok"],
       ["claude:team-alpha", "Claude (team-alpha)", "team-alpha", "ok"], ["claude:team-beta", "Claude (team-beta)", "team-beta", "error"]]);
     expect(Object.hasOwn(providers[0]!, "profile"), "no profile key on a shared row").toBe(false);
+  });
+  it("a profile row that misses the deadline keeps its profile too (Fable #2016 P3)", async () => {
+    setUsageProviderDeadlineForTests(20);
+    setUsageProvidersForTests([{ id: "claude", name: "Claude", fetch: (home?: string) => home ? new Promise(() => {}) : Promise.resolve({ status: "ok" as const, metrics: [] }) }]);
+    const { providers } = await fetchAllUsage(configWith(["team-alpha", null]));
+    expect(providers.map(p => [p.id, p.profile, p.status, p.error])).toEqual([["claude", undefined, "ok", undefined], ["claude:team-alpha", "team-alpha", "error", "Could not reach Claude (team-alpha)."]]);
   });
 });
 
@@ -56,6 +62,8 @@ describe("the card's title", () => {
     expect(usage.providerTitle({ name: "Claude" })).toEqual({ base: "Claude", profile: "" });
     expect(usage.providerTitle({ name: "Kiro (odd)", profile: "other" })).toEqual({ base: "Kiro (odd)", profile: "other" });
     expect(usage.providerTitle({ name: "Codex (default)" }), "the shared Codex row has no profile").toEqual({ base: "Codex (default)", profile: "" });
+    // Fable #2016 P3: a profile that is not a non-empty string is no profile.
+    for (const profile of [5, ["x"], { a: 1 }, ""]) expect(usage.providerTitle({ name: "Claude (5)", profile }), JSON.stringify(profile)).toEqual({ base: "Claude (5)", profile: "" });
   });
   it("rendered: the provider name on the title line, the profile on its own line, the full name as the tooltip; the plan badge beside it", async () => {
     pg = page({ storage: { agend_tour_done: "1" } });
