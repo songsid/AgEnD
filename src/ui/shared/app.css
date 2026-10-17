@@ -225,6 +225,8 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 }
 .panel-head .sb-open { display: none; }
 .sb-collapsed .panel-head .sb-open { display: inline-flex; }
+/* #2074: a collapsed sidebar's "New agent", beside its ☰ (a phone opens the drawer, which has the row). */
+.panel-head .sb-new { margin-left: calc(-1 * var(--s-1)); }
 /* One row of --header-h on every page (a phone's instance tabs wrap below it): the title, its status and badges on one centre line. */
 .panel-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s-3); min-height: calc(var(--header-h) - 2 * var(--s-1)); }
 .panel-title h1 { font-size: var(--fs-lg); line-height: var(--lh-lg); font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; outline: none; }
@@ -730,6 +732,7 @@ html.lb-open .scroller { overflow: hidden; }
   .sb-open .sidebar { transform: none; visibility: visible; }
   .sb-open .scrim { display: block; position: fixed; inset: 0; background: var(--scrim); z-index: 39; }
   .panel-head .sb-open { display: inline-flex; }
+  .panel-head .sb-new { display: none; }
   .only-narrow { display: inline-flex; }
   .thread { padding: var(--s-3) var(--s-3) var(--s-2); gap: var(--s-5); }
   .col { padding: var(--s-3) var(--s-3) var(--s-8); }

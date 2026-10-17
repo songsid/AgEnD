@@ -39,6 +39,25 @@ let newInstanceOpener = null;
 export function setNewInstanceOpener(fn) { newInstanceOpener = fn; }
 export function requestNewInstance() { if (newInstanceOpener) newInstanceOpener(); }
 
+/**
+ * #2074: whether this page's session may make an agent — an admin's (/auth/session's tier); a guest's create is refused.
+ * Asked once per page; a session that ends takes the buttons away. A display hint only: the create route decides.
+ */
+export const canCreateStore = createStore({ value: false });
+let canCreateOf = null;                          // the AgendAuth asked (one per page)
+export function useCanCreate() {
+  const s = useStore(canCreateStore);
+  useEffect(() => {
+    const auth = typeof window !== "undefined" ? window.AgendAuth : undefined;
+    if (!auth || typeof auth.canWrite !== "function" || canCreateOf === auth) return;
+    canCreateOf = auth;
+    canCreateStore.set({ value: false });
+    Promise.resolve(auth.canWrite()).then((v) => { if (canCreateOf === auth && !auth.sessionEnded?.()) canCreateStore.set({ value: v === true }); }, () => {});
+    auth.onSessionEnd?.(() => { if (canCreateOf === auth) canCreateStore.set({ value: false }); });
+  }, []);
+  return s.value;
+}
+
 /** An app-level dialog (New instance): rendered by the shell until closed, whatever panel is showing. */
 export function showDialog(Component, props = {}) { shellStore.set({ dialog: { Component, props } }); }
 export function closeDialog() { shellStore.set({ dialog: null }); }
@@ -247,6 +266,7 @@ export function signInHref() {
 function Sidebar({ route, onNewInstance, viewOnly }) {
   const app = useStore(appStore);
   const shell = useStore(shellStore);
+  const canCreate = useCanCreate();
   // #1675: the Fleet panel is "Fleet overview"'s (one current row); the "Fleet" row is current on an instance's Details.
   const on = (panel) => !!route && (panel === "fleet" ? route.panel === "details" : route.panel === panel);
   const openInstance = openInstanceOf(route);
@@ -280,13 +300,13 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     <div class="side-head" data-trust="navigation">
       <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
       <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
-      <button type="button" class="icon-btn" onClick=${onNewInstance} aria-label=${t("app.newInstance")} title=${t("app.newInstance")}><${Icon} name="plus" /></button>
     </div>
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${overview}
       ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
       ${navLink("fleet", openInstance ? detailsPath(openInstance) : "/ui/fleet", "fleet", t("app.fleet"))}
       ${navLink("view", "/view", "view", t("app.view"))}
+      ${canCreate && onNewInstance ? html`<button type="button" class="side-row side-new" onClick=${onNewInstance}><${Icon} name="plus" /><span class="grow">${t("app.newAgent")}</span></button>` : null}
     </nav>
     ${shell.side ? html`<${shell.side.Component} />` : html`<${InstanceNav} route=${route} items=${app.instances} loaded=${app.ready !== false}
         exec=${app.exec} awaiting=${app.awaiting} onPick=${closeDrawer} />`}
@@ -349,9 +369,11 @@ function PrefsPopover() {
  */
 export function PanelHeader({ title, sub, children, headingRef, nav }) {
   const shell = useStore(shellStore);
+  const canCreate = useCanCreate() && !!newInstanceOpener;
   return html`<header data-trust="header" class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
     <button type="button" id="sbOpen" class="icon-btn sb-open" onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
       aria-label=${narrow() ? t("app.openMenu") : t("app.expand")} title=${narrow() ? t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" /></button>
+    ${canCreate && shell.collapsed ? html`<button type="button" class="icon-btn sb-new" onClick=${requestNewInstance} aria-label=${t("app.newAgent")} title=${t("app.newAgent")}><${Icon} name="plus" /></button>` : null}
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1">${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
     ${nav || null}
     <div class="panel-actions">${children}</div>

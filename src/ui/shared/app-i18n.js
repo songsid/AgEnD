@@ -60,7 +60,7 @@ export function t(key, ...values) {
 
 register("app", {
   en: {
-    brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet overview", view: "View", settings: "Settings", instances: "Instances", newInstance: "New instance",
+    brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet overview", view: "View", settings: "Settings", instances: "Instances", newInstance: "New instance", newAgent: "New agent",
     collapse: "Hide the sidebar", expand: "Show the sidebar", openMenu: "Open the sidebar", closeMenu: "Close the sidebar",
     resizeSidebar: "Sidebar width", resizeSidebarHint: "Drag to resize · double-click to reset",
     names: "Names", namesNickname: "Nickname first", namesInstance: "Real name first",
@@ -92,7 +92,7 @@ register("app", {
     needs_reason_hang: "Not responding", needs_reason_exited: "Exited", needs_reason_assist: "Waiting at its terminal", needs_reason_permission: "Permission needed", needs_reason_dangerous_command: "Dangerous command waiting", needs_reason_login: "Sign-in needed", needs_reason_dialog: "Waiting at a dialog", needs_reason_terminal_input: "May be waiting for input", needs_reason_auth_paused: "Paused: sign-in needed", needs_reason_crashed: "Crashed", needs_reason_delivery_uncertain: "Could not confirm delivery", needs_reason_delivery_failed: "Delivery failed",
   },
   "zh-TW": {
-    brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet 概覽", view: "檢視", settings: "設定", instances: "Instances", newInstance: "新增 instance",
+    brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet 概覽", view: "檢視", settings: "設定", instances: "Instances", newInstance: "新增 instance", newAgent: "新增 Agent",
     collapse: "隱藏側邊欄", expand: "顯示側邊欄", openMenu: "打開側邊欄", closeMenu: "關閉側邊欄",
     resizeSidebar: "側邊欄寬度", resizeSidebarHint: "拖曳調整寬度 · 按兩下恢復預設",
     names: "名稱", namesNickname: "暱稱優先", namesInstance: "實際名稱優先",
