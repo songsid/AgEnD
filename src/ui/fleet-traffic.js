@@ -221,4 +221,3 @@ export function sendingBy(items) {
   }
   return out;
 }
-
