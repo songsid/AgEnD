@@ -40,7 +40,8 @@ describe("guestRouteDecision (the table)", () => {
     expect(guestRouteDecision("GET", u("/api/profile/a"), new Set()).kind, "an empty scope reaches nothing").toBe("deny");
   });
   it("a `later` route and anything else → 403 guest_forbidden; a method not listed → 403", () => {
-    const later = ["/ui/events", "/ui/poll", "/ui/file/abc", `/ui/effect-posters/${"a".repeat(32)}.png`, "/ui/history?instance=a", "/ui/prefs", "/ui/profile"];
+    // Phase 1b opened the stream, the poll and a file (answered per recipient: web-guest-stream-1920.test.ts).
+    const later = [`/ui/effect-posters/${"a".repeat(32)}.png`, "/ui/history?instance=a", "/ui/prefs", "/ui/profile"];
     const admin = ["/status", "/api/fleet", "/api/profiles", "/api/pane/a", "/ui/org", "/ui/traffic", "/ui/cache", "/ui/teams", "/ui/tasks", "/ui/steps",
       "/ui/instance/a", "/ui/instances", "/ui/config", "/ui/themes", "/ui/emojis", "/ui/mentions", "/api/settings/fleet", "/api/ai-usage", "/ui/fleet", "/ui/needs",
       "/ui/fleet/agent/a", "/ui/log/a", "/settings", "/ui/img/emoji/x", "/ui/preview-status"];
@@ -136,7 +137,7 @@ describe("the gate, live: a guest scoped to `a`", () => {
       expect(await raw(port, "GET", p, { cookie: cookieOf(guest) }), p).toEqual({ status: 404, body: JSON.stringify({ error: "not found" }) });
       expect((await raw(port, "GET", p, { cookie: cookieOf(admin) })).status, `admin ${p}`).not.toBe(404);
     }
-    for (const p of ["/status", "/api/fleet", "/ui/org", "/ui/traffic", "/ui/events", "/ui/poll", "/ui/history?instance=a", "/ui/file/x", "/api/settings/fleet", "/ui/instance/a"]) {
+    for (const p of ["/status", "/api/fleet", "/ui/org", "/ui/traffic", "/ui/history?instance=a", "/api/settings/fleet", "/ui/instance/a"]) {
       expect(await raw(port, "GET", p, { cookie: cookieOf(guest) }), p).toEqual({ status: 403, body: JSON.stringify({ error: "guest_forbidden" }) });
     }
     const send = await raw(port, "POST", "/ui/send", write(guest, port), JSON.stringify({ instance: "a", text: "hi" }));
