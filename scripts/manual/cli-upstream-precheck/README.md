@@ -24,7 +24,7 @@ tail -n 20 "$S/precheck.txt"
 Run it from the AgEnD repo root.
 - **Inputs:** either one may be a native binary, an npm `.tgz`, a `.tar.gz`, a `.zip`, a gzip file, or a directory holding any of these.
   - Every format `--download` produces is covered: claude, grok and muse as a binary; codex and opencode as an npm tgz; kiro-cli and agy as a `.tar.gz`.
-- **No old version:** when `--download` cannot fetch the old one (agy's download always gives the latest), use the host install instead, e.g. `~/.local/bin/agy`.
+- **No old version:** when `--download` cannot fetch the old one, use the host install instead, e.g. `~/.local/bin/agy`. For agy, `--download` fetches only the latest version or one whose download URL it recorded when that version was the latest; any other version is refused (exit 2) and nothing is fetched.
 - **Run time:** about 1 to 3 minutes per pair; a package of several hundred MB takes longest.
 
 ## Reading the output

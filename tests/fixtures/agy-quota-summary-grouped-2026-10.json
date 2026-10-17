@@ -1,0 +1,21 @@
+{
+  "_note": "#1898: retrieveUserQuotaSummary in the grouped shape agy shows since 2026-10-16. Field names come from the proto descriptor in the agy binary (QuotaSummaryGroup / QuotaSummaryBucket); group names, limits, fractions and refresh times from the user's Models & Quota screen. Bucket ids and window values were not captured live: the Claude group keeps the pooled 3p-* ids, the Gemini group's ids are new ones.",
+  "groups": [
+    {
+      "displayName": "Gemini Models",
+      "description": "Gemini Flash, Gemini Pro",
+      "buckets": [
+        { "bucketId": "gemini-models-weekly-limit", "displayName": "Weekly Limit", "window": "WEEKLY", "remainingFraction": 0.9818, "resetTime": "2026-10-23T03:00:00Z" },
+        { "bucketId": "gemini-models-five-hour-limit", "displayName": "Five Hour Limit", "window": "FIVE_HOURS", "remainingFraction": 0.9585, "resetTime": "2026-10-16T04:21:00Z" }
+      ]
+    },
+    {
+      "displayName": "Claude and GPT Models",
+      "description": "Claude Opus, Claude Sonnet, GPT-OSS",
+      "buckets": [
+        { "bucketId": "3p-weekly", "displayName": "Weekly Limit", "window": "WEEKLY", "remainingFraction": 1, "resetTime": "2026-10-23T03:00:00Z" },
+        { "bucketId": "3p-5h", "displayName": "Five Hour Limit", "window": "FIVE_HOURS", "remainingFraction": 1, "resetTime": "2026-10-16T06:00:00Z" }
+      ]
+    }
+  ]
+}

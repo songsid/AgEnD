@@ -37,7 +37,8 @@ export interface WebCommandDeps {
   /** The instance is one the web chat may command (a fleet instance or a ClassicBot room), and in which scope. */
   scope(instance: string): CommandScope | null;
   ctx(instance: string): Promise<string>;
-  compact(instance: string, instructions: string | undefined): Promise<string>;
+  /** Board 003648ac: `sent` — the command went; `watch` — the id its end is followed by (null: this backend's can't be seen). */
+  compact(instance: string, instructions: string | undefined): Promise<{ sent: boolean; text: string; watch: string | null }>;
   applyModel(instance: string, name: string): Promise<string>;
   /** The model menu from the cached catalog only (never a live probe on this path); null: no list to offer. */
   modelChoices(instance: string): WebChoices | null;
@@ -54,14 +55,20 @@ export interface WebCommandDeps {
   save(instance: string, filename: string): Promise<string>;
   /** Ask: a confirmation token (or why not). Confirm: clear, if the token is live and the instance unchanged. */
   clearAsk(instance: string): { token: string; message: string } | { refused: string };
-  clearConfirm(instance: string, token: string): Promise<{ status: number; text: string }>;
+  clearConfirm(instance: string, token: string): Promise<{ status: number; text: string; sent?: boolean }>;
   t(key: string, ...args: string[]): string;
 }
 
 export interface WebCommandInput { instance: string; command: string; args?: string; confirm?: string }
 export interface WebCommandResult {
   status: number;
-  body: { text?: string; error?: string; choices?: WebChoices; confirm?: { token: string; message: string } };
+  body: {
+    text?: string; error?: string; choices?: WebChoices; confirm?: { token: string; message: string };
+    /** A sent /compact: the status frame's `compact` with this id says when it ends; id null: its end can't be seen. */
+    follow?: { kind: "compact"; id: string | null };
+    /** Board 003648ac: the command was handed over and its text says only that — the chat's card may leave by itself. */
+    sent?: true;
+  };
 }
 
 const isWebCommand = (c: string): c is WebCommand => (WEB_COMMANDS as readonly string[]).includes(c);
@@ -83,7 +90,10 @@ export async function runWebCommand(deps: WebCommandDeps, input: WebCommandInput
   const ok = (text: string) => ({ status: 200, body: { text } });
   switch (command) {
     case "ctx": return ok(await deps.ctx(instance));
-    case "compact": return ok(await deps.compact(instance, args || undefined));
+    case "compact": {
+      const r = await deps.compact(instance, args || undefined);
+      return r.sent ? { status: 200, body: { text: r.text, follow: { kind: "compact", id: r.watch } } } : { status: 409, body: { error: r.text } };
+    }
     case "model": {
       if (args) return ok(await deps.applyModel(instance, args));
       const choices = deps.modelChoices(instance);
@@ -102,7 +112,7 @@ export async function runWebCommand(deps: WebCommandDeps, input: WebCommandInput
       const choices = deps.effortChoices(instance);
       return choices ? { status: 200, body: { choices } } : { status: 400, body: { error: deps.t("web.command_no_choices", "/effort") } };
     }
-    case "cancel": return ok(deps.cancel(instance) ? deps.t("cancel.sent", instance) : deps.t("cancel.not_running", instance));
+    case "cancel": return deps.cancel(instance) ? { status: 200, body: { text: deps.t("cancel.sent", instance), sent: true } } : ok(deps.t("cancel.not_running", instance));
     case "steer":
     case "btw":
       if (!args) return { status: 400, body: { error: deps.t(`${command}.usage`) } };
@@ -114,7 +124,10 @@ export async function runWebCommand(deps: WebCommandDeps, input: WebCommandInput
       if (!SAVE_FILENAME_RE.test(args)) return { status: 400, body: { error: deps.t("filename.invalid") } };
       return ok(await deps.save(instance, args));
     case "clear": {
-      if (input.confirm) { const r = await deps.clearConfirm(instance, input.confirm); return { status: r.status, body: r.status === 200 ? { text: r.text } : { error: r.text } }; }
+      if (input.confirm) {
+        const r = await deps.clearConfirm(instance, input.confirm);
+        return { status: r.status, body: r.status === 200 ? { text: r.text, ...(r.sent ? { sent: true as const } : {}) } : { error: r.text } };
+      }
       const asked = deps.clearAsk(instance);
       return "token" in asked ? { status: 200, body: { confirm: asked } } : { status: 409, body: { error: asked.refused } };
     }

@@ -2,7 +2,7 @@
 
 [繁體中文](command-surface.zh-TW.md) · [Command reference](commands.md) · [Admission and credentials](permissions.md)
 
-The tables distinguish menu visibility, AgEnD handling, refusal and ordinary text routing. Verified against main `572bf39f9a4d98ed0d1fa78b414d07c7c9f54295`; the roles and command paths are unchanged from the linked audit source below.
+Counts checked against main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`: 28 command rules, 23/11 Telegram fleet/Classic menu entries, and 29 Discord slash names (including the web alias). The pinned links below preserve the original authorization audit; current registration counts supersede its old 27 and 21/10 counts.
 
 ## Reading a cell
 
@@ -18,7 +18,7 @@ The tables distinguish menu visibility, AgEnD handling, refusal and ordinary tex
 - `R(C)` / `R(F)`: the real unregistered-chat handler checks C / F first, then finds no agent. C alone does not pass the F-or-C helper without a registration.
 - `*`: `/tips` without a mode is informational; settings-changing modes require F.
 
-✓ is the configured menu entry, not a runtime grant. Backend support, arguments, lifecycle state and source checks still apply to every H cell. Telegram G/T menus are registered on the whole forum chat, so General and instance topics share their suggestions. Discord registers all 27 commands globally for each bot; platform registration failure may leave an older menu.
+✓ is the configured menu entry, not a runtime grant. Backend support, arguments, lifecycle state and source checks still apply to every H cell. Telegram G/T menus are registered on the whole forum chat, so General and instance topics share their suggestions. Discord registers 29 slash names globally for each bot, including the `/web` alias; platform registration failure may leave an older menu.
 
 ## Discord native slash
 
@@ -129,8 +129,8 @@ The no-thread General suffix and after-await callback fences reject stale or unv
 
 ## Audited sources
 
-- [`src/command-table.ts:116`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/command-table.ts#L116) — 27 command rules / 27 條命令規則
-- [`src/command-table.ts:215`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/command-table.ts#L215) — 21/10 Telegram menus / Telegram 選單
+- [`src/command-table.ts:116`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/command-table.ts#L116) — Original audit: 27 command rules / 原始稽核 27 條命令規則
+- [`src/command-table.ts:215`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/command-table.ts#L215) — Original audit: 21/10 Telegram menus / 原始稽核 Telegram 選單
 - [`src/channel/adapters/discord.ts:1117`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/channel/adapters/discord.ts#L1117) — Discord global registration / 全域註冊
 - [`src/topic-commands.ts:1896`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/topic-commands.ts#L1896) — Telegram registration scopes / 註冊 scope
 - [`src/fleet-manager.ts:3347`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/fleet-manager.ts#L3347) — Discord door → table → handler

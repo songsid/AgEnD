@@ -19,6 +19,7 @@ import {
   deriveNeedsYou, itemsForWorld, renderLiveMessage, renderSignature, messageLink, instanceLink,
   type DeliveryInput, type InstanceInput, type NeedsYouItem, type PromptInput, type WorldPlace,
 } from "./needs-you.js";
+import { GroupMembership, topicUrl } from "./topic-link.js";
 import { NeedsYouLiveMessage, canonicalTarget, type LiveAcks, type LivePointer, type LiveTarget } from "./needs-you-live.js";
 
 export const NEEDS_ACK_PREFIX = "needs-ack:";
@@ -117,7 +118,12 @@ export class NeedsYouHub {
   /** The first computation after start: what waits then is not news (a restart edits, it does not post or DM). */
   private seeded = false;
 
-  constructor(private readonly ctx: NeedsYouHubContext) {}
+  /** #1990: a DM links into the group only for a confirmed member. */
+  private readonly membership: GroupMembership;
+
+  constructor(private readonly ctx: NeedsYouHubContext) {
+    this.membership = new GroupMembership({ now: () => ctx.mono() });
+  }
 
   start(): void {
     this.recompute();
@@ -386,14 +392,32 @@ export class NeedsYouHub {
     const still = this.items.filter(i => ids.has(i.id) && this.ctx.ownerOf(i.instance) === worldId);
     if (still.length === 0) return;
     this.dmLastAt.set(worldId, this.ctx.mono());
-    const text = [this.ctx.t("needs.dm_header", still.length), ...still.slice(0, 10).map(item => {
-      const link = item.promptAt ? messageLink(world.place, item.promptAt) : instanceLink(world.place, this.ctx.instanceTopic(item.instance));
+    // #1990: links only for an admin the platform confirms is in the group (a DM reader may not be); a browser URL
+    // either way, since a DM is outside the guild a channel mention would resolve in.
+    const asked = { adapter: world.adapter, placeKey: placeKey(world.place) };
+    for (const admin of this.ctx.fleetAdmins(worldId)) {
+      void this.membership.isMember(world.adapter, world.place.groupId ?? "", admin).then(member => {
+        // The read took time: everything above is resolved again now (#1398 review), and the verdict counts only for
+        // the same adapter and group it was asked of.
+        if (this.stopped || this.ctx.stopping() || !this.ctx.settings().dm) return;
+        const now = this.ctx.worlds().find(w => w.id === worldId);
+        if (!now?.adapter.sendDirect || now.adapter !== asked.adapter || placeKey(now.place) !== asked.placeKey) return;
+        if (!this.ctx.fleetAdmins(worldId).includes(admin)) return;
+        const current = this.items.filter(i => ids.has(i.id) && this.ctx.ownerOf(i.instance) === worldId);
+        if (current.length === 0) return;
+        // Telegram: only an admin who has started the bot can be messaged; the send fails otherwise, and that is fine.
+        return now.adapter.sendDirect(admin, this.dmText(current, now.place, member));
+      }).catch(err => this.ctx.log("debug", "Needs you: DM not delivered", { world: worldId, err: String((err as Error)?.message ?? err) }));
+    }
+  }
+
+  /** A DM's text: its items, with links (browser URLs) only when `linked`. */
+  private dmText(items: readonly NeedsYouItem[], place: WorldPlace, linked: boolean): string {
+    return [this.ctx.t("needs.dm_header", items.length), ...items.slice(0, 10).map(item => {
+      const link = !linked ? undefined
+        : item.promptAt ? messageLink(place, item.promptAt) : topicUrl(place, this.ctx.instanceTopic(item.instance));
       return `• ${item.instance} — ${this.lineTitle(item)}${link ? ` · ${link}` : ""}`;
     })].join("\n");
-    for (const admin of this.ctx.fleetAdmins(worldId)) {
-      // Telegram: only an admin who has started the bot can be messaged; the send fails otherwise, and that is fine.
-      world.adapter.sendDirect(admin, text).catch(err => this.ctx.log("debug", "Needs you: DM not delivered", { world: worldId, err: String((err as Error)?.message ?? err) }));
-    }
   }
 
   /** Shutdown: every live message says so, without buttons; no further renders or DMs. */

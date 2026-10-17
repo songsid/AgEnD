@@ -401,6 +401,8 @@ const PASSIVE_APPLY_STATUS = /^\/api\/settings\/(?:apply\/[A-Za-z0-9-]+|(?:provi
 export function isPassiveWebRead(method: string | undefined, path: string): boolean {
   // #1629: automatic diagnostic reports are not human activity. This affects touch only: POST still needs CSRF; only the bounded diagnostic route accepts a read-tier session.
   if (method === "POST" && /^\/ui\/effects\/profile\/[0-9a-f]{32}$/.test(path)) return true;
+  // #1629: Trial Stop is also automatic lifecycle cleanup. This only suppresses idle touch; CSRF/local-admin gates remain.
+  if (method === "POST" && /^\/ui\/effect-trials\/[0-9a-f]{32}\/stop$/.test(path)) return true;
   if ((method ?? "GET") !== "GET") return false;
   return /^\/ui\/effect-trials\/[0-9a-f]{32}\/(?:resource|poster\.png|profile)$/.test(path) || /^\/ui\/effect-posters(?:\/[0-9a-f]{32}\.png)?$/.test(path) || /^\/ui\/effects(?:\/(?:placements|(?:resource|profile)\/[0-9a-f]{32}|image\/[0-9a-f]{32}\/(?:poster|cursor)\.png))?$/.test(path) || PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path) || PASSIVE_GET_IMAGES.test(path) || PASSIVE_GET_OWNER_CSS.test(path) || PASSIVE_GET_THEMES.test(path) || PASSIVE_GET_CARD.test(path)
     || /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path)

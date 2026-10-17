@@ -12,7 +12,7 @@ AgEnD 把你的 AI coding agent 變成系統服務，放進 Telegram 或 Discord
 - 要從 Telegram 或 Discord 聊天：Telegram bot token（跟 [@BotFather](https://t.me/BotFather) 要）或 Discord bot token。沒有 bot 也能只用網頁儀表板，見[網頁使用說明](/AgEnD/zh-tw/docs/web-guide/)。
 - 至少一個已安裝並登入的 AI coding CLI — 見[安裝後端](#安裝後端)
 
-支援 macOS 和 Linux。不支援原生 Windows：請在 WSL 裡執行 AgEnD，[Windows 安裝指南](/AgEnD/zh-tw/install-windows/)會幫你設好。
+支援 macOS 和 Linux。不支援 musl Linux（例如 Alpine）與沒有 systemd 的 Linux 主機：AgEnD 也許裝得起來，但沒有測試過，也不保證能用。同樣不支援原生 Windows：請在 WSL 裡執行 AgEnD，[Windows 安裝指南](/AgEnD/zh-tw/install-windows/)會幫你設好。
 
 ## 安裝
 
@@ -67,7 +67,7 @@ agend quickstart
 
 1. 找出你已安裝的 AI coding CLI，有好幾個時讓你選。
 2. 問你要用 Telegram、Discord 還是兩者都要。Discord 是內建的，不用另外裝東西。
-3. 檢查你的 bot token。Telegram 會在你到群組裡傳 `/start` 後找出那個群組和你的 user ID。Discord 會列出 bot 所在的伺服器；如果它還不在任何伺服器，就請你貼上伺服器 ID。接著會問你的 user ID 和 General 頻道的 ID（Discord 的開發者模式 → 複製 ID），並詢問要不要設定 ClassicBot。
+3. 檢查你的 bot token。Telegram 會在你到群組裡傳 `/start` 後找出那個群組和你的 user ID。Discord 會列出 bot 所在的伺服器；如果它還不在任何伺服器，就請你貼上伺服器 ID。接著最多等 30 秒，從你在該伺服器或 bot 私訊送出的訊息偵測帳號，再請你確認顯示的 username 與 ID。偵測失敗或拒絕採用時，必須手動輸入有效的 17–20 位 user ID。另需 General 頻道 ID（開發者模式 → 複製 ID），並可選擇設定 ClassicBot。
 4. 問你的專案放在哪裡。
 
 它會寫好 `~/.agend/fleet.yaml`（存取權鎖定給你的 user ID），bot token 則寫進 `~/.agend/.env`。最後它會提議把 fleet 裝成系統服務並啟動，接著告訴你網頁儀表板在哪裡。

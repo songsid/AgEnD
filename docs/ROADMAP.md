@@ -1,6 +1,6 @@
 # AgEnD Roadmap
 
-> Last updated: 2026-10-07 (2.2 line)
+> Last updated: 2026-10-16 (2.2 pre-stable)
 > Short and user-facing: what shipped, what is next.
 
 ## Shipped (v1.x)
@@ -28,14 +28,14 @@ documentation. Details are in the CHANGELOG release sections.
 - 2.1.11: Codex capacity answered with keep-going nudge, update-channel
   pinning, cancel stops reply recovery, restart no-resend, capacity/stuck
   detection fixes, Discord slash table and auth door.
-- 2.1.12 (in beta): kiro 2.28 Classic-nudge handling, bot-to-bot visibility
+- 2.1.12: kiro 2.28 Classic-nudge handling, bot-to-bot visibility
   setting, gemini-cli removed, macOS memory alerts off, alpha release
   channel, reaction ownership fixes, docs overhaul. Short unique instance
   names ship in 2.1.12-beta.4.
 
-## Next: 2.2.0 — the web line
+## 2.2.0 — implemented in the current prerelease
 
-The dashboard becomes a first-class way to talk to the fleet:
+See the [current 2.2 highlights](release-notes/2.2.0.md) and [upgrade guide](upgrade-2.2.md). The dashboard includes:
 
 - Sign-in with one-time codes, sessions with revoke.
 - Chat-first UI: message input front and center, Markdown, uploads,
@@ -43,13 +43,14 @@ The dashboard becomes a first-class way to talk to the fleet:
 - Health prompts mirrored between Telegram and web, single answer.
 - Echo sync: web-typed messages appear in the instance's channel topic
   (fleet topics on, ClassicBot per-channel opt-in — see
-  `docs/design/1320-classicbot-web-echo.md`).
+  [design](design/1320-classicbot-web-echo.md)).
 
-## 2.2.1 — chat depth (planned direction, subject to change)
+- Optional inline HTML previews and persisted per-instance chat history.
+- Optional Log steps for the current Claude Code or Codex conversation; other backends show fleet events only.
 
-- Inline HTML preview.
-- Persisted, searchable chat history per instance.
-- Step list: what the agent is doing, step by step.
+## Later chat depth (planned direction, subject to change)
+
+- Searchable chat history. This is a plan, not a 2.2 feature promise.
 
 ## 2.2.2 — review flow (planned direction, subject to change)
 

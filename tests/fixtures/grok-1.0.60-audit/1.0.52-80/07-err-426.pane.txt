@@ -1,0 +1,40 @@
+
+  master /t/work-1.0.52-80/repo                      1.5K / 256K │ [Dashboard]
+
+
+     ❯ error turn d                                                  1:13 PM
+
+
+  ┃  Request failed (426): invalid_request_error: Upgrade required
+
+
+
+
+
+
+
+
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

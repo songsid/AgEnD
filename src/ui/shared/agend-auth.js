@@ -51,7 +51,7 @@
     if (!sessionPending) {
       sessionPending = nativeFetch("/auth/session", { credentials: "same-origin", cache: "no-store" })
         .then((r) => { if (r.status === 401) endSession("unauthorized"); return r.ok ? r.json() : null; })
-        .then((j) => (j && typeof j.csrf === "string" ? { csrf: j.csrf, handle: typeof j.handle === "string" ? j.handle : null, canWrite: j.tier === "admin" } : null))
+        .then((j) => (j && typeof j.csrf === "string" ? { csrf: j.csrf, handle: typeof j.handle === "string" ? j.handle : null, canWrite: j.tier === "admin", localAdmin: j.tier === "admin" && j.surface === "local" } : null))
         .catch(() => null)
         .then((value) => { if (!value) sessionPending = null; return value; });
     }
@@ -103,6 +103,8 @@
     onSessionEnd,
     /** Display hint from the existing session read. Every write still requires server authorization. */
     canWrite() { return session().then(s => !ended && s?.canWrite === true); },
+    /** Display hint from the same server session response; Start still reauthorizes. No CSRF is exposed here. */
+    trialSession() { return session().then(s => !ended && s?.handle && /^[a-f0-9]{16}$/.test(s.handle) ? Object.freeze({ epoch: s.handle, localAdmin: s.localAdmin === true }) : null); },
     sessionEnded() { return ended !== null; },
     /** #1568: the session handle of this page's sign-in, or null when there is none. */
     sessionHandle() { return session().then((s) => (s && s.handle ? s.handle : null)); },

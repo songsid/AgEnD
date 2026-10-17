@@ -51,7 +51,10 @@ describe("fixed preference scope and one atomic mixed transaction", () => {
   it("agent guidance keeps host-wide operator, withdrawal and chat retention distinct", () => {
     const e = AGENT_WHATS_NEW.find(e => e.id === "2.3-owner-effect-policy")!;
     expect(e.since).toBe("2.3.0-alpha.1");
-    for (const words of ["never agent/header-token targets", "host-wide operator bucket", "Unsharing blocks the next personal-slot resource read", "keeps its saved reference until cleared", "chat placements retain their separate runtime policy", "Page/header/sidebar/box playback now shares the app pool with Chat after preview consent", "Host cursor playback uses a static PNG with stock cursor fallback, no Worker code or frame slot", "Try remains separate work"]) expect(e.text).toContain(words);
+    for (const words of ["never agent/header-token targets", "host-wide operator bucket", "Unsharing blocks the next personal-slot resource read", "keeps its saved reference until cleared", "chat placements retain their separate runtime policy", "Page/header/sidebar/box playback now shares the app pool with Chat after preview consent", "Host cursor playback uses a static PNG with stock cursor fallback, no Worker code or frame slot", "Agents can offer Try cards; only a local admin click starts a clipped temporary sample."]) expect(e.text).toContain(words);
+  });
+  it("the owner announcement no longer describes Try as unavailable", () => {
+    expect(AGENT_WHATS_NEW.find(e => e.id === "2.3-owner-effect-policy")!.text).not.toContain("Try remains separate work");
   });
   it("only five keys are personal; old host/internal keys retain their scope", () => {
     expect(OWNER_EFFECT_KEYS.map(webPrefScope)).toEqual(Array(5).fill("person"));

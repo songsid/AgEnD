@@ -15,7 +15,7 @@ import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer
 import { detailsPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { HeaderTools } from "/assets/header-tools.js";
-import { navigate } from "/assets/app-nav.js";
+import { navigate, navStore } from "/assets/app-nav.js";
 import { Menu } from "/assets/ui-menu.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, Skeleton } from "/assets/ui-states.js";
@@ -56,7 +56,7 @@ import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
 import { ChatEffectPosters } from "/ui/js/chat-effect-posters.js";
 import { ChatEffects, chatEffectsMenuAvailable } from "./chat-effects.js";
-import { startAppEffects } from "./app-effects.js";
+import { startAppEffects, getAppEffects } from "./app-effects.js";
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -308,9 +308,12 @@ function Thread({ name, th }) {
   const [jump, setJump] = useState({ show: false, unseen: 0 });
   const [empty, setEmpty] = useState(false);
   useLayoutEffect(() => {
+    let live = true;
     const thread = createThread(list.current, scroller.current, {
       t, tf: t, isUser: (x) => store.isUser(x, name), onJump: setJump, onEmpty: setEmpty,
       setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
+      canTryEffect: x => getAppEffects()?.canTry(x) === true,
+      startEffectTrial: x => { const seq = navStore.get().seq; void getAppEffects()?.startTrial(x).then(ok => { if (!ok && live && navStore.get().seq === seq && document.hasFocus?.() === true && document.visibilityState === "visible") toast(t("chat.effectTrialUnavailable")); }); },
       clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
       replyButtonBusy: (id) => store.state.rbBusy.has(id),
       pollMine: (id) => store.state.pollMine[id],                            // #1823: this device's own vote
@@ -334,13 +337,15 @@ function Thread({ name, th }) {
       else if (kind === "sent") thread.jumpLatest();
     });
     const offPv = P() ? P().onChange(() => thread.refreshCards()) : () => {};
+    const offTrials = getAppEffects()?.subscribeTrial(() => thread.render(store.state.msgs[name] || [])) ?? (() => {});
     const offPanel = panelStore.subscribe(() => thread.refreshCards());   // a card shows whether the panel has its block
     const onScroll = () => { store.state.scrollMemo[name] = thread.onScroll(); };
     const sc = scroller.current, ls = list.current;
     sc.addEventListener("scroll", onScroll, { passive: true });
     ls.addEventListener("click", thread.onClick);
     return () => {
-      off(); offPv(); offPanel(); offEmojis(); offMentions();
+      live = false;
+      off(); offPv(); offPanel(); offTrials(); offEmojis(); offMentions();
       sc.removeEventListener("scroll", onScroll);
       ls.removeEventListener("click", thread.onClick);
       thread.dispose();                     // the whole thread goes: every preview in it stops first
@@ -383,6 +388,9 @@ function CommandCard({ name, lease }) {
         aria-label=${t("chat.cmdDismiss")} onClick=${() => store.dismissCommand(name)}><${Icon} name="close" size=${14} /></button>`}</div>
     ${c.error ? html`<p class="cmd-text">${c.error}</p>` : null}
     ${c.text ? html`<pre class="cmd-text">${c.text}</pre>` : null}
+    ${c.compact ? html`<p class="cmd-text cmd-phase">${c.compact === "running" ? t("chat.compactRunning")
+      : c.compact === "done" ? t("chat.compactDone") : c.compact === "timeout" ? t("chat.compactTimeout", "10")
+      : c.compact === "lost" ? t("chat.compactLost") : c.compact === "not_compacted" ? t("chat.compactNotCompacted") : t("chat.compactUnknown")}</p>` : null}
     ${c.choices && c.choices.prompt ? html`<pre class="cmd-text">${c.choices.prompt}</pre>` : null}
     ${c.choices ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdChoose")}>${c.choices.options.map((o) => html`<button key=${o.id} type="button"
       class=${`btn btn-sm${o.id === c.choices.current ? " current" : ""}`} aria-current=${o.id === c.choices.current ? "true" : undefined} onClick=${() => run(o.id)}>${o.label}</button>`)}</div>` : null}
@@ -497,7 +505,7 @@ function Composer({ name, lease, busy }) {
     ${files.length ? html`<div class="pending-files">${files.map((f, i) => html`<${FileChip} key=${`${f.name}-${i}`} f=${f} i=${i} name=${name} />`)}</div>` : null}
     <div class="composer">
       <button id="attachBtn" type="button" class="icon-btn" title=${t("chat.attachTitle")} aria-label=${t("chat.attachTitle")} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
-      <input ref=${fileIn} type="file" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.log,.yaml,.yml"
+      <input ref=${fileIn} type="file" multiple hidden
         onChange=${(e) => { store.addFiles(name, e.target.files); e.target.value = ""; }} />
       <textarea id="msgIn" ref=${input} rows="1" value=${value} placeholder=${t("chat.composerPlaceholder", name)} aria-label=${t("chat.composerPlaceholder", name)}
         autocomplete="off" aria-controls=${palette ? "cmdPalette" : undefined} aria-expanded=${palette ? "true" : "false"}

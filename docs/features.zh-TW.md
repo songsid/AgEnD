@@ -70,7 +70,7 @@ instance 啟動時，daemon 會把剛組好的 fleet 指示，和上次告訴 ag
 
 - 第一次啟動（還沒有任何紀錄）：只記錄指示，不送任何東西。
 - Claude Code 在 resume 時會自己重讀指示，所以永遠不用通知它。
-- 其他後端會收到一行通知，請它重新載入自己的指示檔（`AGENTS.md`、kiro 的 agent 檔或 steering 檔、`.agents/agents.md` 等）。如果沒有訊息在等，這則通知會延到下一則真正的訊息再一起送，免得 agent 平白回一段話；如果已經有投遞在排隊，daemon 會等到閒置，先貼上通知。
+- 其他後端會收到一行通知，請它重新載入自己的指示檔（`AGENTS.md`、kiro 的 agent 檔或 steering 檔、`.agents/AGENTS.md` 等）。如果沒有訊息在等，這則通知會延到下一則真正的訊息再一起送，免得 agent 平白回一段話；如果已經有投遞在排隊，daemon 會等到閒置，先貼上通知。
 
 不需要任何設定。
 
@@ -219,12 +219,12 @@ agent 可以提供讓人點選、而不必打字的選項（2.2）。同一組�
 
 ## 點對點 Agent 協作 (Peer-to-peer agent collaboration)
 
-每個 instance 都是平等的對等節點，可以找到、喚醒、建立其他 instance，也能傳訊息給它們。不需要中央調度器，協作是從每個 agent 手上的工具自然形成的。
+Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕並傳訊；建立、啟動或喚醒 instance 則需要對應的管理工具權限。見[工具權限組](features.zh-TW.md#工具權限組合-tool-profiles)。
 
 **核心 MCP 工具：**
 
 - `list_instances` — 找出所有已設定的 instance（執行中或已停止），附上狀態、工作目錄和最後活動時間
-- `send_to_instance` — 傳訊息給另一個 instance 或外部 session；支援結構化的 metadata（`request_kind`、`requires_reply`、`correlation_id`、`task_summary`）
+- `send_to_instance` — 傳訊息給另一個 fleet instance；支援結構化的 metadata（`request_kind`、`requires_reply`、`correlation_id`、`task_summary`）
 - `start_instance` — 喚醒已停止的 instance，好讓你傳訊息給它
 - `create_instance` — 建立新 instance 和它的 topic（目錄可省略；省略時自動建立 `~/.agend/workspaces/<name>`）；支援用 `branch` 建立 git worktree 隔離
 - `delete_instance` — 移除 instance 和它的 topic
@@ -261,7 +261,7 @@ agent 可以提供讓人點選、而不必打字的選項（2.2）。同一組�
 - `consumed_at` / `consumed_via`：steer 或交給原生佇列的訊息，早在模型讀到之前就已被 CLI 收進輸入；Claude Code 會在下一個工具結束時或回合結束時才取用。當 CLI 的 transcript（claude-code、codex）顯示這則投遞自己的 marker 被取用，就記下時間，以及它是作為自己的回合（`turn`）還是併入進行中的回合（`mid_turn`）。這也是唯一能把 `uncertain` 變成 `delivered` 的情況；此時尚未寄給寄件者的失敗通知會被撤回。找不到 marker 絕不改變任何紀錄。
 - `waiting_reason`（#1641）：在 `queued` 或 `retry_wait` 的紀錄上，以文字說明目標為什麼沒有接收（「CLI 看起來卡住了。」、已暫停、有對話框、登入失敗），只是單純排在後面時為 null。常駐的目標若有排隊中的工作因為這類原因等了 30 分鐘，會在它的主題通知一次。
 
-instance 只看得到自己送出或收到的紀錄（身分取自它自己的 socket 或 token，絕不取自參數）。用收到的訊息的 `message_id` 去查，就能確認同伴傳來的訊息真的經過 fleet：回傳「Delivery not found」就代表不是。每種工具權限組合都有 `delivery_status`，連 `minimal` 也有。
+Instance 可看到自己送出、收到，或經 `forwards` 明確授權的紀錄（身分取自它自己的 socket 或 token，絕不取自參數）。用收到的訊息的 `message_id` 去查，就能確認同伴傳來的訊息真的經過 fleet："Delivery not found" 可能是 ACL 隱藏、紀錄過期，或沒有投遞，不能證明從未投遞。無法驗證時不要行動，請對方明確 forward 可驗證的參照。每種工具權限組合都有 `delivery_status`，連 `minimal` 也有。
 
 `send_to_instance` 和 `delegate_task` 支援選填的 `forwards` 清單，最多 16 個寄件者已能讀取的已投遞訊息 ID。收件者就能用 `delivery_status` 查那些 ID，包括使用者授權收據（`verification_id` / `agend-human-id`）。轉發鏈的每一跳都要明確列在 `forwards`；把 ID 寫在訊息文字裡不授予任何權限。使用者收據分開保存原始身分、adapter、平台與內容，缺乏 owner 綁定的正向證據時維持 uncertain。完整說明見 [cross-instance-messaging.md](cross-instance-messaging.md) 與 [delivery-verification.zh-TW.md](delivery-verification.zh-TW.md)。
 
@@ -339,7 +339,7 @@ daemon 會用分層的環境變數，自動把外部 session 和內部 session �
 
 內部 session 的 `AGEND_INSTANCE_NAME` 由 daemon 注入 tmux 的 shell 環境。外部 session 沒有這個變數，所以會退回 `AGEND_SESSION_NAME`（有設定的話），否則就用工作目錄加上 MCP server 的 PID 自動產生名稱，同一個專案裡的兩個 session 才不會撞名。因此同一份 `.mcp.json` 在內部和外部 session 會得到不同的身分，不會有設定衝突。
 
-外部 session 會出現在 `list_instances` 裡，也可以當作 `send_to_instance` 的目標。
+外部 session 可登錄身分、出現在 `list_instances`，並呼叫允許的 fleet 工具。登錄本身不會建立通往該外部 CLI 目前對話的可驗證收件路徑；不要依賴 `send_to_instance` 在那裡提交回合。
 
 ## 工具權限組合 (Tool profiles)
 
@@ -347,13 +347,13 @@ agent 能做什麼，由每個 instance 的 `tool_set` 決定，而且是由 fle
 
 | 權限組合 | 怎麼取得 | 內容 |
 |---|---|---|
-| `worker` | **預設** | 和人與同伴對話、讀取 fleet 狀態、完成工作。包括 `reply`、`send_to_instance`、`broadcast`、`report_result`、`request_information`、`delegate_task`、`delivery_status`、`task`、`post_decision`、`checkout_repo` / `release_repo`，以及所有唯讀查詢，其中也有 `list_schedules` 和 `list_deployments`，所以看得到有哪些東西，但不能更改。從 2.1.6 起，它也能建立和修改以自己為目標的排程（#896），還能列出、預覽並設定自己的 persona emoji，以及列出和預覽貼圖。共 38 個工具。 |
+| `worker` | **預設** | 和人與同伴對話、讀取 fleet 狀態、完成工作。包括 `reply`、`send_to_instance`、`broadcast`、`report_result`、`request_information`、`delegate_task`、`delivery_status`、`task`、`post_decision`、`checkout_repo` / `release_repo`，以及所有唯讀查詢，其中也有 `list_schedules` 和 `list_deployments`，所以看得到有哪些東西，但不能更改。從 2.1.6 起，它也能建立和修改以自己為目標的排程（#896），還能列出、預覽並設定自己的 persona emoji，以及列出和預覽貼圖。共 39 個工具。 |
 | `coordinator` | `tool_set: coordinator` | worker 有的全部，再加上管理 fleet 的動詞：建立／刪除／替換／啟動／停止／重啟／喚醒 instance、部署和拆除模板、team 的增刪改查、建立和修改排程、`update_instance_config`、`update_fleet_defaults`、`update_decision`。 |
 | `full` | `tool_set: full` | AgEnD 的所有工具。 |
 
-**`coordinator` 和 `full` 目前是同樣的 54 個工具**，差別在於意義，而不是內容。`coordinator` 表示「這個 agent 負責管理 fleet」，日後若發現某個動詞不屬於這裡，就會把它收窄；`full` 表示「不管怎樣都給它全部」，也是舊版預設值的名字。想讓 agent 擔任協調者，就寫 `coordinator`；為了拿到*更多*而選 `full`，什麼也不會多，反而會錯過之後所有的調整。
+**`coordinator` 和 `full` 目前是同樣的 55 個工具**，差別在於意義，而不是內容。`coordinator` 表示「這個 agent 負責管理 fleet」，日後若發現某個動詞不屬於這裡，就會把它收窄；`full` 表示「不管怎樣都給它全部」，也是舊版預設值的名字。想讓 agent 擔任協調者，就寫 `coordinator`；為了拿到*更多*而選 `full`，什麼也不會多，反而會錯過之後所有的調整。
 
-`standard`（29 個工具）和 `minimal`（9 個）仍然存在。`minimal` 在 2.1.9 加入了 `list_emojis` 和 `preview_emojis`，在 2.1.12 加入了 `list_stickers` 和 `preview_stickers`。**`general` 是一種身分，不是可以自己挑的權限組合**：它會指派給設定了 `general_topic: true` 的 instance，手動寫上會通不過驗證，因為兩種成為 General 的途徑遲早會互相矛盾。
+`standard`（30 個工具）和 `minimal`（9 個）仍然存在。`minimal` 在 2.1.9 加入了 `list_emojis` 和 `preview_emojis`，在 2.1.12 加入了 `list_stickers` 和 `preview_stickers`。**`general` 是一種身分，不是可以自己挑的權限組合**：它會指派給設定了 `general_topic: true` 的 instance，手動寫上會通不過驗證，因為兩種成為 General 的途徑遲早會互相矛盾。
 
 `delegate_task` 刻意設計成 worker 工具。它不建立任何東西、不刪除任何東西，而且目標必須已經存在，所以一般 agent 可以把工作交給同伴，卻不能自己生出一個同伴。
 
@@ -537,7 +537,7 @@ defaults:
 - **Topic 模式**：每個 instance 對應「AgEnD Agents」分類（可用 `options.category_name` 改名）底下的一個文字頻道，另有一個 General 頻道。
 - **ClassicBot**：在任何文字頻道打 `/start`，它就變成 agent 頻道；`/stop` 則移除。`/start` 之後預設開啟 collab 模式，只有 @ 這個 bot 才會觸發 agent。
 - **同一個伺服器放多個 bot**：每個 bot 是 `channels[]` 裡獨立的一項；bot 只回應提到自己的訊息，絕不替別的 bot 回答。
-- **斜線指令**：共 28 個，包括 `/chat`、`/steer`、`/btw`、`/cancel`、`/ctx`、`/compact`、`/model`、`/backend`、`/effort`、`/web`、`/usage`、`/login`；需要管理員權限的會標上 🔒（這個標記和實際執行權限檢查的是同一張表產生的）。
+- **斜線指令**：共 29 個名稱（28 個命令加上 `/web` 別名），包括 `/chat`、`/steer`、`/btw`、`/cancel`、`/ctx`、`/compact`、`/model`、`/backend`、`/effort`、`/web`、`/usage`、`/login`；需要管理員權限的會標上 🔒（這個標記和實際執行權限檢查的是同一張表產生的）。
 - **按鈕與選單**：權限核准（Allow / Always / Deny）、後端選單、取消，以及 hang / model / effort 選擇器。
 - **Reaction**：對 bot 訊息按的 reaction（包括其他 bot 按的）會轉給 agent；投遞狀態戳記可依 instance 或頻道設定；persona emoji 可以用伺服器 emoji。
 - **附件**：圖片、檔案和音訊都會下載；轉傳的訊息會保留圖片；回覆一張圖片時會把那張圖一起帶上。
@@ -622,11 +622,11 @@ resume 預算、resume 重試和故障短路只針對 kiro（屬於後端能力�
 
 ## agend quickstart
 
-簡化成 4 個問題的設定精靈，專為新使用者設計。它會自動偵測已安裝的後端、透過 `getUpdates` 輪詢自動找出 Telegram 群組 ID，並產生一份帶有合理預設值的精簡 `fleet.yaml`。它取代 9 步驟的 `agend init`，成為建議的入門方式。
+建議的入門精靈會偵測已安裝的 backend，並產生精簡的 `fleet.yaml`。Telegram 從 `/start` 訊息找出群組與使用者；Discord 從伺服器訊息或私訊偵測帳號，請你明確確認，失敗時改為必填且驗證 snowflake 的手動輸入。網頁精靈也必須填有效的管理員 ID。
 
 ## Web Dashboard
 
-Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板。其中的 `/ui` 就是**網頁聊天**：選一個 instance，就能在瀏覽器裡跟它對話。這和那個 instance 在 Telegram 或 Discord 上的是同一段對話：從網頁送出的訊息會以 `🌐 <你的名字>: …` 出現在 topic，Agent 的回覆兩邊都看得到。用 `/web` 的驗證碼登入時，對 Agent 來說你就是你的 Discord 或 Telegram 帳號（用它的使用者 id，`via web`，只用來辨認；見 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md#agent-看到的是誰1827)）。可以傳檔案和圖片（📎、貼上或拖進來）、按 Stop，也看得到每則訊息送到哪一步；沒有設定任何聊天平台的 fleet，也能只靠儀表板操作。`/view` 是以檢視為主的總覽，`/settings` 是 fleet 設定。
+Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板。其中的 `/ui` 就是**網頁聊天**：選一個 instance，就能在瀏覽器裡跟它對話。這和那個 instance 在 Telegram 或 Discord 上的是同一段對話：從網頁送出的訊息會以 `🌐 web · <你的名字>: …` 出現在 topic，Agent 的回覆兩邊都看得到。用 `/web` 的驗證碼登入時，對 Agent 來說你就是你的 Discord 或 Telegram 帳號（用它的使用者 id，`via web`，只用來辨認；見 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md#agent-看到的是誰1827)）。可以傳檔案和圖片（📎、貼上或拖進來）、按 Stop，也看得到每則訊息送到哪一步；沒有設定任何聊天平台的 fleet，也能只靠儀表板操作。`/view` 是以檢視為主的總覽，`/settings` 是 fleet 設定。
 
 用一次性登入碼登入：傳 `/web`（fleet 管理員），或在主機上執行 `agend web`。要從手機或其他電腦使用，請看[從別的裝置連線](web-dashboard.zh-TW.md#從別的裝置連線)。完整說明在 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md)。
 
@@ -781,7 +781,7 @@ instance 啟動時會帶上 `-c model_provider="glm"`。provider 本身（`[mode
 - Claude Code → `CLAUDE.md`
 - Codex、OpenCode、Grok Build、Meta Muse Code → `AGENTS.md`
 - Kiro CLI → `.kiro/steering/project.md`
-- Antigravity CLI → `.agents/agents.md`
+- Antigravity CLI → `.agents/AGENTS.md`
 
 已經存在的檔案不會被動到。
 
@@ -808,7 +808,7 @@ fleet 指示以附加的方式注入，不會覆蓋 CLI 內建的系統提示。
 - Claude Code：`--append-system-prompt-file`（檔案是 instance 目錄裡的 `fleet-instructions.md`）
 - Kiro CLI：instance 自己的 agent `.kiro/agents/agend-<instance>-<fleet>.json` 的 `prompt`（見[同一個工作目錄裡的 kiro instance](#同一個工作目錄裡的-kiro-instance)）。kiro-cli 2.21 以前，以及恢復的對話（切換成 instance 自己 agent 的步驟已暫停，#1800），改用 steering 檔 `.kiro/steering/agend-<instance>.md`。恢復時 AgEnD 兩個檔都會寫；本來就以 instance 自己 agent 存檔的對話，讀的是 agent 的 `prompt`。
 - Codex、Grok Build、Meta Muse Code：工作目錄裡 `AGENTS.md` 中一段有標記的區塊
-- Antigravity CLI：工作目錄裡 `.agents/agents.md` 中一段有標記的區塊
+- Antigravity CLI：工作目錄裡 `.agents/AGENTS.md` 中一段有標記的區塊
 - OpenCode：instance 目錄裡的 `fleet-instructions.md`，加進工作目錄中 `opencode.json` 的 `instructions` 清單
 
 ## 自動關閉互動提示 (Auto-dismiss interactive prompts)
@@ -846,7 +846,7 @@ instances:
     systemPrompt: "file:prompts/role.md"
 ```
 
-相對路徑以 **instance 的 `working_directory`** 為基準（#1314）；`~/` 與絕對路徑照原樣使用。這個目錄只是相對路徑的*起點*，不是邊界：`../` 與符號連結可以離開它，就像絕對路徑可以指向 fleet 使用者讀得到的任何檔案一樣。`~name/`（其他使用者的家目錄）不支援，會發出警告並拒絕，絕不會當成名為 `~name` 的目錄來讀。2.1.13 之前是以 fleet 程序的目前目錄為基準（安裝的服務下是 `~/.agend`，手動執行 `agend fleet start` 時是 shell 所在目錄）。保留一個版本的相容：相對路徑在 working_directory 下找不到檔案、但舊的 fleet 目錄下有時，仍會改用舊檔案，log 會列出兩個路徑，並在該 instance 的主題通知一次。這個退回機制會在 2.2 移除。
+相對路徑以 **instance 的 `working_directory`** 為基準（#1314）；`~/` 與絕對路徑照原樣使用。這個目錄只是相對路徑的*起點*，不是邊界：`../` 與符號連結可以離開它，就像絕對路徑可以指向 fleet 使用者讀得到的任何檔案一樣。`~name/`（其他使用者的家目錄）不支援，會發出警告並拒絕，絕不會當成名為 `~name` 的目錄來讀。這項變更以前是以 fleet 程序的目前目錄為基準（安裝的服務下是 `~/.agend`，手動執行 `agend fleet start` 時是 shell 所在目錄）。為了相容：相對路徑在 working_directory 下找不到檔案、但舊的 fleet 目錄下有時，仍會改用舊檔案，log 會列出兩個路徑，並在該 instance 的主題通知一次。2.2 目前仍實作這個退回機制；請將檔案移到 instance 的工作目錄以消除警告。
 
 可以用逗號串接多個部分（`"file:a.md, file:b.md"`，中間也可以夾行內文字），各部分之間以空行連接。**只有至少一個部分是 `file:` 參照時**才會以逗號切分，所以像 `"You are Kuro, a careful reviewer"` 這樣的行內提示會維持一段。讀不到、超過 256 KiB，或不是一般檔案（例如 FIFO 或裝置，開啟時不會阻塞）的檔案不會貢獻任何內容；log 會列出它的路徑與錯誤（絕不列出內容），設定驗證也會對找不到檔案的參照發出警告。`workflow: "file:…"` 設定也用同樣的方式讀檔。
 
@@ -865,7 +865,7 @@ defaults:
 
 ## 同一個工作目錄裡的 kiro instance
 
-每個 kiro instance 都有自己的 kiro agent（工作目錄裡的 `.kiro/agents/agend-<instance>-<fleet>.json`），並用 id 恢復自己的對話，所以共用工作目錄的 kiro instance 不會恢復到彼此的對話。這個 agent 只包含本 instance 的 AgEnD MCP server 和它的指示：**新的**對話以這個 agent 執行：AgEnD 不會替它寫共用項目，它的 agent 也不載入 steering（`resources: []`），所以只讀自己的指示；不過 agent 仍會納入工作目錄的 `.kiro/settings/mcp.json`，同目錄有其他 instance 恢復對話時，那個檔案裡有它的 AgEnD 項目，新對話也看得到那個 server。切換暫停期間（#1800，見下方），**恢復的**對話維持存檔時的 agent 並使用共用項目。所以在有恢復中 kiro instance 的目錄裡，server 隔離無法保證。細節見[設計文件](design/kiro-per-instance-agent.md)。需要 kiro-cli 2.21 以上；較舊的版本照舊執行，並在 instance 啟動時說明。
+每個 kiro instance 都有自己的 kiro agent（工作目錄裡的 `.kiro/agents/agend-<instance>-<fleet>.json`），並用 id 恢復自己的對話，所以共用工作目錄的 kiro instance 不會恢復到彼此的對話。這個 agent 只包含本 instance 的 AgEnD MCP server 和它的指示：**新的**對話以這個 agent 執行，AgEnD 不會替它寫共用項目。它的 agent 沒有列任何 resources（`resources: []`），但 kiro 仍會替每個 agent 載入目錄裡所有的 `.kiro/steering/*.md`（kiro-cli 2.21.0、2.28.0 與 2.30.0 的每個引擎都驗證過），所以新對話也會讀到那裡的 steering 檔案：你自己的，以及其他 instance 在恢復對話時使用的 AgEnD steering 檔案（#1800，見下方）。agent 也會納入工作目錄的 `.kiro/settings/mcp.json`，同目錄有其他 instance 恢復對話時，那個檔案裡有它的 AgEnD 項目，新對話也看得到那個 server。切換暫停期間（#1800，見下方），**恢復的**對話維持存檔時的 agent 並使用共用項目。所以在有恢復中 kiro instance 的目錄裡，server 隔離無法保證。細節見[設計文件](design/kiro-per-instance-agent.md)。需要 kiro-cli 2.21 以上；較舊的版本照舊執行，並在 instance 啟動時說明。
 
 - **你自己的 MCP server 都還在。** agent 會納入全域的 `~/.kiro/settings/mcp.json` 和工作目錄的 `.kiro/settings/mcp.json`；只有在恢復的對話需要時（見下一點），AgEnD 才會把自己的項目寫進去。
 - **恢復的對話維持原本的 agent（#1800）。** kiro 恢復對話時，會回到它當初存檔時的 agent。AgEnD 以前會在 pane 裡輸入 `/agent swap <agent>`，把它切換成 instance 自己的 agent；這個切換已**暫停**，因為有 instance 切換後失去了 AgEnD 的工具、無法 `reply`。現在恢復的對話，會和 #906 之前一樣，從共用的 `.kiro/settings/mcp.json` 項目和 steering 檔取得本 instance 的 AgEnD server 與指示；已記錄過切換的 instance 也一樣。
@@ -888,7 +888,7 @@ instances:
 
 ### Workspace 處理
 
-agy 1.1.0 以後接受位於隱藏路徑（例如 `~/.agend/workspaces/`）底下的工作目錄，所以 instance 和其他後端一樣，就在設定的工作目錄裡執行（以前轉向 `~/agend-workspaces/<instanceName>/` 的做法已經移除）。fleet 指示會以一段有標記的區塊，寫進該目錄裡的 `.agents/agents.md`。
+agy 1.1.0 以後接受位於隱藏路徑（例如 `~/.agend/workspaces/`）底下的工作目錄，所以 instance 和其他後端一樣，就在設定的工作目錄裡執行（以前轉向 `~/agend-workspaces/<instanceName>/` 的做法已經移除）。fleet 指示會以一段有標記的區塊，寫進該目錄裡的 `.agents/AGENTS.md`。
 
 ### 信任提示
 
@@ -906,7 +906,7 @@ instances:
 
 用 `/login muse` 安裝，或在 shell 執行：`mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"`。launcher 會把執行檔放在自己旁邊，所以要先存成 `~/.local/bin/muse`；如果直接 pipe 給 `bash`，它會下載到目前的目錄。安裝後用 `muse login` 登入，`/login` 目前還不支援 muse 的登入。Muse 採取「併入」而不是排隊：turn 進行中傳來的訊息會被納入這一輪，所以 `/steer` 可以使用（已在 muse 1.3.0 驗證）。`/clear` 會開始新的對話。訂閱用量會從 muse 的回應串流轉送到 `/usage`。
 
-`skip_permissions: false` 時，「Would you like to run the following command?」批准提示會被認出來是等人處理的 permission 互動（#1715）：顯示期間暫停投遞、出現在「需要你處理」、AgEnD 絕不代答。背景任務執行中下 `/quit` 時，「Local work is still active」確認選單會被認出來並明確處理（#1716）：顯示期間暫停投遞，stop 以 Escape 取消選單而不代選任何選項，被結束的背景工作也會回報到 instance 的 topic，不會靜默消失。`/model` 從 muse 本機的 provider catalog 讀取模型清單，因此新模型重啟後即可顯示，不需要更新程式（#1796）。
+`skipPermissions: false` 時，「Would you like to run the following command?」批准提示會被認出來是等人處理的 permission 互動（#1715）：顯示期間暫停投遞、出現在「需要你處理」、AgEnD 絕不代答。背景任務執行中下 `/quit` 時，「Local work is still active」確認選單會被認出來並明確處理（#1716）：顯示期間暫停投遞，stop 以 Escape 取消選單而不代選任何選項，被結束的背景工作也會回報到 instance 的 topic，不會靜默消失。`/model` 從 muse 本機的 provider catalog 讀取模型清單，因此新模型重啟後即可顯示，不需要更新程式（#1796）。
 
 ## Grok Build 後端 (Grok Build backend)
 
@@ -1089,9 +1089,9 @@ agend update --beta     # 從 @beta npm dist-tag 安裝
 agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 alpha
 ```
 
-聊天裡的 `/update` 和 `agend update` 相同：安裝會留在它原本的頻道。會退回較舊版本的更新（例如 alpha 要求 @beta）會被拒絕；要這麼做，請加上 `--stable`、`--version` 或 `--force` 表明意圖。「有新版本」的通知也依循同一個頻道：alpha 安裝只會被告知較新的 alpha 或較新的穩定版，絕不會被告知 beta。
+聊天裡的 `/update` 和 `agend update` 相同：安裝會留在它原本的頻道。會退回較舊版本的更新（例如 alpha 要求 @beta）會被拒絕；要這麼做，請加上 `--stable`、`--version` 或 `--force` 表明意圖。「有新版本」的通知也依循同一個頻道：beta 安裝只會被告知較新的 beta（穩定版推出後，beta 使用者仍留在 beta 線）；alpha 安裝只會被告知較新的 alpha 或更新次版本的穩定版，絕不會被告知 beta。
 
-發版就是推送一個 `v*` tag。發布 workflow 嚴格對應：`vX.Y.Z` → `@latest`、`vX.Y.Z-beta.N` → `@beta`、`vX.Y.Z-alpha.N` → `@alpha`。其他任何 tag（`-rc.N`、打錯字）都會在建置任何東西之前讓 job 失敗；比目前 `@latest` 舊的穩定版也會被拒絕。某個次版本轉為穩定版時（2.2.0），也要把 `@alpha` 指向它（`npm dist-tag add @songsid/agend@2.2.0 alpha`）：alpha 安裝不會被告知與自己同版號的穩定版。
+發版就是推送一個 `v*` tag。發布 workflow 嚴格對應：`vX.Y.Z` → `@latest`、`vX.Y.Z-beta.N` → `@beta`、`vX.Y.Z-alpha.N` → `@alpha`。其他任何 tag（`-rc.N`、打錯字）都會在建置任何東西之前讓 job 失敗；比目前 `@latest` 舊的穩定版也會被拒絕。某個次版本轉為穩定版時（2.2.0），也要把 `@alpha` 指向它（`npm dist-tag add @songsid/agend@2.2.0 alpha`）：之後 alpha 安裝的 `/update` 會直接裝上它，通知也會請你執行 `/update`。
 
 ## PSS 記憶體報告 (PSS memory reporting)
 
@@ -1158,7 +1158,7 @@ bot 頭像與 fleet 所在 Discord 伺服器的自訂表情，會在主機上用
 後端已依網頁登入身分保存五個擁有者效果選擇（`fx.sidebar`、`fx.header`、`fx.page`、`fx.box`、`fx.cursor`）。
 Discord 與 Telegram 身分各自獨立，不合併帳號。透過 `agend web --code` 登入的純網頁使用者，使用
 **整台主機共用的 operator** 儲存區；所有以該 operator 登入的人都會共用。Header token 不能讀寫這五個欄位。
-既有公開偏好仍為主機共用，不做遷移；個人檔案與自訂 CSS 內部的身分規則維持原樣。設定 → 網頁外觀提供五個選擇器。開啟效果並同意預覽後，頁面／頁首／側邊欄／區塊選擇會在支援的 stock 頁面播放，與聊天共用同一個 pool，並提供各槽的暫停／恢復及失效／清除控制。游標選擇在相同的同意設定下套用主機的靜態 PNG，保留明確指定的按鈕／文字／拖曳游標；拖曳中或無法套用時會還原一般游標。不執行 Worker 程式，也不占用 frame 名額。Try 仍另行實作。
+既有公開偏好仍為主機共用，不做遷移；個人檔案與自訂 CSS 內部的身分規則維持原樣。設定 → 網頁外觀提供五個選擇器。開啟效果並同意預覽後，頁面／頁首／側邊欄／區塊選擇會在支援的 stock 頁面播放，與聊天共用同一個 pool，並提供各槽的暫停／恢復及失效／清除控制。游標選擇在相同的同意設定下套用主機的靜態 PNG，保留明確指定的按鈕／文字／拖曳游標；拖曳中或無法套用時會還原一般游標。不執行 Worker 程式，也不占用 frame 名額。
 
 效果取消共享後，他人的個人選擇會在下次資源授權時失效，游標圖片也一樣。已儲存的選擇會保留為不可用，
 直到使用者清除，並繼續保留其檔案引用。這刻意比聊天效果的保留執行政策嚴格：個人選擇遵循目前的共享權限，
@@ -1177,11 +1177,11 @@ agent 前景效果維持暫停（人類放入的效果保留原有例外）。
 或使用公開連結時，可改在內容後方顯示放置效果的靜態封面。沒有封面就不顯示圖片；安全模式、顯示開關
 與未知的 stock 順序都會拒絕封面顯示。公開連結不會取得 Worker 程式碼或播放控制，其明確的顯示選擇只
 保存在這個瀏覽器，重新載入後仍保留，不改主機預設。手動暫停、等待空位的效果與讀取失敗的即時效果，
-不由這項 fallback 取代。個人的頁面／頁首／側邊欄／區塊選擇也沿用這個 pool。個人游標在同一個 app 工作階段使用受限的主機圖片；Try 預覽仍另行實作。
+不由這項 fallback 取代。個人的頁面／頁首／側邊欄／區塊選擇也沿用這個 pool。個人游標在同一個 app 工作階段使用受限的主機圖片。
 
-已核准的 Try 例外是在主機面板或 sheet 內、經實體裁切的管理員試用區。只有已登入的本機管理員明確點擊才可開始，
+`preview_web_effect({id})` 依 Agent 目前自有或共享的讀取權限，在自己的網頁聊天提供暫存卡片，不會寫入外觀。Try 是在主機面板或 sheet 內、經實體裁切的管理員試用區。只有已登入的本機管理員明確點擊才可開始，
 並由主機顯示 Trial 標籤及停止控制；公開連結、代理與 header token 都不能啟動。關閉面板、換頁、視窗失焦或開啟其他
 選單／對話框就會停止。自訂 CSS 必須關閉；原有名額、效能監看及安全停止仍適用，一般前景效果仍保持抑制。
 提議最多十分鐘到期，試用綁定 session／epoch，每次讀取重新檢查來源代理目前的持有／共享權限。不建立保存的放置、
-持有權、共享或匯出。目前已有暫存的伺服器授權與本機管理員介面；主機面板與實體裁切另有尚未掛載的基礎，卡片與共用 pool 的播放仍待整合；Try 不寫入保存的量測紀錄。詳見
+持有權、共享或匯出。暫存的伺服器授權、本機管理員介面、主機面板與共用 app pool 一起執行此邊界。卡片只保留在記憶體，會原地過期，不會從磁碟還原；晚到的有效開始回應只會被停止，不會掛載。Try 使用 manifest 預設參數，不寫入保存的量測紀錄，但仍沿用必要的安全紀錄。詳見
 [Try 邊界](design/1629-effect-trial-authority.md)。

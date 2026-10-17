@@ -7,7 +7,7 @@ import { SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileRes
 import { performance } from "node:perf_hooks";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { gatewayRequestContext } from "./web-request-context.js";
-import { createPublicWebGateway } from "./public-web-gateway.js";
+import { createPublicWebGateway, PUBLIC_GATEWAY_RECEIVE_MS } from "./public-web-gateway.js";
 import { handleWebIconRequest } from "./web-icons.js";
 import { trackWebServer, type WebServerDrain } from "./web-server-drain.js";
 import { renderPublicLinkProgress, ThrottledMessageEditor, type PublicLinkProgress } from "./public-link-progress.js";
@@ -208,7 +208,7 @@ import type { WebPerson as WebPersonView } from "./web-api.js";
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
 import { parsePoll, type PollRender } from "./reply-polls.js";
-import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
+import { isUploadRequest, limitRequestReceive, publicAttachment, sweepOrphanedUploads, UPLOAD_REQUEST_TIMEOUT_MS, uploadLimits, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
 import { cardPicture, handleViewRequest, humanCards, identityColors, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
 import { autoIdentityColor } from "./web-identity-color.js";
@@ -232,7 +232,7 @@ import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScope } from "./command-table.js";
 import { runVisibilityCommand } from "./cross-instance-notice.js";
-import { installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
+import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
@@ -264,8 +264,11 @@ import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { WEB_CHAT_NOTICE, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
+import { GENERAL_POINTING_REFUSALS, SNOWFLAKE, hasPlaceRefs, placeRef, placeSuffix, renderPlaceRefs, stripPlaceRefs, topicUrl, type PlaceLink, type PlaceTarget, worldPlaceOf } from "./topic-link.js";
 import { CacheService, WINDOWS, type CacheInstance, type CacheReport, type CacheWindow } from "./cache-service.js";
 import { runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
+import { CompactWatch, launchIdentity } from "./compact-watch.js";
+import { agyLegacyAgentsFile, danglingSymlink, migrateAgyAgentsFile } from "./backend/antigravity.js";
 import { claudeConfigDirFor, claudeProjectKey } from "./backend/claude-code.js";
 import { sharedRolloutIndex } from "./rollout-index.js";
 import {
@@ -1246,7 +1249,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #1565: the web chat history's files (set at fleet start, once the home and the instances are known). */
   private webChatStore: WebChatDiskStore | null = null;
   /** Uploaded files and the files the dashboard may fetch back (uploads, reply attachments). */
-  readonly webFiles = new WebFileLedger();
+  // #1937: the upload limits are the config's, read on each use (agend reload applies a change to the next upload).
+  readonly webFiles = new WebFileLedger({ limits: () => uploadLimits(this.fleetConfig?.web) });
   /** #1770: per instance, its last web reply still copying its files — the next one is shown after it, in order. */
   private readonly webReplyOrder = new Map<string, Promise<void>>();
   /** #1770: an instance's web-files byte cap (a field, so a test can make it small). */
@@ -1346,7 +1350,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     return this.effectLibraryInstance;
   }
-  /** Volatile Try owner shares this library; no tool emits offers until the card adapter lands. */
+  /** Volatile Try offers and session-bound runs share this library. */
   get effectTrials(): WebEffectTrials { if (!this.effectTrialsInstance) void this.effectLibrary; return this.effectTrialsInstance!; }
 
   private effectProfilesInstance?: WebEffectProfiles;
@@ -1378,8 +1382,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return w.ok ? { ok: true, rev: w.rev } : { ok: false, error: w.error };
       },
       changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* later status carries placements */ } },
-      // Product preview/profile adapters land with the reviewed viewer. Never fabricate measurements or a card.
-      preview: async () => ({ error: "effects_unavailable", message: "Effect previews are not available in this build." }),
+      // A nonmutating own/shared offer is not an appearance write. Only an explicit local-admin click may start it.
+      preview: async (instance, id) => {
+        const result = this.effectTrials.offer(instance, id);
+        if (!result.ok) return { error: "not_found" };
+        const present = this.webChatHistory.list(instance).some(row => row.effectTrial?.offer === result.offer.offer);
+        if (!present && !this.publishEffectTrial(instance, result.offer)) return { error: "trial_unavailable" };
+        return { id, status: "offered", expiresAt: result.offer.expiresAt, message: "A trial card is in your web chat. A signed-in local admin can start it; nothing was applied." };
+      },
       profiles: id => this.effectProfiles.read(id),
       profileSummary: id => this.effectService.profileSummary(id),
       profileSummaries: ids => this.effectService.profileSummaries(ids),
@@ -1797,7 +1807,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** #1266: the choice, delivered as an ordinary inbound message from whoever made it, and shown in the web chat. */
   private async deliverReplyButtonChoice(
-    set: { instance: string; adapterId: string; chatId: string; threadId: string; messageId: string | null },
+    set: { id: string; instance: string; adapterId: string; chatId: string; threadId: string; messageId: string | null },
     button: { label: string; value: string },
     by: { userId: string; username: string; source: string; humanOrigin?: HumanOrigin },
   ): Promise<boolean> {
@@ -1847,8 +1857,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!accepted) return false;
     reactions.consume();
     this.afterUserInboundDelivered(set.instance, inbound, deliveryEpoch);
+    // The web chat shows the click as its button's label (a chip); `text` stays what the agent was given.
     this.emitSseEvent("message", {
       instance: set.instance, sender: by.username, role: "user", text: content, ts, ...(web ? { messageId } : {}),
+      click: { label: button.label, of: set.id },
     });
     return true;
   }
@@ -3378,6 +3390,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
   }
 
+  /** Board 003648ac: a web /compact followed to its end, from the transcript the Log reads (none: nothing to follow). */
+  private compactWatchService: CompactWatch | null = null;
+  private get compactWatch(): CompactWatch {
+    return this.compactWatchService ??= new CompactWatch({
+      source: (name) => { const src = this.logSource(name); return { path: src.path, format: src.format }; },
+      // The launch that runs it now (the same value the daemon sends with raw_paste_written).
+      owner: (name) => {
+        const daemon = this.lifecycle.daemons.get(name);
+        try { return daemon ? launchIdentity(daemon.getInteractionSnapshot().owner) : null; } catch { return null; }
+      },
+      paneFollow: (name) => {
+        try { return this.lifecycle.daemons.get(name)?.compactPaneUi() != null; } catch { return false; }
+      },
+      changed: () => this.emitSseEvent("status", this.getUiStatus()),
+    });
+  }
+
   /** #1218: GET /ui/steps — an instance's steps, read on demand (null: no such instance). */
   logSteps(name: string, q: LogQuery): Promise<LogAnswer | null> { return this.log.steps(name, q); }
 
@@ -4210,7 +4239,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const [key, ...args] = decision.reply;
       // A command off for want of fleet admins names where they go (`{0}` in its disabled reply).
       if (decision.reply === spec.disabled) args.push(this.adminListKey(adapterId));
-      await data.respond(t(key, ...args)).catch(() => { /* the interaction may already be gone */ });
+      // #1990: a refusal that sends the person to General links to it — not in a ClassicBot room, whose readers need
+      // not be in the fleet's guild.
+      const toGeneral = GENERAL_POINTING_REFUSALS.has(key) && scope !== "classic" && scope !== "none";
+      const reply = toGeneral ? this.renderPlaces(adapterId, t(key, ...args) + placeSuffix({ kind: "general" }, "General")).text : t(key, ...args);
+      await data.respond(reply).catch(() => { /* the interaction may already be gone */ });
       return;
     }
 
@@ -5749,7 +5782,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const owner = id ? this.dashboardOwner(msg.userId, id, msg.chatId, msg.threadId, msg.username) : null;
     if (!owner) {
       const adapter = id ? this.adapters.get(id) : undefined;
-      await adapter?.sendText(msg.chatId, t("dashboard.public_general"), { threadId: msg.threadId }); return;
+      const out = this.renderPlaces(id, t("dashboard.public_general") + placeSuffix({ kind: "general" }, "General"), { threadId: msg.threadId });
+      await adapter?.sendText(msg.chatId, out.text, out.opts); return;
     }
     if (!await this.showDashboardMenu(owner)) {
       await (owner.binding as ChannelAdapter).sendText(owner.chatId, t("dashboard.menu_failed"), { threadId: owner.threadId }).catch(() => undefined);
@@ -7734,6 +7768,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
                 "Could not deliver cross-instance failure status back to sender");
             });
           }
+        } else if (msg.type === "raw_paste_written") {
+          // Board 003648ac: a web /compact's paste reached the pane (or never will): its watch starts, or ends as lost.
+          if (typeof msg.id === "string") this.compactWatchService?.pasted(name, msg.id, msg.outcome === "written", { owner: msg.owner, checkpoint: msg.checkpoint, pane: msg.pane });
+        } else if (msg.type === "compact_pane_result") {
+          // Board 907c7899: kiro's pane said how that /compact ended.
+          if (typeof msg.id === "string") this.compactWatchService?.paneResult(name, msg.id, msg.owner, msg.outcome);
         } else if (msg.type === "runtime_switch_result") {
           // #1690: what our own runtime /model came to (the daemon answered claude's "Switch model?" or saw the result).
           const waiter = typeof msg.id === "string" ? this.runtimeSwitchWaiters.get(msg.id) : undefined;
@@ -7915,6 +7955,44 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } finally {
       lease?.release(); this.adapterRestarting.delete(id);
     }
+  }
+
+  /**
+   * #1990: how a reader in world `worldId`'s group reaches a place token's target — undefined (plain text) for another
+   * world's instance, an instance without a fleet topic (a ClassicBot room may be anywhere), or an id no link is built
+   * from. Discord: the channel mention; Telegram: the topic URL (General's topic included).
+   */
+  private placeLink(worldId: string | undefined, target: PlaceTarget): PlaceLink | undefined {
+    const world = this.worlds.get(worldId ?? "");
+    if (!world) return undefined;
+    let topic: string | undefined;
+    if (target.kind === "general") {
+      const notice = this.fleetNoticeTarget(world.id);
+      if (!notice || notice.chatId !== world.groupId || notice.opts.threadId === undefined) return undefined;
+      topic = String(notice.opts.threadId);
+    } else {
+      if (this.getInstanceAdapterId(target.name) !== world.id) return undefined;
+      const topicId = this.fleetConfig?.instances[target.name]?.topic_id;
+      if (topicId == null) return undefined;
+      topic = String(topicId);
+    }
+    if (world.type === "discord") return SNOWFLAKE.test(topic) && SNOWFLAKE.test(world.groupId) ? { mention: `<#${topic}>` } : undefined;
+    const url = topicUrl(worldPlaceOf(world), topic, { general: target.kind === "general" });
+    return url ? { url } : undefined;
+  }
+
+  /** #1990: a message for world `worldId`'s group with its place tokens rendered (links as text or Telegram entities). */
+  renderPlaces(worldId: string | undefined, text: string, opts?: import("./channel/types.js").SendOpts): { text: string; opts?: import("./channel/types.js").SendOpts } {
+    if (!hasPlaceRefs(text)) return { text, opts };
+    const type = this.worlds.get(worldId ?? "")?.type;
+    const surface = type === "discord" ? "discord" : type === "telegram" ? "telegram" : "plain";
+    const out = renderPlaceRefs(text, surface, target => this.placeLink(worldId, target));
+    return { text: out.text, opts: out.textLinks.length ? { ...opts, textLinks: out.textLinks } : opts };
+  }
+
+  /** #1990: renderPlaces for the world that owns `instanceName`'s topic. */
+  renderPlacesFor(instanceName: string, text: string, opts?: import("./channel/types.js").SendOpts): { text: string; opts?: import("./channel/types.js").SendOpts } {
+    return this.renderPlaces(this.getInstanceAdapterId(instanceName), text, opts);
   }
 
   /** Handle inbound message — transcribe voice if present, then route */
@@ -10803,6 +10881,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // must not be shown the old one's conversation, and deleted names must not pile up.
     this.webChatHistory.forget(name);
     this.webFiles.forget(name);
+    this.compactWatchService?.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
     try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
     try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); this.effectToolsService?.forget(name); this.mods.forgetInstance(name); this.agentMods.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
@@ -12137,7 +12216,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Discord, so every such fallback failed inside the catch handler.
       const target = this.fleetNoticeTarget();
       if (this.adapter && target) {
-        this.adapter.sendText(target.chatId, body, target.opts)
+        const out = this.renderPlaces(this.getPrimaryAdapterId(), body, target.opts);
+        this.adapter.sendText(target.chatId, out.text, out.opts)
           .catch(err => this.logger.warn({ err }, "Failed to send fleet error notification"));
         dispatched = true;
       }
@@ -12150,7 +12230,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // also suppressed the next ten minutes of identical ones. Leaving the key
       // unspent lets the next caller, once an adapter is up, actually get
       // through. The counter is not reset either: nothing was shown.
-      this.logger.warn({ text: body },
+      this.logger.warn({ text: stripPlaceRefs(body) },
         "Fleet error could not be delivered (no adapter or no target yet) — not consuming the throttle window");
       return false;
     }
@@ -12191,8 +12271,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Fleet topic instance
     const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
+    const worldId = this.getInstanceAdapterId(instanceName);
     if (threadId != null && groupId) {
-      adapter.sendText(String(groupId), text, { threadId: String(threadId), ...extraOpts })
+      const out = this.renderPlaces(worldId, text, { threadId: String(threadId), ...extraOpts });
+      adapter.sendText(String(groupId), out.text, out.opts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send instance topic notification"));
       return true;
     }
@@ -12200,7 +12282,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Classic instance: find its channelId from the classic manager
     const classicChatId = this.classicChannels?.getChannelIdByInstance(instanceName);
     if (classicChatId) {
-      adapter.sendText(classicChatId, text, extraOpts)
+      // #1990: a ClassicBot room's readers need not be in the fleet's group, so its notices name places as plain text.
+      adapter.sendText(classicChatId, stripPlaceRefs(text), extraOpts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send classic notification"));
       return true;
     }
@@ -12208,9 +12291,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Fallback: the instance has neither a topic nor a classic channel, so post
     // where fleet-wide notices go. Not the bare group id: on Discord that is a
     // guild, and the send fails inside the catch handler.
-    const target = this.fleetNoticeTarget(this.getInstanceAdapterId(instanceName));
+    const target = this.fleetNoticeTarget(worldId);
     if (target) {
-      adapter.sendText(target.chatId, text, { ...target.opts, ...extraOpts })
+      const out = this.renderPlaces(worldId, text, { ...target.opts, ...extraOpts });
+      adapter.sendText(target.chatId, out.text, out.opts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send notification (no topic)"));
       return true;
     }
@@ -12299,12 +12383,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     try {
       const choices = opts.choices.map(c => ({ id: `${opts.prefix}${nonce}:${c.action}`, label: c.label }));
+      // #1990: place names link for the group the prompt is posted in; the dashboard's copy is plain (for now).
+      const posted = this.renderPlaces(opts.adapterId, opts.message, opts.threadId ? { threadId: opts.threadId } : undefined);
       const sent: PrivateSentMessage = opts.deliver ? await opts.deliver(choices) : await opts.adapter.notifyAlert(opts.chatId, {
         type: opts.alertType,
         instanceName: opts.instanceName,
-        message: opts.message,
+        message: posted.text,
         choices,
-      }, opts.threadId ? { threadId: opts.threadId } : undefined);
+      }, posted.opts);
       // Bind the nonce to the provider's canonical delivery address, not the
       // logical routing input. Telegram, for example, represents General as
       // AgEnD topic "1" on input but omits message_thread_id on the wire and in
@@ -12322,7 +12408,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // and only if nothing claimed or expired it meanwhile.
       if (WEB_MIRRORED_PROMPT_PREFIXES.has(opts.prefix) && this.pendingNonceButtons.get(nonce) === entry) {
         entry.web = {
-          text: opts.message,
+          text: stripPlaceRefs(opts.message),
           actions: opts.choices.map(c => ({ id: c.action, label: c.label })),
           expiresAt: Date.now() + (opts.timeoutMs ?? NONCE_BUTTON_TIMEOUT_MS),
         };
@@ -12579,7 +12665,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       isClassic: name => classic.has(name),
       place: name => {
         const world = this.worlds.get(this.getInstanceAdapterId(name) ?? "");
-        return world ? { type: world.type, ...(world.groupId ? { groupId: world.groupId } : {}) } : undefined;
+        return world ? worldPlaceOf(world) : undefined;
       },
       // fleet.yaml's topic only. A ClassicBot room has none here, so no link: its channel may sit in any allowed
       // guild, not necessarily its world's group.
@@ -12739,9 +12825,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         finishedAt: Date.parse(d.finishedAt) || 0,
       })),
       ownerOf,
-      worlds: () => [...this.worlds.values()].map((w): NeedsYouWorld => ({
-        id: w.id, adapter: w.adapter, place: { type: w.type, ...(w.groupId ? { groupId: w.groupId } : {}) },
-      })),
+      worlds: () => [...this.worlds.values()].map((w): NeedsYouWorld => ({ id: w.id, adapter: w.adapter, place: worldPlaceOf(w) })),
       noticeTarget: world => {
         const target = this.fleetNoticeTarget(world);
         return target ? { chatId: target.chatId, ...(target.opts.threadId !== undefined ? { threadId: String(target.opts.threadId) } : {}) } : null;
@@ -13248,7 +13332,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return this.classicChannels?.getChannelIdByInstance(instance) !== undefined ? "classic" : null;
       },
       ctx: (instance) => this.topicCommands.getCtxText(instance),
-      compact: (instance, instructions) => this.topicCommands.sendCompact(instance, instructions),
+      // Board 003648ac: a watch for the paste, armed when the daemon says it was written (raw_paste_written); one
+      // for a command that was not handed over is dropped.
+      compact: async (instance, instructions) => {
+        let watch: string | null = null;
+        try {
+          const r = this.topicCommands.compactInstance(instance, instructions, () => (watch = this.compactWatch.begin(instance)));
+          if (!r.sent && watch) this.compactWatch.cancel(instance, watch);
+          return { ...r, watch: r.sent ? watch : null };
+        } catch (err) {
+          if (watch) this.compactWatch.cancel(instance, watch);
+          throw err;
+        }
+      },
       applyModel: (instance, name) => this.applyModel(instance, name),
       modelChoices: choicesFromCache,
       applyEffort: (instance, level) => this.applyEffort(instance, level),
@@ -13310,7 +13406,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.eventLog?.insert(instance, "clear_action", { action: "confirm", userId: "web" });
         // sendClear sends its first IPC synchronously: no await separates this check from the effect.
         if (this.shuttingDown || !entry.fence()) return { status: 409, text: t("menu.click_stale") };
-        return { status: 200, text: await this.topicCommands.sendClear(instance) };
+        const r = this.topicCommands.clearInstance(instance);
+        return r.sent ? { status: 200, text: r.text, sent: true } : { status: 409, text: r.text };
       },
       t: (key, ...args) => t(key, ...args),
     }, input, opts);
@@ -13457,13 +13554,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the operator's. Keep the instance notice passive and put the action in the
    * same-world General topic where an administrator can make the choice. */
   async notifyNormalExit(instanceName: string): Promise<void> {
-    this.notifyInstanceTopic(instanceName, t("exit.instance_notice", instanceName));
+    this.notifyInstanceTopic(instanceName, t("exit.instance_notice", instanceName) + placeSuffix({ kind: "general" }, "General"));
 
     const web = this.webOnlyPromptPlace();
     if (web) {
       await this.postNonceButtonPrompt({
         prefix: EXIT_RESTART_CALLBACK_PREFIX, alertType: "exit_restart", instanceName, ...web,
-        message: t("exit.general_notice", instanceName),
+        message: t("exit.general_notice", placeRef({ kind: "instance", name: instanceName }, instanceName)),
         choices: [{ action: "restart", label: t("exit.restart") }, { action: "ignore", label: t("exit.ignore") }],
         expiredText: t("exit.expired", instanceName),
       });
@@ -13494,7 +13591,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapterId,
       chatId,
       threadId,
-      message: t("exit.general_notice", instanceName),
+      message: t("exit.general_notice", placeRef({ kind: "instance", name: instanceName }, instanceName)),
       choices: [
         { action: "restart", label: t("exit.restart") },
         { action: "ignore", label: t("exit.ignore") },
@@ -13572,7 +13669,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * contain usernames or secret-adjacent text and stays in daemon.log.
    */
   async notifyInteractivePrompt(instanceName: string, kind: string): Promise<void> {
-    this.notifyInstanceTopic(instanceName, t("interactive.instance_notice", instanceName));
+    this.notifyInstanceTopic(instanceName, t("interactive.instance_notice", instanceName) + placeSuffix({ kind: "general" }, "General"));
     // Multi-world fleets can have one General per bot/platform. Route the assist
     // request to the General bound to the same adapter as the blocked instance.
     const generalName = this.findGeneralInstance(this.getInstanceAdapterId(instanceName));
@@ -13583,7 +13680,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const label = this.interactivePromptLabel(kind);
     const prompt = {
       prefix: INTERACTIVE_ASSIST_CALLBACK_PREFIX, alertType: "interactive_prompt" as const, instanceName,
-      message: t("interactive.general_notice", instanceName, label),
+      message: t("interactive.general_notice", placeRef({ kind: "instance", name: instanceName }, instanceName), label),
       choices: [{ action: "confirm", label: t("interactive.confirm") }, { action: "cancel", label: t("interactive.cancel") }],
       expiredText: t("interactive.expired", instanceName),
       extra: { generalName, promptKind: kind, assistFor: this.interactionWaitKey(instanceName) },
@@ -15318,6 +15415,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return room ? `room:${room.channelId}:${room.adapterId ?? ""}` : null;
   }
 
+  /** The only Try-card publisher: no arbitrary SSE sender/role can manufacture this metadata. */
+  private publishEffectTrial(instance: string, offer: unknown): boolean {
+    const row = this.webChatHistory.recordEffectTrial(instance, offer, new Date().toISOString());
+    if (!row) return false;
+    broadcastSseEvent(this.sseClients, "message", row, err => this.logger.debug({ err }, "SSE client write failed; evicting"), this.webChatHistory.cursorOf(row));
+    return true;
+  }
+
   /** Push an SSE event to all connected Web UI clients. */
   emitSseEvent(event: string, data: unknown): void {
     // #1386: a prompt opened or closed, or an instance's state moved — "Needs you" may have changed.
@@ -15325,14 +15430,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; effectTrial?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
         messageId: typeof m.messageId === "string" ? m.messageId : undefined,
         role: typeof m.role === "string" ? m.role : undefined,
         buttons: m.buttons,
-        effectTrial: m.effectTrial,
+        click: m.click,
       });
       broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
       // #1629: live-only receipt after the recorded agent reply. Never persist/replay it or give it an SSE cursor.
@@ -15475,12 +15580,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     "codex": "AGENTS.md",
     "opencode": "AGENTS.md",
     "kiro-cli": ".kiro/steering/project.md",
-    // Grok reads AGENTS.md project docs; agy reads .agents/agents.md — the
+    // Grok reads AGENTS.md project docs; agy reads .agents/AGENTS.md (board 0340ec89: not the lowercase name) — the
     // same files their writeConfig() appends fleet instructions to.
     "grok": "AGENTS.md",
     // muse init scaffolds AGENTS.md and the binary reads it as project rules.
     "muse": "AGENTS.md",
-    "antigravity": ".agents/agents.md",
+    "antigravity": ".agents/AGENTS.md",
     "mock": "CLAUDE.md",
   };
 
@@ -15522,10 +15627,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   private ensureGeneralInstructionsSync(workDir: string, backendName?: string, instanceName?: string): void {
     const backend = backendName ?? "claude-code";
     workDir = this.resolveKnowledgeWorkDir(workDir, backend, instanceName);
+    // Board 0340ec89: General's file from before, under the lowercase name agy never read, becomes the one it reads.
+    if (backend === "antigravity") migrateAgyAgentsFile(workDir);
     const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
     const filePath = join(workDir, filename);
     mkdirSync(dirname(filePath), { recursive: true });
-    if (!existsSync(filePath)) {
+    if (backend === "antigravity" && danglingSymlink(filePath)) {
+      // #1914 review: a person's dangling symlink there is kept and not followed (nothing created where it points).
+      this.logger.warn({ filePath }, "General's agy instructions file is a dangling symlink; left as it is, not written");
+    } else if (!existsSync(filePath)) {
       writeFileSync(filePath, FleetManager.GENERAL_INSTRUCTIONS, "utf-8");
       this.logger.info({ filePath }, "Created general instance instructions file");
     }
@@ -15626,6 +15736,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
     const instructionsPath = join(workDir, filename);
+    if (backend === "antigravity" && danglingSymlink(instructionsPath)) return;   // kept, not followed (#1914 review; logged above)
     const body = files.map(f => readFileSync(join(srcSteering, f), "utf-8").trim()).join("\n\n");
     const block = `${FleetManager.STEERING_BLOCK_BEGIN}\n${body}\n${FleetManager.STEERING_BLOCK_END}`;
 
@@ -15642,6 +15753,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (next !== existing) {
       mkdirSync(dirname(instructionsPath), { recursive: true });
       writeFileSync(instructionsPath, next);
+    }
+    // Board 0340ec89: a legacy agy file that stays beside the new one (a person's own) loses only AgEnD's block.
+    const legacy = backend === "antigravity" ? agyLegacyAgentsFile(workDir) : null;
+    if (legacy) {
+      try {
+        const old = readFileSync(legacy, "utf-8");
+        const b = old.indexOf(FleetManager.STEERING_BLOCK_BEGIN), e = old.indexOf(FleetManager.STEERING_BLOCK_END);
+        if (b !== -1 && e > b) {
+          const rest = (old.slice(0, b).trimEnd() + "\n" + old.slice(e + FleetManager.STEERING_BLOCK_END.length).trimStart()).trim();
+          if (rest) writeFileSync(legacy, rest + "\n"); else rmSync(legacy, { force: true });
+        }
+      } catch { /* best effort: the new file already has the block */ }
     }
   }
 
@@ -18137,6 +18260,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
     this.logService?.unwatchAll();   // #1218: a Log's watch timers end with the fleet
+    this.compactWatchService?.stopAll();
     if (this.outboxPruneTimer) { clearInterval(this.outboxPruneTimer); this.outboxPruneTimer = null; }
     if (this.replyObligationTimer) { clearInterval(this.replyObligationTimer); this.replyObligationTimer = null; }
     this.wakeCoordinator?.stop();
@@ -20034,36 +20158,40 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const currentVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
       const latest = await npmVersion("@songsid/agend");
       let target = latest;
+      let fromChannel = false;
       // The same channel rule as `agend update` (#1259): an alpha follows @alpha, any other prerelease @beta.
       const channel = installedChannel(currentVersion);
       if (channel !== "latest") {
-        // Prerelease users track their own channel (never fall back to @latest,
-        // which is older, and an alpha is never offered @beta), but should also
-        // hear when a newer STABLE ships — pick whichever is the newest.
         let pre = "";
         try {
           pre = await npmVersion(`@songsid/agend@${channel}`);
         } catch { /* no such tag */ }
-        target = pre || latest;
-        if (latest && this.semverGt(latest, target)) target = latest;
+        // #1926: a beta install hears about @beta only: beta users stay on the beta line after a stable ships, so
+        // @latest is not their target. Taking the higher of the two made a same-core stable (2.2.0 over beta.16) the
+        // target, which the same-core guard then dropped, so the newer beta.17 was never announced.
+        target = pre;
+        fromChannel = true;
+        // An alpha is still told about a stable that passed its own minor (with --stable, #1259): only a stable of
+        // another core that is newer than its channel's release. A same-core @latest (2.2.0 for 2.2.0-alpha.3) is not
+        // taken from @latest and no longer hides a newer alpha; once the release points @alpha at it, it comes from
+        // @alpha like any channel release.
+        const core = (v: string) => v.replace(/^v/, "").split("-")[0];
+        if (channel === "alpha" && latest && core(latest) !== core(currentVersion) && (!pre || this.semverGt(latest, pre))) {
+          target = latest;
+          fromChannel = false;
+        }
       }
-      // A beta already at/ahead of its matching stable must NOT be told to
-      // "update" to that stable — e.g. 2.0.11-beta.41 already contains everything
-      // in stable 2.0.11, so semverGt(2.0.11, 2.0.11-beta.41) being true (a stable
-      // outranks a prerelease of the same core) is a false positive here. Suppress
-      // only that same-core stable-vs-my-beta case; a higher stable core (2.0.12)
-      // or a newer beta (2.0.11-beta.50) still notifies via semverGt below.
-      const core = (v: string) => v.replace(/^v/, "").split("-")[0];
-      const betaSupersedesStable =
-        isPrereleaseVersion(currentVersion) && !isPrereleaseVersion(target) && core(target) === core(currentVersion);
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
-      if (target && !betaSupersedesStable && this.semverGt(target, currentVersion)) {
+      if (target && this.semverGt(target, currentVersion)) {
         const generalId = this.findGeneralInstance();
         if (generalId) {
           // No release URL — Discord's SuppressEmbeds proved unreliable and the
           // link preview looked bad. Version + /update instruction is enough.
-          this.notifyInstanceTopic(generalId, t(updateNoticeKey(currentVersion, target), `v${target}`, `v${currentVersion}`));
+          // From the install's own channel tag, this is what /update installs — even a stable the release pointed the
+          // tag at (2.2.0 on @alpha / @beta): the plain /update text, never "/update stays on … use --stable" (#1928).
+          const key = fromChannel ? "update.available_current" : updateNoticeKey(currentVersion, target);
+          this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
         }
       }
     } catch { /* silent — network issues */ }
@@ -20121,6 +20249,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   /** Shared handler dispatcher; gateway admission is enforced by its separate listener. */
   private dispatchWebHttp(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, port: number, closing = false): void {
     try {
+      // #1937: the listeners allow an upload long enough for a slow link; every other request keeps its old bound on
+      // arriving whole — 10 s through the public link's gateway, Node's 300 s here.
+      if (!isUploadRequest(req)) limitRequestReceive(req, gatewayRequestContext(req) ? PUBLIC_GATEWAY_RECEIVE_MS : 300_000);
       res.setHeader("Content-Type", "application/json");
       // No Referer to a tunnel host, an upstream proxy, or any page linked from
       // the panel — the dashboard URL is itself a credential-bearing address.
@@ -20445,6 +20576,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!this.webToken || !this.webSessions) this.initializeWebAuthTokens();
 
     const server = createServer((req, res) => this.dispatchWebHttp(req, res, port, drain.closing));
+    // #1937: Node's default (300 s to receive a request) would cut a large upload on a slow link. The listener allows
+    // more; the upload route keeps its own clocks (no byte for a minute, or 30 minutes in all), and every other request
+    // keeps the old 300 s (limitRequestReceive in dispatchWebHttp).
+    server.requestTimeout = UPLOAD_REQUEST_TIMEOUT_MS;
     const drain = trackWebServer(server);
     this.healthServer = server;
     this.healthServerDrain = drain;
@@ -20669,6 +20804,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const effort = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.effort;
       const effort_source = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.source;
       const identity = resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic: classicRooms.get(name), profile: profiles.get(name) });
+      const compact = this.compactWatchService?.view(name) ?? null;
       let image: { avatar: AvatarDescriptor; accent?: string; themeAvatar?: AvatarDescriptor; themeAccent?: string; roleColor?: string; agentColor?: string; agentShow?: string[] };
       try { image = this.webIdentityImage(name, identity.display_name, profiles.get(name)?.avatar_path, bots); }
       catch (err) { this.logger.debug({ err, name }, "avatar unreadable (getUiStatus)"); image = { avatar: avatarFor({ name, displayName: identity.display_name }) }; }
@@ -20700,6 +20836,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         effort,
         effort_source,
         ...this.instancePresentation(name),
+        // Board 003648ac: the last web /compact, while it runs and briefly after (the chat's card follows it).
+        ...(compact ? { compact } : {}),
       };
     });
     return {

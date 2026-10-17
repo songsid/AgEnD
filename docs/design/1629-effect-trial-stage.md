@@ -1,5 +1,7 @@
 # #1629 physically clipped local Trial stage
 
+> Current integration: [product Try](1629-effect-trial-product.md) connects these foundations. References below to an unmounted or unavailable slice describe its original introduction, not the current feature branch.
+
 This is an **unmounted paint foundation** for the approved
 [Try policy](1629-effect-trial-authority.md), following the
 [local-admin API](1629-effect-trial-api.md). The real app still does not offer or

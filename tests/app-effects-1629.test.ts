@@ -32,7 +32,7 @@ async function rig(prepare: (h: any) => void = () => {}) {
   const cursor = { ok: true, update: vi.fn(), snapshot: vi.fn(() => ({ id: "a".repeat(32), status: "running" })), dispose: vi.fn() }, cursorFactory = vi.fn(() => cursor);
   const runtime = vi.fn((o: any) => { options = o; return api; }), regions = { ok: true, resolve: vi.fn(() => ({})), dispose: vi.fn() }, regionFactory = vi.fn(() => regions);
   const h: any = { host, doc, media, coarse, preview, observer, replies, store, parts, api, runtime, regions, regionFactory, cursor, cursorFactory, options: () => options, startAppEffects, getAppEffects };
-  prepare(h); h.entry = startAppEffects({ window: host, store, factories: { runtime, regions: regionFactory, cursor: cursorFactory } }); return h;
+  prepare(h); h.entry = startAppEffects({ window: host, store, factories: { runtime, regions: regionFactory, cursor: cursorFactory, trialController: h.trialController } }); return h;
 }
 beforeEach(() => { vi.resetModules(); env.app.reset({ themesRev: 1, prefsRev: 1, connection: "live" }); env.nav.reset({ seq: 1, route: { panel: "fleet" } }); env.css.reset({ state: "off" }); env.themes.reset({}); env.prefs.clear(); env.values = { "fx.show": true, "preview.optIn": true }; env.safe = false; env.mode = "light"; });
 describe("#1629 app lifetime effect bridge", () => {
@@ -162,4 +162,64 @@ it("stock sidebar dragging closes only the cursor gate and restores it on the ob
 it.each(["safe", "hidden", "consent", "show", "modal", "saveData", "unsupported"])("cursor follows existing %s gate without another metadata reader", async fault => {
   const h = await rig(); if (fault === "safe") env.safe = true; if (fault === "hidden") h.doc.visibilityState = "hidden"; if (fault === "consent") env.values["preview.optIn"] = false; if (fault === "show") env.values["fx.show"] = false; if (fault === "modal") h.doc.querySelector = () => ({}); if (fault === "saveData") h.host.navigator.connection.saveData = true; if (fault === "unsupported") delete h.host.Worker;
   h.host.emit("resize"); expect(h.cursor.update).toHaveBeenLastCalledWith(h.api.cursorSelection(), false); expect(h.api.changedOwner).not.toHaveBeenCalled(); expect(h.cursorFactory).toHaveBeenCalledOnce(); h.entry.dispose();
+});
+
+
+// Real app bridge + real control lane; injected core/stage protocol, not native clip/cap evidence.
+const trialOffer = () => ({ v: 1, offer: "b".repeat(32), id: "a".repeat(32), title: "Fixture", expiresAt: 600000 });
+const trialMessage = () => ({ sender: "agend", role: "status", instance: "own", effectTrial: trialOffer() });
+const trialReply = () => ({ trial: "c".repeat(32), offer: trialOffer(), remainingMs: 600000,
+  manifest: { v: 1, kind: "effect", runtime: "canvas-worker-v1", worker: "worker.js", name: "fixture", title: "Fixture", regions: ["page"], layer: "front", wants: ["theme"] }, params: {} });
+const trialResponse = () => new Response(JSON.stringify(trialReply()), { headers: { "content-type": "application/json" } });
+async function trialFlush() { for (let i = 0; i < 40; i++) await Promise.resolve(); }
+async function trialRig() {
+  let mono = 0; const timers = new Map(), sourceStop = vi.fn();
+  const h = await rig(h => {
+    h.doc.hasFocus = () => true; h.host.Date = { now: () => 0 }; h.host.performance = { now: () => mono }; h.host.AbortController = AbortController;
+    h.host.setTimeout = vi.fn((fn: any, ms: number) => { const id = {}; timers.set(id, { fn, ms }); return id; }); h.host.clearTimeout = (id: any) => timers.delete(id);
+    h.host.AgendAuth.trialSession = vi.fn(async () => ({ epoch: "e".repeat(16), localAdmin: true }));
+    h.host.fetch = vi.fn(async () => trialResponse()); h.api.attachTrial = vi.fn(() => ({ stop: sourceStop }));
+  });
+  env.nav.set({ seq: 2, route: { panel: "chat", instance: "own" } }); h.entry.attachChat({ name: "own", current: () => true });
+  await trialFlush(); h.panel = await import("/ui/js/preview-panel.js"); h.sourceStop = sourceStop; h.at = (v: number) => { mono = v; }; return h;
+}
+describe("#1629 product Trial bridge with protocol core", () => {
+  it("does not auto-start; explicit admission uses the current Chat and own panel slot, never an HTML run token", async () => {
+    const h = await trialRig(); try {
+      expect(h.entry.canTry(trialMessage())).toBe(true); expect(h.host.fetch).not.toHaveBeenCalled(); expect(h.entry.canTry({ ...trialMessage(), instance: "other" })).toBe(false);
+      expect(await h.entry.startTrial(trialMessage())).toBe(true); const open = h.panel.panelStore.get().open;
+      expect(open.kind).toBe("trial"); expect(h.panel.panelStore.get().run).toBe(0); expect(open.binding).toMatchObject({ id: "a".repeat(32), run: "c".repeat(32), instance: "own", generation: 1 }); expect(Object.isFrozen(open.binding)).toBe(true);
+      const stage = { receipt: {}, dispose: vi.fn(), hide: vi.fn() }; open.onStage(stage); expect(h.api.attachTrial).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ reply: trialReply(), startedAt: 0, stage }));
+      expect(h.entry.canTry(trialMessage())).toBe(false); open.handle.stop(); await trialFlush(); expect(stage.dispose).toHaveBeenCalledOnce(); expect(h.sourceStop).toHaveBeenCalledOnce(); expect(h.panel.panelStore.get().open).toBeNull();
+      expect(h.runtime).toHaveBeenCalledOnce(); expect(h.host.fetch.mock.calls.map(([p]: any[]) => p)).toEqual([`/ui/effect-trials/start?ownerEpoch=${"e".repeat(16)}`, `/ui/effect-trials/${"c".repeat(32)}/stop?ownerEpoch=${"e".repeat(16)}`]);
+    } finally { h.entry.dispose(); await trialFlush(); }
+  });
+  it.each(["navigation", "same-name-chat", "new-store"])("%s cancels a pending Start before a late reply can mount", async fault => {
+    const h = await trialRig(); let resolve: any; h.host.fetch.mockReturnValueOnce(new Promise(r => { resolve = r; }));
+    try {
+      const pending = h.entry.startTrial(trialMessage()); await trialFlush();
+      if (fault === "navigation") env.nav.set({ seq: 3, route: { panel: "chat", instance: "own" } });
+      if (fault === "same-name-chat") h.entry.attachChat({ name: "own", current: () => true });
+      if (fault === "new-store") h.entry.bindStore({ onAgentReply: () => () => {} });
+      expect(await pending).toBe(false); resolve(trialResponse()); await trialFlush(); expect(h.panel.panelStore.get().open).toBeNull(); expect(h.api.attachTrial).not.toHaveBeenCalled(); expect(h.host.fetch).toHaveBeenCalledTimes(2);
+    } finally { h.entry.dispose(); await trialFlush(); }
+  });
+  it.each(["on", "loading", "unknown"])("CSS %s never offers a start, and stops an admitted trial", async css => {
+    const h = await trialRig(); try { expect(await h.entry.startTrial(trialMessage())).toBe(true); env.css.set({ state: css }); await trialFlush(); expect(h.panel.panelStore.get().open).toBeNull(); expect(h.entry.canTry(trialMessage())).toBe(false); expect(await h.entry.startTrial(trialMessage())).toBe(false); expect(h.host.fetch).toHaveBeenCalledTimes(2); } finally { h.entry.dispose(); await trialFlush(); }
+  });
+  it("a late stage callback is disposed without attaching or closing a newer owner", async () => {
+    const h = await trialRig(); try {
+      expect(await h.entry.startTrial(trialMessage())).toBe(true); const old = h.panel.panelStore.get().open; old.handle.stop(); await trialFlush();
+      expect(await h.entry.startTrial(trialMessage())).toBe(true); const current = h.panel.panelStore.get().open, stage = { receipt: {}, dispose: vi.fn(), hide: vi.fn() }; old.onStage(stage);
+      expect(stage.dispose).toHaveBeenCalledOnce(); expect(h.api.attachTrial).not.toHaveBeenCalled(); expect(h.panel.panelStore.get().open).toBe(current); expect(current.handle.current()).toBe(true);
+    } finally { h.entry.dispose(); await trialFlush(); }
+  });
+  it("a refused source attach disposes its stage and closes only its own panel", async () => {
+    const h = await trialRig(); h.api.attachTrial.mockReturnValue(null); try {
+      expect(await h.entry.startTrial(trialMessage())).toBe(true); const open = h.panel.panelStore.get().open, stage = { receipt: {}, dispose: vi.fn(), hide: vi.fn() }; open.onStage(stage); await trialFlush(); expect(stage.dispose).toHaveBeenCalled(); expect(h.panel.panelStore.get().open).toBeNull(); expect(h.host.fetch).toHaveBeenCalledTimes(2);
+    } finally { h.entry.dispose(); await trialFlush(); }
+  });
+  it("repeated runtime observations do not repaint Trial eligibility until its value changes", async () => {
+    const h = await trialRig(), fn = vi.fn(); try { const off = h.entry.subscribeTrial(fn); for (let i = 0; i < 100; i++) h.options().onChange(); expect(fn).not.toHaveBeenCalled(); env.css.set({ state: "on" }); expect(fn).toHaveBeenCalledOnce(); off(); env.css.set({ state: "off" }); expect(fn).toHaveBeenCalledOnce(); } finally { h.entry.dispose(); }
+  });
 });

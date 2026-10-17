@@ -13,11 +13,11 @@ This page is the short version. Every field, with the edge cases, is in the [ful
 
 ## fleet.yaml
 
-Only `instances` is required.
+`instances` may be omitted; it defaults to an empty mapping.
 
 | Field | Type | Default | What it does |
 |---|---|---|---|
-| `instances` | object | — | **Required.** Per-instance config, keyed by name |
+| `instances` | object | `{}` | Per-instance config, keyed by name |
 | `channels` | ChannelConfig[] | — | Platform adapters, one per bot |
 | `channel` | object | — | Single-channel form. Still works; Settings saves it as a `channels` list |
 | `defaults` | object | `{}` | Applied to every instance |
@@ -57,7 +57,7 @@ One entry per bot.
 | Field | Type | Required | Default | What it does |
 |---|---|---|---|---|
 | `type` | string | yes | — | `telegram` or `discord` |
-| `mode` | string | yes | — | Must be `topic` |
+| `mode` | string | no | `topic` | Must be `topic` |
 | `bot_token_env` | string | yes | — | Name of the env var holding the token |
 | `id` | string | with several channels | type value | Unique id, e.g. `telegram`, `discord` |
 | `group_id` | number \| string | no | — | Telegram forum group, or Discord server (guild) |
@@ -76,7 +76,7 @@ The token itself never goes in the file. `bot_token_env` names the variable in `
 |---|---|---|---|
 | `mode` | `locked` \| `pairing` \| `open` | `open` | `locked` = the allow list only. `pairing` = the allow list, plus self-registration with `/pair`. `open` = anyone |
 | `allowed_users` | (number\|string)[] | `[]` | User IDs allowed in |
-| `max_pending_codes` | number | `0` | Simultaneous pairing codes. Set a positive number for `pairing` |
+| `max_pending_codes` | number | `0` | Distinct users with pending pairing codes (up to two codes per user). Set a positive number for `pairing` |
 | `code_expiry_minutes` | number | `0` | Pairing code lifetime. Set a positive number for `pairing` |
 
 - **The saved state wins over `fleet.yaml`.** Pairing, confirming a code, or `agend access lock`/`unlock` writes the mode to `~/.agend/access/access.json` (`access-<id>.json` for other bots). From then on the saved mode is used, and the saved users are added to `allowed_users`. To take someone out, remove them from both.
@@ -162,7 +162,7 @@ instances:
 | `pre_task_command` | string | — | Pasted before every user message |
 | `skipPermissions` | boolean | `true` unless `false` | Skip the CLI's own permission prompts, with each backend's flag. Antigravity always launches with `--dangerously-skip-permissions`, even with `false` |
 | `startup_timeout_ms` | number | `25000` | How long the CLI gets to come up |
-| `log_level` | string | `info` | `debug`, `info`, `warn`, `error` |
+| `log_level` | string | `info` | `trace`, `debug`, `info`, `warn`, `error` |
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |
 | `agent_mode` | `mcp` \| `cli` | `mcp` | `cli` uses `agend-agent` commands instead of MCP |
 | `kiro_ui` | `legacy` \| `tui` | `legacy` | Kiro engine, pinned on every launch (`v3` is refused until it can run unattended) |
@@ -198,7 +198,7 @@ teams:
 
 ### templates
 
-A template deploys several instances at once, each in its own git worktree.
+A template deploys several instances at once. Supply `branch` for a worktree per role; without it, a second role in the same directory is refused and deployment rolls back.
 
 ```yaml
 templates:
@@ -263,7 +263,7 @@ instances:
         credential_profile: personal
 ```
 
-Instances naming the same profile share a login. An instance with no `credential_profile` is untouched: nothing is added to its launch and no directory is created for it. Profiles live under `~/.agend/credential-profiles/<backend>/<profile>`.
+Instances naming the same profile share a login. An instance without its own `credential_profile` inherits the fleet default. Only an effective empty/unset profile uses the shared login without creating a profile directory. Profiles live under `~/.agend/credential-profiles/<backend>/<profile>`.
 
 Log a profile in once:
 
@@ -273,7 +273,7 @@ Log a profile in once:
 | Kiro CLI | On the host: `XDG_DATA_HOME=~/.agend/credential-profiles/kiro-cli/work kiro-cli login` |
 | Codex | On the host: `CODEX_HOME=~/.agend/credential-profiles/codex/work codex login` |
 
-To move an existing agent, ask General in plain language, for example "move research-a to the personal subscription". AgEnD changes the config and restarts the agent. **Switching to a profile that was never logged in is refused**, and the error carries the command that logs it in. `credential_profile: null` clears the agent's own setting, so it follows the fleet default again (normally the shared login). Going back to the shared login is never refused.
+To move an existing agent, ask General in plain language, for example "move research-a to the personal subscription". AgEnD changes the config and restarts a running agent; a paused/stopped agent uses it on the next start. **A config change that switches to a profile that was never logged in is refused**,  and the error carries the command that logs it in. `credential_profile: null` clears the agent's own setting, so it follows the fleet default again (normally the shared login). Going back to the shared login is never refused.
 
 What a switch does to the conversation depends on the backend:
 - **Claude Code** keeps it: AgEnD copies the session into the new profile during the restart, and the old profile keeps its own copy. If the copy can't be made, it starts fresh as Kiro does, and says why.
@@ -286,7 +286,7 @@ For Kiro, only the login is duplicated: the large runtimes kiro downloads link b
 
 ## classicBot.yaml
 
-`~/.agend/classicBot.yaml` manages ClassicBot channels (an agent attached to any channel with `/start`). `agend quickstart` offers to create it for Discord; otherwise it is created on the first `/start`. Changes are picked up every 30 seconds, with no restart.
+`~/.agend/classicBot.yaml` manages ClassicBot channels (an agent attached to any channel with `/start`). `agend quickstart` offers to create it for Discord; otherwise it is created on the first `/start`. Changes are detected every 30 seconds. Launch settings restart running agents; supported runtime settings update in place.
 
 ### defaults
 
@@ -299,6 +299,8 @@ For Kiro, only the login is duplicated: the large runtimes kiro downloads link b
 | `allowed_groups` | string[] | `[]` | Telegram groups allowed |
 | `allowed_users` | string[] | `[]` | Telegram users allowed in a private chat |
 | `admin_users` | string[] | `[]` | ClassicBot admins. They may start in a new room without the allow lists; the [command surface](https://github.com/songsid/AgEnD/blob/main/docs/command-surface.md) lists what else needs one |
+| `auto_pause_after` | number | inherited | Idle minutes before pause; `0` disables |
+| `tool_progress` | `off` \| `standard` \| `verbose` | inherited | Processing-bubble detail |
 | `reply_completion_guard` | boolean | inherited | As the instance field of the same name |
 
 **An empty allow list does not mean open.** When someone who is not a ClassicBot admin runs `/start` in a new room whose server, group or private chat is not on a list, General is asked for approval, with **Allow / Allow+admin / Ignore** buttons. Approving does not start the agent: run `/start` again. Admins skip this, and rooms already registered keep working.
@@ -322,6 +324,10 @@ channels:
 | `backend` / `model` | string | from defaults | Override for this channel |
 | `context_lines` | number | from defaults | Override for this channel |
 | `collab` | boolean | `false` | Discord: keep every message in the channel as context. A turn still needs an @mention of the bot, or `/chat`. Don't set it on Telegram, see below |
+| `auto_pause_after` / `tool_progress` | as above | inherited | Per-channel overrides |
+| `backend_options` | object | merged defaults | Backend-specific options and credential profile |
+| `display_name` / `description` | string | — | Agent label and description |
+| `web_echo` | boolean | `false` | Copy this room’s web chat to the platform, independent of `web.echo_to_channel` |
 | `pre_task_command` | string | — | Pasted before every message |
 | `reply_completion_guard` | boolean | from defaults | Override for this channel |
 

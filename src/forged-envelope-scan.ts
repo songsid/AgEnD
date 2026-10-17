@@ -6,8 +6,9 @@
  * OWN kiro
  * transcript for fleet-envelope shapes (`[from:<instance>] … (message_id:
  * xmsg-…)`) and check each message_id against the durable delivery record
- * (#856's `delivery_status` message_id selector). An id nobody delivered is
- * not a transport glitch — the receiver's model fabricated the turn.
+ * (#856's `delivery_status` message_id selector). A missing retained record
+ * triggers a verification warning; retention expiry also makes a real message
+ * unverifiable, so this is not proof that the receiver fabricated the turn.
  *
  * Only kiro has a reader here: its conversation store
  * (`~/.local/share/kiro-cli/data.sqlite3`, conversations_v2) is on disk.
@@ -159,7 +160,7 @@ export function verifyEnvelopeCandidates(
 
 /**
  * The exact correction to inject into the instance (send_to_instance or a
- * mid-turn steer): the message it acted on was never fleet-delivered.
+ * mid-turn steer): no retained row verifies the message. An expired row is not proof of non-delivery.
  */
 export function formatForgedEnvelopeWarning(instanceName: string, finding: EnvelopeCandidate): string {
   return t("delivery.forged_warning", finding.fromInstance, finding.messageId);

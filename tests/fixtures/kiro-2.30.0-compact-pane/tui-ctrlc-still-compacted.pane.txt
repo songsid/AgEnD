@@ -1,0 +1,94 @@
+                             ⢀⣴⣶⣶⣦⡀⠀⠀⠀⠀⢀⣴⣶⣦⣄⡀   ⢀⣴⣶⣶⣦⡀   ⢀⣴⣶⣶⣶⣶⣶⣶⣶⣶⣶⣦⣄⡀       ⢀⣠⣴⣶⣶⣶⣶⣶⣦⣄⡀
+                            ⢰⣿⠋⠁⠈⠙⣿⡆⠀⢀⣾⡿⠁  ⠈⢻⡆ ⢰⣿⠋⠁⠈⠙⣿⡆ ⢰⣿⠋⠁        ⠈⠙⠻⣦     ⣴⡿⠟⠋⠁   ⠈⠙⠻⢿⣦
+                            ⢸⣿⠀⠀⠀⠀⣿⣇⣴⡿⠋⠀⠀  ⢀⣼⠇ ⢸⣿⠀⠀⠀⠀⣿⡇ ⢸⣿⠀⠀⠀⢠⣤⣤⣤⣤⣄    ⣿⡆   ⣼⡟⠀⠀⠀ ⣀⣀⣀    ⢻⣧
+                            ⢸⣿⠀⠀⠀⠀⣿⡿⠋⠀⠀  ⢀⣾⡿⠁  ⢸⣿⠀⠀⠀⠀⣿⡇ ⢸⣿⠀⠀⠀⢸⣿⠉⠉⠉⣿⡇   ⣿⡇  ⣼⡟⠀⠀ ⣰⡿⠟⠛⠻⢿⣆⠀⠀ ⢻⣧
+                            ⢸⣿⠀⠀⠀⠀⠙⠁⠀⠀ ⢀⣼⡟⠁    ⢸⣿⠀⠀⠀⠀⣿⡇ ⢸⣿⠀⠀⠀⢸⣿⣶⣶⡶⠋⠀   ⣿⠇ ⢰⣿⠀⠀⠀⢰⣿⠀⠀⠀  ⣿⡆⠀⠀ ⣿⡆
+                            ⢸⣿⠀⠀⠀⠀⠀⠀⠀⠀ ⠹⣷⡀     ⢸⣿⠀⠀⠀⠀⣿⡇⠀⢸⣿⠀⠀⠀⠀⠀⠀⠀⠀   ⣠⣼⠟  ⢸⣿⠀⠀ ⢸⣿⠀⠀⠀⠀ ⣿⡇⠀⠀ ⣿⡇
+                            ⢸⣿⠀⠀⠀⠀⠀⣠⡀⠀⠀ ⠹⣷⡄    ⢸⣿⠀⠀⠀⠀⣿⡇⠀⢸⣿⠀⠀⠀⠀⣤⣄  ⠀⠀⠹⣿⡅   ⠸⣿⠀⠀ ⠸⣿⠀⠀⠀⠀ ⣿⠇⠀  ⣿⠇
+                            ⢸⣿⠀⠀⠀⠀⣾⡟⣷⡀⠀⠀ ⠘⣿⣆   ⢸⣿⠀⠀⠀⠀⣿⡇ ⢸⣿⠀⠀⠀⠀⣿⡟⣷⡀⠀⠀ ⠘⣿⣆   ⢻⣧⠀⠀ ⠹⣷⣦⣤⣤⣾⠏⠀⠀⠀⣼⡟
+                            ⢸⣿⠀⠀⠀⠀⣿⡇⠹⣷⡀  ⠀⠈⢻⡇  ⢸⣿⠀⠀⠀⠀⣿⡇ ⢸⣿⠀⠀⠀⠀⣿⡇⠹⣷⡀  ⠀⠈⢻⡇   ⢻⣧⠀⠀⠀ ⠉⠉⠉    ⣼⡟
+                            ⠸⣿⣄⡀⢀⣠⣿⠇⠀⠙⣷⡀  ⢀⣼⠇  ⠸⣿⣄⡀⢀⣠⣿⠇ ⠸⣿⣄⡀⢀⣠⣿⠇⠀⠙⣷⡀  ⢀⣼⠇    ⠻⣷⣦⣄⡀   ⢀⣠⣴⣾⠟
+                             ⠈⠻⠿⠿⠟⠁⠀⠀⠀⠈⠻⠿⠿⠟⠁    ⠈⠻⠿⠿⠟⠁   ⠈⠻⠿⠿⠟⠁⠀⠀⠀⠈⠻⠿⠿⠟⠁     ⠀⠀⠈⠙⠻⠿⠿⠿⠿⠟⠋⠁
+
+                      An early release of Kiro CLI V3 is now available! Try it out: kiro-cli --v3
+                                             https://kiro.dev/docs/cli/v3/
+
+               Tip: Press Ctrl+G to open the full-screen monitor of subagent activity; Ctrl+G or q exits.
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ ✧ What's new: Cloud sessions, specs, expanded hooks, and an improved trust model.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › Reply with exactly one word: alpha
+
+• alpha
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+• OBJECTIVE
+
+  Unknown. No user objective has been established in this session.
+
+  USER GUIDANCE
+
+  None provided. No user messages have been received in this conversation.
+
+  COMPLETED
+
+  Nothing. This session contains no prior work, decisions, or exchanges with the user.
+
+  TECHNICAL CONTEXT
+  - Operating System: linux
+  - Current Directory:
+  /work/kiro-tui
+  - No files have been read, created, or modified.
+  - No project structure, build tools, or dependencies have been investigated.
+
+  TOOLS EXECUTED
+
+  None.
+
+  NEXT STEPS
+  - Await an actual user request to establish an objective.
+  - Once a task is provided, investigate the current directory contents to understand any existing project context.
+
+  TODO LIST
+
+  ID if loaded: none
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+• OBJECTIVE
+
+  Unknown. No user objective has been established in this session.
+
+  USER GUIDANCE
+
+  None provided. No user messages have been received in this conversation.
+
+  COMPLETED
+
+  Nothing. This session contains no prior work, decisions, or exchanges with the user.
+
+  TECHNICAL CONTEXT
+  - Operating System: linux
+  - Current Directory:
+  /work/kiro-tui
+  - No files have been read, created, or modified.
+  - No project structure, build tools, or dependencies have been investigated.
+
+  TOOLS EXECUTED
+
+  None.
+
+  NEXT STEPS
+  - Await an actual user request to establish an objective.
+  - Once a task is provided, investigate the current directory contents to understand any existing project context.
+
+  TODO LIST
+
+  ID if loaded: none
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+kiro_default · auto · ◔ 1%
+/work/kiro-tui
+
+›  ask a question or describe a task ↵
+                                                                                                     /copy to clipboard

@@ -23,6 +23,7 @@ import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from ".
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileLogin, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import type { CarryResult } from "./backend/claude-carry.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "./kiro-engine-status.js";
+import { noPlaceMarkers, placeRef, stripPlaceRefs } from "./topic-link.js";
 import {
   formatCrossInstanceInboundMessage, type AgentMode,
   MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES,
@@ -131,6 +132,8 @@ export interface OutboundContext {
   saveFleetConfig(): void;
   queueMirrorMessage?(text: string): void;
   getAdapterForInstance?(name: string): ChannelAdapter | null;
+  /** #1990: a message for the group that owns `instanceName`'s topic, its place tokens rendered (links). */
+  renderPlacesFor?(instanceName: string, text: string, opts?: import("./channel/types.js").SendOpts): { text: string; opts?: import("./channel/types.js").SendOpts };
   getChannelConfig?(adapterId?: string): import("./types.js").ChannelConfig | undefined;
   getGroupIdForInstance?(name: string): string;
   getWorldForInstance?(name: string): { id: string; adapter: ChannelAdapter } | undefined;
@@ -548,25 +551,37 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     name,
     displayName: ctx.fleetConfig?.instances[name]?.display_name,
   })));
+  // #1990 review: a display name is the agent's own text (set_display_name) — it names no place either.
   const displayLabel = (name: string) =>
-    fleetLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
+    noPlaceMarkers(fleetLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name));
   const instances = ctx.fleetConfig?.instances ?? {};
-  const notice = { label: `${displayLabel(senderLabel)} → ${displayLabel(targetName)}`, message, requestKind, taskSummary: ipcMeta.task_summary };
+  // #1990: each topic's line links the other side's topic (the target's names the sender, the sender's the target).
+  // The agent's own text names no place: a marker in it is dropped.
+  const notice = {
+    label: `${displayLabel(senderLabel)} → ${displayLabel(targetName)}`,
+    message: noPlaceMarkers(message ?? ""), requestKind,
+    taskSummary: ipcMeta.task_summary === undefined ? undefined : noPlaceMarkers(ipcMeta.task_summary),
+  };
+  const senderPlace = placeRef({ kind: "instance", name: meta.instanceName }, displayLabel(senderLabel));
+  const targetPlace = placeRef({ kind: "instance", name: targetInstanceName }, displayLabel(targetName));
   const targetInstance = instances[targetInstanceName];
   const targetIsGeneral = targetInstance?.general_topic === true;
-  const targetText = targetTopicNotice(crossInstanceVisibility(ctx.fleetConfig, targetInstanceName), notice);
+  const targetText = targetTopicNotice(crossInstanceVisibility(ctx.fleetConfig, targetInstanceName), { ...notice, label: `${senderPlace} → ${displayLabel(targetName)}` });
   const targetShown = targetText !== null && !targetIsGeneral && !ctx.sessionRegistry.has(targetName);
   const senderInstance = instances[meta.instanceName];
   const senderIsGeneral = senderInstance?.general_topic === true;
-  const senderText = senderTopicNotice(crossInstanceVisibility(ctx.fleetConfig, meta.instanceName), notice);
+  const senderText = senderTopicNotice(crossInstanceVisibility(ctx.fleetConfig, meta.instanceName), { ...notice, label: `${displayLabel(senderLabel)} → ${targetPlace}` });
   const senderShown = senderText !== null && !senderIsGeneral;
+  const placed = (instance: string, text: string, opts: import("./channel/types.js").SendOpts) =>
+    ctx.renderPlacesFor?.(instance, text, opts) ?? { text: stripPlaceRefs(text), opts };
   if (groupId && ctx.adapter) {
     // ── Target topic notification ──
     const targetTopicId = targetInstance?.topic_id;
     if (targetShown && targetTopicId) {
       const targetAdapter = ctx.getAdapterForInstance?.(targetInstanceName) ?? ctx.adapter;
       const targetGroupId = ctx.getGroupIdForInstance?.(targetInstanceName) ?? String(groupId);
-      targetAdapter!.sendText(String(targetGroupId), targetText!, { threadId: String(targetTopicId) })
+      const out = placed(targetInstanceName, targetText!, { threadId: String(targetTopicId) });
+      targetAdapter!.sendText(String(targetGroupId), out.text, out.opts)
         .catch(e => ctx.logger.warn({ err: e }, "Failed to post target topic notification"));
     }
 
@@ -575,7 +590,8 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     if (senderShown && senderTopicId) {
       const senderAdapter = ctx.getAdapterForInstance?.(meta.instanceName) ?? ctx.adapter;
       const senderGroupId = ctx.getGroupIdForInstance?.(meta.instanceName) ?? String(groupId);
-      senderAdapter!.sendText(senderGroupId, senderText!, { threadId: String(senderTopicId) })
+      const out = placed(meta.instanceName, senderText!, { threadId: String(senderTopicId) });
+      senderAdapter!.sendText(senderGroupId, out.text, out.opts)
         .catch(e => ctx.logger.warn({ err: e }, "Failed to post sender topic notification"));
     }
   }
@@ -584,8 +600,8 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const webNotice = (instance: string, text: string) => ctx.emitSseEvent?.("message", {
     instance, sender: displayLabel(senderLabel), role: "status", text, ts: new Date().toISOString(),
   });
-  if (targetShown) webNotice(targetInstanceName, targetText!);
-  if (senderShown) webNotice(meta.instanceName, senderText!);
+  if (targetShown) webNotice(targetInstanceName, stripPlaceRefs(targetText!));
+  if (senderShown) webNotice(meta.instanceName, stripPlaceRefs(senderText!));
 
   // #856: the same line, now carrying the envelope's message_id and a short
   // content digest, so a disputed message can be matched to its outbox row

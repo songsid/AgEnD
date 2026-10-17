@@ -123,6 +123,17 @@ describe("private Trial lease contribution (no registry/loader factory)", () => 
     const h = rig(), a = h.attach(), d = h.api.descriptors()[0], b = h.api.binding(d.key, d.id), m = manifest();
     h.read.mockResolvedValueOnce(resource({ manifest: Object.fromEntries(Object.entries(m).reverse()) })); expect(await h.api.load(b, new AbortController().signal)).not.toBeNull(); expect(a.handle.current()).toBe(true); h.api.dispose();
   });
+  it("stage end synchronously stops its lease and aborts a held read without a descriptors poll", async () => {
+    const h = rig(), a = h.attach(), key = a.stage.s.identity.key, binding = h.api.binding(key, ID), wait = held();
+    h.read.mockImplementationOnce(() => wait.promise);
+    const loading = h.api.load(binding, new AbortController().signal);
+    expect(h.read).toHaveBeenCalledOnce(); const signal = h.read.mock.calls[0]![1]; expect(signal.aborted).toBe(false);
+    a.stage.api.dispose(); // No descriptors/current/heartbeat call may be needed to deliver stage end.
+    expect(a.stop).toHaveBeenCalledExactlyOnceWith("stage_ended"); expect(signal.aborted).toBe(true);
+    expect(a.handle.current()).toBe(false); expect(h.api.binding(key, ID)).toBeNull();
+    expect(await h.api.load(binding, new AbortController().signal)).toBeNull(); expect(h.read).toHaveBeenCalledOnce();
+    wait.resolve(resource()); expect(await loading).toBeNull(); h.api.dispose();
+  });
   it("stop aborts but does not settle a held physical read, and a late old response cannot fail B", async () => {
     const h = rig(), a = h.attach(), d = h.api.descriptors()[0], b = h.api.binding(d.key, d.id), wait = held(); h.read.mockImplementationOnce(() => wait.promise);
     let settled = false; const loading = h.api.load(b, new AbortController().signal).then((x: any) => { settled = true; return x; }); await flush();

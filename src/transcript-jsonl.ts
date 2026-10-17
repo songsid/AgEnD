@@ -1,4 +1,4 @@
-import { open, stat } from "node:fs/promises";
+import { open, stat, type FileHandle } from "node:fs/promises";
 
 /** #1218 P0: the most one look reads. A busy session's delta is read over several looks, never in one buffer. */
 export const READ_MAX_BYTES = 1024 * 1024;
@@ -20,10 +20,13 @@ export interface LongLine { at: number; head: string; bytes: number; complete: b
  */
 export const WHOLE_LINE_MAX_BYTES = 16 * 1024 * 1024;
 
-/** The line of `bytes` bytes at `offset`, as text, when it is at most `max` bytes; null otherwise or when it cannot be read whole. */
-export async function readWholeLine(path: string, offset: number, bytes: number, max = WHOLE_LINE_MAX_BYTES): Promise<string | null> {
+/**
+ * The line of `bytes` bytes at `offset`, as text, when it is at most `max` bytes; null otherwise or when it cannot be read whole.
+ * `handle`: read from this open file (the caller's, left open) instead of opening `path`.
+ */
+export async function readWholeLine(path: string, offset: number, bytes: number, max = WHOLE_LINE_MAX_BYTES, handle?: FileHandle): Promise<string | null> {
   if (bytes <= 0 || bytes > max) return null;
-  const fh = await open(path, "r");
+  const fh = handle ?? await open(path, "r");
   try {
     const buf = Buffer.alloc(bytes);
     for (let filled = 0; filled < bytes;) {
@@ -33,7 +36,7 @@ export async function readWholeLine(path: string, offset: number, bytes: number,
     }
     return buf.toString("utf-8");
   } finally {
-    await fh.close();
+    if (!handle) await fh.close();
   }
 }
 
@@ -112,14 +115,15 @@ function headText(buf: Buffer, max: number): string {
  * its head, and the offset moves past it — across several looks if it is longer than one (`skipping`). Transcripts
  * reach hundreds of MB and one tool result can be tens of MB; the fleet loop must not hold either in one buffer.
  */
-export async function readNewLines(path: string, fromOffset: number, opts: { maxBytes?: number; maxLine?: number; skipping?: boolean } = {}): Promise<ReadNewLinesResult> {
+export async function readNewLines(path: string, fromOffset: number, opts: { maxBytes?: number; maxLine?: number; skipping?: boolean; handle?: FileHandle } = {}): Promise<ReadNewLinesResult> {
   const maxBytes = Math.max(1, opts.maxBytes ?? READ_MAX_BYTES);
   const maxLine = Math.max(1, opts.maxLine ?? LINE_MAX_BYTES);
-  const stats = await stat(path);
+  // `handle`: one file the caller opened and checked (its identity), read and sized through that handle only.
+  const stats = opts.handle ? await opts.handle.stat() : await stat(path);
   const empty = (offset: number, skipping: boolean, more: boolean, longEnd?: number): ReadNewLinesResult =>
     ({ lines: [], offsets: [], newOffset: offset, long: [], more, skipping, ...(longEnd !== undefined ? { longEnd } : {}) });
   if (stats.size <= fromOffset) return empty(fromOffset, !!opts.skipping, false);
-  const fh = await open(path, "r");
+  const fh = opts.handle ?? await open(path, "r");
   try {
     const read = async (at: number, length: number): Promise<Buffer> => {
       const buffer = Buffer.alloc(length);
@@ -169,7 +173,7 @@ export async function readNewLines(path: string, fromOffset: number, opts: { max
     // More: this look was cut short by its budget, so complete records may wait past the offset.
     return { lines, offsets, newOffset, long, more: window.length === budget && newOffset < stats.size, skipping: false, ...ended };
   } finally {
-    await fh.close();
+    if (!opts.handle) await fh.close();
   }
 }
 

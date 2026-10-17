@@ -270,6 +270,11 @@ describe("a click", () => {
     expect(update.buttons).toMatchObject({ state: "chosen", chosen: 0, by: "alice" });
     expect(h.fm.webChatHistory.list("w").find(m => m.role === "agent")!.buttons).toMatchObject({ state: "chosen", chosen: 0 });
     expect(h.sse.filter(e => e.event === "message" && e.data.role === "user").map(e => e.data.text)).toEqual(["[button] Deploy (value: deploy-prod)"]);
+    // The web chat shows the click as its label (a chip): the message carries it, with the set it belongs to; the agent's
+    // line above is unchanged, value and all.
+    const setOf = deploy!.id.split(":")[1]!;
+    expect(h.sse.filter(e => e.event === "message" && e.data.role === "user").map(e => e.data.click)).toEqual([{ label: "Deploy", of: setOf }]);
+    expect(h.fm.webChatHistory.list("w").find(m => m.role === "user")!.click).toEqual({ label: "Deploy", of: setOf });
 
     const second = await h.click(wait!.id, { userId: "owner" });
     expect([second.acks, h.delivered.length, h.rec.settles.length]).toEqual([["Already answered."], 1, 1]);
@@ -408,6 +413,7 @@ describe("a web-only fleet", () => {
     expect(msg.buttons).toMatchObject({ labels: ["Deploy"], state: "open" });
     expect(await fm.clickWebReplyButton("w", msg.buttons!.id, 0)).toEqual({ status: 200 });
     expect(delivered[0].content).toBe("[button] Deploy");
+    expect(fm.webChatHistory.list("w").find(m => m.role === "user")).toMatchObject({ text: "[button] Deploy", click: { label: "Deploy", of: msg.buttons!.id } });
     expect(fm.webChatHistory.list("w").find(m => m.role === "agent")!.buttons!.state).toBe("chosen");
     expect(fm.webChatHistory.buttonStates()).toEqual([{ instance: "w", buttons: expect.objectContaining({ state: "chosen", chosen: 0, by: "web-user" }) }]);
   });

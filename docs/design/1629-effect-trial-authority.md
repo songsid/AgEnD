@@ -1,5 +1,7 @@
 # #1629 volatile Try authority
 
+> Current integration: [product Try](1629-effect-trial-product.md) connects these foundations. References below to an unmounted or unavailable slice describe its original introduction, not the current feature branch.
+
 This records the authority foundation introduced without product imports in #1984.
 The [server adapter](1629-effect-trial-api.md) now connects it to the Fleet library
 and local-admin HTTP routes. No tool issues an offer, no card starts a trial and

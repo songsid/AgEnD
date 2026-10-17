@@ -13,11 +13,11 @@ agend validate
 
 ## fleet.yaml
 
-只有 `instances` 是必填。
+`instances` 可省略，預設為空 mapping。
 
 | 欄位 | 型別 | 預設 | 作用 |
 |---|---|---|---|
-| `instances` | object | — | **必填。** 每個 instance 的設定，用名稱當 key |
+| `instances` | object | `{}` | 每個 instance 的設定，用名稱當 key |
 | `channels` | ChannelConfig[] | — | 平台 adapter，一個 bot 一筆 |
 | `channel` | object | — | 單一 channel 的寫法。仍然可用；Settings 儲存時會改存成 `channels` 清單 |
 | `defaults` | object | `{}` | 套用到每個 instance |
@@ -57,7 +57,7 @@ agend validate
 | 欄位 | 型別 | 必填 | 預設 | 作用 |
 |---|---|---|---|---|
 | `type` | string | 是 | — | `telegram` 或 `discord` |
-| `mode` | string | 是 | — | 必須是 `topic` |
+| `mode` | string | 否 | `topic` | 必須是 `topic` |
 | `bot_token_env` | string | 是 | — | 存放 token 的環境變數**名稱** |
 | `id` | string | 多 channel 時 | 同 type | 唯一識別，例如 `telegram`、`discord` |
 | `group_id` | number \| string | 否 | — | Telegram 論壇群組或 Discord server（guild） |
@@ -76,7 +76,7 @@ Token 本身永遠不會寫進檔案。`bot_token_env` 指的是要去 `~/.agend
 |---|---|---|---|
 | `mode` | `locked` \| `pairing` \| `open` | `open` | `locked` = 只認白名單。`pairing` = 白名單，加上用 `/pair` 自助註冊。`open` = 所有人 |
 | `allowed_users` | (number\|string)[] | `[]` | 允許的 user ID |
-| `max_pending_codes` | number | `0` | 同時存在的配對碼上限。用 `pairing` 時請設正數 |
+| `max_pending_codes` | number | `0` | 有待處理配對碼的不同使用者上限（每人最多兩碼）。用 `pairing` 時請設正數 |
 | `code_expiry_minutes` | number | `0` | 配對碼有效時間。用 `pairing` 時請設正數 |
 
 - **儲存的狀態優先於 `fleet.yaml`。** 配對、確認配對碼、或 `agend access lock`/`unlock` 都會把 mode 寫進 `~/.agend/access/access.json`（其他 bot 是 `access-<id>.json`）。從那之後用的是存下來的 mode，存下來的使用者也會併進 `allowed_users`。要移除某人，兩邊都要刪。
@@ -162,7 +162,7 @@ instances:
 | `pre_task_command` | string | — | 每則使用者訊息前先貼上的指令 |
 | `skipPermissions` | boolean | 除非設 `false`，否則為 `true` | 用各後端的旗標跳過 CLI 自己的權限確認。Antigravity 一律帶 `--dangerously-skip-permissions` 啟動，設 `false` 也一樣 |
 | `startup_timeout_ms` | number | `25000` | 給 CLI 啟動的時間 |
-| `log_level` | string | `info` | `debug`、`info`、`warn`、`error` |
+| `log_level` | string | `info` | `trace`、`debug`、`info`、`warn`、`error` |
 | `lightweight` | boolean | `false` | 跳過非必要子系統 |
 | `agent_mode` | `mcp` \| `cli` | `mcp` | `cli` 改用 `agend-agent` 指令取代 MCP |
 | `kiro_ui` | `legacy` \| `tui` | `legacy` | Kiro 引擎，每次啟動都會固定（`v3` 在能無人值守執行前會被拒絕） |
@@ -198,7 +198,7 @@ teams:
 
 ### templates
 
-一個 template 一次部署多個 instance，每個都在自己的 git worktree 裡。
+Template 可一次部署多個 instance；指定 `branch` 才會為各角色建立 worktree。未指定時，同目錄的第二個角色會被拒絕，部署也會回復。
 
 ```yaml
 templates:
@@ -263,7 +263,7 @@ instances:
         credential_profile: personal
 ```
 
-指到同一個 profile 的 instance 共用一個登入。沒有寫 `credential_profile` 的 instance 完全不受影響：啟動指令不會被加東西，也不會幫它建目錄。Profile 放在 `~/.agend/credential-profiles/<backend>/<profile>`。
+指到同一個 profile 的 instance 共用一個登入。Instance 未自行設定 `credential_profile` 時會繼承 fleet 預設；只有有效值為空或未設時，才使用共用登入且不建立 profile 目錄。Profile 放在 `~/.agend/credential-profiles/<backend>/<profile>`。
 
 每個 profile 先登入一次：
 
@@ -273,7 +273,7 @@ instances:
 | Kiro CLI | 在主機上：`XDG_DATA_HOME=~/.agend/credential-profiles/kiro-cli/work kiro-cli login` |
 | Codex | 在主機上：`CODEX_HOME=~/.agend/credential-profiles/codex/work codex login` |
 
-要幫既有 agent 換 profile，直接用自然語言跟 General 說，例如「把 research-a 換到個人訂閱」。AgEnD 會改設定並重啟 agent。**換到一個從沒登入過的 profile 會被拒絕**，錯誤訊息會附上登入指令。`credential_profile: null` 會清掉這個 agent 自己的設定，回到 fleet 的預設（通常是共用登入）。換回共用登入永遠不會被拒絕。
+要幫既有 agent 換 profile，直接用自然語言跟 General 說，例如「把 research-a 換到個人訂閱」。AgEnD 會改設定並重啟執行中的 agent；暫停或停止的 agent 在下次啟動時使用。**設定變更若切換到從未登入過的 profile，會被拒絕**，錯誤訊息會附上登入指令。`credential_profile: null` 會清掉這個 agent 自己的設定，回到 fleet 的預設（通常是共用登入）。換回共用登入永遠不會被拒絕。
 
 換 profile 對對話的影響依後端而定：
 - **Claude Code** 會保留對話：AgEnD 在重啟時把 session 複製到新 profile，舊 profile 也保有自己那份。複製不成時，會像 Kiro 一樣開新對話，並說明原因。
@@ -286,7 +286,7 @@ Kiro 只複製登入資訊：kiro 下載的大型執行環境會連回共用的�
 
 ## classicBot.yaml
 
-`~/.agend/classicBot.yaml` 管 ClassicBot 頻道（在任何頻道用 `/start` 掛上一個 agent）。`agend quickstart` 設定 Discord 時會詢問要不要建立；不然就在第一次 `/start` 時建立。改動每 30 秒偵測一次，不用重啟。
+`~/.agend/classicBot.yaml` 管 ClassicBot 頻道（在任何頻道用 `/start` 掛上一個 agent）。`agend quickstart` 設定 Discord 時會詢問要不要建立；不然就在第一次 `/start` 時建立。改動每 30 秒偵測一次；啟動設定會重啟執行中的 agent，支援的執行期設定則直接套用。
 
 ### defaults
 
@@ -299,6 +299,8 @@ Kiro 只複製登入資訊：kiro 下載的大型執行環境會連回共用的�
 | `allowed_groups` | string[] | `[]` | 可以用的 Telegram 群組 |
 | `allowed_users` | string[] | `[]` | 可以在私人對話使用的 Telegram 使用者 |
 | `admin_users` | string[] | `[]` | ClassicBot 管理員，在新頻道啟動時不受名單限制；其他需要管理員的指令見[指令範圍表](https://github.com/songsid/AgEnD/blob/main/docs/command-surface.zh-TW.md) |
+| `auto_pause_after` | number | 繼承 | 閒置幾分鐘後暫停；`0` 停用 |
+| `tool_progress` | `off` \| `standard` \| `verbose` | 繼承 | 處理中氣泡的詳細程度 |
 | `reply_completion_guard` | boolean | 繼承 | 同 instance 的同名欄位 |
 
 **名單是空的不代表開放。** 不是 ClassicBot 管理員的人在新頻道執行 `/start`，而該 server、群組或私人對話不在名單上時，會在 General 請你核准，附上 **Allow / Allow+admin / Ignore** 按鈕。核准不會直接啟動 agent，請再執行一次 `/start`。管理員不受此限，已經註冊的頻道也照常運作。
@@ -322,6 +324,10 @@ channels:
 | `backend` / `model` | string | 同 defaults | 這個頻道的覆寫 |
 | `context_lines` | number | 同 defaults | 這個頻道的覆寫 |
 | `collab` | boolean | `false` | Discord：把頻道裡每則訊息都留作上下文。觸發回合仍需要 @提及 bot，或用 `/chat`。不要在 Telegram 設定，見下 |
+| `auto_pause_after` / `tool_progress` | 同上 | 繼承 | 個別 channel 覆寫 |
+| `backend_options` | object | 合併預設 | Backend 選項與 credential profile |
+| `display_name` / `description` | string | — | Agent 名稱與說明 |
+| `web_echo` | boolean | `false` | 將此聊天室的 web chat 同步至平台，與 `web.echo_to_channel` 無關 |
 | `pre_task_command` | string | — | 每則訊息前先貼上的指令 |
 | `reply_completion_guard` | boolean | 同 defaults | 這個頻道的覆寫 |
 

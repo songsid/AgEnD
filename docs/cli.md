@@ -2,15 +2,18 @@
 
 ## Chat commands (Telegram fleet menu / Discord slash)
 
-The Telegram fleet menu (General topic and instance topics, `setMyCommands`) lists 19 commands; Discord registers 25 slash commands globally — the same 19 plus `/start`, `/stop`, `/chat`, `/save`, `/load` and `/cancel`. `/cancel` and `/save` are handled when typed on Telegram but intentionally kept out of its menu. 🔒 needs a fleet admin; the lock prefix in each menu is generated from `src/command-table.ts`, never typed. See [commands.md](commands.md) for the per-platform permission details.
+The Telegram fleet menu lists 23 commands; the ClassicBot menu lists 11. Discord registers 29 slash names, including both `/web` and its `/dashboard` alias. `/cancel` and `/save` are also handled when typed on Telegram, outside its menus. 🔒 requires an admin for that scope; see [commands.md](commands.md) for the owning fleet/ClassicBot roles and platform details. The menus and locks come from `src/command-table.ts`.
 
 | Command | Description | Options / args | Permission |
 |---------|-------------|----------------|------------|
 | `/status` | Fleet table with Backend, Model, Ctx, Effort, Cost and State columns | — | 🔒 admin |
 | `/sysinfo` | Show detailed system diagnostics (version, load, IPC status, each backend CLI's version); also `/sys-info`, `/sys_info` on Telegram | — | All |
-| `/web` (`/dashboard` alias) | Sign in to the web dashboard and web chat: the sign-in link and a one-time code (spoilered on Telegram, visible only to you on Discord). On a `localhost` dashboard it also says how to reach it from a phone. `/web revoke` (on Discord, the `action: revoke` option) signs every browser out | `[revoke]` | 🔒 admin |
+| `/web` (`/dashboard` alias) | Open the web sign-in menu, then press a login button to get a private one-time code. Discord uses DM with an ephemeral fallback; Telegram DM refusal explains how to start the bot privately. `/web revoke` (on Discord, the `action: revoke` option) signs every browser out | `[revoke]` | 🔒 admin |
+| `/backend` | Switch a fleet instance’s backend; ClassicBot uses Settings or `classicBot.yaml` | Backend name or menu | 🔒 admin |
+| `/visibility` | Set cross-instance message visibility | `full\|summary\|hidden`; Telegram General only | 🔒 admin |
+| `/profile` | Record the running fleet’s CPU profile in General (default 60 s, max 1,800 s) | `[seconds]` | 🔒 admin |
 | `/ctx` | Show agent context usage | — | All |
-| `/compact` | Compact agent context | `[instructions]` — steers the summary, Claude Code only | All in fleet topics |
+| `/compact` | Compact agent context | `[instructions]` — steers the summary, Claude Code only | 🔒 admin |
 | `/steer` | Interject into the agent's current turn instead of queueing for idle | `<message>` required; `claude-code`/`codex`/`grok`/`muse`, and `kiro-cli` on its verified TUI ([details](commands.md#steer-btw-and-clear-backend-support)) | All |
 | `/btw` | Side question without interrupting the current task | `<message>` required; `claude-code` only | All |
 | `/clear` | Full conversation reset (destructive — asks Confirm/Cancel) | — | 🔒 admin |
@@ -19,7 +22,7 @@ The Telegram fleet menu (General topic and instance topics, `setMyCommands`) lis
 | `/pause` | Manually pause an idle instance | `[instance]` — required in General | 🔒 admin |
 | `/wake` | Wake a paused instance | `[instance]` — required in General | 🔒 admin |
 | `/restart` | Restart all instances in-process (no process exit) | `[full]` / `mode: full` reloads the entire fleet process and adapters | 🔒 admin |
-| `/collab` | Toggle bot/webhook message reception | — | All in fleet topics (not a command in ClassicBot chats) |
+| `/collab` | Toggle bot/webhook message reception | — | 🔒 admin (not handled in Telegram ClassicBot) |
 | `/update` | Update AgEnD to the latest version on the installed channel | — | 🔒 admin |
 | `/doctor` | Run fleet health diagnostics | — | 🔒 admin |
 | `/login` | (beta) Remote CLI sign-in, installing the CLI first when missing | `[backend] [cancel]`; `/login cancel` anytime | 🔒 admin |
@@ -31,7 +34,7 @@ All other operations (create/delete/start instances, delegate tasks) are handled
 ## Service management
 
 ```bash
-agend start                     # Start AgEnD service (requires install)
+agend start                     # Start installed service; with no service, start a detached fleet
 agend stop                      # Stop AgEnD service
 agend restart                   # Restart AgEnD service
 agend update                    # Update on the installed channel (an alpha stays on alpha, a beta on beta) and restart
@@ -245,58 +248,17 @@ one somebody already has.
 A user guide to the whole dashboard (panels, chat, files, Stop, sessions, reaching it from elsewhere) is in
 [web-dashboard.md](web-dashboard.md).
 
-The dashboard signs in with a **one-time code**, not a link that carries a
-credential. Send `/web` to your bot (or run `agend web --code` on the host)
-and you get the sign-in page address plus an 8-character code — `ABCD-EFGH`,
-typed with or without the dash, in any case. Type it into the sign-in page and
-you are signed in to `/ui`, `/view` and `/settings` for as long as the session
-lasts, with nothing in the address bar, the browser history or any log that
-records request URLs.
+### Dashboard sign-in and sessions
 
-- **The code works once and expires after 5 minutes.** Only the newest code
-  works: asking again replaces the previous one. Five wrong tries use up that one
-  code (ask for another); enough wrong tries across codes pause sign-in for a few
-  minutes. While no code has been issued there is nothing to guess.
-- **A session is an opaque server-side record**, not a value derived from
-  `web.token`. By default it ends 48 hours after sign-in at the latest, or after
-  48 hours without use, whichever comes first — the server decides, not the
-  browser. It survives a fleet restart (Settings can restart the fleet).
-- **`/web revoke`** in the chat (on Discord, the `/web` slash command with `action: revoke`) signs every browser out and withdraws any
-  unused code. `agend web-token rotate` does the same and also rotates the token
-  the CLI uses; a running fleet picks it up with no restart. The sign-in
-  endpoints also list your signed-in devices and end one or all of them
-  (`GET/DELETE /auth/sessions`).
-- **Each sign-in is announced** in the General topic ("New web sign-in: Chrome on
-  macOS"). If it was not you, send `/web revoke`. Turn this off with
-  `web.notify_login: false`.
-- **Writes need more than the cookie.** The panels add a per-session
-  `X-Agend-CSRF` header to every write, and the server also requires a matching
-  `Origin`; a cookie alone cannot change anything.
-- **One navigation across the panels.** `/ui`, `/view` and `/settings` share a
-  *Dashboard · View · Settings* bar and a **Session** menu (which browser you are,
-  when the session ends, your other signed-in devices with a Sign-out each, and
-  Sign out everywhere). `/` opens the dashboard. If the dashboard's live stream is
-  silent — a proxy that buffers it, or a path that cannot carry SSE such as a
-  Cloudflare Quick Tunnel — it polls `/ui/poll` every 5 seconds until the stream
-  speaks again.
-- **`/view` reads are open by default** (it is a read-only dashboard on a loopback
-  listener) — including the live terminal capture, so anyone who can reach the
-  port can watch your agents. Set `web.view_access: session` in `fleet.yaml` to
-  require a sign-in for the page, the capture, the roster and usage. **Editing a
-  profile or avatar always needs a signed-in session** (or `X-Agend-Token` from a
-  script): the Edit button on `/view` sends a signed-out visitor to sign in and
-  back. The old "paste your web.token to save" box is gone, and `/view?token=…` no
-  longer authorizes anything.
-- **No credential ever goes into a URL.** A `/ui?token=…` link (as older versions
-  printed, and as `agend web` used to open) is no longer a way in: it gets the
-  sign-in page. `agend web` now prints a code and opens `/signin`; scripts keep
-  using the `X-Agend-Token` header.
+Send `/web` in General and press **💻 AgEnD computer: get a code** (or choose the temporary public option for another device). The private packet includes the page and code; `agend web --code` does the same on the host. The newest code works once for five minutes.
 
-Following a link from Telegram or Discord into a panel lands on the sign-in page
-first if the browser did not send the cookie on that cross-site hop
-(`SameSite=Strict`); the page checks for a session from inside the site and
-carries on to the panel you asked for by itself. (Verified on Chromium; Firefox
-and WebKit have not been measured.)
+- Direct dashboard sessions default to 48 hours, configurable with `web.session.local.*`. A public-link session ends after at most four hours, 30 minutes idle, or when the link closes.
+- `/web revoke` signs every browser out and withdraws unused codes; `agend web-token rotate` also replaces the header token.
+- A code or session grants web administration. Keep it private; the session cookie is not a verified platform identity.
+- Browser writes require the session’s CSRF value and a matching Origin. Scripts use `X-Agend-Token`; an Origin they supply must still match Host.
+- `/view` reads are open on the loopback listener by default. Set `web.view_access: session` to require sign-in; profile writes always require authorization.
+
+See the [web guide](web-dashboard.md) for devices, public links, uploads and previews, and [security](SECURITY.md#dashboard-sign-in-and-browser-sessions) for the complete credential rules.
 
 ### Applying settings changes
 
@@ -342,11 +304,8 @@ people who would notice it was not them.
 no event id, so a client that reconnects cannot ask for what it missed — treat a
 frame as a signal to re-read the job.
 
-**If following the link loops back to "No session" forever**, check what sits in
-front of AgEnD. The cookie is marked `Secure` when the request arrives with
-`X-Forwarded-Proto: https`, so a proxy that sets that header while actually
-serving plain HTTP makes the browser refuse to store the cookie. It is a
-misconfigured proxy, not a failed login.
+
+**If a link loops back to “No session”**, check proxy HTTPS headers: a Secure cookie cannot be stored over plain HTTP.
 
 ## Schedules
 
@@ -395,6 +354,8 @@ agend access lock <name>        # Lock instance access (whitelist only)
 agend access unlock <name>      # Unlock instance access (enable pairing)
 agend access pair <name> <uid>  # Generate pairing code
 ```
+
+`access pair` generates a code; it does not approve one. There is no CLI code-confirmation command or `access add`. An owner can grant access through the configured user list; saved and YAML lists are combined as described in [access configuration](configuration.md#channelaccess).
 
 ## Setup & installation
 

@@ -64,7 +64,7 @@ const homeHref = `${base}zh-tw/`;
     </div>
     <div class="mb-14 rounded-xl border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
       <b class="text-text-primary">小提示：</b>事先把 Bot Token 記在記事本，安裝時可直接貼上比較順暢。
-      Telegram：你在群組傳 <code class="font-mono text-accent">/start</code> 時，quickstart 會找出群組和你的 User ID。Discord：quickstart 會問你的 User ID 和 General 頻道的 ID，請看 <a href={`${base}zh-tw/setup-discord/`} class="text-accent hover:underline">Discord Bot 設定教學</a>。
+      Telegram：你在群組傳 <code class="font-mono text-accent">/start</code> 時，quickstart 會找出群組和你的 User ID。Discord：quickstart 會從你的伺服器訊息或 bot 私訊偵測帳號，請你確認；失敗時須手填有效 ID，另需 General 頻道 ID，請看 <a href={`${base}zh-tw/setup-discord/`} class="text-accent hover:underline">Discord Bot 設定教學</a>。
     </div>
 
     <!-- Steps -->
@@ -116,7 +116,7 @@ Unblock-File .\install-agend.ps1</pre>
           </li>
           <li><b class="text-text-primary">[3/5] 登入各後端</b> —— 腳本會帶你依序登入所選的每個後端。Kiro 會顯示一個網址，複製到瀏覽器用 AWS Builder ID / GitHub / Google 授權；Claude / Antigravity / Codex 則在首次執行時各自導向對應的登入頁。完成授權後自動繼續。</li>
           <li><b class="text-text-primary">[4/5] 安裝 AgEnD</b> —— 全自動（透過官方安裝腳本裝 Node.js 22 LTS + tmux）。</li>
-          <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 執行 <code class="font-mono text-accent">agend quickstart</code>：選擇 Discord 或 Telegram，貼上 Bot Token。Telegram 要在群組傳 <code class="font-mono text-accent">/start</code> 讓 quickstart 找到群組；Discord 要貼上你的 User ID 和 General 頻道 ID。接著寫入設定，再詢問要不要安裝服務並啟動。</li>
+          <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 執行 <code class="font-mono text-accent">agend quickstart</code>：選擇 Discord 或 Telegram，貼上 Bot Token。Telegram 要在群組傳 <code class="font-mono text-accent">/start</code> 讓 quickstart 找到群組；Discord 先從訊息偵測帳號並請你確認；失敗時須填有效 ID，另需 General 頻道 ID。接著寫入設定，再詢問要不要安裝服務並啟動。</li>
         </ol>
       </div>
     </div>

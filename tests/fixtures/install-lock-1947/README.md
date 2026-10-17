@@ -1,0 +1,1 @@
+The `.agend-install.lock` shape that every 2.2 beta's updater (2.2.0-beta.1 … beta.18, src/install-lock.ts) writes. It has no `startTicks`, and `processStart` is `ps -o lstart=` under LC_ALL=C and TZ=UTC. A 2.1.12 updater writes no lock at all. A newer postinstall must still admit that updater's own npm child (#1947). `__PREFIX__` is replaced by the test's prefix.

@@ -32,6 +32,13 @@ function writePollMine(mine) {
   try { globalThis.localStorage?.setItem(POLL_MINE_KEY, JSON.stringify(mine)); } catch { /* storage unavailable */ }
 }
 
+/** Board 003648ac: an answer the server marks `sent` (handed over, and its text says only that) leaves after this. */
+const SENT_CLEAR_MS = 8000;
+const COMPACT_DONE_CLEAR_MS = 6000;
+const COMPACT_UNKNOWN_CLEAR_MS = 12000;
+/** The fleet stops following a /compact after 10 minutes (compact-watch.ts); the page waits a minute more. */
+const COMPACT_PAGE_LIMIT_MS = 11 * 60_000;
+
 /** Build a store. `deps` (fetch, toast, announce, t, now) are injected so tests can drive every path. */
 export function createChatStore(deps) {
   const s = {
@@ -79,6 +86,7 @@ export function createChatStore(deps) {
       const waits = i.state === "awaiting_input" ? (typeof i.interaction_summary === "string" ? i.interaction_summary : "") : null;
       if (i.name === s.current && waits != null && s.awaiting[i.name] == null) deps.announce(tf("chat.awaiting", i.name));
       s.awaiting[i.name] = waits;
+      if (i.compact) noteCompact(i.name, i.compact);
     }
     changed(null);
   }
@@ -265,7 +273,7 @@ export function createChatStore(deps) {
     const inFlight = s.inFlightFiles[target] || [];
     const res = R().checkFiles(inFlight.concat(s.pendingFiles[target] || []), [...(list || [])]);
     s.pendingFiles[target] = res.kept.slice(inFlight.length);
-    for (const x of res.rejected) deps.toast(`${x.name}: ${t(`chat.file_${x.reason.replace(/-/g, "_")}`)}`, false);
+    for (const x of res.rejected) { const why = R().fileRejection(x.reason); deps.toast(`${x.name}: ${t(why.key, ...why.values)}`, false); }
     changed(target);
   }
   function removeFile(target, index) { (s.pendingFiles[target] || []).splice(index, 1); changed(target); }
@@ -341,9 +349,31 @@ export function createChatStore(deps) {
       if (!yes || !alive()) { delete s.commands[target]; changed(target); return; }
       r = await post({ confirm: r.confirm.token });
     }
-    s.commands[target] = r && r.choices ? { command, busy: false, choices: r.choices }
-      : r && r.error ? { command, busy: false, error: r.error } : { command, busy: false, text: (r && r.text) || "" };
+    const follow = r && r.follow && r.follow.kind === "compact" ? r.follow : null;
+    showCommand(target, r && r.choices ? { command, busy: false, choices: r.choices }
+      : r && r.error ? { command, busy: false, error: r.error }
+      : { command, busy: false, text: (r && r.text) || "", ...(r && r.sent === true ? { sent: true } : {}), ...(follow ? { compact: follow.id ? "running" : "unknown", watch: follow.id } : {}) });
     changed(target);
+  }
+  // Board 003648ac: an answer the server marks `sent` leaves by itself; a sent /compact says "compacting…" until the
+  // status frame's `compact` (same watch id) says it ended, then leaves when it is done. Everything else — a refusal
+  // (even one worded as text), a list to choose from, an answer to read, a compaction timed out, lost or not made — stays.
+  function showCommand(target, card) {
+    s.commands[target] = card;
+    const later = (ms, fn) => deps.setTimeout(() => { if (s.commands[target] === card) { fn(); changed(target); } }, ms);
+    const leave = () => { delete s.commands[target]; };
+    if (card.busy || card.error || card.choices || ["timeout", "lost", "not_compacted"].includes(card.compact)) return;
+    if (card.compact === "running") later(COMPACT_PAGE_LIMIT_MS, () => showCommand(target, { ...card, compact: "timeout" }));
+    else if (card.compact === "done") later(COMPACT_DONE_CLEAR_MS, leave);
+    else if (card.compact === "unknown") later(COMPACT_UNKNOWN_CLEAR_MS, leave);
+    else if (card.sent === true) later(SENT_CLEAR_MS, leave);
+  }
+  /** The status frame's word on a followed /compact: done, not compacted (kiro said so, board 907c7899), timed out, or lost. */
+  function noteCompact(name, view) {
+    const c = s.commands[name];
+    if (!c || c.compact !== "running" || !view || view.id !== c.watch || !["done", "not_compacted", "timeout", "lost"].includes(view.state)) return;
+    showCommand(name, { ...c, compact: view.state });
+    changed(name);
   }
   function dismissCommand(target) { delete s.commands[target]; changed(target); }
   /** Whether a command can start for `target` now (none is out): checked before a typed command line is consumed. */

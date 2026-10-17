@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, renameSync, statSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, renameSync, statSync, chmodSync, realpathSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -453,6 +453,46 @@ function replaceUnitFile(unitPath: string, text: string): void {
     try { unlinkSync(tmp); } catch { /* already gone */ }
     throw err;
   }
+}
+
+export type SystemUnitRefresh =
+  | { kind: "updated"; execStart: string }
+  | { kind: "current" }
+  | { kind: "foreign"; reason: string }
+  | { kind: "unreadable" };
+
+/**
+ * #1884: a legacy system unit (/etc/systemd/system/agend.service, written by an operator for a root fleet; AgEnD only
+ * recognises it) is AgEnD's service too, but a refresh used to write only the user unit. An update from 2.1 left its
+ * ExecStart on 2.1's `bin/agend` script, and `agend restart`'s C6 guard then refused it (the loaded unit does not start
+ * the selected Node): the update installed 2.2 and left 2.1 running.
+ *
+ * The refresh rewrites that one line to what the user unit gets — this package's selected program, `fleet start` — when
+ * the unit has exactly one ExecStart and it starts THIS package's fleet (its program, or the script a Node runs, is a
+ * file inside `pkgDir`). Every other line, and an ExecStart that starts anything else, is the operator's and stays.
+ * Written atomically with the file's own mode. Proof and rollback are the restart's and the updater's, exactly as for
+ * the user unit: a daemon-reload, the loaded ExecStart judged against the selection, the preimage put back on refusal.
+ */
+export function refreshSystemUnitExecStart(unitPath: string, vars: ServiceVars, pkgDir: string): SystemUnitRefresh {
+  let text: string;
+  try { text = readFileSync(unitPath, "utf-8"); } catch { return { kind: "unreadable" }; }
+  const lines = text.split("\n");
+  const bounds = sectionBounds(lines, "Service");
+  if (!bounds) return { kind: "unreadable" };
+  const at = lines.map((line, index) => ({ line, index })).filter(({ line, index }) => index > bounds.start && index < bounds.end && /^\s*ExecStart\s*=/.test(line));
+  if (at.length !== 1) return { kind: "foreign", reason: `${at.length} ExecStart lines` };
+  const words = systemdWords(at[0].line.replace(/^\s*ExecStart\s*=\s*/, ""));
+  const real = (path: string | undefined) => { if (!path?.startsWith("/")) return null; try { return realpathSync(path); } catch { return null; } };
+  const root = real(pkgDir);
+  const inside = (path: string | undefined) => { const r = real(path); return !!root && !!r && (r === root || r.startsWith(`${root}/`)); };
+  const starts = words.length >= 3 && words[words.length - 2] === "fleet" && words[words.length - 1] === "start"
+    && (words.length === 3 ? inside(words[0]) : words.length === 4 && /(^|\/)node$/.test(words[0]) && inside(words[1]));
+  if (!starts) return { kind: "foreign", reason: "its ExecStart does not start this package's fleet" };
+  const wanted = /^ExecStart=.*$/m.exec(renderSystemdUnit(vars))![0];
+  if (at[0].line.trim() === wanted) return { kind: "current" };
+  lines[at[0].index] = wanted;
+  replaceUnitFile(unitPath, lines.join("\n"));
+  return { kind: "updated", execStart: wanted.slice("ExecStart=".length) };
 }
 
 /**

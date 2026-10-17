@@ -1,4 +1,4 @@
-/** #1629: fixed host producer only. Not imported or mounted by the product yet; creates no frame or request. */
+/** #1629: fixed host producer. Creates no frame or request; the admitted app controller owns its lease. */
 import { html, useLayoutEffect, useRef } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { createEffectTrialStage } from "/assets/effect-trial-stage.js";

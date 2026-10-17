@@ -108,14 +108,36 @@ describe("#1629 real Fleet effect tool integration", () => {
     expect(await f.op("own","effect-list")).toMatchObject({effects:[{id,latest_profile:{status:"reported",records:[{device:"standard"},{device:"constrained"}]}}]});
     const list=await f.op("own","effect-list");expect(list.effects[0].latest_profile.records).toHaveLength(2);expect((await f.op("own","effect-profile",{id})).records).toHaveLength(3);
   });
-  it("refuses unknown callers, malformed payloads and private previews; never fabricates a card or an unmeasured healthy profile", async () => {
+  it("refuses unknown callers, malformed payloads and private previews; never fabricates a healthy profile", async () => {
     const f = await fixture(), id = await upload(f);
     expect(await f.fm.handleWebThemeHttp("missing", "list_web_effects", {})).toEqual({ error: "unknown_instance" });
     expect(await f.op("own", "effect-list", { instance: "other" })).toMatchObject({ error: "effect_args" });
     expect(await f.op("other", "effect-preview", { id })).toEqual({ error: "not_found" });
-    expect(await f.op("own", "effect-preview", { id })).toMatchObject({ error: "effects_unavailable" });
+    expect(await f.op("own", "effect-preview", { id })).toMatchObject({ id, status: "offered" });
     expect(await f.op("own", "effect-profile", { id })).toEqual({ ok: true, records: [], status: "unmeasured" });
     expect(f.events.mock.calls.some(c => c[0] === "message")).toBe(false);
+  });
+  it("preview publishes one host-only memory card, keeps its deadline and spends no appearance quota", async () => {
+    const f = await fixture(), id = await upload(f), humanId = human(f), write = vi.fn((_chunk: string) => true); f.fm.sseClients.add({ write });
+    const quota = f.fm.webAppearance.limiter.remaining("own"), placements = f.fm.themeStore.get("own").placements.effects;
+    f.fm.themeStore.setLocked("own", true); f.fm.fleetConfig.web.themes.agent_edit = false;
+    const first = await f.op("own", "effect-preview", { id }); expect(first).toMatchObject({ id, status: "offered" });
+    expect(first).not.toHaveProperty("offer"); const cards = f.fm.webChatHistory.list("own");
+    expect(cards).toHaveLength(1); expect(cards[0]).toMatchObject({ role: "status", sender: "agend", text: "", effectTrial: { id, expiresAt: first.expiresAt } });
+    const offer = cards[0].effectTrial; expect(Object.isFrozen(offer)).toBe(true);
+    expect(await f.op("own", "effect-preview", { id })).toEqual(first);
+    expect(f.fm.webChatHistory.list("own")).toHaveLength(1); expect(write).toHaveBeenCalledOnce();
+    expect(write.mock.calls[0]![0]).toContain(JSON.stringify(cards[0]));
+    expect(f.events.mock.calls.some(c => c[0] === "agent_reply_live")).toBe(false);
+    expect(f.fm.webAppearance.limiter.remaining("own")).toEqual(quota);
+    expect(f.fm.themeStore.get("own").placements.effects).toEqual(placements);
+    expect(await f.op("own", "effect-preview", { id: humanId })).toEqual({ error: "not_found" });
+    expect(f.fm.webChatHistory.list("own")).toHaveLength(1);
+    f.fm.effectLibrary.setShared(humanId, { kind: "human", id: OPERATOR }, true);
+    expect(await f.op("own", "effect-preview", { id: humanId })).toMatchObject({ status: "offered" });
+    f.fm.effectLibrary.setShared(humanId, { kind: "human", id: OPERATOR }, false);
+    expect(await f.op("own", "effect-preview", { id: humanId })).toEqual({ error: "not_found" });
+    expect(f.fm.webChatHistory.list("own")).toHaveLength(2);
   });
   it.each(["web-themes.json", "web-prefs.json", "web-mods.json"])("refuses unknown references from %s instead of publishing new claims", async file => {
     const f = await fixture(); writeFileSync(join(f.dir, file), "not JSON");
@@ -141,7 +163,7 @@ describe("#1629 real Fleet effect tool integration", () => {
     expect(() => f.fm.effectLibrary).toThrow("registration failed"); expect(f.fm.effectLibraryInstance).toBeUndefined(); spy.mockRestore();
     expect(await upload(f)).toEqual(expect.any(String));
   });
-  it("registers the single volatile trial owner before publishing the library and leaves the tool unavailable", async () => {
+  it("registers the single volatile trial owner before publishing the library and offers an explicit trial", async () => {
     const f = await fixture(), names: string[] = [], original = WebEffectLibrary.prototype.registerReferenceSource;
     const registration = vi.spyOn(WebEffectLibrary.prototype, "registerReferenceSource").mockImplementation(function (this: WebEffectLibrary, name, source) {
       expect(f.fm.effectLibraryInstance).toBeUndefined(); names.push(name); return original.call(this, name, source);
@@ -151,7 +173,7 @@ describe("#1629 real Fleet effect tool integration", () => {
     const id = await upload(f), offered = f.fm.effectTrials.offer("own", id); expect(offered.ok).toBe(true);
     expect(f.fm.effectTrials.offer("other", id)).toEqual({ ok: false, error: "trial_unavailable" });
     expect(library.deleteClaim(id, { kind: "agent", id: "own" })).toMatchObject({ error: "effect_in_use" });
-    expect(await f.op("own", "effect-preview", { id })).toMatchObject({ error: "effects_unavailable" });
+    expect(await f.op("own", "effect-preview", { id })).toMatchObject({ id, status: "offered" });
     const viewer = { via: "session", surface: "local", tier: "admin", sessionHash: "a".repeat(64), epoch: "b".repeat(16), person: OPERATOR, ownerCss: "off" };
     const started = f.fm.effectService.trialStart(offered.offer.offer, "own", viewer); expect(started).toMatchObject({ trial: expect.stringMatching(/^[0-9a-f]{32}$/) });
     expect(f.fm.effectService.trialResource(started.trial, "own", viewer)).toMatchObject({ id, code: "agend.ready()" });

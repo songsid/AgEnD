@@ -1,0 +1,4 @@
+108c108
+<           Resume a session by ID or title, or the most recent if omitted. Non-ID values match session titles for the current directory, ignoring letter case; UUID-shaped values always mean IDs. Among duplicate titles a sole renamed match wins; otherwise the resume fails as ambiguous
+---
+>           Resume a session by ID or title, or the most recent if omitted. Non-ID values match session titles for the current directory, ignoring letter case; UUID-shaped values always mean IDs. Without an exact match, the same words joined by any separators also match: quote "fix login bug" or write fix-login-bug. Among duplicate titles a sole renamed match wins; otherwise the resume fails as ambiguous

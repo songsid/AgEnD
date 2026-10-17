@@ -345,6 +345,14 @@ export interface WebConfig {
   /** Show the AI subscription usage panel on /view and serve /api/ai-usage (default true). */
   usage_panel?: boolean;
   /**
+   * #1937: the largest file the web chat takes, in MB (whole number, 1–500; default 50). Never more than
+   * upload_max_total_mb; over the public link a file is at most 95 MB whatever this says (the quick tunnel's limit).
+   * Read on each upload: `agend reload` applies a change; an open page uses the new limits after it reloads.
+   */
+  upload_max_file_mb?: number;
+  /** #1937: all files on one web chat message together, in MB (whole number, 1–500; default 100). At most 5 files. */
+  upload_max_total_mb?: number;
+  /**
    * #1218: the instance Log tab (紀錄) — each agent's steps (prompts, replies, tool calls and results, errors) read on
    * demand from its own transcript, secrets masked. Default false: off, it does no work at all. Turning it on is an
    * admin's change, confirmed like any access change (Settings → Web).

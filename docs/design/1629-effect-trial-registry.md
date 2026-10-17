@@ -1,5 +1,7 @@
 # #1629 local Trial admission in the common registry
 
+> Current integration: [product Try](1629-effect-trial-product.md) connects these foundations. References below to an unmounted or unavailable slice describe its original introduction, not the current feature branch.
+
 This connects the [host paint receipt](1629-effect-trial-stage.md) to the existing
 allocator and registry. **No product adapter emits a Trial descriptor yet.** It
 creates no second registry, baseline, pool, profiler, budget or safety history.
