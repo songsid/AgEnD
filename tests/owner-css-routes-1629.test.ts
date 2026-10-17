@@ -264,19 +264,29 @@ describe("no agent path reaches it", () => {
         // web-mod-agent.ts (r4-5b): an agent's mod path names it only to refuse it (owner_css_not_from_agent), and its
         // export never carries it — both tested in web-mods-agent-1629.
         "web-mod-agent.ts",
+        // web-settings-tools.ts (#2056): General's tools change the user's Settings → Web appearance — for custom CSS only
+        // a trial (the store's own save, checkOwnerCss and all), its revert, or off; keeping it stays the person's (pinned below).
+        "web-settings-tools.ts",
         // Try checks the host-supplied CSS lifecycle enum for a closed diagnostic value.
         // It neither imports the CSS store nor exposes its management routes (pinned below).
         "web-effect-trials.ts"].includes(f)) continue;
       if (/owner[-_ ]?css/i.test(readFileSync(join(src, f), "utf8"))) hits.push(f);
     }
     expect(hits, "no tool, CLI or agent route names it").toEqual([]);
+    // #2056: General's tools save on trial, revert it, or turn it off — never keep a trial or choose a version.
+    const tools = readFileSync(join(src, "web-settings-tools.ts"), "utf8");
+    expect(tools).not.toMatch(/\.keep\(/);
+    expect([...tools.matchAll(/store\.restore\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(["null"]);
+    expect([...tools.matchAll(/ownerCss\.restore\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(["null"]);
     const trials = readFileSync(join(src, "web-effect-trials.ts"), "utf8");
     expect(trials).toContain('["off", "on", "loading", "unknown"].includes(d.ownerCss as string)');
     expect(trials).not.toContain('d.ownerCss !== "off"');
     expect(trials).not.toMatch(/from\s*["']\.\/web-owner-css|\/ui\/owner-css|setOwnerCss/);
     const fm = readFileSync(join(src, "fleet-manager.ts"), "utf8");
-    // Field, getter, construction — and (r4-5) handing it to the mod store, whose only door is the /ui/mods routes.
-    expect(fm.match(/ownerCss/g)?.length, "fleet-manager only holds the store for the web context").toBe(5);
+    // Field, getter, construction — and (r4-5) handing it to the mod store, whose only door is the /ui/mods routes; and
+    // (#2056) to General's web-settings tools, whose CSS door is a trial, its revert, or off (pinned above).
+    expect(fm.match(/ownerCss/g)?.length, "fleet-manager only holds the store for the web context").toBe(7);
+    expect(fm).toContain("prefs: this.webPrefs, ownerCss: this.ownerCss, mods: this.mods, effects: this.effectService,");
     expect(fm).toContain("ownerCss: this.ownerCss,");
   });
 });

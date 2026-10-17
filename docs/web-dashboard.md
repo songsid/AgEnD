@@ -368,7 +368,15 @@ A mod is one file, `<name>-<version>.agendmod.json`, that carries a look: an age
 - **Export a mod** makes a file from what is in force now: an agent's theme with its pictures and the effects it places, its card text and widgets, your sidebar widget, and your custom CSS with the files it names. An exported file imports as it is. **Only effects that are yours to carry away travel**: your own and ones a person shared. Someone else's private effect placed on that agent stays out, and the page says how many were left out. An agent's own export (`export_web_mod`) follows the same rule for the agent.
 - **Agents' mods.** An agent can export its own look as a mod file (`export_web_mod`, written in its working directory) and propose a mod for you to review (`propose_web_mod`). A proposal shows under **Proposed by agents**: **Review** opens it into the same two-step import, and **Dismiss** drops it. A mod an agent proposes can never carry custom CSS, and agents never import.
 - **Effects** in a mod need the effect runtime. Until this fleet has one, a mod that carries effects is refused with `effects_unavailable`.
-- Mods are a signed-in person's action. They are never available over a temporary public link, and an agent's CLI token can't reach them.
+- Mods are a signed-in person's action, or General's when you ask it (below). They are never available over a temporary public link, and an ordinary agent can only propose one.
+
+### Asking General to change it for you
+
+General (and a coordinator or full-profile instance) can change **Settings → Web appearance** for you: just ask in chat.
+- **What it uses:** `get_web_settings` tells it every setting in plain words, and `set_web_settings` changes one through the page's own checks.
+- **What it can change:** agents' themes shown, identity colours and where they show, card sizes, the sidebar widget, one agent's colour, effects on a chat and your effect slots, an agent's proposed mod (it shows you the plan, then installs only what you asked for), and Restore defaults.
+- **Custom CSS:** it keeps its safe rules. General can put it on trial, revert the trial or turn it off. **Keeping** it, or switching to an earlier version, is your own click on your screen.
+- **What only you can do, on the page:** choosing a file from your computer (a mod file, an effect folder, a CSS asset, a card picture), this browser's own switches, downloading an export, and the card upload limits.
 
 ## Reaching it from elsewhere
 

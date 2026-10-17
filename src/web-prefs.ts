@@ -344,6 +344,16 @@ export class WebPrefsStore {
     return { ok: true, state: candidate, changed };
   }
 
+  /**
+   * #2056: the people whose preferences are kept here — the host operator first, then everyone who has signed in (their
+   * bucket), each with the web name they go by. For a tool naming whose own settings it changes.
+   */
+  people(): Array<{ person: string; name: string | null }> {
+    const state = this.load();
+    const ids = state === "unreadable" ? [] : [...state.buckets.keys()].filter((k) => k !== OPERATOR).sort();
+    return [OPERATOR, ...ids].map((person) => { const p = this.profile(person); return { person, name: p?.name ?? p?.platformName ?? null }; });
+  }
+
   /** #1827: a web person's profile as kept (checked again where it is used); null while the file cannot be read. */
   profile(identity: string): WebProfile | null {
     const state = this.load();

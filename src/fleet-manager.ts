@@ -210,7 +210,7 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { parsePoll, type PollRender } from "./reply-polls.js";
 import { isUploadRequest, limitRequestReceive, publicAttachment, sweepOrphanedUploads, UPLOAD_REQUEST_TIMEOUT_MS, uploadLimits, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
-import { cardPicture, handleViewRequest, humanCards, identityColors, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
+import { cardPicture, handleViewRequest, humanCards, identityColors, isViewPath, personIdentityColour, profileIdentities, resolveInstanceIdentity, setPersonIdentityColour } from "./view-api.js";
 import { autoIdentityColor } from "./web-identity-color.js";
 import { AppearanceTools } from "./web-appearance-tools.js";
 import type { FrameEntry } from "./web-appearance-view.js";
@@ -232,6 +232,7 @@ import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScope } from "./command-table.js";
 import { crossInstanceVisibility, runVisibilityCommand } from "./cross-instance-notice.js";
+import { WebSettingsTools } from "./web-settings-tools.js";
 import { bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
 import { TrafficLog, trafficItem, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
@@ -1487,6 +1488,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #1629 r4 §3: each person's own CSS; which version is in force is their `css.active` in the web preferences. */
   get ownerCss(): OwnerCssStore {
     return (this.ownerCssStore ??= new OwnerCssStore(this.dataDir, this.webPrefs));
+  }
+
+  private webSettingsToolsService?: WebSettingsTools;
+  /**
+   * #2056: Settings → Web appearance for a tool (General, a coordinator, full) — the page's own stores and checks, and the
+   * page's announcement after a change (web-settings-tools.ts).
+   */
+  get webSettings(): WebSettingsTools {
+    return (this.webSettingsToolsService ??= new WebSettingsTools({
+      prefs: this.webPrefs, ownerCss: this.ownerCss, mods: this.mods, effects: this.effectService,
+      instances: () => [...Object.keys(this.fleetConfig?.instances ?? {}),
+        ...(this.classicChannels?.getAll() ?? []).map((ch) => ch.instanceName).filter((n) => !Object.hasOwn(this.fleetConfig?.instances ?? {}, n))],
+      colour: (name) => personIdentityColour(this.dataDir, name),
+      setColour: (name, patch) => { const w = setPersonIdentityColour(this.dataDir, name, patch); if (w.ok) this.identityChanged(); return w; },
+      placements: (name) => this.themeStore.get(name).placements.effects.map((e) => (typeof e === "string" ? { id: e } : e)),
+      announce: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next status frame carries it */ } },
+    }));
   }
 
   get webPrefs(): WebPrefsStore {

@@ -326,6 +326,56 @@ export const GetUsageArgs = z.object({
   force: z.boolean().optional().describe("Bypass the 5-minute cache and fetch fresh data (rate-limited by vendors — use sparingly)"),
 });
 
+// #2056: Settings → Web appearance for the user — General, a coordinator or a full profile; the page's own checks.
+const Person = NonEmptyString.optional()
+  .describe("Whose own settings (custom CSS, effect slots): a `person` from get_web_settings' people — the one whose platform id is the user's. Default: the host operator. Host settings are everyone's on this host.");
+const Places = z.array(z.enum(["name", "bar", "ring"])).max(3);
+export const GetWebSettingsArgs = z.object({ person: Person }).strict();
+export const SetWebSettingsArgs = z.object({
+  person: Person,
+  change: z.discriminatedUnion("what", [
+    z.object({
+      what: z.literal("host"),
+      set: z.object({
+        themes_shown: z.boolean().nullable().optional().describe("Show agents' themes, effects and widgets (null: the default, shown)"),
+        card_size: z.enum(["s", "m", "l"]).nullable().optional().describe("Identity cards' size (null: the default, m)"),
+        card_sizes: z.record(z.string(), z.enum(["s", "m", "l"])).nullable().optional().describe("Cards set apart from it: { <instance>: s|m|l } (null: none)"),
+        colour_places: Places.nullable().optional().describe("Where identity colours show where nobody chose: name, bar, ring ([] nowhere; null: the default, all three)"),
+        colours_off: z.boolean().nullable().optional().describe("Turn every identity colour off on this host (picks are kept)"),
+        sidebar_widget: z.object({ spec: z.record(z.string(), z.unknown()), data: z.record(z.string(), z.unknown()) }).strict().nullable().optional()
+          .describe("The sidebar widget: { spec, data }, the same spec as set_web_widget's, binds fleet.working / needs_you / idle / stopped (null removes it)"),
+      }).strict(),
+    }).strict(),
+    z.object({
+      what: z.literal("agent_colour"), instance: NonEmptyString,
+      colour: z.string().nullable().optional().describe("preset:<name> or #rrggbb (null: back to the agent's, its bot's or the automatic one)"),
+      places: Places.nullable().optional().describe("Where that agent's colour shows ([] nowhere; null: back to the host's places)"),
+    }).strict(),
+    z.object({
+      what: z.literal("custom_css"), action: z.enum(["save", "revert", "off"]),
+      text: z.string().optional().describe("save: the stylesheet (same rules as the page: no remote URLs, assets as url(\"asset:<id>\"), at most 64 KiB). It goes on trial on their screens; keeping it is the person's own click."),
+    }).strict(),
+    z.object({
+      what: z.literal("mod"), action: z.enum(["review", "install", "cancel", "dismiss", "uninstall"]),
+      instance: z.string().optional().describe("review / dismiss: the agent whose proposal it is"),
+      stage: z.string().optional().describe("install / cancel: from review"), plan_hash: z.string().optional().describe("install: from review"),
+      include: z.record(z.string(), z.unknown()).optional().describe("install: the parts to apply, as the plan names them (custom CSS only when you mean it)"),
+      target: z.string().optional().describe("install: the agent the look applies to"),
+      id: z.string().optional().describe("uninstall: an installed mod's id"),
+    }).strict(),
+    z.object({
+      what: z.literal("effect"), action: z.enum(["apply", "remove"]), instance: NonEmptyString,
+      id: z.string().optional().describe("apply: the effect's id; remove: one id (omit for all)"),
+      params: z.record(z.string(), z.unknown()).optional().describe("apply: typed params the effect declares"),
+    }).strict(),
+    z.object({
+      what: z.literal("effect_slot"), slot: z.enum(["sidebar", "header", "page", "box", "cursor"]),
+      id: z.string().nullable().describe("An effect id from the library for that slot, or null to clear it"),
+    }).strict(),
+    z.object({ what: z.literal("restore_defaults") }).strict(),
+  ]),
+}).strict();
+
 /** #2001: the prompt-cache expiry / keep-warm report, read-only. */
 export const GetCacheReportArgs = z.object({
   window: z.enum(["24h", "7d", "30d"]).optional().describe("The period to analyse. Default: 7d."),

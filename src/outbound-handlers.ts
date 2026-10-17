@@ -56,6 +56,8 @@ import {
   KiroEngineStatusArgs,
   GetUsageArgs,
   GetCacheReportArgs,
+  GetWebSettingsArgs,
+  SetWebSettingsArgs,
   ListModelsArgs,
   GetFleetConfigArgs,
   UpdateInstanceConfigArgs,
@@ -149,6 +151,8 @@ export interface OutboundContext {
   getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
   /** Subscription provider IDs used by running or paused fleet/Classic instances. */
   getActiveUsageProviderIds?(): ReadonlySet<string>;
+  /** #2056: Settings → Web appearance for the user (web-settings-tools.ts). */
+  webSettings?: import("./web-settings-tools.js").WebSettingsTools;
   /** #2001: the cache report as last worked out (CacheService.published) — never a transcript read. */
   cacheReportPublished?(window: string): Promise<import("./cache-service.js").CacheReport>;
   /** Effective process state used to annotate cross-instance delivery results. */
@@ -1092,6 +1096,25 @@ const getUsage: Handler = async (ctx, rawArgs, respond) => {
   } catch (err) {
     respond(null, `Usage fetch failed: ${(err as Error).message}`);
   }
+};
+
+/**
+ * #2056: Settings → Web appearance for the user — get_web_settings / set_web_settings, through the page's own stores and
+ * checks (web-settings-tools.ts). Who may call them is the tool profile (General, coordinator, full), at every sink.
+ */
+const getWebSettings: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(GetWebSettingsArgs, rawArgs, "get_web_settings");
+  if (!v.ok) { respond(null, v.error); return; }
+  if (!ctx.webSettings) { respond(null, "get_web_settings is unavailable on this fleet"); return; }
+  const r = ctx.webSettings.read(v.data.person);
+  if (r.ok) respond(r); else respond(null, `get_web_settings: ${r.error}${r.detail ? ` — ${r.detail}` : ""}`);
+};
+const setWebSettings: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(SetWebSettingsArgs, rawArgs, "set_web_settings");
+  if (!v.ok) { respond(null, v.error); return; }
+  if (!ctx.webSettings) { respond(null, "set_web_settings is unavailable on this fleet"); return; }
+  try { respond(ctx.webSettings.change(v.data.person, v.data.change)); }
+  catch (err) { respond(null, `set_web_settings failed: ${(err as Error).message}`); }
 };
 
 /**
@@ -2204,6 +2227,8 @@ export const outboundHandlers = new Map<string, Handler>([
   ["kiro_engine_status", kiroEngineStatusHandler],
   ["get_usage", getUsage],
   ["get_cache_report", getCacheReport],
+  ["get_web_settings", getWebSettings],
+  ["set_web_settings", setWebSettings],
   ["list_models", listModels],
   ["get_instance_logs", getInstanceLogs],
   ["get_fleet_config", getFleetConfig],
