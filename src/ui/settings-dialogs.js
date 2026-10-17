@@ -50,7 +50,8 @@ export function BackendSelect({ value, onChange, disabled, id }) {
 }
 /**
  * #2072: a model field is a list — that backend's models for this account (cached; never a probe), the current one
- * first and marked when the CLI does not list it, and "Other…" for a name it does not list (a text box opens).
+ * first and marked when the CLI does not list it, and "Other…" for a name it does not list (a text box opens with
+ * the current value in it: choosing "Other…" alone changes nothing — emptying the box is what inherits, #2098 review).
  * `inherit`: the label of the empty choice (inherit / none), or omit it when the field has none.
  */
 export function ModelSelect({ value, onChange, disabled, id, backend, instance, inherit }) {
@@ -59,7 +60,7 @@ export function ModelSelect({ value, onChange, disabled, id, backend, instance, 
   const opts = modelChoices(catalog || [], value, { notListed: tn("modelNotListed"), other: tn("modelOther") }, inherit);
   return html`<div class="model-pick">
     <select id=${id} value=${typing ? OTHER_MODEL : value} disabled=${disabled}
-      onChange=${(e) => { const v = e.target.value; if (v === OTHER_MODEL) { setTyping(true); onChange(""); } else { setTyping(false); onChange(v); } }}>
+      onChange=${(e) => { const v = e.target.value; if (v === OTHER_MODEL) setTyping(true); else { setTyping(false); onChange(v); } }}>
       ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select>
     ${typing ? html`<input type="text" aria-label=${tn("modelOtherLabel")} placeholder=${tn("modelOtherPlaceholder")} disabled=${disabled}
       value=${value} onInput=${(e) => onChange(e.target.value)} />` : null}</div>`;

@@ -72,8 +72,11 @@ describe("the pickers on a page", () => {
     select.value = "sonnet"; fire(select, "change"); await settle();
     expect(value).toBe("sonnet");
     select.value = OTHER_MODEL; fire(select, "change"); await settle();
+    // Choosing "Other…" alone changes nothing: the box opens holding the current model (#2098 review P3-1).
+    expect(value).toBe("sonnet");
     const box = p.root.querySelector(".model-pick input")!;
     expect(box).not.toBeNull();
+    expect(box.value).toBe("sonnet");
     box.value = "my-model"; fire(box, "input"); await settle();
     expect(value).toBe("my-model");
   });
