@@ -1744,6 +1744,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private webGuestLoginCodes: GuestLoginCodes | null = null;
   /** #1920 step 4: when each account last got a guest code (monotonic) — one a minute, so `/web` is no DM flood. */
   private readonly guestCodeAskedAt = new Map<string, number>();
+  /** #2093 review: an account's guest /web in progress — one at a time, so two at once cannot both pass the minute. */
+  private readonly guestCodeInFlight = new Set<string>();
+  /**
+   * #2093 review: revokes a guest /web in progress must see — every web session's (`/web revoke` from an admin) bumps
+   * the global count, an account's own bumps its entry — checked before the code is issued and while it is delivered.
+   */
+  private guestRevokes = 0;
+  private readonly guestAccountRevokes = new Map<string, number>();
   /** #1570: browsers that may ask the sign-in page for a fresh code, and how often they may. */
   private returningDevices: ReturningDevices | null = null;
   private readonly codeRequestLimiter = new CodeRequestLimiter();
@@ -6219,6 +6227,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     void this.publicWebLink?.close("dashboard revoke");
     this.webLoginCodes!.revoke();
     this.webGuestLoginCodes!.revokeAll();
+    this.guestRevokes++;                              // and every guest /web still on its way
     // #1570: no browser may ask the sign-in page for a code any more.
     const devices = this.returningDevices!.revokeAll();
     const sessions = this.webSessions!.revokeAll();
@@ -6244,6 +6253,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   revokeGuestWebSessions(owner: { adapterId: string; userId: string }): { count: number; durable: boolean } {
     this.initializeWebSessions();
+    const key = `${owner.adapterId}\u0000${owner.userId}`;
+    this.guestAccountRevokes.set(key, (this.guestAccountRevokes.get(key) ?? 0) + 1);   // its /web on its way, too
+    while (this.guestAccountRevokes.size > 4096) this.guestAccountRevokes.delete(this.guestAccountRevokes.keys().next().value as string);
     this.webGuestLoginCodes!.revokeRecipient(owner);
     const ended = this.webSessions!.revokeAll(r => r.tier === "guest" && r.owner?.adapterId === owner.adapterId && r.owner.userId === owner.userId);
     this.logger.info({ adapterId: owner.adapterId, count: ended.count, durable: ended.durable }, "Guest web sessions revoked by their account");
@@ -6274,25 +6286,38 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const adapter = this.adapters.get(ask.adapterId);
     if (this.shuttingDown || !token || !adapter) { await say(t("dashboard.starting")); return true; }
     const key = `${owner.adapterId}\u0000${owner.userId}`, asked = this.guestCodeAskedAt.get(key);
-    if (asked !== undefined && performance.now() - asked < 60_000) { await say(t("web.guest_wait")); return true; }
+    if (this.guestCodeInFlight.has(key) || (asked !== undefined && performance.now() - asked < 60_000)) { await say(t("web.guest_wait")); return true; }
+    this.guestCodeInFlight.add(key);
+    try { await this.issueGuestCode(ask, owner, key, adapter, token); }
+    finally { this.guestCodeInFlight.delete(key); }
+    return true;
+  }
+
+  /** guestWebCommand's issuance, one per account at a time; a revoke made meanwhile (either kind) ends it unissued. */
+  private async issueGuestCode(ask: { username?: string; replyHere: (text: string) => Promise<unknown>; replyPrivately?: (text: string) => Promise<unknown> },
+    owner: { adapterId: string; userId: string }, key: string, adapter: ChannelAdapter, token: string): Promise<void> {
+    const say = (text: string) => ask.replyHere(text).catch(() => undefined);
+    const revokes = this.guestRevokes, accountRevokes = this.guestAccountRevokes.get(key) ?? 0;
+    const unrevoked = (): boolean => this.guestRevokes === revokes && (this.guestAccountRevokes.get(key) ?? 0) === accountRevokes;
     // §3.2: its rooms are read at sign-in (bounded; never longer than the reads' own deadline).
     await withinBudget(this.refreshGuestRooms(owner, { mode: "force" }), performance.now() + 6_000).catch(() => undefined);
+    if (!unrevoked()) return;                         // revoked while its rooms were read: no code
     const scope = this.guestScope(owner);
     if (!scope.size) {
       const open = this.worlds.get(owner.adapterId)?.accessManager.getMode() === "open";
       await say(t(open ? "web.guest_not_set_up" : "web.guest_nothing"));
-      return true;
+      return;
     }
     this.initializeWebSessions();
     const codes = this.webGuestLoginCodes!;
-    if (codes.pausedForMs() > 0) { await say(t("web.guest_paused")); return true; }
+    if (codes.pausedForMs() > 0) { await say(t("web.guest_paused")); return; }
     // One code per account (a new one replaces only its own); at the cap, refused — never another guest's evicted.
     const login = codes.issue({ epoch: tokenEpoch(token), recipient: { adapterId: owner.adapterId, userId: owner.userId, ...(ask.username ? { username: ask.username } : {}) } });
-    if (!login) { await say(t("web.guest_busy")); return true; }
+    if (!login) { await say(t("web.guest_busy")); return; }
     this.guestCodeAskedAt.delete(key); this.guestCodeAskedAt.set(key, performance.now());
     while (this.guestCodeAskedAt.size > 256) this.guestCodeAskedAt.delete(this.guestCodeAskedAt.keys().next().value as string);
-    const current = (): boolean => !this.shuttingDown && this.webToken === token && this.adapters.get(ask.adapterId) === adapter
-      && this.guestSignInAllowed(owner);
+    const current = (): boolean => !this.shuttingDown && this.webToken === token && this.adapters.get(owner.adapterId) === adapter
+      && unrevoked() && this.guestSignInAllowed(owner);
     const privateText = `${t("web.guest_intro", scope.size)}\n${this.topicCommands.getDashboardText()}\n${t("dashboard.code", login.display, Math.round(LOGIN_CODE_TTL_MS / 60_000))}`;
     const deadline = performance.now() + 10_000;
     try {
@@ -6314,12 +6339,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await say(t("web.guest_sent"));
       }
     } catch (err) {
-      codes.revokeIfCurrent(login.issuanceId);
+      codes.revokeIfCurrent(login.issuanceId);              // this flow's code only, never a later one's
       this.logger.info({ err: (err as Error)?.message, adapterId: owner.adapterId }, "Guest sign-in code was not delivered privately");
+      if (!unrevoked()) return;                              // revoked meanwhile: the revoke's own answer said so
       const start = adapter.type === "telegram" ? this.tgStartWebUrl(owner.adapterId) : null;
       await say(start ? t("web.guest_dm_failed_link", start) : t("web.guest_dm_failed"));
     }
-    return true;
   }
 
   /** #1570 (auth-api): this browser becomes a returning device of the code's owner. The cookie value, or null. */

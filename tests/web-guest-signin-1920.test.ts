@@ -117,6 +117,46 @@ describe("a non-admin's /web while guest sign-in is on", () => {
     await h.slash("alice");
     expect(h.respond.mock.calls[0]![0], "a slot freed: hers now").toBe(t("web.guest_sent"));
   });
+  it("#2093 review: two /web at once from one account: one code, one DM; the other waits; another account is not held up", async () => {
+    const h = rig();
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    vi.spyOn(h.s, "refreshGuestRooms").mockImplementation(() => held);
+    const first = h.slash("alice"), second = h.slash("alice");
+    await Promise.resolve(); await Promise.resolve();
+    expect(h.respond.mock.calls.map((c: any[]) => c[0])).toEqual([t("web.guest_wait")]);
+    const bob = h.slash("bob");
+    release(); await Promise.all([first, second, bob]);
+    expect(h.adapter.sendDirect.mock.calls.filter((c: any[]) => c[0] === "alice" && CODE.test(String(c[1])) && String(c[1]).includes("\n"))).toHaveLength(1);
+    const code = codeOf(h.adapter.sendDirect.mock.calls.find((c: any[]) => c[0] === "alice")![1]);
+    expect(h.s.webGuestLoginCodes.match(code, tokenEpoch(TOKEN)), "her one code stands").toMatchObject({ kind: "ok" });
+    expect(h.s.webGuestLoginCodes.hasCodeFor({ adapterId: "owner", userId: "bob" })).toBe(true);
+  });
+  it("#2093 review: a revoke (hers, or an admin's) made while her /web is on its way ends it — no late code", async () => {
+    for (const revoker of ["alice", "admin"]) {
+      const h = rig();
+      let release!: () => void;
+      vi.spyOn(h.s, "refreshGuestRooms").mockImplementation(() => new Promise<void>((r) => { release = r; }));
+      const asking = h.slash("alice");
+      await Promise.resolve();
+      await h.slash(revoker, "revoke");
+      release(); await asking;
+      expect(h.adapter.sendDirect, revoker).not.toHaveBeenCalled();
+      expect(h.s.webGuestLoginCodes.size, revoker).toBe(0);
+    }
+    // Revoked while the DM is on its way: that code is withdrawn, and nothing says it was sent.
+    const h = rig();
+    let sent!: () => void;
+    h.adapter.sendDirect.mockImplementationOnce(() => new Promise((r) => { sent = () => r({ chatId: "DM", messageId: "dm" }); }));
+    const asking = h.slash("alice");
+    await vi.waitFor(() => expect(h.adapter.sendDirect).toHaveBeenCalled());
+    const code = codeOf(h.adapter.sendDirect.mock.calls[0]![1]);
+    await h.slash("admin", "revoke");
+    sent(); await asking;
+    expect(h.s.webGuestLoginCodes.match(code, tokenEpoch(TOKEN))).toBeNull();
+    expect(h.respond.mock.calls.map((c: any[]) => c[0])).not.toContain(t("web.guest_sent"));
+    expect(h.respond.mock.calls.map((c: any[]) => c[0]), "nor that a DM failed: the revoke answered").not.toContain(t("web.guest_dm_failed"));
+  });
   it("a wrong code counts against every guest code (each dies at its fifth) and the breaker; nothing typed counts nothing", async () => {
     const h = rig();
     const codes = h.s.webGuestLoginCodes, epoch = tokenEpoch(TOKEN);
@@ -128,7 +168,8 @@ describe("a non-admin's /web while guest sign-in is on", () => {
     codes.recordWrong("ZZZZ-ZZZZ");
     expect(codes.size, "both burned at the fifth wrong try").toBe(0);
     expect(codes.match(a.display, epoch)).toBeNull();
-    for (let i = 0; i < 15; i++) codes.recordWrong("ZZZZ-ZZZZ");
+    // Three more codes, five wrong tries each: 20 in the window (with a code to guess each time) — paused.
+    for (let n = 0; n < 3; n++) { codes.issue({ epoch, recipient: { adapterId: "owner", userId: "a" } }); for (let i = 0; i < 5; i++) codes.recordWrong("ZZZZ-ZZZZ"); }
     expect(codes.pausedForMs(), "20 wrong in the window: paused").toBeGreaterThan(0);
   });
   it("once a minute per account; the DM refused: the slash command's ephemeral answer, else the code is withdrawn", async () => {
@@ -202,6 +243,25 @@ describe("a non-admin's /web while guest sign-in is on", () => {
 });
 
 describe("GuestLoginCodes", () => {
+  it("#2093 review: with no guest code outstanding (none issued, expired, burned) a wrong code counts against nothing", () => {
+    let now = 0;
+    const codes = new GuestLoginCodes({ now: () => now });
+    for (let i = 0; i < 25; i++) codes.recordWrong("ZZZZ-ZZZZ");
+    expect(codes.pausedForMs(), "none issued").toBe(0);
+    // An expired code is nothing to guess: these five count against nothing — 15 more (with codes) do not pause, 20 do.
+    codes.issue({ epoch: "e", recipient: { adapterId: "o", userId: "a" } }); now += LOGIN_CODE_TTL_MS;
+    for (let i = 0; i < 5; i++) codes.recordWrong("ZZZZ-ZZZZ");
+    for (let n = 0; n < 3; n++) { codes.issue({ epoch: "e", recipient: { adapterId: "o", userId: "a" } }); for (let i = 0; i < 5; i++) codes.recordWrong("ZZZZ-ZZZZ"); }
+    expect(codes.pausedForMs(), "expired").toBe(0);
+    now += 16 * 60_000;                                            // a fresh breaker window for the rest
+    codes.issue({ epoch: "e", recipient: { adapterId: "o", userId: "a" } });
+    for (let i = 0; i < 5; i++) codes.recordWrong("ZZZZ-ZZZZ");       // burned at the fifth
+    for (let i = 0; i < 25; i++) codes.recordWrong("ZZZZ-ZZZZ");
+    expect(codes.pausedForMs(), "burned").toBe(0);
+    // The breaker's history stays across codes: 5 + 5 + 5 + 5 wrong tries on four codes in the window pause it.
+    for (let n = 0; n < 3; n++) { codes.issue({ epoch: "e", recipient: { adapterId: "o", userId: "a" } }); for (let i = 0; i < 5; i++) codes.recordWrong("ZZZZ-ZZZZ"); }
+    expect(codes.pausedForMs()).toBeGreaterThan(0);
+  });
   it("a code matches only under its token, for its audience, before it expires, and not while paused", () => {
     let now = 0;
     const codes = new GuestLoginCodes({ now: () => now });
@@ -274,10 +334,20 @@ describe("live: a guest code at /auth/login", () => {
       const code = codeOf(h.adapter.sendDirect.mock.calls[0]![1]);
       for (let i = 0; i < 5; i++) await post(h.port, { code: "ZZZZ-ZZZZ" });
       expect((await post(h.port, { code })).status, "burned at the fifth wrong try").toBe(401);
-      const next = h.s.webGuestLoginCodes.issue({ epoch: tokenEpoch(TOKEN), recipient: { adapterId: "owner", userId: "alice" } }).display;
-      for (let i = 0; i < 20; i++) h.s.webGuestLoginCodes.recordWrong("ZZZZ-ZZZZ");
+      // 15 more wrong tries, each with a code to guess (three codes, burned at five each): 20 in the window.
+      for (let n = 0; n < 3; n++) { h.s.webGuestLoginCodes.issue({ epoch: tokenEpoch(TOKEN), recipient: { adapterId: "owner", userId: "x" } }); for (let i = 0; i < 5; i++) h.s.webGuestLoginCodes.recordWrong("ZZZZ-ZZZZ"); }
+      const next = h.s.webGuestLoginCodes.issue({ epoch: tokenEpoch(TOKEN), recipient: { adapterId: "owner", userId: "alice" } })?.display ?? "ABCD-EFGH";
       const paused = await post(h.port, { code: next });
       expect(paused.status).toBe(429);
+    } finally { await h.close(); }
+  });
+  it("#2093 review: wrong codes before any code exists (guests off) never make a later admin code 429", async () => {
+    const h = await live();
+    try {
+      h.fm.fleetConfig!.web = { guests: { enabled: false } } as never;
+      for (let i = 0; i < 20; i++) expect((await post(h.port, { code: "ZZZZ-ZZZZ" })).status).toBe(401);
+      const admin = h.s.issueDashboardLogin()!;
+      expect((await post(h.port, { code: admin.display })).status).toBe(200);
     } finally { await h.close(); }
   });
   it("refused when the account is no longer a guest with something to see (guests off since, or made an admin)", async () => {

@@ -282,10 +282,14 @@ export class GuestLoginCodes {
 
   /**
    * A code that was neither a guest's nor an admin's: one wrong try against every outstanding guest code, and the
-   * breaker. Nothing typed is not a guess (as WebLoginCodes): it counts against nothing.
+   * breaker. As WebLoginCodes: nothing typed is not a guess, and with no guest code outstanding there is nothing to
+   * guess — it counts against nothing (#2093 review: else wrong codes could open this breaker, which pauses the admins'
+   * sign-in too, before any code exists). The breaker's history stays across codes.
    */
   recordWrong(input: string): void {
     if (!normalizeOneTimeCode(input)) return;
+    this.prune();
+    if (!this.outstanding.size) return;
     const now = this.now();
     for (const [k, o] of this.outstanding) {
       o.failures += 1;
