@@ -28,6 +28,7 @@ function pixel(png,x,y){
 
 const server=createServer((req,res)=>{
  const u=new URL(req.url||"/","http://localhost"),path=u.pathname;
+ if(path==="/assets/inter.woff2"){res.setHeader("Content-Type","font/woff2");res.end(readFileSync("src/ui/shared/fonts/inter.woff2"));return;}
  if(/^\/assets\/[a-z0-9._-]+$/.test(path)||/^\/ui\/js\/[a-z0-9_-]+\.js$/.test(path)){
   try{let source=readFileSync(join("src/ui",path.startsWith("/assets/")?"shared":"",path.split("/").at(-1)!),"utf8");
    if(path==="/ui/js/panel-chat.js"){

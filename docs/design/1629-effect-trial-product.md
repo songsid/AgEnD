@@ -75,3 +75,27 @@ real Safari, and no hard real-time cutoff is claimed while the host is blocked.
 Rollback is the product integration commit: the existing Chat, personal slots,
 cursor, library and safety stores remain usable; the private Trial foundations
 remain inert without this card/bridge publication and do not require migration.
+
+## Click consent and owner CSS (#2039)
+
+Try does not use the HTML preview origin's global opt-in as its consent gate. The
+local admin's explicit, trusted, current keyed-card click produces the trial
+receipt. Listener/boot transport readiness is checked separately; ordinary effects
+and cursors still require their original preview consent. No preference is forced
+on, and a live Trial cannot lend consent to another descriptor.
+
+The Trial panel's own chrome and canvas stage are inside closed Shadow DOM. Its
+fixed self-only stylesheet exports no parts/slots and resets inherited font,
+color and direction. An important host reset also blocks direct outer host hiding
+and pseudo-element relabeling. Missing, replaced or overdue styles fail closed
+before a stage receipt; existing ancestor paint/geometry checks still apply.
+Owner CSS remains active for ordinary UI outside this panel. Refusal cards show
+one condition and a fixed host action; pending session verification is inert.
+
+The product recipe runs with HTML opt-in false and the session's never-preview
+flag true, and proves those choices remain unchanged. It loads real hostile owner
+CSS (`::after`, zero font size, display/visibility/opacity hiding, `:host`, `::part`
+and inherited font/color) and checks the resulting controls while a real Worker
+runs. Browser sessions are minted private fixtures, not a real-login proof. The
+separate stage recipe deliberately oversizes the iframe and samples protected
+control/clip-edge pixels. Linux WebKit is not real Safari.
