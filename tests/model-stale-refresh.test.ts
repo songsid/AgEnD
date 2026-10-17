@@ -207,10 +207,11 @@ describe("usage hang bounds — #720 LONGEST_SINGLE_FETCH_MS, #724 probe deadlin
 
     const bounded = vi.spyOn(fm as any, "probeBackendBounded");
 
-    await (fm as any).claudeApiModelOptions();
+    await (fm as any).claudeApiModelOptions("no-such-instance");
 
     expect(bounded, "claudeApiModelOptions must use the deadline-bounded probe").toHaveBeenCalled();
-    expect(bounded).toHaveBeenCalledWith("claude-code");
+    // #2072: with the instance's credential profile (none here: the default login).
+    expect(bounded).toHaveBeenCalledWith("claude-code", { profile: null });
   });
 
   it("#724: probeCliEnvs() calls probeBackendBounded (deadline-bounded), not probeBackend", async () => {

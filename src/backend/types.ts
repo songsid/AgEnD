@@ -102,6 +102,11 @@ export interface CliBackendConfig {
   agentPort?: number;
   /** Per-backend options merged from fleet defaults + instance config (e.g. { provider: "glm" }). */
   backendOptions?: Record<string, unknown>;
+  /**
+   * #2072: a credential profile's login store (credentialProfileStoreHome), for a probe that reads an ACCOUNT's
+   * catalog — claude-code's `GET /v1/models` then uses that profile's token, not the default login's.
+   */
+  credentialStoreHome?: string;
   /** Daemon-owned localhost Muse usage relay, prepared before spawn. */
   museBaseUrl?: string;
   /**
