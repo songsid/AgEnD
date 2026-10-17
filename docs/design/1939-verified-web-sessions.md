@@ -130,6 +130,7 @@ interface HumanAuthority {
     /** The exact, immutable payload the person confirmed (§6.1). Receivers recompute its hash themselves. */
     binding: StepUpBinding;
     binding_sha256: string;         // sha256 of the RFC 8785 (JCS) encoding of `binding`
+    /** Server-owned, outside the confirmed payload: when the challenge was redeemed (before binding.redeem_by). */
     verified_at: string;
     event_id: string | null;        // the platform interaction id for a click
   };
@@ -172,7 +173,7 @@ So nothing an agent accepted before changes meaning.
 
 `src/authority/step-up-actions.ts` exports a frozen, ordered list. Each entry has an id, an English and a zh-TW
 label, and the target kind it must name. Three consumers read it:
-- the receipt writer validates `step_up.action` against it;
+- the receipt writer validates `step_up.binding.action` against it;
 - the instructions builder (`instructions.ts`) renders the list into the rule text, so it can never drift from the
   code;
 - the `/authorize` page builds its menu from it.
@@ -214,7 +215,8 @@ A step-up never replaces those gates. It is about authority that an agent acts o
 4. **Action and target.** `binding.action` is the action about to be performed, and `binding.target` is exactly the
    resource it will be performed on (same repo, same number, same SHA).
 5. **Executor.** The receiver itself is in `binding.executors`.
-6. **Not expired.** The current time is before `binding.expires_at`.
+6. **Not expired.** The current time is before `binding.act_by`. A receipt whose `verified_at` is not before
+   `binding.redeem_by` is invalid, and AgEnD never writes one.
 
 For anything else, accept `platform` or `web-session`, never `none`.
 
@@ -237,13 +239,17 @@ interface StepUpBinding {
   session_handle: string;
   actor: { adapter_id: string; user_id: string };
   issued_at: string;             // when the challenge was issued (ISO 8601, UTC, ms)
-  expires_at: string;            // when acting on it is no longer allowed: verification + 10 min
+  redeem_by: string;             // issued_at + 5 min: the code or click must be redeemed before this
+  act_by: string;                // issued_at + 15 min: no executor may act on it at or after this
 }
 binding_sha256 = sha256(JCS(binding))   // RFC 8785 canonical JSON
 ```
 
-AgEnD builds the binding **before** it issues the challenge. The DM or the card shows its human-readable parts, and the
-code or click confirms exactly that binding.
+AgEnD builds the binding **before** it issues the challenge. Every field, including both deadlines, is known at
+issuance. The DM or the card shows its human-readable parts ("act by 10:15"), and the code or click confirms exactly
+that binding.
+- **Time is fixed at issuance.** Redemption only stamps the separate, server-owned `step_up.verified_at`. It never
+  changes the binding, so a challenge issued at 10:00 and redeemed at 10:04 can still be acted on until 10:15.
 - **Stored whole.** On verification, the binding is stored unchanged in the receipt, so receivers need nothing that
   isn't in the receipt to check it (§5).
 - **Text changes.** Editing a single character of the text means a new challenge.
@@ -342,8 +348,10 @@ The tool posts a host-rendered card into the web chat, marked `data-trust="threa
 
   The person can confirm where they are from the browser's address bar.
 - **The in-app entry is just a link.** The composer's **Authorize…** opens `/authorize?…`. Owner CSS can hide or
-  mislabel that link, but CSS can't create an input field or a submit target. A CSS-faked "dialog" therefore has
-  nowhere to collect a code or send a confirmation.
+  mislabel it.
+- **App controls can be disguised.** CSS can restyle the composer and its Send button as a fake "enter your code"
+  prompt. A code typed there becomes chat text the agent receives, which is the code phishing §6.2 already admits.
+  The only trustworthy places are `/authorize`, confirmed in the address bar, and the platform's own Confirm card.
 - **In-app indicators are informational.** An "Authorized: merge #2001" line under a bubble can be faked with CSS
   `content:` on the app page, so nothing relies on it. The trusted views are:
   - the `/authorize` page's history;
@@ -360,10 +368,8 @@ The tool posts a host-rendered card into the web chat, marked `data-trust="threa
 
   CSS isolation (a separate document) and effect paint suppression (barriers) are two different mechanisms. Both
   are needed, and neither stands in for the other.
-- **Escape hatch.** "Use Discord instead" closes the dialog and tells the person what to type there.
-- **Verified messages.** A verified message gets a small "Authorized: merge #2001" line under the bubble; it is
-  host-drawn.
-- **Phones.** The same dialog appears as a sheet.
+- **Escape hatch.** "Use Discord instead" on `/authorize` ends the challenge and says what to type there.
+- **Phones.** `/authorize` is a responsive top-level page. It is never an in-app sheet or dialog.
 - **Public link.** Authorize is not offered there, and the composer says why.
 
 ## 7. Audit
@@ -400,7 +406,7 @@ No code, cookie, CSRF value or message text is logged; the receipt keeps the tex
 | An agent asks the person to "just click" | Same on any platform | A reply button can never step up. A step-up needs the `/authorize` page plus the person's own click or DM code, and shows the exact action, target and executors |
 | A phishing page in an agent's HTML preview asks for the code | — | The page can't use the code itself (no cookie, no `/authorize/verify`), but the code can leave it, and whoever holds the session can redeem it. The DM says where to enter it. The platform click is the recommended default, and §11 asks whether to require it for the most dangerous actions |
 | Script in the dashboard origin | CSP and the preview origin keep agent HTML out | Unchanged, and now load-bearing. The §9 invariants become release blockers |
-| Owner CSS, or imported CSS, restyles or fakes authorization UI | — | Authorization happens only on `/authorize`, a separate document with no owner CSS, mods or effects (§6.5). In-app indicators are informational, and CSS can't create inputs to collect a code |
+| Owner CSS, or imported CSS, restyles or fakes authorization UI | — | Authorization happens only on `/authorize`, a separate document with no owner CSS, mods or effects (§6.5). In-app indicators and app controls can be disguised by CSS (e.g. as a fake code prompt, which is the phishing in §6.2). Only `/authorize`, confirmed in the address bar, and the platform's Confirm card are trusted |
 | Replaying a step-up on another message, target or executor | — | The receiver recomputes `binding_sha256` and checks content, target, executors and expiry (§5). The challenge is single use |
 | Turning web authority off in a hurry | — | The server switch downgrades every web-session receipt on the next `delivery_status`, whatever instructions an agent runs with (§10) |
 | An old fleet with old instructions | Rejects web | Still rejects web, so the safe default holds. Receivers act on web authority only after the instruction change (§10, S3) |
