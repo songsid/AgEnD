@@ -571,7 +571,10 @@ export function createThread(list, scroller, opts) {
 
   function onScroll() {
     const bottom = nearBottom(), top = scroller.scrollTop;
-    if (bottom) pinned = true;
+    // #2087: pinned only at the exact bottom — a reader still wheeling through the last 48 px was pinned there, so
+    // the next resize (a picture, a card, the dock) pulled the view the rest of the way down under them. Near the bottom
+    // still counts for a new message (render follows it) and for the pill; nothing else moves a view the reader moves.
+    if (atBottom()) pinned = true;
     else if (top < lastTop) pinned = false;
     lastTop = top;
     if (bottom) unseen = 0;
