@@ -56,7 +56,7 @@ const server=createServer((req,res)=>{
   // Inert metadata only; no effect, session, preference, preview or asset route is substituted.
   if(url.pathname==="/api/profile"){res.setHeader("Content-Type","application/json");res.end(JSON.stringify({}));return;}
   res.statusCode=404;res.end("not found");
- }catch(e){serverErrors.push(String(e));res.statusCode=500;res.end(String(e));}
+ }catch(e){console.error(e);serverErrors.push(String(e));res.statusCode=500;res.setHeader("Content-Type","text/plain; charset=utf-8");res.end("Internal fixture error");}
 });
 const listen=async(s:any)=>{s.listen(0,"127.0.0.1");await once(s,"listening");return s.address().port;};
 function pixel(png,x,y){
@@ -79,6 +79,9 @@ try{
   previewForUi:(host,secure)=>({...previewAvailability(preview.settings,host,secure,preview.origins),boot:preview.bootId}),
   emitSseEvent:(event,data)=>{for(const s of ctx.sseClients)s.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);}};
  const base=`http://127.0.0.1:${port}`;
+ const originalStatus=ctx.getUiStatus;ctx.getUiStatus=()=>{throw Error("private-fixture-error-sentinel");};
+ try{const fault=await fetch(base+"/ui/poll",{headers:{Authorization:`Bearer ${token}`}});assert.equal(fault.status,500);assert.equal(fault.headers.get("content-type"),"text/plain; charset=utf-8");assert.equal(await fault.text(),"Internal fixture error");assert.equal(serverErrors.pop(),"Error: private-fixture-error-sentinel");}finally{ctx.getUiStatus=originalStatus;}
+
  for(const engine of(process.env.PROBE_ENGINES||"chromium,firefox,webkit").split(",")){
   browser=await pw[engine].launch({headless:true,env:{HOME:join(scratch,"home"),TMPDIR:join(scratch,"tmp"),PATH:"/usr/bin:/bin",LANG:"C.UTF-8"}});
   for(const width of(process.env.PROBE_WIDTHS||"1366,390").split(",").map(Number)){

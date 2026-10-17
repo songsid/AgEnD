@@ -66,7 +66,7 @@ export function resetCliHelpCache(): void { helpCache.clear(); }
  */
 export function helpOption(help: string, flag: string): { listed: boolean; levels: string[] | null } {
   const lines = help.split("\n");
-  const at = lines.findIndex(line => new RegExp(`^\\s*(?:-\\w,\\s*)?${flag.replace(/[-]/g, "\\-")}(?=[\\s,=<]|$)`).test(line));
+  const at = lines.findIndex(line => new RegExp(`^\\s*(?:-\\w,\\s*)?${flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=[\\s,=<]|$)`).test(line));
   if (at < 0) return { listed: false, levels: null };
   const entry: string[] = [lines[at]!];
   for (let i = at + 1; i < lines.length; i++) {

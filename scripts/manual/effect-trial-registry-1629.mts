@@ -36,7 +36,7 @@ const server=createServer((req,res)=>{
     source='import {EffectTrialPanel} from "/ui/js/effect-trial-panel.js";\n'+source.replace(slot,'<'+ '${EffectTrialPanel} ...'+ '${window.trialProps} />');
    }
    res.setHeader("Content-Type",path.endsWith(".css")?"text/css":"text/javascript");res.end(source);
-  }catch(e){res.statusCode=500;res.end(String(e));}return;
+  }catch(e){console.error(e);res.statusCode=500;res.setHeader("Content-Type","text/plain; charset=utf-8");res.end("Internal fixture error");}return;
  }
  if(path!=="/"){res.setHeader("Content-Type","application/json");res.end(JSON.stringify(path==="/ui/history"?{messages:[]} :path==="/auth/session"?{tier:"admin",label:"private fixture",expiresAt:Date.now()+60000}:{ok:true}));return;}
  res.setHeader("Content-Type","text/html");res.setHeader("Content-Security-Policy",`default-src 'none'; script-src 'self' 'nonce-trial-probe'; style-src 'self'; connect-src 'self'; frame-src http://127.0.0.1:${preview.settings.port}; img-src 'self' blob:; font-src 'self'; worker-src 'none'`);
@@ -68,7 +68,7 @@ const server=createServer((req,res)=>{
 const listen=async(s:any)=>{s.listen(0,"127.0.0.1");await once(s,"listening");return s.address().port;};
 
 try{
- const port=await listen(server);preview=createPreviewListener({settings:{enabled:true,port:0,origin:null},healthPort:port,config:{},bootId:boot});await listen(preview.server);
+ const port=await listen(server);const fault=await fetch(`http://127.0.0.1:${port}/assets/fixture-missing.js`);assert.equal(fault.status,500);assert.equal(fault.headers.get("content-type"),"text/plain; charset=utf-8");assert.equal(await fault.text(),"Internal fixture error");preview=createPreviewListener({settings:{enabled:true,port:0,origin:null},healthPort:port,config:{},bootId:boot});await listen(preview.server);
  for(const engine of(process.env.PROBE_ENGINES||"chromium,firefox,webkit").split(",")){
   browser=await pw[engine].launch({headless:true,env:{HOME:join(scratch,"home"),TMPDIR:join(scratch,"tmp"),PATH:"/usr/bin:/bin",LANG:"C.UTF-8"}});
   for(const [width,lang,dark]of [[1366,"en",false],[390,"zh-TW",true]] as const){

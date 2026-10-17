@@ -74,7 +74,14 @@ const MUSE_SEPARATOR = /^─{10,}\s*$/;
  * (`  muse-spark-1.3-contributor · high · ~/cwd · Launch overrides`). A chooser
  * drawn under the box (`  1 Allow`) or any other indented row cannot pass for it.
  */
-const MUSE_STATUS_BAR = /^\s{1,4}[^\s·]+(?:\s+·\s+[^·\s][^·]*)+$/;
+function isMuseStatusBar(row: string): boolean {
+  // Split at literal separators before checking fields: repeated regex fields
+  // let adjacent whitespace be repartitioned exponentially on malformed tails.
+  const fields = row.split("·");
+  if (fields.length < 2 || !/^\s{1,4}\S+\s+$/.test(fields[0]!)) return false;
+  return fields.slice(1).every((field, index) => /^\s+\S/.test(field)
+    && (index === fields.length - 2 || /\s$/.test(field)));
+}
 /**
  * Menu chrome muse draws for its dialogs and pickers. The picker chrome is muse
  * 1.4.0's list component, captured live on its login menu (2026-09-28):
@@ -133,7 +140,7 @@ function museStatusFooter(rows: readonly string[], bottomSeparator: number, busy
     status = status.slice(end);
     if (status.length === 0) return false;
   }
-  if (!MUSE_STATUS_BAR.test(status[0])) return false;
+  if (!isMuseStatusBar(status[0]!)) return false;
   if (!status.every(row => /^\s+\S/.test(row) && !MUSE_SEPARATOR.test(row.trim()) && !busy.test(row) && !MUSE_DIALOG_CHROME.test(row))) return false;
   // A wrapped cwd continues as path text; a numbered option list or a
   // selection cursor under the bar is a picker, not the bar.

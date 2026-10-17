@@ -468,9 +468,10 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
             res.writeHead(404);
             res.end("Not found");
           } catch (err) {
+            console.error("Telegram mock request failed", err);
             if (!res.headersSent) {
               res.writeHead(500, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ ok: false, error: String(err) }));
+              res.end(JSON.stringify({ ok: false, error: "Internal mock error" }));
             }
           }
         });
