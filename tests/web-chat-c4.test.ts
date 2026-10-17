@@ -496,6 +496,35 @@ describe("the chat panel's prompts (the real page modules)", () => {
     expect(card.querySelector("img"), "the text is text, never markup").toBeNull();
   });
 
+  it("#1990: the prompt's instance name opens its View — an in-app link, the rest text; a foreign link is text", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    c.stream.emit("prompt", { instance: "w", nonce: NONCE, text: "w stopped <b>x</b>", links: [{ offset: 0, length: 1, url: "/view/w" }],
+      actions: [{ id: "restart", label: "Restart" }], expiresAt: 1 });
+    await settle();
+    const card = cards(c)[0];
+    const a = card.querySelector(".txt a.st-link");
+    expect([a.getAttribute("href"), a.getAttribute("target"), a.textContent]).toEqual(["/view/w", null, "w"]);
+    expect(txt(card)).toBe("w stopped <b>x</b>");
+    expect(card.querySelector(".txt b")).toBeNull();
+    // A plain left click is the app's own navigation: no reload, the View route.
+    const { fire } = await import("./helpers/mini-dom.js");
+    const { startRouter, navStore } = await load("/assets/app-nav.js");
+    startRouter(c.p.window);
+    const ev = fire(a, "click", { button: 0 }) as any;
+    expect([ev.defaultPrevented, navStore.get().route, c.p.window.location.pathname, c.p.window.location.assigned ?? null]).toEqual([true, { panel: "view", instance: "w" }, "/view/w", null]);
+    // #2008 review: HTML in the linked text is text in the card too.
+    const evil = `<img src=x onerror=alert(1)>"`;
+    c.stream.emit("prompt", { instance: "w", nonce: NONCE, text: `${evil} stopped`, links: [{ offset: 0, length: evil.length, url: "/view/w" }], actions: [{ id: "restart", label: "Restart" }], expiresAt: 1 });
+    await settle();
+    const la = cards(c)[0].querySelector(".txt a.st-link");
+    expect([la.textContent, cards(c)[0].querySelector(".txt img")]).toEqual([evil, null]);
+    c.stream.emit("prompt", { instance: "w", nonce: NONCE, text: "w stopped", links: [{ offset: 0, length: 1, url: "https://evil.example/" }], actions: [{ id: "restart", label: "Restart" }], expiresAt: 1 });
+    await settle();
+    expect(cards(c)[0].querySelector(".txt a"), "a repeat refreshes the links too; a foreign one is text").toBeNull();
+  });
+
   it("another instance's prompt is announced, not shown here — not even when this chat re-renders", async () => {
     const c = await chatPage();
     c.stream.emit("status", frame(inst("w"), inst("other")));
