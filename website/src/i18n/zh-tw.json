@@ -11,7 +11,7 @@
   "hero": {
     "tagline": "你的 AI 艦隊，",
     "taglineAccent": "一則訊息掌控。",
-    "subtitle": "Agent Engineering Daemon — 從 Telegram、Discord 或瀏覽器管理 AI 編碼 Agent。7 種後端、艦隊模式、Agent 協作、零維護。",
+    "subtitle": "Agent Engineering Daemon — 從 Telegram、Discord 或瀏覽器管理 AI 編碼 Agent。7 種後端、艦隊模式、Agent 協作。",
     "cta": "快速開始",
     "github": "GitHub",
     "badges": "macOS · Linux · Windows (WSL) · MIT 授權",
@@ -65,7 +65,7 @@
       },
       {
         "icon": "users",
-        "name": "Credential Profile 與 /backend",
+        "name": "多組帳號與 /backend",
         "desc": "讓 agent 跑在第二個 Claude、Codex 或 Kiro 帳號上。從聊天室下 /login 就能登入 Claude profile。/backend 一步切換到另一個 CLI。"
       },
       {
@@ -75,7 +75,7 @@
       },
       {
         "icon": "rocket",
-        "name": "Fleet Mode",
+        "name": "Fleet 模式",
         "desc": "N 個專案，每個都是一個 Telegram topic 或 Discord 頻道。獨立 session，crash 自動恢復並自動壓縮 context。"
       },
       {
@@ -97,6 +97,11 @@
         "icon": "shield",
         "name": "花費守衛",
         "desc": "每個 instance 每日限額，達上限時停止並通知。"
+      },
+      {
+        "icon": "zap",
+        "name": "Model Failover",
+        "desc": "被限速時自動切換備用 model，5 分鐘冷卻期。在 fleet.yaml 的 model_failover 欄位設定。"
       },
       {
         "icon": "clock",
@@ -180,12 +185,12 @@
       },
       {
         "icon": "bot",
-        "label": "General Topic",
+        "label": "General 主題",
         "desc": "解讀自然語言，路由到對的 agent"
       },
       {
         "icon": "cpu",
-        "label": "Agent Fleet",
+        "label": "Agent 群",
         "desc": "獨立 tmux session，各有自己的專案和 backend"
       },
       {
@@ -268,8 +273,8 @@
         "a": "透過 MCP tools：send_to_instance、delegate_task、report_result。Agent 互相發現、委派工作、回報結果，全部點對點。"
       },
       {
-        "q": "General Topic 是什麼？",
-        "a": "自然語言調度器。把任何任務傳到 General topic，它會判斷哪個 agent 該處理，自動委派。"
+        "q": "General 主題是什麼？",
+        "a": "自然語言調度器。把任何任務傳到 General 主題，它會判斷哪個 agent 該處理，自動委派。"
       },
       {
         "q": "跑起來要花多少錢？",
@@ -292,7 +297,7 @@
       {
         "name": "網頁聊天",
         "desc": "在瀏覽器裡和每個 agent 對話——和你 Telegram 或 Discord 的同一段對話。傳檔案、點回覆按鈕、即時預覽 agent 發來的 HTML 頁面。手機也能用。",
-        "icon": "💬",
+        "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"/></svg>",
         "imgLight": "chat-light.webp",
         "imgDark": "chat-dark.webp",
         "alt": "網頁聊天：Atlas 代理的延遲表、SQL 程式碼區塊、一個被選中的回覆按鈕，以及訊息框上方的兩個待上傳檔案。示範資料。"
@@ -300,7 +305,7 @@
       {
         "name": "等你處理",
         "desc": "所有等你的權限請求、送達失敗、和等待中的 agent，集中在一個即時清單——General 和網頁都看得到。在任一處處理，所有清單都會消失。",
-        "icon": "🔔",
+        "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9\"/><path d=\"M13.73 21a2 2 0 0 1-3.46 0\"/></svg>",
         "imgLight": "needs-light.webp",
         "imgDark": "needs-dark.webp",
         "alt": "等你處理頁面：一個權限請求、一個送達失敗、一個沒有回應的 agent（附有重啟和繼續等待按鈕）、一個當機的 agent。示範資料。"
@@ -308,7 +313,7 @@
       {
         "name": "用量與訂閱",
         "desc": "每個訂閱各一列。用 credential profile 讓 agent 跑在第二個 Claude 帳號上——從聊天室下 /login 就能登入，用量面板會分開顯示每個帳號。",
-        "icon": "📊",
+        "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"18\" y1=\"20\" x2=\"18\" y2=\"10\"/><line x1=\"12\" y1=\"20\" x2=\"12\" y2=\"4\"/><line x1=\"6\" y1=\"20\" x2=\"6\" y2=\"14\"/></svg>",
         "imgLight": "usage-light.webp",
         "imgDark": "usage-dark.webp",
         "alt": "用量面板：兩個 Claude 帳號（work 和 personal）各一列，再加上一列 Codex，每列顯示 session 和每週用量。示範資料。"
@@ -316,7 +321,7 @@
       {
         "name": "Fleet 總覽",
         "desc": "組織圖顯示每個 agent 的即時狀態。在網頁上管理排程、team 和 agent 詳細設定。快取頁面顯示每個 agent 的 prompt cache 過期頻率。",
-        "icon": "🗺️",
+        "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/></svg>",
         "imgLight": "org-light.webp",
         "imgDark": "org-dark.webp",
         "alt": "組織圖：產品團隊（Pixel、Atlas、Quill）和支援團隊（Sage、Orbit、Comet），每個 agent 都顯示狀態。示範資料。"
