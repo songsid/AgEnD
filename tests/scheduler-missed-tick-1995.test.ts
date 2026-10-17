@@ -167,6 +167,37 @@ describe("#1995 cron ticks: logged, and a missed one caught up once", () => {
     expect(runs.length).toBeLessThanOrEqual(1 + Math.ceil(10 / 3));  // bounded: at most one per grace
   });
 
+  it("every minute, checks aligned to the minute, ticks that never arrive: still caught up, once per grace", async () => {
+    start(T - MIN);                                               // the checks land on T, T+1, … exactly
+    const s = everyMinute();
+    (scheduler as any).jobs.get(s.id).stop();
+    await vi.advanceTimersByTimeAsync(5 * MIN + 1000);
+    expect(missed().length).toBe(1);
+    const first = missed()[0] as string;                          // a settled occurrence, never the one due this instant
+    expect(Date.parse(first)).toBeLessThan(Date.now() - 30_000);
+    expect(runs).toEqual([first]);
+    vi.setSystemTime(new Date(Date.parse(first) + 500));          // croner's callback arriving late for that same instant
+    await (scheduler as any).jobs.get(s.id).trigger();
+    expect(runs).toEqual([first]);
+    expect(reasons()).toEqual([`already_ran@${first}`]);
+  });
+
+  it("every second (seconds cron): ticks missing are caught up once per grace; normal ticks are never counted missed", async () => {
+    const everySecond = () => scheduler.create({ cron: "* * * * * *", message: "m", source: "w", target: "w", reply_chat_id: "1", reply_thread_id: null, timezone: "Asia/Taipei" });
+    start(T - 2_500);
+    const s = everySecond();
+    await vi.advanceTimersByTimeAsync(5 * MIN);
+    expect(missed()).toEqual([]);                                  // ticking normally: never a false miss
+    expect(new Set(runs).size).toBe(runs.length);
+    const ran = runs.length;
+    (scheduler as any).jobs.get(s.id).stop();
+    await vi.advanceTimersByTimeAsync(5 * MIN);
+    expect(missed().length).toBeGreaterThanOrEqual(1);
+    expect(missed().length).toBeLessThanOrEqual(2);                // bounded: one per grace, not one per missed second
+    expect(runs.length).toBe(ran + missed().length);
+    expect(new Set(runs).size).toBe(runs.length);
+  });
+
   it("every minute, with the check landing on the tick instants: a tick about to fire is never counted as missed", async () => {
     start(T - MIN);                                               // the checks run at T, T+1, … — the same instants as the ticks
     everyMinute();
