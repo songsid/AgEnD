@@ -4,7 +4,7 @@ import { settingsRequestExecution, settingsWrite } from "./settings-request-capa
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
-import { applyAppearanceChanges, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
+import { applyAppearanceChanges, applyGuestsPatch, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS, effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { redactInlineSecrets, restoreRedactedSecrets } from "./settings-redaction.js";
@@ -70,6 +70,9 @@ import {
 
 
 export interface SettingsApiContext extends AppShellContext {
+  /** #1920 phase 3: Settings → Web sign-ins → Guests. */
+  guestOverview?(): unknown;
+  revokeGuestWebSessions?(owner: { adapterId: string; userId: string }): { count: number; durable: boolean };
   readonly webToken?: string | null;
   readonly webSessions?: import("./web-session.js").WebSessionStore | null;
   fleetConfig: FleetConfig | null;
@@ -648,13 +651,37 @@ export function handleSettingsRequest(
     return true;
   }
 
+  // ── #1920 phase 3: Settings → Web sign-ins → Guests. The list (GET) and an account's sign-out (POST — it only takes
+  // away, so it is not a confirmed change). Never over the public link. The switches and lists are fleet/web's PUT.
+  if (path === "/api/settings/guests" && method === "GET") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
+    if (!ctx.guestOverview) { json(res, 404, { error: "not available" }); return true; }
+    res.setHeader("Cache-Control", "no-store");
+    json(res, 200, ctx.guestOverview());
+    return true;
+  }
+  if (path === "/api/settings/guests/revoke" && method === "POST") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
+    if (!ctx.revokeGuestWebSessions) { json(res, 404, { error: "not available" }); return true; }
+    readBody(req, 4096).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
+      let body: { adapterId?: unknown; userId?: unknown };
+      try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
+      if (typeof body?.adapterId !== "string" || !body.adapterId || typeof body.userId !== "string" || !body.userId) return json(res, 400, { error: "adapterId and userId required" });
+      const ended = ctx.revokeGuestWebSessions!({ adapterId: body.adapterId, userId: body.userId });
+      json(res, 200, { ok: true, count: ended.count, durable: ended.durable });
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
   // One hot web toggle; an unrelated Settings edit never materializes defaults.
   if (method === "PUT" && path === "/api/settings/fleet/web") {
     // #1620: never over the temporary public link — refused before the body is read (the confirmation gate refuses it
     // first; this is the second wall, for any path that reaches the handler without it).
     if (gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }); return true; }
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
-    readBody(req, 4096).then(buf => {
+    // #1920 phase 3: room for guest lists (open_instances, narrow — up to 200 names each); the gate reads up to 512 KiB.
+    readBody(req, 256 * 1024).then(buf => {
       if (!permitWebContinuation(req, res, ctx)) return;
       let body: unknown;
       try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
@@ -685,6 +712,12 @@ export function handleSettingsRequest(
           else { wt[key] = value; changes.push({ path: ["web_terminal", key], value }); }
         }
         webTerminal = wt as typeof cfg.web_terminal;
+      }
+      // #1920 phase 3: guest sign-in (Settings → Web sign-ins → Guests); widening it is confirmed (settings-change.ts).
+      if (parsed.guests) {
+        const applied = applyGuestsPatch(cfg.web?.guests, parsed.guests);
+        if (applied.next) web.guests = applied.next; else delete web.guests;
+        changes.push(...applied.changes);
       }
       if (!changes.length) return json(res, 200, { ok: true });
       const before = validateFleetConfig(cfg);

@@ -95,6 +95,48 @@ function sessionChange(old: unknown, next: unknown): Array<[string, unknown, unk
   // absolute limit lifts (it was cut to it) is named by absolute_hours, which grew.
   return changed.filter(k => looser[k] || odd.includes(k)).map(k => [k, a[k], b[k]]);
 }
+const GUESTS = ["fleet", "web", "guests"] as const;
+/** At the gate's root (fleet.web.guests) and at the fleet's (web.guests — settings-authority.ts walks a fleet alone). */
+const atGuests = (path: readonly string[]): boolean => (path.length === 3 && GUESTS.every((k, i) => path[i] === k))
+  || (path.length === 2 && path[0] === "web" && path[1] === "guests");
+const GUEST_JUDGED: readonly string[] = ["enabled", "chat", "open_instances", "narrow"];
+/**
+ * #1920 phase 3: guest sign-in is judged by what it lets guests reach. Confirmed: turning it on, letting guests chat,
+ * naming more agents for an open connection, and widening or lifting one guest's narrowing. Applied directly: the
+ * reverse of each (it only takes away). A value not of its kind is never applied quietly. Returns the loosening entries
+ * to name (empty: it only tightens), or null when the change touches something else (then walked key by key).
+ */
+function guestsChange(old: unknown, next: unknown): Array<[string, unknown, unknown]> | null {
+  if ((old !== undefined && old !== null && !object(old)) || (next !== undefined && next !== null && !object(next))) return null;
+  const a: Record<string, unknown> = object(old) ? old : {}, b: Record<string, unknown> = object(next) ? next : {};
+  const changed = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => !same(a[k], b[k]));
+  if (changed.some(k => !GUEST_JUDGED.includes(k))) return null;
+  const out: Array<[string, unknown, unknown]> = [];
+  const flag = (key: "enabled" | "chat", def: boolean) => {
+    if (!changed.includes(key)) return;
+    const x = a[key] ?? def, y = b[key] ?? def;
+    if (typeof x !== "boolean" || typeof y !== "boolean" || (y === true && x !== true)) out.push([key, a[key], b[key]]);
+  };
+  flag("enabled", false); flag("chat", true);
+  const lists = (v: unknown): Record<string, unknown> => (object(v) ? v : {});
+  const names = (v: unknown): string[] | null => (Array.isArray(v) && v.every(n => typeof n === "string") ? v as string[] : null);
+  for (const key of ["open_instances", "narrow"] as const) {
+    if (!changed.includes(key)) continue;
+    const x = lists(a[key]), y = lists(b[key]);
+    if ((a[key] !== undefined && !object(a[key])) || (b[key] !== undefined && !object(b[key]))) { out.push([key, a[key], b[key]]); continue; }
+    for (const entry of new Set([...Object.keys(x), ...Object.keys(y)])) {
+      const before = Object.hasOwn(x, entry) ? x[entry] : undefined, after = Object.hasOwn(y, entry) ? y[entry] : undefined;
+      if (same(before, after)) continue;
+      const bn = before === undefined ? null : names(before), an = after === undefined ? null : names(after);
+      if ((before !== undefined && !bn) || (after !== undefined && !an)) { out.push([`${key}.${entry}`, before, after]); continue; }
+      // open_instances: more names reach more. narrow: lifting it (gone) or adding names widens; setting one narrows.
+      const added = (an ?? []).some(n => !(bn ?? []).includes(n));
+      const looser = key === "open_instances" ? added : (after === undefined && before !== undefined) || (before !== undefined && added);
+      if (looser) out.push([`${key}.${entry}`, before, after]);
+    }
+  }
+  return out;
+}
 /** A key under a named map (an instance or connection name), not a field: its name says nothing about its kind. */
 const namedEntry = (path: readonly string[], at: number): boolean => ["channels", "instances"].includes(path.at(at - 1) ?? "");
 function ordinary(path: readonly string[], old: unknown, next: unknown): boolean {
@@ -135,6 +177,14 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     if (same(old, next)) return;
     if (path.length === SESSION_LOCAL.length && SESSION_LOCAL.every((k, i) => path[i] === k)) {
       const looser = sessionChange(old, next);
+      if (looser) {
+        if (looser.length && section !== "secret") section = "access";
+        for (const [key, a, b] of looser) add(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`);
+        return;
+      }
+    }
+    if (atGuests(path)) {
+      const looser = guestsChange(old, next);
       if (looser) {
         if (looser.length && section !== "secret") section = "access";
         for (const [key, a, b] of looser) add(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`);

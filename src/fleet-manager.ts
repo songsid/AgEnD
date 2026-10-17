@@ -6258,6 +6258,37 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return result;
   }
 
+  /**
+   * #1920 phase 3: Settings → Web sign-ins → Guests — the switches, each connection's access mode and the agents named for
+   * an open one, and every guest account (signed in, with a returning device, or narrowed): who, its platform, what it
+   * reaches now, its sessions and devices, and its narrowing. Ids are the accounts' own (an admin's page).
+   */
+  guestOverview(): {
+    enabled: boolean; chat: boolean; instances: string[];
+    connections: Array<{ id: string; type: string; mode: "open" | "allowlist"; named: string[] }>;
+    guests: Array<{ adapterId: string; userId: string; name: string; platform: string; scope: string[]; sessions: number; lastSeen: number | null; devices: number; narrow: string[] | null }>;
+  } {
+    this.initializeWebSessions();
+    const cfg = this.fleetConfig?.web?.guests;
+    const own = <T>(map: Record<string, T> | undefined, key: string): T | undefined => (map && Object.hasOwn(map, key) ? map[key] : undefined);
+    const connections = [...this.worlds.entries()].map(([id, w]) => ({ id, type: w.adapter.type, mode: (w.accessManager.getMode() === "open" ? "open" : "allowlist") as "open" | "allowlist",
+      named: [...(own(cfg?.open_instances, id) ?? [])] }));
+    const accounts = new Map<string, { adapterId: string; userId: string; sessions: number; lastSeen: number | null }>();
+    for (const a of this.webSessions!.guestActivity()) accounts.set(`${a.adapterId}\u0000${a.userId}`, a);
+    const devices = this.returningDevices!.guestCounts();
+    for (const k of devices.keys()) if (!accounts.has(k)) { const [adapterId, userId] = k.split("\u0000") as [string, string]; accounts.set(k, { adapterId, userId, sessions: 0, lastSeen: null }); }
+    for (const key of Object.keys(cfg?.narrow ?? {})) {
+      const at = key.indexOf(":"), adapterId = key.slice(0, at), userId = key.slice(at + 1), k = `${adapterId}\u0000${userId}`;
+      if (at > 0 && !accounts.has(k)) accounts.set(k, { adapterId, userId, sessions: 0, lastSeen: null });
+    }
+    const guests = [...accounts.entries()].map(([k, a]) => {
+      const owner = { adapterId: a.adapterId, userId: a.userId };
+      return { ...a, name: this.webPerson(owner).name, platform: this.worlds.get(a.adapterId)?.adapter.type ?? a.adapterId, scope: [...this.guestScope(owner)].sort(),
+        devices: devices.get(k) ?? 0, narrow: own(cfg?.narrow, `${a.adapterId}:${a.userId}`) ?? null };
+    }).sort((x, y) => (y.lastSeen ?? -1) - (x.lastSeen ?? -1));
+    return { enabled: cfg?.enabled === true, chat: cfg?.chat !== false, instances: Object.keys(this.fleetConfig?.instances ?? {}).sort(), connections, guests };
+  }
+
   /** #1920 step 4: whether a `/web` is a guest's — guest sign-in on, and not from a fleet admin (theirs runs as before). */
   isGuestWebAsk(adapterId: string | undefined, userId: string): boolean {
     return !!adapterId && this.fleetConfig?.web?.guests?.enabled === true && !this.isFleetAdmin(userId, adapterId);

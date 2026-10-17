@@ -440,6 +440,19 @@ export class WebSessionStore {
     return [...seen.values()];
   }
 
+  /** #1920 phase 3 (Settings → Guests): each account with a live guest session — how many, and when last seen. */
+  guestActivity(): Array<{ adapterId: string; userId: string; sessions: number; lastSeen: number }> {
+    this.purgeExpired(this.now());
+    const by = new Map<string, { adapterId: string; userId: string; sessions: number; lastSeen: number }>();
+    for (const r of this.byHash.values()) {
+      if (r.tier !== "guest" || !r.owner || this.pending.has(r.idHash)) continue;
+      const k = `${r.owner.adapterId}\u0000${r.owner.userId}`, cur = by.get(k);
+      if (cur) { cur.sessions++; cur.lastSeen = Math.max(cur.lastSeen, r.lastSeen); }
+      else by.set(k, { adapterId: r.owner.adapterId, userId: r.owner.userId, sessions: 1, lastSeen: r.lastSeen });
+    }
+    return [...by.values()];
+  }
+
   /** #1920: `only` as in list() — a session it rejects is not found. */
   revokeByHandle(handle: string, only?: (r: SessionRecord) => boolean): { found: boolean; durable: boolean } {
     if (!HANDLE_PATTERN.test(handle)) return { found: false, durable: true };

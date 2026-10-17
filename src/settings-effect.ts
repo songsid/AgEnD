@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { agentConflict, draftQuickstart, newConnectionConflict, planQuickstart, validateWizardInput, withExistingAgent, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
 import type { FleetConfig } from "./types.js";
 import { settingsChangeDiff, type SettingsChangeDiff } from "./settings-change.js";
-import { applyAppearanceChanges, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
+import { applyAppearanceChanges, applyGuestsPatch, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
 import { SettingsConfirmationError } from "./settings-confirmation.js";
 import { validateFleetConfig, validateClassicBotConfig } from "./config-validator.js";
 import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAuthority } from "./settings-authority.js";
@@ -87,6 +87,10 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       const wt: Record<string, any> = { ...cfg.web_terminal, ...terminalPatch };
       for (const k of Object.keys(wt)) if (wt[k] === null) delete wt[k];
       after.fleet.web_terminal = wt;
+    }
+    if (parsed.guests) {
+      const applied = applyGuestsPatch(cfg.web?.guests, parsed.guests);
+      if (applied.next) after.fleet.web.guests = applied.next; else delete after.fleet.web.guests;
     }
   } else if (path === "/api/settings/fleet/appearance") {
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");

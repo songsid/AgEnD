@@ -154,6 +154,17 @@ export class ReturningDevices {
     return this.byHash.get(device.idHash) === device && this.now() < device.expires && device.tokenEpoch === tokenEpoch;
   }
 
+  /** #1920 phase 3 (Settings → Guests): how many returning devices each guest account has, by "<connection>\u0000<user>". */
+  guestCounts(): Map<string, number> {
+    const now = this.now(), out = new Map<string, number>();
+    for (const d of this.byHash.values()) {
+      if (d.tier !== "guest" || now >= d.expires) continue;
+      const k = `${d.owner.adapterId}\u0000${d.owner.userId}`;
+      out.set(k, (out.get(k) ?? 0) + 1);
+    }
+    return out;
+  }
+
   /** `/dashboard revoke`: no browser may ask for a code any more. Whether that holds after a restart. */
   revokeAll(): { count: number; durable: boolean } {
     const count = this.byHash.size;
