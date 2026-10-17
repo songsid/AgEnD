@@ -65,6 +65,15 @@ describe('native pointer evidence refuses missing input or paint', () => {
       expect(particlePaintDelta(before, after, { x: 100, y: 2 }).added).toBe(0);
     }
   });
+  it.each([
+    [[33, 33, 33], [41, 64, 91]],
+    [[33, 33, 33], [39, 63, 92]],
+    [[255, 255, 255], [194, 218, 247]],
+  ])('rejects actual selection-only RGB pairs from the original WebKit captures', (base, selected) => {
+    const before = image(), after = image();
+    for (let x = 0; x < before.width * before.height; x++) { before.data.set(base, x * 3); after.data.set(selected, x * 3); }
+    expect(particlePaintDelta(before, after, { x: 100, y: 2 }).added).toBe(0);
+  });
   it('refuses mismatched screenshot sizes rather than inventing paint', () => {
     expect(() => particlePaintDelta(image(), image(401), { x: 100, y: 2 })).toThrow('capture dimensions changed');
   });
