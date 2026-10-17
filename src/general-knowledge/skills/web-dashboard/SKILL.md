@@ -123,9 +123,9 @@ restored; files that can't be served again show as unavailable.
 **Copies in Discord/Telegram (web echo).** For a fleet topic instance, each web message is also posted to its topic as
 `🌐 web · <name>: …` (the first 500 characters plus attachment names; longer text says "(full text in web chat)").
 Turn it off with Settings → Web → **Web echo** (`web.echo_to_channel`). ClassicBot rooms: per room,
-`classicBot.yaml` `channels.<key>.web_echo` (Settings → ClassicBot → the room → **Web echo**). On current main a room
-echoes only with `web_echo: true`; #2054 (2.3.0-beta.3) makes it on by default — an unset room follows
-`web.echo_to_channel`, and `web_echo: false` keeps a room off. Check the running version before answering.
+`classicBot.yaml` `channels.<key>.web_echo` (Settings → ClassicBot → the room → **Web echo**). From 2.3.0-beta.3
+(#2054) a room echoes by default: an unset room follows `web.echo_to_channel`, `web_echo: false` keeps it off and
+`web_echo: true` keeps it on. Before that, a room echoed only with `web_echo: true` — check the running version.
 
 ## Needs you
 
@@ -269,7 +269,8 @@ in the General chat ("Waiting for confirmation", **Withdraw**). After a failure,
 | Status emojis (Received, Queued, Processing, Delivered, Failed, …) | `status_emojis` | agent |
 
 **Connections** (the bots) — **New connection**: type, bot token (**Verify**), Discord server or Telegram group,
-your user ID; it starts without a restart. Per bot: **Access mode** (locked / open / pairing) and **Allowed users** —
+your user ID. It starts without a restart when AgEnD already runs another connection and nothing else at fleet level
+changed; a fleet's first connection (or a change to an existing one) offers **Restart AgEnD**. Per bot: **Access mode** (locked / open / pairing) and **Allowed users** —
 `channels[i].access.*`, staged, restarts AgEnD, asks before opening access; **Guild/Group id** and General channel /
 forum topic with **Verify the new binding** (applies directly after a confirmation); **Status emojis**; Advanced →
 **Replace** the token (saved to `~/.agend/.env`); **Delete this bot** (the token stays in `.env`). **Provider API keys**:
@@ -328,8 +329,10 @@ Settings → **Web appearance**, card by card:
   tick (custom CSS is never pre-ticked); agents can propose mods (**Review** / **Dismiss**); **Export a mod** writes one.
   Uninstalling removes the mod, not what it applied.
 - **Effects** — the effect library (upload a folder with `effect.json` and `worker.js`, up to 1 MiB), save one for a
-  chat, share your copy; **Your effect choices** for Sidebar / Header / Page / Box / Cursor with Pause / Resume /
-  Clear. Playback needs the HTML-preview consent.
+  chat, share your copy; **Your effect choices** for Sidebar / Header / Page / Box (each with Pause / Resume and
+  Clear) and a Cursor (its state, and Clear). Placed and saved effects play only with the HTML-preview consent
+  (**Allow HTML previews**); a Try sample is different — a local admin's click on its card consents to that one
+  sample only, with no global opt-in.
 - **Identity card upload limits** — portrait and banner size limits and per-agent picture quota
   (`web.appearance.*`); lowering applies at once, raising waits for an admin.
 - **Restore defaults** — resets this host's appearance settings (it lists what it resets first).
@@ -360,10 +363,13 @@ own decision. If the port is taken by something else, chat says "Dashboard unava
 use".
 
 **Preview "connection refused" / "did not answer within 3 s".** The preview frame comes from the second port
-(`health_port + 1`). Over SSH, forward that port too (`-L 19281:127.0.0.1:19281`); through a proxy set
-`web.preview_origin` and list the address in `web.allowed_hosts`. "Something else answered on the preview port":
-another program holds it — change `web.preview_port` (restart). If fleet.log says "Preview listener unavailable",
-the port could not be bound, even when the card claims previews are turned off.
+(`health_port + 1`). Over SSH, forward that port too (`-L 19281:127.0.0.1:19281`). Through a proxy or tunnel the two
+names are kept apart: the **dashboard's** external name goes in `web.allowed_hosts`, and `web.preview_origin` must be
+a **different** host name, mapped to the preview port, that is neither the dashboard's `hostname` nor in
+`web.allowed_hosts` (the validator refuses a preview origin the dashboard answers to). "Something else answered on
+the preview port": another program holds it — change `web.preview_port` (restart). If fleet.log says "Preview
+listener unavailable", the port could not be bound (older versions' cards then wrongly said previews were turned
+off).
 
 **Public link fails at once.** Read the step list the bot posts and daemon.log's "Public web link … startup failed":
 - "another tunnel is still running" — a `/login` link or an unconfirmed old tunnel; wait for it to end, or close it;

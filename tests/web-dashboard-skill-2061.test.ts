@@ -14,6 +14,7 @@ import { DEFAULT_SESSION_POLICY, MAX_WEB_SESSIONS } from "../src/web-session.js"
 import { LOGIN_CODE_TTL_MS, MAX_LOGIN_CODE_ATTEMPTS } from "../src/web-login.js";
 import { EFFECTIVE_TTL_WINDOW_MS } from "../src/cache-analysis.js";
 import { TOOLS } from "../src/channel/mcp-tools.js";
+import { previewOriginProblem } from "../src/web-preview.js";
 
 const PATH = join(process.cwd(), "src/general-knowledge/skills/web-dashboard/SKILL.md");
 const SKILL = readFileSync(PATH, "utf8");
@@ -73,6 +74,16 @@ describe("the web-dashboard skill", () => {
     expect(named.filter(k => !known.includes(k))).toEqual([]);
     const tools = new Set(TOOLS.map((t: { name: string }) => t.name));
     for (const t of ["get_cache_report", "get_usage", "get_fleet_config"]) { expect(tools.has(t), t).toBe(true); expect(SKILL).toContain(`\`${t}\``); }
+  });
+
+  it("keeps the dashboard's allowed_hosts and the preview origin apart, as the validator does (#2065 review)", () => {
+    const trouble = SKILL.slice(SKILL.indexOf("**Preview \"connection refused\""), SKILL.indexOf("**Public link fails at once.**"));
+    expect(trouble).toMatch(/\*\*dashboard's\*\* external name goes in `web\.allowed_hosts`/);
+    expect(trouble).toMatch(/`web\.preview_origin` must be\s+a \*\*different\*\* host name/);
+    expect(trouble).not.toMatch(/web\.preview_origin` and list the address in `web\.allowed_hosts`/);
+    // The rule it states is the validator's: a preview origin the dashboard answers to is refused.
+    expect(previewOriginProblem("https://dash.example.net", { web: { allowed_hosts: ["dash.example.net"] } } as never)).toMatch(/separate host name/);
+    expect(previewOriginProblem("https://preview.example.net", { web: { allowed_hosts: ["dash.example.net"] } } as never)).toBeNull();
   });
 
   it("never tells anyone to kill wslrelay or shut WSL down, and names no real host or secret", () => {
