@@ -684,14 +684,29 @@ describe("the chat's renderer and a live preview (§6.2, #1408 §4)", () => {
   // gc() to clear a WeakRef — whether a detached node is collected within a few ticks is the engine's business, and
   // shard 3 kept failing on it. Correctness never depended on the collection, only on these references going away.
   it("a card that left the page is held by nothing the chat keeps: the thread's nodes, a live preview, a refresh (#1332 review, #2032)", () => {
-    const { thread, list } = threadAt(fresh().document);
+    // The per-card registry is weak (Prism #2033): while the thread is made and draws, every Map / Set / WeakMap it
+    // creates is a recording subclass. A card may be a WeakMap key, never a key or member of a strong collection —
+    // a strong registry would keep every retired card (and its HTML source) for the thread's whole life.
+    const Real = { Map: globalThis.Map, Set: globalThis.Set, WeakMap: globalThis.WeakMap };
+    const isCard = (k: any) => !!k?.classList?.contains?.("html-card");
+    const strong: string[] = [], weak: unknown[] = [];
+    class RecMap<K, V> extends Real.Map<K, V> { override set(k: K, v: V) { if (isCard(k)) strong.push("Map key"); return super.set(k, v); } }
+    class RecSet<T> extends Real.Set<T> { override add(v: T) { if (isCard(v)) strong.push("Set member"); return super.add(v); } }
+    class RecWeakMap<K extends WeakKey, V> extends Real.WeakMap<K, V> { override set(k: K, v: V) { if (isCard(k)) weak.push(k); return super.set(k, v); } }
+    Object.assign(globalThis, { Map: RecMap, Set: RecSet, WeakMap: RecWeakMap });
+    let made: ReturnType<typeof threadAt>;
+    try {
+      made = threadAt(fresh().document);
+      made.thread.render([agent(1, FENCE("<p>a</p>"))]);
+    } finally { Object.assign(globalThis, Real); }
+    expect([weak.length > 0, strong], "the card is a weak key only").toEqual([true, []]);
+    const { thread, list } = made!;
     const released = (node: any, card: any, key: string) => {
       expect(list.contains(card), "it left the thread").toBe(false);
       expect([...thread.nodes.values()].some((v: any) => v.node === node || v.node.contains(card)), "the thread's node map lets go").toBe(false);
       expect([PV.liveCount(), !!PV.liveFrame(key)], "the preview module lets go of its frame").toEqual([0, false]);
     };
     // Another message takes its place (draw's path).
-    thread.render([agent(1, FENCE("<p>a</p>"))]);
     const node = list.children[0], card = list.querySelector(".html-card");
     expect(card?.querySelector(".pv-run"), "the card was really built").not.toBeNull();
     runPreview(node, 1);
