@@ -98,6 +98,35 @@ describe("Settings → Web appearance in plain words", () => {
     limitsOk = true;
   });
 
+  it("custom CSS's pictures and fonts: the 1 MiB limit is for all of them together, as the store enforces (not each)", async () => {
+    for (const [lang, total, each] of [["en", /in total \(at most 1 MiB in all\)/, /each/], ["zh-TW", /合計.*全部合計最多 1 MiB/, /每個/]] as const) {
+      const root = await mount(lang);
+      const line = [...root.querySelectorAll(".s-owner-css p.sub")].map((p: any) => p.textContent).find((x: string) => x.includes("1 MiB"));
+      expect(line, lang).toMatch(total);
+      expect(line, lang).not.toMatch(each);
+      await pg!.unmount(); pg!.restore(); pg = null;
+    }
+    const { OWNER_CSS_MAX_ASSET_BYTES } = await import("../src/web-owner-css-store.js");
+    expect(OWNER_CSS_MAX_ASSET_BYTES, "the store's one limit, for all of a person's assets").toBe(1024 * 1024);
+  });
+
+  it("Restore defaults asks first, in Chinese too, naming what it resets and what it keeps; no keeps everything", async () => {
+    const asked: string[] = [];
+    const root = await mount("zh-TW");
+    g.confirm = (m: string) => { asked.push(m); return false; };          // after the page: it installs its own
+    try {
+      const posts: string[] = [];
+      const inner = g.fetch;
+      g.fetch = async (url: string, init: any = {}) => { if (init.method === "POST") posts.push(url); return inner(url, init); };
+      root.querySelector(".s-restore button").click();
+      await settle(3); await new Promise((r) => setTimeout(r, 450)); await settle();
+      expect(asked).toHaveLength(1);
+      for (const item of ["是否顯示 agent 的主題與效果", "卡片大小與各張卡片自己的大小", "你的側欄小工具", "顏色顯示的位置", "是否關閉顏色", "關閉你的自訂 CSS", "這台裝置上的 CSS 開關",
+        "不變：有人替 agent 挑的顏色、已安裝的 mod、上傳的效果與卡片上限。"]) expect(asked[0], item).toContain(item);
+      expect(posts, "no: nothing written").toEqual([]);
+    } finally { delete g.confirm; }
+  });
+
   it("the colour card's sample row is painted with the default places and follows the checkboxes", async () => {
     const root = await mount("en");
     const row = () => root.querySelector(".s-colors-sample .inst");

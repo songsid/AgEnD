@@ -235,7 +235,9 @@ describe("Settings → Web appearance", () => {
       pg!.root.querySelector(".s-restore button").click();
       await settle(3); await flush(); await settle();
       expect(asked).toHaveLength(1);
-      expect(asked[0]).toContain("Agents' own colours, mods, effects and card limits stay.");
+      // #2056 B review: short, but it still names what it resets — and that the colours people picked are kept.
+      for (const item of ["showing agents' themes and effects", "the card size and each card's own size", "your sidebar widget", "where colours show", "colours off",
+        "turns your custom CSS off", "its switch on this device", "Kept: the colours people picked for agents, installed mods, uploaded effects and the card limits."]) expect(asked[0], item).toContain(item);
       expect([host["color.off"], posts], "no: nothing reset").toEqual([true, []]);
       yes = true;
       pg!.root.querySelector(".s-restore button").click();
