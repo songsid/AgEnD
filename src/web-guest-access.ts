@@ -49,15 +49,17 @@ export const GUEST_ROUTES: readonly GuestRoute[] = [
   { methods: ["GET"], pattern: /^\/ui\/events$/, instance: null, state: "on", note: "the stream, projected for this guest (guestFrameData)" },
   { methods: ["GET"], pattern: /^\/ui\/poll$/, instance: null, state: "on", note: "the poll, projected for this guest (guestPollBody)" },
   { methods: ["GET"], pattern: /^\/ui\/file\/[^/]+$/, instance: null, state: "on", note: "a file, served only when its stored instance is in scope (the handler checks)" },
-  { methods: ["GET"], pattern: /^\/ui\/effect-posters\/[0-9a-f]{32}\.png$/, instance: null, state: "later", note: "phase 1b: a poster bound to its instance" },
+  { methods: ["GET"], pattern: /^\/ui\/effect-posters\/[0-9a-f]{32}\.png$/, instance: { query: "instance" }, state: "on", note: "a placed effect's static poster, bound to its instance by the query" },
   // Opened by phase 2: what needs the guest's own identity, authority and the history rule.
   { methods: ["GET"], pattern: /^\/ui\/history$/, instance: { query: "instance" }, state: "on", note: "an in-scope instance's history, as its channel showed it (guestHistory, #1920 §5.2)" },
-  { methods: ["POST"], pattern: /^\/ui\/send$/, instance: null, state: "later", note: "phase 2: guest chat (web.guests.chat), authority none" },
-  { methods: ["POST"], pattern: /^\/ui\/upload$/, instance: { query: "instance" }, state: "later", note: "phase 2: guest chat's uploads" },
-  { methods: ["POST"], pattern: /^\/ui\/reply-button$/, instance: null, state: "later", note: "phase 2: reply buttons, as on the platform" },
-  { methods: ["POST"], pattern: new RegExp(`^/ui/cancel/${NAME}$`), instance: { group: 1 }, state: "later", note: "phase 2: Cancel, as the platform's button" },
-  { methods: ["GET", "POST"], pattern: /^\/ui\/prefs$/, instance: null, state: "later", note: "phase 2: the guest's own preferences, never the host's" },
-  { methods: ["GET", "POST"], pattern: /^\/ui\/profile$/, instance: null, state: "later", note: "phase 2: the guest's own web name" },
+  // Phase 2 (step 2b): chat as on the platform — authority none, never a command (guestChatRefusal, in the handlers).
+  { methods: ["POST"], pattern: /^\/ui\/send$/, instance: null, state: "on", note: "a message to an in-scope instance (the handler checks the body's instance and web.guests.chat); never a command" },
+  { methods: ["POST"], pattern: /^\/ui\/upload$/, instance: { query: "instance" }, state: "on", note: "a file for an in-scope instance's message (web.guests.chat)" },
+  { methods: ["POST"], pattern: /^\/ui\/reply-button$/, instance: null, state: "on", note: "a click on a reply the guest may see (the handler checks; web.guests.chat)" },
+  { methods: ["POST"], pattern: new RegExp(`^/ui/cancel/${NAME}$`), instance: { group: 1 }, state: "on", note: "Cancel, as the platform's button lets anyone allowed there (web.guests.chat)" },
+  { methods: ["GET"], pattern: /^\/ui\/prefs$/, instance: null, state: "on", note: "the host's look (theme, language, shown settings) and the guest's own — nothing that names an instance (guestPrefs)" },
+  { methods: ["POST"], pattern: /^\/ui\/prefs$/, instance: null, state: "later", note: "phase 3: what a guest may keep of its own" },
+  { methods: ["GET", "POST"], pattern: /^\/ui\/profile$/, instance: null, state: "on", note: "the guest's own web name (its account's, never anyone else's)" },
 ];
 
 export type GuestRouteDecision =
@@ -110,6 +112,32 @@ export interface GuestRequest {
   ownRoom?(instance: string): boolean;
   /** #1920 §5.2: the kept messages, to show a tick or a reply's buttons only on a message the guest may see. */
   history?(): WebChatHistory | null;
+  /** #1920 §5.1: guests may chat (web.guests.chat, default true); false: read-only. Absent: read-only. */
+  chat?(): boolean;
+}
+
+/**
+ * #1920 §5.1 (step 2b): why a guest may not write to `instance` now, or null (not a guest, or allowed): out of scope is
+ * "not found" (another instance's name is never confirmed); read-only when the host says so.
+ */
+export function guestChatRefusal(guest: GuestRequest | undefined, instance: unknown): { status: 403 | 404; error: string } | null {
+  if (!guest) return null;
+  if (typeof instance !== "string" || !guest.scope().has(instance)) return { status: 404, error: "not found" };
+  if (guest.chat?.() !== true) return { status: 403, error: "guest_read_only" };
+  return null;
+}
+/** A guest never sends a command: text that starts (after spaces) with "/" is the platform's admin or command syntax. */
+export const guestCommandText = (text: string): boolean => /^\s*\//.test(text);
+
+/**
+ * #1920 §4 (step 2b): the preferences a guest reads — the host's look and the guest's own; never one that names an
+ * instance (the sidebar's order, favourites, a card's size, the sidebar widget, names, the filter).
+ */
+export const GUEST_PREF_KEYS: ReadonlySet<string> = new Set(["theme", "lang", "fx.show", "card.size", "color.show", "color.off", "fx.sidebar", "fx.header", "fx.page", "fx.box", "fx.cursor"]);
+export function guestPrefs<T extends { values: Record<string, unknown> }>(view: T): T {
+  const values: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(view.values)) if (GUEST_PREF_KEYS.has(k)) values[k] = v;
+  return { ...view, values };
 }
 const guestRequests = new WeakMap<object, GuestRequest>();
 /** Set by the one entry that admits a guest (FleetManager's gate); read by the handlers that answer per recipient. */

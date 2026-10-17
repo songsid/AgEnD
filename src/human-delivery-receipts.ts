@@ -225,7 +225,8 @@ export const BTW_INBOUND_PREFIX = "[BTW — side question from the user. Answer 
 
 /** One formatter for human wire bytes and their immutable evidence snapshot. */
 export function formatHumanInboundMessage(content: string, meta: Record<string, string>, mode: AgentMode): string {
-  const via = meta.source ? " via " + meta.source : "";
+  // #1920: a guest's web message says so — recognition only, like every web message (authority none).
+  const via = meta.source ? " via " + meta.source + (meta.source === "web" && meta.web_guest === "1" ? " (guest)" : "") : "";
   const idTag = meta.user_id ? ", id:" + meta.user_id : "";
   let body = "[user:" + (meta.user || "unknown") + via + idTag + "] " + content;
   if (meta.pending_reactions) body = "[Recent reactions: " + meta.pending_reactions + "]\n" + body;

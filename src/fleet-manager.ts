@@ -20662,7 +20662,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           bindGuestRequest(req, { owner, scope: () => this.guestScope(owner), current: () => this.guestStillAdmitted(admitted),
             // #1920 §5.2: its own Telegram private room shows it everything; the kept messages place ticks and buttons.
             ownRoom: (instance) => this.guestOwnRoom(owner, instance),
-            history: () => this.webChatHistory });
+            history: () => this.webChatHistory,
+            // #1920 §5.1: guests chat unless the host made them read-only (web.guests.chat: false).
+            chat: () => this.fleetConfig?.web?.guests?.chat !== false });
         }
       }
 

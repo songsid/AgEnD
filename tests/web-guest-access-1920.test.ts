@@ -41,19 +41,20 @@ describe("guestRouteDecision (the table)", () => {
   });
   it("a `later` route and anything else → 403 guest_forbidden; a method not listed → 403", () => {
     // Phase 1b opened the stream, the poll and a file (answered per recipient: web-guest-stream-1920.test.ts).
-    const later = [`/ui/effect-posters/${"a".repeat(32)}.png`, "/ui/prefs", "/ui/profile"];
+    // Step 2b opened chat, the guest's prefs (read) and profile, and the posters (by their instance).
+    const later: string[] = [];
     const admin = ["/status", "/api/fleet", "/api/profiles", "/api/pane/a", "/ui/org", "/ui/traffic", "/ui/cache", "/ui/teams", "/ui/tasks", "/ui/steps",
       "/ui/instance/a", "/ui/instances", "/ui/config", "/ui/themes", "/ui/emojis", "/ui/mentions", "/api/settings/fleet", "/api/ai-usage", "/ui/fleet", "/ui/needs",
       "/ui/fleet/agent/a", "/ui/log/a", "/settings", "/ui/img/emoji/x", "/ui/preview-status"];
     for (const p of [...later, ...admin]) expect(guestRouteDecision("GET", u(p), new Set(["a"])), p).toEqual({ kind: "deny", status: 403, error: "guest_forbidden" });
-    for (const [m, p] of [["POST", "/ui/send"], ["POST", "/ui/upload?instance=a"], ["POST", "/ui/reply-button"], ["POST", "/ui/cancel/a"], ["POST", "/ui/command"],
+    for (const [m, p] of [["POST", "/ui/prefs"], ["POST", "/ui/command"],
       ["POST", "/ui/prompt"], ["POST", "/api/profile/a"], ["POST", "/api/card/a/banner"], ["DELETE", "/api/avatar/a"], ["POST", "/ui/chat/a"], ["PUT", "/api/settings/fleet/web"]]) {
       expect(guestRouteDecision(m!, u(p!), new Set(["a"])), `${m} ${p}`).toEqual({ kind: "deny", status: 403, error: "guest_forbidden" });
     }
   });
   it("every entry says why it is open or which phase opens it; the `later` ones are the design's (#1920 §4)", () => {
     for (const r of GUEST_ROUTES) expect(r.note.length, r.pattern.source).toBeGreaterThan(10);
-    expect(GUEST_ROUTES.filter((r) => r.state === "later").every((r) => /^phase (1b|2):/.test(r.note))).toBe(true);
+    expect(GUEST_ROUTES.filter((r) => r.state === "later").every((r) => /^phase (1b|2|3):/.test(r.note))).toBe(true);
   });
   it("sameAccount: both name one account; a missing one is nobody's", () => {
     expect([sameAccount(ALICE, { ...ALICE }), sameAccount(ALICE, BOB), sameAccount(ALICE, undefined), sameAccount(undefined, undefined)]).toEqual([true, false, false, false]);
@@ -140,8 +141,10 @@ describe("the gate, live: a guest scoped to `a`", () => {
     for (const p of ["/status", "/api/fleet", "/ui/org", "/ui/traffic", "/api/settings/fleet", "/ui/instance/a"]) {
       expect(await raw(port, "GET", p, { cookie: cookieOf(guest) }), p).toEqual({ status: 403, body: JSON.stringify({ error: "guest_forbidden" }) });
     }
-    const send = await raw(port, "POST", "/ui/send", write(guest, port), JSON.stringify({ instance: "a", text: "hi" }));
-    expect(send).toEqual({ status: 403, body: JSON.stringify({ error: "guest_forbidden" }) });
+    // Step 2b: chat is a guest's now — but never to an instance out of scope (404), and its preferences stay read-only.
+    const send = await raw(port, "POST", "/ui/send", write(guest, port), JSON.stringify({ instance: "b", message: "hi" }));
+    expect(send).toEqual({ status: 404, body: JSON.stringify({ error: "not found" }) });
+    expect(await raw(port, "POST", "/ui/prefs", write(guest, port), JSON.stringify({ set: { theme: "dark" } }))).toEqual({ status: 403, body: JSON.stringify({ error: "guest_forbidden" }) });
     expect((await raw(port, "POST", "/ui/command", write(guest, port), JSON.stringify({ instance: "a", command: "clear" }))).status).toBe(403);
     // Unchanged: an admin session and the header token reach the admin routes.
     expect((await raw(port, "GET", "/status", { cookie: cookieOf(admin) })).status).toBe(200);
