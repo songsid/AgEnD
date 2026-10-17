@@ -7428,7 +7428,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapters: { total: this.adapterState.size, connected, states, details },
       startupComplete: this.startupComplete,
       memory: readFleetMemory(),
-      hostMemory: this.memoryTop && hostMemory.level !== "normal"
+      hostMemory: this.memoryTop && (hostMemory.level === "elevated" || hostMemory.level === "critical")
         ? { ...hostMemory, topProcesses: this.memoryTop.processes, topProcessesAt: this.memoryTop.at } : hostMemory,
       problems,
     };

@@ -49,19 +49,10 @@ async function statusOf(procRoot: string, pid: number): Promise<{ name: string; 
   return { name, rss: Number.parseInt(rss, 10) * 1024, ppid: Number.parseInt(ppid, 10) };
 }
 
-/** The pids the service runs: its cgroup's, else the fleet process and its descendants. */
-async function servicePids(deps: MemoryHogDeps, procRoot: string): Promise<number[]> {
-  // The cgroup v2 path (the "0::" line), as process-memory.ts reads it.
-  const line = (await readText(`${procRoot}/${deps.fleetPid}/cgroup`))?.split("\n").find(l => l.startsWith("0::"));
-  const cg = line ? line.slice(3).trim() : null;
-  const cgRoot = deps.cgroupRoot ?? "/sys/fs/cgroup";
-  if (cg && cg !== "/") {
-    const procs = await readText(`${cgRoot}${cg}/cgroup.procs`);
-    if (procs) return procs.split("\n").map(l => Number.parseInt(l, 10)).filter(n => Number.isSafeInteger(n) && n > 0).slice(0, MEMORY_HOGS_SCAN_MAX);
-  }
-  // No cgroup v2 view: the fleet's descendants, from every process's parent.
+/** Every descendant of `roots` (the roots included), breadth first, from one pass over every process's parent. */
+async function descendants(procRoot: string, roots: number[]): Promise<number[]> {
   let entries: string[] = [];
-  try { entries = await readdir(procRoot); } catch { return [deps.fleetPid]; }
+  try { entries = await readdir(procRoot); } catch { return roots; }
   const children = new Map<number, number[]>();
   for (const e of entries.slice(0, 65536)) {
     if (!/^\d+$/.test(e)) continue;
@@ -72,7 +63,7 @@ async function servicePids(deps: MemoryHogDeps, procRoot: string): Promise<numbe
     children.set(st.ppid, list);
   }
   const out: number[] = [];
-  const queue = [deps.fleetPid, ...(deps.tmuxServerPid ? [deps.tmuxServerPid] : [])];
+  const queue = [...roots];
   const seen = new Set<number>();
   while (queue.length && out.length < MEMORY_HOGS_SCAN_MAX) {
     const pid = queue.shift()!;
@@ -81,6 +72,30 @@ async function servicePids(deps: MemoryHogDeps, procRoot: string): Promise<numbe
     queue.push(...(children.get(pid) ?? []));
   }
   return out;
+}
+
+/**
+ * The pids the service runs: its cgroup's, else the fleet process and its descendants. The tmux server holding the
+ * instances can outlive a fleet restart in another cgroup (a fleet started again from another terminal moves to a new
+ * scope; tmux stays): when it is not among the cgroup's processes, its descendants (every pane's CLI and what it ran)
+ * are added (#2036 review).
+ */
+async function servicePids(deps: MemoryHogDeps, procRoot: string): Promise<number[]> {
+  // The cgroup v2 path (the "0::" line), as process-memory.ts reads it.
+  const line = (await readText(`${procRoot}/${deps.fleetPid}/cgroup`))?.split("\n").find(l => l.startsWith("0::"));
+  const cg = line ? line.slice(3).trim() : null;
+  const cgRoot = deps.cgroupRoot ?? "/sys/fs/cgroup";
+  if (cg && cg !== "/") {
+    const procs = await readText(`${cgRoot}${cg}/cgroup.procs`);
+    if (procs) {
+      const pids = procs.split("\n").map(l => Number.parseInt(l, 10)).filter(n => Number.isSafeInteger(n) && n > 0).slice(0, MEMORY_HOGS_SCAN_MAX);
+      if (!deps.tmuxServerPid || pids.includes(deps.tmuxServerPid)) return pids;
+      const outside = (await descendants(procRoot, [deps.tmuxServerPid])).filter(p => !pids.includes(p));
+      return [...pids, ...outside].slice(0, MEMORY_HOGS_SCAN_MAX);
+    }
+  }
+  // No cgroup v2 view: the fleet's and tmux's descendants.
+  return descendants(procRoot, [deps.fleetPid, ...(deps.tmuxServerPid ? [deps.tmuxServerPid] : [])]);
 }
 
 /** The `limit` processes with the most RSS in the fleet's service, largest first, each with its owner. */

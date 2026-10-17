@@ -57,14 +57,24 @@ describe("topMemoryHogs: the largest processes of the service and their owners",
     const hogs = await topMemoryHogs({ ...base, ...fs, panes: [...PANES, { pid: 600, window: "scratch" }] }, 5);
     expect(hogs.map(h => [h.pid, h.owner, h.instance ?? null])).toEqual([[700, "other", null], [601, "other", null], [100, "fleet", null], [200, "tmux", null], [600, "other", null]]);
   });
+  it("#2036 review: a tmux server outside the fleet's cgroup (it outlived a restart into another scope): its panes still count", async () => {
+    // The fleet's cgroup holds only the fleet; tmux (orphaned to 1) and every pane, CLI and script are outside it.
+    const fs = proc({ ...TREE, 200: ["tmux: server", 9_000, 1] }, { inCgroup: [100] });
+    expect((await topMemoryHogs({ ...base, ...fs }, 3)).map(h => [h.pid, h.owner, h.instance ?? null])).toEqual([
+      [302, "instance", "dev-a"], [401, "instance", "web"], [301, "instance", "dev-a"],
+    ]);
+    // tmux inside the cgroup: the cgroup alone (no /proc walk needed), as before.
+    const inside = proc(TREE, { inCgroup: [100, 200, 300, 301, 302] });
+    expect((await topMemoryHogs({ ...base, ...inside }, 5)).map(h => h.pid)).toEqual([302, 301, 100, 200, 300]);
+  });
   it("without a cgroup v2 view: the fleet's and tmux's descendants; a kernel thread (no VmRSS) is skipped", async () => {
     const fs = proc({ ...TREE, 900: ["elsewhere", 9_000_000, 1] }, { cgroup: null });
     const hogs = await topMemoryHogs({ ...base, ...fs }, 10);
     expect(hogs.map(h => h.pid)).toEqual([302, 401, 301, 100, 200, 300, 400]);   // 900 is not the fleet's; 500 has no RSS
   });
   it("a process gone between the list and its read is skipped; limit 0 is nothing; the scan is bounded", async () => {
-    const fs = proc(TREE, { inCgroup: [100, 302, 99999] });
-    expect((await topMemoryHogs({ ...base, ...fs }, 5)).map(h => h.pid)).toEqual([302, 100]);
+    const fs = proc(TREE, { inCgroup: [100, 200, 302, 99999] });   // tmux in the cgroup: the cgroup alone is read
+    expect((await topMemoryHogs({ ...base, ...fs }, 5)).map(h => h.pid)).toEqual([302, 100, 200]);
     expect(await topMemoryHogs({ ...base, ...fs }, 0)).toEqual([]);
     expect(MEMORY_HOGS_SCAN_MAX).toBeGreaterThanOrEqual(1024);
   });
@@ -117,6 +127,15 @@ describe("the fleet keeps the largest processes for the log, /health and the das
     const pressure = f.warn.mock.calls.filter(c => c[1] === "Host memory critical — deferring new CLI spawns");
     expect(pressure.at(-1)![0]).toMatchObject({ topProcesses: TOP3 });
     expect(f.chat).not.toHaveBeenCalled();
+  });
+
+  it("#2036 review: /health carries the list only at elevated or critical (not a stale one at unknown)", async () => {
+    const f = fleet();
+    await f.sample("elevated");
+    f.fm.memoryPressure = { advisoryOnly: () => false, snapshot: () => ({ level: "unknown" }) };
+    expect(f.fm.getFleetHealth().hostMemory.topProcesses).toBeUndefined();
+    f.fm.memoryPressure = { advisoryOnly: () => false, snapshot: () => ({ level: "critical" }) };
+    expect(f.fm.getFleetHealth().hostMemory.topProcesses).toEqual(TOP3);
   });
 
   it("normal clears it everywhere (log, /health, dashboard)", async () => {
