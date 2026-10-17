@@ -247,7 +247,7 @@ import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { recentChatContext } from "./log-tail.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
-import { ClassicChannelManager, classicWebEchoOn, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
+import { ClassicChannelManager, classicWebEchoOn, getClassicBackendChoices, inferClassicChannelType, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
@@ -288,7 +288,7 @@ import {
 import { authorizeSession, decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
 import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
-import { localSessionPolicy, tokenEpoch, WebSessionStore } from "./web-session.js";
+import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
 import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
@@ -2798,6 +2798,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.fleetConfig = loaded;
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
     this.warnAboutRemovedLoginMode(loaded);
+    this.enforceGuestSwitch();
     return this.fleetConfig;
   }
 
@@ -5741,7 +5742,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // #1620: fleet.yaml's web.session.local, read at every check — a Settings save or a reload applies at once
         // (shortening ends the sessions it now outlives). The public link's policy stays fixed.
         localPolicy: () => localSessionPolicy(this.fleetConfig?.web?.session?.local),
+        // #1920 §5.4: a guest's, from web.guests.session (never longer than the surface's own).
+        guestPolicy: () => guestSessionPolicy(this.fleetConfig?.web?.guests?.session),
       });
+      this.enforceGuestSwitch();                     // #1920: guests off while the fleet was down
     }
     if (!this.returningDevices) {
       this.returningDevices = new ReturningDevices({ dataDir: this.dataDir, onWarn: message => this.logger.warn(message) });
@@ -10718,6 +10722,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   saveFleetConfig(explicitPatches: RawConfigPatch[] = []): void {
     this.publicWebLink?.refresh();
+    this.enforceGuestSwitch();                       // #1920: a Settings save turning guests off ends their sessions
     if (!this.fleetConfig || !this.configPath) return;
 
     if (!this.savedFleetConfigSnapshot) this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
@@ -20465,11 +20470,61 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   /**
-   * #1920: the instances a guest session may see — derived on every request, never stored. Phase 2 derives it from
-   * the account's chat access (and an admin's naming for an open connection); until then a guest sees nothing.
+   * #1920 §3: the instances a guest session may see — derived on every request from the account's chat access, never
+   * stored; nothing while `web.guests.enabled` is not true.
+   * - Its connection's fleet topics and General (what it may talk to in chat): when that connection's access lets the
+   *   account in (AccessManager.isAllowed — allowed_users or paired). An `open` connection lets everyone in, so it gives
+   *   only the instances an admin named for its guests (`web.guests.open_instances`; the user's decision: least
+   *   privilege, as an open group has no list of people).
+   * - A Telegram private ClassicBot room that is the account's own (its chat id is the user id).
+   * - A group or guild room: only while membership is verified (a later step; until then none).
+   * - Then an admin's narrowing (`web.guests.narrow`), which only takes away.
+   * A fleet admin is not a guest: an admin outside the connection's access gets nothing here (admins sign in as admins).
    */
-  guestScope(_owner: { readonly adapterId: string; readonly userId: string } | undefined): ReadonlySet<string> {
-    return NO_GUEST_SCOPE;
+  guestScope(owner: { readonly adapterId: string; readonly userId: string } | undefined): ReadonlySet<string> {
+    const guests = this.fleetConfig?.web?.guests;
+    if (!owner || guests?.enabled !== true) return NO_GUEST_SCOPE;
+    const own = <T>(map: Record<string, T> | undefined, key: string): T | undefined => (map && Object.hasOwn(map, key) ? map[key] : undefined);
+    const scope = new Set<string>();
+    const world = this.worlds.get(owner.adapterId);
+    if (world && world.accessManager.isAllowed(owner.userId)) {
+      const named = world.accessManager.getMode() === "open" ? new Set(own(guests.open_instances, owner.adapterId) ?? []) : null;
+      for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
+        if (this.getInstanceAdapterId(name) !== owner.adapterId || this.isClassicInstance(name)) continue;
+        if (!named || named.has(name)) scope.add(name);
+      }
+    }
+    for (const room of this.classicChannels?.getAll() ?? []) {
+      // A private room's chat id is its one user's id (a group's is negative, so never equal); Telegram only.
+      if (room.adapterId === owner.adapterId && room.channelId === owner.userId && inferClassicChannelType(room.channelId) === "telegram") scope.add(room.instanceName);
+    }
+    const narrow = own(guests.narrow, `${owner.adapterId}:${owner.userId}`);
+    if (narrow) { const keep = new Set(narrow); for (const name of [...scope]) if (!keep.has(name)) scope.delete(name); }
+    return scope.size ? scope : NO_GUEST_SCOPE;
+  }
+
+  /**
+   * #1920 §3.5: a guest session still admitted — current, with something in scope. A scope that became empty (guest
+   * sign-in off, the account removed from the connection's access, everything narrowed away) ends the session here,
+   * so the next request and the open stream find it gone.
+   */
+  private guestStillAdmitted(record: SessionRecord): boolean {
+    if (!this.webSessions || !this.webToken || !this.webSessions.isCurrent(record, tokenEpoch(this.webToken))) return false;
+    if (this.guestScope(record.owner).size) return true;
+    this.enforceGuestSwitch();
+    const ended = this.webSessions.revokeByHandle(record.handle);
+    if (ended.found) this.logger.info({ adapterId: record.owner?.adapterId, durable: ended.durable }, "Guest web session ended: nothing left in its scope");
+    return false;
+  }
+
+  /**
+   * #1920 §3.5: guest sign-in turned off ends every guest session — checked when the configuration is read or saved
+   * and when the sessions are opened, so turning it back on never revives one.
+   */
+  private enforceGuestSwitch(): void {
+    if (this.fleetConfig?.web?.guests?.enabled === true || !this.webSessions) return;
+    const ended = this.webSessions.revokeAll((r) => r.tier === "guest");
+    if (ended.count) this.logger.info({ count: ended.count, durable: ended.durable }, "Guest web sign-in is off: every guest session ended");
   }
 
   /** Shared handler dispatcher; gateway admission is enforced by its separate listener. */
@@ -20537,6 +20592,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         // handler, on this listener and the public link's gateway alike (both come through here).
         if (decision.via === "session" && decision.session.tier === "guest") {
           const owner = decision.session.owner!;
+          const admitted = decision.session;
+          if (!this.guestStillAdmitted(admitted)) {
+            res.writeHead(401);
+            res.end(JSON.stringify({ error: "guest_scope_empty" }));
+            return;
+          }
           const verdict = guestRouteDecision(req.method ?? "GET", parsedUrl, this.guestScope(owner));
           if (verdict.kind === "deny") {
             res.writeHead(verdict.status);
@@ -20544,10 +20605,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
             return;
           }
           // Phase 1b: the handlers that answer per recipient (the stream, the poll, a file) know it is a guest's, and
-          // ask its scope anew each time.
-          const admitted = decision.session;
-          bindGuestRequest(req, { owner, scope: () => this.guestScope(owner),
-            current: () => !!this.webSessions && !!this.webToken && this.webSessions.isCurrent(admitted, tokenEpoch(this.webToken)) });
+          // ask its scope anew each time; an emptied scope ends the session (and closes its stream).
+          bindGuestRequest(req, { owner, scope: () => this.guestScope(owner), current: () => this.guestStillAdmitted(admitted) });
         }
       }
 
