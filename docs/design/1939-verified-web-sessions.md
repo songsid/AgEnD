@@ -100,8 +100,19 @@ do), and again when a step-up is verified (§6). Nothing about locality is remem
      loopback host. It does **not** prove which person sits at it. A local reverse proxy that strips forwarding
      headers is indistinguishable from a local browser, the same out-of-scope case as other local processes and
      users (A7 in the secure-login design).
-   - **What `lan` means.** It covers anything that can reach the health port. With the default, a cookie stolen and
-     replayed from another machine on the same network carries authority. The user accepted that risk (§8).
+   - **What `lan` means: only "not loopback".** The classifier does not check that a peer is on a private network or
+     a tailnet. `lan` is everything that reaches the health listener and is not loopback. That includes whatever a
+     port forward, a changed bind address, `web.allowed_hosts` or an ordinary reverse proxy exposes, and it can be the
+     internet.
+     - **What this design assumes.** The health listener is reachable only from networks the user trusts. The
+       supported way in from outside is the public link, a separate `gateway` surface that never qualifies (item 5).
+     - **What AgEnD enforces.** The only barrier AgEnD itself enforces against non-local requests is the "Only this
+       computer can authorize" switch.
+     - **The default.** A cookie stolen and replayed from any host that can reach the health listener carries
+       ordinary authority. On a trusted LAN or tailnet that is the risk the user accepted. If the listener is exposed
+       to the internet, the same holds for the internet (§8).
+     - **The warning.** Settings → Web sign-ins warns when `web.allowed_hosts` names a host that isn't loopback while
+       the switch is off.
 5. **Never the public link.** A `gateway` session can never qualify, whatever the configuration.
 6. **Freshness.**
    - **Ordinary authority:** the session is at most 48 hours old by default (`web.verified_authority.max_session_hours`,
@@ -140,8 +151,11 @@ interface HumanAuthority {
     verified_at: string;
     event_id: string | null;        // the platform interaction id for a click
   };
-  /** The server policy this authority was granted under (§10). delivery_status downgrades a stale or disabled one. */
-  policy_generation: number;
+  /**
+   * The revocation epoch this authority was granted under (§10). Only an explicit revocation bumps it; a change to the
+   * enforced list does not. delivery_status reports authority from an older epoch as none.
+   */
+  authority_epoch: number;
 }
 
 type StepUpTarget =
@@ -188,11 +202,32 @@ on Discord or Telegram.
 **The enforced list is the user's.** Settings → Web sign-ins → "Always require a step-up for" lets the user add or
 remove actions. AgEnD enforces whatever is on it, and only that.
 - **The default** is `release`, `force-push` and `delete-instance`.
-- **Where it lives.** The list is stored as `web.verified_authority.step_up: [ids…]` in fleet.yaml.
 - **Adding** an action takes effect at once.
 - **Removing** one goes through Settings confirmation, because that loosens the rule.
-- **Custom actions.** An entry may also be a custom action: an id and label written by the user, with target kind
-  `text`. This covers anything the catalog doesn't name.
+- **Custom actions.** The user can define actions the catalog doesn't name. Each has its own id and label, with target
+  kind `text`.
+
+**The configuration** (fleet.yaml, the only place the list and custom definitions live):
+
+```yaml
+web:
+  verified_authority:
+    enabled: false              # the server switch (§10)
+    loopback_only: false        # "Only this computer can authorize" (§3.4)
+    max_session_hours: 48       # 1–48 (§3.6)
+    step_up:
+      enforce: [release, force-push, delete-instance]   # catalog ids and/or custom ids
+      custom:                                            # user-defined actions, merged with the catalog
+        - { id: drop-database, label: "Drop a production database", label_zh: "刪除正式資料庫" }
+```
+
+- **How the two lists combine.** `step-up-policy.ts` merges the catalog and `custom` into one action table. A custom
+  id must match `^[a-z][a-z0-9-]{2,31}$` and must not shadow a catalog id; the config validator refuses one that does.
+  `enforce` may name only ids in the merged table. A custom action's target kind is always `text`.
+- **A binding is self-describing.** It records the action's id **and** its label as shown when it was issued
+  (`binding.action_label`). If a custom definition is later deleted or relabelled, receipts already written still
+  read correctly. An id that is no longer in the table is simply not enforced. A step-up for it remains valid
+  evidence until its `act_by`.
 
 **One source.** `src/authority/step-up-policy.ts` holds:
 - **The catalog.** The schema and the actions people can pick from. Each entry has an id, English and zh-TW labels,
@@ -203,8 +238,9 @@ remove actions. AgEnD enforces whatever is on it, and only that.
   - the instructions builder, which renders the three examples, the class, and the *current* enforced list from
     config;
   - the `/authorize` page, which builds its menu from the catalog plus the configured custom actions;
-  - `delivery_status`, which returns the list in force as `step_up_policy: { generation, enforced: [ids] }` with
-    every human receipt. Agents never have to guess it.
+  - `delivery_status`, which returns the list in force as `step_up_policy: { version, enforced: [ids] }` with every
+    human receipt. `version` is informational: it changes when the list changes, and it is **not** the revocation
+    epoch. Agents never have to guess the list.
 - **A docs test** pins the three examples and the defaults against `docs/features.md`.
 
 | id (catalog) | What | Target | Enforced by default |
@@ -222,10 +258,16 @@ remove actions. AgEnD enforces whatever is on it, and only that.
 
 There is no separate `grant` action. Who may *perform* the action is part of every step-up (`executors`, §6.1).
 
-**Changing the list.** Each change bumps `policy_generation` (§10).
-- **Removing an action** never makes an earlier step-up invalid.
-- **Adding an action** means its next use needs a step-up. A receiver checks the list `delivery_status` returns *now*,
-  not the one in force when the message was sent.
+**Changing the list never revokes anything.** It changes only which actions need a step-up. The receiver applies the
+list `delivery_status` returns *now* to the receipt it is about to act on. Revocation is separate (`authority_epoch`,
+§10). Examples, with a release step-up issued at 10:00 that can be acted on until 10:15:
+- **At 10:01, force-push is removed.** The release step-up still passes, because release is still enforced and the
+  step-up matches. An ordinary web-session message from 09:55 asking for a force-push now needs only ordinary
+  authority, plus the agent's judgement.
+- **At 10:01, merge is added.** That same 09:55 ordinary message, if it asked for a merge, no longer suffices: merge
+  is enforced now, and the message has no step-up for it. Unrelated receipts and existing step-ups are unaffected.
+- **Release is removed.** The 10:00 release step-up is still valid evidence. Release just doesn't require one any
+  more.
 
 **The coordinator.** The coordinator's human-consent rule uses the same configured list.
 - **`merge` is off by default.** A human go-ahead to merge is then judged by context, while `gate-merge.sh` still
@@ -274,7 +316,8 @@ The receiver applies the rule to the receipt **as `delivery_status` returns it n
 interface StepUpBinding {
   v: 1;
   challenge_id: string;          // 32 hex, the code's or the card's id
-  action: StepUpAction;
+  action: string;                // an id in the merged action table (§5)
+  action_label: string;          // its label as shown at issuance, so the receipt reads correctly later
   target: StepUpTarget;
   content_sha256: string;        // the exact original text of the web message being authorized
   audience: string;              // the instance the message is delivered to
@@ -444,10 +487,10 @@ No code, cookie, CSRF value or message text is logged; the receipt keeps the tex
 | Threat | Today | With this design |
 |---|---|---|
 | A stolen or unlocked browser on this machine | It can chat; it authorizes nothing | It can give ordinary authority for up to 48 h (the default age). It can step up only with the account's click, or a DM code the person reveals (codes are phishable, §6.2). Revocation: `/web revoke`, the device list, `agend web-token rotate`, or the server switch (§10) |
-| A stolen cookie used from another machine on the same network (LAN, tailnet) | It can chat | **Accepted risk by default** (the user's decision, 2026-10-17): it can give ordinary authority, and step-ups only with the account's click or a revealed code. "Only this computer can authorize" (§3.4) removes it. The receipt and the audit log record `peer: lan` |
-| A stolen cookie used from outside the network | It can chat | The health port isn't reachable from there. The public link is a separate `gateway` surface that never qualifies (§3.5) |
+| A stolen cookie used from another machine on the same network (LAN, tailnet) | It can chat | **Accepted risk by default** (the user's decision, 2026-10-17): it can give ordinary authority, and step-ups only with the account's click or a revealed code. Turning on "Only this computer can authorize" (§3.4) stops it for new messages, and makes existing `lan` receipts and step-ups read as `none` (§10). The receipt and the audit log record `peer: lan` |
+| A stolen cookie used from outside the network | It can chat | **A deployment assumption, not an AgEnD barrier.** If the health listener is reachable only through the public link, outside requests arrive on the `gateway` surface, which never qualifies (§3.5). If the listener itself is exposed (a port forward, a changed bind, an ordinary reverse proxy), the classifier sees only "not loopback", calls it `lan`, and by default it qualifies. Turn on "Only this computer can authorize", or don't expose the health listener |
 | Public link | Recognition only | Never authority (§3.5) |
-| A reverse proxy that adds forwarding headers | Same as local | Classified `lan`. It qualifies by default, and not under "Only this computer can authorize" |
+| A reverse proxy in front of the health listener (forwarding headers or not) | Same as local | Classified `lan`, with or without forwarding headers (a header-stripping local proxy reads as loopback; see the next row). It qualifies by default, which is right only if everyone who can reach that proxy is trusted (the previous row). It never qualifies under "Only this computer can authorize" |
 | A local reverse proxy that strips forwarding headers | Same as local | Not supported for authority. Indistinguishable from a local browser, so out of scope like other local processes (§3.4) |
 | An agent asks the person to "just click" | Same on any platform | A reply button can never step up. A step-up needs the `/authorize` page plus the person's own click or DM code, and shows the exact action, target and executors |
 | A phishing page in an agent's HTML preview asks for the code | — | The page can't use the code itself (no cookie, no `/authorize/verify`), but the code can leave it, and whoever holds the session can redeem it. The DM says where to enter it. Both kinds ship; the Authorize page offers the click first |
@@ -480,10 +523,18 @@ These must hold, and a change to any of them needs a security review and a fresh
 ## 10. Migration and staging
 
 - **The switch, first.** `web.verified_authority.enabled` is a server setting, off by default, and turning it on
-  goes through Settings confirmation. Each authority is stamped with the current `policy_generation`.
-  - **Turning it off,** or bumping the generation (e.g. `/web revoke` bumps it), immediately makes `delivery_status`
-    return every web-session receipt, step-ups included, as `kind: "none"` with `downgraded: "policy"`. New web
-    receipts are written as `none`.
+  goes through Settings confirmation. Each authority is stamped with the current `authority_epoch`.
+- **What revokes, and only what revokes.** `delivery_status` evaluates every web-session receipt against the
+  revocation state *now*:
+  - **Turning the switch off,** or bumping `authority_epoch` (`/web revoke` bumps it; so does a Settings "Revoke web
+    authority"). From then on, every web-session receipt from an older epoch, step-ups included, reads as
+    `kind: "none"` with `downgraded: "revoked"`. While the switch is off, new web receipts are written as `none`.
+  - **Turning "Only this computer can authorize" on.** From then on, every web-session receipt whose
+    `session.peer` is `lan` reads as `none` with `downgraded: "loopback_only"`, step-ups included. `loopback`
+    receipts are unaffected. Turning it off again doesn't restore them: re-enabling requires Settings confirmation,
+    and the epoch is bumped along with it.
+  - **Not revocation.** Changing the enforced step-up list or its `version` (§5), lowering `max_session_hours`, or
+    editing custom actions. These affect only what is required or allowed from then on, as §5 describes.
   - **Why this is fail-closed.** It doesn't depend on which instruction text an agent is running: agents act on the
     receipt they read now (§5).
 - **S1: observe only.** Admission evaluates §3 per request, computes `authority`, and writes it into receipts, and
@@ -511,7 +562,7 @@ These must hold, and a change to any of them needs a security review and a fresh
 - **S4 (later): the agent card.** `request_step_up` and its host-rendered card (§6.4), once S2 and S3 have run in a
   beta.
 - **Rollback.**
-  - **Immediate stop:** turn the switch off (or bump the generation). Every web-session authority, including
+  - **Immediate stop:** turn the switch off (or bump `authority_epoch`). Every web-session authority, including
     already-verified step-ups, reads as `none` from the next `delivery_status`, so even an agent still running S3
     text gets nothing to act on.
   - **Code and instructions:** after that, revert S3 (and S2/S1 if wanted). Live instances pick up the reverted text
