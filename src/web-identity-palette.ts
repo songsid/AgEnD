@@ -76,8 +76,8 @@ export function autoIdentityColor(name: string): IdentityColor {
 /** Where the colour shows (the user's decision 2): the name, a bar at the row's left edge, the avatar's ring. */
 export const PLACEMENTS = ["name", "bar", "ring"] as const;
 export type Placement = (typeof PLACEMENTS)[number];
-/** The host's default where nobody chose (decision 1): ring and bar. */
-export const DEFAULT_PLACEMENTS: readonly Placement[] = ["bar", "ring"];
+/** The host's default where nobody chose: all three (#2056, the user 2026-10-17; it was ring and bar, #1958 decision 1). */
+export const DEFAULT_PLACEMENTS: readonly Placement[] = ["name", "bar", "ring"];
 /** A set of places, in PLACEMENTS order, no repeats; [] is "nowhere". null for anything else. */
 export function canonicalPlacements(v: unknown): Placement[] | null {
   if (!Array.isArray(v) || v.length > PLACEMENTS.length || !v.every(p => (PLACEMENTS as readonly unknown[]).includes(p))) return null;
