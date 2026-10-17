@@ -66,7 +66,17 @@ export function UsageMetric({ m }) {
   const sub = [note, expiryText(m.expiresAt)].filter(Boolean).join(" · ");
   return html`<div class="u-metric"><div class="u-row"><span class="u-label">${label}</span><span class="u-val">${val}</span></div>${sub ? html`<div class="u-sub">${sub}</div>` : null}</div>`;
 }
-/** "Updated 3 min ago" (#1585): how old the numbers are — the panel may show the last snapshot while a fresh one comes. */
+/**
+ * #2014: a row's title. A credential profile's row (`profile`; its API `name` is "Claude (<profile>)") shows the
+ * provider name on the title line beside the plan badge, and the profile on its own full-width muted line under it;
+ * the full name is the tooltip, and the dialog shows the profile unclipped. Any other row: its name.
+ */
+export function providerTitle(p) {
+  const name = String((p && p.name) || ""), profile = p && typeof p.profile === "string" && p.profile ? p.profile : "";
+  const suffix = ` (${profile})`;
+  return profile && name.endsWith(suffix) ? { base: name.slice(0, -suffix.length), profile } : { base: name, profile };
+}
+
 /**
  * #1749: a plan as its badge reads — one short line. "Name [Tier] (N×)" (Claude's "Team Premium (6.25x)", "Max (20x)")
  * becomes "Name ×N"; anything else (Pro, Codex's and muse's labels) as it is. The full name stays on the badge's
@@ -76,6 +86,7 @@ export function planBadge(plan) {
   const m = /^(\S+)(?: [^()]+)? \((\d+(?:\.\d+)?)x\)$/i.exec(String(plan || "").trim());
   return m ? `${m[1]} ×${m[2]}` : String(plan || "");
 }
+/** "Updated 3 min ago" (#1585): how old the numbers are — the panel may show the last snapshot while a fresh one comes. */
 export function updatedAgo(fetchedAt, now = Date.now()) {
   const ms = now - new Date(fetchedAt).getTime();
   if (!Number.isFinite(ms) || ms < 60_000) return tn("usageUpdatedJustNow");
@@ -134,11 +145,12 @@ export function UsageBody({ owner }) {
     const providers = ordered(data.providers);
     content = html`${!providers.length ? html`<p class="note">${tn("usage.empty_active")}</p>` : null}
       ${providers.map((p, i) => html`<section key=${key(p)} class="u-provider">
-        <div class="u-head"><strong title=${p.name}>${p.name}</strong>${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
+        <div class="u-head"><strong title=${p.name}>${providerTitle(p).base}</strong>${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
           <span class="u-order">
             <button type="button" class="icon-btn" disabled=${i === 0} aria-label=${tn("usageMoveUp")} title=${tn("usageMoveUp")} onClick=${() => move(key(p), -1, data.providers)}><${Icon} name="up" size=${14} /></button>
             <button type="button" class="icon-btn" disabled=${i === providers.length - 1} aria-label=${tn("usageMoveDown")} title=${tn("usageMoveDown")} onClick=${() => move(key(p), 1, data.providers)}><${Icon} name="down" size=${14} /></button>
           </span></div>
+        ${providerTitle(p).profile ? html`<div class="u-profile" title=${p.name}>${providerTitle(p).profile}</div>` : null}
         ${p.stale ? html`<p class="note">${usageText(p.hint || "", p.hintI18n)}</p>` : null}
         ${p.status === "error" && !p.transient ? html`<p class="u-err">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`
           : p.status === "error" && p.transient ? html`<p class="note">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`

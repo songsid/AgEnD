@@ -72,15 +72,32 @@ describe("Fleet overview", () => {
     await settle(4);
     expect([navStore.get().route, (pg.root.querySelector(".p-fleet .seg-item.active") as any)?.getAttribute("href")]).toEqual([{ panel: "fleet", tab: "org" }, "/ui/fleet/org"]);
   });
-  it("an instance row still opens that instance — its chat from a chat, its Details from the Fleet panel (#1523 Q4)", async () => {
+  it("an instance row opens that instance's chat — from a chat and from every Fleet tab; its Details only from Details (#1917)", async () => {
     const row = (pg: AppPage, href: string) => [...pg.root.querySelectorAll("#instanceList a")].find((a: any) => a.getAttribute("href") === href);
     const a = await shell("/ui/chat/web-dev");
     click(row(a.pg, "/ui/chat/reviewer")); await settle(4);
     const fromChat = a.navStore.get().route;
-    const p = mounted.pop()!; await p.unmount(); p.restore();
-    const b = await shell("/ui/fleet/org");
-    click(row(b.pg, "/ui/fleet/agent/reviewer")); await settle(4);
-    expect([fromChat, b.navStore.get().route]).toEqual([{ panel: "chat", instance: "reviewer" }, { panel: "details", instance: "reviewer" }]);
+    let p = mounted.pop()!; await p.unmount(); p.restore();
+    const routes: unknown[] = [];
+    for (const path of ["/ui/fleet/org", "/ui/fleet", "/ui/fleet/cache"]) {
+      const b = await shell(path);
+      expect(row(b.pg, "/ui/fleet/agent/reviewer"), `${path}: no row goes to Details`).toBeUndefined();
+      click(row(b.pg, "/ui/chat/reviewer")); await settle(4);
+      routes.push(b.navStore.get().route);
+      p = mounted.pop()!; await p.unmount(); p.restore();
+    }
+    const c = await shell("/ui/fleet/agent/web-dev");
+    click(row(c.pg, "/ui/fleet/agent/reviewer")); await settle(4);
+    expect([fromChat, ...routes, c.navStore.get().route]).toEqual([{ panel: "chat", instance: "reviewer" }, { panel: "chat", instance: "reviewer" },
+      { panel: "chat", instance: "reviewer" }, { panel: "chat", instance: "reviewer" }, { panel: "details", instance: "reviewer" }]);
+  });
+  it("the round trip: chat → Fleet overview → the same instance's row lands on its chat, not Details (#1917)", async () => {
+    const { pg, navStore } = await shell("/ui/chat/web-dev");
+    click(entry(pg)); await settle(6);
+    expect(navStore.get().route).toEqual({ panel: "fleet", tab: "org" });
+    const back = [...pg.root.querySelectorAll("#instanceList a")].find((a: any) => a.getAttribute("href") === "/ui/chat/web-dev") as any;
+    click(back); await settle(4);
+    expect([navStore.get().route, pg.window.location.pathname]).toEqual([{ panel: "chat", instance: "web-dev" }, "/ui/chat/web-dev"]);
   });
   it("on a phone it is at the top of the drawer, and closes it when chosen", async () => {
     const { pg, navStore } = await shell("/ui/chat/web-dev", { narrow: true });
