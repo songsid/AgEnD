@@ -166,6 +166,8 @@ Chat's ⋯ → "Details" goes here instead of the dialog.
 
 Decided by the user on 2026-10-10 ("照建議"): Q1 = B, Q2 = A, Q4 = A. Q3 = A and Q5 were decided earlier.
 
+**Changed on 2026-10-16 (#1917): Q4 is now B.** A sidebar click on a Fleet tab opens that instance's Chat. Only a click on a Details page opens Details.
+
 | # | Question | Options | Decided |
 |---|---|---|---|
 | Q1 | What does **Details** (the Fleet side of one instance) show? | A: the current details dialog as a page (runtime + recent activity) · B: A + a read-only config summary (directory, binding, tags, description) with "Edit in Settings", + start/stop/pause actions · C: B + the full config editor inline | **B** |

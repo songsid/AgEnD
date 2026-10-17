@@ -356,11 +356,11 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   // #1664: "☆ Edit" — the stars on every row (on a phone the only way to them) and ↑ ↓ on the favorites — only on the
   // full list, as drag: in a filtered one the row above may not be the one above in the list (#1677 review).
   const [editing, setEditing] = useState(false);
-  // Where a row goes: the view the page is in (#1523 §3.1). View → View; Details, or a Fleet tab (Q4 = A), → Details;
-  // everywhere else → Chat. The anonymous reader only ever has View.
+  // Where a row goes: the view the page is in (#1523 §3.1). View → View; Details → Details; everywhere else, a Fleet tab
+  // included (#1917: the user's call, replacing Q4 = A), → Chat. The anonymous reader only ever has View.
   const rowPath = viewOnly || (route && route.panel === "view") ? viewPath
     : route && route.panel === "log" ? logPath                                  // #1218: Log → Log
-    : route && (route.panel === "details" || route.panel === "fleet") ? detailsPath : chatPath;
+    : route && route.panel === "details" ? detailsPath : chatPath;
   const active = route && (route.panel === "chat" || route.panel === "view" || route.panel === "log" || route.panel === "details") ? route.instance : null;
   useLayoutEffect(() => { keepActiveInView(list.current); }, [active, items.length, loaded]);
   const own = (map, name) => Object.prototype.hasOwnProperty.call(map, name);
