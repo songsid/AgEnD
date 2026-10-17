@@ -2357,11 +2357,15 @@ type PrefsViewer = { person: string | null; epoch: string | null; scope: "none" 
 function prefsViewer(req: IncomingMessage, url: URL, ctx: Partial<Pick<WebApiContext, "webToken" | "webSessions">>): PrefsViewer | null {
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
   if (v.kind !== "allow") return null;
+  // #1920: a guest is a guest on every listener. The public link's page and reads too — before, a guest signed in through
+  // it (#2094) read the host's preferences unfiltered: the sidebar's order and favourites, naming instances out of its
+  // scope.
+  const guest = v.via === "session" && v.session?.tier === "guest" ? { guest: true } : {};
   if (!gatewayRequestContext(req) && v.via === "session" && v.session) {
     const person = webPersonKey(v.session.owner);
-    return { person, epoch: v.session.handle, scope: person === OPERATOR ? "operator" : "person", canWrite: v.session.tier === "admin", via: "session", ...(v.session.tier === "guest" ? { guest: true } : {}) };
+    return { person, epoch: v.session.handle, scope: person === OPERATOR ? "operator" : "person", canWrite: v.session.tier === "admin", via: "session", ...guest };
   }
-  return { person: null, epoch: null, scope: "none", canWrite: v.via !== "session" || v.session?.tier === "admin", via: v.via };
+  return { person: null, epoch: null, scope: "none", canWrite: v.via !== "session" || v.session?.tier === "admin", via: v.via, ...guest };
 }
 const prefsScope = (v: PrefsViewer | null) => ({ ownerScope: v?.scope ?? "none", ownerEpoch: v?.epoch ?? null });
 // #1920: a guest reads the host's look and its own, never a preference that names an instance (guestPrefs).
