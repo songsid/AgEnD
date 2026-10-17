@@ -110,7 +110,7 @@ it("a locked agent is refused at the first part: nothing is buffered, nothing st
  expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({entries:[]});
  f.refuse(null);
  for(let k=0;k<5;k++)await upload(f,"own",files(`agend.ready() // ${k}`));
- expect(f.lib.list({kind:"agent",id:"own"}).entries.length,"five in a row: no upload count").toBe(5);
+ expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({ok:true,entries:Array.from({length:5},()=>expect.anything())});
 });
 it("aborts a staged upload when the durable claim write fails, without charging",async()=>{
  const f=fixture(),abort=vi.spyOn(f.lib,"abort");vi.spyOn(f.lib,"commit").mockReturnValue({ok:false,error:"index_failure"});
