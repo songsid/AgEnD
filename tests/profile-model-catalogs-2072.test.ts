@@ -149,7 +149,25 @@ describe("Fable R1 P3: every reader of a profile's catalog, locked", () => {
     const fm = await makeFleet({ a: profiled("work"), b: profiled("work"), c: profiled("home"), d: { backend: "claude-code" } });
     fm.probeCliEnvs();
     await vi.waitFor(() => expect(stores.length).toBe(3));
-    expect(stores.filter(Boolean).map(s => s!.includes("work") ? "work" : s!.includes("home") ? "home" : s).sort()).toEqual(["home", "work"]);
+    // Fable #2080 R2: exact paths (a TMPDIR containing "work" must not decide it)
+    const { credentialProfileStoreHome } = await import("../src/backend/credential-profile.js");
+    const { getAgendHome } = await import("../src/paths.js");
+    expect(stores.filter(Boolean).sort()).toEqual([credentialProfileStoreHome(getAgendHome(), "claude-code", "home"), credentialProfileStoreHome(getAgendHome(), "claude-code", "work")].sort());
     expect(stores.filter(s => s === undefined)).toHaveLength(1);       // the default login, once
+  });
+});
+
+describe("part 3: the catalog a Settings model field offers", () => {
+  it("merges the CLI's list and the account catalog, deduplicated; follows a named instance's profile; never probes", async () => {
+    seed("claude-code.json", { models: [{ id: "opus", label: "opus" }], apiModels: [{ id: "opus", label: "opus" }, { id: "claude-default-1", label: "claude-default-1" }] });
+    seed("claude-code@work.json", { models: [{ id: "opus", label: "opus" }], apiModels: [{ id: "claude-work-1", label: "claude-work-1" }] });
+    FakeProbeWorker.answer = () => { throw new Error("a Settings field never probes"); };
+    const fm = await makeFleet({ onwork: profiled("work"), plain: { backend: "claude-code" } });
+    expect(fm.modelCatalogFor("claude-code", null).map((m: any) => m.id)).toEqual(["opus", "claude-default-1"]);
+    expect(fm.modelCatalogFor("claude-code", "onwork").map((m: any) => m.id)).toEqual(["opus", "claude-work-1"]);
+    expect(fm.modelCatalogFor("claude-code", "no-such-instance").map((m: any) => m.id)).toEqual(["opus", "claude-default-1"]);
+    expect(fm.modelCatalogFor("not-a-backend", null)).toEqual([]);
+    expect(fm.modelCatalogFor("mock", null)).toEqual([]);
+    expect(fm.modelCatalogFor("codex", null)).toEqual([]);                 // nothing cached: an empty list, not a probe
   });
 });

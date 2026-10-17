@@ -202,6 +202,8 @@ export interface WebApiContext {
   readonly webToken: string | null;
   /** #2072: what this host can run (the published snapshot); absent in a hand-built context. */
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
+  /** #2072: a backend's cached model catalog, for an instance's own account when one is named; never a probe. */
+  modelCatalogFor?(backend: string, instance: string | null): Array<{ id: string; label: string; description?: string }>;
   /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
   readonly webSessions?: WebSessionStore | null;
   readonly dataDir: string;
@@ -880,6 +882,15 @@ export function handleWebRequest(
   }
 
   // ── Backend detection ─────────────────────────────────
+
+  // #2072: the model a Settings field offers — the cached catalog of that backend (that instance's account's). Read only.
+  if (method === "GET" && path === "/ui/models") {
+    const backend = url.searchParams.get("backend") ?? "";
+    const instance = url.searchParams.get("instance");
+    if (!/^[a-z][a-z0-9-]{0,31}$/.test(backend) || (instance !== null && (instance.length < 1 || instance.length > 256))) { json(res, 400, { error: "backend (and optional instance) required" }); return true; }
+    json(res, 200, { backend, models: ctx.modelCatalogFor?.(backend, instance) ?? [] });
+    return true;
+  }
 
   if (method === "GET" && path === "/ui/backends") {
     const BACKENDS: Array<{ name: string; binary: string; deprecated?: boolean }> = [

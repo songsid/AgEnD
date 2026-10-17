@@ -102,6 +102,11 @@ const click = async (el: any) => { fire(el, "click"); await settle(); };
 const check = async (el: any, on = !el.checked) => { el.checked = on; fire(el, "change"); await settle(); };
 const type = async (el: any, value: string) => { el.value = value; fire(el, "input"); await settle(); };
 const choose = async (el: any, value: string) => { el.value = value; fire(el, "change"); await settle(); };
+/** #2072: a model field is a list; a name it does not list is typed after choosing "Other…". */
+const typeModel = async (id: string, value: string) => {
+  await choose(p.root.querySelector(id), "\u0000other");
+  await type(p.root.querySelector(id)!.parentNode.querySelector("input"), value);
+};
 const pending = () => p.root.querySelector("[role=region]");
 /** Wait until the app's Apply runner is no longer writing or watching (a running job is polled once a second). */
 const untilIdle = async () => {
@@ -143,7 +148,7 @@ describe("Settings P0 redesign shell", () => {
     await mountSettings("general");
     expect(pending()).toBeNull();
     // An instance-level default (model): the bar names the costliest kind staged.
-    await type(p.root.querySelector("#g-model"), "claude-opus-4-8");
+    await typeModel("#g-model", "claude-opus-4-8");
     await click(button("Review changes"));
     const bar = pending()!;
     expect(bar).not.toBeNull();
@@ -248,7 +253,7 @@ describe("Settings P0 redesign shell", () => {
     // A room's edit is staged, and Apply sends it to that room's own channel.
     await mountSettings("classic");
     await click(button("Settings"));
-    await type(p.root.querySelector("#cl-model"), "claude-haiku-5-5");
+    await typeModel("#cl-model", "claude-haiku-5-5");
     await click(button("Stage change"));
     await applyStaged();
     expect(writes().find(s => s.method === "PATCH")).toMatchObject({ path: "/api/settings/classic/channels/c1", body: { model: "claude-haiku-5-5" } });

@@ -18109,6 +18109,20 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return this.backendAvailability.snapshot();
   }
   /**
+   * #2072 part 3: the models a Settings field offers for `backend` — the cached catalog (an instance's own credential
+   * profile's, when it is named and has one), claude's account catalog included. Read only: never a probe.
+   */
+  modelCatalogFor(backend: string, instance: string | null): import("./backend/types.js").ModelOption[] {
+    if (!KNOWN_BACKENDS.includes(backend) || backend === "mock") return [];
+    const own = instance && Object.prototype.hasOwnProperty.call(this.fleetConfig?.instances ?? {}, instance) ? instance
+      : instance && this.classicChannels?.getChannelIdByInstance(instance) !== undefined ? instance : null;
+    const env = this.readCliEnv(backend, this.catalogProfile(backend, own));
+    const seen = new Set<string>(), out: import("./backend/types.js").ModelOption[] = [];
+    for (const m of [...(env?.models ?? []), ...(env?.apiModels ?? [])]) if (!seen.has(m.id)) { seen.add(m.id); out.push(m); }
+    return out;
+  }
+
+  /**
    * #2072 (#2078 review): the snapshot as THIS instance would see it. Its sign-in on a backend is its own credential
    * profile's when it has one there — the host's default login says nothing about it. A profile's login is a file check
    * (credentialProfileLogin), no process.

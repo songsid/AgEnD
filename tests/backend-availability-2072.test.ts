@@ -259,6 +259,16 @@ describe("#2078 review: the version is read from disk first, starting nothing", 
     expect(await staticBackendVersion("opencode", join(scoped, "bin", "cli"))).toBeNull();
     // a version-looking directory that is not a known layout is not a version
     expect(await staticBackendVersion("kiro-cli", cli(join(root, "tools", "2.0.0", "bin")))).toBeNull();
+    // Fable #2078 R3 P3: nodenv puts Node's version under a `versions` directory — a package.json without a version is
+    // unknown, never Node's 22.22.2 (the node_modules branch ends there)
+    const nodenv = join(root, ".nodenv", "versions", "22.22.2", "lib", "node_modules", "kiro-x"); mkdirSync(join(nodenv, "bin"), { recursive: true });
+    writeFileSync(join(nodenv, "package.json"), JSON.stringify({ name: "kiro-x" }));
+    expect(await staticBackendVersion("kiro-cli", cli(join(nodenv, "bin")))).toBeNull();
+    // pnpm's global store: the LAST node_modules owns the binary (.pnpm/<pkg>@<v>/node_modules/<pkg>)
+    const pnpm = join(root, "pnpm", "global", "5", "node_modules", ".pnpm", "grok-cli@1.7.3", "node_modules", "grok-cli");
+    mkdirSync(join(pnpm, "bin"), { recursive: true });
+    writeFileSync(join(pnpm, "package.json"), JSON.stringify({ name: "grok-cli", version: "1.7.3" }));
+    expect(await staticBackendVersion("grok", cli(join(pnpm, "bin")))).toBe("1.7.3");
     // nothing on disk says: unknown
     expect(await staticBackendVersion("grok", cli(join(root, "plain", "bin")))).toBeNull();
     expect(existsSync(marker)).toBe(false);

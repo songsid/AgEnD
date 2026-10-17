@@ -31,7 +31,7 @@ import {
   visibilityDefault, worstImpact,
 } from "./settings-model.js";
 import {
-  AgentDialog, BackendSelect, BotDialog, ChipList, ClassicDialog, Drawer, Feedback, Impact, Label, NewBotDialog, Override,
+  AgentDialog, BackendSelect, BotDialog, ChipList, ClassicDialog, Drawer, Feedback, Impact, Label, ModelSelect, NewBotDialog, Override,
   Select, ask, impactText,
 } from "./settings-dialogs.js";
 import { SetupWizard } from "./settings-wizard.js";
@@ -707,7 +707,8 @@ function General({ ctx }) {
         <div class="field">${L(tn("language"), "defaults.locale", "g-locale")}<${Select} id="g-locale" value=${f.locale} onChange=${set("locale")}
           options=${localeOptions(f.locale).map((o) => (o.auto ? { value: "", label: tn("localeAuto") } : o))} /></div>
         <div class="field">${L(tn("defaultBackend"), "defaults.backend", "g-be")}<${BackendSelect} id="g-be" value=${f.backend} onChange=${set("backend")} /></div>
-        <div class="field">${L(tn("defaultModel"), "defaults.model", "g-model")}<input id="g-model" type="text" placeholder="e.g. claude-opus-4-8" value=${f.model} onInput=${(e) => set("model")(e.target.value)} /></div>
+        <div class="field">${L(tn("defaultModel"), "defaults.model", "g-model")}<${ModelSelect} id="g-model" value=${f.model} onChange=${set("model")}
+          backend=${f.backend || "claude-code"} inherit=${tn("modelCliDefault")} /></div>
         <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "defaults.auto_pause_after", "g-auto")}<input id="g-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} value=${f.auto} onInput=${(e) => set("auto")(e.target.value)} /><${Feedback} error=${errors.auto} /></div>
         <div class="field">${L(tn("toolProgress"), "defaults.tool_progress", "g-tp")}<${Select} id="g-tp" value=${f.tool_progress} onChange=${set("tool_progress")} options=${TOOL_PROGRESS} /></div>
         <div class="field">${L(tn("crossInstanceVisibility"), "defaults.cross_instance_visibility", "g-vis")}<${Select} id="g-vis" value=${f.visibility} onChange=${set("visibility")} options=${VISIBILITY_MODES} />

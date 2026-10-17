@@ -366,6 +366,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .field input:focus, .field select:focus, .field textarea:focus, .field-row input:focus { border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-dim); }
 .field input:disabled { opacity: 0.6; }
 .field-row { display: flex; gap: var(--s-1); align-items: center; }
+/* #2072: a model field — the list, and the text box "Other…" opens under it. */
+.model-pick { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.model-pick > select, .model-pick > input { width: 100%; }
 .note { font-size: var(--fs-xs); color: var(--text-3); }
 .checks { display: flex; flex-direction: column; gap: var(--s-1); max-height: 180px; overflow-y: auto; }
 .check { display: flex; gap: var(--s-2); align-items: center; font-size: var(--fs-sm); }

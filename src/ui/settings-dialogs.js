@@ -13,6 +13,8 @@ import { api, confirmedWrite, newKey } from "./settings-confirm.js";
 import { adminUserIdError, adminUserIdPattern, botHandle, TokenEnvNote, TokenField, verifyBotToken } from "./settings-token.js";
 import { DiscordServerPicker } from "./settings-discord.js";
 import { startOperation } from "./settings-apply.js";
+import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
+import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows, useModelCatalog } from "./settings-catalog.js";
 import {
   ACCESS_MODES, AGENT_FIELDS, AGENT_MODES, BOT_FIELDS, CH_TYPES, CLASSIC_FIELDS, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
   VISIBILITY_MODES, accessConfirmations, agentForm, agentPatch, backendOptions, changedFields, channelId, channelsOf,
@@ -32,9 +34,35 @@ export function Select({ value, options, onChange, disabled, id, label }) {
   return html`<select id=${id} value=${value} disabled=${disabled} aria-label=${label} onChange=${(e) => onChange(e.target.value)}>
     ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select>`;
 }
+/**
+ * #2072: a backend field shows every backend with what this host says about it — one it cannot run is disabled with
+ * why (not installed, not signed in, too old); one not checked yet stays selectable; the current value always can be.
+ */
 export function BackendSelect({ value, onChange, disabled, id }) {
-  return html`<${Select} id=${id} value=${value} disabled=${disabled} onChange=${onChange}
-    options=${backendOptions(value).map((o) => (o.unavailable ? { value: o.value, label: tn("backendUnavailable", o.value) } : o))} />`;
+  const rows = useBackendRows();
+  const known = backendOptions(value).filter((o) => !o.unavailable).map((o) => o.value);
+  const opts = backendChoices(known, rows || [], value, {
+    notInstalled: tn("backendNotInstalled"), notSignedIn: tn("backendNotSignedIn"), tooOld: (v) => tn("backendTooOld", v),
+    unchecked: tn("backendUnchecked"), removed: (v) => tn("backendUnavailable", v),
+  });
+  return html`<select id=${id} value=${value} disabled=${disabled} onChange=${(e) => onChange(e.target.value)}>
+    ${opts.map((o) => html`<option key=${o.value} value=${o.value} disabled=${o.disabled}>${o.label}</option>`)}</select>`;
+}
+/**
+ * #2072: a model field is a list — that backend's models for this account (cached; never a probe), the current one
+ * first and marked when the CLI does not list it, and "Other…" for a name it does not list (a text box opens).
+ * `inherit`: the label of the empty choice (inherit / none), or omit it when the field has none.
+ */
+export function ModelSelect({ value, onChange, disabled, id, backend, instance, inherit }) {
+  const catalog = useModelCatalog(backend, instance);
+  const [typing, setTyping] = useState(false);
+  const opts = modelChoices(catalog || [], value, { notListed: tn("modelNotListed"), other: tn("modelOther") }, inherit);
+  return html`<div class="model-pick">
+    <select id=${id} value=${typing ? OTHER_MODEL : value} disabled=${disabled}
+      onChange=${(e) => { const v = e.target.value; if (v === OTHER_MODEL) { setTyping(true); onChange(""); } else { setTyping(false); onChange(v); } }}>
+      ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select>
+    ${typing ? html`<input type="text" aria-label=${tn("modelOtherLabel")} placeholder=${tn("modelOtherPlaceholder")} disabled=${disabled}
+      value=${value} onInput=${(e) => onChange(e.target.value)} />` : null}</div>`;
 }
 export function Impact({ schema, field }) { return html`<span class="impact">${impactText(impactOf(schema, field))}</span>`; }
 export function Label({ text, schema, field, htmlFor }) {
@@ -228,7 +256,8 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
           <input id="ag-dn" type="text" placeholder=${name} disabled=${f.inherit.display_name} value=${shown("display_name", f.display_name, defaults.display_name || "")} onInput=${(e) => set("display_name")(e.target.value)} /></${Override}></div>
       <div class="field">${L(tn("description"), "instance.description", "ag-desc")}<input id="ag-desc" type="text" value=${f.description} onInput=${(e) => set("description")(e.target.value)} /></div>
       <div class="field">${L(tn("backend"), "instance.backend", "ag-be")}<${BackendSelect} id="ag-be" value=${f.backend} onChange=${set("backend")} /></div>
-      <div class="field">${L(tn("model"), "instance.model", "ag-model")}<input id="ag-model" type="text" placeholder=${tn("inheritPlaceholder")} value=${f.model} onInput=${(e) => set("model")(e.target.value)} /></div>
+      <div class="field">${L(tn("model"), "instance.model", "ag-model")}<${ModelSelect} id="ag-model" value=${f.model} onChange=${set("model")}
+        backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("inheritPlaceholder")} /></div>
     </div>
     <div class="field">${L(tn("workingDir"), "instance.working_directory", "ag-wd")}<input id="ag-wd" type="text" value=${f.working_directory} onInput=${(e) => set("working_directory")(e.target.value)} /></div>
     <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "instance.auto_pause_after", "ag-auto")}
@@ -264,8 +293,8 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
               onChange=${(e) => set("lightweight")(e.target.checked)} /><span>${tn("lightweight")}</span></label></${Override}></div>
         <div class="field">${L(tn("modelFailover"), "instance.model_failover", "ag-fo")}
           <${Override} inherit=${f.inherit.model_failover} onInherit=${setInherit("model_failover")}>
-            <input id="ag-fo" type="text" placeholder="e.g. sonnet" disabled=${f.inherit.model_failover}
-              value=${shown("model_failover", f.model_failover, (defaults.model_failover && defaults.model_failover[0]) || "")} onInput=${(e) => set("model_failover")(e.target.value)} /></${Override}>
+            <${ModelSelect} id="ag-fo" disabled=${f.inherit.model_failover} backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("modelNone")}
+              value=${shown("model_failover", f.model_failover, (defaults.model_failover && defaults.model_failover[0]) || "")} onChange=${set("model_failover")} /></${Override}>
           <${Feedback} warning=${failoverWarn} /></div>
       </div>
       <div class="field">${L(tn("systemPrompt"), "instance.systemPrompt", "ag-sys")}<input id="ag-sys" type="text" placeholder="e.g. file:prompts/dev.md" value=${f.systemPrompt} onInput=${(e) => set("systemPrompt")(e.target.value)} /></div>
@@ -591,7 +620,8 @@ export function ClassicDialog({ room, ctx, onClose }) {
   return html`<${EditDialog} title=${c.name || c.instanceName} subtitle=${`ID: ${c.instanceName} · ${tn(`exec_${runtime.execution}`)}`} onClose=${onClose} onStage=${stage} ready=${ready} impacts=${CLASSIC_FIELDS} schema=${schema}>
     <div class="grid2">
       <div class="field">${L(tn("backend"), "classic.backend", "cl-be")}<${BackendSelect} id="cl-be" value=${f.backend} onChange=${set("backend")} /></div>
-      <div class="field">${L(tn("model"), "classic.model", "cl-model")}<input id="cl-model" type="text" placeholder=${inherited.model || tn("inheritPlaceholder")} value=${f.model} onInput=${(e) => set("model")(e.target.value)} /></div>
+      <div class="field">${L(tn("model"), "classic.model", "cl-model")}<${ModelSelect} id="cl-model" value=${f.model} onChange=${set("model")}
+        backend=${f.backend} instance=${c.instanceName} inherit=${inherited.model ? tn("inheritValue", inherited.model) : tn("inheritPlaceholder")} /></div>
       <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "classic.auto_pause_after", "cl-auto")}
         <${Override} inherit=${f.inherit.auto_pause_after} onInherit=${setInherit("auto_pause_after")}>
           <input id="cl-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} disabled=${f.inherit.auto_pause_after}

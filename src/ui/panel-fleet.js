@@ -21,6 +21,7 @@ import { confirmedWrite } from "./settings-confirm.js";
 import { OrgCanvas } from "./fleet-canvas.js";
 import { labelOf } from "/assets/instance-nav.js";
 import { CacheReport } from "./fleet-cache.js";
+import { BackendSelect, ModelSelect } from "./settings-dialogs.js";
 
 /** #2015: one of the largest processes as text: "python3 18.1 GB (dev-a)". */
 export function memoryHogText(p) {
@@ -334,8 +335,7 @@ function Config({ lease }) {
       <div class="field"><label for="cfg-users">${t("fleet.allowedUsers")}</label><${Secret} id="cfg-users" value=${form.users} onInput=${set("users")} label=${t("fleet.allowedUsers")} />
         <p class="note">${t("fleet.allowedUsersNote")}</p></div></section>
     <section class="card"><h3>${t("fleet.defaults")}</h3>
-      <label class="field"><span>${t("fleet.backend")}</span><select value=${form.backend} onChange=${set("backend")}>
-        ${[...(BACKENDS.includes(form.backend) ? [] : [form.backend]), ...BACKENDS].map(b => html`<option key=${b} value=${b}>${b}</option>`)}</select></label></section>
+      <div class="field"><label for="cfg-be">${t("fleet.backend")}</label><${BackendSelect} id="cfg-be" value=${form.backend} onChange=${(v) => setForm({ ...form, backend: v })} /></div></section>
     <section class="card"><h3>${t("fleet.roots")}</h3>
       ${form.roots.map((r, i) => html`<div key=${i} class="field-row"><input value=${r} placeholder="/path/to/projects" aria-label=${t("fleet.roots")}
         onInput=${(e) => { const roots = [...form.roots]; roots[i] = e.target.value; setForm({ ...form, roots }); }} />
@@ -560,7 +560,7 @@ export function CreateInstanceDialog({ onClose }) {
     ${field(t("fleet.description"), html`<input value=${f.desc} onInput=${set("desc")} placeholder=${t("fleet.descriptionHint")} />`)}
     ${field(t("fleet.backend"), backends ? html`<select value=${f.backend} onChange=${set("backend")}><option value="">${t("fleet.fleetDefault")}</option>
       ${backends.map(b => html`<option key=${b.name} value=${b.name} disabled=${backendBlocked(b)}>${b.name}${b.deprecated ? ` ${t("fleet.deprecated")}` : ""}${backendNote(b)}</option>`)}</select>` : html`<${Skeleton} lines=${1} />`)}
-    ${field(t("fleet.model"), html`<input value=${f.model} onInput=${set("model")} placeholder=${t("fleet.modelHint")} />`)}
+    ${field(t("fleet.model"), html`<${ModelSelect} value=${f.model} onChange=${(v) => setF(x => ({ ...x, model: v }))} backend=${f.backend || null} inherit=${t("fleet.fleetDefault")} />`)}
     ${field(t("fleet.branch"), html`<input value=${f.branch} onInput=${set("branch")} placeholder=${t("fleet.branchHint")} />`)}
     ${field(t("fleet.tags"), html`<input value=${f.tags} onInput=${set("tags")} placeholder=${t("fleet.tagsHint")} />`)}
     ${field(t("fleet.systemPrompt"), html`<textarea rows="3" value=${f.prompt} onInput=${set("prompt")} placeholder=${t("fleet.systemPromptHint")}></textarea>`)}
