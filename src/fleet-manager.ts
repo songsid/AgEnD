@@ -16749,7 +16749,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // #724: use the bounded variant so background startup probes cannot hang
     // indefinitely — each is wrapped by CLI_ENV_PROBE_DEADLINE_MS.
     for (const b of backends) void this.probeBackendBounded(b);
-    // #2072: each Claude credential profile in use has its own account catalog.
+    // #2072: each Claude credential profile in use has its own account catalog. Only fleet.yaml's agents are walked
+    // here; a ClassicBot room on a profile is probed on its first /model (catalogProfile knows rooms too).
     const profiles = new Set<string>();
     for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
       if (this.backendNameForInstance(name) !== "claude-code") continue;

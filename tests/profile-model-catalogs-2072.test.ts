@@ -98,11 +98,10 @@ describe("the model an instance runs is always a choice", () => {
 });
 
 describe("claude's account catalog uses the profile's token", () => {
-  it("listApiModels(storeHome) asks for that store's token, and probeCLIEnv passes the config's store", async () => {
+  it("listApiModels(storeHome) asks for that store's token", async () => {
     const providers = await import("../src/usage/providers.js");
     const token = vi.spyOn(providers, "getClaudeOAuthToken").mockResolvedValue("tok-" + "c".repeat(8));
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: [{ id: "claude-x" }] }) }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ data: [{ id: "claude-x" }] }) })));
     const { ClaudeCodeBackend } = await import("../src/backend/claude-code.js");
     const be = Object.create(ClaudeCodeBackend.prototype);
     expect((await be.listApiModels("/store/work")).map((m: any) => m.id)).toEqual(["claude-x", "claude-x[1m]"]);
@@ -110,5 +109,47 @@ describe("claude's account catalog uses the profile's token", () => {
     await be.listApiModels();
     expect(token).toHaveBeenLastCalledWith(undefined);
     token.mockRestore();
+  });
+  it("probeCLIEnv(config) carries config.credentialStoreHome to the token (Fable R1 P2: the feature's core)", async () => {
+    const providers = await import("../src/usage/providers.js");
+    const token = vi.spyOn(providers, "getClaudeOAuthToken").mockResolvedValue("tok-" + "c".repeat(8));
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ data: [{ id: "claude-x" }] }) })));
+    const { ClaudeCodeBackend } = await import("../src/backend/claude-code.js");
+    const be = Object.create(ClaudeCodeBackend.prototype);
+    be.binaryPath = "/nonexistent/claude-2072";            // probeCliVersion answers undefined: no CLI runs
+    be.listModels = async () => [{ id: "opus", label: "opus" }];
+    const env = await be.probeCLIEnv({ workingDirectory: "", instanceDir: "", instanceName: "p", mcpServers: {}, credentialStoreHome: "/store/work" });
+    expect(token).toHaveBeenLastCalledWith("/store/work");
+    expect(env.apiModels.map((m: any) => m.id)).toEqual(["claude-x", "claude-x[1m]"]);
+    await be.probeCLIEnv({ workingDirectory: "", instanceDir: "", instanceName: "p", mcpServers: {} });
+    expect(token).toHaveBeenLastCalledWith(undefined);
+    token.mockRestore();
+  });
+});
+
+describe("Fable R1 P3: every reader of a profile's catalog, locked", () => {
+  it("/model reads a fresh profile cache without probing", async () => {
+    seed("claude-code@work.json", { models: [{ id: "opus", label: "opus" }, { id: "sonnet", label: "sonnet" }] });
+    FakeProbeWorker.answer = () => { throw new Error("a fresh profile cache must not be probed"); };
+    const fm = await makeFleet({ onwork: profiled("work") });
+    expect((await fm.getModelOptions("onwork")).map((m: any) => m.id)).toEqual(["opus", "sonnet"]);
+    expect(FakeProbeWorker.workers).toHaveLength(0);
+  });
+  it("the web /model choices read the instance's profile catalog and keep its current model", async () => {
+    seed("claude-code.json", { models: [{ id: "default-only", label: "default-only" }] });
+    seed("claude-code@work.json", { models: [{ id: "opus", label: "opus" }] });
+    const fm = await makeFleet({ onwork: { ...profiled("work"), model: "claude-legacy-9" } });
+    const r = await fm.webCommand({ instance: "onwork", command: "model" }, { publicLink: false });
+    const ids = r.body.choices.options.map((o: any) => o.id);
+    expect(ids).toEqual(["claude-legacy-9", "opus"]);
+  });
+  it("startup probes each Claude profile in use, with its own login store", async () => {
+    const stores: Array<string | undefined> = [];
+    FakeProbeWorker.answer = (input) => { stores.push(input.config.credentialStoreHome); return { models: [{ id: "opus", label: "opus" }] }; };
+    const fm = await makeFleet({ a: profiled("work"), b: profiled("work"), c: profiled("home"), d: { backend: "claude-code" } });
+    fm.probeCliEnvs();
+    await vi.waitFor(() => expect(stores.length).toBe(3));
+    expect(stores.filter(Boolean).map(s => s!.includes("work") ? "work" : s!.includes("home") ? "home" : s).sort()).toEqual(["home", "work"]);
+    expect(stores.filter(s => s === undefined)).toHaveLength(1);       // the default login, once
   });
 });
