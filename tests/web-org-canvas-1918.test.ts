@@ -13,7 +13,8 @@ import { fire } from "./helpers/mini-dom.js";
 
 const INSTANCES = [
   { name: "atlas", display_name: "Atlas", status: "running", backend: "claude-code" },
-  ...["pixel", "quill", "sage", "orbit", "nova", "ember", "lark", "moss", "juno", "flint", "wren"].map((name, i) => ({ name, status: "running", backend: ["codex", "kiro-cli", "grok"][i % 3] })),
+  { name: "pixel", display_name: "Comet", status: "running", backend: "codex" },
+  ...["quill", "sage", "orbit", "nova", "ember", "lark", "moss", "juno", "flint", "wren"].map((name, i) => ({ name, status: "running", backend: ["codex", "kiro-cli", "grok"][i % 3] })),
   { name: "tide", status: "crashed", backend: "claude-code" },
 ];
 const ORG = {
@@ -77,6 +78,8 @@ describe("layout: fixed slots", () => {
     const web = shut.boxes.find((b: any) => b.key === "Web");
     expect([web.folded, web.cells.length, web.h, web.slotH]).toEqual([true, 0, C.OC.FOLDED, open.boxes.find((b: any) => b.key === "Web").slotH]);
     expect(shut.boxes.find((b: any) => b.key === "Platform").cells).toHaveLength(4);
+    // A whole row folded: the rows below stay where they were too.
+    expect(at(C.canvasLayout(view(), new Set(["Platform", "Web"])))).toEqual(at(open));
     expect(C.canvasLayout(view(), new Set(["Empty"])).boxes.find((b: any) => b.key === "Empty").folded, "nothing to fold").toBe(false);
     // The instances in no team fold by a key no team name can be.
     expect(C.canvasLayout(view(), new Set([C.REST_KEY])).boxes.at(-1).folded).toBe(true);
@@ -148,12 +151,12 @@ describe("the canvas on the page", () => {
     expect(svg().getAttribute("role")).toBe("application");
     expect(svg().getAttribute("aria-label")).toContain("Enter opens a chat");
     expect(card("atlas").getAttribute("class")).toContain("lead");
-    expect(card("quill").getAttribute("aria-label")).toBe("quill — Working · Kiro CLI. Open chat");
+    expect(card("quill").getAttribute("aria-label")).toBe("quill — Working · Codex. Open chat");
     expect(card("quill").getAttribute("class")).toContain("st-working");
     expect(card("tide").getAttribute("class")).toContain("st-crashed");
     expect(p.root.querySelectorAll(".oc-team").map((g: any) => g.getAttribute("data-team"))).toEqual(["Platform", "Web", "Research", "Empty", C.REST_KEY]);
     expect(p.root.querySelectorAll(".oc-tree path")).toHaveLength(C.canvasLayout(view()).tree.length);
-    expect(p.root.querySelector(".org-team"), "the list is not drawn too").toBeNull();
+    expect(!!p.root.querySelector(".org-team"), "the list is not drawn too").toBe(false);
     // The desktop opening: the fleet's width in the viewport, from the top, no larger than life (no size in this DOM: 960 × 600).
     const v = tf()!, L = C.canvasLayout(view());
     expect(v.k).toBeCloseTo((960 - 48) / (L.width - C.OC.TRUNK + 40));
@@ -174,6 +177,14 @@ describe("the canvas on the page", () => {
     expect(location.pathname).toBe("/ui/fleet/org");
     const after = tf()!;
     expect([after.x - before.x, after.y - before.y, after.k]).toEqual([60, 50, before.k]);
+    // A click with no pointer at all (a screen reader's), a moment after the drag: it opens.
+    await settle(1);
+    card("orbit").click(); await settle(2);
+    expect(location.pathname).toBe("/ui/chat/orbit");
+    nav.navigate("/ui/fleet/org"); await mount();
+    fire(card("sage"), "pointerdown", { pointerId: 3, clientX: 100, clientY: 100, pointerType: "mouse", button: 0 });
+    fire(card("sage"), "pointermove", { pointerId: 3, clientX: 160, clientY: 150 });
+    fire(card("sage"), "pointerup", { pointerId: 3, clientX: 160, clientY: 150 });
     // A tap (no movement) after that drag opens again.
     fire(card("sage"), "pointerdown", { pointerId: 2, clientX: 10, clientY: 10, pointerType: "mouse", button: 0 });
     fire(card("sage"), "pointerup", { pointerId: 2, clientX: 10, clientY: 10 });
@@ -207,13 +218,39 @@ describe("the canvas on the page", () => {
     fire(card("pixel"), "keydown", { key: "Enter" }); await settle(2);
     expect(location.pathname).toBe("/ui/chat/pixel");
   });
+  it("a card that gets focus off screen is brought into view; one in view stays put", async () => {
+    await mount();
+    for (let i = 0; i < 4; i++) fire(svg(), "keydown", { key: "+" });
+    const v0 = tf()!;
+    fire(card("atlas"), "focusin");
+    const v1 = tf()!, L = C.canvasLayout(view()), c = L.tops[0];
+    expect([v1.x + (c.x + c.w / 2) * v1.k, v1.y + (c.y + c.h / 2) * v1.k, v1.k]).toEqual([480, 300, v0.k]);
+    fire(card("atlas"), "focusin");
+    expect(tf()).toEqual(v1);
+  });
+  it("two pointers pinch: apart zooms in about their midpoint, together zooms out", async () => {
+    await mount();
+    const v0 = tf()!;
+    fire(svg(), "pointerdown", { pointerId: 1, clientX: 400, clientY: 300, pointerType: "touch" });
+    fire(svg(), "pointerdown", { pointerId: 2, clientX: 500, clientY: 300, pointerType: "touch" });
+    fire(svg(), "pointermove", { pointerId: 2, clientX: 500, clientY: 300 });           // the first two-pointer move: the span is set
+    fire(svg(), "pointermove", { pointerId: 2, clientX: 600, clientY: 300 });           // 100 → 200 px apart, midpoint 500
+    const v1 = tf()!;
+    expect(v1.k).toBeCloseTo(v0.k * 2);
+    expect((500 - v1.x) / v1.k, "the canvas point under the midpoint stays under it").toBeCloseTo((500 - v0.x) / v0.k);
+    fire(svg(), "pointermove", { pointerId: 2, clientX: 500, clientY: 300 });           // back to 100 apart
+    expect(tf()!.k).toBeCloseTo(v0.k);
+    fire(svg(), "pointerup", { pointerId: 2 }); fire(svg(), "pointerup", { pointerId: 1 });
+    card("quill").click(); await settle(2);
+    expect(location.pathname, "the click that ends a pinch opens nothing").toBe("/ui/fleet/org");
+  });
   it("the arrow keys move between cards; the canvas itself pans", async () => {
     await mount();
     card("pixel").focus();
     fire(card("pixel"), "keydown", { key: "ArrowRight" });
-    expect(document.activeElement).toBe(card("quill"));
+    expect((document.activeElement as any).getAttribute("data-name")).toBe("quill");      // names, not nodes: a failing diff of a DOM node never ends
     fire(card("quill"), "keydown", { key: "ArrowDown" });
-    expect(document.activeElement).toBe(card("orbit"));
+    expect((document.activeElement as any).getAttribute("data-name")).toBe("orbit");
     const v = tf()!;
     fire(svg(), "keydown", { key: "ArrowLeft" });
     expect(tf()!.x).toBe(v.x + 80);
@@ -224,14 +261,14 @@ describe("the canvas on the page", () => {
     const before = pos();
     team("Web").querySelector(".oc-toggle").click(); await settle(2);
     expect(team("Web").querySelector(".oc-toggle").getAttribute("aria-expanded")).toBe("false");
-    expect(card("nova")).toBeUndefined();
+    expect(!!card("nova")).toBe(false);
     expect(team("Web").querySelectorAll(".oc-team-sum").map((t: any) => t.textContent)).toEqual(["5 Idle"]);
     expect(pos()).toEqual(before);
     expect(JSON.parse(localStorage.getItem("agend_org_folded")!)).toEqual(["Web"]);
     await p.unmount(); await mount();
-    expect(card("nova")).toBeUndefined();
+    expect(!!card("nova")).toBe(false);
     fire(team("Web").querySelector(".oc-toggle"), "keydown", { key: "Enter" }); await settle(2);
-    expect(card("nova")).not.toBeUndefined();
+    expect(!!card("nova")).toBe(true);
     expect(JSON.parse(localStorage.getItem("agend_org_folded")!)).toEqual([]);
     expect(team("Empty").querySelector(".oc-toggle").getAttribute("role"), "an empty team has nothing to fold").toBeNull();
   });
@@ -253,8 +290,8 @@ describe("the canvas on the page", () => {
     const v = tf()!, L = C.canvasLayout(view()), c = L.boxes.find((b: any) => b.key === "Web").cells.find((x: any) => x.node.name === "moss");
     expect(v.k).toBeGreaterThanOrEqual(1);
     expect([v.x + (c.x + c.w / 2) * v.k, v.y + (c.y + c.h / 2) * v.k]).toEqual([480, 300]);
-    input.value = "atl"; fire(input, "input"); await settle(2);
-    expect(card("atlas").getAttribute("class")).toContain("match");           // the display name too
+    input.value = "come"; fire(input, "input"); await settle(2);
+    expect(card("pixel").getAttribute("class")).toContain("match");           // the display name too ("Comet")
     input.value = "zzz"; fire(input, "input"); await settle(2);
     expect(p.root.querySelector(".oc-found").textContent).toBe("No match");
   });
@@ -263,15 +300,15 @@ describe("the canvas on the page", () => {
     const [canvasBtn, listBtn] = p.root.querySelectorAll(".oc-tools .seg-inline button");
     expect([canvasBtn.getAttribute("aria-pressed"), listBtn.getAttribute("aria-pressed")]).toEqual(["true", "false"]);
     listBtn.click(); await settle(2);
-    expect(svg()).toBeNull();
+    expect(!!svg()).toBe(false);
     expect(p.root.querySelectorAll(".org-team h3").map((e: any) => e.textContent.trim())).toEqual(["Platform", "Web", "Research", "Empty", "Not in a team"]);
     expect(p.root.querySelectorAll(".org-head")).toHaveLength(1);          // the bar's count, not the list's own too
-    expect(p.root.querySelector(".oc-find"), "search is the canvas's").toBeNull();
+    expect(!!p.root.querySelector(".oc-find"), "search is the canvas's").toBe(false);
     expect(localStorage.getItem("agend_org_mode")).toBe("list");
     await p.unmount(); await mount();
-    expect(svg()).toBeNull();
+    expect(!!svg()).toBe(false);
     p.root.querySelectorAll(".oc-tools .seg-inline button")[0].click(); await settle(2);
-    expect(svg()).not.toBeNull();
+    expect(!!svg()).toBe(true);
   });
   it("a member the fleet no longer lists: a card that says so and opens nothing", async () => {
     orgAnswer = { ...ORG, teams: [{ name: "Platform", members: ["pixel", "gone"] }] };
@@ -287,8 +324,9 @@ describe("the canvas on the page", () => {
     const mini = p.root.querySelector(".oc-mini"), L = C.canvasLayout(view());
     const box = { x: C.OC.TRUNK - 30, y: 0, w: L.width - C.OC.TRUNK + 60, h: L.height + 20 };
     expect(mini.getAttribute("viewBox")).toBe(`${box.x} ${box.y} ${box.w} ${box.h}`);
-    mini.getBoundingClientRect = () => ({ left: 0, top: 0, width: 180, height: 120, right: 180, bottom: 120 });
-    fire(mini, "click", { clientX: 90, clientY: 60 });
+    // Wider than the canvas's shape: the drawing is letterboxed left and right (and a click is measured from it).
+    mini.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 120, right: 600, bottom: 120 });
+    fire(mini, "click", { clientX: 300, clientY: 60 });
     const v = tf()!;
     // The overview's middle is the whole's middle: it is now the viewport's middle (960 × 600 here).
     expect(v.x + (box.x + box.w / 2) * v.k).toBeCloseTo(480);
