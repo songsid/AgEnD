@@ -7,6 +7,13 @@ import { validateTimezone } from "../config.js";
 /** #1426: how a pending retry ended without running, reported for the escalation. */
 export type RetryDroppedHandler = (schedule: Schedule, retry: ScheduleRetry, reason: ScheduleRetryDrop) => void;
 
+/** #1995: where the scheduler says what happened to each tick (the fleet logger; pino's (fields, message) shape). */
+export interface SchedulerLog {
+  info(fields: Record<string, unknown>, message: string): void;
+  warn(fields: Record<string, unknown>, message: string): void;
+}
+const NO_LOG: SchedulerLog = { info() {}, warn() {} };
+
 export class Scheduler {
   /** #1426: an attempt waiting for a reset time gives the window this long to settle before it looks again. */
   static readonly RETRY_RESET_GRACE_MS = 60_000;
@@ -22,6 +29,14 @@ export class Scheduler {
   private static readonly MAX_TIMEOUT_MS = 2_147_000_000;
   /** Admission failures leave one-shot schedules pending instead of losing their run. */
   private static readonly ONE_SHOT_FAILURE_RETRY_MS = 30_000;
+  /** #1995: how often a running fleet looks for a cron occurrence that came due but never ran. */
+  static readonly MISSED_TICK_CHECK_MS = 60_000;
+  /**
+   * #1995: how long (monotonic, measured by this process) an occurrence must have been due and not run before it counts
+   * as missed. Croner's own timer re-checks at least every 30 s, so a late-but-real fire, even after a wall-clock jump,
+   * wins well within this.
+   */
+  static readonly MISSED_TICK_GRACE_MS = 3 * 60_000;
 
   readonly db: SchedulerDb;
   private jobs: Map<string, Cron> = new Map();
@@ -40,6 +55,21 @@ export class Scheduler {
   /** IDs of schedules whose onTrigger is currently in flight; guards against
    * a manual trigger and a cron firing (or two cron fires) overlapping. */
   private executing = new Set<string>();
+  private log: SchedulerLog;
+  /**
+   * #1995: the latest occurrence (epoch ms) this process has dealt with, per schedule — started a run of, or skipped on
+   * purpose because the previous run was still in flight. Neither the tick nor the missed-tick check runs it again.
+   */
+  private lastRunAt = new Map<string, number>();
+  /**
+   * #1995: since when (wall ms) each cron schedule has been armed in this process. Kept across reload(), which only
+   * re-creates the timers: an occurrence lost to a reload at its due instant is still this registration's to run.
+   * Reset when the schedule is created, edited or re-enabled; an occurrence before that is not caught up.
+   */
+  private armedSince = new Map<string, number>();
+  /** #1995: an occurrence the missed-tick check saw due and not run, and since when (monotonic ms). */
+  private missSeen = new Map<string, { runId: string; sinceMono: number }>();
+  private missTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     dbPath: string,
@@ -47,12 +77,14 @@ export class Scheduler {
     config: SchedulerConfig,
     isValidInstance: (name: string) => boolean,
     onRetryDropped: RetryDroppedHandler = () => {},
+    log: SchedulerLog = NO_LOG,
   ) {
     this.db = new SchedulerDb(dbPath);
     this.onTrigger = onTrigger;
     this.config = config;
     this.isValidInstance = isValidInstance;
     this.onRetryDropped = onRetryDropped;
+    this.log = log;
   }
 
   init(): void {
@@ -60,6 +92,7 @@ export class Scheduler {
     // Catch-up first: an occurrence missed while the fleet was down supersedes the retry of an older one.
     this.runCatchUp();
     this.registerAllJobs();
+    this.armMissedTickCheck();
   }
 
   /**
@@ -110,6 +143,7 @@ export class Scheduler {
 
   shutdown(): void {
     this.stopped = true;
+    if (this.missTimer) { clearTimeout(this.missTimer); this.missTimer = null; }
     this.stopAllJobs();
     this.db.close();
   }
@@ -158,6 +192,8 @@ export class Scheduler {
 
     const updated = this.db.update(id, params);
     this.stopJob(id);
+    // #1995: an edited or re-enabled schedule starts from now; nothing before the change is caught up.
+    this.forget(id);
     if (updated.enabled) {
       this.registerJob(updated);
     }
@@ -166,6 +202,7 @@ export class Scheduler {
 
   delete(id: string): void {
     this.stopJob(id);
+    this.forget(id);
     const retryTimer = this.retryTimers.get(id);
     if (retryTimer) { clearTimeout(retryTimer); this.retryTimers.delete(id); }
     this.db.delete(id);   // its pending retry goes with it (ON DELETE CASCADE)
@@ -188,8 +225,17 @@ export class Scheduler {
     if (!retry) {
       // …but the occurrence a pending retry already owns is not run again unlabelled: a one-shot timer after a restart,
       // or croner re-firing it after the wall clock was set back across it (#1433 review). The retry runs it.
-      if (this.db.getRetry(schedule.id)?.run_id === runId) return;
+      if (this.db.getRetry(schedule.id)?.run_id === runId) {
+        this.log.info({ scheduleId: schedule.id, runId, reason: "owned_by_retry" }, "Schedule run not started");
+        return;
+      }
       this.supersedeRetry(schedule, runId);
+    }
+    // #1995: an occurrence instant (not a manual trigger's UUID) runs at most once per process, whoever starts it.
+    const occurrence = Date.parse(runId);
+    if (Number.isFinite(occurrence) && !retry) {
+      this.lastRunAt.set(schedule.id, Math.max(occurrence, this.lastRunAt.get(schedule.id) ?? -Infinity));
+      this.missSeen.delete(schedule.id);
     }
     this.executing.add(schedule.id);
     if (retry) this.runningRetry.add(schedule.id);
@@ -235,11 +281,16 @@ export class Scheduler {
     try {
       result = this.onTrigger(schedule, runId, retry);
     } catch (err) {
+      this.log.warn({ scheduleId: schedule.id, runId, err: (err as Error)?.message ?? String(err) }, "Schedule run failed");
       finish(!schedule.silent);
       throw err;
     }
     if (result && typeof (result as Promise<void>).then === "function") {
-      void (result as Promise<void>).then(() => finish(), () => finish(!schedule.silent));
+      // #1995: a run that rejects used to end here without a trace — no run row and no log line.
+      void (result as Promise<void>).then(() => finish(), (err: unknown) => {
+        this.log.warn({ scheduleId: schedule.id, runId, err: (err as Error)?.message ?? String(err) }, "Schedule run failed");
+        finish(!schedule.silent);
+      });
     } else {
       finish();
     }
@@ -251,6 +302,7 @@ export class Scheduler {
     );
     for (const s of affected) {
       this.stopJob(s.id);
+      this.forget(s.id);
     }
     return this.db.deleteByInstanceOrThread(instanceName, threadId);
   }
@@ -418,23 +470,86 @@ export class Scheduler {
       return;
     }
     if (!schedule.cron) return;
+    if (!this.armedSince.has(schedule.id)) this.armedSince.set(schedule.id, Date.now());
     const job = new Cron(schedule.cron, { timezone: schedule.timezone }, currentJob => {
-      const current = this.db.get(schedule.id);
-      if (!current || !current.enabled) return;
       // currentRun() is callback wall-clock time, not the cron occurrence. A
       // delayed callback must still use the scheduled instant so restart
       // catch-up derives the same durable outbox key.
       const runId = this.cronRunAtOrBefore(currentJob, new Date())?.toISOString() ?? null;
+      // #1995: one line per tick and one per tick that does not run, with the reason: "croner never fired" and "AgEnD
+      // received the tick and dropped it" must be told apart from the log alone.
+      this.log.info({ scheduleId: schedule.id, runId }, "Cron tick");
+      const dropped = (reason: string) => this.log.info({ scheduleId: schedule.id, runId, reason }, "Cron tick not run");
+      const current = this.db.get(schedule.id);
+      if (!current) return dropped("schedule_missing");
+      if (!current.enabled) return dropped("disabled");
+      if (!runId) return dropped("no_occurrence");
+      if ((this.lastRunAt.get(current.id) ?? -Infinity) >= Date.parse(runId)) return dropped("already_ran");
       // Skip if a previous fire (or manual trigger) is still in flight —
       // avoids overlapping runs of the same schedule. A RETRY in flight is not a reason to lose this occurrence
       // (#1426): it is held and runs as soon as the retry settles (the retry stops at this occurrence, its deadline).
       if (this.executing.has(current.id)) {
-        if (runId && this.runningRetry.has(current.id)) this.heldBehindRetry.set(current.id, runId);
-        return;
+        if (this.runningRetry.has(current.id)) {
+          this.heldBehindRetry.set(current.id, runId);
+          return dropped("held_behind_retry");
+        }
+        // Skipped on purpose, as before: overlapping runs are not started, and the check must not replay it later.
+        this.lastRunAt.set(current.id, Math.max(Date.parse(runId), this.lastRunAt.get(current.id) ?? -Infinity));
+        return dropped("still_running");
       }
-      if (runId) this.runWithLock(current, runId);
+      this.runWithLock(current, runId);
     });
     this.jobs.set(schedule.id, job);
+  }
+
+  /** #1995: the schedule was edited, re-enabled or deleted: its in-process tick history no longer applies. */
+  private forget(id: string): void {
+    this.lastRunAt.delete(id);
+    this.armedSince.delete(id);
+    this.missSeen.delete(id);
+  }
+
+  private armMissedTickCheck(): void {
+    if (this.stopped) return;
+    this.missTimer = setTimeout(() => {
+      this.missTimer = null;
+      try { this.checkMissedTicks(); } catch (err) {
+        this.log.warn({ err: (err as Error)?.message ?? String(err) }, "Missed-tick check failed");
+      }
+      this.armMissedTickCheck();
+    }, Scheduler.MISSED_TICK_CHECK_MS);
+  }
+
+  /**
+   * #1995: a cron occurrence that came due while this process was running, and was never run, gets the same single
+   * catch-up the startup does. It counts as missed only once it has been due, and not run, for MISSED_TICK_GRACE_MS of
+   * this process's own (monotonic) time — so a late but real tick still runs it, once: the run id is the occurrence
+   * instant, and runWithLock starts each occurrence at most once.
+   */
+  private checkMissedTicks(nowMono: number = performance.now()): void {
+    if (this.stopped) return;
+    const now = Date.now();
+    for (const schedule of this.db.list()) {
+      if (!schedule.enabled || !schedule.cron || schedule.at) { this.missSeen.delete(schedule.id); continue; }
+      const armed = this.armedSince.get(schedule.id);
+      if (armed === undefined || !this.jobs.has(schedule.id)) continue;
+      let latest: Date | null;
+      try { latest = this.cronRunAtOrBefore(new Cron(schedule.cron, { timezone: schedule.timezone }), new Date(now)); } catch { continue; }
+      if (!latest) continue;
+      const latestMs = latest.getTime();
+      // Every run this process starts goes through runWithLock, which records it in lastRunAt; an occurrence from before
+      // this registration (startup catch-up's, or one while disabled) is not this check's.
+      const handled = (this.lastRunAt.get(schedule.id) ?? -Infinity) >= latestMs || latestMs <= armed;
+      if (handled) { this.missSeen.delete(schedule.id); continue; }
+      // A run still in flight: never start an overlapping one. The occurrence stays pending and runs once it settles.
+      if (this.executing.has(schedule.id)) continue;
+      const runId = latest.toISOString();
+      const seen = this.missSeen.get(schedule.id);
+      if (!seen || seen.runId !== runId) { this.missSeen.set(schedule.id, { runId, sinceMono: nowMono }); continue; }
+      if (nowMono - seen.sinceMono < Scheduler.MISSED_TICK_GRACE_MS) continue;
+      this.log.warn({ scheduleId: schedule.id, runId, lastTriggeredAt: schedule.last_triggered_at }, "Missed cron tick — catching up");
+      this.runWithLock(schedule, runId);
+    }
   }
 
   /** Return the latest actual cron occurrence at or before the observation. */
