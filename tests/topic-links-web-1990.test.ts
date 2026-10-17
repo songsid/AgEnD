@@ -64,6 +64,18 @@ describe("routes and their validation", () => {
     expect(textLinkSegments("", undefined)).toEqual([{ text: "" }]);
     expect(textLinkSegments(text, null)).toEqual([{ text }]);
   });
+  it("#2008 review: the client rebuilds the href, refuses traversal / another host / overlap, and stops at 16", () => {
+    expect(textLinkSegments("abc", [{ offset: 0, length: 3, url: "/ui/chat/%61%62" }])).toEqual([{ text: "abc", href: "/ui/chat/ab" }]);
+    for (const url of ["/ui/chat/../x", "//evil.com/ui/chat/a", "/ui/chat/a/../../x", "/ui/chat/%2e%2e", "/ui/chat/a?x=1", "/ui/chat/a#x", "/ui/chat/a b"]) {
+      expect(textLinkSegments("abcdef", [{ offset: 0, length: 3, url }]), url).toEqual([{ text: "abcdef" }]);
+    }
+    expect(textLinkSegments("abcdef", [{ offset: 0, length: 3, url: "/ui/chat/a" }, { offset: 2, length: 2, url: "/ui/chat/b" }]))
+      .toEqual([{ text: "abc", href: "/ui/chat/a" }, { text: "def" }]);
+    const many = Array.from({ length: 20 }, (_, i) => ({ offset: i, length: 1, url: "/ui/chat/a" }));
+    const text = "x".repeat(20);
+    expect(textLinkSegments(text, many).filter((sg: any) => sg.href)).toHaveLength(16);
+    expect(webTextLinks(many, text)).toHaveLength(16);
+  });
 });
 
 describe("the history keeps a status line's links — and nobody else's", () => {
@@ -93,7 +105,7 @@ describe("the history keeps a status line's links — and nobody else's", () => 
 });
 
 describe("the server: cross-instance web lines and prompts carry the links", () => {
-  async function send(message: string) {
+  async function send(message: string, sender = "alice") {
     const web: any[] = [];
     const ctx = {
       fleetConfig: {
@@ -109,7 +121,7 @@ describe("the server: cross-instance web lines and prompts carry the links", () 
     };
     let error: unknown;
     await outboundHandlers.get("send_to_instance")!(ctx as never, { instance_name: "bob", message, request_kind: "task" } as never,
-      (_r, err) => { error = err; }, { instanceName: "alice" } as never);
+      (_r, err) => { error = err; }, { instanceName: sender } as never);
     expect(error).toBeUndefined();
     return web;
   }
@@ -119,6 +131,10 @@ describe("the server: cross-instance web lines and prompts carry the links", () 
     expect(bob.text).toBe("alice → bob:\nplease look");
     expect(bob.links).toEqual([{ offset: 0, length: 5, url: "/ui/chat/alice" }]);
     expect(alice.links).toEqual([{ offset: 8, length: 3, url: "/ui/chat/bob" }]);
+  });
+  it("#2008 review: a sender that is not a fleet instance (a session) gets no link", async () => {
+    const web = await send("hi", "outside-session");
+    expect(web.find(w => w.instance === "bob").links).toBeUndefined();
   });
   it("an agent's message cannot add a link", async () => {
     const web = await send(`see ${placeRef({ kind: "instance", name: "bob" }, "HERE")}`);
@@ -181,6 +197,17 @@ describe("the client draws them as in-app links", () => {
       startRouter((globalThis as any).window);
       const ev = fire(list.querySelector("a.st-link"), "click", { button: 0 }) as any;
       expect([ev.defaultPrevented, navStore.get().route, (globalThis as any).location.pathname]).toEqual([true, { panel: "chat", instance: "alice" }, "/ui/chat/alice"]);
+    } finally { dom.restore(); }
+  });
+  it("#2008 review: a display name with HTML in the link stays text — no element, attribute or entity is made of it", () => {
+    const { dom, list, th } = thread();
+    try {
+      const name = `<img src=x onerror=alert(1)>"'&amp;`;
+      th.render([line([{ offset: 0, length: name.length, url: "/ui/chat/alice" }], `${name} → w:\nhi`)]);
+      const a = list.querySelector(".st-text a.st-link");
+      expect([a.textContent, a.getAttribute("href"), a.attributes.length]).toEqual([name, "/ui/chat/alice", 2]);
+      expect(list.querySelector(".st-text img")).toBeNull();
+      expect(list.querySelector(".st-text").textContent).toBe(`${name} → w:\nhi`);
     } finally { dom.restore(); }
   });
   it("a link the client's table does not take is plain text", () => {

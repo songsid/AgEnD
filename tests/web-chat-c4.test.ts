@@ -514,6 +514,12 @@ describe("the chat panel's prompts (the real page modules)", () => {
     startRouter(c.p.window);
     const ev = fire(a, "click", { button: 0 }) as any;
     expect([ev.defaultPrevented, navStore.get().route, c.p.window.location.pathname, c.p.window.location.assigned ?? null]).toEqual([true, { panel: "view", instance: "w" }, "/view/w", null]);
+    // #2008 review: HTML in the linked text is text in the card too.
+    const evil = `<img src=x onerror=alert(1)>"`;
+    c.stream.emit("prompt", { instance: "w", nonce: NONCE, text: `${evil} stopped`, links: [{ offset: 0, length: evil.length, url: "/view/w" }], actions: [{ id: "restart", label: "Restart" }], expiresAt: 1 });
+    await settle();
+    const la = cards(c)[0].querySelector(".txt a.st-link");
+    expect([la.textContent, cards(c)[0].querySelector(".txt img")]).toEqual([evil, null]);
     c.stream.emit("prompt", { instance: "w", nonce: NONCE, text: "w stopped", links: [{ offset: 0, length: 1, url: "https://evil.example/" }], actions: [{ id: "restart", label: "Restart" }], expiresAt: 1 });
     await settle();
     expect(cards(c)[0].querySelector(".txt a"), "a repeat refreshes the links too; a foreign one is text").toBeNull();
