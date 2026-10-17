@@ -28,9 +28,10 @@ describe("the rows", () => {
     expect(rows.map(r => [r.id, r.name, r.profile])).toEqual([["claude", "Claude", undefined], ["claude:team-alpha", "Claude (team-alpha)", "team-alpha"]]);
   });
   it("the snapshot keeps it, on a good read and on a failed one", async () => {
-    setUsageProvidersForTests([{ id: "claude", name: "Claude", fetch: async (home?: string) => { if (home) throw new Error("boom"); return { status: "ok" as const, metrics: [] }; } }]);
-    const { providers } = await fetchAllUsage(configWith(["team-alpha", null]));
-    expect(providers.map(p => [p.id, p.name, p.profile, p.status])).toEqual([["claude", "Claude", undefined, "ok"], ["claude:team-alpha", "Claude (team-alpha)", "team-alpha", "error"]]);
+    setUsageProvidersForTests([{ id: "claude", name: "Claude", fetch: async (home?: string) => { if (home?.includes("team-beta")) throw new Error("boom"); return { status: "ok" as const, metrics: [] }; } }]);
+    const { providers } = await fetchAllUsage(configWith(["team-alpha", "team-beta", null]));
+    expect(providers.map(p => [p.id, p.name, p.profile, p.status])).toEqual([["claude", "Claude", undefined, "ok"],
+      ["claude:team-alpha", "Claude (team-alpha)", "team-alpha", "ok"], ["claude:team-beta", "Claude (team-beta)", "team-beta", "error"]]);
     expect(Object.hasOwn(providers[0]!, "profile"), "no profile key on a shared row").toBe(false);
   });
 });
