@@ -100,7 +100,7 @@ export function createThread(list, scroller, opts) {
   function clickHtml(click) {
     const inner = `<span class="click-mark" aria-hidden="true">🔘</span><span class="sr-only">${escAttr(tr("chat.clicked"))} </span>${escAttr(click.label)}`;
     const of = typeof click.of === "string" && /^[0-9a-f]{32}$/.test(click.of) ? click.of : null;
-    return `<div class="click-chip">${of
+    return `<div class="click-chip" data-trust="thread-control">${of
       ? `<button type="button" class="click-link" data-act="showButtons" data-arg="${escAttr(of)}" title="${escAttr(tr("chat.clickShow"))}">${inner}</button>`
       : `<span class="click-text">${inner}</span>`}</div>`;
   }
