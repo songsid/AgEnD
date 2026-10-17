@@ -15,6 +15,7 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { canonicalPlacements } from "./web-identity-palette.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { checkWidgetData, checkWidgetSpec } from "./web-widget.js";
 
@@ -105,6 +106,10 @@ const VALIDATORS = new Map<string, (v: unknown) => unknown>([
   // #1629 r4.1 Q3 (a): how large this person's screens draw identity cards — the default for every card, and the cards
   // set apart from it (at most 200; the page drops the oldest). A display size only: no agent reads or sets it.
   ["card.size", (v) => (v === "s" || v === "m" || v === "l" ? v : bad("card.size: s, m or l"))],
+  // #1958: where identity colours show for an instance nobody chose for (a list of name / bar / ring; [] is nowhere;
+  // unset: ring and bar), and whether this host shows them at all (true: off everywhere; every pick is kept).
+  ["color.show", (v) => canonicalPlacements(v) ?? bad("color.show: a list of name, bar, ring (each once; [] for nowhere)")],
+  ["color.off", (v) => (v === true ? v : bad("color.off: true (clear it to turn colours back on)"))],
   ["card.sizeByInstance", (v) => {
     if (!plain(v)) return bad("card.sizeByInstance: { <instance>: s | m | l }");
     const keys = Object.keys(v);

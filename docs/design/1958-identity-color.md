@@ -1,6 +1,6 @@
 # #1958: a person-picked identity colour per instance, shown where you scan
 
-Status: design note, for decision. It targets 2.3.0 on `feat/2.3-web-mod` and is folded into the #1629 identity work.
+Status: decided (the user's answers, 2026-10-17); PR A merged (#1966), PR B in progress. It targets 2.3.0 on `feat/2.3-web-mod` and is folded into the #1629 identity work.
 
 ## What exists today (on `feat/2.3-web-mod`)
 
@@ -17,6 +17,8 @@ Status: design note, for decision. It targets 2.3.0 on `feat/2.3-web-mod` and is
 **Sidebar rows have no ⋯ menu.** The ⋯ menus are in the Chat and Details headers; profile edits are in View's Edit profile dialog.
 
 ## Proposal
+
+*The first proposal, as posted. Where the user's decisions below differ, they win.*
 
 ### 1. One colour per instance, resolved in a fixed order
 
@@ -73,23 +75,52 @@ Message bubbles stay with the agent's theme (`bubble`). Colouring them by identi
 - **Mods (#1629):** a person's export carries the person's colour with the identity defaults, and an import offers it. An agent's export never carries a person's pick.
 - **Accessibility:** colour is never the only cue, since the names stay. Name text always meets 4.5:1. The ring and bar meet 3:1, or the preset variant does.
 
-## Decisions needed
+## The user's decisions (2026-10-17)
 
-1. **Default placement:** keep today's look (ring only), or make the colour visible by default (ring + accent bar)? *My recommendation:* ring + accent bar, since visibility is the point of the request.
-2. **Who the setting belongs to.** Host-wide like `card.size` (simple: one value for everyone signed in as the host), or per person? Per person needs the person-scope rules in `web-prefs` widened beyond effect ids, which is Sol's area. *My recommendation:* host-wide now, per person when the person-scope rules are widened.
-3. **Public link:** may change colours, like profile and card edits? *My recommendation:* yes, for consistency with r4.1 Q2.
-4. **Automatic colours for everyone:** instances that show no ring today get one from the hash tier. *My recommendation:* yes; that is how rooms and emoji faces become distinguishable.
+1. **Default placement:** ring and the left accent bar.
+2. **Per instance, all three places:** each instance can show its colour on its **name**, its **left bar** and its
+   **ring**, in any combination. Agents help set it: the theme's `identity: { color?, show? }` (`set_web_theme`), and
+   `get_web_appearance` reports the colour, where it shows, whose choice each is, and whether colours are off. A
+   person's choice wins, field by field; Reset clears it. A host-wide default applies where nobody chose.
+3. **The public link may change colours,** as it may profile and card edits.
+4. **Automatic colours:** a few soft, low-saturation colours (8: sand, clay, rose, plum, dusk, sea, moss, slate), like
+   Telegram's and Discord's default avatar colours, chosen by a stable hash of the name. Duplicates are fine. Each reads
+   at 4.5:1 on the page and the sidebar, light and dark.
+5. **Settings → Web appearance (網頁外觀):** the Appearance tab, renamed and holding every appearance setting:
+   - what it holds now: themes and effects shown, card size, the sidebar widget, custom CSS, mods, effects, this
+     device's CSS switch, and the card limits;
+   - plus the colour's default places, and **Turn off colours** (`color.off`: none drawn anywhere on this host; every
+     pick is kept, so turning them back on restores them);
+   - plus **Restore defaults**, which asks first, says what it resets, and resets the host's appearance settings
+     (`fx.show`, `card.size`, `card.sizeByInstance`, `widget.sidebar`, `color.show`, `color.off`) and turns this
+     person's custom CSS off (its versions are kept).
+   - Restore defaults leaves alone what is not a setting: the colours people picked per instance, installed mods,
+     uploaded effects and the fleet's card limits.
+   - Theme, language and names stay in Preferences: they are this device's basics, synced, and not about agents' looks.
 
-## Plan (on `feat/2.3-web-mod`, after these decisions)
+## How it is built
 
-- **PR A, the server:**
-  - the store column and validation;
-  - `identityColor()`, its tiers and the hash fallback;
-  - the palette module with contrast-checked variants (tested);
-  - the `/api/profile` field, the status-frame field and the status event after writes;
-  - `get_web_appearance`, tests, and docs EN/zh-TW.
-- **PR B, the page:**
-  - the shared resolver (`fx.show`), and the ring for every face;
-  - the bar and the name tint, and the header dots;
-  - the Color dialog in Chat ⋯, Details ⋯ and Edit profile;
-  - the Settings → Appearance setting, strings EN/zh-TW, the skill, a fragment, and a Chromium smoke test in both themes.
+- **Resolution.**
+  - The colour: a person's pick, then the agent's (`theme.identity.color`, else its `accent`; only while themes are
+    shown), then the own bot's role colour, then automatic.
+  - The places: a person's choice, then the agent's (themes shown), then the host's `color.show`, then ring + bar.
+  - `color.off` draws nothing.
+- **Store.** `profiles.db` `instance_identity (instance_name, color, show, updated_at)`. The first cut's
+  `instance_color` rows carry over once.
+- **Profile write.** `POST /api/profile/<name>` takes `color` and `color_show`. Card text, the colour choice and the
+  profile row are written in one transaction.
+
+## Plan (on `feat/2.3-web-mod`)
+
+- **PR A (#1966, merged):** the store, the resolver, the palette, the profile field, the status-frame tiers and `get_web_appearance`.
+- **PR B1, the server:**
+  - the decisions' model: the automatic palette, per-instance places in the store and in `color_show`, the theme's
+    `identity`, and the `color.show` / `color.off` prefs;
+  - the placements' resolution, `get_web_appearance`'s places and off switch, and the one-transaction profile write
+    (Fable #1966 P3);
+  - the skill and the design note.
+- **PR B2, the page:**
+  - the shared resolver, the ring for every face, the bar and the name tint, and the header dots;
+  - the Color dialog (a colour plus three places, and Reset) in Chat ⋯, Details ⋯ and Edit profile;
+  - Settings → Web appearance: the renamed tab, the colour card, Turn off colours and Restore defaults;
+  - strings EN/zh-TW, docs, a fragment, and a Chromium smoke test in both themes.

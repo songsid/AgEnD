@@ -46,7 +46,7 @@ import { getTmuxSocketName } from "./paths.js";
 import { evaluateWebRequest, type WebGateRequest } from "./web-auth.js";
 import type { WebSessionStore } from "./web-session.js";
 import { CARD_SLOTS, type CardSlot, HumanCardStore, resolveCard } from "./web-card.js";
-import { canonicalIdentityColor, IdentityColorStore } from "./web-identity-color.js";
+import { IdentityColorStore } from "./web-identity-color.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import type { ThemeCard } from "./web-theme.js";
 
@@ -442,8 +442,9 @@ export function handleViewRequest(
       const db = profileDb(ctx.dataDir);
       const row = (db.prepare("SELECT * FROM instance_profile WHERE instance_name = ?").get(name) as ProfileRow | undefined)
         ?? { instance_name: name, display_name: null, avatar_path: null, role: null, description: null, updated_at: 0 };
-      // #1958: the person's colour pick (null: none — the agent's, the bot's or the automatic one shows).
-      json(res, 200, { ...row, color: colorStore(ctx).get(name) });
+      // #1958: the person's choice (null fields: not chosen — the agent's, the bot's, the host's or the automatic one shows).
+      const pick = colorStore(ctx).get(name);
+      json(res, 200, { ...row, color: pick.color, color_show: pick.show });
       return true;
     }
 
@@ -468,31 +469,42 @@ export function handleViewRequest(
         const cardText: { tagline?: unknown; bio?: unknown } = {};
         if (Object.hasOwn(body, "card_tagline")) cardText.tagline = body.card_tagline;
         if (Object.hasOwn(body, "card_bio")) cardText.bio = body.card_bio;
-        // #1958: the identity colour (a preset or #rrggbb; null or "" resets it), checked before anything is written.
-        const color = Object.hasOwn(body, "color") ? body.color : undefined;
-        if (color !== undefined && color !== null && !(typeof color === "string" && !color.trim()) && !canonicalIdentityColor(color)) {
-          json(res, 400, { error: "color", detail: "a preset id or a hex colour #rrggbb" });
+        // #1958: the identity colour (a preset or #rrggbb; null or "" resets it) and where it shows (color_show: a list
+        // of name / bar / ring, [] for nowhere; null resets it) — checked before anything is written.
+        const identity: { color?: unknown; show?: unknown } = {};
+        if (Object.hasOwn(body, "color")) identity.color = body.color;
+        if (Object.hasOwn(body, "color_show")) identity.show = body.color_show;
+        const idCheck = colorStore(ctx).check(identity);
+        if (!idCheck.ok) { json(res, idCheck.status, { error: idCheck.error, detail: idCheck.detail }); return; }
+        const texts = cardText.tagline !== undefined || cardText.bio !== undefined;
+        const ids = identity.color !== undefined || identity.show !== undefined;
+        if (!texts && !ids && !set.length) { json(res, 200, { ok: true }); return; }
+        // Fable #1966 P3: the card text, the identity choice and the profile row in one transaction (all profiles.db):
+        // a write that fails takes the others back with it, so the answer is never "failed" with part of it applied.
+        const db = profileDb(ctx.dataDir);
+        let refused: { status: number; error: string; detail?: string } | null = null;
+        const rollback = new Error("rollback");
+        try {
+          db.transaction(() => {
+            if (texts) { const cw = cardStore(ctx).setText(name, cardText); if (!cw.ok) { refused = cw; throw rollback; } }
+            if (ids) { const w = colorStore(ctx).set(name, identity); if (!w.ok) { refused = w; throw rollback; } }
+            if (set.length) {
+              // Column names come only from the fixed list above; avatar_path is the avatar route's — never touched here.
+              const cols = set.map(([k]) => k);
+              db.prepare(`INSERT INTO instance_profile (instance_name, ${cols.join(", ")}, updated_at)
+                VALUES (@n, ${cols.map(c => `@${c}`).join(", ")}, @t)
+                ON CONFLICT(instance_name) DO UPDATE SET ${cols.map(c => `${c} = excluded.${c}`).join(", ")}, updated_at = excluded.updated_at`)
+                .run({ n: name, t: Date.now(), ...Object.fromEntries(set) });
+            }
+          })();
+        } catch (err) {
+          const r = refused as { status: number; error: string; detail?: string } | null;
+          if (err === rollback && r) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
+          json(res, 503, { error: "profile_write_failed", detail: (err as Error).message });
           return;
         }
-        if (cardText.tagline !== undefined || cardText.bio !== undefined) {
-          const cw = cardStore(ctx).setText(name, cardText);
-          if (!cw.ok) { json(res, cw.status, { error: cw.error, ...(cw.detail ? { detail: cw.detail } : {}) }); return; }
-        }
-        if (color !== undefined) {
-          const w = colorStore(ctx).set(name, color);
-          if (!w.ok) { json(res, w.status, { error: w.error, ...(w.detail ? { detail: w.detail } : {}) }); return; }
-        }
-        const wrote = cardText.tagline !== undefined || cardText.bio !== undefined || color !== undefined || set.length > 0;
-        const done = () => { if (wrote) { try { ctx.identityChanged?.(); } catch { /* the next status frame carries it */ } } json(res, 200, { ok: true }); };
-        if (!set.length) { done(); return; }
-        const db = profileDb(ctx.dataDir);
-        // Column names come only from the fixed list above; avatar_path is the avatar route's — never touched here.
-        const cols = set.map(([k]) => k);
-        db.prepare(`INSERT INTO instance_profile (instance_name, ${cols.join(", ")}, updated_at)
-          VALUES (@n, ${cols.map(c => `@${c}`).join(", ")}, @t)
-          ON CONFLICT(instance_name) DO UPDATE SET ${cols.map(c => `${c} = excluded.${c}`).join(", ")}, updated_at = excluded.updated_at`)
-          .run({ n: name, t: Date.now(), ...Object.fromEntries(set) });
-        done();
+        try { ctx.identityChanged?.(); } catch { /* the next status frame carries it */ }
+        json(res, 200, { ok: true });
       }).catch(err => json(res, 400, { error: (err as Error).message }));
       return true;
     }
