@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { page, type AppPage } from "./helpers/app-harness.js";
 import { isServedAsset } from "../src/auth-api.js";
-const { createEffectTrialStage, effectTrialStage, effectTrialStageIdentity, watchEffectTrialStage } = await import("/assets/effect-trial-stage.js");
+const { createEffectTrialStage, effectTrialStage, effectTrialStageIdentity, watchEffectTrialStage, disposeEffectTrialStage, constrainEffectTrialStage } = await import("/assets/effect-trial-stage.js");
 const { allocateEffectFrames } = await import("/assets/effect-policy.js");
 const proof = () => ({ ok: true, front: false, agentFront: false, rects: [] });
 const own = () => ({ key: "trial:a", id: "a".repeat(32), run: "b".repeat(32), instance: "worker", generation: 1 });
@@ -32,6 +32,22 @@ function fixture(options: any = {}) {
   return { p, host, doc, panel, stage, link, rules, api, onStop, frame, patch, framePatch, otherPatch, rect(v: any) { r = v; }, css(v: string) { css = () => v; }, focus(v: boolean) { focused = v; }, current(fn: () => boolean) { current = fn; } };
 }
 describe("host-only local trial stage, not product admission or a new frame pool", () => {
+  it("one pre-frame host veto cannot replace original permission and is rechecked after layout", () => {
+    const f = fixture(); let allowed = true;
+    expect(constrainEffectTrialStage({}, () => true)).toBe(false); expect(constrainEffectTrialStage(f.api.receipt, null)).toBe(false);
+    expect(constrainEffectTrialStage(f.api.receipt, () => allowed)).toBe(true); expect(constrainEffectTrialStage(f.api.receipt, () => true)).toBe(false);
+    const p = effectTrialStage(f.api.receipt, own(), proof()), frame = f.frame(), bound = p.bind(frame, { layer: "front" }, proof()); expect(bound.ok).toBe(true); expect(bound.sync(proof())).toBe(true);
+    const rect = f.stage.getBoundingClientRect.bind(f.stage); f.stage.getBoundingClientRect = () => { allowed = false; return rect(); };
+    expect(effectTrialStage(f.api.receipt, own(), proof())).toBeNull(); expect(frame.isConnected).toBe(false); expect(f.onStop).toHaveBeenCalledOnce();
+    const other = fixture(), before = effectTrialStage(other.api.receipt, own(), proof()), existing = other.frame(); expect(before.bind(existing, { layer: "front" }, proof()).ok).toBe(true); expect(constrainEffectTrialStage(other.api.receipt, () => true)).toBe(false);
+  });
+  it("issued-owner retirement removes paint before callbacks and refuses unknown/repeated receipts", () => {
+    const f = fixture(), p = effectTrialStage(f.api.receipt, own(), proof()), frame = f.frame(), mounted = p.bind(frame, { layer: "front" }, proof());
+    expect(mounted.ok).toBe(true); expect(mounted.sync(proof())).toBe(true);
+    const seen: string[] = []; watchEffectTrialStage(f.api.receipt, () => { expect(frame.isConnected).toBe(false); expect(effectTrialStageIdentity(f.api.receipt)).toBeNull(); seen.push("ended"); });
+    expect(disposeEffectTrialStage({})).toBe(false); expect(disposeEffectTrialStage(f.api.receipt)).toBe(true); expect(seen).toEqual(["ended"]);
+    expect(disposeEffectTrialStage(f.api.receipt)).toBe(false); f.api.dispose(); expect(f.onStop).toHaveBeenCalledOnce();
+  });
   it("serves only the shared registry dependency; no product TrialPanel import", () => {
     expect(isServedAsset("effect-trial-stage.js")).toBe(true);
     for (const file of ["src/ui/panel-chat.js", "src/ui/shared/app.js", "src/ui/app-effects.js"]) expect(readFileSync(file, "utf8")).not.toContain("effect-trial-panel");
