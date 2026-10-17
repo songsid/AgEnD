@@ -17,6 +17,7 @@ import { InstanceSwitch } from "/assets/instance-switch.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { Menu } from "/assets/ui-menu.js";
 import { themeMenuItems, themesStore } from "/assets/app-themes.js";
+import { colorMenuItem } from "/assets/identity-color.js";
 import { IdentityCard, useCard } from "/assets/identity-card.js";
 import { AgentWidget, instanceBinds, widgetFor } from "/assets/agent-widget.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
@@ -98,6 +99,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
     { key: "edit", label: t("chat.dEditInSettings"), icon: "settings", onSelect: editInSettings },
     st === "running" ? { key: "pause", label: t("chat.dPause"), icon: "pause", disabled: !!busy, onSelect: () => pauseWake("pause") } : null,
     st === "paused" ? { key: "wake", label: t("chat.dWake"), icon: "play", disabled: !!busy, onSelect: () => pauseWake("wake") } : null,
+    colorMenuItem(name, inst),   // #1958
     ...themeMenuItems(name),   // #1629
   ] : [
     { key: "edit", label: t("chat.dEditInSettings"), icon: "settings", onSelect: editInSettings },
@@ -106,6 +108,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
     st === "running" ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", disabled: !!busy, onSelect: () => lifecycle("stop") } : null,
     st === "running" ? { key: "pause", label: t("chat.dPause"), icon: "pause", disabled: !!busy, onSelect: () => pauseWake("pause") } : null,
     st === "paused" ? { key: "wake", label: t("chat.dWake"), icon: "play", disabled: !!busy, onSelect: () => pauseWake("wake") } : null,
+    colorMenuItem(name, inst),   // #1958: its identity colour (the public link too)
     // #1629: a person's Lock and Reset of this agent's own web theme (not over the public link).
     ...themeMenuItems(name),
   ];

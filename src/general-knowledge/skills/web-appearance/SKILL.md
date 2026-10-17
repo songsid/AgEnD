@@ -156,7 +156,7 @@ Then, as you go: `set_web_widget { "slot": "chat_header", "data": { "tests": 75 
 ## Mods
 
 A mod is one file, `<name>-<version>.agendmod.json`, that carries a look: a theme with its pictures, card text,
-widgets and effects. People import mods in **Settings → Appearance → Mods**. **You never import**: a person reviews
+widgets and effects. People import mods in **Settings → Web appearance → Mods**. **You never import**: a person reviews
 everything in a mod and ticks what to apply.
 
 - `export_web_mod { name, version, title? }` writes **your own** look to `.agend/mods/<name>-<version>.agendmod.json`
@@ -212,7 +212,7 @@ from being collected until cleared. This is deliberately stricter than chat plac
 a personal choice keeps following its person's current own/shared access, while a chat preserves the exact effect
 placed there. A reference is not a sharing or export grant. Do not keep retrying a denied personal selection.
 
-Owner selectors are available in Settings → Appearance. With effects and preview consent enabled, personal
+Owner selectors are available in Settings → Web appearance. With effects and preview consent enabled, personal
 page/header/sidebar/box choices play across supported stock pages in the same pool as local signed-in Chat.
 Appearance offers slot Pause/Resume and unavailable/Clear controls. The personal cursor uses a static PNG on the host shell after the same consent: no Worker/code read or frame slot. It preserves explicit pointer/text/resize cursors, falls back while dragging or on failure, and has status/Clear rather than Worker Pause/Resume. Before revealing paint, the host must prove stock content
 ordering and trust paint coverage. Agent front effects must remain paused when custom CSS is active, loading or

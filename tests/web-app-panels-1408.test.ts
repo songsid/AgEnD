@@ -180,9 +180,9 @@ describe("the chat's states", () => {
       await p.unmount();
       return labels;
     };
-    // #1629: a person's Lock and Reset of the agent's web theme, before Delete (still last).
-    expect(await items("alpha")).toEqual(["Instance details", "Restart instance", "Stop instance", "Lock theme", "Reset theme…", "Delete instance…"]);
-    expect(await items("beta")).toEqual(["Instance details", "Start instance", "Lock theme", "Reset theme…", "Delete instance…"]);
+    // #1629: a person's Lock and Reset of the agent's web theme, before Delete (still last); #1958: its colour, before them.
+    expect(await items("alpha")).toEqual(["Instance details", "Restart instance", "Stop instance", "Colour…", "Lock theme", "Reset theme…", "Delete instance…"]);
+    expect(await items("beta")).toEqual(["Instance details", "Start instance", "Colour…", "Lock theme", "Reset theme…", "Delete instance…"]);
   });
 
   it.each(["person", "operator", "public", "poll", "header", "bad-epoch", "view"])("Effects controls follow the actual local runtime identity: %s", async kind => {
