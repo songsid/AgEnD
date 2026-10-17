@@ -45,7 +45,7 @@ import {
   type WebGateRequest,
 } from "./web-auth.js";
 import { csrfTokenFor, labelFromUserAgent, sessionIdHash, tokenEpoch, type SessionTier, type WebSessionStore } from "./web-session.js";
-import type { LoginCodeOwner, LoginCodeRecipient, WebLoginCodes } from "./web-login.js";
+import type { GuestLoginCodes, LoginCodeOwner, LoginCodeRecipient, LoginRedeemResult, WebLoginCodes } from "./web-login.js";
 import { buildDeviceCookie, readDeviceCookie, type ReturningDevice } from "./web-returning-device.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -60,8 +60,8 @@ export interface AuthApiContext {
   readonly webToken: string | null;
   readonly webSessions: WebSessionStore | null;
   readonly webLoginCodes: WebLoginCodes | null;
-  /** #1920 step 4: guests' codes (local sign-in), redeemed when an admin's code does not match. */
-  readonly webGuestLoginCodes?: WebLoginCodes | null;
+  /** #1920 step 4: guests' codes (local sign-in), one per account — tried before the admins' code, never counted by it. */
+  readonly webGuestLoginCodes?: GuestLoginCodes | null;
   /** #1920 step 4: a guest code's account may still sign in (guests on, something in scope, not an admin). */
   guestSignInAllowed?(account: { adapterId: string; userId: string }): boolean;
   readonly logger: Logger;
@@ -255,9 +255,15 @@ export function handleAuthRequest(
       const current = (): boolean => isWebRequestCurrent(req) && ctx.webToken === token
         && (!publicRequest || (!disconnected && !req.aborted && !(req.destroyed && !req.complete) && !res.destroyed && !res.writableEnded));
       if (!current()) { json(res, 401, { error: LOGIN_REFUSED_MESSAGE }); return; }
-      let result = codes.redeem(body.code, tokenEpoch(token), gateway?.exposureId ?? "local");
-      // #1920 step 4: not an admin's code — perhaps a guest's (its own store: a guest's /web never withdraws an admin's).
-      if (result.kind === "invalid" && ctx.webGuestLoginCodes) result = ctx.webGuestLoginCodes.redeem(body.code, tokenEpoch(token), gateway?.exposureId ?? "local");
+      // #1920 step 4: a guest's code first (matching counts nothing), then the admins' as before; a code neither knows is
+      // one wrong try against the guests' codes too. Either breaker open pauses both: guessing is guessing.
+      const guestCodes = ctx.webGuestLoginCodes ?? null;
+      const audience = gateway?.exposureId ?? "local";
+      const guestPausedMs = guestCodes?.pausedForMs() ?? 0;
+      const result: LoginRedeemResult = guestPausedMs > 0 ? { kind: "paused", retryAfterMs: Math.max(guestPausedMs, codes.pausedForMs()) }
+        : codes.pausedForMs() > 0 ? codes.redeem(body.code, tokenEpoch(token), audience)
+        : guestCodes?.match(body.code, tokenEpoch(token), audience) ?? codes.redeem(body.code, tokenEpoch(token), audience);
+      if (result.kind === "invalid") guestCodes?.recordWrong(body.code);
       if (result.kind === "paused") {
         json(res, 429, { error: LOGIN_PAUSED_MESSAGE }, { "Retry-After": String(Math.ceil(result.retryAfterMs / 1000)) });
         return;

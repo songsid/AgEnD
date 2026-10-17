@@ -25,6 +25,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { tokenEpoch } from "../src/web-session.js";
 import { setLocale, t } from "../src/locale.js";
 import { formatWebChannelEcho } from "../src/web-channel-echo.js";
+import { GuestLoginCodes, LOGIN_CODE_TTL_MS } from "../src/web-login.js";
 
 const TOKEN = "c".repeat(48);
 const rigs: Array<{ dir: string; fm: FleetManager; s: any }> = [];
@@ -71,8 +72,8 @@ describe("a non-admin's /web while guest sign-in is on", () => {
     const code = codeOf(dm[1]);
     expect(h.respond.mock.calls.map((c: any[]) => c[0])).toEqual([t("web.guest_sent")]);
     expect(h.respond.mock.calls.some((c: any[]) => String(c[0]).includes(code)), "the code is never posted where asked").toBe(false);
-    expect(h.s.webGuestLoginCodes.redeem(code, tokenEpoch(TOKEN))).toMatchObject({ kind: "ok", tier: "guest", recipient: { adapterId: "owner", userId: "alice" } });
-    expect(h.s.webGuestLoginCodes.redeem(code, tokenEpoch(TOKEN)), "single use").toEqual({ kind: "invalid" });
+    expect(h.s.webGuestLoginCodes.match(code, tokenEpoch(TOKEN))).toMatchObject({ kind: "ok", tier: "guest", recipient: { adapterId: "owner", userId: "alice" } });
+    expect(h.s.webGuestLoginCodes.match(code, tokenEpoch(TOKEN)), "single use").toBeNull();
     // Guest sign-in off: the same /web is refused by the table, as before.
     h.fm.fleetConfig!.web = { guests: { enabled: false } } as never;
     h.respond.mockClear(); h.adapter.sendDirect.mockClear(); mono += 120_000;
@@ -86,7 +87,49 @@ describe("a non-admin's /web while guest sign-in is on", () => {
     await h.slash("alice");
     const guest = codeOf(h.adapter.sendDirect.mock.calls[0]![1]);
     expect(h.s.webLoginCodes.redeem(admin.display, tokenEpoch(TOKEN))).toMatchObject({ kind: "ok", tier: "admin" });
-    expect(h.s.webGuestLoginCodes.redeem(guest, tokenEpoch(TOKEN))).toMatchObject({ kind: "ok", tier: "guest" });
+    expect(h.s.webGuestLoginCodes.match(guest, tokenEpoch(TOKEN))).toMatchObject({ kind: "ok", tier: "guest" });
+  });
+  it("leader's #2093 review: one code per account — guest B's /web never invalidates guest A's live code", async () => {
+    const h = rig();
+    await h.slash("alice");
+    const a1 = codeOf(h.adapter.sendDirect.mock.calls[0]![1]);
+    await h.slash("bob");
+    const b1 = codeOf(h.adapter.sendDirect.mock.calls.at(-1)![1]);
+    // A new /web from alice replaces only her own code.
+    mono += 60_000; await h.slash("alice");
+    const a2 = codeOf(h.adapter.sendDirect.mock.calls.at(-1)![1]);
+    const epoch = tokenEpoch(TOKEN);
+    expect(h.s.webGuestLoginCodes.match(a1, epoch), "her old code was replaced").toBeNull();
+    expect(h.s.webGuestLoginCodes.match(b1, epoch)).toMatchObject({ kind: "ok", recipient: { userId: "bob" } });
+    expect(h.s.webGuestLoginCodes.match(a2, epoch)).toMatchObject({ kind: "ok", recipient: { userId: "alice" } });
+  });
+  it("at most 32 outstanding guest codes: past that a new account is refused (try again later), nobody's evicted", async () => {
+    const h = rig();
+    const codes = h.s.webGuestLoginCodes, epoch = tokenEpoch(TOKEN);
+    const first = codes.issue({ epoch, recipient: { adapterId: "owner", userId: "u0" } });
+    for (let i = 1; i < 32; i++) expect(codes.issue({ epoch, recipient: { adapterId: "owner", userId: `u${i}` } })).not.toBeNull();
+    await h.slash("alice");
+    expect(h.adapter.sendDirect).not.toHaveBeenCalled();
+    expect(h.respond.mock.calls[0]![0]).toBe(t("web.guest_busy"));
+    expect(codes.issue({ epoch, recipient: { adapterId: "owner", userId: "u5" } }), "an account at the cap may replace its own").not.toBeNull();
+    expect(codes.match(first.display, epoch), "u0's code was kept").toMatchObject({ kind: "ok" });
+    h.respond.mockClear();
+    await h.slash("alice");
+    expect(h.respond.mock.calls[0]![0], "a slot freed: hers now").toBe(t("web.guest_sent"));
+  });
+  it("a wrong code counts against every guest code (each dies at its fifth) and the breaker; nothing typed counts nothing", async () => {
+    const h = rig();
+    const codes = h.s.webGuestLoginCodes, epoch = tokenEpoch(TOKEN);
+    const a = codes.issue({ epoch, recipient: { adapterId: "owner", userId: "a" } });
+    codes.issue({ epoch, recipient: { adapterId: "owner", userId: "b" } });
+    for (let i = 0; i < 10; i++) codes.recordWrong("   ");
+    for (let i = 0; i < 4; i++) codes.recordWrong("ZZZZ-ZZZZ");
+    expect(codes.size).toBe(2);
+    codes.recordWrong("ZZZZ-ZZZZ");
+    expect(codes.size, "both burned at the fifth wrong try").toBe(0);
+    expect(codes.match(a.display, epoch)).toBeNull();
+    for (let i = 0; i < 15; i++) codes.recordWrong("ZZZZ-ZZZZ");
+    expect(codes.pausedForMs(), "20 wrong in the window: paused").toBeGreaterThan(0);
   });
   it("once a minute per account; the DM refused: the slash command's ephemeral answer, else the code is withdrawn", async () => {
     const h = rig();
@@ -100,7 +143,7 @@ describe("a non-admin's /web while guest sign-in is on", () => {
     h.adapter.sendDirect.mockRejectedValueOnce(new Error("Cannot send messages to this user"));
     await h.slash("alice");
     const ephemeral = String(h.respond.mock.calls[0]![0]);
-    expect(h.s.webGuestLoginCodes.redeem(codeOf(ephemeral), tokenEpoch(TOKEN))).toMatchObject({ kind: "ok", tier: "guest" });
+    expect(h.s.webGuestLoginCodes.match(codeOf(ephemeral), tokenEpoch(TOKEN))).toMatchObject({ kind: "ok", tier: "guest" });
     // DM refused on typed text (nothing private to fall back on): the code is withdrawn and they are told how.
     const tg = rig("telegram");
     tg.s.worlds.get("owner").botUsername = "agend_demo_bot";
@@ -108,7 +151,7 @@ describe("a non-admin's /web while guest sign-in is on", () => {
     expect(await tg.typed("alice")).toBe(true);
     const said = texts(tg.adapter.sendText);
     expect(said).toEqual([t("web.guest_dm_failed_link", "https://t.me/agend_demo_bot?start=web")]);
-    expect(tg.s.webGuestLoginCodes.hasOutstandingCode, "withdrawn").toBe(false);
+    expect(tg.s.webGuestLoginCodes.size > 0, "withdrawn").toBe(false);
   });
   it("typed in any topic of the fleet (the table would point a non-admin elsewhere); never the code in the group", async () => {
     const h = rig("telegram");
@@ -127,7 +170,7 @@ describe("a non-admin's /web while guest sign-in is on", () => {
     n.fm.fleetConfig!.web = { guests: { enabled: true, narrow: { "owner:alice": [] } } } as never;
     await n.slash("alice");
     expect(n.respond.mock.calls[0]![0]).toBe(t("web.guest_nothing"));
-    expect(n.s.webGuestLoginCodes.hasOutstandingCode).toBe(false);
+    expect(n.s.webGuestLoginCodes.size > 0).toBe(false);
   });
   it("a guest's /web revoke: its own sessions and code; an admin's: everyone's", async () => {
     const h = rig();
@@ -138,23 +181,44 @@ describe("a non-admin's /web while guest sign-in is on", () => {
     h.respond.mockClear();
     await h.slash("alice", "revoke");
     expect(h.respond.mock.calls[0]![0]).toBe(t("web.guest_revoked", 2));
-    expect(h.s.webGuestLoginCodes.hasOutstandingCode, "her code too").toBe(false);
+    expect(h.s.webGuestLoginCodes.hasCodeFor({ adapterId: "owner", userId: "alice" }), "her code too").toBe(false);
     const left = h.s.webSessions.list().map((r: any) => r.label).sort();
     expect(left).toEqual(["admin", "guest"]);                // bob's and the admin's
     // Another guest's revoke leaves her outstanding code alone; an admin's withdraws it with everything else.
     mono += 60_000; await h.slash("alice");
-    expect(h.s.webGuestLoginCodes.hasOutstandingCode).toBe(true);
+    expect(h.s.webGuestLoginCodes.hasCodeFor({ adapterId: "owner", userId: "alice" })).toBe(true);
     await h.slash("bob", "revoke");
-    expect(h.s.webGuestLoginCodes.hasOutstandingCode, "bob's revoke is not hers").toBe(true);
+    expect(h.s.webGuestLoginCodes.hasCodeFor({ adapterId: "owner", userId: "alice" }), "bob's revoke is not hers").toBe(true);
     h.respond.mockClear();
     await h.slash("admin", "revoke");
     expect(h.s.webSessions.list()).toEqual([]);
-    expect(h.s.webGuestLoginCodes.hasOutstandingCode, "an admin's revoke withdraws a guest's code too").toBe(false);
+    expect(h.s.webGuestLoginCodes.hasCodeFor({ adapterId: "owner", userId: "alice" }), "an admin's revoke withdraws a guest's code too").toBe(false);
   });
   it("the channel copy of a guest's web message says so after the (clipped) name", () => {
     expect(formatWebChannelEcho("Alice", "hi", "full", { guest: true })).toBe("🌐 web · Alice (guest): hi");
     expect(formatWebChannelEcho("x".repeat(200), "hi", "full", { guest: true })).toContain(`${"x".repeat(80)} (guest): hi`);
     expect(formatWebChannelEcho("Alice", "hi")).toBe("🌐 web · Alice: hi");
+  });
+});
+
+describe("GuestLoginCodes", () => {
+  it("a code matches only under its token, for its audience, before it expires, and not while paused", () => {
+    let now = 0;
+    const codes = new GuestLoginCodes({ now: () => now });
+    const r = { adapterId: "owner", userId: "a" };
+    const issue = () => codes.issue({ epoch: "e1", recipient: r })!.display;
+    expect(codes.match(issue(), "e2"), "the token was rotated").toBeNull();
+    expect(codes.size).toBe(0);
+    expect(codes.match(issue(), "e1", "exposure-1"), "another audience").toBeNull();
+    const c = issue(); now += LOGIN_CODE_TTL_MS;
+    expect(codes.match(c, "e1"), "expired").toBeNull();
+    const d = issue();
+    for (let i = 0; i < 20; i++) { codes.issue({ epoch: "e1", recipient: { adapterId: "owner", userId: `x${i % 2}` } }); codes.recordWrong("ZZZZ-ZZZZ"); }
+    codes.issue({ epoch: "e1", recipient: r });
+    expect(codes.pausedForMs()).toBeGreaterThan(0);
+    const e = codes.issue({ epoch: "e1", recipient: r })!.display;
+    expect(codes.match(e, "e1"), "paused: even a right code").toBeNull();
+    expect(d).not.toBe(e);
   });
 });
 
@@ -190,6 +254,30 @@ describe("live: a guest code at /auth/login", () => {
       const sessions = h.s.webSessions.list(undefined, (x: any) => x.tier === "guest");
       expect(sessions).toHaveLength(1);
       expect(h.notify.mock.calls.map((c: any[]) => c[0]).find((x: string) => x.includes("guest"))).toMatch(/^👤 A guest, .+ signed in to the web \(.+; 2 agents/);
+    } finally { await h.close(); }
+  });
+  it("a guest signing in never counts against an admin's code; a code neither knows counts against both", async () => {
+    const h = await live();
+    try {
+      const admin = h.s.issueDashboardLogin()!;
+      await h.slash("alice");
+      expect((await post(h.port, { code: codeOf(h.adapter.sendDirect.mock.calls[0]![1]) })).status).toBe(200);
+      for (let i = 0; i < 4; i++) expect((await post(h.port, { code: "ZZZZ-ZZZZ" })).status).toBe(401);
+      // Four wrong tries: the admin's code (dead at its fifth) still works — the guest's sign-in was not one of them.
+      expect(JSON.parse((await post(h.port, { code: admin.display })).body)).toMatchObject({ ok: true, tier: "admin" });
+    } finally { await h.close(); }
+  });
+  it("at /auth/login, a code neither knows counts against the guests' codes; their breaker open pauses sign-in (429)", async () => {
+    const h = await live();
+    try {
+      await h.slash("alice");
+      const code = codeOf(h.adapter.sendDirect.mock.calls[0]![1]);
+      for (let i = 0; i < 5; i++) await post(h.port, { code: "ZZZZ-ZZZZ" });
+      expect((await post(h.port, { code })).status, "burned at the fifth wrong try").toBe(401);
+      const next = h.s.webGuestLoginCodes.issue({ epoch: tokenEpoch(TOKEN), recipient: { adapterId: "owner", userId: "alice" } }).display;
+      for (let i = 0; i < 20; i++) h.s.webGuestLoginCodes.recordWrong("ZZZZ-ZZZZ");
+      const paused = await post(h.port, { code: next });
+      expect(paused.status).toBe(429);
     } finally { await h.close(); }
   });
   it("refused when the account is no longer a guest with something to see (guests off since, or made an admin)", async () => {

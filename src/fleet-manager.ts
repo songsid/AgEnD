@@ -290,7 +290,7 @@ import { authorizeSession, decideWebGate, loadOrCreateWebToken, readWebToken } f
 import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
-import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
+import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { createPreviewListener, normalizeOrigin, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener, type PreviewOffCode } from "./web-preview.js";
@@ -1738,10 +1738,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** The dashboard's login codes. Memory only: a code that outlives the process is a code nobody can prove was not copied. */
   private webLoginCodes: WebLoginCodes | null = null;
   /**
-   * #1920 step 4: guests' codes, apart from the admins' — one outstanding at a time, as there, but a guest's `/web`
-   * never withdraws an admin's code (or the reverse). Local sign-in only for now (audience "local").
+   * #1920 step 4: guests' codes, apart from the admins' — one per account, so no guest's `/web` withdraws another's or
+   * an admin's code (#2093 review), at most 32 at once. Local sign-in only for now (audience "local").
    */
-  private webGuestLoginCodes: WebLoginCodes | null = null;
+  private webGuestLoginCodes: GuestLoginCodes | null = null;
   /** #1920 step 4: when each account last got a guest code (monotonic) — one a minute, so `/web` is no DM flood. */
   private readonly guestCodeAskedAt = new Map<string, number>();
   /** #1570: browsers that may ask the sign-in page for a fresh code, and how often they may. */
@@ -5793,7 +5793,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       });
     }
     if (!this.webGuestLoginCodes) {
-      this.webGuestLoginCodes = new WebLoginCodes({
+      this.webGuestLoginCodes = new GuestLoginCodes({
         onEvent: event => {
           if (event === "burned") this.logger.warn("A guest web login code was used up by wrong attempts");
           else if (event === "breaker-open") this.logger.warn("Guest web sign-in paused: too many wrong login codes");
@@ -6218,7 +6218,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.initializeWebSessions();
     void this.publicWebLink?.close("dashboard revoke");
     this.webLoginCodes!.revoke();
-    this.webGuestLoginCodes!.revoke();
+    this.webGuestLoginCodes!.revokeAll();
     // #1570: no browser may ask the sign-in page for a code any more.
     const devices = this.returningDevices!.revokeAll();
     const sessions = this.webSessions!.revokeAll();
@@ -6244,7 +6244,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   revokeGuestWebSessions(owner: { adapterId: string; userId: string }): { count: number; durable: boolean } {
     this.initializeWebSessions();
-    this.webGuestLoginCodes!.revokeRecipient(owner.adapterId, owner.userId);
+    this.webGuestLoginCodes!.revokeRecipient(owner);
     const ended = this.webSessions!.revokeAll(r => r.tier === "guest" && r.owner?.adapterId === owner.adapterId && r.owner.userId === owner.userId);
     this.logger.info({ adapterId: owner.adapterId, count: ended.count, durable: ended.durable }, "Guest web sessions revoked by their account");
     return ended;
@@ -6286,9 +6286,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.initializeWebSessions();
     const codes = this.webGuestLoginCodes!;
     if (codes.pausedForMs() > 0) { await say(t("web.guest_paused")); return true; }
+    // One code per account (a new one replaces only its own); at the cap, refused — never another guest's evicted.
+    const login = codes.issue({ epoch: tokenEpoch(token), recipient: { adapterId: owner.adapterId, userId: owner.userId, ...(ask.username ? { username: ask.username } : {}) } });
+    if (!login) { await say(t("web.guest_busy")); return true; }
     this.guestCodeAskedAt.delete(key); this.guestCodeAskedAt.set(key, performance.now());
     while (this.guestCodeAskedAt.size > 256) this.guestCodeAskedAt.delete(this.guestCodeAskedAt.keys().next().value as string);
-    const login = codes.issue({ tier: "guest", epoch: tokenEpoch(token), recipient: { adapterId: owner.adapterId, userId: owner.userId, ...(ask.username ? { username: ask.username } : {}) } });
     const current = (): boolean => !this.shuttingDown && this.webToken === token && this.adapters.get(ask.adapterId) === adapter
       && this.guestSignInAllowed(owner);
     const privateText = `${t("web.guest_intro", scope.size)}\n${this.topicCommands.getDashboardText()}\n${t("dashboard.code", login.display, Math.round(LOGIN_CODE_TTL_MS / 60_000))}`;

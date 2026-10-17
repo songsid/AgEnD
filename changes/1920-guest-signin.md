@@ -6,5 +6,5 @@ section: Security
   - **What they see:** only the agents they can already use in chat. If there are none, no code is sent. On an `open` connection that has no agents named for guests, they're told to ask an admin.
   - **Admins stay aware:** every guest sign-in is posted in General, with who it was and how many agents they can reach. This happens even with `web.notify_login: false`, which covers only your own sign-ins.
   - **Signing out:** `/web revoke` from a guest signs out only their own guest sessions. From an admin it still signs out everyone.
-  - **Admins' codes are safe:** a guest asking for a code never cancels an admin's code.
+  - **Nobody cancels anyone else's code:** each account has one sign-in code at a time, and asking again replaces only their own. A guest never cancels another guest's code or an admin's. If too many guest codes are waiting to be used (32), new guests are asked to try again in a few minutes.
   - **In the channel:** a guest's message copied from the web shows "(guest)" after their name.
