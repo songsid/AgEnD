@@ -80,7 +80,7 @@ try{
   emitSseEvent:(event,data)=>{for(const s of ctx.sseClients)s.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);}};
  const base=`http://127.0.0.1:${port}`;
  const originalStatus=ctx.getUiStatus;ctx.getUiStatus=()=>{throw Error("private-fixture-error-sentinel");};
- try{const fault=await fetch(base+"/ui/poll",{headers:{Authorization:`Bearer ${token}`}});assert.equal(fault.status,500);assert.equal(fault.headers.get("content-type"),"text/plain; charset=utf-8");assert.equal(await fault.text(),"Internal fixture error");assert.equal(serverErrors.pop(),"Error: private-fixture-error-sentinel");}finally{ctx.getUiStatus=originalStatus;}
+ try{const fault=await fetch(base+"/ui/poll",{headers:{"X-Agend-Token":token}});assert.equal(fault.status,500);assert.equal(fault.headers.get("content-type"),"text/plain; charset=utf-8");assert.equal(await fault.text(),"Internal fixture error");assert.equal(serverErrors.pop(),"Error: private-fixture-error-sentinel");}finally{ctx.getUiStatus=originalStatus;}
 
  for(const engine of(process.env.PROBE_ENGINES||"chromium,firefox,webkit").split(",")){
   browser=await pw[engine].launch({headless:true,env:{HOME:join(scratch,"home"),TMPDIR:join(scratch,"tmp"),PATH:"/usr/bin:/bin",LANG:"C.UTF-8"}});
