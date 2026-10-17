@@ -77,6 +77,8 @@ export interface UsageMetric {
 export interface ProviderUsage {
   id: string;
   name: string;
+  /** #2014: the credential profile this row reads (its `name` ends in ` (<profile>)`); the page shows it on its own line. */
+  profile?: string;
   status: "ok" | "error" | "no-credentials";
   /** A non-metered subscription whose entitlement is unlimited (not 0/100%). */
   unlimited?: boolean;
@@ -1481,7 +1483,7 @@ export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderU
 
 // ── Registry ─────────────────────────────────────────────────────────────────
 
-type UsageProvider = { id: string; name: string; fetch: (storeHome?: string, scope?: ClaudeUsageScope) => Promise<Omit<ProviderUsage, "id" | "name">> };
+type UsageProvider = { id: string; name: string; profile?: string; fetch: (storeHome?: string, scope?: ClaudeUsageScope) => Promise<Omit<ProviderUsage, "id" | "name">> };
 
 type UsageFleetConfig = Parameters<typeof listConfiguredProfiles>[0];
 
@@ -1593,6 +1595,7 @@ export function providersForConfig(
     rows.push(...profiles.map(profile => ({
       id: `${provider.id}:${profile}`,
       name: `${provider.name} (${profile})`,
+      profile,
       fetch: () => provider.fetch(credentialProfileStoreHome(getAgendHome(), backendName, profile), { profile }),
     })));
     return rows;
@@ -1789,15 +1792,15 @@ export async function fetchAllUsage(
         // Fail soft: this row says it could not be read, the rest still answer,
         // and the snapshot returns in bounded time.
         return {
-          id: p.id, name: p.name, status: "error",
+          id: p.id, name: p.name, ...(p.profile ? { profile: p.profile } : {}), status: "error",
           error: `Could not reach ${p.name}.`,
           errorI18n: i18n("usage.error.unreachable", p.name),
           metrics: [],
         };
       }
-      return { id: p.id, name: p.name, ...outcome };
+      return { id: p.id, name: p.name, ...(p.profile ? { profile: p.profile } : {}), ...outcome };
     } catch (err) {
-      return { id: p.id, name: p.name, status: "error", error: String((err as Error)?.message ?? err), metrics: [] };
+      return { id: p.id, name: p.name, ...(p.profile ? { profile: p.profile } : {}), status: "error", error: String((err as Error)?.message ?? err), metrics: [] };
     }
   }));
   return {
