@@ -1,7 +1,7 @@
 /**
  * #1629 r4-6: the `web-appearance` skill and the what's-new entries. The skill must not drift from the code: every tool
- * it names exists, its slots, sizes, limits and contrast numbers are the code's. The 2.3 entries reach an instance once,
- * on 2.3 — never on a 2.2.x.
+ * it names exists, its slots, sizes, limits and contrast numbers are the code's. The 2.3 what's-new lines reach an
+ * instance once, from 2.3.0-beta.2 — never on a 2.2.x — and only name the skill: the details are here.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -58,10 +58,10 @@ describe("the web-appearance skill", () => {
   });
 });
 
-describe("what's new for 2.3 (#1633)", () => {
-  it("the card notice shows the call that works: card inside set (#1891 review)", async () => {
-    const text = AGENT_WHATS_NEW.find(e => e.id === "2.3-web-card")!.text;
-    expect(text).toContain("`set_web_theme({ set: { card: { tagline, bio, portrait, banner } } })`");
+describe("what's new for 2.3 (#1633, #2012: topic lines; the details are the skill's)", () => {
+  const FLAT = SKILL.replace(/\s+/g, " ");
+  it("the skill shows the card call that works: card inside set (#1891 review)", async () => {
+    expect(FLAT).toContain("`set_web_theme({ set: { card: { tagline, bio, portrait, banner } } })`");
     const { ThemeStore } = await import("../src/web-theme-store.js");
     const { WebAppearance } = await import("../src/web-appearance.js");
     const { mkdtempSync, rmSync } = await import("node:fs");
@@ -73,15 +73,50 @@ describe("what's new for 2.3 (#1633)", () => {
       expect(svc.handleTool("a", "set_web_theme", { set: { card: { tagline: "Hello" } } })).toMatchObject({ theme: { card: { tagline: "Hello" } } });
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
-  const OLD = AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.0")! <= 0).map(e => e.id);
-  it("an instance told everything of 2.2 hears the six 2.3 entries once on 2.3 — never on a 2.2.x", () => {
-    expect(planWhatsNew({ record: { announced: OLD }, fresh: false, version: "2.2.5" })).toBeNull();
-    for (const version of ["2.3.0-alpha.1", "2.3.0-beta.1", "2.3.0"]) {
-      const plan = planWhatsNew({ record: { announced: OLD }, fresh: false, version });
-      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.3-owner-effect-policy", "2.3-web-theme", "2.3-web-card", "2.3-web-appearance", "2.3-web-mod", "2.3-web-widget"]);
+  it("one web-appearance topic line names the skill; every tool area it lists is in the skill", () => {
+    const topic = AGENT_WHATS_NEW.find(e => e.id === "2.3-web-appearance-topic")!;
+    expect(topic.since).toBe("2.3.0-beta.2");
+    expect(topic.text).toContain("Load the `web-appearance` skill");
+    for (const tool of topic.text.match(/`[a-z_]+`/g)!.map(t => t.slice(1, -1)).filter(t => t !== "web-appearance")) {
+      expect(TOOLS.some(t => t.name === tool), tool).toBe(true);
+      expect(SKILL, tool).toContain(`\`${tool}`);
     }
-    const all = AGENT_WHATS_NEW.map(e => e.id);
-    expect(planWhatsNew({ record: { announced: all }, fresh: false, version: "2.3.0" })).toBeNull();
+    expect(AGENT_WHATS_NEW.filter(e => e.id.startsWith("2.3-")).map(e => e.id)).toEqual(["2.3-web-appearance-topic", "2.3-repo-tools"]);
+  });
+  it("what the six folded 2.3.0-alpha.1 entries said is in the skill", () => {
+    const facts = [
+      // web-theme
+      "`set_web_theme { set?, clear? }`", "`workingLabel`", "`reset_web_theme`", "`set_web_theme_asset { slot, file }`", "At least **30 s** between changes, at most **10 changes an hour**", "refused with `locked`",
+      // web-card
+      "`card.tagline`", "`card.bio`", "`card.portrait`", "A person may set their own version of any field",
+      // web-appearance
+      "`get_web_appearance`", "`preview_web_appearance` (`modes`", "`.agend/appearance/<mode>.svg`",
+      // web-mod
+      "`export_web_mod { name, version, title? }`", "`propose_web_mod { file }`", "Settings → Web appearance → Mods", "**You never import**", "**A mod carrying custom CSS is refused**",
+      // web-widget
+      "`set_web_widget { slot, spec?, data? }`", "`chat_header`", "`details`", "`context_pct`", "`cost_usd`", "at least **10 s** apart", "`remove_web_widget { slot? }`",
+      // new in beta.2: identity colour and effects
+      "`identity`: `{ color?, show? }`", "first match wins: a **person's** pick", "`show_source`",
+      "`upload_web_effect { dir }`", "`list_web_effects`", "`apply_web_effect { id, params? }`", "`remove_web_effect { id? }`", "`delete_web_effect { id }`", "`profile_web_effect { id }`", "`preview_web_effect({id})`",
+      "**`mention` is reserved and never fires in 2.3.0**", "**Your `front` effects are paused while the viewer's custom CSS is on, loading or unknown**",
+    ];
+    for (const f of facts) expect(FLAT, f).toContain(f);
+    expect(SKILL).not.toMatch(/Settings → Appearance/);
+  });
+  const OLD = AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.0")! <= 0).map(e => e.id);
+  const SIX = ["2.3-owner-effect-policy", "2.3-web-theme", "2.3-web-card", "2.3-web-appearance", "2.3-web-mod", "2.3-web-widget"];
+  it("an instance told everything of 2.2 hears the two 2.3 topic lines once from 2.3.0-beta.2 — never on a 2.2.x or beta.1", () => {
+    for (const version of ["2.2.5", "2.3.0-alpha.1", "2.3.0-beta.1"]) expect(planWhatsNew({ record: { announced: OLD }, fresh: false, version }), version).toBeNull();
+    for (const version of ["2.3.0-beta.2", "2.3.0"]) {
+      const plan = planWhatsNew({ record: { announced: OLD }, fresh: false, version });
+      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.3-web-appearance-topic", "2.3-repo-tools"]);
+    }
+    expect(planWhatsNew({ record: { announced: AGENT_WHATS_NEW.map(e => e.id) }, fresh: false, version: "2.3.0" })).toBeNull();
+  });
+  it("one told the six detailed entries on 2.3.0-beta.1 hears the two short lines once on beta.2, then nothing", () => {
+    const plan = planWhatsNew({ record: { announced: [...OLD, ...SIX] }, fresh: false, version: "2.3.0-beta.2" });
+    expect(plan && "ids" in plan ? plan.ids : plan).toEqual(["2.3-web-appearance-topic", "2.3-repo-tools"]);
+    expect(planWhatsNew({ record: { announced: [...OLD, ...SIX, "2.3-web-appearance-topic", "2.3-repo-tools"] }, fresh: false, version: "2.3.0" })).toBeNull();
   });
 });
 

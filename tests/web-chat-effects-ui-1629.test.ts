@@ -54,7 +54,7 @@ describe("#1629 actual Effects component", () => {
   it("shows the plain custom CSS reason and the actual Appearance destination inside the protected Dialog", async () => {
     const h = await fixture(); await h.publish(); await h.open();
     expect(pg!.root.textContent).toContain("Agent foreground effects are paused while your custom CSS is on or cannot be verified.");
-    const settings = [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Open Appearance settings")!;
+    const settings = [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Open Web appearance settings")!;
     expect(settings.closest("[data-trust=dialog]")).not.toBeNull(); settings.click(); await settle(); expect(globalThis.location.pathname).toBe("/settings/appearance"); h.cleanup();
   });
 });

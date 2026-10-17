@@ -137,7 +137,7 @@ describe("propose_web_mod", () => {
     const r = propose(s, bundle());
     expect(r).toMatchObject({ proposed: { name: "proposed", version: "1.0.0", title: "Proposed look" } });
     expect(s.mods.proposals()).toMatchObject([{ instance: "alpha", name: "proposed", title: "Proposed look" }]);
-    expect(s.notices).toEqual([["alpha", "Proposed a mod: Proposed look (proposed 1.0.0). A person can review it in Settings → Appearance → Mods."]]);
+    expect(s.notices).toEqual([["alpha", "Proposed a mod: Proposed look (proposed 1.0.0). A person can review it in Settings → Web appearance → Mods."]]);
     expect([s.limiter.remaining("alpha").uploads, s.changed(), s.themes.get("alpha").theme]).toEqual([2, 1, { v: 1 }]);
   });
   it("custom CSS from an agent is refused by the path it came in by — before anything else is read, and nothing counts", () => {

@@ -1,6 +1,6 @@
 ---
 name: web-appearance
-description: How you look on the AgEnD web dashboard — check it, change your own theme, identity card and widgets, preview the result, share it as a mod
+description: How you look on the AgEnD web dashboard — check it, change your own theme, identity card, identity colour and widgets, play Canvas Worker effects in your chat (and offer a Try), preview the result, share it as a mod
 roles: [worker]
 ---
 
@@ -16,8 +16,10 @@ can shape how you look there — **only your own look, and only on the surfaces 
 | Your chat | theme: colours, accent, bubbles, font, background picture, working label | `set_web_theme`, `set_web_theme_asset` |
 | Your face and ring | theme picture and accent | `set_web_theme`, `set_web_theme_asset` |
 | Your identity card | portrait, banner, tagline, bio | `set_web_theme` (`card.*`), `set_web_theme_asset` |
+| Your identity colour | the colour people find you by in the sidebar, and where it shows (name, bar, ring) | `set_web_theme` (`identity`) |
 | Your chat header strip and Details page | widgets: small panels of facts the dashboard draws | `set_web_widget`, `remove_web_widget` |
 | A file of your look | a mod: export yours, or propose one for a person | `export_web_mod`, `propose_web_mod` |
+| Effects in your chat | Canvas Worker animations, and Try cards a local admin may start | `upload_web_effect`, `apply_web_effect`, `preview_web_effect`, … (see Effects) |
 
 None of these tools takes a target: they always act on you. You can't change another instance, the dashboard's own
 chrome, a person's sidebar widget, or a person's custom CSS.
@@ -109,6 +111,25 @@ theme stops naming is deleted.
 `card.banner` (asset ids uploaded for those slots). Text is shown as text — never markup or links. A person may set
 their own version of any field; theirs is shown instead of yours.
 
+The card goes **inside `set`**: `set_web_theme({ set: { card: { tagline, bio, portrait, banner } } })` (a top-level
+`card` argument is refused).
+
+## Your identity colour
+
+The colour people find you by in the sidebar, drawn on your name, a bar at your row's left edge and/or the ring around
+your picture. Set yours with `set_web_theme({ set: { identity: { color, show } } })` (see Change your theme).
+
+- **Which colour shows**, first match wins: a **person's** pick for you (⋯ → Colour… or View's Edit profile, also from a
+  temporary public link) > **yours** (`identity.color`, else your theme's `accent`; only for a viewer who shows agents'
+  themes) > your own bot's Discord **role** colour > an **automatic** soft colour chosen from your name (two instances
+  may share one).
+- **Where it shows**: a person's choice for you > yours (`identity.show`; again only while themes are shown) > the
+  host's default (Settings → Web appearance; ring and bar unless changed).
+- The host can **turn colours off** for everyone: nothing is drawn, and every pick, yours included, is kept for when
+  they come back.
+- `get_web_appearance`'s `identity_color` shows what is in force: `color`, `source` (`person`, `agent`, `role`, `auto`),
+  `light` / `dark`, `show`, `show_source` (`person`, `agent`, `host`) and `off`.
+
 ## Widgets
 
 A widget is a small panel of facts the dashboard draws **with its own components**: you send what to show and the
@@ -184,6 +205,8 @@ with the tools above, then `export_web_mod`.
   with `rate_limited` and `retry_after_s`. Only an accepted change counts; a refused or invalid one costs nothing.
 - Widget values (`set_web_widget` with `data` only): at least **10 s** apart, at most **180 an hour**, apart from the
   above.
+- Effects: `apply_web_effect` and `remove_web_effect` are changes; `upload_web_effect` and `propose_web_mod` are uploads.
+  At most 10 effects and 8 MiB in your library, at most two placed in your chat.
 - Plan the whole look, check it in one `set_web_theme`, then preview — don't iterate change by change.
 
 ## A good workflow
@@ -197,6 +220,64 @@ From a shell: `agend-agent theme get|set key=value…|set --json '<patch>'|clear
 `agend-agent appearance`, `agend-agent appearance preview [light|dark]`, and
 `agend-agent widget set <slot> '<spec json>' ['<data json>']|data <slot> '<data json>'|remove [slot]`, and
 `agend-agent mod export <name> <version> [title]|propose <file>`.
+
+## Effects
+
+A Canvas Worker effect is a small animation drawn in your chat by code that runs in an isolated Worker: no page, no
+DOM, no network. You place effects **only in your own chat**; a person can place them anywhere. None of these tools
+takes a target.
+
+**The package** (CW1): a directory in your working directory with `effect.json` and `worker.js`, optionally
+`poster.png`, `cursor.png` and `assets/*.png|jpg|jpeg|webp|gif`. No HTML or CSS, at most 20 files and 16 assets.
+
+- `effect.json`: `{ "v": 1, "kind": "effect", "runtime": "canvas-worker-v1", "worker": "worker.js", "name", "title",
+  "description"?, "poster"?: "poster.png", "regions", "layer", "box"?, "cursor"?, "wants", "params"? }`.
+  - `name`: a-z, 0-9 and -, up to 32 characters. `title`: 1..40 characters. `description`: up to 200.
+  - `regions`: 1–5 of `chat`, `sidebar`, `header`, `page`, `box`. For your chat it must include `chat`; the rest are
+    regions a person may choose it for.
+  - `layer`: `behind` (under the content) or `front` (over it).
+  - `wants`: up to 5 of `pointer`, `state`, `reply`, `mention`, `theme`. **`mention` is reserved and never fires in
+    2.3.0** (see Effect event availability).
+  - `params`: up to 16 typed parameters (`number`, `int`, `bool`, `enum`, `color`) a placement may set.
+- `worker.js` (at most 1 MiB, a classic script) draws through the `agend` API: `canvas`, `params`, `asset()`, `on()`,
+  `frame()` and `ready()`. Call `ready()` within 10 s, or it is stopped. `fetch` and imports don't work: the upload
+  warns (`network_or_import_api_unsupported`).
+- Size: `effect.json` at most 64 KiB; the whole effect at most 8 MiB as uploaded and **1 MiB normalized**; pictures at
+  most 4096 px a side and 8 megapixels; a cursor is a square PNG of at most 64 px and 32 KiB.
+
+**The tools:**
+
+- `upload_web_effect { dir }` → `{ id, warnings }`. It counts as an upload (3 an hour, shared with pictures and mods).
+  Your library keeps at most **10 effects and 8 MiB**.
+- `list_web_effects` — your own effects and those a person shared with you: `id`, `name`, `title`, `regions`, `layer`,
+  `bytes`, `latest_profile`.
+- `apply_web_effect { id, params? }` places one in your chat, **at most two at a time**, with the declared `params`
+  (unknown or out of range → `effect_params`). `remove_web_effect { id? }` takes one out, or all of them. Both are
+  changes (30 s apart, 10 an hour), are refused while a person has locked your theme (`locked`) and when the fleet
+  turned agent changes off (`theme_editing_off`).
+- `delete_web_effect { id }` deletes your own copy once nothing uses it; a placement, mod, stage or Try offer gives
+  `effect_in_use`. Another's copy is never removed.
+- `profile_web_effect { id }` — how it ran on viewers' pages, per device class: `unmeasured`, or `reported` with
+  records carrying a `verdict` (`ok`, `degraded`, `paused`, `off`) and a `reason` (`host_budget`, `hidden`,
+  `reduced_motion`, `save_data`, `viewer_off`, `clock_unavailable`, `gates_unknown`). No measurement means unknown,
+  never healthy. It is the only way you learn an effect was paused.
+- `preview_web_effect { id }` offers a Try card in your chat (see Try below).
+- **Sharing is a person's act.** You can't share an effect. You may use one a person shared with you (list, apply,
+  Try, profile, put in a mod). When they unshare it, a placement already in your chat keeps playing; applying it again
+  gives `not_found`.
+
+**On a viewer's page:**
+
+- At most **3** effects play at once, at most **2** of them `front` (1 and 1 on a constrained device); the rest wait
+  (`frame_limit`, `front_limit`).
+- Nothing plays in safe mode, over a temporary public link, with reduced motion or save-data, on a hidden page, while
+  the viewer has effects off, or before they consent to previews. A `poster.png` may then show behind the chat (see
+  Static Chat fallback). A visible menu or dialog stops `front` effects.
+- **Safety pause:** the page watches its frame rate and long tasks (about 55 fps and at most 50 ms of long tasks a
+  second; 50 fps and 25 ms on a constrained device). Three bad 2-second windows in a row pause the effect
+  (`host_budget`); three pauses within 24 hours turn it off on that page. Only a person resumes it.
+- **Your `front` effects are paused while the viewer's custom CSS is on, loading or unknown**; `behind` effects play
+  once the page's stock layout is proven. A person's placement is exempt. Don't keep re-applying (see below).
 
 ## Owner-level effect selections
 
@@ -214,7 +295,7 @@ placed there. A reference is not a sharing or export grant. Do not keep retrying
 
 Owner selectors are available in Settings → Web appearance. With effects and preview consent enabled, personal
 page/header/sidebar/box choices play across supported stock pages in the same pool as local signed-in Chat.
-Appearance offers slot Pause/Resume and unavailable/Clear controls. The personal cursor uses a static PNG on the host shell after the same consent: no Worker/code read or frame slot. It preserves explicit pointer/text/resize cursors, falls back while dragging or on failure, and has status/Clear rather than Worker Pause/Resume. Before revealing paint, the host must prove stock content
+Web appearance offers slot Pause/Resume and unavailable/Clear controls. The personal cursor uses a static PNG on the host shell after the same consent: no Worker/code read or frame slot. It preserves explicit pointer/text/resize cursors, falls back while dragging or on failure, and has status/Clear rather than Worker Pause/Resume. Before revealing paint, the host must prove stock content
 ordering and trust paint coverage. Agent front effects must remain paused when custom CSS is active, loading or
 unknown; a person sees the reason and can open the causing setting. Human placements retain their exemption from
 that agent restriction, and behind effects still require proven ordering. Saving a placement alone is not proof of

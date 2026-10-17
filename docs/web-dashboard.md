@@ -443,7 +443,7 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 | The sign-in page says the code is wrong | Codes are single-use and expire after 5 minutes, and only the newest works. Ask for a new one. |
 | "Your session has ended" | 48 hours without use or since sign-in (the defaults), or someone revoked. Sign in again. |
 | Updates arrive a few seconds late, with no live stream | The live stream is blocked on your path (or this is the public link), so the page polls every 5 seconds. Nothing to do — it is not shown as a problem. |
-| A page looks wrong or something is hidden after you saved custom CSS | Add `?safe=1` to the address to load it without your CSS. Settings → **Appearance** is never styled by it: fix the CSS there, or turn it off. |
+| A page looks wrong or something is hidden after you saved custom CSS | Add `?safe=1` to the address to load it without your CSS. Settings → **Web appearance** is never styled by it: fix the CSS there, or turn it off. |
 | `/web` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |
 | The browser's developer tools show a red **401** for `/auth/session` on the sign-in page | Expected: the page checks whether you are already signed in, and "no" is a 401. Nothing to do. |
 

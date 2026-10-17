@@ -48,13 +48,14 @@ function fixture(opts: ConstructorParameters<typeof WebPrefsStore>[1] = {}) {
 }
 
 describe("fixed preference scope and one atomic mixed transaction", () => {
+  // #2012: the agent guidance moved from the what's-new entry into the web-appearance skill (what's-new names the skill).
+  const SKILL = readFileSync(join(process.cwd(), "src/general-knowledge/skills/web-appearance/SKILL.md"), "utf8").replace(/\s+/g, " ");
   it("agent guidance keeps host-wide operator, withdrawal and chat retention distinct", () => {
-    const e = AGENT_WHATS_NEW.find(e => e.id === "2.3-owner-effect-policy")!;
-    expect(e.since).toBe("2.3.0-alpha.1");
-    for (const words of ["never agent/header-token targets", "host-wide operator bucket", "Unsharing blocks the next personal-slot resource read", "keeps its saved reference until cleared", "chat placements retain their separate runtime policy", "Page/header/sidebar/box playback now shares the app pool with Chat after preview consent", "Host cursor playback uses a static PNG with stock cursor fallback, no Worker code or frame slot", "Agents can offer Try cards; only a local admin click starts a clipped temporary sample."]) expect(e.text).toContain(words);
+    expect(AGENT_WHATS_NEW.some(e => e.id === "2.3-owner-effect-policy"), "folded into the web-appearance skill").toBe(false);
+    for (const words of ["never agent tool targets", "**host-wide operator** bucket", "becomes unavailable at its next resource authorization", "keeps the blob from being collected until cleared", "deliberately stricter than chat placements' retained-runtime reads", "play across supported stock pages in the same pool as local signed-in Chat", "The personal cursor uses a static PNG on the host shell after the same consent: no Worker/code read or frame slot", "Only an explicit click by a signed-in **local admin** may start it"]) expect(SKILL, words).toContain(words);
   });
-  it("the owner announcement no longer describes Try as unavailable", () => {
-    expect(AGENT_WHATS_NEW.find(e => e.id === "2.3-owner-effect-policy")!.text).not.toContain("Try remains separate work");
+  it("the guidance no longer describes Try as unavailable", () => {
+    expect(SKILL).not.toContain("Try remains separate work");
   });
   it("only five keys are personal; old host/internal keys retain their scope", () => {
     expect(OWNER_EFFECT_KEYS.map(webPrefScope)).toEqual(Array(5).fill("person"));
