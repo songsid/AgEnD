@@ -125,7 +125,7 @@ import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { applyInstanceConfigPatch, outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { backendArgs, backendStep, joinBackendArgs, modelNameCarried, planDisplay, type BackendCommandDeps, type BackendStep } from "./backend-command.js";
-import { DeliveryOutbox, DEFAULT_REPLY_OBLIGATION_TTL_MS, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type OutboxState, type DeliveryStatusSelector, type DeliveryStatusPage } from "./delivery-outbox.js";
+import { DeliveryOutbox, DEFAULT_REPLY_OBLIGATION_TTL_MS, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage } from "./delivery-outbox.js";
 
 // The target Daemon can legitimately wait 30 minutes for a busy pane before
 // deciding to defer before submission. This is an alert threshold only: the
@@ -1912,9 +1912,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     });
     // #1918: the org canvas's traffic — from the row this listener's events already name, never a probe of its own.
-    outbox.on("state", (event: { deliveryId?: string; state?: string }) => {
+    // The row as it is now (it has already changed when the event comes): its state, not the event's, is the truth.
+    outbox.on("state", (event: { deliveryId?: string }) => {
       const row = event.deliveryId ? outbox.get(event.deliveryId) : undefined;
-      if (row && event.state) this.publishTraffic(row, event.state as OutboxState);
+      if (row) this.publishTraffic(row);
     });
     outbox.on("consumed", (event: { deliveryId?: string }) => {
       const row = event.deliveryId ? outbox.get(event.deliveryId) : undefined;
@@ -1946,7 +1947,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private readonly trafficLog = new TrafficLog();
   private trafficMemo: { atMs: number; value: { now: string; items: TrafficItem[] } } | null = null;
   /** One delivery row's traffic item, kept for the snapshot and sent to the open pages when it is news. */
-  private publishTraffic(row: OutboxDelivery, state?: OutboxState | "consumed"): void {
+  private publishTraffic(row: OutboxDelivery, state?: "consumed"): void {
     try {
       const item = trafficItem(row, this.fleetConfig, new Date().toISOString(), state);
       const news = item ? this.trafficLog.note(item) : null;

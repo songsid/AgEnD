@@ -161,6 +161,20 @@ describe("FleetManager: SSE traffic and GET /ui/traffic", () => {
       expect(fm.trafficSnapshot().items.map((i: TrafficItem) => [i.from, i.to])).toEqual([["atlas", "quill"], ["atlas", "quill"]]);
     } finally { close(); }
   });
+  it("a finished item kept for the snapshot leaves it once one of its instances is hidden", async () => {
+    const { fm, close } = await fleet();
+    try {
+      const a = admit(fm, "atlas", "quill");
+      const outbox = fm.deliveryOutbox as DeliveryOutbox;
+      const c = outbox.claimNext("manager", () => "boot-q", new Set())!;
+      outbox.begin(a.deliveryId, "boot-q", c.attemptNo, { backend: "claude-code", backendVersion: null, windowId: "@w", transcriptPath: "/t", transcriptOffset: 0, transcriptSessionId: "/t", submissionMode: "native_queue_handoff" });
+      outbox.complete(a.deliveryId, "boot-q", c.attemptNo, "delivered", "proof");
+      expect(fm.trafficSnapshot().items.map((i: TrafficItem) => [i.to, i.state])).toEqual([["quill", "delivered"]]);
+      fm.fleetConfig.instances.quill = { cross_instance_visibility: "hidden" };
+      admit(fm, "atlas", "sage", "fleet_inbound", "task", "op-news");            // news: the memo is dropped
+      expect(fm.trafficSnapshot().items.map((i: TrafficItem) => [i.to, i.state])).toEqual([["sage", "queued"]]);
+    } finally { close(); }
+  });
   it("GET /ui/traffic answers the snapshot (empty without a fleet); a public-link read, polled, so not a person's activity; no write", () => {
     const token = "c".repeat(48);
     const call = (method: string, over: Record<string, unknown> = {}) => {
