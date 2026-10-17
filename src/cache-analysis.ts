@@ -130,8 +130,13 @@ export const EFFECTIVE_TTL_HIT_MAX = 0.1;
 export const EFFECTIVE_TTL_MISS_MIN = 0.5;
 
 export interface EffectiveTtl {
-  /** Seconds the cache behaves as; null: not enough evidence (use the label, and say it is an estimate). */
+  /** Seconds the cache behaves as now (what #1469's keep-warm would ping by); null: not enough evidence. */
   ttlSec: number | null;
+  /**
+   * What a 5-minute label measured as over the evidence window, whatever the latest label (Fable, #1469): the
+   * simulation judges every 5-minute gap by it — a later switch back to 1 hour must not recast them. null: too few.
+   */
+  fiveMinute: 3600 | 300 | null;
   basis: "label_1h" | "measured" | "insufficient" | "codex" | "label";
   /** The gap-miss signal: 5–60 minute gaps after a 5-minute write in the last 7 days, and how many were rewritten. */
   sample: number;
@@ -153,13 +158,12 @@ export function effectiveTtl(gaps: readonly GapEvent[], latestLabelSec: number, 
     if (Math.min(measured ?? estimated, ctx) >= ctx / 2) misses++;
   }
   const rate = sample ? misses / sample : null;
-  const out = (ttlSec: number | null, basis: EffectiveTtl["basis"]): EffectiveTtl => ({ ttlSec, basis, sample, misses, rate });
+  const fiveMinute = sample < EFFECTIVE_TTL_MIN_SAMPLES ? null : rate! <= EFFECTIVE_TTL_HIT_MAX ? 3600 : rate! >= EFFECTIVE_TTL_MISS_MIN ? 300 : null;
+  const out = (ttlSec: number | null, basis: EffectiveTtl["basis"]): EffectiveTtl => ({ ttlSec, fiveMinute, basis, sample, misses, rate });
   if (backend === "codex") return out(1800, "codex");
   if (latestLabelSec >= 3600) return out(3600, "label_1h");
   if (latestLabelSec !== 300) return out(latestLabelSec, "label");
-  if (sample >= EFFECTIVE_TTL_MIN_SAMPLES && rate! <= EFFECTIVE_TTL_HIT_MAX) return out(3600, "measured");
-  if (sample >= EFFECTIVE_TTL_MIN_SAMPLES && rate! >= EFFECTIVE_TTL_MISS_MIN) return out(300, "measured");
-  return out(null, "insufficient");
+  return fiveMinute === null ? out(null, "insufficient") : out(fiveMinute, "measured");
 }
 
 /** Codex GPT-5.6 and later bill cache writes and keep a prefix 30 minutes. */
@@ -197,8 +201,9 @@ export function analyzeLedger(ledger: Ledger, o: AnalyzeOptions): InstanceAnalys
   const latest = tails.reduce<SimTail | null>((a, t) => (!a || t.t > a.t ? t : a), null);
   const ttlSec = latest ? latest.ttl : o.backend === "codex" ? 1800 : 3600;
   const effective = effectiveTtl(ledger.gaps, ttlSec, o.backend, o.to);
-  // A 5-minute label that measures as 1 hour (or 5 minutes) is simulated so; without evidence, as labelled.
-  const ttlFor = (label: number): number => (label === 300 && effective.basis === "measured" && effective.ttlSec !== null ? effective.ttlSec : label);
+  // Each gap by its own label: a 5-minute one by what 5 minutes measured as (even after a switch back to 1 hour);
+  // without evidence, as labelled. Codex keeps its own.
+  const ttlFor = (label: number): number => (o.backend === "claude" && label === 300 && effective.fiveMinute !== null ? effective.fiveMinute : label);
   // One unit for the whole instance: dollars when every model that contributes to this window is priced — the
   // window's requests, and whatever the simulation itself prices (a pinged context, an expired request, an idle tail).
   // A probe run records exactly the models the simulation asks a rate for.
@@ -230,6 +235,8 @@ export function analyzeLedger(ledger: Ledger, o: AnalyzeOptions): InstanceAnalys
   }
   const sim = simulate(ledger.gaps, tails, { rates, from: o.from, to: o.to, measured: !estimatedTotals, ttlFor });
   const unproven = effective.basis === "insufficient";
+  // A 5-minute gap in this window simulated by its label, for want of evidence: what is shown is an estimate.
+  const labelled5m = o.backend === "claude" && effective.fiveMinute === null && ledger.gaps.some(([t, , , , label]) => label === 300 && t >= o.from && t <= o.to);
   const assumedTtl = o.backend === "codex" && [...requestModels].some((m) => !isOpenAiTtlModel(m));
   let recommendation: InstanceAnalysis["recommendation"];
   if (requests < MIN_REQUESTS) recommendation = { on: false, reason: "quiet" };
@@ -240,7 +247,7 @@ export function analyzeLedger(ledger: Ledger, o: AnalyzeOptions): InstanceAnalys
   else recommendation = { on: false, reason: "costs_more", pingsPerExpiry: Math.round((sim.pings + sim.tailPings) / sim.expired) };
   return {
     // An estimate when anything shown used one: the totals (Codex with no recorded write), a gap's rewrite, a TTL.
-    requests, ttlSec, effectiveTtl: effective, writeMix, estimate: (estimatedTotals && requests > 0) || sim.estimated || assumedTtl || (unproven && requests > 0), priced, models: [...requestModels].sort(), gapBuckets, sim,
+    requests, ttlSec, effectiveTtl: effective, writeMix, estimate: (estimatedTotals && requests > 0) || sim.estimated || assumedTtl || (unproven && requests > 0) || labelled5m, priced, models: [...requestModels].sort(), gapBuckets, sim,
     totalCost, share: totalCost > 0 ? sim.expiryCost / totalCost : null, recommendation,
   };
 }

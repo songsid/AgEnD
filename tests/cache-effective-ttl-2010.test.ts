@@ -31,10 +31,12 @@ describe("effectiveTtl: the rule", () => {
     expect(pick(effectiveTtl(gaps(10, 2), 300, "claude", NOW))).toEqual([null, "insufficient", 10, 2]);
     expect(pick(effectiveTtl(gaps(9, 0), 300, "claude", NOW))).toEqual([null, "insufficient", 9, 0]);
     expect(effectiveTtl(gaps(9, 9), 300, "claude", NOW).ttlSec, "nine misses are still too few").toBeNull();
-    expect(effectiveTtl([], 300, "claude", NOW)).toEqual({ ttlSec: null, basis: "insufficient", sample: 0, misses: 0, rate: null });
+    expect(effectiveTtl([], 300, "claude", NOW)).toEqual({ ttlSec: null, fiveMinute: null, basis: "insufficient", sample: 0, misses: 0, rate: null });
   });
   it("a 1-hour label is 1 hour (the signal is still counted); Codex is 30 minutes", () => {
     expect(pick(effectiveTtl(gaps(12, 12), 3600, "claude", NOW))).toEqual([3600, "label_1h", 12, 12]);
+    // Fable: what 5 minutes measured as is kept even when the latest label is 1 hour — the simulation uses it.
+    expect([effectiveTtl(gaps(12, 12), 3600, "claude", NOW).fiveMinute, effectiveTtl(gaps(12, 0), 3600, "claude", NOW).fiveMinute, effectiveTtl(gaps(5, 5), 3600, "claude", NOW).fiveMinute]).toEqual([300, 3600, null]);
     expect(pick(effectiveTtl(gaps(12, 12), 1800, "codex", NOW))).toEqual([1800, "codex", 12, 12]);
   });
   it("a sample: a 5-minute write, 300 s < gap ≤ 3600 s, a context, ending in (to − 7 days, to]", () => {
@@ -81,6 +83,21 @@ describe("the report uses it", () => {
     const a = analyze(fiveMinute({ gapsCount: 4, rewritten: 4 }));
     expect([a.effectiveTtl.ttlSec, a.effectiveTtl.basis, a.recommendation.reason, a.estimate]).toEqual([null, "insufficient", "insufficient_evidence", true]);
     expect(a.sim.pastTtl, "simulated with the label").toBe(4);
+  });
+  it("Fable: after a switch back to 1 hour, the 5-minute gaps are still judged by what 5 minutes measured as", () => {
+    const expiring = fiveMinute({ gapsCount: 12, rewritten: 12 }), surviving = fiveMinute({ gapsCount: 12, rewritten: 0 });
+    for (const l of [expiring, surviving]) {
+      const file = l.files["a"]!;
+      addTurn(l, file, { t: NOW - DAY, model: "m", prompt: C, uncached: 0, read: C - 1000, write5m: 0, write1h: 1000, write: null, output: 0 }, 0);   // now writes 1 h
+    }
+    const e = analyze(expiring), s = analyze(surviving);
+    expect([e.ttlSec, e.effectiveTtl.basis, e.effectiveTtl.fiveMinute]).toEqual([3600, "label_1h", 300]);
+    expect(e.sim.pastTtl, "twelve 20-minute gaps past a measured 5 minutes — not recast as 1 hour — and the day-long gap before the switch").toBe(13);
+    expect(e.sim.expired).toBe(12);
+    expect([s.effectiveTtl.fiveMinute, s.sim.pastTtl, s.estimate], "only the day-long gap is past a measured hour").toEqual([3600, 1, false]);
+    const few = fiveMinute({ gapsCount: 4, rewritten: 4 });
+    addTurn(few, few.files["a"]!, { t: NOW - DAY, model: "m", prompt: C, uncached: 0, read: C - 1000, write5m: 0, write1h: 1000, write: null, output: 0 }, 0);
+    expect([analyze(few).effectiveTtl.basis, analyze(few).estimate], "1-hour now, but its 5-minute gaps had no evidence: an estimate").toEqual(["label_1h", true]);
   });
   it("the 5m / 1h write mix in the window", () => {
     const l = fiveMinute({ gapsCount: 3, rewritten: 1 });

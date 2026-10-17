@@ -189,6 +189,13 @@ A kiro profile that is configured but has never been logged in still gets a row,
 reading **Signed out — run `kiro-cli` to log in**. That is the reminder to go
 and log it in, so report it as such rather than as a missing subscription.
 
+## "Is the prompt cache costing us?"
+
+`get_cache_report({ window?, instance?, top? })` is the dashboard's **Fleet → cache** report.
+- **What a row has:** each instance's cache TTL as written and its 5m/1h write mix, the TTL it really behaves as (`effective_ttl`, with the gap-miss rate it is measured from), its expiry cost, and the keep-warm simulation and recommendation.
+- **When to look:** when someone asks why costs rose, whether to keep caches warm, or whether to set `backend_options.claude-code.prompt_cache_ttl: "1h"`. A row recommending `switch_to_1h` is the answer to the last one.
+- **What you can see:** as General you see every instance and the fleet summary.
+
 ## What to tell the user
 
 - Two agents with the same profile name share one login and one quota.

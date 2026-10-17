@@ -26,7 +26,7 @@ function row(r: InstanceReport): Record<string, unknown> {
     name: r.name, backend: r.backend, status: r.status, models: a.models, requests: a.requests,
     ttl_written: ttlText(a.ttlSec),
     write_mix: { "5m_tokens": a.writeMix["5m"], "1h_tokens": a.writeMix["1h"], "1h_share": writes ? round(a.writeMix["1h"] / writes) : null },
-    effective_ttl: { ttl: ttlText(e.ttlSec), basis: e.basis, gap_miss: { gaps: e.sample, rewritten: e.misses, rate: e.rate === null ? null : round(e.rate) } },
+    effective_ttl: { ttl: ttlText(e.ttlSec), basis: e.basis, five_minute_measured_as: ttlText(e.fiveMinute), gap_miss: { gaps: e.sample, rewritten: e.misses, rate: e.rate === null ? null : round(e.rate) } },
     past_ttl: s.pastTtl, expired: s.expired, rewrite_tokens: s.rewriteTokens,
     unit: a.priced ? "usd" : "input_price_units",
     expiry_cost: round(s.expiryCost), share_of_cost: a.share === null ? null : round(a.share),

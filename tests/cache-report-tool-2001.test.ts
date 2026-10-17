@@ -26,7 +26,7 @@ const sim = (o: Record<string, number> = {}) => ({ pastTtl: 0, expired: 0, rewri
 const analysis = (cost: number, o: Record<string, unknown> = {}) => ({
   requests: 100, ttlSec: 300, estimate: false, priced: true, models: ["claude-opus-5-5"], gapBuckets: [1, 0, 0, 0, 0, 0, 0],
   sim: sim({ expiryCost: cost, pings: 3, tailPings: 1, pingCost: 0.5, tailCost: 0.25, net: -0.75 }), totalCost: 10, share: cost / 10,
-  recommendation: { on: false, reason: "never_expired" }, effectiveTtl: { ttlSec: 3600, basis: "measured", sample: 12, misses: 1, rate: 1 / 12 },
+  recommendation: { on: false, reason: "never_expired" }, effectiveTtl: { ttlSec: 3600, fiveMinute: 3600, basis: "measured", sample: 12, misses: 1, rate: 1 / 12 },
   writeMix: { "5m": 3000, "1h": 1000 }, ...o,
 });
 const ok = (name: string, cost: number, o: Record<string, unknown> = {}) => ({ name, backend: "claude-code", status: "ok", analysis: analysis(cost, o) });
@@ -46,7 +46,7 @@ describe("the answer's shape and bounds", () => {
     expect(out.instances[0]).toEqual({
       name: "dear", backend: "claude-code", status: "ok", models: ["claude-opus-5-5"], requests: 100, ttl_written: "5m",
       write_mix: { "5m_tokens": 3000, "1h_tokens": 1000, "1h_share": 0.25 },
-      effective_ttl: { ttl: "1h", basis: "measured", gap_miss: { gaps: 12, rewritten: 1, rate: 0.0833 } },
+      effective_ttl: { ttl: "1h", basis: "measured", five_minute_measured_as: "1h", gap_miss: { gaps: 12, rewritten: 1, rate: 0.0833 } },
       past_ttl: 0, expired: 0, rewrite_tokens: 0, unit: "usd", expiry_cost: 5, share_of_cost: 0.5,
       keep_warm: { pings: 4, pings_after_last_request: 1, ping_cost: 0.75, net: -0.75 },
       recommendation: { on: false, reason: "never_expired" }, estimate: false,

@@ -222,6 +222,12 @@ The fleet's shared work and its overview, one tab each. Every tab has its own ad
   - Costs are list prices from one table; the date they were checked is shown.
   - Where a transcript records cache writes, those are used. Where it does not (some Codex sessions), the rewrite is estimated from the uncached input, and the numbers are marked as estimates; so are they when the cache lifetime had to be assumed.
   - Kiro and other CLIs show "not available".
+  - **Cache writes 5 min / 1 h:** each Claude instance shows how many tokens it wrote with a 5-minute TTL and how many with a 1-hour one (#2001).
+  - **Behaves as (#2010):** what a 5-minute cache really lasts, measured from the last 7 days of gaps between requests of 5 to 60 minutes.
+    - Rarely rewritten (at most 10% of at least 10 gaps): it counts as 1 hour, and keep-warm is simulated so.
+    - Mostly rewritten (at least half): the card recommends setting `prompt_cache_ttl: "1h"` for that instance (see [configuration](configuration.md), #2010) instead of keep-warm. The fleet row counts such instances.
+    - Too few gaps: it says so, and the figures are marked as estimates.
+  - Agents read the same report with `get_cache_report`. General, coordinators and full-profile instances see every instance; any other agent sees only its own row.
 - **Config**: the fleet's channel, access and defaults.
 
 ## Needs you (`/ui/needs`)

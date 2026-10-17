@@ -96,7 +96,7 @@ describe("#1470 review 11: ClassicBot rooms are analysed too", () => {
 const sim = (o: Record<string, number>) => ({ pastTtl: 0, expired: 0, rewriteTokens: 0, expiryCost: 0, pings: 0, pingCost: 0, tailPings: 0, tailCost: 0, net: 0, priced: true, ...o });
 const analysis = (o: Record<string, unknown>) => ({ requests: 120, ttlSec: 3600, estimate: false, priced: true, models: ["claude-opus-5-5"],
   gapBuckets: [100, 10, 3, 1, 1, 0, 2], totalCost: 20, share: 0.095, recommendation: { on: false, reason: "never_expired" }, sim: sim({}),
-  effectiveTtl: { ttlSec: 3600, basis: "label_1h", sample: 0, misses: 0, rate: null }, writeMix: { "5m": 0, "1h": 0 }, ...o });
+  effectiveTtl: { ttlSec: 3600, fiveMinute: null, basis: "label_1h", sample: 0, misses: 0, rate: null }, writeMix: { "5m": 0, "1h": 0 }, ...o });
 const REPORT = {
   window: "7d", from: 0, to: 1, pricesChecked: "2026-10-09", priceSources: [], scanning: { active: true, caughtUp: true, pendingBytes: 0, pendingFiles: 0 },
   fleet: { expiryCost: 1.9 + 7.4, saving: 0.8, recommended: 1, analysed: 3, priced: true },
@@ -151,6 +151,40 @@ describe("the page reads once per opening and per window; never on a timer", () 
     expect(p.root.querySelector(".ch-scan").textContent).toContain("120 MB left");
     p.root.querySelector(".ch-scan .btn").click(); await settle(6);
     expect(reqs.map((r) => r.url)).toEqual(["/ui/cache?window=7d", "/ui/cache?window=24h", "/ui/cache?window=30d", "/ui/cache?window=30d"]);
+  });
+});
+
+describe("#2001 / #2010: the write mix, the effective TTL and its recommendations", () => {
+  const eff = (o: Record<string, unknown>) => ({ ttlSec: 3600, fiveMinute: 3600, basis: "measured", sample: 14, misses: 1, rate: 1 / 14, ...o });
+  const R2 = { ...REPORT, fleet: { ...REPORT.fleet, switchTo1h: 1 }, instances: [
+    { name: "five", backend: "claude-code", status: "ok", analysis: analysis({ ttlSec: 300, effectiveTtl: eff({ ttlSec: 300, fiveMinute: 300, misses: 12, rate: 12 / 14 }), writeMix: { "5m": 4e6, "1h": 0 },
+      sim: sim({ pastTtl: 14, expired: 12, expiryCost: 3 }), recommendation: { on: false, reason: "switch_to_1h" } }) },
+    { name: "survives", backend: "claude-code", status: "ok", analysis: analysis({ ttlSec: 300, effectiveTtl: eff({}), writeMix: { "5m": 2e6, "1h": 5e5 }, sim: sim({ expiryCost: 1 }) }) },
+    { name: "young", backend: "claude-code", status: "ok", analysis: analysis({ ttlSec: 300, estimate: true, effectiveTtl: eff({ ttlSec: null, fiveMinute: null, basis: "insufficient", sample: 3, misses: 3, rate: 1 }),
+      sim: sim({ pastTtl: 3, expired: 3, expiryCost: 0.5 }), recommendation: { on: false, reason: "insufficient_evidence" } }) },
+    { name: "cx2", backend: "codex", status: "ok", analysis: analysis({ ttlSec: 1800, effectiveTtl: eff({ ttlSec: 1800, fiveMinute: null, basis: "codex", sample: 0, misses: 0, rate: null }), sim: sim({ expiryCost: 0.1 }) }) },
+  ] };
+  it("the reasons, the metrics, the fleet count; no effective-TTL metric for Codex", async () => {
+    answer = R2; await mount(); await settle(4);
+    expect(card("five").querySelector(".ch-reason").textContent).toBe("Its 5-minute cache really expires: 12 of 14 gaps of 5–60 minutes rewrote it. Set prompt_cache_ttl: \"1h\" for this instance (backend_options.claude-code) rather than keep-warm.");
+    expect(card("young").querySelector(".ch-reason").textContent).toBe("Written with a 5-minute TTL, but only 3 gaps of 5–60 minutes so far — too few to tell how long it really lasts. The keep-warm figures assume 5 minutes. estimate");
+    expect(metric(card("five"), "Behaves as")).toBe("5 min (measured)12 of 14 5–60 min gaps rewrote it");
+    expect(metric(card("survives"), "Behaves as")).toBe("1 h (measured)1 of 14 5–60 min gaps rewrote it");
+    expect(metric(card("young"), "Behaves as")).toBe("not known yet3 of 3 5–60 min gaps rewrote it");
+    expect(metric(card("survives"), "Cache writes 5 min / 1 h")).toBe("2.0M / 500k");
+    expect(metric(card("cx2"), "Behaves as")).toBeUndefined();
+    expect(metric(card("cx2"), "Cache writes 5 min / 1 h"), "no writes recorded: no mix").toBeUndefined();
+    expect(p.root.querySelectorAll(".ch-fleet dt").map((e: any) => e.textContent)).toEqual(["Expiry cost", "Keep-warm would save", "Recommended", "Switch to 1-hour cache"]);
+    expect(p.root.querySelectorAll(".ch-fleet dd").map((e: any) => e.textContent).at(-1)).toBe("1 of 3");
+  });
+  it("the histogram's TTL line is the measured one", async () => {
+    answer = R2; await mount(); await settle(4);
+    expect(card("survives").querySelector(".ch-ttl text").textContent).toBe("TTL 1 h");
+    expect(card("young").querySelector(".ch-ttl text").textContent, "no evidence: the label").toBe("TTL 5 min");
+  });
+  it("no switch to count: no fleet metric for it", async () => {
+    await mount(); await settle(4);
+    expect(p.root.querySelectorAll(".ch-fleet dt").length).toBe(3);
   });
 });
 
