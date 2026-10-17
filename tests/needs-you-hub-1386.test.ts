@@ -18,6 +18,7 @@ function adapter(name: string) {
   const calls: string[] = [];
   const held: Array<() => void> = [];
   let hold = false;
+  const members = new Map<string, boolean | "error">([["100", true], ["200", true]]);
   const gate = <T>(v: T): Promise<T> => hold ? new Promise<T>(res => held.push(() => res(v))) : Promise.resolve(v);
   return {
     calls,
@@ -32,7 +33,10 @@ function adapter(name: string) {
       editAlert: vi.fn(async (_c: string, messageId: string, alert: { message: string; choices?: unknown[] }) => { calls.push(`edit ${messageId} ${alert.message.split("\n").join(" | ")} [${(alert.choices ?? []).length}]`); return gate(undefined); }),
       deleteMessage: vi.fn(async (_c: string, messageId: string) => { calls.push(`delete ${messageId}`); }),
       sendDirect: vi.fn(async (user: string, text: string) => { calls.push(`dm ${user} ${text.split("\n").join(" | ")}`); return { messageId: "dm", chatId: user }; }),
+      // #1990: who the platform confirms is in the group (a DM links into it only for them).
+      isGroupMember: vi.fn(async (_group: string, user: string) => { if (members.get(user) === "error") throw new Error("403"); return members.get(user) === true; }),
     } as any,
+    members,
   };
 }
 
@@ -238,14 +242,33 @@ describe("§5.5 DMs (opt-in): the owning world's admins, new items only, rate-li
     r.state.deliveries = [delivery("d1", "alpha")];
     r.hub.recompute();
     await r.advance(0);
-    expect(r.A.calls.filter(c => c.startsWith("dm"))).toEqual(["dm 100 needs.dm_header(1) | • alpha — needs.reason.delivery_uncertain · <#700001>"]);
+    expect(r.A.calls.filter(c => c.startsWith("dm"))).toEqual(["dm 100 needs.dm_header(1) | • alpha — needs.reason.delivery_uncertain · https://discord.com/channels/111111/700001"]);
     expect(r.B.calls.filter(c => c.startsWith("dm"))).toEqual([]);
     r.state.deliveries = [delivery("d1", "alpha"), delivery("d4", "alpha")];
     r.hub.recompute();
     await r.advance(1_000);
     expect(r.A.calls.filter(c => c.startsWith("dm"))).toHaveLength(1);
     await r.advance(60_000);
-    expect(r.A.calls.filter(c => c.startsWith("dm")).at(-1)).toBe("dm 100 needs.dm_header(1) | • alpha — needs.reason.delivery_uncertain · <#700001>");
+    expect(r.A.calls.filter(c => c.startsWith("dm")).at(-1)).toBe("dm 100 needs.dm_header(1) | • alpha — needs.reason.delivery_uncertain · https://discord.com/channels/111111/700001");
+  });
+
+  it("#1990: a DM links into the group only for an admin the platform confirms is in it; anyone else gets plain text", async () => {
+    const r = rig();
+    r.state.settings.dm = true;
+    r.state.admins.dcA = ["100", "101", "102"];
+    r.A.members.set("101", false);
+    r.A.members.set("102", "error");
+    r.hub.start();
+    await r.advance(0);
+    r.state.deliveries = [delivery("d1", "alpha")];
+    r.hub.recompute();
+    await r.advance(0);
+    expect(r.A.calls.filter(c => c.startsWith("dm")).sort()).toEqual([
+      "dm 100 needs.dm_header(1) | • alpha — needs.reason.delivery_uncertain · https://discord.com/channels/111111/700001",
+      "dm 101 needs.dm_header(1) | • alpha — needs.reason.delivery_uncertain",
+      "dm 102 needs.dm_header(1) | • alpha — needs.reason.delivery_uncertain",
+    ]);
+    expect(r.A.a.isGroupMember).toHaveBeenCalledWith("111111", "101");
   });
 
   it("a terminal wait is DMed only once it has lasted 5 s (a dialog AgEnD answers itself never pings); the list shows it at once", async () => {
@@ -262,7 +285,7 @@ describe("§5.5 DMs (opt-in): the owning world's admins, new items only, rate-li
     r.tick(5_000);
     r.hub.recompute();
     await r.advance(0);
-    expect(r.A.calls.filter(c => c.startsWith("dm"))).toEqual(["dm 100 needs.dm_header(1) | • alpha — needs.reason.permission · <#700001>"]);
+    expect(r.A.calls.filter(c => c.startsWith("dm"))).toEqual(["dm 100 needs.dm_header(1) | • alpha — needs.reason.permission · https://discord.com/channels/111111/700001"]);
   });
 
   it("off by default", async () => {

@@ -97,6 +97,16 @@ export interface ChannelAdapter extends EventEmitter {
    * leave this unset; callers must treat a false return as a best-effort skip.
    */
   setActivity?(text: string): boolean;
+  /**
+   * #1990: a group's public @username (Telegram), as last read; undefined when it has none or it has not been read
+   * yet. Never waits on the network: a missing or stale value starts one bounded background read (getChat).
+   */
+  groupUsername?(groupId: string): string | undefined;
+  /**
+   * #1990: whether a user is a member of a group/guild — asked before a DM links into it. Read-only, with the fleet's
+   * own bot token; rejects on any platform error (the caller then treats the user as not a member).
+   */
+  isGroupMember?(groupId: string, userId: string): Promise<boolean>;
 
   sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage>;
   /**
@@ -281,6 +291,11 @@ export interface SendOpts {
    * that do not support them (Discord, etc.).
    */
   urlButtons?: Array<{ label: string; url: string }>;
+  /**
+   * #1990: links on parts of a plain text (Telegram `text_link` entities; UTF-16 offsets into the text). Only Telegram
+   * honours them, and only on a plain-text send that fits one message; Discord's links are in the text itself.
+   */
+  textLinks?: import("../topic-link.js").TextLink[];
 }
 
 /** #1266: how a reply's buttons end — one chosen (by whom), or expired with none chosen. */

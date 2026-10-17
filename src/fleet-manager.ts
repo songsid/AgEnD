@@ -246,6 +246,7 @@ import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { WEB_CHAT_NOTICE, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
+import { SNOWFLAKE, hasPlaceRefs, renderPlaceRefs, stripPlaceRefs, topicUrl, type PlaceLink, type PlaceTarget, worldPlaceOf } from "./topic-link.js";
 import { CacheService, WINDOWS, type CacheInstance, type CacheReport, type CacheWindow } from "./cache-service.js";
 import { runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
 import { CompactWatch, launchIdentity } from "./compact-watch.js";
@@ -7776,6 +7777,39 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * #1990: how a reader in world `worldId`'s group reaches a place token's target — undefined (plain text) for another
+   * world's instance, an instance without a fleet topic (a ClassicBot room may be anywhere), or an id no link is built
+   * from. Discord: the channel mention; Telegram: the topic URL (General's topic included).
+   */
+  private placeLink(worldId: string | undefined, target: PlaceTarget): PlaceLink | undefined {
+    const world = this.worlds.get(worldId ?? "");
+    if (!world) return undefined;
+    let topic: string | undefined;
+    if (target.kind === "general") {
+      const notice = this.fleetNoticeTarget(world.id);
+      if (!notice || notice.chatId !== world.groupId || notice.opts.threadId === undefined) return undefined;
+      topic = String(notice.opts.threadId);
+    } else {
+      if (this.getInstanceAdapterId(target.name) !== world.id) return undefined;
+      const topicId = this.fleetConfig?.instances[target.name]?.topic_id;
+      if (topicId == null) return undefined;
+      topic = String(topicId);
+    }
+    if (world.type === "discord") return SNOWFLAKE.test(topic) && SNOWFLAKE.test(world.groupId) ? { mention: `<#${topic}>` } : undefined;
+    const url = topicUrl(worldPlaceOf(world), topic, { general: target.kind === "general" });
+    return url ? { url } : undefined;
+  }
+
+  /** #1990: a message for world `worldId`'s group with its place tokens rendered (links as text or Telegram entities). */
+  private renderPlaces(worldId: string | undefined, text: string, opts?: import("./channel/types.js").SendOpts): { text: string; opts?: import("./channel/types.js").SendOpts } {
+    if (!hasPlaceRefs(text)) return { text, opts };
+    const type = this.worlds.get(worldId ?? "")?.type;
+    const surface = type === "discord" ? "discord" : type === "telegram" ? "telegram" : "plain";
+    const out = renderPlaceRefs(text, surface, target => this.placeLink(worldId, target));
+    return { text: out.text, opts: out.textLinks.length ? { ...opts, textLinks: out.textLinks } : opts };
+  }
+
   /** Handle inbound message — transcribe voice if present, then route */
   private findGeneralInstance(adapterId?: string): string | undefined {
     if (!this.fleetConfig) return undefined;
@@ -11989,8 +12023,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Fleet topic instance
     const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
+    const worldId = this.getInstanceAdapterId(instanceName);
     if (threadId != null && groupId) {
-      adapter.sendText(String(groupId), text, { threadId: String(threadId), ...extraOpts })
+      const out = this.renderPlaces(worldId, text, { threadId: String(threadId), ...extraOpts });
+      adapter.sendText(String(groupId), out.text, out.opts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send instance topic notification"));
       return true;
     }
@@ -11998,7 +12034,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Classic instance: find its channelId from the classic manager
     const classicChatId = this.classicChannels?.getChannelIdByInstance(instanceName);
     if (classicChatId) {
-      adapter.sendText(classicChatId, text, extraOpts)
+      // #1990: a ClassicBot room's readers need not be in the fleet's group, so its notices name places as plain text.
+      adapter.sendText(classicChatId, stripPlaceRefs(text), extraOpts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send classic notification"));
       return true;
     }
@@ -12006,9 +12043,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Fallback: the instance has neither a topic nor a classic channel, so post
     // where fleet-wide notices go. Not the bare group id: on Discord that is a
     // guild, and the send fails inside the catch handler.
-    const target = this.fleetNoticeTarget(this.getInstanceAdapterId(instanceName));
+    const target = this.fleetNoticeTarget(worldId);
     if (target) {
-      adapter.sendText(target.chatId, text, { ...target.opts, ...extraOpts })
+      const out = this.renderPlaces(worldId, text, { ...target.opts, ...extraOpts });
+      adapter.sendText(target.chatId, out.text, out.opts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send notification (no topic)"));
       return true;
     }
@@ -12377,7 +12415,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       isClassic: name => classic.has(name),
       place: name => {
         const world = this.worlds.get(this.getInstanceAdapterId(name) ?? "");
-        return world ? { type: world.type, ...(world.groupId ? { groupId: world.groupId } : {}) } : undefined;
+        return world ? worldPlaceOf(world) : undefined;
       },
       // fleet.yaml's topic only. A ClassicBot room has none here, so no link: its channel may sit in any allowed
       // guild, not necessarily its world's group.
@@ -12537,9 +12575,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         finishedAt: Date.parse(d.finishedAt) || 0,
       })),
       ownerOf,
-      worlds: () => [...this.worlds.values()].map((w): NeedsYouWorld => ({
-        id: w.id, adapter: w.adapter, place: { type: w.type, ...(w.groupId ? { groupId: w.groupId } : {}) },
-      })),
+      worlds: () => [...this.worlds.values()].map((w): NeedsYouWorld => ({ id: w.id, adapter: w.adapter, place: worldPlaceOf(w) })),
       noticeTarget: world => {
         const target = this.fleetNoticeTarget(world);
         return target ? { chatId: target.chatId, ...(target.opts.threadId !== undefined ? { threadId: String(target.opts.threadId) } : {}) } : null;
