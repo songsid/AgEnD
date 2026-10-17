@@ -26,7 +26,7 @@ const botDcHref = `${base.replace(/\/$/, '')}${bot.discordHref}`;
 
     <div class="reveal mb-12 mx-auto max-w-3xl">
       <p class="text-center text-xs uppercase tracking-widest text-text-secondary mb-3">{data.quickstart.oneLiner.label}</p>
-      <div class="bg-bg border border-accent/40 rounded-xl p-5 font-mono text-sm text-text-primary overflow-x-auto whitespace-nowrap">
+      <div class="bg-bg border border-accent/40 rounded-xl p-5 font-mono text-sm text-text-primary [overflow-wrap:anywhere] sm:overflow-x-auto sm:[overflow-wrap:normal] sm:whitespace-nowrap">
         {data.quickstart.oneLiner.cmd}
       </div>
       <p class="text-center text-text-secondary text-sm mt-3">{data.quickstart.oneLiner.note}</p>

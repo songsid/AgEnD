@@ -29,7 +29,7 @@ const docsBase = '/AgEnD';
     </h1>
 
     <!-- Subtitle -->
-    <p class="text-lg sm:text-xl text-text-secondary font-light leading-relaxed max-w-2xl mx-auto mb-10">
+    <p class={`text-lg sm:text-xl text-text-secondary font-light leading-relaxed max-w-2xl mx-auto mb-10${locale === 'zh-tw' ? ' break-keep' : ''}`}>
       {t(locale, 'hero.subtitle')}
     </p>
 

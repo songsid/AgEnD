@@ -32,15 +32,19 @@ const iconMap: Record<string, string> = {
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 stagger">
-      {data.features.items.map((item: any) => (
-        <div class="reveal feature-card bg-surface border border-border rounded-2xl p-6">
+      {data.features.items.map((item: any, i: number) => {
+        const total = data.features.items.length;
+        const isLoneLastRow = i === total - 1 && total % 4 === 1;
+        return (
+        <div class={`reveal feature-card bg-surface border border-border rounded-2xl p-6${isLoneLastRow ? ' lg:col-start-2 lg:col-span-2' : ''}`}>
           <div class="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center mb-4 text-accent">
             <Fragment set:html={iconMap[item.icon]} />
           </div>
           <h3 class="font-display font-bold text-base mb-2">{item.name}</h3>
           <p class="text-sm text-text-secondary leading-relaxed">{item.desc}</p>
         </div>
-      ))}
+        );
+      })}
     </div>
   </div>
 </section>
