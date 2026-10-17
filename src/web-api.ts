@@ -258,6 +258,8 @@ export interface WebApiContext {
   needsYouItems?(): unknown[];
   /** #1389: the org chart's structure (fleet.yaml's teams, General, descriptions, thread links); absent: an empty chart. */
   orgChart?(): unknown;
+  /** #1918: in-flight and recently finished cross-instance traffic, bounded (fleet-traffic.ts). */
+  trafficSnapshot?(): { now: string; items: unknown[] };
   /** #1218: an instance's Log steps, read on demand (null: no such instance; `{ enabled: false }`: the Log is off). */
   logSteps?(name: string, q: import("./log-service.js").LogQuery): Promise<unknown>;
   /** #1468: the prompt-cache expiry analysis for a window ("24h" | "7d" | "30d"); absent: not offered. */
@@ -1752,6 +1754,12 @@ export function handleWebRequest(
   // it on a timer — the live state comes over the stream the page already has.
   if (method === "GET" && path === "/ui/org") {
     json(res, 200, ctx.orgChart?.() ?? { general: [], teams: [], instances: {} });
+    return true;
+  }
+  // #1918: the org canvas's traffic on opening, and the public link's (which has no stream) on its poll cadence. The
+  // fleet works it out at most once every two seconds and caps it, whoever asks how often.
+  if (method === "GET" && path === "/ui/traffic") {
+    json(res, 200, ctx.trafficSnapshot?.() ?? { now: new Date().toISOString(), items: [] });
     return true;
   }
 
