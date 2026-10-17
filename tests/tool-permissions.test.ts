@@ -85,6 +85,8 @@ const BEFORE: Record<string, string[]> = {
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
     // kiro engine move: read-only kiro engine facts, for explaining a kiro incompatibility.
     "kiro_engine_status",
+    // #2056: the user's Settings → Web appearance, through the page's own checks.
+    "get_web_settings", "set_web_settings",
   ],
 };
 

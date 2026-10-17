@@ -86,7 +86,13 @@ describe("what's new for 2.3 (#1633, #2012: topic lines; the details are the ski
       expect(TOOLS.some(t => t.name === tool), tool).toBe(true);
       expect(SKILL, tool).toContain(`\`${tool}`);
     }
-    expect(AGENT_WHATS_NEW.filter(e => e.id.startsWith("2.3-")).map(e => e.id)).toEqual(["2.3-web-appearance-topic", "2.3-repo-tools"]);
+    expect(AGENT_WHATS_NEW.filter(e => e.id.startsWith("2.3-")).map(e => e.id)).toEqual(["2.3-web-appearance-topic", "2.3-web-settings-for-the-user", "2.3-repo-tools"]);
+  });
+  it("#2056: General's topic line names the skill and its two tools, from beta.3; the skill reaches General too", () => {
+    const line = AGENT_WHATS_NEW.find(e => e.id === "2.3-web-settings-for-the-user")!;
+    expect([line.since, line.text.includes("Load the `web-appearance` skill")]).toEqual(["2.3.0-beta.3", true]);
+    for (const tool of ["get_web_settings", "set_web_settings"]) { expect(line.text).toContain(`\`${tool}\``); expect(SKILL).toContain(`\`${tool}`); expect(TOOLS.some(t => t.name === tool)).toBe(true); }
+    expect(SKILL).toMatch(/^roles: \[general, worker\]$/m);
   });
   it("what the six folded 2.3.0-alpha.1 entries said is in the skill", () => {
     const facts = [
@@ -112,16 +118,18 @@ describe("what's new for 2.3 (#1633, #2012: topic lines; the details are the ski
   const SIX = ["2.3-owner-effect-policy", "2.3-web-theme", "2.3-web-card", "2.3-web-appearance", "2.3-web-mod", "2.3-web-widget"];
   it("an instance told everything of 2.2 hears the two 2.3 topic lines once from 2.3.0-beta.2 — never on a 2.2.x or beta.1", () => {
     for (const version of ["2.2.5", "2.3.0-alpha.1", "2.3.0-beta.1"]) expect(planWhatsNew({ record: { announced: OLD }, fresh: false, version }), version).toBeNull();
-    for (const version of ["2.3.0-beta.2", "2.3.0"]) {
+    for (const [version, ids] of [["2.3.0-beta.2", ["2.3-web-appearance-topic", "2.3-repo-tools"]], ["2.3.0", ["2.3-web-appearance-topic", "2.3-web-settings-for-the-user", "2.3-repo-tools"]]] as const) {
       const plan = planWhatsNew({ record: { announced: OLD }, fresh: false, version });
-      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.3-web-appearance-topic", "2.3-repo-tools"]);
+      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(ids);
     }
     expect(planWhatsNew({ record: { announced: AGENT_WHATS_NEW.map(e => e.id) }, fresh: false, version: "2.3.0" })).toBeNull();
   });
   it("one told the six detailed entries on 2.3.0-beta.1 hears the two short lines once on beta.2, then nothing", () => {
     const plan = planWhatsNew({ record: { announced: [...OLD, ...SIX] }, fresh: false, version: "2.3.0-beta.2" });
     expect(plan && "ids" in plan ? plan.ids : plan).toEqual(["2.3-web-appearance-topic", "2.3-repo-tools"]);
-    expect(planWhatsNew({ record: { announced: [...OLD, ...SIX, "2.3-web-appearance-topic", "2.3-repo-tools"] }, fresh: false, version: "2.3.0" })).toBeNull();
+    expect(planWhatsNew({ record: { announced: [...OLD, ...SIX, "2.3-web-appearance-topic", "2.3-repo-tools"] }, fresh: false, version: "2.3.0-beta.2" })).toBeNull();
+    const later = planWhatsNew({ record: { announced: [...OLD, ...SIX, "2.3-web-appearance-topic", "2.3-repo-tools"] }, fresh: false, version: "2.3.0" });
+    expect(later && "ids" in later ? later.ids : later, "#2056: beta.3's line, once").toEqual(["2.3-web-settings-for-the-user"]);
   });
 });
 
