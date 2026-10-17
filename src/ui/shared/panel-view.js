@@ -16,7 +16,7 @@ import { HeaderTools, VIEW_SCALE, textSizeStore } from "./header-tools.js";
 import { readStream } from "./read-stream.js";
 // The usage dialog's metric row lives with the dialog now (usage-dialog.js); re-exported for what imported it here.
 export { UsageMetric } from "./usage-dialog.js";
-import { backendLabel, STATUS_KEYS } from "./instance-nav.js";
+import { backendLabel, modelText, STATUS_KEYS } from "./instance-nav.js";
 import { viewStore } from "./view-roster-store.js";
 
 /** #1580: the app's stream says the fleet is not answering (a restart): the View's polls skip their turn until it is. */
@@ -305,7 +305,7 @@ function Card({ it, viewOnly, onEdit }) {
     <div class="v-avatar">${it.has_avatar ? html`<img ref=${avatar} alt="" />` : html`<span class="v-initial" aria-hidden="true">${initial}</span>`}</div>
     <div class="v-card-body">
       <div class="v-card-line"><strong>${it.display_name || it.instance_name}</strong>${it.role ? html`<span class="v-role">${it.role}</span>` : null}</div>
-      <div class="v-card-meta">${it.instance_name} · ${backendLabel(it.backend)}${it.model ? ` · ${it.model}` : ""}${ctx}</div>
+      <div class="v-card-meta">${it.instance_name} · ${backendLabel(it.backend)}${it.model ? ` · ${modelText(it)}` : ""}${ctx}</div>
       ${open && it.description ? html`<p class="v-card-desc">${it.description}</p>` : null}
     </div>
     <button type="button" class="icon-btn" onClick=${toggle} aria-expanded=${open ? "true" : "false"} aria-label=${tn(open ? "collapseProfile" : "expandProfile")} title=${tn(open ? "collapseProfile" : "expandProfile")}>

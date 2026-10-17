@@ -36,6 +36,22 @@ export function groupOf(it) {
   if (tags.length) return tags[0];
   return "Other";
 }
+/** A group's heading: the fallback group ("Other") is a key, shown in the page's language; a tag is shown as it is. */
+export function groupLabel(g) { return g === "Other" ? tn("groupOther") : g; }
+/**
+ * #2050: the model as a person reads it. The server's resolver writes English for a model it has not resolved yet
+ * ("default (detected when it starts)") and for a CLI's own default ("x (default)"); those are shown in the page's language.
+ */
+export function modelText(it, raw = it && it.model) {
+  if (!raw || typeof raw !== "string") return raw;
+  if (it.model_source === "unresolved") {
+    const why = /^default \((.*)\)$/.exec(raw)?.[1];
+    const reason = why === "detected when it starts" ? tn("modelWhyStart") : why === "this CLI does not report a default" ? tn("modelWhyCli") : why;
+    return reason ? tn("modelDefaultWhy", { reason }) : raw === "default" ? tn("modelDefault") : raw;
+  }
+  if (it.model_source === "cli-default") { const m = /^(.*) \(default\)$/.exec(raw); if (m) return tn("modelCliDefault", { model: m[1] }); }
+  return raw;
+}
 const BACKEND_LABELS = { "claude-code": "Claude Code", "kiro-cli": "Kiro CLI", codex: "Codex", grok: "Grok Build", antigravity: "Antigravity", opencode: "OpenCode" };
 export function backendLabel(backend) { return BACKEND_LABELS[backend] || backend || "Unknown"; }
 export const KNOWN_BACKENDS = new Set(Object.keys(BACKEND_LABELS));
@@ -93,8 +109,8 @@ export function instanceTooltip(it) {
   if (it.display_name && it.display_name !== name) lines.push(it.display_name, `(${name})`);
   else lines.push(name);
   lines.push(line("tooltipBackend", backendLabel(it.backend)));
-  const src = (s) => (s === "instance" || s === "classic" ? " (configured)" : s === "fleet-default" ? " (fleet default)" : "");
-  lines.push(line("tooltipModel", (it.model || tn("tooltipUnavailable")) + src(it.model_source)));
+  const src = (s) => (s === "instance" || s === "classic" ? tn("srcConfigured") : s === "fleet-default" ? tn("srcFleetDefault") : "");
+  lines.push(line("tooltipModel", (modelText(it) || tn("tooltipUnavailable")) + src(it.model_source)));
   lines.push(line("tooltipStatus", status));
   lines.push(line("tooltipContext", context));
   if (it.effort) lines.push(line("tooltipEffort", it.effort + src(it.effort_source)));
@@ -481,8 +497,8 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
       const folded = nav.collapsed.has(g);
       return html`<div key=${g} class="v-group">
         <button type="button" class="v-group-head" aria-expanded=${folded ? "false" : "true"} onClick=${() => toggle(g)}
-          title=${tn(folded ? "expandGroup" : "collapseGroup", { group: g })} ...${dragProps({ type: "group", name: g })}>
-          <${Icon} name="chevron" size=${14} cls=${folded ? "caret folded" : "caret"} /><span class="grow">${g}</span><span class="count">${names.length}</span></button>
+          title=${tn(folded ? "expandGroup" : "collapseGroup", { group: groupLabel(g) })} ...${dragProps({ type: "group", name: g })}>
+          <${Icon} name="chevron" size=${14} cls=${folded ? "caret folded" : "caret"} /><span class="grow">${groupLabel(g)}</span><span class="count">${names.length}</span></button>
         ${folded ? null : html`<ul class="inst-list">${names.map((name, i) => row(name, g, i, names.length))}</ul>`}
       </div>`;
     })}
