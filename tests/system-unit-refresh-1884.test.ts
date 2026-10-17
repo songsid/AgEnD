@@ -54,6 +54,22 @@ describe("#2015: the same refresh gives a system unit OOMPolicy=continue", () =>
       expect(readFileSync(path, "utf8")).toBe(before);
     }
   });
+  it("#2018 review: an own OOMPolicy=stop survives a refresh that DOES rewrite ExecStart (no second assignment)", () => {
+    const h = host();
+    const path = h.unit(`ExecStart=${h.bin} fleet start`, "OOMPolicy=stop\n");
+    const before = readFileSync(path, "utf8");
+    expect(refreshSystemUnitExecStart(path, h.vars, h.pkg)).toEqual({ kind: "updated", execStart: h.selected });
+    const after = readFileSync(path, "utf8");
+    expect(after).toBe(before.replace(`ExecStart=${h.bin} fleet start`, `ExecStart=${h.selected}`));
+    expect(after.match(/^\s*OOMPolicy\s*=.*$/gm)).toEqual(["OOMPolicy=stop"]);
+  });
+  it("#2018 review: only [Service] counts: an OOMPolicy line elsewhere ([Unit]) does not stand in for it", () => {
+    const h = host();
+    const path = h.unit(`ExecStart=${h.selected}`);
+    writeFileSync(path, readFileSync(path, "utf8").replace("Description=AgEnD (operator's own)\n", "Description=AgEnD (operator's own)\nOOMPolicy=stop\n"));
+    expect(refreshSystemUnitExecStart(path, h.vars, h.pkg)).toEqual({ kind: "updated", oomPolicyAdded: true });
+    expect(readFileSync(path, "utf8").split(/^\[Service\]/m)[1]).toMatch(/^OOMPolicy=continue$/m);
+  });
   it("a foreign unit gets no OOMPolicy either", () => {
     const h = host();
     const path = h.unit("ExecStart=/usr/bin/env agend fleet start");
