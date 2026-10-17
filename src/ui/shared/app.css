@@ -781,6 +781,9 @@ html.lb-open .scroller { overflow: hidden; }
 .inst-star.on { color: var(--warn); }
 .inst-star.on svg, .fav-mark { fill: currentColor; }
 .fav-head { cursor: default; }
+/* #1936: the open instance, pinned on top while a filter is on — its header reads "Current", a line under it. */
+.pinned-head { cursor: default; }
+.v-pinned { border-bottom: 1px solid var(--border); padding-bottom: var(--s-2); margin-bottom: var(--s-1); }
 .fav-mark { color: var(--warn); }
 .inst-nav:not(.fav-editing) .inst-star:not(.on) { visibility: hidden; }
 /* As specific as the rule that hides it (and later), so hover and focus win. */

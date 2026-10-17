@@ -224,6 +224,8 @@ function writeFacetsOpen(open) { try { localStorage.setItem(FACETS_KEY, JSON.str
 
 /** The Favorites group's key among the tag groups: no tag can be it (a group name is never a control character). */
 const FAV_GROUP = "\u0000favorites";
+/** #1936: the open instance, pinned on top while a filter is on. */
+const PINNED_GROUP = "\u0000pinned";
 function persistOrder(groupNames, instByGroup) {
   const rows = [];
   groupNames.forEach((g, i) => rows.push({ item_type: "group", item_name: g, sort_index: i, group_name: null }));
@@ -362,7 +364,6 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     : route && route.panel === "log" ? logPath                                  // #1218: Log → Log
     : route && route.panel === "details" ? detailsPath : chatPath;
   const active = route && (route.panel === "chat" || route.panel === "view" || route.panel === "log" || route.panel === "details") ? route.instance : null;
-  useLayoutEffect(() => { keepActiveInView(list.current); }, [active, items.length, loaded]);
   const own = (map, name) => Object.prototype.hasOwnProperty.call(map, name);
   const byName = new Map(items.map((it) => [nameOf(it), it]));
   const facetOf = (name) => statusFacet(byName.get(name), own(exec, name) ? exec[name] : null, own(awaiting, name) ? awaiting[name] : null);
@@ -379,6 +380,12 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   if (favs.length) shownInsts.set(FAV_GROUP, favs);
   const f = nav.filter;
   const shown = filterSidebar(shownGroups, shownInsts, byName, f.q, backendLabel, { status: f.status, cli: f.cli, statusOf: facetOf });
+  // #1936: while a filter is on, the instance you have open stays on top, pinned and marked "Current", whether or not
+  // it matches; a match is not repeated below. "N / M" still counts the filter's matches (the pinned row counts only
+  // when it is one). Clearing the filter puts it back in its place, and the list scrolls to it again.
+  const pinned = shown.active && active && byName.has(active) ? active : null;
+  const listed = pinned ? shown.groups.map((x) => ({ ...x, names: x.names.filter((n) => n !== pinned) })).filter((x) => x.names.length) : shown.groups;
+  useLayoutEffect(() => { keepActiveInView(list.current); }, [active, items.length, loaded, shown.active]);
   const backends = [...new Set(items.map((it) => it.backend).filter((b) => typeof b === "string" && b))].sort((a, b) => backendLabel(a).localeCompare(backendLabel(b)));
   const toggle = (g) => { const c = new Set(navStore.get().collapsed); if (c.has(g)) c.delete(g); else c.add(g); setCollapsed(c); };
   // From the store, not this render's copy: two clicks before the next render must both count.
@@ -463,7 +470,10 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
       ${canStar && items.length ? html`<button type="button" class="chip-btn fav-edit" aria-pressed=${editing ? "true" : "false"} onClick=${() => setEditing(!editing)}>
         ${editing ? tn("favDone") : html`<${Icon} name="star" size=${12} />${tn("favEdit")}`}</button>` : null}</div>
     ${!loaded ? html`<${Skeleton} lines=${4} />` : !items.length ? html`<p class="side-empty">${t("app.noInstances")}</p>` : null}
-    ${shown.groups.map(({ group: g, names }) => {
+    ${pinned ? html`<div key=${PINNED_GROUP} class="v-group v-pinned" role="group" aria-label=${tn("pinnedLabel")}>
+      <div class="v-group-head pinned-head"><span class="grow">${tn("pinnedCurrent")}</span></div>
+      <ul class="inst-list">${row(pinned, PINNED_GROUP, 0, 1)}</ul></div>` : null}
+    ${listed.map(({ group: g, names }) => {
       // #1664: Favorites — always open, not dragged (↑ ↓ in Edit), named in the page's language.
       if (g === FAV_GROUP) return html`<div key=${g} class="v-group v-fav" role="group" aria-label=${tn("favorites")}>
         <div class="v-group-head fav-head"><${Icon} name="star" size=${14} cls="fav-mark" /><span class="grow">${tn("favorites")}</span><span class="count">${names.length}</span></div>
