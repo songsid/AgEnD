@@ -130,6 +130,14 @@ try {
       await page.evaluate(()=>(window as any).stock.removePaint());const beforeOfferClick=actions.length;await card.click();assert.equal(actions.length,beforeOfferClick);
       for(const marker of [null,'reply']){await card.evaluate((el,value)=>value===null?el.removeAttribute('data-trust'):el.setAttribute('data-trust',value),marker);assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().ok),false);await card.evaluate(el=>el.setAttribute('data-trust','thread-control'));}
       assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().ok),true);
+      // Main carry: the actual click chip is a protected stock control, including its full child paint.
+      await page.evaluate(() => (window as any).stock.store.ingest({boot:'probe',id:901,instance:'worker',role:'user',sender:'person',text:'clicked value must not be shown',ts:new Date().toISOString(),click:{label:'Approve',of:'a'.repeat(32)}}));
+      const chip=page.locator('.thread .click-chip');await chip.waitFor();await chip.scrollIntoViewIfNeeded();await page.evaluate(()=>{const a=document.activeElement;if(a instanceof HTMLElement)a.blur();});
+      assert.equal(await chip.getAttribute('data-trust'),'thread-control');assert.equal(await chip.locator('button[data-act=showButtons]').count(),1);
+      const chipBase=await page.screenshot(),chipPoints=await chip.evaluate(el=>{const r=el.getBoundingClientRect();return[{x:Math.floor(r.x+2),y:Math.floor(r.y+2)},{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2)},{x:Math.floor(r.right-2),y:Math.floor(r.bottom-2)}];});
+      assert.equal(await page.evaluate(()=>(window as any).stock.paint('front')),true);const chipFront=await page.screenshot();for(const p of chipPoints)assert.deepEqual(pixel(chipFront,p.x,p.y),pixel(chipBase,p.x,p.y),'click chip protected pixel');await page.evaluate(()=>(window as any).stock.removePaint());
+      for(const marker of [null,'reply']){await chip.evaluate((el,value)=>value===null?el.removeAttribute('data-trust'):el.setAttribute('data-trust',value),marker);assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().ok),false);await chip.evaluate(el=>el.setAttribute('data-trust','thread-control'));}
+      const beforeShow=actions.length;await chip.locator('button').click();assert.equal(actions.length,beforeShow);await page.evaluate(()=>{const a=document.activeElement;if(a instanceof HTMLElement)a.blur();});
       await page.evaluate(()=>(window as any).stock.longThread());await page.waitForTimeout(50);await page.locator('.scroller').evaluate(el=>{el.scrollTop=0;el.dispatchEvent(new Event('scroll'));});await page.locator('.jump-latest').waitFor();
       const jumpBase=await page.screenshot();const jp=await page.locator('.jump-latest').evaluate(el=>{const r=el.getBoundingClientRect();return{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2)};});assert.equal(await page.evaluate(()=>(window as any).stock.paint('front')),true);const jumpFront=await page.screenshot();assert.deepEqual(pixel(jumpFront,jp.x,jp.y),pixel(jumpBase,jp.x,jp.y));await page.evaluate(()=>(window as any).stock.removePaint());
       for(const selector of ['.chat-card','.jump-latest',...(width>=900?['.side-resize']:[])])for(const kind of ['', 'wrong']){
@@ -137,7 +145,7 @@ try {
       }
       for(const css of ['on','loading','unknown']){const v=await page.evaluate(c=>(window as any).stock.snapshot(c),css);assert.equal(v.agentFront,false);assert.equal(v.front,true);assert.equal(v.agentReason,'owner_css');}
       assert.equal(await page.locator('iframe').count(),0);assert.deepEqual(errors,[]);
-      rows.push({ engine,width,lang,dark,snapshot,diagnostics,points,free,permissionBackground:{stock:pixel(baseline,permissionPaint.x,permissionPaint.y),behind:pixel(behind,permissionPaint.x,permissionPaint.y),front:pixel(front,permissionPaint.x,permissionPaint.y)},painted:true,themeImage:true,trialOffer:{protectedPixels:3,inert:true,missingWrongMarker:true},reviewerR2:{identity:true,jump:true,resize:width>=900,preview:true,notes:noteKinds},overlays,controls,errors,resources });
+      rows.push({ engine,width,lang,dark,snapshot,diagnostics,points,free,permissionBackground:{stock:pixel(baseline,permissionPaint.x,permissionPaint.y),behind:pixel(behind,permissionPaint.x,permissionPaint.y),front:pixel(front,permissionPaint.x,permissionPaint.y)},painted:true,themeImage:true,clickChip:{protectedPixels:3,missingWrongMarker:true,noReplyPost:true},trialOffer:{protectedPixels:3,inert:true,missingWrongMarker:true},reviewerR2:{identity:true,jump:true,resize:width>=900,preview:true,notes:noteKinds},overlays,controls,errors,resources });
     } finally { await context.close(); }
     }
     await browser.close(); browser = null;

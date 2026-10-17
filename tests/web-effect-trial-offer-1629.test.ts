@@ -115,6 +115,24 @@ describe("the real thread's inert protected offer card", () => {
       f.th.render([message({ effectTrial: offer({ title: "New" }) })]); f.th.onClick({ target: button, isTrusted: true }); expect(start).toHaveBeenCalledOnce();
     } finally { f.th.dispose(); f.dom.restore(); }
   });
+  it("growing the chunked thread through a click chip preserves exact Trial ownership and expiry", () => {
+    vi.useFakeTimers(); let now = 0; const start = vi.fn(), row = message({ effectTrial: offer({ expiresAt: 10 }) });
+    const f = fixture("en", false, { canTryEffect: () => true, startEffectTrial: start, serverNow: () => now });
+    try {
+      const buttons = { id: "c".repeat(32), state: "open", labels: ["Reply"] };
+      const reply = message({ id: 2, sender: "own", role: "agent", text: "Old reply", effectTrial: undefined, buttons });
+      const middle = Array.from({ length: 34 }, (_, i) => message({ id: i + 3, sender: "own", role: "agent", text: `Row ${i}`, effectTrial: undefined }));
+      const click = message({ id: 37, sender: "person", role: "user", effectTrial: undefined, click: { label: "Reply", of: buttons.id } });
+      f.th.render([row, reply, ...middle, click]); expect(f.list.querySelector(".effect-trial-offer")).toBeNull();
+      const chip = f.list.querySelector(".click-chip")!; expect(chip.getAttribute("data-trust")).toBe("thread-control");
+      f.th.onClick({ target: chip.querySelector("button"), isTrusted: true });
+      expect(f.list.textContent).toContain("Old reply"); const button = f.list.querySelector("button.effect-trial-start")!; expect(button).not.toBeNull();
+      f.th.onClick({ target: button, isTrusted: true }); expect(start).toHaveBeenCalledExactlyOnceWith(row);
+      const forged = f.list.ownerDocument.createElement("button"); forged.className = button.className; forged.setAttribute("data-act", "effectTrial"); forged.setAttribute("data-arg", "aa-1"); button.parentElement!.append(forged); f.th.onClick({ target: forged, isTrusted: true }); expect(start).toHaveBeenCalledOnce();
+      now = 10; vi.advanceTimersByTime(10); expect(f.list.querySelector("button.effect-trial-start")).toBeNull();
+      expect(f.list.textContent).toContain("This trial offer has expired."); f.th.onClick({ target: button, isTrusted: true }); expect(start).toHaveBeenCalledOnce();
+    } finally { f.th.dispose(); f.dom.restore(); vi.useRealTimers(); }
+  });
   it("public link is inert even if a caller wrongly supplies an available display hint", () => {
     const start = vi.fn(), f = fixture("en", true, { canTryEffect: () => true, startEffectTrial: start });
     try { f.th.render([message()]); expect(f.list.querySelector("button")).toBeNull(); expect(start).not.toHaveBeenCalled(); } finally { f.th.dispose(); f.dom.restore(); }
