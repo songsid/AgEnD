@@ -276,6 +276,30 @@ describe("FleetManager: where a reply landed; the marks recorded; a copy that ma
     const after = guestPollBody({ instances: [] }, SCOPE, 3, g, next.cursor as string, () => [...h.replayFor(parse(next.cursor as string)), ...h.seenAfter(parse(next.cursor as string))]);
     expect(after.messages, "not sent again").toEqual([]);
   });
+  it("#2085 review: a mark made before a restart still reaches the old cursor's next poll (persisted), once; unmarked rows stay hidden", async () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-1920-seen-")); homes.push(home);
+    const store = () => new WebChatDiskStore({ home, logger: { warn: vi.fn() }, debounceMs: 1, ownerOf: () => "dir:/w/a" });
+    const one = new WebChatHistory({ boot: "b1" }); const s1 = store(); one.restore("a", s1.load("a")); one.setStore(s1);
+    const g1 = guestOf(one);
+    one.record({ instance: "a", sender: "bob", text: "held", ts: ts(), messageId: "web-1", from: BOB_FROM });
+    one.record({ instance: "a", sender: "x", text: "seen", ts: ts(), channel: true });
+    one.record({ instance: "a", sender: "bob", text: "never copied", ts: ts(), messageId: "web-3", from: BOB_FROM });
+    const first = guestPollBody({ instances: [] }, SCOPE, 1, g1, null, () => one.after(0));
+    expect((first.messages as Array<{ text: string }>).map((m) => m.text)).toEqual(["seen"]);
+    const cursor = first.cursor as string;                       // b1-3
+    one.markChannel("a", "web-1");                               // its echo went out; the guest's tab is offline
+    await new Promise((r) => setTimeout(r, 40));
+    // A restart: a new process restores the history from disk.
+    const two = new WebChatHistory({ boot: "b2" }); two.restore("a", store().load("a"));
+    const g2 = guestOf(two);
+    const parse = (c: string) => { const i = c.lastIndexOf("-"); return { boot: c.slice(0, i), id: Number(c.slice(i + 1)) }; };
+    const replay = (c: string) => { const cur = parse(c); const rows = [...two.replayFor(cur), ...two.seenAfter(cur)]; return rows.filter((m, i) => rows.findIndex((x) => x.boot === m.boot && x.id === m.id) === i); };
+    const next = guestPollBody({ instances: [] }, SCOPE, 2, g2, cursor, () => replay(cursor));
+    expect((next.messages as Array<{ text: string }>).map((m) => m.text), "the old tab's next poll gets it").toEqual(["held"]);
+    const again = guestPollBody({ instances: [] }, SCOPE, 3, g2, next.cursor as string, () => replay(next.cursor as string));
+    expect(again.messages, "and not again").toEqual([]);
+    expect(guestHistory(two, "a", 50, g2, SCOPE).map((m) => m.text), "the unmarked row stays hidden").toEqual(["held", "seen"]);
+  });
   it("guestOwnRoom: the account's own Telegram private room, on its own connection", () => {
     const fm = fleet();
     expect(fm.guestOwnRoom({ adapterId: "tg", userId: "5550001" }, "room")).toBe(true);

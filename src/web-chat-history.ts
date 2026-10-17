@@ -137,8 +137,9 @@ export interface WebChatMessage {
   from?: string;
   /**
    * #1920 (#2085 review): when it became the channel's after it was recorded (its copy was sent later) — a sequence
-   * number from the ids' own counter, so a cursor handed out after that moves past it and a guest's next poll is sent
-   * the row it could not see before. Live only (a restart's guests read the history again).
+   * number from its boot's id counter, so a cursor handed out after that moves past it and a guest's next poll is sent
+   * the row it could not see before. Kept on disk with the row (#2085 review): a page that held a cursor of that boot
+   * across a restart is still sent it.
    */
   seenSeq?: number;
 }
@@ -193,6 +194,8 @@ export interface StoredWebChatMessage {
   /** #1920: reached the platform channel; and who wrote it (see WebChatMessage). */
   channel?: true;
   from?: string;
+  /** #1920: when, in its boot's id sequence, it became the channel's (see WebChatMessage). */
+  seenSeq?: number;
 }
 
 /** #1565: what the history needs of the file ledger (web-upload.ts). */
@@ -262,7 +265,7 @@ export class WebChatHistory {
   /** #1565: a message as kept on disk: no buttons, no delivery, no message id; a file with the path it is served from. */
   private stored(m: WebChatMessage): StoredWebChatMessage {
     const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.click ? { click: { label: m.click.label } } : {}), ...(m.links ? { links: m.links } : {}),
-      ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}) };
+      ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.channel && m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}) };
     if (m.attachments?.length) {
       row.attachments = m.attachments.map((a) => {
         const base = { kind: a.kind, name: a.name, size: a.size, mime: a.mime };
@@ -434,8 +437,9 @@ export class WebChatHistory {
    * adds to its replay, since their ids are older than the cursor it was given.
    */
   seenAfter(cursor: { boot: string; id: number } | null): WebChatMessage[] {
-    if (!cursor || cursor.boot !== this.boot) return [];
-    return this.collect((m) => m.seenSeq !== undefined && m.seenSeq > cursor.id);
+    if (!cursor) return [];
+    // The cursor's own boot (this one, or one restored from disk): its sequence is the one seenSeq counts in.
+    return this.collect((m) => m.boot === cursor.boot && m.seenSeq !== undefined && m.seenSeq > cursor.id);
   }
 
   /** #1920: a kept message by the `message_id` the agent was given (a web message, a web click). */
@@ -560,13 +564,15 @@ export class WebChatHistory {
   pollCursor(): string {
     if (this.lastId > 0 || this.restoredBoots.size === 0) return `${this.boot}-${this.lastId}`;
     const rank = this.bootRanks();
+    // #2085 review: a restored row made the channel's later counts at its seenSeq — else that row would be sent again.
+    const at = (m: WebChatMessage) => Math.max(m.id, m.seenSeq ?? 0);
     let newest: WebChatMessage | null = null;
     for (const slot of this.byInstance.values()) {
       for (const m of slot.messages) {
-        if (!newest || rank(m.boot) > rank(newest.boot) || (m.boot === newest.boot && m.id > newest.id)) newest = m;
+        if (!newest || rank(m.boot) > rank(newest.boot) || (m.boot === newest.boot && at(m) > at(newest))) newest = m;
       }
     }
-    return newest ? this.cursorOf(newest) : `${this.boot}-0`;
+    return newest ? `${newest.boot}-${at(newest)}` : `${this.boot}-0`;
   }
 
   /**
@@ -610,6 +616,7 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   // #1920: as recorded — a row from before these were written has neither, so a guest is never shown it.
   if (r.channel === true) message.channel = true;
   if (role === "user" && typeof r.from === "string" && FROM.test(r.from)) message.from = r.from;
+  if (message.channel && typeof r.seenSeq === "number" && Number.isSafeInteger(r.seenSeq) && r.seenSeq > r.id) message.seenSeq = r.seenSeq;
   const files = !Array.isArray(r.attachments) ? [] : r.attachments.slice(0, 20).flatMap((a): RestoredFile[] => {
     if (!a || typeof a !== "object" || Array.isArray(a)) return [];
     const f = a as Record<string, unknown>;
