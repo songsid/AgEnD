@@ -200,6 +200,19 @@ const session = (tier: "admin" | "guest", owner?: typeof ALICE) =>
   fm.webSessions.create({ tier, surface: "local", label: tier, tokenEpoch: tokenEpoch(fm.getDashboardAccess().token!), owner }).sessionId as string;
 
 describe("live: the stream, the poll and a file for a guest scoped to `a`", () => {
+  it("#1920 §3.5 (#2082 review): a scope that empties while the stream is open ends the session and closes the stream", async () => {
+    const scope = vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
+    const sid = session("guest", ALICE), epoch = tokenEpoch(fm.getDashboardAccess().token!);
+    const g = stream(cookieOf(sid));
+    await g.ready;
+    expect(fm.webSessions.authenticate(sid, epoch, { touch: false })).not.toBeNull();
+    scope.mockReturnValue(new Set());
+    fm.emitSseEvent("activity", { instance: "a", state: "working" });   // the next event asks the stream's current()
+    await vi.waitFor(() => expect(g.ended()).toBe(true));
+    expect(fm.webSessions.authenticate(sid, epoch, { touch: false }), "revoked, not just quiet").toBeNull();
+    scope.mockReturnValue(new Set(["a"]));
+    expect((await get("/ui/poll", cookieOf(sid))).status, "and it stays gone").toBe(401);
+  });
   it("the stream: projected status on connect; an in-scope activity; no chat, no prompts, nothing of `b` — the admin's stream gets everything", async () => {
     vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
     const g = stream(cookieOf(session("guest", ALICE))), ad = stream(cookieOf(session("admin")));
