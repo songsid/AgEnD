@@ -4,7 +4,11 @@
  * the simulation pings and judges expiry by it, writes stay priced at the label, a measured 5 minutes recommends the
  * 1-hour setting instead of keep-warm, too little evidence says so (an estimate). Plus the 5m/1h write mix (#2001).
  */
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { CacheService } from "../src/cache-service.js";
 import { addTurn, emptyLedger, type FileCursor, type GapEvent, type Ledger, type Turn } from "../src/cache-ledger.js";
 import { analyzeLedger, effectiveTtl, EFFECTIVE_TTL_HIT_MAX, EFFECTIVE_TTL_MIN_SAMPLES, EFFECTIVE_TTL_MISS_MIN, EFFECTIVE_TTL_WINDOW_MS, type EffectiveTtl } from "../src/cache-analysis.js";
 import type { Rates } from "../src/cache-prices.js";
@@ -98,6 +102,28 @@ describe("the report uses it", () => {
     const few = fiveMinute({ gapsCount: 4, rewritten: 4 });
     addTurn(few, few.files["a"]!, { t: NOW - DAY, model: "m", prompt: C, uncached: 0, read: C - 1000, write5m: 0, write1h: 1000, write: null, output: 0 }, 0);
     expect([analyze(few).effectiveTtl.basis, analyze(few).estimate], "1-hour now, but its 5-minute gaps had no evidence: an estimate").toEqual(["label_1h", true]);
+  });
+  it("an expiry on a 5-minute label measured as 1 hour is still priced at the 5-minute write rate", () => {
+    const l = fiveMinute({ gapsCount: 12, rewritten: 0 });
+    const file = l.files["a"]!, last = file.last!.t;
+    addTurn(l, file, { t: last + 2 * H, model: "m", prompt: C, uncached: 0, read: 0, write5m: C, write1h: 0, write: null, output: 0 }, 0);   // 2 h later: rewritten
+    const a = analyze(l);
+    expect([a.effectiveTtl.fiveMinute, a.sim.pastTtl, a.sim.expired]).toEqual([3600, 1, 1]);
+    expect(a.sim.expiryCost, "C at write5m (1.25) − read (0.1), not the 1-hour write rate").toBeCloseTo(1.25 - 0.1, 6);
+  });
+  it("the service's fleet row counts the instances to switch to 1 hour", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-2010-svc-"));
+    try {
+      const expiring = fiveMinute({ gapsCount: 12, rewritten: 12 }), surviving = fiveMinute({ gapsCount: 12, rewritten: 0 });
+      writeFileSync(join(dir, "e.json"), JSON.stringify(expiring)); writeFileSync(join(dir, "s.json"), JSON.stringify(surviving));
+      const inst = (name: string, f: string) => ({ name, backend: "claude-code", workingDirectory: join(dir, `w-${name}`), ledgerPath: join(dir, f), claudeConfigDir: join(dir, "none") });
+      const svc = new CacheService({ instances: () => [inst("e", "e.json"), inst("s", "s.json")], claudeProjectsDir: () => join(dir, "none", "projects"), claudeKey: (d) => d,
+        codexSessionsDir: () => join(dir, "none"), listRollouts: () => [], metaPath: join(dir, "meta.json"), now: () => NOW });
+      const r = await svc.report("7d");
+      await svc.stop();
+      expect(r.instances.map((x) => [x.name, x.analysis?.recommendation.reason])).toEqual([["e", "switch_to_1h"], ["s", "never_expired"]]);
+      expect([r.fleet.switchTo1h, r.fleet.analysed]).toEqual([1, 2]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
   it("the 5m / 1h write mix in the window", () => {
     const l = fiveMinute({ gapsCount: 3, rewritten: 1 });
