@@ -147,6 +147,35 @@ describe("set_web_settings: as the page changes it", () => {
     expect(fm.webSettings.read().mods.installed.map((m: { name: string }) => m.name)).toEqual(["tagline"]);
     expect(set({ what: "mod", action: "uninstall", id: installed.id })).toMatchObject({ ok: true });
   });
+  it("mods (#2064 review): General never displaces the person's open review, and never installs a mod they imported from a file", async () => {
+    const { createHash } = await import("node:crypto");
+    const { checkModBundle } = await import("../src/web-mod-bundle.js");
+    const { agendVersion } = await import("../src/agent-whats-new.js");
+    const file = (t: string) => ({ sha256: createHash("sha256").update(t).digest("hex"), b64: Buffer.from(t).toString("base64") });
+    const bundle = (name: string) => JSON.stringify({ format: "agend-mod", v: 1, manifest: { name, version: "1.0.0", title: name, author: "alpha", contents: { identity: "identity.json" } },
+      files: { "identity.json": file(JSON.stringify({ tagline: name })) } });
+    const proposed = checkModBundle(bundle("proposed"), { agendVersion: agendVersion(), limits: fm.themeStore.limits(), effects: null });
+    if (!proposed.ok) throw new Error(JSON.stringify(proposed.problems));
+    expect(fm.mods.propose("alpha", bundle("proposed"), proposed.mod)).toMatchObject({ ok: true });
+    const person = fm.webSettings.read().person as string;
+    // The person imports a file on the page and is looking at its plan.
+    const theirs = fm.mods.stage(person, bundle("from-a-file"));
+    expect(theirs).toMatchObject({ ok: true });
+    expect(set({ what: "mod", action: "review", instance: "alpha" }), "theirs stays open").toMatchObject({ ok: false, error: "mod_review_open", detail: expect.stringContaining("file") });
+    expect(set({ what: "mod", action: "install", stage: theirs.stage, plan_hash: theirs.plan_hash, include: { identity: true } }), "a file's mod is the person's to install")
+      .toMatchObject({ ok: false, error: "mod_not_from_an_agent" });
+    expect(fm.mods.staged(person)?.stage, "their review is untouched").toBe(theirs.stage);
+    expect(fm.webSettings.read().mods.installed).toEqual([]);
+    expect(fm.mods.abort(person, theirs.stage)).toMatchObject({ ok: true });
+    // With nothing open General reviews the proposal; a second review waits for that one, which General may cancel.
+    const review = set({ what: "mod", action: "review", instance: "alpha" });
+    expect(review).toMatchObject({ ok: true, stage: expect.any(String) });
+    expect(set({ what: "mod", action: "review", instance: "alpha" })).toMatchObject({ ok: false, error: "mod_review_open", detail: expect.stringContaining("alpha's proposal") });
+    expect(set({ what: "mod", action: "cancel", stage: review.stage })).toMatchObject({ ok: true });
+    expect(set({ what: "mod", action: "review", instance: "alpha" })).toMatchObject({ ok: true });
+    expect(set({ what: "mod", action: "dismiss", instance: "alpha" })).toMatchObject({ ok: true });
+    fm.mods.abort(person, fm.mods.staged(person)?.stage);
+  });
   it("mods: a proposal that is not there is the store's refusal; an unknown action is named", () => {
     expect(set({ what: "mod", action: "review", instance: "alpha" })).toMatchObject({ ok: false });
     expect(set({ what: "mod", action: "lasers" })).toMatchObject({ ok: false, error: "mod" });

@@ -182,8 +182,21 @@ export class WebSettingsTools {
     const out = (r: { ok: boolean; error?: string; detail?: string; problems?: unknown }, body: () => Record<string, unknown>): Result =>
       r.ok ? { ok: true, ...body() } : failed(r.error ?? "mod", r.detail, r.problems);
     switch (c.action) {
-      case "review": { const r = mods.stageProposal(person, c.instance); return out(r, () => r.ok ? { stage: r.stage, plan: r.plan, plan_hash: r.plan_hash, note: "install it with the parts to apply (custom CSS is never ticked for you)" } : {}); }
+      case "review": {
+        // A person has one review open at a time: opening another would drop theirs (a file they are looking at on the page).
+        const open = mods.stageOrigin(person);
+        if (open) {
+          return failed("mod_review_open", open.proposal === null
+            ? "the person has a mod file open for review on the page; ask them to install or cancel it first"
+            : `a review of ${open.proposal}'s proposal is already open (yours, or the person's on the page); cancel yours with its stage, or ask them to finish`);
+        }
+        const r = mods.stageProposal(person, c.instance);
+        return out(r, () => r.ok ? { stage: r.stage, plan: r.plan, plan_hash: r.plan_hash, note: "install it with the parts to apply (custom CSS is never ticked for you)" } : {});
+      }
       case "install": {
+        // Only an agent's proposal: a mod the person imported from a file is theirs to install on the page.
+        const open = mods.stageOrigin(person);
+        if (open && open.stage === c.stage && open.proposal === null) return failed("mod_not_from_an_agent", "a mod the person imported from a file is installed on the page, by them");
         const r = mods.commit(person, { stage: c.stage, plan_hash: c.plan_hash, include: c.include, target: c.target });
         if (r.ok) this.deps.announce();
         return out(r, () => r.ok ? { id: r.id, applied: r.applied, ...(r.css ? { css: r.css } : {}) } : {});
