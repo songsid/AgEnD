@@ -55,15 +55,26 @@ describe("the page's resolver is the server's", () => {
     expect([C.PLACEMENTS, C.DEFAULT_PLACEMENTS]).toEqual([[...S.PLACEMENTS], [...S.DEFAULT_PLACEMENTS]]);
   });
   it("the same readable shades, colour values and resolution, on a spread of inputs", () => {
-    const hexes = ["#ffff00", "#000080", "#777777", "#0a62c2", "#33aaff", "#aa2244", "#ffffff", "#000000"];
+    // #757575 reads on the light page but not on the light sidebar; #808080 on the dark sidebar but not the dark page.
+    const hexes = ["#ffff00", "#000080", "#777777", "#0a62c2", "#33aaff", "#aa2244", "#ffffff", "#000000", "#757575", "#808080"];
     for (const hex of hexes) for (const mode of ["light", "dark"] as const) expect(C.readableShade(hex, mode), `${hex} ${mode}`).toBe(SC.readableShade(hex, mode));
     for (const c of ["preset:blue", "auto:sea", "#123456"]) for (const mode of ["light", "dark"] as const) expect(C.colorValue(c, mode)).toBe(S.identityColorValue(c as never, mode));
     const tiers = [{ auto: "auto:moss" }, { person: "preset:pink", agent: "#112233", role: "#445566", auto: "auto:sand" }, { agent: "preset:teal", auto: "auto:dusk" },
-      { role: "#abcdef", auto: "auto:sea" }, { agent: "bad", role: "nope", auto: "auto:clay" }];
+      { role: "#abcdef", auto: "auto:sea" }, { agent: "bad", role: "nope", auto: "auto:clay" },
+      { agent: "auto:sand", role: "#445566", auto: "auto:sea" }, { agent: "auto:sand", auto: "auto:moss" }];      // an agent never picks an automatic colour
     for (const t of tiers) for (const showThemes of [true, false]) expect(C.resolveColor(t, showThemes), JSON.stringify(t)).toEqual(SC.resolveIdentityColor(t as never, { showThemes }));
-    const places = [{}, { person: ["name"] }, { agent: ["ring"] }, { person: [], agent: ["bar"] }, { person: ["glow"] }];
+    const places = [{}, { person: ["name"] }, { agent: ["ring"] }, { person: [], agent: ["bar"] }, { person: ["glow"] }, { person: ["name", "name"], agent: ["ring"] }];
     for (const t of places) for (const showThemes of [true, false]) for (const hostDefault of [undefined, ["name"], [], "x"]) {
       expect(C.resolvePlaces(t, showThemes, hostDefault), JSON.stringify([t, showThemes, hostDefault])).toEqual(SC.resolvePlacements(t as never, { showThemes, hostDefault }));
+    }
+  });
+  it("colours as the server sends them are accepted, anything else is not; the same place lists", () => {
+    // The page checks the wire form (preset:<id>, auto:<id>, lower-case #rrggbb), never a person's typing.
+    for (const c of ["preset:blue", "auto:sea", "#0a62c2"]) expect(C.colorOk(c), c).toBe(c);
+    for (const c of ["#0A62C2", "#0a62c", "#0a62c2ff", "#gggggg", "0a62c2", "blue", "preset:nope", "auto:nope", "", null, 7]) expect(C.colorOk(c), String(c)).toBeNull();
+    for (const typed of ["blue", "preset:teal", "#ABC", "#0A62C2", "#123456"]) expect(C.colorOk(S.canonicalIdentityColor(typed)), typed).toBe(S.canonicalIdentityColor(typed));
+    for (const v of [[], ["name"], ["ring", "bar"], ["name", "name"], ["glow"], "name", null, [1], ["name", "bar", "ring", "name"]]) {
+      expect(C.placesOk(v), JSON.stringify(v)).toEqual(S.canonicalPlacements(v));
     }
   });
   it("a custom colour is drawn as it is; its name text uses each mode's readable shade", () => {
@@ -200,7 +211,9 @@ describe("Settings → Web appearance", () => {
     expect(host).toMatchObject({ "color.show": ["name", "bar", "ring"], "color.off": true });
   });
   it("Restore defaults puts the appearance settings back and turns this person's custom CSS off", async () => {
-    await setHost({ "color.show": ["name"], "color.off": true, "fx.show": false, "card.size": "l", "card.sizeByInstance": { alpha: "s" } });
+    await setHost({ "color.show": ["name"], "color.off": true, "fx.show": false, "card.size": "l", "card.sizeByInstance": { alpha: "s" },
+      "widget.sidebar": { spec: { v: 1, title: "Mine", items: [{ type: "stat", label: "Idle", bind: "fleet.idle" }] }, data: {} } });
+    expect(host["widget.sidebar"], "set before the restore").toBeTruthy();
     await mountSettings();
     const { restoreAppearanceDefaults } = await import("/ui/js/settings-appearance.js");
     expect(await restoreAppearanceDefaults()).toEqual({ ok: true });
