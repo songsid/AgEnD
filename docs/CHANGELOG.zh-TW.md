@@ -188,6 +188,7 @@
 - **網頁：Fleet 概覽多了「文件」連結（#1844）。** Fleet 頁的標題列有 **文件**，會在新分頁開啟專案的文件網站——dashboard 是中文時開繁體中文版，否則開英文版。手機上是一個書本圖示。
 
 ### 變更 (Changed)
+- **README 開頭多了一張圖（#1959）。** 圖裡是網頁儀表板（以示範資料繪製），旁邊是一支呈現同一段對話的手機示意圖，有淺色與深色兩版，跟著你的主題切換。產生這張圖的腳本放在 `docs/assets/readme/src/`，介面改了之後可以重新產生。
 - **送給忙碌中 Claude Code instance 的訊息，現在交給 Claude 自己的佇列，不再等目前回合結束（#1169），與 Codex 相同。** 已在真的 Claude Code 2.1.293 TUI 上驗證：
   - Claude 工作中送來的訊息會排進佇列，回合結束後送出；進行中的回合不會被打斷，訊息只送一次。
   - 工具執行中時，Claude 在該工具結束的時候接收訊息。
@@ -374,6 +375,7 @@
   - **記憶體：** 上傳改為邊收邊寫入磁碟，不再整個放在記憶體裡，大檔案下載也一樣。上傳停滯一分鐘或超過 30 分鐘就會中止，並刪掉已收到的部分。
 
 ### 修正 (Fixed)
+- **安裝途中時鐘被調整時，`/update` 失敗的機會大幅降低。** 只讓正在進行的更新自己的 npm 安裝通過的檢查，原本用掛鐘時間的文字比對更新程序的啟動時間；npm 執行期間只要時鐘被調整（NTP、VM 或 WSL 重新對時），更新程序就可能被當成已經結束而拒絕安裝，聊天裡只看到「npm error code 1」，重試通常就會成功。現在 Linux 上由這個版本寫下的鎖，會用核心記錄的程序啟動時間加上這次開機的識別來認更新程序，時鐘怎麼調都不受影響；macOS、以及較早 2.2 beta 的更新程序寫下的鎖（升級到這個版本的第一次），可容許 2 秒以內的時鐘調整，調整更多時仍可能被拒絕，重試即可。程序檢查在忙碌的主機上也有更多時間。安裝被拒絕時，聊天現在會顯示 AgEnD 自己的原因（「AgEnD cannot be installed here: …」），不再只有 npm 的結束代碼；更新程序本身是這個版本或更新版本的升級才會顯示。(#1947)
 - **`update_instance_config` 現在明確拒絕 `tool_set`（權限邊界 #804/#814）。** 在 config patch 中傳入 `tool_set` 會立即回傳明確的錯誤訊息——`"tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)"`——且不會寫入任何內容。先前此欄位會被靜默忽略。如需將 instance 標記為 coordinator：在 `fleet.yaml` 中加入 `tool_set: coordinator`，或使用網頁 UI 的 **Settings** 面板。
 - Kiro 原生 TUI 的 trust-all-tools 確認畫面改為 startup/runtime 共用結構式 selector（#849，A 部分）。AgEnD 從「No, exit」只送一次 Down，重新觀察游標確實位於單次 session 的「Yes, I accept」後才送 Enter。未知布局、游標未移動與「Yes, and don't ask again」保留給人處理；歷史引用不會收到同意按鍵。既有 model-picker hold 與 engine/session 身分鎖定不變。本次不開放 `kiro_ui: v3`；v3 startup/enablement 與後續 steering 驗證等有原生證據及使用者需求再議。
 
