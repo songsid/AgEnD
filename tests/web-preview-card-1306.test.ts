@@ -685,17 +685,20 @@ describe("the chat's renderer and a live preview (§6.2, #1408 §4)", () => {
   // shard 3 kept failing on it. Correctness never depended on the collection, only on these references going away.
   it("a card that left the page is held by nothing the chat keeps: the thread's nodes, a live preview, a refresh (#1332 review, #2032)", () => {
     const { thread, list } = threadAt(fresh().document);
+    const released = (node: any, card: any, key: string) => {
+      expect(list.contains(card), "it left the thread").toBe(false);
+      expect([...thread.nodes.values()].some((v: any) => v.node === node || v.node.contains(card)), "the thread's node map lets go").toBe(false);
+      expect([PV.liveCount(), !!PV.liveFrame(key)], "the preview module lets go of its frame").toEqual([0, false]);
+    };
+    // Another message takes its place (draw's path).
     thread.render([agent(1, FENCE("<p>a</p>"))]);
     const node = list.children[0], card = list.querySelector(".html-card");
     expect(card?.querySelector(".pv-run"), "the card was really built").not.toBeNull();
     runPreview(node, 1);
     expect([PV.liveCount(), !!PV.liveFrame(keyOf(1))], "its preview is running").toEqual([1, true]);
-    thread.render([]);
-    expect(list.contains(card), "it left the thread").toBe(false);
-    expect([...thread.nodes.values()].some((v: any) => v.node === node || v.node.contains(card)), "the thread's node map lets go").toBe(false);
-    expect([PV.liveCount(), !!PV.liveFrame(keyOf(1))], "the preview module lets go of its frame").toEqual([0, false]);
-    // A refresh reaches the cards in the thread only: turning previews off rewrites the new card, never the old one.
     thread.render([agent(2, FENCE("<p>b</p>"))]);
+    released(node, card, keyOf(1));
+    // A refresh reaches the cards in the thread only: turning previews off rewrites the new card, never the old one.
     const next = list.querySelector(".html-card"), oldNote = card!.querySelector(".pv-note")?.textContent, nextNote = next.querySelector(".pv-note")?.textContent;
     PV.setNever(true);
     try {
@@ -704,5 +707,12 @@ describe("the chat's renderer and a live preview (§6.2, #1408 §4)", () => {
       expect(next.querySelector(".pv-note").textContent).not.toBe(nextNote);
       expect(card!.querySelector(".pv-note")?.textContent, "the card that left does not").toBe(oldNote);
     } finally { PV.setNever(false); }
+    // The thread emptied (render's own path).
+    const node2 = list.children[0], card2 = list.querySelector(".html-card");
+    runPreview(node2, 2);
+    expect(PV.liveCount()).toBe(1);
+    thread.render([]);
+    released(node2, card2, keyOf(2));
+    expect(thread.nodes.size).toBe(0);
   });
 });
