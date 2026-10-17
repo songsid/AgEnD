@@ -83,7 +83,8 @@ export function buildOrgView(org, app) {
   return { top: general.map(node), teams, rest: { nodes: rest, counts: counts(rest) }, total: all.length, counts: counts(all) };
 }
 
-function Summary({ counts }) {
+/** The states in a group, most pressing first, with how many are in each (the canvas's bar shows it too). */
+export function OrgSummary({ counts }) {
   return html`<ul class="org-counts">${counts.map(([s, n]) => html`<li key=${s} class=${`org-count st-${s}`}>
     <span class=${`dot ${DOT[s]}`} aria-hidden="true"></span>${n} ${to(s)}</li>`)}</ul>`;
 }
@@ -116,19 +117,22 @@ function Team({ id, name, description, nodes, counts, icon }) {
     <header class="org-team-head">
       <h3 id=${id}><${Icon} name=${icon} size=${16} /><span>${name}</span></h3>
       ${description ? html`<p class="org-team-desc">${description}</p>` : null}
-      <div class="org-team-sub"><span class="muted">${count("member", "members", nodes.length)}</span><${Summary} counts=${counts} /></div>
+      <div class="org-team-sub"><span class="muted">${count("member", "members", nodes.length)}</span><${OrgSummary} counts=${counts} /></div>
     </header>
     <ul class="org-nodes">${nodes.map((n) => html`<${Node} key=${n.name} n=${n} />`)}</ul>
   </section>`;
 }
 
-/** The tab's body. `org`: what /ui/org answered (the Fleet panel's loader); `app`: the app store. */
-export function OrgChart({ org, app }) {
+/**
+ * The chart as a list. `org`: what /ui/org answered (the Fleet panel's loader); `app`: the app store. #1918: `bare` when
+ * the canvas's bar (fleet-canvas.js) already shows the count and the states.
+ */
+export function OrgChart({ org, app, bare = false }) {
   if (!app.ready) return html`<${Skeleton} lines=${4} />`;
   const view = buildOrgView(org, app);
   if (!view.total) return html`<${Empty} icon="team" title=${to("empty")} hint=${to("emptyHint")} />`;
   return html`<div class="org">
-    <div class="list-head org-head"><span>${count("instance", "instances", view.total)}</span><${Summary} counts=${view.counts} /></div>
+    ${bare ? null : html`<div class="list-head org-head"><span>${count("instance", "instances", view.total)}</span><${OrgSummary} counts=${view.counts} /></div>`}
     ${view.top.length ? html`<section class="org-top" aria-labelledby="org-general">
       <h3 id="org-general" class="sr-only">${to("general")}</h3>
       <ul class="org-nodes">${view.top.map((n) => html`<${Node} key=${n.name} n=${n} />`)}</ul>
