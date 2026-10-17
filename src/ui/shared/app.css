@@ -227,6 +227,8 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .panel-title h1 { font-size: var(--fs-lg); line-height: var(--lh-lg); font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; outline: none; }
 .panel-sub { color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; }
 .status { display: inline-flex; align-items: center; gap: 6px; }
+/* #2015: the largest processes, after the host memory chip's text. */
+.host-mem-top { margin-left: var(--s-2); opacity: 0.8; overflow-wrap: anywhere; }
 .panel-actions { display: flex; align-items: center; gap: var(--s-1); }
 /* #1523 N2: the instance view switch — beside the title on a wide screen; on a phone, a row of tabs under the header. */
 .inst-switch.seg { padding: 0; margin: 0; width: auto; max-width: none; flex-shrink: 0; }

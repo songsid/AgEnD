@@ -22,10 +22,19 @@ import { OrgChart } from "./fleet-org.js";
 import { labelOf } from "/assets/instance-nav.js";
 import { CacheReport } from "./fleet-cache.js";
 
+/** #2015: one of the largest processes as text: "python3 18.1 GB (dev-a)". */
+export function memoryHogText(p) {
+  const size = p.rssBytes >= 1024 ** 3 ? `${(p.rssBytes / 1024 ** 3).toFixed(1)} GB` : `${Math.round(p.rssBytes / 1024 ** 2)} MB`;
+  const owner = p.owner === "instance" && p.instance ? p.instance
+    : t(p.owner === "fleet" ? "fleet.hostMemory_ownerFleet" : p.owner === "tmux" ? "fleet.hostMemory_ownerTmux" : "fleet.hostMemory_ownerOther");
+  return `${p.name} ${size} (${owner})`;
+}
+
 register("fleet", {
   en: {
     hostMemory_elevated: "Host memory pressure: elevated — new agents start one at a time, at least 5 s apart",
     hostMemory_critical: "Host memory pressure: critical — new agents wait for memory to recover",
+    hostMemory_top: "Largest: {0}", hostMemory_ownerFleet: "the fleet", hostMemory_ownerTmux: "tmux", hostMemory_ownerOther: "not an instance",
     title: "Fleet", tasks: "Tasks", schedules: "Schedules", teams: "Teams", org: "Org chart", cache: "Cache", config: "Config",
     docs: "Docs", docsNewTab: "Docs (opens in a new tab)",
     newTask: "New task", newSchedule: "New schedule", newTeam: "New team",
@@ -57,6 +66,7 @@ register("fleet", {
   "zh-TW": {
     hostMemory_elevated: "主機記憶體壓力偏高：新的 agent 一次啟動一個，至少間隔 5 秒",
     hostMemory_critical: "主機記憶體壓力嚴重：新的 agent 會等記憶體恢復再啟動",
+    hostMemory_top: "最大：{0}", hostMemory_ownerFleet: "fleet 本身", hostMemory_ownerTmux: "tmux", hostMemory_ownerOther: "不屬於任何 instance",
     title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", org: "組織圖", cache: "快取", config: "設定",
     docs: "文件", docsNewTab: "文件（在新分頁開啟）",
     newTask: "新增 task", newSchedule: "新增排程", newTeam: "新增 team",
@@ -132,8 +142,10 @@ export function FleetPanel({ route, navKey }) {
   useEffect(() => { setTitle(`${t("fleet.title")} · ${t(`fleet.${tab}`)}`); }, [tab, navKey]);
   const Body = { tasks: Tasks, schedules: Schedules, teams: Teams, org: Org, cache: Cache, config: Config }[tab] || Tasks;
   // #1685: host memory pressure slowing or holding new agents — shown here, where macOS's routine "elevated" is not a chat notice.
-  const { hostMemory } = useStore(appStore);
-  const sub = hostMemory ? html`<span class=${`status host-mem ${hostMemory}`} role="status"><span class=${`dot ${hostMemory === "critical" ? "bad" : "warn"}`} aria-hidden="true"></span>${t(`fleet.hostMemory_${hostMemory}`)}</span>` : null;
+  const { hostMemory, hostMemoryTop } = useStore(appStore);
+  // #2015: and which processes hold the most, and whose — text only (never chat, #1712).
+  const top = hostMemory && hostMemoryTop?.length ? t("fleet.hostMemory_top", hostMemoryTop.map(memoryHogText).join(" · ")) : "";
+  const sub = hostMemory ? html`<span class=${`status host-mem ${hostMemory}`} role="status"><span class=${`dot ${hostMemory === "critical" ? "bad" : "warn"}`} aria-hidden="true"></span>${t(`fleet.hostMemory_${hostMemory}`)}${top ? html`<span class="host-mem-top">${top}</span>` : null}</span>` : null;
   return html`<div data-effect-panel="fleet" class="panel p-fleet">
     <${PanelHeader} title=${t("fleet.title")} sub=${sub}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
     <nav data-trust="panel-navigation" class="seg" aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
