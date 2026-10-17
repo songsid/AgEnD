@@ -80,6 +80,11 @@ export interface ModContext {
   agendVersion: string | null;
   limits: AppearanceLimits;
   effects: ModEffectChecker | null;
+  /**
+   * #2017: whether a theme's placements must name effects that play in chat. On for a new import or proposal (the
+   * default); off when an installed mod's file is read again — what was installed before the rule stays as it was.
+   */
+  placementRegions?: boolean;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
@@ -258,6 +263,9 @@ export function checkModBundle(text: string, ctx: ModContext): { ok: true; mod: 
             if (!effectPaths.has(p.effect)) { bad(where, `${p.effect} is not one of this bundle's effects`); return; }
             const entry = mod.effects.find(e => e.path === p.effect);
             if (!entry || !ctx.effects) return;                      // its own problem is reported already
+            // #2017: a chat placement needs an effect that plays in chat. A non-chat effect may still come as a library
+            // entry (contents.effects) without being placed.
+            if (ctx.placementRegions !== false && !entry.summary.regions.includes("chat")) { bad(where, `effect_region: ${p.effect}'s regions do not include chat`); return; }
             const r = ctx.effects.params(entry.manifest, p.params ?? {});
             if (!r.ok) { bad(`${where}.params`, r.error); return; }
             if (effects.some(e => e.effect === p.effect)) { bad(where, "placed twice"); return; }

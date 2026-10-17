@@ -175,6 +175,21 @@ describe("the bundle check", () => {
     const bad = bundle({ files: { "effects/snow/effect.json": file(JSON.stringify({ ...EFFECT, runtime: "html" })), "effects/snow/worker.js": file("agend.ready()") }, contents: { effects: ["effects/snow"] } });
     expect(problems(bad, c).some(p => p.startsWith("effects.effects/snow/"))).toBe(true);
   });
+  it("#2017: a theme may place only effects that play in chat; a non-chat effect may still come as a library entry", () => {
+    const c = ctx({ effects: B.cw1EffectChecker() });
+    const GLOW = { ...EFFECT, name: "glow", title: "Glow", regions: ["header", "page"] };
+    const doc = (placed: unknown) => bundle({ files: {
+      "effects/snow/effect.json": file(JSON.stringify(EFFECT)), "effects/snow/worker.js": file("agend.ready()"),
+      "effects/glow/effect.json": file(JSON.stringify(GLOW)), "effects/glow/worker.js": file("agend.ready()//glow"),
+      "theme.json": file(JSON.stringify({ v: 1, accent: "#8b5cf6", background: { image: "pictures/bg.png", fit: "cover", opacity: 0.4 }, avatar: "pictures/me.png", effects: placed })) },
+      contents: { effects: ["effects/snow", "effects/glow"] } });
+    const fine = check(doc([{ effect: "effects/snow" }]), c);
+    expect(fine.ok, JSON.stringify(!fine.ok && fine.problems)).toBe(true);
+    if (fine.ok) expect(fine.mod.effects.map(e => e.path), "the non-chat effect is a library entry").toEqual(["effects/snow", "effects/glow"]);
+    const refused = check(doc([{ effect: "effects/snow" }, { effect: "effects/glow" }]), c);
+    expect(refused.ok, "the whole mod is refused: nothing to stage or commit").toBe(false);
+    expect(problems(doc([{ effect: "effects/snow" }, { effect: "effects/glow" }]), c)).toEqual(["theme.effects.1: effect_region: effects/glow's regions do not include chat"]);
+  });
   it("export → import: what a fleet builds, it accepts (and card pictures never travel)", () => {
     const built = buildModBundle({ name: "out", version: "2.0.0", title: "Out" }, {
       theme: { theme: { v: 1, accent: "#8b5cf6", background: { image: "a".repeat(32), fit: "contain", opacity: 0.5 }, card: { tagline: "x", portrait: "b".repeat(32) } }, picture: () => ({ bytes: BG, kind: "png" }) },

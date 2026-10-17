@@ -251,8 +251,9 @@ smallest valid `effect.json`:
   `params`.
   - `name`: 1..32 characters, starting with a-z or 0-9, then a-z, 0-9 and -.
   - `title` (1..40) and `description` (up to 200): one line each, counted in characters as people see them.
-  - `regions`: 1–5 of `chat`, `sidebar`, `header`, `page`, `box`. **Include `chat` to play in your chat**: an effect
-    without it can be placed but never plays there. The other regions are ones a person may choose it for.
+  - `regions`: 1–5 of `chat`, `sidebar`, `header`, `page`, `box`. **Include `chat` to place it in a chat**: applying
+    one without it is refused (`effect_region`), and so is a mod placing it. The other regions are ones a person may
+    choose it for.
   - `layer`: `behind` (under the content) or `front` (over it).
   - `wants`: up to 5 of `pointer`, `state`, `reply`, `mention`, `theme`. **`mention` is reserved and never fires in
     2.3.0** (see Effect event availability).
@@ -272,9 +273,9 @@ smallest valid `effect.json`:
 - `list_web_effects` — your own effects and those a person shared with you: `id`, `name`, `title`, `regions`, `layer`,
   `bytes`, `latest_profile`.
 - `apply_web_effect { id, params? }` places one in your chat, **at most two at a time**, with the declared `params`
-  (unknown or out of range → `effect_params`). `remove_web_effect { id? }` takes one out, or all of them. Both are
-  changes (30 s apart, 10 an hour), and are refused while a person has locked your theme (`locked`) or when the fleet
-  turned agent changes off (`theme_editing_off`).
+  (unknown or out of range → `effect_params`; regions without `chat` → `effect_region`). `remove_web_effect { id? }`
+  takes one out, or all of them. Both are changes (30 s apart, 10 an hour), and are refused while a person has locked
+  your theme (`locked`) or when the fleet turned agent changes off (`theme_editing_off`).
 - `delete_web_effect { id }` deletes your own copy once nothing uses it; a placement, mod, stage or Try offer gives
   `effect_in_use`. Another's copy is never removed.
 - `profile_web_effect { id }` — how it ran on viewers' pages, per device class: `unmeasured`, or `reported` with

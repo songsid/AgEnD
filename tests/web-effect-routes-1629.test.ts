@@ -17,7 +17,7 @@ import { encodeEffectFiles } from "../src/web-effect-upload.js";
 const roots:string[]=[], servers:Server[]=[];
 afterEach(async()=>{ vi.restoreAllMocks(); await Promise.all(servers.splice(0).map(s=>new Promise<void>(resolve=>{s.closeAllConnections();s.close(()=>resolve());})));for(const p of roots.splice(0))rmSync(p,{recursive:true,force:true}); });
 const owner=(id:string)=>({adapterId:"discord",userId:id});
-const input=()=>encodeEffectFiles(new Map([["effect.json",Buffer.from(JSON.stringify({v:1,runtime:"canvas-worker-v1",worker:"worker.js",name:"fixture",title:"Fixture",regions:["chat"],layer:"front",wants:[]}))],["worker.js",Buffer.from("agend.ready()")]]))!;
+const input=(regions=["chat"],tag="")=>encodeEffectFiles(new Map([["effect.json",Buffer.from(JSON.stringify({v:1,runtime:"canvas-worker-v1",worker:"worker.js",name:"fixture",title:"Fixture",regions,layer:"front",wants:[]}))],["worker.js",Buffer.from(`agend.ready()${tag}`)]]))!;
 const profile=()=>({v:1,device:"standard",verdict:"ok",reason:null,samples:1,fps_p50:60,fps_p10:60,fps_floor:54,long_task_p95:null,long_task_samples:0,attributed_long_task_p95:null,attributed_samples:0,attribution:"unknown",load_ms:null});
 async function fixture(idleMs?:number){
  mkdirSync(".artifacts",{recursive:true});const root=mkdtempSync(join(process.cwd(),".artifacts/effect-routes-"));roots.push(root);
@@ -31,6 +31,34 @@ async function fixture(idleMs?:number){
  const call=(method:string,path:string,headers:Record<string,string>={},body?:Buffer|string)=>new Promise<{status:number;body:any;headers:Record<string,unknown>} >((resolve,reject)=>{const r=request({host:"127.0.0.1",port,method,path,headers},res=>{const chunks:Buffer[]=[];res.on("data",c=>chunks.push(c));res.on("end",()=>resolve({status:res.statusCode!,headers:res.headers,body:res.headers["content-type"]==="image/png"?Buffer.concat(chunks):JSON.parse(Buffer.concat(chunks).toString())}));});r.on("error",reject);r.setTimeout(5000,()=>r.destroy(Error("scratch HTTP deadline")));r.end(body);});
  return {root,library,themes,profiles,sessions,token,service,ctx,session,call,changed,origin,at:(n:number)=>{wall=n;}};
 }
+describe("#2017 a chat placement needs an effect that plays in chat (the person's route)",()=>{
+ it("refused with 400 effect_region before any write or notice; uploaded and personal choices still take a non-chat effect; read access first",async()=>{
+  const f=await fixture(),a=f.session(),b=f.session("bob");
+  const up=await f.call("POST","/ui/effects/upload",a.headers,input(["header"]));expect(up.status,"a non-chat effect is a valid upload").toBe(200);const header=up.body.id;
+  expect(f.service.validateOwnerSelection(webPersonKey(owner("alice")),"fx.header",header),"and a valid personal header choice").toBeNull();
+  const rev=f.themes.rev();f.changed.mockClear();
+  expect(await f.call("POST","/ui/effects/apply",b.headers,JSON.stringify({instance:"own",id:header})),"unreadable stays not_found").toMatchObject({status:404,body:{error:"not_found"}});
+  for(let i=0;i<2;i++)expect(await f.call("POST","/ui/effects/apply",a.headers,JSON.stringify({instance:"own",id:header}))).toMatchObject({status:400,body:{error:"effect_region",message:"This effect's regions do not include chat."}});
+  expect([f.themes.get("own").placements.effects,f.themes.rev(),f.changed.mock.calls.length]).toEqual([[],rev,0]);
+  const chat=(await f.call("POST","/ui/effects/upload",a.headers,input(["chat"],"//chat"))).body.id;
+  expect((await f.call("POST","/ui/effects/apply",a.headers,JSON.stringify({instance:"own",id:chat}))).status).toBe(200);
+ });
+ it("an older placement without chat survives reads, is kept beside a new one, and can be removed",async()=>{
+  const f=await fixture(),a=f.session();
+  const header=(await f.call("POST","/ui/effects/upload",a.headers,input(["header"]))).body.id,chat=(await f.call("POST","/ui/effects/upload",a.headers,input(["chat"],"//chat"))).body.id;
+  expect(f.themes.setPlacements("own",{effects:[header]},"human",()=>null).ok,"stored before #2017").toBe(true);
+  const bob=f.session("bob");
+  expect(await f.call("POST","/ui/effects/apply",bob.headers,JSON.stringify({instance:"own",id:header})),"placed here, but bob can't read it: not_found, never effect_region").toMatchObject({status:404,body:{error:"not_found"}});
+  const read=await f.call("GET",`/ui/effects/placements?instance=own&ownerEpoch=${a.epoch}`,a.headers);
+  expect([read.status,read.body.effects.map((p:{id:string})=>p.id)],"still readable, for cleanup").toEqual([200,[header]]);
+  expect((await f.call("POST","/ui/effects/apply",a.headers,JSON.stringify({instance:"own",id:chat}))).status).toBe(200);
+  expect(f.themes.get("own").placements.effects.map(p=>p.id)).toEqual([header,chat]);
+  expect((await f.call("POST","/ui/effects/apply",a.headers,JSON.stringify({instance:"own",id:header}))).body.error).toBe("effect_region");
+  expect((await f.call("POST","/ui/effects/remove",a.headers,JSON.stringify({instance:"own",id:header}))).body).toMatchObject({removed:[header]});
+  expect(f.themes.get("own").placements.effects.map(p=>p.id)).toEqual([chat]);
+ });
+});
+
 describe("#1629 human-only effects routes",()=>{
  it("real session upload/list/apply/resource/report/remove/delete, with no implicit claim or export grant",async()=>{
   const f=await fixture(),a=f.session(),b=f.session("bob");const upload=await f.call("POST","/ui/effects/upload",a.headers,input());expect(upload.status).toBe(200);const id=upload.body.id;

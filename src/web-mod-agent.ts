@@ -20,6 +20,7 @@ import type { ModStore } from "./web-mod-store.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import { AGENT_WIDGET_SLOTS } from "./web-widget.js";
 import { canonicalText } from "./web-theme.js";
+import { filesPlayInChat } from "./web-effect.js";
 
 /** An exported mod that fits one message is sent whole; a larger one is fetched in parts (as a preview is). */
 export const MOD_INLINE_BYTES = 600 * 1024;
@@ -75,7 +76,8 @@ export class AgentMods {
     const { card, ...look } = rec.theme;
     let omitted = 0;
     if (Object.keys(look).length > 1 || rec.placements.effects.length) {
-      const effects = rec.placements.effects.flatMap(p => { const e = this.deps.readOwnEffect?.(instance, p.id); if (!e) { omitted++; return []; } return [{ name: e.name, files: e.files, params: p.params ?? {} }]; });
+      // #2017: an older placement of an effect that doesn't play in chat stays out (a mod can't place it): counted.
+      const effects = rec.placements.effects.flatMap(p => { const e = this.deps.readOwnEffect?.(instance, p.id); if (!e || !filesPlayInChat(e.files)) { omitted++; return []; } return [{ name: e.name, files: e.files, params: p.params ?? {} }]; });
       // A default look whose placed effects are all someone else's has nothing of its own to carry (#1910 review).
       if (Object.keys(look).length > 1 || effects.length) parts.theme = { theme: { ...look, v: 1 }, picture: id => { const a = rec.assets.find(x => x.id === id); const b = this.deps.themes.asset(instance, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; }, effects };
     }
