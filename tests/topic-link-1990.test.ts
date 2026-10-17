@@ -247,7 +247,7 @@ describe("Telegram adapter: text_link entities", () => {
 });
 
 describe("Discord adapter: guild membership and the leftover-token strip", () => {
-  function discord(fetchMember: (id: string) => Promise<unknown>) {
+  function discord(fetchMember: (arg: unknown) => Promise<unknown>) {
     const a = new DiscordAdapter({ id: "discord", botToken: "t", accessManager: { canRead: () => true, canWrite: () => true } as any, inboxDir: tmp(), guildId: GUILD } as any);
     const guilds = { fetch: vi.fn(async (id: string) => { expect(id).toBe(GUILD); return { members: { fetch: fetchMember } }; }) };
     (a as any).readyClient = async () => ({ guilds });
@@ -260,6 +260,18 @@ describe("Discord adapter: guild membership and the leftover-token strip", () =>
     expect(await other.a.isGroupMember("999999999999999999", "123456789012345678")).toBe(false);   // another guild: never asked
     expect(await other.a.isGroupMember(GUILD, "not-an-id")).toBe(false);
     expect(other.guilds.fetch).not.toHaveBeenCalled();
+  });
+  it("#1997 review: always a read from Discord — a member still in the cache who has left is not one", async () => {
+    // discord.js returns a cached member for fetch(id) / force:false without asking Discord; with force it asks.
+    const fetchMember = vi.fn(async (arg: unknown) => {
+      if (typeof arg === "string" || !(arg as { force?: boolean }).force) return { id: "123456789012345678" };
+      throw Object.assign(new Error("Unknown Member"), { code: 10007 });
+    });
+    const { a } = discord(fetchMember);
+    await expect(a.isGroupMember(GUILD, "123456789012345678")).rejects.toThrow("Unknown Member");
+    expect(fetchMember).toHaveBeenCalledWith({ user: "123456789012345678", force: true });
+    // …and GroupMembership turns that rejection into no links.
+    expect(await new GroupMembership({ now: () => 0 }).isMember(a, GUILD, "123456789012345678")).toBe(false);
   });
   it("a token that reaches sendText unrendered goes out as its label", async () => {
     const { a } = discord(async () => ({}));

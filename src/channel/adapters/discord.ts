@@ -1447,7 +1447,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   async isGroupMember(groupId: string, userId: string): Promise<boolean> {
     if (!/^\d{5,25}$/.test(userId) || !groupId || groupId !== this.guildId) return false;
     const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
-    await guild.members.fetch(userId);
+    // force: a read from Discord, never the member cache — without the GuildMembers intent a member who left can
+    // stay cached, and each ten-minute recheck would confirm them again.
+    await guild.members.fetch({ user: userId, force: true });
     return true;
   }
 
