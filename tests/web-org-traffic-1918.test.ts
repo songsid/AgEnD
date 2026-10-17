@@ -90,6 +90,20 @@ describe("the store", () => {
     expect(s.load(null, 7)).toBe(true);                                       // nothing in flight any more
     expect(s.items()).toEqual([]);
   });
+  it("a snapshot that has a drawn line as delivered starts its fade (the public link has no other news of it); FADE_MS later it goes", () => {
+    const s = T.createTrafficStore();
+    s.apply(it_(1, "a", "b", "delivering"), 0);
+    expect(s.load({ items: [it_(1, "a", "b", "delivered")] }, 100)).toBe(true);
+    expect(s.items()).toEqual([expect.objectContaining({ id: id(1), state: "delivered", fading: true })]);
+    expect(s.load({ items: [it_(1, "a", "b", "delivered")] }, 200), "the same again: still fading from the first").toBe(false);
+    expect(s.sweep(100 + T.FADE_MS - 1)).toBe(false);
+    expect(s.sweep(100 + T.FADE_MS)).toBe(true);
+    expect(s.items()).toEqual([]);
+    // Consumed in the snapshot ends a drawn line at once.
+    s.apply(it_(2, "a", "c", "queued"), 300);
+    expect(s.load({ items: [it_(2, "a", "c", "consumed")] }, 400)).toBe(true);
+    expect(s.items()).toEqual([]);
+  });
 });
 
 describe("edges", () => {
@@ -195,19 +209,27 @@ describe("the page", () => {
     await vi.advanceTimersByTimeAsync(T.POLL_MS);
     expect(reads).toBe(2);
     expect(flows()).toEqual(["h-send ph-live"]);
+    // Delivered in the next snapshot: the line fades (no stream to say so), then goes.
+    snapshot = { now: "", items: [it_(5, "nova", "juno", "delivered", "send")] };
+    await vi.advanceTimersByTimeAsync(T.POLL_MS);
+    expect(flows()).toEqual(["h-send ph-fading"]);
+    await vi.advanceTimersByTimeAsync(T.FADE_MS + 1100);
+    expect(flows()).toEqual([]);
+    snapshot = { now: "", items: [] };
+    const n = reads;
     (p.document as any).hidden = true;
     await vi.advanceTimersByTimeAsync(T.POLL_MS * 3);
-    expect(reads, "hidden: no reads").toBe(2);
+    expect(reads, "hidden: no reads").toBe(n);
     (p.document as any).hidden = false;
     delete p.document.body.dataset.webTransport;
     emit("connection", "live"); await vi.advanceTimersByTimeAsync(10);
-    expect(reads).toBe(3);
+    expect(reads).toBe(n + 1);
     await vi.advanceTimersByTimeAsync(T.POLL_MS * 2);
-    expect(reads, "a live stream: no polling").toBe(3);
+    expect(reads, "a live stream: no polling").toBe(n + 1);
     // A stream that fell back to polling /ui/poll (no traffic there): the snapshot again.
     app.appStore.set((s: any) => ({ ...s, connection: "polling" }));
     await vi.advanceTimersByTimeAsync(T.POLL_MS);
-    expect(reads).toBe(4);
+    expect(reads).toBe(n + 2);
   });
   it("zoomed out past FAR_K: lines per team pair", async () => {
     await mount();

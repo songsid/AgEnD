@@ -63,10 +63,11 @@ export function createTrafficStore() {
       const listed = new Set(list.map((i) => i.id));
       let changed = false;
       for (const [id, e] of items) if (!listed.has(id) && LIVE.has(e.item.state)) { finish(id); changed = true; }
-      // A message the snapshot already has as finished is not drawn now (it finished up to two minutes ago).
+      // Delivered, for a line drawn here: it fades now (with no stream, the snapshot is the only news of it). Any other
+      // finished message is not drawn (it finished up to two minutes ago), and an ended one goes.
       for (const it of list) {
-        if (LIVE.has(it.state)) changed = store.apply(it, now) || changed;
-        else if (!items.has(it.id) || it.state !== "delivered") { const had = items.has(it.id); finish(it.id); changed = changed || had; }
+        if (LIVE.has(it.state) || (it.state === "delivered" && items.has(it.id))) changed = store.apply(it, now) || changed;
+        else { const had = items.has(it.id); finish(it.id); changed = changed || had; }
       }
       return changed;
     },
