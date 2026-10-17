@@ -1422,6 +1422,10 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .s-fx-owner-row{display:flex;align-items:end;flex-wrap:wrap;gap:var(--s-2);margin-top:var(--s-2)}
 .s-fx-owner-row>label{display:flex;flex-direction:column;gap:var(--s-1);min-width:0;flex:1}
 
+/* #2044: the effect frame's document declares no colour scheme (light). An iframe whose own colour scheme differs
+   from its document's gets an opaque backdrop, so under the dark theme the frame hid the whole chat: keep them equal. */
+.agend-effect-frame { color-scheme: normal !important; }
+
 /* #1629: host-created static poster IMG; geometry and visibility belong to the trusted CSSOM binding. */
 .agend-effect-poster { object-fit: cover !important; object-position: center !important; user-select: none; }
 
