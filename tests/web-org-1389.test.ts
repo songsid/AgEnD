@@ -186,6 +186,7 @@ beforeEach(async () => {
   vi.useRealTimers();
   await p.unmount();
   reqs = []; org = ORG;
+  localStorage.setItem("agend_org_mode", "list");                       // #1918: these are the list's tests (the canvas opens by default)
   app.appStore.set({ ready: true, instances: INSTANCES, exec: { lead: "working", "web-dev": "idle", newbie: "stuck" }, awaiting: {}, needs: [] });
 });
 const mount = (key = "fleet:org|1|en") => p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "org" }, navKey: key }));

@@ -18,7 +18,7 @@ import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { confirmedWrite } from "./settings-confirm.js";
-import { OrgChart } from "./fleet-org.js";
+import { OrgCanvas } from "./fleet-canvas.js";
 import { labelOf } from "/assets/instance-nav.js";
 import { CacheReport } from "./fleet-cache.js";
 
@@ -267,11 +267,11 @@ function Teams({ lease }) {
   ${editing ? html`<${CreateTeam} team=${editing} onClose=${() => setEditing(null)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
 }
 
-/** #1389: the org chart — its structure read once per opening, its live state from the app store (fleet-org.js). */
+/** #1389: the org chart — its structure read once per opening, its live state from the app store. #1918: a canvas, or the list (fleet-canvas.js). */
 function Org({ lease }) {
   const state = useLoad(lease, "/ui/org", 0);
   const app = useStore(appStore);
-  return html`<${Loaded} state=${state}>${(org) => html`<${OrgChart} org=${org} app=${app} />`}</${Loaded}>`;
+  return html`<${Loaded} state=${state}>${(org) => html`<${OrgCanvas} org=${org} app=${app} />`}</${Loaded}>`;
 }
 
 /** #1468: the prompt-cache analysis — one read per opening and per window chosen; Refresh reads again (fleet-cache.js). */
