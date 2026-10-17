@@ -34,7 +34,7 @@ const { effectiveAppearanceLimits } = await import("../src/web-appearance-limits
 const { checkWidgetSpec } = await import("../src/web-widget.js");
 
 const dirs: string[] = [];
-afterEach(() => { vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "agend-mods-agent-")); dirs.push(d); return d; };
 
 const crc = (b: Buffer) => { let c = ~0; for (const x of b) { c ^= x; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); } return (~c) >>> 0; };
@@ -343,10 +343,11 @@ describe("wiring", () => {
     const { TOOLS } = await import("../src/channel/mcp-tools.js");
     expect(TOOLS.map((t: { name: string }) => t.name).filter((n: string) => /import_web_mod|install_web_mod/.test(n)), "agents never import").toEqual([]);
   });
-  it("the daemon: export fetched in parts and written to .agend/mods; propose read here and sent in parts; every IPC message < 1 MiB", async () => {
+  it.each([false, true])("daemon mod export / propose, IPC < 1 MiB (state workspace=%s)", async classic => {
     const s = setup();
     dress(s, "a", noisy());
-    const ws = tmp();
+    const home = tmp(), ws = classic ? join(home, "workspaces/a") : tmp();
+    mkdirSync(ws, { recursive: true }); vi.stubEnv("AGEND_HOME", home);
     const { Daemon } = await import("../src/daemon.js");
     const daemon = new Daemon("a", { working_directory: ws, log_level: "error", restart_policy: { max_retries: 1, backoff: "exponential", reset_after: 300 },
       context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 } } as never, join(ws, ".instance"), true, undefined, undefined, pino({ level: "silent" }) as never) as any;
@@ -370,7 +371,7 @@ describe("wiring", () => {
     expect((send.mock.calls[1]![1] as any).result).toMatchObject({ proposed: { name: "again" } });
     expect(Math.max(...sizes)).toBeLessThan(1024 * 1024);
   }, 60_000);
-  it("agend-agent mod export / mod propose", async () => {
+  it.each([false, true])("agend-agent mod export / propose (state workspace=%s)", async classic => {
     const { createServer } = await import("node:http");
     const { execFile } = await vi.importActual<typeof import("node:child_process")>("node:child_process");
     const { pathToFileURL } = await import("node:url");
@@ -383,7 +384,8 @@ describe("wiring", () => {
     }); });
     await new Promise<void>(r => server.listen(0, "127.0.0.1", () => r()));
     const port = (server.address() as { port: number }).port;
-    const home = tmp(), ws = tmp();
+    const home = tmp(), ws = classic ? join(home, "workspaces/a") : tmp();
+    mkdirSync(ws, { recursive: true });
     const run = (...argv: string[]) => new Promise<string>(resolve => execFile(process.execPath, ["--import", pathToFileURL(join(process.cwd(), "node_modules/tsx/dist/loader.mjs")).href, join(process.cwd(), "src/agent-cli.ts"), ...argv], {
       cwd: ws, env: { ...process.env, AGEND_PORT: String(port), AGEND_INSTANCE_NAME: "a", AGEND_HOME: home }, timeout: 60_000 }, (_e, stdout, stderr) => resolve(stdout + stderr)));
     try {
