@@ -893,6 +893,8 @@ export function handleWebRequest(
   }
 
   if (method === "GET" && path === "/ui/backends") {
+    // #2072 (#2098 review P3-3): the backend an agent created with "fleet default" runs, so its model list can be shown.
+    const defaultBackend = ctx.fleetConfig?.defaults?.backend ?? "claude-code";
     const BACKENDS: Array<{ name: string; binary: string; deprecated?: boolean }> = [
       { name: "claude-code", binary: "claude" },
       { name: "codex", binary: "codex" },
@@ -909,7 +911,7 @@ export function handleWebRequest(
         name: r.backend, binary: binaryOf.get(r.backend)!.binary, installed: r.state !== "not_installed" && r.path !== null, path: r.path ?? "",
         deprecated: binaryOf.get(r.backend)!.deprecated ?? false, state: r.state, minVersion: r.minVersion, ...(r.state === "unknown" ? { unknown: true } : {}),
       }));
-      json(res, 200, { backends });
+      json(res, 200, { backends, defaultBackend });
       return true;
     }
     // #1490: seven sequential 2 s `execFileSync("which")` calls used to block the event loop here. The shared probe
@@ -921,7 +923,7 @@ export function handleWebRequest(
       return { name: b.name, binary: b.binary, installed: path !== null, path: path ?? "", deprecated: b.deprecated ?? false,
         ...(found.known ? {} : { unknown: true }) };
     })).then(
-      (backends) => { if (!res.headersSent) json(res, 200, { backends }); },
+      (backends) => { if (!res.headersSent) json(res, 200, { backends, defaultBackend }); },
       () => { if (!res.headersSent) json(res, 500, { error: "backend probe failed" }); },
     );
     return true;

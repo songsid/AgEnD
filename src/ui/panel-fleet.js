@@ -522,6 +522,8 @@ function CreateTeam({ onClose, onDone, team = null }) {
 export function CreateInstanceDialog({ onClose }) {
   const lease = useLease("create-instance");
   const [backends, setBackends] = useState(null);
+  // The backend "fleet default" means (#2098 review P3-3): its models are the ones the model list offers then.
+  const [defaultBackend, setDefaultBackend] = useState("claude-code");
   const [f, setF] = useState({ dir: "", topic: "", desc: "", backend: "", model: "", branch: "", tags: "", prompt: "" });
   useEffect(() => {
     (async () => {
@@ -530,6 +532,7 @@ export function CreateInstanceDialog({ onClose }) {
         if (!lease.current()) return;
         const list = bd.backends || [];
         const first = list.find(b => b.installed && !b.deprecated) || list.find(b => b.installed);
+        if (typeof bd.defaultBackend === "string" && bd.defaultBackend) setDefaultBackend(bd.defaultBackend);
         setBackends(list);
         setF(x => ({ ...x, backend: first ? first.name : "" }));
       } catch {
@@ -560,7 +563,7 @@ export function CreateInstanceDialog({ onClose }) {
     ${field(t("fleet.description"), html`<input value=${f.desc} onInput=${set("desc")} placeholder=${t("fleet.descriptionHint")} />`)}
     ${field(t("fleet.backend"), backends ? html`<select value=${f.backend} onChange=${set("backend")}><option value="">${t("fleet.fleetDefault")}</option>
       ${backends.map(b => html`<option key=${b.name} value=${b.name} disabled=${backendBlocked(b)}>${b.name}${b.deprecated ? ` ${t("fleet.deprecated")}` : ""}${backendNote(b)}</option>`)}</select>` : html`<${Skeleton} lines=${1} />`)}
-    ${field(t("fleet.model"), html`<${ModelSelect} value=${f.model} onChange=${(v) => setF(x => ({ ...x, model: v }))} backend=${f.backend || null} inherit=${t("fleet.fleetDefault")} />`)}
+    ${field(t("fleet.model"), html`<${ModelSelect} value=${f.model} onChange=${(v) => setF(x => ({ ...x, model: v }))} backend=${f.backend || defaultBackend} inherit=${t("fleet.fleetDefault")} />`)}
     ${field(t("fleet.branch"), html`<input value=${f.branch} onInput=${set("branch")} placeholder=${t("fleet.branchHint")} />`)}
     ${field(t("fleet.tags"), html`<input value=${f.tags} onInput=${set("tags")} placeholder=${t("fleet.tagsHint")} />`)}
     ${field(t("fleet.systemPrompt"), html`<textarea rows="3" value=${f.prompt} onInput=${set("prompt")} placeholder=${t("fleet.systemPromptHint")}></textarea>`)}

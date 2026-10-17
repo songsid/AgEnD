@@ -426,3 +426,20 @@ describe("#1465 review: a delete confirmed after its tab went sends nothing", ()
     } finally { (globalThis as any).confirm = () => true; }
   });
 });
+
+describe("#2072 (#2098 review P3-3): the model list with \"fleet default\" is the fleet default backend's", () => {
+  it("no backend chosen: the models asked for are the fleet default backend's, not an empty list", async () => {
+    const C = await import("/ui/js/settings-catalog.js"); C.forgetCatalogs();
+    handler = async (path) => {
+      if (path === "/ui/backends") return { backends: [{ name: "codex", installed: false }], defaultBackend: "codex" };
+      if (path.startsWith("/ui/models")) return { models: [{ id: "gpt-5.5", label: "gpt-5.5" }] };
+      return { ok: true };
+    };
+    requests.length = 0;
+    await p.mount(h(fleet.CreateInstanceDialog, { onClose() {} })); await settle(8);
+    expect(p.root.querySelector("dialog select").value).toBe("");                 // "fleet default"
+    expect(requests).toContain("GET /ui/models?backend=codex");
+    const options = [...p.root.querySelectorAll("dialog .model-pick option")].map((o: any) => o.value);
+    expect(options).toContain("gpt-5.5");
+  });
+});

@@ -21,7 +21,10 @@ function cached(url) {
   cache.set(url, { at: now, value: null, pending });
   return pending;
 }
-/** For tests and after a write that changes the answer. */
+/**
+ * Drop every remembered answer. Only tests call it today: a page keeps an answer TTL_MS, so a sign-in or a newly
+ * cached catalog shows within that time, or at once on the next page load.
+ */
 export function forgetCatalogs() { cache.clear(); }
 
 function useAnswer(url) {

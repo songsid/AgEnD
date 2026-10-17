@@ -3,7 +3,7 @@
  * snapshot (/ui/backends) and the cached catalog of that backend for that instance's account (/ui/models). The current
  * value is always listed — marked when the CLI does not list it — and "Other…" types a name it does not list.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 import { backendChoices, modelChoices, OTHER_MODEL } from "/ui/js/settings-catalog.js";
@@ -88,4 +88,21 @@ describe("the pickers on a page", () => {
     expect(codex.textContent).toContain("codex — ");
     expect(options.find(o => o.value === "claude-code")!.disabled).toBe(false);
   });
+
+  it("a page asks once per answer: two fields share one request; it asks again after 30 s or when forgotten (#2098 review P3-2)", async () => {
+    let clock = 1_000_000; const now = vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const Two = () => P.h("div", {}, P.h(D.ModelSelect, { id: "m1", value: "", onChange: () => {}, backend: "claude-code", instance: "w" }),
+      P.h(D.ModelSelect, { id: "m2", value: "", onChange: () => {}, backend: "claude-code", instance: "w" }));
+    const asked = () => requests.filter(r => r === "/ui/models?backend=claude-code&instance=w").length;
+    await p.mount(h(Two, {})); await settle(8);
+    expect(asked()).toBe(1);
+    await p.unmount(); clock += 29_000; await p.mount(h(Two, {})); await settle(8);
+    expect(asked()).toBe(1);                                    // still fresh: no request
+    await p.unmount(); clock += 2_000; await p.mount(h(Two, {})); await settle(8);
+    expect(asked()).toBe(2);                                    // past 30 s: asked again
+    await p.unmount(); C.forgetCatalogs(); await p.mount(h(Two, {})); await settle(8);
+    expect(asked()).toBe(3);
+    now.mockRestore();
+  });
 });
+

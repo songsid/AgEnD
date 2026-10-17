@@ -43,3 +43,19 @@ describe("GET /ui/models", () => {
     expect(r.json()).toEqual({ backend: "codex", models: [] });
   });
 });
+
+describe("GET /ui/backends names the fleet default backend (#2098 review P3-3)", () => {
+  const backends = (fleetConfig: unknown) => {
+    const token = "c".repeat(48);
+    const req = Object.assign(new EventEmitter(), { method: "GET", url: "/ui/backends", headers: { host: "127.0.0.1:19280", "x-agend-token": token }, socket: { remoteAddress: "127.0.0.1", destroy() {} } });
+    let body = "";
+    const res = Object.assign(new EventEmitter(), { headersSent: false, setHeader() {}, getHeader() { return undefined; }, writeHead() {}, end(t = "") { body = String(t); }, write() { return true; } });
+    handleWebRequest(req as never, res as never, new URL("/ui/backends", "http://127.0.0.1:19280"),
+      { webToken: token, fleetConfig, backendAvailabilityRows: () => [{ backend: "codex", state: "usable", path: "/bin/codex", minVersion: null }], logger: { info() {}, debug() {}, error() {}, warn() {} } } as never);
+    return JSON.parse(body);
+  };
+  it("the configured default, else claude-code", () => {
+    expect(backends({ defaults: { backend: "codex" }, instances: {} }).defaultBackend).toBe("codex");
+    expect(backends({ instances: {} }).defaultBackend).toBe("claude-code");
+  });
+});
