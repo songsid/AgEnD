@@ -112,7 +112,26 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .av img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .av.av-emoji { background: transparent; font-size: 18px; font-weight: normal; }
 .av.av-emoji img { width: 22px; height: 22px; border-radius: 0; object-fit: contain; }
-.av.ring { box-shadow: 0 0 0 2px var(--ring, transparent); }
+/* #1958: an instance's identity colour — both modes' values set on the row through the CSSOM (identity-color.js), the
+   page's mode picks one (the same selectors as tokens.css). Places: .id-ring (the avatar's ring, every face), .id-bar (a
+   bar at the row's left edge), .id-name (the name, in a shade readable on the page and the sidebar). */
+.idc { --id: var(--id-dark); --id-name: var(--id-name-dark); }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .idc { --id: var(--id-light); --id-name: var(--id-name-light); } }
+:root[data-theme="light"] .idc { --id: var(--id-light); --id-name: var(--id-name-light); }
+.idc.id-ring .av { box-shadow: 0 0 0 2px var(--id); }
+.idc.id-bar { box-shadow: inset 3px 0 0 var(--id); }
+.idc.id-name .inst-name { color: var(--id-name); }
+.idc-swatches, .idc-places { border: 0; padding: 0; margin: 0 0 var(--s-3); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.idc-swatches legend, .idc-places legend { font-weight: var(--fw-semibold); margin-bottom: 6px; width: 100%; }
+.idc-swatch { --sw: var(--sw-dark); width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; background: var(--sw); cursor: pointer; padding: 0; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .idc-swatch { --sw: var(--sw-light); } }
+:root[data-theme="light"] .idc-swatch { --sw: var(--sw-light); }
+.idc-swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg); }
+.idc-custom { display: inline-flex; gap: 6px; align-items: center; }
+.idc-custom input[type="color"] { width: 32px; height: 28px; padding: 0; border: 0; background: none; }
+.idc-hex { width: 9ch; font-family: var(--font-mono, monospace); }
+.dlg-actions .dlg-spacer { flex: 1 1 auto; }
+.idc-preview { padding: 6px; border-radius: 10px; background: var(--bg-sidebar); max-width: 260px; }
 .av-text { overflow: hidden; }
 .av .av-dot { position: absolute; right: -2px; bottom: -2px; margin: 0; box-shadow: 0 0 0 2px var(--bg-sidebar); }
 /* #1722: the CLI as a letter on the avatar's top-left corner — monochrome (the #1630 ring keeps the colour), cut out like the dot */

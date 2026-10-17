@@ -13,6 +13,9 @@ import { setThemesShown, themesStore } from "/assets/app-themes.js";
 import { CARD_SIZES, cardSizeDefault, cardSizeStore, setCardSizeDefault } from "/assets/identity-card.js";
 import { AgentWidget, checkWidget, fleetBinds, setSidebarWidget, sidebarWidgetRaw, sidebarWidgetStore, widgetProblem } from "/assets/agent-widget.js";
 import { confirmedWrite } from "./settings-confirm.js";
+import { savePref } from "/assets/app-prefs.js";
+import { confirmDialog } from "/assets/ui-confirm.js";
+import { colorsOff, defaultPlaces, PLACEMENTS, setColorsOff, setDefaultPlaces, useIdentityColors } from "/assets/identity-color.js";
 import "./settings-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -39,7 +42,56 @@ function refusal(body) {
 export function AppearanceSection() {
   const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
   if (publicLink) return html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>`;
-  return html`<${ThemesCard} /><${CardSizeCard} /><${SidebarWidgetCard} /><${OwnerCssCard} /><${ModsCard} /><${EffectsCard} /><${DeviceCard} /><${CardLimitsCard} />`;
+  return html`<${ThemesCard} /><${IdentityColorCard} /><${CardSizeCard} /><${SidebarWidgetCard} /><${OwnerCssCard} /><${ModsCard} /><${EffectsCard} /><${DeviceCard} /><${CardLimitsCard} /><${RestoreDefaultsCard} />`;
+}
+
+/**
+ * #1958: identity colours on this host — where they show for an instance nobody chose for (ring and bar unless
+ * changed), and a switch that turns them off everywhere while every pick is kept.
+ */
+function IdentityColorCard() {
+  useIdentityColors();
+  const places = defaultPlaces(), off = colorsOff();
+  const toggle = (p) => setDefaultPlaces(places.includes(p) ? places.filter((x) => x !== p) : [...places, p]);
+  return html`<section class="card s-appearance s-synced s-colors"><h3>${tn("colorTitle")}</h3>
+    <p class="sub">${tn("colorLead")}</p>
+    <fieldset class="idc-places" disabled=${off}><legend>${tn("colorPlaces")}</legend>
+      ${PLACEMENTS.map((p) => html`<label key=${p} class="check"><input type="checkbox" checked=${places.includes(p)} onChange=${() => toggle(p)} /> ${t(`color.place_${p}`)}</label>`)}
+    </fieldset>
+    <label class="check"><input type="checkbox" class="s-colors-off" checked=${off} onChange=${(e) => setColorsOff(e.target.checked)} /> <span>${tn("colorOff")}</span></label>
+    <p class="sub">${tn("colorOffLead")}</p>
+  </section>`;
+}
+
+/**
+ * #1958 decision 5: Restore defaults — the host's appearance settings back to their defaults after a confirm that says
+ * what it resets; this person's custom CSS turned off (its versions stay). Not settings, so never touched: the colours
+ * people picked per instance, installed mods, uploaded effects and the fleet's card limits.
+ */
+export async function restoreAppearanceDefaults() {
+  setThemesShown(true);
+  setCardSizeDefault("m");
+  savePref("card.sizeByInstance", null);
+  setSidebarWidget(null);
+  setDefaultPlaces(null);
+  setColorsOff(false);
+  setOwnerCssOffHere(false);
+  const r = await postJson("/ui/owner-css/restore", { sha: null });
+  return r && r.error ? { ok: false, error: r.error } : { ok: true };
+}
+function RestoreDefaultsCard() {
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    if (!(await confirmDialog({ title: tn("restoreTitle"), message: tn("restoreConfirm"), confirmLabel: tn("restoreGo"), danger: true }))) return;
+    setBusy(true);
+    const r = await restoreAppearanceDefaults();
+    setBusy(false);
+    if (r.ok) toast(tn("restoreDone")); else toast(tn("restoreCssFailed", r.error), false);
+  }
+  return html`<section class="card s-appearance s-restore"><h3>${tn("restoreTitle")}</h3>
+    <p class="sub">${tn("restoreLead")}</p>
+    <button type="button" class="btn" disabled=${busy} onClick=${go}>${tn("restoreTitle")}</button>
+  </section>`;
 }
 
 /** #1629 r4.1 Q3 (a): every identity card's size on this person's screens (a card's own control sets it apart). */

@@ -5,6 +5,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from "./app-html.j
 import { Icon } from "./ui-icons.js";
 import { Toasts } from "./ui-toast.js";
 import { ConfirmHost } from "./ui-confirm.js";
+import { ColorDialogHost } from "./identity-color.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
@@ -522,6 +523,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
     ${viewOnly || (nav.route && nav.route.panel === "settings") ? null : html`<${PendingChanges} />`}
     <${ConfirmHost} />
+    <${ColorDialogHost} />
     ${viewOnly ? null : html`<${OwnerCssKeepBar} />`}
     <${Toasts} />
   </div>`;
