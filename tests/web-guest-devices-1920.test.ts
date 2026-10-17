@@ -21,7 +21,7 @@ vi.mock("../src/tmux-manager.js", async original => ({ ...await original<typeof 
 vi.mock("../src/logger.js", () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn(), child() { return this; } }) }));
 import { FleetManager } from "../src/fleet-manager.js";
 import { tokenEpoch } from "../src/web-session.js";
-import { setLocale } from "../src/locale.js";
+import { setLocale, t } from "../src/locale.js";
 import { MAX_GUEST_RETURNING_DEVICES, MAX_RETURNING_DEVICES, ReturningDevices } from "../src/web-returning-device.js";
 
 const TOKEN = "c".repeat(48);
@@ -111,10 +111,29 @@ describe("a guest's device asks for a code", () => {
     expect(h.s.webLoginCodes.redeem(admin.display, tokenEpoch(TOKEN)), "the admin's code still stands").toMatchObject({ kind: "ok", tier: "admin" });
     expect(adminLimit, "guests' requests use their own limiter").not.toHaveBeenCalled();
   });
-  it("refused: guest sign-in off, the account now an admin or out of scope, or through the public link (not yet)", async () => {
+  it("through the public link: only while that exposure is the open one, and its code works through it alone", async () => {
+    const h = rig();
+    const X = "a".repeat(32);
+    let link: any = null;
+    h.s.publicWebLink = { openSignin: () => link, exposureId: X, close: async () => ({ confirmed: true }), status: () => ({ state: link ? "open" : "closed" }) };
+    const d = h.device();
+    expect(await h.ask(d, { surface: "gateway", exposureId: X }), "no link open").toEqual({ kind: "refused" });
+    link = { exposureId: X, url: "https://sample.trycloudflare.com/signin", owner: {} };
+    expect(await h.ask(d, { surface: "gateway", exposureId: "b".repeat(32) }), "another link").toEqual({ kind: "refused" });
+    expect(await h.ask(d, { surface: "gateway", exposureId: X })).toEqual({ kind: "sent" });
+    const code = codeOf(h.adapter.sendDirect.mock.calls[0]![1]);
+    expect(String(h.adapter.sendDirect.mock.calls[0]![1]), "the DM says where it was asked from").toContain(t("web.resend_public"));
+    expect(h.s.webGuestLoginCodes.match(code, tokenEpoch(TOKEN), "local"), "not directly").toBeNull();
+    expect(h.s.webGuestLoginCodes.match(code, tokenEpoch(TOKEN), X)).toMatchObject({ kind: "ok", tier: "guest" });
+    // The link closing while the DM is on its way: that code is withdrawn.
+    mono += 60_000;
+    h.adapter.sendDirect.mockImplementationOnce(async () => { link = null; return { chatId: "DM", messageId: "dm" }; });
+    expect(await h.ask(h.device("bob"), { surface: "gateway", exposureId: X })).toEqual({ kind: "refused" });
+    expect(h.s.webGuestLoginCodes.hasCodeFor({ adapterId: "owner", userId: "bob" })).toBe(false);
+  });
+  it("refused: guest sign-in off, the account now an admin or out of scope", async () => {
     const h = rig();
     const d = h.device();
-    expect(await h.ask(d, { surface: "gateway", exposureId: "a".repeat(32) })).toEqual({ kind: "refused" });
     h.fm.fleetConfig!.web = { guests: { enabled: true, narrow: { "owner:alice": [] } } } as never;
     expect(await h.ask(d)).toEqual({ kind: "refused" });
     (h.fm.fleetConfig as any).channels[0].access.allowed_users.push("alice");

@@ -6444,8 +6444,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * #1920 step 4b: a guest's returning device asks for a code — a guest code for that account, by DM only, under the
    * same rules as its /web (guests on, not an admin, something in scope now; one per account and the cap; one flow per
-   * account at a time; a revoke meanwhile ends it), its own limiter, and the guests' breaker. The dashboard reached
-   * directly only, for now: a device asking through the public link is refused.
+   * account at a time; a revoke meanwhile ends it), its own limiter, and the guests' breaker. Asked through the public
+   * link: only while that exposure is the open one (its code then works through it alone), as an admin's device.
    */
   private async requestGuestDeviceCode(device: ReturningDevice, input: { surface: "local" | "gateway"; exposureId?: string; label: string }, token: string):
     Promise<{ kind: "sent" } | { kind: "limited"; retryAfterMs: number } | { kind: "refused" }> {
@@ -6453,7 +6453,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const account = { adapterId: device.owner.adapterId, userId: device.owner.userId };
     const key = `${account.adapterId}\u0000${account.userId}`;
     const adapter = this.adapters.get(account.adapterId);
-    if (input.surface !== "local" || input.exposureId !== undefined || !adapter?.sendDirect || !this.guestSignInAllowed(account)) {
+    const viaLink = input.surface === "gateway";
+    const linkOpen = (): boolean => !!input.exposureId && this.publicWebLink?.openSignin()?.exposureId === input.exposureId;
+    if ((viaLink ? !linkOpen() : input.exposureId !== undefined) || !adapter?.sendDirect || !this.guestSignInAllowed(account)) {
       this.logger.info({ adapterId: account.adapterId, surface: input.surface }, "Guest sign-in code request refused");
       return { kind: "refused" };
     }
@@ -6466,13 +6468,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!admitted.ok) return { kind: "limited", retryAfterMs: admitted.retryAfterMs };
     const revokes = this.guestRevokes, accountRevokes = this.guestAccountRevokes.get(key) ?? 0;
     const current = (): boolean => !this.shuttingDown && this.webToken === token && this.adapters.get(account.adapterId) === adapter
-      && this.guestRevokes === revokes && (this.guestAccountRevokes.get(key) ?? 0) === accountRevokes && this.guestSignInAllowed(account);
-    const issued = codes.issue({ epoch: tokenEpoch(token), recipient: account });
+      && this.guestRevokes === revokes && (this.guestAccountRevokes.get(key) ?? 0) === accountRevokes && this.guestSignInAllowed(account)
+      && (!viaLink || linkOpen());
+    const issued = codes.issue({ epoch: tokenEpoch(token), recipient: account, audiences: [viaLink ? input.exposureId! : "local"] });
     if (!issued) return { kind: "limited", retryAfterMs: 60_000 };            // the guests' cap: never someone's evicted
     this.guestCodeInFlight.add(key);
     this.guestCodeAskedAt.delete(key); this.guestCodeAskedAt.set(key, performance.now());
     try {
-      const text = t("web.resend_code", issued.display, Math.round(LOGIN_CODE_TTL_MS / 60_000), input.label || t("web.resend_unknown_browser"), t("web.resend_local"))
+      const text = t("web.resend_code", issued.display, Math.round(LOGIN_CODE_TTL_MS / 60_000), input.label || t("web.resend_unknown_browser"), t(viaLink ? "web.resend_public" : "web.resend_local"))
         + "\n" + t("dashboard.code_next");
       try { await withinBudget(adapter.sendDirect(account.userId, text, { disablePreview: true }), performance.now() + 5_000); }
       catch (err) {
