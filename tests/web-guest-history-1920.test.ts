@@ -64,7 +64,22 @@ describe("a kept message says where it was seen and whose it is", () => {
     const g = guestOf(two);
     expect(guestHistory(two, "a", 50, g, SCOPE).map((m) => m.text), "the old row stays hidden; its own (restored) shows").toEqual(["from discord", "mine, web only"]);
   });
-  it("markChannel: a web message becomes the channel's once (persisted), by the id the agent was given", () => {
+  it("a restored row is the channel's only when it says exactly true", () => {
+    const h = new WebChatHistory({ boot: "b2" });
+    const row = (id: number, channel: unknown) => ({ boot: "b1", id, instance: "a", role: "user", sender: "x", text: `row ${id}`, ts: ts(), channel });
+    h.restore("a", [row(1, true), row(2, "true"), row(3, 1), row(4, false)]);
+    expect(h.list("a").map((m) => m.channel ?? null)).toEqual([true, null, null, null]);
+  });
+  it("markChannel: a web message becomes the channel's once (persisted), by the id the agent was given", async () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-1920-mark-")); homes.push(home);
+    const store = () => new WebChatDiskStore({ home, logger: { warn: vi.fn() }, debounceMs: 1, ownerOf: () => "dir:/w/a" });
+    const one = new WebChatHistory({ boot: "b1" }); const s1 = store(); one.restore("a", s1.load("a")); one.setStore(s1);
+    one.record({ instance: "a", sender: "x", text: "copied", ts: ts(), messageId: "web-8", from: "dc:111" });
+    await new Promise((r) => setTimeout(r, 30));
+    one.markChannel("a", "web-8");
+    await new Promise((r) => setTimeout(r, 30));
+    const two = new WebChatHistory({ boot: "b2" }); two.restore("a", store().load("a"));
+    expect(two.list("a").map((m) => [m.text, m.channel ?? null]), "the mark is kept across a restart").toEqual([["copied", true]]);
     const { h, say } = hist();
     say("a", "hello", { messageId: "web-9", from: "dc:111" });
     expect(h.markChannel("a", "web-9")).toMatchObject({ text: "hello", channel: true });
@@ -188,7 +203,7 @@ describe("FleetManager: where a reply landed; the marks recorded; a copy that ma
   const { FleetManager } = await import("../src/fleet-manager.js");
   function fleet() {
     const fm: any = new FleetManager(home);
-    fm.fleetConfig = { channels: [{ id: "dc", type: "discord" }], instances: { a: { channel_id: "dc", topic_id: "42" }, general: { general_topic: true, channel_id: "dc" } } };
+    fm.fleetConfig = { channels: [{ id: "dc", type: "discord" }, { id: "tg", type: "telegram" }], instances: { a: { channel_id: "dc", topic_id: "42" }, b: { channel_id: "tg", topic_id: "42" }, general: { general_topic: true, channel_id: "dc" } } };
     fm.worlds.set("dc", { id: "dc", groupId: "G" });
     fm.classicChannels = { getAll: () => [{ instanceName: "room", adapterId: "tg", channelId: "5550001" }], getChannelIdByInstance: () => undefined, getAdapterIdByInstance: () => undefined };
     return fm;
@@ -205,6 +220,7 @@ describe("FleetManager: where a reply landed; the marks recorded; a copy that ma
     expect(fm.landedInOwnChannel("room", "tg", { chatId: "5550002" })).toBe(false);
     expect(fm.landedInOwnChannel("room", "dc", { chatId: "5550001" })).toBe(false);
     expect(fm.landedInOwnChannel("nobody", "dc", { chatId: "G", threadId: "42" })).toBe(false);
+    expect(fm.landedInOwnChannel("b", "dc", { chatId: "G", threadId: "42" }), "the same topic id in another connection's group").toBe(false);
   });
   it("emitSseEvent records the marks it is given; webMessageInChannel marks a web message and tells the guests only", () => {
     const fm = fleet();
