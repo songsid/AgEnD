@@ -19,6 +19,11 @@ Collaboration MCP tools: `list_instances`, `send_to_instance`, `start_instance`,
 
 Schedules can target a specific instance or the same instance that created them. When a schedule triggers, the daemon pushes the message to Claude as if a user sent it.
 
+A missed run is run once, never twice (#1995):
+- **After a restart.** A run that came due while the fleet was down, within the last 24 hours, runs once at startup.
+- **While the fleet runs.** A run that came due and did not start within 3 minutes gets the same single catch-up, with the same run id, so a late but real trigger does not run it again. A run skipped because the previous run of the same schedule was still going stays skipped. The fleet log says `Missed cron tick — catching up`.
+- **In the fleet log.** Each trigger logs a `Cron tick` line with the schedule id and run id. A trigger that does not start logs `Cron tick not run` with the reason (`disabled`, `still_running`, `already_ran`, …), and a run that fails logs `Schedule run failed`.
+
 **Fleet → Schedules** in the web dashboard shows all schedules and lets you manage them (#1724):
 - Each row shows the schedule in words ("Weekdays 18:00", "Every 15 minutes", "Once · 2026-10-13 14:00 (UTC+8)") and the next run in the fleet's timezone. The raw cron expression moves to the tooltip. Disabled schedules are visually marked.
 - **Edit** opens the schedule form filled in, with a **Repeat / Once** toggle. Saving goes through the same validation as the `update_schedule` tool.
