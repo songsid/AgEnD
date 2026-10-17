@@ -65,3 +65,15 @@ describe("model and group text in the page's language (#2050)", () => {
     i18n.setLang("en");
   });
 });
+
+describe("fitLines keeps graphemes whole (#2050, Fable on #2048)", () => {
+  it("never splits an emoji sequence or a modifier from its base", () => {
+    for (const s of ["ab👨‍👩‍👧cdefghijklmnop", "x👍🏽yzzzzzzzzzzzz", "🇹🇼🇹🇼🇹🇼🇹🇼🇹🇼🇹🇼🇹🇼🇹🇼"]) {
+      for (const px of [20, 40, 60]) for (const line of fitLines(s, px, 15, 3)) {
+        expect(line).not.toMatch(/‍(…|$)/);                          // no dangling joiner
+        expect(line).not.toMatch(/^[\u{1f3fb}-\u{1f3ff}‍]/u);        // no orphan modifier or joiner at a line start
+        expect([...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(line)].every(g => !/^[\u{1f1e6}-\u{1f1ff}]$/u.test(g.segment))).toBe(true);
+      }
+    }
+  });
+});

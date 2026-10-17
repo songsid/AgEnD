@@ -107,10 +107,13 @@ const BIO_LINES = 12;
 // #2050: an estimate of drawn width (the preview is a file; nothing measures it): a CJK, fullwidth or emoji character
 // is about one em, any other about 0.58 em.
 const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{20000}-\u{3fffd}]|\p{Extended_Pictographic}/u;
-const charPx = (ch: string, size: number) => (WIDE.test(ch) ? size : size * 0.58);
+// A grapheme (an emoji sequence, a letter and its marks) is never split; it is as wide as its widest code point.
+const charPx = (g: string, size: number) => (Array.from(g).some(c => WIDE.test(c)) ? size : size * 0.58);
+const SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+const graphemes = (s: string) => Array.from(SEGMENTER.segment(s), x => x.segment);
 /**
  * Wrap `text` (its own line breaks kept) to `maxPx` at `size`, at most `maxLines` lines; what does not fit ends the last
- * line with "…". Latin text breaks at a space when one is on the line; CJK breaks anywhere. Never splits a code point.
+ * line with "…". Latin text breaks at a space when one is on the line; CJK breaks anywhere. Never splits a grapheme.
  */
 export function fitLines(text: string, maxPx: number, size: number, maxLines: number): string[] {
   const out: string[] = [];
@@ -118,11 +121,11 @@ export function fitLines(text: string, maxPx: number, size: number, maxLines: nu
   let truncated = false;
   paragraphs: for (const para of text.split("\n")) {
     let cur: string[] = [];
-    for (const ch of Array.from(para)) {
+    for (const ch of graphemes(para)) {
       if (cur.length && width(cur) + charPx(ch, size) > maxPx) {
         if (out.length === maxLines - 1) { out.push(cur.join("")); truncated = true; break paragraphs; }
         // Latin breaks after the last space on the line; CJK (or a line with no space) breaks here.
-        const space = WIDE.test(ch) ? -1 : cur.lastIndexOf(" ");
+        const space = charPx(ch, 1) === 1 ? -1 : cur.lastIndexOf(" ");
         out.push((space > 0 ? cur.slice(0, space) : cur).join("").trimEnd());
         cur = space > 0 ? cur.slice(space + 1) : [];
       }
@@ -132,7 +135,7 @@ export function fitLines(text: string, maxPx: number, size: number, maxLines: nu
     out.push(cur.join(""));
   }
   if (truncated) {
-    const last = Array.from(out[out.length - 1]);
+    const last = graphemes(out[out.length - 1]);
     while (last.length && width(last) + charPx("…", size) > maxPx) last.pop();
     out[out.length - 1] = `${last.join("").trimEnd()}…`;
   }
