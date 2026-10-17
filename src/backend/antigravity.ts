@@ -495,9 +495,9 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
   getQuitKey(): string { return "C-c"; }
   getQuitKeyPresses(): number { return 2; }
 
-  // agy has no summarizing /compact — "/clear" is the only manual context reset
-  // (full reset; agy also auto-summarizes at a token threshold).
-  getCompactCommand(): string { return "/clear"; }
+  // agy's own summarizing /compact (board 0340ec89). A compact goes through topic-commands'
+  // compactCommandForBackend, which also refuses an agy older than 1.3.5 instead of clearing it.
+  getCompactCommand(): string { return "/compact"; }
   getClearCommand(): string { return "/clear"; }
 
   // agy's documented interrupt is Ctrl+C (2-stage: 2nd press exits the CLI).

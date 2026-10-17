@@ -162,7 +162,7 @@ Discord 和 Telegram 可以接到同一個 fleet（用 `agend quickstart` 設定
   - Settings：調整 instance 設定，例如閒置多久自動暫停。
   - 這是管理員指令，預設的 localhost 網址只能在主機上打開。Telegram 請在 General 使用。
 - **沒在工作的 instance，讓它休眠**：Auto Pause 會在閒置一段時間後暫停 instance，有新訊息再喚醒，記憶會保留。General 不會被暫停。instance 超過 20 個左右可能會影響主機效能。
-- **怕壓縮後忘記，先留交接**：對話很長時，先請助理把目前進度、已經決定的事、下一步寫進 `soul.md`，再送 `/compact`，接著請它讀交接檔繼續做。注意：不同後端的壓縮行為不一樣：Antigravity 的 `/compact` 會使用 agy 自己的摘要式壓縮（agy 1.3.6 以上）；更舊的 agy 會被拒絕，什麼都不會送出。（這個版本之前，AgEnD 在 agy 上送的是 `/clear`，會把對話完全清空。）
+- **怕壓縮後忘記，先留交接**：對話很長時，先請助理把目前進度、已經決定的事、下一步寫進 `soul.md`，再送 `/compact`，接著請它讀交接檔繼續做。注意：不同後端的壓縮行為不一樣：Antigravity 的 `/compact` 會使用 agy 自己的摘要式壓縮（agy 1.3.5 以上）；更舊的 agy 會被拒絕，什麼都不會送出。（這個版本之前，AgEnD 在 agy 上送的是 `/clear`，會把對話完全清空。）
 - **用 `/model`、`/effort` 控制用量**：每個 instance 可以依工作需要挑模型和推理強度。設定完到 CLI 確認有沒有真的套用。
 - **遇到 bug 請 General 幫忙**：請它查 log，整理版本、平台、後端、重現步驟，並先移除 token、帳密和公司資料，產出 issue 草稿，確認後再送到 GitHub。
 

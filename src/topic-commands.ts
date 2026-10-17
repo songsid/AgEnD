@@ -277,14 +277,6 @@ export function parsePauseWakeCommand(text: string): { action: "pause" | "wake";
   return { action: match[1] as "pause" | "wake", instance: match[2] };
 }
 
-/**
- * The in-session compact/context-reset command for a backend NAME (the fleet
- * process routes /compact via IPC and only has the backend string, not a
- * CliBackend instance). Keep in sync with each backend's getCompactCommand().
- * Most CLIs (claude-code, kiro-cli, codex, opencode) use "/compact".
- * Antigravity (agy) has NO summarizing compact — its only manual context-reset
- * is "/clear" (a full reset; it also auto-summarizes at a token threshold).
- */
 /** os.release(), guarded — purely informational, must never break /sysinfo. */
 function osRelease(): string {
   try { return release(); } catch { return "?"; }
@@ -330,12 +322,14 @@ function backendCliLines(versions?: BackendCliVersionSnapshot): string[] {
 }
 
 /**
- * Board 0340ec89: agy's own `/compact` summarizes the conversation (verified on 1.3.6: "Conversation compacted · 5 steps
- * summarized", tests/fixtures/agy-1.3.6-compact.pane.txt). AgEnD used to send `/clear` for an agy compact, which wiped
- * the conversation instead. An agy known to be older than the version `/compact` was verified on is refused (null),
- * never cleared; an agy whose version is not known yet gets `/compact` (a version without it ignores the line).
+ * Board 0340ec89: agy's own `/compact` summarizes the conversation (verified live on 1.3.6: "Conversation compacted ·
+ * 5 steps summarized", tests/fixtures/agy-1.3.6-compact.pane.txt). agy's release notes add it in 1.3.5, and the 1.3.5
+ * binary registers it ("Compact the conversation now (summarize history to free up the context window)"), so 1.3.5 is
+ * the floor. AgEnD used to send `/clear` for an agy compact, which wiped the conversation instead. An agy known to be
+ * older than that is refused (null), never cleared; an agy whose version is not known yet gets `/compact` (a version
+ * without it ignores the line).
  */
-export const AGY_COMPACT_MIN_VERSION = "1.3.6";
+export const AGY_COMPACT_MIN_VERSION = "1.3.5";
 export function compactCommandForBackend(backend: string, version?: string | null): string | null {
   if (backend !== "antigravity") return "/compact";
   const v = typeof version === "string" ? version.match(/\d+\.\d+\.\d+/)?.[0] : undefined;
@@ -352,7 +346,7 @@ export function compactCommandForBackend(backend: string, version?: string | nul
  *    compact into a prompt, so it must never be appended.
  *  - grok 1.0.46: the binary answers "/compact takes no arguments."
  *  - opencode 1.18: `/compact` calls session.summarize with no text.
- *  - kiro-cli: takes none (audit); antigravity's own /compact (1.3.6+, board 0340ec89) takes none either.
+ *  - kiro-cli: takes none (audit); antigravity's own /compact (1.3.5+, board 0340ec89) takes none either.
  *  - muse 1.4.2: accepts the line (empty session: "nothing to summarize") but
  *    no use of the text is verifiable — unsupported until shown otherwise.
  */

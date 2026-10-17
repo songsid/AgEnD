@@ -163,7 +163,7 @@ Discord and Telegram can connect to the same fleet (set up with `agend quickstar
   - Settings: instance settings, such as how long before an idle instance auto-pauses.
   - It is an admin command, and the default localhost URL only opens on the host. On Telegram, use it in General.
 - **Let idle instances sleep**: Auto Pause pauses an instance after it has been idle for a while and wakes it on the next message, with its memory kept. General is never paused. More than about 20 instances can start to slow the host.
-- **Leave a handover before compacting**: when a conversation gets long, ask the assistant to write its progress, decisions made and next steps into `soul.md`, then send `/compact` and ask it to read the handover and carry on. Compaction differs by backend: **Antigravity uses native `/compact` on 1.3.6+ (or when its version is unknown); a known older version is refused, never replaced with `/clear`**.
+- **Leave a handover before compacting**: when a conversation gets long, ask the assistant to write its progress, decisions made and next steps into `soul.md`, then send `/compact` and ask it to read the handover and carry on. Compaction differs by backend: **Antigravity uses native `/compact` on 1.3.5+ (or when its version is unknown); a known older version is refused, never replaced with `/clear`**.
 - **Control usage with `/model` and `/effort`**: pick a model and reasoning level per instance, then check in the CLI that it actually applied.
 - **Hit a bug? Ask General**: have it check the logs, collect version, platform, backend and repro steps, strip tokens, passwords and company data, and draft an issue for you to review before it goes to GitHub.
 
