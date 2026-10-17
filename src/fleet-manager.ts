@@ -1399,6 +1399,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       frame: (name) => ((this.getUiStatus() as { instances: FrameEntry[] }).instances.find(i => i.name === name) ?? { name }),
       theme: (name) => { const r = this.themeStore.get(name); return { theme: r.theme, locked: r.locked, widgets: r.placements.widgets }; },
       card: (name) => resolveCard(name, humanCards(this.dataDir).get(name), this.themeStore.get(name).theme.card),
+      // #1958: the host's identity-colour settings, as the page reads them (an unreadable prefs file: the defaults).
+      colorPrefs: () => { try { const v = this.webPrefs.read(OPERATOR).values as Record<string, unknown>; return { show: v["color.show"], off: v["color.off"] === true }; } catch { return {}; } },
       cardPicture: (name, slot) => cardPicture(this as unknown as { dataDir: string; themeStore: ThemeStore }, name, slot),
       themeAsset: (name, id) => this.themeStore.asset(name, id),
       profileAvatar: (name) => this.webImage("avatar", name),
@@ -1407,12 +1409,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }));
   }
 
-  /** A fleet.yaml instance (own key) or a ClassicBot room, now (#1629: a person's reset/lock names one). */
   /** #1958: a profile, card or colour write (view-api.ts) landed: every open page gets a fresh status frame. */
   identityChanged(): void {
     try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next frame carries it */ }
   }
 
+  /** A fleet.yaml instance (own key) or a ClassicBot room, now (#1629: a person's reset/lock names one). */
   isKnownInstance(name: string): boolean {
     return Object.hasOwn(this.fleetConfig?.instances ?? {}, name) || (this.classicChannels?.getAll() ?? []).some((ch) => ch.instanceName === name);
   }
@@ -11076,7 +11078,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * One instance's avatar and ring for the status frame. Synchronous: what is cached now; fetches run behind. The bot
    * is its own, else the one it speaks through (#1867) — one cache entry per bot, so a shared bot is fetched once.
    */
-  private webIdentityImage(name: string, displayName: string | null, profileAvatar: string | null | undefined, bots: { own: Map<string, string>; speaking: Map<string, string> }): { avatar: AvatarDescriptor; accent?: string; themeAvatar?: AvatarDescriptor; themeAccent?: string; roleColor?: string; agentColor?: string } {
+  private webIdentityImage(name: string, displayName: string | null, profileAvatar: string | null | undefined, bots: { own: Map<string, string>; speaking: Map<string, string> }): { avatar: AvatarDescriptor; accent?: string; themeAvatar?: AvatarDescriptor; themeAccent?: string; roleColor?: string; agentColor?: string; agentShow?: string[] } {
     let profileVersion: string | null = null;
     if (profileAvatar && imageMimeForFile(profileAvatar)) {
       try { profileVersion = Math.floor(statSync(join(this.dataDir, "avatars", basename(profileAvatar))).mtimeMs).toString(36); } catch { /* removed */ }
@@ -11102,7 +11104,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const themeAvatar: AvatarDescriptor | undefined = !profileVersion && theme.avatar ? { kind: "image", src: `/ui/img/theme/${encodeURIComponent(name)}/${theme.avatar}` } : undefined;
     const themeAccent = !profileVersion && theme.accent ? theme.accent : undefined;
     return { avatar, ...(accent ? { accent } : {}), ...(themeAvatar ? { themeAvatar } : {}), ...(themeAccent ? { themeAccent } : {}),
-      ...(roleColor ? { roleColor } : {}), ...(theme.accent ? { agentColor: theme.accent } : {}) };
+      // #1958: the agent's own identity colour (theme.identity.color, else its accent) and where it would show it.
+      ...(roleColor ? { roleColor } : {}), ...(theme.identity?.color ?? theme.accent ? { agentColor: theme.identity?.color ?? theme.accent } : {}),
+      ...(theme.identity?.show ? { agentShow: theme.identity.show } : {}) };
   }
   /**
    * GET /ui/img/bot|avatar/<key>: what is cached, never a fetch. Only a connection some instance or room speaks
@@ -20678,7 +20682,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const effort = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.effort;
       const effort_source = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.source;
       const identity = resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic: classicRooms.get(name), profile: profiles.get(name) });
-      let image: { avatar: AvatarDescriptor; accent?: string; themeAvatar?: AvatarDescriptor; themeAccent?: string; roleColor?: string; agentColor?: string };
+      let image: { avatar: AvatarDescriptor; accent?: string; themeAvatar?: AvatarDescriptor; themeAccent?: string; roleColor?: string; agentColor?: string; agentShow?: string[] };
       try { image = this.webIdentityImage(name, identity.display_name, profiles.get(name)?.avatar_path, bots); }
       catch (err) { this.logger.debug({ err, name }, "avatar unreadable (getUiStatus)"); image = { avatar: avatarFor({ name, displayName: identity.display_name }) }; }
       return {
@@ -20691,8 +20695,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         ...(image.themeAccent ? { theme_accent: image.themeAccent } : {}),
         ...(() => { try { const v = cardVersion(resolveCard(name, cards.get(name), this.themeStore.get(name).theme.card)); return v ? { card_v: v } : {}; } catch { return {}; } })(),
         // #1958: the identity colour's tiers (the page resolves them: the agent's only while it shows agents' themes).
-        color: { ...(colors.get(name) ? { person: colors.get(name) } : {}), ...(image.agentColor ? { agent: image.agentColor } : {}),
+        color: { ...(colors.get(name)?.color ? { person: colors.get(name)!.color! } : {}), ...(image.agentColor ? { agent: image.agentColor } : {}),
           ...(image.roleColor ? { role: image.roleColor } : {}), auto: autoIdentityColor(name) },
+        // #1958 decision 2: where it shows — a person's choice for this instance, the agent's; else the viewer's host default.
+        color_show: { ...(colors.get(name)?.show ? { person: colors.get(name)!.show! } : {}), ...(image.agentShow ? { agent: image.agentShow } : {}) },
         description: identity.description || undefined,
         role: identity.role || undefined,
         tags: identity.tags,

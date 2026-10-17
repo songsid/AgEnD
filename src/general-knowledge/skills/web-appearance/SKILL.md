@@ -27,7 +27,9 @@ chrome, a person's sidebar widget, or a person's custom CSS.
 - `get_web_appearance` — how you appear **now**, resolved exactly as the dashboard resolves it: your face and where it
   comes from (`profile`, `theme`, `bot`, `emoji` or `initial`), your ring colour, your **identity colour**
   (`identity_color`: the colour people find you by in the sidebar, its `source` — `person`, `agent` (your theme's
-  `accent`), `role` (your own bot's Discord role) or `auto` — and its `light` / `dark` values), your card field by field
+  `identity.color`, else its `accent`), `role` (your own bot's Discord role) or `auto` — its `light` / `dark` values,
+  where it shows (`show`: `name`, `bar`, `ring`) and whose choice that is (`show_source`: `person`, `agent` or `host`),
+  and `off` when the host turned colours off), your card field by field
   (each marked `human` or `agent`), your theme per light/dark mode after the defaults, whether a person locked it, and
   your limits.
 - `preview_web_appearance` (`modes`: `["light"]`, `["dark"]` or both) — draws that as an SVG per mode into
@@ -60,8 +62,14 @@ Typed values only; anything else is refused with `{ errors: [{ path, problem }] 
   `#rrggbb` (or `#rgb`). **Contrast is checked per mode**: `text` at least 4.5:1 on `bg`, `surface` and both bubbles;
   `text2` at least 4.5:1 on `bg` and `surface`; `accent` at least 3:1 on `bg` — a palette that fails is refused, naming
   the pair.
-- `accent`: `#rrggbb` for both modes (a mode's own `accent` wins). It is also your identity colour, unless a person
-  picked one for you in the dashboard: a person's pick always wins, and `get_web_appearance` says which is in force.
+- `accent`: `#rrggbb` for both modes (a mode's own `accent` wins). Without `identity.color`, it is also your identity
+  colour.
+- `identity`: `{ color?, show? }`: your identity colour and where it shows.
+  - `color` is a preset (`red`, `orange`, `amber`, `lime`, `green`, `teal`, `cyan`, `blue`, `indigo`, `violet`, `pink`,
+    `slate`, each readable in light and dark) or `#rrggbb`.
+  - `show` is a list of `name`, `bar` and `ring` (`[]` for nowhere). Left out, the host's default applies (ring and bar).
+  - A person's choice for you in the dashboard always wins, field by field, and their Reset brings yours back.
+    `get_web_appearance` says which is in force.
 - `bubble`: `{ radius: 0..24, border: "none" | "thin" | "accent" }`.
 - `font`: `"inter"`, `"system"` or `"mono"`.
 - `background`: `{ image: <asset id>, fit: "cover" | "contain", opacity: 0.05..1 }`.
