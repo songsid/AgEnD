@@ -222,8 +222,11 @@ export function accessConfirmations(previousAccess, nextMode, nextUsers) {
   return out;
 }
 
-/** #1320: only a short positive numeric id is a Telegram private chat; Discord snowflakes and negative ids are groups. */
-export const webEchoIsGroup = (channelIdValue) => !/^\d{1,12}$/.test(String(channelIdValue || ""));
+/**
+ * #2054: whether a ClassicBot room copies web chat (as classicWebEchoOn on the fleet): its own `web_echo` when set, else
+ * the fleet-wide `web.echo_to_channel` (default on).
+ */
+export const classicWebEchoEffective = (room, fleet) => (typeof room?.web_echo === "boolean" ? room.web_echo : fleet?.web?.echo_to_channel !== false);
 
 // ── Developer YAML: the config subset's writer and reader, exactly as settings.html had them (round-trip verified) ──
 export function toYaml(value, indent = 0) {
