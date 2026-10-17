@@ -1,3 +1,4 @@
+import { KNOWN_BACKENDS } from "../src/config-validator.js";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { registerExecutableFixture } from "./support/process-guard.js";
 import { join } from "node:path";
@@ -34,7 +35,7 @@ function deps(over: Partial<BackendCommandDeps> = {}): BackendCommandDeps {
   return {
     currentBackend: () => "claude-code",
     currentDisplay: () => "claude-code · opus",
-    installedBackends: () => ["claude-code", "codex", "opencode"],
+    availability: () => ["claude-code", "codex", "opencode"].map(backend => ({ backend, state: "usable" as const })),
     models: async b => b === "codex" ? [{ id: "gpt-5.5", label: "GPT-5.5" }, { id: "gpt-5.5-mini", label: "mini", description: "fast" }] : [],
     modelKnown: () => false,
     effortLevels: b => b === "codex" || b === "claude-code" ? ["low", "medium", "high"] : [],
@@ -55,9 +56,9 @@ describe("the steps", () => {
     });
   });
 
-  it("a backend that is not installed here — or unknown, or removed — is refused with the installed list", async () => {
-    for (const name of ["kiro-cli", "nope", "gemini-cli", "mock"]) {
-      expect(await backendStep(deps(), "w", [name])).toEqual({ kind: "refuse", text: `backend.not_installed|${name}|claude-code, codex, opencode` });
+  it("a backend that is not one — unknown, removed or test-only — is refused with the backends", async () => {
+    for (const name of ["nope", "gemini-cli", "mock"]) {
+      expect(await backendStep(deps(), "w", [name])).toEqual({ kind: "refuse", text: `backend.unknown_backend|${name}|claude-code, codex, opencode` });
     }
     // A name is matched without regard to case, and nothing else is looked at once it is refused.
     const models = vi.fn(async () => []);
@@ -184,7 +185,10 @@ function fleet(instance: Record<string, unknown> = {}, opts: { status?: string; 
   any.restartSingleInstance = vi.fn(async () => {});
   any.getInstanceStatus = vi.fn(() => opts.status ?? "running");
   any.getInstanceIdle = vi.fn(() => !opts.busy);
-  any.backendInstalledHere = vi.fn((b: string) => INSTALLED.has(b));
+  // #2072: the published snapshot, as the probes would leave it — and probes that never run a CLI.
+  any.backendAvailabilityRows = vi.fn(() => KNOWN_BACKENDS.filter(b => b !== "mock").map(backend => ({ backend, state: INSTALLED.has(backend) ? "usable" : "not_installed",
+    path: INSTALLED.has(backend) ? `/bin/${backend}` : null, version: null, auth: "unknown", minVersion: null, checkedAt: 1 })));
+  any.availabilityProbes = { resolve: async () => undefined, version: async () => null, auth: async () => "unknown", signature: async () => null };
   any.probeBackendBounded = vi.fn(async () => { throw new Error("no live probe in this test"); });
   // As readEffortMetadata answers, without reading a real ~/.codex: codex is given none here.
   any.backendEffortLevels = vi.fn((_i: string, b: string) => b === "codex" || b === "opencode" ? [] : ["low", "medium", "high", "xhigh", "max"]);
@@ -209,8 +213,10 @@ describe("the Telegram flow", () => {
   it("backend → model → effort → confirm: one write of all three, one fresh relaunch, after the last click only", async () => {
     const f = fleet();
     await f.fm.runBackendCommand("worker", "/backend", "admin", "chan", f.adapter, "chat", "topic", "telegram");
-    // Only CLIs installed here; never a removed or test-only backend.
-    expect((f.promptUser.mock.calls[0][2] as Array<{ label: string }>).map(b => b.label)).toEqual(["✓ claude-code", "codex", "opencode", "kiro-cli"]);
+    // #2072: every backend, never a removed or test-only one; one this host cannot run says why.
+    const na = t("backend.reason_not_installed");
+    expect((f.promptUser.mock.calls[0][2] as Array<{ label: string }>).map(b => b.label))
+      .toEqual(["✓ claude-code", "codex", "opencode", "kiro-cli", `antigravity — ${na}`, `grok — ${na}`, `muse — ${na}`]);
     await click(f, "codex");
     await click(f, "GPT-5.5");
     expect(f.any.saveFleetConfig).not.toHaveBeenCalled();
@@ -277,7 +283,7 @@ describe("the Telegram flow", () => {
   it("invalid input is refused with the choices, before anything is written", async () => {
     const f = fleet();
     for (const [text, reply] of [
-      ["/backend antigravity", t("backend.not_installed", "antigravity", "claude-code, codex, opencode, kiro-cli")],
+      ["/backend antigravity", t("backend.unusable", "antigravity", t("backend.reason_not_installed"))],
       ["/backend codex gpt-9", t("backend.unknown_model", "gpt-9", "codex", "default, gpt-5.5")],
       ["/backend opencode default high", t("backend.no_effort", "opencode")],
       ["/backend claude-code sonnet", t("backend.same", "worker", "claude-code")],
@@ -335,8 +341,8 @@ describe("applying it: update_instance_config's write, whole or not at all", () 
     f.worker().backend = "opencode";
     expect(await f.fm.applyBackendSwitch("worker", ["codex", "gpt-5.5"], "claude-code", () => true)).toBe(t("backend.changed", "worker", "claude-code"));
     f.worker().backend = "claude-code";
-    f.any.backendInstalledHere = vi.fn(() => false);
-    expect(await f.fm.applyBackendSwitch("worker", ["codex", "gpt-5.5"], "claude-code", () => true)).toBe(t("backend.not_installed", "codex", "—"));
+    f.any.backendAvailabilityRows = vi.fn(() => [{ backend: "claude-code", state: "usable" }, { backend: "codex", state: "not_installed" }]);
+    expect(await f.fm.applyBackendSwitch("worker", ["codex", "gpt-5.5"], "claude-code", () => true)).toBe(t("backend.unusable", "codex", t("backend.reason_not_installed")));
     expect(f.any.saveFleetConfig).not.toHaveBeenCalled();
   });
 
@@ -414,7 +420,10 @@ describe("the web chat", () => {
     const f = fleet();
     const run = (args: string, confirm?: string) => f.fm.webCommand({ instance: "worker", command: "backend", args, ...(confirm ? { confirm } : {}) }, { publicLink: true });
     const first = await run("");
-    expect(first.body.choices).toMatchObject({ current: "claude-code", options: [{ id: "claude-code" }, { id: "codex" }, { id: "opencode" }, { id: "kiro-cli" }] });
+    const na = t("backend.reason_not_installed");
+    expect(first.body.choices).toMatchObject({ current: "claude-code", options: [{ id: "claude-code" }, { id: "codex" }, { id: "opencode" }, { id: "kiro-cli" },
+      { id: "antigravity", disabled: na }, { id: "grok", disabled: na }, { id: "muse", disabled: na }] });
+    expect(first.body.choices!.options.slice(0, 4).every((o: { disabled?: string }) => !o.disabled)).toBe(true);
     expect(first.body.choices!.prompt).toBe(t("backend.menu", "claude-code · opus"));
     const second = await run("codex");
     expect(second.body.choices!.options.map(o => o.id)).toEqual(["codex default", "codex gpt-5.5"]);
@@ -579,7 +588,7 @@ describe("review r1: a listed model is selectable, whatever its name looks like 
   const AGY = [{ id: "Gemini 3.5 Flash (High)", label: "Gemini 3.5 Flash (High)" }, { id: "gemini-3.6-flash-high", label: "flash" }];
   beforeEach(() => writeFileSync(join(agendHome, "cli-env", "antigravity.json"), JSON.stringify({ backend: "antigravity", models: AGY, probedAt: Date.now() })));
 
-  const withAgy = () => { const f = fleet(); f.any.backendInstalledHere = vi.fn(() => true); return f; };
+  const withAgy = () => { const f = fleet(); f.any.backendAvailabilityRows = vi.fn(() => KNOWN_BACKENDS.filter(b => b !== "mock").map(backend => ({ backend, state: "usable" }))); return f; };
 
   it("Telegram: antigravity's display-name model goes on to the effort step", async () => {
     const f = withAgy();
@@ -599,7 +608,7 @@ describe("review r1: a listed model is selectable, whatever its name looks like 
   });
 
   it("controls: the slug still works; a name its launch line cannot carry is refused, listed or not", async () => {
-    const d = deps({ installedBackends: () => ["claude-code", "codex", "antigravity"], models: async b => b === "antigravity" ? [...AGY, { id: 'bad"q', label: "q" }] : [{ id: "gpt 5", label: "spaced" }] });
+    const d = deps({ availability: () => ["claude-code", "codex", "antigravity"].map(backend => ({ backend, state: "usable" as const })), models: async b => b === "antigravity" ? [...AGY, { id: 'bad"q', label: "q" }] : [{ id: "gpt 5", label: "spaced" }] });
     expect((await backendStep(d, "w", ["antigravity", "gemini-3.6-flash-high"])).kind).toBe("confirm");
     expect((await backendStep(d, "w", ["antigravity", "Gemini 3.5 Flash (High)"])).kind).toBe("confirm");
     expect((await backendStep(d, "w", ["antigravity", 'bad"q'])).kind).toBe("refuse");
@@ -724,5 +733,23 @@ describe("review r2: with the default model, codex's levels are those of the mod
     expect(chosen.nextLaunchPassesMax("gpt-5.6-luna")).toBe(true);
     const inherited = await setup({ earlier: "gpt-5.6-luna", shared: "gpt-5.6-luna", defaults: { model: "gpt-5.5" } });
     expect(await inherited.levels()).not.toContain("max");
+  });
+});
+
+describe("#2078 review: an instance on a credential profile is judged by that profile's login", () => {
+  it("default login signed out, the instance's profile signed in: offered and switchable; a signed-out profile is left to the profile gate", async () => {
+    const { credentialProfileStoreHome } = await import("../src/backend/credential-profile.js");
+    const f = fleet({ backend_options: { codex: { credential_profile: "work" } } });
+    f.any.backendAvailabilityRows = vi.fn(() => [{ backend: "claude-code", state: "usable", path: "/bin/claude" }, { backend: "codex", state: "not_signed_in", path: "/bin/codex", auth: "invalid" }]);
+    const store = credentialProfileStoreHome(f.fm.dataDir, "codex", "work");
+    mkdirSync(store, { recursive: true });
+    writeFileSync(join(store, "auth.json"), JSON.stringify({ tokens: { access_token: "c".repeat(32) } }));
+    const rows = f.fm.backendAvailabilityFor("worker");
+    expect(rows.find((r: any) => r.backend === "codex")).toMatchObject({ state: "usable", auth: "valid" });
+    const step = await backendStep(f.any.backendCommandDeps("worker", { live: false }), "worker", ["codex"]);
+    expect(step.kind).toBe("choose");
+    rmSync(join(store, "auth.json"));
+    // No claim from the default login; update_instance_config's profile gate refuses it with the profile's own command.
+    expect(f.fm.backendAvailabilityFor("worker").find((r: any) => r.backend === "codex")!.state).toBe("unknown");
   });
 });

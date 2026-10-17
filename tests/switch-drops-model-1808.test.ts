@@ -167,7 +167,8 @@ describe("backendModelVerdict: the one rule", () => {
     const f = fleet();
     const { backendStep } = await import("../src/backend-command.js");
     const any = f.any;
-    any.backendInstalledHere = vi.fn(() => true);
+    any.backendAvailabilityRows = vi.fn(() => ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"].map(backend => ({ backend, state: "usable" })));
+    any.availabilityProbes = { resolve: async () => undefined, version: async () => null, auth: async () => "unknown", signature: async () => null };
     any.getInstanceIdle = vi.fn(() => true);
     const deps = any.backendCommandDeps("worker", { live: false });
     expect((await backendStep(deps, "worker", ["grok", "grok-4.5"])).kind).not.toBe("refuse");

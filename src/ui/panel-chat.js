@@ -399,7 +399,8 @@ function CommandCard({ name, lease }) {
       : c.compact === "lost" ? t("chat.compactLost") : c.compact === "not_compacted" ? t("chat.compactNotCompacted") : t("chat.compactUnknown")}</p>` : null}
     ${c.choices && c.choices.prompt ? html`<pre class="cmd-text">${c.choices.prompt}</pre>` : null}
     ${c.choices ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdChoose")}>${c.choices.options.map((o) => html`<button key=${o.id} type="button"
-      class=${`btn btn-sm${o.id === c.choices.current ? " current" : ""}`} aria-current=${o.id === c.choices.current ? "true" : undefined} onClick=${() => run(o.id)}>${o.label}</button>`)}</div>` : null}
+      class=${`btn btn-sm${o.id === c.choices.current ? " current" : ""}`} aria-current=${o.id === c.choices.current ? "true" : undefined}
+      disabled=${!!o.disabled} title=${o.disabled || undefined} onClick=${() => { if (!o.disabled) run(o.id); }}>${o.label}</button>`)}</div>` : null}
   </div>`;
 }
 

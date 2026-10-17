@@ -12,6 +12,7 @@
  * the web chat only present it (fleet-manager.ts, web-commands.ts).
  */
 import type { ModelOption } from "./backend/types.js";
+import type { AvailabilityState } from "./backend-availability.js";
 
 /** The word that picks the inherited value of a model or an effort, in the typed form and in the menus. */
 export const BACKEND_DEFAULT = "default";
@@ -24,8 +25,11 @@ export interface BackendCommandDeps {
   currentBackend(instance: string): string;
   /** What the instance runs on now, as a reply shows it: "claude-code · opus". */
   currentDisplay(instance: string): string;
-  /** Backends whose CLI is installed on this host, found the way the launch finds it; never removed or test-only ones. */
-  installedBackends(): string[];
+  /**
+   * #2072: every backend of the catalog (never removed or test-only ones) with what this host's published snapshot says
+   * about it — installed, signed in, new enough. Read only; never probes.
+   */
+  availability(): Array<{ backend: string; state: AvailabilityState; minVersion?: string | null }>;
   /** The models `/model` would offer on that backend; empty when none are known. */
   models(backend: string): Promise<ModelOption[]>;
   /** A name the backend accepts beyond its list (claude-code's aliases and account catalog). */
@@ -44,8 +48,21 @@ export interface BackendCommandDeps {
 /** What a confirmed `/backend` writes: `null` = the inherited value (no override of the instance's own). */
 export interface BackendPlan { backend: string; model: string | null; effort: string | null }
 
-/** One choice of a step. `token` is the argument it adds; `label` what the button says. */
-export interface BackendChoice { token: string; label: string }
+/**
+ * One choice of a step. `token` is the argument it adds; `label` what the button says. `disabled`: why it cannot be
+ * chosen here (shown, not hidden — a surface that cannot disable an option shows the reason and the step refuses it).
+ */
+export interface BackendChoice { token: string; label: string; disabled?: string }
+
+/** Why a backend cannot be chosen, or null when it can (usable, or unknown: checked again when applied). */
+export function backendUnusable(t: BackendCommandDeps["t"], row: { backend: string; state: AvailabilityState; minVersion?: string | null }): string | null {
+  switch (row.state) {
+    case "not_installed": return t("backend.reason_not_installed");
+    case "not_signed_in": return t("backend.reason_not_signed_in");
+    case "too_old": return t("backend.reason_too_old", row.minVersion ?? "?");
+    default: return null;
+  }
+}
 
 export type BackendStep =
   | { kind: "choose"; step: "backend" | "model" | "effort"; args: string[]; text: string; choices: BackendChoice[]; current: string | null }
@@ -93,19 +110,28 @@ export async function backendStep(deps: BackendCommandDeps, instance: string, ar
   const { t } = deps;
   if (args.length > 3) return { kind: "refuse", text: t("backend.usage") };
   const from = deps.currentBackend(instance);
-  const installed = deps.installedBackends();
+  const rows = deps.availability();
+  // The instance's own backend is never shown as unusable: a failed or stale probe must not disable it (fail open).
+  const why = (row: (typeof rows)[number]) => (row.backend === from ? null : backendUnusable(t, row));
   if (args.length === 0) {
     return {
       kind: "choose", step: "backend", args: [], current: from,
       text: t("backend.menu", deps.currentDisplay(instance)),
-      choices: installed.map(b => ({ token: b, label: b === from ? `✓ ${b}` : b })),
+      choices: rows.map(row => {
+        const reason = why(row);
+        const label = row.backend === from ? `✓ ${row.backend}` : row.state === "unknown" ? `${row.backend} — ${t("backend.reason_unchecked")}` : row.backend;
+        return reason ? { token: row.backend, label: `${row.backend} — ${reason}`, disabled: reason } : { token: row.backend, label };
+      }),
     };
   }
 
   const backend = args[0]!.toLowerCase();
-  if (!installed.includes(backend)) {
-    return { kind: "refuse", text: t("backend.not_installed", args[0]!, installed.join(", ") || "—") };
+  const row = rows.find(r => r.backend === backend);
+  if (!row) {
+    return { kind: "refuse", text: t("backend.unknown_backend", args[0]!, rows.map(r => r.backend).join(", ") || "—") };
   }
+  const reason = why(row);
+  if (reason) return { kind: "refuse", text: t("backend.unusable", backend, reason) };
   // The same backend is not a switch: nothing to restart for. A model or effort on it is /model's and /effort's job.
   if (backend === from) return { kind: "refuse", text: t("backend.same", instance, backend), noop: true };
 

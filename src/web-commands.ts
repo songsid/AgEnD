@@ -24,7 +24,7 @@ export const PUBLIC_LINK_REFUSED: ReadonlySet<WebCommand> = new Set<WebCommand>(
 export const MAX_COMMAND_ARGS = 4000;
 
 export interface WebChoices {
-  current: string | null; options: Array<{ id: string; label: string }>;
+  current: string | null; options: Array<{ id: string; label: string; disabled?: string }>;
   /** What the choice is for, when the command asks more than one thing (/backend: backend, then model, then effort). */
   prompt?: string;
 }

@@ -188,6 +188,8 @@ export const SSE_HEARTBEAT_MS = 10_000;
 /** Minimal interface — only what web-api needs from FleetManager. */
 export interface WebApiContext {
   readonly webToken: string | null;
+  /** #2072: what this host can run (the published snapshot); absent in a hand-built context. */
+  backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
   /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
   readonly webSessions?: WebSessionStore | null;
   readonly dataDir: string;
@@ -875,6 +877,16 @@ export function handleWebRequest(
       { name: "grok", binary: "grok" },
       { name: "muse", binary: "muse" },
     ];
+    // #2072: the published availability snapshot — installed, signed in, new enough — when the fleet has one.
+    if (ctx.backendAvailabilityRows) {
+      const binaryOf = new Map(BACKENDS.map(b => [b.name, b]));
+      const backends = ctx.backendAvailabilityRows().filter(r => binaryOf.has(r.backend)).map(r => ({
+        name: r.backend, binary: binaryOf.get(r.backend)!.binary, installed: r.state !== "not_installed" && r.path !== null, path: r.path ?? "",
+        deprecated: binaryOf.get(r.backend)!.deprecated ?? false, state: r.state, minVersion: r.minVersion, ...(r.state === "unknown" ? { unknown: true } : {}),
+      }));
+      json(res, 200, { backends });
+      return true;
+    }
     // #1490: seven sequential 2 s `execFileSync("which")` calls used to block the event loop here. The shared probe
     // runs `which` as bounded async children and reuses an answer for BINARY_PROBE_TTL_MS. `unknown`: no answer in
     // time (shown as not installed, as the old timeout was).

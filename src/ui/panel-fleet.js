@@ -61,7 +61,7 @@ register("fleet", {
     newInstance: "New instance", directory: "Directory", directoryHint: "Optional — a workspace is created if empty", topic: "Name", topicHint: "From the directory name",
     topicRequired: "Name is required when Directory is empty", description: "Description", descriptionHint: "What this instance does", model: "Model", modelHint: "e.g. sonnet, opus, gpt-5",
     branch: "Branch (git worktree)", branchHint: "e.g. feature-x", tags: "Tags", tagsHint: "comma-separated, e.g. dev, review", systemPrompt: "System prompt", systemPromptHint: "Custom instructions for this instance",
-    fleetDefault: "Use the fleet default", notInstalled: "(not installed)", deprecated: "(deprecated)", instanceCreated: "Instance created",
+    fleetDefault: "Use the fleet default", notInstalled: "(not installed)", notSignedIn: "(not signed in — use /login)", tooOld: "(needs {0} or newer)", unchecked: "(not checked yet)", deprecated: "(deprecated)", instanceCreated: "Instance created",
   },
   "zh-TW": {
     hostMemory_elevated: "主機記憶體壓力偏高：新的 agent 一次啟動一個，至少間隔 5 秒",
@@ -92,7 +92,7 @@ register("fleet", {
     newInstance: "新增 instance", directory: "目錄", directoryHint: "可留空——留空會自動建立工作區", topic: "名稱", topicHint: "預設取自目錄名稱",
     topicRequired: "目錄留空時必須填寫名稱", description: "說明", descriptionHint: "這個 instance 做什麼", model: "模型", modelHint: "例如 sonnet、opus、gpt-5",
     branch: "分支（git worktree）", branchHint: "例如 feature-x", tags: "標籤", tagsHint: "以逗號分隔，例如 dev, review", systemPrompt: "System prompt", systemPromptHint: "這個 instance 的自訂指示",
-    fleetDefault: "使用 fleet 預設", notInstalled: "（未安裝）", deprecated: "（已淘汰）", instanceCreated: "Instance 已建立",
+    fleetDefault: "使用 fleet 預設", notInstalled: "（未安裝）", notSignedIn: "（未登入，請用 /login）", tooOld: "（需要 {0} 以上版本）", unchecked: "（尚未檢查）", deprecated: "（已淘汰）", instanceCreated: "Instance 已建立",
   },
 });
 
@@ -559,12 +559,21 @@ export function CreateInstanceDialog({ onClose }) {
     ${field(`${t("fleet.topic")}${f.dir.trim() ? "" : " *"}`, html`<input value=${f.topic} onInput=${set("topic")} placeholder=${t("fleet.topicHint")} />`)}
     ${field(t("fleet.description"), html`<input value=${f.desc} onInput=${set("desc")} placeholder=${t("fleet.descriptionHint")} />`)}
     ${field(t("fleet.backend"), backends ? html`<select value=${f.backend} onChange=${set("backend")}><option value="">${t("fleet.fleetDefault")}</option>
-      ${backends.map(b => html`<option key=${b.name} value=${b.name} disabled=${!b.installed}>${b.name}${b.deprecated ? ` ${t("fleet.deprecated")}` : ""}${b.installed ? "" : ` ${t("fleet.notInstalled")}`}</option>`)}</select>` : html`<${Skeleton} lines=${1} />`)}
+      ${backends.map(b => html`<option key=${b.name} value=${b.name} disabled=${backendBlocked(b)}>${b.name}${b.deprecated ? ` ${t("fleet.deprecated")}` : ""}${backendNote(b)}</option>`)}</select>` : html`<${Skeleton} lines=${1} />`)}
     ${field(t("fleet.model"), html`<input value=${f.model} onInput=${set("model")} placeholder=${t("fleet.modelHint")} />`)}
     ${field(t("fleet.branch"), html`<input value=${f.branch} onInput=${set("branch")} placeholder=${t("fleet.branchHint")} />`)}
     ${field(t("fleet.tags"), html`<input value=${f.tags} onInput=${set("tags")} placeholder=${t("fleet.tagsHint")} />`)}
     ${field(t("fleet.systemPrompt"), html`<textarea rows="3" value=${f.prompt} onInput=${set("prompt")} placeholder=${t("fleet.systemPromptHint")}></textarea>`)}
   </${FormDialog}>`;
+}
+
+// #2072: a backend this host cannot run is shown, disabled, with why; one not checked yet stays selectable.
+const backendState = (b) => b.state ?? (b.installed ? "usable" : b.unknown ? "unknown" : "not_installed");
+function backendBlocked(b) { return ["not_installed", "not_signed_in", "too_old"].includes(backendState(b)); }
+function backendNote(b) {
+  const s = backendState(b);
+  return s === "not_installed" ? ` ${t("fleet.notInstalled")}` : s === "not_signed_in" ? ` ${t("fleet.notSignedIn")}`
+    : s === "too_old" ? ` ${t("fleet.tooOld", b.minVersion ?? "?")}` : s === "unknown" ? ` ${t("fleet.unchecked")}` : "";
 }
 
 // ── Cron in words (#1724: in the page's language) ──

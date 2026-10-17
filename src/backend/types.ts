@@ -917,7 +917,19 @@ function commonBinaryDirs(): string[] {
   return [...new Set(dirs)];
 }
 
+/**
+ * #2072: paths the availability snapshot (backend-availability.ts) already resolved off the loop, by binary name. A
+ * backend constructed on the fleet loop (`/model`, `/effort`) then needs no synchronous `which`. Only the default
+ * lookup (no caller-given fallback dirs) uses a hint; null forgets one.
+ */
+const resolvedHints = new Map<string, string>();
+export function noteResolvedBinary(name: string, path: string | null): void {
+  if (path) resolvedHints.set(name, path); else resolvedHints.delete(name);
+}
+
 export function resolveBinary(name: string, fallbackDirs?: readonly string[]): string {
+  const hint = fallbackDirs ? undefined : resolvedHints.get(name);
+  if (hint) return hint;
   return measureSyncWork("backend.resolveBinary", () => resolveBinarySync(name, fallbackDirs));
 }
 function resolveBinarySync(name: string, fallbackDirs?: readonly string[]): string {
