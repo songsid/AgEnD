@@ -66,6 +66,12 @@ describe("the page's resolver is the server's", () => {
       expect(C.resolvePlaces(t, showThemes, hostDefault), JSON.stringify([t, showThemes, hostDefault])).toEqual(SC.resolvePlacements(t as never, { showThemes, hostDefault }));
     }
   });
+  it("a custom colour is drawn as it is; its name text uses each mode's readable shade", () => {
+    const id = C.identityOf({ color: { person: "#202060", auto: "auto:sea" }, color_show: { person: ["name"] } }, { off: false });
+    expect([id.light, id.dark]).toEqual(["#202060", "#202060"]);
+    expect([id.nameLight, id.nameDark]).toEqual([SC.readableShade("#202060", "light"), SC.readableShade("#202060", "dark")]);
+    expect(id.nameDark, "too dark for a dark page: lightened").not.toBe("#202060");
+  });
 });
 
 const ITEMS = [
@@ -96,6 +102,14 @@ describe("the sidebar row", () => {
     expect(prop("gamma", "--id-dark")).toBe("#d2a8ff");                       // the agent's preset, while themes are shown
     expect(cls("delta"), "shown nowhere: nothing painted").toEqual([]);
     expect(prop("delta", "--id-light")).toBeFalsy();
+  });
+  it("choosing ring + bar as the default unsets it (the built-in default, not a copy of it); another choice is kept", async () => {
+    await mountNav();
+    C.setDefaultPlaces(["name"]);
+    expect(prefs.prefInForce("color.show")).toEqual({ value: ["name"] });
+    C.setDefaultPlaces(["bar", "ring"]);
+    expect(prefs.prefInForce("color.show")).toEqual({ value: null });
+    await flush(); await settle();
   });
   it("the host's default places, and Turn off colours: nothing painted, the picks kept", async () => {
     await setHost({ "color.show": ["name", "ring"] });
