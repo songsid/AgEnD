@@ -139,6 +139,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .s-ap-group { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text); margin: var(--s-4) 0 var(--s-2); }
 .s-ap-group:first-child { margin-top: 0; }
 .s-ap-title { display: flex; align-items: center; gap: var(--s-2); }
+/* The fields' placeholders show the defaults: readable, not the browser's faint grey (dark mode). */
+.s-appearance input::placeholder { color: var(--text-3); opacity: 1; }
+/* A card title in Chinese is never upper-cased ("AGENT 的主題"): the small caps are a Latin convention. */
+:lang(zh-Hant) .card h3 { text-transform: none; letter-spacing: 0; }
 .s-learn { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: var(--r-full); border: 1px solid var(--border);
   color: var(--text-3); font-size: 11px; text-decoration: none; text-transform: none; letter-spacing: 0; line-height: 1; }
 .s-learn:hover, .s-learn:focus-visible { color: var(--text); border-color: var(--text-3); }
