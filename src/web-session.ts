@@ -429,6 +429,17 @@ export class WebSessionStore {
    * when it is not durable — the operator would believe a session is dead that the next start revives.
    */
 
+  /** #1920 §3.2: the accounts with a live guest session, each once — for the background room-membership reads. */
+  guestOwners(): Array<{ adapterId: string; userId: string }> {
+    this.purgeExpired(this.now());
+    const seen = new Map<string, { adapterId: string; userId: string }>();
+    for (const r of this.byHash.values()) {
+      if (r.tier !== "guest" || !r.owner || this.pending.has(r.idHash)) continue;
+      seen.set(`${r.owner.adapterId}\u0000${r.owner.userId}`, { adapterId: r.owner.adapterId, userId: r.owner.userId });
+    }
+    return [...seen.values()];
+  }
+
   /** #1920: `only` as in list() — a session it rejects is not found. */
   revokeByHandle(handle: string, only?: (r: SessionRecord) => boolean): { found: boolean; durable: boolean } {
     if (!HANDLE_PATTERN.test(handle)) return { found: false, durable: true };

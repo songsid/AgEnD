@@ -235,6 +235,7 @@ import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScop
 import { crossInstanceVisibility, runVisibilityCommand } from "./cross-instance-notice.js";
 import { WebSettingsTools } from "./web-settings-tools.js";
 import { bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
+import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms } from "./web-guest-rooms.js";
 import { TrafficLog, trafficItem, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
@@ -1229,6 +1230,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Injectable only to keep the chat→CLI reload hand-off deterministic in tests. */
   private fullRestartLauncher: () => Promise<FullRestartHelperHandle> = launchFullRestartHelper;
   private eventLogPruneTimer: ReturnType<typeof setInterval> | null = null;
+  /** #1920 §3.2: the background reads of guests' ClassicBot room membership (a minute's tick; reads only what is due). */
+  private guestRoomsTimer: ReturnType<typeof setInterval> | null = null;
+  private guestRoomMembership: GuestRoomMembership | null = null;
   private outboxPruneTimer: ReturnType<typeof setInterval> | null = null;
   private logRotateTimer: ReturnType<typeof setInterval> | null = null;
   private discordPresenceTimer: ReturnType<typeof setInterval> | null = null;
@@ -7000,6 +7004,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.pruneEventLog();
     this.eventLogPruneTimer = setInterval(() => this.pruneEventLog(), 24 * 60 * 60_000);
     this.eventLogPruneTimer.unref?.();
+
+    // #1920 §3.2: guests' ClassicBot room membership, read in the background — now, then each key ten minutes after
+    // its answer (a minute after a failed read; the tick only finds what is due). A request only reads the answers.
+    void this.refreshAllGuestRooms();
+    this.guestRoomsTimer = setInterval(() => { void this.refreshAllGuestRooms(); }, GUEST_ROOM_TICK_MS);
+    this.guestRoomsTimer.unref?.();
 
     // #1335: delivery-outbox.db and Task Board retention. Same once-at-startup
     // + daily-timer pattern; chunked DELETEs so one run cannot hold the loop.
@@ -18529,6 +18539,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.dailyTipScheduler = null;
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
+    if (this.guestRoomsTimer) { clearInterval(this.guestRoomsTimer); this.guestRoomsTimer = null; }
     this.logService?.unwatchAll();   // #1218: a Log's watch timers end with the fleet
     this.compactWatchService?.stopAll();
     if (this.outboxPruneTimer) { clearInterval(this.outboxPruneTimer); this.outboxPruneTimer = null; }
@@ -20525,7 +20536,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    *   only the instances an admin named for its guests (`web.guests.open_instances`; the user's decision: least
    *   privilege, as an open group has no list of people).
    * - A Telegram private ClassicBot room that is the account's own (its chat id is the user id).
-   * - A group or guild room: only while membership is verified (a later step; until then none).
+   * - A ClassicBot group or guild room on its connection: only while its membership is verified (§3.2 — a "member"
+   *   answer read in the background, at most 15 minutes old; unknown, failed or stale hides it).
    * - Then an admin's narrowing (`web.guests.narrow`), which only takes away.
    * A fleet admin is not a guest: an admin outside the connection's access gets nothing here (admins sign in as admins).
    */
@@ -20542,8 +20554,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         if (!named || named.has(name)) scope.add(name);
       }
     }
-    for (const room of this.classicChannels?.getAll() ?? []) {
+    const rooms = this.classicChannels?.getAll() ?? [];
+    for (const room of rooms) {
       if (this.isOwnPrivateRoom(owner, room)) scope.add(room.instanceName);
+    }
+    const members = this.guestRooms();
+    for (const room of guestGroupRooms(rooms, owner)) {
+      if (members.verified(room, owner.userId)) scope.add(room.instance);
     }
     const narrow = own(guests.narrow, `${owner.adapterId}:${owner.userId}`);
     if (narrow) { const keep = new Set(narrow); for (const name of [...scope]) if (!keep.has(name)) scope.delete(name); }
@@ -20556,13 +20573,54 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * so the next request and the open stream find it gone.
    */
   private guestStillAdmitted(record: SessionRecord): boolean {
-    if (!this.webSessions || !this.webToken || !this.webSessions.isCurrent(record, tokenEpoch(this.webToken))) return false;
-    if (this.guestScope(record.owner).size) return true;
+    return this.guestAdmission(record) === "ok";
+  }
+  /**
+   * The same, with a third answer (§3.2): "pending" — nothing in scope now, but a room's membership is not read yet
+   * (a restart, a room just created). The request is refused and the session kept; its read starts in the background.
+   */
+  private guestAdmission(record: SessionRecord): "ok" | "pending" | "gone" {
+    if (!this.webSessions || !this.webToken || !this.webSessions.isCurrent(record, tokenEpoch(this.webToken))) return "gone";
+    const owner = record.owner;
+    if (this.guestScope(owner).size) return "ok";
+    if (owner && this.fleetConfig?.web?.guests?.enabled === true) {
+      const members = this.guestRooms(), rooms = guestGroupRooms(this.classicChannels?.getAll() ?? [], owner);
+      if (rooms.some((room) => members.pending(room, owner.userId))) {
+        void this.refreshGuestRooms(owner);
+        return "pending";
+      }
+    }
     this.enforceGuestSwitch();
     const ended = this.webSessions.revokeByHandle(record.handle);
     if (ended.found) this.logger.info({ adapterId: record.owner?.adapterId, durable: ended.durable }, "Guest web session ended: nothing left in its scope");
-    return false;
+    return "gone";
   }
+
+  /** #1920 §3.2: the membership answers; the read goes to the room's own connection, never waits past its deadline. */
+  private guestRooms(): GuestRoomMembership {
+    this.guestRoomMembership ??= new GuestRoomMembership({
+      now: () => performance.now(),
+      read: (room, userId) => {
+        const adapter = this.worlds.get(room.adapterId)?.adapter;
+        return room.kind === "telegram" ? adapter?.isGroupMember?.(room.channelId, userId) : adapter?.canViewChannel?.(room.channelId, userId);
+      },
+    });
+    return this.guestRoomMembership;
+  }
+  /** #1920 §3.2: read this guest's rooms that are due (`force`: a stream that connects — at most once a minute). */
+  private async refreshGuestRooms(owner: { readonly adapterId: string; readonly userId: string }, opts: { force?: boolean } = {}): Promise<void> {
+    if (this.fleetConfig?.web?.guests?.enabled !== true) return;
+    try { await this.guestRooms().refresh(owner, guestGroupRooms(this.classicChannels?.getAll() ?? [], owner), opts); }
+    catch (err) { this.logger.warn({ err: (err as Error).message }, "Guest room membership could not be read"); }
+  }
+  /** Every account with a live guest session, one after another (the guest caps bound them); one pass at a time. */
+  private async refreshAllGuestRooms(): Promise<void> {
+    if (this.guestRoomsPass || this.fleetConfig?.web?.guests?.enabled !== true || !this.webSessions) return;
+    this.guestRoomsPass = true;
+    try { for (const owner of this.webSessions.guestOwners()) await this.refreshGuestRooms(owner); }
+    finally { this.guestRoomsPass = false; }
+  }
+  private guestRoomsPass = false;
 
   /**
    * #1920 §3.5: guest sign-in turned off ends every guest session — checked when the configuration is read or saved
@@ -20649,7 +20707,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         if (decision.via === "session" && decision.session.tier === "guest") {
           const owner = decision.session.owner!;
           const admitted = decision.session;
-          if (!this.guestStillAdmitted(admitted)) {
+          const admission = this.guestAdmission(admitted);
+          if (admission === "pending") {
+            // §3.2: a room's membership is being read — try again shortly; the session stays.
+            res.writeHead(503, { "Retry-After": "5" });
+            res.end(JSON.stringify({ error: "guest_scope_pending" }));
+            return;
+          }
+          if (admission === "gone") {
             res.writeHead(401);
             res.end(JSON.stringify({ error: "guest_scope_empty" }));
             return;
@@ -20665,6 +20730,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           bindGuestRequest(req, { owner, scope: () => this.guestScope(owner), current: () => this.guestStillAdmitted(admitted),
             // #1920 §5.2: its own Telegram private room shows it everything; the kept messages place ticks and buttons.
             ownRoom: (instance) => this.guestOwnRoom(owner, instance),
+            // §3.2: a stream that connects reads its rooms again (in the background; at most once a minute).
+            streamOpened: () => { void this.refreshGuestRooms(owner, { force: true }); },
             history: () => this.webChatHistory,
             // #1920 §5.1: guests chat unless the host made them read-only (web.guests.chat: false).
             chat: () => this.fleetConfig?.web?.guests?.chat !== false });

@@ -1453,6 +1453,21 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     return true;
   }
 
+  /** #1920 §3.2: a member of the channel's guild who may view it — read from Discord (force), never the member cache. */
+  async canViewChannel(channelId: string, userId: string): Promise<boolean> {
+    if (!/^\d{5,25}$/.test(userId) || !/^\d{5,25}$/.test(channelId)) return false;
+    const channel = await (await this.readyClient()).channels.fetch(channelId);
+    if (!channel || !("guild" in channel) || !channel.guild || typeof (channel as { permissionsFor?: unknown }).permissionsFor !== "function") return false;
+    let member;
+    try { member = await channel.guild.members.fetch({ user: userId, force: true }); }
+    catch (err) {
+      // 10007 Unknown Member / 10013 Unknown User: a definite "not in this guild"; anything else is no answer.
+      if ([10007, 10013].includes((err as { code?: unknown }).code as number)) return false;
+      throw err;
+    }
+    return (channel as { permissionsFor(m: unknown): { has(bit: bigint): boolean } | null }).permissionsFor(member)?.has(PermissionFlagsBits.ViewChannel) === true;
+  }
+
   /** Private delivery: a DM to the user (fails if the user disallows DMs from this server). */
   async sendDirect(userId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
     text = stripPlaceRefs(text);

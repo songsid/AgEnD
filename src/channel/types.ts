@@ -107,6 +107,12 @@ export interface ChannelAdapter extends EventEmitter {
    * own bot token; rejects on any platform error (the caller then treats the user as not a member).
    */
   isGroupMember?(groupId: string, userId: string): Promise<boolean>;
+  /**
+   * #1920 §3.2: whether a user can see this channel (a Discord ClassicBot room): a member of its guild with View
+   * Channel there. False when they are not (left the guild, or no view permission); rejects on any other platform
+   * error (the caller then has no answer).
+   */
+  canViewChannel?(channelId: string, userId: string): Promise<boolean>;
 
   sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage>;
   /**

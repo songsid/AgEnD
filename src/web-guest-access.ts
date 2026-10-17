@@ -114,6 +114,8 @@ export interface GuestRequest {
   history?(): WebChatHistory | null;
   /** #1920 §5.1: guests may chat (web.guests.chat, default true); false: read-only. Absent: read-only. */
   chat?(): boolean;
+  /** #1920 §3.2: its stream connected — its rooms' membership is read again, in the background. */
+  streamOpened?(): void;
 }
 
 /**

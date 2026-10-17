@@ -975,7 +975,7 @@ export function handleWebRequest(
     // #1920: a guest's stream: its projected status now and with each heartbeat, its replay and ticks as it may see them
     // (§5.2), then only what guestFrameData lets through — no prompts or Needs you.
     const guest = guestRequestOf(req);
-    if (guest) streamGuests.set(res, guest);
+    if (guest) { streamGuests.set(res, guest); guest.streamOpened?.(); }
     const statusFrame = () => `event: status\ndata: ${JSON.stringify(guest ? guestStatus(ctx.getUiStatus(), guest.scope()) : ctx.getUiStatus())}\n\n`;
     res.write(`${statusFrame()}${sseClock()}`);
     // An EventSource that reconnects says what it last saw: send what it missed, before anything new.
