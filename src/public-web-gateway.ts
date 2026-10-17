@@ -32,7 +32,7 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "DELETE" && /^\/api\/card\/[^/]+$/.test(path)) return true;   // Clear card
   if (method === "POST" && (/^\/stop\/[^/]+$/.test(path) || /^\/api\/instance\/[^/]+\/start$/.test(path))) return true;
   if (method === "GET" && /^\/ui\/js\/[a-z0-9_-]+\.js$/.test(path)) return true;
-  if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|cache|prefs|preview-status|steps)$/.test(path)) return true;
+  if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|traffic|cache|prefs|preview-status|steps)$/.test(path)) return true;
   // #1629: agents' themes and their pictures, read-only — the public link views themes; reset and lock are not here.
   if (method === "GET" && (path === "/ui/themes" || /^\/ui\/img\/theme\/[^/]+\/[0-9a-f]{32}$/.test(path))) return true;
   // #1629: static posters only. Runtime resources, library, personal slots and writes stay closed.

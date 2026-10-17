@@ -32,6 +32,7 @@ function harness() {
     ensureDeliveryOutbox: vi.fn(), scheduleDeliveryOutboxPump: vi.fn(),
     sendCancelButton: vi.fn(), emitSseEvent: vi.fn(),
   };
+  ctx.publishTraffic = () => {};   // #1918: the org canvas's traffic; not what these tests are about
   ctx.admitDurableDelivery = FleetManager.prototype.admitDurableDelivery.bind(ctx);
   ctx.getDaemonBootId = FleetManager.prototype.getDaemonBootId.bind(ctx);
   ctx.queryDurableDeliveryStatus = FleetManager.prototype.queryDurableDeliveryStatus.bind(ctx);

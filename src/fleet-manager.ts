@@ -231,7 +231,8 @@ import { runOnLoginShell } from "./login-shell.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScope } from "./command-table.js";
-import { runVisibilityCommand } from "./cross-instance-notice.js";
+import { crossInstanceVisibility, runVisibilityCommand } from "./cross-instance-notice.js";
+import { TrafficLog, trafficItem, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
@@ -1910,6 +1911,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
       }
     });
+    // #1918: the org canvas's traffic — from the row this listener's events already name, never a probe of its own.
+    // The row as it is now (it has already changed when the event comes): its state, not the event's, is the truth.
+    outbox.on("state", (event: { deliveryId?: string }) => {
+      const row = event.deliveryId ? outbox.get(event.deliveryId) : undefined;
+      if (row) this.publishTraffic(row);
+    });
+    outbox.on("consumed", (event: { deliveryId?: string }) => {
+      const row = event.deliveryId ? outbox.get(event.deliveryId) : undefined;
+      if (row) this.publishTraffic(row, "consumed");
+    });
     outbox.on("generation_recovered", () => this.scheduleDeliveryOutboxPump());
     this.replyObligationTimer = setInterval(() => measureSyncWork("fleet.replyObligationSweep", () => this.sweepReplyObligations()), REPLY_OBLIGATION_SWEEP_MS);
     this.replyObligationTimer.unref?.();
@@ -1930,6 +1941,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       );
     });
     this.scheduleDeliveryOutboxPump();
+  }
+
+  /** #1918: cross-instance traffic, as the org canvas draws it (fleet-traffic.ts). */
+  private readonly trafficLog = new TrafficLog();
+  private trafficMemo: { atMs: number; value: { now: string; items: TrafficItem[] } } | null = null;
+  /** One delivery row's traffic item, kept for the snapshot and sent to the open pages when it is news. */
+  private publishTraffic(row: OutboxDelivery, state?: "consumed"): void {
+    try {
+      const item = trafficItem(row, this.fleetConfig, new Date().toISOString(), state);
+      const news = item ? this.trafficLog.note(item) : null;
+      if (news) { this.trafficMemo = null; this.emitSseEvent("traffic", news); }
+    } catch (err) { this.logger.debug({ err }, "traffic: an item was not published"); }
+  }
+  /**
+   * GET /ui/traffic: what is in flight now (the outbox's pending rows) and what finished in the last two minutes, at
+   * most TRAFFIC_SNAPSHOT_MAX items. Worked out at most once every two seconds, so the public link's polling (or any
+   * number of pages) costs one indexed read per two seconds. Visibility is applied as of now.
+   */
+  trafficSnapshot(): { now: string; items: TrafficItem[] } {
+    const nowMs = performance.now();
+    if (this.trafficMemo && nowMs - this.trafficMemo.atMs < 2_000) return this.trafficMemo.value;
+    const now = new Date().toISOString();
+    const pending = (this.deliveryOutbox?.listPending() ?? [])
+      .map((r) => trafficItem(r, this.fleetConfig, r.createdAt ?? now)).filter((i): i is TrafficItem => i !== null);
+    const visible = (name: string) => crossInstanceVisibility(this.fleetConfig, name) !== "hidden";
+    const items = this.trafficLog.snapshot(pending).filter((i) => visible(i.from) && visible(i.to));
+    this.trafficMemo = { atMs: nowMs, value: { now, items } };
+    return this.trafficMemo.value;
   }
 
   /** Synchronous SQLite admission; the caller may acknowledge only after this returns. */
@@ -1954,6 +1993,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const sourceKey = `mcp:${input.sourceInstance}:${input.operationId}:${input.targetInstance}:${input.targetSession ?? ""}:${input.kind}`;
     const admitted = outbox.admit({ ...input, sourceDaemonBootId, sourceKey });
+    if (admitted.inserted) this.publishTraffic(admitted.delivery);
     if (admitted.inserted) this.logger.info({
       deliveryId: admitted.delivery.deliveryId,
       operationId: input.operationId,
