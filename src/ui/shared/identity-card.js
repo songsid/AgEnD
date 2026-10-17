@@ -135,7 +135,8 @@ function SizeControl({ name, size }) {
 }
 
 /**
- * The card. `compact`: the chat header's own small size (no size control). Nothing when the card is empty. The
+ * The card. `compact`: the chat header's own small size (no size control; the banner still follows the size choice,
+ * #2038). Nothing when the card is empty. The
  * tagline and bio say whose they are (title), since a person's field wins over the agent's.
  */
 export function IdentityCard({ name, card, compact = false, sizeControl = !compact }) {
@@ -143,10 +144,12 @@ export function IdentityCard({ name, card, compact = false, sizeControl = !compa
   const [broken, setBroken] = useState({});
   if (!card) return null;
   const size = compact ? "c" : cardSizeFor(name);
+  // #2038: the chat header's card is its own small size, but its banner follows the person's size choice too.
+  const bannerSize = compact ? ` bs-${cardSizeFor(name)}` : "";
   const whose = (f) => t(f.by === "human" ? "card.byHuman" : "card.byAgent");
   const pic = (slot, cls, alt) => card[slot] && broken[slot] !== card[slot].src
     ? html`<img class=${cls} src=${card[slot].src} alt=${alt} title=${whose(card[slot])} decoding="async" onError=${() => setBroken({ ...broken, [slot]: card[slot].src })} />` : null;
-  return html`<section class=${`id-card card-${size}`} aria-label=${t("card.label", name)}>
+  return html`<section class=${`id-card card-${size}${bannerSize}`} aria-label=${t("card.label", name)}>
     ${pic("banner", "id-banner", "")}
     <div class="id-row">
       ${pic("portrait", "id-portrait", t("card.portraitAlt", name))}
