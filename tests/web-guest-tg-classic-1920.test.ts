@@ -124,6 +124,18 @@ describe("/web typed in a ClassicBot room", () => {
     const inRoom = h.adapter.sendText.mock.calls.filter((c: any[]) => c[0] === h.classicRoom).map((c: any[]) => c[1]);
     expect(inRoom).toEqual([t("web.guest_sent")]);
   });
+  it("#2096 review: a command that only starts with /web (/webhook@ThisBot, /website) is not /web — never the guest flow", async () => {
+    const h = rig();
+    h.openDm();
+    const guest = vi.spyOn(h.s, "guestWebCommand");
+    await h.inbound(h.classicRoom, `/webhook@${BOT}`);
+    await h.inbound("alice", "/website");
+    await h.inbound("alice", "/web_status");
+    expect(guest).not.toHaveBeenCalled();
+    expect(h.s.webGuestLoginCodes.size).toBe(0);
+    await h.inbound("alice", "/web");
+    expect(guest, "while /web itself is").toHaveBeenCalledTimes(1);
+  });
   it("a private chat: plain /web, and /web revoke; a fleet admin's /web is not a guest's", async () => {
     const h = rig();
     h.openDm();
