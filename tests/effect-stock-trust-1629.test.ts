@@ -78,7 +78,7 @@ describe("stock trust/paint prerequisite", () => {
       const shell = dom.document.createElement("div"), thread = dom.document.createElement("div"), chip = dom.document.createElement("div");
       shell.className = "shell"; thread.className = "thread"; chip.className = "click-chip"; chip.setAttribute("data-trust", "thread-control"); shell.append(thread); thread.append(chip); dom.document.body.append(shell);
       const spec = f.m.STOCK_TRUST_INVENTORY.find((s: any) => s.kind === "thread-control"); expect(spec.selector).toContain(".shell .thread .click-chip"); expect(chip.matches(spec.selector)).toBe(true);
-      const el = f.node(), button = f.node(); el.r = { x: 200, y: 300, width: 120, height: 40 }; button.r = { x: 205, y: 305, width: 130, height: 30 }; el.children = [button]; el.getAttribute = () => chip.getAttribute("data-trust");
+      const el = f.node(), button = f.node(); el.r = { x: 200, y: 300, width: 120, height: 40 }; button.r = { x: 205, y: 305, width: 130, height: 30 }; el.children = [button]; el.getAttribute = () => chip.getAttribute("data-trust") ?? "";
       f.extra.set(spec.selector, [el]); f.marked.push(el); expect(f.snapshot()).toMatchObject({ ok: true, rects: expect.arrayContaining([{ x: 200, y: 300, width: 135, height: 40 }]) });
       chip.removeAttribute("data-trust"); expect(f.snapshot().ok).toBe(false); chip.setAttribute("data-trust", "reply"); expect(f.snapshot().ok).toBe(false);
     } finally { dom.restore(); }
