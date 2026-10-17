@@ -53,7 +53,7 @@
       { "file": "src/backend/muse.ts",
         "exclude": ["museSessionCwd", "getSessionId", "museSessionDirs", "requiresDeliveryEnterRetry", "getClearInputKeys", "buildCommand",
           "writeConfig", "listModels", "probeCLIEnv"],
-        "surfaces": { "MUSE_SEPARATOR": "input-box", "MUSE_STATUS_BAR": "input-box", "MUSE_DIALOG_CHROME": "dialog", "MUSE_BUSY": "idle-busy",
+        "surfaces": { "MUSE_SEPARATOR": "input-box", "isMuseStatusBar": "input-box", "MUSE_DIALOG_CHROME": "dialog", "MUSE_BUSY": "idle-busy",
           "MUSE_LOGIN_MENU": "onboarding", "getReadyPattern": "idle-busy", "getBusyPattern": "idle-busy",
           "getStartupDialogs": "trust", "getRuntimeDialogs": "approval", "resumeMissingPattern": "resume" } }
     ],
