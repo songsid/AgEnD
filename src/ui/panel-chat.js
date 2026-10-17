@@ -15,7 +15,7 @@ import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer
 import { detailsPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { HeaderTools } from "/assets/header-tools.js";
-import { navigate } from "/assets/app-nav.js";
+import { navigate, navStore } from "/assets/app-nav.js";
 import { Menu } from "/assets/ui-menu.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, Skeleton } from "/assets/ui-states.js";
@@ -55,7 +55,7 @@ import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
 import { ChatEffectPosters } from "/ui/js/chat-effect-posters.js";
 import { ChatEffects, chatEffectsMenuAvailable } from "./chat-effects.js";
-import { startAppEffects } from "./app-effects.js";
+import { startAppEffects, getAppEffects } from "./app-effects.js";
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -305,9 +305,12 @@ function Thread({ name, th }) {
   const [jump, setJump] = useState({ show: false, unseen: 0 });
   const [empty, setEmpty] = useState(false);
   useLayoutEffect(() => {
+    let live = true;
     const thread = createThread(list.current, scroller.current, {
       t, tf: t, isUser: (x) => store.isUser(x, name), onJump: setJump, onEmpty: setEmpty,
       setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
+      canTryEffect: x => getAppEffects()?.canTry(x) === true,
+      startEffectTrial: x => { const seq = navStore.get().seq; void getAppEffects()?.startTrial(x).then(ok => { if (!ok && live && navStore.get().seq === seq && document.hasFocus?.() === true && document.visibilityState === "visible") toast(t("chat.effectTrialUnavailable")); }); },
       clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
       replyButtonBusy: (id) => store.state.rbBusy.has(id),
       pollMine: (id) => store.state.pollMine[id],                            // #1823: this device's own vote
@@ -331,13 +334,15 @@ function Thread({ name, th }) {
       else if (kind === "sent") thread.jumpLatest();
     });
     const offPv = P() ? P().onChange(() => thread.refreshCards()) : () => {};
+    const offTrials = getAppEffects()?.subscribeTrial(() => thread.render(store.state.msgs[name] || [])) ?? (() => {});
     const offPanel = panelStore.subscribe(() => thread.refreshCards());   // a card shows whether the panel has its block
     const onScroll = () => { store.state.scrollMemo[name] = thread.onScroll(); };
     const sc = scroller.current, ls = list.current;
     sc.addEventListener("scroll", onScroll, { passive: true });
     ls.addEventListener("click", thread.onClick);
     return () => {
-      off(); offPv(); offPanel(); offEmojis(); offMentions();
+      live = false;
+      off(); offPv(); offPanel(); offTrials(); offEmojis(); offMentions();
       sc.removeEventListener("scroll", onScroll);
       ls.removeEventListener("click", thread.onClick);
       thread.dispose();                     // the whole thread goes: every preview in it stops first

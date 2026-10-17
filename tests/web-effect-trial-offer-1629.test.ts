@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { WebChatHistory } from "../src/web-chat-history.js";
+import { FleetManager } from "../src/fleet-manager.js";
 import { WebChatDiskStore, WEB_CHAT_FILE } from "../src/web-chat-store.js";
 import { effectTrialOffer } from "../src/web-effect-trials.js";
 import { installDom } from "./helpers/mini-dom.js";
@@ -19,32 +20,37 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("closed volatile offer projection", () => {
   it("history keeps only checked host status metadata, copied and frozen", () => {
-    const input = offer(), h = new WebChatHistory(), entry = h.record(message({ effectTrial: input }));
+    const input = offer(), h = new WebChatHistory(), entry = h.recordEffectTrial("own", input, message().ts)!;
     expect(entry.effectTrial).toEqual(input); expect(entry.effectTrial).not.toBe(input); expect(Object.isFrozen(entry.effectTrial)).toBe(true);
     input.title = "Changed"; expect(entry.effectTrial?.title).toBe("Fixture");
     expect(h.list("own")[0]?.effectTrial).toEqual(entry.effectTrial);
     expect(h.replayFor({ boot: h.boot, id: 0 })[0]?.effectTrial).toEqual(entry.effectTrial);
     expect(h.list("other")).toEqual([]); expect(h.buttonStates()).toEqual([]);
   });
+  it("the generic record path strips even exact host-looking sender/role metadata", () => {
+    expect(new WebChatHistory().record(message()).effectTrial).toBeUndefined();
+    for (const [instance, data] of [["", offer()], ["x".repeat(129), offer()], ["own", { ...offer(), extra: true }]] as const) expect(new WebChatHistory().recordEffectTrial(instance, data, message().ts)).toBeNull();
+  });
   it.each([{ role: "agent" }, { role: "user" }, { role: "other" }, { sender: "own" }, { sender: "agend-other" }, { instance: "" }, { instance: "x".repeat(129) }])("does not promote text or another path: %j", patch => {
     expect(new WebChatHistory().record(message(patch)).effectTrial).toBeUndefined();
     expect(messageOffer(message(patch))).toBeNull();
   });
   it("real Fleet SSE projection carries display metadata but creates no agent-reply pulse", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
     const writes: string[] = [], h = new WebChatHistory({ boot: "ab" });
-    const fm = Object.assign(Object.create(FleetManager.prototype), { webChatHistory: h, sseClients: new Set([{ destroyed: false, writableEnded: false, write: (s: string) => { writes.push(s); return true; } }]), logger: { debug() {} } });
+    const fm: any = Object.assign(Object.create(FleetManager.prototype), { webChatHistory: h, sseClients: new Set([{ destroyed: false, writableEnded: false, write: (s: string) => { writes.push(s); return true; } }]), logger: { debug() {} } });
     fm.emitSseEvent("message", message());
-    expect(h.list("own")[0]?.effectTrial).toEqual(offer());
+    expect(h.list("own")[0]?.effectTrial).toBeUndefined(); expect(writes.join("")).not.toContain('"effectTrial"');
+    expect(fm.publishEffectTrial("own", offer())).toBe(true);
+    expect(h.list("own")[1]?.effectTrial).toEqual(offer());
     expect(writes.join("")).toContain('"effectTrial"'); expect(writes.join("")).not.toContain("agent_reply_live");
     fm.emitSseEvent("message", message({ role: "agent" }));
-    expect(h.list("own")[1]?.effectTrial).toBeUndefined(); expect(writes.join("")).toContain("agent_reply_live");
+    expect(h.list("own")[2]?.effectTrial).toBeUndefined(); expect(writes.join("")).toContain("agent_reply_live");
   });
   it("real disk persistence omits offer and restore never revives poisoned interactive metadata", async () => {
     const home = mkdtempSync(join(tmpdir(), "agend-trial-history-"));
     try {
       const store = new WebChatDiskStore({ home, ownerOf: () => "dir:/private", logger: { warn() {} }, debounceMs: 1 });
-      const h = new WebChatHistory({ boot: "aa", store }); h.record(message()); await store.flush();
+      const h = new WebChatHistory({ boot: "aa", store }); h.record(message()); h.recordEffectTrial("own", offer(), message().ts); await store.flush();
       const disk = readFileSync(join(home, "workspaces", "own", WEB_CHAT_FILE), "utf8");
       for (const value of ["effectTrial", "expiresAt", "a".repeat(32), "b".repeat(32)]) expect(disk).not.toContain(value);
       const rows = store.load("own")! as Record<string, unknown>[]; expect(rows).toHaveLength(1); rows[0]!.effectTrial = offer();
@@ -69,7 +75,7 @@ describe("closed volatile offer projection", () => {
       expect(effectTrialOffer(x)).toBeNull(); expect(check(x)).toBeNull();
     }
     expect(reads).toBe(0);
-    for (const x of [Object.assign(offer(), { [Symbol()]: 1 }), Object.create(offer()), [], null, 1, "x"]) { expect(effectTrialOffer(x)).toBeNull(); expect(check(x)).toBeNull(); }
+    for (const x of [Object.assign(offer(), { [Symbol()]: 1 }), Object.create(offer()), Object.assign(Object.create({}), offer()), [], null, 1, "x"]) { expect(effectTrialOffer(x)).toBeNull(); expect(check(x)).toBeNull(); }
     const nonenum = offer(); Object.defineProperty(nonenum, "id", { enumerable: false }); expect(check(nonenum)).toBeNull(); expect(effectTrialOffer(nonenum)).toBeNull();
     const { proxy, revoke } = Proxy.revocable(offer(), {}); revoke(); expect(check(proxy)).toBeNull(); expect(effectTrialOffer(proxy)).toBeNull();
     const nullProto = Object.assign(Object.create(null), offer()); expect(check(nullProto)).toEqual(offer());
@@ -77,13 +83,13 @@ describe("closed volatile offer projection", () => {
 });
 
 describe("the real thread's inert protected offer card", () => {
-  function fixture(lang = "en", publicLink = false) {
+  function fixture(lang = "en", publicLink = false, extra = {}) {
     const dom = installDom({}), doc = dom.document, list = doc.createElement("div"), scroller = doc.createElement("div");
     if (publicLink) doc.body.setAttribute("data-public-link", "1"); scroller.append(list); doc.body.append(scroller); setLang(lang);
-    const start = vi.fn(), th = createThread(list, scroller, { t, tf: t, isUser: (x: any) => x.role === "user", onJump() {}, onEmpty() {}, setPreviewOptIn() {}, copyText: async () => true, download() {}, onEffectTrial: start });
+    const start = vi.fn(), th = createThread(list, scroller, { t, tf: t, isUser: (x: any) => x.role === "user", onJump() {}, onEmpty() {}, setPreviewOptIn() {}, copyText: async () => true, download() {}, onEffectTrial: start, serverNow: () => 0, ...extra });
     return { dom, list, th, start };
   }
-  it.each([["en", "Effect trial", "Only a local administrator can start a trial."], ["zh-TW", "效果試播", "僅限本機管理員手動開始試播。"]])("escaped display in %s, no runnable UI", (lang, label, hint) => {
+  it.each([["en", "Effect trial", "Try requires a local admin, enabled previews and custom CSS off."], ["zh-TW", "效果試播", "需由本機管理員啟用預覽並關閉自訂 CSS，才能試播。"]])("escaped display in %s, no runnable UI", (lang, label, hint) => {
     const f = fixture(lang); try {
       f.th.render([message({ effectTrial: offer({ title: '<b>x</b> & "quoted"' }), text: "not card content" })]);
       const card = f.list.querySelector(".effect-trial-offer")!; expect(card.getAttribute("data-trust")).toBe("thread-control");
@@ -94,7 +100,31 @@ describe("the real thread's inert protected offer card", () => {
     } finally { f.th.dispose(); f.dom.restore(); }
   });
   it("public link also gets only an inert local-admin explanation", () => {
-    const f = fixture("en", true); try { f.th.render([message()]); expect(f.list.querySelector(".effect-trial-offer")!.textContent).toContain("Only a local administrator"); expect(f.list.querySelector("button,iframe")).toBeNull(); } finally { f.th.dispose(); f.dom.restore(); }
+    const f = fixture("en", true); try { f.th.render([message()]); expect(f.list.querySelector(".effect-trial-offer")!.textContent).toContain("Try requires a local admin"); expect(f.list.querySelector("button,iframe")).toBeNull(); } finally { f.th.dispose(); f.dom.restore(); }
+  });
+  it("only the current real host button accepts a trusted click; DOM carries a message key, not the offer", () => {
+    const start = vi.fn(), row = message(), f = fixture("en", false, { canTryEffect: () => true, startEffectTrial: start });
+    try {
+      f.th.render([row]); const button = f.list.querySelector("button.effect-trial-start")!;
+      expect(button.getAttribute("data-arg")).toBe("aa-1"); for (const key of ["a".repeat(32), "b".repeat(32)]) expect(button.outerHTML).not.toContain(key);
+      f.th.onClick({ target: button }); f.th.onClick({ target: button, isTrusted: false }); expect(start).not.toHaveBeenCalled();
+      const forged = f.list.ownerDocument.createElement("button"); forged.className = "btn btn-sm effect-trial-start"; forged.setAttribute("data-act", "effectTrial"); forged.setAttribute("data-arg", "aa-1"); button.parentElement!.append(forged);
+      f.th.onClick({ target: forged, isTrusted: true }); expect(start).not.toHaveBeenCalled();
+      f.th.onClick({ target: button, isTrusted: true, defaultPrevented: true }); expect(start).not.toHaveBeenCalled();
+      f.th.onClick({ target: button, isTrusted: true }); expect(start).toHaveBeenCalledExactlyOnceWith(row);
+      f.th.render([message({ effectTrial: offer({ title: "New" }) })]); f.th.onClick({ target: button, isTrusted: true }); expect(start).toHaveBeenCalledOnce();
+    } finally { f.th.dispose(); f.dom.restore(); }
+  });
+  it("public link is inert even if a caller wrongly supplies an available display hint", () => {
+    const start = vi.fn(), f = fixture("en", true, { canTryEffect: () => true, startEffectTrial: start });
+    try { f.th.render([message()]); expect(f.list.querySelector("button")).toBeNull(); expect(start).not.toHaveBeenCalled(); } finally { f.th.dispose(); f.dom.restore(); }
+  });
+  it("a volatile card expires in place and cannot start from an old button, without another server event", () => {
+    vi.useFakeTimers(); let now = 0; const start = vi.fn(), f = fixture("en", false, { canTryEffect: () => true, startEffectTrial: start, serverNow: () => now });
+    try {
+      f.th.render([message({ effectTrial: offer({ expiresAt: 10 }) })]); const old = f.list.querySelector("button.effect-trial-start")!; expect(old).not.toBeNull(); now = 10; vi.advanceTimersByTime(10);
+      expect(f.list.querySelector("button.effect-trial-start")).toBeNull(); expect(f.list.textContent).toContain("This trial offer has expired."); f.th.onClick({ target: old, isTrusted: true }); expect(start).not.toHaveBeenCalled();
+    } finally { f.th.dispose(); f.dom.restore(); vi.useRealTimers(); }
   });
   it.each([{ role: "agent" }, { role: "user" }, { sender: "own" }, { effectTrial: offer({ extra: true }) }, { effectTrial: undefined }])("invalid metadata/path remains ordinary text: %j", patch => {
     const f = fixture(); try { f.th.render([message(patch)]); expect(f.list.querySelector(".effect-trial-offer")).toBeNull(); expect(f.list.textContent).toContain("Host notice"); } finally { f.th.dispose(); f.dom.restore(); }

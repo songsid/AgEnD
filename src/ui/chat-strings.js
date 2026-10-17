@@ -3,7 +3,8 @@ import { register } from "/assets/app-i18n.js";
 
 register("chat", {
   en: {
-    effectTrial: "Effect trial", effectTrialLocal: "Only a local administrator can start a trial.",
+    effectTrial: "Effect trial", effectTrialLocal: "Try requires a local admin, enabled previews and custom CSS off.",
+    effectTrialStart: "Try", effectTrialExpired: "This trial offer has expired.", effectTrialUnavailable: "Trial unavailable: access or playback settings may have changed.",
     cmdConfirm: "Clear", cmdConfirmBackend: "Switch and restart", cmdRunning: "Running /{0}…", cmdNotCommand: "Not a command here — Enter sends it as a message.", cmdDismiss: "Dismiss", cmdCommands: "Commands",
     cmdChoose: "Choose", cmdCurrent: "current", chipCompact: "Compact", chipClear: "Clear…", chipContext: "Context {0}% used",
     chipModel: "Model: {0} — choose another", chipEffort: "Effort: {0} — choose another",
@@ -95,7 +96,8 @@ register("chat", {
     configured: "(configured)", fleetDefault: "(fleet default)",
   },
   "zh-TW": {
-    effectTrial: "效果試播", effectTrialLocal: "僅限本機管理員手動開始試播。",
+    effectTrial: "效果試播", effectTrialLocal: "需由本機管理員啟用預覽並關閉自訂 CSS，才能試播。",
+    effectTrialStart: "試播", effectTrialExpired: "試播邀請已過期。", effectTrialUnavailable: "無法試播：存取權或播放設定可能已變更。",
     cmdConfirm: "清空", cmdConfirmBackend: "切換並重新啟動", cmdRunning: "執行 /{0} 中…", cmdNotCommand: "這裡沒有這個指令——按 Enter 會當成一般訊息送出。", cmdDismiss: "關閉", cmdCommands: "指令",
     cmdChoose: "選擇", cmdCurrent: "目前", chipCompact: "壓縮", chipClear: "清空…", chipContext: "已用 {0}% 的 context",
     chipModel: "模型：{0}——選擇其他", chipEffort: "推理強度：{0}——選擇其他",

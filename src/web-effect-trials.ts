@@ -128,7 +128,7 @@ export class WebEffectTrials {
     const r = this.deps.library.read(o.public.id, { kind: "agent", id: o.instance });
     return r.ok && !this.dead && this.clock() < o.until ? r.entry : null;
   }
-  /** Agent may OFFER only. On wire, the tool must first check its appearance policy.
+  /** Agent may OFFER only, using its current own/shared read rights. No appearance write or rate-limit record.
    * A repeat active offer is idempotent, never extends TTL, and needs no second card.
    */
   offer(instance: string, id: string): { ok: true; offer: Readonly<EffectTrialOffer>; created: boolean } | Failure {

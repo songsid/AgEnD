@@ -1346,7 +1346,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     return this.effectLibraryInstance;
   }
-  /** Volatile Try owner shares this library; no tool emits offers until the card adapter lands. */
+  /** Volatile Try offers and session-bound runs share this library. */
   get effectTrials(): WebEffectTrials { if (!this.effectTrialsInstance) void this.effectLibrary; return this.effectTrialsInstance!; }
 
   private effectProfilesInstance?: WebEffectProfiles;
@@ -1378,8 +1378,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return w.ok ? { ok: true, rev: w.rev } : { ok: false, error: w.error };
       },
       changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* later status carries placements */ } },
-      // Product preview/profile adapters land with the reviewed viewer. Never fabricate measurements or a card.
-      preview: async () => ({ error: "effects_unavailable", message: "Effect previews are not available in this build." }),
+      // A nonmutating own/shared offer is not an appearance write. Only an explicit local-admin click may start it.
+      preview: async (instance, id) => {
+        const result = this.effectTrials.offer(instance, id);
+        if (!result.ok) return { error: "not_found" };
+        const present = this.webChatHistory.list(instance).some(row => row.effectTrial?.offer === result.offer.offer);
+        if (!present && !this.publishEffectTrial(instance, result.offer)) return { error: "trial_unavailable" };
+        return { id, status: "offered", expiresAt: result.offer.expiresAt, message: "A trial card is in your web chat. A signed-in local admin can start it; nothing was applied." };
+      },
       profiles: id => this.effectProfiles.read(id),
       profileSummary: id => this.effectService.profileSummary(id),
       profileSummaries: ids => this.effectService.profileSummaries(ids),
@@ -15314,6 +15320,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return room ? `room:${room.channelId}:${room.adapterId ?? ""}` : null;
   }
 
+  /** The only Try-card publisher: no arbitrary SSE sender/role can manufacture this metadata. */
+  private publishEffectTrial(instance: string, offer: unknown): boolean {
+    const row = this.webChatHistory.recordEffectTrial(instance, offer, new Date().toISOString());
+    if (!row) return false;
+    broadcastSseEvent(this.sseClients, "message", row, err => this.logger.debug({ err }, "SSE client write failed; evicting"), this.webChatHistory.cursorOf(row));
+    return true;
+  }
+
   /** Push an SSE event to all connected Web UI clients. */
   emitSseEvent(event: string, data: unknown): void {
     // #1386: a prompt opened or closed, or an instance's state moved — "Needs you" may have changed.
@@ -15321,14 +15335,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; effectTrial?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
         messageId: typeof m.messageId === "string" ? m.messageId : undefined,
         role: typeof m.role === "string" ? m.role : undefined,
         buttons: m.buttons,
-        effectTrial: m.effectTrial,
       });
       broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
       // #1629: live-only receipt after the recorded agent reply. Never persist/replay it or give it an SSE cursor.

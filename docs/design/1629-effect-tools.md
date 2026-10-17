@@ -20,7 +20,7 @@ Theme effect removal/reset invokes deferred collection. Claims, retained instanc
 
 ## Viewer seam and current limits
 
-Preview and profile names are registered now so later viewer wiring uses the same ACL and transport. In this intermediate feature-branch build, a readable preview returns `effects_unavailable`; a profile returns `{ records: [], status: "unavailable" }`. No Try card, browser, measurement or healthy verdict is fabricated. List includes that explicit unavailable profile status. A successful apply reports a stored placement, not a running frame. These viewer adapters must be implemented before B2 is declared complete.
+Preview now posts a volatile own-chat Try card through the [explicit local-admin product flow](1629-effect-trial-product.md); it starts nothing by itself. Profile reads real host-reported saved history after own/shared authorization, and list includes latest summaries without fabricating healthy measurements. Trial diagnostics do not create new saved profiles. A successful apply still reports a stored placement, not a running frame.
 
 The library remains single fleet owner. No startup work, migration, config/default change, fleet restart, live adapter call or browser mount is added. Directory reads and syntax/image-header checks are bounded; the fleet still performs synchronous decoding of a wire envelope up to 12 MiB and CW1 validation of up to eight MiB raw input, yielding at most one MiB normalized per completed upload, and this slice does not claim isolation from same-UID processes or arbitrary filesystem races.
 

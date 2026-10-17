@@ -1,5 +1,7 @@
 # #1629 explicit Trial control lane
 
+> Current integration: [product Try](1629-effect-trial-product.md) connects these foundations. References below to an unmounted or unavailable slice describe its original introduction, not the current feature branch.
+
 This is an unmounted controller. No product card starts a trial yet. It creates no
 frame, placement, saved profile or offer; the caller supplies the host panel
 mount and its cleanup function. The next integration must wire this only to an

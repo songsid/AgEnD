@@ -59,7 +59,7 @@ export function createThread(list, scroller, opts) {
     if (el.textContent !== v) el.textContent = v;
   }
   // #1770: "today" ends at the fleet's midnight; the labels are rewritten then (and on every render), while there are any.
-  let offDay = null;
+  let offDay = null, trialTimer = null;
   function armDay() {
     if (nodes.size && !offDay) offDay = onDayChange(() => { for (const v of nodes.values()) timeLabel(v.node); });
     else if (!nodes.size && offDay) { offDay(); offDay = null; }
@@ -72,7 +72,7 @@ export function createThread(list, scroller, opts) {
     // is kept by: it is written into the node (timeLabels) — crossing midnight relabels in place and reloads no preview.
     const time = x.ts ? `<span class="time" data-ts="${escAttr(x.ts)}" title="${escAttr(chatTimeFull(x.ts))}"></span>` : `<span class="time"></span>`;
     const trial = effectTrialMessage(x);
-    if (trial) return trialHtml(trial, time);
+    if (trial) return trialHtml(trial, time, x);
     if (x.role === "status") return statusHtml(x, time);
     const u = opts.isUser(x);
     // renderMarkdown escapes the whole text before it adds any tag of its own (chat-render.js).
@@ -81,9 +81,16 @@ export function createThread(list, scroller, opts) {
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
     return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div><div class="body"><div class="md">${R().renderMarkdown(x.text, { htmlCards: x.role === "agent", emojis: opts.emojis, mentions: opts.mentions })}</div>${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
   }
-  /** Host-issued display only. No start action, resource URL or effect code in this foundation. */
-  function trialHtml(offer, time) {
-    return `<div class="msg status-line"><div class="meta">${time}</div><div class="body"><div class="effect-trial-offer" data-trust="thread-control"><strong>${escAttr(tr("chat.effectTrial"))}: ${escAttr(offer.title)}</strong><div>${escAttr(tr("chat.effectTrialLocal"))}</div></div></div></div>`;
+  function trialNow() { try { const t = opts.serverNow ? opts.serverNow() : Date.now(); return Number.isFinite(t) ? t : Infinity; } catch { return Infinity; } }
+  function trialHtml(offer, time, message) {
+    const expired = trialNow() >= offer.expiresAt, available = !PUBLIC_LINK() && !expired && opts.canTryEffect?.(message) === true;
+    const button = available ? `<button type="button" class="btn btn-sm effect-trial-start" data-act="effectTrial" data-arg="${escAttr(msgKey(message))}">${escAttr(tr("chat.effectTrialStart"))}</button>` : "";
+    return `<div class="msg status-line"><div class="meta">${time}</div><div class="body"><div class="effect-trial-offer" data-trust="thread-control"><strong>${escAttr(tr("chat.effectTrial"))}: ${escAttr(offer.title)}</strong><div>${escAttr(tr(expired ? "chat.effectTrialExpired" : "chat.effectTrialLocal"))}</div>${button}</div></div></div>`;
+  }
+  function armTrials() {
+    if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
+    const now = trialNow(), next = msgs.map(x => effectTrialMessage(x)).filter(x => x && x.expiresAt > now).reduce((n, x) => Math.min(n, x.expiresAt), Infinity);
+    if (Number.isFinite(next)) trialTimer = setTimeout(() => { trialTimer = null; render(msgs); }, Math.max(1, Math.min(2147483647, next - now)));
   }
   /**
    * #1672: a status line (another instance's message, a daemon notice) is muted, read-only plain text — never Markdown,
@@ -440,6 +447,7 @@ export function createThread(list, scroller, opts) {
   function render(next, renderOpts = {}) {
     const stick = pinned || nearBottom();
     msgs = next || [];
+    armTrials();
     if (!msgs.length) {
       for (const v of nodes.values()) stopIn(v.node);
       nodes.clear();
@@ -459,7 +467,7 @@ export function createThread(list, scroller, opts) {
         const stopped = have ? stopIn(have.node) : [];
         const node = msgNode(html, x, stopped);
         if (have) have.node.replaceWith(node); else added++;
-        have = { html, node }; nodes.set(key, have);
+        have = { html, node, trialButton: node.querySelector(".effect-trial-offer > button.effect-trial-start") }; nodes.set(key, have);
       } else timeLabel(have.node);
       const want = prev ? prev.nextSibling : list.firstChild;
       // A node already in the list is being moved: its preview stops first. A new node (still in its template) has none.
@@ -538,11 +546,18 @@ export function createThread(list, scroller, opts) {
     else if (act === "replyButton") {
       const m = /^([0-9a-f]{32}):(\d{1,2})$/.exec(el.dataset.arg || "");
       if (m && opts.clickReplyButton) opts.clickReplyButton(m[1], Number(m[2]));
+    } else if (act === "effectTrial") {
+      // Only the current host-produced keyed card and a real local click can request admission. No token is read from DOM.
+      const key = el.dataset.arg, row = msgs.find(x => msgKey(x) === key), owner = nodes.get(key), node = owner?.node, offer = effectTrialMessage(row);
+      if (PUBLIC_LINK() || e.defaultPrevented || e.isTrusted !== true || owner?.trialButton !== el || el.className !== "btn btn-sm effect-trial-start" || !node?.contains(el) || el.closest(".effect-trial-offer")?.getAttribute("data-trust") !== "thread-control"
+        || !offer || trialNow() >= offer.expiresAt || opts.canTryEffect?.(row) !== true) return;
+      opts.startEffectTrial?.(row);
     }
   }
 
   /** The thread goes (the chat left, or another instance opened): every preview in it stops first. */
   function dispose() {
+    if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
     if (ro) ro.disconnect();
     if (P()) P().stopAll("leave");
     nodes.clear();
