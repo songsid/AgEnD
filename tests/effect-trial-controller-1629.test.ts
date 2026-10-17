@@ -56,6 +56,25 @@ describe("explicit Trial controller lane (unmounted)", () => {
     expect(order).toEqual(["paint removed"]); await flush(); expect(order).toEqual(["paint removed", "stop HTTP"]); h.api.stop(); h.api.dispose(); await flush(); expect(h.host.fetch).toHaveBeenCalledOnce();
     expect(h.host.fetch).toHaveBeenCalledWith(`/ui/effect-trials/${TRIAL}/stop?ownerEpoch=${EPOCH}`, expect.objectContaining({ body: "{}", method: "POST" }));
   });
+  it("removes physical paint before notifying a reentrant Start observer and draining Stop", async () => {
+    const h = fixture(); expect(await h.api.start(message())).toBe(true);
+    const order: string[] = [], observations: boolean[] = []; let painted = true, attempt: Promise<boolean> | null = null;
+    h.disposeStage.mockImplementation(() => { painted = false; order.push("paint removed"); });
+    h.change.mockImplementationOnce(() => { observations.push(painted); order.push("observer"); attempt = h.api.start(message()); });
+    h.host.fetch.mockImplementation(async () => { order.push("stop HTTP"); return response({ ok: true }); });
+    h.api.stop(); expect(observations).toEqual([false]); expect(order).toEqual(["paint removed", "observer"]);
+    expect(attempt).not.toBeNull(); expect(await attempt!).toBe(false); await flush();
+    expect(order).toEqual(["paint removed", "observer", "stop HTTP"]); expect(h.start).toHaveBeenCalledOnce();
+    expect(h.disposeStage).toHaveBeenCalledOnce(); expect(h.host.fetch).toHaveBeenCalledTimes(2); h.api.dispose();
+  });
+  it.each(["title", "expiresAt"])("an active Start with a changed offer %s is stopped without mounting", async field => {
+    const h = fixture(), changed = { ...offer(), [field]: field === "title" ? "Changed" : 599999 };
+    const data = reply({ offer: changed }); data.manifest.title = changed.title;
+    h.host.fetch.mockResolvedValueOnce(response(data));
+    expect(await h.api.start(message())).toBe(false); await flush(); expect(h.start).not.toHaveBeenCalled();
+    expect(h.host.fetch).toHaveBeenCalledTimes(2);
+    expect(h.host.fetch.mock.calls[1]![0]).toBe(`/ui/effect-trials/${TRIAL}/stop?ownerEpoch=${EPOCH}`); h.api.dispose();
+  });
   it("a pending session read times out logically, retains the lane and never starts from its late answer", async () => {
     const h = fixture(), p = held(); h.host.AgendAuth.trialSession.mockReturnValue(p.promise); const result = h.api.start(message()); await flush(); expect(h.host.setTimeout).toHaveBeenCalledWith(expect.any(Function), 10000);
     h.at(10000); h.timeout(); expect(await result).toBe(false); expect(h.api.snapshot().busy).toBe(true); expect(await h.api.start(message())).toBe(false); p.resolve({ localAdmin: true, epoch: EPOCH }); await flush(); expect(h.host.fetch).not.toHaveBeenCalled(); expect(h.api.snapshot().busy).toBe(false); h.api.dispose();
