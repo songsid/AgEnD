@@ -180,7 +180,7 @@ describe("stock trust/paint prerequisite", () => {
   it("#2086: the banner fill's one stock filter — exact value, exact element, clipped by its box (its paint is the box); anything else refuses", async () => {
     const f = await fixture();
     expect(read("shared/app.css")).toContain(`filter: ${f.m.STOCK_BANNER_FILL_FILTER};`);
-    const card: any = f.node(), box: any = f.node({ overflowX: "hidden", overflowY: "hidden" }), fill: any = f.node({ filter: f.m.STOCK_BANNER_FILL_FILTER }), banner: any = f.node();
+    const card: any = f.node(), box: any = f.node({ overflowX: "hidden", overflowY: "hidden", position: "relative" }), fill: any = f.node({ filter: f.m.STOCK_BANNER_FILL_FILTER, position: "absolute" }), banner: any = f.node();
     card.kind = "card"; card.r = { x: 0, y: 100, width: 800, height: 260 }; box.r = { x: 0, y: 100, width: 800, height: 200 };
     fill.r = { x: -160, y: 60, width: 1120, height: 280 };                 // scaled up by its transform: beyond the box
     banner.r = { x: 150, y: 100, width: 500, height: 200 };
@@ -195,6 +195,10 @@ describe("stock trust/paint prerequisite", () => {
       ["a filter on another element", () => { fill.matches = () => false; }, () => { fill.matches = (sel: string) => sel === ".id-banner-box > img.id-banner-fill"; }],
       ["a backdrop filter with it", () => { fill.style.backdropFilter = "blur(2px)"; }, () => { fill.style.backdropFilter = "none"; }],
       ["the same filter on the banner itself", () => { banner.style.filter = f.m.STOCK_BANNER_FILL_FILTER; }, () => { banner.style.filter = "none"; }],
+      // #2089 review: the box clips only what it contains — a fixed fill is the viewport's; a static box is no one's.
+      ["a fixed fill (the viewport's, never clipped by the box)", () => { fill.style.position = "fixed"; }, () => { fill.style.position = "absolute"; }],
+      ["a static (relative-less) fill", () => { fill.style.position = "static"; }, () => { fill.style.position = "absolute"; }],
+      ["a box that is not its containing block", () => { box.style.position = "static"; }, () => { box.style.position = "relative"; }],
     ] as Array<[string, () => void, () => void]>) {
       change(); expect(f.snapshot(), what).toMatchObject({ ok: false, reason: "stock_paint_unknown" }); undo();
     }

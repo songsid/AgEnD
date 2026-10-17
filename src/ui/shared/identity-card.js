@@ -20,8 +20,8 @@ export const CARD_SIZES = ["s", "m", "l"];
  */
 export const BANNER_MAX_ASPECT = 5;
 /**
- * #2086 (#2089 review): the narrowest a card draws its banner — the L size's 9 : 4 (on screens 320 px and wider) — which
- * crops a wide picture's sides. Every card is between this and BANNER_MAX_ASPECT, so the area shown on every screen is
+ * #2086 (#2089 review): the narrowest a card draws its banner — 9 : 4 (app.css caps a banner's height at its box's width ÷ 2.25, on
+ * every layout) — which crops a wide picture's sides. Every card is between this and BANNER_MAX_ASPECT, so the area shown on every screen is
  * the narrowest box's width (centred) × the widest box's height (at the focus).
  */
 export const BANNER_MIN_ASPECT = 9 / 4;

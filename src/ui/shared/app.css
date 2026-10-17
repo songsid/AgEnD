@@ -1348,7 +1348,10 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
    size's tallest height, so the band shown everywhere is (picture aspect ÷ 5) of its height. Beyond that it is centred
    over a blurred copy of itself. */
 .id-banner-box { position: relative; overflow: hidden; container: idbanner / inline-size; }
-.id-banner { position: relative; display: block; width: 100%; max-width: calc(var(--id-bmax) * 5); margin-inline: auto; height: auto; aspect-ratio: var(--id-ar); min-height: var(--id-bmin); max-height: var(--id-bmax); object-fit: cover; object-position: 50% var(--id-focus, 50%); }
+/* #2089 review: and never narrower than 9 : 4 — its height never more than its box's width ÷ 2.25 (a size's floor yields
+   to it on a narrow column: a wide sidebar, the usage rail), so the promised safe area holds on every layout. */
+.id-banner { position: relative; display: block; width: 100%; max-width: calc(var(--id-bmax) * 5); margin-inline: auto; height: auto; aspect-ratio: var(--id-ar);
+  min-height: min(var(--id-bmin), calc(100cqw / 2.25)); max-height: min(var(--id-bmax), calc(100cqw / 2.25)); object-fit: cover; object-position: 50% var(--id-focus, 50%); }
 /* #2086: Edit profile's banner focus — the picture whole, the band every screen shows (dashed, outside it shaded) and a phone's. */
 .bf-wrap { position: relative; max-width: 440px; overflow: hidden; border-radius: var(--r-sm); }
 .bf-pic { display: block; width: 100%; height: auto; }

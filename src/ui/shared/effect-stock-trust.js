@@ -97,8 +97,10 @@ function outset(style) {
 }
 /**
  * #2086: the identity card's banner fill (a blurred copy beside a centred banner) — the one filter stock admits. Only
- * this exact value, on exactly `.id-banner-box > img.id-banner-fill`, inside a box that clips it on both axes; its
- * paint is then that box's rectangle (the blur and its scale never leave it). Anything else with a filter refuses.
+ * this exact value, on exactly `.id-banner-box > img.id-banner-fill`, absolutely positioned in that box (so the box is
+ * its containing block — #2089 review: a fixed fill is the viewport's, and no box clips it), and the box positioned and
+ * clipping on both axes; its paint is then that box's rectangle (the blur and its scale never leave it). Anything else
+ * with a filter refuses.
  */
 export const STOCK_BANNER_FILL_FILTER = "blur(24px) saturate(0.75) brightness(0.7)";
 function stockBannerFill(host, el) {
@@ -107,6 +109,7 @@ function stockBannerFill(host, el) {
   const s = host.getComputedStyle(el), b = host.getComputedStyle(box);
   if (s.filter !== STOCK_BANNER_FILL_FILTER || !none(s.backdropFilter) || !none(b.filter) || !none(b.backdropFilter)) return null;
   if (!["hidden", "clip"].includes(b.overflowX) || !["hidden", "clip"].includes(b.overflowY)) return null;
+  if (s.position !== "absolute" || !["relative", "absolute"].includes(b.position)) return null;
   return rect(box);
 }
 function protectedPaint(host, root, budget) {

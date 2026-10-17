@@ -84,7 +84,29 @@ if (TAG !== "before") {
   results.stock = { stock: await trust() };
   await page.evaluate(`document.querySelector(".id-banner-fill").style.setProperty("filter", "blur(30px)")`);
   results.stock.otherFilter = await trust();
+  // #2089 review: a fixed fill (owner CSS could make one) is the viewport's, never the box's to clip — refused.
+  await page.evaluate(`(() => { const f = document.querySelector(".id-banner-fill"); f.style.removeProperty("filter"); f.style.setProperty("position", "fixed"); document.querySelector(".id-banner-box").style.setProperty("container-type", "normal"); })()`);
+  results.stock.fixedFill = await trust();
   await ctx.close();
+}
+// #2089 review: the narrowest real layouts — a 900 px window with the widest sidebar, and the usage rail open — never draw
+// a banner narrower than 9 : 4 (nor wider than 5 : 1), on Details, View and the chat card, at L (the tallest size).
+if (TAG !== "before") {
+  results.layouts = [];
+  for (const [label, width, storage] of [["900 + 420 sidebar", 900, { agend_sidebar_w: "420" }], ["1366 + usage rail", 1366, { agend_usage_rail: "1" }], ["1280 + 480 sidebar + rail", 1280, { agend_sidebar_w: "480", agend_usage_rail: "1" }]] as const) {
+    const { ctx, page } = await fx.page(c, { storage: { ...storage, agend_view_card_expanded: "1", agend_chat_card: "open" } });
+    await page.setViewportSize({ width, height: 1000 });
+    for (const size of ["s", "m", "l"]) {
+      fm.webPrefs.write("operator", new Map<string, unknown>([["card.size", size]]));
+      for (const [surface, path, sel] of [["details", `/ui/fleet/agent/${enc(NAME)}`, ".p-details .id-card"], ["view", `/view/${enc(NAME)}`, ".v-id .id-card"], ["chat", `/ui/chat/${enc(NAME)}`, ".chat-card"]] as const) {
+        await page.goto(`${fx.base}${path}`); await page.waitForTimeout(800);
+        if (surface === "chat" && !(await page.$(".chat-card .id-card"))) { await page.click(".chat-card-toggle").catch(() => {}); await page.waitForTimeout(300); }
+        const m: any = await page.evaluate(`(() => { const c = document.querySelector(${JSON.stringify(sel)}); const b = c && c.querySelector(".id-banner"); if (!b) return null; const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })()`);
+        results.layouts.push({ label, size, surface, box: m, ar: m ? +(m[0] / m[1]).toFixed(3) : null });
+      }
+    }
+    await ctx.close();
+  }
 }
 // Edit profile's focus control (after only): the picture whole, the band every screen shows and a phone's, at each focus.
 if (TAG !== "before") {
@@ -108,5 +130,6 @@ if (TAG !== "before") {
 }
 writeFileSync(shotPath(SMOKE, "result", TAG).replace(/\.png$/, ".json"), JSON.stringify(results, null, 1));
 console.log(JSON.stringify(results.stock ?? null));
+console.log(JSON.stringify(results.layouts ?? null));
 console.log(JSON.stringify(results.cases.map((x: any) => x.edit ? `edit ${x.edit} f${x.focus} ${x.present ?? x.missing}` : x.missing ? `${x.width} ${x.size} ${x.surface} MISSING` : `${x.width} f${x.focus} ${x.size} ${x.surface} ${x.box?.join("×")} ${x.ar}:1 shows ${x.shownHeight} pos ${x.pos}`)));
 await fx.close(); process.exit(0);

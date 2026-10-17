@@ -123,6 +123,12 @@ describe("the page: what it keeps, how wide it draws, where the bands are", () =
     expect(rule).toContain(`max-width: calc(var(--id-bmax) * ${BANNER_MAX_ASPECT});`);
     expect(rule).toContain("object-position: 50% var(--id-focus, 50%);");
     expect(BANNER_MAX_ASPECT).toBe(5);
+    // #2089 review: never narrower than BANNER_MIN_ASPECT on any layout — the height capped at the box's width ÷ 2.25.
+    const { BANNER_MIN_ASPECT } = await import("/assets/identity-card.js");
+    expect(BANNER_MIN_ASPECT).toBe(9 / 4);
+    expect(rule).toContain(`min-height: min(var(--id-bmin), calc(100cqw / ${BANNER_MIN_ASPECT}));`);
+    expect(rule).toContain(`max-height: min(var(--id-bmax), calc(100cqw / ${BANNER_MIN_ASPECT}));`);
+    expect(/\.id-banner-box \{[^}]*container: idbanner \/ inline-size;/.test(css), "the box is the container its cqw measure").toBe(true);
   });
   it("the bands: a 1600×600 banner shows 53% of its height at 5:1, 89% at 3:1, placed by the focus", async () => {
     const { bannerShownHeight, bannerBandTop } = await import("/assets/identity-card.js");
