@@ -52,8 +52,10 @@ function Slot() {
 }
 const mountView = () => p.mount(h("div", {}, h(view.ViewPanel, { route: { panel: "view", instance: "agend-dev-claude" }, navKey: "view:x|1|en" }), h(Slot, {})));
 // The instance each row opens (#1630: the row shows its display name; the name is in the link).
-const rowNames = () => p.root.querySelectorAll(".v-inst").map((a: any) => decodeURIComponent(a.getAttribute("href").split("/").pop()));
-const groupHeads = () => p.root.querySelectorAll(".v-group-head").map((b: any) => b.querySelector(".grow")!.textContent);
+/** #1936: the open instance pinned on top while a filter is on is not a filter result — these are the results. */
+const inPinned = (el: any) => { for (let n = el.parentNode; n; n = n.parentNode) if (n.classList?.contains("v-pinned")) return true; return false; };
+const rowNames = () => p.root.querySelectorAll(".v-inst").filter((a: any) => !inPinned(a)).map((a: any) => decodeURIComponent(a.getAttribute("href").split("/").pop()));
+const groupHeads = () => p.root.querySelectorAll(".v-group-head").filter((h: any) => !inPinned(h)).map((b: any) => b.querySelector(".grow")!.textContent);
 const input = () => p.root.querySelector("#filterInput")!;
 const typeInto = async (value: string) => { input().value = value; fire(input(), "input"); await settle(); };
 const count = () => p.root.querySelector(".v-filter .note")!.textContent;
@@ -192,8 +194,8 @@ describe("sidebar filter wiring (#999)", () => {
     expect(p.root.querySelector(".v-group-head")!.getAttribute("draggable")).toBe("true");
     await typeInto("a");
     // Preact clears a dropped prop through its property (draggable = "" → false): a browser renders draggable="false".
-    expect(p.root.querySelector(".v-group-head")!.getAttribute("draggable")).toBe("false");
-    expect(p.root.querySelector(".v-inst")!.getAttribute("draggable")).toBe("false");
+    expect(p.root.querySelectorAll(".v-group-head").find((h: any) => !inPinned(h))!.getAttribute("draggable")).toBe("false");
+    expect(p.root.querySelectorAll(".v-inst").find((a: any) => !inPinned(a))!.getAttribute("draggable")).toBe("false");
   });
 
   it("the new strings exist in English and Traditional Chinese", () => {

@@ -197,7 +197,9 @@ register("view", {
   "favUp": "Move {name} up",
   "favDown": "Move {name} down",
   "favFull": "Favorites are full ({max})",
-  "favFiltered": "Clear the filter to reorder favorites"
+  "favFiltered": "Clear the filter to reorder favorites",
+  "pinnedCurrent": "Current",
+  "pinnedLabel": "The instance you have open"
  },
  "zh-TW": {
   "editProfile": "編輯個人資料",
@@ -392,6 +394,8 @@ register("view", {
   "favUp": "把 {name} 上移",
   "favDown": "把 {name} 下移",
   "favFull": "最愛已滿（{max} 個）",
-  "favFiltered": "清除篩選後才能調整最愛順序"
+  "favFiltered": "清除篩選後才能調整最愛順序",
+  "pinnedCurrent": "目前",
+  "pinnedLabel": "你目前開著的 instance"
  }
 });
