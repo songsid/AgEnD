@@ -49,7 +49,7 @@ import{html,render}from'/assets/app-html.js';import{Shell,openDrawer,closeDrawer
 const q=new URL(location.href).searchParams;setLang(q.get('lang')||'en',{store:false});document.documentElement.dataset.theme=q.get('dark')==='1'?'dark':'light';
 const data={ready:true,connection:'open',instances:[{name:'worker',backend:'codex',state:'idle',model:'probe',card_v:'native-card'}],exec:{worker:'idle'},awaiting:{worker:null},connections:1};appStore.set(data);navStore.set({route:{panel:'chat',instance:'worker'},seq:1});
 const store=boot({stream:{on(){return()=>{}}},boot:null,deps:{announce(){},toast(){}}});
-store.onPrompt({nonce:'probe-permission',instance:'worker',text:'Host-owned permission question',actions:[{id:'yes',label:'Allow'},{id:'no',label:'Deny'}],expiresAt:Date.now()+600000});
+store.onPrompt({nonce:'probe-permission',instance:'worker',text:'Host-owned permission question for worker',links:[{offset:35,length:6,url:'/view/worker'}],actions:[{id:'yes',label:'Allow'},{id:'no',label:'Deny'}],expiresAt:Date.now()+600000});
 render(html\`<\${Shell} panels=\${new Map([['chat',{Component:ChatPanel}]])} onNewInstance=\${()=>{}} />\`,document.querySelector('#app'));
 let root=null,geometry=null,binding=null;
 const removePaint=()=>{geometry?.dispose();geometry=null;binding=null;root?.remove();root=null;};
@@ -138,6 +138,15 @@ try {
       assert.equal(await page.evaluate(()=>(window as any).stock.paint('front')),true);const chipFront=await page.screenshot();for(const p of chipPoints)assert.deepEqual(pixel(chipFront,p.x,p.y),pixel(chipBase,p.x,p.y),'click chip protected pixel');await page.evaluate(()=>(window as any).stock.removePaint());
       for(const marker of [null,'reply']){await chip.evaluate((el,value)=>value===null?el.removeAttribute('data-trust'):el.setAttribute('data-trust',value),marker);assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().ok),false);await chip.evaluate(el=>el.setAttribute('data-trust','thread-control'));}
       const beforeShow=actions.length;await chip.locator('button').click();assert.equal(actions.length,beforeShow);await page.evaluate(()=>{const a=document.activeElement;if(a instanceof HTMLElement)a.blur();});
+      // Main topic-link carry: both actual status and permission producers are protected stock links.
+      await page.evaluate(() => (window as any).stock.store.ingest({boot:'probe',id:902,instance:'worker',role:'status',sender:'agend',text:'Open worker',links:[{offset:5,length:6,url:'/ui/chat/worker'}],ts:new Date().toISOString()}));
+      for(const selector of ['.thread .st-text > a.st-link','.dock .prompts .txt > a.st-link']){
+        const link=page.locator(selector);await link.waitFor();await link.scrollIntoViewIfNeeded();
+        assert.equal(await link.getAttribute('data-trust'),'link');
+        const linkBase=await page.screenshot(),linkPoints=await link.evaluate(el=>{const r=el.getBoundingClientRect();return[{x:Math.floor(r.x+1),y:Math.floor(r.y+1)},{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2)},{x:Math.floor(r.right-1),y:Math.floor(r.bottom-1)}];});
+        assert.equal(await page.evaluate(()=>(window as any).stock.paint('front')),true);const linkFront=await page.screenshot();for(const p of linkPoints)assert.deepEqual(pixel(linkFront,p.x,p.y),pixel(linkBase,p.x,p.y),'topic link protected pixel');await page.evaluate(()=>(window as any).stock.removePaint());
+        for(const marker of [null,'reply']){await link.evaluate((el,value)=>value===null?el.removeAttribute('data-trust'):el.setAttribute('data-trust',value),marker);assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().ok),false);await link.evaluate(el=>el.setAttribute('data-trust','link'));}
+      }
       await page.evaluate(()=>(window as any).stock.longThread());await page.waitForTimeout(50);await page.locator('.scroller').evaluate(el=>{el.scrollTop=0;el.dispatchEvent(new Event('scroll'));});await page.locator('.jump-latest').waitFor();
       const jumpBase=await page.screenshot();const jp=await page.locator('.jump-latest').evaluate(el=>{const r=el.getBoundingClientRect();return{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2)};});assert.equal(await page.evaluate(()=>(window as any).stock.paint('front')),true);const jumpFront=await page.screenshot();assert.deepEqual(pixel(jumpFront,jp.x,jp.y),pixel(jumpBase,jp.x,jp.y));await page.evaluate(()=>(window as any).stock.removePaint());
       for(const selector of ['.chat-card','.jump-latest',...(width>=900?['.side-resize']:[])])for(const kind of ['', 'wrong']){
@@ -145,7 +154,7 @@ try {
       }
       for(const css of ['on','loading','unknown']){const v=await page.evaluate(c=>(window as any).stock.snapshot(c),css);assert.equal(v.agentFront,false);assert.equal(v.front,true);assert.equal(v.agentReason,'owner_css');}
       assert.equal(await page.locator('iframe').count(),0);assert.deepEqual(errors,[]);
-      rows.push({ engine,width,lang,dark,snapshot,diagnostics,points,free,permissionBackground:{stock:pixel(baseline,permissionPaint.x,permissionPaint.y),behind:pixel(behind,permissionPaint.x,permissionPaint.y),front:pixel(front,permissionPaint.x,permissionPaint.y)},painted:true,themeImage:true,clickChip:{protectedPixels:3,missingWrongMarker:true,noReplyPost:true},trialOffer:{protectedPixels:3,inert:true,missingWrongMarker:true},reviewerR2:{identity:true,jump:true,resize:width>=900,preview:true,notes:noteKinds},overlays,controls,errors,resources });
+      rows.push({ engine,width,lang,dark,snapshot,diagnostics,points,free,permissionBackground:{stock:pixel(baseline,permissionPaint.x,permissionPaint.y),behind:pixel(behind,permissionPaint.x,permissionPaint.y),front:pixel(front,permissionPaint.x,permissionPaint.y)},painted:true,themeImage:true,topicLinks:{status:true,prompt:true,protectedPixels:6,missingWrongMarker:true},clickChip:{protectedPixels:3,missingWrongMarker:true,noReplyPost:true},trialOffer:{protectedPixels:3,inert:true,missingWrongMarker:true},reviewerR2:{identity:true,jump:true,resize:width>=900,preview:true,notes:noteKinds},overlays,controls,errors,resources });
     } finally { await context.close(); }
     }
     await browser.close(); browser = null;

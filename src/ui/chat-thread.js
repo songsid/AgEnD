@@ -130,7 +130,7 @@ export function createThread(list, scroller, opts) {
       : "";
     const tools = `<div data-trust="thread-control" class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     // #1990: the other instance's name opens its chat (an in-app link the router takes: no target).
-    const body = textLinkSegments(text, x.links).map(sg => sg.href ? `<a class="st-link" href="${escAttr(sg.href)}">${escAttr(sg.text)}</a>` : escAttr(sg.text)).join("");
+    const body = textLinkSegments(text, x.links).map(sg => sg.href ? `<a data-trust="link" class="st-link" href="${escAttr(sg.href)}">${escAttr(sg.text)}</a>` : escAttr(sg.text)).join("");
     return `<div class="msg status-line${more ? " folded" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${more}</div>${tools}</div>`;
   }
   /**

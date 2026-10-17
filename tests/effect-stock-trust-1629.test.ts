@@ -40,6 +40,27 @@ describe("stock trust/paint prerequisite", () => {
     expect(read("chat-tour.js")).toContain('setAttribute("data-trust", "tour")');
     expect(read("shared/agend-auth.js")).toContain('setAttribute("data-trust", "session-ended")');
   });
+  it.each(["status", "prompt"])("independently protects the actual %s topic-link producer", async place => {
+    const f = await fixture(), dom = installDom();
+    try {
+      const shell = dom.document.createElement("div"); shell.className = "shell"; dom.document.body.append(shell);
+      let parent = shell;
+      for (const cls of place === "status" ? ["thread", "st-text"] : ["dock", "prompts", "txt"]) {
+        const next = dom.document.createElement("div"); next.className = cls; parent.append(next); parent = next;
+      }
+      const actual = dom.document.createElement("a"); actual.className = "st-link"; actual.setAttribute("data-trust", "link"); parent.append(actual);
+      const spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "link");
+      expect(actual.matches(spec.selector)).toBe(true);
+      expect(read(place === "status" ? "chat-thread.js" : "panel-chat.js")).toContain('<a data-trust="link" class="st-link"');
+      const el = f.node(); el.r = { x: 310, y: 410, width: 90, height: 24 };
+      el.getAttribute = () => actual.getAttribute("data-trust") ?? "";
+      f.extra.set(spec.selector, [el]); f.marked.push(el);
+      expect(f.snapshot()).toMatchObject({ ok: true, front: true, rects: expect.arrayContaining([el.r]) });
+      actual.removeAttribute("data-trust"); expect(f.snapshot().ok).toBe(false);
+      actual.setAttribute("data-trust", "thread-control"); expect(f.snapshot().ok).toBe(false);
+      actual.setAttribute("data-trust", "link"); expect(f.snapshot().ok).toBe(true);
+    } finally { dom.restore(); }
+  });
   it("the real closed barrier selector suppresses Trial at desktop width while ordinary preview stays nonmodal", async () => {
     const f = await fixture(), real = installDom();
     try {

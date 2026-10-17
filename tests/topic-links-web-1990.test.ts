@@ -205,7 +205,7 @@ describe("the client draws them as in-app links", () => {
       const name = `<img src=x onerror=alert(1)>"'&amp;`;
       th.render([line([{ offset: 0, length: name.length, url: "/ui/chat/alice" }], `${name} → w:\nhi`)]);
       const a = list.querySelector(".st-text a.st-link");
-      expect([a.textContent, a.getAttribute("href"), a.attributes.length]).toEqual([name, "/ui/chat/alice", 2]);
+      expect([a.textContent, a.getAttribute("href"), a.getAttribute("data-trust"), a.attributes.length]).toEqual([name, "/ui/chat/alice", "link", 3]);
       expect(list.querySelector(".st-text img")).toBeNull();
       expect(list.querySelector(".st-text").textContent).toBe(`${name} → w:\nhi`);
     } finally { dom.restore(); }
