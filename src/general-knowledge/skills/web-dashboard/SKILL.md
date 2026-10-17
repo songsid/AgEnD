@@ -342,10 +342,10 @@ Settings → **Web appearance**, card by card:
 full-profile instances get `get_web_settings` / `set_web_settings`, which go through the same checks as the page;
 workers don't. The `web-appearance` skill's **For the user** section has the details. In short: General can change
 the host's appearance settings, one agent's identity colour, mods (review, install, cancel, dismiss, uninstall),
-effects and the effect slots, and Restore defaults; for custom CSS it can only put a version **on trial**, revert the
-trial or turn CSS off. Still the person's own click on the page: keeping a CSS trial or switching to an earlier
-version (`custom_css_person_only`), choosing files from their computer (import a mod, upload an effect folder or CSS
-assets), the per-browser switches (custom CSS off on this device, Pause/Resume), downloading an exported mod, and the
+effects and the effect slots, and Restore defaults; for custom CSS it can save a version **on trial**, keep or revert
+the trial, switch to an earlier saved version, or turn CSS off — and it keeps a trial only once the user says they like
+it (the user's decision, 2.3.0-beta.3). Still the person's own click on the page: choosing files from their computer
+(import a mod, upload an effect folder or CSS assets), the per-browser switches (custom CSS off on this device, Pause/Resume), downloading an exported mod, and the
 card upload limits. The docs' "Asking General to change it for you" says the same for people.
 
 ## Troubleshooting

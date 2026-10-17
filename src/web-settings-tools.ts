@@ -2,10 +2,10 @@
  * #2056: the General instance (and a coordinator or full profile) changes Settings → Web appearance for the user — every
  * setting the page can change that does not need the person's own browser or files. One implementation: each change goes
  * through exactly what the page's route calls (the same store, the same validation, the same announcement), never a
- * copy of it. Custom CSS keeps its safe-token rules (OwnerCssStore.save → checkOwnerCss): no bypass. And a tool only puts
- * CSS on trial (or reverts a trial, or turns it off): keeping it — and choosing an earlier version, which applies at once —
- * is the person's own click on their screen. #1629 r4 §3 kept a person's CSS from agents altogether; #2056 opens it to
- * General this far and no further, so styling the person's screens always waits for the person.
+ * copy of it. Custom CSS keeps its safe-token rules (OwnerCssStore.save → checkOwnerCss): no bypass. A tool saves CSS on
+ * trial, keeps or reverts that trial, switches to an earlier saved version, or turns it off — the page's own buttons, on
+ * the store's own checks (the user's decision, 2026-10-18: General may keep it; #2056 first allowed only the trial). Only
+ * a version the person's store holds can be put back: every one of them passed checkOwnerCss when it was saved.
  *
  * Whose settings: the host's (the prefs every viewer of this host shares), and a person's own — their custom CSS and
  * their effect slots — named by `person` (one of get_web_settings' people; default: the host operator).
@@ -103,7 +103,7 @@ export class WebSettingsTools {
       mods: { installed: mods.mods, proposals },
       effect_slots: slots,
       page_only: ["choosing a file from the person's computer (a mod file, an effect folder, a CSS asset, a card picture)",
-        "keeping a custom CSS trial, or switching to an earlier saved version", "this browser's switches (custom CSS off on this device; pausing effect playback)",
+        "this browser's switches (custom CSS off on this device; pausing effect playback)",
         "downloading an export", "the card upload limits"],
     };
   }
@@ -169,11 +169,12 @@ export class WebSettingsTools {
       return { ok: true, ...body };
     };
     switch (c.action) {
-      case "save": { const r = store.save(person, c.text); return r.ok ? done(r, { on_trial: true, previous: r.previous, note: "on trial on their screens: they keep it (or it goes back by itself); you may revert it" }) : done(r, {}); }
+      case "save": { const r = store.save(person, c.text); return r.ok ? done(r, { on_trial: true, previous: r.previous, note: "on trial on their screens: it goes back by itself unless kept — by them, or by you (keep) when they say so" }) : done(r, {}); }
+      case "keep": { const r = store.keep(person, store.state(person).pending?.id); return r.ok ? done(r, { active: r.active }) : done(r, {}); }
       case "revert": { const r = store.revertTrial(person, store.state(person).pending?.id); return r.ok ? done(r, { active: r.active }) : done(r, {}); }
       case "off": { const r = store.restore(person, null); return r.ok ? done(r, { active: r.active }) : done(r, {}); }
-      case "keep": case "use": return failed("custom_css_person_only", "keeping a trial, or choosing an earlier version, is the person's own click on their screen (Settings → Web appearance → Custom CSS)");
-      default: return failed("custom_css", "action: save (with text: on trial until the person keeps it), revert (the trial) or off");
+      case "use": { const r = store.restore(person, c.version); return r.ok ? done(r, { active: r.active }) : done(r, {}); }
+      default: return failed("custom_css", "action: save (with text: on trial), keep (the trial), revert (the trial), use (with version: an earlier saved one) or off");
     }
   }
 
