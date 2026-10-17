@@ -71,7 +71,7 @@ describe("#1995 cron ticks: logged, and a missed one caught up once", () => {
     expect(runs).toEqual([]);
     await vi.advanceTimersByTimeAsync(2 * MIN);
     expect(runs).toEqual([]);                                     // not before the grace
-    await vi.advanceTimersByTimeAsync(2 * MIN);                   // T+4: due and not run for the grace
+    await vi.advanceTimersByTimeAsync(2 * MIN + 1000);            // T+4: first seen at T+1 (after the settle), plus the grace
     expect(runs).toEqual([iso(T)]);                               // caught up once, under its own run id
     expect(missed()).toEqual([iso(T)]);
     await vi.advanceTimersByTimeAsync(6 * MIN);
@@ -147,6 +147,63 @@ describe("#1995 cron ticks: logged, and a missed one caught up once", () => {
 
   const every10 = () => scheduler.create({ cron: "*/10 * * * *", message: "m", source: "w", target: "w", reply_chat_id: "1", reply_thread_id: null, timezone: "Asia/Taipei" });
 
+  const everyMinute = () => scheduler.create({ cron: "* * * * *", message: "m", source: "w", target: "w", reply_chat_id: "1", reply_thread_id: null, timezone: "Asia/Taipei" });
+  const daily9 = () => scheduler.create({ cron: "0 9 * * *", message: "m", source: "w", target: "w", reply_chat_id: "1", reply_thread_id: null, timezone: "Asia/Taipei" });
+
+  it("every minute, with ticks that never arrive: the grace is still reached, one catch-up per grace, never a replay", async () => {
+    start(T - 30_000);
+    const s = everyMinute();
+    (scheduler as any).jobs.get(s.id).stop();                     // croner never calls back again (its timers are gone)
+    await vi.advanceTimersByTimeAsync(4 * MIN + 1_000);           // seen at T+0:30, caught up at T+3:30
+    expect(missed().length).toBe(1);                              // a newer occurrence every minute did not restart it
+    const first = missed()[0] as string;
+    expect(Date.parse(first)).toBeGreaterThanOrEqual(T + 3 * MIN);
+    expect(runs).toEqual([first]);                                // the latest occurrence only, not T..T+3 replayed
+    await (scheduler as any).jobs.get(s.id).trigger();            // a late real tick for that same instant
+    expect(runs).toEqual([first]);
+    expect(reasons()).toContain(`already_ran@${first}`);
+    await vi.advanceTimersByTimeAsync(10 * MIN);
+    expect(new Set(runs).size).toBe(runs.length);
+    expect(runs.length).toBeLessThanOrEqual(1 + Math.ceil(10 / 3));  // bounded: at most one per grace
+  });
+
+  it("every minute, with the check landing on the tick instants: a tick about to fire is never counted as missed", async () => {
+    start(T - MIN);                                               // the checks run at T, T+1, … — the same instants as the ticks
+    everyMinute();
+    await vi.advanceTimersByTimeAsync(10 * MIN + 1000);
+    expect(runs).toEqual(Array.from({ length: 10 }, (_, k) => iso(T + k * MIN)));   // T … T+9
+    expect(missed()).toEqual([]);
+    expect(reasons()).toEqual([]);
+  });
+
+  it("an occurrence after registration still counts when the wall clock was set back before it came due", async () => {
+    const tenAm = Date.parse("2026-10-13T02:00:00.000Z"), nineAm = tenAm - 60 * MIN;  // 10:00 and 09:00 Asia/Taipei
+    start(tenAm);
+    daily9();                                                      // armed at 10:00 by the (wrong) wall clock
+    vi.setSystemTime(new Date(tenAm - 2 * 60 * MIN));             // corrected back to 08:00, no edit, no re-enable
+    await vi.advanceTimersByTimeAsync(60 * MIN - 1);              // a real hour later: 09:00 is due now
+    vi.setSystemTime(new Date(nineAm + 400));
+    scheduler.reload();                                            // lost at its due instant, as above
+    await vi.advanceTimersByTimeAsync(5 * MIN);
+    expect(runs).toEqual([iso(nineAm)]);
+    expect(missed()).toEqual([iso(nineAm)]);
+  });
+
+  it("a wrong forward jump, then correction and reload: a different occurrence that never ran still runs", async () => {
+    const day = 24 * 60 * MIN, d17 = Date.parse("2026-10-17T01:00:00.000Z");  // 09:00 Asia/Taipei
+    start(d17 - MIN);
+    daily9();
+    await vi.advanceTimersByTimeAsync(2 * MIN);                   // 10/17 09:00 ran
+    vi.setSystemTime(new Date(d17 + 2 * day + 30_000));           // the clock jumps to 10/19 09:00:30 by mistake
+    await vi.advanceTimersByTimeAsync(MIN);                       // croner's late tick runs 10/19 09:00
+    expect(runs).toEqual([iso(d17), iso(d17 + 2 * day)]);
+    vi.setSystemTime(new Date(d17 + 2 * MIN));                    // corrected to 10/17 09:02
+    scheduler.reload();
+    await vi.advanceTimersByTimeAsync(day);                       // 10/18 09:00: distinct, never ran
+    expect(runs).toEqual([iso(d17), iso(d17 + 2 * day), iso(d17 + day)]);
+    expect(reasons()).toEqual([]);
+  });
+
   it("an occurrence before the schedule was re-enabled is not caught up", async () => {
     start(T - 2 * MIN);
     const s = every10();
@@ -182,7 +239,7 @@ describe("#1995 cron ticks: logged, and a missed one caught up once", () => {
     vi.setSystemTime(new Date(T + 400));
     scheduler.reload();                                           // T lost while that run is in flight
     onRun = (schedule) => { scheduler.recordRun(schedule.id, "delivered"); };
-    await vi.advanceTimersByTimeAsync(4 * MIN);                   // past the grace, still in flight
+    await vi.advanceTimersByTimeAsync(5 * MIN);                   // seen at T+1, past the grace at T+4, still in flight
     expect(runs).toEqual(["manual-run"]);                         // never an overlapping run
     settle();
     await vi.advanceTimersByTimeAsync(4.5 * MIN);                 // then the grace again, before T+10
