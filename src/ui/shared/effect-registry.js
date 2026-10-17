@@ -91,6 +91,8 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   const current = s => !dead && !blocked && slots.get(s.d.key) === s && s.live;
   const tell = () => { if (dead) return; const state = view(), stamp = JSON.stringify(state); if (stamp === lastView) return; lastView = stamp; try { onChange(state); } catch { /* a display callback cannot admit code */ } };
   const receipt = (fn, ...args) => { try { return Reflect.apply(fn, safety, args); } catch { return null; } };
+  // #2055: the history's own read names a denial; any other answer stays unknown (and denied).
+  const SAFETY_REASON = Object.freeze({ __proto__: null, off: "safety_off", paused: "paused", interrupted: "interrupted" });
   const clearMarker = (s, why) => {
     if (!s.token) return true;
     const token = s.token; s.token = null;
@@ -191,6 +193,12 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
         if (dead || proposal !== revision) return;
         if (!allowed) r.reason = d.trialStage ? "trial_ended" : stock.front ? "owner_css" : "stock_overlay";
       }
+      // #2055: a sticky safety state outranks a waiting reason (a dialog, typing, a queue): it is what Resume must answer.
+      if (r.verdict !== "active" && d && !d.trialStage) {
+        const named = SAFETY_REASON[receipt(safety.status, d.id, device())?.state];
+        if (dead || proposal !== revision) return;
+        if (named) r.reason = named;
+      }
       results.set(r.key, r);
     }
     if (dead || proposal !== revision) return;
@@ -237,7 +245,13 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (slots.size >= max || loads.size >= max) break;
       const permitted = receipt(safety.allowed, d.id, device());
       if (proposal !== revision) return;
-      if (permitted !== true) { results.set(d.key, { verdict: "off", reason: "safety_unknown", queuePos: null }); continue; }
+      if (permitted !== true) {
+        // #2055: say which denial it is. Only the safety history's own read names it; anything else stays unknown (still denied).
+        const st = receipt(safety.status, d.id, device());
+        if (proposal !== revision) return;
+        const why = SAFETY_REASON[st?.state] ?? "safety_unknown";
+        results.set(d.key, { verdict: "off", reason: why, queuePos: null }); continue;
+      }
       if (slots.has(d.key) || slots.size >= max || loads.size >= max || !globalAllowed(d) || context.hidden || !coverage(d) || proposal !== revision || !descriptors.some(x => x.key === d.key && signature(x) === signature(d) && x.element === d.element)) break;
       const rect = position(d, coverage(d));
       if (dead || proposal !== revision) return;

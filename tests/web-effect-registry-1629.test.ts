@@ -597,3 +597,32 @@ describe("#1629 local Trial admission in the SAME registry (stage protocol model
   });
 
 });
+
+describe("#2055: a safety denial is named from the history's own read", () => {
+  it.each([["off", "safety_off"], ["paused", "paused"], ["interrupted", "interrupted"], ["unknown", "safety_unknown"], ["ok", "safety_unknown"]])("status %s → %s, and nothing mounts", async (state, reason) => {
+    const h = rig(); h.safety.allowed.mockReturnValue(false); (h.safety as any).status = vi.fn(() => ({ state, history: null }));
+    await h.admit();
+    expect(h.frames()).toHaveLength(0); expect(h.safety.begin).not.toHaveBeenCalled();
+    expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
+  });
+  it("an unreadable or missing status read stays unknown (still denied)", async () => {
+    for (const status of [() => { throw Error("unreadable"); }, undefined]) {
+      const h = rig(); h.safety.allowed.mockReturnValue(false); (h.safety as any).status = status;
+      await h.admit();
+      expect(h.frames()).toHaveLength(0); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "safety_unknown" });
+    }
+  });
+});
+
+describe("#2055: a sticky safety state outranks a waiting reason", () => {
+  it("an effect waiting behind a dialog reads safety_off when its history is off", async () => {
+    const h = rig(); h.safety.allowed.mockReturnValue(false); (h.safety as any).status = vi.fn(() => ({ state: "off", history: null }));
+    await h.admit(h.descriptors(1, { layer: "front" }), gates({ modal: true }));
+    expect(h.frames()).toHaveLength(0); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "safety_off" });
+  });
+  it("an ok history leaves the waiting reason alone", async () => {
+    const h = rig(); (h.safety as any).status = vi.fn(() => ({ state: "ok", history: null }));
+    await h.admit(h.descriptors(1, { layer: "front" }), gates({ modal: true }));
+    expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "modal" });
+  });
+});

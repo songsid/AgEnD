@@ -30,7 +30,8 @@ async function fixture(unavailable = false) {
   M.owner = owner;
   await mount(); const api = () => M.apis.at(-1), opts = () => M.opts.at(-1);
   const publish = async () => { opts().onChange({ error: null, rows: [{ id: "a".repeat(32), phase: "running", reason: null }], effects: [{ id: "a".repeat(32), by: "agent", manifest: { title: "Fixture effect", layer: "front" } }] }); await settle(); };
-  return { host, observers, api, opts, publish, open: async () => { open(true); await settle(); },
+  const publishRows = async (rows: any[]) => { opts().onChange({ error: null, rows, effects: [{ id: "a".repeat(32), by: "agent", manifest: { title: "Fixture effect", layer: "front" } }] }); await settle(); };
+  return { host, observers, api, opts, publish, publishRows, open: async () => { open(true); await settle(); }, close: async () => { open(false); await settle(); },
     nextLease: async () => { currentLease.dispose(); currentLease = createLease(); await mount(); }, cleanup: () => currentLease.dispose() };
 }
 describe("#1629 actual Effects component", () => {
@@ -57,4 +58,44 @@ describe("#1629 actual Effects component", () => {
     const settings = [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Open Web appearance settings")!;
     expect(settings.closest("[data-trust=dialog]")).not.toBeNull(); settings.click(); await settle(); expect(globalThis.location.pathname).toBe("/settings/appearance"); h.cleanup();
   });
+
+  // #2055: the dialog names why an effect is not playing.
+  const ID = "a".repeat(32);
+  it("the Effects dialog says it paused a running effect itself, in the past tense, never a cached Running", async () => {
+    let clock = 1000; vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const h = await fixture(); await h.publish();
+    // The ⋯ menu is a barrier too: the effect stops a moment before the dialog opens.
+    await h.publishRows([{ id: ID, phase: null, reason: "stock_overlay", verdict: "off" }]); clock += 800; await h.open();
+    expect(pg!.root.textContent).toContain("Was running; paused while this dialog is open.");
+    expect(pg!.root.textContent).not.toContain("Running");
+    await h.close(); clock += 6000;
+    await h.publishRows([{ id: ID, phase: null, reason: "stock_overlay", verdict: "off" }]); await h.open();
+    expect(pg!.root.textContent).toContain("Paused while this dialog is open.");
+    expect(pg!.root.textContent).not.toContain("Was running");
+    vi.restoreAllMocks(); h.cleanup();
+  });
+  it.each([["safety_off", "Turned off on this device after three automatic pauses."], ["paused", "Paused"], ["interrupted", "Stopped: the page closed while it was playing."],
+    ["owner_css", "Off while your custom CSS is on."], ["reduced_motion", "Off: this device asks for reduced motion."], ["safety_unknown", "Stopped"]])("reason %s reads %s", async (reason, text) => {
+    const h = await fixture(); await h.publish(); await h.publishRows([{ id: ID, phase: null, reason, verdict: "off" }]); await h.open();
+    expect(pg!.root.querySelector("dialog section p")!.textContent).toContain(text); h.cleanup();
+  });
+  it("Resume on a durably-off effect says why it cannot restart", async () => {
+    const h = await fixture(); await h.publish(); await h.publishRows([{ id: ID, phase: null, reason: "safety_off", verdict: "off" }]); await h.open();
+    h.api().resume.mockReturnValue(false);
+    [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Resume")!.click(); await settle();
+    expect(pg!.document.body.textContent).toContain("Resume cannot restart it here."); expect(pg!.document.body.textContent).not.toContain("safety history is not ready");
+    h.cleanup();
+  });
+  it("only a focused editable is called typing; any other protected UI is said generically", async () => {
+    await fixture();
+    const { effectRowText } = await import("/ui/js/chat-effects.js");
+    const row = { id: ID, phase: null, reason: "stock_overlay", verdict: "off" };
+    const doc = (active: any) => ({ body: {}, activeElement: active });
+    expect(effectRowText(row, { doc: doc({ matches: (s: string) => s.includes("textarea"), isContentEditable: false }) })).toContain("while you type");
+    expect(effectRowText(row, { doc: doc({ matches: () => false, isContentEditable: false }) })).toContain("menu or panel");
+    expect(effectRowText(row, { doc: { body: 1, activeElement: 1 } as any })).toContain("menu or panel");
+    expect(effectRowText({ ...row, reason: "modal" }, { doc: doc(null) })).toBe("Waiting while a dialog is open.");
+    expect(effectRowText({ id: ID, phase: "running", reason: "paused" })).toBe("Paused");          // a pause outranks a stale phase
+  });
 });
+
