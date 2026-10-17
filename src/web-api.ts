@@ -308,7 +308,7 @@ export interface WebApiContext {
   /** Answer one of them, exactly as a click on its platform button would. */
   clickWebPrompt?(instance: string, nonce: string, action: string): Promise<{ status: number; error?: string }>;
   /** #1266: a click on an agent reply's button. */
-  clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string }): Promise<{ status: number; error?: string; options?: number[] }>;
+  clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true }): Promise<{ status: number; error?: string; options?: number[] }>;
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
@@ -1326,7 +1326,8 @@ export function handleWebRequest(
       // gate (a session revoked meanwhile) clicks nothing as anyone.
       const person = webPersonOr401(req, res, url, ctx);
       if (!person) return;
-      const r = await click(instance, id, index, { key: person.voterKey, userId: person.userId, name: person.name });
+      // #1920 review: a guest's choice reaches the agent marked as a guest's, as its typed messages do.
+      const r = await click(instance, id, index, { key: person.voterKey, userId: person.userId, name: person.name, ...(guest ? { guest: true as const } : {}) });
       json(res, r.status, r.status === 200 ? { answered: true, ...(r.options ? { options: r.options } : {}) } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web reply-button click failed");

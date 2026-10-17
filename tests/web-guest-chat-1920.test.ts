@@ -3,7 +3,8 @@
  * (web.guests.chat, default true), with authority none, and never a command.
  * - /ui/send: out of scope 404; read-only 403; text that starts with "/" 403; the agent sees "[user:… via web (guest)…]".
  * - /ui/upload: the same scope and switch. /ui/cancel/<n>: the platform button's, in scope and while guests may chat.
- * - /ui/reply-button: only on a reply the guest may see (§5.2).
+ * - /ui/reply-button: only on a reply the guest may see (§5.2), while guests may chat; the agent sees the choice as a
+ *   guest's, as a typed message.
  * - /ui/prefs: read only — the host's look and the guest's own, never a preference that names an instance (the app
  *   shell's embedded copy too); POST stays closed. /ui/profile: its own web name.
  * - A placed effect's poster: by its instance, in scope.
@@ -127,7 +128,33 @@ describe("live: a guest scoped to `a`", () => {
     expect(await raw(port, "POST", "/ui/reply-button", write(guest), JSON.stringify({ instance: "a", id: hidden, index: 0 }))).toEqual({ status: 404, body: JSON.stringify({ error: "not found" }) });
     expect(await raw(port, "POST", "/ui/reply-button", write(guest), JSON.stringify({ instance: "b", id: seen, index: 0 }))).toEqual({ status: 404, body: JSON.stringify({ error: "not found" }) });
     expect(click.mock.calls.map((c) => [c[0], c[1]])).toEqual([["a", seen]]);
-    expect(click.mock.calls[0]![3]).toMatchObject({ key: `${ALICE.adapterId}:${ALICE.userId}`, userId: ALICE.userId });
+    expect(click.mock.calls[0]![3]).toMatchObject({ key: `${ALICE.adapterId}:${ALICE.userId}`, userId: ALICE.userId, guest: true });
+    // #2090 review: a read-only guest's click is a message too — refused, nothing clicked.
+    guestsChat(false);
+    expect(await raw(port, "POST", "/ui/reply-button", write(guest), JSON.stringify({ instance: "a", id: seen, index: 0 }))).toEqual({ status: 403, body: JSON.stringify({ error: "guest_read_only" }) });
+    expect(click).toHaveBeenCalledTimes(1);
+    // An admin's click is not a guest's.
+    expect((await raw(port, "POST", "/ui/reply-button", write(session("admin")), JSON.stringify({ instance: "a", id: seen, index: 0 }))).status).toBe(200);
+    expect(click.mock.calls[1]![3]).not.toHaveProperty("guest");
+  });
+  it("#2090 review: a guest's button choice reaches the agent marked a guest's, as its typed messages do", async () => {
+    scopedToA(); guestsChat();
+    fm.instanceIpcClients.set("a", { connected: true, send: () => true });
+    const delivered: any[] = [];
+    vi.spyOn(fm, "deliverHumanToInstance").mockImplementation(async (_name: unknown, payload: unknown) => { delivered.push(payload); return true; });
+    fm.replyButtons();
+    const ids = ["e".repeat(32), "f".repeat(32)];
+    for (const id of ids) {
+      fm.replyButtonsStore.create({ id, instance: "a", adapterId: "web", chatId: "web", threadId: "", buttons: [{ label: "Deploy", value: "deploy" }] }, Date.now());
+      fm.replyButtonsStore.bind(id, `w-${id.slice(0, 4)}`);
+      fm.emitSseEvent("message", { instance: "a", sender: "a", role: "agent", text: "deploy?", ts: new Date().toISOString(), channel: true, buttons: { id, state: "open", labels: ["Deploy"] } });
+    }
+    expect(await raw(port, "POST", "/ui/reply-button", write(session("guest", ALICE)), JSON.stringify({ instance: "a", id: ids[0], index: 0 }))).toEqual({ status: 200, body: JSON.stringify({ answered: true }) });
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0].meta).toMatchObject({ source: "web", web_guest: "1", user_id: ALICE.userId });
+    expect(formatHumanInboundMessage(delivered[0].content, delivered[0].meta, "mcp")).toContain(`via web (guest), id:${ALICE.userId}]`);
+    expect((await raw(port, "POST", "/ui/reply-button", write(session("admin")), JSON.stringify({ instance: "a", id: ids[1], index: 0 }))).status).toBe(200);
+    expect(delivered[1].meta.web_guest, "an admin's choice is not a guest's").toBeUndefined();
   });
   it("/ui/prefs and the app shell's copy: the host's look and the guest's own only; POST closed", async () => {
     scopedToA(); guestsChat();

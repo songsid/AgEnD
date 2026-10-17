@@ -59,7 +59,7 @@ export interface ReplyButtonsDeps {
   /** May this platform user answer this set — someone who may message its instance there? */
   mayClick(set: ReplyButtonSet, userId: string): boolean;
   /** Deliver the choice to the instance as an inbound message; false when it could not be delivered. */
-  deliver(set: ReplyButtonSet, button: ReplyButton, by: { userId: string; username: string; source: "web" | string; humanOrigin?: HumanOrigin }): Promise<boolean>;
+  deliver(set: ReplyButtonSet, button: ReplyButton, by: { userId: string; username: string; source: "web" | string; humanOrigin?: HumanOrigin; guest?: true }): Promise<boolean>;
   /** Tell the web pages a set changed. */
   publish(instance: string, view: ReplyButtonsView): void;
   /**
@@ -198,7 +198,7 @@ export class ReplyButtonsController {
    * is `voter`'s vote — a session's public handle, so each signed-in device is one voter — and the answer carries the
    * ballot, for the page to mark the voter's own choice.
    */
-  async clickWeb(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
+  async clickWeb(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
     if (!/^[0-9a-f]{32}$/.test(id) || !Number.isInteger(index) || index < 0) return { status: 400, error: "Malformed button" };
     const set = this.deps.store.get(id);
     if (!set) return { status: 409, error: t("reply_buttons.closed") };
@@ -211,12 +211,12 @@ export class ReplyButtonsController {
     let notice: string | undefined;
     // #1827: the choice is the web person's (their web id and name; "web-user" when there is none) — still `via web`
     // with no verified actor (webHumanOrigin).
-    const ok = await this.choose(id, index, { userId: voter?.userId ?? "web-user", username: voter?.name ?? "web-user", source: "web", humanOrigin: webHumanOrigin(true) }, n => { notice = n; });
+    const ok = await this.choose(id, index, { userId: voter?.userId ?? "web-user", username: voter?.name ?? "web-user", source: "web", humanOrigin: webHumanOrigin(true), ...(voter?.guest ? { guest: true as const } : {}) }, n => { notice = n; });
     return ok ? { status: 200 } : { status: 409, error: notice ?? t("reply_buttons.closed") };
   }
 
   /** Consume, deliver, then show it everywhere. A choice the agent could not be given is undone (the set reopens). */
-  private async choose(id: string, index: number, by: { userId: string; username: string; source: string; humanOrigin?: HumanOrigin }, ack?: (notice?: string) => void): Promise<boolean> {
+  private async choose(id: string, index: number, by: { userId: string; username: string; source: string; humanOrigin?: HumanOrigin; guest?: true }, ack?: (notice?: string) => void): Promise<boolean> {
     const now = this.deps.now();
     const result = this.deps.store.consume(id, index, by.username, now);
     if (!result.ok) {

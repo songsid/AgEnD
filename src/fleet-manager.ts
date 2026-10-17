@@ -1847,7 +1847,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async deliverReplyButtonChoice(
     set: { id: string; instance: string; adapterId: string; chatId: string; threadId: string; messageId: string | null },
     button: { label: string; value: string },
-    by: { userId: string; username: string; source: string; humanOrigin?: HumanOrigin },
+    by: { userId: string; username: string; source: string; humanOrigin?: HumanOrigin; guest?: true },
   ): Promise<boolean> {
     const content = replyButtonClickText(button);
     const web = by.source === "web";
@@ -1881,6 +1881,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         meta: {
           chat_id: set.chatId, message_id: messageId, user: by.username, user_id: by.userId, ts,
           thread_id: set.threadId, adapter_id: inbound.adapterId, source: inbound.source,
+          ...(web && by.guest ? { web_guest: "1" } : {}),        // #1920: "[user:… via web (guest), id:…]", as /ui/send
           ...reactions.meta,
         },
       }, by.humanOrigin, button.label)) !== false;
@@ -13061,7 +13062,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1266: a click on a reply's button in the web chat (the /ui gate is passed: a session, or the public link). On a
    * poll (#1823) it is `voter`'s vote: the page's session.
    */
-  clickWebReplyButton(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
+  clickWebReplyButton(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
     const buttons = this.replyButtons();
     return buttons ? buttons.clickWeb(instance, id, index, voter) : Promise.resolve({ status: 409, error: t("reply_buttons.closed") });
   }
