@@ -279,6 +279,15 @@ describe("the canvas on the page", () => {
     card("quill").click(); await settle(2);
     expect(location.pathname, "the click that ends a pinch opens nothing").toBe("/ui/fleet/org");
   });
+  it("a third finger lifted: the two left pinch on from where they are", async () => {
+    await mount();
+    const down = (id: number, x: number) => fire(svg(), "pointerdown", { pointerId: id, clientX: x, clientY: 300, pointerType: "touch" });
+    down(1, 400); down(2, 500); down(3, 900);
+    fire(svg(), "pointerup", { pointerId: 3 });
+    const v0 = tf()!;
+    fire(svg(), "pointermove", { pointerId: 2, clientX: 600, clientY: 300 });
+    expect(tf()!.k).toBeCloseTo(v0.k * 2);
+  });
   it("pinchView: the old midpoint's canvas point lands on the new midpoint; zoom by the spans' ratio, clamped", () => {
     const v = { x: 10, y: 20, k: 1 }, from = { mid: { x: 100, y: 100 }, dist: 50 }, to = { mid: { x: 160, y: 90 }, dist: 100 };
     const z = C.pinchView(v, from, to);
@@ -406,6 +415,9 @@ describe("the canvas on the page", () => {
     expect(texts.map((t: any) => t.textContent)).toEqual(["1 Needs you", "1 Crashed", "1 Looks stuck", "1 Working", "1 Idle", "1 Paused", "1 Stopped", "1 Not in the fleet"]);
     for (const t of texts) { expect(+t.getAttribute("x")).toBeLessThan(right - 14); expect(+t.getAttribute("y")).toBeLessThan(bottom); }
     expect(new Set(texts.map((t: any) => t.getAttribute("y"))).size).toBeGreaterThan(1);
+    // Each dot sits on its count's line.
+    const dots = team("Mixed").querySelectorAll(".oc-dot");
+    expect(dots.map((d: any) => +d.getAttribute("cy") + 4)).toEqual(texts.map((t: any) => +t.getAttribute("y")));
   });
   it("the identity colour's bar: a bar on every card, painted only where the bar is chosen (bar only, ring only, off)", async () => {
     app.appStore.set((s: any) => ({ ...s, instances: s.instances.map((i: any) => (i.name === "quill" ? { ...i, color: { person: "#cf222e" }, color_show: { person: ["bar"] } }
