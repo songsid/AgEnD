@@ -4,7 +4,7 @@
  * theme. Real stores on a scratch home (FleetManager, no fleet start).
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -124,6 +124,16 @@ describe("set_web_settings: as the page changes it", () => {
     expect(fm.ownerCss.state(OPERATOR).active).toBe(first);
     expect(set({ what: "custom_css", action: "off" })).toMatchObject({ ok: true, active: null });
     expect(set({ what: "custom_css", action: "lasers" })).toMatchObject({ ok: false, error: "custom_css" });
+    expect(fm.webSettings.read().page_only.join(" "), "keep and use are no longer the person's alone").not.toMatch(/keep|earlier/i);
+  });
+  it("the skills General loads say the same: keep and use are its own, after the user says so (Prism #2081)", () => {
+    for (const skill of ["web-appearance", "web-dashboard"]) {
+      const text = readFileSync(join("src", "general-knowledge", "skills", skill, "SKILL.md"), "utf8");
+      expect(text, skill).not.toContain("custom_css_person_only");
+      expect(text, skill).not.toMatch(/keeping a (?:custom )?CSS trial,? or switch(?:ing)? to an earlier/i);
+    }
+    expect(readFileSync("src/general-knowledge/skills/web-appearance/SKILL.md", "utf8")).toContain("`keep` (the trial), `revert` (the trial), `use` (with `version`");
+    expect(readFileSync("src/general-knowledge/skills/web-dashboard/SKILL.md", "utf8")).toContain("keep or revert\nthe trial, switch to an earlier saved version");
   });
   it("an effect slot: the page's owner-selection check (an unknown effect is refused); an effect on a chat: the effect service's", () => {
     expect(set({ what: "effect_slot", slot: "sidebar", id: "f".repeat(32) })).toMatchObject({ ok: false });
