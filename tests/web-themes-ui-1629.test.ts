@@ -260,16 +260,14 @@ describe("the page", () => {
   });
   it("the sidebar: the theme's picture and ring while shown; the bot's face and colour otherwise; only same-origin theme paths", async () => {
     const { themes, nav } = await load();
-    const it0 = { name: "alpha", avatar: { kind: "image", src: "/ui/img/bot/discord?v=1" }, accent: "#ff0000", theme_avatar: { kind: "image", src: `/ui/img/theme/alpha/${"a".repeat(32)}` }, theme_accent: "#8b5cf6" };
+    const it0 = { name: "alpha", avatar: { kind: "image", src: "/ui/img/bot/discord?v=1" }, accent: "#ff0000", theme_avatar: { kind: "image", src: `/ui/img/theme/alpha/${"a".repeat(32)}` }, theme_accent: "#8b5cf6",
+      color: { role: "#ff0000", agent: "#8b5cf6", auto: "auto:sea" } };
     expect(nav.avatarOf(it0)).toEqual({ kind: "image", src: `/ui/img/theme/alpha/${"a".repeat(32)}` });
     pg!.storage.set("agend_fx_show", "off");
     expect(themes.themesShown()).toBe(false);
     expect(nav.avatarOf(it0)).toEqual({ kind: "image", src: "/ui/img/bot/discord?v=1" });
-    const ring = async () => {
-      const P = await import("/assets/app-html.js");                         // this module graph's preact (modules were reset)
-      P.render(P.h("div", null, P.h(nav.InstanceAvatar, { it: it0, state: "idle" })), pg!.root); await settle();
-      return (pg!.root.querySelector(".av") as any).style["--ring"] ?? "";
-    };
+    // #1958: the ring is the identity colour — the theme's (the agent tier) while shown, else its bot's (the role tier).
+    const ring = async () => (await import("/assets/identity-color.js")).identityOf(it0).light;
     expect(await ring(), "themes off: the bot's colour").toBe("#ff0000");
     pg!.storage.delete("agend_fx_show");
     themes.themesStore.set({ shown: themes.themesShown() });

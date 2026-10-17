@@ -88,16 +88,19 @@ describe("the avatar", () => {
 });
 
 describe("the ring", () => {
-  it("its bot's colour, through the CSSOM on its picture; nothing for a malformed colour or a non-picture avatar", async () => {
+  // #1958: the ring is the instance's identity colour (its own bot's colour is the frame's `color.role` tier), painted on
+  // the row through the CSSOM for every face; a malformed colour is never drawn (the automatic one shows instead).
+  it("its bot's colour, through the CSSOM on the row; a malformed one falls through; an emoji face is ringed too", async () => {
     const pg = await sidebar([
-      base("bot", { avatar: { kind: "image", src: "/ui/img/bot/discord-2?v=a" }, accent: "#e91e63" }),
-      base("bad", { avatar: { kind: "image", src: "/ui/img/bot/discord-3?v=a" }, accent: "red; background: url(x)" }),
-      base("fox", { avatar: { kind: "emoji", text: "🦊" }, accent: "#e91e63" }),
+      base("bot", { avatar: { kind: "image", src: "/ui/img/bot/discord-2?v=a" }, color: { role: "#e91e63", auto: "auto:sea" } }),
+      base("bad", { avatar: { kind: "image", src: "/ui/img/bot/discord-3?v=a" }, color: { role: "red; background: url(x)", auto: "auto:sea" } }),
+      base("fox", { avatar: { kind: "emoji", text: "🦊" }, color: { role: "#e91e63", auto: "auto:sea" } }),
     ]);
-    const av = (n: string) => row(pg, n).querySelector(".av");
-    expect([av("bot").getAttribute("class"), av("bot").style["--ring"]]).toEqual(["av ring", "#e91e63"]);
-    expect([av("bad").getAttribute("class"), av("bad").style["--ring"]]).toEqual(["av", undefined]);
-    expect([av("fox").getAttribute("class"), av("fox").style["--ring"]]).toEqual(["av av-emoji", undefined]);
+    const ringed = (n: string) => [row(pg, n).className.split(/\s+/).includes("id-ring"), row(pg, n).style["--id-light"]];
+    expect(ringed("bot")).toEqual([true, "#e91e63"]);
+    expect(ringed("bad")).toEqual([true, "#3f7286"]);
+    expect(ringed("fox")).toEqual([true, "#e91e63"]);
+    expect(row(pg, "fox").querySelector(".av").getAttribute("class")).toBe("av av-emoji");
     expect(pg.root.querySelectorAll("[style]").filter((e: any) => typeof e.getAttribute("style") === "string").length, "no style attribute in markup (#1300)").toBe(0);
   });
 });

@@ -29,6 +29,7 @@ import { Icon } from "./ui-icons.js";
 import "./view-strings.js";
 import { checkCard, fitPicture, IdentityCard, useCard } from "./identity-card.js";
 import { confirmDialog } from "./ui-confirm.js";
+import { openColorDialog } from "./identity-color.js";
 
 /** view.* text with named values: tn("paneFailed", { name, status }). */
 function tn(key, values = {}) {
@@ -414,6 +415,7 @@ function EditProfile({ it, onClose }) {
       <label class="field"><span>${tn("avatar")}</span><input ref=${file} type="file" accept="image/png,image/jpeg,image/gif,image/webp" /></label>
       ${it.has_avatar ? html`<div class="field-row"><button type="button" class="btn btn-sm" aria-pressed=${removePic ? "true" : "false"}
         onClick=${() => setRemovePic(!removePic)}>${tn(removePic ? "keepPicture" : "removePicture")}</button>${removePic ? html`<span class="muted">${tn("removePictureNote")}</span>` : null}</div>` : null}
+      <div class="field-row"><button type="button" class="btn btn-sm" onClick=${() => openColorDialog(it.instance_name, (appStore.get().instances || []).find((i) => i.name === it.instance_name))}>${t("color.menu")}</button></div>
       <h3 class="form-sub">${tn("cardSection")}</h3>
       <p class="note">${tn("cardLead")}</p>
       <fieldset class="form" disabled=${clearCard || !card} aria-busy=${card ? "false" : "true"}>

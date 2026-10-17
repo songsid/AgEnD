@@ -40,6 +40,9 @@ export const SYNCED = {
   "card.sizeByInstance": { ls: "agend_card_sizes", ...json },
   // #1629 r4-4: the person's own sidebar widget ({ spec, data }), drawn by the page's own components.
   "widget.sidebar": { ls: "agend_widget_sidebar", ...json },
+  // #1958: where identity colours show by default (ring + bar unless chosen), and the host's switch to turn them off.
+  "color.show": { ls: "agend_color_show", ...json },
+  "color.off": { ls: "agend_color_off", toLocal: (v) => (v === true ? "on" : null), fromLocal: (s) => (s === "on" ? true : undefined) },
 };
 // #1629: fixed personal scope. A separate session-bound owner-effect store synchronizes these, never this host cache.
 export const OWNER_EFFECT_PREF_KEYS = Object.freeze(["fx.sidebar", "fx.header", "fx.page", "fx.box", "fx.cursor"]);

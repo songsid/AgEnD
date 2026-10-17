@@ -115,6 +115,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "identity-card.js", "card-strings.js",
     // #1629 r4-4: widgets drawn by the page's own components (static code; the widgets are read behind the gate).
     "agent-widget.js",
+    // #1958: identity colours on the page and the Color dialog (static code; the colours come in the status frame).
+    "identity-color.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
   ].map(name => [name, { file: join("shared", name), type: "text/javascript; charset=utf-8" }])),
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },

@@ -17,6 +17,7 @@ import { viewStore } from "./view-roster-store.js";
 import { onPrefsChanged, prefInForce, prefsWritable, savePref } from "./app-prefs.js";
 import "./view-strings.js";
 import { themesShown, themesStore } from "./app-themes.js";
+import { identityClasses, identityOf, paintIdentity, useIdentityColors } from "./identity-color.js";
 
 /** view.* text with named values. */
 function tn(key, values = {}) {
@@ -298,7 +299,6 @@ export function avatarOf(it) {
   // #1722: the initial is the leading name's ("Names"), not the server's (which is always the nickname's).
   return { kind: "initial", text: firstCharacter(namesOf(it).primary) || (a && a.kind === "initial" && typeof a.text === "string" ? a.text : "") };
 }
-const ACCENT = /^#[0-9a-f]{6}$/i;
 /** The status dot on the avatar: needs you, crashed, paused, stopped, looks stuck, working, idle — colour AND a label. */
 export function dotState(it, exec, awaiting) {
   if (awaiting != null) return "needs";
@@ -314,25 +314,19 @@ const DOT = {
 };
 export function dotLabel(state) { return (DOT[state] || DOT.stopped)[1](); }
 
-/** An instance's avatar with its status dot. The ring (its bot's colour) is a CSS custom property set through the CSSOM. */
+/**
+ * An instance's avatar with its status dot. #1958: its ring is the identity colour, painted by the row it sits in
+ * (identity-color.js: `.idc.id-ring`), for every face.
+ */
 export function InstanceAvatar({ it, state, cli = false }) {
   useStore(themesStore);                                    // #1629: redraw when the viewer turns agents' themes on or off
   const a = avatarOf(it);
   const [broken, setBroken] = useState("");
-  const el = useRef(null);
-  // #1629: the theme's ring colour beats the bot's while themes are shown.
-  const ring = themesShown() && typeof it.theme_accent === "string" && ACCENT.test(it.theme_accent) ? it.theme_accent : it.accent;
-  const accent = typeof ring === "string" && ACCENT.test(ring) && a.kind === "image" ? ring : "";
-  useLayoutEffect(() => {
-    const node = el.current;
-    if (!node || !node.style) return;
-    if (accent) node.style.setProperty("--ring", accent); else node.style.removeProperty("--ring");
-  }, [accent]);
   const src = a.kind !== "initial" && a.src && broken !== a.src ? a.src : "";
   const text = a.kind === "emoji" && a.text ? a.text : a.kind === "initial" ? a.text : firstCharacter(namesOf(it).primary);
   const [cls] = DOT[state] || DOT.stopped;
   const label = dotLabel(state);
-  return html`<span ref=${el} class=${`av${accent ? " ring" : ""}${a.kind === "emoji" ? " av-emoji" : ""}`}>
+  return html`<span class=${`av${a.kind === "emoji" ? " av-emoji" : ""}`}>
     ${src ? html`<img src=${src} alt="" decoding="async" onError=${() => setBroken(src)} />` : html`<span class="av-text" aria-hidden="true">${text}</span>`}
     <span class=${`av-dot dot ${cls}`} role="img" aria-label=${label} title=${label}></span>${cli
       ? html`<span class="av-cli" aria-hidden="true" title=${backendLabel(it.backend)}>${CLI_MONOGRAM[it.backend] || "·"}</span>` : null}</span>`;
@@ -352,6 +346,7 @@ const statusText = (facet) => (facet === "needs" ? t("app.needsYou") : facet ===
 export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting = {}, viewOnly = false, onPick }) {
   const nav = useStore(navStore);
   const names = useStore(namesStore);   // #1722: which name leads
+  useIdentityColors();                  // #1958: repaint when the host's colour settings or the themes switch change
   const filterRef = useRef(null);
   const list = useRef(null);
   const drag = useRef(null);
@@ -442,8 +437,10 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     const waiting = own(awaiting, name) ? awaiting[name] : null;
     const on = name === active;
     const fav = g === FAV_GROUP, starred = favSet.has(name);
+    // #1958: its identity colour — the ring, a left bar and/or the name, as resolved; painted through the CSSOM.
+    const id = identityOf(it);
     const full = !starred && favs.length >= MAX_FAVORITES;
-    return html`<li key=${name} class="v-li"><a class=${`inst v-inst${on ? " active" : ""}`} href=${rowPath(name)} title=${instanceTooltip(it)}
+    return html`<li key=${name} class="v-li"><a class=${`inst v-inst${on ? " active" : ""} ${identityClasses(id)}`} ref=${(el) => paintIdentity(el, id)} href=${rowPath(name)} title=${instanceTooltip(it)}
         aria-current=${on ? "page" : undefined} onClick=${onPick} ...${fav ? {} : dragProps({ type: "instance", name, group: g })}>
       <${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} cli=${true} />
       <span class="inst-text"><span class="inst-name" title=${label}>${label}</span>

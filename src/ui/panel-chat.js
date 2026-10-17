@@ -24,6 +24,7 @@ import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { savePref } from "/assets/app-prefs.js";
 import { applyTheme, resolvedMode, themeFor, themeImageUrl, themeMenuItems, themesStore } from "/assets/app-themes.js";
+import { colorMenuItem } from "/assets/identity-color.js";
 import { IdentityCard, useCard } from "/assets/identity-card.js";
 import { AgentWidget, instanceBinds, widgetFor } from "/assets/agent-widget.js";
 
@@ -269,6 +270,8 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     running ? null : { key: "start", label: t("chat.start"), icon: "play", onSelect: () => action("start") },
     running ? { key: "restart", label: t("chat.restart"), icon: "restart", onSelect: () => action("restart") } : null,
     running ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", onSelect: () => action("stop") } : null,
+    // #1958: its identity colour and where it shows (the public link too, as profile edits).
+    colorMenuItem(name, inst),
     // #1629: a person's control over this agent's theme — not over the public link (it only views themes).
     ...themeMenuItems(name),
     chatEffectsMenuAvailable() ? { key: "effects", label: t("chatFx.title"), onSelect: () => setDialog("effects") } : null,
