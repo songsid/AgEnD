@@ -245,7 +245,7 @@ import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { recentChatContext } from "./log-tail.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
-import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
+import { ClassicChannelManager, classicWebEchoOn, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
@@ -3899,7 +3899,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * for `instance` (#1320 part B). Per entry: the channel's own adapter, no
    * thread, mention suppression on. Returns the number of channels posted
    * to. Failures are per-entry warn-and-continue — a failed echo never fails
-   * the web send. Entries without `web_echo: true` are never touched.
+   * the web send. Only entries classicWebEchoOn admits are touched (#2054: unset follows web.echo_to_channel; an explicit
+   * `web_echo: false` never echoes).
    *
    * Every copy is fenced at start time: an entry whose explicit world is
    * gone is skipped (only legacy adapterId-less entries fall back to the
@@ -3926,7 +3927,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
       }
       const entry = (this.classicChannels?.getAll() ?? [])
-        .find(candidate => candidate.instanceName === instance && candidate.webEcho === true
+        .find(candidate => candidate.instanceName === instance && classicWebEchoOn(candidate.webEcho, this.fleetConfig?.web?.echo_to_channel)
           && !handled.has(`${candidate.channelId}#${candidate.adapterId ?? ""}`));
       if (!entry) break;
       handled.add(`${entry.channelId}#${entry.adapterId ?? ""}`);

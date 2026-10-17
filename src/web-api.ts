@@ -2001,8 +2001,8 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         && !ctx.isClassicInstance?.(instance) && syncAdapter && groupId && topicId != null;
       // Add no runtime credentials or local attachment paths to the display copy.
       const preview = webEchoPreview(message, files.map(f => f.name));
-      // ClassicBot echo (#1320 part B): same ordering lane, per-entry
-      // opt-in resolved at send time inside sendClassicWebEcho.
+      // ClassicBot echo (#1320 part B): same ordering lane, each room's setting (#2054: on unless it says false, or
+      // the fleet-wide switch is off for a room that is unset) resolved at send time inside sendClassicWebEcho.
       const canClassicEcho = ctx.isClassicInstance?.(instance) === true && !!ctx.sendClassicWebEcho;
       const settleClassicEcho = canClassicEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
         await ctx.sendClassicWebEcho!(instance, formatWebChannelEcho(person.name, preview, t("web.echo_full_text")), person.name);

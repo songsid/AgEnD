@@ -14,7 +14,8 @@
     "subtitle": "Agent Engineering Daemon — manage coding agents from Telegram, Discord or the browser. 7 backends, fleet mode, agent collaboration, zero babysitting.",
     "cta": "Get Started",
     "github": "GitHub",
-    "badges": "macOS · Linux · Windows (WSL) · MIT License"
+    "badges": "macOS · Linux · Windows (WSL) · MIT License",
+    "whatsNew": "What's new in 2.2 →"
   },
   "terminal": {
     "cmd": "$ agend fleet start",
@@ -53,24 +54,44 @@
     "title": "Everything you need to run a fleet",
     "items": [
       {
+        "icon": "monitor",
+        "name": "Web Chat & Dashboard",
+        "desc": "Chat with each agent in the browser. Files, HTML previews, Stop, reply buttons — same conversation as your chat app. No chat platform needed for a fresh setup."
+      },
+      {
+        "icon": "check-square",
+        "name": "Needs You",
+        "desc": "Every prompt, permission and sign-in waiting on you, in one live list in General and on the web. Handle it anywhere and it disappears everywhere."
+      },
+      {
+        "icon": "users",
+        "name": "Credential Profiles & /backend",
+        "desc": "Run agents on a second Claude, Codex or Kiro account. Sign a Claude profile in from chat. /backend switches an agent to another CLI in one step."
+      },
+      {
+        "icon": "zap",
+        "name": "One-step /update",
+        "desc": "Send /update in General. AgEnD fetches, installs, and restarts — with a progress message for each step. Brings its own Node on Linux and macOS so you don't have to upgrade."
+      },
+      {
         "icon": "rocket",
         "name": "Fleet Mode",
-        "desc": "N projects, each a Telegram topic or Discord channel. Independent sessions with crash recovery."
+        "desc": "N projects, each a Telegram topic or Discord channel. Independent sessions with crash recovery and automatic context compaction."
       },
       {
         "icon": "shuffle",
         "name": "Multi-Backend",
-        "desc": "Claude Code, Codex, Antigravity, Kiro CLI, Grok, Meta Muse Code, OpenCode. Switch or mix freely."
+        "desc": "Claude Code, Codex, Antigravity, Kiro CLI, Grok, Meta Muse Code, OpenCode. Switch or mix freely, or add a second subscription of the same backend."
       },
       {
         "icon": "users",
         "name": "Agent Collaboration",
-        "desc": "MCP tools for discovery, delegation, and result reporting between agents."
+        "desc": "MCP tools for discovery, delegation, and result reporting between agents. The General instance routes tasks and reports back."
       },
       {
         "icon": "smartphone",
         "name": "Mobile Control",
-        "desc": "Approve tool use, restart sessions, manage your fleet from Telegram or Discord buttons."
+        "desc": "Approve tool use, restart sessions, manage your fleet from Telegram or Discord buttons — or from the web dashboard on your phone."
       },
       {
         "icon": "shield",
@@ -80,17 +101,12 @@
       {
         "icon": "clock",
         "name": "Persistent Schedules",
-        "desc": "Cron-based tasks backed by SQLite. Survives restarts."
-      },
-      {
-        "icon": "monitor",
-        "name": "Web Chat & Dashboard",
-        "desc": "Chat with each agent from the browser: /web sign-in, files, HTML previews, Stop. Plus a live View of every terminal."
+        "desc": "Cron-based tasks backed by SQLite. Survives restarts. Edit schedules on the web."
       },
       {
         "icon": "settings",
         "name": "Settings UI",
-        "desc": "Web-based fleet config. Agent-centric design, validate-before-write."
+        "desc": "Web-based fleet config. Agent-centric design, validate-before-write, confirmation for sensitive changes."
       },
       {
         "icon": "users",
@@ -108,11 +124,6 @@
         "desc": "agend validate — catch config errors before they crash your fleet."
       },
       {
-        "icon": "zap",
-        "name": "Model Failover",
-        "desc": "Auto-switch to backup model on rate limits with 5-minute cooldown."
-      },
-      {
         "icon": "mic",
         "name": "Voice Messages",
         "desc": "Groq Whisper transcription — talk to your agents."
@@ -121,16 +132,6 @@
         "icon": "file-text",
         "name": "HTML Export",
         "desc": "Export sessions as standalone HTML for sharing or archiving."
-      },
-      {
-        "icon": "check-square",
-        "name": "Needs You",
-        "desc": "Every prompt, permission and sign-in waiting on you, in one live list in General and on the web."
-      },
-      {
-        "icon": "users",
-        "name": "Credential Profiles",
-        "desc": "Run agents on a second Claude, Codex or Kiro subscription. Sign a Claude profile in from chat, and see Claude usage per account."
       }
     ]
   },
@@ -283,5 +284,43 @@
   "footer": {
     "license": "MIT License",
     "tagline": "The operations layer for AI coding agents."
+  },
+  "screenshots": {
+    "sectionLabel": "SEE IT IN ACTION",
+    "title": "Everything in your browser",
+    "items": [
+      {
+        "name": "Web Chat",
+        "desc": "Talk to each agent from a browser — same conversation as your Telegram or Discord topic. Send files, click reply buttons, see a live preview of HTML the agent sends. Works on a phone.",
+        "icon": "💬",
+        "imgLight": "chat-light.webp",
+        "imgDark": "chat-dark.webp",
+        "alt": "The web chat with the agent Atlas: a table of endpoint latencies, an SQL code block, a chosen reply button, and two files above the message box. Made-up demo data."
+      },
+      {
+        "name": "Needs You",
+        "desc": "Every permission request, failed delivery, and waiting agent collected in one live list — in General and on the web. Handle it anywhere, and it leaves every list.",
+        "icon": "🔔",
+        "imgLight": "needs-light.webp",
+        "imgDark": "needs-dark.webp",
+        "alt": "The Needs you page: a permission request, a failed delivery, an agent not responding with Restart and Keep waiting buttons, and a crashed agent. Made-up demo data."
+      },
+      {
+        "name": "Usage & Subscriptions",
+        "desc": "One row per subscription. Run agents on a second Claude account with credential profiles — sign it in from chat with /login, and usage shows each account separately.",
+        "icon": "📊",
+        "imgLight": "usage-light.webp",
+        "imgDark": "usage-dark.webp",
+        "alt": "The usage panel with one row each for two Claude accounts (work and personal) and one for Codex, each with session and weekly use. Made-up demo data."
+      },
+      {
+        "name": "Fleet Overview",
+        "desc": "An org chart shows every agent with its live state. Manage schedules, teams and agent details on the web. The cache page shows how often each agent's prompt cache expires.",
+        "icon": "🗺️",
+        "imgLight": "org-light.webp",
+        "imgDark": "org-dark.webp",
+        "alt": "The org chart: the product team (Pixel, Atlas, Quill) and the support team (Sage, Orbit, Comet), each agent with its state. Made-up demo data."
+      }
+    ]
   }
 }
