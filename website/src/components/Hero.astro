@@ -4,6 +4,7 @@ import { t } from '../i18n/utils';
 
 interface Props { locale: Locale }
 const { locale } = Astro.props;
+const docsBase = '/AgEnD';
 ---
 
 <section class="relative min-h-screen flex flex-col items-center justify-center pt-24 pb-16 overflow-hidden">
@@ -12,7 +13,15 @@ const { locale } = Astro.props;
   <div class="absolute inset-0 hero-glow"></div>
   <div class="noise absolute inset-0"></div>
 
-  <div class="relative z-10 text-center max-w-4xl mx-auto px-6">
+  <div class="relative z-10 text-center max-w-4xl mx-auto px-4">
+    <!-- What's new badge -->
+    <a href={`${docsBase}/docs/whats-new/`}
+       class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[--color-accent]/40 bg-[--color-accent]/10 text-[--color-accent] text-xs font-semibold mb-6 hover:bg-[--color-accent]/20 transition-colors">
+      <span class="w-1.5 h-1.5 rounded-full bg-[--color-accent] animate-pulse"></span>
+      {t(locale, 'hero.whatsNew')}
+      <svg class="w-3.5 h-3.5 opacity-70" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+    </a>
+
     <!-- Tagline -->
     <h1 class="font-display font-extrabold text-4xl sm:text-5xl md:text-6xl leading-tight tracking-tight mb-6">
       <span class="block">{t(locale, 'hero.tagline')}</span>
@@ -41,26 +50,17 @@ const { locale } = Astro.props;
     <p class="text-sm text-text-muted">{t(locale, 'hero.badges')}</p>
   </div>
 
-  <!-- Terminal mockup -->
-  <div class="relative z-10 mt-12 w-full max-w-2xl mx-auto px-6">
-    <div class="bg-surface border border-border rounded-2xl overflow-hidden shadow-2xl">
-      <!-- Terminal header -->
-      <div class="flex items-center gap-2 px-4 py-3 bg-raised border-b border-border">
-        <div class="w-3 h-3 rounded-full bg-error/60"></div>
-        <div class="w-3 h-3 rounded-full bg-[#e5c07b]/60"></div>
-        <div class="w-3 h-3 rounded-full bg-success/60"></div>
-        <span class="ml-2 text-xs text-text-muted font-mono">terminal</span>
-      </div>
-      <!-- Terminal content -->
-      <div class="p-5 font-mono text-sm leading-relaxed">
-        <p class="text-success">{t(locale, 'terminal.cmd')}</p>
-        <p class="text-text-secondary mt-2">{t(locale, 'terminal.line1')}</p>
-        <p class="text-text-secondary">{t(locale, 'terminal.line2')}</p>
-        <p class="text-text-secondary">{t(locale, 'terminal.line3')}</p>
-        <p class="text-text-secondary">{t(locale, 'terminal.line4')}</p>
-        <p class="text-accent mt-3 font-semibold">{t(locale, 'terminal.status')}</p>
-      </div>
-    </div>
+  <!-- 2.2 Hero image -->
+  <div class="relative z-10 mt-12 w-full max-w-5xl mx-auto px-4">
+    <img
+      src="/AgEnD/assets/readme/hero-dark.webp"
+      alt="The AgEnD web dashboard showing six agents with their status, a chat with a table, code blocks and a chosen reply button, and the same conversation on a phone beside it. Made-up demo data."
+      class="w-full rounded-2xl shadow-2xl border border-border"
+      width="880"
+      height="550"
+      loading="eager"
+      style="max-height: 55vw; object-fit: cover; object-position: top;"
+    />
   </div>
 
   <!-- Scroll indicator -->

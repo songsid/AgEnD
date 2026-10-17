@@ -20,6 +20,7 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
+import { groupLabel, modelText } from "/assets/instance-nav.js";
 import "./settings-strings.js";
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
@@ -87,7 +88,7 @@ async function loadLive(lease) {
   if (!lease.current()) return null;
   const live = {}, classicLive = {};
   if (f.ok && f.body && Array.isArray(f.body.instances)) for (const i of f.body.instances) {
-    live[i.name] = { status: i.status, state: i.state, backend: i.backend, model: i.model, model_display: i.model_display, effort: i.effort, effort_supported: i.effort_supported };
+    live[i.name] = { status: i.status, state: i.state, backend: i.backend, model: i.model, model_display: modelText(i, i.model_display), effort: i.effort, effort_supported: i.effort_supported };
     if (i.classic) classicLive[i.name] = { status: i.status, state: i.state };
   }
   // /api/fleet carries live state for ClassicBot rooms; the profiles are the fallback for one not listed there yet.
@@ -473,7 +474,7 @@ function Agents({ ctx, search, openDialog }) {
     return html`<section key=${group} class="s-group">
       <button type="button" class="s-group-head" aria-expanded=${folded ? "false" : "true"}
         onClick=${() => setCollapsed((c) => { const n = new Set(c); n.has(group) ? n.delete(group) : n.add(group); return n; })}>
-        <${Icon} name="chevron" size=${14} cls=${folded ? "caret folded" : "caret"} /><span class="grow">${group}</span><span class="count">${names.length}</span></button>
+        <${Icon} name="chevron" size=${14} cls=${folded ? "caret folded" : "caret"} /><span class="grow">${groupLabel(group)}</span><span class="count">${names.length}</span></button>
       ${folded ? null : names.map((name) => {
         const inst = insts[name];
         const st = (ctx.live[name] && ctx.live[name].status) || "stopped";

@@ -127,7 +127,7 @@ describe("tooltips and labels", () => {
   it("the same lines in Traditional Chinese", () => {
     i18n.setLang("zh-TW");
     const tip = view.instanceTooltip({ instance_name: "a", backend: "claude-code", model: "", status: "running", context_pct: 12, model_source: "fleet-default" } as any);
-    expect(tip.split("\n")).toEqual(["a", "後端：Claude Code", "模型：無資料 (fleet default)", "狀態：運行中", "上下文：12%"]);
+    expect(tip.split("\n")).toEqual(["a", "後端：Claude Code", "模型：無資料（fleet 預設）", "狀態：運行中", "上下文：12%"]);
     expect(tip).toContain("後端：");
   });
 

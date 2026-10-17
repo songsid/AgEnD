@@ -1,4 +1,4 @@
-/** ClassicBot web echo (#1320 part B): opt-in, per-entry send, no re-entry.
+/** ClassicBot web echo (#1320 part B; #2054: on unless the room says false, or the fleet-wide switch is off when the room is unset), per-entry send, no re-entry.
  * Real HTTP send → FleetManager → real Telegram adapters (stub Bot API).
  * No fleet startup, polling, CLI/tmux or external network. */
 import { EventEmitter } from "node:events";
@@ -13,7 +13,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { TelegramAdapter } from "../src/channel/adapters/telegram.js";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
 import { AccessManager } from "../src/channel/access-manager.js";
-import { ClassicChannelManager } from "../src/classic-channel-manager.js";
+import { ClassicChannelManager, classicWebEchoOn } from "../src/classic-channel-manager.js";
 import { validateClassicBotConfig } from "../src/config-validator.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
 import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
@@ -56,14 +56,14 @@ function telegramAdapter(id: string, dir: string, botId: string, sent: Array<{ c
   return { adapter, bot };
 }
 
-async function harness(opts: { aEcho?: boolean; bEcho?: boolean; bCollab?: boolean } = {}) {
+async function harness(opts: { aEcho?: boolean; bEcho?: boolean; bCollab?: boolean; fleetEcho?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "classic-echo-1320-")); dirs.push(dir);
   vi.stubEnv("AGEND_HOME", dir);
   writeFileSync(join(dir, "classicBot.yaml"), yaml.dump({
     defaults: {},
     channels: {
-      [`${CHANNEL}#tg-a`]: { channelId: CHANNEL, adapterId: "tg-a", instanceName: "classic-a", collab: true, ...(opts.aEcho ? { web_echo: true } : {}) },
-      [`${CHANNEL}#tg-b`]: { channelId: CHANNEL, adapterId: "tg-b", instanceName: "classic-b", collab: opts.bCollab ?? true, ...(opts.bEcho ? { web_echo: true } : {}) },
+      [`${CHANNEL}#tg-a`]: { channelId: CHANNEL, adapterId: "tg-a", instanceName: "classic-a", collab: true, ...(opts.aEcho === undefined ? {} : { web_echo: opts.aEcho }) },
+      [`${CHANNEL}#tg-b`]: { channelId: CHANNEL, adapterId: "tg-b", instanceName: "classic-b", collab: opts.bCollab ?? true, ...(opts.bEcho === undefined ? {} : { web_echo: opts.bEcho }) },
     },
   }));
   const fm = new FleetManager(dir); managers.push(fm); const s = fm as any;
@@ -77,7 +77,7 @@ async function harness(opts: { aEcho?: boolean; bEcho?: boolean; bCollab?: boole
   s.adapter = adapterA;
   s.worlds.set("tg-a", { id: "tg-a", adapter: adapterA, groupId: CHANNEL, botUserId: BOT_A, accessManager: new AccessManager(OPEN, join(dir, "a-access.json")) });
   s.worlds.set("tg-b", { id: "tg-b", adapter: adapterB, groupId: CHANNEL, botUserId: BOT_B, accessManager: new AccessManager(OPEN, join(dir, "b-access.json")) });
-  s.fleetConfig = { defaults: {}, channels: [], instances: {} };
+  s.fleetConfig = { defaults: {}, channels: [], instances: {}, ...(opts.fleetEcho === undefined ? {} : { web: { echo_to_channel: opts.fleetEcho } }) };
   s.routing.rebuild(s.fleetConfig);
   s.logger = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() };
   vi.spyOn(s, "webToken", "get").mockReturnValue(TOKEN);
@@ -120,14 +120,32 @@ describe("classic web echo opt-in (#1320 B)", () => {
     expect(h.sentB).toHaveLength(0);
   });
 
-  it("off or absent posts nothing and delivery still succeeds", async () => {
-    for (const opts of [{}, { aEcho: false }]) {
+  it("#2054: a room without web_echo echoes by default (the fleet-wide switch unset, or on)", async () => {
+    for (const opts of [{}, { fleetEcho: true }]) {
+      const h = await harness(opts);
+      expect((await postSend(h.fm, "classic-a", "hi")).status).toBe(200);
+      await flush(); await flush();
+      expect(h.sentA).toHaveLength(1);
+      expect(h.sentA[0].text.startsWith(WEB_ECHO_PREFIX)).toBe(true);
+      expect(h.sentB).toHaveLength(0);                        // classic-b's room is another instance's
+    }
+  });
+
+  it("#2054: an explicit web_echo: false, or an unset room with web.echo_to_channel: false, posts nothing and delivery still succeeds", async () => {
+    for (const opts of [{ aEcho: false }, { aEcho: false, fleetEcho: true }, { fleetEcho: false }]) {
       const h = await harness(opts);
       expect((await postSend(h.fm, "classic-a")).status).toBe(200);
       await flush(); await flush();
-      expect(h.sentA).toHaveLength(0);
+      expect(h.sentA, JSON.stringify(opts)).toHaveLength(0);
       expect(h.delivered.length).toBeGreaterThan(0);
     }
+  });
+
+  it("#2054: an explicit web_echo: true wins over web.echo_to_channel: false", async () => {
+    const h = await harness({ aEcho: true, fleetEcho: false });
+    expect((await postSend(h.fm, "classic-a", "hi")).status).toBe(200);
+    await flush(); await flush();
+    expect(h.sentA).toHaveLength(1);
   });
 
   it("one entry failing does not block the other", async () => {
@@ -302,6 +320,21 @@ describe("classic echo settings (#1320 B)", () => {
     expect(saved.channels.chan.web_echo).toBe(true);
   });
 
+  it("#2054: turning a room off saves web_echo: false explicitly, and the manager reads it back as off", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "classic-echo-settings-")); dirs.push(dir);
+    const ctx = settingsCtx(dir, { "chan": { channelId: "-1001", instanceName: "classic-a" } });
+    const res = await patch(ctx, "chan", { web_echo: false });
+    expect(res.status).toBe(200);
+    const saved = yaml.load(readFileSync(join(dir, "classicBot.yaml"), "utf-8")) as any;
+    expect(saved.channels.chan.web_echo).toBe(false);
+    const manager = new ClassicChannelManager(dir, { info() {}, warn() {}, error() {}, debug() {} } as never);
+    manager.configureAdapters([{ id: "tg", type: "telegram" }]);
+    expect(manager.getAll().find(c => c.instanceName === "classic-a")?.webEcho).toBe(false);
+    (manager as any).save();
+    const resaved = Object.values((yaml.load(readFileSync(join(dir, "classicBot.yaml"), "utf-8")) as any).channels) as any[];
+    expect(resaved.find(c => c.instanceName === "classic-a").web_echo).toBe(false);
+  });
+
   it("rejects a non-boolean opt-in and leaves the file alone", async () => {
     const dir = mkdtempSync(join(tmpdir(), "classic-echo-settings-")); dirs.push(dir);
     const ctx = settingsCtx(dir, { "chan": { channelId: "-1001", instanceName: "classic-a" } });
@@ -323,25 +356,36 @@ describe("classic echo config (#1320 B)", () => {
     expect(good.valid).toBe(true);
   });
 
-  it("manager loads strict-true and round-trips only true", () => {
+  it("#2054: the manager keeps true, false and unset apart, and a room turned off survives save round trips", () => {
     const dir = mkdtempSync(join(tmpdir(), "classic-echo-yaml-")); dirs.push(dir);
     writeFileSync(join(dir, "classicBot.yaml"), yaml.dump({ channels: {
       on: { channelId: "-1", instanceName: "a", web_echo: true },
-      off: { channelId: "-2", instanceName: "b" },
+      unset: { channelId: "-2", instanceName: "b" },
       weird: { channelId: "-3", instanceName: "c", web_echo: "yes" },
+      off: { channelId: "-4", instanceName: "d", web_echo: false },
     }}));
-    const manager = new ClassicChannelManager(dir, { info() {}, warn() {}, error() {}, debug() {} } as never);
-    manager.configureAdapters([{ id: "tg", type: "telegram" }]);
-    const byInstance = Object.fromEntries(manager.getAll().map(c => [c.instanceName, c]));
-    expect(byInstance["a"]?.webEcho).toBe(true);
-    expect(byInstance["b"]?.webEcho).toBe(false);
-    expect(byInstance["c"]?.webEcho).toBe(false);
-    (manager as any).save();
-    const saved = yaml.load(readFileSync(join(dir, "classicBot.yaml"), "utf-8")) as any;
-    const channels = Object.values(saved.channels) as any[];
-    expect(channels.find(c => c.instanceName === "a").web_echo).toBe(true);
-    expect(channels.find(c => c.instanceName === "b").web_echo).toBeUndefined();
-    expect(channels.find(c => c.instanceName === "c").web_echo).toBeUndefined();
+    const load = () => {
+      const manager = new ClassicChannelManager(dir, { info() {}, warn() {}, error() {}, debug() {} } as never);
+      manager.configureAdapters([{ id: "tg", type: "telegram" }]);
+      return { manager, byInstance: Object.fromEntries(manager.getAll().map(c => [c.instanceName, c])) };
+    };
+    let { manager, byInstance } = load();
+    expect([byInstance["a"]?.webEcho, byInstance["b"]?.webEcho, byInstance["c"]?.webEcho, byInstance["d"]?.webEcho]).toEqual([true, undefined, false, false]);
+    for (let round = 0; round < 2; round++) {
+      (manager as any).save();
+      const saved = yaml.load(readFileSync(join(dir, "classicBot.yaml"), "utf-8")) as any;
+      const channels = Object.values(saved.channels) as any[];
+      const echo = (name: string) => channels.find(c => c.instanceName === name).web_echo;
+      expect([echo("a"), echo("b"), echo("c"), echo("d")], `save ${round}`).toEqual([true, undefined, false, false]);
+      ({ manager, byInstance } = load());
+      expect(byInstance["d"]?.webEcho, `reload ${round}`).toBe(false);
+      expect(Object.hasOwn(byInstance["b"]!, "webEcho") ? byInstance["b"]!.webEcho : undefined).toBeUndefined();
+    }
+  });
+
+  it("#2054: classicWebEchoOn — the room's own value wins, unset follows web.echo_to_channel (default on)", () => {
+    expect([classicWebEchoOn(undefined, undefined), classicWebEchoOn(undefined, true), classicWebEchoOn(undefined, false)]).toEqual([true, true, false]);
+    expect([classicWebEchoOn(false, undefined), classicWebEchoOn(false, true), classicWebEchoOn(true, false)]).toEqual([false, false, true]);
   });
 });
 

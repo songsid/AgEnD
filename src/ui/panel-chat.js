@@ -10,7 +10,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-
 import { t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
-import { namesOf, namesStore } from "/assets/instance-nav.js";
+import { modelText, namesOf, namesStore } from "/assets/instance-nav.js";
 import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
 import { detailsPath, textLinkSegments } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
@@ -281,7 +281,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   // #1269 quick actions: the model and effort it runs, each a way to /model or /effort (the same pick list).
   const pick = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
   const sub = html`<span class="status"><span class=${`dot ${cls}`} aria-hidden="true"></span>${statusLabel(inst, exec, awaiting)}</span>
-    ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", inst.model)} aria-label=${t("chat.chipModel", inst.model)} onClick=${() => pick("model")}>${inst.model}</button>` : null}
+    ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelText(inst)}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
     <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="chat" />`}><${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} /><${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onClose=${() => setDialog(null)} /><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>

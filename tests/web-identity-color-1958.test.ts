@@ -113,16 +113,16 @@ describe("placements: where the colour shows", () => {
     expect(C.canonicalPlacements(["ring", "name"])).toEqual(["name", "ring"]);
     expect(C.canonicalPlacements([])).toEqual([]);
     for (const bad of [["ring", "ring"], ["glow"], "ring", [1], ["name", "bar", "ring", "name"], null, {}]) expect(C.canonicalPlacements(bad), JSON.stringify(bad)).toBeNull();
-    expect(C.DEFAULT_PLACEMENTS).toEqual(["bar", "ring"]);
+    expect(C.DEFAULT_PLACEMENTS, "#2056: all three where nobody chose").toEqual(["name", "bar", "ring"]);
   });
-  it("a person's choice > the agent's (themes shown) > the host's default > ring + bar", () => {
+  it("a person's choice > the agent's (themes shown) > the host's default > all three (#2056)", () => {
     const t = { person: ["name"], agent: ["ring"] } as never;
     expect(C.resolvePlacements(t, { showThemes: true, hostDefault: ["bar"] })).toEqual({ show: ["name"], source: "person" });
     expect(C.resolvePlacements({ agent: ["ring"] } as never, { showThemes: true, hostDefault: ["bar"] })).toEqual({ show: ["ring"], source: "agent" });
     expect(C.resolvePlacements({ agent: ["ring"] } as never, { showThemes: false, hostDefault: ["bar"] })).toEqual({ show: ["bar"], source: "host" });
-    expect(C.resolvePlacements({}, { showThemes: true })).toEqual({ show: ["bar", "ring"], source: "host" });
+    expect(C.resolvePlacements({}, { showThemes: true })).toEqual({ show: ["name", "bar", "ring"], source: "host" });
     expect(C.resolvePlacements({}, { showThemes: true, hostDefault: [] })).toEqual({ show: [], source: "host" });
-    expect(C.resolvePlacements({ person: ["glow"] } as never, { showThemes: true, hostDefault: "x" }), "unreadable tiers fall through").toEqual({ show: ["bar", "ring"], source: "host" });
+    expect(C.resolvePlacements({ person: ["glow"] } as never, { showThemes: true, hostDefault: "x" }), "unreadable tiers fall through").toEqual({ show: ["name", "bar", "ring"], source: "host" });
   });
   it("the host's settings are web prefs: color.show (a set of places) and color.off (true)", () => {
     expect(parseWebPrefsPatch({ "color.show": ["ring", "name"], "color.off": true }, () => true)).toMatchObject({ ok: true });
@@ -301,7 +301,7 @@ describe("through the fleet: the profile route, the status frame, get_web_appear
     const entry = (n: string) => (fm.getUiStatus().instances as Array<Record<string, any>>).find(i => i.name === n)!;
     expect([entry("alpha").color, entry("alpha").color_show]).toEqual([{ agent: "#3366cc", auto: C.autoIdentityColor("alpha") }, {}]);
     expect(entry("beta").color).toEqual({ auto: C.autoIdentityColor("beta") });
-    expect(resolvedIdentityColor(entry("alpha") as never)).toEqual({ color: "#3366cc", source: "agent", light: "#3366cc", dark: "#3366cc", show: ["bar", "ring"], show_source: "host", off: false });
+    expect(resolvedIdentityColor(entry("alpha") as never)).toEqual({ color: "#3366cc", source: "agent", light: "#3366cc", dark: "#3366cc", show: ["name", "bar", "ring"], show_source: "host", off: false });
     // The agent's own colour and places (theme.identity) win over its accent.
     // (Through the store: the agent's tool would wait out the edit limiter's gap first.)
     fm.themeStore.setTheme("alpha", { v: 1, accent: "#3366cc", identity: { color: "preset:indigo", show: ["name"] } }, "agent");

@@ -450,7 +450,7 @@ channels:
 | `channels.<key>.tool_progress` | `off` \| `standard` \| `verbose` | 處理中氣泡的詳細程度，未設時繼承 |
 | `channels.<key>.backend_options` | object | 與預設合併的 backend 選項，包括 credential profile |
 | `channels.<key>.display_name` / `description` | string | Agent 顯示名稱與說明 |
-| `channels.<key>.web_echo` | boolean | 此 ClassicBot 聊天室的 web chat 同步；預設 `false` |
+| `channels.<key>.web_echo` | boolean | 此 ClassicBot 聊天室的 web chat 同步；未設定時依 `web.echo_to_channel`（預設開啟），`false` 讓這個聊天室保持關閉 |
 | `channels.<key>.reply_completion_guard` | boolean | 個別 channel 的人類回覆 guard 覆寫 |
 | `channels.<key>.collab` | boolean | @mention 觸發的協作模式（預設 `false`） |
 | `channels.<key>.pre_task_command` | string | 每次訊息前貼入的原始命令 |
@@ -673,6 +673,6 @@ instance 的 statusline 寫下的額度。尚未登入的 profile 會顯示「�
 
 ### Web chat 主題同步（2.2 web 線）
 
-fleet-topic instance 預設會將 web chat 訊息同步至自己綁定的 Telegram 或 Discord 主題。可設定 `web.echo_to_channel: false` 關閉，或在 **Settings → 網頁 → 網頁聊天** 切換。同步文字使用 `🌐 web · <名字>: …`（網頁使用者的名字，沒有時是 `web-user`，#1827），附件只顯示檔名，長文字會附上請看 web chat 的提示。這只是顯示副本：bot 自己的訊息不會觸發 Agent 新回合。純 web fleet 不做同步。ClassicBot 聊天室另以 `classicBot.yaml` 的 `channels.<key>.web_echo: true` 逐一開啟（預設 `false`），與 `web.echo_to_channel` 無關。同步失敗只記錄日誌，不會使 web 投遞失敗或延遲。每筆副本的排序等待總共最多五秒，包含排隊與 admission；平台請求結束或期限到達後，Agent 回覆就繼續。逾時會丟棄尚未開始的副本並記 warn；已在飛的副本可能晚於回覆出現，其晚到結果另記日誌。不自動重送副本。
+fleet-topic instance 預設會將 web chat 訊息同步至自己綁定的 Telegram 或 Discord 主題。可設定 `web.echo_to_channel: false` 關閉，或在 **Settings → 網頁 → 網頁聊天** 切換。同步文字使用 `🌐 web · <名字>: …`（網頁使用者的名字，沒有時是 `web-user`，#1827），附件只顯示檔名，長文字會附上請看 web chat 的提示。這只是顯示副本：bot 自己的訊息不會觸發 Agent 新回合。純 web fleet 不做同步。ClassicBot 聊天室（包括群組頻道）也會同步：`classicBot.yaml` 裡沒有設定 `channels.<key>.web_echo` 的聊天室，依照 `web.echo_to_channel`（因此預設開啟，全 fleet 關閉時也跟著關閉）；設為 `false` 讓該聊天室保持關閉，設為 `true` 則不論全 fleet 的開關都保持開啟（#2054）。同步失敗只記錄日誌，不會使 web 投遞失敗或延遲。每筆副本的排序等待總共最多五秒，包含排隊與 admission；平台請求結束或期限到達後，Agent 回覆就繼續。逾時會丟棄尚未開始的副本並記 warn；已在飛的副本可能晚於回覆出現，其晚到結果另記日誌。不自動重送副本。
 
 同步本文與附件名稱的 mention／command token 改成可見 ASCII 標籤，例如 `[mention: 200]`、`[at: botname]`、`[command: cmd at bot]`。先做相容正規化與 format-character 移除；URL、email local part 與一般路徑斜線保留。Discord 另設定 `allowedMentions: { parse: [] }`；Telegram 傳送不含 mention entities 的純文字。共用 ingress 在作者是該平台已設定的 fleet bot 帳號、且本文以固定 `🌐 web · ` 開頭時丟棄副本，不依賴 echo 開關或 send ACK。同平台只要還有任一已設定 world 的 bot 身分未知，也會在 trigger 判斷前丟棄帶平台 bot 作者旗標的前綴候選並記 debug。這段暫時隔離不影響人類貼上的前綴；身分全部就緒後，非 fleet bot 維持原 admission／collab 規則。不將未知作者當成 fleet bot，也不使用近期 message-ID cache。
