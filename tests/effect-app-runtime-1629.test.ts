@@ -26,7 +26,7 @@ function rig(prepare: (h: any) => void = () => {}) {
   const observation: any = { context, ownerCss: "off", mode: "light" }, globalChange = vi.fn();
   const h: any = { host, values, loader, registry, collectors, context, observation, globalChange, placement, listeners, events, at(t: number) { now = t; }, stale() { live = false; }, signOut() { ended = true; for (const fn of [...listeners]) fn(); }, options: () => options };
   prepare(h);
-  h.factories = { loader: vi.fn((o: any) => { h.loaderOptions = o; return h.realLoader ? createEffectRuntimeLoader(o) : loader; }), registry: vi.fn((o: any) => { options = o; return registry; }), safety: vi.fn(), stock: vi.fn(() => ({ ok: true, front: true, agentFront: true, rects: [] })), collector: collect };
+  h.factories = { ...(h.trialFactory ? { trialSource: h.trialFactory } : {}), loader: vi.fn((o: any) => { h.loaderOptions = o; return h.realLoader ? createEffectRuntimeLoader(o) : loader; }), registry: vi.fn((o: any) => { options = o; return registry; }), safety: vi.fn(), stock: vi.fn(() => ({ ok: true, front: true, agentFront: true, rects: [] })), collector: collect };
   h.api = createAppEffectRuntime({ window: host, current: () => h.current ? h.current() : live, observe: () => h.observe ? h.observe() : observation, onChange: globalChange, onDispose: h.onDispose, resolveOwnerTarget: h.resolveOwnerTarget, onOwnerUnavailable: h.onOwnerUnavailable, factories: h.factories });
   h.chat = (name = "own", patch: any = {}) => { const part: any = { element: { isConnected: true }, current: () => true, observe: () => ({ state: "working" }), onChange: vi.fn(), ...patch }; part.api = h.api.attachChat({ name, ...part }); return part; };
   return h;
@@ -292,4 +292,58 @@ describe("app cursor uses the same fifth-slot metadata and settled loader", () =
 it("cursor dispatch never reads an accessor id or an id-only guess", async () => {
   const h = rig(h => { personal(h); const b: any = ownerBody(); b.slots["fx.cursor"] = { id, status: "available", manifest: { ...b.slots["fx.page"].manifest, cursor: { hotspot: [0, 0] } } }; h.loader.ownerSettled.mockResolvedValue(b); }); h.api.sync(); await flush();
   const c = h.api.cursorSelection(), get = vi.fn(() => id); expect(await h.api.cursorImageSettled({ get id() { return get(); }, generation: c.generation, hotspot: [0, 0] })).toBeNull(); expect(await h.api.cursorImageSettled({ id })).toBeNull(); expect(get).not.toHaveBeenCalled(); expect(h.loader.cursorImageSettled).not.toHaveBeenCalled(); h.api.dispose();
+});
+
+
+describe("#1629 Trial contribution in the one app pool (protocol double)", () => {
+  function trialRig() {
+    let options: any, binding: any = null, chatOwner: any = null;
+    const lease = { current: () => true, stop: vi.fn() }, protocol: any = {
+      attach: vi.fn((_spec: any, owner: any) => { chatOwner = owner; binding = { kind: "trial", key: "trial:one", id, source: {}, generation: 1 }; options.onChange(); return lease; }),
+      descriptors: () => binding ? [{ key: binding.key, id, by: "agent", region: "chat", layer: "front", order: 0, paused: false, visible: true, instance: "own", element: { isConnected: true }, generation: 1, trialStage: {} }] : [],
+      binding: (key: string, content: string) => binding?.key === key && content === id ? binding : null,
+      current: (b: any) => b === binding && binding !== null,
+      load: vi.fn(async () => ({ id, code: "agend.ready()" })),
+      stopFor: vi.fn((owner: any) => { if (owner !== chatOwner) return false; binding = null; return true; }),
+      stop: vi.fn(() => { binding = null; options.onChange(); }), dispose: vi.fn(),
+    };
+    const factory = vi.fn((o: any) => { options = o; return protocol; }), h = rig(h => { h.trialFactory = factory; });
+    return { ...h, protocol, factory, trialOptions: () => options, chatOwner: () => chatOwner };
+  }
+  it("does not admit without a live Chat; then contributes to the SAME registry with the captured owner", async () => {
+    const h = trialRig(); expect(h.api.attachTrial({})).toBeNull(); expect(h.protocol.attach).not.toHaveBeenCalled(); const a = h.chat("own"); await flush();
+    const input = { opaque: true }; expect(h.api.attachTrial(input)).toHaveProperty("stop");
+    expect(h.protocol.attach).toHaveBeenCalledWith(input, expect.objectContaining({ name: "own" }));
+    expect(h.registry.update.mock.calls.at(-1)[0].map((x: any) => x.key)).toContain("trial:one");
+    expect(h.factories.loader).toHaveBeenCalledOnce(); expect(h.factories.registry).toHaveBeenCalledOnce(); expect(h.factory).toHaveBeenCalledOnce();
+    expect(h.api.trialSnapshot().rows.map((x: any) => x.key)).toEqual(["trial:one"]); a.api.dispose(); expect(h.protocol.stopFor).toHaveBeenCalledWith(h.chatOwner()); h.api.dispose();
+  });
+  it.each(["on", "loading", "unknown"])("CSS %s and every global opt-out are refused by the Trial's independent current gate", async css => {
+    const h = trialRig(); h.chat(); await flush(); h.api.attachTrial({}); expect(h.trialOptions().current()).toBe(true);
+    h.observation.ownerCss = css; expect(h.trialOptions().current()).toBe(false); h.observation.ownerCss = "off";
+    for (const key of ["enabled", "show", "previewReady", "optIn"]) { h.context[key] = false; expect(h.trialOptions().current()).toBe(false); h.context[key] = true; }
+    for (const key of ["safe", "publicLink", "reducedMotion", "saveData", "hidden"]) { h.context[key] = true; expect(h.trialOptions().current()).toBe(false); h.context[key] = false; }
+    expect(h.trialOptions().current()).toBe(true); h.api.dispose();
+  });
+  it("dispatches a Trial read without touching the ordinary loader or failing Chat", async () => {
+    const h = trialRig(), a = h.chat(); await flush(); h.api.attachTrial({}); const row = h.api.trialSnapshot().rows[0];
+    expect(await h.options().load(row, new AbortController().signal)).toMatchObject({ id }); expect(h.protocol.load).toHaveBeenCalledOnce(); expect(h.loader.resourceSettled).not.toHaveBeenCalled();
+    h.protocol.load.mockResolvedValueOnce(null); expect(await h.options().load(row, new AbortController().signal)).toBeNull(); expect(a.api.snapshot().error).toBeNull(); h.api.dispose();
+  });
+  it("Trial samples stay transient, while ordinary Chat profile POST remains functional", async () => {
+    const h = trialRig(), a = h.chat(); await flush(); h.api.attachTrial({}); const row = h.api.trialSnapshot().rows[0], owner = { ...row, device: "standard", current: () => true };
+    h.options().onMount(owner); h.at(10000); h.options().onProfile({ verdict: "paused" }, owner); await flush(); expect(h.collectors[0].add).toHaveBeenCalledOnce(); expect(h.host.fetch).not.toHaveBeenCalled();
+    const chat = { ...a.api.snapshot().rows[0], device: "standard", current: () => true }; h.options().onMount(chat); h.at(20000); h.options().onProfile({ verdict: "paused" }, chat); await flush();
+    expect(h.host.fetch).toHaveBeenCalledOnce(); expect(h.host.fetch.mock.calls[0][0]).toContain("/ui/effects/profile/"); h.api.dispose();
+  });
+  it("Trial stop reentry while discarding Chat A preserves newly attached Chat B", async () => {
+    const h = trialRig(), a = h.chat("own"); await flush(); h.api.attachTrial({}); let next: any = null;
+    h.protocol.stopFor.mockImplementationOnce(() => { h.protocol.stop(); next = h.chat("next"); return true; });
+    a.api.dispose(); await flush(); expect(next?.api).not.toBeNull(); expect(next.api.snapshot().effects).toHaveLength(1); expect(h.registry.update.mock.calls.at(-1)[1].openInstance).toBe("next");
+    a.api.dispose(); expect(next.api.snapshot().effects).toHaveLength(1); expect(h.factories.registry).toHaveBeenCalledOnce(); expect(h.factories.loader).toHaveBeenCalledOnce(); h.api.dispose();
+  });
+  it("old Chat owners become unavailable and global disposal releases all participants once", async () => {
+    const h = trialRig(), a = h.chat(); await flush(); h.api.attachTrial({}); const old = h.chatOwner(); expect(h.trialOptions().ownerCurrent(old, "own")).toBe(true); expect(h.trialOptions().ownerCurrent(old, "other")).toBe(false);
+    h.chat("next"); await flush(); expect(h.trialOptions().ownerCurrent(old, "own")).toBe(false); a.api.dispose(); h.api.dispose(); h.api.dispose(); expect(h.protocol.dispose).toHaveBeenCalledOnce(); expect(h.registry.dispose).toHaveBeenCalledOnce(); expect(h.loader.dispose).toHaveBeenCalledOnce();
+  });
 });
