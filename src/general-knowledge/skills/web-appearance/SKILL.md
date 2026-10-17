@@ -109,7 +109,7 @@ Typed values only; anything else is refused with `{ errors: [{ path, problem }] 
 - `background`: `{ image: <asset id>, fit: "cover" | "contain", opacity: 0.05..1 }`.
 - `avatar`: an asset id — your face (below a person's upload).
 - `workingLabel`: 1..24 characters on one line, shown while you work instead of "is working…".
-- `card`: `{ portrait?, banner?, tagline?, bio? }` — see below.
+- `card`: `{ portrait?, banner?, tagline?, bio?, bannerFocus? }` — see below.
 
 Example:
 
@@ -145,6 +145,13 @@ their own version of any field; theirs is shown instead of yours.
 
 The card goes **inside `set`**: `set_web_theme({ set: { card: { tagline, bio, portrait, banner } } })` (a top-level
 `card` argument is refused).
+
+**Your banner is cropped, never drawn wider than 5 : 1** (on a wider screen it is centred over a blurred copy). Make it
+**1600×600** (the default limit) and keep faces and text inside the **safe band: 53% of its height — a 1600×320 strip**
+— which every screen shows; a phone shows 89%. `card.bannerFocus` (0 top … 100 bottom; default 50, the centre) says
+where that band sits: put a face near the top at `bannerFocus: 0`. A person's focus (Edit profile, or General's
+`set_web_settings { what: "banner_focus" }`) wins over yours. `preview_web_appearance` draws the banner cropped at its
+focus, as the page does.
 
 ## Your identity colour
 

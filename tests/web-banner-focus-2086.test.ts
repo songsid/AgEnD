@@ -139,6 +139,43 @@ describe("the page: what it keeps, how wide it draws, where the bands are", () =
   });
 });
 
+describe("the card draws it; Edit profile previews it", () => {
+  it("the banner box carries --id-focus (the person's or agent's, else 50%), with the blurred fill behind the banner", async () => {
+    const { page, h, settle } = await import("./helpers/app-harness.js");
+    const pg = page({ url: "http://127.0.0.1:19280/ui/fleet/agent/a" });
+    try {
+      const card = await import("/assets/identity-card.js");
+      const src = `/api/card/a/banner?v=${"f".repeat(32)}`;
+      const prop = (el: any) => (el.style as any)["--id-focus"] ?? el.style.getPropertyValue?.("--id-focus");
+      await pg.mount(h(card.IdentityCard, { name: "a", card: { banner: { src, by: "agent" }, banner_focus: { value: 20, by: "human" } } }));
+      await settle(2);
+      const box = pg.root.querySelector(".id-banner-box") as any;
+      expect([prop(box), box.querySelectorAll("img.id-banner-fill").length, box.querySelectorAll("img.id-banner").length]).toEqual(["20%", 1, 1]);
+      await pg.unmount();
+      await pg.mount(h(card.IdentityCard, { name: "a", card: { banner: { src, by: "agent" } } }));
+      await settle(2);
+      expect(prop(pg.root.querySelector(".id-banner-box")), "no focus set: the centre").toBe("50%");
+    } finally { await pg.unmount().catch(() => {}); pg.restore(); }
+  });
+  it("the preview's bands: every screen's (5:1) and a phone's (3:1), placed by the focus once the picture's size is known", async () => {
+    const { page, h, settle } = await import("./helpers/app-harness.js");
+    const pg = page({ url: "http://127.0.0.1:19280/ui/fleet/agent/a" });
+    try {
+      const card = await import("/assets/identity-card.js");
+      await pg.mount(h(card.BannerFocusPreview, { src: "blob:x", focus: 100 }));
+      await settle(2);
+      const pic = pg.root.querySelector(".bf-pic") as any;
+      expect(pg.root.querySelectorAll(".bf-band").length, "nothing to place before the picture's size is known").toBe(0);
+      Object.assign(pic, { naturalWidth: 1600, naturalHeight: 600 });
+      pic.dispatchEvent(new (globalThis as any).Event("load"));
+      await settle(3);
+      const band = (cls: string) => { const el = pg.root.querySelector(cls) as any; const g = (k: string) => (el.style as any)[k] ?? el.style.getPropertyValue?.(k); return [g("top"), g("height")]; };
+      expect(band(".bf-safe")).toEqual(["46.67%", "53.33%"]);
+      expect(band(".bf-phone")).toEqual(["11.11%", "88.89%"]);
+    } finally { await pg.unmount().catch(() => {}); pg.restore(); }
+  });
+});
+
 describe("the agent's SVG preview", () => {
   it("crops the banner at its focus, as the page does (a nested SVG's viewBox)", async () => {
     const { previewSvg } = await import("../src/web-appearance-view.js");
