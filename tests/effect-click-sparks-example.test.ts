@@ -41,6 +41,7 @@ describe('native pointer evidence refuses missing input or paint', () => {
     const packets = expected === 'sparks' ? [{ kind: 'click', buttons: 1 }] : [{ kind: 'move', buttons: 1 }, { kind: 'move', buttons: 1 }];
     expect(pointerCaseFailure({ expected, packets, paint: { added: 16 } })).toBeNull();
     expect(pointerCaseFailure({ expected, packets, paint: { added: 0 } })).toBe('required particle paint absent');
+    expect(pointerCaseFailure({ expected, packets, paint: { added: 14 } })).toBe('insufficient particle paint evidence');
     expect(pointerCaseFailure({ expected, packets: [], paint: { added: 100 } })).toBe('required pointer input absent');
   });
   it('never reports a core finding as pass', () => { expect(pointerCaseFailure({ status: 'FINDING:no-burst-packet' })).toBeTruthy(); });

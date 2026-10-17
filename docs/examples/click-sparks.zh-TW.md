@@ -41,3 +41,5 @@ node scripts/manual/effect-pointer-particles-1629.mts
 `PROBE_SURFACES` 可選 `chat`、`page`、`box`。Firefox 透過 in-process Playwright handle 使用原生截圖協定；
 `PROBE_RAW_SCREENSHOT=0` 可改用公開 API 的截圖準備流程來診斷。收據分開保存耗時、原生輸入、主機封包時間與
 實際粒子像素；必要的輸入或繪製缺失會以非零結束。
+
+封包間隔包含最後的框架驗證與 IPC 延遲，只用來觀察節奏，不能當作 60／30 Hz 閘門時鐘的精確量測；該閘門由 registry 單元測試固定。少量彩色像素未達配方門檻時屬於畫面證據不足，不代表完全沒有繪製。

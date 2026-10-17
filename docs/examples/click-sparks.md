@@ -44,3 +44,5 @@ never cleared during a case. `PROBE_GROUPS` selects `clicks`, `protected`, `drag
 `PROBE_SURFACES` selects `chat`, `page`, `box`. Firefox uses its native screenshot protocol through the in-process
 Playwright handle; `PROBE_RAW_SCREENSHOT=0` selects public screenshot preparation for diagnosis. Durations, native
 input, host packet timings and actual particle pixels are recorded separately; missing required input or paint exits nonzero.
+
+Packet intervals include final frame validation and IPC delay; they show observed pacing, not the exact 60/30 Hz acceptance clock. The registry unit tests pin that gate. A few colored pixels below the smoke threshold are insufficient visual evidence, not proof of zero paint.

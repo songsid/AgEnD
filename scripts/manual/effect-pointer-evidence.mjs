@@ -7,7 +7,7 @@ export function pointerCaseFailure(c) {
       ? c.packets?.some(p => p.kind === 'click' || p.kind === 'down')
       : c.packets?.filter(p => p.kind === 'move' && (p.buttons & 1) !== 0).length >= 2;
     if (!accepted) return 'required pointer input absent';
-    if (!(c.paint?.added > 15)) return 'required particle paint absent';
+    if (!(c.paint?.added > 15)) return c.paint?.added > 0 ? 'insufficient particle paint evidence' : 'required particle paint absent';
   }
   return null;
 }
