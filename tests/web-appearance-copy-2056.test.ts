@@ -10,7 +10,10 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 
+let limitsOk = true;
 const fetchFake = async (url: string, init: any = {}) => {
+  if (url === "/ui/mods") return { ok: true, status: 200, json: async () => ({ mods: [], proposals: [] }) };
+  if (url === "/api/settings/fleet/appearance" && !limitsOk) return { ok: false, status: 403, json: async () => ({ error: "forbidden" }) };
   if (url === "/ui/prefs") return { ok: true, status: 200, json: async () => ({ values: {}, rev: 1 }) };
   if (url === "/ui/owner-css/state") return { ok: true, status: 200, json: async () => ({ active: null, pending: null, text: "", versions: [], assets: [], limits: { maxAssets: 16 } }) };
   if (url === "/api/settings/fleet/appearance") {
@@ -82,14 +85,17 @@ describe("Settings → Web appearance in plain words", () => {
     }
   });
 
-  it("no hint on the page runs long (was up to 306 characters in English, 150 in Chinese)", async () => {
-    for (const [lang, max] of [["en", 70], ["zh-TW", 40]] as const) {
+  it("no hint on the page runs long (was up to 306 characters in English, 150 in Chinese), for an admin or not", async () => {
+    for (const [lang, max, admin] of [["en", 70, true], ["zh-TW", 40, true], ["en", 70, false], ["zh-TW", 40, false]] as const) {
+      limitsOk = admin;
       const root = await mount(lang);
+      expect(!!root.querySelector(".s-appearance input[type=number]"), `${lang} admin=${admin}: the limits form`).toBe(admin);
       const hints = [...root.querySelectorAll("p.sub, p.note")].map((p: any) => p.textContent.trim()).filter(Boolean);
       expect(hints.length, lang).toBeGreaterThan(5);
       for (const text of hints) expect(text.length, `${lang}: ${text}`).toBeLessThanOrEqual(max);
       await pg!.unmount(); pg!.restore(); pg = null;
     }
+    limitsOk = true;
   });
 
   it("the colour card's sample row is painted with the default places and follows the checkboxes", async () => {
