@@ -141,6 +141,8 @@ export function broadcastSseEvent(
       // never replays chat, so a cursor of the admin's stream is not its to hold).
       const guest = streamGuests.get(client);
       if (guest) {
+        // The exact session that opened it ended (revoked, expired, rotated away): nothing more, and the stream goes.
+        if (!guest.current()) { dead.push(client); continue; }
         const shown = guestFrameData(event, data, guest.scope());
         if (shown !== undefined) client.write(sseFrame(event, shown));
         continue;
@@ -958,7 +960,9 @@ export function handleWebRequest(
       // A stream authorized once must not outlive the authorization. Re-checked
       // without counting as activity, or an open tab would keep an idle session
       // alive forever; a revoked, expired or rotated-away session ends here.
-      if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false })) {
+      // #2049 review: a guest's stream also needs the exact session that opened it — another cookie on the same request
+      // still authenticating does not keep a revoked device's stream (with its scope) alive.
+      if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false }) || (guest && !guest.current())) {
         // Close the connection too, not just the response: an ended response leaves the socket idle in
         // keep-alive, still held open by whoever's session just ended.
         const socket = req.socket;

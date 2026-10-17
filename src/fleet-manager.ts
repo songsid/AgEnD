@@ -20433,7 +20433,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           }
           // Phase 1b: the handlers that answer per recipient (the stream, the poll, a file) know it is a guest's, and
           // ask its scope anew each time.
-          bindGuestRequest(req, { owner, scope: () => this.guestScope(owner) });
+          const admitted = decision.session;
+          bindGuestRequest(req, { owner, scope: () => this.guestScope(owner),
+            current: () => !!this.webSessions && !!this.webToken && this.webSessions.isCurrent(admitted, tokenEpoch(this.webToken)) });
         }
       }
 

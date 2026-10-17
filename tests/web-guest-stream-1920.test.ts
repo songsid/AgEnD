@@ -18,8 +18,9 @@ process.env.AGEND_HOME = home;                          // before the fleet's mo
 const { FleetManager } = await import("../src/fleet-manager.js");
 const { guestFrameData, guestPollBody, guestStatus, bindGuestRequest, guestRequestOf, GUEST_ROUTES } = await import("../src/web-guest-access.js");
 const { broadcastSseEvent, sseFrame } = await import("../src/web-api.js");
-const { WEB_SESSION_COOKIE } = await import("../src/web-auth.js");
-const { tokenEpoch } = await import("../src/web-session.js");
+const { WEB_SESSION_COOKIE, WEB_SESSION_COOKIE_SECURE } = await import("../src/web-auth.js");
+const { tokenEpoch, WebSessionStore } = await import("../src/web-session.js");
+const BOB = { adapterId: "discord", userId: "222222222222222222" };
 
 const ALICE = { adapterId: "discord", userId: "111111111111111111" };
 const FULL = {
@@ -57,7 +58,7 @@ describe("the projections (pure)", () => {
     for (const p of ["/ui/events", "/ui/poll", "/ui/file/x"]) expect(GUEST_ROUTES.find((r) => r.pattern.test(p))?.state, p).toBe("on");
   });
   it("a request's guest context: bound once, read by the handlers", () => {
-    const req = {}, guest = { owner: ALICE, scope: () => new Set(["a"]) };
+    const req = {}, guest = { owner: ALICE, scope: () => new Set(["a"]), current: () => true };
     expect(guestRequestOf(req)).toBeUndefined();
     bindGuestRequest(req, guest);
     expect(guestRequestOf(req)).toBe(guest);
@@ -76,7 +77,7 @@ describe("broadcastSseEvent: an admin's bytes unchanged; a guest's projected for
     const clients = new Set<any>();
     const ctx = { webToken: "c".repeat(48), webSessions: null, logger: { info() {}, debug() {}, warn() {}, error() {} }, sseClients: clients, getUiStatus: () => FULL, sseHeartbeatMs: 3_600_000 } as any;
     const reqOf = () => Object.assign(new EventEmitter(), { method: "GET", url: "/ui/events", headers: { host: "127.0.0.1:19280", "x-agend-token": "c".repeat(48) }, socket: null });
-    const greq = reqOf(); bindGuestRequest(greq, { owner: ALICE, scope: () => scope });
+    const greq = reqOf(); bindGuestRequest(greq, { owner: ALICE, scope: () => scope, current: () => true });
     handleWebRequest(reqOf() as never, adminRes as never, new URL("/ui/events", "http://127.0.0.1:19280"), ctx);
     handleWebRequest(greq as never, guestRes as never, new URL("/ui/events", "http://127.0.0.1:19280"), ctx);
     try {
@@ -103,6 +104,57 @@ describe("broadcastSseEvent: an admin's bytes unchanged; a guest's projected for
   });
 });
 
+describe("#2049 review: a guest stream lives only as long as the exact session that opened it", () => {
+  // One request with two local cookies: __Host-agend_session=A (guest Alice, scope {a}) and agend_session=B (guest Bob).
+  async function open(revoke: "none" | "revoke" | "expire") {
+    const { handleWebRequest } = await import("../src/web-api.js");
+    const { EventEmitter } = await import("node:events");
+    const token = "c".repeat(48), epoch = tokenEpoch(token), store = new WebSessionStore();
+    const a = store.create({ tier: "guest", surface: "local", label: "a", tokenEpoch: epoch, owner: ALICE });
+    const b = store.create({ tier: "guest", surface: "local", label: "b", tokenEpoch: epoch, owner: BOB });
+    const writes: string[] = [];
+    let ended = false;
+    const res = Object.assign(new EventEmitter(), { writeHead() {}, setHeader() {}, write: (x: string) => { writes.push(x); return true; }, end: (cb?: () => void) => { ended = true; cb?.(); } });
+    const req = Object.assign(new EventEmitter(), { method: "GET", url: "/ui/events", socket: { destroy() {} },
+      headers: { host: "127.0.0.1:19280", cookie: `${WEB_SESSION_COOKIE_SECURE}=${a.sessionId}; ${WEB_SESSION_COOKIE}=${b.sessionId}` } });
+    bindGuestRequest(req, { owner: ALICE, scope: () => new Set(["a"]), current: () => store.isCurrent(a.record, epoch) });
+    const clients = new Set<any>();
+    const ctx = { webToken: token, webSessions: store, logger: { info() {}, debug() {}, warn() {}, error() {} }, sseClients: clients, getUiStatus: () => FULL, sseHeartbeatMs: 15 } as any;
+    handleWebRequest(req as never, res as never, new URL("/ui/events", "http://127.0.0.1:19280"), ctx);
+    expect(clients.has(res)).toBe(true);
+    if (revoke === "revoke") store.revokeByHandle(a.record.handle);
+    if (revoke === "expire") (a.record as { idleExpiry: number }).idleExpiry = 0;
+    return { store, a, b, res, req, clients, writes, ended: () => ended };
+  }
+  it("A revoked while B still authenticates: the next event is not sent, and the stream goes", async () => {
+    const h = await open("revoke");
+    try {
+      expect(h.store.authenticate(h.b.sessionId, h.b.record.tokenEpoch, { touch: false }), "B still signs in").not.toBeNull();
+      h.writes.length = 0;
+      broadcastSseEvent(h.clients, "activity", { instance: "a", state: "working" });
+      expect([h.writes, h.clients.has(h.res), h.ended()]).toEqual([[], false, true]);
+    } finally { h.res.emit("close"); }
+  });
+  it("A expired: the heartbeat closes it, though B still authenticates", async () => {
+    const h = await open("expire");
+    try {
+      await vi.waitFor(() => expect(h.ended()).toBe(true));
+      expect(h.clients.has(h.res)).toBe(false);
+    } finally { h.res.emit("close"); }
+  });
+  it("A unchanged: the stream stays, its heartbeats keep coming, and its events still follow A's scope", async () => {
+    const h = await open("none");
+    try {
+      h.writes.length = 0;
+      await vi.waitFor(() => expect(h.writes.filter((w) => w.startsWith("event: status")).length).toBeGreaterThanOrEqual(2));
+      broadcastSseEvent(h.clients, "activity", { instance: "a", state: "working" });
+      broadcastSseEvent(h.clients, "activity", { instance: "b", state: "working" });
+      expect(h.writes.filter((w) => w.startsWith("event: activity"))).toEqual([sseFrame("activity", { instance: "a", state: "working" })]);
+      expect([h.clients.has(h.res), h.ended()]).toEqual([true, false]);
+    } finally { h.res.emit("close"); }
+  });
+});
+
 // ── Live: a real FleetManager, a guest and an admin ──
 let fm: any, port = 0, dir: string;
 const cookieOf = (sid: string) => `${WEB_SESSION_COOKIE}=${sid}`;
@@ -115,15 +167,17 @@ function get(path: string, cookie: string): Promise<{ status: number; body: stri
   });
 }
 /** Open a stream; collect what arrives. */
-function stream(cookie: string, lastEventId?: string): { chunks: string[]; req: ClientRequest; ready: Promise<void> } {
+function stream(cookie: string, lastEventId?: string): { chunks: string[]; req: ClientRequest; ready: Promise<void>; ended: () => boolean } {
   const chunks: string[] = [];
+  let ended = false;
   let ready!: () => void;
   const readyP = new Promise<void>((r) => { ready = r; });
   const req = request({ host: "127.0.0.1", port, method: "GET", path: "/ui/events", headers: { host: `127.0.0.1:${port}`, cookie, accept: "text/event-stream", ...(lastEventId ? { "last-event-id": lastEventId } : {}) } }, (res) => {
     res.on("data", (c: Buffer) => { chunks.push(c.toString()); ready(); });
+    res.on("end", () => { ended = true; });
   });
   req.on("error", () => {}); req.end();
-  return { chunks, req, ready: readyP };
+  return { chunks, req, ready: readyP, ended: () => ended };
 }
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "agend-1920b-fleet-"));
@@ -182,6 +236,26 @@ describe("live: the stream, the poll and a file for a guest scoped to `a`", () =
       await new Promise((r) => setTimeout(r, 30));
       expect(g.chunks.join("")).not.toContain("event: message");
     } finally { g.req.destroy(); ad.req.destroy(); }
+  });
+  it("two cookies on one stream: it is bound to the session that admitted it (A); revoking A ends it though B (Bob) still signs in", async () => {
+    vi.spyOn(fm, "guestScope").mockImplementation((owner: any) => new Set(owner?.userId === ALICE.userId ? ["a"] : ["b"]));
+    const a = fm.webSessions.create({ tier: "guest", surface: "local", label: "a", tokenEpoch: tokenEpoch(fm.getDashboardAccess().token!), owner: ALICE });
+    const b = session("guest", BOB);
+    const s = stream(`${WEB_SESSION_COOKIE_SECURE}=${a.sessionId}; ${WEB_SESSION_COOKIE}=${b}`);
+    try {
+      await s.ready;
+      s.chunks.length = 0;
+      fm.emitSseEvent("activity", { instance: "a", state: "working" });
+      fm.emitSseEvent("activity", { instance: "b", state: "working" });
+      await vi.waitFor(() => expect(s.chunks.join("")).toBe(sseFrame("activity", { instance: "a", state: "working" })));
+      fm.webSessions.revokeByHandle(a.record.handle);
+      s.chunks.length = 0;
+      fm.emitSseEvent("activity", { instance: "a", state: "idle" });
+      fm.emitSseEvent("activity", { instance: "b", state: "idle" });
+      await vi.waitFor(() => expect(s.ended(), "the server ended A's stream").toBe(true));
+      expect(s.chunks.join("")).toBe("");
+      expect((await get("/auth/session", cookieOf(b))).status, "B still signs in").toBe(200);
+    } finally { s.req.destroy(); }
   });
   it("the poll: the projected status alone; an admin's poll unchanged", async () => {
     vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));

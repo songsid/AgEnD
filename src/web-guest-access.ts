@@ -96,8 +96,12 @@ export function sameAccount(a: { readonly adapterId: string; readonly userId: st
 // ── Phase 1b: what a handler knows of a guest request, and what the stream and the poll may show it ──
 
 type Owner = { readonly adapterId: string; readonly userId: string };
-/** A guest request: whose, and its scope — asked anew each time (a long-lived stream follows a narrowed scope). */
-export interface GuestRequest { readonly owner: Owner; scope(): ReadonlySet<string> }
+/**
+ * A guest request: whose, and its scope — asked anew each time (a long-lived stream follows a narrowed scope). `current`
+ * is the exact session that admitted it, still current (not revoked, expired or rotated away) — never "some cookie on the
+ * request still authenticates": another device's session must not keep a revoked one's stream alive (#2049 review).
+ */
+export interface GuestRequest { readonly owner: Owner; scope(): ReadonlySet<string>; current(): boolean }
 const guestRequests = new WeakMap<object, GuestRequest>();
 /** Set by the one entry that admits a guest (FleetManager's gate); read by the handlers that answer per recipient. */
 export function bindGuestRequest(req: object, guest: GuestRequest): void { guestRequests.set(req, guest); }
