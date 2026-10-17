@@ -1,4 +1,4 @@
-/** #1629: volatile Try authority. Local-admin API exists; offer cards and playback remain disconnected. */
+/** #1629: volatile Try authority. An agent's preview_web_effect posts an offer card in its own chat; only an explicit local-admin click (POST /ui/effect-trials/start) plays the clipped sample. */
 import { randomBytes } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { canonicalText } from "./web-theme.js";
@@ -38,7 +38,7 @@ function data(value: unknown, keys: readonly string[]): Record<string, unknown> 
   } catch { return null; }
 }
 
-/** Independent history/card codec. Future producer must also require host status + own instance. */
+/** Independent history/card codec: a card read back from chat history is display metadata, never a grant. */
 export function effectTrialOffer(value: unknown): Readonly<EffectTrialOffer> | null {
   const d = data(value, ["v", "offer", "id", "title", "expiresAt"]);
   if (!d || d.v !== 1 || typeof d.offer !== "string" || !ID.test(d.offer) || typeof d.id !== "string" || !ID.test(d.id)
@@ -150,7 +150,7 @@ export class WebEffectTrials {
       return { ok: true as const, offer, created: true };
     });
   }
-  /** Future CSRF-protected POST only, after an explicit local-admin click. Never a tool or GET. */
+  /** The CSRF-protected POST /ui/effect-trials/start only, after an explicit local-admin click. Never a tool or GET. */
   start(offer: string, instance: string, viewer: unknown): { ok: true; trial: string; offer: Readonly<EffectTrialOffer>; remainingMs: number } | Failure {
     return this.run(() => {
       const a = actor(viewer), o = this.offers.get(offer);

@@ -206,7 +206,7 @@ with the tools above, then `export_web_mod`.
 - Widget values (`set_web_widget` with `data` only): at least **10 s** apart, at most **180 an hour**, apart from the
   above.
 - Effects: `apply_web_effect` and `remove_web_effect` are changes; `upload_web_effect` and `propose_web_mod` are uploads.
-  At most 10 effects and 8 MiB in your library, at most two placed in your chat.
+  At most 10 effects and 8 MiB of your own, at most two placed in your chat.
 - Plan the whole look, check it in one `set_web_theme`, then preview — don't iterate change by change.
 
 ## A good workflow
@@ -223,48 +223,58 @@ From a shell: `agend-agent theme get|set key=value…|set --json '<patch>'|clear
 
 ## Effects
 
-A Canvas Worker effect is a small animation drawn in your chat by code that runs in an isolated Worker: no page, no
-DOM, no network. You place effects **only in your own chat**; a person can place them anywhere. None of these tools
-takes a target.
+A Canvas Worker effect is a small animation drawn by code that runs in an isolated Worker: no page, no DOM, no
+network. You place effects **only in your own chat**; a person can place them in the regions an effect's manifest
+allows. None of these tools takes a target.
 
 **The package** (CW1): a directory in your working directory with `effect.json` and `worker.js`, optionally
-`poster.png`, `cursor.png` and `assets/*.png|jpg|jpeg|webp|gif`. No HTML or CSS, at most 20 files and 16 assets.
+`poster.png`, `cursor.png` and `assets/*.png|jpg|jpeg|webp|gif`. No HTML or CSS, at most 20 files and 16 assets. The
+smallest valid `effect.json`:
 
-- `effect.json`: `{ "v": 1, "kind": "effect", "runtime": "canvas-worker-v1", "worker": "worker.js", "name", "title",
-  "description"?, "poster"?: "poster.png", "regions", "layer", "box"?, "cursor"?, "wants", "params"? }`.
-  - `name`: a-z, 0-9 and -, up to 32 characters. `title`: 1..40 characters. `description`: up to 200.
-  - `regions`: 1–5 of `chat`, `sidebar`, `header`, `page`, `box`. For your chat it must include `chat`; the rest are
-    regions a person may choose it for.
+```json
+{ "v": 1, "kind": "effect", "runtime": "canvas-worker-v1", "worker": "worker.js", "name": "spark", "title": "Spark", "regions": ["chat"], "layer": "behind", "wants": [] }
+```
+
+- Optional fields: `description`, `poster` (`"poster.png"`), `box`, `cursor` (its `hotspot` inside the image) and
+  `params`.
+  - `name`: 1..32 characters, starting with a-z or 0-9, then a-z, 0-9 and -.
+  - `title` (1..40) and `description` (up to 200): one line each, counted in characters as people see them.
+  - `regions`: 1–5 of `chat`, `sidebar`, `header`, `page`, `box`. **Include `chat` to play in your chat**: an effect
+    without it can be placed but never plays there. The other regions are ones a person may choose it for.
   - `layer`: `behind` (under the content) or `front` (over it).
   - `wants`: up to 5 of `pointer`, `state`, `reply`, `mention`, `theme`. **`mention` is reserved and never fires in
     2.3.0** (see Effect event availability).
   - `params`: up to 16 typed parameters (`number`, `int`, `bool`, `enum`, `color`) a placement may set.
-- `worker.js` (at most 1 MiB, a classic script) draws through the `agend` API: `canvas`, `params`, `asset()`, `on()`,
-  `frame()` and `ready()`. Call `ready()` within 10 s, or it is stopped. `fetch` and imports don't work: the upload
-  warns (`network_or_import_api_unsupported`).
-- Size: `effect.json` at most 64 KiB; the whole effect at most 8 MiB as uploaded and **1 MiB normalized**; pictures at
-  most 4096 px a side and 8 megapixels; a cursor is a square PNG of at most 64 px and 32 KiB.
+- `worker.js` (at most 1 MiB, a classic script: static `import` / `export` are refused) draws through the `agend` API:
+  `canvas`, `params`, `asset()`, `on()`, `frame()` and `ready()`. Call `ready()` within 10 s, or it is stopped. Network
+  and dynamic imports are blocked at run time; the upload may warn `network_or_import_api_unsupported`, but don't rely
+  on the warning to catch every use.
+- Size: `effect.json` at most 64 KiB; the whole effect at most 8 MiB as uploaded and **1 MiB normalized**. Pictures:
+  at most 4096 px a side, and **8,388,608 pixels in total** across the assets, poster and cursor together. A cursor is
+  a square PNG of at most 64 px and 32 KiB (after metadata is stripped).
 
 **The tools:**
 
 - `upload_web_effect { dir }` → `{ id, warnings }`. It counts as an upload (3 an hour, shared with pictures and mods).
-  Your library keeps at most **10 effects and 8 MiB**.
+  **Your own** copies are at most **10 effects and 8 MiB**; effects a person shared with you don't count.
 - `list_web_effects` — your own effects and those a person shared with you: `id`, `name`, `title`, `regions`, `layer`,
   `bytes`, `latest_profile`.
 - `apply_web_effect { id, params? }` places one in your chat, **at most two at a time**, with the declared `params`
   (unknown or out of range → `effect_params`). `remove_web_effect { id? }` takes one out, or all of them. Both are
-  changes (30 s apart, 10 an hour), are refused while a person has locked your theme (`locked`) and when the fleet
+  changes (30 s apart, 10 an hour), and are refused while a person has locked your theme (`locked`) or when the fleet
   turned agent changes off (`theme_editing_off`).
 - `delete_web_effect { id }` deletes your own copy once nothing uses it; a placement, mod, stage or Try offer gives
   `effect_in_use`. Another's copy is never removed.
 - `profile_web_effect { id }` — how it ran on viewers' pages, per device class: `unmeasured`, or `reported` with
   records carrying a `verdict` (`ok`, `degraded`, `paused`, `off`) and a `reason` (`host_budget`, `hidden`,
-  `reduced_motion`, `save_data`, `viewer_off`, `clock_unavailable`, `gates_unknown`). No measurement means unknown,
-  never healthy. It is the only way you learn an effect was paused.
+  `reduced_motion`, `save_data`, `viewer_off`, `clock_unavailable`, `gates_unknown`, or none).
+  `list_web_effects`' `latest_profile` has the latest one. These are best-effort reports of what happened, not live
+  notices. No measurement means unknown, never healthy.
 - `preview_web_effect { id }` offers a Try card in your chat (see Try below).
 - **Sharing is a person's act.** You can't share an effect. You may use one a person shared with you (list, apply,
-  Try, profile, put in a mod). When they unshare it, a placement already in your chat keeps playing; applying it again
-  gives `not_found`.
+  Try, profile, put in a mod) while it is shared. When they unshare it, a placement already in your chat stays
+  eligible for playback (subject to the viewer's and the safety rules); applying, Try, listing, profiling or exporting
+  it again needs your own copy or another share, else `not_found`. A placement is never a grant to export it.
 
 **On a viewer's page:**
 
@@ -272,10 +282,15 @@ takes a target.
   (`frame_limit`, `front_limit`).
 - Nothing plays in safe mode, over a temporary public link, with reduced motion or save-data, on a hidden page, while
   the viewer has effects off, or before they consent to previews. A `poster.png` may then show behind the chat (see
-  Static Chat fallback). A visible menu or dialog stops `front` effects.
-- **Safety pause:** the page watches its frame rate and long tasks (about 55 fps and at most 50 ms of long tasks a
-  second; 50 fps and 25 ms on a constrained device). Three bad 2-second windows in a row pause the effect
-  (`host_budget`); three pauses within 24 hours turn it off on that page. Only a person resumes it.
+  Static Chat fallback). A visible menu or dialog stops `front` effects; these stops lift by themselves.
+- **Safety pause** — it measures the page's responsiveness, not your Worker's CPU. The page's frame-rate floor is
+  90% of what it measured before the effect started, capped at 55 fps (50 on a constrained device), so a 30 Hz screen
+  has a 27 fps floor. Where the browser reports them, long tasks may take at most 50 ms a second (25 ms constrained);
+  unknown timing doesn't count as free. Overlapping 2-second windows are judged at most once a second after a warm-up,
+  and three bad judgements in a row pause the effect (`host_budget`).
+- Only a viewer's explicit **Resume** restarts a safety-paused effect, and it doesn't clear the history: three such
+  pauses within 24 hours turn the effect **off** for that viewer's browser and device class, across tabs and reloads,
+  and Resume then refuses. It doesn't come back by itself after 24 hours.
 - **Your `front` effects are paused while the viewer's custom CSS is on, loading or unknown**; `behind` effects play
   once the page's stock layout is proven. A person's placement is exempt. Don't keep re-applying (see below).
 
@@ -311,7 +326,7 @@ deferred to #1940; do not keep reapplying an agent front while custom CSS is on,
 click by a signed-in **local admin** may start it; never an agent, public link, header token or automatic action.
 The host owns a visible Trial label and Stop control. Closing the panel/sheet, navigating, window blur, or another
 menu/dialog stops it. Custom CSS must be off (on/loading/unknown denies), and the same caps, profiler and safety
-stops apply. Ordinary foreground effects stay suppressed. A volatile offer lasts at most ten minutes; every read
+stops apply. Ordinary foreground effects stay suppressed. A volatile offer lasts at most ten minutes (offering the same effect again keeps that offer and its expiry; a different effect replaces it); every read
 rechecks the originating agent's current own/shared access, with the trial bound to the admin's session and epoch.
 There is no saved placement, claim, share, export or new saved profile record. Cards are memory-only and become inert when expired; a restart never restores them. Try uses manifest defaults and the existing app pool, not a second runtime. Do not treat an offer id or ordinary reply button
 as permission to run or fetch an effect, and do not keep retrying an unavailable Try.
