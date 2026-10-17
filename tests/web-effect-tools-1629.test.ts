@@ -103,6 +103,15 @@ it("rechecks authority on later parts and never publishes or spends quota after 
  expect(answer).toEqual({error:"locked"});expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({entries:[]});
  expect(f.limiter.remaining("own").changes).toBe(10);expect(f.changed).not.toHaveBeenCalled();
 });
+it("a locked agent is refused at the first part: nothing is buffered, nothing stored (uploads themselves are not counted)",async()=>{
+ const f=fixture();f.refuse("locked");let calls=0;
+ const answer=await sendEffectInParts(files("a".repeat(700000)),async args=>{calls++;return f.tools.upload("own",args);});
+ expect([answer,calls]).toEqual([{error:"locked"},1]);
+ expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({entries:[]});
+ f.refuse(null);
+ for(let k=0;k<5;k++)await upload(f,"own",files(`agend.ready() // ${k}`));
+ expect(f.lib.list({kind:"agent",id:"own"}).entries.length,"five in a row: no upload count").toBe(5);
+});
 it("aborts a staged upload when the durable claim write fails, without charging",async()=>{
  const f=fixture(),abort=vi.spyOn(f.lib,"abort");vi.spyOn(f.lib,"commit").mockReturnValue({ok:false,error:"index_failure"});
  const answer=await sendEffectInParts(files(),async args=>f.tools.upload("own",args));
