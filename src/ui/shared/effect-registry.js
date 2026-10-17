@@ -96,9 +96,13 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   // Display only: the sticky history state per descriptor, which outranks a waiting reason (a queue, a dialog, typing)
   // because it is what Resume must answer. Admission, caps, latches and safety policy never read it.
   const named = new Map();
+  // The read can re-enter (an update from a callback): only a pass still current, for the same device, may write.
   const nameSafety = (d, dev = device()) => {
+    const proposed = revision;
     const reason = d.trialStage ? null : SAFETY_REASON[receipt(safety.status, d.id, dev)?.state];
+    if (dead || proposed !== revision || dev !== device()) return false;
     if (reason) named.set(d.key, { identity: signature(d), reason }); else named.delete(d.key);
+    return true;
   };
   // Display only: the closed global gate a row is waiting on, when the host knows it (else the caller's unknown).
   const gateReason = () => {
@@ -194,7 +198,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     if (blocked || !eligible() || !stock) {
       if (!stopAll(blocked ?? "gates_unknown")) return;
       results.clear();
-      if (!blocked) for (const d of descriptors) { nameSafety(d); if (dead || proposal !== revision) return; }
+      if (!blocked) for (const d of descriptors) if (!nameSafety(d) || dead || proposal !== revision) return;
       tell(); return;
     }
     // Hidden frames already owned may survive for <=10 s, but no new frame or load is admitted while hidden.
@@ -206,7 +210,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (dead || proposal !== revision) return;
       ds.push({ ...d, paused: !allowed || d.paused === true || paused.get(d.key) === signature(d) || failures.get(d.key)?.identity === signature(d) });
     }
-    for (const d of descriptors) { nameSafety(d); if (dead || proposal !== revision) return; }
+    for (const d of descriptors) if (!nameSafety(d) || dead || proposal !== revision) return;
     const allocation = allocateEffectFrames(ds, ctx); results.clear();
     for (const r of allocation) {
       const d = descriptors.find(d => d.key === r.key);

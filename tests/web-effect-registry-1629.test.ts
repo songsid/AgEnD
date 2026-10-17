@@ -693,3 +693,33 @@ describe("#2055 R2: one display precedence through the real snapshot (Prism)", (
     expect(h.api.snapshot()[0].reason).not.toMatch(/reduced_motion|save_data|disabled|preview_unavailable|safe_mode|public_link/);
   });
 });
+
+describe("#2055 R3: a re-entered status read never writes a stale display reason (Prism)", () => {
+  it("a nested update for another device keeps its own reason; the outer read's OFF is dropped", async () => {
+    const h = rig(), ds = h.descriptors(1); let nested = false;
+    (h.safety as any).status = vi.fn((_id: string, device: string) => {
+      if (!nested && device === "standard") { nested = true; h.api.update(ds, gates({ constrained: true })); return { state: "off", history: null }; }
+      return { state: device === "constrained" ? "paused" : "off", history: null };
+    });
+    h.safety.allowed.mockReturnValue(false);
+    const view = h.api.update(ds, gates()); await flush();
+    expect(nested).toBe(true);
+    expect(view[0]).toMatchObject({ reason: "paused" }); expect(h.api.snapshot()[0]).toMatchObject({ reason: "paused" });
+  });
+  it("a stale ok read does not delete the nested current name", async () => {
+    const h = rig(), ds = h.descriptors(1); let nested = false;
+    (h.safety as any).status = vi.fn((_id: string, device: string) => {
+      if (!nested && device === "standard") { nested = true; h.api.update(ds, gates({ constrained: true })); return { state: "ok", history: null }; }
+      return { state: "off", history: null };
+    });
+    h.safety.allowed.mockReturnValue(false);
+    h.api.update(ds, gates()); await flush();
+    expect(h.api.snapshot()[0]).toMatchObject({ reason: "safety_off" });
+  });
+  it("a read that disposes the registry writes nothing and does not throw", async () => {
+    const h = rig(), ds = h.descriptors(1);
+    (h.safety as any).status = vi.fn(() => { h.api.dispose(); return { state: "off", history: null }; });
+    h.safety.allowed.mockReturnValue(false);
+    expect(() => h.api.update(ds, gates())).not.toThrow(); await flush();
+  });
+});
