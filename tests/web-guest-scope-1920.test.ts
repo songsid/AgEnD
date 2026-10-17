@@ -17,7 +17,7 @@ const home = mkdtempSync(join(tmpdir(), "agend-1920-scope-"));
 process.env.AGEND_HOME = home;                         // before the fleet's modules load (pino's daemon.log)
 
 const { FleetManager } = await import("../src/fleet-manager.js");
-const { GUEST_SESSION_POLICY, guestSessionPolicy, MAX_GUEST_SESSIONS_PER_ACCOUNT, MAX_WEB_SESSIONS, tokenEpoch, WebSessionStore } = await import("../src/web-session.js");
+const { GUEST_SESSION_POLICY, guestSessionPolicy, MAX_GUEST_SESSIONS, MAX_GUEST_SESSIONS_PER_ACCOUNT, MAX_WEB_SESSIONS, tokenEpoch, WebSessionStore } = await import("../src/web-session.js");
 const { validateFleetConfig } = await import("../src/config-validator.js");
 
 afterAll(() => rmSync(home, { recursive: true, force: true }));
@@ -137,7 +137,27 @@ describe("an emptied scope or guests turned off ends guest sessions (§3.5)", ()
     expect(fm.webSessions.list().map((s: { tier: string }) => s.tier)).toEqual(["admin"]);
     expect(fm.webSessions.isCurrent(admin, tokenEpoch(fm.webToken))).toBe(true);
   });
-  it("…and when the config is read (a reload, or the fleet starting with guests off)", () => {
+  it("#2082 review: the fleet starting with guests off ends the guest sessions kept on disk — turning guests on later revives none", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-1920-start-"));
+    try {
+      const before: any = new FleetManager(dir);
+      const q = () => {}; before.logger = { info: q, warn: q, error: q, debug: q, trace: q, fatal: q, child: () => before.logger };
+      before.fleetConfig = { instances: {}, web: { guests: { enabled: true } } };
+      before.initializeWebAuthTokens();
+      const epoch = tokenEpoch(before.webToken);
+      const { sessionId } = before.webSessions.create({ tier: "guest", surface: "local", label: "g", tokenEpoch: epoch, owner: ALICE });
+      before.webSessions.create({ tier: "admin", surface: "local", label: "a", tokenEpoch: epoch });
+      // A new process: its config says guests are off when it opens the sessions kept on disk (before any guest asks).
+      const after: any = new FleetManager(dir);
+      after.logger = before.logger;
+      after.fleetConfig = { instances: {}, web: { guests: { enabled: false } } };
+      after.initializeWebAuthTokens();
+      after.fleetConfig.web.guests.enabled = true;
+      expect(after.webSessions.authenticate(sessionId, epoch, { touch: false })).toBeNull();
+      expect(after.webSessions.list().map((s: { tier: string }) => s.tier)).toEqual(["admin"]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+  it("…and when the config is read again (a reload with guests off)", () => {
     const fm = fleet({ allowed: { dc: [ALICE.userId] } });
     const { guest } = withSessions(fm);
     const dir = mkdtempSync(join(tmpdir(), "agend-1920-cfg-"));
@@ -179,6 +199,16 @@ describe("a guest's session: its own policy and its own room (§5.4)", () => {
     expect(guestSessionPolicy({ absolute_hours: 0.1, idle_minutes: 1 })).toEqual({ absoluteMs: 1 * HOUR, idleMs: 15 * MINUTE });
     expect(guestSessionPolicy({ absolute_hours: 1, idle_minutes: 600 })).toEqual({ absoluteMs: 1 * HOUR, idleMs: 1 * HOUR });
     expect(guestSessionPolicy({ absolute_hours: 999, idle_minutes: "x" as never })).toEqual(GUEST_SESSION_POLICY);
+  });
+  it("all guests together: at most 64 (the least recently used of them goes), and still no admin", () => {
+    let now = 1_000;
+    const s = new WebSessionStore({ now: () => now++ });
+    const admin = s.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: EPOCH }).record;
+    for (let i = 0; i < MAX_GUEST_SESSIONS + 1; i++) s.create({ tier: "guest", surface: "local", label: `g${i}`, tokenEpoch: EPOCH, owner: { adapterId: "dc", userId: String(i) } });
+    const labels = s.list().map((x) => x.label);
+    expect(labels.filter((l) => l.startsWith("g")).length).toBe(MAX_GUEST_SESSIONS);
+    expect(labels).not.toContain("g0");
+    expect(s.isCurrent(admin, EPOCH)).toBe(true);
   });
   it("guests never push an admin out; one account keeps at most four; a reload keeps the same caps", () => {
     let now = 1_000;

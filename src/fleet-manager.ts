@@ -20424,6 +20424,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * - A Telegram private ClassicBot room that is the account's own (its chat id is the user id).
    * - A group or guild room: only while membership is verified (a later step; until then none).
    * - Then an admin's narrowing (`web.guests.narrow`), which only takes away.
+   * A fleet admin is not a guest: an admin outside the connection's access gets nothing here (admins sign in as admins).
    */
   guestScope(owner: { readonly adapterId: string; readonly userId: string } | undefined): ReadonlySet<string> {
     const guests = this.fleetConfig?.web?.guests;
