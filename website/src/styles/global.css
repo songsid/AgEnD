@@ -56,6 +56,15 @@
   transform: translateY(0);
 }
 
+/* No permanently-invisible content: always visible without JS or with reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 /* Stagger children */
 .stagger > .reveal:nth-child(1) { transition-delay: 0ms; }
 .stagger > .reveal:nth-child(2) { transition-delay: 80ms; }

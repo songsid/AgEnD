@@ -11,7 +11,7 @@
   "hero": {
     "tagline": "你的 AI 艦隊，",
     "taglineAccent": "一則訊息掌控。",
-    "subtitle": "Agent Engineering Daemon — 從 Telegram、Discord 或瀏覽器管理 AI 編碼 Agent。7 種後端、艦隊模式、Agent 協作、零維護。",
+    "subtitle": "Agent Engineering Daemon — 從 Telegram、Discord 或瀏覽器管理 AI 編碼 Agent。7 種後端、艦隊模式、Agent 協作。",
     "cta": "快速開始",
     "github": "GitHub",
     "badges": "macOS · Linux · Windows (WSL) · MIT 授權",
