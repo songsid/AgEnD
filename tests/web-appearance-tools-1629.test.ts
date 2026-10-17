@@ -16,7 +16,7 @@ import { pathToFileURL } from "node:url";
 import pino from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as schemas from "../src/outbound-schemas.js";
-import { pictureFileName, resolvedAvatar, resolvedRing, type FrameEntry } from "../src/web-appearance-view.js";
+import { pictureFileName, PREVIEW_BANNER, resolvedAvatar, resolvedRing, type FrameEntry } from "../src/web-appearance-view.js";
 import { AppearanceTools, PREVIEW_IDLE_MS } from "../src/web-appearance-tools.js";
 import { receivePreview } from "../src/web-asset-parts.js";
 import { writeAgentFile } from "../src/agent-file-read.js";
@@ -147,6 +147,14 @@ describe("preview_web_appearance", () => {
       expect(svg).toContain('opacity="0.4"');                                   // the background's own opacity
       expect(svg).not.toMatch(/<b>|<script|on[a-z]+=/i);
     }
+    // #2038: the banner as the page draws it — the M card's rule in app.css (3:1 of the 720 px column, between its floor and ceiling).
+    const css = readFileSync(join(process.cwd(), "src/ui/shared/app.css"), "utf8");
+    const card = css.slice(css.indexOf(".id-card {"), css.indexOf("}", css.indexOf(".id-card {")));
+    const [, a, b] = /--id-ar: (\d+) \/ (\d+);/.exec(card)!, lo = Number(/--id-bmin: (\d+)px/.exec(card)![1]), hi = Number(/--id-bmax: (\d+)px/.exec(card)![1]);
+    expect({ aspect: Number(a) / Number(b), min: lo, max: hi }).toEqual(PREVIEW_BANNER);
+    const banner = /<image href="banner\.png" x="0" y="(\d+)" width="720" height="(\d+)"/.exec(svgOf(r, "light"))!;
+    expect(Number(banner[2])).toBe(Math.min(hi, Math.max(lo, Math.round(720 * Number(b) / Number(a)))));
+    expect(Number(banner[2])).toBe(240);
   });
   it("every SVG stays well under what an agent's Read takes (256 KB), even with the largest pictures (#1890 review)", async () => {
     const { t } = tools({ big: true });
