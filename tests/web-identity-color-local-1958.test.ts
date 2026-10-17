@@ -19,17 +19,17 @@ describe("no host prefs on the page: this browser's copy", () => {
   it("the host's values are not known here", () => {
     expect([prefs.prefInForce("color.show"), prefs.prefInForce("color.off")]).toEqual([null, null]);
   });
-  it("default places: a stored list is used; unreadable JSON, a bad list or nothing is ring + bar", () => {
+  it("default places: a stored list is used; unreadable JSON, a bad list or nothing is all three (#2056)", () => {
     pg.storage.set("agend_color_show", JSON.stringify(["name"]));
     expect(C.defaultPlaces()).toEqual(["name"]);
     pg.storage.set("agend_color_show", JSON.stringify([]));
     expect(C.defaultPlaces(), "nowhere is a choice").toEqual([]);
     for (const bad of ["{not json", JSON.stringify(["glow"]), JSON.stringify(["name", "name"]), JSON.stringify("name")]) {
       pg.storage.set("agend_color_show", bad);
-      expect(C.defaultPlaces(), bad).toEqual(["bar", "ring"]);
+      expect(C.defaultPlaces(), bad).toEqual(["name", "bar", "ring"]);
     }
     pg.storage.delete("agend_color_show");
-    expect(C.defaultPlaces()).toEqual(["bar", "ring"]);
+    expect(C.defaultPlaces()).toEqual(["name", "bar", "ring"]);
   });
   it("Turn off colours: only \"on\" turns them off", () => {
     pg.storage.set("agend_color_off", "on");

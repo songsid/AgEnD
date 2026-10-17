@@ -3,7 +3,7 @@
 // (`color`, `color_show`); this module resolves them as src/web-identity-color.ts does (a test pins the two equal),
 // paints the sidebar row through the CSSOM (no style attribute, #1300), and holds the Color dialog.
 //   colour: a person's pick > the agent's (themes shown) > its own bot's role colour > automatic (a few soft colours)
-//   places: a person's choice > the agent's (themes shown) > this host's default (color.show) > ring + bar
+//   places: a person's choice > the agent's (themes shown) > this host's default (color.show) > all three (#2056)
 //   Settings → Web appearance can turn colours off for the host (color.off): nothing is painted, every pick is kept.
 import { html, useEffect, useState } from "./app-html.js";
 import { createStore, useStore } from "./app-store.js";
@@ -30,7 +30,7 @@ export const AUTO_PALETTE = [
   { id: "moss", light: "#5b7340", dark: "#a9c48d" }, { id: "slate", light: "#5f6b78", dark: "#aeb8c4" },
 ];
 export const PLACEMENTS = ["name", "bar", "ring"];
-export const DEFAULT_PLACEMENTS = ["bar", "ring"];
+export const DEFAULT_PLACEMENTS = ["name", "bar", "ring"];   // #2056: all three where nobody chose (was ring + bar)
 const HEX = /^#[0-9a-f]{6}$/;
 const presetOf = (c) => (typeof c === "string" && c.startsWith("preset:") ? IDENTITY_PALETTE.find((p) => p.id === c.slice(7)) : undefined);
 const autoOf = (c) => (typeof c === "string" && c.startsWith("auto:") ? AUTO_PALETTE.find((p) => p.id === c.slice(5)) : undefined);
@@ -115,7 +115,7 @@ export function colorsOff() {
   const f = prefInForce("color.off");
   return f ? f.value === true : readLocal("agend_color_off") === "on";
 }
-/** The default places (null: back to ring + bar). */
+/** The default places (null: back to all three, #2056). */
 export function setDefaultPlaces(list) {
   const v = list === null ? null : placesOk(list);
   const same = v && v.length === DEFAULT_PLACEMENTS.length && v.every((p, i) => p === DEFAULT_PLACEMENTS[i]);

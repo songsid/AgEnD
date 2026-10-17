@@ -69,7 +69,7 @@ Public cookies are Secure `__Host-` cookies and bind one exposure. The gateway r
 - whatever a reverse proxy, tailnet share or port forward admits (`web.allowed_hosts`);
 - on WSL2, the Windows host.
 
-The anonymous `/view` reader sees every instance: it has no account and no scope, unlike a signed-in session. `/api/ai-usage` is also public when enabled, and GET `/health` needs no token. Pane captures can contain commands, credentials and other private output.
+The anonymous `/view` reader sees every instance: it has no account and no scope. Signing in doesn't add one to `/view`: with `web.view_access: open` a signed-in guest can use those same public reads too. Only a guest's own routes are checked against its scope. `/api/ai-usage` is also public when enabled, and GET `/health` needs no token. Pane captures can contain commands, credentials and other private output.
 
 Set `web.view_access: session` to close those reads: `/view`, its GET APIs and `/api/ai-usage` then need a session or the header token, like the dashboard. `/view`'s writes (profile, avatar, sort order) always go through the dashboard gate: a session with the cookie-write checks above, or `X-Agend-Token`, never a `?token=`.
 

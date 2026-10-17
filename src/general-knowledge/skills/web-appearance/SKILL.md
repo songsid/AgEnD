@@ -266,6 +266,8 @@ smallest valid `effect.json`:
   at most 4096 px a side, and **8,388,608 pixels in total** across the assets, poster and cursor together. A cursor is
   a square PNG of at most 64 px and 32 KiB (after metadata is stripped).
 
+**Reusable pointer example:** [`docs/examples/click-sparks`](https://github.com/songsid/AgEnD/blob/main/docs/examples/click-sparks.md) has a small two-file CW1 package: click for a burst, hold the primary button and move for a trail. Copy it into your working directory before uploading. Protected controls receive no pointer input; samples are coalesced (up to 60 Hz, 30 at reduced quality), so do not use it as a required click or drag control.
+
 **The tools:**
 
 - `upload_web_effect { dir }` → `{ id, warnings }`. It counts as an upload (3 an hour, shared with pictures and mods).
