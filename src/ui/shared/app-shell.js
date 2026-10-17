@@ -341,7 +341,9 @@ function GuestChip() {
   const { name, platform } = guestBadge();
   const where = PLATFORM_NAMES[platform] || platform;
   const label = name ? (where ? t("app.guestAsOn", name, where) : t("app.guestAs", name)) : t("app.guestChip");
-  return html`<p class="guest-chip" data-trust="navigation" title=${t("app.guestHint")}><${Icon} name="user" size=${14} /><span class="grow">${label}</span></p>`;
+  // Inside .side-foot (a marked, stock-trusted element): no trust marker of its own — effect-stock-trust's closed inventory
+  // refuses any element it does not know, which would hide a guest's static effect posters (#2101 review).
+  return html`<p class="guest-chip" title=${t("app.guestHint")}><${Icon} name="user" size=${14} /><span class="grow">${label}</span></p>`;
 }
 
 /** #1629 r4-4: the person's own sidebar widget (their synced preference), with the fleet's counts. */

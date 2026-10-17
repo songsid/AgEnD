@@ -79,6 +79,10 @@ describe("a guest's shell", () => {
   it("its own agents to pick from, its chip and session — and nothing of an admin's", async () => {
     const { pg, prefs } = await shell(true);
     expect(texts(pg, "#sidebar .guest-chip")).toEqual(["Guest · Alice (Discord)"]);
+    // #2101 review: no trust marker of its own (inside the marked .side-foot) — effect-stock-trust's closed inventory
+    // would refuse it, and a guest's static effect posters with it (real Chrome: smoke-1920-guest's poster proof).
+    expect(pg.root.querySelector("#sidebar .guest-chip").getAttribute("data-trust")).toBeNull();
+    expect(pg.root.querySelector("#sidebar .guest-chip").parentNode.getAttribute("data-trust")).toBe("navigation");
     expect(pg.root.querySelector("#sidebar .side-nav"), "no Fleet overview, Needs you, Fleet, View or New agent").toBeNull();
     expect(texts(pg, "#sidebar .side-foot a.side-row"), "no Settings").toEqual([]);
     expect(pg.root.querySelector("#sidebar .v-filter"), "no filters").toBeNull();
