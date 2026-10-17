@@ -12,7 +12,7 @@ import { createRequire } from "node:module";
 
 const execAsync = promisify(exec);
 import type { FleetContext } from "./fleet-context.js";
-import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
+import type { ChannelAdapter, InboundMessage, SendOpts } from "./channel/types.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { discordGeneralChannelId } from "./discord-general.js";
 import { formatCents } from "./cost-guard.js";
@@ -37,6 +37,7 @@ import { recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
 import { selfCommand } from "./cli-entry.js";
+import { GENERAL_POINTING_REFUSALS, placeSuffix } from "./topic-link.js";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
 export type { TokenContextRatio } from "./context-percent.js";
@@ -608,7 +609,16 @@ export class TopicCommands {
 
   private async sendRefusal(msg: InboundMessage, [key, ...args]: [string, ...unknown[]]): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
-    if (adapter) await adapter.sendText(msg.chatId, t(key, ...(args as never[])), { threadId: msg.threadId }).catch(() => {});
+    if (!adapter) return;
+    // #1990: a refusal that sends the person to General links to it.
+    const text = t(key, ...(args as never[])) + (GENERAL_POINTING_REFUSALS.has(key) ? placeSuffix({ kind: "general" }, "General") : "");
+    const out = this.placed(msg, text);
+    await adapter.sendText(msg.chatId, out.text, out.opts).catch(() => {});
+  }
+
+  /** #1990: a reply in the message's own chat, its place tokens rendered for the world it came from. */
+  private placed(msg: InboundMessage, text: string): { text: string; opts?: SendOpts } {
+    return this.ctx.renderPlaces?.(msg.adapterId, text, { threadId: msg.threadId }) ?? { text, opts: { threadId: msg.threadId } };
   }
 
   private getReplyAdapter(msg: InboundMessage): ChannelAdapter | null {
@@ -1791,11 +1801,8 @@ export class TopicCommands {
   async handleUnboundTopic(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter) return;
-    await adapter.sendText(
-      msg.chatId,
-      t("topic.unbound"),
-      { threadId: msg.threadId },
-    );
+    const out = this.placed(msg, t("topic.unbound") + placeSuffix({ kind: "general" }, "General"));
+    await adapter.sendText(msg.chatId, out.text, out.opts);
   }
 
   /**

@@ -237,3 +237,14 @@ export class GroupMembership {
     });
   }
 }
+
+/** #1990: refusals that send the person to General — their reply carries a link to it. */
+export const GENERAL_POINTING_REFUSALS: ReadonlySet<string> = new Set(["cmd.use_in_general", "profile.general_only"]);
+
+/**
+ * Text from outside (an agent's message, a pane line, a dialog's description) as a place-token-free argument: a
+ * message that interpolates it must not let it name a place of its own.
+ */
+export function noPlaceMarkers(text: string): string {
+  return text.replace(MARKERS, "");
+}
