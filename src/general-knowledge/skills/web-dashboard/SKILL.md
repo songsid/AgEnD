@@ -337,8 +337,8 @@ Settings → **Web appearance**, card by card:
   (`web.appearance.*`); lowering applies at once, raising waits for an admin.
 - **Restore defaults** — resets this host's appearance settings (it lists what it resets first).
 
-**What an agent can change for the user.** Today each agent changes only its own look (the `web-appearance` tools);
-everything on this page is the person's. With #2056 (PR #2064 — check the running version) General, coordinators and
+**What an agent can change for the user.** A worker changes only its own look (the `web-appearance` tools); before
+#2064 everything on this page was the person's. Since #2064 (2.3.0-beta.3; check the running version) General, coordinators and
 full-profile instances get `get_web_settings` / `set_web_settings`, which go through the same checks as the page;
 workers don't. The `web-appearance` skill's **For the user** section has the details. In short: General can change
 the host's appearance settings, one agent's identity colour, mods (review, install, cancel, dismiss, uninstall),
