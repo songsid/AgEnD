@@ -6401,6 +6401,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const token = this.webToken;
     if (!token || this.shuttingDown) return { kind: "refused" };
     this.initializeWebSessions();
+    // #2095 review: verified before the request's body was read — a revoke (its own, or an admin's) made meanwhile
+    // removed it, and nothing it asks for may then go out.
+    if (!this.returningDevices!.current(device, tokenEpoch(token))) return { kind: "refused" };
     if (device.tier === "guest") return this.requestGuestDeviceCode(device, input, token);
     const paused = this.webLoginCodes!.pausedForMs();
     if (paused > 0) return { kind: "limited", retryAfterMs: paused };
@@ -6428,12 +6431,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ err: (err as Error)?.message, adapterId }, "Sign-in code request: the private message could not be sent");
       return { kind: "refused" };
     }
-    if (this.webToken !== token || !this.publicOwnerCurrent(owner)) { this.webLoginCodes!.revokeIfCurrent(issued.issuanceId); return { kind: "refused" }; }
+    if (this.webToken !== token || !this.publicOwnerCurrent(owner) || !this.returningDevices!.current(device, tokenEpoch(token))) { this.webLoginCodes!.revokeIfCurrent(issued.issuanceId); return { kind: "refused" }; }
     await this.sendCodeAlone((body, opts) => adapter.sendDirect!(userId, body, opts), adapter.type, issued.display);
     // Asked again after the follow-up's wait: the owner, the token, shutdown, and a public request's exposure.
     const exposureGone = input.surface === "gateway"
       && (this.publicWebLink?.exposureId !== input.exposureId || this.publicWebLink?.status().state !== "open");
-    if (this.shuttingDown || this.webToken !== token || !this.publicOwnerCurrent(owner) || exposureGone) {
+    if (this.shuttingDown || this.webToken !== token || !this.publicOwnerCurrent(owner) || exposureGone || !this.returningDevices!.current(device, tokenEpoch(token))) {
       this.webLoginCodes!.revokeIfCurrent(issued.issuanceId);
       return { kind: "refused" };
     }
@@ -6469,7 +6472,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const revokes = this.guestRevokes, accountRevokes = this.guestAccountRevokes.get(key) ?? 0;
     const current = (): boolean => !this.shuttingDown && this.webToken === token && this.adapters.get(account.adapterId) === adapter
       && this.guestRevokes === revokes && (this.guestAccountRevokes.get(key) ?? 0) === accountRevokes && this.guestSignInAllowed(account)
-      && (!viaLink || linkOpen());
+      && (!viaLink || linkOpen()) && this.returningDevices!.current(device, tokenEpoch(token));
     const issued = codes.issue({ epoch: tokenEpoch(token), recipient: account, audiences: [viaLink ? input.exposureId! : "local"] });
     if (!issued) return { kind: "limited", retryAfterMs: 60_000 };            // the guests' cap: never someone's evicted
     this.guestCodeInFlight.add(key);

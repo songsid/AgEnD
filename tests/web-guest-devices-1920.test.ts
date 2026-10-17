@@ -13,6 +13,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { request } from "node:http";
 vi.mock("node:child_process", async original => ({ ...await original<typeof import("node:child_process")>(),
   spawn: () => { throw Error("No process"); }, execFile: () => { throw Error("No CLI"); }, execFileSync: () => { throw Error("No CLI"); }, execSync: () => { throw Error("No CLI"); }, spawnSync: () => { throw Error("No CLI"); } }));
 vi.mock("node:inspector", () => ({ Session: class { constructor() { throw Error("No inspector"); } } }));
@@ -185,6 +186,28 @@ describe("a guest's device asks for a code", () => {
     expect(h.s.webGuestLoginCodes.match(code, tokenEpoch(TOKEN))).toBeNull();
     expect(h.adapter.sendDirect, "and no code-only follow-up after the revoke").toHaveBeenCalledTimes(1);
   });
+  it("#2095 review: the asking device no longer the registry's while its DM is on its way (pushed out by the cap): no code", async () => {
+    const h = rig();
+    let release!: () => void;
+    h.adapter.sendDirect.mockImplementationOnce(() => new Promise((r) => { release = () => r({ chatId: "DM", messageId: "dm" }); }));
+    const asking = h.ask(h.device());
+    await vi.waitFor(() => expect(release).toBeDefined());
+    for (let i = 0; i < 4; i++) h.device();                     // four newer browsers of hers: the asking one is out
+    release();
+    expect(await asking).toEqual({ kind: "refused" });
+    expect(h.s.webGuestLoginCodes.size).toBe(0);
+    // An admin's device the same (#1570's path): pushed out by 16 newer admin devices mid-DM.
+    const a = rig();
+    const remember = () => a.s.returningDevices.verify(a.s.rememberReturningDevice({ adapterId: "owner", userId: "admin", chatId: "G", threadId: "T0", binding: a.adapter }, { surface: "local", label: "x" }), TOKEN, tokenEpoch(TOKEN));
+    let sent!: () => void;
+    a.adapter.sendDirect.mockImplementationOnce(() => new Promise((r) => { sent = () => r({ chatId: "DM", messageId: "dm" }); }));
+    const adminAsking = a.ask(remember());
+    await vi.waitFor(() => expect(sent).toBeDefined());
+    for (let i = 0; i < 16; i++) remember();
+    sent();
+    expect(await adminAsking).toEqual({ kind: "refused" });
+    expect(a.s.webLoginCodes.hasOutstandingCode).toBe(false);
+  });
   it("forgotten: by the guest's own /web revoke (theirs only), by guest sign-in turned off (every guest's)", async () => {
     const h = rig();
     const alice = h.device(), bob = h.device("bob");
@@ -196,5 +219,54 @@ describe("a guest's device asks for a code", () => {
     h.s.enforceGuestSwitch();
     expect(known(bob)).toBe(false);
     expect(h.s.returningDevices.verify(admin, TOKEN, tokenEpoch(TOKEN)), "an admin's device stays").not.toBeNull();
+  });
+});
+
+describe("#2095 review: through the real /auth/request-code, a revoke while the request's body is still coming", () => {
+  // The device was verified before the body was read; a revoke made meanwhile must stop the code.
+  async function held(h: ReturnType<typeof rig>, cookie: string, between: () => Promise<unknown>): Promise<number> {
+    const port = h.s.healthServer.address().port as number;
+    const body = "{}";
+    return new Promise<number>((resolve, reject) => {
+      const r = request({ host: "127.0.0.1", port, method: "POST", path: "/auth/request-code", headers: { host: `127.0.0.1:${port}`, origin: `http://127.0.0.1:${port}`,
+        "content-type": "application/json", "content-length": String(body.length), cookie: `agend_device=${cookie}` } }, (res) => { res.resume(); res.on("end", () => resolve(res.statusCode ?? 0)); });
+      r.on("error", reject);
+      r.write(body.slice(0, 1));
+      setTimeout(() => { void between().then(() => r.end(body.slice(1))); }, 50);
+    });
+  }
+  async function live() {
+    vi.mocked(performance.now).mockRestore?.();
+    const h = rig();
+    h.s.startHealthServer(0);
+    await vi.waitFor(() => expect(h.s.healthServer?.address()).toBeTruthy());
+    return { ...h, close: () => new Promise<void>((r) => h.s.healthServer.close(() => r())) };
+  }
+  it("the guest's own /web revoke, or an admin's: no DM, no code; nothing in between: sent", async () => {
+    for (const revoker of ["alice", "admin", null] as const) {
+      const h = await live();
+      try {
+        const cookie = h.s.rememberGuestDevice({ adapterId: "owner", userId: "alice" }, { surface: "local", label: "Firefox" })!;
+        const status = await held(h, cookie, () => (revoker ? h.slash(revoker, "revoke") : Promise.resolve()));
+        const dms = h.adapter.sendDirect.mock.calls.filter((c: any[]) => /[A-Z0-9]{4}-[A-Z0-9]{4}/.test(String(c[1])));
+        if (revoker) {
+          expect([status, dms.length, h.s.webGuestLoginCodes.size], String(revoker)).toEqual([503, 0, 0]);
+        } else {
+          expect(status).toBe(202);
+          expect(dms.length, "the sign-in message and the code alone").toBe(2);
+          expect(h.s.webGuestLoginCodes.hasCodeFor({ adapterId: "owner", userId: "alice" })).toBe(true);
+        }
+      } finally { await h.close(); }
+    }
+  });
+  it("an admin's returning device too (#1570): an admin's /web revoke meanwhile, no code", async () => {
+    const h = await live();
+    try {
+      const cookie = h.s.rememberReturningDevice({ adapterId: "owner", userId: "admin", chatId: "G", threadId: "T0", binding: h.adapter }, { surface: "local", label: "Firefox" })!;
+      const status = await held(h, cookie, () => h.slash("admin", "revoke"));
+      expect(status).toBe(503);
+      expect(h.adapter.sendDirect).not.toHaveBeenCalled();
+      expect(h.s.webLoginCodes.hasOutstandingCode).toBe(false);
+    } finally { await h.close(); }
   });
 });

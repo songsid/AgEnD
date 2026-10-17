@@ -146,6 +146,14 @@ export class ReturningDevices {
     return { count, durable: count ? this.persist() : true };
   }
 
+  /**
+   * #2095 review: this exact record is still the registry's — not revoked (by either revoke), expired or of an old token
+   * since it was verified. A request that awaited (its body, a DM) asks again before it acts.
+   */
+  current(device: ReturningDevice, tokenEpoch: string): boolean {
+    return this.byHash.get(device.idHash) === device && this.now() < device.expires && device.tokenEpoch === tokenEpoch;
+  }
+
   /** `/dashboard revoke`: no browser may ask for a code any more. Whether that holds after a restart. */
   revokeAll(): { count: number; durable: boolean } {
     const count = this.byHash.size;
