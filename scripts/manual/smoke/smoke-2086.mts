@@ -87,6 +87,17 @@ if (TAG !== "before") {
   // #2089 review: a fixed fill (owner CSS could make one) is the viewport's, never the box's to clip — refused.
   await page.evaluate(`(() => { const f = document.querySelector(".id-banner-fill"); f.style.removeProperty("filter"); f.style.setProperty("position", "fixed"); document.querySelector(".id-banner-box").style.setProperty("container-type", "normal"); })()`);
   results.stock.fixedFill = await trust();
+  // #2089 review r3: `display: contents` keeps the box's computed position and overflow but generates no box; an inline
+  // box clips differently. Both refused; the geometry shows where the fill really is placed.
+  const geo = `(() => { const f = document.querySelector(".id-banner-fill"), b = document.querySelector(".id-banner-box"), r = (e) => { const x = e.getBoundingClientRect(); return [Math.round(x.x), Math.round(x.y), Math.round(x.width), Math.round(x.height)]; }; return { box: r(b), fill: r(f), offsetParent: f.offsetParent?.className ?? null, boxDisplay: getComputedStyle(b).display, boxPosition: getComputedStyle(b).position, boxOverflow: getComputedStyle(b).overflow }; })()`;
+  const reset = `(() => { const f = document.querySelector(".id-banner-fill"), b = document.querySelector(".id-banner-box"); f.style.removeProperty("position"); b.style.removeProperty("display"); b.style.removeProperty("container-type"); })()`;
+  for (const [key, display] of [["contentsBox", "contents"], ["inlineBox", "inline"]] as const) {
+    await page.evaluate(reset);
+    await page.evaluate(`(() => { const b = document.querySelector(".id-banner-box"); b.style.setProperty("display", "${display}"); b.style.setProperty("container-type", "normal"); })()`);
+    results.stock[key] = { ...(await trust()), geometry: await page.evaluate(geo) };
+  }
+  await page.evaluate(reset);
+  results.stock.restored = await trust();
   await ctx.close();
 }
 // #2089 review: the narrowest real layouts — a 900 px window with the widest sidebar, and the usage rail open — never draw

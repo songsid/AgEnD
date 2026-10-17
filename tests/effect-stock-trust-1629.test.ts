@@ -184,7 +184,7 @@ describe("stock trust/paint prerequisite", () => {
     card.kind = "card"; card.r = { x: 0, y: 100, width: 800, height: 260 }; box.r = { x: 0, y: 100, width: 800, height: 200 };
     fill.r = { x: -160, y: 60, width: 1120, height: 280 };                 // scaled up by its transform: beyond the box
     banner.r = { x: 150, y: 100, width: 500, height: 200 };
-    fill.parentElement = box; fill.matches = (sel: string) => sel === ".id-banner-box > img.id-banner-fill";
+    fill.parentElement = box; fill.offsetParent = box; fill.matches = (sel: string) => sel === ".id-banner-box > img.id-banner-fill";
     card.children = [box, fill, banner];
     const spec = f.m.STOCK_TRUST_INVENTORY.find((s: any) => s.kind === "card");
     f.extra.set(spec.selector, [card]); f.marked.push(card);
@@ -199,6 +199,13 @@ describe("stock trust/paint prerequisite", () => {
       ["a fixed fill (the viewport's, never clipped by the box)", () => { fill.style.position = "fixed"; }, () => { fill.style.position = "absolute"; }],
       ["a static (relative-less) fill", () => { fill.style.position = "static"; }, () => { fill.style.position = "absolute"; }],
       ["a box that is not its containing block", () => { box.style.position = "static"; }, () => { box.style.position = "relative"; }],
+      // #2089 review r3: `display: contents` keeps position and overflow but generates no box — an outer ancestor places
+      // the fill (as the browser reports it) and the box's rect is empty; an inline box does not clip the same way.
+      ["a box with display: contents", () => { box.style.display = "contents"; fill.offsetParent = card; }, () => { box.style.display = "block"; fill.offsetParent = box; }],
+      ["display: contents even if the offset parent looked right", () => { box.style.display = "contents"; }, () => { box.style.display = "block"; }],
+      ["an inline box", () => { box.style.display = "inline"; }, () => { box.style.display = "block"; }],
+      ["an inline-block box", () => { box.style.display = "inline-block"; }, () => { box.style.display = "block"; }],
+      ["a fill placed by another ancestor", () => { fill.offsetParent = card; }, () => { fill.offsetParent = box; }],
     ] as Array<[string, () => void, () => void]>) {
       change(); expect(f.snapshot(), what).toMatchObject({ ok: false, reason: "stock_paint_unknown" }); undo();
     }

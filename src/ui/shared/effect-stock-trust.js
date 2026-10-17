@@ -99,8 +99,10 @@ function outset(style) {
  * #2086: the identity card's banner fill (a blurred copy beside a centred banner) — the one filter stock admits. Only
  * this exact value, on exactly `.id-banner-box > img.id-banner-fill`, absolutely positioned in that box (so the box is
  * its containing block — #2089 review: a fixed fill is the viewport's, and no box clips it), and the box positioned and
- * clipping on both axes; its paint is then that box's rectangle (the blur and its scale never leave it). Anything else
- * with a filter refuses.
+ * clipping on both axes; its paint is then that box's rectangle (the blur and its scale never leave it). The box must
+ * also be a real block box that the browser reports as the fill's offset parent (#2089 review r3: `display: contents`
+ * keeps the computed position and overflow but generates no box, so an outer ancestor would place the fill, and an inline
+ * box clips differently). Anything else with a filter refuses.
  */
 export const STOCK_BANNER_FILL_FILTER = "blur(24px) saturate(0.75) brightness(0.7)";
 function stockBannerFill(host, el) {
@@ -110,6 +112,7 @@ function stockBannerFill(host, el) {
   if (s.filter !== STOCK_BANNER_FILL_FILTER || !none(s.backdropFilter) || !none(b.filter) || !none(b.backdropFilter)) return null;
   if (!["hidden", "clip"].includes(b.overflowX) || !["hidden", "clip"].includes(b.overflowY)) return null;
   if (s.position !== "absolute" || !["relative", "absolute"].includes(b.position)) return null;
+  if (b.display !== "block" || el.offsetParent !== box) return null;
   return rect(box);
 }
 function protectedPaint(host, root, budget) {
