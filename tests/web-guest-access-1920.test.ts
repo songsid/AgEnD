@@ -34,7 +34,7 @@ describe("guestRouteDecision (the table)", () => {
     }
     expect(guestRouteDecision("HEAD", u("/ui/chat/a"), scope).kind).toBe("allow");
     for (const p of ["/ui/chat/b", "/api/profile/b", "/api/card/b/portrait", "/ui/img/bot/b", "/ui/effect-posters?instance=b", "/ui/effect-posters",
-      "/ui/chat/a%2Fb", "/api/profile/a%2Fb"]) {
+      "/ui/chat/a%2Fb", "/api/profile/a%2Fb", "/ui/chat/%E0%A4%A", "/api/card/%ZZ"]) {
       expect(guestRouteDecision("GET", u(p), scope), p).toEqual({ kind: "deny", status: 404, error: "not found" });
     }
     expect(guestRouteDecision("GET", u("/api/profile/a"), new Set()).kind, "an empty scope reaches nothing").toBe("deny");
@@ -56,6 +56,7 @@ describe("guestRouteDecision (the table)", () => {
   });
   it("sameAccount: both name one account; a missing one is nobody's", () => {
     expect([sameAccount(ALICE, { ...ALICE }), sameAccount(ALICE, BOB), sameAccount(ALICE, undefined), sameAccount(undefined, undefined)]).toEqual([true, false, false, false]);
+    expect(sameAccount(ALICE, { adapterId: "telegram", userId: ALICE.userId }), "the same number on another platform is someone else").toBe(false);
   });
 });
 
