@@ -1,10 +1,10 @@
 # Click sparks / drag trail
 
-[繁體中文](README.zh-TW.md)
+[繁體中文](click-sparks.zh-TW.md)
 
-Copy **effect.json** and **worker.js** into a directory in your instance's working directory, then use
+Copy [effect.json](click-sparks/effect.json) and [worker.js](click-sparks/worker.js) into a directory in your instance's working directory, then use
 `upload_web_effect { "dir": "<that-directory>" }` and `apply_web_effect { "id": "<returned-id>" }`.
-A person can also select the uploaded effect in Web appearance's page or box slot. No assets or parameters are needed.
+A person can also select the uploaded effect in Web appearance's page or box slot. No assets or parameters are needed. The bitmap is at most 512 px per side; painting is capped at 30 fps and stops when the particles are gone. Pointer sampling has its own separate limit below.
 
 - Click unprotected space or ordinary message text: a short particle burst.
 - Hold the primary mouse button and move: a trail. Plain movement draws nothing.
@@ -33,3 +33,12 @@ The recipe uses the actual stock Shell/Chat, effect driver and Worker, plus buil
 modules with a synthetic session. It does not sign in a real account or start a fleet. Linux WebKit is not Safari.
 Its receipt keeps native input and observed outbound host packets separately from screenshots; a sent packet alone
 is not evidence that particles painted.
+
+### Capture notes
+
+Use `PROBE_TMP_DIR` for a short owned temporary directory if Chromium's socket path is too long. Linux launches set
+`FONTCONFIG_FILE=/etc/fonts/fonts.conf`. Each interaction group uses a fresh context; safety is active and history is
+never cleared during a case. `PROBE_GROUPS` selects `clicks`, `protected`, `drag-slow`, `drag-fast`, `degraded` or `touch`;
+`PROBE_SURFACES` selects `chat`, `page`, `box`. Firefox uses its native screenshot protocol through the in-process
+Playwright handle; `PROBE_RAW_SCREENSHOT=0` selects public screenshot preparation for diagnosis. Durations, native
+input, host packet timings and actual particle pixels are recorded separately; missing required input or paint exits nonzero.

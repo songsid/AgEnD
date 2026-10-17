@@ -1,10 +1,10 @@
 # 點擊火花／拖曳軌跡
 
-[English](README.md)
+[English](click-sparks.md)
 
-把 **effect.json** 與 **worker.js** 複製到實例工作目錄內的一個資料夾，再呼叫
+把 [effect.json](click-sparks/effect.json) 與 [worker.js](click-sparks/worker.js) 複製到實例工作目錄內的一個資料夾，再呼叫
 `upload_web_effect { "dir": "<資料夾>" }`，接著用 `apply_web_effect { "id": "<回傳的 id>" }`。
-使用者也能在「網頁外觀」選擇此效果供 page 或 box 槽使用。不需素材或參數。
+使用者也能在「網頁外觀」選擇此效果供 page 或 box 槽使用。不需素材或參數。點陣圖每邊最多 512 px，繪製最多每秒 30 次，粒子消失後即停止；指標取樣另有下述限制。
 
 - 在未受保護的空白處或一般訊息文字上點擊：出現短暫火花。
 - 按住滑鼠主按鈕移動：留下粒子軌跡。單純移動不繪製。
@@ -30,3 +30,12 @@ node scripts/manual/effect-pointer-particles-1629.mts
 配方使用實際的 stock Shell／Chat、效果驅動程式與 Worker，搭配建置後的私有 library／service／preview
 模組及合成 session，不會登入真實帳號或啟動 fleet。Linux WebKit 不是真實 Safari。
 收據分開記錄原生輸入、觀察到的主機送出封包與截圖；送出封包本身不能證明粒子已繪製。
+
+### 擷取備註
+
+若 Chromium 的 socket 路徑太長，可用 `PROBE_TMP_DIR` 指定自己擁有的短暫存路徑。Linux 啟動時會設定
+`FONTCONFIG_FILE=/etc/fonts/fonts.conf`。每組互動使用新 context；安全監測保持啟用，案例內不會清除歷史。
+`PROBE_GROUPS` 可選 `clicks`、`protected`、`drag-slow`、`drag-fast`、`degraded`、`touch`，
+`PROBE_SURFACES` 可選 `chat`、`page`、`box`。Firefox 透過 in-process Playwright handle 使用原生截圖協定；
+`PROBE_RAW_SCREENSHOT=0` 可改用公開 API 的截圖準備流程來診斷。收據分開保存耗時、原生輸入、主機封包時間與
+實際粒子像素；必要的輸入或繪製缺失會以非零結束。
