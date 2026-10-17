@@ -8,13 +8,15 @@ import { page, type AppPage } from "./helpers/app-harness.js";
 import { fitLines, previewSvg } from "../src/web-appearance-view.js";
 
 const TAG = "部署前檢查清單：確認所有服務的健康檢查、資料庫遷移與回滾腳本都已在預備環境驗證完成並通知值班人員與相關團隊成員";
-const em = (s: string, size: number) => Array.from(s).reduce((w, ch) => w + (/[⺀-꓏＀-｠]/.test(ch) ? size : size * 0.58), 0);
+// Not the layout's own estimate: a floor every font meets (CJK one em, anything else at least 0.5 em), so a test can tell
+// a line that is surely too long. Real drawn widths are measured in scripts/manual/preview-text-2050.mts.
+const floorPx = (s: string, size: number) => [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(s)].reduce((w, g) => w + (/[\u2e80-\ua4cf\uff00-\uff60]/.test(g.segment) ? size : size * 0.5), 0);
 
 describe("fitLines (#2050)", () => {
   it("wraps CJK to the column and ends what does not fit with …", () => {
     const lines = fitLines(TAG.repeat(2), 300, 15, 2);
     expect(lines).toHaveLength(2);
-    for (const l of lines) expect(em(l, 15)).toBeLessThanOrEqual(300);
+    for (const l of lines) expect(floorPx(l, 15)).toBeLessThanOrEqual(300);
     expect(lines[1].endsWith("…")).toBe(true);
   });
   it("keeps text that fits whole, and its own line breaks", () => {
@@ -22,8 +24,18 @@ describe("fitLines (#2050)", () => {
     expect(fitLines("one\ntwo", 300, 13, 4)).toEqual(["one", "two"]);
     expect(fitLines("a\nb\nc", 300, 13, 2)).toEqual(["a", "b…"]);
   });
+  it("never returns more than maxLines, even when a long paragraph follows a full set (Prism R1 P3)", () => {
+    for (const max of [1, 2, 3]) {
+      const lines = fitLines("a\nb\n" + "界".repeat(50), 300, 15, max);
+      expect(lines.length).toBeLessThanOrEqual(max); expect(lines.at(-1)!.endsWith("…")).toBe(true);
+    }
+    expect(fitLines("one\n" + "界".repeat(50), 300, 15, 2)).toHaveLength(2);
+  });
+  it("bounds wide Latin conservatively: 60 capital W fit their columns, never one 60-character line", () => {
+    for (const col of [688, 492]) { const lines = fitLines("W".repeat(60), col, 15, 2); expect(lines.join("")).toBe("W".repeat(60)); expect(lines.length).toBe(2); }
+  });
   it("breaks Latin at a space", () => {
-    const lines = fitLines("Release captain for the Android and iOS trains, weekly", 200, 15, 3);
+    const lines = fitLines("Release captain for the Android and iOS trains, weekly", 200, 15, 8);
     expect(lines.length).toBeGreaterThan(1);
     for (const l of lines.slice(0, -1)) expect(l.endsWith(" ")).toBe(false);
     expect(lines.join(" ")).toBe("Release captain for the Android and iOS trains, weekly");
@@ -31,13 +43,18 @@ describe("fitLines (#2050)", () => {
 });
 
 describe("previewSvg card text (#2050)", () => {
-  it("draws a cap-length CJK tagline inside the 720 px image", () => {
-    const svg = previewSvg({ entry: { name: "a", display_name: null } as any, theme: {} as any, card: { tagline: { text: TAG, by: "human" }, bio: { text: TAG.repeat(4), by: "human" } } as any,
-      locked: false, agentEdit: false, limits: {} }, "dark", { avatar: null, portrait: null, banner: null, background: null } as any);
-    const texts = [...svg.matchAll(/<text x="(\d+(?:\.\d+)?)"[^>]*font-size="(\d+)"[^>]*>([^<]*)<\/text>/g)].map(m => ({ x: +m[1], size: +m[2], text: m[3] }));
-    const card = texts.filter(t => t.size === 15 || t.size === 13).filter(t => /[一-鿿]/.test(t.text));
-    expect(card.length).toBeGreaterThan(2);
-    for (const t of card) expect(t.x + em(t.text, t.size)).toBeLessThanOrEqual(720 - 16);
+  const svgOf = (card: any, portrait = false) => previewSvg({ entry: { name: "a", display_name: null } as any, theme: {} as any, card: { ...card, ...(portrait ? { portrait: { by: "human" } } : {}) },
+    locked: false, agentEdit: false, limits: {} }, "dark", { avatar: null, portrait: portrait ? "portrait.jpg" : null, banner: null, background: null } as any);
+  it("wraps a cap-length CJK tagline and bio, and clips the card text to its column", () => {
+    for (const portrait of [false, true]) {
+      const svg = svgOf({ tagline: { text: TAG, by: "human" }, bio: { text: TAG.repeat(4), by: "human" } }, portrait);
+      const clip = /<clipPath id="card-text"><rect x="(\d+)" y="[\d.]+" width="(\d+)"/.exec(svg)!;
+      expect(clip).not.toBeNull();
+      const group = svg.slice(svg.indexOf('<g clip-path="url(#card-text)">'), svg.indexOf("</g>", svg.indexOf('<g clip-path="url(#card-text)">')));
+      const texts = [...group.matchAll(/<text x="(\d+)"[^>]*font-size="(\d+)"[^>]*>([^<]*)<\/text>/g)];
+      expect(texts.length).toBeGreaterThan(3);
+      for (const [, x, size, text] of texts) { expect(+x).toBe(+clip[1]); expect(floorPx(text, +size)).toBeLessThanOrEqual(+clip[2]); }
+    }
   });
 });
 
