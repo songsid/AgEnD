@@ -1,5 +1,5 @@
 import { validPublicLinkPatch } from "./public-web-link.js";
-import { validateProvider } from "./backend/types.js";
+import { PROMPT_CACHE_TTLS, validateProvider } from "./backend/types.js";
 import { DELIVERY_WORKER_MODES, type WebConfig } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
@@ -187,6 +187,10 @@ export function validateFleetConfig(config: unknown): ValidationResult {
                   `${backendName} has no credential home yet — the profile will be ignored`);
               }
             }
+          }
+          // #2010: opt-in Claude prompt-cache TTL ("1h" | "5m"); unset leaves the CLI's own choice.
+          if (backendName === "claude-code" && settings.prompt_cache_ttl !== undefined && !PROMPT_CACHE_TTLS.includes(settings.prompt_cache_ttl as never)) {
+            err(`${optionPath}.prompt_cache_ttl`, `must be one of: ${PROMPT_CACHE_TTLS.join(", ")}`);
           }
           if (backendName === "codex" && settings.provider !== undefined) {
             if (typeof settings.provider !== "string") {

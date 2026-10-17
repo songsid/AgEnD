@@ -6,7 +6,7 @@
  * - The SVG embeds only this instance's pictures as data: URIs and references nothing else (no http, no //, no other
  *   instance); its text is escaped; another instance's theme never appears.
  * - The fleet never names or opens a path: the files are bytes, written by the daemon or the CLI into the agent's own
- *   .agend/appearance/ (no symlinked folder, never the AgEnD state directory); a large preview comes in parts.
+ *   .agend/appearance/ (no symlinked folder; only its own managed workspace may be in AgEnD state); a large preview comes in parts.
  */
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
@@ -24,7 +24,7 @@ import { page, type AppPage } from "./helpers/app-harness.js";
 
 const dirs: string[] = [];
 let pg: AppPage | null = null;
-afterEach(() => { vi.restoreAllMocks(); if (pg) { pg.restore(); pg = null; } for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); if (pg) { pg.restore(); pg = null; } for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 const statSize = (p: string) => statSync(p).size;
 const tmp = (p: string) => { const d = mkdtempSync(join(tmpdir(), p)); dirs.push(d); return d; };
 const be32 = (n: number) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
@@ -250,8 +250,9 @@ describe("written on the agent's side", () => {
     expect(await writeAgentFile(".agend/appearance", "light.svg", Buffer.from("x"), { workspace: undefined, stateDir: tmp("s-") })).toEqual({ ok: false, reason: "this instance has no working directory" });
     for (const name of ["../x.svg", ".hidden", "a/b.svg"]) expect(await writeAgentFile(".agend/appearance", name, Buffer.from("x"), { workspace: tmp("w-"), stateDir: tmp("s-") }), name).toEqual({ ok: false, reason: "not a plain name" });
   });
-  it("the daemon: asks the fleet, takes the parts, writes each file, answers with the SVGs' and the pictures' paths", async () => {
-    const ws = tmp("agend-app-ws-");
+  it.each([false, true])("daemon preview writes (state workspace=%s)", async classic => {
+    const home = tmp("agend-app-home-"), ws = classic ? join(home, "workspaces/a") : tmp("agend-app-ws-");
+    mkdirSync(ws, { recursive: true }); vi.stubEnv("AGEND_HOME", home);
     const { t } = tools({ big: true });
     const { Daemon } = await import("../src/daemon.js");
     const daemon = new Daemon("a", { working_directory: ws, log_level: "error", restart_policy: { max_retries: 1, backoff: "exponential", reset_after: 300 },
@@ -267,13 +268,14 @@ describe("written on the agent's side", () => {
     daemon.handleToolCall({ tool: "preview_web_appearance", args: {}, requestId: 9 }, {} as never);
     await vi.waitFor(() => expect(send).toHaveBeenCalledOnce(), { timeout: 20_000 });
     const answer = send.mock.calls[0]![1] as { requestId: number; result: { files: Array<{ mode: string; path: string }>; pictures: Array<{ role: string; path: string }> } };
+    expect(answer).toMatchObject({ requestId: 9, result: { files: expect.any(Array), pictures: expect.any(Array) } });
     const dir = join(ws, ".agend", "appearance");
     expect(answer.result.files).toEqual([{ mode: "light", path: join(dir, "light.svg") }, { mode: "dark", path: join(dir, "dark.svg") }]);
     expect(answer.result.pictures.map(p => p.role)).toEqual(["avatar", "portrait", "banner", "background"]);
     expect([readFileSync(join(dir, "dark.svg"), "utf8").startsWith("<?xml"), statSize(join(dir, "dark.svg")) < 32 * 1024, statSize(join(dir, "portrait.png")) > 1_000_000]).toEqual([true, true, true]);
     expect(Math.max(...sizes)).toBeLessThan(1024 * 1024);
   }, 60_000);
-  it("agend-agent appearance / appearance preview dark: one op each; the preview is written in the working directory", async () => {
+  it.each([false, true])("agend-agent appearance preview (state workspace=%s)", async classic => {
     const { createServer } = await import("node:http");
     const { execFile } = await import("node:child_process");
     const { t } = tools();
@@ -284,12 +286,14 @@ describe("written on the agent's side", () => {
     }); });
     await new Promise<void>(r => server.listen(0, "127.0.0.1", () => r()));
     const port = (server.address() as { port: number }).port;
-    const home = tmp("agend-app-cli-"), ws = tmp("agend-app-cli-ws-");
+    const home = tmp("agend-app-cli-"), ws = classic ? join(home, "workspaces/a") : tmp("agend-app-cli-ws-");
+    mkdirSync(ws, { recursive: true });
     const run = (...argv: string[]) => new Promise<string>(resolve => execFile(process.execPath, ["--import", pathToFileURL(join(process.cwd(), "node_modules/tsx/dist/loader.mjs")).href, join(process.cwd(), "src/agent-cli.ts"), ...argv], {
       cwd: ws, env: { ...process.env, AGEND_PORT: String(port), AGEND_INSTANCE_NAME: "a", AGEND_HOME: home }, timeout: 60_000 }, (_e, stdout) => resolve(stdout)));
     try {
       expect(JSON.parse(await run("appearance")).name).toBe("a");
       const out = JSON.parse(await run("appearance", "preview", "dark"));
+      expect(out).toMatchObject({ files: expect.any(Array), pictures: expect.any(Array) });
       expect([out.files, out.pictures.length]).toEqual([[{ mode: "dark", path: join(ws, ".agend", "appearance", "dark.svg") }], 4]);
       expect(readFileSync(join(ws, ".agend", "appearance", "dark.svg"), "utf8")).toMatch(/^<\?xml/);
       expect(ops).toEqual(["appearance-get", "appearance-preview"]);

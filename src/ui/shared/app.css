@@ -157,7 +157,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 }
 /* #1604: one row — Settings and Session (the anonymous View reader: Sign in and the theme/language popover). Their
    pop-ups open over the whole footer's width. */
-.side-foot { display: flex; align-items: center; gap: var(--s-1); padding: var(--s-2); position: relative; }
+/* #1922: a divider above the footer, with the filter block's bottom padding and the footer's top padding trimmed to
+   --s-1: the gap reads as a section break, not an empty ~20 px band (the two --s-2 paddings used to stack). */
+.side-foot { display: flex; align-items: center; gap: var(--s-1); padding: var(--s-1) var(--s-2) var(--s-2); border-top: 1px solid var(--border); position: relative; }
 .side-foot > .side-row, .side-foot > .session { flex: 1; min-width: 0; }
 .side-foot > .session { position: static; }
 .side-foot .side-row span:not(.dot):not(.meta) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -803,7 +805,7 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .dragging { opacity: 0.4; }
 .drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 .drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
-.v-filter { flex: none; padding: var(--s-2) var(--s-3) var(--s-2); border-top: 1px solid var(--border); }
+.v-filter { flex: none; padding: var(--s-2) var(--s-3) var(--s-1); border-top: 1px solid var(--border); }
 .v-filter-box { display: flex; align-items: center; gap: var(--s-2); padding: 0 var(--s-1) 0 var(--s-3); border-radius: var(--r-sm); background: var(--surface); color: var(--text-3); }
 .v-filter-box:focus-within { box-shadow: 0 0 0 2px var(--focus); }
 .v-filter-box input { flex: 1; min-width: 0; height: 34px; border: 0; background: transparent; color: var(--text); font-size: var(--fs-sm); outline: none; }

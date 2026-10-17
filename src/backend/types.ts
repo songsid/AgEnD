@@ -963,6 +963,18 @@ export function validateModel(model: string): string {
   return model;
 }
 
+/**
+ * #2010: Claude Code's prompt-cache TTL as an opt-in per instance (`backend_options.claude-code.prompt_cache_ttl`).
+ * Unset (the default) leaves the CLI's automatic choice; a value is passed as CLAUDE_CODE_PROMPT_CACHE_TTL and
+ * CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL on the next launch.
+ */
+export const PROMPT_CACHE_TTLS = ["1h", "5m"] as const;
+export type PromptCacheTtl = typeof PROMPT_CACHE_TTLS[number];
+export function promptCacheTtl(backendOptions: Record<string, unknown> | undefined): PromptCacheTtl | null {
+  const v = backendOptions?.prompt_cache_ttl;
+  return typeof v === "string" && (PROMPT_CACHE_TTLS as readonly string[]).includes(v) ? v as PromptCacheTtl : null;
+}
+
 /** Guard a provider name before embedding it in a shell command. */
 export function validateProvider(provider: string): string {
   if (!/^[A-Za-z0-9_-]+$/.test(provider)) {

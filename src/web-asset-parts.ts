@@ -10,7 +10,7 @@
  * The fleet keeps one upload per instance and drops it after a minute without a part (web-appearance.ts).
  */
 import { createHash } from "node:crypto";
-import { writeAgentFile } from "./agent-file-read.js";
+import { writeAgentFile, type AgentFileContext } from "./agent-file-read.js";
 
 /** Every picture slot an agent uploads for (the theme's two and the card's two). Here so agend-agent stays small. */
 export const THEME_ASSET_SLOTS = ["background", "avatar", "portrait", "banner"] as const;
@@ -115,7 +115,7 @@ export const MOD_MAX_PARTS = 24;
 export const MOD_UPLOAD_MAX_BYTES = 8 * 1024 * 1024;
 
 /** Write a received mod into `.agend/mods/` of the working directory (on the agent's side), and say where. */
-export async function writeModFile(files: Array<{ name: string; data: Buffer }>, opts: { workspace: string | undefined; stateDir: string }): Promise<{ path: string; bytes: number } | { error: string }> {
+export async function writeModFile(files: Array<{ name: string; data: Buffer }>, opts: AgentFileContext): Promise<{ path: string; bytes: number } | { error: string }> {
   const f = files.length === 1 ? files[0]! : null;
   if (!f || !MOD_FILE.test(f.name)) return { error: ".agend/mods — not one mod file" };
   const w = await writeAgentFile(".agend/mods", f.name, f.data, opts);
@@ -126,7 +126,7 @@ export async function writeModFile(files: Array<{ name: string; data: Buffer }>,
  * Write a received preview into `.agend/appearance/` of the working directory (on the agent's side), and say where:
  * the SVG per mode, and the pictures they name (Read those as images).
  */
-export async function writePreview(files: Array<{ name: string; data: Buffer }>, opts: { workspace: string | undefined; stateDir: string }):
+export async function writePreview(files: Array<{ name: string; data: Buffer }>, opts: AgentFileContext):
   Promise<{ files: Array<{ mode: string; path: string }>; pictures: Array<{ role: string; path: string }> } | { error: string }> {
   const out = { files: [] as Array<{ mode: string; path: string }>, pictures: [] as Array<{ role: string; path: string }> };
   for (const f of files) {
