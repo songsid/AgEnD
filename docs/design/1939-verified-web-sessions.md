@@ -50,6 +50,9 @@ only, no permission.
     `cross-instance-messaging` and `worker-collaboration` skills.
 - **No code gate.** No code anywhere checks a human approval before a merge, release or deletion. The coordinator's
   gate and the consent rules are instructions only.
+- **A stale design claim.** `docs/design/web-unification-secure-login.zh-TW.md` lists D5 (`403 reauth_required` for
+  risky public-link actions) as implemented (#1018), but no `reauth` exists in `src/`. The step-up here supersedes
+  D5.
 
 ## 3. Which sessions qualify
 
@@ -314,8 +317,8 @@ These must hold, and a change to any of them needs a security review and a fresh
 
 ## 10. Migration and staging
 
-- **S1: observe only.** Admission computes `authority` and writes it into receipts, and `delivery_status` returns
-  it. Instruction text is unchanged, so agents keep refusing web. Ship this first and watch the `web_authority`
+- **S1: observe only.** Sign-in records each session's `peer` (§3.4). Admission computes `authority` and writes it
+  into receipts, and `delivery_status` returns it. Instruction text is unchanged, so agents keep refusing web. Ship this first and watch the `web_authority`
   events for a beta cycle.
 - **S2: step-up.** Add `step-up-actions.ts`, the Authorize dialog, DM codes, platform clicks, `request_step_up` and
   the audit events. Instructions are still unchanged.
