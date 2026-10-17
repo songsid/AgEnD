@@ -13,7 +13,10 @@
 //   panel allows (no larger than life), on a phone no smaller than readable. 0 / Fit shows the whole fleet.
 // - Presentation only, like the list: a card opens that instance's chat; nothing is edited here (#1689 is how teams
 //   change). The live state is the app store's (fleet-org.js buildOrgView), so the canvas moves with the stream.
+// - Live traffic (fleet-traffic.js): the messages between instances, drawn between the team boxes and the cards (never
+//   hidden under a box, never across a name). Live on or off per device; the list says it in words ("Sending: …").
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
+import { appStore } from "/assets/app-store.js";
 import { t, register } from "/assets/app-i18n.js";
 import { chatPath } from "/assets/app-route.js";
 import { navigate } from "/assets/app-nav.js";
@@ -22,6 +25,8 @@ import { Icon } from "/assets/ui-icons.js";
 import { avatarOf, backendLabel, firstCharacter, namesOf } from "/assets/instance-nav.js";
 import { identityClasses, identityOf, paintIdentity, useIdentityColors } from "/assets/identity-color.js";
 import { buildOrgView, OrgChart, OrgSummary } from "./fleet-org.js";
+import { OC, REST_KEY, SUM_LINE, canvasLayout, openingRegion, summaryRows } from "./fleet-canvas-layout.js";
+import { createTrafficStore, FAR_K, POLL_MS, sendingBy, trafficEdges } from "./fleet-traffic.js";
 
 register("orgc", {
   en: {
@@ -30,6 +35,8 @@ register("orgc", {
     label: "Org chart canvas. Tab or the arrow keys move between instances, Enter opens a chat, + and − zoom, 0 fits the fleet.",
     expand: "Expand", collapse: "Collapse", members: "{0} members", member: "1 member", inFolded: "{0} found · expand", noMembers: "No members",
     openChat: "Open chat", minimap: "Overview: click to move there",
+    live: "Live", liveOn: "Hide live traffic", liveOff: "Show live traffic", lgTask: "delegate_task", lgSend: "send_to_instance",
+    lgReport: "report_result", lgBroadcast: "broadcast", lgQueued: "queued", lgFading: "delivered", lgTeam: "between teams", legend: "Key",
   },
   "zh-TW": {
     view: "檢視", canvas: "畫布", list: "清單", find: "尋找 instance", findShort: "尋找", found: "找到 {0} 個", foundOne: "找到 1 個", noMatch: "沒有符合的",
@@ -37,120 +44,15 @@ register("orgc", {
     label: "組織圖畫布。用 Tab 或方向鍵在 instance 之間移動，Enter 開啟聊天，+ 和 − 縮放，0 顯示整個 fleet。",
     expand: "展開", collapse: "收合", members: "{0} 名成員", member: "1 名成員", inFolded: "找到 {0} 個 · 展開", noMembers: "沒有成員",
     openChat: "開啟聊天", minimap: "總覽：點一下移到那裡",
+    live: "即時", liveOn: "隱藏即時往來", liveOff: "顯示即時往來", lgTask: "delegate_task", lgSend: "send_to_instance",
+    lgReport: "report_result", lgBroadcast: "broadcast", lgQueued: "排隊中", lgFading: "已送達", lgTeam: "team 之間", legend: "圖例",
   },
 });
 const tc = (k, ...v) => t(`orgc.${k}`, ...v);
 
-// ── Layout (pure: the same structure always gives the same picture) ──
+// ── Layout: fleet-canvas-layout.js (pure; the traffic overlay routes through the same lanes) ──
 
-/** Sizes in canvas units. NW×NH a member card, LW×LH a General card; FOLDED a folded (or empty) team's height. */
-export const OC = { NW: 184, NH: 56, GAP: 18, PAD: 24, HEAD: 34, TEAM_GAP: 56, ROW_GAP: 96, ROW_MAX: 1400, ROW_MAX_NARROW: 460, LW: 232, LH: 68, TOP_Y: 20, BUS: 44, FOLDED: 64, TRUNK: -30 };
-const colsFor = (n, narrow) => (n <= 1 ? 1 : n <= 4 || narrow ? 2 : 3);
-/** The key a team folds by (per device): its name; the instances in no team have one of their own no team name can be. */
-export const REST_KEY = "\u0000rest";
-
-/**
- * Where everything goes, from buildOrgView's answer and the folded teams' keys: `tops` (General's cards), `boxes`
- * (each team: its slot, its header, its member cells unless folded), the tree lines (`tree`: SVG path data) and the
- * size of the whole. `narrow`: a phone's packing.
- */
-export function canvasLayout(view, folded = new Set(), { narrow = false, label = (s, n) => `${n} ${s}` } = {}) {
-  const { NW, NH, GAP, PAD, HEAD } = OC;
-  const groups = [...view.teams.map((tm) => ({ key: tm.name, name: tm.name, loose: false, nodes: tm.nodes, counts: tm.counts })),
-    ...(view.rest.nodes.length ? [{ key: REST_KEY, name: null, loose: true, nodes: view.rest.nodes, counts: view.rest.counts }] : [])];
-  const rows = [];
-  let row = [], x = 0;
-  for (const g of groups) {
-    const n = g.nodes.length, cols = colsFor(n, narrow), lines = Math.ceil(n / cols);
-    const w = PAD * 2 + cols * NW + (cols - 1) * GAP;
-    const fullH = n ? HEAD + PAD + lines * NH + (lines - 1) * GAP + PAD : OC.FOLDED;
-    if (row.length && x + w > (narrow ? OC.ROW_MAX_NARROW : OC.ROW_MAX)) { rows.push(row); row = []; x = 0; }
-    row.push({ ...g, cols, w, fullH, x });
-    x += w + OC.TEAM_GAP;
-  }
-  if (row.length) rows.push(row);
-  const boxes = [];
-  let y = view.top.length ? OC.TOP_Y + OC.LH + 100 : OC.BUS + 16;
-  for (const r of rows) {
-    const slotH = Math.max(...r.map((b) => b.fullH));
-    for (const b of r) {
-      const isFolded = b.nodes.length > 0 && folded.has(b.key);
-      // Folded: its members' states in rows that fit the box (never wider; never taller than its open slot).
-      const summary = isFolded ? summaryRows(b.counts, b.w, label) : [];
-      const box = { key: b.key, name: b.name, loose: b.loose, nodes: b.nodes, counts: b.counts, cols: b.cols, x: b.x, y, w: b.w,
-        h: isFolded ? Math.min(b.fullH, Math.max(OC.FOLDED, HEAD + 10 + summary.length * SUM_LINE)) : b.fullH, slotH, folded: isFolded, summary,
-        busY: y - OC.BUS, cells: [] };
-      if (!isFolded) b.nodes.forEach((node, i) => box.cells.push({ node, key: `${b.key}/${node.name}`,
-        x: b.x + PAD + (i % b.cols) * (NW + GAP), y: y + HEAD + PAD + Math.floor(i / b.cols) * (NH + GAP), w: NW, h: NH }));
-      boxes.push(box);
-    }
-    y += slotH + OC.ROW_GAP;
-  }
-  const rowsW = boxes.length ? Math.max(...boxes.map((b) => b.x + b.w)) : 0;
-  const topW = view.top.length * OC.LW + Math.max(0, view.top.length - 1) * GAP;
-  const width = Math.max(rowsW, topW);
-  const tops = view.top.map((node, i) => ({ node, key: `\u0000top/${node.name}`, x: width / 2 - topW / 2 + i * (OC.LW + GAP), y: OC.TOP_Y, w: OC.LW, h: OC.LH }));
-  const height = boxes.length ? y - OC.ROW_GAP : tops.length ? OC.TOP_Y + OC.LH : 0;
-  return { tops, boxes, width, height, tree: treeLines(tops, boxes) };
-}
-
-/** A folded team's summary line height, and a label's width estimate (canvas units: wide for CJK, narrow otherwise). */
-const SUM_LINE = 20;
-const textWidth = (s) => [...s].reduce((w, ch) => w + (ch.codePointAt(0) >= 0x2e80 ? 12 : 6.6), 0);
-/**
- * A folded team's states as rows of { s, n, label, dx } that fit a box `w` wide (dx from the box's left), most pressing
- * first; an item never splits, and one wider than a row has the row to itself.
- */
-export function summaryRows(counts, w, label) {
-  const rows = [];
-  let row = [], x = 14;
-  for (const [s, n] of counts) {
-    const text = label(s, n), iw = 24 + textWidth(text);
-    if (row.length && x + iw > w - 14) { rows.push(row); row = []; x = 14; }
-    row.push({ s, n, label: text, dx: x });
-    x += iw;
-  }
-  if (row.length) rows.push(row);
-  return rows;
-}
-
-/** General's stem, a bus over each row of teams, the trunk joining the rows at the left, one drop per team. */
-function treeLines(tops, boxes) {
-  const d = [];
-  const teamed = boxes.filter((b) => !b.loose);
-  if (!teamed.length) return d;
-  const buses = [...new Set(teamed.map((b) => b.busY))].sort((a, b) => a - b);
-  const first = buses[0], last = buses[buses.length - 1];
-  let stemX = null;
-  if (tops.length) {
-    const cx = tops.map((tp) => tp.x + tp.w / 2), bottom = tops[0].y + tops[0].h;
-    stemX = (Math.min(...cx) + Math.max(...cx)) / 2;
-    if (tops.length > 1) {
-      const joinY = bottom + 16;
-      for (const x of cx) d.push(`M${x} ${bottom} V${joinY}`);
-      d.push(`M${Math.min(...cx)} ${joinY} H${Math.max(...cx)}`, `M${stemX} ${joinY} V${first}`);
-    } else d.push(`M${stemX} ${bottom} V${first}`);
-  }
-  if (last > first) d.push(`M${OC.TRUNK} ${first} V${last}`);
-  for (const busY of buses) {
-    const xs = teamed.filter((b) => b.busY === busY).map((b) => b.x + b.w / 2);
-    const ends = busY === first ? [...xs, ...(stemX === null ? [] : [stemX]), ...(last > first ? [OC.TRUNK] : [])] : [...xs, OC.TRUNK];
-    d.push(`M${Math.min(...ends)} ${busY} H${Math.max(...ends)}`);
-  }
-  for (const b of teamed) d.push(`M${b.x + b.w / 2} ${b.busY} V${b.y}`);
-  return d;
-}
-
-/** The region the canvas opens on: General and the first row of teams (the whole canvas when there is neither). */
-export function openingRegion(L) {
-  const firstBus = L.boxes.length ? Math.min(...L.boxes.map((b) => b.busY)) : null;
-  // The trunk at the left joins the rows: in view too, not cut by the edge.
-  const trunk = L.boxes.some((b) => b.busY !== firstBus) ? [{ x: OC.TRUNK - 8, y: firstBus, w: 1, h: 1 }] : [];
-  const parts = [...L.tops, ...L.boxes.filter((b) => b.busY === firstBus).map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.slotH })), ...trunk];
-  if (!parts.length) return { x: 0, y: 0, w: Math.max(1, L.width), h: Math.max(1, L.height) };
-  const x0 = Math.min(...parts.map((p) => p.x)), y0 = Math.min(...parts.map((p) => p.y));
-  return { x: x0, y: y0, w: Math.max(...parts.map((p) => p.x + p.w)) - x0, h: Math.max(...parts.map((p) => p.y + p.h)) - y0 };
-}
+export { OC, REST_KEY, SUM_LINE, canvasLayout, openingRegion, summaryRows };
 
 // ── The view: pan, zoom, fit (pure helpers; the component applies them) ──
 
@@ -181,8 +83,9 @@ export function zoomAt(v, f, cx, cy) {
 
 // ── Per device ──
 
-const MODE_KEY = "agend_org_mode", FOLD_KEY = "agend_org_folded";
+const MODE_KEY = "agend_org_mode", FOLD_KEY = "agend_org_folded", LIVE_KEY = "agend_org_live", KEY_KEY = "agend_org_key";
 function readMode() { try { return localStorage.getItem(MODE_KEY) === "list" ? "list" : "canvas"; } catch { return "canvas"; } }
+function readLive() { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch { return true; } }
 function readFolded() {
   try { const a = JSON.parse(localStorage.getItem(FOLD_KEY) || "[]"); return new Set(Array.isArray(a) ? a.filter((x) => typeof x === "string").slice(0, 500) : []); } catch { return new Set(); }
 }
@@ -254,9 +157,73 @@ function TeamBox({ b, q, onFold }) {
 /** Every card, in the order Tab walks them (General, then each team's members in reading order). */
 const cardsOf = (L) => [...L.tops, ...L.boxes.flatMap((b) => b.cells)];
 
-/** The canvas body: `view` buildOrgView's answer; `folded` the folded teams' keys; `q` the search needle. */
-function Canvas({ view, folded, onFold, q, jump }) {
+const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** The traffic lines: dotted while queued, a dash and a pulse while delivering, fading once delivered; ×N on shared lines. */
+function TrafficLayer({ edges, q }) {
+  const still = reducedMotion();
+  return html`<g class="oc-flows" aria-hidden="true">${edges.map((e) => {
+    const dim = q && !e.names.some((n) => n.toLowerCase().includes(q));
+    return html`<g key=${e.key} class=${`oc-fl${dim ? " dim" : ""}`}>
+      <path class="oc-flow-halo" d=${e.d} />
+      <path class=${`oc-flow h-${e.hue} ph-${e.phase}`} d=${e.d} marker-start=${`url(#oc-src-${e.phase === "fading" ? "fading" : e.hue})`} marker-end=${`url(#oc-ah-${e.phase === "fading" ? "fading" : e.hue})`} />
+      ${e.phase === "live" && !still ? html`<circle class=${`oc-pulse h-${e.hue}`} r="4"><animateMotion dur=${`${Math.max(1.6, e.pts.length * 0.3)}s`} repeatCount="indefinite" path=${e.d} /></circle>` : null}
+      ${e.badge ? html`<g class="oc-badge" transform=${`translate(${e.badge.x - 14} ${e.badge.y - 10})`}><rect width="28" height="20" rx="10" /><text x="14" y="14" text-anchor="middle">${`×${e.n}`}</text></g>` : null}
+    </g>`;
+  })}</g>`;
+}
+const ARROWS = ["task", "send", "report", "broadcast", "team", "fading"];
+
+/** The key to the lines: folded until the person opens it (open, it covers a corner of the canvas); kept per device. */
+function Legend() {
+  const [open] = useState(() => { try { return localStorage.getItem(KEY_KEY) === "1"; } catch { return false; } });
+  const row = (cls, k) => html`<span class="oc-lg"><i class=${`oc-sw ${cls}`} aria-hidden="true"></i>${tc(k)}</span>`;
+  return html`<details class="oc-legend" open=${open} onToggle=${(e) => save(KEY_KEY, e.currentTarget.open ? "1" : "0")}><summary>${tc("legend")}</summary>
+    <div class="oc-lg-rows">${row("h-task", "lgTask")}${row("h-send", "lgSend")}${row("h-report", "lgReport")}${row("h-broadcast", "lgBroadcast")}
+    ${row("ph-queued", "lgQueued")}${row("ph-fading", "lgFading")}</div></details>`;
+}
+
+/**
+ * The page's traffic while the canvas (or its list) is open and Live is on: the snapshot on opening; then the stream's
+ * items — or, with no live stream (the public link, or a stream that fell back to polling), the snapshot every
+ * POLL_MS while the page is shown; read again when the stream comes back. Everything is the lease's (#1408 §4).
+ */
+function useTraffic(lease, on) {
+  const store = useMemo(createTrafficStore, []);
+  const [rev, setRev] = useState(0);
+  useEffect(() => {
+    if (!on || !lease) return undefined;
+    const bump = () => setRev((n) => n + 1);
+    const read = async () => {
+      try {
+        const r = await lease.fetch("/ui/traffic", { method: "GET", headers: { "Content-Type": "application/json" } });
+        if (!lease.current() || !r.ok) return;
+        const d = await r.json();
+        if (lease.current() && store.load(d)) bump();
+      } catch { /* the next poll, or the stream, brings it */ }
+    };
+    void read();
+    const sub = appStore.get().streamOn;
+    // No live stream to bring traffic: the public link (poll transport), or a stream that fell back to /ui/poll.
+    const polled = () => globalThis.document?.body?.dataset?.webTransport === "poll" || appStore.get().connection === "polling";
+    const offs = [];
+    if (sub) {
+      offs.push(lease.hold(sub("traffic", (item) => { if (store.apply(item)) bump(); })));
+      offs.push(lease.hold(sub("connection", (c) => { if (c === "live") void read(); })));
+    }
+    const hs = [
+      lease.interval(() => { if (polled() && !globalThis.document?.hidden) void read(); }, POLL_MS),
+      lease.interval(() => { if (store.sweep()) bump(); }, 1000),
+    ];
+    return () => { for (const off of offs) off(); for (const h of hs) lease.clear(h); };
+  }, [lease, on]);
+  return useMemo(() => (on ? store.items() : []), [rev, on]);
+}
+
+/** The canvas body: `view` buildOrgView's answer; `folded` the folded teams' keys; `q` the search needle; `traffic` the live items (null: Live is off). */
+function Canvas({ view, folded, onFold, q, jump, traffic }) {
   const [narrow] = useState(() => typeof matchMedia === "function" && matchMedia("(max-width: 640px)").matches);
+  const [far, setFar] = useState(false);
   const L = useMemo(() => canvasLayout(view, folded, { narrow, label: (s, n) => `${n} ${STATE_LABEL(s)}` }), [view, folded, narrow]);
   const svgRef = useRef(null), worldRef = useRef(null), miniRef = useRef(null), miniViewRef = useRef(null);
   const vp = useRef(null);
@@ -272,7 +239,8 @@ function Canvas({ view, folded, onFold, q, jump }) {
     const s = size(), m = miniViewRef.current;
     if (m) for (const [k, val] of [["x", -v.x / v.k], ["y", -v.y / v.k], ["width", s.w / v.k], ["height", s.h / v.k]]) m.setAttribute(k, String(val));
   };
-  const set = (v) => { vp.current = v; apply(); };
+  // Zoomed out past FAR_K, traffic is drawn per team pair: a re-render only when that changes.
+  const set = (v) => { vp.current = v; apply(); if ((v.k < FAR_K) !== far) setFar(v.k < FAR_K); };
   const whole = () => ({ x: OC.TRUNK - 20, y: 0, w: Math.max(1, L.width - OC.TRUNK + 40), h: Math.max(1, L.height + 10) });
   const fit = () => set(fitView(whole(), size()));
   const zoomBy = (f) => { const s = size(); set(zoomAt(vp.current, f, s.w / 2, s.h / 2)); };
@@ -289,7 +257,9 @@ function Canvas({ view, folded, onFold, q, jump }) {
   // than readable.
   useLayoutEffect(() => {
     vp.current = narrow ? fitView(openingRegion(L), size(), { margin: 12, minK: 0.75 }) : fitView(whole(), size(), { widthOnly: true, maxK: 1, minK: 0.6 });
+    setFar(vp.current.k < FAR_K);
   }, []);
+  const edges = useMemo(() => (traffic ? trafficEdges(traffic, L, { far }) : []), [traffic, L, far]);
   // Preact owns the markup, not the transform: put it back after every render.
   useLayoutEffect(apply);
   // A search's Enter: the first match, unfolded (by the panel) and then brought into view — once. It waits for the
@@ -389,16 +359,22 @@ function Canvas({ view, folded, onFold, q, jump }) {
   return html`<div class="oc-stage">
     <svg ref=${svgRef} class="oc-svg" role="application" tabindex="0" aria-label=${tc("label")} onWheel=${onWheel} onPointerDown=${onPointerDown}
       onPointerMove=${onPointerMove} onPointerUp=${onPointerUp} onPointerCancel=${onPointerUp} onKeyDown=${onKeyDown} onFocusIn=${onFocusIn} onClickCapture=${onClickCapture}>
-      <defs><clipPath id="oc-clip-av" clipPathUnits="objectBoundingBox"><circle cx="0.5" cy="0.5" r="0.5" /></clipPath></defs>
+      <defs><clipPath id="oc-clip-av" clipPathUnits="objectBoundingBox"><circle cx="0.5" cy="0.5" r="0.5" /></clipPath>
+        ${ARROWS.map((a) => html`<marker key=${a} id=${`oc-ah-${a}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0 0 L10 5 L0 10 z" class=${`oc-ah h-${a}`} /></marker>`)}
+        ${ARROWS.map((a) => html`<marker key=${`s-${a}`} id=${`oc-src-${a}`} viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5">
+          <circle cx="5" cy="5" r="4" class=${`oc-ah h-${a}`} /></marker>`)}</defs>
       <g ref=${worldRef} class="oc-world">
         <g class="oc-tree">${L.tree.map((d, i) => html`<path key=${i} d=${d} />`)}</g>
         <g class="oc-teams">${L.boxes.map((b) => html`<${TeamBox} key=${b.key} b=${b} q=${q} onFold=${onFold} />`)}</g>
+        <${TrafficLayer} edges=${edges} q=${q} />
         <g class="oc-cards">
           ${L.tops.map((c) => html`<${Card} key=${c.key} c=${c} lead=${true} cls=${q ? (hits(c.node, q) ? "match" : "dim") : ""} onOpen=${open} />`)}
           ${L.boxes.flatMap((b) => b.cells.map((c) => html`<${Card} key=${c.key} c=${c} lead=${false} cls=${q ? (hits(c.node, q) ? "match" : "dim") : ""} onOpen=${open} />`))}
         </g>
       </g>
     </svg>
+    ${traffic ? html`<${Legend} />` : null}
     <div class="oc-zoom" role="group" aria-label=${tc("view")}>
       <button type="button" class="icon-btn" aria-label=${tc("zoomIn")} title=${tc("zoomIn")} onClick=${() => zoomBy(1.25)}><${Icon} name="plus" size=${16} /></button>
       <button type="button" class="icon-btn" aria-label=${tc("zoomOut")} title=${tc("zoomOut")} onClick=${() => zoomBy(0.8)}><span aria-hidden="true">−</span></button>
@@ -443,14 +419,18 @@ function focusCard(svg, key) {
  * The tab's body (the Fleet panel's loader passes /ui/org's answer and the app store): Canvas or List, chosen per
  * device; the list is fleet-org.js's chart, which is also what a screen reader is pointed to.
  */
-export function OrgCanvas({ org, app }) {
+export function OrgCanvas({ org, app, lease }) {
   useIdentityColors();
   const [mode, setMode] = useState(readMode);
+  const [live, setLive] = useState(readLive);
+  const traffic = useTraffic(lease, live);
+  const sending = useMemo(() => sendingBy(traffic), [traffic]);
   const [folded, setFolded] = useState(readFolded);
   const [query, setQuery] = useState("");
   const [jump, setJump] = useState(null);
   const view = useMemo(() => buildOrgView(org, app), [org, app]);
   useEffect(() => { save(MODE_KEY, mode); }, [mode]);
+  useEffect(() => { save(LIVE_KEY, live ? "1" : "0"); }, [live]);
   if (!app.ready) return html`<${Skeleton} lines=${4} />`;
   if (!view.total) return html`<${Empty} icon="team" title=${t("org.empty")} hint=${t("org.emptyHint")} />`;
   const q = needle(query);
@@ -481,10 +461,12 @@ export function OrgCanvas({ org, app }) {
         ${mode === "canvas" ? html`<label class="s-search oc-find"><${Icon} name="search" size=${14} /><span class="sr-only">${tc("find")}</span>
           <input type="search" value=${query} placeholder=${tc("findShort")} autocomplete="off" onInput=${(e) => setQuery(e.target.value)} onKeyDown=${onFind} />
           ${q ? html`<span class="oc-found" role="status">${found ? (found === 1 ? tc("foundOne") : tc("found", found)) : tc("noMatch")}</span>` : null}</label>` : null}
+        <button type="button" class=${`btn btn-sm oc-live${live ? " on" : ""}`} aria-pressed=${live ? "true" : "false"} title=${live ? tc("liveOn") : tc("liveOff")}
+          onClick=${() => setLive((v) => !v)}><span class="oc-live-dot" aria-hidden="true"></span>${tc("live")}</button>
         <div class="seg-inline" role="group" aria-label=${tc("view")}>${modeBtn("canvas")}${modeBtn("list")}</div>
       </div>
     </div>
-    ${mode === "list" ? html`<${OrgChart} org=${org} app=${app} bare=${true} />`
-      : html`<${Canvas} view=${view} folded=${folded} onFold=${onFold} q=${q} jump=${jump} />`}
+    ${mode === "list" ? html`<${OrgChart} org=${org} app=${app} bare=${true} sending=${sending} />`
+      : html`<${Canvas} view=${view} folded=${folded} onFold=${onFold} q=${q} jump=${jump} traffic=${live ? traffic : null} />`}
   </div>`;
 }

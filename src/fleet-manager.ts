@@ -232,6 +232,7 @@ import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScope } from "./command-table.js";
 import { crossInstanceVisibility, runVisibilityCommand } from "./cross-instance-notice.js";
+import { guestRouteDecision } from "./web-guest-access.js";
 import { TrafficLog, trafficItem, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
@@ -916,6 +917,9 @@ function emojiListFilter(opts: Record<string, unknown>): {
   };
 }
 
+
+/** #1920: a guest's scope until phase 2 derives one: nothing. */
+const NO_GUEST_SCOPE: ReadonlySet<string> = new Set();
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
@@ -20348,6 +20352,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.logger.warn({ host: name }, "Web request refused: Host is not allowed (add it to web.allowed_hosts if this is a proxy you run)");
   }
 
+  /**
+   * #1920: the instances a guest session may see — derived on every request, never stored. Phase 2 derives it from
+   * the account's chat access (and an admin's naming for an open connection); until then a guest sees nothing.
+   */
+  guestScope(_owner: { readonly adapterId: string; readonly userId: string } | undefined): ReadonlySet<string> {
+    return NO_GUEST_SCOPE;
+  }
+
   /** Shared handler dispatcher; gateway admission is enforced by its separate listener. */
   private dispatchWebHttp(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, port: number, closing = false): void {
     try {
@@ -20408,6 +20420,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           res.writeHead(decision.status);
           res.end(JSON.stringify({ error: decision.message }));
           return;
+        }
+        // #1920: a guest reaches only GUEST_ROUTES, within the scope derived for it now — default deny, before any
+        // handler, on this listener and the public link's gateway alike (both come through here).
+        if (decision.via === "session" && decision.session.tier === "guest") {
+          const verdict = guestRouteDecision(req.method ?? "GET", parsedUrl, this.guestScope(decision.session.owner));
+          if (verdict.kind === "deny") {
+            res.writeHead(verdict.status);
+            res.end(JSON.stringify({ error: verdict.error }));
+            return;
+          }
         }
       }
 

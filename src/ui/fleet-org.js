@@ -19,6 +19,7 @@ register("org", {
     missing: "Not in the fleet", thread_discord: "Discord thread", thread_telegram: "Telegram topic", openChat: "Open chat",
     classic: "ClassicBot room", empty: "No instances yet", emptyHint: "Instances and teams show here once the fleet has them.",
     noTeams: "No teams yet — define them in Fleet → Teams to group the chart.", newTab: "(opens in a new tab)",
+    sending: "Sending:", queuedNote: "(queued)",
   },
   "zh-TW": {
     title: "組織圖", general: "General", unteamed: "未加入 team", members: "{0} 名成員", member: "1 名成員", instances: "{0} 個 instance", instance: "1 個 instance",
@@ -26,6 +27,7 @@ register("org", {
     missing: "不在 fleet 中", thread_discord: "Discord 討論串", thread_telegram: "Telegram topic", openChat: "開啟聊天",
     classic: "ClassicBot 頻道", empty: "還沒有 instance", emptyHint: "fleet 有 instance 和 team 後會顯示在這裡。",
     noTeams: "還沒有 team——到 Fleet → Teams 定義後，組織圖會依 team 分組。", newTab: "（在新分頁開啟）",
+    sending: "傳送中：", queuedNote: "（排隊中）",
   },
 });
 const to = (k, ...v) => t(`org.${k}`, ...v);
@@ -89,7 +91,13 @@ export function OrgSummary({ counts }) {
     <span class=${`dot ${DOT[s]}`} aria-hidden="true"></span>${n} ${to(s)}</li>`)}</ul>`;
 }
 
-function Node({ n }) {
+/** #1918: what an instance is sending now, in words — the canvas's live traffic for the list (and a screen reader). */
+const KIND_WORD = { task: "delegate_task", report: "report_result", query: "request_information", update: "send_to_instance", send: "send_to_instance", broadcast: "broadcast" };
+function Sending({ list }) {
+  return html`<p class="org-sending"><span class="muted">${to("sending")}</span> ${list.map((s, i) => html`<span key=${s.key} class=${`org-send k-${s.kind}`}>${i ? ", " : ""}${KIND_WORD[s.kind] || s.kind} → ${s.to}${s.queued ? ` ${to("queuedNote")}` : ""}</span>`)}</p>`;
+}
+
+function Node({ n, sending }) {
   const alias = n.i && typeof n.i.display_name === "string" && n.i.display_name.trim() && n.i.display_name.trim() !== n.name ? n.i.display_name.trim() : "";
   const thread = n.info.thread;
   const model = n.i && n.i.model ? n.i.model : "";
@@ -101,6 +109,7 @@ function Node({ n }) {
       <span class=${`org-state st-${n.state}`}>${to(n.state)}</span>
     </div>
     ${n.info.description ? html`<p class="org-desc" title=${n.info.description}>${n.info.description}</p>` : null}
+    ${sending && sending.length ? html`<${Sending} list=${sending} />` : null}
     ${n.i ? html`<div class="org-meta">${n.i.backend ? html`<span class="org-chip">${n.i.backend}</span>` : null}
       ${model ? html`<span class="org-model mono" title=${model}>${model}</span>` : null}
       ${n.info.classic ? html`<span class="org-chip">${to("classic")}</span>` : null}</div>` : null}
@@ -112,22 +121,23 @@ function Node({ n }) {
   </li>`;
 }
 
-function Team({ id, name, description, nodes, counts, icon }) {
+function Team({ id, name, description, nodes, counts, icon, sending }) {
   return html`<section class="org-team" aria-labelledby=${id}>
     <header class="org-team-head">
       <h3 id=${id}><${Icon} name=${icon} size=${16} /><span>${name}</span></h3>
       ${description ? html`<p class="org-team-desc">${description}</p>` : null}
       <div class="org-team-sub"><span class="muted">${count("member", "members", nodes.length)}</span><${OrgSummary} counts=${counts} /></div>
     </header>
-    <ul class="org-nodes">${nodes.map((n) => html`<${Node} key=${n.name} n=${n} />`)}</ul>
+    <ul class="org-nodes">${nodes.map((n) => html`<${Node} key=${n.name} n=${n} sending=${sending && sending.get(n.name)} />`)}</ul>
   </section>`;
 }
 
 /**
  * The chart as a list. `org`: what /ui/org answered (the Fleet panel's loader); `app`: the app store. #1918: `bare` when
- * the canvas's bar (fleet-canvas.js) already shows the count and the states.
+ * the canvas's bar (fleet-canvas.js) already shows the count and the states; `sending` what each instance is sending
+ * now (name → list), null when Live is off.
  */
-export function OrgChart({ org, app, bare = false }) {
+export function OrgChart({ org, app, bare = false, sending = null }) {
   if (!app.ready) return html`<${Skeleton} lines=${4} />`;
   const view = buildOrgView(org, app);
   if (!view.total) return html`<${Empty} icon="team" title=${to("empty")} hint=${to("emptyHint")} />`;
@@ -135,12 +145,12 @@ export function OrgChart({ org, app, bare = false }) {
     ${bare ? null : html`<div class="list-head org-head"><span>${count("instance", "instances", view.total)}</span><${OrgSummary} counts=${view.counts} /></div>`}
     ${view.top.length ? html`<section class="org-top" aria-labelledby="org-general">
       <h3 id="org-general" class="sr-only">${to("general")}</h3>
-      <ul class="org-nodes">${view.top.map((n) => html`<${Node} key=${n.name} n=${n} />`)}</ul>
+      <ul class="org-nodes">${view.top.map((n) => html`<${Node} key=${n.name} n=${n} sending=${sending && sending.get(n.name)} />`)}</ul>
     </section>` : null}
     ${view.teams.length ? null : html`<p class="note org-note">${to("noTeams")}</p>`}
     <div class="org-teams">
-      ${view.teams.map((team, k) => html`<${Team} key=${team.name} id=${`org-team-${k}`} icon="team" ...${team} />`)}
-      ${view.rest.nodes.length ? html`<${Team} id="org-rest" icon="fleet" name=${to("unteamed")} description="" ...${view.rest} />` : null}
+      ${view.teams.map((team, k) => html`<${Team} key=${team.name} id=${`org-team-${k}`} icon="team" sending=${sending} ...${team} />`)}
+      ${view.rest.nodes.length ? html`<${Team} id="org-rest" icon="fleet" name=${to("unteamed")} description="" sending=${sending} ...${view.rest} />` : null}
     </div>
   </div>`;
 }

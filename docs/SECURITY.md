@@ -64,7 +64,12 @@ An explicit owner-adapter General admin action may open the managed public link 
 
 Public cookies are Secure `__Host-` cookies and bind one exposure. The gateway rejects local header tokens, cookies and codes; public codes and sessions are exposure scoped. Public sessions have a four-hour absolute and 30-minute idle limit, also bounded by earlier link closure. Every public login needs a confirmed 🔐 public notice in the owning General within five seconds, regardless of `notify_login`; the candidate is neither usable nor persisted before confirmation. Code leakage can still grant full web-admin access. Cloudflare terminates TLS; forwarding a link alone does not sign in, but reveals the endpoint to guessing and shared-breaker denial of service. Exact Origin plus CSRF protects browser writes; Host checks are not authentication. Expiry, disable, private close, revoke, owner/binding loss and shutdown close access and withdraw public credentials before child cleanup. An unconfirmed child stop blocks another tunnel.
 
-**Signing in does not protect all local HTTP reads.** `/view` and its GET APIs, including `/api/pane/<instance>`, profiles, avatars and sort order, are public to anyone who can reach the listener with an allowed `Host`. `/api/ai-usage` is also public when enabled, and GET `/health` needs no token. Pane captures can contain commands, credentials and other private output.
+**Signing in does not protect all local HTTP reads.** `/view` and its GET APIs, including `/api/pane/<instance>`, profiles, avatars and sort order, are public to anyone who can reach the listener with an allowed `Host`. The listener binds `127.0.0.1`, but that still includes:
+- other local users and processes;
+- whatever a reverse proxy, tailnet share or port forward admits (`web.allowed_hosts`);
+- on WSL2, the Windows host.
+
+The anonymous `/view` reader sees every instance: it has no account and no scope, unlike a signed-in session. `/api/ai-usage` is also public when enabled, and GET `/health` needs no token. Pane captures can contain commands, credentials and other private output.
 
 Set `web.view_access: session` to close those reads: `/view`, its GET APIs and `/api/ai-usage` then need a session or the header token, like the dashboard. `/view`'s writes (profile, avatar, sort order) always go through the dashboard gate: a session with the cookie-write checks above, or `X-Agend-Token`, never a `?token=`.
 

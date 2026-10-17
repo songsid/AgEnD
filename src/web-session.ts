@@ -27,8 +27,12 @@ import { chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, ren
 import { dirname, join } from "node:path";
 
 export type SessionSurface = "local" | "gateway";
-/** `admin` may do everything the panel can; `read` is reserved for the read-only tier (design D6). */
-export type SessionTier = "admin" | "read";
+/**
+ * `admin` may do everything the panel can; `read` is reserved for the read-only tier (design D6). #1920: `guest` is a
+ * non-admin signed in as their own account (`owner`, always set), allowed only GUEST_ROUTES within a scope derived on
+ * every request (web-guest-access.ts). No code issues one yet (phase 2).
+ */
+export type SessionTier = "admin" | "read" | "guest";
 
 export interface SessionPolicy {
   /** Hard cap from creation; activity never extends it. */
@@ -209,7 +213,7 @@ function isRecord(value: unknown): value is SessionRecord {
     && typeof v.lastSeen === "number" && Number.isFinite(v.lastSeen)
     && typeof v.absoluteExpiry === "number" && Number.isFinite(v.absoluteExpiry)
     && typeof v.idleExpiry === "number" && Number.isFinite(v.idleExpiry)
-    && (v.tier === "admin" || v.tier === "read")
+    && (v.tier === "admin" || v.tier === "read" || (v.tier === "guest" && v.owner !== undefined))
     && (v.surface === "local" || v.surface === "gateway")
     && (v.exposureId === undefined || (typeof v.exposureId === "string" && /^[0-9a-f]{32}$/.test(v.exposureId)))
     && (v.owner === undefined || isOwner(v.owner))
@@ -279,6 +283,8 @@ export class WebSessionStore {
    * in a cookie and forgets it.
    */
   create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean; owner?: { adapterId: string; userId: string } }): { sessionId: string; record: SessionRecord } {
+    // #1920: a guest is always someone's own account; never a guest of nobody.
+    if (input.tier === "guest" && !input.owner) throw new Error("a guest session needs its owner");
     const now = this.now();
     this.purgeExpired(now);
     const sessionId = randomBytes(32).toString("hex");
@@ -363,10 +369,13 @@ export class WebSessionStore {
     return { count, durable: this.persistNow() };
   }
 
-  /** Every live session, newest activity first. `currentIdHash` marks the caller's own. */
-  list(currentIdHash?: string): SessionSummary[] {
+  /**
+   * Every live session, newest activity first. `currentIdHash` marks the caller's own. #1920: `only` keeps those a
+   * non-admin may see (their own, web-guest-access.ts).
+   */
+  list(currentIdHash?: string, only?: (r: SessionRecord) => boolean): SessionSummary[] {
     this.purgeExpired(this.now());
-    return [...this.byHash.values()].filter(r => !this.pending.has(r.idHash))
+    return [...this.byHash.values()].filter(r => !this.pending.has(r.idHash) && (!only || only(r)))
       .sort((a, b) => b.lastSeen - a.lastSeen)
       .map(r => ({
         handle: r.handle,
@@ -387,10 +396,11 @@ export class WebSessionStore {
    * when it is not durable — the operator would believe a session is dead that the next start revives.
    */
 
-  revokeByHandle(handle: string): { found: boolean; durable: boolean } {
+  /** #1920: `only` as in list() — a session it rejects is not found. */
+  revokeByHandle(handle: string, only?: (r: SessionRecord) => boolean): { found: boolean; durable: boolean } {
     if (!HANDLE_PATTERN.test(handle)) return { found: false, durable: true };
     for (const [hash, record] of this.byHash) {
-      if (record.handle === handle) {
+      if (record.handle === handle && (!only || only(record))) {
         this.byHash.delete(hash);
         this.pending.delete(hash);
         return { found: true, durable: this.persistNow() };
@@ -407,8 +417,13 @@ export class WebSessionStore {
     return { removed, durable: removed ? this.persistNow() : true };
   }
 
-  /** Every session: how many there were, and whether the revocation is durable. */
-  revokeAll(): { count: number; durable: boolean } {
+  /** Every session (#1920: or every one `only` keeps): how many there were, and whether the revocation is durable. */
+  revokeAll(only?: (r: SessionRecord) => boolean): { count: number; durable: boolean } {
+    if (only) {
+      let count = 0;
+      for (const [hash, record] of this.byHash) if (only(record)) { this.byHash.delete(hash); this.pending.delete(hash); count++; }
+      return { count, durable: count ? this.persistNow() : true };
+    }
     const count = this.byHash.size;
     this.byHash.clear();
     this.pending.clear();

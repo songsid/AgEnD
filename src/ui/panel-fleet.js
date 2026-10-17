@@ -271,7 +271,7 @@ function Teams({ lease }) {
 function Org({ lease }) {
   const state = useLoad(lease, "/ui/org", 0);
   const app = useStore(appStore);
-  return html`<${Loaded} state=${state}>${(org) => html`<${OrgCanvas} org=${org} app=${app} />`}</${Loaded}>`;
+  return html`<${Loaded} state=${state}>${(org) => html`<${OrgCanvas} org=${org} app=${app} lease=${lease} />`}</${Loaded}>`;
 }
 
 /** #1468: the prompt-cache analysis — one read per opening and per window chosen; Refresh reads again (fleet-cache.js). */

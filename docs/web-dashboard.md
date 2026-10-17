@@ -246,7 +246,12 @@ Everything waiting on you, from every bot's world, in one list: a fleet prompt (
 - **The header** has **Text size**, **Usage** and **Help**. On View the size goes Fit → S → M → L: **Fit** (the default) sizes the terminal to fit its box, never larger, down to a 6 px floor. S / M / L are the size every page shares. Choosing a size on another page keeps View on Fit; only View's own Text size leaves it. The terminal stays dark in both themes.
 - **The card under the terminal** shows the agent's name, role and model; its arrow opens the whole profile. **Edit profile** changes the display name, role, description and avatar. **Remove picture** (shown when one is uploaded) goes back to the bot's avatar, the persona emoji or the first letter when you save.
 
-- **Reading `/view` needs no sign-in by default** (`web.view_access: open`). That includes the live terminal, so anyone who can reach the port can watch your agents. On a machine only you can reach, that is fine. Otherwise set:
+- **Reading `/view` needs no sign-in by default** (`web.view_access: open`). That includes every agent's live terminal, with no account and no limit to some agents. The dashboard listens on `127.0.0.1` only, but "anyone who can reach the port" covers more than you:
+  - every other user and process on the machine;
+  - anyone a reverse proxy, a tailnet share or a port forward you set up lets in (`web.allowed_hosts`);
+  - on WSL2, the Windows side.
+
+  On a machine only you can reach, that is fine. Otherwise set:
   ```yaml
   web:
     view_access: session   # reading /view needs a signed-in session too

@@ -1,3 +1,4 @@
+import { sameAccount } from "./web-guest-access.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { performance } from "node:perf_hooks";
 import { withinBudget } from "./monotonic-budget.js";
@@ -356,6 +357,9 @@ export function handleAuthRequest(
     }
     const sessions = ctx.webSessions!;
     const { session, sessionId } = auth;
+    // #1920: a session that is not an admin's sees and ends only its own: itself, and its account's other sessions.
+    const own = session.tier === "admin" ? undefined
+      : (r: { idHash: string; owner?: { adapterId: string; userId: string } }) => r.idHash === session.idHash || sameAccount(r.owner, session.owner);
 
     if (path === "/auth/session" && method === "GET") {
       json(res, 200, {
@@ -382,14 +386,14 @@ export function handleAuthRequest(
     }
 
     if (path === "/auth/sessions" && method === "GET") {
-      json(res, 200, { sessions: sessions.list(sessionIdHash(sessionId)) });
+      json(res, 200, { sessions: sessions.list(sessionIdHash(sessionId), own) });
       return true;
     }
 
     if (path === "/auth/sessions" && method === "DELETE") {
-      const { count, durable } = sessions.revokeAll();
+      const { count, durable } = sessions.revokeAll(own);
       if (!durable) return notDurable(res, ctx, { count }, "Web sessions revoked in memory only");
-      ctx.logger.info({ count }, "Web sessions revoked (all)");
+      ctx.logger.info({ count, ...(own ? { own: true } : {}) }, own ? "Web sessions revoked (the caller's own)" : "Web sessions revoked (all)");
       json(res, 200, { ok: true, revoked: count }, { "Set-Cookie": buildClearedSessionCookies() });
       return true;
     }
@@ -397,7 +401,7 @@ export function handleAuthRequest(
     if (path.startsWith("/auth/sessions/") && method === "DELETE") {
       const handle = path.slice("/auth/sessions/".length);
       const wasCurrent = handle === session.handle;
-      const { found, durable } = sessions.revokeByHandle(handle);
+      const { found, durable } = sessions.revokeByHandle(handle, own);
       if (!found) { json(res, 404, { error: "no such session" }); return true; }
       if (!durable) return notDurable(res, ctx, { handle }, "Web session revoked in memory only", wasCurrent);
       ctx.logger.info({ handle }, "Web session revoked");
