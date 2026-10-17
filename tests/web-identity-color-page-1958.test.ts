@@ -194,22 +194,25 @@ describe("Settings → Web appearance", () => {
     for (const k of ["color.show", "color.off", "fx.show", "card.size", "card.sizeByInstance", "widget.sidebar"]) expect(host[k], k).toBeUndefined();
     expect(posts.find((p) => p.url === "/ui/owner-css/restore")?.body).toEqual({ sha: null });
   });
-  it("its button asks first, saying what it resets; Cancel resets nothing", async () => {
+  it("its button asks first, saying what it resets; answering no resets nothing, yes resets", async () => {
     await setHost({ "color.off": true });
     await mountSettings();
-    const { answerConfirm, confirmStore } = await import("/assets/ui-confirm.js");
-    posts = [];
-    const btn = pg!.root.querySelector(".s-restore button");
-    console.log("DBG", !!btn, btn?.textContent, btn?.disabled, pg!.root.querySelectorAll(".s-restore").length);
-    btn.click();
-    await settle(2);
-    console.log("DBG queue", confirmStore.get().queue.length);
-    const q = confirmStore.get().queue[0];
-    expect([q?.title, q?.danger]).toEqual(["Restore defaults", true]);
-    expect(q.message).toContain("The colours people picked for agents, installed mods, uploaded effects and the card limits stay as they are.");
-    answerConfirm(q.id, false);
-    await flush(); await settle();
-    expect([host["color.off"], posts]).toEqual([true, []]);
+    const asked: string[] = [];
+    let yes = false;
+    g.confirm = (m: string) => { asked.push(m); return yes; };          // the harness answers the app's question with this
+    try {
+      posts = [];
+      pg!.root.querySelector(".s-restore button").click();
+      await settle(3); await flush(); await settle();
+      expect(asked).toHaveLength(1);
+      expect(asked[0]).toContain("The colours people picked for agents, installed mods, uploaded effects and the card limits stay as they are.");
+      expect([host["color.off"], posts], "no: nothing reset").toEqual([true, []]);
+      yes = true;
+      pg!.root.querySelector(".s-restore button").click();
+      await settle(3); await flush(); await settle();
+      expect(host["color.off"], "yes: reset").toBeUndefined();
+      expect(posts.some((p) => p.url === "/ui/owner-css/restore")).toBe(true);
+    } finally { delete g.confirm; }
   });
   it("the tab is called Web appearance (網頁外觀)", async () => {
     const i18n = await import("/assets/app-i18n.js");

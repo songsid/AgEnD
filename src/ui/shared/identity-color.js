@@ -223,7 +223,7 @@ function ColorDialog({ name, it, onClose }) {
         onClick=${() => pick(`preset:${p.id}`)}></button>`)}
       <label class="idc-custom">${t("color.custom")}
         <input type="color" value=${HEX.test(hex) ? hex : "#808080"} onInput=${(e) => onHex(e.currentTarget.value)} aria-label=${t("color.custom")} />
-        <input type="text" class="idc-hex" inputmode="text" spellcheck="false" maxlength="7" placeholder="#rrggbb" value=${hex} onInput=${(e) => onHex(e.currentTarget.value.trim())} aria-label=${t("color.hex")} /></label>
+        <input type="text" class="idc-hex" inputmode="text" spellcheck=${false} maxlength="7" placeholder="#rrggbb" value=${hex} onInput=${(e) => onHex(e.currentTarget.value.trim())} aria-label=${t("color.hex")} /></label>
       <button type="button" class="btn btn-sm" disabled=${!color} onClick=${() => pick(null)}>${t("color.noPick")}</button>
     </fieldset>
     <fieldset class="idc-places"><legend>${t("color.places")}</legend>
