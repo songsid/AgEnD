@@ -90,6 +90,8 @@ describe("guestScope: derived from the account's chat access, every time", () =>
     const fm = fleet({ rooms });
     expect(names(fm.guestScope(TG_ALICE))).toEqual(["room"]);
     expect(fm.guestScope({ adapterId: "dc", userId: TG_ALICE.userId }).size, "on its own connection only").toBe(0);
+    const discord = fleet({ rooms: [{ channelId: ALICE.userId, adapterId: "dc", instanceName: "room" }] });
+    expect(discord.guestScope(ALICE).size, "a private room is Telegram's; a Discord channel never is one person's").toBe(0);
   });
   it("a ClassicBot instance never comes in through its connection's access", () => {
     const fm = fleet({ allowed: { tg: [TG_ALICE.userId] }, rooms: [{ channelId: "-1009", adapterId: "tg", instanceName: "room" }] });

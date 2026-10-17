@@ -20439,8 +20439,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
     }
     for (const room of this.classicChannels?.getAll() ?? []) {
-      if (room.adapterId === owner.adapterId && room.channelId === owner.userId && !room.channelId.startsWith("-")
-        && inferClassicChannelType(room.channelId) === "telegram") scope.add(room.instanceName);
+      // A private room's chat id is its one user's id (a group's is negative, so never equal); Telegram only.
+      if (room.adapterId === owner.adapterId && room.channelId === owner.userId && inferClassicChannelType(room.channelId) === "telegram") scope.add(room.instanceName);
     }
     const narrow = own(guests.narrow, `${owner.adapterId}:${owner.userId}`);
     if (narrow) { const keep = new Set(narrow); for (const name of [...scope]) if (!keep.has(name)) scope.delete(name); }
