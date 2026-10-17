@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CacheService } from "../src/cache-service.js";
 import { addTurn, emptyLedger, type FileCursor, type GapEvent, type Ledger, type Turn } from "../src/cache-ledger.js";
-import { analyzeLedger, effectiveTtl, EFFECTIVE_TTL_HIT_MAX, EFFECTIVE_TTL_MIN_SAMPLES, EFFECTIVE_TTL_MISS_MIN, EFFECTIVE_TTL_WINDOW_MS, type EffectiveTtl } from "../src/cache-analysis.js";
+import { analyzeLedger, effectiveTtl, latestLabelSec, EFFECTIVE_TTL_HIT_MAX, EFFECTIVE_TTL_MIN_SAMPLES, EFFECTIVE_TTL_MISS_MIN, EFFECTIVE_TTL_WINDOW_MS, type EffectiveTtl } from "../src/cache-analysis.js";
 import type { Rates } from "../src/cache-prices.js";
 
 const R: Rates = { input: 1, read: 0.1, write5m: 1.25, write1h: 2, write: 1.25, output: 5 };
@@ -36,6 +36,13 @@ describe("effectiveTtl: the rule", () => {
     expect(pick(effectiveTtl(gaps(9, 0), 300, "claude", NOW))).toEqual([null, "insufficient", 9, 0]);
     expect(effectiveTtl(gaps(9, 9), 300, "claude", NOW).ttlSec, "nine misses are still too few").toBeNull();
     expect(effectiveTtl([], 300, "claude", NOW)).toEqual({ ttlSec: null, fiveMinute: null, basis: "insufficient", sample: 0, misses: 0, rate: null });
+  });
+  it("latestLabelSec: the latest session's label, else the backend's default (#1469's executor calls effectiveTtl with it)", () => {
+    expect([latestLabelSec(emptyLedger(), "claude", NOW), latestLabelSec(emptyLedger(), "codex", NOW)]).toEqual([3600, 1800]);
+    const l = fiveMinute({ gapsCount: 2, rewritten: 0 });
+    expect(latestLabelSec(l, "claude", NOW)).toBe(300);
+    addTurn(l, l.files["a"]!, { t: NOW - DAY, model: "m", prompt: C, uncached: 0, read: 0, write5m: 0, write1h: 500, write: null, output: 0 }, 0);
+    expect(latestLabelSec(l, "claude", NOW)).toBe(3600);
   });
   it("a 1-hour label is 1 hour (the signal is still counted); Codex is 30 minutes", () => {
     expect(pick(effectiveTtl(gaps(12, 12), 3600, "claude", NOW))).toEqual([3600, "label_1h", 12, 12]);

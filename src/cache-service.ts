@@ -156,7 +156,6 @@ export class CacheService {
   private async catchUp(): Promise<void> {
     for (;;) {
       const left = await this.pass();
-      this.passes++;
       if (left === 0) this.caughtUp = true;
       // Stop looping when: all caught up, explicitly stopped, or closing (stop()
       // fenced new admission — let the current physical pass write its dirty data,
@@ -240,6 +239,9 @@ export class CacheService {
       pruneLedger(ledger, cutoff);
     }
     this.pending = { bytes: behindBytes, files: behindFiles };
+    // A ledger read something new (or lost a file): a published report is out of date (Fable #2030 P2 — a pass that
+    // read nothing, such as the one every report starts, leaves it as it is).
+    if (this.dirty.size) this.changes++;
     await this.save(insts);
     return behindBytes;
   }
@@ -335,17 +337,19 @@ export class CacheService {
     if (this.metaDirty && this.meta && await writeAtomic(this.o.metaPath, JSON.stringify(this.meta))) this.metaDirty = false;
   }
 
-  private passes = 0;
-  private readonly memo = new Map<CacheWindow, { at: number; passes: number; report: Promise<CacheReport> }>();
+  /** Ledger changes so far: a catch-up pass that read new lines (or dropped a file). */
+  private changes = 0;
+  private readonly memo = new Map<CacheWindow, { at: number; changes: number; report: Promise<CacheReport> }>();
   /**
    * #2001: the report as last worked out, for get_cache_report — the same as report(), reused for up to a minute and
-   * until the next catch-up pass, so agents asking in turn do not each redo the arithmetic. Never reads a transcript.
+   * until a catch-up reads something new, so agents asking in turn do not each redo it (or start another catch-up).
+   * Never reads a transcript itself.
    */
   published(window: CacheWindow, maxAgeMs = 60_000): Promise<CacheReport> {
     const m = this.memo.get(window), now = (this.o.monotonic ?? (() => performance.now()))();
-    if (m && m.passes === this.passes && now - m.at < maxAgeMs) return m.report;
+    if (m && m.changes === this.changes && now - m.at < maxAgeMs) return m.report;
     const report = this.report(window);
-    this.memo.set(window, { at: now, passes: this.passes, report });
+    this.memo.set(window, { at: now, changes: this.changes, report });
     report.catch(() => this.memo.delete(window));
     return report;
   }

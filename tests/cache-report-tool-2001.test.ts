@@ -8,6 +8,9 @@
  * - From the last scan: the handler runs no process (tool-handlers-never-fork) and the service reuses its report for a
  *   minute or until the next pass.
  */
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 const hooks = vi.hoisted(() => ({ calls: [] as string[] }));
@@ -108,23 +111,36 @@ describe("who reads the fleet", () => {
 });
 
 describe("the published report", () => {
-  it("reused for a minute and until the next catch-up pass; a fresh one after either", async () => {
-    let mono = 0;
-    const svc = new CacheService({ instances: () => [], claudeProjectsDir: () => "/nope", claudeKey: (d) => d, codexSessionsDir: () => "/nope", listRollouts: () => [], metaPath: "/nope/meta.json", monotonic: () => mono });
-    let n = 0;
-    const report = vi.spyOn(svc, "report").mockImplementation(async (w) => ({ window: w, n: ++n }) as any);
-    expect(await svc.published("7d")).toMatchObject({ n: 1 });
-    mono = 59_999;
-    expect(await svc.published("7d")).toMatchObject({ n: 1 });
-    expect(await svc.published("24h"), "per window").toMatchObject({ window: "24h", n: 2 });
-    mono = 60_000;
-    expect(await svc.published("7d"), "a minute old").toMatchObject({ n: 3 });
-    (svc as any).passes++;
-    expect(await svc.published("7d"), "a pass finished").toMatchObject({ n: 4 });
-    expect(report).toHaveBeenCalledTimes(4);
-    report.mockImplementationOnce(async () => { throw new Error("boom"); });
-    mono = 999_999;
-    await expect(svc.published("7d")).rejects.toThrow("boom");
-    expect(await svc.published("7d"), "a failure is not kept").toMatchObject({ n: 5 });
+  it("reused for a minute and until a catch-up reads something new (the real report, its own catch-up included — Fable #2030 P2)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-2001-pub-"));
+    try {
+      const wd = join(dir, "wd"), proj = join(dir, "projects", "wd-key");
+      mkdirSync(proj, { recursive: true });
+      let mono = 0;
+      const svc = new CacheService({ instances: () => [{ name: "w", backend: "claude-code", workingDirectory: wd, ledgerPath: join(dir, "w.json") }],
+        claudeProjectsDir: () => join(dir, "projects"), claudeKey: () => "wd-key", codexSessionsDir: () => join(dir, "sessions"), listRollouts: () => [],
+        metaPath: join(dir, "meta.json"), monotonic: () => mono, intervalMs: 3_600_000 });
+      const report = vi.spyOn(svc, "report");
+      const first = await svc.published("7d");
+      await svc.kick();                                                    // the catch-up the report started, finished: nothing new
+      mono = 1_000;
+      expect(await svc.published("7d"), "an idle fleet: reused after its own catch-up").toBe(first);
+      expect(report).toHaveBeenCalledTimes(1);
+      expect(await svc.published("24h"), "per window").not.toBe(first);
+      copyFileSync(join(process.cwd(), "tests", "fixtures", "cache-1468", "claude-transcript.jsonl"), join(proj, "s1.jsonl"));
+      await svc.kick();                                                    // a catch-up that reads a new transcript
+      const fresh = await svc.published("7d");
+      expect(fresh, "new lines read: a fresh report").not.toBe(first);
+      expect(report).toHaveBeenCalledTimes(3);
+      await svc.kick(); mono = 59_999;
+      expect(await svc.published("7d"), "nothing new since").toBe(fresh);
+      mono = 61_000;
+      expect(await svc.published("7d"), "a minute old").not.toBe(fresh);
+      report.mockImplementationOnce(async () => { throw new Error("boom"); });
+      mono = 999_999;
+      await expect(svc.published("7d")).rejects.toThrow("boom");
+      await expect(svc.published("7d"), "a failure is not kept").resolves.toMatchObject({ window: "7d" });
+      await svc.stop();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

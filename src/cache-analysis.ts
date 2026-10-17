@@ -121,6 +121,15 @@ export function sessionTails(ledger: Ledger, to: number): SimTail[] {
   });
 }
 
+/**
+ * The TTL the instance's latest session writes with (each gap keeps its own): the latest session end's, else the
+ * backend's default (Claude 1 hour, Codex 30 minutes). effectiveTtl's `latestLabelSec` (Fable, #1469's executor).
+ */
+export function latestLabelSec(ledger: Ledger, backend: Backend, to: number): number {
+  const latest = sessionTails(ledger, to).reduce<SimTail | null>((a, t) => (!a || t.t > a.t ? t : a), null);
+  return latest ? latest.ttl : backend === "codex" ? 1800 : 3600;
+}
+
 /** #2010: the evidence window and thresholds of effectiveTtl (one definition for the report and #1469's keep-warm). */
 export const EFFECTIVE_TTL_WINDOW_MS = 7 * 86_400_000;
 export const EFFECTIVE_TTL_MIN_SAMPLES = 10;
@@ -198,8 +207,7 @@ export function analyzeLedger(ledger: Ledger, o: AnalyzeOptions): InstanceAnalys
   const inWindow = (h: number): boolean => h + 3_600_000 > o.from && h <= o.to;
   const tails = sessionTails(ledger, o.to);
   const estimatedTotals = o.backend === "codex" && !ledger.writesSeen;
-  const latest = tails.reduce<SimTail | null>((a, t) => (!a || t.t > a.t ? t : a), null);
-  const ttlSec = latest ? latest.ttl : o.backend === "codex" ? 1800 : 3600;
+  const ttlSec = latestLabelSec(ledger, o.backend, o.to);
   const effective = effectiveTtl(ledger.gaps, ttlSec, o.backend, o.to);
   // Each gap by its own label: a 5-minute one by what 5 minutes measured as (even after a switch back to 1 hour);
   // without evidence, as labelled. Codex keeps its own.
