@@ -93,15 +93,14 @@ describe("#1629 local-admin trial API (no card or runtime mount)", () => {
     const denied = await f.call("GET", f.url(r.body.trial, part, a.epoch), a.headers); expect(denied.status).toBe(404); expect(denied.body).toEqual({ error: "not_found" });
     expect((await f.start(a)).status).toBe(404);
   });
-  it.each(["on", "loading", "unknown", null, false, "OFF"])("CSS %j denies start/each read but the same owner can still stop", async css => {
+  it.each(["on", "loading", "unknown", null, false, "OFF"])("CSS %j does not block the shadow-isolated local-admin trial", async css => {
     const f = await fixture(), a = f.session(), r = await f.start(a); expect(r.status).toBe(200); f.css(css);
-    expect((await f.start(a)).status).toBe(404);
-    for (const p of ["resource", "poster.png", "profile"]) expect((await f.call("GET", f.url(r.body.trial, p, a.epoch), a.headers)).status).toBe(404);
+    for (const p of ["resource", "poster.png", "profile"]) expect((await f.call("GET", f.url(r.body.trial, p, a.epoch), a.headers)).status).toBe(200);
     expect((await f.call("POST", `${rootPath}/${r.body.trial}/stop?ownerEpoch=${a.epoch}`, a.headers, "{}")).status).toBe(200);
   });
-  it("absent or throwing CSS evidence is unknown, never an implicit off", async () => {
-    const f = await fixture(), a = f.session(); (f.ctx as any).ownerCss = undefined; expect((await f.start(a)).status).toBe(404);
-    (f.ctx as any).ownerCss = { effectState() { throw Error("unreadable"); } }; expect((await f.start(a)).status).toBe(404);
+  it("absent or throwing CSS evidence remains diagnostic unknown for an isolated trial", async () => {
+    const f = await fixture(), a = f.session(); (f.ctx as any).ownerCss = undefined; expect((await f.start(a)).status).toBe(200);
+    (f.ctx as any).ownerCss = { effectState() { throw Error("unreadable"); } }; expect((await f.start(a)).status).toBe(200);
   });
   it("anonymous, read-tier, header tokens and header+cookie all fail admission and reads", async () => {
     const f = await fixture(), a = f.session(), ro = f.session("reader", "read"), r = await f.start(a);
@@ -182,7 +181,7 @@ describe("#1629 local-admin trial API (no card or runtime mount)", () => {
     if (change === "session-store") (f.ctx as any).webSessions = new WebSessionStore(f.sessionOptions);
     if (change === "css") f.css("on");
     req.emit("data", Buffer.from(`${f.offer.offer}","instance":"agent"}`)); req.emit("end"); for (let i = 0; i < 5; i++) await Promise.resolve();
-    expect(status).toBe(change === "same-person-cookie" || change === "session-store" ? 409 : change === "css" ? 404 : 401);
+    expect(status).toBe(change === "same-person-cookie" || change === "session-store" ? 409 : change === "css" ? 200 : 401);
     if (change === "css") expect(start).toHaveBeenCalledOnce(); else expect(start).not.toHaveBeenCalled();
   });
   it("public gateway manifest and direct bound requests refuse every trial operation", async () => {

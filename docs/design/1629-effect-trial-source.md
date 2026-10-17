@@ -27,7 +27,7 @@ exists. It only reduces the original owner's permission and is checked before
 and after layout, so the next admission/geometry check refuses a spent lease even with a delayed
 timer or a slow marker/layout callback. It cannot be replaced or removed.
 
-Source and stage must both remain current. Unknown CSS, opt-out, hidden state,
+Source and stage must both remain current. Effects opt-out, hidden state,
 changed Chat owner, stage invalidation or a refused resource ends that exact
 lease. Stop marks the lease dead, aborts its resource work, disposes physical
 stage paint through the issued owner and then notifies host callbacks. A wrapper

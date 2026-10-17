@@ -175,6 +175,7 @@ async function trialFlush() { for (let i = 0; i < 40; i++) await Promise.resolve
 async function trialRig() {
   let mono = 0; const timers = new Map(), sourceStop = vi.fn();
   const h = await rig(h => {
+    h.host.location = { href: "http://localhost/", origin: "http://localhost" }; h.doc.body.dataset.previewOrigin = "http://localhost:3001"; h.doc.body.dataset.previewBoot = "b".repeat(32);
     h.doc.hasFocus = () => true; h.host.Date = { now: () => 0 }; h.host.performance = { now: () => mono }; h.host.AbortController = AbortController;
     h.host.setTimeout = vi.fn((fn: any, ms: number) => { const id = {}; timers.set(id, { fn, ms }); return id; }); h.host.clearTimeout = (id: any) => timers.delete(id);
     h.host.AgendAuth.trialSession = vi.fn(async () => ({ epoch: "e".repeat(16), localAdmin: true }));
@@ -194,6 +195,15 @@ describe("#1629 product Trial bridge with protocol core", () => {
       expect(h.runtime).toHaveBeenCalledOnce(); expect(h.host.fetch.mock.calls.map(([p]: any[]) => p)).toEqual([`/ui/effect-trials/start?ownerEpoch=${"e".repeat(16)}`, `/ui/effect-trials/${"c".repeat(32)}/stop?ownerEpoch=${"e".repeat(16)}`]);
     } finally { h.entry.dispose(); await trialFlush(); }
   });
+  it("the click receipt is Trial-only consent; global preview settings and cursor consent remain unchanged", async () => {
+    const h = await trialRig(); try {
+      env.values["preview.optIn"] = false; h.preview.optedIn = () => false; h.preview.never = () => true; h.preview.availability = () => ({ ok: false });
+      env.css.set({ state: "on" });
+      expect(h.entry.gates()).toMatchObject({ previewReady: false, optIn: false, trialReady: true });
+      expect(h.entry.canTry(trialMessage())).toBe(true); expect(await h.entry.startTrial(trialMessage())).toBe(true);
+      expect(env.values["preview.optIn"]).toBe(false); expect(h.cursor.update.mock.calls.at(-1)[1]).toBe(false);
+    } finally { h.entry.dispose(); await trialFlush(); }
+  });
   it.each(["navigation", "same-name-chat", "new-store"])("%s cancels a pending Start before a late reply can mount", async fault => {
     const h = await trialRig(); let resolve: any; h.host.fetch.mockReturnValueOnce(new Promise(r => { resolve = r; }));
     try {
@@ -204,8 +214,8 @@ describe("#1629 product Trial bridge with protocol core", () => {
       expect(await pending).toBe(false); resolve(trialResponse()); await trialFlush(); expect(h.panel.panelStore.get().open).toBeNull(); expect(h.api.attachTrial).not.toHaveBeenCalled(); expect(h.host.fetch).toHaveBeenCalledTimes(2);
     } finally { h.entry.dispose(); await trialFlush(); }
   });
-  it.each(["on", "loading", "unknown"])("CSS %s never offers a start, and stops an admitted trial", async css => {
-    const h = await trialRig(); try { expect(await h.entry.startTrial(trialMessage())).toBe(true); env.css.set({ state: css }); await trialFlush(); expect(h.panel.panelStore.get().open).toBeNull(); expect(h.entry.canTry(trialMessage())).toBe(false); expect(await h.entry.startTrial(trialMessage())).toBe(false); expect(h.host.fetch).toHaveBeenCalledTimes(2); } finally { h.entry.dispose(); await trialFlush(); }
+  it.each(["on", "loading", "unknown"])("CSS %s remains active without stopping the isolated trial", async css => {
+    const h = await trialRig(); try { expect(await h.entry.startTrial(trialMessage())).toBe(true); env.css.set({ state: css }); await trialFlush(); expect(h.panel.panelStore.get().open.kind).toBe("trial"); expect(h.panel.panelStore.get().open.handle.current()).toBe(true); expect(h.host.fetch).toHaveBeenCalledTimes(1); } finally { h.entry.dispose(); await trialFlush(); }
   });
   it("a late stage callback is disposed without attaching or closing a newer owner", async () => {
     const h = await trialRig(); try {
@@ -219,7 +229,27 @@ describe("#1629 product Trial bridge with protocol core", () => {
       expect(await h.entry.startTrial(trialMessage())).toBe(true); const open = h.panel.panelStore.get().open, stage = { receipt: {}, dispose: vi.fn(), hide: vi.fn() }; open.onStage(stage); await trialFlush(); expect(stage.dispose).toHaveBeenCalled(); expect(h.panel.panelStore.get().open).toBeNull(); expect(h.host.fetch).toHaveBeenCalledTimes(2);
     } finally { h.entry.dispose(); await trialFlush(); }
   });
+  it("redraws the real card when a false gate changes reason, while unchanged priority remains deduplicated", async () => {
+    const h = await trialRig(), { installDom } = await import("./helpers/mini-dom.js"), dom = installDom({});
+    const { createThread } = await import("/ui/js/chat-thread.js"), { t, setLang } = await import("/assets/app-i18n.js"); await import("/ui/js/chat-strings.js"); setLang("en", { store:false });
+    const list = dom.document.createElement("div"), scroller = dom.document.createElement("div"); scroller.append(list); dom.document.body.append(scroller);
+    const row = { ...trialMessage(), boot:"aa", id:1, ts:"2026-10-17T00:00:00Z", text:"Host offer" };
+    const thread = createThread(list,scroller,{t,tf:t,isUser:()=>false,serverNow:()=>0,onJump(){},onEmpty(){},effectTrialStatus:(x:any)=>h.entry.trialStatus(x),canTryEffect:(x:any)=>h.entry.canTry(x),fixEffectTrial:vi.fn()});
+    const draw = vi.fn(()=>thread.render([row])), off = h.entry.subscribeTrial(draw);
+    try {
+      h.media.matches = true; h.host.navigator.connection.saveData = true; h.host.emit("resize");
+      expect(draw).toHaveBeenCalledTimes(1); expect(h.entry.canTry(row)).toBe(false); expect(list.textContent).toContain("Your device requests reduced motion.");
+      // Removing the higher-priority condition must redraw despite aggregate permission remaining false.
+      h.media.matches = false; h.media.emit("change"); expect(draw).toHaveBeenCalledTimes(2); expect(h.entry.canTry(row)).toBe(false);
+      expect(list.textContent).toContain("Your device requests reduced data use."); expect(list.textContent).not.toContain("reduced motion");
+      env.values["fx.show"] = false; for(const fn of env.prefs)fn(); expect(draw).toHaveBeenCalledTimes(3); expect(list.textContent).toContain("Turn on effects to Try.");
+      h.media.matches = true; h.media.emit("change"); expect(draw).toHaveBeenCalledTimes(3); // hidden lower-priority changes do not redraw
+      env.values["fx.show"] = true; for(const fn of env.prefs)fn(); expect(draw).toHaveBeenCalledTimes(4); expect(h.entry.canTry(row)).toBe(false);
+      expect(list.textContent).toContain("Your device requests reduced motion."); expect(list.textContent).not.toContain("Turn on effects");
+      for(let i=0;i<100;i++)h.options().onChange(); expect(draw).toHaveBeenCalledTimes(4);
+    } finally { off(); thread.dispose(); dom.restore(); h.entry.dispose(); await trialFlush(); }
+  });
   it("repeated runtime observations do not repaint Trial eligibility until its value changes", async () => {
-    const h = await trialRig(), fn = vi.fn(); try { const off = h.entry.subscribeTrial(fn); for (let i = 0; i < 100; i++) h.options().onChange(); expect(fn).not.toHaveBeenCalled(); env.css.set({ state: "on" }); expect(fn).toHaveBeenCalledOnce(); off(); env.css.set({ state: "off" }); expect(fn).toHaveBeenCalledOnce(); } finally { h.entry.dispose(); }
+    const h = await trialRig(), fn = vi.fn(); try { const off = h.entry.subscribeTrial(fn); for (let i = 0; i < 100; i++) h.options().onChange(); expect(fn).not.toHaveBeenCalled(); env.css.set({ state: "on" }); expect(fn).not.toHaveBeenCalled(); h.media.matches = true; h.host.emit("resize"); expect(fn).toHaveBeenCalledOnce(); off(); h.media.matches = false; h.host.emit("resize"); expect(fn).toHaveBeenCalledOnce(); } finally { h.entry.dispose(); }
   });
 });

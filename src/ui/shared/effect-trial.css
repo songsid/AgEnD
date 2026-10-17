@@ -1,0 +1,40 @@
+/* #2039: fixed closed-shadow Trial chrome; no inherited owner-CSS typography, parts or slots. */
+:host {
+  all: initial !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex: 0 0 45% !important;
+  flex-direction: column !important;
+  align-self: stretch !important;
+  width: 45% !important;
+  min-width: 320px !important;
+  max-width: calc(100% - 368px) !important;
+  min-height: 0 !important;
+  height: auto !important;
+  position: relative !important;
+  z-index: 1 !important;
+  overflow: clip !important;
+  background: #ffffff !important;
+  color: #1b1b1f !important;
+  font: 400 16px/1.4 system-ui, sans-serif !important;
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+  text-align: start !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+:host([data-effect-trial-theme="dark"]) { background: #202024 !important; color: #f0f0f4 !important; }
+:host::before, :host::after { all: initial !important; content: none !important; display: none !important; }
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.effect-trial-head, .effect-trial-controls, .effect-trial-note { position: relative; z-index: 1; padding: 12px; margin: 0; }
+.effect-trial-head { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid currentColor; }
+.effect-trial-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+button { appearance: auto; display: inline-block; font: inherit; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 6px; padding: 8px 12px; cursor: pointer; }
+button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.effect-trial-body { flex: 1; min-height: 0; display: flex; padding: 12px; }
+.effect-trial-stage { position: relative; z-index: 0; flex: 1; min-width: 0; min-height: 0; contain: paint; overflow: clip; padding: 0; border: 0; outline: none; box-shadow: none; }
+.effect-trial-note { font-size: 14px; }
+@media (max-width: 899px) {
+  :host { position: fixed !important; inset: 0 !important; z-index: 37 !important; width: auto !important; min-width: 0 !important; max-width: none !important; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left) !important; }
+}

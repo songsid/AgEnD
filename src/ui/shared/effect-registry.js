@@ -65,7 +65,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     finally { readingStages.delete(d.trialStage); }
     return !dead && !blocked && revision === before && stage?.root === d.element ? stage : null;
   };
-  const permits = (d, proof) => d.trialStage ? !!localStage(d, proof) : effectStockAllows(proof, d);
+  const permits = (d, proof) => eligible(d) && (d.trialStage ? !!localStage(d, proof) : effectStockAllows(proof, d));
   const coverage = (d = null) => {
     if (dead || blocked || readingStock) return null;
     const before = revision; let proof = null; readingStock = true;
@@ -124,8 +124,15 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     return true;
   }
   function gatesKnown() { return context && FLAGS.every(k => typeof context[k] === "boolean") && (context.openInstance === null || typeof context.openInstance === "string" && context.openInstance.length >= 1 && context.openInstance.length <= 128); }
-  function eligible() { return gatesKnown() && !context.safe && !context.publicLink && !context.reducedMotion && !context.saveData && context.enabled && context.show && context.previewReady && context.optIn; }
-  const globalAllowed = () => eligible() && host.document.visibilityState === "visible";
+  function consent(d) {
+    const trial = d?.trialStage && effectTrialStageIdentity(d.trialStage);
+    return trial ? context.trialReady === true : context.previewReady === true && context.optIn === true;
+  }
+  function eligible(d = null) {
+    return gatesKnown() && !context.safe && !context.publicLink && !context.reducedMotion && !context.saveData && context.enabled && context.show
+      && (d ? consent(d) : context.previewReady && context.optIn || descriptors.some(x => x.trialStage && consent(x)));
+  }
+  const globalAllowed = (d = null) => eligible(d) && host.document.visibilityState === "visible";
   const signature = d => d.identity;
   function view() {
     return descriptors.map(d => {
@@ -231,7 +238,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       const permitted = receipt(safety.allowed, d.id, device());
       if (proposal !== revision) return;
       if (permitted !== true) { results.set(d.key, { verdict: "off", reason: "safety_unknown", queuePos: null }); continue; }
-      if (slots.has(d.key) || slots.size >= max || loads.size >= max || !globalAllowed() || context.hidden || !coverage(d) || proposal !== revision || !descriptors.some(x => x.key === d.key && signature(x) === signature(d) && x.element === d.element)) break;
+      if (slots.has(d.key) || slots.size >= max || loads.size >= max || !globalAllowed(d) || context.hidden || !coverage(d) || proposal !== revision || !descriptors.some(x => x.key === d.key && signature(x) === signature(d) && x.element === d.element)) break;
       const rect = position(d, coverage(d));
       if (dead || proposal !== revision) return;
       if (!rect || d.element.ownerDocument !== host.document) { results.set(d.key, { verdict: "off", reason: "geometry_unknown", queuePos: null }); continue; }
@@ -254,7 +261,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       const acceptCompletion = () => {
         if (!current(s)) { clearMarker(s, "superseded"); return false; }
         if (!withinDeadline()) return false;
-        if (request.controller.signal.aborted || !globalAllowed() || context.hidden || !coverage(d)) {
+        if (request.controller.signal.aborted || !globalAllowed(d) || context.hidden || !coverage(d)) {
           if (current(s)) retire(s, "admission_revoked"); else clearMarker(s, "superseded");
           return false;
         }
@@ -290,7 +297,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
         s.budget = new EffectBudget({ device: s.device, baselineFps: baseline, clock: nativeClock, longTasksSupported });
         const frame = createEffectFrame({ window: host, root: local?.root ?? root, origin, boot, clock: nativeClock,
           render: { code: resource.code, params: resource.params, assets: resource.assets, wants: resource.wants, instance: d.instance, width: fresh.width, height: fresh.height, dpr: dpr(s.device) },
-          onReady() { if (!current(s)) return; if (!globalAllowed() || context.hidden || !coverage(d)) { retire(s, "hidden"); tell(); return; } const n = time(); if (n === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return; } s.ready = true; s.readyAt = n; s.healthySince = n; publishEnv(s); schedule(); tell(); },
+          onReady() { if (!current(s)) return; if (!globalAllowed(d) || context.hidden || !coverage(d)) { retire(s, "hidden"); tell(); return; } const n = time(); if (n === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return; } s.ready = true; s.readyAt = n; s.healthySince = n; publishEnv(s); schedule(); tell(); },
           onRemove(why) { if (current(s)) { retire(s, why); tell(); } },
         });
         s.frame = frame;
@@ -316,7 +323,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     schedule(); tell();
   }
   function publishEnv(s, proof = coverage(s.d)) {
-    if (!s.ready || !current(s) || context.hidden || !globalAllowed() || !permits(s.d, proof)) return;
+    if (!s.ready || !current(s) || context.hidden || !globalAllowed(s.d) || !permits(s.d, proof)) return;
     const e = effectEvent("env", { width: s.rect.width, height: s.rect.height, dpr: dpr(s.device), quality: s.budget.snapshot().quality }, null, time());
     if (e) s.frame.send(e);
   }
@@ -456,7 +463,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       descriptors = ds.map(snapshotDescriptor).filter(Boolean);
       for (const [key, identity] of paused) if (!descriptors.some(d => d.key === key && signature(d) === identity)) paused.delete(key);
       for (const [key, f] of failures) if (!descriptors.some(d => d.key === key && signature(d) === f.identity)) failures.delete(key);
-      context = Object.fromEntries([...FLAGS, "openInstance"].map(k => [k, ctx[k]]));
+      context = Object.fromEntries([...FLAGS, "trialReady", "openInstance"].map(k => [k, ctx[k]]));
       reconcile(); return view();
     },
     snapshot: view,

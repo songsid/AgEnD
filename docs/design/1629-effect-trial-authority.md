@@ -27,8 +27,9 @@ The stage must be physically inside that panel/sheet, with `contain: paint` and
 overlay, focusable mod element, DOM effect script or expanded pointer boundary.
 Worker code, the opaque shim and ready-only input remain unchanged. Trials must
 join the **same** caps, profiler and safety stops as the app's other effects; they
-cannot allocate a second registry to reset capacity. Owner CSS on, loading or
-unknown refuses the trial (including a human initiating it). These are future
+cannot allocate a second registry to reset capacity. The explicit local-admin click is consent for this sample alone;
+global HTML-preview preferences are unchanged. Owner CSS does not refuse Try: the host isolates chrome and stage
+in closed Shadow DOM with fixed styles and reset inheritance, while owner CSS remains active elsewhere. These are future
 mount prerequisites, **not** guarantees established by this server-only PR.
 
 The sample may display an effect declaring any region/layer inside the bounded
@@ -56,7 +57,7 @@ behavior. A Try is not Apply and creates no saved placement.
   explicit click. Routes must build a fresh actor from the real session verdict:
   local/admin/session, `SessionRecord.idHash`, its handle as epoch, and the current
   `webPersonKey`. Neither request JSON nor a web display name supplies this actor.
-  Custom CSS must be authoritatively off. At most one trial per session and 128
+  Owner CSS is a closed diagnostic enum, not admission authority. At most one trial per session and 128
   globally. A new start replaces only that session's previous trial.
 - `read(trial, instance, actor)` binds all of session hash, epoch, person and origin
   instance. Every code, image or profile authorization must call it with a **fresh**

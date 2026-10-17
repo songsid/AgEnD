@@ -64,8 +64,9 @@ export class MiniNode extends Target {
   get lastChild() { return this.childNodes[this.childNodes.length - 1] ?? null; }
   get nextSibling(): MiniNode | null { const p = this.parentNode; if (!p) return null; const i = p.childNodes.indexOf(this); return p.childNodes[i + 1] ?? null; }
   get previousSibling(): MiniNode | null { const p = this.parentNode; if (!p) return null; const i = p.childNodes.indexOf(this); return i > 0 ? p.childNodes[i - 1]! : null; }
-  get parentElement() { return this.parentNode; }
-  get isConnected(): boolean { let n: MiniNode | null = this; while (n) { if (n === (n.ownerDocument as any)?.documentElement) return true; n = n.parentNode; } return false; }
+  get parentElement(): MiniElement | null { return this.parentNode?.nodeType === 1 ? this.parentNode : null; }
+  getRootNode(): MiniNode { let n: MiniNode = this; while (n.parentNode) n = n.parentNode; return n; }
+  get isConnected(): boolean { let n: MiniNode | null = this; while (n) { if (n === (n.ownerDocument as any)?.documentElement) return true; n = n.parentNode ?? (n instanceof MiniShadowRoot ? n.host : null); } return false; }
   _detach(n: MiniNode) {
     if (n.nodeType === 11) return;
     if (n.parentNode) { const p = n.parentNode; const i = p.childNodes.indexOf(n); if (i >= 0) p.childNodes.splice(i, 1); }
@@ -132,6 +133,12 @@ function walk(root: MiniNode, fn: (el: MiniElement) => void) {
 }
 
 export class MiniElement extends MiniNode {
+  _shadow: MiniShadowRoot | null = null;
+  get shadowRoot(): MiniShadowRoot | null { return this._shadow?.mode === "open" ? this._shadow : null; }
+  attachShadow({ mode }: { mode: "open" | "closed" }) {
+    if (this._shadow) throw new Error("shadow root already attached");
+    return this._shadow = new MiniShadowRoot(this, mode);
+  }
   localName: string; namespaceURI: string | null; attrs = new Map<string, string>();
   style: Record<string, any>;
   scrollTop = 0; scrollHeight = 0; clientHeight = 0; offsetParent: any = {};
@@ -191,7 +198,7 @@ export class MiniElement extends MiniNode {
   get tabIndex() { return Number(this.getAttribute("tabindex") ?? -1); } set tabIndex(v: number) { this.setAttribute("tabindex", v); }
   get innerHTML(): string { return this.childNodes.map(serialize).join(""); }
   set innerHTML(html: string) { const target: MiniNode = this.content ?? this; target.childNodes = []; for (const n of parseHtml(this.ownerDocument, html)) target.appendChild(n); }
-  get outerHTML() { return serialize(this); }
+  get outerHTML(): string { return serialize(this); }
   matches(sel: string) { return matches(this, sel, null); }
   closest(sel: string): MiniElement | null { let n: any = this; while (n && n.nodeType === 1) { if (matches(n, sel, null)) return n; n = n.parentNode; } return null; }
   focus() { this.ownerDocument.activeElement = this; }
@@ -213,6 +220,11 @@ for (const ev of ["click", "input", "change", "keydown", "keyup", "paste", "subm
 
 export class MiniFragment extends MiniNode {
   constructor(doc: MiniDocument) { super(); this.nodeType = 11; this.ownerDocument = doc; }
+}
+
+export class MiniShadowRoot extends MiniNode {
+  nodeType = 11;
+  constructor(readonly host: MiniElement, readonly mode: "open" | "closed") { super(); this.ownerDocument = host.ownerDocument; }
 }
 
 export class MiniDocument extends MiniNode {

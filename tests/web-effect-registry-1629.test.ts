@@ -33,7 +33,7 @@ vi.mock("../src/ui/shared/effect-frame.js", async () => {
 const { createEffectRegistry } = await import(new URL("../src/ui/shared/effect-registry.js", import.meta.url).href);
 const id = (n: number) => n.toString(16).padStart(32, "0"), boot = "b".repeat(32);
 const stock = (patch = {}) => ({ ok: true, front: true, agentFront: true, rects: [], ...patch });
-const gates = (patch = {}) => ({ safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, constrained: false, modal: false, openInstance: "own", ...patch });
+const gates = (patch = {}) => ({ safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, trialReady: true, constrained: false, modal: false, openInstance: "own", ...patch });
 async function flush() { for (let i = 0; i < 12; i++) await Promise.resolve(); }
 function rig(options: any = {}) {
   let now = 0, seq = 0, tokens = 0;
@@ -533,6 +533,14 @@ describe("#1629 local Trial admission in the SAME registry (stage protocol model
     expect(h.cals()).toHaveLength(1); expect(h.load).toHaveBeenCalledExactlyOnceWith({ key: "trial", id: t.d.id, params: {} }, expect.any(AbortSignal));
     f.ready(); h.frame(100); expect(f.send.mock.calls.filter(([e]: any) => e.type === "env").at(-1)![0]).toMatchObject({ width: 99, height: 78 }); expect(h.api.publish("reply", {}, "own")).toBe(1); expect(h.api.publish("mention", {}, "own")).toBe(0);
     expect(h.api.snapshot()[0]).not.toHaveProperty("trialStage"); expect(f.options.render).not.toHaveProperty("trialStage"); expect(h.mount.mock.calls[0]![0]).not.toHaveProperty("trialStage");
+  });
+  it("a live branded Trial alone bypasses HTML opt-in and cannot lend that consent to ordinary rows", async () => {
+    const h = rig(), t = trial(h), other = h.descriptors(1, { layer: "behind" }); h.coverage.mockReturnValue(stock({ front: false, agentFront: false }));
+    await h.admit([t.d, ...other], gates({ modal: true, previewReady: false, optIn: false }));
+    expect(h.frames()).toHaveLength(1); expect(h.load).toHaveBeenCalledOnce(); expect(h.load.mock.calls[0][0].key).toBe(t.d.key);
+    h.frames()[0].ready(); expect(h.api.publish("reply", {}, "own")).toBe(1);
+    h.api.update([t.d, ...other], gates({ previewReady: false, optIn: false, trialReady: false }));
+    expect(h.frames()[0].state().removed).toBe(true); expect(h.api.publish("reply", {}, "own")).toBe(0);
   });
   it.each([false, true])("constrained=%s spends the common pool, preserves declared layer and queues without a read", async constrained => {
     const h = rig(), t = trial(h), ds = h.descriptors(4); h.coverage.mockReturnValue(stock({ front: false, agentFront: false }));

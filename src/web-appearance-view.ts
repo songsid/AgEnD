@@ -99,9 +99,12 @@ export function appearanceView(i: AppearanceInput): Record<string, unknown> {
   };
 }
 
-// ── The preview ── the page's numbers (app.css): a 720 px column, the M card (240 px portrait, banner half that), a
-// 56 px chat header with a 32 px face, bubbles of the theme's radius and border.
-const W = 720, PAD = 16, PORTRAIT_H = 240, BANNER_H = 120, HEADER_H = 56;
+// ── The preview ── the page's numbers (app.css): a 720 px column, the M card (240 px portrait; #2038: the banner 3:1
+// of the width, held between 140 and 240 px, as `.id-card`'s --id-ar / --id-bmin / --id-bmax), a 56 px chat header
+// with a 32 px face, bubbles of the theme's radius and border.
+const W = 720, PAD = 16, PORTRAIT_H = 240, HEADER_H = 56;
+export const PREVIEW_BANNER = { aspect: 3, min: 140, max: 240 } as const;
+const BANNER_H = Math.min(PREVIEW_BANNER.max, Math.max(PREVIEW_BANNER.min, Math.round(W / PREVIEW_BANNER.aspect)));
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const FONT: Record<string, string> = { inter: "sans-serif", system: "sans-serif", mono: "monospace" };
 

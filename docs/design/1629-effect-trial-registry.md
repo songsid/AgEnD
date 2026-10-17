@@ -26,7 +26,9 @@ provenance cannot turn a Trial into an owner placement. The only modal exception
 is the exact live local sample: global stock `front:false` and
 `agentFront:false` remain unchanged for ordinary descriptors. Shared total 3/1,
 front 2/1, DPR caps and owner/Chat priority stay intact. Safe mode, public links,
-consent, show, motion/data and other global gates still apply.
+show, motion/data and other global gates still apply. Only an exact live branded Trial descriptor uses
+sample-specific click consent plus validated transport readiness. Ordinary descriptors retain HTML-preview
+readiness and opt-in even while a Trial shares the same registry. The exception never forces global flags on.
 
 The loader receives the same closed `{key,id,params}` plus AbortSignal. No stage
 receipt or geometry is sent in a load payload, API snapshot, mount receipt or
@@ -77,6 +79,6 @@ geometry/factory and built Worker response. Its safety store and authenticated
 loader are private in-memory fixtures, not product grants or durable-store proof.
 Chromium/Firefox/Linux WebKit run at 1366/390 with shared caps, suppressed ordinary
 front, empty calibration, marker-before-frame, protected pixels, synchronous stage
-retirement, CSS/other dialog/menu/blur/stale/contain denial and full disposal.
+retirement, shadow-style loss/other dialog/menu/blur/stale/contain denial and full disposal.
 Linux WebKit is not real Safari. Product Try remains unavailable until the
 separate card/driver integration is reviewed.

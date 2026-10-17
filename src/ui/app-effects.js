@@ -6,6 +6,7 @@ import { resolvedMode, themesStore } from "/assets/app-themes.js";
 import { ownerCssLifecycle, safeMode } from "/assets/owner-css.js";
 import { constrainedDevice } from "/assets/effect-policy.js";
 import { createAppEffectRuntime } from "/assets/effect-app-runtime.js";
+import { effectTransportReady } from "/assets/effect-frame.js";
 import { createEffectCursor } from "/assets/effect-cursor.js";
 import { createOwnerEffectRegions } from "/assets/effect-owner-regions.js";
 import { chatEffectIdentity } from "/assets/effect-chat-runtime.js";
@@ -20,7 +21,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
   const existing = owners.get(host);
   if (existing) { if (!existing.dead) existing.bindStore(store); return getAppEffects(host); }
   if (!chatEffectIdentity(host) || typeof host.AgendAuth?.onSessionEnd !== "function" || typeof host.AgendAuth?.sessionEnded !== "function") return null;
-  const doc = host.document, releases = [], ended = new Set(), updates = new Set(), trialUpdates = new Set(); let replyOff = null, replyStore = null, regions = null, cursor = null, cursorStamp = null, trialControl = null, trialIntent = null, trialHint = false, trialSerial = 0, trialStamp = null, chatBinding = null;
+  const doc = host.document, releases = [], ended = new Set(), updates = new Set(), trialUpdates = new Set(); let replyOff = null, replyStore = null, regions = null, cursor = null, cursorStamp = null, trialControl = null, trialIntent = null, trialHint = null, trialSerial = 0, trialStamp = null, chatBinding = null;
   const safe = fn => { try { return fn(); } catch { return null; } };
   const hold = off => { if (entry.dead) safe(() => off?.()); else releases.push(off); };
   const entry = { dead: false, api: null,
@@ -38,11 +39,19 @@ export function startAppEffects({ store, window: host = window, factories = {} }
         if (entry.dead || replyStore !== value) safe(() => off?.()); else replyOff = off;
       }
     },
-    canTry(message) {
+    trialStatus(message) {
       const offer = safe(() => effectTrialMessage(message)), nav = navStore.get();
-      return !entry.dead && !!chatBinding && safe(() => chatBinding.current()) === true && trialHint && trialControl?.ok === true && !!offer && message.instance === nav.route?.instance && nav.route?.panel === "chat"
-        && trialControl.snapshot().phase === "idle" && !trialControl.snapshot().busy && trialAllowed();
+      const now = safe(() => host.Date.now());
+      if (!offer || !Number.isFinite(now) || now >= offer.expiresAt) return "expired";
+      if (trialHint === null && !entry.dead) return "checking";
+      if (entry.dead || !trialHint || trialControl?.ok !== true) return "localAdmin";
+      if (!chatBinding || safe(() => chatBinding.current()) !== true || message.instance !== nav.route?.instance || nav.route?.panel !== "chat") return "chatChanged";
+      const state = trialControl.snapshot();
+      if (state.phase !== "idle" || state.busy) return "busy";
+      return trialPlaybackStatus();
     },
+    canTry(message) { return entry.trialStatus(message) === "ready"; },
+    stopTrial() { trialControl?.stop(); },
     startTrial(message) {
       if (!entry.canTry(message)) return Promise.resolve(false);
       const nav = navStore.get(); trialIntent = { name: message.instance, seq: nav.seq, claim: claimPanel(), handle: null, chat: chatBinding };
@@ -73,6 +82,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     return { safe: safeMode(), publicLink: doc.body.dataset.publicLink === "1", reducedMotion: media?.matches !== false, saveData: host.navigator?.connection?.saveData === true,
       hidden: doc.visibilityState !== "visible", enabled: typeof host.OffscreenCanvas === "function" && typeof host.Worker === "function" && typeof host.MutationObserver === "function" && typeof host.ResizeObserver === "function",
       show: prefInForce("fx.show")?.value !== false, previewReady: ready,
+      trialReady: effectTransportReady(host, doc.body.dataset.previewOrigin, doc.body.dataset.previewBoot),
       optIn: prefInForce("preview.optIn")?.value === true && preview?.optedIn() === true && preview?.never() !== true,
       constrained: constrainedDevice({ memory: host.navigator?.deviceMemory, cores: host.navigator?.hardwareConcurrency, coarse: coarse?.matches === true, width: host.innerWidth }),
       modal: !!doc.querySelector("dialog[open],.menu-list,.pop,[role=alertdialog],.oc-keep,.shell.sb-open"), openInstance: null };
@@ -82,10 +92,24 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     return !entry.dead && host.document === doc && !!intent && !!intent.chat && chatBinding === intent.chat && intent.chat.current() === true && intent.name === name && nav.seq === intent.seq && nav.route?.panel === "chat" && nav.route.instance === name
       && (panelVersion() === intent.claim || intent.handle !== null && panelStore.get().open?.handle === intent.handle);
   }
+  // One priority order feeds both presentation and redraw identity: false→different-false must redraw.
+  function trialPlaybackStatus() {
+    const c = context();
+    if (c.safe) return "safe";
+    if (!c.show) return "effectsOff";
+    if (c.reducedMotion) return "reducedMotion";
+    if (c.saveData) return "saveData";
+    if (!c.enabled) return "unsupported";
+    if (!c.trialReady) return "transport";
+    if (c.publicLink) return "localAdmin";
+    if (c.hidden || doc.hasFocus?.() !== true) return "inactive";
+    if (c.modal) return "dialog";
+    return "ready";
+  }
   function trialAllowed() {
     const c = context();
-    return !entry.dead && doc.visibilityState === "visible" && doc.hasFocus?.() === true && ownerCssLifecycle.get().state === "off"
-      && c.enabled && c.show && c.previewReady && c.optIn && !c.safe && !c.publicLink && !c.reducedMotion && !c.saveData && !c.hidden && !c.modal;
+    return !entry.dead && doc.visibilityState === "visible" && doc.hasFocus?.() === true
+      && c.enabled && c.show && c.trialReady && !c.safe && !c.publicLink && !c.reducedMotion && !c.saveData && !c.hidden && !c.modal;
   }
   function mountTrial(handle) {
     const intent = trialIntent; if (!intent || !trialCurrent(handle.instance) || !handle.current() || !Number.isSafeInteger(++trialSerial)) throw Error("trial_unavailable");
@@ -97,7 +121,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
       if (panelStore.get().open?.handle === handle) closePanel();
     };
     try {
-      openTrialPanel({ key: binding.key, instance: handle.instance, binding, handle, ownerCss: () => ownerCssLifecycle.get().state,
+      openTrialPanel({ key: binding.key, instance: handle.instance, binding, handle,
         onStage(value) {
           stage = value;
           if (!handle.current()) { cleanup(); handle.stop(); return; }
@@ -111,7 +135,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
   }
   function notifyTrial() {
     if (entry.dead) return;
-    const nav = navStore.get(), next = JSON.stringify([trialHint, safe(() => chatBinding?.current()) === true, trialAllowed(), nav.route?.panel, nav.route?.instance, trialControl?.snapshot()]);
+    const nav = navStore.get(), next = JSON.stringify([trialHint, safe(() => chatBinding?.current()) === true, trialPlaybackStatus(), nav.route?.panel, nav.route?.instance, trialControl?.snapshot()]);
     if (next === trialStamp) return; trialStamp = next;
     for (const fn of [...trialUpdates]) safe(fn);
   }
@@ -136,7 +160,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     hold(() => trialControl?.dispose());
     if (typeof host.AgendAuth.trialSession === "function") Promise.resolve().then(() => host.AgendAuth.trialSession()).then(value => {
       if (entry.dead) return; trialHint = value?.localAdmin === true && value.epoch === chatEffectIdentity(host)?.epoch; notify();
-    }).catch(() => {});
+    }).catch(() => { if (!entry.dead) { trialHint = false; notify(); } });
     hold(panelStore.subscribe(() => { trialControl?.sync(); notifyTrial(); }));
     const ownRegions = (factories.regions ?? createOwnerEffectRegions)({ window: host, current: () => !entry.dead && host.document === doc });
     regions = ownRegions?.ok ? ownRegions : null; hold(() => ownRegions?.dispose?.());

@@ -74,7 +74,7 @@ export function allocateEffectFrames(descriptors, context) {
   else if (context.saveData === true) global = "save_data";
   else if (context.hidden === true) global = "hidden";
   else if (context.enabled !== true || context.show !== true) global = "disabled";
-  else if (context.previewReady !== true || context.optIn !== true) global = "preview_unavailable";
+
   const candidates = [];
   for (let i = 0; i < descriptors.length; i++) {
     const d = descriptors[i], r = result[i];
@@ -87,6 +87,7 @@ export function allocateEffectFrames(descriptors, context) {
     if (!owner && d.region !== "chat") { r.reason = "scope"; continue; }
     if (d.region === "chat" && (!instanceName(d.instance) || d.instance !== context.openInstance)) { r.reason = "closed_chat"; continue; }
     if (global) { r.reason = global; continue; }
+    if (trial ? context.trialReady !== true : context.previewReady !== true || context.optIn !== true) { r.reason = "preview_unavailable"; continue; }
     if (d.paused === true) { r.reason = "paused"; continue; }
     if (d.visible !== true) { r.reason = "offscreen"; continue; }
     if (d.layer === "front" && context.modal === true && !trial) { r.reason = "modal"; continue; }

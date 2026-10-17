@@ -22,7 +22,7 @@ function rig(prepare: (h: any) => void = () => {}) {
   const loader = { ok: true, ownerSettled: vi.fn(async (): Promise<any> => ownerBody()), placementsSettled: vi.fn(async () => ({ rev: 1, effects: [placement] })), resourceSettled: vi.fn(async () => ({ id, params: { n: 1 } })), cursorImageSettled: vi.fn(async (): Promise<any> => new Uint8Array([1, 2, 3])), dispose: vi.fn() };
   const registry = { ok: true, frameRoot: { isConnected: true }, update: vi.fn((ds: any[]) => { rows = ds.map(d => ({ ...d, verdict: "active", phase: "running" })); }), snapshot: () => rows, resume: vi.fn(() => true), publish: vi.fn(), dispose: vi.fn() };
   const collectors: any[] = [], collect = () => { const c = { ok: true, add: vi.fn(), report: vi.fn(() => ({ profile: { v: 1, device: "standard" } })), dispose: vi.fn() }; collectors.push(c); return c; };
-  const context: any = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, constrained: false, modal: false, openInstance: "caller-not-authority" };
+  const context: any = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, trialReady: true, constrained: false, modal: false, openInstance: "caller-not-authority" };
   const observation: any = { context, ownerCss: "off", mode: "light" }, globalChange = vi.fn();
   const h: any = { host, values, loader, registry, collectors, context, observation, globalChange, placement, listeners, events, at(t: number) { now = t; }, stale() { live = false; }, signOut() { ended = true; for (const fn of [...listeners]) fn(); }, options: () => options };
   prepare(h);
@@ -318,10 +318,10 @@ describe("#1629 Trial contribution in the one app pool (protocol double)", () =>
     expect(h.factories.loader).toHaveBeenCalledOnce(); expect(h.factories.registry).toHaveBeenCalledOnce(); expect(h.factory).toHaveBeenCalledOnce();
     expect(h.api.trialSnapshot().rows.map((x: any) => x.key)).toEqual(["trial:one"]); a.api.dispose(); expect(h.protocol.stopFor).toHaveBeenCalledWith(h.chatOwner()); h.api.dispose();
   });
-  it.each(["on", "loading", "unknown"])("CSS %s and every global opt-out are refused by the Trial's independent current gate", async css => {
+  it.each(["on", "loading", "unknown"])("CSS %s stays on while the Trial retains its independent transport and safety gates", async css => {
     const h = trialRig(); h.chat(); await flush(); h.api.attachTrial({}); expect(h.trialOptions().current()).toBe(true);
-    h.observation.ownerCss = css; expect(h.trialOptions().current()).toBe(false); h.observation.ownerCss = "off";
-    for (const key of ["enabled", "show", "previewReady", "optIn"]) { h.context[key] = false; expect(h.trialOptions().current()).toBe(false); h.context[key] = true; }
+    h.observation.ownerCss = css; expect(h.trialOptions().current()).toBe(true); h.context.previewReady = false; h.context.optIn = false; expect(h.trialOptions().current()).toBe(true);
+    for (const key of ["enabled", "show", "trialReady"]) { h.context[key] = false; expect(h.trialOptions().current()).toBe(false); h.context[key] = true; }
     for (const key of ["safe", "publicLink", "reducedMotion", "saveData", "hidden"]) { h.context[key] = true; expect(h.trialOptions().current()).toBe(false); h.context[key] = false; }
     expect(h.trialOptions().current()).toBe(true); h.api.dispose();
   });

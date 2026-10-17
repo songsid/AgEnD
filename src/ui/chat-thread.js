@@ -106,10 +106,17 @@ export function createThread(list, scroller, opts) {
       : `<span class="click-text">${inner}</span>`}</div>`;
   }
   function trialNow() { try { const t = opts.serverNow ? opts.serverNow() : Date.now(); return Number.isFinite(t) ? t : Infinity; } catch { return Infinity; } }
+  const trialReasons = new Set(["checking", "localAdmin", "chatChanged", "busy", "safe", "effectsOff", "reducedMotion", "saveData", "unsupported", "transport", "inactive", "dialog", "expired"]);
+  function trialStatus(message) {
+    const reason = opts.effectTrialStatus?.(message);
+    return reason === "ready" || trialReasons.has(reason) ? reason : opts.canTryEffect?.(message) === true ? "ready" : "localAdmin";
+  }
   function trialHtml(offer, time, message) {
-    const expired = trialNow() >= offer.expiresAt, available = !PUBLIC_LINK() && !expired && opts.canTryEffect?.(message) === true;
-    const button = available ? `<button type="button" class="btn btn-sm effect-trial-start" data-act="effectTrial" data-arg="${escAttr(msgKey(message))}">${escAttr(tr("chat.effectTrialStart"))}</button>` : "";
-    return `<div class="msg status-line"><div class="meta">${time}</div><div class="body"><div class="effect-trial-offer" data-trust="thread-control"><strong>${escAttr(tr("chat.effectTrial"))}: ${escAttr(offer.title)}</strong><div>${escAttr(tr(expired ? "chat.effectTrialExpired" : "chat.effectTrialLocal"))}</div>${button}</div></div></div>`;
+    const reason = trialNow() >= offer.expiresAt ? "expired" : PUBLIC_LINK() ? "localAdmin" : trialStatus(message);
+    const available = reason === "ready", fix = !PUBLIC_LINK() && !available && reason !== "expired" && reason !== "checking" && typeof opts.fixEffectTrial === "function";
+    const label = available ? "chat.effectTrialStart" : reason === "busy" ? "chat.effectTrialStopOther" : reason === "localAdmin" ? "chat.effectTrialSignIn" : "chat.effectTrialSettings";
+    const button = available || fix ? `<button type="button" class="btn btn-sm effect-trial-start" data-act="effectTrial" data-arg="${escAttr(msgKey(message))}">${escAttr(tr(label))}</button>` : "";
+    return `<div class="msg status-line"><div class="meta">${time}</div><div class="body"><div class="effect-trial-offer" data-trust="thread-control"><strong>${escAttr(tr("chat.effectTrial"))}: ${escAttr(offer.title)}</strong><div>${escAttr(tr(available ? "chat.effectTrialLocal" : "chat.effectTrialReason_" + reason))}</div>${button}</div></div></div>`;
   }
   function armTrials() {
     if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
@@ -628,8 +635,9 @@ export function createThread(list, scroller, opts) {
       // Only the current host-produced keyed card and a real local click can request admission. No token is read from DOM.
       const key = el.dataset.arg, row = msgs.find(x => msgKey(x) === key), owner = nodes.get(key), node = owner?.node, offer = effectTrialMessage(row);
       if (PUBLIC_LINK() || e.defaultPrevented || e.isTrusted !== true || owner?.trialButton !== el || el.className !== "btn btn-sm effect-trial-start" || !node?.contains(el) || el.closest(".effect-trial-offer")?.getAttribute("data-trust") !== "thread-control"
-        || !offer || trialNow() >= offer.expiresAt || opts.canTryEffect?.(row) !== true) return;
-      opts.startEffectTrial?.(row);
+        || !offer || trialNow() >= offer.expiresAt) return;
+      if (trialStatus(row) === "ready" && opts.canTryEffect?.(row) === true) opts.startEffectTrial?.(row);
+      else opts.fixEffectTrial?.(row, trialStatus(row));
     } else if (act === "showButtons") { const x = msgs.find(y => y.buttons && y.buttons.id === el.dataset.arg); if (x) reveal(msgKey(x)); }
   }
 

@@ -49,7 +49,7 @@ export function effectTrialOffer(value: unknown): Readonly<EffectTrialOffer> | n
 
 /** HOST INPUT ONLY: build afresh from the route's verified session verdict, never from JSON.
  * sessionHash is SessionRecord.idHash, not the cookie; epoch is its handle. Header tokens
- * have no actor. Owner CSS must be authoritatively off, including at each resource read.
+ * have no actor. Owner CSS is diagnostic; the host isolates Trial chrome in its own shadow root.
  */
 export interface EffectTrialActor {
   readonly via: "session";
@@ -58,15 +58,15 @@ export interface EffectTrialActor {
   readonly sessionHash: string;
   readonly epoch: string;
   readonly person: string;
-  readonly ownerCss: "off";
+  readonly ownerCss: "off" | "on" | "loading" | "unknown";
 }
-function actor(value: unknown, requireCss = true): EffectTrialActor | null {
+function actor(value: unknown): EffectTrialActor | null {
   const d = data(value, ["via", "surface", "tier", "sessionHash", "epoch", "person", "ownerCss"]);
   if (!d || d.via !== "session" || d.surface !== "local" || d.tier !== "admin"
     || typeof d.sessionHash !== "string" || !SESSION.test(d.sessionHash)
     || typeof d.epoch !== "string" || !EPOCH.test(d.epoch)
     || typeof d.person !== "string" || !d.person.length || d.person.length > 256
-    || (requireCss ? d.ownerCss !== "off" : !["off", "on", "loading", "unknown"].includes(d.ownerCss as string))) return null;
+    || !["off", "on", "loading", "unknown"].includes(d.ownerCss as string)) return null;
   return Object.freeze({ ...d }) as unknown as EffectTrialActor;
 }
 interface Offer { readonly public: Readonly<EffectTrialOffer>; readonly instance: string; readonly until: number }
@@ -177,7 +177,7 @@ export class WebEffectTrials {
   /** An authenticated owner can stop even after CSS becomes on/unknown; never stops another session. */
   stop(trial: string, viewer: unknown): { ok: true } | Failure {
     return this.run(() => {
-      const a = actor(viewer, false), t = this.trials.get(trial);
+      const a = actor(viewer), t = this.trials.get(trial);
       if (!a || !t || !sameActor(a, t.actor)) return denied();
       this.trials.delete(trial); return { ok: true as const };
     });

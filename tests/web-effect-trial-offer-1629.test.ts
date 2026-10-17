@@ -89,7 +89,7 @@ describe("the real thread's inert protected offer card", () => {
     const start = vi.fn(), th = createThread(list, scroller, { t, tf: t, isUser: (x: any) => x.role === "user", onJump() {}, onEmpty() {}, setPreviewOptIn() {}, copyText: async () => true, download() {}, onEffectTrial: start, serverNow: () => 0, ...extra });
     return { dom, list, th, start };
   }
-  it.each([["en", "Effect trial", "Try requires a local admin, enabled previews and custom CSS off."], ["zh-TW", "效果試播", "需由本機管理員啟用預覽並關閉自訂 CSS，才能試播。"]])("escaped display in %s, no runnable UI", (lang, label, hint) => {
+  it.each([["en", "Effect trial", "Sign in as an admin on this computer to Try."], ["zh-TW", "效果試播", "請在這台電腦以管理員登入後試播。"]])("escaped display in %s, no runnable UI", (lang, label, hint) => {
     const f = fixture(lang); try {
       f.th.render([message({ effectTrial: offer({ title: '<b>x</b> & "quoted"' }), text: "not card content" })]);
       const card = f.list.querySelector(".effect-trial-offer")!; expect(card.getAttribute("data-trust")).toBe("thread-control");
@@ -100,7 +100,7 @@ describe("the real thread's inert protected offer card", () => {
     } finally { f.th.dispose(); f.dom.restore(); }
   });
   it("public link also gets only an inert local-admin explanation", () => {
-    const f = fixture("en", true); try { f.th.render([message()]); expect(f.list.querySelector(".effect-trial-offer")!.textContent).toContain("Try requires a local admin"); expect(f.list.querySelector("button,iframe")).toBeNull(); } finally { f.th.dispose(); f.dom.restore(); }
+    const f = fixture("en", true); try { f.th.render([message()]); expect(f.list.querySelector(".effect-trial-offer")!.textContent).toContain("Sign in as an admin on this computer"); expect(f.list.querySelector("button,iframe")).toBeNull(); } finally { f.th.dispose(); f.dom.restore(); }
   });
   it("only the current real host button accepts a trusted click; DOM carries a message key, not the offer", () => {
     const start = vi.fn(), row = message(), f = fixture("en", false, { canTryEffect: () => true, startEffectTrial: start });
@@ -114,6 +114,22 @@ describe("the real thread's inert protected offer card", () => {
       f.th.onClick({ target: button, isTrusted: true }); expect(start).toHaveBeenCalledExactlyOnceWith(row);
       f.th.render([message({ effectTrial: offer({ title: "New" }) })]); f.th.onClick({ target: button, isTrusted: true }); expect(start).toHaveBeenCalledOnce();
     } finally { f.th.dispose(); f.dom.restore(); }
+  });
+  it.each([
+    ["localAdmin", "Sign in as an admin on this computer to Try.", "Sign in here"],
+    ["busy", "Stop the current trial before starting another.", "Stop current trial"],
+    ["effectsOff", "Turn on effects to Try.", "Open playback settings"],
+    ["reducedMotion", "Your device requests reduced motion.", "Open playback settings"],
+  ])("one unmet %s condition has one host action; it can never start from the fix click", (reason, hint, label) => {
+    const fix = vi.fn(), start = vi.fn(), row = message(), f = fixture("en", false, { effectTrialStatus: () => reason, fixEffectTrial: fix, canTryEffect: () => false, startEffectTrial: start });
+    try { f.th.render([row]); const card = f.list.querySelector(".effect-trial-offer")!, button = card.querySelector("button")!;
+      expect(card.textContent).toContain(hint); expect(button.textContent).toBe(label); expect(card.textContent).not.toContain("custom CSS"); expect(card.querySelectorAll("button")).toHaveLength(1);
+      f.th.onClick({ target: button, isTrusted: false }); expect(fix).not.toHaveBeenCalled(); f.th.onClick({ target: button, isTrusted: true }); expect(fix).toHaveBeenCalledExactlyOnceWith(row, reason); expect(start).not.toHaveBeenCalled();
+    } finally { f.th.dispose(); f.dom.restore(); }
+  });
+  it("session verification is an inert checking state, not a premature sign-in refusal", () => {
+    const f = fixture("en", false, { effectTrialStatus: () => "checking", fixEffectTrial: vi.fn() });
+    try { f.th.render([message()]); expect(f.list.textContent).toContain("Checking this session…"); expect(f.list.querySelector("button")).toBeNull(); } finally { f.th.dispose(); f.dom.restore(); }
   });
   it("growing the chunked thread through a click chip preserves exact Trial ownership and expiry", () => {
     vi.useFakeTimers(); let now = 0; const start = vi.fn(), row = message({ effectTrial: offer({ expiresAt: 10 }) });

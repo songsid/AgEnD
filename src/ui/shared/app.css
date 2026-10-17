@@ -1310,12 +1310,17 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   font-weight: var(--fw-medium); white-space: nowrap; }
 
 /* #1629 r4 §1 / r4.1 Q3 (a): the identity card (identity-card.js). The size is a class token; its heights are here
-   (S 160 / M 240 / L 360 px, on a phone 120 / 180 / 240); the banner scales with the portrait. Never a style attribute. */
-.id-card { --id-h: 240px; margin: 0 0 var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
-.id-card.card-s { --id-h: 160px; }
-.id-card.card-l { --id-h: 360px; }
-.id-card.card-c { --id-h: 96px; margin: 0; border: 0; border-radius: 0; background: none; }
-.id-banner { display: block; width: 100%; height: calc(var(--id-h) / 2); object-fit: cover; }
+   (S 160 / M 240 / L 360 px, on a phone 120 / 180 / 240). Never a style attribute.
+   #2038: the banner's height follows the card's width — S 4:1, M 3:1, L 2.25:1 — between a floor and a ceiling per size,
+   so it is never a strip across a wide chat and never a wall on a phone; the picture fills it, cropped about its middle.
+   The chat header's card (card-c) follows the same size choice (card-c bs-<size>). */
+.id-card { --id-h: 240px; --id-ar: 3 / 1; --id-bmin: 140px; --id-bmax: 240px; margin: 0 0 var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
+.id-card.card-s { --id-h: 160px; --id-ar: 4 / 1; --id-bmin: 100px; --id-bmax: 160px; }
+.id-card.card-l { --id-h: 360px; --id-ar: 9 / 4; --id-bmin: 200px; --id-bmax: 360px; }
+.id-card.card-c { --id-h: 96px; --id-bmin: 120px; --id-bmax: 200px; margin: 0; border: 0; border-radius: 0; background: none; }
+.id-card.card-c.bs-s { --id-ar: 4 / 1; --id-bmin: 96px; --id-bmax: 150px; }
+.id-card.card-c.bs-l { --id-ar: 9 / 4; --id-bmin: 150px; --id-bmax: 220px; }
+.id-banner { display: block; width: 100%; height: auto; aspect-ratio: var(--id-ar); min-height: var(--id-bmin); max-height: var(--id-bmax); object-fit: cover; object-position: 50% 50%; }
 .id-row { display: flex; align-items: flex-start; gap: var(--s-3); padding: var(--s-3) var(--s-4); }
 .id-portrait { display: block; flex-shrink: 0; height: var(--id-h); width: auto; max-width: min(calc(var(--id-h) * 0.75), 100%); object-fit: cover; border-radius: var(--r-sm); }
 .id-text { flex: 1; min-width: 0; }
@@ -1373,9 +1378,12 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .chat-card-toggle { display: flex; align-items: center; gap: var(--s-2); width: 100%; min-height: 32px; padding: 0 var(--s-4); border: 0; background: none; color: var(--text-2); font: inherit; font-size: var(--fs-xs); text-align: left; cursor: pointer; }
 .chat-card-peek { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }
 @media (max-width: 479px) {
-  .id-card.card-s { --id-h: 120px; }
-  .id-card.card-m { --id-h: 180px; }
-  .id-card.card-l { --id-h: 240px; }
+  .id-card.card-s { --id-h: 120px; --id-bmin: 80px; --id-bmax: 120px; }
+  .id-card.card-m { --id-h: 180px; --id-bmin: 100px; --id-bmax: 150px; }
+  .id-card.card-l { --id-h: 240px; --id-bmin: 120px; --id-bmax: 200px; }
+  .id-card.card-c { --id-bmin: 100px; --id-bmax: 140px; }
+  .id-card.card-c.bs-s { --id-bmin: 80px; --id-bmax: 110px; }
+  .id-card.card-c.bs-l { --id-bmin: 110px; --id-bmax: 150px; }
   .id-row { flex-wrap: wrap; }
   .id-text { flex-basis: 100%; }
 }

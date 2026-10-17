@@ -68,13 +68,17 @@ describe("#1629 volatile local-admin Try authority (unmounted)", () => {
   });
   it.each([
     { surface: "gateway" }, { surface: "public" }, { via: "header-token" }, { via: "agent" }, { tier: "read" }, { tier: undefined },
-    { ownerCss: "on" }, { ownerCss: "loading" }, { ownerCss: "unknown" }, { ownerCss: null }, { ownerCss: undefined },
+    { ownerCss: null }, { ownerCss: undefined },
     { sessionHash: "a".repeat(63) }, { sessionHash: "x".repeat(64) }, { epoch: "b".repeat(15) }, { epoch: "B".repeat(16) },
     { person: "" }, { person: "x".repeat(257) }, { extra: true },
   ])("refuses start AND each read for an ineligible/fail-closed viewer %j", patch => {
     const f = fixture(), o = f.offer().offer, t = f.start(o), before = disk(f.root), a = viewer(patch);
     expect(f.trials.start(o.offer, "agent", a)).toEqual(unavailable); expect(f.trials.read(t.trial, "agent", a)).toEqual(unavailable); expect(disk(f.root)).toEqual(before);
     expect(f.trials.read(t.trial, "agent", viewer()).ok).toBe(true);
+  });
+  it.each(["off", "on", "loading", "unknown"])("CSS %s is diagnostic: local admin consent works without changing owner CSS", ownerCss => {
+    const f = fixture(), o = f.offer().offer, a = viewer({ ownerCss }), before = disk(f.root), t = f.start(o, a);
+    expect(f.trials.read(t.trial, "agent", a).ok).toBe(true); expect(disk(f.root)).toEqual(before);
   });
   it.each([null, [], "admin", {}, Object.create(viewer())])("no implicit operator, inherited viewer or anonymous admission: %j", a => {
     const f = fixture(), o = f.offer().offer; expect(f.trials.start(o.offer, "agent", a)).toEqual(unavailable);

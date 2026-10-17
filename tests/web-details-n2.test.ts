@@ -307,9 +307,30 @@ describe("#1629 r4 §1: the identity card", () => {
     const toggle = () => pg.root.querySelector(".p-chat .chat-card-toggle");
     expect([toggle().getAttribute("aria-expanded"), pg.root.querySelector(".p-chat .id-card"), pg.root.querySelector(".chat-card-peek").textContent]).toEqual(["false", null, "<b>Reviews</b> your PRs"]);
     toggle().click(); await settle(2);
-    expect([pg.root.querySelector(".p-chat .id-card").getAttribute("class"), pg.root.querySelector(".p-chat .card-size"), pg.storage.get("agend_chat_card")]).toEqual(["id-card card-c", null, "open"]);
+    expect([pg.root.querySelector(".p-chat .id-card").getAttribute("class"), pg.root.querySelector(".p-chat .card-size"), pg.storage.get("agend_chat_card")]).toEqual(["id-card card-c bs-m", null, "open"]);
+    // #2038: its banner follows this card's size choice (made on Details or in View).
+    const { setCardSize } = await import("/assets/identity-card.js");
+    setCardSize("loner", "l"); await settle(2);
+    expect(pg.root.querySelector(".p-chat .id-card").getAttribute("class")).toBe("id-card card-c bs-l");
+    setCardSize("loner", "m"); await settle(2);
     toggle().click(); await settle(2);
     expect([pg.root.querySelector(".p-chat .id-card"), pg.storage.get("agend_chat_card") ?? null]).toEqual([null, null]);
+  });
+  it("#2038: the banner's height follows the card's width (an aspect per size) between a floor and a ceiling — never half the size token", async () => {
+    const css = (await import("node:fs")).readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
+    const rule = (sel: string) => { const i = css.indexOf(`${sel} {`); expect(i, sel).toBeGreaterThanOrEqual(0); return css.slice(i, css.indexOf("}", i)); };
+    expect(rule(".id-banner")).toContain("aspect-ratio: var(--id-ar); min-height: var(--id-bmin); max-height: var(--id-bmax); object-fit: cover;");
+    expect(css).not.toContain("calc(var(--id-h) / 2)");
+    // Every size, the chat header's and a phone's, sets a floor below its ceiling, and the chat's floor is at least 96 px.
+    const px = (sel: string, v: string, from = 0) => { const i = css.indexOf(`${sel} {`, from); const m = new RegExp(`--${v}: (\\d+)px`).exec(css.slice(i, css.indexOf("}", i))); return m ? Number(m[1]) : null; };
+    const phone = css.indexOf("@media (max-width: 479px) {\n  .id-card.card-s");
+    expect(phone).toBeGreaterThan(0);
+    for (const [sel, from] of [[".id-card", 0], [".id-card.card-s", 0], [".id-card.card-l", 0], [".id-card.card-c", 0], [".id-card.card-c.bs-s", 0], [".id-card.card-c.bs-l", 0],
+      [".id-card.card-s", phone], [".id-card.card-m", phone], [".id-card.card-l", phone], [".id-card.card-c", phone], [".id-card.card-c.bs-s", phone], [".id-card.card-c.bs-l", phone]] as const) {
+      const lo = px(sel, "id-bmin", from), hi = px(sel, "id-bmax", from);
+      expect([lo !== null && hi !== null && lo < hi, sel, from > 0]).toEqual([true, sel, from > 0]);
+      if (sel.startsWith(".id-card.card-c")) expect(lo!, sel).toBeGreaterThanOrEqual(80);
+    }
   });
   it("#1888 review: the agent's working label shows only while working; its background's opacity goes through the CSSOM", async () => {
     const pg = await app("/ui/chat/loner");

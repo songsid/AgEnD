@@ -338,8 +338,9 @@ deferred to #1940; do not keep reapplying an agent front while custom CSS is on,
 `preview_web_effect({id})` posts a volatile Try card in your own web chat, using your current own/shared read rights. It starts nothing and changes no appearance. The sample is physically clipped inside its own host panel or sheet. Only an explicit
 click by a signed-in **local admin** may start it; never an agent, public link, header token or automatic action.
 The host owns a visible Trial label and Stop control. Closing the panel/sheet, navigating, window blur, or another
-menu/dialog stops it. Custom CSS must be off (on/loading/unknown denies), and the same caps, profiler and safety
-stops apply. Ordinary foreground effects stay suppressed. A volatile offer lasts at most ten minutes (offering the same effect again keeps that offer and its expiry; a different effect replaces it); every read
+menu/dialog stops it. The explicit Try click consents to this sample only; no global HTML-preview opt-in is needed or changed.
+The host isolates the Trial controls and clipped stage in a closed Shadow DOM with fixed styles and reset typography.
+Custom CSS stays active elsewhere. The same caps, profiler and safety stops apply. Ordinary foreground effects stay suppressed. A volatile offer lasts at most ten minutes (offering the same effect again keeps that offer and its expiry; a different effect replaces it); every read
 rechecks the originating agent's current own/shared access, with the trial bound to the admin's session and epoch.
 There is no saved placement, claim, share, export or new saved profile record. Cards are memory-only and become inert when expired; a restart never restores them. Try uses manifest defaults and the existing app pool, not a second runtime. Do not treat an offer id or ordinary reply button
 as permission to run or fetch an effect, and do not keep retrying an unavailable Try.

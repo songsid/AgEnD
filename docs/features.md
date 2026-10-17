@@ -1228,7 +1228,9 @@ Personal page/header/sidebar/box choices use that same pool. The personal cursor
 `preview_web_effect({id})` offers a volatile card in the agent's own web chat, using current own/shared read access. It makes no appearance write. Try is an admin-initiated sample inside a physically clipped host panel or sheet. Only an
 explicit click by a signed-in local admin may start it, with a visible Trial label and Stop control. Public links,
 agents and header tokens cannot start it. Closing the panel, navigating, window blur or another menu/dialog stops
-it. Custom CSS must be off; the usual caps, profiler and safety stops remain, and ordinary foreground effects stay
+it. That click supplies consent for this sample without enabling global HTML previews. Host controls and the clipped
+stage use a closed Shadow DOM with fixed styles and reset inherited typography; custom CSS stays active elsewhere.
+The usual caps, profiler and safety stops remain, and ordinary foreground effects stay
 suppressed. Offers last at most ten minutes, trials are session/epoch-bound, and each read rechecks the origin
 agent's current own/shared access. No saved placement, claim, share or export is created. The volatile server
 authority, local-admin API, host panel and shared app pool enforce this boundary. Cards are memory-only, expire in place and are never restored from disk. A valid late Start is only stopped, never mounted. Try uses manifest defaults and writes no saved profile record; mandatory safety history still applies. See the

@@ -32,7 +32,7 @@ The existing app owner owns one control lane and the one shared effect runtime.
 An explicit click captures the Chat contribution, navigation sequence, instance,
 document, epoch and panel claim before any await. Navigating, replacing the Chat
 or its store, closing/replacing the claimed panel, blur, hidden state, auth end,
-opt-out, reduced motion, save-data, unknown CSS or another menu/dialog ends it.
+effects opt-out, reduced motion, save-data or another menu/dialog ends it. HTML preview consent and the owner-CSS lifecycle do not gate the isolated Trial.
 A same-name replacement cannot inherit an old click. No logical cancellation
 releases an outstanding physical session read/fetch/body/cancel operation.
 
@@ -55,8 +55,9 @@ The existing stage proves contain:paint, overflow:clip, exact physical geometry,
 trusted host stylesheet and the fixed direct-child topology before painting.
 It lives inside its own panel/sheet, never a portal or a new overlay. There is no
 focusable mod document or expanded pointer authority. Ordinary foreground effects
-stay suppressed while the Trial panel is visible. Custom CSS on/loading/unknown
-refuses Try even where an ordinary human placement would retain an exemption.
+stay suppressed while the Trial panel is visible. The local-admin click supplies sample-specific consent.
+Trial chrome and stage use a closed shadow root with a fixed same-origin stylesheet, no parts/slots, and reset inherited font/color/direction.
+Owner CSS remains active elsewhere, including the unchanged agent-front suppression rule. Unknown/missing shadow styles refuse paint.
 
 Trial uses the same settled resource lane, registry, standard/constrained caps,
 relative host-baseline profiler and mandatory safety history as Chat/personal
@@ -74,3 +75,27 @@ real Safari, and no hard real-time cutoff is claimed while the host is blocked.
 Rollback is the product integration commit: the existing Chat, personal slots,
 cursor, library and safety stores remain usable; the private Trial foundations
 remain inert without this card/bridge publication and do not require migration.
+
+## Click consent and owner CSS (#2039)
+
+Try does not use the HTML preview origin's global opt-in as its consent gate. The
+local admin's explicit, trusted, current keyed-card click produces the trial
+receipt. Listener/boot transport readiness is checked separately; ordinary effects
+and cursors still require their original preview consent. No preference is forced
+on, and a live Trial cannot lend consent to another descriptor.
+
+The Trial panel's own chrome and canvas stage are inside closed Shadow DOM. Its
+fixed self-only stylesheet exports no parts/slots and resets inherited font,
+color and direction. An important host reset also blocks direct outer host hiding
+and pseudo-element relabeling. Missing, replaced or overdue styles fail closed
+before a stage receipt; existing ancestor paint/geometry checks still apply.
+Owner CSS remains active for ordinary UI outside this panel. Refusal cards show
+one condition and a fixed host action; pending session verification is inert.
+
+The product recipe runs with HTML opt-in false and the session's never-preview
+flag true, and proves those choices remain unchanged. It loads real hostile owner
+CSS (`::after`, zero font size, display/visibility/opacity hiding, `:host`, `::part`
+and inherited font/color) and checks the resulting controls while a real Worker
+runs. Browser sessions are minted private fixtures, not a real-login proof. The
+separate stage recipe deliberately oversizes the iframe and samples protected
+control/clip-edge pixels. Linux WebKit is not real Safari.

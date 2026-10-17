@@ -312,6 +312,12 @@ function Thread({ name, th }) {
     const thread = createThread(list.current, scroller.current, {
       t, tf: t, isUser: (x) => store.isUser(x, name), onJump: setJump, onEmpty: setEmpty,
       setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
+      effectTrialStatus: x => getAppEffects()?.trialStatus(x) ?? "localAdmin",
+      fixEffectTrial: (x, reason) => {
+        if (reason === "busy") getAppEffects()?.stopTrial();
+        else if (reason === "localAdmin") location.href = "/signin?next=" + encodeURIComponent(location.pathname + location.search);
+        else navigate("/ui/settings?section=appearance");
+      },
       canTryEffect: x => getAppEffects()?.canTry(x) === true,
       startEffectTrial: x => { const seq = navStore.get().seq; void getAppEffects()?.startTrial(x).then(ok => { if (!ok && live && navStore.get().seq === seq && document.hasFocus?.() === true && document.visibilityState === "visible") toast(t("chat.effectTrialUnavailable")); }); },
       clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266

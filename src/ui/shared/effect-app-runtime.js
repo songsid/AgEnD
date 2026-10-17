@@ -98,7 +98,7 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
     if (!registry.ok) throw Error("runtime_unavailable");
     trial = make("trialSource", createEffectTrialSource)({ window: host, current: () => {
       if (!alive()) return false; const v = observe(), c = v.context;
-      return alive() && v.ownerCss === "off" && c.enabled === true && c.show === true && c.previewReady === true && c.optIn === true
+      return alive() && c.enabled === true && c.show === true && c.trialReady === true
         && c.safe === false && c.publicLink === false && c.reducedMotion === false && c.saveData === false && c.hidden === false;
     }, ownerCurrent: (s, name) => sourceAlive(s) && s.name === name,
       stock: () => registry.frameRoot ? make("stock", stockEffectTrust)(host, { frameRoot: registry.frameRoot, ownerCss: observe().ownerCss }) : null,
