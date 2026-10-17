@@ -57,7 +57,7 @@ describe("a kept message says where it was seen and whose it is", () => {
     one.record({ instance: "a", sender: "bob", text: "from discord", ts: ts(), channel: true, from: BOB_FROM });
     one.record({ instance: "a", sender: "alice", text: "mine, web only", ts: ts(), from: "dc:111", messageId: "web-1" });
     one.record({ instance: "a", sender: "old", text: "before #1920", ts: ts() });
-    await s1.flush?.(); await new Promise((r) => setTimeout(r, 30));
+    await s1.flush();
     const two = new WebChatHistory({ boot: "b2" }); two.restore("a", store().load("a"));
     expect(two.list("a").map((m) => [m.text, m.channel ?? null, m.from ?? null])).toEqual([
       ["from discord", true, BOB_FROM], ["mine, web only", null, "dc:111"], ["before #1920", null, null]]);
@@ -75,9 +75,9 @@ describe("a kept message says where it was seen and whose it is", () => {
     const store = () => new WebChatDiskStore({ home, logger: { warn: vi.fn() }, debounceMs: 1, ownerOf: () => "dir:/w/a" });
     const one = new WebChatHistory({ boot: "b1" }); const s1 = store(); one.restore("a", s1.load("a")); one.setStore(s1);
     one.record({ instance: "a", sender: "x", text: "copied", ts: ts(), messageId: "web-8", from: "dc:111" });
-    await new Promise((r) => setTimeout(r, 30));
+    await s1.flush();
     one.markChannel("a", "web-8");
-    await new Promise((r) => setTimeout(r, 30));
+    await s1.flush();
     const two = new WebChatHistory({ boot: "b2" }); two.restore("a", store().load("a"));
     expect(two.list("a").map((m) => [m.text, m.channel ?? null]), "the mark is kept across a restart").toEqual([["copied", true]]);
     const { h, say } = hist();
@@ -288,7 +288,7 @@ describe("FleetManager: where a reply landed; the marks recorded; a copy that ma
     expect((first.messages as Array<{ text: string }>).map((m) => m.text)).toEqual(["seen"]);
     const cursor = first.cursor as string;                       // b1-3
     one.markChannel("a", "web-1");                               // its echo went out; the guest's tab is offline
-    await new Promise((r) => setTimeout(r, 40));
+    await s1.flush();
     // A restart: a new process restores the history from disk.
     const two = new WebChatHistory({ boot: "b2" }); two.restore("a", store().load("a"));
     const g2 = guestOf(two);
