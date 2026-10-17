@@ -112,6 +112,15 @@ it("a locked agent is refused at the first part: nothing is buffered, nothing st
  for(let k=0;k<5;k++)await upload(f,"own",files(`agend.ready() // ${k}`));
  expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({ok:true,entries:Array.from({length:5},()=>expect.anything())});
 });
+it("a person's lock set just before the last part refuses the effect at the end: nothing stored",async()=>{
+ const f=fixture();let parts=0;
+ await sendEffectInParts(files("a".repeat(700000)),async args=>{parts++;return f.tools.upload("other",args);});
+ expect(parts,"several parts").toBeGreaterThan(1);
+ let calls=0;
+ const answer=await sendEffectInParts(files("b".repeat(700000)),async args=>{if(++calls===parts)f.refuse("locked");return f.tools.upload("own",args);});
+ expect(answer).toEqual({error:"locked"});expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({entries:[]});
+ expect(f.changed,"only the first (another agent's) upload changed anything").toHaveBeenCalledTimes(1);
+});
 it("aborts a staged upload when the durable claim write fails, without charging",async()=>{
  const f=fixture(),abort=vi.spyOn(f.lib,"abort");vi.spyOn(f.lib,"commit").mockReturnValue({ok:false,error:"index_failure"});
  const answer=await sendEffectInParts(files(),async args=>f.tools.upload("own",args));

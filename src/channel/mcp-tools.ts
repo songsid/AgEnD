@@ -144,7 +144,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["set_web_settings", schemas.SetWebSettingsArgs,
     "Change one Web appearance setting for the user, exactly as the page changes it (the same checks; custom CSS keeps its safe rules): host settings, an agent's colour, custom CSS (save on trial, keep or revert the trial, use an earlier version, off), a proposed mod (review, install with the parts to apply, cancel, dismiss, uninstall), an effect on a chat, an effect slot, or Restore defaults. Returns { ok, ... } or { ok: false, error, detail }. See the web-appearance skill. General, coordinators and full profiles."],
   ["get_web_theme", schemas.GetWebThemeArgs,
-    "Your own web theme (how your chat looks in the web dashboard): the current theme, the token defaults it is drawn over, your uploaded pictures, and your limits (changes and uploads left, each picture slot's size limits and your picture quota). No target: always yours."],
+    "Your own web theme (how your chat looks in the web dashboard): the current theme, the token defaults it is drawn over, your uploaded pictures, and your limits (changes left, each picture slot's size limits and your picture quota; uploads are not counted). No target: always yours."],
   ["set_web_theme", schemas.SetWebThemeArgs,
     "Change your own web theme, all or nothing: typed values only (colours #rrggbb, choices from fixed lists, numbers in range), contrast checked per light/dark mode. Returns { theme, rev } or { errors: [{ path, problem }] }. Rate-limited (30 s apart, 10 an hour); refused while a person has locked your theme."],
   ["set_web_theme_asset", schemas.SetWebThemeAssetArgs,
