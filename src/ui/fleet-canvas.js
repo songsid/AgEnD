@@ -83,7 +83,7 @@ export function zoomAt(v, f, cx, cy) {
 
 // ── Per device ──
 
-const MODE_KEY = "agend_org_mode", FOLD_KEY = "agend_org_folded", LIVE_KEY = "agend_org_live";
+const MODE_KEY = "agend_org_mode", FOLD_KEY = "agend_org_folded", LIVE_KEY = "agend_org_live", KEY_KEY = "agend_org_key";
 function readMode() { try { return localStorage.getItem(MODE_KEY) === "list" ? "list" : "canvas"; } catch { return "canvas"; } }
 function readLive() { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch { return true; } }
 function readFolded() {
@@ -174,10 +174,11 @@ function TrafficLayer({ edges, q }) {
 }
 const ARROWS = ["task", "send", "report", "broadcast", "team", "fading"];
 
-/** The key to the lines: open on a desktop, folded on a phone (it would cover the canvas); a person's choice after. */
-function Legend({ narrow }) {
+/** The key to the lines: folded until the person opens it (open, it covers a corner of the canvas); kept per device. */
+function Legend() {
+  const [open] = useState(() => { try { return localStorage.getItem(KEY_KEY) === "1"; } catch { return false; } });
   const row = (cls, k) => html`<span class="oc-lg"><i class=${`oc-sw ${cls}`} aria-hidden="true"></i>${tc(k)}</span>`;
-  return html`<details class="oc-legend" open=${!narrow}><summary>${tc("legend")}</summary>
+  return html`<details class="oc-legend" open=${open} onToggle=${(e) => save(KEY_KEY, e.currentTarget.open ? "1" : "0")}><summary>${tc("legend")}</summary>
     <div class="oc-lg-rows">${row("h-task", "lgTask")}${row("h-send", "lgSend")}${row("h-report", "lgReport")}${row("h-broadcast", "lgBroadcast")}
     ${row("ph-queued", "lgQueued")}${row("ph-fading", "lgFading")}</div></details>`;
 }
@@ -373,7 +374,7 @@ function Canvas({ view, folded, onFold, q, jump, traffic }) {
         </g>
       </g>
     </svg>
-    ${traffic ? html`<${Legend} narrow=${narrow} />` : null}
+    ${traffic ? html`<${Legend} />` : null}
     <div class="oc-zoom" role="group" aria-label=${tc("view")}>
       <button type="button" class="icon-btn" aria-label=${tc("zoomIn")} title=${tc("zoomIn")} onClick=${() => zoomBy(1.25)}><${Icon} name="plus" size=${16} /></button>
       <button type="button" class="icon-btn" aria-label=${tc("zoomOut")} title=${tc("zoomOut")} onClick=${() => zoomBy(0.8)}><span aria-hidden="true">−</span></button>

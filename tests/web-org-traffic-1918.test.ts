@@ -252,10 +252,16 @@ describe("the page", () => {
     p.root.querySelector(".oc-live").click(); await settle(4);
     expect([subs.get("traffic")?.size, reads]).toEqual([1, 2]);
   });
-  it("the key: open on a desktop; each line starts at a dot and ends at an arrow of its colour", async () => {
+  it("the key: folded until opened, kept per device; each line starts at a dot and ends at an arrow of its colour", async () => {
     await mount();
     emit("traffic", it_(1, "atlas", "quill", "delivering")); await settle(2);
-    expect(p.root.querySelector(".oc-legend").open).toBe(true);
+    const key = p.root.querySelector(".oc-legend");
+    expect(!!key.open).toBe(false);
+    key.open = true; key.dispatchEvent(Object.assign(new (globalThis as any).Event("toggle"), {}));
+    expect(localStorage.getItem("agend_org_key")).toBe("1");
+    await p.unmount(); await mount();
+    emit("traffic", it_(1, "atlas", "quill", "delivering")); await settle(2);
+    expect(!!p.root.querySelector(".oc-legend").open).toBe(true);
     const f = p.root.querySelector(".oc-flow");
     expect([f.getAttribute("marker-start"), f.getAttribute("marker-end")]).toEqual(["url(#oc-src-task)", "url(#oc-ah-task)"]);
     expect(["oc-src-task", "oc-ah-task"].every((id) => !!p.root.querySelector(`#${id}`))).toBe(true);
