@@ -244,6 +244,38 @@ describe("FleetManager: where a reply landed; the marks recorded; a copy that ma
     await fm.afterReplyRouted("a", { text: "elsewhere" }, undefined, null, false);
     expect(events.map((e) => [e.text, e.channel ?? null, e.from ?? null])).toEqual([["hi there", true, "dc:222"], ["landed", true, null], ["elsewhere", null, null]]);
   });
+  it("#2085 review: a platform click is the channel's only when its buttons are in the instance's own topic; a guest reads its label", async () => {
+    const fm = fleet();
+    const events: Array<Record<string, unknown>> = [];
+    Object.assign(fm, { emitSseEvent: (e: string, d: Record<string, unknown>) => { if (e === "message") events.push(d); }, reactMessageStatus: () => {}, touchActivity: () => {},
+      setTopicIcon: () => {}, pendingReactionsMeta: () => ({ meta: {}, consume: () => {} }), deliverHumanToInstance: async () => true, afterUserInboundDelivered: () => {}, getDeliveryEpoch: () => 0 });
+    fm.worlds.get("dc").adapter = { type: "discord" };
+    const click = (chatId: string, threadId: string, userId: string) => fm.deliverReplyButtonChoice({ id: "f".repeat(32), instance: "a", adapterId: "dc", chatId, threadId, messageId: "m1" },
+      { label: "Ship it", value: "deploy-prod-7" }, { userId, username: "u", source: "discord" });
+    await click("G", "42", "222"); await click("G", "99", "222"); await click("dm-chat", "", "111");
+    expect(events.map((e) => [e.channel ?? null, e.from])).toEqual([[true, "dc:222"], [null, "dc:222"], [null, "dc:111"]]);
+    const { h } = hist();
+    const rows = events.map((e) => h.record(e as never));
+    const g = guestOf(h);
+    expect(rows.map((r) => guestSeesMessage(r, g, SCOPE)), "own topic: yes; another topic: no; its own DM click: yes").toEqual([true, false, true]);
+    const shown = guestMessage(rows[0]!, g);
+    expect(shown.text).toBe("Ship it");
+    expect(JSON.stringify(shown)).not.toContain("deploy-prod-7");
+  });
+  it("#2085 review: a message that becomes the channel's after a poll's cursor reaches that guest's next poll, once", () => {
+    const { h, say } = hist(), g = guestOf(h);
+    say("a", "held", { messageId: "web-1", from: BOB_FROM });
+    say("a", "seen", { channel: true });
+    const first = guestPollBody({ instances: [] }, SCOPE, 1, g, null, () => h.after(0));
+    expect((first.messages as Array<{ text: string }>).map((m) => m.text)).toEqual(["seen"]);
+    const cursor = first.cursor as string;
+    h.markChannel("a", "web-1");
+    const parse = (c: string) => ({ boot: c.split("-")[0]!, id: Number(c.split("-")[1]) });
+    const next = guestPollBody({ instances: [] }, SCOPE, 2, g, cursor, () => [...h.replayFor(parse(cursor)), ...h.seenAfter(parse(cursor))]);
+    expect((next.messages as Array<{ text: string }>).map((m) => m.text)).toEqual(["held"]);
+    const after = guestPollBody({ instances: [] }, SCOPE, 3, g, next.cursor as string, () => [...h.replayFor(parse(next.cursor as string)), ...h.seenAfter(parse(next.cursor as string))]);
+    expect(after.messages, "not sent again").toEqual([]);
+  });
   it("guestOwnRoom: the account's own Telegram private room, on its own connection", () => {
     const fm = fleet();
     expect(fm.guestOwnRoom({ adapterId: "tg", userId: "5550001" }, "room")).toBe(true);
