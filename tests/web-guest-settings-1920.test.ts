@@ -28,7 +28,9 @@ vi.mock("node:child_process", async importOriginal => {
 vi.mock("../src/backend/index.js", async original => ({ ...await original<typeof import("../src/backend/index.js")>(), createBackend: () => { throw Error("No backend"); } }));
 vi.mock("../src/tmux-manager.js", async original => ({ ...await original<typeof import("../src/tmux-manager.js")>(), TmuxManager: new Proxy({}, { get: () => () => { throw Error("No tmux"); } }) }));
 import { FleetManager } from "../src/fleet-manager.js";
-import { tokenEpoch } from "../src/web-session.js";
+import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
+import { WEB_CSRF_HEADER, WEB_SESSION_COOKIE } from "../src/web-auth.js";
+import { request as httpRequest } from "node:http";
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
 import { SettingsBaselines } from "../src/settings-baseline.js";
@@ -106,7 +108,11 @@ function harness(fleet: Record<string, unknown> = {}) {
   const save = vi.fn(() => { noteSettingsWrite(path, yaml.load(readFileSync(path, "utf8")), config); writeFileSync(path, yaml.dump(config)); revision++; });
   const overview = vi.fn(() => ({ enabled: true, guests: [] }));
   const revoke = vi.fn(() => ({ count: 2, durable: true }));
-  const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  // A real admin session (the revoke asks for its caller again after the body, #2103 review).
+  const TOKEN = "c".repeat(48), sessions = new WebSessionStore();
+  const sid = sessions.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
+  const guestSid = sessions.create({ tier: "guest", surface: "local", label: "guest", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "dc", userId: "999" } }).sessionId as string;
+  const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
     getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
     guestOverview: overview, revokeGuestWebSessions: revoke } as unknown as SettingsApiContext;
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
@@ -115,10 +121,12 @@ function harness(fleet: Record<string, unknown> = {}) {
     principal: req => req.headers.cookie ? { id: "session-a", label: "browser", source: "web_session", current: () => true } : null,
     baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
   });
-  function request(method: string, url: string, body?: unknown, opts: { publicLink?: boolean } = {}) {
+  function request(method: string, url: string, body?: unknown, opts: { publicLink?: boolean; as?: "admin" | "guest" | "none" } = {}) {
     return new Promise<{ status: number; body: any }>((resolve, reject) => {
       const req = new EventEmitter() as any;
-      req.method = method; req.url = url; req.headers = { "idempotency-key": `k-${Math.random()}`, cookie: "opaque" }; req.destroy = () => undefined;
+      req.method = method; req.url = url; req.destroy = () => undefined;
+      const who = opts.as === "guest" ? guestSid : opts.as === "none" ? "not-a-session" : sid;
+      req.headers = { "idempotency-key": `k-${Math.random()}`, host: "localhost", origin: "http://localhost", cookie: `${WEB_SESSION_COOKIE}=${who}`, [WEB_CSRF_HEADER]: csrfTokenFor(who) };
       if (opts.publicLink) bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.example", isCurrent: () => true });
       let status = 0;
       const res = { headersSent: false, destroyed: false, writeHead(code: number) { status = code; this.headersSent = true; }, setHeader: vi.fn(),
@@ -164,6 +172,9 @@ describe("through the gate and the real handler", () => {
     expect(r).toEqual({ status: 200, body: { ok: true, count: 2, durable: true } });
     expect(h.revoke).toHaveBeenCalledWith({ adapterId: "dc", userId: "111" });
     expect((await h.request("POST", "/api/settings/guests/revoke", { adapterId: "dc" })).status).toBe(400);
+    // The handler itself refuses a caller that is not an admin (the global gate refuses them first in the server).
+    expect((await h.request("POST", "/api/settings/guests/revoke", { adapterId: "dc", userId: "111" }, { as: "guest" })).status).toBe(401);
+    expect((await h.request("POST", "/api/settings/guests/revoke", { adapterId: "dc", userId: "111" }, { as: "none" })).status).toBe(401);
     expect((await h.request("GET", "/api/settings/guests", undefined, { publicLink: true })).status).toBe(403);
     expect((await h.request("POST", "/api/settings/guests/revoke", { adapterId: "dc", userId: "111" }, { publicLink: true })).status).toBe(403);
     expect(h.revoke).toHaveBeenCalledTimes(1);
@@ -196,5 +207,60 @@ describe("the overview (a real FleetManager)", () => {
     if (s.rememberGuestDevice) expect(by["222"]).toMatchObject({ sessions: 0, devices: 1 });
     expect(Object.keys(by).sort(), "no admin session in it").toEqual(s.rememberGuestDevice ? ["111", "222", "333"] : ["111", "333"]);
     fm.stormWindow.shutdown(); fm.spawnGate.shutdown();
+  });
+});
+
+describe("#2103 review: POST …/revoke through the real local server, its body held", () => {
+  async function live() {
+    const dir = mkdtempSync(join(tmpdir(), "agend-1920gr-")); roots.push(dir);
+    const fm = new FleetManager(dir), s = fm as any;
+    const q = () => {}; s.logger = { info: q, warn: q, error: q, debug: q, trace: q, fatal: q, child: () => s.logger };
+    writeFileSync(join(dir, "fleet.yaml"), `health_port: 0\ninstances:\n  a:\n    working_directory: ${dir}\n    backend: claude-code\nweb:\n  guests:\n    enabled: true\n`);
+    s.notifyFleetError = () => true; fm.loadConfig(join(dir, "fleet.yaml"));
+    s.lifecycle = { isPaused: () => false, hasWorkLease: () => false, daemons: new Map() };
+    s.getInstanceStatus = () => "running";
+    s.initializeWebAuthTokens(); s.startHealthServer(0);
+    await vi.waitFor(() => expect(s.getDashboardAccess().ready).toBe(true));
+    s.initializeWebSessions();
+    const port = s.healthServer.address().port as number;
+    const epoch = () => tokenEpoch(s.getDashboardAccess().token);
+    const admin = s.webSessions.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: epoch() });
+    const guest = () => s.webSessions.create({ tier: "guest", surface: "local", label: "g", tokenEpoch: epoch(), owner: { adapterId: "dc", userId: "111" } });
+    guest();
+    const guests = () => s.webSessions.list(undefined, (r: any) => r.tier === "guest").length;
+    /** The revoke, its body held until `between` has run. */
+    const revoke = (between: () => unknown, extra: Record<string, string> = {}) => new Promise<number>((resolve, reject) => {
+      const body = JSON.stringify({ adapterId: "dc", userId: "111" });
+      const r = httpRequest({ host: "127.0.0.1", port, method: "POST", path: "/api/settings/guests/revoke", headers: { host: `127.0.0.1:${port}`, origin: `http://127.0.0.1:${port}`,
+        "content-type": "application/json", "content-length": String(Buffer.byteLength(body)), cookie: `${WEB_SESSION_COOKIE}=${admin.sessionId}`, [WEB_CSRF_HEADER]: csrfTokenFor(admin.sessionId), ...extra } },
+        (res) => { res.resume(); res.on("end", () => resolve(res.statusCode ?? 0)); });
+      r.on("error", reject);
+      r.write(body.slice(0, 1));
+      setTimeout(() => { between(); r.end(body.slice(1)); }, 50);
+    });
+    const close = () => new Promise<void>((r) => { s.healthServer.close(() => r()); fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); });
+    return { s, dir, admin, guests, revoke, close };
+  }
+  it("unchanged: an admin's revoke signs the guest out at once (no confirmation)", async () => {
+    const h = await live();
+    try {
+      expect(h.guests()).toBe(1);
+      expect(await h.revoke(() => {})).toBe(200);
+      expect(h.guests()).toBe(0);
+    } finally { await h.close(); }
+  });
+  it("the admin's session revoked while the body came: refused, the guest untouched", async () => {
+    const h = await live();
+    try {
+      expect(await h.revoke(() => h.s.webSessions.revokeById(h.admin.sessionId))).toBe(401);
+      expect(h.guests()).toBe(1);
+    } finally { await h.close(); }
+  });
+  it("the web token rotated while the body came: refused, the guest untouched", async () => {
+    const h = await live();
+    try {
+      expect(await h.revoke(() => writeFileSync(join(h.dir, "web.token"), "d".repeat(48), { mode: 0o600 }))).toBe(401);
+      expect(h.guests()).toBe(1);
+    } finally { await h.close(); }
   });
 });

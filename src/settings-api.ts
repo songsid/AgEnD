@@ -7,6 +7,7 @@ import { gatewayRequestContext } from "./web-request-context.js";
 import { applyAppearanceChanges, applyGuestsPatch, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS, effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { permitWebContinuation } from "./web-continuation.js";
+import { evaluateWebRequest } from "./web-auth.js";
 import { redactInlineSecrets, restoreRedactedSecrets } from "./settings-redaction.js";
 /**
  * Settings Web API (`/settings`) — CRUD over fleet.yaml + classicBot.yaml.
@@ -68,6 +69,18 @@ import {
 
 
 
+
+/**
+ * #2103 review: who may change guest sign-in outside the settings transaction — an admin's session (by its handle) or
+ * the header token, as the request is judged NOW; null otherwise. A caller asked again after an await must come back
+ * the same: its session revoked, expired or rotated away (or the token rotated) is no one.
+ */
+function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: string | null; webSessions?: import("./web-session.js").WebSessionStore | null }): string | null {
+  const v = evaluateWebRequest(req as never, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  if (v.kind !== "allow") return null;
+  if (v.via === "header-token") return "header-token";
+  return v.session.tier === "admin" ? `session:${v.session.handle}` : null;
+}
 
 export interface SettingsApiContext extends AppShellContext {
   /** #1920 phase 3: Settings → Web sign-ins → Guests. */
@@ -663,8 +676,13 @@ export function handleSettingsRequest(
   if (path === "/api/settings/guests/revoke" && method === "POST") {
     if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
     if (!ctx.revokeGuestWebSessions) { json(res, 404, { error: "not available" }); return true; }
+    // #2103 review: not a gated settings change (it only takes away), so no transaction fences it — the caller is
+    // asked again after the body: the same admin session (or the header token) still current, else nothing happens.
+    const caller = guestSettingsCaller(req, url, ctx);
+    if (!caller) { json(res, 401, { error: "not authorized" }); return true; }
     readBody(req, 4096).then(buf => {
       if (!permitWebContinuation(req, res, ctx)) return;
+      if (guestSettingsCaller(req, url, ctx) !== caller) return json(res, 401, { error: "no longer authorized" });
       let body: { adapterId?: unknown; userId?: unknown };
       try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body?.adapterId !== "string" || !body.adapterId || typeof body.userId !== "string" || !body.userId) return json(res, 400, { error: "adapterId and userId required" });
