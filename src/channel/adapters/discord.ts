@@ -1453,19 +1453,26 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     return true;
   }
 
-  /** #1920 §3.2: a member of the channel's guild who may view it — read from Discord (force), never the member cache. */
+  /**
+   * #1920 §3.2: whether a user can read this room as on Discord — a member of the channel's guild (read from Discord,
+   * force: never the member cache) with View Channel and Read Message History there (the web shows a room's history,
+   * #2092 review). A private thread (a ClassicBot room can be one) also needs the user in it, or Manage Threads:
+   * discord.js answers a thread's permissionsFor from its parent, which every guild member who sees the parent passes.
+   */
   async canViewChannel(channelId: string, userId: string): Promise<boolean> {
     if (!/^\d{5,25}$/.test(userId) || !/^\d{5,25}$/.test(channelId)) return false;
     const channel = await (await this.readyClient()).channels.fetch(channelId);
     if (!channel || !("guild" in channel) || !channel.guild || typeof (channel as { permissionsFor?: unknown }).permissionsFor !== "function") return false;
+    // 10007 Unknown Member / 10013 Unknown User: a definite "not in it"; anything else is no answer (rethrown).
+    const notIn = (err: unknown): false => { if ([10007, 10013].includes((err as { code?: unknown }).code as number)) return false; throw err; };
     let member;
     try { member = await channel.guild.members.fetch({ user: userId, force: true }); }
-    catch (err) {
-      // 10007 Unknown Member / 10013 Unknown User: a definite "not in this guild"; anything else is no answer.
-      if ([10007, 10013].includes((err as { code?: unknown }).code as number)) return false;
-      throw err;
-    }
-    return (channel as { permissionsFor(m: unknown): { has(bit: bigint): boolean } | null }).permissionsFor(member)?.has(PermissionFlagsBits.ViewChannel) === true;
+    catch (err) { return notIn(err); }
+    const perms = (channel as { permissionsFor(m: unknown): { has(bit: bigint): boolean } | null }).permissionsFor(member);
+    if (perms?.has(PermissionFlagsBits.ViewChannel) !== true || perms.has(PermissionFlagsBits.ReadMessageHistory) !== true) return false;
+    if (channel.type !== ChannelType.PrivateThread || perms.has(PermissionFlagsBits.ManageThreads)) return true;
+    try { await (channel as { members: { fetch(o: { member: string; force: boolean }): Promise<unknown> } }).members.fetch({ member: userId, force: true }); return true; }
+    catch (err) { return notIn(err); }
   }
 
   /** Private delivery: a DM to the user (fails if the user disallows DMs from this server). */

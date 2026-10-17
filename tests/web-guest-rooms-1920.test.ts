@@ -268,7 +268,7 @@ describe("live: a guest whose only scope is a ClassicBot room", () => {
 
 describe("Discord: canViewChannel (a ClassicBot room in any guild)", async () => {
   const { DiscordAdapter } = await import("../src/channel/adapters/discord.js");
-  const { PermissionFlagsBits } = await import("discord.js");
+  const { ChannelType, PermissionFlagsBits } = await import("discord.js");
   const USER = "123456789012345678";
   function discord(opts: { channel?: unknown; fetchMember?: (arg: any) => Promise<unknown> }) {
     const a = new DiscordAdapter({ id: "discord", botToken: "t", accessManager: { canRead: () => true, canWrite: () => true } as any, inboxDir: join(home, "dc-inbox"), guildId: "999" } as any);
@@ -277,7 +277,10 @@ describe("Discord: canViewChannel (a ClassicBot room in any guild)", async () =>
     (a as any).readyClient = async () => ({ channels });
     return { a, members, channels };
   }
-  const channelIn = (members: any, view: boolean) => ({ guild: { members }, permissionsFor: (m: any) => ({ has: (bit: bigint) => m?.id === USER && bit === PermissionFlagsBits.ViewChannel && view }) });
+  // `allow`: the bits this member has here (a thread's are its parent's, as discord.js answers them).
+  const READ = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory];
+  const channelIn = (members: any, view: boolean, extra: Record<string, unknown> = {}, allow: bigint[] = READ) =>
+    ({ type: ChannelType.GuildText, guild: { members }, permissionsFor: (m: any) => ({ has: (bit: bigint) => m?.id === USER && view && allow.includes(bit) }), ...extra });
 
   it("a member with View Channel: yes; without it: no; read from Discord (force)", async () => {
     for (const view of [true, false]) {
@@ -295,6 +298,34 @@ describe("Discord: canViewChannel (a ClassicBot room in any guild)", async () =>
     }
     const members = { fetch: vi.fn(async () => { throw Object.assign(new Error("rate limited"), { code: 429 }); }) };
     await expect(discord({ channel: channelIn(members, true) }).a.canViewChannel(DC_ROOM, USER)).rejects.toThrow("rate limited");
+  });
+  it("#2092 review: View Channel without Read Message History is no — the web shows the room's history", async () => {
+    const members = { fetch: vi.fn(async () => ({ id: USER })) };
+    expect(await discord({ channel: channelIn(members, true, {}, [PermissionFlagsBits.ViewChannel]) }).a.canViewChannel(DC_ROOM, USER)).toBe(false);
+    expect(await discord({ channel: channelIn(members, true, {}, [PermissionFlagsBits.ReadMessageHistory]) }).a.canViewChannel(DC_ROOM, USER), "nor the reverse").toBe(false);
+  });
+  it("#2092 review: a private thread needs the user in it (or Manage Threads), not only its parent's permissions", async () => {
+    const guildMembers = { fetch: vi.fn(async () => ({ id: USER })) };
+    const thread = (threadFetch: () => Promise<unknown>, allow?: bigint[]) => {
+      const members = { fetch: vi.fn(threadFetch) };
+      return { members, channel: channelIn(guildMembers, true, { type: ChannelType.PrivateThread, members }, allow) };
+    };
+    const inIt = thread(async () => ({ id: USER }));
+    expect(await discord({ channel: inIt.channel }).a.canViewChannel(DC_ROOM, USER)).toBe(true);
+    expect(inIt.members.fetch).toHaveBeenCalledWith({ member: USER, force: true });
+    const notIn = thread(async () => { throw Object.assign(new Error("Unknown Member"), { code: 10007 }); });
+    expect(await discord({ channel: notIn.channel }).a.canViewChannel(DC_ROOM, USER), "sees the parent, not in the thread").toBe(false);
+    const failing = thread(async () => { throw Object.assign(new Error("Missing Access"), { code: 50001 }); });
+    await expect(discord({ channel: failing.channel }).a.canViewChannel(DC_ROOM, USER), "no answer").rejects.toThrow("Missing Access");
+    const manager = thread(async () => { throw Object.assign(new Error("Unknown Member"), { code: 10007 }); }, [...READ, PermissionFlagsBits.ManageThreads]);
+    expect(await discord({ channel: manager.channel }).a.canViewChannel(DC_ROOM, USER), "Manage Threads sees every private thread").toBe(true);
+    expect(manager.members.fetch).not.toHaveBeenCalled();
+    const noParent = thread(async () => ({ id: USER }), [PermissionFlagsBits.ManageThreads]);
+    expect(await discord({ channel: noParent.channel }).a.canViewChannel(DC_ROOM, USER), "in the thread, but cannot read the parent").toBe(false);
+    // A public thread is its parent's to see.
+    const pub = { fetch: vi.fn(async () => { throw new Error("never asked"); }) };
+    expect(await discord({ channel: channelIn(guildMembers, true, { type: ChannelType.PublicThread, members: pub }) }).a.canViewChannel(DC_ROOM, USER)).toBe(true);
+    expect(pub.fetch).not.toHaveBeenCalled();
   });
   it("not a guild channel, or malformed ids: no, and nothing asked for malformed ids", async () => {
     expect(await discord({ channel: { id: "dm" } }).a.canViewChannel(DC_ROOM, USER)).toBe(false);
