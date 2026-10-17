@@ -73,6 +73,26 @@ for (const focus of foci) {
     await ctx.close();
   }
 }
+// Edit profile's focus control (after only): the picture whole, the band every screen shows and a phone's, at each focus.
+if (TAG !== "before") {
+  for (const width of [1366, 390]) {
+    const { ctx, page } = await fx.page({ ...c, device: width < 600 ? "phone" : "desk" }, { storage: { agend_view_card_expanded: "1" } });
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${fx.base}/view/${enc(NAME)}`); await page.waitForTimeout(900);
+    const edit = await page.$("button:has-text('Edit profile')");
+    if (edit) {
+      await edit.click(); await page.waitForTimeout(1200);
+      for (const f of [0, 50, 100]) {
+        await page.evaluate(`(() => { const r = document.querySelector('.bf-field input[type=range]'); if (!r) return; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(r, "${f}"); r.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+        await page.waitForTimeout(300);
+        const el = await page.$(".bf-field");
+        if (el) await el.screenshot({ path: shotPath(SMOKE, `${TAG}-edit-w${width}`, `focus${f}`) });
+        results.cases.push({ edit: width, focus: f, present: !!el });
+      }
+    } else results.cases.push({ edit: width, missing: "Edit profile" });
+    await ctx.close();
+  }
+}
 writeFileSync(shotPath(SMOKE, "result", TAG).replace(/\.png$/, ".json"), JSON.stringify(results, null, 1));
-console.log(JSON.stringify(results.cases.map((x: any) => x.missing ? `${x.width} ${x.size} ${x.surface} MISSING` : `${x.width} f${x.focus} ${x.size} ${x.surface} ${x.box?.join("×")} ${x.ar}:1 shows ${x.shownHeight} pos ${x.pos}`)));
+console.log(JSON.stringify(results.cases.map((x: any) => x.edit ? `edit ${x.edit} f${x.focus} ${x.present ?? x.missing}` : x.missing ? `${x.width} ${x.size} ${x.surface} MISSING` : `${x.width} f${x.focus} ${x.size} ${x.surface} ${x.box?.join("×")} ${x.ar}:1 shows ${x.shownHeight} pos ${x.pos}`)));
 await fx.close(); process.exit(0);

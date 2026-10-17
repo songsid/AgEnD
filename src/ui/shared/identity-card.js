@@ -4,7 +4,8 @@
 //
 // Nothing the agent wrote is markup: the tagline and bio are text nodes (never linkified), the pictures are same-origin
 // <img> elements whose URLs are checked here again, and sizes are class tokens only (card-s | card-m | card-l, heights in
-// app.css) — no style attribute, no CSSOM size (#1300). The size is a viewer's choice: every card's default
+// app.css) — no style attribute, no CSSOM size (#1300). #2086: the banner's focus is a position, not a size: one custom
+// property set through the CSSOM (`--id-focus`), and the banner is never drawn wider than BANNER_MAX_ASPECT : 1. The size is a viewer's choice: every card's default
 // (`card.size`) and the cards set apart from it (`card.sizeByInstance`, at most 200), synced like the other preferences.
 import { html, useEffect, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
@@ -13,6 +14,15 @@ import { onPrefsChanged, prefInForce, savePref } from "./app-prefs.js";
 import "./card-strings.js";
 
 export const CARD_SIZES = ["s", "m", "l"];
+/**
+ * #2086: the widest a banner is ever drawn (width : height) — app.css caps its width at this many times its size's
+ * tallest height. So the band of the picture shown everywhere is (picture's aspect ÷ this) of its height, at the focus.
+ */
+export const BANNER_MAX_ASPECT = 5;
+/** The share of a picture's height a box of `boxAspect` shows (1: all of it; a narrower box crops the sides instead). */
+export const bannerShownHeight = (pictureAspect, boxAspect) => Math.min(1, pictureAspect / boxAspect);
+/** That band's top, as a share of the picture's height, at focus `f` (0–100) — object-position's own rule. */
+export const bannerBandTop = (shown, f) => (1 - shown) * (f / 100);
 export const MAX_CARD_SIZES = 200;
 const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
 const readLocal = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
@@ -82,6 +92,9 @@ export function checkCard(name, body) {
     const v = body[k];
     if (v && typeof v === "object" && typeof v.text === "string" && v.text.length && v.text.length <= MAX[k] && (v.by === "human" || v.by === "agent")) out[k] = { text: v.text, by: v.by };
   }
+  // #2086: the banner's focus, a whole number 0 (top) … 100 (bottom).
+  const f = body.banner_focus;
+  if (f && typeof f === "object" && Number.isInteger(f.value) && f.value >= 0 && f.value <= 100 && (f.by === "human" || f.by === "agent")) out.banner_focus = { value: f.value, by: f.by };
   return Object.keys(out).length ? out : null;
 }
 // #1889 review: per instance, an epoch that moves whenever the version this page wants changes (a clear included).
@@ -149,8 +162,12 @@ export function IdentityCard({ name, card, compact = false, sizeControl = !compa
   const whose = (f) => t(f.by === "human" ? "card.byHuman" : "card.byAgent");
   const pic = (slot, cls, alt) => card[slot] && broken[slot] !== card[slot].src
     ? html`<img class=${cls} src=${card[slot].src} alt=${alt} title=${whose(card[slot])} decoding="async" onError=${() => setBroken({ ...broken, [slot]: card[slot].src })} />` : null;
+  // #2086: the banner at its focus; on a screen wider than BANNER_MAX_ASPECT it is centred over a blurred copy of itself.
+  const focus = card.banner_focus ? card.banner_focus.value : 50;
+  const atFocus = (el) => { if (el && el.style) el.style.setProperty("--id-focus", `${focus}%`); };
+  const banner = pic("banner", "id-banner", "");
   return html`<section class=${`id-card card-${size}${bannerSize}`} aria-label=${t("card.label", name)}>
-    ${pic("banner", "id-banner", "")}
+    ${banner ? html`<div class="id-banner-box" ref=${atFocus}><img class="id-banner-fill" src=${card.banner.src} alt="" aria-hidden="true" decoding="async" />${banner}</div>` : null}
     <div class="id-row">
       ${pic("portrait", "id-portrait", t("card.portraitAlt", name))}
       <div class="id-text">
@@ -160,6 +177,30 @@ export function IdentityCard({ name, card, compact = false, sizeControl = !compa
       ${sizeControl ? html`<${SizeControl} name=${name} size=${size} />` : null}
     </div>
   </section>`;
+}
+
+// ── #2086: the banner's focus, set in View's Edit profile — the whole picture, what each screen shows of it ──
+/** Phones draw a card's banner at about 3 : 1 (app.css, M at ≤479 px): the band a phone shows. */
+export const BANNER_PHONE_ASPECT = 3;
+/**
+ * The banner whole, with the band every screen shows at this focus (dashed; outside it shaded) and the band a phone
+ * shows (solid) — measured from the picture itself once it has loaded. Positions go through the CSSOM (#1300).
+ */
+export function BannerFocusPreview({ src, focus }) {
+  const [size, setSize] = useState(null);
+  if (!src) return null;
+  const ar = size ? size.w / size.h : null;
+  const place = (boxAspect) => (el) => {
+    if (!el || !el.style || !ar) return;
+    const shown = bannerShownHeight(ar, boxAspect);
+    el.style.setProperty("top", `${(bannerBandTop(shown, focus) * 100).toFixed(2)}%`);
+    el.style.setProperty("height", `${(shown * 100).toFixed(2)}%`);
+  };
+  return html`<div class="bf-wrap">
+    <img class="bf-pic" src=${src} alt="" onLoad=${(e) => { const i = e.currentTarget; if (i.naturalWidth && i.naturalHeight) setSize({ w: i.naturalWidth, h: i.naturalHeight }); }} />
+    ${ar ? html`<div class="bf-band bf-phone" ref=${place(BANNER_PHONE_ASPECT)}><span>${t("card.bannerPhone")}</span></div>
+      <div class="bf-band bf-safe" ref=${place(BANNER_MAX_ASPECT)}><span>${t("card.bannerSafe")}</span></div>` : null}
+  </div>`;
 }
 
 // ── A person's picture for the card (View's Edit profile), fitted before it is sent (r4.1 Q3 (b)) ──

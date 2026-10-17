@@ -7,6 +7,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { appearanceView, type AppearanceInput, type FrameEntry, PICTURE_ROLES, pictureFileName, previewSvg, type PictureRole, type PreviewPictures } from "./web-appearance-view.js";
 import { ASSET_PART_BYTES } from "./web-asset-parts.js";
+import { imageSize, sniffMedia } from "./web-image-meta.js";
 import type { ResolvedCard } from "./web-card.js";
 import type { Theme, ThemeMode } from "./web-theme.js";
 
@@ -82,7 +83,10 @@ export class AppearanceTools {
       names[role] = fileName;
       if (p && fileName) add(fileName, p.bytes);
     }
-    for (const mode of modes as ThemeMode[]) add(`${mode}.svg`, Buffer.from(previewSvg(input, mode, names), "utf8"));
+    // #2086: the banner's own size, so the preview crops it at its focus exactly as the page does.
+    const bannerKind = bytes.banner ? sniffMedia(bytes.banner.bytes) : null;
+    const bannerSize = bytes.banner && bannerKind ? imageSize(bytes.banner.bytes, bannerKind) : null;
+    for (const mode of modes as ThemeMode[]) add(`${mode}.svg`, Buffer.from(previewSvg(input, mode, names, bannerSize), "utf8"));
     const total = files.reduce((n, f) => n + f.data.length, 0);
     if (total <= PREVIEW_INLINE_BYTES) return { files: files.map(f => ({ name: f.name, data_b64: f.data.toString("base64") })) };
     const built: Built = { id: randomBytes(8).toString("hex"), files, last: now };

@@ -211,7 +211,7 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { parsePoll, type PollRender } from "./reply-polls.js";
 import { isUploadRequest, limitRequestReceive, publicAttachment, sweepOrphanedUploads, UPLOAD_REQUEST_TIMEOUT_MS, uploadLimits, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
-import { cardPicture, handleViewRequest, humanCards, identityColors, isViewPath, personIdentityColour, profileIdentities, resolveInstanceIdentity, setPersonIdentityColour } from "./view-api.js";
+import { cardPicture, handleViewRequest, humanCards, identityColors, isViewPath, personBannerFocus, personIdentityColour, profileIdentities, resolveInstanceIdentity, setPersonBannerFocus, setPersonIdentityColour } from "./view-api.js";
 import { autoIdentityColor } from "./web-identity-color.js";
 import { AppearanceTools } from "./web-appearance-tools.js";
 import type { FrameEntry } from "./web-appearance-view.js";
@@ -1505,6 +1505,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(this.classicChannels?.getAll() ?? []).map((ch) => ch.instanceName).filter((n) => !Object.hasOwn(this.fleetConfig?.instances ?? {}, n))],
       colour: (name) => personIdentityColour(this.dataDir, name),
       setColour: (name, patch) => { const w = setPersonIdentityColour(this.dataDir, name, patch); if (w.ok) this.identityChanged(); return w; },
+      bannerFocus: (name) => personBannerFocus(this.dataDir, name),
+      setBannerFocus: (name, focus) => { const w = setPersonBannerFocus(this.dataDir, name, focus); if (w.ok) this.identityChanged(); return w; },
       placements: (name) => this.themeStore.get(name).placements.effects.map((e) => (typeof e === "string" ? { id: e } : e)),
       announce: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next status frame carries it */ } },
     }));
