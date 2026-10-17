@@ -56,6 +56,7 @@ import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { resolveTz } from "./tz-utils.js";
+import { filesPlayInChat } from "./web-effect.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -713,7 +714,8 @@ export function exportMod(ctx: WebApiContext, person: string, body: Record<strin
     if (inc.theme === true) {
       // The effects the theme places travel with it, as the library keeps them (a person may export what is placed).
       // Only effects this person may carry away travel (Sol's ACL); the rest are counted, never packaged.
-      const effects = rec.placements.effects.flatMap(p => { const e = ctx.modPlacedEffect?.(person, p.id); if (!e) { omitted++; return []; } return [{ name: e.name, files: e.files, params: p.params ?? {} }]; });
+      // #2017: an older placement of an effect that doesn't play in chat stays out (a mod can't place it): counted.
+      const effects = rec.placements.effects.flatMap(p => { const e = ctx.modPlacedEffect?.(person, p.id); if (!e || !filesPlayInChat(e.files)) { omitted++; return []; } return [{ name: e.name, files: e.files, params: p.params ?? {} }]; });
       parts.theme = { theme: rec.theme, picture: id => { const a = rec.assets.find(x => x.id === id); const b = store.asset(name!, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; }, effects };
     }
     if (inc.identity === true) parts.identity = ctx.modCardText?.(name) ?? {};

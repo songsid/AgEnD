@@ -40,6 +40,8 @@ afterAll(async () => {
   expect(removed.filter(r => existsSync(r))).toEqual([]);
 });
 const manifest = (name = "fixture") => ({ v: 1, runtime: "canvas-worker-v1", worker: "worker.js", name, title: "Fixture", regions: ["chat"], layer: "front", wants: ["state"], params: { size: { type: "number", min: 1, max: 5, default: 2 } } });
+/** #2017: an effect that plays only in the header, not in a chat. */
+const headerFiles = (code = "agend.ready()//header", name = "glow") => new Map<string, Uint8Array>([["effect.json", Buffer.from(JSON.stringify({ ...manifest(name), regions: ["header"] }))], ["worker.js", Buffer.from(code)]]);
 const files = (code = "agend.ready()", name = "fixture") => new Map<string, Uint8Array>([["effect.json", Buffer.from(JSON.stringify(manifest(name)))], ["worker.js", Buffer.from(code)]]);
 
 async function fixture() {
@@ -93,6 +95,17 @@ describe("effects in a person's export", () => {
     expect(f.fm.mods.commit(OPERATOR, { stage: staged.stage, plan_hash: staged.plan_hash, include: { theme: true, effects: true }, target: "other" })).toMatchObject({ ok: true });
     expect(f.fm.themeStore.get("other").placements.effects).toMatchObject([{ id, by: "human", params: { size: 4 } }]);
   });
+  it("#2017 (Fable P3): an older placement of a non-chat effect stays out of the export, counted; the file imports again", async () => {
+    const f = await fixture();
+    const chat = claim(f, OPERATOR), header = (() => { const st = f.fm.effectLibrary.stage(headerFiles(), { kind: "human", id: OPERATOR }); if (!st.ok) throw Error(st.error); const c = f.fm.effectLibrary.commit(st.stageId); if (!c.ok) throw Error(c.error); return c.ids[0] as string; })();
+    expect(f.fm.themeStore.setPlacements("own", { effects: [{ id: header }, { id: chat }] }, "human", () => null).ok, "placed before #2017").toBe(true);
+    f.fm.themeStore.setTheme("own", { v: 1, accent: "#8b5cf6" }, "agent");
+    const { exportMod } = await import("../src/web-api.js");
+    const r = exportMod(f.fm, OPERATOR, { instance: "own", name: "old-fx", version: "1.0.0", title: "Old fx", include: { theme: true } });
+    if (!r.ok) throw Error(JSON.stringify(r));
+    expect([r.omitted, JSON.parse(r.text).manifest.contents.effects]).toEqual([1, ["effects/fixture"]]);
+    expect(f.fm.mods.stage(OPERATOR, r.text).ok, "what this fleet exports, it imports").toBe(true);
+  });
   it("two effects of one name get distinct paths", () => {
     const one = files("agend.ready()"), two = files("agend.ready();");
     const r = buildModBundle({ name: "x", version: "1.0.0", title: "x" }, { theme: { theme: { v: 1 }, picture: () => null, effects: [{ name: "fixture", files: one, params: {} }, { name: "fixture", files: two, params: { size: 3 } }] } });
@@ -105,6 +118,17 @@ describe("effects in a person's export", () => {
 });
 
 describe("effects in an agent's export", () => {
+  it("#2017 (Fable P3): its own older non-chat placement stays out (effects_omitted); the file still checks", async () => {
+    const f = await fixture();
+    const header = await upload(f, "own", headerFiles());
+    expect(f.fm.themeStore.setPlacements("own", { effects: [{ id: header }] }, "agent", () => null).ok, "placed before #2017").toBe(true);
+    f.fm.themeStore.setTheme("own", { v: 1, accent: "#8b5cf6" }, "agent");
+    const r = f.fm.agentMods.handle("own", "export_web_mod", { name: "mine", version: "1.0.0" }) as any;
+    expect(r.effects_omitted).toBe(1);
+    const text = Buffer.from(r.files[0].data_b64, "base64").toString("utf8");
+    expect(JSON.parse(text).manifest.contents.effects).toBeUndefined();
+    expect(B.checkModBundle(text, ctx()).ok).toBe(true);
+  });
   it("its own effect travels; a person's private effect placed on it stays out (effects_omitted)", async () => {
     const f = await fixture();
     const own = await upload(f);
@@ -206,6 +230,22 @@ describe("Sol's export ACL (#1910 review): only what this person may carry away 
       expect(await h.get(`/ui/mods/file/${id}`, "1"), "still not A's").toBe(403);
       expect(f.fm.effectLibrary.setShared(own, { kind: "human", id: B }, true)).toMatchObject({ ok: true });
       expect(await h.get(`/ui/mods/file/${id}`, "1"), "B shared it").toBe(200);
+    } finally { await h.stop(); }
+  }, 30_000);
+  it("#2017 (Fable P2): a mod installed before the rule, its theme placing a non-chat effect, still downloads for its owner", async () => {
+    const f = await fixture(), h = await http(f);
+    try {
+      const glow = JSON.stringify({ format: "agend-mod", v: 1, manifest: { name: "glow", version: "1.0.0", title: "Glow", contents: { theme: "theme.json", effects: ["effects/glow"] } }, files: {
+        "theme.json": file(JSON.stringify({ v: 1, effects: [{ effect: "effects/glow" }] })),
+        "effects/glow/effect.json": file(JSON.stringify({ ...manifest("glow"), regions: ["header"] })), "effects/glow/worker.js": file("agend.ready()//glow") } });
+      expect(f.fm.mods.stage(B, glow), "a new import is refused").toMatchObject({ ok: false, error: "mod_invalid" });
+      const deps = (f.fm.mods as any).deps, context = deps.context;
+      deps.context = () => ({ ...context(), placementRegions: false });       // installed by a version before #2017
+      const id = install(f, B, glow, { theme: true, effects: true });
+      deps.context = context;
+      expect(f.fm.mods.bundleEffects(id), "the installed file still checks").toHaveLength(1);
+      expect(await h.get(`/ui/mods/file/${id}`, "2"), "its owner downloads it").toBe(200);
+      expect(await h.get(`/ui/mods/file/${id}`, "1"), "not someone else").toBe(403);
     } finally { await h.stop(); }
   }, 30_000);
   it("a file that lists effects but no longer checks here is nobody's to download; one listing none still is any admin's", async () => {

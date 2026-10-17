@@ -261,9 +261,9 @@ smallest valid `effect.json`:
 - `list_web_effects` — your own effects and those a person shared with you: `id`, `name`, `title`, `regions`, `layer`,
   `bytes`, `latest_profile`.
 - `apply_web_effect { id, params? }` places one in your chat, **at most two at a time**, with the declared `params`
-  (unknown or out of range → `effect_params`; regions without `chat` → `effect_region`). `remove_web_effect { id? }` takes one out, or all of them. Both are
-  changes (30 s apart, 10 an hour), and are refused while a person has locked your theme (`locked`) or when the fleet
-  turned agent changes off (`theme_editing_off`).
+  (unknown or out of range → `effect_params`; regions without `chat` → `effect_region`). `remove_web_effect { id? }`
+  takes one out, or all of them. Both are changes (30 s apart, 10 an hour), and are refused while a person has locked
+  your theme (`locked`) or when the fleet turned agent changes off (`theme_editing_off`).
 - `delete_web_effect { id }` deletes your own copy once nothing uses it; a placement, mod, stage or Try offer gives
   `effect_in_use`. Another's copy is never removed.
 - `profile_web_effect { id }` — how it ran on viewers' pages, per device class: `unmeasured`, or `reported` with

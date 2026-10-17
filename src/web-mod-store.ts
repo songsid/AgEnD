@@ -258,7 +258,8 @@ export class ModStore {
   bundleEffects(id: string): string[] | "unknown" | null {
     const text = this.bundleText(id);
     if (text === null) return null;
-    const checked = checkModBundle(text, this.deps.context());
+    // An installed file, read again: #2017's placement rule is for new imports — a mod installed before it still checks.
+    const checked = checkModBundle(text, { ...this.deps.context(), placementRegions: false });
     if (checked.ok) return checked.mod.effects.map(e => e.summary.id);
     try {
       const listed = (JSON.parse(text) as { manifest?: { contents?: { effects?: unknown } } })?.manifest?.contents?.effects;
