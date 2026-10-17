@@ -1755,6 +1755,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #1570: browsers that may ask the sign-in page for a fresh code, and how often they may. */
   private returningDevices: ReturningDevices | null = null;
   private readonly codeRequestLimiter = new CodeRequestLimiter();
+  /** #1920 step 4b: guests' device code requests, limited apart — guests never use up the admins' fleet-wide budget. */
+  private readonly guestCodeRequestLimiter = new CodeRequestLimiter();
   /**
    * Set while a Settings apply job is driving the reconcile. The reconcile
    * stays the single doer; it just says out loud what it is doing to whom, so
@@ -5791,6 +5793,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     if (!this.returningDevices) {
       this.returningDevices = new ReturningDevices({ dataDir: this.dataDir, onWarn: message => this.logger.warn(message) });
+      this.enforceGuestSwitch();                     // #1920: guests' devices too, if guests went off while down
     }
     if (!this.webLoginCodes) {
       this.webLoginCodes = new WebLoginCodes({
@@ -6257,9 +6260,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.guestAccountRevokes.set(key, (this.guestAccountRevokes.get(key) ?? 0) + 1);   // its /web on its way, too
     while (this.guestAccountRevokes.size > 4096) this.guestAccountRevokes.delete(this.guestAccountRevokes.keys().next().value as string);
     this.webGuestLoginCodes!.revokeRecipient(owner);
+    // §5.4: its sessions and its returning devices (no browser of theirs may ask for a code any more).
+    const devices = this.returningDevices!.revokeGuest(owner);
     const ended = this.webSessions!.revokeAll(r => r.tier === "guest" && r.owner?.adapterId === owner.adapterId && r.owner.userId === owner.userId);
-    this.logger.info({ adapterId: owner.adapterId, count: ended.count, durable: ended.durable }, "Guest web sessions revoked by their account");
-    return ended;
+    this.logger.info({ adapterId: owner.adapterId, count: ended.count, devices: devices.count, durable: ended.durable && devices.durable }, "Guest web sessions revoked by their account");
+    return { count: ended.count, durable: ended.durable && devices.durable };
   }
 
   /**
@@ -6374,6 +6379,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const token = this.webToken;
     if (!token || this.shuttingDown) return { kind: "refused" };
     this.initializeWebSessions();
+    if (device.tier === "guest") return this.requestGuestDeviceCode(device, input, token);
     const paused = this.webLoginCodes!.pausedForMs();
     if (paused > 0) return { kind: "limited", retryAfterMs: paused };
     const admitted = this.codeRequestLimiter.admit(device.idHash);
@@ -6411,6 +6417,61 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     this.logger.info({ adapterId, surface: input.surface }, "Web sign-in code sent privately to a returning device's owner");
     return { kind: "sent" };
+  }
+
+  /**
+   * #1920 step 4b: a guest's returning device asks for a code — a guest code for that account, by DM only, under the
+   * same rules as its /web (guests on, not an admin, something in scope now; one per account and the cap; one flow per
+   * account at a time; a revoke meanwhile ends it), its own limiter, and the guests' breaker. The dashboard reached
+   * directly only, for now: a device asking through the public link is refused.
+   */
+  private async requestGuestDeviceCode(device: ReturningDevice, input: { surface: "local" | "gateway"; exposureId?: string; label: string }, token: string):
+    Promise<{ kind: "sent" } | { kind: "limited"; retryAfterMs: number } | { kind: "refused" }> {
+    const codes = this.webGuestLoginCodes!;
+    const account = { adapterId: device.owner.adapterId, userId: device.owner.userId };
+    const key = `${account.adapterId}\u0000${account.userId}`;
+    const adapter = this.adapters.get(account.adapterId);
+    if (input.surface !== "local" || input.exposureId !== undefined || !adapter?.sendDirect || !this.guestSignInAllowed(account)) {
+      this.logger.info({ adapterId: account.adapterId, surface: input.surface }, "Guest sign-in code request refused");
+      return { kind: "refused" };
+    }
+    const paused = codes.pausedForMs();
+    if (paused > 0) return { kind: "limited", retryAfterMs: paused };
+    const asked = this.guestCodeAskedAt.get(key);
+    if (this.guestCodeInFlight.has(key)) return { kind: "limited", retryAfterMs: 5_000 };
+    if (asked !== undefined && performance.now() - asked < 60_000) return { kind: "limited", retryAfterMs: 60_000 - (performance.now() - asked) };
+    const admitted = this.guestCodeRequestLimiter.admit(device.idHash);
+    if (!admitted.ok) return { kind: "limited", retryAfterMs: admitted.retryAfterMs };
+    const revokes = this.guestRevokes, accountRevokes = this.guestAccountRevokes.get(key) ?? 0;
+    const current = (): boolean => !this.shuttingDown && this.webToken === token && this.adapters.get(account.adapterId) === adapter
+      && this.guestRevokes === revokes && (this.guestAccountRevokes.get(key) ?? 0) === accountRevokes && this.guestSignInAllowed(account);
+    const issued = codes.issue({ epoch: tokenEpoch(token), recipient: account });
+    if (!issued) return { kind: "limited", retryAfterMs: 60_000 };            // the guests' cap: never someone's evicted
+    this.guestCodeInFlight.add(key);
+    this.guestCodeAskedAt.delete(key); this.guestCodeAskedAt.set(key, performance.now());
+    try {
+      const text = t("web.resend_code", issued.display, Math.round(LOGIN_CODE_TTL_MS / 60_000), input.label || t("web.resend_unknown_browser"), t("web.resend_local"))
+        + "\n" + t("dashboard.code_next");
+      try { await withinBudget(adapter.sendDirect(account.userId, text, { disablePreview: true }), performance.now() + 5_000); }
+      catch (err) {
+        codes.revokeIfCurrent(issued.issuanceId);
+        this.logger.info({ err: (err as Error)?.message, adapterId: account.adapterId }, "Guest sign-in code request: the private message could not be sent");
+        return { kind: "refused" };
+      }
+      if (!current()) { codes.revokeIfCurrent(issued.issuanceId); return { kind: "refused" }; }
+      await this.sendCodeAlone((body, opts) => adapter.sendDirect!(account.userId, body, opts), adapter.type, issued.display);
+      if (!current()) { codes.revokeIfCurrent(issued.issuanceId); return { kind: "refused" }; }
+      this.logger.info({ adapterId: account.adapterId }, "Guest sign-in code sent privately to a returning device's account");
+      return { kind: "sent" };
+    } finally { this.guestCodeInFlight.delete(key); }
+  }
+
+  /** #1920 step 4b (auth-api): this browser becomes a guest's returning device. The cookie value, or null. */
+  rememberGuestDevice(account: { adapterId: string; userId: string }, input: { surface: "local" | "gateway"; label: string }): string | null {
+    const token = this.webToken;
+    if (!token) return null;
+    this.initializeWebSessions();
+    return this.returningDevices!.rememberGuest(account, { ...input, tokenEpoch: tokenEpoch(token), webToken: token });
   }
 
   /** Called by the sign-in endpoint: a login the operator did not make should be visible to them. */
@@ -20783,6 +20844,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.fleetConfig?.web?.guests?.enabled === true || !this.webSessions) return;
     const ended = this.webSessions.revokeAll((r) => r.tier === "guest");
     if (ended.count) this.logger.info({ count: ended.count, durable: ended.durable }, "Guest web sign-in is off: every guest session ended");
+    // #1920 step 4b: and every guest's returning device — turning it back on lets no old browser ask for a code.
+    const devices = this.returningDevices?.revokeGuest();
+    if (devices?.count) this.logger.info({ count: devices.count, durable: devices.durable }, "Guest web sign-in is off: every guest's returning device forgotten");
   }
 
   /** #1920 §5.2: whether this instance is the account's own Telegram private ClassicBot room (its chat id is the user id). */
