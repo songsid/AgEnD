@@ -80,6 +80,8 @@ const ORCHESTRATION: readonly string[] = [
   "update_fleet_defaults", "update_instance_config",
   // Changing a decision somebody else recorded; `post_decision` adds, and stays.
   "update_decision",
+  // #2056: Settings → Web appearance for the user (General has these too; a worker changes only its own theme).
+  "get_web_settings", "set_web_settings",
 ];
 
 const ALL_TOOLS = TOOLS.map(t => t.name);
@@ -110,6 +112,8 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     // Its own web theme (#1629), like its own status stamp. (The read-only appearance tools stay out: this profile is
     // the lean one — a dispatcher reads its theme with get_web_theme.)
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
+    // #2056: Settings → Web appearance for the user (the page's own checks; a worker's are its own theme only).
+    "get_web_settings", "set_web_settings",
   ],
   standard: [
     "reply", "react", "edit_message", "close_poll",
