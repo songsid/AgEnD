@@ -282,6 +282,18 @@ describe("live: the stream, the poll and a file for a guest scoped to `a`", () =
       expect(ticks).toEqual([{ instance: "a", messageId: "web-alice", delivery: "delivered" }]);
     } finally { g.req.destroy(); }
   });
+  it("#1920 §5.2: a guest's own Telegram private room shows it everything there (the gate binds it)", async () => {
+    const TG = { adapterId: "tg", userId: "5550001" };
+    vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
+    const rooms = fm.classicChannels;
+    fm.classicChannels = { getAll: () => [{ instanceName: "a", adapterId: "tg", channelId: "5550001" }], getChannelIdByInstance: () => undefined, getAdapterIdByInstance: () => undefined };
+    try {
+      fm.emitSseEvent("message", { instance: "a", sender: "a", role: "agent", text: "a reply only the web saw", ts: new Date().toISOString() });
+      const own = JSON.parse((await get("/ui/history?instance=a", cookieOf(session("guest", TG)))).body).messages.map((m: { text: string }) => m.text);
+      const other = JSON.parse((await get("/ui/history?instance=a", cookieOf(session("guest", ALICE)))).body).messages.map((m: { text: string }) => m.text);
+      expect([own.includes("a reply only the web saw"), other.includes("a reply only the web saw")]).toEqual([true, false]);
+    } finally { fm.classicChannels = rooms; }
+  });
   it("the poll: the projected status, and only the chat it may see (an agent's web-only note is not); an admin's poll unchanged", async () => {
     vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
     fm.emitSseEvent("message", { instance: "a", sender: "a", text: "another private note", ts: new Date().toISOString(), role: "agent" });

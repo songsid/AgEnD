@@ -8946,11 +8946,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.afterUserInboundDelivered(generalInstance, msg);
           this.logger.info(`${msg.username} → ${generalInstance}: ${(text ?? "").slice(0, 100)}`);
           this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), generalInstance);
-          this.emitSseEvent("message", {
-            instance: generalInstance, sender: msg.username, role: "user",
-            text: (text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
-            channel: true, from: webChatFrom(msg.adapterId, msg.userId),           // #1920: said in General's channel
-          });
+          this.emitPlatformInbound(generalInstance, msg, text ?? "");
         } catch (err) {
           this.logger.warn({ err: (err as Error).message, instanceName: generalInstance }, "General wake/delivery failed");
         }
@@ -9067,10 +9063,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.afterUserInboundDelivered(instanceName, msg);
     this.logger.info(`${msg.username} → ${instanceName}: ${(text ?? "").slice(0, 100)}`);
     this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), instanceName);
+    this.emitPlatformInbound(instanceName, msg, text ?? "");
+  }
+
+  /**
+   * A person's platform message as the web chat shows it — the user's own words, as a user (#1306), in the instance's
+   * history (#1565). #1920 §5.2: said in the instance's topic, General or room, so it is that channel's, by that account.
+   */
+  private emitPlatformInbound(instance: string, msg: { username: string; adapterId?: string; userId?: string }, text: string): void {
     this.emitSseEvent("message", {
-      instance: instanceName, sender: msg.username, role: "user",
-      text: (text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
-      channel: true, from: webChatFrom(msg.adapterId, msg.userId),                 // #1920: said in its topic
+      instance, sender: msg.username, role: "user", text: text.slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
+      channel: true, from: webChatFrom(msg.adapterId, msg.userId),
     });
   }
 
@@ -16439,11 +16442,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.logger.info(`${msg.username} → ${instanceName} (classic): ${text.slice(0, 100)}`);
     // #1592: the web chat shows what was asked, as for every other inbound — the user's own words (no chat-log
     // context), as a user (#1306: never a role read from text), in the room's history (#1565).
-    this.emitSseEvent("message", {
-      instance: instanceName, sender: msg.username, role: "user",
-      text: text.slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
-      channel: true, from: webChatFrom(msg.adapterId, msg.userId),                 // #1920: said in its room
-    });
+    this.emitPlatformInbound(instanceName, msg, text);
   }
 
   /** Paste raw text directly to a classic instance's CLI (no [user:] wrapping) */

@@ -233,6 +233,16 @@ describe("FleetManager: where a reply landed; the marks recorded; a copy that ma
     expect(fm.webChatHistory.findByMessageId("a", "web-7").channel).toBe(true);
     expect(admin.write, "an admin's stream is not sent it again").not.toHaveBeenCalled();
   });
+  it("a person's platform message is the channel's, by that account; an agent's reply is only when it landed there", async () => {
+    const fm = fleet();
+    const events: Array<Record<string, unknown>> = [];
+    fm.emitSseEvent = (e: string, d: Record<string, unknown>) => { if (e === "message") events.push(d); };
+    fm.emitPlatformInbound("a", { username: "bob", adapterId: "dc", userId: "222" }, "hi there");
+    Object.assign(fm, { getInstanceIdle: () => true, clearCancelButton: () => {}, reactDone: () => {} });
+    await fm.afterReplyRouted("a", { text: "landed" }, undefined, null, true);
+    await fm.afterReplyRouted("a", { text: "elsewhere" }, undefined, null, false);
+    expect(events.map((e) => [e.text, e.channel ?? null, e.from ?? null])).toEqual([["hi there", true, "dc:222"], ["landed", true, null], ["elsewhere", null, null]]);
+  });
   it("guestOwnRoom: the account's own Telegram private room, on its own connection", () => {
     const fm = fleet();
     expect(fm.guestOwnRoom({ adapterId: "tg", userId: "5550001" }, "room")).toBe(true);
