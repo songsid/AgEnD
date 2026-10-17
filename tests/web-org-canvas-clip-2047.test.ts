@@ -40,3 +40,19 @@ describe("clipText keeps graphemes whole (Fable P3 on #2048)", () => {
     }
   });
 });
+
+describe("clipText prices an emoji sequence by its parts (Prism R1 on #2063)", () => {
+  const units = (s: string) => [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(s)].reduce((w, { segment: g }) => {
+    const p = Array.from(g).filter(c => /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(c)).length;
+    return w + (p ? 2 * p : /[⺀-꓏＀-｠]/.test(g) ? 1.6 : 1);
+  }, 0);
+  it("repeated ZWJ families and flags stay whole and within the budget", () => {
+    for (const s of ["👨‍👩‍👧".repeat(10) + "suffix", "🇹🇼".repeat(12) + "tail", "👨‍👩‍👧‍👦x".repeat(6)]) for (const n of [6, 15, 20, 27]) {
+      const out = C.clipText(s, n), body = out.replace(/…$/, "");
+      const seg = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(body)].map(x => x.segment);
+      expect(seg).toEqual([...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(s)].map(x => x.segment).slice(0, seg.length));
+      expect(units(body) + (out.endsWith("…") ? 1 : 0)).toBeLessThanOrEqual(n);
+    }
+    expect(C.clipText("👨‍👩‍👧".repeat(10) + "suffix", 20)).toBe("👨‍👩‍👧".repeat(3) + "…");   // 3 families = 18, + … = 19
+  });
+});
