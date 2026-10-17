@@ -55,11 +55,10 @@ offer. Public `expiresAt` is wall-clock display only: client/server clock skew o
 wall-time rollback must not extend playback. A sub-millisecond remainder refuses
 start. These client deadline checks remain future mount work.
 
-The server asks the current owner-CSS provider on every request. Only literal
-`off` permits start and reads; absent, thrown, loading or invalid evidence becomes
-unknown and refuses. Stop is still allowed with on/unknown so cleanup remains
-possible. This does not replace the future browser's independent live CSS
-lifecycle gate, which must also deny loading/unknown even if the server is off.
+The server records the current owner-CSS enum as diagnostic context; unavailable evidence becomes unknown.
+It does not block the shadow-isolated Try on CSS state. Local admin, session/epoch, current origin-agent ACL
+and monotonic expiry remain mandatory for Start and every read. The click supplies consent only for this sample;
+ordinary playback and HTML-preview preferences keep their existing gates.
 
 Each code/image/history read passes through `trials.read`, checking exact
 session/epoch/person/origin, monotonic TTL, known instance and the **origin

@@ -32,7 +32,7 @@ The existing app owner owns one control lane and the one shared effect runtime.
 An explicit click captures the Chat contribution, navigation sequence, instance,
 document, epoch and panel claim before any await. Navigating, replacing the Chat
 or its store, closing/replacing the claimed panel, blur, hidden state, auth end,
-opt-out, reduced motion, save-data, unknown CSS or another menu/dialog ends it.
+effects opt-out, reduced motion, save-data or another menu/dialog ends it. HTML preview consent and the owner-CSS lifecycle do not gate the isolated Trial.
 A same-name replacement cannot inherit an old click. No logical cancellation
 releases an outstanding physical session read/fetch/body/cancel operation.
 
@@ -55,8 +55,9 @@ The existing stage proves contain:paint, overflow:clip, exact physical geometry,
 trusted host stylesheet and the fixed direct-child topology before painting.
 It lives inside its own panel/sheet, never a portal or a new overlay. There is no
 focusable mod document or expanded pointer authority. Ordinary foreground effects
-stay suppressed while the Trial panel is visible. Custom CSS on/loading/unknown
-refuses Try even where an ordinary human placement would retain an exemption.
+stay suppressed while the Trial panel is visible. The local-admin click supplies sample-specific consent.
+Trial chrome and stage use a closed shadow root with a fixed same-origin stylesheet, no parts/slots, and reset inherited font/color/direction.
+Owner CSS remains active elsewhere, including the unchanged agent-front suppression rule. Unknown/missing shadow styles refuse paint.
 
 Trial uses the same settled resource lane, registry, standard/constrained caps,
 relative host-baseline profiler and mandatory safety history as Chat/personal

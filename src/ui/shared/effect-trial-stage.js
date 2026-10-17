@@ -1,4 +1,5 @@
 /** #1629: host-issued LOCAL trial paint receipt. No authority, loader, frame factory or pool is created here. */
+import { effectTrialShadow } from "./effect-trial-shadow.js";
 import { effectHostStyle } from "./effect-host-style.js";
 import { effectStockSnapshot } from "./effect-stock-snapshot.js";
 import { STOCK_EFFECT_BARRIERS } from "./effect-stock-trust.js";
@@ -58,10 +59,11 @@ export function effectTrialStage(receipt, expected, stock) {
 }
 
 /** Only the fixed host TrialPanel supplies these elements and a current server-run lease. Not an agent manifest. */
-export function createEffectTrialStage({ window: host, panel, stage, binding: raw, current, ownerCss, onStop = () => {} } = {}) {
+export function createEffectTrialStage({ window: host, panel, stage, binding: raw, current, onStop = () => {} } = {}) {
   const own = binding(raw);
-  if (!own || typeof current !== "function" || typeof ownerCss !== "function" || typeof onStop !== "function" || !host?.document || !panel || !stage || owners.has(stage)) return null;
-  let sheet; try { sheet = effectHostStyle(host); if (!sheet || host.CSS?.supports("contain", "paint") !== true || host.CSS.supports("overflow", "clip") !== true) return null; } catch { return null; }
+  if (!own || typeof current !== "function" || typeof onStop !== "function" || !host?.document || !panel || !stage || owners.has(stage)) return null;
+  const shell = effectTrialShadow(host, panel), hostSheet = effectHostStyle(host);
+  let sheet; try { sheet = shell?.sheet; if (!shell || shell.stage !== stage || !hostSheet || !sheet || host.CSS?.supports("contain", "paint") !== true || host.CSS.supports("overflow", "clip") !== true) return null; } catch { return null; }
   const receipt = Object.freeze(Object.create(null)), frames = new Set(), listeners = new Set(); let dead = false, constraint = null;
   const identity = Object.freeze({ key: own.key, id: own.id, instance: own.instance, generation: own.generation, serial: ++serial });
   const invalidate = reason => {
@@ -76,23 +78,27 @@ export function createEffectTrialStage({ window: host, panel, stage, binding: ra
   function check(stock) {
     try {
       // This callback may reenter disposal or replace the owner. Recheck identity after it returns.
-      if (dead || current(own) !== true || constraint !== null && constraint() !== true || dead || owners.get(stage) !== receipt || ownerCss() !== "off" || dead) return null;
+      if (dead || current(own) !== true || constraint !== null && constraint() !== true || dead || owners.get(stage) !== receipt || dead) return null;
       const proof = effectStockSnapshot(stock), doc = host.document;
-      if (effectHostStyle(host) !== sheet) return null;
+      if (effectHostStyle(host) !== hostSheet || effectTrialShadow(host, panel) !== shell) return null;
       // The own panel MUST still suppress ordinary foreground effects. Never synthesize front:true.
       if (!proof || proof.front !== false || doc.visibilityState !== "visible" || doc.hasFocus?.() !== true || doc.fullscreenElement || doc.pictureInPictureElement) return null;
       const split = doc.querySelector(".main > .p-chat > .chat-split");
       if (!split || doc.querySelectorAll(".main > .p-chat").length !== 1 || doc.querySelectorAll(".chat-split > .pv-panel").length !== 1
         || panel.parentElement !== split || panel.ownerDocument !== doc || panel.isConnected !== true || panel.className !== "pv-panel effect-trial-panel" || panel.getAttribute("data-trust") !== "preview") return null;
-      const children = [...panel.children], names = ["effect-trial-head", "effect-trial-controls", "effect-trial-body", "effect-trial-note"];
-      if (children.length !== names.length || children.some((el, i) => el.className !== names[i]) || children[2].children.length !== 1 || children[2].firstElementChild !== stage
+      const children = [...shell.root.children], names = ["effect-trial-style", "effect-trial-head", "effect-trial-controls", "effect-trial-body", "effect-trial-note"];
+      if (panel.children.length !== 0 || children.length !== names.length || children.some((el, i) => el.className !== names[i]) || children[3].children.length !== 1 || children[3].firstElementChild !== stage
         || stage.className !== "effect-trial-stage" || stage.ownerDocument !== doc || stage.isConnected !== true || stage.hasAttribute("tabindex") || stage.hasAttribute("contenteditable")) return null;
+      for (const control of [shell.head, shell.controls, shell.close, shell.stop, shell.note]) {
+        const style = host.getComputedStyle(control);
+        if (style.display === "none" || style.visibility !== "visible" || style.opacity !== "1" || !rect(control)) return null;
+      }
       if ([...doc.querySelectorAll(STOCK_EFFECT_BARRIERS)].some(el => el !== panel && visible(host, el))
         || [...doc.querySelectorAll(".pv-panel")].some(el => el !== panel && visible(host, el))) return null;
       const active = doc.activeElement;
       if (active && active !== doc.body && active !== doc.documentElement && (active.matches("input,select,textarea,[contenteditable]") || active.isContentEditable)) return null;
       let el = stage, depth = 0;
-      while (el) { const s = host.getComputedStyle(el); if (++depth > 128 || el.ownerDocument !== doc || !neutral(s) || s.opacity !== "1" || s.visibility !== "visible" || s.display === "none" || s.contain !== (el === stage ? "paint" : "none")) return null; if (el === doc.documentElement) break; el = el.parentElement; }
+      while (el) { const s = host.getComputedStyle(el); if (++depth > 128 || el.ownerDocument !== doc || !neutral(s) || s.opacity !== "1" || s.visibility !== "visible" || s.display === "none" || s.contain !== (el === stage ? "paint" : "none")) return null; if (el === doc.documentElement) break; el = el.parentElement ?? (el.getRootNode?.() === shell.root ? panel : null); }
       if (el !== doc.documentElement) return null;
       const s = host.getComputedStyle(stage), r = rect(stage), p = rect(panel);
       if (!r || !p || s.position !== "relative" || s.zIndex !== "0" || s.overflowX !== "clip" || s.overflowY !== "clip"
@@ -103,7 +109,7 @@ export function createEffectTrialStage({ window: host, panel, stage, binding: ra
       if ([...stage.children].some(child => ![...frames].some(f => f.element === child))) return null;
       const width = Math.floor(r.width), height = Math.floor(r.height);
       if (width < 1 || height < 1 || width > 4096 || height > 4096 || width * height > 8388608 || dead || owners.get(stage) !== receipt) return null;
-      if (current(own) !== true || constraint !== null && constraint() !== true || dead || owners.get(stage) !== receipt || ownerCss() !== "off" || dead || stage.isConnected !== true || panel.parentElement !== split) return null;
+      if (current(own) !== true || constraint !== null && constraint() !== true || dead || owners.get(stage) !== receipt || dead || stage.isConnected !== true || panel.parentElement !== split) return null;
       return { x: r.x, y: r.y, width, height };
     } catch { return null; }
   }

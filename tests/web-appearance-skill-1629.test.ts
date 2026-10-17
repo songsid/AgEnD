@@ -19,6 +19,11 @@ import * as W from "../src/web-widget.js";
 const SKILL = readFileSync(join(process.cwd(), "src/general-knowledge/skills/web-appearance/SKILL.md"), "utf8");
 
 describe("the web-appearance skill", () => {
+  it("Try click is sample-only consent with isolated chrome; the ordinary CSS policy remains", () => {
+    const trial = SKILL.slice(SKILL.indexOf("### Try:"), SKILL.indexOf("### Static Chat"));
+    expect(trial).toContain("no global HTML-preview opt-in"); expect(trial).toContain("closed Shadow DOM"); expect(trial).toContain("Custom CSS stays active elsewhere"); expect(trial).not.toContain("Custom CSS must be off");
+    expect(SKILL).toContain("on, loading or unknown");
+  });
   it("names only real tools, and every appearance tool", () => {
     const names = new Set(TOOLS.map((t: { name: string }) => t.name));
     const named = [...SKILL.matchAll(/`([a-z_]+)`/g)].map(m => m[1]!).filter(n => /^(get|set|reset|preview)_/.test(n));

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { page, type AppPage } from "./helpers/app-harness.js";
 import { isServedAsset } from "../src/auth-api.js";
 const { createEffectTrialStage, effectTrialStage, effectTrialStageIdentity, watchEffectTrialStage, disposeEffectTrialStage, constrainEffectTrialStage } = await import("/assets/effect-trial-stage.js");
+const { createEffectTrialShadow } = await import("/assets/effect-trial-shadow.js");
 const { allocateEffectFrames } = await import("/assets/effect-policy.js");
 const proof = () => ({ ok: true, front: false, agentFront: false, rects: [] });
 const own = () => ({ key: "trial:a", id: "a".repeat(32), run: "b".repeat(32), instance: "worker", generation: 1 });
@@ -11,14 +12,18 @@ afterEach(async () => { for (const f of cleanup.splice(0)) f(); for (const p of 
 function fixture(options: any = {}) {
   const p = page(); pages.push(p); const doc: any = p.document, host: any = p.window;
   p.root.className = "main";
-  const chat = doc.createElement("section"), split = doc.createElement("div"), panel = doc.createElement("aside"), stage = doc.createElement("div"), link = doc.createElement("link");
-  chat.className = "panel p-chat"; split.className = "chat-split"; panel.className = "pv-panel effect-trial-panel"; panel.setAttribute("data-trust", "preview"); stage.className = "effect-trial-stage";
+  const chat = doc.createElement("section"), split = doc.createElement("div"), panel = doc.createElement("aside"), link = doc.createElement("link");
+  chat.className = "panel p-chat"; split.className = "chat-split"; panel.className = "pv-panel effect-trial-panel"; panel.setAttribute("data-trust", "preview");
   p.root.append(chat); chat.append(split); split.append(panel);
-  for (const name of ["head", "controls", "body", "note"]) { const e = doc.createElement("div"); e.className = "effect-trial-" + name; panel.append(e); if (name === "body") e.append(stage); }
+  const shadow = createEffectTrialShadow({ window: host, panel, title: "Test", labels: { label: "Trial", close: "Close", stop: "Stop", note: "Note" }, onReady() {}, onError() {} });
+  cleanup.push(shadow.dispose);
+  const shadowRoot = panel._shadow, stage = shadowRoot.querySelector(".effect-trial-stage"), shadowLink = shadowRoot.querySelector("link");
   link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/app.css"); doc.body.append(link); (link as any).disabled = false;
   const rules: any[] = [], sheet: any = { ownerNode: link, href: host.location.origin + "/assets/app.css", disabled: false, cssRules: rules,
     insertRule(selector: string) { const declarations: any = {}; rules.push({ selectorText: selector.slice(0, -2), declarations, style: { setProperty(k: string, v: string) { declarations[k.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = v; } } }); return rules.length - 1; }, deleteRule(i: number) { rules.splice(i, 1); } };
-  (link as any).sheet = sheet;
+  (link as any).sheet = sheet; shadowLink.disabled = false;
+  shadowLink.sheet = { ...sheet, ownerNode: shadowLink, href: host.location.origin + "/assets/effect-trial.css" };
+  shadowLink.dispatchEvent({ type: "load" });
   const base = () => ({ position: "static", zIndex: "auto", visibility: "visible", display: "block", opacity: "1", contain: "none", isolation: "auto", mixBlendMode: "normal", willChange: "auto", contentVisibility: "visible", transform: "none", boxShadow: "none", outlineStyle: "none" });
   const stageStyle = { position: "relative", zIndex: "0", contain: "paint", overflowX: "clip", overflowY: "clip", paddingLeft: "0px", paddingRight: "0px", paddingTop: "0px", paddingBottom: "0px", borderLeftWidth: "0px", borderRightWidth: "0px", borderTopWidth: "0px", borderBottomWidth: "0px" };
   let current = () => true, css = () => "off", focused = true, patch: any = {}, framePatch: any = {}, otherPatch = new Map<any, any>(), r = { x: 320, y: 160, width: 399.75, height: 300.5 };
@@ -26,6 +31,7 @@ function fixture(options: any = {}) {
   stage.getBoundingClientRect = () => bounds(stage); panel.getBoundingClientRect = () => bounds(panel);
   Object.assign(host, { innerWidth: 800, innerHeight: 600, CSS: { supports: () => options.supports !== false }, getComputedStyle(el: any) { const matching = rules.filter(rule => el.classList.contains(rule.selectorText.slice(1))); return { ...base(), ...(el === stage ? { ...stageStyle, ...patch } : {}), ...Object.assign({}, ...matching.map(rule => rule.declarations)), ...(el.tagName === "IFRAME" ? framePatch : {}), ...otherPatch.get(el) }; } });
   Object.defineProperty(doc, "visibilityState", { configurable: true, value: "visible" }); doc.hasFocus = () => focused;
+  for (const el of shadowRoot.querySelectorAll(".effect-trial-head,.effect-trial-controls,button,.effect-trial-note")) el.getBoundingClientRect = () => ({ x: 310, y: 110, width: 80, height: 20 });
   const onStop = vi.fn(), api = createEffectTrialStage({ window: host, panel, stage, binding: options.binding || own(), current: (v: any) => current(), ownerCss: () => css(), onStop });
   if (api) cleanup.push(api.dispose);
   const frame = () => { const f = doc.createElement("iframe"); f.getBoundingClientRect = () => bounds(f); stage.append(f); return f; };
@@ -67,7 +73,7 @@ describe("host-only local trial stage, not product admission or a new frame pool
     expect(b.ok).toBe(true); expect(h.host.getComputedStyle(f).visibility).toBe("hidden"); expect(b.sync(proof())).toBe(true); expect(h.host.getComputedStyle(f)).toMatchObject({ width: "399px", height: "300px", pointerEvents: "none", opacity: "0.85", visibility: "visible" });
     h.api.hide(); expect(h.host.getComputedStyle(f).visibility).toBe("hidden"); h.api.dispose(); h.api.dispose(); expect(f.isConnected).toBe(false); expect(h.rules).toHaveLength(0); expect(h.panel.isConnected).toBe(true); expect(h.onStop).toHaveBeenCalledExactlyOnceWith("stopped"); expect(effectTrialStageIdentity(h.api.receipt)).toBeNull();
   });
-  it.each(["on", "loading", "unknown", "other"])("owner CSS %s permanently ends a stage", css => { const h = fixture(); h.css(css); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); expect(h.onStop).toHaveBeenCalledExactlyOnceWith("stage_unavailable"); h.css("off"); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); });
+  it.each(["on", "loading", "unknown"])("owner CSS %s does not grant access to the isolated stage", css => { const h = fixture(); h.css(css); expect(effectTrialStage(h.api.receipt, own(), proof())).not.toBeNull(); expect(h.panel.shadowRoot).toBeNull(); expect(h.panel.querySelector(".effect-trial-stage")).toBeNull(); });
   it.each([null, { ...proof(), ok: false }, { ...proof(), front: true, agentFront: true }])("missing or globally unsuppressed proof refuses: %j", p => { const h = fixture(); expect(effectTrialStage(h.api.receipt, own(), p)).toBeNull(); });
   it.each([{ contain: "none" }, { overflowX: "visible" }, { overflowY: "hidden" }, { position: "fixed" }, { zIndex: "20" }, { paddingLeft: "1px" }, { borderRightWidth: "1px" }, { transform: "matrix(1,0,0,1,1,0)" }, { isolation: "isolate" }, { mixBlendMode: "multiply" }, { boxShadow: "0px 0px 2px red" }, { outlineStyle: "solid" }])("clip or paint change %j refuses", patch => { const h = fixture(); Object.assign(h.patch, patch); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); });
   it.each(["class", "marker", "topology", "extra-child", "focusable", "editable", "offscreen", "out-of-panel", "huge", "missing-sheet", "no-focus"])("stage %s refuses", fault => {
@@ -93,18 +99,20 @@ describe("host-only local trial stage, not product admission or a new frame pool
   it("cancelled stage subscribers are not notified", () => { const h = fixture(), fn = vi.fn(), off = watchEffectTrialStage(h.api.receipt, fn); off(); off(); h.api.dispose(); expect(fn).not.toHaveBeenCalled(); });
 
   it("pure allocation keeps common total/front caps and refuses cloned/disposed receipts", () => {
-    const ctx = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, constrained: false, modal: true, openInstance: "worker" };
+    const ctx = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, trialReady: true, constrained: false, modal: true, openInstance: "worker" };
     const items = [0, 1, 2, 3].map(i => {
       const binding = { ...own(), key: "trial:" + i }, h = fixture({ binding });
       return { h, d: { ...binding, trialStage: h.api.receipt, region: "chat", layer: i === 3 ? "behind" : "front", by: "human", order: i, paused: false, visible: true } };
     });
+    expect(allocateEffectFrames([items[0].d], { ...ctx, optIn: false, previewReady: false })[0]).toMatchObject({ verdict: "active" });
+    expect(allocateEffectFrames([{ ...items[0].d, trialStage: undefined }], { ...ctx, modal: false, optIn: false, previewReady: false })[0]).toMatchObject({ verdict: "off", reason: "preview_unavailable" });
     const ds = items.map(x => x.d), result = allocateEffectFrames(ds, ctx); expect(result.map((r: any) => [r.verdict, r.reason])).toEqual([["active", null], ["active", null], ["queued", "front_limit"], ["active", null]]);
     expect(allocateEffectFrames(ds, { ...ctx, constrained: true }).filter((r: any) => r.verdict === "active")).toHaveLength(1);
     expect(allocateEffectFrames([{ ...ds[0], region: "page" }], ctx)[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
     expect(allocateEffectFrames([{ ...ds[0], trialStage: { ...ds[0].trialStage } }], ctx)[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
     expect(allocateEffectFrames([{ ...ds[0], trialStage: {} }], { ...ctx, modal: false })[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
     items[0].h.api.dispose(); expect(allocateEffectFrames([ds[0]], ctx)[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
-    for (const patch of [{ safe: true }, { publicLink: true }, { reducedMotion: true }, { saveData: true }, { enabled: false }, { show: false }, { previewReady: false }, { optIn: false }, { hidden: true }]) expect(allocateEffectFrames([ds[1]], { ...ctx, ...patch })[0].verdict).toBe("off");
+    for (const patch of [{ safe: true }, { publicLink: true }, { reducedMotion: true }, { saveData: true }, { enabled: false }, { show: false }, { trialReady: false }, { hidden: true }]) expect(allocateEffectFrames([ds[1]], { ...ctx, ...patch })[0].verdict).toBe("off");
   });
   it("constructor refuses unknown clip support or a duplicate owner of the same stage", () => {
     expect(fixture({ supports: false }).api).toBeNull(); const h = fixture(); expect(createEffectTrialStage({ window: h.host, panel: h.panel, stage: h.stage, binding: own(), current: () => true, ownerCss: () => "off" })).toBeNull();

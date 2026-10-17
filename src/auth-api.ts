@@ -105,7 +105,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     // #1629: static host runtime closure; effect data stays behind session/epoch routes.
     "effect-posters.js", "effect-poster-reader.js",
     "effect-app-runtime.js", "effect-trial-source.js", "effect-owner-source.js", "effect-owner-regions.js", "effect-chat-runtime.js", "effect-runtime-loader.js", "effect-registry.js", "effect-safety.js",
-    "effect-stock-trust.js", "effect-stock-snapshot.js", "effect-trial-stage.js", "effect-profiles.js", "effect-profiler.js",
+    "effect-stock-trust.js", "effect-stock-snapshot.js", "effect-trial-stage.js", "effect-trial-shadow.js", "effect-profiles.js", "effect-profiler.js",
     "effect-baseline.js", "effect-frame.js", "effect-geometry.js", "effect-host-style.js", "effect-cursor.js", "effect-policy.js",
     // #1629 r4 §3: links the signed-in person's owner CSS (static code; the stylesheet itself is session-gated).
     "owner-css.js",
@@ -119,6 +119,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "identity-color.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
   ].map(name => [name, { file: join("shared", name), type: "text/javascript; charset=utf-8" }])),
+  "effect-trial.css": { file: join("shared", "effect-trial.css"), type: "text/css; charset=utf-8" },
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },
 };
 

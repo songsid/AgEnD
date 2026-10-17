@@ -479,7 +479,7 @@ function handleEffectTrials(req: IncomingMessage, res: ServerResponse, url: URL,
     const person = webPersonKey(v.session.owner);
     let css: "off" | "on" | "unknown" = "unknown";
     try { const value = ctx.ownerCss?.effectState(person); if (value === "off" || value === "on") css = value; } catch { /* unavailable is never off */ }
-    // CSS remains a checked runtime value. The authority refuses anything except off on start/read.
+    // CSS is diagnostic for Try; its host-owned shadow shell isolates controls and local paint.
     const actor = Object.freeze({ via: "session" as const, surface: "local" as const, tier: "admin" as const, sessionHash: v.session.idHash, epoch: v.session.handle, person, ownerCss: css });
     return { actor, record: v.session, sessions };
   };

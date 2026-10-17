@@ -1,6 +1,6 @@
 # Authenticated Canvas effect access (#1629 B2)
 
-This is the server adapter for the reviewed library, placement store and reported-profile foundation. It does **not** import or serve a browser runtime module, create a frame, start a preview listener, add startup work or mount an effect. The subsequent human Settings, Try-card and product adapter must still enforce local opt-in, safe mode, trust geometry, one registry and the reviewed caps/safety/profiler lifecycle.
+This is the server adapter for the reviewed library, placement store and reported-profile foundation. It does **not** import or serve a browser runtime module, create a frame, start a preview listener, add startup work or mount an effect. The subsequent human Settings, Try-card and product adapter must still enforce ordinary local opt-in (or the isolated Try's explicit local-admin click consent), safe mode, trust geometry, one registry and the reviewed caps/safety/profiler lifecycle.
 
 ## Identity and boundaries
 

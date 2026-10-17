@@ -12,21 +12,24 @@ request, frame, Worker, registry, profiler or pool on their own.
 
 The host producer renders one `aside.pv-panel.effect-trial-panel`, directly inside
 the actual Chat split, with the existing protected `preview` marker. It owns the
-bilingual Trial label, title, Stop and Close buttons, stage and explanatory note.
+bilingual Trial label, title, Stop and Close buttons, stage and explanatory note inside a closed shadow root.
+No parts, slots or exported parts expose these nodes to owner CSS. The fixed same-origin `/assets/effect-trial.css`
+loads before controls are revealed or a paint receipt is issued. Its important host reset defeats outer host rules,
+including hide/relabel attempts; fixed internal typography resets inherited color/font/direction. Ancestor paint changes still fail closed.
 There is no portal or overlay added by this feature. The existing preview panel's
 phone sheet positioning is reused. No mod HTML, controls or DOM is accepted.
 
 The stage is an empty, nonfocusable, aria-hidden DIV with `contain: paint`,
 `overflow: clip`, position relative and local level 0. Host controls own level 1.
-The real, loaded same-origin app.css is the only CSSOM write seam. Unknown CSS,
-missing stylesheet, transforms, opacity/blending changes, padding/borders or
+The loaded same-origin app.css remains a prerequisite; frame rules are written only into the verified fixed shadow stylesheet.
+A missing/replaced stylesheet, hidden chrome, transforms, opacity/blending changes, padding/borders or
 lost clipping refuse paint. Stage bounds must stay inside the panel and visible
 viewport. Width/height are rounded **inward** to integer canvas dimensions;
 unsupported/subpixel geometry may conservatively refuse rather than spill.
 
 A nonserializable WeakMap receipt binds the exact host stage, id, instance and
 generation. Its frozen public identity is diagnostic, not a serialized grant;
-forged, stale or mismatched receipts resolve to nothing. Current lease and CSS-off
+forged, stale or mismatched receipts resolve to nothing. Current lease
 callbacks run before and after layout, with disposal/replacement fences.
 The stage accepts at most one real effect iframe. It proves initial hiding before
 successful bind, checks local geometry before every reveal, and physically removes
@@ -67,6 +70,6 @@ actual TrialPanel through exactly one **private component-slot overlay** (the
 production Chat module is not changed). It uses the real factory and built preview
 response/Canvas Worker, samples protected pixels, forces an oversized iframe to
 prove physical clipping, and tests initial hiding, clip/contain/transform refusal,
-CSS on/loading/unknown, stale owner, other dialog/menu, blur, Stop, Close and unmount.
+shadow-style loss, hostile owner-CSS isolation, stale owner, other dialog/menu, blur, Stop, Close and unmount.
 It runs Chromium, Firefox and Linux WebKit at 1366/390px; Linux WebKit is not Safari.
 These are local paint controls, not authenticated product Try or common-cap proof.

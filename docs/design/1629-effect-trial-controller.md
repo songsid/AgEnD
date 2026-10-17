@@ -36,7 +36,7 @@ the bound. A blocked physical cleanup intentionally denies more starts.
 
 Window blur, pagehide, hidden state, session end, explicit Stop and a failed
 current/gate predicate stop the operation. The product bridge must call sync on
-route, CSS, menu/dialog and preference changes, and pass predicates that check
+route, menu/dialog and effect preference changes, and pass predicates that check
 those states. Synchronous predicate reentry refuses and ends the older operation;
 it cannot recursively validate itself. The existing local stage independently rechecks its own paint
 boundary. A mount callback must clean up partial work if it throws; if it returns

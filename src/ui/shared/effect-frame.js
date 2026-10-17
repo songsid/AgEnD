@@ -30,16 +30,21 @@ function snapshotRender(raw) {
   return { code: raw.code, params: { ...params }, instance: raw.instance, width: raw.width, height: raw.height, dpr: raw.dpr, assets, wants: [...raw.wants] };
 }
 
+/** Listener transport only; this does not grant HTML-preview or ordinary-effect consent. */
+export function effectTransportReady(host, origin, boot) {
+  try {
+    const target = new URL(origin), page = new URL(host.location.origin);
+    return origin === target.origin && ["http:", "https:"].includes(target.protocol) && ["http:", "https:"].includes(page.protocol)
+      && target.origin !== page.origin && !(page.protocol === "https:" && target.protocol !== "https:") && typeof boot === "string" && /^[0-9a-f]{32}$/.test(boot);
+  } catch { return false; }
+}
+
 /**
  * All options come from the host, never from an agent event or manifest origin. The registry supplies an admitted
  * root and geometry in a later integration. This primitive alone does not implement caps, clipping or profiling.
  */
 export function createEffectFrame({ window: host, root, origin, boot, render, clock = () => performance.now(), onReady = () => {}, onRemove = () => {} } = {}) {
-  let url;
-  try { url = new URL(origin); } catch { return { ok: false, reason: "preview_unknown" }; }
-  if (origin !== url.origin || !["http:", "https:"].includes(url.protocol) || typeof boot !== "string" || !/^[0-9a-f]{32}$/.test(boot)) return { ok: false, reason: "preview_unknown" };
-  let hostOrigin; try { hostOrigin = new URL(host.location.origin); } catch { return { ok: false, reason: "preview_unknown" }; }
-  if (!["http:", "https:"].includes(hostOrigin.protocol) || origin === hostOrigin.origin || hostOrigin.protocol === "https:" && url.protocol !== "https:") return { ok: false, reason: "preview_unknown" };
+  if (!effectTransportReady(host, origin, boot)) return { ok: false, reason: "preview_unknown" };
   const payload = snapshotRender(render);
   if (!payload || !host || !root || root.ownerDocument !== host.document || typeof root.append !== "function" || typeof host.MessageChannel !== "function" || typeof clock !== "function" || typeof onReady !== "function" || typeof onRemove !== "function") return { ok: false, reason: "unsupported" };
   let mounted;
