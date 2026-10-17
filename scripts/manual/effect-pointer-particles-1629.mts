@@ -69,7 +69,7 @@ const config={defaults:{backend:'codex'},instances:{worker:{working_directory:'/
 const server=createServer(async(req,res)=>{
  const u=new URL(req.url||'/','http://localhost'),p=u.pathname;
  if(/^\/assets\/[a-z0-9._-]+$/.test(p)||/^\/ui\/js\/[a-z0-9_-]+\.js$/.test(p)){
-  try{res.setHeader('Content-Type',p.endsWith('.css')?'text/css':p.endsWith('.woff2')?'font/woff2':'text/javascript');let file=readFileSync(join('src/ui',p.startsWith('/assets/')?'shared':'',p.split('/').at(-1)));if(p==='/assets/effect-registry.js'&&process.env.PROBE_MUTATION==='old-focus')file=Buffer.from(file.toString().replace(' || stockMain',''));if(p==='/assets/effect-registry.js'&&process.env.PROBE_MUTATION==='drop-pending')file=Buffer.from(file.toString().replace('const packet = s.pointer;', 'const packet = s.pointer; s.pointer = null;'));res.end(file);}catch{res.statusCode=404;res.end();}return;
+  try{res.setHeader('Content-Type',p.endsWith('.css')?'text/css':p.endsWith('.woff2')?'font/woff2':'text/javascript');let file=readFileSync(join('src/ui',p.startsWith('/assets/')?'shared':'',p.split('/').at(-1)));if(p==='/assets/effect-registry.js'&&process.env.PROBE_MUTATION==='old-focus')file=Buffer.from(file.toString().replace(' || stockMain',''));if(p==='/assets/effect-registry.js'&&process.env.PROBE_MUTATION==='overwrite-discrete')file=Buffer.from(file.toString().replace('kind !== "move" || !s.pointer || s.pointer.fields.kind === "move" || at - s.pointer.at > 100', 'true'));if(p==='/assets/effect-registry.js'&&process.env.PROBE_MUTATION==='drop-pending')file=Buffer.from(file.toString().replace('const packet = s.pointer;', 'const packet = s.pointer; s.pointer = null;'));res.end(file);}catch{res.statusCode=404;res.end();}return;
  }
  if(p==='/ui/owner-css.css'){res.setHeader('Content-Type','text/css');res.end('/* neutral owner CSS; still blocks agent front */');return;}
  if(p!=='/'&&!p.startsWith('/ui/chat/')){
@@ -214,9 +214,10 @@ try {
       try{
        await page.waitForFunction(()=>probe.rows().some(r=>r.quality==='low'),undefined,{timeout:5000});
        await page.evaluate(()=>{clearInterval(window.pointerStress);window.pointerPackets=[];window.pointerNative=[]});
-       // Prime one real low-quality move, then click immediately in the same 30Hz send interval.
+       // Prime a real low-quality move, then click and move again. Driver latency may cross
+       // a send interval; deterministic unit clocks separately pin the exact 1ms interleaving.
        await page.mouse.move(p.x,p.y);await page.waitForFunction(()=>window.pointerPackets.some(e=>e.kind==='move'&&e.quality==='low'),undefined,{timeout:1000});
-       await page.mouse.click(p.x,p.y);await page.waitForTimeout(120);const after=await shot(surface+'-coalesced-after'),seen=await packets();
+       await page.mouse.click(p.x,p.y);await page.mouse.move(p.x+1,p.y);await page.waitForTimeout(120);const after=await shot(surface+'-coalesced-after'),seen=await packets();
        cases.push({label:'coalesced-click',expected:'sparks',point:p,paint:{pending:true},before,after,status:seen.packets.some(e=>e.kind==='click'||e.kind==='down')?'delivered':'FINDING:no-burst-packet',...seen});
       }finally{await page.evaluate(()=>clearInterval(window.pointerStress))}
      }

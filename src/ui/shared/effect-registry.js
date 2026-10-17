@@ -466,7 +466,11 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       const fields = { kind, x: event.clientX - r.x, y: event.clientY - r.y, buttons: event.buttons };
       if (fields.x < 0 || fields.y < 0 || fields.x > r.width || fields.y > r.height) continue;
       if (kind === "wheel") { fields.dx = event.deltaX; fields.dy = event.deltaY; }
-      if (effectEvent("pointer", fields, s.d.instance, at)) s.pointer = { fields, at };
+      if (effectEvent("pointer", fields, s.d.instance, at)) {
+        // One slot, with discrete input ahead of motion. A later move must not erase
+        // a waiting click; down/up/click may still coalesce to the latest discrete event.
+        if (kind !== "move" || !s.pointer || s.pointer.fields.kind === "move" || at - s.pointer.at > 100) s.pointer = { fields, at };
+      }
     }
     schedule();
   }

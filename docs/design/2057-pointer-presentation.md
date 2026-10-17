@@ -43,7 +43,7 @@ The fix skips writes only for a previously revealed frame whose **fresh** stock 
 
 ### Coalescing
 
-Previously the registry cleared its one pending pointer sample before checking whether the 60/30Hz interval had elapsed. An early rAF therefore lost a click after a move. It now retains that latest sample until a permitted frame, preserving the original timestamp and 100ms expiry. A newer sample replaces it; there is no event queue or guarantee to deliver every intermediate input. Every send still checks current ownership, stock/focus permissions, ready state and profiler forwarding. Revocation or invalidation discards pending input.
+Previously the registry cleared its one pending pointer sample before checking whether the 60/30Hz interval had elapsed. An early rAF therefore lost a click after a move. It now retains that latest sample until a permitted frame, preserving the original timestamp and 100ms expiry. Movement replaces earlier movement, but cannot replace a fresh pending discrete event. A later discrete event replaces an earlier one, so a near-simultaneous down/up/click sequence deliberately coalesces to its final click. An expired discrete sample cannot block new motion. There is still only one slot, no event queue or guarantee to deliver every intermediate input. Every send still checks current ownership, stock/focus permissions, ready state and profiler forwarding. Revocation or invalidation discards pending input.
 
 ## Capture checks
 
@@ -57,7 +57,7 @@ PW_DIR=<private-prefix> OUT_DIR=<private-output> \
   node scripts/manual/effect-pointer-particles-1629.mts
 ```
 
-`PROBE_WIDTHS`, `PROBE_MODES`, `PROBE_SURFACES` and `PROBE_GROUPS` select separate supplements without replacing originals. `PROBE_GROUPS=coalesced-click` primes a real degraded move before an immediate trusted click. `PROBE_MUTATION=no-paint`, `old-focus` or `drop-pending` are served-source/sample reversals, never product configuration. `scripts/manual/effect-geometry-1629.mts` checks fresh geometry, protected pixels, hole movement and cascade refusal.
+`PROBE_WIDTHS`, `PROBE_MODES`, `PROBE_SURFACES` and `PROBE_GROUPS` select separate supplements without replacing originals. `PROBE_GROUPS=coalesced-click` primes a real degraded move before a trusted click and subsequent motion. Driver latency can cross a send interval; deterministic unit clocks pin the exact 1ms interleaving. `PROBE_MUTATION=no-paint`, `old-focus`, `drop-pending` or `overwrite-discrete` are served-source/sample reversals, never product configuration. `scripts/manual/effect-geometry-1629.mts` checks fresh geometry, protected pixels, hole movement and cascade refusal.
 
 The loopback harness uses actual stock Shell/Chat, service/library, preview listener, Worker and runtime, with a private synthetic session. It does not prove real login, public gateway behavior, physical touch scrolling or real Safari. Optional native touch/cancellation observations remain separate from required mouse cases. All browser processes, profiles and listeners are private and cleaned up.
 
