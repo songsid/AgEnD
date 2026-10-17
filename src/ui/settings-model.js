@@ -223,10 +223,11 @@ export function accessConfirmations(previousAccess, nextMode, nextUsers) {
 }
 
 /**
- * #2054: whether a ClassicBot room copies web chat (as classicWebEchoOn on the fleet): its own `web_echo` when set, else
- * the fleet-wide `web.echo_to_channel` (default on).
+ * #2054: whether a ClassicBot room copies web chat, as the fleet decides it (ClassicChannelManager's load +
+ * classicWebEchoOn): an absent `web_echo` follows the fleet-wide `web.echo_to_channel` (default on); any other value
+ * echoes only when it is `true` (a `null`, `0` or string reads as off, as the manager reads it).
  */
-export const classicWebEchoEffective = (room, fleet) => (typeof room?.web_echo === "boolean" ? room.web_echo : fleet?.web?.echo_to_channel !== false);
+export const classicWebEchoEffective = (room, fleet) => (room?.web_echo === undefined ? fleet?.web?.echo_to_channel !== false : room.web_echo === true);
 
 // ── Developer YAML: the config subset's writer and reader, exactly as settings.html had them (round-trip verified) ──
 export function toYaml(value, indent = 0) {
