@@ -599,7 +599,7 @@ export class Scheduler {
         // Only one this process never armed gets a baseline: this scheduler's real start (both clocks), moved to its
         // creation when that is later — never earlier than either, and never a monotonic instant in the future.
         if (!this.armedSince.has(schedule.id)) {
-          const createdMs = Date.parse(schedule.created_at.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(schedule.created_at) ? schedule.created_at : schedule.created_at + "Z");
+          const createdMs = Scheduler.createdMs(schedule);
           const start = this.startedAt ?? { wall: now, mono: nowMono };
           const shift = Number.isFinite(createdMs) && createdMs > start.wall ? createdMs - start.wall : 0;
           this.armedSince.set(schedule.id, { wall: start.wall + shift, mono: Math.min(nowMono, start.mono + shift) });
@@ -621,8 +621,14 @@ export class Scheduler {
       // moves back with it (wall now minus the monotonic time since), so an occurrence that comes due after the
       // registration still counts. One from before it (startup catch-up's, or while disabled) is not this check's.
       const armedAt = Math.min(armed.wall, now - (nowMono - armed.mono));
+      // The row's own creation, as written, bounds it too. Whether it was written in today's wall clock or in one from
+      // before the clock was set back cannot always be told: when it reads as already past, it is taken at its word (a
+      // catch-up may then be missed, never invented). One that reads as still to come was written before the clock went
+      // back; the baseline above, carried by the monotonic clock, decides alone.
+      const createdMs = Scheduler.createdMs(schedule);
+      const beforeCreated = Number.isFinite(createdMs) && createdMs <= now && latestMs <= createdMs;
       // Every run this process starts goes through runWithLock, which records its exact run id.
-      if (this.wasHandled(schedule.id, runId) || latestMs <= armedAt) { this.missSeen.delete(schedule.id); continue; }
+      if (this.wasHandled(schedule.id, runId) || latestMs <= armedAt || beforeCreated) { this.missSeen.delete(schedule.id); continue; }
       // A run still in flight: never start an overlapping one. The occurrence stays pending and runs once it settles.
       if (this.executing.has(schedule.id)) continue;
       const since = this.missSeen.get(schedule.id);
@@ -633,6 +639,12 @@ export class Scheduler {
       this.log.warn({ scheduleId: schedule.id, runId, lastTriggeredAt: schedule.last_triggered_at }, "Missed cron tick — catching up");
       this.runWithLock(schedule, runId);
     }
+  }
+
+  /** When the row was created, as its wall clock wrote it (an older row may lack the zone suffix: UTC). */
+  private static createdMs(schedule: Schedule): number {
+    const at = schedule.created_at;
+    return Date.parse(at.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(at) ? at : at + "Z");
   }
 
   /** Return the latest actual cron occurrence at or before the observation. */

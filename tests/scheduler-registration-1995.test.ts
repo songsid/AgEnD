@@ -174,6 +174,20 @@ describe("#1995 cron registration: logged, and repaired when missing", () => {
     expect(missed()).toEqual([iso(T - 75 * MIN)]);                   // 13:10 by the check; 13:15 by the job the check re-registered
   });
 
+  // 30 s: Prism's case. 0: created at the very instant of the occurrence — croner would not run that one either.
+  it.each([30_000, 0])("created only after the wall clock was set back (+%i ms), never armed, its reload lost: nothing from before its creation", async (after) => {
+    start(T - 25 * MIN);                                             // 14:00: an empty scheduler
+    await vi.advanceTimersByTimeAsync(60_500);                       // the first check (nothing to do)
+    vi.setSystemTime(new Date(T - 75 * MIN));                        // the wall clock goes back to 13:10:00.000
+    await vi.advanceTimersByTimeAsync(after);
+    const s = cli(db => db.create(params("10 13 * * *"), 100));      // daily at 13:10: today's is already due
+    await vi.advanceTimersByTimeAsync(60_000 - after);               // ~13:11: the check repairs it (the reload never came)
+    expect(repaired()).toEqual([s.id]);
+    await vi.advanceTimersByTimeAsync(10 * MIN);                     // well past the grace
+    expect(runs).toEqual([]);                                        // 13:10 came due before the row existed
+    expect(missed()).toEqual([]);
+  });
+
   it("re-enabled outside this process with no reload, never registered: nothing from while it was disabled is caught up", async () => {
     vi.setSystemTime(new Date(T - 30 * MIN));
     const s = cli(db => db.create(params("25 14 17 10 *"), 100));
