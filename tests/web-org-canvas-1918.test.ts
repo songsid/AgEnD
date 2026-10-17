@@ -76,13 +76,38 @@ describe("layout: fixed slots", () => {
     const at = (L: any) => L.boxes.map((b: any) => [b.key, b.x, b.y, b.w]);
     expect(at(shut)).toEqual(at(open));
     const web = shut.boxes.find((b: any) => b.key === "Web");
-    expect([web.folded, web.cells.length, web.h, web.slotH]).toEqual([true, 0, C.OC.FOLDED, open.boxes.find((b: any) => b.key === "Web").slotH]);
+    expect([web.folded, web.cells.length, web.h, web.slotH]).toEqual([true, 0, C.OC.FOLDED, open.boxes.find((b: any) => b.key === "Web").slotH]);   // one summary row
     expect(shut.boxes.find((b: any) => b.key === "Platform").cells).toHaveLength(4);
     // A whole row folded: the rows below stay where they were too.
     expect(at(C.canvasLayout(view(), new Set(["Platform", "Web"])))).toEqual(at(open));
     expect(C.canvasLayout(view(), new Set(["Empty"])).boxes.find((b: any) => b.key === "Empty").folded, "nothing to fold").toBe(false);
     // The instances in no team fold by a key no team name can be.
     expect(C.canvasLayout(view(), new Set([C.REST_KEY])).boxes.at(-1).folded).toBe(true);
+  });
+  it("a folded team's states wrap inside its box, most pressing first; it grows only within its slot", () => {
+    const states = ["needs", "crashed", "stuck", "working", "idle", "paused", "stopped", "missing"];
+    const counts = states.map((st, i) => [st, i + 1]);
+    const en = { needs: "Needs you", crashed: "Crashed", stuck: "Looks stuck", working: "Working", idle: "Idle", paused: "Paused", stopped: "Stopped", missing: "Not in the fleet" } as Record<string, string>;
+    const zh = { needs: "等你回應", crashed: "已當掉", stuck: "似乎卡住", working: "工作中", idle: "閒置", paused: "已暫停", stopped: "已停止", missing: "不在 fleet 中" } as Record<string, string>;
+    for (const [w, labels] of [[434, en], [636, en], [434, zh], [232, en]] as const) {
+      const rows = C.summaryRows(counts, w, (st: string, n: number) => `${n} ${labels[st]}`);
+      expect(rows.flat().map((it: any) => it.s), `${w}`).toEqual(states);
+      // Every item starts inside the box and ends before its right padding (an item alone on its row may not, but none is that wide here).
+      for (const row of rows) { const last = row[row.length - 1]; expect(last.dx + 24 + [...last.label].reduce((x: number, ch: string) => x + (ch.codePointAt(0)! >= 0x2e80 ? 12 : 6.6), 0)).toBeLessThanOrEqual(w - 14 + 1e-9); }
+      expect(rows.length, `${w}`).toBeGreaterThan(1);
+    }
+    expect(C.summaryRows(counts, 434, (st: string, n: number) => `${n} ${zh[st]}`).length).toBeGreaterThanOrEqual(C.summaryRows(counts, 636, (st: string, n: number) => `${n} ${en[st]}`).length);
+    // In a layout: an eight-member team with eight states, folded, narrow and wide; the whole row folded too.
+    const mixed = { top: [], teams: [{ name: "Mixed", nodes: states.map((st) => ({ name: st, state: st })), counts }, { name: "Next", nodes: [{ name: "x", state: "idle" }], counts: [["idle", 1]] }], rest: { nodes: [], counts: [] } };
+    for (const narrow of [false, true]) {
+      const open = C.canvasLayout(mixed, new Set(), { narrow, label: (st: string, n: number) => `${n} ${en[st]}` });
+      const shut = C.canvasLayout(mixed, new Set(["Mixed", "Next"]), { narrow, label: (st: string, n: number) => `${n} ${en[st]}` });
+      const box = shut.boxes[0];
+      expect(box.summary.length).toBeGreaterThan(1);
+      expect(box.h).toBeGreaterThanOrEqual(C.OC.HEAD + 10 + box.summary.length * 20);
+      expect(box.h).toBeLessThanOrEqual(open.boxes[0].h);
+      expect(shut.boxes.map((b: any) => [b.x, b.y])).toEqual(open.boxes.map((b: any) => [b.x, b.y]));
+    }
   });
   it("the tree: General's stem, a bus per row, the trunk joining the rows, one drop per team; none for the loose box", () => {
     const L = C.canvasLayout(view());
@@ -228,21 +253,57 @@ describe("the canvas on the page", () => {
     fire(card("atlas"), "focusin");
     expect(tf()).toEqual(v1);
   });
-  it("two pointers pinch: apart zooms in about their midpoint, together zooms out", async () => {
+  it("two pointers pinch from their first move: the canvas point under the old midpoint goes to the new one", async () => {
     await mount();
     const v0 = tf()!;
-    fire(svg(), "pointerdown", { pointerId: 1, clientX: 400, clientY: 300, pointerType: "touch" });
-    fire(svg(), "pointerdown", { pointerId: 2, clientX: 500, clientY: 300, pointerType: "touch" });
-    fire(svg(), "pointermove", { pointerId: 2, clientX: 500, clientY: 300 });           // the first two-pointer move: the span is set
-    fire(svg(), "pointermove", { pointerId: 2, clientX: 600, clientY: 300 });           // 100 → 200 px apart, midpoint 500
+    const down = (id: number, x: number, y = 300) => fire(svg(), "pointerdown", { pointerId: id, clientX: x, clientY: y, pointerType: "touch" });
+    const move = (id: number, x: number, y = 300) => fire(svg(), "pointermove", { pointerId: id, clientX: x, clientY: y });
+    down(1, 400); down(2, 500);
+    move(2, 600);                                                          // no warm-up move: 100 → 200 apart, midpoint 450 → 500
     const v1 = tf()!;
     expect(v1.k).toBeCloseTo(v0.k * 2);
-    expect((500 - v1.x) / v1.k, "the canvas point under the midpoint stays under it").toBeCloseTo((500 - v0.x) / v0.k);
-    fire(svg(), "pointermove", { pointerId: 2, clientX: 500, clientY: 300 });           // back to 100 apart
+    expect([(500 - v1.x) / v1.k, (300 - v1.y) / v1.k], "the point that was under 450 is under 500").toEqual([expect.closeTo((450 - v0.x) / v0.k), expect.closeTo((300 - v0.y) / v0.k)]);
+    // Both fingers move the same way: the canvas pans with them, no zoom.
+    move(1, 450); move(2, 650);
+    const v2 = tf()!;
+    expect([v2.k, v2.x - v1.x]).toEqual([expect.closeTo(v1.k), expect.closeTo(50)]);
+    // Together again (200 → 100 apart): back to the opening zoom.
+    move(2, 550);
     expect(tf()!.k).toBeCloseTo(v0.k);
-    fire(svg(), "pointerup", { pointerId: 2 }); fire(svg(), "pointerup", { pointerId: 1 });
+    // One finger lifted: the other pans on at once (even a few pixels: it is no tap).
+    fire(svg(), "pointerup", { pointerId: 2 });
+    const v3 = tf()!;
+    move(1, 453);
+    expect(tf()!.x - v3.x).toBeCloseTo(3);
+    fire(svg(), "pointerup", { pointerId: 1 });
     card("quill").click(); await settle(2);
     expect(location.pathname, "the click that ends a pinch opens nothing").toBe("/ui/fleet/org");
+  });
+  it("pinchView: the old midpoint's canvas point lands on the new midpoint; zoom by the spans' ratio, clamped", () => {
+    const v = { x: 10, y: 20, k: 1 }, from = { mid: { x: 100, y: 100 }, dist: 50 }, to = { mid: { x: 160, y: 90 }, dist: 100 };
+    const z = C.pinchView(v, from, to);
+    expect([z.k, (160 - z.x) / z.k, (90 - z.y) / z.k]).toEqual([2, 90, 80]);
+    expect(C.pinchView(v, from, { ...to, dist: 50 * 1000 }).k).toBe(C.K_MAX);
+  });
+  it("a search's Enter moves the view once: later renders (the stream, clearing the search, a fold) keep where the person went", async () => {
+    await mount();
+    const input = p.root.querySelector(".oc-find input");
+    input.value = "moss"; fire(input, "input"); await settle(2);
+    fire(input, "keydown", { key: "Enter" }); await settle(4);
+    const centred = tf()!;
+    fire(svg(), "keydown", { key: "ArrowLeft" }); fire(svg(), "keydown", { key: "-" });
+    const moved = tf()!;
+    expect(moved).not.toEqual(centred);
+    app.appStore.set((s: any) => ({ ...s, exec: { ...s.exec, flint: "working" } })); await settle(4);
+    expect(tf(), "an unrelated state change").toEqual(moved);
+    input.value = ""; fire(input, "input"); await settle(2);
+    expect(tf(), "the search cleared").toEqual(moved);
+    team("Research").querySelector(".oc-toggle").click(); await settle(2);
+    expect(tf(), "another team folded").toEqual(moved);
+    // A new Enter moves it again.
+    input.value = "moss"; fire(input, "input"); await settle(2);
+    fire(input, "keydown", { key: "Enter" }); await settle(4);
+    expect(tf()).toEqual(centred);
   });
   it("the arrow keys move between cards; the canvas itself pans", async () => {
     await mount();
@@ -333,6 +394,33 @@ describe("the canvas on the page", () => {
     expect(v.y + (box.y + box.h / 2) * v.k).toBeCloseTo(300);
     const mv = p.root.querySelector(".oc-mini-view");
     expect([+mv.getAttribute("x"), +mv.getAttribute("width")]).toEqual([-v.x / v.k, 960 / v.k]);
+  });
+  it("a folded team of eight states draws every count inside its box", async () => {
+    orgAnswer = { ...ORG, teams: [{ name: "Mixed", members: ["pixel", "quill", "sage", "orbit", "nova", "ember", "lark", "ghost"] }] };
+    app.appStore.set((s: any) => ({ ...s, exec: { quill: "working", sage: "stuck" }, awaiting: { pixel: "Allow?" },
+      instances: s.instances.map((i: any) => (i.name === "orbit" ? { ...i, status: "crashed" } : i.name === "nova" ? { ...i, status: "paused" } : i.name === "ember" ? { ...i, status: "stopped" } : i)) }));
+    await mount();
+    team("Mixed").querySelector(".oc-toggle").click(); await settle(2);
+    const box = team("Mixed").querySelector(".oc-box"), right = +box.getAttribute("x") + +box.getAttribute("width"), bottom = +box.getAttribute("y") + +box.getAttribute("height");
+    const texts = team("Mixed").querySelectorAll(".oc-team-sum");
+    expect(texts.map((t: any) => t.textContent)).toEqual(["1 Needs you", "1 Crashed", "1 Looks stuck", "1 Working", "1 Idle", "1 Paused", "1 Stopped", "1 Not in the fleet"]);
+    for (const t of texts) { expect(+t.getAttribute("x")).toBeLessThan(right - 14); expect(+t.getAttribute("y")).toBeLessThan(bottom); }
+    expect(new Set(texts.map((t: any) => t.getAttribute("y"))).size).toBeGreaterThan(1);
+  });
+  it("the identity colour's bar: a bar on every card, painted only where the bar is chosen (bar only, ring only, off)", async () => {
+    app.appStore.set((s: any) => ({ ...s, instances: s.instances.map((i: any) => (i.name === "quill" ? { ...i, color: { person: "#cf222e" }, color_show: { person: ["bar"] } }
+      : i.name === "sage" ? { ...i, color: { person: "#cf222e" }, color_show: { person: ["ring"] } } : i)) }));
+    await mount();
+    expect(p.root.querySelectorAll(".oc-node").every((n: any) => !!n.querySelector(".oc-idbar"))).toBe(true);
+    const cls = (n: string) => card(n).getAttribute("class").split(" ").filter((c: string) => c.startsWith("id"));
+    expect([cls("quill"), cls("sage")]).toEqual([["idc", "id-bar"], ["idc", "id-ring"]]);
+    const css = (await import("node:fs")).readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
+    expect(css).toContain(".oc-idbar { display: none; }");
+    expect(css).toContain(".oc-node.idc.id-bar .oc-idbar { display: inline; fill: var(--id); }");
+    // Colours off for this host: no card is painted, bar or ring.
+    localStorage.setItem("agend_color_off", "on");
+    await p.unmount(); await mount();
+    expect([cls("quill"), cls("sage")]).toEqual([[], []]);
   });
   it("no styles in markup: per-card values are SVG attributes (#1300)", async () => {
     await mount();

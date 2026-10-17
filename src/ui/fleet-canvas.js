@@ -54,7 +54,7 @@ export const REST_KEY = "\u0000rest";
  * (each team: its slot, its header, its member cells unless folded), the tree lines (`tree`: SVG path data) and the
  * size of the whole. `narrow`: a phone's packing.
  */
-export function canvasLayout(view, folded = new Set(), { narrow = false } = {}) {
+export function canvasLayout(view, folded = new Set(), { narrow = false, label = (s, n) => `${n} ${s}` } = {}) {
   const { NW, NH, GAP, PAD, HEAD } = OC;
   const groups = [...view.teams.map((tm) => ({ key: tm.name, name: tm.name, loose: false, nodes: tm.nodes, counts: tm.counts })),
     ...(view.rest.nodes.length ? [{ key: REST_KEY, name: null, loose: true, nodes: view.rest.nodes, counts: view.rest.counts }] : [])];
@@ -75,8 +75,11 @@ export function canvasLayout(view, folded = new Set(), { narrow = false } = {}) 
     const slotH = Math.max(...r.map((b) => b.fullH));
     for (const b of r) {
       const isFolded = b.nodes.length > 0 && folded.has(b.key);
+      // Folded: its members' states in rows that fit the box (never wider; never taller than its open slot).
+      const summary = isFolded ? summaryRows(b.counts, b.w, label) : [];
       const box = { key: b.key, name: b.name, loose: b.loose, nodes: b.nodes, counts: b.counts, cols: b.cols, x: b.x, y, w: b.w,
-        h: isFolded ? OC.FOLDED : b.fullH, slotH, folded: isFolded, busY: y - OC.BUS, cells: [] };
+        h: isFolded ? Math.min(b.fullH, Math.max(OC.FOLDED, HEAD + 10 + summary.length * SUM_LINE)) : b.fullH, slotH, folded: isFolded, summary,
+        busY: y - OC.BUS, cells: [] };
       if (!isFolded) b.nodes.forEach((node, i) => box.cells.push({ node, key: `${b.key}/${node.name}`,
         x: b.x + PAD + (i % b.cols) * (NW + GAP), y: y + HEAD + PAD + Math.floor(i / b.cols) * (NH + GAP), w: NW, h: NH }));
       boxes.push(box);
@@ -89,6 +92,26 @@ export function canvasLayout(view, folded = new Set(), { narrow = false } = {}) 
   const tops = view.top.map((node, i) => ({ node, key: `\u0000top/${node.name}`, x: width / 2 - topW / 2 + i * (OC.LW + GAP), y: OC.TOP_Y, w: OC.LW, h: OC.LH }));
   const height = boxes.length ? y - OC.ROW_GAP : tops.length ? OC.TOP_Y + OC.LH : 0;
   return { tops, boxes, width, height, tree: treeLines(tops, boxes) };
+}
+
+/** A folded team's summary line height, and a label's width estimate (canvas units: wide for CJK, narrow otherwise). */
+const SUM_LINE = 20;
+const textWidth = (s) => [...s].reduce((w, ch) => w + (ch.codePointAt(0) >= 0x2e80 ? 12 : 6.6), 0);
+/**
+ * A folded team's states as rows of { s, n, label, dx } that fit a box `w` wide (dx from the box's left), most pressing
+ * first; an item never splits, and one wider than a row has the row to itself.
+ */
+export function summaryRows(counts, w, label) {
+  const rows = [];
+  let row = [], x = 14;
+  for (const [s, n] of counts) {
+    const text = label(s, n), iw = 24 + textWidth(text);
+    if (row.length && x + iw > w - 14) { rows.push(row); row = []; x = 14; }
+    row.push({ s, n, label: text, dx: x });
+    x += iw;
+  }
+  if (row.length) rows.push(row);
+  return rows;
 }
 
 /** General's stem, a bus over each row of teams, the trunk joining the rows at the left, one drop per team. */
@@ -144,6 +167,12 @@ export function fitView(r, size, { margin = 24, minK = K_MIN, maxK = 1.25, width
   const x = r.w * k > size.w - 2 * margin ? margin - r.x * k : size.w / 2 - (r.x + r.w / 2) * k;
   return { k, x, y: margin - r.y * k };
 }
+/** A pinch step: the canvas point under the old midpoint goes to the new midpoint, the zoom scaled by the spans' ratio. */
+export function pinchView(v, from, to) {
+  const k = clampK(v.k * (to.dist / from.dist));
+  const wx = (from.mid.x - v.x) / v.k, wy = (from.mid.y - v.y) / v.k;
+  return { k, x: to.mid.x - wx * k, y: to.mid.y - wy * k };
+}
 /** Zoom by `f` about the viewport point (cx, cy): the canvas point under it stays under it. */
 export function zoomAt(v, f, cx, cy) {
   const k = clampK(v.k * f);
@@ -191,6 +220,7 @@ function Card({ c, lead, cls, onOpen }) {
     aria-label=${it ? `${full}. ${tc("openChat")}` : full} onClick=${it ? () => onOpen(n.name) : undefined}>
     <title>${full}</title>
     <rect class="oc-card" width=${c.w} height=${c.h} rx="10" />
+    <rect class="oc-idbar" x="0" y="8" width="4" height=${c.h - 16} rx="2" />
     <${Face} it=${it} name=${n.name} cx=${26} cy=${cy} r=${16} />
     <circle class=${`oc-dot st-${n.state}`} cx=${38} cy=${cy + 12} r=${5} />
     <text class="oc-name" x=${50} y=${cy - 4}>${clip(names.primary, lead ? 20 : 15)}</text>
@@ -203,7 +233,6 @@ function TeamBox({ b, q, onFold }) {
   const found = q ? b.nodes.filter((n) => hits(n, q)).length : 0;
   const count = b.nodes.length === 1 ? tc("member") : tc("members", b.nodes.length);
   const toggle = (e) => { if (e.type === "click" || e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onFold(b.key); } };
-  let sx = b.x + 14;
   return html`<g class=${`oc-team${b.loose ? " loose" : ""}${q && !found ? " dim" : ""}`} data-team=${b.key}>
     <rect class=${`oc-box${b.folded && found ? " match" : ""}`} x=${b.x} y=${b.y} width=${b.w} height=${b.h} rx="12" />
     <rect class="oc-head" x=${b.x + 1} y=${b.y + 1} width=${b.w - 2} height=${OC.HEAD - 2} rx="11" />
@@ -216,12 +245,9 @@ function TeamBox({ b, q, onFold }) {
       <text class="oc-team-meta" x=${b.x + b.w - 12} y=${b.y + 22} text-anchor="end">${b.folded && found ? tc("inFolded", found) : String(b.nodes.length)}</text>
     </g>
     ${!b.nodes.length ? html`<text class="oc-team-sum" x=${b.x + 14} y=${b.y + OC.HEAD + 18}>${tc("noMembers")}</text>` : null}
-    ${b.folded ? b.counts.map(([s, n]) => {
-      const label = `${n} ${STATE_LABEL(s)}`, x0 = sx;
-      sx += 24 + label.length * 6.4;
-      return html`<g key=${s}><circle class=${`oc-dot st-${s}`} cx=${x0 + 5} cy=${b.y + OC.HEAD + 14} r="5" />
-        <text class="oc-team-sum" x=${x0 + 14} y=${b.y + OC.HEAD + 18}>${label}</text></g>`;
-    }) : null}
+    ${b.folded ? b.summary.flatMap((row, i) => row.map((it) => html`<g key=${it.s}>
+      <circle class=${`oc-dot st-${it.s}`} cx=${b.x + it.dx + 5} cy=${b.y + OC.HEAD + 14 + i * SUM_LINE} r="5" />
+      <text class="oc-team-sum" x=${b.x + it.dx + 14} y=${b.y + OC.HEAD + 18 + i * SUM_LINE}>${it.label}</text></g>`)) : null}
   </g>`;
 }
 
@@ -231,10 +257,10 @@ const cardsOf = (L) => [...L.tops, ...L.boxes.flatMap((b) => b.cells)];
 /** The canvas body: `view` buildOrgView's answer; `folded` the folded teams' keys; `q` the search needle. */
 function Canvas({ view, folded, onFold, q, jump }) {
   const [narrow] = useState(() => typeof matchMedia === "function" && matchMedia("(max-width: 640px)").matches);
-  const L = useMemo(() => canvasLayout(view, folded, { narrow }), [view, folded, narrow]);
+  const L = useMemo(() => canvasLayout(view, folded, { narrow, label: (s, n) => `${n} ${STATE_LABEL(s)}` }), [view, folded, narrow]);
   const svgRef = useRef(null), worldRef = useRef(null), miniRef = useRef(null), miniViewRef = useRef(null);
   const vp = useRef(null);
-  const drag = useRef({ pts: new Map(), moved: 0, pinch: 0, swallow: false });
+  const drag = useRef({ pts: new Map(), moved: 0, span: null, swallow: false });
   const size = () => {
     const r = svgRef.current ? svgRef.current.getBoundingClientRect() : null;
     return r && r.width > 0 && r.height > 0 ? { w: r.width, h: r.height } : { w: 960, h: 600 };
@@ -266,12 +292,17 @@ function Canvas({ view, folded, onFold, q, jump }) {
   }, []);
   // Preact owns the markup, not the transform: put it back after every render.
   useLayoutEffect(apply);
-  // A search's Enter: the first match, unfolded (by the panel) and then brought into view.
+  // A search's Enter: the first match, unfolded (by the panel) and then brought into view — once. It waits for the
+  // render that has its card (the unfold); a later render (the stream, a fold, a new search text) keeps the person's view.
+  const pendingJump = useRef(null);
+  useLayoutEffect(() => { pendingJump.current = jump; }, [jump]);
   useLayoutEffect(() => {
-    if (!jump) return;
-    const c = cardsOf(L).find((x) => x.node.name === jump.name);
-    if (c) show(c, true);
-  }, [jump, L]);
+    const j = pendingJump.current;
+    if (!j) return;
+    const c = cardsOf(L).find((x) => x.node.name === j.name);
+    if (c) { pendingJump.current = null; show(c, true); return; }
+    if (!L.boxes.some((b) => b.folded && b.nodes.some((n) => n.name === j.name))) pendingJump.current = null;   // gone: nothing to wait for
+  });
 
   const open = (name) => navigate(chatPath(name));
   // The click that ends a drag or a pinch opens nothing and folds nothing.
@@ -281,14 +312,19 @@ function Canvas({ view, folded, onFold, q, jump }) {
     const r = svgRef.current.getBoundingClientRect();
     set(zoomAt(vp.current, Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top));
   };
-  // One pointer pans (after a few pixels, so a tap still opens a card); two pinch about their midpoint. The pointer is
+  // One pointer pans (after a few pixels, so a tap still opens a card); two pinch: the canvas point under their old
+  // midpoint goes to the new one, scaled by how their span changed (so a two-finger move pans too). The pointer is
   // captured only once it drags: a capture at once would send the tap's click to the canvas, not the card.
+  const spanOf = () => {
+    const [a, b] = [...drag.current.pts.values()], r = svgRef.current.getBoundingClientRect();
+    return { mid: { x: (a.x + b.x) / 2 - r.left, y: (a.y + b.y) / 2 - r.top }, dist: Math.hypot(a.x - b.x, a.y - b.y) };
+  };
   const onPointerDown = (e) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const d = drag.current;
     d.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (d.pts.size === 1) { d.moved = 0; d.swallow = false; }
-    d.pinch = 0;
+    if (d.pts.size === 1) { d.moved = 0; d.swallow = false; d.span = null; }
+    else if (d.pts.size === 2) { d.swallow = true; d.span = spanOf(); }
   };
   const onPointerMove = (e) => {
     const d = drag.current, prev = d.pts.get(e.pointerId);
@@ -301,15 +337,18 @@ function Canvas({ view, folded, onFold, q, jump }) {
       set({ ...vp.current, x: vp.current.x + e.clientX - prev.x, y: vp.current.y + e.clientY - prev.y });
       return;
     }
+    if (d.pts.size !== 2) return;
     d.swallow = true;
-    const [a, b] = [...d.pts.values()], dist = Math.hypot(a.x - b.x, a.y - b.y), r = svgRef.current.getBoundingClientRect();
-    if (d.pinch) set(zoomAt(vp.current, dist / d.pinch, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top));
-    d.pinch = dist;
+    const next = spanOf();
+    if (d.span && d.span.dist > 0 && next.dist > 0) set(pinchView(vp.current, d.span, next));
+    d.span = next;
   };
   const onPointerUp = (e) => {
     const d = drag.current;
     d.pts.delete(e.pointerId);
-    d.pinch = 0;
+    // Back to one finger: it pans on at once (the pinch already swallows the click); two again: a new span.
+    d.span = d.pts.size === 2 ? spanOf() : null;
+    if (d.pts.size === 1) d.moved = 5;
     // The click that ends a drag comes after this: let it be swallowed, then forget.
     if (d.swallow && !d.pts.size) setTimeout(() => { if (!d.pts.size) d.swallow = false; }, 0);
   };
@@ -449,4 +488,3 @@ export function OrgCanvas({ org, app }) {
       : html`<${Canvas} view=${view} folded=${folded} onFold=${onFold} q=${q} jump=${jump} />`}
   </div>`;
 }
-
