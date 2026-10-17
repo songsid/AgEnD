@@ -27,15 +27,15 @@ export class WebEffectTools {
   constructor(private readonly deps:EffectToolDeps) { this.uploads=new EffectUploads(deps.clock); }
   private principal(instance:string) { return {kind:"agent" as const,id:instance}; }
   upload(instance:string,args:Answer):Answer {
-    const refused=this.deps.authorize(instance,["upload"]);
+    const refused=this.deps.authorize(instance,[]);   // the switch and the lock; uploads are not counted (the user's decision)
     if(refused){this.uploads.forget(instance);return refused;}
     return this.uploads.accept(instance,args,files=>{
-      const last=this.deps.authorize(instance,["upload"]);if(last)return last;
+      const last=this.deps.authorize(instance,[]);if(last)return last;
       const stage=this.deps.library.stage(files,this.principal(instance));
       if(!stage.ok)return {error:stage.error};
       const committed=this.deps.library.commit(stage.stageId);
       if(!committed.ok){this.deps.library.abort(stage.stageId);return {error:committed.error};}
-      this.deps.limiter.record(instance,["upload"]);this.deps.changed();
+      this.deps.changed();
       return {id:committed.ids[0],warnings:stage.entries[0]!.warnings};
     });
   }

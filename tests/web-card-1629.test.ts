@@ -159,7 +159,7 @@ describe("pictures in parts (r4 §1: larger than one message)", () => {
     expect(answer).toEqual({ id: expect.stringMatching(ID) });
     expect(store.get("w").assets).toEqual([{ id: (answer as { id: string }).id, slot: "portrait", kind: "png", bytes: big.length - 19 }]);
     expect(store.asset("w", (answer as { id: string }).id)!.bytes.includes(Buffer.from("GPS:1,2"))).toBe(false);
-    expect(limiter.remaining("w").uploads).toBe(2);
+    expect(limiter.remaining("w").changes, "an upload is not a change (and uploads are not counted)").toBe(10);
   });
   it("refused: a part out of order, another upload's id, a gap over a minute, bytes that do not add up — none counts", () => {
     const { svc, limiter, at } = service();
@@ -180,13 +180,32 @@ describe("pictures in parts (r4 §1: larger than one message)", () => {
     expect(part(2, up, Buffer.alloc(chunks[2]!.length, 1))).toMatchObject({ error: "part", message: expect.stringContaining("do not add up") });
     expect(svc.handleTool("w", "set_web_theme_asset", { slot: "portrait", data_b64: chunks[0]!.toString("base64"), part: { index: 0, count: 2, bytes: big.length, sha256: meta.sha256 } })).toMatchObject({ error: "part" });
     expect(svc.handleTool("w", "set_web_theme_asset", { slot: "portrait", data_b64: chunks[0]!.toString("base64"), part: { index: 0, count: 9, bytes: 9 * 1024 * 1024, sha256: meta.sha256 } })).toMatchObject({ error: "asset_too_large" });
-    expect(limiter.remaining("w").uploads).toBe(3);
+    expect(limiter.remaining("w").changes).toBe(10);
+  });
+  it("#2083: the user's flow — banner, portrait and avatar back to back, then one set_web_theme: all stored, one change", () => {
+    const { svc, store, limiter } = service();
+    const up = (slot: string, w: number, h: number) => svc.handleTool("w", "set_web_theme_asset", { slot, data_b64: png(w, h).toString("base64") }) as { id?: string };
+    const banner = up("banner", 32, 12), portrait = up("portrait", 8, 12), avatar = up("avatar", 8, 8);
+    for (const a of [banner, portrait, avatar]) expect(a).toEqual({ id: expect.stringMatching(ID) });
+    expect(store.get("w").assets.map((a) => a.slot).sort()).toEqual(["avatar", "banner", "portrait"]);
+    expect(limiter.remaining("w").changes, "uploads are not changes").toBe(10);
+    expect(svc.setTheme("w", { set: { avatar: avatar.id, card: { banner: banner.id, portrait: portrait.id } } })).toHaveProperty("theme");
+    expect(limiter.remaining("w").changes, "one change for all three").toBe(9);
+    // And right after that change (no 30 s wait): another picture is still taken — an upload asks no change budget.
+    expect(up("banner", 40, 15)).toEqual({ id: expect.stringMatching(ID) });
+  });
+  it("a lock set before the upload refuses it at the first part: nothing more is sent or kept", async () => {
+    const { svc, store } = service();
+    store.setLocked("w", true);
+    let calls = 0;
+    const answer = await sendAssetInParts("portrait", big, async (args) => { calls++; return svc.handleTool("w", "set_web_theme_asset", args); });
+    expect([answer, calls, store.get("w").assets]).toEqual([expect.objectContaining({ error: "locked" }), 1, []]);
   });
   it("a lock set during the upload refuses it at the end (nothing stored, nothing counted)", async () => {
     const { svc, store, limiter } = service();
     let n = 0;
     const answer = await sendAssetInParts("portrait", big, async (args) => { if (n++ === 1) store.setLocked("w", true); return svc.handleTool("w", "set_web_theme_asset", args); });
-    expect([answer, store.get("w").assets, limiter.remaining("w").uploads]).toEqual([expect.objectContaining({ error: "locked" }), [], 3]);
+    expect([answer, store.get("w").assets, limiter.remaining("w").changes]).toEqual([expect.objectContaining({ error: "locked" }), [], 10]);
   });
   it("the daemon reads a large picture and sends it in parts, each answered before the next", async () => {
     const ws = tmp("agend-card-ws-");

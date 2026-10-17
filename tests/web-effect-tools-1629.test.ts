@@ -27,7 +27,7 @@ it("uploads real wire parts into the real scoped library, once",async()=>{
  expect(f.lib.read(id,{kind:"agent",id:"own"}).ok).toBe(true);
  expect(f.lib.read(id,{kind:"agent",id:"other"}).ok).toBe(false);
  expect(f.changed).toHaveBeenCalledTimes(1);
- expect(f.limiter.remaining("own").uploads).toBeDefined();
+ expect(f.limiter.remaining("own"),"no upload count (the user's decision)").not.toHaveProperty("uploads");
 });
 it("places a chat effect in the caller's own chat, using an explicit placement",async()=>{
  const f=fixture(),id=await upload(f,"own",files("agend.ready()",["chat","page"]));
@@ -101,13 +101,31 @@ it("rechecks authority on later parts and never publishes or spends quota after 
   if(calls++>0)f.refuse("locked");return f.tools.upload("own",args);
  });
  expect(answer).toEqual({error:"locked"});expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({entries:[]});
- expect(f.limiter.remaining("own").uploads).toBe(3);expect(f.changed).not.toHaveBeenCalled();
+ expect(f.limiter.remaining("own").changes).toBe(10);expect(f.changed).not.toHaveBeenCalled();
+});
+it("a locked agent is refused at the first part: nothing is buffered, nothing stored (uploads themselves are not counted)",async()=>{
+ const f=fixture();f.refuse("locked");let calls=0;
+ const answer=await sendEffectInParts(files("a".repeat(700000)),async args=>{calls++;return f.tools.upload("own",args);});
+ expect([answer,calls]).toEqual([{error:"locked"},1]);
+ expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({entries:[]});
+ f.refuse(null);
+ for(let k=0;k<5;k++)await upload(f,"own",files(`agend.ready() // ${k}`));
+ expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({ok:true,entries:Array.from({length:5},()=>expect.anything())});
+});
+it("a person's lock set just before the last part refuses the effect at the end: nothing stored",async()=>{
+ const f=fixture();let parts=0;
+ await sendEffectInParts(files("a".repeat(700000)),async args=>{parts++;return f.tools.upload("other",args);});
+ expect(parts,"several parts").toBeGreaterThan(1);
+ let calls=0;
+ const answer=await sendEffectInParts(files("b".repeat(700000)),async args=>{if(++calls===parts)f.refuse("locked");return f.tools.upload("own",args);});
+ expect(answer).toEqual({error:"locked"});expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({entries:[]});
+ expect(f.changed,"only the first (another agent's) upload changed anything").toHaveBeenCalledTimes(1);
 });
 it("aborts a staged upload when the durable claim write fails, without charging",async()=>{
  const f=fixture(),abort=vi.spyOn(f.lib,"abort");vi.spyOn(f.lib,"commit").mockReturnValue({ok:false,error:"index_failure"});
  const answer=await sendEffectInParts(files(),async args=>f.tools.upload("own",args));
  expect(answer).toEqual({error:"index_failure"});expect(abort).toHaveBeenCalledOnce();
- expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({entries:[]});expect(f.limiter.remaining("own").uploads).toBe(3);expect(f.changed).not.toHaveBeenCalled();
+ expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({entries:[]});expect(f.limiter.remaining("own").changes).toBe(10);expect(f.changed).not.toHaveBeenCalled();
 });
 it("lists and profiles a human-shared effect without revealing a private one",()=>{
  const f=fixture(),human={kind:"human" as const,id:"operator"};

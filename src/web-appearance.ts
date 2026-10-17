@@ -86,20 +86,19 @@ export class WebAppearance {
 
   /**
    * set_web_theme_asset { slot, data_b64, part? }: the bytes the daemon or the CLI read on the agent's side — whole, or
-   * in parts (web-asset-parts.ts). The switch, the lock and the limit are asked at the first part and again before the
-   * picture is stored; only a stored picture counts as an upload.
+   * in parts (web-asset-parts.ts). The switch and the lock are asked at the first part and again before the picture is
+   * stored; uploads are not counted (the user's decision) — the slot's size limits and the picture quota still apply.
    */
   setAsset(instance: string, args: { slot?: unknown; data_b64?: unknown; part?: unknown }): ToolAnswer {
     if (typeof args.data_b64 !== "string" || !/^[A-Za-z0-9+/]*={0,2}$/.test(args.data_b64)) return { error: "data", message: "The picture's bytes are missing." };
     if (args.part !== undefined) return this.setAssetPart(instance, args.slot, args.data_b64, args.part);
-    const refused = this.refusal(instance, ["upload"]);
+    const refused = this.refusal(instance, []);
     if (refused) return refused;
     return this.storeAsset(instance, args.slot, Buffer.from(args.data_b64, "base64"));
   }
   private storeAsset(instance: string, slot: unknown, bytes: Buffer): ToolAnswer {
     const w = this.store.addAsset(instance, slot, bytes);
     if (!w.ok) return { error: w.error, ...(w.detail ? { detail: w.detail } : {}) };
-    this.limiter.record(instance, ["upload"]);
     return { id: w.id };
   }
   private setAssetPart(instance: string, slot: unknown, data: string, raw: unknown): ToolAnswer {
@@ -114,7 +113,7 @@ export class WebAppearance {
     // Uploads left idle by any instance go, so at most one picture's parts per active upload stay in memory.
     for (const [name, u] of this.uploads) if (now - u.last > ASSET_UPLOAD_IDLE_MS && name !== instance) this.uploads.delete(name);
     if (index === 0) {
-      const refused = this.refusal(instance, ["upload"]);
+      const refused = this.refusal(instance, []);
       if (refused) { this.uploads.delete(instance); return refused; }
       if (!THEME_ASSET_SLOTS.includes(slot as ThemeAssetSlot)) return fail("slot", THEME_ASSET_SLOTS.join(", "));
       const max = Math.min(ASSET_UPLOAD_MAX_BYTES, slotLimit(slot as ThemeAssetSlot, this.store.limits()).maxBytes);
@@ -132,7 +131,7 @@ export class WebAppearance {
     this.uploads.delete(instance);
     const all = Buffer.concat(up.parts);
     if (all.length !== up.bytes || createHash("sha256").update(all).digest("hex") !== up.sha256) return { error: "part", message: "The parts do not add up to the declared picture." };
-    const refused = this.refusal(instance, ["upload"]);
+    const refused = this.refusal(instance, []);
     if (refused) return refused;
     return this.storeAsset(instance, up.slot, all);
   }
