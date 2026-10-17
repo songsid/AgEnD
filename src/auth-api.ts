@@ -62,6 +62,8 @@ export interface AuthApiContext {
   readonly webLoginCodes: WebLoginCodes | null;
   /** #1920 step 4: guests' codes (local sign-in), one per account — tried before the admins' code, never counted by it. */
   readonly webGuestLoginCodes?: GuestLoginCodes | null;
+  /** #1920 step 4b: a guest's public-link sign-in, said in the opener's General before the session is activated. */
+  confirmGuestPublicWebLogin?(info: { label: string; handle: string; account: { adapterId: string; userId: string }; exposureId: string }, current: () => boolean): Promise<void>;
   /** #1920 step 4: a guest code's account may still sign in (guests on, something in scope, not an admin). */
   guestSignInAllowed?(account: { adapterId: string; userId: string }): boolean;
   readonly logger: Logger;
@@ -299,8 +301,14 @@ export function handleAuthRequest(
       if (gateway) candidateId = sessionId;
       if (gateway) {
         try {
-          if (!result.owner || !ctx.confirmPublicWebLogin) throw new Error("public notice unavailable");
-          await withinBudget(ctx.confirmPublicWebLogin({ label, handle: record.handle, owner: result.owner }, current), performance.now() + 5_000);
+          if (result.tier === "guest") {
+            // #1920 §5.5: a guest through the public link — its own notice (who, how many agents), in the opener's General.
+            if (!account || !ctx.confirmGuestPublicWebLogin) throw new Error("public notice unavailable");
+            await withinBudget(ctx.confirmGuestPublicWebLogin({ label, handle: record.handle, account, exposureId: gateway.exposureId }, current), performance.now() + 5_000);
+          } else {
+            if (!result.owner || !ctx.confirmPublicWebLogin) throw new Error("public notice unavailable");
+            await withinBudget(ctx.confirmPublicWebLogin({ label, handle: record.handle, owner: result.owner }, current), performance.now() + 5_000);
+          }
           if (!current() || !sessions.activate(sessionId)) throw new Error("public login closed");
         } catch {
           sessions.revokeById(sessionId);

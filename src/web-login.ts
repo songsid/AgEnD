@@ -220,8 +220,11 @@ export const MAX_GUEST_LOGIN_CODES = 32;
  * a code neither knows is wrong (recordWrong) — so a guest signing in never counts against an admin's code, nor the
  * reverse.
  */
+/** A guest code may work on more than one listener: the dashboard reached directly, and the public link open then. */
+type GuestOutstanding = Outstanding & { audiences: readonly string[] };
+
 export class GuestLoginCodes {
-  private readonly outstanding = new Map<string, Outstanding>();
+  private readonly outstanding = new Map<string, GuestOutstanding>();
   private failures: number[] = [];
   private pausedUntil = 0;
   private readonly now: () => number;
@@ -237,14 +240,15 @@ export class GuestLoginCodes {
   private key(r: { adapterId: string; userId: string }): string { return `${r.adapterId}\u0000${r.userId}`; }
 
   /** A code for this account, replacing its own outstanding one; null when MAX_GUEST_LOGIN_CODES others are outstanding. */
-  issue(opts: { epoch: string; recipient: LoginCodeRecipient; audience?: string }): IssuedLoginCode | null {
+  issue(opts: { epoch: string; recipient: LoginCodeRecipient; audiences?: readonly string[] }): IssuedLoginCode | null {
     this.prune();
     const k = this.key(opts.recipient);
     if (!this.outstanding.has(k) && this.outstanding.size >= MAX_GUEST_LOGIN_CODES) return null;
     const code = this.generate();
     const expiresAt = this.now() + LOGIN_CODE_TTL_MS;
     const issuanceId = randomBytes(16).toString("hex");
-    this.outstanding.set(k, { code, expiresAt, tier: "guest", epoch: opts.epoch, failures: 0, issuanceId, audience: opts.audience ?? "local", recipient: opts.recipient });
+    const audiences = opts.audiences?.length ? [...opts.audiences] : ["local"];
+    this.outstanding.set(k, { code, expiresAt, tier: "guest", epoch: opts.epoch, failures: 0, issuanceId, audience: audiences[0]!, audiences, recipient: opts.recipient });
     this.onEvent("issued");
     return { display: formatOneTimeCode(code), expiresAt, tier: "guest", issuanceId };
   }
@@ -259,6 +263,14 @@ export class GuestLoginCodes {
   revokeIfCurrent(issuanceId: string): void {
     for (const [k, o] of this.outstanding) if (o.issuanceId === issuanceId) this.outstanding.delete(k);
   }
+  /** A public link closed: its codes no longer work through it (still on the other listeners they were for). */
+  revokeAudience(audience: string): void {
+    for (const [k, o] of this.outstanding) {
+      if (!o.audiences.includes(audience)) continue;
+      const rest = o.audiences.filter(a => a !== audience);
+      if (rest.length) this.outstanding.set(k, { ...o, audiences: rest, audience: rest[0]! }); else this.outstanding.delete(k);
+    }
+  }
 
   /**
    * The guest code `input` is, spent — or null (no count: the caller asks the admins' codes next, and reports a code
@@ -269,10 +281,10 @@ export class GuestLoginCodes {
     const provided = normalizeOneTimeCode(input);
     if (!provided) return null;
     this.prune();
-    let hit: [string, Outstanding] | null = null;
+    let hit: [string, GuestOutstanding] | null = null;
     for (const entry of this.outstanding) {
       if (entry[1].epoch !== currentEpoch) { this.outstanding.delete(entry[0]); continue; }   // the token was rotated
-      if (constantTimeMatches(provided, entry[1].code) && entry[1].audience === audience) hit = entry;
+      if (constantTimeMatches(provided, entry[1].code) && entry[1].audiences.includes(audience)) hit = entry;
     }
     if (!hit) return null;
     this.outstanding.delete(hit[0]);

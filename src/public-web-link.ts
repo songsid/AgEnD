@@ -102,6 +102,14 @@ export class PublicWebLink {
   }) { this.now = deps.now ?? (() => performance.now()); }
 
   get exposureId(): string | undefined { return this.entry?.id; }
+  /**
+   * #1920 step 4b: the open, current exposure — its id, sign-in page and the admin who opened it (whose General hears
+   * of a guest signing in through it) — else null. A guest code then also works through it.
+   */
+  openSignin(): { exposureId: string; url: string; owner: LoginCodeOwner } | null {
+    const e = this.entry;
+    return e && e.phase === "open" && e.url && this.current(e) ? { exposureId: e.id, url: e.url, owner: e.owner } : null;
+  }
   /** #1723: the open exposure's dashboard origin (`https://<host>`), for a configured preview origin to accept; else null. */
   openDashboardOrigin(): string | null {
     const e = this.entry;

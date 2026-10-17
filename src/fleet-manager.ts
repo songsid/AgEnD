@@ -5916,6 +5916,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         dispatch: (req, res) => this.dispatchWebHttp(req, res, this.fleetConfig?.health_port ?? 19280) }),
       revoke: id => {
         this.webLoginCodes?.revokeAudience(id);
+        this.webGuestLoginCodes?.revokeAudience(id);
         const result = this.webSessions?.revokeExposure(id);
         if (result && !result.durable) this.logger.warn("Public session revocation could not be saved; exposure remains closed");
       },
@@ -5941,6 +5942,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const adapter = info.owner.binding as ChannelAdapter;
     await adapter.sendText(info.owner.chatId, t("web.public_login_notice", info.label, info.handle.slice(0, 8)), { threadId: info.owner.threadId, allowedMentions: { parse: [] } });
     if (!current() || !this.publicOwnerCurrent(info.owner)) throw new Error("public owner changed");
+  }
+  /**
+   * #1920 §5.5 (step 4b): a guest signing in through the public link — said in the General of the admin who opened it
+   * (who, how many agents), awaited as an admin's public sign-in is, while that link is the open one, its opener still
+   * current, and the account still an admitted guest. A failure refuses the sign-in.
+   */
+  async confirmGuestPublicWebLogin(info: { label: string; handle: string; account: { adapterId: string; userId: string }; exposureId: string }, current: () => boolean): Promise<void> {
+    const admitted = (): { owner: LoginCodeOwner } | null => {
+      const open = this.publicWebLink?.openSignin();
+      return current() && open && open.exposureId === info.exposureId && this.publicOwnerCurrent(open.owner) && this.guestSignInAllowed(info.account) ? open : null;
+    };
+    const open = admitted();
+    if (!open) throw new Error("guest public sign-in unavailable");
+    const adapter = open.owner.binding as ChannelAdapter;
+    await adapter.sendText(open.owner.chatId, t("web.guest_public_login_notice", this.webPerson(info.account).name, info.label, this.guestScope(info.account).size, info.handle.slice(0, 8)),
+      { threadId: open.owner.threadId, allowedMentions: { parse: [] } });
+    if (!admitted()) throw new Error("guest public sign-in changed");
   }
   /** Telegram's typed command enters through the same strict owner and nonce path as Discord. */
   async dashboardMenu(msg: InboundMessage): Promise<void> {
@@ -6311,14 +6329,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.initializeWebSessions();
     const codes = this.webGuestLoginCodes!;
     if (codes.pausedForMs() > 0) { await say(t("web.guest_paused")); return; }
+    // §5.5 (step 4b): with the public link open, the code works through it too (an admin opened it; a guest is still a
+    // guest there) — most guests are not on the host's network. Its closing withdraws that audience (revokeAudience).
+    const open = this.publicWebLink?.openSignin() ?? null;
     // One code per account (a new one replaces only its own); at the cap, refused — never another guest's evicted.
-    const login = codes.issue({ epoch: tokenEpoch(token), recipient: { adapterId: owner.adapterId, userId: owner.userId, ...(ask.username ? { username: ask.username } : {}) } });
+    const login = codes.issue({ epoch: tokenEpoch(token), audiences: ["local", ...(open ? [open.exposureId] : [])],
+      recipient: { adapterId: owner.adapterId, userId: owner.userId, ...(ask.username ? { username: ask.username } : {}) } });
     if (!login) { await say(t("web.guest_busy")); return; }
     this.guestCodeAskedAt.delete(key); this.guestCodeAskedAt.set(key, performance.now());
     while (this.guestCodeAskedAt.size > 256) this.guestCodeAskedAt.delete(this.guestCodeAskedAt.keys().next().value as string);
     const current = (): boolean => !this.shuttingDown && this.webToken === token && this.adapters.get(owner.adapterId) === adapter
       && unrevoked() && this.guestSignInAllowed(owner);
-    const privateText = `${t("web.guest_intro", scope.size)}\n${this.topicCommands.getDashboardText()}\n${t("dashboard.code", login.display, Math.round(LOGIN_CODE_TTL_MS / 60_000))}`;
+    const privateText = `${t("web.guest_intro", scope.size)}\n${this.topicCommands.getDashboardText()}${open ? `\n${t("web.guest_public", open.url)}` : ""}\n${t("dashboard.code", login.display, Math.round(LOGIN_CODE_TTL_MS / 60_000))}`;
     const deadline = performance.now() + 10_000;
     try {
       let byDm = false;
