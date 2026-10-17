@@ -240,7 +240,7 @@ Restart deduplication keeps a separate owner/boot checkpoint (IDs and timestamp 
 | `tool_progress` | `"off"` \| `"standard"` \| `"verbose"` | `"off"` | Tool-activity detail shown in the channel's processing bubble. `standard` shows semantic labels with no shell arguments; `verbose` adds truncated command previews. Opt-in — the bubble broadcasts activity into the channel. |
 | `cross_instance_visibility` | `"full"` \| `"summary"` \| `"hidden"` | `"full"` | How much of a bot-to-bot (cross-instance) message is posted in this instance's topic and web chat, on whichever side it is: `full` the whole message (as before), `summary` one line, `hidden` nothing. Set under `defaults` for the fleet (also with `/visibility`), here to override it for one instance; Settings has both. Applies at once, without a restart. Delivery and the Mirror Topic are never affected — see [features](features.md#bot-to-bot-message-visibility). |
 | `effort` | string | — | Default reasoning effort for this instance (`low`/`medium`/`high`/`xhigh`/`max`, clamped per backend). Passed at every launch, a resumed one included, where the CLI takes it: `--effort` (claude-code, kiro-cli, antigravity), `--reasoning-effort` (grok, muse), `-c model_reasoning_effort` (codex). For claude-code, grok and antigravity, only when the installed version's `--help` lists the flag; kiro-cli uses its version check, and codex requires a level advertised by its model catalog. The level must be supported; otherwise the instance launches on the CLI's own setting and the Log tab says why. antigravity's model list has one model per level, so there the effort picks that level's model (`gemini-3.8-flash-medium` + `high` launches `gemini-3.8-flash-high`), and `--effort` never goes out with `--model`; a level the model lacks launches the configured model without it. Runtime override via the `/effort` command — see [commands.md](./commands.md). |
-| `backend_options` | object | — | Per-backend options keyed by backend name, e.g. `{ codex: { provider: "glm" } }`. See **Credential profiles** below for `credential_profile`. |
+| `backend_options` | object | — | Per-backend options keyed by backend name, e.g. `{ codex: { provider: "glm" } }`. See **Credential profiles** below for `credential_profile`, and **Claude prompt-cache TTL** for `claude-code.prompt_cache_ttl`. |
 | `terminal.enabled` | boolean | `true` | Logical terminal size feature toggle. `false` pins the window to tmux's historical 80x24 for compatibility. |
 | `terminal.columns` | number | `120` | Terminal width when enabled; integer `80`–`300`. |
 | `terminal.rows` | number | `36` | Terminal height when enabled; integer `24`–`120`. |
@@ -460,6 +460,24 @@ which group messages reach a bot; see the [Telegram Bots FAQ](https://core.teleg
 If an explicitly targeted command fails, first check whether its update arrived
 at the intended adapter, then check polling errors/webhooks and routing. Another
 bot being online alone does not establish which layer lost the command.
+
+## Claude prompt-cache TTL
+
+`backend_options.claude-code.prompt_cache_ttl` picks how long Claude Code asks the API to keep its prompt cache: `"1h"` or `"5m"`. Leave it unset, which is the default, and the CLI chooses for itself.
+
+```yaml
+instances:
+  reviewer:
+    backend: claude-code
+    backend_options:
+      claude-code:
+        prompt_cache_ttl: "1h"
+```
+
+- **How it's passed:** AgEnD sets `CLAUDE_CODE_PROMPT_CACHE_TTL` and `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL` to the value when it launches the instance. That covers the main conversation and its subagents.
+- **When it takes effect:** on the instance's next start or restart.
+- **What it costs:** a 1-hour cache write costs more than a 5-minute one (2× against 1.25× the base input price). It pays off only when an instance's idle gaps would otherwise expire the cache. **Fleet → cache** shows how often its gaps outlast the TTL and what that costs.
+- **Billing modes:** an explicit value applies whatever the account's billing, including extra usage.
 
 ## Credential profiles (multiple subscriptions of one backend)
 

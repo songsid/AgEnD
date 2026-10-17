@@ -2,7 +2,7 @@
 import { lstat, opendir, realpath } from "node:fs/promises";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
-import { readAgentFile } from "./agent-file-read.js";
+import { agentFileScope, readAgentFile, type AgentFileContext } from "./agent-file-read.js";
 import { checkEffectEntry } from "./web-effect-bundle.js";
 import { ASSET_PART_BYTES } from "./web-asset-parts.js";
 
@@ -16,15 +16,13 @@ const under = (path: string, root: string) => path === root || path.startsWith(r
 export type EffectRead = { ok: true; files: ReadonlyMap<string, Uint8Array> } | { ok: false; reason: string };
 
 /** All paths and bounded reads are on the agent's side. A partial/changed directory is revalidated as one CW1 entry. */
-export async function readAgentEffect(dir: unknown, opts: { workspace: string | undefined; stateDir: string }): Promise<EffectRead> {
+export async function readAgentEffect(dir: unknown, opts: AgentFileContext): Promise<EffectRead> {
   if (typeof dir !== "string" || !dir.trim() || dir.includes("\0") || !opts.workspace) return { ok:false, reason:"an effect directory in your working directory" };
   try {
     const named=isAbsolute(dir)?dir:resolve(opts.workspace,dir), info=await lstat(named);
     if (!info.isDirectory() || info.isSymbolicLink()) return {ok:false,reason:"not a plain directory"};
-    const root=await realpath(named), workspace=await realpath(opts.workspace);
-    const states=[resolve(opts.stateDir)];
-    try { states.push(await realpath(opts.stateDir)); } catch { /* absent state path */ }
-    if (!under(root,workspace) || states.some(state=>under(root,state))) return {ok:false,reason:"outside the workspace or inside AgEnD state"};
+    const root=await realpath(named), scope=await agentFileScope(opts), workspace=scope.workspace;
+    if (!under(root,workspace) || scope.stateBlocked(root)) return {ok:false,reason:"outside the workspace or inside AgEnD state"};
     const paths:string[]=[];
     const directory=await opendir(root);
     for await (const entry of directory) {

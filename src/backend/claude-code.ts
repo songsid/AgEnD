@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { credentialHomeSpec, credentialProfileHome, prepareCredentialProfileHome, resolveCredentialProfile } from "./credential-profile.js";
 import { getAgendHome } from "../paths.js";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBox, type RuntimeDialog, type StartupDialog, CLI_PROBE_LONGEST_LEAF_MS, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBox, type RuntimeDialog, type StartupDialog, CLI_PROBE_LONGEST_LEAF_MS, promptCacheTtl, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
 /** Mirror Claude Code's ~/.claude/projects key for a working directory. Exported for the detection-signal seam. */
 export function claudeProjectKey(cwd: string): string {
@@ -957,6 +957,9 @@ export class ClaudeCodeBackend implements CliBackend {
       envPrefix.push(`CLAUDE_CONFIG_DIR=${shellQuote(profileDir)}`);
     }
     if (process.env.ANTHROPIC_BASE_URL) envPrefix.push(`ANTHROPIC_BASE_URL=${shellQuote(process.env.ANTHROPIC_BASE_URL)}`);
+    // #2010: an opt-in prompt-cache TTL for the main thread and its subagents. Unset: nothing added, the CLI chooses.
+    const ttl = promptCacheTtl(config.backendOptions);
+    if (ttl) envPrefix.push(`CLAUDE_CODE_PROMPT_CACHE_TTL=${ttl}`, `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=${ttl}`);
     // The fleet's API key only where this instance's own config dir has no OAuth login: a key in the environment wins
     // over the login, so reading another dir here bills the wrong account (#1699).
     if (process.env.ANTHROPIC_API_KEY && !this.hasOAuthSession(profileDir)) {

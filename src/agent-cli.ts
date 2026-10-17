@@ -212,7 +212,7 @@ async function main(): Promise<void> {
       if (!(THEME_ASSET_SLOTS as readonly string[]).includes(rest[0] ?? "") || !rest[1]) die(`Usage: agend-agent theme asset <${THEME_ASSET_SLOTS.join("|")}> <file>`);
       // Read here, on the agent's side, in its working directory: the fleet never opens a workspace path. A picture
       // larger than one request body goes up in parts (r4 §1); the fleet checks the slot's limit in force.
-      const read = await readAgentFile(rest[1], { workspace: process.cwd(), stateDir: DATA_DIR, maxBytes: ASSET_UPLOAD_MAX_BYTES });
+      const read = await readAgentFile(rest[1], { workspace: process.cwd(), stateDir: DATA_DIR, instance: INSTANCE, maxBytes: ASSET_UPLOAD_MAX_BYTES });
       if (!read.ok) die(`theme asset: ${rest[1]} — ${read.reason}`);
       try {
         const answer = await sendAssetInParts(rest[0], read.bytes, async (part) => {
@@ -226,7 +226,7 @@ async function main(): Promise<void> {
     case "effect-upload": {
       const { readAgentEffect, sendEffectInParts } = await import("./web-effect-upload.js");
       if (rest.length !== 1) die("Usage: agend-agent effect upload <directory>");
-      const read = await readAgentEffect(rest[0], { workspace: process.cwd(), stateDir: DATA_DIR });
+      const read = await readAgentEffect(rest[0], { workspace: process.cwd(), stateDir: DATA_DIR, instance: INSTANCE });
       if (!read.ok) die(`effect upload: ${read.reason}`);
       try {
         const answer = await sendEffectInParts(read.files, async payload => {
@@ -283,7 +283,7 @@ async function main(): Promise<void> {
         const first = await ask({ name: rest[0], version: rest[1], ...(rest[2] ? { title: rest.slice(2).join(" ") } : {}) });
         const got = await receiveFiles(first, ask, { name: MOD_FILE, idKey: "transfer", what: "export", maxParts: MOD_MAX_PARTS });
         if ("error" in got) { console.log(JSON.stringify(got)); process.exit(1); }
-        const written = await writeModFile(got.files, { workspace: process.cwd(), stateDir: DATA_DIR });
+        const written = await writeModFile(got.files, { workspace: process.cwd(), stateDir: DATA_DIR, instance: INSTANCE });
         if ("error" in written) die(`mod export: ${written.error}`);
         console.log(JSON.stringify({ ...written, ...(first.effects_omitted ? { effects_omitted: first.effects_omitted } : {}) }));
       } catch (err) { die(`Connection failed: ${(err as Error).message}`); }
@@ -291,7 +291,7 @@ async function main(): Promise<void> {
     }
     case "mod-propose": {
       if (!rest[0]) die("Usage: agend-agent mod propose <file>");
-      const read = await readAgentFile(rest[0], { workspace: process.cwd(), stateDir: DATA_DIR, maxBytes: MOD_UPLOAD_MAX_BYTES });
+      const read = await readAgentFile(rest[0], { workspace: process.cwd(), stateDir: DATA_DIR, instance: INSTANCE, maxBytes: MOD_UPLOAD_MAX_BYTES });
       if (!read.ok) die(`mod propose: ${rest[0]} — ${read.reason}`);
       try {
         const answer = await sendAssetInParts("mod", read.bytes, async (part) => {
@@ -309,7 +309,7 @@ async function main(): Promise<void> {
       try {
         const got = await receivePreview(await ask(rest.length ? { modes: rest } : {}), ask);
         if ("error" in got) { console.log(JSON.stringify(got)); process.exit(1); }
-        const written = await writePreview(got.files, { workspace: process.cwd(), stateDir: DATA_DIR });
+        const written = await writePreview(got.files, { workspace: process.cwd(), stateDir: DATA_DIR, instance: INSTANCE });
         if ("error" in written) die(`appearance preview: ${written.error}`);
         console.log(JSON.stringify(written));
       } catch (err) { die(`Connection failed: ${(err as Error).message}`); }

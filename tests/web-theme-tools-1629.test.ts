@@ -31,7 +31,7 @@ import { readAgentFile } from "../src/agent-file-read.js";
 import * as schemas from "../src/outbound-schemas.js";
 
 const dirs: string[] = [];
-afterEach(() => { fsHook.lstat = null; vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => { vi.unstubAllEnvs(); fsHook.lstat = null; vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 const tmp = (p: string) => { const d = mkdtempSync(join(tmpdir(), p)); dirs.push(d); return d; };
 
 const be32 = (n: number) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
@@ -220,8 +220,9 @@ describe("the doors", () => {
     expect(await dispatchAgentOperation(ctx, "worker", "theme-clear", { clear: ["bubble"] })).toMatchObject({ error: "rate_limited" });
     expect(fm.themeStore.get("other").theme).toEqual({ v: 1 });
   });
-  it("the daemon reads the picture in its working directory and sends bytes, never the path", async () => {
-    const ws = tmp("agend-th-ws-");
+  it.each([false, true])("the daemon reads the picture, never the path (state workspace=%s)", async classic => {
+    const home = tmp("agend-th-home-"), ws = classic ? join(home, "workspaces/worker") : tmp("agend-th-ws-");
+    mkdirSync(ws, { recursive: true }); vi.stubEnv("AGEND_HOME", home);
     writeFileSync(join(ws, "me.png"), png());
     const { Daemon } = await import("../src/daemon.js");
     const daemon = new Daemon("worker", { working_directory: ws, log_level: "error", restart_policy: { max_retries: 1, backoff: "exponential", reset_after: 300 },
@@ -308,7 +309,7 @@ describe("reading the agent's file (the daemon's and the CLI's side)", () => {
 });
 
 describe("agend-agent theme …", () => {
-  it("get / set pairs (typed) / set --json / clear / asset (read here, sent as bytes) / reset — each its own op", async () => {
+  it.each([false, true])("get / set / clear / asset / reset (state workspace=%s)", async classic => {
     const { createServer } = await import("node:http");
     const { execFile } = await import("node:child_process");
     const posts: Array<{ op: string; args: Record<string, unknown> }> = [];
@@ -319,7 +320,8 @@ describe("agend-agent theme …", () => {
     });
     await new Promise<void>(r => server.listen(0, "127.0.0.1", () => r()));
     const port = (server.address() as { port: number }).port;
-    const home = tmp("agend-th-cli-"), ws = tmp("agend-th-cli-ws-");
+    const home = tmp("agend-th-cli-"), ws = classic ? join(home, "workspaces/worker") : tmp("agend-th-cli-ws-");
+    mkdirSync(ws, { recursive: true });
     writeFileSync(join(ws, "bg.png"), png());
     const run = (...argv: string[]) => new Promise<{ code: number; out: string }>(resolve => {
       // Run in the agent's working directory (the CLI reads files there), with tsx's loader named by path.
