@@ -99,6 +99,11 @@
         "desc": "Per-instance daily spending limits stop the instance at its limit and notify you."
       },
       {
+        "icon": "zap",
+        "name": "Model Failover",
+        "desc": "Auto-switch to a backup model on rate limits with a 5-minute cooldown. Configure model_failover per instance in fleet.yaml."
+      },
+      {
         "icon": "clock",
         "name": "Persistent Schedules",
         "desc": "Cron-based tasks backed by SQLite. Survives restarts. Edit schedules on the web."
@@ -292,7 +297,7 @@
       {
         "name": "Web Chat",
         "desc": "Talk to each agent from a browser — same conversation as your Telegram or Discord topic. Send files, click reply buttons, see a live preview of HTML the agent sends. Works on a phone.",
-        "icon": "💬",
+        "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"/></svg>",
         "imgLight": "chat-light.webp",
         "imgDark": "chat-dark.webp",
         "alt": "The web chat with the agent Atlas: a table of endpoint latencies, an SQL code block, a chosen reply button, and two files above the message box. Made-up demo data."
@@ -300,7 +305,7 @@
       {
         "name": "Needs You",
         "desc": "Every permission request, failed delivery, and waiting agent collected in one live list — in General and on the web. Handle it anywhere, and it leaves every list.",
-        "icon": "🔔",
+        "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9\"/><path d=\"M13.73 21a2 2 0 0 1-3.46 0\"/></svg>",
         "imgLight": "needs-light.webp",
         "imgDark": "needs-dark.webp",
         "alt": "The Needs you page: a permission request, a failed delivery, an agent not responding with Restart and Keep waiting buttons, and a crashed agent. Made-up demo data."
@@ -308,7 +313,7 @@
       {
         "name": "Usage & Subscriptions",
         "desc": "One row per subscription. Run agents on a second Claude account with credential profiles — sign it in from chat with /login, and usage shows each account separately.",
-        "icon": "📊",
+        "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"18\" y1=\"20\" x2=\"18\" y2=\"10\"/><line x1=\"12\" y1=\"20\" x2=\"12\" y2=\"4\"/><line x1=\"6\" y1=\"20\" x2=\"6\" y2=\"14\"/></svg>",
         "imgLight": "usage-light.webp",
         "imgDark": "usage-dark.webp",
         "alt": "The usage panel with one row each for two Claude accounts (work and personal) and one for Codex, each with session and weekly use. Made-up demo data."
@@ -316,7 +321,7 @@
       {
         "name": "Fleet Overview",
         "desc": "An org chart shows every agent with its live state. Manage schedules, teams and agent details on the web. The cache page shows how often each agent's prompt cache expires.",
-        "icon": "🗺️",
+        "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/></svg>",
         "imgLight": "org-light.webp",
         "imgDark": "org-dark.webp",
         "alt": "The org chart: the product team (Pixel, Atlas, Quill) and the support team (Sage, Orbit, Comet), each agent with its state. Made-up demo data."

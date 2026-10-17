@@ -8,14 +8,14 @@ const { locale } = Astro.props;
 const data = locale === 'en' ? en : zhTw;
 ---
 
-<section id="screenshots" class="py-24 relative overflow-hidden">
+<section id="screenshots" class="py-12 relative overflow-hidden">
   <div class="mx-auto max-w-6xl px-4">
     <div class="text-center mb-14">
       <p class="section-label mb-3">{data.screenshots.sectionLabel}</p>
       <h2 class="font-display font-bold text-3xl sm:text-4xl tracking-tight">{data.screenshots.title}</h2>
     </div>
 
-    <div class="flex flex-col gap-16">
+    <div class="flex flex-col gap-10">
       {data.screenshots.items.map((item: any, i: number) => (
         <div class={`reveal flex flex-col ${i % 2 === 1 ? 'lg:flex-row-reverse' : 'lg:flex-row'} items-center gap-8 lg:gap-12`}>
           <!-- Image -->
@@ -31,7 +31,9 @@ const data = locale === 'en' ? en : zhTw;
           </div>
           <!-- Caption -->
           <div class="w-full lg:w-2/5">
-            <div class="text-3xl mb-4">{item.icon}</div>
+            <div class="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center mb-4 text-accent">
+              <Fragment set:html={item.icon} />
+            </div>
             <h3 class="font-display font-bold text-xl mb-3">{item.name}</h3>
             <p class="text-text-secondary leading-relaxed">{item.desc}</p>
           </div>

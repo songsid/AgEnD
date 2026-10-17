@@ -2,7 +2,7 @@
  * No live fleet/account. Host MessagePort observation never changes or invents packets.
  * Build first. PW_DIR, OUT_DIR, PROBE_ENGINES, PROBE_WIDTHS, PROBE_MODES; Linux WebKit is not Safari. */
 import assert from "node:assert/strict";
-import { pointerCaseFailure } from "./effect-pointer-evidence.mjs";
+import { pointerCaseFailure, particlePaintDelta } from "./effect-pointer-evidence.mjs";
 import { inflateSync, deflateSync } from "node:zlib";
 import { createServer } from "node:http";
 import { once } from "node:events";
@@ -19,6 +19,8 @@ const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(1);ihdr.writeUInt32BE(1,4);ihdr[8
 const background=Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),chunk('IHDR',ihdr),chunk('IDAT',deflateSync(Buffer.from([0,32,96,224,255]))),chunk('IEND',Buffer.alloc(0))]);
 const actions: string[] = [];
 const rows: any[] = [], ts = new Date().toISOString();
+const stressMs=Number(process.env.PROBE_STRESS_MS||75),stressPeriod=Number(process.env.PROBE_STRESS_PERIOD||180);
+assert.ok(Number.isInteger(stressMs)&&stressMs>=50&&stressMs<=200&&Number.isInteger(stressPeriod)&&stressPeriod>=stressMs+15&&stressPeriod<=500,'bounded private load fixture');
 const message = { boot: "probe", id: 1, instance: "worker", sender: "worker", role: "agent", text: "Click the plain message text for sparks. Drag across this message to leave a trail. Protected controls stay clear. [This link is protected](https://example.invalid).\n\n```js\nconst n = 1;\n```\n\n```html\n<p>unterminated", ts, attachments:[{id:"d".repeat(32),name:"wide.csv",mime:"text/csv",size:600}], buttons: { id: "a".repeat(32), state: "open", labels: ["Approve", "Decline"] } };
 function decode(png){
  assert.equal(png.subarray(0,8).toString('hex'),'89504e470d0a1a0a');let at=8,width=0,height=0,channels=0;const parts=[];
@@ -32,13 +34,6 @@ function decode(png){
  return {width,height,channels,data:rows};
 }
 
-function colors(file,point){
- const image=decode(readFileSync(join(out,file)));let count=0;
- for(let y=Math.max(0,Math.floor(point.y-100));y<Math.min(image.height,point.y+100);y++)for(let x=Math.max(0,Math.floor(point.x-100));x<Math.min(image.width,point.x+100);x++){
-  const i=(y*image.width+x)*image.channels,r=image.data[i],g=image.data[i+1],b=image.data[i+2];
-  if(r<90&&g>140&&b>140||r>180&&g<120&&b>70||r>180&&g>60&&g<200&&b<80)count++;
- }return count;
-}
 // @ts-ignore built service projection, private scratch stores only.
 import {WebEffectLibrary} from '../../dist/web-effect-library.js';
 import {WebPrefsStore} from '../../dist/web-prefs.js';
@@ -76,7 +71,7 @@ const config={defaults:{backend:'codex'},instances:{worker:{working_directory:'/
 const server=createServer(async(req,res)=>{
  const u=new URL(req.url||'/','http://localhost'),p=u.pathname;
  if(/^\/assets\/[a-z0-9._-]+$/.test(p)||/^\/ui\/js\/[a-z0-9_-]+\.js$/.test(p)){
-  try{res.setHeader('Content-Type',p.endsWith('.css')?'text/css':p.endsWith('.woff2')?'font/woff2':'text/javascript');let file=readFileSync(join('src/ui',p.startsWith('/assets/')?'shared':'',p.split('/').at(-1)));if(p==='/assets/effect-registry.js'&&process.env.PROBE_MUTATION==='old-focus')file=Buffer.from(file.toString().replace(' || stockMain',''));res.end(file);}catch{res.statusCode=404;res.end();}return;
+  try{res.setHeader('Content-Type',p.endsWith('.css')?'text/css':p.endsWith('.woff2')?'font/woff2':'text/javascript');let file=readFileSync(join('src/ui',p.startsWith('/assets/')?'shared':'',p.split('/').at(-1)));if(p==='/assets/effect-registry.js'&&process.env.PROBE_MUTATION==='old-focus')file=Buffer.from(file.toString().replace(' || stockMain',''));if(p==='/assets/effect-registry.js'&&process.env.PROBE_MUTATION==='overwrite-discrete')file=Buffer.from(file.toString().replace('kind !== "move" || !s.pointer || s.pointer.fields.kind === "move" || at - s.pointer.at > 100', 'true'));if(p==='/assets/effect-registry.js'&&process.env.PROBE_MUTATION==='drop-pending')file=Buffer.from(file.toString().replace('const packet = s.pointer;', 'const packet = s.pointer; s.pointer = null;'));res.end(file);}catch{res.statusCode=404;res.end();}return;
  }
  if(p==='/ui/owner-css.css'){res.setHeader('Content-Type','text/css');res.end('/* neutral owner CSS; still blocks agent front */');return;}
  if(p!=='/'&&!p.startsWith('/ui/chat/')){
@@ -129,7 +124,7 @@ try {
  for(const engine of(process.env.PROBE_ENGINES||'chromium,firefox,webkit').split(',')){
   browser=await pw[engine].launch({headless:true,env:{HOME:join(scratch,'home'),TMPDIR:browserTmp,PATH:'/usr/bin:/bin',LANG:'C.UTF-8',FONTCONFIG_FILE:'/etc/fonts/fonts.conf'}});
   for(const width of(process.env.PROBE_WIDTHS||'1366,390').split(',').map(Number))for(const mode of(process.env.PROBE_MODES||'light,dark').split(','))for(const selectedSurface of(process.env.PROBE_SURFACES||'chat,page,box').split(','))for(const group of(process.env.PROBE_GROUPS||'clicks,protected,drag-slow,drag-fast,degraded,touch').split(',')){
-   if(!['all','clicks','protected','drag-slow','drag-fast','degraded','touch'].includes(group))throw Error('unknown PROBE_GROUPS');
+   if(!['all','clicks','protected','drag-slow','drag-fast','degraded','coalesced-click','touch'].includes(group))throw Error('unknown PROBE_GROUPS');
    if(group==='touch'&&(width!==390||engine==='firefox'))continue;
    const context=await browser.newContext({viewport:{width,height:900},colorScheme:mode,hasTouch:width===390&&engine!=='firefox'}),page=await context.newPage(),errors=[],outside=[];
    await context.addInitScript(cores=>{
@@ -147,10 +142,10 @@ try {
    },width===390?4:8);
    page.on('pageerror',e=>errors.push(e.stack||e.message));
    await page.route('**/*',r=>{const u=new URL(r.request().url());if(['blob:','data:'].includes(u.protocol)||u.hostname==='127.0.0.1'&&[String(port),String(preview.settings.port)].includes(u.port))return r.continue();outside.push(u.origin);return r.abort()});
-   const prefix=engine+'-'+width+'-'+mode+'-'+selectedSurface+'-'+group,record={engine,version:browser.version(),width,mode,selectedSurface,group,timings:[],surfaces:[],errors,outside,status:'pass'};
+   const prefix=engine+'-'+width+'-'+mode+'-'+selectedSurface+'-'+group,record={engine,version:browser.version(),width,mode,selectedSurface,group,stress:{ms:stressMs,period:stressPeriod},timings:[],surfaces:[],errors,outside,status:'pass'};
    const running=async()=>{await page.waitForFunction(()=>probe.rows().filter(r=>r.phase==='running').length===1,undefined,{timeout:20000});await page.waitForFunction(()=>[...document.querySelectorAll('iframe.agend-effect-frame')].some(f=>getComputedStyle(f).visibility==='visible'),undefined,{timeout:20000})};
    const reset=async()=>{await page.waitForTimeout(1350);await page.evaluate(()=>{document.activeElement?.blur?.();window.pointerPackets=[];window.pointerNative=[]});await page.waitForTimeout(70)};
-   const shot=async(label)=>{const name=prefix+'-'+label+'.png';const before=await page.evaluate(()=>({at:performance.now(),frames:window.pointerFrames,fonts:document.fonts.status,visible:document.visibilityState,focus:document.hasFocus(),rows:probe.rows()}));if(engine==='firefox'&&process.env.PROBE_RAW_SCREENSHOT!=='0'){const impl=page._connection.toImpl(page);const result=await impl.delegate._session.send('Page.screenshot',{mimeType:'image/png',clip:{x:0,y:0,width,height:900},omitDeviceScaleFactor:true});writeFileSync(join(out,name),Buffer.from(result.data,'base64'));}else await page.screenshot({path:join(out,name),caret:'initial',animations:'allow'});const after=await page.evaluate(()=>({at:performance.now(),frames:window.pointerFrames}));record.timings.push({label,before,after});return name};
+   const shot=async(label)=>{const name=prefix+'-'+label+'.png';const before=await page.evaluate(()=>({at:performance.now(),frames:window.pointerFrames,fonts:document.fonts.status,visible:document.visibilityState,focus:document.hasFocus(),rows:probe.rows()}));if(engine==='firefox'&&process.env.PROBE_RAW_SCREENSHOT!=='0'){const impl=page._connection.toImpl(page);const result=await impl.delegate._session.send('Page.screenshot',{mimeType:'image/png',clip:{x:0,y:0,width,height:900},omitDeviceScaleFactor:true});writeFileSync(join(out,name),Buffer.from(result.data,'base64'));}else await page.screenshot({path:join(out,name),caret:'initial',animations:'allow'});const after=await page.evaluate(()=>({at:performance.now(),frames:window.pointerFrames}));record.timings.push({label,file:name,before,after});return name};
    const packets=()=>page.evaluate(()=>({packets:window.pointerPackets,native:window.pointerNative,focus:{tag:document.activeElement?.tagName,id:document.activeElement?.id,editable:document.activeElement?.isContentEditable}}));
    const point=async(selector,protectedPoint=false)=>page.evaluate(({selector,protectedPoint})=>{
     const frame=document.querySelector('iframe.agend-effect-frame'),fr=frame?.getBoundingClientRect();if(!fr)return null;
@@ -195,7 +190,7 @@ try {
       const end=await page.evaluate(p=>{let x=p.x;for(let n=1;n<=100;n++){const hit=document.elementFromPoint(p.x+n,p.y);if(p.x+n>=innerWidth-8||!hit||hit.closest('[data-trust]'))break;x=p.x+n}return x},empty);
       for(let i=1;i<=steps;i++){await page.mouse.move(empty.x+(end-empty.x)*i/steps,empty.y);if(delay)await page.waitForTimeout(delay)}
       await page.waitForTimeout(180);const after=await shot(surface+'-'+label+'-after');await page.mouse.up();const seen=await packets(),held=seen.packets.filter(e=>e.buttons&1),gaps=held.slice(1).map((e,i)=>e.validatedAt-held[i].validatedAt);
-      if(!held.length)surfaceRecord.finding='native drag receives no held samples';cases.push({label,point:empty,paint:{pending:true},status:held.length?'delivered':'FINDING:no-held-samples',expected:'trail',...seen,gaps,before,after});
+      if(!held.length)surfaceRecord.finding='native drag receives no held samples';cases.push({label,point:empty,end:{x:end,y:empty.y},paint:{pending:true},status:held.length?'delivered':'FINDING:no-held-samples',expected:'trail',...seen,gaps,before,after});
      }
      if((group==='all'||group==='touch')&&width===390&&engine!=='firefox'&&empty){
       await reset();await page.touchscreen.tap(empty.x,empty.y);await page.waitForTimeout(65);const seen=await packets();cases.push({label:'touch-tap',optional:true,status:seen.packets.some(e=>e.kind==='click'||e.kind==='down')?'delivered':'FINDING:no-burst-packet',...seen,after:await shot(surface+'-touch-tap')});
@@ -204,22 +199,38 @@ try {
       }
      }
      if((group==='all'||group==='degraded')&&empty){
-      await reset();const lowPoint=await point(null);assert.ok(lowPoint,'fresh unprotected point after touch');const before=await shot(surface+'-drag-degraded-before');await page.evaluate(()=>{window.pointerStress=setInterval(()=>{const end=performance.now()+75;while(performance.now()<end){}},180)});
+      await reset();const lowPoint=await point(null);assert.ok(lowPoint,'fresh unprotected point after touch');const before=await shot(surface+'-drag-degraded-before');await page.evaluate(({ms,period})=>{window.pointerStress=setInterval(()=>{const end=performance.now()+ms;while(performance.now()<end){}},period)},{ms:stressMs,period:stressPeriod});
       try{
        await page.waitForFunction(()=>probe.rows().some(r=>r.quality==='low'),undefined,{timeout:5000});
        await page.evaluate(()=>{clearInterval(window.pointerStress);window.pointerPackets=[];window.pointerNative=[]});
        await page.mouse.move(lowPoint.x,lowPoint.y);await page.mouse.down();
        for(let n=1;n<=12;n++){await page.mouse.move(lowPoint.x+n*2,lowPoint.y);await page.waitForTimeout(8)}
        await page.waitForTimeout(100);const after=await shot(surface+'-drag-degraded');await page.mouse.up();const seen=await packets(),held=seen.packets.filter(e=>e.buttons&1),gaps=held.slice(1).map((e,i)=>e.validatedAt-held[i].validatedAt);
-       cases.push({label:'drag-degraded',point:lowPoint,paint:{pending:true},before,expected:'trail capped at30Hz',status:held.length>=2?'delivered':'FINDING:no-degraded-held-samples',...seen,gaps,after});assert.ok(held.length>=2,'degraded samples present');
+       cases.push({label:'drag-degraded',point:lowPoint,end:{x:lowPoint.x+24,y:lowPoint.y},paint:{pending:true},before,expected:'trail capped at30Hz',status:held.length>=2?'delivered':'FINDING:no-degraded-held-samples',...seen,gaps,after});assert.ok(held.length>=2,'degraded samples present');
        // Send timestamps include final factory validation/IPC latency; gaps observe pacing, not the exact acceptance clock.
+      }finally{await page.evaluate(()=>clearInterval(window.pointerStress))}
+     }
+     if(group==='coalesced-click'&&empty){
+      await reset();const p=await point(null);assert.ok(p);const before=await shot(surface+'-coalesced-before');
+      await page.evaluate(({ms,period})=>{window.pointerStress=setInterval(()=>{const end=performance.now()+ms;while(performance.now()<end){}},period)},{ms:stressMs,period:stressPeriod});
+      try{
+       await page.waitForFunction(()=>probe.rows().some(r=>r.quality==='low'),undefined,{timeout:5000});
+       await page.evaluate(()=>{clearInterval(window.pointerStress);window.pointerPackets=[];window.pointerNative=[]});
+       // Prime a real low-quality move, then click and move again. Driver latency may cross
+       // a send interval; deterministic unit clocks separately pin the exact 1ms interleaving.
+       await page.mouse.move(p.x,p.y);await page.waitForFunction(()=>window.pointerPackets.some(e=>e.kind==='move'&&e.quality==='low'),undefined,{timeout:1000});
+       await page.mouse.click(p.x,p.y);await page.mouse.move(p.x+1,p.y);await page.waitForTimeout(120);const after=await shot(surface+'-coalesced-after'),seen=await packets();
+       cases.push({label:'coalesced-click',expected:'sparks',point:p,paint:{pending:true},before,after,status:seen.packets.some(e=>e.kind==='click'||e.kind==='down')?'delivered':'FINDING:no-burst-packet',...seen});
       }finally{await page.evaluate(()=>clearInterval(window.pointerStress))}
      }
      // Keep packet evidence; screenshots are checked separately for actual paint, never inferred from this spy.
      await page.evaluate(()=>probe.unmount());await page.waitForFunction(()=>document.querySelectorAll('iframe.agend-effect-frame').length===0);
     }
-    for(const surface of record.surfaces)for(const c of surface.cases)if(c.paint?.pending&&c.point&&c.before&&c.after){c.paint={before:colors(c.before,c.point),after:colors(c.after,c.point)};c.paint.added=c.paint.after-c.paint.before;if(c.expected==='sparks'&&c.status==='delivered'&&c.paint.added<=15)c.status=c.paint.added>0?'FINDING:insufficient-painted-burst':'FINDING:no-painted-burst'}
-    assert.deepEqual(errors,[]);assert.deepEqual(outside,[]);record.findings=record.surfaces.flatMap(s=>s.cases.map(c=>({surface:s.surface,label:c.label,status:pointerCaseFailure(c)})).filter(c=>c.status));const required={clicks:['empty','bubble'],protected:['composer','button','menu','dialog'],'drag-slow':['drag-slow'],'drag-fast':['drag-fast'],degraded:['drag-degraded'],touch:[]};for(const label of required[group]??[])if(!record.surfaces.some(s=>s.cases.some(c=>c.label===label)))record.findings.push({label,status:'required case missing'});record.status=record.findings.length?'failed':'pass';console.log(record.findings.length?'FINDINGS':'PASS',prefix,JSON.stringify(record.findings));
+    for(const surface of record.surfaces)for(const c of surface.cases)if(c.paint?.pending&&c.point&&c.before&&c.after){
+     c.paint=particlePaintDelta(decode(readFileSync(join(out,c.before))),decode(readFileSync(join(out,c.after))),c.point,c.end);
+     c.capture=Object.fromEntries(['before','after'].map(k=>{const t=record.timings.find(t=>t.file===c[k]);return[k,t?t.after.at-t.before.at:null]}));
+    }
+    assert.deepEqual(errors,[]);assert.deepEqual(outside,[]);record.findings=record.surfaces.flatMap(s=>s.cases.map(c=>({surface:s.surface,label:c.label,status:pointerCaseFailure(c)})).filter(c=>c.status));const required={clicks:['empty','bubble'],protected:['composer','button','menu','dialog'],'drag-slow':['drag-slow'],'drag-fast':['drag-fast'],degraded:['drag-degraded'],'coalesced-click':['coalesced-click'],touch:[]};for(const label of required[group]??[])if(!record.surfaces.some(s=>s.cases.some(c=>c.label===label)))record.findings.push({label,status:'required case missing'});record.status=record.findings.length?'failed':'pass';console.log(record.findings.length?'FINDINGS':'PASS',prefix,JSON.stringify(record.findings));
    }catch(e){record.status='failed';record.error=e.message;record.stack=e.stack;record.history=service.profile('alice',ids[0]);record.diagnostic=await page.evaluate(()=>({rows:window.probe?.rows(),trust:window.probe?.trust(),text:document.body.innerText.slice(-1200)})).catch(()=>null);console.log('FAIL',prefix,e.stack,JSON.stringify(record.diagnostic));}
    finally{rows.push(record);writeFileSync(join(out,'receipt.json'),JSON.stringify({source:'actual Shell/Chat + built private service/library/preview; synthetic auth, no live fleet',rows},null,2));await context.close()}
   }await browser.close();browser=null;

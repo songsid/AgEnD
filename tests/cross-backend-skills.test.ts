@@ -200,6 +200,7 @@ describe("cross-backend skill publishing", () => {
       "persona-emoji",
       "scheduling",
       "web-appearance",   // #1629: how it looks on the web dashboard
+      "web-dashboard",    // #2061: where things are on the web dashboard and what they do
       "worker-collaboration",
     ]);
     expect(existsSync(join(skills, "delegation-playbook"))).toBe(false);

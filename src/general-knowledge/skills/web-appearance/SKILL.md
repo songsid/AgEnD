@@ -1,7 +1,7 @@
 ---
 name: web-appearance
-description: How you look on the AgEnD web dashboard — check it, change your own theme, identity card, identity colour and widgets, play Canvas Worker effects in your chat (and offer a Try), preview the result, share it as a mod
-roles: [worker]
+description: How you look on the AgEnD web dashboard — check it, change your own theme, identity card, identity colour and widgets, play Canvas Worker effects in your chat (and offer a Try), preview the result, share it as a mod; and, for General, changing Settings → Web appearance for the user
+roles: [general, worker]
 ---
 
 ## What it is
@@ -23,6 +23,39 @@ can shape how you look there — **only your own look, and only on the surfaces 
 
 None of these tools takes a target: they always act on you. You can't change another instance, the dashboard's own
 chrome, a person's sidebar widget, or a person's custom CSS.
+
+## For the user: Settings → Web appearance (General, coordinators, full)
+
+If you are General (or a coordinator or full profile), you can change the user's **Settings → Web appearance** for
+them, exactly as the page changes it: the same checks, the same refusals. Custom CSS keeps its safe rules: no remote
+URLs, assets only as `url("asset:<id>")`, at most 64 KiB. Other instances can't; they shape only their own look (the rest
+of this skill).
+
+1. **Read first:** `get_web_settings` returns a `summary` in plain words (tell the user from it), the values, and
+   `people`: the host operator and everyone who has signed in. Host settings are everyone's on this host. Custom CSS and
+   effect slots are one person's own: pass `person` as the entry whose id is the user's (`person:<adapter>:<their id>`),
+   else the host operator's are changed.
+2. **One change per call:** `set_web_settings({ person?, change })`, where `change.what` is one of:
+
+| `what` | Changes | Example |
+|---|---|---|
+| `host` | `themes_shown`, `card_size` (s/m/l), `card_sizes` ({instance: s/m/l}), `colour_places` (name/bar/ring), `colours_off`, `sidebar_widget` ({spec, data}) — null puts one back to its default | `{ what: "host", set: { colour_places: ["name","ring"] } }` |
+| `agent_colour` | one agent's colour (`preset:<name>` or `#rrggbb`) and places; null resets each | `{ what: "agent_colour", instance: "atlas", colour: "preset:teal" }` |
+| `custom_css` | `save` (with `text`): goes **on trial** on their screens — **the person keeps it** with one click (or it goes back by itself); `revert` (the trial), `off` | `{ what: "custom_css", action: "save", text: "…" }`, then tell them to keep it if they like it |
+| `mod` | an agent's proposal: `review` (instance → `stage`, `plan`, `plan_hash`), then `install` (stage, plan_hash, `include`: the parts, `target`: the agent); `cancel`, `dismiss`, `uninstall` (id) | review, show the user the plan, install only what they asked for — never custom CSS unasked |
+| `effect` | `apply` (instance, id, params?) or `remove` (instance, id?) an effect on a chat | |
+| `effect_slot` | a person's `sidebar` / `header` / `page` / `box` / `cursor` effect (an id, or null) | |
+| `restore_defaults` | the host settings back to their defaults, and the person's custom CSS off | |
+
+3. **Say what changed** in the user's words (read again if unsure). A refusal says why: the same words the page would
+   show.
+
+**Only the person can do these, on the page:**
+- choose a file from their computer: import a mod file, upload an effect folder, add a CSS asset or a card picture;
+- keep a custom CSS trial, or switch to an earlier saved version (styling their screens waits for them);
+- this browser's own switches: custom CSS off on this device, pausing effect playback;
+- download an export;
+- the card upload limits (fleet configuration; a raise waits for an admin's confirmation).
 
 ## Look first
 

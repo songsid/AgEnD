@@ -3,7 +3,7 @@ import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { checkEffectEntry } from '../src/web-effect-bundle.js';
 // @ts-ignore private native-recipe verdict helper, outside the emitted application.
-import { pointerCaseFailure } from '../scripts/manual/effect-pointer-evidence.mjs';
+import { pointerCaseFailure, particlePaintDelta } from '../scripts/manual/effect-pointer-evidence.mjs';
 const directory = new URL('../docs/examples/click-sparks/', import.meta.url);
 const code = readFileSync(new URL('worker.js', directory), 'utf8');
 function worker() {
@@ -37,12 +37,58 @@ describe('reusable CW1 click sparks example', () => {
 });
 
 describe('native pointer evidence refuses missing input or paint', () => {
+  const image = (width = 400, height = 4) => ({ width, height, channels: 3, data: new Uint8Array(width * height * 3).fill(40) });
+  it('counts faded sample colours at the far end of a drag, independently of input packets', () => {
+    const before = image(), after = image();
+    for (let x = 205; x < 225; x++) after.data.set([126, 44, 74], x * 3); // 40% pink over dark grey
+    expect(particlePaintDelta(before, after, { x: 100, y: 2 }).added).toBe(0);
+    expect(particlePaintDelta(before, after, { x: 100, y: 2 }, { x: 200, y: 2 }).added).toBe(20);
+    expect(before.data.every(v => v === 40)).toBe(true);
+  });
+  it('counts each antialiased sample colour over light and dark backgrounds', () => {
+    for (const background of [30, 240]) for (const color of [[255, 49, 124], [0, 199, 206], [255, 152, 0]]) {
+      const before = image(), after = image(); before.data.fill(background); after.data.fill(background);
+      for (let x = 105; x < 125; x++) after.data.set(color.map(v => Math.round(background + (v - background) * 0.2)), x * 3);
+      expect(particlePaintDelta(before, after, { x: 100, y: 2 }).added).toBe(20);
+    }
+  });
+  it('unchanged coloured UI and absent paint never count, and selection blue is not a particle', () => {
+    const before = image(), after = image();
+    for (let x = 105; x < 125; x++) { before.data.set([255, 49, 124], x * 3); after.data.set([255, 49, 124], x * 3); }
+    for (let x = 130; x < 150; x++) after.data.set([30, 90, 200], x * 3);
+    expect(particlePaintDelta(before, after, { x: 100, y: 2 }).added).toBe(0);
+  });
+  it('neutral glyph antialiasing and gray background changes are not faded particles', () => {
+    for (const base of [40, 240]) {
+      const before = image(), after = image(); before.data.fill(base); after.data.fill(base);
+      for (let x = 105; x < 125; x++) after.data.set([base - 10, base - 10, base - 10], x * 3);
+      expect(particlePaintDelta(before, after, { x: 100, y: 2 }).added).toBe(0);
+    }
+  });
+  it.each([
+    [[33, 33, 33], [41, 64, 91]],
+    [[33, 33, 33], [39, 63, 92]],
+    [[255, 255, 255], [194, 218, 247]],
+  ])('rejects actual selection-only RGB pairs from the original WebKit captures', (base, selected) => {
+    const before = image(), after = image();
+    for (let x = 0; x < before.width * before.height; x++) { before.data.set(base, x * 3); after.data.set(selected, x * 3); }
+    expect(particlePaintDelta(before, after, { x: 100, y: 2 }).added).toBe(0);
+  });
+  it('refuses mismatched screenshot sizes rather than inventing paint', () => {
+    expect(() => particlePaintDelta(image(), image(401), { x: 100, y: 2 })).toThrow('capture dimensions changed');
+  });
   it.each(['sparks', 'trail', 'trail capped at30Hz'])('%s needs real particles independently of packets', expected => {
     const packets = expected === 'sparks' ? [{ kind: 'click', buttons: 1 }] : [{ kind: 'move', buttons: 1 }, { kind: 'move', buttons: 1 }];
     expect(pointerCaseFailure({ expected, packets, paint: { added: 16 } })).toBeNull();
     expect(pointerCaseFailure({ expected, packets, paint: { added: 0 } })).toBe('required particle paint absent');
     expect(pointerCaseFailure({ expected, packets, paint: { added: 14 } })).toBe('insufficient particle paint evidence');
     expect(pointerCaseFailure({ expected, packets: [], paint: { added: 100 } })).toBe('required pointer input absent');
+  });
+  it('a late screenshot cannot establish timely particle paint even when pixels are present', () => {
+    const c = { expected: 'sparks', packets: [{ kind: 'click' }], paint: { added: 100 }, capture: { before: 20, after: 1001 } };
+    expect(pointerCaseFailure(c)).toBe('invalid capture: exceeded particle observation budget');
+    expect(pointerCaseFailure({ ...c, capture: { before: 1001, after: 20 } })).toBe('invalid capture: exceeded particle observation budget');
+    expect(pointerCaseFailure({ ...c, capture: { before: 20, after: 1000 } })).toBeNull();
   });
   it('never reports a core finding as pass', () => { expect(pointerCaseFailure({ status: 'FINDING:no-burst-packet' })).toBeTruthy(); });
   it('keeps explicitly optional touch and out-of-region diagnostics separate', () => {

@@ -46,7 +46,7 @@ The profiler degrades before pausing; pause physically removes the factory and r
 
 `publish` accepts only content-free state/reply/theme signals. `mention` remains reserved in the codec but is never emitted in 2.3.0 (follow-up #1963). Own-instance and wants fences remain at the factory. Owner-region pulses use the currently open chat without exporting another instance's identity. Raw pointer publishing is refused.
 
-Native pointer listeners read only type, trusted-event flag, client coordinates, buttons and bounded wheel deltas. Unknown/typing focus, designMode, modal, trusted target, outside-region or viewer gates suppress them. One latest local packet per frame/rAF, with the degraded 30 Hz/normal 60 Hz bound; no keys, input text, selection, message bodies, file or URL data enter the API. The host never forwards arbitrary DOM events.
+Native pointer listeners read only type, trusted-event flag, client coordinates, buttons and bounded wheel deltas. Unknown/typing focus, designMode, modal, trusted target, outside-region or viewer gates suppress them. One local packet per frame/rAF, with the degraded 30 Hz/normal 60 Hz bound; no keys, input text, selection, message bodies, file or URL data enter the API. The host never forwards arbitrary DOM events. Since #2057, a fresh pending discrete event takes priority over later movement; movement replaces movement, and later discrete input replaces earlier discrete input (down/up/click deliberately coalesce to the final click). Waiting for the send interval never refreshes the original 100ms expiry.
 
 ## Verification and limitations
 

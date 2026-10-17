@@ -16,8 +16,9 @@ If the chat opens with focus in the composer, click an empty area and wait for p
   safety, consent and performance limits as other effects apply. An agent's foreground effect also requires custom
   CSS to be off; a person's selection retains the usual exemption.
 
-Pointer input is sampled, not a reliable mouse-event queue: the host forwards the latest eligible sample per frame,
-up to 60 times a second, or 30 at reduced quality. A quick click or drag boundary can be dropped. This example handles
+Pointer input is sampled, not a reliable mouse-event queue: the host keeps one eligible sample per frame,
+up to 60 times a second, or 30 at reduced quality. New movement replaces movement, but cannot overwrite a waiting
+click or other discrete sample. Near-simultaneous down/up/click coalesce to the final click. Intermediate click or drag boundaries can still be dropped. This example handles
 both clicks and the first received pressed sample, but cannot recover input the host withheld. The rate limit affects
 pointer samples, not the Worker's animation frames. It receives no DOM target, message text or pointer identity.
 Touch browsers may synthesize compatible pointer/click events; scrolling, touch cancellation and drag capture are
