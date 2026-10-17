@@ -76,6 +76,10 @@ describe("explicit Trial controller lane (unmounted)", () => {
   it("lease acceptance checks time again after slow predicates; no timer can refresh it", async () => {
     const h = fixture(); h.gate.mockImplementation(() => { h.at(10000); return true; }); expect(await h.api.start(message())).toBe(false); expect(h.host.fetch).not.toHaveBeenCalled(); h.api.dispose();
   });
+  it.each(["current", "gate"])("synchronous %s reentry cannot recursively validate or admit the old operation", async field => {
+    const h = fixture(); h[field === "current" ? "current" : "gate"].mockImplementation(() => { h.api.sync(); return true; });
+    expect(await h.api.start(message())).toBe(false); expect(h.start).not.toHaveBeenCalled(); expect(h.host.fetch).not.toHaveBeenCalled(); expect(h.current).toHaveBeenCalledOnce(); h.api.dispose();
+  });
   it("a current-handle check rechecks elapsed lease time after a slow gate", async () => {
     const h = fixture(); expect(await h.api.start(message())).toBe(true); const a = h.start.mock.calls[0]![0]; h.at(599999); h.gate.mockImplementation(() => { h.at(600000); return true; }); expect(a.current()).toBe(false); h.api.sync(); await flush(); expect(h.disposeStage).toHaveBeenCalledOnce(); h.api.dispose();
   });

@@ -15,11 +15,14 @@ export function createEffectTrialController({ window: host, current, allowed, on
     return previous = t;
   }
   function eligible(op) {
-    if (dead || broken || !op || active !== op || op.dead || host.AgendAuth?.sessionEnded?.() !== false) return false;
-    const t = clock();
-    if (t === null || t < op.began || t >= op.until || safe(() => current(op.instance) === true && allowed() === true) !== true) return false;
-    const after = clock();
-    return !dead && !op.dead && active === op && after !== null && after >= op.began && after < op.until;
+    if (dead || broken || !op || active !== op || op.dead || op.checking || host.AgendAuth?.sessionEnded?.() !== false) return false;
+    op.checking = true;
+    try {
+      const t = clock();
+      if (t === null || t < op.began || t >= op.until || safe(() => current(op.instance) === true && allowed() === true) !== true) return false;
+      const after = clock();
+      return !dead && !op.dead && active === op && after !== null && after >= op.began && after < op.until;
+    } finally { op.checking = false; }
   }
   function end(op, reason = "stopped") {
     if (!op || op.dead) return false;
