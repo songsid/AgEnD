@@ -94,7 +94,18 @@ function save(key, value) { try { localStorage.setItem(key, value); } catch { /*
 // ── Drawing ──
 
 const STATE_LABEL = (s) => t(`org.${s}`);
-const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+// #2047: SVG text does not wrap or ellipsize, so names are shortened before they are drawn. A budget counts Latin-width
+// characters: a CJK, fullwidth or emoji character draws about 1.6 of them, and a code point is never split.
+const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{20000}-\u{3fffd}]|\p{Extended_Pictographic}/u;
+const charWidth = (ch) => (WIDE.test(ch) ? 1.6 : 1);
+export function clipText(s, n) {
+  const chars = Array.from(String(s));
+  if (chars.reduce((w, ch) => w + charWidth(ch), 0) <= n) return chars.join("");
+  let used = 1, out = "";   // the ellipsis takes one
+  for (const ch of chars) { if (used + charWidth(ch) > n) break; used += charWidth(ch); out += ch; }
+  return `${out}…`;
+}
+const clip = clipText;
 const needle = (q) => String(q || "").trim().toLowerCase();
 const hits = (node, q) => !!q && (node.name.toLowerCase().includes(q) || (!!node.i && typeof node.i.display_name === "string" && node.i.display_name.toLowerCase().includes(q)));
 
