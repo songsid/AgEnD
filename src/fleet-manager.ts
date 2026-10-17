@@ -232,7 +232,7 @@ import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScope } from "./command-table.js";
 import { crossInstanceVisibility, runVisibilityCommand } from "./cross-instance-notice.js";
-import { guestRouteDecision } from "./web-guest-access.js";
+import { bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
 import { TrafficLog, trafficItem, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
@@ -20424,12 +20424,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         // #1920: a guest reaches only GUEST_ROUTES, within the scope derived for it now — default deny, before any
         // handler, on this listener and the public link's gateway alike (both come through here).
         if (decision.via === "session" && decision.session.tier === "guest") {
-          const verdict = guestRouteDecision(req.method ?? "GET", parsedUrl, this.guestScope(decision.session.owner));
+          const owner = decision.session.owner!;
+          const verdict = guestRouteDecision(req.method ?? "GET", parsedUrl, this.guestScope(owner));
           if (verdict.kind === "deny") {
             res.writeHead(verdict.status);
             res.end(JSON.stringify({ error: verdict.error }));
             return;
           }
+          // Phase 1b: the handlers that answer per recipient (the stream, the poll, a file) know it is a guest's, and
+          // ask its scope anew each time.
+          const admitted = decision.session;
+          bindGuestRequest(req, { owner, scope: () => this.guestScope(owner),
+            current: () => !!this.webSessions && !!this.webToken && this.webSessions.isCurrent(admitted, tokenEpoch(this.webToken)) });
         }
       }
 

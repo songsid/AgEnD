@@ -67,7 +67,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 - 反向代理、tailnet 分享或 port 轉送所放行的對象（`web.allowed_hosts`）；
 - 在 WSL2 上，Windows 主機。
 
-匿名的 `/view` 讀者看得到每個 instance：它沒有帳號、也沒有範圍限制，這點和已登入的 session 不同。啟用時的 `/api/ai-usage` 也公開，GET `/health` 不需要 token。Pane 擷取可能包含指令、憑證與其他私人輸出。
+匿名的 `/view` 讀者看得到每個 instance：它沒有帳號、也沒有範圍限制。登入並不會替 `/view` 加上範圍：在 `web.view_access: open` 時，已登入的訪客也能使用同樣的公開讀取；只有訪客自己的路由會依其範圍檢查。啟用時的 `/api/ai-usage` 也公開，GET `/health` 不需要 token。Pane 擷取可能包含指令、憑證與其他私人輸出。
 
 設定 `web.view_access: session` 可關閉這些讀取：`/view`、其 GET API 與 `/api/ai-usage` 會和 dashboard 一樣需要 session 或 header token。`/view` 的寫入（個人資料、頭像、排序）一律經過 dashboard 閘門：需要通過上述 cookie 寫入檢查的 session，或 `X-Agend-Token`，絕不接受 `?token=`。
 

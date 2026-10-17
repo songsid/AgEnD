@@ -309,6 +309,33 @@ describe("#1629 shared Canvas Worker registry", () => {
     expect(f.send).not.toHaveBeenCalled(); h.frame(17); expect(f.send).toHaveBeenCalledOnce(); expect(f.send.mock.calls[0]![0]).toEqual({ v: 1, type: "pointer", ts: 0, kind: "move", x: 9, y: 20, buttons: 0 });
     h.emit("pointermove", { isTrusted: true, clientX: 2, clientY: 20, buttons: 0 }); h.frame(20); expect(f.send).toHaveBeenCalledOnce();
   });
+  it("stock main focus preserves native click and subsequent drag, clearing stale pre-focus down", async () => {
+    const h = rig(); await h.admit(); const f = h.frames()[0]; f.ready(); f.send.mockClear();
+    const main = h.node("MAIN"); main.isConnected = true;
+    const original = h.doc.querySelectorAll.getMockImplementation();
+    h.doc.querySelectorAll.mockImplementation((q: string) => q === "#app > .shell > main#main.main[tabindex='-1']" ? [main] : original(q));
+    h.emit("pointerdown", { isTrusted: true, clientX: 10, clientY: 20, buttons: 1 });
+    h.doc.activeElement = main; h.emit("focusin"); h.frame(17); expect(f.send).not.toHaveBeenCalled();
+    h.emit("pointerup", { isTrusted: true, clientX: 10, clientY: 20, buttons: 0 });
+    h.emit("click", { isTrusted: true, clientX: 10, clientY: 20, buttons: 0 }); h.frame(34);
+    expect(f.send).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ kind: "click" }));
+    h.emit("pointermove", { isTrusted: true, clientX: 11, clientY: 20, buttons: 1 }); h.frame(51);
+    expect(f.send).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "move", buttons: 1 }));
+  });
+  it.each(["unknown-main", "detached", "other-document", "duplicate", "wrong-root", "changed-tabindex", "editable", "editable-selector", "design-mode", "trusted-target"])("stock main focus still refuses %s", async fault => {
+    const h = rig(); await h.admit(); const f = h.frames()[0]; f.ready(); f.send.mockClear();
+    const main = h.node("MAIN"); main.isConnected = fault !== "detached";
+    if (fault === "other-document") main.ownerDocument = {};
+    if (fault === "editable") main.isContentEditable = true;
+    if (fault === "editable-selector") main.matches.mockReturnValue(true);
+    if (fault === "design-mode") h.doc.designMode = "on";
+    if (fault === "trusted-target") h.doc.body.closest.mockReturnValue(h.doc.body);
+    const original = h.doc.querySelectorAll.getMockImplementation();
+    h.doc.querySelectorAll.mockImplementation((q: string) => q === "#app > .shell > main#main.main[tabindex='-1']" ? ["unknown-main", "changed-tabindex"].includes(fault) ? [] : fault === "wrong-root" ? [h.node("MAIN")] : fault === "duplicate" ? [main, h.node("MAIN")] : [main] : original(q));
+    h.doc.activeElement = main;
+    h.emit("pointermove", { isTrusted: true, clientX: 10, clientY: 20, buttons: 1 }); h.frame(17);
+    expect(f.send).not.toHaveBeenCalled();
+  });
   it.each(["synthetic", "focused", "unknown-focus", "contenteditable", "modal", "trusted", "outside"])("pointer %s does not enter a Worker", async fault => {
     const h = rig(), ds = await h.admit(); const f = h.frames()[0]; f.ready(); f.send.mockClear();
     if (fault === "focused") h.doc.activeElement.matches.mockReturnValue(true);
