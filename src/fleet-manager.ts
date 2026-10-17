@@ -6365,6 +6365,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ err: (err as Error)?.message, adapterId: owner.adapterId }, "Guest sign-in code was not delivered privately");
       if (!unrevoked()) return;                              // revoked meanwhile: the revoke's own answer said so
       const start = adapter.type === "telegram" ? this.tgStartWebUrl(owner.adapterId) : null;
+      // #1742 for guests (step 4b-3): its START button (a bare /start, or the link's /start web) then asks again, from
+      // the DM — once, within the window.
+      if (adapter.type === "telegram") this.openTgWebStartWindow(owner.adapterId, owner.userId);
       await say(start ? t("web.guest_dm_failed_link", start) : t("web.guest_dm_failed"));
     }
   }
@@ -8814,6 +8817,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return; // bare slash in group — ignore silently
         }
 
+        // #1920 step 4b-3: /web typed in a ClassicBot room (a group: `/web@ThisBot`) by someone who is not a fleet admin,
+        // while guest sign-in is on: their guest code, privately — as anywhere else. An admin's goes on as before.
+        if (/^\/(?:web|dashboard)(?:\s|$)/i.test(text) && msgAdapter && this.isGuestWebAsk(msg.adapterId, msg.userId)) {
+          await this.guestWebCommand({ adapterId: msg.adapterId!, userId: msg.userId, username: msg.username,
+            arg: text.replace(/^\/(?:web|dashboard)/i, "").trim().toLowerCase(), replyHere: body => msgAdapter.sendText(chatId, body) });
+          return;
+        }
+
         // Handle /start command
         if (text === "/start" || text.startsWith("/start ")) {
           // #1686: intercept /start web before the ClassicBot admission flow runs.
@@ -8822,13 +8833,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // #1742: a bare /start from a fleet admin whose /web just failed to reach them privately is that /start web
           // (Telegram's START button sends it bare) — once, within the window; any other bare /start is ClassicBot's.
           const admin = isPrivateChat && this.isFleetAdmin(msg.userId, msg.adapterId ?? "");
+          // #1920 step 4b-3: a guest's too (guest sign-in on, not an admin) — its /web reached it no other way.
+          const guest = isPrivateChat && !admin && this.isGuestWebAsk(msg.adapterId, msg.userId);
           const webStart = isPrivateChat && (requestedBackend === "web"
-            || (text === "/start" && admin && this.takeTgWebStartWindow(msg.adapterId ?? "", msg.userId)));
+            || (text === "/start" && (admin || guest) && this.takeTgWebStartWindow(msg.adapterId ?? "", msg.userId)));
           if (webStart) {
             if (requestedBackend === "web") this.takeTgWebStartWindow(msg.adapterId ?? "", msg.userId);
             // #1742: the /web menu right here; the code comes to this DM.
             if (admin) await this.startWebInDm(msg, msgAdapter ?? undefined);
-            // Non-fleet-admins: /start alone is enough to open the DM channel; no further action.
+            // A guest: its guest code, here (this DM is where it goes).
+            else if (guest && msgAdapter) await this.guestWebCommand({ adapterId: msg.adapterId!, userId: msg.userId, username: msg.username, arg: "",
+              replyHere: body => msgAdapter.sendText(chatId, body) });
+            // Anyone else: /start alone is enough to open the DM channel; no further action.
             return;
           }
           // All new starts, including explicit backend and later chooser callbacks,
