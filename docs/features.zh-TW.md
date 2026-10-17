@@ -22,7 +22,7 @@ Claude：→ create_schedule(cron: "0 9 * * *", message: "檢查需要審查的 
 漏掉的那一次會補跑一次，不會跑兩次（#1995）：
 - **重啟之後。** fleet 停止期間到期、且在 24 小時內的那一次，啟動時補跑一次。
 - **fleet 執行中。** 已經到期卻 3 分鐘內都沒開始的那一次，也會用同樣的方式補跑一次，沿用同一個 run id，所以晚到但真實的觸發不會再跑一次。因為同一個排程的上一次還在執行而跳過的那一次，仍然維持跳過。fleet log 會記一行 `Missed cron tick — catching up`。
-- **在 fleet log 裡。** 每次觸發都會記一行 `Cron tick`，附排程 id 與 run id。觸發後沒有開始的會記 `Cron tick not run` 與原因（`disabled`、`still_running`、`already_ran` 等），執行失敗的會記 `Schedule run failed`。
+- **在 fleet log 裡。** 每次註冊都會記一行 `Cron schedule registered`，附排程 id、來源（`init`、`reload`、`create`、`update`、`repair`）與下一次執行時間。已啟用卻沒有對應排程工作的排程（例如用 `agend schedule add` 新增、但重新載入沒有生效的），會在一分鐘內被發現並記一行 `Cron schedule was not registered — registering`，漏掉的那一次照上面的方式補跑。每次觸發都會記一行 `Cron tick`，附排程 id 與 run id。觸發後沒有開始的會記 `Cron tick not run` 與原因（`disabled`、`still_running`、`already_ran` 等），執行失敗的會記 `Schedule run failed`。
 
 網頁儀表板的 **Fleet → 排程** 會列出所有排程，並可在那裡管理（#1724）：
 - 每一列以文字顯示排程的執行方式（「每週一到五 18:00」、「每 15 分鐘」、「一次 · 2026-10-13 14:00 (UTC+8)」），以及依 fleet 時區顯示的下次執行時間；原始 cron 改放在提示文字中。已停用的排程會有明顯標示。
