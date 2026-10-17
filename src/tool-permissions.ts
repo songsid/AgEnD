@@ -43,6 +43,8 @@ const WORKER: readonly string[] = [
   // Knowing where it is and who is next to it. All read-only.
   "list_instances", "describe_instance", "list_teams", "list_models",
   "get_fleet_status", "get_fleet_config", "get_usage", "get_effort", "get_instance_logs", "kiro_engine_status",
+  // #2001: the prompt-cache report — its own row only, unless the profile reads the fleet (cacheReportScope).
+  "get_cache_report",
   "list_decisions", "list_schedules", "list_deployments", "validate_config",
   // Its own things.
   "task", "post_decision", "set_display_name", "set_description", "list_emojis", "set_persona_emoji", "preview_emojis",
@@ -94,7 +96,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
   coordinator: [...WORKER, ...ORCHESTRATION],
   general: [
     "reply", "react", "edit_message", "download_attachment", "close_poll",
-    "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models",
+    "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models", "get_cache_report",
     // Read-only: what each kiro instance runs on, for explaining a kiro incompatibility.
     "kiro_engine_status",
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",
@@ -117,7 +119,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
     "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget", "export_web_mod", "propose_web_mod",
     "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
-    "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config", "kiro_engine_status",
+    "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config", "kiro_engine_status", "get_cache_report",
     // Self-scheduling, same scope as worker (#895).
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],
@@ -315,6 +317,13 @@ export function toolRefusedMessage(profile: ToolSetName, tool: string): string {
  * instances. Everyone else may still schedule — for itself only.
  */
 const SCHEDULES_OTHERS: ReadonlySet<ToolSetName> = new Set<ToolSetName>(["full", "coordinator", "general"]);
+/**
+ * #2001: whose rows get_cache_report shows a caller — every instance's and the fleet summary for the profiles that
+ * act on other instances (full, coordinator, general: the leader and General), else only the caller's own row.
+ */
+export function cacheReportScope(profile: ToolSetName): "fleet" | "own" {
+  return SCHEDULES_OTHERS.has(profile) ? "fleet" : "own";
+}
 
 export type ScheduleOp = "create" | "update" | "delete";
 

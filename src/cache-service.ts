@@ -42,10 +42,14 @@ export interface CacheServiceOptions {
   pauseMs?: number;
   intervalMs?: number;
   log?: (level: "info" | "warn" | "debug", msg: string, extra?: Record<string, unknown>) => void;
+  /** Monotonic milliseconds for the published report's age (tests); default performance.now. */
+  monotonic?: () => number;
 }
 
 export type CacheWindow = "24h" | "7d" | "30d";
 export const WINDOWS: Record<CacheWindow, number> = { "24h": 86_400_000, "7d": 7 * 86_400_000, "30d": 30 * 86_400_000 };
+/** A window name as asked (a query string, a tool argument); anything unknown is the default, 7 days. */
+export const cacheWindow = (w: string): CacheWindow => (Object.prototype.hasOwnProperty.call(WINDOWS, w) ? w as CacheWindow : "7d");
 
 export interface InstanceReport {
   name: string;
@@ -67,7 +71,8 @@ export interface CacheReport {
   priceSources: readonly string[];
   /** `caughtUp`: a catch-up has finished since the fleet started (before that, what is shown may be partial). */
   scanning: { active: boolean; caughtUp: boolean; pendingBytes: number; pendingFiles: number };
-  fleet: { expiryCost: number; saving: number; recommended: number; analysed: number; priced: boolean };
+  /** `switchTo1h` (#2010): instances whose 5-minute cache measurably expires in 5–60 minute gaps — set prompt_cache_ttl: "1h". */
+  fleet: { expiryCost: number; saving: number; recommended: number; analysed: number; priced: boolean; switchTo1h: number };
   instances: InstanceReport[];
 }
 
@@ -151,6 +156,7 @@ export class CacheService {
   private async catchUp(): Promise<void> {
     for (;;) {
       const left = await this.pass();
+      this.passes++;
       if (left === 0) this.caughtUp = true;
       // Stop looping when: all caught up, explicitly stopped, or closing (stop()
       // fenced new admission — let the current physical pass write its dirty data,
@@ -329,13 +335,28 @@ export class CacheService {
     if (this.metaDirty && this.meta && await writeAtomic(this.o.metaPath, JSON.stringify(this.meta))) this.metaDirty = false;
   }
 
+  private passes = 0;
+  private readonly memo = new Map<CacheWindow, { at: number; passes: number; report: Promise<CacheReport> }>();
+  /**
+   * #2001: the report as last worked out, for get_cache_report — the same as report(), reused for up to a minute and
+   * until the next catch-up pass, so agents asking in turn do not each redo the arithmetic. Never reads a transcript.
+   */
+  published(window: CacheWindow, maxAgeMs = 60_000): Promise<CacheReport> {
+    const m = this.memo.get(window), now = (this.o.monotonic ?? (() => performance.now()))();
+    if (m && m.passes === this.passes && now - m.at < maxAgeMs) return m.report;
+    const report = this.report(window);
+    this.memo.set(window, { at: now, passes: this.passes, report });
+    report.catch(() => this.memo.delete(window));
+    return report;
+  }
+
   /** The analysis for a window, from the ledgers as they are now (a catch-up is started, not waited for). */
   async report(window: CacheWindow): Promise<CacheReport> {
     this.start();
     void this.kick();
     const to = this.now(), from = to - WINDOWS[window];
     const instances: InstanceReport[] = [];
-    const fleet = { expiryCost: 0, saving: 0, recommended: 0, analysed: 0, priced: true };
+    const fleet = { expiryCost: 0, saving: 0, recommended: 0, analysed: 0, priced: true, switchTo1h: 0 };
     const insts = this.o.instances();
     const shared = await this.shared(insts);
     for (const inst of insts) {
@@ -348,6 +369,7 @@ export class CacheService {
       if (!analysis.requests && !analysis.sim.tailPings) { instances.push({ name: inst.name, backend: inst.backend, status: "no_data" }); continue; }
       instances.push({ name: inst.name, backend: inst.backend, status: "ok", analysis });
       fleet.analysed++;
+      if (analysis.recommendation.reason === "switch_to_1h") fleet.switchTo1h++;
       if (!analysis.priced) { fleet.priced = false; continue; }
       fleet.expiryCost += analysis.sim.expiryCost;
       if (analysis.recommendation.on) { fleet.recommended++; fleet.saving += analysis.sim.net; }

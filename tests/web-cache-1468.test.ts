@@ -22,6 +22,7 @@ const rosterMethods = {
   cacheInstances: (FleetManager.prototype as any).cacheInstances,
   claudeConfigDirOf: (FleetManager.prototype as any).claudeConfigDirOf,
   credentialProfileOf: (FleetManager.prototype as any).credentialProfileOf,
+  cacheServiceFor: (FleetManager.prototype as any).cacheServiceFor,
   daemons: new Map(),
 };
 const token = "c".repeat(48);
@@ -94,7 +95,8 @@ describe("#1470 review 11: ClassicBot rooms are analysed too", () => {
 // ── The page ──
 const sim = (o: Record<string, number>) => ({ pastTtl: 0, expired: 0, rewriteTokens: 0, expiryCost: 0, pings: 0, pingCost: 0, tailPings: 0, tailCost: 0, net: 0, priced: true, ...o });
 const analysis = (o: Record<string, unknown>) => ({ requests: 120, ttlSec: 3600, estimate: false, priced: true, models: ["claude-opus-5-5"],
-  gapBuckets: [100, 10, 3, 1, 1, 0, 2], totalCost: 20, share: 0.095, recommendation: { on: false, reason: "never_expired" }, sim: sim({}), ...o });
+  gapBuckets: [100, 10, 3, 1, 1, 0, 2], totalCost: 20, share: 0.095, recommendation: { on: false, reason: "never_expired" }, sim: sim({}),
+  effectiveTtl: { ttlSec: 3600, basis: "label_1h", sample: 0, misses: 0, rate: null }, writeMix: { "5m": 0, "1h": 0 }, ...o });
 const REPORT = {
   window: "7d", from: 0, to: 1, pricesChecked: "2026-10-09", priceSources: [], scanning: { active: true, caughtUp: true, pendingBytes: 0, pendingFiles: 0 },
   fleet: { expiryCost: 1.9 + 7.4, saving: 0.8, recommended: 1, analysed: 3, priced: true },

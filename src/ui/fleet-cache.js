@@ -31,6 +31,11 @@ register("cache", {
     shared: "shares its working directory with {0}; their transcripts cannot be told apart",
     empty: "No instances", emptyHint: "Instances show here once the fleet has them.",
     b0: "≤5m", b1: "≤30m", b2: "≤1h", b3: "≤2h", b4: "≤6h", b5: "≤24h", b6: ">24h", tokensUnit: "input-token equivalents",
+    writeMix: "Cache writes 5 min / 1 h", effectiveTtl: "Behaves as", gapMiss: "{0} of {1} 5–60 min gaps rewrote it", gapMissNone: "no 5–60 min gaps yet",
+    effMeasured: "{0} (measured)", effLabel: "{0} (as written)", effUnproven: "not known yet",
+    fleetSwitch: "Switch to 1-hour cache",
+    switchTo1h: "Its 5-minute cache really expires: {0} of {1} gaps of 5–60 minutes rewrote it. Set prompt_cache_ttl: \"1h\" for this instance (backend_options.claude-code) rather than keep-warm.",
+    unproven: "Written with a 5-minute TTL, but only {0} gaps of 5–60 minutes so far — too few to tell how long it really lasts. The keep-warm figures assume 5 minutes.",
   },
   "zh-TW": {
     title: "快取", w24h: "24 小時", w7d: "7 天", w30d: "30 天", window: "期間",
@@ -53,6 +58,11 @@ register("cache", {
     shared: "與 {0} 共用工作目錄，無法分辨各自的 transcript",
     empty: "沒有 instance", emptyHint: "fleet 有 instance 後會顯示在這裡。",
     b0: "≤5分", b1: "≤30分", b2: "≤1時", b3: "≤2時", b4: "≤6時", b5: "≤24時", b6: ">24時", tokensUnit: "輸入 token 當量",
+    writeMix: "快取寫入 5 分 / 1 時", effectiveTtl: "實際存活", gapMiss: "{1} 個 5–60 分鐘空檔中有 {0} 個重寫", gapMissNone: "還沒有 5–60 分鐘的空檔",
+    effMeasured: "{0}（實測）", effLabel: "{0}（依寫入標記）", effUnproven: "尚無法判斷",
+    fleetSwitch: "建議改用 1 小時快取",
+    switchTo1h: "它的 5 分鐘快取確實會過期：{1} 個 5–60 分鐘空檔中有 {0} 個重寫。請為這個 instance 設定 prompt_cache_ttl: \"1h\"（backend_options.claude-code），而不是保溫。",
+    unproven: "以 5 分鐘 TTL 寫入，但目前只有 {0} 個 5–60 分鐘空檔，太少，無法判斷實際存活多久。保溫的數字以 5 分鐘估算。",
   },
 });
 const tc = (k, ...v) => t(`cache.${k}`, ...v);
@@ -79,6 +89,8 @@ const pct = (x) => `${x >= 0.1 ? Math.round(x * 100) : (x * 100).toFixed(1)}%`;
 export function reasonText(a) {
   const r = a.recommendation, ttl = ttlText(a.ttlSec);
   if (r.reason === "quiet") return tc("quiet");
+  if (r.reason === "switch_to_1h") return tc("switchTo1h", a.effectiveTtl.misses, a.effectiveTtl.sample);
+  if (r.reason === "insufficient_evidence") return tc("unproven", a.effectiveTtl.sample);
   if (r.reason === "never_expired") {
     if (a.sim.pastTtl) return tc("survived", a.sim.pastTtl, ttl);
     return a.sim.tailPings ? tc("onlyIdle", a.sim.tailPings.toLocaleString("en-US")) : tc("neverExpired", ttl);
@@ -107,6 +119,12 @@ function Histogram({ buckets, ttlSec }) {
   </svg>`;
 }
 
+/** #2010: what the TTL behaves as — measured, as written, or not known yet. */
+export function effectiveText(e) {
+  if (e.ttlSec === null) return tc("effUnproven");
+  return e.basis === "measured" ? tc("effMeasured", ttlText(e.ttlSec)) : tc("effLabel", ttlText(e.ttlSec));
+}
+
 function Metric({ label, value, sub }) {
   return html`<div class="ch-metric"><dt>${label}</dt><dd>${value}${sub ? html`<span class="ch-sub">${sub}</span>` : null}</dd></div>`;
 }
@@ -130,8 +148,11 @@ function InstanceCard({ r }) {
       <${Metric} label=${tc("pings")} value=${(s.pings + s.tailPings).toLocaleString("en-US")} sub=${s.tailPings ? tc("pingsAfter", s.tailPings) : null} />
       <${Metric} label=${tc("pingCost")} value=${$(s.pingCost + s.tailCost)} />
       <${Metric} label=${tc("net")} value=${a.priced ? `${s.net >= 0 ? "+" : "−"}${money(Math.abs(s.net))}` : "—"} />
+      ${a.writeMix["5m"] + a.writeMix["1h"] > 0 ? html`<${Metric} label=${tc("writeMix")} value=${`${tokens(a.writeMix["5m"])} / ${tokens(a.writeMix["1h"])}`} />` : null}
+      ${r.backend === "claude-code" ? html`<${Metric} label=${tc("effectiveTtl")} value=${effectiveText(a.effectiveTtl)}
+        sub=${a.effectiveTtl.sample ? tc("gapMiss", a.effectiveTtl.misses, a.effectiveTtl.sample) : tc("gapMissNone")} />` : null}
     </dl>
-    <${Histogram} buckets=${a.gapBuckets} ttlSec=${a.ttlSec} />
+    <${Histogram} buckets=${a.gapBuckets} ttlSec=${a.effectiveTtl.basis === "measured" && a.effectiveTtl.ttlSec !== null ? a.effectiveTtl.ttlSec : a.ttlSec} />
   </article>`;
 }
 
@@ -154,6 +175,7 @@ export function CacheReport({ report, win, setWin, refresh }) {
       <${Metric} label=${tc("fleetExpiry")} value=${money(f.expiryCost)} />
       <${Metric} label=${tc("fleetSaving")} value=${money(f.saving)} />
       <${Metric} label=${tc("fleetRecommended")} value=${tc("ofN", f.recommended, f.analysed)} />
+      ${f.switchTo1h ? html`<${Metric} label=${tc("fleetSwitch")} value=${tc("ofN", f.switchTo1h, f.analysed)} />` : null}
     </section>` : html`<${Empty} icon="chart" title=${tc("empty")} hint=${tc("emptyHint")} />`}
     <div class="ch-notes note">
       <p>${tc("pricesNote", report.pricesChecked)} ${tc("quotaNote")}</p>

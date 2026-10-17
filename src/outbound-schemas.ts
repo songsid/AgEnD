@@ -326,6 +326,13 @@ export const GetUsageArgs = z.object({
   force: z.boolean().optional().describe("Bypass the 5-minute cache and fetch fresh data (rate-limited by vendors — use sparingly)"),
 });
 
+/** #2001: the prompt-cache expiry / keep-warm report, read-only. */
+export const GetCacheReportArgs = z.object({
+  window: z.enum(["24h", "7d", "30d"]).optional().describe("The period to analyse. Default: 7d."),
+  instance: NonEmptyString.optional().describe("One instance's row. An ordinary instance may name only itself (its row is the default)."),
+  top: z.number().int().min(1).max(50).optional().describe("At most this many analysed instances, the costliest expiries first. Default: 10."),
+}).strict();
+
 export const ListModelsArgs = z.object({
   backend: NonEmptyString.optional()
     .describe("Backend to list the account catalog for (claude-code, kiro-cli, codex, grok, opencode, antigravity). Defaults to the fleet default backend."),

@@ -265,7 +265,7 @@ import { WEB_CHAT_NOTICE, claimNotice, hasWebChat, releaseNotice, upgradeNotices
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
 import { GENERAL_POINTING_REFUSALS, SNOWFLAKE, hasPlaceRefs, placeRef, webRoute, webTextLinks, placeSuffix, renderPlaceRefs, stripPlaceRefs, topicUrl, type PlaceLink, type PlaceTarget, worldPlaceOf } from "./topic-link.js";
-import { CacheService, WINDOWS, type CacheInstance, type CacheReport, type CacheWindow } from "./cache-service.js";
+import { CacheService, cacheWindow, type CacheInstance, type CacheReport } from "./cache-service.js";
 import { runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
 import { CompactWatch, launchIdentity } from "./compact-watch.js";
 import { agyLegacyAgentsFile, danglingSymlink, migrateAgyAgentsFile } from "./backend/antigravity.js";
@@ -12732,8 +12732,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * (cache-service.ts) — never a vendor call, never a synchronous transcript read.
    */
   cacheReport(window: string): Promise<CacheReport> {
-    const w: CacheWindow = Object.prototype.hasOwnProperty.call(WINDOWS, window) ? window as CacheWindow : "7d";
-    this.cacheService ??= new CacheService({
+    return this.cacheServiceFor().report(cacheWindow(window));
+  }
+  /** #2001: get_cache_report's — the same report, as last worked out (reused for a minute, until the next pass). */
+  cacheReportPublished(window: string): Promise<CacheReport> {
+    return this.cacheServiceFor().published(cacheWindow(window));
+  }
+  private cacheServiceFor(): CacheService {
+    return this.cacheService ??= new CacheService({
       instances: () => this.cacheInstances(),
       claudeProjectsDir: () => join(process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude"), "projects"),
       claudeKey: claudeProjectKey,
@@ -12742,7 +12748,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       metaPath: join(this.dataDir, "cache-codex-rollouts.json"),
       log: (level, msg, extra) => this.logger[level](extra ?? {}, msg),
     });
-    return this.cacheService.report(w);
   }
 
   /** The web's Acknowledge (any item; a signed-in session is fleet-admin level). */

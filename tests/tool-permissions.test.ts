@@ -58,6 +58,8 @@ const BEFORE: Record<string, string[]> = {
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
     // kiro engine move: read-only kiro engine facts.
     "kiro_engine_status",
+    // #2001: the prompt-cache report (its own row unless the profile reads the fleet).
+    "get_cache_report",
     // #895: self-scheduling, scoped by target in scheduleOpRefusal.
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],
@@ -69,7 +71,7 @@ const BEFORE: Record<string, string[]> = {
     "reply", "react", "edit_message", "download_attachment",
     // #1823: closing its own poll early (reply's `poll`).
     "close_poll",
-    "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models",
+    "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models", "get_cache_report",
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",
     "create_instance", "start_instance", "restart_instance", "wake_instance",
     "task", "list_decisions", "post_decision",

@@ -55,6 +55,7 @@ import {
   ClosePollArgs,
   KiroEngineStatusArgs,
   GetUsageArgs,
+  GetCacheReportArgs,
   ListModelsArgs,
   GetFleetConfigArgs,
   UpdateInstanceConfigArgs,
@@ -148,6 +149,8 @@ export interface OutboundContext {
   getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
   /** Subscription provider IDs used by running or paused fleet/Classic instances. */
   getActiveUsageProviderIds?(): ReadonlySet<string>;
+  /** #2001: the cache report as last worked out (CacheService.published) — never a transcript read. */
+  cacheReportPublished?(window: string): Promise<import("./cache-service.js").CacheReport>;
   /** Effective process state used to annotate cross-instance delivery results. */
   getInstanceStatus?(name: string): "running" | "paused" | "stopped" | "crashed";
   /** #1808: whether `backend` takes this model name (the rule /backend applies too); `choices`: what it offers. */
@@ -1088,6 +1091,27 @@ const getUsage: Handler = async (ctx, rawArgs, respond) => {
     respond(await getUsageSnapshot(v.data.force === true, ctx.getActiveUsageProviderIds?.()));
   } catch (err) {
     respond(null, `Usage fetch failed: ${(err as Error).message}`);
+  }
+};
+
+/**
+ * #2001: the prompt-cache report for an agent. From the last scan (cacheReportPublished: in-memory ledgers, reused
+ * for a minute) — no transcript read and no process on the fleet loop. Who sees what: cacheReportScope.
+ */
+const getCacheReport: Handler = async (ctx, rawArgs, respond, meta) => {
+  const v = validateArgs(GetCacheReportArgs, rawArgs, "get_cache_report");
+  if (!v.ok) { respond(null, v.error); return; }
+  const caller = meta?.instanceName;
+  if (!caller) { respond(null, "get_cache_report: the calling instance is unknown"); return; }
+  if (!ctx.cacheReportPublished) { respond(null, "get_cache_report is unavailable on this fleet"); return; }
+  const { resolveToolSet, cacheReportScope } = await import("./tool-permissions.js");
+  const { cacheReportForTool } = await import("./cache-report-tool.js");
+  const scope = cacheReportScope(resolveToolSet(ctx.fleetConfig?.instances[caller], caller));
+  try {
+    const out = cacheReportForTool(await ctx.cacheReportPublished(v.data.window ?? "7d"), { scope, caller, instance: v.data.instance, top: v.data.top });
+    if ("error" in out && typeof out.error === "string") respond(null, out.error); else respond(out);
+  } catch (err) {
+    respond(null, `get_cache_report failed: ${(err as Error).message}`);
   }
 };
 
@@ -2179,6 +2203,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["close_poll", closePoll],
   ["kiro_engine_status", kiroEngineStatusHandler],
   ["get_usage", getUsage],
+  ["get_cache_report", getCacheReport],
   ["list_models", listModels],
   ["get_instance_logs", getInstanceLogs],
   ["get_fleet_config", getFleetConfig],
