@@ -99,6 +99,11 @@
         "desc": "Per-instance daily spending limits stop the instance at its limit and notify you."
       },
       {
+        "icon": "zap",
+        "name": "Model Failover",
+        "desc": "Auto-switch to a backup model on rate limits with a 5-minute cooldown. Configure model_failover per instance in fleet.yaml."
+      },
+      {
         "icon": "clock",
         "name": "Persistent Schedules",
         "desc": "Cron-based tasks backed by SQLite. Survives restarts. Edit schedules on the web."

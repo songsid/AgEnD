@@ -99,6 +99,11 @@
         "desc": "每個 instance 每日限額，達上限時停止並通知。"
       },
       {
+        "icon": "zap",
+        "name": "Model Failover",
+        "desc": "被限速時自動切換備用 model，5 分鐘冷卻期。在 fleet.yaml 的 model_failover 欄位設定。"
+      },
+      {
         "icon": "clock",
         "name": "持久化排程",
         "desc": "Cron 排程任務，SQLite 儲存，重啟不遺失。也可以在網頁上編輯排程。"
