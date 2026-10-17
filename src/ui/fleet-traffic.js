@@ -206,7 +206,7 @@ export function trafficEdges(items, L, { far = false, max = MAX_EDGES } = {}) {
   return list.map(([key, g], i) => {
     const o = ((i % 7) - 3) * 5;                                                    // neighbours 5 px apart
     const pts = route(L, g.a, g.z, o);
-    return { key, hue: g.hue, phase: g.phase, n: g.n, names: [...new Set(g.names)], d: pathOf(pts), pts, badge: g.n > 1 || g.hue === "team" ? badgeAt(pts) : null };
+    return { key, hue: g.hue, phase: g.phase, n: g.n, names: [...new Set(g.names)], d: pathOf(pts), pts, badge: g.n > 1 ? badgeAt(pts) : null };
   });
 }
 

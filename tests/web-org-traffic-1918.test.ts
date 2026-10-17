@@ -128,7 +128,7 @@ describe("edges", () => {
     const items = [it_(1, "pixel", "nova"), it_(2, "quill", "ember", "delivering"), it_(3, "pixel", "quill"), it_(4, "atlas", "flint")];
     const e = T.trafficEdges(items, L(), { far: true });
     expect(e.map((x: any) => [x.key, x.n, x.hue])).toEqual([["team|box:Platform>box:Web|live", 2, "team"], ["team|top/atlas>box:Research|live".replace("top/", "\u0000top/"), 1, "team"]]);
-    expect(e.every((x: any) => x.badge)).toBe(true);
+    expect(e.map((x: any) => !!x.badge), "×N only when more than one").toEqual([true, false]);
   });
   it("a folded team: its members' lines end at its box, ×N; a line inside it is not drawn", () => {
     const items = [it_(1, "atlas", "nova"), it_(2, "atlas", "juno"), it_(3, "nova", "juno")];

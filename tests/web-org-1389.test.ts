@@ -256,9 +256,10 @@ describe("the page reads once; the stream moves it (#1374)", () => {
   it("one GET /ui/org on opening, none while it stays open; a state change re-renders from the store", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval"] });
     const m = mount(); await vi.advanceTimersByTimeAsync(50); await m;
-    expect(reqs).toEqual([{ method: "GET", url: "/ui/org" }]);
+    // #1918: and the live traffic's snapshot, once (the stream brings the rest; nothing reads on a timer here).
+    expect(reqs).toEqual([{ method: "GET", url: "/ui/org" }, { method: "GET", url: "/ui/traffic" }]);
     await vi.advanceTimersByTimeAsync(10 * 60_000);
-    expect(reqs).toHaveLength(1);
+    expect(reqs).toHaveLength(2);
     vi.useRealTimers();
     // Activity: web-dev starts working.
     app.appStore.set((s: any) => ({ ...s, exec: { ...s.exec, "web-dev": "working" } })); await settle(4);
@@ -272,7 +273,7 @@ describe("the page reads once; the stream moves it (#1374)", () => {
     // A new instance in the status frame: it shows (in no team) without a read.
     app.appStore.set((s: any) => ({ ...s, instances: [...s.instances, { name: "late", status: "running", backend: "codex" }] })); await settle(4);
     expect(names(team("Not in a team"))).toEqual(["loner", "newbie", "late"]);
-    expect(reqs).toHaveLength(1);
+    expect(reqs).toHaveLength(2);
   });
 
   it("an answer that arrives after the person left the tab is dropped", async () => {
@@ -290,7 +291,7 @@ describe("the page reads once; the stream moves it (#1374)", () => {
   it("before the first status frame: a skeleton, not a chart of missing instances; no instances: the empty state", async () => {
     app.appStore.set({ ready: false, instances: [] });
     await mount(); await settle(4);
-    expect(reqs).toEqual([{ method: "GET", url: "/ui/org" }]);       // the structure has arrived; the status has not
+    expect(reqs).toEqual([{ method: "GET", url: "/ui/org" }, { method: "GET", url: "/ui/traffic" }]);       // the structure has arrived; the status has not
     expect(p.root.querySelector(".skeleton")).not.toBeNull();
     expect(p.root.querySelector(".empty")).toBeNull();                // not "No instances yet": it just does not know yet
     app.appStore.set({ ready: true, instances: [] }); await settle(4);
