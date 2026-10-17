@@ -206,6 +206,23 @@ describe("the store (profiles.db instance_identity)", () => {
     s.set("alpha", { show: ["name"] });
     expect(C.IdentityColorStore.all(dir, openDb).get("alpha")).toEqual({ color: "preset:red", show: ["name"] });
   });
+  it("Prism #2003 P2-1: carried over once per database — a pick reset since never comes back on a later connection", () => {
+    const dir = tmp("agend-color-");
+    const first = new Database(join(dir, "profiles.db"));
+    first.exec("CREATE TABLE instance_color (instance_name TEXT PRIMARY KEY, color TEXT NOT NULL, updated_at INTEGER)");
+    first.prepare("INSERT INTO instance_color VALUES ('alpha', 'preset:red', 1)").run();
+    const s1 = new C.IdentityColorStore(() => first);
+    expect(s1.get("alpha").color).toBe("preset:red");                    // carried over
+    expect(s1.set("alpha", { color: null })).toEqual({ ok: true });      // Reset: the row is gone
+    first.close();
+    // A later connection (a fleet restart): the old table is still there, and must not bring red back.
+    const second = new Database(join(dir, "profiles.db"));
+    const s2 = new C.IdentityColorStore(() => second);
+    expect(s2.get("alpha")).toEqual({ color: null, show: null });
+    expect(C.IdentityColorStore.all(dir, () => second).has("alpha")).toBe(false);
+    expect(second.prepare("SELECT COUNT(*) AS n FROM instance_color").get(), "the old table is left as it is").toEqual({ n: 1 });
+    second.close();
+  });
 });
 
 describe("through the fleet: the profile route, the status frame, get_web_appearance", () => {
@@ -257,14 +274,17 @@ describe("through the fleet: the profile route, the status frame, get_web_appear
     db.exec("CREATE TABLE instance_profile (instance_name TEXT PRIMARY KEY, display_name TEXT, avatar_path TEXT, description TEXT, updated_at INTEGER)");
     db.close();
     const r = await call("POST", "/api/profile/alpha", { color: "pink", color_show: ["ring"], card_tagline: "Rolled back", role: "Lead" });
-    expect(r.status).toBe(503);
-    expect(r.body.error).toBe("profile_write_failed");
-    expect(changed).not.toHaveBeenCalled();
-    const { HumanCardStore } = await import("../src/web-card.js");
-    const check = new Database(join(dir, "profiles.db"));
-    expect(new C.IdentityColorStore(() => check).get("alpha"), "the colour was taken back").toEqual({ color: null, show: null });
-    expect(new HumanCardStore(dir, () => check).get("alpha").tagline, "and the card text").toBeNull();
-    check.close();
+    expect([r.status, r.body.error]).toEqual([503, "profile_write_failed"]);
+    expect(changed, "a failed write repaints nothing").not.toHaveBeenCalled();
+    // Prism #2003 P2-2: the SAME fleet, route and cached handle still work for both stores after the rollback.
+    const got = (await call("GET", "/api/profile/alpha")).body;
+    expect([got.color, got.color_show], "the colour was taken back").toEqual([null, null]);
+    expect((await call("GET", "/api/card/alpha")).body.tagline, "and the card text").toBeUndefined();
+    expect((await call("POST", "/api/profile/alpha", { color: "teal", color_show: ["name"], card_tagline: "After" })).status).toBe(200);
+    expect(changed).toHaveBeenCalledTimes(1);
+    const after = (await call("GET", "/api/profile/alpha")).body;
+    expect([after.color, after.color_show]).toEqual(["preset:teal", ["name"]]);
+    expect((await call("GET", "/api/card/alpha")).body.tagline).toEqual({ text: "After", by: "human" });
   });
   it("an agent sets its own colour and places with set_web_theme (identity); a bad one is refused and nothing kept", async () => {
     const { fm } = await fleet();
