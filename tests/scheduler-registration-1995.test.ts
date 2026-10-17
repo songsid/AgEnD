@@ -122,4 +122,93 @@ describe("#1995 cron registration: logged, and repaired when missing", () => {
     expect(runs).toEqual([iso(T + 5 * MIN)]);
     expect(missed()).toEqual([]);
   });
+
+  it("a job lost after its occurrence already ran is re-registered without replaying that occurrence", async () => {
+    start(T - 2 * MIN);
+    const s = scheduler.create(params("25 14 17 10 *"));
+    await vi.advanceTimersByTimeAsync(2 * MIN + 30_000);            // 14:25 runs normally
+    expect(runs).toEqual([iso(T)]);
+    (scheduler as any).jobs.get(s.id).stop(); (scheduler as any).jobs.delete(s.id);
+    await vi.advanceTimersByTimeAsync(8 * MIN);
+    expect(repaired()).toEqual([s.id]);
+    expect(runs).toEqual([iso(T)]);                                  // its handled run id was kept
+    expect(missed()).toEqual([]);
+  });
+
+  it("a job lost after an occurrence was skipped on purpose (still running) is re-registered without replaying it", async () => {
+    start(T - 12 * MIN);
+    const s = scheduler.create(params("*/10 * * * *"));
+    let settle!: () => void;
+    scheduler.shutdown();
+    scheduler = new Scheduler(join(dir, "scheduler.db"), (schedule: Schedule, runId: string) => { runs.push(runId); return new Promise<void>(r => { settle = () => { scheduler.recordRun(schedule.id, "delivered"); r(); }; }); },
+      { ...DEFAULT_SCHEDULER_CONFIG, default_timezone: "Asia/Taipei" }, () => true, () => {}, log);
+    scheduler.init();
+    await vi.advanceTimersByTimeAsync(7 * MIN + 30_000);             // 14:20 starts and keeps running
+    await vi.advanceTimersByTimeAsync(10 * MIN);                     // 14:30 is skipped on purpose (still_running)
+    expect(runs).toEqual([iso(T - 5 * MIN)]);
+    settle();
+    (scheduler as any).jobs.get(s.id).stop(); (scheduler as any).jobs.delete(s.id);
+    await vi.advanceTimersByTimeAsync(5 * MIN);                      // up to 14:35:30: repaired, nothing replayed
+    expect(repaired()).toEqual([s.id]);
+    expect(runs).toEqual([iso(T - 5 * MIN)]);
+    expect(missed()).toEqual([]);
+  });
+
+  it("a never-armed schedule repaired after the wall clock was set back still counts what came due after the start", async () => {
+    vi.setSystemTime(new Date(T - 35 * MIN));                        // 13:50: the row exists before the scheduler starts
+    const s = cli(db => db.create(params("*/5 * * * *"), 100));
+    start(T - 25 * MIN);                                             // 14:00: started (this also registers it)
+    (scheduler as any).jobs.get(s.id).stop(); (scheduler as any).jobs.delete(s.id); (scheduler as any).armedSince.delete(s.id);
+    await vi.advanceTimersByTimeAsync(50_000);                       // 14:00:50: no check yet, and nothing armed it
+    vi.setSystemTime(new Date(T - 75 * MIN + 5000));                 // the wall clock is set back to 13:10:05
+    await vi.advanceTimersByTimeAsync(11_000);                       // the first check repairs it
+    expect(repaired()).toEqual([s.id]);
+    const armed = (scheduler as any).armedSince.get(s.id);
+    expect(armed.mono).toBeLessThanOrEqual(performance.now());       // never a monotonic instant in the future
+    (scheduler as any).jobs.get(s.id).stop(); (scheduler as any).jobs.delete(s.id);   // and 13:15's tick is lost again
+    await vi.advanceTimersByTimeAsync(9.5 * MIN);                    // 13:19:30: 13:15 came due after the start; caught up
+    // 13:55 is the startup catch-up (created 13:50, started 14:00). After the clock went back, 13:10 and 13:15 both came
+    // due after the start in today's frame, so both run; with a start baseline faked from the stepped wall
+    // clock (a monotonic instant in the future), neither would be.
+    expect(runs).toEqual([iso(T - 30 * MIN), iso(T - 75 * MIN), iso(T - 70 * MIN)]);
+    expect(missed()).toEqual([iso(T - 75 * MIN)]);                   // 13:10 by the check; 13:15 by the job the check re-registered
+  });
+
+  it("re-enabled outside this process with no reload, never registered: nothing from while it was disabled is caught up", async () => {
+    vi.setSystemTime(new Date(T - 30 * MIN));
+    const s = cli(db => db.create(params("25 14 17 10 *"), 100));
+    cli(db => db.update(s.id, { enabled: false }));
+    start(T - 25 * MIN);                                             // 14:00: it is disabled, so no job
+    await vi.advanceTimersByTimeAsync(26 * MIN);                     // 14:25 passes while disabled
+    cli(db => db.update(s.id, { enabled: true }));                   // 14:26: enabled, and the reload is lost
+    await vi.advanceTimersByTimeAsync(10 * MIN);
+    expect(repaired()).toEqual([s.id]);
+    expect(runs).toEqual([]);
+    expect(missed()).toEqual([]);
+  });
+
+  it("disabled and re-enabled outside this process with no reload at all: the check keeps working afterwards", async () => {
+    start(T - 12 * MIN);
+    const s = scheduler.create(params("*/10 * * * *"));
+    cli(db => db.update(s.id, { enabled: false }));                 // no reload: the job stays registered
+    await vi.advanceTimersByTimeAsync(9 * MIN);                      // 14:20 passes while disabled; the check sees it
+    cli(db => db.update(s.id, { enabled: true }));                   // and no reload again
+    await vi.advanceTimersByTimeAsync(2 * MIN);                      // the check sees it enabled: armed from ~14:24
+    (scheduler as any).jobs.get(s.id).stop();                        // the job stays registered, but 14:30's tick is lost
+    await vi.advanceTimersByTimeAsync(10 * MIN);
+    expect(runs).toEqual([iso(T + 5 * MIN)]);                        // 14:30 caught up; 14:20 never
+    expect(missed()).toEqual([iso(T + 5 * MIN)]);
+  });
+
+  it("disabled in this process (update), re-enabled through the CLI with no reload: nothing from while it was disabled", async () => {
+    start(T - 12 * MIN);
+    const s = scheduler.create(params("*/10 * * * *"));
+    scheduler.update(s.id, { enabled: false });                     // the job is stopped and its history cleared
+    vi.setSystemTime(new Date(Date.now() + 9 * MIN));                // 14:22: 14:20 passed while disabled, before any check
+    cli(db => db.update(s.id, { enabled: true }));                   // re-enabled outside, and no reload
+    await vi.advanceTimersByTimeAsync(10 * MIN);                     // repaired; 14:30 runs; 14:20 never
+    expect(repaired()).toEqual([s.id]);
+    expect(runs).toEqual([iso(T + 5 * MIN)]);
+    expect(missed()).toEqual([]);
+  });
 });

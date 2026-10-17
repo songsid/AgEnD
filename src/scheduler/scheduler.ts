@@ -88,6 +88,12 @@ export class Scheduler {
   private missTimer: ReturnType<typeof setTimeout> | null = null;
   /** #1995: when this process's scheduler started (both clocks): the earliest a repaired registration is armed from. */
   private startedAt: { wall: number; mono: number } | null = null;
+  /**
+   * #1995: schedules this process has seen disabled (in a reload or the check) and not yet seen enabled again. The first
+   * time one is seen enabled — whichever path sees it, with or without a reload — it is armed afresh from that moment,
+   * so nothing from while it was disabled is ever caught up.
+   */
+  private seenDisabled = new Set<string>();
 
   constructor(
     dbPath: string,
@@ -215,6 +221,8 @@ export class Scheduler {
     this.forget(id);
     if (updated.enabled) {
       this.registerJob(updated, "update");
+    } else {
+      this.markDisabled(id);
     }
     return updated;
   }
@@ -475,7 +483,7 @@ export class Scheduler {
       } else {
         // #1995: disabled outside this process (the CLI writes the database, then reloads): its tick history no longer
         // applies, so re-enabling it later never catches up an occurrence from while it was disabled.
-        this.forget(schedule.id);
+        this.markDisabled(schedule.id);
       }
     }
     // #1426: pending retries survive a restart (and a reload): re-armed from what was persisted.
@@ -490,6 +498,8 @@ export class Scheduler {
       return;
     }
     if (!schedule.cron) return;
+    // Seen disabled since it was last armed: it is re-enabled now, and armed from now.
+    if (this.seenDisabled.delete(schedule.id)) this.armedSince.delete(schedule.id);
     if (!this.armedSince.has(schedule.id)) this.armedSince.set(schedule.id, { wall: Date.now(), mono: performance.now() });
     const job = new Cron(schedule.cron, { timezone: schedule.timezone }, currentJob => {
       // currentRun() is callback wall-clock time, not the cron occurrence. A
@@ -526,8 +536,15 @@ export class Scheduler {
     this.log.info({ scheduleId: schedule.id, source, cron: schedule.cron, timezone: schedule.timezone, next }, "Cron schedule registered");
   }
 
+  /** #1995: seen disabled: its tick history no longer applies, and its next enable is a new arming boundary. */
+  private markDisabled(id: string): void {
+    this.forget(id);
+    this.seenDisabled.add(id);
+  }
+
   /** #1995: the schedule was edited, re-enabled or deleted: its in-process tick history no longer applies. */
   private forget(id: string): void {
+    this.seenDisabled.delete(id);
     this.handled.delete(id);
     this.armedSince.delete(id);
     this.missSeen.delete(id);
@@ -568,19 +585,26 @@ export class Scheduler {
     const now = Date.now();
     for (const schedule of this.db.list()) {
       if (!schedule.enabled || !schedule.cron || schedule.at) {
-        if (!schedule.enabled) this.forget(schedule.id); else this.missSeen.delete(schedule.id);
+        if (!schedule.enabled) this.markDisabled(schedule.id); else this.missSeen.delete(schedule.id);
         continue;
+      }
+      if (this.seenDisabled.delete(schedule.id)) {
+        // Re-enabled outside this process and no reload has said so: armed from now, as a reload would have done.
+        this.forget(schedule.id);
+        this.armedSince.set(schedule.id, { wall: now, mono: nowMono });
       }
       if (!this.jobs.has(schedule.id)) {
         // #1995: enabled in the database but no job in this process (a registration that never happened, or was lost).
-        // Register it now. It counts as armed from when it was created, but never earlier than this scheduler's start,
-        // so an occurrence it missed since then is caught up as usual.
-        const createdMs = Date.parse(schedule.created_at.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(schedule.created_at) ? schedule.created_at : schedule.created_at + "Z");
-        const start = this.startedAt ?? { wall: now, mono: nowMono };
-        const wall = Number.isFinite(createdMs) && createdMs > start.wall && createdMs <= now ? createdMs : start.wall;
-        this.forget(schedule.id);
-        this.armedSince.set(schedule.id, { wall, mono: nowMono - (now - wall) });
-        this.log.warn({ scheduleId: schedule.id, cron: schedule.cron, armedFrom: new Date(wall).toISOString() }, "Cron schedule was not registered — registering");
+        // Register it now, keeping every bit of state it already has: the run ids it handled and when it was armed.
+        // Only one this process never armed gets a baseline: this scheduler's real start (both clocks), moved to its
+        // creation when that is later — never earlier than either, and never a monotonic instant in the future.
+        if (!this.armedSince.has(schedule.id)) {
+          const createdMs = Date.parse(schedule.created_at.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(schedule.created_at) ? schedule.created_at : schedule.created_at + "Z");
+          const start = this.startedAt ?? { wall: now, mono: nowMono };
+          const shift = Number.isFinite(createdMs) && createdMs > start.wall ? createdMs - start.wall : 0;
+          this.armedSince.set(schedule.id, { wall: start.wall + shift, mono: Math.min(nowMono, start.mono + shift) });
+        }
+        this.log.warn({ scheduleId: schedule.id, cron: schedule.cron, armedFrom: new Date(this.armedSince.get(schedule.id)!.wall).toISOString() }, "Cron schedule was not registered — registering");
         try { this.registerJob(schedule, "repair"); } catch (err) {
           this.log.warn({ scheduleId: schedule.id, err: (err as Error)?.message ?? String(err) }, "Cron schedule could not be registered");
           continue;
