@@ -108,6 +108,20 @@ describe("the outbox's consumed event", () => {
     expect(events).toEqual([{ deliveryId: r.deliveryId }]);
     outbox.close();
   });
+  it("the upgrade from uncertain is a consumed mark too: \"consumed\" after its \"state\" delivered", () => {
+    const outbox = new DeliveryOutbox(join(scratch(), "outbox.db"), "manager-1");
+    const r = outbox.admit({ operationId: "op-u", sourceKey: "s:op-u", sourceInstance: "atlas", sourceDaemonBootId: "sb", targetInstance: "quill", kind: "fleet_inbound",
+      correlationId: "cid", payload: { type: "fleet_inbound", content: "work", meta: { request_kind: "task" } } }).delivery;
+    const c = outbox.claimNext("manager-1", () => "boot-1", new Set())!;
+    outbox.begin(r.deliveryId, "boot-1", c.attemptNo, { backend: "claude-code", backendVersion: null, windowId: "@w", transcriptPath: "/t", transcriptOffset: 0, transcriptSessionId: "/t", submissionMode: "native_queue_handoff" });
+    outbox.complete(r.deliveryId, "boot-1", c.attemptNo, "uncertain", "no proof");
+    const events: string[] = [];
+    outbox.on("state", (e: any) => { if (e.deliveryId === r.deliveryId) events.push(`state:${e.state}`); });
+    outbox.on("consumed", (e: any) => { if (e.deliveryId === r.deliveryId) events.push("consumed"); });
+    expect(outbox.markConsumed(r.deliveryId, "boot-1", c.attemptNo, "turn", "e")).toBe("upgraded");
+    expect(events).toEqual(["state:delivered", "consumed"]);
+    outbox.close();
+  });
 });
 
 describe("FleetManager: SSE traffic and GET /ui/traffic", () => {

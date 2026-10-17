@@ -1181,11 +1181,49 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oc-mini-team.match { stroke: var(--focus); stroke-width: 14; }
 .oc-mini-hit { fill: var(--focus); }
 .oc-mini-view { fill: none; stroke: var(--focus); stroke-width: 10; }
+/* #1918 phase 3: live traffic. Kind hues kept apart from the state colours (ok = working/idle, warn = needs you, danger). */
+.oc { --fx-task: #b794f6; --fx-send: #2dd4bf; --fx-report: #f472b6; --fx-broadcast: #fb923c; --fx-team: #cbd5e1; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .oc { --fx-task: #7c3aed; --fx-send: #0f766e; --fx-report: #be185d; --fx-broadcast: #c2410c; --fx-team: #475569; } }
+:root[data-theme="light"] .oc { --fx-task: #7c3aed; --fx-send: #0f766e; --fx-report: #be185d; --fx-broadcast: #c2410c; --fx-team: #475569; }
+.oc-flow { fill: none; stroke-width: 2.5; stroke-linecap: round; }
+.oc-flow-halo { fill: none; stroke: var(--bg); stroke-width: 6; stroke-linecap: round; opacity: 0.85; }
+.oc-flow.h-task { stroke: var(--fx-task); } .oc-flow.h-send { stroke: var(--fx-send); } .oc-flow.h-report { stroke: var(--fx-report); }
+.oc-flow.h-broadcast { stroke: var(--fx-broadcast); } .oc-flow.h-team { stroke: var(--fx-team); stroke-width: 3.5; }
+.oc-flow.ph-live { stroke-dasharray: 7 6; animation: oc-dash 0.9s linear infinite; }
+.oc-flow.ph-queued { stroke-dasharray: 2 5; opacity: 0.8; }
+.oc-flow.ph-fading { stroke: var(--text-3); animation: oc-fade 3s ease-out forwards; }
+.oc-ah.h-task { fill: var(--fx-task); } .oc-ah.h-send { fill: var(--fx-send); } .oc-ah.h-report { fill: var(--fx-report); }
+.oc-ah.h-broadcast { fill: var(--fx-broadcast); } .oc-ah.h-team { fill: var(--fx-team); } .oc-ah.h-fading { fill: var(--text-3); }
+.oc-pulse.h-task { fill: var(--fx-task); } .oc-pulse.h-send { fill: var(--fx-send); } .oc-pulse.h-report { fill: var(--fx-report); }
+.oc-pulse.h-broadcast { fill: var(--fx-broadcast); } .oc-pulse.h-team { fill: var(--fx-team); }
+.oc-fl.dim { opacity: 0.18; }
+.oc-badge rect { fill: var(--surface-2); stroke: var(--border); } .oc-badge text { fill: var(--text-2); font-size: 10.5px; }
+@keyframes oc-dash { to { stroke-dashoffset: -26; } }
+@keyframes oc-fade { from { opacity: 0.8; } to { opacity: 0.15; } }
+.oc-legend { position: absolute; left: var(--s-3); bottom: var(--s-3); display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); max-width: calc(100% - 220px);
+  font-size: var(--fs-xs); color: var(--text-2); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 6px 10px; }
+.oc-lg { display: inline-flex; align-items: center; gap: 6px; }
+.oc-sw { width: 18px; height: 3px; border-radius: 2px; display: inline-block; background: var(--text-3); }
+.oc-sw.h-task { background: var(--fx-task); } .oc-sw.h-send { background: var(--fx-send); } .oc-sw.h-report { background: var(--fx-report); } .oc-sw.h-broadcast { background: var(--fx-broadcast); }
+.oc-sw.ph-queued { background: repeating-linear-gradient(90deg, var(--text-2) 0 3px, transparent 3px 7px); }
+.oc-sw.ph-fading { opacity: 0.5; }
+.oc-live { gap: 6px; }
+.oc-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.oc-live.on .oc-live-dot { background: var(--ok); }
+.org-sending { font-size: var(--fs-xs); color: var(--text-2); overflow-wrap: anywhere; }
+.org-send.k-task { color: var(--fx-task); } .org-send.k-report { color: var(--fx-report); } .org-send.k-broadcast { color: var(--fx-broadcast); }
+.org-send.k-send, .org-send.k-query, .org-send.k-update { color: var(--fx-send); }
+@media (prefers-reduced-motion: reduce) {
+  .oc-flow.ph-live { animation: none; stroke-dasharray: none; }
+  .oc-flow.ph-fading { animation: none; opacity: 0.4; }
+  .oc-pulse { display: none; }
+}
 @media (max-width: 640px) {
   .oc-stage { height: calc(100dvh - 248px); min-height: 340px; }
   .oc-find { flex: 1 1 150px; }
   .oc-tools { margin-left: 0; width: 100%; flex-wrap: nowrap; }
   .oc-mini { display: none; }
+  .oc-legend { max-width: calc(100% - 24px); gap: 2px var(--s-2); }
 }
 /* A phone: Fleet's five tabs fit when only the open one shows its label (the others keep theirs for screen readers). */
 @media (max-width: 479px) {

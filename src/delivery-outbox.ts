@@ -1521,6 +1521,8 @@ export class DeliveryOutbox extends EventEmitter {
     if (result === "upgraded") {
       this.emit("state", { deliveryId, state: "delivered" });
       if (cancelledNotice) this.emit("state", { deliveryId: cancelledNotice, state: "cancelled" });
+      // #1918 review (P3): the upgrade from uncertain writes consumed_at too: it is a consumed mark, after its state.
+      this.emit("consumed", { deliveryId });
     }
     return result;
   }
