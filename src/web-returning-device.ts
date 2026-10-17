@@ -26,6 +26,12 @@ export const DEVICE_COOKIE = "agend_device";
 export const DEVICE_COOKIE_SECURE = "__Host-agend_device";
 export const DEVICE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
 export const MAX_RETURNING_DEVICES = 16;
+/**
+ * #1920 step 4b: a guest's devices are counted apart, so guests never push an admin's device out (nor the reverse) —
+ * as their sessions: the least recently remembered of the account's first, then of all guests.
+ */
+export const MAX_GUEST_RETURNING_DEVICES = 64;
+export const MAX_GUEST_RETURNING_DEVICES_PER_ACCOUNT = 4;
 
 const ID_PATTERN = /^[0-9a-f]{32}$/;
 const SIG_PATTERN = /^[0-9a-f]{64}$/;
@@ -34,6 +40,12 @@ const HASH_PATTERN = /^[0-9a-f]{64}$/;
 /** What the registry knows about one returning device. No cookie value; the owner minus the live binding. */
 export interface ReturningDevice {
   readonly idHash: string;
+  /**
+   * #1920 step 4b: "guest" — a guest's device; a code it asks for is a guest code, for that account, by DM. Absent: an
+   * admin's (every device before guests), whose code goes as before.
+   */
+  readonly tier?: "guest";
+  /** A guest's has no chat (its code goes by DM): `chatId` is "". */
   readonly owner: { readonly adapterId: string; readonly userId: string; readonly chatId: string; readonly threadId?: string };
   readonly surface: SessionSurface;
   readonly label: string;
@@ -54,6 +66,7 @@ function isDevice(v: unknown): v is ReturningDevice {
   if (!v || typeof v !== "object") return false;
   const d = v as Record<string, unknown>, o = d.owner as Record<string, unknown> | undefined;
   return typeof d.idHash === "string" && HASH_PATTERN.test(d.idHash)
+    && (d.tier === undefined || d.tier === "guest")
     && !!o && typeof o.adapterId === "string" && typeof o.userId === "string" && typeof o.chatId === "string"
     && (o.threadId === undefined || typeof o.threadId === "string")
     && (d.surface === "local" || d.surface === "gateway")
@@ -79,18 +92,31 @@ export class ReturningDevices {
 
   /** Record this browser as a returning device of `owner`; the returned value is the cookie, given out once. */
   remember(owner: LoginCodeOwner, input: { surface: SessionSurface; label: string; tokenEpoch: string; webToken: string }): string {
+    return this.add({ adapterId: owner.adapterId, userId: owner.userId, chatId: owner.chatId, ...(owner.threadId !== undefined ? { threadId: owner.threadId } : {}) }, input);
+  }
+
+  /** #1920 step 4b: a guest's returning device (its own caps); its code requests are guest codes, by DM. */
+  rememberGuest(account: { adapterId: string; userId: string }, input: { surface: SessionSurface; label: string; tokenEpoch: string; webToken: string }): string {
+    return this.add({ adapterId: account.adapterId, userId: account.userId, chatId: "" }, input, "guest");
+  }
+
+  private add(owner: ReturningDevice["owner"], input: { surface: SessionSurface; label: string; tokenEpoch: string; webToken: string }, tier?: "guest"): string {
     const deviceId = randomBytes(16).toString("hex");
     const now = this.now();
     const device: ReturningDevice = {
-      idHash: sha256(deviceId),
-      owner: { adapterId: owner.adapterId, userId: owner.userId, chatId: owner.chatId, ...(owner.threadId !== undefined ? { threadId: owner.threadId } : {}) },
+      idHash: sha256(deviceId), ...(tier ? { tier } : {}), owner,
       surface: input.surface, label: input.label.slice(0, 80), tokenEpoch: input.tokenEpoch, created: now, expires: now + DEVICE_MAX_AGE_MS,
     };
     this.byHash.set(device.idHash, device);
-    while (this.byHash.size > MAX_RETURNING_DEVICES) {
-      const oldest = [...this.byHash.values()].reduce((a, b) => (a.created <= b.created ? a : b));
-      this.byHash.delete(oldest.idHash);
-    }
+    const oldestOf = (only: (d: ReturningDevice) => boolean, max: number): void => {
+      for (let kind = [...this.byHash.values()].filter(only); kind.length > max; kind = [...this.byHash.values()].filter(only)) {
+        this.byHash.delete(kind.reduce((a, b) => (a.created <= b.created ? a : b)).idHash);
+      }
+    };
+    if (tier === "guest") {
+      oldestOf(d => d.tier === "guest" && d.owner.adapterId === owner.adapterId && d.owner.userId === owner.userId, MAX_GUEST_RETURNING_DEVICES_PER_ACCOUNT);
+      oldestOf(d => d.tier === "guest", MAX_GUEST_RETURNING_DEVICES);
+    } else oldestOf(d => d.tier !== "guest", MAX_RETURNING_DEVICES);
     this.persist();
     return `${deviceId}.${sign(deviceId, input.webToken)}`;
   }
@@ -106,6 +132,26 @@ export class ReturningDevices {
     const device = this.byHash.get(sha256(id));
     if (!device || device.tokenEpoch !== tokenEpoch || this.now() >= device.expires) return null;
     return device;
+  }
+
+  /**
+   * #1920 §5.4: a guest's own `/web revoke` — that account's guest devices only; with no account (guest sign-in turned
+   * off), every guest's. Never an admin's. Whether that holds after a restart.
+   */
+  revokeGuest(account?: { adapterId: string; userId: string }): { count: number; durable: boolean } {
+    let count = 0;
+    for (const d of [...this.byHash.values()]) {
+      if (d.tier === "guest" && (!account || (d.owner.adapterId === account.adapterId && d.owner.userId === account.userId))) { this.byHash.delete(d.idHash); count++; }
+    }
+    return { count, durable: count ? this.persist() : true };
+  }
+
+  /**
+   * #2095 review: this exact record is still the registry's — not revoked (by either revoke), expired or of an old token
+   * since it was verified. A request that awaited (its body, a DM) asks again before it acts.
+   */
+  current(device: ReturningDevice, tokenEpoch: string): boolean {
+    return this.byHash.get(device.idHash) === device && this.now() < device.expires && device.tokenEpoch === tokenEpoch;
   }
 
   /** `/dashboard revoke`: no browser may ask for a code any more. Whether that holds after a restart. */

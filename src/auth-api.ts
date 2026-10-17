@@ -72,6 +72,8 @@ export interface AuthApiContext {
   onWebLogin?(info: { label: string; surface: "local" | "gateway"; tier: SessionTier; handle: string; owner?: { adapterId: string; userId: string } }): void;
   /** #1570: record this browser as a returning device of the code's owner; the cookie value, or null when not kept. */
   rememberReturningDevice?(owner: LoginCodeOwner, input: { surface: "local" | "gateway"; label: string }): string | null;
+  /** #1920 step 4b: a guest's sign-in makes this browser a guest's returning device (its own caps). The cookie, or null. */
+  rememberGuestDevice?(account: { adapterId: string; userId: string }, input: { surface: "local" | "gateway"; label: string }): string | null;
   /** #1827: a sign-in as this account — its display name then is the web name it starts with. */
   noteWebSignIn?(account: LoginCodeRecipient): void;
   /** #1570: the returning device a cookie value proves, or null. */
@@ -322,7 +324,10 @@ export function handleAuthRequest(
       // #1570: a code delivered privately to its owner makes this browser a returning device (a separate cookie; the
       // session id above is unrelated to it). A code with no owner (`agend web --code`) does not.
       let device: string | null = null;
-      try { device = result.owner ? ctx.rememberReturningDevice?.(result.owner, { surface: record.surface, label }) ?? null : null; } catch (err) { ctx.logger.debug({ err }, "returning device not recorded"); }
+      try {
+        device = result.tier === "guest" && account ? ctx.rememberGuestDevice?.(account, { surface: record.surface, label }) ?? null
+          : result.owner ? ctx.rememberReturningDevice?.(result.owner, { surface: record.surface, label }) ?? null : null;
+      } catch (err) { ctx.logger.debug({ err }, "returning device not recorded"); }
       const secure = isSecureRequest(gateReq);
       const session = buildSessionCookie(sessionId, secure, (record.absoluteExpiry - record.created) / 1000);
       json(res, 200, { ok: true, csrf: csrfTokenFor(sessionId), tier: record.tier, expiresAt: record.absoluteExpiry }, {

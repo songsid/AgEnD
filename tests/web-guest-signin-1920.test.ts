@@ -4,7 +4,7 @@
  *   only when their scope holds something; once a minute at most; never posted where they asked.
  * - Guests' codes are their own store: a guest's /web never withdraws an admin's code.
  * - A guest code signs in only while the account is still a guest with something in scope; its sign-in is said in
- *   General (who, how many agents); it makes no returning device (later step).
+ *   General (who, how many agents); it makes the browser a guest's returning device (step 4b, web-guest-devices-1920).
  * - A guest's `/web revoke` ends its own sessions and code only; an admin's still ends everyone's.
  * - The channel copy of a guest's web message says "(guest)" after the name.
  * Rig: a real FleetManager with no fleet, as login-code-copy-1586 (spawners, tmux, backend and inspector mocked).
@@ -302,7 +302,7 @@ describe("live: a guest code at /auth/login", () => {
     const notify = vi.spyOn(h.fm as any, "notifyFleetError").mockReturnValue(true);
     return { ...h, port, notify, close: () => new Promise<void>((r) => h.s.healthServer.close(() => r())) };
   }
-  it("signs in as a guest bound to the account; said in General; no returning device", async () => {
+  it("signs in as a guest bound to the account; said in General; a guest's returning device", async () => {
     const h = await live();
     try {
       await h.slash("alice");
@@ -310,7 +310,7 @@ describe("live: a guest code at /auth/login", () => {
       const r = await post(h.port, { code });
       expect(r.status).toBe(200);
       expect(JSON.parse(r.body)).toMatchObject({ ok: true, tier: "guest" });
-      expect(r.cookies.some((c) => /agend_device/.test(c)), "no returning device for a guest yet").toBe(false);
+      expect(r.cookies.some((c) => /agend_device/.test(c)), "a guest's returning device (4b)").toBe(true);
       const sessions = h.s.webSessions.list(undefined, (x: any) => x.tier === "guest");
       expect(sessions).toHaveLength(1);
       expect(h.notify.mock.calls.map((c: any[]) => c[0]).find((x: string) => x.includes("guest"))).toMatch(/^👤 A guest, .+ signed in to the web \(.+; 2 agents/);

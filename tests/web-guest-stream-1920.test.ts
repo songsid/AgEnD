@@ -7,6 +7,12 @@
  * - the poll: the projected status alone; a file: only when its stored instance is in scope.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+// #2095 CI: pino's worker opens daemon.log in the scratch home late — an afterAll rmSync walking it met ENOTEMPTY (as
+// #1778/#1779). This file has no use for the log: the logger is silent, so nothing writes there once the work is done.
+vi.mock("../src/logger.js", async original => {
+  const silent: Record<string, unknown> = new Proxy({}, { get: (_t, key) => (key === "child" ? () => silent : key === "level" ? "silent" : () => {}) });
+  return { ...await original<typeof import("../src/logger.js")>(), createLogger: () => silent };
+});
 import { request, type ClientRequest } from "node:http";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
