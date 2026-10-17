@@ -61,9 +61,9 @@ export interface ClassicChannel {
   toolProgress?: InstanceConfig["tool_progress"];
   replyCompletionGuard?: boolean;
   /**
-   * Echo owner web-chat messages into this channel (#1320 part B).
-   * Default off; only an explicit `true` opts in. Load/save preserve it;
-   * anything non-boolean in YAML reads as off (the validator rejects it).
+   * Echo owner web-chat messages into this channel (#1320 part B). #2054: unset (`undefined`) means on, following the
+   * fleet-wide `web.echo_to_channel` (classicWebEchoOn); an explicit `false` keeps the room off, an explicit `true` on.
+   * Load/save preserve an explicit value; anything non-boolean in YAML reads as off (the validator rejects it).
    */
   webEcho?: boolean;
   /**
@@ -167,6 +167,14 @@ export function inferClassicChannelType(channelId: string): "telegram" | "discor
  * Persists to ~/.agend/classicBot.yaml with per-channel backend override.
  * YAML keys are channelId to avoid duplicate name collisions.
  */
+/**
+ * #2054: whether a ClassicBot room copies web chat into its channel. The room's own `web_echo` wins; unset follows the
+ * fleet-wide `web.echo_to_channel` (default on), so a fleet that turned web echo off does not echo into rooms either.
+ */
+export function classicWebEchoOn(roomWebEcho: boolean | undefined, fleetEchoToChannel: boolean | undefined): boolean {
+  return roomWebEcho ?? fleetEchoToChannel !== false;
+}
+
 export class ClassicChannelManager {
   /** Keyed by compositeKey(channelId, adapterId) — see {@link ClassicChannel.adapterId}. */
   private channels = new Map<string, ClassicChannel>();
@@ -323,7 +331,7 @@ export class ClassicChannelManager {
               contextLines: val.context_lines,
               toolProgress: val.tool_progress,
               replyCompletionGuard: val.reply_completion_guard,
-              webEcho: val.web_echo === true,
+              webEcho: val.web_echo === undefined ? undefined : val.web_echo === true,
               backendOptions: this.readBackendOptions(val.backend_options, key),
               createdAt: val.createdAt ?? "",
               createdBy: val.createdBy ?? "",
@@ -439,7 +447,7 @@ export class ClassicChannelManager {
       if (ch.contextLines) entry.context_lines = ch.contextLines;
       if (ch.toolProgress !== undefined) entry.tool_progress = ch.toolProgress;
       if (ch.replyCompletionGuard !== undefined) entry.reply_completion_guard = ch.replyCompletionGuard;
-      if (ch.webEcho) entry.web_echo = true;
+      if (ch.webEcho !== undefined) entry.web_echo = ch.webEcho;            // #2054: an explicit off survives a save
       if (ch.backendOptions && Object.keys(ch.backendOptions).length > 0) entry.backend_options = ch.backendOptions;
       if (ch.collab) entry.collab = ch.collab;
       if (ch.preTaskCommand) entry.pre_task_command = ch.preTaskCommand;
