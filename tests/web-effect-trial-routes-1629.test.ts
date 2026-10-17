@@ -153,10 +153,20 @@ describe("#1629 local-admin trial API (no card or runtime mount)", () => {
     for (const body of ["{", Buffer.from([0xff])]) expect((await f.call("POST", path, a.headers, body)).status).toBe(400);
     expect(await f.call("POST", path, a.headers, " ".repeat(16385)).then(() => "accepted", e => e.code)).toBe("ECONNRESET"); expect(start).not.toHaveBeenCalled();
   });
-  it("automatic trial reads are passive and cannot extend an idle session; start/stop stay human activity", async () => {
+  it("passive Stop still requires CSRF/Origin and the same local admin", async () => {
+    const f = await fixture(), a = f.session(), r = await f.start(a), path = `${rootPath}/${r.body.trial}/stop?ownerEpoch=${a.epoch}`;
+    for (const headers of [{ cookie: a.headers.cookie }, { ...a.headers, origin: "http://evil.example" }, { ...a.headers, "sec-fetch-site": "cross-site" }]) expect((await f.call("POST", path, headers, "{}")).status).toBe(401);
+    expect((await f.call("GET", f.url(r.body.trial, "resource", a.epoch), a.headers)).status).toBe(200);
+    const b = f.session("bob", "read"); expect((await f.call("POST", `${rootPath}/${r.body.trial}/stop?ownerEpoch=${b.epoch}`, b.headers, "{}")).status).toBe(403);
+    expect((await f.call("POST", path, a.headers, "{}")).status).toBe(200);
+    for (const method of ["GET", "HEAD", "PUT", "DELETE", "PATCH"]) expect(isPassiveWebRead(method, `${rootPath}/${r.body.trial}/stop`)).toBe(false);
+    for (const path of [`${rootPath}/${r.body.trial}/stop/extra`, `${rootPath}/${r.body.trial}/stop/`, `${rootPath}/${"A".repeat(32)}/stop`, `${rootPath}/${"a".repeat(31)}/stop`, `${rootPath}/${"a".repeat(33)}/stop`, `${rootPath}/bad/stop`, `${rootPath}/start`, "/ui/effects/apply"]) expect(isPassiveWebRead("POST", path)).toBe(false);
+  });
+  it("automatic trial reads and Stop do not extend idle expiry; Start stays human activity", async () => {
     const f = await fixture(1000), a = f.session(), r = await f.start(a); f.wall(800);
     for (const part of ["resource", "poster.png", "profile"]) { const p = f.url(r.body.trial, part, a.epoch); expect(isPassiveWebRead("GET", new URL(p, f.origin).pathname)).toBe(true); expect((await f.call("GET", p, a.headers)).status).toBe(200); }
-    expect(a.record.lastSeen).toBe(0); expect(isPassiveWebRead("POST", `${rootPath}/start`)).toBe(false); expect(isPassiveWebRead("POST", `${rootPath}/${r.body.trial}/stop`)).toBe(false);
+    expect(a.record.lastSeen).toBe(0); expect(isPassiveWebRead("POST", `${rootPath}/start`)).toBe(false); expect(isPassiveWebRead("POST", `${rootPath}/${r.body.trial}/stop`)).toBe(true);
+    expect((await f.call("POST", `${rootPath}/${r.body.trial}/stop?ownerEpoch=${a.epoch}`, a.headers, "{}")).status).toBe(200); expect(a.record.lastSeen).toBe(0);
     f.wall(1001); expect((await f.call("GET", f.url(r.body.trial, "resource", a.epoch), a.headers)).status).toBe(401);
   });
   it.each(["revoke", "expiry", "token", "same-person-cookie", "session-store", "css"])("held body rechecks current session/CSS before start: %s", async change => {

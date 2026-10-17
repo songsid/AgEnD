@@ -25,6 +25,15 @@ describe("#1629 synchronous auth revocation observations", () => {
     expect(await h.auth.canWrite()).toBe(tier === "admin"); expect(await h.auth.sessionHandle()).toBe("b".repeat(16)); expect(await h.auth.csrf()).toBe("private-csrf"); expect(h.nativeFetch).toHaveBeenCalledOnce();
     await h.auth.signOut(); expect(await h.auth.canWrite()).toBe(false);
   });
+  it.each([["admin", "local", true], ["read", "local", false], ["admin", "gateway", false], ["admin", undefined, false]])("Trial display hint uses the same server session: %s %s", async (tier, surface, allowed) => {
+    const h = fixture(); h.nativeFetch.mockResolvedValueOnce(reply(200, { csrf: "private-csrf", handle: "b".repeat(16), tier, surface }));
+    const value = await h.auth.trialSession(); expect(value).toEqual({ epoch: "b".repeat(16), localAdmin: allowed }); expect(Object.isFrozen(value)).toBe(true);
+    expect(await h.auth.sessionHandle()).toBe("b".repeat(16)); expect(await h.auth.csrf()).toBe("private-csrf"); expect(h.nativeFetch).toHaveBeenCalledOnce();
+    await h.auth.signOut(); expect(await h.auth.trialSession()).toBeNull();
+  });
+  it.each([undefined, "", "a".repeat(15), "A".repeat(16)])("Trial display hint refuses malformed handle %s", async handle => {
+    const h = fixture(); h.nativeFetch.mockResolvedValueOnce(reply(200, { csrf: "private-csrf", handle, tier: "admin", surface: "local" })); expect(await h.auth.trialSession()).toBeNull();
+  });
   it("sign-out notifies synchronously before its first await or native request", async () => {
     const h = fixture(), pending = held<any>(), fn = vi.fn((_event: any) => { h.order.push("revoked"); });
     h.auth.onSessionEnd(fn); h.nativeFetch.mockImplementationOnce(() => { h.order.push("csrf-request"); return pending.promise; });
