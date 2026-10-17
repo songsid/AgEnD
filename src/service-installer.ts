@@ -456,7 +456,7 @@ function replaceUnitFile(unitPath: string, text: string): void {
 }
 
 export type SystemUnitRefresh =
-  | { kind: "updated"; execStart: string }
+  | { kind: "updated"; execStart?: string; oomPolicyAdded?: boolean }
   | { kind: "current" }
   | { kind: "foreign"; reason: string }
   | { kind: "unreadable" };
@@ -489,10 +489,20 @@ export function refreshSystemUnitExecStart(unitPath: string, vars: ServiceVars, 
     && (words.length === 3 ? inside(words[0]) : words.length === 4 && /(^|\/)node$/.test(words[0]) && inside(words[1]));
   if (!starts) return { kind: "foreign", reason: "its ExecStart does not start this package's fleet" };
   const wanted = /^ExecStart=.*$/m.exec(renderSystemdUnit(vars))![0];
-  if (at[0].line.trim() === wanted) return { kind: "current" };
-  lines[at[0].index] = wanted;
+  const execChanged = at[0].line.trim() !== wanted;
+  if (execChanged) lines[at[0].index] = wanted;
+  // #2015: the same refresh gives the unit OOMPolicy=continue when it sets no OOMPolicy at all (the user unit gets it
+  // by being rewritten). One it does set, whatever the value, is the operator's.
+  const service = sectionBounds(lines, "Service")!;
+  const hasOomPolicy = lines.slice(service.start + 1, service.end).some(l => /^\s*OOMPolicy\s*=/.test(l));
+  if (!hasOomPolicy) {
+    let insert = service.end;
+    while (insert > service.start + 1 && lines[insert - 1].trim() === "") insert--;
+    lines.splice(insert, 0, "OOMPolicy=continue");
+  }
+  if (!execChanged && hasOomPolicy) return { kind: "current" };
   replaceUnitFile(unitPath, lines.join("\n"));
-  return { kind: "updated", execStart: wanted.slice("ExecStart=".length) };
+  return { kind: "updated", ...(execChanged ? { execStart: wanted.slice("ExecStart=".length) } : {}), ...(!hasOomPolicy ? { oomPolicyAdded: true } : {}) };
 }
 
 /**
@@ -648,6 +658,9 @@ const UNIT_HARDENING: readonly UnitDirectivePolicy[] = [
   // Classified from every assignment, drop-ins included: see unitCoredumpFilterState.
   { section: "Service", key: "CoredumpFilter", value: "0", equivalent: v => /^(?:0x)?0+$/i.test(v), allAssignments: true },
   { section: "Service", key: "LimitCORE", value: "0" },
+  // #2015: an OOM-killed process stops only itself. `stop` (systemd's default) is never something AgEnD wrote, so a
+  // unit that sets it is the operator's choice and is left alone.
+  { section: "Service", key: "OOMPolicy", value: "continue" },
 ];
 
 export type UnitDirectiveOutcome = "added" | "upgraded" | "present" | "custom";

@@ -1888,11 +1888,14 @@ program
       const { refreshSystemUnitExecStart } = await import("./service-installer.js");
       try {
         const refreshed = refreshSystemUnitExecStart(systemUnit, serviceVars, dirname(dirname(execPath)));
-        if (refreshed.kind === "updated") console.log(`  ✓ ${systemUnit}: ExecStart=${refreshed.execStart}`);
+        if (refreshed.kind === "updated") {
+          if (refreshed.execStart) console.log(`  ✓ ${systemUnit}: ExecStart=${refreshed.execStart}`);
+          if (refreshed.oomPolicyAdded) console.log(`  ✓ ${systemUnit}: OOMPolicy=continue (one OOM-killed process no longer stops the fleet)`);
+        }
         else if (refreshed.kind === "foreign") console.log(`  ℹ ${systemUnit} left as it is: ${refreshed.reason}.`);
         else if (refreshed.kind === "unreadable") console.log(`  ⚠ ${systemUnit} could not be read; left as it is.`);
       } catch (err) {
-        console.error(`  ✗ ${systemUnit} could not be updated (${(err as Error).message}); \`agend restart\` will refuse until its ExecStart starts this install. Run the update as root, or: sudo agend install --no-activate`);
+        console.error(`  ✗ ${systemUnit} could not be updated (${(err as Error).message}): its ExecStart and OOMPolicy=continue (#2015) are not written, and \`agend restart\` refuses until its ExecStart starts this install. Run the update as root, or: sudo agend install --no-activate`);
         process.exitCode = 1;
       }
     }

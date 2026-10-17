@@ -35,14 +35,59 @@ function host() {
   return { root, pkg, node, vars, unit, selected, bin: join(root, "prefix/bin/agend") };
 }
 
+describe("#2015: the same refresh gives a system unit OOMPolicy=continue", () => {
+  it("a unit already on this install's ExecStart gets only the OOMPolicy line; a second refresh changes nothing", () => {
+    const h = host();
+    const path = h.unit(`ExecStart=${h.selected}`);
+    const before = readFileSync(path, "utf8");
+    expect(refreshSystemUnitExecStart(path, h.vars, h.pkg)).toEqual({ kind: "updated", oomPolicyAdded: true });
+    expect(readFileSync(path, "utf8")).toBe(before.replace("Restart=always\n", "Restart=always\nOOMPolicy=continue\n"));
+    expect(statSync(path).mode & 0o777).toBe(0o640);
+    expect(refreshSystemUnitExecStart(path, h.vars, h.pkg)).toEqual({ kind: "current" });
+  });
+  it("an OOMPolicy the unit sets itself — any value — is the operator's and stays", () => {
+    const h = host();
+    for (const own of ["OOMPolicy=stop\n", "OOMPolicy=kill\n", "  OOMPolicy = continue\n"]) {
+      const path = h.unit(`ExecStart=${h.selected}`, own);
+      const before = readFileSync(path, "utf8");
+      expect(refreshSystemUnitExecStart(path, h.vars, h.pkg)).toEqual({ kind: "current" });
+      expect(readFileSync(path, "utf8")).toBe(before);
+    }
+  });
+  it("#2018 review: an own OOMPolicy=stop survives a refresh that DOES rewrite ExecStart (no second assignment)", () => {
+    const h = host();
+    const path = h.unit(`ExecStart=${h.bin} fleet start`, "OOMPolicy=stop\n");
+    const before = readFileSync(path, "utf8");
+    expect(refreshSystemUnitExecStart(path, h.vars, h.pkg)).toEqual({ kind: "updated", execStart: h.selected });
+    const after = readFileSync(path, "utf8");
+    expect(after).toBe(before.replace(`ExecStart=${h.bin} fleet start`, `ExecStart=${h.selected}`));
+    expect(after.match(/^\s*OOMPolicy\s*=.*$/gm)).toEqual(["OOMPolicy=stop"]);
+  });
+  it("#2018 review: only [Service] counts: an OOMPolicy line elsewhere ([Unit]) does not stand in for it", () => {
+    const h = host();
+    const path = h.unit(`ExecStart=${h.selected}`);
+    writeFileSync(path, readFileSync(path, "utf8").replace("Description=AgEnD (operator's own)\n", "Description=AgEnD (operator's own)\nOOMPolicy=stop\n"));
+    expect(refreshSystemUnitExecStart(path, h.vars, h.pkg)).toEqual({ kind: "updated", oomPolicyAdded: true });
+    expect(readFileSync(path, "utf8").split(/^\[Service\]/m)[1]).toMatch(/^OOMPolicy=continue$/m);
+  });
+  it("a foreign unit gets no OOMPolicy either", () => {
+    const h = host();
+    const path = h.unit("ExecStart=/usr/bin/env agend fleet start");
+    const before = readFileSync(path, "utf8");
+    expect(refreshSystemUnitExecStart(path, h.vars, h.pkg).kind).toBe("foreign");
+    expect(readFileSync(path, "utf8")).toBe(before);
+  });
+});
+
 describe("#1884: the refresh brings a legacy system unit's ExecStart to this install", () => {
   it("2.1's `<prefix>/bin/agend fleet start` → the selected Node on this package's entry; every other line and the mode stay", () => {
     const h = host();
     const path = h.unit(`ExecStart=${h.bin} fleet start`);
     const before = readFileSync(path, "utf8");
-    expect(refreshSystemUnitExecStart(path, h.vars, h.pkg)).toEqual({ kind: "updated", execStart: h.selected });
+    expect(refreshSystemUnitExecStart(path, h.vars, h.pkg)).toEqual({ kind: "updated", execStart: h.selected, oomPolicyAdded: true });
     const after = readFileSync(path, "utf8");
-    expect(after).toBe(before.replace(`ExecStart=${h.bin} fleet start`, `ExecStart=${h.selected}`));
+    // #2015: OOMPolicy=continue joins the end of [Service]; nothing else moves.
+    expect(after).toBe(before.replace(`ExecStart=${h.bin} fleet start`, `ExecStart=${h.selected}`).replace("Restart=always\n", "Restart=always\nOOMPolicy=continue\n"));
     expect(statSync(path).mode & 0o777).toBe(0o640);
     expect(refreshSystemUnitExecStart(path, h.vars, h.pkg)).toEqual({ kind: "current" });       // a second refresh changes nothing
   });
