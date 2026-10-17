@@ -7,6 +7,8 @@
  * placements): `set_web_theme` never places anything.
  */
 
+import { canonicalIdentityColor, canonicalPlacements, type IdentityColor, type Placement } from "./web-identity-palette.js";
+
 export type Color = string;
 export type AssetId = string;
 export interface Palette { bg?: Color; surface?: Color; text?: Color; text2?: Color; accent?: Color; userBubble?: Color; agentBubble?: Color }
@@ -22,7 +24,13 @@ export interface Theme {
   workingLabel?: string;
   /** r4 §1: the agent's identity card. A person's card fields (View's Edit profile) win field by field. */
   card?: ThemeCard;
+  /**
+   * #1958: the agent's identity colour (a preset or #rrggbb; without it, its accent) and where it shows. A person's
+   * choice for this instance wins, field by field.
+   */
+  identity?: ThemeIdentity;
 }
+export interface ThemeIdentity { color?: IdentityColor; show?: Placement[] }
 export interface ThemeCard { portrait?: AssetId; banner?: AssetId; tagline?: string; bio?: string }
 export interface ThemeProblem { path: string; problem: string }
 
@@ -134,7 +142,7 @@ export function checkTheme(input: unknown, ctx: ThemeContext): { ok: true; theme
   const bad = (path: string, problem: string) => { errors.push({ path, problem }); };
   if (!isObj(input)) return { ok: false, errors: [{ path: "", problem: "must be an object" }] };
   const out: Theme = { v: 1 };
-  const known = new Set(["v", "colors", "accent", "bubble", "font", "background", "avatar", "workingLabel", "card"]);
+  const known = new Set(["v", "colors", "accent", "bubble", "font", "background", "avatar", "workingLabel", "card", "identity"]);
   for (const k of Object.keys(input)) if (!known.has(k)) bad(k, "unknown key");
   if (input.v !== undefined && input.v !== 1) bad("v", "must be 1");
 
@@ -228,6 +236,23 @@ export function checkTheme(input: unknown, ctx: ThemeContext): { ok: true; theme
       if (Object.keys(card).length) out.card = card;
     }
   }
+  if (input.identity !== undefined) {
+    const id = input.identity;
+    if (!isObj(id)) bad("identity", "must be an object");
+    else {
+      const identity: ThemeIdentity = {};
+      for (const k of Object.keys(id)) if (k !== "color" && k !== "show") bad(`identity.${k}`, "unknown key");
+      if (id.color !== undefined) {
+        const c = canonicalIdentityColor(id.color);
+        if (!c) bad("identity.color", "a preset (red, orange, amber, lime, green, teal, cyan, blue, indigo, violet, pink, slate) or a colour #rrggbb"); else identity.color = c;
+      }
+      if (id.show !== undefined) {
+        const s = canonicalPlacements(id.show);
+        if (!s) bad("identity.show", "a list of where the colour shows: name, bar, ring (each once; [] for nowhere)"); else identity.show = s;
+      }
+      if (Object.keys(identity).length) out.identity = identity;
+    }
+  }
   if (errors.length) return { ok: false, errors };
 
   for (const mode of MODES) {
@@ -262,6 +287,9 @@ export function canonicalTheme(t: Theme): Theme {
     const c: ThemeCard = {};
     for (const k of ["portrait", "banner", "tagline", "bio"] as const) if (t.card[k]) c[k] = t.card[k];
     if (Object.keys(c).length) out.card = c;
+  }
+  if (t.identity && (t.identity.color || t.identity.show)) {
+    out.identity = { ...(t.identity.color ? { color: t.identity.color } : {}), ...(t.identity.show ? { show: [...t.identity.show] } : {}) };
   }
   return out;
 }
