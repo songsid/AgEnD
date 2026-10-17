@@ -16,6 +16,7 @@ import { Icon } from "/assets/ui-icons.js";
 import "./chat-render.js";
 import "./preview.js";
 import { loadHtmlAttachment } from "./html-attachment.js";
+import { EffectTrialPanel } from "./effect-trial-panel.js";
 import { chatTime, onDayChange } from "./chat-time.js";
 
 const R = () => globalThis.AgendChatRender;
@@ -43,14 +44,25 @@ export const panelClaims = () => claims;
 /** The frame's key in preview.js: its own, so the card that opened it keeps its own state. */
 export const frameKey = (key) => `panel:${key}`;
 /** Show `spec` in the panel; `run`: start it there (the card's "Open in panel" click). The block shown before stops. */
-export function openPanel(spec, { run = false } = {}) {
-  if (state.open && P()) P().stop(frameKey(state.open.key), "stopped", "");
-  set({ open: { ...spec }, run: run ? ++runs : 0 });
+function retire(open) {
+  if (!open) return;
+  if (open.kind === "trial") { try { open.handle.stop(); } catch { /* host controller owns cleanup */ } }
+  else if (P()) P().stop(frameKey(open.key), "stopped", "");
 }
-/** Close the panel: its frame stops first. */
+export function openPanel(spec, { run = false } = {}) {
+  const old = state.open;
+  set({ open: { ...spec, kind: "html" }, run: run ? ++runs : 0 });
+  retire(old); // State changes first: cleanup reentry cannot close a newer panel.
+}
+/** A checked controller handle enters the existing component slot; no HTML run token is issued. */
+export function openTrialPanel(spec) {
+  const old = state.open;
+  set({ open: { ...spec, kind: "trial" }, run: 0 }); retire(old);
+}
+/** Close publishes the empty slot before old-owner callbacks can reenter. */
 export function closePanel() {
-  if (state.open && P()) P().stop(frameKey(state.open.key), "stopped", "");
-  if (state.open) set({ open: null, run: 0 });
+  const old = state.open; if (!old) return;
+  set({ open: null, run: 0 }); retire(old);
 }
 /** The card key the panel shows, or null. */
 export const shownKey = () => (state.open ? state.open.key : null);
@@ -67,7 +79,7 @@ export function htmlTitle(code) {
  * without one, the newest block does. `msgs` in order; `keyOf` makes a message's key.
  */
 export function newerVersion(open, msgs, keyOf) {
-  if (!open || !Array.isArray(msgs)) return null;
+  if (!open || open.kind === "trial" || !Array.isArray(msgs)) return null;
   const at = msgs.findIndex(x => keyOf(x) === open.msgKey);
   if (at < 0) return null;
   // An attached file: a later agent reply attaching a file of the same name is its newer version. Its HTML is read
@@ -132,7 +144,8 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const pending = useRef(0);      // #1704: the card's click, waiting for this device's Allow (the st.run it came with)
   const ownAllow = useRef(0);     // while this panel's own Allow commits its choice: the click it answers (not cancelled by it)
   const holder = useRef(null), divider = useRef(null), panel = useRef(null);
-  const open = st.open && st.open.instance === name ? st.open : null;
+  const trial = st.open?.kind === "trial" && st.open.instance === name ? st.open : null;
+  const open = st.open?.kind !== "trial" && st.open?.instance === name ? st.open : null;
 
   useEffect(() => panelStore.subscribe(setSt), []);
   // This device's choice (here or in another tab) decides whether Preview is offered: re-read it when it changes.
@@ -231,6 +244,9 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   // Esc in the panel closes it (and is not the chat's "stop the reply").
   const onPanelKey = (e) => { if (e.key === "Escape" && !e.isComposing) { e.preventDefault(); closePanel(); } };
 
+  if (trial) return html`<${EffectTrialPanel} binding=${trial.binding} title=${trial.handle.reply.offer.title}
+    current=${trial.handle.current} ownerCss=${trial.ownerCss} onStage=${trial.onStage}
+    onStop=${trial.handle.stop} onClose=${() => { if (panelStore.get().open === trial) closePanel(); }} />`;
   if (!open) return null;
   const going = run.state === "starting" || run.state === "running";
   const a = P().availability();

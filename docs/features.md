@@ -1193,7 +1193,7 @@ The backend now keeps five owner effect selections (`fx.sidebar`, `fx.header`, `
 the signed-in web identity. Discord and Telegram identities stay separate; accounts are not merged. A web-only
 `agend web --code` sign-in uses a **host-wide operator** bucket shared by everyone signing in as that operator.
 Header tokens cannot read or write these five keys. Existing visible preferences remain host-wide, without migration;
-profile and custom-CSS internal identity rules are unchanged. Settings → Appearance offers the five selectors. With effects and preview consent enabled, page/header/sidebar/box choices play across the supported stock panels in the same pool as Chat, with slot-specific Pause/Resume and unavailable/Clear controls. The cursor choice applies a static host PNG after the same consent, preserves explicit pointer/text/resize cursors and falls back while dragging or when unavailable. It runs no Worker code and consumes no frame slot. Try remains separate work.
+profile and custom-CSS internal identity rules are unchanged. Settings → Appearance offers the five selectors. With effects and preview consent enabled, page/header/sidebar/box choices play across the supported stock panels in the same pool as Chat, with slot-specific Pause/Resume and unavailable/Clear controls. The cursor choice applies a static host PNG after the same consent, preserves explicit pointer/text/resize cursors and falls back while dragging or when unavailable. It runs no Worker code and consumes no frame slot.
 
 Unsharing an effect revokes subsequent resource authorization for someone else's personal selection, including its
 cursor image. The saved choice remains as unavailable until cleared, retaining its blob reference. This is stricter
@@ -1215,13 +1215,13 @@ settings prevent playback or the page is a public link, a placement's static pos
 No poster means no image; safe mode, the show switch and unknown stock ordering refuse poster paint. Public links
 receive no Worker code or playback controls. Their explicit show choice stays in this browser and survives a reload,
 without changing the host default. Explicit Pause/queued effects and failed live reads are not replaced by this fallback.
-Personal page/header/sidebar/box choices use that same pool. The personal cursor uses a bounded host image in the same app session; Try previews remain separate work.
+Personal page/header/sidebar/box choices use that same pool. The personal cursor uses a bounded host image in the same app session.
 
-The approved Try exception is an admin-initiated sample inside a physically clipped host panel or sheet. Only an
+`preview_web_effect({id})` offers a volatile card in the agent's own web chat, using current own/shared read access. It makes no appearance write. Try is an admin-initiated sample inside a physically clipped host panel or sheet. Only an
 explicit click by a signed-in local admin may start it, with a visible Trial label and Stop control. Public links,
 agents and header tokens cannot start it. Closing the panel, navigating, window blur or another menu/dialog stops
 it. Custom CSS must be off; the usual caps, profiler and safety stops remain, and ordinary foreground effects stay
 suppressed. Offers last at most ten minutes, trials are session/epoch-bound, and each read rechecks the origin
 agent's current own/shared access. No saved placement, claim, share or export is created. The volatile server
-authority and local-admin API are present; the host panel and physical clip have a separate unmounted foundation. The card and shared-pool playback still require integration. Try writes no saved profile record. See the
+authority, local-admin API, host panel and shared app pool enforce this boundary. Cards are memory-only, expire in place and are never restored from disk. A valid late Start is only stopped, never mounted. Try uses manifest defaults and writes no saved profile record; mandatory safety history still applies. See the
 [Try boundary](design/1629-effect-trial-authority.md).

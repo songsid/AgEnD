@@ -1,5 +1,7 @@
 # #1629 private Trial source in the app-owned pool
 
+> Current integration: [product Try](1629-effect-trial-product.md) connects these foundations. References below to an unmounted or unavailable slice describe its original introduction, not the current feature branch.
+
 This adds no product Start control or preview publication. The existing app core
 exposes a private `attachTrial` seam for the subsequent explicit admin controller.
 There remains exactly one registry, loader, profiler and safety participant per

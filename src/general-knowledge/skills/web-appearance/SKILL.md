@@ -214,7 +214,7 @@ placed there. A reference is not a sharing or export grant. Do not keep retrying
 
 Owner selectors are available in Settings → Appearance. With effects and preview consent enabled, personal
 page/header/sidebar/box choices play across supported stock pages in the same pool as local signed-in Chat.
-Appearance offers slot Pause/Resume and unavailable/Clear controls. The personal cursor uses a static PNG on the host shell after the same consent: no Worker/code read or frame slot. It preserves explicit pointer/text/resize cursors, falls back while dragging or on failure, and has status/Clear rather than Worker Pause/Resume. Try remains separate work. Before revealing paint, the host must prove stock content
+Appearance offers slot Pause/Resume and unavailable/Clear controls. The personal cursor uses a static PNG on the host shell after the same consent: no Worker/code read or frame slot. It preserves explicit pointer/text/resize cursors, falls back while dragging or on failure, and has status/Clear rather than Worker Pause/Resume. Before revealing paint, the host must prove stock content
 ordering and trust paint coverage. Agent front effects must remain paused when custom CSS is active, loading or
 unknown; a person sees the reason and can open the causing setting. Human placements retain their exemption from
 that agent restriction, and behind effects still require proven ordering. Saving a placement alone is not proof of
@@ -224,16 +224,15 @@ Visible menus, dialogs, Keep/tour notices and focused inputs suppress all foregr
 does not bypass those host safety gates. Unknown stock layout refuses admission. A trusted foreground plane is
 deferred to #1940; do not keep reapplying an agent front while custom CSS is on, loading or unknown.
 
-### Try contract (integration pending)
+### Try: offer first, local admin click to start
 
-The approved Try exception is a physically clipped sample inside its own host panel or sheet. Only an explicit
+`preview_web_effect({id})` posts a volatile Try card in your own web chat, using your current own/shared read rights. It starts nothing and changes no appearance. The sample is physically clipped inside its own host panel or sheet. Only an explicit
 click by a signed-in **local admin** may start it; never an agent, public link, header token or automatic action.
 The host owns a visible Trial label and Stop control. Closing the panel/sheet, navigating, window blur, or another
 menu/dialog stops it. Custom CSS must be off (on/loading/unknown denies), and the same caps, profiler and safety
 stops apply. Ordinary foreground effects stay suppressed. A volatile offer lasts at most ten minutes; every read
 rechecks the originating agent's current own/shared access, with the trial bound to the admin's session and epoch.
-There is no saved placement, claim, share, export or new saved profile record. The server authority and local-admin
-API are present. The host panel/physical clip is an unmounted foundation; the chat card and shared-pool playback still need integration. Do not treat an offer id or ordinary reply button
+There is no saved placement, claim, share, export or new saved profile record. Cards are memory-only and become inert when expired; a restart never restores them. Try uses manifest defaults and the existing app pool, not a second runtime. Do not treat an offer id or ordinary reply button
 as permission to run or fetch an effect, and do not keep retrying an unavailable Try.
 
 

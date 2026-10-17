@@ -1,9 +1,8 @@
 # #1629 volatile Trial offer display
 
-This prepares the chat metadata and inert offer card. The agent preview callback
-still returns `effects_unavailable`; no product code issues an offer through this
-slice, and no click can start or fetch a trial. The existing authority, local-admin
-API, host stage and common registry remain separate reviewed foundations.
+> Current integration: [product Try](1629-effect-trial-product.md) connects these foundations. References below to an unmounted or unavailable slice describe its original introduction, not the current feature branch.
+
+This introduced the chat metadata and inert offer card. Product integration now uses the dedicated host publication seam and an explicit local-admin click; the authority, local-admin API, host stage and common registry retain their reviewed boundaries.
 
 ## Transport and disk boundary
 

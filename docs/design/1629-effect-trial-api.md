@@ -1,5 +1,7 @@
 # #1629 local-admin Try server adapter
 
+> Current integration: [product Try](1629-effect-trial-product.md) connects these foundations. References below to an unmounted or unavailable slice describe its original introduction, not the current feature branch.
+
 This connects the [volatile authority](1629-effect-trial-authority.md) to the
 Fleet library and separate local-admin HTTP routes. **No tool emits an offer, no
 chat card starts a trial and no frame is mounted by this PR.** `preview_web_effect`

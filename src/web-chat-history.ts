@@ -209,7 +209,7 @@ export class WebChatHistory {
 
   private persist(instance: string): void {
     if (!this.store) return;
-    this.store.schedule(instance, () => (this.byInstance.get(instance)?.messages ?? []).map((m) => this.stored(m)));
+    this.store.schedule(instance, () => (this.byInstance.get(instance)?.messages ?? []).filter(m => !m.effectTrial).map((m) => this.stored(m)));
   }
 
   /** #1565: a message as kept on disk: no buttons, no delivery, no message id; a file with the path it is served from. */
@@ -299,6 +299,17 @@ export class WebChatHistory {
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
   record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; effectTrial?: unknown }): WebChatMessage {
+    return this.recordEntry(msg, null);
+  }
+
+  /** Host-only producer seam. Generic records cannot promote sender/role strings into a Try action. */
+  recordEffectTrial(instance: string, offer: unknown, ts: string): WebChatMessage | null {
+    const trial = effectTrialOffer(offer);
+    if (typeof instance !== "string" || !instance.length || instance.length > 128 || !trial) return null;
+    return this.recordEntry({ instance, sender: "agend", role: "status", text: "", ts }, trial);
+  }
+
+  private recordEntry(msg: Parameters<WebChatHistory["record"]>[0], trial: ReturnType<typeof effectTrialOffer>): WebChatMessage {
     const entry: WebChatMessage = {
       boot: this.boot,
       id: this.nextId++,
@@ -313,9 +324,6 @@ export class WebChatHistory {
     };
     const buttons = msg.role === "agent" ? webChatButtons(msg.buttons) : undefined;
     if (buttons) entry.buttons = buttons;
-    // Internal host publication only. Text, agent replies and user input never become trial offers.
-    const trial = msg.role === "status" && msg.sender === "agend" && entry.instance.length >= 1 && entry.instance.length <= 128
-      ? effectTrialOffer(msg.effectTrial) : null;
     if (trial) entry.effectTrial = trial;
     let slot = this.byInstance.get(entry.instance);
     if (!slot) { slot = { messages: [], chars: 0 }; this.byInstance.set(entry.instance, slot); }

@@ -1,5 +1,7 @@
 # #1629 Trial response projection and shared resource reads
 
+> Current integration: [product Try](1629-effect-trial-product.md) connects these foundations. References below to an unmounted or unavailable slice describe its original introduction, not the current feature branch.
+
 This adds no product Start action, offer producer, request controller or Trial
 source. It prepares the existing runtime loader for the subsequent app-owned
 lease. The card is still inert and the preview tool is still unavailable.
