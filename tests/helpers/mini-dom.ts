@@ -206,7 +206,8 @@ export class MiniElement extends MiniNode {
 
 // Preact names an event prop by asking whether `on<name>` (lower case) is a property of the element: these must exist.
 for (const ev of ["click", "input", "change", "keydown", "keyup", "paste", "submit", "scroll", "focus", "blur", "pointerdown", "mousedown",
-  "touchstart", "dragenter", "dragover", "dragleave", "drop", "load", "error", "cancel", "close", "toggle", "focusin", "focusout"]) {
+  "touchstart", "dragenter", "dragover", "dragleave", "drop", "load", "error", "cancel", "close", "toggle", "focusin", "focusout",
+  "wheel", "pointermove", "pointerup", "pointercancel"]) {   // #1918: the org canvas's pan, pinch and wheel
   Object.defineProperty(MiniElement.prototype, `on${ev}`, { value: null, writable: true, configurable: true });
 }
 
