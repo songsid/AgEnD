@@ -61,6 +61,8 @@ PW_DIR=<private-prefix> OUT_DIR=<private-output> \
 
 The loopback harness uses actual stock Shell/Chat, service/library, preview listener, Worker and runtime, with a private synthetic session. It does not prove real login, public gateway behavior, physical touch scrolling or real Safari. Optional native touch/cancellation observations remain separate from required mouse cases. All browser processes, profiles and listeners are private and cleaned up.
 
+The degraded-input fixture normally blocks its private page for 75ms every 180ms. If a host's measured baseline is already low, that may not induce a degraded window: a timeout with a still-normal row is a failed load-induction control, not a passed 30Hz test. A separately named supplement can set bounded `PROBE_STRESS_MS` / `PROBE_STRESS_PERIOD` (for example 150/200); the receipt records them. Keep the original failure and distinguish the supplement rather than silently retrying.
+
 ## Risk and rollback
 
 The stable presentation path can expose a missing fresh check if future code accidentally caches permission or omits actual geometry; regressions pin those checks and changed-hole ordering. The input fix deliberately keeps only one fresh sample and retains all existing caps. Reverting the production changes requires no data migration and restores the previous paint/input defects. Reverting only capture tooling affects evidence, not authorization or playback.

@@ -19,6 +19,8 @@ const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(1);ihdr.writeUInt32BE(1,4);ihdr[8
 const background=Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),chunk('IHDR',ihdr),chunk('IDAT',deflateSync(Buffer.from([0,32,96,224,255]))),chunk('IEND',Buffer.alloc(0))]);
 const actions: string[] = [];
 const rows: any[] = [], ts = new Date().toISOString();
+const stressMs=Number(process.env.PROBE_STRESS_MS||75),stressPeriod=Number(process.env.PROBE_STRESS_PERIOD||180);
+assert.ok(Number.isInteger(stressMs)&&stressMs>=50&&stressMs<=200&&Number.isInteger(stressPeriod)&&stressPeriod>=stressMs+15&&stressPeriod<=500,'bounded private load fixture');
 const message = { boot: "probe", id: 1, instance: "worker", sender: "worker", role: "agent", text: "Click the plain message text for sparks. Drag across this message to leave a trail. Protected controls stay clear. [This link is protected](https://example.invalid).\n\n```js\nconst n = 1;\n```\n\n```html\n<p>unterminated", ts, attachments:[{id:"d".repeat(32),name:"wide.csv",mime:"text/csv",size:600}], buttons: { id: "a".repeat(32), state: "open", labels: ["Approve", "Decline"] } };
 function decode(png){
  assert.equal(png.subarray(0,8).toString('hex'),'89504e470d0a1a0a');let at=8,width=0,height=0,channels=0;const parts=[];
@@ -140,7 +142,7 @@ try {
    },width===390?4:8);
    page.on('pageerror',e=>errors.push(e.stack||e.message));
    await page.route('**/*',r=>{const u=new URL(r.request().url());if(['blob:','data:'].includes(u.protocol)||u.hostname==='127.0.0.1'&&[String(port),String(preview.settings.port)].includes(u.port))return r.continue();outside.push(u.origin);return r.abort()});
-   const prefix=engine+'-'+width+'-'+mode+'-'+selectedSurface+'-'+group,record={engine,version:browser.version(),width,mode,selectedSurface,group,timings:[],surfaces:[],errors,outside,status:'pass'};
+   const prefix=engine+'-'+width+'-'+mode+'-'+selectedSurface+'-'+group,record={engine,version:browser.version(),width,mode,selectedSurface,group,stress:{ms:stressMs,period:stressPeriod},timings:[],surfaces:[],errors,outside,status:'pass'};
    const running=async()=>{await page.waitForFunction(()=>probe.rows().filter(r=>r.phase==='running').length===1,undefined,{timeout:20000});await page.waitForFunction(()=>[...document.querySelectorAll('iframe.agend-effect-frame')].some(f=>getComputedStyle(f).visibility==='visible'),undefined,{timeout:20000})};
    const reset=async()=>{await page.waitForTimeout(1350);await page.evaluate(()=>{document.activeElement?.blur?.();window.pointerPackets=[];window.pointerNative=[]});await page.waitForTimeout(70)};
    const shot=async(label)=>{const name=prefix+'-'+label+'.png';const before=await page.evaluate(()=>({at:performance.now(),frames:window.pointerFrames,fonts:document.fonts.status,visible:document.visibilityState,focus:document.hasFocus(),rows:probe.rows()}));if(engine==='firefox'&&process.env.PROBE_RAW_SCREENSHOT!=='0'){const impl=page._connection.toImpl(page);const result=await impl.delegate._session.send('Page.screenshot',{mimeType:'image/png',clip:{x:0,y:0,width,height:900},omitDeviceScaleFactor:true});writeFileSync(join(out,name),Buffer.from(result.data,'base64'));}else await page.screenshot({path:join(out,name),caret:'initial',animations:'allow'});const after=await page.evaluate(()=>({at:performance.now(),frames:window.pointerFrames}));record.timings.push({label,file:name,before,after});return name};
@@ -197,7 +199,7 @@ try {
       }
      }
      if((group==='all'||group==='degraded')&&empty){
-      await reset();const lowPoint=await point(null);assert.ok(lowPoint,'fresh unprotected point after touch');const before=await shot(surface+'-drag-degraded-before');await page.evaluate(()=>{window.pointerStress=setInterval(()=>{const end=performance.now()+75;while(performance.now()<end){}},180)});
+      await reset();const lowPoint=await point(null);assert.ok(lowPoint,'fresh unprotected point after touch');const before=await shot(surface+'-drag-degraded-before');await page.evaluate(({ms,period})=>{window.pointerStress=setInterval(()=>{const end=performance.now()+ms;while(performance.now()<end){}},period)},{ms:stressMs,period:stressPeriod});
       try{
        await page.waitForFunction(()=>probe.rows().some(r=>r.quality==='low'),undefined,{timeout:5000});
        await page.evaluate(()=>{clearInterval(window.pointerStress);window.pointerPackets=[];window.pointerNative=[]});
@@ -210,7 +212,7 @@ try {
      }
      if(group==='coalesced-click'&&empty){
       await reset();const p=await point(null);assert.ok(p);const before=await shot(surface+'-coalesced-before');
-      await page.evaluate(()=>{window.pointerStress=setInterval(()=>{const end=performance.now()+75;while(performance.now()<end){}},180)});
+      await page.evaluate(({ms,period})=>{window.pointerStress=setInterval(()=>{const end=performance.now()+ms;while(performance.now()<end){}},period)},{ms:stressMs,period:stressPeriod});
       try{
        await page.waitForFunction(()=>probe.rows().some(r=>r.quality==='low'),undefined,{timeout:5000});
        await page.evaluate(()=>{clearInterval(window.pointerStress);window.pointerPackets=[];window.pointerNative=[]});
