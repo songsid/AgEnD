@@ -23,11 +23,12 @@ const ORG = {
   instances: {},
 };
 
+let orgAnswer: unknown = ORG;
 let p: AppPage;
 let C: any, O: any, app: any, fleet: any, nav: any;
 beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19280/ui/fleet/org" });
-  (globalThis as any).fetch = async (url: string) => ({ ok: true, status: 200, json: async () => (url === "/ui/org" ? ORG : {}) });
+  (globalThis as any).fetch = async (url: string) => ({ ok: true, status: 200, json: async () => (url === "/ui/org" ? orgAnswer : {}) });
   app = await import("/assets/app-store.js");
   nav = await import("/assets/app-nav.js");
   nav.startRouter(p.window);
@@ -39,6 +40,7 @@ afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
   await p.unmount();
   p.storage.clear();
+  orgAnswer = ORG;
   nav.navigate("/ui/fleet/org");
   app.appStore.set({ ready: true, instances: INSTANCES, exec: { atlas: "working", quill: "working" }, awaiting: {}, needs: [] });
 });
@@ -186,7 +188,8 @@ describe("the canvas on the page", () => {
     expect(tf()!.k).toBeCloseTo(k0 * 1.25);
     fire(svg(), "keydown", { key: "-" });
     expect(tf()!.k).toBeCloseTo(k0);
-    fire(svg(), "wheel", { deltaY: -200, clientX: 0, clientY: 0 });
+    const wheel = fire(svg(), "wheel", { deltaY: -200, clientX: 0, clientY: 0 });
+    expect(wheel.defaultPrevented, "the wheel zooms the canvas, not the page").toBe(true);
     const zoomed = tf()!;
     expect(zoomed.k).toBeGreaterThan(k0);
     app.appStore.set((s: any) => ({ ...s, exec: { ...s.exec, sage: "working" } })); await settle(4);
@@ -269,6 +272,15 @@ describe("the canvas on the page", () => {
     expect(svg()).toBeNull();
     p.root.querySelectorAll(".oc-tools .seg-inline button")[0].click(); await settle(2);
     expect(svg()).not.toBeNull();
+  });
+  it("a member the fleet no longer lists: a card that says so and opens nothing", async () => {
+    orgAnswer = { ...ORG, teams: [{ name: "Platform", members: ["pixel", "gone"] }] };
+    await mount();
+    expect([card("gone").getAttribute("role"), card("gone").getAttribute("class")]).toEqual(["img", expect.stringContaining("st-missing")]);
+    expect(card("gone").getAttribute("aria-label")).toBe("gone — Not in the fleet");
+    card("gone").click(); await settle(2);
+    fire(card("gone"), "keydown", { key: "Enter" }); await settle(2);
+    expect(location.pathname).toBe("/ui/fleet/org");
   });
   it("the overview: a click centres the canvas there; the viewport is marked on it", async () => {
     await mount();
