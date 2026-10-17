@@ -39,7 +39,8 @@ function table(db: Database.Database): Database.Database {
       banner TEXT,
       updated_at INTEGER
     );`);
-    ready.add(db);
+    // Prism #2003 P2-2: ready only when made outside a transaction — a rollback takes the table away, never the mark.
+    if (!db.inTransaction) ready.add(db);
   }
   return db;
 }

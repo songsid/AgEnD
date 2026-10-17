@@ -80,21 +80,36 @@ export function resolvePlacements(t: PlacementTiers, opts: { showThemes: boolean
 export interface PersonIdentity { color: IdentityColor | null; show: Placement[] | null }
 export type ColorWrite = { ok: true } | { ok: false; status: 400 | 503; error: string; detail?: string };
 
+/** The first cut's table (instance_color, colour only, on feat/2.3-web-mod before 2.3 ships). */
+const LEGACY = "instance_color";
+/** Done once per database, recorded in it: the first cut's picks were carried over (Prism #2003 P2-1). */
+const MIGRATED = "instance_color_carried";
+const hasTable = (db: Database.Database, name: string) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
+const migrated = (db: Database.Database) => hasTable(db, "instance_identity_meta") && !!db.prepare("SELECT 1 FROM instance_identity_meta WHERE key = ?").get(MIGRATED);
+
 const ready = new WeakSet<Database.Database>();
+/**
+ * The table, made once per connection. The first cut's picks carry over once per database — recorded in
+ * instance_identity_meta, so a pick reset since never comes back on a later connection — and never over a newer choice;
+ * the old table is left as it is. Prism #2003 P2-2: a connection counts as ready only when this ran outside a
+ * transaction (a rollback would take the tables away, never the mark), and the route sets it up before its transaction.
+ */
 function table(db: Database.Database): Database.Database {
   if (!ready.has(db)) {
-    db.exec(`CREATE TABLE IF NOT EXISTS instance_identity (
-      instance_name TEXT PRIMARY KEY,
-      color TEXT,
-      show TEXT,
-      updated_at INTEGER
-    );`);
-    // The first cut of this table (instance_color, colour only, on feat/2.3-web-mod before 2.3 ships): its picks carry
-    // over once, never over a newer choice. The old table is left as it is.
-    if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'instance_color'").get()) {
-      db.exec("INSERT OR IGNORE INTO instance_identity (instance_name, color, show, updated_at) SELECT instance_name, color, NULL, updated_at FROM instance_color");
-    }
-    ready.add(db);
+    db.transaction(() => {
+      db.exec(`CREATE TABLE IF NOT EXISTS instance_identity (
+        instance_name TEXT PRIMARY KEY,
+        color TEXT,
+        show TEXT,
+        updated_at INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS instance_identity_meta (key TEXT PRIMARY KEY, value TEXT);`);
+      if (!migrated(db)) {
+        if (hasTable(db, LEGACY)) db.exec(`INSERT OR IGNORE INTO instance_identity (instance_name, color, show, updated_at) SELECT instance_name, color, NULL, updated_at FROM ${LEGACY}`);
+        db.prepare("INSERT OR IGNORE INTO instance_identity_meta (key, value) VALUES (?, '1')").run(MIGRATED);
+      }
+    })();
+    if (!db.inTransaction) ready.add(db);
   }
   return db;
 }
@@ -116,19 +131,19 @@ export class IdentityColorStore {
     if (!existsSync(join(dataDir, "profiles.db"))) return new Map();
     try {
       const db = openDb();
-      const has = (t: string) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
       const out = new Map<string, PersonIdentity>();
-      if (has("instance_identity")) {
+      if (hasTable(db, "instance_identity")) {
         for (const r of db.prepare("SELECT instance_name, color, show FROM instance_identity").all() as Array<{ instance_name: string; color: string | null; show: string | null }>) {
           // A value this version cannot read is no choice, not an error.
           const p: PersonIdentity = { color: r.color ? canonicalIdentityColor(r.color) : null, show: parseShow(r.show) };
           if (p.color || p.show) out.set(r.instance_name, p);
         }
-      } else if (has("instance_color")) {
-        // Not migrated yet (nothing has written since): the first cut's picks read as they are.
-        for (const r of db.prepare("SELECT instance_name, color FROM instance_color").all() as Array<{ instance_name: string; color: string }>) {
+      }
+      if (!migrated(db) && hasTable(db, LEGACY)) {
+        // Not carried over yet (nothing has written since): the first cut's picks read as they are, under a newer one.
+        for (const r of db.prepare(`SELECT instance_name, color FROM ${LEGACY}`).all() as Array<{ instance_name: string; color: string }>) {
           const c = canonicalIdentityColor(r.color);
-          if (c) out.set(r.instance_name, { color: c, show: null });
+          if (c && !out.has(r.instance_name)) out.set(r.instance_name, { color: c, show: null });
         }
       }
       return out;

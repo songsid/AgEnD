@@ -482,6 +482,10 @@ export function handleViewRequest(
         // Fable #1966 P3: the card text, the identity choice and the profile row in one transaction (all profiles.db):
         // a write that fails takes the others back with it, so the answer is never "failed" with part of it applied.
         const db = profileDb(ctx.dataDir);
+        // Prism #2003 P2-2: the stores' tables are made before the transaction, so a rollback never leaves this cached
+        // handle believing in tables it does not have.
+        if (texts) cardStore(ctx).get(name);
+        if (ids) colorStore(ctx).get(name);
         let refused: { status: number; error: string; detail?: string } | null = null;
         const rollback = new Error("rollback");
         try {
