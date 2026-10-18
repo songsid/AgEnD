@@ -127,9 +127,10 @@ for(const engine of engines)for(const origin of origins)for(const width of width
       await page.waitForTimeout(10500);
       if(incident===1||incident===3){await page.reload();await waitObservation(page,async()=>{const m=await import('/ui/js/app-effects.js');return m.getAppEffects()?.api.snapshot().rows.length>0});assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);}
       const dialog=await openEffects();
-      if(incident===3){await page.getByText('Turned off on this device after three automatic pauses.',{exact:false}).first().waitFor();await dialog.getByRole('button',{name:'Resume',exact:true}).click();await page.waitForTimeout(500);assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);row.safetyOffSurvivesReload=true;row.resumeRefused=true;}
+      if(incident===3){await page.getByText('Turned off on this device after three automatic pauses.',{exact:false}).first().waitFor();await dialog.getByRole('button',{name:'Resume',exact:true}).click();await page.locator('.toasts .toast.err').filter({hasText:'Resume cannot restart it here.'}).waitFor({state:'visible'});assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);row.safetyOffSurvivesReload=true;row.resumeRefused=true;row.resumeRefusalToast=true;}
       else {assert.match(await dialog.innerText(),/automatic-pause history/);await dialog.getByRole('button',{name:'Resume',exact:true}).click();}
       await dialog.getByRole('button',{name:'Close',exact:true}).click();
+      if(incident===3){await waitObservation(page,async()=>{const m=await import('/ui/js/app-effects.js');return m.getAppEffects()?.api.snapshot().rows.some(r=>r.phase===null&&r.reason==='safety_off')});assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);await capture({path:join(out,key+'-off-after-reload-resume.png')});row.offAfterClosingDialog=true;}
      }
     }
     // The same visible offer uses one click on any non-public admin dashboard origin.
