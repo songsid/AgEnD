@@ -176,6 +176,24 @@ describe("§10 the revocation epoch: moved by the switch, by loopback_only going
     m.io.fail = false;
     expect(s.current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, epoch: 2 });
   });
+  it("#2112 review: a file missing, or behind the receipts (deleted, restored from an older copy), is never trusted", () => {
+    const l = log();
+    // Missing, with receipts at epoch 4: past them and the clock's seconds, and off.
+    expect(new AuthorityStateStore("/s.json", l, memIo().io, () => 9_000, () => 4).current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, epoch: 10 });
+    expect(l.warn).toHaveBeenCalledTimes(1);
+    expect(new AuthorityStateStore("/s.json", log(), memIo().io, () => 1_000, () => 40).current(undefined).epoch).toBe(41);
+    // A file at epoch 2 while a receipt carries 5.
+    const behind = memIo(JSON.stringify({ v: 1, epoch: 2, enabled: true, loopback_only: false }));
+    expect(new AuthorityStateStore("/s.json", log(), behind.io, () => 1_000, () => 5).current({ enabled: true }).epoch).toBe(7);   // 6, then on: 7
+    // At the receipts' epoch: trusted as written.
+    const level = memIo(JSON.stringify({ v: 1, epoch: 5, enabled: true, loopback_only: false }));
+    expect(new AuthorityStateStore("/s.json", log(), level.io, () => 1_000, () => 5).current({ enabled: true }).epoch).toBe(5);
+    // Missing with no receipts: a fresh fleet.
+    expect(new AuthorityStateStore("/s.json", log(), memIo().io, () => 1_000, () => 0).current(undefined).epoch).toBe(0);
+    // The receipts cannot be read: the file is not trusted either.
+    const unknown = memIo(JSON.stringify({ v: 1, epoch: 5, enabled: true, loopback_only: false }));
+    expect(new AuthorityStateStore("/s.json", log(), unknown.io, () => 9_000, () => { throw new Error("locked"); }).current({ enabled: true }).epoch).toBe(10);
+  });
   it("on disk: web-authority.json, owner-only", () => {
     const dir = tmp(); const s = new AuthorityStateStore(join(dir, "web-authority.json"), log());
     s.current({ enabled: true });
@@ -279,6 +297,28 @@ describe("the FleetManager: admission and delivery_status use the state in force
     expect(item.authority).toEqual({ kind: "platform", actor: { adapter_id: "owner", user_id: "7" }, authority_epoch: 0 });
     expect(item.step_up_policy.enforced).toEqual(["merge"]);
     expect(item.source_instance).toBe("human:telegram:7");
+    h.outbox.close();
+  });
+  it("#2112 review: while the state cannot be written, admission refuses (no web-session receipt to revive later)", async () => {
+    const h = fm({ verified_authority: { enabled: true } });
+    expect(h.s.webAuthorityState().enabled).toBe(true);
+    h.s.authorityStateStore = new AuthorityStateStore(join(h.dir, "web-authority.json"), { warn: vi.fn() },
+      { read: () => JSON.stringify({ v: 1, epoch: 1, enabled: false, loopback_only: false }), write: () => { throw new Error("EROFS"); } });
+    const session = { handle: "a1b2c3d4e5f60718", idHash: "x".repeat(64), created: Date.now(), lastSeen: Date.now(), absoluteExpiry: Date.now() + 1e9, idleExpiry: Date.now() + 1e9,
+      tier: "admin", surface: "local", label: "x", tokenEpoch: tokenEpoch("c".repeat(48)), owner: { adapterId: "owner", userId: "admin" } };
+    h.s.adminGate = () => "ok"; h.s.getInstanceAdapterId = () => "owner";                // were the switch read from config, this would be token_rotated
+    expect(h.s.webAuthority({ session, gateway: false, peer: "loopback", instance: "general" }).refusal).toBe("disabled");
+    h.outbox.close();
+  });
+  it("#2112 review: web-authority.json deleted after receipts were written: they read revoked, never back", () => {
+    const h = fm({ verified_authority: { enabled: true } });
+    h.s.webAuthorityState(); h.s.revokeWebAuthority();                                     // epoch 2
+    const id = h.receive(webHumanOrigin(false, webSession(2)));
+    expect(h.status(id).authority.kind).toBe("web-session");
+    rmSync(join(h.dir, "web-authority.json"));
+    h.s.authorityStateStore = null;                                                       // as a restart reads it again
+    expect(h.status(id).authority.downgraded).toBe("revoked");
+    expect(h.s.webAuthorityState().epoch).toBeGreaterThan(2);
     h.outbox.close();
   });
   it("no data directory: off", () => {

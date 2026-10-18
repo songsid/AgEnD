@@ -190,6 +190,17 @@ export function settleHumanReceipt(db: Database.Database, id: string, target: st
   })();
 }
 
+/**
+ * #1939 §10: the highest revocation epoch any stored receipt was stamped with (0: none) — every web receipt, web-session or
+ * none, carries the epoch in force when it was written. The authority state must never be behind it: a state file deleted
+ * or restored from an older copy would otherwise bring revoked receipts back.
+ */
+export function maxWebAuthorityEpoch(db: Database.Database): number {
+  const row = db.prepare("SELECT MAX(CAST(json_extract(authority_json,'$.authority_epoch') AS INTEGER)) AS epoch FROM human_delivery_receipts "
+    + "WHERE authority_json IS NOT NULL AND json_valid(authority_json)").get() as { epoch: number | null } | undefined;
+  return Number.isSafeInteger(row?.epoch) && (row!.epoch as number) > 0 ? row!.epoch as number : 0;
+}
+
 /** Read-only operator compatibility: an older database simply has no human receipts. */
 export function queryHumanReceipt(db: Database.Database, caller: string | null, selector: DeliveryStatusSelector): DeliveryStatusPage | null {
   const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='human_delivery_receipts'").get();

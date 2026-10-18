@@ -7,7 +7,12 @@
  * turned the switch on or off or turned "Only this computer can authorize" off — however it changed (Settings, an edited
  * fleet.yaml, even while the fleet was stopped: the last positions are on disk). So a receipt from before the switch went
  * off never comes back, and neither does a `lan` one after loopback_only was on. Fail-closed: while the new state cannot
- * be written, the switch counts as off.
+ * be written, the switch counts as off. The file is never trusted to be behind the receipts: one deleted, or restored from
+ * an older copy, whose epoch is below one a stored receipt carries is treated as unreadable.
+ *
+ * Limits (#2112 review): a state that could not be written is lost on a restart (the file read back is the one last
+ * saved, so a revocation that never reached it is undone); and a change the fleet never sees (the switch turned off and
+ * back on while it was stopped) moves nothing — `/web revoke` covers both.
  */
 import { readFileSync } from "node:fs";
 import { atomicWriteFileSync } from "../atomic-write.js";
@@ -38,25 +43,29 @@ export class AuthorityStateStore {
   private disk: Stored | null = null;
   private warned = false;
 
-  constructor(private readonly path: string, private readonly log: { warn(obj: object, msg?: string): void }, private readonly io: AuthorityStateIo = fileIo, private readonly now: () => number = Date.now) {}
+  /** `floor`: the highest epoch a stored receipt carries (delivery-outbox maxWebAuthorityEpoch); the file must not be behind it. */
+  constructor(private readonly path: string, private readonly log: { warn(obj: object, msg?: string): void }, private readonly io: AuthorityStateIo = fileIo,
+    private readonly now: () => number = Date.now, private readonly floor: () => number = () => 0) {}
 
   private load(): Stored {
     if (this.want) return this.want;
-    let raw: string | null = null;
-    try { raw = this.io.read(this.path); } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") { this.want = { v: 1, epoch: 0, enabled: false, loopback_only: false }; this.disk = { ...this.want }; return this.want; }
-    }
+    let raw: string | null = null, missing = false;
+    try { raw = this.io.read(this.path); } catch (err) { missing = (err as NodeJS.ErrnoException).code === "ENOENT"; }
+    let floor = 0;
+    try { floor = this.floor(); } catch { floor = Number.MAX_SAFE_INTEGER; }        // unknown: never trust the file
+    if (missing && floor === 0) { this.want = { v: 1, epoch: 0, enabled: false, loopback_only: false }; this.disk = { ...this.want }; return this.want; }
     try {
       const v = JSON.parse(raw ?? "") as Partial<Stored>;
-      if (v.v === 1 && Number.isSafeInteger(v.epoch) && (v.epoch as number) >= 0 && typeof v.enabled === "boolean" && typeof v.loopback_only === "boolean") {
+      if (v.v === 1 && Number.isSafeInteger(v.epoch) && (v.epoch as number) >= floor && typeof v.enabled === "boolean" && typeof v.loopback_only === "boolean") {
         this.want = { v: 1, epoch: v.epoch as number, enabled: v.enabled, loopback_only: v.loopback_only };
         this.disk = { ...this.want };
         return this.want;
       }
     } catch { /* below */ }
-    // Unreadable: the old epoch is unknown, so move past any it could have been (a counter far below the clock's seconds).
-    this.log.warn({ path: this.path }, "Web authority state unreadable; every earlier web authority is revoked");
-    this.want = { v: 1, epoch: Math.floor(this.now() / 1000), enabled: false, loopback_only: false };
+    // Unreadable, missing or behind the receipts: the real epoch is unknown, so move past any it could have been (a
+    // counter far below the clock's seconds), and start from off.
+    this.log.warn({ path: this.path, missing, floor }, "Web authority state unreadable, missing or older than the receipts; every earlier web authority is revoked");
+    this.want = { v: 1, epoch: Math.max(Math.floor(this.now() / 1000), floor === Number.MAX_SAFE_INTEGER ? 0 : floor + 1), enabled: false, loopback_only: false };
     return this.want;
   }
 
@@ -70,7 +79,7 @@ export class AuthorityStateStore {
       this.warned = false;
       return true;
     } catch (err) {
-      if (!this.warned) this.log.warn({ err: (err as Error).message, path: this.path }, "Web authority state could not be written; web authority is off until it can be");
+      if (!this.warned) this.log.warn({ err: (err as Error).message, path: this.path }, "Web authority state could not be written; web authority is off until it can be (a restart before then reads back the state last saved)");
       this.warned = true;
       return false;
     }

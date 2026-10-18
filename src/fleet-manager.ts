@@ -13838,7 +13838,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   webAuthorityState(): AuthorityState {
     if (!this.dataDir) return { enabled: false, loopbackOnly: true, epoch: 0 };
-    this.authorityStateStore ??= new AuthorityStateStore(join(this.dataDir, "web-authority.json"), this.logger);
+    this.authorityStateStore ??= new AuthorityStateStore(join(this.dataDir, "web-authority.json"), this.logger, undefined, undefined,
+      () => { this.ensureDeliveryOutbox?.(); return this.deliveryOutbox?.maxWebAuthorityEpoch() ?? 0; });
     return this.authorityStateStore.current(this.fleetConfig?.web?.verified_authority);
   }
 
@@ -13847,7 +13848,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.webAuthorityState();                                            // any switch change first, then this revocation
     const result = this.authorityStateStore?.revoke() ?? { epoch: 0, durable: false };
     if (result.durable) this.logger.info({ epoch: result.epoch }, "Web authority revoked");
-    else this.logger.warn({ epoch: result.epoch }, "Web authority revoked in memory only — web authority stays off until its state can be written");
+    else this.logger.warn({ epoch: result.epoch }, "Web authority revoked in memory only — web authority stays off until its state can be written; a restart before then undoes this revocation");
     return result;
   }
 
