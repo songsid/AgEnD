@@ -552,6 +552,31 @@ describe("the refusal explains itself", () => {
       expect(message, `${tool}: should still suggest coordinator`).toContain("tool_set: coordinator");
     }
   });
+
+  it("standard/delegate_task: no 'own-instance', no circular suggestion (#2134 R1)", () => {
+    // standard doesn't have delegate_task. The suggestion must point to a
+    // profile that HAS the tool (coordinator does) and must never be the
+    // current profile (standard) or suggest standard has no target.
+    const message = toolRefusedMessage("standard", "delegate_task");
+    expect(message).not.toContain("own-appearance");
+    expect(message).not.toContain("own-instance");
+    // Must not suggest the current profile or a profile that lacks the tool.
+    expect(message).not.toMatch(/tool_set: standard/);
+    expect(message).toContain("tool_set: coordinator");
+  });
+
+  it("general/checkout_repo: no 'own-instance', no harmful downgrade (#2134 R1)", () => {
+    // general doesn't have checkout_repo. Suggesting worker would lose the
+    // orchestration tools general has — so the message must not suggest worker
+    // (nor the current profile, general). coordinator has checkout_repo.
+    const message = toolRefusedMessage("general", "checkout_repo");
+    expect(message).not.toContain("own-appearance");
+    expect(message).not.toContain("own-instance");
+    expect(message).not.toMatch(/tool_set: general/);
+    // Must not suggest a profile that lacks the tool or is a downgrade from general.
+    expect(message).not.toMatch(/tool_set: worker\b/);
+    expect(message).toContain("tool_set: coordinator");
+  });
 });
 
 // ── Drift guard: every profile with set_web_theme has the full own-appearance family ──
