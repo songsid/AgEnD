@@ -61,6 +61,7 @@ for(const engine of engines)for(const origin of origins)for(const width of width
   const isProfile=r=>r.method()==='POST'&&/^\/ui\/effects\/profile\/[a-f0-9]{32}$/.test(new URL(r.url()).pathname);
   const profileQuiet=async()=>{const until=Date.now()+30000;do{if(!pendingProfiles.size&&Date.now()-profileActivity>=11000)return;await page.waitForTimeout(200)}while(Date.now()<until);assert.fail('profile transport did not become quiet before the next UI mount')};
   const beforeNavigate=async (ctx,debugPage)=>{
+  if(process.env.PROBE_MUTATION==='no-containment')await debugPage.route('**/assets/app.css*',async route=>{const response=await route.fetch(),css=await response.text();const edited=css.split('\n').filter(line=>!line.startsWith('.shell .thread .msg-tools { contain: paint;')&&!line.startsWith('.shell .thread .codeblock > .cb-head { contain: paint;')).join('\n');assert.notEqual(edited,css);await route.fulfill({response,body:edited});row.nativeNoContainment=true});
     // Shared helper selects 127.0.0.1 for loopback. Exercise the reporter's literal localhost
     // via navigation-target substitution only; sign-in still uses visible fields and submission.
     if(origin==='loopback'){for(const method of ['goto','waitForURL']){const original=debugPage[method].bind(debugPage);debugPage[method]=(url,...rest)=>original(typeof url==='string'?url.replace('http://127.0.0.1:19280','http://localhost:19280'):url,...rest)}}
@@ -69,6 +70,8 @@ debugPage.on('console',m=>{if(m.type()==='warning'&&m.text().startsWith('[AgEnD 
   const c={device:width<900?'phone':'desk',theme,lang:'en'};let fresh;
   if(origin==='public'){link=await openPublicLink(view);guestSetup();fresh=await link.publicPage(c,{reducedMotion:reduced,beforeNavigate})}else {guestSetup();fresh=await freshPage(view,c,{origin,reducedMotion:reduced,beforeNavigate});}
   ({page,ctx}=fresh);
+
+
   if(trialNoPaint)await page.route('**/ui/effect-trials/*/resource?*',async route=>{const response=await route.fetch();assert.equal(response.status(),200);const data=await response.json();data.code='agend.ready();';await route.fulfill({response,json:data});row.trialOnlyNoDraw=true});
   capture=async options=>{
    const count=async()=>new Map(await Promise.all(page.frames().map(async f=>[f,await f.evaluate(()=>globalThis.__defaultStyleInserts?.filter(s=>s==='body {}').length||0).catch(()=>0)])));
@@ -93,7 +96,7 @@ debugPage.on('console',m=>{if(m.type()==='warning'&&m.text().startsWith('[AgEnD 
    for(let i=65;i<499;i++)fx.fm.emitSseEvent('message',{instance:name,sender:name,role:'agent',text:'Conversation '+i+' [reference](https://example.test/)\n\n```js\nconst value = 1;\n```',ts:new Date(Date.now()+i).toISOString()});
    await waitObservation(page,async()=>{const p=await import('/ui/js/panel-chat.js');return Object.values(p.store.state.msgs).some(xs=>xs.length===500)&&document.querySelectorAll('.thread > .msg').length===500},30000);
    row.historyCap=await page.evaluate(()=>{const roots=[...document.querySelectorAll('[data-trust]')],bars=[...document.querySelectorAll('.thread .msg-tools,.thread .codeblock > .cb-head')];return{rendered:document.querySelectorAll('.thread > .msg').length,markers:roots.length,naivePaintNodes:roots.reduce((n,r)=>n+1+r.querySelectorAll('*').length,0),contained:bars.filter(e=>getComputedStyle(e).contain==='paint'&&getComputedStyle(e).overflowClipMargin==='0px').length}});
-   assert.equal(row.historyCap.rendered,500);assert.ok(row.historyCap.naivePaintNodes>4096);assert.equal(row.historyCap.contained,998);
+   assert.equal(row.historyCap.rendered,500);assert.ok(row.historyCap.naivePaintNodes>4096);if(process.env.PROBE_MUTATION==='no-containment'){const refusal=await page.evaluate(async()=>{const t=await import('/assets/effect-stock-trust.js');return t.stockEffectTrust(window,{frameRoot:document.querySelector('.agend-effect-layer'),ownerCss:'off'}).reason});row.capDenial=refusal;assert.equal(refusal,'stock_paint_limit');assert.fail('native reversal: removing physical containment restores the 500-message paint refusal');}assert.equal(row.historyCap.contained,998);
    row.fixedDescendant=await page.evaluate(()=>{const root=document.querySelector('.thread .msg-tools'),r=root.getBoundingClientRect(),child=document.createElement('button');child.className='fixed-containment-witness';child.textContent='test';Object.assign(child.style,{position:'fixed',left:'0px',top:'0px',width:'40px',height:'40px',backgroundColor:'#00ffff',border:'0',color:'transparent'});root.append(child);const c=child.getBoundingClientRect();return{root:{x:r.x,y:r.y,width:r.width,height:r.height},child:{x:c.x,y:c.y,width:c.width,height:c.height},contain:getComputedStyle(root).contain}});
    assert.equal(row.fixedDescendant.contain,'paint');assert.ok(row.fixedDescendant.root.y<0&&row.fixedDescendant.child.y<0,'fixed child is relative to its off-screen contained box, not the viewport');
    assert.ok(!fx.fm.effectTools.apply(name,{id}).error,'place after the actual capped history is loaded, as a later agent action');
