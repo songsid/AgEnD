@@ -133,7 +133,7 @@ try {
      const saved=page.waitForResponse(r=>r.request().method()==="POST"&&new URL(r.url()).pathname==="/ui/prefs");
      await page.getByRole("button",{name:"Allow previews",exact:true}).click();assert.equal((await saved).status(),200);
      await page.waitForFunction(()=>window.AgendPreview?.optedIn()===true);
-     if(width<900)await page.getByRole("button",{name:"Open menu",exact:true}).click();
+     if(width<900)await page.getByRole("button",{name:"Open the sidebar",exact:true}).click();
      await page.locator('.inst[href="/ui/chat/worker"]').click();await page.waitForURL("**/ui/chat/worker");await page.locator(".p-chat > .panel-head").waitFor();
      await page.waitForTimeout(500);await page.locator(".p-chat > .panel-head").click({position:{x:6,y:6}});
      await page.evaluate(async()=>{const m=await import("/ui/js/app-effects.js");window.__diagnosticTrace=[];m.getAppEffects()?.subscribe(()=>{const value=m.getAppEffects()?.api.snapshot();window.__diagnosticTrace.push({at:performance.now(),rows:value?.rows,gates:m.getAppEffects()?.gates(),focus:document.activeElement?.tagName});if(window.__diagnosticTrace.length>80)window.__diagnosticTrace.shift();});});
