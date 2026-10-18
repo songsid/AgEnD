@@ -1333,6 +1333,8 @@ a later 2.3.x follow-up (#1940).
 
 ### Chat effects and static posters (2.3 beta)
 
+Canvas Worker layout refusals retain a local diagnostic code in Chat and the Effects dialog, and failed Try offers retain their stop code. The browser console also names them. Long conversations no longer exhaust the 128 paint-hole limit merely by containing off-screen controls; every marker is still inventoried and paint checks remain bounded. Agent summaries keep their closed reasons.
+
 Signed-in Chat uses an opaque isolated bootstrap on the dashboard listener, without HTML-preview consent, a separate
 preview port or a localhost requirement. Signed-in public/guest viewers can play current placements in chats they may
 see; reads recheck their session/epoch, exposure and the exact placement. Library management, personal choices, private
@@ -1376,3 +1378,4 @@ General, coordinators and full-profile instances can read and change Settings â†
 - **Restore defaults:** the host settings and that person's custom CSS. This device's custom-CSS switch is left to the person.
 
 What stays on the page: choosing a file from the person's computer (a mod, an effect folder, a CSS asset, a card picture), this browser's own switches (custom CSS off on this device, pausing playback), downloading an export, and the card upload limits. `get_web_settings` lists these as `page_only`. The `web-appearance` skill walks General through it.
+

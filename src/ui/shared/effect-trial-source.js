@@ -64,7 +64,7 @@ export function createEffectTrialSource({ window: host, current, ownerCurrent, s
     const lease = { identity, reply, stage, owner, current: x.current, onStop: x.onStop, startedAt: x.startedAt, until, dead: false, checking: false, pending: new Set(), timer: null, off: null, binding: null };
     lease.binding = Object.freeze({ kind: "trial", key: identity.key, id: identity.id, source: lease, generation: identity.generation });
     active = lease; used.add(stage.receipt);
-    lease.off = watchEffectTrialStage(stage.receipt, () => stop(lease, "stage_ended"));
+    lease.off = watchEffectTrialStage(stage.receipt, reason => stop(lease, typeof reason === "string" ? reason : "stage_ended"));
     if (typeof lease.off !== "function" || constrainEffectTrialStage(stage.receipt, () => checked(lease)) !== true || !checked(lease)) { stop(lease, "stage_unavailable"); return null; }
     try { arm(lease); } catch { stop(lease, "trial_unavailable"); return null; }
     if (!checked(lease)) return null;

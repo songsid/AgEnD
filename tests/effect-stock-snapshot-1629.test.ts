@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-const { effectStockSnapshot, effectStockAllows } = await import(new URL("../src/ui/shared/effect-stock-snapshot.js", import.meta.url).href);
+const { effectStockSnapshot, effectStockAllows, effectStockRefusal } = await import(new URL("../src/ui/shared/effect-stock-snapshot.js", import.meta.url).href);
 const rect = () => ({ x: -12.2, y: 3.4, width: 120.2, height: 80 });
 const proof = (patch: any = {}) => ({ ok: true, front: true, agentFront: true, rects: [rect()], ...patch });
 describe("closed host stock paint snapshots", () => {
+  it("extracts only a bounded local refusal code without granting any paint", () => {
+    const get = vi.fn(() => "private"), raw = { ok: false }; Object.defineProperty(raw, "reason", { get });
+    expect(effectStockRefusal(raw)).toBe("stock_evidence_invalid"); expect(get).not.toHaveBeenCalled();
+    for (const reason of ["stock_order_unknown", "future_refusal"]) { const v = { ok: false, reason }; expect(effectStockRefusal(v)).toBe(reason); expect(effectStockSnapshot(v)).toBeNull(); }
+    for (const reason of [false, null, "x".repeat(81), "<b>", "private text"]) expect(effectStockRefusal({ reason })).toBe("stock_evidence_invalid");
+  });
   it("copies expanded paint rectangles independently and freezes every level", () => {
     const original = proof(), result = effectStockSnapshot(original);
     expect(result).toEqual(original); expect(result).not.toBe(original); expect(result.rects[0]).not.toBe(original.rects[0]);

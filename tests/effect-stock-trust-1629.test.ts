@@ -21,7 +21,7 @@ async function fixture() {
   doc.getElementById = (id: string) => nodes.get(`#${id}`) ?? null; doc.querySelector = (s: string) => nodes.get(s) ?? null;
   doc.querySelectorAll = (s: string) => s === "[data-trust]" ? marked : s === "#app > .shell" ? [nodes.get(s)] : s === ".main > .panel" ? [nodes.get(".main > .p-chat")] : extra.get(s) ?? [];
   doc.activeElement = doc.body;
-  const host = { document: doc, innerWidth: 1366, getComputedStyle: (el: any) => el.style }, snapshot = (opts: any = {}) => m.stockEffectTrust(host, { ownerCss: "off", ...opts });
+  const host = { document: doc, innerWidth: 1366, innerHeight: 768, getComputedStyle: (el: any) => el.style }, snapshot = (opts: any = {}) => m.stockEffectTrust(host, { ownerCss: "off", ...opts });
   return { m, doc, node, nodes, marked, composer, header, extra, host, snapshot };
 }
 describe("stock trust/paint prerequisite", () => {
@@ -186,7 +186,23 @@ describe("stock trust/paint prerequisite", () => {
   });
   it("caps markers and protected descendants", async () => {
     const f = await fixture(); f.composer.children = Array.from({ length: 4096 }, () => f.node()); expect(f.snapshot().ok).toBe(false);
-    f.composer.children = []; f.marked.push(...Array(127).fill(f.composer)); expect(f.snapshot().ok).toBe(false);
+    f.composer.children = []; f.marked.push(...Array(4095).fill(f.composer)); expect(f.snapshot().ok).toBe(false);
+  });
+  it("inventories a long conversation without spending holes on off-screen history", async () => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "link");
+    const history = Array.from({ length: 210 }, (_, i) => { const el = f.node(); el.kind = "link"; el.r = { x: 300, y: -10000 + i * 30, width: 80, height: 20 }; return el; });
+    f.marked.push(...history); f.extra.set(spec.selector, history);
+    const proof = f.snapshot(); expect(proof.ok).toBe(true); expect(proof.rects.length).toBe(2);
+    // Off-screen producers are still checked: no missing marker, filter, or unknown producer can hide there.
+    history[0].kind = ""; expect(f.snapshot().ok).toBe(false); history[0].kind = "link";
+    history[0].style.filter = "blur(1px)"; expect(f.snapshot().ok).toBe(false);
+  });
+  it("bounds dense viewport holes by conservative union; every original rectangle stays protected", async () => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "link");
+    const dense = Array.from({ length: 200 }, (_, i) => { const el = f.node(); el.kind = "link"; el.r = { x: 200 + i % 20 * 10, y: 200 + Math.floor(i / 20) * 20, width: 8, height: 16 }; return el; });
+    f.marked.push(...dense); f.extra.set(spec.selector, dense);
+    const proof = f.snapshot(); expect(proof.ok).toBe(true); expect(proof.rects).toHaveLength(128);
+    for (const { r } of dense) expect(proof.rects.some((b: any) => b.x <= r.x && b.y <= r.y && b.x + b.width >= r.x + r.width && b.y + b.height >= r.y + r.height)).toBe(true);
   });
   it("protects descendants and derives conservative shadow/focus outsets; unknown paint refuses", async () => {
     const f = await fixture(); f.composer.style.boxShadow = "rgba(0, 0, 0, 0.3) 0px 2px 4px 1px";

@@ -117,7 +117,7 @@ function stockBannerFill(host, el) {
 }
 function protectedPaint(host, root, budget) {
   const nodes = [root, ...root.querySelectorAll("*")]; budget.n += nodes.length;
-  if (budget.n > 4096) return null;
+  if (budget.n > 4096) { budget.exceeded = true; return null; }
   let union = null;
   for (const el of nodes) {
     if (!visible(host, el)) continue;
@@ -165,15 +165,23 @@ export function stockEffectTrust(host, { frameRoot = null, ownerCss = "unknown" 
       if (s.position !== "relative" || s.zIndex !== "1" || !neutral(s)) return fail("stock_order_unknown");
     }
     const marked = [...doc.querySelectorAll("[data-trust]")], expected = new Set(), rects = [], budget = { n: 0 };
-    if (marked.length > 128) return fail("stock_trust_unknown");
+    if (marked.length > 4096) return fail("stock_marker_limit");
     for (const { kind, selector } of STOCK_TRUST_INVENTORY) for (const el of doc.querySelectorAll(selector)) {
       if (el.ownerDocument !== doc || el.isConnected !== true || el.getAttribute("data-trust") !== kind) return fail("stock_trust_unknown");
       expected.add(el);
     }
     if (marked.some(el => !expected.has(el)) || surface.kind === "chat" && !chat.querySelector('.dock[data-trust="composer"]') || !surface.panel.querySelector('.panel-head[data-trust="header"]')) return fail("stock_trust_unknown");
     for (const el of marked) {
-      const bounds = protectedPaint(host, el, budget); if (!bounds) return fail("stock_paint_unknown");
-      if (bounds.width && bounds.height) rects.push(bounds);
+      const bounds = protectedPaint(host, el, budget); if (!bounds) return fail(budget.exceeded ? "stock_paint_limit" : "stock_paint_unknown");
+      // Off-screen history remains inventoried and paint-checked; it need not consume a
+      // viewport hole. Include the clip algorithm's extra 8px protection margin.
+      if (bounds.width && bounds.height && (!finite(host.innerHeight) || bounds.x + bounds.width + 8 >= 0 && bounds.y + bounds.height + 8 >= 0 && bounds.x - 8 <= host.innerWidth && bounds.y - 8 <= host.innerHeight)) rects.push(bounds);
+    }
+    // Keep the existing 128-hole transport bound. Conservative union may hide extra
+    // effect pixels; it can never reveal protected pixels, even for a dense viewport.
+    if (rects.length > 128) {
+      const rest = rects.splice(127), x = Math.min(...rest.map(r => r.x)), y = Math.min(...rest.map(r => r.y));
+      rects.push({ x, y, width: Math.max(...rest.map(r => r.x + r.width)) - x, height: Math.max(...rest.map(r => r.y + r.height)) - y });
     }
     if (doc.querySelector(".agend-session-ended")) return fail("session_ended");
     let barrier = [...doc.querySelectorAll(BARRIERS)].some(el => visible(host, el));

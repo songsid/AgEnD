@@ -50,7 +50,7 @@ marker. An unexpected marker or a missing/wrong marker is unknown coverage.
   native media wrappers. Markdown escapes input before fixed markup, so authored
   text cannot inject these attributes.
 
-Inventory/paint work is bounded (128 marked roots,4096 descendant observations).
+Inventory/paint work is bounded (4096 marked roots,4096 descendant observations; at most 128 paint rectangles).
 Unknown/malformed or excessive coverage refuses. Geometry is copied into plain
 numeric rectangles. Protected rectangles conservatively union descendant bounds,
 stock outer shadow outsets and focus outlines; unknown shadows/text shadows/filter
@@ -125,8 +125,28 @@ The six non-Chat producers (Fleet, Needs, Settings, View, Log and Details) now s
 
 New independent expected selectors require `panel-navigation`, `panel-content` and `panel-controls` markers even when the marker is missing. They protect Fleet/Settings segments, all six bounded panel bodies, Log filters, View terminal/profile/identity and the sticky Settings Apply bar. The real stylesheet puts these bounded surfaces at level1, keeps headers at level2 and leaves panel/app structural ancestors neutral. Only the known Apply bar may stay sticky. Inline Settings confirmations are also in the closed inventory. Menus/dialogs still suppress all fronts; owner CSS still denies agent fronts independently of route proof.
 
-Protection conservatively unions all descendants of each bounded parent, so agent fronts may have very little visible area on these pages. The 128-root/4096-observation limits remain unchanged; a large log/settings/organization view may refuse playback rather than silently skip protected nodes. Structural proof is not authorization: it does not grant anonymous View, public-link or header-token users a personal identity, and does not alter Settings' owner-CSS recovery exclusion.
+Protection conservatively unions all descendants of each bounded parent, so agent fronts may have very little visible area on these pages. The 4096-root/4096-observation limits are enforced; a large log/settings/organization view may refuse playback rather than silently skip protected nodes. Structural proof is not authorization: it does not grant anonymous View, public-link or header-token users a personal identity, and does not alter Settings' owner-CSS recovery exclusion.
 
 `scripts/manual/effect-stock-routes-1629.mts` renders the real Shell and all six real producers with inert local HTTP fixtures. Chromium/Firefox/Linux WebKit at 1366/390 verify every Fleet tab and Settings section, View expanded/loading/error/empty/not-found states, Log filters/loading/not-found, Needs permissions, Details ready/loading/not-found, a real locally staged sticky Apply bar and inline confirmation. Protected controls have front paint samples; missing markers, negative bands, transforms, unknown children and the real generic Outlet fallback refuse. No author effect, iframe or Worker runs. Fixture failures from an incomplete Appearance API response and unsettled stock hover transitions are retained separately; the recipe supplies the real response shape and lets transitions settle, without changing production checks.
 
 Rollback this extension's producer markers, CSS bands and proof together. Before reverting it after a future personal mount, disable that mount first. No stored format, authorization, network policy, effect bundle or frame cap changes here.
+
+
+## Long conversations (#2147)
+
+A native 65-message Classic chat with persona palette/font, looping ambient and a placed CW produced 207 protected
+markers. The old 128-marker check rejected the whole stock proof; registry fallback used boolean false as a reason,
+rendered as `unknown`. Try consulted the same refused proof, invalidated its stage and closed without retaining why.
+This reproduces both symptoms on Linux Chromium; it does not by itself prove the reporter's Windows chat has the same
+marker count. A short mixed conversation passed the same recipe.
+
+All markers still belong to the closed inventory, including off-screen history. Marker scans and ResizeObserver setup
+are capped at 4096; descendant paint work retains its 4096-observation bound. Paint bounds fully outside the viewport
+plus the clip's 8px margin are omitted only after their producers and descendants were checked. If more than 128 bounds
+remain, the tail is conservatively unioned into the final rectangle. This can clip extra effect pixels, never expose a
+protected pixel. Missing markers, unknown paint, changed stacking, overflow and unsupported proof remain refusals.
+
+Refused stock data has a separate descriptor-only local diagnostic path, never paint authority. Registry rows and local
+console warnings retain a bounded code; Try passes its stage termination reason through source/controller to the offer
+card. The closed agent telemetry vocabulary remains unchanged. A real window blur still stops Try; pointer leave does
+not. No timing delay, permissive proof fallback, Worker channel or authorization change is introduced.

@@ -328,6 +328,7 @@ function Thread({ name, th }) {
       t, tf: t, isUser: (x) => store.isUser(x, name), onJump: setJump, onEmpty: setEmpty,
       setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
       effectTrialStatus: x => getAppEffects()?.trialStatus(x) ?? "localAdmin",
+      effectTrialFailure: x => getAppEffects()?.trialFailure(x),
       fixEffectTrial: (x, reason) => {
         if (reason === "reducedMotion") setFollowsReducedMotion(false);
         else if (reason === "busy") getAppEffects()?.stopTrial();

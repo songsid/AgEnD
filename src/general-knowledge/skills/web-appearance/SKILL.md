@@ -414,6 +414,10 @@ smallest valid `effect.json`:
   offers to follow reduced motion, and a motion refusal offers **Play effects anyway** right there, including public/guest
   viewers. Safe mode offers **Leave safe mode**. A poster may replace unsupported playback or a chosen motion block
   (see Static Chat fallback). Menus/dialogs stop `front` effects temporarily.
+- A layout refusal keeps its local code in the Chat notice and Effects dialog (for example `stock_order_unknown`);
+  the browser console also names it. Report that code rather than repeatedly applying the effect. A failed Try leaves
+  its stop code on the offer card. Pointer-leave does not stop Try; window blur, closing, navigation or lost stage proof do.
+  Agent playback summaries still contain only the closed reporting reasons, never raw local diagnostics.
 - **Safety pause** — it measures the page's responsiveness, not your Worker's CPU. Host rAF observations learn a live
   cadence during warm-up, then fix the mount's floor at 90% of a faster observed cadence, capped at 55 fps (50 on a
   constrained device). A steady 30 Hz display has a 27 fps floor. This is not an empty-page health certificate; uniformly

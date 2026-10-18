@@ -77,9 +77,9 @@ export function allocateEffectFrames(descriptors, context) {
   if (!Array.isArray(descriptors) || descriptors.length > 128 || !plain(context)) return [];
   const keys = new Set(), duplicate = new Set();
   for (const d of descriptors) if (d && typeof d.key === "string") { if (keys.has(d.key)) duplicate.add(d.key); keys.add(d.key); }
-  const result = descriptors.map(d => ({ key: d?.key, verdict: "off", reason: "unknown", queuePos: null }));
+  const result = descriptors.map(d => ({ key: d?.key, verdict: "off", reason: "descriptor_invalid", queuePos: null }));
   const gates = ["safe", "publicLink", "reducedMotion", "hidden", "enabled", "show", "transportReady", "constrained", "modal"];
-  if (gates.some(k => typeof context[k] !== "boolean") || context.openInstance !== null && !instanceName(context.openInstance)) return result;
+  if (gates.some(k => typeof context[k] !== "boolean") || context.openInstance !== null && !instanceName(context.openInstance)) return result.map(r => ({ ...r, reason: "gates_unknown" }));
   let global = null;
   if (context.safe === true) global = "safe_mode";
   else if (context.reducedMotion === true) global = "reduced_motion";
