@@ -97,9 +97,9 @@ export function createThread(list, scroller, opts) {
   // Only a move UP unpins: the browser's own scroll anchoring also fires scroll events when content grows (the view
   // moves down or stays), and those must not count as the reader leaving the bottom. Reaching the bottom pins again.
   let pinned = true;
-  // Where the view was (and how tall the thread) at the last scroll the page saw or made: a move up from there unpins.
-  let lastTop = 0, lastHeight = 0;
-  const mark = () => { lastTop = scroller.scrollTop; lastHeight = scroller.scrollHeight; };
+  // Where the view was (and how tall it was) at the last scroll the page saw or made: a move up from there unpins.
+  let lastTop = 0, lastView = 0;
+  const mark = () => { lastTop = scroller.scrollTop; lastView = scroller.clientHeight; };
   // The oldest message drawn (by key): everything after it is drawn, so new messages never push the window. Null: none
   // drawn yet — the next render draws the newest THREAD_TAIL and the rest follows (grow).
   let firstKey = null;
@@ -624,11 +624,12 @@ export function createThread(list, scroller, opts) {
   }
 
   function onScroll() {
-    // #2158: the thread got shorter under a pinned view (text settling on a cold load, a card) and the
-    // browser clamped scrollTop down by no more than it lost. WebKit sends that clamp's scroll event before the
-    // ResizeObserver: layout, not the reader — still pinned, back at the bottom. A reader's own move up loses no height.
-    const shrunk = lastHeight - scroller.scrollHeight;
-    if (pinned && shrunk > 0 && !atBottom() && lastTop - scroller.scrollTop <= shrunk + 1) toBottom();
+    // #2158: the thread got shorter under a pinned view (text settling on a cold load, a card) and the browser clamped
+    // scrollTop to its new end — for the view as tall as it was then; the view got shorter too before WebKit sent that
+    // clamp's scroll event (it comes before the ResizeObserver). A view resting exactly at the bottom of the view as it
+    // was at the last mark was put there by the browser: still pinned, back at the bottom. Anything a reader moved
+    // (by any amount, in any order with the dock) leaves it elsewhere, and unpins as before.
+    if (pinned && !atBottom() && Math.abs(scroller.scrollHeight - lastView - scroller.scrollTop) <= 1) toBottom();
     const bottom = nearBottom(), top = scroller.scrollTop;
     // #2087: pinned only at the exact bottom — a reader still wheeling through the last 48 px was pinned there, so
     // the next resize (a picture, a card, the dock) pulled the view the rest of the way down under them. Near the bottom

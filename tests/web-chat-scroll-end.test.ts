@@ -59,10 +59,13 @@ function threadAt() {
   /**
    * #2158, as WebKit ordered it on a cold load: the thread gets `shrink` px shorter (its text settling) and the position
    * is clamped to the view as it was; the dock takes `dock` px; then the clamp's scroll event, with `wheelUp` px of the
-   * reader's own in the same frame (0: none); and only then the ResizeObserver.
+   * reader's own in the same frame (0: none); and only then the ResizeObserver. `dockFirst`: the dock grows before the
+   * thread shrinks, so the clamp is to the shorter view (review r1's order).
    */
-  const settle = (shrink: number, dock: number, wheelUp = 0) => {
-    extra -= shrink; top = Math.max(0, Math.min(top, max()) - wheelUp); view -= dock;
+  const settle = (shrink: number, dock: number, wheelUp = 0, dockFirst = false, subpixel = 0) => {
+    if (dockFirst) view -= dock;
+    extra -= shrink; top = Math.max(0, Math.min(top, max()) - wheelUp - subpixel);
+    if (!dockFirst) view -= dock;
     thread.onScroll();
     for (const cb of observers) cb();
   };
@@ -129,6 +132,40 @@ describe("#2158: a pinned thread that gets shorter stays at the bottom (WebKit's
     t.resize(20);
     expect(t.writes.slice(after), "nothing written after the reader's move").toEqual([]);
     expect(t.fromBottom()).toBe(25);
+  });
+  it("a high-DPI screen reports the clamped scrollTop half a pixel off: still the browser's, still re-pinned", () => {
+    const t = threadAt();
+    t.thread.render(many(60), { restore: null });
+    t.settle(168, 36, 0, false, 0.5);
+    expect(t.fromBottom()).toBe(0);
+  });
+  it("the view's height is re-read on every scroll: a taller view (the dock gave room back), then the cold-load clamp — re-pinned against the taller view", () => {
+    const t = threadAt();
+    t.thread.render(many(60), { restore: null });
+    t.resize(-100);                                           // the dock shrinks: the browser clamps to the new end…
+    t.wheel(0);                                               // …and sends its scroll event (at the bottom)
+    t.settle(168, 36);
+    expect(t.fromBottom()).toBe(0);
+  });
+  it("review r1: the dock grows first, then the thread shrinks (clamped to the shorter view), and the reader moves 5 px up in that frame — theirs", () => {
+    const t = threadAt();
+    t.thread.render(many(60), { restore: null });
+    const after = t.writes.length;
+    t.settle(168, 36, 5, true);                               // 6000/500/5500 → view 464, 5832 tall, clamped 5368, the reader 5363
+    expect(t.fromBottom(), "5 px up, as the reader left it").toBe(5);
+    t.resize(20);                                             // later growth (the dock again): unpinned, not followed
+    expect(t.writes.slice(after), "no scrollTop written after the reader's move").toEqual([]);
+    expect(t.fromBottom()).toBe(25);
+  });
+  it("…and the dock first with no reader: the clamp lands at the bottom — pinned, nothing written", () => {
+    const t = threadAt();
+    t.thread.render(many(60), { restore: null });
+    const after = t.writes.length;
+    t.settle(168, 36, 0, true);
+    expect(t.fromBottom()).toBe(0);
+    expect(t.writes.slice(after)).toEqual([]);
+    t.resize(30);
+    expect(t.fromBottom(), "still pinned: follows").toBe(0);
   });
   it("a reader who scrolled up — even just above the bottom, where the clamp moves them too — is not pulled down", () => {
     const t = threadAt();
