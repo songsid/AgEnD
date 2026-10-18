@@ -1,6 +1,6 @@
 /** #2118 PR2 transport acceptance: visible sign-in, fresh prefs/consents, private source-product fixture.
  * node --import tsx scripts/manual/effect-defaults-cutover-2118.mts; PW_DIR, REPO, OUT_DIR.
- * No fleet/process/account/tunnel. The real PublicWebLink/gateway uses the shared fixture's explicit tunnel/transport stubs.
+ * No fleet/backend/real-account/tunnel operation. The real PublicWebLink/gateway uses the shared fixture's explicit tunnel/transport stubs.
  * This PR still expects reduced-motion refusal/baseline; PR3 supplies their separate remedy. Not real Safari/Windows/phone.
  */
 import assert from 'node:assert/strict';
@@ -10,7 +10,7 @@ import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {inflateSync} from 'node:zlib';
 import {createServer,request as proxyRequest} from 'node:http';
-import {bootFixture,freshPage,mounted,openPublicLink} from './smoke-fixture/index.mts';
+import {bootFixture,freshPage,openPublicLink} from './smoke-fixture/index.mts';
 process.env.REPO=process.cwd();const out=resolve(process.env.OUT_DIR||'.artifacts/effect-cutover');process.env.OUT=out;mkdirSync(out,{recursive:true});
 const pw=createRequire(process.env.PW_DIR+'/')('playwright-core');
 const engines=(process.env.PROBE_ENGINES||'chromium,firefox,webkit').split(',');
@@ -66,7 +66,7 @@ for(const engine of engines)for(const origin of origins)for(const width of width
   const requests=[];page.on('response',r=>{if(/\/effect-bootstrap|\/ui\/effects\//.test(r.url()))requests.push({url:new URL(r.url()).pathname,status:r.status()})});
   const a=page.locator(`.sidebar a[href="/ui/chat/${name}"]`);await a.waitFor({state:"attached"});if(width>=900)await a.waitFor({state:"visible"});else if(!await a.isVisible())await page.locator('button[aria-controls="sidebar"][aria-expanded]').filter({visible:true}).click();
   await a.click();await page.waitForSelector('.p-chat .chat-main');if(asGuest){await page.waitForFunction(async()=>{const m=await import('/ui/js/app-effects.js'),s=m.getAppEffects()?.api.snapshot();return s&&!s.loading&&s.effects.length===0});assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);assert.ok(!fx.fm.effectTools.apply(name,{id}).error);row.guestInitialEmptyToApply=true;}
-  if(reduced){await page.waitForFunction(()=>document.querySelector('.chat-fx-notice')?.textContent.includes('reduced motion'),undefined,{timeout:12000});assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);row.blocked='reduced_motion';row.url=page.url();row.pageText=await page.locator('body').innerText().catch(()=>null);row.notice=await page.locator('.chat-fx-notice').allTextContents();await capture({path:join(out,key+'.png')});}
+  if(reduced){await page.waitForFunction(()=>[...document.querySelectorAll('.chat-fx-notice[role=status]')].some(n=>n.textContent.includes('reduced motion')),undefined,{timeout:12000});assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);row.blocked='reduced_motion';row.url=page.url();row.pageText=await page.locator('body').innerText().catch(()=>null);row.notice=await page.locator('.chat-fx-notice').allTextContents();await capture({path:join(out,key+'.png')});}
   else{
    await page.waitForFunction(()=>[...document.querySelectorAll('iframe.agend-effect-frame')].some(f=>getComputedStyle(f).visibility==='visible'),undefined,{timeout:15000});
    // ready/visible precedes the browser's asynchronous OffscreenCanvas presentation.
