@@ -9,6 +9,7 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { appStore, guestPage, useStore } from "/assets/app-store.js";
+import { AuthorizeChip } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
 import { modelText, namesOf, namesStore } from "/assets/instance-nav.js";
 import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
@@ -390,7 +391,7 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
       <button type="button" class="btn btn-sm" onClick=${() => store.discardFailed(name)}>${t("chat.discard")}</button></div>` : null}
     <${Composer} name=${name} lease=${lease} busy=${R().isBusy(exec)} />
     <p class="hint" title=${t(guestPage() ? "chat.guestMore" : "chat.composerMore")}>${t("chat.composerHint")}</p>
-    ${guestPage() ? html`<p class="guest-note">${t("chat.guestNote")}</p>` : null}
+    ${guestPage() ? html`<p class="guest-note">${t("chat.guestNote")}</p>` : html`<${AuthorizeChip} />`}
   </div></div>`;
 }
 

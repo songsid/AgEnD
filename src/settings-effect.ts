@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { agentConflict, draftQuickstart, newConnectionConflict, planQuickstart, validateWizardInput, withExistingAgent, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
 import type { FleetConfig } from "./types.js";
 import { settingsChangeDiff, type SettingsChangeDiff } from "./settings-change.js";
-import { applyAppearanceChanges, applyGuestsPatch, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
+import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
 import { SettingsConfirmationError } from "./settings-confirmation.js";
 import { validateFleetConfig, validateClassicBotConfig } from "./config-validator.js";
 import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAuthority } from "./settings-authority.js";
@@ -91,6 +91,10 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (parsed.guests) {
       const applied = applyGuestsPatch(cfg.web?.guests, parsed.guests);
       if (applied.next) after.fleet.web.guests = applied.next; else delete after.fleet.web.guests;
+    }
+    if (parsed.verifiedAuthority) {
+      const applied = applyVerifiedAuthorityPatch(cfg.web?.verified_authority, parsed.verifiedAuthority);
+      if (applied.next) after.fleet.web.verified_authority = applied.next; else delete after.fleet.web.verified_authority;
     }
   } else if (path === "/api/settings/fleet/appearance") {
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
