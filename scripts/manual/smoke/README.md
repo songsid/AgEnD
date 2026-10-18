@@ -87,6 +87,70 @@ await fx.close(); process.exit(0);
 | `addSnowEffect` | a drawing canvas-worker effect |
 | `bigMod` | a mod near its size cap |
 
+## From defaults (fleet decision a78ebdc5)
+
+`fx.page()` seeds what a new person never has: it skips the tour and first-run, sets prefs, and signs in with an
+owner-less code. Every user-visible feature also needs a **from-defaults** smoke:
+- a fresh profile with nothing seeded, driven only through visible UI;
+- it passes only if the user sees the feature, or the UI names the blocking reason with a link that fixes it;
+- the blocked state is a tested state: screenshot it and assert its message.
+
+```ts
+import { bootFixture, freshPage, mounted, openPublicLink, shotPath } from "../smoke-fixture/index.mts";
+const fx = await bootFixture({ port: Number(process.env.HP ?? 48700) });
+// Loopback, nothing seeded, signed in as a synthetic account of its own; reduced motion; a phone.
+const a = await freshPage(fx, { device: "phone", theme: "dark", lang: "en" }, { reducedMotion: true });
+if (!(await mounted(a.page)) || a.errors.length) throw new Error("did not mount");   // a.errors: from before the first navigation
+// A real non-localhost origin: the page is on http://dashboard.lan.example:<port> (location, secure context, storage).
+const b = await freshPage(fx, { device: "desk", theme: "light", lang: "en" }, { origin: "lan" });
+// The temporary public link, real end to end inside the product.
+const link = await openPublicLink(fx);
+const c = await link.publicPage({ device: "phone", theme: "light", lang: "en" });
+await link.close();
+```
+
+- **Accounts.** Each `freshPage` signs in as a new synthetic Discord account (`demoAccount()`), so its session is bound
+  to that account like a real DM code. `{ account: "operator" }` is the owner-less `agend web` case, used only on
+  purpose.
+- **Prefs.** Before each case, what that viewer would read must be empty: `WebPrefsStore.readForViewer`, the host's prefs
+  plus that person's. The public link's viewer reads the host's only.
+  - **A new account doesn't isolate the host.** Host-wide settings (`preview.optIn`, `fx.show`, `theme`, `lang`, …) reach
+    every account, so a consent another case gave, or an earlier `fx.page()` run, is not a default state.
+  - **Refused, never cleaned or rewritten.** A polluted store refuses, and so does one that can't be read. Run
+    from-defaults cases on a fixture of their own (or before anything writes prefs).
+- **Errors.** `errors` collects page errors and console errors from before the first navigation. The sign-in page's own
+  `/auth/session` 401 before signing in is kept apart in `expected`.
+- **Mounted.** `mounted(page)` waits for the app's visible navigation (the sidebar, or the phone's tab bar) with a
+  control in it. The empty `#app` the page ships with doesn't count.
+- **Fault injection.** `beforeNavigate(ctx, page)` runs before the first navigation, for negative controls.
+
+**What is not real, exactly** — everything else the browser does goes through the product:
+- **the sign-in code's delivery:** it's issued directly to the synthetic account, as its DM would carry it;
+- **the name `dashboard.lan.example`:** the fixture's Chromium resolves it to 127.0.0.1 (`--host-resolver-rules`), and
+  the harness adds it to `web.allowed_hosts`;
+- **for the public link:**
+  - the Cloudflare tunnel (TunnelPurposeLane's manager);
+  - the cloudflared install (`ensure`) and process (`provider`);
+  - PublicWebLink's `permitted`, the Discord-side owner check;
+  - FleetManager's `confirmPublicWebLogin`, replaced whole: the General notice is recorded in `link.notices`, not posted;
+  - the transport: Playwright terminates `https://demo-smoke-link.trycloudflare.com` in the browser and carries each
+    request to the gateway's local port with that Host, instead of Cloudflare's edge, and refuses event streams (the
+    public link polls by design).
+
+  The PublicWebLink lifecycle, the gateway (`createPublicWebGateway`), its Host pin, its route list, the origin checks
+  and the `__Host-` cookie are the product's own.
+
+`scripts/manual/smoke/smoke-from-defaults-probe.mts` checks the harness itself:
+- the loopback, LAN, operator and public cases;
+- the location and secure context of each;
+- negative controls that must be caught:
+  - a boot that throws;
+  - a boot that never mounts;
+  - a host consent written by another account through the product's write path, refused for a new account and on the
+    public link;
+  - an unreadable prefs store;
+- and a positive control: a separate clean fixture signs in and mounts.
+
 ## Pitfalls (each one cost a run)
 
 - **Language** is the host pref `lang` (`fx.page` writes it). `localStorage.agend_lang` alone leaves the page in English.

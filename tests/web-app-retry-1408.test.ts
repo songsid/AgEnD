@@ -45,9 +45,13 @@ async function scenario(poll: PollAnswer[]) {
     const json = path.startsWith("/ui/history") ? { messages: [{ ...MSG, delivery: "delivered" }] } : {};
     return { ok: !path.startsWith("/auth/"), status: path.startsWith("/auth/") ? 401 : 200, json: async () => json };
   };
-  const { options } = await import("/assets/preact.module.js");
+  const { options, render } = await import("/assets/preact.module.js");
   options.requestAnimationFrame = (cb: () => void) => setTimeout(cb, 0);
-  restore = () => { dom.restore(); delete g.EventSource; delete g.fetch; };
+  restore = () => {
+    // Stop the real stream and unmount before replacing globals; an unfinished retry must never poll the next case.
+    dom.window._fire(new Event("pagehide", { target: dom.window, eventPhase: 2 } as any), false); render(null, app);
+    dom.restore(); delete g.EventSource; delete g.fetch;
+  };
   await import("/assets/app.js");
   await vi.waitFor(() => expect(sources.map(s => s.url)).toEqual(["/ui/events"]));
   await vi.waitFor(() => expect(app.querySelector(".error-state")).not.toBeNull());
@@ -81,7 +85,8 @@ describe("Retry after a failed first load of the chat", () => {
     s.send("delivery", { instance: "alpha", messageId: "m5", delivery: "delivered" });
     s.send("status", STATUS); s.send("status", STATUS);
     s.retry();
-    await vi.waitFor(() => expect(s.cards().length).toBeGreaterThan(0));
+    // The retried import is deliberately cold; use the same bounded readiness budget as the late-join case below.
+    await vi.waitFor(() => expect(s.cards().length).toBeGreaterThan(0), { timeout: 8000 });
     await vi.waitFor(() => expect(s.app.querySelector(".tick")).not.toBeNull());
     expect(s.polls()).toBe(1);
     expect(s.requests.some(r => r.startsWith("GET /ui/history?instance=alpha"))).toBe(true);

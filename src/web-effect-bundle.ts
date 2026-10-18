@@ -26,6 +26,29 @@ export type EffectEntryResult = {
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const assetPath = /^assets\/[a-z0-9][a-z0-9_-]{0,63}\.(png|jpe?g|webp|gif)$/;
 const fail = (path: string, problem: string): EffectEntryResult => ({ ok: false, problems: [{ path, problem }] });
+/** Advisory text lint only, never validation or a security boundary. Keep quoted URLs while ignoring comments. */
+function workerLintText(code: string): string {
+  const parts: string[] = []; let copied = 0, at = 0;
+  while (at < code.length) {
+    const c = code[at];
+    if (c === '"' || c === "'" || c === "`") {
+      const quote = c; at++;
+      while (at < code.length) { if (code[at] === "\\") { at += 2; continue; } if (code[at++] === quote) break; }
+      continue;
+    }
+    // Escaped slashes in a regular-expression literal are not comment openers.
+    if (c === "\\") { at += 2; continue; }
+    if (c === "/" && (code[at + 1] === "/" || code[at + 1] === "*")) {
+      parts.push(code.slice(copied, at), " ");
+      if (code[at + 1] === "/") {
+        at += 2; while (at < code.length && !/[\r\n\u2028\u2029]/.test(code[at]!)) at++;
+      } else { at += 2; while (at < code.length && !(code[at] === "*" && code[at + 1] === "/")) at++; at = Math.min(code.length, at + 2); }
+      copied = at; continue;
+    }
+    at++;
+  }
+  parts.push(code.slice(copied)); return parts.join("");
+}
 export function checkEffectEntry(input: ReadonlyMap<string, Uint8Array>): EffectEntryResult {
   try {
     if (!(input instanceof Map) || input.size < 2 || input.size > 20)
@@ -120,7 +143,7 @@ export function checkEffectEntry(input: ReadonlyMap<string, Uint8Array>): Effect
     }
     const identity = effectBundleIdentity(manifest, files);
     const warnings: string[] = [];
-    if (/\b(?:fetch|XMLHttpRequest|WebSocket|RTCPeerConnection|importScripts)\b|https?:\/\/|\/\/|\bimport\s*\(|\btop\.|\bparent\.location/.test(code))
+    if (/\b(?:fetch|XMLHttpRequest|WebSocket|RTCPeerConnection|importScripts)\b|https?:\/\/|["\'`]\/\/|\bimport\s*\(|\btop\.|\bparent\.location/.test(workerLintText(code)))
       warnings.push("network_or_import_api_unsupported");
     return { ok: true, id: identity.id, sha256: identity.sha256, manifest, files, bytes, warnings };
   }

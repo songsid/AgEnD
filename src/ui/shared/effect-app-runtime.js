@@ -1,4 +1,5 @@
 /** #1629: app-owned pool; Chat contributes a lease, never another registry/loader. */
+import { effectPlaybackReason, EFFECT_BLOCK_REASONS } from "./effect-policy.js";
 import { createEffectTrialSource } from "./effect-trial-source.js";
 import { createOwnerEffectSource } from "./effect-owner-source.js";
 import { createEffectRuntimeLoader } from "./effect-runtime-loader.js";
@@ -14,6 +15,7 @@ const episodes = new WeakSet();
 export function createAppEffectRuntime({ window: host, current, observe, onChange = () => {}, onDispose = () => {}, resolveOwnerTarget = null, onOwnerUnavailable = () => {}, factories = {} }) {
   let dead = false, error = null, loader = null, registry = null, writer = null, source = null, personal = null, trial = null, pending = null, lastMetadata = null, serial = 0, revision = 0, stamp = null, syncing = false, queued = false;
   const bindings = new Map(), profiles = new Map();
+  let lastContext = null, playbackUnavailable = null;
   const identity = chatEffectIdentity(host), auth = host?.AgendAuth;
   const safe = fn => { try { return fn(); } catch { return null; } };
   const alive = () => { if (dead) return false; const value = safe(() => current() === true && !auth.sessionEnded()); return !dead && value === true; };
@@ -25,15 +27,49 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
   const placementIdentity = p => JSON.stringify([p.by, p.manifest.layer, p.params]);
   const clock = () => host.performance.now();
   let offAuth = null;
-  const snapshot = s => ({ error: error ?? s?.error ?? null, rows: registry?.snapshot().filter(row => s?.bindings.get(row.id)?.key === row.key) ?? [], effects: s?.metadata?.effects ?? [], loading: !!s && !s.dead && s.metadata === null && !s.error });
+  const snapshot = s => {
+    const effects = s?.metadata?.effects ?? [], known = registry?.snapshot?.() ?? [];
+    const rows = effects.map(p => {
+      const b = s.bindings.get(p.id), row = known.find(r => b && r.key === b.key && r.id === p.id);
+      if (row && !s.error && !playbackUnavailable) return row.reason == null && row.phase == null ? { ...row, reason: "calibrating" } : row;
+      return { id: p.id, key: b?.key ?? null, verdict: "off", phase: null, quality: null,
+        reason: s.error ?? playbackUnavailable ?? effectPlaybackReason(lastContext) ?? (!p.manifest.regions.includes("chat") ? "region_unavailable" : "runtime_unavailable") };
+    });
+    return { error: error ?? s?.error ?? null, rows, effects, loading: !!s && !s.dead && s.metadata === null && !s.error };
+  };
   function tell() {
     const s = source, value = snapshot(s); if (dead) return;
-    if (sourceAlive(s)) safe(() => s.onChange(value));
+    if (sourceAlive(s)) {
+      const next = JSON.stringify(value);
+      if (next !== s.lastSnapshot) { s.lastSnapshot = next; safe(() => s.onChange(value)); }
+    }
     if (!dead) safe(() => onChange(snapshot(source)));
+  }
+  function reportPlayback(s) {
+    if (!sourceAlive(s)) return;
+    const now = safe(clock);
+    if (!Number.isFinite(now) || now < 0 || s.reportClock !== null && now < s.reportClock) { s.reporter.dispose(); return; }
+    s.reportClock = now;
+    const value = snapshot(s);
+    for (const id of s.reported.keys()) if (!value.effects.some(p => p.id === id)) s.reported.delete(id);
+    for (const row of value.rows) {
+      if (!sourceAlive(s)) return;
+      const status = row.phase === "running" && row.reason == null ? "playing" : "blocked";
+      const reason = status === "playing" ? null : EFFECT_BLOCK_REASONS.includes(row.reason) ? row.reason : "unknown";
+      const device = lastContext?.constrained === true ? "constrained" : "standard";
+      const next = JSON.stringify([status, reason, device]), last = s.reported.get(row.id);
+      if (last && (now - last.at < 10000 || next === last.value && now - last.at < 60000)) continue;
+      s.reported.set(row.id, { at: now, value: next });
+      void s.reporter.post(`/ui/effects/profile/${row.id}?instance=${encodeURIComponent(s.name)}&ownerEpoch=${identity.epoch}`,
+        { v: 1, kind: "playback", device, status, reason });
+    }
+    // No server polling or unbounded retries: at most one observation per effect / 10s, a 60s heartbeat.
+    if (sourceAlive(s)) s.reportTimer = host.setTimeout(() => reportPlayback(s), 10000);
   }
   function discard(s) {
     if (!s || s.dead) return;
     s.dead = true; s.generation++; s.metadata = null;
+    safe(() => host.clearTimeout(s.reportTimer)); safe(() => s.reporter?.dispose());
     if (source === s) source = null;
     safe(() => trial?.stopFor(s));
     for (const b of s.bindings.values()) bindings.delete(b.key); s.bindings.clear();
@@ -95,7 +131,13 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
         void writer.post(`/ui/effects/profile/${owner.id}?${query}ownerEpoch=${identity.epoch}`, report.profile);
       }, clock,
     });
-    if (!registry.ok) throw Error("runtime_unavailable");
+    if (!registry.ok) {
+      // Keep authenticated placement metadata available for explanations. This inert adapter cannot create,
+      // load, resume, send to, or authorize a frame; a failed paint subsystem is never permission.
+      playbackUnavailable = "unsupported_host";
+      safe(() => registry?.dispose?.());
+      registry = { ok: true, frameRoot: null, update() {}, snapshot: () => [], publish() {}, resume: () => false, dispose() {} };
+    }
     trial = make("trialSource", createEffectTrialSource)({ window: host, current: () => {
       if (!alive()) return false; const v = observe(), c = v.context;
       return alive() && c.enabled === true && c.show === true && c.trialReady === true
@@ -139,7 +181,7 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
   }
   function refuseSource(s) {
     if (!sourceAlive(s)) return;
-    s.error = "resource_unavailable"; s.metadata = null; s.generation++;
+    s.error = "resource_unavailable"; s.generation++;
     for (const b of s.bindings.values()) bindings.delete(b.key); s.bindings.clear(); revision++; stamp = null; sync(); tell();
   }
   function queueSync() {
@@ -156,6 +198,7 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
       if (!alive() || revision !== before || s !== source) { if (alive()) queueSync(); return; }
       const entries = [...(personal?.descriptors() ?? []), ...(trial?.descriptors() ?? []), ...descriptors(s)];
       if (!alive() || revision !== before || s !== source) { stamp = null; if (alive()) queueSync(); return; }
+      lastContext = { ...value.context };
       const next = JSON.stringify([revision, value.context, entries.map(d => [d.key, d.paused])]);
       if (stamp !== next) {
         if (!alive() || revision !== before || s !== source) { stamp = null; if (alive()) queueSync(); return; }
@@ -164,12 +207,15 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
       if (!alive() || revision !== before || s !== source) { stamp = null; if (alive()) queueSync(); return; }
       emit();
       const c = value.context;
-      if (!pending && c.enabled && c.show && c.previewReady && c.optIn && !c.safe && !c.publicLink && !c.reducedMotion && !c.saveData && !c.hidden) {
-        const ownerNeeds = personal?.needsMetadata() === true, chatNeeds = sourceAlive(s) && !s.error && !s.metadata;
+      // Metadata describes placements, not executable resources. Its existing session/epoch/current and
+      // shared settled-lane fences apply even when this viewer has declined playback. No code is fetched here.
+      if (!pending && !c.publicLink) {
+        const ownerNeeds = c.enabled && c.show && c.previewReady && c.optIn && !c.safe && !c.reducedMotion && !c.saveData && !c.hidden && personal?.needsMetadata() === true, chatNeeds = sourceAlive(s) && !s.error && !s.metadata;
         if (!alive() || revision !== before || s !== source) { if (alive()) queueSync(); return; }
         if (ownerNeeds && (!chatNeeds || lastMetadata !== "owner")) void readPersonal();
         else if (chatNeeds) void read(s);
       }
+      tell();
     } catch { fail("runtime_unavailable"); }
     finally { syncing = false; }
   }
@@ -223,7 +269,10 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
     const { name, element, current: ownCurrent, observe: ownObserve, onChange: ownChange = () => {} } = options ?? {};
     if (!alive() || typeof name !== "string" || name.length < 1 || name.length > 128 || !element || element.isConnected !== true || typeof ownCurrent !== "function" || typeof ownObserve !== "function" || safe(() => ownCurrent() === true) !== true || revision !== expected || source !== null) return null;
     const s = { name, element, current: ownCurrent, observe: ownObserve, onChange: ownChange, serial: ++serial, generation: 0, dead: false, error: null, metadata: null, bindings: new Map(), paused: new Map() };
-    source = s; revision++; stamp = null;
+    source = s;
+    s.reporter = createEffectWriter(host, () => sourceAlive(s)); s.reported = new Map(); s.reportClock = null;
+    s.reportTimer = host.setTimeout(() => reportPlayback(s), 10000);
+    revision++; stamp = null;
     const placement = id => sourceAlive(s) && !s.error ? s.metadata?.effects.find(p => p.id === id) : null;
     const changed = () => changedSource(s);
     const api = { ok: true, sync,
@@ -237,8 +286,8 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
     };
     sync(); tell(); return sourceAlive(s) ? api : null;
   }
-  return { ok: true, sync, attachChat, changedOwner, ownerSnapshot,
-    attachTrial(options) { const s = source; return sourceAlive(s) ? trial.attach(options, s) : null; },
+  return { ok: true, playbackAvailable: playbackUnavailable === null, sync, attachChat, changedOwner, ownerSnapshot,
+    attachTrial(options) { const s = source; return !playbackUnavailable && sourceAlive(s) ? trial.attach(options, s) : null; },
     stopTrial() { trial?.stop(); },
     trialSnapshot() { return { rows: registry?.snapshot().filter(row => trial?.binding(row.key, row.id)) ?? [] }; },
     cursorSelection: () => personal?.cursorSelection() ?? null, cursorImageSettled,

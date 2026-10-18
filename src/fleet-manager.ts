@@ -126,7 +126,7 @@ import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { applyInstanceConfigPatch, outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { backendArgs, backendStep, joinBackendArgs, modelNameCarried, planDisplay, type BackendCommandDeps, type BackendStep } from "./backend-command.js";
-import { DeliveryOutbox, DEFAULT_REPLY_OBLIGATION_TTL_MS, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage } from "./delivery-outbox.js";
+import { DeliveryOutbox, DEFAULT_REPLY_OBLIGATION_TTL_MS, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage, type DeliveryStatusItem } from "./delivery-outbox.js";
 
 // The target Daemon can legitimately wait 30 minutes for a busy pane before
 // deciding to defer before submission. This is an alert threshold only: the
@@ -290,7 +290,9 @@ import { authorizeSession, decideWebGate, loadOrCreateWebToken, readWebToken } f
 import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
-import { evaluateWebAuthority, webAuthorityPolicy, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
+import { authorityNow, evaluateWebAuthority, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
+import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
+import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
@@ -1419,6 +1421,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       profiles: id => this.effectProfiles.read(id),
       profileSummary: id => this.effectService.profileSummary(id),
       profileSummaries: ids => this.effectService.profileSummaries(ids),
+      playbackSummary: (name, id) => this.effectService.playbackSummary(name, id),
     }));
   }
 
@@ -1429,6 +1432,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       frame: (name) => ((this.getUiStatus() as { instances: FrameEntry[] }).instances.find(i => i.name === name) ?? { name }),
       theme: (name) => { const r = this.themeStore.get(name); return { theme: r.theme, locked: r.locked, widgets: r.placements.widgets, ambient: r.placements.ambient,
         glyphAsset: (id) => this.themeStore.asset(name, id) }; },
+      effects: name => this.themeStore.readable() ? this.themeStore.get(name).placements.effects.map(p => ({ id: p.id, by: p.by, ...(p.params ? { params: p.params } : {}), playback: this.effectService.playbackSummary(name, p.id) })) : [],
       card: (name) => resolveCard(name, humanCards(this.dataDir).get(name), this.themeStore.get(name).theme.card),
       // #1958: the host's identity-colour settings, as the page reads them (an unreadable prefs file: the defaults).
       colorPrefs: () => { try { const v = this.webPrefs.read(OPERATOR).values as Record<string, unknown>; return { show: v["color.show"], off: v["color.off"] === true }; } catch { return {}; } },
@@ -2084,10 +2088,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   queryDurableDeliveryStatus(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage {
     this.ensureDeliveryOutbox();
     const page = this.deliveryOutbox!.queryStatusForInstance(callerInstance, selector);
+    // #1939 §10: a human receipt's authority as it reads now (switch, epoch, loopback_only).
+    const state = page.items.some(item => item.authority) ? this.webAuthorityState() : null;
+    const human = (item: DeliveryStatusItem): DeliveryStatusItem => {
+      if (!item.authority || !state) return item;
+      const authority = authorityNow(item.authority, state);
+      return { ...item, authority, ...(authority.downgraded ? { source_instance: "human:web:unknown" } : {}) };
+    };
     // #1641: a sender that sees only `queued` cannot tell "next in line" from "the target is stuck": say which.
     return {
       ...page,
-      items: page.items.map(item => (item.state === "queued" || item.state === "retry_wait")
+      items: page.items.map(human).map(item => (item.state === "queued" || item.state === "retry_wait")
         ? { ...item, waiting_reason: this.deliveryWaitingReason(item.target_instance) }
         : item),
     };
@@ -4163,11 +4174,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       origin: { ...origin }, inputKind: String(payload.type), managerBootId: this.managerBootId });
     // #1939 §7: each ordinary verified web message, for the S1 beta to watch. No text, cookie or session id: the handle.
     const authority = origin.authority;
-    if (authority?.kind === "web-session" && authority.actor && authority.session) {
+    if (authority?.kind === "web-verified" && authority.actor && authority.session) {
       try {
         this.eventLog?.insert(instanceName, "web_authority", { receipt_id: row.receipt_id, session: authority.session.handle,
           peer: authority.session.peer, surface: "local", actor: `${authority.actor.adapter_id}:${authority.actor.user_id}`,
-          input_kind: String(payload.type), outcome: "web-session", authority_epoch: authority.authority_epoch });
+          input_kind: String(payload.type), outcome: "web-verified", authority_epoch: authority.authority_epoch });
       } catch (err) { this.logger.warn({ err, instanceName }, "Could not record web authority"); }
     }
     return { ...payload, meta: { ...(payload.meta as Record<string, unknown> ?? {}),
@@ -6265,7 +6276,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #1570: no browser may ask the sign-in page for a code any more.
     const devices = this.returningDevices!.revokeAll();
     const sessions = this.webSessions!.revokeAll();
-    const result = { count: sessions.count, durable: sessions.durable && devices.durable };
+    // #1939 §10: and every web authority given so far (its receipts read as none).
+    const authority = this.revokeWebAuthority();
+    const result = { count: sessions.count, durable: sessions.durable && devices.durable && authority.durable };
     if (result.durable) this.logger.info({ count: result.count, devices: devices.count }, "Web sessions revoked (all)");
     else this.logger.warn({ count: result.count }, "Web sessions revoked in memory only — the session file could not be updated or removed");
     return result;
@@ -13812,13 +13825,65 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * token; `instance` once the body has named it. Observe only: receipts record it, no agent acts on it yet.
    */
   webAuthority(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer; instance?: string }): WebAuthorityResult {
+    const state = this.webAuthorityState();
     return evaluateWebAuthority({
       session: input.session, gateway: input.gateway, peer: input.peer,
       tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
       ...(input.instance !== undefined ? { target: { adapterId: this.getInstanceAdapterId(input.instance) } } : {}),
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
-      policy: webAuthorityPolicy(this.fleetConfig?.web), epoch: 0, now: Date.now(),
+      authorization: input.session ? this.sessionAuthorizationStore()?.get(input.session.handle) ?? null : null,
+      policy: { ...webAuthorityPolicy(this.fleetConfig?.web), enabled: state.enabled, loopbackOnly: state.loopbackOnly }, epoch: state.epoch, now: Date.now(),
     });
+  }
+
+  private sessionAuthorizations: SessionAuthorizations | null = null;
+  private sessionAuthorizationStore(): SessionAuthorizations | null {
+    if (!this.dataDir) return null;
+    this.sessionAuthorizations ??= new SessionAuthorizations(join(this.dataDir, "web-authorizations.json"), this.logger);
+    return this.sessionAuthorizations;
+  }
+
+  /**
+   * #1939 §0: record that a session's account has authorized it — called only once that account has confirmed on Discord
+   * or Telegram (S2b). The session must qualify now (§3, as a message from it would be judged); then every message,
+   * click, /steer and /btw from it is web-verified until max_session_hours after now, the session ends, or a revocation.
+   * Ones no longer worth keeping (their session gone, an old epoch, run out) are dropped on the way.
+   */
+  authorizeWebSession(session: SessionRecord, peer: WebPeer): { ok: true; authorization: SessionAuthorization; durable: boolean } | { ok: false; refusal: WebAuthorityRefusal } {
+    const store = this.sessionAuthorizationStore();
+    const state = this.webAuthorityState(), now = Date.now(), policy = webAuthorityPolicy(this.fleetConfig?.web);
+    if (!store || !session.owner) return { ok: false, refusal: !store ? "disabled" : "no_account" };
+    const check = evaluateWebAuthority({
+      session, gateway: false, peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
+      isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
+      authorization: { handle: session.handle, owner: session.owner, authorizedAt: now, epoch: state.epoch },
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly }, epoch: state.epoch, now,
+    });
+    if (check.refusal) return { ok: false, refusal: check.refusal };
+    const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
+    store.prune(a => a.epoch === state.epoch && now - a.authorizedAt <= policy.maxSessionMs && live.has(a.handle));
+    return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch) };
+  }
+
+  private authorityStateStore: AuthorityStateStore | null = null;
+  /**
+   * #1939 §10: the switch, "Only this computer can authorize" and the revocation epoch in force for the configuration as
+   * it is now (a change since last seen moves the epoch first; authority-state.ts). No data directory: off.
+   */
+  webAuthorityState(): AuthorityState {
+    if (!this.dataDir) return { enabled: false, loopbackOnly: true, epoch: 0 };
+    this.authorityStateStore ??= new AuthorityStateStore(join(this.dataDir, "web-authority.json"), this.logger, undefined, undefined,
+      () => { this.ensureDeliveryOutbox?.(); return this.deliveryOutbox?.maxWebAuthorityEpoch() ?? 0; });
+    return this.authorityStateStore.current(this.fleetConfig?.web?.verified_authority);
+  }
+
+  /** #1939 §10: revoke every web authority given so far (receipts read as none), without signing anyone out. */
+  revokeWebAuthority(): { epoch: number; durable: boolean } {
+    this.webAuthorityState();                                            // any switch change first, then this revocation
+    const result = this.authorityStateStore?.revoke() ?? { epoch: 0, durable: false };
+    if (result.durable) this.logger.info({ epoch: result.epoch }, "Web authority revoked");
+    else this.logger.warn({ epoch: result.epoch }, "Web authority revoked in memory only — web authority stays off until its state can be written; a restart before then undoes this revocation");
+    return result;
   }
 
   /** #1269: an instance's chat command from the web chat (web-commands.ts); `publicLink`: a gateway request. */

@@ -17,6 +17,7 @@ export interface EffectToolDeps {
   preview(instance:string,id:string,title:string):Promise<Answer>;
   profiles(id:string):Answer;
   profileSummary?(id:string):Answer;
+  playbackSummary?(instance:string,id:string):Answer;
   profileSummaries?(ids:readonly string[]):Record<string,Answer>;
   clock?:()=>number;
 }
@@ -43,7 +44,8 @@ export class WebEffectTools {
     const result=this.deps.library.list(this.principal(instance));
     if(!result.ok)return {error:result.error};
     const profiles=this.deps.profileSummaries?.(result.entries.map(e=>e.id));
-    return {effects:result.entries.map(e=>({id:e.id,name:e.manifest.name,title:e.manifest.title,regions:e.manifest.regions,layer:e.manifest.layer,bytes:e.bytes,latest_profile:profiles?profiles[e.id]:this.deps.profileSummary?this.deps.profileSummary(e.id):this.deps.profiles(e.id)}))};
+    const placed=new Set(this.deps.placed(instance).map(e=>e.id));
+    return {effects:result.entries.map(e=>({id:e.id,name:e.manifest.name,title:e.manifest.title,regions:e.manifest.regions,layer:e.manifest.layer,bytes:e.bytes,...(placed.has(e.id)&&this.deps.playbackSummary?{playback:this.deps.playbackSummary(instance,e.id)}:{}),latest_profile:profiles?profiles[e.id]:this.deps.profileSummary?this.deps.profileSummary(e.id):this.deps.profiles(e.id)}))};
   }
   apply(instance:string,args:Answer):Answer {
     const refused=this.deps.authorize(instance,["change"]);if(refused)return refused;

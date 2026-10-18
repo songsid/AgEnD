@@ -58,6 +58,19 @@ export function constrainedDevice(signals) {
   return !!signals && (finite(signals.memory) && signals.memory > 0 && signals.memory <= 4 || finite(signals.cores) && signals.cores > 0 && signals.cores <= 4 || signals.coarse === true && finite(signals.width) && signals.width > 0 && signals.width <= 900);
 }
 
+export const EFFECT_BLOCK_REASONS = Object.freeze([
+  "preview_unavailable", "preview_not_consented", "unsupported_host", "safe_mode", "reduced_motion", "save_data", "hidden", "disabled", "public_link",
+  "baseline_unsupported", "baseline_unavailable", "baseline_timeout", "calibrating", "clock_unavailable", "gates_unknown", "owner_css", "stock_overlay", "modal",
+  "safety_off", "safety_unknown", "interrupted", "paused", "host_budget", "frame_limit", "front_limit", "offscreen", "region_unavailable", "resource_unavailable", "resource_timeout", "runtime_unavailable", "unknown",
+]);
+
+/** Diagnostic names only; the admission policy below still validates every required flag. */
+export function effectPlaybackReason(c) {
+  if (!c || ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "previewReady", "optIn"].some(k => typeof c[k] !== "boolean")) return "gates_unknown";
+  return c.safe ? "safe_mode" : c.publicLink ? "public_link" : c.reducedMotion ? "reduced_motion" : c.saveData ? "save_data"
+    : c.hidden ? "hidden" : !c.enabled ? "unsupported_host" : !c.show ? "disabled" : !c.previewReady ? "preview_unavailable" : !c.optIn ? "preview_not_consented" : null;
+}
+
 const OWNER_ORDER = Object.freeze({ page: 0, header: 1, sidebar: 2, box: 3 });
 /** Recomputed from host descriptors; queued/off/unknown descriptors never get a frame reservation. */
 export function allocateEffectFrames(descriptors, context) {
@@ -73,7 +86,8 @@ export function allocateEffectFrames(descriptors, context) {
   else if (context.reducedMotion === true) global = "reduced_motion";
   else if (context.saveData === true) global = "save_data";
   else if (context.hidden === true) global = "hidden";
-  else if (context.enabled !== true || context.show !== true) global = "disabled";
+  else if (context.enabled !== true) global = "unsupported_host";
+  else if (context.show !== true) global = "disabled";
 
   const candidates = [];
   for (let i = 0; i < descriptors.length; i++) {
@@ -87,7 +101,8 @@ export function allocateEffectFrames(descriptors, context) {
     if (!owner && d.region !== "chat") { r.reason = "scope"; continue; }
     if (d.region === "chat" && (!instanceName(d.instance) || d.instance !== context.openInstance)) { r.reason = "closed_chat"; continue; }
     if (global) { r.reason = global; continue; }
-    if (trial ? context.trialReady !== true : context.previewReady !== true || context.optIn !== true) { r.reason = "preview_unavailable"; continue; }
+    if (trial ? context.trialReady !== true : context.previewReady !== true) { r.reason = "preview_unavailable"; continue; }
+    if (!trial && context.optIn !== true) { r.reason = "preview_not_consented"; continue; }
     if (d.paused === true) { r.reason = "paused"; continue; }
     if (d.visible !== true) { r.reason = "offscreen"; continue; }
     if (d.layer === "front" && context.modal === true && !trial) { r.reason = "modal"; continue; }

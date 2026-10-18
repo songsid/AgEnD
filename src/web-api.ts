@@ -617,7 +617,10 @@ function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
     if (path === "/ui/effects/apply") answer(service.apply(now.person, body));
     else if (path === "/ui/effects/remove") answer(service.remove(now.person, body));
     else if (path === "/ui/effects/share") answer(service.share(now.person, body));
-    else answer(service.report(now.person, idPath![2]!, body, instance));
+    else {
+      if (body && typeof body === "object" && (body as Record<string, unknown>).kind === "playback" && (url.searchParams.getAll("instance").length !== 1 || slot !== null)) { json(res, 400, { error: "playback_report" }); return; }
+      answer(service.report(now.person, idPath![2]!, body, instance, now.epoch));
+    }
   })().catch(() => { try { json(res, 500, { error: "effect_request_failed" }); } catch { /* response ended */ } });
   return true;
 }

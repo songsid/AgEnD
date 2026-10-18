@@ -78,9 +78,9 @@ export function startAppEffects({ store, window: host = window, factories = {} }
   owners.set(host, entry); // Reentrant setup never constructs another owner.
   let media, coarse, preview;
   function context() {
-    let ready = false; try { ready = preview?.availability().ok === true; } catch { /* unavailable */ }
+    let ready = false; try { const status = preview?.availability(); ready = status?.ok === true || ["optin", "never"].includes(status?.why); } catch { /* unavailable */ }
     return { safe: safeMode(), publicLink: doc.body.dataset.publicLink === "1", reducedMotion: media?.matches !== false, saveData: host.navigator?.connection?.saveData === true,
-      hidden: doc.visibilityState !== "visible", enabled: typeof host.OffscreenCanvas === "function" && typeof host.Worker === "function" && typeof host.MutationObserver === "function" && typeof host.ResizeObserver === "function",
+      hidden: doc.visibilityState !== "visible", enabled: entry.api?.playbackAvailable !== false && typeof host.OffscreenCanvas === "function" && typeof host.Worker === "function" && typeof host.MutationObserver === "function" && typeof host.ResizeObserver === "function",
       show: prefInForce("fx.show")?.value !== false, previewReady: ready,
       trialReady: effectTransportReady(host, doc.body.dataset.previewOrigin, doc.body.dataset.previewBoot),
       optIn: prefInForce("preview.optIn")?.value === true && preview?.optedIn() === true && preview?.never() !== true,

@@ -198,6 +198,28 @@ describe("#1629 CW1 boundary controls", () => {
     f.set("cursor.png", Buffer.concat([png.subarray(0, -12), chunk, png.subarray(-12)]));
     expect(checkEffectEntry(f)).toMatchObject({ ok: false, problems: [{ problem: "invalid_cursor" }] });
   });
+  it.each([
+    "// draw the next frame\nagend.ready()",
+    '// fetch("https://private.invalid") and import("example") are not used\nagend.ready()',
+    '/* WebSocket, importScripts and "//private.invalid" are only comments */ agend.ready()',
+    'const ratio = 8 / 2; // animation ratio\nagend.ready()',
+    'const pattern = /https?:\\/\\//; // a regex pattern, no network call\nagend.ready()',
+  ])("does not lint comments as network/import use: %s", code => {
+    const f = files(); f.set("worker.js", Buffer.from(code));
+    const result = checkEffectEntry(f); expect(result.ok).toBe(true); expect(result.ok && result.warnings).toEqual([]);
+  });
+  it.each([
+    'const url = "//example.invalid/a"; agend.ready()',
+    "const url = '//example.invalid/a'; agend.ready()",
+    'const url = `//example.invalid/a`; agend.ready()',
+    'const url = "https://example.invalid/a"; agend.ready()',
+    '/* comment */ fetch("relative"); agend.ready()',
+    'import/* comment */("module.js"); agend.ready()',
+    'const url = "http://example.invalid/a"; // comment\nagend.ready()',
+  ])("retains advisory warnings for actual URL literals or APIs: %s", code => {
+    const f = files(); f.set("worker.js", Buffer.from(code));
+    const result = checkEffectEntry(f); expect(result.ok).toBe(true); expect(result.ok && result.warnings).toEqual(["network_or_import_api_unsupported"]);
+  });
   it("returns generic lint tags without executing or echoing script text", () => {
     const f = files();
     f.set("worker.js", Buffer.from('fetch("https://private.invalid/token-secret"); agend.ready();'));

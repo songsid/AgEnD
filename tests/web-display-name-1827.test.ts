@@ -25,7 +25,7 @@ import { handleAuthRequest, type AuthApiContext } from "../src/auth-api.js";
 import { handleWebRequest } from "../src/web-api.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
-import { csrfTokenFor } from "../src/web-session.js";
+import { csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { formatHumanInboundMessage, webHumanOrigin } from "../src/human-delivery-receipts.js";
 import { setLocale } from "../src/locale.js";
 import { WebPrefsStore } from "../src/web-prefs.js";
@@ -289,14 +289,18 @@ describe("every web surface uses the person: the header, the echo, tasks, activi
     const got = inbox(h);
     const a = await signInAs(h, "admin");
     await web(h, "/ui/profile", "POST", a, { name: "Hanhan" });
+    (h.fm.fleetConfig as any).web = { verified_authority: { enabled: true } };          // #1939: the server switch
+    // #1939 §0: and the account authorized this session once (S2b's card or code; here the call it ends in).
+    const mine = h.s.webSessions.authenticate(a.sessionId, tokenEpoch("c".repeat(48)), { touch: false });
+    expect(h.s.authorizeWebSession(mine, "loopback")).toMatchObject({ ok: true });
     expect((await web(h, "/ui/send", "POST", a, { instance: "general", message: "hello" })).status).toBe(200);
     const [{ payload, origin }] = got;
     expect(payload.meta).toMatchObject({ user: "Hanhan", user_id: "admin", source: "web" });
     expect(formatHumanInboundMessage("hello", payload.meta, "mcp").split("\n")[0]).toBe("[user:Hanhan via web, id:admin] hello");
     // The origin is still the web's, with no adapter, user or username (#1756). #1939 S1: the receipt also records that
-    // this session — signed in by a code DMed to the account, from this machine — carries web-session authority (observe only).
+    // this session — signed in by a code DMed to the account, from this machine, and authorized once — carries web-verified authority.
     expect(origin).toEqual(webHumanOrigin(false, origin.authority));
-    expect(origin.authority).toMatchObject({ kind: "web-session", actor: { adapter_id: "owner", user_id: "admin" }, session: { peer: "loopback" } });
+    expect(origin.authority).toMatchObject({ kind: "web-verified", actor: { adapter_id: "owner", user_id: "admin" }, session: { peer: "loopback" } });
     expect(h.fm.webChatHistory.list("general").at(-1)).toMatchObject({ sender: "Hanhan", role: "user" });
     expect(h.s.lastInboundUser.get("general")).toBe("Hanhan");
   });
