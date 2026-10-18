@@ -6,7 +6,8 @@
  * - one pending card per session, at most 3 asks an hour per account; a refusal is explained in the app;
  * - a card expires after 5 minutes (marked in place), and Confirm is judged at the tap (the session read again by its
  *   handle and §3 run again — FleetManager.authorizeWebSession);
- * - after Confirm the card stays as the notice, with Not me (sign the session out) for as long as the authorization lasts;
+ * - after Confirm the card stays as the notice, with Not me (sign the session out) for as long as the authorization lasts,
+ *   and says so (no buttons) when it ends;
  * - when no DM can be sent, the adapter's General gets one line with no details.
  * Durations use a monotonic clock; what the card shows is wall-clock time.
  */
@@ -30,7 +31,7 @@ interface Card {
   peer: WebPeer;
   /** Monotonic deadline for a pending card. */
   expiresAt: number;
-  state: "pending" | "confirmed" | "denied" | "expired" | "refused" | "revoked";
+  state: "pending" | "confirmed" | "denied" | "expired" | "refused" | "revoked" | "ended";
   /** Where the card is (to edit it in place). */
   where: { chatId: string; messageId: string } | null;
   timer?: ReturnType<typeof setTimeout>;
@@ -45,6 +46,7 @@ export interface AuthorizationCardText {
   expired(c: { label: string }): string;
   refused(c: { label: string; refusal: string }): string;
   revoked(c: { label: string }): string;
+  ended(c: { label: string }): string;
   generalHint(): string;
   confirmLabel(): string;
   notMeLabel(): string;
@@ -117,7 +119,7 @@ export class SessionAuthorizationRequests {
    * The session asks (it qualifies under §3 — the caller checked, on this request). Refused while a card for it is
    * pending, after 3 asks this hour by the account, or when no DM can be sent (General then gets a line, no details).
    */
-  async ask(input: { handle: string; owner: AuthorizationOwner; label: string; peer: WebPeer }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: AuthorizationAskRefusal; retryAfterMs?: number }> {
+  async ask(input: { handle: string; owner: AuthorizationOwner; label: string; peer: WebPeer; sessionEnd: number }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: AuthorizationAskRefusal; retryAfterMs?: number }> {
     const existing = this.livePending(input.handle);
     if (existing) return { ok: false, refusal: "pending", retryAfterMs: Math.max(0, existing.expiresAt - this.deps.now()) };
     const key = `${input.owner.adapterId}:${input.owner.userId}`;
@@ -132,7 +134,9 @@ export class SessionAuthorizationRequests {
     const wall = this.deps.wallNow();
     let where: { chatId: string; messageId: string } | null = null;
     try {
-      where = await this.deps.sendDirect(c.owner, this.deps.text.ask({ label: c.label, peer: c.peer, askedAt: wall, until: wall + this.deps.maxSessionMs() }), this.choices(c, true));
+      // Until when it would last: the authorization's end, or the session's own when that comes first (as Confirm says).
+      const until = Math.min(wall + this.deps.maxSessionMs(), input.sessionEnd);
+      where = await this.deps.sendDirect(c.owner, this.deps.text.ask({ label: c.label, peer: c.peer, askedAt: wall, until }), this.choices(c, true));
     } catch (err) { this.deps.log.warn({ err: (err as Error)?.message }, "Web authorization card could not be sent"); }
     if (!where) {
       this.forget(c);
@@ -165,6 +169,14 @@ export class SessionAuthorizationRequests {
     this.byNonce.delete(c.nonce);
     this.deps.event("session_authorization_expired", { challenge: c.nonce, session: c.handle, actor: `${c.owner.adapterId}:${c.owner.userId}`, peer: c.peer });
     await this.edit(c, this.deps.text.expired({ label: c.label }), null);
+  }
+
+  /** A confirmed card at its authorization's end: forgotten, and edited to say so (no Not me left to press). */
+  private async end(c: Card): Promise<void> {
+    if (c.state !== "confirmed" || this.byNonce.get(c.nonce) !== c) return;
+    c.state = "ended";
+    this.byNonce.delete(c.nonce);
+    await this.edit(c, this.deps.text.ended({ label: c.label }), null);
   }
 
   /** A tap on a card's button. Only the account it was sent to may tap it; anyone else is told it is not theirs. */
@@ -202,11 +214,10 @@ export class SessionAuthorizationRequests {
     c.state = "confirmed";
     c.until = r.until;
     this.deps.event("session_authorization_verified", { challenge: c.nonce, session: c.handle, actor: key, peer: c.peer });
-    // The card stays as the notice, with Not me, for as long as the authorization lasts.
+    // The card stays as the notice, with Not me, for as long as the authorization lasts; then it says it ended.
     await this.edit(c, this.deps.text.confirmed({ label: c.label, peer: c.peer, until: r.until }), false);
-    const left = r.until - this.deps.wallNow();
-    const drop = setTimeout(() => { if (this.byNonce.get(c.nonce) === c) this.byNonce.delete(c.nonce); }, Math.max(0, Math.min(left, 2 ** 31 - 1)));
-    drop.unref?.();
+    const end = setTimeout(() => { void this.end(c); }, Math.max(0, Math.min(c.until - this.deps.wallNow(), 2 ** 31 - 1)));
+    end.unref?.();
     return true;
   }
 }

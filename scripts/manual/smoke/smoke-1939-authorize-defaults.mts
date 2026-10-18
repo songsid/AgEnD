@@ -159,7 +159,9 @@ if (only("confirm")) {
   c.cardConfirmed = /^✅ Authorized: .+ · on this computer, until .+\. Its messages now carry your authority\./.test(done.text) && JSON.stringify(done.buttons) === JSON.stringify(["Not me"]);
   // The card's end is the session's own when that comes first, the same moment Settings lists.
   const s0 = sessionOf(a);
-  c.cardUntilIsEffective = !!s0 && done.text.includes(`until ${new Date(Math.min(authorizationOf(a)?.until ?? 0, s0.absoluteExpiry)).toLocaleString()}.`);
+  const zoned = (ms: number) => new Date(ms).toLocaleString(undefined, { timeZoneName: "short" });                   // with the host's zone
+  c.cardUntilIsEffective = !!s0 && done.text.includes(`until ${zoned(Math.min(authorizationOf(a)?.until ?? 0, s0.absoluteExpiry))}.`)
+    && ask.text.includes(`it would last until ${zoned(s0.absoluteExpiry)}`);                                         // the ask says the same end
   const auth = authorizationOf(a);
   c.stored = !!auth && typeof auth.until === "number" && auth.until > Date.now();
   const verified = await chipState(p, "verified");
