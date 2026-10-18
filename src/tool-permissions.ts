@@ -325,17 +325,23 @@ export const EARLY_AGENT_OP_TOOLS: Readonly<Record<string, string>> = {
  * than only what went wrong. Naming the profile matters too: "not allowed" with
  * no reason invites retrying.
  *
- * Own-instance tools (in WORKER, not in ORCHESTRATION) need a wider worker-tier
- * profile, not a coordinator — suggesting coordinator for a cosmetic change is
- * misleading and grants far more than needed.
+ * Own-appearance tools (no target, act only on the caller's look) need a wider
+ * worker-tier profile, not a coordinator — suggesting coordinator for a
+ * cosmetic change is misleading and grants far more than needed. (#2132)
  */
-const WORKER_TOOL_SET = new Set(WORKER);
-const ORCHESTRATION_TOOL_SET = new Set(ORCHESTRATION);
+const OWN_APPEARANCE_TOOLS: ReadonlySet<string> = new Set([
+  "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
+  "get_web_appearance", "preview_web_appearance",
+  "set_web_widget", "remove_web_widget",
+  "set_web_ambient", "clear_web_ambient",
+  "export_web_mod", "propose_web_mod",
+  "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
+  "apply_web_effect", "remove_web_effect", "delete_web_effect",
+]);
 
 export function toolRefusedMessage(profile: ToolSetName, tool: string): string {
-  const isOwnInstanceTool = WORKER_TOOL_SET.has(tool) && !ORCHESTRATION_TOOL_SET.has(tool);
-  if (isOwnInstanceTool) {
-    return `${tool} is not available to this instance: it runs with the "${profile}" tool set, and ${tool} is an own-instance tool (no target; acts only on the caller). `
+  if (OWN_APPEARANCE_TOOLS.has(tool)) {
+    return `${tool} is not available to this instance: it runs with the "${profile}" tool set, and ${tool} is an own-appearance tool (no target; acts only on the caller's look). `
       + 'Ask an administrator to set `tool_set: worker` or `tool_set: standard` for this instance.';
   }
   return `${tool} is not available to this instance: it runs with the "${profile}" tool set, and ${tool} belongs to a coordinator. `

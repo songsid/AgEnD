@@ -518,16 +518,16 @@ describe("the refusal explains itself", () => {
     expect(message).toContain("tool_set: coordinator");
   });
 
-  it("does not suggest coordinator for an own-instance tool", () => {
-    // set_web_widget is in the worker profile — it has no target and acts only
-    // on the caller. Suggesting `tool_set: coordinator` for a cosmetic change
-    // is wrong: it grants far more than needed. (#2132)
+  it("does not suggest coordinator for an own-appearance tool", () => {
+    // Own-appearance tools have no target and act only on the caller's look.
+    // Suggesting `tool_set: coordinator` for a cosmetic change is wrong: it
+    // grants far more than needed. (#2132)
     for (const tool of [
       "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient",
       "get_web_appearance", "preview_web_appearance",
       "export_web_mod", "propose_web_mod",
       "upload_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
-      "set_display_name", "set_description",
+      "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
     ]) {
       const message = toolRefusedMessage("minimal", tool);
       expect(message, `${tool}: must not suggest coordinator`).not.toContain("tool_set: coordinator");
@@ -540,6 +540,16 @@ describe("the refusal explains itself", () => {
     for (const tool of ["create_instance", "delete_instance", "update_fleet_defaults", "update_decision"]) {
       const message = toolRefusedMessage("worker", tool);
       expect(message, tool).toContain("tool_set: coordinator");
+    }
+  });
+
+  it("still suggests coordinator for worker-only cross-instance tools", () => {
+    // delegate_task, report_result, checkout_repo etc. are in WORKER but are
+    // not own-appearance tools — they are protocol/repo tools. The refusal
+    // should still point to a coordinator, not just a wider profile.
+    for (const tool of ["delegate_task", "report_result", "checkout_repo", "get_instance_logs"]) {
+      const message = toolRefusedMessage("minimal", tool);
+      expect(message, `${tool}: should still suggest coordinator`).toContain("tool_set: coordinator");
     }
   });
 });
