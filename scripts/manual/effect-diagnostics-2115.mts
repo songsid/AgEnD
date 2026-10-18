@@ -67,6 +67,18 @@ const handler=(req,res)=>{
 const server=createServer(handler);
 const listen=async(s:any,port=0)=>{s.listen(port,"0.0.0.0");await once(s,"listening");return s.address().port;};
 
+function redPixels(png){
+ assert.equal(png.subarray(0,8).toString('hex'),'89504e470d0a1a0a');let at=8,width=0,height=0,channels=0;const parts=[];
+ while(at<png.length){const size=png.readUInt32BE(at),type=png.subarray(at+4,at+8).toString(),data=png.subarray(at+8,at+8+size);at+=size+12;
+  if(type==='IHDR'){width=data.readUInt32BE(0);height=data.readUInt32BE(4);assert.equal(data[8],8);channels=data[9]===2?3:data[9]===6?4:0;assert.ok(channels);assert.equal(data[12],0);assert.ok(width*height<2e6);}
+  if(type==='IDAT')parts.push(data);if(type==='IEND')break;
+ }
+ const raw=inflateSync(Buffer.concat(parts)),stride=width*channels,rows=Buffer.alloc(stride*height);assert.equal(raw.length,(stride+1)*height);
+ const paeth=(a,b,c)=>{const p=a+b-c,A=Math.abs(p-a),B=Math.abs(p-b),C=Math.abs(p-c);return A<=B&&A<=C?a:B<=C?b:c;};
+ for(let row=0;row<height;row++){const filter=raw[row*(stride+1)];assert.ok(filter<=4);for(let i=0;i<stride;i++){const left=i>=channels?rows[row*stride+i-channels]:0,up=row?rows[(row-1)*stride+i]:0,corner=row&&i>=channels?rows[(row-1)*stride+i-channels]:0;rows[row*stride+i]=(raw[row*(stride+1)+i+1]+(filter===0?0:filter===1?left:filter===2?up:filter===3?Math.floor((left+up)/2):paeth(left,up,corner)))&255;}}
+ let count=0;for(let i=0;i<rows.length;i+=channels)if(rows[i]>200&&rows[i]>rows[i+1]+100&&rows[i]>rows[i+2]+100)count++;return count;
+}
+
 try {
  const port=await listen(server,19280);preview=createPreviewListener({settings:{enabled:true,port:19281,origin:null},healthPort:port,config:{}});await listen(preview.server,19281);
  ctx={webToken:token,webSessions:sessions,dataDir:scratch,sseClients:new Set(),fleetConfig:{instances:{worker:{backend:"codex",working_directory:scratch}},web:{usage_panel:false}},logger,
@@ -104,7 +116,7 @@ try {
     assert.equal(await page.locator("iframe.agend-effect-frame").count(),0);
     const message=await page.locator(".chat-fx-notice").innerText();assert.match(message,motion==="reduce"?/reduced motion/:/allow HTML previews/);
     assert.equal(await page.evaluate(()=>matchMedia("(prefers-reduced-motion: reduce)").matches),motion==="reduce");
-    await page.screenshot({path:join(out,tag+"-defaults-blocked.png")});
+    const beforePixels=redPixels(await page.screenshot({path:join(out,tag+"-defaults-blocked.png")}));
     const noCode=requests.slice(startRequest).filter(r=>r.path.startsWith("/ui/effects/resource/"));assert.equal(noCode.length,0);
     if(motion==="reduce") {
      // Real browser media emulation reproduces the gate; not evidence about the reporter's Windows value.
@@ -120,7 +132,7 @@ try {
      await page.waitForTimeout(500);await page.locator(".p-chat > .panel-head").click({position:{x:6,y:6}});
      await page.evaluate(async()=>{const m=await import("/ui/js/app-effects.js");window.__diagnosticTrace=[];m.getAppEffects()?.subscribe(()=>{const value=m.getAppEffects()?.api.snapshot();window.__diagnosticTrace.push({at:performance.now(),rows:value?.rows,gates:m.getAppEffects()?.gates(),focus:document.activeElement?.tagName});if(window.__diagnosticTrace.length>80)window.__diagnosticTrace.shift();});});
      await until(()=>page.evaluate(async()=>{const m=await import("/ui/js/app-effects.js");return m.getAppEffects()?.api.snapshot().rows.some(r=>r.phase==="running")===true}));
-     await page.screenshot({path:join(out,tag+"-ui-consented-playing.png")});
+     const paintPixels=redPixels(await page.screenshot({path:join(out,tag+"-ui-consented-playing.png")}));assert.ok(paintPixels>beforePixels+1000,"independent visible Worker paint");
      assert.ok((await view()).rows.some(r=>r.phase==="running"));
      // An actual click inside the clipped Try stage must not be mistaken for window blur.
      await page.getByRole("button",{name:"Try",exact:true}).click();
@@ -129,10 +141,10 @@ try {
      const rect=await page.evaluate(()=>{const r=window.__trialShell.stage.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}});
      await page.mouse.click(rect.x,rect.y);await page.waitForTimeout(200);
      assert.equal(await page.evaluate(()=>window.__trialShell.stage.querySelectorAll("iframe").length),1,"real stage click keeps the trial");
-     await page.screenshot({path:join(out,tag+"-trial-click-alive.png")});
+     const trialPixels=redPixels(await page.screenshot({path:join(out,tag+"-trial-click-alive.png")}));assert.ok(trialPixels>1000,"independent visible trial paint after actual click");
      await page.evaluate(()=>window.dispatchEvent(new Event("blur")));
      assert.equal(await page.evaluate(()=>window.__trialShell.stage.querySelectorAll("iframe").length),0,"genuine window blur boundary still stops");
-     rows.push({engine,width,motion,defaults:true,status:"pass",reason:initialReason,message,privateCookieSession:true,seededPrefs:false,seededConsent:false,visibleUiConsent:true,actualWorkerRunning:true,actualStageClickSurvives:true,windowBlurStops:true});
+     rows.push({engine,width,motion,defaults:true,status:"pass",reason:initialReason,message,privateCookieSession:true,seededPrefs:false,seededConsent:false,visibleUiConsent:true,actualWorkerRunning:true,independentPaint:{beforePixels,paintPixels,trialPixels},actualStageClickSurvives:true,windowBlurStops:true});
     }
     assert.deepEqual(errors,[]);assert.deepEqual(outside,[]);console.log("PASS",tag);
    } catch(e) {await page.screenshot({path:join(out,tag+"-failure.png")}).catch(()=>{});writeFileSync(join(out,tag+"-failure.json"),JSON.stringify({error:String(e),errors,outside,snapshot:await view().catch(()=>null),trace:await page.evaluate(()=>window.__diagnosticTrace).catch(()=>null),requests:requests.slice(startRequest)},null,2));throw e;}
