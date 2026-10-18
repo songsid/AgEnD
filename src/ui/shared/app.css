@@ -569,6 +569,16 @@ html.lb-open .scroller { overflow: hidden; }
 .th-bg { position: absolute; inset: 0; width: 100%; height: 100%; opacity: var(--th-bg-opacity, 1); pointer-events: none; z-index: 0; user-select: none; }
 .th-bg-cover { object-fit: cover; }
 .th-bg-contain { object-fit: contain; }
+/* #2117: an agent's ambient effect (chat-ambient.js). The loop sits behind the thread (z 0, under the scroller and the
+   dock at z 1); a burst follows the dock in the tree at z 1, so it shows over the messages and under the header (z 2).
+   Neither ever takes a pointer, focus or selection; positions and sizes are set through the CSSOM. */
+.chat-main.has-amb { position: relative; }
+.chat-main.has-amb > .amb-layer, .chat-main.has-amb > .amb-burst { position: absolute; inset: 0; overflow: hidden; pointer-events: none; user-select: none; contain: strict; }
+.chat-main.has-amb > .amb-layer { z-index: 0; }
+.chat-main.has-amb > .amb-burst { z-index: 1; }
+.amb-p { position: absolute; left: 0; top: 0; line-height: 1; color: var(--accent); pointer-events: none; will-change: transform, opacity; }
+img.amb-p { object-fit: contain; }
+.s-mod-glyph { width: 24px; height: 24px; object-fit: contain; }
 .pv-divider { flex: 0 0 8px; cursor: col-resize; background: var(--bg); border-left: 1px solid var(--border); touch-action: none; position: relative; }
 .pv-divider::after { content: ""; position: absolute; top: 50%; left: 2px; width: 3px; height: 32px; margin-top: -16px; border-radius: 2px; background: var(--border-strong); }
 .pv-divider:hover::after, .pv-divider:focus-visible::after, .chat-split.resizing .pv-divider::after { background: var(--accent); }

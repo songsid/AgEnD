@@ -1427,7 +1427,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   get appearanceTools(): AppearanceTools {
     return (this.appearanceToolsService ??= new AppearanceTools({
       frame: (name) => ((this.getUiStatus() as { instances: FrameEntry[] }).instances.find(i => i.name === name) ?? { name }),
-      theme: (name) => { const r = this.themeStore.get(name); return { theme: r.theme, locked: r.locked, widgets: r.placements.widgets }; },
+      theme: (name) => { const r = this.themeStore.get(name); return { theme: r.theme, locked: r.locked, widgets: r.placements.widgets, ambient: r.placements.ambient,
+        glyphAsset: (id) => this.themeStore.asset(name, id) }; },
       card: (name) => resolveCard(name, humanCards(this.dataDir).get(name), this.themeStore.get(name).theme.card),
       // #1958: the host's identity-colour settings, as the page reads them (an unreadable prefs file: the defaults).
       colorPrefs: () => { try { const v = this.webPrefs.read(OPERATOR).values as Record<string, unknown>; return { show: v["color.show"], off: v["color.off"] === true }; } catch { return {}; } },
@@ -1513,6 +1514,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       bannerFocus: (name) => personBannerFocus(this.dataDir, name),
       setBannerFocus: (name, focus) => { const w = setPersonBannerFocus(this.dataDir, name, focus); if (w.ok) this.identityChanged(); return w; },
       placements: (name) => this.themeStore.get(name).placements.effects.map((e) => (typeof e === "string" ? { id: e } : e)),
+      ambient: (name) => Object.fromEntries(Object.entries(this.themeStore.get(name).placements.ambient).flatMap(([k, a]) => a ? [[k, { spec: a.spec, by: a.by }]] : [])),
+      setAmbient: (name, spec, which) => this.webAppearance.humanSetAmbient(name, spec, which),
       announce: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next status frame carries it */ } },
     }));
   }
@@ -10174,6 +10177,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (type === "fleet_get_web_theme" || type === "fleet_set_web_theme" || type === "fleet_set_web_theme_asset" || type === "fleet_reset_web_theme"
       || type === "fleet_get_web_appearance" || type === "fleet_preview_web_appearance"
       || type === "fleet_set_web_widget" || type === "fleet_remove_web_widget"
+      || type === "fleet_set_web_ambient" || type === "fleet_clear_web_ambient"
       || type === "fleet_export_web_mod" || type === "fleet_propose_web_mod") {
       this.handleWebTheme(name, msg); return;
     }

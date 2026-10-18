@@ -10,8 +10,11 @@ import { t } from "./app-i18n.js";
 import { toast } from "./ui-toast.js";
 import { confirmDialog } from "./ui-confirm.js";
 
-/** { rev, themes: { <name>: theme }, locked: [<name>], widgets: { <name>: { <slot>: widget } } } as GET /ui/themes said (rev -1: not read yet). */
-export const themesStore = createStore({ rev: -1, themes: {}, locked: [], widgets: {}, shown: true });
+/**
+ * { rev, themes: { <name>: theme }, locked: [<name>], widgets: { <name>: { <slot>: widget } }, ambient: { <name>: { loop?, click? } } }
+ * as GET /ui/themes said (rev -1: not read yet).
+ */
+export const themesStore = createStore({ rev: -1, themes: {}, locked: [], widgets: {}, ambient: {}, shown: true });
 const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
 
 const COLOR = /^#[0-9a-f]{6}$/;
@@ -122,7 +125,8 @@ async function read(rev) {
       if (!body || typeof body !== "object") break;
       themesStore.set({ rev: typeof body.rev === "number" ? body.rev : want, themes: body.themes && typeof body.themes === "object" ? body.themes : {},
         locked: Array.isArray(body.locked) ? body.locked.filter((n) => typeof n === "string") : [],
-        widgets: body.widgets && typeof body.widgets === "object" && !Array.isArray(body.widgets) ? body.widgets : {} });
+        widgets: body.widgets && typeof body.widgets === "object" && !Array.isArray(body.widgets) ? body.widgets : {},
+        ambient: body.ambient && typeof body.ambient === "object" && !Array.isArray(body.ambient) ? body.ambient : {} });
       if (want === wanted) break;
     }
   } finally { reading = false; }
@@ -167,6 +171,18 @@ async function removeWidget(name, slot) {
   } catch (err) { r = { error: err && err.message ? err.message : "network" }; }
   if (r && r.error) toast(t("chat.themeFailed", r.error), false);
   else toast(t("chat.widgetRemoved", name));
+}
+
+/** #2117: a person's Clear of an agent's ambient, one kind ("loop" or "click"). */
+export async function clearAmbient(name, which) {
+  let r;
+  try {
+    const res = await fetch(`/ui/themes/${encodeURIComponent(name)}/ambient`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ which }) });
+    r = await res.json().catch(() => ({}));
+    if (!res.ok) r = { error: r && r.error ? r.error : `HTTP ${res.status}` };
+  } catch (err) { r = { error: err && err.message ? err.message : "network" }; }
+  if (r && r.error) toast(t("chat.themeFailed", r.error), false);
+  else toast(t("chat.ambientCleared", name));
 }
 
 /** The chat's and Details' ⋯ entries for an agent's theme: Lock/Unlock, Reset… and its widgets' Remove — none over the public link. */

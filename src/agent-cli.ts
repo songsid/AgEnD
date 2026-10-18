@@ -90,10 +90,11 @@ async function main(): Promise<void> {
   // #1629: `theme <get|set|clear|asset|reset> …` is sent as its own op each (theme-get, …): one op, one tool.
   // #1629 r4 §1: `appearance` (get) and `appearance preview [light|dark]`.
   // r4-4: `widget set|data <slot> …` and `widget remove [slot]` (data is set_web_widget with values only).
+  // #2117: `ambient set '<json spec>'` and `ambient clear [loop|click]`.
   const op = first === "theme" ? `theme-${given[0] ?? ""}` : first === "appearance" ? (given[0] === "preview" ? "appearance-preview" : given.length ? `appearance-${given[0]}` : "appearance-get")
     : first === "effect" ? `effect-${given[0] ?? ""}` : first === "widget" ? (given[0] === "data" ? "widget-set" : `widget-${given[0] ?? ""}`)
-    : first === "mod" ? `mod-${given[0] ?? ""}` : first;
-  const rest = first === "theme" || first === "widget" || first === "effect" || first === "mod" || (first === "appearance" && given.length) ? given.slice(1) : given;
+    : first === "mod" ? `mod-${given[0] ?? ""}` : first === "ambient" ? `ambient-${given[0] ?? ""}` : first;
+  const rest = first === "theme" || first === "widget" || first === "effect" || first === "mod" || first === "ambient" || (first === "appearance" && given.length) ? given.slice(1) : given;
   const widgetData = first === "widget" && given[0] === "data";
   if (!INSTANCE) die("AGEND_INSTANCE_NAME not set");
 
@@ -274,6 +275,17 @@ async function main(): Promise<void> {
     }
     case "widget-remove":
       args = rest[0] ? { slot: rest[0] } : {};
+      break;
+    case "ambient-set": {
+      let v: unknown;
+      if (!rest[0]) die("Usage: agend-agent ambient set '<json spec>'");
+      try { v = JSON.parse(rest[0]); } catch { die("ambient: the spec is not JSON"); }
+      if (!v || typeof v !== "object" || Array.isArray(v)) die("ambient: the spec must be a JSON object");
+      args = v as Record<string, unknown>;
+      break;
+    }
+    case "ambient-clear":
+      args = rest[0] ? { which: rest[0] } : {};
       break;
     // #1629 r4-5b: `mod export <name> <version> [title]` (written to .agend/mods/ here) and `mod propose <file>`.
     case "mod-export": {

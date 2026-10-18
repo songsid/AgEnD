@@ -17,6 +17,7 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { imageSize, MEDIA_EXT, MEDIA_MIME, type MediaKind, sniffMedia, stripMetadata } from "./web-image-meta.js";
 import { checkTheme, type Theme } from "./web-theme.js";
 import { type AppearanceLimits, effectiveAppearanceLimits } from "./web-appearance-limits.js";
+import { AMBIENT_KINDS, type AmbientKind, ambientAssets, ambientKind, type AmbientSpec, checkAmbient } from "./web-ambient.js";
 import { AGENT_WIDGET_SLOTS, type AgentWidgetSlot, checkWidgetData, checkWidgetSpec, type WidgetData, widgetId, type WidgetSpec } from "./web-widget.js";
 
 export type AppearanceActor = "agent" | "human";
@@ -24,7 +25,14 @@ export type AppearanceActor = "agent" | "human";
 export interface Placement { id: string; by: AppearanceActor; at: number; params?: Record<string, unknown> }
 /** r4-4 (option A): a widget is a declarative spec and its data (web-widget.ts); `id` is the spec's content hash. */
 export interface WidgetPlacement extends Placement { spec: WidgetSpec; data: WidgetData }
-export interface Placements { effects: Placement[]; widgets: { chat_header?: WidgetPlacement; details?: WidgetPlacement } }
+/** #2117: an ambient is a declarative spec (web-ambient.ts); `id` is the spec's content hash. */
+export interface AmbientPlacement extends Placement { spec: AmbientSpec }
+export interface Placements {
+  effects: Placement[];
+  widgets: { chat_header?: WidgetPlacement; details?: WidgetPlacement };
+  /** One looping ambient and one click ambient. An older binary drops this key (an unknown placement), nothing else. */
+  ambient: { loop?: AmbientPlacement; click?: AmbientPlacement };
+}
 import { THEME_ASSET_SLOTS, type ThemeAssetSlot } from "./web-asset-parts.js";
 export { THEME_ASSET_SLOTS, type ThemeAssetSlot };
 export interface ThemeAsset { id: string; slot: ThemeAssetSlot; kind: MediaKind; bytes: number }
@@ -45,19 +53,24 @@ export const THEME_ASSET_LIMITS: Record<"background" | "avatar", { maxBytes: num
   background: { maxBytes: 512 * 1024, maxSide: 4096 },
   avatar: { maxBytes: 256 * 1024, maxSide: 4096 },
 };
+/** #2117: an ambient's glyph picture is small and fixed (not configurable): at most this many per instance. */
+export const GLYPH_ASSET_LIMIT = { maxBytes: 64 * 1024, maxSide: 128, files: 4 } as const;
 /** Width, height and bytes a slot takes now. */
 export function slotLimit(slot: ThemeAssetSlot, limits: AppearanceLimits): { maxWidth: number; maxHeight: number; maxBytes: number } {
   if (slot === "portrait" || slot === "banner") return limits[slot];
+  if (slot === "glyph") return { maxWidth: GLYPH_ASSET_LIMIT.maxSide, maxHeight: GLYPH_ASSET_LIMIT.maxSide, maxBytes: GLYPH_ASSET_LIMIT.maxBytes };
   const l = THEME_ASSET_LIMITS[slot];
   return { maxWidth: l.maxSide, maxHeight: l.maxSide, maxBytes: l.maxBytes };
 }
 const PICTURE_KINDS: ReadonlySet<MediaKind> = new Set(["png", "jpeg", "webp", "gif"]);
 /** A card picture is a still: png, webp or jpeg (r4 §1). */
 const CARD_KINDS: ReadonlySet<MediaKind> = new Set(["png", "jpeg", "webp"]);
+/** A glyph is drawn small over the chat: png, webp or gif (a jpeg has no transparency). */
+const GLYPH_KINDS: ReadonlySet<MediaKind> = new Set(["png", "webp", "gif"]);
 const ASSET_ID = /^[0-9a-f]{32}$/;
 
 const hash32 = (data: string | Uint8Array) => createHash("sha256").update(data).digest("hex").slice(0, 32);
-const emptyPlacements = (): Placements => ({ effects: [], widgets: {} });
+const emptyPlacements = (): Placements => ({ effects: [], widgets: {}, ambient: {} });
 const emptyRecord = (now: number): ThemeRecord => ({ theme: { v: 1 }, placements: emptyPlacements(), assets: [], by: "agent", updated: now, locked: false });
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
@@ -77,8 +90,8 @@ export function prepareThemeAsset(slot: unknown, bytes: Uint8Array, limits: Appe
   const s = slot as ThemeAssetSlot;
   const card = s === "portrait" || s === "banner";
   const kind = sniffMedia(bytes);
-  const kinds = card ? CARD_KINDS : PICTURE_KINDS;
-  if (!kind || !kinds.has(kind)) return { ok: false, status: 400, error: "asset_type", detail: card ? "png, jpeg or webp" : "png, jpeg, webp or gif" };
+  const kinds = card ? CARD_KINDS : s === "glyph" ? GLYPH_KINDS : PICTURE_KINDS;
+  if (!kind || !kinds.has(kind)) return { ok: false, status: 400, error: "asset_type", detail: card ? "png, jpeg or webp" : s === "glyph" ? "png, webp or gif" : "png, jpeg, webp or gif" };
   const lim = slotLimit(s, limits);
   if (bytes.length > lim.maxBytes) return { ok: false, status: 413, error: "asset_too_large", detail: `at most ${lim.maxBytes / 1024} KiB for ${s}` };
   const size = imageSize(bytes, kind);
@@ -126,7 +139,7 @@ export class ThemeStore {
         const checked = checkTheme(r.theme ?? { v: 1 }, { assets: new Set(assets.map(a => a.id)), slotOf: id => assets.find(a => a.id === id)?.slot });
         records.set(name, {
           theme: checked.ok ? checked.theme : { v: 1 },
-          placements: sanePlacements(r.placements),
+          placements: sanePlacements(r.placements, new Set(assets.filter(a => a.slot === "glyph").map(a => a.id))),
           assets,
           by: r.by === "human" ? "human" : "agent",
           updated: Number.isFinite(r.updated) ? (r.updated as number) : 0,
@@ -209,18 +222,33 @@ export class ThemeStore {
     const prev = this.get(name);
     const same = prev.assets.find(a => a.id === id);
     if (same) return same.slot === s ? { ok: true, rev: this.rev(), id } : { ok: false, status: 409, error: "asset_other_slot", detail: `this picture is already this instance's ${same.slot}` };
+    // #2117: at most 4 glyph pictures. Unnamed ones (an upload the agent never used) make room, oldest first.
+    let assets = prev.assets;
+    if (s === "glyph") {
+      const named = new Set(Object.values(prev.placements.ambient).flatMap(a => a ? ambientAssets(a.spec) : []));
+      const glyphs = assets.filter(a => a.slot === "glyph");
+      const spare = glyphs.filter(a => !named.has(a.id));
+      const over = glyphs.length + 1 - GLYPH_ASSET_LIMIT.files;
+      if (over > spare.length) return { ok: false, status: 409, error: "asset_quota", detail: `at most ${GLYPH_ASSET_LIMIT.files} glyph pictures, all in use by your ambient` };
+      if (over > 0) { const out = new Set(spare.slice(0, over)); assets = assets.filter(a => !out.has(a)); }
+    }
+    const evicted = prev.assets.filter(a => !assets.includes(a));
     const quota = limits.quota;
-    if (prev.assets.length >= quota.files || prev.assets.reduce((n, a) => n + a.bytes, 0) + kept.length > quota.bytes) {
+    if (assets.length >= quota.files || assets.reduce((n, a) => n + a.bytes, 0) + kept.length > quota.bytes) {
       return { ok: false, status: 409, error: "asset_quota", detail: `at most ${quota.files} files and ${quota.bytes / 1024 / 1024} MiB` };
     }
     try {
       mkdirSync(this.assetDir(name), { recursive: true, mode: 0o700 });
       writeBytesAtomic(join(this.assetDir(name), `${id}.${MEDIA_EXT[kind]}`), kept);
     } catch (err) { return { ok: false, status: 503, error: "asset_write_failed", detail: (err as Error).message }; }
-    const next: ThemeRecord = { ...prev, assets: [...prev.assets, { id, slot: s, kind, bytes: kept.length }], updated: this.now() };
+    const next: ThemeRecord = { ...prev, assets: [...assets, { id, slot: s, kind, bytes: kept.length }], updated: this.now() };
     const w = this.commit(name, next);
     if (!w.ok) { try { unlinkSync(join(this.assetDir(name), `${id}.${MEDIA_EXT[kind]}`)); } catch { /* none */ } return w; }
+    this.unlinkAssets(name, evicted);
     return { ...w, id };
+  }
+  private unlinkAssets(name: string, assets: readonly ThemeAsset[]): void {
+    for (const a of assets) { try { unlinkSync(join(this.assetDir(name), `${a.id}.${MEDIA_EXT[a.kind]}`)); } catch { /* already gone */ } }
   }
   asset(name: string, id: string): { bytes: Buffer; mime: string } | null {
     if (!ASSET_ID.test(id)) return null;
@@ -318,6 +346,59 @@ export class ThemeStore {
     return w.ok ? { ...w, removed } : w;
   }
   /**
+   * #2117: place an ambient (already checked — web-ambient.ts — its glyph pictures this instance's own) where its preset
+   * goes (one looping, one click), or replace the one there. The same spec placed again keeps its first `by` and `at`.
+   * Glyph pictures the replaced ambient named and no ambient names now are deleted once the write is on disk.
+   */
+  setAmbient(name: string, spec: AmbientSpec, by: AppearanceActor): StoreWrite<{ ambient: AmbientPlacement; kind: AmbientKind }> {
+    const prev = this.get(name);
+    const kind = ambientKind(spec.preset);
+    const id = hash32(JSON.stringify(spec));
+    const had = prev.placements.ambient[kind];
+    const at = this.now();
+    const ambient: AmbientPlacement = had?.id === id ? had : { id, by, at, spec: clone(spec) };
+    const placements = clone(prev.placements);
+    placements.ambient[kind] = ambient;
+    const { assets, dropped } = this.glyphsAfter(prev, placements);
+    const w = this.commit(name, { ...prev, assets, placements, by, updated: at });
+    if (!w.ok) return w;
+    this.unlinkAssets(name, dropped);
+    return { ...w, ambient: clone(ambient), kind };
+  }
+  /** #2117: take ambients out (those placed nowhere are skipped); one write; their unused glyph pictures go. */
+  clearAmbient(name: string, kinds: readonly AmbientKind[], by: AppearanceActor): StoreWrite<{ removed: AmbientKind[] }> {
+    const prev = this.get(name);
+    const removed = kinds.filter(k => prev.placements.ambient[k]);
+    if (!removed.length) return { ok: true, rev: this.rev(), removed };
+    const placements = clone(prev.placements);
+    for (const k of removed) delete placements.ambient[k];
+    const { assets, dropped } = this.glyphsAfter(prev, placements);
+    const w = this.commit(name, { ...prev, assets, placements, by, updated: this.now() });
+    if (!w.ok) return w;
+    this.unlinkAssets(name, dropped);
+    return { ...w, removed };
+  }
+  /** The record's assets once `placements` replace its own: glyph pictures the old ambients named and the new ones don't go. */
+  private glyphsAfter(prev: ThemeRecord, placements: Placements): { assets: ThemeAsset[]; dropped: ThemeAsset[] } {
+    const named = (p: Placements) => new Set(Object.values(p.ambient).flatMap(a => a ? ambientAssets(a.spec) : []));
+    const had = named(prev.placements), keep = named(placements);
+    const dropped = prev.assets.filter(a => a.slot === "glyph" && had.has(a.id) && !keep.has(a.id));
+    return { assets: prev.assets.filter(a => !dropped.includes(a)), dropped };
+  }
+  /** Every instance's ambients, for the page (GET /ui/themes): `{ <name>: { loop?: { spec, by }, click?: { spec, by } } }`. */
+  ambients(): Record<string, Partial<Record<AmbientKind, { spec: AmbientSpec; by: AppearanceActor }>>> {
+    const out: Record<string, Partial<Record<AmbientKind, { spec: AmbientSpec; by: AppearanceActor }>>> = Object.create(null);
+    const s = this.load();
+    if (s === "unreadable") return out;
+    for (const [name, r] of s.records) {
+      const kinds: Partial<Record<AmbientKind, { spec: AmbientSpec; by: AppearanceActor }>> = {};
+      for (const k of AMBIENT_KINDS) { const a = r.placements.ambient[k]; if (a) kinds[k] = { spec: clone(a.spec), by: a.by }; }
+      if (Object.keys(kinds).length) Object.defineProperty(out, name, { value: kinds, enumerable: true });
+    }
+    return out;
+  }
+
+  /**
    * Every instance's placed effects (B2's reference source for the effect library: an effect placed on an instance is
    * in use, holder "instance:<name>"). Empty when the file can't be read.
    */
@@ -351,6 +432,8 @@ export class ThemeStore {
     pictures: Array<{ slot: ThemeAssetSlot; id: string; kind: MediaKind; kept: Uint8Array }>;
     widgets?: Partial<Record<AgentWidgetSlot, { spec: WidgetSpec; data: WidgetData }>>;
     effects?: Array<{ id: string; params: Record<string, unknown> }>;
+    /** #2117: replaces the instance's ambients (a mod's look carries both kinds or none). */
+    ambient?: Partial<Record<AmbientKind, AmbientSpec>>;
   }, by: AppearanceActor): StoreWrite<{ finalize: () => void; undo: () => StoreWrite }> {
     const s = this.load();
     if (s === "unreadable") return { ok: false, status: 503, error: "themes_unreadable" };
@@ -372,12 +455,16 @@ export class ThemeStore {
     const checked = checkTheme(theme, { assets: new Set(assets.map(a => a.id)), slotOf: id => assets.find(a => a.id === id)?.slot });
     if (!checked.ok) return { ok: false, status: 400, error: "theme", detail: `${checked.errors[0]!.path}: ${checked.errors[0]!.problem}` };
     // Only what the new look names (and any picture not named by the old look either: an upload still to be used) stays.
-    const keep = referencedAssets(checked.theme), had = referencedAssets(prev.theme);
+    const placements = clone(prev.placements);
+    if (look.ambient) {
+      placements.ambient = {};
+      for (const k of AMBIENT_KINDS) { const spec = look.ambient[k]; if (spec) placements.ambient[k] = { id: hash32(JSON.stringify(spec)), by, at, spec: clone(spec) }; }
+    }
+    const keep = referencedAssets(checked.theme, placements), had = referencedAssets(prev.theme, prev.placements);
     const dropped = assets.filter(a => had.has(a.id) && !keep.has(a.id));
     const kept = assets.filter(a => !dropped.includes(a));
     const quota = this.limits().quota;
     if (kept.length > quota.files || kept.reduce((n, a) => n + a.bytes, 0) > quota.bytes) return { ok: false, status: 409, error: "asset_quota", detail: `at most ${quota.files} files and ${quota.bytes / 1024 / 1024} MiB` };
-    const placements = clone(prev.placements);
     for (const [slot, w] of Object.entries(look.widgets ?? {}) as Array<[AgentWidgetSlot, { spec: WidgetSpec; data: WidgetData }]>) {
       placements.widgets[slot] = { id: widgetId(w.spec), by, at, spec: clone(w.spec), data: clone(w.data) };
     }
@@ -410,15 +497,15 @@ export class ThemeStore {
   }
 }
 
-function referencedAssets(theme: Theme): Set<string> {
-  const out = new Set<string>();
+function referencedAssets(theme: Theme, placements?: Placements): Set<string> {
+  const out = new Set<string>(placements ? Object.values(placements.ambient).flatMap(a => a ? ambientAssets(a.spec) : []) : []);
   if (theme.background) out.add(theme.background.image);
   if (theme.avatar) out.add(theme.avatar);
   if (theme.card?.portrait) out.add(theme.card.portrait);
   if (theme.card?.banner) out.add(theme.card.banner);
   return out;
 }
-function sanePlacements(raw: unknown): Placements {
+function sanePlacements(raw: unknown, glyphs: ReadonlySet<string>): Placements {
   const out = emptyPlacements();
   const r = raw as Partial<Placements> | undefined;
   const ok = (p: unknown): p is Placement => !!p && typeof p === "object" && ASSET_ID.test(String((p as Placement).id)) && ((p as Placement).by === "agent" || (p as Placement).by === "human") && Number.isFinite((p as Placement).at);
@@ -434,6 +521,13 @@ function sanePlacements(raw: unknown): Placements {
     const spec = checkWidgetSpec(rawSpec, slot);
     const data = spec.ok ? checkWidgetData(rawData ?? {}, spec.value) : null;
     if (spec.ok && data?.ok && widgetId(spec.value) === w.id) out.widgets[slot] = { id: w.id, by: w.by, at: w.at, spec: spec.value, data: data.value };
+  }
+  // #2117: a stored ambient too, its glyph pictures still this instance's; in the place its preset goes.
+  if (r && r.ambient && typeof r.ambient === "object") for (const kind of AMBIENT_KINDS) {
+    const a: unknown = r.ambient[kind];
+    if (!ok(a)) continue;
+    const spec = checkAmbient((a as Partial<AmbientPlacement>).spec, { glyphAsset: id => glyphs.has(id) });
+    if (spec.ok && ambientKind(spec.value.preset) === kind && hash32(JSON.stringify(spec.value)) === a.id) out.ambient[kind] = { id: a.id, by: a.by, at: a.at, spec: spec.value };
   }
   return out;
 }

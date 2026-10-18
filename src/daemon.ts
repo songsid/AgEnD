@@ -99,6 +99,8 @@ const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
   get_web_appearance: "fleet_get_web_appearance", preview_web_appearance: "fleet_preview_web_appearance",
   // r4-4: its own declarative widgets.
   set_web_widget: "fleet_set_web_widget", remove_web_widget: "fleet_remove_web_widget",
+  // #2117: its own declarative ambient.
+  set_web_ambient: "fleet_set_web_ambient", clear_web_ambient: "fleet_clear_web_ambient",
   // r4-5b: mods — an export's file is written here, a proposal's file read here (on the agent's side).
   export_web_mod: "fleet_export_web_mod", propose_web_mod: "fleet_propose_web_mod",
   upload_web_effect: "fleet_upload_web_effect",

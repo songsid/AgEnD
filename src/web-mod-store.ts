@@ -68,7 +68,7 @@ export interface ModRecord {
   installedAt: number;
   /** The instance the look went to, when it had one. */
   target?: string;
-  /** What was applied: "theme", "identity", "widget:<slot>", "effects", "ownerCss". */
+  /** What was applied: "theme", "identity", "widget:<slot>", "ambient", "effects", "ownerCss". */
   parts: string[];
   /** The effect entries it carries, by path, and the library's ids for them (audit: which claims this commit created). */
   effects: Array<{ path: string; id: string }>;
@@ -85,7 +85,7 @@ export interface ModPlan {
   warnings: string[];
 }
 export interface ModInclude {
-  theme?: boolean; identity?: boolean; effects?: boolean; ownerCss?: boolean;
+  theme?: boolean; identity?: boolean; effects?: boolean; ownerCss?: boolean; ambient?: boolean;
   widgets?: Partial<Record<"chat_header" | "details" | "sidebar", boolean>>;
   /** Replace the installed mod of the same name (a different version). */
   replace?: boolean;
@@ -114,6 +114,7 @@ export function modPlan(mod: CheckedMod, installed: ReadonlyMap<string, ModRecor
     const w = mod.widgets[slot];
     if (w) items.push({ part: "widget", slot, spec: w.spec, data: w.data });
   }
+  if (mod.ambient) items.push({ part: "ambient", ...mod.ambient.specs, pictures: mod.ambient.pictures.map(p => ({ path: p.path, slot: p.slot, id: p.id, bytes: p.kept.length })) });
   for (const e of mod.effects) items.push({ part: "effect", path: e.path, ...e.summary });
   if (mod.ownerCss) items.push({ part: "ownerCss", text: mod.ownerCss.text, assets: mod.ownerCss.assets.map(a => ({ path: a.path, id: a.id, kind: a.kind, bytes: a.kept.length })) });
   const same = [...installed].find(([, r]) => r.name === mod.manifest.name);
@@ -129,7 +130,7 @@ export function modPlan(mod: CheckedMod, installed: ReadonlyMap<string, ModRecor
       ...(same && same[0] !== mod.id ? { replaces: { id: same[0], version: same[1].version } } : {}),
     },
     items,
-    needs_target: !!(mod.theme || mod.identity || mod.widgets.chat_header || mod.widgets.details),
+    needs_target: !!(mod.theme || mod.identity || mod.widgets.chat_header || mod.widgets.details || mod.ambient),
     warnings,
   };
 }
@@ -294,7 +295,8 @@ export class ModStore {
   /** A picture of this person's staged mod (its theme's), so the plan can show it before anything is applied. */
   stagedPicture(person: string, id: string): { bytes: Uint8Array; mime: string } | null {
     this.sweep();
-    const p = this.stages.get(person)?.mod.theme?.pictures.find(x => x.id === id);
+    const mod = this.stages.get(person)?.mod;
+    const p = [...(mod?.theme?.pictures ?? []), ...(mod?.ambient?.pictures ?? [])].find(x => x.id === id);
     return p ? { bytes: p.kept, mime: MEDIA_MIME[p.kind] } : null;
   }
   abort(person: string, stage: unknown): ModWrite {
@@ -352,17 +354,18 @@ export class ModStore {
     if (!s || s.id !== body.stage) return { ok: false, status: 404, error: "unknown_stage" };
     if (body.plan_hash !== s.planHash) return { ok: false, status: 409, error: "plan_changed" };
     const include = parseInclude(body.include);
-    if (!include) return { ok: false, status: 400, error: "include", detail: "{ theme?, identity?, effects?, ownerCss?, widgets?: { chat_header?, details?, sidebar? }, replace? } of booleans" };
+    if (!include) return { ok: false, status: 400, error: "include", detail: "{ theme?, identity?, ambient?, effects?, ownerCss?, widgets?: { chat_header?, details?, sidebar? }, replace? } of booleans" };
     const mod = s.mod;
     const want = {
       theme: !!(include.theme && mod.theme), identity: !!(include.identity && mod.identity), effects: !!(include.effects && mod.effects.length),
       ownerCss: !!(include.ownerCss && mod.ownerCss),
+      ambient: !!(include.ambient && mod.ambient),
       widgets: AGENT_WIDGET_SLOTS.filter(slot => include.widgets?.[slot] && mod.widgets[slot]),
       sidebar: !!(include.widgets?.sidebar && mod.widgets.sidebar),
     };
     // Effect placements ride with the theme, and need the effects installed.
     if (want.theme && mod.theme?.effects.length && !want.effects) return { ok: false, status: 400, error: "include", detail: "the theme places this mod's effects: include effects too" };
-    const toInstance = want.theme || want.identity || want.widgets.length > 0;
+    const toInstance = want.theme || want.identity || want.widgets.length > 0 || want.ambient;
     let target: string | undefined;
     if (toInstance) {
       if (typeof body.target !== "string" || !this.deps.isKnownInstance(body.target)) return { ok: false, status: 400, error: "target", detail: "an instance of this fleet" };
@@ -416,7 +419,8 @@ export class ModStore {
         const w = this.deps.themes.applyLook(target, {
           ...(want.theme && t ? { theme: t.theme } : {}),
           ...(want.identity && mod.identity ? { identity: mod.identity } : {}),
-          pictures: want.theme && t ? t.pictures.map(p => ({ slot: p.slot, id: p.id, kind: p.kind, kept: p.kept })) : [],
+          pictures: [...(want.theme && t ? t.pictures : []), ...(want.ambient && mod.ambient ? mod.ambient.pictures : [])].map(p => ({ slot: p.slot, id: p.id, kind: p.kind, kept: p.kept })),
+          ...(want.ambient && mod.ambient ? { ambient: mod.ambient.specs } : {}),
           widgets: Object.fromEntries(want.widgets.map(slot => [slot, mod.widgets[slot]!])),
           ...(want.theme && t && t.effects.length ? { effects: t.effects.map(e => ({ id: effectIds.get(e.effect)!, params: e.params })) } : {}),
         }, "human");
@@ -426,6 +430,7 @@ export class ModStore {
         if (want.theme) applied.push("theme");
         if (want.identity) applied.push("identity");
         for (const slot of want.widgets) applied.push(`widget:${slot}`);
+        if (want.ambient) applied.push("ambient");
       }
       if (want.sidebar) {
         const who = this.deps.prefsIdentity;
@@ -541,7 +546,7 @@ function parseInclude(raw: unknown): ModInclude | null {
   if (!isObj(raw)) return null;
   const out: ModInclude = {};
   for (const [k, v] of Object.entries(raw)) {
-    if (["theme", "identity", "effects", "ownerCss", "replace"].includes(k)) { if (typeof v !== "boolean") return null; (out as Record<string, unknown>)[k] = v; continue; }
+    if (["theme", "identity", "ambient", "effects", "ownerCss", "replace"].includes(k)) { if (typeof v !== "boolean") return null; (out as Record<string, unknown>)[k] = v; continue; }
     if (k !== "widgets" || !isObj(v)) return null;
     const w: NonNullable<ModInclude["widgets"]> = {};
     for (const [slot, on] of Object.entries(v)) {

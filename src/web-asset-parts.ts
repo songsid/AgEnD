@@ -12,8 +12,8 @@
 import { createHash } from "node:crypto";
 import { writeAgentFile, type AgentFileContext } from "./agent-file-read.js";
 
-/** Every picture slot an agent uploads for (the theme's two and the card's two). Here so agend-agent stays small. */
-export const THEME_ASSET_SLOTS = ["background", "avatar", "portrait", "banner"] as const;
+/** Every picture slot an agent uploads for (the theme's two, the card's two and an ambient's glyphs, #2117). Here so agend-agent stays small. */
+export const THEME_ASSET_SLOTS = ["background", "avatar", "portrait", "banner", "glyph"] as const;
 export type ThemeAssetSlot = typeof THEME_ASSET_SLOTS[number];
 
 /** Raw bytes per part: base64 of this (480 KiB) plus the envelope fits both the IPC line and the endpoint body. */
@@ -51,7 +51,7 @@ export async function sendAssetInParts(
 }
 
 /** Every file a preview may carry: an SVG per mode, and the pictures it names (web-appearance-view.ts PREVIEW_FILE). */
-export const PREVIEW_FILE = /^(?:(?:light|dark)\.svg|(?:avatar|portrait|banner|background)\.(?:png|jpg|webp|gif))$/;
+export const PREVIEW_FILE = /^(?:(?:light|dark)\.svg|(?:avatar|portrait|banner|background)\.(?:png|jpg|webp|gif)|glyph[1-4]\.(?:png|webp|gif))$/;
 /** The most parts one preview file may come in (its largest picture, a 4 MiB portrait, is 12). */
 export const PREVIEW_MAX_PARTS = 64;
 /**
