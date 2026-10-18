@@ -563,14 +563,22 @@ describe("the refusal explains itself", () => {
   });
 
   it("general refused an effect tool gets set_web_settings guidance (#2132)", () => {
-    // General uses set_web_settings {change:{what:"effect",...}} — not the direct
-    // effect tools. The refusal must name the correct alternative path.
-    const message = toolRefusedMessage("general", "upload_web_effect");
-    expect(message).not.toContain("tool_set: coordinator");
-    expect(message).not.toContain("own-appearance");
-    expect(message).toContain("set_web_settings");
-    expect(message).toContain(`what: "effect"`);
-    expect(message).toContain(`action: "apply"`);
+    // Library tools get "library managed by worker/standard"
+    for (const tool of ["upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "delete_web_effect"]) {
+      const msg = toolRefusedMessage("general", tool);
+      expect(msg, tool).not.toContain("tool_set: coordinator");
+      expect(msg, tool).toContain("set_web_settings");
+      expect(msg, tool).toContain(`what: "effect"`);
+      expect(msg, tool).toContain("library");
+    }
+    // Apply/remove tools get "use set_web_settings to apply/remove"
+    for (const tool of ["apply_web_effect", "remove_web_effect"]) {
+      const msg = toolRefusedMessage("general", tool);
+      expect(msg, tool).not.toContain("tool_set: coordinator");
+      expect(msg, tool).toContain("set_web_settings");
+      expect(msg, tool).toContain(`what: "effect"`);
+      expect(msg, tool).toContain(`action: "apply"`);
+    }
   });
 
   it("general refused an ambient tool gets set_web_settings guidance (#2132)", () => {
@@ -579,6 +587,37 @@ describe("the refusal explains itself", () => {
     expect(message).toContain("set_web_settings");
     expect(message).toContain(`what: "ambient"`);
     expect(message).toContain("ambient:");
+  });
+
+  it("the set_web_settings shapes cited in refusal messages pass safeParse (#2134 R3)", async () => {
+    // If the format in the message and the schema drift, an agent following the
+    // refusal gets a schema error. Validate the exact objects we describe.
+    const { SetWebSettingsArgs } = await import("../src/outbound-schemas.js");
+
+    // Effect apply shape
+    expect(SetWebSettingsArgs.safeParse({
+      change: { what: "effect", action: "apply", instance: "general", id: "effect-id" },
+    }).success, "effect apply shape").toBe(true);
+
+    // Effect remove shape
+    expect(SetWebSettingsArgs.safeParse({
+      change: { what: "effect", action: "remove", instance: "general" },
+    }).success, "effect remove shape").toBe(true);
+
+    // Ambient set shape
+    expect(SetWebSettingsArgs.safeParse({
+      change: { what: "ambient", instance: "general", ambient: { preset: "fall" } },
+    }).success, "ambient set shape").toBe(true);
+
+    // Ambient clear shape (null)
+    expect(SetWebSettingsArgs.safeParse({
+      change: { what: "ambient", instance: "general", ambient: null },
+    }).success, "ambient clear shape").toBe(true);
+
+    // Ambient clear with which
+    expect(SetWebSettingsArgs.safeParse({
+      change: { what: "ambient", instance: "general", ambient: null, which: "loop" },
+    }).success, "ambient clear which shape").toBe(true);
   });
 });
 
