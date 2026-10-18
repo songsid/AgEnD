@@ -73,9 +73,13 @@ the local address sees every instance's live terminal and the roster (status, co
 tags, name, description, avatars, cards) and the usage meters — read only; editing says "Sign in to edit". Over a
 public link `/view` always needs sign-in.
 
-**Guests (#1920).** Phase 1 is on main: a guest session tier with a default-deny route list (a guest is refused
-everything not explicitly allowed). Nothing issues a guest sign-in yet; inviting guests and their chat/history are
-phase 2. Answer "not yet" to "can I invite someone".
+**Guests (#1920, 2.3 beta).** Off by default: `web.guests.enabled` (or Settings → Web → Guests). Then someone who is
+not a fleet admin sends `/web` and gets a code privately, signing in as their own Discord or Telegram account. A guest
+sees only the agents they can already use in chat: their connection's fleet topics and General (an `open` connection:
+only `web.guests.open_instances`), their own Telegram private ClassicBot room, and ClassicBot group rooms while their
+membership is verified, minus any `web.guests.narrow`. They can chat there unless `web.guests.chat` is false, never send
+a command (text starting with `/` is refused), and the agent sees them as `via web (guest)`. A guest's app has no Fleet,
+View, Settings or Needs you. To invite someone: turn it on, then tell them to send `/web`.
 
 ## Chat
 
