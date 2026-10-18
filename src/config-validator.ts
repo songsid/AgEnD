@@ -432,12 +432,14 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     if (config.web.session !== undefined) validateWebSession(config.web.session, err);
     if (config.web.guests !== undefined) validateWebGuests(config.web.guests, config, err, warn);
-    // #1939 S1: the two §3 keys; anything else under it (the switch, the step-up list) arrives with S2 and is ignored now.
+    // #1939: the server switch and the §3 keys (§0: a session is authorized once; no step-up list).
     if (config.web.verified_authority !== undefined) {
       const v = config.web.verified_authority;
       if (!isObj(v)) err("web.verified_authority", "must be a mapping");
       else {
-        for (const k of Object.keys(v)) if (k !== "loopback_only" && k !== "max_session_hours") warn(`web.verified_authority.${k}`, "unknown key (known: loopback_only, max_session_hours) — ignored");
+        const known = ["enabled", "loopback_only", "max_session_hours"];
+        for (const k of Object.keys(v)) if (!known.includes(k)) warn(`web.verified_authority.${k}`, `unknown key (known: ${known.join(", ")}) — ignored`);
+        if (v.enabled !== undefined && typeof v.enabled !== "boolean") err("web.verified_authority.enabled", "must be a boolean");
         if (v.loopback_only !== undefined && typeof v.loopback_only !== "boolean") err("web.verified_authority.loopback_only", "must be a boolean");
         const h = v.max_session_hours;
         if (h !== undefined && (typeof h !== "number" || !Number.isFinite(h) || h < VERIFIED_SESSION_HOURS.min || h > VERIFIED_SESSION_HOURS.max)) {

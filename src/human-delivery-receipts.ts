@@ -190,6 +190,17 @@ export function settleHumanReceipt(db: Database.Database, id: string, target: st
   })();
 }
 
+/**
+ * #1939 §10: the highest revocation epoch any stored receipt was stamped with (0: none) — every web receipt, web-verified or
+ * none, carries the epoch in force when it was written. The authority state must never be behind it: a state file deleted
+ * or restored from an older copy would otherwise bring revoked receipts back.
+ */
+export function maxWebAuthorityEpoch(db: Database.Database): number {
+  const row = db.prepare("SELECT MAX(CAST(json_extract(authority_json,'$.authority_epoch') AS INTEGER)) AS epoch FROM human_delivery_receipts "
+    + "WHERE authority_json IS NOT NULL AND json_valid(authority_json)").get() as { epoch: number | null } | undefined;
+  return Number.isSafeInteger(row?.epoch) && (row!.epoch as number) > 0 ? row!.epoch as number : 0;
+}
+
 /** Read-only operator compatibility: an older database simply has no human receipts. */
 export function queryHumanReceipt(db: Database.Database, caller: string | null, selector: DeliveryStatusSelector): DeliveryStatusPage | null {
   const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='human_delivery_receipts'").get();
@@ -204,11 +215,11 @@ export function queryHumanReceipt(db: Database.Database, caller: string | null, 
     && !db.prepare("SELECT 1 FROM delivery_forward_edges WHERE reference_kind='human' AND reference_id=? AND receiver_instance=? LIMIT 1")
       .get(row.receipt_id, caller)) return { items: [], next_cursor: null };
   const origin = JSON.parse(row.origin_json) as HumanOrigin;
-  // #1939 S1: who authorized it, next to origin and proof_kind (delivery evidence); a web-session receipt names its account.
+  // #1939 S1: who authorized it, next to origin and proof_kind (delivery evidence); a web-verified receipt names its account.
   const authority = receiptAuthority(origin, row.authority_json ?? null);
   const item: DeliveryStatusItem = {
     delivery_id: row.receipt_id, operation_id: row.receipt_id, correlation_id: null,
-    source_instance: authority.kind === "web-session" && authority.actor
+    source_instance: authority.kind === "web-verified" && authority.actor
       ? "human:web:" + authority.actor.adapter_id + ":" + authority.actor.user_id
       : "human:" + origin.platform + ":" + (origin.user_id ?? "unknown"),
     target_instance: row.target_instance, kind: "human_inbound", state: row.state, attempt_no: 0,
