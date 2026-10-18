@@ -371,7 +371,7 @@ fleet.yaml 頂層**。預設 `"builtin"`，也可用內嵌內容、`file:path` �
 Fleet 啟動時預載最多 20 筆 active decisions，每筆內容截到 200 字元；daemon 再篩選
 相關條目，指令最多顯示 15 筆摘要、每筆最多 120 字元，並提示用 `list_decisions`
 查看其餘條目。這是啟動時的快照，不是即時推播；要看完整、最新或啟動後新增的 decisions，
-請呼叫 `list_decisions`。
+請呼叫 `list_decisions`。它回傳標題（id、標題、範圍、日期、tags）；要看某一條的全文就傳 `id`，要看全部就傳 `full: true`（#2152）。
 
 ### Session snapshots
 

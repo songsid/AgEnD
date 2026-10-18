@@ -61,6 +61,8 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
     text: "Repo tools: `checkout_repo` works with branch names again and records each checkout; `release_repo` releases only your own checkout under your `repos/` and refuses any other path." },
   { id: "2.3-web-verified", since: "2.3.0-beta.7",
     text: "Web messages can now carry the person's authority (#1939): when their Discord or Telegram account has authorized that browser, they arrive as `[user:<name> via web (verified), id:<their user id>]`. The label is a hint — before acting on it as the person, read its receipt with `delivery_status`: `authority.kind: web-verified` names them in `authority.actor`, and it is checked and forwarded (`forwards`) like a Discord or Telegram message. Plain `via web` still grants nothing. The full rule is in the cross-instance-messaging skill." },
+  { id: "2.3-decision-titles", since: "2.3.0-beta.9",
+    text: "`list_decisions` now answers titles by default (id, title, scope, date, tags). Read a decision's full text with `list_decisions { id }`, or all of them with `{ full: true }` (large). CLI mode: `agend-agent decision-get <id>`." },
 ];
 
 /**

@@ -356,6 +356,7 @@ async function main(): Promise<void> {
     // Decisions
     case "decision-post": args = { title: rest[0] ?? "", content: rest[1] ?? "", scope: rest[2], tags: rest[3] }; break;
     case "decision-list": args = { include_archived: rest[0] === "true" }; break;
+    case "decision-get": args = { id: rest[0] ?? "" }; break;
     case "decision-update": args = { id: rest[0] ?? "", content: rest[1], archive: rest[2] === "true" }; break;
 
     // Schedules

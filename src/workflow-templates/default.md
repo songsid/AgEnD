@@ -12,7 +12,7 @@
 
 ## Shared Decisions
 
-- Run `list_decisions` after restart to reload fleet-wide decisions.
+- Run `list_decisions` after restart to reload fleet-wide decisions: it lists titles; read the full text only of the ones you need (`list_decisions { id }`).
 - Use `post_decision` to share architectural choices that affect other instances.
 
 ## Progress Tracking

@@ -159,6 +159,8 @@ export const ListDecisionsArgs = z.object({
   include_archived: z.boolean().optional()
     .describe("Include archived/superseded decisions. Default: false"),
   tags: z.array(z.string()).optional().describe("Filter by tags"),
+  id: z.string().optional().describe("One decision's full text, by its id (or a unique prefix of 6+ characters)"),
+  full: z.boolean().optional().describe("Every decision's full text (large: prefer titles, then { id } for the ones you need). Default: false — titles only"),
 });
 
 export const UpdateDecisionArgs = z.object({
