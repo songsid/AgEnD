@@ -283,7 +283,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   ];
   const cls = statusClass(inst, exec, awaiting);
   // #1920 phase 3: a guest has this chat only — no Details, View or Log to switch to, no lifecycle, colour, theme,
-  // effects or delete (a guest's status frame carries no model or effort either, so those chips do not show).
+  // effect management or delete (a guest's status frame carries no model or effort either, so those chips do not show).
   const guest = guestPage();
   // #1269 quick actions: the model and effort it runs, each a way to /model or /effort (the same pick list).
   const pick = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });

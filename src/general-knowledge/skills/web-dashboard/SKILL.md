@@ -343,7 +343,8 @@ Settings → **Web appearance**, card by card:
   chat, share your copy; **Your effect choices** for Sidebar / Header / Page / Box (each with Pause / Resume and
   Clear) and a Cursor (its state, and Clear). CW uses the dashboard's opaque isolated document, independently of
   **Allow HTML previews**, its listener and port. Signed-in public/guest viewers can play current effects in chats they
-  may see, without library, personal-slot, Trial or profile grants. A Try sample starts on a signed-in non-public admin's
+  may see, without library, personal-slot, Trial or profile grants. Their Chat header offers a browser-local show/off
+  switch and recovery, on desktop and phone; it never changes host preferences. A Try sample starts on a signed-in non-public admin's
   click, with no extra consent. The show switch, safe mode, hidden tab, browser support, system reduced motion,
   data-saver and two-second frame-rate baseline still apply; changing motion/baseline policy is a separate follow-up.
   A blocked placement keeps an exact named notice. Show/custom-CSS actions open **Web appearance**; an unavailable

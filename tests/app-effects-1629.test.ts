@@ -267,8 +267,9 @@ it.each([false, true])("#2118 Chat-only app owner constructs no personal, cursor
 it("#2118 guest proves absent owner CSS without installing it; unexpected styles stay unknown", async () => {
   const h = await rig(h => {Object.assign(h.doc.body.dataset,{tier:"guest",effectScope:"chat"}); env.css.reset({state:"unknown"});});
   expect(h.options().observe().ownerCss).toBe("off"); expect(h.preview.onChange).not.toHaveBeenCalled();
-  h.doc.querySelectorAll=(q:string)=>q==='style,#owner-css'?[{}]:[];
+  h.doc.querySelectorAll=(q:string)=>q==='style'?[{sheet:{disabled:false}}]:[];
   expect(h.options().observe().ownerCss).toBe("unknown");
+  h.doc.querySelectorAll=(q:string)=>q==='style'?[{sheet:null},{sheet:{disabled:true}}]:[];expect(h.options().observe().ownerCss).toBe("off");
   h.doc.querySelectorAll=(q:string)=>q.includes('link[')?[{getAttribute:()=>"/ui/owner-css.css?v=unowned"}]:[];
   expect(h.options().observe().ownerCss).toBe("unknown");
   h.doc.querySelectorAll=()=>[];h.doc.body.dataset.ownerCss="a".repeat(32); expect(h.options().observe().ownerCss).toBe("unknown"); h.entry.dispose();

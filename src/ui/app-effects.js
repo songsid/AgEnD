@@ -83,7 +83,10 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     // Guests never install owner CSS. Prove its absence rather than borrowing the uninstalled
     // lifecycle's initial unknown, and refuse unexpected styles instead of trusting a missing id.
     try {
-      if (doc.body.dataset.ownerCss || doc.querySelectorAll("style,#owner-css").length) return "unknown";
+      if (doc.body.dataset.ownerCss || doc.querySelectorAll("#owner-css").length) return "unknown";
+      // A CSP-refused or disabled STYLE has no paint. Recheck on every proof so enabling
+      // it never borrows an earlier absence verdict (WebKit capture inserts a refused no-op).
+      for (const style of doc.querySelectorAll("style")) if (style.sheet && style.sheet.disabled !== true) return "unknown";
       const allowed = new Set(["/assets/tokens.css", "/assets/app.css"]);
       for (const link of doc.querySelectorAll('link[rel~="stylesheet"]')) {
         const url = new URL(link.getAttribute("href"), host.location.origin);

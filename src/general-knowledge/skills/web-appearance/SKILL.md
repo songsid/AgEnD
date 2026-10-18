@@ -402,7 +402,8 @@ smallest valid `effect.json`:
   (`frame_limit`, `front_limit`).
 - CW uses an opaque isolated document on the dashboard listener: no HTML-preview consent, separate preview port or
   localhost requirement. Signed-in public/guest viewers may read and play only current effects in chats they can see;
-  this grants no library management, personal-slot, private-image, Trial or profile access.
+  this grants no library management, personal-slot, private-image, Trial or profile access. Their Chat header has a
+  browser-local show/off switch, including on phones, and an inline recovery action. It never writes host preferences.
 - Nothing plays in safe mode, with reduced motion or save-data, on a hidden page or while the viewer has effects off.
   The two-second empty-page frame-rate baseline still applies. A poster may replace unsupported/motion/data playback
   (see Static Chat fallback). Menus/dialogs stop `front` effects temporarily. The motion/baseline simplification is a

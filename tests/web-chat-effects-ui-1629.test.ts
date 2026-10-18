@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fire } from "./helpers/mini-dom.js";
 import { page, settle, type AppPage } from "./helpers/app-harness.js";
 const M = vi.hoisted(() => ({ apis: [] as any[], opts: [] as any[], unavailable: false, owner: null as any }));
 vi.mock("/ui/js/app-effects.js", () => ({ getAppEffects: () => M.owner }));
@@ -126,6 +127,13 @@ describe("#2115 persistent named block notices", () => {
     for (const reason of ["constructor", "__proto__"]) expect(effectRowText({ reason })).toBe(`Playback blocked: ${reason}`);
     expect(effectRowText({ reason: "preview_not_consented" })).toContain("older playback information");
     expect(effectRowText({ reason: "baseline_timeout" })).toContain("calibration failed");
+  });
+  it.each(["guest","public"])("%s has an always-visible local off/on control, no management and no host write",async kind=>{
+    const h=await fixture();if(kind==="guest")pg!.document.body.dataset.tier="guest";else pg!.document.body.dataset.publicLink="1";
+    await h.nextLease();await h.publish();const requests=vi.fn();vi.stubGlobal("fetch",requests);h.host.fetch=requests;
+    const themes=await import("/assets/app-themes.js");const control=()=>pg!.root.querySelector('.chat-fx-notice input[type=checkbox]') as any;
+    expect(control()).toBeTruthy();expect(pg!.root.querySelector("dialog")).toBeNull();control().checked=false;fire(control(),"change");await settle();expect(themes.themesShown()).toBe(false);
+    control().checked=true;fire(control(),"change");await settle();expect(themes.themesShown()).toBe(true);expect(requests).not.toHaveBeenCalled();expect(pg!.root.textContent).not.toContain("Remove from chat");h.cleanup();
   });
   it("a public disabled notice turns effects on in this browser without a host preference POST", async () => {
     const h = await fixture(); pg!.document.body.dataset.publicLink = "1";

@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, type AppPage } from "./helpers/app-harness.js";
 let pg: AppPage | null = null;
 afterEach(async () => { vi.useRealTimers(); vi.restoreAllMocks(); if (pg) { await pg.unmount(); pg.restore(); pg = null; } });
-async function fixture({ publicLink = true, hostShow = true, storage = {}, safe = false } = {}) {
+async function fixture({ publicLink = true, guest = false, hostShow = true, storage = {}, safe = false } = {}) {
   vi.resetModules(); pg = page({ url: `http://localhost/ui/chat/own${safe ? "?safe=1" : ""}`, storage });
-  pg.document.body.dataset.publicLink = publicLink ? "1" : "0";
+  pg.document.body.dataset.publicLink = publicLink ? "1" : "0";if(guest)pg.document.body.dataset.tier="guest";
   pg.document.documentElement.setAttribute("data-prefs", JSON.stringify({ rev: 1, values: { "fx.show": hostShow } }));
   const fetch = vi.spyOn(globalThis, "fetch"), module = await import("/assets/app-themes.js");
   return { ...module, fetch };
@@ -17,6 +17,11 @@ describe("#1629 public theme/effect switch is this browser's choice", () => {
     vi.resetModules(); const reload = await import("/assets/app-themes.js"); expect(reload.themesShown()).toBe(false);
     reload.setThemesShown(true); expect(reload.themesShown()).toBe(true); expect(localStorage.getItem("agend_public_fx_show")).toBe("on");
     expect(JSON.parse(pg!.document.documentElement.getAttribute("data-prefs")!).values["fx.show"]).toBe(hostShow); expect(m.fetch).not.toHaveBeenCalled(); expect(observed).toEqual([false]); off();
+  });
+  it.each([true,false])("a guest switch stays browser-local, survives reload, and cannot modify host default %s",async hostShow=>{
+    const m=await fixture({publicLink:false,guest:true,hostShow});m.setThemesShown(false);expect(m.themesShown()).toBe(false);
+    vi.resetModules();const again=await import("/assets/app-themes.js");expect(again.themesShown()).toBe(false);again.setThemesShown(true);expect(again.themesShown()).toBe(true);
+    expect(m.fetch).not.toHaveBeenCalled();expect(JSON.parse(pg!.document.documentElement.getAttribute("data-prefs")!).values["fx.show"]).toBe(hostShow);
   });
   it("a public override never shadows local signed-in host choices", async () => {
     const m = await fixture({ publicLink: false, storage: { agend_public_fx_show: "off" } }); expect(m.themesShown()).toBe(true);

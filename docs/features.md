@@ -1335,11 +1335,13 @@ a later 2.3.x follow-up (#1940).
 Signed-in Chat uses an opaque isolated bootstrap on the dashboard listener, without HTML-preview consent, a separate
 preview port or a localhost requirement. Signed-in public/guest viewers can play current placements in chats they may
 see; reads recheck their session/epoch, exposure and the exact placement. Library management, personal choices, private
-images, Trial and profile routes remain closed to them. More → Effects provides local Pause/Resume and authorized Remove.
+images, Trial and profile routes remain closed to them. Public/guest Chat headers provide a browser-local show/off
+switch and recovery on desktop and phone, without changing host settings. Other dashboard sessions use More → Effects
+for local Pause/Resume and authorized Remove.
 
 The show switch, safe mode, hidden tabs, browser support, system reduced motion, data saver and the two-second empty-page
 frame-rate baseline still apply. Motion/baseline changes are a separate #2118 follow-up. A poster can appear behind content
-when Worker/transport support or motion/data settings prevent playback; no poster means no image. Public viewers' show
+when Worker/transport support or motion/data settings prevent playback; no poster means no image. Public/guest viewers' show
 choice stays in their browser and never changes host defaults. Safe mode, Show off and unknown stock ordering hide posters;
 manual Pause, queues and failed live reads do not select fallback. Personal page/header/sidebar/box effects use the same pool;
 the personal cursor uses a bounded static host image.

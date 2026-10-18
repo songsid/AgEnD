@@ -192,6 +192,18 @@ describe("#1629 shared Canvas Worker registry", () => {
   it.each([{ safe: true }, { reducedMotion: true }, { saveData: true }, { enabled: false }, { show: false }, { transportReady: false }, { hidden: true }, { show: undefined }])("unknown/disabled viewer gate %j mounts nothing", async patch => {
     const h = rig(); await h.admit(h.descriptors(3), gates(patch)); expect(h.frames()).toHaveLength(0); expect(h.load).not.toHaveBeenCalled();
   });
+  it("#2118 a viewer off/on revokes paint then recovers without clearing real safety or resource latches",async()=>{
+    const h=rig(),ds=await h.admit();h.frames()[0].ready();const first=h.frames()[0];
+    h.api.update(ds,gates({show:false}));expect(first.state().removed).toBe(true);expect(h.api.snapshot()[0]).toMatchObject({phase:null,reason:"disabled"});
+    h.api.update(ds,gates());await flush();expect(h.frames().filter((f:any)=>!f.state().removed)).toHaveLength(1);expect(h.load).toHaveBeenCalledTimes(2);expect(h.api.snapshot()[0].reason).not.toBe("gates_unknown");
+    h.api.dispose();
+  });
+  it("#2118 viewer off/on cannot clear resource or durable safety failures",async()=>{
+    const failed=rig();failed.load.mockResolvedValueOnce(null);const ds=await failed.admit();expect(failed.load).toHaveBeenCalledOnce();
+    failed.api.update(ds,gates({show:false}));failed.api.update(ds,gates());await flush();expect(failed.load).toHaveBeenCalledOnce();failed.api.dispose();
+    const off=rig();off.safety.allowed.mockReturnValue(false);off.safety.status=vi.fn(()=>({state:"off",history:null}));const blocked=await off.admit();
+    off.api.update(blocked,gates({show:false}));off.api.update(blocked,gates());await flush();expect(off.load).not.toHaveBeenCalled();expect(off.api.snapshot()[0].reason).toBe("safety_off");off.api.dispose();
+  });
   it("the constrained front pool admits exactly one front effect", async () => {
     const h = rig(); await h.admit(h.descriptors(3, { layer: "front" }), gates({ constrained: true })); expect(h.frames()).toHaveLength(1); expect(h.geo().bind.mock.calls[0]![1]).toMatchObject({ layer: "front" });
   });

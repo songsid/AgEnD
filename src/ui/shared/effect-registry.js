@@ -117,7 +117,9 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     s.live = false;
     if (slots.get(s.d.key) === s) slots.delete(s.d.key);
     if (s.request) { s.request.controller.abort(); if (s.request.timer !== null) host.clearTimeout(s.request.timer); }
-    if (!["disposed", "superseded", "hidden", "human_resume", "calibrating", "geometry_changed"].includes(why)) failures.set(s.d.key, { identity: signature(s.d), reason: why });
+    // A closed/unknown viewer gate revokes paint, not the effect identity. Fresh known gates
+    // may admit it again; resource failures and actual safety pauses retain their latches.
+    if (!["disposed", "superseded", "hidden", "human_resume", "calibrating", "geometry_changed", "gates_unknown"].includes(why)) failures.set(s.d.key, { identity: signature(s.d), reason: why });
     s.stageOff?.(); s.stageOff = null;
     s.frame?.remove(why); s.geometry?.remove();
     if (s.loadOff) s.loadOff();
