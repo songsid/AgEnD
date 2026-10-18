@@ -110,8 +110,14 @@ await link.close();
 ```
 
 - **Accounts.** Each `freshPage` signs in as a new synthetic Discord account (`demoAccount()`), so its session is bound
-  to that account like a real DM code, and it starts from that person's empty prefs. A bucket that already has prefs is
-  refused, never cleaned. `{ account: "operator" }` is the owner-less `agend web` case, used only on purpose.
+  to that account like a real DM code. `{ account: "operator" }` is the owner-less `agend web` case, used only on
+  purpose.
+- **Prefs.** Before each case, what that viewer would read must be empty: `WebPrefsStore.readForViewer`, the host's prefs
+  plus that person's. The public link's viewer reads the host's only.
+  - **A new account doesn't isolate the host.** Host-wide settings (`preview.optIn`, `fx.show`, `theme`, `lang`, …) reach
+    every account, so a consent another case gave, or an earlier `fx.page()` run, is not a default state.
+  - **Refused, never cleaned or rewritten.** A polluted store refuses, and so does one that can't be read. Run
+    from-defaults cases on a fixture of their own (or before anything writes prefs).
 - **Errors.** `errors` collects page errors and console errors from before the first navigation. The sign-in page's own
   `/auth/session` 401 before signing in is kept apart in `expected`.
 - **Mounted.** `mounted(page)` waits for the app's visible navigation (the sidebar, or the phone's tab bar) with a
@@ -137,8 +143,13 @@ await link.close();
 `scripts/manual/smoke/smoke-from-defaults-probe.mts` checks the harness itself:
 - the loopback, LAN, operator and public cases;
 - the location and secure context of each;
-- negative controls that must be caught: a boot that throws, a boot that never mounts, a person whose prefs were
-  already written, and the next case being its own person.
+- negative controls that must be caught:
+  - a boot that throws;
+  - a boot that never mounts;
+  - a host consent written by another account through the product's write path, refused for a new account and on the
+    public link;
+  - an unreadable prefs store;
+- and a positive control: a separate clean fixture signs in and mounts.
 
 ## Pitfalls (each one cost a run)
 

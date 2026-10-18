@@ -5,7 +5,9 @@
  *
  * - freshPage(): a new context, nothing seeded, signed in through the visible /signin page as a synthetic Discord account
  *   of its own — the code is issued to that account as its DM would carry it (the only step outside the page), so the
- *   session is bound to the account, and its person prefs start empty (checked, never written: a polluted bucket refuses).
+ *   session is bound to the account. What that viewer would read must be empty: the host's prefs AND that person's
+ *   (readForViewer — host-scope keys such as preview.optIn, fx.show, theme and lang apply to every account, so a new
+ *   account does not make a polluted host default). Checked, never cleaned or written: a polluted or unreadable store refuses.
  *   `origin: "lan"` puts the page on http://dashboard.lan.example:<port> — a real non-loopback origin in the browser
  *   (location, secure context, storage), resolved to the fixture by the browser's host-resolver rule, and admitted by
  *   web.allowed_hosts like a LAN or tailnet name. Page errors are collected from before the first navigation.
@@ -77,10 +79,17 @@ function collectErrors(page: any): { errors: string[]; expected: string[]; signe
   return { errors, expected, signedIn: () => { before = false; } };
 }
 
-/** A person's prefs bucket must be untouched before a defaults case — never cleaned or written here: refuse instead. */
-function untouched(fm: any, personKey: string): void {
-  const values = fm.webPrefs?.read(personKey)?.values ?? {};
-  if (Object.keys(values).length) throw new Error(`from-defaults: ${personKey} already has prefs (${Object.keys(values).join(", ")}): not a default state`);
+/**
+ * What this viewer would read must be untouched before a defaults case: the host's prefs and, for a signed-in person,
+ * theirs — exactly the product's projection (WebPrefsStore.readForViewer; `null`: the public link's viewer, host only).
+ * Host-scope keys reach every account, so another account's consent (preview.optIn …) or a seeded fx.page() run counts.
+ * Never cleaned or written here: a polluted store refuses, and so does one that cannot be read ({} proves nothing).
+ */
+function untouched(fm: any, viewer: string | null): void {
+  const view = fm.webPrefs?.readForViewer(viewer);
+  if (!view || view.unreadable) throw new Error(`from-defaults: the prefs store cannot be read: not a proven default state`);
+  const keys = Object.keys(view.values ?? {});
+  if (keys.length) throw new Error(`from-defaults: ${viewer ?? "the public-link viewer"} would read prefs already set (${keys.join(", ")}): not a default state`);
 }
 
 /** Sign in on the page that is open at /signin with `code`, as a person would: type it, press the button. */
@@ -115,7 +124,7 @@ export async function freshPage(fx: { fm: any; browser: any; base: string }, c: 
   const base = opts.origin === "lan" ? `http://${LAN_HOST}:${port}` : `http://127.0.0.1:${port}`;
   const account = opts.account === "operator" ? null : opts.account ?? demoAccount();
   const personKey = account ? `person:${account.adapterId}:${account.userId}` : "operator";
-  if (account) untouched(fm, personKey);
+  untouched(fm, personKey);                                                              // the operator case too
   fm.initializeWebSessions();
   const code = fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken), ...(account ? { recipient: account } : {}) }).display;
   const ctx = await freshContext(fx.browser, c, opts.reducedMotion === true);
@@ -187,7 +196,7 @@ export async function openPublicLink(fx: { fm: any; browser: any }, opts: { host
   return {
     host: HOST, url, exposureId, owner, notices,
     async publicPage(c, popts = {}) {
-      untouched(fm, personKey);
+      untouched(fm, null);                                                                 // the public link reads the host's prefs only
       const ctx = await freshContext(fx.browser, c, popts.reducedMotion === true);
       // Stubbed transport: https://HOST/* → the gateway's local port, with that Host (the gateway pins it), as the tunnel
       // would carry it. The public link has no live stream (the page polls); one asked for anyway is refused.
