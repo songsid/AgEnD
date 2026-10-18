@@ -1,6 +1,6 @@
 ---
 name: web-appearance
-description: How you look on the AgEnD web dashboard — check it, change your own theme, identity card, identity colour and widgets, play Canvas Worker effects in your chat (and offer a Try), preview the result, share it as a mod; and, for General, changing Settings → Web appearance for the user
+description: How you look on the AgEnD web dashboard — check it, change your own theme, identity card, identity colour and widgets, set an ambient effect (falling petals, click stars), play Canvas Worker effects in your chat (and offer a Try), preview the result, share it as a mod; and, for General, changing Settings → Web appearance for the user
 roles: [general, worker]
 ---
 
@@ -18,6 +18,7 @@ can shape how you look there — **only your own look, and only on the surfaces 
 | Your identity card | portrait, banner, tagline, bio | `set_web_theme` (`card.*`), `set_web_theme_asset` |
 | Your identity colour | the colour people find you by in the sidebar, and where it shows (name, bar, ring) | `set_web_theme` (`identity`) |
 | Your chat header strip and Details page | widgets: small panels of facts the dashboard draws | `set_web_widget`, `remove_web_widget` |
+| An ambient effect in your chat | falling petals, snow, rising lanterns, twinkles, stars where a person clicks — data only, drawn by the dashboard | `set_web_ambient`, `clear_web_ambient` |
 | A file of your look | a mod: export yours, or propose one for a person | `export_web_mod`, `propose_web_mod` |
 | Effects in your chat | Canvas Worker animations, and Try cards a local admin may start | `upload_web_effect`, `apply_web_effect`, `preview_web_effect`, … (see Effects) |
 
@@ -45,6 +46,7 @@ of this skill).
 | `custom_css` | `save` (with `text`): goes **on trial** on their screens (it goes back by itself unless kept); `keep` (the trial), `revert` (the trial), `use` (with `version`: an earlier saved one, at once), `off` | `{ what: "custom_css", action: "save", text: "…" }`; ask how it looks, then `keep` only when they say so |
 | `mod` | an agent's proposal: `review` (instance → `stage`, `plan`, `plan_hash`), then `install` (stage, plan_hash, `include`: the parts, `target`: the agent); `cancel`, `dismiss`, `uninstall` (id) | review, show the user the plan, install only what they asked for — never custom CSS unasked. A person has one review open at a time: while theirs is open (`mod_review_open`) ask them to finish it; a mod they imported from a file is theirs to install (`mod_not_from_an_agent`) |
 | `effect` | `apply` (instance, id, params?) or `remove` (instance, id?) an effect on a chat | |
+| `ambient` | one agent's ambient effect, set for the user: `ambient` is the same spec as `set_web_ambient`'s (it replaces the one of its kind, and the agent can't change it after); `ambient: null` clears (`which`: `loop` or `click`, default both) | `{ what: "ambient", instance: "atlas", ambient: { preset: "fall", glyphs: ["🌸","❀","✿"] } }` |
 | `effect_slot` | a person's `sidebar` / `header` / `page` / `box` / `cursor` effect (an id, or null) | |
 | `restore_defaults` | the host settings back to their defaults, and the person's custom CSS off | |
 
@@ -133,6 +135,7 @@ the id is the hash of what is kept, so the same picture is the same id.
 | `avatar` | png, jpeg, webp, gif | 256 KiB, 4096 px a side |
 | `portrait` | png, jpeg, webp | set by the fleet (default 1024×1536, 1.5 MiB) |
 | `banner` | png, jpeg, webp | set by the fleet (default 1600×600, 768 KiB) |
+| `glyph` | png, webp, gif | 64 KiB, 128 px a side; at most 4 (for `set_web_ambient`'s `glyphs`) |
 
 A picture holds one slot: upload it again for another slot only if it is a different picture. `get_web_theme`'s
 `limits.asset_slots` has the limits in force and `limits.asset_quota` how many pictures you may keep. A picture your
@@ -214,6 +217,42 @@ in it can be clicked or focused.
 
 Then, as you go: `set_web_widget { "slot": "chat_header", "data": { "tests": 75 } }`.
 
+## Ambient effects
+
+An ambient effect is **data only**: you choose a preset and its glyphs, the dashboard draws them. No code runs, so it
+needs no Try, no preview consent and no measurement — use it for petals, snow, lanterns, sparkles and stars on a click.
+Use a Canvas Worker effect (below) only for what a preset can't express.
+
+`set_web_ambient { preset, glyphs, colors?, count?, duration?, size?, sway?, spread?, rotate?, opacity? }`:
+
+| `preset` | What it draws | `count` | `duration` (seconds, [min, max]) |
+|---|---|---|---|
+| `fall` | glyphs drifting down behind your chat, endlessly | 1..24 particles (default 12) | 4..30 (default [9, 19]) |
+| `rise` | the same, drifting up | 1..24 (12) | 4..30 ([9, 19]) |
+| `twinkle` | glyphs pulsing in place | 1..24 (12) | 1..10 ([2, 5]) |
+| `burst-on-click` | glyphs scattering from where a person clicks or taps in your chat | 4..16 per click (10) | 0.3..2 ([0.5, 0.9]) |
+
+- `glyphs`: 1..4, picked at random per particle — a string of 1..2 characters (an emoji, `✦`, `❀`), or `{ "asset": id }`,
+  a picture you uploaded with `set_web_theme_asset` to the `glyph` slot.
+- `colors`: 0..5 `#rrggbb` for text glyphs (default: your accent). `size`: [min, max] px, 10..40 (default [14, 22]).
+  `sway`: sideways drift for fall and rise, 0..80 px (40). `spread`: how far a burst scatters, [min, max] 20..120 px
+  ([34, 90]). `rotate`: 0..720 degrees over a run (300). `opacity`: [start, peak, end], each 0..1 ([0, 0.85, 0.15]).
+- Your chat holds **one looping ambient** (`fall`, `rise` or `twinkle`) **and one `burst-on-click`**: setting one
+  replaces only its own kind. `clear_web_ambient { which? }` clears `loop`, `click`, or both.
+- It is drawn **behind your messages** and never takes a click (a burst shows over them for a moment, then is gone).
+- Who sees it: everyone who shows agents' looks, the public link included. Not with "Show agents' themes, effects and
+  widgets" off, `?safe=1`, or on a device that chose to follow the system's reduced-motion setting while
+  the system asks for it. A hidden tab pauses it.
+- Like a theme: a change for the rate limit, refused while a person locked your look; one a person set is theirs
+  (`person_placed`). A person's Reset of your theme clears it. `get_web_appearance` shows it, and
+  `preview_web_appearance` draws the looping one, still, behind the bubbles.
+
+```json
+{ "preset": "fall", "glyphs": ["🌸", "❀", "✿"], "colors": ["#f4a7b9", "#ffd1dc"], "count": 12, "duration": [9, 19] }
+```
+
+Then stars on a click, alongside: `set_web_ambient { "preset": "burst-on-click", "glyphs": ["✦", "✧"] }`.
+
 ## Mods
 
 A mod is one file, `<name>-<version>.agendmod.json`, that carries a look: a theme with its pictures, card text,
@@ -223,7 +262,7 @@ everything in a mod and ticks what to apply.
 - `export_web_mod { name, version, title? }` writes **your own** look to `.agend/mods/<name>-<version>.agendmod.json`
   in your working directory and returns `{ path, bytes }`. It carries your theme with its pictures, the effects your
   theme places (with their params) when they are yours or shared with you, your own card text (not a person's card
-  fields), and the widgets you placed. A person's private effect placed on you stays out (`effects_omitted` counts it).
+  fields), the widgets and ambient effects you set yourself. A person's private effect placed on you stays out (`effects_omitted` counts it).
   It never carries custom CSS or the sidebar widget, which are a person's. `name` is a-z, 0-9 and -, `version` is
   MAJOR.MINOR.PATCH.
 - `propose_web_mod { file }` sends a mod file from your working directory (at most 8 MiB) for a person to review. It
@@ -234,9 +273,9 @@ everything in a mod and ticks what to apply.
   or remove it (`person_placed`).
 
 The file format: `{ "format": "agend-mod", "v": 1, "manifest": { name, version, title, description?, author?,
-requires?: { agend: ">=X.Y.Z" }, contents: { theme?, identity?, widgets?: { chat_header?, details? }, effects? } },
+requires?: { agend: ">=X.Y.Z" }, contents: { theme?, identity?, widgets?: { chat_header?, details? }, ambient?, effects? } },
 "files": { "<path>": { "sha256", "b64" } } }`. Every file is listed with its sha256 and used by exactly one part, paths
-are lowercase with no `..`, and a theme names its pictures by path. The easiest way to get one right is to set your look
+are lowercase with no `..`, and a theme names its pictures by path (an ambient's glyph pictures too: `{ "asset": "<path>" }`). The easiest way to get one right is to set your look
 with the tools above, then `export_web_mod`.
 
 ## Limits
@@ -247,6 +286,7 @@ with the tools above, then `export_web_mod`.
   each file's own caps still apply; using a picture in your theme is a change.
 - Widget values (`set_web_widget` with `data` only): at least **10 s** apart, at most **180 an hour**, apart from the
   above.
+- `set_web_ambient` and `clear_web_ambient` are changes.
 - Effects: `apply_web_effect` and `remove_web_effect` are changes; `upload_web_effect` and `propose_web_mod` are not
   counted.
   At most 10 effects and 8 MiB of your own, at most two placed in your chat.
@@ -261,7 +301,8 @@ with the tools above, then `export_web_mod`.
 
 From a shell: `agend-agent theme get|set key=value…|set --json '<patch>'|clear <path>…|asset <slot> <file>|reset`,
 `agend-agent appearance`, `agend-agent appearance preview [light|dark]`, and
-`agend-agent widget set <slot> '<spec json>' ['<data json>']|data <slot> '<data json>'|remove [slot]`, and
+`agend-agent widget set <slot> '<spec json>' ['<data json>']|data <slot> '<data json>'|remove [slot]`,
+`agend-agent ambient set '<spec json>'|clear [loop|click]`, and
 `agend-agent mod export <name> <version> [title]|propose <file>`.
 
 ## Files in your working directory
@@ -295,7 +336,8 @@ these local checks prevent accidental uploads, but do not isolate shells running
 ## Effects
 
 A Canvas Worker effect is a small animation drawn by code that runs in an isolated Worker: no page, no DOM, no
-network. You place effects **only in your own chat**; a person can place them in the regions an effect's manifest
+network. For petals, snow or stars on a click, an ambient effect (above) is simpler and plays without a Try. You place
+effects **only in your own chat**; a person can place them in the regions an effect's manifest
 allows. None of these tools takes a target.
 
 **The package** (CW1): a directory in your working directory with `effect.json` and `worker.js`, optionally

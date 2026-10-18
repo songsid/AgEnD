@@ -105,7 +105,7 @@ describe("what's new for 2.3 (#1633, #2012: topic lines; the details are the ski
       expect(TOOLS.some(t => t.name === tool), tool).toBe(true);
       expect(SKILL, tool).toContain(`\`${tool}`);
     }
-    expect(AGENT_WHATS_NEW.filter(e => e.id.startsWith("2.3-")).map(e => e.id)).toEqual(["2.3-web-appearance-topic", "2.3-web-settings-for-the-user", "2.3-repo-tools"]);
+    expect(AGENT_WHATS_NEW.filter(e => e.id.startsWith("2.3-")).map(e => e.id)).toEqual(["2.3-web-appearance-topic", "2.3-web-settings-for-the-user", "2.3-web-ambient", "2.3-repo-tools"]);
   });
   it("#2056: General's topic line names the skill and its two tools, from beta.3; the skill reaches General too", () => {
     const line = AGENT_WHATS_NEW.find(e => e.id === "2.3-web-settings-for-the-user")!;

@@ -5,8 +5,9 @@
 // the scroller and the dock); a burst shows over the messages for a moment (.amb-burst) and never takes the click.
 //
 // Its own gates (not the Canvas Worker runtime's, #2115): the viewer's "Show agents' themes, effects and widgets", safe
-// mode, data saver, Web Animations support, and reduced motion only when this device chose to follow the system's
-// setting (fx-motion.js; the user's direction: effects play by default). A hidden tab pauses.
+// mode, Web Animations support, and reduced motion only when this device chose to follow the system's setting
+// (fx-motion.js; the user's direction: effects play by default). A hidden tab pauses. Nothing else gates it: it runs
+// no agent code and fetches nothing but its own glyph pictures (fleet decision: no gate without a threat it stops).
 // Caps: 24 looping particles, bursts of at most 16, at most 3 bursts alive — 72 nodes and animations per chat.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
@@ -65,13 +66,12 @@ export function ambientBlock(win = globalThis) {
   if (safeMode()) return "safe";
   if (!themesShown()) return "hidden";
   if (motionBlocked(win)) return "reducedMotion";
-  try { if (win.navigator && win.navigator.connection && win.navigator.connection.saveData === true) return "saveData"; } catch { /* unknown: not saving */ }
   const El = win.Element;
   if (!El || !El.prototype || typeof El.prototype.animate !== "function") return "unsupported";
   return null;
 }
 
-/** The gate as state: moves with the switches, the themes and the device's reduced-motion and data-saver answers. */
+/** The gate as state: moves with the switches, the themes and the device's reduced-motion answer. */
 function useAmbientBlock() {
   useStore(themesStore);
   const [, bump] = useState(0);
@@ -79,13 +79,7 @@ function useAmbientBlock() {
     const again = () => bump((n) => n + 1);
     const offPrefs = onPrefsChanged((changed) => { if (changed.has("fx.show")) again(); });
     const offMotion = onMotionChange(again);
-    let conn = null;
-    try { conn = globalThis.navigator && globalThis.navigator.connection; if (conn && conn.addEventListener) conn.addEventListener("change", again); } catch { conn = null; }
-    return () => {
-      if (typeof offPrefs === "function") offPrefs();
-      offMotion();
-      try { if (conn && conn.removeEventListener) conn.removeEventListener("change", again); } catch { /* gone */ }
-    };
+    return () => { if (typeof offPrefs === "function") offPrefs(); offMotion(); };
   }, []);
   return ambientBlock();
 }

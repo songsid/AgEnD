@@ -98,7 +98,7 @@ export function appearanceView(i: AppearanceInput): Record<string, unknown> {
     effects: [],
     widgets: (["chat_header", "details"] as const).flatMap(slot => { const w = i.widgets?.[slot]; return w ? [{ slot, by: w.by, spec: w.spec, data: w.data }] : []; }),
     ambient: AMBIENT_KINDS.flatMap(kind => { const a = i.ambient?.[kind]; return a ? [{ kind, by: a.by, spec: a.spec }] : []; }),
-    shown_when: "A viewer who turned off \"Show agents' themes, effects and widgets\", or a page opened with ?safe=1, sees the default look, the bot's face, no card colours, no widgets and no ambient effect. An ambient effect also stays still on a device that chose to follow the system's reduced-motion setting while the system asks for it, or that asks to save data.",
+    shown_when: "A viewer who turned off \"Show agents' themes, effects and widgets\", or a page opened with ?safe=1, sees the default look, the bot's face, no card colours, no widgets and no ambient effect. An ambient effect also stays still on a device that chose to follow the system's reduced-motion setting while the system asks for it.",
     locked: i.locked,
     agent_edit: i.agentEdit,
     limits: i.limits,

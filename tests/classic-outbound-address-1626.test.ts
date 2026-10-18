@@ -82,6 +82,7 @@ const samples: Record<string, Record<string, unknown>> = {
   get_web_theme: {}, set_web_theme: { set: { font: "mono" } }, set_web_theme_asset: { slot: "avatar", file: "a.png" }, reset_web_theme: {},
   get_web_appearance: {}, preview_web_appearance: { modes: ["dark"] },
   set_web_widget: { slot: "details", data: { prs: 1 } }, remove_web_widget: { slot: "details" },
+  set_web_ambient: { preset: "fall", glyphs: ["🌸"] }, clear_web_ambient: { which: "loop" },
   export_web_mod: { name: "look", version: "1.0.0" }, propose_web_mod: { file: "look.agendmod.json" },
   upload_web_effect: { dir: "./effect" }, list_web_effects: {},
   preview_web_effect: { id: "a".repeat(32) }, profile_web_effect: { id: "a".repeat(32) },
