@@ -13914,7 +13914,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   sessionAuthorizationRequests(): SessionAuthorizationRequests {
     if (this.authorizationRequests) return this.authorizationRequests;
     const adapterOf = (adapterId: string): ChannelAdapter | undefined => this.adapters.get(adapterId) ?? this.worlds.get(adapterId)?.adapter;
-    const when = (ms: number) => new Date(ms).toLocaleString();
+    // The host's clock, with its zone: the person may read the DM on a phone in another one.
+    const when = (ms: number) => new Date(ms).toLocaleString(undefined, { timeZoneName: "short" });
     const where = (peer: WebPeer) => t(peer === "loopback" ? "web_auth.peer_loopback" : "web_auth.peer_lan");
     return this.authorizationRequests = new SessionAuthorizationRequests({
       now: () => performance.now(), wallNow: () => Date.now(),
@@ -13957,6 +13958,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         expired: (c) => t("web_auth.card_expired", c.label),
         refused: (c) => t("web_auth.card_refused", c.label, t(`web_auth.refusal_${c.refusal}`)),
         revoked: (c) => t("web_auth.card_revoked", c.label),
+        ended: (c) => t("web_auth.card_ended", c.label),
         generalHint: () => t("web_auth.general_hint"),
         confirmLabel: () => t("web_auth.confirm"),
         notMeLabel: () => t("web_auth.not_me"),
@@ -13971,7 +13973,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const s = input.session;
     const gate = this.webAuthorityQualifies(input);
     if (gate) return { ok: false, refusal: gate };
-    return this.sessionAuthorizationRequests().ask({ handle: s!.handle, owner: s!.owner!, label: s!.label, peer: input.peer });
+    return this.sessionAuthorizationRequests().ask({ handle: s!.handle, owner: s!.owner!, label: s!.label, peer: input.peer, sessionEnd: s!.absoluteExpiry });
   }
 
   /**
