@@ -218,9 +218,13 @@ this is rare.
   - a receipt that stays `uncertain` or `failed` never counts;
   - a repeated settle of a delivered receipt changes nothing, because the guarded UPDATE matches no row and the counter
     isn't touched.
-- **Which hour:** the hour of the receipt's actual `delivered_at`, not its admission. A delivery late enough to fall
-  at or before the checkpoint (§5.2) would be a clock jump. It is counted in the current hour instead, and noted in
-  `late_dropped`'s sibling `late_moved`.
+- **Which hour:** the hour of the receipt's actual `delivered_at`, not its admission.
+- **A delivery at or before the checkpoint:** this can only happen when the wall clock went back past the checkpoint
+  (§5.2), and then the current hour is behind it too. Such a delivery is **not placed on any hour**. It goes in a
+  separate per-instance counter, `usage_message_late(instance, count)`. The checkpoint never folds or prunes that
+  counter, and it is incremented in the same transaction.
+  - **On the page and in the tool:** "N delivered messages with a clock before the collected period (not placed on a
+    day)". The receipt keeps its real `delivered_at`, and no hour is invented for it.
 - **What it's called:** the page, the tool and the CSV call it "delivered messages".
 - **Receipt retention doesn't matter:** receipts are pruned after `retention_days` (30 by default), but the counter
   isn't a scan of receipts.
@@ -242,9 +246,9 @@ coverage is recorded **by the scanner**, never inferred from missing buckets.
   - **not caught up yet:** after the last caught-up time, while the scanner works. "Scanning — totals may still grow."
   - **not collected:** outside every interval, for example before the first pass or while nothing was read for longer
     than the read window. The page says "not collected", **without a reason**.
-- **AgEnD stopped:** a reason is shown only with evidence. The fleet records its start time and each pass's time; a
-  hole between the last pass before a restart and that restart can be shown as "AgEnD wasn't running (recorded)".
-  Nothing else claims why data is missing.
+- **No reason is inferred.** A pass time followed by a restart doesn't show the fleet was down in between. It may have
+  run until a crash a minute before the restart. So an uncovered period is only ever "not collected", whatever the
+  pass and start times say.
 - **On the page:** "Collected since <first interval>"; "all" means all that was collected; the heatmap draws
   not-collected days differently from zero days.
 
@@ -293,7 +297,11 @@ Each state is screenshotted and its message asserted. Unit tests pin §5:
 - messages counted once: `queued → delivered`, `queued → uncertain → delivered` and a repeated settle all count 1,
   and a receipt left `uncertain` counts 0, in the hour of `delivered_at`;
 - coverage: a fleet running all day but used only at 09:00 and 17:00 reads 10:00–16:00 as covered zeros. An interval
-  before the first pass reads "not collected", and a recorded restart hole reads "AgEnD wasn't running (recorded)".
+  before the first pass reads "not collected".
+- a pass at 09:00, the fleet still running until 09:59, then a restart at 10:00: no hour reads as "stopped". What isn't
+  inside a coverage interval reads "not collected".
+- the wall clock set back before the checkpoint: a delivery then goes to `usage_message_late`, never onto an hour the
+  checkpoint skips or prunes, and the next fold neither drops nor double-counts it.
 
 ## 8. Docs and skills, in the same PR
 
