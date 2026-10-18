@@ -11,7 +11,7 @@
  * Settings panel (step 3; settings-api.ts serves them, signed in only).
  */
 
-export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "config"] as const;
+export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage", "config"] as const;
 export type FleetTab = typeof FLEET_TABS[number];
 // #1604: "device" — this browser's own choices (theme, language, HTML previews, the tour); no configuration behind it.
 export const SETTINGS_SECTIONS = ["device", "appearance", "agents", "bots", "classic", "general", "web", "advanced"] as const;

@@ -160,6 +160,14 @@ authority) uses the harness and stubs two more things, both outside the product:
 
 The demo connection's fleet-admin list is fleet config the smoke writes, as an operator would.
 
+`scripts/manual/smoke/smoke-2122-usage.mts` (#2122 Fleet → Usage) uses the harness with what the product reads made
+real: Claude Code transcripts and a Codex rollout in their real shapes (`tests/fixtures/cache-1468`, copied onto recent
+days) in a scratch `CLAUDE_CONFIG_DIR` / `CODEX_HOME` set before the fleet boots, never the host's. Each demo instance
+gets its own working directory (the fixture's share one, which the report would call "shared"). One instance's rollup
+file carries an older day, so the heatmap has never-collected days; that instance joins the fleet only after the empty
+case, so the product reads its rollup fresh. A rollout written within the rollout index's 1 s listing cache is seen on
+the next pass, so the smoke waits until the product has read every source.
+
 ## Pitfalls (each one cost a run)
 
 - **Language** is the host pref `lang` (`fx.page` writes it). `localStorage.agend_lang` alone leaves the page in English.
