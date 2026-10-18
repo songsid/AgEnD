@@ -26,7 +26,11 @@ const PERF = "研一官網-t1544335726169165914";
 
 const PETALS = { preset: "fall", glyphs: ["🌸", "❀", "✿"], colors: ["#f4a7b9", "#ffd1dc", "#e75480"] };
 const STARS = { preset: "burst-on-click", glyphs: ["✦", "✧"], colors: ["#ffd700", "#ff69b4", "#87ceeb", "#98fb98", "#dda0dd"], count: 12 };
-const results: Record<string, any> = { browser: fx.browser.version(), cases: {}, setup: {} };
+const results: Record<string, any> = { browser: fx.browser.version(), engine: process.env.PW_ENGINE ?? "chromium", cases: {}, setup: {} };
+// WebKit logs "Refused to apply a stylesheet…" on Settings → Appearance and on a click in a chat message on main too,
+// with no ambient anywhere (it fires no securitypolicyviolation event): recorded apart, not this smoke's failure.
+const WEBKIT = process.env.PW_ENGINE === "webkit";
+const KNOWN_WEBKIT = /Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline'/;
 const fail: string[] = [];
 const check = (cond: unknown, what: string) => { if (!cond) fail.push(what); return !!cond; };
 
@@ -83,8 +87,8 @@ for (const c of process.env.ONLY_PUBLIC || process.env.ONLY_PERF ? [] : matrix()
     const { ctx, page, csp } = await fx.page(c, { path: `/ui/chat/${enc(WITH)}` });
     await page.emulateMedia({ reducedMotion: reduce ? "reduce" : "no-preference" });
     const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 160)));
-    page.on("console", (m: any) => { if (/Content Security Policy|Refused/.test(m.text())) errs.push("console: " + m.text().slice(0, 200)); });
-    const r: any = {};
+    const r: any = { webkitStyleRefusals: 0 };
+    page.on("console", (m: any) => { if (WEBKIT && KNOWN_WEBKIT.test(m.text())) r.webkitStyleRefusals++; else if (/Content Security Policy|Refused/.test(m.text())) errs.push("console: " + m.text().slice(0, 200)); });
     await page.reload(); await page.waitForTimeout(1800);
     // From defaults: it plays, reduced motion or not (the user's direction).
     r.defaults = await probe(page);
@@ -149,6 +153,8 @@ for (const c of process.env.ONLY_PUBLIC || process.env.ONLY_PERF ? [] : matrix()
       check(r.safe === 0, `${name}: ?safe=1 draws none`);
     }
     r.csp = await csp(); r.errs = errs;
+    // The same WebKit item as a securitypolicyviolation: an inline <style> element after a click in a message (main too).
+    if (WEBKIT) { r.webkitStyleElem = r.csp.filter((v: string) => /^style-src-elem inline/.test(v)).length; r.csp = r.csp.filter((v: string) => !/^style-src-elem inline/.test(v)); }
     check(r.csp.length === 0 && errs.length === 0, `${name}: no CSP violation or page error`);
     results.cases[name] = r;
     await ctx.close();
@@ -176,7 +182,9 @@ if (!process.env.ONLY_PERF && !process.env.SKIP_EXTRA) {
         await route.fulfill({ response: res });
       });
       const page = await ctx.newPage();
-      const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 160)));
+      // In WebKit, requests this harness proxies (route.fetch) can fail its access-control check; that is the proxy, not the
+      // page (the same flows pass in Chromium), and every check below still has to pass.
+      const errs: string[] = []; page.on("pageerror", (e: any) => { const t = String(e); if (!(WEBKIT && /due to access control checks/.test(t))) errs.push(t.slice(0, 160)); });
       const code = fx.fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fx.fm.webToken), audience: "amb-smoke", owner: { adapterId: "discord", userId: "100000000000000001" } }).display;
       const seen: string[] = []; page.on("response", (x: any) => seen.push(`${x.status()} ${x.request().method()} ${new URL(x.url()).pathname}`));
       await page.goto(`https://${HOST}/signin`); await page.waitForSelector("#code"); await page.fill("#code", code); await page.click("#go");
@@ -201,7 +209,8 @@ if (!process.env.ONLY_PERF && !process.env.SKIP_EXTRA) {
 }
 
 // ── Performance: phone, a 1,200-message chat, 4× CPU throttle, scrolling; ambient on vs off. ──
-if (!process.env.ONLY_PUBLIC && !process.env.SKIP_EXTRA) {
+// (Chromium only: CPU throttling is a DevTools Protocol call.)
+if (!process.env.ONLY_PUBLIC && !process.env.SKIP_EXTRA && process.env.PW_ENGINE !== "webkit") {
   await seedChat(fx, [PERF], 1200);
   const run = async (on: boolean) => {
     if (on) { fx.fm.webAppearance.humanSetAmbient(PERF, PETALS); fx.fm.webAppearance.humanSetAmbient(PERF, STARS); }
