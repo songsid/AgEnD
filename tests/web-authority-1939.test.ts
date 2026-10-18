@@ -377,6 +377,13 @@ describe("the receipt stores it apart from origin; delivery_status returns it", 
   ])("a stored value that is %s reads as none", (_name, stored, want) => {
     expect(receiptAuthority({ platform: "web", adapter_id: null, user_id: null }, stored)).toEqual(want);
   });
+  it("§0: S1's observe-only web-session, and a web-verified value without its authorization time, read as none", () => {
+    const actor = { adapter_id: "owner", user_id: "admin" }, session = { handle: "a1b2c3d4e5f60718", peer: "lan", signed_in_at: "2026-10-18T09:00:00.000Z" };
+    const web = { platform: "web", adapter_id: null, user_id: null };
+    expect(receiptAuthority(web, JSON.stringify({ kind: "web-session", actor, session: { ...session, age_s: 60 }, authority_epoch: 0 }))).toEqual(NONE);
+    expect(receiptAuthority(web, JSON.stringify({ kind: "web-session", actor, session: { ...session, authorized_at: "2026-10-18T09:05:00.000Z" }, authority_epoch: 0 }))).toEqual(NONE);
+    expect(receiptAuthority(web, JSON.stringify({ kind: "web-verified", actor, session, authority_epoch: 0 }))).toEqual(NONE);
+  });
   it("web-verified stored on a platform row reads as none", () => {
     expect(receiptAuthority({ platform: "telegram", adapter_id: "owner", user_id: "7" }, JSON.stringify(web1))).toEqual(NONE);
   });

@@ -315,6 +315,15 @@ describe("§0 sessions authorized once: the store", () => {
     expect(s.list().length).toBe(SESSION_AUTHORIZATIONS_MAX);
     expect(s.get("b".repeat(16))).toBeNull();
   });
+  it("authorizing a session again moves it to the back: at the cap the oldest authorization goes first", () => {
+    const s = new SessionAuthorizations("/a.json", log(), mem().io);
+    const h = (i: number) => i.toString(16).padStart(16, "0");
+    for (let i = 0; i < SESSION_AUTHORIZATIONS_MAX; i++) s.authorize(h(i), OWNER, 10 + i, 1);
+    s.authorize(h(0), OWNER, 99_999, 1);                                                 // the first, given again
+    s.authorize("e".repeat(16), OWNER, 100_000, 1);                                      // over the cap: one goes
+    expect(s.get(h(0)), "renewed: kept").not.toBeNull();
+    expect(s.get(h(1)), "now the oldest: dropped").toBeNull();
+  });
   it("on disk: web-authorizations.json, owner-only", () => {
     const dir = tmp(); const s = new SessionAuthorizations(join(dir, "web-authorizations.json"), log());
     s.authorize(H, OWNER, 1, 1);
