@@ -137,6 +137,22 @@ function guestsChange(old: unknown, next: unknown): Array<[string, unknown, unkn
   }
   return out;
 }
+const VERIFIED = ["fleet", "web", "verified_authority"] as const;
+/** At the gate's root (fleet.web.verified_authority) and at the fleet's (web.verified_authority), as atGuests. */
+const atVerified = (path: readonly string[]): boolean => (path.length === 3 && VERIFIED.every((k, i) => path[i] === k))
+  || (path.length === 2 && path[0] === "web" && path[1] === "verified_authority");
+/**
+ * #1939 §0.1: web authority's keys apply at once, either way — the switch, "Only this computer can authorize" and the
+ * hours grant nothing by themselves (a session still needs its account's Confirm in Discord or Telegram), so no change
+ * to them waits for a confirmation. Returns [] (nothing to confirm), or null when the change touches another key (then
+ * walked key by key, as everything else).
+ */
+function verifiedAuthorityChange(old: unknown, next: unknown): Array<[string, unknown, unknown]> | null {
+  if ((old !== undefined && old !== null && !object(old)) || (next !== undefined && next !== null && !object(next))) return null;
+  const a: Record<string, any> = object(old) ? old : {}, b: Record<string, any> = object(next) ? next : {};
+  const changed = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => !same(a[k], b[k]));
+  return changed.some(k => !["enabled", "loopback_only", "max_session_hours"].includes(k)) ? null : [];
+}
 /** A key under a named map (an instance or connection name), not a field: its name says nothing about its kind. */
 const namedEntry = (path: readonly string[], at: number): boolean => ["channels", "instances"].includes(path.at(at - 1) ?? "");
 function ordinary(path: readonly string[], old: unknown, next: unknown): boolean {
@@ -177,6 +193,14 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     if (same(old, next)) return;
     if (path.length === SESSION_LOCAL.length && SESSION_LOCAL.every((k, i) => path[i] === k)) {
       const looser = sessionChange(old, next);
+      if (looser) {
+        if (looser.length && section !== "secret") section = "access";
+        for (const [key, a, b] of looser) add(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`);
+        return;
+      }
+    }
+    if (atVerified(path)) {
+      const looser = verifiedAuthorityChange(old, next);
       if (looser) {
         if (looser.length && section !== "secret") section = "access";
         for (const [key, a, b] of looser) add(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`);

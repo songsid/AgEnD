@@ -64,7 +64,8 @@ function serveFiles(files: Record<string, string>, opts: { hold?: boolean } = {}
   const calls: Array<{ url: string; init: any }> = [];
   const held: Array<() => void> = [];
   globalThis.fetch = vi.fn((url: string, init: any) => {
-    calls.push({ url, init });
+    // The reads these tests count are the file's; the page's other reads (#1939's /ui/authorization) are not file reads.
+    if (/^\/ui\/file\//.test(url)) calls.push({ url, init });
     const id = /^\/ui\/file\/([0-9a-f]{32})$/.exec(url)?.[1];
     const body = id !== undefined ? files[id] : undefined;
     const res = body === undefined ? { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) }

@@ -79,7 +79,21 @@ sees only the agents they can already use in chat: their connection's fleet topi
 only `web.guests.open_instances`), their own Telegram private ClassicBot room, and ClassicBot group rooms while their
 membership is verified, minus any `web.guests.narrow`. They can chat there unless `web.guests.chat` is false, never send
 a command (text starting with `/` is refused), and the agent sees them as `via web (guest)`. A guest's app has no Fleet,
-View, Settings or Needs you. To invite someone: turn it on, then tell them to send `/web`.
+View, Settings or Needs you. To invite someone: turn it on, then tell them to send `/web`. The Guests card is not in
+Settings over the public link.
+
+**Web authority (#1939, 2.3 beta).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
+account. Under the composer (and in the session menu) the line says **Not verified · Authorize this browser**. Pressing it
+sends a card to that account's DM, saying which browser (device, on this computer or the network, when, until when), with
+**Confirm** and **Not me**. A card left for 5 minutes is marked expired on the card, and the line offers Authorize
+again. Confirm within 5 minutes and the line says **Verified · speaks as you until …**. That
+browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
+Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
+per account. Never on the public link or for a guest; when a browser can't be authorized, the line says why (with a
+link to Settings when the switch or "Only this computer" is the reason). Settings → Web → **Web authority**
+(`web.verified_authority`, on by default) has the switch, **Only this computer can authorize** (`loopback_only`), the
+hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change there applies at once.
+Agents still treat web messages as recognition only for now.
 
 ## Chat
 

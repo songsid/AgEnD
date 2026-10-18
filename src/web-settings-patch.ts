@@ -7,11 +7,11 @@
  * one — Settings must not write one).
  */
 import { validPublicLinkPatch } from "./public-web-link.js";
-import type { WebConfig, WebGuestsConfig } from "./types.js";
+import type { WebConfig, WebGuestsConfig, WebVerifiedAuthorityConfig } from "./types.js";
 
 export const WEB_TERMINAL_TTL_MINUTES = { min: 1, max: 20 } as const;
 /** What Settings → Web may write; everything else under web: / web_terminal: is fleet.yaml's. */
-export const WEB_SETTINGS_BODY_KEYS = ["echo_to_channel", "log_tab", "public_link", "session", "web_terminal", "guests"] as const;
+export const WEB_SETTINGS_BODY_KEYS = ["echo_to_channel", "log_tab", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
 
 export type WebSettingsBody = {
   echo?: boolean;
@@ -22,6 +22,8 @@ export type WebSettingsBody = {
   terminal: Record<string, boolean | number | null> | null;
   /** #1920 phase 3: guest sign-in (Settings → Web sign-ins → Guests). */
   guests?: GuestsPatch;
+  /** #1939 S2a: web authority (Settings → Web → Web authority). */
+  verifiedAuthority?: VerifiedAuthorityPatch;
 };
 /** The whole body, or what is wrong with it (the handler's 400 message). */
 export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: string } {
@@ -37,11 +39,14 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   if (terminal === "invalid") return { error: "web_terminal must be { enabled?: boolean|null, ttl_minutes?: 1..20|null }" };
   const guests = guestsPatch(patch.guests);
   if (guests === "invalid") return { error: "guests must be { enabled?, chat?: boolean|null, open_instances?: { <connection>: [instance…]|null }, narrow?: { \"<connection>:<user>\": [instance…]|null } }" };
+  const verifiedAuthority = verifiedAuthorityPatch(patch.verified_authority);
+  if (verifiedAuthority === "invalid") return { error: "verified_authority must be { enabled?, loopback_only?: boolean|null, max_session_hours?: number|null }" };
   return {
     ...(patch.echo_to_channel !== undefined ? { echo: patch.echo_to_channel as boolean } : {}),
     ...(patch.log_tab !== undefined ? { logTab: patch.log_tab as boolean } : {}),
     ...(patch.public_link !== undefined ? { publicLink: patch.public_link as NonNullable<WebConfig["public_link"]> } : {}),
     ...(guests ? { guests } : {}),
+    ...(verifiedAuthority ? { verifiedAuthority } : {}),
     session, terminal,
   };
 }
@@ -113,6 +118,41 @@ export function applyGuestsPatch(current: WebGuestsConfig | undefined, patch: Gu
       else { merged[k] = list; changes.push({ path: ["web", "guests", key, k], value: list }); }
     }
     if (Object.keys(merged).length) next[key] = { ...merged }; else delete next[key];
+  }
+  return { next: Object.keys(next).length ? next : undefined, changes };
+}
+
+/**
+ * #1939 S2a: `verified_authority` — `{ enabled?, loopback_only?: boolean | null, max_session_hours?: number | null }`; null
+ * = back to the default (the key leaves fleet.yaml). The validator judges the hours' bounds; settings-change.ts which
+ * change loosens it.
+ */
+export type VerifiedAuthorityPatch = {
+  enabled?: boolean | null;
+  loopback_only?: boolean | null;
+  max_session_hours?: number | null;
+};
+export function verifiedAuthorityPatch(raw: unknown): VerifiedAuthorityPatch | null | "invalid" {
+  if (raw === undefined) return null;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "invalid";
+  const out: VerifiedAuthorityPatch = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (k === "enabled" || k === "loopback_only") { if (v !== null && typeof v !== "boolean") return "invalid"; out[k] = v as boolean | null; continue; }
+    if (k === "max_session_hours") { if (v !== null && !(typeof v === "number" && Number.isFinite(v))) return "invalid"; out[k] = v as number | null; continue; }
+    return "invalid";
+  }
+  return Object.keys(out).length ? out : null;
+}
+/** `web.verified_authority` after a patch (a copy; null removes; nothing left: undefined), and the file edits. */
+export function applyVerifiedAuthorityPatch(current: WebVerifiedAuthorityConfig | undefined, patch: VerifiedAuthorityPatch):
+  { next: WebVerifiedAuthorityConfig | undefined; changes: Array<{ path: string[]; value: unknown; remove?: true }> } {
+  const next: WebVerifiedAuthorityConfig = { ...current };
+  const changes: Array<{ path: string[]; value: unknown; remove?: true }> = [];
+  for (const key of ["enabled", "loopback_only", "max_session_hours"] as const) {
+    if (!(key in patch)) continue;
+    const v = patch[key];
+    if (v === null || v === undefined) { delete next[key]; changes.push({ path: ["web", "verified_authority", key], value: undefined, remove: true }); }
+    else { (next as Record<string, unknown>)[key] = v; changes.push({ path: ["web", "verified_authority", key], value: v }); }
   }
   return { next: Object.keys(next).length ? next : undefined, changes };
 }

@@ -299,6 +299,9 @@ export interface WebApiContext {
   cacheReport?(window: string): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
   webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority }): Promise<{ status: number; body: unknown }>;
+  /** #1939 S2b: "Authorize this browser" — the Confirm card in the account's DM; and what the app shows for this browser. */
+  requestSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: string; retryAfterMs?: number }>;
+  webSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): { state: string; until?: number; expiresInMs?: number; reason?: string };
   /** #1939 S1: the design's §3 for one request (`instance` once the body names it); absent: web carries no authority. */
   webAuthority?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer; instance?: string }): WebAuthorityResult;
   /**
@@ -1472,6 +1475,35 @@ export function handleWebRequest(
   // #1269: an instance's chat command (/ctx, /compact, /clear, /model, …) — a session write (CSRF, checked by the
   // gate), run through the platforms' own handlers and command table. The public link is told it is one (/save is
   // refused there).
+  // ── #1939 S2b: this browser's authorization — what the app shows (GET), and "Authorize this browser" (POST: posts the
+  // Confirm card in the account's DM). Judged on this request (§3), never touching the session.
+  if (path === "/ui/authorization" && (method === "GET" || method === "POST")) {
+    const judge = () => {
+      const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      return { session: v.kind === "allow" && v.via === "session" ? v.session : null, gateway: !!gatewayRequestContext(req), peer: classifyWebPeer(req) };
+    };
+    res.setHeader("Cache-Control", "no-store");
+    if (method === "GET") {
+      if (!ctx.webSessionAuthorization) { json(res, 404, { error: "not available" }); return true; }
+      json(res, 200, ctx.webSessionAuthorization(judge()));
+      return true;
+    }
+    if (!ctx.requestSessionAuthorization) { json(res, 404, { error: "not available" }); return true; }
+    const ask = ctx.requestSessionAuthorization.bind(ctx);
+    (async () => {
+      try { await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const r = await ask(judge());                                              // asked again now the body is in
+      // A refusal is an answer the page shows (pending, three this hour, why not), not a failed request: 200 with
+      // ok: false — a 4xx would be logged as an error in the browser's console every time.
+      json(res, 200, r);
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Web authorization request failed");
+      try { json(res, 500, { error: "Request failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
   if (method === "POST" && path === "/ui/command") {
     if (!ctx.webCommand) { json(res, 404, { error: "Not available" }); return true; }
     const run = ctx.webCommand.bind(ctx);

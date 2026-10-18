@@ -424,7 +424,7 @@ export interface WebConfig {
 /** #1939: fleet.yaml `web.verified_authority` (docs/design/1939-verified-web-sessions.md §0, §3, §10). */
 export interface WebVerifiedAuthorityConfig {
   /**
-   * The server switch (§10): web messages carry authority only while it is on (default false). Turning it off makes
+   * The server switch (§10): web messages carry authority only while it is on (default true, §0.1). Turning it off makes
    * every web authority read as none at once; turning it back on never brings back authority given before.
    */
   enabled?: boolean;

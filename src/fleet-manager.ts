@@ -63,7 +63,7 @@ import { kiroLogGate } from "./kiro-log-gate.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import type { FleetConfig, RawFleetConfig, InstanceConfig, ChannelConfig, CostGuardConfig, DailySummaryConfig, WebhookConfig, AccessConfig } from "./types.js";
+import type { FleetConfig, RawFleetConfig, InstanceConfig, ChannelConfig, CostGuardConfig, DailySummaryConfig, WebhookConfig, AccessConfig, WebVerifiedAuthorityConfig } from "./types.js";
 
 /** Fallback access policy for a channel with no `access:` block — open (no gate). */
 const DEFAULT_OPEN_ACCESS: AccessConfig = { mode: "open", allowed_users: [], max_pending_codes: 0, code_expiry_minutes: 0 };
@@ -290,12 +290,13 @@ import { authorizeSession, decideWebGate, loadOrCreateWebToken, readWebToken } f
 import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
-import { authorityNow, evaluateWebAuthority, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
+import { authorityNow, evaluateWebAuthority, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
+import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
-import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
+import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, LOOPBACK_HOST_NAMES, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { createPreviewListener, normalizeOrigin, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener, type PreviewOffCode } from "./web-preview.js";
 import { createEffectBootstrap } from "./web-effect-bootstrap.js";
 import { fleetLevelDifferences, fleetLevelSignature, appendedConnections } from "./fleet-level-config.js";
@@ -13101,6 +13102,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapterId: string,
     adapter: ChannelAdapter | undefined,
   ): Promise<boolean> {
+    if (await this.sessionAuthorizationRequests().handleCallback(data, adapterId)) return true;   // #1939 S2b
     if (data.callbackData.startsWith(REPLY_BUTTON_PREFIX)) {                       // #1266
       const buttons = this.replyButtons();
       if (!buttons) { data.ack?.(t("reply_buttons.closed")); return true; }
@@ -13856,20 +13858,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * click, /steer and /btw from it is web-verified until max_session_hours after now, the session ends, or a revocation.
    * Ones no longer worth keeping (their session gone, an old epoch, run out) are dropped on the way.
    */
-  authorizeWebSession(session: SessionRecord, peer: WebPeer): { ok: true; authorization: SessionAuthorization; durable: boolean } | { ok: false; refusal: WebAuthorityRefusal } {
+  authorizeWebSession(session: SessionRecord, peer: WebPeer, gateway: boolean): { ok: true; authorization: SessionAuthorization; durable: boolean } | { ok: false; refusal: WebAuthorityRefusal } {
     const store = this.sessionAuthorizationStore();
     const state = this.webAuthorityState(), now = Date.now(), policy = webAuthorityPolicy(this.fleetConfig?.web);
     if (!store || !session.owner) return { ok: false, refusal: !store ? "disabled" : "no_account" };
     const check = evaluateWebAuthority({
-      session, gateway: false, peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
+      session, gateway, peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
-      authorization: { handle: session.handle, owner: session.owner, authorizedAt: now, epoch: state.epoch },
+      authorization: { handle: session.handle, owner: session.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch },
       policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly }, epoch: state.epoch, now,
     });
     if (check.refusal) return { ok: false, refusal: check.refusal };
     const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
-    store.prune(a => a.epoch === state.epoch && now - a.authorizedAt <= policy.maxSessionMs && live.has(a.handle));
-    return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch) };
+    store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
+    return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs) };
   }
 
   private authorityStateStore: AuthorityStateStore | null = null;
@@ -13882,6 +13884,124 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.authorityStateStore ??= new AuthorityStateStore(join(this.dataDir, "web-authority.json"), this.logger, undefined, undefined,
       () => { this.ensureDeliveryOutbox?.(); return this.deliveryOutbox?.maxWebAuthorityEpoch() ?? 0; });
     return this.authorityStateStore.current(this.fleetConfig?.web?.verified_authority);
+  }
+
+  /**
+   * #1939 S2a: Settings → Web → Web authority — the state in force (the switch counts as off while its state cannot be
+   * written), what fleet.yaml says, the hosts that make the dashboard reachable from elsewhere (the warning while
+   * loopback_only is off), and the sessions authorized now (§0): each one's device, account, and when it runs out.
+   */
+  webAuthorityOverview(): {
+    state: AuthorityState; configured: WebVerifiedAuthorityConfig; hours: typeof VERIFIED_SESSION_HOURS; lanHosts: string[];
+    authorized: Array<{ handle: string; label: string; account: string; authorizedAt: number; until: number }>;
+  } {
+    const configured = this.fleetConfig?.web?.verified_authority ?? {};
+    const lanHosts = (this.fleetConfig?.web?.allowed_hosts ?? []).filter(h => { const name = hostnameOf(String(h)); return name !== null && !LOOPBACK_HOST_NAMES.includes(name); });
+    const state = this.webAuthorityState(), maxMs = webAuthorityPolicy(this.fleetConfig?.web).maxSessionMs, now = Date.now();
+    const sessions = new Map((this.webSessions?.list(undefined, () => true) ?? []).map(r => [r.handle, r]));
+    const authorized = state.enabled ? (this.sessionAuthorizationStore()?.list() ?? [])
+      .filter(a => a.epoch === state.epoch && sessions.has(a.handle) && now <= Math.min(a.until, a.authorizedAt + maxMs))
+      .map(a => ({ handle: a.handle, label: sessions.get(a.handle)!.label, account: `${a.owner.adapterId}:${a.owner.userId}`, authorizedAt: a.authorizedAt,
+        until: Math.min(a.until, a.authorizedAt + maxMs, sessions.get(a.handle)!.absoluteExpiry) })) : [];
+    return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized };
+  }
+
+  private authorizationRequests: SessionAuthorizationRequests | null = null;
+  /**
+   * #1939 S2b (§0.1): "Authorize this browser" — the Confirm card in the account's DM. Confirm runs §3 again at the tap
+   * (authorizeWebSession on the session read again by its handle); Not me signs the session out.
+   */
+  sessionAuthorizationRequests(): SessionAuthorizationRequests {
+    if (this.authorizationRequests) return this.authorizationRequests;
+    const adapterOf = (adapterId: string): ChannelAdapter | undefined => this.adapters.get(adapterId) ?? this.worlds.get(adapterId)?.adapter;
+    const when = (ms: number) => new Date(ms).toLocaleString();
+    const where = (peer: WebPeer) => t(peer === "loopback" ? "web_auth.peer_loopback" : "web_auth.peer_lan");
+    return this.authorizationRequests = new SessionAuthorizationRequests({
+      now: () => performance.now(), wallNow: () => Date.now(),
+      maxSessionMs: () => webAuthorityPolicy(this.fleetConfig?.web).maxSessionMs,
+      sendDirect: async (owner, text, choices) => {
+        const adapter = adapterOf(owner.adapterId);
+        if (!adapter?.sendDirect) return null;
+        const sent = await adapter.sendDirect(owner.userId, text, { choices, allowedMentions: { parse: [] } });
+        return sent?.messageId ? { chatId: sent.chatId, messageId: sent.messageId } : null;
+      },
+      sendGeneralHint: async (owner, text) => {
+        const adapter = adapterOf(owner.adapterId), general = this.findGeneralInstance(owner.adapterId);
+        const topic = general ? this.fleetConfig?.instances[general]?.topic_id : undefined;
+        const group = general ? this.getGroupIdForInstance(general) : undefined;
+        if (adapter && group) await adapter.sendText(String(group), text, { ...(topic != null ? { threadId: String(topic) } : {}), allowedMentions: { parse: [] } });
+      },
+      editCard: async (owner, at, text, choices) => {
+        const adapter = adapterOf(owner.adapterId);
+        if (!adapter) return;
+        if (!choices.length && adapter.editMessageRemoveButtons) { await adapter.editMessageRemoveButtons(at.chatId, at.messageId, text); return; }
+        await adapter.editMessage(at.chatId, at.messageId, text);
+        if (adapter.replaceMessageButtons) await adapter.replaceMessageButtons(at.chatId, at.messageId, choices);
+      },
+      authorize: (handle, peer) => {
+        const record = this.webSessions?.findByHandle(handle);
+        if (!record) return { ok: false, refusal: "session_gone" };
+        const r = this.authorizeWebSession(record, peer, false);
+        // What the card says: the end of the authorization, or the session's own end when that comes first.
+        return r.ok ? { ok: true, until: Math.min(r.authorization.until, record.absoluteExpiry) } : { ok: false, refusal: r.refusal };
+      },
+      signOut: (handle) => {
+        this.webSessions?.revokeByHandle(handle);
+        this.sessionAuthorizationStore()?.prune(a => a.handle !== handle);
+      },
+      event: (type, payload) => { try { this.eventLog?.insert("web", type, payload); } catch { /* the event log is best effort */ } },
+      text: {
+        ask: (c) => t("web_auth.card_ask", c.label, where(c.peer), when(c.askedAt), when(c.until)),
+        confirmed: (c) => t("web_auth.card_confirmed", c.label, where(c.peer), when(c.until)),
+        denied: (c) => t("web_auth.card_denied", c.label),
+        expired: (c) => t("web_auth.card_expired", c.label),
+        refused: (c) => t("web_auth.card_refused", c.label, t(`web_auth.refusal_${c.refusal}`)),
+        revoked: (c) => t("web_auth.card_revoked", c.label),
+        generalHint: () => t("web_auth.general_hint"),
+        confirmLabel: () => t("web_auth.confirm"),
+        notMeLabel: () => t("web_auth.not_me"),
+        notYours: () => t("web_auth.not_yours"),
+      },
+      log: this.logger,
+    });
+  }
+
+  /** #1939 S2b: the web session asks to be authorized (the request judged by §3 first — as it will be again at the tap). */
+  async requestSessionAuthorization(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: AuthorizationAskRefusal; retryAfterMs?: number }> {
+    const s = input.session;
+    const gate = this.webAuthorityQualifies(input);
+    if (gate) return { ok: false, refusal: gate };
+    return this.sessionAuthorizationRequests().ask({ handle: s!.handle, owner: s!.owner!, label: s!.label, peer: input.peer });
+  }
+
+  /**
+   * #1939 §3 without the authorization: would this request's session qualify to be authorized? null: yes; otherwise the
+   * first check it fails (for the app to say why it can't be authorized here).
+   */
+  private webAuthorityQualifies(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): WebAuthorityRefusal | null {
+    const s = input.session, state = this.webAuthorityState(), now = Date.now(), policy = webAuthorityPolicy(this.fleetConfig?.web);
+    const r = evaluateWebAuthority({
+      session: s, gateway: input.gateway, peer: input.peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
+      isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
+      authorization: s?.owner ? { handle: s.handle, owner: s.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch } : null,
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly }, epoch: state.epoch, now,
+    });
+    return r.refusal;
+  }
+
+  /** #1939 S2b: what the app shows for this browser — verified (until when), a card pending, or why not. */
+  webSessionAuthorization(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }):
+    { state: "verified"; until: number } | { state: "pending"; expiresInMs: number } | { state: "none"; reason: WebAuthorityRefusal } {
+    const s = input.session;
+    const verdict = this.webAuthority(input);
+    if (!verdict.refusal && verdict.authority.session) {
+      const a = this.sessionAuthorizationStore()?.get(s!.handle);
+      const max = webAuthorityPolicy(this.fleetConfig?.web).maxSessionMs;
+      if (a) return { state: "verified", until: Math.min(a.until, a.authorizedAt + max, s!.absoluteExpiry) };
+    }
+    const pending = s ? this.sessionAuthorizationRequests().pending(s.handle) : null;
+    if (pending) return { state: "pending", expiresInMs: pending.expiresInMs };
+    return { state: "none", reason: this.webAuthorityQualifies(input) ?? (verdict.refusal ?? "not_authorized") };
   }
 
   /** #1939 §10: revoke every web authority given so far (receipts read as none), without signing anyone out. */

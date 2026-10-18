@@ -88,7 +88,7 @@ export class AuthorityStateStore {
   /** The state in force for this configuration. A switch change since last seen moves the epoch first. */
   current(config: WebVerifiedAuthorityConfig | undefined): AuthorityState {
     const s = this.load();
-    const enabled = config?.enabled === true, loopbackOnly = config?.loopback_only === true;
+    const enabled = config?.enabled !== false, loopbackOnly = config?.loopback_only === true;            // §0.1: on by default
     const revokes = s.enabled !== enabled || (s.loopback_only && !loopbackOnly);
     if (revokes || s.loopback_only !== loopbackOnly) this.want = { v: 1, epoch: s.epoch + (revokes ? 1 : 0), enabled, loopback_only: loopbackOnly };
     const durable = this.flush();
