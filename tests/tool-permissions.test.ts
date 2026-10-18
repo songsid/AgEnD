@@ -563,13 +563,14 @@ describe("the refusal explains itself", () => {
   });
 
   it("general refused an effect tool gets set_web_settings guidance (#2132)", () => {
-    // General uses set_web_settings {what:"effect", instance:self} — not the
-    // direct effect tools. The refusal must name the correct alternative.
+    // General uses set_web_settings {change:{what:"effect",...}} — not the direct
+    // effect tools. The refusal must name the correct alternative path.
     const message = toolRefusedMessage("general", "upload_web_effect");
     expect(message).not.toContain("tool_set: coordinator");
     expect(message).not.toContain("own-appearance");
     expect(message).toContain("set_web_settings");
     expect(message).toContain(`what: "effect"`);
+    expect(message).toContain(`action: "apply"`);
   });
 
   it("general refused an ambient tool gets set_web_settings guidance (#2132)", () => {
@@ -577,6 +578,7 @@ describe("the refusal explains itself", () => {
     expect(message).not.toContain("tool_set: coordinator");
     expect(message).toContain("set_web_settings");
     expect(message).toContain(`what: "ambient"`);
+    expect(message).toContain("ambient:");
   });
 });
 
