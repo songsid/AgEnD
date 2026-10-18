@@ -18,7 +18,10 @@ export const USAGE_RANGES = ["today", "7d", "month", "all"] as const;
 export type UsageRange = { kind: typeof USAGE_RANGES[number] } | { kind: "custom"; from: string; to: string };
 /** What every amount is, in words — the page, the CSV and the agent tool all carry it. */
 export const usageBasis = (checked = PRICES_CHECKED): string => `API-equivalent at list price (checked ${checked}) — not money spent`;
-/** Daily rows returned at most (the CSV and the trend); beyond it the report says it is truncated. */
+/**
+ * Daily rows returned at most (the CSV and the trend): one per day, source and model. Beyond it the report keeps the
+ * latest whole days and says from which date (`dailyFrom`); the rows and totals always cover the whole range.
+ */
 export const USAGE_DAILY_MAX = 20_000;
 
 const M = 1_000_000;
@@ -45,6 +48,8 @@ export interface UsageInput {
   instances: UsageInstanceInput[];
   messages: Array<{ instance: string; hour: number; count: number }>;
   scanning: { active: boolean; caughtUp: boolean; pendingBytes: number; pendingFiles: number };
+  /** Daily rows at most (default USAGE_DAILY_MAX; tests lower it to reach the same path). */
+  dailyMax?: number;
 }
 
 export interface UsageTotals {
@@ -99,7 +104,13 @@ export interface UsageReport {
   rows: UsageRow[];
   totals: UsageRow;
   daily: UsageDaily[];
+  /**
+   * The daily rows (and the messages by day) are not the whole range: they start at `dailyFrom` (earlier days were too
+   * many rows to send), or — `dailyFrom` null — there are none at all (the latest day alone was more than the cap: a
+   * part of a day is never sent as if it were the day). The rows and totals always cover the whole range.
+   */
   dailyTruncated: boolean;
+  dailyFrom: string | null;
   messagesDaily: Array<{ date: string; instance: string; count: number }>;
   notMeasured: Array<{ name: string; backend: string; reason: "credit_billed" | "unsupported" | "no_data" }>;
   shared: Array<{ name: string; backend: string; with: string[] }>;
@@ -195,7 +206,8 @@ export function buildUsageReport(input: UsageInput): UsageReport {
   const rows = new Map<string, Acc>();
   const newRow = (key: string): Acc => ({ key, ...zero(), total: 0, messages: null, amount: null, priced: "none", flags: [], unpriced: [], instances: [], backends: [], models: [], profiles: [], _amount: 0, _pricedAny: false, _unpricedAny: false });
   const uniq = (list: string[], v: string) => { if (!list.includes(v)) list.push(v); };
-  const daily: UsageDaily[] = [];
+  // Daily rows: one per day, zone, agent, backend, model, tier and profile (an hour's slices summed into their day).
+  const dailyBy = new Map<string, UsageDaily>();
   for (const s of slices) {
     const key = keyOf(s);
     const row = rows.get(key) ?? (rows.set(key, newRow(key)), rows.get(key)!);
@@ -205,10 +217,32 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     if (amount === null) { row._unpricedAny = true; uniq(row.unpriced, s.model); } else { row._pricedAny = true; row._amount += amount; }
     if (!s.writesReported) uniq(row.flags, "cache_write_not_reported");
     if (unknownSource(s)) uniq(row.flags, "source_unknown");
-    if (daily.length <= USAGE_DAILY_MAX) {
-      const t = zero(); addTotals(t, s.tot);
-      daily.push({ date: s.date, zone: s.zone, instance: s.instance, backend: s.backend, model: s.model, tier: s.long ? "long" : "standard", profile: s.profile, ...t, amount, flags: [...(s.writesReported ? [] : ["cache_write_not_reported"]), ...(amount === null ? ["not_priced"] : []), ...(unknownSource(s) ? ["source_unknown"] : [])] });
+    const tier = s.long ? "long" : "standard";
+    const dk = [s.date, s.zone, s.instance, s.backend, s.model, tier, s.profile].join("\u0000");
+    let d = dailyBy.get(dk);
+    if (!d) {
+      d = { date: s.date, zone: s.zone, instance: s.instance, backend: s.backend, model: s.model, tier, profile: s.profile, ...zero(), amount: amount === null ? null : 0,
+        flags: [...(s.writesReported ? [] : ["cache_write_not_reported"]), ...(amount === null ? ["not_priced"] : []), ...(unknownSource(s) ? ["source_unknown"] : [])] };
+      dailyBy.set(dk, d);
     }
+    addTotals(d, s.tot);
+    if (amount !== null && d.amount !== null) d.amount += amount;
+  }
+  const allDaily = [...dailyBy.values()].sort((a, b) => a.date.localeCompare(b.date) || a.instance.localeCompare(b.instance) || a.model.localeCompare(b.model) || a.zone.localeCompare(b.zone));
+  // Too many: the latest whole days that fit — never part of a day (a missing row would read as nothing used). Not even
+  // the latest day fits: no daily rows at all, said so (dailyTruncated with no dailyFrom).
+  let dailyFrom: string | null = null, daily = allDaily, truncated = false;
+  const cap = input.dailyMax ?? USAGE_DAILY_MAX;
+  if (allDaily.length > cap) {
+    truncated = true;
+    const perDate = new Map<string, number>();
+    for (const d of allDaily) perDate.set(d.date, (perDate.get(d.date) ?? 0) + 1);
+    let kept = 0;
+    for (const date of [...perDate.keys()].sort().reverse()) {
+      if (kept + perDate.get(date)! > cap) break;
+      kept += perDate.get(date)!; dailyFrom = date;
+    }
+    daily = dailyFrom === null ? [] : allDaily.filter(d => d.date >= dailyFrom!);
   }
 
   // Messages: delivered, per instance and hour (§5.4); placed on days the same way as tokens.
@@ -261,8 +295,10 @@ export function buildUsageReport(input: UsageInput): UsageReport {
   return {
     range: { kind: input.range.kind, from, to }, zone: input.zone, granularity: "hour", basis: usageBasis(), pricesChecked: PRICES_CHECKED,
     group: input.group, rows: out, totals,
-    daily: daily.slice(0, USAGE_DAILY_MAX), dailyTruncated: daily.length > USAGE_DAILY_MAX,
-    messagesDaily: [...messagesDaily.values()].sort((a, b) => a.date.localeCompare(b.date) || a.instance.localeCompare(b.instance)),
+    daily, dailyTruncated: truncated, dailyFrom,
+    // Messages by day: the same window as the daily rows (none when there are none); their total stays in `totals`.
+    messagesDaily: [...messagesDaily.values()].filter(m => !truncated || (dailyFrom !== null && m.date >= dailyFrom))
+      .sort((a, b) => a.date.localeCompare(b.date) || a.instance.localeCompare(b.instance)),
     notMeasured, shared, coverage, scanning: input.scanning,
   };
 }

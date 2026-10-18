@@ -211,6 +211,7 @@ export interface WebApiContext {
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
+    health_port?: number;
     web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
@@ -1931,8 +1932,12 @@ export function handleWebRequest(
       if (gatewayRequestContext(req) && ctx.fleetConfig?.web?.usage_report_on_public_link !== true) return [403, "usage_report_not_over_public_link"];
       return null;
     };
+    // Over the public link, where to turn it on: Settings → Web on the dashboard reached directly (this computer's own
+    // address — the public link's Settings only reads). Never the public origin's own Settings, which cannot change it.
+    const answer = ([status, error]: [number, string]) => json(res, status, {
+      error, ...(status === 403 ? { settings: `http://localhost:${ctx.fleetConfig?.health_port ?? 19280}/settings/web` } : {}) });
     const first = refusal();
-    if (first) { json(res, first[0], { error: first[1] }); return true; }
+    if (first) { answer(first); return true; }
     const admitted = admissionOf(req, url, ctx);
     if (!admitted) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return true; }
     void import("./usage-report.js").then(({ usageRange, usageGroup }) => ctx.usageReport!({
@@ -1941,7 +1946,7 @@ export function handleWebRequest(
     })).then(
       (report) => {
         const now = refusal();
-        if (now) return json(res, now[0], { error: now[1] });
+        if (now) return answer(now);
         if (admissionOf(req, url, ctx) !== admitted) return json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
         json(res, 200, report);
       },

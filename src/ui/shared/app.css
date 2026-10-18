@@ -1341,6 +1341,73 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   .ch-bar .btn { min-height: var(--tap); }
 }
 
+/* ── #2122: Fleet → Usage. A categorical palette kept apart from the state colours (Okabe–Ito hues, tuned per mode for
+   contrast); every series also has a text label, so colour is never the only cue. ── */
+.us { --us-0: #56b4e9; --us-1: #e69f00; --us-2: #2bc48a; --us-3: #f0e442; --us-4: #e78ac3; --us-5: #94a3b8; --us-heat: #56b4e9;
+  display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .us { --us-0: #0072b2; --us-1: #c25400; --us-2: #007a5a; --us-3: #8a6d00; --us-4: #b0457a; --us-5: #64748b; --us-heat: #0072b2; } }
+:root[data-theme="light"] .us { --us-0: #0072b2; --us-1: #c25400; --us-2: #007a5a; --us-3: #8a6d00; --us-4: #b0457a; --us-5: #64748b; --us-heat: #0072b2; }
+.us-bar-top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); margin-top: var(--s-2); }
+.us-group { display: inline-flex; align-items: center; gap: var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
+.us-group select, .us-custom input { min-height: 32px; padding: 0 var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); }
+.us-group select:focus, .us-custom input:focus { border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-dim); outline: none; }
+.us-csv { margin-left: auto; }
+.us-custom { display: flex; flex-wrap: wrap; align-items: end; gap: var(--s-2) var(--s-3); font-size: var(--fs-sm); }
+.us-custom label { display: inline-flex; flex-direction: column; gap: 2px; color: var(--text-2); }
+.us-basis { font-size: var(--fs-sm); color: var(--text); padding: var(--s-2) var(--s-3); border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: var(--r-sm); }
+.us-fresh { font-size: var(--fs-xs); }
+.us-partial { font-size: var(--fs-sm); padding: var(--s-2) var(--s-3); border-left: 3px solid var(--warn); background: var(--warn-bg); border-radius: var(--r-sm); }
+.us-unpriced { font-size: var(--fs-xs); }
+.us-scan { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.us-totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-3); margin: 0; }
+.us-totals .ch-metric dd { font-size: var(--fs-lg); }
+.us-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.us-table th, .us-table td { padding: var(--s-2); border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.us-table thead th { font-size: 11px; font-weight: var(--fw-regular); color: var(--text-3); }
+.us-table .num { text-align: right; white-space: nowrap; }
+.us-name { min-width: 0; max-width: 360px; font-weight: var(--fw-regular); }
+.us-name .mono { display: block; font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.us-bar { display: block; width: 100%; height: 6px; margin: 4px 0; }
+.us-bar-bg { fill: var(--surface-2); } .us-bar-fg { fill: var(--us-0); }
+.us-meta { display: block; font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
+.us-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.us-trend, .us-heat { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
+.us-trend h3, .us-heat h3, .us-rest h3 { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.us-scroll { overflow-x: auto; max-width: 100%; }
+.us-chart, .us-heatmap { display: block; }
+.us-axis { font-size: 9px; fill: var(--text-3); }
+.us-s0 { fill: var(--us-0); background: var(--us-0); } .us-s1 { fill: var(--us-1); background: var(--us-1); } .us-s2 { fill: var(--us-2); background: var(--us-2); }
+.us-s3 { fill: var(--us-3); background: var(--us-3); } .us-s4 { fill: var(--us-4); background: var(--us-4); } .us-s5 { fill: var(--us-5); background: var(--us-5); }
+.us-legend { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); list-style: none; padding: 0; margin: 0; font-size: var(--fs-xs); }
+.us-legend li { display: inline-flex; align-items: center; gap: var(--s-1); min-width: 0; overflow-wrap: anywhere; }
+.us-sw, .us-h-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.us-h { fill: var(--us-heat); }
+.us-h.l1, .us-h-sw.l1 { opacity: 0.45; } .us-h.l2 { opacity: 0.65; } .us-h.l3 { opacity: 0.85; } .us-h.l4, .us-h-sw.l4 { opacity: 1; }
+.us-h-sw.l4 { background: var(--us-heat); }
+/* Read with nothing used: a solid grey cell. Not collected: an empty dashed outline. */
+.us-h.idle { fill: var(--text-3); opacity: 0.35; }
+.us-h-sw.idle { background: var(--text-3); opacity: 0.35; }
+.us-h.gap { fill: none; stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 2 2; }
+.us-h-sw.gap { border: 1px dashed var(--text-3); }
+.us-grid, .us-base { stroke: var(--border); stroke-width: 1; }
+.us-grid { stroke-dasharray: 3 3; }
+.us-scale, .us-earlier { font-size: var(--fs-xs); }
+.us-heat-key { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1); font-size: var(--fs-xs); }
+.us-rest .row-item { font-size: var(--fs-xs); }
+.u-by-agent { margin-left: auto; }
+@media (max-width: 699px) {
+  .us-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .us-csv { margin-left: 0; }
+  .us-bar-top .btn { min-height: var(--tap); }
+  /* Rows become cards: each value with its label. */
+  .us-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .us-table, .us-table tbody, .us-table tr, .us-table th, .us-table td { display: block; width: 100%; }
+  .us-table tr { margin-bottom: var(--s-3); padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
+  .us-table th, .us-table td { border: 0; padding: 2px 0; max-width: none; }
+  .us-table td { display: flex; justify-content: space-between; gap: var(--s-3); }
+  .us-table td::before { content: attr(data-label); color: var(--text-3); text-align: left; }
+}
+
 /* ── Chat commands and quick actions (#1269) ── */
 .hd-chip { margin-left: var(--s-2); padding: 0 var(--s-2); border: 1px solid var(--border); border-radius: var(--r-full); background: transparent; color: var(--text-2);
   font-size: var(--fs-xs); line-height: 20px; cursor: pointer; max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }

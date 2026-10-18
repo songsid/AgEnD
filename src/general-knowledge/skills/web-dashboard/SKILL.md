@@ -231,7 +231,8 @@ expired (rewrote), tokens rewritten, expiry cost, keep-warm pings and their cost
 days). Money is list price (date shown); quota effects are estimates. `get_cache_report` gives the fleet to General,
 coordinators and full-profile instances, and each other instance only its own row.
 
-**The usage report** (the `get_usage_report` tool; its Fleet page comes next, #2122). Per instance (or backend,
+**The usage report** (the `get_usage_report` tool, and Fleet → **Usage**, `/ui/fleet/usage`, #2122; the ◔ dialog's
+**By agent →** opens it). Per instance (or backend,
 model, credential profile, team): input, output, cache read and cache write tokens, requests, delivered messages,
 and an amount, over today / 7d / month / all / custom days in the fleet's timezone. **Every amount is the
 API-equivalent at list price — not money spent** (subscriptions aren't billed per token): say "API-equivalent", never
@@ -246,7 +247,13 @@ backend or profile keeps its history as it was. `notMeasured` lists kiro and the
 they are never a $0 row, and what such an instance measured before still shows. Messages are counted per instance, so
 by backend they go under its backend now. Coverage only says "read" for a catch-up that listed and read every source
 (an unreadable directory or transcript is not covered, never a 0). Scope as
-`get_cache_report`. The dashboard reaches it over the public link only with `web.usage_report_on_public_link: true`.
+`get_cache_report`. The dashboard reaches it over the public link only with `web.usage_report_on_public_link: true`
+(Settings → Web → **Usage report over the public link**, applies at once; otherwise the page says "Not offered over
+the public link" and links to that switch on the dashboard reached directly); guests never. The page adds a daily trend (top 5 and
+others), a heatmap that tells a day read with nothing used from a day not collected, and **Download CSV** (the shown
+answer's daily rows, with the basis). Claude subagent (sidechain) turns aren't counted yet. A long range whose daily rows
+are too many says from which date the charts and the CSV start (the totals stay whole); a day used only by an unpriced
+model is "used, not priced"; after a timezone change each day keeps the zone it was made in, and the page says so.
 
 **Keep-warm** means sending a small turn before the cache expires so the next real turn reads it instead of
 rewriting it. **Today it is only a simulation and a recommendation** — AgEnD sends no keep-warm pings (#1469 is

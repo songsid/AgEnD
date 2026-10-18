@@ -11,12 +11,14 @@ import type { WebConfig, WebGuestsConfig, WebVerifiedAuthorityConfig } from "./t
 
 export const WEB_TERMINAL_TTL_MINUTES = { min: 1, max: 20 } as const;
 /** What Settings → Web may write; everything else under web: / web_terminal: is fleet.yaml's. */
-export const WEB_SETTINGS_BODY_KEYS = ["echo_to_channel", "log_tab", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
+export const WEB_SETTINGS_BODY_KEYS = ["echo_to_channel", "log_tab", "usage_report_on_public_link", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
 
 export type WebSettingsBody = {
   echo?: boolean;
   /** #1218: the Log tab on (true) or off (false). */
   logTab?: boolean;
+  /** #2122: the usage report over the temporary public link (web.usage_report_on_public_link). */
+  usageOnPublicLink?: boolean;
   publicLink?: NonNullable<WebConfig["public_link"]>;
   session: Record<string, number | null> | null;
   terminal: Record<string, boolean | number | null> | null;
@@ -32,6 +34,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   const patch = body as Record<string, unknown>;
   if (patch.echo_to_channel !== undefined && typeof patch.echo_to_channel !== "boolean") return { error: "echo_to_channel must be a boolean" };
   if (patch.log_tab !== undefined && typeof patch.log_tab !== "boolean") return { error: "log_tab must be a boolean" };
+  if (patch.usage_report_on_public_link !== undefined && typeof patch.usage_report_on_public_link !== "boolean") return { error: "usage_report_on_public_link must be a boolean" };
   if (patch.public_link !== undefined && !validPublicLinkPatch(patch.public_link)) return { error: "invalid public_link settings" };
   const session = webSessionPatch(patch.session);
   if (session === "invalid") return { error: "session must be { local: { absolute_hours?, idle_hours? } } with numbers or null" };
@@ -44,6 +47,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   return {
     ...(patch.echo_to_channel !== undefined ? { echo: patch.echo_to_channel as boolean } : {}),
     ...(patch.log_tab !== undefined ? { logTab: patch.log_tab as boolean } : {}),
+    ...(patch.usage_report_on_public_link !== undefined ? { usageOnPublicLink: patch.usage_report_on_public_link as boolean } : {}),
     ...(patch.public_link !== undefined ? { publicLink: patch.public_link as NonNullable<WebConfig["public_link"]> } : {}),
     ...(guests ? { guests } : {}),
     ...(verifiedAuthority ? { verifiedAuthority } : {}),

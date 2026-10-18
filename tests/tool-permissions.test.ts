@@ -85,8 +85,14 @@ const BEFORE: Record<string, string[]> = {
     "list_emojis", "preview_emojis", "set_persona_emoji",
     // #1226: stickers.
     "list_stickers", "preview_stickers",
+    // Its own identity — same as any worker.
+    "set_display_name", "set_description",
     // #1629: its own web theme, like its own status stamp.
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
+    // #2132: own-appearance family (effects and ambient excluded — use set_web_settings instead).
+    "get_web_appearance", "preview_web_appearance",
+    "set_web_widget", "remove_web_widget",
+    "export_web_mod", "propose_web_mod",
     // kiro engine move: read-only kiro engine facts, for explaining a kiro incompatibility.
     "kiro_engine_status",
     // #2056: the user's Settings → Web appearance, through the page's own checks.
@@ -507,6 +513,179 @@ describe("the refusal explains itself", () => {
     expect(message).toContain("worker");
     expect(message).toContain("report_result");
     expect(message).toContain("tool_set: coordinator");
+  });
+
+  it("does not suggest coordinator for an own-appearance tool", () => {
+    // Own-appearance tools have no target and act only on the caller's look.
+    // Suggesting `tool_set: coordinator` for a cosmetic change is wrong: it
+    // grants far more than needed. (#2132)
+    for (const tool of [
+      "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient",
+      "get_web_appearance", "preview_web_appearance",
+      "export_web_mod", "propose_web_mod",
+      "upload_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
+      "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
+    ]) {
+      const message = toolRefusedMessage("minimal", tool);
+      expect(message, `${tool}: must not suggest coordinator`).not.toContain("tool_set: coordinator");
+      expect(message, `${tool}: must name the tool`).toContain(tool);
+      expect(message, `${tool}: must name a fix`).toMatch(/tool_set: worker|tool_set: standard/);
+    }
+  });
+
+  it("still suggests coordinator for orchestration tools", () => {
+    for (const tool of ["create_instance", "delete_instance", "update_fleet_defaults", "update_decision"]) {
+      const message = toolRefusedMessage("worker", tool);
+      expect(message, tool).toContain("tool_set: coordinator");
+    }
+  });
+
+  it("still suggests coordinator for worker-only cross-instance tools", () => {
+    // delegate_task, report_result, checkout_repo etc. are in WORKER but are
+    // not own-appearance tools — they are protocol/repo tools. The refusal
+    // should still point to a coordinator, not just a wider profile.
+    for (const tool of ["delegate_task", "report_result", "checkout_repo", "get_instance_logs"]) {
+      const message = toolRefusedMessage("minimal", tool);
+      expect(message, `${tool}: should still suggest coordinator`).toContain("tool_set: coordinator");
+    }
+  });
+
+  it("standard/delegate_task: no 'own-instance', no circular suggestion (#2134 R1)", () => {
+    // standard doesn't have delegate_task. The suggestion must point to a
+    // profile that HAS the tool (coordinator does) and must never be the
+    // current profile (standard) or suggest standard has no target.
+    const message = toolRefusedMessage("standard", "delegate_task");
+    expect(message).not.toContain("own-appearance");
+    expect(message).not.toContain("own-instance");
+    // Must not suggest the current profile or a profile that lacks the tool.
+    expect(message).not.toMatch(/tool_set: standard/);
+    expect(message).toContain("tool_set: coordinator");
+  });
+
+  it("general refused an effect tool gets set_web_settings guidance (#2132)", () => {
+    // Library tools get "library managed by worker/standard"
+    for (const tool of ["upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "delete_web_effect"]) {
+      const msg = toolRefusedMessage("general", tool);
+      expect(msg, tool).not.toContain("tool_set: coordinator");
+      expect(msg, tool).toContain("set_web_settings");
+      expect(msg, tool).toContain(`what: "effect"`);
+      expect(msg, tool).toContain("library");
+    }
+    // Apply/remove tools get "use set_web_settings to apply/remove"
+    for (const tool of ["apply_web_effect", "remove_web_effect"]) {
+      const msg = toolRefusedMessage("general", tool);
+      expect(msg, tool).not.toContain("tool_set: coordinator");
+      expect(msg, tool).toContain("set_web_settings");
+      expect(msg, tool).toContain(`what: "effect"`);
+      expect(msg, tool).toContain(`action: "apply"`);
+    }
+  });
+
+  it("general refused an ambient tool gets set_web_settings guidance (#2132)", () => {
+    const message = toolRefusedMessage("general", "set_web_ambient");
+    expect(message).not.toContain("tool_set: coordinator");
+    expect(message).toContain("set_web_settings");
+    expect(message).toContain(`what: "ambient"`);
+    expect(message).toContain("ambient:");
+  });
+
+  it("the set_web_settings shapes cited in refusal messages pass safeParse (#2134 R3)", async () => {
+    // If the format in the message and the schema drift, an agent following the
+    // refusal gets a schema error. Validate the exact objects we describe.
+    const { SetWebSettingsArgs } = await import("../src/outbound-schemas.js");
+
+    // Effect apply shape
+    expect(SetWebSettingsArgs.safeParse({
+      change: { what: "effect", action: "apply", instance: "general", id: "effect-id" },
+    }).success, "effect apply shape").toBe(true);
+
+    // Effect remove shape
+    expect(SetWebSettingsArgs.safeParse({
+      change: { what: "effect", action: "remove", instance: "general" },
+    }).success, "effect remove shape").toBe(true);
+
+    // Ambient set shape
+    expect(SetWebSettingsArgs.safeParse({
+      change: { what: "ambient", instance: "general", ambient: { preset: "fall" } },
+    }).success, "ambient set shape").toBe(true);
+
+    // Ambient clear shape (null)
+    expect(SetWebSettingsArgs.safeParse({
+      change: { what: "ambient", instance: "general", ambient: null },
+    }).success, "ambient clear shape").toBe(true);
+
+    // Ambient clear with which
+    expect(SetWebSettingsArgs.safeParse({
+      change: { what: "ambient", instance: "general", ambient: null, which: "loop" },
+    }).success, "ambient clear which shape").toBe(true);
+  });
+});
+
+// ── Drift guard: every profile with set_web_theme has the full own-appearance family ──
+
+describe("own-appearance family consistency (#2132)", () => {
+  /**
+   * The full own-appearance family — tools that have no target and act only on
+   * the caller. Any profile that lets an instance style itself (set_web_theme)
+   * must include all of them, with one documented exception for general.
+   */
+  const OWN_APPEARANCE = [
+    "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
+    "get_web_appearance", "preview_web_appearance",
+    "set_web_widget", "remove_web_widget",
+    "set_web_ambient", "clear_web_ambient",
+    "export_web_mod", "propose_web_mod",
+    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
+    "apply_web_effect", "remove_web_effect", "delete_web_effect",
+  ] as const;
+
+  /**
+   * General's documented exception: effect and ambient tools are intentionally
+   * excluded from the general profile. General applies effects and ambient for
+   * its own chat through set_web_settings { what: "effect"|"ambient", instance: self },
+   * not through the direct tools. See #2124 (web-ambient) and the token cap in
+   * auth-pause-and-token-diet. Changing this requires updating both those tests.
+   */
+  const GENERAL_EXCEPTION = new Set([
+    "set_web_ambient", "clear_web_ambient",
+    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
+    "apply_web_effect", "remove_web_effect", "delete_web_effect",
+  ]);
+
+  it("every profile with set_web_theme has all own-appearance tools (general: effects/ambient via set_web_settings)", () => {
+    for (const [name, tools] of Object.entries(TOOL_PROFILES)) {
+      const set = new Set(tools);
+      if (!set.has("set_web_theme")) continue; // minimal doesn't style itself
+      for (const tool of OWN_APPEARANCE) {
+        if (name === "general" && GENERAL_EXCEPTION.has(tool)) continue;
+        expect(set.has(tool), `${name} has set_web_theme but is missing ${tool}`).toBe(true);
+      }
+    }
+  });
+
+  it("general has the 8 own-appearance tools added in #2132", () => {
+    for (const tool of [
+      "get_web_appearance", "preview_web_appearance",
+      "set_web_widget", "remove_web_widget",
+      "export_web_mod", "propose_web_mod",
+      "set_display_name", "set_description",
+    ]) {
+      expect(TOOL_PROFILES.general, `general must have ${tool}`).toContain(tool);
+    }
+  });
+
+  it("general intentionally excludes effect and ambient tools — uses set_web_settings instead (#2124 #2132)", () => {
+    // These are the GENERAL_EXCEPTION tools. Changing this needs updates to
+    // web-ambient-2117.test.ts and auth-pause-and-token-diet.test.ts.
+    for (const tool of GENERAL_EXCEPTION) {
+      expect(TOOL_PROFILES.general, `general must NOT have ${tool}`).not.toContain(tool);
+    }
+    // General does have set_web_settings for the effect/ambient path.
+    expect(TOOL_PROFILES.general).toContain("set_web_settings");
+  });
+
+  it("stays under the token cap: general < full / 1.5", () => {
+    expect(TOOL_PROFILES.general.length).toBeLessThan(TOOL_PROFILES.full.length / 1.5);
   });
 });
 

@@ -160,6 +160,23 @@ authority) uses the harness and stubs two more things, both outside the product:
 
 The demo connection's fleet-admin list is fleet config the smoke writes, as an operator would.
 
+`scripts/manual/smoke/smoke-2122-usage.mts` (#2122 Fleet → Usage) uses the harness with what the product reads made
+real: Claude Code transcripts and a Codex rollout in their real shapes (`tests/fixtures/cache-1468`, copied onto recent
+days) in a scratch `CLAUDE_CONFIG_DIR` / `CODEX_HOME` set before the fleet boots, never the host's. Each demo instance
+gets its own working directory (the fixture's share one, which the report would call "shared"). One instance's rollup
+file carries an older day, so the heatmap has never-collected days; that instance joins the fleet only after the empty
+case, so the product reads its rollup fresh. A rollout written within the rollout index's 1 s listing cache is seen on
+the next pass, so the smoke waits until the product has read every source.
+`PW_ENGINE=webkit` runs the same cases in WebKit. Its system libraries come with the Playwright image, so it runs there
+with the host's Node (the checkout's native modules are built for it), as your user, on the host network:
+`docker run --rm --network host --user $(id -u):$(id -g) -e HOME=/tmp -e PW_ENGINE=webkit -e PW_DIR=/pw -e REPO=$PWD
+-e OUT=/out -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright -v $PWD:$PWD -v $PW_DIR:/pw:ro -v <node dir>:/node:ro -v <out>:/out
+-w $PWD mcr.microsoft.com/playwright:v1.64.1-noble /node/bin/node node_modules/tsx/dist/cli.mjs
+scripts/manual/smoke/smoke-2122-usage.mts`. WebKit has no host resolver rules, so its phone case is on loopback. Its own
+console lines (a `<select>`'s internal sheet, the viewport meta's interactive-widget) are accepted and printed apart, as
+in smoke-ambient; a poll or stream a navigation cancels (and the Settings page's own fetch it cancels, "Load failed")
+only within the smoke's own navigations, for those URLs — anywhere else they fail.
+
 ## Pitfalls (each one cost a run)
 
 - **Language** is the host pref `lang` (`fx.page` writes it). `localStorage.agend_lang` alone leaves the page in English.

@@ -57,10 +57,10 @@ describe("Fleet overview → Docs", () => {
     const want = { href: EN, target: "_blank", rel: "noopener noreferrer", label: "Docs (opens in a new tab)", text: "Docs", current: null, active: false };
     expect(out).toEqual(["/ui/fleet/org", "/ui/fleet", "/ui/fleet/cache", "/ui/fleet/config"].map(p => [p, order, want]));
   });
-  it("is not a Fleet tab: the tab row is the six tabs, unchanged", async () => {
+  it("is not a Fleet tab: the tab row is the seven tabs (#2122 added Usage), unchanged", async () => {
     const { pg } = await shell("/ui/fleet/org");
     expect([row(pg).map(a => a.getAttribute("href")), pg.root.querySelectorAll(".p-fleet nav.seg a[target]").length]).toEqual(
-      [["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/cache", "/ui/fleet/config"], 0]);
+      [["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/cache", "/ui/fleet/usage", "/ui/fleet/config"], 0]);
   });
   it("follows the dashboard's language: zh-TW opens /zh-tw/docs, and back to English", async () => {
     const { pg } = await shell("/ui/fleet/org");

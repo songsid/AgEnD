@@ -21,6 +21,7 @@ import { confirmedWrite } from "./settings-confirm.js";
 import { OrgCanvas } from "./fleet-canvas.js";
 import { labelOf } from "/assets/instance-nav.js";
 import { CacheReport } from "./fleet-cache.js";
+import { UsageTab } from "./fleet-usage.js";
 import { BackendSelect, ModelSelect } from "./settings-dialogs.js";
 
 /** #2015: one of the largest processes as text: "python3 18.1 GB (dev-a)". */
@@ -36,7 +37,7 @@ register("fleet", {
     hostMemory_elevated: "Host memory pressure: elevated — new agents start one at a time, at least 5 s apart",
     hostMemory_critical: "Host memory pressure: critical — new agents wait for memory to recover",
     hostMemory_top: "Largest: {0}", hostMemory_ownerFleet: "the fleet", hostMemory_ownerTmux: "tmux", hostMemory_ownerOther: "not an instance",
-    title: "Fleet", tasks: "Tasks", schedules: "Schedules", teams: "Teams", org: "Org chart", cache: "Cache", config: "Config",
+    title: "Fleet", tasks: "Tasks", schedules: "Schedules", teams: "Teams", org: "Org chart", cache: "Cache", usage: "Usage", config: "Config",
     docs: "Docs", docsNewTab: "Docs (opens in a new tab)",
     newTask: "New task", newSchedule: "New schedule", newTeam: "New team",
     noTasks: "No tasks yet", noTasksHint: "Create one to coordinate fleet work.", noSchedules: "No schedules yet", noSchedulesHint: "Automate recurring work with cron.",
@@ -68,7 +69,7 @@ register("fleet", {
     hostMemory_elevated: "主機記憶體壓力偏高：新的 agent 一次啟動一個，至少間隔 5 秒",
     hostMemory_critical: "主機記憶體壓力嚴重：新的 agent 會等記憶體恢復再啟動",
     hostMemory_top: "最大：{0}", hostMemory_ownerFleet: "fleet 本身", hostMemory_ownerTmux: "tmux", hostMemory_ownerOther: "不屬於任何 instance",
-    title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", org: "組織圖", cache: "快取", config: "設定",
+    title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", org: "組織圖", cache: "快取", usage: "用量", config: "設定",
     docs: "文件", docsNewTab: "文件（在新分頁開啟）",
     newTask: "新增 task", newSchedule: "新增排程", newTeam: "新增 team",
     noTasks: "還沒有 task", noTasksHint: "建立一個來協調 fleet 的工作。", noSchedules: "還沒有排程", noSchedulesHint: "用 cron 自動執行例行工作。",
@@ -102,7 +103,7 @@ const DOCS_SITE = "https://songsid.github.io/AgEnD";
 export function docsUrl(language = lang()) {
   return `${DOCS_SITE}${language === "zh-TW" ? "/zh-tw" : ""}/docs/web-guide/`;
 }
-const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "chart", config: "sliders" };
+const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "chart", usage: "chart", config: "sliders" };
 const BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"];
 
 async function api(method, path, body, lease) {
@@ -141,7 +142,7 @@ export function FleetPanel({ route, navKey }) {
   const lease = useLease(navKey);
   const tab = route.tab;
   useEffect(() => { setTitle(`${t("fleet.title")} · ${t(`fleet.${tab}`)}`); }, [tab, navKey]);
-  const Body = { tasks: Tasks, schedules: Schedules, teams: Teams, org: Org, cache: Cache, config: Config }[tab] || Tasks;
+  const Body = { tasks: Tasks, schedules: Schedules, teams: Teams, org: Org, cache: Cache, usage: UsageTab, config: Config }[tab] || Tasks;
   // #1685: host memory pressure slowing or holding new agents — shown here, where macOS's routine "elevated" is not a chat notice.
   const { hostMemory, hostMemoryTop } = useStore(appStore);
   // #2015: and which processes hold the most, and whose — text only (never chat, #1712).
@@ -151,7 +152,7 @@ export function FleetPanel({ route, navKey }) {
     <${PanelHeader} title=${t("fleet.title")} sub=${sub}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
     <nav data-trust="panel-navigation" class="seg" aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
       aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>
-    <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "org" || tab === "cache" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
+    <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "org" || tab === "cache" || tab === "usage" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
   </div>`;
 }
 
