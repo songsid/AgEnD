@@ -37,6 +37,9 @@ export interface WebSettingsDeps {
   /** #2086: a person's banner focus for one instance (0 top … 100 bottom; null: none), and its write (Edit profile's). */
   bannerFocus(instance: string): number | null;
   setBannerFocus(instance: string, focus: unknown): { ok: true } | { ok: false; status: number; error: string; detail?: string };
+  /** #2117: each chat's ambient ({ loop?, click? }: spec and who set it), and a person's write (the chat menu's route). */
+  ambient(instance: string): Record<string, { spec: unknown; by: string }>;
+  setAmbient(instance: string, spec: unknown, which?: unknown): Record<string, unknown>;
   /** The effects placed on each chat (the page's Effects card). */
   placements(instance: string): Array<{ id: string; params?: Record<string, unknown> }>;
   /** Every page re-reads after a change (the routes' `announce`). */
@@ -83,7 +86,7 @@ export class WebSettingsTools {
     const cardSize = (host["card.size"] as string | undefined) ?? "m";
     const css = this.deps.ownerCss.state(person);
     const mods = this.deps.mods.list(), proposals = this.deps.mods.proposals();
-    const agents = this.deps.instances().map((name) => ({ name, ...this.deps.colour(name), effects: this.deps.placements(name) }));
+    const agents = this.deps.instances().map((name) => ({ name, ...this.deps.colour(name), effects: this.deps.placements(name), ambient: this.deps.ambient(name) }));
     const slots = Object.fromEntries(OWNER_SLOTS.map((s) => [s, (own[`fx.${s}`] as string | undefined) ?? null]));
     const sizeWord = { s: "small", m: "medium", l: "large" } as Record<string, string>;
     const summary = [
@@ -95,6 +98,7 @@ export class WebSettingsTools {
       `Custom CSS (${person === OPERATOR ? "the host operator" : person}): ${css.active ? `in force (version ${css.active.slice(0, 8)})` : "off"}${css.pending ? `, on trial (${Math.ceil(css.pending.remaining_ms / 1000)} s left): keep or revert it` : ""}; ${css.versions.length} saved version(s).`,
       `Mods installed: ${mods.mods.map((m) => `${m.name} ${m.version}`).join(", ") || "none"}; proposed by agents: ${proposals.map((p) => p.instance).join(", ") || "none"}.`,
       `Effects on chats: ${agents.filter((a) => a.effects.length).map((a) => `${a.name}: ${a.effects.map((e) => e.id.slice(0, 8)).join(", ")}`).join("; ") || "none"}.`,
+      `Ambient effects: ${agents.filter((a) => Object.keys(a.ambient).length).map((a) => `${a.name}: ${Object.values(a.ambient).map((x) => `${(x.spec as { preset?: string }).preset} (set by ${x.by === "human" ? "a person" : "the agent"})`).join(", ")}`).join("; ") || "none"}.`,
       `Effect slots (${person === OPERATOR ? "the host operator" : person}): ${OWNER_SLOTS.filter((s) => slots[s]).map((s) => `${s} ${(slots[s] as string).slice(0, 8)}`).join(", ") || "none"}.`,
     ];
     return {
@@ -124,6 +128,7 @@ export class WebSettingsTools {
       case "mod": return this.mod(person, change);
       case "effect": return this.effect(person, change);
       case "effect_slot": return this.slot(person, change);
+      case "ambient": return this.ambient(change);
       case "restore_defaults": return this.restore(person);
       default: return failed("change", `unknown \`what\`: ${change.what}`);
     }
@@ -226,6 +231,15 @@ export class WebSettingsTools {
     const r = c.action === "apply" ? this.deps.effects.apply(person, args) : c.action === "remove" ? this.deps.effects.remove(person, { instance: c.instance, ...(c.id !== undefined ? { id: c.id } : {}) }) : null;
     if (!r) return failed("effect", "action: apply (instance, id, params?) or remove (instance, id?)");
     return isObj(r) && typeof r.error === "string" ? failed(r.error, typeof r.detail === "string" ? r.detail : undefined) : { ok: true, ...(r as Record<string, unknown>) };
+  }
+
+  /** #2117: a person's ambient for an agent — the chat menu's write (a person's wins over the agent's, and binds it). */
+  private ambient(c: Record<string, unknown>): Result {
+    if (typeof c.instance !== "string" || !this.deps.instances().includes(c.instance)) return failed("unknown_instance");
+    if (!Object.hasOwn(c, "ambient")) return failed("ambient", "ambient: a spec (as set_web_ambient's), or null to clear (which: loop | click, default both)");
+    const r = this.deps.setAmbient(c.instance, c.ambient, c.which);
+    if (typeof r.error === "string") return failed(r.error, typeof r.message === "string" ? r.message : undefined);
+    return { ok: true, instance: c.instance, ...r, now: this.deps.ambient(c.instance) };
   }
 
   private slot(person: string, c: Record<string, unknown>): Result {

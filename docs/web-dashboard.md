@@ -337,6 +337,7 @@ An agent can give its own web chat a look: colours for light and dark, an accent
   - **Reset theme…** removes it and keeps a lock in place.
   - Both need a signed-in admin, and neither is offered over a temporary public link.
 - **Your switch.** **Settings → Web appearance → Show agents' themes, effects and widgets** turns them off on all your devices. Every chat then looks the same, and pictures and ring colours are the bots' again. `?safe=1` also loads a page without them.
+- **Reduced motion.** Agents' effects play even when your system asks for reduced motion. To keep them still on a device, tick **Effects: follow the system's reduced-motion setting** under that switch (this device only; off by default).
 - **Limits.** An agent's changes are at least 30 seconds apart, at most 10 an hour. Its uploads (pictures, effects, mods) are not counted; each picture's size limits and the agent's picture quota still apply. A picture you uploaded for an agent in its profile wins over its theme's. `web.themes.agent_edit: false` in `fleet.yaml` refuses every agent's changes.
 
 ### Identity cards
@@ -372,6 +373,20 @@ A widget is a small panel of facts drawn by the dashboard itself: numbers, progr
 - **People decide.** **Lock theme** stops an agent changing its widgets too. A chat's or Details' **⋯** menu offers **Remove the chat header widget** and **Remove the Details widget**. A widget a person placed (from a mod) takes the agent's values, but the agent can't replace or remove it. **Reset theme…** removes the agent's widgets.
 - **Your sidebar widget.** **Settings → Web appearance → Your sidebar widget** takes the spec and values as JSON. It shows a preview and says what's wrong before saving. **Start from an example** fills in the fleet's counts. It is kept with your preferences on all your devices, and is never shown over a temporary public link or with `?safe=1`.
 - **Your switch** hides agents' widgets along with their themes. The public link shows agents' widgets, like their cards.
+
+### Ambient effects
+
+An ambient effect is a light decoration an agent puts in its own chat: falling petals, snow, rising lanterns, twinkling stars, or glyphs that scatter where you click. The agent sends only data (a preset, up to 4 glyphs or small pictures, colours and a few numbers); the dashboard draws it. No agent code runs, so it needs no consent and plays by default.
+
+- **Where.** Behind the messages of that agent's chat, never over the composer or header. It never takes a click, a tap or focus: a click star appears for a moment over the messages and your click still lands on what is under it.
+- **One of each.** A chat has at most one looping effect (falling, rising or twinkling) and one click effect.
+- **How an agent sets one.** `set_web_ambient` with a `preset` (`fall`, `rise`, `twinkle`, `burst-on-click`) and its `glyphs`; `clear_web_ambient` removes it. It counts as a theme change: the same rate limit, and **Lock theme** stops it.
+- **People decide.** The chat's **⋯** menu offers **Clear the ambient effect** and **Clear the click effect**; **Reset theme…** clears both. Ask General to set one for an agent (it becomes yours, and the agent can't change it).
+- **When it doesn't show,** the chat's **⋯** menu says why, and choosing the line fixes it right there (on the public link too): **Show agents' themes, effects and widgets** is off (it turns it on); **Effects: follow the system's reduced-motion setting** is on while the system asks for reduced motion (this device stops following it); or the page was opened with `?safe=1` (it leaves safe mode).
+- **Reduced motion.** When your system asks for reduced motion and an ambient effect plays anyway, the chat says so once on that device ("Your system asks for reduced motion; effects are on.") with **Turn off here**, which ticks **Effects: follow the system's reduced-motion setting** for that device.
+- **Cost.** At most 24 looping glyphs, and at most 3 bursts of 16 at once, animated with transform and opacity only. A hidden tab pauses it.
+- **The public link** shows it, with the viewer's own switch, like agents' themes and widgets.
+- **Mods** carry it (**Ambient effect** when you import or export).
 
 ### Mods
 

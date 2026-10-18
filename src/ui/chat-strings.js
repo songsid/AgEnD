@@ -117,6 +117,13 @@ register("chat", {
     themeResetDone: "{0}'s theme was reset.", themeLocked: "{0}'s theme is locked: the agent can't change it.", themeUnlocked: "{0}'s theme is unlocked.",
     themeFailed: "The theme was not changed ({0}).",
     widgetRemoveHeader: "Remove the chat header widget", widgetRemoveDetails: "Remove the Details widget", widgetRemoved: "{0}'s widget was removed.",
+    // #2117: an agent's ambient effect — why it is not showing here, and a person's Clear.
+    ambientBlocked_hidden: "Ambient effect hidden: agents' themes are off — turn them on",
+    ambientBlocked_safe: "Ambient effect hidden: safe mode (?safe=1) — leave safe mode",
+    ambientBlocked_reducedMotion: "Ambient effect hidden: this device follows reduced motion — play effects anyway",
+    ambientBlocked_unsupported: "Ambient effect hidden: this browser can't animate it",
+    ambientClearLoop: "Clear the ambient effect", ambientClearClick: "Clear the click effect", ambientCleared: "{0}'s ambient effect was cleared.",
+    ambientMotionNote: "Your system asks for reduced motion; effects are on.", ambientMotionNoteLink: "Turn off here", ambientMotionNoteClose: "Close",
     configured: "(configured)", fleetDefault: "(fleet default)",
   },
   "zh-TW": {
@@ -231,6 +238,12 @@ register("chat", {
     themeResetDone: "已重設 {0} 的主題。", themeLocked: "已鎖定 {0} 的主題：agent 無法變更。", themeUnlocked: "已解除 {0} 的主題鎖定。",
     themeFailed: "主題沒有變更（{0}）。",
     widgetRemoveHeader: "移除聊天標頭的小工具", widgetRemoveDetails: "移除詳細資料頁的小工具", widgetRemoved: "已移除 {0} 的小工具。",
+    ambientBlocked_hidden: "環境效果未顯示：已關閉 agent 的主題——開啟",
+    ambientBlocked_safe: "環境效果未顯示：安全模式（?safe=1）——離開安全模式",
+    ambientBlocked_reducedMotion: "環境效果未顯示：這台裝置跟隨「減少動態效果」——仍然播放",
+    ambientBlocked_unsupported: "環境效果未顯示：此瀏覽器無法播放",
+    ambientClearLoop: "清除環境效果", ambientClearClick: "清除點擊效果", ambientCleared: "已清除 {0} 的環境效果。",
+    ambientMotionNote: "你的系統要求減少動態效果；效果目前開著。", ambientMotionNoteLink: "在這裡關閉", ambientMotionNoteClose: "關閉",
     configured: "（設定值）", fleetDefault: "（fleet 預設）",
   },
 });

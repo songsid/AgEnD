@@ -50,6 +50,8 @@ const BEFORE: Record<string, string[]> = {
     "get_web_appearance", "preview_web_appearance",
     // #1629 r4-4: its own declarative widgets (no target).
     "set_web_widget", "remove_web_widget",
+    // #2117: its own declarative ambient (no target).
+    "set_web_ambient", "clear_web_ambient",
     // #1629 r4-5b: mods — its own look as a file, and a proposal for a person (agents never import).
     "export_web_mod", "propose_web_mod",
     // #1629 B2: the caller-scoped Canvas Worker effect tools.

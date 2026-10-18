@@ -298,6 +298,7 @@ import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.j
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, LOOPBACK_HOST_NAMES, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { createPreviewListener, normalizeOrigin, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener, type PreviewOffCode } from "./web-preview.js";
+import { createEffectBootstrap } from "./web-effect-bootstrap.js";
 import { fleetLevelDifferences, fleetLevelSignature, appendedConnections } from "./fleet-level-config.js";
 import { checkSelfRestartAllowance, recordSelfRestartAttempt } from "./self-restart-limit.js";
 import { SecretStore } from "./secret-store.js";
@@ -1210,6 +1211,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Health endpoint
   private healthServer: Server | null = null;
+  /** #2118: independent of HTML preview availability/port; fixed bootstrap only, no effect resources. */
+  private readonly effectBootstrap = createEffectBootstrap();
   private healthServerDrain: WebServerDrain | null = null;
   /** #1306: the preview listener (health_port + 1 by default), and whether it is listening. */
   private previewListener: PreviewListener | null = null;
@@ -1431,7 +1434,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   get appearanceTools(): AppearanceTools {
     return (this.appearanceToolsService ??= new AppearanceTools({
       frame: (name) => ((this.getUiStatus() as { instances: FrameEntry[] }).instances.find(i => i.name === name) ?? { name }),
-      theme: (name) => { const r = this.themeStore.get(name); return { theme: r.theme, locked: r.locked, widgets: r.placements.widgets }; },
+      theme: (name) => { const r = this.themeStore.get(name); return { theme: r.theme, locked: r.locked, widgets: r.placements.widgets, ambient: r.placements.ambient,
+        glyphAsset: (id) => this.themeStore.asset(name, id) }; },
       effects: name => this.themeStore.readable() ? this.themeStore.get(name).placements.effects.map(p => ({ id: p.id, by: p.by, ...(p.params ? { params: p.params } : {}), playback: this.effectService.playbackSummary(name, p.id) })) : [],
       card: (name) => resolveCard(name, humanCards(this.dataDir).get(name), this.themeStore.get(name).theme.card),
       // #1958: the host's identity-colour settings, as the page reads them (an unreadable prefs file: the defaults).
@@ -1518,6 +1522,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       bannerFocus: (name) => personBannerFocus(this.dataDir, name),
       setBannerFocus: (name, focus) => { const w = setPersonBannerFocus(this.dataDir, name, focus); if (w.ok) this.identityChanged(); return w; },
       placements: (name) => this.themeStore.get(name).placements.effects.map((e) => (typeof e === "string" ? { id: e } : e)),
+      ambient: (name) => Object.fromEntries(Object.entries(this.themeStore.get(name).placements.ambient).flatMap(([k, a]) => a ? [[k, { spec: a.spec, by: a.by }]] : [])),
+      setAmbient: (name, spec, which) => this.webAppearance.humanSetAmbient(name, spec, which),
       announce: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next status frame carries it */ } },
     }));
   }
@@ -10188,6 +10194,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (type === "fleet_get_web_theme" || type === "fleet_set_web_theme" || type === "fleet_set_web_theme_asset" || type === "fleet_reset_web_theme"
       || type === "fleet_get_web_appearance" || type === "fleet_preview_web_appearance"
       || type === "fleet_set_web_widget" || type === "fleet_remove_web_widget"
+      || type === "fleet_set_web_ambient" || type === "fleet_clear_web_ambient"
       || type === "fleet_export_web_mod" || type === "fleet_propose_web_mod") {
       this.handleWebTheme(name, msg); return;
     }
@@ -21206,6 +21213,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         return;
       }
       const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
+
+      if (this.effectBootstrap.handle(req, res)) return;
 
       // Branding is public, after Host admission: automatic favicon requests
       // must not become noisy web-token 401s in the browser console.

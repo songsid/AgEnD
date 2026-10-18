@@ -14,7 +14,7 @@ import type { Theme, ThemeMode } from "./web-theme.js";
 type Picture = { bytes: Buffer; mime: string } | null;
 export interface AppearanceDeps {
   frame(name: string): FrameEntry;
-  theme(name: string): { theme: Theme; locked: boolean; widgets?: AppearanceInput["widgets"] };
+  theme(name: string): { theme: Theme; locked: boolean; widgets?: AppearanceInput["widgets"]; ambient?: AppearanceInput["ambient"]; glyphAsset?: (id: string) => Picture };
   card(name: string): ResolvedCard;
   /** The resolved card's picture for a slot (the person's, else the agent's). */
   cardPicture(name: string, slot: "portrait" | "banner"): Picture;
@@ -32,6 +32,8 @@ export interface AppearanceDeps {
 /** A preview whose files (base64) fit one message is sent whole; a larger one is fetched in parts. */
 export const PREVIEW_INLINE_BYTES = 600 * 1024;
 export const PREVIEW_IDLE_MS = 60_000;
+/** A glyph picture's side file type (the glyph slot's kinds). */
+const GLYPH_EXT: Readonly<Record<string, string>> = { "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
 const MODES: readonly ThemeMode[] = ["light", "dark"];
 type Built = { id: string; files: Array<{ name: string; data: Buffer; sha256: string }>; last: number };
 
@@ -44,7 +46,7 @@ export class AppearanceTools {
     const entry = this.deps.frame(name);
     const t = this.deps.theme(name);
     const answer = this.deps.themeAnswer(name);
-    return { entry, theme: t.theme, card: this.deps.card(name), locked: t.locked, agentEdit: answer.agent_edit !== false, limits: (answer.limits ?? {}) as Record<string, unknown>, widgets: t.widgets,
+    return { entry, theme: t.theme, card: this.deps.card(name), locked: t.locked, agentEdit: answer.agent_edit !== false, limits: (answer.limits ?? {}) as Record<string, unknown>, widgets: t.widgets, ambient: t.ambient,
       effects: this.deps.effects?.(name) ?? [], colorPrefs: this.deps.colorPrefs?.() ?? {} };
   }
   /** The face drawn, as bytes of this instance's: the theme's picture, the person's upload, or its own bot's. */
@@ -87,7 +89,18 @@ export class AppearanceTools {
     // #2086: the banner's own size, so the preview crops it at its focus exactly as the page does.
     const bannerKind = bytes.banner ? sniffMedia(bytes.banner.bytes) : null;
     const bannerSize = bytes.banner && bannerKind ? imageSize(bytes.banner.bytes, bannerKind) : null;
-    for (const mode of modes as ThemeMode[]) add(`${mode}.svg`, Buffer.from(previewSvg(input, mode, names, bannerSize), "utf8"));
+    // #2117: the looping ambient's glyph pictures, glyph1… next to the SVGs.
+    const glyphPics: Record<string, string> = {};
+    const glyphOf = this.deps.theme(name).glyphAsset;
+    for (const g of input.ambient?.loop?.spec.glyphs ?? []) {
+      if (typeof g === "string" || glyphPics[g.asset] || !glyphOf) continue;
+      const p = glyphOf(g.asset), ext = p ? GLYPH_EXT[p.mime] : undefined;
+      if (!p || !ext) continue;
+      const fileName = `glyph${Object.keys(glyphPics).length + 1}.${ext}`;
+      glyphPics[g.asset] = fileName;
+      add(fileName, p.bytes);
+    }
+    for (const mode of modes as ThemeMode[]) add(`${mode}.svg`, Buffer.from(previewSvg(input, mode, names, bannerSize, glyphPics), "utf8"));
     const total = files.reduce((n, f) => n + f.data.length, 0);
     if (total <= PREVIEW_INLINE_BYTES) return { files: files.map(f => ({ name: f.name, data_b64: f.data.toString("base64") })) };
     const built: Built = { id: randomBytes(8).toString("hex"), files, last: now };
