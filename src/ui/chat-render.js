@@ -53,11 +53,14 @@
 
   // #1630: a Discord server emoji, `<:name:id>` / `<a:name:id>` — escaped by now — drawn as its picture. Only an id the
   // page knows (the fleet's servers: /ui/emojis) and only from the dashboard's own route; the src is built from the
-  // matched digits, the name (word characters only) goes into alt/title. An unknown id stays the literal text.
+  // matched digits, the name (word characters only) goes into alt/title. Any other — an id the page does not know, or
+  // before the list has come — reads `:name:` (never the raw markup); so does a picture that does not load
+  // (chat-thread.js swaps it: an <img> sized to an emoji showed an empty box, the user's "tofu").
   var EMOJI_RE = /&lt;(a?):([A-Za-z0-9_]{2,32}):(\d{15,25})&gt;/g;
   function emojiImg(id, name) {
     return '<img class="emoji" src="/ui/img/emoji/' + id + '" alt=":' + name + ':" title=":' + name + ':" decoding="async">';
   }
+  function emojiText(name) { return '<span class="emoji-text" title=":' + name + ':">:' + name + ':</span>'; }
 
   // #1682: Discord mentions — `<@id>` / `<@!id>` (a user), `<@&id>` (a role), `<#id>` (a channel) — escaped by now (the
   // role's & too), drawn as a pill: the name the page knows (store.mentions(kind, id), inserted escaped), else @user /
@@ -82,7 +85,7 @@
     // path held its whole column wide.
     s = s.replace(/`([^`\n]+)`/g, function (_m, code) { return stash(store, "<code>" + (store.inCell ? code.replace(/\//g, "/<wbr>") : code) + "</code>"); });
     var known = store.emojis;
-    if (known) s = s.replace(EMOJI_RE, function (m, _a, name, id) { return known(id) ? stash(store, emojiImg(id, name)) : m; });
+    s = s.replace(EMOJI_RE, function (_m, _a, name, id) { return stash(store, known && known(id) ? emojiImg(id, name) : emojiText(name)); });
     var names = store.mentions;
     s = s.replace(MENTION_RE, function (_m, sigil, id) {
       var kind = MENTION_KIND[sigil];

@@ -559,7 +559,7 @@ html.lb-open .scroller { overflow: hidden; }
    these tokens. The surface paints its own background (the page's body is not its). */
 .p-chat.th { background: var(--bg); color: var(--text); }
 .p-chat.th .msg.user .body { border-radius: var(--bubble-radius, var(--r-xl)); }
-.p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+.p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea { font-family: system-ui, -apple-system, "Segoe UI", sans-serif, var(--font-emoji); }
 .p-chat.th-font-mono .thread, .p-chat.th-font-mono .composer textarea { font-family: var(--font-mono); }
 .p-chat.th-bubble-thin .msg.user .body { box-shadow: inset 0 0 0 1px var(--border); }
 .p-chat.th-bubble-accent .msg.user .body { box-shadow: inset 0 0 0 1px var(--accent); }
@@ -1449,6 +1449,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 }
 /* #1630: a Discord server emoji in a chat message, the size of the text around it. */
 .md img.emoji { display: inline-block; width: 1.375em; height: 1.375em; object-fit: contain; vertical-align: -0.3em; margin: 0 0.05em; }
+.md .emoji-text { color: var(--text-2); }
 /* #1682: a mention, as Discord draws one — accent text on a tint of it; the id (or the Telegram handle) on hover. */
 .md .mention { display: inline; padding: 0 0.2em; border-radius: var(--r-sm); color: var(--accent); background: var(--accent-dim);
   font-weight: var(--fw-medium); white-space: nowrap; }

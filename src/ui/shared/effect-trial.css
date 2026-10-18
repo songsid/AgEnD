@@ -16,7 +16,7 @@
   overflow: clip !important;
   background: #ffffff !important;
   color: #1b1b1f !important;
-  font: 400 16px/1.4 system-ui, sans-serif !important;
+  font: 400 16px/1.4 system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", emoji !important;
   direction: ltr !important;
   unicode-bidi: isolate !important;
   text-align: start !important;

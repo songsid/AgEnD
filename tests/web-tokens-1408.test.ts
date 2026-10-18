@@ -100,7 +100,8 @@ describe("Inter, bundled", () => {
       "Microsoft JhengHei", "Microsoft YaHei",
     ]);
     expect(stack.indexOf("system-ui")).toBeGreaterThan(8);
-    expect(stack.at(-1)).toBe("sans-serif");
+    // …then the generic sans-serif, and last the colour emoji fonts (the user's tofu boxes: tests/web-emoji-fonts.test.ts).
+    expect(stack.slice(-2)).toEqual(["sans-serif", "var(--font-emoji)"]);
   });
 
   it("the font file is a WOFF2 subset, and the OFL ships beside it", () => {
