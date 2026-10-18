@@ -75,7 +75,9 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
   - **The name:** your account's display name at sign-in, unless you choose another under **Settings → Preferences → Your name**. The choice follows you to every device you sign in on, the public link included. The id never changes with the name.
   - **Name rules:** 1–32 characters of letters, digits, spaces, single emoji and `. - _ ' ·`. A name can't contain the word "via", and can't be a name AgEnD reserves or an agent's or bot's name here.
 - **Signed in otherwise** (an `agend web` code, or a session from before 2.2): `web-user`, as before. You can still set a name for those messages; signing in once with a `/web` code makes this browser your account.
-- **It is for recognition only.** A web message is never a verified message from that platform account: it grants no permission, and a #1756 human-authorization receipt never names it as one.
+- **It is for recognition only, until you authorize this browser (#1939).** A plain `via web` message grants no permission, and a #1756 human-authorization receipt never names it as your account.
+  - **Authorize this browser** (under the composer, or in the session menu) and confirm the card in your Discord or Telegram DM. Your messages then arrive as `[user:<name> via web (verified), id:<your user id>]`, and their receipts carry your account's authority (`authority.kind: web-verified`): an agent checks and relays them exactly like a message you sent on Discord or Telegram.
+  - It lasts until the authorization runs out (`web.verified_authority.max_session_hours`, default 48), you sign out, or web authority is revoked. Never on the public link or for a guest.
 - **The same name is used** in the topic echo, a ClassicBot room's log, reply-button choices, poll results, tasks you create or claim, and web `/steer` and `/btw`.
 - **Polls:** your web vote is your account's ballot, the same one as your vote on Discord or Telegram.
 

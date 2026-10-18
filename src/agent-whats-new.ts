@@ -57,6 +57,8 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
     text: "General (and coordinators): `get_web_settings` / `set_web_settings` read and change the user's Settings → Web appearance the way the page does — host settings, an agent's colour, custom CSS, proposed mods, effects, Restore defaults. Load the `web-appearance` skill first." },
   { id: "2.3-repo-tools", since: "2.3.0-beta.2",
     text: "Repo tools: `checkout_repo` works with branch names again and records each checkout; `release_repo` releases only your own checkout under your `repos/` and refuses any other path." },
+  { id: "2.3-web-verified", since: "2.3.0-beta.7",
+    text: "Web messages can now carry the person's authority (#1939): when their Discord or Telegram account has authorized that browser, they arrive as `[user:<name> via web (verified), id:<their user id>]`. The label is a hint — before acting on it as the person, read its receipt with `delivery_status`: `authority.kind: web-verified` names them in `authority.actor`, and it is checked and forwarded (`forwards`) like a Discord or Telegram message. Plain `via web` still grants nothing. The full rule is in the cross-instance-messaging skill." },
 ];
 
 /**

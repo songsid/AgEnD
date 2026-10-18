@@ -20,7 +20,7 @@ import { handleWebRequest } from "../src/web-api.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { csrfTokenFor, tokenEpoch, type SessionRecord } from "../src/web-session.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
-import { createHumanReceipt, initializeHumanReceipts, nativeHumanOrigin, queryHumanReceipt, webHumanOrigin } from "../src/human-delivery-receipts.js";
+import { createHumanReceipt, formatHumanInboundMessage, initializeHumanReceipts, nativeHumanOrigin, queryHumanReceipt, webHumanOrigin } from "../src/human-delivery-receipts.js";
 import { validateFleetConfig } from "../src/config-validator.js";
 import { setLocale } from "../src/locale.js";
 import {
@@ -201,6 +201,15 @@ describe("/ui/send: the receipt's origin carries the session's authority (and is
     const handle = h.s.webSessions.list(undefined, () => true)[0]!.handle;
     expect(origin.authority).toEqual({ kind: "web-verified", actor: { adapter_id: "owner", user_id: "admin" },
       session: { handle, peer: "loopback", signed_in_at: new Date(T0).toISOString(), authorized_at: new Date(T0).toISOString() }, authority_epoch: 1 });
+  });
+  it("S3: what the agent sees — authorized: `via web (verified)`; before its account authorized it: plain `via web`", async () => {
+    const h = rig(); h.s.ensureDeliveryOutbox();
+    const seen = (n: number) => { const { name, payload, origin } = h.got[n]!; const meta = h.s.humanReceiptPayload(name, payload, origin, "ship it").meta; return formatHumanInboundMessage(payload.content, meta, "mcp"); };
+    await send(h, session(h));
+    await send(h, session(h, { authorized: false }));
+    expect(seen(0)).toContain("via web (verified), id:admin] ship it");
+    expect(seen(1)).toContain("via web, id:admin] ship it");
+    h.s.deliveryOutbox.close();
   });
   it("§0: the same session before its account authorized it: none — recognition only, as before #1939", async () => {
     const h = rig(); const a = session(h, { authorized: false });

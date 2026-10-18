@@ -4169,6 +4169,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Evidence-only admission. Bots/system/agent payloads have no trusted origin. */
   private humanReceiptPayload(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin | undefined, originalBody: string): Record<string, unknown> {
+    // #1939 S3: "via web (verified)" comes only from the receipt written here — never from a caller's meta.
+    const given = payload.meta as Record<string, unknown> | undefined;
+    if (given && "web_verified" in given) { const { web_verified: _claimed, ...rest } = given; payload = { ...payload, meta: rest }; }
     if (!origin || !this.deliveryOutbox) return payload;
     const row = this.deliveryOutbox.createHumanReceipt({ targetInstance: instanceName, originalBody,
       origin: { ...origin }, inputKind: String(payload.type), managerBootId: this.managerBootId });
@@ -4181,8 +4184,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           input_kind: String(payload.type), outcome: "web-verified", authority_epoch: authority.authority_epoch });
       } catch (err) { this.logger.warn({ err, instanceName }, "Could not record web authority"); }
     }
+    const verified = origin.platform === "web" && authority?.kind === "web-verified";
     return { ...payload, meta: { ...(payload.meta as Record<string, unknown> ?? {}),
-      human_receipt_id: row.receipt_id, verification_id: row.message_id } };
+      human_receipt_id: row.receipt_id, verification_id: row.message_id, ...(verified ? { web_verified: "1" } : {}) } };
   }
 
   /** Bind at the actual IPC send, after all wake/reconnect waits. No human retry lane. */
