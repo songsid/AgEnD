@@ -50,6 +50,21 @@ const KNOWN_WEBKIT = /Refused to apply a stylesheet because its hash, its nonce,
 // (WebKit prints the URL as "https: /host/…".)
 const NAV_CANCELLED = /^(?:Unhandled Promise Rejection: TypeError: Load failed|Fetch API cannot load https?: ?\/\/?[^ /]+\/ui\/(?:poll|events)[^ ]* due to access control checks\.)$/;
 const known: string[] = [];
+/**
+ * The errors, by index, that are a cancel inside one of the smoke's own navigation windows [from, to). By position, not
+ * by text: the same line outside every window still fails.
+ */
+function cancelledIn(errors: string[], windows: Array<[number, number]>, webkit = WEBKIT): Set<number> {
+  const out = new Set<number>();
+  if (!webkit) return out;
+  for (const [from, to] of windows) for (let i = from; i < Math.min(to, errors.length); i++) if (NAV_CANCELLED.test(errors[i]!)) out.add(i);
+  return out;
+}
+{ // Control, every run: one poll cancel inside a window and the very same line outside it — only the one inside goes.
+  const line = "Fetch API cannot load https: /demo.example/ui/poll?after= due to access control checks.";
+  const kept = cancelledIn([line, "something else", line], [[0, 1]], true);
+  if (!(kept.has(0) && !kept.has(2) && kept.size === 1)) throw new Error("cancelledIn: a line outside its window was accepted");
+}
 const pageErrors = (errors: string[]) => errors.filter(e => { if (WEBKIT && KNOWN_WEBKIT.test(e)) { known.push(e); return false; } return true; });
 const check = (ok: boolean, what: string) => { console.log(`${ok ? "ok  " : "FAIL"} ${what}`); if (!ok) failed.push(what); };
 const DAY = 86_400_000, now = Date.now();
@@ -257,7 +272,7 @@ if (process.env.DEBUG) {
   await p.page.click(".us-fix");
   await p.page.waitForSelector("#code", { timeout: 15000 });
   // WebKit: a fetch the public page had in flight is cancelled by this navigation ("Load failed"), only in this window.
-  const navCancelled = new Set([...p.errors.slice(0, atArrival), ...p.errors.slice(beforeNav)].filter(e => WEBKIT && NAV_CANCELLED.test(e)));
+  const windows: Array<[number, number]> = [[0, atArrival], [beforeNav, p.errors.length]];
   const { tokenEpoch } = await import(REPO + "/src/web-session.ts");
   const code = fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken), recipient: link.owner }).display;
   await p.page.fill("#code", code);
@@ -277,7 +292,7 @@ if (process.env.DEBUG) {
   const beforeBack = p.errors.length;
   await p.page.goto(publicUsage);
   await p.page.waitForSelector(".us-row", { timeout: 15000 });
-  for (const e of p.errors.slice(beforeBack)) if (WEBKIT && NAV_CANCELLED.test(e)) navCancelled.add(e);
+  windows.push([beforeBack, p.errors.length]);
   check((await p.page.$$(".us-row")).length >= 3, "public: after the fix, the rows");
   check(await noOverflow(p.page), "public: no horizontal overflow");
   await p.page.screenshot({ path: shotPath(SMOKE, pub, "public-on"), fullPage: true });
@@ -285,9 +300,10 @@ if (process.env.DEBUG) {
   // answering this browser's first visit there before it signed in (the page itself, and the sign-in page's
   // /auth/session — the same pair every fresh sign-in has). Anything else fails.
   const local = `http://localhost:${port}`;
-  const unexpected = pageErrors(p.errors.filter(e => !navCancelled.has(e))).filter(e => !((/status of 403/.test(e) && /\/ui\/usage-report\?/.test(e))
+  const navCancelled = cancelledIn(p.errors, windows);
+  const unexpected = pageErrors(p.errors.filter((_, i) => !navCancelled.has(i))).filter(e => !((/status of 403/.test(e) && /\/ui\/usage-report\?/.test(e))
     || (/status of 401/.test(e) && (e.endsWith(`@ ${local}/settings/web`) || e.endsWith(`@ ${local}/auth/session`)))));
-  if (navCancelled.size) known.push(...navCancelled);
+  for (const i of navCancelled) known.push(p.errors[i]!);
   check(unexpected.length === 0, `public: no page errors besides the refused usage read (${unexpected.join(" | ")})`);
   await p.ctx.close();
   await link.close();
