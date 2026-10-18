@@ -1,8 +1,8 @@
 # #1939 Verified web sessions
 
 Status: target 2.3. **Amended 2026-10-18 (§0): a session is authenticated once; there is no per-action step-up.** §0
-is the design in force, and §1, §3, §4 and §7 are rewritten to match it. §5, §6 (except §6.5's rules for `/authorize`)
-and §11's decisions 4–6 are superseded and kept below only as the record of what was considered. Where §8 or §10 still
+is the design in force (simplified the same day: §0.1), and §1, §3, §4 and §7 are rewritten to match it. §5, §6 and
+§11's decisions 4–6 are superseded and kept below only as the record of what was considered. Where §8 or §10 still
 says "step-up", read "the session's authorization". S1 (#2108) is merged; §0 says what changes in it.
 
 ## 0. Amendment (2026-10-18): authenticate the session once
@@ -19,13 +19,13 @@ says "step-up", read "the session's authorization". S1 (#2108) is merged; §0 sa
 1. **Authorize once.** A session that qualifies under §3 is authorized once. §3 means: a cookie session, admin tier,
    the local surface, a current token epoch, a bound account still in its adapter's `allowed_users`, the target on that
    adapter, the `loopback_only` rule, never the public link.
-   - **How:** the person starts it on `/authorize`, a document of its own (§6.5 still holds: no owner CSS, mod, theme,
-     widget or effect; text only; never framed).
-   - **Confirming:** the person confirms with the account the session's sign-in code went to. AgEnD sends that account,
-     in a DM only, a Confirm card and a one-time code. Clicking the card, or typing the code on `/authorize`, authorizes
-     **that session** (its handle).
-   - **The claim:** only that account can claim the card. The code is single use, 5 minutes, 5 tries, and counts toward
-     the existing breaker.
+   - **How:** the person presses **Authorize this browser** in the app. It is on the session menu, and on a
+     "Not verified" chip by the composer.
+   - **Confirming:** AgEnD posts a Confirm card to the account the session's sign-in code went to, in that account's DM.
+     **Confirm** authorizes **that session** (its handle). **Not me** denies it and signs that session out at once.
+     - **If a DM can't be sent,** that adapter's General gets only a line with no details ("open your DMs, then press
+       Authorize again"). The card, with its account and device, is never posted where others can see it.
+   - **The claim:** only that account can press either button.
    - **What is kept:** an authorization is a record beside the fleet (`web-authorizations.json`, owner-only), keyed by
      the session's handle, holding the account that gave it, when, and the revocation epoch it was given under.
      - It survives a restart while its session lives.
@@ -61,7 +61,7 @@ says "step-up", read "the session's authorization". S1 (#2108) is merged; §0 sa
    - S4's agent card.
 
    Settings → Web → Web authority keeps four controls: the switch, "Only this computer can authorize", the hours, and
-   Revoke web authority. It also lists the authorized sessions.
+   Revoke web authority. It also lists the authorized sessions. §0.1 drops more.
 6. **The instructions (S3)** replace every "web grants nothing" rule with one: a `via web (verified)` message is a human
    receipt; verify it with `delivery_status` (require `authority.kind: web-verified`, delivered, an owned `proof_kind`,
    the content and the actor) the same way as a Discord or Telegram message, and forward it with `forwards`. Plain
@@ -75,16 +75,80 @@ says "step-up", read "the session's authorization". S1 (#2108) is merged; §0 sa
   - **Changed:** `authority.kind` becomes `web-verified`, written only for an authorized session. S1's `web-session` is
     read as `none`.
   - **Added:** the session-authorization store.
-- **S2b, `/authorize`.** The Confirm card and the DM code, verification, the audit events and the owner's DM notice.
-- **S2c, Settings.** The four controls and the authorized sessions.
+- **S2b, the Confirm card** (§0.1): Authorize this browser, the card with Confirm and Not me, its limits, the
+  in-app states, and the audit events.
+- **S2c, Settings.** The four controls and the authorized sessions; the switch on by default (§0.1).
 - **S3.** The instructions and the `via web (verified)` header label.
 
 The receipt model of §4 keeps `authority`. The `step_up` field is not written.
 
+### 0.1 Simplified (2026-10-18): only the gates that stop a named threat
+
+**The user's decision** (fleet decision a94a1bab, relayed by the leader): 「後續要減少這種過度設計權限」 (from now on,
+cut this kind of over-designed permission). The rule: keep the simplest design that holds the real boundary; every
+consent step, switch, origin restriction or precondition names the concrete threat it stops, or it goes; prefer "works
+by default, with a visible off switch".
+
+**The real boundary** is the account's own click: a session gets authority only after the account it was signed in as
+presses Confirm in its own Discord or Telegram. A stolen cookie therefore cannot speak as the person.
+
+**Changed:**
+- **The switch is on by default** (`web.verified_authority.enabled`), with a visible off switch in Settings. On by
+  default exposes nothing: no session carries authority until its account confirms. Off is the server-wide kill
+  (§10), unchanged.
+- **The Confirm card is the only way.** The DM code is dropped: a code typed into a page is the one phishable step,
+  and a click in the person's own Discord isn't. With it goes the separate `/authorize` document and §6.5's isolation
+  rules. That isolation stopped a page restyled to fake a code prompt, and there is no code to fake any more.
+- **No Settings confirmation for these keys.** Turning the switch on, turning `loopback_only` off and a longer
+  `max_session_hours` grant nothing by themselves: a session still needs the account's click. They apply at once. A
+  Settings write still needs an admin session.
+  - **The hours never stretch an authorization already given.** Each authorization keeps the end it was given with
+    (`authorizedAt + max_session_hours` then). A shorter setting shortens it, but a longer one only applies to
+    authorizations given afterwards. So a stolen, already-authorized admin session cannot extend itself by raising the
+    hours.
+
+**Kept, each with the threat it stops:**
+
+| Gate | Threat |
+|---|---|
+| The account's Confirm, once per session | A stolen cookie speaking as the person |
+| §3's checks per request | A guest, the public link, a non-admin, a rotated token, another adapter's account |
+| `loopback_only` (off by default) | A dashboard listener reachable from an untrusted network, for those who want it closed |
+| The revocation epoch, `/web revoke`, Revoke web authority | Recovering after a theft |
+| `max_session_hours` | An authorization left standing long after it was needed |
+
+**Against confirm fatigue**, the one risk the card adds: someone with a stolen cookie pressing Authorize again and
+again, hoping the person taps Confirm.
+- **The card says exactly what it authorizes:**
+  - "this browser";
+  - its surface (this computer, or the network);
+  - a coarse device label from the browser's own description;
+  - the time asked, and when the authorization would end.
+- **One pending request per session**, and at most **3 requests an hour per account**. The app explains a refusal.
+- **A card expires** 5 minutes after it is posted, and is marked expired where it sits. A tap that comes later does
+  nothing.
+- **Confirm is judged at the moment of the tap:** AgEnD reads the session again by its handle and runs §3 again. It
+  refuses, and says so on the card, if:
+  - the session has ended;
+  - its token has rotated;
+  - the epoch has moved;
+  - the account is no longer an admin;
+  - the switch is off.
+- **Not me** denies the request and signs that session out at once, so a theft ends with one tap.
+- **After Confirm, the card stays as the notice:**
+  - it reads "Authorized: this browser (…) until <time>";
+  - it keeps a **Not me** button that signs the session out and ends its authorization for as long as the authorization
+    lasts;
+  - so a mistaken Confirm still has one tap to undo it.
+
+**The from-defaults smoke** (fleet decision a78ebdc5) goes the whole way: a fresh profile signs in, sees "Not verified",
+presses Authorize, gets the card (the DM stubbed), and Confirm turns it verified. It also covers Not me (signed out),
+the limits, and the blocked states: the public link, a guest, the switch off.
+
 ## 1. Summary
 
 A web session that qualifies (§3) is authorized once by the Discord or Telegram account that signed it in: a Confirm
-card or a one-time code, sent to that account only (§0). From then on, its messages, button clicks, `/steer` and `/btw`
+card sent to that account only (§0, §0.1). From then on, its messages, button clicks, `/steer` and `/btw`
 get their own owned authority, `web-verified`, bound to that account. Receivers verify and forward them as they would a
 Discord message.
 
@@ -370,8 +434,8 @@ The receiver applies the rule to the receipt **as `delivery_status` returns it n
 
 ## 6. The step-up mechanism
 
-> Superseded by §0 (2026-10-18), except §6.5's rules for `/authorize` as a document of its own, which still hold.
-> The Confirm card and the DM code now authorize a session, not one action.
+> Superseded by §0 and §0.1 (2026-10-18): the Confirm card authorizes a session, not one action. There is no DM code
+> and no separate `/authorize` document, so §6.5's rules no longer apply.
 
 
 ### 6.1 What a step-up is bound to
@@ -590,7 +654,9 @@ These must hold, and a change to any of them needs a security review and a fresh
 
 ## 10. Migration and staging
 
-> Amended by §0 (2026-10-18): the switch and the revocation rules below stand; S2–S4 are replaced by §0's staging.
+> Amended by §0 and §0.1 (2026-10-18): the revocation rules below stand; S2–S4 are replaced by §0's staging. The switch is
+> on by default, and turning it on (or loosening `loopback_only` or the hours) applies at once, with no Settings
+> confirmation (§0.1).
 
 
 - **The switch, first.** `web.verified_authority.enabled` is a server setting, off by default, and turning it on

@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { fixtureInstances, CLASSIC_ROOMS, TEAMS, type FixtureInstance } from "./data.mts";
 import { drawPicture, PICTURES, type PictureSpec } from "./pictures.mts";
+import { LAN_HOST } from "./from-defaults.mts";
 
 export * from "./data.mts";
 export * from "./pictures.mts";
@@ -148,7 +149,8 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
   const code = () => { fm.initializeWebSessions(); return fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken) }).display; };
   const { chromium } = createRequire(PW + "/")("playwright-core");
   // CHROME if set, else playwright-core's own Chromium (`npx playwright-core install chromium` in PW_DIR).
-  browser = await chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
+  // from-defaults.mts: dashboard.lan.example resolves to the fixture, so a page can be on a real non-loopback origin.
+  browser = await chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox", `--host-resolver-rules=MAP ${LAN_HOST} 127.0.0.1`] });
   const base = `http://127.0.0.1:${o.port}`;
   const painter = await browser.newPage();
   return {
@@ -192,3 +194,4 @@ export function shotPath(smoke: string, c: MatrixCase | string, name: string): s
   return join(out, `${typeof c === "string" ? c : caseName(c)}-${name}.png`);
 }
 export * from "./seed.mts";
+export * from "./from-defaults.mts";
