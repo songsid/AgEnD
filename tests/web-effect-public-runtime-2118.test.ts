@@ -100,6 +100,7 @@ describe("#2118 exact current Chat reads over the real public gateway", () => {
   it.each([false, true])("guest instance/current scope is checked by the handler as well as the route table (public=%s)", async publicLink => {
     const f = await fixture(true), s = f.session(publicLink ? "gateway" : "local"), id = f.upload(); f.themes.setPlacements("own", { effects: [id] }, "human", () => null);
     const path = `/ui/effects/resource/${id}?${query(s.epoch)}`;
+    const shell=await f.call("/ui/chat/own",s,"GET",publicLink); expect(shell.body).toContain('data-owner-css-state="off"');expect(shell.body).not.toContain('data-owner-css="');
     expect((await f.call(path, s, "GET", publicLink)).status).toBe(200);
     f.scope.clear(); expect((await f.call(path, s, "GET", publicLink)).status).toBe(404);
     f.scope.add("own"); f.endGuest(); expect((await f.call(path, s, "GET", publicLink)).status).toBe(404);

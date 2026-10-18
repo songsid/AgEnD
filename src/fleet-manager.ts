@@ -21682,6 +21682,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         ...(image.themeAvatar ? { theme_avatar: image.themeAvatar } : {}),
         ...(image.themeAccent ? { theme_accent: image.themeAccent } : {}),
         ...(() => { try { const v = cardVersion(resolveCard(name, cards.get(name), this.themeStore.get(name).theme.card)); return v ? { card_v: v } : {}; } catch { return {}; } })(),
+        // #2118: only this Chat's placement content; guest projection drops global revisions.
+        effect_chat_v: createHash("sha256").update(JSON.stringify(this.themeStore.get(name).placements.effects)).digest("hex").slice(0, 32),
         // #1958: the identity colour's tiers (the page resolves them: the agent's only while it shows agents' themes).
         color: { ...(colors.get(name)?.color ? { person: colors.get(name)!.color! } : {}), ...(image.agentColor ? { agent: image.agentColor } : {}),
           ...(image.roleColor ? { role: image.roleColor } : {}), auto: autoIdentityColor(name) },

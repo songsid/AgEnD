@@ -19,7 +19,7 @@ function target(extra: any = {}) {
 }
 async function rig(prepare: (h: any) => void = () => {}) {
   const { startAppEffects, getAppEffects } = await import(new URL("../src/ui/app-effects.js", import.meta.url).href);
-  const doc = target({ body: { dataset: { mode: "full", effectScope: "owner", effectEpoch: "e".repeat(16), effectBoot: "a".repeat(32) } }, documentElement: { getAttribute: () => JSON.stringify({ ownerScope: "person", ownerEpoch: "e".repeat(16) }) }, visibilityState: "visible", querySelector: () => null });
+  const doc = target({ body: { dataset: { mode: "full", effectScope: "owner", effectEpoch: "e".repeat(16), effectBoot: "a".repeat(32) } }, documentElement: { getAttribute: () => JSON.stringify({ ownerScope: "person", ownerEpoch: "e".repeat(16) }) }, visibilityState: "visible", querySelector: () => null, querySelectorAll: () => [] });
   const media = target({ matches: false }), coarse = target({ matches: false }), preview = { availability: () => ({ ok: true }), optedIn: () => true, never: () => false, onChange: vi.fn(() => vi.fn()) };
   const observer: any = { observe: vi.fn(), disconnect: vi.fn() };
   const host: any = target({ document: doc, location: { origin: "http://localhost" }, AgendAuth: { onSessionEnd: vi.fn(), sessionEnded: () => false }, AgendPreview: preview,
@@ -262,4 +262,25 @@ it.each([false, true])("#2118 Chat-only app owner constructs no personal, cursor
   });
   expect(h.entry).not.toBeNull(); expect(h.regionFactory).not.toHaveBeenCalled(); expect(h.cursorFactory).not.toHaveBeenCalled(); expect(h.trialController).not.toHaveBeenCalled();
   expect(h.entry.trialStatus(trialMessage())).toBe("localAdmin"); h.entry.dispose();
+});
+
+it("#2118 guest proves absent owner CSS without installing it; unexpected styles stay unknown", async () => {
+  const h = await rig(h => {Object.assign(h.doc.body.dataset,{tier:"guest",effectScope:"chat"}); env.css.reset({state:"unknown"});});
+  expect(h.options().observe().ownerCss).toBe("off"); expect(h.preview.onChange).not.toHaveBeenCalled();
+  h.doc.querySelectorAll=(q:string)=>q==='style,#owner-css'?[{}]:[];
+  expect(h.options().observe().ownerCss).toBe("unknown");
+  h.doc.querySelectorAll=(q:string)=>q.includes('link[')?[{getAttribute:()=>"/ui/owner-css.css?v=unowned"}]:[];
+  expect(h.options().observe().ownerCss).toBe("unknown");
+  h.doc.querySelectorAll=()=>[];h.doc.body.dataset.ownerCss="a".repeat(32); expect(h.options().observe().ownerCss).toBe("unknown"); h.entry.dispose();
+});
+it("#2118 guest status refreshes only the current Chat when its scoped placement content changes", async () => {
+  const {guestStatus}=await import("../src/web-guest-access.js");
+  env.nav.set({seq:2,route:{panel:"chat",instance:"own"}});
+  const status=(own:string,peer:string)=>guestStatus({themes_rev:999,instances:[{name:"own",effect_chat_v:own},{name:"peer",effect_chat_v:peer}]},new Set(["own"]));
+  const h=await rig(h=>Object.assign(h.doc.body.dataset,{tier:"guest",effectScope:"chat"}));h.api.changedChat.mockClear();
+  const publish=(own:string,peer="c".repeat(32))=>env.app.set({...status(own,peer),themesRev:null,prefsRev:null});
+  publish("a".repeat(32));expect(h.api.changedChat).toHaveBeenCalledTimes(1);
+  publish("a".repeat(32),"d".repeat(32));expect(h.api.changedChat).toHaveBeenCalledTimes(1);
+  publish("b".repeat(32));expect(h.api.changedChat).toHaveBeenCalledTimes(2);
+  publish("e".repeat(32));expect(h.api.changedChat).toHaveBeenCalledTimes(3);h.entry.dispose();
 });

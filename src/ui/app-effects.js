@@ -78,6 +78,25 @@ export function startAppEffects({ store, window: host = window, factories = {} }
   };
   owners.set(host, entry); // Reentrant setup never constructs another owner.
   let media, coarse;
+  function ownerCssForPlayback() {
+    if (doc.body.dataset.tier !== "guest") return ownerCssLifecycle.get().state;
+    // Guests never install owner CSS. Prove its absence rather than borrowing the uninstalled
+    // lifecycle's initial unknown, and refuse unexpected styles instead of trusting a missing id.
+    try {
+      if (doc.body.dataset.ownerCss || doc.querySelectorAll("style,#owner-css").length) return "unknown";
+      const allowed = new Set(["/assets/tokens.css", "/assets/app.css"]);
+      for (const link of doc.querySelectorAll('link[rel~="stylesheet"]')) {
+        const url = new URL(link.getAttribute("href"), host.location.origin);
+        if (url.origin !== host.location.origin || !allowed.has(url.pathname) || url.search || url.hash) return "unknown";
+      }
+      return "off";
+    } catch { return "unknown"; }
+  }
+  function guestChatVersion(value) {
+    if (doc.body.dataset.tier !== "guest") return null;
+    const name = navStore.get().route?.instance, v = value.instances?.find(i => i.name === name)?.effect_chat_v;
+    return typeof v === "string" && /^[a-f0-9]{32}$/.test(v) ? v : null;
+  }
   function context() {
     return { safe: safeMode(), publicLink: doc.body.dataset.publicLink === "1", reducedMotion: media?.matches !== false, saveData: host.navigator?.connection?.saveData === true,
       hidden: doc.visibilityState !== "visible", enabled: entry.api?.playbackAvailable !== false && typeof host.OffscreenCanvas === "function" && typeof host.Worker === "function" && typeof host.MutationObserver === "function" && typeof host.ResizeObserver === "function",
@@ -149,7 +168,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     media = host.matchMedia?.("(prefers-reduced-motion: reduce)") ?? { matches: true };
     coarse = host.matchMedia?.("(pointer: coarse)") ?? { matches: false };
     entry.api = (factories.runtime ?? createAppEffectRuntime)({ window: host, current: () => !entry.dead && host.document === doc,
-      observe: () => ({ context: context(), ownerCss: ownerCssLifecycle.get().state, mode: resolvedMode() }), onDispose: () => entry.dispose(),
+      observe: () => ({ context: context(), ownerCss: ownerCssForPlayback(), mode: resolvedMode() }), onDispose: () => entry.dispose(),
       resolveOwnerTarget: (slot, manifest, proof) => !entry.dead ? regions?.resolve?.(slot, manifest.box, proof) ?? null : null,
       onChange: () => { syncCursor(); notify(); } });
     if (entry.dead || !entry.api.ok) { entry.dispose(); return null; }
@@ -169,13 +188,13 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     cursor = ownCursor?.ok ? ownCursor : null; hold(() => ownCursor?.dispose?.());
     if (entry.dead) return null;
     const sync = () => { if (!entry.dead) { trialControl?.sync(); entry.api.sync(); syncCursor(); notifyTrial(); } };
-    let revision = appStore.get().themesRev, prefsRevision = appStore.get().prefsRev, navSeq = navStore.get().seq;
+    let revision = appStore.get().themesRev, prefsRevision = appStore.get().prefsRev, guestRevision = guestChatVersion(appStore.get()), navSeq = navStore.get().seq;
     hold(navStore.subscribe(value => { if (entry.dead || value.seq === navSeq) return; navSeq = value.seq; trialControl?.stop(); chatBinding = null; entry.api.detachChat(); syncCursor(); }));
     hold(appStore.subscribe(value => {
       if (entry.dead) return;
       if (value.connection === "ended") { entry.dispose(); return; }
-      const chatChanged = value.themesRev !== revision, ownerChanged = value.prefsRev !== prefsRevision;
-      revision = value.themesRev; prefsRevision = value.prefsRev;
+      const guestNext = guestChatVersion(value), chatChanged = value.themesRev !== revision || guestNext !== guestRevision, ownerChanged = value.prefsRev !== prefsRevision;
+      revision = value.themesRev; prefsRevision = value.prefsRev; guestRevision = guestNext;
       if (chatChanged) entry.api.changedChat();
       if (ownerChanged) entry.api.changedOwner();
       if (!chatChanged && !ownerChanged) sync();

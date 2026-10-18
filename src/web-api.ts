@@ -2429,7 +2429,7 @@ function shellHtmlTag(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVie
  * the public link, the anonymous View reader, the CLI's header token or the sign-in and setup pages (other panels).
  */
 function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string | null {
-  return mode === "full" && viewer?.person !== null && viewer?.person !== undefined && ctx.ownerCss ? ctx.ownerCss.active(viewer.person) : null;
+  return mode === "full" && !viewer?.guest && viewer?.person !== null && viewer?.person !== undefined && ctx.ownerCss ? ctx.ownerCss.active(viewer.person) : null;
 }
 
 function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: string | null | undefined) => string): string {
@@ -2446,8 +2446,8 @@ function shellEffect(req: IncomingMessage, ctx: AppShellContext, mode: AppShellM
 function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   const p = shellPreview(req, ctx, mode);
   const ownerCss = shellOwnerCss(ctx, mode, viewer), effect = shellEffect(req, ctx, mode);
-  let ownerCssState: "off" | "on" | "unknown" = mode === "full" && gatewayRequestContext(req) ? "off" : "unknown";
-  if (mode === "full" && viewer?.person != null && ctx.ownerCss) {
+  let ownerCssState: "off" | "on" | "unknown" = mode === "full" && (gatewayRequestContext(req) || viewer?.guest) ? "off" : "unknown";
+  if (mode === "full" && !viewer?.guest && viewer?.person != null && ctx.ownerCss) {
     ownerCssState = ctx.ownerCss.effectState(viewer.person);
     if (ownerCssState === "off" && ownerCss !== null || ownerCssState === "on" && ownerCss === null) ownerCssState = "unknown";
   }

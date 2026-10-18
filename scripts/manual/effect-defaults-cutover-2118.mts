@@ -15,7 +15,7 @@ const pw=createRequire(process.env.PW_DIR+'/')('playwright-core');
 const engines=(process.env.PROBE_ENGINES||'chromium,firefox,webkit').split(',');
 const origins=(process.env.PROBE_SURFACES||'loopback,lan,public').split(',');
 const widths=(process.env.PROBE_WIDTHS||'1366,390').split(',').map(Number),modes=(process.env.PROBE_MODES||'light,dark').split(',');
-const reductions=process.env.PROBE_GROUPS==='fresh-only'?[false]:[false,true],rows=[];
+const asGuest=process.env.PROBE_GROUPS==='guest',reductions=asGuest||process.env.PROBE_GROUPS==='fresh-only'?[false]:[false,true],rows=[];
 function pixels(png){
  assert.equal(png.subarray(0,8).toString('hex'),'89504e470d0a1a0a');let i=8,w=0,h=0,c=0;const parts=[];
  while(i<png.length){const n=png.readUInt32BE(i),t=png.subarray(i+4,i+8).toString(),d=png.subarray(i+8,i+8+n);i+=n+12;if(t==='IHDR'){w=d.readUInt32BE(0);h=d.readUInt32BE(4);assert.equal(d[8],8);c=d[9]===2?3:d[9]===6?4:0;assert.ok(c);assert.equal(d[12],0)}if(t==='IDAT')parts.push(d);if(t==='IEND')break}
@@ -34,10 +34,11 @@ for(const engine of engines)for(const origin of origins)for(const width of width
   const actualBrowser={newContext:opts=>browser.newContext({...opts,...(engine==='firefox'?{isMobile:false}:{})})};
   const view={...fx,browser:actualBrowser},name=fx.instances[0].name;
   const code=process.env.PROBE_MUTATION==='no-paint'?'agend.ready();':"const c=agend.canvas.getContext('2d');function draw(){c.fillStyle='#ed174c';c.fillRect(0,0,4096,4096)}draw();agend.on('env',draw);agend.ready();";
-  const staged=fx.fm.effectLibrary.stage(new Map([['effect.json',Buffer.from(JSON.stringify({v:1,runtime:'canvas-worker-v1',worker:'worker.js',name:'defaults-smoke',title:'Visible defaults sample',regions:['chat'],layer:'front',wants:[]}))],['worker.js',Buffer.from(code)]]),{kind:'agent',id:name});assert.equal(staged.ok,true);const commit=fx.fm.effectLibrary.commit(staged.stageId);assert.equal(commit.ok,true);const id=commit.ids[0];assert.ok(!fx.fm.effectTools.apply(name,{id}).error);assert.equal((await fx.fm.effectTools.preview(name,{id})).status,"offered");
+  const staged=fx.fm.effectLibrary.stage(new Map([['effect.json',Buffer.from(JSON.stringify({v:1,runtime:'canvas-worker-v1',worker:'worker.js',name:'defaults-smoke',title:'Visible defaults sample',regions:['chat'],layer:'front',wants:[]}))],['worker.js',Buffer.from(code)]]),{kind:'agent',id:name});assert.equal(staged.ok,true);const commit=fx.fm.effectLibrary.commit(staged.stageId);assert.equal(commit.ok,true);const id=commit.ids[0];if(!asGuest)assert.ok(!fx.fm.effectTools.apply(name,{id}).error);assert.equal((await fx.fm.effectTools.preview(name,{id})).status,"offered");
   const beforeNavigate=async ctx=>ctx.addInitScript(()=>{globalThis.__defaultViolations=[];globalThis.__defaultStyleInserts=[];new MutationObserver(rs=>{for(const r of rs)for(const n of r.addedNodes)if(n.nodeName==='STYLE')globalThis.__defaultStyleInserts.push(n.textContent)}).observe(document,{childList:true,subtree:true});document.addEventListener('securitypolicyviolation',e=>globalThis.__defaultViolations.push({directive:e.effectiveDirective,blocked:e.blockedURI,source:e.sourceFile,line:e.lineNumber,column:e.columnNumber,sample:e.sample,target:e.target?.outerHTML?.slice(0,500)}))});
+  const guestSetup=()=>{if(!asGuest)return;fx.fm.initializeWebSessions();fx.fm.fleetConfig.web.guests={enabled:true};fx.fm.guestScope=()=>new Set([name]);fx.fm.confirmGuestPublicWebLogin=async()=>{};const issue=fx.fm.webLoginCodes.issue.bind(fx.fm.webLoginCodes);fx.fm.webLoginCodes.issue=input=>issue({...input,tier:'guest',owner:undefined,recipient:input.recipient??{adapterId:input.owner.adapterId,userId:input.owner.userId}});row.syntheticGuestScope=[name]};
   const c={device:width<900?'phone':'desk',theme,lang:'en'};let fresh;
-  if(origin==='public'){link=await openPublicLink(view);fresh=await link.publicPage(c,{reducedMotion:reduced,beforeNavigate})}else fresh=await freshPage(view,c,{origin,reducedMotion:reduced,beforeNavigate});
+  if(origin==='public'){link=await openPublicLink(view);guestSetup();fresh=await link.publicPage(c,{reducedMotion:reduced,beforeNavigate})}else {guestSetup();fresh=await freshPage(view,c,{origin,reducedMotion:reduced,beforeNavigate});}
   ({page,ctx}=fresh);
   capture=async options=>{
    const count=async()=>new Map(await Promise.all(page.frames().map(async f=>[f,await f.evaluate(()=>globalThis.__defaultStyleInserts?.filter(s=>s==='body {}').length||0).catch(()=>0)])));
@@ -50,26 +51,26 @@ for(const engine of engines)for(const origin of origins)for(const width of width
    if(engine==='webkit'&&indices.length&&indices.length===injected){(row.captureCompatibility??=[]).push({injectedBodyRules:injected,diagnostics:indices.map(i=>fresh.errors[i])});for(const i of indices)(row.captureErrorIndices??=[]).push(i)}
    return buffer;
   };
-  assert.equal(await mounted(page),true);row.version=browser.version();row.signInErrors=fresh.expected;
+  row.browserErrors=fresh.errors;assert.equal(await mounted(page,30000),true);row.version=browser.version();row.signInErrors=fresh.expected;
   const requests=[];page.on('response',r=>{if(/\/effect-bootstrap|\/ui\/effects\//.test(r.url()))requests.push({url:new URL(r.url()).pathname,status:r.status()})});
   const a=page.locator(`.sidebar a[href="/ui/chat/${name}"]`);await a.waitFor({state:"attached"});if(width>=900)await a.waitFor({state:"visible"});else if(!await a.isVisible())await page.locator('button[aria-controls="sidebar"][aria-expanded]').filter({visible:true}).click();
-  await a.click();await page.waitForSelector('.p-chat .chat-main');
+  await a.click();await page.waitForSelector('.p-chat .chat-main');if(asGuest){await page.waitForFunction(async()=>{const m=await import('/ui/js/app-effects.js'),s=m.getAppEffects()?.api.snapshot();return s&&!s.loading&&s.effects.length===0});assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);assert.ok(!fx.fm.effectTools.apply(name,{id}).error);row.guestInitialEmptyToApply=true;}
   if(reduced){await page.waitForFunction(()=>document.querySelector('.chat-fx-notice')?.textContent.includes('reduced motion'),undefined,{timeout:12000});assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);row.blocked='reduced_motion';row.notice=await page.locator('.chat-fx-notice').allTextContents();await capture({path:join(out,key+'.png')});}
   else{
    await page.waitForFunction(()=>[...document.querySelectorAll('iframe.agend-effect-frame')].some(f=>getComputedStyle(f).visibility==='visible'),undefined,{timeout:15000});
    // ready/visible precedes the browser's asynchronous OffscreenCanvas presentation.
    // Wait for independent screenshot pixels, never infer paint from port/DOM readiness.
-   row.errorsBeforePaint=[...fresh.errors];let image;const paintUntil=Date.now()+4000;do{image=pixels(await capture({path:join(out,key+'.png')}));if(image.red>500)break;await page.waitForTimeout(100)}while(Date.now()<paintUntil);
+   row.errorsBeforePaint=[...fresh.errors];let image;const paintUntil=Date.now()+8000;do{image=pixels(await capture({path:join(out,key+'.png')}));if(image.red>500)break;await page.waitForTimeout(500)}while(Date.now()<paintUntil);
    assert.ok(image.red>500,'actual independent red paint');row.redPixels=image.red;
    const controls=await page.evaluate(()=>[...document.querySelectorAll('.dock textarea,.dock button,.panel-head button')].filter(e=>e.getBoundingClientRect().width&&e.getBoundingClientRect().height).slice(0,8).map(e=>{const r=e.getBoundingClientRect();return{tag:e.tagName,x:r.left+3,y:r.top+3}}));
    assert.ok(controls.length>1);row.protected=controls.map(p=>({...p,rgb:image.pixel(p.x,p.y)}));assert.ok(row.protected.every(p=>!(p.rgb[0]>200&&p.rgb[1]<60&&p.rgb[2]>40&&p.rgb[2]<110)),'protected control pixels must not turn red');
    row.active=await page.evaluate(()=>document.activeElement?.tagName);assert.ok(requests.some(r=>r.url==='/effect-bootstrap'&&r.status===200));assert.ok(requests.some(r=>r.url.startsWith('/ui/effects/resource/')&&r.status===200));row.requests=requests;
    // The same visible offer uses one click on any non-public admin dashboard origin.
-   if(origin==='public') { assert.equal(await page.locator('.effect-trial-start').count(),0);row.trial='public has no Start authority'; }
+   if(origin==='public'||asGuest) { assert.equal(await page.locator('.effect-trial-start').count(),0);row.trial='public/guest has no Start authority';if(asGuest){const same=await page.locator('iframe.agend-effect-frame').elementHandle();fx.fm.emitSseEvent('status',fx.fm.getUiStatus());await page.waitForTimeout(500);assert.equal(await same.evaluate(e=>e.isConnected),true,'identical scoped version preserves its frame');assert.equal(fx.fm.themeStore.setPlacements(name,{effects:[]},'human',()=>null).ok,true);fx.fm.emitSseEvent('status',fx.fm.getUiStatus());await page.waitForFunction(()=>!document.querySelector('iframe.agend-effect-frame'),undefined,{timeout:10000});row.guestRemoveObserved=true;} }
    else {
     await page.waitForFunction(()=>document.querySelector('.effect-trial-start')?.textContent==='Try');await page.locator('.effect-trial-start').click();
     await page.waitForFunction(async()=>{const m=await import('/assets/effect-trial-shadow.js');const p=document.querySelector('.effect-trial-panel'),s=p&&m.effectTrialShadow(window,p);const f=s?.stage.querySelector('iframe');return f&&getComputedStyle(f).visibility==='visible'},undefined,{timeout:15000});
-    let trialPaint;const until=Date.now()+4000;do{trialPaint=pixels(await capture({path:join(out,key+'-try.png')}));if(trialPaint.red>500)break;await page.waitForTimeout(100)}while(Date.now()<until);assert.ok(trialPaint.red>500,'independent Trial pixels');
+    let trialPaint;const until=Date.now()+8000;do{trialPaint=pixels(await capture({path:join(out,key+'-try.png')}));if(trialPaint.red>500)break;await page.waitForTimeout(500)}while(Date.now()<until);assert.ok(trialPaint.red>500,'independent Trial pixels');
     const shell=await page.evaluate(async()=>{const m=await import('/assets/effect-trial-shadow.js'),s=m.effectTrialShadow(window,document.querySelector('.effect-trial-panel'));const r=s.stage.getBoundingClientRect(),c=getComputedStyle(s.stage),b=s.root.querySelector('.effect-trial-stop').getBoundingClientRect();return{contain:c.contain,overflow:c.overflow,stage:{x:r.x,y:r.y,width:r.width,height:r.height},stop:{x:b.x+b.width/2,y:b.y+b.height/2}}});
     assert.ok(shell.contain.includes('paint'));assert.equal(shell.overflow,'clip');await page.mouse.click(shell.stop.x,shell.stop.y);
     await page.waitForFunction(async()=>{const m=await import('/assets/effect-trial-shadow.js'),p=document.querySelector('.effect-trial-panel');return !p||!m.effectTrialShadow(window,p)?.stage.querySelector('iframe')});row.trial={status:'explicit-click painted and Stop removed',redPixels:trialPaint.red,...shell};

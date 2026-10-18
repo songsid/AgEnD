@@ -153,7 +153,7 @@ export function guestRequestOf(req: object): GuestRequest | undefined { return g
  * backend, effort, cost, context, description, tags or what it is waiting for (a prompt's text). And nothing of the
  * fleet: no public link, connections, uptime, host memory, revisions.
  */
-const STATUS_FIELDS = ["name", "display_name", "avatar", "accent", "theme_avatar", "theme_accent", "card_v", "color", "color_show", "status", "state", "execution_state"] as const;
+const STATUS_FIELDS = ["name", "display_name", "avatar", "accent", "theme_avatar", "theme_accent", "card_v", "effect_chat_v", "color", "color_show", "status", "state", "execution_state"] as const;
 export function guestStatus(status: unknown, scope: ReadonlySet<string>): { instances: Array<Record<string, unknown>> } {
   const list = status && typeof status === "object" && Array.isArray((status as { instances?: unknown }).instances) ? (status as { instances: unknown[] }).instances : [];
   const instances: Array<Record<string, unknown>> = [];
