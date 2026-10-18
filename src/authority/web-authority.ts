@@ -1,30 +1,32 @@
 /**
- * #1939: whether a web chat message, command or click carries `web-session` authority — the design's §3 checks, made
- * per request — the `authority` a human receipt records (§4), and how delivery_status reads it now (§10: the switch, the
- * revocation epoch, "Only this computer can authorize"). Nothing tells an agent to accept it yet: the instructions still
- * say web grants nothing (S3 changes that). docs/design/1939-verified-web-sessions.md.
+ * #1939: whether a web chat message, command or click carries `web-verified` authority — the design's §3 checks, made
+ * per request, on a session its account has authorized once (§0) — the `authority` a human receipt records (§4), and how
+ * delivery_status reads it now (§10: the switch, the revocation epoch, "Only this computer can authorize"). Nothing tells
+ * an agent to accept it yet: the instructions still say web grants nothing (S3 changes that).
+ * docs/design/1939-verified-web-sessions.md.
  */
 import type { SessionRecord } from "../web-session.js";
 import type { WebConfig } from "../types.js";
 import { hostnameOf, LOOPBACK_HOST_NAMES } from "../web-host-guard.js";
+import type { SessionAuthorization } from "./session-authorizations.js";
 
 /** Where one request came from (§3.4): `loopback` is this machine naming a loopback host; `lan` is only "not loopback". */
 export type WebPeer = "loopback" | "lan";
 
 /** The account behind a human receipt, written by AgEnD at admission — nothing in a message can set it (§4). */
 export interface HumanAuthority {
-  kind: "platform" | "web-session" | "none";
+  kind: "platform" | "web-verified" | "none";
   /** The platform sender, or the web session's bound account. */
   actor: { adapter_id: string; user_id: string } | null;
-  /** web-session only. `handle` is the opaque one the device list shows. */
-  session?: { handle: string; peer: WebPeer; signed_in_at: string; age_s: number };
+  /** web-verified only. `handle` is the opaque one the device list shows; `authorized_at`: when its account authorized it. */
+  session?: { handle: string; peer: WebPeer; signed_in_at: string; authorized_at: string };
   /** The revocation epoch it was granted under (§10; authority-state.ts). */
   authority_epoch: number;
-  /** delivery_status only, never stored: why a web-session receipt reads as none now (§10). */
+  /** delivery_status only, never stored: why a web-verified receipt reads as none now (§10). */
   downgraded?: AuthorityDowngrade;
 }
 
-/** §10: what turned a web-session receipt into none after it was written. */
+/** §10: what turned a web-verified receipt into none after it was written. */
 export type AuthorityDowngrade = "disabled" | "revoked" | "loopback_only";
 
 /** Why a web request carries no authority — the first §3 check it failed. */
@@ -38,7 +40,8 @@ export type WebAuthorityRefusal =
   | "not_admin"            // §3.3: no longer in its adapter's access.allowed_users
   | "other_namespace"      // §3.3: the target instance belongs to another adapter
   | "loopback_only"        // §3.4: "Only this computer can authorize" is on and this request is not loopback
-  | "too_old"              // §3.6: signed in longer ago than max_session_hours
+  | "not_authorized"       // §0: its account has not authorized this session (or not under the current epoch)
+  | "authorization_expired" // §0: authorized longer ago than max_session_hours
   | "session_changed";     // the session after the body is not the one the request arrived with
 
 export interface WebAuthorityResult {
@@ -46,7 +49,7 @@ export interface WebAuthorityResult {
   refusal: WebAuthorityRefusal | null;
 }
 
-/** §3.6: ordinary authority lasts at most this long after sign-in (web.verified_authority.max_session_hours). */
+/** §0: a session's authorization lasts at most this long after it was given (web.verified_authority.max_session_hours). */
 export const VERIFIED_SESSION_HOURS = { min: 1, max: 48, default: 48 } as const;
 
 export interface WebAuthorityPolicy {
@@ -98,6 +101,8 @@ export interface WebAuthorityInput {
   target?: { adapterId: string | undefined };
   /** adminGate(userId, adapterId) === "ok": in that adapter's access.allowed_users, now. */
   isAdmin: (userId: string, adapterId: string) => boolean;
+  /** §0: this session's authorization (session-authorizations.ts), or null when its account has not given one. */
+  authorization: SessionAuthorization | null;
   policy: WebAuthorityPolicy;
   epoch: number;
   now: number;
@@ -105,7 +110,7 @@ export interface WebAuthorityInput {
 
 export const noAuthority = (epoch: number): HumanAuthority => ({ kind: "none", actor: null, authority_epoch: epoch });
 
-/** §3: every check, in order, for one request. The first that fails is the refusal; all passing is `web-session`. */
+/** §3: every check, in order, for one request. The first that fails is the refusal; all passing is `web-verified`. */
 export function evaluateWebAuthority(i: WebAuthorityInput): WebAuthorityResult {
   const refuse = (refusal: WebAuthorityRefusal): WebAuthorityResult => ({ authority: noAuthority(i.epoch), refusal });
   const s = i.session;
@@ -120,12 +125,14 @@ export function evaluateWebAuthority(i: WebAuthorityInput): WebAuthorityResult {
   if (!i.isAdmin(owner.userId, owner.adapterId)) return refuse("not_admin");
   if (i.target && i.target.adapterId !== owner.adapterId) return refuse("other_namespace");
   if (i.policy.loopbackOnly && i.peer !== "loopback") return refuse("loopback_only");
-  const age = i.now - s.created;
-  if (!(age <= i.policy.maxSessionMs)) return refuse("too_old");
+  // §0: authorized once, by this account, for this session, under the current epoch, and not longer ago than allowed.
+  const a = i.authorization;
+  if (!a || a.handle !== s.handle || a.owner.adapterId !== owner.adapterId || a.owner.userId !== owner.userId || a.epoch !== i.epoch) return refuse("not_authorized");
+  if (!(i.now - a.authorizedAt <= i.policy.maxSessionMs)) return refuse("authorization_expired");
   return {
     authority: {
-      kind: "web-session", actor: { adapter_id: owner.adapterId, user_id: owner.userId },
-      session: { handle: s.handle, peer: i.peer, signed_in_at: new Date(s.created).toISOString(), age_s: Math.max(0, Math.floor(age / 1000)) },
+      kind: "web-verified", actor: { adapter_id: owner.adapterId, user_id: owner.userId },
+      session: { handle: s.handle, peer: i.peer, signed_in_at: new Date(s.created).toISOString(), authorized_at: new Date(a.authorizedAt).toISOString() },
       authority_epoch: i.epoch,
     },
     refusal: null,
@@ -144,12 +151,12 @@ export function confirmAfterBody(arrival: WebAuthorityResult, now: WebAuthorityR
 }
 
 /**
- * §10: a receipt's authority as it reads NOW. A web-session one reads as none, saying why, while the switch is off, once
+ * §10: a receipt's authority as it reads NOW. A web-verified one reads as none, saying why, while the switch is off, once
  * the epoch has moved past the one it was granted under, or (lan only) while "Only this computer can authorize" is on.
  * Platform and none are unchanged. The receiver applies the rule to this, never to the stored value.
  */
 export function authorityNow(stored: HumanAuthority, state: { enabled: boolean; loopbackOnly: boolean; epoch: number }): HumanAuthority {
-  if (stored.kind !== "web-session") return stored;
+  if (stored.kind !== "web-verified") return stored;
   const down = (downgraded: AuthorityDowngrade): HumanAuthority => ({ kind: "none", actor: null, authority_epoch: stored.authority_epoch, downgraded });
   if (!state.enabled) return down("disabled");
   if (stored.authority_epoch < state.epoch) return down("revoked");
@@ -175,10 +182,11 @@ export function isHumanAuthority(v: unknown): v is HumanAuthority {
     && typeof actor.user_id === "string" && !!actor.user_id;
   if (a.kind === "none") return a.actor === null && a.session === undefined;
   if (a.kind === "platform") return actorOk && a.session === undefined;
-  if (a.kind !== "web-session" || !actorOk) return false;
+  // S1's observe-only "web-session" is not authority any more (§0: never an authorization): it fails here, so reads none.
+  if (a.kind !== "web-verified" || !actorOk) return false;
   const s = a.session as Record<string, unknown> | undefined;
   return !!s && typeof s === "object" && typeof s.handle === "string" && !!s.handle && (s.peer === "loopback" || s.peer === "lan")
-    && typeof s.signed_in_at === "string" && Number.isSafeInteger(s.age_s) && (s.age_s as number) >= 0;
+    && typeof s.signed_in_at === "string" && typeof s.authorized_at === "string";
 }
 
 /**
@@ -190,8 +198,8 @@ export function receiptAuthority(origin: { platform: string; adapter_id: string 
   let parsed: unknown;
   try { parsed = JSON.parse(stored); } catch { return noAuthority(0); }
   if (!isHumanAuthority(parsed)) return noAuthority(0);
-  // Web traffic is never platform authority, and platform traffic never web-session (§4).
-  const crossed = parsed.kind === "platform" ? origin.platform === "web" : parsed.kind === "web-session" && origin.platform !== "web";
+  // Web traffic is never platform authority, and platform traffic never web-verified (§4).
+  const crossed = parsed.kind === "platform" ? origin.platform === "web" : parsed.kind === "web-verified" && origin.platform !== "web";
   if (crossed) return noAuthority(parsed.authority_epoch);
   return parsed;
 }

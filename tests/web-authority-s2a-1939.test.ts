@@ -1,6 +1,6 @@
 /**
- * #1939 S2a: the step-up policy's one source (§5), the server switch and the revocation epoch (§10), and how
- * delivery_status reads a receipt's authority now. docs/design/1939-verified-web-sessions.md.
+ * #1939 S2a: the server switch and the revocation epoch (§10), sessions authorized once (§0), and how delivery_status
+ * reads a receipt's authority now. docs/design/1939-verified-web-sessions.md.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -17,7 +17,7 @@ import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { createHumanReceipt, initializeHumanReceipts, nativeHumanOrigin, webHumanOrigin } from "../src/human-delivery-receipts.js";
 import { validateFleetConfig } from "../src/config-validator.js";
 import { tokenEpoch } from "../src/web-session.js";
-import { DEFAULT_ENFORCED, STEP_UP_CATALOG, enforcedStepUps, stepUpActions, stepUpPolicyProblems } from "../src/authority/step-up-policy.js";
+import { SessionAuthorizations, SESSION_AUTHORIZATIONS_MAX, type SessionAuthorizationsIo } from "../src/authority/session-authorizations.js";
 import { AuthorityStateStore, type AuthorityStateIo } from "../src/authority/authority-state.js";
 import { authorityNow, evaluateWebAuthority, type HumanAuthority } from "../src/authority/web-authority.js";
 import Database from "better-sqlite3";
@@ -26,80 +26,8 @@ const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "agend-1939-s2a-")); dirs.push(d); return d; };
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-const webSession = (epoch: number, peer: "loopback" | "lan" = "loopback"): HumanAuthority => ({ kind: "web-session", actor: { adapter_id: "owner", user_id: "admin" },
-  session: { handle: "a1b2c3d4e5f60718", peer, signed_in_at: "2026-10-18T09:00:00.000Z", age_s: 60 }, authority_epoch: epoch });
-
-describe("§5 the one source: the catalog, the defaults, custom actions, and the enforced list in force", () => {
-  it("the catalog is §5's table: ids, target kinds, English and Chinese labels", () => {
-    expect(STEP_UP_CATALOG.map(a => [a.id, a.targets.join("|")])).toEqual([
-      ["release", "tag"], ["force-push", "branch"], ["delete-instance", "instance"], ["merge", "pr"], ["history-rewrite", "branch"],
-      ["real-account", "account"], ["deploy", "text"], ["close", "pr|issue"], ["credential", "instance"], ["fleet-control", "text"],
-    ]);
-    for (const a of STEP_UP_CATALOG) { expect(a.label.length).toBeGreaterThan(5); expect(a.label_zh.length).toBeGreaterThan(3); expect(a.custom).toBeUndefined(); }
-    expect(Object.isFrozen(STEP_UP_CATALOG) && Object.isFrozen(STEP_UP_CATALOG[0]) && Object.isFrozen(STEP_UP_CATALOG[0]!.targets)).toBe(true);
-  });
-  it("the default list is release, force-push and delete-instance (§11.5)", () => {
-    expect(DEFAULT_ENFORCED).toEqual(["release", "force-push", "delete-instance"]);
-    expect(enforcedStepUps(undefined).enforced).toEqual(["release", "force-push", "delete-instance"]);
-    expect(enforcedStepUps({ step_up: {} }).enforced).toEqual(["release", "force-push", "delete-instance"]);
-  });
-  it("the user's list is used as written: emptied, extended with merge and a custom action; unknown ids are not enforced", () => {
-    const custom = [{ id: "drop-database", label: "Drop a production database", label_zh: "刪除正式資料庫" }];
-    expect(enforcedStepUps({ step_up: { enforce: [] } }).enforced).toEqual([]);
-    expect(enforcedStepUps({ step_up: { enforce: ["merge", "release", "drop-database"], custom } }).enforced).toEqual(["merge", "release", "drop-database"]);
-    expect(enforcedStepUps({ step_up: { enforce: ["release", "drop-database", "nope", "release"] } }).enforced).toEqual(["release"]);
-  });
-  it("version: informational — the same for the same list, different when the list changes", () => {
-    const a = enforcedStepUps(undefined).version, b = enforcedStepUps({ step_up: { enforce: ["release", "force-push", "delete-instance"] } }).version;
-    expect(a).toMatch(/^[0-9a-f]{12}$/);
-    expect(b).toBe(a);
-    expect(enforcedStepUps({ step_up: { enforce: ["release"] } }).version).not.toBe(a);
-  });
-  it("custom actions join the table with text targets; a bad one is left out (never shadows the catalog)", () => {
-    const table = stepUpActions({ step_up: { custom: [
-      { id: "drop-database", label: "Drop a production database" },
-      { id: "merge", label: "My merge" }, { id: "X1", label: "bad id" }, { id: "rotate-keys", label: "" }, { id: "wipe-disk", label: "a\nb" },
-    ] } });
-    expect(table.get("drop-database")).toEqual({ id: "drop-database", label: "Drop a production database", label_zh: "Drop a production database", targets: ["text"], custom: true });
-    expect(table.get("merge")!.label).toBe("Merge into a protected branch");
-    expect([...table.keys()].filter(k => !STEP_UP_CATALOG.some(a => a.id === k))).toEqual(["drop-database"]);
-  });
-  it("the validator names every problem under step_up", () => {
-    const paths = (stepUp: unknown) => stepUpPolicyProblems(stepUp).map(p => `${p.warning ? "warn" : "err"} ${p.path}`);
-    expect(paths(undefined)).toEqual([]);
-    expect(paths({ enforce: ["release", "drop-database"], custom: [{ id: "drop-database", label: "Drop", label_zh: "刪除" }] })).toEqual([]);
-    expect(paths([])).toEqual(["err web.verified_authority.step_up"]);
-    expect(paths({ extra: 1 })).toEqual(["warn web.verified_authority.step_up.extra"]);
-    expect(paths({ enforce: "release" })).toEqual(["err web.verified_authority.step_up.enforce"]);
-    expect(paths({ enforce: ["nope", 7] })).toEqual(["err web.verified_authority.step_up.enforce[0]", "err web.verified_authority.step_up.enforce[1]"]);
-    expect(paths({ custom: {} })).toEqual(["err web.verified_authority.step_up.custom"]);
-    expect(paths({ custom: ["x"] })).toEqual(["err web.verified_authority.step_up.custom[0]"]);
-    expect(paths({ custom: [{ id: "ab", label: "x" }] })).toEqual(["err web.verified_authority.step_up.custom[0].id"]);
-    expect(paths({ custom: [{ id: "release", label: "x" }] })).toEqual(["err web.verified_authority.step_up.custom[0].id"]);
-    expect(paths({ custom: [{ id: "abc", label: "x" }, { id: "abc", label: "y" }] })).toEqual(["err web.verified_authority.step_up.custom[1].id"]);
-    expect(paths({ custom: [{ id: "abc", label: "x".repeat(81) }] })).toEqual(["err web.verified_authority.step_up.custom[0].label"]);
-    expect(paths({ custom: [{ id: "abc", label: "x", label_zh: "" }] })).toEqual(["err web.verified_authority.step_up.custom[0].label_zh"]);
-    expect(paths({ custom: [{ id: "abc", label: "x", color: "red" }] })).toEqual(["warn web.verified_authority.step_up.custom[0].color"]);
-    // A custom id that failed is not one enforce may name.
-    expect(paths({ enforce: ["Bad"], custom: [{ id: "Bad", label: "x" }] })).toEqual(["err web.verified_authority.step_up.custom[0].id", "err web.verified_authority.step_up.enforce[0]"]);
-  });
-  it("…and fleet.yaml validation reports them, with the switch", () => {
-    const r = validateFleetConfig({ instances: {}, web: { verified_authority: { enabled: "yes", step_up: { enforce: ["nope"], other: 1 } } } } as never);
-    expect(r.errors.map(e => e.path).filter(p => p.startsWith("web."))).toEqual(["web.verified_authority.enabled", "web.verified_authority.step_up.enforce[0]"]);
-    expect(r.warnings.map(e => e.path).filter(p => p.startsWith("web."))).toEqual(["web.verified_authority.step_up.other"]);
-  });
-  it("the configuration docs name the switch and the default list", () => {
-    for (const file of ["docs/configuration.md", "docs/configuration.zh-TW.md"]) {
-      const text = readFileSync(join(import.meta.dirname, "..", file), "utf8");
-      const at = text.indexOf("verified_authority`"), part = text.slice(at, text.indexOf(" |", at));
-      expect(at).toBeGreaterThan(0);
-      for (const key of ["enabled", "loopback_only", "max_session_hours", "step_up", "enforce", "custom"]) expect(part).toContain(`\`${key}`);
-      for (const a of STEP_UP_CATALOG) expect(part).toContain(`\`${a.id}\``);
-      // The defaults are named first, in order, before the others to pick from.
-      expect(part.indexOf(DEFAULT_ENFORCED.map(id => `\`${id}\``).join(file.endsWith("zh-TW.md") ? "、" : ", "))).toBeGreaterThan(0);
-    }
-  });
-});
+const webSession = (epoch: number, peer: "loopback" | "lan" = "loopback"): HumanAuthority => ({ kind: "web-verified", actor: { adapter_id: "owner", user_id: "admin" },
+  session: { handle: "a1b2c3d4e5f60718", peer, signed_in_at: "2026-10-18T09:00:00.000Z", authorized_at: "2026-10-18T09:05:00.000Z" }, authority_epoch: epoch });
 
 /** An in-memory file for the store; `fail` makes writes throw. */
 function memIo(initial?: string) {
@@ -205,7 +133,7 @@ describe("§10 the revocation epoch: moved by the switch, by loopback_only going
 
 describe("§10 a receipt's authority, read now", () => {
   const on = { enabled: true, loopbackOnly: false, epoch: 3 };
-  it("web-session stays while on, at the current epoch", () => {
+  it("web-verified stays while on, at the current epoch", () => {
     expect(authorityNow(webSession(3), on)).toEqual(webSession(3));
     expect(authorityNow(webSession(3, "lan"), on)).toEqual(webSession(3, "lan"));
   });
@@ -218,7 +146,7 @@ describe("§10 a receipt's authority, read now", () => {
     expect(authorityNow(stored, state)).toEqual({ kind: "none", actor: null, authority_epoch: stored.authority_epoch, downgraded });
   });
   it("loopback under loopback_only stays; platform and none never change", () => {
-    expect(authorityNow(webSession(3), { ...on, loopbackOnly: true }).kind).toBe("web-session");
+    expect(authorityNow(webSession(3), { ...on, loopbackOnly: true }).kind).toBe("web-verified");
     const platform: HumanAuthority = { kind: "platform", actor: { adapter_id: "owner", user_id: "7" }, authority_epoch: 0 };
     expect(authorityNow(platform, { enabled: false, loopbackOnly: true, epoch: 9 })).toBe(platform);
     const none: HumanAuthority = { kind: "none", actor: null, authority_epoch: 0 };
@@ -230,7 +158,7 @@ describe("§10 a receipt's authority, read now", () => {
       origin: webHumanOrigin(false, { kind: "none", actor: null, authority_epoch: 0, downgraded: "revoked" }) })).toThrow(/unavailable/);
   });
   it("admission: the switch off refuses first", () => {
-    const r = evaluateWebAuthority({ session: null, gateway: true, peer: "lan", tokenEpoch: null, isAdmin: () => true,
+    const r = evaluateWebAuthority({ session: null, gateway: true, peer: "lan", tokenEpoch: null, isAdmin: () => true, authorization: null,
       policy: { enabled: false, loopbackOnly: false, maxSessionMs: 1 }, epoch: 4, now: 0 });
     expect(r).toEqual({ authority: { kind: "none", actor: null, authority_epoch: 4 }, refusal: "disabled" });
   });
@@ -248,7 +176,7 @@ describe("the FleetManager: admission and delivery_status use the state in force
     const status = (id: string) => s.queryDurableDeliveryStatus("general", { messageId: id }).items[0];
     return { s, dir, outbox, receive, status };
   }
-  it("the switch off: admission refuses; on: the first read moves the epoch, and a receipt reads web-session", () => {
+  it("the switch off: admission refuses; on: the first read moves the epoch, and a receipt reads web-verified", () => {
     const h = fm(undefined);
     expect(h.s.webAuthority({ session: null, gateway: false, peer: "loopback" }).refusal).toBe("disabled");
     h.s.fleetConfig.web = { verified_authority: { enabled: true } };
@@ -258,7 +186,7 @@ describe("the FleetManager: admission and delivery_status use the state in force
     const item = h.status(id);
     expect(item.authority).toEqual(webSession(1));
     expect(item.source_instance).toBe("human:web:owner:admin");
-    expect(item.step_up_policy).toEqual(enforcedStepUps(undefined));
+    expect(item).not.toHaveProperty("step_up_policy");                                 // §0: no step-up list any more
     expect(item.waiting_reason).toBeNull();                                             // #1641 still applies (queued)
     h.outbox.close();
   });
@@ -278,10 +206,10 @@ describe("the FleetManager: admission and delivery_status use the state in force
     const lan = h.receive(webHumanOrigin(false, webSession(1, "lan"))), local = h.receive(webHumanOrigin(false, webSession(1)));
     h.s.fleetConfig.web = { verified_authority: { enabled: true, loopback_only: true } };
     expect(h.status(lan).authority.downgraded).toBe("loopback_only");
-    expect(h.status(local).authority.kind).toBe("web-session");
+    expect(h.status(local).authority.kind).toBe("web-verified");
     h.outbox.close();
   });
-  it("Revoke web authority: every earlier web-session receipt reads revoked; the switch stays on", () => {
+  it("Revoke web authority: every earlier web-verified receipt reads revoked; the switch stays on", () => {
     const h = fm({ verified_authority: { enabled: true } });
     h.s.webAuthorityState();
     const id = h.receive(webHumanOrigin(false, webSession(1)));
@@ -291,15 +219,14 @@ describe("the FleetManager: admission and delivery_status use the state in force
     expect(JSON.parse(readFileSync(join(h.dir, "web-authority.json"), "utf8")).epoch).toBe(2);
     h.outbox.close();
   });
-  it("a platform receipt: unchanged, with the enforced list in force (the user's)", () => {
-    const h = fm({ verified_authority: { step_up: { enforce: ["merge"] } } });
+  it("a platform receipt: unchanged, whatever the switch", () => {
+    const h = fm({ verified_authority: { enabled: false } });
     const item = h.status(h.receive(nativeHumanOrigin("telegram", "owner", "7", "bo", false, "1")!));
     expect(item.authority).toEqual({ kind: "platform", actor: { adapter_id: "owner", user_id: "7" }, authority_epoch: 0 });
-    expect(item.step_up_policy.enforced).toEqual(["merge"]);
     expect(item.source_instance).toBe("human:telegram:7");
     h.outbox.close();
   });
-  it("#2112 review: while the state cannot be written, admission refuses (no web-session receipt to revive later)", async () => {
+  it("#2112 review: while the state cannot be written, admission refuses (no web-verified receipt to revive later)", async () => {
     const h = fm({ verified_authority: { enabled: true } });
     expect(h.s.webAuthorityState().enabled).toBe(true);
     h.s.authorityStateStore = new AuthorityStateStore(join(h.dir, "web-authority.json"), { warn: vi.fn() },
@@ -314,7 +241,7 @@ describe("the FleetManager: admission and delivery_status use the state in force
     const h = fm({ verified_authority: { enabled: true } });
     h.s.webAuthorityState(); h.s.revokeWebAuthority();                                     // epoch 2
     const id = h.receive(webHumanOrigin(false, webSession(2)));
-    expect(h.status(id).authority.kind).toBe("web-session");
+    expect(h.status(id).authority.kind).toBe("web-verified");
     rmSync(join(h.dir, "web-authority.json"));
     h.s.authorityStateStore = null;                                                       // as a restart reads it again
     expect(h.status(id).authority.downgraded).toBe("revoked");
@@ -338,5 +265,168 @@ describe("/web revoke also revokes web authority", () => {
     expect(s.webAuthorityState().epoch).toBe(1);
     expect(s.revokeWebSessions()).toEqual({ count: 1, durable: true });
     expect(s.webAuthorityState().epoch).toBe(2);
+  });
+});
+
+describe("§0 sessions authorized once: the store", () => {
+  const H = "a1b2c3d4e5f60718", OWNER = { adapterId: "owner", userId: "admin" };
+  function mem(initial?: string) {
+    const files = new Map<string, string>(initial === undefined ? [] : [["/a.json", initial]]);
+    const io: SessionAuthorizationsIo & { fail: boolean } = { fail: false,
+      read: p => { const v = files.get(p); if (v === undefined) throw Object.assign(new Error("no"), { code: "ENOENT" }); return v; },
+      write: (p, d) => { if (io.fail) throw new Error("EROFS"); files.set(p, d); } };
+    return { io, files, stored: () => JSON.parse(files.get("/a.json")!) };
+  }
+  it("authorize, get, kept across a restart (the file)", () => {
+    const m = mem(); const s = new SessionAuthorizations("/a.json", log(), m.io);
+    expect(s.get(H)).toBeNull();
+    expect(s.authorize(H, OWNER, 1_000, 3)).toEqual({ authorization: { handle: H, owner: OWNER, authorizedAt: 1_000, epoch: 3 }, durable: true });
+    expect(m.stored()).toEqual({ v: 1, authorizations: [{ handle: H, owner: OWNER, authorizedAt: 1_000, epoch: 3 }] });
+    expect(new SessionAuthorizations("/a.json", log(), m.io).get(H)).toEqual({ handle: H, owner: OWNER, authorizedAt: 1_000, epoch: 3 });
+  });
+  it("a second authorization replaces the first; a bad one is refused", () => {
+    const s = new SessionAuthorizations("/a.json", log(), mem().io);
+    s.authorize(H, OWNER, 1_000, 1); s.authorize(H, OWNER, 2_000, 2);
+    expect(s.list()).toEqual([{ handle: H, owner: OWNER, authorizedAt: 2_000, epoch: 2 }]);
+    expect(() => s.authorize("not-a-handle", OWNER, 1, 1)).toThrow(/invalid/);
+    expect(() => s.authorize(H, { adapterId: "", userId: "x" }, 1, 1)).toThrow(/invalid/);
+  });
+  it("unreadable or malformed: none kept (losing them never grants one); a malformed entry is skipped", () => {
+    const l = log();
+    expect(new SessionAuthorizations("/a.json", l, mem("{broken").io).list()).toEqual([]);
+    expect(l.warn).toHaveBeenCalledTimes(1);
+    const mixed = JSON.stringify({ v: 1, authorizations: [{ handle: H, owner: OWNER, authorizedAt: 5, epoch: 1 }, { handle: "x", owner: OWNER, authorizedAt: 5, epoch: 1 }, { handle: "b".repeat(16), owner: {}, authorizedAt: 5, epoch: 1 }] });
+    expect(new SessionAuthorizations("/a.json", log(), mem(mixed).io).list().map(a => a.handle)).toEqual([H]);
+  });
+  it("not saved: it holds for now (only a restart forgets it), said once", () => {
+    const l = log(); const m = mem(); const s = new SessionAuthorizations("/a.json", l, m.io);
+    m.io.fail = true;
+    expect(s.authorize(H, OWNER, 1, 1).durable).toBe(false);
+    s.authorize("b".repeat(16), OWNER, 1, 1);
+    expect(s.get(H)).not.toBeNull();
+    expect(l.warn).toHaveBeenCalledTimes(1);
+  });
+  it("prune drops what fails the test and saves; capped, oldest out", () => {
+    const m = mem(); const s = new SessionAuthorizations("/a.json", log(), m.io);
+    s.authorize(H, OWNER, 1, 1); s.authorize("b".repeat(16), OWNER, 2, 2);
+    expect(s.prune(a => a.epoch === 2)).toBe(1);
+    expect(m.stored().authorizations.map((a: any) => a.handle)).toEqual(["b".repeat(16)]);
+    for (let i = 0; i <= SESSION_AUTHORIZATIONS_MAX; i++) s.authorize(i.toString(16).padStart(16, "0"), OWNER, 10 + i, 2);
+    expect(s.list().length).toBe(SESSION_AUTHORIZATIONS_MAX);
+    expect(s.get("b".repeat(16))).toBeNull();
+  });
+  it("on disk: web-authorizations.json, owner-only", () => {
+    const dir = tmp(); const s = new SessionAuthorizations(join(dir, "web-authorizations.json"), log());
+    s.authorize(H, OWNER, 1, 1);
+    expect(statSync(join(dir, "web-authorizations.json")).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe("§0 the FleetManager: a session is authorized once, then web-verified until it runs out or is revoked", () => {
+  const TOKEN = "c".repeat(48);
+  function rig() {
+    const dir = tmp();
+    const fm = new FleetManager(dir), s = fm as any;
+    const owner = { id: "owner", type: "telegram", group_id: "G", bot_token_env: "NONE", access: { mode: "open", allowed_users: ["admin"] } };
+    fm.fleetConfig = { defaults: {}, channel: owner, channels: [owner], instances: { general: { working_directory: dir, general_topic: true, topic_id: "T0", channel_id: "owner" } },
+      web: { verified_authority: { enabled: true } } } as never;
+    writeFileSync(join(dir, "web.token"), TOKEN, { mode: 0o600 }); s.initializeWebSessions();
+    const session = (userId = "admin") => s.webSessions.create({ tier: "admin", surface: "local", label: "x", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "owner", userId } }).record;
+    const judge = (record: any, peer: "loopback" | "lan" = "loopback") => s.webAuthority({ session: record, gateway: false, peer, instance: "general" });
+    return { s, dir, session, judge, close: () => { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); } };
+  }
+  it("not authorized: none (a qualifying session is still only recognition); authorized: web-verified, saying when", () => {
+    const h = rig(); const r = h.session();
+    expect(h.judge(r)).toMatchObject({ refusal: "not_authorized", authority: { kind: "none" } });
+    const a = h.s.authorizeWebSession(r, "loopback");
+    expect(a).toMatchObject({ ok: true, durable: true, authorization: { handle: r.handle, owner: { adapterId: "owner", userId: "admin" }, epoch: 1 } });
+    const v = h.judge(r);
+    expect(v.refusal).toBeNull();
+    expect(v.authority).toMatchObject({ kind: "web-verified", actor: { adapter_id: "owner", user_id: "admin" }, session: { handle: r.handle, authorized_at: new Date(a.authorization.authorizedAt).toISOString() }, authority_epoch: 1 });
+    h.close();
+  });
+  it("authorizing refuses a session that does not qualify now, saying why", () => {
+    const h = rig();
+    expect(h.s.authorizeWebSession(h.session("stranger"), "loopback")).toEqual({ ok: false, refusal: "not_admin" });
+    h.s.fleetConfig.web = { verified_authority: { enabled: true, loopback_only: true } };
+    expect(h.s.authorizeWebSession(h.session(), "lan")).toEqual({ ok: false, refusal: "loopback_only" });
+    h.s.fleetConfig.web = { verified_authority: { enabled: false } };
+    expect(h.s.authorizeWebSession(h.session(), "loopback")).toEqual({ ok: false, refusal: "disabled" });
+    const noAccount = h.s.webSessions.create({ tier: "admin", surface: "local", label: "x", tokenEpoch: tokenEpoch(TOKEN) }).record;
+    expect(h.s.authorizeWebSession(noAccount, "loopback")).toEqual({ ok: false, refusal: "no_account" });
+    h.close();
+  });
+  it("one session's authorization is never another's, even the same account's", () => {
+    const h = rig(); const a = h.session(), b = h.session();
+    h.s.authorizeWebSession(a, "loopback");
+    expect(h.judge(a).refusal).toBeNull();
+    expect(h.judge(b).refusal).toBe("not_authorized");
+    h.close();
+  });
+  it("ends: max_session_hours after the authorization (not after sign-in)", () => {
+    vi.useFakeTimers(); vi.setSystemTime(Date.UTC(2026, 9, 18, 9, 0, 0));
+    const h = rig(); const r = h.session();
+    h.s.fleetConfig.web = { verified_authority: { enabled: true, max_session_hours: 2 } };
+    vi.setSystemTime(Date.UTC(2026, 9, 18, 10, 30, 0));                                  // signed in 1.5 h ago
+    h.s.authorizeWebSession(r, "loopback");
+    vi.setSystemTime(Date.UTC(2026, 9, 18, 12, 30, 0));                                  // 3.5 h after sign-in, 2 h after authorizing
+    expect(h.judge(r).refusal).toBeNull();
+    vi.setSystemTime(Date.UTC(2026, 9, 18, 12, 30, 1));
+    expect(h.judge(r).refusal).toBe("authorization_expired");
+    h.close();
+  });
+  it("ends: a revocation (epoch bump) — and authorizing again works under the new epoch", () => {
+    const h = rig(); const r = h.session();
+    h.s.authorizeWebSession(r, "loopback");
+    h.s.revokeWebAuthority();
+    expect(h.judge(r).refusal).toBe("not_authorized");
+    expect(h.s.authorizeWebSession(r, "loopback")).toMatchObject({ ok: true, authorization: { epoch: 2 } });
+    expect(h.judge(r).refusal).toBeNull();
+    h.close();
+  });
+  it("ends: the switch off (and back on: a new epoch, so authorize again)", () => {
+    const h = rig(); const r = h.session();
+    h.s.authorizeWebSession(r, "loopback");
+    h.s.fleetConfig.web = { verified_authority: { enabled: false } };
+    expect(h.judge(r).refusal).toBe("disabled");
+    h.s.fleetConfig.web = { verified_authority: { enabled: true } };
+    expect(h.judge(r).refusal).toBe("not_authorized");
+    h.close();
+  });
+  it("kept across a restart while its session lives (the file is read again)", () => {
+    const h = rig(); const r = h.session();
+    h.s.authorizeWebSession(r, "loopback");
+    h.s.sessionAuthorizations = null;                                                     // as a restart reads the file again
+    expect(h.judge(r).refusal).toBeNull();
+    h.close();
+  });
+  it("stale authorizations are dropped when another is given: an old epoch; a session that is gone", () => {
+    const h = rig(); const a = h.session(), b = h.session();
+    h.s.authorizeWebSession(a, "loopback");
+    h.s.revokeWebAuthority();
+    h.s.authorizeWebSession(b, "loopback");
+    expect(h.s.sessionAuthorizationStore().list().map((x: any) => x.handle), "a: an old epoch").toEqual([b.handle]);
+    h.s.webSessions.revokeAll();                                                          // b's session is gone
+    const c = h.session();
+    h.s.authorizeWebSession(c, "loopback");
+    expect(h.s.sessionAuthorizationStore().list().map((x: any) => x.handle), "b: its session gone").toEqual([c.handle]);
+    h.close();
+  });
+});
+
+describe("the configuration docs", () => {
+  it("name the switch, only-this-computer and the hours, and no step-up list (§0)", () => {
+    for (const file of ["docs/configuration.md", "docs/configuration.zh-TW.md"]) {
+      const text = readFileSync(join(import.meta.dirname, "..", file), "utf8");
+      const at = text.indexOf("verified_authority`"), part = text.slice(at, text.indexOf(" |", at));
+      expect(at, file).toBeGreaterThan(0);
+      for (const key of ["enabled", "loopback_only", "max_session_hours", "web-verified", "/web revoke"]) expect(part, `${file}: ${key}`).toContain(key);
+      expect(part, file).not.toMatch(/step_up|enforce|custom/);
+    }
+  });
+  it("fleet.yaml takes the three keys; a step_up left over is warned about and ignored", () => {
+    const r = validateFleetConfig({ instances: {}, web: { verified_authority: { enabled: true, loopback_only: false, max_session_hours: 12, step_up: { enforce: ["merge"] } } } } as never);
+    expect(r.errors.map(e => e.path).filter(p => p.startsWith("web."))).toEqual([]);
+    expect(r.warnings.map(e => e.path).filter(p => p.startsWith("web."))).toEqual(["web.verified_authority.step_up"]);
   });
 });

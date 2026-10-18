@@ -9,7 +9,6 @@ import { previewOriginProblem } from "./web-preview.js";
 import { DEFAULT_SESSION_POLICY, GUEST_SESSION_BOUNDS, GUEST_SESSION_POLICY, LOCAL_SESSION_HOURS } from "./web-session.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { VERIFIED_SESSION_HOURS } from "./authority/web-authority.js";
-import { stepUpPolicyProblems } from "./authority/step-up-policy.js";
 import { existsSync } from "node:fs";
 import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
@@ -433,16 +432,15 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     if (config.web.session !== undefined) validateWebSession(config.web.session, err);
     if (config.web.guests !== undefined) validateWebGuests(config.web.guests, config, err, warn);
-    // #1939: the server switch, the §3 keys and the §5 step-up list.
+    // #1939: the server switch and the §3 keys (§0: a session is authorized once; no step-up list).
     if (config.web.verified_authority !== undefined) {
       const v = config.web.verified_authority;
       if (!isObj(v)) err("web.verified_authority", "must be a mapping");
       else {
-        const known = ["enabled", "loopback_only", "max_session_hours", "step_up"];
+        const known = ["enabled", "loopback_only", "max_session_hours"];
         for (const k of Object.keys(v)) if (!known.includes(k)) warn(`web.verified_authority.${k}`, `unknown key (known: ${known.join(", ")}) — ignored`);
         if (v.enabled !== undefined && typeof v.enabled !== "boolean") err("web.verified_authority.enabled", "must be a boolean");
         if (v.loopback_only !== undefined && typeof v.loopback_only !== "boolean") err("web.verified_authority.loopback_only", "must be a boolean");
-        for (const p of stepUpPolicyProblems(v.step_up)) (p.warning ? warn : err)(p.path, p.message);
         const h = v.max_session_hours;
         if (h !== undefined && (typeof h !== "number" || !Number.isFinite(h) || h < VERIFIED_SESSION_HOURS.min || h > VERIFIED_SESSION_HOURS.max)) {
           err("web.verified_authority.max_session_hours", `must be a number of hours from ${VERIFIED_SESSION_HOURS.min} to ${VERIFIED_SESSION_HOURS.max}`);

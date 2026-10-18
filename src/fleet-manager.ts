@@ -290,9 +290,9 @@ import { authorizeSession, decideWebGate, loadOrCreateWebToken, readWebToken } f
 import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
-import { authorityNow, evaluateWebAuthority, webAuthorityPolicy, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
+import { authorityNow, evaluateWebAuthority, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
-import { enforcedStepUps } from "./authority/step-up-policy.js";
+import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
@@ -2083,14 +2083,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   queryDurableDeliveryStatus(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage {
     this.ensureDeliveryOutbox();
     const page = this.deliveryOutbox!.queryStatusForInstance(callerInstance, selector);
-    // #1939 §5, §10: a human receipt's authority as it reads now (switch, epoch, loopback_only), and the enforced list in force.
+    // #1939 §10: a human receipt's authority as it reads now (switch, epoch, loopback_only).
     const state = page.items.some(item => item.authority) ? this.webAuthorityState() : null;
-    const policy = state ? enforcedStepUps(this.fleetConfig?.web?.verified_authority) : null;
     const human = (item: DeliveryStatusItem): DeliveryStatusItem => {
-      if (!item.authority || !state || !policy) return item;
+      if (!item.authority || !state) return item;
       const authority = authorityNow(item.authority, state);
-      return { ...item, authority, step_up_policy: policy,
-        ...(authority.downgraded ? { source_instance: "human:web:unknown" } : {}) };
+      return { ...item, authority, ...(authority.downgraded ? { source_instance: "human:web:unknown" } : {}) };
     };
     // #1641: a sender that sees only `queued` cannot tell "next in line" from "the target is stuck": say which.
     return {
@@ -4171,11 +4169,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       origin: { ...origin }, inputKind: String(payload.type), managerBootId: this.managerBootId });
     // #1939 §7: each ordinary verified web message, for the S1 beta to watch. No text, cookie or session id: the handle.
     const authority = origin.authority;
-    if (authority?.kind === "web-session" && authority.actor && authority.session) {
+    if (authority?.kind === "web-verified" && authority.actor && authority.session) {
       try {
         this.eventLog?.insert(instanceName, "web_authority", { receipt_id: row.receipt_id, session: authority.session.handle,
           peer: authority.session.peer, surface: "local", actor: `${authority.actor.adapter_id}:${authority.actor.user_id}`,
-          input_kind: String(payload.type), outcome: "web-session", authority_epoch: authority.authority_epoch });
+          input_kind: String(payload.type), outcome: "web-verified", authority_epoch: authority.authority_epoch });
       } catch (err) { this.logger.warn({ err, instanceName }, "Could not record web authority"); }
     }
     return { ...payload, meta: { ...(payload.meta as Record<string, unknown> ?? {}),
@@ -13827,8 +13825,38 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
       ...(input.instance !== undefined ? { target: { adapterId: this.getInstanceAdapterId(input.instance) } } : {}),
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
+      authorization: input.session ? this.sessionAuthorizationStore()?.get(input.session.handle) ?? null : null,
       policy: { ...webAuthorityPolicy(this.fleetConfig?.web), enabled: state.enabled, loopbackOnly: state.loopbackOnly }, epoch: state.epoch, now: Date.now(),
     });
+  }
+
+  private sessionAuthorizations: SessionAuthorizations | null = null;
+  private sessionAuthorizationStore(): SessionAuthorizations | null {
+    if (!this.dataDir) return null;
+    this.sessionAuthorizations ??= new SessionAuthorizations(join(this.dataDir, "web-authorizations.json"), this.logger);
+    return this.sessionAuthorizations;
+  }
+
+  /**
+   * #1939 §0: record that a session's account has authorized it — called only once that account has confirmed on Discord
+   * or Telegram (S2b). The session must qualify now (§3, as a message from it would be judged); then every message,
+   * click, /steer and /btw from it is web-verified until max_session_hours after now, the session ends, or a revocation.
+   * Ones no longer worth keeping (their session gone, an old epoch, run out) are dropped on the way.
+   */
+  authorizeWebSession(session: SessionRecord, peer: WebPeer): { ok: true; authorization: SessionAuthorization; durable: boolean } | { ok: false; refusal: WebAuthorityRefusal } {
+    const store = this.sessionAuthorizationStore();
+    const state = this.webAuthorityState(), now = Date.now(), policy = webAuthorityPolicy(this.fleetConfig?.web);
+    if (!store || !session.owner) return { ok: false, refusal: !store ? "disabled" : "no_account" };
+    const check = evaluateWebAuthority({
+      session, gateway: false, peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
+      isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
+      authorization: { handle: session.handle, owner: session.owner, authorizedAt: now, epoch: state.epoch },
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly }, epoch: state.epoch, now,
+    });
+    if (check.refusal) return { ok: false, refusal: check.refusal };
+    const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
+    store.prune(a => a.epoch === state.epoch && now - a.authorizedAt <= policy.maxSessionMs && live.has(a.handle));
+    return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch) };
   }
 
   private authorityStateStore: AuthorityStateStore | null = null;
