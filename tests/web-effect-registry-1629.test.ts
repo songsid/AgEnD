@@ -69,6 +69,7 @@ function rig(options: any = {}) {
     async admit(ds = descriptors(), ctx = gates()) { api.update(ds, ctx); const c = M.calibrations.filter(c => c.options.window === host).at(-1); if (c) c.resolve({ ok: true, baselineFps: 60 }); await flush(); return ds; },
   };
 }
+function warmCadence(h: ReturnType<typeof rig>) { for (let i = 1; i <= 60; i++) h.frame(i * 1000 / 60); }
 function trial(h: ReturnType<typeof rig>, patch: any = {}) {
   const d: any = h.descriptors(1, { key: "trial", id: id(88), layer: "front", generation: 1, ...patch })[0];
   const receipt = Object.freeze({}); d.trialStage = receipt;
@@ -83,6 +84,12 @@ function trial(h: ReturnType<typeof rig>, patch: any = {}) {
 
 afterEach(() => { for (const a of M.APIs) a.dispose?.(); M.APIs.length = 0; M.frames.length = 0; M.calibrations.length = 0; M.geometries.length = 0; });
 describe("#1629 shared Canvas Worker registry", () => {
+  it("Save-Data does not delay admission or retire a running frame", async () => {
+    const h = rig(), ds = await h.admit(undefined, gates({ saveData: true }));
+    expect(h.load).toHaveBeenCalledOnce(); const frame = h.frames()[0]; expect(frame).toBeDefined(); frame.ready();
+    h.api.update(ds, gates({ saveData: undefined })); h.frame(17); h.timer(1000);
+    expect(frame.remove).not.toHaveBeenCalled(); expect(h.api.snapshot()[0]).toMatchObject({ phase: "running", reason: null }); h.api.dispose();
+  });
   it("exposes exactly its connected host root read-only, and nothing after disposal", () => {
     const h = rig(), root = h.api.frameRoot, descriptor = Object.getOwnPropertyDescriptor(h.api, "frameRoot");
     expect(root).toBe(h.doc.body.children[0]); expect(root.isConnected).toBe(true); expect(root.className).toBe("agend-effect-layer");
@@ -176,10 +183,12 @@ describe("#1629 shared Canvas Worker registry", () => {
     expect(f.send.mock.calls.filter(([e]: any) => e.type === "env").at(-1)![0].dpr).toBe(expected);
     ds[0].element.rect.width++; h.frame(100); expect(f.send.mock.calls.filter(([e]: any) => e.type === "env").at(-1)![0].dpr).toBe(expected);
   });
-  it("mounts nothing before a proven empty host baseline, retaining one calibration across notifications", async () => {
-    const h = rig(), ds = h.descriptors(); h.api.update(ds, gates()); expect(h.load).not.toHaveBeenCalled(); expect(h.frames()).toHaveLength(0); expect(h.cals()).toHaveLength(1);
-    expect(h.cals()[0].options.empty()).toBe(true); h.api.update(ds, gates()); h.mutations[0].cb(); h.resizes[0].cb(); expect(h.cals()).toHaveLength(1);
-    h.cals()[0].resolve({ ok: true, baselineFps: 50 }); await flush(); expect(h.frames()).toHaveLength(1); expect(h.safety.begin).toHaveBeenCalledOnce();
+  it("starts the authorized load immediately, with no empty-page calibration or extra admission delay", async () => {
+    const h = rig(), ds = h.descriptors(); h.api.update(ds, gates());
+    expect(h.cals()).toHaveLength(0); expect(h.frames()).toHaveLength(0);
+    h.api.update(ds, gates()); h.mutations[0].cb(); h.resizes[0].cb();
+    await flush(); expect(h.frames()).toHaveLength(1); expect(h.safety.begin).toHaveBeenCalledOnce(); expect(h.load).toHaveBeenCalledOnce();
+    expect(h.cals()).toHaveLength(0);
   });
   it("admits only three frames and two front layers, queue has no load or iframe", async () => {
     const h = rig(), ds = h.descriptors(5); ds[0].layer = ds[1].layer = ds[2].layer = "front"; await h.admit(ds);
@@ -189,7 +198,7 @@ describe("#1629 shared Canvas Worker registry", () => {
   it("a constrained host has one frame even if many descriptors are eligible", async () => {
     const h = rig(); await h.admit(h.descriptors(4), gates({ constrained: true })); expect(h.frames()).toHaveLength(1); expect(h.load).toHaveBeenCalledTimes(1);
   });
-  it.each([{ safe: true }, { reducedMotion: true }, { saveData: true }, { enabled: false }, { show: false }, { transportReady: false }, { hidden: true }, { show: undefined }])("unknown/disabled viewer gate %j mounts nothing", async patch => {
+  it.each([{ safe: true }, { reducedMotion: true }, { enabled: false }, { show: false }, { transportReady: false }, { hidden: true }, { show: undefined }])("unknown/disabled viewer gate %j mounts nothing", async patch => {
     const h = rig(); await h.admit(h.descriptors(3), gates(patch)); expect(h.frames()).toHaveLength(0); expect(h.load).not.toHaveBeenCalled();
   });
   it("#2118 a viewer off/on revokes paint then recovers without clearing real safety or resource latches",async()=>{
@@ -417,12 +426,12 @@ describe("#1629 shared Canvas Worker registry", () => {
     if (fault === "trusted") h.doc.body.closest.mockReturnValue(h.doc.body);
     h.emit("pointermove", { isTrusted: fault !== "synthetic", clientX: fault === "outside" ? 500 : 10, clientY: 20, buttons: 0 }); h.frame(17); expect(f.send).not.toHaveBeenCalled();
   });
-  it("human Resume removes the pool and measures again; descriptor updates cannot revive a failed mount", async () => {
+  it("human Resume remounts immediately without calibration; descriptor updates cannot revive a failed mount", async () => {
     const h = rig(), ds = await h.admit(); const f = h.frames()[0]; f.remove("navigation"); h.api.update(ds, gates()); await flush(); expect(h.frames()).toHaveLength(1);
-    expect(h.api.resume(ds[0]!.key)).toBe(true); expect(h.safety.resume).toHaveBeenCalledWith(ds[0]!.id, "standard"); expect(h.cals()).toHaveLength(2); expect(h.cals()[1].options.empty()).toBe(true); expect(h.frames()[0].state().removed).toBe(true);
+    expect(h.api.resume(ds[0]!.key)).toBe(true); expect(h.safety.resume).toHaveBeenCalledWith(ds[0]!.id, "standard"); expect(h.cals()).toHaveLength(0); expect(h.frames()[0].state().removed).toBe(true); await flush(); expect(h.frames()).toHaveLength(2);
   });
   it("a sticky safety off refuses a human Resume", async () => {
-    const h = rig(), ds = await h.admit(); h.safety.resume.mockReturnValue(false); expect(h.api.resume(ds[0]!.key)).toBe(false); expect(h.cals()).toHaveLength(1);
+    const h = rig(), ds = await h.admit(); h.safety.resume.mockReturnValue(false); expect(h.api.resume(ds[0]!.key)).toBe(false); expect(h.cals()).toHaveLength(0);
   });
   it("behind effects receive no pointer while a fresh stock barrier denies front interaction", async () => {
     const h = rig(); await h.admit(); const frame = h.frames()[0]; frame.ready(); frame.send.mockClear();
@@ -484,10 +493,13 @@ describe("#1629 shared Canvas Worker registry", () => {
     for (let i = 1; i < 300; i++) { h.frame(9001 + i * 1000 / 60); h.timer(9001 + i * 1000 / 60); }
     expect(h.safety.finish).not.toHaveBeenCalled(); h.frame(14001); h.timer(14001); expect(h.safety.finish).toHaveBeenCalledWith("token-1", "healthy");
   });
-  it("an old calibration cannot authorize another device epoch after cancellation", async () => {
-    const h = rig(), ds = h.descriptors(); h.api.update(ds, gates()); const old = h.cals()[0]; old.cancel.mockImplementation(() => {});
-    h.api.update(ds, gates({ constrained: true })); expect(h.cals()).toHaveLength(2); old.resolve({ ok: true, baselineFps: 144 }); await flush(); expect(h.load).not.toHaveBeenCalled();
-    h.cals()[1].resolve({ ok: true, baselineFps: 30 }); await flush(); expect(h.frames()).toHaveLength(1);
+  it("a load from the old device epoch cannot create a frame or safety marker for its replacement", async () => {
+    const h = rig(), ds = h.descriptors(); h.api.update(ds, gates()); await Promise.resolve();
+    const oldSignal = h.load.mock.calls[0]![1]!;
+    h.api.update(ds, gates({ constrained: true })); expect(oldSignal.aborted).toBe(true);
+    expect(h.load).toHaveBeenCalledOnce(); await flush();
+    expect(h.load).toHaveBeenCalledTimes(2); expect(h.frames()).toHaveLength(1);
+    expect(h.mount.mock.calls[0]![0].device).toBe("constrained"); expect(h.safety.begin).toHaveBeenCalledOnce(); expect(h.cals()).toHaveLength(0);
   });
   it("no eligible placements means no calibration, loader or frame", async () => {
     const h = rig(); h.api.update([], gates()); await flush(); expect(h.cals()).toHaveLength(0); expect(h.load).not.toHaveBeenCalled();
@@ -500,7 +512,7 @@ describe("#1629 shared Canvas Worker registry", () => {
     expect(h.profile.mock.calls.at(-1)![0].metrics.hostLongTaskMsPerSecond).toBeNull();
   });
   it("three bad host windows degrade then physically pause, and a descriptor update cannot revive it", async () => {
-    const h = rig(), ds = await h.admit(); h.frames()[0].ready();
+    const h = rig(), ds = await h.admit(); h.frames()[0].ready(); warmCadence(h);
     for (const t of [1000, 2000, 3000]) { h.frame(t); h.timer(t); }
     expect(h.profile.mock.calls.at(-1)![0]).toMatchObject({ verdict: "degraded", quality: "low" }); expect(h.frames()[0].state().removed).toBe(false);
     for (const t of [4000, 5000]) { h.frame(t); h.timer(t); }
@@ -508,7 +520,7 @@ describe("#1629 shared Canvas Worker registry", () => {
     h.api.update(ds, gates()); await flush(); expect(h.frames()).toHaveLength(1);
   });
   it("simultaneously paused copies of one content id count once per host incident", async () => {
-    const h = rig(), ds = h.descriptors(2); ds[1]!.id = ds[0]!.id; await h.admit(ds); for (const f of h.frames()) f.ready();
+    const h = rig(), ds = h.descriptors(2); ds[1]!.id = ds[0]!.id; await h.admit(ds); for (const f of h.frames()) f.ready(); warmCadence(h);
     for (const t of [1000, 2000, 3000, 4000, 5000]) { h.frame(t); h.timer(t); }
     expect(h.frames().every(f => f.state().removed)).toBe(true); expect(h.safety.pause).toHaveBeenCalledOnce();
   });
@@ -599,14 +611,14 @@ describe("transient stock restrictions", () => {
     const h = rig(), ds = await h.admit(h.descriptors(1, { layer: "front" })); const f = h.frames()[0]; f.ready();
     h.coverage.mockReturnValue(stock({ agentFront: false, front: reason === "owner_css" })); h.frame(17);
     expect(f.state().removed).toBe(true); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
-    h.coverage.mockReturnValue(stock()); h.api.update(ds, gates()); h.cals().at(-1).resolve({ ok: true, baselineFps: 60 }); await flush();
+    h.coverage.mockReturnValue(stock()); h.api.update(ds, gates()); await flush();
     expect(h.load).toHaveBeenCalledTimes(2); expect(h.frames().filter(f => !f.state().removed)).toHaveLength(1); expect(h.safety.resume).not.toHaveBeenCalled();
   });
   it.each(["owner_css", "stock_overlay"])("heartbeat-first %s does not introduce a trial latch for an ordinary placement", async reason => {
     const h = rig(), ds = await h.admit(h.descriptors(1, { layer: "front" })), f = h.frames()[0]; f.ready();
     h.coverage.mockReturnValue(stock({ agentFront: false, front: reason === "owner_css" })); h.timer(1000); h.frame(1017);
     expect(f.state().removed).toBe(true); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
-    h.coverage.mockReturnValue(stock()); h.api.update(ds, gates()); h.cals().at(-1).resolve({ ok: true, baselineFps: 60 }); await flush(); expect(h.load).toHaveBeenCalledTimes(2); expect(h.safety.resume).not.toHaveBeenCalled();
+    h.coverage.mockReturnValue(stock()); h.api.update(ds, gates()); await flush(); expect(h.load).toHaveBeenCalledTimes(2); expect(h.safety.resume).not.toHaveBeenCalled();
   });
 
 });
@@ -618,7 +630,7 @@ describe("stock focus wake-up", () => {
     h.doc.activeElement = h.node("SELECT"); h.coverage.mockReturnValue(stock({ front: false, agentFront: false })); h.emit("focusin"); await flush();
     expect(h.api.snapshot()[0]).toMatchObject({ reason: "stock_overlay", phase: null }); expect(h.frames()[0].state().removed).toBe(true);
     h.doc.activeElement = h.doc.body; h.coverage.mockReturnValue(stock()); h.emit("focusout");
-    expect(h.cals()).toHaveLength(2); h.cals()[1].resolve({ ok: true, baselineFps: 60 }); await flush();
+    expect(h.cals()).toHaveLength(0); await flush();
     expect(h.frames().filter(f => !f.state().removed)).toHaveLength(1); expect(h.load).toHaveBeenCalledTimes(2);
   });
 });
@@ -629,7 +641,7 @@ describe("#1629 local Trial admission in the SAME registry (stage protocol model
     await h.admit([t.d], gates({ modal: true })); const f = h.frames()[0]; expect(f).toBeDefined();
     expect(f.options.root).toBe(t.e.root); expect(f.options.render).toMatchObject({ width: 99, height: 78, instance: "own" });
     expect(t.e.bind).toHaveBeenCalledWith(f.element, { layer: "front" }, expect.objectContaining({ front: false })); expect(h.geo().bind).not.toHaveBeenCalled();
-    expect(h.cals()).toHaveLength(1); expect(h.load).toHaveBeenCalledExactlyOnceWith({ key: "trial", id: t.d.id, params: {} }, expect.any(AbortSignal));
+    expect(h.cals()).toHaveLength(0); expect(h.load).toHaveBeenCalledExactlyOnceWith({ key: "trial", id: t.d.id, params: {} }, expect.any(AbortSignal));
     f.ready(); h.frame(100); expect(f.send.mock.calls.filter(([e]: any) => e.type === "env").at(-1)![0]).toMatchObject({ width: 99, height: 78 }); expect(h.api.publish("reply", {}, "own")).toBe(1); expect(h.api.publish("mention", {}, "own")).toBe(0);
     expect(h.api.snapshot()[0]).not.toHaveProperty("trialStage"); expect(f.options.render).not.toHaveProperty("trialStage"); expect(h.mount.mock.calls[0]![0]).not.toHaveProperty("trialStage");
   });
@@ -663,7 +675,7 @@ describe("#1629 local Trial admission in the SAME registry (stage protocol model
   });
   it("a terminated held load keeps physical capacity until settlement and never opens a marker", async () => {
     const h = rig(), t = trial(h); let resolve: any; h.load.mockImplementation(() => new Promise(r => resolve = r)); h.coverage.mockReturnValue(stock({ front: false, agentFront: false }));
-    await h.admit([t.d], gates({ constrained: true, modal: true })); t.e.end(); const other = h.descriptors(); h.api.update(other, gates({ constrained: true })); h.cals().at(-1).resolve({ ok: true, baselineFps: 60 }); await flush(); expect(h.load).toHaveBeenCalledOnce(); expect(h.safety.begin).not.toHaveBeenCalled();
+    await h.admit([t.d], gates({ constrained: true, modal: true })); t.e.end(); const other = h.descriptors(); h.api.update(other, gates({ constrained: true })); await flush(); expect(h.load).toHaveBeenCalledOnce(); expect(h.safety.begin).not.toHaveBeenCalled();
     resolve({ id: t.d.id, code: "agend.ready()", params: {}, assets: [], wants: [] }); await flush(); expect(h.load).toHaveBeenCalledTimes(2); expect(h.frames()).toHaveLength(0);
   });
   it.each(["completion", "marker", "ready", "raf", "heartbeat", "profile", "send"])("stage loss at %s refuses further work", async via => {
@@ -687,8 +699,8 @@ describe("#1629 local Trial admission in the SAME registry (stage protocol model
   });
   it("a new issued serial clears only the old run's failure identity, never the content safety gate", async () => {
     const h = rig(), a = trial(h); h.coverage.mockReturnValue(stock({ front: false, agentFront: false })); await h.admit([a.d], gates({ modal: true })); a.e.end();
-    const b = trial(h); h.api.update([b.d], gates({ modal: true })); h.cals().at(-1).resolve({ ok: true, baselineFps: 60 }); await flush(); expect(h.load).toHaveBeenCalledTimes(2); expect(h.frames().at(-1).state().removed).toBe(false);
-    h.safety.allowed.mockReturnValue(false); h.api.revalidateSafety(); expect(h.frames().at(-1).state().removed).toBe(true); expect(h.api.resume(b.d.key)).toBe(true); h.cals().at(-1).resolve({ ok: true, baselineFps: 60 }); await flush(); expect(h.load).toHaveBeenCalledTimes(2);
+    const b = trial(h); h.api.update([b.d], gates({ modal: true })); await flush(); expect(h.load).toHaveBeenCalledTimes(2); expect(h.frames().at(-1).state().removed).toBe(false);
+    h.safety.allowed.mockReturnValue(false); h.api.revalidateSafety(); expect(h.frames().at(-1).state().removed).toBe(true); expect(h.api.resume(b.d.key)).toBe(true); await flush(); expect(h.load).toHaveBeenCalledTimes(2);
   });
   it("same-receipt predicate recursion is bounded and cannot allocate a replacement from stale evidence", async () => {
     const h = rig(), t = trial(h); h.coverage.mockReturnValue(stock({ front: false, agentFront: false })); t.e.onProject = () => h.api.update([t.d], gates({ modal: true }));
@@ -739,7 +751,7 @@ describe("#2055 R2: one display precedence through the real snapshot (Prism)", (
   it("the third automatic pause reads off in the same page; a pause that is not the third still reads paused", async () => {
     for (const [after, reason] of [["off", "safety_off"], ["paused", "paused"]] as const) {
       const h = rig(); let state = "ok"; withStatus(h, () => state); h.safety.pause.mockImplementation(() => { state = after; return true; });
-      await h.admit(); h.frames()[0].ready();
+      await h.admit(); h.frames()[0].ready(); warmCadence(h);
       for (const t of [1000, 2000, 3000, 4000, 5000]) { h.frame(t); h.timer(t); }
       expect(h.safety.pause).toHaveBeenCalledOnce(); expect(h.frames()[0].state().removed).toBe(true);
       expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
@@ -755,7 +767,7 @@ describe("#2055 R2: one display precedence through the real snapshot (Prism)", (
       expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
     }
   });
-  it.each([[{ reducedMotion: true }, "reduced_motion"], [{ saveData: true }, "save_data"], [{ show: false }, "disabled"], [{ transportReady: false }, "transport_unavailable"],
+  it.each([[{ reducedMotion: true }, "reduced_motion"], [{ show: false }, "disabled"], [{ transportReady: false }, "transport_unavailable"],
     [{ safe: true }, "safe_mode"]])("a closed global gate %o is named %s", async (patch, reason) => {
     const h = rig(), ds = await h.admit(); h.api.update(ds, gates(patch)); await flush();
     expect(h.frames().every((f: any) => f.state().removed)).toBe(true); expect(h.api.snapshot()[0]).toMatchObject({ verdict: "off", reason });

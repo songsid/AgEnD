@@ -1,5 +1,6 @@
 /** #1629: one session-only app effect owner. Importing this module starts nothing. */
 import { appStore } from "/assets/app-store.js";
+import { motionBlocked, onMotionChange } from "/assets/fx-motion.js";
 import { navStore } from "/assets/app-nav.js";
 import { onPrefsChanged } from "/assets/app-prefs.js";
 import { resolvedMode, themesStore, themesShown } from "/assets/app-themes.js";
@@ -101,7 +102,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     return typeof v === "string" && /^[a-f0-9]{32}$/.test(v) ? v : null;
   }
   function context() {
-    return { safe: safeMode(), publicLink: doc.body.dataset.publicLink === "1", reducedMotion: media?.matches !== false, saveData: host.navigator?.connection?.saveData === true,
+    return { safe: safeMode(), publicLink: doc.body.dataset.publicLink === "1", reducedMotion: motionBlocked(host), saveData: host.navigator?.connection?.saveData === true,
       hidden: doc.visibilityState !== "visible", enabled: entry.api?.playbackAvailable !== false && typeof host.OffscreenCanvas === "function" && typeof host.Worker === "function" && typeof host.MutationObserver === "function" && typeof host.ResizeObserver === "function",
       show: themesShown(), transportReady: effectBootstrapReady(host, host.location?.origin, doc.body.dataset.effectBoot),
       constrained: constrainedDevice({ memory: host.navigator?.deviceMemory, cores: host.navigator?.hardwareConcurrency, coarse: coarse?.matches === true, width: host.innerWidth }),
@@ -118,7 +119,6 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     if (c.safe) return "safe";
     if (!c.show) return "effectsOff";
     if (c.reducedMotion) return "reducedMotion";
-    if (c.saveData) return "saveData";
     if (!c.enabled) return "unsupported";
     if (!c.transportReady) return "transport";
     if (c.publicLink) return "localAdmin";
@@ -129,7 +129,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
   function trialAllowed() {
     const c = context();
     return !entry.dead && doc.visibilityState === "visible" && doc.hasFocus?.() === true
-      && c.enabled && c.show && c.transportReady && !c.safe && !c.publicLink && !c.reducedMotion && !c.saveData && !c.hidden && !c.modal;
+      && c.enabled && c.show && c.transportReady && !c.safe && !c.publicLink && !c.reducedMotion && !c.hidden && !c.modal;
   }
   function mountTrial(handle) {
     const intent = trialIntent; if (!intent || !trialCurrent(handle.instance) || !handle.current() || !Number.isSafeInteger(++trialSerial)) throw Error("trial_unavailable");
@@ -164,7 +164,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
   function syncCursor() {
     if (entry.dead || !cursor) return;
     const c = context();
-    cursor.update(entry.api?.cursorSelection?.() ?? null, c.enabled && c.show && c.transportReady && !c.safe && !c.publicLink && !c.reducedMotion && !c.saveData && !c.hidden && !c.modal && !cursorDragging());
+    cursor.update(entry.api?.cursorSelection?.() ?? null, c.enabled && c.show && c.transportReady && !c.safe && !c.publicLink && !c.reducedMotion && !c.hidden && !c.modal && !cursorDragging());
   }
   try {
     if (appStore.get().connection === "ended") { entry.dispose(); return null; }
@@ -202,7 +202,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
       if (ownerChanged) entry.api.changedOwner();
       if (!chatChanged && !ownerChanged) sync();
     }));
-    hold(ownerCssLifecycle.subscribe(sync)); hold(themesStore.subscribe(sync)); hold(onPrefsChanged(sync));
+    hold(ownerCssLifecycle.subscribe(sync)); hold(themesStore.subscribe(sync)); hold(onPrefsChanged(sync)); hold(onMotionChange(sync));
     if (typeof host.AgendTheme?.onChange === "function") hold(host.AgendTheme.onChange(sync));
     for (const [target, type] of [[media, "change"], [coarse, "change"], [doc, "visibilitychange"], [host, "resize"], [host.navigator?.connection, "change"]]) {
       if (target?.addEventListener) { target.addEventListener(type, sync); hold(() => target.removeEventListener(type, sync)); }

@@ -138,7 +138,7 @@ export function createChatEffectRuntime({ window: host, name, element, current, 
     const stamp = JSON.stringify(ctx);
     if (stamp !== lastContext) { lastContext = stamp; registry.update(descriptors(), ctx); }
     emit();
-    if (!metadata && !active && ctx.enabled && ctx.show && ctx.transportReady && !ctx.safe && !ctx.publicLink && !ctx.reducedMotion && !ctx.saveData && !ctx.hidden) void read();
+    if (!metadata && !active && ctx.enabled && ctx.show && ctx.transportReady && !ctx.safe && !ctx.publicLink && !ctx.reducedMotion && !ctx.hidden) void read();
   }
   async function read() {
     if (!alive() || error || active) return;

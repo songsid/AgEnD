@@ -55,6 +55,12 @@ describe("#1629 effect signals", () => {
   });
 });
 describe("#1629 global frame allocation",()=>{
+  it.each([true, undefined])("Save-Data=%s is informational for admission and diagnostic reason", saveData => {
+    const context = ctx({ saveData });
+    expect(P.effectPlaybackReason(context)).toBeNull();
+    expect(P.allocateEffectFrames([descriptor("a")], context)[0]).toMatchObject({ verdict: "active", reason: null });
+  });
+
   it("loads three and queues the fourth without reserving a frame",()=>{
     const rows=P.allocateEffectFrames([0,1,2,3].map(n=>descriptor(String(n),{order:n})),ctx());
     expect(rows.map((r: {verdict:string})=>r.verdict)).toEqual(["active","active","active","queued"]);
@@ -76,7 +82,7 @@ describe("#1629 global frame allocation",()=>{
     expect(P.allocateEffectFrames(ds,ctx({constrained:true})).find((r:{verdict:string})=>r.verdict==="active").key).toBe("page");
   });
   it.each([
-    [{safe:true},"safe_mode"],[{reducedMotion:true},"reduced_motion"],[{saveData:true},"save_data"],
+    [{safe:true},"safe_mode"],[{reducedMotion:true},"reduced_motion"],
     [{hidden:true},"hidden"],[{enabled:false},"unsupported_host"],[{show:false},"disabled"],[{transportReady:false},"transport_unavailable"],
   ])("doesn't reserve frames for global refusal %o",(patch,reason)=>{
     expect(P.allocateEffectFrames([descriptor("a")],ctx(patch))[0]).toEqual({key:"a",verdict:"off",reason,queuePos:null});
@@ -124,7 +130,7 @@ describe("#1629 unioned trust geometry",()=>{
 it("requires a known host binding and every current page gate",()=>{
   const env=P.effectEvent("env",samples.env,null,now);
   expect(P.maySendEffectEvent(env,{wants:[]})).toBe(false);
-  for(const k of ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "transportReady", "constrained", "modal"]){
+  for(const k of ["safe", "publicLink", "reducedMotion", "hidden", "enabled", "show", "transportReady", "constrained", "modal"]){
     expect(P.allocateEffectFrames([descriptor("a")],ctx({[k]:undefined}))[0]).toMatchObject({verdict:"off",reason:"unknown"});
   }
   expect(P.allocateEffectFrames([descriptor("a",{paused:undefined})],ctx())[0]).toMatchObject({verdict:"off",reason:"unknown"});

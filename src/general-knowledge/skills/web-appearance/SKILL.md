@@ -408,15 +408,18 @@ smallest valid `effect.json`:
   localhost requirement. Signed-in public/guest viewers may read and play only current effects in chats they can see;
   this grants no library management, personal-slot, private-image, Trial or profile access. Their Chat header has a
   browser-local show/off switch, including on phones, and an inline recovery action. It never writes host preferences.
-- Nothing plays in safe mode, with reduced motion or save-data, on a hidden page or while the viewer has effects off.
-  The two-second empty-page frame-rate baseline still applies. A poster may replace unsupported/motion/data playback
-  (see Static Chat fallback). Menus/dialogs stop `front` effects temporarily. The motion/baseline simplification is a
-  separate #2118 follow-up; it is not implemented by this transport cutover.
-- **Safety pause** — it measures the page's responsiveness, not your Worker's CPU. The page's frame-rate floor is
-  90% of what it measured before the effect started, capped at 55 fps (50 on a constrained device), so a 30 Hz screen
-  has a 27 fps floor. Where the browser reports them, long tasks may take at most 50 ms a second (25 ms constrained);
-  unknown timing doesn't count as free. Overlapping 2-second windows are judged at most once a second after a warm-up,
-  and three bad judgements in a row pause the effect (`host_budget`).
+- Playback starts without an empty-page FPS calibration. Safe mode, hidden tabs and the viewer's show switch still
+  stop it. **Effects: follow the system's reduced-motion setting** is device-local and **off by default**, shared with
+  ambient effects. The OS request alone does not block playback; data saver is informational. A one-time chat note
+  offers to follow reduced motion, and a motion refusal offers **Play effects anyway** right there, including public/guest
+  viewers. Safe mode offers **Leave safe mode**. A poster may replace unsupported playback or a chosen motion block
+  (see Static Chat fallback). Menus/dialogs stop `front` effects temporarily.
+- **Safety pause** — it measures the page's responsiveness, not your Worker's CPU. Host rAF observations learn a live
+  cadence during warm-up, then fix the mount's floor at 90% of a faster observed cadence, capped at 55 fps (50 on a
+  constrained device). A steady 30 Hz display has a 27 fps floor. This is not an empty-page health certificate; uniformly
+  slow startup can look like a low-refresh display. Where reported, long tasks may take at most 50 ms a second (25 ms
+  constrained); unknown observations never count as free. Overlapping 2-second windows are judged at most once a second
+  after warm-up, and three bad judgements in a row pause the effect (`host_budget`).
 - Only a viewer's explicit **Resume** restarts a safety-paused effect, and it doesn't clear the history: three such
   pauses within 24 hours turn the effect **off** for that viewer's browser and device class, across tabs and reloads,
   and Resume then refuses. It doesn't come back by itself after 24 hours.
@@ -465,7 +468,7 @@ as permission to run or fetch an effect, and do not keep retrying an unavailable
 
 ## Static Chat fallback
 
-When Worker/transport support is unavailable, motion/data settings prevent playback, or the page has no playback session,
+When Worker/transport support is unavailable, the chosen motion preference prevents playback, or the page has no playback session,
 a current chat placement with a poster can show its static PNG **behind** the content; a front declaration does not
 make its poster foreground. No poster means nothing is drawn. Safe mode and the viewer's show switch hide posters
 too; unknown stock ordering refuses paint. Explicit Pause, queued effects and a failed live read are not replaced by

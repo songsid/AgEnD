@@ -1,5 +1,10 @@
 # Effect geometry and pre-mount cadence (#1629 B2)
 
+> Current policy: [#2118 default playback](canvas-worker-default-playback.md#immediate-startup-and-live-reference-pr-3-of-3)
+> supersedes this slice's empty-page calibration and hard OS-motion/Save-Data prerequisites. The original evidence below
+> describes that earlier slice. Playback now starts while the host learns a live cadence; the shared device motion option
+> is off by default. Isolation, protected pixels, caps and sticky safety remain.
+
 These are unmounted host primitives. They do not add an iframe to a product page, a static asset route, a registry, event adapters, preference writes or profile storage. The registry must still enforce the reviewed frame caps, owner/currentness fences, opt-in/device gates, observer coverage, probation and pause history before product mounting.
 
 ## Why

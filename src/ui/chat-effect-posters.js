@@ -6,6 +6,7 @@ import { themesShown, themesStore } from "/assets/app-themes.js";
 import { ownerCssLifecycle } from "/assets/owner-css.js";
 import { effectPlaybackIdentity } from "/assets/effect-chat-runtime.js";
 import { effectBootstrapReady } from "/assets/effect-frame.js";
+import { motionBlocked, onMotionChange } from "/assets/fx-motion.js";
 import { createChatPosters } from "/assets/effect-posters.js";
 
 export function ChatEffectPosters({ name, lease, element }) {
@@ -20,7 +21,7 @@ export function ChatEffectPosters({ name, lease, element }) {
       const observe = () => {
         // This is a surface fallback, not a replacement for an explicit Pause, queued effect or failed live read.
         const playback = effectPlaybackIdentity(host) && typeof host.Worker === "function" && typeof host.OffscreenCanvas === "function" &&
-          effectBootstrapReady(host, host.location?.origin, host.document.body.dataset.effectBoot) && !motion.matches && host.navigator?.connection?.saveData !== true;
+          effectBootstrapReady(host, host.location?.origin, host.document.body.dataset.effectBoot) && !motionBlocked(host);
         return { shown: themesShown(), fallback: !playback, ownerCss: ownerCssLifecycle.get().state };
       };
       api = createChatPosters({ window: host, name, element: element.current, current, observe });
@@ -32,7 +33,7 @@ export function ChatEffectPosters({ name, lease, element }) {
         if (s.connection === "ended") { api.dispose(); return; }
         if (s.themesRev !== revision) { revision = s.themesRev; api.changed(); } else sync();
       }));
-      releases.push(ownerCssLifecycle.subscribe(sync)); releases.push(themesStore.subscribe(sync)); releases.push(onPrefsChanged(sync));
+      releases.push(ownerCssLifecycle.subscribe(sync)); releases.push(themesStore.subscribe(sync)); releases.push(onPrefsChanged(sync)); releases.push(onMotionChange(sync));
       for (const target of [motion, host.navigator?.connection]) if (target?.addEventListener) { target.addEventListener("change", sync); releases.push(() => target.removeEventListener("change", sync)); }
       sync(); return cleanup;
     } catch { cleanup(); return cleanup; }

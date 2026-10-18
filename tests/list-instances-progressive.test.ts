@@ -245,6 +245,95 @@ describe("list_instances progressive disclosure", () => {
       expect(result.instances[0].status).toBe("paused");
     });
 
+    it("filters by display_name (fuzzy match, #2141)", async () => {
+      const { outboundHandlers } = await import("../src/outbound-handlers.js");
+      const handler = outboundHandlers.get("list_instances")!;
+
+      const ctx = createMockContext({
+        "agent-running": { working_directory: "/a", backend: "claude-code", display_name: "稜鏡 Prism" },
+        "other-running": { working_directory: "/b", backend: "claude-code", display_name: "溯源 Fable" },
+        "noname-running": { working_directory: "/c", backend: "claude-code" },
+      });
+
+      let result: any;
+      await handler(ctx as any, { name: "Prism" }, (r) => { result = r; }, {
+        instanceName: "caller", requestId: 1, fleetRequestId: undefined, senderSessionName: undefined,
+      });
+
+      expect(result.instances).toHaveLength(1);
+      expect(result.instances[0].name).toBe("agent-running");
+    });
+
+    it("display_name partial match is case-insensitive (#2141)", async () => {
+      const { outboundHandlers } = await import("../src/outbound-handlers.js");
+      const handler = outboundHandlers.get("list_instances")!;
+
+      const ctx = createMockContext({
+        "dev1-running": { working_directory: "/a", backend: "claude-code", display_name: "Sentinel Alpha" },
+        "dev2-running": { working_directory: "/b", backend: "claude-code", display_name: "Sentinel Beta" },
+        "dev3-running": { working_directory: "/c", backend: "claude-code" },
+      });
+
+      let result: any;
+      await handler(ctx as any, { name: "sentinel" }, (r) => { result = r; }, {
+        instanceName: "caller", requestId: 1, fleetRequestId: undefined, senderSessionName: undefined,
+      });
+
+      // Both "Sentinel Alpha" and "Sentinel Beta" match "sentinel" case-insensitively
+      expect(result.instances).toHaveLength(2);
+      expect(result.instances.every((i: any) => i.display_name?.toLowerCase().includes("sentinel"))).toBe(true);
+    });
+
+    it("name filter matches both instance name and display_name (#2141)", async () => {
+      const { outboundHandlers } = await import("../src/outbound-handlers.js");
+      const handler = outboundHandlers.get("list_instances")!;
+
+      const ctx = createMockContext({
+        "alpha-running":  { working_directory: "/a", backend: "claude-code" },                         // name matches
+        "beta-running":   { working_directory: "/b", backend: "claude-code", display_name: "Alpha Reviewer" }, // display_name matches
+        "gamma-running":  { working_directory: "/c", backend: "claude-code", display_name: "Unrelated" },
+      });
+
+      let result: any;
+      await handler(ctx as any, { name: "alpha" }, (r) => { result = r; }, {
+        instanceName: "caller", requestId: 1, fleetRequestId: undefined, senderSessionName: undefined,
+      });
+
+      expect(result.instances).toHaveLength(2);
+    });
+
+    it("compact rows include display_name when set (#2141)", async () => {
+      const { outboundHandlers } = await import("../src/outbound-handlers.js");
+      const handler = outboundHandlers.get("list_instances")!;
+
+      // Create enough instances with long descriptions to force compact tier
+      const instances: Record<string, any> = {};
+      for (let i = 0; i < 30; i++) {
+        instances[`instance-${i}`] = {
+          working_directory: `/projects/path-${i}`,
+          backend: "claude-code",
+          description: "A".repeat(300),
+          display_name: i === 0 ? "Named One" : null,
+          tags: [],
+        };
+      }
+      const ctx = createMockContext(instances);
+
+      let result: any;
+      await handler(ctx as any, {}, (r) => { result = r; }, {
+        instanceName: "caller", requestId: 1, fleetRequestId: undefined, senderSessionName: undefined,
+      });
+
+      // If in compact tier (or full tier), instance-0 must carry display_name
+      if (result.instances) {
+        const named = result.instances.find((i: any) => i.name === "instance-0");
+        expect(named?.display_name).toBe("Named One");
+        // instance-1 has no display_name — must not have the field (or null is fine)
+        const unnamed = result.instances.find((i: any) => i.name === "instance-1");
+        expect(unnamed?.display_name ?? null).toBeNull();
+      }
+    });
+
     it("filters by tags", async () => {
       const { outboundHandlers } = await import("../src/outbound-handlers.js");
       const handler = outboundHandlers.get("list_instances")!;
@@ -410,6 +499,60 @@ describe("list_instances progressive disclosure", () => {
       // Summary tier should not call readStatuslineModel (no per-instance model shown)
       // Note: This is a design verification - in summary we only show counts
     });
+  });
+});
+
+describe("describe_instance includes display_name (#2141)", () => {
+  function createDescribeCtx(instances: Record<string, any>) {
+    const daemons = new Map<string, unknown>();
+    for (const name of Object.keys(instances)) {
+      if (name.includes("running")) daemons.set(name, {});
+    }
+    return {
+      dataDir: "/mock",
+      fleetConfig: { defaults: {}, instances },
+      lifecycle: {
+        daemons,
+        isPaused: () => false,
+        has: (n: string) => daemons.has(n),
+        getLastPausedAt: () => null,
+      },
+      classicChannels: null,
+      lastActivityMs: () => 0,
+      resolveInstanceModel: () => ({ model: "default", source: "unresolved", display: "default" }),
+      getInstanceInteraction: () => null,
+      getInstanceExecutionState: () => null,
+    };
+  }
+
+  it("fleet-topic: display_name is returned when set", async () => {
+    const { outboundHandlers } = await import("../src/outbound-handlers.js");
+    const handler = outboundHandlers.get("describe_instance")!;
+    const ctx = createDescribeCtx({
+      "my-running": { working_directory: "/a", backend: "claude-code", display_name: "Pixel" },
+    });
+
+    let result: any;
+    await handler(ctx as any, { name: "my-running" }, (r) => { result = r; }, {
+      instanceName: "caller", requestId: 1, fleetRequestId: undefined, senderSessionName: undefined,
+    });
+
+    expect(result.display_name).toBe("Pixel");
+  });
+
+  it("fleet-topic: display_name is null when not set", async () => {
+    const { outboundHandlers } = await import("../src/outbound-handlers.js");
+    const handler = outboundHandlers.get("describe_instance")!;
+    const ctx = createDescribeCtx({
+      "my-running": { working_directory: "/a", backend: "claude-code" },
+    });
+
+    let result: any;
+    await handler(ctx as any, { name: "my-running" }, (r) => { result = r; }, {
+      instanceName: "caller", requestId: 1, fleetRequestId: undefined, senderSessionName: undefined,
+    });
+
+    expect(result.display_name).toBeNull();
   });
 });
 

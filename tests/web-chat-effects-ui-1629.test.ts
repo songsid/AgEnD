@@ -19,10 +19,10 @@ async function fixture(unavailable = false) {
   const P = await import("/assets/app-html.js");
   const { createLease } = await import("/assets/app-ctx.js");
   let currentLease = createLease(), open: (v: boolean) => void = () => {};
-  const store = { onAgentReply: () => () => {} }, element = { current: pg.document.body };
+  const store = { onAgentReply: () => () => {} }, element = { current: pg.document.body }, playback = vi.fn();
   function Parent({ lease }: any) {
     const [shown, setShown] = P.useState(false); open = setShown;
-    return P.h(ChatEffects, { name: "own", lease, element, store, open: shown, onClose: () => setShown(false) });
+    return P.h(ChatEffects, { name: "own", lease, element, store, open: shown, onPlayback: playback, onClose: () => setShown(false) });
   }
   const mount = async () => { P.render(P.h(Parent, { lease: currentLease }), pg!.root); await settle(); };
   const owner = { gates: () => ({ enabled: !M.unavailable, show: true, transportReady: true, optIn: true, reducedMotion: false, saveData: false }), onEnd: () => () => {}, attachChat(options: any) {
@@ -32,10 +32,24 @@ async function fixture(unavailable = false) {
   await mount(); const api = () => M.apis.at(-1), opts = () => M.opts.at(-1);
   const publish = async () => { opts().onChange({ error: null, rows: [{ id: "a".repeat(32), phase: "running", reason: null }], effects: [{ id: "a".repeat(32), by: "agent", manifest: { title: "Fixture effect", layer: "front" } }] }); await settle(); };
   const publishRows = async (rows: any[]) => { opts().onChange({ error: null, rows, effects: [{ id: "a".repeat(32), by: "agent", manifest: { title: "Fixture effect", layer: "front" } }] }); await settle(); };
-  return { host, observers, api, opts, publish, publishRows, open: async () => { open(true); await settle(); }, close: async () => { open(false); await settle(); },
+  return { host, observers, api, opts, playback, publish, publishRows, open: async () => { open(true); await settle(); }, close: async () => { open(false); await settle(); },
     nextLease: async () => { currentLease.dispose(); currentLease = createLease(); await mount(); }, cleanup: () => currentLease.dispose() };
 }
 describe("#1629 actual Effects component", () => {
+  it("publishes actual Chat playback for the one shared motion note, and clears it on pause/unmount", async () => {
+    const h = await fixture(); await h.publish(); expect(h.playback).toHaveBeenLastCalledWith({ name: "own", playing: true });
+    await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "paused" }]);
+    expect(h.playback).toHaveBeenLastCalledWith({ name: "own", playing: false });
+    await h.publish(); h.cleanup(); await pg!.unmount(); expect(h.playback).toHaveBeenLastCalledWith({ name: "own", playing: false });
+  });
+  it("a manual pause never claims a performance intervention; actual budget and OFF reasons still explain it", async () => {
+    const h = await fixture();
+    await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "paused" }]);
+    expect(pg!.root.textContent).not.toContain("protect page responsiveness"); expect(pg!.root.textContent).toContain("automatic-pause history");
+    await h.open(); expect(pg!.root.textContent).not.toContain("protect page responsiveness");
+    await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "host_budget" }]); expect(pg!.root.textContent).toContain("protect page responsiveness");
+    await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "safety_off" }]); expect(pg!.root.textContent).toContain("after three automatic pauses"); h.cleanup();
+  });
   it("refused admission installs no runtime observers and keeps an incomplete browser host harmless", async () => {
     const h = await fixture(true); expect(h.observers).toEqual([]); expect(h.api().sync).not.toHaveBeenCalled();
     expect(pg!.root.textContent).toContain("runtime_unavailable"); await h.open(); expect(pg!.root.textContent).toContain("Playback is off or unavailable here."); h.cleanup(); expect(h.api().dispose).toHaveBeenCalledOnce();
@@ -95,7 +109,7 @@ describe("#1629 actual Effects component", () => {
     expect(effectRowText({ id: ID, phase: null, verdict: "queued", reason: "frame_limit" })).toBe("Waiting for a slot");
   });
   it.each([["safety_off", "Turned off on this device after three automatic pauses."], ["paused", "Paused"], ["interrupted", "Stopped: the page closed while it was playing."],
-    ["owner_css", "Off while your custom CSS is on."], ["reduced_motion", "Off: this device asks for reduced motion."], ["safety_unknown", "Stopped"]])("reason %s reads %s", async (reason, text) => {
+    ["owner_css", "Off while your custom CSS is on."], ["reduced_motion", "Off: you chose to follow the system's reduced motion setting."], ["safety_unknown", "Stopped"]])("reason %s reads %s", async (reason, text) => {
     const h = await fixture(); await h.publish(); await h.publishRows([{ id: ID, phase: null, reason, verdict: "off" }]); await h.open();
     expect(pg!.root.querySelector("dialog section p")!.textContent).toContain(text); h.cleanup();
   });
@@ -126,7 +140,7 @@ describe("#2115 persistent named block notices", () => {
     for (const phase of [null, "running", "loading"]) expect(effectRowText({ reason: "future_failure_42", phase, verdict: "queued" })).toBe("Playback blocked: future_failure_42");
     for (const reason of ["constructor", "__proto__"]) expect(effectRowText({ reason })).toBe(`Playback blocked: ${reason}`);
     expect(effectRowText({ reason: "preview_not_consented" })).toContain("older playback information");
-    expect(effectRowText({ reason: "baseline_timeout" })).toContain("calibration failed");
+    expect(effectRowText({ reason: "baseline_timeout" })).toContain("older playback information");
   });
   it.each(["guest","public"])("%s has an always-visible local off/on control, no management and no host write",async kind=>{
     const h=await fixture();if(kind==="guest")pg!.document.body.dataset.tier="guest";else pg!.document.body.dataset.publicLink="1";
@@ -144,6 +158,21 @@ describe("#2115 persistent named block notices", () => {
     const action = [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Turn effects on here")!;
     expect(action).toBeTruthy(); action.click(); await settle();
     expect(themes.themesShown()).toBe(true); expect(requests).toEqual([]); h.cleanup();
+  });
+  it.each(["guest", "public"])("%s motion recovery only changes the device choice", async kind => {
+    const h = await fixture(); if (kind === "guest") pg!.document.body.dataset.tier = "guest"; else pg!.document.body.dataset.publicLink = "1";
+    const motion = await import("/assets/fx-motion.js"), requests = vi.fn(); vi.stubGlobal("fetch", requests); h.host.fetch = requests;
+    motion.setFollowsReducedMotion(true); await h.publishRows([{ id: "a".repeat(32), reason: "reduced_motion", phase: null }]);
+    const action = [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Play effects anyway")!;
+    expect(action).toBeTruthy(); action.click(); await settle(); expect(motion.followsReducedMotion()).toBe(false);
+    expect(requests).not.toHaveBeenCalled(); expect(pg!.root.textContent).not.toContain("Remove from chat"); h.cleanup();
+  });
+  it("safe mode exits through the same-origin current URL while preserving other parameters", async () => {
+    const h = await fixture(); const assign = vi.fn();
+    vi.stubGlobal("location", { href: "http://localhost/ui/chat/own?safe=1&x=2#test", assign });
+    await h.publishRows([{ id: "a".repeat(32), reason: "safe_mode", phase: null }]);
+    [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Leave safe mode")!.click();
+    expect(assign).toHaveBeenCalledExactlyOnceWith("http://localhost/ui/chat/own?x=2#test"); h.cleanup();
   });
   it("stays visible outside the dialog, changes false→different-false, and links to the current viewer switch", async () => {
     const h = await fixture(); await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "disabled" }]);

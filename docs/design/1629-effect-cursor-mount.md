@@ -1,5 +1,10 @@
 # #1629 actual personal cursor integration
 
+> Current policy: [#2118 default playback](canvas-worker-default-playback.md#immediate-startup-and-live-reference-pr-3-of-3)
+> supersedes this slice's empty-page calibration and hard OS-motion/Save-Data prerequisites. The original evidence below
+> describes that earlier slice. Playback now starts while the host learns a live cadence; the shared device motion option
+> is off by default. Isolation, protected pixels, caps and sticky safety remain.
+
 The session-only app owner connects the fifth personal slot to the reviewed host
 cursor controller. This is local signed-in playback; public link, View, polling
 transport and header-token pages have no app owner. Per-platform identity and the

@@ -1340,9 +1340,12 @@ images, Trial and profile routes remain closed to them. Public/guest Chat header
 switch and recovery on desktop and phone, without changing host settings. Other dashboard sessions use More → Effects
 for local Pause/Resume and authorized Remove.
 
-The show switch, safe mode, hidden tabs, browser support, system reduced motion, data saver and the two-second empty-page
-frame-rate baseline still apply. Motion/baseline changes are a separate #2118 follow-up. A poster can appear behind content
-when Worker/transport support or motion/data settings prevent playback; no poster means no image. Public/guest viewers' show
+Effects start without an empty-page FPS calibration. The show switch, safe mode, hidden tabs, browser support and live
+performance guard remain. **Effects: follow the system's reduced-motion setting** is device-local and off by default,
+shared with ambient effects. An OS reduced-motion request alone does not block playback; data saver is informational.
+A one-time chat note offers to follow the system; a motion refusal offers **Play effects anyway**, and safe mode offers
+**Leave safe mode**. A poster can appear behind content when Worker/transport support or the chosen motion preference
+prevents playback; no poster means no image. Public/guest viewers' show
 choice stays in their browser and never changes host defaults. Safe mode, Show off and unknown stock ordering hide posters;
 manual Pause, queues and failed live reads do not select fallback. Personal page/header/sidebar/box effects use the same pool;
 the personal cursor uses a bounded static host image.

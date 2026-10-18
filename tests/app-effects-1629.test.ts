@@ -85,7 +85,7 @@ describe("#1629 app lifetime effect bridge", () => {
   it("the global barrier observer syncs once per actual modal transition and retains optional device gates", async () => {
     const h = await rig(); h.api.sync.mockClear(); h.doc.querySelector = () => ({}); h.observer.fn(); h.observer.fn(); expect(h.api.sync).toHaveBeenCalledOnce(); expect(h.entry.gates().modal).toBe(true);
     h.doc.querySelector = () => null; h.observer.fn(); expect(h.api.sync).toHaveBeenCalledTimes(2); h.media.matches = true; h.host.navigator.connection.saveData = true; env.safe = true;
-    expect(h.entry.gates()).toMatchObject({ modal: false, reducedMotion: true, saveData: true, safe: true }); h.entry.dispose();
+    expect(h.entry.gates()).toMatchObject({ modal: false, reducedMotion: false, saveData: true, safe: true }); h.entry.dispose();
   });
   it("a replacement Chat store unsubscribes the old reply source without a new core", async () => {
     const h = await rig(), old = [...h.replies][0], fresh = new Set<any>(), store = { onAgentReply: vi.fn((fn: any) => { fresh.add(fn); return () => fresh.delete(fn); }) };
@@ -101,7 +101,7 @@ describe("#1629 app lifetime effect bridge", () => {
   });
   it("a minimal browser facade disables playback without throwing or touching bare browser globals", async () => {
     const h = await rig(h => { delete h.host.navigator; delete h.host.innerWidth; delete h.host.matchMedia; delete h.host.Worker; delete h.host.OffscreenCanvas; delete h.host.MutationObserver; delete h.host.ResizeObserver; });
-    expect(h.entry.gates()).toMatchObject({ enabled: false, reducedMotion: true, saveData: false }); h.entry.dispose();
+    expect(h.entry.gates()).toMatchObject({ enabled: false, reducedMotion: false, saveData: false }); h.entry.dispose();
   });
   it.each(["core", "connection", "manual"])("%s termination releases every observer once and cannot start another Window episode", async fault => {
     const h = await rig(), ended = vi.fn(); h.entry.onEnd(ended); if (fault === "core") h.options().onDispose(); if (fault === "connection") env.app.set({ connection: "ended" }); if (fault === "manual") h.entry.dispose();
@@ -140,9 +140,11 @@ describe("#1629 app lifetime effect bridge", () => {
 
 
 describe("actual app cursor ownership", () => {
-  it("constructs one controller with exact source snapshot/shared read and current consent gates", async () => {
+  it("constructs one controller with exact source snapshot/shared read and current device motion choice", async () => {
     const h = await rig(); expect(h.cursorFactory).toHaveBeenCalledOnce(); const options = h.cursorFactory.mock.calls[0][0], c = h.api.cursorSelection(); expect(h.cursor.update).toHaveBeenLastCalledWith(c, true); const signal = new AbortController().signal; expect(await options.readImage(c, signal)).toEqual(new Uint8Array([1])); expect(h.api.cursorImageSettled).toHaveBeenCalledExactlyOnceWith(c, signal);
-    h.media.matches = true; h.media.emit("change"); expect(h.cursor.update).toHaveBeenLastCalledWith(c, false); h.media.matches = false; h.media.emit("change"); expect(h.cursor.update).toHaveBeenLastCalledWith(c, true); h.entry.dispose(); expect(h.cursor.dispose).toHaveBeenCalledOnce(); expect(options.current()).toBe(false);
+    h.media.matches = true; h.media.emit("change"); expect(h.cursor.update).toHaveBeenLastCalledWith(c, true);
+    const motion = await import("/assets/fx-motion.js"); motion.setFollowsReducedMotion(true); expect(h.cursor.update).toHaveBeenLastCalledWith(c, false);
+    motion.setFollowsReducedMotion(false); expect(h.cursor.update).toHaveBeenLastCalledWith(c, true); h.entry.dispose(); expect(h.cursor.dispose).toHaveBeenCalledOnce(); expect(options.current()).toBe(false);
   });
   it("unsupported or throwing cursor setup leaves the shared Chat/owner runtime intact", async () => {
     for (const kind of ["unsupported", "throw"]) { const h = await rig(h => { if (kind === "unsupported") h.cursor.ok = false; else h.cursorFactory.mockImplementation(() => { throw Error("unsupported"); }); }); expect(h.entry).not.toBeNull(); expect(h.entry.cursorSnapshot().status).toBe("unavailable"); expect(h.api.dispose).not.toHaveBeenCalled(); h.entry.dispose(); }
@@ -159,7 +161,7 @@ it("stock sidebar dragging closes only the cursor gate and restores it on the ob
   let dragging = false; const h = await rig(h => { h.doc.body.classList = { contains: (key: string) => key === "side-resizing" && dragging }; });
   const c = h.api.cursorSelection(); dragging = true; h.observer.fn([{ target: h.doc.body }]); expect(h.cursor.update).toHaveBeenLastCalledWith(c, false); dragging = false; h.observer.fn([{ target: h.doc.body }]); expect(h.cursor.update).toHaveBeenLastCalledWith(c, true); expect(h.cursorFactory).toHaveBeenCalledOnce(); h.entry.dispose();
 });
-it.each(["safe", "hidden", "transport", "show", "modal", "saveData", "unsupported"])("cursor follows existing %s gate without another metadata reader", async fault => {
+it.each(["safe", "hidden", "transport", "show", "modal", "unsupported"])("cursor follows existing %s gate without another metadata reader", async fault => {
   const h = await rig(); if (fault === "safe") env.safe = true; if (fault === "hidden") h.doc.visibilityState = "hidden"; if (fault === "transport") h.doc.body.dataset.effectBoot = ""; if (fault === "show") env.values["fx.show"] = false; if (fault === "modal") h.doc.querySelector = () => ({}); if (fault === "saveData") h.host.navigator.connection.saveData = true; if (fault === "unsupported") delete h.host.Worker;
   h.host.emit("resize"); expect(h.cursor.update).toHaveBeenLastCalledWith(h.api.cursorSelection(), false); expect(h.api.changedOwner).not.toHaveBeenCalled(); expect(h.cursorFactory).toHaveBeenCalledOnce(); h.entry.dispose();
 });
@@ -237,20 +239,21 @@ describe("#1629 product Trial bridge with protocol core", () => {
     const thread = createThread(list,scroller,{t,tf:t,isUser:()=>false,serverNow:()=>0,onJump(){},onEmpty(){},effectTrialStatus:(x:any)=>h.entry.trialStatus(x),canTryEffect:(x:any)=>h.entry.canTry(x),fixEffectTrial:vi.fn()});
     const draw = vi.fn(()=>thread.render([row])), off = h.entry.subscribeTrial(draw);
     try {
-      h.media.matches = true; h.host.navigator.connection.saveData = true; h.host.emit("resize");
-      expect(draw).toHaveBeenCalledTimes(1); expect(h.entry.canTry(row)).toBe(false); expect(list.textContent).toContain("Your device requests reduced motion.");
+      const motion = await import("/assets/fx-motion.js"); motion.setFollowsReducedMotion(true);
+      h.media.matches = true; h.doc.body.dataset.effectBoot = ""; h.host.emit("resize");
+      expect(draw).toHaveBeenCalledTimes(1); expect(h.entry.canTry(row)).toBe(false); expect(list.textContent).toContain("Effects follow this device’s reduced-motion setting.");
       // Removing the higher-priority condition must redraw despite aggregate permission remaining false.
       h.media.matches = false; h.media.emit("change"); expect(draw).toHaveBeenCalledTimes(2); expect(h.entry.canTry(row)).toBe(false);
-      expect(list.textContent).toContain("Your device requests reduced data use."); expect(list.textContent).not.toContain("reduced motion");
+      expect(list.textContent).toContain("The isolated effect player is unavailable."); expect(list.textContent).not.toContain("reduced-motion");
       env.values["fx.show"] = false; for(const fn of env.prefs)fn(); expect(draw).toHaveBeenCalledTimes(3); expect(list.textContent).toContain("Turn on effects to Try.");
       h.media.matches = true; h.media.emit("change"); expect(draw).toHaveBeenCalledTimes(3); // hidden lower-priority changes do not redraw
-      env.values["fx.show"] = true; for(const fn of env.prefs)fn(); expect(draw).toHaveBeenCalledTimes(4); expect(h.entry.canTry(row)).toBe(false);
-      expect(list.textContent).toContain("Your device requests reduced motion."); expect(list.textContent).not.toContain("Turn on effects");
+      h.doc.body.dataset.effectBoot = "a".repeat(32); env.values["fx.show"] = true; for(const fn of env.prefs)fn(); expect(draw).toHaveBeenCalledTimes(4); expect(h.entry.canTry(row)).toBe(false);
+      expect(list.textContent).toContain("Effects follow this device’s reduced-motion setting."); expect(list.textContent).not.toContain("Turn on effects");
       for(let i=0;i<100;i++)h.options().onChange(); expect(draw).toHaveBeenCalledTimes(4);
     } finally { off(); thread.dispose(); dom.restore(); h.entry.dispose(); await trialFlush(); }
   });
   it("repeated runtime observations do not repaint Trial eligibility until its value changes", async () => {
-    const h = await trialRig(), fn = vi.fn(); try { const off = h.entry.subscribeTrial(fn); for (let i = 0; i < 100; i++) h.options().onChange(); expect(fn).not.toHaveBeenCalled(); env.css.set({ state: "on" }); expect(fn).not.toHaveBeenCalled(); h.media.matches = true; h.host.emit("resize"); expect(fn).toHaveBeenCalledOnce(); off(); h.media.matches = false; h.host.emit("resize"); expect(fn).toHaveBeenCalledOnce(); } finally { h.entry.dispose(); }
+    const h = await trialRig(), fn = vi.fn(); try { const off = h.entry.subscribeTrial(fn); for (let i = 0; i < 100; i++) h.options().onChange(); expect(fn).not.toHaveBeenCalled(); env.css.set({ state: "on" }); expect(fn).not.toHaveBeenCalled(); (await import("/assets/fx-motion.js")).setFollowsReducedMotion(true); h.media.matches = true; h.host.emit("resize"); expect(fn).toHaveBeenCalledOnce(); off(); h.media.matches = false; h.host.emit("resize"); expect(fn).toHaveBeenCalledOnce(); } finally { h.entry.dispose(); }
   });
 });
 

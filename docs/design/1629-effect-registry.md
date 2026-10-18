@@ -1,5 +1,10 @@
 # Shared Canvas Worker registry (#1629 B2)
 
+> Current policy: [#2118 default playback](canvas-worker-default-playback.md#immediate-startup-and-live-reference-pr-3-of-3)
+> supersedes this slice's empty-page calibration and hard OS-motion/Save-Data prerequisites. The original evidence below
+> describes that earlier slice. Playback now starts while the host learns a live cadence; the shared device motion option
+> is off by default. Isolation, protected pixels, caps and sticky safety remain.
+
 This is an unmounted integration primitive. No product page imports it, no static asset is added to the public allowlist, and no concrete human preference, safety/history/profile store or HTTP route is added here. Product wiring remains a separate step.
 
 ## Admission and ownership

@@ -31,7 +31,7 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
     const effects = s?.metadata?.effects ?? [], known = registry?.snapshot?.() ?? [];
     const rows = effects.map(p => {
       const b = s.bindings.get(p.id), row = known.find(r => b && r.key === b.key && r.id === p.id);
-      if (row && !s.error && !playbackUnavailable) return row.reason == null && row.phase == null ? { ...row, reason: "calibrating" } : row;
+      if (row && !s.error && !playbackUnavailable) return row.reason == null && row.phase == null ? { ...row, phase: "loading" } : row;
       return { id: p.id, key: b?.key ?? null, verdict: "off", phase: null, quality: null,
         reason: s.error ?? playbackUnavailable ?? effectPlaybackReason(lastContext) ?? (!p.manifest.regions.includes("chat") ? "region_unavailable" : "runtime_unavailable") };
     });
@@ -141,7 +141,7 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
     if (identity.scope === "owner") trial = make("trialSource", createEffectTrialSource)({ window: host, current: () => {
       if (!alive()) return false; const v = observe(), c = v.context;
       return alive() && c.enabled === true && c.show === true && c.transportReady === true
-        && c.safe === false && c.publicLink === false && c.reducedMotion === false && c.saveData === false && c.hidden === false;
+        && c.safe === false && c.publicLink === false && c.reducedMotion === false && c.hidden === false;
     }, ownerCurrent: (s, name) => sourceAlive(s) && s.name === name,
       stock: () => registry.frameRoot ? make("stock", stockEffectTrust)(host, { frameRoot: registry.frameRoot, ownerCss: observe().ownerCss }) : null,
       readResource: (spec, signal) => typeof loader.trialResourceSettled === "function" ? loader.trialResourceSettled(spec, signal) : Promise.resolve(null),
@@ -210,7 +210,7 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
       // Metadata describes placements, not executable resources. Its existing session/epoch/current and
       // shared settled-lane fences apply even when this viewer has declined playback. No code is fetched here.
       if (!pending) {
-        const ownerNeeds = identity.scope === "owner" && !c.publicLink && c.enabled && c.show && c.transportReady && !c.safe && !c.reducedMotion && !c.saveData && !c.hidden && personal?.needsMetadata() === true, chatNeeds = sourceAlive(s) && !s.error && !s.metadata;
+        const ownerNeeds = identity.scope === "owner" && !c.publicLink && c.enabled && c.show && c.transportReady && !c.safe && !c.reducedMotion && !c.hidden && personal?.needsMetadata() === true, chatNeeds = sourceAlive(s) && !s.error && !s.metadata;
         if (!alive() || revision !== before || s !== source) { if (alive()) queueSync(); return; }
         if (ownerNeeds && (!chatNeeds || lastMetadata !== "owner")) void readPersonal();
         else if (chatNeeds) void read(s);

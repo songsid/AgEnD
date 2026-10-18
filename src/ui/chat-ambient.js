@@ -252,22 +252,23 @@ export function ChatAmbient({ name, surface, part }) {
 }
 
 /**
- * The one-time note (the user's direction): the system asks for reduced motion and this chat's ambient plays anyway —
+ * The one-time note (the user's direction): the system asks for reduced motion and this chat's ambient or Canvas Worker plays anyway —
  * say so once on this device, and turn it off right here (this device's switch: the same on the public link, where
- * Settings is not). Shown only where an ambient is actually drawn.
+ * Settings is not). Shown only while an ambient or Canvas Worker is playing.
  */
-export function AmbientMotionNote({ name }) {
+export function AmbientMotionNote({ name, canvasPlaying = false }) {
   const block = useAmbientBlock();
-  const shown = !block && !!ambientFor(name);
+  const shown = canvasPlaying || !block && !!ambientFor(name);
+  const noteDue = motionNoteDue();
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    if (!shown || open || !motionNoteDue()) return;
+    if (!shown || open || !noteDue) return;
     markMotionNoteShown();
     setOpen(true);
-  }, [shown]);
+  }, [shown, noteDue]);
   if (!open || !shown) return null;
   const off = () => { setOpen(false); setFollowsReducedMotion(true); };
-  return html`<div class="amb-note" role="status">
+  return html`<div class="amb-note" data-trust="thread-control" role="status">
     <span>${t("chat.ambientMotionNote")}</span>
     <button type="button" class="amb-note-off" onClick=${off}>${t("chat.ambientMotionNoteLink")}</button>
     <button type="button" class="amb-note-x" aria-label=${t("chat.ambientMotionNoteClose")} onClick=${() => setOpen(false)}>×</button>

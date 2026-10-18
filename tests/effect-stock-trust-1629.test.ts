@@ -76,6 +76,24 @@ describe("stock trust/paint prerequisite", () => {
       expect(f.snapshot()).toMatchObject({ ok: true, front: true, agentFront: true, reason: "stock" });
     } finally { real.restore(); }
   });
+  it("protects the shared motion note and its controls, and refuses missing markers or wrong paint order", async () => {
+    const f = await fixture(), dom = installDom();
+    try {
+      const shell = dom.document.createElement("div"), main = dom.document.createElement("div"), actual = dom.document.createElement("div");
+      shell.className = "shell"; main.className = "chat-main"; actual.className = "amb-note";
+      actual.setAttribute("data-trust", "thread-control"); shell.append(main); main.append(actual); dom.document.body.append(shell);
+      const spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "thread-control");
+      expect(spec.selector).toContain(".shell .chat-main > .amb-note"); expect(actual.matches(spec.selector)).toBe(true);
+      const el = f.node({ position: "relative", zIndex: "1" }), button = f.node();
+      el.r = { x: 300, y: 200, width: 400, height: 50 }; button.r = { x: 650, y: 210, width: 60, height: 35 }; el.children = [button];
+      el.getAttribute = () => actual.getAttribute("data-trust") ?? "";
+      f.extra.set(spec.selector, [el]); f.extra.set(".chat-main > .amb-note", [el]); f.marked.push(el);
+      expect(f.snapshot()).toMatchObject({ ok: true, rects: expect.arrayContaining([{ x: 300, y: 200, width: 410, height: 50 }]) });
+      el.style.zIndex = "-1"; expect(f.snapshot().ok).toBe(false); el.style.zIndex = "1";
+      actual.removeAttribute("data-trust"); expect(f.snapshot()).toMatchObject({ ok: false, reason: "stock_trust_unknown" });
+      actual.setAttribute("data-trust", "reply"); expect(f.snapshot().ok).toBe(false);
+    } finally { dom.restore(); }
+  });
   it("independently expects the actual inert offer root and protects its descendant paint", async () => {
     const f = await fixture(), dom = installDom();
     try {

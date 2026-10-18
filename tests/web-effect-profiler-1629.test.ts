@@ -34,7 +34,7 @@ describe("#1629 host-only effect profiler", () => {
     const bad = rig(device as string, true, hz as number); bad.frames(1000, 3000, (floor as number) - 0.5);
     expect(bad.budget.poll()).toMatchObject({ verdict: "degraded", metrics: { fpsFloor: floor } });
   });
-  it.each([undefined, null, 0, -1, NaN, Infinity, "60", 1001])("refuses unknown host calibration %s instead of falling back to a fixed floor", baselineFps => {
+  it.each([null, 0, -1, NaN, Infinity, "60", 1001])("refuses an invalid explicitly supplied host reference %s", baselineFps => {
     expect(() => new P.EffectBudget({ device: "standard", baselineFps })).toThrow(TypeError);
   });
   it("ignores startup, waits for a full window, degrades then pauses at 3/4/5 seconds", () => {
@@ -165,7 +165,7 @@ describe("#1629 host-only effect profiler", () => {
     h.frames(10000, 12000, 60);
     expect(h.budget.poll()).toMatchObject({ verdict: "degraded", badWindows: 0, remove: false, forward: true, metrics: { hostFps: 60 } });
   });
-  it.each([[{ reducedMotion: true }, "reduced_motion"], [{ saveData: true }, "save_data"], [{ show: false }, "viewer_off"], [{ hidden: undefined }, "gates_unknown"]])("removes immediately for %s", (patch, reason) => {
+  it.each([[{ reducedMotion: true }, "reduced_motion"], [{ show: false }, "viewer_off"], [{ hidden: undefined }, "gates_unknown"]])("removes immediately for %s", (patch, reason) => {
     const h = rig(); expect(h.budget.gates({ ...page, ...patch })).toMatchObject({ remove: true, forward: false, reason });
     expect(h.budget.gates(page).remove).toBe(true);
   });

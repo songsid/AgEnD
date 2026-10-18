@@ -1,5 +1,10 @@
 # Canvas Worker effects in local Chat
 
+> Current policy: [#2118 default playback](canvas-worker-default-playback.md#immediate-startup-and-live-reference-pr-3-of-3)
+> supersedes this slice's empty-page calibration and hard OS-motion/Save-Data prerequisites. The original evidence below
+> describes that earlier slice. Playback now starts while the host learns a live cadence; the shared device motion option
+> is off by default. Isolation, protected pixels, caps and sticky safety remain.
+
 This slice connects the reviewed B2 components to the committed Chat view on the
 2.3 feature branch. It does not mount personal sidebar/header/page/box/cursor
 choices or implement the Try side panel. Static public/anonymous posters are a separately reviewed path; this live bridge does not change them. Those personal/Try paths remain

@@ -6,7 +6,7 @@
 // right, the agent's at full width, and one rounded composer pinned below with attach, Stop reply and Send inside it.
 // The instance's own actions (details, start, stop, restart, delete) are in the header's ⋯ menu, and only the ones
 // that apply to its state are offered (#1408 rough edges 4 and 7).
-import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
+import { html, useCallback, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { appStore, guestPage, useStore } from "/assets/app-store.js";
 import { AuthorizeChip } from "/assets/web-authorize.js";
@@ -57,6 +57,7 @@ import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
 import { ChatEffectPosters } from "/ui/js/chat-effect-posters.js";
 import { ChatEffects, chatEffectsMenuAvailable } from "./chat-effects.js";
+import { setFollowsReducedMotion } from "/assets/fx-motion.js";
 import { AmbientMotionNote, ChatAmbient, ambientMenuItems } from "./chat-ambient.js";
 import { startAppEffects, getAppEffects } from "./app-effects.js";
 
@@ -225,6 +226,9 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const themeKey = JSON.stringify(theme);
   const card = useCard(name, inst.card_v);
   const [dialog, setDialog] = useState(null);       // "delete" | null
+  const [canvasPlayback, setCanvasPlayback] = useState(null);
+  const publishCanvasPlayback = useCallback(value => setCanvasPlayback(previous =>
+    !previous && !value.playing || previous?.name === value.name && previous.playing === value.playing ? previous : value), []);
   const [wrap, setWrap] = useState(codeWrap);
   const view = useRef(null), split = useRef(null), thread = useRef(null), bg = useRef(null), effectSurface = useRef(null);
   useLayoutEffect(() => { applyTheme(view.current, theme, mode); }, [themeKey, mode]);
@@ -292,14 +296,14 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelText(inst)}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
-    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`} notice=${html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onClose=${() => setDialog(null)} />`}><${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
+    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`} notice=${html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onPlayback=${publishCanvasPlayback} onClose=${() => setDialog(null)} />`}><${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>
       <div ref=${effectSurface} class=${`chat-main${theme && theme.background ? " has-th-bg" : ""}`}>
         ${theme && theme.background ? html`<img ref=${bg} class=${`th-bg th-bg-${theme.background.fit}`} src=${themeImageUrl(name, theme.background.image)} alt="" aria-hidden="true" decoding="async" />` : null}
         <${ChatAmbient} name=${name} surface=${effectSurface} part="layer" />
-        <${AmbientMotionNote} name=${name} />
+        <${AmbientMotionNote} name=${name} canvasPlaying=${canvasPlayback?.name === name && canvasPlayback.playing} />
         <${Thread} name=${name} th=${thread} />
         <${Dock} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${theme ? theme.workingLabel : undefined} />
         <${ChatAmbient} name=${name} surface=${effectSurface} part="front" />
@@ -325,7 +329,8 @@ function Thread({ name, th }) {
       setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
       effectTrialStatus: x => getAppEffects()?.trialStatus(x) ?? "localAdmin",
       fixEffectTrial: (x, reason) => {
-        if (reason === "busy") getAppEffects()?.stopTrial();
+        if (reason === "reducedMotion") setFollowsReducedMotion(false);
+        else if (reason === "busy") getAppEffects()?.stopTrial();
         else if (reason === "transport") location.reload();
         else if (reason === "localAdmin") location.href = "/signin?next=" + encodeURIComponent(location.pathname + location.search);
         else navigate("/settings/appearance");

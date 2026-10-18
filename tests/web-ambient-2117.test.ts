@@ -699,14 +699,30 @@ describe("the wiring", () => {
 });
 
 describe("the page: the one-time reduced-motion note", () => {
-  async function mountNote(storage: Record<string, string>, reduce: boolean, withAmbient = true, url?: string) {
+  async function mountNote(storage: Record<string, string>, reduce: boolean, withAmbient = true, url?: string, canvasPlaying = false) {
     const env = await pageLoad({ storage, reduce, ...(url ? { url } : {}) });
     const { P, themes, amb } = env;
     themes.themesStore.set({ ambient: withAmbient ? { alpha: { loop: { spec: spec(PETALS), by: "agent" } } } : {} });
     const pre = await import("/assets/preact.module.js");
-    pre.render(P.h("div", { class: "chat-main" }, P.h(amb.AmbientMotionNote, { name: "alpha" })), pg!.root); await settle(4);
+    pre.render(P.h("div", { class: "chat-main" }, P.h(amb.AmbientMotionNote, { name: "alpha", canvasPlaying })), pg!.root); await settle(4);
     return { ...env, note: () => pg!.root.querySelector(".amb-note") };
   }
+  it("a CW-only chat uses the same one-time note and protects its controls", async () => {
+    const first = await mountNote({}, true, false, undefined, true);
+    expect(first.note()).not.toBeNull(); expect(first.note()!.getAttribute("data-trust")).toBe("thread-control");
+    const motion = await import("/assets/fx-motion.js");
+    first.note()!.querySelector(".amb-note-off")!.click(); await settle(4);
+    expect(motion.motionBlocked()).toBe(true); expect(first.note()).toBeNull();
+  });
+  it("reevaluates the shared note when OS motion changes even if playback stays shown", async () => {
+    const env = await pageLoad({ reduce: false });
+    const pre = await import("/assets/preact.module.js"), motion = await import("/assets/fx-motion.js");
+    pre.render(env.P.h(env.amb.AmbientMotionNote, { name: "alpha", canvasPlaying: true }), pg!.root); await settle(4);
+    expect(pg!.root.querySelector(".amb-note")).toBeNull();
+    (globalThis as any).matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+    motion.setFollowsReducedMotion(false); await settle(4);
+    expect(pg!.root.querySelector(".amb-note")).not.toBeNull();
+  });
   it("the system asks for reduced motion and the ambient plays: said once on this device, with the switch that turns it off", async () => {
     const first = await mountNote({}, true);
     expect(first.note()).not.toBeNull();
