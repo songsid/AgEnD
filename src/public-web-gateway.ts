@@ -13,6 +13,8 @@ export const PUBLIC_GATEWAY_RECEIVE_MS = 10_000;
 /** Reviewed panel routes. No health, agent, issue-code, preview, legacy restart or SSE. */
 export function isPublicWebRoute(method: string, path: string): boolean {
   const reads = method === "GET" || method === "HEAD";
+  // #2118: fixed trusted opaque bootstrap only. No library/resource, personal or Trial grant.
+  if (method === "GET" && path === "/effect-bootstrap") return true;
   if (reads && isWebIconPath(path)) return true;
   if (reads && ["/", "/signin", "/ui", "/view", "/auth/session", "/auth/sessions", "/auth/device", "/api/fleet", "/api/profiles", "/api/sort-order", "/api/ai-usage"].includes(path)) return true;
   if (method === "GET" && path.startsWith("/assets/") && isServedAsset(path.slice("/assets/".length))) return true;
