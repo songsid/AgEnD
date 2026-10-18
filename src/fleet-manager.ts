@@ -293,6 +293,7 @@ import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, ty
 import { authorityNow, evaluateWebAuthority, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
+import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, LOOPBACK_HOST_NAMES, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
@@ -13088,6 +13089,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapterId: string,
     adapter: ChannelAdapter | undefined,
   ): Promise<boolean> {
+    if (await this.sessionAuthorizationRequests().handleCallback(data, adapterId)) return true;   // #1939 S2b
     if (data.callbackData.startsWith(REPLY_BUTTON_PREFIX)) {                       // #1266
       const buttons = this.replyButtons();
       if (!buttons) { data.ack?.(t("reply_buttons.closed")); return true; }
@@ -13889,6 +13891,103 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       .map(a => ({ handle: a.handle, label: sessions.get(a.handle)!.label, account: `${a.owner.adapterId}:${a.owner.userId}`, authorizedAt: a.authorizedAt,
         until: Math.min(a.until, a.authorizedAt + maxMs, sessions.get(a.handle)!.absoluteExpiry) })) : [];
     return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized };
+  }
+
+  private authorizationRequests: SessionAuthorizationRequests | null = null;
+  /**
+   * #1939 S2b (§0.1): "Authorize this browser" — the Confirm card in the account's DM. Confirm runs §3 again at the tap
+   * (authorizeWebSession on the session read again by its handle); Not me signs the session out.
+   */
+  sessionAuthorizationRequests(): SessionAuthorizationRequests {
+    if (this.authorizationRequests) return this.authorizationRequests;
+    const adapterOf = (adapterId: string): ChannelAdapter | undefined => this.adapters.get(adapterId) ?? this.worlds.get(adapterId)?.adapter;
+    const when = (ms: number) => new Date(ms).toLocaleString();
+    const where = (peer: WebPeer) => t(peer === "loopback" ? "web_auth.peer_loopback" : "web_auth.peer_lan");
+    return this.authorizationRequests = new SessionAuthorizationRequests({
+      now: () => performance.now(), wallNow: () => Date.now(),
+      maxSessionMs: () => webAuthorityPolicy(this.fleetConfig?.web).maxSessionMs,
+      sendDirect: async (owner, text, choices) => {
+        const adapter = adapterOf(owner.adapterId);
+        if (!adapter?.sendDirect) return null;
+        const sent = await adapter.sendDirect(owner.userId, text, { choices, allowedMentions: { parse: [] } });
+        return sent?.messageId ? { chatId: sent.chatId, messageId: sent.messageId } : null;
+      },
+      sendGeneralHint: async (owner, text) => {
+        const adapter = adapterOf(owner.adapterId), general = this.findGeneralInstance(owner.adapterId);
+        const topic = general ? this.fleetConfig?.instances[general]?.topic_id : undefined;
+        const group = general ? this.getGroupIdForInstance(general) : undefined;
+        if (adapter && group) await adapter.sendText(String(group), text, { ...(topic != null ? { threadId: String(topic) } : {}), allowedMentions: { parse: [] } });
+      },
+      editCard: async (owner, at, text, choices) => {
+        const adapter = adapterOf(owner.adapterId);
+        if (!adapter) return;
+        if (!choices.length && adapter.editMessageRemoveButtons) { await adapter.editMessageRemoveButtons(at.chatId, at.messageId, text); return; }
+        await adapter.editMessage(at.chatId, at.messageId, text);
+        if (adapter.replaceMessageButtons) await adapter.replaceMessageButtons(at.chatId, at.messageId, choices);
+      },
+      authorize: (handle, peer) => {
+        const record = this.webSessions?.findByHandle(handle);
+        if (!record) return { ok: false, refusal: "session_gone" };
+        const r = this.authorizeWebSession(record, peer, false);
+        return r.ok ? { ok: true, until: r.authorization.until } : { ok: false, refusal: r.refusal };
+      },
+      signOut: (handle) => {
+        this.webSessions?.revokeByHandle(handle);
+        this.sessionAuthorizationStore()?.prune(a => a.handle !== handle);
+      },
+      event: (type, payload) => { try { this.eventLog?.insert("web", type, payload); } catch { /* the event log is best effort */ } },
+      text: {
+        ask: (c) => t("web_auth.card_ask", c.label, where(c.peer), when(c.askedAt), when(c.until)),
+        confirmed: (c) => t("web_auth.card_confirmed", c.label, where(c.peer), when(c.until)),
+        denied: (c) => t("web_auth.card_denied", c.label),
+        expired: (c) => t("web_auth.card_expired", c.label),
+        refused: (c) => t("web_auth.card_refused", c.label, t(`web_auth.refusal_${c.refusal}`)),
+        revoked: (c) => t("web_auth.card_revoked", c.label),
+        generalHint: () => t("web_auth.general_hint"),
+        confirmLabel: () => t("web_auth.confirm"),
+        notMeLabel: () => t("web_auth.not_me"),
+        notYours: () => t("web_auth.not_yours"),
+      },
+      log: this.logger,
+    });
+  }
+
+  /** #1939 S2b: the web session asks to be authorized (the request judged by §3 first — as it will be again at the tap). */
+  async requestSessionAuthorization(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: AuthorizationAskRefusal; retryAfterMs?: number }> {
+    const s = input.session;
+    const gate = this.webAuthorityQualifies(input);
+    if (gate) return { ok: false, refusal: gate };
+    return this.sessionAuthorizationRequests().ask({ handle: s!.handle, owner: s!.owner!, label: s!.label, peer: input.peer });
+  }
+
+  /**
+   * #1939 §3 without the authorization: would this request's session qualify to be authorized? null: yes; otherwise the
+   * first check it fails (for the app to say why it can't be authorized here).
+   */
+  private webAuthorityQualifies(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): WebAuthorityRefusal | null {
+    const s = input.session, state = this.webAuthorityState(), now = Date.now(), policy = webAuthorityPolicy(this.fleetConfig?.web);
+    const r = evaluateWebAuthority({
+      session: s, gateway: input.gateway, peer: input.peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
+      isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
+      authorization: s?.owner ? { handle: s.handle, owner: s.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch } : null,
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly }, epoch: state.epoch, now,
+    });
+    return r.refusal;
+  }
+
+  /** #1939 S2b: what the app shows for this browser — verified (until when), a card pending, or why not. */
+  webSessionAuthorization(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }):
+    { state: "verified"; until: number } | { state: "pending"; expiresInMs: number } | { state: "none"; reason: WebAuthorityRefusal } {
+    const s = input.session;
+    const verdict = this.webAuthority(input);
+    if (!verdict.refusal && verdict.authority.session) {
+      const a = this.sessionAuthorizationStore()?.get(s!.handle);
+      const max = webAuthorityPolicy(this.fleetConfig?.web).maxSessionMs;
+      if (a) return { state: "verified", until: Math.min(a.until, a.authorizedAt + max, s!.absoluteExpiry) };
+    }
+    const pending = s ? this.sessionAuthorizationRequests().pending(s.handle) : null;
+    if (pending) return { state: "pending", expiresInMs: pending.expiresInMs };
+    return { state: "none", reason: this.webAuthorityQualifies(input) ?? (verdict.refusal ?? "not_authorized") };
   }
 
   /** #1939 §10: revoke every web authority given so far (receipts read as none), without signing anyone out. */

@@ -677,6 +677,10 @@ html.lb-open .scroller { overflow: hidden; }
 .s-guests .guest-actions { display: flex; flex-wrap: wrap; gap: var(--s-1); margin-top: var(--s-1); }
 .s-guests .guest-narrow-edit { margin-top: var(--s-2); }
 .s-guests .guest-away { color: var(--text-3); }
+/* #1939 S2b: this browser's authorization, under the composer and in the session menu (one compact line). */
+.webauth-chip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); margin: var(--s-1) 0 0; font-size: var(--fs-xs); }
+.webauth-chip .webauth-ok { color: var(--ok); }
+.webauth-chip .btn-sm { min-height: 24px; }
 /* #1939 S2a: Settings → Web → Web authority. */
 .s-web-authority .s-va-sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .s-web-authority .s-va-sessions li { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); overflow-wrap: anywhere; }

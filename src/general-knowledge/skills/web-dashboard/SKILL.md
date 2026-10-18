@@ -81,14 +81,17 @@ membership is verified, minus any `web.guests.narrow`. They can chat there unles
 a command (text starting with `/` is refused), and the agent sees them as `via web (guest)`. A guest's app has no Fleet,
 View, Settings or Needs you. To invite someone: turn it on, then tell them to send `/web`.
 
-**Web authority (#1939, 2.3 beta).** Settings → Web → **Web authority** (`web.verified_authority`, on by default):
-whether a signed-in fleet admin's web messages carry their own account's authority in the delivery receipt. A session
-signed in with a code DMed to that account, on the dashboard reached directly (never the public link or a guest), is
-authorized once from Discord or Telegram; after that its messages are `web-verified` for `max_session_hours` (default
-48). **Only this computer can authorize** (`loopback_only`) limits it to a browser on the host. The card lists the
-authorized sessions. **Revoke web authority** (or `/web revoke`) makes all authority given so far read as none and ends
-every authorization. Changes apply at once (none grants anything without the account's confirmation). Agents still
-treat web messages as recognition only for now.
+**Web authority (#1939, 2.3 beta).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
+account. Under the composer (and in the session menu) the line says **Not verified · Authorize this browser**. Pressing it
+sends a card to that account's DM, saying which browser (device, on this computer or the network, when, until when), with
+**Confirm** and **Not me**. Confirm within 5 minutes and the line says **Verified · speaks as you until …**. That
+browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
+Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
+per account. Never on the public link or for a guest; when a browser can't be authorized, the line says why (with a
+link to Settings when the switch or "Only this computer" is the reason). Settings → Web → **Web authority**
+(`web.verified_authority`, on by default) has the switch, **Only this computer can authorize** (`loopback_only`), the
+hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change there applies at once.
+Agents still treat web messages as recognition only for now.
 
 ## Chat
 
