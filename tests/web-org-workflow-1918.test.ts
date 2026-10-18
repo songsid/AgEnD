@@ -23,11 +23,17 @@ const ORG = { general: ["atlas", "beacon"], teams: [{ name: "Web", members: ["pi
 
 let p: AppPage, T: any, C: any, O: any, app: any, fleet: any, nav: any;
 let snapshot: any = { now: "", items: [], delegations: [] };
+/** When set, the next /ui/traffic answer waits for it (a slow read the stream overtakes). */
+let hold: Promise<void> | null = null;
 const subs = new Map<string, Set<(d: unknown) => void>>();
 const emit = (name: string, d: unknown) => { for (const fn of subs.get(name) ?? []) fn(d); };
 beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19280/ui/fleet/org" });
-  (globalThis as any).fetch = async (url: string) => ({ ok: true, status: 200, json: async () => (url === "/ui/org" ? ORG : url === "/ui/traffic" ? snapshot : {}) });
+  (globalThis as any).fetch = async (url: string) => {
+    const body = url === "/ui/org" ? ORG : url === "/ui/traffic" ? snapshot : {};      // what the server said when asked
+    if (url === "/ui/traffic" && hold) { const h = hold; hold = null; await h; }
+    return { ok: true, status: 200, json: async () => body };
+  };
   app = await import("/assets/app-store.js");
   nav = await import("/assets/app-nav.js");
   nav.startRouter(p.window);
@@ -40,7 +46,7 @@ afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
   vi.useRealTimers();
   await p.unmount();
-  p.storage.clear(); subs.clear(); snapshot = { now: "", items: [], delegations: [] };
+  p.storage.clear(); subs.clear(); snapshot = { now: "", items: [], delegations: [] }; hold = null;
   app.appStore.set({ ready: true, instances: INSTANCES, exec: {}, awaiting: {}, needs: [], connection: "live",
     streamOn: (name: string, fn: (d: unknown) => void) => { const s = subs.get(name) ?? new Set(); s.add(fn); subs.set(name, s); return () => s.delete(fn); } });
 });
@@ -162,6 +168,44 @@ describe("the work: a delegation stays until its report", () => {
     expect(s.load({ items: [], delegations: [] }, 1)).toBe(true);
     expect(s.items()).toEqual([]);
   });
+  it("#2135 review: ended work is remembered — a snapshot that still lists it (asked for before, or not) never draws it again", () => {
+    const s = T.createTrafficStore();
+    const since = s.streamRev();                                                        // a read goes out
+    s.delegation(del(1, "atlas", "ember"), 0);
+    s.delegation(del(1, "atlas", "ember", "done"), 1_000);
+    s.sweep(1_000 + T.RETURN_MS);
+    expect(s.items()).toEqual([]);
+    const old = { items: [], delegations: [del(1, "atlas", "ember", "open", 500)] };
+    expect(s.load(old, 1_000 + T.RETURN_MS + 1, since), "the held answer arrives").toBe(false);
+    expect(s.load(old, 1_000 + T.RETURN_MS + 2), "even as a fresh one").toBe(false);
+    expect(s.items()).toEqual([]);
+    // Expired, taken back, run out here: the same.
+    s.delegation(del(2, "atlas", "quill"), 0); s.delegation(del(2, "atlas", "quill", "expired"), 1);
+    s.delegation(del(3, "atlas", "sage"), 0); s.delegation(del(3, "atlas", "sage", "cancelled"), 1);
+    s.delegation(del(4, "atlas", "kite", "open", T.DELEGATION_TTL_MS), 0); s.sweep(1); s.sweep(1 + T.FADE_MS);
+    s.sweep(2 + T.FADE_MS);
+    expect(s.load({ items: [], delegations: [del(2, "atlas", "quill"), del(3, "atlas", "sage"), del(4, "atlas", "kite")] }, 3 + T.FADE_MS)).toBe(false);
+    expect(s.items()).toEqual([]);
+  });
+  it("#2135 review: a snapshot asked for before the stream's latest news ends and rewinds nothing; it only adds what is new", () => {
+    const s = T.createTrafficStore();
+    s.apply(msg(1, "atlas", "ember", "queued", "task"), 0);
+    const since = s.streamRev();
+    s.apply(msg(1, "atlas", "ember", "delivering", "task"), 1);
+    expect(s.streamRev(), "a stream item counts").toBe(since + 1);
+    s.delegation(del(1, "atlas", "ember"), 1);
+    const old = { items: [msg(1, "atlas", "ember", "queued", "task"), msg(2, "beacon", "kite", "queued")], delegations: [] };
+    expect(s.load(old, 2, since)).toBe(true);
+    expect(s.items().map((i: any) => [i.to, i.state, i.phase ?? null])).toEqual([["ember", "delivering", null], ["kite", "queued", null], ["ember", "delivering", "work"]]);
+    // A message the stream drew after the read went out is not ended by the answer that does not know it.
+    const since2 = s.streamRev();
+    s.apply(msg(3, "atlas", "sage", "delivering"), 2);
+    expect(s.load({ items: [], delegations: [] }, 2, since2)).toBe(false);
+    expect(s.items().some((i: any) => i.to === "sage")).toBe(true);
+    // A fresh one (nothing heard since it was asked for) is the truth again.
+    expect(s.load({ items: [], delegations: [] }, 3)).toBe(true);
+    expect(s.items()).toEqual([]);
+  });
   it("edges: in progress and its return are lines of their own (not merged with the task message); live first", () => {
     const s = T.createTrafficStore();
     s.apply(msg(9, "atlas", "ember", "delivering", "task"), 0);
@@ -199,6 +243,31 @@ describe("the page", () => {
     expect([f.getAttribute("marker-start"), f.getAttribute("marker-end")]).toEqual(["url(#oc-src-report)", "url(#oc-ah-report)"]);
     await vi.advanceTimersByTimeAsync(T.RETURN_MS + 1100);
     expect(flows()).toEqual([]);
+    vi.useRealTimers();
+  });
+  it("#2135 review: a slow snapshot overtaken by the stream's done (and the return gone) never redraws the work", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "performance"] });
+    let release!: () => void;
+    hold = new Promise<void>((r) => { release = r; });
+    snapshot = { now: "", items: [], delegations: [del(1, "atlas", "ember", "open", 1_000)] };   // as the server saw it when asked
+    const m = mount(); await vi.advanceTimersByTimeAsync(50); await m;
+    expect(flows(), "the read is still out").toEqual([]);
+    emit("delegation", del(1, "atlas", "ember")); emit("delegation", del(1, "atlas", "ember", "done"));
+    await vi.advanceTimersByTimeAsync(T.RETURN_MS + 1100);
+    expect(flows()).toEqual([]);
+    release(); await vi.advanceTimersByTimeAsync(50);
+    expect(flows(), "the old answer arrives: nothing comes back").toEqual([]);
+    vi.useRealTimers();
+  });
+  it("#2135 review: a slow snapshot that does not know a delegation the stream opened meanwhile does not end it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "performance"] });
+    let release!: () => void;
+    hold = new Promise<void>((r) => { release = r; });
+    const m = mount(); await vi.advanceTimersByTimeAsync(50); await m;
+    emit("delegation", del(2, "beacon", "kite")); await vi.advanceTimersByTimeAsync(20);
+    expect(flows()).toEqual(["h-task ph-work"]);
+    release(); await vi.advanceTimersByTimeAsync(50);
+    expect(flows(), "the answer from before it: the line stays").toEqual(["h-task ph-work"]);
     vi.useRealTimers();
   });
   it("on opening, the snapshot's open delegations are drawn (a reload, the public link)", async () => {

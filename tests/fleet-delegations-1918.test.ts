@@ -11,59 +11,85 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { Delegations, DELEGATION_TTL_MS, DELEGATIONS_MAX, type TrafficItem } from "../src/fleet-traffic.js";
+import type { OutboxDelivery } from "../src/delivery-outbox.js";
 
 const roots: string[] = [];
 afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
 const AT = "2026-10-18T10:00:00.000Z";
-const item = (from: string, to: string, kind: TrafficItem["kind"], state: TrafficItem["state"] = "queued"): TrafficItem => ({ id: "0".repeat(16), from, to, kind, state, at: AT });
+/** A message's traffic item: `n` names its delivery (each state of one message shares it). */
+const item = (from: string, to: string, kind: TrafficItem["kind"], state: TrafficItem["state"] = "queued", n = 1): TrafficItem => ({ id: n.toString(16).padStart(16, "0"), from, to, kind, state, at: AT });
 const row = (correlationId: string | null) => ({ correlationId });
 
 describe("Delegations", () => {
   it("a task opens one; its report (same correlation id, the other way) closes it: open, then done, with how long it took", () => {
     let now = 0;
     const d = new Delegations(() => now);
-    const [open] = d.note(row("cid-1"), item("atlas", "ember", "task"));
+    const [open] = d.note(row("cid-1"), item("atlas", "ember", "task", "queued", 1));
     expect(open).toEqual({ id: expect.stringMatching(/^[0-9a-f]{16}$/), from: "atlas", to: "ember", state: "open", age_ms: 0 });
-    expect(d.note(row("cid-1"), item("atlas", "ember", "task", "delivering")), "its later states: no news").toEqual([]);
+    expect(d.note(row("cid-1"), item("atlas", "ember", "task", "delivering", 1)), "its later states: no news").toEqual([]);
     now = 90_000;
     expect(d.snapshot()).toEqual([{ ...open, age_ms: 90_000 }]);
-    expect(d.note(row("cid-1"), item("ember", "atlas", "report"))).toEqual([{ ...open, state: "done", age_ms: 90_000 }]);
+    expect(d.note(row("cid-1"), item("ember", "atlas", "report", "queued", 2))).toEqual([{ ...open, state: "done", age_ms: 90_000 }]);
     expect(d.snapshot()).toEqual([]);
     expect(JSON.stringify(open)).not.toContain("cid-1");
   });
+  it("#2135 review: a later state of the task's own delivery never opens it again — after its report, its expiry or being pushed out", () => {
+    let now = 0;
+    const d = new Delegations(() => now);
+    d.note(row("cid-1"), item("atlas", "ember", "task", "delivered", 1));
+    d.note(row("cid-1"), item("ember", "atlas", "report", "queued", 2));                // a fast report, before the task's consumed mark
+    expect(d.note(row("cid-1"), item("atlas", "ember", "task", "consumed", 1)), "the consumed mark, 5 s later").toEqual([]);
+    expect(d.snapshot()).toEqual([]);
+    d.note(row("cid-2"), item("atlas", "quill", "task", "queued", 3));
+    now = DELEGATION_TTL_MS;
+    expect(d.note(row("cid-2"), item("atlas", "quill", "task", "delivered", 3)).map((x) => x.state), "expired, and not opened again").toEqual(["expired"]);
+    expect(d.snapshot()).toEqual([]);
+  });
+  it("a new task delivery with the same correlation id is a new delegation (its own id); one already open for the pair is kept", () => {
+    const d = new Delegations(() => 0);
+    const [a] = d.note(row("cid-1"), item("atlas", "ember", "task", "queued", 1));
+    d.note(row("cid-1"), item("ember", "atlas", "report", "queued", 2));
+    const [b] = d.note(row("cid-1"), item("atlas", "ember", "task", "queued", 3));
+    expect([b.state, b.id === a.id]).toEqual(["open", false]);
+    expect(d.note(row("cid-1"), item("atlas", "ember", "task", "queued", 4)), "open already for this pair: its report closes it").toEqual([]);
+    expect(d.note(row("cid-1"), item("atlas", "ember", "task", "failed", 4)), "that other delivery failing takes nothing back").toEqual([]);
+    expect(d.snapshot().map((x) => x.id)).toEqual([b.id]);
+  });
   it("only its own report closes it: not another correlation id, not the same direction, not a send; no correlation id: nothing", () => {
     const d = new Delegations(() => 0);
-    d.note(row("cid-1"), item("atlas", "ember", "task"));
-    expect(d.note(row("cid-2"), item("ember", "atlas", "report"))).toEqual([]);
-    expect(d.note(row("cid-1"), item("atlas", "ember", "report"))).toEqual([]);
-    expect(d.note(row("cid-1"), item("ember", "atlas", "send"))).toEqual([]);
-    expect(d.note(row("cid-1"), item("ember", "atlas", "report", "failed")), "a report that failed to arrive").toEqual([]);
-    expect(d.note(row(null), item("quill", "sage", "task"))).toEqual([]);
+    d.note(row("cid-1"), item("atlas", "ember", "task", "queued", 1));
+    expect(d.note(row("cid-2"), item("ember", "atlas", "report", "queued", 2))).toEqual([]);
+    expect(d.note(row("cid-1"), item("atlas", "ember", "report", "queued", 3))).toEqual([]);
+    expect(d.note(row("cid-1"), item("ember", "atlas", "send", "queued", 4))).toEqual([]);
+    expect(d.note(row("cid-1"), item("ember", "atlas", "report", "failed", 5)), "a report that failed to arrive").toEqual([]);
+    expect(d.note(row(null), item("quill", "sage", "task", "queued", 6))).toEqual([]);
     expect(d.snapshot().map((x) => x.to)).toEqual(["ember"]);
   });
-  it("the task's delivery failed or was cancelled: taken back (cancelled)", () => {
+  it("the task's delivery failed or was cancelled: taken back (cancelled), and its later states never open it", () => {
     const d = new Delegations(() => 0);
-    d.note(row("cid-1"), item("atlas", "ember", "task"));
-    d.note(row("cid-2"), item("atlas", "quill", "task"));
-    expect(d.note(row("cid-1"), item("atlas", "ember", "task", "failed")).map((x) => x.state)).toEqual(["cancelled"]);
-    expect(d.note(row("cid-2"), item("atlas", "quill", "task", "cancelled")).map((x) => x.state)).toEqual(["cancelled"]);
+    d.note(row("cid-1"), item("atlas", "ember", "task", "queued", 1));
+    d.note(row("cid-2"), item("atlas", "quill", "task", "queued", 2));
+    expect(d.note(row("cid-1"), item("atlas", "ember", "task", "failed", 1)).map((x) => x.state)).toEqual(["cancelled"]);
+    expect(d.note(row("cid-2"), item("atlas", "quill", "task", "cancelled", 2)).map((x) => x.state)).toEqual(["cancelled"]);
+    expect(d.note(row("cid-1"), item("atlas", "ember", "task", "delivering", 1))).toEqual([]);
     expect(d.snapshot()).toEqual([]);
   });
   it("one that waits past DELEGATION_TTL_MS expires (no report yet): said with the next news, gone from the snapshot", () => {
     let now = 0;
     const d = new Delegations(() => now);
-    d.note(row("cid-1"), item("atlas", "ember", "task"));
+    d.note(row("cid-1"), item("atlas", "ember", "task", "queued", 1));
     now = DELEGATION_TTL_MS - 1;
     expect(d.snapshot()).toHaveLength(1);
     now = DELEGATION_TTL_MS;
-    expect(d.note(row("cid-9"), item("quill", "sage", "task")).map((x) => [x.to, x.state])).toEqual([["ember", "expired"], ["sage", "open"]]);
+    expect(d.note(row("cid-9"), item("quill", "sage", "task", "queued", 2)).map((x) => [x.to, x.state])).toEqual([["ember", "expired"], ["sage", "open"]]);
     expect(d.snapshot().map((x) => x.to)).toEqual(["sage"]);
   });
-  it("capped at DELEGATIONS_MAX: the oldest expires first", () => {
+  it("capped at DELEGATIONS_MAX: the oldest expires first, and its later states never open it again", () => {
     const d = new Delegations(() => 0);
-    for (let i = 0; i < DELEGATIONS_MAX; i++) d.note(row(`cid-${i}`), item("atlas", `w${i}`, "task"));
-    expect(d.note(row("cid-new"), item("atlas", "wnew", "task")).map((x) => [x.to, x.state])).toEqual([["wnew", "open"], ["w0", "expired"]]);
+    for (let i = 0; i < DELEGATIONS_MAX; i++) d.note(row(`cid-${i}`), item("atlas", `w${i}`, "task", "queued", 100 + i));
+    expect(d.note(row("cid-new"), item("atlas", "wnew", "task", "queued", 9999)).map((x) => [x.to, x.state])).toEqual([["wnew", "open"], ["w0", "expired"]]);
     expect(d.snapshot()).toHaveLength(DELEGATIONS_MAX);
+    expect(d.note(row("cid-0"), item("atlas", "w0", "task", "consumed", 100))).toEqual([]);
   });
 });
 
@@ -97,6 +123,47 @@ describe("FleetManager: SSE delegation and the snapshot", () => {
       admit(fm, "ember", "atlas", "report", "cid-a");
       expect(sse.filter(([t]) => t === "delegation").map(([, d]) => [d.from, d.to, d.state])).toEqual([["atlas", "ember", "open"], ["atlas", "quill", "open"], ["atlas", "ember", "done"]]);
       expect(fm.trafficSnapshot().delegations.map((d: any) => d.to), "news dropped the memo").toEqual(["quill"]);
+    } finally { close(); }
+  });
+  const deliver = (fm: any, deliveryId: string, boot: string) => {
+    const outbox = fm.deliveryOutbox as DeliveryOutbox;
+    const c = outbox.claimNext("manager", () => boot, new Set())!;
+    expect(c.deliveryId).toBe(deliveryId);
+    outbox.begin(deliveryId, boot, c.attemptNo, { backend: "claude-code", backendVersion: null, windowId: "@w", transcriptPath: "/t", transcriptOffset: 0, transcriptSessionId: "/t", submissionMode: "native_queue_handoff" });
+    outbox.complete(deliveryId, boot, c.attemptNo, "delivered", "proof");
+    return c.attemptNo as number;
+  };
+  it("#2135 review: task → a fast report → the task's own consumed mark (seconds later) never opens it again", async () => {
+    const { fm, sse, close } = await fleet();
+    try {
+      const task = admit(fm, "atlas", "ember", "task", "cid-a");
+      const attempt = deliver(fm, task.deliveryId, "boot-e");
+      admit(fm, "ember", "atlas", "report", "cid-a");                                    // the report comes back first
+      (fm.deliveryOutbox as DeliveryOutbox).markConsumed(task.deliveryId, "boot-e", attempt, "turn", "e");
+      expect(sse.filter(([t]) => t === "traffic").some(([, d]) => d.kind === "task" && d.state === "consumed"), "the consumed mark was published").toBe(true);
+      expect(sse.filter(([t]) => t === "delegation").map(([, d]) => d.state)).toEqual(["open", "done"]);
+      expect(fm.trafficSnapshot().delegations).toEqual([]);
+    } finally { close(); }
+  });
+  it("#2135 review: an instance hidden after its delegation opened is in no later delegation event — not its expiry, not its eviction", async () => {
+    const { fm, sse, close } = await fleet();
+    try {
+      let now = 0;
+      fm.delegations = new Delegations(() => now);
+      admit(fm, "atlas", "quill", "task", "cid-q");
+      fm.fleetConfig.instances.quill = { cross_instance_visibility: "hidden" };
+      now = DELEGATION_TTL_MS;
+      admit(fm, "atlas", "ember", "task", "cid-e");                                      // news: the sweep expires quill's
+      const after = sse.filter(([t]) => t === "delegation").map(([, d]) => [d.to, d.state]);
+      expect(after).toEqual([["quill", "open"], ["ember", "open"]]);
+      // Eviction at the cap: one more open for a hidden peer, pushed out by visible ones.
+      fm.fleetConfig.instances.quill = {};
+      admit(fm, "atlas", "quill", "task", "cid-q2");
+      fm.fleetConfig.instances.quill = { cross_instance_visibility: "hidden" };
+      for (let i = 0; i < DELEGATIONS_MAX; i++) { fm.fleetConfig.instances[`w${i}`] = {}; fm.daemons.set(`w${i}`, { bootId: `w${i}-boot` }); admit(fm, "atlas", `w${i}`, "task", `cid-w${i}`); }
+      const evicted = sse.filter(([t]) => t === "delegation").map(([, d]) => d).filter((d: any) => d.state === "expired");
+      expect(evicted.length, "evictions happened").toBeGreaterThan(0);
+      expect(evicted.some((d: any) => d.to === "quill"), "quill is never named").toBe(false);
     } finally { close(); }
   });
   it("the task's delivery failing takes it back; a hidden instance's delegations never show", async () => {

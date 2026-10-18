@@ -54,66 +54,86 @@ export function delegationOk(x) {
 }
 
 /**
- * The page's traffic: `apply(item, nowMs)` one stream item, `delegation(d, nowMs)` one delegation event, `load(snapshot, nowMs)` a snapshot, `sweep(nowMs)` drops
- * faded lines; each returns whether anything shown changed. `items()` what to draw: { …item, fading }.
+ * The page's traffic: `apply(item, nowMs)` one stream item, `delegation(d, nowMs)` one delegation event,
+ * `load(snapshot, nowMs, since)` a snapshot, `sweep(nowMs)` drops faded lines; each returns whether anything shown
+ * changed. `items()` what to draw: { …item, fading }. `streamRev()` counts the stream's events: a snapshot asked for
+ * before the latest one (`since` older than it) may be older than what the stream already said, so it adds only what
+ * is new and ends or rewinds nothing (#2135 review).
+ * Ended work is remembered (bounded): a late snapshot never draws a delegation that is done, expired or taken back.
  */
 export function createTrafficStore() {
   const items = new Map();          // id → { item, fadeAt }
   const work = new Map();           // delegation id → { d, phase: "work" | "return" | "stale", until }
-  const done = new Set();           // ids that ended: a late item for one is ignored
+  const done = new Set();           // message ids that ended: a late item for one is ignored
+  const ended = new Set();          // delegation ids that ended: never drawn in progress again
+  let rev = 0;
   const finish = (id) => {
     items.delete(id);
     done.add(id);
     if (done.size > MAX_DONE) done.delete(done.values().next().value);
   };
+  const end = (id) => {
+    ended.add(id);
+    if (ended.size > MAX_DONE) ended.delete(ended.values().next().value);
+  };
+  const applyItem = (raw, now) => {
+    const it = itemOk(raw);
+    if (!it || done.has(it.id)) return false;
+    const prev = items.get(it.id);
+    if (ENDS.has(it.state)) { const had = !!prev; finish(it.id); return had; }
+    if (prev && prev.fadeAt !== null) return false;                            // fading: never goes back, nor starts again
+    if (prev && prev.item.state === it.state) return false;
+    if (it.state === "consumed" && !prev) { finish(it.id); return false; }      // read before this page drew it
+    items.delete(it.id);
+    // A message keeps what it was (from, to, kind) through its states; only the state moves.
+    items.set(it.id, { item: prev ? { ...prev.item, state: it.state } : it, fadeAt: SETTLED.has(it.state) ? now + FADE_MS : null });
+    while (items.size > MAX_ITEMS) items.delete(items.keys().next().value);
+    return true;
+  };
+  const applyDelegation = (raw, now) => {
+    const d = delegationOk(raw);
+    if (!d || ended.has(d.id)) return false;
+    const prev = work.get(d.id);
+    if (d.state === "open") {
+      if (prev) return false;
+      work.set(d.id, { d, phase: "work", until: now + Math.max(0, DELEGATION_TTL_MS - d.age) });
+      while (work.size > MAX_WORK) { const oldest = work.keys().next().value; work.delete(oldest); end(oldest); }
+      return true;
+    }
+    end(d.id);
+    if (d.state === "cancelled") return work.delete(d.id);
+    if (d.state === "done") { work.set(d.id, { d, phase: "return", until: now + RETURN_MS }); return true; }
+    if (!prev || prev.phase !== "work") return false;                              // expired: only one this page shows
+    work.set(d.id, { d, phase: "stale", until: now + FADE_MS });
+    return true;
+  };
   const store = {
-    apply(raw, now = mono()) {
-      const it = itemOk(raw);
-      if (!it || done.has(it.id)) return false;
-      const prev = items.get(it.id);
-      if (ENDS.has(it.state)) { const had = !!prev; finish(it.id); return had; }
-      if (prev && prev.fadeAt !== null) return false;                            // fading: never goes back, nor starts again
-      if (prev && prev.item.state === it.state) return false;
-      if (it.state === "consumed" && !prev) { finish(it.id); return false; }      // read before this page drew it
-      items.delete(it.id);
-      // A message keeps what it was (from, to, kind) through its states; only the state moves.
-      items.set(it.id, { item: prev ? { ...prev.item, state: it.state } : it, fadeAt: SETTLED.has(it.state) ? now + FADE_MS : null });
-      while (items.size > MAX_ITEMS) items.delete(items.keys().next().value);
-      return true;
-    },
-    delegation(raw, now = mono()) {
-      const d = delegationOk(raw);
-      if (!d) return false;
-      const prev = work.get(d.id);
-      if (d.state === "open") {
-        if (prev) return false;
-        work.set(d.id, { d, phase: "work", until: now + Math.max(0, DELEGATION_TTL_MS - d.age) });
-        while (work.size > MAX_WORK) work.delete(work.keys().next().value);
-        return true;
-      }
-      if (d.state === "cancelled") return work.delete(d.id);
-      if (d.state === "done") { work.set(d.id, { d, phase: "return", until: now + RETURN_MS }); return true; }
-      if (!prev || prev.phase !== "work") return false;                              // expired: only one this page shows
-      work.set(d.id, { d, phase: "stale", until: now + FADE_MS });
-      return true;
-    },
-    /** A snapshot is the truth for what is in flight: anything live it no longer lists has ended (missed while away). */
-    load(snap, now = mono()) {
+    apply(raw, now = mono()) { rev++; return applyItem(raw, now); },
+    delegation(raw, now = mono()) { rev++; return applyDelegation(raw, now); },
+    streamRev: () => rev,
+    /**
+     * A snapshot is the truth for what is in flight: anything live it no longer lists has ended (missed while away) —
+     * unless the stream has spoken since it was asked for (`since`): then it may be older than what is drawn, and only
+     * what is new to this page is taken from it.
+     */
+    load(snap, now = mono(), since = rev) {
+      const fresh = since === rev;
       const list = snap && Array.isArray(snap.items) ? snap.items.map(itemOk).filter(Boolean) : [];
       const listed = new Set(list.map((i) => i.id));
       let changed = false;
-      for (const [id, e] of items) if (!listed.has(id) && LIVE.has(e.item.state)) { finish(id); changed = true; }
+      if (fresh) for (const [id, e] of items) if (!listed.has(id) && LIVE.has(e.item.state)) { finish(id); changed = true; }
       // Delivered or read, for a line drawn here: it fades now (with no stream, the snapshot is the only news of it). Any
       // other finished message is not drawn (it finished up to two minutes ago), and an ended one goes.
       for (const it of list) {
-        if (LIVE.has(it.state) || (SETTLED.has(it.state) && items.has(it.id))) changed = store.apply(it, now) || changed;
-        else { const had = items.has(it.id); finish(it.id); changed = changed || had; }
+        if (!fresh && items.has(it.id)) continue;                                    // the stream knows it better
+        if (LIVE.has(it.state) || (SETTLED.has(it.state) && items.has(it.id))) changed = applyItem(it, now) || changed;
+        else if (fresh) { const had = items.has(it.id); finish(it.id); changed = changed || had; }
       }
       // The open delegations: the snapshot's list is the truth (one it no longer lists ended while this page was away).
       const open = snap && Array.isArray(snap.delegations) ? snap.delegations.filter((d) => delegationOk(d)?.state === "open") : [];
       const ids = new Set(open.map((d) => d.id));
-      for (const [id, e] of work) if (e.phase === "work" && !ids.has(id)) { work.delete(id); changed = true; }
-      for (const d of open) changed = store.delegation(d, now) || changed;
+      if (fresh) for (const [id, e] of work) if (e.phase === "work" && !ids.has(id)) { work.delete(id); end(id); changed = true; }
+      for (const d of open) changed = applyDelegation(d, now) || changed;
       return changed;
     },
     sweep(now = mono()) {
@@ -121,7 +141,7 @@ export function createTrafficStore() {
       for (const [id, e] of items) if (e.fadeAt !== null && now >= e.fadeAt) { finish(id); changed = true; }
       for (const [id, e] of work) {
         if (now < e.until) continue;
-        if (e.phase === "work") work.set(id, { ...e, phase: "stale", until: now + FADE_MS });    // its wait ran out here
+        if (e.phase === "work") { end(id); work.set(id, { ...e, phase: "stale", until: now + FADE_MS }); }    // its wait ran out here
         else work.delete(id);
         changed = true;
       }

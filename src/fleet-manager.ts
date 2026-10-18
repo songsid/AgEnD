@@ -2034,7 +2034,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const work = news ? this.delegations.note(row, news) : [];
       if (news || work.length) this.trafficMemo = null;
       if (news) this.emitSseEvent("traffic", news);
-      for (const d of work) this.emitSseEvent("delegation", d);
+      // Each delegation as its two instances are seen now: one that expires or is pushed out may be older than a change
+      // to their visibility (the incoming row's own item was checked; these can be anyone's).
+      const visible = (name: string) => crossInstanceVisibility(this.fleetConfig, name) !== "hidden";
+      for (const d of work) if (visible(d.from) && visible(d.to)) this.emitSseEvent("delegation", d);
     } catch (err) { this.logger.debug({ err }, "traffic: an item was not published"); }
   }
   /**

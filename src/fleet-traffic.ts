@@ -103,59 +103,81 @@ export interface Delegation { id: string; from: string; to: string; state: Deleg
 export const DELEGATION_TTL_MS = 4 * 3_600_000;
 export const DELEGATIONS_MAX = 100;
 
-const delegationId = (correlationId: string, from: string, to: string): string => trafficId(`del:${correlationId}\u0000${from}\u0000${to}`);
+/** The pair a report closes: correlation id, delegator, worker. */
+const pairKey = (correlationId: string, from: string, to: string): string => `${correlationId}\u0000${from}\u0000${to}`;
 const DEAD: ReadonlySet<TrafficState> = new Set(["failed", "cancelled"]);
+/** How many task deliveries are remembered as having opened a delegation (so a late state of one never opens it again). */
+const OPENED_MAX = 2000;
 
 /**
  * The delegations open now. `note(row, item)` takes each traffic item with its row (for the correlation id, never sent
- * on): a task that was admitted opens one; its delivery failing or being cancelled takes it back; a report from the
- * worker to the delegator with the same correlation id closes it. Returns the news, for the stream. The oldest go first
- * past DELEGATIONS_MAX; an open one past DELEGATION_TTL_MS expires.
+ * on): a task delivery's admission opens one (keyed for its report by correlation id and the two names; its id is the
+ * delivery's own, so a new task with the same correlation id is a new delegation); that delivery failing or being
+ * cancelled takes it back; a report from the worker to the delegator with the same correlation id closes it. A later
+ * state of a task delivery that already opened one — delivered or consumed after its report came back, or after it
+ * expired — never opens it again. Returns the news, for the stream. The oldest go first past DELEGATIONS_MAX; an open
+ * one past DELEGATION_TTL_MS expires.
  */
 export class Delegations {
-  private readonly open = new Map<string, { from: string; to: string; openedMs: number }>();
+  private readonly open = new Map<string, { id: string; task: string; from: string; to: string; openedMs: number }>();
+  /** The task deliveries (their traffic ids) that have opened one: bounded, oldest out. */
+  private readonly opened = new Set<string>();
   constructor(private readonly monotonic: () => number = () => performance.now()) {}
+
+  private ended(d: { id: string; from: string; to: string; openedMs: number }, state: Exclude<DelegationState, "open">): Delegation {
+    return { id: d.id, from: d.from, to: d.to, state, age_ms: Math.max(0, this.monotonic() - d.openedMs) };
+  }
 
   note(row: Pick<OutboxDelivery, "correlationId">, item: TrafficItem): Delegation[] {
     const news = this.sweep();
     const corr = row.correlationId;
     if (!corr || (item.kind !== "task" && item.kind !== "report")) return news;
     if (item.kind === "task") {
-      const id = delegationId(corr, item.from, item.to);
+      const key = pairKey(corr, item.from, item.to), cur = this.open.get(key);
       if (DEAD.has(item.state)) {
-        if (this.open.delete(id)) news.push({ id, from: item.from, to: item.to, state: "cancelled", age_ms: 0 });
-      } else if (!this.open.has(id)) {
-        this.open.set(id, { from: item.from, to: item.to, openedMs: this.monotonic() });
-        news.push({ id, from: item.from, to: item.to, state: "open", age_ms: 0 });
-        while (this.open.size > DELEGATIONS_MAX) {
-          const [oldId, old] = this.open.entries().next().value!;
-          this.open.delete(oldId);
-          news.push({ id: oldId, from: old.from, to: old.to, state: "expired", age_ms: Math.max(0, this.monotonic() - old.openedMs) });
-        }
+        if (cur && cur.task === item.id) { this.open.delete(key); news.push(this.ended(cur, "cancelled")); }
+        return news;
+      }
+      if (this.opened.has(item.id)) return news;                     // a later state of a delivery that opened one already
+      this.noteOpened(item.id);
+      if (cur) return news;                                          // one is open for this pair and correlation: its report closes it
+      const d = { id: trafficId(`del:${item.id}`), task: item.id, from: item.from, to: item.to, openedMs: this.monotonic() };
+      this.open.set(key, d);
+      news.push({ id: d.id, from: d.from, to: d.to, state: "open", age_ms: 0 });
+      while (this.open.size > DELEGATIONS_MAX) {
+        const [oldKey, old] = this.open.entries().next().value!;
+        this.open.delete(oldKey);
+        news.push(this.ended(old, "expired"));
       }
       return news;
     }
     // A report closes the task it answers: same correlation id, the other way round.
     if (DEAD.has(item.state)) return news;
-    const id = delegationId(corr, item.to, item.from), d = this.open.get(id);
-    if (d) { this.open.delete(id); news.push({ id, from: d.from, to: d.to, state: "done", age_ms: Math.max(0, this.monotonic() - d.openedMs) }); }
+    const key = pairKey(corr, item.to, item.from), d = this.open.get(key);
+    if (d) { this.open.delete(key); news.push(this.ended(d, "done")); }
     return news;
+  }
+
+  private noteOpened(taskId: string): void {
+    this.opened.delete(taskId);
+    this.opened.add(taskId);
+    while (this.opened.size > OPENED_MAX) this.opened.delete(this.opened.values().next().value!);
   }
 
   /** What is open now (after expiring the ones past the TTL — the stream is told by the next note). */
   snapshot(): Delegation[] {
     this.sweep();
     const now = this.monotonic();
-    return [...this.open].map(([id, d]) => ({ id, from: d.from, to: d.to, state: "open" as const, age_ms: Math.max(0, now - d.openedMs) }));
+    return [...this.open.values()].map((d) => ({ id: d.id, from: d.from, to: d.to, state: "open" as const, age_ms: Math.max(0, now - d.openedMs) }));
   }
 
   /** Expire what has waited past the TTL; returns the news. */
   sweep(): Delegation[] {
     const now = this.monotonic(), out: Delegation[] = [];
-    for (const [id, d] of this.open) {
+    for (const [key, d] of this.open) {
       if (now - d.openedMs < DELEGATION_TTL_MS) continue;
-      this.open.delete(id);
-      out.push({ id, from: d.from, to: d.to, state: "expired", age_ms: now - d.openedMs });
+      this.open.delete(key);
+      out.push(this.ended(d, "expired"));
     }
     return out;
   }

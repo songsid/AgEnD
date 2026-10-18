@@ -233,11 +233,13 @@ function useTraffic(lease, on) {
     if (!on || !lease) return undefined;
     const bump = () => setRev((n) => n + 1);
     const read = async () => {
+      // What the stream had said when this was asked for: a stream event after it makes the answer possibly older.
+      const since = store.streamRev();
       try {
         const r = await lease.fetch("/ui/traffic", { method: "GET", headers: { "Content-Type": "application/json" } });
         if (!lease.current() || !r.ok) return;
         const d = await r.json();
-        if (lease.current() && store.load(d)) bump();
+        if (lease.current() && store.load(d, undefined, since)) bump();
       } catch { /* the next poll, or the stream, brings it */ }
     };
     void read();
