@@ -218,7 +218,7 @@ export const SetWebThemeArgs = z.object({
   clear: z.array(z.string().max(64)).max(32).optional().describe("Dotted paths to remove, e.g. [\"colors.dark.bg\", \"workingLabel\"]"),
 });
 export const SetWebThemeAssetArgs = z.object({
-  slot: z.enum(["background", "avatar", "portrait", "banner"]).describe("What the picture is for: your theme's background or avatar, or your identity card's portrait or banner"),
+  slot: z.enum(["background", "avatar", "portrait", "banner", "glyph"]).describe("What the picture is for: your theme's background or avatar, your identity card's portrait or banner, or a glyph for your ambient (set_web_ambient)"),
   file: NonEmptyString.describe("A picture in your working directory: png, jpeg, webp or gif for background (≤ 512 KiB) and avatar (≤ 256 KiB), ≤ 4096 px a side; png, jpeg or webp for portrait and banner (limits set by the fleet — get_web_theme's limits.asset_slots says the ones in force)"),
 });
 export const ResetWebThemeArgs = z.object({});
@@ -235,6 +235,24 @@ export const SetWebWidgetArgs = z.object({
   data: z.record(z.string(), z.unknown()).optional()
     .describe("Values by key: a number, a line of text, a list of lines (list) or numbers (spark). With spec: the widget's values. Alone: merged into the placed widget's values (null removes a key) — its own budget, 10 s apart."),
 });
+// #2117: your own ambient — declarative (a preset and its glyphs; the dashboard draws it), always yours.
+const AmbientRange = z.tuple([z.number(), z.number()]);
+export const SetWebAmbientArgs = z.object({
+  preset: z.enum(["fall", "rise", "twinkle", "burst-on-click"]).describe("fall / rise: particles drifting down or up behind your chat, endlessly; twinkle: glyphs pulsing in place; burst-on-click: glyphs scatter from where a person clicks or taps. A chat has one looping ambient (fall, rise or twinkle) and one burst-on-click: setting one replaces only its own kind"),
+  glyphs: z.array(z.union([z.string().max(32), z.object({ asset: z.string() }).strict()])).min(1).max(4).describe("1..4 glyphs, picked at random per particle: a short string of 1..2 characters (an emoji, ✦, ❀), or { asset: <id> } — a picture you uploaded with set_web_theme_asset slot glyph (png, webp or gif, ≤ 64 KiB, ≤ 128 px)"),
+  colors: z.array(z.string()).max(5).optional().describe("0..5 colours #rrggbb for text glyphs, picked at random per particle (default: your theme's accent)"),
+  count: z.number().int().optional().describe("Particles: 1..24 for fall, rise and twinkle (default 12); per click for burst-on-click 4..16 (default 10)"),
+  duration: AmbientRange.optional().describe("[min, max] seconds of one particle's run: fall/rise 4..30 (default [9, 19]), twinkle 1..10 ([2, 5]), burst-on-click 0.3..2 ([0.5, 0.9])"),
+  size: AmbientRange.optional().describe("[min, max] px, 10..40 (default [14, 22])"),
+  sway: z.number().optional().describe("Sideways drift in px for fall and rise, 0..80 (default 40)"),
+  spread: AmbientRange.optional().describe("[min, max] px a burst scatters, 20..120 (default [34, 90])"),
+  rotate: z.number().optional().describe("Degrees a particle turns over its run, 0..720 (default 300)"),
+  opacity: z.tuple([z.number(), z.number(), z.number()]).optional().describe("[start, peak, end], each 0..1 (default [0, 0.85, 0.15])"),
+  layer: z.literal("behind").optional().describe("Always behind your chat's messages (a burst shows over them briefly, never taking a click)"),
+}).strict();
+export const ClearWebAmbientArgs = z.object({
+  which: z.enum(["loop", "click"]).optional().describe("loop (fall, rise, twinkle) or click (burst-on-click); default both. One a person set stays."),
+}).strict();
 // #1629 r4-5b: mods — your own look as a file, and proposing one for a person to review. Agents never import.
 export const ExportWebModArgs = z.object({
   name: NonEmptyString.describe("The mod's name: a-z, 0-9 and - (1..64)"),
@@ -376,6 +394,11 @@ export const SetWebSettingsArgs = z.object({
     z.object({
       what: z.literal("effect_slot"), slot: z.enum(["sidebar", "header", "page", "box", "cursor"]),
       id: z.string().nullable().describe("An effect id from the library for that slot, or null to clear it"),
+    }).strict(),
+    z.object({
+      what: z.literal("ambient"), instance: NonEmptyString,
+      ambient: z.record(z.string(), z.unknown()).nullable().describe("That agent's ambient effect, set for the user: the same spec as set_web_ambient's ({ preset, glyphs, colors?, count?, … }); it replaces the one of its kind (loop or click) and the agent can't change it after. null clears"),
+      which: z.enum(["loop", "click"]).optional().describe("With ambient: null — which one to clear (default both)"),
     }).strict(),
     z.object({ what: z.literal("restore_defaults") }).strict(),
   ]),

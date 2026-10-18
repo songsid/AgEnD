@@ -147,10 +147,15 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
   if (!(await until(() => fm.healthServerListening === true && owns(fm.healthServer, o.port), 10000))) throw new Error(`the fixture's health listener did not bind 127.0.0.1:${o.port}`);
   if (!(await until(() => fm.previewListening === true && owns(fm.previewListener?.server, o.port + 1), 10000))) throw new Error(`the fixture's preview listener did not bind 127.0.0.1:${o.port + 1}`);
   const code = () => { fm.initializeWebSessions(); return fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken) }).display; };
-  const { chromium } = createRequire(PW + "/")("playwright-core");
-  // CHROME if set, else playwright-core's own Chromium (`npx playwright-core install chromium` in PW_DIR).
-  // from-defaults.mts: dashboard.lan.example resolves to the fixture, so a page can be on a real non-loopback origin.
-  browser = await chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox", `--host-resolver-rules=MAP ${LAN_HOST} 127.0.0.1`] });
+  // PW_ENGINE=webkit runs the same smoke in WebKit (Safari's engine; its system libraries come with the Playwright
+  // image, e.g. mcr.microsoft.com/playwright). Default: CHROME if set, else playwright-core's own Chromium
+  // (`npx playwright-core install chromium` in PW_DIR).
+  // from-defaults.mts: dashboard.lan.example resolves to the fixture, so a page can be on a real non-loopback origin
+  // (Chromium only: WebKit has no host resolver rules).
+  const engine = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";
+  const pw = createRequire(PW + "/")("playwright-core");
+  browser = engine === "webkit" ? await pw.webkit.launch()
+    : await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox", `--host-resolver-rules=MAP ${LAN_HOST} 127.0.0.1`] });
   const base = `http://127.0.0.1:${o.port}`;
   const painter = await browser.newPage();
   return {
