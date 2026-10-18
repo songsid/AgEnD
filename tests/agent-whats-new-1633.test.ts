@@ -154,10 +154,14 @@ function daemon() {
   } as never, dir, true, undefined, undefined, quiet) as any;
   d["tmux"] = { pasteBuffer: async () => true, sendSpecialKey: async () => true, capturePane: async () => "", getLastSendSpecialKeyError: () => null } as unknown as TmuxManager;
   const pastes: string[] = [];
-  const outcome = { notice: true };
-  d["deliverMessage"] = vi.fn(async (text: string) => {
+  // `written`: the notice's paste reached the pane even when `notice` (proven submitted) is false — what Claude's
+  // collapsed "[Pasted text #1 +N lines]" leaves for a long notice (#2140).
+  const outcome = { notice: true, written: false };
+  d["deliverMessage"] = vi.fn(async (text: string, _status: unknown, opts?: { verdict?: { paneWriteStarted?: boolean } }) => {
     pastes.push(text);
-    return text.startsWith("[system:whats-new]") ? outcome.notice : true;
+    if (!text.startsWith("[system:whats-new]")) return true;
+    if (opts?.verdict && (outcome.notice || outcome.written)) opts.verdict.paneWriteStarted = true;
+    return outcome.notice;
   });
   const deliver = async (text: string) => { d.pushChannelMessage(text, { chat_id: "", user: "peer", from_instance: "peer" }); await d["pasteLock"]; };
   return { d, dir, pastes, outcome, deliver };
@@ -201,6 +205,63 @@ describe("the daemon", () => {
     await w.deliver("second");
     expect(w.pastes.filter(p => p.startsWith("[system:whats-new]")).length).toBe(2);
     expect(announcedIn(w.dir)).toEqual(ALL);
+  });
+  it("#2140: pasted but its submission unproven (a long notice Claude collapses) — recorded once, never re-sent before later messages", async () => {
+    const w = daemon();
+    const warn = vi.spyOn(w.d.logger, "warn");
+    w.d["prepareWhatsNew"](false, V);
+    w.outcome.notice = false; w.outcome.written = true;
+    for (const m of ["first", "second", "third", "fourth"]) await w.deliver(m);
+    expect(w.pastes.filter(p => p.startsWith("[system:whats-new]")).length, "the notice went out once").toBe(1);
+    expect(w.pastes.filter(p => !p.startsWith("[system:")).length).toBe(4);
+    expect([w.d["pendingWhatsNew"], announcedIn(w.dir)]).toEqual([null, ALL]);
+    expect(warn.mock.calls.some(c => /pasted but its submission could not be proven/.test(String(c[1])))).toBe(true);
+  });
+  it("#2140: a notice that never reaches the pane is tried at most 3 times, then recorded with a warning — never before every message", async () => {
+    const w = daemon();
+    const warn = vi.spyOn(w.d.logger, "warn");
+    w.d["prepareWhatsNew"](false, V);
+    w.outcome.notice = false; w.outcome.written = false;
+    for (const m of ["1", "2", "3", "4", "5", "6"]) await w.deliver(m);
+    expect(w.pastes.filter(p => p.startsWith("[system:whats-new]")).length).toBe(3);
+    expect([w.d["pendingWhatsNew"], announcedIn(w.dir)]).toEqual([null, ALL]);
+    expect(warn.mock.calls.some(c => /did not reach the pane after several deliveries/.test(String(c[1])))).toBe(true);
+  });
+  it("#2140: an unwritten try then a written one: recorded at the written one, the count starts over for the next version's notice", async () => {
+    const w = daemon();
+    w.d["prepareWhatsNew"](false, V);
+    w.outcome.notice = false; w.outcome.written = false;
+    await w.deliver("1"); await w.deliver("2");
+    w.outcome.written = true;
+    await w.deliver("3"); await w.deliver("4");
+    expect(w.pastes.filter(p => p.startsWith("[system:whats-new]")).length).toBe(3);
+    expect([w.d["pendingWhatsNew"], w.d["whatsNewUnwritten"], announcedIn(w.dir)]).toEqual([null, 0, ALL]);
+  });
+  it("#2140: the record-write failure still warns, and the notice is not re-sent in this session", async () => {
+    const w = daemon();
+    const warn = vi.spyOn(w.d.logger, "warn");
+    w.d["prepareWhatsNew"](false, V);
+    w.outcome.notice = false; w.outcome.written = true;
+    const { chmodSync } = await import("node:fs");
+    chmodSync(w.dir, 0o500);                                   // the instance dir cannot take the record
+    try {
+      await w.deliver("first"); await w.deliver("second");
+    } finally { chmodSync(w.dir, 0o700); }
+    expect(warn.mock.calls.some(c => /what's-new record not written/.test(String(c[1])))).toBe(true);
+    expect(w.pastes.filter(p => p.startsWith("[system:whats-new]")).length).toBe(1);
+    expect(w.d["pendingWhatsNew"]).toBeNull();
+  });
+  it("#2140: replaced while its paste was out (a newer plan): the old one is not recorded and the newer one stays pending", async () => {
+    const w = daemon();
+    w.d["prepareWhatsNew"](false, V);
+    const newer = { notice: "[system:whats-new] newer", ids: ["newer-entry"], version: V };
+    const inner = w.d["deliverMessage"];
+    w.d["deliverMessage"] = vi.fn(async (text: string, status: unknown, opts: unknown) => {
+      if (text.startsWith("[system:whats-new]")) w.d["pendingWhatsNew"] = newer;
+      return inner(text, status, opts);
+    });
+    await w.deliver("first");
+    expect([w.d["pendingWhatsNew"], readWhatsNewRecord(w.dir)]).toEqual([newer, null]);
   });
   it("after a restart it is not told again (the record decides), even if the launch says 'upgraded'", async () => {
     const w = daemon();

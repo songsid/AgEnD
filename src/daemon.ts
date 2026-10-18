@@ -83,6 +83,9 @@ import { unrecognisedPromptShape, type PromptShape } from "./unrecognised-prompt
 import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
 import type { KiroLogLaunch } from "./kiro-log-gate.js";
 
+/** #2140: deliveries that may carry an unwritten what's-new notice before it is recorded anyway. */
+const WHATS_NEW_MAX_UNWRITTEN = 3;
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -1708,6 +1711,8 @@ export class Daemon extends EventEmitter {
   private pendingInstructionsNotice = false;
   /** #1633: the one-time "what's new for you" notice, pasted before the next real delivery; recorded once pasted. */
   private pendingWhatsNew: { notice: string; ids: string[]; version: string } | null = null;
+  /** #2140: deliveries tried for the pending what's-new notice that never reached the pane (capped: never before every message). */
+  private whatsNewUnwritten = 0;
   // Whether the warmup steering-reload notice should be injected after spawn.
   // Set in trySpawn by comparing the freshly-built instructions against the
   // last value the agent was told about (prev-instructions). Skipped when
@@ -6950,12 +6955,27 @@ export class Daemon extends EventEmitter {
         const whatsNew = this.pendingWhatsNew ? this.currentWhatsNew(this.pendingWhatsNew) : null;
         if (whatsNew) {
           // #1633: here, inside the delivery lock and ahead of a real delivery — never into a busy turn, never to an
-          // instance nobody writes to. Recorded only once pasted: a failed or cancelled paste stays pending.
-          const pasted = await this.deliverMessage(whatsNew.notice, undefined, { deliveryEpoch });
-          if (pasted && this.pendingWhatsNew === whatsNew) {
-            this.pendingWhatsNew = null;
-            try { recordWhatsNew(this.instanceDir, whatsNew.ids, whatsNew.version); }
-            catch (err) { this.logger.warn({ err }, "what's-new record not written — the notice may repeat once"); }
+          // instance nobody writes to. #2140: told at most once. Once its paste reached the pane it is recorded, proven
+          // submitted or not. A system paste has no unique id: its only pane proof is its opening line on the screen, and
+          // a long notice (every entry since an old session began) scrolls that line above the captured rows once Claude
+          // paints it — unproven, though the agent read it. One that never reached the pane (cancelled, never idle) is
+          // tried again, at most WHATS_NEW_MAX_UNWRITTEN times, then recorded with a warning.
+          const attempt: DeliveryVerdict = { reached: false };
+          const pasted = await this.deliverMessage(whatsNew.notice, undefined, { deliveryEpoch, verdict: attempt });
+          if (this.pendingWhatsNew === whatsNew) {
+            const written = pasted || attempt.paneWriteStarted === true;
+            if (!written) this.whatsNewUnwritten++;
+            if (written || this.whatsNewUnwritten >= WHATS_NEW_MAX_UNWRITTEN) {
+              if (!pasted) {
+                this.logger.warn({ entries: whatsNew.ids, written, attempts: this.whatsNewUnwritten, phase: attempt.phase, proof: attempt.proof },
+                  written ? "what's-new notice pasted but its submission could not be proven — recorded so it is not sent again"
+                    : "what's-new notice did not reach the pane after several deliveries — recorded so it is not sent again");
+              }
+              this.pendingWhatsNew = null;
+              this.whatsNewUnwritten = 0;
+              try { recordWhatsNew(this.instanceDir, whatsNew.ids, whatsNew.version); }
+              catch (err) { this.logger.warn({ err }, "what's-new record not written — the notice may repeat once"); }
+            }
           }
           if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
         }
@@ -11163,6 +11183,7 @@ export class Daemon extends EventEmitter {
       if (!plan) { this.pendingWhatsNew = null; return; }
       if ("silent" in plan) { recordWhatsNew(this.instanceDir, plan.silent, plan.version); this.pendingWhatsNew = null; return; }
       this.pendingWhatsNew = plan;
+      this.whatsNewUnwritten = 0;
       this.logger.info({ entries: plan.ids }, "what's-new notice pending for the next delivery");
     } catch (err) {
       this.logger.debug({ err }, "what's-new not prepared");
