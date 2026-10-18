@@ -4173,6 +4173,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Evidence-only admission. Bots/system/agent payloads have no trusted origin. */
   private humanReceiptPayload(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin | undefined, originalBody: string): Record<string, unknown> {
+    // #1939 S3: "via web (verified)" comes only from the receipt written here — never from a caller's meta.
+    const given = payload.meta as Record<string, unknown> | undefined;
+    if (given && "web_verified" in given) { const { web_verified: _claimed, ...rest } = given; payload = { ...payload, meta: rest }; }
     if (!origin || !this.deliveryOutbox) return payload;
     const row = this.deliveryOutbox.createHumanReceipt({ targetInstance: instanceName, originalBody,
       origin: { ...origin }, inputKind: String(payload.type), managerBootId: this.managerBootId });
@@ -4185,8 +4188,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           input_kind: String(payload.type), outcome: "web-verified", authority_epoch: authority.authority_epoch });
       } catch (err) { this.logger.warn({ err, instanceName }, "Could not record web authority"); }
     }
+    const verified = origin.platform === "web" && authority?.kind === "web-verified";
     return { ...payload, meta: { ...(payload.meta as Record<string, unknown> ?? {}),
-      human_receipt_id: row.receipt_id, verification_id: row.message_id } };
+      human_receipt_id: row.receipt_id, verification_id: row.message_id, ...(verified ? { web_verified: "1" } : {}) } };
   }
 
   /** Bind at the actual IPC send, after all wake/reconnect waits. No human retry lane. */
@@ -13951,7 +13955,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   sessionAuthorizationRequests(): SessionAuthorizationRequests {
     if (this.authorizationRequests) return this.authorizationRequests;
     const adapterOf = (adapterId: string): ChannelAdapter | undefined => this.adapters.get(adapterId) ?? this.worlds.get(adapterId)?.adapter;
-    const when = (ms: number) => new Date(ms).toLocaleString();
+    // The host's clock, with its zone: the person may read the DM on a phone in another one.
+    const when = (ms: number) => new Date(ms).toLocaleString(undefined, { timeZoneName: "short" });
     const where = (peer: WebPeer) => t(peer === "loopback" ? "web_auth.peer_loopback" : "web_auth.peer_lan");
     return this.authorizationRequests = new SessionAuthorizationRequests({
       now: () => performance.now(), wallNow: () => Date.now(),
@@ -13994,6 +13999,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         expired: (c) => t("web_auth.card_expired", c.label),
         refused: (c) => t("web_auth.card_refused", c.label, t(`web_auth.refusal_${c.refusal}`)),
         revoked: (c) => t("web_auth.card_revoked", c.label),
+        ended: (c) => t("web_auth.card_ended", c.label),
         generalHint: () => t("web_auth.general_hint"),
         confirmLabel: () => t("web_auth.confirm"),
         notMeLabel: () => t("web_auth.not_me"),
@@ -14008,7 +14014,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const s = input.session;
     const gate = this.webAuthorityQualifies(input);
     if (gate) return { ok: false, refusal: gate };
-    return this.sessionAuthorizationRequests().ask({ handle: s!.handle, owner: s!.owner!, label: s!.label, peer: input.peer });
+    return this.sessionAuthorizationRequests().ask({ handle: s!.handle, owner: s!.owner!, label: s!.label, peer: input.peer, sessionEnd: s!.absoluteExpiry });
   }
 
   /**

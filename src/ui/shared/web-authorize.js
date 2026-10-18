@@ -103,6 +103,12 @@ export function useWebAuthorization() {
     const tick = setInterval(() => setNow(Date.now()), 1000), poll = setInterval(load, 3000);
     return () => { clearInterval(tick); clearInterval(poll); };
   }, [st && st.state]);
+  // "Verified · until X" is read again at X (a page left open must not keep saying verified after it ends).
+  useEffect(() => {
+    if (!st || st.state !== "verified" || typeof st.until !== "number") return undefined;
+    const at = setTimeout(() => { resetWebAuthorization(); load(); }, Math.max(0, Math.min(st.until - Date.now() + 1000, 2 ** 31 - 1)));
+    return () => clearTimeout(at);
+  }, [st && st.state, st && st.until]);
   const ask = async () => {
     setNotice(null);
     let r = null, body = null;
