@@ -66,6 +66,16 @@ describe("this browser's authorization line", () => {
     expect(after.dataset.state).toBe("verified");
     expect(after.textContent).not.toContain("Sent —");
   });
+  it("#2126 P3: 'Verified · until X' is read again at X: a page left open says Not verified after it ends", async () => {
+    await chip({ state: "verified", until: Date.now() + 1_500 });
+    expect(p.root.querySelector(".webauth-chip").dataset.state).toBe("verified");
+    state = { state: "none", reason: "authorization_expired" };
+    const reads = sent.filter((s) => s.path === "/ui/authorization").length;
+    await new Promise((r) => setTimeout(r, 2_800)); await settle(8);
+    expect(sent.filter((s) => s.path === "/ui/authorization").length).toBe(reads + 1);
+    expect(p.root.querySelector(".webauth-chip").dataset.state).toBe("none");
+    expect(p.root.querySelector(".webauth-chip button").textContent).toBe("Authorize this browser");
+  });
   it("signed out while a card waits (Not me): the next poll answers 401 and the line goes", async () => {
     await chip({ state: "pending", expiresInMs: 200_000 });
     signedOut = true;

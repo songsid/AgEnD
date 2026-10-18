@@ -279,8 +279,12 @@ export const BTW_INBOUND_PREFIX = "[BTW — side question from the user. Answer 
 
 /** One formatter for human wire bytes and their immutable evidence snapshot. */
 export function formatHumanInboundMessage(content: string, meta: Record<string, string>, mode: AgentMode): string {
-  // #1920: a guest's web message says so — recognition only, like every web message (authority none).
-  const via = meta.source ? " via " + meta.source + (meta.source === "web" && meta.web_guest === "1" ? " (guest)" : "") : "";
+  // #1920: a guest's web message says so — recognition only (authority none). #1939 S3: "(verified)" when its receipt
+  // carries web-verified authority (set with the receipt, FleetManager.humanReceiptPayload) — a hint: agents read the
+  // receipt before acting on it as the person.
+  const web = meta.source === "web";
+  const label = web && meta.web_guest === "1" ? " (guest)" : web && meta.web_verified === "1" ? " (verified)" : "";
+  const via = meta.source ? " via " + meta.source + label : "";
   const idTag = meta.user_id ? ", id:" + meta.user_id : "";
   let body = "[user:" + (meta.user || "unknown") + via + idTag + "] " + content;
   if (meta.pending_reactions) body = "[Recent reactions: " + meta.pending_reactions + "]\n" + body;

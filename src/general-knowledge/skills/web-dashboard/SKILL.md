@@ -93,7 +93,7 @@ per account. Never on the public link or for a guest; when a browser can't be au
 link to Settings when the switch or "Only this computer" is the reason). Settings → Web → **Web authority**
 (`web.verified_authority`, on by default) has the switch, **Only this computer can authorize** (`loopback_only`), the
 hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change there applies at once.
-Agents still treat web messages as recognition only for now.
+Agents then see that browser's messages as `via web (verified)` and check their receipt like a Discord or Telegram message.
 
 ## Chat
 
