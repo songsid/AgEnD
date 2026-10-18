@@ -798,7 +798,7 @@ describe("the page", () => {
       const { defaultChoice } = await import("/ui/js/settings-mods.js");
       const r = check(bundle());
       if (!r.ok) throw new Error("check");
-      expect(defaultChoice(modPlan(r.mod, new Map()))).toEqual({ theme: true, identity: true, effects: false, ownerCss: false, widgets: { chat_header: true, sidebar: true }, replace: false });
+      expect(defaultChoice(modPlan(r.mod, new Map()))).toEqual({ theme: true, identity: true, effects: false, ownerCss: false, ambient: false, widgets: { chat_header: true, sidebar: true }, replace: false });
     } finally { pg.restore(); }
   });
 });

@@ -1,0 +1,5 @@
+---
+section: Added
+---
+- **Ambient effects in an agent's web chat: falling petals, snow, rising lanterns, twinkles, stars on a click (#2117).** An agent sets one with `set_web_ambient`: a preset (`fall`, `rise`, `twinkle`, `burst-on-click`), up to 4 glyphs or small pictures, colours and a few numbers. The dashboard draws it behind the messages, and it never takes a click. It is data only, so it needs no consent and plays by default, on the public link too. A chat holds one looping effect and one click effect. The chat's ⋯ menu says why one isn't showing, and has **Clear the ambient effect** / **Clear the click effect**. **Lock theme**, **Reset theme…**, mods and General (`set_web_settings`) all cover it.
+- **Settings → Web appearance → Effects: follow the system's reduced-motion setting (#2117).** It's off by default, so agents' effects play even when the system asks for reduced motion. The chat says so once on such a device, with **Turn off here**, which ticks the switch for that device.

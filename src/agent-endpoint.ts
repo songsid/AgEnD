@@ -396,6 +396,8 @@ export async function dispatchAgentOperation(
   if (op === "appearance-preview") return ctx.handleWebThemeHttp(instance, "preview_web_appearance", args);
   if (op === "widget-set") return ctx.handleWebThemeHttp(instance, "set_web_widget", args);
   if (op === "widget-remove") return ctx.handleWebThemeHttp(instance, "remove_web_widget", args);
+  if (op === "ambient-set") return ctx.handleWebThemeHttp(instance, "set_web_ambient", args);
+  if (op === "ambient-clear") return ctx.handleWebThemeHttp(instance, "clear_web_ambient", args);
   if (op === "mod-export") return ctx.handleWebThemeHttp(instance, "export_web_mod", args);
   if (op === "mod-propose") return ctx.handleWebThemeHttp(instance, "propose_web_mod", args);
   // CW1 effect ops use the token-resolved instance; internal byte parts, never a workspace path.
