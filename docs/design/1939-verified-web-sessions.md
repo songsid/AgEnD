@@ -136,7 +136,8 @@ only, no permission.
 
 ## 3. Which sessions qualify
 
-A web message or click carries `web-session` authority only if **all** of these hold **for the request that carries
+A web session qualifies to be authorized (§0), and once authorized its message or click carries `web-verified` authority,
+only if **all** of these hold **for the request that carries
 it**. They are evaluated when the request arrives, again after its body is read (as the effect-trial routes already
 do), and again when the session is authorized (§0). Nothing about locality is remembered from sign-in.
 
