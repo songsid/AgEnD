@@ -90,7 +90,7 @@ for(const engine of engines)for(const origin of origins)for(const width of width
      await note.locator('.amb-note-off').click();await page.waitForFunction(()=>!document.querySelector('iframe.agend-effect-frame'));
      await page.getByText("Off: you chose to follow the system's reduced motion setting.",{exact:false}).first().waitFor();
      await capture({path:join(out,key+'-motion-off.png')});
-     await page.getByRole('button',{name:'Play effects anyway',exact:true}).click();
+     await page.locator('.chat-fx-notice').getByRole('button',{name:'Play effects anyway',exact:true}).click();
      await page.waitForFunction(()=>[...document.querySelectorAll('iframe.agend-effect-frame')].some(f=>getComputedStyle(f).visibility==='visible'),undefined,{timeout:15000});
      let recovered;const until=Date.now()+8000;do{recovered=pixels(await capture({path:join(out,key+'-motion-on.png')}));if(recovered.red>500)break;await page.waitForTimeout(500)}while(Date.now()<until);
      assert.ok(recovered.red>500,'device motion recovery must actually paint');assert.equal(await note.count(),0,'the shared one-time note is not duplicated');
