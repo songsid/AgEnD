@@ -65,12 +65,14 @@ describe("#2140: why the notice was never confirmed on long-lived Claude session
     expect(readClaudeInputBox(screen(["● x"]))).toMatchObject({ text: "", collapsedPastes: 0 });
   });
   it("a long notice (every entry since an old session began): submitted, read and answered — yet unproven, its head scrolled away", async () => {
-    const notice = whatsNewNotice("2.3.0-beta.5", AGENT_WHATS_NEW);
+    // 2.2.1: 2.2 has fewer entries than 2.3 (its full notice is ~30 rows), so the list is doubled here to reach the
+    // condition this test is about — a notice taller than the captured screen. The fix does not depend on the length.
+    const notice = whatsNewNotice("2.2.1", [...AGENT_WHATS_NEW, ...AGENT_WHATS_NEW]);
     expect(asUserMessage(notice).length, "taller than the captured screen").toBeGreaterThan(ROWS);
     expect(await proofFor(notice)).toBe("unproven");
   });
   it("a short notice (a session that began recently): its head stays on the screen — proven", async () => {
-    const notice = whatsNewNotice("2.3.0-beta.5", AGENT_WHATS_NEW.slice(-1));
+    const notice = whatsNewNotice("2.2.1", AGENT_WHATS_NEW.slice(-1));
     expect(asUserMessage(notice).length).toBeLessThan(ROWS - 10);
     expect(await proofFor(notice)).toBe("submitted");
   });
