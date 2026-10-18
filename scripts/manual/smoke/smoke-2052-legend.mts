@@ -43,7 +43,10 @@ const MEASURE = `(() => {
   return { key: r(document.querySelector(".oc-tools .oc-key")), bar: r(document.querySelector(".oc-bar")), strip: r(document.querySelector(".oc-legend")),
     inStage: !!document.querySelector(".oc-stage .oc-legend, .oc-svg .oc-legend"), svg: r(svg),
     things: [...document.querySelectorAll(".oc-node, .oc-box")].map(r).filter(visible),
-    overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth, vw: window.innerWidth };
+    overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth, vw: window.innerWidth,
+    // Every toolbar control wholly on screen (the phone's row once cut the last one off).
+    toolsClipped: [...document.querySelectorAll(".oc-tools > *")].filter((el) => { const b = el.getBoundingClientRect(); return b.width > 0 && (b.left < -0.5 || b.right > window.innerWidth + 0.5); }).map((el) => el.className || el.tagName),
+    toolsOverflow: (() => { const t = document.querySelector(".oc-tools"); return t ? t.scrollWidth > t.clientWidth + 1 : false; })() };
 })()`;
 const overlaps = (a: any, b: any) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
@@ -58,6 +61,7 @@ for (const [name, c, opts] of [["desk-light-en", { device: "desk", theme: "light
     keyInToolbar: !!m0.key && m0.key.y + m0.key.h <= m0.svg.y + 0.5 && m0.key.x + m0.key.w <= m0.vw + 0.5,
     nothingOverCanvas: !m0.strip && !m0.inStage,
     noOverflow: !m0.overflow,
+    toolbarWhole: m0.toolsClipped.length === 0 && !m0.toolsOverflow,
   };
   await p.page.locator(".oc-tools .oc-key").click();
   await p.page.waitForSelector(".oc-legend", { timeout: 5000 });
@@ -65,7 +69,7 @@ for (const [name, c, opts] of [["desk-light-en", { device: "desk", theme: "light
   const m1 = await p.page.evaluate(MEASURE) as any;
   chk.stripBetweenToolbarAndCanvas = !!m1.strip && m1.strip.y >= m1.bar.y + m1.bar.h - 0.5 && m1.strip.y + m1.strip.h <= m1.svg.y + 0.5 && !m1.inStage;
   chk.stripCoversNoCard = m1.things.length > 0 && !m1.things.some((t: any) => overlaps(t, m1.strip));
-  chk.openNoOverflow = !m1.overflow;
+  chk.openNoOverflow = !m1.overflow && m1.toolsClipped.length === 0 && !m1.toolsOverflow;
   await p.page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-${name}`, "2-key-open") });
   await p.page.reload();
   await p.page.waitForSelector(".oc-svg .oc-node", { timeout: 10000 });
@@ -74,7 +78,7 @@ for (const [name, c, opts] of [["desk-light-en", { device: "desk", theme: "light
   chk.noErrors = errors.length === 0;
   const failed = Object.entries(chk).filter(([, v]) => !v).map(([k]) => k);
   results.push({ name, ok: !failed.length, failed });
-  console.log(`${failed.length ? "FAIL" : "ok  "} ${ENGINE}-${name}${failed.length ? ` [${failed.join(", ")}] ${JSON.stringify({ m0: { key: m0.key, svg: m0.svg, overflow: m0.overflow }, m1: { strip: m1.strip, bar: m1.bar, svg: m1.svg } }).slice(0, 500)} ${JSON.stringify(errors).slice(0, 200)}` : ""}`);
+  console.log(`${failed.length ? "FAIL" : "ok  "} ${ENGINE}-${name}${failed.length ? ` [${failed.join(", ")}] ${JSON.stringify({ m0: { key: m0.key, svg: m0.svg, overflow: m0.overflow, clipped: m0.toolsClipped }, m1: { strip: m1.strip, bar: m1.bar, svg: m1.svg } }).slice(0, 500)} ${JSON.stringify(errors).slice(0, 200)}` : ""}`);
   await p.ctx.close();
 }
 const bad = results.filter((r) => !r.ok);

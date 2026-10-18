@@ -1305,7 +1305,8 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 @media (max-width: 640px) {
   .oc-stage { height: calc(100dvh - 248px); min-height: 340px; }
   .oc-find { flex: 1 1 150px; }
-  .oc-tools { margin-left: 0; width: 100%; flex-wrap: nowrap; }
+  /* #2052: Find, Key, Live and Canvas/List are wider than a phone together: the row wraps (nothing is cut off). */
+  .oc-tools { margin-left: 0; width: 100%; flex-wrap: wrap; row-gap: var(--s-2); }
   .oc-mini { display: none; }
 }
 /* A phone: Fleet's five tabs fit when only the open one shows its label (the others keep theirs for screen readers). */
