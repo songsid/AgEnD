@@ -1448,15 +1448,21 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 
 .chat-card-toggle { display: flex; align-items: center; gap: var(--s-2); width: 100%; min-height: 32px; padding: 0 var(--s-4); border: 0; background: none; color: var(--text-2); font: inherit; font-size: var(--fs-xs); text-align: left; cursor: pointer; }
 .chat-card-peek { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }
+/* A phone: the portrait stays on the text's row, smaller (the user's ask: never a portrait alone on a line with the text
+   under it); the S / M / L control takes the line below. The chat header's card is trimmed further: a smaller portrait
+   and banner, and its tagline and bio cut to a few lines (Details and View show them whole). */
 @media (max-width: 479px) {
-  .id-card.card-s { --id-h: 120px; --id-bmin: 80px; --id-bmax: 120px; }
-  .id-card.card-m { --id-h: 180px; --id-bmin: 100px; --id-bmax: 150px; }
-  .id-card.card-l { --id-h: 240px; --id-bmin: 120px; --id-bmax: 200px; }
-  .id-card.card-c { --id-bmin: 100px; --id-bmax: 140px; }
-  .id-card.card-c.bs-s { --id-bmin: 80px; --id-bmax: 110px; }
-  .id-card.card-c.bs-l { --id-bmin: 110px; --id-bmax: 150px; }
-  .id-row { flex-wrap: wrap; }
-  .id-text { flex-basis: 100%; }
+  .id-card.card-s { --id-h: 96px; --id-bmin: 80px; --id-bmax: 120px; }
+  .id-card.card-m { --id-h: 128px; --id-bmin: 100px; --id-bmax: 150px; }
+  .id-card.card-l { --id-h: 168px; --id-bmin: 120px; --id-bmax: 200px; }
+  .id-card.card-c { --id-h: 64px; --id-bmin: 80px; --id-bmax: 110px; }
+  .id-card.card-c.bs-s { --id-bmin: 80px; --id-bmax: 100px; }
+  .id-card.card-c.bs-l { --id-bmin: 96px; --id-bmax: 130px; }
+  .id-row { flex-wrap: wrap; gap: var(--s-2) var(--s-3); padding: var(--s-2) var(--s-3); }
+  .card-size { flex-basis: 100%; justify-content: flex-end; }
+  .id-card.card-c .id-tagline, .id-card.card-c .id-bio { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+  .id-card.card-c .id-tagline { -webkit-line-clamp: 2; line-clamp: 2; }
+  .id-card.card-c .id-bio { -webkit-line-clamp: 3; line-clamp: 3; }
 }
 /* #1629 r4 §1: the card in View (above the profile row) and its part of Edit profile. */
 .v-id { flex-shrink: 0; padding: var(--s-2) var(--s-4) 0; background: var(--bg); }
