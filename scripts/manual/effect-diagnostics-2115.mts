@@ -133,7 +133,8 @@ try {
      const saved=page.waitForResponse(r=>r.request().method()==="POST"&&new URL(r.url()).pathname==="/ui/prefs");
      await page.getByRole("button",{name:"Allow previews",exact:true}).click();assert.equal((await saved).status(),200);
      await page.waitForFunction(()=>window.AgendPreview?.optedIn()===true);
-     await page.goto(base+"/ui/chat/worker");await page.locator(".p-chat > .panel-head").waitFor();
+     if(width<900)await page.getByRole("button",{name:"Open menu",exact:true}).click();
+     await page.locator('.inst[href="/ui/chat/worker"]').click();await page.waitForURL("**/ui/chat/worker");await page.locator(".p-chat > .panel-head").waitFor();
      await page.waitForTimeout(500);await page.locator(".p-chat > .panel-head").click({position:{x:6,y:6}});
      await page.evaluate(async()=>{const m=await import("/ui/js/app-effects.js");window.__diagnosticTrace=[];m.getAppEffects()?.subscribe(()=>{const value=m.getAppEffects()?.api.snapshot();window.__diagnosticTrace.push({at:performance.now(),rows:value?.rows,gates:m.getAppEffects()?.gates(),focus:document.activeElement?.tagName});if(window.__diagnosticTrace.length>80)window.__diagnosticTrace.shift();});});
      await until(()=>page.evaluate(async()=>{const m=await import("/ui/js/app-effects.js");return m.getAppEffects()?.api.snapshot().rows.some(r=>r.phase==="running")===true}));
@@ -153,8 +154,8 @@ try {
      for(const delay of [0,100,300,600,1000]) {await page.waitForTimeout(delay);trialPaintDelayMs+=delay;trialPixels=redPixels(await page.screenshot({path:join(out,tag+"-trial-click-alive.png")}));if(trialPixels>1000)break;}
      assert.ok(trialPixels>1000,"independent visible trial paint after actual click");
      await page.evaluate(()=>window.dispatchEvent(new Event("blur")));
-     assert.equal(await page.evaluate(()=>window.__trialShell.stage.querySelectorAll("iframe").length),0,"genuine window blur boundary still stops");
-     rows.push({engine,width,motion,defaults:true,status:"pass",reason:initialReason,message,visibleSignIn:true,seededCookies:false,seededPrefs:false,seededConsent:false,visibleUiConsent:true,actualWorkerRunning:true,independentPaint:{beforePixels,paintPixels,trialPixels,paintDelayMs,trialPaintDelayMs},actualStageClickSurvives:true,windowBlurStops:true});
+     assert.equal(await page.evaluate(()=>window.__trialShell.stage.querySelectorAll("iframe").length),0,"dispatched window blur event still stops");
+     rows.push({engine,width,motion,defaults:true,status:"pass",reason:initialReason,message,visibleSignIn:true,seededCookies:false,seededPrefs:false,seededConsent:false,visibleUiConsent:true,visibleReturnNavigation:true,actualWorkerRunning:true,independentPaint:{beforePixels,paintPixels,trialPixels,paintDelayMs,trialPaintDelayMs},actualStageClickSurvives:true,windowBlurStops:true});
     }
     assert.deepEqual(errors,[]);assert.deepEqual(outside,[]);console.log("PASS",tag);
    } catch(e) {await page.screenshot({path:join(out,tag+"-failure.png")}).catch(()=>{});writeFileSync(join(out,tag+"-failure.json"),JSON.stringify({error:String(e),errors,outside,snapshot:await view().catch(()=>null),trace:await page.evaluate(()=>window.__diagnosticTrace).catch(()=>null),trial:await page.evaluate(async()=>{const m=await import("/ui/js/app-effects.js");const frame=window.__trialShell?.stage.querySelector("iframe"),c=frame?getComputedStyle(frame):null;return{rows:m.getAppEffects()?.api.trialSnapshot().rows,focus:document.hasFocus(),frame:frame?{visibility:c.visibility,display:c.display,opacity:c.opacity,clip:c.clipPath,rect:frame.getBoundingClientRect().toJSON()}:null}}).catch(()=>null),requests:requests.slice(startRequest)},null,2));throw e;}
