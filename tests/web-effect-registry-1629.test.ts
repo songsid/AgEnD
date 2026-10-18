@@ -199,9 +199,9 @@ describe("#1629 shared Canvas Worker registry", () => {
     h.api.dispose();
   });
   it("#2118 viewer off/on cannot clear resource or durable safety failures",async()=>{
-    const failed=rig();failed.load.mockResolvedValueOnce(null);const ds=await failed.admit();expect(failed.load).toHaveBeenCalledOnce();
+    const failed=rig();failed.load.mockResolvedValueOnce(null as any);const ds=await failed.admit();expect(failed.load).toHaveBeenCalledOnce();
     failed.api.update(ds,gates({show:false}));failed.api.update(ds,gates());await flush();expect(failed.load).toHaveBeenCalledOnce();failed.api.dispose();
-    const off=rig();off.safety.allowed.mockReturnValue(false);off.safety.status=vi.fn(()=>({state:"off",history:null}));const blocked=await off.admit();
+    const off=rig();off.safety.allowed.mockReturnValue(false);(off.safety as any).status=vi.fn(()=>({state:"off",history:null}));const blocked=await off.admit();
     off.api.update(blocked,gates({show:false}));off.api.update(blocked,gates());await flush();expect(off.load).not.toHaveBeenCalled();expect(off.api.snapshot()[0].reason).toBe("safety_off");off.api.dispose();
   });
   it("the constrained front pool admits exactly one front effect", async () => {
