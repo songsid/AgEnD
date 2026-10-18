@@ -4,14 +4,19 @@
 // runs with a 4× CPU slowdown (DevTools; WebKit has none, so it runs unthrottled). Per switch, from the click on the
 // chat's sidebar row (a DOM click: the phone's drawer is not opened, so only the app's own work is timed):
 //   first — the first message of the new thread is in the DOM      full — every message is (the thread drawn)
-//   lt    — long-task ms between the click and `full` (Chromium)   md / mdN — ms in renderMarkdown, and its calls
+//   lt    — long-task ms started between the click and every message in the DOM (Chromium)
+//   md / mdN — ms in renderMarkdown, and its calls (until 400 ms after `full`)
 // First visits (history read); revisits among the last four chats shown (what the page keeps: THREAD_KEEP), ROUNDS
 // rounds; and revisits of chats seen longer ago (let go: drawn anew); medians. A chat left at the bottom comes back at
-// the bottom (#2088's end-of-scroll must hold); one left higher up keeps the memo's unchanged path (listed). RUN IT
-// ALONE: nothing else may run beside it.
+// the bottom (#2088's end-of-scroll must hold); one left higher up keeps the memo's unchanged path (listed).
+// Then the acceptance, no timing (the review's P2-2): the person's way — the sidebar's visible rows, a phone's drawer
+// opened with ☰ — on desk light (English; a LAN origin in Chromium), phone dark (zh-TW, reduced motion) and the
+// temporary public link (phone light, reduced motion; stubbed as the harness says). A chat read part-way up, another
+// opened, the first shown again: the very same thread (kept), where the reader left it; the second, left at the bottom,
+// shown again at the bottom. No page error (WebKit's own two lines only). RUN IT ALONE: nothing else may run beside it.
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> [PW_ENGINE=webkit] npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2053-switch.mts
 import { writeFileSync } from "node:fs";
-import { bootFixture, freshPage, mounted, seedChat, shotPath } from "../smoke-fixture/index.mts";
+import { bootFixture, freshPage, mounted, openPublicLink, seedChat, shotPath, type FreshPage } from "../smoke-fixture/index.mts";
 
 const N = Number(process.env.N ?? 200), ROUNDS = Number(process.env.ROUNDS ?? 2);
 const ENGINE = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";
@@ -42,16 +47,17 @@ const chatted = await seedChat(fx, CHATS, N);
 const measure = (page: any, to: string) => page.evaluate(`new Promise((resolve) => {
   const to = ${JSON.stringify(to)}, want = ${N};
   const link = document.querySelector('a[href="/ui/chat/' + to + '"]');
-  const marks = {}; let t0 = 0; let done = false;
+  const marks = {}; let t0 = 0, tEnd = 0; let done = false;
   const frame = (k) => { if (marks[k] === undefined) { marks[k] = -1; requestAnimationFrame(() => { marks[k] = Math.round(performance.now() - t0); }); } };
-  const finish = (extra) => { obs.disconnect(); const lt = (window.__lt || []).filter(([s]) => s >= t0).reduce((n, [, d]) => n + d, 0);
+  // Long tasks that started between the click and the thread drawn (entries arrive late: read 400 ms on).
+  const finish = (extra) => { obs.disconnect(); if (!tEnd) tEnd = performance.now(); const lt = (window.__lt || []).filter(([s]) => s >= t0 && s < tEnd).reduce((n, [, d]) => n + d, 0);
     const sc = document.querySelector(".p-chat .scroller"); const dist = sc ? Math.round(sc.scrollHeight - sc.scrollTop - sc.clientHeight) : null;
     resolve({ ...marks, lt: Math.round(lt), md: Math.round(window.__md), mdN: window.__mdN, dist, ...extra }); };
   const check = () => {
     const mine = [...document.querySelectorAll(".p-chat .msg.agent .sender")].some((e) => e.textContent === to);
     const msgs = mine ? document.querySelectorAll(".p-chat .msg").length : 0;
     if (msgs > 0) frame("first");
-    if (msgs >= want && !done) { done = true; frame("full"); setTimeout(() => finish({}), 400); }
+    if (msgs >= want && !done) { done = true; tEnd = performance.now(); frame("full"); setTimeout(() => finish({}), 400); }
   };
   const obs = new MutationObserver(check);
   obs.observe(document.body, { childList: true, subtree: true });
@@ -101,8 +107,67 @@ for (const [tag, c] of [["desk", { device: "desk", theme: "light", lang: "en" }]
   await p.page.screenshot({ path: shotPath("smoke-2053-switch", `${ENGINE}-${tag}`, "chat") });
   await p.ctx.close();
 }
+
+async function clickVisible(page: any, selector: string, timeout = 10000): Promise<void> {
+  const all = page.locator(selector), end = Date.now() + timeout;
+  do {
+    for (let i = 0; i < await all.count(); i++) if (await all.nth(i).isVisible()) { await all.nth(i).click(); return; }
+    await page.waitForTimeout(100);
+  } while (Date.now() < end);
+  throw new Error(`nothing visible matches ${selector} on ${page.url()}`);
+}
+/** Open a chat as a person does: its visible row in the sidebar (a phone opens the drawer with ☰ first). */
+async function visit(p: FreshPage, to: string) {
+  if (p.page.viewportSize().width < 760 && !(await p.page.locator(".shell.sb-open").count())) await clickVisible(p.page, 'button[aria-controls="sidebar"]');
+  await clickVisible(p.page, `a[href="/ui/chat/${to}"]`);
+  await p.page.waitForURL(`**/ui/chat/${to}`, { timeout: 10000 });
+  await p.page.waitForFunction(([name, n]: [string, number]) => [...document.querySelectorAll(".p-chat .msg.agent .sender")].some((e) => e.textContent === name)
+    && document.querySelectorAll(".p-chat .msg").length >= n, [to, N] as [string, number], { timeout: 30000 });
+  await p.page.waitForTimeout(600);
+}
+/** The open chat's scroller: its position, px from the bottom, and whether its thread is the one tagged `tag`. */
+const where = (p: FreshPage, tag?: string) => p.page.evaluate((t: string | null) => {
+  const sc = document.querySelector(".p-chat .scroller") as HTMLElement, th = document.querySelector(".p-chat .thread") as any;
+  return { top: Math.round(sc.scrollTop), dist: Math.round(sc.scrollHeight - sc.scrollTop - sc.clientHeight), same: t ? th[t] === true : null };
+}, tag ?? null);
+const accept: any[] = [];
+async function acceptCase(name: string, open: () => Promise<FreshPage>) {
+  const p = await open();
+  await mounted(p.page, 30000);
+  const [A, B] = [CHATS[0], CHATS[1]];
+  await visit(p, A);
+  // Read part-way up: a wheel on a desk, the page scrolled by the reader's finger on a phone (no wheel there).
+  if (p.page.viewportSize().width < 760) await p.page.evaluate(() => { document.querySelector(".p-chat .scroller")!.scrollBy(0, -1500); });
+  else { await p.page.locator(".p-chat .scroller").hover(); await p.page.mouse.wheel(0, -1500); }
+  await p.page.waitForTimeout(500);
+  await p.page.evaluate(() => { (document.querySelector(".p-chat .thread") as any).__keptA = true; });
+  const leftA = await where(p);
+  await visit(p, B);
+  const firstB = await where(p);
+  await p.page.evaluate(() => { (document.querySelector(".p-chat .thread") as any).__keptB = true; });
+  await visit(p, A);
+  const backA = await where(p, "__keptA");
+  await p.page.screenshot({ path: shotPath("smoke-2053-switch", `${ENGINE}-accept-${name}`, "back") });
+  await visit(p, B);
+  const backB = await where(p, "__keptB");
+  const errors = p.errors.filter((e) => !(ENGINE === "webkit" && WEBKIT_OWN.has(e.replace(/ @ \S+$/, ""))));
+  const chk = { readUp: leftA.dist > 200, keptA: backA.same === true, whereLeftA: Math.abs(backA.top - leftA.top) <= 2,
+    bOpensAtBottom: firstB.dist <= 2, keptB: backB.same === true, bBackAtBottom: backB.dist <= 2, noErrors: errors.length === 0 };
+  const failed = Object.entries(chk).filter(([, v]) => !v).map(([k]) => k);
+  accept.push({ name, ok: !failed.length, failed, leftA, backA, firstB, backB, errors });
+  console.log(`${failed.length ? "FAIL" : "ok  "} ${ENGINE}-accept-${name}${failed.length ? ` [${failed.join(", ")}] ${JSON.stringify({ leftA, backA, firstB, backB, errors }).slice(0, 500)}` : ""}`);
+  await p.ctx.close();
+}
+await acceptCase(ENGINE === "webkit" ? "desk-light-en" : "desk-light-en-lan",
+  () => freshPage(fx, { device: "desk", theme: "light", lang: "en" }, ENGINE === "webkit" ? {} : { origin: "lan" }));
+await acceptCase("phone-dark-zh-TW-reduced", () => freshPage(fx, { device: "phone", theme: "dark", lang: "zh-TW" }, { reducedMotion: true }));
+const link = await openPublicLink(fx);
+await acceptCase("public-link-phone-light-en-reduced", () => link.publicPage({ device: "phone", theme: "light", lang: "en" }, { reducedMotion: true }));
+await link.close();
+results.accept = accept;
+
 writeFileSync(shotPath("smoke-2053-switch", `${ENGINE}-result`, "x").replace(/-x\.png$/, ".json"), JSON.stringify(results, null, 1));
 console.log(JSON.stringify(Object.fromEntries(Object.entries(results.cases).map(([k, v]: any) => [k, { ...v.summary, backWhereLeft: v.backWhereLeft, leftOffBottom: v.leftOffBottom, timeouts: v.timeouts, errors: v.errors, webkitOwn: v.webkitOwn.length }])), null, 1));
-const failed = Object.values(results.cases).some((v: any) => v.errors.length || v.timeouts || !v.backWhereLeft);
+const failed = Object.values(results.cases).some((v: any) => v.errors.length || v.timeouts || !v.backWhereLeft) || accept.some((a) => !a.ok);
 console.log(failed ? "FAIL" : `PASS (${ENGINE})`);
 await fx.close(); process.exit(failed ? 1 : 0);

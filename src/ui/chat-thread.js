@@ -56,8 +56,10 @@ export function renderedMarkdown(text, cards, emojis, mentions) {
   const src = typeof text === "string" ? text : String(text == null ? "" : text);
   let sig = cards ? "c" : "-";
   if (src.includes("<")) {
-    for (const m of src.matchAll(EMOJI_IDS)) sig += `|e${m[1]}${emojis && emojis(m[1]) ? 1 : 0}`;
-    for (const m of src.matchAll(MENTION_IDS)) { const name = mentions ? mentions(MENTION_KINDS[m[1]], m[2]) : null; sig += `|m${m[1]}${m[2]}=${typeof name === "string" ? name.length + ":" + name : "-"}`; }
+    // Read as renderMarkdown reads it: it drops NUL first (its placeholder mark), so "<@\0id>" is a mention there too.
+    const seen = src.includes("\u0000") ? src.replace(/\u0000/g, "") : src;
+    for (const m of seen.matchAll(EMOJI_IDS)) sig += `|e${m[1]}${emojis && emojis(m[1]) ? 1 : 0}`;
+    for (const m of seen.matchAll(MENTION_IDS)) { const name = mentions ? mentions(MENTION_KINDS[m[1]], m[2]) : null; sig += `|m${m[1]}${m[2]}=${typeof name === "string" ? name.length + ":" + name : "-"}`; }
   }
   const key = `${sig}\u0000${src}`;
   let html = mdCache.get(key);
@@ -101,6 +103,7 @@ export function createThread(list, scroller, opts) {
   let firstKey = null;
   let growTimer = null, growFrame = null, disposed = false, parked = false;
   const cardRefresh = new WeakMap(); // card node → re-read availability (weak: a card that left takes its source with it)
+  const cardDrop = new WeakMap();    // card node → drop the HTML read it is waiting on (the chat left: park)
   const tr = opts.t, trf = opts.tf;
   const stopIn = (node) => (P() ? P().stopIn(node) : []);
   /** #1770: write a message node's time label for now; unchanged text is not touched. */
@@ -317,7 +320,7 @@ export function createThread(list, scroller, opts) {
     const note = el("div", "pv-note"); note.setAttribute("data-trust", "thread-control");
     const body = el("div", "tc-body"); body.hidden = true;
     ph.append(head, note, body);
-    let text = null, reading = false, all = false;
+    let text = null, reading = 0, reads = 0, all = false;
     const draw = () => {
       body.textContent = "";
       const lines = text.split(/\r?\n/);
@@ -353,12 +356,15 @@ export function createThread(list, scroller, opts) {
         body.append(more);
       }
     };
+    // #2053: as an HTML card's read (cardDrop), one still waiting when the chat left is dropped, the card not left Loading.
+    cardDrop.set(ph, () => { if (reading) { reading = 0; note.textContent = ""; } });
     show.onclick = async () => {
       if (reading) return;
       if (text !== null) { body.hidden = !body.hidden; show.textContent = tr(body.hidden ? "chat.tcShow" : "chat.tcHide"); return; }
-      reading = true; note.textContent = tr("chat.pvLoading");
+      const mine = reading = ++reads; note.textContent = tr("chat.pvLoading");
       const r = await loadHtmlAttachment({ id: att.id, name: att.name, size: att.size });
-      reading = false;
+      if (reading !== mine) return;                      // dropped (its chat left meanwhile): a new click reads again
+      reading = 0;
       if (!ph.isConnected) return;                       // the card left the page while it was read: nothing to draw
       if (!r.ok) { note.textContent = r.reason === "over" ? tr("chat.tcOver") : attReason(r.reason); return; }
       note.textContent = "";
@@ -496,6 +502,10 @@ export function createThread(list, scroller, opts) {
     optB.onclick = () => { menu.open = false; opts.setPreviewOptIn(!P().optedIn()); };
     neverB.onclick = () => { menu.open = false; P().setNever(!P().never()); refreshCards(); };
     cardRefresh.set(ph, refresh);
+    // #2053: a kept card is shown again later. A read still waiting when its chat left is dropped then: its answer —
+    // whenever it comes — starts nothing (no preview, no panel without a new click), and the card is not left Loading
+    // (shown again, it is refreshed: refreshCards).
+    cardDrop.set(ph, () => { reading = 0; });
     refresh(stoppedKeys.includes(key) ? tr("chat.pvChanged") : null);
   }
   /** Re-read this device's preview choice on every card in this thread. */
@@ -694,6 +704,7 @@ export function createThread(list, scroller, opts) {
   function park() {
     parked = true;
     if (P()) P().stopAll("leave");
+    for (const node of list.querySelectorAll(".html-card[data-att], .text-card[data-att]")) { const f = cardDrop.get(node); if (f) f(); }
     if (ro) { ro.disconnect(); ro = null; }
     if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
     if (growFrame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(growFrame);

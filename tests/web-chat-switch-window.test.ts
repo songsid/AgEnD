@@ -154,6 +154,19 @@ describe("#2053: rendered Markdown is kept, and always what renderMarkdown would
     name = "Bob";
     expect(renderedMarkdown(text, false, emojis, mentions), "and changed").toBe(fresh());
   });
+  it("review P3: a NUL inside the tag (renderMarkdown drops NUL first, so it is still an emoji / mention there) counts the same", () => {
+    clearRenderedMarkdown();
+    const text = `hi <:blob:\u0000${ID}> <@\u0000${UID}>`;
+    let known = false, name: string | null = null;
+    const emojis = (id: string) => known && id === ID, mentions = (_k: string, id: string) => (id === UID ? name : null);
+    const fresh = () => R().renderMarkdown(text, { htmlCards: false, emojis, mentions });
+    expect(renderedMarkdown(text, false, emojis, mentions)).toBe(fresh());
+    known = true; name = "Ann";
+    expect(fresh(), "the renderer does read them").toContain("Ann");
+    expect(renderedMarkdown(text, false, emojis, mentions), "known, named").toBe(fresh());
+    name = "Bob";
+    expect(renderedMarkdown(text, false, emojis, mentions), "renamed").toBe(fresh());
+  });
   it("bounded: past MD_CACHE_MAX the least recently used goes", () => {
     clearRenderedMarkdown();
     let n = 0; const real = R().renderMarkdown; R().renderMarkdown = function (...a: unknown[]) { n++; return real.apply(this, a); };
