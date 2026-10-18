@@ -292,7 +292,7 @@ describe("every web surface uses the person: the header, the echo, tasks, activi
     (h.fm.fleetConfig as any).web = { verified_authority: { enabled: true } };          // #1939: the server switch
     // #1939 §0: and the account authorized this session once (S2b's card or code; here the call it ends in).
     const mine = h.s.webSessions.authenticate(a.sessionId, tokenEpoch("c".repeat(48)), { touch: false });
-    expect(h.s.authorizeWebSession(mine, "loopback")).toMatchObject({ ok: true });
+    expect(h.s.authorizeWebSession(mine, "loopback", false)).toMatchObject({ ok: true });
     expect((await web(h, "/ui/send", "POST", a, { instance: "general", message: "hello" })).status).toBe(200);
     const [{ payload, origin }] = got;
     expect(payload.meta).toMatchObject({ user: "Hanhan", user_id: "admin", source: "web" });

@@ -453,6 +453,21 @@ export class WebSessionStore {
     return [...by.values()];
   }
 
+  /**
+   * #1939 S2b: the live session with this handle (an active one, not expired — limits applied), or null. Read-only: a
+   * Confirm tapped in Discord is judged against the session as it is at that moment.
+   */
+  findByHandle(handle: string): SessionRecord | null {
+    if (!HANDLE_PATTERN.test(handle)) return null;
+    const now = this.now();
+    for (const record of this.byHash.values()) {
+      if (record.handle !== handle || this.pending.has(record.idHash)) continue;
+      this.limit(record);
+      return now < record.absoluteExpiry && now < record.idleExpiry ? record : null;
+    }
+    return null;
+  }
+
   /** #1920: `only` as in list() — a session it rejects is not found. */
   revokeByHandle(handle: string, only?: (r: SessionRecord) => boolean): { found: boolean; durable: boolean } {
     if (!HANDLE_PATTERN.test(handle)) return { found: false, durable: true };

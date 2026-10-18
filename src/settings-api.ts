@@ -4,7 +4,7 @@ import { settingsRequestExecution, settingsWrite } from "./settings-request-capa
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
-import { applyAppearanceChanges, applyGuestsPatch, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
+import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS, effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { evaluateWebRequest } from "./web-auth.js";
@@ -86,6 +86,9 @@ export interface SettingsApiContext extends AppShellContext {
   /** #1920 phase 3: Settings → Web sign-ins → Guests. */
   guestOverview?(): unknown;
   revokeGuestWebSessions?(owner: { adapterId: string; userId: string }): { count: number; durable: boolean };
+  /** #1939 S2a: Settings → Web → Web authority — what is in force, the actions to pick from, and the revocation. */
+  webAuthorityOverview?(): unknown;
+  revokeWebAuthority?(): { epoch: number; durable: boolean };
   readonly webToken?: string | null;
   readonly webSessions?: import("./web-session.js").WebSessionStore | null;
   fleetConfig: FleetConfig | null;
@@ -692,6 +695,30 @@ export function handleSettingsRequest(
     return true;
   }
 
+  // ── #1939 S2a: Settings → Web → Web authority. What is in force (GET) and "Revoke web authority" (POST — it only
+  // takes away, so it is not a confirmed change; the caller is asked again after the body, as the guests' sign-out).
+  // Never over the public link. The switches and the lists are fleet/web's PUT.
+  if (path === "/api/settings/web-authority" && method === "GET") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "web_authority_not_over_public_link" }); return true; }
+    if (!ctx.webAuthorityOverview) { json(res, 404, { error: "not available" }); return true; }
+    res.setHeader("Cache-Control", "no-store");
+    json(res, 200, ctx.webAuthorityOverview());
+    return true;
+  }
+  if (path === "/api/settings/web-authority/revoke" && method === "POST") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "web_authority_not_over_public_link" }); return true; }
+    if (!ctx.revokeWebAuthority) { json(res, 404, { error: "not available" }); return true; }
+    const caller = guestSettingsCaller(req, url, ctx);
+    if (!caller) { json(res, 401, { error: "not authorized" }); return true; }
+    readBody(req, 1024).then(() => {
+      if (!permitWebContinuation(req, res, ctx)) return;
+      if (guestSettingsCaller(req, url, ctx) !== caller) return json(res, 401, { error: "no longer authorized" });
+      const r = ctx.revokeWebAuthority!();
+      json(res, 200, { ok: true, epoch: r.epoch, durable: r.durable });
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
   // One hot web toggle; an unrelated Settings edit never materializes defaults.
   if (method === "PUT" && path === "/api/settings/fleet/web") {
     // #1620: never over the temporary public link — refused before the body is read (the confirmation gate refuses it
@@ -735,6 +762,12 @@ export function handleSettingsRequest(
       if (parsed.guests) {
         const applied = applyGuestsPatch(cfg.web?.guests, parsed.guests);
         if (applied.next) web.guests = applied.next; else delete web.guests;
+        changes.push(...applied.changes);
+      }
+      // #1939 S2a: web authority; loosening it is confirmed, tightening applies at once (settings-change.ts).
+      if (parsed.verifiedAuthority) {
+        const applied = applyVerifiedAuthorityPatch(cfg.web?.verified_authority, parsed.verifiedAuthority);
+        if (applied.next) web.verified_authority = applied.next; else delete web.verified_authority;
         changes.push(...applied.changes);
       }
       if (!changes.length) return json(res, 200, { ok: true });

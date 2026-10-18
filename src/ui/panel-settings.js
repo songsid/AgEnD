@@ -44,6 +44,7 @@ import { startTour } from "./chat-tour.js";
 import "./chat-strings.js";
 import { AppearanceSection } from "./settings-appearance.js";
 import { GuestsCard } from "./settings-guests.js";
+import { WebAuthorityCard } from "./settings-web-authority.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const ICONS = { device: "user", appearance: "palette", agents: "bot", bots: "plug", classic: "room", general: "sliders", web: "globe", advanced: "code" };
@@ -772,6 +773,8 @@ export const WEB_READ_ONLY = [
 function WebSection({ ctx, staged }) {
   const { schema } = ctx;
   const web = ctx.fleet.web || {}, local = (web.session && web.session.local) || {}, term = ctx.fleet.web_terminal || {};
+  // Over the public link the fields read only; the Guests and Web authority cards are not offered (the server never
+  // serves their reads there).
   const overPublicLink = globalThis.document?.body?.dataset?.publicLink === "1";
   const original = useMemo(() => ({
     echo: web.echo_to_channel ?? true,
@@ -867,7 +870,7 @@ function WebSection({ ctx, staged }) {
       </div>
     </section>
     </fieldset>
-    <${GuestsCard} ctx=${ctx} staged=${staged} disabled=${overPublicLink} />
+    ${overPublicLink ? null : html`<${GuestsCard} ctx=${ctx} staged=${staged} /><${WebAuthorityCard} ctx=${ctx} staged=${staged} />`}
     <section class="card s-web-readonly"><h3>${tn("webReadOnlyTitle")}</h3>
       <p class="note">${tn("webReadOnlyLead")}</p>
       <dl class="s-web-ro">${WEB_READ_ONLY.map((k) => html`<div key=${k}><dt><code>${k}</code></dt><dd>${shown(k)}</dd></div>`)}</dl>

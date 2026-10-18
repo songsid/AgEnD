@@ -59,7 +59,8 @@ const esc = (target: any = p.document.body) => { const e = fire(target, "keydown
 describe("#1374: what counts as use", () => {
   it("first visit: one history read; coming back: nothing at all", async () => {
     await mountChat("alpha");
-    expect(requests).toEqual(["GET /ui/history?instance=alpha&limit=200"]);
+    // #1939 S2b: plus this browser's authorization, read once per page load (the line under the composer).
+    expect(requests).toEqual(["GET /ui/authorization", "GET /ui/history?instance=alpha&limit=200"]);
     await p.unmount();
     await mountFleet("tasks");
     await p.unmount();

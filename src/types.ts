@@ -345,6 +345,12 @@ export interface WebConfig {
   /** Show the AI subscription usage panel on /view and serve /api/ai-usage (default true). */
   usage_panel?: boolean;
   /**
+   * #2122: serve the usage report (Fleet → Usage, GET /ui/usage-report) over the temporary public link too (default
+   * false). It is up to 400 days of per-agent, per-model, per-profile activity and amounts — more than the live quota
+   * rail or the cache report the link already shows. Guests never get it.
+   */
+  usage_report_on_public_link?: boolean;
+  /**
    * #1937: the largest file the web chat takes, in MB (whole number, 1–500; default 50). Never more than
    * upload_max_total_mb; over the public link a file is at most 95 MB whatever this says (the quick tunnel's limit).
    * Read on each upload: `agend reload` applies a change; an open page uses the new limits after it reloads.
@@ -424,7 +430,7 @@ export interface WebConfig {
 /** #1939: fleet.yaml `web.verified_authority` (docs/design/1939-verified-web-sessions.md §0, §3, §10). */
 export interface WebVerifiedAuthorityConfig {
   /**
-   * The server switch (§10): web messages carry authority only while it is on (default false). Turning it off makes
+   * The server switch (§10): web messages carry authority only while it is on (default true, §0.1). Turning it off makes
    * every web authority read as none at once; turning it back on never brings back authority given before.
    */
   enabled?: boolean;

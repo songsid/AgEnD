@@ -28,7 +28,7 @@ export interface ValidationIssue {
 }
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
-const WEB_KEYS = ["public_link", "echo_to_channel", "usage_panel", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
+const WEB_KEYS = ["public_link", "echo_to_channel", "usage_panel", "usage_report_on_public_link", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
   "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
@@ -404,6 +404,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     if (config.web.usage_panel !== undefined && typeof config.web.usage_panel !== "boolean") {
       err("web.usage_panel", "must be a boolean");
+    }
+    if (config.web.usage_report_on_public_link !== undefined && typeof config.web.usage_report_on_public_link !== "boolean") {
+      err("web.usage_report_on_public_link", "must be a boolean");
     }
     if (config.web.log_tab !== undefined && typeof config.web.log_tab !== "boolean") {
       err("web.log_tab", "must be a boolean");

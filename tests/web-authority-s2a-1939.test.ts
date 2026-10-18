@@ -40,10 +40,11 @@ function memIo(initial?: string) {
 const log = () => ({ warn: vi.fn() });
 
 describe("§10 the revocation epoch: moved by the switch, by loopback_only going off, and by an explicit revocation", () => {
-  it("a fresh fleet: off, epoch 0, nothing written", () => {
+  it("a fresh fleet: on by default (§0.1) — the first read records it and moves the epoch past 0", () => {
     const m = memIo(); const s = new AuthorityStateStore("/s.json", log(), m.io);
-    expect(s.current(undefined)).toEqual({ enabled: false, loopbackOnly: false, epoch: 0 });
-    expect(m.io.writes).toBe(0);
+    expect(s.current(undefined)).toEqual({ enabled: true, loopbackOnly: false, epoch: 1 });
+    expect(m.stored()).toEqual({ v: 1, epoch: 1, enabled: true, loopback_only: false });
+    expect(s.current({ enabled: false })).toEqual({ enabled: false, loopbackOnly: false, epoch: 2 });
   });
   it("on, off, on: each moves the epoch, and the positions are written", () => {
     const m = memIo(); const s = new AuthorityStateStore("/s.json", log(), m.io);
@@ -109,7 +110,7 @@ describe("§10 the revocation epoch: moved by the switch, by loopback_only going
     // Missing, with receipts at epoch 4: past them and the clock's seconds, and off.
     expect(new AuthorityStateStore("/s.json", l, memIo().io, () => 9_000, () => 4).current({ enabled: true })).toEqual({ enabled: true, loopbackOnly: false, epoch: 10 });
     expect(l.warn).toHaveBeenCalledTimes(1);
-    expect(new AuthorityStateStore("/s.json", log(), memIo().io, () => 1_000, () => 40).current(undefined).epoch).toBe(41);
+    expect(new AuthorityStateStore("/s.json", log(), memIo().io, () => 1_000, () => 40).current({ enabled: false }).epoch).toBe(41);
     // A file at epoch 2 while a receipt carries 5.
     const behind = memIo(JSON.stringify({ v: 1, epoch: 2, enabled: true, loopback_only: false }));
     expect(new AuthorityStateStore("/s.json", log(), behind.io, () => 1_000, () => 5).current({ enabled: true }).epoch).toBe(7);   // 6, then on: 7
@@ -117,7 +118,7 @@ describe("§10 the revocation epoch: moved by the switch, by loopback_only going
     const level = memIo(JSON.stringify({ v: 1, epoch: 5, enabled: true, loopback_only: false }));
     expect(new AuthorityStateStore("/s.json", log(), level.io, () => 1_000, () => 5).current({ enabled: true }).epoch).toBe(5);
     // Missing with no receipts: a fresh fleet.
-    expect(new AuthorityStateStore("/s.json", log(), memIo().io, () => 1_000, () => 0).current(undefined).epoch).toBe(0);
+    expect(new AuthorityStateStore("/s.json", log(), memIo().io, () => 1_000, () => 0).current({ enabled: false }).epoch).toBe(0);
     // The receipts cannot be read: the file is not trusted either.
     const unknown = memIo(JSON.stringify({ v: 1, epoch: 5, enabled: true, loopback_only: false }));
     expect(new AuthorityStateStore("/s.json", log(), unknown.io, () => 9_000, () => { throw new Error("locked"); }).current({ enabled: true }).epoch).toBe(10);
@@ -177,7 +178,7 @@ describe("the FleetManager: admission and delivery_status use the state in force
     return { s, dir, outbox, receive, status };
   }
   it("the switch off: admission refuses; on: the first read moves the epoch, and a receipt reads web-verified", () => {
-    const h = fm(undefined);
+    const h = fm({ verified_authority: { enabled: false } });
     expect(h.s.webAuthority({ session: null, gateway: false, peer: "loopback" }).refusal).toBe("disabled");
     h.s.fleetConfig.web = { verified_authority: { enabled: true } };
     expect(h.s.webAuthorityState()).toEqual({ enabled: true, loopbackOnly: false, epoch: 1 });
@@ -268,6 +269,7 @@ describe("/web revoke also revokes web authority", () => {
   });
 });
 
+const HOUR_MS = 3_600_000;
 describe("§0 sessions authorized once: the store", () => {
   const H = "a1b2c3d4e5f60718", OWNER = { adapterId: "owner", userId: "admin" };
   function mem(initial?: string) {
@@ -280,53 +282,64 @@ describe("§0 sessions authorized once: the store", () => {
   it("authorize, get, kept across a restart (the file)", () => {
     const m = mem(); const s = new SessionAuthorizations("/a.json", log(), m.io);
     expect(s.get(H)).toBeNull();
-    expect(s.authorize(H, OWNER, 1_000, 3)).toEqual({ authorization: { handle: H, owner: OWNER, authorizedAt: 1_000, epoch: 3 }, durable: true });
-    expect(m.stored()).toEqual({ v: 1, authorizations: [{ handle: H, owner: OWNER, authorizedAt: 1_000, epoch: 3 }] });
-    expect(new SessionAuthorizations("/a.json", log(), m.io).get(H)).toEqual({ handle: H, owner: OWNER, authorizedAt: 1_000, epoch: 3 });
+    expect(s.authorize(H, OWNER, 1_000, 3, 1_000 + HOUR_MS)).toEqual({ authorization: { handle: H, owner: OWNER, authorizedAt: 1_000, until: 1_000 + HOUR_MS, epoch: 3 }, durable: true });
+    expect(m.stored()).toEqual({ v: 1, authorizations: [{ handle: H, owner: OWNER, authorizedAt: 1_000, until: 1_000 + HOUR_MS, epoch: 3 }] });
+    expect(new SessionAuthorizations("/a.json", log(), m.io).get(H)).toEqual({ handle: H, owner: OWNER, authorizedAt: 1_000, until: 1_000 + HOUR_MS, epoch: 3 });
   });
   it("a second authorization replaces the first; a bad one is refused", () => {
     const s = new SessionAuthorizations("/a.json", log(), mem().io);
-    s.authorize(H, OWNER, 1_000, 1); s.authorize(H, OWNER, 2_000, 2);
-    expect(s.list()).toEqual([{ handle: H, owner: OWNER, authorizedAt: 2_000, epoch: 2 }]);
-    expect(() => s.authorize("not-a-handle", OWNER, 1, 1)).toThrow(/invalid/);
-    expect(() => s.authorize(H, { adapterId: "", userId: "x" }, 1, 1)).toThrow(/invalid/);
+    s.authorize(H, OWNER, 1_000, 1, 1_000 + HOUR_MS); s.authorize(H, OWNER, 2_000, 2, 2_000 + HOUR_MS);
+    expect(s.list()).toEqual([{ handle: H, owner: OWNER, authorizedAt: 2_000, until: 2_000 + HOUR_MS, epoch: 2 }]);
+    expect(() => s.authorize("not-a-handle", OWNER, 1, 1, 1 + HOUR_MS)).toThrow(/invalid/);
+    expect(() => s.authorize(H, { adapterId: "", userId: "x" }, 1, 1, 1 + HOUR_MS)).toThrow(/invalid/);
+  });
+  it("#2112 review: a file of another version keeps none; a record with a negative epoch is skipped", () => {
+    expect(new SessionAuthorizations("/a.json", log(), mem(JSON.stringify({ v: 2, authorizations: [{ handle: H, owner: OWNER, authorizedAt: 5, until: 5 + HOUR_MS, epoch: 1 }] })).io).list()).toEqual([]);
+    expect(new SessionAuthorizations("/a.json", log(), mem(JSON.stringify({ v: 1, authorizations: [{ handle: H, owner: OWNER, authorizedAt: 5, epoch: -1 }] })).io).list()).toEqual([]);
+  });
+  it("S2c: a stored record must say until when — none, not a number, or not after it was given: skipped", () => {
+    const load = (rec: Record<string, unknown>) => new SessionAuthorizations("/a.json", log(), mem(JSON.stringify({ v: 1, authorizations: [{ handle: H, owner: OWNER, authorizedAt: 5, epoch: 1, ...rec }] })).io).list();
+    expect(load({})).toEqual([]);
+    expect(load({ until: "later" })).toEqual([]);
+    expect(load({ until: 5 })).toEqual([]);
+    expect(load({ until: 5 + HOUR_MS }).map(a => a.until), "the positive control").toEqual([5 + HOUR_MS]);
   });
   it("unreadable or malformed: none kept (losing them never grants one); a malformed entry is skipped", () => {
     const l = log();
     expect(new SessionAuthorizations("/a.json", l, mem("{broken").io).list()).toEqual([]);
     expect(l.warn).toHaveBeenCalledTimes(1);
-    const mixed = JSON.stringify({ v: 1, authorizations: [{ handle: H, owner: OWNER, authorizedAt: 5, epoch: 1 }, { handle: "x", owner: OWNER, authorizedAt: 5, epoch: 1 }, { handle: "b".repeat(16), owner: {}, authorizedAt: 5, epoch: 1 }] });
+    const mixed = JSON.stringify({ v: 1, authorizations: [{ handle: H, owner: OWNER, authorizedAt: 5, until: 5 + HOUR_MS, epoch: 1 }, { handle: "x", owner: OWNER, authorizedAt: 5, until: 5 + HOUR_MS, epoch: 1 }, { handle: "b".repeat(16), owner: {}, authorizedAt: 5, until: 5 + HOUR_MS, epoch: 1 }] });
     expect(new SessionAuthorizations("/a.json", log(), mem(mixed).io).list().map(a => a.handle)).toEqual([H]);
   });
   it("not saved: it holds for now (only a restart forgets it), said once", () => {
     const l = log(); const m = mem(); const s = new SessionAuthorizations("/a.json", l, m.io);
     m.io.fail = true;
-    expect(s.authorize(H, OWNER, 1, 1).durable).toBe(false);
-    s.authorize("b".repeat(16), OWNER, 1, 1);
+    expect(s.authorize(H, OWNER, 1, 1, 1 + HOUR_MS).durable).toBe(false);
+    s.authorize("b".repeat(16), OWNER, 1, 1, 1 + HOUR_MS);
     expect(s.get(H)).not.toBeNull();
     expect(l.warn).toHaveBeenCalledTimes(1);
   });
   it("prune drops what fails the test and saves; capped, oldest out", () => {
     const m = mem(); const s = new SessionAuthorizations("/a.json", log(), m.io);
-    s.authorize(H, OWNER, 1, 1); s.authorize("b".repeat(16), OWNER, 2, 2);
+    s.authorize(H, OWNER, 1, 1, 1 + HOUR_MS); s.authorize("b".repeat(16), OWNER, 2, 2, 2 + HOUR_MS);
     expect(s.prune(a => a.epoch === 2)).toBe(1);
     expect(m.stored().authorizations.map((a: any) => a.handle)).toEqual(["b".repeat(16)]);
-    for (let i = 0; i <= SESSION_AUTHORIZATIONS_MAX; i++) s.authorize(i.toString(16).padStart(16, "0"), OWNER, 10 + i, 2);
+    for (let i = 0; i <= SESSION_AUTHORIZATIONS_MAX; i++) s.authorize(i.toString(16).padStart(16, "0"), OWNER, 10 + i, 2, 10 + i + HOUR_MS);
     expect(s.list().length).toBe(SESSION_AUTHORIZATIONS_MAX);
     expect(s.get("b".repeat(16))).toBeNull();
   });
   it("authorizing a session again moves it to the back: at the cap the oldest authorization goes first", () => {
     const s = new SessionAuthorizations("/a.json", log(), mem().io);
     const h = (i: number) => i.toString(16).padStart(16, "0");
-    for (let i = 0; i < SESSION_AUTHORIZATIONS_MAX; i++) s.authorize(h(i), OWNER, 10 + i, 1);
-    s.authorize(h(0), OWNER, 99_999, 1);                                                 // the first, given again
-    s.authorize("e".repeat(16), OWNER, 100_000, 1);                                      // over the cap: one goes
+    for (let i = 0; i < SESSION_AUTHORIZATIONS_MAX; i++) s.authorize(h(i), OWNER, 10 + i, 1, 10 + i + HOUR_MS);
+    s.authorize(h(0), OWNER, 99_999, 1, 99_999 + HOUR_MS);                                                 // the first, given again
+    s.authorize("e".repeat(16), OWNER, 100_000, 1, 100_000 + HOUR_MS);                                      // over the cap: one goes
     expect(s.get(h(0)), "renewed: kept").not.toBeNull();
     expect(s.get(h(1)), "now the oldest: dropped").toBeNull();
   });
   it("on disk: web-authorizations.json, owner-only", () => {
     const dir = tmp(); const s = new SessionAuthorizations(join(dir, "web-authorizations.json"), log());
-    s.authorize(H, OWNER, 1, 1);
+    s.authorize(H, OWNER, 1, 1, 1 + HOUR_MS);
     expect(statSync(join(dir, "web-authorizations.json")).mode & 0o777).toBe(0o600);
   });
 });
@@ -347,11 +360,16 @@ describe("§0 the FleetManager: a session is authorized once, then web-verified 
   it("not authorized: none (a qualifying session is still only recognition); authorized: web-verified, saying when", () => {
     const h = rig(); const r = h.session();
     expect(h.judge(r)).toMatchObject({ refusal: "not_authorized", authority: { kind: "none" } });
-    const a = h.s.authorizeWebSession(r, "loopback");
+    const a = h.s.authorizeWebSession(r, "loopback", false);
     expect(a).toMatchObject({ ok: true, durable: true, authorization: { handle: r.handle, owner: { adapterId: "owner", userId: "admin" }, epoch: 1 } });
     const v = h.judge(r);
     expect(v.refusal).toBeNull();
     expect(v.authority).toMatchObject({ kind: "web-verified", actor: { adapter_id: "owner", user_id: "admin" }, session: { handle: r.handle, authorized_at: new Date(a.authorization.authorizedAt).toISOString() }, authority_epoch: 1 });
+    h.close();
+  });
+  it("#2112 review: authorizing judges the request too — over the public link it is refused, whatever the session", () => {
+    const h = rig();
+    expect(h.s.authorizeWebSession(h.session(), "loopback", true)).toEqual({ ok: false, refusal: "public_link" });
     h.close();
   });
   it("authorizing refuses a session that does not qualify now, saying why", () => {
@@ -362,12 +380,12 @@ describe("§0 the FleetManager: a session is authorized once, then web-verified 
     h.s.fleetConfig.web = { verified_authority: { enabled: false } };
     expect(h.s.authorizeWebSession(h.session(), "loopback")).toEqual({ ok: false, refusal: "disabled" });
     const noAccount = h.s.webSessions.create({ tier: "admin", surface: "local", label: "x", tokenEpoch: tokenEpoch(TOKEN) }).record;
-    expect(h.s.authorizeWebSession(noAccount, "loopback")).toEqual({ ok: false, refusal: "no_account" });
+    expect(h.s.authorizeWebSession(noAccount, "loopback", false)).toEqual({ ok: false, refusal: "no_account" });
     h.close();
   });
   it("one session's authorization is never another's, even the same account's", () => {
     const h = rig(); const a = h.session(), b = h.session();
-    h.s.authorizeWebSession(a, "loopback");
+    h.s.authorizeWebSession(a, "loopback", false);
     expect(h.judge(a).refusal).toBeNull();
     expect(h.judge(b).refusal).toBe("not_authorized");
     h.close();
@@ -377,25 +395,40 @@ describe("§0 the FleetManager: a session is authorized once, then web-verified 
     const h = rig(); const r = h.session();
     h.s.fleetConfig.web = { verified_authority: { enabled: true, max_session_hours: 2 } };
     vi.setSystemTime(Date.UTC(2026, 9, 18, 10, 30, 0));                                  // signed in 1.5 h ago
-    h.s.authorizeWebSession(r, "loopback");
+    h.s.authorizeWebSession(r, "loopback", false);
     vi.setSystemTime(Date.UTC(2026, 9, 18, 12, 30, 0));                                  // 3.5 h after sign-in, 2 h after authorizing
     expect(h.judge(r).refusal).toBeNull();
     vi.setSystemTime(Date.UTC(2026, 9, 18, 12, 30, 1));
     expect(h.judge(r).refusal).toBe("authorization_expired");
     h.close();
   });
+  it("§0.1: a longer max_session_hours never stretches an authorization already given; a shorter one shortens it", () => {
+    vi.useFakeTimers(); vi.setSystemTime(Date.UTC(2026, 9, 18, 9, 0, 0));
+    const h = rig(); const r = h.session();
+    h.s.fleetConfig.web = { verified_authority: { max_session_hours: 2 } };
+    h.s.authorizeWebSession(r, "loopback", false);                                       // until 11:00
+    h.s.fleetConfig.web = { verified_authority: { max_session_hours: 24 } };             // raised later
+    vi.setSystemTime(Date.UTC(2026, 9, 18, 11, 0, 1));
+    expect(h.judge(r).refusal, "the end it was given with").toBe("authorization_expired");
+    vi.setSystemTime(Date.UTC(2026, 9, 18, 9, 0, 0));
+    h.s.authorizeWebSession(r, "loopback", false);                                       // until 09:00 + 24 h
+    h.s.fleetConfig.web = { verified_authority: { max_session_hours: 1 } };              // lowered later
+    vi.setSystemTime(Date.UTC(2026, 9, 18, 10, 0, 1));
+    expect(h.judge(r).refusal, "a shorter setting shortens it").toBe("authorization_expired");
+    h.close();
+  });
   it("ends: a revocation (epoch bump) — and authorizing again works under the new epoch", () => {
     const h = rig(); const r = h.session();
-    h.s.authorizeWebSession(r, "loopback");
+    h.s.authorizeWebSession(r, "loopback", false);
     h.s.revokeWebAuthority();
     expect(h.judge(r).refusal).toBe("not_authorized");
-    expect(h.s.authorizeWebSession(r, "loopback")).toMatchObject({ ok: true, authorization: { epoch: 2 } });
+    expect(h.s.authorizeWebSession(r, "loopback", false)).toMatchObject({ ok: true, authorization: { epoch: 2 } });
     expect(h.judge(r).refusal).toBeNull();
     h.close();
   });
   it("ends: the switch off (and back on: a new epoch, so authorize again)", () => {
     const h = rig(); const r = h.session();
-    h.s.authorizeWebSession(r, "loopback");
+    h.s.authorizeWebSession(r, "loopback", false);
     h.s.fleetConfig.web = { verified_authority: { enabled: false } };
     expect(h.judge(r).refusal).toBe("disabled");
     h.s.fleetConfig.web = { verified_authority: { enabled: true } };
@@ -404,20 +437,20 @@ describe("§0 the FleetManager: a session is authorized once, then web-verified 
   });
   it("kept across a restart while its session lives (the file is read again)", () => {
     const h = rig(); const r = h.session();
-    h.s.authorizeWebSession(r, "loopback");
+    h.s.authorizeWebSession(r, "loopback", false);
     h.s.sessionAuthorizations = null;                                                     // as a restart reads the file again
     expect(h.judge(r).refusal).toBeNull();
     h.close();
   });
   it("stale authorizations are dropped when another is given: an old epoch; a session that is gone", () => {
     const h = rig(); const a = h.session(), b = h.session();
-    h.s.authorizeWebSession(a, "loopback");
+    h.s.authorizeWebSession(a, "loopback", false);
     h.s.revokeWebAuthority();
-    h.s.authorizeWebSession(b, "loopback");
+    h.s.authorizeWebSession(b, "loopback", false);
     expect(h.s.sessionAuthorizationStore().list().map((x: any) => x.handle), "a: an old epoch").toEqual([b.handle]);
     h.s.webSessions.revokeAll();                                                          // b's session is gone
     const c = h.session();
-    h.s.authorizeWebSession(c, "loopback");
+    h.s.authorizeWebSession(c, "loopback", false);
     expect(h.s.sessionAuthorizationStore().list().map((x: any) => x.handle), "b: its session gone").toEqual([c.handle]);
     h.close();
   });

@@ -4,6 +4,7 @@
 import { html, useEffect, useRef, useState } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 import { t, lang } from "./app-i18n.js";
+import { AuthorizeChip } from "./web-authorize.js";
 
 async function getJson(url) {
   try {
@@ -53,6 +54,7 @@ export function SessionMenu() {
       ${!me ? html`<h3>${t("app.signedOut")}</h3><a class="btn" href=${`/signin?next=${encodeURIComponent(location.pathname)}`}>${t("app.signIn")}</a>` : html`
         <h3>${t("app.signedIn")} · ${me.label}</h3>
         <p class="sub">${t("app.expires", clock(me.expiresAt), span(me.idleMs))}</p>
+        <${AuthorizeChip} />
         ${rows.length > 1 ? html`<h3>${t("app.devices")}</h3><ul class="devices">${rows.map(s => html`<li key=${s.handle}>
           <span class="grow"><span class="name">${s.label}${s.current ? ` · ${t("app.thisDevice")}` : ""}</span><span class="when">${t("app.lastActive", ago(s.lastSeen))}</span></span>
           ${s.current ? null : html`<button type="button" class="btn btn-sm danger" onClick=${() => act("DELETE", `/auth/sessions/${encodeURIComponent(s.handle)}`, refresh)}>${t("app.signOut")}</button>`}</li>`)}</ul>` : null}

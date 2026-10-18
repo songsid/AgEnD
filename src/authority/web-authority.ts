@@ -64,7 +64,8 @@ export function webAuthorityPolicy(web: WebConfig | undefined): WebAuthorityPoli
   const v = web?.verified_authority;
   const hours = typeof v?.max_session_hours === "number" && Number.isFinite(v.max_session_hours)
     ? Math.min(VERIFIED_SESSION_HOURS.max, Math.max(VERIFIED_SESSION_HOURS.min, v.max_session_hours)) : VERIFIED_SESSION_HOURS.default;
-  return { enabled: v?.enabled === true, loopbackOnly: v?.loopback_only === true, maxSessionMs: hours * 3_600_000 };
+  // §0.1: the switch is on unless fleet.yaml says false (nothing carries authority until its account confirms anyway).
+  return { enabled: v?.enabled !== false, loopbackOnly: v?.loopback_only === true, maxSessionMs: hours * 3_600_000 };
 }
 
 /** Headers a proxy adds; any one of them makes a request `lan`, whatever its peer address (§3.4). */
@@ -128,7 +129,8 @@ export function evaluateWebAuthority(i: WebAuthorityInput): WebAuthorityResult {
   // §0: authorized once, by this account, for this session, under the current epoch, and not longer ago than allowed.
   const a = i.authorization;
   if (!a || a.handle !== s.handle || a.owner.adapterId !== owner.adapterId || a.owner.userId !== owner.userId || a.epoch !== i.epoch) return refuse("not_authorized");
-  if (!(i.now - a.authorizedAt <= i.policy.maxSessionMs)) return refuse("authorization_expired");
+  // §0.1: the end it was given with, or sooner if the hours were lowered since — never later.
+  if (!(i.now <= Math.min(a.until, a.authorizedAt + i.policy.maxSessionMs))) return refuse("authorization_expired");
   return {
     authority: {
       kind: "web-verified", actor: { adapter_id: owner.adapterId, user_id: owner.userId },
