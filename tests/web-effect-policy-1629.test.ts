@@ -55,6 +55,12 @@ describe("#1629 effect signals", () => {
   });
 });
 describe("#1629 global frame allocation",()=>{
+  it.each([true, undefined])("Save-Data=%s is informational for admission and diagnostic reason", saveData => {
+    const context = ctx({ saveData });
+    expect(P.effectPlaybackReason(context)).toBeNull();
+    expect(P.allocateEffectFrames([descriptor("a")], context)[0]).toMatchObject({ verdict: "active", reason: null });
+  });
+
   it("loads three and queues the fourth without reserving a frame",()=>{
     const rows=P.allocateEffectFrames([0,1,2,3].map(n=>descriptor(String(n),{order:n})),ctx());
     expect(rows.map((r: {verdict:string})=>r.verdict)).toEqual(["active","active","active","queued"]);
