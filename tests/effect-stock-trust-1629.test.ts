@@ -215,11 +215,11 @@ describe("stock trust/paint prerequisite", () => {
     const f = await fixture(); f.composer.r.x = Number.NaN; expect(f.snapshot().ok).toBe(false);
     f.composer.r.x = 1e8; expect(f.snapshot().ok).toBe(false);
   });
-  it("overlay/focus suppresses every front; CSS restriction affects agent fronts only", async () => {
+  it("overlays suppress fronts; editable focus keeps protected rectangles without suppressing unrelated paint", async () => {
     const f = await fixture(); const popup = f.node();
     f.doc.querySelectorAll = ((old: any) => (s: string) => s.startsWith('[role=menu]') ? [popup] : old(s))(f.doc.querySelectorAll);
     expect(f.snapshot()).toMatchObject({ ok: true, front: false, agentFront: false, reason: "stock_overlay" });
-    popup.style.display = "none"; f.doc.activeElement = { matches: () => true }; expect(f.snapshot().front).toBe(false);
+    popup.style.display = "none"; f.doc.activeElement = { matches: () => true }; const proof = f.snapshot(); expect(proof).toMatchObject({ front: true, agentFront: true }); expect(proof.rects).toContainEqual(f.composer.r);
   });
   it.each(["fullscreenElement", "pictureInPictureElement"])("native %s suppresses every front", async key => {
     const f = await fixture(); f.doc[key] = f.node(); expect(f.snapshot()).toMatchObject({ ok: true, front: false, agentFront: false, reason: "stock_overlay" });

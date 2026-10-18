@@ -1,6 +1,6 @@
 /** #2115: untrusted, volatile playback observations. Never a safety/admission input or measured profile. */
 export const EFFECT_BLOCK_REASONS = Object.freeze([
-  "preview_unavailable", "preview_not_consented", "unsupported_host", "safe_mode", "reduced_motion", "save_data", "hidden", "disabled", "public_link",
+  "transport_unavailable", "preview_unavailable", "preview_not_consented", "unsupported_host", "safe_mode", "reduced_motion", "save_data", "hidden", "disabled", "public_link",
   "baseline_unsupported", "baseline_unavailable", "baseline_timeout", "calibrating", "clock_unavailable", "gates_unknown", "owner_css", "stock_overlay", "modal",
   "safety_off", "safety_unknown", "interrupted", "paused", "host_budget", "frame_limit", "front_limit", "offscreen", "region_unavailable", "resource_unavailable", "resource_timeout", "runtime_unavailable", "unknown",
 ] as const);

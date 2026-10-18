@@ -85,6 +85,24 @@ describe("host-only local trial stage, not product admission or a new frame pool
   it("current callback reentry cannot revive a disposed receipt or touch a replacement", () => { const h = fixture(); h.current(() => { h.api.dispose(); return true; }); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); expect(h.onStop).toHaveBeenCalledTimes(1); });
   it("a stronger initial visible cascade is refused and removed before successful bind", () => { const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), f = h.frame(); h.framePatch.visibility = "visible"; expect(p.bind(f, { layer: "front" }, proof()).ok).toBe(false); expect(f.isConnected).toBe(false); expect(h.rules).toHaveLength(0); });
   it("sync paint loss removes the frame; another frame cannot share this stage", () => { const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), f = h.frame(), b = p.bind(f, { layer: "behind" }, proof()); expect(b.sync(proof())).toBe(true); h.framePatch.pointerEvents = "auto"; expect(b.sync(proof())).toBe(false); expect(f.isConnected).toBe(false); });
+  it("rechecks an unchanged visible stage without hiding or rewriting its presentation", () => {
+    const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), f = h.frame(), b = p.bind(f, { layer: "front" }, proof()); expect(b.sync(proof())).toBe(true);
+    const write = vi.spyOn(h.rules[0].style, "setProperty"), current = vi.fn(() => true); h.current(current);
+    for (let i = 0; i < 100; i++) expect(b.sync(proof())).toBe(true);
+    expect(current).toHaveBeenCalledTimes(200); expect(write).not.toHaveBeenCalled();
+    // A new proof still vetoes that exact unchanged presentation immediately.
+    expect(b.sync({ ...proof(), front: true })).toBe(false); expect(f.isConnected).toBe(false);
+  });
+  it("changed bounds and an explicit hide require hidden verification before revealing again", () => {
+    const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), f = h.frame(), b = p.bind(f, { layer: "front" }, proof()); expect(b.sync(proof())).toBe(true);
+    const write = vi.spyOn(h.rules[0].style, "setProperty"); h.rect({ x: 320, y: 160, width: 200, height: 200 });
+    expect(b.sync(proof())).toBe(true); expect(write.mock.calls[0]).toEqual(["visibility", "hidden", "important"]); expect(write.mock.calls.at(-1)).toEqual(["visibility", "visible", "important"]); expect(h.host.getComputedStyle(f).width).toBe("200px");
+    b.hide(); write.mockClear(); expect(b.sync(proof())).toBe(true); expect(write.mock.calls[0]).toEqual(["visibility", "hidden", "important"]);
+  });
+  it.each([{ pointerEvents: "auto" }, { transform: "matrix(1,0,0,1,1,0)" }, { opacity: "1" }, { visibility: "visible", pointerEvents: "auto" }])("a formerly visible frame cannot bypass a lost paint/hiding rule: %j", patch => {
+    const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), f = h.frame(), b = p.bind(f, { layer: "front" }, proof()); expect(b.sync(proof())).toBe(true);
+    Object.assign(h.framePatch, patch); expect(b.sync(proof())).toBe(false); expect(f.isConnected).toBe(false); expect(effectTrialStageIdentity(h.api.receipt)).toBeNull();
+  });
   it("binding rejects getters without calling them", () => { const get = vi.fn(), raw = own(); Object.defineProperty(raw, "id", { get, enumerable: true }); const h = fixture({ binding: raw }); expect(h.api).toBeNull(); expect(get).not.toHaveBeenCalled(); });
   it("expected binding accessors are refused without invocation", () => { const h = fixture(), value = own(), get = vi.fn(); Object.defineProperty(value, "id", { get }); expect(effectTrialStage(h.api.receipt, value, proof())).toBeNull(); expect(get).not.toHaveBeenCalled(); });
   it("one stage holds only one frame, and rejection removes the extra input", () => { const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), first = h.frame(); const one = p.bind(first, { layer: "front" }, proof()); expect(one.ok).toBe(true); const second = h.frame(); expect(p.bind(second, { layer: "front" }, proof()).ok).toBe(false); expect(second.isConnected).toBe(false); expect(first.isConnected).toBe(true); });
@@ -99,20 +117,20 @@ describe("host-only local trial stage, not product admission or a new frame pool
   it("cancelled stage subscribers are not notified", () => { const h = fixture(), fn = vi.fn(), off = watchEffectTrialStage(h.api.receipt, fn); off(); off(); h.api.dispose(); expect(fn).not.toHaveBeenCalled(); });
 
   it("pure allocation keeps common total/front caps and refuses cloned/disposed receipts", () => {
-    const ctx = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, trialReady: true, constrained: false, modal: true, openInstance: "worker" };
+    const ctx = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, transportReady: true, optIn: true, trialReady: true, constrained: false, modal: true, openInstance: "worker" };
     const items = [0, 1, 2, 3].map(i => {
       const binding = { ...own(), key: "trial:" + i }, h = fixture({ binding });
       return { h, d: { ...binding, trialStage: h.api.receipt, region: "chat", layer: i === 3 ? "behind" : "front", by: "human", order: i, paused: false, visible: true } };
     });
-    expect(allocateEffectFrames([items[0].d], { ...ctx, optIn: false, previewReady: false })[0]).toMatchObject({ verdict: "active" });
-    expect(allocateEffectFrames([{ ...items[0].d, trialStage: undefined }], { ...ctx, modal: false, optIn: false, previewReady: false })[0]).toMatchObject({ verdict: "off", reason: "preview_unavailable" });
+    expect(allocateEffectFrames([items[0].d], { ...ctx, optIn: false, transportReady: true })[0]).toMatchObject({ verdict: "active" });
+    expect(allocateEffectFrames([{ ...items[0].d, trialStage: undefined }], { ...ctx, modal: false, optIn: false, transportReady: false })[0]).toMatchObject({ verdict: "off", reason: "transport_unavailable" });
     const ds = items.map(x => x.d), result = allocateEffectFrames(ds, ctx); expect(result.map((r: any) => [r.verdict, r.reason])).toEqual([["active", null], ["active", null], ["queued", "front_limit"], ["active", null]]);
     expect(allocateEffectFrames(ds, { ...ctx, constrained: true }).filter((r: any) => r.verdict === "active")).toHaveLength(1);
     expect(allocateEffectFrames([{ ...ds[0], region: "page" }], ctx)[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
     expect(allocateEffectFrames([{ ...ds[0], trialStage: { ...ds[0].trialStage } }], ctx)[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
     expect(allocateEffectFrames([{ ...ds[0], trialStage: {} }], { ...ctx, modal: false })[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
     items[0].h.api.dispose(); expect(allocateEffectFrames([ds[0]], ctx)[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
-    for (const patch of [{ safe: true }, { publicLink: true }, { reducedMotion: true }, { saveData: true }, { enabled: false }, { show: false }, { trialReady: false }, { hidden: true }]) expect(allocateEffectFrames([ds[1]], { ...ctx, ...patch })[0].verdict).toBe("off");
+    for (const patch of [{ safe: true }, { publicLink: true }, { reducedMotion: true }, { saveData: true }, { enabled: false }, { show: false }, { transportReady: false }, { hidden: true }]) expect(allocateEffectFrames([ds[1]], { ...ctx, ...patch })[0].verdict).toBe("off");
   });
   it("constructor refuses unknown clip support or a duplicate owner of the same stage", () => {
     expect(fixture({ supports: false }).api).toBeNull(); const h = fixture(); expect(createEffectTrialStage({ window: h.host, panel: h.panel, stage: h.stage, binding: own(), current: () => true, ownerCss: () => "off" })).toBeNull();

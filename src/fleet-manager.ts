@@ -1213,6 +1213,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private healthServer: Server | null = null;
   /** #2118: independent of HTML preview availability/port; fixed bootstrap only, no effect resources. */
   private readonly effectBootstrap = createEffectBootstrap();
+  /** Fixed trusted document coherence, independent of the HTML preview listener; never a resource grant. */
+  get effectBoot(): string { return this.effectBootstrap.boot; }
   private healthServerDrain: WebServerDrain | null = null;
   /** #1306: the preview listener (health_port + 1 by default), and whether it is listening. */
   private previewListener: PreviewListener | null = null;
@@ -1414,13 +1416,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return w.ok ? { ok: true, rev: w.rev } : { ok: false, error: w.error };
       },
       changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* later status carries placements */ } },
-      // A nonmutating own/shared offer is not an appearance write. Only an explicit local-admin click may start it.
+      // A nonmutating own/shared offer is not an appearance write. Only an explicit non-public admin-session click may start it.
       preview: async (instance, id) => {
         const result = this.effectTrials.offer(instance, id);
         if (!result.ok) return { error: "not_found" };
         const present = this.webChatHistory.list(instance).some(row => row.effectTrial?.offer === result.offer.offer);
         if (!present && !this.publishEffectTrial(instance, result.offer)) return { error: "trial_unavailable" };
-        return { id, status: "offered", expiresAt: result.offer.expiresAt, message: "A trial card is in your web chat. A signed-in local admin can start it; nothing was applied." };
+        return { id, status: "offered", expiresAt: result.offer.expiresAt, message: "A trial card is in your web chat. A signed-in admin outside the public link can start it; nothing was applied." };
       },
       profiles: id => this.effectProfiles.read(id),
       profileSummary: id => this.effectService.profileSummary(id),
@@ -21847,6 +21849,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         ...(image.themeAvatar ? { theme_avatar: image.themeAvatar } : {}),
         ...(image.themeAccent ? { theme_accent: image.themeAccent } : {}),
         ...(() => { try { const v = cardVersion(resolveCard(name, cards.get(name), this.themeStore.get(name).theme.card)); return v ? { card_v: v } : {}; } catch { return {}; } })(),
+        // #2118: only this Chat's placement content; guest projection drops global revisions.
+        effect_chat_v: createHash("sha256").update(JSON.stringify(this.themeStore.get(name).placements.effects)).digest("hex").slice(0, 32),
         // #1958: the identity colour's tiers (the page resolves them: the agent's only while it shows agents' themes).
         color: { ...(colors.get(name)?.color ? { person: colors.get(name)!.color! } : {}), ...(image.agentColor ? { agent: image.agentColor } : {}),
           ...(image.roleColor ? { role: image.roleColor } : {}), auto: autoIdentityColor(name) },

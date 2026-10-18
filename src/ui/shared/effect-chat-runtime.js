@@ -46,9 +46,22 @@ export function createEffectWriter(host, current) {
 export function chatEffectIdentity(host) {
   try {
     const b = host.document.body.dataset, x = JSON.parse(host.document.documentElement.getAttribute("data-prefs") || "null");
-    if (b.mode !== "full" || b.publicLink === "1" || b.webTransport === "poll" || !["person", "operator"].includes(x?.ownerScope) || x.unreadable === true || typeof x.ownerEpoch !== "string" || !/^[a-f0-9]{16}$/.test(x.ownerEpoch)) return null;
+    if (b.mode !== "full" || b.tier === "guest" || b.publicLink === "1" || b.webTransport === "poll" || !["person", "operator"].includes(x?.ownerScope) || x.unreadable === true || typeof x.ownerEpoch !== "string" || !/^[a-f0-9]{16}$/.test(x.ownerEpoch)) return null;
     return Object.freeze({ epoch: x.ownerEpoch, scope: x.ownerScope });
   } catch { return null; }
+}
+/** Chat-only public/guest capability stays separate from personal preferences and management. */
+export function effectPlaybackIdentity(host) {
+  try {
+    const b = host.document.body.dataset;
+    if (b.mode !== "full" || typeof b.effectEpoch !== "string" || !/^[a-f0-9]{16}$/.test(b.effectEpoch)) return null;
+    if (b.effectScope === "owner") {
+      const own = chatEffectIdentity(host);
+      return own?.epoch === b.effectEpoch ? Object.freeze({ epoch: b.effectEpoch, scope: "owner" }) : null;
+    }
+    if (b.effectScope === "chat" && (b.publicLink === "1" && b.webTransport === "poll" || b.tier === "guest")) return Object.freeze({ epoch: b.effectEpoch, scope: "chat" });
+  } catch { /* no session capability */ }
+  return null;
 }
 export function chatEffectState(state, name) {
   const inst = state.instances?.find(i => i.name === name);
@@ -81,7 +94,7 @@ export function createChatEffectRuntime({ window: host, name, element, current, 
     writer = createEffectWriter(host, alive);
     loader = make("loader", createEffectRuntimeLoader)({ window: host, ownerEpoch: identity.epoch, current: alive });
     if (!loader.ok) throw Error("runtime_unavailable");
-    registry = make("registry", createEffectRegistry)({ window: host, origin: host.document.body.dataset.previewOrigin, boot: host.document.body.dataset.previewBoot,
+    registry = make("registry", createEffectRegistry)({ window: host, origin: host.location?.origin, boot: host.document.body.dataset.effectBoot,
       load: async (d, signal) => {
         const mine = generation, value = await loader.resource({ id: d.id, instance: name }, signal);
         if (!alive() || mine !== generation || signal.aborted) return null;
@@ -125,7 +138,7 @@ export function createChatEffectRuntime({ window: host, name, element, current, 
     const stamp = JSON.stringify(ctx);
     if (stamp !== lastContext) { lastContext = stamp; registry.update(descriptors(), ctx); }
     emit();
-    if (!metadata && !active && ctx.enabled && ctx.show && ctx.previewReady && ctx.optIn && !ctx.safe && !ctx.publicLink && !ctx.reducedMotion && !ctx.saveData && !ctx.hidden) void read();
+    if (!metadata && !active && ctx.enabled && ctx.show && ctx.transportReady && !ctx.safe && !ctx.publicLink && !ctx.reducedMotion && !ctx.saveData && !ctx.hidden) void read();
   }
   async function read() {
     if (!alive() || error || active) return;

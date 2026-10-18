@@ -1,4 +1,5 @@
 import { PaneContextCache } from "./pane-context-cache.js";
+import { sanitizeInstanceName } from "./instance-names.js";
 import { LOGIN_BACKEND_ALIASES } from "./login-flows.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { LOOPBACK_HOST_NAMES } from "./web-host-guard.js";
@@ -53,10 +54,7 @@ type ExecutionFleetContext = FleetContext & {
 };
 
 /** Sanitize a directory name into a valid instance name. Keeps Unicode letters (incl. CJK). */
-export function sanitizeInstanceName(name: string): string {
-  const sanitized = name.toLowerCase().replace(/[^\p{L}\d-]/gu, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
-  return sanitized || "project";
-}
+export { sanitizeInstanceName };
 
 /** Digits of the topic id kept in a fresh instance-name suffix; lengthened on collision. */
 export const INSTANCE_NAME_SUFFIX_DIGITS = 6;

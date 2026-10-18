@@ -120,21 +120,32 @@ export function createEffectTrialStage({ window: host, panel, stage, binding: ra
   function bind(frame, { layer } = {}, stock) {
     if (frames.size || !["front", "behind"].includes(layer) || frame?.ownerDocument !== host.document || frame.parentElement !== stage || frame.tagName !== "IFRAME") { frame?.remove?.(); return { ok: false }; }
     // The new frame is temporarily known to this owner before the topology check; it remains hidden until sync.
-    const token = `agend-effect-trial-${identity.serial}`; let rule, removed = false;
+    const token = `agend-effect-trial-${identity.serial}`; let rule, removed = false, shown = false;
     const remove = () => {
       if (removed) return; removed = true; frame.remove(); frames.delete(handle);
       try { frame.classList.remove(token); const i = [...sheet.cssRules].indexOf(rule); if (i >= 0) sheet.deleteRule(i); } catch { /* physically removed first */ }
     };
-    const hide = () => { try { rule.style.setProperty("visibility", "hidden", "important"); if (frame.isConnected && host.getComputedStyle(frame).visibility !== "hidden") remove(); } catch { remove(); } };
+    const hide = () => {
+      shown = false;
+      try { rule.style.setProperty("visibility", "hidden", "important"); if (frame.isConnected && host.getComputedStyle(frame).visibility !== "hidden") { remove(); return false; } return !removed; } catch { remove(); return false; }
+    };
     const handle = { ok: true, element: frame, remove, hide,
       sync(proof) {
-        hide(); const r = check(proof); if (!r || removed) { invalidate("stage_unavailable"); return false; }
+        const r = check(proof); if (!r || removed) { invalidate("stage_unavailable"); return false; }
         try {
+          const matches = visibility => {
+            const s = host.getComputedStyle(frame), actual = rect(frame);
+            return !!actual && s.position === "absolute" && s.visibility === visibility && s.pointerEvents === "none" && s.zIndex === "0" && s.opacity === (layer === "front" ? "0.85" : "1") && neutral(s)
+              && ["x", "y", "width", "height"].every(k => Math.abs(actual[k] - r[k]) < 0.02) && actual.x >= r.x && actual.y >= r.y && actual.x + actual.width <= r.x + r.width && actual.y + actual.height <= r.y + r.height
+              && frame.isConnected === true && frame.ownerDocument === host.document && frame.parentElement === stage && !dead && !removed && owners.get(stage) === receipt;
+          };
+          // Reprove the current stage, clipping and actual frame every tick. Hiding/revealing an
+          // unchanged iframe each rAF can starve Firefox's OffscreenCanvas presentation.
+          if (shown && matches("visible")) return true;
+          if (!hide()) throw Error("local hiding lost");
           for (const [k, v] of Object.entries({ left: "0px", top: "0px", width: `${r.width}px`, height: `${r.height}px` })) rule.style.setProperty(k, v, "important");
-          const s = host.getComputedStyle(frame), actual = rect(frame);
-          if (!actual || s.position !== "absolute" || s.visibility !== "hidden" || s.pointerEvents !== "none" || s.zIndex !== "0" || s.opacity !== (layer === "front" ? "0.85" : "1") || !neutral(s)
-            || !["x", "y", "width", "height"].every(k => Math.abs(actual[k] - r[k]) < 0.02) || actual.x < r.x || actual.y < r.y || actual.x + actual.width > r.x + r.width || actual.y + actual.height > r.y + r.height) throw Error("local geometry lost");
-          rule.style.setProperty("visibility", "visible", "important"); return true;
+          if (!matches("hidden")) throw Error("local geometry lost");
+          rule.style.setProperty("visibility", "visible", "important"); shown = true; return true;
         } catch { invalidate("stage_unavailable"); return false; }
       },
     };

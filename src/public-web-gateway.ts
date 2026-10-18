@@ -37,7 +37,9 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|traffic|cache|usage-report|prefs|preview-status|steps)$/.test(path)) return true;
   // #1629: agents' themes and their pictures, read-only — the public link views themes; reset and lock are not here.
   if (method === "GET" && (path === "/ui/themes" || /^\/ui\/img\/theme\/[^/]+\/[0-9a-f]{32}$/.test(path))) return true;
-  // #1629: static posters only. Runtime resources, library, personal slots and writes stay closed.
+  // #2118: exact current-Chat reads only; handler rechecks session/epoch/exposure/instance/retention.
+  if (method === "GET" && (path === "/ui/effects/placements" || /^\/ui\/effects\/resource\/[0-9a-f]{32}$/.test(path))) return true;
+  // Static posters remain available without granting library, personal slots or writes.
   if (method === "GET" && (path === "/ui/effect-posters" || /^\/ui\/effect-posters\/[0-9a-f]{32}\.png$/.test(path))) return true;
   // #1630: avatars and server emoji, read-only — nothing a signed-in public user cannot already see in the page.
   if (method === "GET" && /^\/ui\/(?:img\/(?:bot|avatar|emoji)\/[^/]+|emojis|mentions)$/.test(path)) return true;
