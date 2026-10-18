@@ -139,13 +139,17 @@ for(const engine of engines)for(const origin of origins)for(const width of width
     await waitObservation(page,async()=>{const m=await import('/assets/effect-trial-shadow.js');const p=document.querySelector('.effect-trial-panel'),s=p&&m.effectTrialShadow(window,p);const f=s?.stage.querySelector('iframe');return f&&getComputedStyle(f).visibility==='visible'},15000);
     const shell=await page.evaluate(async()=>{const m=await import('/assets/effect-trial-shadow.js'),s=m.effectTrialShadow(window,document.querySelector('.effect-trial-panel'));const r=s.stage.getBoundingClientRect(),c=getComputedStyle(s.stage),b=s.root.querySelector('.effect-trial-stop').getBoundingClientRect();return{contain:c.contain,overflow:c.overflow,stage:{x:r.x,y:r.y,width:r.width,height:r.height},stop:{x:b.x+b.width/2,y:b.y+b.height/2}}});
     assert.ok(shell.contain.includes('paint'));assert.equal(shell.overflow,'clip');
+    const trialFrame=await page.evaluateHandle(async()=>{const m=await import('/assets/effect-trial-shadow.js'),s=m.effectTrialShadow(window,document.querySelector('.effect-trial-panel'));return s.stage.querySelector('iframe')});assert.equal(await trialFrame.evaluate(f=>f.isConnected),true);
     let trialPaint,stageRed=0;const until=Date.now()+8000;do{trialPaint=pixels(await capture({path:join(out,key+'-try.png')}));assert.equal(trialPaint.width,width);stageRed=trialPaint.redIn(shell.stage);if(stageRed>500)break;await page.waitForTimeout(500)}while(Date.now()<until);
     row.trialPixels={stageRed,wholeScreenRed:trialPaint.red,ordinaryOutsideStageRed:trialPaint.red-stageRed};
     if(trialNoPaint){assert.equal(row.trialOnlyNoDraw,true,'Trial resource alone must be the no-draw control');assert.ok(row.trialPixels.ordinaryOutsideStageRed>500,'the ordinary effect still paints outside the stage');}
     assert.ok(stageRed>500,'independent stage-only Trial pixels');
     const stopRgb=trialPaint.pixel(shell.stop.x,shell.stop.y);assert.ok(!(stopRgb[0]>200&&stopRgb[1]<60&&stopRgb[2]>40&&stopRgb[2]<110),'host Stop pixels are not effect paint');await page.mouse.click(shell.stop.x,shell.stop.y);
     await waitObservation(page,async()=>{const m=await import('/assets/effect-trial-shadow.js'),p=document.querySelector('.effect-trial-panel');return !p||!m.effectTrialShadow(window,p)?.stage.querySelector('iframe')});
-    const stopped=pixels(await capture({path:join(out,key+'-try-stopped.png')}));assert.ok(stopped.redIn(shell.stage)<500,'Stop removes physical Trial paint');row.trial={status:'explicit-click painted inside stage and Stop removed paint',redPixels:stageRed,stopRgb,...shell};
+    assert.equal(await trialFrame.evaluate(f=>f.isConnected),false,'Stop removes the exact physical Trial iframe');await trialFrame.dispose();
+    // The panel can close and ordinary chat paint can return beneath its former rectangle.
+    // Retain that screenshot without mistaking legitimate ordinary pixels for a stale Trial.
+    const stopped=pixels(await capture({path:join(out,key+'-try-stopped.png')}));row.trial={status:'explicit-click painted inside stage and Stop removed exact iframe',redPixels:stageRed,stopRemovedExactFrame:true,afterStopRectRed:stopped.redIn(shell.stage),stopRgb,...shell};
    }
   }
   // Chromium logs this draft directive as an error; keep that exact bootstrap-only
