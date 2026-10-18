@@ -38,7 +38,7 @@ const text = () => p!.root.textContent;
 const change = async (key: string, value: string) => { const el = $(`[data-owner-slot="${key}"]`); el.value = value; el.dispatchEvent(new MiniEvent("change", { bubbles: true })); await ticks(); };
 function runtime() {
   const listeners = new Set<any>(), ends = new Set<any>(), snapshot: any = { slots: empty(), rows: [{ id: A, slot: "fx.page", phase: "running", verdict: "active", reason: null }] };
-  const entry: any = { dead: false, gates: () => ({ enabled: true, show: true, previewReady: true, optIn: true }), subscribe: (fn: any) => { listeners.add(fn); return () => listeners.delete(fn); }, onEnd: (fn: any) => { ends.add(fn); return () => ends.delete(fn); } };
+  const entry: any = { dead: false, gates: () => ({ enabled: true, show: true, transportReady: true, optIn: true }), subscribe: (fn: any) => { listeners.add(fn); return () => listeners.delete(fn); }, onEnd: (fn: any) => { ends.add(fn); return () => ends.delete(fn); } };
   entry.api = { ownerSnapshot: () => snapshot, changedOwner: vi.fn(), pauseOwner: vi.fn((key: string) => { snapshot.rows[0].reason = "paused"; for (const fn of [...listeners]) fn(); return key === "fx.page"; }), resumeOwner: vi.fn((_key: string) => true) }; fx.entry = entry;
   return { entry, snapshot, listeners, ends, changed() { for (const fn of [...listeners]) fn(); } };
 }

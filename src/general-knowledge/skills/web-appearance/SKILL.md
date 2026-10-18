@@ -19,7 +19,7 @@ can shape how you look there — **only your own look, and only on the surfaces 
 | Your identity colour | the colour people find you by in the sidebar, and where it shows (name, bar, ring) | `set_web_theme` (`identity`) |
 | Your chat header strip and Details page | widgets: small panels of facts the dashboard draws | `set_web_widget`, `remove_web_widget` |
 | A file of your look | a mod: export yours, or propose one for a person | `export_web_mod`, `propose_web_mod` |
-| Effects in your chat | Canvas Worker animations, and Try cards a local admin may start | `upload_web_effect`, `apply_web_effect`, `preview_web_effect`, … (see Effects) |
+| Effects in your chat | Canvas Worker animations, and Try cards an admin outside the public link may start | `upload_web_effect`, `apply_web_effect`, `preview_web_effect`, … (see Effects) |
 
 None of these tools takes a target: they always act on you. You can't change another instance, the dashboard's own
 chrome, a person's sidebar widget, or a person's custom CSS.
@@ -358,9 +358,13 @@ smallest valid `effect.json`:
 
 - At most **3** effects play at once, at most **2** of them `front` (1 and 1 on a constrained device); the rest wait
   (`frame_limit`, `front_limit`).
-- Nothing plays in safe mode, over a temporary public link, with reduced motion or save-data, on a hidden page, while
-  the viewer has effects off, or before they consent to previews. A `poster.png` may then show behind the chat (see
-  Static Chat fallback). A visible menu or dialog stops `front` effects; these stops lift by themselves.
+- CW uses an opaque isolated document on the dashboard listener: no HTML-preview consent, separate preview port or
+  localhost requirement. Signed-in public/guest viewers may read and play only current effects in chats they can see;
+  this grants no library management, personal-slot, private-image, Trial or profile access.
+- Nothing plays in safe mode, with reduced motion or save-data, on a hidden page or while the viewer has effects off.
+  The two-second empty-page frame-rate baseline still applies. A poster may replace unsupported/motion/data playback
+  (see Static Chat fallback). Menus/dialogs stop `front` effects temporarily. The motion/baseline simplification is a
+  separate #2118 follow-up; it is not implemented by this transport cutover.
 - **Safety pause** — it measures the page's responsiveness, not your Worker's CPU. The page's frame-rate floor is
   90% of what it measured before the effect started, capped at 55 fps (50 on a constrained device), so a 30 Hz screen
   has a 27 fps floor. Where the browser reports them, long tasks may take at most 50 ms a second (25 ms constrained);
@@ -386,22 +390,23 @@ from being collected until cleared. This is deliberately stricter than chat plac
 a personal choice keeps following its person's current own/shared access, while a chat preserves the exact effect
 placed there. A reference is not a sharing or export grant. Do not keep retrying a denied personal selection.
 
-Owner selectors are available in Settings → Web appearance. With effects and preview consent enabled, personal
-page/header/sidebar/box choices play across supported stock pages in the same pool as local signed-in Chat.
-Web appearance offers slot Pause/Resume and unavailable/Clear controls. The personal cursor uses a static PNG on the host shell after the same consent: no Worker/code read or frame slot. It preserves explicit pointer/text/resize cursors, falls back while dragging or on failure, and has status/Clear rather than Worker Pause/Resume. Before revealing paint, the host must prove stock content
+Owner selectors are available in Settings → Web appearance. With effects enabled, personal page/header/sidebar/box choices play across supported stock pages in the same pool
+as signed-in Chat. HTML-preview consent and its service are not involved.
+Web appearance offers slot Pause/Resume and unavailable/Clear controls. The personal cursor uses a static PNG on the host shell without HTML-preview consent: no Worker/code read or frame slot. It preserves explicit pointer/text/resize cursors, falls back while dragging or on failure, and has status/Clear rather than Worker Pause/Resume. Before revealing paint, the host must prove stock content
 ordering and trust paint coverage. Agent front effects must remain paused when custom CSS is active, loading or
 unknown; a person sees the reason and can open the causing setting. Human placements retain their exemption from
 that agent restriction, and behind effects still require proven ordering. Saving a placement alone is not proof of
 playback.
 
-Visible menus, dialogs, Keep/tour notices and focused inputs suppress all foreground effects; a human placement
-does not bypass those host safety gates. Unknown stock layout refuses admission. A trusted foreground plane is
+Visible menus, dialogs and Keep/tour notices suppress foreground effects; a human placement does not bypass them.
+Editable focus suppresses pointer signals, not unrelated drawing. Protected controls stay clipped out of front paint;
+keyboard events never enter the Worker. Unknown stock layout refuses admission. A trusted foreground plane is
 deferred to #1940; do not keep reapplying an agent front while custom CSS is on, loading or unknown.
 
-### Try: offer first, local admin click to start
+### Try: offer first, signed-in admin click to start
 
 `preview_web_effect({id})` posts a volatile Try card in your own web chat, using your current own/shared read rights. It starts nothing and changes no appearance. The sample is physically clipped inside its own host panel or sheet. Only an explicit
-click by a signed-in **local admin** may start it; never an agent, public link, header token or automatic action.
+click by a signed-in **admin outside the public link** may start it (localhost is not required); never an agent, public link, header token or automatic action.
 The host owns a visible Trial label and Stop control. Closing the panel/sheet, navigating, window blur, or another
 menu/dialog stops it. The explicit Try click consents to this sample only; no global HTML-preview opt-in is needed or changed.
 The host isolates the Trial controls and clipped stage in a closed Shadow DOM with fixed styles and reset typography.
@@ -413,12 +418,12 @@ as permission to run or fetch an effect, and do not keep retrying an unavailable
 
 ## Static Chat fallback
 
-When preview is unavailable, consent is missing, motion/data settings prevent playback, or the page is a public link,
+When Worker/transport support is unavailable, motion/data settings prevent playback, or the page has no playback session,
 a current chat placement with a poster can show its static PNG **behind** the content; a front declaration does not
 make its poster foreground. No poster means nothing is drawn. Safe mode and the viewer's show switch hide posters
 too; unknown stock ordering refuses paint. Explicit Pause, queued effects and a failed live read are not replaced by
 this surface fallback. A failed static read/decode stops its poster pool until a changed revision or page reload;
-there is no automatic network retry. The public link offers no Effects playback controls or Worker code.
+there is no automatic network retry. Public viewers can read current Chat Worker code, with fresh session/exposure/placement checks; they acquire no library or personal-slot grant. They have no placement-management or Try controls.
 
 The public-link show switch is this browser's choice, kept separately from boot-cached host defaults; it never writes
 a host preference. The ordinary signed-in switch keeps its existing host preference. Do not depend on decoration to

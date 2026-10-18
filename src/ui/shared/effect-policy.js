@@ -59,16 +59,16 @@ export function constrainedDevice(signals) {
 }
 
 export const EFFECT_BLOCK_REASONS = Object.freeze([
-  "preview_unavailable", "preview_not_consented", "unsupported_host", "safe_mode", "reduced_motion", "save_data", "hidden", "disabled", "public_link",
+  "transport_unavailable", "preview_unavailable", "preview_not_consented", "unsupported_host", "safe_mode", "reduced_motion", "save_data", "hidden", "disabled", "public_link",
   "baseline_unsupported", "baseline_unavailable", "baseline_timeout", "calibrating", "clock_unavailable", "gates_unknown", "owner_css", "stock_overlay", "modal",
   "safety_off", "safety_unknown", "interrupted", "paused", "host_budget", "frame_limit", "front_limit", "offscreen", "region_unavailable", "resource_unavailable", "resource_timeout", "runtime_unavailable", "unknown",
 ]);
 
 /** Diagnostic names only; the admission policy below still validates every required flag. */
 export function effectPlaybackReason(c) {
-  if (!c || ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "previewReady", "optIn"].some(k => typeof c[k] !== "boolean")) return "gates_unknown";
-  return c.safe ? "safe_mode" : c.publicLink ? "public_link" : c.reducedMotion ? "reduced_motion" : c.saveData ? "save_data"
-    : c.hidden ? "hidden" : !c.enabled ? "unsupported_host" : !c.show ? "disabled" : !c.previewReady ? "preview_unavailable" : !c.optIn ? "preview_not_consented" : null;
+  if (!c || ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "transportReady"].some(k => typeof c[k] !== "boolean")) return "gates_unknown";
+  return c.safe ? "safe_mode" : c.reducedMotion ? "reduced_motion" : c.saveData ? "save_data"
+    : c.hidden ? "hidden" : !c.enabled ? "unsupported_host" : !c.show ? "disabled" : !c.transportReady ? "transport_unavailable" : null;
 }
 
 const OWNER_ORDER = Object.freeze({ page: 0, header: 1, sidebar: 2, box: 3 });
@@ -78,11 +78,10 @@ export function allocateEffectFrames(descriptors, context) {
   const keys = new Set(), duplicate = new Set();
   for (const d of descriptors) if (d && typeof d.key === "string") { if (keys.has(d.key)) duplicate.add(d.key); keys.add(d.key); }
   const result = descriptors.map(d => ({ key: d?.key, verdict: "off", reason: "unknown", queuePos: null }));
-  const gates = ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "previewReady", "optIn", "constrained", "modal"];
+  const gates = ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "transportReady", "constrained", "modal"];
   if (gates.some(k => typeof context[k] !== "boolean") || context.openInstance !== null && !instanceName(context.openInstance)) return result;
   let global = null;
   if (context.safe === true) global = "safe_mode";
-  else if (context.publicLink === true) global = "public_link";
   else if (context.reducedMotion === true) global = "reduced_motion";
   else if (context.saveData === true) global = "save_data";
   else if (context.hidden === true) global = "hidden";
@@ -101,8 +100,8 @@ export function allocateEffectFrames(descriptors, context) {
     if (!owner && d.region !== "chat") { r.reason = "scope"; continue; }
     if (d.region === "chat" && (!instanceName(d.instance) || d.instance !== context.openInstance)) { r.reason = "closed_chat"; continue; }
     if (global) { r.reason = global; continue; }
-    if (trial ? context.trialReady !== true : context.previewReady !== true) { r.reason = "preview_unavailable"; continue; }
-    if (!trial && context.optIn !== true) { r.reason = "preview_not_consented"; continue; }
+    if (context.publicLink && (d.region !== "chat" || trial)) { r.reason = "public_link"; continue; }
+    if (!context.transportReady) { r.reason = "transport_unavailable"; continue; }
     if (d.paused === true) { r.reason = "paused"; continue; }
     if (d.visible !== true) { r.reason = "offscreen"; continue; }
     if (d.layer === "front" && context.modal === true && !trial) { r.reason = "modal"; continue; }

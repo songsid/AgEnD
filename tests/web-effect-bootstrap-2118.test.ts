@@ -89,7 +89,7 @@ describe("#2118 fixed same-listener bootstrap", () => {
     expect(r.status).not.toBe(200); expect(r.body).not.toContain("ORIGINS=");
   });
 
-  it("admits only the fixed GET through a real current gateway, with no effect resources or Trial grant", async () => {
+  it("admits only the fixed GET through a real current gateway, without library, owner or Trial grants", async () => {
     const { fm, port } = await listener();
     let current = true;
     const gateway = createPublicWebGateway({ exposureId: "private-fixture", isCurrent: () => current, isOpen: () => true,
@@ -102,7 +102,7 @@ describe("#2118 fixed same-listener bootstrap", () => {
     expect((await raw(Number(address.port), "GET", EFFECT_BOOTSTRAP_PATH, { host: "demo.trycloudflare.com" })).status).toBe(403);
     expect(isPublicWebRoute("GET", EFFECT_BOOTSTRAP_PATH)).toBe(true);
     for (const method of ["HEAD", "POST", "PUT", "DELETE"]) expect(isPublicWebRoute(method, EFFECT_BOOTSTRAP_PATH)).toBe(false);
-    for (const path of ["/effect-bootstrap/extra", "/ui/effects/placements", "/ui/effects/resource/" + "a".repeat(32), "/ui/effects/owner", "/ui/effect-trials/start"]) expect(isPublicWebRoute("GET", path)).toBe(false);
+    for (const path of ["/effect-bootstrap/extra", "/ui/effects", "/ui/effects/owner", "/ui/effect-trials/start"]) expect(isPublicWebRoute("GET", path)).toBe(false);
   });
 
   it("a stale bound context cannot bypass the handler's exposure fence", () => {

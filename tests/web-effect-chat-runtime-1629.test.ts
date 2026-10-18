@@ -16,7 +16,7 @@ function rig(patch: any = {}) {
   let options: any, view: any[] = [];
   const registry = { ok: true, update: vi.fn((ds: any[]) => { view = ds.map(d => ({ ...d, phase: "running", verdict: "active" })); }), snapshot: () => view, dispose: vi.fn(), resume: vi.fn(() => true), publish: vi.fn() };
   const collector = { ok: true, add: vi.fn(() => true), report: vi.fn(() => ({ id, profile: { v: 1, device: "standard" } })), dispose: vi.fn() };
-  const context = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, constrained: false, modal: false, openInstance: "own" };
+  const context = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, transportReady: true, optIn: true, constrained: false, modal: false, openInstance: "own" };
   const observation = { context, ownerCss: "off", mode: "light", state: "working" };
   const changes = vi.fn(), element: any = { isConnected: true };
   patch.prepare?.({ host, loader, registry, context, values, element });
@@ -52,7 +52,7 @@ describe("#1629 real Chat runtime ownership", () => {
     expect(h.registry.update.mock.calls.at(-1)?.[0]).toEqual([expect.objectContaining({ id, instance: "own", by: "agent", params: { size: 2 }, element: h.element })]);
     expect(h.registry.update.mock.calls.at(-1)?.[0][0]).not.toHaveProperty("ownerEpoch"); h.api.dispose();
   });
-  it.each(["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "previewReady", "optIn"])("gate %s prevents metadata/resource reads", fault => {
+  it.each(["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "transportReady"])("gate %s prevents metadata/resource reads", fault => {
     const h = rig(); (h.context as any)[fault] = ["safe", "publicLink", "reducedMotion", "saveData", "hidden"].includes(fault); h.api.sync();
     expect(h.loader.placements).not.toHaveBeenCalled(); expect(h.loader.resource).not.toHaveBeenCalled(); h.api.dispose();
   });
@@ -155,4 +155,25 @@ it("execution projection sends no text or unknown state", () => {
   const s: any = { instances: [{ name: "own", status: "running" }], awaiting: {}, exec: { own: "working" } };
   for (const [input, output] of [["working", "working"], ["stuck", "working"], ["idle", "idle"], ["secret", null]]) { s.exec.own = input; expect(chatEffectState(s, "own")).toBe(output); }
   s.awaiting.own = "secret permission text"; expect(chatEffectState(s, "own")).toBe("needs_you"); s.instances[0].status = "paused"; expect(chatEffectState(s, "own")).toBe("stopped"); expect(chatEffectState(s, "other")).toBe(null);
+});
+
+
+describe("#2118 separate session playback capability", () => {
+  it("public/poll and local guest get Chat only, never personal identity", async () => {
+    const { effectPlaybackIdentity, chatEffectIdentity } = await import(new URL("../src/ui/shared/effect-chat-runtime.js", import.meta.url).href);
+    for (const extra of [{ publicLink: "1", webTransport: "poll" }, { tier: "guest" }]) {
+      const h: any = { document: { body: { dataset: { mode: "full", effectEpoch: "e".repeat(16), effectScope: "chat", ...extra } }, documentElement: { getAttribute: () => JSON.stringify({ ownerScope: "none", ownerEpoch: null }) } } };
+      const id = effectPlaybackIdentity(h); expect(id).toEqual({ epoch: "e".repeat(16), scope: "chat" }); expect(Object.isFrozen(id)).toBe(true); expect(chatEffectIdentity(h)).toBeNull();
+      h.document.body.dataset.effectScope = "owner"; expect(effectPlaybackIdentity(h)).toBeNull();
+    }
+  });
+  it("rejects missing/malformed capability, view/header, stale owner epoch and a forged public owner scope", async () => {
+    const { effectPlaybackIdentity } = await import(new URL("../src/ui/shared/effect-chat-runtime.js", import.meta.url).href);
+    for (const patch of [{ effectEpoch: "" }, { effectEpoch: "E".repeat(16) }, { effectScope: "admin" }, { effectScope: "chat" }, { mode: "view-only" }, { publicLink: "1", webTransport: "poll" }]) {
+      const h: any = { document: { body: { dataset: { mode: "full", effectEpoch: "e".repeat(16), effectScope: "owner", ...patch } }, documentElement: { getAttribute: () => JSON.stringify({ ownerScope: "person", ownerEpoch: "e".repeat(16) }) } } };
+      expect(effectPlaybackIdentity(h), JSON.stringify(patch)).toBeNull();
+    }
+    const h: any = { document: { body: { dataset: { mode: "full", effectEpoch: "e".repeat(16), effectScope: "owner" } }, documentElement: { getAttribute: () => JSON.stringify({ ownerScope: "person", ownerEpoch: "f".repeat(16) }) } } };
+    expect(effectPlaybackIdentity(h)).toBeNull(); h.document.documentElement.getAttribute = () => null; expect(effectPlaybackIdentity(h)).toBeNull();
+  });
 });

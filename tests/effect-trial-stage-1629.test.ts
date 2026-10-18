@@ -99,20 +99,20 @@ describe("host-only local trial stage, not product admission or a new frame pool
   it("cancelled stage subscribers are not notified", () => { const h = fixture(), fn = vi.fn(), off = watchEffectTrialStage(h.api.receipt, fn); off(); off(); h.api.dispose(); expect(fn).not.toHaveBeenCalled(); });
 
   it("pure allocation keeps common total/front caps and refuses cloned/disposed receipts", () => {
-    const ctx = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, trialReady: true, constrained: false, modal: true, openInstance: "worker" };
+    const ctx = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, transportReady: true, optIn: true, trialReady: true, constrained: false, modal: true, openInstance: "worker" };
     const items = [0, 1, 2, 3].map(i => {
       const binding = { ...own(), key: "trial:" + i }, h = fixture({ binding });
       return { h, d: { ...binding, trialStage: h.api.receipt, region: "chat", layer: i === 3 ? "behind" : "front", by: "human", order: i, paused: false, visible: true } };
     });
-    expect(allocateEffectFrames([items[0].d], { ...ctx, optIn: false, previewReady: false })[0]).toMatchObject({ verdict: "active" });
-    expect(allocateEffectFrames([{ ...items[0].d, trialStage: undefined }], { ...ctx, modal: false, optIn: false, previewReady: false })[0]).toMatchObject({ verdict: "off", reason: "preview_unavailable" });
+    expect(allocateEffectFrames([items[0].d], { ...ctx, optIn: false, transportReady: true })[0]).toMatchObject({ verdict: "active" });
+    expect(allocateEffectFrames([{ ...items[0].d, trialStage: undefined }], { ...ctx, modal: false, optIn: false, transportReady: false })[0]).toMatchObject({ verdict: "off", reason: "transport_unavailable" });
     const ds = items.map(x => x.d), result = allocateEffectFrames(ds, ctx); expect(result.map((r: any) => [r.verdict, r.reason])).toEqual([["active", null], ["active", null], ["queued", "front_limit"], ["active", null]]);
     expect(allocateEffectFrames(ds, { ...ctx, constrained: true }).filter((r: any) => r.verdict === "active")).toHaveLength(1);
     expect(allocateEffectFrames([{ ...ds[0], region: "page" }], ctx)[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
     expect(allocateEffectFrames([{ ...ds[0], trialStage: { ...ds[0].trialStage } }], ctx)[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
     expect(allocateEffectFrames([{ ...ds[0], trialStage: {} }], { ...ctx, modal: false })[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
     items[0].h.api.dispose(); expect(allocateEffectFrames([ds[0]], ctx)[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
-    for (const patch of [{ safe: true }, { publicLink: true }, { reducedMotion: true }, { saveData: true }, { enabled: false }, { show: false }, { trialReady: false }, { hidden: true }]) expect(allocateEffectFrames([ds[1]], { ...ctx, ...patch })[0].verdict).toBe("off");
+    for (const patch of [{ safe: true }, { publicLink: true }, { reducedMotion: true }, { saveData: true }, { enabled: false }, { show: false }, { transportReady: false }, { hidden: true }]) expect(allocateEffectFrames([ds[1]], { ...ctx, ...patch })[0].verdict).toBe("off");
   });
   it("constructor refuses unknown clip support or a duplicate owner of the same stage", () => {
     expect(fixture({ supports: false }).api).toBeNull(); const h = fixture(); expect(createEffectTrialStage({ window: h.host, panel: h.panel, stage: h.stage, binding: own(), current: () => true, ownerCss: () => "off" })).toBeNull();

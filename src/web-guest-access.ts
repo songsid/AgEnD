@@ -43,6 +43,8 @@ export const GUEST_ROUTES: readonly GuestRoute[] = [
   { methods: ["GET"], pattern: new RegExp(`^/ui/img/(?:avatar|bot)/${NAME}$`), instance: { group: 1 }, state: "on", note: "the instance's face in the sidebar" },
   { methods: ["GET"], pattern: new RegExp(`^/ui/img/theme/${NAME}/[0-9a-f]{32}$`), instance: { group: 1 }, state: "on", note: "the instance's theme pictures" },
   { methods: ["GET"], pattern: /^\/ui\/effect-posters$/, instance: { query: "instance" }, state: "on", note: "the instance's static effect posters (the list)" },
+  { methods: ["GET"], pattern: /^\/ui\/effects\/placements$/, instance: { query: "instance" }, state: "on", note: "current in-scope Chat effect metadata only, with a session epoch" },
+  { methods: ["GET"], pattern: /^\/ui\/effects\/resource\/[0-9a-f]{32}$/, instance: { query: "instance" }, state: "on", note: "a current in-scope Chat effect resource, never library or personal-slot reads" },
   // Opened by phase 1b: the stream and the poll filtered per recipient; a file bound to its instance.
   // The stream and the poll, projected per recipient (guestFrameData / guestPollBody); a file, bound to its stored
   // instance by the handler (404 out of scope: an id from another instance is useless).

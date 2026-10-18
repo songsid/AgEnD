@@ -201,9 +201,11 @@ export class WebEffectService {
     const bytes = source ? staticEffectPoster(source) : null;
     return bytes ? { ok: true, bytes } : { ok: false, error: "not_found" };
   }
-  resource(person: string, id: string, instance?: string): Answer {
+  resource(person: string, id: string, instance?: string, chatOnly = false): Answer {
     if (!this.validPerson(person)) return fail("not_found");
     const binding = instance === undefined ? null : this.retained(id, instance);
+    // A public/guest read never falls back to a library claim, even for the same caller/id.
+    if (chatOnly && (!binding?.ok || !binding.entry.manifest.regions.includes("chat"))) return fail("not_found");
     const r = binding ?? this.readable(person, id); if (!r.ok) return fail("not_found");
     const defaults = resolveEffectParams(r.entry.manifest); if (!defaults.ok) return fail("not_found");
     return this.resourceAnswer(id, r.entry, binding?.ok ? binding.params : defaults.values);
@@ -214,10 +216,10 @@ export class WebEffectService {
     const bytes = r.ok ? r.entry.files.get(`${kind}.png`) : undefined;
     return bytes ? { ok: true, bytes } : { ok: false, error: "not_found" };
   }
-  placements(person: string, instance: string): Answer {
+  placements(person: string, instance: string, chatOnly = false): Answer {
     if (!this.validPerson(person) || !this.deps.known(instance)) return fail("not_found"); if (!this.deps.themes.readable()) return fail("themes_unreadable");
     return { rev: this.deps.themes.rev(), effects: this.deps.themes.get(instance).placements.effects.flatMap(p => {
-      const r = this.retained(p.id, instance); return r.ok ? [{ ...p, manifest: r.entry.manifest, params: r.params }] : [];
+      const r = this.retained(p.id, instance); return r.ok && (!chatOnly || r.entry.manifest.regions.includes("chat")) ? [{ ...p, manifest: r.entry.manifest, params: r.params }] : [];
     }) };
   }
   /** Diagnostic writes only: a validated report never changes safety, admission or a placement. */
