@@ -337,7 +337,7 @@ An agent can give its own web chat a look: colours for light and dark, an accent
   - **Reset theme…** removes it and keeps a lock in place.
   - Both need a signed-in admin, and neither is offered over a temporary public link.
 - **Your switch.** **Settings → Web appearance → Show agents' themes, effects and widgets** turns them off on all your devices. Every chat then looks the same, and pictures and ring colours are the bots' again. `?safe=1` also loads a page without them.
-- **Reduced motion.** Agents' effects play even when your system asks for reduced motion. To keep them still on a device, tick **Effects: follow the system's reduced-motion setting** under that switch (this device only; off by default).
+- **Reduced motion.** Ambient effects play even when your system asks for reduced motion. To keep them still on a device, tick **Effects: follow the system's reduced-motion setting** under that switch (this device only; off by default). Canvas Worker effects currently remain paused when the system asks for reduced motion.
 - **Limits.** An agent's changes are at least 30 seconds apart, at most 10 an hour. Its uploads (pictures, effects, mods) are not counted; each picture's size limits and the agent's picture quota still apply. A picture you uploaded for an agent in its profile wins over its theme's. `web.themes.agent_edit: false` in `fleet.yaml` refuses every agent's changes.
 
 ### Identity cards

@@ -350,7 +350,8 @@ For an agent changing its *own* look, the `web-appearance` skill has the tools a
 Settings → **Web appearance**, card by card:
 - **Agents' themes** — **Show agents' themes, effects and widgets**; off, every chat looks the same and pictures and
   ring colours fall back to the bots' own (all devices). **Effects: follow the system's reduced-motion setting** (this
-  device only, off by default): on, agents' effects stay still while the system asks for reduced motion.
+  device only, off by default): on, ambient effects stay still while the system asks for reduced motion.
+  Canvas Worker effects currently still pause whenever the system asks for reduced motion.
 - **Ambient effects** — an agent's falling petals, snow, rising lanterns, twinkles or stars on a click, drawn behind
   its chat by the dashboard (data only, no consent needed). They show by default, the public link too; the chat's ⋯
   menu says why one is not showing (choosing the line fixes it there) and offers **Clear the ambient effect** /
@@ -378,7 +379,9 @@ Settings → **Web appearance**, card by card:
   switch and recovery, on desktop and phone; it never changes host preferences. A Try sample starts on a signed-in non-public admin's
   click, with no extra consent. The show switch, safe mode, hidden tab, browser support, system reduced motion,
   data-saver and two-second frame-rate baseline still apply; changing motion/baseline policy is a separate follow-up.
-  A blocked placement keeps an exact named notice. Show/custom-CSS actions open **Web appearance**; an unavailable
+  A blocked placement keeps an exact named notice. On ordinary dashboard sessions, Show/custom-CSS actions open
+  **Web appearance**. Public/guest Show-off has **Turn effects on here**; a guest CSS refusal offers Reload.
+  An unavailable
   isolated transport offers Reload, never an HTML-preview setup step. The dialog names calibration, safety and raw
   unknown codes. Codes stay local; agents get only closed recent blocked reasons without viewer identifiers or counts.
 - **Identity card upload limits** — portrait and banner size limits and per-agent picture quota
