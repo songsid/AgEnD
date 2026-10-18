@@ -5,6 +5,7 @@
  */
 import type { ChannelAdapter } from "./channel/types.js";
 import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
+import type { HumanAuthority } from "./authority/web-authority.js";
 import { t } from "./locale.js";
 import {
   REPLY_BUTTON_PREFIX, newReplyButtonsId, parseReplyButtonCallback, replyButtonCallback, replyButtonsClickPlace,
@@ -198,7 +199,7 @@ export class ReplyButtonsController {
    * is `voter`'s vote — a session's public handle, so each signed-in device is one voter — and the answer carries the
    * ballot, for the page to mark the voter's own choice.
    */
-  async clickWeb(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
+  async clickWeb(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
     if (!/^[0-9a-f]{32}$/.test(id) || !Number.isInteger(index) || index < 0) return { status: 400, error: "Malformed button" };
     const set = this.deps.store.get(id);
     if (!set) return { status: 409, error: t("reply_buttons.closed") };
@@ -210,8 +211,8 @@ export class ReplyButtonsController {
     }
     let notice: string | undefined;
     // #1827: the choice is the web person's (their web id and name; "web-user" when there is none) — still `via web`
-    // with no verified actor (webHumanOrigin).
-    const ok = await this.choose(id, index, { userId: voter?.userId ?? "web-user", username: voter?.name ?? "web-user", source: "web", humanOrigin: webHumanOrigin(true), ...(voter?.guest ? { guest: true as const } : {}) }, n => { notice = n; });
+    // with no verified platform actor (webHumanOrigin); #1939: the receipt records the session's authority.
+    const ok = await this.choose(id, index, { userId: voter?.userId ?? "web-user", username: voter?.name ?? "web-user", source: "web", humanOrigin: webHumanOrigin(true, voter?.authority), ...(voter?.guest ? { guest: true as const } : {}) }, n => { notice = n; });
     return ok ? { status: 200 } : { status: 409, error: notice ?? t("reply_buttons.closed") };
   }
 

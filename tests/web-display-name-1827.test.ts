@@ -293,8 +293,10 @@ describe("every web surface uses the person: the header, the echo, tasks, activi
     const [{ payload, origin }] = got;
     expect(payload.meta).toMatchObject({ user: "Hanhan", user_id: "admin", source: "web" });
     expect(formatHumanInboundMessage("hello", payload.meta, "mcp").split("\n")[0]).toBe("[user:Hanhan via web, id:admin] hello");
-    // Authorization unchanged (#1756): the origin is the web's, with no adapter, user or username.
-    expect(origin).toEqual(webHumanOrigin());
+    // The origin is still the web's, with no adapter, user or username (#1756). #1939 S1: the receipt also records that
+    // this session — signed in by a code DMed to the account, from this machine — carries web-session authority (observe only).
+    expect(origin).toEqual(webHumanOrigin(false, origin.authority));
+    expect(origin.authority).toMatchObject({ kind: "web-session", actor: { adapter_id: "owner", user_id: "admin" }, session: { peer: "loopback" } });
     expect(h.fm.webChatHistory.list("general").at(-1)).toMatchObject({ sender: "Hanhan", role: "user" });
     expect(h.s.lastInboundUser.get("general")).toBe("Hanhan");
   });
@@ -418,6 +420,7 @@ describe("buttons and polls: the account's own ballot, named by the person", () 
 });
 
 describe("authorization is unchanged: recognition is not consent (#1756)", () => {
+  // #1939 S1 asks adminGate for the receipt's authority only (web-authority-1939.test.ts); nothing here is authorized by it.
   it("a bound session's requests never put its account through an admin or allowed-user check", async () => {
     const h = rig1827();
     inbox(h);

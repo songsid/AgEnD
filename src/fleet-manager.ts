@@ -290,6 +290,7 @@ import { authorizeSession, decideWebGate, loadOrCreateWebToken, readWebToken } f
 import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
+import { evaluateWebAuthority, webAuthorityPolicy, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
@@ -4157,6 +4158,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!origin || !this.deliveryOutbox) return payload;
     const row = this.deliveryOutbox.createHumanReceipt({ targetInstance: instanceName, originalBody,
       origin: { ...origin }, inputKind: String(payload.type), managerBootId: this.managerBootId });
+    // #1939 §7: each ordinary verified web message, for the S1 beta to watch. No text, cookie or session id: the handle.
+    const authority = origin.authority;
+    if (authority?.kind === "web-session" && authority.actor && authority.session) {
+      try {
+        this.eventLog?.insert(instanceName, "web_authority", { receipt_id: row.receipt_id, session: authority.session.handle,
+          peer: authority.session.peer, surface: "local", actor: `${authority.actor.adapter_id}:${authority.actor.user_id}`,
+          input_kind: String(payload.type), outcome: "web-session", authority_epoch: authority.authority_epoch });
+      } catch (err) { this.logger.warn({ err, instanceName }, "Could not record web authority"); }
+    }
     return { ...payload, meta: { ...(payload.meta as Record<string, unknown> ?? {}),
       human_receipt_id: row.receipt_id, verification_id: row.message_id } };
   }
@@ -13365,7 +13375,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1266: a click on a reply's button in the web chat (the /ui gate is passed: a session, or the public link). On a
    * poll (#1823) it is `voter`'s vote: the page's session.
    */
-  clickWebReplyButton(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
+  clickWebReplyButton(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
     const buttons = this.replyButtons();
     return buttons ? buttons.clickWeb(instance, id, index, voter) : Promise.resolve({ status: 409, error: t("reply_buttons.closed") });
   }
@@ -13792,15 +13802,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #1269: the web's /clear confirmations — one token per question, used once, for the instance as it was asked about. */
   private readonly webClearTokens = new Map<string, { instance: string; fence: () => boolean; deadline: number }>();
 
+  /**
+   * #1939 S1: the design's §3 for one web request (authority/web-authority.ts), with this fleet's admins, policy and
+   * token; `instance` once the body has named it. Observe only: receipts record it, no agent acts on it yet.
+   */
+  webAuthority(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer; instance?: string }): WebAuthorityResult {
+    return evaluateWebAuthority({
+      session: input.session, gateway: input.gateway, peer: input.peer,
+      tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
+      ...(input.instance !== undefined ? { target: { adapterId: this.getInstanceAdapterId(input.instance) } } : {}),
+      isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
+      policy: webAuthorityPolicy(this.fleetConfig?.web), epoch: 0, now: Date.now(),
+    });
+  }
+
   /** #1269: an instance's chat command from the web chat (web-commands.ts); `publicLink`: a gateway request. */
-  webCommand(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name"> }): Promise<WebCommandResult> {
+  webCommand(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name">; authority?: HumanAuthority }): Promise<WebCommandResult> {
     const webMeta = (instance: string) => {
       const topicId = this.fleetConfig?.instances[instance]?.topic_id;
       return {
         // #1827: a /steer or /btw reaches the agent as the web person who wrote it.
         chatId: this.getGroupIdForInstance(instance) || "", messageId: newWebMessageId(),
         username: opts.person?.name ?? WEB_NAME_FALLBACK, userId: opts.person?.userId ?? WEB_NAME_FALLBACK,
-        threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const, humanOrigin: webHumanOrigin(true),
+        threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const, humanOrigin: webHumanOrigin(true, opts.authority),
       };
     };
     const choicesFromCache = (instance: string): WebChoices | null => {

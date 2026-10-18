@@ -1,4 +1,5 @@
 import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
+import { classifyWebPeer, confirmAfterBody, noAuthority, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { guestChatRefusal, guestCommandText, guestDeliveries, guestFrameData, guestHistory, guestMessages, guestPollBody, guestPrefs, guestRequestOf, guestSeesMessage, guestStatus, type GuestRequest } from "./web-guest-access.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { binaryProbe } from "./binary-probe.js";
@@ -297,7 +298,9 @@ export interface WebApiContext {
   /** #1468: the prompt-cache expiry analysis for a window ("24h" | "7d" | "30d"); absent: not offered. */
   cacheReport?(window: string): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
-  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: WebPerson }): Promise<{ status: number; body: unknown }>;
+  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority }): Promise<{ status: number; body: unknown }>;
+  /** #1939 S1: the design's §3 for one request (`instance` once the body names it); absent: web carries no authority. */
+  webAuthority?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer; instance?: string }): WebAuthorityResult;
   /**
    * #1827: a web person — for the account a session is bound to (none: the operator) — as agents and chats see them.
    * Absent: everyone is "web-user", as before.
@@ -310,7 +313,7 @@ export interface WebApiContext {
   /** Answer one of them, exactly as a click on its platform button would. */
   clickWebPrompt?(instance: string, nonce: string, action: string): Promise<{ status: number; error?: string }>;
   /** #1266: a click on an agent reply's button. */
-  clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true }): Promise<{ status: number; error?: string; options?: number[] }>;
+  clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority }): Promise<{ status: number; error?: string; options?: number[] }>;
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
@@ -810,6 +813,16 @@ function webPersonOf(req: IncomingMessage, url: URL, ctx: WebApiContext): WebPer
   if (!ctx.webPerson) return { key: OPERATOR, bound: false, userId: WEB_NAME_FALLBACK, voterKey: "web:operator", name: WEB_NAME_FALLBACK, set: false };
   const who = webAccountOf(req, url, ctx);
   return who ? ctx.webPerson(who.owner) : null;
+}
+/**
+ * #1939 S1: whether this request carries `web-session` authority, asked as it stands now — on arrival without an instance,
+ * after the body with the one it names (then confirmAfterBody joins the two). Never touches the session.
+ */
+function webAuthorityOf(req: IncomingMessage, url: URL, ctx: WebApiContext, instance?: string): WebAuthorityResult {
+  if (!ctx.webAuthority) return { authority: noAuthority(0), refusal: "not_session" };
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  return ctx.webAuthority({ session: v.kind === "allow" && v.via === "session" ? v.session : null, gateway: !!gatewayRequestContext(req),
+    peer: classifyWebPeer(req), ...(instance !== undefined ? { instance } : {}) });
 }
 /** #1827: the person, or the request is answered 401 here (it is no longer authorized) and null is returned. */
 function webPersonOr401(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext): WebPerson | null {
@@ -1317,6 +1330,7 @@ export function handleWebRequest(
   if (method === "POST" && path === "/ui/reply-button") {
     if (!ctx.clickWebReplyButton) { json(res, 404, { error: "No buttons here" }); return true; }
     const click = ctx.clickWebReplyButton.bind(ctx);
+    const arrival = webAuthorityOf(req, url, ctx);                         // #1939 §3: on arrival, and again after the body
     (async () => {
       let body: Record<string, unknown>;
       try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
@@ -1340,7 +1354,8 @@ export function handleWebRequest(
       const person = webPersonOr401(req, res, url, ctx);
       if (!person) return;
       // #1920 review: a guest's choice reaches the agent marked as a guest's, as its typed messages do.
-      const r = await click(instance, id, index, { key: person.voterKey, userId: person.userId, name: person.name, ...(guest ? { guest: true as const } : {}) });
+      const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
+      const r = await click(instance, id, index, { key: person.voterKey, userId: person.userId, name: person.name, ...(guest ? { guest: true as const } : {}), authority });
       json(res, r.status, r.status === 200 ? { answered: true, ...(r.options ? { options: r.options } : {}) } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web reply-button click failed");
@@ -1450,6 +1465,7 @@ export function handleWebRequest(
   if (method === "POST" && path === "/ui/command") {
     if (!ctx.webCommand) { json(res, 404, { error: "Not available" }); return true; }
     const run = ctx.webCommand.bind(ctx);
+    const arrival = webAuthorityOf(req, url, ctx);                         // #1939 §3: on arrival, and again after the body
     (async () => {
       let body: Record<string, unknown>;
       try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
@@ -1461,8 +1477,9 @@ export function handleWebRequest(
       if (body.confirm !== undefined && !(typeof body.confirm === "string" && /^[0-9a-f]{32}$/.test(body.confirm))) { json(res, 400, { error: "invalid confirmation" }); return; }
       const person = webPersonOr401(req, res, url, ctx);                    // #1827: asked again, now the body is in
       if (!person) return;
+      const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
       const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined },
-        { publicLink: !!gatewayRequestContext(req), person });
+        { publicLink: !!gatewayRequestContext(req), person, authority });
       json(res, r.status, r.body);
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web command failed");
@@ -2011,6 +2028,7 @@ function webEchoPreview(message: string, names: string[]): string {
 
 /** Handle POST /ui/send — extracted for readability. */
 function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebApiContext): void {
+  const arrival = webAuthorityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);   // #1939 §3: again after the body
   let body = "";
   let size = 0;
   req.on("data", (chunk: Buffer) => {
@@ -2064,6 +2082,8 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // body is in: a session revoked meanwhile sends nothing (not as the operator).
       const person = webPersonOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);
       if (!person) { ctx.webFiles?.release(files); json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+      // #1939 S1: what the receipt records about who authorized it (observe only: agents still read web as recognition).
+      const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx, instance));
       const ts = new Date().toISOString();
       // The id the agent is given, and the one its delivery reports come back under: the page's ticks.
       const messageId = newWebMessageId();
@@ -2097,7 +2117,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       let delivered: boolean | void;
       try {
         const deliver = (name: string, payload: Record<string, unknown>) => ctx.deliverHumanToInstance
-          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(), typed)
+          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority), typed)
           : ctx.deliverToInstance(name, payload);
         delivered = await deliver(instance, {
           type: "fleet_inbound",

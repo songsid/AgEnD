@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import type { DeliveryStatusItem, DeliveryStatusSelector, DeliveryStatusPage } from "./delivery-outbox.js";
 import { t } from "./locale.js";
 import { renderCrossInstanceHandoffMetadata, type AgentMode } from "./cross-instance-envelope.js";
+import { isHumanAuthority, platformAuthority, receiptAuthority, type HumanAuthority } from "./authority/web-authority.js";
 
 /** Server-owned ingress facts. Labels and Web session identity are not platform authority. */
 export interface HumanOrigin {
@@ -14,6 +15,11 @@ export interface HumanOrigin {
   ingress: "message" | "action" | "web";
   anchor_message_id?: string;
   event_id?: string;
+  /**
+   * #1939: web traffic only — what web admission found for the session that sent it (authority/web-authority.ts).
+   * Server-owned like the rest, never read from a message; the receipt stores it in its own column, not in `origin`.
+   */
+  authority?: HumanAuthority;
 }
 
 /** Called only by trusted SDK event producers, never on text/agent metadata. */
@@ -28,9 +34,10 @@ export function nativeHumanOrigin(platform: "telegram" | "discord", adapterId: s
   };
 }
 
-export function webHumanOrigin(action = false): HumanOrigin {
+/** The actor fields stay null whatever the session (§4: HumanOrigin.platform stays "web"); its account is in `authority`. */
+export function webHumanOrigin(action = false, authority?: HumanAuthority): HumanOrigin {
   return { platform: "web", adapter_id: null, user_id: null, username: null,
-    platform_message_id: null, ingress: action ? "action" : "web" };
+    platform_message_id: null, ingress: action ? "action" : "web", ...(authority ? { authority } : {}) };
 }
 
 export type HumanWriteMode = "idle_submit" | "native_queue_handoff" | "steer" | "raw_paste";
@@ -95,6 +102,8 @@ export interface HumanReceiptRow {
   created_at: string;
   updated_at: string;
   delivered_at: string | null;
+  /** #1939: the HumanAuthority written at admission (JSON); null on a row from before — see receiptAuthority. */
+  authority_json: string | null;
 }
 
 export function initializeHumanReceipts(db: Database.Database): void {
@@ -107,6 +116,9 @@ export function initializeHumanReceipts(db: Database.Database): void {
     "proof_tag TEXT,proof_mode TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,delivered_at TEXT);",
     "CREATE INDEX IF NOT EXISTS idx_human_receipt_retention ON human_delivery_receipts(updated_at);",
   ].join("\n"));
+  // #1939: added in place; rows from before keep NULL, which reads as their platform's meaning.
+  const columns = db.prepare("PRAGMA table_info(human_delivery_receipts)").all() as Array<{ name: string }>;
+  if (!columns.some(c => c.name === "authority_json")) db.exec("ALTER TABLE human_delivery_receipts ADD COLUMN authority_json TEXT");
 }
 
 /** Server-only admission; no origin is read from an agent payload or tool argument. */
@@ -119,14 +131,19 @@ export function createHumanReceipt(db: Database.Database, input: {
     || !["message", "action", "web"].includes(input.origin.ingress)
     || (input.origin.platform !== "web" && (!input.origin.adapter_id || !input.origin.user_id || input.origin.ingress === "web"))
     || (input.origin.platform === "web" && (input.origin.adapter_id !== null || input.origin.user_id !== null || input.origin.username !== null || input.origin.platform_message_id !== null))
-    || (input.origin.ingress === "action" && input.origin.platform_message_id !== null)) throw new Error("Human verification evidence is unavailable");
-  const origin = JSON.stringify(input.origin);
+    || (input.origin.ingress === "action" && input.origin.platform_message_id !== null)
+    // #1939: only web admission writes authority, and only the shape it writes; platform authority comes from the origin.
+    || (input.origin.authority !== undefined && (input.origin.platform !== "web" || !isHumanAuthority(input.origin.authority)
+      || input.origin.authority.kind === "platform"))) throw new Error("Human verification evidence is unavailable");
+  const { authority: webAuthority, ...stored } = input.origin;
+  const authority = JSON.stringify(stored.platform === "web" ? webAuthority ?? { kind: "none", actor: null, authority_epoch: 0 } : platformAuthority(stored, 0));
+  const origin = JSON.stringify(stored);
   if (Buffer.byteLength(origin, "utf8") > 4096) throw new Error("Human verification origin exceeds its bound");
   const id = randomUUID(), now = new Date().toISOString();
   db.prepare("INSERT INTO human_delivery_receipts " +
-    "(receipt_id,message_id,target_instance,manager_boot_id,original_body,original_sha256,origin_json,input_kind,state,created_at,updated_at) " +
-    "VALUES (?,?,?,?,?,?,?,?,'queued',?,?)")
-    .run(id, "hmsg-" + id, input.targetInstance, input.managerBootId, input.originalBody, humanBodyHash(input.originalBody), origin, input.inputKind, now, now);
+    "(receipt_id,message_id,target_instance,manager_boot_id,original_body,original_sha256,origin_json,input_kind,state,created_at,updated_at,authority_json) " +
+    "VALUES (?,?,?,?,?,?,?,?,'queued',?,?,?)")
+    .run(id, "hmsg-" + id, input.targetInstance, input.managerBootId, input.originalBody, humanBodyHash(input.originalBody), origin, input.inputKind, now, now, authority);
   return getHumanReceipt(db, id)!;
 }
 
@@ -187,9 +204,13 @@ export function queryHumanReceipt(db: Database.Database, caller: string | null, 
     && !db.prepare("SELECT 1 FROM delivery_forward_edges WHERE reference_kind='human' AND reference_id=? AND receiver_instance=? LIMIT 1")
       .get(row.receipt_id, caller)) return { items: [], next_cursor: null };
   const origin = JSON.parse(row.origin_json) as HumanOrigin;
+  // #1939 S1: who authorized it, next to origin and proof_kind (delivery evidence); a web-session receipt names its account.
+  const authority = receiptAuthority(origin, row.authority_json ?? null);
   const item: DeliveryStatusItem = {
     delivery_id: row.receipt_id, operation_id: row.receipt_id, correlation_id: null,
-    source_instance: "human:" + origin.platform + ":" + (origin.user_id ?? "unknown"),
+    source_instance: authority.kind === "web-session" && authority.actor
+      ? "human:web:" + authority.actor.adapter_id + ":" + authority.actor.user_id
+      : "human:" + origin.platform + ":" + (origin.user_id ?? "unknown"),
     target_instance: row.target_instance, kind: "human_inbound", state: row.state, attempt_no: 0,
     created_at: row.created_at, updated_at: row.updated_at,
     status_summary: t("delivery.status_" + row.state),
@@ -197,6 +218,7 @@ export function queryHumanReceipt(db: Database.Database, caller: string | null, 
     delivery_mode: row.proof_mode === "steer" ? "steer" : "idle_queue", submission_mode: row.proof_mode, consumed_at: null, consumed_via: null,
     origin, wire_content_sha256: row.wire_sha256, delivered_at: row.delivered_at,
     proof_kind: row.proof_tag,
+    authority,
     ...(caller !== null && selector.messageId ? { content: row.original_body } : {}),
   };
   if (caller !== null && selector.messageId) {

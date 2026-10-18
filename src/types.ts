@@ -414,6 +414,19 @@ export interface WebConfig {
    * they already use in chat (derived on every request). Default off.
    */
   guests?: WebGuestsConfig;
+  /**
+   * #1939: when a signed-in web session's messages carry authority (docs/design/1939-verified-web-sessions.md §3).
+   * S1 records it in receipts only; no agent acts on it yet.
+   */
+  verified_authority?: WebVerifiedAuthorityConfig;
+}
+
+/** #1939: fleet.yaml `web.verified_authority` (S1: the two §3 keys; the switch and the step-up list come in S2). */
+export interface WebVerifiedAuthorityConfig {
+  /** "Only this computer can authorize": only loopback requests qualify (default false: LAN and tailnet too). */
+  loopback_only?: boolean;
+  /** Ordinary authority lasts this many hours after sign-in, 1–48 (default 48). */
+  max_session_hours?: number;
 }
 
 /** #1920: fleet.yaml `web.guests`. */

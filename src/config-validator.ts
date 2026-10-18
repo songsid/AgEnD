@@ -8,6 +8,7 @@ import { mbText, PUBLIC_LINK_MAX_FILE_BYTES, UPLOAD_LIMITS, UPLOAD_MB_RANGE } fr
 import { previewOriginProblem } from "./web-preview.js";
 import { DEFAULT_SESSION_POLICY, GUEST_SESSION_BOUNDS, GUEST_SESSION_POLICY, LOCAL_SESSION_HOURS } from "./web-session.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
+import { VERIFIED_SESSION_HOURS } from "./authority/web-authority.js";
 import { existsSync } from "node:fs";
 import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
@@ -28,7 +29,7 @@ export interface ValidationIssue {
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
 const WEB_KEYS = ["public_link", "echo_to_channel", "usage_panel", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
-  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests"] as const satisfies ReadonlyArray<keyof WebConfig>;
+  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
 
@@ -431,6 +432,19 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     if (config.web.session !== undefined) validateWebSession(config.web.session, err);
     if (config.web.guests !== undefined) validateWebGuests(config.web.guests, config, err, warn);
+    // #1939 S1: the two §3 keys; anything else under it (the switch, the step-up list) arrives with S2 and is ignored now.
+    if (config.web.verified_authority !== undefined) {
+      const v = config.web.verified_authority;
+      if (!isObj(v)) err("web.verified_authority", "must be a mapping");
+      else {
+        for (const k of Object.keys(v)) if (k !== "loopback_only" && k !== "max_session_hours") warn(`web.verified_authority.${k}`, "unknown key (known: loopback_only, max_session_hours) — ignored");
+        if (v.loopback_only !== undefined && typeof v.loopback_only !== "boolean") err("web.verified_authority.loopback_only", "must be a boolean");
+        const h = v.max_session_hours;
+        if (h !== undefined && (typeof h !== "number" || !Number.isFinite(h) || h < VERIFIED_SESSION_HOURS.min || h > VERIFIED_SESSION_HOURS.max)) {
+          err("web.verified_authority.max_session_hours", `must be a number of hours from ${VERIFIED_SESSION_HOURS.min} to ${VERIFIED_SESSION_HOURS.max}`);
+        }
+      }
+    }
     validateUploadLimits(config.web, warn);
     if (config.web.allowed_hosts !== undefined) {
       if (!Array.isArray(config.web.allowed_hosts)) {

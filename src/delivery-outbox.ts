@@ -197,6 +197,8 @@ export interface DeliveryStatusItem {
   wire_content_sha256?: string | null;
   delivered_at?: string | null;
   proof_kind?: HumanReceiptProof["tag"] | null;
+  /** #1939: who authorized a human receipt — platform, web-session or none — written at admission (not delivery evidence). */
+  authority?: import("./authority/web-authority.js").HumanAuthority;
   /**
    * How the message was routed, in send_to_instance's own words: `steer` (into the live turn) or `idle_queue` (as the
    * next message). The fleet decided this at admission; it is the row's kind.
