@@ -13,7 +13,6 @@ import { constants as fsConstants } from "node:fs";
 import { lstat, open, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
-import yaml from "js-yaml";
 
 export type AgentFileRead = { ok: true; bytes: Buffer } | { ok: false; reason: string };
 
@@ -56,7 +55,11 @@ export async function agentFileScope(opts: AgentFileContext): Promise<{ workspac
     // Unlike loadFleetConfig this reads no defaults that create directories or initialize repositories.
     // A malformed/unreadable roster cannot prove exclusive ownership and refuses all in-state reads.
     let fleet: unknown, rosterRead = false;
-    try { const text = await readFile(resolve(state, "fleet.yaml"), "utf8"); rosterRead = true; fleet = yaml.load(text); }
+    try {
+      const text = await readFile(resolve(state, "fleet.yaml"), "utf8");
+      const { default: yaml } = await import("js-yaml");
+      rosterRead = true; fleet = yaml.load(text);
+    }
     catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
     if (rosterRead && (!fleet || typeof fleet !== "object" || Array.isArray(fleet))) throw new Error("invalid fleet configuration");
     const rows = fleet && typeof fleet === "object" && !Array.isArray(fleet)
