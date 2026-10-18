@@ -426,8 +426,8 @@ State 欄把暫停、停止或當機和執行狀態合併顯示（見 [Instance 
 - **`/usage`**（所有人）— 這台機器上已登入之 CLI 的 AI 訂閱用量：Claude、Codex、Muse、Grok、Kiro 和 Antigravity。設定了[憑證 profile](#憑證-profile-與第二份訂閱-credential-profiles-and-a-second-subscription) 的後端，每份訂閱各佔一列。agent 可以用 `get_usage` 讀取同樣的資料。
 - **`/doctor`**（fleet 管理員）— 健康診斷，分成六個區塊：Prerequisites、Service、Fleet、Channel gateways、MCP IPC 和 Resources，每項檢查的結果是 `ok`、`warn` 或 `error`。
 - **`/sysinfo`**（所有人）— fleet 的運行時間和記憶體、instance 數量、系統記憶體，以及每個後端 CLI 的版本。
-- **`/model`**（頻道管理員）— 從選單切換 instance 的模型（Telegram 上也可以用 `/model <name>`）。
-- **`/backend`**（頻道管理員，和 `/model` 相同）— 把 instance 換到另一個 CLI backend：先選 backend（只列這台主機已安裝的 CLI），再選模型（`/model` 的清單，或預設），再選推理強度（`/effort` 的等級；backend 沒有推理強度就跳過），最後確認。instance 只在最後**重新啟動一次**，並開**全新的 session**：對話不會跨 backend 延續。`/backend <backend> [模型] [推理強度]` 會直接跳到確認。只適用 fleet instance；ClassicBot agent 的 backend 在 `classicBot.yaml` 或設定頁裡設定。
+- **`/model`**（頻道管理員）— 從選單切換 instance 的模型（Telegram 上也可以用 `/model <name>`）。2.3 beta 起，選單列的是 instance 所用帳號的模型清單（Claude Code 的[憑證 profile](#憑證-profile-與第二份訂閱-credential-profiles-and-a-second-subscription) 各有自己的一份），而 instance 正在用的模型一定在選項裡：CLI 清單裡沒有的會排在最前面，標示「目前使用中 — 不在這個 CLI 的清單裡」。詳見[後端可用性與模型清單](#後端可用性與模型清單-backend-availability-and-model-lists-23-beta)。
+- **`/backend`**（頻道管理員，和 `/model` 相同）— 把 instance 換到另一個 CLI backend：先選 backend，再選模型（`/model` 的清單，或預設），再選推理強度（`/effort` 的等級；backend 沒有推理強度就跳過），最後確認。instance 只在最後**重新啟動一次**，並開**全新的 session**：對話不會跨 backend 延續。`/backend <backend> [模型] [推理強度]` 會直接跳到確認。2.3 beta 起，每個 backend 都會列出，並附上這台主機對它的判斷（[後端可用性](#後端可用性與模型清單-backend-availability-and-model-lists-23-beta)）：未安裝、未登入或版本太舊的會停用並寫出原因，直接打出來也會被拒絕並說明原因；尚未檢查的仍可選；目前使用中的 backend 永遠不會停用。Discord 的選單無法停用單一選項，所以原因寫在選項文字裡，選了就會告訴你為什麼。只適用 fleet instance；ClassicBot agent 的 backend 在 `classicBot.yaml` 或設定頁裡設定。
 - **`/effort`**（頻道管理員）— 設定推理強度（`low` / `medium` / `high` / `xhigh` / `max`，會限制在後端接受的範圍內）。Claude Code、Grok、Antigravity 和 Muse 可以在執行中直接更改；Kiro CLI 和 Codex 要重啟 instance 才會生效；OpenCode 沒有推理強度設定。agent 可以用 `get_effort` 讀取。
 
 ## 每日摘要 (Daily summary)
@@ -633,7 +633,9 @@ resume 預算、resume 重試和故障短路只針對 kiro（屬於後端能力�
 
 Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板。其中的 `/ui` 就是**網頁聊天**：選一個 instance，就能在瀏覽器裡跟它對話。這和那個 instance 在 Telegram 或 Discord 上的是同一段對話：從網頁送出的訊息會以 `🌐 web · <你的名字>: …` 出現在 topic，Agent 的回覆兩邊都看得到。用 `/web` 的驗證碼登入時，對 Agent 來說你就是你的 Discord 或 Telegram 帳號（用它的使用者 id，`via web`，只用來辨認；見 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md#agent-看到的是誰1827)）。可以傳檔案和圖片（📎、貼上或拖進來）、按 Stop，也看得到每則訊息送到哪一步；沒有設定任何聊天平台的 fleet，也能只靠儀表板操作。`/view` 是以檢視為主的總覽，`/settings` 是 fleet 設定。
 
-用一次性登入碼登入：傳 `/web`（fleet 管理員），或在主機上執行 `agend web`。要從手機或其他電腦使用，請看[從別的裝置連線](web-dashboard.zh-TW.md#從別的裝置連線)。完整說明在 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md)。
+用一次性登入碼登入：傳 `/web`（fleet 管理員），或在主機上執行 `agend web`。開啟[訪客登入](#訪客網頁登入-guest-web-sign-in-23-beta)後（2.3 beta，預設關閉），其他人傳 `/web` 會以訪客身分登入，只看得到他們在聊天中本來就能用的 agent。要從手機或其他電腦使用，請看[從別的裝置連線](web-dashboard.zh-TW.md#從別的裝置連線)。完整說明在 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md)。
+
+**ClassicBot 聊天室也會同步網頁聊天（2.3 beta，#2054）。** 從網頁傳給 ClassicBot agent 的訊息會貼到它的聊天室（`🌐 web · <名字>: …`），群組頻道也一樣；除非聊天室在 `classicBot.yaml` 設了 `web_echo`（或在聊天室的設定裡切換**網頁同步**），否則依照 `web.echo_to_channel`。升級後，只要 fleet 的 `web.echo_to_channel` 沒有關閉，從沒設定過的聊天室就會開始同步；要讓那個聊天室保持安靜，就設 `web_echo: false`。
 
 ## 遠端登入 CLI（`/login`）
 
@@ -665,6 +667,19 @@ profile 存放在 fleet 底下的 `~/.agend/credential-profiles/<backend>/<profi
 **ClassicBot 頻道（#1220）。** `classicBot.yaml` 裡的頻道也接受同樣的 `backend_options.<backend>.credential_profile`，而且優先於從 fleet defaults 繼承來的 profile（值為空或 `null` 代表用共用的登入）。頻道的 agent 會以這個 profile 啟動，`/usage` 會把它算在那份訂閱的那一列（例如 `Codex (personal)`），`kiro_engine_status` 也會回報它。profile 名稱無法使用時，這個頻道的 agent 會直接不啟動，而不是改用別的登入執行。更改 profile 會重啟該頻道的 agent。
 
 `/usage`、`get_usage` 和儀表板都是每份訂閱各一列，絕不加總。完整說明見英文版 [configuration](configuration.md#credential-profiles-multiple-subscriptions-of-one-backend)。
+
+## 後端可用性與模型清單 (Backend availability and model lists, 2.3 beta)
+
+AgEnD 會保存一份「這台主機能跑什麼」的快照（#2072），每個 backend 的狀態是**可用**、**未安裝**、**未登入**、**版本太舊**（只有 kiro-cli 有最低版本 2.21.0），或**未知**（還沒檢查，或無法判斷）。讀取時不會啟動任何可能自我更新或連網的 CLI：版本從磁碟讀取（muse 的 `.muse-version`、npm 安裝的套件自己的 `package.json`、claude 的 `…/versions/<v>`、codex 的 `…/releases/<v>-<target>/`），讀不到時只在 Linux 上以無網路的方式（`unshare -rn`）執行 `<cli> --version`，期限 5 秒；讀不到版本就是未知，絕不會判為「太舊」。登入狀態從憑證檔與 API key 環境變數判斷，絕不向帳號查詢；macOS 上的 Claude 把登入存在鑰匙圈裡，因此在那裡是未知。有憑證 profile 的 instance，看的是那個 profile 的登入。快照在啟動時、每 10 分鐘、以及每次 `/login` 之後更新，請求只讀取它。探測失敗會保留上一次的明確結果，而且只有明確的結果才會停用：未知的仍可選，套用時會再檢查一次。
+
+會用到它的地方：
+- 聊天裡的 **`/backend`**（見[上方](#診斷與各-agent-的聊天指令-diagnostics-and-per-agent-chat-commands)）：不能用的 backend 會停用並寫出原因，直接打出來也會被拒絕。
+- **網頁的新增 agent 對話框，以及設定頁的每個 backend 欄位**（agent、fleet 預設、ClassicBot 預設與聊天室、Fleet → Config）：「未安裝」、「未登入（請用 /login）」與「需要 X 以上版本」會停用並寫出原因；「尚未檢查」仍可選；目前的值永遠可選，已經移除的 backend 會排在最前面並標示已移除。
+- ClassicBot 的 `/start` backend 清單與設定精靈也讀同一份快照。`create_instance` 工具本身不檢查它。
+
+模型清單：
+- **`/model`** 與網頁聊天的模型選項，列的是 instance 所用帳號能跑的模型。Claude Code 的憑證 profile 各有自己的清單，用那個 profile 的登入讀取；Codex 與 Kiro 的 profile 則每個 backend 共用一份。instance 正在用的模型一定在選項裡；CLI 清單裡沒有的會排在最前面，標示「目前使用中 — 不在這個 CLI 的清單裡」。
+- **設定頁的每個模型欄位**（agent 的模型與備援模型、fleet 預設、ClassicBot 聊天室、新增 agent 對話框）都是下拉選單，列出那個 backend 對那個帳號的快取清單，打開時絕不探測。目前的模型一定列出；**其他…** 會打開一個文字框，裡面預先填好目前的名稱，可以改成 CLI 接受的其他名稱，清空則改為沿用。新增 agent 對話框選 **Fleet 預設**時，列的是 fleet 預設 backend 的模型。
 
 ## 內建工作流程模板 (Built-in workflow template)
 
@@ -1126,17 +1141,56 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 
 每個世界的 General topic 都有一則持續更新的**「需要你處理」**訊息，彙整該世界的 instance 所有等待操作者處理的事項——投遞確認、掛起警告、權限請求。每個 General 只顯示自己世界的 instance（owner-scoped）；`/ui` 的網頁動態消息則是全艦隊可見。訊息中的每個項目都能一鍵前往對應的地方操作：instance 的獨立 topic 或訊息本身的現有按鈕。唯一新增的互動是對目前沒有按鈕的投遞項目加上**確認（Acknowledge）**功能。任何介面上解決的項目都會在所有介面上消失。在 `/ui` 中，**等你處理**（`/ui/needs`）是一個附側欄標記與可選桌面通知的面板（#1408 第 4 步）。設計文件：[docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md)。
 
+## 連到訊息要你去的地方 (Links to where a message sends you, 2.3 beta)
+
+在 Discord 與 Telegram 上，要你去另一個 topic 的訊息會附上連結（#1990）：要你改到 General 的回覆，結尾會有連到 General 的「→ General」；instance 指向 General 的通知也有同樣的連結；General 提到某個 instance 的通知，會把名稱連到那個 instance 的 topic；跨 instance 的狀態行會連到另一端。Telegram 的連結放在文字本身上，Discord 則是頻道提及。ClassicBot 聊天室、別的 bot 的 instance，以及來自 agent 或 pane 的文字，都不會有連結。等你處理的私訊只會對群組成員附上連到群組的連結（用 fleet 自己的 bot 確認，快取 10 分鐘）；公開 Telegram 群組的連結使用它的 @username。
+
 ## 網頁應用程式外殼（#1408）
 
 `/ui` 以單頁式 Preact + htm 應用程式重建（無需建置步驟；Preact 和 htm 以源碼形式隨附於 `src/ui/shared/vendor/`）。第一步提供 **Chat** 面板（`/ui/chat/<instance>`）和 **Fleet** 面板（`/ui/fleet`）。第二步提供 **View** 面板（`/view` 及 `/view/<instance>`），第三步提供 **Settings** 面板（`/settings` 及 `/settings/<section>`）。排版和版面設計以 ChatGPT 網頁介面為參考（僅參考設計語言——不使用 OpenAI 的程式碼或素材）。聊天執行緒保持為由 Preact 元件掛載的鍵值 DOM 渲染器。第四步加入 **等你處理** 面板（`/ui/needs`）。設計文件：[docs/design/1408-app-shell.md](design/1408-app-shell.md)。
 
 之後陸續加入：
-- **Fleet → 組織圖**（`/ui/fleet/org`，#1389）：General、team 與 instance，各自附上即時狀態與討論串連結。
-- **Fleet → 快取**（`/ui/fleet/cache`，#1468）：每個 instance 的提示快取過期分析與保溫建議。資料來自本機 transcript，以牌價計算，並顯示查證日期。
+- **Fleet → 組織圖**（`/ui/fleet/org`，#1389；2.3 beta 起是畫布，#1918）：General 在最上面，接著是依 `fleet.yaml` 順序排列的 team，最後是不屬於任何 team 的 instance；每張卡片顯示頭像、身分色、狀態與 backend，點一下會打開它的聊天。拖曳平移；用滾輪、雙指縮放、+／−／Fit 按鈕或 `+ - 0` 鍵縮放；總覽小地圖可以直接跳過去；點 team 會把它收合成依狀態統計的成員數；搜尋會淡化不符合的項目。**清單**模式用文字說同樣的內容。這裡不能編輯任何東西。**即時流量**會在 instance 之間為每則訊息畫一條線（`delegate_task`、`send_to_instance`、`report_result`、`request_information`、`broadcast`）：排隊中是虛線，傳送中是移動的虛線，送達後 3 秒淡出；廣播給超過 8 個對象（或縮小檢視時的任何廣播）會變成每個 team 一條線並標示 ×N。只帶兩端的名稱，絕不帶訊息內容，也不包含 `cross_instance_visibility: hidden` 的 instance。公開連結也看得到，每 5 秒更新一次。側欄的 **Fleet 總覽**會打開它。
+- **Fleet → 快取**（`/ui/fleet/cache`，#1468）：每個 instance 的提示快取過期分析與保溫建議。資料來自本機 transcript，以牌價計算，並顯示查證日期。2.3 beta 起（#2010）會顯示 5 分鐘與 1 小時快取寫入的比例，並實際量測 5 分鐘快取能撐多久：計算每個 instance 過去 7 天內 5 到 60 分鐘的間隔，至少有 10 個時，若最多 10% 重寫了快取，就當作 1 小時來模擬；若至少一半重寫了，卡片會建議改用 `backend_options.claude-code.prompt_cache_ttl: "1h"` 而不是保溫（這個自選設定會在 instance 下次啟動時帶入 `CLAUDE_CODE_PROMPT_CACHE_TTL`；不設定時由 CLI 自己決定）。agent 可以用 `get_cache_report` 讀取同一份報告：General、coordinator 與 full 權限組合看得到所有 instance，其他 instance 只看得到自己那一列。
+- **新增 agent**（2.3 beta，#2074）：側欄清單最後的按鈕會打開新增 agent 對話框。側欄收合時，☰ 旁邊的 **+** 有同樣的作用；手機上它在選單抽屜裡。只有能新增 agent 的 session 看得到它。
+- **篩選側欄時**（2.3 beta，#1936）：你正在看的 instance 會留在最上面的**目前**底下，不論是否符合篩選。
+- **可以點開 instance 的名稱**（2.3 beta，#1990）：聊天裡跨 instance 的狀態行中，對方的名稱會打開它的聊天；提示卡片裡的 instance 名稱會打開它的 View。agent 或人寫的訊息永遠不會有這種連結。
 - **聊天的指令與快速動作**（#1269）：打 `/` 即可透過相同的處理程式與指令表，執行 instance 自己 topic 的指令。超過 4,000 字元的貼上會改成文字檔附加，內容變長時聊天會停在最新訊息。
 - **紀錄分頁**（#1218）：每個 instance 有一個「紀錄」面板，逐步顯示每一則提示、agent 的回覆（不含思考過程）、每次工具呼叫的參數與結果、錯誤，以及 fleet 事件如當機或重啟。分頁開著時才從 agent 的 transcript 按需讀取，有人在看時即時更新；機密值會遮蔽，長文字截斷。預設關閉（`web.log_tab`）；fleet admin 在「設定 → 網頁」開啟後，公開連結也看得到。claude-code 與 codex 完整支援；其他 backend 只顯示 fleet 事件；kiro 會另外說明原因，待確認所在對話後才能顯示它自己的步驟。
 
 詳見 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md)。
+
+## 訪客網頁登入 (Guest web sign-in, 2.3 beta)
+
+預設關閉（#1920）。開啟後，不是 fleet 管理員的人也能用自己的 Discord 或 Telegram 帳號登入儀表板，只看得到他們在聊天中本來就能用的 agent。第一、二階段已在 2.3.0-beta.4；設定 → 網頁 → 訪客卡片，以及訪客精簡版的介面，會在它之後推出。
+
+**開啟方式。** **設定 → 網頁 → 訪客**裡有**訪客登入**與**訪客可以聊天**兩個開關；每個 `open` 連線各有一份它的訪客可以接觸的 agent 清單；以及每個訪客帳號：名稱、平台與 id、能接觸的 agent、session 與裝置、最後活動時間，加上**收窄**、**取消收窄**與**登出**。會擴大訪客範圍的變更（開啟、開啟聊天、加入 agent、取消收窄）要等 fleet 管理員確認；縮小範圍的變更立即生效。公開連結上這張卡片是停用的。也可以寫在 `fleet.yaml`：
+
+```yaml
+web:
+  guests:
+    enabled: true          # 預設 false
+    chat: true             # 預設 true；false：訪客只能讀
+    open_instances:        # open 連線的訪客只能接觸這些（預設沒有）
+      <連線 id>: [helper]
+    narrow:                # "<連線 id>:<使用者 id>"：只會縮小
+      "<連線 id>:123456789": [helper]
+    session: { absolute_hours: 12, idle_minutes: 120 }   # 1–24 小時，15–720 分鐘
+```
+
+**取得登入碼。** 訪客傳 `/web`：可以在 General 或任何 fleet topic 打字、用斜線指令，或在 ClassicBot 聊天室裡（Telegram 群組要用 `/web@你的Bot`）。登入碼一律私下送出，透過私訊或斜線指令的私人回覆，絕不會貼在他們發問的地方。在 Telegram 上，如果 bot 還不能私訊對方，回覆會附上 bot 的連結，在那裡按 **Start** 就會收到登入碼。每個帳號一次只有一組碼，有效 5 分鐘，每分鐘最多要一次。管理員開著[公開連結](web-dashboard.zh-TW.md#從別的裝置連線)時，私訊會附上它，登入碼在那裡也能用；開連結的管理員會先在自己的 General 收到通知，登入才會完成，通知送不出去時登入會被拒絕。每次訪客登入都會在 General 貼出通知。訪客自己傳 `/web revoke` 只會結束自己的 session、登入碼與記住的裝置。
+
+**訪客能接觸什麼**（每次請求時重新計算，絕不儲存）：
+- 它所在連線的 fleet topic 與 General，前提是那個連線的存取設定讓這個帳號進來（允許名單或已配對）；`open` 連線則只有 `open_instances` 裡列出的 agent。
+- 它自己的 Telegram 私人 ClassicBot 聊天室。
+- 同一連線上的 ClassicBot 群組聊天室，前提是成員身分已經確認：Telegram 用 `getChatMember`；Discord 要求這個人在伺服器裡，並在那裡擁有「檢視頻道」與「讀取訊息歷史」，私人討論串還要是討論串成員（或擁有「管理討論串」）。答案在背景讀取（登入時、訪客頁面連線時，以及之後每 10 分鐘），只有在 15 分鐘內確認是成員，聊天室才會顯示；聊天室還在檢查時，頁面會等待，而不是把訪客登出。
+- 最後套用 `narrow`，它只會縮小範圍。
+
+fleet 管理員永遠不會是訪客。
+
+**訪客能做什麼。** 和這些 agent 聊天，包括它的頻道顯示過的歷史、檔案、回覆按鈕與「取消」；`chat: false` 時訪客只能讀。它永遠不能下指令：以 `/` 開頭的文字會被拒絕。agent 看到的是 `[user:<名稱> via web (guest), id:<id>]`，打字的訊息和按鈕點擊都一樣；和所有網頁訊息一樣，這只用來辨認。它的介面只有這些：沒有 Fleet、View、設定、等你處理、新增 agent 或小工具，並有一個**訪客**標籤標出登入的是誰。它讀得到主機的外觀（主題、語言），但讀不到任何提到 agent 的偏好，也可以設定自己的網頁名稱。
+
+**Session。** 預設絕對時限 12 小時、閒置 2 小時（`web.guests.session`），絕不超過所在介面本身的時限（公開連結是 4 小時／30 分鐘）；每個帳號最多 4 個、全部最多 64 個，和管理員分開計算，所以訪客永遠不會把管理員擠掉。範圍變成空的訪客會被登出；關閉訪客登入會結束所有訪客 session，並忘記所有訪客記住的裝置，再次開啟也不會讓任何一個恢復。
 
 ## 網頁儀表板的 instance 身份識別（#1630）
 
@@ -1158,9 +1212,13 @@ bot 頭像與 fleet 所在 Discord 伺服器的自訂表情，會在主機上用
 
 **Mod** 是帶著這樣一套外觀的單一檔案：主題與圖片、身分卡文字、小工具、效果與自訂 CSS。在 **設定 → 網頁外觀 → Mod** 分兩步匯入：先列出全部內容，再一次套用你勾選的部分。檔案裡的自訂 CSS 永遠不會預先勾選。同一張卡片也能把外觀匯出成檔案。
 
-`web.themes.agent_edit: false` 會拒絕所有 agent 的外觀變更；`web.appearance` 設定身分卡的上傳限制。細節請見 [網頁儀表板](web-dashboard.zh-TW.md) 的「自訂 CSS」、「Agent 的主題」、「身分卡」、「小工具」與「Mod」。
+`web.themes.agent_edit: false` 會拒絕所有 agent 的外觀變更；`web.appearance` 設定身分卡的上傳限制。agent 的變更至少相隔 30 秒，每小時最多 10 次；2.3 beta 起，它的上傳（圖片、效果、提案的 mod）不再計算次數（#2083），但每個圖片欄位的大小限制、agent 的圖片配額與每個檔案本身的上限仍然適用。
 
-### 擁有者效果偏好（2.3 開發中）
+**網頁外觀頁面**（2.3 beta，#2071）把卡片分在五個標題底下：**外觀**（agent 主題開關、附範例列的身分色、卡片大小）、**你的版面**（你的側欄小工具）、**你寫的樣式**（自訂 CSS，以及只在這台裝置關閉它）、**附加元件**（mod、效果與你的效果選擇）和**進階**（身分卡上傳限制、還原預設值）；每張卡片標題旁的 **?** 會打開指南裡對應的段落。公開連結上這一頁只顯示一則說明。
+
+**橫幅焦點（2.3 beta，#2086）。** 身分卡的橫幅繪製時絕不寬於 5:1（更寬的畫面會把它置中，放在模糊的副本上），也絕不窄於 9:4（會裁掉兩側），所以在 1600×600 的橫幅上，有一塊水平置中、大約 1350×320 的區域在各種卡片大小與版面都看得到。這塊區域會隨下面的焦點上下移動；焦點為預設的 50 時，它位於圖片中央。焦點從 0（頂端）到 100（底部），預設 50，決定高的圖片要顯示哪一部分：agent 用 `card.bannerFocus` 設定，人在 View 的**編輯資料**用滑桿設定（人的設定優先），General 用 `set_web_settings` 設定。細節請見 [網頁儀表板](web-dashboard.zh-TW.md) 的「自訂 CSS」、「Agent 的主題」、「身分卡」、「小工具」與「Mod」。
+
+### 擁有者效果偏好（2.3 beta）
 
 後端已依網頁登入身分保存五個擁有者效果選擇（`fx.sidebar`、`fx.header`、`fx.page`、`fx.box`、`fx.cursor`）。
 Discord 與 Telegram 身分各自獨立，不合併帳號。透過 `agend web --code` 登入的純網頁使用者，使用
@@ -1175,9 +1233,9 @@ agent 前景效果維持暫停（人類放入的效果保留原有例外）。
 
 選單、對話框、Keep／導覽提示與取得焦點的輸入框會暫停所有前景效果。背景效果仍須先證明 stock 層級正確；
 人類放入的效果也不能繞過這些限制。聊天的前景狀態連到外觀設定，指出造成限制的自訂 CSS。詳見
-[2.3 開發預覽](whats-new-2.3.zh-TW.md)；可信前景平面留待 2.3.x 後續處理（#1940）。
+[2.3 預覽](whats-new-2.3.zh-TW.md)；可信前景平面留待 2.3.x 後續處理（#1940）。
 
-### 聊天效果與靜態封面（2.3 開發中）
+### 聊天效果與靜態封面（2.3 beta）
 
 本機登入的聊天在同意預覽，且通過目前的安全與 stock 驗證後，可播放已放置的 Canvas Worker 效果；
 「更多 → 效果」提供暫停、恢復與經授權的移除。預覽不可用、未同意預覽、動態／節流設定禁止播放，
@@ -1194,3 +1252,18 @@ agent 前景效果維持暫停（人類放入的效果保留原有例外）。
 提議最多十分鐘到期，試用綁定 session／epoch，每次讀取重新檢查來源代理目前的持有／共享權限。不建立保存的放置、
 持有權、共享或匯出。暫存的伺服器授權、本機管理員介面、主機面板與共用 app pool 一起執行此邊界。卡片只保留在記憶體，會原地過期，不會從磁碟還原；晚到的有效開始回應只會被停止，不會掛載。Try 使用 manifest 預設參數，不寫入保存的量測紀錄，但仍沿用必要的安全紀錄。詳見
 [Try 邊界](design/1629-effect-trial-authority.md)。
+
+完整的範例 [click-sparks](examples/click-sparks.zh-TW.md) 示範一個效果從 `effect.json` 到 `upload_web_effect` 與 `apply_web_effect` 的整個過程：點擊處會爆出火花，按住拖曳會留下軌跡（512 px、30 fps、128 個粒子；#2043）。人也可以把它選進頁面或方塊欄位。
+
+### General 替你修改網頁外觀 (General changes Web appearance for you, 2.3 beta)
+
+General、coordinator 與 full 權限組合的 instance，可以用 `get_web_settings` 與 `set_web_settings` 替使用者讀取和修改「設定 → 網頁外觀」（#2056）。修改走的是頁面自己的儲存、檢查與通知，所以每個開著的頁面都會重新讀取。每次呼叫一項變更：
+- 主機設定：是否顯示 agent 主題、卡片大小與個別 agent 的大小、身分色顯示的位置、關閉身分色、側欄小工具（`null` 會改回預設）。
+- 某個 agent 的身分色（預設色或 `#rrggbb`）與顯示的位置。
+- 橫幅焦點。
+- 某個人的自訂 CSS（`person`；預設是主機操作者）：儲存（會先進入試用）、保留、還原、切換到先前存過的版本，或關閉；64 KiB、不准遠端網址與 `asset:` 的規則照舊（#2081）。
+- agent 提案的 mod：檢查、安裝勾選的部分（自訂 CSS 絕不會自動勾選）、取消、略過或解除安裝；人自己從檔案匯入的 mod 屬於那個人，會被拒絕。
+- 在某個聊天套用或移除效果，以及某個人的效果欄位（側欄、標頭、頁面、方塊、游標）。
+- 還原預設值：主機設定與那個人的自訂 CSS（這台裝置上的自訂 CSS 開關留給本人決定）。
+
+只能在頁面上做的事：從那個人的電腦選檔案（mod、效果資料夾、CSS 素材、身分卡圖片）、這個瀏覽器自己的開關（只在這台裝置關閉自訂 CSS、暫停播放）、下載匯出檔，以及身分卡上傳限制。`get_web_settings` 會把這些列在 `page_only`。`web-appearance` skill 會帶 General 一步步完成。

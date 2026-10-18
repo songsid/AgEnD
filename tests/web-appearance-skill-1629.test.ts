@@ -15,6 +15,7 @@ import { AGENT_WHATS_NEW, compareVersions, planWhatsNew } from "../src/agent-wha
 import { PREVIEW_FILE as VIEW_PREVIEW_FILE } from "../src/web-appearance-view.js";
 import { PREVIEW_FILE as PARTS_PREVIEW_FILE } from "../src/web-asset-parts.js";
 import * as W from "../src/web-widget.js";
+import { DEFAULT_PLACEMENTS } from "../src/web-identity-palette.js";
 
 const SKILL = readFileSync(join(process.cwd(), "src/general-knowledge/skills/web-appearance/SKILL.md"), "utf8");
 
@@ -29,6 +30,21 @@ describe("the web-appearance skill", () => {
     const named = [...SKILL.matchAll(/`([a-z_]+)`/g)].map(m => m[1]!).filter(n => /^(get|set|reset|preview)_/.test(n));
     expect(named.filter(n => !names.has(n))).toEqual([]);
     for (const t of ["get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme", "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget", "export_web_mod", "propose_web_mod"]) expect(SKILL, t).toContain(`\`${t}\``);
+  });
+  it("the host's default colour places are the code's (#2056: all three, no longer ring and bar)", () => {
+    const words = `${DEFAULT_PLACEMENTS.slice(0, -1).join(", ")} and ${DEFAULT_PLACEMENTS.at(-1)}`;
+    expect(SKILL).toContain(`the host's default applies (${words})`);
+    expect(SKILL).toContain(`${words} unless changed`);
+    expect(SKILL).not.toMatch(/ring and bar/);
+  });
+  it("its set_web_settings table has a row for every `what` the tool takes, and the tool says banner focus", () => {
+    const src = readFileSync(join(process.cwd(), "src/outbound-schemas.ts"), "utf8");
+    const body = src.slice(src.indexOf("export const SetWebSettingsArgs"), src.indexOf("export const", src.indexOf("export const SetWebSettingsArgs") + 1));
+    const whats = [...body.matchAll(/what: z\.literal\("([a-z_]+)"\)/g)].map(m => m[1]!);
+    expect(whats).toContain("banner_focus");
+    for (const w of whats) expect(SKILL, w).toContain(`\n| \`${w}\` |`);
+    const tool = TOOLS.find((t: { name: string }) => t.name === "set_web_settings") as { description: string };
+    expect(tool.description).toMatch(/banner focus/);
   });
   it("its numbers are the code's: slots, sizes, rate limits, text limits, contrast", () => {
     for (const slot of THEME_ASSET_SLOTS) expect(SKILL, slot).toContain(`| \`${slot}\` |`);

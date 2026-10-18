@@ -10,7 +10,7 @@
  *   3. role    — the own bot's colour from its highest coloured Discord role (never a shared bot's);
  *   4. auto    — one of a few soft colours, chosen by a stable hash of the name (two instances may share one).
  * The placements, likewise: a person's choice for this instance > the agent's (theme.identity.show, while themes are
- * shown) > the host's default (web prefs `color.show`, else ring + bar). The host may turn colours off altogether
+ * shown) > the host's default (web prefs `color.show`, else name, bar and ring — #2056). The host may turn colours off altogether
  * (`color.off`): nothing is drawn, and every pick is kept for when they come back.
  *
  * A colour is kept and sent as `preset:<id>`, `auto:<id>` (both drawn with their light or dark value, readable on the
@@ -67,7 +67,7 @@ export function resolveIdentityColor(t: IdentityColorTiers, opts: { showThemes: 
   if (role) return { color: role as IdentityColor, source: "role" };
   return { color: t.auto, source: "auto" };
 }
-/** Where the colour shows: a person's choice, else the agent's (themes shown), else the host's default, else ring + bar. */
+/** Where the colour shows: a person's choice, else the agent's (themes shown), else the host's default, else all three (DEFAULT_PLACEMENTS). */
 export function resolvePlacements(t: PlacementTiers, opts: { showThemes: boolean; hostDefault?: unknown }): { show: Placement[]; source: PlacementSource } {
   const person = canonicalPlacements(t.person);
   if (person) return { show: person, source: "person" };

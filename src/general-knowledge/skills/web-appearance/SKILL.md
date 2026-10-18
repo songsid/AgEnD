@@ -41,6 +41,7 @@ of this skill).
 |---|---|---|
 | `host` | `themes_shown`, `card_size` (s/m/l), `card_sizes` ({instance: s/m/l}), `colour_places` (name/bar/ring), `colours_off`, `sidebar_widget` ({spec, data}) — null puts one back to its default | `{ what: "host", set: { colour_places: ["name","ring"] } }` |
 | `agent_colour` | one agent's colour (`preset:<name>` or `#rrggbb`) and places; null resets each | `{ what: "agent_colour", instance: "atlas", colour: "preset:teal" }` |
+| `banner_focus` | which part of one agent's cropped card banner stays in view: `focus` 0 (top) … 100 (bottom), 50 the centre; it wins over the agent's own `card.bannerFocus`; null follows the agent's again | `{ what: "banner_focus", instance: "atlas", focus: 20 }` |
 | `custom_css` | `save` (with `text`): goes **on trial** on their screens (it goes back by itself unless kept); `keep` (the trial), `revert` (the trial), `use` (with `version`: an earlier saved one, at once), `off` | `{ what: "custom_css", action: "save", text: "…" }`; ask how it looks, then `keep` only when they say so |
 | `mod` | an agent's proposal: `review` (instance → `stage`, `plan`, `plan_hash`), then `install` (stage, plan_hash, `include`: the parts, `target`: the agent); `cancel`, `dismiss`, `uninstall` (id) | review, show the user the plan, install only what they asked for — never custom CSS unasked. A person has one review open at a time: while theirs is open (`mod_review_open`) ask them to finish it; a mod they imported from a file is theirs to install (`mod_not_from_an_agent`) |
 | `effect` | `apply` (instance, id, params?) or `remove` (instance, id?) an effect on a chat | |
@@ -101,7 +102,7 @@ Typed values only; anything else is refused with `{ errors: [{ path, problem }] 
 - `identity`: `{ color?, show? }`: your identity colour and where it shows.
   - `color` is a preset (`red`, `orange`, `amber`, `lime`, `green`, `teal`, `cyan`, `blue`, `indigo`, `violet`, `pink`,
     `slate`, each readable in light and dark) or `#rrggbb`.
-  - `show` is a list of `name`, `bar` and `ring` (`[]` for nowhere). Left out, the host's default applies (ring and bar).
+  - `show` is a list of `name`, `bar` and `ring` (`[]` for nowhere). Left out, the host's default applies (name, bar and ring).
   - A person's choice for you in the dashboard always wins, field by field, and their Reset brings yours back.
     `get_web_appearance` says which is in force.
 - `bubble`: `{ radius: 0..24, border: "none" | "thin" | "accent" }`.
@@ -163,7 +164,7 @@ your picture. Set yours with `set_web_theme({ set: { identity: { color, show } }
   themes) > your own bot's Discord **role** colour > an **automatic** soft colour chosen from your name (two instances
   may share one).
 - **Where it shows**: a person's choice for you > yours (`identity.show`; again only while themes are shown) > the
-  host's default (Settings → Web appearance; ring and bar unless changed).
+  host's default (Settings → Web appearance; name, bar and ring unless changed).
 - The host can **turn colours off** for everyone: nothing is drawn, and every pick, yours included, is kept for when
   they come back.
 - `get_web_appearance`'s `identity_color` shows what is in force: `color`, `source` (`person`, `agent`, `role`, `auto`),
