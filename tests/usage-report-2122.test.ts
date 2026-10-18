@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { addTurn, emptyLedger, pruneLedger, reviveLedger, type FileCursor, type Ledger } from "../src/cache-ledger.js";
 import { addCoverage, covered, emptyDays, foldHours, hourSources, localDate, readDays, reviveDays, COVERAGE_MAX } from "../src/usage-rollup.js";
 import { buildUsageReport, rangeDates, usageBasis, usageRange, type UsageInstanceInput } from "../src/usage-report.js";
-import { CacheService } from "../src/cache-service.js";
+import { CacheService, rolloutMeta } from "../src/cache-service.js";
 import { RolloutIndex } from "../src/rollout-index.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { humanBodyHash, nativeHumanOrigin } from "../src/human-delivery-receipts.js";
@@ -236,6 +236,28 @@ describe("§5.5 a source that could not be listed or read is never covered", () 
       expect((await coverage()).length, what).toBe(n);
       await svc.stop();
     }
+  });
+  it.skipIf(process.getuid?.() === 0)("Codex: listed and stat'ed, but its first session_meta read fails (EACCES, no meta cache): not covered; readable again, covered", async () => {
+    const root = tmp(), wd = join(root, "wd"), rollout = join(root, "codex", "rollout-1.jsonl");
+    mkdirSync(join(root, "codex"), { recursive: true }); mkdirSync(wd);
+    writeFileSync(rollout, JSON.stringify({ type: "session_meta", payload: { cwd: wd } }) + "\n");
+    chmodSync(rollout, 0o000);                                               // stat works; open does not
+    const { svc, coverage } = service(root, { backend: "codex", unreadable: 0, listRollouts: () => [{ path: rollout, mtimeMs: now }] });
+    await svc.kick();
+    expect(await coverage()).toEqual([]);
+    chmodSync(rollout, 0o600);
+    await svc.kick();
+    expect(await coverage()).toEqual([[now - 31 * DAY, now]]);
+    expect((await svc.usageData()).instances[0]!.status).toBe("ok");
+    await svc.stop();
+  });
+  it.skipIf(process.getuid?.() === 0)("rolloutMeta: gone or unfinished is null (read again later); there but unreadable says so", async () => {
+    const root = tmp(), path = join(root, "rollout-2.jsonl");
+    expect(await rolloutMeta(path)).toBeNull();                              // ENOENT
+    writeFileSync(path, '{"type":"session_meta"');                           // the first line is still being written
+    expect(await rolloutMeta(path)).toBeNull();
+    chmodSync(path, 0o000);
+    expect(await rolloutMeta(path)).toBe("unreadable");
   });
   it("the rollout index counts what it could not read, not what is gone", () => {
     const err = (code: string) => Object.assign(new Error(code), { code });

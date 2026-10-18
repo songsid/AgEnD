@@ -401,6 +401,8 @@ export class CacheService {
       // Read once per physical file; a first line still being written is read again next pass.
       if (!m || m.ino !== st.ino) {
         const read = await rolloutMeta(r.path);
+        // Unreadable (not gone, not just unfinished): whose it is cannot be known, so no codex instance is covered.
+        if (read === "unreadable") { unlisted(); delete this.meta![r.path]; continue; }
         if (read) { m = this.meta![r.path] = read; this.metaDirty = true; } else { delete this.meta![r.path]; continue; }
       }
       const name = m.cwd ? byCwd.get(resolve(m.cwd)) : undefined;
@@ -508,10 +510,11 @@ async function cwdKeys(dir: string): Promise<string[]> {
 
 /**
  * A rollout's session_meta, read with one bounded read through the descriptor whose inode it records. Null while the
- * first line is not complete yet (the next pass reads it again); `cwd: null` for a complete first line that is not
- * a session_meta.
+ * first line is not complete yet, or the file is gone (the next pass reads it again); `cwd: null` for a complete first
+ * line that is not a session_meta; "unreadable" when it is there and could not be read (EACCES, EIO… — #2122: not a
+ * real absence).
  */
-export async function rolloutMeta(path: string): Promise<{ ino: number; cwd: string | null } | null> {
+export async function rolloutMeta(path: string): Promise<{ ino: number; cwd: string | null } | null | "unreadable"> {
   let fh;
   try {
     fh = await open(path, "r");
@@ -524,8 +527,8 @@ export async function rolloutMeta(path: string): Promise<{ ino: number; cwd: str
       const d = JSON.parse(buf.toString("utf8", 0, nl)) as { type?: unknown; payload?: { cwd?: unknown } };
       return { ino, cwd: d.type === "session_meta" && typeof d.payload?.cwd === "string" ? d.payload.cwd : null };
     } catch { return { ino, cwd: null }; }
-  } catch {
-    return null;
+  } catch (err) {
+    return gone(err) ? null : "unreadable";
   } finally {
     await fh?.close().catch(() => {});
   }
