@@ -15,7 +15,7 @@
 //   Review → Apply (at once) — and back on the public link: the rows. Only the usage read's own 403 is an accepted error.
 // Every page logs no error. Guests are covered by the unit tests (no Fleet route, no dialog link).
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf \
-//   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2122-usage.mts
+//   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2122-usage.mts        (PW_ENGINE=webkit: the same in WebKit)
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -41,6 +41,13 @@ for (const name of KEEP) { const wd = join(SRC, "wd", String([...KEEP].indexOf(n
 const wdOf = (name: string) => fm.fleetConfig.instances[name].working_directory as string;
 
 const failed: string[] = [];
+// WebKit-only lines that are the engine's, never the dashboard's (as smoke-ambient, #2127) — accepted, but printed:
+// its internal sheet for each <select> ("Refused to apply a stylesheet…", renders identically), the viewport meta's
+// interactive-widget key it doesn't know, and a stream or poll a navigation cancels ("… due to access control checks").
+const WEBKIT = process.env.PW_ENGINE === "webkit";
+const KNOWN_WEBKIT = /Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline'|Viewport argument key "interactive-widget" not recognized|cannot load .* due to access control checks/;
+const known: string[] = [];
+const pageErrors = (errors: string[]) => errors.filter(e => { if (WEBKIT && KNOWN_WEBKIT.test(e)) { known.push(e); return false; } return true; });
 const check = (ok: boolean, what: string) => { console.log(`${ok ? "ok  " : "FAIL"} ${what}`); if (!ok) failed.push(what); };
 const DAY = 86_400_000, now = Date.now();
 const dayOf = (k: number) => new Date(now - k * DAY).toISOString().slice(0, 10);
@@ -100,7 +107,7 @@ delete fm.fleetConfig.instances[A!];
   check(t.includes("Nothing recorded yet") && t.includes("Usage is read from Claude Code and Codex transcripts"), `empty: "${t}"`);
   check(!!(await text(p.page, ".us-basis")), "empty: the basis line is still there");
   await p.page.screenshot({ path: shotPath(SMOKE, desk, "empty"), fullPage: true });
-  check(p.errors.length === 0, `empty: no page errors (${p.errors.join(" | ")})`);
+  check(pageErrors(p.errors).length === 0, `empty: no page errors (${pageErrors(p.errors).join(" | ")})`);
   await p.ctx.close();
 }
 fm.fleetConfig.instances[A!] = configA;
@@ -188,14 +195,15 @@ if (process.env.DEBUG) {
   const aRequests = lines.filter(l => l.split(",")[2] === A).reduce((n, l) => n + Number(l.split(",")[13] || 0), 0);
   check(aRequests === 21, `desk: CSV rows sum to A's requests over all (4×4 + the older day's 5): ${aRequests}`);
   check(await noOverflow(p.page), "desk: no horizontal overflow");
-  check(p.errors.length === 0, `desk: no page errors (${p.errors.join(" | ")})`);
+  check(pageErrors(p.errors).length === 0, `desk: no page errors (${pageErrors(p.errors).join(" | ")})`);
   await p.ctx.close();
 }
 
 // ── phone, dark, zh-TW, a LAN origin, reduced motion: from the ◔ dialog ──
 {
   const phone = { device: "phone", theme: "dark", lang: "zh-TW" } as const;
-  const p = await open(phone, { origin: "lan", reducedMotion: true });
+  // WebKit has no host resolver rules (smoke-fixture): its phone case is on loopback; Chromium's is on a LAN origin.
+  const p = await open(phone, { origin: process.env.PW_ENGINE === "webkit" ? "loopback" : "lan", reducedMotion: true });
   await p.page.click(".tabs a.tab:nth-of-type(3)");                              // the tab bar's Fleet
   await p.page.waitForSelector(".p-fleet .hd-usage", { timeout: 10000 });
   await p.page.click(".p-fleet .hd-usage");                                      // ◔ in Fleet's header
@@ -217,7 +225,7 @@ if (process.env.DEBUG) {
   check(scrolls.some(Boolean), `phone: a chart wider than the screen scrolls inside its own box (${scrolls.join(",")})`);
   const atEnd = await p.page.$$eval(".us-scroll", (s: any[]) => s.filter(x => x.scrollWidth > x.clientWidth).every(x => x.scrollLeft + x.clientWidth >= x.scrollWidth - 2));
   check(atEnd, "phone: a scrolling chart opens at its latest days");
-  check(p.errors.length === 0, `phone: no page errors (${p.errors.join(" | ")})`);
+  check(pageErrors(p.errors).length === 0, `phone: no page errors (${pageErrors(p.errors).join(" | ")})`);
   await p.ctx.close();
 }
 
@@ -230,6 +238,7 @@ if (process.env.DEBUG) {
   const link = await openPublicLink(fx);
   const p = await link.publicPage(pub, { path: "/ui/fleet/usage" });
   const publicUsage = p.page.url();
+  if (process.env.DEBUG) { p.page.on("pageerror", (e: any) => console.log("PAGEERR", p.page.url(), String(e?.stack ?? e).slice(0, 600))); p.page.on("framenavigated", (fr: any) => { if (fr === p.page.mainFrame()) console.log("NAV", fr.url()); }); }
   await p.page.waitForSelector(".p-fleet .empty", { timeout: 10000 });
   const title = await text(p.page, ".p-fleet .empty-title"), hint = await text(p.page, ".p-fleet .empty-hint");
   check(title === "Not offered over the public link", `public: blocked: "${title}"`);
@@ -239,8 +248,11 @@ if (process.env.DEBUG) {
   check(fixHref === `http://localhost:${port}/settings/web`, `public: the fix link is this computer's Settings → Web: ${fixHref}`);
   await p.page.screenshot({ path: shotPath(SMOKE, pub, "public-blocked"), fullPage: true });
   // Follow it. The dashboard reached directly asks this browser to sign in there (its own origin), as it would.
+  const beforeNav = p.errors.length;
   await p.page.click(".us-fix");
   await p.page.waitForSelector("#code", { timeout: 15000 });
+  // WebKit: a fetch the public page had in flight is cancelled by this navigation ("Load failed"), only in this window.
+  const navCancelled = new Set(p.errors.slice(beforeNav).filter(e => WEBKIT && /^Unhandled Promise Rejection: TypeError: Load failed$/.test(e)));
   const { tokenEpoch } = await import(REPO + "/src/web-session.ts");
   const code = fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken), recipient: link.owner }).display;
   await p.page.fill("#code", code);
@@ -256,9 +268,11 @@ if (process.env.DEBUG) {
   for (let k = 0; k < 40 && fm.fleetConfig.web?.usage_report_on_public_link !== true; k++) await new Promise(r => setTimeout(r, 250));
   check(fm.fleetConfig.web?.usage_report_on_public_link === true, "public: the switch was applied from Settings → Web (at once, nothing to confirm)");
   await p.page.screenshot({ path: shotPath(SMOKE, pub, "public-fix-settings"), fullPage: true });
-  // Back on the public link: the rows.
+  // Back on the public link: the rows. (WebKit: leaving Settings cancels its own fetch in flight — "Load failed".)
+  const beforeBack = p.errors.length;
   await p.page.goto(publicUsage);
   await p.page.waitForSelector(".us-row", { timeout: 15000 });
+  for (const e of p.errors.slice(beforeBack)) if (WEBKIT && /^Unhandled Promise Rejection: TypeError: Load failed$/.test(e)) navCancelled.add(e);
   check((await p.page.$$(".us-row")).length >= 3, "public: after the fix, the rows");
   check(await noOverflow(p.page), "public: no horizontal overflow");
   await p.page.screenshot({ path: shotPath(SMOKE, pub, "public-on"), fullPage: true });
@@ -266,13 +280,16 @@ if (process.env.DEBUG) {
   // answering this browser's first visit there before it signed in (the page itself, and the sign-in page's
   // /auth/session — the same pair every fresh sign-in has). Anything else fails.
   const local = `http://localhost:${port}`;
-  const unexpected = p.errors.filter(e => !((/status of 403/.test(e) && /\/ui\/usage-report\?/.test(e))
+  const unexpected = pageErrors(p.errors.filter(e => !navCancelled.has(e))).filter(e => !((/status of 403/.test(e) && /\/ui\/usage-report\?/.test(e))
     || (/status of 401/.test(e) && (e.endsWith(`@ ${local}/settings/web`) || e.endsWith(`@ ${local}/auth/session`)))));
+  if (navCancelled.size) known.push(...navCancelled);
   check(unexpected.length === 0, `public: no page errors besides the refused usage read (${unexpected.join(" | ")})`);
   await p.ctx.close();
   await link.close();
 }
 
+if (known.length) console.log(`WebKit's own lines, accepted (${known.length}):\n  ${[...new Set(known)].join("\n  ")}`);
+console.log(`engine: ${WEBKIT ? "webkit" : "chromium"} ${fx.browser.version()}`);
 await fx.close();
 console.log(failed.length ? `\n${SMOKE}: ${failed.length} FAILED` : `\n${SMOKE}: PASS`);
 process.exit(failed.length ? 1 : 0);
