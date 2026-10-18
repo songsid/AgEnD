@@ -50,7 +50,7 @@ Almost everything already exists in the prompt-cache report's ledger (#1468, #20
 ### 2.1 tokscale as the reference
 
 tokscale (github.com/junhoyeo/tokscale, MIT License, "Copyright (c) 2025 Junho Yeo"; the repo's `LICENSE` was read
-2026-10-18 at commit `e2039b1`) parses about 55 clients into one `UnifiedMessage` with `TokenBreakdown {input, output,
+2026-10-18 at commit `e2039b141411a72e2d5ed5e813512d7125947cbc`) parses about 55 clients into one `UnifiedMessage` with `TokenBreakdown {input, output,
 cache_read, cache_write, cache_write_1h, reasoning}`. It was read only, never run.
 
 **What we take from it** (as knowledge; no code is adapted in 2.3):
@@ -139,7 +139,7 @@ subscription quotas gains a "By agent →" link.
 - **Freshness:**
   - "Updated <time> · read every 10 min".
   - While the scanner catches up, "Scanning — totals may still grow"; it never blocks.
-  - "Collected since <date>", with any gap named (§5.5).
+  - "Collected since <date>", and not-collected periods named as such (§5.5).
 - **Phone:** rows become cards. The chart scrolls inside its own box, and the page never scrolls sideways.
 
 ### Agent read: `get_usage_report`
@@ -209,25 +209,44 @@ this is rare.
 ### 5.4 Messages: delivered, once, by receipt
 
 - **Where it's counted:** a per-instance hourly counter, the SQLite table `usage_message_hours(instance, hour, count)`
-  in the delivery database. It is incremented **in the same transaction** that moves a human receipt from queued to
-  `delivered` (`settleHumanReceipt`).
-- **Why this counts once:** the state machine allows that transition once, so each receipt counts once and atomically.
-  Failed and uncertain handoffs never count. The page, the tool and the CSV call it "delivered messages".
-- **Receipt retention doesn't matter:** receipts are pruned after `retention_days`, 30 by default, but the counter
+  in the delivery database.
+- **When it's incremented:** **in the same transaction** as a human receipt's **first transition to `delivered` from
+  any other state**. `settleHumanReceipt` moves any non-delivered state to `delivered`, and never moves a receipt
+  that is already `delivered`. So:
+  - `queued → delivered` counts once;
+  - so does `queued → uncertain → delivered`, when positive proof arrives later;
+  - a receipt that stays `uncertain` or `failed` never counts;
+  - a repeated settle of a delivered receipt changes nothing, because the guarded UPDATE matches no row and the counter
+    isn't touched.
+- **Which hour:** the hour of the receipt's actual `delivered_at`, not its admission. A delivery late enough to fall
+  at or before the checkpoint (§5.2) would be a clock jump. It is counted in the current hour instead, and noted in
+  `late_dropped`'s sibling `late_moved`.
+- **What it's called:** the page, the tool and the CSV call it "delivered messages".
+- **Receipt retention doesn't matter:** receipts are pruned after `retention_days` (30 by default), but the counter
   isn't a scan of receipts.
 - **Folding:** at the checkpoint, the same fold step moves counter rows into D, writes D, then deletes the rows at or
   before the checkpoint. A crash in between leaves rows at or before the checkpoint, which are skipped and deleted
   next time.
 
-### 5.5 Coverage
+### 5.5 Coverage: what was read, not what was used
 
+An hour with no ledger bucket can simply be an idle hour: the ledger makes a bucket only when a turn happened. So
+coverage is recorded **by the scanner**, never inferred from missing buckets.
 - **Collection starts at fleet start.** It doesn't wait for the page to be opened: the existing lazy `CacheService`
-  timer starts at boot. It is bounded the same way, at 16 MB a pass.
-- **Coverage is recorded:** D records each instance's first collected hour, plus a **gap** whenever a fold finds the
-  ledger's earliest hour later than the checkpoint plus one. That happens when the fleet was stopped longer than the
-  ledger keeps.
-- **What the page shows:** "Collected since <date>" and "No data <from>–<to> (AgEnD wasn't running)". "All" means all
-  that was collected.
+  timer starts at boot, bounded the same way, at 16 MB a pass.
+- **Coverage intervals:** each instance's D keeps a short list of merged UTC intervals `[from, to]`. A pass that
+  finishes **caught up** at time T adds `[T − 31 days, T]`, since every source changed in that window has been read up
+  to T. Adjacent and overlapping intervals merge, so the list stays short.
+- **Each hour is one of:**
+  - **covered:** inside an interval. No bucket there means **0**, a real zero.
+  - **not caught up yet:** after the last caught-up time, while the scanner works. "Scanning — totals may still grow."
+  - **not collected:** outside every interval, for example before the first pass or while nothing was read for longer
+    than the read window. The page says "not collected", **without a reason**.
+- **AgEnD stopped:** a reason is shown only with evidence. The fleet records its start time and each pass's time; a
+  hole between the last pass before a restart and that restart can be shown as "AgEnD wasn't running (recorded)".
+  Nothing else claims why data is missing.
+- **On the page:** "Collected since <first interval>"; "all" means all that was collected; the heatmap draws
+  not-collected days differently from zero days.
 
 ### 5.6 Serving and memory
 
@@ -263,14 +282,18 @@ It covers:
 - "not priced" for an unknown model;
 - "not measured" for kiro, grok, agy, muse and opencode, each with its reason;
 - the empty state ("Nothing recorded yet — usage is read from Claude Code and Codex transcripts");
-- a coverage gap;
+- a covered idle period (zeros) beside a not-collected period;
 - the public link, both blocked and opted in;
 - a guest, absent;
 - the CSV download's rows and `basis` column.
 
-Each state is screenshotted and its message asserted. Unit tests pin §5: fold idempotence across a crash at each step,
-the never-prune-past-checkpoint rule, profile provenance across a profile switch, zone recording, and messages counted
-once on delivered only.
+Each state is screenshotted and its message asserted. Unit tests pin §5:
+- fold idempotence across a crash at each step, and the never-prune-past-checkpoint rule;
+- profile provenance across a profile switch, and zone recording;
+- messages counted once: `queued → delivered`, `queued → uncertain → delivered` and a repeated settle all count 1,
+  and a receipt left `uncertain` counts 0, in the hour of `delivered_at`;
+- coverage: a fleet running all day but used only at 09:00 and 17:00 reads 10:00–16:00 as covered zeros. An interval
+  before the first pass reads "not collected", and a recorded restart hole reads "AgEnD wasn't running (recorded)".
 
 ## 8. Docs and skills, in the same PR
 
