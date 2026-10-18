@@ -68,6 +68,13 @@ export type Checked<T> = { ok: true; value: T } | { ok: false; errors: AmbientPr
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+/**
+ * #2155: a client that read an older declaration of the ranges (a tuple, which codex turned into `Array<string>`) sends
+ * `["3", "6"]`. A plain decimal string in one of these arrays is taken as its number; anything else is left as it is,
+ * for the check to refuse.
+ */
+const DECIMAL = /^\s*-?(?:\d+(?:\.\d*)?|\.\d+)\s*$/;
+const numbers = (v: unknown): unknown => Array.isArray(v) ? v.map(x => typeof x === "string" && DECIMAL.test(x) ? Number(x) : x) : v;
 /** Two decimals are plenty for seconds, pixels and opacity, and keep the stored spec short. */
 const round = (n: number) => Math.round(n * 100) / 100;
 
@@ -115,7 +122,7 @@ export function checkAmbient(raw: unknown, opts: { glyphAsset?: (id: string) => 
     return round(v);
   };
   const range = (key: string, [lo, hi]: Range, dflt: Range): [number, number] => {
-    const v = raw[key];
+    const v = numbers(raw[key]);
     if (v === undefined) return [dflt[0], dflt[1]];
     if (!Array.isArray(v) || v.length !== 2 || !v.every(isNum) || v[0] < lo || v[1] > hi || v[0] > v[1]) {
       bad(key, `[min, max] within ${lo}..${hi}${key === "duration" ? ` seconds for ${preset}` : ""}`);
@@ -132,7 +139,7 @@ export function checkAmbient(raw: unknown, opts: { glyphAsset?: (id: string) => 
   const rotate = num("rotate", [0, AMBIENT_ROTATE_MAX], AMBIENT_ROTATE_DEFAULT);
   let opacity: [number, number, number] = [...AMBIENT_OPACITY_DEFAULT];
   if (raw.opacity !== undefined) {
-    const o = raw.opacity;
+    const o = numbers(raw.opacity);
     if (!Array.isArray(o) || o.length !== 3 || !o.every(x => isNum(x) && x >= 0 && x <= 1)) bad("opacity", "[start, peak, end], each 0..1");
     else opacity = [round(o[0]), round(o[1]), round(o[2])];
   }

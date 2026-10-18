@@ -238,7 +238,9 @@ export const SetWebWidgetArgs = z.object({
     .describe("Values by key: a number, a line of text, a list of lines (list) or numbers (spark). With spec: the widget's values. Alone: merged into the placed widget's values (null removes a key) — its own budget, 10 s apart."),
 });
 // #2117: your own ambient — declarative (a preset and its glyphs; the dashboard draws it), always yours.
-const AmbientRange = z.tuple([z.number(), z.number()]);
+// #2155: fixed-length plain arrays, never z.tuple — a tuple serialises to `prefixItems` (2020-12; `$schema` is stripped
+// for clients), which codex turns into `Array<string>`. tests/tool-schema-portability-2155.test.ts keeps it out.
+const AmbientRange = z.array(z.number()).length(2);
 export const SetWebAmbientArgs = z.object({
   preset: z.enum(["fall", "rise", "twinkle", "burst-on-click"]).describe("fall / rise: particles drifting down or up behind your chat, endlessly; twinkle: glyphs pulsing in place; burst-on-click: glyphs scatter from where a person clicks or taps. A chat has one looping ambient (fall, rise or twinkle) and one burst-on-click: setting one replaces only its own kind"),
   glyphs: z.array(z.union([z.string().max(32), z.object({ asset: z.string() }).strict()])).min(1).max(4).describe("1..4 glyphs, picked at random per particle: a short string of 1..2 characters (an emoji, ✦, ❀), or { asset: <id> } — a picture you uploaded with set_web_theme_asset slot glyph (png, webp or gif, ≤ 64 KiB, ≤ 128 px)"),
@@ -249,7 +251,7 @@ export const SetWebAmbientArgs = z.object({
   sway: z.number().optional().describe("Sideways drift in px for fall and rise, 0..80 (default 40)"),
   spread: AmbientRange.optional().describe("[min, max] px a burst scatters, 20..120 (default [34, 90])"),
   rotate: z.number().optional().describe("Degrees a particle turns over its run, 0..720 (default 300)"),
-  opacity: z.tuple([z.number(), z.number(), z.number()]).optional().describe("[start, peak, end], each 0..1 (default [0, 0.85, 0.15])"),
+  opacity: z.array(z.number()).length(3).optional().describe("[start, peak, end], each 0..1 (default [0, 0.85, 0.15])"),
   layer: z.literal("behind").optional().describe("Always behind your chat's messages (a burst shows over them briefly, never taking a click)"),
 }).strict();
 export const ClearWebAmbientArgs = z.object({

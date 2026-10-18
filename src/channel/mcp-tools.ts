@@ -160,7 +160,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["remove_web_widget", schemas.RemoveWebWidgetArgs,
     "Remove your own widget from one slot, or both (a change for the rate limit). A widget a person placed stays."],
   ["set_web_ambient", schemas.SetWebAmbientArgs,
-    "Set your own ambient effect on the web dashboard: a preset (fall, rise, twinkle, burst-on-click) with your glyphs, colours and a few numbers — data only; the dashboard draws it behind your chat (falling petals 🌸❀✿, snow, click stars ✦✧). No code, no consent or preview needed, unlike a Canvas Worker effect. A chat has one looping ambient and one burst-on-click. Shown only where a person shows agents' looks, never with reduced motion. Returns { kind, ambient, rev } or { errors: [{ path, problem }] }. A change for the rate limit; refused while a person locked your look or set that ambient."],
+    "Set your own ambient effect on the web dashboard: a preset (fall, rise, twinkle, burst-on-click) with your glyphs, colours and a few numbers — data only; the dashboard draws it behind your chat (falling petals 🌸❀✿, snow, click stars ✦✧). No code, no consent or preview needed, unlike a Canvas Worker effect. A chat has one looping ambient and one burst-on-click. Shown only where a person shows agents' looks (it plays with the system's reduced motion on, unless that device chose to follow it). Returns { kind, ambient, rev } or { errors: [{ path, problem }] }. A change for the rate limit; refused while a person locked your look or set that ambient."],
   ["clear_web_ambient", schemas.ClearWebAmbientArgs,
     "Clear your own ambient effect: the looping one, the click one, or both (a change for the rate limit). One a person set stays."],
   ["export_web_mod", schemas.ExportWebModArgs,
