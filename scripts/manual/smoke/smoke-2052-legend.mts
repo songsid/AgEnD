@@ -3,11 +3,17 @@
 // - At the opening view the key is a **Key** toggle in the toolbar: nothing over the canvas, the bottom-left team in view
 //   uncovered.
 // - Opened, its rows are a strip between the toolbar and the canvas: below the toolbar, above the canvas, over no card.
-// - Desk light (English) and phone dark (zh-TW, reduced motion, a LAN origin): no horizontal overflow, the toggle on
-//   screen; kept per device (a reload keeps it open). No page error.
+// - Desk light (English) and phone dark (zh-TW, reduced motion, a LAN origin — Chromium; WebKit has no host-resolver
+//   rule, so its phone case is on 127.0.0.1): no horizontal overflow, every toolbar control on screen; kept per device
+//   (a reload keeps it open).
+// - The temporary public link (desk light, reduced motion): the real PublicWebLink, gateway and routes
+//   (openPublicLink); a fresh profile signs in through the link's own visible /signin and reaches Org the same way.
+//   Stubbed, as the harness says: the tunnel and cloudflared, the owner check, the General notice, and the transport
+//   (Playwright carries https://<demo>.trycloudflare.com to the gateway's local port).
+// - No page error at all: nothing is filtered.
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2052-legend.mts
 //   (PW_ENGINE=webkit for WebKit: see smoke-emoji-tofu.mts's header for the in-Docker recipe)
-import { bootFixture, freshPage, mounted, shotPath, type FreshPage } from "../smoke-fixture/index.mts";
+import { bootFixture, freshPage, mounted, openPublicLink, shotPath, type FreshPage } from "../smoke-fixture/index.mts";
 
 const SMOKE = "smoke-2052-legend";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48490), classic: false });
@@ -17,7 +23,6 @@ const REAL = /^(agend-|rd1-|awp-|doupo-)|^(web-claude|sol|fable|qa-1|a)$|-t\d{10
 for (const name of Object.keys(fm.fleetConfig.instances)) if (REAL.test(name)) delete fm.fleetConfig.instances[name];
 for (const t of Object.values(fm.fleetConfig.teams ?? {}) as Array<{ members: string[] }>) t.members = t.members.filter((m) => !REAL.test(m));
 const ENGINE = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";
-const KNOWN_WEBKIT = /Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline'|Viewport argument key "interactive-widget" not recognized|cannot load .* due to access control checks/;
 
 async function openOrg(p: FreshPage) {
   await mounted(p.page);
@@ -51,9 +56,8 @@ const MEASURE = `(() => {
 const overlaps = (a: any, b: any) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
 const results: Array<{ name: string; ok: boolean; [k: string]: unknown }> = [];
-for (const [name, c, opts] of [["desk-light-en", { device: "desk", theme: "light", lang: "en" }, {}],
-  ["phone-dark-zh-TW-lan-reduced", { device: "phone", theme: "dark", lang: "zh-TW" }, ENGINE === "webkit" ? { reducedMotion: true } : { origin: "lan", reducedMotion: true }]] as const) {
-  const p = await freshPage(fx, c as any, opts as any);
+async function runCase(name: string, open: () => Promise<FreshPage>) {
+  const p = await open();
   await openOrg(p);
   const m0 = await p.page.evaluate(MEASURE) as any;
   await p.page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-${name}`, "1-opening") });
@@ -74,13 +78,18 @@ for (const [name, c, opts] of [["desk-light-en", { device: "desk", theme: "light
   await p.page.reload();
   await p.page.waitForSelector(".oc-svg .oc-node", { timeout: 10000 });
   chk.keptOpen = await p.page.waitForSelector(".oc-legend", { timeout: 5000 }).then(() => true, () => false);
-  const errors = p.errors.filter((e) => !(ENGINE === "webkit" && KNOWN_WEBKIT.test(e)));
-  chk.noErrors = errors.length === 0;
+  chk.noErrors = p.errors.length === 0;
   const failed = Object.entries(chk).filter(([, v]) => !v).map(([k]) => k);
-  results.push({ name, ok: !failed.length, failed });
-  console.log(`${failed.length ? "FAIL" : "ok  "} ${ENGINE}-${name}${failed.length ? ` [${failed.join(", ")}] ${JSON.stringify({ m0: { key: m0.key, svg: m0.svg, overflow: m0.overflow, clipped: m0.toolsClipped }, m1: { strip: m1.strip, bar: m1.bar, svg: m1.svg } }).slice(0, 500)} ${JSON.stringify(errors).slice(0, 200)}` : ""}`);
+  results.push({ name, ok: !failed.length, failed, errors: p.errors });
+  console.log(`${failed.length ? "FAIL" : "ok  "} ${ENGINE}-${name}${failed.length ? ` [${failed.join(", ")}] ${JSON.stringify({ m0: { key: m0.key, svg: m0.svg, overflow: m0.overflow, clipped: m0.toolsClipped }, m1: { strip: m1.strip, bar: m1.bar, svg: m1.svg } }).slice(0, 500)} ${JSON.stringify(p.errors).slice(0, 400)}` : ""}`);
   await p.ctx.close();
 }
+await runCase("desk-light-en", () => freshPage(fx, { device: "desk", theme: "light", lang: "en" }));
+await runCase(ENGINE === "webkit" ? "phone-dark-zh-TW-reduced" : "phone-dark-zh-TW-lan-reduced",
+  () => freshPage(fx, { device: "phone", theme: "dark", lang: "zh-TW" }, ENGINE === "webkit" ? { reducedMotion: true } : { origin: "lan", reducedMotion: true }));
+const link = await openPublicLink(fx);
+await runCase("public-link-desk-light-en-reduced", () => link.publicPage({ device: "desk", theme: "light", lang: "en" }, { reducedMotion: true }));
+await link.close();
 const bad = results.filter((r) => !r.ok);
 console.log(bad.length ? `FAIL ${bad.map((b) => b.name).join(", ")}` : `PASS (${ENGINE})`);
 await fx.close();
