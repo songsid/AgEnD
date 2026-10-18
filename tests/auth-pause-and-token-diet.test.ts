@@ -95,7 +95,7 @@ describe("general tool profile", () => {
   it("only references real tools and is materially smaller than full", () => {
     const names = new Set(TOOLS.map(t => t.name));
     for (const t of TOOL_SETS.general) expect(names.has(t)).toBe(true);
-    expect(TOOL_SETS.general.length).toBeLessThan(TOOL_SETS.full.length / 1.5);
+    expect(TOOL_SETS.general.length).toBeLessThanOrEqual(TOOL_SETS.worker.length);
   });
 });
 

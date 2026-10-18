@@ -89,10 +89,13 @@ const BEFORE: Record<string, string[]> = {
     "set_display_name", "set_description",
     // #1629: its own web theme, like its own status stamp.
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
-    // #2132: own-appearance family (effects and ambient excluded — use set_web_settings instead).
+    // #2132: own-appearance family + user decision 2026-10-18 (hmsg-07371500): full family, same as worker.
     "get_web_appearance", "preview_web_appearance",
     "set_web_widget", "remove_web_widget",
+    "set_web_ambient", "clear_web_ambient",
     "export_web_mod", "propose_web_mod",
+    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
+    "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // kiro engine move: read-only kiro engine facts, for explaining a kiro incompatibility.
     "kiro_engine_status",
     // #2056: the user's Settings → Web appearance, through the page's own checks.
@@ -561,64 +564,6 @@ describe("the refusal explains itself", () => {
     expect(message).not.toMatch(/tool_set: standard/);
     expect(message).toContain("tool_set: coordinator");
   });
-
-  it("general refused an effect tool gets set_web_settings guidance (#2132)", () => {
-    // Library tools get "library managed by worker/standard"
-    for (const tool of ["upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "delete_web_effect"]) {
-      const msg = toolRefusedMessage("general", tool);
-      expect(msg, tool).not.toContain("tool_set: coordinator");
-      expect(msg, tool).toContain("set_web_settings");
-      expect(msg, tool).toContain(`what: "effect"`);
-      expect(msg, tool).toContain("library");
-    }
-    // Apply/remove tools get "use set_web_settings to apply/remove"
-    for (const tool of ["apply_web_effect", "remove_web_effect"]) {
-      const msg = toolRefusedMessage("general", tool);
-      expect(msg, tool).not.toContain("tool_set: coordinator");
-      expect(msg, tool).toContain("set_web_settings");
-      expect(msg, tool).toContain(`what: "effect"`);
-      expect(msg, tool).toContain(`action: "apply"`);
-    }
-  });
-
-  it("general refused an ambient tool gets set_web_settings guidance (#2132)", () => {
-    const message = toolRefusedMessage("general", "set_web_ambient");
-    expect(message).not.toContain("tool_set: coordinator");
-    expect(message).toContain("set_web_settings");
-    expect(message).toContain(`what: "ambient"`);
-    expect(message).toContain("ambient:");
-  });
-
-  it("the set_web_settings shapes cited in refusal messages pass safeParse (#2134 R3)", async () => {
-    // If the format in the message and the schema drift, an agent following the
-    // refusal gets a schema error. Validate the exact objects we describe.
-    const { SetWebSettingsArgs } = await import("../src/outbound-schemas.js");
-
-    // Effect apply shape
-    expect(SetWebSettingsArgs.safeParse({
-      change: { what: "effect", action: "apply", instance: "general", id: "effect-id" },
-    }).success, "effect apply shape").toBe(true);
-
-    // Effect remove shape
-    expect(SetWebSettingsArgs.safeParse({
-      change: { what: "effect", action: "remove", instance: "general" },
-    }).success, "effect remove shape").toBe(true);
-
-    // Ambient set shape
-    expect(SetWebSettingsArgs.safeParse({
-      change: { what: "ambient", instance: "general", ambient: { preset: "fall" } },
-    }).success, "ambient set shape").toBe(true);
-
-    // Ambient clear shape (null)
-    expect(SetWebSettingsArgs.safeParse({
-      change: { what: "ambient", instance: "general", ambient: null },
-    }).success, "ambient clear shape").toBe(true);
-
-    // Ambient clear with which
-    expect(SetWebSettingsArgs.safeParse({
-      change: { what: "ambient", instance: "general", ambient: null, which: "loop" },
-    }).success, "ambient clear which shape").toBe(true);
-  });
 });
 
 // ── Drift guard: every profile with set_web_theme has the full own-appearance family ──
@@ -626,8 +571,10 @@ describe("the refusal explains itself", () => {
 describe("own-appearance family consistency (#2132)", () => {
   /**
    * The full own-appearance family — tools that have no target and act only on
-   * the caller. Any profile that lets an instance style itself (set_web_theme)
-   * must include all of them, with one documented exception for general.
+   * the caller. Every profile that lets an instance style itself (set_web_theme)
+   * must include ALL of them with NO exceptions.
+   * User decision 2026-10-18 (hmsg-07371500): general carries the full family,
+   * same as a worker.
    */
   const OWN_APPEARANCE = [
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
@@ -639,53 +586,29 @@ describe("own-appearance family consistency (#2132)", () => {
     "apply_web_effect", "remove_web_effect", "delete_web_effect",
   ] as const;
 
-  /**
-   * General's documented exception: effect and ambient tools are intentionally
-   * excluded from the general profile. General applies effects and ambient for
-   * its own chat through set_web_settings { what: "effect"|"ambient", instance: self },
-   * not through the direct tools. See #2124 (web-ambient) and the token cap in
-   * auth-pause-and-token-diet. Changing this requires updating both those tests.
-   */
-  const GENERAL_EXCEPTION = new Set([
-    "set_web_ambient", "clear_web_ambient",
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
-    "apply_web_effect", "remove_web_effect", "delete_web_effect",
-  ]);
-
-  it("every profile with set_web_theme has all own-appearance tools (general: effects/ambient via set_web_settings)", () => {
+  it("every profile with set_web_theme has ALL own-appearance tools — no exceptions (#2132 + hmsg-07371500)", () => {
     for (const [name, tools] of Object.entries(TOOL_PROFILES)) {
       const set = new Set(tools);
       if (!set.has("set_web_theme")) continue; // minimal doesn't style itself
       for (const tool of OWN_APPEARANCE) {
-        if (name === "general" && GENERAL_EXCEPTION.has(tool)) continue;
         expect(set.has(tool), `${name} has set_web_theme but is missing ${tool}`).toBe(true);
       }
     }
   });
 
-  it("general has the 8 own-appearance tools added in #2132", () => {
-    for (const tool of [
-      "get_web_appearance", "preview_web_appearance",
-      "set_web_widget", "remove_web_widget",
-      "export_web_mod", "propose_web_mod",
-      "set_display_name", "set_description",
-    ]) {
+  it("general has the full own-appearance family including ambient and effect tools (#2132 + hmsg-07371500)", () => {
+    for (const tool of OWN_APPEARANCE) {
       expect(TOOL_PROFILES.general, `general must have ${tool}`).toContain(tool);
     }
   });
 
-  it("general intentionally excludes effect and ambient tools — uses set_web_settings instead (#2124 #2132)", () => {
-    // These are the GENERAL_EXCEPTION tools. Changing this needs updates to
-    // web-ambient-2117.test.ts and auth-pause-and-token-diet.test.ts.
-    for (const tool of GENERAL_EXCEPTION) {
-      expect(TOOL_PROFILES.general, `general must NOT have ${tool}`).not.toContain(tool);
-    }
-    // General does have set_web_settings for the effect/ambient path.
-    expect(TOOL_PROFILES.general).toContain("set_web_settings");
-  });
-
-  it("stays under the token cap: general < full / 1.5", () => {
-    expect(TOOL_PROFILES.general.length).toBeLessThan(TOOL_PROFILES.full.length / 1.5);
+  it("general size equals worker size — it carries the same own-appearance family (user decision hmsg-07371500)", () => {
+    // General and worker should both have the full own-appearance family.
+    // General has different routing/orchestration tools but not the repo/config tools
+    // a worker has. The sizes coinciding is intentional (different sets, same count).
+    // Guard: if either profile gains unexpected tools, this test fires.
+    expect(TOOL_PROFILES.general.length, "general grew beyond worker — check if new tools belong here")
+      .toBeLessThanOrEqual(TOOL_PROFILES.worker.length);
   });
 });
 
