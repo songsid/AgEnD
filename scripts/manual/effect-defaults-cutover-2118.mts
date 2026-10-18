@@ -26,7 +26,7 @@ function pixels(png){
  return{red,width:w,height:h,pixel:(x,y)=>[...b.subarray((Math.floor(y)*w+Math.floor(x))*c,(Math.floor(y)*w+Math.floor(x))*c+3)]};
 }
 for(const engine of engines)for(const origin of origins)for(const width of widths)for(const theme of modes)for(const reduced of reductions){
- const key=[engine,origin,width,theme,reduced?'reduce':'normal'].join('-');let fx=null,browser=null,ctx=null,link=null,page=null;const row={key,engine,origin,width,theme,reduced,status:'failed',fromDefaults:true,visibleSignIn:true,seededPrefs:false,seededConsent:false,realSafari:false,physicalPhone:false};
+ const key=[engine,origin,width,theme,reduced?'reduce':'normal'].join('-');let fx=null,browser=null,ctx=null,link=null,page=null,capture=null;const row={key,engine,origin,width,theme,reduced,status:'failed',fromDefaults:true,visibleSignIn:true,seededPrefs:false,seededConsent:false,realSafari:false,physicalPhone:false};
  try{
   fx=await bootFixture({port:19280,instances:8});await fx.fm.stopPreviewListener();fx.fm.fleetConfig.web.preview=false;
   assert.ok(!fx.fm.previewListener?.server?.listening);row.previewListenerAbsentBeforeSignIn=true;
@@ -35,19 +35,31 @@ for(const engine of engines)for(const origin of origins)for(const width of width
   const view={...fx,browser:actualBrowser},name=fx.instances[0].name;
   const code=process.env.PROBE_MUTATION==='no-paint'?'agend.ready();':"const c=agend.canvas.getContext('2d');function draw(){c.fillStyle='#ed174c';c.fillRect(0,0,4096,4096)}draw();agend.on('env',draw);agend.ready();";
   const staged=fx.fm.effectLibrary.stage(new Map([['effect.json',Buffer.from(JSON.stringify({v:1,runtime:'canvas-worker-v1',worker:'worker.js',name:'defaults-smoke',title:'Visible defaults sample',regions:['chat'],layer:'front',wants:[]}))],['worker.js',Buffer.from(code)]]),{kind:'agent',id:name});assert.equal(staged.ok,true);const commit=fx.fm.effectLibrary.commit(staged.stageId);assert.equal(commit.ok,true);const id=commit.ids[0];assert.ok(!fx.fm.effectTools.apply(name,{id}).error);assert.equal((await fx.fm.effectTools.preview(name,{id})).status,"offered");
-  const beforeNavigate=async ctx=>ctx.addInitScript(()=>{globalThis.__defaultViolations=[];document.addEventListener('securitypolicyviolation',e=>globalThis.__defaultViolations.push({directive:e.effectiveDirective,blocked:e.blockedURI,source:e.sourceFile,line:e.lineNumber,column:e.columnNumber,sample:e.sample,target:e.target?.outerHTML?.slice(0,500)}))});
+  const beforeNavigate=async ctx=>ctx.addInitScript(()=>{globalThis.__defaultViolations=[];globalThis.__defaultStyleInserts=[];new MutationObserver(rs=>{for(const r of rs)for(const n of r.addedNodes)if(n.nodeName==='STYLE')globalThis.__defaultStyleInserts.push(n.textContent)}).observe(document,{childList:true,subtree:true});document.addEventListener('securitypolicyviolation',e=>globalThis.__defaultViolations.push({directive:e.effectiveDirective,blocked:e.blockedURI,source:e.sourceFile,line:e.lineNumber,column:e.columnNumber,sample:e.sample,target:e.target?.outerHTML?.slice(0,500)}))});
   const c={device:width<900?'phone':'desk',theme,lang:'en'};let fresh;
   if(origin==='public'){link=await openPublicLink(view);fresh=await link.publicPage(c,{reducedMotion:reduced,beforeNavigate})}else fresh=await freshPage(view,c,{origin,reducedMotion:reduced,beforeNavigate});
-  ({page,ctx}=fresh);assert.equal(await mounted(page),true);row.version=browser.version();row.signInErrors=fresh.expected;
+  ({page,ctx}=fresh);
+  capture=async options=>{
+   const count=async()=>new Map(await Promise.all(page.frames().map(async f=>[f,await f.evaluate(()=>globalThis.__defaultStyleInserts?.filter(s=>s==='body {}').length||0).catch(()=>0)])));
+   const prior=await count(),start=fresh.errors.length,buffer=await page.screenshot({caret:"initial",...options});await page.waitForTimeout(0);
+   const after=await count(),injected=[...after].reduce((n,[f,v])=>n+Math.max(0,v-(prior.get(f)||0)),0);
+   const indices=fresh.errors.map((e,i)=>i>=start&&/^Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy\. @ https?:\/\//.test(e)?i:null).filter(i=>i!==null);
+   // Playwright/WebKit screenshot synchronization inserts exactly `body {}` into each frame.
+   // Its no-op inline stylesheet is correctly refused by the product CSP. Match each observed
+   // DOM insertion to one capture-local diagnostic; unrelated/outside-capture violations stay errors.
+   if(engine==='webkit'&&indices.length&&indices.length===injected){(row.captureCompatibility??=[]).push({injectedBodyRules:injected,diagnostics:indices.map(i=>fresh.errors[i])});for(const i of indices)(row.captureErrorIndices??=[]).push(i)}
+   return buffer;
+  };
+  assert.equal(await mounted(page),true);row.version=browser.version();row.signInErrors=fresh.expected;
   const requests=[];page.on('response',r=>{if(/\/effect-bootstrap|\/ui\/effects\//.test(r.url()))requests.push({url:new URL(r.url()).pathname,status:r.status()})});
   const a=page.locator(`.sidebar a[href="/ui/chat/${name}"]`);await a.waitFor({state:"attached"});if(width>=900)await a.waitFor({state:"visible"});else if(!await a.isVisible())await page.locator('button[aria-controls="sidebar"][aria-expanded]').filter({visible:true}).click();
   await a.click();await page.waitForSelector('.p-chat .chat-main');
-  if(reduced){await page.waitForFunction(()=>document.querySelector('.chat-fx-notice')?.textContent.includes('reduced motion'),undefined,{timeout:12000});assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);row.blocked='reduced_motion';row.notice=await page.locator('.chat-fx-notice').allTextContents();await page.screenshot({path:join(out,key+'.png')});}
+  if(reduced){await page.waitForFunction(()=>document.querySelector('.chat-fx-notice')?.textContent.includes('reduced motion'),undefined,{timeout:12000});assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);row.blocked='reduced_motion';row.notice=await page.locator('.chat-fx-notice').allTextContents();await capture({path:join(out,key+'.png')});}
   else{
    await page.waitForFunction(()=>[...document.querySelectorAll('iframe.agend-effect-frame')].some(f=>getComputedStyle(f).visibility==='visible'),undefined,{timeout:15000});
    // ready/visible precedes the browser's asynchronous OffscreenCanvas presentation.
    // Wait for independent screenshot pixels, never infer paint from port/DOM readiness.
-   let image;const paintUntil=Date.now()+4000;do{image=pixels(await page.screenshot({path:join(out,key+'.png')}));if(image.red>500)break;await page.waitForTimeout(100)}while(Date.now()<paintUntil);
+   row.errorsBeforePaint=[...fresh.errors];let image;const paintUntil=Date.now()+4000;do{image=pixels(await capture({path:join(out,key+'.png')}));if(image.red>500)break;await page.waitForTimeout(100)}while(Date.now()<paintUntil);
    assert.ok(image.red>500,'actual independent red paint');row.redPixels=image.red;
    const controls=await page.evaluate(()=>[...document.querySelectorAll('.dock textarea,.dock button,.panel-head button')].filter(e=>e.getBoundingClientRect().width&&e.getBoundingClientRect().height).slice(0,8).map(e=>{const r=e.getBoundingClientRect();return{tag:e.tagName,x:r.left+3,y:r.top+3}}));
    assert.ok(controls.length>1);row.protected=controls.map(p=>({...p,rgb:image.pixel(p.x,p.y)}));assert.ok(row.protected.every(p=>!(p.rgb[0]>200&&p.rgb[1]<60&&p.rgb[2]>40&&p.rgb[2]<110)),'protected control pixels must not turn red');
@@ -57,7 +69,7 @@ for(const engine of engines)for(const origin of origins)for(const width of width
    else {
     await page.waitForFunction(()=>document.querySelector('.effect-trial-start')?.textContent==='Try');await page.locator('.effect-trial-start').click();
     await page.waitForFunction(async()=>{const m=await import('/assets/effect-trial-shadow.js');const p=document.querySelector('.effect-trial-panel'),s=p&&m.effectTrialShadow(window,p);const f=s?.stage.querySelector('iframe');return f&&getComputedStyle(f).visibility==='visible'},undefined,{timeout:15000});
-    let trialPaint;const until=Date.now()+4000;do{trialPaint=pixels(await page.screenshot({path:join(out,key+'-try.png')}));if(trialPaint.red>500)break;await page.waitForTimeout(100)}while(Date.now()<until);assert.ok(trialPaint.red>500,'independent Trial pixels');
+    let trialPaint;const until=Date.now()+4000;do{trialPaint=pixels(await capture({path:join(out,key+'-try.png')}));if(trialPaint.red>500)break;await page.waitForTimeout(100)}while(Date.now()<until);assert.ok(trialPaint.red>500,'independent Trial pixels');
     const shell=await page.evaluate(async()=>{const m=await import('/assets/effect-trial-shadow.js'),s=m.effectTrialShadow(window,document.querySelector('.effect-trial-panel'));const r=s.stage.getBoundingClientRect(),c=getComputedStyle(s.stage),b=s.root.querySelector('.effect-trial-stop').getBoundingClientRect();return{contain:c.contain,overflow:c.overflow,stage:{x:r.x,y:r.y,width:r.width,height:r.height},stop:{x:b.x+b.width/2,y:b.y+b.height/2}}});
     assert.ok(shell.contain.includes('paint'));assert.equal(shell.overflow,'clip');await page.mouse.click(shell.stop.x,shell.stop.y);
     await page.waitForFunction(async()=>{const m=await import('/assets/effect-trial-shadow.js'),p=document.querySelector('.effect-trial-panel');return !p||!m.effectTrialShadow(window,p)?.stage.querySelector('iframe')});row.trial={status:'explicit-click painted and Stop removed',redPixels:trialPaint.red,...shell};
@@ -66,9 +78,9 @@ for(const engine of engines)for(const origin of origins)for(const width of width
   // Chromium logs this draft directive as an error; keep that exact bootstrap-only
   // compatibility diagnostic, without ignoring runtime/CSP violations. The Worker shim
   // and tested network traps do not rely on support for the extra WebRTC directive.
-  row.bootstrapCompatibility=fresh.errors.filter(e=>/^Unrecognized Content-Security-Policy directive 'webrtc'\. @ https?:\/\/[^/]+\/effect-bootstrap$/.test(e));
-  assert.deepEqual(fresh.errors.filter(e=>!row.bootstrapCompatibility.includes(e)),[]);row.status='pass';
- }catch(error){row.error=String(error);if(page){row.notice=await page.locator('.chat-fx-notice').allTextContents().catch(()=>[]);row.violations=await Promise.all(page.frames().map(f=>f.evaluate(()=>({url:location.href,violations:globalThis.__defaultViolations})).catch(()=>null)));row.diagnostic=await page.evaluate(async()=>{const m=await import('/ui/js/app-effects.js');return{body:document.body.dataset,rows:m.getAppEffects()?.api.snapshot()}}).catch(()=>null);await page.screenshot({path:join(out,key+'-failed.png')}).catch(()=>{});}}
+  row.bootstrapCompatibility=fresh.errors.filter(e=>/^Unrecognized Content-Security-Policy directive 'webrtc'\.\s+@ (?:https?:\/\/[^/]+\/effect-bootstrap|\?)$/.test(e)||/^Viewport argument key "interactive-widget" not recognized and ignored\. @ https?:\/\/[^/]+\/ui(?:\/chat\/[^?]+)?$/.test(e));
+  assert.deepEqual(fresh.errors.filter((e,i)=>!row.bootstrapCompatibility.includes(e)&&!row.captureErrorIndices?.includes(i)),[]);row.status='pass';
+ }catch(error){row.error=String(error);if(page){row.notice=await page.locator('.chat-fx-notice').allTextContents().catch(()=>[]);row.violations=await Promise.all(page.frames().map(f=>f.evaluate(()=>({url:location.href,violations:globalThis.__defaultViolations,styles:globalThis.__defaultStyleInserts})).catch(()=>null)));row.diagnostic=await page.evaluate(async()=>{const m=await import('/ui/js/app-effects.js');return{body:document.body.dataset,rows:m.getAppEffects()?.api.snapshot()}}).catch(()=>null);await page.screenshot({caret:'initial',path:join(out,key+'-failed.png')}).catch(()=>{});}}
  finally{for(const fn of [()=>ctx?.close(),()=>link?.close(),()=>browser&&browser!==fx?.browser?browser.close():null,()=>fx?.close()])try{await fn()}catch(e){row.cleanupError=String(e);row.status='failed'}rows.push(row);writeFileSync(join(out,'receipt.json'),JSON.stringify({phase:'PR2 transport cutover; motion/baseline remain pending PR3',publicTransport:'real PublicWebLink/gateway; provider/tunnel/HTTPS transport stubbed by shared fixture',rows},null,2)+'\n');console.log(key,row.status,row.error||'');}
 }
 const files=['src/web-api.ts','src/public-web-gateway.ts','src/ui/app-effects.js','src/ui/shared/effect-app-runtime.js','src/ui/shared/effect-registry.js','src/ui/shared/effect-policy.js','scripts/manual/effect-defaults-cutover-2118.mts'];writeFileSync(join(out,'hashes.json'),JSON.stringify(Object.fromEntries(files.map(f=>[f,createHash('sha256').update(readFileSync(f)).digest('hex')])),null,2)+'\n');
