@@ -14,8 +14,8 @@ import { t } from "/assets/app-i18n.js";
 import { useStore } from "/assets/app-store.js";
 import { onPrefsChanged } from "/assets/app-prefs.js";
 import { safeMode } from "/assets/owner-css.js";
-import { themeImageUrl, themesShown, themesStore } from "/assets/app-themes.js";
-import { motionBlocked, onMotionChange } from "/assets/fx-motion.js";
+import { setThemesShown, themeImageUrl, themesShown, themesStore } from "/assets/app-themes.js";
+import { markMotionNoteShown, motionBlocked, motionNoteDue, onMotionChange, setFollowsReducedMotion } from "/assets/fx-motion.js";
 import "./chat-strings.js";
 
 export const AMBIENT_CAPS = { loop: 24, burst: 16, bursts: 3 };
@@ -251,14 +251,45 @@ export function ChatAmbient({ name, surface, part }) {
   return part === "layer" ? html`<div ref=${ref} class="amb-layer" aria-hidden="true"></div>` : html`<div class="amb-burst" aria-hidden="true"></div>`;
 }
 
-/** Where a person changes a block from the page: both switches are in Settings → Appearance (safe mode: the URL). */
-const FIX = { hidden: "/settings/appearance", reducedMotion: "/settings/appearance" };
+/**
+ * The one-time note (the user's direction): the system asks for reduced motion and this chat's ambient plays anyway —
+ * say so once on this device, and turn it off right here (this device's switch: the same on the public link, where
+ * Settings is not). Shown only where an ambient is actually drawn.
+ */
+export function AmbientMotionNote({ name }) {
+  const block = useAmbientBlock();
+  const shown = !block && !!ambientFor(name);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!shown || open || !motionNoteDue()) return;
+    markMotionNoteShown();
+    setOpen(true);
+  }, [shown]);
+  if (!open || !shown) return null;
+  const off = () => { setOpen(false); setFollowsReducedMotion(true); };
+  return html`<div class="amb-note" role="status">
+    <span>${t("chat.ambientMotionNote")}</span>
+    <button type="button" class="amb-note-off" onClick=${off}>${t("chat.ambientMotionNoteLink")}</button>
+    <button type="button" class="amb-note-x" aria-label=${t("chat.ambientMotionNoteClose")} onClick=${() => setOpen(false)}>×</button>
+  </div>`;
+}
 
 /**
- * The chat ⋯ entries for `name`'s ambient: why it is not showing here (a visible reason, with the way to fix it when
- * the page has one), and — for an admin, never over the public link — Clear for each kind.
+ * The fix for a block, done right here: both switches are this viewer's own (the show switch is a local choice on the
+ * public link; the reduced-motion one is per device), so it works on the public link too; safe mode is the URL. Both
+ * stay in Settings → Web appearance as well.
  */
-export function ambientMenuItems(name, { publicLink, clear, navigate }) {
+const FIX = {
+  hidden: () => setThemesShown(true),
+  reducedMotion: () => setFollowsReducedMotion(false),
+  safe: () => { const u = new URL(globalThis.location.href); u.searchParams.delete("safe"); globalThis.location.assign(u.toString()); },
+};
+
+/**
+ * The chat ⋯ entries for `name`'s ambient: why it is not showing here (a visible reason; choosing it fixes it when the
+ * page can), and — for an admin, never over the public link — Clear for each kind.
+ */
+export function ambientMenuItems(name, { publicLink, clear }) {
   const a = themesStore.get().ambient;
   const mine = a && own(a, name) ? a[name] : null;
   if (!mine || typeof mine !== "object" || !(own(mine, "loop") || own(mine, "click"))) return [];
@@ -267,10 +298,7 @@ export function ambientMenuItems(name, { publicLink, clear, navigate }) {
   if (block) {
     items.push({
       key: "ambient-blocked", label: t(`chat.ambientBlocked_${block}`), icon: "info",
-      onSelect: () => {
-        if (block === "safe") { const u = new URL(globalThis.location.href); u.searchParams.delete("safe"); globalThis.location.assign(u.toString()); return; }
-        if (FIX[block]) navigate(FIX[block]);
-      },
+      onSelect: () => { if (own(FIX, block)) FIX[block](); },
     });
   }
   if (!publicLink) for (const k of ["loop", "click"]) if (own(mine, k)) items.push({ key: `ambient-clear-${k}`, label: t(k === "loop" ? "chat.ambientClearLoop" : "chat.ambientClearClick"), icon: "trash", onSelect: () => clear(name, k) });

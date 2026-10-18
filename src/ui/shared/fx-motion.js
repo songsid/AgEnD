@@ -2,6 +2,8 @@
 // unless this device chose "Effects: follow the system's reduced-motion setting". One per-device switch (not synced:
 // it is about this screen), shared by ambient effects and Canvas Worker effects; it also works on the public link.
 export const FX_FOLLOW_REDUCED_MOTION_KEY = "agend_fx_follow_reduced_motion";
+/** The one-time chat note "your system asks for reduced motion; effects are on" was shown on this device. */
+export const FX_MOTION_NOTE_KEY = "agend_fx_motion_note_seen";
 const listeners = new Set();
 
 /** Whether this device asked effects to follow the system's reduced-motion setting (default: no). */
@@ -26,6 +28,22 @@ export function onMotionChange(fn) {
     try { if (q && q.removeEventListener) q.removeEventListener("change", fn); } catch { /* gone */ }
   };
 }
+/** Whether the system asks for reduced motion (false when it can't say: the note is only for a clear yes). */
+export function systemReducesMotion(win = globalThis) {
+  try { return typeof win.matchMedia === "function" && win.matchMedia("(prefers-reduced-motion: reduce)").matches === true; } catch { return false; }
+}
+/**
+ * The one-time note (the user's direction): the system asks for reduced motion, this device does not follow it, and the
+ * note was not shown here before. Showing it marks it shown.
+ */
+export function motionNoteDue(win = globalThis) {
+  if (followsReducedMotion() || !systemReducesMotion(win)) return false;
+  try { return globalThis.localStorage.getItem(FX_MOTION_NOTE_KEY) !== "1"; } catch { return false; }
+}
+export function markMotionNoteShown() {
+  try { globalThis.localStorage.setItem(FX_MOTION_NOTE_KEY, "1"); } catch { /* shown again next time: harmless */ }
+}
+
 /**
  * True when effects stay still here: this device follows the system's setting and the system asks for reduced motion
  * (or cannot say — then still, as asked for). With the switch off (the default), never.

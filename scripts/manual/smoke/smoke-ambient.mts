@@ -30,9 +30,10 @@ const PERF = "billing-reconciliation";
 const PETALS = { preset: "fall", glyphs: ["🌸", "❀", "✿"], colors: ["#f4a7b9", "#ffd1dc", "#e75480"] };
 const STARS = { preset: "burst-on-click", glyphs: ["✦", "✧"], colors: ["#ffd700", "#ff69b4", "#87ceeb", "#98fb98", "#dda0dd"], count: 12 };
 const results: Record<string, any> = { browser: fx.browser.version(), engine: process.env.PW_ENGINE ?? "chromium", cases: {}, setup: {} };
-// WebKit-only console lines that main has too, with no ambient anywhere — recorded apart, not this smoke's failure:
-// "Refused to apply a stylesheet…" (Settings → Appearance, and a click in a chat message), the viewport meta's
-// interactive-widget key it doesn't know, and a stream or poll a navigation cancels ("… due to access control checks").
+// WebKit-only lines that are the engine's or this harness's, never the dashboard's (#2127) — recorded apart:
+// "Refused to apply a stylesheet…" is WebKit's own internal sheet for each <select> (renders identically); a
+// style-src-elem violation is Playwright's caret-hiding <style> at page.screenshot(); the viewport meta's
+// interactive-widget key WebKit doesn't know; and a stream or poll a navigation cancels ("… due to access control checks").
 const WEBKIT = process.env.PW_ENGINE === "webkit";
 const KNOWN_WEBKIT = /Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline'|Viewport argument key "interactive-widget" not recognized|cannot load .* due to access control checks/;
 const fail: string[] = [];
@@ -116,12 +117,21 @@ for (const c of process.env.ONLY_PUBLIC || process.env.ONLY_PERF ? [] : matrix()
       const a = document.getAnimations().filter((x) => x.effect.target.closest(".amb-layer")); const paused = a.filter((x) => x.playState === "paused").length;
       Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true }); document.dispatchEvent(new Event("visibilitychange"));
       return { total: a.length, paused, runningAfter: document.getAnimations().filter((x) => x.effect.target.closest(".amb-layer") && x.playState === "running").length }; })()`);
+    // The one-time note (the user's direction): reduced motion on and this device not following it → said once.
+    r.note = await page.evaluate(`(() => { const n = document.querySelector(".p-chat .amb-note"); return n ? { text: n.textContent, link: !!n.querySelector(".amb-note-off") } : null; })()`);
+    check(reduce ? !!(r.note && r.note.link) : r.note === null, `${name}: the reduced-motion note ${reduce ? "shown" : "absent"}`);
     check(r.hidden.total === r.hidden.paused && r.hidden.runningAfter === r.hidden.total, `${name}: hidden tab pauses`);
     if (reduce) {
-      // The blocked state, through visible UI only: tick the device switch in Settings → Appearance.
+      // The blocked state, through visible UI only: the note's "Turn off here" sets this device's switch, right here.
+      await page.screenshot({ path: shotPath(SMOKE, name, "note") });
+      await page.locator(".p-chat .amb-note .amb-note-off").click(); await page.waitForTimeout(800);
+      r.offHere = await probe(page);
+      check(r.offHere.layer === null && r.offHere.running === 0, `${name}: the note turns it off right here`);
+      // Settings shows the same switch, ticked.
       await page.goto(`${base}/settings/appearance`); await page.waitForTimeout(1500);
       const box = page.locator("#fx-follow-reduced-motion");
-      await box.scrollIntoViewIfNeeded(); await box.check(); await page.waitForTimeout(200);
+      await box.scrollIntoViewIfNeeded(); r.switchTicked = await box.isChecked();
+      check(r.switchTicked === true, `${name}: Settings shows the switch ticked`);
       await page.screenshot({ path: shotPath(SMOKE, name, "settings-switch") });
       await page.goto(`${base}/ui/chat/${enc(WITH)}`); await page.waitForTimeout(1500);
       r.blocked = await probe(page);
@@ -135,14 +145,13 @@ for (const c of process.env.ONLY_PUBLIC || process.env.ONLY_PERF ? [] : matrix()
       r.blockedAtShot = await page.evaluate(`document.querySelectorAll(".amb-layer > *, .amb-burst > *").length`);
       check(r.blockedAtShot === 0, `${name}: nothing drawn while blocked`);
       await page.screenshot({ path: shotPath(SMOKE, name, "blocked-menu") });
+      // Choosing the reason fixes it right here: this device stops following, and it plays again.
       await page.locator("[role=menu] [role=menuitem], [role=menu] button", { hasText: why }).first().click();
-      await page.waitForTimeout(1200);
-      r.fixUrl = new URL(page.url()).pathname;
-      check(r.fixUrl === "/settings/appearance", `${name}: the reason opens its switch`);
-      await page.locator("#fx-follow-reduced-motion").uncheck(); await page.waitForTimeout(200);
-      await page.goto(`${base}/ui/chat/${enc(WITH)}`); await page.waitForTimeout(1500);
+      await page.waitForTimeout(1500);
       r.unblocked = await probe(page);
-      check(r.unblocked.layer === 12 && r.unblocked.moved, `${name}: unticked, it plays again`);
+      check(r.unblocked.layer === 12 && r.unblocked.moved, `${name}: the reason line plays it again`);
+      r.noteAgain = await page.evaluate(`!!document.querySelector(".p-chat .amb-note")`);
+      check(r.noteAgain === false, `${name}: the note is said once`);
     } else if (c.lang === "en") {
       // The show switch off, through Settings; the ⋯ line names it; then on again. ?safe=1 draws none.
       await page.goto(`${base}/settings/appearance`); await page.waitForTimeout(1500);
@@ -153,16 +162,17 @@ for (const c of process.env.ONLY_PUBLIC || process.env.ONLY_PERF ? [] : matrix()
       r.menuHidden = await openMenu(page);
       check(r.hiddenSwitch.layer === null && r.menuHidden.some((t: string) => t.includes("agents' themes are off")), `${name}: show switch off is named`);
       await page.screenshot({ path: shotPath(SMOKE, name, "hidden-menu") });
-      await page.keyboard.press("Escape");
-      await page.goto(`${base}/settings/appearance`); await page.waitForTimeout(1200);
-      await page.locator("label.check", { hasText: "Show agents' themes, effects and widgets" }).locator("input").check(); await page.waitForTimeout(800);
+      // The line turns the switch on, right here.
+      await page.locator("[role=menu] [role=menuitem], [role=menu] button", { hasText: "agents' themes are off" }).first().click(); await page.waitForTimeout(1500);
+      r.hiddenFixed = await probe(page);
+      check(r.hiddenFixed.layer === 12, `${name}: the show-switch line turns it on`);
       await page.goto(`${base}/ui/chat/${enc(WITH)}?safe=1`); await page.waitForTimeout(1500);
       r.safe = await page.evaluate(`document.querySelectorAll(".amb-layer, .amb-burst").length`);
       check(r.safe === 0, `${name}: ?safe=1 draws none`);
     }
     r.csp = await csp();
     if (WEBKIT) { r.webkitStyleRefusals = errs.filter((e) => KNOWN_WEBKIT.test(e)).length; r.errs = errs.filter((e) => !KNOWN_WEBKIT.test(e)); } else r.errs = errs;
-    // The same WebKit item as a securitypolicyviolation: an inline <style> element after a click in a message (main too).
+    // Playwright's screenshot <style> (#2127), as a securitypolicyviolation.
     if (WEBKIT) { r.webkitStyleElem = r.csp.filter((v: string) => /^style-src-elem inline/.test(v)).length; r.csp = r.csp.filter((v: string) => !/^style-src-elem inline/.test(v)); }
     check(r.csp.length === 0 && r.errs.length === 0, `${name}: no CSP violation or page error`);
     results.cases[name] = r;
@@ -182,8 +192,21 @@ if (!process.env.ONLY_PERF && !process.env.SKIP_EXTRA) {
       const page = p.page;
       await page.waitForTimeout(2000);
       const r: any = { isPublic: await page.evaluate(`document.body.dataset.publicLink === "1"`), probe: await probe(page) };
+      r.note = await page.evaluate(`!!document.querySelector(".p-chat .amb-note .amb-note-off")`);
+      check(r.note === reduce, `${name}: the reduced-motion note ${reduce ? "shown" : "absent"} on the public link`);
       r.click = await clickInThread(page, c);
       r.menu = await openMenu(page).catch(() => null);
+      if (reduce) {
+        // On the public link too: the note turns it off right here, and the ⋯ reason line turns it back on.
+        await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+        await page.locator(".p-chat .amb-note .amb-note-off").click(); await page.waitForTimeout(800);
+        r.offHere = (await probe(page)).layer;
+        const why = labelOf(c, { en: "this device follows reduced motion", zh: "這台裝置跟隨「減少動態效果」" });
+        const items = await openMenu(page);
+        await page.locator("[role=menu] [role=menuitem], [role=menu] button", { hasText: why }).first().click(); await page.waitForTimeout(1500);
+        r.backOn = (await probe(page)).layer;
+        check(r.offHere === null && items.some((t: string) => t.includes(why)) && r.backOn === 12, `${name}: off and back on, right there on the public link`);
+      }
       // In WebKit, requests the harness carries (route.fetch) can fail its access-control check: the transport, not the
       // page (the same flows pass in Chromium); every check below still has to pass.
       r.errs = p.errors.filter((e: string) => !(WEBKIT && KNOWN_WEBKIT.test(e)));

@@ -109,6 +109,13 @@ describe("the spec", () => {
     expect(ok({ preset: "fall", glyphs: [{ asset: id }] }, (x) => x === id)).toBe(true);
     expect(ok({ preset: "fall", glyphs: [{ asset: id }] }, () => false)).toBe(false);
   });
+  it("1 KiB is reachable: one grapheme can be long (a base and many combining marks) — refused by bytes alone", () => {
+    const long = "x" + "\u0331".repeat(400);                 // 1 grapheme, 801 bytes
+    expect(ok({ preset: "fall", glyphs: [long] })).toBe(true);           // one fits under 1 KiB with every default
+
+    const r = A.checkAmbient({ preset: "fall", glyphs: [long, long] });
+    expect(r).toEqual({ ok: false, errors: [{ path: "ambient", problem: "at most 1024 bytes" }] });
+  });
   it("at most 1 KiB, canonical", () => {
     expect(A.AMBIENT_SPEC_MAX_BYTES).toBe(1024);
     // The largest spec the bounds allow fits: 4 two-character emoji glyphs, 5 colours, every number long.
@@ -381,6 +388,9 @@ describe("the page: when it shows", () => {
   it("the page checks the spec again: out of bounds, a wrong kind or an unknown preset is not drawn", async () => {
     const { amb, themes } = await pageLoad();
     const good = spec(PETALS);
+    expect(amb.sanitizeAmbient({ ...good, glyphs: ["x".repeat(33)] })).toBeNull();
+    expect(amb.sanitizeAmbient({ ...good, glyphs: [""] })).toBeNull();
+    expect(amb.sanitizeAmbient({ ...good, glyphs: ["x".repeat(32)] })).not.toBeNull();
     for (const [k, v] of [["sway", 81], ["rotate", 721], ["size", [9, 20]], ["spread", [20, 121]], ["duration", [3, 9]], ["opacity", [0, 2, 0]], ["glyphs", []], ["colors", "x"]] as const) {
       expect(amb.sanitizeAmbient({ ...good, [k]: v }), k).toEqual(k === "colors" ? { ...amb.sanitizeAmbient(good), colors: [] } : null);
     }
@@ -406,6 +416,24 @@ function surfaceFor(doc: any) {
 }
 
 describe("the page: drawing", () => {
+  it("a glyph is text, never markup: \"<b>x</b>\" past every server check is one text node, loop and burst alike (Fable R1 P2)", async () => {
+    const { amb, doc } = await pageLoad();
+    const s = surfaceFor(doc);
+    const markup = "<b>x</b>";
+    const run = amb.startAmbient({ name: "alpha", ambient: { loop: { ...spec(PETALS), glyphs: [markup], count: 3 }, click: { ...spec(STARS), glyphs: [markup], count: 4 } },
+      layer: s.layer, front: s.front, surface: s.surface, doc });
+    fire(s.msg, "pointerdown", { bubbles: true, clientX: 10, clientY: 10, button: 0 });
+    const nodes = [...s.layer.children, ...s.front.children];
+    expect(nodes).toHaveLength(7);
+    for (const n of nodes) {
+      expect(n.tagName.toLowerCase()).toBe("span");
+      expect(n.children.length).toBe(0);
+      expect(n.childNodes.map((c: any) => c.nodeType)).toEqual([3]);
+      expect(n.textContent).toBe(markup);
+    }
+    expect(s.surface.querySelectorAll("b")).toHaveLength(0);
+    run.stop();
+  });
   it("a loop: count nodes, aria-hidden, CSSOM only (no style attribute), transform and opacity only, endless", async () => {
     const { amb, doc } = await pageLoad();
     const s = surfaceFor(doc);
@@ -510,18 +538,25 @@ describe("the page: the chat", () => {
     motion.setFollowsReducedMotion(false); await settle(4);
     expect(surface().querySelector(".amb-layer").children.length).toBe(12);
   });
-  it("the ⋯ menu: why it isn't showing (each with its fix) and a person's Clear — no Clear over the public link", async () => {
-    const { amb } = await mount({ agend_fx_follow_reduced_motion: "1" }, true);
-    const navigate = vi.fn(), clear = vi.fn();
-    const items = amb.ambientMenuItems("alpha", { publicLink: false, clear, navigate });
+  it("the ⋯ menu: why it isn't showing, and choosing it fixes it right there (public link too); a person's Clear — none over the public link", async () => {
+    const { amb, surface } = await mount({ agend_fx_follow_reduced_motion: "1" }, true);
+    const clear = vi.fn();
+    const items = amb.ambientMenuItems("alpha", { publicLink: false, clear });
     expect(items.map((i: any) => i.key)).toEqual(["ambient-blocked", "ambient-clear-loop", "ambient-clear-click"]);
     expect(items[0].label).toContain("reduced motion");
-    items[0].onSelect(); expect(navigate).toHaveBeenCalledWith("/settings/appearance");
+    expect(amb.ambientMenuItems("alpha", { publicLink: true, clear }).map((i: any) => i.key)).toEqual(["ambient-blocked"]);
+    items[0].onSelect(); await settle(4);
+    expect([pg!.storage.has("agend_fx_follow_reduced_motion"), surface().querySelector(".amb-layer").children.length]).toEqual([false, 12]);
     items[2].onSelect(); expect(clear).toHaveBeenCalledWith("alpha", "click");
-    expect(amb.ambientMenuItems("alpha", { publicLink: true, clear, navigate }).map((i: any) => i.key)).toEqual(["ambient-blocked"]);
-    expect(amb.ambientMenuItems("nobody", { publicLink: false, clear, navigate })).toEqual([]);
-    const shown = await mount();
-    expect(shown.amb.ambientMenuItems("alpha", { publicLink: false, clear, navigate }).map((i: any) => i.key)).toEqual(["ambient-clear-loop", "ambient-clear-click"]);
+    expect(amb.ambientMenuItems("nobody", { publicLink: false, clear })).toEqual([]);
+    expect(amb.ambientMenuItems("alpha", { publicLink: false, clear }).map((i: any) => i.key)).toEqual(["ambient-clear-loop", "ambient-clear-click"]);
+  });
+  it("the show switch off: the ⋯ line turns it on here", async () => {
+    const { amb, surface } = await mount({ agend_fx_show: "off" }, false);
+    const [line] = amb.ambientMenuItems("alpha", { publicLink: false, clear: vi.fn() });
+    expect([line.key, surface().querySelector(".amb-layer")]).toEqual(["ambient-blocked", null]);
+    line.onSelect(); await settle(4);
+    expect(amb.ambientBlock()).toBeNull();
   });
 });
 
@@ -661,4 +696,37 @@ describe("the wiring", () => {
       expect(seen).toEqual([["ambient-set", PETALS], ["ambient-clear", { which: "loop" }]]);
     } finally { await new Promise(r => server.close(r)); }
   }, 120_000);
+});
+
+describe("the page: the one-time reduced-motion note", () => {
+  async function mountNote(storage: Record<string, string>, reduce: boolean, withAmbient = true) {
+    const env = await pageLoad({ storage, reduce });
+    const { P, themes, amb } = env;
+    themes.themesStore.set({ ambient: withAmbient ? { alpha: { loop: { spec: spec(PETALS), by: "agent" } } } : {} });
+    const pre = await import("/assets/preact.module.js");
+    pre.render(P.h("div", { class: "chat-main" }, P.h(amb.AmbientMotionNote, { name: "alpha" })), pg!.root); await settle(4);
+    return { ...env, note: () => pg!.root.querySelector(".amb-note") };
+  }
+  it("the system asks for reduced motion and the ambient plays: said once on this device, with the switch that turns it off", async () => {
+    const first = await mountNote({}, true);
+    expect(first.note()).not.toBeNull();
+    expect(first.note().getAttribute("role")).toBe("status");
+    expect(first.note().textContent).toContain("reduced motion");
+    expect(pg!.storage.get("agend_fx_motion_note_seen")).toBe("1");
+    fire(first.note().querySelector(".amb-note-off"), "click", { bubbles: true, cancelable: true });
+    await settle(2);
+    expect([pg!.storage.get("agend_fx_follow_reduced_motion"), first.amb.ambientBlock()]).toEqual(["1", "reducedMotion"]);   // turned off right here
+    expect(first.note()).toBeNull();
+    const again = await mountNote({ agend_fx_motion_note_seen: "1" }, true);
+    expect(again.note()).toBeNull();
+  });
+  it("not shown: no reduced motion, this device follows it (nothing plays), no ambient here; × closes it", async () => {
+    expect((await mountNote({}, false)).note()).toBeNull();
+    expect((await mountNote({ agend_fx_follow_reduced_motion: "1" }, true)).note()).toBeNull();
+    expect((await mountNote({}, true, false)).note()).toBeNull();
+    const m = await mountNote({}, true);
+    fire(m.note().querySelector(".amb-note-x"), "click", { bubbles: true });
+    await settle(2);
+    expect(m.note()).toBeNull();
+  });
 });

@@ -321,8 +321,9 @@ Settings → **Web appearance**, card by card:
   device only, off by default): on, agents' effects stay still while the system asks for reduced motion.
 - **Ambient effects** — an agent's falling petals, snow, rising lanterns, twinkles or stars on a click, drawn behind
   its chat by the dashboard (data only, no consent needed). They show by default, the public link too; the chat's ⋯
-  menu says why one is not showing (with the switch that changes it) and offers **Clear the ambient effect** /
-  **Clear the click effect**. General can set or clear one for the user (`set_web_settings`, `what: "ambient"`).
+  menu says why one is not showing (choosing the line fixes it there) and offers **Clear the ambient effect** /
+  **Clear the click effect**. With the system asking for reduced motion, the chat says once per device that effects
+  are on, with **Turn off here**. General can set or clear one for the user (`set_web_settings`, `what: "ambient"`).
 - **Identity colours** — each agent's colour in the sidebar comes from, in order: a person's pick (⋯ menu →
   Colour…), the agent's own, its bot's Discord role colour, or an automatic soft colour. Choose where it shows (Name /
   Left bar / Ring) or **Turn off colours** (the picks are kept).
