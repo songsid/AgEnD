@@ -139,7 +139,13 @@ async function acceptCase(name: string, open: () => Promise<FreshPage>) {
   // Read part-way up: a wheel on a desk, the page scrolled by the reader's finger on a phone (no wheel there).
   if (p.page.viewportSize().width < 760) await p.page.evaluate(() => { document.querySelector(".p-chat .scroller")!.scrollBy(0, -1500); });
   else { await p.page.locator(".p-chat .scroller").hover(); await p.page.mouse.wheel(0, -1500); }
-  await p.page.waitForTimeout(500);
+  // Where the reader stopped: once the scroll has come to rest (WebKit's wheel scrolls smoothly, and was read mid-way).
+  for (let i = 0, last = -1; i < 40; i++) {
+    const top = await p.page.evaluate(() => document.querySelector(".p-chat .scroller")!.scrollTop);
+    if (top === last) break;
+    last = top; await p.page.waitForTimeout(150);
+  }
+  await p.page.waitForTimeout(300);
   await p.page.evaluate(() => { (document.querySelector(".p-chat .thread") as any).__keptA = true; });
   const leftA = await where(p);
   await visit(p, B);
