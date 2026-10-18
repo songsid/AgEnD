@@ -189,7 +189,8 @@ describe("phones and assistive tech (segment 3)", () => {
   });
 
   it("the conversation is a log that is not read out message by message; one polite status line carries the coarse events", () => {
-    expect(PANEL_CHAT).toMatch(/class="thread" ref=\$\{list\} role="log" aria-live="off" aria-label=/);
+    // #2053: the list is made by the kept-thread entry (it outlives the view); the same three attributes.
+    expect(PANEL_CHAT).toMatch(/list\.className = "thread";\s*list\.setAttribute\("role", "log"\);\s*list\.setAttribute\("aria-live", "off"\);\s*list\.setAttribute\("aria-label", t\("chat\.conversationWith", name\)\);/);
     // The announcer is the one polite status line; the panel creates it once, with the same three attributes.
     expect(PANEL_CHAT).toMatch(/el\.id = "announcer"; el\.className = "sr-only"; el\.setAttribute\("role", "status"\); el\.setAttribute\("aria-live", "polite"\); el\.setAttribute\("aria-atomic", "true"\)/);
     const workBar = PANEL_CHAT.split("\n").find(l => l.includes('class=${`work-bar'))!;

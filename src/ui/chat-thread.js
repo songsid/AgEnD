@@ -41,6 +41,36 @@ export const THREAD_TAIL = 24;
 export const THREAD_CHUNK = 40;
 
 /**
+ * #2053: a message's rendered Markdown, kept across renders and chat switches. A draw compares each message's html with
+ * its node's, so every render of a thread rendered every drawn message's Markdown again (~320 calls per 200-message
+ * switch). renderMarkdown's output depends only on the text, whether its HTML cards are on (an agent's message), and —
+ * for a text that has them — whether the page knows each server-emoji id and the name it has for each mention: the key
+ * holds exactly those, so a cached html is always what renderMarkdown would return now. Bounded: least recently used out.
+ */
+export const MD_CACHE_MAX = 4000;
+const mdCache = new Map();
+const EMOJI_IDS = /<a?:[A-Za-z0-9_]{2,32}:(\d{15,25})>/g;
+const MENTION_IDS = /<(@!?|@&|#)(\d{15,25})>/g;
+const MENTION_KINDS = { "@": "u", "@!": "u", "@&": "r", "#": "c" };
+export function renderedMarkdown(text, cards, emojis, mentions) {
+  const src = typeof text === "string" ? text : String(text == null ? "" : text);
+  let sig = cards ? "c" : "-";
+  if (src.includes("<")) {
+    for (const m of src.matchAll(EMOJI_IDS)) sig += `|e${m[1]}${emojis && emojis(m[1]) ? 1 : 0}`;
+    for (const m of src.matchAll(MENTION_IDS)) { const name = mentions ? mentions(MENTION_KINDS[m[1]], m[2]) : null; sig += `|m${m[1]}${m[2]}=${typeof name === "string" ? name.length + ":" + name : "-"}`; }
+  }
+  const key = `${sig}\u0000${src}`;
+  let html = mdCache.get(key);
+  if (html === undefined) html = R().renderMarkdown(src, { htmlCards: cards, emojis, mentions });
+  else mdCache.delete(key);
+  mdCache.set(key, html);
+  while (mdCache.size > MD_CACHE_MAX) mdCache.delete(mdCache.keys().next().value);
+  return html;
+}
+/** Tests only: forget every rendered Markdown. */
+export function clearRenderedMarkdown() { mdCache.clear(); }
+
+/**
  * Bind a renderer to `list` (the thread element) inside `scroller`. opts: { t, tf, isUser(x), onJump({show, unseen}),
  * setPreviewOptIn(on), copyText(text) → Promise<boolean>, download(code), panel? }. panel (#1481): { shown() → the card
  * key the side panel shows, or null; open(spec, { run }); version(); claim(); claims() } — without it a card has no "Open in panel".
@@ -69,7 +99,7 @@ export function createThread(list, scroller, opts) {
   // The oldest message drawn (by key): everything after it is drawn, so new messages never push the window. Null: none
   // drawn yet — the next render draws the newest THREAD_TAIL and the rest follows (grow).
   let firstKey = null;
-  let growTimer = null, growFrame = null, disposed = false;
+  let growTimer = null, growFrame = null, disposed = false, parked = false;
   const cardRefresh = new WeakMap(); // card node → re-read availability (weak: a card that left takes its source with it)
   const tr = opts.t, trf = opts.tf;
   const stopIn = (node) => (P() ? P().stopIn(node) : []);
@@ -103,7 +133,7 @@ export function createThread(list, scroller, opts) {
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
     // A person's click on a reply button shows as the button's label, never the line the agent was given (its value).
     const clicked = x.role === "user" && x.click && typeof x.click.label === "string";
-    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div><div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${R().renderMarkdown(x.text, { htmlCards: x.role === "agent", emojis: opts.emojis, mentions: opts.mentions })}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div><div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
   }
   /**
    * A button click as a chip: 🔘 and the label (escaped: the label is the agent's text). With `of` (live, while its
@@ -484,7 +514,7 @@ export function createThread(list, scroller, opts) {
   // Sizes change without a scroll event (layout after the render, the dock under the thread): while pinned, the view
   // stays flush with the bottom; a reader who scrolled up is never moved.
   const resized = () => { if (pinned && !atBottom()) toBottom(); reportJump(); };
-  const ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
+  let ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
   if (ro) { ro.observe(list); ro.observe(scroller); }
 
   /** Where drawing starts in `msgs`: at the oldest drawn message, or (none yet) the newest THREAD_TAIL. */
@@ -499,7 +529,7 @@ export function createThread(list, scroller, opts) {
   /** Draw the next chunk of older messages, keeping the reader where they were; then the next, until all are drawn. */
   function grow() {
     growTimer = growFrame = null;
-    if (disposed) return;                 // the chat left: nothing more is drawn
+    if (disposed || parked) return;       // the chat left: nothing more is drawn (a kept one fills in when shown again)
     const at = startIndex();
     if (at <= 0) return;
     firstKey = msgKey(msgs[Math.max(0, at - THREAD_CHUNK)]);
@@ -656,15 +686,40 @@ export function createThread(list, scroller, opts) {
   }
 
   /** The thread goes (the chat left, or another instance opened): every preview in it stops first. */
-  function dispose() {
+  /**
+   * #2053: kept for a later visit — the chat left as it always did (every preview stops: "leave"), but its drawn nodes
+   * stay. Nothing of it runs meanwhile: no timer (day labels, polls, effect trials, filling in), no size observer; the
+   * caller drops its subscriptions. Shown again: attach, then render — only what changed is drawn.
+   */
+  function park() {
+    parked = true;
+    if (P()) P().stopAll("leave");
+    if (ro) { ro.disconnect(); ro = null; }
+    if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
+    if (growFrame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(growFrame);
+    if (growTimer !== null) clearTimeout(growTimer);
+    growTimer = growFrame = null;
+    if (offDay) { offDay(); offDay = null; }
+    if (pollTick) { clearInterval(pollTick); pollTick = null; }
+  }
+  /** In view in `sc` (the view's scroller): sizes watched there from now on; the caller restores the position. */
+  function attach(sc) {
+    parked = false;
+    scroller = sc;
+    if (ro) ro.disconnect();
+    ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
+    if (ro) { ro.observe(list); ro.observe(sc); }
+  }
+  /** `own`: only this thread's previews stop (a thread let go while another chat is in view); else every one, as leaving. */
+  function dispose(own = false) {
     disposed = true;
     if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
     if (ro) ro.disconnect();
-    if (P()) P().stopAll("leave");
+    if (P()) { if (own) P().stopIn(list); else P().stopAll("leave"); }
     nodes.clear();
     armDay();
     armPolls();
   }
 
-  return { render, onScroll, onClick, jumpLatest, reveal, refreshCards, dispose, nodes, get unseen() { return unseen; } };
+  return { render, onScroll, onClick, jumpLatest, reveal, refreshCards, park, attach, dispose, nodes, get unseen() { return unseen; } };
 }

@@ -66,6 +66,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - A message you send from the web is echoed into the topic as `🌐 web · <your name>: …` (see *Who the agent sees* below).
 - The agent's reply goes to Telegram/Discord as usual and also appears here.
 - You can switch between the web and your phone mid-conversation.
+- **Switching chats:** the last four chats you opened come back at once, where you left them (a chat you have not opened for a while is drawn again).
 - **No chat platform at all?** With no `channel` / `channels` in `fleet.yaml`, the dashboard alone is enough: an agent's replies come to the web chat.
 - **A tour, when you want one.** **Settings → Preferences → Chat tour** opens an agent's chat (the last one you had open) and points out the agent list, files, Stop and the *needs you* badge. It never starts by itself. With no agent to open, it says so.
 
