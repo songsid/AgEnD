@@ -18,6 +18,7 @@ import { request, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
@@ -604,6 +605,60 @@ describe("the fleet: the agent's door, General's, GET /ui/themes and a person's 
       expect((await post(session("read"), { which: "loop" })).status).toBe(403);
       expect(JSON.parse((await post(session("admin"), { which: "loop" })).body)).toMatchObject({ ok: true, removed: ["loop"] });
       expect(Object.keys(fm.themeStore.ambients().alpha)).toEqual(["click"]);
+      // Typed IPC (the daemon's door): the connection's instance; and the agent endpoint (agend-agent's).
+      const send = vi.fn();
+      fm.instanceIpcClients.set("alpha", { send });
+      fm.webAppearance.limiter.forget("alpha");
+      fm.dispatchTypedIpc("alpha", { type: "fleet_set_web_ambient", fleetRequestId: "t1", payload: { preset: "twinkle", glyphs: ["✦"] } });
+      expect(send.mock.calls.map(c => [c[0].type, c[0].fleetRequestId, c[0].result.kind])).toEqual([["fleet_web_theme_response", "t1", "loop"]]);
+      const { dispatchAgentOperation } = await import("../src/agent-endpoint.js");
+      fm.webAppearance.limiter.forget("alpha");
+      expect(await dispatchAgentOperation(fm, "alpha", "ambient-clear", { which: "loop" })).toMatchObject({ removed: ["loop"] });
+      fm.webAppearance.limiter.forget("alpha");
+      expect(await dispatchAgentOperation(fm, "alpha", "ambient-set", PETALS)).toMatchObject({ kind: "loop" });
     } finally { await new Promise<void>(r => (fm.healthServer as Server).close(() => r())); }
   });
+});
+
+describe("the wiring", () => {
+  it("both tools: IPC, the agent endpoint, worker and standard profiles — never general; no target in either schema", async () => {
+    const perms = await import("../src/tool-permissions.js");
+    const schemas = await import("../src/outbound-schemas.js");
+    for (const tool of ["set_web_ambient", "clear_web_ambient"]) {
+      expect(perms.TOOL_PROFILES.worker, tool).toContain(tool);
+      expect(perms.TOOL_PROFILES.standard, tool).toContain(tool);
+      expect(perms.TOOL_PROFILES.general, tool).not.toContain(tool);
+      expect(Object.values(perms.IPC_TYPE_TOOLS)).toContain(tool);
+      expect(Object.values(perms.EARLY_AGENT_OP_TOOLS)).toContain(tool);
+    }
+    for (const s of [schemas.SetWebAmbientArgs, schemas.ClearWebAmbientArgs]) expect(Object.keys(s.shape).filter(k => /instance|target|name/.test(k))).toEqual([]);
+    expect(schemas.SetWebAmbientArgs.safeParse({ ...PETALS, instance: "other" }).success).toBe(false);
+    expect(schemas.SetWebAmbientArgs.safeParse({ ...PETALS, layer: "front" }).success).toBe(false);
+    expect(schemas.SetWebThemeAssetArgs.safeParse({ slot: "glyph", file: "p.png" }).success).toBe(true);
+    const src = (await import("node:fs")).readFileSync(new URL("../src/daemon.ts", import.meta.url), "utf8");
+    expect(src).toContain('set_web_ambient: "fleet_set_web_ambient", clear_web_ambient: "fleet_clear_web_ambient"');
+  });
+  it("agend-agent ambient set / clear: one op each, the spec as JSON", async () => {
+    const { createServer } = await import("node:http");
+    const { execFile } = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+    const t = tools();
+    const seen: Array<[string, unknown]> = [];
+    const server = createServer((req, res) => { let body = ""; req.on("data", c => { body += c; }); req.on("end", () => {
+      const p = JSON.parse(body); seen.push([p.op, p.args]);
+      res.end(JSON.stringify(t.app.handleTool("a", p.op === "ambient-clear" ? "clear_web_ambient" : "set_web_ambient", p.args)));
+    }); });
+    await new Promise<void>(r => server.listen(0, "127.0.0.1", () => r()));
+    const port = (server.address() as { port: number }).port;
+    const home = tmp(), ws = tmp();
+    const run = (...argv: string[]) => new Promise<{ code: number; out: string }>(resolve => execFile(process.execPath, ["--import", pathToFileURL(join(process.cwd(), "node_modules/tsx/dist/loader.mjs")).href, join(process.cwd(), "src/agent-cli.ts"), ...argv], {
+      cwd: ws, env: { ...process.env, AGEND_PORT: String(port), AGEND_INSTANCE_NAME: "a", AGEND_HOME: home }, timeout: 60_000 }, (e, stdout, stderr) => resolve({ code: e ? (e as { code?: number }).code ?? 1 : 0, out: stdout + stderr })));
+    try {
+      expect(JSON.parse((await run("ambient", "set", JSON.stringify(PETALS))).out)).toMatchObject({ kind: "loop" });
+      t.tick(31_000);
+      expect(JSON.parse((await run("ambient", "clear", "loop")).out)).toMatchObject({ removed: ["loop"] });
+      const bad = await run("ambient", "set", "{not json");
+      expect([bad.code !== 0, bad.out]).toEqual([true, expect.stringContaining("not JSON")]);
+      expect(seen).toEqual([["ambient-set", PETALS], ["ambient-clear", { which: "loop" }]]);
+    } finally { await new Promise(r => server.close(r)); }
+  }, 120_000);
 });
