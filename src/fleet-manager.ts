@@ -11603,11 +11603,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // ── #1630: what stands for an instance in the web app, and Discord server emoji in web chat ──
   private webImageCaches: { avatars: WebImageCache; emoji: WebImageCache } | null = null;
+  /** Server emoji whose picture fetch failure was already logged at warn (once each; bounded). */
+  private readonly webEmojiFailures = new Set<string>();
   private webImageCache(kind: "avatars" | "emoji"): WebImageCache {
     const onError = (key: string, err: unknown) => this.logger.debug({ err: (err as Error)?.message, key }, "web image fetch failed (kept what was cached)");
+    // A server emoji's picture that cannot be fetched reads `:name:` in web chat (it used to be an empty box, the user's
+    // "tofu"): say why once per emoji, where it can be seen, not on every render (its key is quiet for an hour anyway).
+    const emojiError = (key: string, err: unknown) => {
+      if (this.webEmojiFailures.has(key)) return onError(key, err);
+      this.webEmojiFailures.add(key);
+      while (this.webEmojiFailures.size > 512) this.webEmojiFailures.delete(this.webEmojiFailures.values().next().value!);
+      this.logger.warn({ err: (err as Error)?.message, key }, "Discord server emoji picture could not be fetched (web chat shows its :name:)");
+    };
     this.webImageCaches ??= {
       avatars: new WebImageCache({ dir: join(this.dataDir, "cache", "avatars"), onError }),
-      emoji: new WebImageCache({ dir: join(this.dataDir, "cache", "emoji"), onError }),
+      emoji: new WebImageCache({ dir: join(this.dataDir, "cache", "emoji"), onError: emojiError }),
     };
     return this.webImageCaches[kind];
   }

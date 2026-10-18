@@ -1,12 +1,13 @@
 /**
  * #1630 part C (design: the comment on #1630): a Discord server emoji in web chat, `<:name:id>` / `<a:name:id>`, is drawn
  * as its picture from the dashboard's own route (/ui/img/emoji/<id>) — only for an id of the fleet's servers (GET
- * /ui/emojis, read once per page and only when a message shows a tag); an unknown id stays the literal text; the
+ * /ui/emojis, read once per page and only when a message shows a tag); an unknown id (or before the list) reads `:name:`,
+ * never the raw markup, and so does a picture that fails to load (the user's "tofu" boxes); the
  * renderer escapes first, so nothing in a message can shape the tag. The real chat-render.js, chat-emojis.js and the
  * real ChatPanel in the mini DOM.
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { installDom, settle } from "./helpers/mini-dom.js";
+import { fire, installDom, settle } from "./helpers/mini-dom.js";
 import { h, page, type AppPage } from "./helpers/app-harness.js";
 
 let R: any;
@@ -24,9 +25,9 @@ describe("the renderer", () => {
       .toBe(`<p>hi <img class="emoji" src="/ui/img/emoji/${ID}" alt=":blob:" title=":blob:" decoding="async">!</p>`);
     expect(R.renderMarkdown(`<a:dance:${ANIM}>`, { emojis: known })).toContain(`src="/ui/img/emoji/${ANIM}" alt=":dance:"`);
   });
-  it("an unknown id, no list, or a tag inside code stays the literal text", () => {
-    expect(R.renderMarkdown("<:blob:999999999999999999>", { emojis: known })).toBe("<p>&lt;:blob:999999999999999999&gt;</p>");
-    expect(R.renderMarkdown(`<:blob:${ID}>`)).toBe(`<p>&lt;:blob:${ID}&gt;</p>`);
+  it("an unknown id, or no list (yet), reads :name: — never the raw markup; inside code it stays the literal text", () => {
+    expect(R.renderMarkdown("<:blob:999999999999999999>", { emojis: known })).toBe('<p><span class="emoji-text" title=":blob:">:blob:</span></p>');
+    expect(R.renderMarkdown(`<a:dance:${ANIM}>`)).toBe('<p><span class="emoji-text" title=":dance:">:dance:</span></p>');
     expect(R.renderMarkdown(`\`<:blob:${ID}>\``, { emojis: known })).toBe(`<p><code>&lt;:blob:${ID}&gt;</code></p>`);
   });
   it("nothing in a message shapes the tag: a name or id outside the pattern stays text; the src is only digits", () => {
@@ -86,15 +87,19 @@ describe("in the chat", () => {
     await current.mount(h(panel.ChatPanel, { route: { instance: "x" }, navKey: "x1" }));
     expect(reads.filter(u => u === "/ui/emojis")).toEqual([]);
   });
-  it("a tag shows as text until the list arrives, then as the picture — and an unknown one stays text; one read", async () => {
+  it("a tag reads :name: until the list arrives, then shows the picture — an unknown one stays :name:; one read", async () => {
     panel.store.state.msgs.w = [msg(1, `hello <:blob:${ID}> and <:nope:999999999999999999>`)];
     current = page({ storage: { agend_tour_done: "1" } });
     await current.mount(h(panel.ChatPanel, { route: { instance: "w" }, navKey: "w1" }));
     const md = () => current!.root.querySelector(".msg .md") as any;
-    expect([md().querySelector("img.emoji"), md().textContent]).toEqual([null, `hello <:blob:${ID}> and <:nope:999999999999999999>`]);
+    expect([md().querySelector("img.emoji"), md().textContent]).toEqual([null, "hello :blob: and :nope:"]);
     release!(); await settle(); await settle();
     const img = md().querySelector("img.emoji");
-    expect([img?.getAttribute("src"), img?.getAttribute("alt"), md().textContent.includes("<:nope:999999999999999999>")]).toEqual([`/ui/img/emoji/${ID}`, ":blob:", true]);
+    expect([img?.getAttribute("src"), img?.getAttribute("alt"), md().textContent]).toEqual([`/ui/img/emoji/${ID}`, ":blob:", "hello  and :nope:"]);
     expect(reads.filter(u => u === "/ui/emojis").length).toBe(1);
+    // The picture does not load (the route answers 404): it reads :blob: instead of an empty box.
+    fire(img, "error", { bubbles: false });                                             // as a browser's: it does not bubble
+    await settle();
+    expect([md().querySelector("img.emoji"), md().querySelector(".emoji-text")?.textContent, md().textContent]).toEqual([null, ":blob:", "hello :blob: and :nope:"]);
   });
 });

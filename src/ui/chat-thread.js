@@ -47,6 +47,17 @@ export const THREAD_CHUNK = 40;
  */
 export function createThread(list, scroller, opts) {
   const nodes = new Map();          // key → { html, node }
+  // A server emoji's picture that does not load reads `:name:` (its alt) instead of an empty box (error does not bubble:
+  // caught on the way down).
+  list.addEventListener("error", (e) => {
+    const img = e.target;
+    if (!img || img.tagName !== "IMG" || !img.classList || !img.classList.contains("emoji")) return;
+    const span = list.ownerDocument.createElement("span");
+    span.className = "emoji-text";
+    span.textContent = img.getAttribute("alt") || "";
+    span.title = img.getAttribute("title") || span.textContent;
+    img.replaceWith(span);
+  }, true);
   let msgs = [];
   let unseen = 0;
   // The reader is at the newest message. While pinned, content that grows after it was drawn — an image loading, a
