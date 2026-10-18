@@ -37,7 +37,7 @@ async function fixture(unavailable = false) {
 describe("#1629 actual Effects component", () => {
   it("refused admission installs no runtime observers and keeps an incomplete browser host harmless", async () => {
     const h = await fixture(true); expect(h.observers).toEqual([]); expect(h.api().sync).not.toHaveBeenCalled();
-    expect(pg!.root.textContent).toBe(""); await h.open(); expect(pg!.root.textContent).toContain("Playback is off or unavailable here."); h.cleanup(); expect(h.api().dispose).toHaveBeenCalledOnce();
+    expect(pg!.root.textContent).toContain("runtime_unavailable"); await h.open(); expect(pg!.root.textContent).toContain("Playback is off or unavailable here."); h.cleanup(); expect(h.api().dispose).toHaveBeenCalledOnce();
   });
   it("a missing app owner leaves Chat mounted and offers unavailable without constructing a private pool", async () => {
     const h = await fixture(); h.cleanup(); M.owner = null; await h.nextLease(); await h.open();
@@ -115,5 +115,24 @@ describe("#1629 actual Effects component", () => {
     expect(effectRowText(row, { doc: { body: 1, activeElement: 1 } as any })).toContain("menu or panel");
     expect(effectRowText({ ...row, reason: "modal" }, { doc: doc(null) })).toBe("Waiting while a dialog is open.");
     expect(effectRowText({ id: ID, phase: "running", reason: "paused" })).toBe("Paused");          // a pause outranks a stale phase
+  });
+});
+
+describe("#2115 persistent named block notices", () => {
+  it("names an absent row and unknown raw local reason, never generic Stopped", async () => {
+    await fixture(); const { effectRowText } = await import("/ui/js/chat-effects.js");
+    expect(effectRowText(null)).toContain("runtime_unavailable");
+    for (const phase of [null, "running", "loading"]) expect(effectRowText({ reason: "future_failure_42", phase, verdict: "queued" })).toBe("Playback blocked: future_failure_42");
+    for (const reason of ["constructor", "__proto__"]) expect(effectRowText({ reason })).toBe(`Playback blocked: ${reason}`);
+    expect(effectRowText({ reason: "preview_not_consented" })).toContain("allow HTML previews");
+    expect(effectRowText({ reason: "baseline_timeout" })).toContain("calibration failed");
+  });
+  it("stays visible outside the dialog, changes false→different-false, and links to the real consent switch", async () => {
+    const h = await fixture(); await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "preview_not_consented" }]);
+    expect(pg!.root.querySelector("dialog")).toBeNull(); expect(pg!.root.querySelector(".chat-fx-notice")!.textContent).toContain("allow HTML previews");
+    [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Open device preferences")!.click(); await settle(); expect(globalThis.location.pathname).toBe("/settings/device");
+    await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "reduced_motion" }]);
+    expect(pg!.root.querySelector(".chat-fx-notice")!.textContent).toContain("reduced motion"); expect(pg!.root.textContent).not.toContain("allow HTML previews");
+    await h.publish(); expect(pg!.root.querySelector(".chat-fx-notice")).toBeNull(); h.cleanup();
   });
 });

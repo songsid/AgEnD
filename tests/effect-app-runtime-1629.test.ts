@@ -24,7 +24,7 @@ function rig(prepare: (h: any) => void = () => {}) {
   const collectors: any[] = [], collect = () => { const c = { ok: true, add: vi.fn(), report: vi.fn(() => ({ profile: { v: 1, device: "standard" } })), dispose: vi.fn() }; collectors.push(c); return c; };
   const context: any = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, trialReady: true, constrained: false, modal: false, openInstance: "caller-not-authority" };
   const observation: any = { context, ownerCss: "off", mode: "light" }, globalChange = vi.fn();
-  const h: any = { host, values, loader, registry, collectors, context, observation, globalChange, placement, listeners, events, at(t: number) { now = t; }, stale() { live = false; }, signOut() { ended = true; for (const fn of [...listeners]) fn(); }, options: () => options };
+  const h: any = { host, values, loader, registry, collectors, context, observation, globalChange, placement, listeners, events, timers, at(t: number) { now = t; }, stale() { live = false; }, signOut() { ended = true; for (const fn of [...listeners]) fn(); }, options: () => options };
   prepare(h);
   h.factories = { ...(h.trialFactory ? { trialSource: h.trialFactory } : {}), loader: vi.fn((o: any) => { h.loaderOptions = o; return h.realLoader ? createEffectRuntimeLoader(o) : loader; }), registry: vi.fn((o: any) => { options = o; return registry; }), safety: vi.fn(), stock: vi.fn(() => ({ ok: true, front: true, agentFront: true, rects: [] })), collector: collect };
   h.api = createAppEffectRuntime({ window: host, current: () => h.current ? h.current() : live, observe: () => h.observe ? h.observe() : observation, onChange: globalChange, onDispose: h.onDispose, resolveOwnerTarget: h.resolveOwnerTarget, onOwnerUnavailable: h.onOwnerUnavailable, factories: h.factories });
@@ -217,9 +217,9 @@ describe("#1629 optional personal sources share the app pool", () => {
     first.resolve(ownerBody("e".repeat(32))); await flush(); expect(order).toEqual(["owner-old", "chat", "owner-new"]); expect(a.api.snapshot().rows).toHaveLength(1); expect(h.api.ownerSnapshot().rows.every((r: any) => r.id === id)).toBe(true); h.api.dispose();
   });
   it("an in-flight Chat read excludes personal metadata without sharing its instance scope", async () => {
-    const h = rig(personal), first = held(); h.context.enabled = false; const a = h.chat(); h.context.enabled = true;
-    // Both need metadata; the first read is personal, then the held Chat read.
-    h.loader.placementsSettled.mockImplementationOnce(() => first.promise); h.api.sync(); await flush(); expect(h.loader.placementsSettled).toHaveBeenCalledOnce(); h.api.changedOwner(); await flush(); expect(h.loader.ownerSettled).toHaveBeenCalledOnce();
+    const h = rig(personal), first = held();
+    // Start personal metadata first, then hold the Chat metadata lane. Blocked Chat reads are now diagnostic too.
+    h.api.sync(); await flush(); h.loader.placementsSettled.mockImplementationOnce(() => first.promise); const a = h.chat(); await flush(); expect(h.loader.placementsSettled).toHaveBeenCalledOnce(); h.api.changedOwner(); await flush(); expect(h.loader.ownerSettled).toHaveBeenCalledOnce();
     first.resolve({ rev: 1, effects: [h.placement] }); await flush(); expect(h.loader.ownerSettled).toHaveBeenCalledTimes(2); expect(a.api.snapshot().rows[0].instance).toBe("own"); h.api.dispose();
   });
   it("ordinary personal metadata failure latches until explicit invalidation and does not kill Chat", async () => {
@@ -345,5 +345,25 @@ describe("#1629 Trial contribution in the one app pool (protocol double)", () =>
   it("old Chat owners become unavailable and global disposal releases all participants once", async () => {
     const h = trialRig(), a = h.chat(); await flush(); h.api.attachTrial({}); const old = h.chatOwner(); expect(h.trialOptions().ownerCurrent(old, "own")).toBe(true); expect(h.trialOptions().ownerCurrent(old, "other")).toBe(false);
     h.chat("next"); await flush(); expect(h.trialOptions().ownerCurrent(old, "own")).toBe(false); a.api.dispose(); h.api.dispose(); h.api.dispose(); expect(h.protocol.dispose).toHaveBeenCalledOnce(); expect(h.registry.dispose).toHaveBeenCalledOnce(); expect(h.loader.dispose).toHaveBeenCalledOnce();
+  });
+});
+
+describe("#2115 metadata diagnostics before playback admission", () => {
+  it.each([["reducedMotion", true, "reduced_motion"], ["optIn", false, "preview_not_consented"], ["previewReady", false, "preview_unavailable"], ["enabled", false, "unsupported_host"], ["safe", true, "safe_mode"], ["saveData", true, "save_data"], ["hidden", true, "hidden"], ["show", false, "disabled"]])("%s still names each placement without a code fetch", async (key, value, reason) => {
+    const h = rig(h => { h.context[key as string] = value; h.registry.snapshot = () => []; });
+    const a = h.chat(); await flush();
+    expect(h.loader.placementsSettled).toHaveBeenCalledOnce(); expect(a.api.snapshot().rows).toMatchObject([{ id, reason }]);
+    expect(h.loader.resourceSettled).not.toHaveBeenCalled(); h.api.dispose(); expect(h.timers.size).toBe(0);
+  });
+  it("a refused registry remains diagnostic only and cannot load or resume a frame", async () => {
+    const h = rig(h => { h.registry.ok = false; }); const a = h.chat(); await flush();
+    expect(h.api.ok).toBe(true); expect(h.api.playbackAvailable).toBe(false); expect(a.api.snapshot().rows).toMatchObject([{ id, reason: "unsupported_host", phase: null }]);
+    expect(a.api.resume(id)).toBe(false); expect(h.loader.resourceSettled).not.toHaveBeenCalled(); h.api.dispose();
+  });
+  it("posts only closed bounded playback observations through the existing shared writer, and stops on handoff", async () => {
+    const h = rig(h => { h.context.reducedMotion = true; h.registry.snapshot = () => []; }); const a = h.chat(); await flush();
+    h.at(10000); const tick = [...h.timers.values()][0] as () => void; h.timers.clear(); tick(); await flush();
+    expect(h.host.fetch).toHaveBeenCalledExactlyOnceWith(`/ui/effects/profile/${id}?instance=own&ownerEpoch=${epoch}`, expect.objectContaining({ body: JSON.stringify({ v: 1, kind: "playback", device: "standard", status: "blocked", reason: "reduced_motion" }) }));
+    a.api.dispose(); h.at(20000); tick(); await flush(); expect(h.host.fetch).toHaveBeenCalledOnce(); h.api.dispose();
   });
 });

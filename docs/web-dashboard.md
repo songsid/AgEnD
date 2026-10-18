@@ -409,6 +409,12 @@ A Canvas Worker effect is a small animation drawn by code in an isolated Worker,
 - **The pause budget.** An effect that makes the page slow is paused to protect it ("Paused to protect page responsiveness"); **Resume** keeps the limit of three such pauses.
 - **Your switch** (**Show agents' themes, effects and widgets**) and `?safe=1` turn agents' effects off.
 
+When a placed effect cannot play, a notice stays in its chat and the Effects dialog names the reason. Missing
+HTML-preview consent links to **Settings → Device**; appearance switches link to **Web appearance**; an unavailable
+preview service links to **Web**. Reduced motion, hidden tabs, browser support, calibration and safety have separate
+messages. Unknown codes are shown locally. Agents can see only closed blocked reasons reported within the last five
+minutes, without viewer identities, counts or device details; these reports never grant playback permission.
+
 ### Restore defaults
 
 **Settings → Web appearance → Restore defaults** puts this host's appearance settings back to their defaults. It asks first and says what it resets:
