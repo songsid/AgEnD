@@ -115,6 +115,8 @@ export function initializeHumanReceipts(db: Database.Database): void {
     "state TEXT NOT NULL CHECK (state IN ('queued','delivered','uncertain')),",
     "proof_tag TEXT,proof_mode TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,delivered_at TEXT);",
     "CREATE INDEX IF NOT EXISTS idx_human_receipt_retention ON human_delivery_receipts(updated_at);",
+    // #2122 §5.4: delivered messages per instance per UTC hour, counted where a receipt becomes delivered (kept 400 days).
+    "CREATE TABLE IF NOT EXISTS usage_message_hours (instance TEXT NOT NULL, hour INTEGER NOT NULL, count INTEGER NOT NULL, PRIMARY KEY (instance, hour));",
   ].join("\n"));
   // #1939: added in place; rows from before keep NULL, which reads as their platform's meaning.
   const columns = db.prepare("PRAGMA table_info(human_delivery_receipts)").all() as Array<{ name: string }>;
@@ -183,11 +185,30 @@ export function settleHumanReceipt(db: Database.Database, id: string, target: st
         && proof.wire_sha256 === row.wire_sha256 && row.wire_body !== null
         && humanBodyHash(row.wire_body) === row.wire_sha256 && humanBodyHash(row.original_body) === row.original_sha256) positive = proof;
     }
-    const now = new Date().toISOString();
-    db.prepare("UPDATE human_delivery_receipts SET state=?,proof_tag=?,proof_mode=?,updated_at=?,delivered_at=? WHERE receipt_id=? AND state!='delivered'")
+    const at = new Date(), now = at.toISOString();
+    const moved = db.prepare("UPDATE human_delivery_receipts SET state=?,proof_tag=?,proof_mode=?,updated_at=?,delivered_at=? WHERE receipt_id=? AND state!='delivered'")
       .run(positive ? "delivered" : "uncertain", positive?.tag ?? null, positive?.mode ?? null, now, positive ? now : null, id);
+    // #2122 §5.4: the first move to delivered — from queued or from uncertain — counts once, in this transaction, in the
+    // hour of its real delivered_at. A receipt already delivered never got here (the guard above and the UPDATE's own).
+    if (positive && moved.changes === 1) {
+      db.prepare("INSERT INTO usage_message_hours (instance, hour, count) VALUES (?, ?, 1) ON CONFLICT(instance, hour) DO UPDATE SET count = count + 1")
+        .run(row.target_instance, Math.floor(at.getTime() / 3_600_000) * 3_600_000);
+    }
     return positive !== null;
   })();
+}
+
+/** #2122: delivered messages per instance and UTC hour in [from, to) — what the usage report counts as messages. */
+export function deliveredMessageHours(db: Database.Database, from: number, to: number): Array<{ instance: string; hour: number; count: number }> {
+  const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='usage_message_hours'").get();
+  if (!table) return [];
+  return db.prepare("SELECT instance, hour, count FROM usage_message_hours WHERE hour >= ? AND hour < ?").all(from, to) as Array<{ instance: string; hour: number; count: number }>;
+}
+/** #2122: drop message counts older than the usage rollup keeps (400 days). */
+export function pruneMessageHours(db: Database.Database, before: number): number {
+  const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='usage_message_hours'").get();
+  if (!table) return 0;
+  return db.prepare("DELETE FROM usage_message_hours WHERE hour < ?").run(before).changes;
 }
 
 /**

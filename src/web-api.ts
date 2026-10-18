@@ -211,7 +211,7 @@ export interface WebApiContext {
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
-    web?: { echo_to_channel?: boolean; usage_panel?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number };
+    web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
@@ -297,6 +297,8 @@ export interface WebApiContext {
   logSteps?(name: string, q: import("./log-service.js").LogQuery): Promise<unknown>;
   /** #1468: the prompt-cache expiry analysis for a window ("24h" | "7d" | "30d"); absent: not offered. */
   cacheReport?(window: string): Promise<unknown>;
+  /** #2122: the usage report (Fleet → Usage); absent: not offered. */
+  usageReport?(params: { range: import("./usage-report.js").UsageRange; group: import("./usage-report.js").UsageGroup }): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
   webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority }): Promise<{ status: number; body: unknown }>;
   /** #1939 S2b: "Authorize this browser" — the Confirm card in the account's DM; and what the app shows for this browser. */
@@ -834,6 +836,18 @@ function webAuthorityOf(req: IncomingMessage, url: URL, ctx: WebApiContext, inst
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
   return ctx.webAuthority({ session: v.kind === "allow" && v.via === "session" ? v.session : null, gateway: !!gatewayRequestContext(req),
     peer: classifyWebPeer(req), ...(instance !== undefined ? { instance } : {}) });
+}
+/**
+ * #2122: what let this request in, asked now — its session (by handle, under the token it was signed in with) or the
+ * header token; null when nothing does any more (the gate also refuses a public link that is no longer the current
+ * one). Equal before and after an await: the same admission still holds. Never touches the session.
+ */
+function admissionOf(req: IncomingMessage, url: URL, ctx: WebApiContext): string | null {
+  const gateway = gatewayRequestContext(req);
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  if (v.kind !== "allow") return null;
+  const via = v.via === "session" ? `session:${v.session.handle}:${v.session.tokenEpoch}` : "token";
+  return gateway ? `${via}@${gateway.exposureId}` : via;
 }
 /** #1827: the person, or the request is answered 401 here (it is no longer authorized) and null is returned. */
 function webPersonOr401(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext): WebPerson | null {
@@ -1896,6 +1910,36 @@ export function handleWebRequest(
       ctx.scheduler.delete(decodeURIComponent(schedDelMatch[1]));
       json(res, 200, { deleted: true });
     } catch (err) { json(res, 400, { error: (err as Error).message }); }
+    return true;
+  }
+
+  // #2122: the usage report. Signed-in sessions by default (guests never: not in GUEST_ROUTES); hidden with the rest of
+  // usage by web.usage_panel: false; over the public link only when web.usage_report_on_public_link is true. Answered
+  // from the ledgers and rollups as they are; a catch-up runs behind. The page's CSV is built from this same answer.
+  if (method === "GET" && path === "/ui/usage-report") {
+    // Who may have it, asked on arrival and again before it is sent (the report is awaited: a switch turned off, a
+    // session signed out or a public link ended meanwhile gets nothing). The same boundary both times, no new gate.
+    const refusal = (): [number, string] | null => {
+      if (!ctx.usageReport || ctx.fleetConfig?.web?.usage_panel === false) return [404, "Not available"];
+      if (gatewayRequestContext(req) && ctx.fleetConfig?.web?.usage_report_on_public_link !== true) return [403, "usage_report_not_over_public_link"];
+      return null;
+    };
+    const first = refusal();
+    if (first) { json(res, first[0], { error: first[1] }); return true; }
+    const admitted = admissionOf(req, url, ctx);
+    if (!admitted) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return true; }
+    void import("./usage-report.js").then(({ usageRange, usageGroup }) => ctx.usageReport!({
+      range: usageRange(url.searchParams.get("range"), url.searchParams.get("from") ?? undefined, url.searchParams.get("to") ?? undefined),
+      group: usageGroup(url.searchParams.get("group")),
+    })).then(
+      (report) => {
+        const now = refusal();
+        if (now) return json(res, now[0], { error: now[1] });
+        if (admissionOf(req, url, ctx) !== admitted) return json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
+        json(res, 200, report);
+      },
+      (err) => { ctx.logger.error({ err }, "usage report failed"); json(res, 500, { error: "Usage report failed" }); },
+    );
     return true;
   }
 

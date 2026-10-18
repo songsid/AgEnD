@@ -56,6 +56,7 @@ import {
   KiroEngineStatusArgs,
   GetUsageArgs,
   GetCacheReportArgs,
+  GetUsageReportArgs,
   GetWebSettingsArgs,
   SetWebSettingsArgs,
   ListModelsArgs,
@@ -155,6 +156,8 @@ export interface OutboundContext {
   webSettings?: import("./web-settings-tools.js").WebSettingsTools;
   /** #2001: the cache report as last worked out (CacheService.published) — never a transcript read. */
   cacheReportPublished?(window: string): Promise<import("./cache-service.js").CacheReport>;
+  /** #2122: the usage report; `only`: just that instance (an ordinary caller's own row). */
+  usageReport?(params: { range: import("./usage-report.js").UsageRange; group: import("./usage-report.js").UsageGroup; only?: string }): Promise<import("./usage-report.js").UsageReport>;
   /** Effective process state used to annotate cross-instance delivery results. */
   getInstanceStatus?(name: string): "running" | "paused" | "stopped" | "crashed";
   /** #1808: whether `backend` takes this model name (the rule /backend applies too); `choices`: what it offers. */
@@ -1135,6 +1138,37 @@ const getCacheReport: Handler = async (ctx, rawArgs, respond, meta) => {
     if ("error" in out && typeof out.error === "string") respond(null, out.error); else respond(out);
   } catch (err) {
     respond(null, `get_cache_report failed: ${(err as Error).message}`);
+  }
+};
+
+/**
+ * #2122: the usage report for an agent — the dashboard's Fleet → Usage, from the last scan (no transcript read). Who
+ * sees what: cacheReportScope (its own row, or the fleet). Every amount carries `basis`: the API-equivalent at list
+ * price, not money spent.
+ */
+const getUsageReport: Handler = async (ctx, rawArgs, respond, meta) => {
+  const v = validateArgs(GetUsageReportArgs, rawArgs, "get_usage_report");
+  if (!v.ok) { respond(null, v.error); return; }
+  const caller = meta?.instanceName;
+  if (!caller) { respond(null, "get_usage_report: the calling instance is unknown"); return; }
+  if (!ctx.usageReport) { respond(null, "get_usage_report is unavailable on this fleet"); return; }
+  const { resolveToolSet, cacheReportScope } = await import("./tool-permissions.js");
+  const { usageRange, usageGroup } = await import("./usage-report.js");
+  const scope = cacheReportScope(resolveToolSet(ctx.fleetConfig?.instances[caller], caller));
+  if (scope === "own" && v.data.instance !== undefined && v.data.instance !== caller) { respond(null, "get_usage_report: an instance reads only its own row"); return; }
+  const only = scope === "own" ? caller : v.data.instance;
+  try {
+    const r = await ctx.usageReport({ range: usageRange(v.data.range, v.data.from, v.data.to), group: scope === "own" ? "instance" : usageGroup(v.data.group), ...(only ? { only } : {}) });
+    const top = v.data.top ?? 10;
+    respond({
+      basis: r.basis, range: r.range, zone: r.zone, granularity: r.granularity, group: r.group,
+      rows: r.rows.slice(0, top).map(row => ({ ...row, basis: r.basis })),
+      more: Math.max(0, r.rows.length - top),
+      totals: { ...r.totals, basis: r.basis },
+      notMeasured: r.notMeasured, shared: r.shared, scanning: r.scanning,
+    });
+  } catch (err) {
+    respond(null, `get_usage_report failed: ${(err as Error).message}`);
   }
 };
 
@@ -2227,6 +2261,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["kiro_engine_status", kiroEngineStatusHandler],
   ["get_usage", getUsage],
   ["get_cache_report", getCacheReport],
+  ["get_usage_report", getUsageReport],
   ["get_web_settings", getWebSettings],
   ["set_web_settings", setWebSettings],
   ["list_models", listModels],

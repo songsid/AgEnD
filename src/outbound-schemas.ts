@@ -411,6 +411,16 @@ export const GetCacheReportArgs = z.object({
   top: z.number().int().min(1).max(50).optional().describe("At most this many analysed instances, the costliest expiries first. Default: 10."),
 }).strict();
 
+/** #2122: tokens, requests, delivered messages and their API-equivalent at list price, read-only. */
+export const GetUsageReportArgs = z.object({
+  range: z.enum(["today", "7d", "month", "all", "custom"]).optional().describe("The days to sum, in the fleet's timezone. Default: 7d. custom needs from and to."),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("custom: the first day, YYYY-MM-DD."),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("custom: the last day, YYYY-MM-DD."),
+  group: z.enum(["instance", "backend", "model", "profile", "team"]).optional().describe("How rows are grouped. Default: instance. team is by current membership."),
+  instance: NonEmptyString.optional().describe("One instance's row. An ordinary instance may name only itself (its row is the default)."),
+  top: z.number().int().min(1).max(50).optional().describe("At most this many rows, the largest first. Default: 10."),
+}).strict();
+
 export const ListModelsArgs = z.object({
   backend: NonEmptyString.optional()
     .describe("Backend to list the account catalog for (claude-code, kiro-cli, codex, grok, opencode, antigravity). Defaults to the fleet default backend."),

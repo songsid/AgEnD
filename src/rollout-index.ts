@@ -50,7 +50,11 @@ interface DirEntry {
    * however long ago that refresh comes (the pollers are 2 s apart: "is it hot NOW" would already be false).
    */
   hotWhenRead: boolean;
+  /** Its listing failed (an error other than "it is gone"): read again next time, and counted in `unreadable`. */
+  failed?: boolean;
 }
+/** An error that means the path is gone (raced with deletion), not that it could not be read. */
+const gone = (err: unknown): boolean => (err as NodeJS.ErrnoException | null)?.code === "ENOENT";
 
 export const DEFAULT_ROLLOUT_TTL_MS = 1_000;
 /** A directory read this soon after its last change is read once more before its mtime is trusted. */
@@ -68,6 +72,11 @@ export class RolloutIndex {
   private listing: RolloutFile[] = [];
   private builtAt = Number.NEGATIVE_INFINITY;
   private fullAt = Number.NEGATIVE_INFINITY;
+  /**
+   * #2122: directories and rollouts the last listing could not read (EACCES, EIO… — not ones that are gone). Above 0 the
+   * listing may be short, so nothing may treat it as complete.
+   */
+  unreadable = 0;
 
   constructor(private readonly root: string, options: RolloutIndexOptions = {}) {
     this.ttlMs = options.ttlMs ?? DEFAULT_ROLLOUT_TTL_MS;
@@ -90,17 +99,19 @@ export class RolloutIndex {
   private rebuild(now: number, full: boolean): void {
     const dirs = new Map<string, DirEntry>();
     const files = new Map<string, RolloutFile>();
+    let unreadable = 0;
     const walk = (dir: string, depth: number): void => {
       let mtimeMs: number;
-      try { mtimeMs = this.ops.stat(dir).mtimeMs; } catch { return; }
+      try { mtimeMs = this.ops.stat(dir).mtimeMs; } catch (err) { if (!gone(err)) unreadable++; return; }
       let entry = this.dirs.get(dir);
       // A directory whose last read was taken right after a change is read once more: file times have
       // coarse granularity, so a rollout created in the same tick as that change shares its mtime and
       // would otherwise stay unseen until the next full refresh. (Judged by when it was LAST READ, not by
       // how hot it is now: the next refresh comes a poll interval later, when it has long since cooled.)
-      if (full || !entry || entry.mtimeMs !== mtimeMs || entry.hotWhenRead) {
+      if (full || !entry || entry.mtimeMs !== mtimeMs || entry.hotWhenRead || entry.failed) {
         entry = this.readDir(dir, mtimeMs, depth, now);
       }
+      if (entry.failed) unreadable++;
       dirs.set(dir, entry);
       for (const rollout of entry.rollouts) {
         const known = this.files.get(rollout);
@@ -108,7 +119,7 @@ export class RolloutIndex {
         try {
           const st = this.ops.stat(rollout);
           files.set(rollout, { path: rollout, mtimeMs: st.mtimeMs, size: st.size });
-        } catch { /* raced with deletion */ }
+        } catch (err) { if (!gone(err)) unreadable++; /* else raced with deletion */ }
       }
       if (depth < this.maxDepth) for (const sub of entry.subdirs) walk(sub, depth + 1);
     };
@@ -116,6 +127,7 @@ export class RolloutIndex {
     this.dirs = dirs;
     this.files = files;
     this.listing = [...files.values()].sort((a, b) => b.mtimeMs - a.mtimeMs);
+    this.unreadable = unreadable;
     this.builtAt = now;
     if (full) this.fullAt = now;
   }
@@ -123,12 +135,12 @@ export class RolloutIndex {
   private readDir(dir: string, mtimeMs: number, depth: number, now: number): DirEntry {
     const entry: DirEntry = { mtimeMs, subdirs: [], rollouts: [], hotWhenRead: now - mtimeMs < HOT_DIR_MS };
     let names: string[];
-    try { names = this.ops.readdir(dir); } catch { return entry; }
+    try { names = this.ops.readdir(dir); } catch (err) { if (!gone(err)) entry.failed = true; return entry; }
     for (const name of names) {
       const path = join(dir, name);
       if (name.startsWith("rollout-") && name.endsWith(".jsonl")) { entry.rollouts.push(path); continue; }
       if (depth >= this.maxDepth) continue;
-      try { if (this.ops.stat(path).isDirectory()) entry.subdirs.push(path); } catch { /* raced with deletion */ }
+      try { if (this.ops.stat(path).isDirectory()) entry.subdirs.push(path); } catch (err) { if (!gone(err)) entry.failed = true; /* else raced with deletion */ }
     }
     return entry;
   }

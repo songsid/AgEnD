@@ -46,7 +46,16 @@ export const KEEP_DAYS = 31;
 
 /** [requests, uncached, read, write5m, write1h, write, output] */
 export type HourTotals = [number, number, number, number, number, number, number];
-export interface HourAgg { m: Record<string, HourTotals>; g: number[] }
+/**
+ * `src` (#2122): the same totals split by where they were read from — `sourceKey(reader, profile)`: the transcript reader
+ * (claude, codex) and the credential profile (claude: its config dir's profile, "default" without one; codex:
+ * "unrecorded", since a rollout does not say which login wrote it). Each source keeps its own exact totals. What `m`
+ * holds beyond the sum of `src` was counted before #2122 and reads as unknown (hourSources) — never relabelled with
+ * today's backend or profile.
+ */
+export interface HourAgg { m: Record<string, HourTotals>; g: number[]; src?: Record<string, Record<string, HourTotals>> }
+/** A source of an hour's totals: the reader that read them and the profile it read them under. */
+export const sourceKey = (reader: TranscriptKind, profile: string): string => `${reader}:${profile}`;
 /**
  * One long gap: [tEnd, gapSec, contextCached, contextModel, ttlSec, model, promptAfter, measuredWrite, estimatedWrite].
  * - `contextCached`/`contextModel`: what the previous request left cached, and its model — what a ping would read.
@@ -98,7 +107,14 @@ export function reviveLedger(raw: unknown): Ledger {
     if (!v || !Array.isArray(v.g)) continue;
     const m = dict<HourTotals>();
     for (const [mk, tot] of Object.entries(v.m ?? {})) if (Array.isArray(tot) && tot.length === 7) m[mk] = tot as HourTotals;
-    l.hours[k] = { m, g: v.g };
+    const src = dict<Record<string, HourTotals>>();
+    for (const [sk, sm] of Object.entries(v.src ?? {})) {
+      if (!/^(?:claude|codex):.{1,120}$/s.test(sk) || !sm || typeof sm !== "object") continue;
+      const into = dict<HourTotals>();
+      for (const [mk, tot] of Object.entries(sm)) if (Array.isArray(tot) && tot.length === 7 && tot.every(n => Number.isFinite(n))) into[mk] = tot as HourTotals;
+      src[sk] = into;
+    }
+    l.hours[k] = { m, g: v.g, ...(Object.keys(src).length ? { src } : {}) };
   }
   if (Array.isArray(r.gaps)) l.gaps = r.gaps.filter((g) => Array.isArray(g) && g.length === 9);
   if (r.writesSeen) l.writesSeen = true;
@@ -125,7 +141,7 @@ export function claudeTtlAfter(turn: Turn, current: number | undefined): number 
  * Fold one turn into the ledger, in file order. Turns older than `cutoff` only move the session's last point (the
  * next gap needs it); everything else is counted. Pure apart from mutating `ledger`.
  */
-export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: number): void {
+export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: number, profile?: string): void {
   const prev = file.last;
   const ttlBefore = file.kind === "claude" ? (file.ttl ?? CLAUDE_DEFAULT_TTL_SEC) : CODEX_TTL_SEC;
   if (file.kind === "claude") file.ttl = claudeTtlAfter(turn, file.ttl);
@@ -136,8 +152,13 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
   const hk = String(hourOf(turn.t));
   const hour = ledger.hours[hk] ??= { m: dict<HourTotals>(), g: new Array<number>(GAP_BUCKETS).fill(0) };
   const mk = modelKey(turn.model, turn.prompt);
-  const tot = hour.m[mk] ??= [0, 0, 0, 0, 0, 0, 0];
-  tot[0] += 1; tot[1] += turn.uncached; tot[2] += turn.read; tot[3] += turn.write5m; tot[4] += turn.write1h; tot[5] += turn.write ?? 0; tot[6] += turn.output;
+  const bump = (tot: HourTotals): void => {
+    tot[0] += 1; tot[1] += turn.uncached; tot[2] += turn.read; tot[3] += turn.write5m; tot[4] += turn.write1h; tot[5] += turn.write ?? 0; tot[6] += turn.output;
+  };
+  bump(hour.m[mk] ??= [0, 0, 0, 0, 0, 0, 0]);
+  // #2122: and under its source — the reader that read it (this file's kind) and the profile it was read under.
+  const src = (hour.src ??= dict<Record<string, HourTotals>>())[sourceKey(file.kind, profile ?? "unknown")] ??= dict<HourTotals>();
+  bump(src[mk] ??= [0, 0, 0, 0, 0, 0, 0]);
   if (!prev) return;
   const gap = (turn.t - prev.t) / 1000;
   if (!(gap >= 0)) return;
@@ -148,9 +169,12 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
   ledger.gaps.push([turn.t, gap, prev.ctx, prev.model, ttlBefore, turn.model, turn.prompt, measured, estimated]);
 }
 
-/** Drop what is older than `cutoff` (hours and gap events). */
-export function pruneLedger(ledger: Ledger, cutoff: number): void {
-  for (const k of Object.keys(ledger.hours)) if (Number(k) + HOUR <= cutoff) delete ledger.hours[k];
+/**
+ * Drop what is older than `cutoff` (hours and gap events). `foldedThrough` (#2122): an hour is dropped only once the
+ * usage rollup holds it (usage-rollup.ts: fold, then prune) — never one after the rollup's durable checkpoint.
+ */
+export function pruneLedger(ledger: Ledger, cutoff: number, foldedThrough = Number.POSITIVE_INFINITY): void {
+  for (const k of Object.keys(ledger.hours)) if (Number(k) + HOUR <= cutoff && Number(k) <= foldedThrough) delete ledger.hours[k];
   if (ledger.gaps.length && ledger.gaps[0]![0] < cutoff) ledger.gaps = ledger.gaps.filter((g) => g[0] >= cutoff);
 }
 

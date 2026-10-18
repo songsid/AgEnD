@@ -230,6 +230,23 @@ expired (rewrote), tokens rewritten, expiry cost, keep-warm pings and their cost
 days). Money is list price (date shown); quota effects are estimates. `get_cache_report` gives the fleet to General,
 coordinators and full-profile instances, and each other instance only its own row.
 
+**The usage report** (the `get_usage_report` tool; its Fleet page comes next, #2122). Per instance (or backend,
+model, credential profile, team): input, output, cache read and cache write tokens, requests, delivered messages,
+and an amount, over today / 7d / month / all / custom days in the fleet's timezone. **Every amount is the
+API-equivalent at list price — not money spent** (subscriptions aren't billed per token): say "API-equivalent", never
+"spent". Measured for Claude Code and Codex. Marks to repeat in words:
+- `cache_write_not_reported`: Codex records no cache writes, so they are neither shown as 0 nor priced.
+- `not_priced`: the tokens are shown, the amount isn't.
+- `source_unknown`: read before #2122, when which backend and profile read it was not recorded (backend and profile
+  "unknown" — never today's).
+
+Each hour keeps the backend whose reader read it and the profile it was read under, so an instance that changes
+backend or profile keeps its history as it was. `notMeasured` lists kiro and the other backends with their reason;
+they are never a $0 row, and what such an instance measured before still shows. Messages are counted per instance, so
+by backend they go under its backend now. Coverage only says "read" for a catch-up that listed and read every source
+(an unreadable directory or transcript is not covered, never a 0). Scope as
+`get_cache_report`. The dashboard reaches it over the public link only with `web.usage_report_on_public_link: true`.
+
 **Keep-warm** means sending a small turn before the cache expires so the next real turn reads it instead of
 rewriting it. **Today it is only a simulation and a recommendation** — AgEnD sends no keep-warm pings (#1469 is
 still being designed). If the report says **Switch to 1-hour cache**, the remedy is

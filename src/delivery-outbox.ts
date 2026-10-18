@@ -6,7 +6,7 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { t } from "./locale.js";
 import type { QueueResumePolicy } from "./delivery-queue-evidence.js";
-import { initializeHumanReceipts, createHumanReceipt, getHumanReceipt, bindHumanReceipt, settleHumanReceipt, queryHumanReceipt, maxWebAuthorityEpoch,
+import { initializeHumanReceipts, createHumanReceipt, getHumanReceipt, bindHumanReceipt, settleHumanReceipt, queryHumanReceipt, maxWebAuthorityEpoch, deliveredMessageHours, pruneMessageHours,
   type HumanOrigin, type HumanReceiptRow, type HumanReceiptProof } from "./human-delivery-receipts.js";
 
 export const DURABLE_DELIVERY_MAX_ATTEMPTS = 8;
@@ -1169,6 +1169,8 @@ export class DeliveryOutbox extends EventEmitter {
   }
   /** #1939 §10: the highest epoch a stored receipt carries (authority-state.ts must not be behind it). */
   maxWebAuthorityEpoch(): number { return maxWebAuthorityEpoch(this.db); }
+  /** #2122: delivered messages per instance and UTC hour in [from, to). */
+  deliveredMessageHours(from: number, to: number): Array<{ instance: string; hour: number; count: number }> { return deliveredMessageHours(this.db, from, to); }
 
   markHumanReceiptUncertain(id: string, target: string): void {
     this.db.prepare("UPDATE human_delivery_receipts SET state='uncertain',updated_at=? WHERE receipt_id=? AND target_instance=? AND state='queued'")
@@ -1949,6 +1951,8 @@ export class DeliveryOutbox extends EventEmitter {
       await new Promise<void>(resolve => setImmediate(resolve));
     }
 
+    // #2122: delivered-message counts are kept as long as the usage rollup (400 days), whatever `days` is.
+    pruneMessageHours(this.db, Date.now() - 400 * 24 * 60 * 60_000);
     // Human rows are evidence only: retention never schedules or retries them.
     for (;;) {
       if (!this.db.open) break;
