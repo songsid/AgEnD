@@ -41,7 +41,7 @@ function rig(over: Partial<SessionAuthorizationDeps> = {}) {
     signOut: (handle) => { signedOut.push(handle); },
     event: (type, payload) => { events.push([type, payload]); },
     text: { ask: (c) => `ASK ${c.label} ${c.peer} ${c.askedAt} ${c.until}`, confirmed: (c) => `OK ${c.label} ${c.until}`, denied: (c) => `DENIED ${c.label}`,
-      expired: (c) => `EXPIRED ${c.label}`, refused: (c) => `REFUSED ${c.label} ${c.refusal}`, revoked: (c) => `REVOKED ${c.label}`, generalHint: () => "HINT",
+      expired: (c) => `EXPIRED ${c.label}`, refused: (c) => `REFUSED ${c.label} ${c.refusal}`, revoked: (c) => `REVOKED ${c.label}`, ended: (c) => `ENDED ${c.label}`, generalHint: () => "HINT",
       confirmLabel: () => "Confirm", notMeLabel: () => "Not me", notYours: () => "NOT YOURS" },
     log: { warn: vi.fn() }, ...over,
   };
@@ -53,7 +53,8 @@ function rig(over: Partial<SessionAuthorizationDeps> = {}) {
   };
   return { r, deps, sent, edits, hints, events, signedOut, authorized, tap, advance: (ms: number) => { mono += ms; wall += ms; } };
 }
-const ask = (h: ReturnType<typeof rig>, handle = H) => h.r.ask({ handle, owner: OWNER, label: "Firefox on Mac", peer: "loopback" });
+const SESSION_END = Date.UTC(2026, 9, 25, 9, 0, 0);                                     // later than any authorization here
+const ask = (h: ReturnType<typeof rig>, handle = H, sessionEnd = SESSION_END) => h.r.ask({ handle, owner: OWNER, label: "Firefox on Mac", peer: "loopback", sessionEnd });
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
@@ -66,6 +67,12 @@ describe("the card: what it says, and the limits against confirm fatigue", () =>
     expect(h.sent[0]!.choices).toEqual([expect.stringMatching(/^wauth:[0-9a-f]{32}:confirm$/), expect.stringMatching(/^wauth:[0-9a-f]{32}:notme$/)]);
     expect(h.events[0]).toEqual(["session_authorization_issued", expect.objectContaining({ session: H, actor: "owner:admin", peer: "loopback" })]);
     expect(h.r.pending(H)).toEqual({ expiresInMs: AUTHORIZATION_CARD_TTL_MS });
+  });
+  it("#2126 P3: the ask says the session's own end when that comes before the authorization's", async () => {
+    const h = rig();
+    const sessionEnd = Date.UTC(2026, 9, 18, 21, 0, 0);                                   // 12 h from now; the authorization would be 48 h
+    await ask(h, H, sessionEnd);
+    expect(h.sent[0]!.text).toBe(`ASK Firefox on Mac loopback ${Date.UTC(2026, 9, 18, 9, 0, 0)} ${sessionEnd}`);
   });
   it("one pending card per session; a second ask says so (until when)", async () => {
     const h = rig();
@@ -177,6 +184,28 @@ describe("a tap on the card", () => {
     expect(h.edits.at(-1)).toEqual({ text: "REVOKED Firefox on Mac", choices: [] });
     expect(h.events.at(-1)).toEqual(["session_authorization_failed", expect.objectContaining({ reason: "not_me_after_confirm" })]);
   });
+  it("#2126 P3: at the authorization's end the confirmed card says it ended, with no button left", async () => {
+    vi.useFakeTimers();
+    const h = rig();
+    await ask(h);
+    await h.tap(0);
+    expect(h.edits.at(-1)!.choices).toEqual([expect.stringMatching(/:notme$/)]);
+    await vi.advanceTimersByTimeAsync(48 * 3_600_000 - 1);
+    expect(h.edits.at(-1)!.text).toMatch(/^OK /);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.edits.at(-1)).toEqual({ text: "ENDED Firefox on Mac", choices: [] });
+    const { ack } = await h.tap(1);                                                       // an old client's Not me
+    expect(ack).toHaveBeenCalledWith();
+    expect(h.signedOut).toEqual([]);
+  });
+  it("#2126 P3: a card Not me'd before its end is not edited again at the end", async () => {
+    vi.useFakeTimers();
+    const h = rig();
+    await ask(h); await h.tap(0); await h.tap(1);
+    const edits = h.edits.length;
+    await vi.advanceTimersByTimeAsync(48 * 3_600_000);
+    expect(h.edits).toHaveLength(edits);
+  });
   it("another prefix, a malformed id or an unknown card: not ours, or acknowledged quietly", async () => {
     const h = rig();
     expect(await h.r.handleCallback({ callbackData: "rb:x:1" }, "owner")).toBe(false);
@@ -244,7 +273,10 @@ describe("the FleetManager wiring (a real one, no fleet)", () => {
     await h.s.dispatchAdapterCallback({ callbackData: h.dms[0]!.choices[0]!.id, chatId: "dm-admin", messageId: "m1", userId: "admin", ack: vi.fn() }, "owner", h.adapter);
     const st = (await route(h, "GET", { sessionId })).body;
     expect(st.until).toBe(record.absoluteExpiry);
-    expect(h.adapter.editMessage).toHaveBeenCalledWith("dm-admin", "m1", expect.stringContaining(`until ${new Date(record.absoluteExpiry).toLocaleString()}.`));
+    const zoned = (ms: number) => new Date(ms).toLocaleString(undefined, { timeZoneName: "short" });
+    expect(h.dms[0]!.text, "#2126 P3: the ask says the session's end too").toContain(`it would last until ${zoned(record.absoluteExpiry)}`);
+    expect(h.adapter.editMessage).toHaveBeenCalledWith("dm-admin", "m1", expect.stringContaining(`until ${zoned(record.absoluteExpiry)}.`));
+    expect(zoned(record.absoluteExpiry), "#2126 P3: with the host's zone").toMatch(/(GMT|UTC|[A-Z]{2,5})[+-]?\d*$/);
     h.close();
   });
   it("Not me signs that browser out: its next request is not signed in", async () => {

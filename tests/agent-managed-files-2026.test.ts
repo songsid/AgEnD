@@ -37,10 +37,11 @@ describe("managed in-state appearance files", () => {
     expect(await f.read("root.png")).toMatchObject({ ok: false });
     expect(await readAgentEffect("effect", f.opts)).toMatchObject({ ok: false });
   });
-  it("a configured project inside its own workspace has staged access without granting sibling files", async () => {
+  it("a configured project inside its own workspace has ordinary access without granting sibling files", async () => {
     const f = fixture("worker", "workspaces/worker/project");
     f.save(join(f.workspace, "web-assets/banner.png"));
     expect(await f.read("web-assets/banner.png")).toMatchObject({ ok: true });
+    f.save(join(f.workspace, "ordinary.png")); expect(await f.read("ordinary.png")).toMatchObject({ ok: true });
     f.save(join(f.stateDir, "workspaces/worker/sibling.png"));
     expect(await f.read("../sibling.png")).toMatchObject({ ok: false });
   });
@@ -151,7 +152,7 @@ describe("managed in-state appearance files", () => {
     expect(await writeAgentFile("web-assets/output", "file.png", Buffer.from("x"), f.opts)).toMatchObject({ ok: false });
     expect(existsSync(join(f.workspace, "web-assets/output"))).toBe(false);
   });
-  it.each(["", "workspaces", "instances/general", "credential-profiles/general", "cx/general", "kiro-v3/general", "inbox", "workspaces/other", "web-effects/general", "web-mods", "web-themes", "web-owner-css", "cards", "avatars", "cache", "web-files", "kiro-identity", "operator", "model-catalog", "profiles", "preview-tunnel", "bin", ".agend/appearance", ".vendor/data"])("configured cwd %s cannot turn protected/shared state into asset scope", async part => {
+  it.each(["", "workspaces", "instances/general", "credential-profiles/general", "cx/general", "kiro-v3/general", "inbox", "web-effects/general", "web-mods", "web-themes", "web-owner-css", "cards", "avatars", "cache", "web-files", "kiro-identity", "operator", "model-catalog", "profiles", "preview-tunnel", "bin", ".agend/appearance", ".vendor/data"])("configured cwd %s cannot turn protected/shared state into asset scope", async part => {
     const f = fixture("general", part); f.save(join(f.workspace, "web-assets/banner.png"));
     expect(await f.read("web-assets/banner.png")).toMatchObject({ ok: false });
   });
@@ -179,8 +180,8 @@ describe("managed in-state appearance files", () => {
     expect(await writeAgentFile("web-assets/new", "auth.json", Buffer.from("secret"), f.opts)).toMatchObject({ ok: false });
     expect(existsSync(join(f.workspace, "web-assets"))).toBe(false);
   });
-  it.each(["general", "general-telegram"])("daemon %s reads bytes from its configured staged area, never a tool-selected identity", async name => {
-    const f = fixture(name); f.save(join(f.workspace, "web-assets/banner.png"));
+  it.each([["general", "general"], ["general-telegram", "general-telegram"], ["alpha", "workspaces/alpha-home"]])("daemon %s reads bytes from configured %s, never a tool-selected identity", async (name, part) => {
+    const f = fixture(name, part); f.save(join(f.workspace, "web-assets/banner.png"));
     const { Daemon } = await import("../src/daemon.js");
     const { default: pino } = await import("pino");
     const { vi } = await import("vitest");

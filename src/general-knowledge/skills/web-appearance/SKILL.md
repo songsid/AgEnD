@@ -308,11 +308,15 @@ From a shell: `agend-agent theme get|set key=value…|set --json '<patch>'|clear
 ## Files in your working directory
 
 Asset uploads, effect directories and mod proposals must be inside your working directory. For an external project,
-use files there as before. For your own AgEnD-managed `~/.agend/workspaces/<your-instance-name>` (ClassicBot and
-instances without a project directory), ordinary files there also work; no staging folder is required.
+use files there as before. For your own AgEnD-managed workspace under `~/.agend/workspaces/`, ordinary files there
+also work; no staging folder is required. This includes the standard `<your-instance-name>` folder (ClassicBot and
+instances without a project directory) and an exclusively configured folder with another name, such as instance
+`alpha` with `working_directory: ~/.agend/workspaces/alpha-home` in `fleet.yaml`. Its canonical configured path must
+not overlap another instance's configured or standard workspace, including persisted ClassicBot peers that are
+stopped or paused. The `workspaces/` root itself is not a workspace.
 
-General, adapter-specific General (such as `general-telegram`), and other configured working directories inside the
-AgEnD state directory must stage inputs under **`web-assets/` or `web-effects/`**. For example, put a banner at
+General, adapter-specific General (such as `general-telegram`), and other configured working directories elsewhere
+inside the AgEnD state directory must stage inputs under **`web-assets/` or `web-effects/`**. For example, put a banner at
 `web-assets/banner.png` or an effect package at `web-effects/sparks/`, relative to that working directory. Its root
 and backend configuration folders are not upload areas. Generated previews and exported mods still use the fixed
 `.agend/appearance/` and `.agend/mods/` directories and can be read back or proposed there.
