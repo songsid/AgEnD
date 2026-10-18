@@ -42,6 +42,14 @@ describe("#1629 actual Effects component", () => {
     expect(h.playback).toHaveBeenLastCalledWith({ name: "own", playing: false });
     await h.publish(); h.cleanup(); await pg!.unmount(); expect(h.playback).toHaveBeenLastCalledWith({ name: "own", playing: false });
   });
+  it("a manual pause never claims a performance intervention; actual budget and OFF reasons still explain it", async () => {
+    const h = await fixture();
+    await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "paused" }]);
+    expect(pg!.root.textContent).not.toContain("protect page responsiveness"); expect(pg!.root.textContent).toContain("automatic-pause history");
+    await h.open(); expect(pg!.root.textContent).not.toContain("protect page responsiveness");
+    await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "host_budget" }]); expect(pg!.root.textContent).toContain("protect page responsiveness");
+    await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "safety_off" }]); expect(pg!.root.textContent).toContain("after three automatic pauses"); h.cleanup();
+  });
   it("refused admission installs no runtime observers and keeps an incomplete browser host harmless", async () => {
     const h = await fixture(true); expect(h.observers).toEqual([]); expect(h.api().sync).not.toHaveBeenCalled();
     expect(pg!.root.textContent).toContain("runtime_unavailable"); await h.open(); expect(pg!.root.textContent).toContain("Playback is off or unavailable here."); h.cleanup(); expect(h.api().dispose).toHaveBeenCalledOnce();

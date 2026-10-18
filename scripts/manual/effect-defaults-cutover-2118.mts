@@ -16,6 +16,7 @@ const pw=createRequire(process.env.PW_DIR+'/')('playwright-core');
 const engines=(process.env.PROBE_ENGINES||'chromium,firefox,webkit').split(',');
 const origins=(process.env.PROBE_SURFACES||'loopback,lan,public').split(',');
 const widths=(process.env.PROBE_WIDTHS||'1366,390').split(',').map(Number),modes=(process.env.PROBE_MODES||'light,dark').split(',');
+const trialNoPaint=process.env.PROBE_MUTATION==='trial-no-paint';
 const asGuest=process.env.PROBE_GROUPS==='guest',safetyProbe=process.env.PROBE_GROUPS==='safety',safeProbe=process.env.PROBE_GROUPS==='safe',reductions=asGuest||safetyProbe||safeProbe||process.env.PROBE_GROUPS==='fresh-only'?[false]:[false,true],rows=[];
 // Explicitly await asynchronous module observations in Node. Driver predicate polling can
 // treat the returned Promise itself as truthy; a resolved value must be exactly true.
@@ -31,7 +32,7 @@ function pixels(png){
  const paeth=(a,b,c)=>{const p=a+b-c,A=Math.abs(p-a),B=Math.abs(p-b),C=Math.abs(p-c);return A<=B&&A<=C?a:B<=C?b:c};
  for(let y=0;y<h;y++){const f=raw[y*(stride+1)];assert.ok(f<=4);for(let x=0;x<stride;x++){const a=x>=c?b[y*stride+x-c]:0,u=y?b[(y-1)*stride+x]:0,v=y&&x>=c?b[(y-1)*stride+x-c]:0;b[y*stride+x]=(raw[y*(stride+1)+x+1]+(f===0?0:f===1?a:f===2?u:f===3?Math.floor((a+u)/2):paeth(a,u,v)))&255}}
  let red=0;for(let j=0;j<b.length;j+=c)if(b[j]>200&&b[j+1]<60&&b[j+2]>40&&b[j+2]<110)red++;
- return{red,width:w,height:h,pixel:(x,y)=>[...b.subarray((Math.floor(y)*w+Math.floor(x))*c,(Math.floor(y)*w+Math.floor(x))*c+3)]};
+ return{red,width:w,height:h,redIn:rect=>{let n=0;for(let y=Math.max(0,Math.ceil(rect.y));y<Math.min(h,Math.floor(rect.y+rect.height));y++)for(let x=Math.max(0,Math.ceil(rect.x));x<Math.min(w,Math.floor(rect.x+rect.width));x++){const j=(y*w+x)*c;if(b[j]>200&&b[j+1]<60&&b[j+2]>40&&b[j+2]<110)n++}return n},pixel:(x,y)=>[...b.subarray((Math.floor(y)*w+Math.floor(x))*c,(Math.floor(y)*w+Math.floor(x))*c+3)]};
 }
 for(const engine of engines)for(const origin of origins)for(const width of widths)for(const theme of modes)for(const reduced of reductions){
  const key=[engine,origin,width,theme,reduced?'reduce':'normal'].join('-');let fx=null,browser=null,ctx=null,link=null,page=null,capture=null,lanProxy=null;const row={key,engine,origin,width,theme,reduced,status:'failed',fromDefaults:true,visibleSignIn:true,seededPrefs:false,seededConsent:false,realSafari:false,physicalPhone:false};
@@ -49,12 +50,13 @@ for(const engine of engines)for(const origin of origins)for(const width of width
   const actualBrowser={newContext:opts=>browser.newContext({...opts,...(engine==='firefox'?{isMobile:false}:{}),...(lanProxy?{proxy:{server:'http://127.0.0.1:'+lanProxy.address().port}}:{})})};
   const view={...fx,browser:actualBrowser},name=fx.instances[0].name;
   const code=process.env.PROBE_MUTATION==='no-paint'?'agend.ready();':"const c=agend.canvas.getContext('2d');function draw(){c.fillStyle='#ed174c';c.fillRect(0,0,4096,4096)}draw();agend.on('env',draw);agend.ready();";
-  const staged=fx.fm.effectLibrary.stage(new Map([['effect.json',Buffer.from(JSON.stringify({v:1,runtime:'canvas-worker-v1',worker:'worker.js',name:'defaults-smoke',title:'Visible defaults sample',regions:['chat'],layer:'front',wants:[]}))],['worker.js',Buffer.from(code)]]),{kind:'agent',id:name});assert.equal(staged.ok,true);const commit=fx.fm.effectLibrary.commit(staged.stageId);assert.equal(commit.ok,true);const id=commit.ids[0];if(!asGuest)assert.ok(!fx.fm.effectTools.apply(name,{id}).error);assert.equal((await fx.fm.effectTools.preview(name,{id})).status,"offered");
+  const staged=fx.fm.effectLibrary.stage(new Map([['effect.json',Buffer.from(JSON.stringify({v:1,runtime:'canvas-worker-v1',worker:'worker.js',name:'defaults-smoke',title:'Visible defaults sample',regions:['chat'],layer:trialNoPaint?'behind':'front',wants:[]}))],['worker.js',Buffer.from(code)]]),{kind:'agent',id:name});assert.equal(staged.ok,true);const commit=fx.fm.effectLibrary.commit(staged.stageId);assert.equal(commit.ok,true);const id=commit.ids[0];if(!asGuest)assert.ok(!fx.fm.effectTools.apply(name,{id}).error);assert.equal((await fx.fm.effectTools.preview(name,{id})).status,"offered");
   const beforeNavigate=async (ctx,debugPage)=>{debugPage.on('pageerror',e=>(row.pageErrorStacks??=[]).push(e.stack));debugPage.on('requestfailed',r=>(row.requestFailures??=[]).push({path:new URL(r.url()).pathname,error:r.failure()}));debugPage.on('response',r=>{if(r.status()>=400)(row.httpFailures??=[]).push({path:new URL(r.url()).pathname,status:r.status()})});return ctx.addInitScript(()=>{globalThis.__defaultViolations=[];globalThis.__defaultStyleInserts=[];new MutationObserver(rs=>{for(const r of rs)for(const n of r.addedNodes)if(n.nodeName==='STYLE')globalThis.__defaultStyleInserts.push(n.textContent)}).observe(document,{childList:true,subtree:true});document.addEventListener('securitypolicyviolation',e=>globalThis.__defaultViolations.push({directive:e.effectiveDirective,blocked:e.blockedURI,source:e.sourceFile,line:e.lineNumber,column:e.columnNumber,sample:e.sample,target:e.target?.outerHTML?.slice(0,500)}))})};
   const guestSetup=()=>{if(!asGuest)return;fx.fm.initializeWebSessions();fx.fm.fleetConfig.web.guests={enabled:true};fx.fm.guestScope=()=>new Set([name]);fx.fm.confirmGuestPublicWebLogin=async()=>{};const issue=fx.fm.webLoginCodes.issue.bind(fx.fm.webLoginCodes);fx.fm.webLoginCodes.issue=input=>issue({...input,tier:'guest',owner:undefined,recipient:input.recipient??{adapterId:input.owner.adapterId,userId:input.owner.userId}});row.syntheticGuestScope=[name]};
   const c={device:width<900?'phone':'desk',theme,lang:'en'};let fresh;
   if(origin==='public'){link=await openPublicLink(view);guestSetup();fresh=await link.publicPage(c,{reducedMotion:reduced,beforeNavigate})}else {guestSetup();fresh=await freshPage(view,c,{origin,reducedMotion:reduced,beforeNavigate});}
   ({page,ctx}=fresh);
+  if(trialNoPaint)await page.route('**/ui/effect-trials/*/resource?*',async route=>{const response=await route.fetch();assert.equal(response.status(),200);const data=await response.json();data.code='agend.ready();';await route.fulfill({response,json:data});row.trialOnlyNoDraw=true});
   capture=async options=>{
    const count=async()=>new Map(await Promise.all(page.frames().map(async f=>[f,await f.evaluate(()=>globalThis.__defaultStyleInserts?.filter(s=>s==='body {}').length||0).catch(()=>0)])));
    const prior=await count(),start=fresh.errors.length,buffer=await page.screenshot({caret:"initial",...options});await page.waitForTimeout(0);
@@ -126,7 +128,7 @@ for(const engine of engines)for(const origin of origins)for(const width of width
       if(incident===1||incident===3){await page.reload();await waitObservation(page,async()=>{const m=await import('/ui/js/app-effects.js');return m.getAppEffects()?.api.snapshot().rows.length>0});assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);}
       const dialog=await openEffects();
       if(incident===3){await page.getByText('Turned off on this device after three automatic pauses.',{exact:false}).first().waitFor();await dialog.getByRole('button',{name:'Resume',exact:true}).click();await page.waitForTimeout(500);assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);row.safetyOffSurvivesReload=true;row.resumeRefused=true;}
-      else {assert.match(await dialog.innerText(),/page responsiveness/);await dialog.getByRole('button',{name:'Resume',exact:true}).click();}
+      else {assert.match(await dialog.innerText(),/automatic-pause history/);await dialog.getByRole('button',{name:'Resume',exact:true}).click();}
       await dialog.getByRole('button',{name:'Close',exact:true}).click();
      }
     }
@@ -135,10 +137,15 @@ for(const engine of engines)for(const origin of origins)for(const width of width
    else {
     await page.waitForFunction(()=>document.querySelector('.effect-trial-start')?.textContent==='Try');await page.locator('.effect-trial-start').click();
     await waitObservation(page,async()=>{const m=await import('/assets/effect-trial-shadow.js');const p=document.querySelector('.effect-trial-panel'),s=p&&m.effectTrialShadow(window,p);const f=s?.stage.querySelector('iframe');return f&&getComputedStyle(f).visibility==='visible'},15000);
-    let trialPaint;const until=Date.now()+8000;do{trialPaint=pixels(await capture({path:join(out,key+'-try.png')}));if(trialPaint.red>500)break;await page.waitForTimeout(500)}while(Date.now()<until);assert.ok(trialPaint.red>500,'independent Trial pixels');
     const shell=await page.evaluate(async()=>{const m=await import('/assets/effect-trial-shadow.js'),s=m.effectTrialShadow(window,document.querySelector('.effect-trial-panel'));const r=s.stage.getBoundingClientRect(),c=getComputedStyle(s.stage),b=s.root.querySelector('.effect-trial-stop').getBoundingClientRect();return{contain:c.contain,overflow:c.overflow,stage:{x:r.x,y:r.y,width:r.width,height:r.height},stop:{x:b.x+b.width/2,y:b.y+b.height/2}}});
-    assert.ok(shell.contain.includes('paint'));assert.equal(shell.overflow,'clip');await page.mouse.click(shell.stop.x,shell.stop.y);
-    await waitObservation(page,async()=>{const m=await import('/assets/effect-trial-shadow.js'),p=document.querySelector('.effect-trial-panel');return !p||!m.effectTrialShadow(window,p)?.stage.querySelector('iframe')});row.trial={status:'explicit-click painted and Stop removed',redPixels:trialPaint.red,...shell};
+    assert.ok(shell.contain.includes('paint'));assert.equal(shell.overflow,'clip');
+    let trialPaint,stageRed=0;const until=Date.now()+8000;do{trialPaint=pixels(await capture({path:join(out,key+'-try.png')}));assert.equal(trialPaint.width,width);stageRed=trialPaint.redIn(shell.stage);if(stageRed>500)break;await page.waitForTimeout(500)}while(Date.now()<until);
+    row.trialPixels={stageRed,wholeScreenRed:trialPaint.red,ordinaryOutsideStageRed:trialPaint.red-stageRed};
+    if(trialNoPaint){assert.equal(row.trialOnlyNoDraw,true,'Trial resource alone must be the no-draw control');assert.ok(row.trialPixels.ordinaryOutsideStageRed>500,'the ordinary effect still paints outside the stage');}
+    assert.ok(stageRed>500,'independent stage-only Trial pixels');
+    const stopRgb=trialPaint.pixel(shell.stop.x,shell.stop.y);assert.ok(!(stopRgb[0]>200&&stopRgb[1]<60&&stopRgb[2]>40&&stopRgb[2]<110),'host Stop pixels are not effect paint');await page.mouse.click(shell.stop.x,shell.stop.y);
+    await waitObservation(page,async()=>{const m=await import('/assets/effect-trial-shadow.js'),p=document.querySelector('.effect-trial-panel');return !p||!m.effectTrialShadow(window,p)?.stage.querySelector('iframe')});
+    const stopped=pixels(await capture({path:join(out,key+'-try-stopped.png')}));assert.ok(stopped.redIn(shell.stage)<500,'Stop removes physical Trial paint');row.trial={status:'explicit-click painted inside stage and Stop removed paint',redPixels:stageRed,stopRgb,...shell};
    }
   }
   // Chromium logs this draft directive as an error; keep that exact bootstrap-only
