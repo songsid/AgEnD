@@ -2,7 +2,7 @@
 import { allocateEffectFrames, effectEvent, effectPlaybackReason } from "./effect-policy.js";
 import { createOpaqueEffectFrame } from "./effect-frame.js";
 import { createEffectGeometry, hostEffectRect } from "./effect-geometry.js";
-import { effectStockSnapshot, effectStockAllows } from "./effect-stock-snapshot.js";
+import { effectStockSnapshot, effectStockAllows, effectStockRefusal } from "./effect-stock-snapshot.js";
 import { effectTrialStage, effectTrialStageIdentity, watchEffectTrialStage } from "./effect-trial-stage.js";
 import { EffectBudget } from "./effect-profiler.js";
 
@@ -42,7 +42,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   try { if (!host?.document || !host.document.body || registries.has(host) || typeof load !== "function" || typeof stockSnapshot !== "function" || typeof onChange !== "function" || typeof onProfile !== "function" || typeof onMount !== "function" || typeof onRetire !== "function" || typeof clock !== "function" || !safety || ["allowed", "begin", "finish", "pause", "resume"].some(k => typeof safety[k] !== "function") || ["requestAnimationFrame", "cancelAnimationFrame", "setTimeout", "clearTimeout", "MutationObserver", "ResizeObserver", "AbortController"].some(k => typeof host[k] !== "function")) return { ok: false, reason: "registry_unsupported" }; } catch { return { ok: false, reason: "registry_unsupported" }; }
   let dead = false, blocked = null, revision = 0, last = null, lastView = null, frameSerial = 0, context = null, descriptors = [], raf = null, timer = null;
   const slots = new Map(), loads = new Set(), paused = new Map(), offs = [], observed = new Set(), failures = new Map(), results = new Map();
-  let readingStock = false;
+  let readingStock = false, stockFailure = "stock_evidence_invalid", warned = null;
   let root, geometry, observer, resize, longTasks = null, longTasksSupported = false;
   const time = () => {
     let n; try { n = clock(); } catch { return null; }
@@ -68,9 +68,13 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   const coverage = (d = null) => {
     if (dead || blocked || readingStock) return null;
     const before = revision; let proof = null; readingStock = true;
-    try { proof = effectStockSnapshot(stockSnapshot(Object.freeze({ frameRoot: root }))); }
-    catch { /* unknown is never permission */ }
+    let failure = "stock_provider_failed";
+    try { const raw = stockSnapshot(Object.freeze({ frameRoot: root })); proof = effectStockSnapshot(raw); failure = proof ? null : effectStockRefusal(raw); }
+    catch { /* unavailable stays denied, with a local diagnostic */ }
     finally { readingStock = false; }
+    if (dead || blocked || before !== revision) return null;
+    stockFailure = failure;
+    if (failure !== warned) { warned = failure; if (failure) { try { host.console?.warn("[AgEnD effects] Playback blocked:", failure); } catch { /* display only */ } } }
     if (dead || blocked || before !== revision) return null;
     return d === null || permits(d, proof) ? proof : null;
   };
@@ -150,7 +154,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   const shown = why => (why === "gates_unknown" && !eligible() && gateReason()) || why;
   function view() {
     return descriptors.map(d => {
-      const r = results.get(d.key) ?? { verdict: "off", reason: blocked ?? (!eligible() && gateReason()) ?? "unknown", queuePos: null }, s = slots.get(d.key);
+      const r = results.get(d.key) ?? { verdict: "off", reason: blocked ?? (eligible() ? stockFailure : gateReason()) ?? "runtime_unavailable", queuePos: null }, s = slots.get(d.key);
       // #2055 one display precedence: a global latch, then the sticky safety history, then this page's own pause/failure.
       const n = named.get(d.key), sticky = n && n.identity === signature(d) ? n.reason : null;
       return { key: d.key, id: d.id, ...r, ...(sticky && r.verdict === "queued" ? { verdict: "off", queuePos: null } : {}), phase: s?.frame ? s.ready ? "running" : "starting" : s ? "loading" : null,
@@ -173,7 +177,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   };
   function observe() {
     const nodes = host.document.querySelectorAll("[data-trust]");
-    if (nodes.length > 128) throw Error("trust coverage unavailable");
+    if (nodes.length > 4096) throw Error("trust coverage unavailable");
     const wanted = new Set([host.document.documentElement, ...nodes]);
     for (const d of descriptors) if (d.element?.ownerDocument === host.document && d.element.isConnected === true) wanted.add(d.element);
     for (const n of observed) if (!wanted.has(n)) { resize.unobserve(n); observed.delete(n); }
@@ -186,6 +190,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     if (time() === null) blocked = "clock_unavailable";
     const hidden = context?.hidden === true || host.document.visibilityState !== "visible";
     const stock = eligible() ? coverage() : null;
+    if (dead || proposal !== revision) return;
     if (blocked || !eligible() || !stock) {
       if (!stopAll(blocked ?? "gates_unknown")) return;
       results.clear();
@@ -234,7 +239,11 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (s.frame && s.hiddenSince !== null) { s.hiddenSince = null; s.healthySince = last; if (s.budget.gates({ hidden: false, reducedMotion: false, saveData: false, show: true }).remove) retire(s, "hidden"); }
       if (dead || proposal !== revision) return;
     }
-    try { observe(); } catch { stopAll("trust_geometry_unknown"); tell(); return; }
+    try { observe(); } catch {
+      if (dead || proposal !== revision || !stopAll("trust_geometry_unknown")) return;
+      for (const d of descriptors) results.set(d.key, { verdict: "off", reason: "trust_geometry_unknown", queuePos: null });
+      tell(); return;
+    }
     const max = context.constrained ? 1 : 3;
     for (const d of descriptors) {
       if (!chosen.has(d.key) || slots.has(d.key)) continue;

@@ -11,7 +11,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, type AppPage } from "./helpers/app-harness.js";
 // @ts-expect-error — a JS module of the app, with no types (as web-preview-card-1306 imports it)
-import { createThread, THREAD_CHUNK, THREAD_TAIL } from "../src/ui/chat-thread.js";
+import { clearRenderedMarkdown, createThread, renderedMarkdown, MD_CACHE_MAX, THREAD_CHUNK, THREAD_TAIL } from "../src/ui/chat-thread.js";
 
 beforeAll(async () => {
   // @ts-expect-error — a JS module of the app, with no types: sets the page's AgendChatRender global
@@ -107,6 +107,7 @@ describe("a thread opens with its newest messages, the rest drawn after", () => 
     expect(list.children.length).toBe(THREAD_TAIL);
   });
   it("filling in never draws a message again: Markdown runs once per message", async () => {
+    clearRenderedMarkdown();
     const R = (globalThis as any).AgendChatRender;
     const real = R.renderMarkdown;
     let n = 0;
@@ -116,6 +117,77 @@ describe("a thread opens with its newest messages, the rest drawn after", () => 
       thread.render(many(200), { restore: null });
       await flush();
       expect(n).toBe(200);
+      // #2053: another render of the same messages (a status frame, the emoji list arriving), or another thread of
+      // them (the chat shown again), renders no Markdown again.
+      thread.render(many(200).map((x: any) => ({ ...x })));
+      await flush();
+      threadAt().thread.render(many(200), { restore: null });
+      await flush();
+      expect(n, "nothing rendered twice").toBe(200);
     } finally { R.renderMarkdown = real; }
+  });
+});
+
+describe("#2053: rendered Markdown is kept, and always what renderMarkdown would give now", () => {
+  const R = () => (globalThis as any).AgendChatRender;
+  const ID = "123456789012345678", UID = "223456789012345678";
+  it("the same text renders once; cards (an agent's) and not are kept apart", () => {
+    clearRenderedMarkdown();
+    let n = 0; const real = R().renderMarkdown; R().renderMarkdown = function (...a: unknown[]) { n++; return real.apply(this, a); };
+    try {
+      const fence = "```html\n<p>x</p>\n```";
+      const a1 = renderedMarkdown(fence, true), a2 = renderedMarkdown(fence, true), u = renderedMarkdown(fence, false);
+      expect([n, a1 === a2, a1 === real(fence, { htmlCards: true }), u === real(fence, { htmlCards: false }), a1 === u]).toEqual([2, true, true, true, false]);
+    } finally { R().renderMarkdown = real; }
+  });
+  it("an emoji the page comes to know, or a mention's name that arrives, renders again — exactly as renderMarkdown would", () => {
+    clearRenderedMarkdown();
+    const text = `hi <:blob:${ID}> <@${UID}>`;
+    let known = false, name: string | null = null;
+    const emojis = (id: string) => known && id === ID, mentions = (_k: string, id: string) => (id === UID ? name : null);
+    const fresh = () => R().renderMarkdown(text, { htmlCards: false, emojis, mentions });
+    expect(renderedMarkdown(text, false, emojis, mentions)).toBe(fresh());
+    known = true;
+    expect(renderedMarkdown(text, false, emojis, mentions), "the emoji is known now").toBe(fresh());
+    name = "Ann";
+    expect(renderedMarkdown(text, false, emojis, mentions), "the name arrived").toBe(fresh());
+    name = "Bob";
+    expect(renderedMarkdown(text, false, emojis, mentions), "and changed").toBe(fresh());
+  });
+  it("review P3: a NUL inside the tag (renderMarkdown drops NUL first, so it is still an emoji / mention there) counts the same", () => {
+    clearRenderedMarkdown();
+    const text = `hi <:blob:\u0000${ID}> <@\u0000${UID}>`;
+    let known = false, name: string | null = null;
+    const emojis = (id: string) => known && id === ID, mentions = (_k: string, id: string) => (id === UID ? name : null);
+    const fresh = () => R().renderMarkdown(text, { htmlCards: false, emojis, mentions });
+    expect(renderedMarkdown(text, false, emojis, mentions)).toBe(fresh());
+    known = true; name = "Ann";
+    expect(fresh(), "the renderer does read them").toContain("Ann");
+    expect(renderedMarkdown(text, false, emojis, mentions), "known, named").toBe(fresh());
+    name = "Bob";
+    expect(renderedMarkdown(text, false, emojis, mentions), "renamed").toBe(fresh());
+  });
+  it("bounded: past MD_CACHE_MAX the least recently used goes", () => {
+    clearRenderedMarkdown();
+    let n = 0; const real = R().renderMarkdown; R().renderMarkdown = function (...a: unknown[]) { n++; return real.apply(this, a); };
+    try {
+      renderedMarkdown("first", false);
+      for (let i = 0; i < MD_CACHE_MAX; i++) renderedMarkdown(`m${i}`, false);
+      const before = n;
+      renderedMarkdown("first", false);
+      expect(n, "it had gone").toBe(before + 1);
+      renderedMarkdown(`m${MD_CACHE_MAX - 1}`, false);
+      expect(n, "a recent one is kept").toBe(before + 1);
+      // Least recently USED: one read again stays, though it went in first.
+      clearRenderedMarkdown();
+      renderedMarkdown("early", false);
+      for (let i = 0; i < MD_CACHE_MAX - 1; i++) { renderedMarkdown(`k${i}`, false); if (i === MD_CACHE_MAX / 2) renderedMarkdown("early", false); }
+      renderedMarkdown("one more", false);                                    // past the cap: the least recently used goes
+      const at = n;
+      renderedMarkdown("early", false);
+      expect(n, "read again, so kept").toBe(at);
+      renderedMarkdown("k0", false);
+      expect(n, "k0, least recently used, went").toBe(at + 1);
+    } finally { R().renderMarkdown = real; }
   });
 });

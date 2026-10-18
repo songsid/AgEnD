@@ -42,6 +42,11 @@ describe("#1629 actual Effects component", () => {
     expect(h.playback).toHaveBeenLastCalledWith({ name: "own", playing: false });
     await h.publish(); h.cleanup(); await pg!.unmount(); expect(h.playback).toHaveBeenLastCalledWith({ name: "own", playing: false });
   });
+  it("keeps layout and unexpected raw codes visible locally, including the dialog", async () => {
+    const h = await fixture(); await h.publishRows([{ id: "a".repeat(32), reason: "stock_marker_limit", phase: null }]);
+    expect(pg!.root.textContent).toContain("page layout could not be verified (stock_marker_limit)"); await h.open(); expect(pg!.root.textContent).toContain("stock_marker_limit");
+    const { effectRowText } = await import("/ui/js/chat-effects.js"); expect(effectRowText({ reason: "future_host_code" })).toContain("future_host_code"); expect(effectRowText({ reason: false })).toContain("invalid_reason_type"); h.cleanup();
+  });
   it("a manual pause never claims a performance intervention; actual budget and OFF reasons still explain it", async () => {
     const h = await fixture();
     await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "paused" }]);

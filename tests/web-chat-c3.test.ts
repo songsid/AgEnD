@@ -779,6 +779,48 @@ describe("the chat panel (the real page modules)", () => {
     expect(jump()).toBeNull();
   });
 
+  it("#2053: a chat shown again puts its kept thread back — the same list, only what arrived meanwhile drawn, where the reader was; it leaves as a chat always did", async () => {
+    const c = await chatPage();
+    const P = (globalThis as any).AgendPreview ??= { stopIn: () => [], stopAll: () => [], onChange: () => () => {} };
+    const stopIn = vi.spyOn(P, "stopIn"), stopAll = vi.spyOn(P, "stopAll");
+    const R = (globalThis as any).AgendChatRender, real = R.renderMarkdown;
+    let md = 0; R.renderMarkdown = function (...a: unknown[]) { md++; return real.apply(this, a); };
+    try {
+      c.stream.emit("status", frame(...["w", "x", "y", "z", "v", "u"].map((n) => inst(n))));
+      for (const [i, n] of ["w", "x", "y", "z", "v", "u"].entries()) c.stream.emit("message", msg(10 + i, n, `hello from ${n}`, { instance: n }));
+      await c.mount("w"); await settle();
+      const list = c.p.root.querySelector(".thread");
+      expect(list.textContent).toContain("hello from w");
+      // Scrolled up to read, then away.
+      const sc = c.p.root.querySelector(".scroller");
+      Object.assign(sc, { scrollTop: 120, clientHeight: 500, scrollHeight: 2000 }); fire(sc, "scroll");
+      await c.mount("x"); await settle();
+      expect(stopAll.mock.calls.map((a) => a[0]), "every preview stops as the chat leaves, as before").toEqual(["leave"]);
+      expect(list.parentNode, "kept out of the page").toBeNull();
+      md = 0;
+      c.stream.emit("message", msg(20, "w", "while you were away", { instance: "w" })); await settle();
+      expect(md, "a kept thread follows nothing while away").toBe(0);
+      await c.mount("w"); await settle();
+      const back = c.p.root.querySelector(".thread");
+      expect([back === list, back.textContent.includes("while you were away"), md], "the same list; only the new message drawn").toEqual([true, true, 1]);
+      expect(c.p.root.querySelector(".scroller").scrollTop, "where the reader was").toBe(120);
+      // More than THREAD_KEEP other chats: the oldest kept one is let go (its own previews only).
+      expect(c.panel.THREAD_KEEP).toBe(4);
+      stopIn.mockClear();
+      for (const n of ["x", "y", "z", "v", "u"]) { await c.mount(n); await settle(); }
+      expect(stopIn.mock.calls.some(([node]) => node === list), "the one let go stops its own previews (another chat is open)").toBe(true);
+      await c.mount("w"); await settle();
+      expect(c.p.root.querySelector(".thread") === list, "w was the oldest: drawn anew").toBe(false);
+      // Another language: a kept thread (its labels in the old one) is drawn anew.
+      const u = await (async () => { await c.mount("u"); await settle(); return c.p.root.querySelector(".thread"); })();
+      await c.mount("w"); await settle();
+      const i18n = await import("/assets/app-i18n.js");
+      i18n.setLang("zh-TW");
+      await c.mount("u"); await settle();
+      expect(c.p.root.querySelector(".thread") === u, "a new language: drawn anew").toBe(false);
+      i18n.setLang("en");
+    } finally { R.renderMarkdown = real; }
+  });
   it("#1269: content that grows after it was drawn keeps a reader at the bottom there; one who scrolled up is never moved", async () => {
     const observers: Array<{ cb: () => void; targets: unknown[]; off: boolean }> = [];
     const saved = (globalThis as any).ResizeObserver;

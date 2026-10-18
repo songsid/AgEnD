@@ -21,7 +21,7 @@ async function fixture() {
   doc.getElementById = (id: string) => nodes.get(`#${id}`) ?? null; doc.querySelector = (s: string) => nodes.get(s) ?? null;
   doc.querySelectorAll = (s: string) => s === "[data-trust]" ? marked : s === "#app > .shell" ? [nodes.get(s)] : s === ".main > .panel" ? [nodes.get(".main > .p-chat")] : extra.get(s) ?? [];
   doc.activeElement = doc.body;
-  const host = { document: doc, innerWidth: 1366, getComputedStyle: (el: any) => el.style }, snapshot = (opts: any = {}) => m.stockEffectTrust(host, { ownerCss: "off", ...opts });
+  const host = { document: doc, innerWidth: 1366, innerHeight: 768, getComputedStyle: (el: any) => el.style }, snapshot = (opts: any = {}) => m.stockEffectTrust(host, { ownerCss: "off", ...opts });
   return { m, doc, node, nodes, marked, composer, header, extra, host, snapshot };
 }
 describe("stock trust/paint prerequisite", () => {
@@ -185,8 +185,79 @@ describe("stock trust/paint prerequisite", () => {
     f.composer.kind = "composer"; const fake = f.node(); fake.kind = "permission"; f.marked.push(fake); expect(f.snapshot().ok).toBe(false);
   });
   it("caps markers and protected descendants", async () => {
-    const f = await fixture(); f.composer.children = Array.from({ length: 4096 }, () => f.node()); expect(f.snapshot().ok).toBe(false);
-    f.composer.children = []; f.marked.push(...Array(127).fill(f.composer)); expect(f.snapshot().ok).toBe(false);
+    const f = await fixture(); f.composer.children = Array.from({ length: 4096 }, () => f.node()); expect(f.snapshot()).toMatchObject({ ok: false, reason: "stock_paint_limit" });
+    f.composer.children = []; f.marked.push(...Array(4095).fill(f.composer)); expect(f.snapshot()).toMatchObject({ ok: false, reason: "stock_marker_limit" });
+  });
+  it("500 messages' contained stock toolbars fit the original paint budget without inspecting descendants", async () => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "thread-control");
+    const roots = Array.from({ length: 1000 }, () => { const el = f.node({ display: "flex", contain: "paint", overflowX: "clip", overflowY: "clip", overflowClipMargin: "0px", borderImageSource: "none" }); el.kind = "thread-control"; el.matches = () => true; el.querySelectorAll = () => { throw Error("contained descendants must not be walked"); }; return el; });
+    f.marked.push(...roots); f.extra.set(spec.selector, roots); expect(f.snapshot().ok).toBe(true);
+  });
+  it.each(["unsupported", "supported-zero", "unknown", "supported-missing", "expanded"])("%s clip-margin capability is handled without guessing", async mode => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "thread-control");
+    const el = f.node({ display: "flex", contain: "paint", overflowX: "clip", overflowY: "clip", borderImageSource: "none" });
+    el.kind = "thread-control"; el.matches = () => true; el.children = [f.node({ filter: "blur(20px)" })];
+    el.style.getPropertyValue = () => mode === "supported-zero" ? "0px" : mode === "expanded" ? "8px" : "";
+    if (mode !== "unknown") (f.host as any).CSS = { supports: () => mode !== "unsupported" };
+    f.marked.push(el); f.extra.set(spec.selector, [el]);
+    expect(f.snapshot().ok).toBe(["unsupported", "supported-zero"].includes(mode));
+  });
+  it("a contained toolbar protects its whole clip, including fixed descendants, but refuses its own overflowing ink", async () => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "thread-control");
+    const el = f.node({ display: "flex", contain: "paint", overflowX: "clip", overflowY: "clip", overflowClipMargin: "0px", borderImageSource: "none" }); el.kind = "thread-control"; el.matches = () => true;
+    const child = f.node({ position: "fixed" }); child.r = { x: 600, y: 600, width: 40, height: 30 }; el.children = [child]; f.marked.push(el); f.extra.set(spec.selector, [el]);
+    expect(f.snapshot().rects).toContainEqual(el.r); expect(f.snapshot().rects.some((r: any) => r.x + r.width >= 640)).toBe(false);
+    el.style.contain = "none"; expect(f.snapshot().rects.some((r: any) => r.x + r.width >= 640)).toBe(true);
+    el.style.contain = "paint"; el.style.outlineStyle = "solid"; el.style.outlineWidth = "3px"; el.style.outlineOffset = "6px";
+    expect(f.snapshot().ok).toBe(false); el.style.outlineStyle = "none";
+    el.style.boxShadow = "rgb(0, 0, 0) 0px 0px 20px 0px"; expect(f.snapshot().ok).toBe(false);
+  });
+  it.each(["contents", "inline", "fragmented", "expanded-clip", "auto", "border-image"])("%s never borrows a clipped-box proof", async fault => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "thread-control");
+    const el = f.node({ display: "flex", contain: "paint", overflowX: "clip", overflowY: "clip", overflowClipMargin: "0px", borderImageSource: "none" }); el.kind = "thread-control"; el.matches = () => true;
+    el.children = [f.node({ filter: "blur(20px)" })]; if (["contents", "inline"].includes(fault)) el.style.display = fault;
+    if (fault === "fragmented") el.getClientRects = () => [el.r, el.r]; if (fault === "expanded-clip") el.style.overflowClipMargin = "8px";
+    if (fault === "auto") el.style.contentVisibility = "auto"; if (fault === "border-image") el.style.borderImageSource = "url(blob:example)";
+    f.marked.push(el); f.extra.set(spec.selector, [el]); expect(f.snapshot().ok).toBe(false);
+  });
+  it.each(["filter", "backdropFilter"])("the contained root's own %s output never borrows the descendant clip", async property => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "thread-control");
+    const el = f.node({ display: "flex", contain: "paint", overflowX: "clip", overflowY: "clip", overflowClipMargin: "0px", borderImageSource: "none" });
+    el.kind = "thread-control"; el.matches = () => true; f.marked.push(el); f.extra.set(spec.selector, [el]);
+    expect(f.snapshot().ok).toBe(true);
+    el.style[property] = property === "filter" ? "drop-shadow(0px 0px 20px red)" : "blur(20px)";
+    expect(f.snapshot()).toMatchObject({ ok: false, reason: "stock_paint_unknown" });
+    el.style[property] = "none"; expect(f.snapshot().ok).toBe(true);
+  });
+  it.each(["border-image", "auto", "hidden"])("the ordinary descendant walk refuses %s paint independently of the toolbar shortcut", async fault => {
+    const f = await fixture(), child = f.node(); f.composer.children = [child];
+    expect(f.snapshot().ok).toBe(true);
+    if (fault === "border-image") child.style.borderImageSource = "url(blob:example)";
+    else child.style.contentVisibility = fault;
+    expect(f.snapshot()).toMatchObject({ ok: false, reason: "stock_paint_unknown" });
+    child.style.borderImageSource = "none"; child.style.contentVisibility = "visible"; expect(f.snapshot().ok).toBe(true);
+  });
+  it.each([1, 8, 9])("keeps a marker %ipx above the viewport only within the physical 8px clip margin", async edge => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "link"), el = f.node();
+    el.kind = "link"; el.r = { x: 300, y: -10 - edge, width: 80, height: 10 }; f.marked.push(el); f.extra.set(spec.selector, [el]);
+    const proof = f.snapshot(); expect(proof.ok).toBe(true);
+    if (edge <= 8) expect(proof.rects).toContainEqual(el.r); else expect(proof.rects).not.toContainEqual(el.r);
+  });
+  it("inventories a long conversation without spending holes on off-screen history", async () => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "link");
+    const history = Array.from({ length: 210 }, (_, i) => { const el = f.node(); el.kind = "link"; el.r = { x: 300, y: -10000 + i * 30, width: 80, height: 20 }; return el; });
+    f.marked.push(...history); f.extra.set(spec.selector, history);
+    const proof = f.snapshot(); expect(proof.ok).toBe(true); expect(proof.rects.length).toBe(2);
+    // Off-screen producers are still checked: no missing marker, filter, or unknown producer can hide there.
+    history[0].kind = ""; expect(f.snapshot().ok).toBe(false); history[0].kind = "link";
+    history[0].style.filter = "blur(1px)"; expect(f.snapshot().ok).toBe(false);
+  });
+  it("bounds dense viewport holes by conservative union; every original rectangle stays protected", async () => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "link");
+    const dense = Array.from({ length: 200 }, (_, i) => { const el = f.node(); el.kind = "link"; el.r = { x: 200 + i % 20 * 10, y: 200 + Math.floor(i / 20) * 20, width: 8, height: 16 }; return el; });
+    f.marked.push(...dense); f.extra.set(spec.selector, dense);
+    const proof = f.snapshot(); expect(proof.ok).toBe(true); expect(proof.rects).toHaveLength(128);
+    for (const { r } of dense) expect(proof.rects.some((b: any) => b.x <= r.x && b.y <= r.y && b.x + b.width >= r.x + r.width && b.y + b.height >= r.y + r.height)).toBe(true);
   });
   it("protects descendants and derives conservative shadow/focus outsets; unknown paint refuses", async () => {
     const f = await fixture(); f.composer.style.boxShadow = "rgba(0, 0, 0, 0.3) 0px 2px 4px 1px";

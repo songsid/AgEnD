@@ -187,6 +187,18 @@ async function trialRig() {
   await trialFlush(); h.panel = await import("/ui/js/preview-panel.js"); h.sourceStop = sourceStop; h.at = (v: number) => { mono = v; }; return h;
 }
 describe("#1629 product Trial bridge with protocol core", () => {
+  it("replacement is silent in the card just as it is in the console", async () => {
+    const h = await trialRig(); try { expect(await h.entry.startTrial(trialMessage())).toBe(true); h.panel.panelStore.get().open.handle.stop("replaced"); await trialFlush(); expect(h.entry.trialFailure(trialMessage())).toBeNull(); } finally { h.entry.dispose(); }
+  });
+  it("returns the same offer's exact terminal reason after the panel closes", async () => {
+    const h = await trialRig(); try {
+      expect(await h.entry.startTrial(trialMessage())).toBe(true); const open = h.panel.panelStore.get().open;
+      open.handle.stop("stock_marker_limit"); await trialFlush();
+      expect(h.entry.trialFailure(trialMessage())).toBe("stock_marker_limit");
+      expect(h.entry.trialFailure({ ...trialMessage(), effectTrial: { ...trialOffer(), offer: "f".repeat(32) } })).toBeNull();
+      expect(h.panel.panelStore.get().open).toBeNull();
+    } finally { h.entry.dispose(); }
+  });
   it("does not auto-start; explicit admission uses the current Chat and own panel slot, never an HTML run token", async () => {
     const h = await trialRig(); try {
       expect(h.entry.canTry(trialMessage())).toBe(true); expect(h.host.fetch).not.toHaveBeenCalled(); expect(h.entry.canTry({ ...trialMessage(), instance: "other" })).toBe(false);

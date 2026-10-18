@@ -453,6 +453,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .msg.status-line .st-more { border: 0; background: none; color: var(--text-2); cursor: pointer; font-size: var(--fs-xs); padding: var(--s-1) 0 0 var(--s-3); }
 .msg.status-line .st-more:hover { color: var(--text); }
 .msg-tools { display: flex; gap: var(--s-1); margin-top: var(--s-1); opacity: 0; transition: opacity var(--t-fast); }
+/* #2147: bounded stock toolbar paint, including fixed descendants. Padding preserves focus outlines. */
+.shell .thread .msg-tools { contain: paint; overflow: clip; overflow-clip-margin: 0px; padding: 4px; margin: 0 -4px -4px; }
+.shell .thread .codeblock > .cb-head { contain: paint; overflow: clip; overflow-clip-margin: 0px; }
 .msg:hover .msg-tools, .msg:focus-within .msg-tools { opacity: 1; }
 @media (hover: none) { .msg-tools { opacity: 1; } }
 /* Delivery ticks: always visible, in colour, with their label on hover and for screen readers (rough edge 10). */

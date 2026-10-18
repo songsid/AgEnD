@@ -41,6 +41,38 @@ export const THREAD_TAIL = 24;
 export const THREAD_CHUNK = 40;
 
 /**
+ * #2053: a message's rendered Markdown, kept across renders and chat switches. A draw compares each message's html with
+ * its node's, so every render of a thread rendered every drawn message's Markdown again (~320 calls per 200-message
+ * switch). renderMarkdown's output depends only on the text, whether its HTML cards are on (an agent's message), and —
+ * for a text that has them — whether the page knows each server-emoji id and the name it has for each mention: the key
+ * holds exactly those, so a cached html is always what renderMarkdown would return now. Bounded: least recently used out.
+ */
+export const MD_CACHE_MAX = 4000;
+const mdCache = new Map();
+const EMOJI_IDS = /<a?:[A-Za-z0-9_]{2,32}:(\d{15,25})>/g;
+const MENTION_IDS = /<(@!?|@&|#)(\d{15,25})>/g;
+const MENTION_KINDS = { "@": "u", "@!": "u", "@&": "r", "#": "c" };
+export function renderedMarkdown(text, cards, emojis, mentions) {
+  const src = typeof text === "string" ? text : String(text == null ? "" : text);
+  let sig = cards ? "c" : "-";
+  if (src.includes("<")) {
+    // Read as renderMarkdown reads it: it drops NUL first (its placeholder mark), so "<@\0id>" is a mention there too.
+    const seen = src.includes("\u0000") ? src.replace(/\u0000/g, "") : src;
+    for (const m of seen.matchAll(EMOJI_IDS)) sig += `|e${m[1]}${emojis && emojis(m[1]) ? 1 : 0}`;
+    for (const m of seen.matchAll(MENTION_IDS)) { const name = mentions ? mentions(MENTION_KINDS[m[1]], m[2]) : null; sig += `|m${m[1]}${m[2]}=${typeof name === "string" ? name.length + ":" + name : "-"}`; }
+  }
+  const key = `${sig}\u0000${src}`;
+  let html = mdCache.get(key);
+  if (html === undefined) html = R().renderMarkdown(src, { htmlCards: cards, emojis, mentions });
+  else mdCache.delete(key);
+  mdCache.set(key, html);
+  while (mdCache.size > MD_CACHE_MAX) mdCache.delete(mdCache.keys().next().value);
+  return html;
+}
+/** Tests only: forget every rendered Markdown. */
+export function clearRenderedMarkdown() { mdCache.clear(); }
+
+/**
  * Bind a renderer to `list` (the thread element) inside `scroller`. opts: { t, tf, isUser(x), onJump({show, unseen}),
  * setPreviewOptIn(on), copyText(text) → Promise<boolean>, download(code), panel? }. panel (#1481): { shown() → the card
  * key the side panel shows, or null; open(spec, { run }); version(); claim(); claims() } — without it a card has no "Open in panel".
@@ -71,8 +103,9 @@ export function createThread(list, scroller, opts) {
   // The oldest message drawn (by key): everything after it is drawn, so new messages never push the window. Null: none
   // drawn yet — the next render draws the newest THREAD_TAIL and the rest follows (grow).
   let firstKey = null;
-  let growTimer = null, growFrame = null, disposed = false;
+  let growTimer = null, growFrame = null, disposed = false, parked = false;
   const cardRefresh = new WeakMap(); // card node → re-read availability (weak: a card that left takes its source with it)
+  const cardDrop = new WeakMap();    // card node → drop the HTML read it is waiting on (the chat left: park)
   const tr = opts.t, trf = opts.tf;
   const stopIn = (node) => (P() ? P().stopIn(node) : []);
   /** #1770: write a message node's time label for now; unchanged text is not touched. */
@@ -105,7 +138,7 @@ export function createThread(list, scroller, opts) {
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
     // A person's click on a reply button shows as the button's label, never the line the agent was given (its value).
     const clicked = x.role === "user" && x.click && typeof x.click.label === "string";
-    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div><div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${R().renderMarkdown(x.text, { htmlCards: x.role === "agent", emojis: opts.emojis, mentions: opts.mentions })}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div><div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
   }
   /**
    * A button click as a chip: 🔘 and the label (escaped: the label is the agent's text). With `of` (live, while its
@@ -126,10 +159,11 @@ export function createThread(list, scroller, opts) {
   }
   function trialHtml(offer, time, message) {
     const reason = trialNow() >= offer.expiresAt ? "expired" : PUBLIC_LINK() ? "localAdmin" : trialStatus(message);
+    const rawFailure = opts.effectTrialFailure?.(message), failure = typeof rawFailure === "string" ? rawFailure.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 80) : null;
     const available = reason === "ready", fix = !PUBLIC_LINK() && !available && reason !== "expired" && reason !== "checking" && typeof opts.fixEffectTrial === "function";
     const label = available ? "chat.effectTrialStart" : reason === "busy" ? "chat.effectTrialStopOther" : reason === "localAdmin" ? "chat.effectTrialSignIn" : reason === "reducedMotion" ? "chat.effectTrialPlayMotion" : "chat.effectTrialSettings";
     const button = available || fix ? `<button type="button" class="btn btn-sm effect-trial-start" data-act="effectTrial" data-arg="${escAttr(msgKey(message))}">${escAttr(tr(label))}</button>` : "";
-    return `<div class="msg status-line"><div class="meta">${time}</div><div class="body"><div class="effect-trial-offer" data-trust="thread-control"><strong>${escAttr(tr("chat.effectTrial"))}: ${escAttr(offer.title)}</strong><div>${escAttr(tr(available ? "chat.effectTrialLocal" : "chat.effectTrialReason_" + reason))}</div>${button}</div></div></div>`;
+    return `<div class="msg status-line"><div class="meta">${time}</div><div class="body"><div class="effect-trial-offer" data-trust="thread-control"><strong>${escAttr(tr("chat.effectTrial"))}: ${escAttr(offer.title)}</strong><div>${escAttr(tr(available ? "chat.effectTrialLocal" : "chat.effectTrialReason_" + reason))}</div>${failure ? `<div class="effect-trial-failure" role="status">${escAttr(tr("chat.effectTrialStopped"))}: ${escAttr(failure)}</div>` : ""}${button}</div></div></div>`;
   }
   function armTrials() {
     if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
@@ -289,7 +323,7 @@ export function createThread(list, scroller, opts) {
     const note = el("div", "pv-note"); note.setAttribute("data-trust", "thread-control");
     const body = el("div", "tc-body"); body.hidden = true;
     ph.append(head, note, body);
-    let text = null, reading = false, all = false;
+    let text = null, reading = 0, reads = 0, all = false;
     const draw = () => {
       body.textContent = "";
       const lines = text.split(/\r?\n/);
@@ -325,12 +359,15 @@ export function createThread(list, scroller, opts) {
         body.append(more);
       }
     };
+    // #2053: as an HTML card's read (cardDrop), one still waiting when the chat left is dropped, the card not left Loading.
+    cardDrop.set(ph, () => { if (reading) { reading = 0; note.textContent = ""; } });
     show.onclick = async () => {
       if (reading) return;
       if (text !== null) { body.hidden = !body.hidden; show.textContent = tr(body.hidden ? "chat.tcShow" : "chat.tcHide"); return; }
-      reading = true; note.textContent = tr("chat.pvLoading");
+      const mine = reading = ++reads; note.textContent = tr("chat.pvLoading");
       const r = await loadHtmlAttachment({ id: att.id, name: att.name, size: att.size });
-      reading = false;
+      if (reading !== mine) return;                      // dropped (its chat left meanwhile): a new click reads again
+      reading = 0;
       if (!ph.isConnected) return;                       // the card left the page while it was read: nothing to draw
       if (!r.ok) { note.textContent = r.reason === "over" ? tr("chat.tcOver") : attReason(r.reason); return; }
       note.textContent = "";
@@ -468,6 +505,10 @@ export function createThread(list, scroller, opts) {
     optB.onclick = () => { menu.open = false; opts.setPreviewOptIn(!P().optedIn()); };
     neverB.onclick = () => { menu.open = false; P().setNever(!P().never()); refreshCards(); };
     cardRefresh.set(ph, refresh);
+    // #2053: a kept card is shown again later. A read still waiting when its chat left is dropped then: its answer —
+    // whenever it comes — starts nothing (no preview, no panel without a new click), and the card is not left Loading
+    // (shown again, it is refreshed: refreshCards).
+    cardDrop.set(ph, () => { reading = 0; });
     refresh(stoppedKeys.includes(key) ? tr("chat.pvChanged") : null);
   }
   /** Re-read this device's preview choice on every card in this thread. */
@@ -486,7 +527,7 @@ export function createThread(list, scroller, opts) {
   // Sizes change without a scroll event (layout after the render, the dock under the thread): while pinned, the view
   // stays flush with the bottom; a reader who scrolled up is never moved.
   const resized = () => { if (pinned && !atBottom()) toBottom(); reportJump(); };
-  const ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
+  let ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
   if (ro) { ro.observe(list); ro.observe(scroller); }
 
   /** Where drawing starts in `msgs`: at the oldest drawn message, or (none yet) the newest THREAD_TAIL. */
@@ -501,7 +542,7 @@ export function createThread(list, scroller, opts) {
   /** Draw the next chunk of older messages, keeping the reader where they were; then the next, until all are drawn. */
   function grow() {
     growTimer = growFrame = null;
-    if (disposed) return;                 // the chat left: nothing more is drawn
+    if (disposed || parked) return;       // the chat left: nothing more is drawn (a kept one fills in when shown again)
     const at = startIndex();
     if (at <= 0) return;
     firstKey = msgKey(msgs[Math.max(0, at - THREAD_CHUNK)]);
@@ -663,15 +704,41 @@ export function createThread(list, scroller, opts) {
   }
 
   /** The thread goes (the chat left, or another instance opened): every preview in it stops first. */
-  function dispose() {
+  /**
+   * #2053: kept for a later visit — the chat left as it always did (every preview stops: "leave"), but its drawn nodes
+   * stay. Nothing of it runs meanwhile: no timer (day labels, polls, effect trials, filling in), no size observer; the
+   * caller drops its subscriptions. Shown again: attach, then render — only what changed is drawn.
+   */
+  function park() {
+    parked = true;
+    if (P()) P().stopAll("leave");
+    for (const node of list.querySelectorAll(".html-card[data-att], .text-card[data-att]")) { const f = cardDrop.get(node); if (f) f(); }
+    if (ro) { ro.disconnect(); ro = null; }
+    if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
+    if (growFrame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(growFrame);
+    if (growTimer !== null) clearTimeout(growTimer);
+    growTimer = growFrame = null;
+    if (offDay) { offDay(); offDay = null; }
+    if (pollTick) { clearInterval(pollTick); pollTick = null; }
+  }
+  /** In view in `sc` (the view's scroller): sizes watched there from now on; the caller restores the position. */
+  function attach(sc) {
+    parked = false;
+    scroller = sc;
+    if (ro) ro.disconnect();
+    ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
+    if (ro) { ro.observe(list); ro.observe(sc); }
+  }
+  /** `own`: only this thread's previews stop (a thread let go while another chat is in view); else every one, as leaving. */
+  function dispose(own = false) {
     disposed = true;
     if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
     if (ro) ro.disconnect();
-    if (P()) P().stopAll("leave");
+    if (P()) { if (own) P().stopIn(list); else P().stopAll("leave"); }
     nodes.clear();
     armDay();
     armPolls();
   }
 
-  return { render, onScroll, onClick, jumpLatest, reveal, refreshCards, dispose, nodes, get unseen() { return unseen; } };
+  return { render, onScroll, onClick, jumpLatest, reveal, refreshCards, park, attach, dispose, nodes, get unseen() { return unseen; } };
 }

@@ -127,6 +127,14 @@ describe("the real thread's inert protected offer card", () => {
       f.th.onClick({ target: button, isTrusted: false }); expect(fix).not.toHaveBeenCalled(); f.th.onClick({ target: button, isTrusted: true }); expect(fix).toHaveBeenCalledExactlyOnceWith(row, reason); expect(start).not.toHaveBeenCalled();
     } finally { f.th.dispose(); f.dom.restore(); }
   });
+  it.each(["en", "zh-TW"])("%s retains the local stop code on the current card and escapes unexpected details", lang => {
+    let failure: string | null = "stock_marker_limit";
+    const f = fixture(lang, false, { canTryEffect: () => true, effectTrialFailure: () => failure });
+    try { f.th.render([message()]); expect(f.list.querySelector(".effect-trial-failure")!.textContent).toContain("stock_marker_limit");
+      failure = '<img src=x> & detail'; f.th.render([message()]); expect(f.list.querySelector(".effect-trial-failure")!.textContent).toContain(failure); expect(f.list.querySelector("img")).toBeNull();
+      failure = null; f.th.render([message()]); expect(f.list.querySelector(".effect-trial-failure")).toBeNull();
+    } finally { f.th.dispose(); f.dom.restore(); }
+  });
   it("session verification is an inert checking state, not a premature sign-in refusal", () => {
     const f = fixture("en", false, { effectTrialStatus: () => "checking", fixEffectTrial: vi.fn() });
     try { f.th.render([message()]); expect(f.list.textContent).toContain("Checking this session…"); expect(f.list.querySelector("button")).toBeNull(); } finally { f.th.dispose(); f.dom.restore(); }

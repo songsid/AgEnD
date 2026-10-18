@@ -115,13 +115,36 @@ function stockBannerFill(host, el) {
   if (b.display !== "block" || el.offsetParent !== box) return null;
   return rect(box);
 }
+function zeroClipMargin(host, style) {
+  const margin = style.overflowClipMargin ?? style.getPropertyValue?.("overflow-clip-margin");
+  // WebKit versions without this property still implement paint containment. An absent
+  // computed value is usable only when the engine explicitly reports it unsupported;
+  // unknown capability or a supported but unreadable/expanded margin cannot prove a box.
+  return margin === "0px" || [undefined, ""].includes(margin)
+    && host.CSS?.supports?.("overflow-clip-margin", "1px") === false;
+}
 function protectedPaint(host, root, budget) {
+  // These two stock toolbar boxes physically clip ALL descendants, including fixed-position
+  // children. Their entire box is a hole; descendant ink cannot escape it. Inline, fragmented,
+  // expanded-clip or CSS-overridden boxes take the ordinary bounded walk instead.
+  const s = host.getComputedStyle(root);
+  if (root.matches?.(".shell .thread .msg-tools, .shell .thread .codeblock > .cb-head") && s.contain === "paint"
+    && s.display === "flex" && s.overflowX === "clip" && s.overflowY === "clip" && zeroClipMargin(host, s)
+    && none(s.filter) && none(s.backdropFilter) && s.borderImageSource === "none" && [undefined, "", "visible"].includes(s.contentVisibility) && root.getClientRects().length === 1) {
+    if (++budget.n > 4096) { budget.exceeded = true; return null; }
+    const r = rect(root), pad = outset(s);
+    // Containment clips descendants, not the root's own ink. Do not infer a world-space
+    // outset from local CSS lengths under a potentially transformed content ancestor.
+    if (!r || pad !== 0) return null;
+    return r;
+  }
   const nodes = [root, ...root.querySelectorAll("*")]; budget.n += nodes.length;
-  if (budget.n > 4096) return null;
+  if (budget.n > 4096) { budget.exceeded = true; return null; }
   let union = null;
   for (const el of nodes) {
     if (!visible(host, el)) continue;
     const style = host.getComputedStyle(el), pad = outset(style);
+    if (style.borderImageSource !== undefined && style.borderImageSource !== "none" || ![undefined, "", "visible"].includes(style.contentVisibility)) return null;
     const r = none(style.filter) ? rect(el) : stockBannerFill(host, el);
     if (!r || pad === null || !none(style.backdropFilter)) return null;
     const a = { x: r.x - pad, y: r.y - pad, width: r.width + pad * 2, height: r.height + pad * 2 };
@@ -165,15 +188,23 @@ export function stockEffectTrust(host, { frameRoot = null, ownerCss = "unknown" 
       if (s.position !== "relative" || s.zIndex !== "1" || !neutral(s)) return fail("stock_order_unknown");
     }
     const marked = [...doc.querySelectorAll("[data-trust]")], expected = new Set(), rects = [], budget = { n: 0 };
-    if (marked.length > 128) return fail("stock_trust_unknown");
+    if (marked.length > 4096) return fail("stock_marker_limit");
     for (const { kind, selector } of STOCK_TRUST_INVENTORY) for (const el of doc.querySelectorAll(selector)) {
       if (el.ownerDocument !== doc || el.isConnected !== true || el.getAttribute("data-trust") !== kind) return fail("stock_trust_unknown");
       expected.add(el);
     }
     if (marked.some(el => !expected.has(el)) || surface.kind === "chat" && !chat.querySelector('.dock[data-trust="composer"]') || !surface.panel.querySelector('.panel-head[data-trust="header"]')) return fail("stock_trust_unknown");
     for (const el of marked) {
-      const bounds = protectedPaint(host, el, budget); if (!bounds) return fail("stock_paint_unknown");
-      if (bounds.width && bounds.height) rects.push(bounds);
+      const bounds = protectedPaint(host, el, budget); if (!bounds) return fail(budget.exceeded ? "stock_paint_limit" : "stock_paint_unknown");
+      // Off-screen history remains inventoried and paint-checked; it need not consume a
+      // viewport hole. Include the clip algorithm's extra 8px protection margin.
+      if (bounds.width && bounds.height && (!finite(host.innerHeight) || bounds.x + bounds.width + 8 >= 0 && bounds.y + bounds.height + 8 >= 0 && bounds.x - 8 <= host.innerWidth && bounds.y - 8 <= host.innerHeight)) rects.push(bounds);
+    }
+    // Keep the existing 128-hole transport bound. Conservative union may hide extra
+    // effect pixels; it can never reveal protected pixels, even for a dense viewport.
+    if (rects.length > 128) {
+      const rest = rects.splice(127), x = Math.min(...rest.map(r => r.x)), y = Math.min(...rest.map(r => r.y));
+      rects.push({ x, y, width: Math.max(...rest.map(r => r.x + r.width)) - x, height: Math.max(...rest.map(r => r.y + r.height)) - y });
     }
     if (doc.querySelector(".agend-session-ended")) return fail("session_ended");
     let barrier = [...doc.querySelectorAll(BARRIERS)].some(el => visible(host, el));

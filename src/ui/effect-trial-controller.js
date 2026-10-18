@@ -5,7 +5,7 @@ import { chatEffectIdentity } from "/assets/effect-chat-runtime.js";
 const owners = new WeakSet(), safe = fn => { try { return fn(); } catch { return null; } };
 const LIMIT = 128 * 1024;
 export function createEffectTrialController({ window: host, current, allowed, onStart, onChange = () => {} }) {
-  let dead = false, active = null, physical = null, previous = null, broken = false, clockBusy = false;
+  let dead = false, active = null, physical = null, previous = null, broken = false, clockBusy = false, endedReason = null, endedOffer = null;
   const cleanup = [], releases = [], identity = safe(() => chatEffectIdentity(host));
   const tell = () => { if (!dead) safe(onChange); };
   function clock() {
@@ -26,11 +26,16 @@ export function createEffectTrialController({ window: host, current, allowed, on
   }
   function end(op, reason = "stopped") {
     if (!op || op.dead) return false;
-    op.dead = true; if (active === op) active = null; safe(() => op.resolve?.(false));
+    op.dead = true; if (active === op) active = null;
+    endedReason = typeof reason === "string" && /^[a-z][a-z0-9_]{0,79}$/.test(reason) ? reason : "trial_failed";
+    endedOffer = op.offer.offer;
+    safe(() => op.resolve?.(false));
     safe(() => host.clearTimeout(op.timer)); safe(() => op.controller.abort());
     if (op.reply && !op.stopQueued) { op.stopQueued = true; cleanup.push(op); }
     // Physical paint is removed before callbacks, cleanup I/O or another explicit click.
-    safe(() => op.dispose?.()); op.dispose = null; tell(); drain(); return true;
+    safe(() => op.dispose?.()); op.dispose = null;
+    if (!["stopped", "replaced"].includes(endedReason)) safe(() => host.console?.warn("[AgEnD effects] Try stopped:", endedReason));
+    tell(); drain(); return true;
   }
   function arm(op) {
     safe(() => host.clearTimeout(op.timer));
@@ -67,7 +72,7 @@ export function createEffectTrialController({ window: host, current, allowed, on
     if (dead) return; dead = true; end(active); for (const off of releases.splice(0)) safe(off); tell();
   }
   const api = { ok: false, start: async () => false, stop: () => end(active), sync() { const op = active; if (op && !eligible(op)) end(op, "trial_ended"); },
-    snapshot: () => Object.freeze({ busy: !!physical || cleanup.length > 0, phase: active ? active.reply ? "running" : "starting" : "idle" }), dispose };
+    snapshot: () => Object.freeze({ busy: !!physical || cleanup.length > 0, phase: active ? active.reply ? "running" : "starting" : "idle", reason: active ? null : endedReason, offer: active ? active.offer.offer : endedOffer }), dispose };
   if (!identity || owners.has(host) || typeof current !== "function" || typeof allowed !== "function" || typeof onStart !== "function"
     || typeof host.AgendAuth?.trialSession !== "function" || typeof host.AgendAuth?.onSessionEnd !== "function") return Object.freeze(api);
   owners.add(host);
@@ -75,7 +80,7 @@ export function createEffectTrialController({ window: host, current, allowed, on
     const off = host.AgendAuth.onSessionEnd(dispose);
     if (dead) { safe(off); return Object.freeze(api); }
     releases.push(off);
-    for (const [target, type, fn] of [[host, "blur", () => end(active)], [host, "pagehide", dispose], [host.document, "visibilitychange", () => { if (host.document.visibilityState !== "visible") end(active); }]]) {
+    for (const [target, type, fn] of [[host, "blur", () => end(active, "trial_window_blur")], [host, "pagehide", dispose], [host.document, "visibilitychange", () => { if (host.document.visibilityState !== "visible") end(active, "hidden"); }]]) {
       target.addEventListener(type, fn); releases.push(() => target.removeEventListener(type, fn));
     }
   } catch { dispose(); return Object.freeze(api); }
@@ -86,7 +91,7 @@ export function createEffectTrialController({ window: host, current, allowed, on
     const offer = safe(() => effectTrialMessage(message)), instance = safe(() => message.instance), began = clock();
     if (!offer || began === null || began + 10000 > Number.MAX_SAFE_INTEGER || safe(() => host.Date.now() < offer.expiresAt) !== true) return false;
     const op = { instance, offer, began, until: began + 10000, controller: new host.AbortController(), timer: null, reply: null, dead: false, stopQueued: false, dispose: null };
-    active = op; const token = {}; physical = token;
+    endedReason = null; endedOffer = null; active = op; const token = {}; physical = token;
     const cancelled = new Promise(resolve => { op.resolve = resolve; });
     const work = Promise.resolve().then(async () => {
       if (!eligible(op)) return false;
@@ -105,12 +110,12 @@ export function createEffectTrialController({ window: host, current, allowed, on
       op.until = began + reply.remainingMs;
       if (op.until > Number.MAX_SAFE_INTEGER || !eligible(op)) return false;
       arm(op);
-      const handle = Object.freeze({ reply, startedAt: began, instance, current: () => eligible(op), stop: () => end(op), });
+      const handle = Object.freeze({ reply, startedAt: began, instance, current: () => eligible(op), stop: (reason = "stopped") => end(op, reason), });
       const disposer = onStart(handle);
       if (typeof disposer !== "function") return false;
       if (!eligible(op)) { safe(disposer); return false; }
       op.dispose = disposer; tell(); return eligible(op);
-    }).catch(() => false).then(ok => { if (!ok) end(op); return ok; }).finally(() => { if (physical === token) physical = null; tell(); drain(); });
+    }).catch(() => false).then(ok => { if (!ok) end(op, "trial_start_failed"); return ok; }).finally(() => { if (physical === token) physical = null; tell(); drain(); });
     // The logical caller may stop immediately, while the physical request/cancel still owns the lane.
     tell();
     return Promise.race([work, cancelled]);

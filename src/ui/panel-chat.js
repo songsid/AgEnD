@@ -7,7 +7,7 @@
 // The instance's own actions (details, start, stop, restart, delete) are in the header's ⋯ menu, and only the ones
 // that apply to its state are offered (#1408 rough edges 4 and 7).
 import { html, useCallback, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
-import { t } from "/assets/app-i18n.js";
+import { lang, t } from "/assets/app-i18n.js";
 import { appStore, guestPage, useStore } from "/assets/app-store.js";
 import { AuthorizeChip } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
@@ -317,66 +317,115 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   </div>`;
 }
 
-/** The thread: Preact owns the elements, the keyed renderer owns what is inside the list (chat-thread.js). */
+/**
+ * #2053: the last THREAD_KEEP chats' threads are kept when their view leaves (the chat view is keyed by instance, so
+ * each switch built the thread again: a revisit was no faster than a first visit). A kept thread is its list element
+ * and its renderer, and nothing more: it leaves as a chat always did (previews stop), with no subscription or timer
+ * left; shown again, one render draws only what changed meanwhile, where the reader was. A new language, another
+ * document, or more than THREAD_KEEP lets one go.
+ */
+export const THREAD_KEEP = 4;
+const keptThreads = new Map();                 // name → { thread, list, sink, lang }
+/** Tests only: let every kept thread go. */
+export function forgetKeptThreads() { for (const e of keptThreads.values()) letGo(e, true); keptThreads.clear(); }
+function letGo(e, own) { e.thread.dispose(own); e.list.remove(); }
+
+/** A chat's thread: its own list element and renderer, and a sink for the view that shows it. */
+function threadEntry(name, doc) {
+  const list = doc.createElement("div");
+  list.className = "thread";
+  list.setAttribute("role", "log");
+  list.setAttribute("aria-live", "off");
+  list.setAttribute("aria-label", t("chat.conversationWith", name));
+  const e = { list, sink: null, lang: lang(), thread: null };
+  const thread = createThread(list, doc.createElement("div"), {
+    t, tf: t, isUser: (x) => store.isUser(x, name), onJump: (j) => e.sink?.setJump(j), onEmpty: (v) => e.sink?.setEmpty(v),
+    setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
+    effectTrialStatus: x => getAppEffects()?.trialStatus(x) ?? "localAdmin",
+    effectTrialFailure: x => getAppEffects()?.trialFailure(x),
+    fixEffectTrial: (x, reason) => {
+      if (reason === "reducedMotion") setFollowsReducedMotion(false);
+      else if (reason === "busy") getAppEffects()?.stopTrial();
+      else if (reason === "transport") location.reload();
+      else if (reason === "localAdmin") location.href = "/signin?next=" + encodeURIComponent(location.pathname + location.search);
+      else navigate("/settings/appearance");
+    },
+    canTryEffect: x => getAppEffects()?.canTry(x) === true,
+    startEffectTrial: x => { const seq = navStore.get().seq; void getAppEffects()?.startTrial(x).then(ok => { if (!ok && e.sink && navStore.get().seq === seq && document.hasFocus?.() === true && document.visibilityState === "visible") toast(t("chat.effectTrialUnavailable")); }); },
+    clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
+    replyButtonBusy: (id) => store.state.rbBusy.has(id),
+    pollMine: (id) => store.state.pollMine[id],                            // #1823: this device's own vote
+    serverNow: () => Date.now() + store.state.clockSkew,                   // #1823: the deadline is the server's
+    panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims },   // #1481, #1704
+    openImage: openLightbox,                                               // an image, full size, in the page
+    emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
+    mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names
+  });
+  e.thread = thread;
+  return e;
+}
+/** While a thread is shown: what it follows. Returns what lets it all go. */
+function follow(name, thread) {
+  // #1630: the server-emoji list is read once a message shows a tag; when it arrives, those messages are drawn again.
+  // #1682: the same for mention names — asked for the ids the messages carry; when names arrive, drawn again.
+  const wantEmojis = (msgs) => { if (emojiIndex && emojiIndex.wants(msgs)) emojiIndex.ensure(); if (mentionIndex) mentionIndex.ensure(msgs); };
+  const offs = [];
+  if (emojiIndex) offs.push(emojiIndex.subscribe(() => thread.render(store.state.msgs[name] || [])));
+  if (mentionIndex) offs.push(mentionIndex.subscribe(() => thread.render(store.state.msgs[name] || [])));
+  wantEmojis(store.state.msgs[name]);
+  offs.push(store.subscribe((instance, kind) => {
+    if (instance !== name) return;
+    if (kind === "msgs") { thread.render(store.state.msgs[name] || []); wantEmojis(store.state.msgs[name]); }
+    else if (kind === "sent") thread.jumpLatest();
+  }));
+  offs.push(P() ? P().onChange(() => thread.refreshCards()) : () => {});
+  offs.push(getAppEffects()?.subscribeTrial(() => thread.render(store.state.msgs[name] || [])) ?? (() => {}));
+  offs.push(panelStore.subscribe(() => thread.refreshCards()));   // a card shows whether the panel has its block
+  return () => { for (const off of offs) off(); };
+}
+
+/** The thread's view: Preact owns the scroller and the jump pill; the kept list (chat-thread.js) is put inside it. */
 function Thread({ name, th }) {
-  const scroller = useRef(null), list = useRef(null);
+  const scroller = useRef(null), host = useRef(null);
   const [jump, setJump] = useState({ show: false, unseen: 0 });
   const [empty, setEmpty] = useState(false);
   useLayoutEffect(() => {
-    let live = true;
-    const thread = createThread(list.current, scroller.current, {
-      t, tf: t, isUser: (x) => store.isUser(x, name), onJump: setJump, onEmpty: setEmpty,
-      setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
-      effectTrialStatus: x => getAppEffects()?.trialStatus(x) ?? "localAdmin",
-      fixEffectTrial: (x, reason) => {
-        if (reason === "reducedMotion") setFollowsReducedMotion(false);
-        else if (reason === "busy") getAppEffects()?.stopTrial();
-        else if (reason === "transport") location.reload();
-        else if (reason === "localAdmin") location.href = "/signin?next=" + encodeURIComponent(location.pathname + location.search);
-        else navigate("/settings/appearance");
-      },
-      canTryEffect: x => getAppEffects()?.canTry(x) === true,
-      startEffectTrial: x => { const seq = navStore.get().seq; void getAppEffects()?.startTrial(x).then(ok => { if (!ok && live && navStore.get().seq === seq && document.hasFocus?.() === true && document.visibilityState === "visible") toast(t("chat.effectTrialUnavailable")); }); },
-      clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
-      replyButtonBusy: (id) => store.state.rbBusy.has(id),
-      pollMine: (id) => store.state.pollMine[id],                            // #1823: this device's own vote
-      serverNow: () => Date.now() + store.state.clockSkew,                   // #1823: the deadline is the server's
-      panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims },   // #1481, #1704
-      openImage: openLightbox,                                               // an image, full size, in the page
-      emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
-      mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names
-    });
+    const doc = host.current.ownerDocument;
+    let e = keptThreads.get(name);
+    // Kept only while it can be shown as it is: the same language, and this page's own document.
+    if (e && (e.lang !== lang() || e.list.ownerDocument !== doc)) { letGo(e, true); keptThreads.delete(name); e = undefined; }
+    const kept = !!e;
+    if (e) keptThreads.delete(name);
+    else e = threadEntry(name, doc);
+    keptThreads.set(name, e);                                              // the most recent last
+    for (const [k, old] of keptThreads) {
+      if (keptThreads.size <= THREAD_KEEP) break;
+      if (k !== name) { letGo(old, true); keptThreads.delete(k); }
+    }
+    const thread = e.thread, sc = scroller.current, ls = e.list;
+    e.sink = { setJump, setEmpty };
+    host.current.append(ls);
+    thread.attach(sc);
     th.current = thread;
-    // #1630: the server-emoji list is read once a message shows a tag; when it arrives, those messages are drawn again.
-    // #1682: the same for mention names — asked for the ids the messages carry; when names arrive, drawn again.
-    const wantEmojis = (msgs) => { if (emojiIndex && emojiIndex.wants(msgs)) emojiIndex.ensure(); if (mentionIndex) mentionIndex.ensure(msgs); };
-    const offEmojis = emojiIndex ? emojiIndex.subscribe(() => thread.render(store.state.msgs[name] || [])) : () => {};
-    const offMentions = mentionIndex ? mentionIndex.subscribe(() => thread.render(store.state.msgs[name] || [])) : () => {};
+    // Up to date, at the reader's place (the bottom unless they had scrolled up); a kept one's cards say what they can do.
     thread.render(store.state.msgs[name] || [], { restore: store.state.scrollMemo[name] ?? null });
-    wantEmojis(store.state.msgs[name]);
-    const off = store.subscribe((instance, kind) => {
-      if (instance !== name) return;
-      if (kind === "msgs") { thread.render(store.state.msgs[name] || []); wantEmojis(store.state.msgs[name]); }
-      else if (kind === "sent") thread.jumpLatest();
-    });
-    const offPv = P() ? P().onChange(() => thread.refreshCards()) : () => {};
-    const offTrials = getAppEffects()?.subscribeTrial(() => thread.render(store.state.msgs[name] || [])) ?? (() => {});
-    const offPanel = panelStore.subscribe(() => thread.refreshCards());   // a card shows whether the panel has its block
+    if (kept) thread.refreshCards();
+    const unfollow = follow(name, thread);
     const onScroll = () => { store.state.scrollMemo[name] = thread.onScroll(); };
-    const sc = scroller.current, ls = list.current;
     sc.addEventListener("scroll", onScroll, { passive: true });
     ls.addEventListener("click", thread.onClick);
     return () => {
-      live = false;
-      off(); offPv(); offPanel(); offTrials(); offEmojis(); offMentions();
+      unfollow();
       sc.removeEventListener("scroll", onScroll);
       ls.removeEventListener("click", thread.onClick);
-      thread.dispose();                     // the whole thread goes: every preview in it stops first
+      e.sink = null;
       th.current = null;
+      if (keptThreads.get(name) === e) { thread.park(); ls.remove(); }   // kept for a later visit: the chat left
+      else letGo(e, false);                                                // let go meanwhile (a new language)
     };
   }, [name]);
   return html`<div class="scroller" ref=${scroller}>
-    <div class="thread" ref=${list} role="log" aria-live="off" aria-label=${t("chat.conversationWith", name)}></div>
+    <div class="thread-host" ref=${host}></div>
     ${empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} />` : null}
     <div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
       <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}</div>
