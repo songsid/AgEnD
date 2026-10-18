@@ -30,7 +30,7 @@ const plainCaller = (name: unknown): name is string => typeof name === "string" 
 // These names are private even inside an admitted staging directory. A staging area is not a credential store.
 const sensitiveNames = [
   "instances", "credential-profiles", "inbox", "chat-logs", "web-files", "web-chat.json", "cx", "kiro-v3", "cli-env", "access",
-  "web-sessions", "sessions", "session-env", "projects", "file-history", "shell-snapshots", "backups", "todos", "statsig", "ide",
+  "web.token", "view.token", "web-sessions", "sessions", "session-env", "projects", "file-history", "shell-snapshots", "backups", "todos", "statsig", "ide",
   "claude.md", "agents.md", "mcp-config.json", "claude-settings.json", "credentials.json", "opencode.json", "opencode.jsonc",
   "config.toml", "settings.json", "settings.local.json", "auth.json", "history.jsonl", "agent.token", "session-id", "session-id.backend",
   "fleet.yaml", "classicbot.yaml", "web-sessions.json", "web-devices.json", "web-prefs.json", "web-effects.json", "web-mods.json",
@@ -39,7 +39,7 @@ const sensitiveNames = [
   "restart-audit.log", "tunnel.lease", "service-plan.json", "update-in-progress.json", "self-restart.json", "setup-complete.json",
 ];
 const sensitivePart = (part: string) => (part.startsWith(".") && part !== ".agend") || sensitiveNames.some(name => part.toLowerCase() === name || part.toLowerCase().startsWith(name + ".") || part.toLowerCase().startsWith(name + "-"))
-  || /\.(?:db|sqlite|sqlite3)(?:[.-]|$)/i.test(part) || /\.(?:token|pem|key)$/i.test(part);
+  || /\.(?:db|sqlite|sqlite3)(?:[.-]|$)/i.test(part) || /\.(?:token|pem|key)(?:[.-]|$)/i.test(part);
 const reservedStateRoots = new Set(["workspaces", "kiro-identity", "operator", "model-catalog", "profiles", "preview-tunnel", "bin", "web-effects", "web-mods", "web-themes", "web-owner-css", "cards", "avatars", "cache", "web-files"]);
 const staging = ["web-assets", "web-effects", ".agend/appearance", ".agend/mods"];
 
@@ -81,7 +81,7 @@ export async function agentFileScope(opts: AgentFileContext): Promise<{ workspac
     const standard = resolve(state, "workspaces", opts.instance);
     const parts = relative(state, expected).split(sep);
     const reserved = expected === state || !under(expected, state) || parts.some(part => part.startsWith(".") || sensitivePart(part))
-      || (reservedStateRoots.has(parts[0]!) && !(parts[0] === "workspaces" && expected === standard));
+      || (reservedStateRoots.has(parts[0]!) && !(parts[0] === "workspaces" && under(expected, standard)));
     if (launchMatches && !reserved && under(workspace, expected)) {
       let exclusive = true;
       for (const [name, peer] of Object.entries(roster)) {
