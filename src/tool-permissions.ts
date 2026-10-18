@@ -113,9 +113,16 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     // a dispatcher can choose its own status stamp like any worker.
     "list_emojis", "preview_emojis", "set_persona_emoji",
     "list_stickers", "preview_stickers",
-    // Its own web theme (#1629), like its own status stamp. (The read-only appearance tools stay out: this profile is
-    // the lean one — a dispatcher reads its theme with get_web_theme.)
+    // Its own identity — same as any worker.
+    "set_display_name", "set_description",
+    // Its own web theme (#1629), like its own status stamp.
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
+    // Own-appearance family (#2132): no target, caller-scoped — same as worker/standard.
+    "get_web_appearance", "preview_web_appearance",
+    "set_web_widget", "remove_web_widget",
+    "set_web_ambient", "clear_web_ambient",
+    "export_web_mod", "propose_web_mod",
+    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // #2056: Settings → Web appearance for the user (the page's own checks; a worker's are its own theme only).
     "get_web_settings", "set_web_settings",
   ],
@@ -317,8 +324,20 @@ export const EARLY_AGENT_OP_TOOLS: Readonly<Record<string, string>> = {
  * It will read this as an instruction, so it says what to do instead rather
  * than only what went wrong. Naming the profile matters too: "not allowed" with
  * no reason invites retrying.
+ *
+ * Own-instance tools (in WORKER, not in ORCHESTRATION) need a wider worker-tier
+ * profile, not a coordinator — suggesting coordinator for a cosmetic change is
+ * misleading and grants far more than needed.
  */
+const WORKER_TOOL_SET = new Set(WORKER);
+const ORCHESTRATION_TOOL_SET = new Set(ORCHESTRATION);
+
 export function toolRefusedMessage(profile: ToolSetName, tool: string): string {
+  const isOwnInstanceTool = WORKER_TOOL_SET.has(tool) && !ORCHESTRATION_TOOL_SET.has(tool);
+  if (isOwnInstanceTool) {
+    return `${tool} is not available to this instance: it runs with the "${profile}" tool set, and ${tool} is an own-instance tool (no target; acts only on the caller). `
+      + 'Ask an administrator to set `tool_set: worker` or `tool_set: standard` for this instance.';
+  }
   return `${tool} is not available to this instance: it runs with the "${profile}" tool set, and ${tool} belongs to a coordinator. `
     + "Report what you need with report_result and let the coordinator do it, "
     + 'or ask an administrator to set `tool_set: coordinator` for this instance.';

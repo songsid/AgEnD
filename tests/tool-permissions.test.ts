@@ -85,8 +85,17 @@ const BEFORE: Record<string, string[]> = {
     "list_emojis", "preview_emojis", "set_persona_emoji",
     // #1226: stickers.
     "list_stickers", "preview_stickers",
+    // Its own identity — same as any worker.
+    "set_display_name", "set_description",
     // #1629: its own web theme, like its own status stamp.
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
+    // #2132: own-appearance family — no target, caller-scoped.
+    "get_web_appearance", "preview_web_appearance",
+    "set_web_widget", "remove_web_widget",
+    "set_web_ambient", "clear_web_ambient",
+    "export_web_mod", "propose_web_mod",
+    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
+    "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // kiro engine move: read-only kiro engine facts, for explaining a kiro incompatibility.
     "kiro_engine_status",
     // #2056: the user's Settings → Web appearance, through the page's own checks.
@@ -507,6 +516,67 @@ describe("the refusal explains itself", () => {
     expect(message).toContain("worker");
     expect(message).toContain("report_result");
     expect(message).toContain("tool_set: coordinator");
+  });
+
+  it("does not suggest coordinator for an own-instance tool", () => {
+    // set_web_widget is in the worker profile — it has no target and acts only
+    // on the caller. Suggesting `tool_set: coordinator` for a cosmetic change
+    // is wrong: it grants far more than needed. (#2132)
+    for (const tool of [
+      "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient",
+      "get_web_appearance", "preview_web_appearance",
+      "export_web_mod", "propose_web_mod",
+      "upload_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
+      "set_display_name", "set_description",
+    ]) {
+      const message = toolRefusedMessage("minimal", tool);
+      expect(message, `${tool}: must not suggest coordinator`).not.toContain("tool_set: coordinator");
+      expect(message, `${tool}: must name the tool`).toContain(tool);
+      expect(message, `${tool}: must name a fix`).toMatch(/tool_set: worker|tool_set: standard/);
+    }
+  });
+
+  it("still suggests coordinator for orchestration tools", () => {
+    for (const tool of ["create_instance", "delete_instance", "update_fleet_defaults", "update_decision"]) {
+      const message = toolRefusedMessage("worker", tool);
+      expect(message, tool).toContain("tool_set: coordinator");
+    }
+  });
+});
+
+// ── Drift guard: every profile with set_web_theme has the full own-appearance family ──
+
+describe("own-appearance family consistency (#2132)", () => {
+  /**
+   * The full own-appearance family — tools that have no target and act only on
+   * the caller. Any profile that lets an instance style itself (set_web_theme)
+   * must include all of them: a gap means "you can change your theme but not
+   * your widgets", which is the bug #2132 reported.
+   */
+  const OWN_APPEARANCE = [
+    "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
+    "get_web_appearance", "preview_web_appearance",
+    "set_web_widget", "remove_web_widget",
+    "set_web_ambient", "clear_web_ambient",
+    "export_web_mod", "propose_web_mod",
+    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
+    "apply_web_effect", "remove_web_effect", "delete_web_effect",
+  ] as const;
+
+  it("every profile with set_web_theme has all own-appearance tools", () => {
+    for (const [name, tools] of Object.entries(TOOL_PROFILES)) {
+      const set = new Set(tools);
+      if (!set.has("set_web_theme")) continue; // minimal doesn't style itself
+      for (const tool of OWN_APPEARANCE) {
+        expect(set.has(tool), `${name} has set_web_theme but is missing ${tool}`).toBe(true);
+      }
+    }
+  });
+
+  it("general has the full own-appearance family (#2132)", () => {
+    for (const tool of OWN_APPEARANCE) {
+      expect(TOOL_PROFILES.general, `general must have ${tool}`).toContain(tool);
+    }
   });
 });
 
