@@ -10041,7 +10041,7 @@ export class Daemon extends EventEmitter {
           });
           if (failed) { reply(null, failed); return; }
           if ("error" in got) { reply(got, undefined); return; }
-          const written = await writePreview(got.files, { workspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name });
+          const written = await writePreview(got.files, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name });
           if ("error" in written) { reply(null, `preview_web_appearance: ${written.error}`); return; }
           reply(written, undefined);
           return;
@@ -10059,13 +10059,13 @@ export class Daemon extends EventEmitter {
           }, { name: MOD_FILE, idKey: "transfer", what: "export", maxParts: MOD_MAX_PARTS });
           if (failed) { reply(null, failed); return; }
           if ("error" in got) { reply(got, undefined); return; }
-          const written = await writeModFile(got.files, { workspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name });
+          const written = await writeModFile(got.files, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name });
           if ("error" in written) { reply(null, `export_web_mod: ${written.error}`); return; }
           reply({ ...written, ...(firstResult.effects_omitted ? { effects_omitted: firstResult.effects_omitted } : {}) }, undefined);
           return;
         }
         if (tool === "propose_web_mod") {
-          const read = await readAgentFile(args.file, { workspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name, maxBytes: MOD_UPLOAD_MAX_BYTES });
+          const read = await readAgentFile(args.file, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name, maxBytes: MOD_UPLOAD_MAX_BYTES });
           const named = typeof args.file === "string" ? args.file.slice(0, 200) : "the file argument";
           if (!read.ok) { reply(null, `propose_web_mod: ${named} — ${read.reason}`); return; }
           let failed: string | undefined;
@@ -10081,7 +10081,7 @@ export class Daemon extends EventEmitter {
           const owner = { fence:this.launchFenceEpoch, spawn:this.spawnGeneration, boot:this.bootId, ipc:this.ipcServer };
           const current = () => !!owner.ipc && owner.ipc === this.ipcServer && owner.fence === this.launchFenceEpoch && owner.spawn === this.spawnGeneration && owner.boot === this.bootId && !this.deliveryWritesStopping && !this.startupAborted;
           if (!current()) { reply(null,"upload_web_effect: launch no longer current"); return; }
-          const read = await readAgentEffect(args.dir, { workspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name });
+          const read = await readAgentEffect(args.dir, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name });
           if (!current()) { reply(null,"upload_web_effect: launch no longer current"); return; }
           if (!read.ok) { reply(null, `upload_web_effect: ${read.reason}`); return; }
           let failed: string | undefined;
@@ -10095,7 +10095,7 @@ export class Daemon extends EventEmitter {
           return;
         }
         if (tool !== "set_web_theme_asset") { const r = await ask(args); reply(r.result, r.error); return; }
-        const read = await readAgentFile(args.file, { workspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name, maxBytes: WEB_THEME_ASSET_MAX_BYTES });
+        const read = await readAgentFile(args.file, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name, maxBytes: WEB_THEME_ASSET_MAX_BYTES });
         // The path as the agent gave it — only a string is shown (an object from raw JSON args is never coerced).
         const named = typeof args.file === "string" ? args.file.slice(0, 200) : "the file argument";
         if (!read.ok) { reply(null, `set_web_theme_asset: ${named} — ${read.reason}`); return; }

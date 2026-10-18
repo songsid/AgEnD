@@ -22,7 +22,7 @@ export async function readAgentEffect(dir: unknown, opts: AgentFileContext): Pro
     const named=isAbsolute(dir)?dir:resolve(opts.workspace,dir), info=await lstat(named);
     if (!info.isDirectory() || info.isSymbolicLink()) return {ok:false,reason:"not a plain directory"};
     const root=await realpath(named), scope=await agentFileScope(opts), workspace=scope.workspace;
-    if (!under(root,workspace) || scope.stateBlocked(root)) return {ok:false,reason:"outside the workspace or inside AgEnD state"};
+    if (!under(root,workspace) || (scope.stateBlocked(root) || scope.stateBlocked(named))) return {ok:false,reason:"outside the workspace or inside AgEnD state"};
     const paths:string[]=[];
     const directory=await opendir(root);
     for await (const entry of directory) {
