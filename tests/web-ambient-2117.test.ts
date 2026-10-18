@@ -720,6 +720,20 @@ describe("the page: the one-time reduced-motion note", () => {
     const again = await mountNote({ agend_fx_motion_note_seen: "1" }, true);
     expect(again.note()).toBeNull();
   });
+  it("the shared helper on its own (Canvas Worker effects may use it): due only for a clear system yes, not following, not seen", async () => {
+    const cases: Array<[Record<string, string>, boolean | "throws", boolean]> = [
+      [{}, true, true], [{}, false, false], [{}, "throws", false],
+      [{ agend_fx_follow_reduced_motion: "1" }, true, false], [{ agend_fx_motion_note_seen: "1" }, true, false],
+    ];
+    for (const [storage, reduce, due] of cases) {
+      await pageLoad({ storage, reduce });
+      const motion = await import("/assets/fx-motion.js");
+      expect(motion.motionNoteDue(), JSON.stringify([storage, reduce])).toBe(due);
+    }
+    await pageLoad({ reduce: true });
+    (globalThis as any).matchMedia = () => ({ matches: undefined, addEventListener() {}, removeEventListener() {} });
+    expect((await import("/assets/fx-motion.js")).motionNoteDue(), "an answer that isn't yes").toBe(false);
+  });
   it("not shown: no reduced motion, this device follows it (nothing plays), no ambient here; × closes it", async () => {
     expect((await mountNote({}, false)).note()).toBeNull();
     expect((await mountNote({ agend_fx_follow_reduced_motion: "1" }, true)).note()).toBeNull();
