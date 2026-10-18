@@ -42,10 +42,11 @@ function threadAt() {
   const doc = pg.document as any;
   const scroller = doc.createElement("div"), list = doc.createElement("div");
   scroller.append(list); doc.body.append(scroller);
-  let top = 0, view = 500, wheeling = false;
-  const max = () => Math.max(0, list.children.length * 100 - view);
+  let top = 0, view = 500, wheeling = false, extra = 0;
+  const height = () => list.children.length * 100 + extra;
+  const max = () => Math.max(0, height() - view);
   const writes: number[] = [];
-  Object.defineProperty(scroller, "scrollHeight", { get: () => list.children.length * 100 });
+  Object.defineProperty(scroller, "scrollHeight", { get: () => height() });
   Object.defineProperty(scroller, "clientHeight", { get: () => view });
   Object.defineProperty(scroller, "scrollTop", { get: () => top, set: (v: number) => { if (!wheeling) writes.push(v); top = Math.max(0, Math.min(v, max())); } });
   const thread = createThread(list, scroller, {
@@ -54,8 +55,18 @@ function threadAt() {
   });
   const wheel = (dy: number) => { wheeling = true; scroller.scrollTop = top + dy; wheeling = false; thread.onScroll(); };
   const resize = (dockGrowth: number) => { view -= dockGrowth; top = Math.min(top, max()); for (const cb of observers) cb(); };
-  const fromBottom = () => list.children.length * 100 - top - view;
-  return { thread, scroller, writes, wheel, resize, fromBottom };
+  const fromBottom = () => height() - top - view;
+  /**
+   * #2158, as WebKit ordered it on a cold load: the thread gets `shrink` px shorter (its text settling) and the position
+   * is clamped to the view as it was; the dock takes `dock` px; then the clamp's scroll event, with `wheelUp` px of the
+   * reader's own in the same frame (0: none); and only then the ResizeObserver.
+   */
+  const settle = (shrink: number, dock: number, wheelUp = 0) => {
+    extra -= shrink; top = Math.max(0, Math.min(top, max()) - wheelUp); view -= dock;
+    thread.onScroll();
+    for (const cb of observers) cb();
+  };
+  return { thread, scroller, writes, wheel, resize, settle, fromBottom };
 }
 
 describe("wheeling down to the bottom: nothing moves the view after the reader's last wheel", () => {
@@ -96,6 +107,58 @@ describe("wheeling down to the bottom: nothing moves the view after the reader's
     for (const dy of [500, 470]) t.wheel(dy);                 // 30 px short
     t.thread.render(many(61));
     expect(t.fromBottom()).toBe(0);
+  });
+});
+
+describe("#2158: a pinned thread that gets shorter stays at the bottom (WebKit's clamp comes before the resize)", () => {
+  it("a cold load at the bottom: 168 px of text lost, 36 px of dock — still flush with the bottom, and older messages filling in keep it there", () => {
+    const t = threadAt();
+    t.thread.render(many(60), { restore: null });            // opens at the bottom, pinned
+    t.settle(168, 36);
+    expect(t.fromBottom(), "back at the bottom").toBe(0);
+    t.resize(0);                                              // a later growth (older messages, a picture)
+    t.thread.render(many(61));
+    expect(t.fromBottom(), "still pinned").toBe(0);
+  });
+  it("the reader's own move up in that frame — any more than the thread lost — still leaves the bottom", () => {
+    const t = threadAt();
+    t.thread.render(many(60), { restore: null });
+    const after = t.writes.length;
+    t.settle(40, 0, 5);                                       // clamped 40 px, and 5 px of the reader's
+    expect(t.fromBottom()).toBe(5);
+    t.resize(20);
+    expect(t.writes.slice(after), "nothing written after the reader's move").toEqual([]);
+    expect(t.fromBottom()).toBe(25);
+  });
+  it("a reader who scrolled up — even just above the bottom, where the clamp moves them too — is not pulled down", () => {
+    const t = threadAt();
+    t.thread.render(many(60), { restore: null });
+    t.wheel(-1000);
+    t.wheel(900);                                             // 100 px short: not pinned
+    const after = t.writes.length;
+    t.settle(168, 36);                                        // clamped 68 px up with the thread
+    expect(t.writes.slice(after)).toEqual([]);
+    expect(t.fromBottom()).toBe(36);
+  });
+  it("a clamp that leaves the view at the bottom writes nothing; and the reader's later move up is theirs", () => {
+    const t = threadAt();
+    t.thread.render(many(60), { restore: null });
+    const after = t.writes.length;
+    t.settle(168, 0);                                         // clamped to the new bottom, the view unchanged
+    expect(t.fromBottom()).toBe(0);
+    t.wheel(-100);                                            // the height lost before is not the reader's
+    t.resize(0);
+    expect(t.writes.slice(after)).toEqual([]);
+    expect(t.fromBottom()).toBe(100);
+  });
+  it("a pinned reader's own small move up (a trackpad), with nothing lost, is theirs", () => {
+    const t = threadAt();
+    t.thread.render(many(60), { restore: null });
+    const after = t.writes.length;
+    t.wheel(-2);
+    t.resize(0);
+    expect(t.writes.slice(after)).toEqual([]);
+    expect(t.fromBottom()).toBe(2);
   });
 });
 

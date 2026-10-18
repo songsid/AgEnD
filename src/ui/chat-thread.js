@@ -65,7 +65,9 @@ export function createThread(list, scroller, opts) {
   // Only a move UP unpins: the browser's own scroll anchoring also fires scroll events when content grows (the view
   // moves down or stays), and those must not count as the reader leaving the bottom. Reaching the bottom pins again.
   let pinned = true;
-  let lastTop = 0;
+  // Where the view was (and how tall the thread) at the last scroll the page saw or made: a move up from there unpins.
+  let lastTop = 0, lastHeight = 0;
+  const mark = () => { lastTop = scroller.scrollTop; lastHeight = scroller.scrollHeight; };
   // The oldest message drawn (by key): everything after it is drawn, so new messages never push the window. Null: none
   // drawn yet — the next render draws the newest THREAD_TAIL and the rest follows (grow).
   let firstKey = null;
@@ -480,7 +482,7 @@ export function createThread(list, scroller, opts) {
   // newest bubble clipped behind it, and the next growth past 48 px put the pill over it.
   const atBottom = () => R().isNearBottom(scroller.scrollTop, scroller.clientHeight, scroller.scrollHeight, 1);
   function reportJump() { opts.onJump({ show: !nearBottom(), unseen }); }
-  function toBottom() { scroller.scrollTop = scroller.scrollHeight; pinned = true; lastTop = scroller.scrollTop; }
+  function toBottom() { scroller.scrollTop = scroller.scrollHeight; pinned = true; mark(); }
   // Sizes change without a scroll event (layout after the render, the dock under the thread): while pinned, the view
   // stays flush with the bottom; a reader who scrolled up is never moved.
   const resized = () => { if (pinned && !atBottom()) toBottom(); reportJump(); };
@@ -506,7 +508,7 @@ export function createThread(list, scroller, opts) {
     const fromBottom = scroller.scrollHeight - scroller.scrollTop;
     draw({ older: true });                // drawn above the reader: never "new below" (render alone counts those)
     if (pinned) toBottom();
-    else { scroller.scrollTop = scroller.scrollHeight - fromBottom; lastTop = scroller.scrollTop; }
+    else { scroller.scrollTop = scroller.scrollHeight - fromBottom; mark(); }
     scheduleGrow();
   }
   /** After the next frame has painted (the click's own frame stays light), draw a chunk more. */
@@ -547,7 +549,7 @@ export function createThread(list, scroller, opts) {
     if ("restore" in renderOpts) {
       unseen = 0;
       if (renderOpts.restore == null) toBottom();
-      else { scroller.scrollTop = renderOpts.restore; pinned = nearBottom(); lastTop = scroller.scrollTop; }
+      else { scroller.scrollTop = renderOpts.restore; pinned = nearBottom(); mark(); }
     } else if (stick) toBottom();
     else unseen += added;
     reportJump();
@@ -581,13 +583,18 @@ export function createThread(list, scroller, opts) {
   }
 
   function onScroll() {
+    // #2158: the thread got shorter under a pinned view (text settling on a cold load, a card) and the
+    // browser clamped scrollTop down by no more than it lost. WebKit sends that clamp's scroll event before the
+    // ResizeObserver: layout, not the reader — still pinned, back at the bottom. A reader's own move up loses no height.
+    const shrunk = lastHeight - scroller.scrollHeight;
+    if (pinned && shrunk > 0 && !atBottom() && lastTop - scroller.scrollTop <= shrunk + 1) toBottom();
     const bottom = nearBottom(), top = scroller.scrollTop;
     // #2087: pinned only at the exact bottom — a reader still wheeling through the last 48 px was pinned there, so
     // the next resize (a picture, a card, the dock) pulled the view the rest of the way down under them. Near the bottom
     // still counts for a new message (render follows it) and for the pill; nothing else moves a view the reader moves.
     if (atBottom()) pinned = true;
     else if (top < lastTop) pinned = false;
-    lastTop = top;
+    mark();
     if (bottom) unseen = 0;
     reportJump();
     return bottom ? null : scroller.scrollTop;
