@@ -203,7 +203,8 @@ describe("the overview (a real FleetManager)", () => {
     const by = Object.fromEntries(o.guests.map((g: any) => [g.userId, g]));
     expect(by["111"]).toMatchObject({ adapterId: "dc", platform: "discord", sessions: 2, devices: 0, scope: ["a", "b"], narrow: null });
     expect(typeof by["111"].lastSeen).toBe("number");
-    expect(by["333"]).toMatchObject({ sessions: 0, lastSeen: null, scope: ["a"], narrow: ["a"] });
+    expect(by["333"]).toMatchObject({ sessions: 0, lastSeen: null, scope: ["a"], reach: ["a", "b"], narrow: ["a"] });
+    expect(by["111"].reach, "not narrowed: reach is its scope").toEqual(["a", "b"]);
     if (s.rememberGuestDevice) expect(by["222"]).toMatchObject({ sessions: 0, devices: 1 });
     expect(Object.keys(by).sort(), "no admin session in it").toEqual(s.rememberGuestDevice ? ["111", "222", "333"] : ["111", "333"]);
     fm.stormWindow.shutdown(); fm.spawnGate.shutdown();

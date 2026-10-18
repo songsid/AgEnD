@@ -676,6 +676,7 @@ html.lb-open .scroller { overflow: hidden; }
 .s-guests .guest-row { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); }
 .s-guests .guest-actions { display: flex; flex-wrap: wrap; gap: var(--s-1); margin-top: var(--s-1); }
 .s-guests .guest-narrow-edit { margin-top: var(--s-2); }
+.s-guests .guest-away { color: var(--text-3); }
 /* #1920: a guest's note under the composer — on a phone too, where the key hints are hidden. */
 .guest-note { margin: 2px 0 0; font-size: var(--fs-xs); color: var(--text-3); text-align: center; }
 .pending-files { display: flex; flex-wrap: wrap; gap: var(--s-2); padding: var(--s-2) var(--s-2) 0; }

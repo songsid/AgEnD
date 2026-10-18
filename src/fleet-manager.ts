@@ -6266,7 +6266,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   guestOverview(): {
     enabled: boolean; chat: boolean; instances: string[];
     connections: Array<{ id: string; type: string; mode: "open" | "allowlist"; named: string[] }>;
-    guests: Array<{ adapterId: string; userId: string; name: string; platform: string; scope: string[]; sessions: number; lastSeen: number | null; devices: number; narrow: string[] | null }>;
+    guests: Array<{ adapterId: string; userId: string; name: string; platform: string; scope: string[]; reach: string[]; sessions: number; lastSeen: number | null; devices: number; narrow: string[] | null }>;
   } {
     this.initializeWebSessions();
     const cfg = this.fleetConfig?.web?.guests;
@@ -6284,7 +6284,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const guests = [...accounts.entries()].map(([k, a]) => {
       const owner = { adapterId: a.adapterId, userId: a.userId };
       const badge = this.guestBadge(owner);
-      return { ...a, name: badge.name, platform: badge.platform, scope: [...this.guestScope(owner)].sort(),
+      // `reach`: before narrowing — what Settings offers to narrow to (#2104 review: never an agent it cannot reach).
+      return { ...a, name: badge.name, platform: badge.platform, scope: [...this.guestScope(owner)].sort(), reach: [...this.guestReach(owner)].sort(),
         devices: devices.get(k) ?? 0, narrow: own(cfg?.narrow, `${a.adapterId}:${a.userId}`) ?? null };
     }).sort((x, y) => (y.lastSeen ?? -1) - (x.lastSeen ?? -1));
     return { enabled: cfg?.enabled === true, chat: cfg?.chat !== false, instances: Object.keys(this.fleetConfig?.instances ?? {}).sort(), connections, guests };
@@ -20849,8 +20850,22 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   guestScope(owner: { readonly adapterId: string; readonly userId: string } | undefined): ReadonlySet<string> {
     const guests = this.fleetConfig?.web?.guests;
     if (!owner || guests?.enabled !== true) return NO_GUEST_SCOPE;
-    const own = <T>(map: Record<string, T> | undefined, key: string): T | undefined => (map && Object.hasOwn(map, key) ? map[key] : undefined);
+    const scope = new Set(this.guestReach(owner));
+    const narrow = guests.narrow && Object.hasOwn(guests.narrow, `${owner.adapterId}:${owner.userId}`) ? guests.narrow[`${owner.adapterId}:${owner.userId}`] : undefined;
+    if (narrow) { const keep = new Set(narrow); for (const name of [...scope]) if (!keep.has(name)) scope.delete(name); }
+    return scope.size ? scope : NO_GUEST_SCOPE;
+  }
+
+  /**
+   * #1920 (#2104 review): what an account reaches before an admin's narrowing — its connection's topics (an open one's
+   * named agents), its own Telegram private room, its verified group rooms. Narrowing can only take from this set, so it
+   * is what Settings offers to narrow to. Empty while guest sign-in is off.
+   */
+  private guestReach(owner: { readonly adapterId: string; readonly userId: string }): Set<string> {
+    const guests = this.fleetConfig?.web?.guests;
     const scope = new Set<string>();
+    if (guests?.enabled !== true) return scope;
+    const own = <T>(map: Record<string, T> | undefined, key: string): T | undefined => (map && Object.hasOwn(map, key) ? map[key] : undefined);
     const world = this.worlds.get(owner.adapterId);
     if (world && world.accessManager.isAllowed(owner.userId)) {
       const named = world.accessManager.getMode() === "open" ? new Set(own(guests.open_instances, owner.adapterId) ?? []) : null;
@@ -20867,9 +20882,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     for (const room of guestGroupRooms(rooms, owner)) {
       if (members.verified(room, owner.userId)) scope.add(room.instance);
     }
-    const narrow = own(guests.narrow, `${owner.adapterId}:${owner.userId}`);
-    if (narrow) { const keep = new Set(narrow); for (const name of [...scope]) if (!keep.has(name)) scope.delete(name); }
-    return scope.size ? scope : NO_GUEST_SCOPE;
+    return scope;
   }
 
   /**
