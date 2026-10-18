@@ -50,6 +50,8 @@ const svg = () => p.root.querySelector(".oc-svg");
 const world = () => p.root.querySelector(".oc-world");
 const card = (name: string) => p.root.querySelectorAll(".oc-node").find((n: any) => n.getAttribute("data-name") === name);
 const team = (key: string) => p.root.querySelectorAll(".oc-team").find((n: any) => n.getAttribute("data-team") === key);
+/** A team's header (#1918 review: drawn above the traffic lines, in its own layer). */
+const head = (key: string) => p.root.querySelectorAll(".oc-team-head").find((n: any) => n.getAttribute("data-team") === key);
 const tf = () => { const m = /translate\(([-\d.e]+) ([-\d.e]+)\) scale\(([-\d.e]+)\)/.exec(world().getAttribute("transform")); return m ? { x: +m[1]!, y: +m[2]!, k: +m[3]! } : null; };
 const view = () => O.buildOrgView(ORG, app.appStore.get());
 /** Nine more instances in no team: a fleet taller than the viewport is wide (fitting its height is smaller than its width). */
@@ -307,7 +309,7 @@ describe("the canvas on the page", () => {
     expect(tf(), "an unrelated state change").toEqual(moved);
     input.value = ""; fire(input, "input"); await settle(2);
     expect(tf(), "the search cleared").toEqual(moved);
-    team("Research").querySelector(".oc-toggle").click(); await settle(2);
+    head("Research").querySelector(".oc-toggle").click(); await settle(2);
     expect(tf(), "another team folded").toEqual(moved);
     // A new Enter moves it again.
     input.value = "moss"; fire(input, "input"); await settle(2);
@@ -329,28 +331,28 @@ describe("the canvas on the page", () => {
     await mount();
     const pos = () => p.root.querySelectorAll(".oc-box").map((r: any) => [r.getAttribute("x"), r.getAttribute("y")]);
     const before = pos();
-    team("Web").querySelector(".oc-toggle").click(); await settle(2);
-    expect(team("Web").querySelector(".oc-toggle").getAttribute("aria-expanded")).toBe("false");
+    head("Web").querySelector(".oc-toggle").click(); await settle(2);
+    expect(head("Web").querySelector(".oc-toggle").getAttribute("aria-expanded")).toBe("false");
     expect(!!card("nova")).toBe(false);
     expect(team("Web").querySelectorAll(".oc-team-sum").map((t: any) => t.textContent)).toEqual(["5 Idle"]);
     expect(pos()).toEqual(before);
     expect(JSON.parse(localStorage.getItem("agend_org_folded")!)).toEqual(["Web"]);
     await p.unmount(); await mount();
     expect(!!card("nova")).toBe(false);
-    fire(team("Web").querySelector(".oc-toggle"), "keydown", { key: "Enter" }); await settle(2);
+    fire(head("Web").querySelector(".oc-toggle"), "keydown", { key: "Enter" }); await settle(2);
     expect(!!card("nova")).toBe(true);
     expect(JSON.parse(localStorage.getItem("agend_org_folded")!)).toEqual([]);
-    expect(team("Empty").querySelector(".oc-toggle").getAttribute("role"), "an empty team has nothing to fold").toBeNull();
+    expect(head("Empty").querySelector(".oc-toggle").getAttribute("role"), "an empty team has nothing to fold").toBeNull();
   });
   it("search: the rest dims, a count; a match in a folded team says so; Enter unfolds it and shows the match", async () => {
     await mount();
-    team("Web").querySelector(".oc-toggle").click(); await settle(2);
+    head("Web").querySelector(".oc-toggle").click(); await settle(2);
     const input = p.root.querySelector(".oc-find input");
     input.value = "MOS"; fire(input, "input"); await settle(2);
     expect(p.root.querySelector(".oc-found").textContent).toBe("1 found");
     expect(card("pixel").getAttribute("class")).toContain("dim");
     expect(team("Platform").getAttribute("class")).toContain("dim");
-    expect(team("Web").querySelector(".oc-team-meta").textContent).toBe("1 found · expand");
+    expect(head("Web").querySelector(".oc-team-meta").textContent).toBe("1 found · expand");
     // The overview marks where the matches are: the folded team's box (its card is not drawn).
     expect(p.root.querySelectorAll(".oc-mini-team.match")).toHaveLength(1);
     expect(p.root.querySelectorAll(".oc-mini-hit")).toHaveLength(0);
@@ -409,7 +411,7 @@ describe("the canvas on the page", () => {
     app.appStore.set((s: any) => ({ ...s, exec: { quill: "working", sage: "stuck" }, awaiting: { pixel: "Allow?" },
       instances: s.instances.map((i: any) => (i.name === "orbit" ? { ...i, status: "crashed" } : i.name === "nova" ? { ...i, status: "paused" } : i.name === "ember" ? { ...i, status: "stopped" } : i)) }));
     await mount();
-    team("Mixed").querySelector(".oc-toggle").click(); await settle(2);
+    head("Mixed").querySelector(".oc-toggle").click(); await settle(2);
     const box = team("Mixed").querySelector(".oc-box"), right = +box.getAttribute("x") + +box.getAttribute("width"), bottom = +box.getAttribute("y") + +box.getAttribute("height");
     const texts = team("Mixed").querySelectorAll(".oc-team-sum");
     expect(texts.map((t: any) => t.textContent)).toEqual(["1 Needs you", "1 Crashed", "1 Looks stuck", "1 Working", "1 Idle", "1 Paused", "1 Stopped", "1 Not in the fleet"]);

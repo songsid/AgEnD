@@ -236,7 +236,7 @@ import { crossInstanceVisibility, runVisibilityCommand } from "./cross-instance-
 import { WebSettingsTools } from "./web-settings-tools.js";
 import { bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
-import { TrafficLog, trafficItem, type TrafficItem } from "./fleet-traffic.js";
+import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
@@ -2021,13 +2021,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** #1918: cross-instance traffic, as the org canvas draws it (fleet-traffic.ts). */
   private readonly trafficLog = new TrafficLog();
-  private trafficMemo: { atMs: number; value: { now: string; items: TrafficItem[] } } | null = null;
-  /** One delivery row's traffic item, kept for the snapshot and sent to the open pages when it is news. */
+  private readonly delegations = new Delegations();
+  private trafficMemo: { atMs: number; value: { now: string; items: TrafficItem[]; delegations: Delegation[] } } | null = null;
+  /**
+   * One delivery row's traffic item, kept for the snapshot and sent to the open pages when it is news; and the
+   * delegation it opens or closes (a task and its report), sent as "delegation".
+   */
   private publishTraffic(row: OutboxDelivery, state?: "consumed"): void {
     try {
       const item = trafficItem(row, this.fleetConfig, new Date().toISOString(), state);
       const news = item ? this.trafficLog.note(item) : null;
-      if (news) { this.trafficMemo = null; this.emitSseEvent("traffic", news); }
+      const work = news ? this.delegations.note(row, news) : [];
+      if (news || work.length) this.trafficMemo = null;
+      if (news) this.emitSseEvent("traffic", news);
+      for (const d of work) this.emitSseEvent("delegation", d);
     } catch (err) { this.logger.debug({ err }, "traffic: an item was not published"); }
   }
   /**
@@ -2035,7 +2042,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * most TRAFFIC_SNAPSHOT_MAX items. Worked out at most once every two seconds, so the public link's polling (or any
    * number of pages) costs one indexed read per two seconds. Visibility is applied as of now.
    */
-  trafficSnapshot(): { now: string; items: TrafficItem[] } {
+  trafficSnapshot(): { now: string; items: TrafficItem[]; delegations: Delegation[] } {
     const nowMs = performance.now();
     if (this.trafficMemo && nowMs - this.trafficMemo.atMs < 2_000) return this.trafficMemo.value;
     const now = new Date().toISOString();
@@ -2043,7 +2050,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       .map((r) => trafficItem(r, this.fleetConfig, r.createdAt ?? now)).filter((i): i is TrafficItem => i !== null);
     const visible = (name: string) => crossInstanceVisibility(this.fleetConfig, name) !== "hidden";
     const items = this.trafficLog.snapshot(pending).filter((i) => visible(i.from) && visible(i.to));
-    this.trafficMemo = { atMs: nowMs, value: { now, items } };
+    const delegations = this.delegations.snapshot().filter((d) => visible(d.from) && visible(d.to));
+    this.trafficMemo = { atMs: nowMs, value: { now, items, delegations } };
     return this.trafficMemo.value;
   }
 

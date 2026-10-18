@@ -37,6 +37,7 @@ register("orgc", {
     openChat: "Open chat", minimap: "Overview: click to move there",
     live: "Live", liveOn: "Hide live traffic", liveOff: "Show live traffic", lgTask: "delegate_task", lgSend: "send_to_instance",
     lgReport: "report_result", lgBroadcast: "broadcast", lgQueued: "queued", lgFading: "delivered", lgTeam: "between teams", legend: "Key",
+    lgWork: "in progress (until its report)", lgReturn: "done (report back)", lgStale: "no report yet",
   },
   "zh-TW": {
     view: "檢視", canvas: "畫布", list: "清單", find: "尋找 instance", findShort: "尋找", found: "找到 {0} 個", foundOne: "找到 1 個", noMatch: "沒有符合的",
@@ -46,6 +47,7 @@ register("orgc", {
     openChat: "開啟聊天", minimap: "總覽：點一下移到那裡",
     live: "即時", liveOn: "隱藏即時往來", liveOff: "顯示即時往來", lgTask: "delegate_task", lgSend: "send_to_instance",
     lgReport: "report_result", lgBroadcast: "broadcast", lgQueued: "排隊中", lgFading: "已送達", lgTeam: "team 之間", legend: "圖例",
+    lgWork: "進行中（直到回報）", lgReturn: "完成（回報送回）", lgStale: "尚未回報",
   },
 });
 const tc = (k, ...v) => t(`orgc.${k}`, ...v);
@@ -148,14 +150,31 @@ function Card({ c, lead, cls, onOpen }) {
   </g>`;
 }
 
-function TeamBox({ b, q, onFold }) {
-  const name = b.name === null ? t("org.unteamed") : b.name;
-  const found = q ? b.nodes.filter((n) => hits(n, q)).length : 0;
-  const count = b.nodes.length === 1 ? tc("member") : tc("members", b.nodes.length);
-  const toggle = (e) => { if (e.type === "click" || e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onFold(b.key); } };
+function teamName(b) { return b.name === null ? t("org.unteamed") : b.name; }
+const foundIn = (b, q) => (q ? b.nodes.filter((n) => hits(n, q)).length : 0);
+
+/** A team's box: its frame, header band and (folded) summary — under the traffic lines. */
+function TeamBox({ b, q }) {
+  const found = foundIn(b, q);
   return html`<g class=${`oc-team${b.loose ? " loose" : ""}${q && !found ? " dim" : ""}`} data-team=${b.key}>
     <rect class=${`oc-box${b.folded && found ? " match" : ""}`} x=${b.x} y=${b.y} width=${b.w} height=${b.h} rx="12" />
     <rect class="oc-head" x=${b.x + 1} y=${b.y + 1} width=${b.w - 2} height=${OC.HEAD - 2} rx="11" />
+    ${!b.nodes.length ? html`<text class="oc-team-sum" x=${b.x + 14} y=${b.y + OC.HEAD + 18}>${tc("noMembers")}</text>` : null}
+    ${b.folded ? b.summary.flatMap((row, i) => row.map((it) => html`<g key=${it.s}>
+      <circle class=${`oc-dot st-${it.s}`} cx=${b.x + it.dx + 5} cy=${b.y + OC.HEAD + 14 + i * SUM_LINE} r="5" />
+      <text class="oc-team-sum" x=${b.x + it.dx + 14} y=${b.y + OC.HEAD + 18 + i * SUM_LINE}>${it.label}</text></g>`)) : null}
+  </g>`;
+}
+
+/**
+ * A team's header: the fold control, its name and count — above the traffic lines (#1918 review: a line leaving the box
+ * through its header ran over the count), so it stays readable and clickable.
+ */
+function TeamHead({ b, q, onFold }) {
+  const name = teamName(b), found = foundIn(b, q);
+  const count = b.nodes.length === 1 ? tc("member") : tc("members", b.nodes.length);
+  const toggle = (e) => { if (e.type === "click" || e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onFold(b.key); } };
+  return html`<g class=${`oc-team-head${q && !found ? " dim" : ""}`} data-team=${b.key}>
     <g class=${`oc-toggle${b.nodes.length ? "" : " empty"}`} tabindex=${b.nodes.length ? "0" : undefined} role=${b.nodes.length ? "button" : undefined}
       aria-expanded=${b.nodes.length ? String(!b.folded) : undefined} aria-label=${`${name}, ${count}.${b.nodes.length ? ` ${b.folded ? tc("expand") : tc("collapse")}.` : ""}`}
       onClick=${b.nodes.length ? toggle : undefined} onKeyDown=${b.nodes.length ? toggle : undefined}>
@@ -164,10 +183,6 @@ function TeamBox({ b, q, onFold }) {
       <text class="oc-team-name" x=${b.x + (b.nodes.length ? 28 : 14)} y=${b.y + 22}>${clip(name, Math.max(8, Math.floor((b.w - 90) / 7.5)))}</text>
       <text class="oc-team-meta" x=${b.x + b.w - 12} y=${b.y + 22} text-anchor="end">${b.folded && found ? tc("inFolded", found) : String(b.nodes.length)}</text>
     </g>
-    ${!b.nodes.length ? html`<text class="oc-team-sum" x=${b.x + 14} y=${b.y + OC.HEAD + 18}>${tc("noMembers")}</text>` : null}
-    ${b.folded ? b.summary.flatMap((row, i) => row.map((it) => html`<g key=${it.s}>
-      <circle class=${`oc-dot st-${it.s}`} cx=${b.x + it.dx + 5} cy=${b.y + OC.HEAD + 14 + i * SUM_LINE} r="5" />
-      <text class="oc-team-sum" x=${b.x + it.dx + 14} y=${b.y + OC.HEAD + 18 + i * SUM_LINE}>${it.label}</text></g>`)) : null}
   </g>`;
 }
 
@@ -176,15 +191,21 @@ const cardsOf = (L) => [...L.tops, ...L.boxes.flatMap((b) => b.cells)];
 
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** The traffic lines: dotted while queued, a dash and a pulse while delivering, fading once delivered; ×N on shared lines. */
+/**
+ * The traffic lines: dotted while queued, a dash and a pulse while delivering, fading once delivered; a delegation's
+ * slow moving dash while its work is in progress, one pulse back when its report comes, a faint dash when none came;
+ * ×N on shared lines.
+ */
+const MARKER = (e) => (e.phase === "fading" || e.phase === "stale" ? "fading" : e.hue);
 function TrafficLayer({ edges, q }) {
   const still = reducedMotion();
   return html`<g class="oc-flows" aria-hidden="true">${edges.map((e) => {
     const dim = q && !e.names.some((n) => n.toLowerCase().includes(q));
     return html`<g key=${e.key} class=${`oc-fl${dim ? " dim" : ""}`}>
       <path class="oc-flow-halo" d=${e.d} />
-      <path class=${`oc-flow h-${e.hue} ph-${e.phase}`} d=${e.d} marker-start=${`url(#oc-src-${e.phase === "fading" ? "fading" : e.hue})`} marker-end=${`url(#oc-ah-${e.phase === "fading" ? "fading" : e.hue})`} />
+      <path class=${`oc-flow h-${e.hue} ph-${e.phase}`} d=${e.d} marker-start=${`url(#oc-src-${MARKER(e)})`} marker-end=${`url(#oc-ah-${MARKER(e)})`} />
       ${e.phase === "live" && !still ? html`<circle class=${`oc-pulse h-${e.hue}`} r="4"><animateMotion dur=${`${Math.max(1.6, e.pts.length * 0.3)}s`} repeatCount="indefinite" path=${e.d} /></circle>` : null}
+      ${e.phase === "return" && !still ? html`<circle class=${`oc-pulse h-${e.hue}`} r="5"><animateMotion dur="1.6s" repeatCount="1" fill="freeze" path=${e.d} /></circle>` : null}
       ${e.badge ? html`<g class="oc-badge" transform=${`translate(${e.badge.x - 14} ${e.badge.y - 10})`}><rect width="28" height="20" rx="10" /><text x="14" y="14" text-anchor="middle">${`×${e.n}`}</text></g>` : null}
     </g>`;
   })}</g>`;
@@ -197,7 +218,7 @@ function Legend() {
   const row = (cls, k) => html`<span class="oc-lg"><i class=${`oc-sw ${cls}`} aria-hidden="true"></i>${tc(k)}</span>`;
   return html`<details class="oc-legend" open=${open} onToggle=${(e) => save(KEY_KEY, e.currentTarget.open ? "1" : "0")}><summary>${tc("legend")}</summary>
     <div class="oc-lg-rows">${row("h-task", "lgTask")}${row("h-send", "lgSend")}${row("h-report", "lgReport")}${row("h-broadcast", "lgBroadcast")}
-    ${row("ph-queued", "lgQueued")}${row("ph-fading", "lgFading")}</div></details>`;
+    ${row("ph-queued", "lgQueued")}${row("ph-fading", "lgFading")}${row("h-task ph-work", "lgWork")}${row("h-report ph-return", "lgReturn")}${row("ph-stale", "lgStale")}</div></details>`;
 }
 
 /**
@@ -226,6 +247,7 @@ function useTraffic(lease, on) {
     const offs = [];
     if (sub) {
       offs.push(lease.hold(sub("traffic", (item) => { if (store.apply(item)) bump(); })));
+      offs.push(lease.hold(sub("delegation", (d) => { if (store.delegation(d)) bump(); })));
       offs.push(lease.hold(sub("connection", (c) => { if (c === "live") void read(); })));
     }
     const hs = [
@@ -383,8 +405,9 @@ function Canvas({ view, folded, onFold, q, jump, traffic }) {
           <circle cx="5" cy="5" r="4" class=${`oc-ah h-${a}`} /></marker>`)}</defs>
       <g ref=${worldRef} class="oc-world">
         <g class="oc-tree">${L.tree.map((d, i) => html`<path key=${i} d=${d} />`)}</g>
-        <g class="oc-teams">${L.boxes.map((b) => html`<${TeamBox} key=${b.key} b=${b} q=${q} onFold=${onFold} />`)}</g>
+        <g class="oc-teams">${L.boxes.map((b) => html`<${TeamBox} key=${b.key} b=${b} q=${q} />`)}</g>
         <${TrafficLayer} edges=${edges} q=${q} />
+        <g class="oc-heads">${L.boxes.map((b) => html`<${TeamHead} key=${b.key} b=${b} q=${q} onFold=${onFold} />`)}</g>
         <g class="oc-cards">
           ${L.tops.map((c) => html`<${Card} key=${c.key} c=${c} lead=${true} cls=${q ? (hits(c.node, q) ? "match" : "dim") : ""} onOpen=${open} />`)}
           ${L.boxes.flatMap((b) => b.cells.map((c) => html`<${Card} key=${c.key} c=${c} lead=${false} cls=${q ? (hits(c.node, q) ? "match" : "dim") : ""} onOpen=${open} />`))}

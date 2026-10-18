@@ -20,7 +20,7 @@ register("org", {
     missing: "Not in the fleet", thread_discord: "Discord thread", thread_telegram: "Telegram topic", openChat: "Open chat",
     classic: "ClassicBot room", empty: "No instances yet", emptyHint: "Instances and teams show here once the fleet has them.",
     noTeams: "No teams yet — define them in Fleet → Teams to group the chart.", newTab: "(opens in a new tab)",
-    sending: "Sending:", queuedNote: "(queued)",
+    sending: "Sending:", queuedNote: "(queued)", workingNote: "(in progress)",
   },
   "zh-TW": {
     title: "組織圖", general: "General", unteamed: "未加入 team", members: "{0} 名成員", member: "1 名成員", instances: "{0} 個 instance", instance: "1 個 instance",
@@ -28,7 +28,7 @@ register("org", {
     missing: "不在 fleet 中", thread_discord: "Discord 討論串", thread_telegram: "Telegram topic", openChat: "開啟聊天",
     classic: "ClassicBot 頻道", empty: "還沒有 instance", emptyHint: "fleet 有 instance 和 team 後會顯示在這裡。",
     noTeams: "還沒有 team——到 Fleet → Teams 定義後，組織圖會依 team 分組。", newTab: "（在新分頁開啟）",
-    sending: "傳送中：", queuedNote: "（排隊中）",
+    sending: "傳送中：", queuedNote: "（排隊中）", workingNote: "（進行中）",
   },
 });
 const to = (k, ...v) => t(`org.${k}`, ...v);
@@ -95,7 +95,7 @@ export function OrgSummary({ counts }) {
 /** #1918: what an instance is sending now, in words — the canvas's live traffic for the list (and a screen reader). */
 const KIND_WORD = { task: "delegate_task", report: "report_result", query: "request_information", update: "send_to_instance", send: "send_to_instance", broadcast: "broadcast" };
 function Sending({ list }) {
-  return html`<p class="org-sending"><span class="muted">${to("sending")}</span> ${list.map((s, i) => html`<span key=${s.key} class=${`org-send k-${s.kind}`}>${i ? ", " : ""}${KIND_WORD[s.kind] || s.kind} → ${s.to}${s.queued ? ` ${to("queuedNote")}` : ""}</span>`)}</p>`;
+  return html`<p class="org-sending"><span class="muted">${to("sending")}</span> ${list.map((s, i) => html`<span key=${s.key} class=${`org-send k-${s.kind}`}>${i ? ", " : ""}${KIND_WORD[s.kind] || s.kind} → ${s.to}${s.working ? ` ${to("workingNote")}` : s.queued ? ` ${to("queuedNote")}` : ""}</span>`)}</p>`;
 }
 
 function Node({ n, sending }) {

@@ -1,6 +1,6 @@
 /**
  * #1918 phase 3: live traffic on the org canvas (src/ui/fleet-traffic.js, drawn by fleet-canvas.js).
- * - The store: queued → delivering → delivered (fades FADE_MS, then goes); consumed / failed / uncertain / cancelled end
+ * - The store: queued → delivering → delivered or consumed (fades FADE_MS, then goes; #1918 review); failed / uncertain / cancelled end
  *   a line at once; a finished message never comes back; a snapshot ends what it no longer lists.
  * - Edges: one per (from, to, kind, phase), ×N; far = per team pair; a broadcast fans out, bundled per team past
  *   BUNDLE_AT recipients (the user's decision 3); routed through empty lanes — never across a card; at most MAX_EDGES.
@@ -73,12 +73,26 @@ describe("the store", () => {
     expect(s.items()).toEqual([]);
     expect(s.apply(it_(1, "a", "b", "queued"), 20), "ended: never again").toBe(false);
   });
-  it("consumed, failed, uncertain and cancelled end a line at once", () => {
+  it("failed, uncertain and cancelled end a line at once", () => {
     const s = T.createTrafficStore();
-    ["consumed", "failed", "uncertain", "cancelled"].forEach((st, i) => { s.apply(it_(i, "a", "b", "delivering"), 0); expect(s.apply(it_(i, "a", "b", st), 1), st).toBe(true); });
+    ["failed", "uncertain", "cancelled"].forEach((st, i) => { s.apply(it_(i, "a", "b", "delivering"), 0); expect(s.apply(it_(i, "a", "b", st), 1), st).toBe(true); });
     expect(s.items()).toEqual([]);
-    expect(s.apply(it_(7, "a", "b", "consumed"), 1), "nothing shown changed").toBe(false);
+    expect(s.apply(it_(7, "a", "b", "failed"), 1), "nothing shown changed").toBe(false);
     expect(s.apply(it_(7, "a", "b", "queued"), 2)).toBe(false);
+  });
+  it("#1918 review: consumed (read at once, as an MCP send is) fades like delivered — it does not vanish; already fading, it changes nothing; never drawn, nothing", () => {
+    const s = T.createTrafficStore();
+    s.apply(it_(1, "a", "b", "delivering"), 0);
+    expect(s.apply(it_(1, "a", "b", "consumed"), 5)).toBe(true);
+    expect(s.items()).toEqual([expect.objectContaining({ id: id(1), state: "consumed", fading: true })]);
+    s.apply(it_(2, "a", "c", "delivered"), 0);
+    expect(s.apply(it_(2, "a", "c", "consumed"), 3_000), "fading since delivered: the fade goes on").toBe(false);
+    expect(s.sweep(T.FADE_MS)).toBe(true);
+    expect(s.items().map((i: any) => i.id)).toEqual([id(1)]);
+    expect(s.sweep(5 + T.FADE_MS)).toBe(true);
+    expect(s.items()).toEqual([]);
+    expect(s.apply(it_(3, "a", "b", "consumed"), 1), "never drawn here").toBe(false);
+    expect(s.apply(it_(3, "a", "b", "queued"), 2), "and ended").toBe(false);
   });
   it("a snapshot: its live items are drawn; a live line it no longer lists has ended; a finished one is not drawn", () => {
     const s = T.createTrafficStore();
@@ -99,10 +113,10 @@ describe("the store", () => {
     expect(s.sweep(100 + T.FADE_MS - 1)).toBe(false);
     expect(s.sweep(100 + T.FADE_MS)).toBe(true);
     expect(s.items()).toEqual([]);
-    // Consumed in the snapshot ends a drawn line at once.
+    // Consumed in the snapshot fades a drawn line too (#1918 review).
     s.apply(it_(2, "a", "c", "queued"), 300);
     expect(s.load({ items: [it_(2, "a", "c", "consumed")] }, 400)).toBe(true);
-    expect(s.items()).toEqual([]);
+    expect(s.items()).toEqual([expect.objectContaining({ id: id(2), fading: true })]);
   });
 });
 
@@ -174,7 +188,7 @@ describe("edges", () => {
 });
 
 describe("the page", () => {
-  it("reads the snapshot on opening, then draws the stream's items as they move; delivered fades, consumed goes", async () => {
+  it("reads the snapshot on opening, then draws the stream's items as they move; delivered and consumed fade", async () => {
     snapshot = { now: "", items: [it_(1, "atlas", "quill", "delivering")] };
     await mount();
     expect(reads).toBe(1);
@@ -186,10 +200,10 @@ describe("the page", () => {
     emit("traffic", it_(1, "atlas", "quill", "delivered")); await settle(2);
     expect(flows()).toEqual(["h-report ph-queued", "h-task ph-fading"]);
     emit("traffic", it_(2, "sage", "atlas", "consumed")); await settle(2);
-    expect(flows()).toEqual(["h-task ph-fading"]);
+    expect(flows()).toEqual(["h-task ph-fading", "h-report ph-fading"]);
     // A line is drawn between the team boxes and the cards.
     const layers = p.root.querySelector(".oc-world").children.map((g: any) => g.getAttribute("class"));
-    expect(layers).toEqual(["oc-tree", "oc-teams", "oc-flows", "oc-cards"]);
+    expect(layers, "#1918 review: team headers above the lines").toEqual(["oc-tree", "oc-teams", "oc-flows", "oc-heads", "oc-cards"]);
     expect(reads, "the stream is live: no polling").toBe(1);
   });
   it("the faded line goes after FADE_MS (the sweep)", async () => {
