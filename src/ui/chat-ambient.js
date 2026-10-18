@@ -187,12 +187,12 @@ export function startAmbient({ name, ambient, layer, front, surface, doc = globa
     }
   };
 
-  // Passive and never cancelling: the click still lands on what is under it. Not in the composer (the dock), menus
-  // or dialogs: stars are for the conversation.
+  // Passive and never cancelling: the click still lands on what is under it. Only in the thread (not the composer),
+  // and not on a menu or dialog open over it: stars are for the conversation.
   const onDown = (ev) => {
     if (!ambient.click || ev.button > 0) return;
     const target = ev.target;
-    if (!target || typeof target.closest !== "function" || !target.closest(".scroller") || target.closest("[role=menu], [role=dialog], .dock")) return;
+    if (!target || typeof target.closest !== "function" || !target.closest(".scroller") || target.closest("[role=menu], [role=dialog]")) return;
     const box = front.getBoundingClientRect();
     burst(ev.clientX - box.left, ev.clientY - box.top);
   };

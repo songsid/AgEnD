@@ -14,6 +14,7 @@
  */
 import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { request, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
@@ -38,6 +39,10 @@ const { modPlan } = await import("../src/web-mod-store.js");
 const { effectiveAppearanceLimits } = await import("../src/web-appearance-limits.js");
 const { WebSettingsTools } = await import("../src/web-settings-tools.js");
 const { appearanceView, previewSvg } = await import("../src/web-appearance-view.js");
+const { ModStore } = await import("../src/web-mod-store.js");
+const { AgentMods } = await import("../src/web-mod-agent.js");
+const { WebPrefsStore, OPERATOR } = await import("../src/web-prefs.js");
+const { OwnerCssStore } = await import("../src/web-owner-css-store.js");
 
 const dirs: string[] = [];
 let pg: AppPage | null = null;
@@ -367,10 +372,17 @@ describe("the page: when it shows", () => {
     expect((await pageLoad({ storage: follow, reduce: "missing" })).amb.ambientBlock()).toBe("reducedMotion");
     expect((await pageLoad({ storage: follow, reduce: "throws" })).amb.ambientBlock()).toBe("reducedMotion");
     expect((await pageLoad({ reduce: "throws" })).amb.ambientBlock()).toBeNull();
+    // An answer that isn't a yes or no is not a "no": following, it stays hidden.
+    const odd = await pageLoad({ storage: follow });
+    (globalThis as any).matchMedia = () => ({ matches: undefined, addEventListener() {}, removeEventListener() {} });
+    expect(odd.amb.ambientBlock()).toBe("reducedMotion");
   });
   it("the page checks the spec again: out of bounds, a wrong kind or an unknown preset is not drawn", async () => {
     const { amb, themes } = await pageLoad();
     const good = spec(PETALS);
+    for (const [k, v] of [["sway", 81], ["rotate", 721], ["size", [9, 20]], ["spread", [20, 121]], ["duration", [3, 9]], ["opacity", [0, 2, 0]], ["glyphs", []], ["colors", "x"]] as const) {
+      expect(amb.sanitizeAmbient({ ...good, [k]: v }), k).toEqual(k === "colors" ? { ...amb.sanitizeAmbient(good), colors: [] } : null);
+    }
     themes.themesStore.set({ ambient: { alpha: { loop: { spec: good, by: "agent" } }, beta: { loop: { spec: { ...good, count: 99 }, by: "agent" } },
       gamma: { loop: { spec: spec(STARS), by: "agent" } }, delta: { click: { spec: { ...good, preset: "explode" }, by: "agent" } } } });
     expect(amb.ambientFor("alpha")).toMatchObject({ loop: { preset: "fall", count: 12 }, click: null });
@@ -427,6 +439,8 @@ describe("the page: drawing", () => {
     expect([ev.defaultPrevented, ev.propagationStopped ?? false]).toEqual([false, false]);
     expect(s.front.children.length).toBe(16);
     down(s.input);                                           // the composer: no stars
+    const menu = doc.createElement("div"); menu.setAttribute("role", "menu"); const item = doc.createElement("button"); menu.appendChild(item); s.scroller.appendChild(menu);
+    down(item);                                              // a menu open over the thread: no stars
     expect(s.front.children.length).toBe(16);
     down(s.msg); down(s.msg); down(s.msg);                   // a 4th while 3 are alive: ignored
     expect(run.stats()).toEqual({ nodes: 72, animations: 72, bursts: 3 });
@@ -507,5 +521,89 @@ describe("the page: the chat", () => {
     expect(amb.ambientMenuItems("nobody", { publicLink: false, clear, navigate })).toEqual([]);
     const shown = await mount();
     expect(shown.amb.ambientMenuItems("alpha", { publicLink: false, clear, navigate }).map((i: any) => i.key)).toEqual(["ambient-clear-loop", "ambient-clear-click"]);
+  });
+});
+
+describe("the person's mods and the agent's export", () => {
+  const limits = effectiveAppearanceLimits(undefined).limits;
+  const ctx = () => ({ agendVersion: "2.3.0", limits, effects: null });
+  const sha = (b: Uint8Array | string) => createHash("sha256").update(b).digest("hex");
+  const file = (b: Uint8Array | string) => { const bytes = Buffer.from(b as any); return { sha256: sha(bytes), b64: bytes.toString("base64") }; };
+  function setup() {
+    const dir = tmp();
+    let clock = 1_000_000;
+    const themes = new ThemeStore(dir);
+    const prefs = new WebPrefsStore(dir, { exists: () => true } as never);
+    const css = new OwnerCssStore(dir, prefs);
+    const mods = new ModStore(dir, { themes, prefs, ownerCss: css, effects: null, context: ctx, isKnownInstance: (n: string) => n === "alpha", prefsIdentity: OPERATOR, clock: () => clock });
+    const web = { themes: { agent_edit: true } };
+    const app = new WebAppearance(themes, () => web, () => {}, new AppearanceLimiter(() => clock), () => clock);
+    const agent = new AgentMods({ themes, mods, limiter: app.limiter, webConfig: () => web, context: ctx, notice: () => {}, changed: () => {}, clock: () => clock });
+    return { themes, mods, app, agent, tick: (ms: number) => { clock += ms; } };
+  }
+  const bundleText = JSON.stringify({ format: "agend-mod", v: 1,
+    manifest: { name: "petals", version: "1.0.0", title: "Petals", contents: { ambient: "ambient.json" } },
+    files: { "ambient.json": file(JSON.stringify({ loop: { preset: "fall", glyphs: ["🌸", { asset: "glyphs/p.png" }] }, click: STARS })), "glyphs/p.png": file(png(16, 16)) } });
+  it("stage → commit: the ambient part is ticked by default and applied to the target as the person's, its glyph picture with it", () => {
+    const s = setup();
+    const st = s.mods.stage("p", bundleText);
+    if (!st.ok) throw new Error("stage");
+    expect(st.plan.items.map(i => i.part)).toEqual(["ambient"]);
+    expect(s.mods.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { ambient: false } })).toMatchObject({ ok: false, error: "include" });
+    const r = s.mods.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { ambient: true }, target: "alpha" });
+    expect(r).toMatchObject({ ok: true, applied: ["ambient"] });
+    const rec = s.themes.get("alpha");
+    expect([rec.placements.ambient.loop?.by, rec.placements.ambient.click?.spec.preset, rec.assets.map(a => a.slot)]).toEqual(["human", "burst-on-click", ["glyph"]]);
+  });
+  it("export_web_mod carries the ambient the agent set itself, never one a person set", () => {
+    const s = setup();
+    s.app.humanSetAmbient("alpha", PETALS);
+    expect(s.app.handleTool("alpha", "set_web_ambient", STARS)).toMatchObject({ kind: "click" });
+    const out = s.agent.handle("alpha", "export_web_mod", { name: "mine", version: "1.0.0" }) as any;
+    const doc = JSON.parse(Buffer.from(out.files[0].data_b64, "base64").toString("utf8"));
+    const amb = JSON.parse(Buffer.from(doc.files["ambient.json"].b64, "base64").toString("utf8"));
+    expect(Object.keys(amb)).toEqual(["click"]);
+    expect(B.checkModBundle(JSON.stringify(doc), ctx()).ok).toBe(true);
+  });
+});
+
+interface Res { status: number; body: string }
+function raw(port: number, method: string, path: string, headers: Record<string, string> = {}, body?: string): Promise<Res> {
+  return new Promise((resolve, reject) => {
+    const r = request({ host: "127.0.0.1", port, method, path, headers }, res => {
+      const chunks: Buffer[] = []; res.on("data", (c: Buffer) => chunks.push(c));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
+    });
+    r.on("error", reject); if (body !== undefined) r.write(body); r.end();
+  });
+}
+
+describe("the fleet: the agent's door, General's, GET /ui/themes and a person's route", () => {
+  it("all wired to the same service", async () => {
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { csrfTokenFor, tokenEpoch } = await import("../src/web-session.js");
+    const fm = new FleetManager(tmp()) as any;
+    const quiet = () => {};
+    fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger };
+    vi.spyOn(fm, "notifyFleetError").mockImplementation(() => true);
+    fm.fleetConfig = { instances: { alpha: { working_directory: "/tmp" } }, defaults: {} };
+    fm.initializeWebAuthTokens(); fm.startHealthServer(0);
+    await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));
+    const port = ((fm.healthServer as Server).address() as { port: number }).port, origin = `http://127.0.0.1:${port}`;
+    const session = (tier: "admin" | "read") => {
+      const { sessionId } = fm.webSessions.create({ tier, surface: "local", label: "t", tokenEpoch: tokenEpoch(fm.webToken) });
+      return { cookie: `agend_session=${sessionId}`, origin, "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json" };
+    };
+    try {
+      await expect(fm.handleWebThemeHttp("alpha", "set_web_ambient", PETALS)).resolves.toMatchObject({ kind: "loop" });
+      expect(fm.webSettings.change(undefined, { what: "ambient", instance: "alpha", ambient: STARS })).toMatchObject({ ok: true, kind: "click" });
+      expect(fm.webSettings.read(undefined).agents.find((a: any) => a.name === "alpha").ambient).toMatchObject({ loop: { by: "agent" }, click: { by: "human" } });
+      const themes = JSON.parse((await raw(port, "GET", "/ui/themes", { cookie: session("read").cookie })).body);
+      expect(Object.keys(themes.ambient.alpha)).toEqual(["loop", "click"]);
+      const post = (h: Record<string, string>, body: unknown) => raw(port, "POST", "/ui/themes/alpha/ambient", h, JSON.stringify(body));
+      expect((await post(session("read"), { which: "loop" })).status).toBe(403);
+      expect(JSON.parse((await post(session("admin"), { which: "loop" })).body)).toMatchObject({ ok: true, removed: ["loop"] });
+      expect(Object.keys(fm.themeStore.ambients().alpha)).toEqual(["click"]);
+    } finally { await new Promise<void>(r => (fm.healthServer as Server).close(() => r())); }
   });
 });

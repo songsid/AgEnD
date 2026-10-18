@@ -117,6 +117,11 @@ for (const c of process.env.ONLY_PUBLIC || process.env.ONLY_PERF ? [] : matrix()
       r.menu = await openMenu(page);
       const why = labelOf(c, { en: "this device follows reduced motion", zh: "這台裝置跟隨「減少動態效果」" });
       check(r.menu.some((t: string) => t.includes(why)), `${name}: the ⋯ menu names the reason`);
+      // The evidence shows the line itself (a phone's menu sheet scrolls), and what is drawn at that moment.
+      const line = page.locator("[role=menu] [role=menuitem], [role=menu] button", { hasText: why }).first();
+      await line.scrollIntoViewIfNeeded(); await page.waitForTimeout(200);
+      r.blockedAtShot = await page.evaluate(`document.querySelectorAll(".amb-layer > *, .amb-burst > *").length`);
+      check(r.blockedAtShot === 0, `${name}: nothing drawn while blocked`);
       await page.screenshot({ path: shotPath(SMOKE, name, "blocked-menu") });
       await page.locator("[role=menu] [role=menuitem], [role=menu] button", { hasText: why }).first().click();
       await page.waitForTimeout(1200);
@@ -151,7 +156,7 @@ for (const c of process.env.ONLY_PUBLIC || process.env.ONLY_PERF ? [] : matrix()
 }
 
 // ── The public link: the product's gateway on a local port, under a trycloudflare-shaped host (no tunnel). ──
-if (!process.env.ONLY_PERF) {
+if (!process.env.ONLY_PERF && !process.env.SKIP_EXTRA) {
   const { createPublicWebGateway } = await import(REPO + "/src/public-web-gateway.ts");
   const { tokenEpoch } = await import(REPO + "/src/web-session.ts");
   const HOST = "amb-smoke.trycloudflare.com";
@@ -196,7 +201,7 @@ if (!process.env.ONLY_PERF) {
 }
 
 // ── Performance: phone, a 1,200-message chat, 4× CPU throttle, scrolling; ambient on vs off. ──
-if (!process.env.ONLY_PUBLIC) {
+if (!process.env.ONLY_PUBLIC && !process.env.SKIP_EXTRA) {
   await seedChat(fx, [PERF], 1200);
   const run = async (on: boolean) => {
     if (on) { fx.fm.webAppearance.humanSetAmbient(PERF, PETALS); fx.fm.webAppearance.humanSetAmbient(PERF, STARS); }
