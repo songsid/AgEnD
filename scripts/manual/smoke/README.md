@@ -173,8 +173,9 @@ with the host's Node (the checkout's native modules are built for it), as your u
 -e OUT=/out -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright -v $PWD:$PWD -v $PW_DIR:/pw:ro -v <node dir>:/node:ro -v <out>:/out
 -w $PWD mcr.microsoft.com/playwright:v1.64.1-noble /node/bin/node node_modules/tsx/dist/cli.mjs
 scripts/manual/smoke/smoke-2122-usage.mts`. WebKit has no host resolver rules, so its phone case is on loopback. Its own
-console lines (a `<select>`'s internal sheet, the viewport meta's interactive-widget, a fetch a navigation cancels) are
-accepted and printed apart, as in smoke-ambient.
+console lines (a `<select>`'s internal sheet, the viewport meta's interactive-widget) are accepted and printed apart, as
+in smoke-ambient; a poll or stream a navigation cancels (and the Settings page's own fetch it cancels, "Load failed")
+only within the smoke's own navigations, for those URLs — anywhere else they fail.
 
 ## Pitfalls (each one cost a run)
 

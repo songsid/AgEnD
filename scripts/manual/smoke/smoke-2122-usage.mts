@@ -42,10 +42,13 @@ const wdOf = (name: string) => fm.fleetConfig.instances[name].working_directory 
 
 const failed: string[] = [];
 // WebKit-only lines that are the engine's, never the dashboard's (as smoke-ambient, #2127) — accepted, but printed:
-// its internal sheet for each <select> ("Refused to apply a stylesheet…", renders identically), the viewport meta's
-// interactive-widget key it doesn't know, and a stream or poll a navigation cancels ("… due to access control checks").
+// its internal sheet for each <select> ("Refused to apply a stylesheet…", renders identically) and the viewport meta's
+// interactive-widget key it doesn't know. A poll or stream a navigation cancels is accepted only around the smoke's own
+// navigations, for those URLs (NAV_CANCELLED below); anywhere else it fails like any error.
 const WEBKIT = process.env.PW_ENGINE === "webkit";
-const KNOWN_WEBKIT = /Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline'|Viewport argument key "interactive-widget" not recognized|cannot load .* due to access control checks/;
+const KNOWN_WEBKIT = /Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline'|Viewport argument key "interactive-widget" not recognized/;
+// (WebKit prints the URL as "https: /host/…".)
+const NAV_CANCELLED = /^(?:Unhandled Promise Rejection: TypeError: Load failed|Fetch API cannot load https?: ?\/\/?[^ /]+\/ui\/(?:poll|events)[^ ]* due to access control checks\.)$/;
 const known: string[] = [];
 const pageErrors = (errors: string[]) => errors.filter(e => { if (WEBKIT && KNOWN_WEBKIT.test(e)) { known.push(e); return false; } return true; });
 const check = (ok: boolean, what: string) => { console.log(`${ok ? "ok  " : "FAIL"} ${what}`); if (!ok) failed.push(what); };
@@ -238,6 +241,8 @@ if (process.env.DEBUG) {
   const link = await openPublicLink(fx);
   const p = await link.publicPage(pub, { path: "/ui/fleet/usage" });
   const publicUsage = p.page.url();
+  // The fixture's own navigation (signed in at /ui, then to this page): a poll it cancels is that navigation's.
+  const atArrival = p.errors.length;
   if (process.env.DEBUG) { p.page.on("pageerror", (e: any) => console.log("PAGEERR", p.page.url(), String(e?.stack ?? e).slice(0, 600))); p.page.on("framenavigated", (fr: any) => { if (fr === p.page.mainFrame()) console.log("NAV", fr.url()); }); }
   await p.page.waitForSelector(".p-fleet .empty", { timeout: 10000 });
   const title = await text(p.page, ".p-fleet .empty-title"), hint = await text(p.page, ".p-fleet .empty-hint");
@@ -252,7 +257,7 @@ if (process.env.DEBUG) {
   await p.page.click(".us-fix");
   await p.page.waitForSelector("#code", { timeout: 15000 });
   // WebKit: a fetch the public page had in flight is cancelled by this navigation ("Load failed"), only in this window.
-  const navCancelled = new Set(p.errors.slice(beforeNav).filter(e => WEBKIT && /^Unhandled Promise Rejection: TypeError: Load failed$/.test(e)));
+  const navCancelled = new Set([...p.errors.slice(0, atArrival), ...p.errors.slice(beforeNav)].filter(e => WEBKIT && NAV_CANCELLED.test(e)));
   const { tokenEpoch } = await import(REPO + "/src/web-session.ts");
   const code = fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken), recipient: link.owner }).display;
   await p.page.fill("#code", code);
@@ -272,7 +277,7 @@ if (process.env.DEBUG) {
   const beforeBack = p.errors.length;
   await p.page.goto(publicUsage);
   await p.page.waitForSelector(".us-row", { timeout: 15000 });
-  for (const e of p.errors.slice(beforeBack)) if (WEBKIT && /^Unhandled Promise Rejection: TypeError: Load failed$/.test(e)) navCancelled.add(e);
+  for (const e of p.errors.slice(beforeBack)) if (WEBKIT && NAV_CANCELLED.test(e)) navCancelled.add(e);
   check((await p.page.$$(".us-row")).length >= 3, "public: after the fix, the rows");
   check(await noOverflow(p.page), "public: no horizontal overflow");
   await p.page.screenshot({ path: shotPath(SMOKE, pub, "public-on"), fullPage: true });

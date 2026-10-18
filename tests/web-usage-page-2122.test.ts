@@ -9,7 +9,7 @@
  * - The ◔ dialog links to it from the app (not View's reader, not a guest).
  * The answers are built by the server's own buildUsageReport, so the page is tested against the real shape.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { addTurn, emptyLedger, type Ledger } from "../src/cache-ledger.js";
 import { emptyDays } from "../src/usage-rollup.js";
 import { buildUsageReport, type UsageInstanceInput } from "../src/usage-report.js";
@@ -142,6 +142,40 @@ describe("what it shows", () => {
   });
 });
 
+describe("a refusal read late never covers a newer answer", () => {
+  /** Answers in order of asking: each may hold its body until released. */
+  function scripted(answers: Array<{ status: number; body: unknown; hold?: boolean }>) {
+    const releases: Array<() => void> = [];
+    let k = 0;
+    (globalThis as any).fetch = async (url: string) => {
+      reqs.push(url);
+      if (!url.startsWith("/ui/usage-report")) return fetchFake(url);
+      const a = answers[Math.min(k++, answers.length - 1)]!;
+      const body = a.hold ? new Promise(r => releases.push(() => r(a.body))) : Promise.resolve(a.body);
+      return { ok: a.status < 400, status: a.status, json: () => body };
+    };
+    return releases;
+  }
+  afterEach(() => { (globalThis as any).fetch = fetchFake; });
+  it("a 403 whose body is held, then a newer 200 shown: releasing the old body changes nothing", async () => {
+    const releases = scripted([{ status: 200, body: report() }, { status: 403, body: { error: "usage_report_not_over_public_link" }, hold: true }, { status: 200, body: report({ range: { kind: "month" } }) }]);
+    await mount();
+    expect(rows().length).toBe(3);
+    btn("All").click(); await settle(4);                                           // asked: 403, its body held
+    btn("This month").click(); await settle(6);                                    // asked again: 200, shown
+    expect(p.root.querySelector(".us-row")).not.toBeNull();
+    releases[0]!(); await settle(6);
+    expect([p.root.querySelector(".empty"), rows().length]).toEqual([null, 3]);    // still the newer answer
+  });
+  it("control: the same held 403 with nothing newer is shown once released", async () => {
+    const releases = scripted([{ status: 403, body: { error: "usage_report_not_over_public_link", settings: "http://localhost:19280/settings/web" }, hold: true }]);
+    await mount();
+    expect(p.root.querySelector(".empty")).toBeNull();
+    releases[0]!(); await settle(6);
+    expect(p.root.querySelector(".empty-title").textContent).toBe("Not offered over the public link");
+  });
+});
+
 describe("states it explains", () => {
   it("nothing collected yet: the empty state says where usage comes from", async () => {
     answer = { status: 200, body: report({ instances: [inst("fresh", "claude-code", undefined, { days: emptyDays() })], messages: [] }) };
@@ -225,6 +259,21 @@ describe("what the charts say about a day (Prism R1)", () => {
     expect(p.root.querySelectorAll(".us-h").length).toBe(4);                                      // no day before it drawn as idle
     expect(p.root.querySelector(".us-csv").textContent.trim()).toBe("Download CSV (from 2026-10-15)");
     expect(U.usageCsv(cut).trimEnd().split("\r\n").slice(1).every((l: string) => l >= "2026-10-15")).toBe(true);
+  });
+  it("the latest day alone over the cap (built by buildUsageReport): no daily detail at all, said so; no chart, no CSV", async () => {
+    // One day, 6 source/model rows, a cap of 4: no whole day fits — never 4 of its 6 rows passed off as the day.
+    const models = ["claude-opus-4-5", "claude-sonnet-4-5", "made-up-a", "made-up-b", "made-up-c", "made-up-d"];
+    const one = [inst("billing", "claude-code", ledger(models.map((m, k) => [at(0, k), m] as [number, string])))];
+    const msgs = [{ instance: "billing", hour: at(0, 1), count: 3 }];
+    const r = buildUsageReport({ now: NOW, zone: "UTC", range: { kind: "today" }, group: "instance", instances: one, messages: msgs, scanning: { active: false, caughtUp: true, pendingBytes: 0, pendingFiles: 0 }, dailyMax: 4 } as never);
+    expect([r.dailyTruncated, r.dailyFrom, r.daily.length, r.messagesDaily.length]).toEqual([true, null, 0, 0]);
+    expect([r.totals.requests, r.totals.messages]).toEqual([6, 3]);                                // the totals stay whole
+    answer = { status: 200, body: r };
+    await mount();
+    expect(p.root.querySelector(".us-partial").textContent).toBe("No daily detail for this range: even its latest day has more rows than one answer carries, and a part of a day is never shown as the day. The rows and totals above are complete; the trend, the heatmap and the CSV need the daily detail and are not shown.");
+    expect([p.root.querySelectorAll(".us-h").length, p.root.querySelector(".us-chart")]).toEqual([0, null]);
+    expect(p.root.querySelector(".us-csv").disabled).toBe(true);
+    expect(cell(rows()[0], "Requests")).toBe("6");
   });
   it("the timezone changed: a date made in two zones shows each part, and the page says the zone changed", async () => {
     const days = { ...emptyDays(), checkpoint: at(1, 0) - HOUR, coverage: [[NOW - 31 * DAY, NOW]] as Array<[number, number]>,

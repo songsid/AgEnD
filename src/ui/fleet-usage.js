@@ -27,6 +27,7 @@ register("fusage", {
     openSettings: "Open Settings → Web on that computer",
     partialDays: "Daily detail from {0}: the earlier days in this range are too many rows to send. The rows and totals above cover the whole range; the trend, the heatmap and the CSV start at {0}.",
     csvFrom: "Download CSV (from {0})",
+    noDaily: "No daily detail for this range: even its latest day has more rows than one answer carries, and a part of a day is never shown as the day. The rows and totals above are complete; the trend, the heatmap and the CSV need the daily detail and are not shown.",
     zoneChanged: "The fleet's timezone changed: these days were made in {0}. A day keeps the zone it was made in, so a day made in two shows each part (see the heatmap). Days from now on are in {1}.",
     dayTokens: "{0} tokens", partNotPriced: "part not priced",
     trendUnpriced: "Not priced, so not in these bars: {0}. Their tokens are in the rows and the heatmap.",
@@ -53,6 +54,7 @@ register("fusage", {
     openSettings: "在那台電腦上開啟設定 → 網頁",
     partialDays: "每日明細從 {0} 起：這段期間更早的日子資料列太多，無法一次送出。上方的各列與總計涵蓋整段期間；趨勢、熱度圖與 CSV 則從 {0} 開始。",
     csvFrom: "下載 CSV（從 {0} 起）",
+    noDaily: "這段期間沒有每日明細：連最近的一天，資料列都超過一次回答能帶的數量，而不完整的一天絕不會被當成那一天顯示。上方的各列與總計是完整的；趨勢、熱度圖與 CSV 需要每日明細，所以不顯示。",
     zoneChanged: "fleet 的時區曾經變更：這些日子分別依 {0} 計算。每一天保留它當初計算時的時區，所以跨兩個時區的日子會分別列出各部分（見熱度圖）。之後的日子依 {1} 計算。",
     dayTokens: "{0} 個 token", partNotPriced: "部分未定價",
     trendUnpriced: "未定價，所以不在這些長條裡：{0}。它們的 token 列在各列與熱度圖中。",
@@ -308,8 +310,11 @@ export function UsageReport({ report, choice, setChoice, refresh, fetchedAt }) {
       ? [...(report.daily || []).map((d) => d.date), ...(report.messagesDaily || []).map((m) => m.date)].sort()[0] || report.range.to
       : report.range.from;
     // Daily detail cut to the latest whole days (too many rows): the charts start where it starts.
+    // No daily detail at all (not even the latest day fits): no dates — no chart drawn from a part of a day.
+    if (report.dailyTruncated && !report.dailyFrom) return [];
     return datesBetween(report.dailyTruncated && report.dailyFrom > first ? report.dailyFrom : first, report.range.to);
   }, [report]);
+  const noDaily = report.dailyTruncated && !report.dailyFrom;
   const zones = zonesChanged(report);
   const csvFrom = report.dailyTruncated ? report.dailyFrom : report.range.kind === "all" ? "all" : report.range.from;
   const rows = report.rows.filter((r) => r.total > 0 || (r.messages || 0) > 0);
@@ -326,15 +331,15 @@ export function UsageReport({ report, choice, setChoice, refresh, fetchedAt }) {
         onClick=${() => (k === "custom" ? setChoice({ ...choice, range: "custom", from: draft.from, to: draft.to }) : setChoice({ ...choice, range: k }))}>${tu(k === "7d" ? "r7d" : k)}</button>`)}</div>
       <label class="us-group">${tu("group")} <select value=${choice.group} onChange=${(e) => setChoice({ ...choice, group: e.target.value })}>
         ${USAGE_GROUPS.map((g) => html`<option key=${g} value=${g}>${tu(`g_${g}`)}</option>`)}</select></label>
-      <button type="button" class="btn btn-sm us-csv" onClick=${() => download(usageCsv(report), `agend-usage-${csvFrom}-${report.range.to}.csv`)}>
-        <${Icon} name="download" size=${14} />${report.dailyTruncated ? tu("csvFrom", report.dailyFrom) : tu("csv")}</button>
+      <button type="button" class="btn btn-sm us-csv" disabled=${noDaily} title=${noDaily ? tu("noDaily") : undefined} onClick=${() => download(usageCsv(report), `agend-usage-${csvFrom}-${report.range.to}.csv`)}>
+        <${Icon} name="download" size=${14} />${report.dailyTruncated && !noDaily ? tu("csvFrom", report.dailyFrom) : tu("csv")}</button>
     </div>
     ${choice.range === "custom" ? html`<form class="us-custom" onSubmit=${(e) => { e.preventDefault(); if (DATE.test(draft.from) && DATE.test(draft.to) && draft.from <= draft.to) setChoice({ ...choice, ...draft }); }}>
       <label>${tu("from")} <input type="date" value=${draft.from} max=${draft.to} onInput=${(e) => setDraft({ ...draft, from: e.target.value })} /></label>
       <label>${tu("to")} <input type="date" value=${draft.to} min=${draft.from} onInput=${(e) => setDraft({ ...draft, to: e.target.value })} /></label>
       <button type="submit" class="btn btn-sm">${tu("apply")}</button></form>` : null}
     <p class="us-basis" role="note">${tu("basis", report.pricesChecked)}</p>
-    ${report.dailyTruncated ? html`<p class="us-partial" role="status">${tu("partialDays", report.dailyFrom)}</p>` : null}
+    ${noDaily ? html`<p class="us-partial" role="status">${tu("noDaily")}</p>` : report.dailyTruncated ? html`<p class="us-partial" role="status">${tu("partialDays", report.dailyFrom)}</p>` : null}
     ${zones ? html`<p class="us-partial" role="status">${tu("zoneChanged", zones.join(", "), report.zone)}</p>` : null}
     <p class="note us-fresh">${tu("updated", new Date(fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))} · ${Number.isFinite(since) ? tu("since", new Date(since).toLocaleDateString()) : tu("notYet")} · ${tu("zoneNote", report.zone)}${group === "team" ? ` ${tu("teamsNote")}` : ""}
       ${report.scanning.active && (!report.scanning.caughtUp || report.scanning.pendingBytes > 0) ? html` <span class="us-scan" role="status">${tu("scanning")} <button type="button" class="btn btn-sm" onClick=${refresh}>${tu("refresh")}</button></span>` : null}</p>
@@ -377,6 +382,7 @@ export function UsageTab({ lease }) {
         if (!lease.current() || mine !== seq.current) return;
         if (r.status === 403 || r.status === 404) {
           const body = await r.json().catch(() => null);
+          if (!lease.current() || mine !== seq.current) return;              // a newer read (or another page) owns the view
           // Over the public link: where it is turned on — Settings → Web on the dashboard reached directly.
           setState({ blocked: r.status === 403 ? "blocked" : "off", settings: body && typeof body.settings === "string" && /^http:\/\/localhost:\d+\/settings\/web$/.test(body.settings) ? body.settings : null });
           return;

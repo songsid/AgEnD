@@ -104,7 +104,11 @@ export interface UsageReport {
   rows: UsageRow[];
   totals: UsageRow;
   daily: UsageDaily[];
-  /** The daily rows (and the messages by day) start at `dailyFrom`: earlier days were too many rows to send. */
+  /**
+   * The daily rows (and the messages by day) are not the whole range: they start at `dailyFrom` (earlier days were too
+   * many rows to send), or — `dailyFrom` null — there are none at all (the latest day alone was more than the cap: a
+   * part of a day is never sent as if it were the day). The rows and totals always cover the whole range.
+   */
   dailyTruncated: boolean;
   dailyFrom: string | null;
   messagesDaily: Array<{ date: string; instance: string; count: number }>;
@@ -225,10 +229,12 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     if (amount !== null && d.amount !== null) d.amount += amount;
   }
   const allDaily = [...dailyBy.values()].sort((a, b) => a.date.localeCompare(b.date) || a.instance.localeCompare(b.instance) || a.model.localeCompare(b.model) || a.zone.localeCompare(b.zone));
-  // Too many: the latest whole days that fit — never part of a day (a missing row would read as nothing used).
-  let dailyFrom: string | null = null, daily = allDaily;
+  // Too many: the latest whole days that fit — never part of a day (a missing row would read as nothing used). Not even
+  // the latest day fits: no daily rows at all, said so (dailyTruncated with no dailyFrom).
+  let dailyFrom: string | null = null, daily = allDaily, truncated = false;
   const cap = input.dailyMax ?? USAGE_DAILY_MAX;
   if (allDaily.length > cap) {
+    truncated = true;
     const perDate = new Map<string, number>();
     for (const d of allDaily) perDate.set(d.date, (perDate.get(d.date) ?? 0) + 1);
     let kept = 0;
@@ -236,8 +242,7 @@ export function buildUsageReport(input: UsageInput): UsageReport {
       if (kept + perDate.get(date)! > cap) break;
       kept += perDate.get(date)!; dailyFrom = date;
     }
-    dailyFrom ??= allDaily[allDaily.length - 1]!.date;            // one day alone over the cap: that day, cut (said so)
-    daily = allDaily.filter(d => d.date >= dailyFrom!).slice(-cap);
+    daily = dailyFrom === null ? [] : allDaily.filter(d => d.date >= dailyFrom!);
   }
 
   // Messages: delivered, per instance and hour (§5.4); placed on days the same way as tokens.
@@ -290,8 +295,9 @@ export function buildUsageReport(input: UsageInput): UsageReport {
   return {
     range: { kind: input.range.kind, from, to }, zone: input.zone, granularity: "hour", basis: usageBasis(), pricesChecked: PRICES_CHECKED,
     group: input.group, rows: out, totals,
-    daily, dailyTruncated: dailyFrom !== null, dailyFrom,
-    messagesDaily: [...messagesDaily.values()].filter(m => dailyFrom === null || m.date >= dailyFrom)
+    daily, dailyTruncated: truncated, dailyFrom,
+    // Messages by day: the same window as the daily rows (none when there are none); their total stays in `totals`.
+    messagesDaily: [...messagesDaily.values()].filter(m => !truncated || (dailyFrom !== null && m.date >= dailyFrom))
       .sort((a, b) => a.date.localeCompare(b.date) || a.instance.localeCompare(b.instance)),
     notMeasured, shared, coverage, scanning: input.scanning,
   };
