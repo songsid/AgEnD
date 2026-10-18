@@ -184,7 +184,7 @@ Click a team header to fold it. **Find** dims everything that doesn't match. A c
 and backend; clicking it opens the chat. List mode adds the description, model, a link to the Discord thread or
 Telegram topic, and **Open chat**.
 
-**Live traffic** (**Live** switch, on by default; **Key** explains it): a line for each message between instances.
+**Live traffic** (**Live** switch, on by default; **Key** in the toolbar explains it, as a strip above the canvas): a line for each message between instances.
 Colour by kind — task (delegate_task) purple, send/query/update teal, report pink, broadcast orange; between teams
 (zoomed out) slate. Dotted = queued, dashed with a moving pulse = being delivered, grey fading for 12 s = delivered or
 read. "×N" = several messages share a line; failed ones belong in Needs you. A `delegate_task` also draws the work: a
