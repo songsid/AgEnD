@@ -1,0 +1,511 @@
+/**
+ * #2117 (from #2115's proposal): declarative ambient effects — the agent sends data, the page draws it.
+ * - The spec is closed and checked whole (web-ambient.ts): every bound of every preset, glyph text and glyph pictures,
+ *   1 KiB; the page checks the bounds again (chat-ambient.js).
+ * - Store: one looping and one click ambient per chat; the same spec keeps its first placement; glyph pictures (their
+ *   own small slot, at most 4) go when no ambient names them; what is stored is checked again on load; a person's reset
+ *   clears it; it is a placement, not a theme key (an older binary drops it and keeps the theme).
+ * - Tools: set_web_ambient / clear_web_ambient — no target, a change, the lock, the fleet switch, a person's placement.
+ * - General: set_web_settings { what: "ambient" } writes as the person. GET /ui/themes carries it.
+ * - Mods: a bundle's ambient (glyph pictures by path) plans, applies with applyLook and exports back.
+ * - The page: shown by default (reduced motion included), hidden with the show switch off, ?safe=1, or this device
+ *   following reduced motion while the system asks for it (or can't say); caps; a passive click listener that never
+ *   cancels; pause on a hidden tab; everything it made goes on stop; the ⋯ menu names why it isn't showing.
+ */
+import { createHash } from "node:crypto";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { deflateSync } from "node:zlib";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { page, settle, type AppPage } from "./helpers/app-harness.js";
+import { fire } from "./helpers/mini-dom.js";
+
+vi.mock("node:child_process", async importOriginal => {
+  const real = await importOriginal<typeof import("node:child_process")>();
+  const refuse = (name: string) => () => { throw new Error(`ambient: no child process may start (${name})`); };
+  return { ...real, spawn: refuse("spawn"), spawnSync: refuse("spawnSync"), exec: refuse("exec"), execSync: refuse("execSync"),
+    execFile: refuse("execFile"), execFileSync: refuse("execFileSync"), fork: refuse("fork") };
+});
+
+const A = await import("../src/web-ambient.js");
+const { ThemeStore, GLYPH_ASSET_LIMIT } = await import("../src/web-theme-store.js");
+const { WebAppearance } = await import("../src/web-appearance.js");
+const { AppearanceLimiter } = await import("../src/web-appearance-policy.js");
+const B = await import("../src/web-mod-bundle.js");
+const { buildModBundle } = await import("../src/web-mod-export.js");
+const { modPlan } = await import("../src/web-mod-store.js");
+const { effectiveAppearanceLimits } = await import("../src/web-appearance-limits.js");
+const { WebSettingsTools } = await import("../src/web-settings-tools.js");
+const { appearanceView, previewSvg } = await import("../src/web-appearance-view.js");
+
+const dirs: string[] = [];
+let pg: AppPage | null = null;
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); if (pg) { pg.restore(); pg = null; } for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+const tmp = () => { const d = mkdtempSync(join(tmpdir(), "agend-ambient-")); dirs.push(d); return d; };
+
+const crc = (b: Buffer) => { let c = ~0; for (const x of b) { c ^= x; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); } return (~c) >>> 0; };
+const chunk = (t: string, d: Buffer) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const td = Buffer.concat([Buffer.from(t), d]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([l, td, c]); };
+function png(w: number, h: number, rgb: number[] = [200, 80, 120]): Buffer {
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(w * 3, Buffer.from(rgb))]);
+  const ih = Buffer.alloc(13); ih.writeUInt32BE(w, 0); ih.writeUInt32BE(h, 4); ih[8] = 8; ih[9] = 2;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ih), chunk("IDAT", deflateSync(Buffer.concat(Array(h).fill(row)))), chunk("IEND", Buffer.alloc(0))]);
+}
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xff, 0xd9]);
+
+const PETALS = { preset: "fall", glyphs: ["🌸", "❀", "✿"] };
+const STARS = { preset: "burst-on-click", glyphs: ["✦", "✧"], colors: ["#ffd700", "#ff69b4", "#87ceeb", "#98fb98", "#dda0dd"] };
+const ok = (raw: unknown, glyphAsset?: (id: string) => boolean) => A.checkAmbient(raw, glyphAsset ? { glyphAsset } : {}).ok;
+
+describe("the spec", () => {
+  it("fills every default, per preset", () => {
+    const fall = A.checkAmbient(PETALS);
+    expect(fall).toEqual({ ok: true, value: { preset: "fall", glyphs: ["🌸", "❀", "✿"], colors: [], count: 12, duration: [9, 19], size: [14, 22], sway: 40, spread: [34, 90], rotate: 300, opacity: [0, 0.85, 0.15], layer: "behind" } });
+    expect((A.checkAmbient({ preset: "twinkle", glyphs: ["✦"] }) as any).value).toMatchObject({ count: 12, duration: [2, 5] });
+    expect((A.checkAmbient(STARS) as any).value).toMatchObject({ count: 10, duration: [0.5, 0.9], colors: STARS.colors });
+    expect(A.ambientKind("fall")).toBe("loop"); expect(A.ambientKind("rise")).toBe("loop"); expect(A.ambientKind("twinkle")).toBe("loop");
+    expect(A.ambientKind("burst-on-click")).toBe("click");
+  });
+  // [what, spec, ok]: each bound on both sides.
+  const TABLE: Array<[string, Record<string, unknown>, boolean]> = [
+    ["no preset", { glyphs: ["x"] }, false], ["an unknown preset", { preset: "rain", glyphs: ["x"] }, false],
+    ["an unknown key", { ...PETALS, css: "x" }, false], ["layer front", { ...PETALS, layer: "front" }, false], ["layer behind", { ...PETALS, layer: "behind" }, true],
+    ["no glyphs", { preset: "fall" }, false], ["0 glyphs", { preset: "fall", glyphs: [] }, false],
+    ["4 glyphs", { preset: "fall", glyphs: ["a", "b", "c", "d"] }, true], ["5 glyphs", { preset: "fall", glyphs: ["a", "b", "c", "d", "e"] }, false],
+    ["a 2-grapheme glyph", { preset: "fall", glyphs: ["✦✧"] }, true], ["a 3-grapheme glyph", { preset: "fall", glyphs: ["abc"] }, false],
+    ["a ZWJ family emoji (1 grapheme)", { preset: "fall", glyphs: ["👨‍👩‍👧"] }, true],
+    ["a bidi override", { preset: "fall", glyphs: ["‮a"] }, false], ["blank", { preset: "fall", glyphs: [" "] }, false],
+    ["a number glyph", { preset: "fall", glyphs: [1] }, false], ["an asset glyph, not hex", { preset: "fall", glyphs: [{ asset: "x" }] }, false],
+    ["an asset glyph with a second key", { preset: "fall", glyphs: [{ asset: "a".repeat(32), url: "x" }] }, false],
+    ["count 1", { ...PETALS, count: 1 }, true], ["count 0", { ...PETALS, count: 0 }, false], ["count 24", { ...PETALS, count: 24 }, true], ["count 25", { ...PETALS, count: 25 }, false],
+    ["count 1.5", { ...PETALS, count: 1.5 }, false],
+    ["burst count 4", { ...STARS, count: 4 }, true], ["burst count 3", { ...STARS, count: 3 }, false], ["burst count 16", { ...STARS, count: 16 }, true], ["burst count 17", { ...STARS, count: 17 }, false],
+    ["fall duration [4, 30]", { ...PETALS, duration: [4, 30] }, true], ["fall duration [3.9, 9]", { ...PETALS, duration: [3.9, 9] }, false], ["fall duration [9, 31]", { ...PETALS, duration: [9, 31] }, false],
+    ["duration min > max", { ...PETALS, duration: [10, 9] }, false], ["duration of 3", { ...PETALS, duration: [4, 5, 6] }, false],
+    ["twinkle duration [1, 10]", { preset: "twinkle", glyphs: ["✦"], duration: [1, 10] }, true], ["twinkle duration [1, 11]", { preset: "twinkle", glyphs: ["✦"], duration: [1, 11] }, false],
+    ["burst duration [0.3, 2]", { ...STARS, duration: [0.3, 2] }, true], ["burst duration [0.2, 1]", { ...STARS, duration: [0.2, 1] }, false], ["burst duration [0.5, 2.1]", { ...STARS, duration: [0.5, 2.1] }, false],
+    ["size [10, 40]", { ...PETALS, size: [10, 40] }, true], ["size [9, 20]", { ...PETALS, size: [9, 20] }, false], ["size [10, 41]", { ...PETALS, size: [10, 41] }, false],
+    ["sway 0", { ...PETALS, sway: 0 }, true], ["sway 80", { ...PETALS, sway: 80 }, true], ["sway 81", { ...PETALS, sway: 81 }, false], ["sway -1", { ...PETALS, sway: -1 }, false],
+    ["spread [20, 120]", { ...STARS, spread: [20, 120] }, true], ["spread [19, 90]", { ...STARS, spread: [19, 90] }, false], ["spread [20, 121]", { ...STARS, spread: [20, 121] }, false],
+    ["rotate 720", { ...PETALS, rotate: 720 }, true], ["rotate 721", { ...PETALS, rotate: 721 }, false], ["rotate NaN", { ...PETALS, rotate: NaN }, false],
+    ["opacity [0, 1, 1]", { ...PETALS, opacity: [0, 1, 1] }, true], ["opacity above 1", { ...PETALS, opacity: [0, 1.1, 0] }, false], ["opacity of 2", { ...PETALS, opacity: [0, 1] }, false],
+    ["5 colours", STARS, true], ["6 colours", { ...STARS, colors: [...STARS.colors, "#000000"] }, false], ["#rgb", { ...PETALS, colors: ["#f0a"] }, true], ["a colour word", { ...PETALS, colors: ["pink"] }, false],
+  ];
+  for (const [what, spec, want] of TABLE) it(`${what}: ${want ? "accepted" : "refused"}`, () => { expect(ok(spec), what).toBe(want); });
+  it("canonical: NFC, #rgb widened, numbers to two decimals; a prototype key is an unknown key", () => {
+    const v = (A.checkAmbient({ preset: "fall", glyphs: ["é"], colors: ["#F0A"], sway: 12.3456 }) as any).value;
+    expect([v.glyphs[0], v.colors[0], v.sway]).toEqual(["é", "#ff00aa", 12.35]);
+    expect(ok(JSON.parse('{"preset":"fall","glyphs":["x"],"__proto__":{"a":1}}'))).toBe(false);
+    expect(ok(Object.assign(Object.create({ preset: "fall" }), { glyphs: ["x"] }))).toBe(false);
+  });
+  it("a glyph picture must be one of the instance's own (when the caller says which are)", () => {
+    const id = "a".repeat(32);
+    expect(ok({ preset: "fall", glyphs: [{ asset: id }] }, (x) => x === id)).toBe(true);
+    expect(ok({ preset: "fall", glyphs: [{ asset: id }] }, () => false)).toBe(false);
+  });
+  it("at most 1 KiB, canonical", () => {
+    expect(A.AMBIENT_SPEC_MAX_BYTES).toBe(1024);
+    // The largest spec the bounds allow fits: 4 two-character emoji glyphs, 5 colours, every number long.
+    const big = { preset: "burst-on-click", glyphs: ["👨‍👩‍👧‍👦👨‍👩‍👧‍👦", "🏳️‍🌈🏳️‍🌈", "👩🏽‍🚀👩🏽‍🚀", "🧑🏿‍🤝‍🧑🏻🧑🏿‍🤝‍🧑🏻"], colors: STARS.colors, count: 16, duration: [0.33, 1.99], size: [10.55, 39.99], sway: 79.99, spread: [20.11, 119.99], rotate: 719.99, opacity: [0.11, 0.99, 0.55] };
+    expect(ok(big)).toBe(true);
+    const r = A.checkAmbient({ ...big, glyphs: Array(4).fill("👨‍👩‍👧‍👦".repeat(2)) });
+    expect(r.ok ? Buffer.byteLength(JSON.stringify(r.value)) : 0).toBeLessThanOrEqual(1024);
+  });
+});
+
+function tools(opts: { agentEdit?: boolean } = {}) {
+  const dir = tmp();
+  let now = 1_000_000;
+  const clock = () => now;
+  const store = new ThemeStore(dir);
+  let changed = 0;
+  const web = { themes: { agent_edit: opts.agentEdit ?? true } };
+  const app = new WebAppearance(store, () => web, () => { changed++; }, new AppearanceLimiter(clock), clock);
+  return { dir, store, app, web, changed: () => changed, tick: (ms: number) => { now += ms; } };
+}
+
+describe("set_web_ambient / clear_web_ambient", () => {
+  it("places its kind: a loop and a click together; stored, for the page, in get_web_theme; one change each", () => {
+    const t = tools();
+    expect(t.app.handleTool("alpha", "set_web_ambient", PETALS)).toMatchObject({ kind: "loop", ambient: { by: "agent", spec: { preset: "fall" } } });
+    t.tick(31_000);
+    expect(t.app.handleTool("alpha", "set_web_ambient", STARS)).toMatchObject({ kind: "click" });
+    const page = t.store.ambients();
+    expect(Object.keys(page)).toEqual(["alpha"]);
+    expect(Object.keys(page.alpha!)).toEqual(["loop", "click"]);
+    expect((t.app.getTheme("alpha") as any).ambient).toMatchObject({ loop: { by: "agent" }, click: { by: "agent" } });
+    expect((t.app.getTheme("alpha") as any).limits.changes).toBe(8);
+    expect([t.changed(), t.store.get("alpha").theme]).toEqual([2, { v: 1 }]);   // not a theme key
+  });
+  it("a new loop replaces only the loop", () => {
+    const t = tools();
+    t.app.handleTool("alpha", "set_web_ambient", PETALS); t.tick(31_000);
+    t.app.handleTool("alpha", "set_web_ambient", STARS); t.tick(31_000);
+    t.app.handleTool("alpha", "set_web_ambient", { preset: "rise", glyphs: ["🏮"] });
+    const a = t.store.ambients().alpha!;
+    expect([a.loop!.spec.preset, a.click!.spec.preset]).toEqual(["rise", "burst-on-click"]);
+  });
+  it("an invalid spec: errors, nothing stored, nothing counted", () => {
+    const t = tools();
+    expect(t.app.handleTool("alpha", "set_web_ambient", { ...PETALS, count: 99 })).toHaveProperty("errors");
+    expect(t.app.handleTool("alpha", "set_web_ambient", { preset: "fall", glyphs: [{ asset: "b".repeat(32) }] })).toHaveProperty("errors");
+    expect([t.store.ambients(), (t.app.getTheme("alpha") as any).limits.changes, t.changed()]).toEqual([{}, 10, 0]);
+  });
+  it("refused: the fleet switch, the lock, the rate limit — each costs nothing", () => {
+    const off = tools({ agentEdit: false });
+    expect(off.app.handleTool("alpha", "set_web_ambient", PETALS)).toMatchObject({ error: "theme_editing_off" });
+    const t = tools();
+    t.app.humanLock("alpha", true);
+    expect(t.app.handleTool("alpha", "set_web_ambient", PETALS)).toMatchObject({ error: "locked" });
+    expect(t.app.handleTool("alpha", "clear_web_ambient", {})).toMatchObject({ error: "locked" });
+    t.app.humanLock("alpha", false);
+    t.app.handleTool("alpha", "set_web_ambient", PETALS);
+    expect(t.app.handleTool("alpha", "set_web_ambient", STARS)).toMatchObject({ error: "rate_limited" });
+    expect(Object.keys(t.store.ambients().alpha!)).toEqual(["loop"]);
+  });
+  it("one a person set: the agent can't replace or clear it; clear-all keeps it and says so", () => {
+    const t = tools();
+    expect(t.app.humanSetAmbient("alpha", PETALS)).toMatchObject({ ok: true, kind: "loop", ambient: { by: "human" } });
+    expect(t.app.handleTool("alpha", "set_web_ambient", { preset: "twinkle", glyphs: ["✦"] })).toMatchObject({ error: "person_placed" });
+    expect(t.app.handleTool("alpha", "clear_web_ambient", { which: "loop" })).toMatchObject({ error: "person_placed" });
+    expect(t.app.handleTool("alpha", "set_web_ambient", STARS)).toMatchObject({ kind: "click" });   // the other kind is free
+    t.tick(31_000);
+    expect(t.app.handleTool("alpha", "clear_web_ambient", {})).toMatchObject({ removed: ["click"], kept: ["loop"] });
+    expect(t.app.handleTool("alpha", "clear_web_ambient", { which: "both" })).toMatchObject({ error: "which" });
+  });
+  it("a person's clear and reset; a person's write is never limited", () => {
+    const t = tools();
+    t.app.handleTool("alpha", "set_web_ambient", PETALS);
+    expect(t.app.humanSetAmbient("alpha", null, "click")).toMatchObject({ ok: true, removed: [] });
+    expect(t.app.humanSetAmbient("alpha", STARS)).toMatchObject({ ok: true });
+    expect(t.app.humanSetAmbient("alpha", { preset: "x" })).toMatchObject({ error: "ambient", status: 400 });
+    expect(t.app.humanSetAmbient("alpha", null, "nope")).toMatchObject({ error: "which", status: 400 });
+    t.app.humanReset("alpha");
+    expect(t.store.ambients()).toEqual({});
+  });
+  it("an agent's own reset (reset_web_theme) is its theme only: the ambient stays", () => {
+    const t = tools();
+    t.app.handleTool("alpha", "set_web_ambient", PETALS); t.tick(31_000);
+    t.app.handleTool("alpha", "reset_web_theme", {});
+    expect(Object.keys(t.store.ambients().alpha!)).toEqual(["loop"]);
+  });
+});
+
+describe("glyph pictures", () => {
+  it("their own slot: png/webp/gif, 64 KiB, 128 px", () => {
+    const s = new ThemeStore(tmp());
+    expect(s.addAsset("a", "glyph", png(128, 128))).toMatchObject({ ok: true });
+    expect(s.addAsset("a", "glyph", png(129, 8))).toMatchObject({ ok: false, error: "asset_dimensions" });
+    expect(s.addAsset("a", "glyph", JPEG)).toMatchObject({ ok: false, error: "asset_type" });
+    expect(GLYPH_ASSET_LIMIT).toEqual({ maxBytes: 64 * 1024, maxSide: 128, files: 4 });
+  });
+  it("at most 4: an unused one makes room (oldest first); when all 4 are in use, refused", () => {
+    const t = tools();
+    const ids = [1, 2, 3, 4].map(i => (t.store.addAsset("alpha", "glyph", png(8, 8, [i, i, i])) as any).id as string);
+    const fifth = t.store.addAsset("alpha", "glyph", png(8, 8, [5, 5, 5]));
+    expect(fifth).toMatchObject({ ok: true });
+    expect(t.store.get("alpha").assets.map(a => a.id)).toEqual([...ids.slice(1), (fifth as any).id]);
+    expect(readdirSync(readdirSync(join(t.dir, "web-themes")).map(d => join(t.dir, "web-themes", d))[0]!)).toHaveLength(4);
+    const inUse = t.store.get("alpha").assets.map(a => ({ asset: a.id }));
+    expect(t.app.handleTool("alpha", "set_web_ambient", { preset: "fall", glyphs: inUse })).toMatchObject({ kind: "loop" });
+    expect(t.store.addAsset("alpha", "glyph", png(8, 8, [6, 6, 6]))).toMatchObject({ ok: false, error: "asset_quota" });
+  });
+  it("replacing or clearing the ambient deletes the glyph pictures no ambient names now", () => {
+    const t = tools();
+    const id = (t.store.addAsset("alpha", "glyph", png(8, 8)) as any).id;
+    t.app.handleTool("alpha", "set_web_ambient", { preset: "fall", glyphs: [{ asset: id }] }); t.tick(31_000);
+    expect(t.store.asset("alpha", id)).not.toBeNull();
+    t.app.handleTool("alpha", "set_web_ambient", PETALS);
+    expect([t.store.asset("alpha", id), t.store.get("alpha").assets]).toEqual([null, []]);
+  });
+});
+
+describe("what is stored", () => {
+  it("is checked again on load: a tightened rule, a wrong kind or a changed id drops it; the theme stays", async () => {
+    const t = tools();
+    t.app.handleTool("alpha", "set_web_theme", { set: { accent: "#8b5cf6" } }); t.tick(31_000);
+    t.app.handleTool("alpha", "set_web_ambient", PETALS);
+    const fs = await import("node:fs");
+    const doc = JSON.parse(fs.readFileSync(t.store.path, "utf8"));
+    const keep = JSON.parse(JSON.stringify(doc));
+    doc.instances.alpha.placements.ambient.loop.spec.count = 99;
+    fs.writeFileSync(t.store.path, JSON.stringify(doc));
+    const again = new ThemeStore(t.dir);
+    expect([again.ambients(), again.get("alpha").theme.accent]).toEqual([{}, "#8b5cf6"]);
+    keep.instances.alpha.placements.ambient = { click: keep.instances.alpha.placements.ambient.loop };
+    fs.writeFileSync(t.store.path, JSON.stringify(keep));
+    expect(new ThemeStore(t.dir).ambients()).toEqual({});
+  });
+  it("an older binary's view: the ambient is a placement, not a theme key — the theme checker never sees it", async () => {
+    const { checkTheme } = await import("../src/web-theme.js");
+    const t = tools();
+    t.app.handleTool("alpha", "set_web_ambient", PETALS);
+    expect(checkTheme(t.store.get("alpha").theme, { assets: new Set() }).ok).toBe(true);
+    expect(Object.keys(t.store.get("alpha").theme)).toEqual(["v"]);
+  });
+});
+
+describe("General: set_web_settings { what: \"ambient\" }", () => {
+  function general() {
+    const t = tools();
+    const deps = {
+      prefs: {} as any, ownerCss: {} as any, mods: {} as any, effects: {} as any,
+      instances: () => ["alpha"], colour: () => ({ color: null, show: null }), setColour: () => ({ ok: true as const }),
+      bannerFocus: () => null, setBannerFocus: () => ({ ok: true as const }), placements: () => [], announce: () => {},
+      ambient: (n: string) => Object.fromEntries(Object.entries(t.store.get(n).placements.ambient).flatMap(([k, a]) => a ? [[k, { spec: a.spec, by: a.by }]] : [])),
+      setAmbient: (n: string, spec: unknown, which?: unknown) => t.app.humanSetAmbient(n, spec, which),
+    };
+    return { t, g: new WebSettingsTools(deps) };
+  }
+  it("sets as the person (the agent can't change it after), clears, refuses an unknown instance or a bad spec", () => {
+    const { t, g } = general();
+    expect(g.change(undefined, { what: "ambient", instance: "alpha", ambient: PETALS })).toMatchObject({ ok: true, kind: "loop", now: { loop: { by: "human" } } });
+    expect(t.app.handleTool("alpha", "set_web_ambient", { preset: "rise", glyphs: ["x"] })).toMatchObject({ error: "person_placed" });
+    expect(g.change(undefined, { what: "ambient", instance: "alpha", ambient: null })).toMatchObject({ ok: true, removed: ["loop"], now: {} });
+    expect(g.change(undefined, { what: "ambient", instance: "nobody", ambient: PETALS })).toMatchObject({ ok: false, error: "unknown_instance" });
+    expect(g.change(undefined, { what: "ambient", instance: "alpha", ambient: { preset: "x" } })).toMatchObject({ ok: false, error: "ambient" });
+    expect(g.change(undefined, { what: "ambient", instance: "alpha" })).toMatchObject({ ok: false, error: "ambient" });
+  });
+});
+
+describe("the appearance view and preview", () => {
+  it("get_web_appearance lists it; the preview draws the loop's glyphs still, behind the bubbles, in its colours", () => {
+    const spec = (A.checkAmbient({ ...PETALS, colors: ["#f4a7b9"], count: 5 }) as any).value;
+    const input = { entry: { name: "alpha" } as any, theme: { v: 1 } as any, card: {} as any, locked: false, agentEdit: true, limits: {}, ambient: { loop: { spec, by: "agent" } } };
+    expect(appearanceView(input as any).ambient).toEqual([{ kind: "loop", by: "agent", spec }]);
+    const svg = previewSvg(input as any, "dark", { avatar: null, portrait: null, banner: null, background: null });
+    expect(svg.match(/fill="#f4a7b9">[🌸❀✿]</gu)).toHaveLength(5);
+    expect(svg.indexOf("🌸")).toBeLessThan(svg.indexOf("A message from a person"));
+    const none = previewSvg({ ...input, ambient: {} } as any, "dark", { avatar: null, portrait: null, banner: null, background: null });
+    expect(none).not.toContain("🌸");
+  });
+});
+
+describe("mods", () => {
+  const limits = effectiveAppearanceLimits(undefined).limits;
+  const ctx = { agendVersion: "2.3.0", limits, effects: null };
+  const sha = (b: Uint8Array | string) => createHash("sha256").update(b).digest("hex");
+  const file = (b: Uint8Array | string) => { const bytes = Buffer.from(b as any); return { sha256: sha(bytes), b64: bytes.toString("base64") }; };
+  const G = png(16, 16);
+  const doc = (ambient: unknown, files: Record<string, unknown> = {}) => JSON.stringify({ format: "agend-mod", v: 1,
+    manifest: { name: "petals", version: "1.0.0", title: "Petals", contents: { ambient: "ambient.json" } },
+    files: { "ambient.json": file(JSON.stringify(ambient)), ...files } });
+  it("a bundle's ambient: glyph pictures by path, checked as uploads; planned; a wrong kind or a missing picture refused", () => {
+    const r = B.checkModBundle(doc({ loop: { preset: "fall", glyphs: ["🌸", { asset: "glyphs/petal.png" }] }, click: STARS }, { "glyphs/petal.png": file(G) }), ctx);
+    expect(r.ok).toBe(true);
+    const mod = (r as any).mod;
+    expect(mod.ambient.pictures).toHaveLength(1);
+    expect(mod.ambient.specs.loop.glyphs[1]).toEqual({ asset: mod.ambient.pictures[0].id });
+    const plan = modPlan(mod, new Map());
+    expect(plan.needs_target).toBe(true);
+    expect(plan.items.find(i => i.part === "ambient")).toMatchObject({ loop: { preset: "fall" }, click: { preset: "burst-on-click" }, pictures: [{ path: "glyphs/petal.png", slot: "glyph" }] });
+    const bad = B.checkModBundle(doc({ click: PETALS }), ctx);
+    expect(bad.ok ? [] : bad.problems.map(p => p.path)).toEqual(["ambient.click.preset"]);
+    const missing = B.checkModBundle(doc({ loop: { preset: "fall", glyphs: [{ asset: "glyphs/x.png" }] } }), ctx);
+    expect(missing.ok).toBe(false);
+    const jpeg = B.checkModBundle(doc({ loop: { preset: "fall", glyphs: [{ asset: "glyphs/x.jpg" }] } }, { "glyphs/x.jpg": file(JPEG) }), ctx);
+    expect(jpeg.ok).toBe(false);
+  });
+  it("applies with the look (as the person), then exports back to an equal ambient", () => {
+    const t = tools();
+    const mod = (B.checkModBundle(doc({ loop: { preset: "fall", glyphs: [{ asset: "glyphs/petal.png" }] }, click: STARS }, { "glyphs/petal.png": file(G) }), ctx) as any).mod;
+    const w = t.store.applyLook("alpha", { pictures: mod.ambient.pictures, ambient: mod.ambient.specs }, "human");
+    expect(w.ok).toBe(true);
+    (w as any).finalize();
+    const rec = t.store.get("alpha");
+    expect([rec.placements.ambient.loop?.by, rec.placements.ambient.click?.by, rec.assets.map(a => a.slot)]).toEqual(["human", "human", ["glyph"]]);
+    const specs = { loop: rec.placements.ambient.loop!.spec, click: rec.placements.ambient.click!.spec };
+    const built = buildModBundle({ name: "again", version: "1.0.0", title: "Again" }, { ambient: { specs, picture: id => { const a = t.store.asset("alpha", id); return a ? { bytes: a.bytes, kind: "png" } : null; } } });
+    expect(built.ok).toBe(true);
+    const back = B.checkModBundle((built as any).text, ctx);
+    expect(back.ok && back.mod.ambient!.specs).toEqual(specs);
+  });
+});
+
+// ── The page ──
+
+class FakeAnimation {
+  static all: FakeAnimation[] = [];
+  playState = "running"; onfinish: (() => void) | null = null; oncancel: (() => void) | null = null;
+  constructor(public el: any, public frames: any[], public opts: any) { FakeAnimation.all.push(this); }
+  pause() { this.playState = "paused"; } play() { this.playState = "running"; }
+  cancel() { if (this.playState === "idle") return; this.playState = "idle"; this.oncancel?.(); }
+  finish() { this.playState = "finished"; this.onfinish?.(); }
+}
+
+async function pageLoad(opts: { url?: string; storage?: Record<string, string>; reduce?: boolean | "throws" | "missing" } = {}) {
+  vi.resetModules();
+  if (pg) { pg.restore(); pg = null; }
+  pg = page({ url: opts.url ?? "http://127.0.0.1:19280/ui/chat/alpha", storage: opts.storage ?? {} });
+  const g = globalThis as any;
+  if (opts.reduce === "missing") g.matchMedia = undefined;
+  else if (opts.reduce === "throws") g.matchMedia = () => { throw new Error("no"); };
+  else g.matchMedia = (q: string) => ({ matches: !!opts.reduce && /reduced-motion: reduce/.test(q), addEventListener() {}, removeEventListener() {} });
+  FakeAnimation.all = [];
+  g.Element.prototype.animate = function (frames: any[], o: any) { return new FakeAnimation(this, frames, o); };
+  await import("/ui/js/chat-strings.js");
+  const amb = await import("/ui/js/chat-ambient.js");
+  const themes = await import("/assets/app-themes.js");
+  const P = await import("/assets/app-html.js");
+  return { amb, themes, P, doc: pg.document as any };
+}
+const spec = (s: unknown) => (A.checkAmbient(s) as any).value;
+
+describe("the page: when it shows", () => {
+  it("by default — reduced motion on or off — and on the public link", async () => {
+    for (const reduce of [false, true]) { const { amb } = await pageLoad({ reduce }); expect(amb.ambientBlock(), `reduce ${reduce}`).toBeNull(); }
+    const { amb, doc } = await pageLoad({ reduce: true });
+    doc.body.dataset.publicLink = "1";
+    expect(amb.ambientBlock()).toBeNull();
+  });
+  it("hidden: the show switch off, ?safe=1, or this device following a system that asks for reduced motion (or can't say)", async () => {
+    expect((await pageLoad({ storage: { agend_fx_show: "off" } })).amb.ambientBlock()).toBe("hidden");
+    expect((await pageLoad({ url: "http://127.0.0.1:19280/ui/chat/alpha?safe=1" })).amb.ambientBlock()).toBe("safe");
+    const follow = { agend_fx_follow_reduced_motion: "1" };
+    expect((await pageLoad({ storage: follow, reduce: true })).amb.ambientBlock()).toBe("reducedMotion");
+    expect((await pageLoad({ storage: follow, reduce: false })).amb.ambientBlock()).toBeNull();
+    expect((await pageLoad({ storage: follow, reduce: "missing" })).amb.ambientBlock()).toBe("reducedMotion");
+    expect((await pageLoad({ storage: follow, reduce: "throws" })).amb.ambientBlock()).toBe("reducedMotion");
+    expect((await pageLoad({ reduce: "throws" })).amb.ambientBlock()).toBeNull();
+  });
+  it("the page checks the spec again: out of bounds, a wrong kind or an unknown preset is not drawn", async () => {
+    const { amb, themes } = await pageLoad();
+    const good = spec(PETALS);
+    themes.themesStore.set({ ambient: { alpha: { loop: { spec: good, by: "agent" } }, beta: { loop: { spec: { ...good, count: 99 }, by: "agent" } },
+      gamma: { loop: { spec: spec(STARS), by: "agent" } }, delta: { click: { spec: { ...good, preset: "explode" }, by: "agent" } } } });
+    expect(amb.ambientFor("alpha")).toMatchObject({ loop: { preset: "fall", count: 12 }, click: null });
+    expect([amb.ambientFor("beta"), amb.ambientFor("gamma"), amb.ambientFor("delta"), amb.ambientFor("nobody"), amb.ambientFor("__proto__")]).toEqual([null, null, null, null, null]);
+  });
+});
+
+function surfaceFor(doc: any) {
+  const surface = doc.createElement("div"); surface.className = "chat-main";
+  const layer = doc.createElement("div"); layer.className = "amb-layer";
+  const scroller = doc.createElement("div"); scroller.className = "scroller";
+  const msg = doc.createElement("a"); msg.className = "link"; scroller.appendChild(msg);
+  const dock = doc.createElement("div"); dock.className = "dock";
+  const input = doc.createElement("textarea"); dock.appendChild(input);
+  const front = doc.createElement("div"); front.className = "amb-burst";
+  surface.append(layer, scroller, dock, front);
+  doc.body.appendChild(surface);
+  layer.clientWidth = 390; layer.clientHeight = 700;
+  return { surface, layer, scroller, msg, dock, input, front };
+}
+
+describe("the page: drawing", () => {
+  it("a loop: count nodes, aria-hidden, CSSOM only (no style attribute), transform and opacity only, endless", async () => {
+    const { amb, doc } = await pageLoad();
+    const s = surfaceFor(doc);
+    const run = amb.startAmbient({ name: "alpha", ambient: { loop: spec({ ...PETALS, count: 24 }), click: null }, layer: s.layer, front: s.front, surface: s.surface, doc });
+    expect(s.layer.children.length).toBe(24);
+    for (const n of s.layer.children) { expect(n.getAttribute("aria-hidden")).toBe("true"); expect(n.getAttribute("style")).toBeNull(); }
+    expect(FakeAnimation.all).toHaveLength(24);
+    for (const a of FakeAnimation.all) {
+      expect(a.opts.iterations).toBe(Infinity);
+      for (const f of a.frames) expect(Object.keys(f).filter(k => k !== "offset").sort()).toEqual(["opacity", "transform"]);
+    }
+    expect(run.stats()).toEqual({ nodes: 24, animations: 24, bursts: 0 });
+    run.stop();
+    expect([s.layer.children.length, FakeAnimation.all.every(a => a.playState === "idle")]).toEqual([0, true]);
+  });
+  it("a glyph picture is an <img> from the instance's own theme pictures, sized through the CSSOM", async () => {
+    const { amb, doc } = await pageLoad();
+    const s = surfaceFor(doc);
+    amb.startAmbient({ name: "al pha", ambient: { loop: { ...spec(PETALS), glyphs: [{ asset: "c".repeat(32) }], count: 1 }, click: null }, layer: s.layer, front: s.front, surface: s.surface, doc });
+    const img = s.layer.children[0];
+    expect([img.tagName.toLowerCase(), img.getAttribute("src") ?? img.src, img.alt]).toEqual(["img", `/ui/img/theme/al%20pha/${"c".repeat(32)}`, ""]);
+    expect(img.style.width).toMatch(/^\d+px$/);
+  });
+  it("bursts: passive pointerdown in the thread only, never cancelled; 3 at once at most (72 nodes with the loop); each cleans up", async () => {
+    const { amb, doc } = await pageLoad();
+    const s = surfaceFor(doc);
+    const add = vi.spyOn(s.surface, "addEventListener");
+    const run = amb.startAmbient({ name: "alpha", ambient: { loop: spec({ ...PETALS, count: 24 }), click: spec({ ...STARS, count: 16 }) }, layer: s.layer, front: s.front, surface: s.surface, doc });
+    expect(add.mock.calls.find(c => c[0] === "pointerdown")?.[2]).toEqual({ passive: true });
+    const down = (target: any) => { const ev = fire(target, "pointerdown", { bubbles: true, cancelable: true, clientX: 50, clientY: 60, button: 0 }); return ev; };
+    const ev = down(s.msg);
+    expect([ev.defaultPrevented, ev.propagationStopped ?? false]).toEqual([false, false]);
+    expect(s.front.children.length).toBe(16);
+    down(s.input);                                           // the composer: no stars
+    expect(s.front.children.length).toBe(16);
+    down(s.msg); down(s.msg); down(s.msg);                   // a 4th while 3 are alive: ignored
+    expect(run.stats()).toEqual({ nodes: 72, animations: 72, bursts: 3 });
+    for (const a of FakeAnimation.all.filter(x => x.el.parentNode === s.front)) a.finish();
+    expect(run.stats()).toEqual({ nodes: 24, animations: 24, bursts: 0 });
+    down(s.msg);
+    expect(run.stats().bursts).toBe(1);
+    run.stop();
+    expect([s.front.children.length, s.layer.children.length, s.surface.listenerCount("pointerdown")]).toEqual([0, 0, 0]);
+  });
+  it("a hidden tab pauses every animation; visible again plays them; stop removes the listener", async () => {
+    const { amb, doc } = await pageLoad();
+    const s = surfaceFor(doc);
+    const run = amb.startAmbient({ name: "alpha", ambient: { loop: spec({ ...PETALS, count: 3 }), click: null }, layer: s.layer, front: s.front, surface: s.surface, doc });
+    Object.defineProperty(doc, "visibilityState", { value: "hidden", configurable: true });
+    fire(doc, "visibilitychange");
+    expect(FakeAnimation.all.map(a => a.playState)).toEqual(["paused", "paused", "paused"]);
+    Object.defineProperty(doc, "visibilityState", { value: "visible", configurable: true });
+    fire(doc, "visibilitychange");
+    expect(FakeAnimation.all.map(a => a.playState)).toEqual(["running", "running", "running"]);
+    run.stop();
+    expect(doc.listenerCount("visibilitychange")).toBe(0);
+  });
+  it("the counts the page draws never pass the caps, whatever the spec says", async () => {
+    const { amb, doc } = await pageLoad();
+    const s = surfaceFor(doc);
+    amb.startAmbient({ name: "alpha", ambient: { loop: { ...spec(PETALS), count: 500 }, click: null }, layer: s.layer, front: s.front, surface: s.surface, doc });
+    expect(s.layer.children.length).toBe(amb.AMBIENT_CAPS.loop);
+  });
+});
+
+describe("the page: the chat", () => {
+  async function mount(storage: Record<string, string> = {}, reduce = false) {
+    const env = await pageLoad({ storage, reduce });
+    const { P, themes, amb } = env;
+    themes.themesStore.set({ ambient: { alpha: { loop: { spec: spec(PETALS), by: "agent" }, click: { spec: spec(STARS), by: "agent" } } } });
+    let surface: any = null;
+    const Chat = () => {
+      const ref = P.useRef(null); surface = ref;
+      return P.h("div", { ref, class: "chat-main" }, P.h(amb.ChatAmbient, { name: "alpha", surface: ref, part: "layer" }),
+        P.h("div", { class: "scroller" }), P.h("div", { class: "dock" }), P.h(amb.ChatAmbient, { name: "alpha", surface: ref, part: "front" }));
+    };
+    // The modules were loaded afresh (resetModules): render with that same Preact, so its hooks are the component's.
+    const pre = await import("/assets/preact.module.js");
+    pre.render(P.h(Chat, {}), pg!.root); await settle(4);
+    return { ...env, surface: () => surface.current, unmount: async () => { pre.render(null, pg!.root); await settle(4); } };
+  }
+  it("mounts both layers, marks the surface, runs; unmounting takes everything away", async () => {
+    const { surface, unmount } = await mount();
+    const el = surface();
+    expect(el.classList.contains("has-amb")).toBe(true);
+    expect([el.querySelector(".amb-layer").children.length, el.querySelector(".amb-burst") !== null]).toEqual([12, true]);
+    await unmount();
+    expect(FakeAnimation.all.every(a => a.playState === "idle")).toBe(true);
+    expect(el.classList.contains("has-amb")).toBe(false);
+  });
+  it("following reduced motion while the system asks for it: nothing is drawn", async () => {
+    const { surface } = await mount({ agend_fx_follow_reduced_motion: "1" }, true);
+    expect([surface().querySelector(".amb-layer"), FakeAnimation.all.length]).toEqual([null, 0]);
+  });
+  it("turning the device switch on hides it at once; off again draws it", async () => {
+    const { surface } = await mount({}, true);
+    const motion = await import("/assets/fx-motion.js");
+    motion.setFollowsReducedMotion(true); await settle(4);
+    expect(surface().querySelector(".amb-layer")).toBeNull();
+    motion.setFollowsReducedMotion(false); await settle(4);
+    expect(surface().querySelector(".amb-layer").children.length).toBe(12);
+  });
+  it("the ⋯ menu: why it isn't showing (each with its fix) and a person's Clear — no Clear over the public link", async () => {
+    const { amb } = await mount({ agend_fx_follow_reduced_motion: "1" }, true);
+    const navigate = vi.fn(), clear = vi.fn();
+    const items = amb.ambientMenuItems("alpha", { publicLink: false, clear, navigate });
+    expect(items.map((i: any) => i.key)).toEqual(["ambient-blocked", "ambient-clear-loop", "ambient-clear-click"]);
+    expect(items[0].label).toContain("reduced motion");
+    items[0].onSelect(); expect(navigate).toHaveBeenCalledWith("/settings/appearance");
+    items[2].onSelect(); expect(clear).toHaveBeenCalledWith("alpha", "click");
+    expect(amb.ambientMenuItems("alpha", { publicLink: true, clear, navigate }).map((i: any) => i.key)).toEqual(["ambient-blocked"]);
+    expect(amb.ambientMenuItems("nobody", { publicLink: false, clear, navigate })).toEqual([]);
+    const shown = await mount();
+    expect(shown.amb.ambientMenuItems("alpha", { publicLink: false, clear, navigate }).map((i: any) => i.key)).toEqual(["ambient-clear-loop", "ambient-clear-click"]);
+  });
+});

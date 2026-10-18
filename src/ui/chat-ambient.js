@@ -224,7 +224,7 @@ export function startAmbient({ name, ambient, layer, front, surface, doc = globa
       while (front.firstChild) front.firstChild.remove();
     },
     /** For tests and the smoke: what is alive now. */
-    stats() { return { nodes: layer.childElementCount + front.childElementCount, animations: anims.size, bursts }; },
+    stats() { return { nodes: layer.children.length + front.children.length, animations: anims.size, bursts }; },
   };
 }
 
@@ -240,7 +240,7 @@ export function ChatAmbient({ name, surface, part }) {
   useEffect(() => {
     if (part !== "layer" || !ambient) return undefined;
     const layer = ref.current, host = surface.current;
-    const front = host && host.querySelector(":scope > .amb-burst");
+    const front = host && host.querySelector(".amb-burst");
     if (!layer || !host || !front) return undefined;
     host.classList.add("has-amb");
     const run = startAmbient({ name, ambient, layer, front, surface: host });
