@@ -142,7 +142,7 @@ Windows Chrome localhost chat, confirming the same old 128-marker cutoff. A shor
 
 All markers still belong to the closed inventory, including off-screen history. Marker scans and ResizeObserver setup
 are capped at 4096; descendant paint work retains its 4096-observation bound. Paint bounds fully outside the viewport
-plus the clip's 8px margin are omitted only after their producers and descendants were checked. If more than 128 bounds
+plus the clip's 8px margin are omitted only after their producers and paint were proved, either by the bounded descendant walk or the contained-box proof below. If more than 128 bounds
 remain, the tail is conservatively unioned into the final rectangle. This can clip extra effect pixels, never expose a
 protected pixel. Missing markers, unknown paint, changed stacking, overflow and unsupported proof remain refusals.
 
@@ -163,7 +163,7 @@ Only the stock `.msg-tools` and `.codeblock > .cb-head` toolbars now have physic
 The former has four pixels of padding for the existing focus ring, with compensating margins. These are button bars,
 not preview menus or inline links. A fresh proof may use the entire toolbar box instead of walking its descendants
 only with exact flex/principal-box, single-fragment, `contain:paint`, both-axis clip, zero clip margin, no filter,
-no border image and visible content evidence. Own outline/shadow outsets refuse this shortcut: containment clips
+no border image and visible content evidence. For engines without overflow-clip-margin (the checked Linux WebKit), an absent computed value is accepted only with an explicit CSS.supports=false result; supported-but-unreadable, unknown and expanded margins take the bounded walk. Own outline/shadow outsets refuse this shortcut: containment clips
 children, not the root's own ink. Other roots retain the bounded walk. Missing markers are still checked globally.
 
 [CSS Containment Level2 §3.4](https://www.w3.org/TR/css-contain-2/#paint-containment) specifies descendant clipping and

@@ -193,6 +193,15 @@ describe("stock trust/paint prerequisite", () => {
     const roots = Array.from({ length: 1000 }, () => { const el = f.node({ display: "flex", contain: "paint", overflowX: "clip", overflowY: "clip", overflowClipMargin: "0px", borderImageSource: "none" }); el.kind = "thread-control"; el.matches = () => true; el.querySelectorAll = () => { throw Error("contained descendants must not be walked"); }; return el; });
     f.marked.push(...roots); f.extra.set(spec.selector, roots); expect(f.snapshot().ok).toBe(true);
   });
+  it.each(["unsupported", "supported-zero", "unknown", "supported-missing", "expanded"])("%s clip-margin capability is handled without guessing", async mode => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "thread-control");
+    const el = f.node({ display: "flex", contain: "paint", overflowX: "clip", overflowY: "clip", borderImageSource: "none" });
+    el.kind = "thread-control"; el.matches = () => true; el.children = [f.node({ filter: "blur(20px)" })];
+    el.style.getPropertyValue = () => mode === "supported-zero" ? "0px" : mode === "expanded" ? "8px" : "";
+    if (mode !== "unknown") (f.host as any).CSS = { supports: () => mode !== "unsupported" };
+    f.marked.push(el); f.extra.set(spec.selector, [el]);
+    expect(f.snapshot().ok).toBe(["unsupported", "supported-zero"].includes(mode));
+  });
   it("a contained toolbar protects its whole clip, including fixed descendants, but refuses its own overflowing ink", async () => {
     const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "thread-control");
     const el = f.node({ display: "flex", contain: "paint", overflowX: "clip", overflowY: "clip", overflowClipMargin: "0px", borderImageSource: "none" }); el.kind = "thread-control"; el.matches = () => true;

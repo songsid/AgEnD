@@ -115,13 +115,21 @@ function stockBannerFill(host, el) {
   if (b.display !== "block" || el.offsetParent !== box) return null;
   return rect(box);
 }
+function zeroClipMargin(host, style) {
+  const margin = style.overflowClipMargin ?? style.getPropertyValue?.("overflow-clip-margin");
+  // WebKit versions without this property still implement paint containment. An absent
+  // computed value is usable only when the engine explicitly reports it unsupported;
+  // unknown capability or a supported but unreadable/expanded margin cannot prove a box.
+  return margin === "0px" || [undefined, ""].includes(margin)
+    && host.CSS?.supports?.("overflow-clip-margin", "1px") === false;
+}
 function protectedPaint(host, root, budget) {
   // These two stock toolbar boxes physically clip ALL descendants, including fixed-position
   // children. Their entire box is a hole; descendant ink cannot escape it. Inline, fragmented,
   // expanded-clip or CSS-overridden boxes take the ordinary bounded walk instead.
   const s = host.getComputedStyle(root);
   if (root.matches?.(".shell .thread .msg-tools, .shell .thread .codeblock > .cb-head") && s.contain === "paint"
-    && s.display === "flex" && s.overflowX === "clip" && s.overflowY === "clip" && s.overflowClipMargin === "0px"
+    && s.display === "flex" && s.overflowX === "clip" && s.overflowY === "clip" && zeroClipMargin(host, s)
     && none(s.filter) && none(s.backdropFilter) && s.borderImageSource === "none" && [undefined, "", "visible"].includes(s.contentVisibility) && root.getClientRects().length === 1) {
     if (++budget.n > 4096) { budget.exceeded = true; return null; }
     const r = rect(root), pad = outset(s);

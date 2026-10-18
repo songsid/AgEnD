@@ -21,9 +21,9 @@ const historyMax=process.env.PROBE_GROUPS==='history-max';
 const asGuest=process.env.PROBE_GROUPS==='guest',safetyProbe=process.env.PROBE_GROUPS==='safety',safeProbe=process.env.PROBE_GROUPS==='safe',reductions=historyMax||asGuest||safetyProbe||safeProbe||process.env.PROBE_GROUPS==='fresh-only'?[false]:[false,true],rows=[];
 // Explicitly await asynchronous module observations in Node. Driver predicate polling can
 // treat the returned Promise itself as truthy; a resolved value must be exactly true.
-async function waitObservation(page, predicate, timeout=15000){
+async function waitObservation(page, predicate, timeout=15000, arg=undefined){
  const until=Date.now()+timeout;let last;
- do{last=await page.evaluate(predicate);if(last===true)return;await page.waitForTimeout(100)}while(Date.now()<until);
+ do{last=await page.evaluate(predicate,arg);if(last===true)return;await page.waitForTimeout(100)}while(Date.now()<until);
  assert.fail("awaited browser observation timed out: "+String(last));
 }
 function pixels(png){
@@ -60,12 +60,14 @@ for(const engine of engines)for(const origin of origins)for(const width of width
   const pendingProfiles=new Set();let profileActivity=Date.now();
   const isProfile=r=>r.method()==='POST'&&/^\/ui\/effects\/profile\/[a-f0-9]{32}$/.test(new URL(r.url()).pathname);
   const profileQuiet=async()=>{const until=Date.now()+30000;do{if(!pendingProfiles.size&&Date.now()-profileActivity>=11000)return;await page.waitForTimeout(200)}while(Date.now()<until);assert.fail('profile transport did not become quiet before the next UI mount')};
+  let capturing=false,captureSerial=0;row.captureStyleWitnesses=[];
   const beforeNavigate=async (ctx,debugPage)=>{
+   await ctx.exposeBinding('__defaultCaptureStyle',({frame},text)=>{if(capturing&&text==='body {}')row.captureStyleWitnesses.push({url:frame.url(),capture:captureSerial})});
   if(process.env.PROBE_MUTATION==='no-containment')await debugPage.route('**/assets/app.css*',async route=>{const response=await route.fetch(),css=await response.text();const edited=css.split('\n').filter(line=>!line.startsWith('.shell .thread .msg-tools { contain: paint;')&&!line.startsWith('.shell .thread .codeblock > .cb-head { contain: paint;')).join('\n');assert.notEqual(edited,css);await route.fulfill({response,body:edited});row.nativeNoContainment=true});
     // Shared helper selects 127.0.0.1 for loopback. Exercise the reporter's literal localhost
     // via navigation-target substitution only; sign-in still uses visible fields and submission.
     if(origin==='loopback'){for(const method of ['goto','waitForURL']){const original=debugPage[method].bind(debugPage);debugPage[method]=(url,...rest)=>original(typeof url==='string'?url.replace('http://127.0.0.1:19280','http://localhost:19280'):url,...rest)}}
-debugPage.on('console',m=>{if(m.type()==='warning'&&m.text().startsWith('[AgEnD effects]'))(row.localWarnings??=[]).push(m.text())});debugPage.on('request',r=>{if(isProfile(r)){pendingProfiles.add(r);profileActivity=Date.now()}});for(const kind of ['requestfinished','requestfailed'])debugPage.on(kind,r=>{if(isProfile(r)){pendingProfiles.delete(r);profileActivity=Date.now()}});debugPage.on('pageerror',e=>(row.pageErrorStacks??=[]).push(e.stack));debugPage.on('requestfailed',r=>(row.requestFailures??=[]).push({path:new URL(r.url()).pathname,error:r.failure()}));debugPage.on('response',r=>{if(r.status()>=400)(row.httpFailures??=[]).push({path:new URL(r.url()).pathname,status:r.status()})});return ctx.addInitScript(()=>{globalThis.__defaultViolations=[];globalThis.__defaultStyleInserts=[];new MutationObserver(rs=>{for(const r of rs)for(const n of r.addedNodes)if(n.nodeName==='STYLE')globalThis.__defaultStyleInserts.push(n.textContent)}).observe(document,{childList:true,subtree:true});document.addEventListener('securitypolicyviolation',e=>globalThis.__defaultViolations.push({directive:e.effectiveDirective,blocked:e.blockedURI,source:e.sourceFile,line:e.lineNumber,column:e.columnNumber,sample:e.sample,target:e.target?.outerHTML?.slice(0,500)}))})};
+debugPage.on('console',m=>{if(m.type()==='warning'&&m.text().startsWith('[AgEnD effects]'))(row.localWarnings??=[]).push(m.text())});debugPage.on('request',r=>{if(isProfile(r)){pendingProfiles.add(r);profileActivity=Date.now()}});for(const kind of ['requestfinished','requestfailed'])debugPage.on(kind,r=>{if(isProfile(r)){pendingProfiles.delete(r);profileActivity=Date.now()}});debugPage.on('pageerror',e=>(row.pageErrorStacks??=[]).push(e.stack));debugPage.on('requestfailed',r=>(row.requestFailures??=[]).push({path:new URL(r.url()).pathname,error:r.failure()}));debugPage.on('response',r=>{if(r.status()>=400)(row.httpFailures??=[]).push({path:new URL(r.url()).pathname,status:r.status()})});return ctx.addInitScript(()=>{globalThis.__defaultViolations=[];globalThis.__defaultStyleInserts=[];new MutationObserver(rs=>{for(const r of rs)for(const n of r.addedNodes)if(n.nodeName==='STYLE'){globalThis.__defaultStyleInserts.push(n.textContent);globalThis.__defaultCaptureStyle?.(n.textContent)}}).observe(document,{childList:true,subtree:true});document.addEventListener('securitypolicyviolation',e=>globalThis.__defaultViolations.push({directive:e.effectiveDirective,blocked:e.blockedURI,source:e.sourceFile,line:e.lineNumber,column:e.columnNumber,sample:e.sample,target:e.target?.outerHTML?.slice(0,500)}))})};
   const guestSetup=()=>{if(!asGuest)return;fx.fm.initializeWebSessions();fx.fm.fleetConfig.web.guests={enabled:true};fx.fm.guestScope=()=>new Set([name]);fx.fm.confirmGuestPublicWebLogin=async()=>{};const issue=fx.fm.webLoginCodes.issue.bind(fx.fm.webLoginCodes);fx.fm.webLoginCodes.issue=input=>issue({...input,tier:'guest',owner:undefined,recipient:input.recipient??{adapterId:input.owner.adapterId,userId:input.owner.userId}});row.syntheticGuestScope=[name]};
   const c={device:width<900?'phone':'desk',theme,lang:'en'};let fresh;
   if(origin==='public'){link=await openPublicLink(view);guestSetup();fresh=await link.publicPage(c,{reducedMotion:reduced,beforeNavigate})}else {guestSetup();fresh=await freshPage(view,c,{origin,reducedMotion:reduced,beforeNavigate});}
@@ -74,28 +76,33 @@ debugPage.on('console',m=>{if(m.type()==='warning'&&m.text().startsWith('[AgEnD 
 
   if(trialNoPaint)await page.route('**/ui/effect-trials/*/resource?*',async route=>{const response=await route.fetch();assert.equal(response.status(),200);const data=await response.json();data.code='agend.ready();';await route.fulfill({response,json:data});row.trialOnlyNoDraw=true});
   capture=async options=>{
-   const count=async()=>new Map(await Promise.all(page.frames().map(async f=>[f,await f.evaluate(()=>globalThis.__defaultStyleInserts?.filter(s=>s==='body {}').length||0).catch(()=>0)])));
-   const prior=await count(),start=fresh.errors.length,buffer=await page.screenshot({caret:"initial",...options});await page.waitForTimeout(0);
-   const after=await count(),injected=[...after].reduce((n,[f,v])=>n+Math.max(0,v-(prior.get(f)||0)),0);
-   const indices=fresh.errors.map((e,i)=>i>=start&&/^Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy\. @ https?:\/\//.test(e)?i:null).filter(i=>i!==null);
-   // Playwright/WebKit screenshot synchronization inserts exactly `body {}` into each frame.
-   // Its no-op inline stylesheet is correctly refused by the product CSP. Match each observed
-   // DOM insertion to one capture-local diagnostic; unrelated/outside-capture violations stay errors.
-   if(engine==='webkit'&&indices.length&&indices.length===injected){(row.captureCompatibility??=[]).push({injectedBodyRules:injected,diagnostics:indices.map(i=>fresh.errors[i])});for(const i of indices)(row.captureErrorIndices??=[]).push(i)}
-   return buffer;
+   capturing=true;captureSerial++;
+   try{return await page.screenshot({caret:"initial",...options})}
+   finally{await page.waitForTimeout(0);capturing=false}
   };
   row.browserErrors=fresh.errors;if(origin==='loopback')assert.ok(page.url().startsWith('http://localhost:19280/'),'exercise literal localhost');
   // A locator uses the driver's visibility polling; the shared helper's string eval trips
   // Firefox's strict CSP on an insecure LAN origin. No page CSP bypass is used here.
   await page.locator('#app .sidebar a,#app .tabs a,#app .tabs button,#app button[aria-controls=sidebar]').filter({visible:true}).first().waitFor({state:'visible',timeout:30000});row.version=browser.version();row.signInErrors=fresh.expected;
+  if(process.env.PROBE_MUTATION==='unexpected-csp')await page.evaluate(()=>{const style=document.createElement('style');style.textContent='body { background: red }';document.head.append(style)});
   const requests=[];page.on('response',r=>{if(/\/effect-bootstrap|\/ui\/effects\//.test(r.url()))requests.push({url:new URL(r.url()).pathname,status:r.status()})});
   const a=page.locator(`.sidebar a[href="/ui/chat/${encodeURIComponent(name)}"]`);await a.waitFor({state:"attached"});if(width>=900)await a.waitFor({state:"visible"});else if(!await a.isVisible())await page.locator('button[aria-controls="sidebar"][aria-expanded]').filter({visible:true}).click();
   await a.click();await page.waitForSelector('.p-chat .chat-main');
   if(historyMax){
-   // 65 initial messages + offer + 434 real SSE messages reach the browser's actual 500-row cap.
-   for(let i=65;i<499;i++)fx.fm.emitSseEvent('message',{instance:name,sender:name,role:'agent',text:'Conversation '+i+' [reference](https://example.test/)\n\n```js\nconst value = 1;\n```',ts:new Date(Date.now()+i).toISOString()});
-   await waitObservation(page,async()=>{const p=await import('/ui/js/panel-chat.js');return Object.values(p.store.state.msgs).some(xs=>xs.length===500)&&document.querySelectorAll('.thread > .msg').length===500},30000);
-   row.historyCap=await page.evaluate(()=>{const roots=[...document.querySelectorAll('[data-trust]')],bars=[...document.querySelectorAll('.thread .msg-tools,.thread .codeblock > .cb-head')];return{rendered:document.querySelectorAll('.thread > .msg').length,markers:roots.length,naivePaintNodes:roots.reduce((n,r)=>n+1+r.querySelectorAll('*').length,0),contained:bars.filter(e=>getComputedStyle(e).contain==='paint'&&getComputedStyle(e).overflowClipMargin==='0px').length}});
+   // Await the actual initial history before live SSE, then feed bounded chunks, like an
+   // active conversation. A single 434-message burst starved WebKit's 40-row rAF growth
+   // under the private CPU limit; record the cost without confusing setup with playback.
+   await waitObservation(page,async()=>{const p=await import('/ui/js/panel-chat.js');return Object.values(p.store.state.msgs).some(xs=>xs.length===66)&&document.querySelectorAll('.thread > .msg').length===66},30000);
+   const historyStarted=Date.now();row.historyBatches=[];
+   for(let first=65;first<499;first+=40){
+    const end=Math.min(499,first+40),started=Date.now();
+    for(let i=first;i<end;i++)fx.fm.emitSseEvent('message',{instance:name,sender:name,role:'agent',text:'Conversation '+i+' [reference](https://example.test/)\n\n```js\nconst value = 1;\n```',ts:new Date(Date.now()+i).toISOString()});
+    const expected=end+1;
+    await waitObservation(page,async expected=>{const p=await import('/ui/js/panel-chat.js');return Object.values(p.store.state.msgs).some(xs=>xs.length===expected)&&document.querySelectorAll('.thread > .msg').length===expected},30000,expected);
+    row.historyBatches.push({count:expected,ms:Date.now()-started});
+   }
+   row.historyLoadMs=Date.now()-historyStarted;
+   row.historyCap=await page.evaluate(()=>{const roots=[...document.querySelectorAll('[data-trust]')],bars=[...document.querySelectorAll('.thread .msg-tools,.thread .codeblock > .cb-head')];return{rendered:document.querySelectorAll('.thread > .msg').length,markers:roots.length,naivePaintNodes:roots.reduce((n,r)=>n+1+r.querySelectorAll('*').length,0),contained:bars.filter(e=>{const s=getComputedStyle(e),m=s.overflowClipMargin??s.getPropertyValue('overflow-clip-margin');return s.contain==='paint'&&(m==='0px'||(m===undefined||m==='')&&CSS.supports('overflow-clip-margin','1px')===false)}).length}});
    assert.equal(row.historyCap.rendered,500);assert.ok(row.historyCap.naivePaintNodes>4096);if(process.env.PROBE_MUTATION==='no-containment'){const refusal=await page.evaluate(async()=>{const t=await import('/assets/effect-stock-trust.js');return t.stockEffectTrust(window,{frameRoot:document.querySelector('.agend-effect-layer'),ownerCss:'off'}).reason});row.capDenial=refusal;assert.equal(refusal,'stock_paint_limit');assert.fail('native reversal: removing physical containment restores the 500-message paint refusal');}assert.equal(row.historyCap.contained,998);
    row.fixedDescendant=await page.evaluate(()=>{const root=document.querySelector('.thread .msg-tools'),r=root.getBoundingClientRect(),child=document.createElement('button');child.className='fixed-containment-witness';child.textContent='test';Object.assign(child.style,{position:'fixed',left:'0px',top:'0px',width:'40px',height:'40px',backgroundColor:'#00ffff',border:'0',color:'transparent'});root.append(child);const c=child.getBoundingClientRect();return{root:{x:r.x,y:r.y,width:r.width,height:r.height},child:{x:c.x,y:c.y,width:c.width,height:c.height},contain:getComputedStyle(root).contain}});
    assert.equal(row.fixedDescendant.contain,'paint');assert.ok(row.fixedDescendant.root.y<0&&row.fixedDescendant.child.y<0,'fixed child is relative to its off-screen contained box, not the viewport');
@@ -185,6 +192,7 @@ if(asGuest){await waitObservation(page,async()=>{const m=await import('/ui/js/ap
       assert.equal(await page.locator('.effect-trial-panel').count(),0);await capture({path:join(out,key+'-named-denial.png')});
       assert.ok(row.localWarnings.some(x=>x.includes('stock_trust_unknown')));row.trial={namedDenial:true,code:'stock_trust_unknown',noPanel:true};
     }else{
+    if(trialNoPaint){await page.evaluate(()=>{const reference=document.createElement('span');reference.className='trial-paint-reference';reference.setAttribute('aria-hidden','true');Object.assign(reference.style,{display:'block',width:'40px',height:'32px',flex:'none',backgroundColor:'#ed174c',pointerEvents:'none'});document.querySelector('.p-chat > .panel-head').append(reference)});row.trialPaintReference='host-owned pointerless header swatch; deliberately outside the stage, not an effect measurement';}
     await page.waitForFunction(()=>document.querySelector('.effect-trial-start')?.textContent==='Try');await page.locator('.effect-trial-start').click();
     await waitObservation(page,async()=>{const m=await import('/assets/effect-trial-shadow.js');const p=document.querySelector('.effect-trial-panel'),s=p&&m.effectTrialShadow(window,p);const f=s?.stage.querySelector('iframe');return f&&getComputedStyle(f).visibility==='visible'},15000);
     const shell=await page.evaluate(async()=>{const m=await import('/assets/effect-trial-shadow.js'),s=m.effectTrialShadow(window,document.querySelector('.effect-trial-panel'));const r=s.stage.getBoundingClientRect(),c=getComputedStyle(s.stage),b=s.root.querySelector('.effect-trial-stop').getBoundingClientRect();return{contain:c.contain,overflow:c.overflow,stage:{x:r.x,y:r.y,width:r.width,height:r.height},stop:{x:b.x+b.width/2,y:b.y+b.height/2}}});
@@ -192,7 +200,7 @@ if(asGuest){await waitObservation(page,async()=>{const m=await import('/ui/js/ap
     const trialFrame=await page.evaluateHandle(async()=>{const m=await import('/assets/effect-trial-shadow.js'),s=m.effectTrialShadow(window,document.querySelector('.effect-trial-panel'));return s.stage.querySelector('iframe')});assert.equal(await trialFrame.evaluate(f=>f.isConnected),true);
     let trialPaint,stageRed=0;const until=Date.now()+8000;do{trialPaint=pixels(await capture({path:join(out,key+'-try.png')}));assert.equal(trialPaint.width,width);stageRed=trialPaint.redIn(shell.stage);if(stageRed>500)break;await page.waitForTimeout(500)}while(Date.now()<until);
     row.trialPixels={stageRed,wholeScreenRed:trialPaint.red,ordinaryOutsideStageRed:trialPaint.red-stageRed};
-    if(trialNoPaint){assert.equal(row.trialOnlyNoDraw,true,'Trial resource alone must be the no-draw control');assert.ok(row.trialPixels.ordinaryOutsideStageRed>500,'the ordinary effect still paints outside the stage');}
+    if(trialNoPaint){assert.equal(row.trialOnlyNoDraw,true,'Trial resource alone must be the no-draw control');assert.ok(row.trialPixels.ordinaryOutsideStageRed>500,'the independent host reference still paints outside the stage');}
     assert.ok(stageRed>500,'independent stage-only Trial pixels');
     const stopRgb=trialPaint.pixel(shell.stop.x,shell.stop.y);assert.ok(!(stopRgb[0]>200&&stopRgb[1]<60&&stopRgb[2]>40&&stopRgb[2]<110),'host Stop pixels are not effect paint');await page.mouse.click(shell.stop.x,shell.stop.y);
     await waitObservation(page,async()=>{const m=await import('/assets/effect-trial-shadow.js'),p=document.querySelector('.effect-trial-panel');return !p||!m.effectTrialShadow(window,p)?.stage.querySelector('iframe')});
@@ -207,7 +215,16 @@ if(asGuest){await waitObservation(page,async()=>{const m=await import('/ui/js/ap
   // compatibility diagnostic, without ignoring runtime/CSP violations. The Worker shim
   // and tested network traps do not rely on support for the extra WebRTC directive.
   row.bootstrapCompatibility=fresh.errors.filter(e=>/^Unrecognized Content-Security-Policy directive 'webrtc'\.\s+@ (?:https?:\/\/[^/]+\/effect-bootstrap|\?)$/.test(e)||/^Viewport argument key "interactive-widget" not recognized and ignored\. @ https?:\/\/[^/]+\/ui(?:\/chat\/[^?]+)?(?:\?safe=1)?$/.test(e));
-  assert.deepEqual(fresh.errors.filter((e,i)=>!row.bootstrapCompatibility.includes(e)&&!row.captureErrorIndices?.includes(i)),[]);row.status='pass';
+  // WebKit's screenshot driver injects exactly `body {}` in each frame, which CSP
+  // correctly refuses. Match independent DOM insertion witnesses to exact console
+  // diagnostics per URL, across frame retirement and delayed console delivery. Any
+  // extra/missing diagnostic leaves the whole URL's group unignored.
+  row.captureCompatibility=[];row.captureErrorIndices=[];
+  if(engine==='webkit')for(const url of new Set(row.captureStyleWitnesses.map(w=>w.url))){
+   const witnesses=row.captureStyleWitnesses.filter(w=>w.url===url),indices=fresh.errors.map((e,i)=>e==="Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy. @ "+url?i:null).filter(i=>i!==null);
+   if(indices.length===witnesses.length){row.captureCompatibility.push({url,witnesses,diagnostics:indices.map(i=>fresh.errors[i])});row.captureErrorIndices.push(...indices)}
+  }
+  assert.deepEqual(fresh.errors.filter((e,i)=>!row.bootstrapCompatibility.includes(e)&&!row.captureErrorIndices.includes(i)),[]);row.status='pass';
  }catch(error){row.error=String(error);row.errorStack=error?.stack;if(page){row.url=page.url();row.pageText=await page.locator('body').innerText().catch(()=>null);row.notice=await page.locator('.chat-fx-notice').allTextContents().catch(()=>[]);row.violations=await Promise.all(page.frames().map(f=>f.evaluate(()=>({url:location.href,violations:globalThis.__defaultViolations,styles:globalThis.__defaultStyleInserts})).catch(()=>null)));row.diagnostic=await page.evaluate(async()=>{const m=await import('/ui/js/app-effects.js');const trust=await import('/assets/effect-stock-trust.js');return{body:document.body.dataset,gates:m.getAppEffects()?.gates(),stock:trust.stockEffectTrust(window,{frameRoot:document.querySelector('.agend-effect-layer'),ownerCss:'off'}),paints:[...document.querySelectorAll('.panel-head *')].map(e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return{tag:e.tagName,text:e.textContent?.slice(0,30),filter:s.filter,backdrop:s.backdropFilter,textShadow:s.textShadow,boxShadow:s.boxShadow,outline:[s.outlineStyle,s.outlineWidth,s.outlineOffset],rect:{x:r.x,y:r.y,width:r.width,height:r.height}}}),rows:m.getAppEffects()?.api.snapshot()}}).catch(()=>null);await page.screenshot({caret:'initial',path:join(out,key+'-failed.png')}).catch(()=>{});}}
  finally{for(const fn of [()=>ctx?.close(),()=>link?.close(),()=>browser&&browser!==fx?.browser?browser.close():null,()=>lanProxy?new Promise(r=>{lanProxy.closeAllConnections();lanProxy.close(r)}):null,()=>fx?.close()])try{await fn()}catch(e){row.cleanupError=String(e);row.status='failed'}rows.push(row);writeFileSync(join(out,'receipt.json'),JSON.stringify({phase:'2147 persona + ambient + long chat + ordinary CW + visible Try',publicTransport:'real PublicWebLink/gateway; provider/tunnel/HTTPS transport stubbed by shared fixture',rows},null,2)+'\n');console.log(key,row.status,row.error||'');}
 }
