@@ -3,32 +3,84 @@
  * with NOTHING seeded (no localStorage, no prefs, no consents, no overlay skips), driven only through visible UI, under
  * real conditions: prefers-reduced-motion, a phone viewport, a non-localhost origin, and the temporary public link.
  *
- * - freshPage(): a new context, nothing seeded, signed in through the visible /signin page with a one-time code (the
- *   code itself is what a person receives in Discord or Telegram; issuing it is the only step taken outside the page).
- *   `origin: "lan"` reaches the dashboard through a small reverse proxy that presents it as dashboard.lan.example — a
- *   Host (and Origin) that is not a loopback name, admitted by web.allowed_hosts, what a LAN or tailnet browser or a
- *   reverse proxy sends. The proxy streams (the live event stream works) and adds no forwarding header.
+ * - freshPage(): a new context, nothing seeded, signed in through the visible /signin page as a synthetic Discord account
+ *   of its own — the code is issued to that account as its DM would carry it (the only step outside the page), so the
+ *   session is bound to the account, and its person prefs start empty (checked, never written: a polluted bucket refuses).
+ *   `origin: "lan"` puts the page on http://dashboard.lan.example:<port> — a real non-loopback origin in the browser
+ *   (location, secure context, storage), resolved to the fixture by the browser's host-resolver rule, and admitted by
+ *   web.allowed_hosts like a LAN or tailnet name. Page errors are collected from before the first navigation.
  * - openPublicLink(): a REAL public link through FleetManager — the real PublicWebLink, the real gateway
- *   (createPublicWebGateway) and its real routes — with only the Cloudflare tunnel stubbed. publicPage() then opens
- *   https://<demo>.trycloudflare.com/signin in a fresh context whose requests to that host are carried to the gateway's
- *   local port with that Host (so the gateway's Host pin, the https origin check and the __Host- cookie all hold).
+ *   (createPublicWebGateway) and its routes. What is not real is listed in the README (the tunnel and its install, the
+ *   owner check, the General notice, and the transport: Playwright carries https://<demo>.trycloudflare.com to the
+ *   gateway's local port with that Host, instead of Cloudflare).
+ * - mounted(): the app actually mounted — a visible navigation (the sidebar, or the phone's tab bar) with a control in it,
+ *   not just the empty #app the page ships with.
  */
-import { createServer, request as httpRequest } from "node:http";
 import type { MatrixCase } from "./index.mts";
 
+/** The non-loopback name a LAN browser uses; the fixture's browser resolves it to 127.0.0.1. */
+export const LAN_HOST = "dashboard.lan.example";
 const VIEWPORTS = { desk: { width: 1366, height: 900 }, phone: { width: 390, height: 844 } } as const;
 
+/** A synthetic Discord account of its own for each fresh case (demo ids, never a real one). */
+export interface DemoAccount { adapterId: string; userId: string; username: string }
+let nextAccount = 0;
+export function demoAccount(): DemoAccount {
+  nextAccount++;
+  return { adapterId: "demo", userId: String(900000000000000000n + BigInt(nextAccount)), username: `Demo Person ${nextAccount}` };
+}
+
 export interface FreshOptions {
-  /** "loopback" (default): http://127.0.0.1:<port>. "lan": through a proxy that presents a non-loopback Host. */
+  /** "loopback" (default): http://127.0.0.1:<port>. "lan": http://dashboard.lan.example:<port>. */
   origin?: "loopback" | "lan";
   reducedMotion?: boolean;
   /** Where to land after signing in (visible navigation is the smoke's own business). Default: /ui. */
   path?: string;
+  /** Default: a new synthetic account. "operator": an owner-less code, as `agend web` gives (a separate case). */
+  account?: DemoAccount | "operator";
+  /** Before the first navigation, e.g. to inject a fault (a negative control). */
+  beforeNavigate?(ctx: any, page: any): Promise<void> | void;
+}
+
+export interface FreshPage {
+  ctx: any;
+  page: any;
+  base: string;
+  /** pageerror and console errors, from before the first navigation. */
+  errors: string[];
+  /** The sign-in page's own /auth/session 401 before signing in (see collectErrors), kept for the record. */
+  expected: string[];
+  /** The account signed in as (null: the operator), and its person-prefs key. */
+  account: DemoAccount | null;
+  personKey: string;
 }
 
 async function freshContext(browser: any, c: MatrixCase, reducedMotion: boolean) {
   return browser.newContext({ viewport: VIEWPORTS[c.device], deviceScaleFactor: 1, colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US",
     isMobile: c.device === "phone", hasTouch: c.device === "phone", reducedMotion: reducedMotion ? "reduce" : "no-preference" });
+}
+
+/**
+ * Page errors from before the first navigation. One is expected and kept apart, never dropped: the sign-in page asks
+ * /auth/session whether it is already signed in, and before signing in the answer is 401 — the browser logs that as a
+ * failed resource. Only that request, only before the sign-in completes; everything else is an error.
+ */
+function collectErrors(page: any): { errors: string[]; expected: string[]; signedIn(): void } {
+  const errors: string[] = [], expected: string[] = [];
+  let before = true;
+  page.on("pageerror", (e: any) => errors.push(String(e).slice(0, 200)));
+  page.on("console", (m: any) => {
+    if (m.type() !== "error") return;
+    const url = m.location?.()?.url ?? "", line = `${m.text().slice(0, 200)} @ ${url || "?"}`;
+    if (before && /status of 401/.test(m.text()) && /\/auth\/session$/.test(url)) expected.push(line); else errors.push(line);
+  });
+  return { errors, expected, signedIn: () => { before = false; } };
+}
+
+/** A person's prefs bucket must be untouched before a defaults case — never cleaned or written here: refuse instead. */
+function untouched(fm: any, personKey: string): void {
+  const values = fm.webPrefs?.read(personKey)?.values ?? {};
+  if (Object.keys(values).length) throw new Error(`from-defaults: ${personKey} already has prefs (${Object.keys(values).join(", ")}): not a default state`);
 }
 
 /** Sign in on the page that is open at /signin with `code`, as a person would: type it, press the button. */
@@ -39,61 +91,58 @@ async function signIn(page: any, code: string, home: string) {
   await page.waitForURL(home, { timeout: 15000 });
 }
 
-/** A streaming reverse proxy on 127.0.0.1:<random> to the dashboard, presenting `host` as Host and Origin. */
-function lanProxy(target: number, host: string): Promise<{ port: number; close(): void }> {
-  return new Promise((resolve) => {
-    const server = createServer((req, res) => {
-      const headers = { ...req.headers, host, ...(req.headers.origin ? { origin: `http://${host}` } : {}) };
-      const up = httpRequest({ host: "127.0.0.1", port: target, method: req.method, path: req.url, headers }, (r) => {
-        res.writeHead(r.statusCode ?? 502, r.headers); r.pipe(res);
-      });
-      up.on("error", () => { if (!res.headersSent) res.writeHead(502); res.end(); });
-      req.pipe(up);
-    });
-    server.listen(0, "127.0.0.1", () => {
-      const a = server.address() as { port: number };
-      resolve({ port: a.port, close: () => { server.closeAllConnections?.(); server.close(); } });
-    });
-  });
+/** The app mounted: a visible navigation (sidebar or phone tab bar) holding at least one control. */
+export async function mounted(page: any, timeoutMs = 10000): Promise<boolean> {
+  try {
+    await page.waitForFunction(`(() => [...document.querySelectorAll("#app .sidebar, #app .tabs")].some((n) => {
+      const r = n.getBoundingClientRect(), cs = getComputedStyle(n);
+      return r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && cs.display !== "none" && !!n.querySelector("a, button");
+    }))()`, null, { timeout: timeoutMs });
+    return true;
+  } catch { return false; }
 }
 
-export async function freshPage(fx: { fm: any; browser: any; base: string }, c: MatrixCase, opts: FreshOptions = {}) {
+export async function freshPage(fx: { fm: any; browser: any; base: string }, c: MatrixCase, opts: FreshOptions = {}): Promise<FreshPage> {
   const REPO = process.env.REPO!;
   const { tokenEpoch } = await import(REPO + "/src/web-session.ts");
   const fm = fx.fm;
   const port = new URL(fx.base).port;
-  const LAN = "dashboard.lan.example";
-  let base = `http://127.0.0.1:${port}`, proxy: { close(): void } | null = null;
   if (opts.origin === "lan") {
     // A name the dashboard answers to, as an operator adds one to web.allowed_hosts for a LAN or tailnet browser.
     const hosts: string[] = fm.fleetConfig.web.allowed_hosts ?? [];
-    if (!hosts.includes(LAN)) fm.fleetConfig.web.allowed_hosts = [...hosts, LAN];
-    const p = await lanProxy(Number(port), `${LAN}:${port}`);
-    base = `http://127.0.0.1:${p.port}`; proxy = p;
+    if (!hosts.includes(LAN_HOST)) fm.fleetConfig.web.allowed_hosts = [...hosts, LAN_HOST];
   }
-  const ctx = await freshContext(fx.browser, c, opts.reducedMotion === true);
-  if (proxy) ctx.on("close", () => proxy!.close());
-  const page = await ctx.newPage();
+  const base = opts.origin === "lan" ? `http://${LAN_HOST}:${port}` : `http://127.0.0.1:${port}`;
+  const account = opts.account === "operator" ? null : opts.account ?? demoAccount();
+  const personKey = account ? `person:${account.adapterId}:${account.userId}` : "operator";
+  if (account) untouched(fm, personKey);
   fm.initializeWebSessions();
-  const code = fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken) }).display;
+  const code = fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken), ...(account ? { recipient: account } : {}) }).display;
+  const ctx = await freshContext(fx.browser, c, opts.reducedMotion === true);
+  const page = await ctx.newPage();
+  const seen = collectErrors(page);
+  await opts.beforeNavigate?.(ctx, page);
   await page.goto(`${base}/signin`);
   await signIn(page, code, `${base}/ui`);
+  seen.signedIn();
   if (opts.path) await page.goto(base + opts.path);
-  return { ctx, page, base };
+  return { ctx, page, base, errors: seen.errors, expected: seen.expected, account, personKey };
 }
 
 export interface PublicLink {
   host: string;
   url: string;
   exposureId: string;
+  /** The account the link was opened by (and its codes go to). */
+  owner: DemoAccount;
   /** The sign-in notices that would have been posted in the owner's General (the Discord side, stubbed). */
   notices: Array<{ label: string; handle: string }>;
-  /** A fresh context on the public link, nothing seeded, signed in through its own /signin. */
-  publicPage(c: MatrixCase, opts?: { reducedMotion?: boolean; path?: string }): Promise<{ ctx: any; page: any; base: string }>;
+  /** A fresh context on the public link, nothing seeded, signed in through its own /signin as the link's owner. */
+  publicPage(c: MatrixCase, opts?: { reducedMotion?: boolean; path?: string; beforeNavigate?(ctx: any, page: any): Promise<void> | void }): Promise<FreshPage>;
   close(): Promise<void>;
 }
 
-/** A real public link (FleetManager, PublicWebLink, gateway), only the tunnel stubbed; the owner is a demo account. */
+/** A real public link (FleetManager, PublicWebLink, gateway and routes); only what is outside the product is stubbed. */
 export async function openPublicLink(fx: { fm: any; browser: any }, opts: { host?: string } = {}): Promise<PublicLink> {
   const REPO = process.env.REPO!;
   const { PublicWebLink } = await import(REPO + "/src/public-web-link.ts");
@@ -103,7 +152,7 @@ export async function openPublicLink(fx: { fm: any; browser: any }, opts: { host
   const fm = fx.fm;
   const HOST = opts.host ?? "demo-smoke-link.trycloudflare.com";
   let gatewayPort = 0;
-  // The tunnel, stubbed: it "publishes" the gateway at https://HOST. Everything else is the product's.
+  // The tunnel, stubbed: it "publishes" the gateway at https://HOST.
   const manager = {
     start: async (_provider: unknown, ctx: any) => {
       gatewayPort = Number(new URL(ctx.origin).port);
@@ -115,40 +164,50 @@ export async function openPublicLink(fx: { fm: any; browser: any }, opts: { host
   const lane = new TunnelPurposeLane(manager as never);
   fm.initializeWebSessions();
   fm.publicWebLink = new PublicWebLink({
-    dataDir: fm.dataDir, web: () => fm.fleetConfig?.web, permitted: () => true, reserve: (id: string) => lane.reserve("dashboard", id),
+    dataDir: fm.dataDir, web: () => fm.fleetConfig?.web,
+    permitted: () => true,                                                               // stubbed: the Discord-side owner check
+    reserve: (id: string) => lane.reserve("dashboard", id),
     createGateway: (exposureId: string, current: () => boolean, open: () => boolean, failed: () => void) => createPublicWebGateway({
       exposureId, isCurrent: current, isOpen: open, onError: failed, dispatch: (req: any, res: any) => fm.dispatchWebHttp(req, res, fm.fleetConfig?.health_port ?? 19280) }),
-    ensure: async () => ({ path: "/stub/cloudflared", source: "agend" }), provider: () => ({}) as never,
+    ensure: async () => ({ path: "/stub/cloudflared", source: "agend" }),               // stubbed: no cloudflared install
+    provider: () => ({}) as never,                                                       // stubbed: no cloudflared process
     revoke: (id: string) => { fm.webLoginCodes?.revokeAudience(id); fm.webSessions?.revokeExposure(id); },
     log: () => {},
   });
-  // A demo owner: the account the link and its code would be DMed to.
-  const owner = { adapterId: "demo", chatId: "demo-chat", threadId: undefined, userId: "101101101101101101", binding: {} };
+  const owner = demoAccount();
+  const ownerRef = { adapterId: owner.adapterId, chatId: `dm-${owner.userId}`, threadId: undefined, userId: owner.userId, username: owner.username, binding: {} };
   let link: { url: string; exposureId: string } | null = null;
-  const ok = await fm.publicWebLink.deliver(owner, async (l: any) => { link = { url: l.url, exposureId: l.exposureId }; return true; });
+  const ok = await fm.publicWebLink.deliver(ownerRef, async (l: any) => { link = { url: l.url, exposureId: l.exposureId }; return true; });
   if (!ok || !link) throw new Error("public link did not open");
   const { url, exposureId } = link as { url: string; exposureId: string };
-  // A public sign-in is confirmed by a notice in the opener's General (the Discord side): recorded here, not posted.
+  // Stubbed, the whole method: a public sign-in's notice in the opener's General is recorded here, not posted.
   const notices: Array<{ label: string; handle: string }> = [];
   fm.confirmPublicWebLogin = async (info: { label: string; handle: string }) => { notices.push({ label: info.label, handle: info.handle }); };
+  const personKey = `person:${owner.adapterId}:${owner.userId}`;
   return {
-    host: HOST, url, exposureId, notices,
+    host: HOST, url, exposureId, owner, notices,
     async publicPage(c, popts = {}) {
+      untouched(fm, personKey);
       const ctx = await freshContext(fx.browser, c, popts.reducedMotion === true);
-      // https://HOST/* → the gateway's local port, with that Host (the gateway pins it), as the tunnel would carry it.
+      // Stubbed transport: https://HOST/* → the gateway's local port, with that Host (the gateway pins it), as the tunnel
+      // would carry it. The public link has no live stream (the page polls); one asked for anyway is refused.
       await ctx.route(`https://${HOST}/**`, async (route: any) => {
         const req = route.request(), u = new URL(req.url());
-        // The public link has no live stream (the page polls); a stream asked for anyway is refused, never left hanging.
-        if (/text\/event-stream/.test(req.headers().accept ?? "")) { await route.abort(); return; }
-        const response = await route.fetch({ url: `http://127.0.0.1:${gatewayPort}${u.pathname}${u.search}`, headers: { ...req.headers(), host: HOST } });
-        await route.fulfill({ response });
+        try {
+          if (/text\/event-stream/.test(req.headers().accept ?? "")) { await route.abort(); return; }
+          const response = await route.fetch({ url: `http://127.0.0.1:${gatewayPort}${u.pathname}${u.search}`, headers: { ...req.headers(), host: HOST } });
+          await route.fulfill({ response });
+        } catch { /* the page or its context closed while a poll was in flight: nothing is waiting for it */ }
       });
       const page = await ctx.newPage();
-      const code = fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken), audience: exposureId, owner }).display;
+      const seen = collectErrors(page);
+      await popts.beforeNavigate?.(ctx, page);
+      const code = fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken), audience: exposureId, owner: ownerRef }).display;
       await page.goto(`https://${HOST}/signin`);
       await signIn(page, code, `https://${HOST}/ui`);
+      seen.signedIn();
       if (popts.path) await page.goto(`https://${HOST}${popts.path}`);
-      return { ctx, page, base: `https://${HOST}` };
+      return { ctx, page, base: `https://${HOST}`, errors: seen.errors, expected: seen.expected, account: owner, personKey };
     },
     close: async () => { await fm.publicWebLink.close("smoke done"); },
   };

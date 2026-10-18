@@ -89,34 +89,56 @@ await fx.close(); process.exit(0);
 
 ## From defaults (fleet decision a78ebdc5)
 
-`fx.page()` seeds things a new person never has: it skips the tour and first-run, sets prefs, and signs in with an
-owner-less code. Every user-visible feature also needs a **from-defaults** smoke. That means a fresh profile with nothing
-seeded, driven only through visible UI. It passes only if the user sees the feature, or the UI names the blocking reason
-with a link that fixes it. The blocked state is a tested state: screenshot it and assert its message.
+`fx.page()` seeds what a new person never has: it skips the tour and first-run, sets prefs, and signs in with an
+owner-less code. Every user-visible feature also needs a **from-defaults** smoke:
+- a fresh profile with nothing seeded, driven only through visible UI;
+- it passes only if the user sees the feature, or the UI names the blocking reason with a link that fixes it;
+- the blocked state is a tested state: screenshot it and assert its message.
 
 ```ts
-import { bootFixture, freshPage, openPublicLink, shotPath } from "../smoke-fixture/index.mts";
+import { bootFixture, freshPage, mounted, openPublicLink, shotPath } from "../smoke-fixture/index.mts";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48700) });
-// Loopback, nothing seeded; prefers-reduced-motion on; a phone viewport.
+// Loopback, nothing seeded, signed in as a synthetic account of its own; reduced motion; a phone.
 const a = await freshPage(fx, { device: "phone", theme: "dark", lang: "en" }, { reducedMotion: true });
-// A non-localhost origin: a streaming reverse proxy presents the dashboard as dashboard.lan.example (added to
-// web.allowed_hosts), with no forwarding header, the way a LAN or tailnet browser or a proxy reaches it.
+if (!(await mounted(a.page)) || a.errors.length) throw new Error("did not mount");   // a.errors: from before the first navigation
+// A real non-localhost origin: the page is on http://dashboard.lan.example:<port> (location, secure context, storage).
 const b = await freshPage(fx, { device: "desk", theme: "light", lang: "en" }, { origin: "lan" });
-// The temporary public link: a real one (FleetManager's PublicWebLink, the real gateway and its routes), with only
-// the Cloudflare tunnel stubbed. A fresh context reaches https://demo-smoke-link.trycloudflare.com through it.
+// The temporary public link, real end to end inside the product.
 const link = await openPublicLink(fx);
 const c = await link.publicPage({ device: "phone", theme: "light", lang: "en" });
-// link.notices: the sign-in notices that would have been posted in the owner's General.
 await link.close();
 ```
 
-What is not real:
-- **The code.** It is issued directly, as the Discord or Telegram DM would carry it.
-- **The tunnel.** It is stubbed.
-- **The General notice for a public sign-in.** It is recorded instead of posted.
+- **Accounts.** Each `freshPage` signs in as a new synthetic Discord account (`demoAccount()`), so its session is bound
+  to that account like a real DM code, and it starts from that person's empty prefs. A bucket that already has prefs is
+  refused, never cleaned. `{ account: "operator" }` is the owner-less `agend web` case, used only on purpose.
+- **Errors.** `errors` collects page errors and console errors from before the first navigation. The sign-in page's own
+  `/auth/session` 401 before signing in is kept apart in `expected`.
+- **Mounted.** `mounted(page)` waits for the app's visible navigation (the sidebar, or the phone's tab bar) with a
+  control in it. The empty `#app` the page ships with doesn't count.
+- **Fault injection.** `beforeNavigate(ctx, page)` runs before the first navigation, for negative controls.
 
-Everything the browser does goes through the product.
-`scripts/manual/smoke/smoke-from-defaults-probe.mts` checks the harness itself.
+**What is not real, exactly** — everything else the browser does goes through the product:
+- **the sign-in code's delivery:** it's issued directly to the synthetic account, as its DM would carry it;
+- **the name `dashboard.lan.example`:** the fixture's Chromium resolves it to 127.0.0.1 (`--host-resolver-rules`), and
+  the harness adds it to `web.allowed_hosts`;
+- **for the public link:**
+  - the Cloudflare tunnel (TunnelPurposeLane's manager);
+  - the cloudflared install (`ensure`) and process (`provider`);
+  - PublicWebLink's `permitted`, the Discord-side owner check;
+  - FleetManager's `confirmPublicWebLogin`, replaced whole: the General notice is recorded in `link.notices`, not posted;
+  - the transport: Playwright terminates `https://demo-smoke-link.trycloudflare.com` in the browser and carries each
+    request to the gateway's local port with that Host, instead of Cloudflare's edge, and refuses event streams (the
+    public link polls by design).
+
+  The PublicWebLink lifecycle, the gateway (`createPublicWebGateway`), its Host pin, its route list, the origin checks
+  and the `__Host-` cookie are the product's own.
+
+`scripts/manual/smoke/smoke-from-defaults-probe.mts` checks the harness itself:
+- the loopback, LAN, operator and public cases;
+- the location and secure context of each;
+- negative controls that must be caught: a boot that throws, a boot that never mounts, a person whose prefs were
+  already written, and the next case being its own person.
 
 ## Pitfalls (each one cost a run)
 
