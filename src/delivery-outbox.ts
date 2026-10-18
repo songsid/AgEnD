@@ -199,6 +199,8 @@ export interface DeliveryStatusItem {
   proof_kind?: HumanReceiptProof["tag"] | null;
   /** #1939: who authorized a human receipt — platform, web-session or none — written at admission (not delivery evidence). */
   authority?: import("./authority/web-authority.js").HumanAuthority;
+  /** #1939 §5: the enforced step-up list in force, with every human receipt delivery_status returns (not stored). */
+  step_up_policy?: import("./authority/step-up-policy.js").StepUpPolicy;
   /**
    * How the message was routed, in send_to_instance's own words: `steer` (into the live turn) or `idle_queue` (as the
    * next message). The fleet decided this at admission; it is the row's kind.

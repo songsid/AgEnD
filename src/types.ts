@@ -421,12 +421,23 @@ export interface WebConfig {
   verified_authority?: WebVerifiedAuthorityConfig;
 }
 
-/** #1939: fleet.yaml `web.verified_authority` (S1: the two §3 keys; the switch and the step-up list come in S2). */
+/** #1939: fleet.yaml `web.verified_authority` (docs/design/1939-verified-web-sessions.md §3, §5, §10). */
 export interface WebVerifiedAuthorityConfig {
+  /**
+   * The server switch (§10): web messages carry authority only while it is on (default false). Turning it off makes
+   * every web authority read as none at once; turning it back on never brings back authority given before.
+   */
+  enabled?: boolean;
   /** "Only this computer can authorize": only loopback requests qualify (default false: LAN and tailnet too). */
   loopback_only?: boolean;
   /** Ordinary authority lasts this many hours after sign-in, 1–48 (default 48). */
   max_session_hours?: number;
+  /** §5: the actions that always need a step-up, and the user's own actions (authority/step-up-policy.ts). */
+  step_up?: {
+    /** Catalog and custom ids (default release, force-push, delete-instance). */
+    enforce?: string[];
+    custom?: Array<{ id: string; label: string; label_zh?: string }>;
+  };
 }
 
 /** #1920: fleet.yaml `web.guests`. */

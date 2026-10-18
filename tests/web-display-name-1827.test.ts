@@ -289,6 +289,7 @@ describe("every web surface uses the person: the header, the echo, tasks, activi
     const got = inbox(h);
     const a = await signInAs(h, "admin");
     await web(h, "/ui/profile", "POST", a, { name: "Hanhan" });
+    (h.fm.fleetConfig as any).web = { verified_authority: { enabled: true } };          // #1939: the server switch
     expect((await web(h, "/ui/send", "POST", a, { instance: "general", message: "hello" })).status).toBe(200);
     const [{ payload, origin }] = got;
     expect(payload.meta).toMatchObject({ user: "Hanhan", user_id: "admin", source: "web" });

@@ -1,8 +1,8 @@
 /**
- * #1939 S1 (observe only): whether a web chat message, command or click carries `web-session` authority — the design's
- * §3 checks, made per request — and the `authority` a human receipt records (§4). Nothing tells an agent to accept it
- * yet: receipts record it and delivery_status returns it, and the instructions still say web grants nothing (S3 changes
- * that). docs/design/1939-verified-web-sessions.md.
+ * #1939: whether a web chat message, command or click carries `web-session` authority — the design's §3 checks, made
+ * per request — the `authority` a human receipt records (§4), and how delivery_status reads it now (§10: the switch, the
+ * revocation epoch, "Only this computer can authorize"). Nothing tells an agent to accept it yet: the instructions still
+ * say web grants nothing (S3 changes that). docs/design/1939-verified-web-sessions.md.
  */
 import type { SessionRecord } from "../web-session.js";
 import type { WebConfig } from "../types.js";
@@ -18,12 +18,18 @@ export interface HumanAuthority {
   actor: { adapter_id: string; user_id: string } | null;
   /** web-session only. `handle` is the opaque one the device list shows. */
   session?: { handle: string; peer: WebPeer; signed_in_at: string; age_s: number };
-  /** The revocation epoch it was granted under (§10). S1 has no revocation yet: always 0. */
+  /** The revocation epoch it was granted under (§10; authority-state.ts). */
   authority_epoch: number;
+  /** delivery_status only, never stored: why a web-session receipt reads as none now (§10). */
+  downgraded?: AuthorityDowngrade;
 }
+
+/** §10: what turned a web-session receipt into none after it was written. */
+export type AuthorityDowngrade = "disabled" | "revoked" | "loopback_only";
 
 /** Why a web request carries no authority — the first §3 check it failed. */
 export type WebAuthorityRefusal =
+  | "disabled"             // §10: the server switch (web.verified_authority.enabled) is off
   | "public_link"          // §3.5: a public-link request or session never qualifies
   | "not_session"          // §3.1: a header token, a CLI call, or no session
   | "not_admin_session"    // §3.1: a guest (or read) session
@@ -44,6 +50,8 @@ export interface WebAuthorityResult {
 export const VERIFIED_SESSION_HOURS = { min: 1, max: 48, default: 48 } as const;
 
 export interface WebAuthorityPolicy {
+  /** The server switch as in force (authority-state.ts: off while its state cannot be written). */
+  enabled: boolean;
   loopbackOnly: boolean;
   maxSessionMs: number;
 }
@@ -53,7 +61,7 @@ export function webAuthorityPolicy(web: WebConfig | undefined): WebAuthorityPoli
   const v = web?.verified_authority;
   const hours = typeof v?.max_session_hours === "number" && Number.isFinite(v.max_session_hours)
     ? Math.min(VERIFIED_SESSION_HOURS.max, Math.max(VERIFIED_SESSION_HOURS.min, v.max_session_hours)) : VERIFIED_SESSION_HOURS.default;
-  return { loopbackOnly: v?.loopback_only === true, maxSessionMs: hours * 3_600_000 };
+  return { enabled: v?.enabled === true, loopbackOnly: v?.loopback_only === true, maxSessionMs: hours * 3_600_000 };
 }
 
 /** Headers a proxy adds; any one of them makes a request `lan`, whatever its peer address (§3.4). */
@@ -101,6 +109,7 @@ export const noAuthority = (epoch: number): HumanAuthority => ({ kind: "none", a
 export function evaluateWebAuthority(i: WebAuthorityInput): WebAuthorityResult {
   const refuse = (refusal: WebAuthorityRefusal): WebAuthorityResult => ({ authority: noAuthority(i.epoch), refusal });
   const s = i.session;
+  if (!i.policy.enabled) return refuse("disabled");
   if (i.gateway) return refuse("public_link");
   if (!s) return refuse("not_session");
   if (s.tier !== "admin") return refuse("not_admin_session");
@@ -134,6 +143,20 @@ export function confirmAfterBody(arrival: WebAuthorityResult, now: WebAuthorityR
   return now;
 }
 
+/**
+ * §10: a receipt's authority as it reads NOW. A web-session one reads as none, saying why, while the switch is off, once
+ * the epoch has moved past the one it was granted under, or (lan only) while "Only this computer can authorize" is on.
+ * Platform and none are unchanged. The receiver applies the rule to this, never to the stored value.
+ */
+export function authorityNow(stored: HumanAuthority, state: { enabled: boolean; loopbackOnly: boolean; epoch: number }): HumanAuthority {
+  if (stored.kind !== "web-session") return stored;
+  const down = (downgraded: AuthorityDowngrade): HumanAuthority => ({ kind: "none", actor: null, authority_epoch: stored.authority_epoch, downgraded });
+  if (!state.enabled) return down("disabled");
+  if (stored.authority_epoch < state.epoch) return down("revoked");
+  if (state.loopbackOnly && stored.session?.peer !== "loopback") return down("loopback_only");
+  return stored;
+}
+
 /** A Discord or Telegram message or click: its sender, from the platform's own event. */
 export function platformAuthority(origin: { platform: string; adapter_id: string | null; user_id: string | null }, epoch: number): HumanAuthority {
   return origin.platform !== "web" && origin.adapter_id && origin.user_id
@@ -146,6 +169,7 @@ export function isHumanAuthority(v: unknown): v is HumanAuthority {
   if (!v || typeof v !== "object") return false;
   const a = v as Record<string, unknown>;
   if (!Number.isSafeInteger(a.authority_epoch) || (a.authority_epoch as number) < 0) return false;
+  if (a.downgraded !== undefined) return false;                  // a read-now view, never a stored value
   const actor = a.actor as Record<string, unknown> | null;
   const actorOk = actor !== null && typeof actor === "object" && typeof actor.adapter_id === "string" && !!actor.adapter_id
     && typeof actor.user_id === "string" && !!actor.user_id;
