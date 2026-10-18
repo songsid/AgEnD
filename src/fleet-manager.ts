@@ -295,6 +295,7 @@ import { AuthorityStateStore, type AuthorityState } from "./authority/authority-
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
+import { decisionListAnswer } from "./decision-list.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, LOOPBACK_HOST_NAMES, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { createPreviewListener, normalizeOrigin, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener, type PreviewOffCode } from "./web-preview.js";
@@ -10334,10 +10335,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         case "fleet_decision_list":
           db.pruneExpiredDecisions();
-          result = db.listDecisions(projectRoot, {
+          // #2152: titles by default; the full text by id, or all of it with full: true.
+          result = decisionListAnswer(db.listDecisions(projectRoot, {
             includeArchived: payload.include_archived as boolean | undefined,
             tags: payload.tags as string[] | undefined,
-          });
+          }), { id: payload.id, full: payload.full });
           break;
         case "fleet_decision_update": {
           const id = payload.id as string;
@@ -10545,10 +10547,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           created_by: instance,
         });
       }
-      case "list": return db.listDecisions(projectRoot, {
-        includeArchived: args.includeArchived === true,
+      // #2152: titles by default (agend-agent decision-list); one decision's full text by id (decision-get <id>).
+      // The CLI sends include_archived (snake case, as the MCP tool): both spellings are read.
+      case "list": case "get": if (op === "get" && !asStr(args.id)?.trim()) return { error: "id is required" };
+        return decisionListAnswer(db.listDecisions(projectRoot, {
+        includeArchived: args.includeArchived === true || args.include_archived === true,
         tags: asStrArr(args.tags),
-      });
+      }), { id: op === "get" ? asStr(args.id) ?? "" : args.id, full: args.full });
       case "update": {
         const id = asStr(args.id);
         if (!id) return { error: "id is required" };
