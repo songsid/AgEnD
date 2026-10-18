@@ -33,15 +33,17 @@ record of what was considered. S1 (observe only, §3 and the receipt's `authorit
    - Receivers verify it with `delivery_status` the way they verify a platform message, and grant it onward with
      `forwards` as any `hmsg` receipt.
    - `HumanOrigin.platform` stays `"web"`, so it is never mistaken for a platform message.
-3. **It ends at the earliest of these.** After that, new messages carry no authority, and `delivery_status` reads
-   earlier `web-verified` receipts as `none` with `downgraded` (§10's rules, unchanged):
+3. **It ends at the earliest of these.** After that, the session's new messages carry no authority:
    - `max_session_hours` after the authorization (1–48, default 48);
    - the session ending (expiry, sign-out, `/web revoke`, a token rotation);
    - the server switch turned off;
    - `loopback_only` turned on (for `lan` sessions);
    - any revocation epoch bump.
 
-   The authorization state never moves behind the receipts (#2112: a missing or rolled-back state file revokes).
+   **Receipts already written** keep their authority as evidence, the way a Discord message stays a Discord message
+   after its sender logs out. They read as `none`, with `downgraded`, only on a revocation, which is §10's rules,
+   unchanged: `/web revoke`, the switch off, `loopback_only` on (for `lan` receipts), or any epoch bump. The
+   authorization state never moves behind the receipts (#2112: a missing or rolled-back state file revokes).
 4. **A qualifying session that is not authorized** carries `none`: recognition only, as all web traffic before #1939.
    S1's observe-only `web-session` value is read as `none` from here on. It was never an authorization, and the first
    time the switch turns on, the epoch moves past it anyway.
