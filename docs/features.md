@@ -660,7 +660,7 @@ The fleet serves a web dashboard on `127.0.0.1` (`health_port`, default 19280). 
 
 Sign in with a one-time code: send `/web` (fleet admin) or run `agend web` on the host. With [guest sign-in](#guest-web-sign-in-23-beta) on (2.3 beta, off by default), anyone else's `/web` signs them in as a guest who sees only the agents they already use in chat. To use it from a phone or another computer, see [Reaching it from elsewhere](web-dashboard.md#reaching-it-from-elsewhere). The full guide is [web-dashboard.md](web-dashboard.md).
 
-**ClassicBot rooms echo the web chat too (2.3 beta, #2054).** What you send to a ClassicBot agent from the web is posted in its room (`🌐 web · <name>: …`), group channels included, following `web.echo_to_channel` unless the room sets `web_echo` in `classicBot.yaml` (or **Web echo** in the room's Settings). After upgrading, a room that never set it starts echoing; set `web_echo: false` to keep it quiet.
+**ClassicBot rooms echo the web chat too (2.3 beta, #2054).** What you send to a ClassicBot agent from the web is posted in its room (`🌐 web · <name>: …`), group channels included, following `web.echo_to_channel` unless the room sets `web_echo` in `classicBot.yaml` (or **Web echo** in the room's Settings). After upgrading, a room that never set it starts echoing while the fleet's `web.echo_to_channel` is not off; set `web_echo: false` to keep that room quiet.
 
 ## Remote CLI sign-in (`/login`)
 
@@ -1307,7 +1307,7 @@ A **mod** is one file that carries such a look: a theme with its pictures, card 
 - **Advanced:** card upload limits, and Restore defaults.
 
 **Banner focus (2.3 beta, #2086).**
-- **Safe band:** a card's banner is never drawn wider than 5:1 (a wider screen centres it over a blurred copy) nor narrower than 9:4 (which crops the sides), so the middle of a 1600×600 banner, about 1350×320, always shows.
+- **Safe band:** a card's banner is never drawn wider than 5:1 (a wider screen centres it over a blurred copy) nor narrower than 9:4 (which crops the sides), so on a 1600×600 banner an area of about 1350×320, centred across the width, shows on every card size and layout. That area moves with the focus below; at the default focus, 50, it sits in the middle of the picture.
 - **Focus:** 0 (top) to 100 (bottom), 50 by default, chooses which part of a tall picture shows. The agent sets `card.bannerFocus`, a person the slider in View's **Edit profile** (theirs wins), and General `set_web_settings`. The details are in [Web dashboard](web-dashboard.md): "Custom CSS", "Agents' themes", "Identity cards", "Widgets" and "Mods".
 
 ### Owner effect preferences (2.3 beta)
