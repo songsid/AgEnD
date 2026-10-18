@@ -451,8 +451,8 @@ Besides `/status`, these work from chat (on Discord as slash commands; on Telegr
 - **`/usage`** (anyone) — AI subscription usage for the CLIs logged in on this machine: Claude, Codex, Muse, Grok, Kiro and Antigravity. A backend with [credential profiles](#credential-profiles-and-a-second-subscription) gets one row per subscription. Agents read the same data with `get_usage`.
 - **`/doctor`** (fleet admin) — health diagnostics in six sections: Prerequisites, Service, Fleet, Channel gateways, MCP IPC and Resources, each check `ok`, `warn` or `error`.
 - **`/sysinfo`** (anyone) — fleet uptime and memory, instance counts, system memory, and each backend CLI's version.
-- **`/model`** (channel admin) — switch the instance's model from a menu (on Telegram also `/model <name>`).
-- **`/backend`** (channel admin, as `/model`) — move the instance to another CLI backend: pick the backend (only CLIs installed on this host), then its model (`/model`'s list, or the default), then its effort (`/effort`'s levels, skipped for a backend without one), then confirm. The instance restarts **once**, at the end, in a **fresh session**: a conversation does not carry across backends. `/backend <backend> [model] [effort]` goes straight to the confirmation. Fleet instances only; a ClassicBot agent's backend is set in `classicBot.yaml` or Settings.
+- **`/model`** (channel admin) — switch the instance's model from a menu (on Telegram also `/model <name>`). In 2.3 beta the menu is the catalog of the account the instance runs on (a Claude Code [credential profile](#credential-profiles-and-a-second-subscription) has its own), and the model it runs is always a choice: one its CLI does not list comes first, marked "current — not in this CLI's list". See [Backend availability and model lists](#backend-availability-and-model-lists-23-beta).
+- **`/backend`** (channel admin, as `/model`) — move the instance to another CLI backend: pick the backend, then its model (`/model`'s list, or the default), then its effort (`/effort`'s levels, skipped for a backend without one), then confirm. The instance restarts **once**, at the end, in a **fresh session**: a conversation does not carry across backends. `/backend <backend> [model] [effort]` goes straight to the confirmation. In 2.3 beta every backend is listed with what this host says about it ([backend availability](#backend-availability-and-model-lists-23-beta)): one that is not installed, not signed in or too old is shown disabled with the reason, and is refused with it when typed; one not checked yet stays selectable; the current backend is never disabled. A Discord select menu cannot disable an option, so there the reason is in the label and choosing it says why. Fleet instances only; a ClassicBot agent's backend is set in `classicBot.yaml` or Settings.
 - **`/effort`** (channel admin) — set the reasoning effort (`low` / `medium` / `high` / `xhigh` / `max`, clamped to what the backend accepts). Claude Code, Grok, Antigravity and Muse change it at runtime; Kiro CLI and Codex restart the instance to apply it; OpenCode has no effort setting. Agents read it with `get_effort`.
 
 ## Daily summary
@@ -658,7 +658,9 @@ The recommended setup wizard detects installed backends and generates a minimal 
 
 The fleet serves a web dashboard on `127.0.0.1` (`health_port`, default 19280). Its `/ui` is **web chat**: pick an instance and talk to it from the browser. It is the same conversation as that instance's Telegram or Discord chat: what you send from the web is echoed into the topic as `🌐 web · <your name>: …`, and the agent's replies show in both. Signed in with a `/web` code, you are your Discord or Telegram account to the agent (its user id, `via web`, for recognition only — see [web-dashboard.md](web-dashboard.md#who-the-agent-sees-1827)). Files and images (📎, paste or drop), Stop, and ticks showing how far each message got all work there, and a fleet with no chat platform can be run from the dashboard alone. `/view` is the read-mostly overview and `/settings` the fleet settings.
 
-Sign in with a one-time code: send `/web` (fleet admin) or run `agend web` on the host. To use it from a phone or another computer, see [Reaching it from elsewhere](web-dashboard.md#reaching-it-from-elsewhere). The full guide is [web-dashboard.md](web-dashboard.md).
+Sign in with a one-time code: send `/web` (fleet admin) or run `agend web` on the host. With [guest sign-in](#guest-web-sign-in-23-beta) on (2.3 beta, off by default), anyone else's `/web` signs them in as a guest who sees only the agents they already use in chat. To use it from a phone or another computer, see [Reaching it from elsewhere](web-dashboard.md#reaching-it-from-elsewhere). The full guide is [web-dashboard.md](web-dashboard.md).
+
+**ClassicBot rooms echo the web chat too (2.3 beta, #2054).** What you send to a ClassicBot agent from the web is posted in its room (`🌐 web · <name>: …`), group channels included, following `web.echo_to_channel` unless the room sets `web_echo` in `classicBot.yaml` (or **Web echo** in the room's Settings). After upgrading, a room that never set it starts echoing while the fleet's `web.echo_to_channel` is not off; set `web_echo: false` to keep that room quiet.
 
 ## Remote CLI sign-in (`/login`)
 
@@ -690,6 +692,25 @@ Profiles live in `~/.agend/credential-profiles/<backend>/<profile>`, under the f
 **ClassicBot channels (#1220).** A channel in `classicBot.yaml` takes the same `backend_options.<backend>.credential_profile`, over any profile inherited from the fleet defaults (an empty or `null` value means the shared login). Its agent launches on that profile, `/usage` counts it under that subscription's row (for example `Codex (personal)`), and `kiro_engine_status` reports it. An unusable profile name stops that channel's agent from starting rather than running it on another login. Changing the profile restarts the channel's agent.
 
 `/usage`, `get_usage` and the dashboard show one row per subscription, never added together. Full reference: [configuration](configuration.md#credential-profiles-multiple-subscriptions-of-one-backend).
+
+## Backend availability and model lists (2.3 beta)
+
+AgEnD keeps a snapshot of what this host can run (#2072). Each backend is **usable**, **not installed**, **not signed in**, **too old** (only kiro-cli has a minimum, 2.21.0) or **unknown** (not checked yet, or it cannot tell).
+
+- **Read without starting a CLI that could update itself or reach the network.** The version comes from disk: muse's `.muse-version`, an npm install's own `package.json`, claude's `…/versions/<v>`, codex's `…/releases/<v>-<target>/`. Failing that, on Linux only, `<cli> --version` runs with no network (`unshare -rn`) and a 5 s deadline. A version it cannot read is unknown, never "too old".
+- **Sign-in** is read from credential files and API-key variables, never by asking the account. Claude on macOS keeps its login in the Keychain, so it reads as unknown there. An instance with a credential profile is judged by that profile's login.
+- **When:** at start, every 10 minutes and after a `/login`; requests only read the snapshot. A probe that fails keeps the last definite answer, and only a definite answer disables anything: unknown stays selectable and is checked again when applied.
+
+Where it shows:
+
+- **`/backend`** in chat (see [above](#diagnostics-and-per-agent-chat-commands)): an unusable backend is disabled with the reason and refused when typed.
+- **The web Create agent dialog and every Settings backend field** (an agent, the fleet default, the ClassicBot default and a room, Fleet → Config): "not installed", "not signed in (use /login)" and "needs X or newer" are disabled with that reason; "not checked yet" stays selectable; the current value is always selectable, and a backend AgEnD no longer has shows first, marked removed.
+- **ClassicBot's `/start`** backend list and the setup wizard read the same snapshot. The `create_instance` tool does not check it.
+
+Model lists:
+
+- **`/model`** and the web chat's model choices list what the instance's account can run. On Claude Code a credential profile has its own catalog, read with that profile's login; Codex and Kiro profiles share one catalog per backend. The model the instance runs is always a choice; one its CLI does not list comes first, marked "current — not in this CLI's list".
+- **Every Settings model field** (an agent's model and failover, the fleet default, a ClassicBot room, the Create agent dialog) is a list of that backend's cached catalog for that account; opening it never probes. The current model is always listed. **Other…** opens a text box holding the current name: type another name the CLI accepts, or empty it to inherit. In the Create agent dialog, **Fleet default** lists the fleet default backend's models.
 
 ## Built-in workflow template
 
@@ -1161,17 +1182,98 @@ Details: [memory-pressure.md](memory-pressure.md).
 
 A single live **Needs you** message in each world's General topic surfaces attention items for that world's instances — delivery acknowledgements, hang alerts, permission prompts. Each General shows only its own world's instances (owner-scoped); the `/ui` web feed shows items fleet-wide. Every item is one tap from where it is acted on: the instance's own thread or the message's existing buttons. The only new interaction is **Acknowledge** for delivery items that have no button today. Items resolved on any surface disappear everywhere. In `/ui`, **Needs you** (`/ui/needs`) is a panel with a sidebar badge and optional desktop notifications (#1408 step 4). Design: [docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md).
 
+## Links to where a message sends you (2.3 beta)
+
+On Discord and Telegram, a message that sends you to another topic links to it (#1990).
+- **What gets a link:**
+  - a reply telling you to use General ends with a linked "→ General";
+  - an instance's notices that point at General carry the same link;
+  - General's notices that name an instance link the name to its topic;
+  - cross-instance status lines link the other side.
+- **How it looks:** on Telegram the link sits on the word; on Discord it is the channel mention.
+- **Where there is none:** in a ClassicBot room, for another bot's instance, or in text that came from an agent or a pane.
+- **Needs-you DMs:** they link into the group only for an admin who is a member (checked with the fleet's bot, cached 10 minutes). A public Telegram group's links use its @username.
+
 ## Web app shell (#1408)
 
 `/ui` is rebuilt as a single-page Preact + htm app (no build step; Preact and htm are bundled alongside the source at `src/ui/shared/vendor/`). Step 1 delivers the **Chat** panel at `/ui/chat/<instance>` and the **Fleet** panel at `/ui/fleet`. Step 2 delivers the **View** panel at `/view` and `/view/<instance>`, and step 3 the **Settings** panel at `/settings` and `/settings/<section>`. Typography and layout are modelled on ChatGPT's web UI (design language only — no OpenAI code or assets). The chat thread remains a keyed DOM renderer mounted by a Preact component. Step 4 adds the **Needs you** panel at `/ui/needs`. Design: [docs/design/1408-app-shell.md](design/1408-app-shell.md).
 
 Since then:
-- **Fleet → Org chart** (`/ui/fleet/org`, #1389): General, teams and instances, each with its live state and a link to its thread.
+- **Fleet → Org chart** (`/ui/fleet/org`, #1389; a canvas in 2.3 beta, #1918): General on top, then the teams in `fleet.yaml` order, then instances in no team, each card with its picture, identity colour, state and backend. A card opens its chat, and the sidebar's **Fleet overview** opens the chart.
+  - **Moving around:** drag to pan; zoom with the wheel, a pinch, the +/−/Fit buttons or `+ - 0`; an overview map jumps there. Clicking a team folds it to a count of its members by state. Find dims what does not match. **List** says the same in words. Nothing is edited here.
+  - **Live traffic:** a line for each message between instances (`delegate_task`, `send_to_instance`, `report_result`, `request_information`, `broadcast`). It is dotted while queued, a moving dash while delivering, and fades 3 s after delivery. A broadcast to more than 8 (or any broadcast while zoomed out) becomes one line per team, ×N. It carries only the names, never message text, and leaves out instances with `cross_instance_visibility: hidden`. The public link shows it too, polled every 5 s.
 - **Fleet → Cache** (`/ui/fleet/cache`, #1468): a per-instance prompt-cache expiry analysis with a keep-warm recommendation. It is read from local transcripts and priced at list price, and the check date is shown.
+  - **In 2.3 beta (#2010):** it shows the mix of 5-minute and 1-hour cache writes and measures what a 5-minute cache really lasts. Each instance's gaps of 5 to 60 minutes over the last 7 days are counted, and with at least 10 such gaps:
+    - where at most 10% rewrote the cache, it is simulated as 1 hour;
+    - where at least half did, the card recommends `backend_options.claude-code.prompt_cache_ttl: "1h"` instead of keep-warm. That opt-in passes `CLAUDE_CODE_PROMPT_CACHE_TTL` on the instance's next start; unset, the CLI chooses.
+  - **`get_cache_report`:** agents read the same report. General, coordinators and full-profile instances see every instance; any other instance sees its own row.
+- **New agent** (2.3 beta, #2074): a button at the end of the sidebar's list opens the Create agent dialog. With the sidebar collapsed, a **+** beside ☰ does the same; on a phone it is in the menu drawer. Only a session that may create agents sees it.
+- **Filtering the sidebar** (2.3 beta, #1936): the instance you have open stays on top under **Current**, matching or not.
+- **Names that open an instance** (2.3 beta, #1990): in a chat's cross-instance status lines the other instance's name opens its chat, and in a prompt card the instance's name opens its View. An agent's or a person's message never gets such a link.
 - **The chat's commands and quick actions** (#1269): typing `/` runs the instance's own topic commands through the same handlers and command table. A paste over 4,000 characters is attached as a text file, and the thread stays at the newest message as content grows.
 - **Log tab** (#1218): a per-instance **Log** panel shows each prompt, the agent's replies (never its thinking), every tool call with arguments and result, errors, and fleet events such as crashes or restarts. Steps are read on demand from the agent's transcript while the tab is open, and update live; secret values are masked and long text is truncated. Off by default (`web.log_tab`); a fleet admin enables it in Settings → Web, and it then appears over the public link too. Supported fully on claude-code and codex; other backends show fleet events only; kiro shows fleet events with a note explaining why its own steps are not yet available.
 
 See [web-dashboard.md](web-dashboard.md).
+
+## Guest web sign-in (2.3 beta)
+
+**Off by default (#1920).** With it on, someone who is not a fleet admin can sign in to the dashboard as their own Discord or Telegram account and see only the agents they can already use in chat. Phases 1 and 2 are in 2.3.0-beta.4. The Settings → Web → Guests card and the guest's trimmed app come after it.
+
+**Turning it on.**
+- **Settings → Web → Guests** has:
+  - the **Guest sign-in** and **Guests may chat** switches;
+  - for each `open` connection, the agents its guests may reach;
+  - every guest account: name, platform and id, the agents it reaches, its sessions and devices, last active, and **Narrow**, **Remove narrowing** and **Sign out**.
+- **Applying changes:**
+  - A change that widens what guests reach waits for a fleet admin's confirmation: turning it on, turning chat on, adding agents, or lifting a narrowing.
+  - A change that narrows applies at once.
+  - The card is disabled over the public link.
+- **Or in `fleet.yaml`:**
+
+```yaml
+web:
+  guests:
+    enabled: true          # default false
+    chat: true             # default true; false: guests only read
+    open_instances:        # an `open` connection's guests reach only these (none by default)
+      <connection id>: [helper]
+    narrow:                # "<connection id>:<user id>": only takes away
+      "<connection id>:123456789": [helper]
+    session: { absolute_hours: 12, idle_minutes: 120 }   # 1–24 h, 15–720 min
+```
+
+**Getting a code.**
+- **Asking:** the guest sends `/web`: typed in General or any fleet topic, as the slash command, or in a ClassicBot room (`/web@YourBot` in a Telegram group).
+- **Delivery:** the code comes privately, by DM or as the slash command's private answer; it is never posted where they asked. On Telegram, if the bot cannot DM them yet, the reply links to the bot, and pressing **Start** there sends the code.
+- **Limits:** one code per account, valid 5 minutes, one ask a minute.
+- **Public link:** while an admin has the [public link](web-dashboard.md#reaching-it-from-elsewhere) open, the DM includes it and the code works there too. The admin who opened it is told in their General before the sign-in completes; if that cannot be posted, the sign-in is refused.
+- **Notices:** every guest sign-in is posted in General.
+- **Signing out:** a guest's own `/web revoke` ends only its sessions, code and remembered devices.
+
+**What a guest reaches.** It is worked out on every request and never stored:
+- **Its connection's agents:** the fleet topics and General, when that connection's access lets the account in (allowed or paired). On an `open` connection, only the agents named in `open_instances`.
+- **Its own Telegram private ClassicBot room.**
+- **A ClassicBot group room on its connection, while membership is verified:**
+  - Telegram asks `getChatMember`.
+  - Discord needs the person in the server, with View Channel and Read Message History there; for a private thread, also in the thread (or Manage Threads).
+  - Answers are read in the background (at sign-in, when the guest's page connects, and again every 10 minutes). A room shows only on a "member" answer at most 15 minutes old. While a room is still being checked the page waits instead of signing the guest out.
+- **Then `narrow`,** which only takes away.
+
+A fleet admin is never a guest.
+
+**What a guest can do.**
+- **Chat:** with those agents only. That means the history its channel showed, files, reply buttons and Cancel, unless `chat: false` makes guests read-only.
+- **No commands:** text starting with `/` is refused.
+- **What the agent sees:** `[user:<name> via web (guest), id:<id>]`, for typed messages and button clicks alike. Like every web message, that is recognition only.
+- **Its app:** no Fleet, View, Settings, Needs you, New agent or widgets; a **Guest** chip says who is signed in.
+- **Preferences:** it reads the host's look (theme, language) but no preference that names an agent, and it can set its own web name.
+
+**Sessions.**
+- **Lifetime:** 12 h absolute and 2 h idle by default (`web.guests.session`), never longer than the surface's own limit (the public link's 4 h / 30 min).
+- **Caps:** at most 4 per account and 64 in all, counted apart from admins', so a guest never pushes an admin out.
+- **Ending:**
+  - a guest whose scope becomes empty is signed out;
+  - turning guest sign-in off ends every guest session and forgets every guest's remembered devices, and turning it back on revives none.
 
 ## Instance identity in the web dashboard (#1630)
 
@@ -1193,9 +1295,22 @@ What a viewer sees is theirs to choose: **Settings → Web appearance → Show a
 
 A **mod** is one file that carries such a look: a theme with its pictures, card text, widgets, effects and custom CSS. **Settings → Web appearance → Mods** imports one in two steps, showing everything in it first and applying only the parts you tick, all at once. Custom CSS from a file is never ticked for you. The same card exports a look as a file.
 
-`web.themes.agent_edit: false` refuses every agent's appearance change; `web.appearance` sets the card's upload limits. The details are in [Web dashboard](web-dashboard.md): "Custom CSS", "Agents' themes", "Identity cards", "Widgets" and "Mods".
+`web.themes.agent_edit: false` refuses every agent's appearance change; `web.appearance` sets the card's upload limits. An agent's changes are at least 30 s apart and at most 10 an hour.
 
-### Owner effect preferences (2.3 development)
+**Uploads are not counted (2.3 beta, #2083).** An agent's uploads (pictures, effects, proposed mods) are not counted. Each picture slot's size limits, the agent's picture quota and each file's own caps still apply.
+
+**The Web appearance page (2.3 beta, #2071)** groups its cards under five headings, each card with a **?** that opens its section of the guide. Over a public link it shows only a notice.
+- **Look:** agents' themes on or off; identity colours, with a sample row; card size.
+- **Your layout:** your sidebar widget.
+- **Styles you write:** custom CSS, and turning it off on this device.
+- **Add-ons:** mods, effects and your effect choices.
+- **Advanced:** card upload limits, and Restore defaults.
+
+**Banner focus (2.3 beta, #2086).**
+- **Safe band:** a card's banner is never drawn wider than 5:1 (a wider screen centres it over a blurred copy) nor narrower than 9:4 (which crops the sides), so on a 1600×600 banner an area of about 1350×320, centred across the width, shows on every card size and layout. That area moves with the focus below; at the default focus, 50, it sits in the middle of the picture.
+- **Focus:** 0 (top) to 100 (bottom), 50 by default, chooses which part of a tall picture shows. The agent sets `card.bannerFocus`, a person the slider in View's **Edit profile** (theirs wins), and General `set_web_settings`. The details are in [Web dashboard](web-dashboard.md): "Custom CSS", "Agents' themes", "Identity cards", "Widgets" and "Mods".
+
+### Owner effect preferences (2.3 beta)
 
 The backend now keeps five owner effect selections (`fx.sidebar`, `fx.header`, `fx.page`, `fx.box`, `fx.cursor`) for
 the signed-in web identity. Discord and Telegram identities stay separate; accounts are not merged. A web-only
@@ -1212,10 +1327,10 @@ agent front effects stay paused while custom CSS is active, loading or unknown (
 
 Menus, dialogs, Keep/tour notices and focused inputs suppress all foreground effects. Behind effects still require
 proven stock ordering; human placements do not bypass those gates. The Chat foreground status links to Appearance
-to show the custom-CSS setting. See the [2.3 development preview](whats-new-2.3.md); a trusted foreground plane is
+to show the custom-CSS setting. See the [2.3 preview](whats-new-2.3.md); a trusted foreground plane is
 a later 2.3.x follow-up (#1940).
 
-### Chat effects and static posters (2.3 development)
+### Chat effects and static posters (2.3 beta)
 
 Local signed-in Chat plays its placed Canvas Worker effects only after preview opt-in and current safety/stock checks;
 More → Effects offers Pause, Resume and authorized Remove. If preview is unavailable, consent is missing, motion/data
@@ -1235,3 +1350,19 @@ suppressed. Offers last at most ten minutes, trials are session/epoch-bound, and
 agent's current own/shared access. No saved placement, claim, share or export is created. The volatile server
 authority, local-admin API, host panel and shared app pool enforce this boundary. Cards are memory-only, expire in place and are never restored from disk. A valid late Start is only stopped, never mounted. Try uses manifest defaults and writes no saved profile record; mandatory safety history still applies. See the
 [Try boundary](design/1629-effect-trial-authority.md).
+
+A worked sample, [click-sparks](examples/click-sparks.md), shows a whole effect from `effect.json` to `upload_web_effect` and `apply_web_effect`: a burst where you click and a trail while you drag (512 px, 30 fps, 128 particles; #2043). A person can also choose it for the page or box slot.
+
+### General changes Web appearance for you (2.3 beta)
+
+General, coordinators and full-profile instances can read and change Settings → Web appearance for the user with `get_web_settings` and `set_web_settings` (#2056). The change goes through the page's own store, checks and announcement, so every open page reads it again. One change per call:
+
+- **Host settings:** agents' themes shown, card size and per-agent sizes, where identity colours show, colours off, the sidebar widget. `null` puts one back.
+- **An agent's identity colour** (a preset or `#rrggbb`) and where it shows.
+- **A banner's focus.**
+- **A person's custom CSS** (`person`; the host operator by default): save (it goes on trial), keep, revert, switch to an earlier saved version, or off. The 64 KiB, no-remote-URL and `asset:` rules still apply (#2081).
+- **A mod an agent proposed:** review, install the parts ticked (custom CSS is never ticked by itself), cancel, dismiss or uninstall. A mod the person imported from a file is theirs, and is refused.
+- **Effects:** apply or remove one on a chat, and a person's effect slots (sidebar, header, page, box, cursor).
+- **Restore defaults:** the host settings and that person's custom CSS. This device's custom-CSS switch is left to the person.
+
+What stays on the page: choosing a file from the person's computer (a mod, an effect folder, a CSS asset, a card picture), this browser's own switches (custom CSS off on this device, pausing playback), downloading an export, and the card upload limits. `get_web_settings` lists these as `page_only`. The `web-appearance` skill walks General through it.

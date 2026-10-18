@@ -36,11 +36,12 @@ export function guestsBody(original, f) {
   return Object.keys(out).length ? out : null;
 }
 
-function Names({ id, all, value, onChange }) {
+/** `away`: narrowed names it no longer reaches — listed (marked) only so they can be unticked; unticked, they leave. */
+function Names({ id, all, value, onChange, away = new Set() }) {
   const chosen = new Set(value || []);
-  return html`<div class="guest-names" id=${id} role="group">${all.map((n) => html`<label key=${n} class="check guest-name">
+  return html`<div class="guest-names" id=${id} role="group">${all.map((n) => html`<label key=${n} class=${`check guest-name${away.has(n) ? " guest-away" : ""}`}>
     <input type="checkbox" checked=${chosen.has(n)} onChange=${(e) => { const s = new Set(chosen); if (e.target.checked) s.add(n); else s.delete(n); onChange(all.filter((x) => s.has(x))); }} />
-    <span>${n}</span></label>`)}</div>`;
+    <span>${n}${away.has(n) ? html` <span class="note">${tn("guestNotReachable")}</span>` : null}</span></label>`)}</div>`;
 }
 
 export function GuestsCard({ ctx, staged, disabled = false }) {
@@ -99,8 +100,14 @@ export function GuestsCard({ ctx, staged, disabled = false }) {
               ${narrowed !== undefined ? html`<button type="button" class="btn btn-sm" onClick=${() => setList("narrow", k, undefined)}>${tn("guestNarrowLift")}</button>` : null}
               ${guest.sessions || guest.devices ? html`<button type="button" class="btn btn-sm btn-danger" onClick=${() => signOut(guest)}>${tn("guestSignOut")}</button>` : null}
             </div>
-            ${narrowing === k ? html`<div class="guest-narrow-edit"><p class="note">${tn("guestNarrowHint")}</p>
-              <${Names} id=${`guestNarrow-${k}`} all=${instances} value=${narrowed === undefined ? guest.scope : narrowed} onChange=${(list) => setList("narrow", k, list)} /></div>` : null}
+            ${narrowing === k ? (() => {
+              // #2104 review: only what this account can reach (narrowing never widens); a narrowed name it no longer
+              // reaches is listed to be unticked, marked.
+              const reach = guest.reach || guest.scope, away = new Set((narrowed || []).filter((n) => !reach.includes(n)));
+              return html`<div class="guest-narrow-edit"><p class="note">${tn("guestNarrowHint")}</p>
+                ${reach.length || away.size ? html`<${Names} id=${`guestNarrow-${k}`} all=${[...reach, ...away]} away=${away} value=${narrowed === undefined ? guest.scope : narrowed} onChange=${(list) => setList("narrow", k, list)} />`
+                  : html`<p class="note">${tn("guestReachesNothing")}</p>`}</div>`;
+            })() : null}
           </li>`;
         })}</ul>`}
     </fieldset>

@@ -47,8 +47,8 @@ const OVERVIEW = {
   enabled: true, chat: true, instances: ["alpha", "beta", "gamma"],
   connections: [{ id: "dc", type: "discord", mode: "open", named: ["alpha"] }, { id: "tg", type: "telegram", mode: "allowlist", named: [] }],
   guests: [
-    { adapterId: "dc", userId: "111", name: "Alice", platform: "discord", scope: ["alpha"], sessions: 2, lastSeen: 1_790_000_000_000, devices: 1, narrow: null },
-    { adapterId: "tg", userId: "222", name: "Bob", platform: "telegram", scope: ["beta"], sessions: 0, lastSeen: null, devices: 0, narrow: ["beta"] },
+    { adapterId: "dc", userId: "111", name: "Alice", platform: "discord", scope: ["alpha"], reach: ["alpha", "beta"], sessions: 2, lastSeen: 1_790_000_000_000, devices: 1, narrow: null },
+    { adapterId: "tg", userId: "222", name: "Bob", platform: "telegram", scope: ["beta"], reach: ["beta"], sessions: 0, lastSeen: null, devices: 0, narrow: ["beta"] },
   ],
 };
 async function open(guests: Record<string, unknown> = { enabled: true, open_instances: { dc: ["alpha"] }, narrow: { "tg:222": ["beta"] } }) {
@@ -115,6 +115,22 @@ describe("Settings → Web → Guests, as rendered", () => {
     await w.check(w.$("#guestsChat"), true);
     await w.review(); await w.apply();
     expect(w.writes()).toEqual([]);
+  });
+  it("#2104 review: Narrow lists only what the account reaches; a narrowed name it no longer reaches is marked, to untick", async () => {
+    const w = await open({ enabled: true, narrow: { "tg:222": ["beta", "gamma"] } });
+    await w.click(w.button("Narrow", w.row("dc:111")));
+    const alice = w.row("dc:111").querySelector(".guest-names");
+    expect([...alice.querySelectorAll("label")].map((l: any) => l.textContent.trim()), "never gamma: Alice cannot reach it").toEqual(["alpha", "beta"]);
+    await w.click(w.button("Narrow", w.row("dc:111")));
+    await w.click(w.button("Narrow", w.row("tg:222")));
+    const bob = w.row("tg:222").querySelector(".guest-names");
+    const gamma = w.name(bob, "gamma (no longer reachable)");
+    expect([...bob.querySelectorAll("label")].map((l: any) => l.textContent.trim())).toEqual(["beta", "gamma (no longer reachable)"]);
+    expect(gamma.checked).toBe(true);
+    await w.check(gamma, false);
+    expect([...w.row("tg:222").querySelector(".guest-names").querySelectorAll("label")].map((l: any) => l.textContent.trim()), "unticked, it leaves (never offered again)").toEqual(["beta"]);
+    await w.review(); await w.apply();
+    expect(w.writes().map((s) => s.body)).toEqual([{ guests: { narrow: { "tg:222": ["beta"] } } }]);
   });
   it("nothing changed: nothing is written", async () => {
     const w = await open();

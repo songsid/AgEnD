@@ -107,7 +107,7 @@ const VALIDATORS = new Map<string, (v: unknown) => unknown>([
   // set apart from it (at most 200; the page drops the oldest). A display size only: no agent reads or sets it.
   ["card.size", (v) => (v === "s" || v === "m" || v === "l" ? v : bad("card.size: s, m or l"))],
   // #1958: where identity colours show for an instance nobody chose for (a list of name / bar / ring; [] is nowhere;
-  // unset: ring and bar), and whether this host shows them at all (true: off everywhere; every pick is kept).
+  // unset: name, bar and ring, #2056), and whether this host shows them at all (true: off everywhere; every pick is kept).
   ["color.show", (v) => canonicalPlacements(v) ?? bad("color.show: a list of name, bar, ring (each once; [] for nowhere)")],
   ["color.off", (v) => (v === true ? v : bad("color.off: true (clear it to turn colours back on)"))],
   ["card.sizeByInstance", (v) => {
