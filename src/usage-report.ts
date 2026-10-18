@@ -10,7 +10,7 @@
  */
 import type { HourTotals, Ledger } from "./cache-ledger.js";
 import { PRICES_CHECKED, ratesFor } from "./cache-prices.js";
-import { localDate, type UsageDays } from "./usage-rollup.js";
+import { hourSources, localDate, type UsageDays } from "./usage-rollup.js";
 
 export const USAGE_GROUPS = ["instance", "backend", "model", "profile", "team"] as const;
 export type UsageGroup = typeof USAGE_GROUPS[number];
@@ -21,17 +21,19 @@ export const usageBasis = (checked = PRICES_CHECKED): string => `API-equivalent 
 /** Daily rows returned at most (the CSV and the trend); beyond it the report says it is truncated. */
 export const USAGE_DAILY_MAX = 20_000;
 
-const DAY = 86_400_000;
 const M = 1_000_000;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface UsageInstanceInput {
   name: string;
+  /** Its backend now: what it is collected with from here on (each slice of its history carries its own). */
   backend: string;
   /** The team it is in now (fleet.yaml), for the one grouping built from current settings. */
   team: string | null;
+  /** Whether it is collected now; what it measured before (`ledger`, `days`) is reported either way. */
   status: "ok" | "no_data" | "credit_billed" | "unsupported" | "shared";
   with?: string[];
+  /** A snapshot taken together with `days` (cache-service.ts usageData): read-only here. */
   ledger?: Ledger;
   days?: UsageDays;
 }
@@ -64,7 +66,10 @@ export interface UsageRow extends UsageTotals {
   /** The API-equivalent at list price of what is priced; null when nothing in it is. */
   amount: number | null;
   priced: "all" | "partial" | "none";
-  /** "cache_write_not_reported" (Codex), "not_priced" (with `unpriced`), "profile_unknown" (hours before #2122). */
+  /**
+   * "cache_write_not_reported" (Codex), "not_priced" (with `unpriced`), "source_unknown" (hours counted before #2122:
+   * which backend and profile read them was not recorded).
+   */
   flags: string[];
   unpriced: string[];
   instances: string[];
@@ -110,12 +115,16 @@ export function usageRange(kind: unknown, from?: unknown, to?: unknown): UsageRa
 }
 export const usageGroup = (g: unknown): UsageGroup => (USAGE_GROUPS as readonly unknown[]).includes(g) ? g as UsageGroup : "instance";
 
-/** The range's first and last local dates (inclusive) in `zone`. */
+/** A local date (YYYY-MM-DD) moved by `n` calendar days — a date's arithmetic, never 24-hour steps (a DST day is 23 or 25). */
+export const shiftDate = (date: string, n: number): string =>
+  new Date(Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)) + n)).toISOString().slice(0, 10);
+
+/** The range's first and last local dates (inclusive) in `zone`: "7d" is today and the 6 calendar days before it. */
 export function rangeDates(range: UsageRange, now: number, zone: string): { from: string; to: string } {
   const today = localDate(now, zone);
   switch (range.kind) {
     case "today": return { from: today, to: today };
-    case "7d": return { from: localDate(now - 6 * DAY, zone), to: today };
+    case "7d": return { from: shiftDate(today, -6), to: today };
     case "month": return { from: `${today.slice(0, 8)}01`, to: today };
     case "all": return { from: "0000-01-01", to: today };
     case "custom": return { from: range.from, to: range.to };
@@ -139,6 +148,7 @@ function amountOf(model: string, long: boolean, [, uncached, read, w5, w1h, w, o
 }
 
 interface Slice { date: string; zone: string; instance: string; backend: string; team: string | null; profile: string; model: string; long: boolean; tot: HourTotals; writesReported: boolean }
+const unknownSource = (s: Slice): boolean => s.backend === "unknown" || s.profile === "unknown";
 
 export function buildUsageReport(input: UsageInput): UsageReport {
   const { from, to } = rangeDates(input.range, input.now, input.zone);
@@ -148,22 +158,27 @@ export function buildUsageReport(input: UsageInput): UsageReport {
   const shared: UsageReport["shared"] = [];
   const coverage: UsageReport["coverage"] = [];
   for (const i of input.instances) {
-    if (i.status === "shared") { shared.push({ name: i.name, backend: i.backend, with: i.with ?? [] }); continue; }
-    if (i.status !== "ok" || !i.ledger || !i.days) { notMeasured.push({ name: i.name, backend: i.backend, reason: i.status === "credit_billed" ? "credit_billed" : i.status === "no_data" ? "no_data" : "unsupported" }); continue; }
+    // Its status is about collecting now; what it measured before — under another backend, or before it shared a
+    // working directory — is still its history and is reported below.
+    if (i.status === "shared") shared.push({ name: i.name, backend: i.backend, with: i.with ?? [] });
+    else if (i.status !== "ok") notMeasured.push({ name: i.name, backend: i.backend, reason: i.status === "credit_billed" ? "credit_billed" : i.status === "no_data" ? "no_data" : "unsupported" });
+    if (!i.ledger || !i.days) continue;
     coverage.push({ name: i.name, intervals: i.days.coverage.map(([a, b]) => [a, b] as [number, number]) });
     // Codex: a write is reported only once a real one has been seen (every CLI so far records 0).
-    const writesReported = i.backend !== "codex" || i.ledger.writesSeen === true;
-    const base = { instance: i.name, backend: i.backend, team: i.team, writesReported };
+    const writesSeen = i.ledger.writesSeen === true;
+    const base = { instance: i.name, team: i.team };
     for (const row of i.days.rows) {
       if (!inRange(row.date)) continue;
-      for (const [mk, tot] of Object.entries(row.m)) slices.push({ ...base, date: row.date, zone: row.zone, profile: row.pf, ...splitKey(mk), tot });
+      for (const [mk, tot] of Object.entries(row.m)) slices.push({ ...base, backend: row.be, writesReported: row.be !== "codex" || writesSeen, date: row.date, zone: row.zone, profile: row.pf, ...splitKey(mk), tot });
     }
     for (const [hk, hour] of Object.entries(i.ledger.hours)) {
       const h = Number(hk);
       if (h <= i.days.checkpoint) continue;                 // already in the rollup: counted once (§5.2)
       const date = localDate(h, input.zone);
       if (!inRange(date)) continue;
-      for (const [mk, tot] of Object.entries(hour.m)) slices.push({ ...base, date, zone: input.zone, profile: hour.pf ?? "unknown", ...splitKey(mk), tot });
+      for (const src of hourSources(hour)) {
+        for (const [mk, tot] of Object.entries(src.m)) slices.push({ ...base, backend: src.backend, writesReported: src.backend !== "codex" || writesSeen, date, zone: input.zone, profile: src.profile, ...splitKey(mk), tot });
+      }
     }
   }
 
@@ -189,10 +204,10 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     const amount = amountOf(s.model, s.long, s.tot);
     if (amount === null) { row._unpricedAny = true; uniq(row.unpriced, s.model); } else { row._pricedAny = true; row._amount += amount; }
     if (!s.writesReported) uniq(row.flags, "cache_write_not_reported");
-    if (s.profile === "unknown") uniq(row.flags, "profile_unknown");
+    if (unknownSource(s)) uniq(row.flags, "source_unknown");
     if (daily.length <= USAGE_DAILY_MAX) {
       const t = zero(); addTotals(t, s.tot);
-      daily.push({ date: s.date, zone: s.zone, instance: s.instance, backend: s.backend, model: s.model, tier: s.long ? "long" : "standard", profile: s.profile, ...t, amount, flags: [...(s.writesReported ? [] : ["cache_write_not_reported"]), ...(amount === null ? ["not_priced"] : [])] });
+      daily.push({ date: s.date, zone: s.zone, instance: s.instance, backend: s.backend, model: s.model, tier: s.long ? "long" : "standard", profile: s.profile, ...t, amount, flags: [...(s.writesReported ? [] : ["cache_write_not_reported"]), ...(amount === null ? ["not_priced"] : []), ...(unknownSource(s) ? ["source_unknown"] : [])] });
     }
   }
 
@@ -209,7 +224,8 @@ export function buildUsageReport(input: UsageInput): UsageReport {
   }
   const instTeam = new Map(input.instances.map(i => [i.name, i]));
   if (input.group === "instance" || input.group === "backend" || input.group === "team") {
-    // An instance with messages but no measured tokens still gets a row (its tokens are not measured; it says so).
+    // An instance with messages but no measured tokens still gets a row (its tokens are not measured; it says so). A
+    // message is counted per instance only, so by backend it goes under the instance's backend now.
     for (const [name, count] of perInstance) {
       const i = instTeam.get(name);
       const key = input.group === "instance" ? name : input.group === "backend" ? (i?.backend ?? "") : (i?.team ?? "");

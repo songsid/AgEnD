@@ -11,13 +11,16 @@
  * - Days at hour granularity: an hour belongs to the local date its start falls on in the fleet's zone (in a zone with
  *   a half-hour offset a day's edge falls on the hour that holds local midnight — said so on the page). Each day row
  *   records its zone; changing the zone re-buckets only the ledger's hours.
+ * - Provenance: each row is one source — the backend whose reader read it and the credential profile it was read under
+ *   (hourSources) — kept apart, so an instance that changes backend or profile never relabels what it read before.
+ *   Hours counted before #2122 have no source: they are "unknown", never today's backend.
  * - Coverage: what the scanner has read, as merged UTC intervals — never inferred from missing hours (an idle hour has
  *   no bucket and is a real zero).
  * Messages are not here: they are counted in the delivery database (human-delivery-receipts.ts).
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { HourTotals, Ledger } from "./cache-ledger.js";
+import type { HourAgg, HourTotals, Ledger } from "./cache-ledger.js";
 
 export const ROLLUP_KEEP_DAYS = 400;
 const HOUR = 3_600_000;
@@ -25,8 +28,32 @@ const DAY = 86_400_000;
 /** Coverage intervals kept per instance; beyond it the two oldest merge (an over-wide interval only hides a gap). */
 export const COVERAGE_MAX = 64;
 
-/** One day row: its local date, the zone it was folded in, the profile it was read from → model|tier → totals. */
-export interface DayRow { date: string; zone: string; pf: string; m: Record<string, HourTotals> }
+/** One day row: its local date, the zone it was folded in, its source (backend, profile) → model|tier → totals. */
+export interface DayRow { date: string; zone: string; be: string; pf: string; m: Record<string, HourTotals> }
+
+/** Where an hour's totals were read: the backend whose reader read them ("unknown" before #2122), and the profile. */
+export interface HourSource { backend: string; profile: string; m: Record<string, HourTotals> }
+const READER_BACKEND: Record<string, string> = { claude: "claude-code", codex: "codex" };
+/**
+ * An hour's totals by source (cache-ledger.ts `src`), each exact. What `m` holds beyond them was counted before #2122:
+ * one more source, backend and profile "unknown".
+ */
+export function hourSources(hour: HourAgg): HourSource[] {
+  const out: HourSource[] = [];
+  const known = dict<HourTotals>();
+  for (const [sk, m] of Object.entries(hour.src ?? {})) {
+    const colon = sk.indexOf(":");
+    out.push({ backend: READER_BACKEND[sk.slice(0, colon)] ?? "unknown", profile: sk.slice(colon + 1), m });
+    for (const [mk, t] of Object.entries(m)) add(known[mk] ??= [0, 0, 0, 0, 0, 0, 0], t);
+  }
+  const legacy = dict<HourTotals>();
+  for (const [mk, t] of Object.entries(hour.m)) {
+    const k = known[mk], rest = t.map((n, i) => n - (k?.[i] ?? 0)) as HourTotals;
+    if (rest.some(n => n > 0)) legacy[mk] = rest.map(n => Math.max(0, n)) as HourTotals;
+  }
+  if (Object.keys(legacy).length) out.push({ backend: "unknown", profile: "unknown", m: legacy });
+  return out;
+}
 export interface UsageDays {
   v: 1;
   /** The last UTC hour (ms) held here; -1: none yet. */
@@ -37,6 +64,7 @@ export interface UsageDays {
 }
 
 const dict = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
+const add = (into: HourTotals, from: HourTotals): void => { for (let i = 0; i < 7; i++) into[i] = (into[i] ?? 0) + (from[i] ?? 0); };
 export const emptyDays = (): UsageDays => ({ v: 1, checkpoint: -1, rows: [], coverage: [] });
 
 /** A rollup read back from disk; anything that is not one is empty. */
@@ -46,10 +74,10 @@ export function reviveDays(raw: unknown): UsageDays {
   const r = raw as UsageDays;
   if (Number.isSafeInteger(r.checkpoint)) d.checkpoint = r.checkpoint;
   if (Array.isArray(r.rows)) for (const row of r.rows) {
-    if (!row || typeof row.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(row.date) || typeof row.zone !== "string" || typeof row.pf !== "string") continue;
+    if (!row || typeof row.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(row.date) || typeof row.zone !== "string" || typeof row.be !== "string" || typeof row.pf !== "string") continue;
     const m = dict<HourTotals>();
     for (const [k, t] of Object.entries(row.m ?? {})) if (Array.isArray(t) && t.length === 7 && t.every(n => Number.isFinite(n))) m[k] = t as HourTotals;
-    d.rows.push({ date: row.date, zone: row.zone, pf: row.pf, m });
+    d.rows.push({ date: row.date, zone: row.zone, be: row.be, pf: row.pf, m });
   }
   if (Array.isArray(r.coverage)) for (const c of r.coverage) if (Array.isArray(c) && c.length === 2 && Number.isFinite(c[0]) && Number.isFinite(c[1]) && c[0] <= c[1]) d.coverage.push([c[0], c[1]]);
   return d;
@@ -64,7 +92,6 @@ export function localDate(t: number, zone: string): string {
   }
 }
 
-const add = (into: HourTotals, from: HourTotals): void => { for (let i = 0; i < 7; i++) into[i] = (into[i] ?? 0) + (from[i] ?? 0); };
 
 /**
  * Fold the ledger's hours that are about to leave it (older than `cutoff`) and after the checkpoint into their days.
@@ -74,15 +101,16 @@ const add = (into: HourTotals, from: HourTotals): void => { for (let i = 0; i < 
 export function foldHours(days: UsageDays, ledger: Ledger, cutoff: number, zone: string): boolean {
   const hours = Object.keys(ledger.hours).map(Number).filter(h => h + HOUR <= cutoff && h > days.checkpoint).sort((a, b) => a - b);
   if (!hours.length) return false;
-  const index = new Map(days.rows.map((r, i) => [`${r.date}\u0000${r.zone}\u0000${r.pf}`, i]));
+  const index = new Map(days.rows.map((r, i) => [`${r.date}\u0000${r.zone}\u0000${r.be}\u0000${r.pf}`, i]));
   for (const h of hours) {
-    const agg = ledger.hours[String(h)]!;
-    const date = localDate(h, zone), pf = agg.pf ?? "unknown";
-    const key = `${date}\u0000${zone}\u0000${pf}`;
-    let i = index.get(key);
-    if (i === undefined) { i = days.rows.push({ date, zone, pf, m: dict<HourTotals>() }) - 1; index.set(key, i); }
-    const row = days.rows[i]!;
-    for (const [mk, tot] of Object.entries(agg.m)) add(row.m[mk] ??= [0, 0, 0, 0, 0, 0, 0], tot);
+    const date = localDate(h, zone);
+    for (const src of hourSources(ledger.hours[String(h)]!)) {
+      const key = `${date}\u0000${zone}\u0000${src.backend}\u0000${src.profile}`;
+      let i = index.get(key);
+      if (i === undefined) { i = days.rows.push({ date, zone, be: src.backend, pf: src.profile, m: dict<HourTotals>() }) - 1; index.set(key, i); }
+      const row = days.rows[i]!;
+      for (const [mk, tot] of Object.entries(src.m)) add(row.m[mk] ??= [0, 0, 0, 0, 0, 0, 0], tot);
+    }
   }
   days.checkpoint = hours[hours.length - 1]!;
   return true;

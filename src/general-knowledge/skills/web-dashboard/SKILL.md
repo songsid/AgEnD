@@ -223,9 +223,14 @@ API-equivalent at list price — not money spent** (subscriptions aren't billed 
 "spent". Measured for Claude Code and Codex. Marks to repeat in words:
 - `cache_write_not_reported`: Codex records no cache writes, so they are neither shown as 0 nor priced.
 - `not_priced`: the tokens are shown, the amount isn't.
-- `profile_unknown`: read before profiles were recorded.
+- `source_unknown`: read before #2122, when which backend and profile read it was not recorded (backend and profile
+  "unknown" — never today's).
 
-`notMeasured` lists kiro and the other backends with their reason; they are never a $0 row. Scope as
+Each hour keeps the backend whose reader read it and the profile it was read under, so an instance that changes
+backend or profile keeps its history as it was. `notMeasured` lists kiro and the other backends with their reason;
+they are never a $0 row, and what such an instance measured before still shows. Messages are counted per instance, so
+by backend they go under its backend now. Coverage only says "read" for a catch-up that listed and read every source
+(an unreadable directory or transcript is not covered, never a 0). Scope as
 `get_cache_report`. The dashboard reaches it over the public link only with `web.usage_report_on_public_link: true`.
 
 **Keep-warm** means sending a small turn before the cache expires so the next real turn reads it instead of

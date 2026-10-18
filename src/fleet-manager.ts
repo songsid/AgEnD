@@ -13268,7 +13268,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return buildUsageReport({
       now, zone: this.usageZone(), range: params.range, group: params.group, scanning: data.scanning,
       instances: data.instances.filter(i => keep(i.inst.name)).map(i => ({ name: i.inst.name, backend: i.inst.backend, team: team.get(i.inst.name) ?? null,
-        status: i.status, ...(i.with ? { with: i.with } : {}), ...(i.ledger ? { ledger: i.ledger } : {}), ...(i.days ? { days: i.days } : {}) })),
+        status: i.status, ...(i.with ? { with: i.with } : {}), ledger: i.ledger, days: i.days })),
       messages: messages.filter(m => keep(m.instance)),
     });
   }
@@ -13283,6 +13283,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       claudeKey: claudeProjectKey,
       codexSessionsDir: () => join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "sessions"),
       listRollouts: root => sharedRolloutIndex(root).list(),
+      rolloutsUnreadable: root => sharedRolloutIndex(root).unreadable,
       metaPath: join(this.dataDir, "cache-codex-rollouts.json"),
       zone: () => this.usageZone(),
       log: (level, msg, extra) => this.logger[level](extra ?? {}, msg),

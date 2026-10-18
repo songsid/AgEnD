@@ -1,6 +1,7 @@
 /**
  * #2122: the usage report's data contracts (docs/design/2122-usage-analysis.md §5) and its honest marks.
- * - §5.1: each ledger hour is tagged with the profile it was read from; hours from before read as unknown.
+ * - §5.1: each ledger hour keeps its totals per source (the reader's backend, the profile); hours from before read as
+ *   unknown — never relabelled with today's backend or profile, and history stays when the instance stops being measured.
  * - §5.2: fold, then prune — an hour is counted once, whichever step a crash interrupts; the ledger never prunes past
  *   the rollup's durable checkpoint, and an unwritable rollup keeps every hour in the ledger.
  * - §5.3: days at hour granularity, each day row with its zone.
@@ -10,14 +11,15 @@
  *   AgEnD cannot measure, the agent tool's scope, and the route's gates (usage_panel, the public link).
  */
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { addTurn, emptyLedger, pruneLedger, type FileCursor, type Ledger } from "../src/cache-ledger.js";
-import { addCoverage, covered, emptyDays, foldHours, localDate, readDays, COVERAGE_MAX } from "../src/usage-rollup.js";
+import { addTurn, emptyLedger, pruneLedger, reviveLedger, type FileCursor, type Ledger } from "../src/cache-ledger.js";
+import { addCoverage, covered, emptyDays, foldHours, hourSources, localDate, readDays, reviveDays, COVERAGE_MAX } from "../src/usage-rollup.js";
 import { buildUsageReport, rangeDates, usageBasis, usageRange, type UsageInstanceInput } from "../src/usage-report.js";
 import { CacheService } from "../src/cache-service.js";
+import { RolloutIndex } from "../src/rollout-index.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { humanBodyHash, nativeHumanOrigin } from "../src/human-delivery-receipts.js";
 import { outboundHandlers } from "../src/outbound-handlers.js";
@@ -42,20 +44,44 @@ function ledgerWith(hours: number[], profile?: string, model?: string): Ledger {
 }
 const sumRows = (rows: { m: Record<string, number[]> }[]) => rows.reduce((n, r) => n + Object.values(r.m).reduce((a, t) => a + t[0]!, 0), 0);
 
-describe("§5.1 an hour carries the profile it was read from", () => {
-  it("one profile, then a second one in the same hour reads mixed; hours from before #2122 have none", () => {
-    const l = emptyLedger(), c = cursor(), h = 1_800_000 * HOUR;
-    addTurn(l, c, turn(h), 0, "work");
-    expect(l.hours[String(h)]!.pf).toBe("work");
-    addTurn(l, c, turn(h + 1000), 0, "home");
-    expect(l.hours[String(h)]!.pf).toBe("mixed");
-    addTurn(l, c, turn(h + HOUR), 0);
-    expect(l.hours[String(h + HOUR)]!.pf).toBeUndefined();
+describe("§5.1 each source of an hour keeps its own totals; hours from before #2122 stay unknown", () => {
+  const h = 1_800_000 * HOUR, MK = "claude-opus-4-5|0";
+  /** An hour as a ledger from before #2122 wrote it: 100 requests, no source. */
+  function legacyLedger(): Ledger {
+    const l = emptyLedger();
+    l.hours[String(h)] = { m: { [MK]: [100, 10_000, 80_000, 5000, 5000, 0, 2000] }, g: [0, 0, 0, 0, 0, 0, 0] };
+    return l;
+  }
+  it("a legacy hour that gets one more request: the 100 stay unknown, the new one is the reader's and profile's", () => {
+    const l = legacyLedger();
+    addTurn(l, cursor(), turn(h + 1000), 0, "work");
+    expect(hourSources(l.hours[String(h)]!)).toEqual([
+      { backend: "claude-code", profile: "work", m: { [MK]: [1, 100, 800, 50, 50, 0, 20] } },
+      { backend: "unknown", profile: "unknown", m: { [MK]: [100, 10_000, 80_000, 5000, 5000, 0, 2000] } },
+    ]);
   });
-  it("a folded hour without a profile is unknown, never today's setting", () => {
-    const h = 1_800_000 * HOUR, l = ledgerWith([h]), d = emptyDays();
-    foldHours(d, l, h + 2 * HOUR, "UTC");
-    expect(d.rows[0]!.pf).toBe("unknown");
+  it("two profiles in one hour: each exact (no \"mixed\"), and they survive the ledger's round trip and the fold", () => {
+    const l = emptyLedger();
+    addTurn(l, cursor(), turn(h + 1000), 0, "work");
+    addTurn(l, cursor(), turn(h + 2000, "claude-opus-4-5", { output: 7 }), 0, "home");
+    addTurn(l, cursor(), turn(h + 3000), 0, "work");
+    const back = reviveLedger(JSON.parse(JSON.stringify(l)));
+    const by = Object.fromEntries(hourSources(back.hours[String(h)]!).map(s => [s.profile, s.m[MK]]));
+    expect(by).toEqual({ work: [2, 200, 1600, 100, 100, 0, 40], home: [1, 100, 800, 50, 50, 0, 7] });
+    const d = emptyDays();
+    foldHours(d, back, h + 2 * HOUR, "UTC");
+    expect(d.rows.map(r => [r.be, r.pf, r.m[MK]![0]]).sort()).toEqual([["claude-code", "home", 1], ["claude-code", "work", 2]]);
+    expect(reviveDays(JSON.parse(JSON.stringify(d))).rows).toHaveLength(2);
+  });
+  it("the reader is the file's, not the instance's: a codex rollout's turn is codex's", () => {
+    const l = emptyLedger();
+    addTurn(l, cursor("codex"), turn(h, "gpt-5.6-sol", { write5m: 0, write1h: 0, write: 0 }), 0, "unrecorded");
+    expect(hourSources(l.hours[String(h)]!).map(s => [s.backend, s.profile])).toEqual([["codex", "unrecorded"]]);
+  });
+  it("a folded legacy hour is unknown, never today's backend or profile", () => {
+    const d = emptyDays();
+    foldHours(d, legacyLedger(), h + 2 * HOUR, "UTC");
+    expect(d.rows.map(r => [r.be, r.pf])).toEqual([["unknown", "unknown"]]);
   });
 });
 
@@ -152,6 +178,100 @@ describe("§5.5 coverage is what the scanner read", () => {
   });
 });
 
+describe("§5.5 a source that could not be listed or read is never covered", () => {
+  const now = Date.UTC(2026, 9, 18, 12);
+  function service(root: string, o: { backend?: string; listRollouts?: () => Array<{ path: string; mtimeMs: number }>; unreadable?: number } = {}) {
+    const dir = join(root, "instances", "a");
+    const svc = new CacheService({
+      instances: () => [{ name: "a", backend: o.backend ?? "claude-code", workingDirectory: join(root, "wd"), ledgerPath: join(dir, "cache-ledger.json"), claudeConfigDir: join(root, "claude"), profile: "default" }],
+      claudeProjectsDir: () => join(root, "claude", "projects"), claudeKey: () => "k", codexSessionsDir: () => join(root, "codex"),
+      listRollouts: o.listRollouts ?? (() => []), ...(o.unreadable !== undefined ? { rolloutsUnreadable: () => o.unreadable! } : {}),
+      metaPath: join(root, "meta.json"), now: () => now, zone: () => "UTC",
+    });
+    return { svc, coverage: async () => (await readDays(join(dir, "usage-days.json"))).coverage };
+  }
+  it("controls: no project directory, or an empty one, is a real zero — covered", async () => {
+    for (const make of [false, true]) {
+      const root = tmp();
+      if (make) mkdirSync(join(root, "claude", "projects", "k"), { recursive: true });
+      const { svc, coverage } = service(root);
+      await svc.kick();
+      expect(await coverage(), make ? "empty" : "absent").toEqual([[now - 31 * DAY, now]]);
+      await svc.stop();
+    }
+  });
+  it("the project directory cannot be listed (not a directory): not covered", async () => {
+    const root = tmp();
+    mkdirSync(join(root, "claude", "projects"), { recursive: true });
+    writeFileSync(join(root, "claude", "projects", "k"), "not a directory");     // readdir: ENOTDIR
+    const { svc, coverage } = service(root);
+    await svc.kick();
+    expect(await coverage()).toEqual([]);
+    await svc.stop();
+  });
+  it.skipIf(process.getuid?.() === 0)("a transcript that cannot be read (EACCES): not covered; readable again, the next catch-up covers it", async () => {
+    const root = tmp(), dir = join(root, "claude", "projects", "k"), file = join(dir, "s.jsonl");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(file, "{}\n");
+    chmodSync(file, 0o000);
+    const { svc, coverage } = service(root);
+    await svc.kick();
+    expect(await coverage()).toEqual([]);
+    chmodSync(file, 0o600);
+    await svc.kick();
+    expect(await coverage()).toEqual([[now - 31 * DAY, now]]);
+    await svc.stop();
+  });
+  it("Codex: a listing that could not read part of the tree, or one that failed outright: not covered; a clean empty one is", async () => {
+    const eacces = Object.assign(new Error("EACCES"), { code: "EACCES" }), enoent = Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    const cases: Array<[string, Parameters<typeof service>[1], number]> = [
+      ["part unreadable", { backend: "codex", unreadable: 1 }, 0],
+      ["listing failed", { backend: "codex", listRollouts: () => { throw eacces; } }, 0],
+      ["no sessions yet", { backend: "codex", listRollouts: () => { throw enoent; } }, 1],
+      ["clean and empty", { backend: "codex", unreadable: 0 }, 1],
+    ];
+    for (const [what, o, n] of cases) {
+      const { svc, coverage } = service(tmp(), o);
+      await svc.kick();
+      expect((await coverage()).length, what).toBe(n);
+      await svc.stop();
+    }
+  });
+  it("the rollout index counts what it could not read, not what is gone", () => {
+    const err = (code: string) => Object.assign(new Error(code), { code });
+    const tree: Record<string, string[]> = { "/s": ["2026", "gone"], "/s/2026": ["rollout-a.jsonl", "rollout-b.jsonl"] };
+    const mk = (fail: Record<string, string>) => new RolloutIndex("/s", { ops: {
+      readdir: (d) => { if (fail[d]) throw err(fail[d]!); return tree[d] ?? []; },
+      stat: (p) => { if (fail[p]) throw err(fail[p]!); return { mtimeMs: 1, size: 1, isDirectory: () => !p.endsWith(".jsonl") }; },
+    } });
+    const clean = mk({ "/s/gone": "ENOENT", "/s/2026/rollout-b.jsonl": "ENOENT" });
+    expect([clean.list().length, clean.unreadable]).toEqual([1, 0]);
+    const denied = mk({ "/s/2026": "EACCES" });
+    expect([denied.list().length, denied.unreadable]).toEqual([0, 1]);
+    const io = mk({ "/s/2026/rollout-b.jsonl": "EIO" });
+    expect([io.list().length, io.unreadable]).toEqual([1, 1]);
+  });
+});
+
+describe("history of an instance not measured now", () => {
+  it("now on Kiro: its old ledger is still in usageData, and its old hours still fold before they leave", async () => {
+    const root = tmp(), dir = join(root, "instances", "a"); mkdirSync(dir, { recursive: true });
+    const now = Date.UTC(2026, 9, 18, 12), old = now - 40 * DAY - (now % HOUR), recent = now - 2 * HOUR - (now % HOUR);
+    writeFileSync(join(dir, "cache-ledger.json"), JSON.stringify(ledgerWith([old, recent], "default")));
+    const svc = new CacheService({
+      instances: () => [{ name: "a", backend: "kiro-cli", workingDirectory: join(root, "wd"), ledgerPath: join(dir, "cache-ledger.json") }],
+      claudeProjectsDir: () => join(root, "claude", "projects"), claudeKey: () => "k", codexSessionsDir: () => join(root, "codex"), listRollouts: () => [],
+      metaPath: join(root, "meta.json"), now: () => now, zone: () => "UTC",
+    });
+    await svc.pass();
+    const a = (await svc.usageData()).instances[0]!;
+    expect(a.status).toBe("credit_billed");
+    expect([Object.keys(a.ledger.hours).map(Number), a.days.checkpoint, sumRows(a.days.rows)]).toEqual([[recent], old, 1]);
+    expect(a.days.rows[0]!.be).toBe("claude-code");
+    await svc.stop();
+  });
+});
+
 describe("§5.4 delivered messages, once per receipt", () => {
   const person = nativeHumanOrigin("telegram", "bot-one", "42", "person", false, "900")!;
   function receipt(outbox: DeliveryOutbox) {
@@ -230,6 +350,47 @@ describe("the report: honest by construction", () => {
     expect(t.rows.find(x => x.key === "core")!.instances.sort()).toEqual(["a", "b"]);
     expect(t.rows.find(x => x.key === "")).toMatchObject({ instances: ["k"], messages: 2 });     // in no team: its own row
   });
+  it("an instance moved from Claude to Codex: its Claude history stays Claude's, priced and flagged as Claude's", () => {
+    const l = ledgerWith([h - 3 * HOUR], "default");                         // read by the claude reader, before the switch
+    addTurn(l, cursor("codex"), turn(h, "gpt-5.6-sol", { write5m: 0, write1h: 0, write: 0 }), 0, "unrecorded");
+    const days = emptyDays();
+    foldHours(days, ledgerWith([h - 30 * HOUR], "default"), h, "UTC");      // a folded Claude day, too
+    const r = input([ok("a", "codex", l, { days })], { group: "backend", range: { kind: "7d" } });
+    const claude = r.rows.find(x => x.key === "claude-code")!, codex = r.rows.find(x => x.key === "codex")!;
+    expect([claude.requests, claude.flags, codex.requests, codex.flags]).toEqual([2, [], 1, ["cache_write_not_reported"]]);
+    const rc = ratesFor("claude-opus-4-5")!;
+    expect(claude.amount).toBeCloseTo(2 * (100 * rc.input + 800 * rc.read + 50 * rc.write5m + 50 * rc.write1h + 20 * rc.output) / 1e6, 10);
+    expect(r.daily.filter(d => d.backend === "claude-code").every(d => !d.flags.includes("cache_write_not_reported"))).toBe(true);
+  });
+  it("a folded Codex day keeps its flag: writes not reported, from the rollup as from the ledger", () => {
+    const days = emptyDays();
+    foldHours(days, codexLedger(), h + 2 * HOUR, "UTC");
+    const r = input([ok("b", "codex", emptyLedger(), { days })], { group: "backend" });
+    expect(r.rows.find(x => x.key === "codex")!.flags).toEqual(["cache_write_not_reported"]);
+    expect(r.daily.map(d => d.flags)).toEqual([["cache_write_not_reported"]]);
+  });
+  it("an instance not measured now (Kiro, or sharing a directory) keeps what it measured: listed with its reason and its history", () => {
+    const k = input([ok("was", "kiro-cli", ledgerWith([h], "default"), { status: "credit_billed" }), ok("sh", "claude-code", ledgerWith([h], "work"), { status: "shared", with: ["x"] })]);
+    expect(k.notMeasured).toEqual([{ name: "was", backend: "kiro-cli", reason: "credit_billed" }]);
+    expect(k.shared).toEqual([{ name: "sh", backend: "claude-code", with: ["x"] }]);
+    expect([k.rows.find(x => x.key === "was")!.requests, k.rows.find(x => x.key === "sh")!.requests]).toEqual([1, 1]);
+    expect(k.rows.find(x => x.key === "was")!.backends).toEqual(["claude-code"]);
+  });
+  it("hours from before #2122: reported under an unknown source, flagged — never as today's backend", () => {
+    const l = emptyLedger();
+    l.hours[String(h)] = { m: { "claude-opus-4-5|0": [5, 500, 4000, 250, 250, 0, 100] }, g: [0, 0, 0, 0, 0, 0, 0] };
+    const r = input([ok("a", "codex", l)], { group: "backend" });
+    expect(r.rows.map(x => [x.key, x.requests])).toEqual(expect.arrayContaining([["unknown", 5]]));
+    expect(r.rows.find(x => x.key === "unknown")!.flags).toEqual(["source_unknown"]);
+    expect(r.rows.find(x => x.key === "codex")).toMatchObject({ requests: 0, total: 0, messages: 3 });   // only its messages (per instance: its backend now)
+  });
+  it("7 days are 7 calendar days in the fleet's zone, across a DST change either way", () => {
+    // New York, 2026-11-02 23:30 local (after the fall change on 11-01, a 25-hour day): from 10-27.
+    expect(rangeDates({ kind: "7d" }, Date.UTC(2026, 10, 3, 4, 30), "America/New_York")).toEqual({ from: "2026-10-27", to: "2026-11-02" });
+    // The spring change on 2026-03-08 (a 23-hour day): 2026-03-10 00:30 local → from 03-04.
+    expect(rangeDates({ kind: "7d" }, Date.UTC(2026, 2, 10, 4, 30), "America/New_York")).toEqual({ from: "2026-03-04", to: "2026-03-10" });
+    expect(rangeDates({ kind: "7d" }, Date.UTC(2026, 2, 1, 12), "UTC")).toEqual({ from: "2026-02-23", to: "2026-03-01" });   // across a month
+  });
   it("ranges are local dates; custom is checked; anything else is 7 days", () => {
     expect(rangeDates({ kind: "today" }, now, "UTC")).toEqual({ from: "2026-10-18", to: "2026-10-18" });
     expect(rangeDates({ kind: "7d" }, now, "UTC")).toEqual({ from: "2026-10-12", to: "2026-10-18" });
@@ -291,6 +452,41 @@ describe("GET /ui/usage-report: who gets it", () => {
     expect([no.status(), JSON.parse(no.body()).error, no.usageReport.mock.calls.length]).toEqual([403, "usage_report_not_over_public_link", 0]);
     const yes = get({ usage_report_on_public_link: true }, true); await settle();
     expect(yes.status()).toBe(200);
+  });
+  /** The report held until `release`: what may change meanwhile is the switch, the session and the public link. */
+  function held(publicLink: boolean) {
+    const sessions = new WebSessionStore();
+    const sid = sessions.create({ tier: "admin", surface: publicLink ? "gateway" : "local", label: "phone", tokenEpoch: tokenEpoch(TOKEN), ...(publicLink ? { exposureId: X } : {}) }).sessionId as string;
+    const cookie = publicLink ? `__Host-agend_session=${sid}` : `agend_session=${sid}`;
+    const req = Object.assign(new EventEmitter(), { method: "GET", url: "/ui/usage-report?range=all", headers: { host: publicLink ? "sample.trycloudflare.com" : "127.0.0.1:19280", cookie } as Record<string, string>, destroy: vi.fn() });
+    let status = 0, body = "", current = true;
+    const res = { destroyed: false, headersSent: false, setHeader: () => {}, writeHead: (code: number) => { status = code; }, end: (text = "") => { body = String(text); }, destroy: vi.fn() };
+    if (publicLink) bindGatewayRequest(req, { surface: "gateway", exposureId: X, expectedOrigin: ORIGIN, isCurrent: () => current });
+    let release!: () => void;
+    const usageReport = vi.fn(() => new Promise(r => { release = () => r({ rows: ["400 days of history"] }); }));
+    const web: Record<string, unknown> = publicLink ? { usage_report_on_public_link: true } : {};
+    const ctx = { webToken: TOKEN, webSessions: sessions, fleetConfig: { instances: {}, web }, usageReport, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
+    expect(handleWebRequest(req as never, res as never, new URL(req.url, publicLink ? ORIGIN : "http://127.0.0.1:19280"), ctx as never)).toBe(true);
+    return {
+      web, status: () => status, body: () => body, endLink: () => { current = false; },
+      signOut: () => { const h = sessions.list(undefined, () => true)[0]!.handle; sessions.revokeByHandle(h); },
+      done: async () => { await vi.waitFor(() => expect(usageReport).toHaveBeenCalled()); release(); await settle(); await settle(); },
+    };
+  }
+  it("held while it is worked out: unchanged, it is sent; the switch turned off, or the panel, meanwhile: refused", async () => {
+    const same = held(true); await same.done();
+    expect([same.status(), same.body()]).toEqual([200, JSON.stringify({ rows: ["400 days of history"] })]);
+    const off = held(true); off.web.usage_report_on_public_link = false; await off.done();
+    expect([off.status(), JSON.parse(off.body()).error]).toEqual([403, "usage_report_not_over_public_link"]);
+    const panel = held(false); panel.web.usage_panel = false; await panel.done();
+    expect([panel.status(), panel.body()]).toEqual([404, JSON.stringify({ error: "Not available" })]);
+  });
+  it("held while it is worked out: the session signed out, or the public link ended, meanwhile: 401, nothing sent", async () => {
+    for (const [what, publicLink, act] of [["signed out (local)", false, "signOut"], ["signed out (link)", true, "signOut"], ["link ended", true, "endLink"]] as const) {
+      const h = held(publicLink); h[act](); await h.done();
+      expect(h.status(), what).toBe(401);
+      expect(h.body(), what).not.toContain("400 days");
+    }
   });
   it("a guest: never — the route is not on GUEST_ROUTES (the gate every web request passes before any handler)", () => {
     for (const q of ["/ui/usage-report", "/ui/usage-report?range=today&instance=a"]) {

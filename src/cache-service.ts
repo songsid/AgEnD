@@ -41,6 +41,8 @@ export interface CacheServiceOptions {
   codexSessionsDir(): string;
   /** Rollout files with their mtimes (the shared rollout index). */
   listRollouts(root: string): Array<{ path: string; mtimeMs: number }>;
+  /** #2122: how much the last listing of `root` could not read (rollout-index.ts `unreadable`); absent: 0. */
+  rolloutsUnreadable?(root: string): number;
   /** Where the rollout → working-directory map is kept (one session_meta read per rollout, ever). */
   metaPath: string;
   now?: () => number;
@@ -89,6 +91,8 @@ const META_MAX_BYTES = 256 * 1024;   // session_meta carries the instructions (~
 const kindOf = (backend: string): TranscriptKind | null => (backend === "claude-code" ? "claude" : backend === "codex" ? "codex" : null);
 const sleep = (ms: number): Promise<void> => new Promise((r) => { const h = setTimeout(r, ms); h.unref?.(); });
 const dict = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
+/** An error that means the path is not there (never was, or went): a real absence, not a failure to read it. */
+const gone = (err: unknown): boolean => (err as NodeJS.ErrnoException | null)?.code === "ENOENT";
 
 export class CacheService {
   private readonly ledgers = new Map<string, Ledger>();
@@ -105,6 +109,11 @@ export class CacheService {
   private closing = false;
   private pending = { bytes: 0, files: 0 };
   private caughtUp = false;
+  /**
+   * #2122 §5.5: instances whose transcripts could not all be listed or read during this catch-up (EACCES, EIO… — a source
+   * that is simply not there is not one). The catch-up then proves nothing about them: no coverage is recorded.
+   */
+  private readonly unread = new Set<string>();
   private readonly now: () => number;
 
   constructor(private readonly o: CacheServiceOptions) { this.now = o.now ?? Date.now; }
@@ -164,6 +173,7 @@ export class CacheService {
   }
 
   private async catchUp(): Promise<void> {
+    this.unread.clear();
     for (;;) {
       const left = await this.pass();
       if (left === 0) { this.caughtUp = true; await this.recordCoverage(); }
@@ -204,13 +214,16 @@ export class CacheService {
     this.rollups.set(inst.name, next);
     return next.checkpoint;
   }
-  /** #2122 §5.5: a catch-up finished — every source changed in the read window has been read up to now. */
+  /**
+   * #2122 §5.5: a catch-up finished — for each instance whose sources were all listed and read, every one changed in the
+   * read window has been read up to now (an empty source included: a real zero). One that failed proves nothing.
+   */
   private async recordCoverage(): Promise<void> {
     const now = this.now();
     const insts = this.o.instances();
     const shared = await this.shared(insts);
     for (const inst of insts) {
-      if (!kindOf(inst.backend) || shared.has(inst.name)) continue;
+      if (!kindOf(inst.backend) || shared.has(inst.name) || this.unread.has(inst.name)) continue;
       const next: UsageDays = structuredClone(await this.rollupFor(inst));
       addCoverage(next, now - KEEP_DAYS * DAY, now);
       if (await writeDays(this.daysPath(inst), next)) this.rollups.set(inst.name, next);
@@ -270,7 +283,7 @@ export class CacheService {
     for (const inst of insts) {
       if (this.stopped) break;
       const kind = kindOf(inst.backend);
-      if (!kind || shared.has(inst.name)) continue;
+      if (!kind || shared.has(inst.name)) { await this.keepHistory(inst, cutoff); continue; }
       const ledger = await this.ledgerFor(inst);
       const files = kind === "claude" ? await this.claudeFiles(inst, cutoff) : codex.get(inst.name) ?? [];
       const listed = new Set(files.map((f) => f.path));
@@ -284,6 +297,7 @@ export class CacheService {
         if (cur.stalled === f.size) continue;
         if (budget <= 0) { behindBytes += f.size - cur.offset; behindFiles++; continue; }
         const done = await this.read(ledger, cur, f.path, budget, cutoff, inst.profile);
+        if (done.failed) this.unread.add(inst.name);
         this.dirty.add(inst.name);
         budget -= done.read;
         if (done.behind > 0) { behindBytes += done.behind; behindFiles++; }
@@ -299,6 +313,18 @@ export class CacheService {
     return behindBytes;
   }
 
+  /**
+   * #2122: an instance not read now (a backend AgEnD cannot measure, or a working directory it shares) keeps what it
+   * measured before: its ledger's old hours are still folded into the rollup before they leave, as anyone's.
+   */
+  private async keepHistory(inst: CacheInstance, cutoff: number): Promise<void> {
+    const ledger = await this.ledgerFor(inst);
+    const before = Object.keys(ledger.hours).length;
+    if (!before) return;
+    pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff));
+    if (Object.keys(ledger.hours).length !== before) this.dirty.add(inst.name);
+  }
+
   /** A file that is not the one the cursor read (another inode, or shorter): keep the session's end, start at its end. */
   private followFromEnd(ledger: Ledger, path: string, cur: FileCursor, ino: number, size: number): FileCursor {
     const next: FileCursor = { kind: cur.kind, ino, offset: size };
@@ -307,7 +333,7 @@ export class CacheService {
     return ledger.files[path] = next;
   }
 
-  private async read(ledger: Ledger, cur: FileCursor, path: string, budget: number, cutoff: number, profile?: string): Promise<{ read: number; behind: number }> {
+  private async read(ledger: Ledger, cur: FileCursor, path: string, budget: number, cutoff: number, profile?: string): Promise<{ read: number; behind: number; failed?: true }> {
     try {
       const res = await scanJsonl(path, cur.offset, { maxBytes: budget, ino: cur.ino }, (line) => {
         const turn = cur.kind === "claude" ? claudeLine(line, cur) : codexLine(line, cur);
@@ -321,7 +347,8 @@ export class CacheService {
       return { read: Math.max(res.read, 1), behind: res.done ? 0 : res.size - res.offset };
     } catch (err) {
       this.o.log?.("debug", "cache analysis: could not read a transcript", { path, err: String(err) });
-      return { read: 1, behind: 0 };
+      // Gone since the listing: nothing left to read. Anything else: not read (the cursor stays; a later pass retries).
+      return gone(err) ? { read: 1, behind: 0 } : { read: 1, behind: 0, failed: true };
     }
   }
 
@@ -329,12 +356,14 @@ export class CacheService {
     const projects = inst.claudeConfigDir ? join(inst.claudeConfigDir, "projects") : this.o.claudeProjectsDir();
     const dir = join(projects, this.o.claudeKey(inst.workingDirectory));
     let names: string[];
-    try { names = await readdir(dir); } catch { return []; }
+    // No project directory: this instance has written nothing there (a real zero). Unreadable: not listed at all.
+    try { names = await readdir(dir); } catch (err) { if (!gone(err)) this.unread.add(inst.name); return []; }
     const out: Array<{ path: string; ino: number; size: number }> = [];
     for (const n of names) {
       if (!n.endsWith(".jsonl")) continue;
       const path = join(dir, n);
-      try { const st = await stat(path); if (st.isFile() && st.mtimeMs >= cutoff) out.push({ path, ino: st.ino, size: st.size }); } catch { /* gone */ }
+      try { const st = await stat(path); if (st.isFile() && st.mtimeMs >= cutoff) out.push({ path, ino: st.ino, size: st.size }); }
+      catch (err) { if (!gone(err)) this.unread.add(inst.name); }
     }
     return out;
   }
@@ -356,12 +385,18 @@ export class CacheService {
       } catch { /* none yet */ }
     }
     let rollouts: Array<{ path: string; mtimeMs: number }> = [];
-    try { rollouts = this.o.listRollouts(this.o.codexSessionsDir()).filter((r) => r.mtimeMs >= cutoff); } catch { /* no sessions yet */ }
+    // A listing that could not read part of the tree may miss any codex instance's rollouts: none of them is covered.
+    const unlisted = (): void => { for (const i of codexInsts) this.unread.add(i.name); };
+    try {
+      const root = this.o.codexSessionsDir();
+      rollouts = this.o.listRollouts(root).filter((r) => r.mtimeMs >= cutoff);
+      if ((this.o.rolloutsUnreadable?.(root) ?? 0) > 0) unlisted();
+    } catch (err) { if (!gone(err)) unlisted(); /* else no sessions yet */ }
     const live = new Set<string>();
     for (const r of rollouts) {
       live.add(r.path);
       let st;
-      try { st = await stat(r.path); } catch { continue; }
+      try { st = await stat(r.path); } catch (err) { if (!gone(err)) unlisted(); continue; }
       let m = this.meta![r.path];
       // Read once per physical file; a first line still being written is read again next pass.
       if (!m || m.ino !== st.ino) {
@@ -411,18 +446,27 @@ export class CacheService {
    * #2122: what the usage report reads — each instance's ledger and rollup as they are now, or why it has none. Never
    * reads a transcript (a catch-up is started, not waited for).
    */
-  async usageData(): Promise<{ scanning: CacheReport["scanning"]; instances: Array<{ inst: CacheInstance; status: InstanceReport["status"]; with?: string[]; ledger?: Ledger; days?: UsageDays }> }> {
+  async usageData(): Promise<{ scanning: CacheReport["scanning"]; instances: Array<{ inst: CacheInstance; status: InstanceReport["status"]; with?: string[]; ledger: Ledger; days: UsageDays }> }> {
     this.start();
     void this.kick();
     const insts = this.o.instances();
     const shared = await this.shared(insts);
-    const out: Array<{ inst: CacheInstance; status: InstanceReport["status"]; with?: string[]; ledger?: Ledger; days?: UsageDays }> = [];
+    const out: Array<{ inst: CacheInstance; status: InstanceReport["status"]; with?: string[]; ledger: Ledger; days: UsageDays }> = [];
     for (const inst of insts) {
-      const kind = kindOf(inst.backend);
-      if (!kind) { out.push({ inst, status: inst.backend.startsWith("kiro") ? "credit_billed" : "unsupported" }); continue; }
-      const others = shared.get(inst.name);
-      if (others) { out.push({ inst, status: "shared", with: others }); continue; }
-      out.push({ inst, status: "ok", ledger: await this.ledgerFor(inst), days: await this.rollupFor(inst) });
+      await this.ledgerFor(inst);
+      await this.rollupFor(inst);
+      // One instance's ledger and rollup copied together, with no await between: a pass folds an hour into a new rollup
+      // and prunes it from the ledger later, so both copies hold it (the report counts it once, by the checkpoint) or
+      // one does — never neither. Copies, so a pass that runs while the next instance is loaded changes nothing here.
+      const live = this.ledgers.get(inst.name)!;
+      const ledger: Ledger = { ...emptyLedger(), hours: structuredClone(live.hours), ...(live.writesSeen ? { writesSeen: true } : {}) };   // what the report reads
+      const days = structuredClone(this.rollups.get(inst.name)!);
+      // `status` is about collecting now; what it measured before (another backend, a directory it did not share yet)
+      // is in `ledger` and `days` either way.
+      const kind = kindOf(inst.backend), others = shared.get(inst.name);
+      if (!kind) out.push({ inst, status: inst.backend.startsWith("kiro") ? "credit_billed" : "unsupported", ledger, days });
+      else if (others) out.push({ inst, status: "shared", with: others, ledger, days });
+      else out.push({ inst, status: "ok", ledger, days });
     }
     return { scanning: this.scanning(), instances: out };
   }
