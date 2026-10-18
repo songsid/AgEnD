@@ -26,7 +26,9 @@ Both the iframe attribute and response CSP use `sandbox="allow-scripts"`, with n
 
 The response hashes its trusted inline script and style and allows Blob Worker scripts only inside this document. Network, forms, nested frames and object/embed are closed. No parent script/style/Worker CSP widening is needed. The transport proof tests actual cookie/storage/API/network denial plus independent visible pixels; an unstarted Worker or a blocked positive-control server cannot count as isolation.
 
-The first PR serves the fixed bootstrap and exports an unused frame helper. Linux WebKit exposes CacheStorage inside opaque Workers. The transport probe therefore checks the actual boundary: a populated parent cache is unreadable, child writes are invisible to the parent, and a second opaque Worker cannot read the first one’s entry. It does not claim that every storage API is absent.\n\nProduct mounting, shell bootstrap metadata and frame permission, public placed-resource reads, consent removal and Try cutover remain in PR 2. Live-guard startup and shared reduced-motion preference remain in PR 3. Existing skill instructions stay accurate until those cutovers; both web skills and paired user docs change alongside each user-visible policy change.
+The first PR serves the fixed bootstrap and exports an unused frame helper. Linux WebKit exposes CacheStorage inside opaque Workers. The transport probe therefore checks the actual boundary: a populated parent cache is unreadable, child writes are invisible to the parent, and a second opaque Worker cannot read the first one’s entry. It does not claim that every storage API is absent.
+
+Product mounting, shell bootstrap metadata and frame permission, public placed-resource reads, consent removal and Try cutover remain in PR 2. Live-guard startup and shared reduced-motion preference remain in PR 3. Existing skill instructions stay accurate until those cutovers; both web skills and paired user docs change alongside each user-visible policy change.
 
 ## Start and live guard
 

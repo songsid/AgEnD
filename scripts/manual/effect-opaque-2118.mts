@@ -18,7 +18,7 @@ const out=resolve(process.env.OUT_DIR||'.artifacts/worker-smoke');mkdirSync(out,
 if(!process.env.PW_DIR)throw Error('Set PW_DIR to an isolated Playwright installation');
 const pw=createRequire(join(resolve(process.env.PW_DIR),'package.json'))('playwright');
 const privateDir=mkdtempSync(join(out,'private-'));mkdirSync(join(privateDir,'home'));mkdirSync(join(privateDir,'tmp'));
-const boot='c'.repeat(32),bootstrap=createEffectBootstrap(boot),receipts=[],trapPaths=[];let browser,trap=0;
+const boot='c'.repeat(32),bootstrap=createEffectBootstrap(boot),receipts=[],trapPaths=[],cleanupErrors=[];let browser,trap=0;
 // The same probe runs without CSP as a positive transport control. All destinations are this scratch server.
 const networkProbe=String.raw`
 async function probeNetwork(base) {
@@ -180,8 +180,11 @@ try{
   await browser.close();browser=null;
  }
 }finally{
- if(browser)await browser.close();for(const server of [parent])if(server?.listening){server.closeAllConnections();server.close();await once(server,'close');}rmSync(privateDir,{recursive:true,force:true});
+ const attempt=async(name,fn)=>{try{await fn()}catch(error){cleanupErrors.push({name,error:String(error)})}};
+ await attempt('browser',async()=>{if(browser)await browser.close()});
+ await attempt('listener',async()=>{if(parent.listening){parent.closeAllConnections();parent.close();await once(parent,'close')}});
+ await attempt('scratch',async()=>rmSync(privateDir,{recursive:true,force:true}));
  const hashes=Object.fromEntries(['src/web-effect-worker.ts','src/web-effect-bootstrap.ts','src/ui/shared/effect-frame.js','dist/web-effect-worker.js','dist/web-effect-bootstrap.js','scripts/manual/effect-opaque-2118.mts'].map(path=>[path,createHash('sha256').update(readFileSync(path)).digest('hex')]));
- writeFileSync(join(out,'receipt.json'),JSON.stringify({securityProbe:true,fromDefaultsAcceptance:false,syntheticSecretSentinels:true,productMount:false,realSafari:false,physicalIme:false,hashes,trap,trapPaths,receipts},null,2)+'\n');console.log(JSON.stringify(receipts.map(({engine,kind,status,error})=>({engine,kind,status,error})),null,2));
+ writeFileSync(join(out,'receipt.json'),JSON.stringify({securityProbe:true,fromDefaultsAcceptance:false,syntheticSecretSentinels:true,productMount:false,realSafari:false,physicalIme:false,hashes,trap,trapPaths,receipts,cleanupErrors},null,2)+'\n');console.log(JSON.stringify(receipts.map(({engine,kind,status,error})=>({engine,kind,status,error})),null,2));
 }
-if(receipts.some(r=>r.status!=='pass'))process.exitCode=1;
+if(cleanupErrors.length||receipts.some(r=>r.status!=='pass'))process.exitCode=1;
