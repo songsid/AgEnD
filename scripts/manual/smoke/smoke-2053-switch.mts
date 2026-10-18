@@ -6,8 +6,9 @@
 //   first — the first message of the new thread is in the DOM      full — every message is (the thread drawn)
 //   lt    — long-task ms between the click and `full` (Chromium)   md / mdN — ms in renderMarkdown, and its calls
 // First visits (history read); revisits among the last four chats shown (what the page keeps: THREAD_KEEP), ROUNDS
-// rounds; and revisits of chats seen longer ago (let go: drawn anew); medians. After every revisit the view is at the
-// bottom (pinned), as before (#2088's end-of-scroll must hold). RUN IT ALONE: nothing else may run beside it.
+// rounds; and revisits of chats seen longer ago (let go: drawn anew); medians. Every revisit comes back where that chat
+// was left: at the bottom if it was left there (within the 48 px slack), else at the same place — the scroll memo as
+// before (#2088's end-of-scroll must hold). RUN IT ALONE: nothing else may run beside it.
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> [PW_ENGINE=webkit] npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2053-switch.mts
 import { writeFileSync } from "node:fs";
 import { bootFixture, freshPage, mounted, seedChat, shotPath } from "../smoke-fixture/index.mts";
@@ -43,8 +44,8 @@ const measure = (page: any, to: string) => page.evaluate(`new Promise((resolve) 
   const marks = {}; let t0 = 0; let done = false;
   const frame = (k) => { if (marks[k] === undefined) { marks[k] = -1; requestAnimationFrame(() => { marks[k] = Math.round(performance.now() - t0); }); } };
   const finish = (extra) => { obs.disconnect(); const lt = (window.__lt || []).filter(([s]) => s >= t0).reduce((n, [, d]) => n + d, 0);
-    const sc = document.querySelector(".p-chat .scroller"); const bottom = sc ? sc.scrollHeight - sc.scrollTop - sc.clientHeight <= 2 : null;
-    resolve({ ...marks, lt: Math.round(lt), md: Math.round(window.__md), mdN: window.__mdN, bottom, ...extra }); };
+    const sc = document.querySelector(".p-chat .scroller"); const dist = sc ? Math.round(sc.scrollHeight - sc.scrollTop - sc.clientHeight) : null;
+    resolve({ ...marks, lt: Math.round(lt), md: Math.round(window.__md), mdN: window.__mdN, dist, ...extra }); };
   const check = () => {
     const mine = [...document.querySelectorAll(".p-chat .msg.agent .sender")].some((e) => e.textContent === to);
     const msgs = mine ? document.querySelectorAll(".p-chat .msg").length : 0;
@@ -55,6 +56,8 @@ const measure = (page: any, to: string) => page.evaluate(`new Promise((resolve) 
   obs.observe(document.body, { childList: true, subtree: true });
   setTimeout(() => { if (!done) finish({ timeout: true, msgs: document.querySelectorAll(".p-chat .msg").length }); }, 30000);
   window.__md = 0; window.__mdN = 0;
+  // Where the chat being left was (px from its bottom): a revisit restores it.
+  const was = document.querySelector(".p-chat .scroller"); marks.leftAt = was ? Math.round(was.scrollHeight - was.scrollTop - was.clientHeight) : null;
   t0 = performance.now(); if (link) link.click(); else resolve({ missing: true }); check();
 })`);
 const med = (xs: number[]) => { const s = xs.filter((x) => typeof x === "number" && x >= 0).sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)]! : null; };
@@ -76,21 +79,28 @@ for (const [tag, c] of [["desk", { device: "desk", theme: "light", lang: "en" }]
   await p.page.waitForTimeout(1000);
   const nav: [number, number] = [navFrom, p.errors.length];
   const first: any[] = [], revisit: any[] = [], older: any[] = [];
-  for (const to of CHATS.slice(1)) first.push(await measure(p.page, to));                    // first visits: history read
+  // Where each chat was left (px from its bottom, at the click away): a revisit must come back there — at the bottom if
+  // it was left within the 48 px a reader counts as at the bottom, else at the same place (the scroll memo, unchanged).
+  let current = CHATS[0];
+  const left: Record<string, number> = {};
+  const go = async (to: string) => { const r = await measure(p.page, to); left[current] = r.leftAt; current = to; return r; };
+  const where = (to: string, r: any) => { const was = left[to]; return { to, was, ok: typeof was !== "number" || typeof r.dist !== "number" ? false : was <= 48 ? r.dist <= 2 : Math.abs(r.dist - was) <= 8, ...r }; };
+  for (const to of CHATS.slice(1)) first.push({ to, ...(await go(to)) });                    // first visits: history read
   // Now shown: CHATS[5]; kept: CHATS[2..4]. Revisits among those four (each a kept one).
-  for (let r = 0; r < ROUNDS; r++) for (const to of [CHATS[4], CHATS[3], CHATS[2], CHATS[5]]) revisit.push(await measure(p.page, to));
+  for (let r = 0; r < ROUNDS; r++) for (const to of [CHATS[4], CHATS[3], CHATS[2], CHATS[5]]) revisit.push(where(to, await go(to)));
   // Seen longer ago (let go): CHATS[0], CHATS[1] — drawn anew, from the history already read.
-  for (const to of [CHATS[0], CHATS[1]]) older.push(await measure(p.page, to));
+  for (const to of [CHATS[0], CHATS[1]]) older.push(where(to, await go(to)));
   const all = [...first, ...revisit, ...older];
   results.cases[tag] = { summary: { first: summary(first), revisit: summary(revisit), older: summary(older) },
-    bottomAfterRevisit: [...revisit, ...older].every((x) => x.bottom === true), timeouts: all.filter((x) => x.timeout || x.missing).length,
-    errors: split(p.errors, nav).other, webkitOwn: split(p.errors, nav).accepted,
+    backWhereLeft: [...revisit, ...older].every((x) => x.ok), leftOffBottom: Object.entries(left).filter(([, d]) => d > 48).map(([n, d]) => `${n}:${d}`),
+    timeouts: all.filter((x) => x.timeout || x.missing).length,
+    errors: split(p.errors, nav).other, webkitOwn: split(p.errors, nav).accepted, nav, allErrors: p.errors,
     rows: { first: first.map((r, i) => ({ to: CHATS[i + 1], ...r })), revisit, older } };
   await p.page.screenshot({ path: shotPath("smoke-2053-switch", `${ENGINE}-${tag}`, "chat") });
   await p.ctx.close();
 }
 writeFileSync(shotPath("smoke-2053-switch", `${ENGINE}-result`, "x").replace(/-x\.png$/, ".json"), JSON.stringify(results, null, 1));
-console.log(JSON.stringify(Object.fromEntries(Object.entries(results.cases).map(([k, v]: any) => [k, { ...v.summary, bottom: v.bottomAfterRevisit, timeouts: v.timeouts, errors: v.errors, webkitOwn: v.webkitOwn.length }])), null, 1));
-const failed = Object.values(results.cases).some((v: any) => v.errors.length || v.timeouts || !v.bottomAfterRevisit);
+console.log(JSON.stringify(Object.fromEntries(Object.entries(results.cases).map(([k, v]: any) => [k, { ...v.summary, backWhereLeft: v.backWhereLeft, leftOffBottom: v.leftOffBottom, timeouts: v.timeouts, errors: v.errors, webkitOwn: v.webkitOwn.length }])), null, 1));
+const failed = Object.values(results.cases).some((v: any) => v.errors.length || v.timeouts || !v.backWhereLeft);
 console.log(failed ? "FAIL" : `PASS (${ENGINE})`);
 await fx.close(); process.exit(failed ? 1 : 0);
