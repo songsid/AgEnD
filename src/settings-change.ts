@@ -55,6 +55,10 @@ const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolea
   { path: ["fleet", "web_terminal", "ttl_minutes"], def: 10, looser: (a, b) => b > a },
   // #1218: the Log tab shows each agent's steps on the web (the public link included): turning it on is confirmed.
   { path: ["fleet", "web", "log_tab"], def: false, looser: (a, b) => b === true && a !== true },
+  // #2122: the usage report over the public link applies at once either way. The default (off) is the gate — a link may
+  // be shared with people who should not see 400 days of usage; the switch is reached only from a signed-in session on
+  // the dashboard reached directly, and it shows counts and amounts, not content: a second confirmation stops nothing more.
+  { path: ["fleet", "web", "usage_report_on_public_link"], def: false, looser: () => false },
   // #1629 r4.1 Q3 (b): the card's upload limits and the picture quota — a lower one applies directly, a higher one is
   // confirmed. Judged as the limit they GIVE (clamped to the bounds, as the loader does): 9999 → 5000 changes nothing.
   ...Object.entries(APPEARANCE_BOUNDS).flatMap(([group, keys]) => Object.entries(keys as Record<string, readonly [number, number]>).map(([key, [floor, ceiling]]) => {

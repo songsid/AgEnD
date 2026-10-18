@@ -247,9 +247,12 @@ they are never a $0 row, and what such an instance measured before still shows. 
 by backend they go under its backend now. Coverage only says "read" for a catch-up that listed and read every source
 (an unreadable directory or transcript is not covered, never a 0). Scope as
 `get_cache_report`. The dashboard reaches it over the public link only with `web.usage_report_on_public_link: true`
-(otherwise the page says "Not offered over the public link"); guests never. The page adds a daily trend (top 5 and
+(Settings → Web → **Usage report over the public link**, applies at once; otherwise the page says "Not offered over
+the public link" and links to that switch on the dashboard reached directly); guests never. The page adds a daily trend (top 5 and
 others), a heatmap that tells a day read with nothing used from a day not collected, and **Download CSV** (the shown
-answer's daily rows, with the basis). Claude subagent (sidechain) turns aren't counted yet.
+answer's daily rows, with the basis). Claude subagent (sidechain) turns aren't counted yet. A long range whose daily rows
+are too many says from which date the charts and the CSV start (the totals stay whole); a day used only by an unpriced
+model is "used, not priced"; after a timezone change each day keeps the zone it was made in, and the page says so.
 
 **Keep-warm** means sending a small turn before the cache expires so the next real turn reads it instead of
 rewriting it. **Today it is only a simulation and a recommendation** — AgEnD sends no keep-warm pings (#1469 is

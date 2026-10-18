@@ -1356,6 +1356,8 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .us-custom label { display: inline-flex; flex-direction: column; gap: 2px; color: var(--text-2); }
 .us-basis { font-size: var(--fs-sm); color: var(--text); padding: var(--s-2) var(--s-3); border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: var(--r-sm); }
 .us-fresh { font-size: var(--fs-xs); }
+.us-partial { font-size: var(--fs-sm); padding: var(--s-2) var(--s-3); border-left: 3px solid var(--warn); background: var(--warn-bg); border-radius: var(--r-sm); }
+.us-unpriced { font-size: var(--fs-xs); }
 .us-scan { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .us-totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-3); margin: 0; }
 .us-totals .ch-metric dd { font-size: var(--fs-lg); }

@@ -23,10 +23,16 @@ register("fusage", {
     notMeasured: "Not measured", nm_credit_billed: "Kiro is credit-billed and records no tokens", nm_unsupported: "AgEnD can't read this CLI's usage yet", nm_no_data: "nothing read yet",
     shared: "shares its working directory with {0}; their transcripts can't be told apart",
     empty: "Nothing recorded yet", emptyHint: "Usage is read from Claude Code and Codex transcripts, from when the fleet started.",
-    blocked: "Not offered over the public link", blockedHint: "Open the dashboard directly to see usage, or have an admin set web.usage_report_on_public_link: true.",
+    blocked: "Not offered over the public link", blockedHint: "Usage is offered over the public link only when \"Usage report over the public link\" is on in Settings → Web — on the dashboard reached directly, on the computer running AgEnD.",
+    openSettings: "Open Settings → Web on that computer",
+    partialDays: "Daily detail from {0}: the earlier days in this range are too many rows to send. The rows and totals above cover the whole range; the trend, the heatmap and the CSV start at {0}.",
+    csvFrom: "Download CSV (from {0})",
+    zoneChanged: "The fleet's timezone changed: these days were made in {0}. A day keeps the zone it was made in, so a day made in two shows each part (see the heatmap). Days from now on are in {1}.",
+    dayTokens: "{0} tokens", partNotPriced: "part not priced",
+    trendUnpriced: "Not priced, so not in these bars: {0}. Their tokens are in the rows and the heatmap.",
     off: "Usage is turned off", offHint: "web.usage_panel: false hides it.",
     trend: "Daily trend", trendTokens: "tokens (nothing here is priced)", others: "Others", heatmap: "Daily totals",
-    h_idle: "{0}: read, nothing used", h_gap: "{0}: not collected", h_day: "{0}: {1}", keyGap: "not collected", keyIdle: "read, nothing used", keyUsed: "used (stronger: more)", scale: "Tallest day: {0}", earlier: "← Scroll for earlier days",
+    h_idle: "{0}: read, nothing used", h_gap: "{0}: not collected", h_day: "{0}: {1}", keyGap: "not collected", keyIdle: "read, nothing used", keyUsed: "used (stronger: more tokens)", scale: "Tallest day: {0}", earlier: "← Scroll for earlier days",
     trendLabel: "Daily {0} for the top {1} and others, {2} to {3}.", trendLabelAll: "Daily {0} for {1} agents, {2} to {3}.", heatLabel: "{0} days; {1} with usage, {2} not collected.",
     zoneNote: "Days in {0}, whole hours.", teamsNote: "Teams as configured now.",
     noRows: "Nothing in this range.",
@@ -43,10 +49,16 @@ register("fusage", {
     notMeasured: "未量測", nm_credit_billed: "Kiro 以 credit 計費，不記錄 token", nm_unsupported: "AgEnD 目前還讀不到這個 CLI 的用量", nm_no_data: "尚未讀到任何資料",
     shared: "與 {0} 共用工作目錄，無法分辨各自的 transcript",
     empty: "還沒有任何紀錄", emptyHint: "用量從 Claude Code 與 Codex 的 transcript 讀取，自 fleet 啟動起計。",
-    blocked: "公開連結上不提供", blockedHint: "請直接開啟儀表板查看用量，或請管理者設定 web.usage_report_on_public_link: true。",
+    blocked: "公開連結上不提供", blockedHint: "只有在設定 → 網頁裡開啟「透過公開連結提供用量報告」時，公開連結才會提供用量；這個設定要在執行 AgEnD 的那台電腦上、直接開啟的儀表板裡變更。",
+    openSettings: "在那台電腦上開啟設定 → 網頁",
+    partialDays: "每日明細從 {0} 起：這段期間更早的日子資料列太多，無法一次送出。上方的各列與總計涵蓋整段期間；趨勢、熱度圖與 CSV 則從 {0} 開始。",
+    csvFrom: "下載 CSV（從 {0} 起）",
+    zoneChanged: "fleet 的時區曾經變更：這些日子分別依 {0} 計算。每一天保留它當初計算時的時區，所以跨兩個時區的日子會分別列出各部分（見熱度圖）。之後的日子依 {1} 計算。",
+    dayTokens: "{0} 個 token", partNotPriced: "部分未定價",
+    trendUnpriced: "未定價，所以不在這些長條裡：{0}。它們的 token 列在各列與熱度圖中。",
     off: "用量已關閉", offHint: "已設定 web.usage_panel: false。",
     trend: "每日趨勢", trendTokens: "token（這裡沒有任何已定價的用量）", others: "其他", heatmap: "每日總計",
-    h_idle: "{0}：已讀取，沒有用量", h_gap: "{0}：未收集", h_day: "{0}：{1}", keyGap: "未收集", keyIdle: "已讀取，沒有用量", keyUsed: "有用量（顏色越濃越多）", scale: "最高的一天：{0}", earlier: "← 往左捲動可看較早的日子",
+    h_idle: "{0}：已讀取，沒有用量", h_gap: "{0}：未收集", h_day: "{0}：{1}", keyGap: "未收集", keyIdle: "已讀取，沒有用量", keyUsed: "有用量（顏色越濃，token 越多）", scale: "最高的一天：{0}", earlier: "← 往左捲動可看較早的日子",
     trendLabel: "前 {1} 名與其他的每日{0}，{2} 至 {3}。", trendLabelAll: "{1} 個 agent 的每日{0}，{2} 至 {3}。", heatLabel: "{0} 天；{1} 天有用量，{2} 天未收集。",
     zoneNote: "日期依 {0}，以整點小時計。", teamsNote: "Team 依目前設定。",
     noRows: "這段期間沒有任何紀錄。",
@@ -99,7 +111,7 @@ export function usageCsv(report) {
       d.requests, "", d.amount === null ? "" : d.amount.toFixed(6), report.basis, (d.flags || []).join(" ")].map(csvField).join(","));
   }
   for (const m of report.messagesDaily || []) {
-    lines.push([m.date, report.zone, m.instance, "", "", "", "", "", "", "", "", "", "", "", m.count, "", "", ""].map(csvField).join(","));
+    lines.push([m.date, report.zone, m.instance, "", "", "", "", "", "", "", "", "", "", "", m.count, "", report.basis, ""].map(csvField).join(","));
   }
   return `${lines.join("\r\n")}\r\n`;
 }
@@ -135,6 +147,38 @@ export function levels(values) {
   const q = (p) => nz[Math.max(0, Math.ceil(p * nz.length) - 1)];
   const cut = nz.length ? [q(0.25), q(0.5), q(0.75)] : [];
   return (v) => (!(v > 0) ? 0 : v <= cut[0] ? 1 : v <= cut[1] ? 2 : v <= cut[2] ? 3 : 4);
+}
+
+const tokensOf = (d) => d.input + d.output + d.cacheRead + d.cacheWrite5m + d.cacheWrite1h + d.cacheWrite;
+/**
+ * Each day of the answer: its tokens (whether it was used at all), the priced part of its amount, whether part of it is
+ * not priced, and its parts by zone (a day folded before the fleet's timezone changed keeps its own zone, §5.3).
+ */
+export function dayTotals(report) {
+  const m = new Map();
+  for (const d of report.daily || []) {
+    let e = m.get(d.date);
+    if (!e) { e = { tokens: 0, amount: 0, unpriced: false, zones: new Map() }; m.set(d.date, e); }
+    const t = tokensOf(d);
+    e.tokens += t;
+    if (d.amount === null) e.unpriced = true; else e.amount += d.amount;
+    const z = e.zones.get(d.zone) || { tokens: 0, amount: 0 };
+    z.tokens += t; z.amount += d.amount || 0; e.zones.set(d.zone, z);
+  }
+  return m;
+}
+/** A day in words: its tokens, its API-equivalent where priced, what is not priced, and each zone's part. */
+export function dayText(date, e) {
+  const parts = [tu("dayTokens", tokens(e.tokens))];
+  if (e.amount > 0) parts.push(money(e.amount));
+  if (e.unpriced) parts.push(tu(e.amount > 0 ? "partNotPriced" : "notPriced"));
+  const zones = e.zones.size > 1 ? ` (${[...e.zones].map(([z, p]) => `${z}: ${tokens(p.tokens)}`).join(", ")})` : "";
+  return tu("h_day", date, parts.join(" · ") + zones);
+}
+/** The zones the answer's days were made in, when they are not all the fleet's current one (§5.3). */
+export function zonesChanged(report) {
+  const zones = [...new Set((report.daily || []).map((d) => d.zone))];
+  return zones.length > 1 || (zones.length === 1 && zones[0] !== report.zone) ? zones : null;
 }
 
 /** The trend's series: the top `TOP` agents by the measure over the range, then "others"; one value per date. */
@@ -201,21 +245,19 @@ function Trend({ report, dates }) {
       })}
     </svg></div>
     <${EarlierHint} wide=${wide} />
+    ${s.priced && (report.totals.unpriced || []).length ? html`<p class="note us-unpriced">${tu("trendUnpriced", report.totals.unpriced.join(", "))}</p>` : null}
     <ul class="us-legend">${s.names.map((name, k) => html`<li key=${name}><span class=${`us-sw us-s${k}`} aria-hidden="true"></span><span class="mono">${name}</span> <span class="note">${fmtMeasure(s.priced, s.totals[k])}</span></li>`)}</ul>
   </section>`;
 }
 
 function Heatmap({ report, dates }) {
-  const priced = report.totals && report.totals.amount !== null && report.totals.amount > 0;
   const covered = useMemo(() => coveredDates(report.coverage, report.zone), [report]);
-  const byDate = useMemo(() => {
-    const m = new Map();
-    for (const d of report.daily || []) m.set(d.date, (m.get(d.date) || 0) + (priced ? d.amount || 0 : d.input + d.output + d.cacheRead + d.cacheWrite5m + d.cacheWrite1h + d.cacheWrite));
-    return m;
-  }, [report, priced]);
+  // Whether a day was used, and how much, is its tokens: a day used only by a model not in the price table is used,
+  // never "nothing used" (its title says it is not priced).
+  const byDate = useMemo(() => dayTotals(report), [report]);
   const [scroller, wide] = useLatestFirst([report, dates]);
   if (!dates.length) return null;
-  const level = levels(dates.map((d) => byDate.get(d) || 0));
+  const level = levels(dates.map((d) => byDate.get(d)?.tokens || 0));
   // Weeks as columns, Monday first (a date's weekday from its own Y-M-D: no zone involved).
   const dow = (d) => (new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7;
   // Weeks as columns under a month row (its short name where a month begins).
@@ -223,11 +265,11 @@ function Heatmap({ report, dates }) {
   let used = 0, gaps = 0;
   const months = [];
   const cells = dates.map((d, i) => {
-    const v = byDate.get(d) || 0, k = lead + i, x = Math.floor(k / 7) * cell + 1, y = head + (k % 7) * cell + 1;
+    const e = byDate.get(d), v = e ? e.tokens : 0, k = lead + i, x = Math.floor(k / 7) * cell + 1, y = head + (k % 7) * cell + 1;
     if (i === 0 || d.endsWith("-01")) months.push(html`<text key=${`m${d}`} class="us-axis" x=${x} y=${10}>${new Date(`${d}T12:00:00Z`).toLocaleDateString([], { month: "short", timeZone: "UTC" })}</text>`);
     const state = v > 0 ? `l${level(v)}` : covered.has(d) ? "idle" : "gap";
     if (v > 0) used++; else if (state === "gap") gaps++;
-    const title = v > 0 ? tu("h_day", d, fmtMeasure(priced, v)) : state === "idle" ? tu("h_idle", d) : tu("h_gap", d);
+    const title = v > 0 ? dayText(d, e) : state === "idle" ? tu("h_idle", d) : tu("h_gap", d);
     return html`<rect key=${d} class=${`us-h ${state}`} x=${x} y=${y} width=${cell - 3} height=${cell - 3} rx="2"><title>${title}</title></rect>`;
   });
   return html`<section class="us-heat card" aria-labelledby="us-heat-h">
@@ -265,8 +307,11 @@ export function UsageReport({ report, choice, setChoice, refresh, fetchedAt }) {
     const first = report.range.from === "0000-01-01"
       ? [...(report.daily || []).map((d) => d.date), ...(report.messagesDaily || []).map((m) => m.date)].sort()[0] || report.range.to
       : report.range.from;
-    return datesBetween(first, report.range.to);
+    // Daily detail cut to the latest whole days (too many rows): the charts start where it starts.
+    return datesBetween(report.dailyTruncated && report.dailyFrom > first ? report.dailyFrom : first, report.range.to);
   }, [report]);
+  const zones = zonesChanged(report);
+  const csvFrom = report.dailyTruncated ? report.dailyFrom : report.range.kind === "all" ? "all" : report.range.from;
   const rows = report.rows.filter((r) => r.total > 0 || (r.messages || 0) > 0);
   const anyAmount = rows.some((r) => r.amount !== null && r.amount > 0);
   const measure = (r) => (anyAmount ? r.amount || 0 : r.total);
@@ -281,14 +326,16 @@ export function UsageReport({ report, choice, setChoice, refresh, fetchedAt }) {
         onClick=${() => (k === "custom" ? setChoice({ ...choice, range: "custom", from: draft.from, to: draft.to }) : setChoice({ ...choice, range: k }))}>${tu(k === "7d" ? "r7d" : k)}</button>`)}</div>
       <label class="us-group">${tu("group")} <select value=${choice.group} onChange=${(e) => setChoice({ ...choice, group: e.target.value })}>
         ${USAGE_GROUPS.map((g) => html`<option key=${g} value=${g}>${tu(`g_${g}`)}</option>`)}</select></label>
-      <button type="button" class="btn btn-sm us-csv" onClick=${() => download(usageCsv(report), `agend-usage-${report.range.kind === "all" ? "all" : report.range.from}-${report.range.to}.csv`)}>
-        <${Icon} name="download" size=${14} />${tu("csv")}</button>
+      <button type="button" class="btn btn-sm us-csv" onClick=${() => download(usageCsv(report), `agend-usage-${csvFrom}-${report.range.to}.csv`)}>
+        <${Icon} name="download" size=${14} />${report.dailyTruncated ? tu("csvFrom", report.dailyFrom) : tu("csv")}</button>
     </div>
     ${choice.range === "custom" ? html`<form class="us-custom" onSubmit=${(e) => { e.preventDefault(); if (DATE.test(draft.from) && DATE.test(draft.to) && draft.from <= draft.to) setChoice({ ...choice, ...draft }); }}>
       <label>${tu("from")} <input type="date" value=${draft.from} max=${draft.to} onInput=${(e) => setDraft({ ...draft, from: e.target.value })} /></label>
       <label>${tu("to")} <input type="date" value=${draft.to} min=${draft.from} onInput=${(e) => setDraft({ ...draft, to: e.target.value })} /></label>
       <button type="submit" class="btn btn-sm">${tu("apply")}</button></form>` : null}
     <p class="us-basis" role="note">${tu("basis", report.pricesChecked)}</p>
+    ${report.dailyTruncated ? html`<p class="us-partial" role="status">${tu("partialDays", report.dailyFrom)}</p>` : null}
+    ${zones ? html`<p class="us-partial" role="status">${tu("zoneChanged", zones.join(", "), report.zone)}</p>` : null}
     <p class="note us-fresh">${tu("updated", new Date(fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))} · ${Number.isFinite(since) ? tu("since", new Date(since).toLocaleDateString()) : tu("notYet")} · ${tu("zoneNote", report.zone)}${group === "team" ? ` ${tu("teamsNote")}` : ""}
       ${report.scanning.active && (!report.scanning.caughtUp || report.scanning.pendingBytes > 0) ? html` <span class="us-scan" role="status">${tu("scanning")} <button type="button" class="btn btn-sm" onClick=${refresh}>${tu("refresh")}</button></span>` : null}</p>
     ${empty ? html`<${Empty} icon="chart" title=${tu("empty")} hint=${tu("emptyHint")} />` : html`
@@ -328,7 +375,12 @@ export function UsageTab({ lease }) {
       try {
         const r = await lease.fetch(path, { method: "GET", headers: { "Content-Type": "application/json" } });
         if (!lease.current() || mine !== seq.current) return;
-        if (r.status === 403 || r.status === 404) { setState({ blocked: r.status === 403 ? "blocked" : "off" }); return; }
+        if (r.status === 403 || r.status === 404) {
+          const body = await r.json().catch(() => null);
+          // Over the public link: where it is turned on — Settings → Web on the dashboard reached directly.
+          setState({ blocked: r.status === 403 ? "blocked" : "off", settings: body && typeof body.settings === "string" && /^http:\/\/localhost:\d+\/settings\/web$/.test(body.settings) ? body.settings : null });
+          return;
+        }
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const d = await r.json();
         if (lease.current() && mine === seq.current) setState(d && Array.isArray(d.rows) ? { data: d, at: Date.now() } : { error: true });
@@ -336,7 +388,8 @@ export function UsageTab({ lease }) {
     })();
   }, [lease, path, version]);
   if (!state) return html`<${Skeleton} lines=${5} />`;
-  if (state.blocked) return html`<${Empty} icon=${state.blocked === "blocked" ? "globe" : "chart"} title=${tu(state.blocked)} hint=${tu(`${state.blocked}Hint`)} />`;
+  if (state.blocked) return html`<${Empty} icon=${state.blocked === "blocked" ? "globe" : "chart"} title=${tu(state.blocked)} hint=${tu(`${state.blocked}Hint`)}
+    action=${state.settings ? html`<a class="btn btn-primary us-fix" href=${state.settings}>${tu("openSettings")}</a>` : null} />`;
   if (state.error) return html`<${ErrorState} onRetry=${() => setVersion((v) => v + 1)} />`;
   return html`<${UsageReport} report=${state.data} fetchedAt=${state.at} choice=${choice} setChoice=${setChoice} refresh=${() => setVersion((v) => v + 1)} />`;
 }

@@ -149,10 +149,18 @@ describe("states it explains", () => {
     expect(p.root.querySelector(".empty").textContent).toContain("Nothing recorded yet");
     expect(p.root.querySelector(".empty").textContent).toContain("Usage is read from Claude Code and Codex transcripts");
   });
-  it("the public link without the key (403): not offered there, and how to get it", async () => {
-    answer = { status: 403, body: { error: "usage_report_not_over_public_link" } };
+  it("the public link without the key (403): not offered there, why, and a working link to where it is turned on", async () => {
+    answer = { status: 403, body: { error: "usage_report_not_over_public_link", settings: "http://localhost:19280/settings/web" } };
     await mount();
-    expect(p.root.querySelector(".empty").textContent).toBe("Not offered over the public linkOpen the dashboard directly to see usage, or have an admin set web.usage_report_on_public_link: true.");
+    expect(p.root.querySelector(".empty-title").textContent).toBe("Not offered over the public link");
+    expect(p.root.querySelector(".empty-hint").textContent).toBe("Usage is offered over the public link only when \"Usage report over the public link\" is on in Settings → Web — on the dashboard reached directly, on the computer running AgEnD.");
+    const fix = p.root.querySelector(".us-fix");
+    expect([fix.textContent, fix.getAttribute("href")]).toEqual(["Open Settings → Web on that computer", "http://localhost:19280/settings/web"]);
+    // Anything else in that field is not followed: no link rather than a wrong one.
+    await p.unmount();
+    answer = { status: 403, body: { error: "usage_report_not_over_public_link", settings: "https://elsewhere.example/settings/web" } };
+    await mount();
+    expect(p.root.querySelector(".us-fix")).toBeNull();
   });
   it("web.usage_panel: false (404): turned off", async () => {
     answer = { status: 404, body: { error: "Not available" } };
@@ -171,7 +179,7 @@ describe("the CSV: this answer's daily rows", () => {
     const priced = lines.find((l: string) => l.includes("claude-opus-4-5"))!;
     expect(priced.split(",").slice(0, 7)).toEqual(["2026-10-17", "UTC", "billing", "claude-code", "claude-opus-4-5", "standard", "default"]);
     expect(priced).toContain(",API-equivalent at list price (checked ");
-    expect(lines.at(-1)).toBe("2026-10-17,UTC,billing,,,,,,,,,,,,4,,,");
+    expect(lines.at(-1)).toBe(`2026-10-17,UTC,billing,,,,,,,,,,,,4,,${r.basis},`);          // every row carries the basis
     expect(U.csvField("-1")).toBe("'-1");
     expect(U.csvField("@x")).toBe("'@x");
   });
@@ -185,6 +193,49 @@ describe("the CSV: this answer's daily rows", () => {
     try { p.root.querySelector(".us-csv").click(); } finally { p.document.body.appendChild = append; }
     expect(named).toBe("agend-usage-2026-10-12-2026-10-18.csv");
     expect(await blob.text()).toBe(U.usageCsv(answer.body));
+  });
+});
+
+describe("what the charts say about a day (Prism R1)", () => {
+  it("a day used only by a model not in the price table is used — never \"read, nothing used\" — and says it is not priced", async () => {
+    await mount();                                                                 // lab used made-up-model-9 today
+    const today = p.root.querySelectorAll(".us-h").find((r: any) => r.querySelector("title").textContent.startsWith("2026-10-18"));
+    expect(today.getAttribute("class")).toMatch(/^us-h l\d$/);
+    expect(today.querySelector("title").textContent).toBe("2026-10-18: 10k tokens · not priced");
+    const mixed = U.dayText("2026-10-17", { tokens: 9700, amount: 0.5, unpriced: true, zones: new Map([["UTC", { tokens: 9700, amount: 0.5 }]]) });
+    expect(mixed).toBe("2026-10-17: 10k tokens · $0.50 · part not priced");
+    expect(p.root.querySelector(".us-unpriced").textContent).toBe("Not priced, so not in these bars: made-up-model-9. Their tokens are in the rows and the heatmap.");
+  });
+  it("a daily answer cut to its latest whole days (built by buildUsageReport): said so; the charts and the CSV start there", async () => {
+    // 3 agents × 2 models × 30 days of rows over a cap lowered for the test is the same code path as 20,000 real ones.
+    const many = Array.from({ length: 10 }, (_, a) => inst(`agent-${a}`, "claude-code", ledger(Array.from({ length: 25 }, (_, k) => [at(k), k % 2 ? "claude-opus-4-5" : "claude-sonnet-4-5"] as [number, string]))));
+    const full = buildUsageReport({ now: NOW, zone: "UTC", range: { kind: "month" }, group: "instance", instances: many, messages: [], scanning: { active: false, caughtUp: true, pendingBytes: 0, pendingFiles: 0 } });
+    expect(full.dailyTruncated).toBe(false);
+    const msgs = [{ instance: "agent-0", hour: at(10), count: 2 }, { instance: "agent-0", hour: at(1), count: 3 }];
+    const cut = buildUsageReport({ now: NOW, zone: "UTC", range: { kind: "month" }, group: "instance", instances: many, messages: msgs, scanning: { active: false, caughtUp: true, pendingBytes: 0, pendingFiles: 0 }, dailyMax: 40 } as never);
+    expect([cut.dailyTruncated, cut.dailyFrom]).toEqual([true, "2026-10-15"]);                    // 4 whole days of 10
+    expect(cut.daily.every((d: any) => d.date >= "2026-10-15")).toBe(true);
+    expect(cut.daily.length).toBe(40);
+    expect(cut.totals.requests).toBe(full.totals.requests);                                       // the totals stay whole
+    expect(cut.messagesDaily.map((m: any) => m.date)).toEqual(["2026-10-17"]);                    // messages by day: the same window
+    expect(cut.totals.messages).toBe(5);                                                          // their total stays whole
+    answer = { status: 200, body: cut };
+    await mount();
+    expect(p.root.querySelector(".us-partial").textContent).toBe("Daily detail from 2026-10-15: the earlier days in this range are too many rows to send. The rows and totals above cover the whole range; the trend, the heatmap and the CSV start at 2026-10-15.");
+    expect(p.root.querySelectorAll(".us-h").length).toBe(4);                                      // no day before it drawn as idle
+    expect(p.root.querySelector(".us-csv").textContent.trim()).toBe("Download CSV (from 2026-10-15)");
+    expect(U.usageCsv(cut).trimEnd().split("\r\n").slice(1).every((l: string) => l >= "2026-10-15")).toBe(true);
+  });
+  it("the timezone changed: a date made in two zones shows each part, and the page says the zone changed", async () => {
+    const days = { ...emptyDays(), checkpoint: at(1, 0) - HOUR, coverage: [[NOW - 31 * DAY, NOW]] as Array<[number, number]>,
+      rows: [{ date: "2026-10-17", zone: "Asia/Taipei", be: "claude-code", pf: "default", m: { "claude-opus-4-5|0": [2, 2000, 16000, 0, 1000, 0, 400] as [number, number, number, number, number, number, number] } }] };
+    const r = report({ instances: [inst("billing", "claude-code", ledger([[at(1, 9), "claude-opus-4-5"]]), { days })], messages: [] });
+    expect(new Set(r.daily.filter((d: any) => d.date === "2026-10-17").map((d: any) => d.zone))).toEqual(new Set(["Asia/Taipei", "UTC"]));
+    answer = { status: 200, body: r };
+    await mount();
+    expect(p.root.querySelector(".us-partial").textContent).toBe("The fleet's timezone changed: these days were made in Asia/Taipei, UTC. A day keeps the zone it was made in, so a day made in two shows each part (see the heatmap). Days from now on are in UTC.");
+    const d17 = p.root.querySelectorAll(".us-h").find((x: any) => x.querySelector("title").textContent.startsWith("2026-10-17"));
+    expect(d17.querySelector("title").textContent).toMatch(/^2026-10-17: \d+k tokens · \$\d+\.\d\d \(Asia\/Taipei: \d+k, UTC: \d+k\)$/);
   });
 });
 

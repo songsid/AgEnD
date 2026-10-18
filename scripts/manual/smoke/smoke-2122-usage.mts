@@ -10,8 +10,9 @@
 //   (header, the basis column, the same rows).
 // - phone (phone dark zh-TW, LAN origin, reduced motion): the tab bar's Fleet, then the ◔ dialog's "依 agent →"; rows as cards; no
 //   horizontal overflow.
-// - public (phone light en): the public link without the key: "Not offered over the public link" (shot); with
-//   web.usage_report_on_public_link: true (config the operator writes): the rows.
+// - public (phone light en): the public link without the key: "Not offered over the public link", why, and a link to
+//   this computer's Settings → Web (shot); following it — sign in there, tick "Usage report over the public link",
+//   Review → Apply (at once) — and back on the public link: the rows. Only the usage read's own 403 is an accepted error.
 // Every page logs no error. Guests are covered by the unit tests (no Fleet route, no dialog link).
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2122-usage.mts
@@ -108,7 +109,7 @@ fm.fleetConfig.instances[A!] = configA;
 // one older day (39 days ago), read only around it: the days between were never collected. ──
 writeClaude(A!, [[0], [1], [2], [4]]);
 writeClaude(B!, [[1]]);
-writeClaude(C!, [[2, "made-up-model-9"]]);
+writeClaude(C!, [[2, "made-up-model-9"], [3, "made-up-model-9"]]);           // day 3: used, only by an unpriced model
 writeCodex(X!, 1);
 {
   const dir = join(fm.getInstanceDir(A!)); mkdirSync(dir, { recursive: true });
@@ -169,6 +170,8 @@ if (process.env.DEBUG) {
   check(gaps.length >= 5 && gaps.every(([, t]: string[]) => t.endsWith(": not collected")), `desk: not-collected days: ${gaps.length}`);
   check(idle.length >= 1 && idle.every(([, t]: string[]) => t.endsWith(": read, nothing used")), `desk: idle days read: ${idle.length} (e.g. ${idle[0]?.[1]})`);
   check(heat.some(([c, t]: string[]) => c.startsWith("us-h l") && t.startsWith(dayOf(39))), "desk: the older day from the rollup is there");
+  const day3 = heat.find(([, t]: string[]) => t.startsWith(dayOf(3)));
+  check(!!day3 && day3[0].startsWith("us-h l") && day3[1].endsWith("tokens · not priced"), `desk: a day used only by an unpriced model is used, and says not priced: ${day3?.join(" / ")}`);
   const label = await p.page.$eval(".us-heatmap", (e: any) => e.getAttribute("aria-label"));
   check(/^\d+ days; \d+ with usage, \d+ not collected\.$/.test(label), `desk: heatmap described in text: "${label}"`);
   await p.page.screenshot({ path: shotPath(SMOKE, desk, "all-heatmap"), fullPage: true });
@@ -218,22 +221,54 @@ if (process.env.DEBUG) {
   await p.ctx.close();
 }
 
-// ── the public link: blocked by default; with the key, the rows ──
+// ── the public link: blocked by default, with the reason and the way to fix it — followed through the visible UI ──
+// The person is on the computer running AgEnD (the link's address is this machine's own): the blocked page's link opens
+// Settings → Web on the dashboard reached directly; signing in there, ticking the switch and applying it is all visible
+// UI; back on the public link, the same page now shows the rows.
 {
   const pub = { device: "phone", theme: "light", lang: "en" } as const;
   const link = await openPublicLink(fx);
   const p = await link.publicPage(pub, { path: "/ui/fleet/usage" });
+  const publicUsage = p.page.url();
   await p.page.waitForSelector(".p-fleet .empty", { timeout: 10000 });
-  const blocked = await text(p.page, ".p-fleet .empty");
-  check(blocked === "Not offered over the public linkOpen the dashboard directly to see usage, or have an admin set web.usage_report_on_public_link: true.", `public: blocked: "${blocked}"`);
+  const title = await text(p.page, ".p-fleet .empty-title"), hint = await text(p.page, ".p-fleet .empty-hint");
+  check(title === "Not offered over the public link", `public: blocked: "${title}"`);
+  check(hint.startsWith("Usage is offered over the public link only when \"Usage report over the public link\" is on in Settings → Web"), `public: why, and where: "${hint}"`);
+  const fixHref = await p.page.$eval(".us-fix", (a: any) => a.getAttribute("href")).catch(() => "");
+  const port = new URL(fx.base).port;
+  check(fixHref === `http://localhost:${port}/settings/web`, `public: the fix link is this computer's Settings → Web: ${fixHref}`);
   await p.page.screenshot({ path: shotPath(SMOKE, pub, "public-blocked"), fullPage: true });
-  fm.fleetConfig.web.usage_report_on_public_link = true;                          // what the operator writes in fleet.yaml
-  await p.page.reload();
-  await p.page.waitForSelector(".us-row", { timeout: 10000 });
-  check((await p.page.$$(".us-row")).length >= 3, "public: with the key, the rows");
+  // Follow it. The dashboard reached directly asks this browser to sign in there (its own origin), as it would.
+  await p.page.click(".us-fix");
+  await p.page.waitForSelector("#code", { timeout: 15000 });
+  const { tokenEpoch } = await import(REPO + "/src/web-session.ts");
+  const code = fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken), recipient: link.owner }).display;
+  await p.page.fill("#code", code);
+  await p.page.click("#go");
+  await p.page.waitForURL(/\/(ui|settings)/, { timeout: 15000 });
+  if (!p.page.url().endsWith("/settings/web")) await p.page.click(`a[href="/settings/web"], .seg a[href="/settings/web"]`).catch(async () => { await p.page.goto(fixHref); });
+  await p.page.waitForSelector("#webUsagePublic", { timeout: 15000 });
+  check(!(await p.page.$eval("#webUsagePublic", (e: any) => e.checked)), "public: Settings → Web shows the switch off (the default)");
+  await p.page.check("#webUsagePublic");
+  await p.page.click('button:has-text("Review changes")');
+  await p.page.click('[role=region] button:has-text("Apply changes")');
+  await p.page.waitForFunction(() => document.body.textContent?.includes("Applied") || document.body.textContent?.includes("applied"), null, { timeout: 15000 }).catch(() => {});
+  for (let k = 0; k < 40 && fm.fleetConfig.web?.usage_report_on_public_link !== true; k++) await new Promise(r => setTimeout(r, 250));
+  check(fm.fleetConfig.web?.usage_report_on_public_link === true, "public: the switch was applied from Settings → Web (at once, nothing to confirm)");
+  await p.page.screenshot({ path: shotPath(SMOKE, pub, "public-fix-settings"), fullPage: true });
+  // Back on the public link: the rows.
+  await p.page.goto(publicUsage);
+  await p.page.waitForSelector(".us-row", { timeout: 15000 });
+  check((await p.page.$$(".us-row")).length >= 3, "public: after the fix, the rows");
   check(await noOverflow(p.page), "public: no horizontal overflow");
   await p.page.screenshot({ path: shotPath(SMOKE, pub, "public-on"), fullPage: true });
-  check(p.errors.filter(e => !/status of 403/.test(e)).length === 0, `public: no page errors besides the refused read (${p.errors.join(" | ")})`);
+  // Only the expected refusals: the usage report's own 403 while the switch was off, and the dashboard reached directly
+  // answering this browser's first visit there before it signed in (the page itself, and the sign-in page's
+  // /auth/session — the same pair every fresh sign-in has). Anything else fails.
+  const local = `http://localhost:${port}`;
+  const unexpected = p.errors.filter(e => !((/status of 403/.test(e) && /\/ui\/usage-report\?/.test(e))
+    || (/status of 401/.test(e) && (e.endsWith(`@ ${local}/settings/web`) || e.endsWith(`@ ${local}/auth/session`)))));
+  check(unexpected.length === 0, `public: no page errors besides the refused usage read (${unexpected.join(" | ")})`);
   await p.ctx.close();
   await link.close();
 }

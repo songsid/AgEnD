@@ -201,6 +201,28 @@ describe("through the gate and the real handler", () => {
   });
 });
 
+describe("#2122: the usage report over the public link — one switch in Settings → Web", () => {
+  it("a boolean; applies at once either way (the default, off, is the gate; nothing to confirm)", () => {
+    expect(judge({ usage_report_on_public_link: true })).toBeNull();
+    expect(judge({ usage_report_on_public_link: false }, { web: { usage_report_on_public_link: true } })).toBeNull();
+    expect(() => prepareSettingsEffect("PUT", WEB, { usage_report_on_public_link: "yes" }, { config: { defaults: {}, instances: {} } as any, classic: {} })).toThrow("invalid_web_settings");
+  });
+  it("through the gate and the real handler: written at once, fleet.yaml and the live config; off again the same way", async () => {
+    const h = harness();
+    const on = await h.request({ usage_report_on_public_link: true });
+    expect(on.status).toBe(200);
+    expect([h.raw().web.usage_report_on_public_link, h.config.web.usage_report_on_public_link]).toEqual([true, true]);
+    const off = await h.request({ usage_report_on_public_link: false });
+    expect(off.status).toBe(200);
+    expect(h.config.web.usage_report_on_public_link).toBe(false);
+  });
+  it("never over the public link itself", async () => {
+    const h = harness();
+    const r = await h.request({ usage_report_on_public_link: true }, { publicLink: true });
+    expect([r.status, r.body.error, h.save.mock.calls.length]).toEqual([403, "web_settings_not_over_public_link", 0]);
+  });
+});
+
 describe("never over the temporary public link", () => {
   it.each([
     ["a tightening", { session: { local: { absolute_hours: 6 } } }],
