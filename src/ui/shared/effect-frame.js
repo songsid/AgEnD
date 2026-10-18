@@ -39,12 +39,26 @@ export function effectTransportReady(host, origin, boot) {
   } catch { return false; }
 }
 
+/** #2118: same URL origin, opaque realm. This helper does not alter product admission or HTML preview consent. */
+export function effectBootstrapReady(host, origin, boot) {
+  try {
+    const target = new URL(origin), page = new URL(host.location.origin);
+    return origin === target.origin && target.origin === page.origin && ["http:", "https:"].includes(target.protocol)
+      && typeof boot === "string" && /^[0-9a-f]{32}$/.test(boot);
+  } catch { return false; }
+}
+
 /**
  * All options come from the host, never from an agent event or manifest origin. The registry supplies an admitted
  * root and geometry in a later integration. This primitive alone does not implement caps, clipping or profiling.
  */
-export function createEffectFrame({ window: host, root, origin, boot, render, clock = () => performance.now(), onReady = () => {}, onRemove = () => {} } = {}) {
-  if (!effectTransportReady(host, origin, boot)) return { ok: false, reason: "preview_unknown" };
+export function createEffectFrame(options = {}) { return ownedEffectFrame(options, false); }
+
+/** Unmounted foundation: the app continues using createEffectFrame until the separately reviewed cutover. */
+export function createOpaqueEffectFrame(options = {}) { return ownedEffectFrame(options, true); }
+
+function ownedEffectFrame({ window: host, root, origin, boot, render, clock = () => performance.now(), onReady = () => {}, onRemove = () => {} } = {}, sameListener) {
+  if (!(sameListener ? effectBootstrapReady : effectTransportReady)(host, origin, boot)) return { ok: false, reason: sameListener ? "bootstrap_unknown" : "preview_unknown" };
   const payload = snapshotRender(render);
   if (!payload || !host || !root || root.ownerDocument !== host.document || typeof root.append !== "function" || typeof host.MessageChannel !== "function" || typeof clock !== "function" || typeof onReady !== "function" || typeof onRemove !== "function") return { ok: false, reason: "unsupported" };
   let mounted;
@@ -122,7 +136,7 @@ export function createEffectFrame({ window: host, root, origin, boot, render, cl
   host.addEventListener("message", hello);
   frame.addEventListener("load", load);
   timer = host.setTimeout(deadline, 10000);
-  try { frame.src = `${origin}/effect`; root.append(frame); } catch { remove("mount_failed"); }
+  try { frame.src = origin + (sameListener ? "/effect-bootstrap" : "/effect"); root.append(frame); } catch { remove("mount_failed"); }
   return { ok: true, element: frame, state, remove,
     send(event) {
       if (!ready || !current() || !maySendEffectEvent(event, { instance: payload.instance, wants: payload.wants })) return false;

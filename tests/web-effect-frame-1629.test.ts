@@ -10,7 +10,7 @@ function bus() {
 }
 const render = (patch = {}) => ({ code: "agend.ready()", params: { density: 2 }, instance: "own", width: 100, height: 80, dpr: 1,
   assets: [{ name: "assets/a.png", mime: "image/png", bytes: new Uint8Array([1, 2]) }], wants: ["state", "reply"], ...patch });
-function rig(options = {}, raw = render()) {
+function rig(options: Record<string, unknown> = {}, raw = render()) {
   let now = 0, seq = 0;
   const timers = new Map<number, { fn: () => void; delay: number }>(), channels: any[] = [];
   const frame = { ...bus(), contentWindow: { postMessage: vi.fn((_data: Record<string, any>, _origin: string, _ports: unknown[]) => {}) }, setAttribute: vi.fn(), remove: vi.fn(), className: "", src: "", parentNode: null as any, isConnected: false };
@@ -21,12 +21,28 @@ function rig(options = {}, raw = render()) {
     MessageChannel: class { port1 = { ...bus(), start: vi.fn(), close: vi.fn(), postMessage: vi.fn() }; port2 = { close: vi.fn() }; constructor() { channels.push(this); } },
   };
   const ready = vi.fn(), removed = vi.fn();
-  const api = P.createEffectFrame({ window: host, root, origin: "https://preview.example", boot, render: raw, clock: () => now, onReady: ready, onRemove: removed, ...options });
+  const { opaque, ...frameOptions } = options;
+  const api = (opaque ? P.createOpaqueEffectFrame : P.createEffectFrame)({ window: host, root, origin: "https://preview.example", boot, render: raw, clock: () => now, onReady: ready, onRemove: removed, ...frameOptions });
   const hello = (patch = {}) => host.emit("message", { source: frame.contentWindow, origin: "null", data: { v: 1, type: "ready", ch: null, boot }, ports: [], ...patch });
   const port = (data: unknown) => channels[0]?.port1.emit("message", { data });
   return { api, host, root, frame, channels, timers, ready, removed, hello, port, raw, at(t: number) { now = t; } };
 }
 describe("#1629 owned parent effect frame", () => {
+  it("#2118 mounts the exact same-listener bootstrap in an opaque sandbox, with the same private handoff", () => {
+    const h = rig({ opaque: true, origin: "https://dashboard.example" });
+    expect(h.api.ok).toBe(true); expect(h.frame.src).toBe("https://dashboard.example/effect-bootstrap");
+    expect(h.frame.setAttribute.mock.calls).toContainEqual(["sandbox", "allow-scripts"]);
+    h.hello({ source: {} }); h.hello({ origin: "https://dashboard.example" }); h.hello({ data: { v: 1, type: "ready", ch: null, boot: "d".repeat(32) } });
+    expect(h.channels).toHaveLength(0);
+    h.hello(); h.hello(); expect(h.channels).toHaveLength(1); expect(h.ready).not.toHaveBeenCalled();
+    h.port({ type: "focus" }); h.port({ type: "ready", extra: true }); expect(h.ready).not.toHaveBeenCalled();
+    h.port({ type: "ready" }); expect(h.ready).toHaveBeenCalledOnce();
+    h.api.remove("done"); expect(h.frame.remove).toHaveBeenCalledOnce(); expect(h.channels[0].port1.close).toHaveBeenCalledOnce();
+  });
+  it.each(["https://preview.example", "http://dashboard.example", "https://dashboard.example/path", "https://dashboard.example/", "https://u:p@dashboard.example", "data:text/html,x", "null"])("#2118 refuses other origins and non-origins: %s", origin => {
+    const h = rig({ opaque: true, origin });
+    expect(h.api).toEqual({ ok: false, reason: "bootstrap_unknown" }); expect(h.root.append).not.toHaveBeenCalled();
+  });
   it("never sends reserved mention even when the manifest wants it", () => {
     const raw = render(); raw.wants = ["mention", "reply"]; const h = rig({}, raw); h.hello(); h.port({ type: "ready" });
     expect(h.api.send({ v: 1, type: "mention", ts: 1, instance: "own" })).toBe(false);
