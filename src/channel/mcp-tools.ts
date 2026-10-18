@@ -64,7 +64,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["close_poll", schemas.ClosePollArgs,
     "Close one of your open polls now, before its deadline (for example when everyone has answered). Its `[poll results]` come to you as when it times out, once."],
   ["list_decisions", schemas.ListDecisionsArgs,
-    "List active decisions: this working directory's (scope='project') plus every fleet-scoped one, fleet first. Archived ones only with include_archived."],
+    "List active decisions: this working directory's (scope='project') plus every fleet-scoped one, fleet first. Titles by default (id, title, scope, date, tags); pass id for one decision's full text, or full: true for all of it. Archived ones only with include_archived."],
   ["update_decision", schemas.UpdateDecisionArgs,
     "Update or archive an existing decision."],
   ["broadcast", schemas.BroadcastArgs,

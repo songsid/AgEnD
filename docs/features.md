@@ -298,7 +298,7 @@ Creating, claiming and completing a task are written to the activity log. Every 
 
 ## Decisions
 
-Decisions are rules and conventions that outlive a conversation. `post_decision` records one with a `title` and `content`, optional `tags`, a `ttl_days` after which it is archived (default: permanent), and `supersedes` to replace an older one. `scope: "project"` (the default) makes it visible to instances working in the same directory; `scope: "fleet"` to every instance. `list_decisions` returns the active ones (`include_archived`, `tags` to filter), and `update_decision` changes or archives one — a coordinator verb, since it edits what somebody else recorded.
+Decisions are rules and conventions that outlive a conversation. `post_decision` records one with a `title` and `content`, optional `tags`, a `ttl_days` after which it is archived (default: permanent), and `supersedes` to replace an older one. `scope: "project"` (the default) makes it visible to instances working in the same directory; `scope: "fleet"` to every instance. `list_decisions` lists the active ones by title (id, title, scope, date, tags; `include_archived` and `tags` filter): pass `id` for one decision's full text or `full: true` for all of it (2.3 beta, #2152 — the full list had grown to over 100 KB), and `update_decision` changes or archives one — a coordinator verb, since it edits what somebody else recorded.
 
 Active decisions are injected into each instance's instructions at spawn. A fleet-scoped decision still has to be relevant: global (no project), or from the same project or one of its worktrees/checkouts. General instances get every fleet-scoped decision, since they route work across projects.
 

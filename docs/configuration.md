@@ -378,7 +378,8 @@ Fleet startup snapshots up to 20 active decisions, with each content capped at
 200 characters. Each daemon selects relevant decisions; its instructions show up
 to 15 summaries, each capped at 120 characters, and point to `list_decisions` for
 more. This is a startup snapshot, not a live feed: use `list_decisions` for current
-full decisions, including ones posted after startup.
+decisions, including ones posted after startup. It answers titles (id, title, scope, date, tags); pass `id` for one
+decision's full text, or `full: true` for all of it (#2152).
 
 ### Session snapshots
 

@@ -44,7 +44,8 @@ agend-agent task done ID "result"                 # Complete task
 
 # Decisions
 agend-agent decision-post "title" "content"       # Post decision
-agend-agent decision-list                         # List decisions
+agend-agent decision-list                         # List decisions (titles)
+agend-agent decision-get <id>                     # One decision's full text
 ```
 
 If a send result is unclear, query its returned operation ID with

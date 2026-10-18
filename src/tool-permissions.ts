@@ -288,6 +288,7 @@ export const EARLY_AGENT_OP_TOOLS: Readonly<Record<string, string>> = {
   "decision-post": "post_decision",
   "decision-create": "post_decision",
   "decision-list": "list_decisions",
+  "decision-get": "list_decisions",
   "decision-update": "update_decision",
   task: "task",
   usage: "get_usage",
