@@ -192,3 +192,4 @@ export function shotPath(smoke: string, c: MatrixCase | string, name: string): s
   return join(out, `${typeof c === "string" ? c : caseName(c)}-${name}.png`);
 }
 export * from "./seed.mts";
+export * from "./from-defaults.mts";

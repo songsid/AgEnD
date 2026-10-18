@@ -87,6 +87,37 @@ await fx.close(); process.exit(0);
 | `addSnowEffect` | a drawing canvas-worker effect |
 | `bigMod` | a mod near its size cap |
 
+## From defaults (fleet decision a78ebdc5)
+
+`fx.page()` seeds things a new person never has: it skips the tour and first-run, sets prefs, and signs in with an
+owner-less code. Every user-visible feature also needs a **from-defaults** smoke. That means a fresh profile with nothing
+seeded, driven only through visible UI. It passes only if the user sees the feature, or the UI names the blocking reason
+with a link that fixes it. The blocked state is a tested state: screenshot it and assert its message.
+
+```ts
+import { bootFixture, freshPage, openPublicLink, shotPath } from "../smoke-fixture/index.mts";
+const fx = await bootFixture({ port: Number(process.env.HP ?? 48700) });
+// Loopback, nothing seeded; prefers-reduced-motion on; a phone viewport.
+const a = await freshPage(fx, { device: "phone", theme: "dark", lang: "en" }, { reducedMotion: true });
+// A non-localhost origin: a streaming reverse proxy presents the dashboard as dashboard.lan.example (added to
+// web.allowed_hosts), with no forwarding header, the way a LAN or tailnet browser or a proxy reaches it.
+const b = await freshPage(fx, { device: "desk", theme: "light", lang: "en" }, { origin: "lan" });
+// The temporary public link: a real one (FleetManager's PublicWebLink, the real gateway and its routes), with only
+// the Cloudflare tunnel stubbed. A fresh context reaches https://demo-smoke-link.trycloudflare.com through it.
+const link = await openPublicLink(fx);
+const c = await link.publicPage({ device: "phone", theme: "light", lang: "en" });
+// link.notices: the sign-in notices that would have been posted in the owner's General.
+await link.close();
+```
+
+What is not real:
+- **The code.** It is issued directly, as the Discord or Telegram DM would carry it.
+- **The tunnel.** It is stubbed.
+- **The General notice for a public sign-in.** It is recorded instead of posted.
+
+Everything the browser does goes through the product.
+`scripts/manual/smoke/smoke-from-defaults-probe.mts` checks the harness itself.
+
 ## Pitfalls (each one cost a run)
 
 - **Language** is the host pref `lang` (`fx.page` writes it). `localStorage.agend_lang` alone leaves the page in English.
