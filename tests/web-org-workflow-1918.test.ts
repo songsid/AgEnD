@@ -278,6 +278,7 @@ describe("the page", () => {
   it("the key names in progress, done and no report yet", async () => {
     await mount();
     emit("delegation", del(1, "atlas", "ember")); await settle(2);
+    p.root.querySelector(".oc-key").click(); await settle(2);
     const rows = p.root.querySelectorAll(".oc-legend .oc-lg").map((r: any) => r.textContent.trim());
     for (const s of ["in progress (until its report)", "done (report back)", "no report yet"]) expect(rows, s).toContain(s);
   });

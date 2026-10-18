@@ -194,7 +194,7 @@ describe("the page", () => {
     expect(reads).toBe(1);
     expect(flows()).toEqual(["h-task ph-live"]);
     expect(p.root.querySelector(".oc-pulse animateMotion")).not.toBeNull();
-    expect(p.root.querySelector(".oc-legend")).not.toBeNull();
+    expect(p.root.querySelector(".oc-tools .oc-key"), "#2052: the key's toggle is in the toolbar").not.toBeNull();
     emit("traffic", it_(2, "sage", "atlas", "queued", "report")); await settle(2);
     expect(flows()).toEqual(["h-task ph-live", "h-report ph-queued"]);
     emit("traffic", it_(1, "atlas", "quill", "delivered")); await settle(2);
@@ -267,7 +267,7 @@ describe("the page", () => {
     expect(localStorage.getItem("agend_org_live")).toBe("0");
     p.root.querySelectorAll(".oc-tools .seg-inline button")[0].click(); await settle(2);
     expect(flows()).toEqual([]);
-    expect(p.root.querySelector(".oc-legend")).toBeNull();
+    expect([p.root.querySelector(".oc-key"), p.root.querySelector(".oc-legend")], "Live off: no key").toEqual([null, null]);
     await p.unmount(); reads = 0; await mount();
     expect([reads, flows().length]).toEqual([0, 0]);
     emit("traffic", it_(3, "atlas", "quill")); await settle(2);
@@ -288,16 +288,22 @@ describe("the page", () => {
     p.root.querySelector(".oc-live").click(); await settle(4);
     expect([subs.get("traffic")?.size, reads]).toEqual([1, 2]);
   });
-  it("the key: folded until opened, kept per device; each line starts at a dot and ends at an arrow of its colour", async () => {
+  it("#2052 the key: a toolbar toggle, folded until opened, kept per device; open, a strip above the canvas — never over it; each line starts at a dot and ends at an arrow of its colour", async () => {
     await mount();
     emit("traffic", it_(1, "atlas", "quill", "delivering")); await settle(2);
-    const key = p.root.querySelector(".oc-legend");
-    expect(!!key.open).toBe(false);
-    key.open = true; key.dispatchEvent(Object.assign(new (globalThis as any).Event("toggle"), {}));
+    const key = p.root.querySelector(".oc-tools .oc-key");
+    expect([key.getAttribute("aria-expanded"), p.root.querySelector(".oc-legend")]).toEqual(["false", null]);
+    key.click(); await settle(2);
     expect(localStorage.getItem("agend_org_key")).toBe("1");
+    const strip = p.root.querySelector(".oc-legend");
+    expect([p.root.querySelector(".oc-key").getAttribute("aria-expanded"), strip.getAttribute("id"), p.root.querySelector(".oc-key").getAttribute("aria-controls")]).toEqual(["true", "oc-legend", "oc-legend"]);
+    // A sibling between the toolbar and the canvas, not inside the canvas's stage.
+    expect([strip.parentNode === p.root.querySelector(".oc"), !!p.root.querySelector(".oc-stage .oc-legend")]).toEqual([true, false]);
+    const kids = [...p.root.querySelector(".oc").children].map((n: any) => n.getAttribute("class"));
+    expect(kids.indexOf("oc-legend")).toBe(kids.findIndex((c: string) => c.includes("oc-bar")) + 1);
     await p.unmount(); await mount();
     emit("traffic", it_(1, "atlas", "quill", "delivering")); await settle(2);
-    expect(!!p.root.querySelector(".oc-legend").open).toBe(true);
+    expect(!!p.root.querySelector(".oc-legend"), "still open on this device").toBe(true);
     const f = p.root.querySelector(".oc-flow");
     expect([f.getAttribute("marker-start"), f.getAttribute("marker-end")]).toEqual(["url(#oc-src-task)", "url(#oc-ah-task)"]);
     expect(["oc-src-task", "oc-ah-task"].every((id) => !!p.root.querySelector(`#${id}`))).toBe(true);

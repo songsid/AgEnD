@@ -104,6 +104,24 @@ describe("the spec", () => {
     expect(ok(JSON.parse('{"preset":"fall","glyphs":["x"],"__proto__":{"a":1}}'))).toBe(false);
     expect(ok(Object.assign(Object.create({ preset: "fall" }), { glyphs: ["x"] }))).toBe(false);
   });
+  it("#2155: numbers sent as decimal strings in the four ranges (an older tuple declaration codex read as strings) are taken as numbers", () => {
+    const r = A.checkAmbient({ preset: "twinkle", glyphs: ["✦", "✧"], count: 6, duration: ["3", "6"], size: ["10", "16"], opacity: ["0", "0.32", "0"], spread: [" 20 ", "40."] });
+    expect(r.ok && { duration: r.value.duration, size: r.value.size, opacity: r.value.opacity, spread: r.value.spread })
+      .toEqual({ duration: [3, 6], size: [10, 16], opacity: [0, 0.32, 0], spread: [20, 40] });
+    expect(r.ok && r.value.duration.every(n => typeof n === "number")).toBe(true);
+  });
+  it("#2155: anything but a plain decimal is still refused, and the scalars are not coerced", () => {
+    for (const [what, spec] of [
+      ["units", { duration: ["3s", "6s"] }], ["empty", { size: ["", "16"] }], ["hex", { size: ["0x10", "16"] }], ["exponent", { size: ["1e1", "16"] }],
+      ["a word", { opacity: ["none", "1", "0"] }], ["out of range as a string", { duration: ["1", "60"] }], ["NaN", { size: ["NaN", "16"] }],
+      ["a string range", { duration: "3,6" }], ["a scalar count", { count: "6" }], ["a scalar sway", { sway: "10" }],
+    ] as const) expect(ok({ ...PETALS, ...spec }), what).toBe(false);
+  });
+  it("#2155: the issue's exact call goes through the tool", () => {
+    const t = tools();
+    expect(t.app.handleTool("alpha", "set_web_ambient", { preset: "twinkle", glyphs: ["✦", "✧"], count: 6, duration: ["3", "6"], size: ["10", "16"], opacity: ["0", "0.32", "0"] }))
+      .toMatchObject({ kind: "loop", ambient: { spec: { duration: [3, 6], size: [10, 16], opacity: [0, 0.32, 0] } } });
+  });
   it("a glyph picture must be one of the instance's own (when the caller says which are)", () => {
     const id = "a".repeat(32);
     expect(ok({ preset: "fall", glyphs: [{ asset: id }] }, (x) => x === id)).toBe(true);

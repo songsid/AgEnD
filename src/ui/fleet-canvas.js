@@ -212,13 +212,21 @@ function TrafficLayer({ edges, q }) {
 }
 const ARROWS = ["task", "send", "report", "broadcast", "team", "fading"];
 
-/** The key to the lines: folded until the person opens it (open, it covers a corner of the canvas); kept per device. */
+/**
+ * The key to the lines (#2052): a **Key** toggle in the toolbar; open, its rows are a strip between the toolbar and the
+ * canvas — never over the canvas, so it covers no card (it used to sit in the canvas's bottom-left corner, over the
+ * team there at the opening view). Folded until the person opens it; kept per device.
+ */
+function readKeyOpen() { try { return localStorage.getItem(KEY_KEY) === "1"; } catch { return false; } }
+function KeyToggle({ open, onToggle }) {
+  return html`<button type="button" class=${`btn btn-sm oc-key${open ? " on" : ""}`} aria-expanded=${open ? "true" : "false"} aria-controls="oc-legend"
+    onClick=${onToggle}>${tc("legend")}</button>`;
+}
 function Legend() {
-  const [open] = useState(() => { try { return localStorage.getItem(KEY_KEY) === "1"; } catch { return false; } });
   const row = (cls, k) => html`<span class="oc-lg"><i class=${`oc-sw ${cls}`} aria-hidden="true"></i>${tc(k)}</span>`;
-  return html`<details class="oc-legend" open=${open} onToggle=${(e) => save(KEY_KEY, e.currentTarget.open ? "1" : "0")}><summary>${tc("legend")}</summary>
+  return html`<div id="oc-legend" class="oc-legend" role="region" aria-label=${tc("legend")}>
     <div class="oc-lg-rows">${row("h-task", "lgTask")}${row("h-send", "lgSend")}${row("h-report", "lgReport")}${row("h-broadcast", "lgBroadcast")}
-    ${row("ph-queued", "lgQueued")}${row("ph-fading", "lgFading")}${row("h-task ph-work", "lgWork")}${row("h-report ph-return", "lgReturn")}${row("ph-stale", "lgStale")}</div></details>`;
+    ${row("ph-queued", "lgQueued")}${row("ph-fading", "lgFading")}${row("h-task ph-work", "lgWork")}${row("h-report ph-return", "lgReturn")}${row("ph-stale", "lgStale")}</div></div>`;
 }
 
 /**
@@ -416,7 +424,6 @@ function Canvas({ view, folded, onFold, q, jump, traffic }) {
         </g>
       </g>
     </svg>
-    ${traffic ? html`<${Legend} />` : null}
     <div class="oc-zoom" role="group" aria-label=${tc("view")}>
       <button type="button" class="icon-btn" aria-label=${tc("zoomIn")} title=${tc("zoomIn")} onClick=${() => zoomBy(1.25)}><${Icon} name="plus" size=${16} /></button>
       <button type="button" class="icon-btn" aria-label=${tc("zoomOut")} title=${tc("zoomOut")} onClick=${() => zoomBy(0.8)}><span aria-hidden="true">−</span></button>
@@ -494,6 +501,8 @@ export function OrgCanvas({ org, app, lease }) {
     if (holder && folded.has(holder[0])) onFold(holder[0]);
     setJump({ name: first.name, at: Date.now() });
   };
+  const [keyOpen, setKeyOpen] = useState(readKeyOpen);
+  const toggleKey = () => setKeyOpen((v) => { save(KEY_KEY, v ? "0" : "1"); return !v; });
   const modeBtn = (m) => html`<button type="button" class=${`btn btn-sm${mode === m ? " btn-primary" : ""}`} aria-pressed=${mode === m ? "true" : "false"}
     onClick=${() => setMode(m)}>${tc(m)}</button>`;
   return html`<div class=${`org oc oc-${mode}`}>
@@ -503,11 +512,13 @@ export function OrgCanvas({ org, app, lease }) {
         ${mode === "canvas" ? html`<label class="s-search oc-find"><${Icon} name="search" size=${14} /><span class="sr-only">${tc("find")}</span>
           <input type="search" value=${query} placeholder=${tc("findShort")} autocomplete="off" onInput=${(e) => setQuery(e.target.value)} onKeyDown=${onFind} />
           ${q ? html`<span class="oc-found" role="status">${found ? (found === 1 ? tc("foundOne") : tc("found", found)) : tc("noMatch")}</span>` : null}</label>` : null}
+        ${mode === "canvas" && live ? html`<${KeyToggle} open=${keyOpen} onToggle=${toggleKey} />` : null}
         <button type="button" class=${`btn btn-sm oc-live${live ? " on" : ""}`} aria-pressed=${live ? "true" : "false"} title=${live ? tc("liveOn") : tc("liveOff")}
           onClick=${() => setLive((v) => !v)}><span class="oc-live-dot" aria-hidden="true"></span>${tc("live")}</button>
         <div class="seg-inline" role="group" aria-label=${tc("view")}>${modeBtn("canvas")}${modeBtn("list")}</div>
       </div>
     </div>
+    ${mode === "canvas" && live && keyOpen ? html`<${Legend} />` : null}
     ${mode === "list" ? html`<${OrgChart} org=${org} app=${app} bare=${true} sending=${sending} />`
       : html`<${Canvas} view=${view} folded=${folded} onFold=${onFold} q=${q} jump=${jump} traffic=${live ? traffic : null} />`}
   </div>`;
