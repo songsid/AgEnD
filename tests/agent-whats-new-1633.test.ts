@@ -252,6 +252,18 @@ describe("the daemon", () => {
     expect(w.pastes.filter(p => p.startsWith("[system:whats-new]")).length).toBe(1);
     expect(w.d["pendingWhatsNew"]).toBeNull();
   });
+  it("#2140: replaced while its paste was out (a newer plan): the old one is not recorded and the newer one stays pending", async () => {
+    const w = daemon();
+    w.d["prepareWhatsNew"](false, V);
+    const newer = { notice: "[system:whats-new] newer", ids: ["newer-entry"], version: V };
+    const inner = w.d["deliverMessage"];
+    w.d["deliverMessage"] = vi.fn(async (text: string, status: unknown, opts: unknown) => {
+      if (text.startsWith("[system:whats-new]")) w.d["pendingWhatsNew"] = newer;
+      return inner(text, status, opts);
+    });
+    await w.deliver("first");
+    expect([w.d["pendingWhatsNew"], readWhatsNewRecord(w.dir)]).toEqual([newer, null]);
+  });
   it("after a restart it is not told again (the record decides), even if the launch says 'upgraded'", async () => {
     const w = daemon();
     w.d["prepareWhatsNew"](false, V);
