@@ -30,10 +30,11 @@ const PERF = "billing-reconciliation";
 const PETALS = { preset: "fall", glyphs: ["🌸", "❀", "✿"], colors: ["#f4a7b9", "#ffd1dc", "#e75480"] };
 const STARS = { preset: "burst-on-click", glyphs: ["✦", "✧"], colors: ["#ffd700", "#ff69b4", "#87ceeb", "#98fb98", "#dda0dd"], count: 12 };
 const results: Record<string, any> = { browser: fx.browser.version(), engine: process.env.PW_ENGINE ?? "chromium", cases: {}, setup: {} };
-// WebKit logs "Refused to apply a stylesheet…" on Settings → Appearance and on a click in a chat message on main too,
-// with no ambient anywhere (it fires no securitypolicyviolation event): recorded apart, not this smoke's failure.
+// WebKit-only console lines that main has too, with no ambient anywhere — recorded apart, not this smoke's failure:
+// "Refused to apply a stylesheet…" (Settings → Appearance, and a click in a chat message), the viewport meta's
+// interactive-widget key it doesn't know, and a stream or poll a navigation cancels ("… due to access control checks").
 const WEBKIT = process.env.PW_ENGINE === "webkit";
-const KNOWN_WEBKIT = /Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline'/;
+const KNOWN_WEBKIT = /Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline'|Viewport argument key "interactive-widget" not recognized|cannot load .* due to access control checks/;
 const fail: string[] = [];
 const check = (cond: unknown, what: string) => { if (!cond) fail.push(what); return !!cond; };
 
@@ -185,7 +186,7 @@ if (!process.env.ONLY_PERF && !process.env.SKIP_EXTRA) {
       r.menu = await openMenu(page).catch(() => null);
       // In WebKit, requests the harness carries (route.fetch) can fail its access-control check: the transport, not the
       // page (the same flows pass in Chromium); every check below still has to pass.
-      r.errs = p.errors.filter((e: string) => !(WEBKIT && (/due to access control checks/.test(e) || KNOWN_WEBKIT.test(e))));
+      r.errs = p.errors.filter((e: string) => !(WEBKIT && KNOWN_WEBKIT.test(e)));
       check(r.isPublic && r.probe.layer === 12 && r.probe.moved, `${name}: plays on the public link`);
       check(r.click && r.click.n >= 12 && r.click.clicks === 2, `${name}: stars on the public link`);
       check(!(r.menu ?? []).some((t: string) => /Clear the|清除/.test(t)), `${name}: no Clear over the public link`);
