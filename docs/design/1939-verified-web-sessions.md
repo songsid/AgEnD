@@ -21,9 +21,10 @@ says "step-up", read "the session's authorization". S1 (#2108) is merged; §0 sa
    adapter, the `loopback_only` rule, never the public link.
    - **How:** the person presses **Authorize this browser** in the app. It is on the session menu, and on a
      "Not verified" chip by the composer.
-   - **Confirming:** AgEnD posts a Confirm card to the account the session's sign-in code went to. It goes to that
-     account's DM, or to that adapter's General when a DM can't be sent. **Confirm** authorizes **that session** (its
-     handle). **Not me** denies it and signs that session out at once.
+   - **Confirming:** AgEnD posts a Confirm card to the account the session's sign-in code went to, in that account's DM.
+     **Confirm** authorizes **that session** (its handle). **Not me** denies it and signs that session out at once.
+     - **If a DM can't be sent,** that adapter's General gets only a line with no details ("open your DMs, then press
+       Authorize again"). The card, with its account and device, is never posted where others can see it.
    - **The claim:** only that account can press either button.
    - **What is kept:** an authorization is a record beside the fleet (`web-authorizations.json`, owner-only), keyed by
      the session's handle, holding the account that gave it, when, and the revocation epoch it was given under.
@@ -101,6 +102,10 @@ presses Confirm in its own Discord or Telegram. A stolen cookie therefore cannot
 - **No Settings confirmation for these keys.** Turning the switch on, turning `loopback_only` off and a longer
   `max_session_hours` grant nothing by themselves: a session still needs the account's click. They apply at once. A
   Settings write still needs an admin session.
+  - **The hours never stretch an authorization already given.** Each authorization keeps the end it was given with
+    (`authorizedAt + max_session_hours` then). A shorter setting shortens it, but a longer one only applies to
+    authorizations given afterwards. So a stolen, already-authorized admin session cannot extend itself by raising the
+    hours.
 
 **Kept, each with the threat it stops:**
 
@@ -120,7 +125,21 @@ again, hoping the person taps Confirm.
   - a coarse device label from the browser's own description;
   - the time asked, and when the authorization would end.
 - **One pending request per session**, and at most **3 requests an hour per account**. The app explains a refusal.
+- **A card expires** 5 minutes after it is posted, and is marked expired where it sits. A tap that comes later does
+  nothing.
+- **Confirm is judged at the moment of the tap:** AgEnD reads the session again by its handle and runs §3 again. It
+  refuses, and says so on the card, if:
+  - the session has ended;
+  - its token has rotated;
+  - the epoch has moved;
+  - the account is no longer an admin;
+  - the switch is off.
 - **Not me** denies the request and signs that session out at once, so a theft ends with one tap.
+- **After Confirm, the card stays as the notice:**
+  - it reads "Authorized: this browser (…) until <time>";
+  - it keeps a **Not me** button that signs the session out and ends its authorization for as long as the authorization
+    lasts;
+  - so a mistaken Confirm still has one tap to undo it.
 
 **The from-defaults smoke** (fleet decision a78ebdc5) goes the whole way: a fresh profile signs in, sees "Not verified",
 presses Authorize, gets the card (the DM stubbed), and Confirm turns it verified. It also covers Not me (signed out),
