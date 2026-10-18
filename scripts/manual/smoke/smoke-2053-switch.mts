@@ -18,9 +18,17 @@ const ENGINE = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";
 // exactly on the text before " @ <url>", and listed apart in the result.
 const WEBKIT_OWN = new Set(["Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy.",
   'Viewport argument key "interactive-widget" not recognized and ignored.']);
-const split = (errors: string[]) => {
+// The smoke's own navigation (to the first chat) cancels the stream and a poll it opened: WebKit logs those as "cannot
+// load … due to access control checks". Accepted only by position — inside that navigation's window [from, to) — and
+// only for /ui/events and /ui/poll (as #2138's smoke); the same text anywhere else fails.
+const CANCEL = /^(EventSource|Fetch API) cannot load \S+\/ui\/(events|poll)\b\S* due to access control checks\.$/;
+const split = (errors: string[], nav: [number, number]) => {
   const accepted: string[] = [], other: string[] = [];
-  for (const e of errors) (ENGINE === "webkit" && WEBKIT_OWN.has(e.replace(/ @ \S+$/, "")) ? accepted : other).push(e);
+  errors.forEach((e, i) => {
+    const text = e.replace(/ @ \S+$/, "");
+    const own = ENGINE === "webkit" && (WEBKIT_OWN.has(text) || (i >= nav[0] && i < nav[1] && CANCEL.test(text)));
+    (own ? accepted : other).push(e);
+  });
   return { accepted, other };
 };
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48560), classic: false });
@@ -61,10 +69,12 @@ for (const [tag, c] of [["desk", { device: "desk", theme: "light", lang: "en" }]
     const wrap = () => { const R = window.AgendChatRender; if (!R || R.__w) return !!R; const f = R.renderMarkdown; R.renderMarkdown = function () { const s = performance.now(); try { return f.apply(this, arguments); } finally { window.__md += performance.now() - s; window.__mdN++; } }; R.__w = true; return true; };
     const iv = setInterval(() => { if (wrap()) clearInterval(iv); }, 5);` });
   if (ENGINE === "chromium") { const cdp = await p.ctx.newCDPSession(p.page); await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 }); }
+  const navFrom = p.errors.length;
   await p.page.goto(`${p.base}/ui/chat/${CHATS[0]}`);
   await mounted(p.page, 30000);
   await p.page.waitForFunction((n: number) => document.querySelectorAll(".p-chat .msg").length >= n, N, { timeout: 60000 });
   await p.page.waitForTimeout(1000);
+  const nav: [number, number] = [navFrom, p.errors.length];
   const first: any[] = [], revisit: any[] = [], older: any[] = [];
   for (const to of CHATS.slice(1)) first.push(await measure(p.page, to));                    // first visits: history read
   // Now shown: CHATS[5]; kept: CHATS[2..4]. Revisits among those four (each a kept one).
@@ -74,7 +84,8 @@ for (const [tag, c] of [["desk", { device: "desk", theme: "light", lang: "en" }]
   const all = [...first, ...revisit, ...older];
   results.cases[tag] = { summary: { first: summary(first), revisit: summary(revisit), older: summary(older) },
     bottomAfterRevisit: [...revisit, ...older].every((x) => x.bottom === true), timeouts: all.filter((x) => x.timeout || x.missing).length,
-    errors: split(p.errors).other, webkitOwn: split(p.errors).accepted };
+    errors: split(p.errors, nav).other, webkitOwn: split(p.errors, nav).accepted,
+    rows: { first: first.map((r, i) => ({ to: CHATS[i + 1], ...r })), revisit, older } };
   await p.page.screenshot({ path: shotPath("smoke-2053-switch", `${ENGINE}-${tag}`, "chat") });
   await p.ctx.close();
 }
