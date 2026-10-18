@@ -34,7 +34,7 @@ const record = (over: Partial<SessionRecord> = {}): SessionRecord => ({ handle: 
   absoluteExpiry: T0 + 48 * HOUR, idleExpiry: T0 + 48 * HOUR, tier: "admin", surface: "local", label: "Firefox", tokenEpoch: EPOCH,
   owner: { adapterId: "owner", userId: "admin" }, ...over });
 /** §0: this session authorized by its account half an hour after sign-in, under epoch 0. */
-const AUTH = { handle: "a1b2c3d4e5f60718", owner: { adapterId: "owner", userId: "admin" }, authorizedAt: T0 + HOUR / 2, epoch: 0 };
+const AUTH = { handle: "a1b2c3d4e5f60718", owner: { adapterId: "owner", userId: "admin" }, authorizedAt: T0 + HOUR / 2, until: T0 + HOUR / 2 + 48 * HOUR, epoch: 0 };
 const input = (over: Partial<WebAuthorityInput> = {}): WebAuthorityInput => ({ session: record(), gateway: false, peer: "loopback", tokenEpoch: EPOCH,
   isAdmin: (u, a) => a === "owner" && u === "admin", authorization: AUTH, policy: { enabled: true, loopbackOnly: false, maxSessionMs: 48 * HOUR }, epoch: 0, now: T0 + HOUR, ...over });
 const req = (remoteAddress: string | undefined, headers: Record<string, string>) => ({ socket: { remoteAddress }, headers });
@@ -107,9 +107,9 @@ describe("§3 every check, in order, for one request", () => {
       .toEqual({ authority: { kind: "none", actor: null, authority_epoch: 0 }, refusal: "session_changed" });
   });
   it("the policy: 48 h and LAN by default; a bad value never loosens it", () => {
-    expect(webAuthorityPolicy(undefined)).toEqual({ enabled: false, loopbackOnly: false, maxSessionMs: 48 * HOUR });
+    expect(webAuthorityPolicy(undefined)).toEqual({ enabled: true, loopbackOnly: false, maxSessionMs: 48 * HOUR });         // §0.1: on by default
     expect(webAuthorityPolicy({ verified_authority: { enabled: true, loopback_only: true, max_session_hours: 6 } })).toEqual({ enabled: true, loopbackOnly: true, maxSessionMs: 6 * HOUR });
-    expect(webAuthorityPolicy({ verified_authority: { enabled: "yes" as never } }).enabled).toBe(false);
+    expect(webAuthorityPolicy({ verified_authority: { enabled: false } }).enabled).toBe(false);
     expect(webAuthorityPolicy({ verified_authority: { max_session_hours: 500 } }).maxSessionMs).toBe(48 * HOUR);
     expect(webAuthorityPolicy({ verified_authority: { max_session_hours: 0 } }).maxSessionMs).toBe(HOUR);
     expect(webAuthorityPolicy({ verified_authority: { max_session_hours: Number.NaN } }).maxSessionMs).toBe(48 * HOUR);
@@ -163,7 +163,7 @@ function session(h: Rig, over: { owner?: { adapterId: string; userId: string } |
   const owner = over.owner === undefined ? { adapterId: "owner", userId: "admin" } : over.owner;
   const { sessionId, record } = h.s.webSessions.create({ tier: over.tier ?? "admin", surface: over.surface ?? "local", label: "Firefox", tokenEpoch: EPOCH,
     ...(owner ? { owner } : {}), ...(over.exposureId ? { exposureId: over.exposureId } : {}) });
-  if (owner && over.authorized !== false) h.s.sessionAuthorizationStore().authorize(record.handle, owner, Date.now(), h.s.webAuthorityState().epoch);
+  if (owner && over.authorized !== false) h.s.sessionAuthorizationStore().authorize(record.handle, owner, Date.now(), h.s.webAuthorityState().epoch, Date.now() + 48 * HOUR);
   // Over https (the public link) the cookie is the __Host- one.
   return { cookie: `${over.exposureId ? "__Host-" : ""}agend_session=${sessionId}`, sessionId, ...(over.exposureId ? { gateway: over.exposureId } : {}) };
 }

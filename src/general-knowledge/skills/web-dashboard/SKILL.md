@@ -81,6 +81,15 @@ membership is verified, minus any `web.guests.narrow`. They can chat there unles
 a command (text starting with `/` is refused), and the agent sees them as `via web (guest)`. A guest's app has no Fleet,
 View, Settings or Needs you. To invite someone: turn it on, then tell them to send `/web`.
 
+**Web authority (#1939, 2.3 beta).** Settings → Web → **Web authority** (`web.verified_authority`, on by default):
+whether a signed-in fleet admin's web messages carry their own account's authority in the delivery receipt. A session
+signed in with a code DMed to that account, on the dashboard reached directly (never the public link or a guest), is
+authorized once from Discord or Telegram; after that its messages are `web-verified` for `max_session_hours` (default
+48). **Only this computer can authorize** (`loopback_only`) limits it to a browser on the host. The card lists the
+authorized sessions. **Revoke web authority** (or `/web revoke`) makes all authority given so far read as none and ends
+every authorization. Changes apply at once (none grants anything without the account's confirmation). Agents still
+treat web messages as recognition only for now.
+
 ## Chat
 
 **Sending.** Type and press Enter. A message sent while the agent works waits its turn; `/steer <text>` goes into

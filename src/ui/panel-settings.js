@@ -44,6 +44,7 @@ import { startTour } from "./chat-tour.js";
 import "./chat-strings.js";
 import { AppearanceSection } from "./settings-appearance.js";
 import { GuestsCard } from "./settings-guests.js";
+import { WebAuthorityCard } from "./settings-web-authority.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const ICONS = { device: "user", appearance: "palette", agents: "bot", bots: "plug", classic: "room", general: "sliders", web: "globe", advanced: "code" };
@@ -868,6 +869,7 @@ function WebSection({ ctx, staged }) {
     </section>
     </fieldset>
     <${GuestsCard} ctx=${ctx} staged=${staged} disabled=${overPublicLink} />
+    ${overPublicLink ? null : html`<${WebAuthorityCard} ctx=${ctx} staged=${staged} />`}
     <section class="card s-web-readonly"><h3>${tn("webReadOnlyTitle")}</h3>
       <p class="note">${tn("webReadOnlyLead")}</p>
       <dl class="s-web-ro">${WEB_READ_ONLY.map((k) => html`<div key=${k}><dt><code>${k}</code></dt><dd>${shown(k)}</dd></div>`)}</dl>

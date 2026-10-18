@@ -13,6 +13,8 @@ export interface SessionAuthorization {
   readonly owner: { readonly adapterId: string; readonly userId: string };
   /** Wall clock (ms): when its account confirmed it; compared with the session store's own wall clock. */
   readonly authorizedAt: number;
+  /** §0.1: the end it was given with (authorizedAt + max_session_hours then): a longer setting later never stretches it. */
+  readonly until: number;
   readonly epoch: number;
 }
 
@@ -31,7 +33,7 @@ function valid(v: unknown): v is SessionAuthorization {
   const a = v as Record<string, any>;
   return typeof a.handle === "string" && HANDLE.test(a.handle) && !!a.owner && typeof a.owner.adapterId === "string" && !!a.owner.adapterId
     && typeof a.owner.userId === "string" && !!a.owner.userId && Number.isSafeInteger(a.authorizedAt) && a.authorizedAt > 0
-    && Number.isSafeInteger(a.epoch) && a.epoch >= 0;
+    && Number.isSafeInteger(a.until) && a.until > a.authorizedAt && Number.isSafeInteger(a.epoch) && a.epoch >= 0;
 }
 
 export class SessionAuthorizations {
@@ -51,7 +53,7 @@ export class SessionAuthorizations {
     try {
       const v = JSON.parse(raw) as { v?: unknown; authorizations?: unknown };
       if (v.v === 1 && Array.isArray(v.authorizations)) for (const a of v.authorizations.slice(0, SESSION_AUTHORIZATIONS_MAX)) {
-        if (valid(a)) this.byHandle.set(a.handle, Object.freeze({ handle: a.handle, owner: Object.freeze({ adapterId: a.owner.adapterId, userId: a.owner.userId }), authorizedAt: a.authorizedAt, epoch: a.epoch }));
+        if (valid(a)) this.byHandle.set(a.handle, Object.freeze({ handle: a.handle, owner: Object.freeze({ adapterId: a.owner.adapterId, userId: a.owner.userId }), authorizedAt: a.authorizedAt, until: a.until, epoch: a.epoch }));
       }
     } catch { this.log.warn({ path: this.path }, "Web session authorizations unreadable; none are kept"); }
     return this.byHandle;
@@ -72,9 +74,9 @@ export class SessionAuthorizations {
 
   get(handle: string): SessionAuthorization | null { return this.load().get(handle) ?? null; }
 
-  /** §0: this session is authorized by its account, from now, under `epoch` (it replaces an earlier one). */
-  authorize(handle: string, owner: { adapterId: string; userId: string }, authorizedAt: number, epoch: number): { authorization: SessionAuthorization; durable: boolean } {
-    const a = Object.freeze({ handle, owner: Object.freeze({ adapterId: owner.adapterId, userId: owner.userId }), authorizedAt, epoch });
+  /** §0: this session is authorized by its account, from now until `until`, under `epoch` (it replaces an earlier one). */
+  authorize(handle: string, owner: { adapterId: string; userId: string }, authorizedAt: number, epoch: number, until: number): { authorization: SessionAuthorization; durable: boolean } {
+    const a = Object.freeze({ handle, owner: Object.freeze({ adapterId: owner.adapterId, userId: owner.userId }), authorizedAt, until, epoch });
     if (!valid(a)) throw new Error("invalid session authorization");
     const map = this.load();
     map.delete(handle);
