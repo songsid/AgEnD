@@ -11,8 +11,8 @@ vi.mock("node:child_process", () => {
 });
 const BOOT = "a".repeat(32), ORIGINS = ["http://127.0.0.1:19280", "https://dashboard.example"];
 const render = () => ({v:1,type:"render",ch:"0123456789abcdef",code:"agend.ready()",params:{},instance:"fixture",width:64,height:64,dpr:1,assets:[] as unknown[]});
-function documentHarness(options: { unsupported?: boolean; noOffscreen?:boolean; bitmap?: () => Promise<unknown> } = {}) {
-  const body = buildEffectShim(BOOT,ORIGINS), script=body.slice(body.indexOf("<script>")+8,body.lastIndexOf("</script>"));
+function documentHarness(options: { sameListener?: boolean; unsupported?: boolean; noOffscreen?:boolean; bitmap?: () => Promise<unknown> } = {}) {
+  const body = buildEffectShim(BOOT,ORIGINS,options.sameListener), script=body.slice(body.indexOf("<script>")+8,body.lastIndexOf("</script>"));
   class DataEvent { constructor(readonly value: unknown) {} get data() {return this.value;} }
   const listeners=new Map<string,Set<(e:any)=>unknown>>(), timers=new Map<number,()=>void>(), delays=new Map<number,number>(), channels:any[]=[], workers:any[]=[], urls:any[]=[], revoked:string[]=[];
   const bitmap={width:1,height:1,close:vi.fn()}, canvas={width:0,height:0,transferControlToOffscreen:vi.fn(()=>({offscreen:true}))};
@@ -22,7 +22,8 @@ function documentHarness(options: { unsupported?: boolean; noOffscreen?:boolean;
   const parent={postMessage:vi.fn()}, host=port(), doc={querySelector:vi.fn(()=>canvas),createElement:vi.fn(()=>{throw Error("no DOM effect nodes allowed");})};
   let timer=0,clock=0;
   const win:any={parent,document:doc,MessageEvent:DataEvent,TextEncoder,Blob,Uint8Array,performance:{now:()=>clock},HTMLCanvasElement:class{},OffscreenCanvas:options.noOffscreen?undefined:class{},Worker:options.unsupported?undefined:Worker,MessageChannel:Channel,
-    URL:{createObjectURL:(b:Blob)=>{urls.push(b);return "blob:fixture/"+urls.length;},revokeObjectURL:(s:string)=>revoked.push(s)},
+    location:{href:ORIGINS[0]+"/effect-bootstrap"},
+    URL:Object.assign(URL.bind(null),{createObjectURL:(b:Blob)=>{urls.push(b);return "blob:fixture/"+urls.length;},revokeObjectURL:(s:string)=>revoked.push(s)}),
     createImageBitmap:options.bitmap??(async()=>bitmap),
     setTimeout:(fn:()=>void,ms:number)=>{timers.set(++timer,fn);delays.set(timer,ms);return timer;},clearTimeout:(id:number)=>{timers.delete(id);delays.delete(id);},
     addEventListener:(t:string,fn:(e:any)=>unknown)=>{if(!listeners.has(t))listeners.set(t,new Set());listeners.get(t)!.add(fn);},removeEventListener:(t:string,fn:(e:any)=>unknown)=>listeners.get(t)?.delete(fn)};
@@ -40,6 +41,12 @@ function documentHarness(options: { unsupported?: boolean; noOffscreen?:boolean;
 }
 
 describe("#1629 Canvas Worker document boundary",()=>{
+  it("#2118 same-listener mode binds its actual URL origin, not the legacy origin array",async()=>{
+    const h=documentHarness({sameListener:true});
+    await h.send(render(),{origin:ORIGINS[1]}); await h.send(render(),{origin:"null"}); await h.send(render(),{source:{}});
+    expect(h.workers).toHaveLength(0);
+    await h.send(); expect(h.workers).toHaveLength(1); expect(h.host.start).toHaveBeenCalledOnce();
+  });
   it("announces one exact boot ready and contains only trusted script + canvas",()=>{
     const h=documentHarness();expect(h.parent.postMessage.mock.calls).toEqual([[{v:1,type:"ready",ch:null,boot:BOOT},"*"]]);
     expect(h.body.match(/<canvas/g)).toHaveLength(1);expect(h.body).not.toContain("DOMParser");expect(h.body).not.toContain("document.write");expect(h.win.agend).toBeUndefined();

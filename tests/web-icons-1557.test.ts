@@ -7,6 +7,7 @@ import { createPublicWebGateway, isPublicWebRoute } from "../src/public-web-gate
 import { WebSessionStore, tokenEpoch } from "../src/web-session.js";
 import { WEB_CONTENT_SECURITY_POLICY } from "../src/web-host-guard.js";
 import { isWebIconPath } from "../src/web-icons.js";
+import { createEffectBootstrap } from "../src/web-effect-bootstrap.js";
 
 const BASE_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 const token = "favicon-fixture-token", exposure = "a".repeat(32), host = "icon-fixture.trycloudflare.com";
@@ -37,6 +38,7 @@ function dispatcher() {
   const sessions = new WebSessionStore();
   const fm = Object.create(FleetManager.prototype);
   Object.assign(fm, { fleetConfig: { defaults: {}, instances: {} }, webSessions: sessions,
+    effectBootstrap: createEffectBootstrap("a".repeat(32)),
     webLoginCodes: null, rejectedHostsLogged: new Set(), logger: { warn: vi.fn(), error: vi.fn() },
     settingsGate: () => ({ handle: () => false }) });
   Object.defineProperty(fm, "webToken", { value: token });

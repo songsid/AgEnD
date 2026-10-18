@@ -89,11 +89,11 @@ function literal(value: unknown): string {
 }
 
 /** No HTML input exists. The document realm contains only this shim and its single canvas. */
-export function buildCanvasEffectShim(bootId: string, origins: readonly string[]): string {
+export function buildCanvasEffectShim(bootId: string, origins: readonly string[], sameListener = false): string {
   const source = String.raw`(function () {
   "use strict";
   ${EFFECT_SIGNAL_CHECK}
-  var BOOT=${literal(bootId)}, ORIGINS=${literal([...origins])}, MAX=${EFFECT_MAX_BYTES}, PIXELS=${EFFECT_MAX_PIXELS};
+  var BOOT=${literal(bootId)}, ORIGINS=${sameListener ? "[new URL(window.location.href).origin]" : literal([...origins])}, MAX=${EFFECT_MAX_BYTES}, PIXELS=${EFFECT_MAX_PIXELS};
   var WORKER=${literal(effectWorkerSource())};
   var done=false, active=true, worker=null, host=null, link=null, urls=[], bitmaps=[], deadline=null, expires=null;
   var defer=window.setTimeout.bind(window), cancel=window.clearTimeout.bind(window), now=performance.now.bind(performance);
