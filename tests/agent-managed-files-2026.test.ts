@@ -44,6 +44,43 @@ describe("managed in-state appearance files", () => {
     f.save(join(f.stateDir, "workspaces/worker/sibling.png"));
     expect(await f.read("../sibling.png")).toMatchObject({ ok: false });
   });
+  it("a sole caller inherits its managed cwd from fleet defaults, for CLI and daemon context", async () => {
+    const f = fixture(); f.save(join(f.workspace, "web-assets/banner.png"));
+    f.effect(join(f.workspace, "web-effects/demo"));
+    f.save(join(f.stateDir, "fleet.yaml"), JSON.stringify({ defaults: { working_directory: f.workspace }, instances: { general: {} } }));
+    for (const extra of [{}, { configuredWorkspace: f.workspace }]) {
+      expect(await f.read("web-assets/banner.png", extra)).toMatchObject({ ok: true });
+      expect(await readAgentEffect("web-effects/demo", { ...f.opts, ...extra })).toMatchObject({ ok: true });
+      expect(await writeAgentFile(".agend/appearance", "dark.svg", Buffer.from("x"), { ...f.opts, ...extra })).toMatchObject({ ok: true });
+    }
+  });
+  it.each(["same", "parent", "child"])("a peer inherits %s overlapping cwd from fleet defaults, refusing reads and writes", async mode => {
+    const f = fixture(); f.save(join(f.workspace, "web-assets/banner.png"));
+    const inherited = mode === "same" ? f.workspace : mode === "parent" ? f.stateDir : join(f.workspace, "web-assets");
+    f.save(join(f.stateDir, "fleet.yaml"), JSON.stringify({ defaults: { working_directory: inherited }, instances: { general: { working_directory: f.workspace }, peer: {} } }));
+    expect(await f.read("web-assets/banner.png")).toMatchObject({ ok: false });
+    expect(await writeAgentFile(".agend/appearance", "dark.svg", Buffer.from("x"), f.opts)).toMatchObject({ ok: false });
+    expect(existsSync(join(f.workspace, ".agend"))).toBe(false);
+  });
+  it("an explicit instance override wins over the inherited directory", async () => {
+    const f = fixture(); f.save(join(f.workspace, "web-assets/banner.png"));
+    const peer = join(f.root, "project"); mkdirSync(peer);
+    f.save(join(f.stateDir, "fleet.yaml"), JSON.stringify({ defaults: { working_directory: f.workspace }, instances: { general: {}, peer: { working_directory: peer } } }));
+    expect(await f.read("web-assets/banner.png")).toMatchObject({ ok: true });
+    f.save(join(f.stateDir, "fleet.yaml"), JSON.stringify({ defaults: { working_directory: peer }, instances: { general: { working_directory: f.workspace }, peer: {} } }));
+    expect(await f.read("web-assets/banner.png")).toMatchObject({ ok: true });
+  });
+  it("dynamic Classic does not inherit fleet working-directory defaults", async () => {
+    const f = fixture("classic-x", "workspaces/classic-x"); f.save(join(f.workspace, "ordinary.png"));
+    const general = join(f.stateDir, "general"); mkdirSync(general);
+    f.save(join(f.stateDir, "fleet.yaml"), JSON.stringify({ defaults: { working_directory: general }, instances: { general: {} } }));
+    expect(await f.read("ordinary.png", { configuredWorkspace: f.workspace })).toMatchObject({ ok: true });
+  });
+  it.each(["", null, false, 0])("falsy instance cwd %j overrides a default before conventional fallback", async value => {
+    const f = fixture("worker", "workspaces/worker"); f.save(join(f.workspace, "ordinary.png"));
+    f.save(join(f.stateDir, "fleet.yaml"), JSON.stringify({ defaults: { working_directory: join(f.stateDir, "general") }, instances: { worker: { working_directory: value } } }));
+    expect(await f.read("ordinary.png")).toMatchObject({ ok: true });
+  });
   it.each(sensitive)("refuses sensitive %s at root and inside staging and classic workspace", async part => {
     for (const classic of [false, true]) {
       const f = fixture("general", classic ? "workspaces/general" : "general");

@@ -26,7 +26,9 @@ Manually configured directories can be shared or nested. A distinct instance nam
 
 ## Admitted areas
 
-The directory must match the caller's `fleet.yaml` record (or the exact conventional `workspaces/<caller>` default). The daemon additionally supplies its launch-config directory; disagreement refuses. The shell's current directory constrains access further but never supplies ownership. An unreadable or malformed fleet roster refuses in-state access. No fleet loader with directory-creation side effects runs here.
+Effective fleet directories merge `defaults.working_directory` with each instance override, falling back to the conventional path only when the merged value is falsy. This same side-effect-free resolution applies to the caller and every peer; dynamic Classic instances absent from the fleet roster do not inherit that field.
+
+The directory must match the caller's effective `fleet.yaml` record (or the exact conventional `workspaces/<caller>` default). The daemon additionally supplies its launch-config directory; disagreement refuses. The shell's current directory constrains access further but never supplies ownership. An unreadable or malformed fleet roster refuses in-state access. No fleet loader with directory-creation side effects runs here.
 
 - Classic/standard own workspaces keep ordinary-file support, with new sensitive-path denial.
 - Other configured in-state directories (including a configured project below its own conventional workspace) admit only `web-assets/`, `web-effects/`, `.agend/appearance/` and `.agend/mods/`.

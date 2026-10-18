@@ -66,10 +66,14 @@ export async function agentFileScope(opts: AgentFileContext): Promise<{ workspac
       ? (fleet as { instances?: unknown }).instances : undefined;
     if (rows !== undefined && (!rows || typeof rows !== "object" || Array.isArray(rows))) throw new Error("invalid instance roster");
     const roster = (rows ?? {}) as Record<string, { working_directory?: unknown }>;
+    const defaults = (fleet as { defaults?: unknown } | undefined)?.defaults ?? {};
+    if (typeof defaults !== "object" || Array.isArray(defaults)) throw new Error("invalid fleet defaults");
     const configured = (name: string, row: { working_directory?: unknown }) => {
       if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error("invalid instance record");
-      const raw = row.working_directory;
-      if (raw !== undefined && (typeof raw !== "string" || !raw.trim())) throw new Error("unknown working directory");
+      // The loader merges defaults first, skips undefined overrides, then falls back on a falsy cwd.
+      // Only records in fleet.instances inherit these defaults; dynamic Classic instances do not.
+      const raw = row.working_directory === undefined ? (defaults as { working_directory?: unknown }).working_directory : row.working_directory;
+      if (raw && (typeof raw !== "string" || !raw.trim())) throw new Error("unknown working directory");
       const path = raw ? resolve((raw as string).replace(/^~(?=\/|$)/, homedir())) : resolve(state!, "workspaces", name);
       // Permit an alias of the state root, never an alias of an individual managed directory.
       return under(path, states[0]!) ? resolve(state!, relative(states[0]!, path)) : path;
