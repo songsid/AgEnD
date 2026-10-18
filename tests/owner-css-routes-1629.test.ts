@@ -269,6 +269,8 @@ describe("no agent path reaches it", () => {
         // web-settings-tools.ts (#2056): General's tools change the user's Settings → Web appearance — custom CSS through
         // the store's own save (checkOwnerCss and all), keep, revert and restore (pinned below).
         "web-settings-tools.ts",
+        // Playback observations name a closed reason only, never a CSS management path (pinned below).
+        "web-effect-playback.ts",
         // Try checks the host-supplied CSS lifecycle enum for a closed diagnostic value.
         // It neither imports the CSS store nor exposes its management routes (pinned below).
         "web-effect-trials.ts"].includes(f)) continue;
@@ -287,6 +289,10 @@ describe("no agent path reaches it", () => {
     expect([...tools.matchAll(/store\.restore\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(["null", "c.version"]);
     expect(tools).not.toMatch(/setOwnerCss|writeIndex|ownerCssActive/);
     expect([...tools.matchAll(/ownerCss\.restore\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(["null"]);
+    const playback = readFileSync(join(src, "web-effect-playback.ts"), "utf8");
+    expect(playback.match(/owner[-_ ]?css/gi)).toHaveLength(1);
+    expect(playback).toContain('"gates_unknown", "owner_css", "stock_overlay"');
+    expect(playback).not.toMatch(/from\s*["']\.\/web-owner-css|import\(\s*["']\.\/web-owner-css|\/ui\/owner-css|setOwnerCss|OwnerCssStore/);
     const trials = readFileSync(join(src, "web-effect-trials.ts"), "utf8");
     expect(trials).toContain('["off", "on", "loading", "unknown"].includes(d.ownerCss as string)');
     expect(trials).not.toContain('d.ownerCss !== "off"');
