@@ -472,6 +472,8 @@ describe("GET /ui/usage-report: who gets it", () => {
   it("the public link: refused unless web.usage_report_on_public_link is true", async () => {
     const no = get(undefined, true); await settle();
     expect([no.status(), JSON.parse(no.body()).error, no.usageReport.mock.calls.length]).toEqual([403, "usage_report_not_over_public_link", 0]);
+    // Where it is turned on: Settings → Web on the dashboard reached directly (this computer's own address).
+    expect(JSON.parse(no.body()).settings).toBe("http://localhost:19280/settings/web");
     const yes = get({ usage_report_on_public_link: true }, true); await settle();
     expect(yes.status()).toBe(200);
   });

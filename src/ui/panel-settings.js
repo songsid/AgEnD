@@ -779,13 +779,14 @@ function WebSection({ ctx, staged }) {
   const original = useMemo(() => ({
     echo: web.echo_to_channel ?? true,
     log: web.log_tab === true,                                                  // #1218: off by default
+    usagePub: web.usage_report_on_public_link === true,                         // #2122: off by default
     pub: { allow_public: (web.public_link && web.public_link.allow_public) ?? true, ttl_minutes: (web.public_link && web.public_link.ttl_minutes) ?? 120, protocol: (web.public_link && web.public_link.protocol) ?? "http2" },
     session: { absolute_hours: local.absolute_hours ?? null, idle_hours: local.idle_hours ?? null },
     terminal: { enabled: term.enabled ?? null, ttl_minutes: term.ttl_minutes ?? null },
   }), []);
   const text = (v) => (v === null || v === undefined ? "" : String(v));
   const [f, setF] = useState(() => ({
-    echo: original.echo, log: original.log, pub: original.pub.allow_public, ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol,
+    echo: original.echo, log: original.log, usagePub: original.usagePub, pub: original.pub.allow_public, ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol,
     abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours),
     termOn: original.terminal.enabled !== false, termTtl: text(original.terminal.ttl_minutes),
   }));
@@ -814,6 +815,7 @@ function WebSection({ ctx, staged }) {
     const body = {
       ...(f.echo !== original.echo ? { echo_to_channel: f.echo } : {}),
       ...(f.log !== original.log ? { log_tab: f.log } : {}),
+      ...(f.usagePub !== original.usagePub ? { usage_report_on_public_link: f.usagePub } : {}),
       ...(Object.keys(publicPatch).length ? { public_link: publicPatch } : {}),
       ...(Object.keys(sessionPatch).length ? { session: { local: sessionPatch } } : {}),
       ...(Object.keys(terminalPatch).length ? { web_terminal: terminalPatch } : {}),
@@ -821,6 +823,7 @@ function WebSection({ ctx, staged }) {
     const fields = [
       ...(body.echo_to_channel !== undefined ? ["web.echo_to_channel"] : []),
       ...(body.log_tab !== undefined ? ["web.log_tab"] : []),
+      ...(body.usage_report_on_public_link !== undefined ? ["web.usage_report_on_public_link"] : []),
       ...Object.keys(publicPatch).map((k) => `web.public_link.${k}`),
       ...Object.keys(sessionPatch).map((k) => `web.session.local.${k}`),
       ...Object.keys(terminalPatch).map((k) => `web_terminal.${k}`),
@@ -862,6 +865,8 @@ function WebSection({ ctx, staged }) {
       <p class="note">${tn("webEchoHint")}</p>
       <label class="check"><input id="webLogTab" type="checkbox" checked=${f.log} onChange=${(e) => set("log")(e.target.checked)} /><span>${tn("webLogTab")}</span><${Impact} schema=${schema} field="web.log_tab" /></label>
       <p class="note">${tn("webLogTabHint")}</p>
+      <label class="check"><input id="webUsagePublic" type="checkbox" checked=${f.usagePub} onChange=${(e) => set("usagePub")(e.target.checked)} /><span>${tn("webUsagePublic")}</span><${Impact} schema=${schema} field="web.usage_report_on_public_link" /></label>
+      <p class="note">${tn("webUsagePublicHint")}</p>
       <label class="check"><input id="publicWebLink" type="checkbox" checked=${f.pub} onChange=${(e) => set("pub")(e.target.checked)} /><span>${tn("publicLink")}</span><${Impact} schema=${schema} field="web.public_link.allow_public" /></label>
       <p class="note">${tn("publicLinkHint")}</p>
       <div class="grid2">

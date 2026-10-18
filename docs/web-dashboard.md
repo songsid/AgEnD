@@ -8,7 +8,7 @@ AgEnD's web dashboard is three panels on one small web server that the fleet run
 
 | Panel | What it is for |
 |---|---|
-| **`/ui`**: the app | Talk to your agents (chat, files, Stop reply), see who is working, and manage instances, tasks, schedules and teams. Each chat has its own address, `/ui/chat/<name>`; Fleet is `/ui/fleet` (`/ui/fleet/schedules`, `…/teams`, `…/org`, `…/cache`, `…/config`); **Needs you** is `/ui/needs` |
+| **`/ui`**: the app | Talk to your agents (chat, files, Stop reply), see who is working, and manage instances, tasks, schedules and teams. Each chat has its own address, `/ui/chat/<name>`; Fleet is `/ui/fleet` (`/ui/fleet/schedules`, `…/teams`, `…/org`, `…/cache`, `…/usage`, `…/config`); **Needs you** is `/ui/needs` |
 | **`/view`** | A read-mostly view of every agent: live terminal, roster, usage, and editing each agent's profile and avatar |
 | **`/settings`** | Fleet settings — your preferences, web appearance, agents, connections, ClassicBot, defaults, `fleet.yaml` — with apply and restart. Each section has its own address: `/settings/device` (Preferences), `…/appearance`, `…/bots`, `…/classic`, `…/general`, `…/web`, `…/advanced` (`/settings` is Agents) |
 
@@ -234,6 +234,14 @@ The fleet's shared work and its overview, one tab each. Every tab has its own ad
     - Mostly rewritten (at least half): the card recommends setting `prompt_cache_ttl: "1h"` for that instance (see [configuration](configuration.md#claude-prompt-cache-ttl)) instead of keep-warm. The fleet row counts such instances.
     - Too few gaps: it says so, and the figures are marked as estimates.
   - Agents read the same report with `get_cache_report`. General, coordinators and full-profile instances see every instance; any other agent with the tool sees only its own row (the `minimal` tool set has none).
+- **Usage** (`/ui/fleet/usage`, #2122): each agent's tokens, requests, delivered messages and their **API-equivalent at list price — not money spent** (subscriptions aren't billed per token), over today, 7 days, this month, all, or custom days in the fleet's timezone. The ◔ usage dialog links here (**By agent →**).
+  - **Rows** are ranked by the API-equivalent (by tokens where nothing is priced), each with a bar, input / output / cache read / cache write / total tokens, requests and messages, and its backend, models and credential profile. Group them by agent, backend, model, credential profile, or team (teams as configured now).
+  - **Marks in words:** Codex records no cache writes, so they read "not reported" (an estimate), never 0; a model not in the price table shows its tokens and "not priced"; hours read before this release say their backend and profile weren't recorded. Kiro and the other CLIs AgEnD can't read are listed below with the reason, never as $0. Claude subagent (sidechain) turns aren't counted yet.
+  - **Trend and heatmap:** a stacked daily chart of the top 5 agents and the others, and a calendar of daily totals where a day read with nothing used (grey) is told apart from a day not collected (dashed). Both are described in text, so colour is never the only cue.
+  - **CSV:** **Download CSV** saves the shown answer's daily rows (date, zone, agent, backend, model, tier, profile, the token columns, requests, amount, the basis and the marks; messages on rows of their own).
+  - **Freshness:** collected from when the fleet started (kept 400 days) and read every 10 minutes; while the reader catches up the page says totals may still grow. It never re-reads on a timer.
+  - **Not everything at once:** when a long range has more daily rows than one answer carries, the page says from which date the trend, the heatmap and the CSV start; the rows and totals still cover the whole range. A day used only by a model not in the price table is shown as used ("not priced"), never as a day with nothing used. If the fleet's timezone changed, days keep the zone they were made in and the page says so; a day made in both shows each part.
+  - **Who sees it:** signed-in sessions; never a guest. Over the temporary public link it says "Not offered over the public link" unless **Settings → Web → Usage report over the public link** is on (`web.usage_report_on_public_link: true`, [configuration](configuration.md); it applies at once), with a link to that switch on the dashboard reached directly. `web.usage_panel: false` hides it with the rest of usage. Agents read the same report with `get_usage_report`.
 - **Config**: the fleet's channel, access and defaults.
 
 ## Needs you (`/ui/needs`)

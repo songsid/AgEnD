@@ -89,6 +89,15 @@ describe("Settings → Web, as rendered", () => {
     expect(w.webWrites().map(s => s.body)).toEqual([{ session: { local: { absolute_hours: 24, idle_hours: 6 } }, web_terminal: { enabled: false, ttl_minutes: 5 } }]);
   });
 
+  it("#2122: Usage report over the public link — off by default; ticking it stages exactly that key; it says it applies at once", async () => {
+    const w = await open();
+    expect(w.$("webUsagePublic").checked).toBe(false);
+    expect(w.text()).toContain("Fleet → Usage (up to 400 days of each agent's tokens, requests, messages and API-equivalent amounts) is offered over the temporary public link too. Off by default; guests never see it. Applies at once.");
+    await w.check(w.$("webUsagePublic"), true);
+    await w.review(); await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ usage_report_on_public_link: true }]);
+  });
+
   it("emptying a set value — or turning the terminal back on — puts it back to its default (null)", async () => {
     const w = await open({ web: { session: { local: { absolute_hours: 48, idle_hours: 6 } } }, web_terminal: { enabled: false, ttl_minutes: 15 } });
     expect([w.$("webSessionAbsolute").value, w.$("webSessionIdle").value, w.$("webTerminalTtl").value, w.$("webTerminalEnabled").checked]).toEqual(["48", "6", "15", false]);

@@ -4,6 +4,7 @@
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
 import { useLease } from "./app-ctx.js";
+import { guestPage } from "./app-store.js";
 import { readStream } from "./read-stream.js";
 import { Dialog } from "./ui-dialog.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
@@ -159,10 +160,17 @@ export function UsageBody({ owner }) {
             ${!p.stale && p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : !(p.metrics || []).length ? html`<p class="note">${tn("usage.no_data")}</p>` : null}`}
       </section>`)}
       <div class="u-foot"><span class="note" title=${new Date(data.fetchedAt).toLocaleString()}>${updatedAgo(data.fetchedAt)}${data.refreshing ? html` · <span class="u-refreshing">${tn("usageRefreshing")}</span>` : null}</span>
+        ${byAgent() ? html`<a class="btn btn-ghost btn-sm u-by-agent" href="/ui/fleet/usage" title=${tn("usageByAgentTitle")}>${tn("usageByAgent")}</a>` : null}
         <button type="button" class="btn btn-sm" onClick=${() => load(true)}>${tn("usageRefresh")}</button></div>`;
   }
   return content;
 }
+
+/**
+ * #2122: the plans above are per login; each agent's own tokens and API-equivalent are Fleet → Usage — linked from the
+ * app (not View's anonymous reader, not a guest, who has no Fleet).
+ */
+const byAgent = () => !guestPage() && typeof location !== "undefined" && location.pathname.startsWith("/ui");
 
 /** `owner`: the navigation that opened it — its reads and the minute's timer live and end with it. */
 export function UsageDialog({ onClose, owner = "" }) {
