@@ -1,5 +1,5 @@
 /** #1629 B2: one host-owned Canvas Worker pool. Product adapters are deliberately separate. */
-import { allocateEffectFrames, effectEvent } from "./effect-policy.js";
+import { allocateEffectFrames, effectEvent, effectPlaybackReason } from "./effect-policy.js";
 import { captureEffectBaseline } from "./effect-baseline.js";
 import { createEffectFrame } from "./effect-frame.js";
 import { createEffectGeometry, hostEffectRect } from "./effect-geometry.js";
@@ -105,12 +105,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     return true;
   };
   // Display only: the closed global gate a row is waiting on, when the host knows it (else the caller's unknown).
-  const gateReason = () => {
-    if (!gatesKnown()) return null;
-    const c = context;
-    return c.safe ? "safe_mode" : c.publicLink ? "public_link" : c.reducedMotion ? "reduced_motion" : c.saveData ? "save_data"
-      : !(c.enabled && c.show) ? "disabled" : !(c.previewReady && c.optIn) ? "preview_unavailable" : null;
-  };
+  const gateReason = () => effectPlaybackReason(context);
   const clearMarker = (s, why) => {
     if (!s.token) return true;
     const token = s.token; s.token = null;

@@ -332,7 +332,11 @@ smallest valid `effect.json`:
 - `upload_web_effect { dir }` → `{ id, warnings }`. Uploads are not counted; the effect's own size caps apply.
   **Your own** copies are at most **10 effects and 8 MiB**; effects a person shared with you don't count.
 - `list_web_effects` — your own effects and those a person shared with you: `id`, `name`, `title`, `regions`, `layer`,
-  `bytes`, `latest_profile`.
+  `bytes`, `latest_profile`. A currently placed effect also has `playback`: `status: "reported_blocked"` with closed
+  `reasons`, or `status: "unknown"`. `get_web_appearance.effects` lists your current placements with the same projection.
+  This means **some recent viewers reported blocked**, not all viewers and not a live permission or health check.
+  Observations expire after five minutes and stay in memory. Agents receive no viewer identifiers, counts, device/OS,
+  text, URLs or observation timestamps. Unknown means unknown; do not keep reapplying to bypass a viewer's choice.
 - `apply_web_effect { id, params? }` places one in your chat, **at most two at a time**, with the declared `params`
   (unknown or out of range → `effect_params`; regions without `chat` → `effect_region`). `remove_web_effect { id? }`
   takes one out, or all of them. Both are changes (30 s apart, 10 an hour), and are refused while a person has locked

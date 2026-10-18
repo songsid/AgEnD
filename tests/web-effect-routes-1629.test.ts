@@ -219,3 +219,21 @@ it("read-session automatic diagnostics do not extend the session's idle deadline
  expect((await f.call("POST",`/ui/effects/profile/${id}?instance=own&ownerEpoch=${reader.epoch}`,reader.headers,JSON.stringify(profile()))).status).toBe(200);
  f.at(1001);expect((await f.call("GET","/ui/effects",reader.headers)).status).toBe(401);
 });
+
+describe("#2115 playback observations keep the profile route's session / current-placement boundaries", () => {
+ it("accepts a strict read-session report for a retained placement; no measured profile is created",async()=>{
+  const f=await fixture(),admin=f.session(),reader=f.session("bob","read"),id=(await f.call("POST","/ui/effects/upload",admin.headers,input())).body.id;
+  expect((await f.call("POST","/ui/effects/apply",admin.headers,JSON.stringify({instance:"own",id}))).status).toBe(200);
+  const path=`/ui/effects/profile/${id}?instance=own&ownerEpoch=${reader.epoch}`, report={v:1,kind:"playback",device:"standard",status:"blocked",reason:"reduced_motion"};
+  expect((await f.call("POST",path,reader.headers,JSON.stringify(report))).status).toBe(200);
+  expect(f.service.playbackSummary("own",id)).toEqual({status:"reported_blocked",reasons:["reduced_motion"]});
+  expect((await f.call("GET",`/ui/effects/profile/${id}`,admin.headers)).body).toMatchObject({status:"unmeasured",records:[]});
+  const bad=f.session("csrf-control","read"); expect((await f.call("POST",path.replace(reader.epoch,bad.epoch),{...bad.headers,"x-agend-csrf":"wrong"},JSON.stringify(report))).status).toBe(401);
+  expect((await f.call("POST",path.replace(reader.epoch,admin.epoch),reader.headers,JSON.stringify(report))).status).toBe(409);
+  expect((await f.call("POST",path+"&instance=own",reader.headers,JSON.stringify(report))).status).toBe(400);
+  expect((await f.call("POST",path,reader.headers,JSON.stringify({...report,viewers:2}))).status).toBe(400);
+  expect((await f.call("POST","/ui/effects/remove",admin.headers,JSON.stringify({instance:"own",id}))).status).toBe(200);
+  expect((await f.call("POST",path,reader.headers,JSON.stringify(report))).status).toBe(404);
+  expect(f.service.playbackSummary("own",id)).toEqual({status:"unknown",reasons:[]});
+ });
+});

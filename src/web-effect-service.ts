@@ -1,4 +1,6 @@
 /** #1629: human-session effects and retained-placement runtime reads. No page is mounted here. */
+import { createHash } from "node:crypto";
+import { WebEffectPlayback } from "./web-effect-playback.js";
 import { WebEffectLibrary } from "./web-effect-library.js";
 import { ThemeStore } from "./web-theme-store.js";
 import { EFFECT_REGION, WEB_EFFECT_ID, chatCompatible, resolveEffectParams } from "./web-effect.js";
@@ -27,7 +29,12 @@ export interface EffectServiceDeps {
 export class WebEffectService {
   private readonly reports = new Map<string, number>();
   private previous: number | null = null;
-  constructor(private readonly deps: EffectServiceDeps) {}
+  private readonly playback: WebEffectPlayback;
+  constructor(private readonly deps: EffectServiceDeps) { this.playback = new WebEffectPlayback(deps.monotonic); }
+  playbackSummary(instance: string, id: string) {
+    if (!this.deps.known(instance) || !this.deps.themes.readable() || !this.deps.themes.get(instance).placements.effects.some(p => p.id === id)) return { status: "unknown", reasons: [] };
+    return this.playback.summary(instance, id);
+  }
   private principal(person: string) { return { kind: "human" as const, id: person }; }
   private validPerson(person: string): boolean { return typeof person === "string" && person.length > 0 && person.length <= 256; }
   private readable(person: string, id: unknown) {
@@ -214,8 +221,15 @@ export class WebEffectService {
     }) };
   }
   /** Diagnostic writes only: a validated report never changes safety, admission or a placement. */
-  report(person: string, id: string, input: unknown, instance?: string): Answer {
+  report(person: string, id: string, input: unknown, instance?: string, sessionEpoch?: string): Answer {
     if (!this.validPerson(person) || !(instance === undefined ? this.readable(person, id) : this.retained(id, instance)).ok) return fail("not_found");
+    // A separately tagged variant: strict schema, current chat reference and a route-issued session key.
+    // It never enters the measured profile store or the safety ledger.
+    if (plain(input) && Object.getOwnPropertyDescriptor(input, "kind")?.value === "playback") {
+      if (instance === undefined || typeof sessionEpoch !== "string" || !/^[a-f0-9]{16}$/.test(sessionEpoch)) return fail("playback_report");
+      const reporter = createHash("sha256").update(JSON.stringify([person, sessionEpoch])).digest("hex");
+      return this.playback.record(reporter, instance, id, input);
+    }
     let now: number; try { now = (this.deps.monotonic ?? (() => performance.now()))(); } catch { return fail("profile_clock"); }
     if (!Number.isFinite(now) || now < 0 || this.previous !== null && now < this.previous) return fail("profile_clock"); this.previous = now;
     for (const [key, t] of this.reports) if (now - t >= 60_000) this.reports.delete(key);

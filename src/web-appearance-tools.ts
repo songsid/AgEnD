@@ -24,6 +24,7 @@ export interface AppearanceDeps {
   /** get_web_theme's agent_edit and limits (one source for both tools). */
   themeAnswer(name: string): { agent_edit?: unknown; limits?: unknown };
   /** #1958: the host's identity-colour settings (web prefs color.show / color.off), for the colour view. */
+  effects?(name: string): AppearanceInput["effects"];
   colorPrefs?(): { show?: unknown; off?: boolean };
   clock?: () => number;
 }
@@ -44,7 +45,7 @@ export class AppearanceTools {
     const t = this.deps.theme(name);
     const answer = this.deps.themeAnswer(name);
     return { entry, theme: t.theme, card: this.deps.card(name), locked: t.locked, agentEdit: answer.agent_edit !== false, limits: (answer.limits ?? {}) as Record<string, unknown>, widgets: t.widgets,
-      colorPrefs: this.deps.colorPrefs?.() ?? {} };
+      effects: this.deps.effects?.(name) ?? [], colorPrefs: this.deps.colorPrefs?.() ?? {} };
   }
   /** The face drawn, as bytes of this instance's: the theme's picture, the person's upload, or its own bot's. */
   private avatar(name: string, input: AppearanceInput): Picture {

@@ -323,3 +323,17 @@ describe("#1905 one mod effect-holder owner across people", () => {
     expect(row.claims).toEqual([expect.objectContaining({ principal: { kind: "human", id: "bob" }, holders: ["upload"] })]);
   });
 });
+
+it("#2115 only current own placements expose closed recent reasons to appearance/list, never viewer data", async () => {
+ const f=await fixture(),id=await upload(f);await f.op("own","effect-apply",{id});
+ f.fm.getUiStatus.mockReturnValue({instances:[{name:"own"},{name:"other"}]});
+ const before=f.fm.effectProfiles.read(id); const report={v:1,kind:"playback",device:"standard",status:"blocked",reason:"reduced_motion"};
+ expect(f.fm.effectService.report(OPERATOR,id,report,"own","b".repeat(16))).toEqual({ok:true});
+ const appearance=f.fm.appearanceTools.handle("own","get_web_appearance",{}),listed=await f.op("own","effect-list");
+ expect(appearance.effects).toEqual([{id,by:"agent",playback:{status:"reported_blocked",reasons:["reduced_motion"]}}]);
+ expect(listed.effects[0].playback).toEqual({status:"reported_blocked",reasons:["reduced_motion"]});
+ expect(f.fm.appearanceTools.handle("other","get_web_appearance",{}).effects).toEqual([]);
+ expect(f.fm.effectProfiles.read(id)).toEqual(before);
+ f.advance();await f.op("own","effect-remove",{id});
+ expect((await f.op("own","effect-list")).effects[0]).not.toHaveProperty("playback");
+});

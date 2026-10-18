@@ -77,7 +77,7 @@ describe("#1629 global frame allocation",()=>{
   });
   it.each([
     [{safe:true},"safe_mode"],[{publicLink:true},"public_link"],[{reducedMotion:true},"reduced_motion"],[{saveData:true},"save_data"],
-    [{hidden:true},"hidden"],[{enabled:false},"disabled"],[{show:false},"disabled"],[{optIn:false},"preview_unavailable"],[{previewReady:false},"preview_unavailable"],
+    [{hidden:true},"hidden"],[{enabled:false},"unsupported_host"],[{show:false},"disabled"],[{optIn:false},"preview_not_consented"],[{previewReady:false},"preview_unavailable"],
   ])("doesn't reserve frames for global refusal %o",(patch,reason)=>{
     expect(P.allocateEffectFrames([descriptor("a")],ctx(patch))[0]).toEqual({key:"a",verdict:"off",reason,queuePos:null});
   });

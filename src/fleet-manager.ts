@@ -1419,6 +1419,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       profiles: id => this.effectProfiles.read(id),
       profileSummary: id => this.effectService.profileSummary(id),
       profileSummaries: ids => this.effectService.profileSummaries(ids),
+      playbackSummary: (name, id) => this.effectService.playbackSummary(name, id),
     }));
   }
 
@@ -1428,6 +1429,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return (this.appearanceToolsService ??= new AppearanceTools({
       frame: (name) => ((this.getUiStatus() as { instances: FrameEntry[] }).instances.find(i => i.name === name) ?? { name }),
       theme: (name) => { const r = this.themeStore.get(name); return { theme: r.theme, locked: r.locked, widgets: r.placements.widgets }; },
+      effects: name => this.themeStore.readable() ? this.themeStore.get(name).placements.effects.map(p => ({ id: p.id, by: p.by, ...(p.params ? { params: p.params } : {}), playback: this.effectService.playbackSummary(name, p.id) })) : [],
       card: (name) => resolveCard(name, humanCards(this.dataDir).get(name), this.themeStore.get(name).theme.card),
       // #1958: the host's identity-colour settings, as the page reads them (an unreadable prefs file: the defaults).
       colorPrefs: () => { try { const v = this.webPrefs.read(OPERATOR).values as Record<string, unknown>; return { show: v["color.show"], off: v["color.off"] === true }; } catch { return {}; } },

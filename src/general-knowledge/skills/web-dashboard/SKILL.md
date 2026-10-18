@@ -336,7 +336,10 @@ Settings → **Web appearance**, card by card:
   chat, share your copy; **Your effect choices** for Sidebar / Header / Page / Box (each with Pause / Resume and
   Clear) and a Cursor (its state, and Clear). Placed and saved effects play only with the HTML-preview consent
   (**Allow HTML previews**); a Try sample is different — a local admin's click on its card consents to that one
-  sample only, with no global opt-in.
+  sample only, with no global opt-in. A blocked chat placement keeps a notice with its exact local reason; missing
+  preview consent links to **Settings → Device**, the show/custom-CSS switches to **Web appearance**, and a missing
+  preview service to **Web**. The Effects dialog also names calibration, safety and unknown raw codes. Unknown
+  codes stay local; agents get only closed recent blocked reasons without viewer identities or counts.
 - **Identity card upload limits** — portrait and banner size limits and per-agent picture quota
   (`web.appearance.*`); lowering applies at once, raising waits for an admin.
 - **Restore defaults** — resets this host's appearance settings (it lists what it resets first).

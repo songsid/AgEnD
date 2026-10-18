@@ -743,7 +743,7 @@ describe("#2055 R2: one display precedence through the real snapshot (Prism)", (
       expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
     }
   });
-  it.each([[{ reducedMotion: true }, "reduced_motion"], [{ saveData: true }, "save_data"], [{ show: false }, "disabled"], [{ optIn: false }, "preview_unavailable"],
+  it.each([[{ reducedMotion: true }, "reduced_motion"], [{ saveData: true }, "save_data"], [{ show: false }, "disabled"], [{ optIn: false }, "preview_not_consented"],
     [{ safe: true }, "safe_mode"], [{ publicLink: true }, "public_link"]])("a closed global gate %o is named %s", async (patch, reason) => {
     const h = rig(), ds = await h.admit(); h.api.update(ds, gates(patch)); await flush();
     expect(h.frames().every((f: any) => f.state().removed)).toBe(true); expect(h.api.snapshot()[0]).toMatchObject({ verdict: "off", reason });
