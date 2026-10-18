@@ -39,6 +39,9 @@ export const msgKey = (x) => `${x.boot}-${x.id}`;
  */
 export const THREAD_TAIL = 24;
 export const THREAD_CHUNK = 40;
+/** #2158: a reader's scroll (smooth, momentum) is theirs until it has been this quiet since their last input or scroll. */
+export const READER_QUIET_MS = 250;
+const SCROLL_KEYS = new Set(["PageUp", "PageDown", "ArrowUp", "ArrowDown", "Home", "End", " "]);
 
 /**
  * #2053: a message's rendered Markdown, kept across renders and chat switches. A draw compares each message's html with
@@ -529,6 +532,26 @@ export function createThread(list, scroller, opts) {
   const resized = () => { if (pinned && !atBottom()) toBottom(); reportJump(); };
   let ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
   if (ro) { ro.observe(list); ro.observe(scroller); }
+  // #2158: the reader's own hand on the thread — a wheel, a touch, the scrollbar (a pointer held), a scrolling key
+  // outside a text field — and the scroll that follows it until it has been quiet READER_QUIET_MS.
+  let inputAt = -Infinity, held = false;
+  const touched = () => { inputAt = performance.now(); };
+  const hold = (on) => () => { held = on; touched(); };
+  const onKey = (ev) => {
+    const el = ev.target;
+    if (SCROLL_KEYS.has(ev.key) && !(el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName || "")))) touched();
+  };
+  const onScroller = [["wheel", touched], ["touchstart", hold(true)], ["touchend", hold(false)], ["touchcancel", hold(false)], ["pointerdown", hold(true)]];
+  const onDocument = [["pointerup", hold(false)], ["pointercancel", hold(false)], ["keydown", onKey]];
+  /** Listen for the reader's input on `sc` (and its document: a pointer let go anywhere, a key), or stop. */
+  function watchReader(sc, on) {
+    const doc = sc.ownerDocument, how = on ? "addEventListener" : "removeEventListener";
+    for (const [type, fn] of onScroller) sc[how](type, fn, { passive: true });
+    if (doc) for (const [type, fn] of onDocument) doc[how](type, fn, true);
+    if (!on) held = false;
+  }
+  const readerActive = () => held || performance.now() - inputAt < READER_QUIET_MS;
+  watchReader(scroller, true);
 
   /** Where drawing starts in `msgs`: at the oldest drawn message, or (none yet) the newest THREAD_TAIL. */
   function startIndex() {
@@ -627,9 +650,13 @@ export function createThread(list, scroller, opts) {
     // #2158: the thread got shorter under a pinned view (text settling on a cold load, a card) and the browser clamped
     // scrollTop to its new end — for the view as tall as it was then; the view got shorter too before WebKit sent that
     // clamp's scroll event (it comes before the ResizeObserver). A view resting exactly at the bottom of the view as it
-    // was at the last mark was put there by the browser: still pinned, back at the bottom. Anything a reader moved
-    // (by any amount, in any order with the dock) leaves it elsewhere, and unpins as before.
-    if (pinned && !atBottom() && Math.abs(scroller.scrollHeight - lastView - scroller.scrollTop) <= 1) toBottom();
+    // was at the last mark, with no hand of the reader's on the thread, was put there by the browser: still pinned, back
+    // at the bottom. Geometry alone can't tell (a reader's move up by the dock's growth lands there too): any input of
+    // theirs, and the scroll after it, is theirs and unpins as before. The page's own scrolls (reveal) have no input but
+    // don't land there.
+    const reader = readerActive();
+    if (reader) touched();                // the reader's scroll goes on (smooth, momentum): still theirs while it does
+    else if (pinned && !atBottom() && Math.abs(scroller.scrollHeight - lastView - scroller.scrollTop) <= 1) toBottom();
     const bottom = nearBottom(), top = scroller.scrollTop;
     // #2087: pinned only at the exact bottom — a reader still wheeling through the last 48 px was pinned there, so
     // the next resize (a picture, a card, the dock) pulled the view the rest of the way down under them. Near the bottom
@@ -712,6 +739,7 @@ export function createThread(list, scroller, opts) {
    */
   function park() {
     parked = true;
+    watchReader(scroller, false);
     if (P()) P().stopAll("leave");
     for (const node of list.querySelectorAll(".html-card[data-att], .text-card[data-att]")) { const f = cardDrop.get(node); if (f) f(); }
     if (ro) { ro.disconnect(); ro = null; }
@@ -724,8 +752,10 @@ export function createThread(list, scroller, opts) {
   }
   /** In view in `sc` (the view's scroller): sizes watched there from now on; the caller restores the position. */
   function attach(sc) {
+    if (!parked) watchReader(scroller, false);   // moved from the scroller it was made with
     parked = false;
     scroller = sc;
+    watchReader(sc, true);
     if (ro) ro.disconnect();
     ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
     if (ro) { ro.observe(list); ro.observe(sc); }
@@ -733,6 +763,7 @@ export function createThread(list, scroller, opts) {
   /** `own`: only this thread's previews stop (a thread let go while another chat is in view); else every one, as leaving. */
   function dispose(own = false) {
     disposed = true;
+    if (!parked) watchReader(scroller, false);
     if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
     if (ro) ro.disconnect();
     if (P()) { if (own) P().stopIn(list); else P().stopAll("leave"); }
