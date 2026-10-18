@@ -118,12 +118,11 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     // Its own web theme (#1629), like its own status stamp.
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
     // Own-appearance family (#2132): no target, caller-scoped.
-    // Effects are intentionally excluded: General applies those for its own chat
-    // via set_web_settings { what: "effect", action: "apply"|"remove", instance: self }.
-    // See the token-cap in auth-pause-and-token-diet.
+    // Effects and ambient are intentionally excluded: General applies those for
+    // its own chat via set_web_settings { what: "effect"|"ambient", instance: self }.
+    // See web-ambient-2117 and the token-cap in auth-pause-and-token-diet.
     "get_web_appearance", "preview_web_appearance",
     "set_web_widget", "remove_web_widget",
-    "set_web_ambient", "clear_web_ambient",
     "export_web_mod", "propose_web_mod",
     // #2056: Settings → Web appearance for the user (the page's own checks; a worker's are its own theme only).
     "get_web_settings", "set_web_settings",
@@ -355,11 +354,14 @@ const EFFECT_TOOLS: ReadonlySet<string> = new Set([
   ...EFFECT_APPLY_TOOLS, ...EFFECT_LIBRARY_TOOLS,
 ]);
 
+const AMBIENT_TOOLS: ReadonlySet<string> = new Set([
+  "set_web_ambient", "clear_web_ambient",
+]);
+
 export function toolRefusedMessage(profile: ToolSetName, tool: string): string {
-  // General: effect tools route through set_web_settings instead of the direct
-  // tools. Ambient tools are in general (#2132). Suggesting coordinator would
-  // lose General's own routing tools.
-  if (profile === "general" && EFFECT_TOOLS.has(tool)) {
+  // General: effect and ambient tools route through set_web_settings instead of
+  // direct tools. Suggesting coordinator would lose General's own routing tools.
+  if (profile === "general" && (EFFECT_TOOLS.has(tool) || AMBIENT_TOOLS.has(tool))) {
     // The set_web_settings shape for applying/removing an effect:
     const effectPath = 'set_web_settings({ change: { what: "effect", action: "apply" | "remove", instance: "<self>", id?: "<effect-id>", params?: {…} } })';
     if (EFFECT_LIBRARY_TOOLS.has(tool)) {
@@ -367,9 +369,14 @@ export function toolRefusedMessage(profile: ToolSetName, tool: string): string {
         + `General can apply or remove effects from the library on its own chat via ${effectPath}. `
         + "The effect library (upload, list, preview, profile, delete) is managed by worker or standard instances.";
     }
-    // apply_web_effect / remove_web_effect
+    if (EFFECT_APPLY_TOOLS.has(tool)) {
+      return `${tool} is not available to the general tool set. `
+        + `Use ${effectPath} to apply or remove a library effect on your own chat. `
+        + "Note: this writes a user-level setting; the agent cannot change it afterwards.";
+    }
+    // Ambient tools.
     return `${tool} is not available to the general tool set. `
-      + `Use ${effectPath} to apply or remove a library effect on your own chat. `
+      + 'General sets or clears ambient on its own chat through set_web_settings({ change: { what: "ambient", instance: "<self>", ambient: {…} | null, which?: "loop" | "click" } }). '
       + "Note: this writes a user-level setting; the agent cannot change it afterwards.";
   }
   // Own-appearance tools: need worker/standard, not coordinator.

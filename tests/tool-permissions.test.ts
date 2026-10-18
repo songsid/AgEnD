@@ -89,10 +89,9 @@ const BEFORE: Record<string, string[]> = {
     "set_display_name", "set_description",
     // #1629: its own web theme, like its own status stamp.
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
-    // #2132: own-appearance family (effects excluded — use set_web_settings instead).
+    // #2132: own-appearance family (effects and ambient excluded — use set_web_settings instead).
     "get_web_appearance", "preview_web_appearance",
     "set_web_widget", "remove_web_widget",
-    "set_web_ambient", "clear_web_ambient",
     "export_web_mod", "propose_web_mod",
     // kiro engine move: read-only kiro engine facts, for explaining a kiro incompatibility.
     "kiro_engine_status",
@@ -582,7 +581,15 @@ describe("the refusal explains itself", () => {
     }
   });
 
-  it("the set_web_settings effect shapes cited in refusal messages pass safeParse (#2134 R3)", async () => {
+  it("general refused an ambient tool gets set_web_settings guidance (#2132)", () => {
+    const message = toolRefusedMessage("general", "set_web_ambient");
+    expect(message).not.toContain("tool_set: coordinator");
+    expect(message).toContain("set_web_settings");
+    expect(message).toContain(`what: "ambient"`);
+    expect(message).toContain("ambient:");
+  });
+
+  it("the set_web_settings shapes cited in refusal messages pass safeParse (#2134 R3)", async () => {
     // If the format in the message and the schema drift, an agent following the
     // refusal gets a schema error. Validate the exact objects we describe.
     const { SetWebSettingsArgs } = await import("../src/outbound-schemas.js");
@@ -596,6 +603,21 @@ describe("the refusal explains itself", () => {
     expect(SetWebSettingsArgs.safeParse({
       change: { what: "effect", action: "remove", instance: "general" },
     }).success, "effect remove shape").toBe(true);
+
+    // Ambient set shape
+    expect(SetWebSettingsArgs.safeParse({
+      change: { what: "ambient", instance: "general", ambient: { preset: "fall" } },
+    }).success, "ambient set shape").toBe(true);
+
+    // Ambient clear shape (null)
+    expect(SetWebSettingsArgs.safeParse({
+      change: { what: "ambient", instance: "general", ambient: null },
+    }).success, "ambient clear shape").toBe(true);
+
+    // Ambient clear with which
+    expect(SetWebSettingsArgs.safeParse({
+      change: { what: "ambient", instance: "general", ambient: null, which: "loop" },
+    }).success, "ambient clear which shape").toBe(true);
   });
 });
 
@@ -618,18 +640,19 @@ describe("own-appearance family consistency (#2132)", () => {
   ] as const;
 
   /**
-   * General's documented exception: the 7 effect tools are intentionally
-   * excluded from the general profile. General applies effects for its own chat
-   * through set_web_settings { what: "effect", action: "apply"|"remove", instance: self }.
-   * Ambient tools (set_web_ambient / clear_web_ambient) ARE in general (#2132).
-   * Changing the effect exception requires updating auth-pause-and-token-diet.test.ts.
+   * General's documented exception: effect and ambient tools are intentionally
+   * excluded from the general profile. General applies effects and ambient for
+   * its own chat through set_web_settings { what: "effect"|"ambient", instance: self },
+   * not through the direct tools. See #2124 (web-ambient) and the token cap in
+   * auth-pause-and-token-diet. Changing this requires updating both those tests.
    */
   const GENERAL_EXCEPTION = new Set([
+    "set_web_ambient", "clear_web_ambient",
     "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
     "apply_web_effect", "remove_web_effect", "delete_web_effect",
   ]);
 
-  it("every profile with set_web_theme has all own-appearance tools (general: effects via set_web_settings)", () => {
+  it("every profile with set_web_theme has all own-appearance tools (general: effects/ambient via set_web_settings)", () => {
     for (const [name, tools] of Object.entries(TOOL_PROFILES)) {
       const set = new Set(tools);
       if (!set.has("set_web_theme")) continue; // minimal doesn't style itself
@@ -640,11 +663,10 @@ describe("own-appearance family consistency (#2132)", () => {
     }
   });
 
-  it("general has the 10 own-appearance tools added in #2132", () => {
+  it("general has the 8 own-appearance tools added in #2132", () => {
     for (const tool of [
       "get_web_appearance", "preview_web_appearance",
       "set_web_widget", "remove_web_widget",
-      "set_web_ambient", "clear_web_ambient",
       "export_web_mod", "propose_web_mod",
       "set_display_name", "set_description",
     ]) {
@@ -652,19 +674,18 @@ describe("own-appearance family consistency (#2132)", () => {
     }
   });
 
-  it("general intentionally excludes the 7 effect tools — uses set_web_settings instead (#2132)", () => {
+  it("general intentionally excludes effect and ambient tools — uses set_web_settings instead (#2124 #2132)", () => {
     // These are the GENERAL_EXCEPTION tools. Changing this needs updates to
-    // auth-pause-and-token-diet.test.ts (the token cap).
+    // web-ambient-2117.test.ts and auth-pause-and-token-diet.test.ts.
     for (const tool of GENERAL_EXCEPTION) {
       expect(TOOL_PROFILES.general, `general must NOT have ${tool}`).not.toContain(tool);
     }
-    // General does have set_web_settings for the effect path.
+    // General does have set_web_settings for the effect/ambient path.
     expect(TOOL_PROFILES.general).toContain("set_web_settings");
   });
 
-  it("stays under the token cap: general < full / 1.4", () => {
-    // Cap raised from /1.5 to /1.4 when ambient was added (#2132).
-    expect(TOOL_PROFILES.general.length).toBeLessThan(TOOL_PROFILES.full.length / 1.4);
+  it("stays under the token cap: general < full / 1.5", () => {
+    expect(TOOL_PROFILES.general.length).toBeLessThan(TOOL_PROFILES.full.length / 1.5);
   });
 });
 
