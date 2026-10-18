@@ -8,6 +8,7 @@
  * picture inside outgrew what an agent's Read takes); text is XML-escaped; colours are checked again; fonts are generic
  * families. No browser, no live session, no other instance's content.
  */
+import { AMBIENT_KINDS, type AmbientKind, type AmbientSpec } from "./web-ambient.js";
 import { autoIdentityColor, identityColorValue, resolveIdentityColor, resolvePlacements, type IdentityColorSource, type IdentityColorTiers, type Placement, type PlacementSource, type PlacementTiers } from "./web-identity-color.js";
 import { effectivePalette, type Palette, type Theme, THEME_DEFAULTS, type ThemeMode } from "./web-theme.js";
 import type { ResolvedCard } from "./web-card.js";
@@ -75,6 +76,8 @@ export interface AppearanceInput {
   /** r4-4: its placed widgets, by slot. */
   effects?: Array<{ id: string; by: string; params?: Record<string, unknown>; playback: Record<string, unknown> }>;
   widgets?: Partial<Record<"chat_header" | "details", { spec: unknown; data: unknown; by: string }>>;
+  /** #2117: its ambients, by kind. */
+  ambient?: Partial<Record<AmbientKind, { spec: AmbientSpec; by: string }>>;
 }
 /** get_web_appearance: current placements and untrusted recent playback observations. */
 export function appearanceView(i: AppearanceInput): Record<string, unknown> {
@@ -95,11 +98,32 @@ export function appearanceView(i: AppearanceInput): Record<string, unknown> {
     background: i.theme.background ? { image: i.theme.background.image, fit: i.theme.background.fit, opacity: i.theme.background.opacity } : null,
     effects: i.effects ?? [],
     widgets: (["chat_header", "details"] as const).flatMap(slot => { const w = i.widgets?.[slot]; return w ? [{ slot, by: w.by, spec: w.spec, data: w.data }] : []; }),
-    shown_when: "A viewer who turned off \"Show agents' themes, effects and widgets\", or a page opened with ?safe=1, sees the default look, the bot's face, no card colours and no widgets.",
+    ambient: AMBIENT_KINDS.flatMap(kind => { const a = i.ambient?.[kind]; return a ? [{ kind, by: a.by, spec: a.spec }] : []; }),
+    shown_when: "A viewer who turned off \"Show agents' themes, effects and widgets\", or a page opened with ?safe=1, sees the default look, the bot's face, no card colours, no widgets and no ambient effect. An ambient effect also stays still on a device that chose to follow the system's reduced-motion setting while the system asks for it.",
     locked: i.locked,
     agent_edit: i.agentEdit,
     limits: i.limits,
   };
+}
+
+/** A still of an ambient: its count of glyphs at fixed, spread-out places (the same every time, so previews compare). */
+function ambientGlyphs(spec: AmbientSpec, top: number, h: number, accent: string, font: string, glyphPics: Readonly<Record<string, string>>): string {
+  const out: string[] = [`<g opacity="${spec.opacity[1]}">`];
+  for (let k = 0; k < Math.min(spec.count, 24); k++) {
+    // A low-discrepancy sequence: evenly spread, no randomness.
+    const x = Math.round(((k * 0.618034) % 1) * (W - 40)) + 20, y = top + Math.round(((k * 0.414214 + 0.2) % 1) * (h - 30)) + 20;
+    const size = Math.round(spec.size[0] + ((k * 0.7548777) % 1) * (spec.size[1] - spec.size[0]));
+    const g = spec.glyphs[k % spec.glyphs.length]!;
+    if (typeof g === "string") {
+      const c = spec.colors.length ? spec.colors[k % spec.colors.length]! : accent;
+      out.push(`<text x="${x}" y="${y}" font-family="${font}" font-size="${size}" fill="${COLOR.test(c) ? c : accent}">${esc(g)}</text>`);
+    } else {
+      const name = glyphPics[g.asset];
+      if (name && PREVIEW_FILE.test(name)) out.push(`<image href="${name}" x="${x}" y="${y - size}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet"/>`);
+    }
+  }
+  out.push("</g>");
+  return out.join("");
 }
 
 // ── The preview ── the page's numbers (app.css): a 720 px column, the M card (240 px portrait; #2038: the banner 3:1
@@ -185,11 +209,11 @@ export function pictureFileName(role: PictureRole, mime: string): string | null 
   return Object.hasOwn(PICTURE_EXT, mime) ? `${role}.${PICTURE_EXT[mime]}` : null;
 }
 /** Every name a preview writes: an SVG per mode, and the pictures it names. */
-export const PREVIEW_FILE = /^(?:(?:light|dark)\.svg|(?:avatar|portrait|banner|background)\.(?:png|jpg|webp|gif))$/;
+export const PREVIEW_FILE = /^(?:(?:light|dark)\.svg|(?:avatar|portrait|banner|background)\.(?:png|jpg|webp|gif)|glyph[1-4]\.(?:png|webp|gif))$/;
 const COLOR = /^#[0-9a-f]{6}$/;
 
 /** One mode's SVG. Every picture is one of `pics` (this instance's), inline; nothing else is referenced. */
-export function previewSvg(i: AppearanceInput, mode: ThemeMode, pics: PreviewPictures, bannerSize?: { width: number; height: number } | null): string {
+export function previewSvg(i: AppearanceInput, mode: ThemeMode, pics: PreviewPictures, bannerSize?: { width: number; height: number } | null, glyphPics: Readonly<Record<string, string>> = {}): string {
   const raw = effectiveTheme(i.theme)[mode];
   // Colours go into attributes: each is checked again here (a file someone may open in a browser), else the default's.
   const t = { ...raw };
@@ -234,6 +258,9 @@ export function previewSvg(i: AppearanceInput, mode: ThemeMode, pics: PreviewPic
   const threadTop = y, threadH = 200;
   out.push(`<rect x="0" y="${threadTop}" width="${W}" height="${threadH}" fill="${t.bg}"/>`);
   if (i.theme.background && pics.background) out.push(img(pics.background, 0, threadTop, W, threadH, ` opacity="${i.theme.background.opacity}"`));
+  // #2117: the looping ambient, still — its glyphs scattered over the thread at their peak opacity, behind the bubbles.
+  const loop = i.ambient?.loop?.spec;
+  if (loop) out.push(ambientGlyphs(loop, threadTop, threadH, t.accent, font, glyphPics));
   const stroke = t.bubbleBorder === "thin" ? ` stroke="${t.text2}" stroke-width="1"` : t.bubbleBorder === "accent" ? ` stroke="${t.accent}" stroke-width="1.5"` : "";
   out.push(`<rect x="${W - PAD - 300}" y="${threadTop + PAD}" width="300" height="44" rx="${t.bubbleRadius}" fill="${t.userBubble}"${stroke}/>`);
   out.push(`<text x="${W - PAD - 286}" y="${threadTop + PAD + 27}" font-family="${font}" font-size="14" fill="${t.text}">A message from a person</text>`);

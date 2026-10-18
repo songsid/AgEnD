@@ -1,6 +1,6 @@
 /**
  * #1629 (first design §4, §6; r2 (a)–(c); r4-4): the agent's own theme tools — get_web_theme, set_web_theme,
- * set_web_theme_asset, reset_web_theme, set_web_widget, remove_web_widget — and a person's reset, lock and widget removal. None takes a target: the caller is the
+ * set_web_theme_asset, reset_web_theme, set_web_widget, remove_web_widget, set_web_ambient, clear_web_ambient (#2117) — and a person's reset, lock, widget removal and ambient. None takes a target: the caller is the
  * instance its IPC connection or agent token belongs to, and only that instance's record is ever read or written.
  *
  * Every agent write: the fleet-wide switch (web.themes.agent_edit), then the person's lock, then the shared limiter's
@@ -12,6 +12,7 @@ import { applyThemePatch, type Theme, THEME_DEFAULTS } from "./web-theme.js";
 import { createHash, randomBytes } from "node:crypto";
 import { slotLimit, THEME_ASSET_SLOTS, type ThemeAssetSlot, type ThemeStore } from "./web-theme-store.js";
 import { ASSET_PART_BYTES, ASSET_UPLOAD_MAX_BYTES } from "./web-asset-parts.js";
+import { AMBIENT_KINDS, type AmbientKind, ambientKind, ambientProblems, checkAmbient } from "./web-ambient.js";
 import { AGENT_WIDGET_SLOTS, type AgentWidgetSlot, carryWidgetData, checkWidgetData, checkWidgetSpec, mergeWidgetData, WIDGET_SLOTS } from "./web-widget.js";
 
 /** An upload in parts with no new part for this long is dropped (monotonic clock). */
@@ -56,6 +57,7 @@ export class WebAppearance {
       defaults: THEME_DEFAULTS,
       assets: r.assets.map(a => ({ id: a.id, slot: a.slot, bytes: a.bytes })),
       widgets: Object.fromEntries(AGENT_WIDGET_SLOTS.flatMap(slot => { const w = r.placements.widgets[slot]; return w ? [[slot, { spec: w.spec, data: w.data, by: w.by }]] : []; })),
+      ambient: Object.fromEntries(AMBIENT_KINDS.flatMap(k => { const a = r.placements.ambient[k]; return a ? [[k, { spec: a.spec, by: a.by }]] : []; })),
       limits: { ...this.limiter.remaining(instance), ...this.assetLimits() },
     };
   }
@@ -223,6 +225,67 @@ export class WebAppearance {
     return raw as AgentWidgetSlot;
   }
 
+  /**
+   * set_web_ambient { preset, glyphs, … } (#2117): its own ambient, in the place its preset goes (one looping, one
+   * click), placed or replaced (a change). One a person set is never replaced by the agent.
+   */
+  setAmbient(instance: string, args: Record<string, unknown>): ToolAnswer {
+    const refused = this.refusal(instance, ["change"]);
+    if (refused) return refused;
+    const r = this.store.get(instance);
+    const spec = checkAmbient(args, { glyphAsset: id => r.assets.some(a => a.id === id && a.slot === "glyph") });
+    if (!spec.ok) return { errors: spec.errors };
+    const kind = ambientKind(spec.value.preset);
+    if (r.placements.ambient[kind]?.by === "human") return { error: "person_placed", message: `A person set the ${kind === "click" ? "click" : "looping"} ambient; only a person changes or clears it.` };
+    const w = this.store.setAmbient(instance, spec.value, "agent");
+    if (!w.ok) return { error: w.error, ...(w.detail ? { detail: w.detail } : {}) };
+    this.limiter.record(instance, ["change"]);
+    this.changed();
+    return { kind: w.kind, ambient: { spec: w.ambient.spec, by: w.ambient.by }, rev: w.rev };
+  }
+
+  /** clear_web_ambient { which? } (#2117): its own ambients, one kind or both; a person's stays (a change). */
+  clearAmbient(instance: string, args: { which?: unknown }): ToolAnswer {
+    let kinds: AmbientKind[] = [...AMBIENT_KINDS];
+    if (args.which !== undefined) {
+      if (!(AMBIENT_KINDS as readonly unknown[]).includes(args.which)) return { error: "which", message: AMBIENT_KINDS.join(" or ") };
+      kinds = [args.which as AmbientKind];
+    }
+    const refused = this.refusal(instance, ["change"]);
+    if (refused) return refused;
+    const placed = this.store.get(instance).placements.ambient;
+    const kept = kinds.filter(k => placed[k]?.by === "human");
+    if (args.which !== undefined && kept.length) return { error: "person_placed", message: `A person set the ${kept[0]} ambient; only a person clears it.` };
+    const mine = kinds.filter(k => placed[k]?.by === "agent");
+    if (!mine.length) return { removed: [], ...(kept.length ? { kept } : {}) };
+    const w = this.store.clearAmbient(instance, mine, "agent");
+    if (!w.ok) return { error: w.error, ...(w.detail ? { detail: w.detail } : {}) };
+    this.limiter.record(instance, ["change"]);
+    this.changed();
+    return { removed: w.removed, ...(kept.length ? { kept } : {}), rev: w.rev };
+  }
+
+  /**
+   * A person's ambient for an agent (General's set_web_settings, an admin session): a spec sets the place its preset
+   * goes, null with `which` clears that one (both without). Not limited; the lock is not needed (it binds agents).
+   */
+  humanSetAmbient(instance: string, spec: unknown, which?: unknown): ToolAnswer {
+    if (spec === null) {
+      if (which !== undefined && !(AMBIENT_KINDS as readonly unknown[]).includes(which)) return { error: "which", status: 400, message: AMBIENT_KINDS.join(" or ") };
+      const w = this.store.clearAmbient(instance, which === undefined ? AMBIENT_KINDS : [which as AmbientKind], "human");
+      if (!w.ok) return { error: w.error, status: w.status };
+      if (w.removed.length) this.changed();
+      return { ok: true, removed: w.removed, rev: w.rev };
+    }
+    const r = this.store.get(instance);
+    const checked = checkAmbient(spec, { glyphAsset: id => r.assets.some(a => a.id === id && a.slot === "glyph") });
+    if (!checked.ok) return { error: "ambient", status: 400, message: ambientProblems(checked.errors) };
+    const w = this.store.setAmbient(instance, checked.value, "human");
+    if (!w.ok) return { error: w.error, status: w.status };
+    this.changed();
+    return { ok: true, kind: w.kind, ambient: { spec: w.ambient.spec, by: w.ambient.by }, rev: w.rev };
+  }
+
   /** A person's removal of an agent's widget (Details, an admin session). Not limited; the lock is not needed. */
   humanRemoveWidget(instance: string, slot: unknown): ToolAnswer {
     if (!(AGENT_WIDGET_SLOTS as readonly unknown[]).includes(slot)) return { error: "slot", status: 400 };
@@ -244,6 +307,8 @@ export class WebAppearance {
       case "reset_web_theme": return this.resetTheme(instance);
       case "set_web_widget": return this.setWidget(instance, args);
       case "remove_web_widget": return this.removeWidget(instance, args);
+      case "set_web_ambient": return this.setAmbient(instance, args);
+      case "clear_web_ambient": return this.clearAmbient(instance, args);
       default: return { error: "unknown_tool" };
     }
   }

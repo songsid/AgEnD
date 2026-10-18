@@ -87,8 +87,11 @@ export class AgentMods {
       const w = rec.placements.widgets[slot];
       if (w && w.by === "agent") (parts.widgets ??= {})[slot] = { spec: w.spec, data: w.data };
     }
+    // #2117: the ambients it set itself (one a person set is theirs).
+    const ambient = Object.fromEntries(Object.entries(rec.placements.ambient).flatMap(([k, a]) => a && a.by === "agent" ? [[k, a.spec]] : []));
+    if (Object.keys(ambient).length) parts.ambient = { specs: ambient, picture: id => { const a = rec.assets.find(x => x.id === id); const b = this.deps.themes.asset(instance, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; } };
     const built = buildModBundle({ name: args.name, version: args.version, title }, parts);
-    if (!built.ok) return { error: built.error, message: built.error === "nothing_to_export" ? "You have no theme, card text or widgets of your own to export." : "A picture your theme names is missing.", ...(omitted ? { effects_omitted: omitted } : {}) };
+    if (!built.ok) return { error: built.error, message: built.error === "nothing_to_export" ? "You have no theme, card text, widgets or ambient effect of your own to export." : "A picture your theme names is missing.", ...(omitted ? { effects_omitted: omitted } : {}) };
     const data = Buffer.from(built.text, "utf8");
     const sha256 = createHash("sha256").update(data).digest("hex");
     const omittedNote = omitted ? { effects_omitted: omitted } : {};

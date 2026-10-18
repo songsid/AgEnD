@@ -742,7 +742,7 @@ export function exportMod(ctx: WebApiContext, person: string, body: Record<strin
   if (title === null) return { ok: false, status: 400, error: "title", detail: "1..60 characters on one line" };
   const parts: ModExportParts = {};
   let omitted = 0;
-  const wantsInstance = inc.theme === true || inc.identity === true || (isObj(inc.widgets) && AGENT_WIDGET_SLOTS.some(s => (inc.widgets as Record<string, unknown>)[s] === true));
+  const wantsInstance = inc.theme === true || inc.identity === true || inc.ambient === true || (isObj(inc.widgets) && AGENT_WIDGET_SLOTS.some(s => (inc.widgets as Record<string, unknown>)[s] === true));
   let name: string | null = null;
   if (wantsInstance) {
     if (typeof body.instance !== "string" || !ctx.isKnownInstance?.(body.instance) || !ctx.themeStore) return { ok: false, status: 400, error: "instance" };
@@ -762,6 +762,11 @@ export function exportMod(ctx: WebApiContext, person: string, body: Record<strin
     for (const slot of AGENT_WIDGET_SLOTS) {
       const w = rec.placements.widgets[slot];
       if (isObj(inc.widgets) && inc.widgets[slot] === true && w) (parts.widgets ??= {})[slot] = { spec: w.spec, data: w.data };
+    }
+    // #2117: its ambients, whoever set them (a person exports what is on the chat).
+    if (inc.ambient === true) {
+      const specs = Object.fromEntries(Object.entries(rec.placements.ambient).flatMap(([k, a]) => a ? [[k, a.spec]] : []));
+      parts.ambient = { specs, picture: id => { const a = rec.assets.find(x => x.id === id); const b = store.asset(name!, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; } };
     }
   }
   if (isObj(inc.widgets) && inc.widgets.sidebar === true && ctx.webPrefs) {
@@ -1168,14 +1173,15 @@ export function handleWebRequest(
   }
 
   // ── #1629: agents' themes — read by every page (the public link included: it views them), changed by a person ──
-  // GET /ui/themes: { rev, themes, locked, widgets } when the status frame's themes_rev moves (passive, web-auth.ts).
+  // GET /ui/themes: { rev, themes, locked, widgets, ambient (#2117) } when the status frame's themes_rev moves (passive, web-auth.ts).
   // GET /ui/img/theme/<instance>/<id>: a theme's picture (same headers as #1630's images; the id is the content hash).
-  // POST /ui/themes/<instance>/reset | lock | widget (r4-4: { slot } — take an agent's widget out): a person's, from an admin session — never the CLI token, never the public
+  // POST /ui/themes/<instance>/reset | lock | widget (r4-4: { slot } — take an agent's widget out) | ambient (#2117: { spec } sets one,
+  // { which? } alone clears that kind or both): a person's, from an admin session — never the CLI token, never the public
   // link (absent from its manifest, and refused here too).
   if (method === "GET" && path === "/ui/themes") {
     const store = ctx.themeStore;
     if (!store) { json(res, 404, { error: "Themes are not kept on this fleet" }); return true; }
-    json(res, 200, { rev: store.rev(), themes: store.themes(), locked: store.lockedNames(), widgets: store.widgets() });
+    json(res, 200, { rev: store.rev(), themes: store.themes(), locked: store.lockedNames(), widgets: store.widgets(), ambient: store.ambients() });
     return true;
   }
   const themeImage = path.match(/^\/ui\/img\/theme\/([^/]+)\/([0-9a-f]{32})$/);
@@ -1192,7 +1198,7 @@ export function handleWebRequest(
     res.end(image.bytes);
     return true;
   }
-  const themeWrite = path.match(/^\/ui\/themes\/([^/]+)\/(reset|lock|widget)$/);
+  const themeWrite = path.match(/^\/ui\/themes\/([^/]+)\/(reset|lock|widget|ambient)$/);
   if (method === "POST" && themeWrite) {
     const service = ctx.webAppearance;
     if (!service) { json(res, 404, { error: "Themes are not kept on this fleet" }); return true; }
@@ -1215,6 +1221,7 @@ export function handleWebRequest(
       if (!ctx.isKnownInstance?.(name)) { json(res, 404, { error: "unknown instance" }); return; }
       const r = themeWrite[2] === "reset" ? service.humanReset(name)
         : themeWrite[2] === "widget" ? service.humanRemoveWidget(name, body.slot)
+        : themeWrite[2] === "ambient" ? service.humanSetAmbient(name, body.spec ?? null, body.which)
         : typeof body.locked === "boolean" ? service.humanLock(name, body.locked) : { error: "locked: true or false", status: 400 };
       if (typeof r.error === "string") { json(res, typeof r.status === "number" ? r.status : 503, { error: r.error }); return; }
       json(res, 200, r);

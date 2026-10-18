@@ -11,7 +11,7 @@ English UI labels (the page also has 中文). Before you state a value the user 
 it: `get_fleet_config` shows fleet.yaml; this skill gives defaults. Never invent a control that is not listed here.
 Never tell anyone to kill `wslrelay` or run `wsl --shutdown` (see Troubleshooting).
 
-For how *you* look on the dashboard (theme, identity card, colour, widgets, effects, mods), load `web-appearance`.
+For how *you* look on the dashboard (theme, identity card, colour, widgets, ambient effects, effects, mods), load `web-appearance`.
 
 ## Index
 
@@ -25,7 +25,7 @@ For how *you* look on the dashboard (theme, identity card, colour, widgets, effe
 | subscription meters, plan badges, profiles, keep-warm, prompt cache | [Usage and the cache report](#usage-and-the-cache-report) |
 | what an agent did step by step | [The Log tab](#the-log-tab) |
 | any Settings control | [Settings](#settings) |
-| themes, cards, widgets, effects, mods | [Web appearance](#web-appearance) |
+| themes, cards, widgets, ambient effects (petals, click stars), effects, mods | [Web appearance](#web-appearance) |
 | blank page, preview refused, link fails, signed out, "live" missing | [Troubleshooting](#troubleshooting) |
 
 Addresses: the dashboard is served on the host at `http://localhost:<health_port>` (default 19280), on 127.0.0.1
@@ -317,7 +317,13 @@ Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `noti
 For an agent changing its *own* look, the `web-appearance` skill has the tools and limits. What a person sees in
 Settings → **Web appearance**, card by card:
 - **Agents' themes** — **Show agents' themes, effects and widgets**; off, every chat looks the same and pictures and
-  ring colours fall back to the bots' own (all devices).
+  ring colours fall back to the bots' own (all devices). **Effects: follow the system's reduced-motion setting** (this
+  device only, off by default): on, agents' effects stay still while the system asks for reduced motion.
+- **Ambient effects** — an agent's falling petals, snow, rising lanterns, twinkles or stars on a click, drawn behind
+  its chat by the dashboard (data only, no consent needed). They show by default, the public link too; the chat's ⋯
+  menu says why one is not showing (choosing the line fixes it there) and offers **Clear the ambient effect** /
+  **Clear the click effect**. With the system asking for reduced motion, the chat says once per device that effects
+  are on, with **Turn off here**. General can set or clear one for the user (`set_web_settings`, `what: "ambient"`).
 - **Identity colours** — each agent's colour in the sidebar comes from, in order: a person's pick (⋯ menu →
   Colour…), the agent's own, its bot's Discord role colour, or an automatic soft colour. Choose where it shows (Name /
   Left bar / Ring) or **Turn off colours** (the picks are kept).

@@ -17,7 +17,8 @@ import type { AppearanceLimits } from "./web-appearance-limits.js";
 import { checkOwnerCss, OWNER_CSS_MAX_BYTES } from "./web-owner-css.js";
 import { MEDIA_EXT, type MediaKind, sniffMedia, stripMetadata } from "./web-image-meta.js";
 import { canonicalBio, canonicalTagline, canonicalText, checkTheme, type Theme } from "./web-theme.js";
-import { prepareThemeAsset } from "./web-theme-store.js";
+import { GLYPH_ASSET_LIMIT, prepareThemeAsset } from "./web-theme-store.js";
+import { AMBIENT_KINDS, type AmbientKind, ambientKind, type AmbientSpec, checkAmbient } from "./web-ambient.js";
 import { checkWidgetData, checkWidgetSpec, WIDGET_SLOTS, type WidgetData, type WidgetSlot, type WidgetSpec } from "./web-widget.js";
 
 export const MOD_FORMAT = "agend-mod";
@@ -45,6 +46,8 @@ export interface ModManifest {
     theme?: string;
     identity?: string;
     widgets?: Partial<Record<WidgetSlot, string>>;
+    /** #2117: `{ loop?, click? }`, each a set_web_ambient spec whose glyph pictures are `{ asset: <path in the bundle> }`. */
+    ambient?: string;
     effects?: string[];
     ownerCss?: { css: string; assets?: string[] };
   };
@@ -63,7 +66,7 @@ export interface ModEffectChecker {
   params(manifest: unknown, overrides: unknown): { ok: true; overrides: Record<string, unknown> } | { ok: false; error: string };
 }
 
-export interface ModPicture { path: string; slot: "background" | "avatar"; id: string; kind: MediaKind; kept: Uint8Array }
+export interface ModPicture { path: string; slot: "background" | "avatar" | "glyph"; id: string; kind: MediaKind; kept: Uint8Array }
 export interface CheckedMod {
   id: string;
   manifest: ModManifest;
@@ -72,6 +75,8 @@ export interface CheckedMod {
   theme?: { theme: Theme; pictures: ModPicture[]; effects: Array<{ effect: string; params: Record<string, unknown> }> };
   identity?: { tagline?: string; bio?: string };
   widgets: Partial<Record<WidgetSlot, { spec: WidgetSpec; data: WidgetData }>>;
+  /** #2117: the ambients (one per kind) and the glyph pictures they name. */
+  ambient?: { specs: Partial<Record<AmbientKind, AmbientSpec>>; pictures: ModPicture[] };
   effects: Array<{ path: string; files: EffectFiles; summary: EffectSummary; manifest: unknown }>;
   ownerCss?: { text: string; assets: Array<{ path: string; id: string; kind: MediaKind; kept: Uint8Array }> };
 }
@@ -133,9 +138,9 @@ function checkManifest(raw: unknown, ctx: ModContext, bad: (path: string, proble
   }
   const c = raw.contents;
   if (!isObj(c)) { bad("manifest.contents", "an object"); return null; }
-  for (const k of Object.keys(c)) if (!["theme", "identity", "widgets", "effects", "ownerCss"].includes(k)) bad(`manifest.contents.${k}`, "unknown key");
+  for (const k of Object.keys(c)) if (!["theme", "identity", "widgets", "ambient", "effects", "ownerCss"].includes(k)) bad(`manifest.contents.${k}`, "unknown key");
   const contents: ModManifest["contents"] = {};
-  for (const k of ["theme", "identity"] as const) if (c[k] !== undefined) { if (pathOk(c[k])) contents[k] = c[k] as string; else bad(`manifest.contents.${k}`, "a path in the bundle"); }
+  for (const k of ["theme", "identity", "ambient"] as const) if (c[k] !== undefined) { if (pathOk(c[k])) contents[k] = c[k] as string; else bad(`manifest.contents.${k}`, "a path in the bundle"); }
   if (c.widgets !== undefined) {
     if (!isObj(c.widgets)) bad("manifest.contents.widgets", "{ chat_header?, details?, sidebar? }");
     else {
@@ -299,6 +304,42 @@ export function checkModBundle(text: string, ctx: ModContext): { ok: true; mod: 
     const data = checkWidgetData(raw.data, spec.value);
     if (!data.ok) { for (const e of data.errors) bad(`widgets.${slot}.${e.path}`, e.problem); continue; }
     mod.widgets[slot] = { spec: spec.value, data: { ...data.value } };
+  }
+
+  // #2117: the ambients, their glyph pictures named by path (each checked as an upload to the glyph slot).
+  if (c.ambient) {
+    const raw = json(c.ambient, "manifest.contents.ambient");
+    if (raw !== undefined) {
+      if (!isObj(raw) || !Object.keys(raw).length || Object.keys(raw).some(k => !(AMBIENT_KINDS as readonly string[]).includes(k))) bad("ambient", "{ loop?, click? }");
+      else {
+        const pictures: ModPicture[] = [];
+        const specs: Partial<Record<AmbientKind, AmbientSpec>> = {};
+        for (const kind of AMBIENT_KINDS) {
+          const s = raw[kind];
+          if (s === undefined) continue;
+          if (!isObj(s)) { bad(`ambient.${kind}`, "a set_web_ambient spec"); continue; }
+          const glyphs = Array.isArray(s.glyphs) ? s.glyphs.map((g, i) => {
+            if (!isObj(g)) return g;
+            const where = `ambient.${kind}.glyphs.${i}.asset`;
+            if (Object.keys(g).length !== 1 || !pathOk(g.asset)) { bad(where, "a path in the bundle"); return g; }
+            const had = pictures.find(p => p.path === g.asset);
+            if (had) return { asset: had.id };
+            const b = take(g.asset, where);
+            if (!b) return g;
+            const r = prepareThemeAsset("glyph", b, ctx.limits);
+            if (!r.ok) { bad(where, `${r.error}${r.detail ? `: ${r.detail}` : ""}`); return g; }
+            pictures.push({ path: g.asset, slot: "glyph", id: r.id, kind: r.kind, kept: r.kept });
+            return { asset: r.id };
+          }) : s.glyphs;
+          const checked = checkAmbient({ ...s, glyphs }, { glyphAsset: id => pictures.some(p => p.id === id) });
+          if (!checked.ok) { for (const e of checked.errors) bad(`ambient.${kind}.${e.path}`, e.problem); continue; }
+          if (ambientKind(checked.value.preset) !== kind) { bad(`ambient.${kind}.preset`, kind === "click" ? "burst-on-click" : "fall, rise or twinkle"); continue; }
+          specs[kind] = checked.value;
+        }
+        if (pictures.length > GLYPH_ASSET_LIMIT.files) bad("ambient", `at most ${GLYPH_ASSET_LIMIT.files} glyph pictures`);
+        else if (Object.keys(specs).length) mod.ambient = { specs, pictures };
+      }
+    }
   }
 
   if (c.ownerCss) {

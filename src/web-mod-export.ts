@@ -8,6 +8,7 @@ import { MEDIA_EXT, type MediaKind } from "./web-image-meta.js";
 import { MOD_FORMAT, type ModManifest, modFile } from "./web-mod-bundle.js";
 import type { Theme } from "./web-theme.js";
 import type { WidgetData, WidgetSlot, WidgetSpec } from "./web-widget.js";
+import type { AmbientKind, AmbientSpec } from "./web-ambient.js";
 
 export interface ModExportParts {
   /**
@@ -17,6 +18,8 @@ export interface ModExportParts {
   theme?: { theme: Theme; picture: (id: string) => { bytes: Uint8Array; kind: MediaKind } | null; effects?: Array<{ name: string; files: ReadonlyMap<string, Uint8Array>; params: Record<string, unknown> }> };
   identity?: { tagline?: string; bio?: string };
   widgets?: Partial<Record<WidgetSlot, { spec: WidgetSpec; data: WidgetData }>>;
+  /** #2117: the ambients, and their glyph pictures by id (written under glyphs/). */
+  ambient?: { specs: Partial<Record<AmbientKind, AmbientSpec>>; picture: (id: string) => { bytes: Uint8Array; kind: MediaKind } | null };
   ownerCss?: { text: string; assets: Array<{ id: string; bytes: Uint8Array; kind: MediaKind }> };
 }
 export interface ModExportMeta { name: string; version: string; title: string; description?: string; author?: string }
@@ -66,6 +69,23 @@ export function buildModBundle(meta: ModExportMeta, parts: ModExportParts): { ok
     const path = `widgets/${slot.replace("_", "-")}.json`;
     put(path, jsonBytes({ spec: w.spec, data: w.data }));
     (contents.widgets ??= {})[slot] = path;
+  }
+  if (parts.ambient && Object.keys(parts.ambient.specs).length) {
+    const out: Record<string, unknown> = {};
+    for (const [kind, spec] of Object.entries(parts.ambient.specs) as Array<[AmbientKind, AmbientSpec]>) {
+      const glyphs: unknown[] = [];
+      for (const g of spec.glyphs) {
+        if (typeof g === "string") { glyphs.push(g); continue; }
+        const p = parts.ambient.picture(g.asset);
+        if (!p) return { ok: false, error: "picture_missing" };
+        const path = `glyphs/${g.asset}.${MEDIA_EXT[p.kind]}`;
+        put(path, p.bytes);
+        glyphs.push({ asset: path });
+      }
+      out[kind] = { ...spec, glyphs };
+    }
+    put("ambient.json", jsonBytes(out));
+    contents.ambient = "ambient.json";
   }
   if (parts.ownerCss) {
     // The CSS names its assets as url("asset:<id>"): the id is the hash of the kept bytes, the same on import.

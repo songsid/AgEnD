@@ -41,9 +41,9 @@ function why(body) {
 
 /** The parts a plan offers, each with its default: everything but custom CSS. */
 export function defaultChoice(plan) {
-  const c = { theme: false, identity: false, effects: false, ownerCss: false, widgets: {}, replace: false };
+  const c = { theme: false, identity: false, effects: false, ownerCss: false, ambient: false, widgets: {}, replace: false };
   for (const it of plan.items) {
-    if (it.part === "theme" || it.part === "identity") c[it.part] = true;
+    if (it.part === "theme" || it.part === "identity" || it.part === "ambient") c[it.part] = true;
     else if (it.part === "widget") c.widgets[it.slot] = true;
     else if (it.part === "effect") c.effects = true;
     // ownerCss stays false: "read it before turning it on" (r4 §4).
@@ -100,6 +100,19 @@ function PlanItem({ it, choice, setChoice, binds, fleet }) {
     return html`<li class="s-mod-item">${tick(tn(`modPartWidget_${it.slot}`), !!choice.widgets[it.slot], (v) => setChoice({ ...choice, widgets: { ...choice.widgets, [it.slot]: v } }))}
       <div class="s-mod-detail s-mod-widget">${w ? html`<${AgentWidget} slot=${it.slot} widget=${w} binds=${it.slot === "sidebar" ? fleet : binds} />` : null}</div></li>`;
   }
+  if (it.part === "ambient") {
+    // #2117: each ambient as it will be drawn: its preset, glyphs (pictures shown) and colours; every field below.
+    const glyph = (g, i) => typeof g === "string" ? html`<span key=${i} class="s-mod-text">${g}</span>`
+      : html`<img key=${i} class="s-mod-glyph" src=${`/ui/mods/staged/${g.asset}`} alt="" loading="lazy" />`;
+    const one = (kind) => {
+      const a = it[kind];
+      if (!a || !Array.isArray(a.glyphs)) return null;
+      return html`<div key=${kind} class="s-mod-kv"><span class="k">${a.preset}</span><span class="v s-mod-sws">${a.glyphs.map(glyph)}${(a.colors || []).map((c) => html`<${Swatch} key=${c} color=${c} />`)}</span></div>`;
+    };
+    return html`<li class="s-mod-item">${tick(tn("modPartAmbient"), !!choice.ambient, (v) => setChoice({ ...choice, ambient: v }))}
+      <div class="s-mod-detail">${one("loop")}${one("click")}
+        <details class="s-mod-raw"><summary>${tn("modAllFields")}</summary><pre class="s-mod-css-text">${JSON.stringify({ loop: it.loop, click: it.click }, null, 2)}</pre></details></div></li>`;
+  }
   if (it.part === "effect") {
     return html`<li class="s-mod-item">${tick(tn("modPartEffect", it.title), choice.effects, (v) => setChoice({ ...choice, effects: v }))}
       <div class="s-mod-detail"><span>${kib(it.bytes)} · ${tn("modRegions", it.regions.join(", "))}</span>${it.wants.length ? html`<span>${tn("modWants", it.wants.join(", "))}</span>` : null}</div></li>`;
@@ -120,7 +133,7 @@ function Plan({ staged, onDone }) {
   const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const toInstance = choice.theme || choice.identity || !!choice.widgets.chat_header || !!choice.widgets.details;
+  const toInstance = choice.theme || choice.identity || choice.ambient || !!choice.widgets.chat_header || !!choice.widgets.details;
   const names = (app.instances || []).map((i) => i.name);
   const install = async () => {
     setBusy(true); setError("");
@@ -162,13 +175,13 @@ function Plan({ staged, onDone }) {
 
 function ExportForm() {
   const app = useStore(appStore);
-  const [f, setF] = useState({ instance: "", name: "", version: "1.0.0", title: "", theme: true, identity: true, header: true, details: true, sidebar: false, ownerCss: false });
+  const [f, setF] = useState({ instance: "", name: "", version: "1.0.0", title: "", theme: true, identity: true, header: true, details: true, ambient: true, sidebar: false, ownerCss: false });
   const [error, setError] = useState("");
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
   const go = async () => {
     setError("");
     const body = { instance: f.instance || undefined, name: f.name, version: f.version, title: f.title,
-      include: { theme: f.theme, identity: f.identity, ownerCss: f.ownerCss, widgets: { chat_header: f.header, details: f.details, sidebar: f.sidebar } } };
+      include: { theme: f.theme, identity: f.identity, ambient: f.ambient, ownerCss: f.ownerCss, widgets: { chat_header: f.header, details: f.details, sidebar: f.sidebar } } };
     let res;
     try { res = await fetch("/ui/mods/export", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
     catch { setError(tn("modFailed", "network")); return; }
@@ -182,7 +195,7 @@ function ExportForm() {
   return html`<details class="s-mod-export"><summary>${tn("modExport")}</summary>
     <p class="sub">${tn("modExportLead")}</p>
     <label class="field"><span>${tn("modExportInstance")}</span><select value=${f.instance} onChange=${set("instance")}><option value="">—</option>${(app.instances || []).map((i) => html`<option key=${i.name} value=${i.name}>${i.name}</option>`)}</select></label>
-    <div class="s-mod-boxes">${box("theme", tn("modPartTheme"))}${box("identity", tn("modPartIdentity"))}${box("header", tn("modPartWidget_chat_header"))}${box("details", tn("modPartWidget_details"))}${box("sidebar", tn("modPartWidget_sidebar"))}${box("ownerCss", tn("modPartCss"))}</div>
+    <div class="s-mod-boxes">${box("theme", tn("modPartTheme"))}${box("identity", tn("modPartIdentity"))}${box("header", tn("modPartWidget_chat_header"))}${box("details", tn("modPartWidget_details"))}${box("ambient", tn("modPartAmbient"))}${box("sidebar", tn("modPartWidget_sidebar"))}${box("ownerCss", tn("modPartCss"))}</div>
     <label class="field"><span>${tn("modExportName")}</span><input value=${f.name} placeholder="my-look" onInput=${set("name")} /></label>
     <label class="field"><span>${tn("modExportVersion")}</span><input value=${f.version} onInput=${set("version")} /></label>
     <label class="field"><span>${tn("modExportTitle")}</span><input value=${f.title} onInput=${set("title")} /></label>

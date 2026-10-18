@@ -55,6 +55,8 @@ const WORKER: readonly string[] = [
   "get_web_appearance", "preview_web_appearance",
   // Its own declarative widgets (#1629 r4-4): no target, the same lock and limits.
   "set_web_widget", "remove_web_widget",
+  // Its own declarative ambient (#2117): no target, the same lock and limits.
+  "set_web_ambient", "clear_web_ambient",
   // Mods (#1629 r4-5b): its own look as a file, and proposing one for a person — never importing.
   "export_web_mod", "propose_web_mod",
   "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
@@ -121,7 +123,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "list_decisions", "post_decision", "task", "set_display_name", "set_description", "list_emojis", "set_persona_emoji", "preview_emojis",
     "list_stickers", "preview_stickers",
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
-    "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget", "export_web_mod", "propose_web_mod",
+    "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient", "export_web_mod", "propose_web_mod",
     "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config", "kiro_engine_status", "get_cache_report",
     // Self-scheduling, same scope as worker (#895).
@@ -246,6 +248,8 @@ export const IPC_TYPE_TOOLS: Readonly<Record<string, string>> = {
   fleet_preview_web_appearance: "preview_web_appearance",
   fleet_set_web_widget: "set_web_widget",
   fleet_remove_web_widget: "remove_web_widget",
+  fleet_set_web_ambient: "set_web_ambient",
+  fleet_clear_web_ambient: "clear_web_ambient",
   fleet_export_web_mod: "export_web_mod",
   fleet_propose_web_mod: "propose_web_mod",
   fleet_upload_web_effect: "upload_web_effect",
@@ -292,6 +296,8 @@ export const EARLY_AGENT_OP_TOOLS: Readonly<Record<string, string>> = {
   "appearance-preview": "preview_web_appearance",
   "widget-set": "set_web_widget",
   "widget-remove": "remove_web_widget",
+  "ambient-set": "set_web_ambient",
+  "ambient-clear": "clear_web_ambient",
   "mod-export": "export_web_mod",
   "mod-propose": "propose_web_mod",
   "effect-upload": "upload_web_effect",

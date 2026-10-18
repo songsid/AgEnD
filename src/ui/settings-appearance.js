@@ -10,6 +10,7 @@ import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { ownerCssOffHere, ownerCssTrial, safeMode, setOwnerCssActive, setOwnerCssOffHere, startOwnerCssTrial } from "/assets/owner-css.js";
 import { setThemesShown, themesStore } from "/assets/app-themes.js";
+import { followsReducedMotion, onMotionChange, setFollowsReducedMotion } from "/assets/fx-motion.js";
 import { CARD_SIZES, cardSizeDefault, cardSizeStore, setCardSizeDefault } from "/assets/identity-card.js";
 import { AgentWidget, checkWidget, fleetBinds, setSidebarWidget, sidebarWidgetRaw, sidebarWidgetStore, widgetProblem } from "/assets/agent-widget.js";
 import { confirmedWrite } from "./settings-confirm.js";
@@ -87,6 +88,7 @@ function IdentityColorCard() {
  */
 export async function restoreAppearanceDefaults() {
   setThemesShown(true);
+  setFollowsReducedMotion(false);
   setCardSizeDefault("m");
   savePref("card.sizeByInstance", null);
   setSidebarWidget(null);
@@ -187,10 +189,16 @@ function CardLimitsCard() {
 /** #1629 r2 (d): whether this person's screens show agents' themes (and, as they come, effects) — synced. */
 function ThemesCard() {
   const s = useStore(themesStore);
+  // #2117: this device's own switch (not synced): effects play unless it follows the system's reduced-motion setting.
+  const [follow, setFollow] = useState(followsReducedMotion);
+  useEffect(() => onMotionChange(() => setFollow(followsReducedMotion())), []);
   return html`<section class="card s-appearance s-synced"><${CardTitle} title=${tn("themesTitle")} topic="themes" />
     <label class="check"><input type="checkbox" checked=${s.shown} disabled=${safeMode()} onChange=${(e) => setThemesShown(e.target.checked)} />
       <span>${tn("themesShow")}</span></label>
     <p class="sub">${safeMode() ? tn("themesSafeMode") : tn("themesShowLead")}</p>
+    <label class="check"><input type="checkbox" id="fx-follow-reduced-motion" checked=${follow} onChange=${(e) => setFollowsReducedMotion(e.target.checked)} />
+      <span>${tn("themesFollowMotion")}</span></label>
+    <p class="sub">${tn("themesFollowMotionLead")}</p>
   </section>`;
 }
 
