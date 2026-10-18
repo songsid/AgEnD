@@ -149,13 +149,15 @@ try {
      const rect=await page.evaluate(()=>{const r=window.__trialShell.stage.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}});
      await page.mouse.click(rect.x,rect.y);await page.waitForTimeout(200);
      assert.equal(await page.evaluate(()=>window.__trialShell.stage.querySelectorAll("iframe").length),1,"real stage click keeps the trial");
-     const trialPixels=redPixels(await page.screenshot({path:join(out,tag+"-trial-click-alive.png")}));assert.ok(trialPixels>1000,"independent visible trial paint after actual click");
+     let trialPixels=0,trialPaintDelayMs=0;
+     for(const delay of [0,100,300,600,1000]) {await page.waitForTimeout(delay);trialPaintDelayMs+=delay;trialPixels=redPixels(await page.screenshot({path:join(out,tag+"-trial-click-alive.png")}));if(trialPixels>1000)break;}
+     assert.ok(trialPixels>1000,"independent visible trial paint after actual click");
      await page.evaluate(()=>window.dispatchEvent(new Event("blur")));
      assert.equal(await page.evaluate(()=>window.__trialShell.stage.querySelectorAll("iframe").length),0,"genuine window blur boundary still stops");
-     rows.push({engine,width,motion,defaults:true,status:"pass",reason:initialReason,message,visibleSignIn:true,seededCookies:false,seededPrefs:false,seededConsent:false,visibleUiConsent:true,actualWorkerRunning:true,independentPaint:{beforePixels,paintPixels,trialPixels,paintDelayMs},actualStageClickSurvives:true,windowBlurStops:true});
+     rows.push({engine,width,motion,defaults:true,status:"pass",reason:initialReason,message,visibleSignIn:true,seededCookies:false,seededPrefs:false,seededConsent:false,visibleUiConsent:true,actualWorkerRunning:true,independentPaint:{beforePixels,paintPixels,trialPixels,paintDelayMs,trialPaintDelayMs},actualStageClickSurvives:true,windowBlurStops:true});
     }
     assert.deepEqual(errors,[]);assert.deepEqual(outside,[]);console.log("PASS",tag);
-   } catch(e) {await page.screenshot({path:join(out,tag+"-failure.png")}).catch(()=>{});writeFileSync(join(out,tag+"-failure.json"),JSON.stringify({error:String(e),errors,outside,snapshot:await view().catch(()=>null),trace:await page.evaluate(()=>window.__diagnosticTrace).catch(()=>null),requests:requests.slice(startRequest)},null,2));throw e;}
+   } catch(e) {await page.screenshot({path:join(out,tag+"-failure.png")}).catch(()=>{});writeFileSync(join(out,tag+"-failure.json"),JSON.stringify({error:String(e),errors,outside,snapshot:await view().catch(()=>null),trace:await page.evaluate(()=>window.__diagnosticTrace).catch(()=>null),trial:await page.evaluate(async()=>{const m=await import("/ui/js/app-effects.js");const frame=window.__trialShell?.stage.querySelector("iframe"),c=frame?getComputedStyle(frame):null;return{rows:m.getAppEffects()?.api.trialSnapshot().rows,focus:document.hasFocus(),frame:frame?{visibility:c.visibility,display:c.display,opacity:c.opacity,clip:c.clipPath,rect:frame.getBoundingClientRect().toJSON()}:null}}).catch(()=>null),requests:requests.slice(startRequest)},null,2));throw e;}
    finally {await context.close();}
   }
   const gateway=sessions.create({tier:"read",surface:"gateway",exposureId,label:"private public-link fixture",tokenEpoch:tokenEpoch(token)});

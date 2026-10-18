@@ -34,7 +34,7 @@ export function chatEffectsMenuAvailable() { return chatEffectIdentity(window) !
 // #2055: what a row's state means, in words — never only "Stopped" when the runtime knows why.
 const RECENT_MS = 5000;
 const EDITABLE = "input, textarea, select, [contenteditable]:not([contenteditable=false])";
-const REASON_KEY = { owner_css: "chatFx.cssOff", reduced_motion: "chatFx.reducedMotion", save_data: "chatFx.saveData", preview_unavailable: "chatFx.previewMissing", preview_not_consented: "chatFx.consent", unsupported_host: "chatFx.unsupported", registry_unsupported: "chatFx.unsupported",
+const REASON_KEY = { __proto__: null, owner_css: "chatFx.cssOff", reduced_motion: "chatFx.reducedMotion", save_data: "chatFx.saveData", preview_unavailable: "chatFx.previewMissing", preview_not_consented: "chatFx.consent", unsupported_host: "chatFx.unsupported", registry_unsupported: "chatFx.unsupported",
   baseline_unsupported: "chatFx.baseline", baseline_unavailable: "chatFx.baseline", baseline_timeout: "chatFx.baseline", calibrating: "chatFx.calibration", safety_unknown: "chatFx.safetyUnknown", region_unavailable: "chatFx.region",
   hidden: "chatFx.hiddenTab", offscreen: "chatFx.offscreen", safe_mode: "chatFx.safeMode", public_link: "chatFx.publicLink", disabled: "chatFx.disabled",
   clock_unavailable: "chatFx.clock", gates_unknown: "chatFx.gatesUnknown", runtime_unavailable: "chatFx.missingRow", resource_unavailable: "chatFx.resource", resource_timeout: "chatFx.resource", front_limit: "chatFx.frontQueue",

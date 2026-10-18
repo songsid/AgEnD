@@ -123,6 +123,7 @@ describe("#2115 persistent named block notices", () => {
     await fixture(); const { effectRowText } = await import("/ui/js/chat-effects.js");
     expect(effectRowText(null)).toContain("runtime_unavailable");
     for (const phase of [null, "running", "loading"]) expect(effectRowText({ reason: "future_failure_42", phase, verdict: "queued" })).toBe("Playback blocked: future_failure_42");
+    for (const reason of ["constructor", "__proto__"]) expect(effectRowText({ reason })).toBe(`Playback blocked: ${reason}`);
     expect(effectRowText({ reason: "preview_not_consented" })).toContain("allow HTML previews");
     expect(effectRowText({ reason: "baseline_timeout" })).toContain("calibration failed");
   });
