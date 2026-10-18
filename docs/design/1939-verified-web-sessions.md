@@ -1,7 +1,72 @@
-# #1939 Verified web sessions with step-up (option B)
+# #1939 Verified web sessions
 
-Status: design, no code. Target 2.3. The user chose option B on 2026-10-16. On 2026-10-17 they decided the open
-questions; §11 lists the decisions, and this text reflects them.
+Status: target 2.3. **Amended 2026-10-18 (§0): a session is authenticated once; there is no per-action step-up.** §0
+is the design in force. §5, §6 and the step-up parts of §4, §7, §10 and §11 are superseded and kept below only as the
+record of what was considered. S1 (observe only, §3 and the receipt's `authority`) is merged (#2108) and unchanged.
+
+## 0. Amendment (2026-10-18): authenticate the session once
+
+**The user's decision.** Both are Discord receipts from the user, read with `delivery_status`: delivered, owned
+`proof_kind`, origin `discord` / `368442276000694273`.
+- `hmsg-d6b0a106-7c45-4fa5-8f5b-793e93d124d8`, the request: "1939 可以改成授權後=我本人discrod / 用原本查訊息id的方式就好嗎 /
+  只要auth ,不用改成收束權限" (once authorized, it is me on Discord; check it by message id as today; only auth, no
+  per-action narrowing).
+- `hmsg-1f07e1fd-d855-4c5a-9205-6172f5c2fa05`, a confirm button: "對，照這個改（整個 session 認證一次）" (yes, change it
+  to this: authenticate the whole session once).
+
+**The model.**
+1. **Authorize once.** A session that qualifies under §3 is authorized once. §3 means: a cookie session, admin tier,
+   the local surface, a current token epoch, a bound account still in its adapter's `allowed_users`, the target on that
+   adapter, the `loopback_only` rule, never the public link.
+   - **How:** the person starts it on `/authorize`, a document of its own (§6.5 still holds: no owner CSS, mod, theme,
+     widget or effect; text only; never framed).
+   - **Confirming:** the person confirms with the account the session's sign-in code went to. AgEnD sends that account,
+     in a DM only, a Confirm card and a one-time code. Clicking the card, or typing the code on `/authorize`, authorizes
+     **that session** (its handle).
+   - **The claim:** only that account can claim the card. The code is single use, 5 minutes, 5 tries, and counts toward
+     the existing breaker.
+2. **After that, the session speaks as the account.** Each message, reply-button click, `/steer` and `/btw` from an
+   authorized session gets a human receipt equivalent to one from Discord or Telegram:
+   - its own `verification_id`;
+   - delivery evidence (`state`, the owned `proof_kind`) exactly as today;
+   - `authority.kind: "web-verified"`, with the linked account as `authority.actor` and the session in `authority.session`.
+   - Receivers verify it with `delivery_status` the way they verify a platform message, and grant it onward with
+     `forwards` as any `hmsg` receipt.
+   - `HumanOrigin.platform` stays `"web"`, so it is never mistaken for a platform message.
+3. **It ends at the earliest of these.** After that, new messages carry no authority, and `delivery_status` reads
+   earlier `web-verified` receipts as `none` with `downgraded` (§10's rules, unchanged):
+   - `max_session_hours` after the authorization (1–48, default 48);
+   - the session ending (expiry, sign-out, `/web revoke`, a token rotation);
+   - the server switch turned off;
+   - `loopback_only` turned on (for `lan` sessions);
+   - any revocation epoch bump.
+
+   The authorization state never moves behind the receipts (#2112: a missing or rolled-back state file revokes).
+4. **A qualifying session that is not authorized** carries `none`: recognition only, as all web traffic before #1939.
+   S1's observe-only `web-session` value is read as `none` from here on. It was never an authorization, and the first
+   time the switch turns on, the epoch moves past it anyway.
+5. **Dropped:**
+   - the per-action step-up;
+   - the enforced action list and custom actions (`step_up` in fleet.yaml);
+   - binding to a message's text;
+   - the executor list (§11's open question);
+   - S4's agent card.
+
+   Settings → Web → Web authority keeps four controls: the switch, "Only this computer can authorize", the hours, and
+   Revoke web authority. It also lists the authorized sessions.
+6. **The instructions (S3)** replace every "web grants nothing" rule with one: a `via web (verified)` message is a human
+   receipt; verify it with `delivery_status` (require `authority.kind: web-verified`, delivered, an owned `proof_kind`,
+   the content and the actor) the same way as a Discord or Telegram message, and forward it with `forwards`. Plain
+   `via web` grants nothing.
+
+**Staging (replaces §10's S2–S4).**
+- **S2a, server.** The switch, the epoch (the #2112 restart and rollback fixes kept), the session-authorization store,
+  `web-verified` receipts and the `delivery_status` view.
+- **S2b, `/authorize`.** The Confirm card and the DM code, verification, the audit events and the owner's DM notice.
+- **S2c, Settings.** The four controls and the authorized sessions.
+- **S3.** The instructions and the `via web (verified)` header label.
+
+The receipt model of §4 keeps `authority`. The `step_up` field is not written.
 
 ## 1. Summary
 
@@ -191,6 +256,9 @@ So nothing an agent accepted before changes meaning.
 
 ## 5. The step-up list: a class, a configurable enforced list, one source
 
+> Superseded by §0 (2026-10-18): there is no per-action step-up and no enforced list.
+
+
 **The class.** A step-up is for actions that are irreversible, outward-facing, or touch accounts and credentials.
 The instructions and the docs name three examples (release, force-push, deleting an instance) and describe the class.
 They do not enumerate every action.
@@ -309,6 +377,10 @@ The receiver applies the rule to the receipt **as `delivery_status` returns it n
 (§10) therefore takes effect on the next check.
 
 ## 6. The step-up mechanism
+
+> Superseded by §0 (2026-10-18), except §6.5's rules for `/authorize` as a document of its own, which still hold.
+> The Confirm card and the DM code now authorize a session, not one action.
+
 
 ### 6.1 What a step-up is bound to
 
@@ -522,6 +594,9 @@ These must hold, and a change to any of them needs a security review and a fresh
 
 ## 10. Migration and staging
 
+> Amended by §0 (2026-10-18): the switch and the revocation rules below stand; S2–S4 are replaced by §0's staging.
+
+
 - **The switch, first.** `web.verified_authority.enabled` is a server setting, off by default, and turning it on
   goes through Settings confirmation. Each authority is stamped with the current `authority_epoch`.
 - **What revokes, and only what revokes.** `delivery_status` evaluates every web-session receipt against the
@@ -579,6 +654,9 @@ These must hold, and a change to any of them needs a security review and a fresh
   - **What is not promised:** a file revert alone does not revoke anything immediately. The switch is what does.
 
 ## 11. Decisions (the user, 2026-10-17)
+
+> Decisions 4–6 and the open executor question are superseded by §0 (2026-10-18); 1–3 stand.
+
 
 1. **Field.** A new `authority` field (§4), not a new `proof_kind`.
 2. **Ordinary authority age.** 48 h by default, configurable from 1 to 48 h (§3.6).
