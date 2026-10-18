@@ -14,6 +14,15 @@ import { bootFixture, freshPage, mounted, seedChat, shotPath } from "../smoke-fi
 
 const N = Number(process.env.N ?? 200), ROUNDS = Number(process.env.ROUNDS ?? 2);
 const ENGINE = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";
+// No page error. The only lines accepted are WebKit's own (#2127, as #2138's smoke), under WebKit only, matched
+// exactly on the text before " @ <url>", and listed apart in the result.
+const WEBKIT_OWN = new Set(["Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy.",
+  'Viewport argument key "interactive-widget" not recognized and ignored.']);
+const split = (errors: string[]) => {
+  const accepted: string[] = [], other: string[] = [];
+  for (const e of errors) (ENGINE === "webkit" && WEBKIT_OWN.has(e.replace(/ @ \S+$/, "")) ? accepted : other).push(e);
+  return { accepted, other };
+};
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48560), classic: false });
 const fm = fx.fm;
 const CHATS = ["observability-dashboards", "billing-reconciliation", "search-indexer", "customer-support-macros", "nightly-benchmarks", "docs-site-builder"];
@@ -64,10 +73,13 @@ for (const [tag, c] of [["desk", { device: "desk", theme: "light", lang: "en" }]
   for (const to of [CHATS[0], CHATS[1]]) older.push(await measure(p.page, to));
   const all = [...first, ...revisit, ...older];
   results.cases[tag] = { summary: { first: summary(first), revisit: summary(revisit), older: summary(older) },
-    bottomAfterRevisit: [...revisit, ...older].every((x) => x.bottom === true), timeouts: all.filter((x) => x.timeout || x.missing).length, errors: p.errors };
+    bottomAfterRevisit: [...revisit, ...older].every((x) => x.bottom === true), timeouts: all.filter((x) => x.timeout || x.missing).length,
+    errors: split(p.errors).other, webkitOwn: split(p.errors).accepted };
   await p.page.screenshot({ path: shotPath("smoke-2053-switch", `${ENGINE}-${tag}`, "chat") });
   await p.ctx.close();
 }
 writeFileSync(shotPath("smoke-2053-switch", `${ENGINE}-result`, "x").replace(/-x\.png$/, ".json"), JSON.stringify(results, null, 1));
-console.log(JSON.stringify(Object.fromEntries(Object.entries(results.cases).map(([k, v]: any) => [k, { ...v.summary, bottom: v.bottomAfterRevisit, timeouts: v.timeouts, errors: v.errors.length }])), null, 1));
-await fx.close(); process.exit(0);
+console.log(JSON.stringify(Object.fromEntries(Object.entries(results.cases).map(([k, v]: any) => [k, { ...v.summary, bottom: v.bottomAfterRevisit, timeouts: v.timeouts, errors: v.errors, webkitOwn: v.webkitOwn.length }])), null, 1));
+const failed = Object.values(results.cases).some((v: any) => v.errors.length || v.timeouts || !v.bottomAfterRevisit);
+console.log(failed ? "FAIL" : `PASS (${ENGINE})`);
+await fx.close(); process.exit(failed ? 1 : 0);
