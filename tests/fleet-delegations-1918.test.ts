@@ -55,6 +55,20 @@ describe("Delegations", () => {
     expect(d.note(row("cid-1"), item("atlas", "ember", "task", "failed", 4)), "that other delivery failing takes nothing back").toEqual([]);
     expect(d.snapshot().map((x) => x.id)).toEqual([b.id]);
   });
+  it("#2135 review: a report counts once — its later states never close the next task of the same correlation id and pair; a new report does", () => {
+    const d = new Delegations(() => 0);
+    d.note(row("cid-1"), item("atlas", "ember", "task", "queued", 1));
+    expect(d.note(row("cid-1"), item("ember", "atlas", "report", "queued", 2)).map((x) => x.state)).toEqual(["done"]);
+    const [t2] = d.note(row("cid-1"), item("atlas", "ember", "task", "queued", 3));
+    for (const st of ["delivering", "delivered", "consumed"] as const) expect(d.note(row("cid-1"), item("ember", "atlas", "report", st, 2)), `the first report, ${st}`).toEqual([]);
+    expect(d.snapshot().map((x) => x.id)).toEqual([t2.id]);
+    expect(d.note(row("cid-1"), item("ember", "atlas", "report", "queued", 4)).map((x) => [x.id, x.state])).toEqual([[t2.id, "done"]]);
+    // A report with nothing to close counts once too: its later states do not close a task opened after it.
+    d.note(row("cid-9"), item("ember", "atlas", "report", "queued", 5));
+    const [t3] = d.note(row("cid-9"), item("atlas", "ember", "task", "queued", 6));
+    expect(d.note(row("cid-9"), item("ember", "atlas", "report", "delivered", 5))).toEqual([]);
+    expect(d.snapshot().map((x) => x.id)).toEqual([t3.id]);
+  });
   it("only its own report closes it: not another correlation id, not the same direction, not a send; no correlation id: nothing", () => {
     const d = new Delegations(() => 0);
     d.note(row("cid-1"), item("atlas", "ember", "task", "queued", 1));
@@ -143,6 +157,22 @@ describe("FleetManager: SSE delegation and the snapshot", () => {
       expect(sse.filter(([t]) => t === "traffic").some(([, d]) => d.kind === "task" && d.state === "consumed"), "the consumed mark was published").toBe(true);
       expect(sse.filter(([t]) => t === "delegation").map(([, d]) => d.state)).toEqual(["open", "done"]);
       expect(fm.trafficSnapshot().delegations).toEqual([]);
+    } finally { close(); }
+  });
+  it("#2135 review: T1 → report R1 → a new T2 (same correlation id) → R1 delivered and consumed: T2 stays open; a new report R2 closes it", async () => {
+    const { fm, sse, close } = await fleet();
+    try {
+      const t1 = admit(fm, "atlas", "ember", "task", "cid-a", "op-t1");
+      deliver(fm, t1.deliveryId, "boot-e");
+      const r1 = admit(fm, "ember", "atlas", "report", "cid-a", "op-r1");
+      admit(fm, "atlas", "ember", "task", "cid-a", "op-t2");
+      const attempt = deliver(fm, r1.deliveryId, "boot-a");
+      (fm.deliveryOutbox as DeliveryOutbox).markConsumed(r1.deliveryId, "boot-a", attempt, "turn", "e");
+      expect(sse.filter(([t]) => t === "traffic").some(([, d]) => d.kind === "report" && d.state === "consumed"), "R1's consumed was published").toBe(true);
+      expect(fm.trafficSnapshot().delegations.map((d: any) => d.to)).toEqual(["ember"]);
+      admit(fm, "ember", "atlas", "report", "cid-a", "op-r2");
+      expect(fm.trafficSnapshot().delegations).toEqual([]);
+      expect(sse.filter(([t]) => t === "delegation").map(([, d]) => d.state)).toEqual(["open", "done", "open", "done"]);
     } finally { close(); }
   });
   it("#2135 review: an instance hidden after its delegation opened is in no later delegation event — not its expiry, not its eviction", async () => {

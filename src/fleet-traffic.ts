@@ -106,22 +106,23 @@ export const DELEGATIONS_MAX = 100;
 /** The pair a report closes: correlation id, delegator, worker. */
 const pairKey = (correlationId: string, from: string, to: string): string => `${correlationId}\u0000${from}\u0000${to}`;
 const DEAD: ReadonlySet<TrafficState> = new Set(["failed", "cancelled"]);
-/** How many task deliveries are remembered as having opened a delegation (so a late state of one never opens it again). */
-const OPENED_MAX = 2000;
+/** How many deliveries are remembered as handled: a task that opened one, a report that was taken (#2135 review). */
+const HANDLED_MAX = 2000;
 
 /**
  * The delegations open now. `note(row, item)` takes each traffic item with its row (for the correlation id, never sent
  * on): a task delivery's admission opens one (keyed for its report by correlation id and the two names; its id is the
  * delivery's own, so a new task with the same correlation id is a new delegation); that delivery failing or being
- * cancelled takes it back; a report from the worker to the delegator with the same correlation id closes it. A later
- * state of a task delivery that already opened one — delivered or consumed after its report came back, or after it
- * expired — never opens it again. Returns the news, for the stream. The oldest go first past DELEGATIONS_MAX; an open
+ * cancelled takes it back; a report from the worker to the delegator with the same correlation id closes it. Each
+ * delivery counts once, at its first state: a later state of a task delivery that already opened one — delivered or
+ * consumed after its report came back, or after it expired — never opens it again, and a later state of a report never
+ * closes the next task of the same correlation id and pair. Returns the news, for the stream. The oldest go first past DELEGATIONS_MAX; an open
  * one past DELEGATION_TTL_MS expires.
  */
 export class Delegations {
   private readonly open = new Map<string, { id: string; task: string; from: string; to: string; openedMs: number }>();
-  /** The task deliveries (their traffic ids) that have opened one: bounded, oldest out. */
-  private readonly opened = new Set<string>();
+  /** The deliveries (their traffic ids) already handled — tasks that opened one, reports taken: bounded, oldest out. */
+  private readonly handled = new Set<string>();
   constructor(private readonly monotonic: () => number = () => performance.now()) {}
 
   private ended(d: { id: string; from: string; to: string; openedMs: number }, state: Exclude<DelegationState, "open">): Delegation {
@@ -138,8 +139,8 @@ export class Delegations {
         if (cur && cur.task === item.id) { this.open.delete(key); news.push(this.ended(cur, "cancelled")); }
         return news;
       }
-      if (this.opened.has(item.id)) return news;                     // a later state of a delivery that opened one already
-      this.noteOpened(item.id);
+      if (this.handled.has(item.id)) return news;                    // a later state of a delivery that opened one already
+      this.noteHandled(item.id);
       if (cur) return news;                                          // one is open for this pair and correlation: its report closes it
       const d = { id: trafficId(`del:${item.id}`), task: item.id, from: item.from, to: item.to, openedMs: this.monotonic() };
       this.open.set(key, d);
@@ -151,17 +152,20 @@ export class Delegations {
       }
       return news;
     }
-    // A report closes the task it answers: same correlation id, the other way round.
+    // A report closes the task it answers: same correlation id, the other way round — once, at its first state (its later
+    // states are the same report, not an answer to a newer task).
+    if (this.handled.has(item.id)) return news;
+    this.noteHandled(item.id);
     if (DEAD.has(item.state)) return news;
     const key = pairKey(corr, item.to, item.from), d = this.open.get(key);
     if (d) { this.open.delete(key); news.push(this.ended(d, "done")); }
     return news;
   }
 
-  private noteOpened(taskId: string): void {
-    this.opened.delete(taskId);
-    this.opened.add(taskId);
-    while (this.opened.size > OPENED_MAX) this.opened.delete(this.opened.values().next().value!);
+  private noteHandled(deliveryId: string): void {
+    this.handled.delete(deliveryId);
+    this.handled.add(deliveryId);
+    while (this.handled.size > HANDLED_MAX) this.handled.delete(this.handled.values().next().value!);
   }
 
   /** What is open now (after expiring the ones past the TTL — the stream is told by the next note). */
