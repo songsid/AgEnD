@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, cop
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { getAgendHome } from "./paths.js";
-import { sanitizeInstanceName } from "./topic-commands.js";
+import { classicInstanceName, sanitizeInstanceName } from "./instance-names.js";
 import type { Logger } from "./logger.js";
 import { KNOWN_BACKENDS } from "./config-validator.js";
 import { classicProfile, normalizeBackendOptions, type BackendOptions, type ClassicProfile } from "./classic-bindings.js";
@@ -139,11 +139,7 @@ const YAML_HEADER = `# ClassicBot Configuration
  * names (dirs / tmux windows / IPC). The primary bot passes `undefined` to keep
  * the historical name — single-bot users see no change across the upgrade.
  */
-export function classicInstanceName(sanitizedName: string, channelId: string, adapterId?: string): string {
-  const suffix = channelId.slice(-4);
-  const base = `classic-${sanitizedName}-${suffix}`;
-  return adapterId ? `${base}-${sanitizeInstanceName(adapterId)}` : base;
-}
+export { classicInstanceName };
 
 /**
  * Infer the platform which issued a Classic channel id.

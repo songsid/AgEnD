@@ -118,8 +118,8 @@ export function boot({ stream, boot: bootData, deps = {} }) {
   }
   // #1604: the preview opt-in and Tour live in Settings → This device now (and on each preview card's menu).
   installTour();
-  // #1920 phase 3: effects are an admin's to place (a guest's page reads none: each read would be refused).
-  if (!guestPage()) startAppEffects({ store });
+  // #2118: viewing current in-scope Chat effects needs no management or personal-slot authority.
+  startAppEffects({ store });
   return store;
 }
 
@@ -284,7 +284,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   ];
   const cls = statusClass(inst, exec, awaiting);
   // #1920 phase 3: a guest has this chat only — no Details, View or Log to switch to, no lifecycle, colour, theme,
-  // effects or delete (a guest's status frame carries no model or effort either, so those chips do not show).
+  // effect management or delete (a guest's status frame carries no model or effort either, so those chips do not show).
   const guest = guestPage();
   // #1269 quick actions: the model and effort it runs, each a way to /model or /effort (the same pick list).
   const pick = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
@@ -292,7 +292,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelText(inst)}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
-    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`} notice=${guest ? null : html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onClose=${() => setDialog(null)} />`}><${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
+    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`} notice=${html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onClose=${() => setDialog(null)} />`}><${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>
@@ -326,6 +326,7 @@ function Thread({ name, th }) {
       effectTrialStatus: x => getAppEffects()?.trialStatus(x) ?? "localAdmin",
       fixEffectTrial: (x, reason) => {
         if (reason === "busy") getAppEffects()?.stopTrial();
+        else if (reason === "transport") location.reload();
         else if (reason === "localAdmin") location.href = "/signin?next=" + encodeURIComponent(location.pathname + location.search);
         else navigate("/settings/appearance");
       },

@@ -111,12 +111,13 @@ describe("caller-owned state workspace", () => {
 });
 
 describe("#2025 CLI effect upload", () => {
-  it.each([[false, false], [true, false], [false, true], [true, true]])("reads caller workspace bytes, absolute=%s General=%s", async (absolute, general) => {
+  it.each([[false, false, false], [true, false, false], [false, true, false], [true, true, false], [false, false, true], [true, false, true]])("reads caller workspace bytes, absolute=%s General=%s configuredAlias=%s", async (absolute, general, configuredAlias) => {
     const f = fixture();
-    if (general) {
-      f.workspace = join(f.stateDir, "general"); f.instance = "general";
-      mkdirSync(f.workspace); f.effect(join(f.workspace, "web-effects/demo"));
-      writeFileSync(join(f.stateDir, "fleet.yaml"), JSON.stringify({ instances: { general: { working_directory: f.workspace } } }));
+    const folder = configuredAlias ? "effect" : "web-effects/demo";
+    if (general || configuredAlias) {
+      f.workspace = join(f.stateDir, configuredAlias ? "workspaces/alpha-home" : "general"); f.instance = configuredAlias ? "alpha" : "general";
+      mkdirSync(f.workspace, { recursive: true }); f.effect(join(f.workspace, folder));
+      writeFileSync(join(f.stateDir, "fleet.yaml"), JSON.stringify({ instances: { [f.instance]: { working_directory: f.workspace } } }));
     }
     const { createServer } = await import("node:http");
     const { execFile } = await import("node:child_process");
@@ -137,11 +138,11 @@ describe("#2025 CLI effect upload", () => {
       }, (err, stdout, stderr) => r({ code: err ? 1 : 0, out: stdout + stderr }));
     });
     try {
-      const reply = await run(absolute ? join(f.workspace, "web-effects/demo") : "web-effects/demo");
+      const reply = await run(absolute ? join(f.workspace, folder) : folder);
       expect(reply.code).toBe(0); expect(JSON.parse(reply.out)).toEqual({ id, files: ["effect.json", "worker.js"] });
       expect(posts).toHaveLength(1); expect(posts[0]!.op).toBe("effect-upload");
       expect(Object.keys(posts[0]!.args).sort()).toEqual(["data_b64", "part"]);
-      expect((await run("web-effects/demo", "other")).code).toBe(1);
+      expect((await run(folder, "other")).code).toBe(1);
       expect(posts).toHaveLength(1);
     } finally { await new Promise<void>(r => server.close(() => r())); }
   }, 60000);

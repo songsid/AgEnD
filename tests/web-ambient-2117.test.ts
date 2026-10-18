@@ -699,8 +699,8 @@ describe("the wiring", () => {
 });
 
 describe("the page: the one-time reduced-motion note", () => {
-  async function mountNote(storage: Record<string, string>, reduce: boolean, withAmbient = true) {
-    const env = await pageLoad({ storage, reduce });
+  async function mountNote(storage: Record<string, string>, reduce: boolean, withAmbient = true, url?: string) {
+    const env = await pageLoad({ storage, reduce, ...(url ? { url } : {}) });
     const { P, themes, amb } = env;
     themes.themesStore.set({ ambient: withAmbient ? { alpha: { loop: { spec: spec(PETALS), by: "agent" } } } : {} });
     const pre = await import("/assets/preact.module.js");
@@ -742,5 +742,46 @@ describe("the page: the one-time reduced-motion note", () => {
     fire(m.note().querySelector(".amb-note-x"), "click", { bubbles: true });
     await settle(2);
     expect(m.note()).toBeNull();
+  });
+});
+
+describe("the note and the ⋯ line, the cases Fable's #2124 R2 review left open", () => {
+  it("never while nothing is drawn: the show switch off or ?safe=1 with reduced motion asked — no note, and the one-time flag is kept", async () => {
+    for (const [storage, url] of [[{ agend_fx_show: "off" }, undefined], [{}, "http://127.0.0.1:19280/ui/chat/alpha?safe=1"]] as const) {
+      const env = await pageLoad({ storage: { ...storage }, reduce: true, ...(url ? { url } : {}) });
+      env.themes.themesStore.set({ ambient: { alpha: { loop: { spec: spec(PETALS), by: "agent" } } } });
+      const pre = await import("/assets/preact.module.js");
+      pre.render(env.P.h("div", { class: "chat-main" }, env.P.h(env.amb.AmbientMotionNote, { name: "alpha" })), pg!.root); await settle(4);
+      expect(pg!.root.querySelector(".amb-note"), JSON.stringify([storage, url])).toBeNull();
+      expect(pg!.storage.has("agend_fx_motion_note_seen"), "the one-time flag is not spent").toBe(false);
+    }
+  });
+  it("an open note goes away when the ambient is cleared, or becomes hidden", async () => {
+    const cleared = await (async () => {
+      const env = await pageLoad({ reduce: true });
+      env.themes.themesStore.set({ ambient: { alpha: { loop: { spec: spec(PETALS), by: "agent" } } } });
+      const pre = await import("/assets/preact.module.js");
+      pre.render(env.P.h("div", { class: "chat-main" }, env.P.h(env.amb.AmbientMotionNote, { name: "alpha" })), pg!.root); await settle(4);
+      expect(pg!.root.querySelector(".amb-note")).not.toBeNull();
+      env.themes.themesStore.set({ ambient: {} }); await settle(4);
+      return pg!.root.querySelector(".amb-note");
+    })();
+    expect(cleared, "cleared").toBeNull();
+    const env = await pageLoad({ reduce: true });
+    env.themes.themesStore.set({ ambient: { alpha: { loop: { spec: spec(PETALS), by: "agent" } } } });
+    const pre = await import("/assets/preact.module.js");
+    pre.render(env.P.h("div", { class: "chat-main" }, env.P.h(env.amb.AmbientMotionNote, { name: "alpha" })), pg!.root); await settle(4);
+    expect(pg!.root.querySelector(".amb-note")).not.toBeNull();
+    env.themes.setThemesShown(false); await settle(4);
+    expect(pg!.root.querySelector(".amb-note"), "hidden by the show switch").toBeNull();
+  });
+  it("?safe=1: the ⋯ line names safe mode and choosing it leaves safe mode (the same URL without safe)", async () => {
+    const env = await pageLoad({ url: "http://127.0.0.1:19280/ui/chat/alpha?safe=1&x=2" });
+    env.themes.themesStore.set({ ambient: { alpha: { loop: { spec: spec(PETALS), by: "agent" } } } });
+    const [line] = env.amb.ambientMenuItems("alpha", { publicLink: false, clear: vi.fn() });
+    expect([line.key, line.label]).toEqual(["ambient-blocked", expect.stringContaining("safe mode")]);
+    line.onSelect();
+    const went = new URL((globalThis as any).location.assigned);
+    expect([went.pathname, went.searchParams.has("safe"), went.searchParams.get("x")]).toEqual(["/ui/chat/alpha", false, "2"]);
   });
 });

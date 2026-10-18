@@ -38,7 +38,7 @@ const text = () => p!.root.textContent;
 const change = async (key: string, value: string) => { const el = $(`[data-owner-slot="${key}"]`); el.value = value; el.dispatchEvent(new MiniEvent("change", { bubbles: true })); await ticks(); };
 function runtime() {
   const listeners = new Set<any>(), ends = new Set<any>(), snapshot: any = { slots: empty(), rows: [{ id: A, slot: "fx.page", phase: "running", verdict: "active", reason: null }] };
-  const entry: any = { dead: false, gates: () => ({ enabled: true, show: true, previewReady: true, optIn: true }), subscribe: (fn: any) => { listeners.add(fn); return () => listeners.delete(fn); }, onEnd: (fn: any) => { ends.add(fn); return () => ends.delete(fn); } };
+  const entry: any = { dead: false, gates: () => ({ enabled: true, show: true, transportReady: true, optIn: true }), subscribe: (fn: any) => { listeners.add(fn); return () => listeners.delete(fn); }, onEnd: (fn: any) => { ends.add(fn); return () => ends.delete(fn); } };
   entry.api = { ownerSnapshot: () => snapshot, changedOwner: vi.fn(), pauseOwner: vi.fn((key: string) => { snapshot.rows[0].reason = "paused"; for (const fn of [...listeners]) fn(); return key === "fx.page"; }), resumeOwner: vi.fn((_key: string) => true) }; fx.entry = entry;
   return { entry, snapshot, listeners, ends, changed() { for (const fn of [...listeners]) fn(); } };
 }
@@ -78,7 +78,7 @@ describe("owner effect selectors", () => {
   });
   it("shows five choices, platform scope and playback gates; saves only exact id and epoch", async () => {
     await mount(); expect(p!.root.querySelectorAll("[data-owner-slot]")).toHaveLength(5);
-    expect(text()).toContain("Follows your sign-in; Discord and Telegram are separate."); expect(text()).toContain("Plays once Effects and previews are allowed.");
+    expect(text()).toContain("Follows your sign-in; Discord and Telegram are separate."); expect(text()).toContain("Effects don't require HTML-preview permission.");
     await change("fx.page", A);
     const posts = calls.filter(c => c.init.method === "POST"); expect(posts).toHaveLength(1);
     expect(JSON.parse(posts[0]!.init.body)).toEqual({ set: { "fx.page": A }, ownerEpoch: E });
@@ -91,6 +91,7 @@ describe("owner effect selectors", () => {
     (await import("/assets/app-i18n.js")).setLang("zh-TW", { store: false });
     (await import("/assets/owner-effect-prefs.js")).ownerEffectsStore.set({ scope: "operator" }); await ticks();
     expect(text()).toContain("所有以主機身分登入的人共用。");
+    expect(text()).toContain("效果不需要 HTML 預覽權限。");
   });
   it("unavailable choices retain their id, show a clear action and clear only by explicit click", async () => {
     await mount({ slots: { ...empty(), "fx.page": { status: "unavailable", id: B } }, lang: "zh-TW" });

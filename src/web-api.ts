@@ -248,6 +248,7 @@ export interface WebApiContext {
   /** Current owned pane reader shared with status; absent means context is unavailable. */
   getPaneContextSource?(name: string): PaneContextSource | null;
   /** #1306: which preview origin this /ui load may frame (Host and the TLS signal only); absent: previews off. */
+  readonly effectBoot?: string;
   previewForUi?(hostHeader: string | undefined, secure: boolean): PreviewAvailability & { boot: string | null };
   /** #1723: the same for a page of the public link (exposure `exposureId`, at `dashboardOrigin`); absent: none there. */
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
@@ -571,13 +572,19 @@ function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   const reading = method === "GET";
   // Reports are bounded untrusted diagnostics, not an appearance or admission write (r2 §6).
   const profilePost = method === "POST" && /^\/ui\/effects\/profile\/[0-9a-f]{32}$/.test(path);
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "effects_not_over_public_link" }); return true; }
-  const who = (): { person: string; canWrite: boolean; epoch: string } | { status: number; error: string } => {
+  const gateway = gatewayRequestContext(req), guest = guestRequestOf(req);
+  const instanceQuery = url.searchParams.get("instance"), keys = [...url.searchParams.keys()];
+  const chatRead = reading && (path === "/ui/effects/placements" || /^\/ui\/effects\/resource\/[0-9a-f]{32}$/.test(path))
+    && keys.length === 2 && keys.includes("instance") && keys.includes("ownerEpoch") && !!instanceQuery && instanceQuery.length <= 128;
+  // Public viewing grants current Chat reads, never ordinary library/owner/Trial access or writes.
+  if (gateway && (!chatRead || !gateway.isCurrent())) { json(res, reading ? 404 : 403, { error: "effects_not_over_public_link" }); return true; }
+  const who = (): { person: string; canWrite: boolean; epoch: string; guest: boolean } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
     if (verdict.via !== "session" || !verdict.session) return { status: 403, error: "effects_need_a_signed_in_person" };
     if (!reading && !profilePost && verdict.session.tier !== "admin") return { status: 403, error: "effects_read_only" };
-    return { person: webPersonKey(verdict.session.owner), canWrite: verdict.session.tier === "admin", epoch: verdict.session.handle };
+    if (verdict.session.tier === "guest" && (!chatRead || !guest || !guest.current() || !guest.scope().has(instanceQuery!))) return { status: 404, error: "not_found" };
+    return { person: webPersonKey(verdict.session.owner), canWrite: verdict.session.tier === "admin", epoch: verdict.session.handle, guest: verdict.session.tier === "guest" };
   };
   const first = who(); if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
   const service = ctx.effectService; if (!service) { json(res, 404, { error: "effects_unavailable" }); return true; }
@@ -601,8 +608,8 @@ function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
     }
     if (path === "/ui/effects") answer({ ...service.list(first.person), canWrite: first.canWrite });
     else if (path === "/ui/effects/owner" && instance === undefined && slot === null) answer(service.ownerSelections(first.person));
-    else if (path === "/ui/effects/placements" && instance !== undefined) answer(service.placements(first.person, instance));
-    else if (idPath?.[1] === "resource") answer(slot === null ? service.resource(first.person, idPath[2]!, instance) : service.ownerResource(first.person, idPath[2]!, slot));
+    else if (path === "/ui/effects/placements" && instance !== undefined) answer(service.placements(first.person, instance, !!gateway || first.guest));
+    else if (idPath?.[1] === "resource") answer(slot === null ? service.resource(first.person, idPath[2]!, instance, !!gateway || first.guest) : service.ownerResource(first.person, idPath[2]!, slot));
     else if (idPath?.[1] === "profile" && instance === undefined) answer(service.profile(first.person, idPath[2]!));
     else json(res, 404, { error: "not_found" });
     return true;
@@ -2377,6 +2384,8 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
 export type PublicPreviewForUi = PreviewAvailability & { boot: string | null; frameSrc: string | null; detail?: string };
 
 export interface AppShellContext {
+  /** #2118: independent trusted opaque effect document, never HTML-preview consent or listener state. */
+  readonly effectBoot?: string;
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
   /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
@@ -2496,23 +2505,31 @@ function shellHtmlTag(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVie
  * the public link, the anonymous View reader, the CLI's header token or the sign-in and setup pages (other panels).
  */
 function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string | null {
-  return mode === "full" && viewer?.person !== null && viewer?.person !== undefined && ctx.ownerCss ? ctx.ownerCss.active(viewer.person) : null;
+  return mode === "full" && !viewer?.guest && viewer?.person !== null && viewer?.person !== undefined && ctx.ownerCss ? ctx.ownerCss.active(viewer.person) : null;
 }
 
 function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: string | null | undefined) => string): string {
   const badge = ctx.guestBadge?.(owner);
   return ` data-tier="guest"${badge ? ` data-guest-name="${attr(badge.name)}" data-guest-platform="${attr(badge.platform)}"` : ""}`;
 }
+/** A separate session fence for Chat playback: public/guest viewers acquire no owner-pref identity. */
+function shellEffect(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode): { boot: string; epoch: string; scope: "owner" | "chat" } | null {
+  if (mode !== "full" || typeof ctx.effectBoot !== "string" || !/^[0-9a-f]{32}$/.test(ctx.effectBoot)) return null;
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  if (v.kind !== "allow" || v.via !== "session" || !v.session || !/^[a-f0-9]{16}$/.test(v.session.handle)) return null;
+  return { boot: ctx.effectBoot, epoch: v.session.handle, scope: gatewayRequestContext(req) || v.session.tier === "guest" ? "chat" : "owner" };
+}
 function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   const p = shellPreview(req, ctx, mode);
-  const ownerCss = shellOwnerCss(ctx, mode, viewer);
-  let ownerCssState: "off" | "on" | "unknown" = "unknown";
-  if (mode === "full" && viewer?.person != null && ctx.ownerCss) {
+  const ownerCss = shellOwnerCss(ctx, mode, viewer), effect = shellEffect(req, ctx, mode);
+  let ownerCssState: "off" | "on" | "unknown" = mode === "full" && (gatewayRequestContext(req) || viewer?.guest) ? "off" : "unknown";
+  if (mode === "full" && !viewer?.guest && viewer?.person != null && ctx.ownerCss) {
     ownerCssState = ctx.ownerCss.effectState(viewer.person);
     if (ownerCssState === "off" && ownerCss !== null || ownerCssState === "on" && ownerCss === null) ownerCssState = "unknown";
   }
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
   return `<body data-mode="${mode}"${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
+    + `${effect ? ` data-effect-boot="${effect.boot}" data-effect-epoch="${effect.epoch}" data-effect-scope="${effect.scope}"` : ""}`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
     // #1554: no availability asked (the public link, or not the full app) still says why, in the page's language.
     + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`
@@ -2548,8 +2565,11 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     const mediaSrc = own ? `${own}/ui/file/` : "'none'";
     // A public-link page frames what its exposure's preview names (the quick-tunnel wildcard: its host is not known when
     // the page may load); every other page frames exactly the origin this load chose (#1723).
-    const frameSrc = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin
-      ? `${p.previewOrigin}/frame${mode === "full" && !gatewayRequestContext(req) ? ` ${p.previewOrigin}/effect` : ""}` : null;
+    const previewFrames = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin ? `${p.previewOrigin}/frame` : null;
+    // This fixed trusted document is independent of HTML preview. Its own response confines all Worker execution.
+    const effectOrigin = gatewayRequestContext(req)?.expectedOrigin ?? dashboardOriginFor(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req));
+    const effectFrame = shellEffect(req, ctx, mode) && effectOrigin ? `${effectOrigin}/effect-bootstrap` : null;
+    const frameSrc = [previewFrames, effectFrame].filter(Boolean).join(" ");
     sendPanelHtml(res, html.replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });

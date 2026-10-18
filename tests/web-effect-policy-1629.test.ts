@@ -4,7 +4,7 @@ import { EFFECT_SIGNAL_CHECK } from "../src/web-effect-worker.js";
 const P = await import(new URL("../src/ui/shared/effect-policy.js", import.meta.url).href);
 const workerSignal = new Function(EFFECT_SIGNAL_CHECK + ";return signal;")();
 const now = 123;
-const ctx = (patch = {}) => ({ enabled:true, show:true, previewReady:true, optIn:true, safe:false, publicLink:false, hidden:false, reducedMotion:false, saveData:false, constrained:false, openInstance:"own", modal:false, ...patch });
+const ctx = (patch = {}) => ({ enabled:true, show:true, transportReady:true, safe:false, publicLink:false, hidden:false, reducedMotion:false, saveData:false, constrained:false, openInstance:"own", modal:false, ...patch });
 const descriptor = (key: string, patch = {}) => ({ key, id:"a".repeat(32), by:"agent", region:"chat", layer:"behind", instance:"own", order:0, visible:true, paused:false, ...patch });
 const frame = {x:100,y:200,width:500,height:400};
 const samples: Record<string,Record<string,unknown>> = {
@@ -76,8 +76,8 @@ describe("#1629 global frame allocation",()=>{
     expect(P.allocateEffectFrames(ds,ctx({constrained:true})).find((r:{verdict:string})=>r.verdict==="active").key).toBe("page");
   });
   it.each([
-    [{safe:true},"safe_mode"],[{publicLink:true},"public_link"],[{reducedMotion:true},"reduced_motion"],[{saveData:true},"save_data"],
-    [{hidden:true},"hidden"],[{enabled:false},"unsupported_host"],[{show:false},"disabled"],[{optIn:false},"preview_not_consented"],[{previewReady:false},"preview_unavailable"],
+    [{safe:true},"safe_mode"],[{reducedMotion:true},"reduced_motion"],[{saveData:true},"save_data"],
+    [{hidden:true},"hidden"],[{enabled:false},"unsupported_host"],[{show:false},"disabled"],[{transportReady:false},"transport_unavailable"],
   ])("doesn't reserve frames for global refusal %o",(patch,reason)=>{
     expect(P.allocateEffectFrames([descriptor("a")],ctx(patch))[0]).toEqual({key:"a",verdict:"off",reason,queuePos:null});
   });
@@ -124,7 +124,7 @@ describe("#1629 unioned trust geometry",()=>{
 it("requires a known host binding and every current page gate",()=>{
   const env=P.effectEvent("env",samples.env,null,now);
   expect(P.maySendEffectEvent(env,{wants:[]})).toBe(false);
-  for(const k of ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "previewReady", "optIn", "constrained", "modal"]){
+  for(const k of ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "transportReady", "constrained", "modal"]){
     expect(P.allocateEffectFrames([descriptor("a")],ctx({[k]:undefined}))[0]).toMatchObject({verdict:"off",reason:"unknown"});
   }
   expect(P.allocateEffectFrames([descriptor("a",{paused:undefined})],ctx())[0]).toMatchObject({verdict:"off",reason:"unknown"});
@@ -158,4 +158,11 @@ describe("#1629 final independent scope and boundary controls",()=>{
   class Rect { x=0;y=0;width=10;height=10; }
   expect(P.effectTrustClip(frame,[new Rect()]).ok).toBe(false);
  });
+});
+
+
+it("#2118 public viewing and HTML-preview opt-out admit only current Chat, never human personal/Trial scope",()=>{
+  expect(P.allocateEffectFrames([descriptor("a")],ctx({publicLink:true,optIn:false}))[0]).toMatchObject({verdict:"active",reason:null});
+  const other=P.allocateEffectFrames([descriptor("page",{by:"human",region:"page"}),descriptor("other",{instance:"peer"})],ctx({publicLink:true}));
+  expect(other.map((r:any)=>r.reason)).toEqual(["public_link","closed_chat"]);
 });

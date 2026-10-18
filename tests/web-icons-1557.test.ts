@@ -62,7 +62,7 @@ function publicDispatcher(d: ReturnType<typeof dispatcher>) {
 
 /** #1589: the app shell narrows media to this listener's file route (`<origin>/ui/file/`), or to nothing ('none') on
  *  the public link and the view-only page; other pages carry no media-src. Nothing else in the policy changes. */
-function assertLinks(h: ReturnType<typeof exchange>, media?: string) {
+function assertLinks(h: ReturnType<typeof exchange>, media?: string, frame?: string) {
   expect(h.headers["content-type"]).toBe("text/html; charset=utf-8");
   expect(h.text()).toContain('<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 64x64">');
   expect(h.text()).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">');
@@ -70,7 +70,7 @@ function assertLinks(h: ReturnType<typeof exchange>, media?: string) {
   const csp = String(h.headers["content-security-policy"]).replace(/'nonce-[^']+'/g, "'nonce-fixture'");
   expect(csp).toBe(BASE_CSP.replace("script-src 'self'", "script-src 'self' 'nonce-fixture'")
     .replace("style-src 'self'", "style-src 'self' 'nonce-fixture'")
-    + (media ? `; media-src ${media}` : ""));
+    + (frame ? `; frame-src ${frame}` : "") + (media ? `; media-src ${media}` : ""));
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -139,7 +139,7 @@ describe("Silver Ag dashboard icons", () => {
     const d = dispatcher(), g = publicDispatcher(d);
     const session = d.sessions.create({ tier: "admin", surface: "gateway", exposureId: exposure, label: "fixture", tokenEpoch: tokenEpoch(token) });
     const h = exchange(path, "GET", { host, cookie: `__Host-agend_session=${session.sessionId}` });
-    g.dispatch(h); expect(h.status()).toBe(200); assertLinks(h, path === "/signin" ? undefined : "'none'");
+    g.dispatch(h); expect(h.status()).toBe(200); assertLinks(h, path === "/signin" ? undefined : "'none'", path === "/signin" ? undefined : `https://${host}/effect-bootstrap`);
     if (path !== "/signin") expect(h.text()).toContain('data-web-transport="poll"');
     const anonymous = exchange(path, "GET", { host, accept: "text/html" }); g.dispatch(anonymous);
     expect(anonymous.status()).toBe(path === "/signin" ? 200 : 401); assertLinks(anonymous);

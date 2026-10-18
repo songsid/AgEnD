@@ -5,7 +5,7 @@
  * - Propose: checked whole; anything carrying custom CSS is refused by the path it came in by (owner_css_not_from_agent),
  *   also when a stored proposal is opened; it counts as an upload; the fleet switch and a lock refuse it; one per agent.
  *   A person opens it into the usual review; once installed (or dismissed) it is gone.
- * - Wiring: no target in either schema, worker and standard profiles only, IPC and agent-endpoint ops, the real Daemon
+ * - Wiring: no target in either schema, worker, standard and general profiles (#2132), IPC and agent-endpoint ops, the real Daemon
  *   branch (parts both ways, every IPC message < 1 MiB), `agend-agent mod export|propose`.
  */
 import { createHash, randomBytes } from "node:crypto";
@@ -331,12 +331,12 @@ describe("proposals: leftovers and bookkeeping (#1906 review)", () => {
 });
 
 describe("wiring", () => {
-  it("no target in either schema; worker and standard profiles only; IPC and endpoint ops", async () => {
+  it("no target in either schema; worker, standard and general profiles (#2132); IPC and endpoint ops", async () => {
     const schemas = await import("../src/outbound-schemas.js");
     const perms = await import("../src/tool-permissions.js");
     for (const s of [schemas.ExportWebModArgs, schemas.ProposeWebModArgs]) expect(Object.keys(s.shape).filter(k => /instance|target/.test(k))).toEqual([]);
     for (const tool of ["export_web_mod", "propose_web_mod"]) {
-      expect([perms.TOOL_PROFILES.worker.includes(tool), perms.TOOL_PROFILES.standard.includes(tool), perms.TOOL_PROFILES.general.includes(tool)], tool).toEqual([true, true, false]);
+      expect([perms.TOOL_PROFILES.worker.includes(tool), perms.TOOL_PROFILES.standard.includes(tool), perms.TOOL_PROFILES.general.includes(tool)], tool).toEqual([true, true, true]);
       expect(Object.values(perms.IPC_TYPE_TOOLS)).toContain(tool);
       expect(Object.values(perms.EARLY_AGENT_OP_TOOLS)).toContain(tool);
     }

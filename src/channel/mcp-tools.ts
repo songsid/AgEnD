@@ -174,7 +174,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["list_web_effects", schemas.ListWebEffectsArgs,
     "List your own effects and human-shared effects, their declarations, byte sizes, recorded profiles and closed recent blocked reasons for effects placed in your own chat. No viewer identities or counts; absence of reports means unknown. No target."],
   ["preview_web_effect", schemas.PreviewWebEffectArgs,
-    "Offer a Try card for an effect you can read, in your own chat: only a signed-in local admin's click starts a clipped sample, never you. Nothing is applied or saved; the offer lasts up to 10 minutes (offering the same effect again keeps it, a different one replaces it). Returns { id, status: \"offered\", expiresAt }, or not_found / trial_unavailable. It never launches a browser for you."],
+    "Offer a Try card for an effect you can read, in your own chat: only an admin signed in outside the public link can click to start a clipped sample, never you. Nothing is applied or saved; the offer lasts up to 10 minutes (offering the same effect again keeps it, a different one replaces it). Returns { id, status: \"offered\", expiresAt }, or not_found / trial_unavailable. It never launches a browser for you."],
   ["profile_web_effect", schemas.ProfileWebEffectArgs,
     "Read how an effect you can read ran on viewers' pages, per device class: { status: \"unmeasured\" | \"reported\", records } with a verdict (ok, degraded, paused, off) and a reason. No measurement means unknown, never free or healthy."],
   ["apply_web_effect", schemas.ApplyWebEffectArgs,

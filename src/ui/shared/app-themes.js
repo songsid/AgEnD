@@ -33,14 +33,15 @@ function labelOk(s) {
   return n >= 1 && n <= 24;
 }
 
-// Public sessions cannot write host prefs. Keep their explicit switch apart from boot-cached host defaults.
+// Public/guest sessions cannot write host prefs. Keep their explicit browser switch apart from boot-cached defaults.
+// Keep the existing public key for compatibility; both read-only viewer surfaces share this device choice.
 const PUBLIC_FX_SHOW = "agend_public_fx_show";
 let publicFxChoice = (() => { try { const v = localStorage.getItem(PUBLIC_FX_SHOW); return v === "on" ? true : v === "off" ? false : null; } catch { return null; } })();
 
 /** Whether this page shows agents' themes now: the viewer's switch (default on), and never in safe mode. */
 export function themesShown() {
   if (safeMode()) return false;
-  if (publicLink() && publicFxChoice !== null) return publicFxChoice;
+  if (localAppearanceViewer() && publicFxChoice !== null) return publicFxChoice;
   try {
     const f = prefInForce("fx.show");                       // this page's choice, else the host's, else the default
     if (f) return f.value !== false;
@@ -49,7 +50,7 @@ export function themesShown() {
 }
 /** The viewer's switch (Settings → Appearance): kept with the person's preferences, and in force on this page at once. */
 export function setThemesShown(on) {
-  if (publicLink()) {
+  if (localAppearanceViewer()) {
     publicFxChoice = !!on;
     try { localStorage.setItem(PUBLIC_FX_SHOW, on ? "on" : "off"); } catch { /* the in-memory choice still applies */ }
   } else savePref("fx.show", on ? null : false);
@@ -148,6 +149,7 @@ export function startThemes() {
 }
 
 const publicLink = () => typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
+const localAppearanceViewer = () => publicLink() || typeof document !== "undefined" && document.body?.dataset.tier === "guest";
 
 /** A person's Reset or Lock of an agent's theme (an admin session; never over the public link). */
 async function themeAction(name, what, body) {

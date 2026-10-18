@@ -55,7 +55,8 @@ days). The code arrives by DM. Limits: one a minute and five an hour per browser
 `trycloudflare.com`), default 120 minutes (`web.public_link.ttl_minutes`, at most 480; `protocol` http2/quic/auto).
 Close it with **Close public link** → **Close link (signs public browsers out)**, `/web revoke`, or let it expire.
 A public link is limited on purpose: no live stream (the page polls), no custom CSS, and Settings → Web, appearance,
-mods, effects, schedule edits and preference writes are refused. HTML previews work over it through a second tunnel
+mods, effect-library/personal-selection management, schedule edits and preference writes are refused. Current in-scope
+Chat effect metadata/code reads are allowed, with session/epoch/exposure checks; the public viewer’s show switch is browser-local. HTML previews work over it through a second tunnel
 of their own (`web.preview_on_public_link`, default on).
 
 **Sessions.**
@@ -352,7 +353,8 @@ For an agent changing its *own* look, the `web-appearance` skill has the tools a
 Settings → **Web appearance**, card by card:
 - **Agents' themes** — **Show agents' themes, effects and widgets**; off, every chat looks the same and pictures and
   ring colours fall back to the bots' own (all devices). **Effects: follow the system's reduced-motion setting** (this
-  device only, off by default): on, agents' effects stay still while the system asks for reduced motion.
+  device only, off by default): on, ambient effects stay still while the system asks for reduced motion.
+  Canvas Worker effects currently still pause whenever the system asks for reduced motion.
 - **Ambient effects** — an agent's falling petals, snow, rising lanterns, twinkles or stars on a click, drawn behind
   its chat by the dashboard (data only, no consent needed). They show by default, the public link too; the chat's ⋯
   menu says why one is not showing (choosing the line fixes it there) and offers **Clear the ambient effect** /
@@ -374,12 +376,17 @@ Settings → **Web appearance**, card by card:
   Uninstalling removes the mod, not what it applied.
 - **Effects** — the effect library (upload a folder with `effect.json` and `worker.js`, up to 1 MiB), save one for a
   chat, share your copy; **Your effect choices** for Sidebar / Header / Page / Box (each with Pause / Resume and
-  Clear) and a Cursor (its state, and Clear). Placed and saved effects play only with the HTML-preview consent
-  (**Allow HTML previews**); a Try sample is different — a local admin's click on its card consents to that one
-  sample only, with no global opt-in. A blocked chat placement keeps a notice with its exact local reason; missing
-  preview consent links to **Settings → Device**, the show/custom-CSS switches to **Web appearance**, and a missing
-  preview service to **Web**. The Effects dialog also names calibration, safety and unknown raw codes. Unknown
-  codes stay local; agents get only closed recent blocked reasons without viewer identities or counts.
+  Clear) and a Cursor (its state, and Clear). CW uses the dashboard's opaque isolated document, independently of
+  **Allow HTML previews**, its listener and port. Signed-in public/guest viewers can play current effects in chats they
+  may see, without library, personal-slot, Trial or profile grants. Their Chat header offers a browser-local show/off
+  switch and recovery, on desktop and phone; it never changes host preferences. A Try sample starts on a signed-in non-public admin's
+  click, with no extra consent. The show switch, safe mode, hidden tab, browser support, system reduced motion,
+  data-saver and two-second frame-rate baseline still apply; changing motion/baseline policy is a separate follow-up.
+  A blocked placement keeps an exact named notice. On ordinary dashboard sessions, Show/custom-CSS actions open
+  **Web appearance**. Public/guest Show-off has **Turn effects on here**; a guest CSS refusal offers Reload.
+  An unavailable
+  isolated transport offers Reload, never an HTML-preview setup step. The dialog names calibration, safety and raw
+  unknown codes. Codes stay local; agents get only closed recent blocked reasons without viewer identifiers or counts.
 - **Identity card upload limits** — portrait and banner size limits and per-agent picture quota
   (`web.appearance.*`); lowering applies at once, raising waits for an admin.
 - **Restore defaults** — resets this host's appearance settings (it lists what it resets first).

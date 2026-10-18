@@ -1316,7 +1316,7 @@ The backend now keeps five owner effect selections (`fx.sidebar`, `fx.header`, `
 the signed-in web identity. Discord and Telegram identities stay separate; accounts are not merged. A web-only
 `agend web --code` sign-in uses a **host-wide operator** bucket shared by everyone signing in as that operator.
 Header tokens cannot read or write these five keys. Existing visible preferences remain host-wide, without migration;
-profile and custom-CSS internal identity rules are unchanged. Settings → Web appearance offers the five selectors. With effects and preview consent enabled, page/header/sidebar/box choices play across the supported stock panels in the same pool as Chat, with slot-specific Pause/Resume and unavailable/Clear controls. The cursor choice applies a static host PNG after the same consent, preserves explicit pointer/text/resize cursors and falls back while dragging or when unavailable. It runs no Worker code and consumes no frame slot.
+profile and custom-CSS internal identity rules are unchanged. Settings → Web appearance offers the five selectors. With effects enabled, without HTML-preview consent or its listener, page/header/sidebar/box choices play across the supported stock panels in the same pool as Chat, with slot-specific Pause/Resume and unavailable/Clear controls. The cursor choice applies a static host PNG without HTML-preview consent, preserves explicit pointer/text/resize cursors and falls back while dragging or when unavailable. It runs no Worker code and consumes no frame slot.
 
 Unsharing an effect revokes subsequent resource authorization for someone else's personal selection, including its
 cursor image. The saved choice remains as unavailable until cleared, retaining its blob reference. This is stricter
@@ -1325,23 +1325,29 @@ effect placed there. A reference never grants sharing or export authority. Unrea
 personal effect and prevent collection. Playback independently rechecks stock trust/paint ordering;
 agent front effects stay paused while custom CSS is active, loading or unknown (human placements keep their exemption).
 
-Menus, dialogs, Keep/tour notices and focused inputs suppress all foreground effects. Behind effects still require
+Menus, dialogs and Keep/tour notices suppress foreground effects. Editable focus stops pointer signals, not unrelated drawing; protected controls remain clipped out, and keyboard events never reach a Worker. Behind effects still require
 proven stock ordering; human placements do not bypass those gates. The Chat foreground status links to Appearance
 to show the custom-CSS setting. See the [2.3 preview](whats-new-2.3.md); a trusted foreground plane is
 a later 2.3.x follow-up (#1940).
 
 ### Chat effects and static posters (2.3 beta)
 
-Local signed-in Chat plays its placed Canvas Worker effects only after preview opt-in and current safety/stock checks;
-More → Effects offers Pause, Resume and authorized Remove. If preview is unavailable, consent is missing, motion/data
-settings prevent playback or the page is a public link, a placement's static poster can appear behind content instead.
-No poster means no image; safe mode, the show switch and unknown stock ordering refuse poster paint. Public links
-receive no Worker code or playback controls. Their explicit show choice stays in this browser and survives a reload,
-without changing the host default. Explicit Pause/queued effects and failed live reads are not replaced by this fallback.
-Personal page/header/sidebar/box choices use that same pool. The personal cursor uses a bounded host image in the same app session.
+Signed-in Chat uses an opaque isolated bootstrap on the dashboard listener, without HTML-preview consent, a separate
+preview port or a localhost requirement. Signed-in public/guest viewers can play current placements in chats they may
+see; reads recheck their session/epoch, exposure and the exact placement. Library management, personal choices, private
+images, Trial and profile routes remain closed to them. Public/guest Chat headers provide a browser-local show/off
+switch and recovery on desktop and phone, without changing host settings. Other dashboard sessions use More → Effects
+for local Pause/Resume and authorized Remove.
+
+The show switch, safe mode, hidden tabs, browser support, system reduced motion, data saver and the two-second empty-page
+frame-rate baseline still apply. Motion/baseline changes are a separate #2118 follow-up. A poster can appear behind content
+when Worker/transport support or motion/data settings prevent playback; no poster means no image. Public/guest viewers' show
+choice stays in their browser and never changes host defaults. Safe mode, Show off and unknown stock ordering hide posters;
+manual Pause, queues and failed live reads do not select fallback. Personal page/header/sidebar/box effects use the same pool;
+the personal cursor uses a bounded static host image.
 
 `preview_web_effect({id})` offers a volatile card in the agent's own web chat, using current own/shared read access. It makes no appearance write. Try is an admin-initiated sample inside a physically clipped host panel or sheet. Only an
-explicit click by a signed-in local admin may start it, with a visible Trial label and Stop control. Public links,
+explicit click by a signed-in admin on the non-public dashboard (not limited to localhost) may start it, with a visible Trial label and Stop control. Public links,
 agents and header tokens cannot start it. Closing the panel, navigating, window blur or another menu/dialog stops
 it. That click supplies consent for this sample without enabling global HTML previews. Host controls and the clipped
 stage use a closed Shadow DOM with fixed styles and reset inherited typography; custom CSS stays active elsewhere.

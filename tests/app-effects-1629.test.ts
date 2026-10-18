@@ -11,7 +11,7 @@ const env = vi.hoisted(() => {
 vi.mock("/assets/app-store.js", () => ({ appStore: env.app }));
 vi.mock("/assets/app-nav.js", () => ({ navStore: env.nav }));
 vi.mock("/assets/app-prefs.js", () => ({ onPrefsChanged: (fn: any) => { env.prefs.add(fn); return () => env.prefs.delete(fn); }, prefInForce: (key: string) => ({ value: env.values[key] }) }));
-vi.mock("/assets/app-themes.js", () => ({ resolvedMode: () => env.mode, themesStore: env.themes }));
+vi.mock("/assets/app-themes.js", () => ({ resolvedMode: () => env.mode, themesShown: () => env.values["fx.show"] !== false, themesStore: env.themes }));
 vi.mock("/assets/owner-css.js", () => ({ safeMode: () => env.safe, ownerCssLifecycle: env.css }));
 function target(extra: any = {}) {
   const listeners = new Map<string, Set<any>>();
@@ -19,10 +19,10 @@ function target(extra: any = {}) {
 }
 async function rig(prepare: (h: any) => void = () => {}) {
   const { startAppEffects, getAppEffects } = await import(new URL("../src/ui/app-effects.js", import.meta.url).href);
-  const doc = target({ body: { dataset: { mode: "full" } }, documentElement: { getAttribute: () => JSON.stringify({ ownerScope: "person", ownerEpoch: "e".repeat(16) }) }, visibilityState: "visible", querySelector: () => null });
+  const doc = target({ body: { dataset: { mode: "full", effectScope: "owner", effectEpoch: "e".repeat(16), effectBoot: "a".repeat(32) } }, documentElement: { getAttribute: () => JSON.stringify({ ownerScope: "person", ownerEpoch: "e".repeat(16) }) }, visibilityState: "visible", querySelector: () => null, querySelectorAll: () => [] });
   const media = target({ matches: false }), coarse = target({ matches: false }), preview = { availability: () => ({ ok: true }), optedIn: () => true, never: () => false, onChange: vi.fn(() => vi.fn()) };
   const observer: any = { observe: vi.fn(), disconnect: vi.fn() };
-  const host: any = target({ document: doc, AgendAuth: { onSessionEnd: vi.fn(), sessionEnded: () => false }, AgendPreview: preview,
+  const host: any = target({ document: doc, location: { origin: "http://localhost" }, AgendAuth: { onSessionEnd: vi.fn(), sessionEnded: () => false }, AgendPreview: preview,
     navigator: { connection: target({ saveData: false }), hardwareConcurrency: 8, deviceMemory: 8 }, innerWidth: 1366,
     OffscreenCanvas: function () {}, Worker: function () {}, ResizeObserver: function () {}, MutationObserver: vi.fn(function (fn: any) { observer.fn = fn; return observer; }), matchMedia: (q: string) => q.includes("coarse") ? coarse : media });
   const replies = new Set<any>(), store = { onAgentReply: vi.fn((fn: any) => { replies.add(fn); return () => replies.delete(fn); }) };
@@ -126,7 +126,7 @@ describe("#1629 app lifetime effect bridge", () => {
     expect(h.entry).toBeNull(); expect(h.observer.observe).not.toHaveBeenCalled(); expect(h.replies.size).toBe(0); expect(env.app.listeners.size).toBe(0);
   });
   it("cleanup continues when one subscriber release and one end listener throw", async () => {
-    const h = await rig(); const finish = vi.fn(); h.entry.onEnd(() => { throw Error("listener"); }); h.entry.onEnd(finish); h.preview.onChange.mock.results[0].value.mockImplementation(() => { throw Error("release"); });
+    const h = await rig(); const finish = vi.fn(); h.entry.onEnd(() => { throw Error("listener"); }); h.entry.onEnd(finish); h.observer.disconnect.mockImplementation(() => { throw Error("release"); });
     expect(() => h.entry.dispose()).not.toThrow(); expect(finish).toHaveBeenCalledOnce(); expect(h.observer.disconnect).toHaveBeenCalledOnce(); expect(env.app.listeners.size).toBe(0); expect(env.prefs.size).toBe(0);
   });
   it("committed Chat currentness includes the caller lease and document identity", async () => {
@@ -159,8 +159,8 @@ it("stock sidebar dragging closes only the cursor gate and restores it on the ob
   let dragging = false; const h = await rig(h => { h.doc.body.classList = { contains: (key: string) => key === "side-resizing" && dragging }; });
   const c = h.api.cursorSelection(); dragging = true; h.observer.fn([{ target: h.doc.body }]); expect(h.cursor.update).toHaveBeenLastCalledWith(c, false); dragging = false; h.observer.fn([{ target: h.doc.body }]); expect(h.cursor.update).toHaveBeenLastCalledWith(c, true); expect(h.cursorFactory).toHaveBeenCalledOnce(); h.entry.dispose();
 });
-it.each(["safe", "hidden", "consent", "show", "modal", "saveData", "unsupported"])("cursor follows existing %s gate without another metadata reader", async fault => {
-  const h = await rig(); if (fault === "safe") env.safe = true; if (fault === "hidden") h.doc.visibilityState = "hidden"; if (fault === "consent") env.values["preview.optIn"] = false; if (fault === "show") env.values["fx.show"] = false; if (fault === "modal") h.doc.querySelector = () => ({}); if (fault === "saveData") h.host.navigator.connection.saveData = true; if (fault === "unsupported") delete h.host.Worker;
+it.each(["safe", "hidden", "transport", "show", "modal", "saveData", "unsupported"])("cursor follows existing %s gate without another metadata reader", async fault => {
+  const h = await rig(); if (fault === "safe") env.safe = true; if (fault === "hidden") h.doc.visibilityState = "hidden"; if (fault === "transport") h.doc.body.dataset.effectBoot = ""; if (fault === "show") env.values["fx.show"] = false; if (fault === "modal") h.doc.querySelector = () => ({}); if (fault === "saveData") h.host.navigator.connection.saveData = true; if (fault === "unsupported") delete h.host.Worker;
   h.host.emit("resize"); expect(h.cursor.update).toHaveBeenLastCalledWith(h.api.cursorSelection(), false); expect(h.api.changedOwner).not.toHaveBeenCalled(); expect(h.cursorFactory).toHaveBeenCalledOnce(); h.entry.dispose();
 });
 
@@ -195,13 +195,13 @@ describe("#1629 product Trial bridge with protocol core", () => {
       expect(h.runtime).toHaveBeenCalledOnce(); expect(h.host.fetch.mock.calls.map(([p]: any[]) => p)).toEqual([`/ui/effect-trials/start?ownerEpoch=${"e".repeat(16)}`, `/ui/effect-trials/${"c".repeat(32)}/stop?ownerEpoch=${"e".repeat(16)}`]);
     } finally { h.entry.dispose(); await trialFlush(); }
   });
-  it("the click receipt is Trial-only consent; global preview settings and cursor consent remain unchanged", async () => {
+  it("HTML preview refusal cannot block opaque Trial, cursor or ordinary playback", async () => {
     const h = await trialRig(); try {
       env.values["preview.optIn"] = false; h.preview.optedIn = () => false; h.preview.never = () => true; h.preview.availability = () => ({ ok: false });
       env.css.set({ state: "on" });
-      expect(h.entry.gates()).toMatchObject({ previewReady: false, optIn: false, trialReady: true });
+      expect(h.entry.gates()).toMatchObject({ transportReady: true });
       expect(h.entry.canTry(trialMessage())).toBe(true); expect(await h.entry.startTrial(trialMessage())).toBe(true);
-      expect(env.values["preview.optIn"]).toBe(false); expect(h.cursor.update.mock.calls.at(-1)[1]).toBe(false);
+      expect(env.values["preview.optIn"]).toBe(false); expect(h.cursor.update.mock.calls.at(-1)[1]).toBe(true);
     } finally { h.entry.dispose(); await trialFlush(); }
   });
   it.each(["navigation", "same-name-chat", "new-store"])("%s cancels a pending Start before a late reply can mount", async fault => {
@@ -252,4 +252,36 @@ describe("#1629 product Trial bridge with protocol core", () => {
   it("repeated runtime observations do not repaint Trial eligibility until its value changes", async () => {
     const h = await trialRig(), fn = vi.fn(); try { const off = h.entry.subscribeTrial(fn); for (let i = 0; i < 100; i++) h.options().onChange(); expect(fn).not.toHaveBeenCalled(); env.css.set({ state: "on" }); expect(fn).not.toHaveBeenCalled(); h.media.matches = true; h.host.emit("resize"); expect(fn).toHaveBeenCalledOnce(); off(); h.media.matches = false; h.host.emit("resize"); expect(fn).toHaveBeenCalledOnce(); } finally { h.entry.dispose(); }
   });
+});
+
+
+it.each([false, true])("#2118 Chat-only app owner constructs no personal, cursor or Trial driver (public=%s)", async publicLink => {
+  const h = await rig(h => {
+    Object.assign(h.doc.body.dataset, { effectScope: "chat", ...(publicLink ? { publicLink: "1", webTransport: "poll" } : { tier: "guest" }) });
+    h.doc.documentElement.getAttribute = () => JSON.stringify({ ownerScope: "none", ownerEpoch: null }); h.trialController = vi.fn(); h.host.Date = { now: () => 0 };
+  });
+  expect(h.entry).not.toBeNull(); expect(h.regionFactory).not.toHaveBeenCalled(); expect(h.cursorFactory).not.toHaveBeenCalled(); expect(h.trialController).not.toHaveBeenCalled();
+  expect(h.entry.trialStatus(trialMessage())).toBe("localAdmin"); h.entry.dispose();
+});
+
+it("#2118 guest proves absent owner CSS without installing it; unexpected styles stay unknown", async () => {
+  const h = await rig(h => {Object.assign(h.doc.body.dataset,{tier:"guest",effectScope:"chat"}); env.css.reset({state:"unknown"});});
+  expect(h.options().observe().ownerCss).toBe("off"); expect(h.preview.onChange).not.toHaveBeenCalled();
+  h.doc.querySelectorAll=(q:string)=>q==='style'?[{sheet:{disabled:false}}]:[];
+  expect(h.options().observe().ownerCss).toBe("unknown");
+  h.doc.querySelectorAll=(q:string)=>q==='style'?[{sheet:null},{sheet:{disabled:true}}]:[];expect(h.options().observe().ownerCss).toBe("off");
+  h.doc.querySelectorAll=(q:string)=>q.includes('link[')?[{getAttribute:()=>"/ui/owner-css.css?v=unowned"}]:[];
+  expect(h.options().observe().ownerCss).toBe("unknown");
+  h.doc.querySelectorAll=()=>[];h.doc.body.dataset.ownerCss="a".repeat(32); expect(h.options().observe().ownerCss).toBe("unknown"); h.entry.dispose();
+});
+it("#2118 guest status refreshes only the current Chat when its scoped placement content changes", async () => {
+  const {guestStatus}=await import("../src/web-guest-access.js");
+  env.nav.set({seq:2,route:{panel:"chat",instance:"own"}});
+  const status=(own:string,peer:string)=>guestStatus({themes_rev:999,instances:[{name:"own",effect_chat_v:own},{name:"peer",effect_chat_v:peer}]},new Set(["own"]));
+  const h=await rig(h=>Object.assign(h.doc.body.dataset,{tier:"guest",effectScope:"chat"}));h.api.changedChat.mockClear();
+  const publish=(own:string,peer="c".repeat(32))=>env.app.set({...status(own,peer),themesRev:null,prefsRev:null});
+  publish("a".repeat(32));expect(h.api.changedChat).toHaveBeenCalledTimes(1);
+  publish("a".repeat(32),"d".repeat(32));expect(h.api.changedChat).toHaveBeenCalledTimes(1);
+  publish("b".repeat(32));expect(h.api.changedChat).toHaveBeenCalledTimes(2);
+  publish("e".repeat(32));expect(h.api.changedChat).toHaveBeenCalledTimes(3);h.entry.dispose();
 });

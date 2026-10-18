@@ -52,7 +52,7 @@ describe("fixed preference scope and one atomic mixed transaction", () => {
   const SKILL = readFileSync(join(process.cwd(), "src/general-knowledge/skills/web-appearance/SKILL.md"), "utf8").replace(/\s+/g, " ");
   it("agent guidance keeps host-wide operator, withdrawal and chat retention distinct", () => {
     expect(AGENT_WHATS_NEW.some(e => e.id === "2.3-owner-effect-policy"), "folded into the web-appearance skill").toBe(false);
-    for (const words of ["never agent tool targets", "**host-wide operator** bucket", "becomes unavailable at its next resource authorization", "keeps the blob from being collected until cleared", "deliberately stricter than chat placements' retained-runtime reads", "play across supported stock pages in the same pool as local signed-in Chat", "The personal cursor uses a static PNG on the host shell after the same consent: no Worker/code read or frame slot", "Only an explicit click by a signed-in **local admin** may start it"]) expect(SKILL, words).toContain(words);
+    for (const words of ["never agent tool targets", "**host-wide operator** bucket", "becomes unavailable at its next resource authorization", "keeps the blob from being collected until cleared", "deliberately stricter than chat placements' retained-runtime reads", "play across supported stock pages in the same pool as signed-in Chat", "The personal cursor uses a static PNG on the host shell without HTML-preview consent: no Worker/code read or frame slot", "Only an explicit click by a signed-in **admin outside the public link** may start it"]) expect(SKILL, words).toContain(words);
   });
   it("the guidance no longer describes Try as unavailable", () => {
     expect(SKILL).not.toContain("Try remains separate work");

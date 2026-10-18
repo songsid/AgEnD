@@ -1,15 +1,15 @@
 /** #1629: one session-only app effect owner. Importing this module starts nothing. */
 import { appStore } from "/assets/app-store.js";
 import { navStore } from "/assets/app-nav.js";
-import { onPrefsChanged, prefInForce } from "/assets/app-prefs.js";
-import { resolvedMode, themesStore } from "/assets/app-themes.js";
+import { onPrefsChanged } from "/assets/app-prefs.js";
+import { resolvedMode, themesStore, themesShown } from "/assets/app-themes.js";
 import { ownerCssLifecycle, safeMode } from "/assets/owner-css.js";
 import { constrainedDevice } from "/assets/effect-policy.js";
 import { createAppEffectRuntime } from "/assets/effect-app-runtime.js";
-import { effectTransportReady } from "/assets/effect-frame.js";
+import { effectBootstrapReady } from "/assets/effect-frame.js";
 import { createEffectCursor } from "/assets/effect-cursor.js";
 import { createOwnerEffectRegions } from "/assets/effect-owner-regions.js";
-import { chatEffectIdentity } from "/assets/effect-chat-runtime.js";
+import { chatEffectIdentity, effectPlaybackIdentity } from "/assets/effect-chat-runtime.js";
 import { createEffectTrialController } from "./effect-trial-controller.js";
 import { effectTrialMessage } from "./effect-trial-offer.js";
 import { claimPanel, panelVersion, panelStore, openTrialPanel, closePanel } from "./preview-panel.js";
@@ -20,8 +20,9 @@ export function getAppEffects(host = window) { const value = owners.get(host); r
 export function startAppEffects({ store, window: host = window, factories = {} } = {}) {
   const existing = owners.get(host);
   if (existing) { if (!existing.dead) existing.bindStore(store); return getAppEffects(host); }
-  if (!chatEffectIdentity(host) || typeof host.AgendAuth?.onSessionEnd !== "function" || typeof host.AgendAuth?.sessionEnded !== "function") return null;
-  const doc = host.document, releases = [], ended = new Set(), updates = new Set(), trialUpdates = new Set(); let replyOff = null, replyStore = null, regions = null, cursor = null, cursorStamp = null, trialControl = null, trialIntent = null, trialHint = null, trialSerial = 0, trialStamp = null, chatBinding = null;
+  const playbackIdentity = effectPlaybackIdentity(host), ownerIdentity = chatEffectIdentity(host);
+  if (!playbackIdentity || typeof host.AgendAuth?.onSessionEnd !== "function" || typeof host.AgendAuth?.sessionEnded !== "function") return null;
+  const doc = host.document, releases = [], ended = new Set(), updates = new Set(), trialUpdates = new Set(); let replyOff = null, replyStore = null, regions = null, cursor = null, cursorStamp = null, trialControl = null, trialIntent = null, trialHint = ownerIdentity ? null : false, trialSerial = 0, trialStamp = null, chatBinding = null;
   const safe = fn => { try { return fn(); } catch { return null; } };
   const hold = off => { if (entry.dead) safe(() => off?.()); else releases.push(off); };
   const entry = { dead: false, api: null,
@@ -76,14 +77,33 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     },
   };
   owners.set(host, entry); // Reentrant setup never constructs another owner.
-  let media, coarse, preview;
+  let media, coarse;
+  function ownerCssForPlayback() {
+    if (doc.body.dataset.tier !== "guest") return ownerCssLifecycle.get().state;
+    // Guests never install owner CSS. Prove its absence rather than borrowing the uninstalled
+    // lifecycle's initial unknown, and refuse unexpected styles instead of trusting a missing id.
+    try {
+      if (doc.body.dataset.ownerCss || doc.querySelectorAll("#owner-css").length) return "unknown";
+      // A CSP-refused or disabled STYLE has no paint. Recheck on every proof so enabling
+      // it never borrows an earlier absence verdict (WebKit capture inserts a refused no-op).
+      for (const style of doc.querySelectorAll("style")) if (style.sheet && style.sheet.disabled !== true) return "unknown";
+      const allowed = new Set(["/assets/tokens.css", "/assets/app.css"]);
+      for (const link of doc.querySelectorAll('link[rel~="stylesheet"]')) {
+        const url = new URL(link.getAttribute("href"), host.location.origin);
+        if (url.origin !== host.location.origin || !allowed.has(url.pathname) || url.search || url.hash) return "unknown";
+      }
+      return "off";
+    } catch { return "unknown"; }
+  }
+  function guestChatVersion(value) {
+    if (doc.body.dataset.tier !== "guest") return null;
+    const name = navStore.get().route?.instance, v = value.instances?.find(i => i.name === name)?.effect_chat_v;
+    return typeof v === "string" && /^[a-f0-9]{32}$/.test(v) ? v : null;
+  }
   function context() {
-    let ready = false; try { const status = preview?.availability(); ready = status?.ok === true || ["optin", "never"].includes(status?.why); } catch { /* unavailable */ }
     return { safe: safeMode(), publicLink: doc.body.dataset.publicLink === "1", reducedMotion: media?.matches !== false, saveData: host.navigator?.connection?.saveData === true,
       hidden: doc.visibilityState !== "visible", enabled: entry.api?.playbackAvailable !== false && typeof host.OffscreenCanvas === "function" && typeof host.Worker === "function" && typeof host.MutationObserver === "function" && typeof host.ResizeObserver === "function",
-      show: prefInForce("fx.show")?.value !== false, previewReady: ready,
-      trialReady: effectTransportReady(host, doc.body.dataset.previewOrigin, doc.body.dataset.previewBoot),
-      optIn: prefInForce("preview.optIn")?.value === true && preview?.optedIn() === true && preview?.never() !== true,
+      show: themesShown(), transportReady: effectBootstrapReady(host, host.location?.origin, doc.body.dataset.effectBoot),
       constrained: constrainedDevice({ memory: host.navigator?.deviceMemory, cores: host.navigator?.hardwareConcurrency, coarse: coarse?.matches === true, width: host.innerWidth }),
       modal: !!doc.querySelector("dialog[open],.menu-list,.pop,[role=alertdialog],.oc-keep,.shell.sb-open"), openInstance: null };
   }
@@ -100,7 +120,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     if (c.reducedMotion) return "reducedMotion";
     if (c.saveData) return "saveData";
     if (!c.enabled) return "unsupported";
-    if (!c.trialReady) return "transport";
+    if (!c.transportReady) return "transport";
     if (c.publicLink) return "localAdmin";
     if (c.hidden || doc.hasFocus?.() !== true) return "inactive";
     if (c.modal) return "dialog";
@@ -109,7 +129,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
   function trialAllowed() {
     const c = context();
     return !entry.dead && doc.visibilityState === "visible" && doc.hasFocus?.() === true
-      && c.enabled && c.show && c.trialReady && !c.safe && !c.publicLink && !c.reducedMotion && !c.saveData && !c.hidden && !c.modal;
+      && c.enabled && c.show && c.transportReady && !c.safe && !c.publicLink && !c.reducedMotion && !c.saveData && !c.hidden && !c.modal;
   }
   function mountTrial(handle) {
     const intent = trialIntent; if (!intent || !trialCurrent(handle.instance) || !handle.current() || !Number.isSafeInteger(++trialSerial)) throw Error("trial_unavailable");
@@ -144,47 +164,45 @@ export function startAppEffects({ store, window: host = window, factories = {} }
   function syncCursor() {
     if (entry.dead || !cursor) return;
     const c = context();
-    cursor.update(entry.api?.cursorSelection?.() ?? null, c.enabled && c.show && c.previewReady && c.optIn && !c.safe && !c.publicLink && !c.reducedMotion && !c.saveData && !c.hidden && !c.modal && !cursorDragging());
+    cursor.update(entry.api?.cursorSelection?.() ?? null, c.enabled && c.show && c.transportReady && !c.safe && !c.publicLink && !c.reducedMotion && !c.saveData && !c.hidden && !c.modal && !cursorDragging());
   }
   try {
     if (appStore.get().connection === "ended") { entry.dispose(); return null; }
-    preview = host.AgendPreview;
     media = host.matchMedia?.("(prefers-reduced-motion: reduce)") ?? { matches: true };
     coarse = host.matchMedia?.("(pointer: coarse)") ?? { matches: false };
     entry.api = (factories.runtime ?? createAppEffectRuntime)({ window: host, current: () => !entry.dead && host.document === doc,
-      observe: () => ({ context: context(), ownerCss: ownerCssLifecycle.get().state, mode: resolvedMode() }), onDispose: () => entry.dispose(),
+      observe: () => ({ context: context(), ownerCss: ownerCssForPlayback(), mode: resolvedMode() }), onDispose: () => entry.dispose(),
       resolveOwnerTarget: (slot, manifest, proof) => !entry.dead ? regions?.resolve?.(slot, manifest.box, proof) ?? null : null,
       onChange: () => { syncCursor(); notify(); } });
     if (entry.dead || !entry.api.ok) { entry.dispose(); return null; }
-    trialControl = (factories.trialController ?? createEffectTrialController)({ window: host, current: trialCurrent, allowed: trialAllowed, onStart: mountTrial, onChange: notify });
+    if (ownerIdentity) trialControl = (factories.trialController ?? createEffectTrialController)({ window: host, current: trialCurrent, allowed: trialAllowed, onStart: mountTrial, onChange: notify });
     hold(() => trialControl?.dispose());
-    if (typeof host.AgendAuth.trialSession === "function") Promise.resolve().then(() => host.AgendAuth.trialSession()).then(value => {
+    if (ownerIdentity && typeof host.AgendAuth.trialSession === "function") Promise.resolve().then(() => host.AgendAuth.trialSession()).then(value => {
       if (entry.dead) return; trialHint = value?.localAdmin === true && value.epoch === chatEffectIdentity(host)?.epoch; notify();
     }).catch(() => { if (!entry.dead) { trialHint = false; notify(); } });
     hold(panelStore.subscribe(() => { trialControl?.sync(); notifyTrial(); }));
-    const ownRegions = (factories.regions ?? createOwnerEffectRegions)({ window: host, current: () => !entry.dead && host.document === doc });
+    const ownRegions = ownerIdentity && (factories.regions ?? createOwnerEffectRegions)({ window: host, current: () => !entry.dead && host.document === doc });
     regions = ownRegions?.ok ? ownRegions : null; hold(() => ownRegions?.dispose?.());
     if (entry.dead) return null;
-    const ownCursor = safe(() => (factories.cursor ?? createEffectCursor)({ window: host, current: () => !entry.dead && host.document === doc,
+    const ownCursor = ownerIdentity && safe(() => (factories.cursor ?? createEffectCursor)({ window: host, current: () => !entry.dead && host.document === doc,
       readImage: (selection, signal) => entry.api?.cursorImageSettled?.(selection, signal) ?? Promise.resolve(null),
       onChange(value) { const next = JSON.stringify(value); if (next !== cursorStamp) { cursorStamp = next; notify(); } },
     }));
     cursor = ownCursor?.ok ? ownCursor : null; hold(() => ownCursor?.dispose?.());
     if (entry.dead) return null;
     const sync = () => { if (!entry.dead) { trialControl?.sync(); entry.api.sync(); syncCursor(); notifyTrial(); } };
-    let revision = appStore.get().themesRev, prefsRevision = appStore.get().prefsRev, navSeq = navStore.get().seq;
+    let revision = appStore.get().themesRev, prefsRevision = appStore.get().prefsRev, guestRevision = guestChatVersion(appStore.get()), navSeq = navStore.get().seq;
     hold(navStore.subscribe(value => { if (entry.dead || value.seq === navSeq) return; navSeq = value.seq; trialControl?.stop(); chatBinding = null; entry.api.detachChat(); syncCursor(); }));
     hold(appStore.subscribe(value => {
       if (entry.dead) return;
       if (value.connection === "ended") { entry.dispose(); return; }
-      const chatChanged = value.themesRev !== revision, ownerChanged = value.prefsRev !== prefsRevision;
-      revision = value.themesRev; prefsRevision = value.prefsRev;
+      const guestNext = guestChatVersion(value), chatChanged = value.themesRev !== revision || guestNext !== guestRevision, ownerChanged = value.prefsRev !== prefsRevision;
+      revision = value.themesRev; prefsRevision = value.prefsRev; guestRevision = guestNext;
       if (chatChanged) entry.api.changedChat();
       if (ownerChanged) entry.api.changedOwner();
       if (!chatChanged && !ownerChanged) sync();
     }));
     hold(ownerCssLifecycle.subscribe(sync)); hold(themesStore.subscribe(sync)); hold(onPrefsChanged(sync));
-    if (typeof preview?.onChange === "function") hold(preview.onChange(sync));
     if (typeof host.AgendTheme?.onChange === "function") hold(host.AgendTheme.onChange(sync));
     for (const [target, type] of [[media, "change"], [coarse, "change"], [doc, "visibilitychange"], [host, "resize"], [host.navigator?.connection, "change"]]) {
       if (target?.addEventListener) { target.addEventListener(type, sync); hold(() => target.removeEventListener(type, sync)); }

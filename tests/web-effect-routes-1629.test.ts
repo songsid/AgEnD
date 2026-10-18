@@ -101,10 +101,10 @@ describe("#1629 human-only effects routes",()=>{
   const req=Object.assign(new EventEmitter(),{method:"POST",url:"/ui/effects/upload",headers:{...a.headers,host:new URL(f.origin).host},destroy(){},resume(){}});
   expect(handleWebRequest(req as never,res,new URL(`${f.origin}/ui/effects/upload`),f.ctx)).toBe(true);expect(status).toBe(0);expect(req.listenerCount("data")).toBe(1);req.emit("data",input().subarray(0,10));f.sessions.revokeById(a.id);req.emit("data",input().subarray(10));req.emit("end");await Promise.resolve();await Promise.resolve();expect(status).toBe(401);expect(spy).not.toHaveBeenCalled();
  });
- it("every route is excluded from public routing and refused with a gateway context even if routed directly",async()=>{
+ it("only scoped Chat GET paths enter public routing; missing scope and all other paths refuse even directly",async()=>{
   const f=await fixture();const paths=["/ui/effects","/ui/effects/placements",`/ui/effects/image/${"a".repeat(32)}/poster.png`,`/ui/effects/resource/${"a".repeat(32)}`,`/ui/effects/profile/${"a".repeat(32)}`,"/ui/effects/upload","/ui/effects/apply","/ui/effects/remove","/ui/effects/share",`/ui/effects/${"a".repeat(32)}`];
   const made=f.sessions.create({tier:"admin",surface:"gateway",exposureId:"e".repeat(32),label:"test",tokenEpoch:tokenEpoch(f.token)});
-  for(const method of ["GET","POST","DELETE"]){for(const path of paths){expect(isPublicWebRoute(method,path)).toBe(false);let status=0;const res:any={headersSent:false,setHeader(){},writeHead(n:number){status=n;this.headersSent=true;},end(){}};
+  for(const method of ["GET","POST","DELETE"]){for(const path of paths){expect(isPublicWebRoute(method,path)).toBe(method==="GET"&&(path==="/ui/effects/placements"||/^\/ui\/effects\/resource\/[0-9a-f]{32}$/.test(path)));let status=0;const res:any={headersSent:false,setHeader(){},writeHead(n:number){status=n;this.headersSent=true;},end(){}};
    const req=Object.assign(new EventEmitter(),{method,url:path,headers:{host:"x.trycloudflare.com",origin:"https://x.trycloudflare.com",cookie:`__Host-agend_session=${made.sessionId}`,"x-agend-csrf":csrfTokenFor(made.sessionId)},destroy(){},resume(){}});bindGatewayRequest(req,{surface:"gateway",exposureId:"e".repeat(32),expectedOrigin:"https://x.trycloudflare.com",isCurrent:()=>true});
    expect(handleWebRequest(req as never,res,new URL(`https://x.trycloudflare.com${path}`),f.ctx)).toBe(true);expect(status).toBe(method==="GET"?404:403);
   }}

@@ -54,7 +54,7 @@ export function effectBootstrapReady(host, origin, boot) {
  */
 export function createEffectFrame(options = {}) { return ownedEffectFrame(options, false); }
 
-/** Unmounted foundation: the app continues using createEffectFrame until the separately reviewed cutover. */
+/** Product transport: the same-listener trusted document still has an opaque sandboxed realm. */
 export function createOpaqueEffectFrame(options = {}) { return ownedEffectFrame(options, true); }
 
 function ownedEffectFrame({ window: host, root, origin, boot, render, clock = () => performance.now(), onReady = () => {}, onRemove = () => {} } = {}, sameListener) {

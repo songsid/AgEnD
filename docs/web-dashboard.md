@@ -339,7 +339,7 @@ An agent can give its own web chat a look: colours for light and dark, an accent
   - **Reset theme…** removes it and keeps a lock in place.
   - Both need a signed-in admin, and neither is offered over a temporary public link.
 - **Your switch.** **Settings → Web appearance → Show agents' themes, effects and widgets** turns them off on all your devices. Every chat then looks the same, and pictures and ring colours are the bots' again. `?safe=1` also loads a page without them.
-- **Reduced motion.** Agents' effects play even when your system asks for reduced motion. To keep them still on a device, tick **Effects: follow the system's reduced-motion setting** under that switch (this device only; off by default).
+- **Reduced motion.** Ambient effects play even when your system asks for reduced motion. To keep them still on a device, tick **Effects: follow the system's reduced-motion setting** under that switch (this device only; off by default). Canvas Worker effects currently remain paused when the system asks for reduced motion.
 - **Limits.** An agent's changes are at least 30 seconds apart, at most 10 an hour. Its uploads (pictures, effects, mods) are not counted; each picture's size limits and the agent's picture quota still apply. A picture you uploaded for an agent in its profile wins over its theme's. `web.themes.agent_edit: false` in `fleet.yaml` refuses every agent's changes.
 
 ### Identity cards
@@ -422,15 +422,15 @@ A Canvas Worker effect is a small animation drawn by code in an isolated Worker,
 - **The library.** **Upload an effect folder**: `effect.json` and `worker.js`, with optional raster pictures, up to 1 MiB after processing. Each effect lists **Your copy** or **Shared with you**. **Share your copy with agents and people on this fleet** lets them use it; **Delete your copy** removes an unused copy (other people's copies stay). **Profile history** shows how it ran on viewers' pages — reported observations, not proof of its cost. **Reload library** reads it again.
 - **For a chat.** Choose the **Chat**, set an effect's **Parameters**, then **Save for this chat** (it replaces that chat's parameters with these values) or **Remove from this chat**.
 - **Your effect choices.** One effect each for the **Sidebar**, **Header**, **Page** and **Box**, each with **Pause / Resume** and **Clear**, and a **Cursor**, which shows its state and has **Clear**. They follow this platform sign-in (a Discord and a Telegram account stay separate); a host-operator sign-in shares **Host-wide effect choices**.
-- **Playback needs consent.** Placed and saved effects play only with **Allow HTML previews** on, and never on the temporary public link (it shows a static poster at most). A **Try** sample is the exception: a local admin's click on its card consents to that one sample, with no global opt-in. The cursor uses a static picture and falls back to the normal cursors.
+- **Playback is separate from HTML previews.** CW uses an opaque isolated document on the dashboard listener: no HTML-preview consent, preview port or localhost restriction. Signed-in public/guest viewers can play current effects in chats they may see, without library, personal-slot, Trial or profile access. Try still needs a signed-in admin's explicit click outside the public link. The cursor uses a static image. Show, safe mode, hidden tabs, browser support, system reduced motion, data saver and the two-second baseline still apply; the motion/baseline change follows separately. Public/guest viewers have a show/off switch in the Chat header, with local recovery; it changes only this browser, never host settings.
 - **The pause budget.** An effect that makes the page slow is paused to protect it ("Paused to protect page responsiveness"); **Resume** keeps the limit of three such pauses.
 - **Your switch** (**Show agents' themes, effects and widgets**) and `?safe=1` turn agents' effects off.
 
-When a placed effect cannot play, a notice stays in its chat and the Effects dialog names the reason. Missing
-HTML-preview consent links to **Settings → Device**; appearance switches link to **Web appearance**; an unavailable
-preview service links to **Web**. Reduced motion, hidden tabs, browser support, calibration and safety have separate
-messages. Unknown codes are shown locally. Agents can see only closed blocked reasons reported within the last five
-minutes, without viewer identities, counts or device details; these reports never grant playback permission.
+When a placed effect cannot play, a notice stays in its chat and the Effects dialog names the reason. Appearance
+switches link to **Web appearance**; public Show off offers **Turn effects on here** without writing host preferences.
+An unavailable isolated frame offers Reload, never an HTML-preview setup step. Reduced motion, data saver, hidden tabs,
+browser support, calibration and safety have separate messages. Unknown codes stay local. Agents get only closed
+blocked reasons reported within five minutes, without viewer identifiers/counts/device details; reports grant no playback.
 
 ### Restore defaults
 

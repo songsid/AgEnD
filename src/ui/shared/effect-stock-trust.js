@@ -178,9 +178,9 @@ export function stockEffectTrust(host, { frameRoot = null, ownerCss = "unknown" 
     if (doc.querySelector(".agend-session-ended")) return fail("session_ended");
     let barrier = [...doc.querySelectorAll(BARRIERS)].some(el => visible(host, el));
     if (host.innerWidth < 900 && [...doc.querySelectorAll(".pv-panel")].some(el => visible(host, el))) barrier = true;
-    const active = doc.activeElement;
     if (doc.fullscreenElement || doc.pictureInPictureElement) barrier = true;
-    if (active && active !== doc.body && active !== doc.documentElement && (active.matches("input,select,textarea,[contenteditable]") || active.isContentEditable)) barrier = true;
+    // Focus alone does not change protected paint bounds. Composer/controls stay clipped; editable focus
+    // separately suppresses pointer delivery in the registry, and keyboard events never enter a Worker.
     return { ok: true, rects, front: !barrier, reason: barrier ? "stock_overlay" : "stock", agentFront: !barrier && ownerCss === "off", agentReason: barrier ? "stock_overlay" : ownerCss === "off" ? "stock" : "owner_css", settingsHref: "/settings/appearance" };
   } catch { return fail("stock_trust_unknown"); }
 }

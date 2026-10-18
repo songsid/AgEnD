@@ -134,11 +134,12 @@ describe("#1629 local/public poster-only HTTP", () => {
       expect(image.headers).toMatchObject({ "cache-control": "private, no-store", "x-content-type-options": "nosniff", "content-type": "image/png", "content-security-policy": "default-src 'none'; sandbox" });
     }
   });
-  it("never opens effect library/code/cursor/personal/profile or write routes over the gateway", async () => {
+  it("keeps library/cursor/personal/profile and writes closed; code needs exact current Chat scope", async () => {
     const f = await routes(), id = f.add(); f.service.apply("alice", { instance: "own", id });
-    for (const path of ["/ui/effects", `/ui/effects/resource/${id}`, `/ui/effects/image/${id}/cursor.png`, `/ui/effects/profile/${id}`, "/ui/effects/owner", "/ui/effects/placements", "/ui/effect-posters/resource", `/ui/effect-posters/${id}.js`]) {
+    for (const path of ["/ui/effects", `/ui/effects/image/${id}/cursor.png`, `/ui/effects/profile/${id}`, "/ui/effects/owner", "/ui/effect-posters/resource", `/ui/effect-posters/${id}.js`]) {
       expect(isPublicWebRoute("GET", path), path).toBe(false); expect((await f.public(path)).status, path).toBe(404);
     }
+    expect((await f.public(`/ui/effects/resource/${id}`)).status).toBe(404);
     for (const method of ["HEAD", "POST", "PUT", "PATCH", "DELETE"]) {
       expect(isPublicWebRoute(method, "/ui/effect-posters")).toBe(false); expect((await f.public("/ui/effect-posters?instance=own", method)).status).toBe(404);
     }

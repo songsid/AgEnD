@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fire } from "./helpers/mini-dom.js";
 import { page, settle, type AppPage } from "./helpers/app-harness.js";
 const M = vi.hoisted(() => ({ apis: [] as any[], opts: [] as any[], unavailable: false, owner: null as any }));
 vi.mock("/ui/js/app-effects.js", () => ({ getAppEffects: () => M.owner }));
 let pg: AppPage | null = null;
 afterEach(async () => { if (pg) { await pg.unmount(); pg.restore(); pg = null; } vi.unstubAllGlobals(); M.apis.length = 0; M.opts.length = 0; M.unavailable = false; M.owner = null; });
 async function fixture(unavailable = false) {
-  vi.resetModules(); M.unavailable = unavailable; pg = page(); const host = pg.window;
+  vi.resetModules(); M.unavailable = unavailable; pg = page(); pg.document.body.dataset.mode = "full"; pg.document.documentElement.setAttribute("data-prefs", JSON.stringify({ ownerScope: "operator", ownerEpoch: "e".repeat(16) })); const host = pg.window;
   Object.assign(host, { matchMedia: globalThis.matchMedia, navigator: globalThis.navigator, OffscreenCanvas: function () {}, Worker: function () {}, ResizeObserver: function () {},
     AgendAuth: { canWrite: async () => true }, AgendPreview: { availability: () => ({ ok: true }), optedIn: () => true, never: () => false } });
   if (unavailable) delete host.navigator;
@@ -24,7 +25,7 @@ async function fixture(unavailable = false) {
     return P.h(ChatEffects, { name: "own", lease, element, store, open: shown, onClose: () => setShown(false) });
   }
   const mount = async () => { P.render(P.h(Parent, { lease: currentLease }), pg!.root); await settle(); };
-  const owner = { gates: () => ({ enabled: !M.unavailable, show: true, previewReady: true, optIn: true, reducedMotion: false, saveData: false }), onEnd: () => () => {}, attachChat(options: any) {
+  const owner = { gates: () => ({ enabled: !M.unavailable, show: true, transportReady: true, optIn: true, reducedMotion: false, saveData: false }), onEnd: () => () => {}, attachChat(options: any) {
     const api = { ok: !M.unavailable, sync: vi.fn(), changed: vi.fn(), reply: vi.fn(), pause: vi.fn(), resume: vi.fn(), remove: vi.fn(async () => true), dispose: vi.fn() }; M.apis.push(api); M.opts.push(options); return api;
   } };
   M.owner = owner;
@@ -110,7 +111,7 @@ describe("#1629 actual Effects component", () => {
     const { effectRowText } = await import("/ui/js/chat-effects.js");
     const row = { id: ID, phase: null, reason: "stock_overlay", verdict: "off" };
     const doc = (active: any) => ({ body: {}, activeElement: active });
-    expect(effectRowText(row, { doc: doc({ matches: (s: string) => s.includes("textarea"), isContentEditable: false }) })).toContain("while you type");
+    expect(effectRowText(row, { doc: doc({ matches: (s: string) => s.includes("textarea"), isContentEditable: false }) })).toContain("menu or panel");
     expect(effectRowText(row, { doc: doc({ matches: () => false, isContentEditable: false }) })).toContain("menu or panel");
     expect(effectRowText(row, { doc: { body: 1, activeElement: 1 } as any })).toContain("menu or panel");
     expect(effectRowText({ ...row, reason: "modal" }, { doc: doc(null) })).toBe("Waiting while a dialog is open.");
@@ -124,15 +125,32 @@ describe("#2115 persistent named block notices", () => {
     expect(effectRowText(null)).toContain("runtime_unavailable");
     for (const phase of [null, "running", "loading"]) expect(effectRowText({ reason: "future_failure_42", phase, verdict: "queued" })).toBe("Playback blocked: future_failure_42");
     for (const reason of ["constructor", "__proto__"]) expect(effectRowText({ reason })).toBe(`Playback blocked: ${reason}`);
-    expect(effectRowText({ reason: "preview_not_consented" })).toContain("allow HTML previews");
+    expect(effectRowText({ reason: "preview_not_consented" })).toContain("older playback information");
     expect(effectRowText({ reason: "baseline_timeout" })).toContain("calibration failed");
   });
-  it("stays visible outside the dialog, changes false→different-false, and links to the real consent switch", async () => {
-    const h = await fixture(); await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "preview_not_consented" }]);
-    expect(pg!.root.querySelector("dialog")).toBeNull(); expect(pg!.root.querySelector(".chat-fx-notice")!.textContent).toContain("allow HTML previews");
-    [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Open device preferences")!.click(); await settle(); expect(globalThis.location.pathname).toBe("/settings/device");
+  it.each(["guest","public"])("%s has an always-visible local off/on control, no management and no host write",async kind=>{
+    const h=await fixture();if(kind==="guest")pg!.document.body.dataset.tier="guest";else pg!.document.body.dataset.publicLink="1";
+    await h.nextLease();await h.publish();const requests=vi.fn();vi.stubGlobal("fetch",requests);h.host.fetch=requests;
+    const themes=await import("/assets/app-themes.js");const control=()=>pg!.root.querySelector('.chat-fx-notice input[type=checkbox]') as any;
+    expect(control()).toBeTruthy();expect(pg!.root.querySelector("dialog")).toBeNull();control().checked=false;fire(control(),"change");await settle();expect(themes.themesShown()).toBe(false);
+    control().checked=true;fire(control(),"change");await settle();expect(themes.themesShown()).toBe(true);expect(requests).not.toHaveBeenCalled();expect(pg!.root.textContent).not.toContain("Remove from chat");h.cleanup();
+  });
+  it("a public disabled notice turns effects on in this browser without a host preference POST", async () => {
+    const h = await fixture(); pg!.document.body.dataset.publicLink = "1";
+    const requests: string[] = []; const post = vi.fn(async (url: string) => { requests.push(String(url)); throw Error("no request expected"); });
+    vi.stubGlobal("fetch", post); h.host.fetch = post;
+    const themes = await import("/assets/app-themes.js"); themes.setThemesShown(false);
+    await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "disabled" }]);
+    const action = [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Turn effects on here")!;
+    expect(action).toBeTruthy(); action.click(); await settle();
+    expect(themes.themesShown()).toBe(true); expect(requests).toEqual([]); h.cleanup();
+  });
+  it("stays visible outside the dialog, changes false→different-false, and links to the current viewer switch", async () => {
+    const h = await fixture(); await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "disabled" }]);
+    expect(pg!.root.querySelector("dialog")).toBeNull(); expect(pg!.root.querySelector(".chat-fx-notice")!.textContent).toContain("switched off");
+    [...pg!.root.querySelectorAll("button")].find(b => b.textContent === "Open Web appearance settings")!.click(); await settle(); expect(globalThis.location.pathname).toBe("/settings/appearance");
     await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "reduced_motion" }]);
-    expect(pg!.root.querySelector(".chat-fx-notice")!.textContent).toContain("reduced motion"); expect(pg!.root.textContent).not.toContain("allow HTML previews");
+    expect(pg!.root.querySelector(".chat-fx-notice")!.textContent).toContain("reduced motion"); expect(pg!.root.textContent).not.toContain("older playback information");
     await h.publish(); expect(pg!.root.querySelector(".chat-fx-notice")).toBeNull(); h.cleanup();
   });
 });

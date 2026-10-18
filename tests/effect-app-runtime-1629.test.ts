@@ -12,7 +12,7 @@ const flush = async () => { for (let i = 0; i < 40; i++) await Promise.resolve()
 function rig(prepare: (h: any) => void = () => {}) {
   let now = 0, live = true, ended = false, seq = 0, options: any, rows: any[] = [];
   const listeners = new Set<() => void>(), events = new Map<string, () => void>(), timers = new Map<number, () => void>(), values: any = { ownerEpoch: epoch, ownerScope: "person" };
-  const host: any = { document: { body: { dataset: { mode: "full", previewOrigin: "https://preview.invalid", previewBoot: "c".repeat(32) } }, documentElement: { getAttribute: () => JSON.stringify(values) } },
+  const host: any = { document: { body: { dataset: { mode: "full", effectEpoch: epoch, effectScope: "owner", effectBoot: "c".repeat(32), previewOrigin: "https://preview.invalid", previewBoot: "c".repeat(32) } }, documentElement: { getAttribute: () => JSON.stringify(values) } },
     AgendAuth: { sessionEnded: () => ended, onSessionEnd: vi.fn((fn: () => void) => { listeners.add(fn); if (ended) fn(); return () => listeners.delete(fn); }) }, performance: { now: () => now },
     AbortController, localStorage: {}, crypto: {}, fetch: vi.fn(async () => ({ ok: true, body: { cancel: async () => {} } })),
     setTimeout(fn: () => void) { timers.set(++seq, fn); return seq; }, clearTimeout(n: number) { timers.delete(n); },
@@ -22,7 +22,7 @@ function rig(prepare: (h: any) => void = () => {}) {
   const loader = { ok: true, ownerSettled: vi.fn(async (): Promise<any> => ownerBody()), placementsSettled: vi.fn(async () => ({ rev: 1, effects: [placement] })), resourceSettled: vi.fn(async () => ({ id, params: { n: 1 } })), cursorImageSettled: vi.fn(async (): Promise<any> => new Uint8Array([1, 2, 3])), dispose: vi.fn() };
   const registry = { ok: true, frameRoot: { isConnected: true }, update: vi.fn((ds: any[]) => { rows = ds.map(d => ({ ...d, verdict: "active", phase: "running" })); }), snapshot: () => rows, resume: vi.fn(() => true), publish: vi.fn(), dispose: vi.fn() };
   const collectors: any[] = [], collect = () => { const c = { ok: true, add: vi.fn(), report: vi.fn(() => ({ profile: { v: 1, device: "standard" } })), dispose: vi.fn() }; collectors.push(c); return c; };
-  const context: any = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, trialReady: true, constrained: false, modal: false, openInstance: "caller-not-authority" };
+  const context: any = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, transportReady: true, optIn: true, trialReady: true, constrained: false, modal: false, openInstance: "caller-not-authority" };
   const observation: any = { context, ownerCss: "off", mode: "light" }, globalChange = vi.fn();
   const h: any = { host, values, loader, registry, collectors, context, observation, globalChange, placement, listeners, events, timers, at(t: number) { now = t; }, stale() { live = false; }, signOut() { ended = true; for (const fn of [...listeners]) fn(); }, options: () => options };
   prepare(h);
@@ -259,8 +259,8 @@ describe("#1629 optional personal sources share the app pool", () => {
     const h = rig(personal), a = h.chat(); await flush(); const first = held(); h.loader.resourceSettled.mockImplementationOnce(() => first.promise); const job = h.options().load(h.api.ownerSnapshot().rows[0], new AbortController().signal);
     h.loaderOptions.onRevoke({ reason: "authorization_rejected" }); first.resolve({ id }); expect(await job).toBeNull(); expect(h.api.ownerSnapshot().rows).toEqual([]); expect(a.api.snapshot().rows).toEqual([]); expect(h.registry.dispose).toHaveBeenCalledOnce(); expect(h.loader.dispose).toHaveBeenCalledOnce();
   });
-  it.each(["enabled", "show", "previewReady", "optIn", "safe", "publicLink", "reducedMotion", "saveData", "hidden"])("the %s global gate applies before any personal read", async gate => {
-    const h = rig(personal); h.context[gate] = ["enabled", "show", "previewReady", "optIn"].includes(gate) ? false : true; h.api.sync(); await flush(); expect(h.loader.ownerSettled).not.toHaveBeenCalled(); h.api.dispose();
+  it.each(["enabled", "show", "transportReady", "safe", "publicLink", "reducedMotion", "saveData", "hidden"])("the %s global gate applies before any personal read", async gate => {
+    const h = rig(personal); h.context[gate] = ["enabled", "show", "transportReady", "optIn"].includes(gate) ? false : true; h.api.sync(); await flush(); expect(h.loader.ownerSettled).not.toHaveBeenCalled(); h.api.dispose();
   });
   it("resolver reentry attaching a new Chat abandons the old aggregate pass", async () => {
     const h = rig(personal); let b: any; h.api.sync(); await flush(); h.resolveOwnerTarget.mockImplementationOnce((slot: string) => { b = h.chat("b"); return h.targets[slot]; }); h.api.sync(); await flush();
@@ -320,8 +320,8 @@ describe("#1629 Trial contribution in the one app pool (protocol double)", () =>
   });
   it.each(["on", "loading", "unknown"])("CSS %s stays on while the Trial retains its independent transport and safety gates", async css => {
     const h = trialRig(); h.chat(); await flush(); h.api.attachTrial({}); expect(h.trialOptions().current()).toBe(true);
-    h.observation.ownerCss = css; expect(h.trialOptions().current()).toBe(true); h.context.previewReady = false; h.context.optIn = false; expect(h.trialOptions().current()).toBe(true);
-    for (const key of ["enabled", "show", "trialReady"]) { h.context[key] = false; expect(h.trialOptions().current()).toBe(false); h.context[key] = true; }
+    h.observation.ownerCss = css; expect(h.trialOptions().current()).toBe(true); h.context.transportReady = true; h.context.optIn = false; expect(h.trialOptions().current()).toBe(true);
+    for (const key of ["enabled", "show", "transportReady"]) { h.context[key] = false; expect(h.trialOptions().current()).toBe(false); h.context[key] = true; }
     for (const key of ["safe", "publicLink", "reducedMotion", "saveData", "hidden"]) { h.context[key] = true; expect(h.trialOptions().current()).toBe(false); h.context[key] = false; }
     expect(h.trialOptions().current()).toBe(true); h.api.dispose();
   });
@@ -349,7 +349,7 @@ describe("#1629 Trial contribution in the one app pool (protocol double)", () =>
 });
 
 describe("#2115 metadata diagnostics before playback admission", () => {
-  it.each([["reducedMotion", true, "reduced_motion"], ["optIn", false, "preview_not_consented"], ["previewReady", false, "preview_unavailable"], ["enabled", false, "unsupported_host"], ["safe", true, "safe_mode"], ["saveData", true, "save_data"], ["hidden", true, "hidden"], ["show", false, "disabled"]])("%s still names each placement without a code fetch", async (key, value, reason) => {
+  it.each([["reducedMotion", true, "reduced_motion"], ["transportReady", false, "transport_unavailable"], ["enabled", false, "unsupported_host"], ["safe", true, "safe_mode"], ["saveData", true, "save_data"], ["hidden", true, "hidden"], ["show", false, "disabled"]])("%s still names each placement without a code fetch", async (key, value, reason) => {
     const h = rig(h => { h.context[key as string] = value; h.registry.snapshot = () => []; });
     const a = h.chat(); await flush();
     expect(h.loader.placementsSettled).toHaveBeenCalledOnce(); expect(a.api.snapshot().rows).toMatchObject([{ id, reason }]);
@@ -365,5 +365,25 @@ describe("#2115 metadata diagnostics before playback admission", () => {
     h.at(10000); const tick = [...h.timers.values()][0] as () => void; h.timers.clear(); tick(); await flush();
     expect(h.host.fetch).toHaveBeenCalledExactlyOnceWith(`/ui/effects/profile/${id}?instance=own&ownerEpoch=${epoch}`, expect.objectContaining({ body: JSON.stringify({ v: 1, kind: "playback", device: "standard", status: "blocked", reason: "reduced_motion" }) }));
     a.api.dispose(); h.at(20000); tick(); await flush(); expect(h.host.fetch).toHaveBeenCalledOnce(); h.api.dispose();
+  });
+});
+
+
+describe("#2118 public Chat uses the shared pool without personal or write participants", () => {
+  it.each([false, true])("Chat-only capability reads current metadata/resource but no owner/cursor/trial/profile or remove (public=%s)", async publicLink => {
+    const h = rig(h => {
+      personal(h); h.trialFactory = vi.fn();
+      Object.assign(h.host.document.body.dataset, { effectScope: "chat", ...(publicLink ? { publicLink: "1", webTransport: "poll" } : { tier: "guest" }) });
+      h.values.ownerScope = "none"; h.values.ownerEpoch = null; h.context.publicLink = publicLink;
+    });
+    const a = h.chat(); await flush(); expect(a.api.ok).toBe(true); expect(h.loader.placementsSettled).toHaveBeenCalledOnce(); expect(h.loader.ownerSettled).not.toHaveBeenCalled(); expect(h.trialFactory).not.toHaveBeenCalled();
+    const row = h.registry.update.mock.calls.at(-1)[0][0]; expect(await h.options().load(row, new AbortController().signal)).toMatchObject({ id }); expect(h.loader.resourceSettled).toHaveBeenCalledWith({ id, instance: "own" }, expect.any(AbortSignal));
+    expect(h.api.attachTrial({})).toBeNull(); expect(h.api.cursorSelection()).toBeNull(); expect(await h.api.cursorImageSettled({}, new AbortController().signal)).toBeNull(); expect(await a.api.remove(id)).toBe(false);
+    const owner = { key: row.key, id, device: "standard", current: () => true }; h.options().onMount(owner); h.options().onProfile({ verdict: "paused" }, owner); h.at(20000); for (const fn of [...h.timers.values()] as (() => void)[]) fn(); await flush(); expect(h.host.fetch).not.toHaveBeenCalled(); expect(h.collectors).toEqual([]);
+    h.api.reply({ instance: "own" }); expect(h.registry.publish.mock.calls.filter(([type]: any) => type === "reply")).toHaveLength(publicLink ? 0 : 1); h.api.dispose();
+  });
+  it("HTML preview opt-out no longer blocks personal reads; public context still cannot borrow them", async () => {
+    const h = rig(personal); h.context.optIn = false; h.api.sync(); await flush(); expect(h.loader.ownerSettled).toHaveBeenCalledOnce(); h.api.dispose();
+    const denied = rig(personal); denied.context.publicLink = true; denied.api.sync(); await flush(); expect(denied.loader.ownerSettled).not.toHaveBeenCalled(); denied.api.dispose();
   });
 });

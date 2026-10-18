@@ -22,7 +22,7 @@ vi.mock("../src/ui/shared/effect-geometry.js", () => ({ hostEffectRect: (el: any
 }));
 vi.mock("../src/ui/shared/effect-frame.js", async () => {
   const policy = await import(new URL("../src/ui/shared/effect-policy.js", import.meta.url).href);
-  return { createEffectFrame(options: any) {
+  return { createOpaqueEffectFrame(options: any) {
     let removed = false, ready = false; const element = options.window.document.createElement("iframe"); options.root.append(element);
     const api = { ok: true, element, options, ready() { if (removed) return; ready = true; options.onReady(); }, state: () => ({ ready, removed, loads: 1 }),
       remove: vi.fn((reason: string) => { if (removed) return; removed = true; element.remove(); options.onRemove(reason); }),
@@ -33,7 +33,7 @@ vi.mock("../src/ui/shared/effect-frame.js", async () => {
 const { createEffectRegistry } = await import(new URL("../src/ui/shared/effect-registry.js", import.meta.url).href);
 const id = (n: number) => n.toString(16).padStart(32, "0"), boot = "b".repeat(32);
 const stock = (patch = {}) => ({ ok: true, front: true, agentFront: true, rects: [], ...patch });
-const gates = (patch = {}) => ({ safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, trialReady: true, constrained: false, modal: false, openInstance: "own", ...patch });
+const gates = (patch = {}) => ({ safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, transportReady: true, optIn: true, trialReady: true, constrained: false, modal: false, openInstance: "own", ...patch });
 async function flush() { for (let i = 0; i < 12; i++) await Promise.resolve(); }
 function rig(options: any = {}) {
   let now = 0, seq = 0, tokens = 0;
@@ -189,8 +189,20 @@ describe("#1629 shared Canvas Worker registry", () => {
   it("a constrained host has one frame even if many descriptors are eligible", async () => {
     const h = rig(); await h.admit(h.descriptors(4), gates({ constrained: true })); expect(h.frames()).toHaveLength(1); expect(h.load).toHaveBeenCalledTimes(1);
   });
-  it.each([{ safe: true }, { publicLink: true }, { reducedMotion: true }, { saveData: true }, { enabled: false }, { show: false }, { previewReady: false }, { optIn: false }, { hidden: true }, { show: undefined }])("unknown/disabled viewer gate %j mounts nothing", async patch => {
+  it.each([{ safe: true }, { reducedMotion: true }, { saveData: true }, { enabled: false }, { show: false }, { transportReady: false }, { hidden: true }, { show: undefined }])("unknown/disabled viewer gate %j mounts nothing", async patch => {
     const h = rig(); await h.admit(h.descriptors(3), gates(patch)); expect(h.frames()).toHaveLength(0); expect(h.load).not.toHaveBeenCalled();
+  });
+  it("#2118 a viewer off/on revokes paint then recovers without clearing real safety or resource latches",async()=>{
+    const h=rig(),ds=await h.admit();h.frames()[0].ready();const first=h.frames()[0];
+    h.api.update(ds,gates({show:false}));expect(first.state().removed).toBe(true);expect(h.api.snapshot()[0]).toMatchObject({phase:null,reason:"disabled"});
+    h.api.update(ds,gates());await flush();expect(h.frames().filter((f:any)=>!f.state().removed)).toHaveLength(1);expect(h.load).toHaveBeenCalledTimes(2);expect(h.api.snapshot()[0].reason).not.toBe("gates_unknown");
+    h.api.dispose();
+  });
+  it("#2118 viewer off/on cannot clear resource or durable safety failures",async()=>{
+    const failed=rig();failed.load.mockResolvedValueOnce(null as any);const ds=await failed.admit();expect(failed.load).toHaveBeenCalledOnce();
+    failed.api.update(ds,gates({show:false}));failed.api.update(ds,gates());await flush();expect(failed.load).toHaveBeenCalledOnce();failed.api.dispose();
+    const off=rig();off.safety.allowed.mockReturnValue(false);(off.safety as any).status=vi.fn(()=>({state:"off",history:null}));const blocked=await off.admit();
+    off.api.update(blocked,gates({show:false}));off.api.update(blocked,gates());await flush();expect(off.load).not.toHaveBeenCalled();expect(off.api.snapshot()[0].reason).toBe("safety_off");off.api.dispose();
   });
   it("the constrained front pool admits exactly one front effect", async () => {
     const h = rig(); await h.admit(h.descriptors(3, { layer: "front" }), gates({ constrained: true })); expect(h.frames()).toHaveLength(1); expect(h.geo().bind.mock.calls[0]![1]).toMatchObject({ layer: "front" });
@@ -621,12 +633,12 @@ describe("#1629 local Trial admission in the SAME registry (stage protocol model
     f.ready(); h.frame(100); expect(f.send.mock.calls.filter(([e]: any) => e.type === "env").at(-1)![0]).toMatchObject({ width: 99, height: 78 }); expect(h.api.publish("reply", {}, "own")).toBe(1); expect(h.api.publish("mention", {}, "own")).toBe(0);
     expect(h.api.snapshot()[0]).not.toHaveProperty("trialStage"); expect(f.options.render).not.toHaveProperty("trialStage"); expect(h.mount.mock.calls[0]![0]).not.toHaveProperty("trialStage");
   });
-  it("a live branded Trial alone bypasses HTML opt-in and cannot lend that consent to ordinary rows", async () => {
-    const h = rig(), t = trial(h), other = h.descriptors(1, { layer: "behind" }); h.coverage.mockReturnValue(stock({ front: false, agentFront: false }));
-    await h.admit([t.d, ...other], gates({ modal: true, previewReady: false, optIn: false }));
+  it("a live branded Trial owns the modal exception; both paths require opaque transport", async () => {
+    const h = rig(), t = trial(h), other = h.descriptors(1, { layer: "front" }); h.coverage.mockReturnValue(stock({ front: false, agentFront: false }));
+    await h.admit([t.d, ...other], gates({ modal: true, transportReady: true, optIn: false }));
     expect(h.frames()).toHaveLength(1); expect(h.load).toHaveBeenCalledOnce(); expect(h.load.mock.calls[0][0].key).toBe(t.d.key);
     h.frames()[0].ready(); expect(h.api.publish("reply", {}, "own")).toBe(1);
-    h.api.update([t.d, ...other], gates({ previewReady: false, optIn: false, trialReady: false }));
+    h.api.update([t.d, ...other], gates({ transportReady: false, optIn: false, trialReady: false }));
     expect(h.frames()[0].state().removed).toBe(true); expect(h.api.publish("reply", {}, "own")).toBe(0);
   });
   it.each([false, true])("constrained=%s spends the common pool, preserves declared layer and queues without a read", async constrained => {
@@ -743,8 +755,8 @@ describe("#2055 R2: one display precedence through the real snapshot (Prism)", (
       expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
     }
   });
-  it.each([[{ reducedMotion: true }, "reduced_motion"], [{ saveData: true }, "save_data"], [{ show: false }, "disabled"], [{ optIn: false }, "preview_not_consented"],
-    [{ safe: true }, "safe_mode"], [{ publicLink: true }, "public_link"]])("a closed global gate %o is named %s", async (patch, reason) => {
+  it.each([[{ reducedMotion: true }, "reduced_motion"], [{ saveData: true }, "save_data"], [{ show: false }, "disabled"], [{ transportReady: false }, "transport_unavailable"],
+    [{ safe: true }, "safe_mode"]])("a closed global gate %o is named %s", async (patch, reason) => {
     const h = rig(), ds = await h.admit(); h.api.update(ds, gates(patch)); await flush();
     expect(h.frames().every((f: any) => f.state().removed)).toBe(true); expect(h.api.snapshot()[0]).toMatchObject({ verdict: "off", reason });
   });

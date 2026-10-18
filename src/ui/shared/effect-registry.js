@@ -1,7 +1,7 @@
 /** #1629 B2: one host-owned Canvas Worker pool. Product adapters are deliberately separate. */
 import { allocateEffectFrames, effectEvent, effectPlaybackReason } from "./effect-policy.js";
 import { captureEffectBaseline } from "./effect-baseline.js";
-import { createEffectFrame } from "./effect-frame.js";
+import { createOpaqueEffectFrame } from "./effect-frame.js";
 import { createEffectGeometry, hostEffectRect } from "./effect-geometry.js";
 import { effectStockSnapshot, effectStockAllows } from "./effect-stock-snapshot.js";
 import { effectTrialStage, effectTrialStageIdentity, watchEffectTrialStage } from "./effect-trial-stage.js";
@@ -10,7 +10,7 @@ import { EffectBudget } from "./effect-profiler.js";
 const registries = new WeakMap();
 const plain = o => !!o && (Object.getPrototypeOf(o) === Object.prototype || Object.getPrototypeOf(o) === null);
 const finite = v => typeof v === "number" && Number.isFinite(v);
-const FLAGS = ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "previewReady", "optIn", "constrained", "modal"];
+const FLAGS = ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "transportReady", "constrained", "modal"];
 const TYPES = ["state", "reply", "theme"];
 function unsafeSnapshotDescriptor(d) {
   if (!plain(d) || !plain(d.params ?? {})) return null;
@@ -117,7 +117,9 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     s.live = false;
     if (slots.get(s.d.key) === s) slots.delete(s.d.key);
     if (s.request) { s.request.controller.abort(); if (s.request.timer !== null) host.clearTimeout(s.request.timer); }
-    if (!["disposed", "superseded", "hidden", "human_resume", "calibrating", "geometry_changed"].includes(why)) failures.set(s.d.key, { identity: signature(s.d), reason: why });
+    // A closed/unknown viewer gate revokes paint, not the effect identity. Fresh known gates
+    // may admit it again; resource failures and actual safety pauses retain their latches.
+    if (!["disposed", "superseded", "hidden", "human_resume", "calibrating", "geometry_changed", "gates_unknown"].includes(why)) failures.set(s.d.key, { identity: signature(s.d), reason: why });
     s.stageOff?.(); s.stageOff = null;
     s.frame?.remove(why); s.geometry?.remove();
     if (s.loadOff) s.loadOff();
@@ -140,13 +142,9 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     return true;
   }
   function gatesKnown() { return context && FLAGS.every(k => typeof context[k] === "boolean") && (context.openInstance === null || typeof context.openInstance === "string" && context.openInstance.length >= 1 && context.openInstance.length <= 128); }
-  function consent(d) {
-    const trial = d?.trialStage && effectTrialStageIdentity(d.trialStage);
-    return trial ? context.trialReady === true : context.previewReady === true && context.optIn === true;
-  }
   function eligible(d = null) {
-    return gatesKnown() && !context.safe && !context.publicLink && !context.reducedMotion && !context.saveData && context.enabled && context.show
-      && (d ? consent(d) : context.previewReady && context.optIn || descriptors.some(x => x.trialStage && consent(x)));
+    return gatesKnown() && !context.safe && !context.reducedMotion && !context.saveData && context.enabled && context.show && context.transportReady
+      && (!d || !context.publicLink || d.region === "chat" && !d.trialStage);
   }
   const globalAllowed = (d = null) => eligible(d) && host.document.visibilityState === "visible";
   const signature = d => d.identity;
@@ -324,7 +322,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
         if (local) fresh = local.rect;
         s.rect = fresh;
         s.budget = new EffectBudget({ device: s.device, baselineFps: baseline, clock: nativeClock, longTasksSupported });
-        const frame = createEffectFrame({ window: host, root: local?.root ?? root, origin, boot, clock: nativeClock,
+        const frame = createOpaqueEffectFrame({ window: host, root: local?.root ?? root, origin, boot, clock: nativeClock,
           render: { code: resource.code, params: resource.params, assets: resource.assets, wants: resource.wants, instance: d.instance, width: fresh.width, height: fresh.height, dpr: dpr(s.device) },
           onReady() { if (!current(s)) return; if (!globalAllowed(d) || context.hidden || !coverage(d)) { retire(s, "hidden"); tell(); return; } const n = time(); if (n === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return; } s.ready = true; s.readyAt = n; s.healthySince = n; publishEnv(s); schedule(); tell(); },
           onRemove(why) { if (current(s)) { retire(s, why); tell(); } },
@@ -505,7 +503,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       descriptors = ds.map(snapshotDescriptor).filter(Boolean);
       for (const [key, identity] of paused) if (!descriptors.some(d => d.key === key && signature(d) === identity)) paused.delete(key);
       for (const [key, f] of failures) if (!descriptors.some(d => d.key === key && signature(d) === f.identity)) failures.delete(key);
-      context = Object.fromEntries([...FLAGS, "trialReady", "openInstance"].map(k => [k, ctx[k]]));
+      context = Object.fromEntries([...FLAGS, "openInstance"].map(k => [k, ctx[k]]));
       reconcile(); return view();
     },
     snapshot: view,
