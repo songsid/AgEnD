@@ -13,6 +13,7 @@ import { constants as fsConstants } from "node:fs";
 import { lstat, open, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
+import { classicInstanceName, sanitizeInstanceName } from "./instance-names.js";
 
 export type AgentFileRead = { ok: true; bytes: Buffer } | { ok: false; reason: string };
 
@@ -42,6 +43,41 @@ const sensitivePart = (part: string) => (part.startsWith(".") && part !== ".agen
   || /\.(?:db|sqlite|sqlite3)(?:[.-]|$)/i.test(part) || /\.(?:token|pem|key)(?:[.-]|$)/i.test(part);
 const reservedStateRoots = new Set(["workspaces", "kiro-identity", "operator", "model-catalog", "profiles", "preview-tunnel", "bin", "web-effects", "web-mods", "web-themes", "web-owner-css", "cards", "avatars", "cache", "web-files"]);
 const staging = ["web-assets", "web-effects", ".agend/appearance", ".agend/mods"];
+
+/** Read persisted Classic ownership, including peers with no running daemon. Never construct the migrating manager. */
+async function classicPeerNames(state: string, fleet: unknown): Promise<Set<string>> {
+  let raw: unknown;
+  try {
+    const text = await readFile(resolve(state, "classicBot.yaml"), "utf8");
+    const { default: yaml } = await import("js-yaml"); raw = yaml.load(text);
+  } catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return new Set(); throw err; }
+  if (raw == null) return new Set();
+  if (typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid Classic configuration");
+  const channels = (raw as { channels?: unknown }).channels ?? {};
+  if (typeof channels !== "object" || Array.isArray(channels)) throw new Error("invalid Classic roster");
+  const names = new Set<string>();
+  for (const [key, value] of Object.entries(channels)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid Classic record");
+    const row = value as { instanceName?: unknown; channelId?: unknown; name?: unknown; adapterId?: unknown };
+    let name = row.instanceName;
+    if (name == null) {
+      // Match the manager's legacy naming, including non-primary adapter suffixes, without load()/save().
+      const channelId = row.channelId ?? key, label = row.name ?? channelId;
+      if (typeof channelId !== "string" || typeof label !== "string" || row.adapterId != null && typeof row.adapterId !== "string") throw new Error("unknown Classic identity");
+      const cfg = fleet as { channels?: unknown; channel?: unknown } | undefined;
+      if (cfg?.channels != null && !Array.isArray(cfg.channels)) throw new Error("unknown adapters");
+      const first = Array.isArray(cfg?.channels) && cfg.channels.length ? cfg.channels[0] : cfg?.channel;
+      if (first != null && (typeof first !== "object" || Array.isArray(first))) throw new Error("unknown primary adapter");
+      const primary = first as { id?: unknown; type?: unknown } | undefined;
+      const primaryId = primary?.id ?? primary?.type;
+      if (primaryId != null && typeof primaryId !== "string") throw new Error("unknown primary adapter");
+      name = classicInstanceName(sanitizeInstanceName(label), channelId, row.adapterId && row.adapterId !== primaryId ? row.adapterId as string : undefined);
+    }
+    if (!plainCaller(name)) throw new Error("invalid Classic instance name");
+    names.add(name);
+  }
+  return names;
+}
 
 /** Shared by reads, effect-directory admission and generated writes. No ownership inferred from the shell cwd. */
 export async function agentFileScope(opts: AgentFileContext): Promise<{ workspace: string; managedState: boolean; stateBlocked(path: string): boolean }> {
@@ -90,15 +126,18 @@ export async function agentFileScope(opts: AgentFileContext): Promise<{ workspac
       || (reservedStateRoots.has(parts[0]!) && !workspaceDirectory);
     if (launchMatches && !reserved && under(workspace, expected)) {
       let exclusive = true;
+      const peerRoots = new Set<string>();
       for (const [name, peer] of Object.entries(roster)) {
         if (name === opts.instance) continue;
         if (!plainCaller(name)) throw new Error("invalid instance name");
         // A peer's standard workspace remains theirs even when their configured cwd is elsewhere.
-        for (const named of new Set([configured(name, peer), resolve(state, "workspaces", name)])) {
-          let actual = named;
-          try { actual = await realpath(named); } catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
-          if (under(named, expected) || under(expected, named) || under(actual, expected) || under(expected, actual)) exclusive = false;
-        }
+        peerRoots.add(configured(name, peer)); peerRoots.add(resolve(state, "workspaces", name));
+      }
+      for (const name of await classicPeerNames(state, fleet)) if (name !== opts.instance) peerRoots.add(resolve(state, "workspaces", name));
+      for (const named of peerRoots) {
+        let actual = named;
+        try { actual = await realpath(named); } catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
+        if (under(named, expected) || under(expected, named) || under(actual, expected) || under(expected, actual)) exclusive = false;
       }
       try {
         // A symlink named General (or one of its ancestors) cannot authorize another directory.

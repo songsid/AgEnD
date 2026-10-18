@@ -312,7 +312,8 @@ use files there as before. For your own AgEnD-managed workspace under `~/.agend/
 also work; no staging folder is required. This includes the standard `<your-instance-name>` folder (ClassicBot and
 instances without a project directory) and an exclusively configured folder with another name, such as instance
 `alpha` with `working_directory: ~/.agend/workspaces/alpha-home` in `fleet.yaml`. Its canonical configured path must
-not overlap another instance's configured or standard workspace. The `workspaces/` root itself is not a workspace.
+not overlap another instance's configured or standard workspace, including persisted ClassicBot peers that are
+stopped or paused. The `workspaces/` root itself is not a workspace.
 
 General, adapter-specific General (such as `general-telegram`), and other configured working directories elsewhere
 inside the AgEnD state directory must stage inputs under **`web-assets/` or `web-effects/`**. For example, put a banner at
