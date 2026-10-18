@@ -50,7 +50,7 @@ Remove the two-second calibration **admission** gate. Start drawing immediately.
 
 ## Try
 
-Keep Try as a volatile preview before a person saves a placement: one click, host label and Stop, clipped stage, stop on close/navigation/another dialog/true window blur. No preview port, HTML consent or owner-CSS gate; the existing isolated host chrome remains. Proposed authorization: an authenticated admin session on any supported origin can start; public read-only viewers can see ordinary placed effects but cannot create a trial. Every read still checks the issuing agent's current own/shared rights and the bound session/epoch. No persistence/export/share/placement side effect. This authorization expansion requires explicit design approval before implementation.
+Keep Try as a volatile preview before a person saves a placement: one click, host label and Stop, clipped stage, stop on close/navigation/another dialog/true window blur. No preview port, HTML consent or owner-CSS gate; the existing isolated host chrome remains. Proposed authorization: an authenticated admin session on any supported non-public dashboard origin can start; public read-only viewers can see ordinary placed effects but cannot create a trial. Every read still checks the issuing agent's current own/shared rights and the bound session/epoch. No persistence/export/share/placement side effect. This authorization expansion requires explicit design approval before implementation.
 
 ## Delivery and proof
 
