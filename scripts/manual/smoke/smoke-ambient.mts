@@ -8,21 +8,24 @@
 //     opens the switch; unticked again → it plays;
 //   - "Show agents' themes, effects and widgets" off (through the page) → the ⋯ line names it; ?safe=1 → none;
 //   - a hidden tab pauses every ambient animation;
-//   - the public link (the product's own gateway, served locally under a trycloudflare-shaped host: no real tunnel);
+//   - the public link (a real one through FleetManager; from-defaults.mts stubs only the tunnel transport);
 //   - CSP violations, page errors, the stacking order (layer under the thread), pointer-events none, aria-hidden.
 // Then a performance run: phone 390, a 1,200-message chat, 4× CPU throttle, scrolling — frame times and long tasks with
 // the ambient on vs off.
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> MATRIX=full FONTCONFIG_FILE=/etc/fonts/fonts.conf npx --prefix <checkout> tsx scripts/manual/smoke/smoke-ambient.mts
 import { join, dirname } from "node:path";
 import { writeFileSync } from "node:fs";
-import { bootFixture, matrix, caseName, shotPath, labelOf, seedChat, VIEWPORTS } from "../smoke-fixture/index.mts";
+import { bootFixture, matrix, caseName, shotPath, labelOf, seedChat, freshPage, openPublicLink } from "../smoke-fixture/index.mts";
 
 const SMOKE = "smoke-ambient";
 const REPO = process.env.REPO ?? process.cwd();
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48720) });
 const enc = encodeURIComponent;
-const WITH = "rd1-platform-backend-sr4-server-t1547091841202130997";
-const PERF = "研一官網-t1544335726169165914";
+// Demo names only (the fixture's first instances are a real fleet's), as smoke-from-defaults-probe does.
+const DEMO = new Set(["observability-dashboards", "billing-reconciliation", "search-indexer", "資料清洗與報表自動化助理"]);
+for (const n of Object.keys(fx.fm.fleetConfig.instances)) if (!DEMO.has(n)) delete fx.fm.fleetConfig.instances[n];
+const WITH = "observability-dashboards";
+const PERF = "billing-reconciliation";
 
 const PETALS = { preset: "fall", glyphs: ["🌸", "❀", "✿"], colors: ["#f4a7b9", "#ffd1dc", "#e75480"] };
 const STARS = { preset: "burst-on-click", glyphs: ["✦", "✧"], colors: ["#ffd700", "#ff69b4", "#87ceeb", "#98fb98", "#dda0dd"], count: 12 };
@@ -35,7 +38,7 @@ const fail: string[] = [];
 const check = (cond: unknown, what: string) => { if (!cond) fail.push(what); return !!cond; };
 
 await seedChat(fx, [WITH], 30);
-// The agent's own tool, and General's tool for the user: the product's write paths, not the store.
+// The agent's own tool, and General's tool for the user (both write the agent's record, never a viewer's prefs): the product's write paths, not the store.
 results.setup.agent = fx.fm.webAppearance.handleTool(WITH, "set_web_ambient", PETALS);
 results.setup.general = fx.fm.webSettings.change(undefined, { what: "ambient", instance: WITH, ambient: STARS });
 check(results.setup.agent?.kind === "loop", "setup: set_web_ambient");
@@ -84,12 +87,16 @@ async function openMenu(page: any) {
 for (const c of process.env.ONLY_PUBLIC || process.env.ONLY_PERF ? [] : matrix()) {
   for (const reduce of [false, true]) {
     const name = `${caseName(c)}-${reduce ? "rm" : "nm"}`;
-    const { ctx, page, csp } = await fx.page(c, { path: `/ui/chat/${enc(WITH)}` });
-    await page.emulateMedia({ reducedMotion: reduce ? "reduce" : "no-preference" });
-    const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 160)));
-    const r: any = { webkitStyleRefusals: 0 };
-    page.on("console", (m: any) => { if (WEBKIT && KNOWN_WEBKIT.test(m.text())) r.webkitStyleRefusals++; else if (/Content Security Policy|Refused/.test(m.text())) errs.push("console: " + m.text().slice(0, 200)); });
-    await page.reload(); await page.waitForTimeout(1800);
+    // From defaults (a78ebdc5): a fresh profile, nothing seeded, signed in through /signin as its own account; the
+    // reduced-motion cases on a LAN name (a non-loopback origin), the others on loopback.
+    const fp = await freshPage(fx, c, { origin: reduce ? "lan" : "loopback", reducedMotion: reduce, path: `/ui/chat/${enc(WITH)}`,
+      beforeNavigate: (ctx: any) => ctx.addInitScript({ content: `window.__csp = []; document.addEventListener("securitypolicyviolation", e => window.__csp.push(e.violatedDirective + " " + (e.blockedURI || "")));` }) });
+    const { ctx, page } = fp;
+    const base = fp.base;
+    const csp = async () => page.evaluate("window.__csp || []") as Promise<string[]>;
+    const errs = fp.errors;
+    const r: any = { origin: base };
+    await page.waitForTimeout(1800);
     // From defaults: it plays, reduced motion or not (the user's direction).
     r.defaults = await probe(page);
     check(r.defaults.layer === 12 && r.defaults.running >= 12 && r.defaults.moved, `${name}: plays from defaults`);
@@ -111,11 +118,11 @@ for (const c of process.env.ONLY_PUBLIC || process.env.ONLY_PERF ? [] : matrix()
     check(r.hidden.total === r.hidden.paused && r.hidden.runningAfter === r.hidden.total, `${name}: hidden tab pauses`);
     if (reduce) {
       // The blocked state, through visible UI only: tick the device switch in Settings → Appearance.
-      await page.goto(`${fx.base}/settings/appearance`); await page.waitForTimeout(1500);
+      await page.goto(`${base}/settings/appearance`); await page.waitForTimeout(1500);
       const box = page.locator("#fx-follow-reduced-motion");
       await box.scrollIntoViewIfNeeded(); await box.check(); await page.waitForTimeout(200);
       await page.screenshot({ path: shotPath(SMOKE, name, "settings-switch") });
-      await page.goto(`${fx.base}/ui/chat/${enc(WITH)}`); await page.waitForTimeout(1500);
+      await page.goto(`${base}/ui/chat/${enc(WITH)}`); await page.waitForTimeout(1500);
       r.blocked = await probe(page);
       check(r.blocked.layer === null && r.blocked.running === 0, `${name}: following reduced motion hides it`);
       r.menu = await openMenu(page);
@@ -132,79 +139,64 @@ for (const c of process.env.ONLY_PUBLIC || process.env.ONLY_PERF ? [] : matrix()
       r.fixUrl = new URL(page.url()).pathname;
       check(r.fixUrl === "/settings/appearance", `${name}: the reason opens its switch`);
       await page.locator("#fx-follow-reduced-motion").uncheck(); await page.waitForTimeout(200);
-      await page.goto(`${fx.base}/ui/chat/${enc(WITH)}`); await page.waitForTimeout(1500);
+      await page.goto(`${base}/ui/chat/${enc(WITH)}`); await page.waitForTimeout(1500);
       r.unblocked = await probe(page);
       check(r.unblocked.layer === 12 && r.unblocked.moved, `${name}: unticked, it plays again`);
     } else if (c.lang === "en") {
       // The show switch off, through Settings; the ⋯ line names it; then on again. ?safe=1 draws none.
-      await page.goto(`${fx.base}/settings/appearance`); await page.waitForTimeout(1500);
+      await page.goto(`${base}/settings/appearance`); await page.waitForTimeout(1500);
       const show = page.locator("label.check", { hasText: "Show agents' themes, effects and widgets" }).locator("input");
       await show.uncheck(); await page.waitForTimeout(800);
-      await page.goto(`${fx.base}/ui/chat/${enc(WITH)}`); await page.waitForTimeout(1500);
+      await page.goto(`${base}/ui/chat/${enc(WITH)}`); await page.waitForTimeout(1500);
       r.hiddenSwitch = await probe(page);
       r.menuHidden = await openMenu(page);
       check(r.hiddenSwitch.layer === null && r.menuHidden.some((t: string) => t.includes("agents' themes are off")), `${name}: show switch off is named`);
       await page.screenshot({ path: shotPath(SMOKE, name, "hidden-menu") });
       await page.keyboard.press("Escape");
-      await page.goto(`${fx.base}/settings/appearance`); await page.waitForTimeout(1200);
+      await page.goto(`${base}/settings/appearance`); await page.waitForTimeout(1200);
       await page.locator("label.check", { hasText: "Show agents' themes, effects and widgets" }).locator("input").check(); await page.waitForTimeout(800);
-      await page.goto(`${fx.base}/ui/chat/${enc(WITH)}?safe=1`); await page.waitForTimeout(1500);
+      await page.goto(`${base}/ui/chat/${enc(WITH)}?safe=1`); await page.waitForTimeout(1500);
       r.safe = await page.evaluate(`document.querySelectorAll(".amb-layer, .amb-burst").length`);
       check(r.safe === 0, `${name}: ?safe=1 draws none`);
     }
-    r.csp = await csp(); r.errs = errs;
+    r.csp = await csp();
+    if (WEBKIT) { r.webkitStyleRefusals = errs.filter((e) => KNOWN_WEBKIT.test(e)).length; r.errs = errs.filter((e) => !KNOWN_WEBKIT.test(e)); } else r.errs = errs;
     // The same WebKit item as a securitypolicyviolation: an inline <style> element after a click in a message (main too).
     if (WEBKIT) { r.webkitStyleElem = r.csp.filter((v: string) => /^style-src-elem inline/.test(v)).length; r.csp = r.csp.filter((v: string) => !/^style-src-elem inline/.test(v)); }
-    check(r.csp.length === 0 && errs.length === 0, `${name}: no CSP violation or page error`);
+    check(r.csp.length === 0 && r.errs.length === 0, `${name}: no CSP violation or page error`);
     results.cases[name] = r;
     await ctx.close();
   }
 }
 
-// ── The public link: the product's gateway on a local port, under a trycloudflare-shaped host (no tunnel). ──
+// ── The public link: a real one through FleetManager (from-defaults.mts: only the tunnel transport is stubbed). ──
 if (!process.env.ONLY_PERF && !process.env.SKIP_EXTRA) {
-  const { createPublicWebGateway } = await import(REPO + "/src/public-web-gateway.ts");
-  const { tokenEpoch } = await import(REPO + "/src/web-session.ts");
-  const HOST = "amb-smoke.trycloudflare.com";
-  const gw = createPublicWebGateway({ exposureId: "amb-smoke", isCurrent: () => true, isOpen: () => true, dispatch: (req: any, res: any) => fx.fm.dispatchWebHttp(req, res, Number(process.env.HP ?? 48720)) });
-  const url = await gw.listen(); gw.setHost(HOST);
-  // A public sign-in posts "someone signed in" to the owner's General: no adapter here, so that notice is a no-op.
-  fx.fm.confirmPublicWebLogin = async () => {};
+  const link = await openPublicLink(fx);
   const pub: any = {};
   for (const c of matrix("desk-light-en,phone-dark-zh-TW")) {
     for (const reduce of [false, true]) {
-      const ctx = await fx.browser.newContext({ viewport: VIEWPORTS[c.device], colorScheme: c.theme, isMobile: c.device === "phone", hasTouch: c.device === "phone", reducedMotion: reduce ? "reduce" : "no-preference" });
-      await ctx.addInitScript({ content: `window.__csp = []; document.addEventListener("securitypolicyviolation", e => window.__csp.push(e.violatedDirective));` });
-      // The browser sees https://<host>; each request goes to the gateway with that Host, as cloudflared would send it.
-      await ctx.route(`https://${HOST}/**`, async (route: any) => {
-        const u = new URL(route.request().url());
-        const res = await route.fetch({ url: `${url.origin}${u.pathname}${u.search}`, headers: { ...route.request().headers(), host: HOST } });
-        await route.fulfill({ response: res });
-      });
-      const page = await ctx.newPage();
-      // In WebKit, requests this harness proxies (route.fetch) can fail its access-control check; that is the proxy, not the
-      // page (the same flows pass in Chromium), and every check below still has to pass.
-      const errs: string[] = []; page.on("pageerror", (e: any) => { const t = String(e); if (!(WEBKIT && /due to access control checks/.test(t))) errs.push(t.slice(0, 160)); });
-      const code = fx.fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fx.fm.webToken), audience: "amb-smoke", owner: { adapterId: "discord", userId: "100000000000000001" } }).display;
-      const seen: string[] = []; page.on("response", (x: any) => seen.push(`${x.status()} ${x.request().method()} ${new URL(x.url()).pathname}`));
-      await page.goto(`https://${HOST}/signin`); await page.waitForSelector("#code"); await page.fill("#code", code); await page.click("#go");
-      await page.waitForURL(`https://${HOST}/ui`, { timeout: 8000 }).catch(async () => { throw new Error(`public sign-in: ${seen.join(" | ")} :: ${(await page.textContent("body").catch(() => "")).slice(0, 300)}`); });
-      await page.goto(`https://${HOST}/ui/chat/${enc(WITH)}`); await page.waitForTimeout(2000);
       const name = `public-${caseName(c)}-${reduce ? "rm" : "nm"}`;
+      const p = await link.publicPage(c, { reducedMotion: reduce, path: `/ui/chat/${enc(WITH)}`,
+        beforeNavigate: (ctx: any) => ctx.addInitScript({ content: `window.__csp = []; document.addEventListener("securitypolicyviolation", e => window.__csp.push(e.violatedDirective));` }) });
+      const page = p.page;
+      await page.waitForTimeout(2000);
       const r: any = { isPublic: await page.evaluate(`document.body.dataset.publicLink === "1"`), probe: await probe(page) };
       r.click = await clickInThread(page, c);
       r.menu = await openMenu(page).catch(() => null);
-      r.errs = errs;
+      // In WebKit, requests the harness carries (route.fetch) can fail its access-control check: the transport, not the
+      // page (the same flows pass in Chromium); every check below still has to pass.
+      r.errs = p.errors.filter((e: string) => !(WEBKIT && (/due to access control checks/.test(e) || KNOWN_WEBKIT.test(e))));
       check(r.isPublic && r.probe.layer === 12 && r.probe.moved, `${name}: plays on the public link`);
       check(r.click && r.click.n >= 12 && r.click.clicks === 2, `${name}: stars on the public link`);
       check(!(r.menu ?? []).some((t: string) => /Clear the|清除/.test(t)), `${name}: no Clear over the public link`);
-      check(errs.length === 0 && (r.probe.csp ?? []).length === 0, `${name}: no CSP violation or page error`);
+      const v = (r.probe.csp ?? []).filter((x: string) => !(WEBKIT && /^style-src-elem/.test(x)));
+      check(r.errs.length === 0 && v.length === 0, `${name}: no CSP violation or page error`);
       await page.screenshot({ path: shotPath(SMOKE, name, "public") });
       pub[name] = r;
-      await ctx.close();
+      await p.ctx.close();
     }
   }
-  gw.close();
+  await link.close();
   results.publicLink = pub;
 }
 
