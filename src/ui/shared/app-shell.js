@@ -394,7 +394,7 @@ function PrefsPopover() {
  * The header every panel shows: ☰ (phone, or a collapsed sidebar), its title and status, then its actions. `nav`
  * (#1523 N2): an instance page's view switch — beside the title on a wide screen, a row of tabs under it on a phone.
  */
-export function PanelHeader({ title, sub, children, headingRef, nav }) {
+export function PanelHeader({ title, sub, children, headingRef, nav, notice }) {
   const shell = useStore(shellStore);
   const canCreate = useCanCreate() && !!newInstanceOpener;
   return html`<header data-trust="header" class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
@@ -404,6 +404,7 @@ export function PanelHeader({ title, sub, children, headingRef, nav }) {
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1">${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
     ${nav || null}
     <div class="panel-actions">${children}</div>
+    ${notice || null}
   </header>`;
 }
 

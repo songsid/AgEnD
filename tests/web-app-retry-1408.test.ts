@@ -49,7 +49,7 @@ async function scenario(poll: PollAnswer[]) {
   options.requestAnimationFrame = (cb: () => void) => setTimeout(cb, 0);
   restore = () => {
     // Stop the real stream and unmount before replacing globals; an unfinished retry must never poll the next case.
-    dom.window.dispatchEvent(new Event("pagehide")); render(null, app);
+    dom.window._fire(new Event("pagehide", { target: dom.window, eventPhase: 2 } as any), false); render(null, app);
     dom.restore(); delete g.EventSource; delete g.fetch;
   };
   await import("/assets/app.js");

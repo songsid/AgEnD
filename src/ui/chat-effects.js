@@ -46,6 +46,8 @@ export function effectRowText(row, { ownOpen = false, wasRunning = false, doc = 
   if (row.reason === "safety_off" || row.reason === "interrupted") return t(REASON_KEY[row.reason]);
   if (row.reason === "paused" || row.reason === "host_budget") return t("chatFx.paused");
   if (REASON_KEY[row.reason]) return t(REASON_KEY[row.reason]);
+  if (row.reason != null && !["stock_overlay", "modal", "frame_limit"].includes(row.reason))
+    return t("chatFx.rawReason", typeof row.reason === "string" ? row.reason.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 80) : "unknown");
   if (row.phase === "running") return t("chatFx.running");
   if (row.phase) return t("chatFx.starting");
   if (row.verdict === "queued") return t("chatFx.queued");
