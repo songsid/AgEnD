@@ -7307,6 +7307,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.eventLogPruneTimer = setInterval(() => this.pruneEventLog(), 24 * 60 * 60_000);
     this.eventLogPruneTimer.unref?.();
 
+    // #2122 §5.5: usage is collected from the start, not from the first time someone opens a report — the same bounded
+    // background passes the cache report uses (16 MB a pass, then every 10 minutes).
+    { const cache = this.cacheServiceFor(); cache.start(); void cache.kick(); }
+
     // #1920 §3.2: guests' ClassicBot room membership, read in the background — now, then each key ten minutes after
     // its answer (a minute after a failed read; the tick only finds what is due). A request only reads the answers.
     void this.refreshAllGuestRooms();
@@ -13209,7 +13213,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private cacheInstances(): CacheInstance[] {
     const fleet = Object.entries(this.fleetConfig?.instances ?? {}).map(([name, cfg]) => ({
       name, backend: this.backendNameOf(name), workingDirectory: cfg.working_directory, ledgerPath: join(this.getInstanceDir(name), "cache-ledger.json"),
-      claudeConfigDir: this.claudeConfigDirOf(name),
+      claudeConfigDir: this.claudeConfigDirOf(name), profile: this.usageProfileOf(name, this.backendNameOf(name)),
     }));
     const taken = new Set(fleet.map(i => i.name));
     const classic = (this.classicChannels?.getAll() ?? []).filter(ch => !taken.has(ch.instanceName)).map(ch => ({
@@ -13218,6 +13222,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       workingDirectory: join(getAgendHome(), "workspaces", ch.instanceName),
       ledgerPath: join(this.getInstanceDir(ch.instanceName), "cache-ledger.json"),
       claudeConfigDir: this.claudeConfigDirOf(ch.instanceName),
+      profile: this.usageProfileOf(ch.instanceName, this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code"),
     }));
     return [...fleet, ...new Map(classic.map(c => [c.name, c])).values()];
   }
@@ -13229,6 +13234,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   cacheReport(window: string): Promise<CacheReport> {
     return this.cacheServiceFor().report(cacheWindow(window));
+  }
+  /**
+   * #2122 §5.1: the profile the usage read now is tagged with — the claude profile whose config dir is read ("default"
+   * without one); codex "unrecorded" (its rollouts don't say which login wrote them).
+   */
+  private usageProfileOf(name: string, backend: string): string | undefined {
+    if (backend === "claude-code") return this.credentialProfileOf(name, "claude-code") ?? "default";
+    if (backend === "codex") return "unrecorded";
+    return undefined;
+  }
+  /** #2122: the fleet's day boundary zone — defaults.scheduler.default_timezone, else this host's. */
+  usageZone(): string {
+    return this.fleetConfig?.defaults?.scheduler?.default_timezone?.trim() || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  }
+  /**
+   * #2122: the usage report (usage-report.ts) — from the ledgers and rollups as they are now and the delivered-message
+   * counts; never a transcript read. `only`: just that instance (an ordinary agent's own row).
+   */
+  async usageReport(params: { range: import("./usage-report.js").UsageRange; group: import("./usage-report.js").UsageGroup; only?: string }): Promise<import("./usage-report.js").UsageReport> {
+    const { buildUsageReport } = await import("./usage-report.js");
+    const data = await this.cacheServiceFor().usageData();
+    const team = new Map<string, string>();
+    for (const [t, cfg] of Object.entries(this.fleetConfig?.teams ?? {})) for (const m of cfg?.members ?? []) if (!team.has(m)) team.set(m, t);
+    const now = Date.now();
+    this.ensureDeliveryOutbox?.();
+    // Every hour of the kept history: the report places each on a local date and keeps the range's own.
+    const messages = this.deliveryOutbox?.deliveredMessageHours(now - 401 * 86_400_000, now + 3_600_000) ?? [];
+    const keep = (name: string) => params.only === undefined || name === params.only;
+    return buildUsageReport({
+      now, zone: this.usageZone(), range: params.range, group: params.group, scanning: data.scanning,
+      instances: data.instances.filter(i => keep(i.inst.name)).map(i => ({ name: i.inst.name, backend: i.inst.backend, team: team.get(i.inst.name) ?? null,
+        status: i.status, ...(i.with ? { with: i.with } : {}), ...(i.ledger ? { ledger: i.ledger } : {}), ...(i.days ? { days: i.days } : {}) })),
+      messages: messages.filter(m => keep(m.instance)),
+    });
   }
   /** #2001: get_cache_report's — the same report, as last worked out (reused for a minute, until the next pass). */
   cacheReportPublished(window: string): Promise<CacheReport> {
@@ -13242,6 +13281,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       codexSessionsDir: () => join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "sessions"),
       listRollouts: root => sharedRolloutIndex(root).list(),
       metaPath: join(this.dataDir, "cache-codex-rollouts.json"),
+      zone: () => this.usageZone(),
       log: (level, msg, extra) => this.logger[level](extra ?? {}, msg),
     });
   }

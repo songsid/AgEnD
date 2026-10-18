@@ -211,7 +211,7 @@ export interface WebApiContext {
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
-    web?: { echo_to_channel?: boolean; usage_panel?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number };
+    web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
@@ -297,6 +297,8 @@ export interface WebApiContext {
   logSteps?(name: string, q: import("./log-service.js").LogQuery): Promise<unknown>;
   /** #1468: the prompt-cache expiry analysis for a window ("24h" | "7d" | "30d"); absent: not offered. */
   cacheReport?(window: string): Promise<unknown>;
+  /** #2122: the usage report (Fleet → Usage); absent: not offered. */
+  usageReport?(params: { range: import("./usage-report.js").UsageRange; group: import("./usage-report.js").UsageGroup }): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
   webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority }): Promise<{ status: number; body: unknown }>;
   /** #1939 S1: the design's §3 for one request (`instance` once the body names it); absent: web carries no authority. */
@@ -1857,6 +1859,22 @@ export function handleWebRequest(
       ctx.scheduler.delete(decodeURIComponent(schedDelMatch[1]));
       json(res, 200, { deleted: true });
     } catch (err) { json(res, 400, { error: (err as Error).message }); }
+    return true;
+  }
+
+  // #2122: the usage report. Signed-in sessions by default (guests never: not in GUEST_ROUTES); hidden with the rest of
+  // usage by web.usage_panel: false; over the public link only when web.usage_report_on_public_link is true. Answered
+  // from the ledgers and rollups as they are; a catch-up runs behind. The page's CSV is built from this same answer.
+  if (method === "GET" && path === "/ui/usage-report") {
+    if (!ctx.usageReport || ctx.fleetConfig?.web?.usage_panel === false) { json(res, 404, { error: "Not available" }); return true; }
+    if (gatewayRequestContext(req) && ctx.fleetConfig?.web?.usage_report_on_public_link !== true) { json(res, 403, { error: "usage_report_not_over_public_link" }); return true; }
+    void import("./usage-report.js").then(({ usageRange, usageGroup }) => ctx.usageReport!({
+      range: usageRange(url.searchParams.get("range"), url.searchParams.get("from") ?? undefined, url.searchParams.get("to") ?? undefined),
+      group: usageGroup(url.searchParams.get("group")),
+    })).then(
+      (report) => json(res, 200, report),
+      (err) => { ctx.logger.error({ err }, "usage report failed"); json(res, 500, { error: "Usage report failed" }); },
+    );
     return true;
   }
 

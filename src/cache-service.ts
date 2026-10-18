@@ -20,12 +20,18 @@ import { scanJsonl } from "./cache-scan.js";
 import { addTurn, claudeLine, codexLine, emptyLedger, KEEP_DAYS, pruneLedger, reviveLedger, type FileCursor, type Ledger, type TranscriptKind } from "./cache-ledger.js";
 import { analyzeLedger, type InstanceAnalysis } from "./cache-analysis.js";
 import { PRICES_CHECKED, PRICE_SOURCES } from "./cache-prices.js";
+import { addCoverage, foldHours, pruneDays, readDays, writeDays, type UsageDays } from "./usage-rollup.js";
 
 /** An instance to analyse: a fleet.yaml instance, or a ClassicBot room (its workspace under the AgEnD home). */
 export interface CacheInstance {
   name: string; backend: string; workingDirectory: string; ledgerPath: string;
   /** #1699: this instance's claude config dir (its credential profile's); absent = claudeProjectsDir()'s parent. */
   claudeConfigDir?: string;
+  /**
+   * #2122: the profile the hours read now are tagged with — the claude profile whose config dir is read ("default"
+   * without one); "unrecorded" for codex (a rollout does not say which login wrote it).
+   */
+  profile?: string;
 }
 
 export interface CacheServiceOptions {
@@ -44,6 +50,8 @@ export interface CacheServiceOptions {
   log?: (level: "info" | "warn" | "debug", msg: string, extra?: Record<string, unknown>) => void;
   /** Monotonic milliseconds for the published report's age (tests); default performance.now. */
   monotonic?: () => number;
+  /** #2122: the zone days are folded in (defaults.scheduler.default_timezone, else the host's). */
+  zone?: () => string;
 }
 
 export type CacheWindow = "24h" | "7d" | "30d";
@@ -84,6 +92,8 @@ const dict = <T>(): Record<string, T> => Object.create(null) as Record<string, T
 
 export class CacheService {
   private readonly ledgers = new Map<string, Ledger>();
+  /** #2122: each instance's daily rollup (usage-rollup.ts), beside its ledger. */
+  private readonly rollups = new Map<string, UsageDays>();
   private readonly dirty = new Set<string>();
   /** Rollout path → the inode its session_meta was read from, and the cwd it names (null: not a session_meta). */
   private meta: Record<string, { ino: number; cwd: string | null }> | null = null;
@@ -156,12 +166,54 @@ export class CacheService {
   private async catchUp(): Promise<void> {
     for (;;) {
       const left = await this.pass();
-      if (left === 0) this.caughtUp = true;
+      if (left === 0) { this.caughtUp = true; await this.recordCoverage(); }
       // Stop looping when: all caught up, explicitly stopped, or closing (stop()
       // fenced new admission — let the current physical pass write its dirty data,
       // then exit rather than scanning the full backlog during shutdown).
       if (this.stopped || this.closing || left === 0) return;
       await sleep(this.o.pauseMs ?? 25);
+    }
+  }
+
+  private zone(): string { return this.o.zone?.() || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; }
+  private daysPath(inst: CacheInstance): string { return join(dirname(inst.ledgerPath), "usage-days.json"); }
+  /** #2122: an instance's rollup, read once. */
+  async rollupFor(inst: CacheInstance): Promise<UsageDays> {
+    let d = this.rollups.get(inst.name);
+    if (d) return d;
+    d = await readDays(this.daysPath(inst));
+    const again = this.rollups.get(inst.name);
+    if (again) return again;
+    this.rollups.set(inst.name, d);
+    return d;
+  }
+  /**
+   * #2122 §5.2: fold the hours about to leave the ledger into the rollup — on a copy, kept only once it is on disk — and
+   * return the checkpoint that is durable now (the ledger is pruned through it, never past it).
+   */
+  private async foldBeforePrune(inst: CacheInstance, ledger: Ledger, cutoff: number): Promise<number> {
+    const current = await this.rollupFor(inst);
+    const next: UsageDays = structuredClone(current);
+    const folded = foldHours(next, ledger, cutoff, this.zone());
+    const pruned = pruneDays(next, this.now(), this.zone());
+    if (!folded && !pruned) return current.checkpoint;
+    if (!(await writeDays(this.daysPath(inst), next))) {
+      this.o.log?.("warn", "usage rollup: could not be saved; the ledger keeps those hours until it can", { instance: inst.name });
+      return current.checkpoint;
+    }
+    this.rollups.set(inst.name, next);
+    return next.checkpoint;
+  }
+  /** #2122 §5.5: a catch-up finished — every source changed in the read window has been read up to now. */
+  private async recordCoverage(): Promise<void> {
+    const now = this.now();
+    const insts = this.o.instances();
+    const shared = await this.shared(insts);
+    for (const inst of insts) {
+      if (!kindOf(inst.backend) || shared.has(inst.name)) continue;
+      const next: UsageDays = structuredClone(await this.rollupFor(inst));
+      addCoverage(next, now - KEEP_DAYS * DAY, now);
+      if (await writeDays(this.daysPath(inst), next)) this.rollups.set(inst.name, next);
     }
   }
 
@@ -231,12 +283,13 @@ export class CacheService {
         // Only an unfinished line was left, and the file has not grown since: nothing new to read.
         if (cur.stalled === f.size) continue;
         if (budget <= 0) { behindBytes += f.size - cur.offset; behindFiles++; continue; }
-        const done = await this.read(ledger, cur, f.path, budget, cutoff);
+        const done = await this.read(ledger, cur, f.path, budget, cutoff, inst.profile);
         this.dirty.add(inst.name);
         budget -= done.read;
         if (done.behind > 0) { behindBytes += done.behind; behindFiles++; }
       }
-      pruneLedger(ledger, cutoff);
+      // #2122: fold, then prune — the ledger never drops an hour the rollup does not durably hold.
+      pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff));
     }
     this.pending = { bytes: behindBytes, files: behindFiles };
     // A ledger read something new (or lost a file): a published report is out of date (Fable #2030 P2 — a pass that
@@ -254,11 +307,11 @@ export class CacheService {
     return ledger.files[path] = next;
   }
 
-  private async read(ledger: Ledger, cur: FileCursor, path: string, budget: number, cutoff: number): Promise<{ read: number; behind: number }> {
+  private async read(ledger: Ledger, cur: FileCursor, path: string, budget: number, cutoff: number, profile?: string): Promise<{ read: number; behind: number }> {
     try {
       const res = await scanJsonl(path, cur.offset, { maxBytes: budget, ino: cur.ino }, (line) => {
         const turn = cur.kind === "claude" ? claudeLine(line, cur) : codexLine(line, cur);
-        if (turn) addTurn(ledger, cur, turn, cutoff);
+        if (turn) addTurn(ledger, cur, turn, cutoff, profile);
       });
       if (res.replaced) { this.followFromEnd(ledger, path, cur, res.ino, res.size); return { read: 0, behind: 0 }; }
       cur.offset = res.offset;
@@ -352,6 +405,26 @@ export class CacheService {
     this.memo.set(window, { at: now, changes: this.changes, report });
     report.catch(() => this.memo.delete(window));
     return report;
+  }
+
+  /**
+   * #2122: what the usage report reads — each instance's ledger and rollup as they are now, or why it has none. Never
+   * reads a transcript (a catch-up is started, not waited for).
+   */
+  async usageData(): Promise<{ scanning: CacheReport["scanning"]; instances: Array<{ inst: CacheInstance; status: InstanceReport["status"]; with?: string[]; ledger?: Ledger; days?: UsageDays }> }> {
+    this.start();
+    void this.kick();
+    const insts = this.o.instances();
+    const shared = await this.shared(insts);
+    const out: Array<{ inst: CacheInstance; status: InstanceReport["status"]; with?: string[]; ledger?: Ledger; days?: UsageDays }> = [];
+    for (const inst of insts) {
+      const kind = kindOf(inst.backend);
+      if (!kind) { out.push({ inst, status: inst.backend.startsWith("kiro") ? "credit_billed" : "unsupported" }); continue; }
+      const others = shared.get(inst.name);
+      if (others) { out.push({ inst, status: "shared", with: others }); continue; }
+      out.push({ inst, status: "ok", ledger: await this.ledgerFor(inst), days: await this.rollupFor(inst) });
+    }
+    return { scanning: this.scanning(), instances: out };
   }
 
   /** The analysis for a window, from the ledgers as they are now (a catch-up is started, not waited for). */
