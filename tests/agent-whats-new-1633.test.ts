@@ -252,6 +252,20 @@ describe("the daemon", () => {
     expect(w.pastes.filter(p => p.startsWith("[system:whats-new]")).length).toBe(1);
     expect(w.d["pendingWhatsNew"]).toBeNull();
   });
+  it("#2140: a new plan starts the unwritten count over (a relaunch or another version gets its own 3 tries)", async () => {
+    const w = daemon();
+    w.d["prepareWhatsNew"](false, V);
+    w.outcome.notice = false; w.outcome.written = false;
+    await w.deliver("1"); await w.deliver("2");
+    expect(w.d["whatsNewUnwritten"]).toBe(2);
+    w.d["prepareWhatsNew"](false, V);                               // the next launch plans it again
+    expect(w.d["whatsNewUnwritten"]).toBe(0);
+    await w.deliver("3"); await w.deliver("4");
+    expect([w.d["pendingWhatsNew"]?.ids, readWhatsNewRecord(w.dir)], "2 tries since the new plan: still pending").toEqual([ALL, null]);
+    await w.deliver("5");
+    expect([w.d["pendingWhatsNew"], announcedIn(w.dir)]).toEqual([null, ALL]);
+    expect(w.pastes.filter(p => p.startsWith("[system:whats-new]")).length).toBe(5);
+  });
   it("#2140: replaced while its paste was out (a newer plan): the old one is not recorded and the newer one stays pending", async () => {
     const w = daemon();
     w.d["prepareWhatsNew"](false, V);
