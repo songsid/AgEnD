@@ -67,7 +67,7 @@
     bar.setAttribute("role", "alert");
     bar.setAttribute("data-trust", "session-ended");
     bar.className = "agend-session-ended";
-    bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2147483647;padding:10px 16px;background:#f85149;color:#fff;font:14px system-ui,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\",\"Noto Color Emoji\",emoji;text-align:center";
+    bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2147483647;padding:10px 16px;background:#f85149;color:#fff;font:14px system-ui,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\",\"Segoe UI Symbol\",\"Noto Color Emoji\",emoji;text-align:center";
     const zh = /^zh/i.test(navigator.language || "");
     bar.append(document.createTextNode(zh ? "登入已結束。" : "Your session has ended. "));
     const link = document.createElement("a");

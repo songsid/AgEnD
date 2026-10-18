@@ -656,13 +656,13 @@ describe("the fleet: the agent's door, General's, GET /ui/themes and a person's 
 });
 
 describe("the wiring", () => {
-  it("both tools: IPC, the agent endpoint, worker and standard profiles — never general; no target in either schema", async () => {
+  it("both tools: IPC, the agent endpoint, worker, standard and general profiles (#2132 + hmsg-07371500); no target in either schema", async () => {
     const perms = await import("../src/tool-permissions.js");
     const schemas = await import("../src/outbound-schemas.js");
     for (const tool of ["set_web_ambient", "clear_web_ambient"]) {
       expect(perms.TOOL_PROFILES.worker, tool).toContain(tool);
       expect(perms.TOOL_PROFILES.standard, tool).toContain(tool);
-      expect(perms.TOOL_PROFILES.general, tool).not.toContain(tool);
+      expect(perms.TOOL_PROFILES.general, tool).toContain(tool);
       expect(Object.values(perms.IPC_TYPE_TOOLS)).toContain(tool);
       expect(Object.values(perms.EARLY_AGENT_OP_TOOLS)).toContain(tool);
     }

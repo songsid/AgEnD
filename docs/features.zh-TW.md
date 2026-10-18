@@ -298,7 +298,7 @@ Instance 可看到自己送出、收到，或經 `forwards` 明確授權的紀�
 
 ## 決策 (Decisions)
 
-決策是比一段對話活得更久的規則和慣例。`post_decision` 用 `title` 和 `content` 記錄一條決策，可選填 `tags`、`ttl_days`（多少天後封存，預設永久保留），以及用 `supersedes` 取代較舊的決策。`scope: "project"`（預設）只讓同一個目錄下工作的 instance 看到；`scope: "fleet"` 則讓所有 instance 看到。`list_decisions` 回傳仍有效的決策（可用 `include_archived`、`tags` 篩選），`update_decision` 則用來修改或封存決策。後者是 coordinator 動詞，因為它會改到別人記下的東西。
+決策是比一段對話活得更久的規則和慣例。`post_decision` 用 `title` 和 `content` 記錄一條決策，可選填 `tags`、`ttl_days`（多少天後封存，預設永久保留），以及用 `supersedes` 取代較舊的決策。`scope: "project"`（預設）只讓同一個目錄下工作的 instance 看到；`scope: "fleet"` 則讓所有 instance 看到。`list_decisions` 依標題列出仍有效的決策（id、標題、範圍、日期、tags；可用 `include_archived`、`tags` 篩選）；要看某一條的全文就傳 `id`，要看全部就傳 `full: true`（2.3 beta，#2152：完整清單已超過 100 KB），`update_decision` 則用來修改或封存決策。後者是 coordinator 動詞，因為它會改到別人記下的東西。
 
 有效的決策會在 instance 啟動時注入它的指示。fleet 範圍的決策也必須相關才會注入：沒有綁定專案的全域決策，或來自同一個專案、或其 worktree/checkout 的決策。General instance 會拿到所有 fleet 範圍的決策，因為它負責在專案之間分派工作。
 
