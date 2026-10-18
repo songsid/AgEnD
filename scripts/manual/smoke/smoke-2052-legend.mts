@@ -10,7 +10,9 @@
 //   (openPublicLink); a fresh profile signs in through the link's own visible /signin and reaches Org the same way.
 //   Stubbed, as the harness says: the tunnel and cloudflared, the owner check, the General notice, and the transport
 //   (Playwright carries https://<demo>.trycloudflare.com to the gateway's local port).
-// - No page error at all: nothing is filtered.
+// - No page error. The only lines accepted are WebKit's own, as #2138's smoke does (#2127), under WebKit only, matched
+//   exactly and printed apart: its internal sheet for each <select> ("Refused to apply a stylesheet…": it renders the
+//   same) and the viewport meta's interactive-widget key it doesn't know. Nothing else, no URL pattern, no cancel.
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2052-legend.mts
 //   (PW_ENGINE=webkit for WebKit: see smoke-emoji-tofu.mts's header for the in-Docker recipe)
 import { bootFixture, freshPage, mounted, openPublicLink, shotPath, type FreshPage } from "../smoke-fixture/index.mts";
@@ -23,6 +25,15 @@ const REAL = /^(agend-|rd1-|awp-|doupo-)|^(web-claude|sol|fable|qa-1|a)$|-t\d{10
 for (const name of Object.keys(fm.fleetConfig.instances)) if (REAL.test(name)) delete fm.fleetConfig.instances[name];
 for (const t of Object.values(fm.fleetConfig.teams ?? {}) as Array<{ members: string[] }>) t.members = t.members.filter((m) => !REAL.test(m));
 const ENGINE = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";
+// The two engine lines, whole (the text before " @ <url>"), never a pattern a page's own error could share.
+const WEBKIT_OWN = new Set(["Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy.",
+  'Viewport argument key "interactive-widget" not recognized and ignored.']);
+const accepted: string[] = [];
+const pageErrors = (errors: string[]) => errors.filter((e) => {
+  const text = e.replace(/ @ \S+$/, "");
+  if (ENGINE === "webkit" && WEBKIT_OWN.has(text)) { accepted.push(e); return false; }
+  return true;
+});
 
 async function openOrg(p: FreshPage) {
   await mounted(p.page);
@@ -78,10 +89,11 @@ async function runCase(name: string, open: () => Promise<FreshPage>) {
   await p.page.reload();
   await p.page.waitForSelector(".oc-svg .oc-node", { timeout: 10000 });
   chk.keptOpen = await p.page.waitForSelector(".oc-legend", { timeout: 5000 }).then(() => true, () => false);
-  chk.noErrors = p.errors.length === 0;
+  const errors = pageErrors(p.errors);
+  chk.noErrors = errors.length === 0;
   const failed = Object.entries(chk).filter(([, v]) => !v).map(([k]) => k);
-  results.push({ name, ok: !failed.length, failed, errors: p.errors });
-  console.log(`${failed.length ? "FAIL" : "ok  "} ${ENGINE}-${name}${failed.length ? ` [${failed.join(", ")}] ${JSON.stringify({ m0: { key: m0.key, svg: m0.svg, overflow: m0.overflow, clipped: m0.toolsClipped }, m1: { strip: m1.strip, bar: m1.bar, svg: m1.svg } }).slice(0, 500)} ${JSON.stringify(p.errors).slice(0, 400)}` : ""}`);
+  results.push({ name, ok: !failed.length, failed, errors });
+  console.log(`${failed.length ? "FAIL" : "ok  "} ${ENGINE}-${name}${failed.length ? ` [${failed.join(", ")}] ${JSON.stringify({ m0: { key: m0.key, svg: m0.svg, overflow: m0.overflow, clipped: m0.toolsClipped }, m1: { strip: m1.strip, bar: m1.bar, svg: m1.svg } }).slice(0, 500)} ${JSON.stringify(errors).slice(0, 400)}` : ""}`);
   await p.ctx.close();
 }
 await runCase("desk-light-en", () => freshPage(fx, { device: "desk", theme: "light", lang: "en" }));
@@ -90,6 +102,7 @@ await runCase(ENGINE === "webkit" ? "phone-dark-zh-TW-reduced" : "phone-dark-zh-
 const link = await openPublicLink(fx);
 await runCase("public-link-desk-light-en-reduced", () => link.publicPage({ device: "desk", theme: "light", lang: "en" }, { reducedMotion: true }));
 await link.close();
+if (accepted.length) console.log(`WebKit's own lines, accepted (${accepted.length}):\n  ${[...new Set(accepted.map((e) => e.replace(/ @ \S+$/, "")))].join("\n  ")}`);
 const bad = results.filter((r) => !r.ok);
 console.log(bad.length ? `FAIL ${bad.map((b) => b.name).join(", ")}` : `PASS (${ENGINE})`);
 await fx.close();
