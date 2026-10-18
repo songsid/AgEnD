@@ -20,6 +20,8 @@ createServer((req, res) => {
   req.on("end", () => {
     const m = mode();
     if (log) appendFileSync(log, `${new Date().toISOString()} ${req.method} ${req.url} mode=${m}\n`);
+    // BODY_LOG: every request body, one per line (tool-schema-codex-2155 reads the tool declarations codex sends).
+    if (process.env.BODY_LOG && req.method === "POST") appendFileSync(process.env.BODY_LOG, body.replace(/\n/g, " ") + "\n");
     if (req.method === "GET" && req.url.startsWith("/v1/models")) {
       res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ models: [] })); return;
     }
