@@ -165,6 +165,16 @@ describe("#2053: rendered Markdown is kept, and always what renderMarkdown would
       expect(n, "it had gone").toBe(before + 1);
       renderedMarkdown(`m${MD_CACHE_MAX - 1}`, false);
       expect(n, "a recent one is kept").toBe(before + 1);
+      // Least recently USED: one read again stays, though it went in first.
+      clearRenderedMarkdown();
+      renderedMarkdown("early", false);
+      for (let i = 0; i < MD_CACHE_MAX - 1; i++) { renderedMarkdown(`k${i}`, false); if (i === MD_CACHE_MAX / 2) renderedMarkdown("early", false); }
+      renderedMarkdown("one more", false);                                    // past the cap: the least recently used goes
+      const at = n;
+      renderedMarkdown("early", false);
+      expect(n, "read again, so kept").toBe(at);
+      renderedMarkdown("k0", false);
+      expect(n, "k0, least recently used, went").toBe(at + 1);
     } finally { R().renderMarkdown = real; }
   });
 });
