@@ -13929,7 +13929,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const record = this.webSessions?.findByHandle(handle);
         if (!record) return { ok: false, refusal: "session_gone" };
         const r = this.authorizeWebSession(record, peer, false);
-        return r.ok ? { ok: true, until: r.authorization.until } : { ok: false, refusal: r.refusal };
+        // What the card says: the end of the authorization, or the session's own end when that comes first.
+        return r.ok ? { ok: true, until: Math.min(r.authorization.until, record.absoluteExpiry) } : { ok: false, refusal: r.refusal };
       },
       signOut: (handle) => {
         this.webSessions?.revokeByHandle(handle);

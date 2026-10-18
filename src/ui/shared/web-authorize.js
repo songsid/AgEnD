@@ -53,20 +53,26 @@ register("webauth", {
 });
 const tn = (k, ...v) => t(`webauth.${k}`, ...v);
 const REASONS = ["disabled", "loopback_only", "no_account", "not_admin", "not_admin_session", "token_rotated", "public_link", "not_session"];
-const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// Until when: the time, with the day when it isn't today (an authorization lasts up to 48 h).
+const clock = (ms) => {
+  const d = new Date(ms), today = new Date().toDateString() === d.toDateString();
+  return today ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+};
 const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 const publicLink = () => globalThis.document?.body?.dataset?.publicLink === "1";
 
 // One read per page load, shared by every line that shows it (the composer's, the session menu's): coming back to a chat
 // reads nothing (#1374). It is read again only after an ask, and while a card is pending.
 // An answer of any kind counts as this page's read (one that isn't a state hides the line); only a network failure lets a
-// later mount try again.
-let shared = null, answered = false, inflight = null;
+// later mount try again. Signed out (401: the session ended, e.g. Not me), the line goes.
+let shared = null, answered = false, inflight = null, signedOut = false;
 async function readStatus() {
   inflight ??= (async () => {
     try {
       const r = await fetch("/ui/authorization", { credentials: "same-origin" });
       answered = true;
+      if (r.status === 401) { signedOut = true; shared = null; }
       const body = r.ok ? await r.json().catch(() => null) : null;
       if (body && typeof body.state === "string") shared = body;
     } catch { /* the line stays as it was; a later mount may try again */ }
@@ -84,8 +90,11 @@ export function useWebAuthorization() {
   const load = async () => {
     if (publicLink() || guestPage()) return;
     const body = await readStatus();
-    if (!alive.current || !body) return;
+    if (!alive.current) return;
+    if (signedOut) { setSt(null); setNotice(null); return; }
+    if (!body) return;
     setSt(body);
+    if (body.state !== "pending") setNotice((n) => (n === tn("sent") ? null : n));           // "Sent —" was about the card
     if (body.state === "pending" && typeof body.expiresInMs === "number") setDeadline(Date.now() + body.expiresInMs);
   };
   useEffect(() => { alive.current = true; if (!answered) load(); return () => { alive.current = false; }; }, []);
@@ -109,10 +118,13 @@ export function useWebAuthorization() {
   return { st, notice, ask, left: deadline - now };
 }
 
-/** The line under the composer: verified, waiting, or "Not verified" with the button (or why not, with the fix). */
-/** Tests only: forget the page's one read. */
-export function resetWebAuthorization() { shared = null; answered = false; inflight = null; }
+/**
+ * Forget the page's one read, so the next line that mounts reads again: Settings → Web calls it when it shows (a revoke
+ * or a changed switch there changes what the line should say). Tests use it too: each case is its own page load.
+ */
+export function resetWebAuthorization() { shared = null; answered = false; inflight = null; signedOut = false; }
 
+/** The line under the composer: verified, waiting, or "Not verified" with the button (or why not, with the fix). */
 export function AuthorizeChip() {
   const a = useWebAuthorization();
   if (guestPage()) return null;

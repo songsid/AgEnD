@@ -151,6 +151,15 @@ await link.close();
   - an unreadable prefs store;
 - and a positive control: a separate clean fixture signs in and mounts.
 
+`scripts/manual/smoke/smoke-1939-authorize-defaults.mts` (#1939 "Authorize this browser" and Settings → Web → Web
+authority) uses the harness and stubs two more things, both outside the product:
+- **the account's Discord DM:** a stub adapter records the Confirm card and its edits; the smoke draws the card on a
+  neutral page, shoots it and reads its text back, and taps its buttons through FleetManager's own callback dispatch;
+- **the card's five minutes:** the card's monotonic clock is moved forward instead of waited for (`REAL_EXPIRY=1` waits
+  the real five minutes for the expiry case). `ONLY=confirm,expiry,…` runs some cases.
+
+The demo connection's fleet-admin list is fleet config the smoke writes, as an operator would.
+
 ## Pitfalls (each one cost a run)
 
 - **Language** is the host pref `lang` (`fx.page` writes it). `localStorage.agend_lang` alone leaves the page in English.

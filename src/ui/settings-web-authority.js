@@ -9,6 +9,7 @@ import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { api } from "./settings-confirm.js";
 import { Feedback } from "./settings-dialogs.js";
+import { resetWebAuthorization } from "/assets/web-authorize.js";
 import "./settings-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -26,6 +27,8 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
   const [overview, setOverview] = useState(null), [failed, setFailed] = useState(false);
   const [original, setOriginal] = useState(null), [f, setF] = useState(null), [msg, setMsg] = useState(null);
   const load = async () => {
+    // What changes here (a revoke, the switch) changes this browser's own line: the chat reads it again when it shows.
+    resetWebAuthorization();
     let r = null;
     try { r = await api("/api/settings/web-authority"); } catch { r = null; }
     // Anything but the overview's shape (an older server, an error page) is "could not be loaded", never a crash.

@@ -377,13 +377,15 @@ function authorize(
  * - `GET /api/ai-usage`: the usage panel, every minute while it is open.
  * - `GET /ui/preview-status`: a public-link page asking whether its preview tunnel is up, every 2 s while it starts (#1723).
  * - `GET /ui/steps`: the Log tab (#1218), on each new-step tick (or every few seconds over the public link) while it is open.
+ * - `GET /ui/authorization`: this browser's authorization (#1939 S2b), every 3 s while its Confirm card waits (the ask
+ *   itself is a POST: the person).
  *
  * Everything else a session authorizes — a page load, a chat's history, any write — is the person, and slides the
  * idle expiry. Only these matter when a session is required for them: `/view`'s reads and the usage panel are open by
  * default and then touch nothing at all.
  */
 // #1665: /ui/prefs is read by the page when another device changed a preference — the page's doing, not the person's.
-const PASSIVE_GET_PATHS: ReadonlySet<string> = new Set(["/ui/poll", "/ui/events", "/api/profiles", "/api/ai-usage", "/ui/prefs", "/ui/preview-status", "/ui/steps", "/ui/traffic"]);   // #1918: the public link polls traffic
+const PASSIVE_GET_PATHS: ReadonlySet<string> = new Set(["/ui/poll", "/ui/events", "/api/profiles", "/api/ai-usage", "/ui/prefs", "/ui/preview-status", "/ui/steps", "/ui/traffic", "/ui/authorization"]);   // #1918: the public link polls traffic
 const PASSIVE_GET_PANE = /^\/api\/pane\/[^/]+$/;
 /** #1630: the pictures a page draws (avatars, server emoji) and the emoji list are loaded by the page, not done by a person. */
 const PASSIVE_GET_IMAGES = /^\/ui\/(?:img\/(?:bot|avatar|emoji)\/[^/]+|emojis|mentions)$/;   // #1682: mention names too

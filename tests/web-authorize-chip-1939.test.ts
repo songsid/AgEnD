@@ -8,19 +8,19 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
-let p: AppPage, state: any, askAnswer: any;
+let p: AppPage, state: any, askAnswer: any, signedOut = false;
 let sent: Array<{ method: string; path: string }> = [];
 const realFetch = (globalThis as any).fetch;
 const fakeFetch = async (path: string, init: { method?: string } = {}) => {
   const method = init.method ?? "GET";
   sent.push({ method, path });
-  if (path === "/ui/authorization" && method === "POST") return { ok: askAnswer.ok, status: askAnswer.ok ? 200 : 409, json: async () => askAnswer };
-  if (path === "/ui/authorization") return { ok: true, status: 200, json: async () => state };
+  if (path === "/ui/authorization" && method === "POST") return { ok: askAnswer.ok, status: 200, json: async () => askAnswer };
+  if (path === "/ui/authorization") return signedOut ? { ok: false, status: 401, json: async () => ({ error: "unauthorized" }) } : { ok: true, status: 200, json: async () => state };
   return { ok: true, status: 200, json: async () => ({}) };
 };
 beforeAll(() => { p = page({ url: "http://127.0.0.1:19280/ui/chat/alpha" }); (globalThis as any).fetch = fakeFetch; });
 afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
-beforeEach(() => { sent = []; askAnswer = { ok: true, expiresInMs: 300_000 }; });
+beforeEach(() => { sent = []; signedOut = false; askAnswer = { ok: true, expiresInMs: 300_000 }; });
 afterEach(async () => { await p.unmount(); p.document.body.removeAttribute("data-public-link"); p.document.body.removeAttribute("data-tier"); });
 
 async function chip(st: any) {
@@ -50,6 +50,27 @@ describe("this browser's authorization line", () => {
     expect(after.dataset.state).toBe("pending");
     expect(after.textContent).toContain("Sent — confirm it in your DM within 5 minutes.");
     expect(after.textContent).toMatch(/Waiting for your Confirm in Discord or Telegram \(\d:\d\d\)/);
+  });
+  it("an end that isn't today says the day too (an authorization lasts up to 48 h)", async () => {
+    const later = new Date(Date.now() + 2 * 86_400_000);
+    const c = await chip({ state: "verified", until: later.getTime() });
+    expect(c.textContent).toContain(later.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }));
+  });
+  it("once the card is decided, 'Sent —' goes with it (the next poll's answer is verified)", async () => {
+    const c = await chip({ state: "none", reason: "not_authorized" });
+    fire(c.querySelector("button"), "click"); await settle(8);
+    expect(p.root.querySelector(".webauth-chip").textContent).toContain("Sent —");
+    state = { state: "verified", until: Date.now() + 3_600_000 };
+    await new Promise((r) => setTimeout(r, 3_100)); await settle(8);
+    const after = p.root.querySelector(".webauth-chip") as any;
+    expect(after.dataset.state).toBe("verified");
+    expect(after.textContent).not.toContain("Sent —");
+  });
+  it("signed out while a card waits (Not me): the next poll answers 401 and the line goes", async () => {
+    await chip({ state: "pending", expiresInMs: 200_000 });
+    signedOut = true;
+    await new Promise((r) => setTimeout(r, 3_100)); await settle(8);
+    expect(p.root.querySelector(".webauth-chip")).toBeNull();
   });
   it("an authorization that ran out offers the button again", async () => {
     const c = await chip({ state: "none", reason: "authorization_expired" });

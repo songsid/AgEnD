@@ -22,7 +22,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   fm.initializeWebSessions();
   const owner = { adapterId: "demo", userId: "101101101101101101" };
   const demo = fm.webSessions.create({ tier: "admin", surface: "local", label: "Firefox on Mac", tokenEpoch: tokenEpoch(fm.webToken), owner }).record;
-  fm.sessionAuthorizationStore().authorize(demo.handle, owner, Date.now(), fm.webAuthorityState().epoch);
+  fm.sessionAuthorizationStore().authorize(demo.handle, owner, Date.now(), fm.webAuthorityState().epoch, Date.now() + 12 * 3_600_000);
   const { ctx, page } = await fx.page(c, { path: "/settings/web" });
   const errors: string[] = [];
   page.on("pageerror", (e: any) => errors.push(String(e).slice(0, 160)));

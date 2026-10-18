@@ -1484,7 +1484,9 @@ export function handleWebRequest(
       try { await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
       if (!permitWebContinuation(req, res, ctx)) return;
       const r = await ask(judge());                                              // asked again now the body is in
-      json(res, r.ok ? 200 : 409, r);
+      // A refusal is an answer the page shows (pending, three this hour, why not), not a failed request: 200 with
+      // ok: false — a 4xx would be logged as an error in the browser's console every time.
+      json(res, 200, r);
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web authorization request failed");
       try { json(res, 500, { error: "Request failed" }); } catch { /* already answered */ }

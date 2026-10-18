@@ -150,6 +150,17 @@ describe("Settings → Web → Web authority, as rendered", () => {
     await w.click(w.$(".s-web-authority button")); await settle(6);                       // its one button: Retry
     expect(w.$("#vaEnabled").checked).toBe(true);
   });
+  it("showing it makes this browser's own line read again (a revoke or the switch there changes what it says)", async () => {
+    const { AuthorizeChip, resetWebAuthorization } = await import("/assets/web-authorize.js");
+    resetWebAuthorization();
+    const reads = () => sent.filter((s) => s.path === "/ui/authorization").length;
+    const line = async () => { await p.unmount(); await p.mount(h(AuthorizeChip, {})); await settle(8); };
+    await line(); await line();
+    expect(reads(), "one read per page load").toBe(1);
+    await open({ enabled: true });
+    await line();
+    expect(reads(), "read again after Settings → Web").toBe(2);
+  });
   it("over the public link the card is not offered", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     const w = await open();

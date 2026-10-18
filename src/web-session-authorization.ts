@@ -96,11 +96,21 @@ export class SessionAuthorizationRequests {
     return kept;
   }
 
-  /** What the app shows for this session: a pending card (until when), or nothing pending. */
-  pending(handle: string): { expiresInMs: number } | null {
+  /**
+   * This session's pending card. One past its deadline is expired now, whether or not its timer has run yet (a timer can
+   * run late): the app never shows "waiting 0:00", and a new ask is not refused as "pending".
+   */
+  private livePending(handle: string): Card | null {
     const c = this.pendingByHandle.get(handle);
     if (!c || c.state !== "pending") return null;
-    return { expiresInMs: Math.max(0, c.expiresAt - this.deps.now()) };
+    if (this.deps.now() >= c.expiresAt) { void this.expire(c); return null; }
+    return c;
+  }
+
+  /** What the app shows for this session: a pending card (until when), or nothing pending. */
+  pending(handle: string): { expiresInMs: number } | null {
+    const c = this.livePending(handle);
+    return c ? { expiresInMs: Math.max(0, c.expiresAt - this.deps.now()) } : null;
   }
 
   /**
@@ -108,8 +118,8 @@ export class SessionAuthorizationRequests {
    * pending, after 3 asks this hour by the account, or when no DM can be sent (General then gets a line, no details).
    */
   async ask(input: { handle: string; owner: AuthorizationOwner; label: string; peer: WebPeer }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: AuthorizationAskRefusal; retryAfterMs?: number }> {
-    const existing = this.pendingByHandle.get(input.handle);
-    if (existing && existing.state === "pending") return { ok: false, refusal: "pending", retryAfterMs: Math.max(0, existing.expiresAt - this.deps.now()) };
+    const existing = this.livePending(input.handle);
+    if (existing) return { ok: false, refusal: "pending", retryAfterMs: Math.max(0, existing.expiresAt - this.deps.now()) };
     const key = `${input.owner.adapterId}:${input.owner.userId}`;
     const recent = this.recentAsks(key);
     if (recent.length >= AUTHORIZATION_ASKS_PER_HOUR) return { ok: false, refusal: "rate_limited", retryAfterMs: Math.max(0, recent[0]! + HOUR_MS - this.deps.now()) };

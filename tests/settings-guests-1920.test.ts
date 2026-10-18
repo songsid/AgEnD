@@ -4,7 +4,7 @@
  *   changed (off / chat on = the default: null); the server judges what waits for a confirmation.
  * - Every guest account is listed (who, platform, what it reaches, sessions, devices, last seen); Narrow stages a list
  *   (Remove narrowing lifts it); Sign out asks, then signs that account out at once (POST …/revoke) and reloads.
- * - Over the public link nothing can be changed.
+ * - Over the public link the card is not offered.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
@@ -150,10 +150,10 @@ describe("Settings → Web → Guests, as rendered", () => {
     expect(sent.filter((s) => s.path === "/api/settings/guests/revoke").map((s) => s.body)).toEqual([{ adapterId: "dc", userId: "111" }]);
     expect(sent.filter((s) => s.path === "/api/settings/guests").length, "reloaded").toBe(before + 1);
   });
-  it("over the public link the card cannot be changed", async () => {
+  it("over the public link the card is not offered (the server never serves its list there), and nothing is read", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     const w = await open();
-    expect(w.$(".s-guest-fields").disabled).toBe(true);
-    expect(w.$("#guestsReview").disabled).toBe(true);
+    expect(w.$(".s-guest-fields")).toBeNull();
+    expect(sent.filter((s) => s.path === "/api/settings/guests")).toEqual([]);
   });
 });

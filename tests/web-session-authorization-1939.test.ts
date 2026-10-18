@@ -22,6 +22,7 @@ import { AUTHORIZATION_CARD_TTL_MS, SessionAuthorizationRequests, type SessionAu
 import { FleetManager } from "../src/fleet-manager.js";
 import { handleWebRequest } from "../src/web-api.js";
 import { csrfTokenFor, tokenEpoch } from "../src/web-session.js";
+import { isPassiveWebRead } from "../src/web-auth.js";
 import { setLocale } from "../src/locale.js";
 
 const OWNER = { adapterId: "owner", userId: "admin" };
@@ -100,6 +101,29 @@ describe("the card: what it says, and the limits against confirm fatigue", () =>
     expect(h.r.pending(H)).toBeNull();
     await h.tap(0);
     expect(h.authorized).toEqual([]);
+  });
+  it("a Confirm after the deadline, before the card's timer has run, is judged expired at the tap: nothing authorized", async () => {
+    vi.useFakeTimers();
+    const h = rig();
+    await ask(h);
+    h.advance(AUTHORIZATION_CARD_TTL_MS);                                                // the clock moved; the timer has not run
+    const { ack } = await h.tap(0);
+    expect(ack).toHaveBeenCalledWith();
+    expect(h.authorized).toEqual([]);
+    expect(h.edits.at(-1)).toEqual({ text: "EXPIRED Firefox on Mac", choices: [] });
+  });
+  it("a card past its deadline is expired when next asked about, even before its timer runs (timers run late)", async () => {
+    vi.useFakeTimers();
+    const h = rig();
+    await ask(h);
+    h.advance(AUTHORIZATION_CARD_TTL_MS);                                                // the clock moved; the timer has not run
+    expect(h.r.pending(H), "never 'waiting 0:00'").toBeNull();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.edits.at(-1)).toEqual({ text: "EXPIRED Firefox on Mac", choices: [] });
+    expect(h.events.filter(e => e[0] === "session_authorization_expired")).toHaveLength(1);
+    expect((await ask(h)).ok, "a new ask is not refused as pending").toBe(true);
+    await vi.advanceTimersByTimeAsync(AUTHORIZATION_CARD_TTL_MS - 1);                   // the first card's timer: nothing more
+    expect(h.events.filter(e => e[0] === "session_authorization_expired")).toHaveLength(1);
   });
 });
 
@@ -211,6 +235,18 @@ describe("the FleetManager wiring (a real one, no fleet)", () => {
     expect(h.adapter.replaceMessageButtons).toHaveBeenCalledWith("dm-admin", "m1", [expect.objectContaining({ label: "Not me" })]);
     h.close();
   });
+  it("the confirmed card says when it really ends: the session's own end when that comes before the authorization's", async () => {
+    const h = fleet();
+    (h.fm.fleetConfig as any).web = { session: { local: { absolute_hours: 2, idle_hours: 2 } } };
+    const { sessionId, record } = h.session();
+    expect(record.absoluteExpiry - Date.now()).toBeLessThan(2 * 3_600_000 + 1000);
+    await route(h, "POST", { sessionId });
+    await h.s.dispatchAdapterCallback({ callbackData: h.dms[0]!.choices[0]!.id, chatId: "dm-admin", messageId: "m1", userId: "admin", ack: vi.fn() }, "owner", h.adapter);
+    const st = (await route(h, "GET", { sessionId })).body;
+    expect(st.until).toBe(record.absoluteExpiry);
+    expect(h.adapter.editMessage).toHaveBeenCalledWith("dm-admin", "m1", expect.stringContaining(`until ${new Date(record.absoluteExpiry).toLocaleString()}.`));
+    h.close();
+  });
   it("Not me signs that browser out: its next request is not signed in", async () => {
     const h = fleet(); const { sessionId } = h.session();
     await route(h, "POST", { sessionId });
@@ -228,11 +264,14 @@ describe("the FleetManager wiring (a real one, no fleet)", () => {
     expect(h.s.sessionAuthorizationStore().list()).toEqual([]);
     h.close();
   });
+  it("the app's poll while a card waits is not the person's activity (#1374): GET is passive, the ask (POST) is not", () => {
+    expect([isPassiveWebRead("GET", "/ui/authorization"), isPassiveWebRead("POST", "/ui/authorization")]).toEqual([true, false]);
+  });
   it("blocked states, said why: the switch off, an account that isn't an admin", async () => {
     const h = fleet();
     const stranger = h.session("stranger");
     expect((await route(h, "GET", stranger)).body).toEqual({ state: "none", reason: "not_admin" });
-    expect((await route(h, "POST", stranger))).toEqual({ status: 409, body: { ok: false, refusal: "not_admin" } });
+    expect((await route(h, "POST", stranger))).toEqual({ status: 200, body: { ok: false, refusal: "not_admin" } });
     h.s.fleetConfig.web = { verified_authority: { enabled: false } };
     const mine = h.session();
     expect((await route(h, "GET", mine)).body).toEqual({ state: "none", reason: "disabled" });

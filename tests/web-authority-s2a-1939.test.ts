@@ -297,6 +297,13 @@ describe("§0 sessions authorized once: the store", () => {
     expect(new SessionAuthorizations("/a.json", log(), mem(JSON.stringify({ v: 2, authorizations: [{ handle: H, owner: OWNER, authorizedAt: 5, until: 5 + HOUR_MS, epoch: 1 }] })).io).list()).toEqual([]);
     expect(new SessionAuthorizations("/a.json", log(), mem(JSON.stringify({ v: 1, authorizations: [{ handle: H, owner: OWNER, authorizedAt: 5, epoch: -1 }] })).io).list()).toEqual([]);
   });
+  it("S2c: a stored record must say until when — none, not a number, or not after it was given: skipped", () => {
+    const load = (rec: Record<string, unknown>) => new SessionAuthorizations("/a.json", log(), mem(JSON.stringify({ v: 1, authorizations: [{ handle: H, owner: OWNER, authorizedAt: 5, epoch: 1, ...rec }] })).io).list();
+    expect(load({})).toEqual([]);
+    expect(load({ until: "later" })).toEqual([]);
+    expect(load({ until: 5 })).toEqual([]);
+    expect(load({ until: 5 + HOUR_MS }).map(a => a.until), "the positive control").toEqual([5 + HOUR_MS]);
+  });
   it("unreadable or malformed: none kept (losing them never grants one); a malformed entry is skipped", () => {
     const l = log();
     expect(new SessionAuthorizations("/a.json", l, mem("{broken").io).list()).toEqual([]);
