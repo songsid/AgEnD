@@ -233,6 +233,12 @@ describe("#1629 shared Canvas Worker registry", () => {
     h.api.update(ds, gates()); expect(warn).toHaveBeenCalledOnce();
     h.coverage.mockReturnValue(stock()); await h.admit(ds); expect(h.load).toHaveBeenCalledOnce(); expect(h.safety.resume).not.toHaveBeenCalled();
   });
+  it("a diagnostic observer cannot make the older refusal retire a newer replacement", async () => {
+    const h = rig(), newer = h.descriptors(1, { key: "newer" });
+    h.host.console = { warn: vi.fn(() => { h.coverage.mockReturnValue(stock()); h.api.update(newer, gates()); }) };
+    h.coverage.mockReturnValue({ ok: false, reason: "stock_order_unknown" }); await h.admit();
+    expect(h.api.snapshot()[0]).toMatchObject({ key: "newer", phase: "starting" }); expect(h.frames()[0].state().removed).toBe(false); expect(h.load).toHaveBeenCalledOnce();
+  });
   it("malformed or throwing providers have named local failures, never false or an invoked getter", async () => {
     const h = rig(), get = vi.fn(() => "secret"), raw = { ok: false }; Object.defineProperty(raw, "reason", { get });
     h.coverage.mockReturnValue(raw); await h.admit(); expect(h.api.snapshot()[0].reason).toBe("stock_evidence_invalid"); expect(get).not.toHaveBeenCalled(); expect(h.load).not.toHaveBeenCalled();

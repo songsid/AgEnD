@@ -75,6 +75,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     if (dead || blocked || before !== revision) return null;
     stockFailure = failure;
     if (failure !== warned) { warned = failure; if (failure) { try { host.console?.warn("[AgEnD effects] Playback blocked:", failure); } catch { /* display only */ } } }
+    if (dead || blocked || before !== revision) return null;
     return d === null || permits(d, proof) ? proof : null;
   };
   const position = (d, proof) => d.trialStage ? localStage(d, proof)?.rect ?? null : hostEffectRect(d.element);
@@ -189,6 +190,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     if (time() === null) blocked = "clock_unavailable";
     const hidden = context?.hidden === true || host.document.visibilityState !== "visible";
     const stock = eligible() ? coverage() : null;
+    if (dead || proposal !== revision) return;
     if (blocked || !eligible() || !stock) {
       if (!stopAll(blocked ?? "gates_unknown")) return;
       results.clear();

@@ -1276,4 +1276,3 @@ General、coordinator 與 full 權限組合的 instance，可以用 `get_web_set
 - 還原預設值：主機設定與那個人的自訂 CSS（這台裝置上的自訂 CSS 開關留給本人決定）。
 
 只能在頁面上做的事：從那個人的電腦選檔案（mod、效果資料夾、CSS 素材、身分卡圖片）、這個瀏覽器自己的開關（只在這台裝置關閉自訂 CSS、暫停播放）、下載匯出檔，以及身分卡上傳限制。`get_web_settings` 會把這些列在 `page_only`。`web-appearance` skill 會帶 General 一步步完成。
-

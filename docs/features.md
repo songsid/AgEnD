@@ -1378,4 +1378,3 @@ General, coordinators and full-profile instances can read and change Settings â†
 - **Restore defaults:** the host settings and that person's custom CSS. This device's custom-CSS switch is left to the person.
 
 What stays on the page: choosing a file from the person's computer (a mod, an effect folder, a CSS asset, a card picture), this browser's own switches (custom CSS off on this device, pausing playback), downloading an export, and the card upload limits. `get_web_settings` lists these as `page_only`. The `web-appearance` skill walks General through it.
-
