@@ -73,7 +73,8 @@ for (const theme of ["light", "dark"] as const) for (const [kind, chat] of Objec
   const m = await p.page.evaluate(MEASURE) as any;
   const c: Record<string, boolean> = {
     themed: kind === "plain" ? !/th-font/.test(m.theme) : m.theme.includes(`th-font-${kind}`),
-    emojiChain: ['"Apple Color Emoji"', '"Segoe UI Emoji"', '"Noto Color Emoji"', "emoji"].every((f) => m.family.replace(/'/g, '"').includes(f.replace(/'/g, '"'))),
+    // The computed stack ends with the emoji fonts (WebKit gives the names without quotes, Chromium with).
+    emojiChain: /Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji, emoji$/.test(m.family.replace(/["']/g, "")),
     namesNotBoxes: m.imgs === 0 && JSON.stringify(m.names) === JSON.stringify([":party:", ":nope:"]),
     noRawMarkup: !m.raw,
     unicodeKept: ["🤩", "✨", "🍿", "💥"].every((e) => m.text.includes(e)),

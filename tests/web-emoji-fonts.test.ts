@@ -50,6 +50,6 @@ describe("emoji are drawn by an emoji font, never a box", () => {
   it("the session-ended banner's inline font too", () => {
     const auth = read("src/ui/shared/agend-auth.js");
     const font = /font:14px ([^;]+);/.exec(auth)![1]!;
-    for (const f of CHAIN) expect(font.replace(/\\"/g, '"'), f).toContain(f);
+    for (const f of [...CHAIN, '"Segoe UI Symbol"']) expect(font.replace(/\\"/g, '"'), f).toContain(f);
   });
 });
