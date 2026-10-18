@@ -264,6 +264,8 @@ describe("no agent path reaches it", () => {
         // web-mod-agent.ts (r4-5b): an agent's mod path names it only to refuse it (owner_css_not_from_agent), and its
         // export never carries it — both tested in web-mods-agent-1629.
         "web-mod-agent.ts",
+        // #2026: file admission names the host CSS store only as a forbidden managed root (pinned below).
+        "agent-file-read.ts",
         // web-settings-tools.ts (#2056): General's tools change the user's Settings → Web appearance — custom CSS through
         // the store's own save (checkOwnerCss and all), keep, revert and restore (pinned below).
         "web-settings-tools.ts",
@@ -275,6 +277,11 @@ describe("no agent path reaches it", () => {
     expect(hits, "no tool, CLI or agent route names it").toEqual([]);
     // #2056: General's tools save on trial and keep exactly the trial in force; a version comes back only through the
     // store's restore (a sha its index holds); nothing writes the pointer or a version around the store.
+    const files = readFileSync(join(src, "agent-file-read.ts"), "utf8");
+    expect(files.match(/owner[-_ ]?css/gi)).toHaveLength(1);
+    expect(files).toMatch(/const reservedStateRoots = new Set\(\[[^\]]*"web-owner-css"/);
+    expect(files).toContain("reservedStateRoots.has(parts[0]!)");
+    expect(files).not.toMatch(/from\s*["']\.\/web-owner-css|import\(\s*["']\.\/web-owner-css|\/ui\/owner-css|setOwnerCss|OwnerCssStore/);
     const tools = readFileSync(join(src, "web-settings-tools.ts"), "utf8");
     expect([...tools.matchAll(/store\.keep\(person, (.*?)\); return/g)].map(m => m[1])).toEqual(["store.state(person).pending?.id"]);
     expect([...tools.matchAll(/store\.restore\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(["null", "c.version"]);

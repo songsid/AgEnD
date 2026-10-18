@@ -266,15 +266,31 @@ From a shell: `agend-agent theme get|set key=value…|set --json '<patch>'|clear
 
 ## Files in your working directory
 
-Asset uploads, effect directories and mod proposals must be inside your working directory. This includes your own
-AgEnD-managed workspace (`~/.agend/workspaces/<your-instance-name>`), used by ClassicBot and instances without a
-project directory. `web-assets/` and `web-effects/` are convenient staging folders, not required names. Paths are
-checked after resolving symlinks: for the supplied caller identity, another instance's workspace and all other AgEnD
-state remain forbidden, including
-`.env`, databases, `instances/`, `credential-profiles/` and `inbox/`. Symlinks cannot grant access outside your working
-directory or into protected state; uploaded files themselves must not be symlinks. Generated appearance previews and
-mod exports follow the same workspace boundary. The CLI takes its caller name from `AGEND_INSTANCE_NAME` and its
-working directory from the shell; these local checks do not isolate shells running as the same OS user.
+Asset uploads, effect directories and mod proposals must be inside your working directory. For an external project,
+use files there as before. For your own AgEnD-managed `~/.agend/workspaces/<your-instance-name>` (ClassicBot and
+instances without a project directory), ordinary files there also work; no staging folder is required.
+
+General, adapter-specific General (such as `general-telegram`), and other configured working directories inside the
+AgEnD state directory must stage inputs under **`web-assets/` or `web-effects/`**. For example, put a banner at
+`web-assets/banner.png` or an effect package at `web-effects/sparks/`, relative to that working directory. Its root
+and backend configuration folders are not upload areas. Generated previews and exported mods still use the fixed
+`.agend/appearance/` and `.agend/mods/` directories and can be read back or proposed there.
+
+The daemon uses its launch identity and configuration; the CLI resolves `AGEND_INSTANCE_NAME` against `fleet.yaml`.
+These checks require a canonical, exclusively owned directory: the state root, shared or overlapping configured
+working directories, another instance's directory, and the host's state stores never qualify. No tool argument can
+select an identity or working directory. Missing or unreadable ownership evidence refuses in-state access.
+
+Inside all admitted in-state areas, `.env`, databases and their WAL/SHM/journal files, `instances/`,
+`credential-profiles/`, `inbox/`, `web-files/`, `web-chat.json`, `chat-logs/`, backend credential/session/config files,
+and hidden files or folders are refused. The only hidden-directory exception is the two generated `.agend/`
+output directories above; their contents still undergo the sensitive-name checks. Hard-linked state files are also
+refused. Copy an intended asset into staging as a new regular file; do not link a private state file there.
+
+Paths are checked after resolving symlinks. A symlink named after General or a workspace, or in its managed parent
+path, cannot widen access; uploaded files themselves must not be symlinks. Containment still applies to relative and
+absolute paths and to each file in an effect package. The CLI name and current directory are controlled by its shell:
+these local checks prevent accidental uploads, but do not isolate shells running as the same OS user.
 
 ## Effects
 

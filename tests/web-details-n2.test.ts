@@ -333,6 +333,20 @@ describe("#1629 r4 §1: the identity card", () => {
       if (sel.startsWith(".id-card.card-c")) expect(lo!, sel).toBeGreaterThanOrEqual(80);
     }
   });
+  it("a phone keeps the portrait on the text's row (the user's ask); the size control takes the line below; the chat header's card is cut to a few lines", async () => {
+    const css = (await import("node:fs")).readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
+    const start = css.indexOf("@media (max-width: 479px) {\n  .id-card.card-s"), phone = css.slice(start, css.indexOf("\n}", start));
+    expect(start).toBeGreaterThan(0);
+    // Nothing pushes the text under the portrait: the text keeps flex: 1 (base) and gets no full-width basis on a phone.
+    expect(phone).not.toMatch(/\.id-text\s*\{/);
+    expect(css).toContain(".id-text { flex: 1; min-width: 0; }");
+    expect(phone).toContain(".card-size { flex-basis: 100%; justify-content: flex-end; }");
+    // Smaller portraits on a phone, each below its desktop size.
+    const h = (sel: string, from: number) => { const i = css.indexOf(`${sel} {`, from); return Number(/--id-h: (\d+)px/.exec(css.slice(i, css.indexOf("}", i)))![1]); };
+    for (const sel of [".id-card.card-s", ".id-card.card-l", ".id-card.card-c"]) expect(h(sel, start), sel).toBeLessThan(h(sel, 0));
+    expect(phone).toContain(".id-card.card-c .id-tagline { -webkit-line-clamp: 2; line-clamp: 2; }");
+    expect(phone).toContain(".id-card.card-c .id-bio { -webkit-line-clamp: 3; line-clamp: 3; }");
+  });
   it("#1888 review: the agent's working label shows only while working; its background's opacity goes through the CSSOM", async () => {
     const pg = await app("/ui/chat/loner");
     const { themesStore } = await import("/assets/app-themes.js");

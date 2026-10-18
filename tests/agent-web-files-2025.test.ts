@@ -111,8 +111,13 @@ describe("caller-owned state workspace", () => {
 });
 
 describe("#2025 CLI effect upload", () => {
-  it.each([false, true])("reads caller workspace bytes, absolute=%s", async absolute => {
+  it.each([[false, false], [true, false], [false, true], [true, true]])("reads caller workspace bytes, absolute=%s General=%s", async (absolute, general) => {
     const f = fixture();
+    if (general) {
+      f.workspace = join(f.stateDir, "general"); f.instance = "general";
+      mkdirSync(f.workspace); f.effect(join(f.workspace, "web-effects/demo"));
+      writeFileSync(join(f.stateDir, "fleet.yaml"), JSON.stringify({ instances: { general: { working_directory: f.workspace } } }));
+    }
     const { createServer } = await import("node:http");
     const { execFile } = await import("node:child_process");
     const { pathToFileURL } = await import("node:url");
