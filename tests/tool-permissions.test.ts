@@ -89,13 +89,10 @@ const BEFORE: Record<string, string[]> = {
     "set_display_name", "set_description",
     // #1629: its own web theme, like its own status stamp.
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
-    // #2132: own-appearance family — no target, caller-scoped.
+    // #2132: own-appearance family (effects and ambient excluded — use set_web_settings instead).
     "get_web_appearance", "preview_web_appearance",
     "set_web_widget", "remove_web_widget",
-    "set_web_ambient", "clear_web_ambient",
     "export_web_mod", "propose_web_mod",
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
-    "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // kiro engine move: read-only kiro engine facts, for explaining a kiro incompatibility.
     "kiro_engine_status",
     // #2056: the user's Settings → Web appearance, through the page's own checks.
@@ -565,17 +562,21 @@ describe("the refusal explains itself", () => {
     expect(message).toContain("tool_set: coordinator");
   });
 
-  it("general/checkout_repo: no 'own-instance', no harmful downgrade (#2134 R1)", () => {
-    // general doesn't have checkout_repo. Suggesting worker would lose the
-    // orchestration tools general has — so the message must not suggest worker
-    // (nor the current profile, general). coordinator has checkout_repo.
-    const message = toolRefusedMessage("general", "checkout_repo");
+  it("general refused an effect tool gets set_web_settings guidance (#2132)", () => {
+    // General uses set_web_settings {what:"effect", instance:self} — not the
+    // direct effect tools. The refusal must name the correct alternative.
+    const message = toolRefusedMessage("general", "upload_web_effect");
+    expect(message).not.toContain("tool_set: coordinator");
     expect(message).not.toContain("own-appearance");
-    expect(message).not.toContain("own-instance");
-    expect(message).not.toMatch(/tool_set: general/);
-    // Must not suggest a profile that lacks the tool or is a downgrade from general.
-    expect(message).not.toMatch(/tool_set: worker\b/);
-    expect(message).toContain("tool_set: coordinator");
+    expect(message).toContain("set_web_settings");
+    expect(message).toContain(`what: "effect"`);
+  });
+
+  it("general refused an ambient tool gets set_web_settings guidance (#2132)", () => {
+    const message = toolRefusedMessage("general", "set_web_ambient");
+    expect(message).not.toContain("tool_set: coordinator");
+    expect(message).toContain("set_web_settings");
+    expect(message).toContain(`what: "ambient"`);
   });
 });
 
@@ -585,8 +586,7 @@ describe("own-appearance family consistency (#2132)", () => {
   /**
    * The full own-appearance family — tools that have no target and act only on
    * the caller. Any profile that lets an instance style itself (set_web_theme)
-   * must include all of them: a gap means "you can change your theme but not
-   * your widgets", which is the bug #2132 reported.
+   * must include all of them, with one documented exception for general.
    */
   const OWN_APPEARANCE = [
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
@@ -598,20 +598,53 @@ describe("own-appearance family consistency (#2132)", () => {
     "apply_web_effect", "remove_web_effect", "delete_web_effect",
   ] as const;
 
-  it("every profile with set_web_theme has all own-appearance tools", () => {
+  /**
+   * General's documented exception: effect and ambient tools are intentionally
+   * excluded from the general profile. General applies effects and ambient for
+   * its own chat through set_web_settings { what: "effect"|"ambient", instance: self },
+   * not through the direct tools. See #2124 (web-ambient) and the token cap in
+   * auth-pause-and-token-diet. Changing this requires updating both those tests.
+   */
+  const GENERAL_EXCEPTION = new Set([
+    "set_web_ambient", "clear_web_ambient",
+    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
+    "apply_web_effect", "remove_web_effect", "delete_web_effect",
+  ]);
+
+  it("every profile with set_web_theme has all own-appearance tools (general: effects/ambient via set_web_settings)", () => {
     for (const [name, tools] of Object.entries(TOOL_PROFILES)) {
       const set = new Set(tools);
       if (!set.has("set_web_theme")) continue; // minimal doesn't style itself
       for (const tool of OWN_APPEARANCE) {
+        if (name === "general" && GENERAL_EXCEPTION.has(tool)) continue;
         expect(set.has(tool), `${name} has set_web_theme but is missing ${tool}`).toBe(true);
       }
     }
   });
 
-  it("general has the full own-appearance family (#2132)", () => {
-    for (const tool of OWN_APPEARANCE) {
+  it("general has the 8 own-appearance tools added in #2132", () => {
+    for (const tool of [
+      "get_web_appearance", "preview_web_appearance",
+      "set_web_widget", "remove_web_widget",
+      "export_web_mod", "propose_web_mod",
+      "set_display_name", "set_description",
+    ]) {
       expect(TOOL_PROFILES.general, `general must have ${tool}`).toContain(tool);
     }
+  });
+
+  it("general intentionally excludes effect and ambient tools — uses set_web_settings instead (#2124 #2132)", () => {
+    // These are the GENERAL_EXCEPTION tools. Changing this needs updates to
+    // web-ambient-2117.test.ts and auth-pause-and-token-diet.test.ts.
+    for (const tool of GENERAL_EXCEPTION) {
+      expect(TOOL_PROFILES.general, `general must NOT have ${tool}`).not.toContain(tool);
+    }
+    // General does have set_web_settings for the effect/ambient path.
+    expect(TOOL_PROFILES.general).toContain("set_web_settings");
+  });
+
+  it("stays under the token cap: general < full / 1.5", () => {
+    expect(TOOL_PROFILES.general.length).toBeLessThan(TOOL_PROFILES.full.length / 1.5);
   });
 });
 

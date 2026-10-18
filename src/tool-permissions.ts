@@ -117,12 +117,13 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "set_display_name", "set_description",
     // Its own web theme (#1629), like its own status stamp.
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
-    // Own-appearance family (#2132): no target, caller-scoped — same as worker/standard.
+    // Own-appearance family (#2132): no target, caller-scoped.
+    // Effects and ambient are intentionally excluded: General applies those for
+    // its own chat via set_web_settings { what: "effect"|"ambient", instance: self }.
+    // See web-ambient-2117 and the token-cap in auth-pause-and-token-diet.
     "get_web_appearance", "preview_web_appearance",
     "set_web_widget", "remove_web_widget",
-    "set_web_ambient", "clear_web_ambient",
     "export_web_mod", "propose_web_mod",
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // #2056: Settings → Web appearance for the user (the page's own checks; a worker's are its own theme only).
     "get_web_settings", "set_web_settings",
   ],
@@ -325,9 +326,11 @@ export const EARLY_AGENT_OP_TOOLS: Readonly<Record<string, string>> = {
  * than only what went wrong. Naming the profile matters too: "not allowed" with
  * no reason invites retrying.
  *
- * Own-appearance tools (no target, act only on the caller's look) need a wider
- * worker-tier profile, not a coordinator — suggesting coordinator for a
- * cosmetic change is misleading and grants far more than needed. (#2132)
+ * Two special cases before the default:
+ * 1. Own-appearance tools (no target, acts only on the caller's look) need a
+ *    worker-tier profile — not a coordinator — when refused to minimal/standard.
+ * 2. General instances refused effect or ambient tools should use set_web_settings
+ *    instead: General manages effects/ambient for its own chat through that path.
  */
 const OWN_APPEARANCE_TOOLS: ReadonlySet<string> = new Set([
   "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
@@ -339,7 +342,25 @@ const OWN_APPEARANCE_TOOLS: ReadonlySet<string> = new Set([
   "apply_web_effect", "remove_web_effect", "delete_web_effect",
 ]);
 
+const EFFECT_TOOLS: ReadonlySet<string> = new Set([
+  "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
+  "apply_web_effect", "remove_web_effect", "delete_web_effect",
+]);
+
+const AMBIENT_TOOLS: ReadonlySet<string> = new Set([
+  "set_web_ambient", "clear_web_ambient",
+]);
+
 export function toolRefusedMessage(profile: ToolSetName, tool: string): string {
+  // General: effect and ambient tools route through set_web_settings instead of
+  // direct tools. Suggesting coordinator would lose General's own routing tools.
+  if (profile === "general" && (EFFECT_TOOLS.has(tool) || AMBIENT_TOOLS.has(tool))) {
+    const what = EFFECT_TOOLS.has(tool) ? "effect" : "ambient";
+    return `${tool} is not available to the general tool set. `
+      + `General manages ${what}s for its own chat through set_web_settings — `
+      + `use set_web_settings({ what: "${what}", instance: "<your-instance-name>" }) instead.`;
+  }
+  // Own-appearance tools: need worker/standard, not coordinator.
   if (OWN_APPEARANCE_TOOLS.has(tool)) {
     return `${tool} is not available to this instance: it runs with the "${profile}" tool set, and ${tool} is an own-appearance tool (no target; acts only on the caller's look). `
       + 'Ask an administrator to set `tool_set: worker` or `tool_set: standard` for this instance.';
