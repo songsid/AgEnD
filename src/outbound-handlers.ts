@@ -765,7 +765,10 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
   }
   if (filterName) {
     const lowerName = filterName.toLowerCase();
-    allInstances = allInstances.filter(i => i.name.toLowerCase().includes(lowerName));
+    allInstances = allInstances.filter(i =>
+      i.name.toLowerCase().includes(lowerName) ||
+      (i.display_name?.toLowerCase().includes(lowerName) ?? false),
+    );
   }
   if (filterBackend) {
     allInstances = allInstances.filter(i => i.backend === filterBackend);
@@ -801,6 +804,7 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
   type CompactInstance = Partial<ReturnType<typeof instancePresentation>> & {
     name: string;
     status: "running" | "paused" | "stopped";
+    display_name?: string | null;
     backend: string;
     model: string;
     kind: "fleet-topic" | "classic";
@@ -809,6 +813,7 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
   const compactInstances: CompactInstance[] = allInstances.map(i => ({
     name: i.name,
     status: i.status,
+    ...(i.display_name ? { display_name: i.display_name } : {}),
     backend: i.backend,
     model: i.model,
     kind: i.kind,
@@ -859,6 +864,7 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
       name: targetName,
       type: "instance",
       kind: "fleet-topic",
+      display_name: config.display_name ?? null,
       description: config.description ?? null,
       tags: config.tags ?? [],
       working_directory: config.working_directory,

@@ -301,7 +301,7 @@ export const ReleaseRepoArgs = z.object({
 
 export const ListInstancesArgs = z.object({
   tags: z.array(z.string()).optional().describe("Filter by tags"),
-  name: z.string().optional().describe("Filter by name (fuzzy match, contains)"),
+  name: z.string().optional().describe("Filter by name (fuzzy match, contains) — also matches display_name"),
   backend: z.string().optional().describe("Filter by backend (exact match)"),
   status: z.enum(["running", "paused", "stopped"]).optional().describe("Filter by status"),
 });

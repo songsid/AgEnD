@@ -90,7 +90,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["describe_instance", schemas.DescribeInstanceArgs,
     "Get detailed information about a specific instance: description, working directory, status, tags, and recent activity."],
   ["list_instances", schemas.ListInstancesArgs,
-    "List the fleet's and ClassicBot instances (running, paused or stopped), excluding yourself. Filter by tags, name, backend or status."],
+    "List the fleet's and ClassicBot instances (running, paused or stopped), excluding yourself. Filter by tags, name, backend or status. The name filter also matches display_name."],
   ["start_instance", schemas.StartInstanceArgs,
     "Start a stopped instance by name."],
   ["restart_instance", schemas.RestartInstanceArgs,
