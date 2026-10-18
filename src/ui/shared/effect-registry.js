@@ -1,6 +1,5 @@
 /** #1629 B2: one host-owned Canvas Worker pool. Product adapters are deliberately separate. */
 import { allocateEffectFrames, effectEvent, effectPlaybackReason } from "./effect-policy.js";
-import { captureEffectBaseline } from "./effect-baseline.js";
 import { createOpaqueEffectFrame } from "./effect-frame.js";
 import { createEffectGeometry, hostEffectRect } from "./effect-geometry.js";
 import { effectStockSnapshot, effectStockAllows } from "./effect-stock-snapshot.js";
@@ -10,7 +9,7 @@ import { EffectBudget } from "./effect-profiler.js";
 const registries = new WeakMap();
 const plain = o => !!o && (Object.getPrototypeOf(o) === Object.prototype || Object.getPrototypeOf(o) === null);
 const finite = v => typeof v === "number" && Number.isFinite(v);
-const FLAGS = ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "transportReady", "constrained", "modal"];
+const FLAGS = ["safe", "publicLink", "reducedMotion", "hidden", "enabled", "show", "transportReady", "constrained", "modal"];
 const TYPES = ["state", "reply", "theme"];
 function unsafeSnapshotDescriptor(d) {
   if (!plain(d) || !plain(d.params ?? {})) return null;
@@ -41,7 +40,7 @@ function snapshotDescriptor(d) { try { return unsafeSnapshotDescriptor(d); } cat
  */
 export function createEffectRegistry({ window: host, origin, boot, load, safety, stockSnapshot, onChange = () => {}, onProfile = () => {}, onMount = () => {}, onRetire = () => {}, clock = () => host.performance.now() } = {}) {
   try { if (!host?.document || !host.document.body || registries.has(host) || typeof load !== "function" || typeof stockSnapshot !== "function" || typeof onChange !== "function" || typeof onProfile !== "function" || typeof onMount !== "function" || typeof onRetire !== "function" || typeof clock !== "function" || !safety || ["allowed", "begin", "finish", "pause", "resume"].some(k => typeof safety[k] !== "function") || ["requestAnimationFrame", "cancelAnimationFrame", "setTimeout", "clearTimeout", "MutationObserver", "ResizeObserver", "AbortController"].some(k => typeof host[k] !== "function")) return { ok: false, reason: "registry_unsupported" }; } catch { return { ok: false, reason: "registry_unsupported" }; }
-  let dead = false, blocked = null, revision = 0, last = null, lastView = null, frameSerial = 0, context = null, descriptors = [], calibration = null, baseline = null, baselineDevice = null, serial = 0, raf = null, timer = null;
+  let dead = false, blocked = null, revision = 0, last = null, lastView = null, frameSerial = 0, context = null, descriptors = [], raf = null, timer = null;
   const slots = new Map(), loads = new Set(), paused = new Map(), offs = [], observed = new Set(), failures = new Map(), results = new Map();
   let readingStock = false;
   let root, geometry, observer, resize, longTasks = null, longTasksSupported = false;
@@ -119,7 +118,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     if (s.request) { s.request.controller.abort(); if (s.request.timer !== null) host.clearTimeout(s.request.timer); }
     // A closed/unknown viewer gate revokes paint, not the effect identity. Fresh known gates
     // may admit it again; resource failures and actual safety pauses retain their latches.
-    if (!["disposed", "superseded", "hidden", "human_resume", "calibrating", "geometry_changed", "gates_unknown"].includes(why)) failures.set(s.d.key, { identity: signature(s.d), reason: why });
+    if (!["disposed", "superseded", "hidden", "human_resume", "geometry_changed", "gates_unknown"].includes(why)) failures.set(s.d.key, { identity: signature(s.d), reason: why });
     s.stageOff?.(); s.stageOff = null;
     s.frame?.remove(why); s.geometry?.remove();
     if (s.loadOff) s.loadOff();
@@ -138,12 +137,11 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       retire(s, why);
       if (revision !== proposed || dead !== wasDead) return false;
     }
-    if (calibration) { calibration.cancel(); calibration = null; }
     return true;
   }
   function gatesKnown() { return context && FLAGS.every(k => typeof context[k] === "boolean") && (context.openInstance === null || typeof context.openInstance === "string" && context.openInstance.length >= 1 && context.openInstance.length <= 128); }
   function eligible(d = null) {
-    return gatesKnown() && !context.safe && !context.reducedMotion && !context.saveData && context.enabled && context.show && context.transportReady
+    return gatesKnown() && !context.safe && !context.reducedMotion && context.enabled && context.show && context.transportReady
       && (!d || !context.publicLink || d.region === "chat" && !d.trialStage);
   }
   const globalAllowed = (d = null) => eligible(d) && host.document.visibilityState === "visible";
@@ -221,10 +219,9 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (!chosen.has(s.d.key) || !d || signature(d) !== signature(s.d) || d.element !== s.d.element || s.device !== device()) retire(s, "superseded");
       if (dead || proposal !== revision) return;
     }
-    if (chosen.size === 0) { if (calibration) { calibration.cancel(); calibration = null; } baseline = null; baselineDevice = null; tell(); return; }
+    if (chosen.size === 0) { tell(); return; }
     if (hidden) {
       hideGeometry();
-      if (calibration) { calibration.cancel(); calibration = null; }
       for (const s of [...slots.values()]) {
         if (!s.frame) retire(s, "hidden");
         else { if (s.hiddenSince === null) { s.hiddenSince = last; s.healthySince = null; } if (s.budget.gates({ hidden: true, reducedMotion: false, saveData: false, show: true }).remove) retire(s, "hidden"); }
@@ -238,20 +235,6 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (dead || proposal !== revision) return;
     }
     try { observe(); } catch { stopAll("trust_geometry_unknown"); tell(); return; }
-    if (baseline === null || baselineDevice !== device()) {
-      if (calibration && baselineDevice === device()) { tell(); return; }
-      if (!stopAll("calibrating") || dead || proposal !== revision) return;
-      const epoch = ++serial;
-      const job = captureEffectBaseline({ window: host, empty: () => !dead && slots.size === 0 && host.document.querySelectorAll("iframe.agend-effect-frame").length === 0 && globalAllowed() && !context.hidden && !!coverage(), clock: nativeClock });
-      calibration = job; baselineDevice = device();
-      job.promise.then(r => {
-        if (dead || calibration !== job || epoch !== serial) return;
-        calibration = null;
-        if (!r.ok) { blocked = r.reason; tell(); return; }
-        baseline = r.baselineFps; reconcile();
-      });
-      tell(); return;
-    }
     const max = context.constrained ? 1 : 3;
     for (const d of descriptors) {
       if (!chosen.has(d.key) || slots.has(d.key)) continue;
@@ -321,7 +304,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
         if (d.trialStage && !local || !current(s)) { if (current(s)) retire(s, "admission_revoked"); return; }
         if (local) fresh = local.rect;
         s.rect = fresh;
-        s.budget = new EffectBudget({ device: s.device, baselineFps: baseline, clock: nativeClock, longTasksSupported });
+        s.budget = new EffectBudget({ device: s.device, clock: nativeClock, longTasksSupported });
         const frame = createOpaqueEffectFrame({ window: host, root: local?.root ?? root, origin, boot, clock: nativeClock,
           render: { code: resource.code, params: resource.params, assets: resource.assets, wants: resource.wants, instance: d.instance, width: fresh.width, height: fresh.height, dpr: dpr(s.device) },
           onReady() { if (!current(s)) return; if (!globalAllowed(d) || context.hidden || !coverage(d)) { retire(s, "hidden"); tell(); return; } const n = time(); if (n === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return; } s.ready = true; s.readyAt = n; s.healthySince = n; publishEnv(s); schedule(); tell(); },
@@ -511,11 +494,11 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     revalidateSafety,
     /** Called only by the host's explicit human Resume UI. A descriptor update never clears this latch. */
     resume(key) {
-      if (dead || reentrantStock() || blocked && !blocked.startsWith("baseline_") || typeof key !== "string") return false;
+      if (dead || reentrantStock() || blocked || typeof key !== "string") return false;
       const proposed = revision, d = descriptors.find(d => d.key === key); if (!d || d.trialStage && !coverage(d) || revision !== proposed || receipt(safety.resume, d.id, device()) !== true || revision !== proposed) return false;
       revision++;
       if (!stopAll("human_resume")) return false;
-      if (blocked && !blocked.startsWith("baseline_")) return false; blocked = null; paused.delete(key); failures.delete(key); baseline = null; serial++; reconcile(); return true;
+      if (blocked) return false; paused.delete(key); failures.delete(key); reconcile(); return true;
     },
     /** Host-only content-free signal API. Raw pointer publishing is refused; native pointer metadata is coalesced here. */
     publish(type, fields, instance = null) {
@@ -531,7 +514,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       return sent;
     },
     dispose() {
-      if (dead) return; dead = true; revision++; serial++; stopAll("disposed");
+      if (dead) return; dead = true; revision++; stopAll("disposed");
       if (raf !== null) host.cancelAnimationFrame(raf); if (timer !== null) host.clearTimeout(timer);
       observer.disconnect(); resize.disconnect(); longTasks?.disconnect(); for (const off of offs) off();
       geometry.dispose(); root.remove(); observed.clear(); if (loads.size === 0 && registries.get(host) === api) registries.delete(host);

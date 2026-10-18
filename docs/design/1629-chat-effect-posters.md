@@ -1,5 +1,10 @@
 # #1629 — behind-only static Chat poster UI
 
+> Current policy: [#2118 default playback](canvas-worker-default-playback.md#immediate-startup-and-live-reference-pr-3-of-3)
+> supersedes this slice's empty-page calibration and hard OS-motion/Save-Data prerequisites. The original evidence below
+> describes that earlier slice. Playback now starts while the host learns a live cadence; the shared device motion option
+> is off by default. Isolation, protected pixels, caps and sticky safety remain.
+
 This completes the Chat fallback on top of the current-placement read API (#1969) and opted-in local Chat runtime (#1968). It does not mount personal regions/cursor or implement Try. Effects remain Canvas Workers; the fallback adds no effect HTML, Worker, iframe, event channel or profiler write.
 
 ## Rendering and gates

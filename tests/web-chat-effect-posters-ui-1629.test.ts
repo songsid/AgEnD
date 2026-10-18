@@ -28,7 +28,7 @@ describe("#1629 actual static Chat poster adapter (controller mocked)", () => {
     const h = await fixture(); expect(h.opts.observe()).toEqual({ shown: true, fallback: false, ownerCss: "unknown" });
     M.identity = false; expect(h.opts.observe().fallback).toBe(true); M.shown = false; expect(h.opts.observe().shown).toBe(false);
   });
-  it.each(["worker", "canvas", "motion", "save-data", "anonymous", "transport"])("%s selects the static surface fallback", async reason => {
+  it.each(["worker", "canvas", "anonymous", "transport"])("%s selects the static surface fallback", async reason => {
     const h = await fixture(({ host, motion, connection }) => {
       if (reason === "consent") M.optIn = false;
       if (reason === "device-consent") host.AgendPreview.optedIn = () => false;
@@ -39,6 +39,13 @@ describe("#1629 actual static Chat poster adapter (controller mocked)", () => {
       if (reason === "motion") motion.matches = true; if (reason === "save-data") connection.saveData = true;
       if (reason === "anonymous") M.identity = false; if (reason === "transport") host.document.body.dataset.effectBoot = "";
     }); expect(h.opts.observe().fallback).toBe(true); expect(h.api.sync).toHaveBeenCalledOnce();
+  });
+  it("OS reduced motion and data saver alone do not select fallback; the explicit device choice does", async () => {
+    const h = await fixture(({ motion, connection }) => { motion.matches = true; connection.saveData = true; });
+    expect(h.opts.observe().fallback).toBe(false);
+    const m = await import("/assets/fx-motion.js"); m.setFollowsReducedMotion(true);
+    expect(h.opts.observe().fallback).toBe(true);
+    m.setFollowsReducedMotion(false); expect(h.opts.observe().fallback).toBe(false);
   });
   it("HTML refusal and public viewing do not select a poster while the isolated player can run", async () => {
     const h = await fixture(({ host }) => { M.optIn = false; host.document.body.dataset.publicLink = "1"; host.AgendPreview.availability = () => { throw Error("not used"); }; host.AgendPreview.optedIn = () => false; host.AgendPreview.never = () => true; });
@@ -58,7 +65,7 @@ describe("#1629 actual static Chat poster adapter (controller mocked)", () => {
     h.appStore.set({ connection: "ended" }); expect(h.api.dispose).toHaveBeenCalledOnce();
   });
   it("an incomplete browser host does not read bare global navigator or width", async () => {
-    const h = await fixture(({ host }) => { delete host.navigator; delete host.innerWidth; delete host.matchMedia; }); expect(h.opts.observe().fallback).toBe(true); expect(h.api.sync).toHaveBeenCalledOnce();
+    const h = await fixture(({ host }) => { delete host.navigator; delete host.innerWidth; delete host.matchMedia; }); expect(h.opts.observe().fallback).toBe(false); expect(h.api.sync).toHaveBeenCalledOnce();
   });
   it("a refused controller installs no subscriptions, and the lease still disposes it", async () => {
     M.unavailable = true; const h = await fixture(); expect(M.theme.size + M.prefs.size + M.css.size).toBe(0); expect(h.motion.addEventListener).not.toHaveBeenCalled(); expect(h.api.sync).not.toHaveBeenCalled();

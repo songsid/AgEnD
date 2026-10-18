@@ -1,5 +1,10 @@
 # Host-observed Canvas effect budgets (#1629)
 
+> Current policy: [#2118 default playback](canvas-worker-default-playback.md#immediate-startup-and-live-reference-pr-3-of-3)
+> supersedes this slice's empty-page calibration and hard OS-motion/Save-Data prerequisites. The original evidence below
+> describes that earlier slice. Playback now starts while the host learns a live cadence; the shared device motion option
+> is off by default. Isolation, protected pixels, caps and sticky safety remain.
+
 This is an unmounted policy module, `src/ui/shared/effect-profiler.js`. It opens no storage, installs no observers or timers, reads no message content and creates no frame. The later registry supplies host observations and must physically remove an iframe when `remove` becomes true. This module alone does not stop Worker work. Product mounting is still disabled.
 
 ## Evidence and limits

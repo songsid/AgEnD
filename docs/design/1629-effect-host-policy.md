@@ -1,5 +1,10 @@
 # Canvas effect host policy (#1629 r2/r3)
 
+> Current policy: [#2118 default playback](canvas-worker-default-playback.md#immediate-startup-and-live-reference-pr-3-of-3)
+> supersedes this slice's empty-page calibration and hard OS-motion/Save-Data prerequisites. The original evidence below
+> describes that earlier slice. Playback now starts while the host learns a live cadence; the shared device motion option
+> is off by default. Isolation, protected pixels, caps and sticky safety remain.
+
 `src/ui/shared/effect-policy.js` is a pure host-side foundation. This module creates no frame, registers no event listener, changes no geometry and reads no message content. Product mounting remains disabled until the factory, trust-marker/observer integration, profiler, opt-in and route authorization land and pass review.
 
 ## Signals

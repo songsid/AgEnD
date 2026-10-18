@@ -1,5 +1,10 @@
 # #1629 explicit local-admin Try in the product
 
+> Current policy: [#2118 default playback](canvas-worker-default-playback.md#immediate-startup-and-live-reference-pr-3-of-3)
+> supersedes this slice's empty-page calibration and hard OS-motion/Save-Data prerequisites. The original evidence below
+> describes that earlier slice. Playback now starts while the host learns a live cadence; the shared device motion option
+> is off by default. Isolation, protected pixels, caps and sticky safety remain.
+
 `preview_web_effect({id})` offers a card in the calling agent's web chat. It uses
 that agent's current own/shared read access and the one Fleet Trial authority;
 it is not an appearance write, does not record a limiter change/upload, and never

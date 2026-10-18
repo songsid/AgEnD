@@ -66,8 +66,8 @@ export const EFFECT_BLOCK_REASONS = Object.freeze([
 
 /** Diagnostic names only; the admission policy below still validates every required flag. */
 export function effectPlaybackReason(c) {
-  if (!c || ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "transportReady"].some(k => typeof c[k] !== "boolean")) return "gates_unknown";
-  return c.safe ? "safe_mode" : c.reducedMotion ? "reduced_motion" : c.saveData ? "save_data"
+  if (!c || ["safe", "publicLink", "reducedMotion", "hidden", "enabled", "show", "transportReady"].some(k => typeof c[k] !== "boolean")) return "gates_unknown";
+  return c.safe ? "safe_mode" : c.reducedMotion ? "reduced_motion"
     : c.hidden ? "hidden" : !c.enabled ? "unsupported_host" : !c.show ? "disabled" : !c.transportReady ? "transport_unavailable" : null;
 }
 
@@ -78,12 +78,11 @@ export function allocateEffectFrames(descriptors, context) {
   const keys = new Set(), duplicate = new Set();
   for (const d of descriptors) if (d && typeof d.key === "string") { if (keys.has(d.key)) duplicate.add(d.key); keys.add(d.key); }
   const result = descriptors.map(d => ({ key: d?.key, verdict: "off", reason: "unknown", queuePos: null }));
-  const gates = ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "transportReady", "constrained", "modal"];
+  const gates = ["safe", "publicLink", "reducedMotion", "hidden", "enabled", "show", "transportReady", "constrained", "modal"];
   if (gates.some(k => typeof context[k] !== "boolean") || context.openInstance !== null && !instanceName(context.openInstance)) return result;
   let global = null;
   if (context.safe === true) global = "safe_mode";
   else if (context.reducedMotion === true) global = "reduced_motion";
-  else if (context.saveData === true) global = "save_data";
   else if (context.hidden === true) global = "hidden";
   else if (context.enabled !== true) global = "unsupported_host";
   else if (context.show !== true) global = "disabled";

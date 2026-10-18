@@ -12,10 +12,14 @@ const id = v => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
 /** One host-owned mount. The registry must remove the frame when remove is true, never merely hide it. */
 export class EffectBudget {
   constructor({ device, baselineFps, clock = () => performance.now(), longTasksSupported = false } = {}) {
-    if (!deviceClass(device) || !finite(baselineFps) || baselineFps <= 0 || baselineFps > 1000 || typeof clock !== "function" || typeof longTasksSupported !== "boolean") throw new TypeError("effect budget options");
+    if (!deviceClass(device) || baselineFps !== undefined && (!finite(baselineFps) || baselineFps <= 0 || baselineFps > 1000) || typeof clock !== "function" || typeof longTasksSupported !== "boolean") throw new TypeError("effect budget options");
     this.device = device;
-    // Measured by the host while NO effects are mounted; never author-supplied or learned from a running effect.
-    this.fpsFloor = Math.min(EFFECT_BUDGETS[device].fps, baselineFps * 0.9);
+    // Legacy host measurements may still be supplied by pure probes. Product playback starts
+    // immediately and learns cadence concurrently from host rAF, never Worker timing.
+    // Freeze before the first report: a mount's profile floor must remain coherent.
+    this.fpsFloor = baselineFps === undefined ? null : Math.min(EFFECT_BUDGETS[device].fps, baselineFps * 0.9);
+    this.cadence = [];
+    this.cadenceAt = null;
     this.clock = clock;
     this.longTasksSupported = longTasksSupported;
     this.last = null;
@@ -58,7 +62,16 @@ export class EffectBudget {
   frame() {
     const now = this.time();
     if (now === null) return this.stop("clock_unavailable");
-    if (this.verdict === "paused" || this.hiddenAt !== null || now < this.epoch + 1000) return this.snapshot();
+    if (this.verdict === "paused" || this.hiddenAt !== null) return this.snapshot();
+    if (this.fpsFloor === null) {
+      const interval = this.cadenceAt === null ? null : now - this.cadenceAt;
+      this.cadenceAt = now;
+      if (interval !== null && interval >= 1 && interval <= 1000) {
+        if (this.cadence.length === 256) this.cadence.shift();
+        this.cadence.push(interval);
+      }
+    }
+    if (now < this.epoch + 1000) return this.snapshot();
     this.trim(now);
     if (this.frames.at(-1) !== now) {
       if (this.frames.length >= 2048) this.overflow = true;
@@ -88,10 +101,10 @@ export class EffectBudget {
     const now = this.time();
     if (now === null) return this.stop("clock_unavailable");
     if (!plain(raw)) return this.stop("gates_unknown");
-    const { hidden, reducedMotion, saveData, show } = raw;
-    if ([hidden, reducedMotion, saveData, show].some(v => typeof v !== "boolean")) return this.stop("gates_unknown");
+    const { hidden, reducedMotion, show } = raw;
+    if ([hidden, reducedMotion, show].some(v => typeof v !== "boolean")) return this.stop("gates_unknown");
     if (this.verdict === "paused") return this.snapshot();
-    if (reducedMotion || saveData || !show) return this.stop(reducedMotion ? "reduced_motion" : saveData ? "save_data" : "viewer_off");
+    if (reducedMotion || !show) return this.stop(reducedMotion ? "reduced_motion" : "viewer_off");
     if (hidden && this.hiddenAt === null) this.hiddenAt = now;
     if (hidden && now - this.hiddenAt >= 10000) return this.stop("hidden");
     if (!hidden && this.hiddenAt !== null) {
@@ -105,6 +118,7 @@ export class EffectBudget {
       this.overflow = false;
       this.badWindows = 0;
       this.metrics = null;
+      this.cadence = []; this.cadenceAt = null;
     }
     return this.snapshot();
   }
@@ -123,8 +137,16 @@ export class EffectBudget {
     const hostMs = this.longTasksSupported ? sum(null) : null;
     const ownMs = this.longTasksSupported && this.tasks.some(t => t.attributed) ? sum(true) : null;
     const limits = EFFECT_BUDGETS[this.device];
-    const bad = this.overflow || fps < this.fpsFloor || hostMs !== null && hostMs > limits.longTaskMsPerSecond;
-    this.metrics = { at: now, hostFps: fps, hostLongTaskMsPerSecond: hostMs, attributedLongTaskMsPerSecond: ownMs,
+    if (this.fpsFloor === null && this.cadence.length >= 3) {
+      // Faster observed intervals distinguish intermittent jank from a genuinely slower
+      // display. This is a live reference, not an empty-page health certification.
+      const sorted = [...this.cadence].sort((a, b) => a - b);
+      const interval = sorted[Math.ceil(sorted.length * (sorted.length < 8 ? 0.5 : 0.2)) - 1];
+      this.fpsFloor = Math.min(limits.fps, 900 / interval);
+      this.cadence = []; this.cadenceAt = null;
+    }
+    const bad = this.overflow || this.fpsFloor === null || fps < this.fpsFloor || hostMs !== null && hostMs > limits.longTaskMsPerSecond;
+    this.metrics = this.fpsFloor === null ? null : { at: now, hostFps: fps, hostLongTaskMsPerSecond: hostMs, attributedLongTaskMsPerSecond: ownMs,
       attribution: ownMs === null ? "unknown" : "observed", fpsFloor: this.fpsFloor, windowMs: 2000 };
     this.overflow = false;
     if (bad) {

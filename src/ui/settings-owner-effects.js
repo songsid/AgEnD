@@ -39,7 +39,7 @@ export function OwnerEffects({ catalog, busy = false }) {
   useEffect(() => { life.current.alive = true; const stop = watchOwnerEffects(); return () => { life.current.alive = false; life.current.seq++; stop(); }; }, []);
   useEffect(() => {
     let live = true; const entry = getAppEffects();
-    const pull = () => { if (!live) return; const gates = entry?.gates(); setRuntime({ entry, snapshot: entry?.api?.ownerSnapshot?.(), cursor: entry?.cursorSnapshot?.(), available: !!entry && !entry.dead && gates.enabled && gates.show && gates.transportReady && !gates.safe && !gates.publicLink && !gates.reducedMotion && !gates.saveData }); };
+    const pull = () => { if (!live) return; const gates = entry?.gates(); setRuntime({ entry, snapshot: entry?.api?.ownerSnapshot?.(), cursor: entry?.cursorSnapshot?.(), available: !!entry && !entry.dead && gates.enabled && gates.show && gates.transportReady && !gates.safe && !gates.publicLink && !gates.reducedMotion }); };
     const off = entry?.subscribe(pull), end = entry?.onEnd(pull); pull();
     return () => { live = false; off?.(); end?.(); };
   }, []);

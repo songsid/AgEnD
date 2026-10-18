@@ -52,8 +52,8 @@ describe("#1629 real Chat runtime ownership", () => {
     expect(h.registry.update.mock.calls.at(-1)?.[0]).toEqual([expect.objectContaining({ id, instance: "own", by: "agent", params: { size: 2 }, element: h.element })]);
     expect(h.registry.update.mock.calls.at(-1)?.[0][0]).not.toHaveProperty("ownerEpoch"); h.api.dispose();
   });
-  it.each(["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "transportReady"])("gate %s prevents metadata/resource reads", fault => {
-    const h = rig(); (h.context as any)[fault] = ["safe", "publicLink", "reducedMotion", "saveData", "hidden"].includes(fault); h.api.sync();
+  it.each(["safe", "publicLink", "reducedMotion", "hidden", "enabled", "show", "transportReady"])("gate %s prevents metadata/resource reads", fault => {
+    const h = rig(); (h.context as any)[fault] = ["safe", "publicLink", "reducedMotion", "hidden"].includes(fault); h.api.sync();
     expect(h.loader.placements).not.toHaveBeenCalled(); expect(h.loader.resource).not.toHaveBeenCalled(); h.api.dispose();
   });
   it("an old metadata answer cannot restore frames after a new revision", async () => {

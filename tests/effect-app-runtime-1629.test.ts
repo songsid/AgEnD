@@ -259,7 +259,7 @@ describe("#1629 optional personal sources share the app pool", () => {
     const h = rig(personal), a = h.chat(); await flush(); const first = held(); h.loader.resourceSettled.mockImplementationOnce(() => first.promise); const job = h.options().load(h.api.ownerSnapshot().rows[0], new AbortController().signal);
     h.loaderOptions.onRevoke({ reason: "authorization_rejected" }); first.resolve({ id }); expect(await job).toBeNull(); expect(h.api.ownerSnapshot().rows).toEqual([]); expect(a.api.snapshot().rows).toEqual([]); expect(h.registry.dispose).toHaveBeenCalledOnce(); expect(h.loader.dispose).toHaveBeenCalledOnce();
   });
-  it.each(["enabled", "show", "transportReady", "safe", "publicLink", "reducedMotion", "saveData", "hidden"])("the %s global gate applies before any personal read", async gate => {
+  it.each(["enabled", "show", "transportReady", "safe", "publicLink", "reducedMotion", "hidden"])("the %s global gate applies before any personal read", async gate => {
     const h = rig(personal); h.context[gate] = ["enabled", "show", "transportReady", "optIn"].includes(gate) ? false : true; h.api.sync(); await flush(); expect(h.loader.ownerSettled).not.toHaveBeenCalled(); h.api.dispose();
   });
   it("resolver reentry attaching a new Chat abandons the old aggregate pass", async () => {
@@ -322,7 +322,7 @@ describe("#1629 Trial contribution in the one app pool (protocol double)", () =>
     const h = trialRig(); h.chat(); await flush(); h.api.attachTrial({}); expect(h.trialOptions().current()).toBe(true);
     h.observation.ownerCss = css; expect(h.trialOptions().current()).toBe(true); h.context.transportReady = true; h.context.optIn = false; expect(h.trialOptions().current()).toBe(true);
     for (const key of ["enabled", "show", "transportReady"]) { h.context[key] = false; expect(h.trialOptions().current()).toBe(false); h.context[key] = true; }
-    for (const key of ["safe", "publicLink", "reducedMotion", "saveData", "hidden"]) { h.context[key] = true; expect(h.trialOptions().current()).toBe(false); h.context[key] = false; }
+    for (const key of ["safe", "publicLink", "reducedMotion", "hidden"]) { h.context[key] = true; expect(h.trialOptions().current()).toBe(false); h.context[key] = false; }
     expect(h.trialOptions().current()).toBe(true); h.api.dispose();
   });
   it("dispatches a Trial read without touching the ordinary loader or failing Chat", async () => {
@@ -349,7 +349,7 @@ describe("#1629 Trial contribution in the one app pool (protocol double)", () =>
 });
 
 describe("#2115 metadata diagnostics before playback admission", () => {
-  it.each([["reducedMotion", true, "reduced_motion"], ["transportReady", false, "transport_unavailable"], ["enabled", false, "unsupported_host"], ["safe", true, "safe_mode"], ["saveData", true, "save_data"], ["hidden", true, "hidden"], ["show", false, "disabled"]])("%s still names each placement without a code fetch", async (key, value, reason) => {
+  it.each([["reducedMotion", true, "reduced_motion"], ["transportReady", false, "transport_unavailable"], ["enabled", false, "unsupported_host"], ["safe", true, "safe_mode"], ["hidden", true, "hidden"], ["show", false, "disabled"]])("%s still names each placement without a code fetch", async (key, value, reason) => {
     const h = rig(h => { h.context[key as string] = value; h.registry.snapshot = () => []; });
     const a = h.chat(); await flush();
     expect(h.loader.placementsSettled).toHaveBeenCalledOnce(); expect(a.api.snapshot().rows).toMatchObject([{ id, reason }]);

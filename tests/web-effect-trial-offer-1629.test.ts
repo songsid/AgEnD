@@ -119,7 +119,7 @@ describe("the real thread's inert protected offer card", () => {
     ["localAdmin", "Sign in as an admin outside the public link to Try.", "Sign in here"],
     ["busy", "Stop the current trial before starting another.", "Stop current trial"],
     ["effectsOff", "Turn on effects to Try.", "Open playback settings"],
-    ["reducedMotion", "Your device requests reduced motion.", "Open playback settings"],
+    ["reducedMotion", "Effects follow this device’s reduced-motion setting.", "Play effects anyway"],
   ])("one unmet %s condition has one host action; it can never start from the fix click", (reason, hint, label) => {
     const fix = vi.fn(), start = vi.fn(), row = message(), f = fixture("en", false, { effectTrialStatus: () => reason, fixEffectTrial: fix, canTryEffect: () => false, startEffectTrial: start });
     try { f.th.render([row]); const card = f.list.querySelector(".effect-trial-offer")!, button = card.querySelector("button")!;

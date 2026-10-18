@@ -11,7 +11,7 @@ const SPECS = [
   ["confirmation", ".shell > .pending-stack, .shell .p-settings > .panel-body > .col > .pending-stack.inline"], ["preview", ".shell .chat-split > .pv-panel, .shell .chat-split > .pv-divider"],
   ["preview-menu", ".shell .thread details.pv-menu"], ["palette", ".shell .dock .cmd-palette"],
   ["drop", ".shell .p-chat > .drop-overlay"],
-  ["thread-control", ".shell .p-chat .jump-latest, .shell .thread .msg-tools, .shell .thread .st-more, .shell .thread .cb-head, .shell .thread .cb-more, .shell .thread .tc-head, .shell .thread .tc-more, .shell .thread .pv-head, .shell .thread .pv-note, .shell .thread .pv-banner, .shell .thread .effect-trial-offer, .shell .thread .click-chip"],
+  ["thread-control", ".shell .chat-main > .amb-note, .shell .p-chat .jump-latest, .shell .thread .msg-tools, .shell .thread .st-more, .shell .thread .cb-head, .shell .thread .cb-more, .shell .thread .tc-head, .shell .thread .tc-more, .shell .thread .pv-head, .shell .thread .pv-note, .shell .thread .pv-banner, .shell .thread .effect-trial-offer, .shell .thread .click-chip"],
   ["link", ".shell .thread .md a, .shell .thread .st-text > a.st-link, .shell .dock .prompts .txt > a.st-link"], ["attachment", ".shell .thread .atts"], ["media", ".shell .thread .att-media"],
   ["panel-navigation", ".shell .p-fleet > .seg, .shell .p-settings > .seg"],
   ["panel-content", ".shell .p-fleet > .panel-body, .shell .p-needs > .panel-body, .shell .p-settings > .panel-body, .shell .p-log > .panel-body, .shell .p-details > .panel-body, .shell .p-view > .panel-body, .shell .p-view > .v-term, .shell .p-view > .v-id, .shell .p-view > .v-card"],
@@ -20,7 +20,7 @@ const SPECS = [
 ];
 export const STOCK_TRUST_INVENTORY = Object.freeze(SPECS.map(([kind, selector]) => Object.freeze({ kind, selector })));
 const STRUCTURAL = ["html", "body", "#app", "#app > .shell", ".shell > .main", ".main > .p-chat", ".p-chat > .chat-split", ".chat-split > .chat-main"];
-const CONTENT = [".main > .conn", ".p-chat > .panel-head", ".p-chat > .chat-card", ".p-chat > .aw-chat_header", ".chat-main > .scroller", ".chat-main > .dock", ".sidebar > .side-head", ".sidebar > .side-nav", ".sidebar > .side-section", ".sidebar > .side-widget", ".sidebar > .side-foot", ".u-rail > .u-rail-head", ".u-rail > .u-rail-body"];
+const CONTENT = [".main > .conn", ".p-chat > .panel-head", ".p-chat > .chat-card", ".p-chat > .aw-chat_header", ".chat-main > .amb-note", ".chat-main > .scroller", ".chat-main > .dock", ".sidebar > .side-head", ".sidebar > .side-nav", ".sidebar > .side-section", ".sidebar > .side-widget", ".sidebar > .side-foot", ".u-rail > .u-rail-head", ".u-rail > .u-rail-body"];
 // Closed producer/topology inventory. Bare Outlet loading/error panels never become an effect surface.
 const PANELS = Object.freeze({
   fleet: { required: [".panel-head", ".seg", ".panel-body"], optional: [] },

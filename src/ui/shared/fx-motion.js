@@ -5,19 +5,27 @@ export const FX_FOLLOW_REDUCED_MOTION_KEY = "agend_fx_follow_reduced_motion";
 /** The one-time chat note "your system asks for reduced motion; effects are on" was shown on this device. */
 export const FX_MOTION_NOTE_KEY = "agend_fx_motion_note_seen";
 const listeners = new Set();
+let pageChoice = null, noteShown = false;
 
 /** Whether this device asked effects to follow the system's reduced-motion setting (default: no). */
 export function followsReducedMotion() {
+  if (pageChoice !== null) return pageChoice;
   try { return globalThis.localStorage.getItem(FX_FOLLOW_REDUCED_MOTION_KEY) === "1"; } catch { return false; }
 }
 export function setFollowsReducedMotion(on) {
+  pageChoice = !!on;
   try { if (on) globalThis.localStorage.setItem(FX_FOLLOW_REDUCED_MOTION_KEY, "1"); else globalThis.localStorage.removeItem(FX_FOLLOW_REDUCED_MOTION_KEY); } catch { /* this page only */ }
   for (const fn of [...listeners]) { try { fn(); } catch { /* a listener's own */ } }
 }
 /** `fn()` when the switch or the system's answer moves (this tab, another tab, the OS). Returns the unsubscribe. */
 export function onMotionChange(fn) {
   listeners.add(fn);
-  const onStorage = (e) => { if (!e || e.key === FX_FOLLOW_REDUCED_MOTION_KEY || e.key === null) fn(); };
+  const onStorage = (e) => {
+    if (!e || e.key === FX_FOLLOW_REDUCED_MOTION_KEY || e.key === null) {
+      pageChoice = e?.key === FX_FOLLOW_REDUCED_MOTION_KEY ? e.newValue === "1" : null;
+      fn();
+    }
+  };
   let q = null;
   try { q = typeof globalThis.matchMedia === "function" ? globalThis.matchMedia("(prefers-reduced-motion: reduce)") : null; } catch { q = null; }
   try { globalThis.addEventListener && globalThis.addEventListener("storage", onStorage); } catch { /* none */ }
@@ -37,10 +45,11 @@ export function systemReducesMotion(win = globalThis) {
  * note was not shown here before. Showing it marks it shown.
  */
 export function motionNoteDue(win = globalThis) {
-  if (followsReducedMotion() || !systemReducesMotion(win)) return false;
-  try { return globalThis.localStorage.getItem(FX_MOTION_NOTE_KEY) !== "1"; } catch { return false; }
+  if (noteShown || followsReducedMotion() || !systemReducesMotion(win)) return false;
+  try { return globalThis.localStorage.getItem(FX_MOTION_NOTE_KEY) !== "1"; } catch { return true; }
 }
 export function markMotionNoteShown() {
+  noteShown = true;
   try { globalThis.localStorage.setItem(FX_MOTION_NOTE_KEY, "1"); } catch { /* shown again next time: harmless */ }
 }
 
