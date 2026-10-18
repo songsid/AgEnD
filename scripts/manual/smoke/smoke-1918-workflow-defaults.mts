@@ -162,6 +162,8 @@ if (only("desk")) {
   const reloaded = await until(p, (m) => has(m, "h-task ph-work", "ops-general", REST[7]));
   c.reloadDrawsOpenWork = reloaded.ok; check(reloaded.m);
   await p.page.screenshot({ path: shotPath(SMOKE, "desk", "5-after-reload") });
+  // Team headers are drawn above the lines (a line leaving a box through its header ran over the count).
+  c.headersAboveLines = await p.page.evaluate(`(() => { const w = [...document.querySelector(".oc-world").children].map((g) => g.getAttribute("class")); return w.indexOf("oc-heads") > w.indexOf("oc-flows"); })()`) as boolean;
   c.noFloatingLine = floats.length === 0;
   c.noErrors = p.errors.length === 0;
   record("desk-light-en", c, { errors: p.errors, floats, thirdCol, line });

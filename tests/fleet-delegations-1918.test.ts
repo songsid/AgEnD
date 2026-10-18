@@ -5,7 +5,7 @@
  * first. Opaque ids, never the correlation id. FleetManager sends each change as SSE "delegation" and lists the open
  * ones in GET /ui/traffic's snapshot (a reload, the public link), hidden instances left out.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -68,6 +68,8 @@ describe("Delegations", () => {
 });
 
 describe("FleetManager: SSE delegation and the snapshot", () => {
+  // Loading FleetManager is slow under a parallel run: not part of any one test's time.
+  beforeAll(async () => { await import("../src/fleet-manager.js"); }, 120_000);
   async function fleet() {
     const dir = mkdtempSync(join(tmpdir(), "agend-1918d-")); roots.push(dir);
     const { FleetManager } = await import("../src/fleet-manager.js");
@@ -110,6 +112,12 @@ describe("FleetManager: SSE delegation and the snapshot", () => {
       const states = sse.filter(([t]) => t === "delegation").map(([, d]) => [d.to, d.state]);
       expect(states).toEqual([["ember", "open"], ["ember", "cancelled"]]);
       expect(fm.trafficSnapshot().delegations.some((d: any) => d.from === "shy" || d.to === "quill")).toBe(false);
+      // Open, then its worker hidden since: gone from the snapshot (visibility as of now).
+      admit(fm, "atlas", "quill", "task", "cid-q");
+      expect(fm.trafficSnapshot().delegations.map((d: any) => d.to)).toEqual(["quill"]);
+      fm.fleetConfig.instances.quill = { cross_instance_visibility: "hidden" };
+      admit(fm, "atlas", "ember", "update", "cid-news");                                   // any news drops the memo
+      expect(fm.trafficSnapshot().delegations).toEqual([]);
     } finally { close(); }
   });
 });

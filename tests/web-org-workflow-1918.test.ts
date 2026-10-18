@@ -84,6 +84,9 @@ describe("every line ends on something drawn, through lanes of the boxes it join
           const x0 = Math.min(pts[i - 1].x, pts[i].x), x1 = Math.max(pts[i - 1].x, pts[i].x), y0 = Math.min(pts[i - 1].y, pts[i].y), y1 = Math.max(pts[i - 1].y, pts[i].y);
           for (const c of cards) expect(x1 > c.x + 1 && x0 < c.x + c.w - 1 && y1 > c.y + 1 && y0 < c.y + c.h - 1, `${a}→${z} segment ${i} crosses ${c.node.name}`).toBe(false);
         }
+        // A lane in a box's padding keeps at least 6 px from the box's border (a line along the border looked attached to it).
+        for (const b of L.boxes) for (const pt of pts) if (!b.folded && pt.x > b.x && pt.x < b.x + b.w && pt.y > b.y && pt.y <= b.y + b.h)
+          expect(Math.min(pt.x - b.x, b.x + b.w - pt.x), `${a}→${z} runs along ${b.key}'s border at ${JSON.stringify(pt)}`).toBeGreaterThanOrEqual(6);
         const box = L.boxes.find((b: any) => !b.folded && b.cells.some((c: any) => c.node.name === a) && b.cells.some((c: any) => c.node.name === z));
         if (box) for (const pt of pts) expect(inside(pt, box), `${a}→${z} leaves its box at ${JSON.stringify(pt)}`).toBe(true);
       }

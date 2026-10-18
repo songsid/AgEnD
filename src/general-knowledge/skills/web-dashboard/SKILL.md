@@ -183,8 +183,11 @@ Telegram topic, and **Open chat**.
 
 **Live traffic** (**Live** switch, on by default; **Key** explains it): a line for each message between instances.
 Colour by kind — task (delegate_task) purple, send/query/update teal, report pink, broadcast orange; between teams
-(zoomed out) slate. Dotted = queued, dashed with a moving pulse = being delivered, grey fading for 3 s = delivered.
-"×N" = several messages share a line. Lines end at once when consumed; failed ones belong in Needs you. No message
+(zoomed out) slate. Dotted = queued, dashed with a moving pulse = being delivered, grey fading for 12 s = delivered or
+read. "×N" = several messages share a line; failed ones belong in Needs you. A `delegate_task` also draws the work: a
+slow-moving purple line, delegator → worker, **in progress** until the worker's `report_result` with the same
+correlation id comes back (then one pink line returns); none after 4 h fades as **no report yet**. Reloads and the
+public link show the open ones. Every line ends on a card or a folded team's box. No message
 text is ever shown; instances with `cross_instance_visibility: hidden` are left out. On a public link it refreshes
 every 5 s.
 
