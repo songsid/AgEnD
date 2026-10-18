@@ -30,6 +30,11 @@ describe("explicit Trial controller lane (unmounted)", () => {
     const handle = h.start.mock.calls[0]![0]; expect(Object.isFrozen(handle)).toBe(true); expect(Object.isFrozen(handle.reply.manifest)).toBe(true); expect(handle.startedAt).toBe(0); expect(handle.current()).toBe(true); expect(handle.instance).toBe("worker /&");
     expect(await h.api.start(message())).toBe(false); expect(h.host.fetch).toHaveBeenCalledOnce(); h.api.dispose(); await flush();
   });
+  it("diagnostic callbacks run only after physical disposal and cleanup reservation", async () => {
+    const h = fixture(); expect(await h.api.start(message())).toBe(true); let painted = true, retry: Promise<boolean> | null = null;
+    h.disposeStage.mockImplementation(() => { painted = false; }); h.host.console = { warn: vi.fn(() => { expect(painted).toBe(false); retry = h.api.start(message()); }) };
+    h.start.mock.calls[0]![0].stop("trial_layout_unverified"); expect(retry).not.toBeNull(); expect(await retry!).toBe(false); await flush(); expect(h.start).toHaveBeenCalledOnce(); h.api.dispose();
+  });
   it("preserves an exact local terminal reason through cleanup and clears it only for the next explicit start", async () => {
     const h = fixture(), warn = vi.fn(); h.host.console = { warn }; expect(await h.api.start(message())).toBe(true);
     h.start.mock.calls[0]![0].stop("stock_marker_limit"); await flush();

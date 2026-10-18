@@ -54,7 +54,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     },
     trialFailure(message) {
       const offer = safe(() => effectTrialMessage(message)), state = trialControl?.snapshot();
-      return offer && state?.phase === "idle" && state.offer === offer.offer && state.reason !== "stopped" ? state.reason : null;
+      return offer && state?.phase === "idle" && state.offer === offer.offer && !["stopped", "replaced"].includes(state.reason) ? state.reason : null;
     },
     canTry(message) { return entry.trialStatus(message) === "ready"; },
     stopTrial() { trialControl?.stop(); },

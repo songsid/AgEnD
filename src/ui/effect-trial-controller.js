@@ -29,12 +29,13 @@ export function createEffectTrialController({ window: host, current, allowed, on
     op.dead = true; if (active === op) active = null;
     endedReason = typeof reason === "string" && /^[a-z][a-z0-9_]{0,79}$/.test(reason) ? reason : "trial_failed";
     endedOffer = op.offer.offer;
-    if (!["stopped", "replaced"].includes(endedReason)) safe(() => host.console?.warn("[AgEnD effects] Try stopped:", endedReason));
     safe(() => op.resolve?.(false));
     safe(() => host.clearTimeout(op.timer)); safe(() => op.controller.abort());
     if (op.reply && !op.stopQueued) { op.stopQueued = true; cleanup.push(op); }
     // Physical paint is removed before callbacks, cleanup I/O or another explicit click.
-    safe(() => op.dispose?.()); op.dispose = null; tell(); drain(); return true;
+    safe(() => op.dispose?.()); op.dispose = null;
+    if (!["stopped", "replaced"].includes(endedReason)) safe(() => host.console?.warn("[AgEnD effects] Try stopped:", endedReason));
+    tell(); drain(); return true;
   }
   function arm(op) {
     safe(() => host.clearTimeout(op.timer));

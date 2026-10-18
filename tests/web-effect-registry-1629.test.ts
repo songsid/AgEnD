@@ -233,6 +233,11 @@ describe("#1629 shared Canvas Worker registry", () => {
     h.api.update(ds, gates()); expect(warn).toHaveBeenCalledOnce();
     h.coverage.mockReturnValue(stock()); await h.admit(ds); expect(h.load).toHaveBeenCalledOnce(); expect(h.safety.resume).not.toHaveBeenCalled();
   });
+  it("cold observation failure names its refusal without inventing a loading frame, then recovers", async () => {
+    const h = rig(), ds = h.descriptors(); h.resizes[0].observe.mockImplementationOnce(() => { throw Error("observer failed"); });
+    await h.admit(ds); expect(h.load).not.toHaveBeenCalled(); expect(h.api.snapshot()[0]).toMatchObject({ verdict: "off", phase: null, reason: "trust_geometry_unknown" });
+    await h.admit(ds); expect(h.load).toHaveBeenCalledOnce(); expect(h.api.snapshot()[0].phase).toBe("starting");
+  });
   it("a diagnostic observer cannot make the older refusal retire a newer replacement", async () => {
     const h = rig(), newer = h.descriptors(1, { key: "newer" });
     h.host.console = { warn: vi.fn(() => { h.coverage.mockReturnValue(stock()); h.api.update(newer, gates()); }) };

@@ -188,6 +188,29 @@ describe("stock trust/paint prerequisite", () => {
     const f = await fixture(); f.composer.children = Array.from({ length: 4096 }, () => f.node()); expect(f.snapshot().ok).toBe(false);
     f.composer.children = []; f.marked.push(...Array(4095).fill(f.composer)); expect(f.snapshot().ok).toBe(false);
   });
+  it("500 messages' contained stock toolbars fit the original paint budget without inspecting descendants", async () => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "thread-control");
+    const roots = Array.from({ length: 1000 }, () => { const el = f.node({ display: "flex", contain: "paint", overflowX: "clip", overflowY: "clip", overflowClipMargin: "0px", borderImageSource: "none" }); el.kind = "thread-control"; el.matches = () => true; el.querySelectorAll = () => { throw Error("contained descendants must not be walked"); }; return el; });
+    f.marked.push(...roots); f.extra.set(spec.selector, roots); expect(f.snapshot().ok).toBe(true);
+  });
+  it("a contained toolbar protects its whole clip, including fixed descendants, but refuses its own overflowing ink", async () => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "thread-control");
+    const el = f.node({ display: "flex", contain: "paint", overflowX: "clip", overflowY: "clip", overflowClipMargin: "0px", borderImageSource: "none" }); el.kind = "thread-control"; el.matches = () => true;
+    const child = f.node({ position: "fixed" }); child.r = { x: 600, y: 600, width: 40, height: 30 }; el.children = [child]; f.marked.push(el); f.extra.set(spec.selector, [el]);
+    expect(f.snapshot().rects).toContainEqual(el.r); expect(f.snapshot().rects.some((r: any) => r.x + r.width >= 640)).toBe(false);
+    el.style.contain = "none"; expect(f.snapshot().rects.some((r: any) => r.x + r.width >= 640)).toBe(true);
+    el.style.contain = "paint"; el.style.outlineStyle = "solid"; el.style.outlineWidth = "3px"; el.style.outlineOffset = "6px";
+    expect(f.snapshot().ok).toBe(false); el.style.outlineStyle = "none";
+    el.style.boxShadow = "rgb(0, 0, 0) 0px 0px 20px 0px"; expect(f.snapshot().ok).toBe(false);
+  });
+  it.each(["contents", "inline", "fragmented", "expanded-clip", "auto", "border-image"])("%s never borrows a clipped-box proof", async fault => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "thread-control");
+    const el = f.node({ display: "flex", contain: "paint", overflowX: "clip", overflowY: "clip", overflowClipMargin: "0px", borderImageSource: "none" }); el.kind = "thread-control"; el.matches = () => true;
+    el.children = [f.node({ filter: "blur(20px)" })]; if (["contents", "inline"].includes(fault)) el.style.display = fault;
+    if (fault === "fragmented") el.getClientRects = () => [el.r, el.r]; if (fault === "expanded-clip") el.style.overflowClipMargin = "8px";
+    if (fault === "auto") el.style.contentVisibility = "auto"; if (fault === "border-image") el.style.borderImageSource = "url(blob:example)";
+    f.marked.push(el); f.extra.set(spec.selector, [el]); expect(f.snapshot().ok).toBe(false);
+  });
   it("inventories a long conversation without spending holes on off-screen history", async () => {
     const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((x: any) => x.kind === "link");
     const history = Array.from({ length: 210 }, (_, i) => { const el = f.node(); el.kind = "link"; el.r = { x: 300, y: -10000 + i * 30, width: 80, height: 20 }; return el; });

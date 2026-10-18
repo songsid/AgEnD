@@ -81,6 +81,11 @@ describe("host-only local trial stage, not product admission or a new frame pool
     expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull();
   });
   it("another menu/dialog ends a stage even if the supplied stock snapshot still says suppressed", () => { const h = fixture(), menu = h.doc.createElement("div"); menu.setAttribute("role", "dialog"); menu.getBoundingClientRect = () => ({ x: 0, y: 0, width: 10, height: 10 }); h.doc.body.append(menu); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); });
+  it("initial bind preserves the precise refused stock code after physical removal", () => {
+    const h = fixture(), local = effectTrialStage(h.api.receipt, own(), proof()), frame = h.frame();
+    expect(local.bind(frame, { layer: "front" }, { ok: false, reason: "stock_paint_limit" }).ok).toBe(false);
+    expect(frame.isConnected).toBe(false); expect(h.onStop).toHaveBeenCalledExactlyOnceWith("stock_paint_limit");
+  });
   it("retains the host stock refusal independently of the rejected paint evidence", () => {
     const h = fixture(); expect(effectTrialStage(h.api.receipt, own(), { ok: false, reason: "stock_marker_limit" })).toBeNull();
     expect(h.onStop).toHaveBeenCalledExactlyOnceWith("stock_marker_limit"); h.api.dispose(); expect(h.onStop).toHaveBeenCalledOnce();

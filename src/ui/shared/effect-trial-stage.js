@@ -159,7 +159,8 @@ export function createEffectTrialStage({ window: host, panel, stage, binding: ra
       const i = sheet.insertRule(`.${token}{}`, sheet.cssRules.length); rule = sheet.cssRules[i];
       for (const [k, v] of Object.entries({ position: "absolute", visibility: "hidden", "pointer-events": "none", "z-index": "0", opacity: layer === "front" ? "0.85" : "1", border: "0px", margin: "0px", padding: "0px", "box-sizing": "border-box", "min-width": "0px", "min-height": "0px", "max-width": "none", "max-height": "none", outline: "none", "box-shadow": "none", "background-color": "transparent", animation: "none", transition: "none" })) rule.style.setProperty(k, v, "important");
       frame.classList.add(token);
-      if (host.getComputedStyle(frame).visibility !== "hidden" || !check(stock)) throw Error("initial local hiding lost");
+      if (host.getComputedStyle(frame).visibility !== "hidden") throw Error("initial local hiding lost");
+      if (!check(stock)) { remove(); invalidate(failure); return { ok: false }; }
     } catch { remove(); invalidate("stage_unavailable"); return { ok: false }; }
     return handle;
   }

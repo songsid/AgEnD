@@ -239,7 +239,11 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (s.frame && s.hiddenSince !== null) { s.hiddenSince = null; s.healthySince = last; if (s.budget.gates({ hidden: false, reducedMotion: false, saveData: false, show: true }).remove) retire(s, "hidden"); }
       if (dead || proposal !== revision) return;
     }
-    try { observe(); } catch { stopAll("trust_geometry_unknown"); tell(); return; }
+    try { observe(); } catch {
+      if (dead || proposal !== revision || !stopAll("trust_geometry_unknown")) return;
+      for (const d of descriptors) results.set(d.key, { verdict: "off", reason: "trust_geometry_unknown", queuePos: null });
+      tell(); return;
+    }
     const max = context.constrained ? 1 : 3;
     for (const d of descriptors) {
       if (!chosen.has(d.key) || slots.has(d.key)) continue;

@@ -137,8 +137,8 @@ Rollback this extension's producer markers, CSS bands and proof together. Before
 A native 65-message Classic chat with persona palette/font, looping ambient and a placed CW produced 207 protected
 markers. The old 128-marker check rejected the whole stock proof; registry fallback used boolean false as a reason,
 rendered as `unknown`. Try consulted the same refused proof, invalidated its stage and closed without retaining why.
-This reproduces both symptoms on Linux Chromium; it does not by itself prove the reporter's Windows chat has the same
-marker count. A short mixed conversation passed the same recipe.
+This reproduces both symptoms on Linux Chromium. The reporter then measured **136** protected markers on their failing
+Windows Chrome localhost chat, confirming the same old 128-marker cutoff. A short mixed conversation passed.
 
 All markers still belong to the closed inventory, including off-screen history. Marker scans and ResizeObserver setup
 are capped at 4096; descendant paint work retains its 4096-observation bound. Paint bounds fully outside the viewport
@@ -150,3 +150,26 @@ Refused stock data has a separate descriptor-only local diagnostic path, never p
 console warnings retain a bounded code; Try passes its stage termination reason through source/controller to the offer
 card. The closed agent telemetry vocabulary remains unchanged. A real window blur still stops Try; pointer leave does
 not. No timing delay, permissive proof fallback, Worker channel or authorization change is introduced.
+
+
+### R2: paint work at the actual history cap
+
+The browser retains at most 500 messages (`chat-store.js`), draws them in 40-message chunks, and initially requests
+200 history rows. A real Classic fixture with one link and one code block per message used about ten descendant visits
+per message: 955 at65, 2302 at200, 3306 at300, 4306 at400 and5296 at500. The old 4096-work limit is therefore reachable
+around379 messages; merely raising the root cap was insufficient.
+
+Only the stock `.msg-tools` and `.codeblock > .cb-head` toolbars now have physical paint containment and clip overflow.
+The former has four pixels of padding for the existing focus ring, with compensating margins. These are button bars,
+not preview menus or inline links. A fresh proof may use the entire toolbar box instead of walking its descendants
+only with exact flex/principal-box, single-fragment, `contain:paint`, both-axis clip, zero clip margin, no filter,
+no border image and visible content evidence. Own outline/shadow outsets refuse this shortcut: containment clips
+children, not the root's own ink. Other roots retain the bounded walk. Missing markers are still checked globally.
+
+[CSS Containment Level2 §3.4](https://www.w3.org/TR/css-contain-2/#paint-containment) specifies descendant clipping and
+establishes a fixed-position containing block; inline/contents boxes do not establish this proof. The native maximum
+history case injects fixed children into both an off-screen and a visible contained toolbar, checks actual fixed positioning and independent
+inside/outside clip pixels (fully outside pixel cells, excluding fractional boundary cells), and still requires ordinary
+CW pixels, protected controls, stage-only Try pixels and exact Stop removal.
+This proves the actual 500-row workload rather than extrapolating from the 65-row reproduction. Uncontained or
+pathological work still fails closed with its local named limit; no paint-work or frame cap is raised.

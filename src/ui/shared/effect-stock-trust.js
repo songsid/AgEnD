@@ -116,12 +116,27 @@ function stockBannerFill(host, el) {
   return rect(box);
 }
 function protectedPaint(host, root, budget) {
+  // These two stock toolbar boxes physically clip ALL descendants, including fixed-position
+  // children. Their entire box is a hole; descendant ink cannot escape it. Inline, fragmented,
+  // expanded-clip or CSS-overridden boxes take the ordinary bounded walk instead.
+  const s = host.getComputedStyle(root);
+  if (root.matches?.(".shell .thread .msg-tools, .shell .thread .codeblock > .cb-head") && s.contain === "paint"
+    && s.display === "flex" && s.overflowX === "clip" && s.overflowY === "clip" && s.overflowClipMargin === "0px"
+    && none(s.filter) && none(s.backdropFilter) && s.borderImageSource === "none" && [undefined, "", "visible"].includes(s.contentVisibility) && root.getClientRects().length === 1) {
+    if (++budget.n > 4096) { budget.exceeded = true; return null; }
+    const r = rect(root), pad = outset(s);
+    // Containment clips descendants, not the root's own ink. Do not infer a world-space
+    // outset from local CSS lengths under a potentially transformed content ancestor.
+    if (!r || pad !== 0) return null;
+    return r;
+  }
   const nodes = [root, ...root.querySelectorAll("*")]; budget.n += nodes.length;
   if (budget.n > 4096) { budget.exceeded = true; return null; }
   let union = null;
   for (const el of nodes) {
     if (!visible(host, el)) continue;
     const style = host.getComputedStyle(el), pad = outset(style);
+    if (style.borderImageSource !== undefined && style.borderImageSource !== "none" || ![undefined, "", "visible"].includes(style.contentVisibility)) return null;
     const r = none(style.filter) ? rect(el) : stockBannerFill(host, el);
     if (!r || pad === null || !none(style.backdropFilter)) return null;
     const a = { x: r.x - pad, y: r.y - pad, width: r.width + pad * 2, height: r.height + pad * 2 };

@@ -187,6 +187,9 @@ async function trialRig() {
   await trialFlush(); h.panel = await import("/ui/js/preview-panel.js"); h.sourceStop = sourceStop; h.at = (v: number) => { mono = v; }; return h;
 }
 describe("#1629 product Trial bridge with protocol core", () => {
+  it("replacement is silent in the card just as it is in the console", async () => {
+    const h = await trialRig(); try { expect(await h.entry.startTrial(trialMessage())).toBe(true); h.panel.panelStore.get().open.handle.stop("replaced"); await trialFlush(); expect(h.entry.trialFailure(trialMessage())).toBeNull(); } finally { h.entry.dispose(); }
+  });
   it("returns the same offer's exact terminal reason after the panel closes", async () => {
     const h = await trialRig(); try {
       expect(await h.entry.startTrial(trialMessage())).toBe(true); const open = h.panel.panelStore.get().open;
