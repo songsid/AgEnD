@@ -342,6 +342,7 @@ function threadEntry(name, doc) {
     t, tf: t, isUser: (x) => store.isUser(x, name), onJump: (j) => e.sink?.setJump(j), onEmpty: (v) => e.sink?.setEmpty(v),
     setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
     effectTrialStatus: x => getAppEffects()?.trialStatus(x) ?? "localAdmin",
+    effectTrialFailure: x => getAppEffects()?.trialFailure(x),
     fixEffectTrial: (x, reason) => {
       if (reason === "reducedMotion") setFollowsReducedMotion(false);
       else if (reason === "busy") getAppEffects()?.stopTrial();

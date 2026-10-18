@@ -32,3 +32,12 @@ export function effectStockAllows(snapshot, { layer, by } = {}) {
   const proof = effectStockSnapshot(snapshot);
   return !!proof && (layer === "behind" || layer === "front" && proof.front && (by === "human" || proof.agentFront));
 }
+
+/** Display only. Refused provider metadata never becomes paint evidence or authority. */
+export function effectStockRefusal(value) {
+  try {
+    if (!plain(value)) return "stock_evidence_invalid";
+    const d = Object.getOwnPropertyDescriptor(value, "reason");
+    return d && Object.hasOwn(d, "value") && typeof d.value === "string" && /^[a-z][a-z0-9_]{0,79}$/.test(d.value) ? d.value : "stock_evidence_invalid";
+  } catch { return "stock_evidence_invalid"; }
+}

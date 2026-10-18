@@ -157,10 +157,11 @@ export function createThread(list, scroller, opts) {
   }
   function trialHtml(offer, time, message) {
     const reason = trialNow() >= offer.expiresAt ? "expired" : PUBLIC_LINK() ? "localAdmin" : trialStatus(message);
+    const rawFailure = opts.effectTrialFailure?.(message), failure = typeof rawFailure === "string" ? rawFailure.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 80) : null;
     const available = reason === "ready", fix = !PUBLIC_LINK() && !available && reason !== "expired" && reason !== "checking" && typeof opts.fixEffectTrial === "function";
     const label = available ? "chat.effectTrialStart" : reason === "busy" ? "chat.effectTrialStopOther" : reason === "localAdmin" ? "chat.effectTrialSignIn" : reason === "reducedMotion" ? "chat.effectTrialPlayMotion" : "chat.effectTrialSettings";
     const button = available || fix ? `<button type="button" class="btn btn-sm effect-trial-start" data-act="effectTrial" data-arg="${escAttr(msgKey(message))}">${escAttr(tr(label))}</button>` : "";
-    return `<div class="msg status-line"><div class="meta">${time}</div><div class="body"><div class="effect-trial-offer" data-trust="thread-control"><strong>${escAttr(tr("chat.effectTrial"))}: ${escAttr(offer.title)}</strong><div>${escAttr(tr(available ? "chat.effectTrialLocal" : "chat.effectTrialReason_" + reason))}</div>${button}</div></div></div>`;
+    return `<div class="msg status-line"><div class="meta">${time}</div><div class="body"><div class="effect-trial-offer" data-trust="thread-control"><strong>${escAttr(tr("chat.effectTrial"))}: ${escAttr(offer.title)}</strong><div>${escAttr(tr(available ? "chat.effectTrialLocal" : "chat.effectTrialReason_" + reason))}</div>${failure ? `<div class="effect-trial-failure" role="status">${escAttr(tr("chat.effectTrialStopped"))}: ${escAttr(failure)}</div>` : ""}${button}</div></div></div>`;
   }
   function armTrials() {
     if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;

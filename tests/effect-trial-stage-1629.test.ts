@@ -81,6 +81,15 @@ describe("host-only local trial stage, not product admission or a new frame pool
     expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull();
   });
   it("another menu/dialog ends a stage even if the supplied stock snapshot still says suppressed", () => { const h = fixture(), menu = h.doc.createElement("div"); menu.setAttribute("role", "dialog"); menu.getBoundingClientRect = () => ({ x: 0, y: 0, width: 10, height: 10 }); h.doc.body.append(menu); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); });
+  it("initial bind preserves the precise refused stock code after physical removal", () => {
+    const h = fixture(), local = effectTrialStage(h.api.receipt, own(), proof()), frame = h.frame();
+    expect(local.bind(frame, { layer: "front" }, { ok: false, reason: "stock_paint_limit" }).ok).toBe(false);
+    expect(frame.isConnected).toBe(false); expect(h.onStop).toHaveBeenCalledExactlyOnceWith("stock_paint_limit");
+  });
+  it("retains the host stock refusal independently of the rejected paint evidence", () => {
+    const h = fixture(); expect(effectTrialStage(h.api.receipt, own(), { ok: false, reason: "stock_marker_limit" })).toBeNull();
+    expect(h.onStop).toHaveBeenCalledExactlyOnceWith("stock_marker_limit"); h.api.dispose(); expect(h.onStop).toHaveBeenCalledOnce();
+  });
   it("window blur stops synchronously; element blur does not", () => { const h = fixture(); h.host._fire({ type: "blur", target: h.stage, eventPhase: 2 }, false); expect(effectTrialStageIdentity(h.api.receipt)).not.toBeNull(); h.host._fire({ type: "blur", target: h.host, eventPhase: 2 }, false); expect(effectTrialStageIdentity(h.api.receipt)).toBeNull(); expect(h.onStop).toHaveBeenCalledExactlyOnceWith("blur"); });
   it("current callback reentry cannot revive a disposed receipt or touch a replacement", () => { const h = fixture(); h.current(() => { h.api.dispose(); return true; }); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); expect(h.onStop).toHaveBeenCalledTimes(1); });
   it("a stronger initial visible cascade is refused and removed before successful bind", () => { const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), f = h.frame(); h.framePatch.visibility = "visible"; expect(p.bind(f, { layer: "front" }, proof()).ok).toBe(false); expect(f.isConnected).toBe(false); expect(h.rules).toHaveLength(0); });

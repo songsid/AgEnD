@@ -90,7 +90,7 @@ describe("#1629 global frame allocation",()=>{
   it("fails closed for unknown state, offscreen/paused/closed chat and modal fronts",()=>{
     const ds=[descriptor("bad",{id:"unknown"}),descriptor("offscreen",{visible:false}),descriptor("paused",{paused:true}),descriptor("other",{instance:"other"}),descriptor("owner",{by:undefined,region:"page"}),descriptor("front",{layer:"front"}),descriptor("behind")];
     const rows=P.allocateEffectFrames(ds,ctx({modal:true}));
-    expect(rows.map((r:{reason:string|null})=>r.reason)).toEqual(["unknown","offscreen","paused","closed_chat","scope","modal",null]);
+    expect(rows.map((r:{reason:string|null})=>r.reason)).toEqual(["descriptor_invalid","offscreen","paused","closed_chat","scope","modal",null]);
     expect(P.allocateEffectFrames([descriptor("a"),descriptor("a")],ctx()).every((r:{verdict:string})=>r.verdict==="off")).toBe(true);
     expect(P.allocateEffectFrames([descriptor("a")],{}).every((r:{verdict:string})=>r.verdict==="off")).toBe(true);
     expect(P.allocateEffectFrames(Array.from({length:129},(_,n)=>descriptor(String(n))),ctx())).toEqual([]);
@@ -131,9 +131,9 @@ it("requires a known host binding and every current page gate",()=>{
   const env=P.effectEvent("env",samples.env,null,now);
   expect(P.maySendEffectEvent(env,{wants:[]})).toBe(false);
   for(const k of ["safe", "publicLink", "reducedMotion", "hidden", "enabled", "show", "transportReady", "constrained", "modal"]){
-    expect(P.allocateEffectFrames([descriptor("a")],ctx({[k]:undefined}))[0]).toMatchObject({verdict:"off",reason:"unknown"});
+    expect(P.allocateEffectFrames([descriptor("a")],ctx({[k]:undefined}))[0]).toMatchObject({verdict:"off",reason:"gates_unknown"});
   }
-  expect(P.allocateEffectFrames([descriptor("a",{paused:undefined})],ctx())[0]).toMatchObject({verdict:"off",reason:"unknown"});
+  expect(P.allocateEffectFrames([descriptor("a",{paused:undefined})],ctx())[0]).toMatchObject({verdict:"off",reason:"descriptor_invalid"});
 });
 
 describe("#1629 final independent scope and boundary controls",()=>{

@@ -23,7 +23,7 @@ function rig() {
   function stage() {
     const receipt = Object.freeze({}), s: any = { identity: Object.freeze({ key: `trial:${++serial}`, id: ID, instance: "own", generation: serial, serial }), live: true, project: true, root: { isConnected: true }, listeners: new Set() };
     staged.set(receipt, s);
-    const dispose = vi.fn(() => { if (!s.live) return; log.push("physical"); s.live = false; s.root.isConnected = false; staged.delete(receipt); for (const fn of [...s.listeners]) fn(); s.listeners.clear(); });
+    const dispose = vi.fn(() => { if (!s.live) return; log.push("physical"); s.live = false; s.root.isConnected = false; staged.delete(receipt); for (const fn of [...s.listeners]) fn("stock_paint_unknown"); s.listeners.clear(); });
     s.end = dispose; return { api: Object.freeze({ receipt, dispose, hide() {} }), s, dispose };
   }
   function options(s = stage(), patch = {}) { const stop = vi.fn(() => log.push("stop")); return { input: { reply: reply(), offer: OFFER, startedAt: time, stage: s.api, current: () => true, onStop: stop, ...patch }, stage: s, stop }; }
@@ -129,7 +129,7 @@ describe("private Trial lease contribution (no registry/loader factory)", () => 
     const loading = h.api.load(binding, new AbortController().signal);
     expect(h.read).toHaveBeenCalledOnce(); const signal = h.read.mock.calls[0]![1]; expect(signal.aborted).toBe(false);
     a.stage.api.dispose(); // No descriptors/current/heartbeat call may be needed to deliver stage end.
-    expect(a.stop).toHaveBeenCalledExactlyOnceWith("stage_ended"); expect(signal.aborted).toBe(true);
+    expect(a.stop).toHaveBeenCalledExactlyOnceWith("stock_paint_unknown"); expect(signal.aborted).toBe(true);
     expect(a.handle.current()).toBe(false); expect(h.api.binding(key, ID)).toBeNull();
     expect(await h.api.load(binding, new AbortController().signal)).toBeNull(); expect(h.read).toHaveBeenCalledOnce();
     wait.resolve(resource()); expect(await loading).toBeNull(); h.api.dispose();

@@ -459,3 +459,10 @@ no instance uses that provider.
 **Settings won't change something.** Over a public link, Web settings and appearance are read only; a loosening
 change waits for an admin's confirmation in General chat; a value in the "Set in fleet.yaml" list must be edited in
 fleet.yaml (Developer tab, or the file) and `agend reload`.
+
+### Canvas Worker playback diagnostics
+
+If an effect cannot play, the Chat notice and Effects dialog show its local refusal code. A failed Try retains its stop
+code on the offer card; the browser console also names refusals. Include the code when reporting a problem. Long chat
+history is checked separately from the bounded set of current paint holes. Moving the pointer away does not stop Try;
+window blur, navigation, closing or loss of the verified stage does. Local raw codes are not sent in agent summaries.

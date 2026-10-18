@@ -225,6 +225,33 @@ describe("#1629 shared Canvas Worker registry", () => {
   it("unknown trust completeness mounts nothing", async () => {
     const h = rig(); h.coverage.mockReturnValue(false); h.api.update(h.descriptors(), gates()); await flush(); expect(h.frames()).toHaveLength(0); expect(h.cals()).toHaveLength(0);
   });
+  it.each(["stock_order_unknown", "stock_marker_limit", "stock_paint_unknown", "future_stock_code"])("retains local %s, denies all loads, then recovers without Resume", async reason => {
+    const h = rig(), warn = vi.fn(); h.host.console = { warn }; const ds = h.descriptors();
+    h.coverage.mockReturnValue({ ok: false, reason, rects: [], front: false }); await h.admit(ds);
+    expect(h.load).not.toHaveBeenCalled(); expect(h.api.snapshot()[0]).toMatchObject({ reason, phase: null });
+    expect(warn).toHaveBeenCalledExactlyOnceWith("[AgEnD effects] Playback blocked:", reason);
+    h.api.update(ds, gates()); expect(warn).toHaveBeenCalledOnce();
+    h.coverage.mockReturnValue(stock()); await h.admit(ds); expect(h.load).toHaveBeenCalledOnce(); expect(h.safety.resume).not.toHaveBeenCalled();
+  });
+  it("cold observation failure names its refusal without inventing a loading frame, then recovers", async () => {
+    const h = rig(), ds = h.descriptors(); h.resizes[0].observe.mockImplementationOnce(() => { throw Error("observer failed"); });
+    await h.admit(ds); expect(h.load).not.toHaveBeenCalled(); expect(h.api.snapshot()[0]).toMatchObject({ verdict: "off", phase: null, reason: "trust_geometry_unknown" });
+    await h.admit(ds); expect(h.load).toHaveBeenCalledOnce(); expect(h.api.snapshot()[0].phase).toBe("starting");
+  });
+  it("a diagnostic observer cannot make the older refusal retire a newer replacement", async () => {
+    const h = rig(), newer = h.descriptors(1, { key: "newer" });
+    h.host.console = { warn: vi.fn(() => { h.coverage.mockReturnValue(stock()); h.api.update(newer, gates()); }) };
+    h.coverage.mockReturnValue({ ok: false, reason: "stock_order_unknown" }); await h.admit();
+    expect(h.api.snapshot()[0]).toMatchObject({ key: "newer", phase: "starting" }); expect(h.frames()[0].state().removed).toBe(false); expect(h.load).toHaveBeenCalledOnce();
+  });
+  it("malformed or throwing providers have named local failures, never false or an invoked getter", async () => {
+    const h = rig(), get = vi.fn(() => "secret"), raw = { ok: false }; Object.defineProperty(raw, "reason", { get });
+    h.coverage.mockReturnValue(raw); await h.admit(); expect(h.api.snapshot()[0].reason).toBe("stock_evidence_invalid"); expect(get).not.toHaveBeenCalled(); expect(h.load).not.toHaveBeenCalled();
+    h.coverage.mockImplementation(() => { throw Error("secret"); }); h.api.update(h.descriptors(), gates()); expect(h.api.snapshot()[0].reason).toBe("stock_provider_failed");
+  });
+  it("more than 128 stock producers do not fail ResizeObserver setup", async () => {
+    const h = rig(); h.trusted.push(...Array.from({ length: 207 }, () => h.node())); await h.admit(); expect(h.load).toHaveBeenCalledOnce(); expect(h.api.snapshot()[0].reason).not.toBe(false);
+  });
   it("new instances cannot bypass this window's one pool", () => {
     const h = rig(); expect(createEffectRegistry({ window: h.host, load: h.load, safety: h.safety, stockSnapshot: h.coverage })).toMatchObject({ ok: false });
   });
