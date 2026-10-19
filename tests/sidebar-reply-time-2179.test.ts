@@ -140,6 +140,13 @@ describe("the sidebar", () => {
     nav.loadNavPrefs();
     expect(nav.navStore.get().sort).toEqual({ mode: "recent", favs: "fixed" });
   });
+  it("another device switches the sort: this page's list follows (the host's change, read)", async () => {
+    const { pg } = await sidebar([I("fav", 300), I("x", 20), I("y", 3)], { favorites: ["fav"] });
+    expect(groups(pg)).toEqual([["Favorites", ["fav"]], ["ops", ["x", "y"]]]);
+    host["nav.sort"] = { mode: "recent", favs: "fixed" }; rev++;
+    await (await import("/assets/app-prefs.js")).refresh(); await settle(3);
+    expect([groups(pg), sortBtn(pg).textContent]).toEqual([[["Favorites", ["fav"]], ["Recent replies first", ["y", "x"]]], "Recent replies"]);
+  });
   it("Escape or a click elsewhere closes the menu", async () => {
     const { pg } = await sidebar([I("x", 20)]);
     fire(sortBtn(pg), "click"); await settle();
