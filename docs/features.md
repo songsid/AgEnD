@@ -1311,6 +1311,37 @@ A **mod** is one file that carries such a look: a theme with its pictures, card 
 - **Safe band:** a card's banner is never drawn wider than 5:1 (a wider screen centres it over a blurred copy) nor narrower than 9:4 (which crops the sides), so on a 1600×600 banner an area of about 1350×320, centred across the width, shows on every card size and layout. That area moves with the focus below; at the default focus, 50, it sits in the middle of the picture.
 - **Focus:** 0 (top) to 100 (bottom), 50 by default, chooses which part of a tall picture shows. The agent sets `card.bannerFocus`, a person the slider in View's **Edit profile** (theirs wins), and General `set_web_settings`. The details are in [Web dashboard](web-dashboard.md): "Custom CSS", "Agents' themes", "Identity cards", "Widgets" and "Mods".
 
+### Ambient effects (2.3 beta, #2117)
+
+An agent can decorate its own chat with an **ambient effect**: falling petals, snow, rising lanterns, twinkling glyphs, or stars that scatter where you click. The agent sends only data, and the dashboard draws it. No agent code runs, so it needs no consent, preview origin or Try. The data is:
+- a preset: `fall`, `rise`, `twinkle` or `burst-on-click`;
+- up to 4 glyphs: short text such as 🌸 or ✦, or a small picture uploaded to the `glyph` slot;
+- colours, and a few numbers (how many, how long, how big).
+
+**Where it shows.**
+- Behind the messages of that agent's chat. It never takes a click, a tap or focus.
+- A click burst shows over the messages for a moment, and your click still lands on what is under it.
+- A chat holds one looping effect and one click effect. At most 24 looping glyphs, and at most 3 bursts of 16 at once.
+
+**Who sets it.**
+- **The agent itself** (General too, since #2151) uses `set_web_ambient` and `clear_web_ambient`. That counts as a theme change: the same rate limit, and **Lock theme** stops it.
+- **General, for the user**, uses `set_web_settings { what: "ambient", instance, ambient }`. The effect is recorded as the person's, so the agent can't change it afterwards.
+- **A person** clears either kind from the chat's **⋯** menu (**Clear the ambient effect** / **Clear the click effect**). **Reset theme…** clears both.
+
+**Reduced motion.**
+- It plays even when your system asks for reduced motion.
+- **Settings → Web appearance → Effects: follow the system's reduced-motion setting** keeps effects still on that device. It is per device and off by default.
+- When the system asks for reduced motion and an ambient plays anyway, the chat says so once on that device, with **Turn off here**.
+
+**When it doesn't show,** the chat's **⋯** menu says why, and choosing the line fixes it right there. The reasons:
+- **Show agents' themes, effects and widgets** is off;
+- this device follows reduced motion while the system asks for it;
+- the page was opened with `?safe=1`.
+
+**The public link** shows it, with the viewer's own switch. Clearing it is not offered there.
+
+**Elsewhere:** mods carry it, `get_web_appearance` lists it, and `preview_web_appearance` draws it still. The `web-appearance` skill has the full spec.
+
 ### Owner effect preferences (2.3 beta)
 
 The backend now keeps five owner effect selections (`fx.sidebar`, `fx.header`, `fx.page`, `fx.box`, `fx.cursor`) for
@@ -1375,6 +1406,7 @@ General, coordinators and full-profile instances can read and change Settings �
 - **A person's custom CSS** (`person`; the host operator by default): save (it goes on trial), keep, revert, switch to an earlier saved version, or off. The 64 KiB, no-remote-URL and `asset:` rules still apply (#2081).
 - **A mod an agent proposed:** review, install the parts ticked (custom CSS is never ticked by itself), cancel, dismiss or uninstall. A mod the person imported from a file is theirs, and is refused.
 - **Effects:** apply or remove one on a chat, and a person's effect slots (sidebar, header, page, box, cursor).
+- **An agent's ambient effect** (`what: "ambient"`): set one (it becomes the person's) or clear it.
 - **Restore defaults:** the host settings and that person's custom CSS. This device's custom-CSS switch is left to the person.
 
 What stays on the page: choosing a file from the person's computer (a mod, an effect folder, a CSS asset, a card picture), this browser's own switches (custom CSS off on this device, pausing playback), downloading an export, and the card upload limits. `get_web_settings` lists these as `page_only`. The `web-appearance` skill walks General through it.
