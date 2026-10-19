@@ -158,24 +158,23 @@ export function pickerDefaultIdx(displayedCandidates: Pick<Candidate, "idx">[]):
 
 /**
  * Format one line of the ambiguity candidate list.
- * `maxNameW` is the max real-name width across all displayed candidates —
- * each name is padded to that width so [status] and teams columns align.
+ * Shows: `  #) realName  [status]  teams` — no display label in output.
+ * `maxNameW` pads names for column alignment.
  */
 export function ambiguityLine(c: Candidate, maxNameW: number): string {
   const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
-  const dispSuffix = c.displayLabel !== c.realName ? `  (${c.displayLabel})` : "";
-  return `  ${String(c.idx).padStart(2)}) ${c.realName.padEnd(maxNameW)}${dispSuffix}  [${c.status}]  ${teams}`;
+  return `  ${String(c.idx).padStart(2)}) ${c.realName.padEnd(maxNameW)}  [${c.status}]  ${teams}`;
 }
 
 /**
  * Format one line of the interactive picker list.
- * `maxNameW` is the max real-name width across all displayed candidates.
+ * Shows: `  #) statusGlyph realName  teams` — no display label in output.
+ * `maxNameW` pads names for column alignment.
  */
 export function pickerLine(c: Candidate, maxNameW: number): string {
   const statusGlyph = c.status === "running" ? "●" : c.status === "paused" ? "○" : "✗";
   const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
-  const dispSuffix = c.displayLabel !== c.realName ? `  (${c.displayLabel})` : "";
-  return `  ${String(c.idx).padStart(2)}) ${statusGlyph} ${c.realName.padEnd(maxNameW)}${dispSuffix}  ${teams}`;
+  return `  ${String(c.idx).padStart(2)}) ${statusGlyph} ${c.realName.padEnd(maxNameW)}  ${teams}`;
 }
 
 /**

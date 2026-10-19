@@ -3035,7 +3035,7 @@ async function listInstanceNames(config: import("./types.js").FleetConfig): Prom
   return names;
 }
 
-async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string }): Promise<void> {
+async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string; display?: boolean }): Promise<void> {
     const yaml = (await import("js-yaml")).default;
     const config = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) as import("./types.js").FleetConfig;
     const names = Object.keys(config.instances);
@@ -3283,7 +3283,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
       const ctxStr = r.context != null ? `${Math.round(r.context)}%` : "-";
       const memStr = r.memMb != null ? `${r.memMb}MB` : "-";
       const actStr = r.lastActivity ?? "-";
-      const dispAnnotation = displayLabel(r) !== r.name ? `  (${displayLabel(r)})` : "";
+      const dispAnnotation = opts.display && displayLabel(r) !== r.name ? `  (${displayLabel(r)})` : "";
 
       console.log(
         String(r.globalIdx).padEnd(numW) +
@@ -3325,7 +3325,8 @@ program
   .option("--running", "Show only running instances")
   .option("--team <name>", "Filter by team name")
   .option("--backend <name>", "Filter by backend (exact match)")
-  .action(async (opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string }) => {
+  .option("--display", "Show display names as last column")
+  .action(async (opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string; display?: boolean }) => {
     await lsAction(opts);
   });
 

@@ -382,31 +382,31 @@ describe("ambiguityLine and pickerLine: full real name, no truncation", () => {
     expect(line).toContain(LONG);
     // The full name must be present; the line must NOT end at the 32-char truncation point
     expect(line.includes(LONG.slice(0, 32) + "2")).toBe(true); // char 33 is "2"
-    expect(line).toContain("(鑄碼副手 Fable)");
+    expect(line).not.toContain("鑄碼副手"); // display label no longer printed
     expect(line).toContain("[running]");
     expect(line).toContain("rd1");
   });
 
-  it("ambiguityLine omits display suffix when label equals realName", () => {
-    const c: Candidate = { idx: 1, realName: "general", displayLabel: "general", status: "running", teams: [] };
+  it("ambiguityLine omits display suffix always (user decision: too many chars)", () => {
+    const c: Candidate = { idx: 1, realName: "general", displayLabel: "General Display", status: "running", teams: [] };
     const line = ambiguityLine(c, "general".length);
-    expect(line).not.toContain("(general)");
+    expect(line).not.toContain("General Display");
+    expect(line).toContain("general");
   });
 
-  it("pickerLine contains the full real name, status glyph, and teams", () => {
+  it("pickerLine contains the full real name and status glyph, no display label", () => {
     const line = pickerLine(cLong, LONG.length);
     expect(line).toContain(LONG);
     expect(line).toContain("●");
-    expect(line).toContain("(鑄碼副手 Fable)");
+    expect(line).not.toContain("鑄碼副手"); // display label no longer printed
     expect(line).toContain("rd1");
   });
 
-  it("pickerLine uses ○ for paused", () => {
+  it("pickerLine uses ○ for paused, no display label", () => {
     const line = pickerLine(cShort, SHORT.length);
     expect(line).toContain("○");
     expect(line).toContain(SHORT);
-    // Alpha != SHORT so... wait SHORT == "alpha-t1", displayLabel == "Alpha" — different!
-    expect(line).toContain("(Alpha)");
+    expect(line).not.toContain("Alpha"); // display label no longer printed
   });
 
   it("names are padded to maxNameW so status/teams columns align", () => {
