@@ -98,6 +98,8 @@ Agents then see that browser's messages as `via web (verified)` and check their 
 
 ## Chat
 
+A message to a paused agent wakes it through the same delivery path as Discord/Telegram, including ClassicBot. The composer shows **Waking…**; a refused wake explains why, keeps the draft/files and offers **Retry send**. No automatic resend. Stopped agents still require Start. Upload/history/Cancel do not wake agents. Existing guest/public-link send permissions are unchanged.
+
 **Sending.** Type and press Enter. A message sent while the agent works waits its turn; `/steer <text>` goes into
 the current turn, `/btw <question>` asks a side question. **Stop reply** (or Esc) interrupts the reply and drops
 queued messages. Text is capped at 16,384 characters; a paste over 4,000 characters becomes a `pasted-….txt`
