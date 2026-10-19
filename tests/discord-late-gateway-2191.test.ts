@@ -8,7 +8,7 @@ import { protectDiscordClientRetirement, retireDiscordClient } from "../src/chan
 
 // Real Client.login, manager and default SimpleShardingStrategy. Only transport,
 // REST gateway response and dependency clocks are inert; no network/process policy.
-function fixture({ protect = true, expireGateway = false } = {}) {
+function fixture({ protect = true, expireGateway = false, blockDestroy = false } = {}) {
   const sockets: InertSocket[] = [];
   class InertSocket extends EventEmitter {
     static OPEN = 1;
@@ -65,6 +65,14 @@ function fixture({ protect = true, expireGateway = false } = {}) {
   const shardErrors = vi.fn();
   client.on("shardError", shardErrors);
   const report = vi.fn();
+  let releaseDestroy!: () => void;
+  const destroying = new Promise<void>(resolve => { releaseDestroy = resolve; });
+  const originalDestroy = client.destroy.bind(client);
+  const destroy = vi.fn(async () => {
+    if (blockDestroy) await destroying;
+    await originalDestroy();
+  });
+  client.destroy = destroy;
   if (protect) protectDiscordClientRetirement(client, report);
   const login = client.login("inert-test-token");
   void login.catch(() => {});
@@ -72,7 +80,7 @@ function fixture({ protect = true, expireGateway = false } = {}) {
     session_start_limit: { total: 100, remaining: 100, reset_after: resetAfter, max_concurrency: 1 } });
   const releaseGateway = () => release(gatewayData(expireGateway ? -1 : 60000));
   const releaseSpawning = () => releaseSpawn(gatewayData(60000));
-  return { client, sockets, get, login, releaseGateway, releaseSpawning, report, shardErrors, get recoverySleeps() { return recoverySleeps; } };
+  return { client, sockets, get, login, releaseGateway, releaseSpawning, report, shardErrors, destroy, releaseDestroy, get recoverySleeps() { return recoverySleeps; } };
 }
 afterEach(() => vi.useRealTimers());
 
@@ -86,8 +94,8 @@ it("fences pending gateway startup after retirement, including a repeated retire
   await f.login;
   await retireDiscordClient(f.client, f.report);
   await vi.advanceTimersByTimeAsync(60_500);
-  expect(f.client.ws._ws.strategy.shards.size).toBe(0);
   expect(f.sockets).toHaveLength(0);
+  expect(f.client.ws._ws.strategy.shards.size).toBe(0);
   expect(f.recoverySleeps).toBe(0);
   expect(f.report).not.toHaveBeenCalled();
 });
@@ -145,4 +153,26 @@ it("proves raw Client.destroy leaves a late socket that can emit an uncaught han
   expect(socket.listenerCount("error")).toBe(0);
   expect(socket.readyState).toBe(0);
   expect(() => socket.emit("error", new Error("Opening handshake has timed out"))).toThrow("Opening handshake has timed out");
+});
+
+it("fences gateway startup while the original destroy is still pending", async () => {
+  vi.useFakeTimers();
+  const f = fixture({ blockDestroy: true });
+  expect(f.get).toHaveBeenCalledTimes(1);
+  const retiring = retireDiscordClient(f.client, f.report);
+  expect(f.destroy).toHaveBeenCalledTimes(1);
+  // The original destroy is blocked before it can touch the manager. Release
+  // the gateway and execute login's continuations inside that retirement await.
+  f.releaseGateway();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(f.sockets).toHaveLength(0);
+  expect(f.client.ws._ws.strategy.shards.size).toBe(0);
+  expect(f.shardErrors).not.toHaveBeenCalled();
+  f.releaseDestroy();
+  await retiring;
+  await f.login;
+  await vi.advanceTimersByTimeAsync(60_500);
+  expect(f.sockets).toHaveLength(0);
+  expect(f.shardErrors).not.toHaveBeenCalled();
+  expect(f.recoverySleeps).toBe(0);
 });
