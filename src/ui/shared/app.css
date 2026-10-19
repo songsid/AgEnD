@@ -423,7 +423,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 
 /* ── Chat ── */
 .p-chat .scroller { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; position: relative; }
-.thread { max-width: var(--col); margin: 0 auto; padding: var(--s-4) var(--s-5) var(--s-3); display: flex; flex-direction: column; gap: var(--s-6); }
+.thread { max-width: var(--col); margin: var(--thread-snap, 0px) auto 0; padding: var(--s-4) var(--s-5) var(--s-3); display: flex; flex-direction: column; gap: var(--s-6); }
 .msg { font-size: var(--fs-md); line-height: var(--lh-md); overflow-wrap: anywhere; min-width: 0; }
 .msg .meta { display: flex; align-items: baseline; gap: var(--s-2); font-size: var(--fs-xs); color: var(--text-3); margin-bottom: var(--s-1); }
 .msg .sender { font-weight: var(--fw-semibold); color: var(--text-2); }

@@ -11,7 +11,7 @@ import { lang, t } from "/assets/app-i18n.js";
 import { appStore, guestPage, useStore } from "/assets/app-store.js";
 import { AuthorizeChip } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
-import { modelText, namesOf, namesStore } from "/assets/instance-nav.js";
+import { modelText, namesOf, namesStore, navStore as instanceNavStore } from "/assets/instance-nav.js";
 import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
 import { detailsPath, textLinkSegments } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
@@ -322,9 +322,39 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
  * each switch built the thread again: a revisit was no faster than a first visit). A kept thread is its list element
  * and its renderer, and nothing more: it leaves as a chat always did (previews stop), with no subscription or timer
  * left; shown again, one render draws only what changed meanwhile, where the reader was. A new language, another
- * document, or more than THREAD_KEEP lets one go.
+ * document, or more than the budget lets one go.
+ *
+ * #2184: the budget (raised for people who switch among ~10 favourites): up to THREAD_KEEP threads on a wide screen and
+ * THREAD_KEEP_NARROW on a narrow one (a phone), and THREAD_KEEP_NODES drawn messages in all, so memory stays bounded
+ * however long the chats are. Over it, the least recently shown goes first — one that is not a favourite before a
+ * favourite; the chat on screen never goes.
  */
-export const THREAD_KEEP = 4;
+export const THREAD_KEEP = 12;
+export const THREAD_KEEP_NARROW = 6;
+export const THREAD_KEEP_NODES = 2400;
+/**
+ * The kept threads to let go, in order. `kept`: [name, drawn messages], least recently shown first; `current`: the
+ * one on screen (never let go).
+ */
+export function threadsToLetGo(kept, current, { keep, maxNodes, favorites }) {
+  let count = kept.length, nodes = kept.reduce((n, [, d]) => n + d, 0);
+  const out = [];
+  const order = [...kept.filter(([n]) => n !== current && !favorites.has(n)), ...kept.filter(([n]) => n !== current && favorites.has(n))];
+  for (const [n, d] of order) {
+    if (count <= keep && nodes <= maxNodes) break;
+    out.push(n); count--; nodes -= d;
+  }
+  return out;
+}
+const narrowScreen = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
+/** Let go what the budget does not hold (after `current` was shown, or drew more). */
+function trimKept(current) {
+  const kept = [...keptThreads].map(([n, e]) => [n, e.thread.nodes.size]);
+  const favorites = new Set(instanceNavStore.get().favorites);
+  for (const n of threadsToLetGo(kept, current, { keep: narrowScreen() ? THREAD_KEEP_NARROW : THREAD_KEEP, maxNodes: THREAD_KEEP_NODES, favorites })) {
+    letGo(keptThreads.get(n), true); keptThreads.delete(n);
+  }
+}
 const keptThreads = new Map();                 // name → { thread, list, sink, lang }
 /** Tests only: let every kept thread go. */
 export function forgetKeptThreads() { for (const e of keptThreads.values()) letGo(e, true); keptThreads.clear(); }
@@ -398,10 +428,7 @@ function Thread({ name, th }) {
     if (e) keptThreads.delete(name);
     else e = threadEntry(name, doc);
     keptThreads.set(name, e);                                              // the most recent last
-    for (const [k, old] of keptThreads) {
-      if (keptThreads.size <= THREAD_KEEP) break;
-      if (k !== name) { letGo(old, true); keptThreads.delete(k); }
-    }
+    trimKept(name);
     const thread = e.thread, sc = scroller.current, ls = e.list;
     e.sink = { setJump, setEmpty };
     host.current.append(ls);

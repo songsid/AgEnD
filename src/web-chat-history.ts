@@ -23,7 +23,7 @@ import { effectTrialOffer, type EffectTrialOffer } from "./web-effect-trials.js"
 import { webTextLinks, type TextLink } from "./topic-link.js";
 
 /** A file shown with a message: an id the dashboard can fetch, never a path. */
-export interface WebChatAttachment { id: string; kind: "photo" | "document"; name: string; size: number; mime: string }
+export interface WebChatAttachment { id: string; kind: "photo" | "document"; name: string; size: number; mime: string; width?: number; height?: number }
 /**
  * #1565: a file shown with a message from before the fleet restarted that could not be served again (missing, moved,
  * or failing one of the ledger's checks): no id — the page shows the name as unavailable, and nothing can be fetched.
@@ -203,7 +203,7 @@ export interface WebChatFiles {
   /** The path to keep with a file id (null: not served, or an upload no message took — never kept). */
   storablePath(id: string): string | null;
   /** Serve a kept file again under its id if it passes every check; null: it does not (shown as unavailable). */
-  restore(entry: { id: string; path: string; name: string; mime: string; kind: string }, instance: string): { id: string; kind: "photo" | "document"; size: number; mime: string } | null;
+  restore(entry: { id: string; path: string; name: string; mime: string; kind: string }, instance: string): { id: string; kind: "photo" | "document"; size: number; mime: string; width?: number; height?: number } | null;
   /** These ids are no longer shown: nothing is served under them. */
   drop(ids: string[]): void;
 }
@@ -340,7 +340,7 @@ export class WebChatHistory {
       const served = this.files.restore({ id: f.id, path: f.path, name: f.name, mime: f.mime, kind: f.kind }, instance);
       if (!served || served.id !== f.id) return gone;
       seen.add(f.id);
-      return { id: served.id, kind: served.kind, name: f.name, size: served.size, mime: served.mime };
+      return { id: served.id, kind: served.kind, name: f.name, size: served.size, mime: served.mime, ...drawnSize(served) };
     });
     return r.message;
   }
@@ -382,7 +382,7 @@ export class WebChatHistory {
       sender: String(msg.sender),
       text: String(msg.text ?? "").slice(0, WEB_CHAT_TEXT_MAX),
       ts: String(msg.ts),
-      ...(msg.attachments && msg.attachments.length ? { attachments: msg.attachments.slice(0, 20).map(a => ({ id: a.id, kind: a.kind, name: a.name, size: a.size, mime: a.mime })) } : {}),
+      ...(msg.attachments && msg.attachments.length ? { attachments: msg.attachments.slice(0, 20).map(a => ({ id: a.id, kind: a.kind, name: a.name, size: a.size, mime: a.mime, ...drawnSize(a) })) } : {}),
       ...(typeof msg.messageId === "string" && msg.messageId ? { messageId: msg.messageId.slice(0, 64) } : {}),
     };
     const buttons = msg.role === "agent" ? webChatButtons(msg.buttons) : undefined;
@@ -640,6 +640,12 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
     }];
   });
   return { message, files };
+}
+
+/** A photo's drawn size as the page gets it (both positive integers), or nothing. Measured from the file, never kept. */
+function drawnSize(a: { width?: unknown; height?: unknown }): { width?: number; height?: number } {
+  const ok = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 1 && v <= 65535;
+  return ok(a.width) && ok(a.height) ? { width: a.width, height: a.height } : {};
 }
 
 /** `Last-Event-ID` as `<boot>-<id>`, or null when absent or not that shape. */

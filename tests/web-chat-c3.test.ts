@@ -786,8 +786,9 @@ describe("the chat panel (the real page modules)", () => {
     const R = (globalThis as any).AgendChatRender, real = R.renderMarkdown;
     let md = 0; R.renderMarkdown = function (...a: unknown[]) { md++; return real.apply(this, a); };
     try {
-      c.stream.emit("status", frame(...["w", "x", "y", "z", "v", "u"].map((n) => inst(n))));
-      for (const [i, n] of ["w", "x", "y", "z", "v", "u"].entries()) c.stream.emit("message", msg(10 + i, n, `hello from ${n}`, { instance: n }));
+      const others = ["x", "y", "z", "v", "u", ...Array.from({ length: 8 }, (_, i) => `o${i}`)];    // 13: one more than kept
+      c.stream.emit("status", frame(...["w", ...others].map((n) => inst(n))));
+      for (const [i, n] of ["w", ...others].entries()) c.stream.emit("message", msg(10 + i, n, `hello from ${n}`, { instance: n }));
       await c.mount("w"); await settle();
       const list = c.p.root.querySelector(".thread");
       expect(list.textContent).toContain("hello from w");
@@ -805,9 +806,9 @@ describe("the chat panel (the real page modules)", () => {
       expect([back === list, back.textContent.includes("while you were away"), md], "the same list; only the new message drawn").toEqual([true, true, 1]);
       expect(c.p.root.querySelector(".scroller").scrollTop, "where the reader was").toBe(120);
       // More than THREAD_KEEP other chats: the oldest kept one is let go (its own previews only).
-      expect(c.panel.THREAD_KEEP).toBe(4);
+      expect(c.panel.THREAD_KEEP).toBe(12);
       stopIn.mockClear();
-      for (const n of ["x", "y", "z", "v", "u"]) { await c.mount(n); await settle(); }
+      for (const n of others) { await c.mount(n); await settle(); }
       expect(stopIn.mock.calls.some(([node]) => node === list), "the one let go stops its own previews (another chat is open)").toBe(true);
       await c.mount("w"); await settle();
       expect(c.p.root.querySelector(".thread") === list, "w was the oldest: drawn anew").toBe(false);
@@ -820,6 +821,56 @@ describe("the chat panel (the real page modules)", () => {
       expect(c.p.root.querySelector(".thread") === u, "a new language: drawn anew").toBe(false);
       i18n.setLang("en");
     } finally { R.renderMarkdown = real; }
+  });
+  it("#2184: the keep budget — least recently shown first, non-favourites before favourites, never the chat on screen; count and drawn messages", async () => {
+    const c = await chatPage();
+    const go = (kept: Array<[string, number]>, current: string | null, o: { keep?: number; maxNodes?: number; favorites?: string[] } = {}) =>
+      c.panel.threadsToLetGo(kept, current, { keep: o.keep ?? 3, maxNodes: o.maxNodes ?? 1000, favorites: new Set(o.favorites ?? []) });
+    const k = (...ns: string[]) => ns.map((n) => [n, 10] as [string, number]);
+    expect(go(k("a", "b", "c"), "c")).toEqual([]);
+    expect(go(k("a", "b", "c", "d"), "d")).toEqual(["a"]);
+    expect(go(k("a", "b", "c", "d", "e"), "e", { favorites: ["a"] })).toEqual(["b", "c"]);           // a favourite stays
+    expect(go(k("a", "b", "c", "d"), "d", { favorites: ["a", "b", "c"] })).toEqual(["a"]);            // all favourites: the oldest
+    expect(go(k("a", "b", "c", "d"), "a", { keep: 2 })).toEqual(["b", "c"]);                           // never the one on screen
+    expect(go([["a", 900], ["b", 50], ["c", 100]], "c", { maxNodes: 600 })).toEqual(["a"]);            // the drawn-message cap
+    expect(go([["a", 400], ["b", 400], ["c", 400]], "c", { maxNodes: 500, favorites: ["a"] })).toEqual(["b", "a"]);
+    expect([c.panel.THREAD_KEEP, c.panel.THREAD_KEEP_NARROW, c.panel.THREAD_KEEP_NODES]).toEqual([12, 6, 2400]);
+  });
+  it("#2184: a pinned view keeps the thread's height whole (a sub-pixel margin above it), so the bottom never moves by a fraction", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    c.stream.emit("message", msg(40, "w", "one", { instance: "w" }));
+    await c.mount("w"); await settle();
+    const list = c.p.root.querySelector(".thread");
+    let h = 1000.36;
+    list.getBoundingClientRect = () => ({ top: 0, left: 0, right: 0, bottom: h, width: 600, height: h });
+    c.stream.emit("message", msg(41, "w", "two", { instance: "w" })); await settle();
+    expect(Number.parseFloat(list.style["--thread-snap"])).toBeCloseTo(0.64, 6);
+    h = 2000;
+    c.stream.emit("message", msg(42, "w", "three", { instance: "w" })); await settle();
+    expect(list.style["--thread-snap"]).toBe("0px");
+    const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8");
+    expect(css).toContain(".thread { max-width: var(--col); margin: var(--thread-snap, 0px) auto 0;");
+  });
+  it("#2184: a narrow screen keeps THREAD_KEEP_NARROW; a favourite outlives non-favourites shown after it", async () => {
+    const c = await chatPage();
+    const saved = (globalThis as any).matchMedia;
+    (globalThis as any).matchMedia = (q: string) => ({ matches: q === "(max-width: 899px)", addEventListener() {}, removeEventListener() {} });
+    try {
+      const names = Array.from({ length: 9 }, (_, i) => `n${i}`);
+      c.stream.emit("status", frame(...names.map((n) => inst(n))));
+      for (const [i, n] of names.entries()) c.stream.emit("message", msg(30 + i, n, `hi ${n}`, { instance: n }));
+      const nav = await import("/assets/instance-nav.js");
+      nav.navStore.set({ ...nav.navStore.get(), favorites: ["n0"] });
+      const lists: Record<string, unknown> = {};
+      for (const n of names) { await c.mount(n); await settle(); lists[n] = c.p.root.querySelector(".thread"); }
+      // 9 shown, 6 kept: n0 (a favourite) stays; n1, n2, n3 went.
+      for (const [n, kept] of [["n4", true], ["n0", true], ["n1", false], ["n3", false]] as const) {
+        await c.mount(n); await settle();
+        expect(c.p.root.querySelector(".thread") === lists[n], n).toBe(kept);
+        lists[n] = c.p.root.querySelector(".thread");
+      }
+    } finally { (globalThis as any).matchMedia = saved; }
   });
   it("#1269: content that grows after it was drawn keeps a reader at the bottom there; one who scrolled up is never moved", async () => {
     const observers: Array<{ cb: () => void; targets: unknown[]; off: boolean }> = [];

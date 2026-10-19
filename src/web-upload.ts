@@ -14,6 +14,7 @@
 import { randomBytes } from "node:crypto";
 import { constants as fsConstants, closeSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, sep } from "node:path";
+import { displaySize } from "./web-image-meta.js";
 
 const MB = 1024 * 1024;
 /** #1937: the defaults; `web.upload_max_file_mb` / `web.upload_max_total_mb` change the two sizes (uploadLimits()). */
@@ -226,6 +227,9 @@ export interface UploadEntry {
   mime: string;
   name: string;
   size: number;
+  /** A photo's drawn size, as its served file has it (ServedFile.width/height). */
+  width?: number;
+  height?: number;
   /** On the ledger's own elapsed clock (not the wall clock): when the upload window closes. */
   expiresAt: number;
   /**
@@ -248,6 +252,12 @@ export interface ServedFile {
   /** The instance whose chat shows it. */
   instance: string;
   kind: UploadKind;
+  /**
+   * #2184: a photo's drawn size from its headers (EXIF orientation applied), when they say: the chat reserves the picture's box
+   * before it loads, so text around it never moves when it does (a cold chat switch jittered — chat-render.js).
+   */
+  width?: number;
+  height?: number;
   /**
    * #1770: a reply file's snapshot (workspaces/<instance>/web-files): the fleet's own copy, kept as long as its message
    * — outside the served-id cap, and removed from disk when the message leaves the history (dropServed).
@@ -334,7 +344,8 @@ export class WebFileLedger {
     this.written.set(entry, { dev: st.dev, ino: st.ino });
     this.prune();
     this.uploads.set(id, entry);
-    this.registerServed({ id, path, name: entry.name, mime: entry.mime, instance: entry.instance, kind: entry.kind });
+    const served = this.registerServed({ id, path, name: entry.name, mime: entry.mime, instance: entry.instance, kind: entry.kind });
+    if (served?.width && served.height) { entry.width = served.width; entry.height = served.height; }
     // If no message takes it in time, the file goes when its id does, without waiting for the next upload.
     const sweep = setTimeout(() => this.prune(), UPLOAD_TTL_MS + 1_000);
     sweep.unref?.();
@@ -451,11 +462,14 @@ export class WebFileLedger {
     }
     const ext = extname(realPath).toLowerCase();
     const mime = input.mime ?? MIME_BY_EXT[ext] ?? "application/octet-stream";
+    const kind = input.kind ?? (INLINE_MIME.has(mime) ? "photo" : "document");
+    const drawn = kind === "photo" ? photoSize(realPath) : null;
     const file: ServedFile = {
       id: input.id ?? randomBytes(16).toString("hex"),
       realPath, size, dev, ino, mime, instance: input.instance,
       name: displayName(input.name ?? basename(realPath), "file"),
-      kind: input.kind ?? (INLINE_MIME.has(mime) ? "photo" : "document"),
+      kind,
+      ...(drawn ? { width: drawn.width, height: drawn.height } : {}),
       ...(input.snapshot ? { snapshot: true as const } : {}),
     };
     this.served.set(file.id, file);
@@ -662,8 +676,26 @@ export function attachmentDelivery(message: string, entries: readonly UploadEntr
 }
 
 /** What the chat shows for a file: never the path. */
-export function publicAttachment(f: { id: string; kind: UploadKind; name: string; size: number; mime: string }): { id: string; kind: UploadKind; name: string; size: number; mime: string } {
-  return { id: f.id, kind: f.kind, name: f.name, size: f.size, mime: f.mime };
+export function publicAttachment(f: { id: string; kind: UploadKind; name: string; size: number; mime: string; width?: number; height?: number }): { id: string; kind: UploadKind; name: string; size: number; mime: string; width?: number; height?: number } {
+  return { id: f.id, kind: f.kind, name: f.name, size: f.size, mime: f.mime, ...(f.width && f.height ? { width: f.width, height: f.height } : {}) };
+}
+
+/** The first bytes a photo's headers are read from (a JPEG's EXIF segment, with its thumbnail, comes before the size). */
+const PHOTO_HEAD_BYTES = 256 * 1024;
+
+/** A photo's drawn size from its first bytes (never decoded), or null when they do not say or it cannot be read. */
+function photoSize(path: string): { width: number; height: number } | null {
+  let fd: number | null = null;
+  try {
+    fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    const head = Buffer.alloc(PHOTO_HEAD_BYTES);
+    const n = readSync(fd, head, 0, PHOTO_HEAD_BYTES, 0);
+    return displaySize(head.subarray(0, n));
+  } catch {
+    return null;
+  } finally {
+    if (fd !== null) try { closeSync(fd); } catch { /* closed */ }
+  }
 }
 
 /** Linux names an open directory by its descriptor: a path through it cannot be redirected by a renamed parent. */
