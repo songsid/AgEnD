@@ -160,6 +160,13 @@ authority) uses the harness and stubs two more things, both outside the product:
 
 The demo connection's fleet-admin list is fleet config the smoke writes, as an operator would.
 
+`scripts/manual/smoke/smoke-2170-web-verified-apply.mts` (#2170 a web-verified admin's own Apply confirms a held
+change) builds on the same stubs: two demo Discord connections — the agents' and General's — whose admin lists the smoke
+writes; General's adapter records what would be posted there (a chat card or the notice, the notice drawn on a neutral
+page and shot). The held change is Settings → Agents → Delete agent, with the lifecycle's stop stubbed as in
+`smoke-delete-agent.mts`. The admin lists are two arrays, never one shared: fleet.yaml would be written with a YAML
+alias between them, which a delete's document edit cannot walk. `PW_ENGINE=webkit` runs the same cases.
+
 `scripts/manual/smoke/smoke-2122-usage.mts` (#2122 Fleet → Usage) uses the harness with what the product reads made
 real: Claude Code transcripts and a Codex rollout in their real shapes (`tests/fixtures/cache-1468`, copied onto recent
 days) in a scratch `CLAUDE_CONFIG_DIR` / `CODEX_HOME` set before the fleet boots, never the host's. Each demo instance
