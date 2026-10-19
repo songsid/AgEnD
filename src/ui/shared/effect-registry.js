@@ -189,6 +189,12 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     const proposal = revision;
     if (time() === null) blocked = "clock_unavailable";
     const hidden = context?.hidden === true || host.document.visibilityState !== "visible";
+    // #2188: nothing to place, nothing to prove — the stock walk (thousands of computed styles) is not run for an empty
+    // list; a frame still held is retired as superseded, exactly as an allocation of nothing would.
+    if (!blocked && descriptors.length === 0) {
+      for (const s of [...slots.values()]) { retire(s, "superseded"); if (dead || proposal !== revision) return; }
+      results.clear(); tell(); return;
+    }
     const stock = eligible() ? coverage() : null;
     if (dead || proposal !== revision) return;
     if (blocked || !eligible() || !stock) {
@@ -440,7 +446,8 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     } catch { return false; }
   }
   function pointer(event) {
-    if (dead || blocked || !pointerGate() || event.isTrusted !== true) return;
+    // #2188: no frame to forward to — no gate to read (each read walks the page's computed styles, per pointer event).
+    if (dead || blocked || slots.size === 0 || !pointerGate() || event.isTrusted !== true) return;
     const kinds = { pointermove: "move", pointerdown: "down", pointerup: "up", click: "click", wheel: "wheel" }, kind = kinds[event.type];
     if (!kind || !finite(event.clientX) || !finite(event.clientY) || Math.abs(event.clientX) > 1e7 || Math.abs(event.clientY) > 1e7 || !Number.isInteger(event.buttons) || event.buttons < 0 || event.buttons > 31) return;
     try { const target = host.document.elementFromPoint(event.clientX, event.clientY); if (!target || typeof target.closest !== "function" || target.closest("[data-trust]")) return; } catch { return; }
@@ -511,7 +518,8 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     },
     /** Host-only content-free signal API. Raw pointer publishing is refused; native pointer metadata is coalesced here. */
     publish(type, fields, instance = null) {
-      if (dead || blocked || !globalAllowed() || context.hidden || !coverage() || !TYPES.includes(type)) return 0;
+      // #2188: no frame to send to — nothing to prove (the stock walk ran twice on every page change).
+      if (dead || blocked || slots.size === 0 || !globalAllowed() || context.hidden || !coverage() || !TYPES.includes(type)) return 0;
       const ts = time(); if (ts === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return 0; }
       let sent = 0; const proposal = revision;
       for (const s of [...slots.values()]) {

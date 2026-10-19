@@ -650,7 +650,7 @@ describe("chat page: the composer and the history", () => {
     expect(panel).toMatch(/<textarea id="msgIn"/);
     expect(panel).not.toMatch(/<input id="msgIn"/);
     expect(panel).toContain("R().composerKey(e)");
-    expect(panel).toContain("store.openHistory(name, lease)");
+    expect(panel).toContain("store.openHistory(name, lease, ac?.signal)");   // #2188: aborted when the chat is left before it answers
     const store = readFileSync(join(process.cwd(), "src", "ui", "chat-store.js"), "utf8");
     expect(store).toContain("R().mergeMessages(");
   });
