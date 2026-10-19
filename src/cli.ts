@@ -2947,9 +2947,11 @@ async function interactivePicker(candidates: import("./ls-attach-resolve.js").Ca
 
   const { createInterface } = await import("node:readline");
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const answer = await new Promise<string>(resolve => rl.question(`\nRow number or name [${defaultIdx}]: `, resolve));
+  // Use the unambiguous #N form so Enter always selects the displayed-first
+  // row, even when its global idx matches a digit-string real name.
+  const answer = await new Promise<string>(resolve => rl.question(`\nRow number or name [#${defaultIdx}]: `, resolve));
   rl.close();
-  const trimmed = answer.trim() || String(defaultIdx);
+  const trimmed = answer.trim() || `#${defaultIdx}`;
 
   // Accept a number or re-run resolution.
   const { resolveCandidate } = await import("./ls-attach-resolve.js");
@@ -3040,6 +3042,9 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     // status work (a tab press should not wait on the fleet) and must print
     // nothing but names — a "no instances" notice would become a candidate.
     if (opts.namesOnly) {
+      const { validateNamesOnlyFilters } = await import("./ls-attach-resolve.js");
+      const filterErr = validateNamesOnlyFilters(opts);
+      if (filterErr) { console.error(filterErr); process.exit(1); }
       for (const n of await listInstanceNames(config)) console.log(n);
       return;
     }

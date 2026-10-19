@@ -23,10 +23,13 @@ export type ResolveResult =
  * Resolve a query string against an ordered candidate list.
  *
  * Resolution order:
- *  1. Exact real name (case-insensitive) — wins over everything, including
- *     digit-string real names (prevents numeric instance names from being
- *     mistaken for row numbers).
- *  2. Integer string → 1-based global row number from `agend ls`.
+ *  0. `#N` prefix → unambiguous row token: always means row N, bypasses
+ *     exact-name lookup. Use this form in the picker to avoid collision
+ *     between digit-string real names and row numbers.
+ *  1. Exact real name (case-insensitive) — wins over bare integer strings,
+ *     so a numeric instance name like "2" resolves by name before row 2.
+ *  2. Bare integer string → 1-based global row number (no `#` prefix,
+ *     and only when no exact real name matched).
  *  3. Exact display label (case-insensitive).
  *  4. Unique substring of display label (case-insensitive).
  *  5. Unique prefix of real name (case-insensitive).
@@ -36,6 +39,18 @@ export type ResolveResult =
  */
 export function resolveCandidate(query: string, candidates: Candidate[]): ResolveResult {
   const q = query.trim().toLowerCase();
+
+  // 0. Unambiguous row token: #N always means row N, regardless of real names.
+  if (q.startsWith("#")) {
+    const after = q.slice(1);
+    if (/^\d+$/.test(after)) {
+      const idx = parseInt(after, 10);
+      const found = candidates.find(c => c.idx === idx);
+      if (found) return { kind: "exact", candidate: found };
+      return { kind: "none", suggestions: fuzzyTopN(after, candidates) };
+    }
+    // #<non-digit> falls through to normal resolution without the # prefix.
+  }
 
   // 1. Exact real name ALWAYS wins — must come before integer check so that
   //    a numeric instance name like "2" is not consumed as a row number.
@@ -139,4 +154,23 @@ export function applyLsFilters(
 /** Return the global idx to use as the picker default (first displayed row). */
 export function pickerDefaultIdx(displayedCandidates: Pick<Candidate, "idx">[]): number {
   return displayedCandidates[0]?.idx ?? 1;
+}
+
+/**
+ * Validate that `--names-only` (shell completion fast path) is not combined
+ * with filters. Returns an error string to print, or null if OK.
+ * Pure so the CLI dispatch path can be tested without spawning a subprocess.
+ */
+export function validateNamesOnlyFilters(opts: {
+  namesOnly?: boolean;
+  running?: boolean;
+  team?: string;
+  backend?: string;
+}): string | null {
+  if (!opts.namesOnly) return null;
+  const active = (
+    [opts.running && "--running", opts.team && "--team", opts.backend && "--backend"] as Array<string | false>
+  ).filter(Boolean) as string[];
+  if (active.length === 0) return null;
+  return `--names-only is for shell completion and cannot be combined with ${active.join(", ")}. Use --json to filter names programmatically.`;
 }

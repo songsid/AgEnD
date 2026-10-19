@@ -3,7 +3,7 @@
  * Covers: CJK display names, row numbers, ambiguity, fuzzy suggestions.
  */
 import { describe, expect, it } from "vitest";
-import { resolveCandidate, applyLsFilters, pickerDefaultIdx } from "../src/ls-attach-resolve.js";
+import { resolveCandidate, applyLsFilters, pickerDefaultIdx, validateNamesOnlyFilters } from "../src/ls-attach-resolve.js";
 import type { Candidate, LsRow } from "../src/ls-attach-resolve.js";
 
 /** Build a minimal fleet candidate list (no tmux calls needed). */
@@ -252,7 +252,92 @@ describe("P2-1: applyLsFilters — stable global indices", () => {
   });
 });
 
-// ── P2-4: picker default matches first displayed row ─────────────────────────
+// ── P2-2: --names-only + filter validation ───────────────────────────────────
+
+describe("P2-2: validateNamesOnlyFilters", () => {
+  it("returns null when not namesOnly", () => {
+    expect(validateNamesOnlyFilters({ namesOnly: false, running: true })).toBeNull();
+    expect(validateNamesOnlyFilters({ running: true })).toBeNull();
+  });
+
+  it("returns null when namesOnly with no filters", () => {
+    expect(validateNamesOnlyFilters({ namesOnly: true })).toBeNull();
+  });
+
+  it("returns error string when namesOnly + --running", () => {
+    const err = validateNamesOnlyFilters({ namesOnly: true, running: true });
+    expect(err).toContain("--names-only");
+    expect(err).toContain("--running");
+  });
+
+  it("returns error string when namesOnly + --team", () => {
+    const err = validateNamesOnlyFilters({ namesOnly: true, team: "agend-dev" });
+    expect(err).toContain("--team");
+  });
+
+  it("returns error string when namesOnly + --backend", () => {
+    const err = validateNamesOnlyFilters({ namesOnly: true, backend: "codex" });
+    expect(err).toContain("--backend");
+  });
+
+  it("mentions all active flags when multiple are combined", () => {
+    const err = validateNamesOnlyFilters({ namesOnly: true, running: true, team: "dev" });
+    expect(err).toContain("--running");
+    expect(err).toContain("--team");
+  });
+});
+
+// ── P2-3 (continued): #N unambiguous row token ───────────────────────────────
+
+describe("P2-3: #N unambiguous row token resolves by row, bypassing exact name", () => {
+  it("#2 selects row 2 even when instance named '2' is at row 1", () => {
+    const cs: Candidate[] = [
+      { idx: 1, realName: "2",     displayLabel: "2",     status: "stopped", teams: [] },
+      { idx: 2, realName: "alpha", displayLabel: "Alpha", status: "running", teams: [] },
+    ];
+    // "#2" → unambiguous row token → alpha
+    expect(resolveCandidate("#2", cs)).toEqual({ kind: "exact", candidate: cs[1] });
+    // bare "2" → exact real name "2" → the stopped instance
+    expect(resolveCandidate("2", cs)).toEqual({ kind: "exact", candidate: cs[0] });
+  });
+
+  it("#1 selects row 1 by index, not by real name match", () => {
+    const cs: Candidate[] = [
+      { idx: 1, realName: "alpha", displayLabel: "Alpha", status: "running", teams: [] },
+      { idx: 2, realName: "1",     displayLabel: "1",     status: "running", teams: [] },
+    ];
+    expect(resolveCandidate("#1", cs)).toEqual({ kind: "exact", candidate: cs[0] });
+    expect(resolveCandidate("1", cs)).toEqual({ kind: "exact", candidate: cs[1] }); // exact "1" wins
+  });
+
+  it("#N out of range returns none", () => {
+    const cs: Candidate[] = [
+      { idx: 1, realName: "alpha", displayLabel: "Alpha", status: "running", teams: [] },
+    ];
+    expect(resolveCandidate("#99", cs).kind).toBe("none");
+  });
+
+  it("picker default uses #N form: Enter resolves to the displayed-first row even in collision", () => {
+    // Scenario from Prism R2: "2" at idx=1 (stopped), alpha at idx=2 (running).
+    // Picker displays alpha first (running-first order) → defaultIdx=2.
+    // Picker default token = "#2" → resolves to alpha (idx=2), not "2" (realName).
+    const cs: Candidate[] = [
+      { idx: 1, realName: "2",     displayLabel: "2",     status: "stopped", teams: [] },
+      { idx: 2, realName: "alpha", displayLabel: "Alpha", status: "running", teams: [] },
+    ];
+    // Simulate picker running-first sort
+    const running = cs.filter(c => c.status === "running");
+    const rest = cs.filter(c => c.status !== "running");
+    const ordered = [...running, ...rest]; // [alpha(idx=2), "2"(idx=1)]
+    const defaultIdx = pickerDefaultIdx(ordered); // = 2 (alpha's idx)
+    const defaultToken = `#${defaultIdx}`; // = "#2"
+    const result = resolveCandidate(defaultToken, cs);
+    expect(result.kind).toBe("exact");
+    if (result.kind === "exact") {
+      expect(result.candidate.realName).toBe("alpha"); // not "2"
+    }
+  });
+});
 
 describe("P2-4: pickerDefaultIdx uses first displayed candidate", () => {
   it("returns first candidate's idx even when it is not 1", () => {
