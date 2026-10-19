@@ -56,7 +56,7 @@ export function OwnerEffects({ catalog, busy = false }) {
     const seq = ++life.current.seq; setMessage(null);
     const result = await saveOwnerEffects({ [key]: id });
     if (!life.current.alive || seq !== life.current.seq) return;
-    if (result.ok || result.saved) { getAppEffects()?.api?.changedOwner?.(); void wakeEffects(); }   // #2193: a personal effect now
+    if (result.ok || result.saved) getAppEffects()?.api?.changedOwner?.();   // #2193: asleep, the saved slot wakes it (app-prefs)
     setMessage(text(result.ok ? "saved" : result.saved ? "savedRefresh" : "failed"));
   };
   return html`<section class="s-fx-owner" aria-label=${text(state.scope === "operator" ? "operatorTitle" : "title")}><h4>${text(state.scope === "operator" ? "operatorTitle" : "title")}</h4><p class="sub">${text(state.scope === "operator" ? "operator" : "person")}</p>
