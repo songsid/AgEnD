@@ -116,4 +116,22 @@ describe("#2213: the fleet completion survives an outage at fleet start", () => 
     expect(sendText).not.toHaveBeenCalled();
     expect(progress.terminalDeferred).toBe(false);
   });
+
+  it("uncertain post that lands late after a newer text was handed over: the newer text edits THAT message — no second post (Fable P2)", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(0);
+    const first = pending<{ messageId: string; chatId: string }>();
+    const sendText = vi.fn().mockReturnValueOnce(first.p).mockResolvedValue({ messageId: "dup", chatId: "g" });
+    const editMessage = vi.fn().mockResolvedValue(undefined);
+    const poster = new RestartProgress(0, 0, logger());
+    void poster.postCompletion({ adapter: { sendText, editMessage } as unknown as ChannelAdapter, chatId: "g" }, "Fleet ready");
+    await vi.advanceTimersByTimeAsync(RESTART_PROGRESS_TERMINAL_TIMEOUT_MS);
+    expect(poster.replaceTerminalText("Fleet ready\n\n⚠️ cleanup")).toBe(true);   // the cleanup warning, while pending
+    await vi.advanceTimersByTimeAsync(60_000);
+    first.resolve({ messageId: "m-late", chatId: "g" });                   // it had landed
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(sendText).toHaveBeenCalledTimes(1);
+    expect(editMessage).toHaveBeenCalledExactlyOnceWith("g", "m-late", "Fleet ready\n\n⚠️ cleanup", undefined);
+    expect(poster.terminalLanded("Fleet ready\n\n⚠️ cleanup")).toBe(true);
+    expect(poster.terminalDeferred).toBe(false);
+  });
 });
