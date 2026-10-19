@@ -202,6 +202,10 @@ export function thinXLabels(n, slotPx, labelWidthPx) {
   if (n === 1) return new Set([0]);
   // Minimum slot steps between label centres (+ 2 px breathing room).
   const step = Math.max(1, Math.ceil((labelWidthPx + 2) / slotPx));
+  // If first and last are too close to both be shown without overlap, keep
+  // only the last (most recent). The caller's "always first+last" contract
+  // is relaxed here: overlap-free takes precedence.
+  if (n - 1 < step) return new Set([n - 1]);
   const idx = [0];
   // Add intermediates that are at least `step` slots away from n-1.
   for (let i = step; i < n - step; i += step) idx.push(i);
@@ -271,7 +275,7 @@ function Trend({ report, dates }) {
           const h = v[i] > 0 ? Math.max(1, ((base - top) * v[i]) / max) : 0;
           y -= h;
           return h ? html`<rect key=${k} class=${`us-s${k}`} x=${left + i * slot + 2} y=${y} width=${slot - 4} height=${h}><title>${`${date} · ${s.names[k]}: ${fmtMeasure(s.priced, v[i])}`}</title></rect>` : null;
-        })}${shownLabels.has(i) ? html`<text class="us-axis" x=${left + i * slot + slot / 2} y=${H - 6} text-anchor="middle">${date.slice(5)}</text>` : null}</g>`;
+        })}${shownLabels.has(i) ? html`<text class="us-axis us-xlabel" x=${left + i * slot + slot / 2} y=${H - 6} text-anchor="middle">${date.slice(5)}</text>` : null}</g>`;
       })}
     </svg></div>
     <${EarlierHint} wide=${wide} />
