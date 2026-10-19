@@ -89,7 +89,17 @@ describe("detachForWrite: a write changes the place it names", () => {
   it("an alias inside the anchored value is copied too, so nothing dangles", () => {
     const d = doc("base: &b {m: 1}\none: &o {inner: *b}\ntwo: *o\n");
     detachForWrite(d, ["one", "inner", "m"]); d.setIn(["one", "inner", "m"], 2);
-    expect([d.toJS(), d.errors]).toEqual([{ base: { m: 1 }, one: { inner: { m: 2 } }, two: { inner: { m: 1 } } }, []]);
+    expect([d.toJS(), d.errors, String(d).includes("*")]).toEqual([{ base: { m: 1 }, one: { inner: { m: 2 } }, two: { inner: { m: 1 } } }, [], false]);
+  });
+  it("an anchor whose value holds an alias of itself: kept as it is (its own alias is not copied into itself)", () => {
+    const d = doc("a: &x [1, *x]\n");
+    detachForWrite(d, ["a", 0]); d.setIn(["a", 0], 2);
+    expect(String(d)).toBe("a: &x [ 2, *x ]\n");
+  });
+  it("aliases nested more than 64 deep refuse instead of recursing on", () => {
+    const text = ["a0: &a0 [1]", ...Array.from({ length: 69 }, (_, i) => `a${i + 1}: &a${i + 1} [*a${i}]`), "last: *a69", ""].join("\n");
+    const d = doc(text);
+    expect(() => detachForWrite(d, ["a69", 0])).toThrow(/nests its aliases too deeply/);
   });
   it("a write nowhere near a shared value leaves the anchors as written", () => {
     const d = doc("a: &x [1]\nb: *x\nc: 1\n");
@@ -186,6 +196,31 @@ describe("FleetManager: a Settings save through a shared node changes only the p
     f.fm.saveFleetConfig();
     const raw = loadRawFleetConfig(f.path).instances as any;
     expect([raw.worker.description, raw.helper.description]).toEqual(["shared words", "its own words"]);
+  });
+});
+
+describe("FleetManager: deletes keep what other places share with the deleted value", () => {
+  const AGENTS = FLEET.replace("  worker:\n    working_directory: /tmp\n", "  worker:\n    working_directory: /tmp\n    description: &d shared words\n    log_level: &lvl info\n  helper:\n    working_directory: /tmp\n    description: *d\n    tags_note: *lvl\n");
+  it("an explicit removal of an agent holding the anchor", () => {
+    const f = fleetOn(AGENTS);
+    delete f.fm.fleetConfig.instances.worker;
+    f.fm.saveFleetConfig([{ path: ["instances", "worker"], remove: true }]);
+    const raw = loadRawFleetConfig(f.path).instances as any;
+    expect([Object.keys(raw), raw.helper.description, raw.helper.tags_note, parseDocument(f.file()).errors]).toEqual([["general", "helper"], "shared words", "info", []]);
+  });
+  it("a value equal to the default, removed on save, that another place shares", () => {
+    const f = fleetOn(AGENTS);
+    f.fm.fleetConfig.instances.general.description = "something else changed";        // any save
+    f.fm.saveFleetConfig();
+    const raw = loadRawFleetConfig(f.path).instances as any;
+    expect([raw.worker.log_level, raw.helper.tags_note]).toEqual([undefined, "info"]);
+  });
+  it("the last connection removed while a later place shares one of its values", () => {
+    const f = fleetOn(FLEET.replace('group_id: "-1002"', 'group_id: &g "-1002"').replace("  worker:\n    working_directory: /tmp\n", "  worker:\n    working_directory: /tmp\n    description: *g\n"));
+    f.fm.fleetConfig.channels = JSON.parse(JSON.stringify(f.fm.fleetConfig.channels.slice(0, 1)));
+    f.fm.saveFleetConfig();
+    const raw = loadRawFleetConfig(f.path) as any;
+    expect([raw.channels.map((c: any) => c.id), raw.instances.worker.description]).toEqual([["main"], "-1002"]);
   });
 });
 

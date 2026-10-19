@@ -91,10 +91,9 @@ export function detachForWrite(doc: YamlDocument, path: Path): void {
   let parent: unknown = null;
   let node: unknown = doc.contents;
   for (let depth = 0; ; depth++) {
-    if (isAlias(node)) {
+    if (isAlias(node) && (isMap(parent) || isSeq(parent))) {                    // (the root is never an alias: it comes first)
       const copy = materialize(doc, node);
-      if (parent === null) doc.contents = copy as typeof doc.contents;
-      else if (isMap(parent) || isSeq(parent)) parent.set(path[depth - 1], copy);
+      parent.set(path[depth - 1], copy);
       node = copy;
     }
     if (isNode(node)) unshareAnchor(doc, node);
