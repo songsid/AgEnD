@@ -1,6 +1,7 @@
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
+import { unshareParsed } from "./yaml-shared-nodes.js";
 import { getAgendHome, getTmuxSessionName, ensureWorkspaceGit } from "./paths.js";
 import type { CostGuardConfig, HangDetectorConfig, DailySummaryConfig, FleetConfig, FleetDefaults, FleetTemplate, InstanceConfig, RawFleetConfig } from "./types.js";
 
@@ -125,7 +126,8 @@ export function loadFleetConfig(configPath: string): FleetConfig {
   // Discord snowflakes and Telegram group IDs are 64-bit and exceed JS MAX_SAFE_INTEGER.
   const safeRaw = raw.replace(/(?<=:\s+|[-]\s+)(\d{16,})(?=\s*$)/gm, (_, d) => `"${d}"`);
 
-  const parsed = yaml.load(safeRaw) as {
+  // #2208: an anchor and its aliases become separate copies, so editing one place never changes another.
+  const parsed = unshareParsed(yaml.load(safeRaw), "fleet.yaml") as {
     channel?: FleetConfig["channel"];
     channels?: FleetConfig["channels"];
     project_roots?: string[];
@@ -282,7 +284,7 @@ export function loadRawFleetConfig(configPath: string): RawFleetConfig {
   const raw = readFileSync(configPath, "utf-8");
   // Match loadFleetConfig(): preserve platform IDs that exceed MAX_SAFE_INTEGER.
   const safeRaw = raw.replace(/(?<=:\s+|[-]\s+)(\d{16,})(?=\s*$)/gm, (_, d) => `"${d}"`);
-  const parsed = yaml.load(safeRaw);
+  const parsed = unshareParsed(yaml.load(safeRaw), "fleet.yaml");          // #2208, as loadFleetConfig
   return parsed && typeof parsed === "object" && !Array.isArray(parsed)
     ? parsed as RawFleetConfig
     : {};

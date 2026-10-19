@@ -84,6 +84,8 @@ Fix all errors before `agend reload`; warnings are advisory.
 - `topic_id` as string vs number (both work, but be consistent)
 - `backend` typo (valid: `claude-code`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok`, `muse`); `gemini-cli` was removed in 2.1.12 — use `antigravity`
 - `model` using wrong format for the backend
+- YAML anchors/aliases (`&x` … `*x`) are fine, but a Settings or tool edit of one place gives that place its own
+  value; the others keep theirs (#2208). To change every place, edit fleet.yaml itself.
 
 **Common classicBot.yaml mistakes:**
 - `allowed_guilds` values should be quoted strings: numbers are accepted, but a Discord ID above 2^53 loses digits as a YAML integer

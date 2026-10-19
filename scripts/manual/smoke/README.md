@@ -160,6 +160,13 @@ authority) uses the harness and stubs two more things, both outside the product:
 
 The demo connection's fleet-admin list is fleet config the smoke writes, as an operator would.
 
+`scripts/manual/smoke/smoke-2208-yaml-shared-nodes.mts` (#2208) writes the operator's own fleet.yaml with two
+connections sharing one admin list through `&admins` / `*admins`, then loads it, and puts it back before each case. It
+adds a user to one connection through Settings → Connections, and the admin's confirmation is the store's decide (as
+in `smoke-delete-agent.mts`). An access edit only writes fleet.yaml and marks a restart as needed, so no adapter
+starts. The same smoke on a checkout without the fix fails: the anchor holder's edit also lands on the other
+connection, and the alias holder's never applies.
+
 `scripts/manual/smoke/smoke-2122-usage.mts` (#2122 Fleet → Usage) uses the harness with what the product reads made
 real: Claude Code transcripts and a Codex rollout in their real shapes (`tests/fixtures/cache-1468`, copied onto recent
 days) in a scratch `CLAUDE_CONFIG_DIR` / `CODEX_HOME` set before the fleet boots, never the host's. Each demo instance

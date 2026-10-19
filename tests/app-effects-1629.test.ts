@@ -142,7 +142,9 @@ describe("#1629 app lifetime effect bridge", () => {
   });
   it("the real full-app boot starts the driver after preview setup; the public entry imports neither it nor Chat directly", () => {
     const panel = readFileSync(new URL("../src/ui/panel-chat.js", import.meta.url), "utf8"), app = readFileSync(new URL("../src/ui/shared/app.js", import.meta.url), "utf8");
-    expect(panel.indexOf("startAppEffects({ store })")).toBeGreaterThan(panel.indexOf("P().init(bootData")); expect(app).not.toContain('from "/ui/js/app-effects.js"'); expect(app).not.toContain('from "/ui/js/panel-chat.js"');
+    // #2193: the boot starts the waker; the runtime module is imported only by it, on demand.
+    expect(panel.indexOf("startEffectsWaker({ store })")).toBeGreaterThan(panel.indexOf("P().init(bootData")); expect(app).not.toContain('from "/ui/js/app-effects.js"'); expect(app).not.toContain('from "/ui/js/panel-chat.js"');
+    expect(panel).not.toMatch(/from "\.\/app-effects\.js"/);
   });
 });
 
