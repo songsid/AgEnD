@@ -138,6 +138,30 @@ describe("#2163: skills for a ClassicBot room's agent", () => {
     await startClassic(work);
     expect(readFileSync(join(outside, "theirs.json"), "utf8")).toBe("keep\n");
   });
+  it("a manifest linked to a valid one elsewhere is not believed: the user's own skill it names stays, that file too", async () => {
+    const home = scratch(); process.env.AGEND_HOME = home;
+    const work = join(home, "workspaces", "room-bot");
+    const skills = join(work, ".agents", "skills");
+    mkdirSync(join(skills, "fleet-health"), { recursive: true });
+    writeFileSync(join(skills, "fleet-health", "SKILL.md"), "my own fleet-health\n");
+    const outside = scratch("agend-2163-user-");
+    writeFileSync(join(outside, "manifest.json"), JSON.stringify(["fleet-health"]) + "\n");
+    symlinkSync(join(outside, "manifest.json"), join(skills, ".agend-managed-skills.json"));
+    await startClassic(work);
+    expect(readFileSync(join(skills, "fleet-health", "SKILL.md"), "utf8")).toBe("my own fleet-health\n");
+    expect(readFileSync(join(outside, "manifest.json"), "utf8")).toBe(JSON.stringify(["fleet-health"]) + "\n");
+  });
+  it("a real local manifest still retires a skill no longer Classic's", async () => {
+    const home = scratch(); process.env.AGEND_HOME = home;
+    const work = join(home, "workspaces", "room-bot");
+    const skills = join(work, ".agents", "skills");
+    await startClassic(work);
+    mkdirSync(join(skills, "fleet-health"), { recursive: true });
+    writeFileSync(join(skills, "fleet-health", "SKILL.md"), "published once\n");
+    writeFileSync(join(skills, ".agend-managed-skills.json"), JSON.stringify([...CLASSIC, "fleet-health"]) + "\n");
+    await startClassic(work);
+    expect(published(skills)).toEqual(CLASSIC);
+  });
   it("the bundled frontmatter marks exactly those three for classic", () => {
     const classic = listBundledSkills().map(s => s.name).filter(n => /roles:\s*\[[^\]]*\bclassic\b/.test(readFileSync(join(__dirname, "..", "src", "general-knowledge", "skills", n, "SKILL.md"), "utf8")));
     expect(classic).toEqual(CLASSIC);

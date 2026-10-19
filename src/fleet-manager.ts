@@ -16628,6 +16628,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (refuse(destSkills)) return;
     mkdirSync(destSkills, { recursive: true });
     const manifestPath = join(destSkills, ".agend-managed-skills.json");
+    // Its ownership claims decide what is replaced or removed below: one that lives elsewhere is never believed.
+    if (refuse(manifestPath)) return;
     const hadManifest = existsSync(manifestPath);
     let previouslyManaged: string[] = [];
     try {
@@ -16700,7 +16702,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
     }
 
-    if (refuse(manifestPath)) return;
     try {
       writeFileSync(manifestPath, JSON.stringify(managed, null, 2) + "\n");
     } catch (err) {
