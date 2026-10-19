@@ -15,6 +15,11 @@ export const LIBAVOID_VERSION = "0.4.5";
 export const LIBAVOID_PREFIX = `/ui/vendor/libavoid-${LIBAVOID_VERSION}/`;
 export const LIBAVOID_PATHS: readonly string[] = [`${LIBAVOID_PREFIX}libavoid.js`, `${LIBAVOID_PREFIX}libavoid.wasm`];
 
+/** The package a resolved directory holds is the one AgEnD pins: by name and exact version. */
+export function isPinnedLibavoid(pkg: { name?: unknown; version?: unknown } | null | undefined): boolean {
+  return !!pkg && pkg.name === "libavoid-js" && pkg.version === LIBAVOID_VERSION;
+}
+
 let dist: string | null | undefined;
 /** The installed package's dist/ directory — null when it is missing or another version. Looked up once. */
 function distDir(): string | null {
@@ -22,7 +27,7 @@ function distDir(): string | null {
   try {
     const d = dirname(createRequire(import.meta.url).resolve("libavoid-js"));
     const pkg = JSON.parse(readFileSync(join(d, "..", "package.json"), "utf8")) as { name?: unknown; version?: unknown };
-    dist = pkg.name === "libavoid-js" && pkg.version === LIBAVOID_VERSION ? d : null;
+    dist = isPinnedLibavoid(pkg) ? d : null;
   } catch {
     dist = null;
   }

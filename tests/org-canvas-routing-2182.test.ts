@@ -19,7 +19,7 @@ import { createRouteClient, TIMEOUT_MS, WASM_URL, WORKER_URL } from "../src/ui/f
 import { route as laneRoute, trafficEdges } from "../src/ui/fleet-traffic.js";
 import { handleWebRequest } from "../src/web-api.js";
 import { ROUTE_WORKER_CSP, ROUTE_WORKER_PATH, WEB_CONTENT_SECURITY_POLICY } from "../src/web-host-guard.js";
-import { LIBAVOID_PATHS, LIBAVOID_PREFIX, LIBAVOID_VERSION, libavoidFile } from "../src/web-libavoid.js";
+import { isPinnedLibavoid, LIBAVOID_PATHS, LIBAVOID_PREFIX, LIBAVOID_VERSION, libavoidFile } from "../src/web-libavoid.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 
 type Pt = { x: number; y: number };
@@ -219,6 +219,17 @@ describe("the separation pass (where libavoid's nudging leaves lines too close)"
       boxes: [{ x: 0, y: -50, w: 144, h: 320 }, { x: 0, y: -50, w: 131, h: 320 }, { x: 0, y: -50, w: 119, h: 320 }] });
     expect(["border", edge.get("a"), edge.get("b")]).toEqual(["border", lineA, b0]);
   });
+  it("a joining run never turns back: a move that would only fit past its corner is not made", () => {
+    // A: up from its card, right, down a run at x 150 (y 100..210) beside B's (x 152); every place left of it to x 122
+    // is in an obstacle, and x 116 would turn A's joining run (120 → 150) back on itself. B is boxed in both ways.
+    const s2 = { shapes: [{ x: 0, y: 0, w: 40, h: 20, pins: 1 }, { x: 0, y: 200, w: 40, h: 20, pins: 1 }, { x: 300, y: 0, w: 40, h: 20, pins: 1 }, { x: 300, y: 200, w: 40, h: 20, pins: 1 },
+      { x: 126, y: 110, w: 18, h: 80, pins: 0 }, { x: 156, y: 30, w: 40, h: 160, pins: 0 }, { x: 60, y: 20, w: 58, h: 70, pins: 0 }],
+      conns: [{ key: "a", a: 0, z: 1 }, { key: "b", a: 2, z: 3 }], boxes: [] as any[] };
+    const a0 = [{ x: 20, y: 20 }, { x: 20, y: 96 }, { x: 120, y: 96 }, { x: 120, y: 100 }, { x: 150, y: 100 }, { x: 150, y: 210 }, { x: 40, y: 210 }];
+    const b0 = [{ x: 300, y: 12 }, { x: 152, y: 12 }, { x: 152, y: 208 }, { x: 300, y: 208 }];
+    const out = separate(new Map([["a", a0], ["b", b0]]), s2);
+    expect([out.get("a"), out.get("b")]).toEqual([a0, b0]);
+  });
   it("first and last runs (on a pin) are never moved", () => {
     const short = new Map([["a", [{ x: 40, y: 10 }, { x: 300, y: 10 }]], ["b", [{ x: 40, y: 12 }, { x: 300, y: 12 }]]]);
     expect([...separate(short, { ...scene, conns: [] }).values()]).toEqual([...short.values()]);
@@ -384,6 +395,8 @@ describe("the server side", () => {
     const installed = JSON.parse(readFileSync(new URL("../package.json", import.meta.resolve("libavoid-js").replace(/dist\/[^/]+$/, "dist/")), "utf8"));
     const worker = readFileSync(new URL("../src/ui/fleet-route-worker.js", import.meta.url), "utf8");
     expect([pkg.dependencies["libavoid-js"], installed.version, LIBAVOID_VERSION, worker.includes(`from "${LIBAVOID_PREFIX}libavoid.js"`)]).toEqual([LIBAVOID_VERSION, LIBAVOID_VERSION, "0.4.5", true]);
+    // Another version, or another package, installed under the name: not served (the canvas keeps its lanes).
+    expect([isPinnedLibavoid(installed), isPinnedLibavoid({ ...installed, version: "0.4.4" }), isPinnedLibavoid({ ...installed, name: "libavoid" }), isPinnedLibavoid(null)]).toEqual([true, false, false, false]);
   });
   it("the public link serves the worker and libavoid's two files, and nothing else under /ui/vendor/", () => {
     expect([isPublicWebRoute("GET", ROUTE_WORKER_PATH), ...LIBAVOID_PATHS.map((p) => isPublicWebRoute("GET", p)), isPublicWebRoute("GET", `${LIBAVOID_PREFIX}x.js`), isPublicWebRoute("POST", LIBAVOID_PATHS[0])])
