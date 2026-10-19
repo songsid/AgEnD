@@ -439,6 +439,20 @@ describe("#1423: a change an admin must confirm", () => {
     app.appStore.set({ pendingChanges: [], settingsOp: null });
   });
 
+  it("#2170 the card says 'Confirmed by your account' only for a request its own verified account confirmed", async () => {
+    nav.navigate("/ui/fleet");
+    const panels = new Map([["fleet", { load: async () => () => h("div", { class: "panel" }, "fleet") }]]);
+    const says = async (confirmation: string) => {
+      app.appStore.set({ pendingChanges: [{ ...VIEW("applied", { confirmation: { kind: confirmation } }), label: "Update main access", deadline: performance.now() + 60_000, withdraw: null, dismiss: null }] });
+      await settle(4);
+      return p.root.querySelector(".pending-card")?.textContent.includes("Confirmed by your account");
+    };
+    await p.mount(h(shell.Shell, { panels }));
+    expect([await says("web"), await says("chat"), await says("host_cli")]).toEqual([true, false, false]);
+    await p.unmount();
+    app.appStore.set({ pendingChanges: [], settingsOp: null });
+  });
+
   it("alpha.2 sweep: in Settings the request card sits in the column, right under the operation", async () => {
     app.appStore.set({ pendingChanges: [{ ...VIEW("pending"), label: "Update main access", deadline: performance.now() + 60_000, withdraw: () => {}, dismiss: null }],
       settingsOp: { id: 1, phase: "writing", error: null, job: null, lostJob: false, restart: "idle", leftover: [], steps: [{ label: "Update main access", impact: "fleet", status: "waiting", error: null, pendingId: "d" }] } });

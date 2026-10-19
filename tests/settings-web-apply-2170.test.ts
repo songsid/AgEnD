@@ -123,14 +123,13 @@ describe("the gate: the request's own confirmation", () => {
 
 // ── The fleet: who qualifies ──
 const TOKEN = "c".repeat(48);
-function fleet(platform: "telegram" | "discord" = "telegram") {
+function fleet(platform: "telegram" | "discord" = "telegram", ids = ["a", "b"], types: Record<string, "telegram" | "discord"> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agend-2170-fleet-")); roots.push(dir);
   const fm = new FleetManager(dir), any = fm as any;
-  const ids = ["a", "b"];
-  const channels = ids.map((id, i) => ({ id, type: platform, mode: "topic", group_id: `-100${i + 1}`, access: { mode: "open", allowed_users: [`${id}-F`, "both-F"] } }));
+  const channels = ids.map((id, i) => ({ id, type: types[id] ?? platform, mode: "topic", group_id: `-100${i + 1}`, access: { mode: "open", allowed_users: [`${id}-F`, "both-F"] } }));
   fm.fleetConfig = { defaults: { backend: "codex" }, channels, web: { verified_authority: { enabled: true } },
     instances: Object.fromEntries(ids.map((id, i) => [`general_${id}`, { working_directory: dir, general_topic: true, channel_id: id, topic_id: i + 1 }])) } as any;
-  const adapters = channels.map((channel) => Object.assign(new EventEmitter(), { id: channel.id, type: platform,
+  const adapters = channels.map((channel) => Object.assign(new EventEmitter(), { id: channel.id, type: channel.type,
     notifyAlert: vi.fn(async (chatId: string, _a: unknown, o: any) => ({ chatId, messageId: `${channel.id}-prompt`, threadId: o?.threadId })),
     editMessageRemoveButtons: vi.fn(async () => {}), sendText: vi.fn(async (_chatId: string, _text: string, _opts?: unknown) => ({ chatId: channel.group_id, messageId: "notice" })) }));
   fm.adapter = adapters[0] as any;
@@ -202,6 +201,28 @@ describe("the fleet: who may confirm by applying", () => {
     expect(f.any.settingsSelfConfirmation(f.store, f.session(null).req, p.view.id)).toBeNull();
     expect(f.any.settingsSelfConfirmation(f.store, f.session({ adapterId: "a", userId: "a-F" }, { tier: "guest", authorize: false }).req, p.view.id)).toBeNull();
   });
+  it("an account on a connection whose id is configured twice: none", () => {
+    const f = fleet(), p = f.propose(), s = f.session({ adapterId: "b", userId: "both-F" });
+    expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)).not.toBeNull();       // admin of a, from b: qualifies
+    f.fm.fleetConfig!.channels!.push({ ...f.fm.fleetConfig!.channels![1]! } as any);
+    expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)).toBeNull();
+  });
+  it("General's agent not running (no chat card could be posted): none", () => {
+    const f = fleet(), p = f.propose(), s = f.session({ adapterId: "a", userId: "a-F" });
+    f.any.daemons.delete("general_b");
+    expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)).toBeNull();
+  });
+  it("the only connected General is on another platform: none", () => {
+    const f = fleet("telegram", ["a", "b", "c"], { c: "discord" }), p = f.propose(), s = f.session({ adapterId: "a", userId: "a-F" });
+    f.any.adapterState.set("b", { status: "disconnected", retryCount: 1 });
+    expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)).toBeNull();
+  });
+  it("two Generals a card could go to: the notice is posted once", async () => {
+    const f = fleet("telegram", ["a", "b", "c"]), p = f.propose(), s = f.session({ adapterId: "a", userId: "a-F" });
+    const self = f.any.settingsSelfConfirmation(f.store, s.req, p.view.id);
+    await self.done(await f.store.decide(p.view.id, "confirm", { ...self, via: "web" }));
+    expect(f.adapters.map((a) => a.sendText.mock.calls.length)).toEqual([0, 1, 0]);
+  });
   it("an unknown scope: none — even for the right admin", () => {
     const f = fleet(), s = f.session({ adapterId: "a", userId: "a-F" }), p = f.propose({ unknown: true });
     expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)).toBeNull();
@@ -231,6 +252,16 @@ describe("the fleet: who may confirm by applying", () => {
     f.fm.fleetConfig!.channels![0]!.access!.allowed_users = ["someone-else"];
     release();
     expect([(await decided).state, p.apply.mock.calls.length]).toEqual(["stale", 0]);
+  });
+  it("verified on another connection, no longer the changed connection's admin when it executes: stale", async () => {
+    let release!: () => void;
+    const f = fleet(), s = f.session({ adapterId: "b", userId: "both-F" });              // still verified on b throughout
+    const p = f.propose({ unchanged: () => new Promise<boolean>((r) => { release = () => r(true); }) });
+    const self = f.any.settingsSelfConfirmation(f.store, s.req, p.view.id);
+    const decided = f.store.decide(p.view.id, "confirm", { ...self, via: "web" });
+    f.fm.fleetConfig!.channels![0]!.access!.allowed_users = ["a-F"];
+    release();
+    expect([(await decided).state, p.apply.mock.calls.length, f.any.webAuthority({ session: s.record, gateway: false, peer: "loopback" }).authority.kind]).toEqual(["stale", 0, "web-verified"]);
   });
   it("expired (max_session_hours past): none", () => {
     vi.useFakeTimers({ toFake: ["Date"], now: Date.UTC(2026, 9, 19, 10, 0, 0) });

@@ -1683,7 +1683,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const record = auth.session, gateway = !!gatewayRequestContext(req), peer = classifyWebPeer(req);
     const verified = (): { adapter_id: string; user_id: string } | null => {
       const now = this.webAuthority({ session: record, gateway, peer });
-      return !now.refusal && now.authority.kind === "web-verified" && now.authority.actor && now.authority.session?.handle === record.handle ? now.authority.actor : null;
+      // A refusal carries no authority (kind "none"); the handle pins the session, and with it its one account.
+      return now.authority.kind === "web-verified" && now.authority.actor && now.authority.session?.handle === record.handle ? now.authority.actor : null;
     };
     const actor = verified();
     if (!actor) return null;
@@ -1697,10 +1698,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const name = this.webPerson({ adapterId: actor.adapter_id, userId: actor.user_id }).name;
     return {
       label: `${name} (web-verified)`,
-      current: () => {
-        const still = verified();
-        return !!still && still.adapter_id === actor.adapter_id && still.user_id === actor.user_id && chat.current() && chat.admin(actor.user_id);
-      },
+      current: () => !!verified() && chat.admin(actor.user_id),                 // admin() asks chat.current() too
       done: view => this.settingsWebConfirmedNotice(view, affected, name, chat.platform),
     };
   }
