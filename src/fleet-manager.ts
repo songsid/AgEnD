@@ -371,7 +371,6 @@ import {
 import {
   cleanupWatchVerdict,
   formatRestartProgressCompletion,
-  RESTART_PROGRESS_TERMINAL_TIMEOUT_MS,
   RestartProgress,
   type RestartProgressSummary,
   type RestartProgressTarget,
@@ -5562,46 +5561,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Last-resort completion after RestartProgress could not deliver to its
-   * adopted target. It stays bounded and never wakes a not-ready gateway. */
+   * adopted target (or had no message: a small fleet, a failed first post). It
+   * never wakes a not-ready gateway. #2213: an outage at fleet start no longer
+   * loses it — bounded at startup, then retried in the background once the
+   * adapter is ready again, never posted twice after an uncertain attempt. */
   private async sendFleetStartCompletionFallback(
     chatId: string,
     text: string,
     threadId?: string,
   ): Promise<boolean> {
     const adapterId = this.getPrimaryAdapterId();
-    const adapter = adapterId ? this.readyProgressAdapter(adapterId) : undefined;
-    if (!adapter) {
-      this.logger.error({ adapterId }, "Fleet start completion fallback skipped because the primary adapter is not ready");
+    if (!adapterId) {
+      this.logger.error({ adapterId }, "Fleet start completion fallback skipped because there is no primary adapter");
       return false;
     }
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<{ status: "timeout" }>(resolve => {
-      timer = setTimeout(
-        () => resolve({ status: "timeout" }),
-        RESTART_PROGRESS_TERMINAL_TIMEOUT_MS,
-      );
-      timer.unref?.();
-    });
-    const delivery = Promise.resolve()
-      .then(() => adapter.sendText(chatId, text, { threadId }))
-      .then<{ status: "sent" }, { status: "failed"; err: unknown }>(
-        () => ({ status: "sent" }),
-        err => ({ status: "failed", err }),
-      );
-    const result = await Promise.race([delivery, timeout]);
-    if (timer) clearTimeout(timer);
-    if (result.status === "sent") return true;
-    if (result.status === "failed") {
-      this.logger.error({ err: result.err }, "Failed to send fleet start completion fallback");
-    } else {
-      this.logger.error(
-        { timeout_ms: RESTART_PROGRESS_TERMINAL_TIMEOUT_MS },
-        "Timed out sending fleet start completion fallback",
-      );
-    }
-    return false;
+    const poster = new RestartProgress(0, Date.now(), this.logger);
+    return poster.postCompletion({ resolveAdapter: () => this.readyProgressAdapter(adapterId), chatId, threadId }, text);
   }
+
 
   async stopInstance(name: string, transition?: TransitionHandle): Promise<{ backgroundWorkEnded: boolean }> {
     this.explicitStopGeneration.set(name, (this.explicitStopGeneration.get(name) ?? 0) + 1);
