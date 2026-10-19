@@ -327,6 +327,8 @@ export interface IncidentEventSource {
   /** Real daemons buffer `pty_error` raised by the startup scan until the lifecycle can handle it. */
   holdStartupIncidents?(): void;
   releaseStartupIncidents?(): void;
+  /** Reconsider a cooldown-suppressed MCP revival through daemon liveness/idle gates. */
+  deferMcpRestart?(delayMs: number): void;
 }
 
 /** Arguments accepted by handleCreate — mirrors CreateInstanceArgs in outbound-schemas.ts
@@ -952,8 +954,10 @@ export class InstanceLifecycle {
       const incident = this.mcpIncident(name);
       const generation = ++incident.gen;
       incident.deathNoticeSent = false;
-      this.ctx.eventLog?.insert(name, "mcp_died", { pid: data.pid });
-      this.ctx.logger.error({ name, pid: data.pid }, "MCP server died — instance cannot use agend tools");
+      this.ctx.eventLog?.insert(name, "mcp_died", { pid: data.pid, ...(data.neverConnected ? { neverConnected: true } : {}) });
+      this.ctx.logger.error({ name, pid: data.pid, neverConnected: data.neverConnected === true }, data.neverConnected
+        ? "MCP server never connected — instance cannot use agend tools"
+        : "MCP server died — instance cannot use agend tools");
       this.ctx.webhookEmit("mcp_died", name, { pid: data.pid });
       // Auth outranks MCP: when the CLI lost authentication, "MCP server died"
       // is a symptom and the fix is /login, not a restart. The daemon flags a
@@ -1088,14 +1092,17 @@ export class InstanceLifecycle {
       // The daemon object dies with the restart it asks for, so the loop guard
       // lives here: if the previous auto-restart was under the cooldown, the new
       // MCP server evidently died right back (broken install, OOM pressure) and
-      // another attempt would just cycle the instance. Leave it to the operator —
-      // the mcp_died notification for this death has already gone out.
+      // another immediate attempt would just cycle the instance. Keep a bounded
+      // reconsideration on the daemon: a one-shot suppression strands this pid
+      // forever because later health ticks dedupe the already reported death.
       const last = this.mcpAutoRestartAt.get(name) ?? 0;
       const now = Date.now();
       if (now - last < InstanceLifecycle.MCP_AUTO_RESTART_COOLDOWN_MS) {
-        this.ctx.eventLog?.insert(name, "mcp_auto_restart_suppressed", { trigger: data.trigger });
-        this.ctx.logger.error({ name, trigger: data.trigger },
-          "MCP auto-restart suppressed — the previous attempt is still inside the cooldown, so the restart is not fixing it");
+        const retryAfterMs = InstanceLifecycle.MCP_AUTO_RESTART_COOLDOWN_MS - (now - last);
+        this.ctx.eventLog?.insert(name, "mcp_auto_restart_suppressed", { trigger: data.trigger, retryAfterMs });
+        this.ctx.logger.warn({ name, trigger: data.trigger, retryAfterMs },
+          "MCP auto-restart deferred — will reconsider after the cooldown with liveness and idle checks");
+        daemon.deferMcpRestart?.(retryAfterMs);
         return;
       }
       this.mcpAutoRestartAt.set(name, now);

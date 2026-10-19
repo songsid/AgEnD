@@ -192,7 +192,7 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
 
 // ── Fleet side: restart with a loop-proof cooldown ─────────────────────────
 
-function makeLifecycle() {
+function makeLifecycle(source?: IncidentEventSource & EventEmitter) {
   const calls: string[] = [];
   const restartSingleInstance = vi.fn(async () => { calls.push("restart"); });
   const clearCancelButton = vi.fn(() => { calls.push("clearCancelButton"); });
@@ -210,7 +210,7 @@ function makeLifecycle() {
     restartSingleInstance,
   } as unknown as LifecycleContext;
   const lifecycle = new InstanceLifecycle(ctx);
-  const daemon = Object.assign(new EventEmitter(), { requestPauseWhenIdle() {} }) as unknown as IncidentEventSource & EventEmitter;
+  const daemon = source ?? Object.assign(new EventEmitter(), { requestPauseWhenIdle() {} }) as unknown as IncidentEventSource & EventEmitter;
   lifecycle.attachIncidentHandlers("worker", daemon);
   return { daemon, restartSingleInstance, notifyInstanceTopic, clearCancelButton, calls };
 }
@@ -269,6 +269,67 @@ describe("lifecycle: mcp_restart_requested → restartSingleInstance, once per c
 
     expect(clearCancelButton).toHaveBeenCalledWith("worker");
     expect(calls).toEqual(["clearCancelButton", "restart"]);
+  });
+});
+
+describe("MCP cooldown reconsideration (#2191)", () => {
+  let dir: string;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    setAuthCheckRunnerForTests(async () => ({ code: 0, output: '{"loggedIn": true}' }));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    liveness.mockReset();
+    liveness.mockReturnValue({ state: "unknown" } as any);
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function suppressedRevival(state: "idle" | "working" = "idle") {
+    const made = makeDaemon(); dir = made.dir;
+    const daemon = made.daemon;
+    daemon["instanceState"] = state;
+    const lifecycle = makeLifecycle(daemon);
+    // The preceding revival is inside the lifecycle's 15-minute cooldown.
+    daemon.emit("mcp_restart_requested", { name: "mcp-test", trigger: "already_idle" });
+    liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
+    daemon["instanceState"] = "idle";
+    daemon["checkMcpServerAlive"]();
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(lifecycle.restartSingleInstance).toHaveBeenCalledTimes(1);
+    expect(daemon["mcpRestartCooldownTimer"]).not.toBeNull();
+    daemon["instanceState"] = state;
+    return { ...lifecycle, daemon };
+  }
+
+  it("automatically retries the same dead pid after cooldown without another death notification", async () => {
+    const { daemon, restartSingleInstance } = await suppressedRevival();
+    // Idle edges and repeated health checks during cooldown cannot bypass it.
+    daemon["fireMcpRestartRequest"]("idle_edge");
+    daemon["checkMcpServerAlive"]();
+    await vi.advanceTimersByTimeAsync(15 * 60_000 - 2_501);
+    expect(restartSingleInstance).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2_501);
+    expect(restartSingleInstance).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits for the next idle edge when cooldown expires during work", async () => {
+    const { daemon, restartSingleInstance } = await suppressedRevival("working");
+    await vi.advanceTimersByTimeAsync(15 * 60_000);
+    expect(restartSingleInstance).toHaveBeenCalledTimes(1);
+    daemon["applyInstanceStateSnapshot"](idleSnapshot());
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(restartSingleInstance).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["recovered", "stopped"])("cancels deferred recovery when %s", async reason => {
+    const { daemon, restartSingleInstance } = await suppressedRevival();
+    if (reason === "recovered") daemon["noteMcpProofOfLife"]("mcp_ready", 12346);
+    else daemon["freezeRuntimeMonitors"]();
+    await vi.advanceTimersByTimeAsync(31 * 60_000);
+    expect(restartSingleInstance).toHaveBeenCalledTimes(1);
+    expect(daemon["mcpRestartPending"]).toBe(false);
+    expect(daemon["mcpRestartCooldownTimer"]).toBeNull();
   });
 });
 

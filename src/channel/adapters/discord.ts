@@ -58,6 +58,7 @@ import { splitTextFenceAware, truncatePreview, fenceBlock } from "../markdown-ch
 import { stripPlaceRefs } from "../../topic-link.js";
 import { CROSS_INSTANCE_VISIBILITY_MODES } from "../../cross-instance-notice.js";
 import { POLL_STATUS_CALLBACK, type PollRender } from "../../reply-polls.js";
+import { protectDiscordClientRetirement, retireDiscordClient } from "./discord-client-retirement.js";
 
 const DISCORD_MAX_LENGTH = 2000;
 const GATEWAY_WATCHDOG_INTERVAL_MS = 30_000;
@@ -381,6 +382,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   private registerClientHandlers(client: Client, generation: number): void {
+    protectDiscordClientRetirement(client, error => this.reportRetiredSocketError(error));
     // Client/shard errors (WebSocket hiccups, gateway resumes, etc.). discord.js
     // auto-reconnects; we just need a listener so Node's EventEmitter doesn't
     // rethrow on "error" — without one it surfaces as an uncaughtException and
@@ -896,7 +898,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     const oldClient = this.client;
     // A destroyed discord.js Client cannot be logged in again. Destroy first to
     // avoid overlapping gateway sessions delivering MESSAGE_CREATE twice.
-    oldClient.destroy();
+    await this.retireClient(oldClient);
+    if (!this.desiredRunning || epoch !== this.lifecycleEpoch) {
+      throw new Error("Discord gateway login superseded by lifecycle change");
+    }
 
     const client = this.clientFactory();
     const generation = ++this.clientGeneration;
@@ -911,7 +916,6 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     try {
       await client.login(this.botToken);
       if (!this.desiredRunning || epoch !== this.lifecycleEpoch || this.client !== client) {
-        client.destroy();
         throw new Error("Discord gateway login superseded by lifecycle change");
       }
       this.lastReconnectAt = this.now();
@@ -919,9 +923,17 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       this.healthStatus = client.isReady() ? "connected" : "starting";
       this.emitHealthChanged();
     } catch (err) {
-      client.destroy();
+      await this.retireClient(client);
       throw err;
     }
+  }
+
+  private retireClient(client: Client): Promise<void> {
+    return retireDiscordClient(client, error => this.reportRetiredSocketError(error));
+  }
+
+  private reportRetiredSocketError(error: Error): void {
+    console.warn(`[discord:${this.id}] retired gateway socket error: ${error.message}`);
   }
 
   /** Rebuild just this bot's gateway Client. Calls coalesce into one generation. */
@@ -1392,7 +1404,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     if (this.watchdogTimer) clearInterval(this.watchdogTimer);
     this.watchdogTimer = null;
     this.queue.stop();
-    this.client.destroy();
+    await this.retireClient(this.client);
   }
 
   // ── Text / file sending ────────────────────────────────────────────────

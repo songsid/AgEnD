@@ -25,7 +25,7 @@ function adapter() {
     inboxDir: mkdtempSync(join(tmpdir(), "agend-discord-foreign-")),
     guildId: "1496407196106494055",
     registerCommands: false,
-    clientFactory: () => ({ isReady: () => true, channels: { fetch }, on: () => {}, once: () => {} }) as any,
+    clientFactory: () => ({ isReady: () => true, channels: { fetch }, on: () => {}, once: () => {}, destroy: vi.fn(async () => {}) }) as any,
   } as any);
   return { a: a as any, fetch };
 }
