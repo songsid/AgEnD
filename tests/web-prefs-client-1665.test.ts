@@ -93,6 +93,23 @@ describe("the app's modules", () => {
   const ls = (k: string) => pg.storage.get(k) ?? null;
   const posts = () => requests.filter((r) => r.method === "POST").map((r) => r.body);
 
+  it("#2193: whether the person has a personal effect slot — from the page's data-prefs, then each host read; told on a change", async () => {
+    const A = "a".repeat(32);
+    const m = await boot({ storage: { agend_prefs_synced: "1" }, host: { theme: "light", "fx.page": A }, rev: 1 });
+    expect(m.ownerEffectsChosen()).toBe(true);
+    const told = vi.fn(); m.onOwnerEffectsChanged(told);
+    hostValues = { theme: "light" }; hostRev = 2; await m.refresh();
+    expect([m.ownerEffectsChosen(), told.mock.calls]).toEqual([false, [[false]]]);
+    hostRev = 3; await m.refresh(); expect(told).toHaveBeenCalledOnce();          // unchanged: not told again
+    hostValues = { theme: "light", "fx.cursor": A }; hostRev = 4; await m.refresh();
+    expect([m.ownerEffectsChosen(), told.mock.calls.at(-1)]).toEqual([true, [true]]);
+    expect(ls("agend_fx_page")).toBeNull();                                         // never cached on the device
+  });
+  it("#2193: none chosen, and no data-prefs (the public link's reader): false", async () => {
+    expect((await boot({ host: { theme: "dark" } })).ownerEffectsChosen()).toBe(false);
+    expect((await boot({ host: null })).ownerEffectsChosen()).toBe(false);
+  });
+
   // ── #1669 review r1 ──
   const ticks = async (n = 30) => { for (let i = 0; i < n; i++) await Promise.resolve(); };
   it("P2-2 ①: a read answered while this page's write is still out does not undo it, nor does the write's own answer", async () => {

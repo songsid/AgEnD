@@ -474,6 +474,10 @@ fleet.yaml (Developer tab, or the file) and `agend reload`.
 
 ### Canvas Worker playback diagnostics
 
+The effect player loads only when there is something to play: the open chat has a placed effect, the person chose a
+personal effect, or a Try card is shown (#2193). Before that, nothing of it is in the page, by design. Ambient effects
+and custom CSS never need it.
+
 If an effect cannot play, the Chat notice and Effects dialog show its local refusal code. A failed Try retains its stop
 code on the offer card; the browser console also names refusals. Include the code when reporting a problem. Long chat
 history is checked separately from the bounded set of current paint holes. Moving the pointer away does not stop Try;
