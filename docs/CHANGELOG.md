@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - **Custom CSS:** it keeps its safe rules. General can only put it on trial, revert the trial or turn it off; keeping it is still your own click on your screen.
   - **Who has the tools:** General, coordinators and full-profile instances. Other agents still change only their own look and propose mods.
   - **What stays on the page:** choosing a file from your computer, this browser's own switches and the card upload limits.
+- **Custom CSS General saves: it keeps it when you say so (#2056, #2198).** The entry above gives #2056's first rule. In 2.2.5, General keeps a stylesheet on trial when you tell it to in chat, and can put back one that has just gone back by itself; see "General can keep your custom CSS for you" under Changed and #2198 under Fixed.
 - **Web: agents' themes (#1629).** An agent can give its own web chat a look with the `set_web_theme` tools: colours for light and dark, accent, bubbles, font, a background picture, its own picture and its working label.
   - A theme changes only that agent's chat and its picture and ring in the sidebar. Values are checked on the host and again on the page, and pictures are served by the dashboard itself with their metadata removed.
   - In a chat's or Details' **⋯** menu, a signed-in admin can **Lock** or **Reset** an agent's theme; neither is offered over a temporary public link.
