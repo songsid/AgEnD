@@ -713,6 +713,7 @@ img.amb-p { object-fit: contain; }
 .webauth-row .webauth-ok:focus-visible, .webauth-row .webauth-ask:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 /* What pressing Authorize answered is said in the row, in the hint's place: nothing is laid over the composer. */
 .webauth-row .webauth-notice { white-space: normal; color: var(--text-2); }
+.webauth-row .webauth-notice::before { content: "·"; margin-right: var(--s-2); color: var(--text-3); }
 .composer-row:has(.webauth-notice) > .hint { display: none; }
 /* When "✓ Verified" ends, on a tap (touch has no hover): a bubble above the row while it has focus. */
 .webauth-tip { position: absolute; left: 0; bottom: calc(100% + 4px); z-index: 5; max-width: min(420px, calc(100vw - 32px)); white-space: normal;
