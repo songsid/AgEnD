@@ -88,6 +88,23 @@ describe("read once per version of the file", () => {
     renameSync(tmp, join(shared, "models_cache.json"));
     expect(readCodexEffortLevels(homes())).toEqual(["xhigh"]);
   });
+  it("replaced by a rename with the same size and mtime (only the inode, and ctime, differ): read again", () => {
+    const file = join(shared, "models_cache.json");
+    writeFileSync(file, cache({ "demo-a": ["high", "low"] })); age(file);
+    resetCodexMetadataCache();
+    expect(readCodexEffortLevels(homes())).toEqual(["high", "low"]);
+    const was = statSync(file), tmp = join(shared, "models_cache.json.tmp");
+    writeFileSync(tmp, cache({ "demo-a": ["low", "high"] })); utimesSync(tmp, was.atime, was.mtime);
+    renameSync(tmp, file);
+    expect([statSync(file).size, statSync(file).mtimeMs, statSync(file).ino === was.ino]).toEqual([was.size, was.mtimeMs, false]);
+    expect(readCodexEffortLevels(homes())).toEqual(["low", "high"]);
+  });
+  it("a slug listed twice: the first entry's levels, as before", () => {
+    const file = join(shared, "models_cache.json");
+    writeFileSync(file, JSON.stringify({ models: [{ slug: "demo-a", supported_reasoning_levels: [{ effort: "low" }] }, { slug: "demo-a", supported_reasoning_levels: [{ effort: "high" }] }] }));
+    age(file); resetCodexMetadataCache();
+    expect(readCodexEffortLevels(homes())).toEqual(["low"]);
+  });
   it("config.toml changed to another model: its levels on the next ask", () => {
     expect(readCodexEffortLevels(homes())).toEqual(["low", "high"]);
     writeFileSync(join(shared, "config.toml"), 'model = "demo-b"\n');
