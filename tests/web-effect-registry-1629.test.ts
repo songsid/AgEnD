@@ -84,6 +84,19 @@ function trial(h: ReturnType<typeof rig>, patch: any = {}) {
 
 afterEach(() => { for (const a of M.APIs) a.dispose?.(); M.APIs.length = 0; M.frames.length = 0; M.calibrations.length = 0; M.geometries.length = 0; });
 describe("#1629 shared Canvas Worker registry", () => {
+  it("#2188: nothing placed — an update, a publish and pointer input read no stock snapshot (a whole-page walk)", async () => {
+    const h = rig(); h.coverage.mockClear();
+    h.api.update([], gates()); h.api.publish("theme", { mode: "light" }); h.api.publish("state", { state: "idle" }, "own");
+    for (const type of ["pointermove", "pointerdown", "click", "wheel"]) h.emit(type, { isTrusted: true, clientX: 5, clientY: 5, buttons: 0, deltaX: 0, deltaY: 0 });
+    expect(h.coverage).not.toHaveBeenCalled();
+  });
+  it("#2188: a held frame is retired as superseded when nothing is placed any more, without a stock read; with a frame, publish reads it", async () => {
+    const h = rig(); const ds = await h.admit(); const frame = h.frames()[0]; frame.ready();
+    h.coverage.mockClear(); h.api.publish("theme", { mode: "dark" }); expect(h.coverage).toHaveBeenCalled();
+    h.coverage.mockClear(); h.api.update([], gates());
+    expect(h.coverage).not.toHaveBeenCalled(); expect(frame.remove).toHaveBeenCalledWith("superseded"); expect(h.api.snapshot()).toEqual([]);
+    void ds;
+  });
   it("Save-Data does not delay admission or retire a running frame", async () => {
     const h = rig(), ds = await h.admit(undefined, gates({ saveData: true }));
     expect(h.load).toHaveBeenCalledOnce(); const frame = h.frames()[0]; expect(frame).toBeDefined(); frame.ready();

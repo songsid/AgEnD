@@ -383,13 +383,13 @@ function fakeStream() {
 }
 /** The page's fetch: every call recorded; `respond` answers it (assign a new one to change the answer). */
 function fetchMock() {
-  const calls: Array<{ path: string; method: string; body?: any }> = [];
+  const calls: Array<{ path: string; method: string; body?: any; signal?: AbortSignal }> = [];
   const mock = {
     calls,
     respond: (_path: string, _body?: any): unknown => ({}),
-    fn: async (path: string, o: { method?: string; body?: string } = {}) => {
+    fn: async (path: string, o: { method?: string; body?: string; signal?: AbortSignal } = {}) => {
       const body = o.body ? JSON.parse(o.body) : undefined;
-      calls.push({ path, method: o.method ?? "GET", body });
+      calls.push({ path, method: o.method ?? "GET", body, ...(o.signal ? { signal: o.signal } : {}) });
       const value = await mock.respond(path, body);
       return { ok: true, status: 200, json: async () => value };
     },
@@ -416,6 +416,9 @@ describe("the chat panel (the real page modules)", () => {
     const app = await load("/assets/app-store.js");
     const shell = await load("/assets/app-shell.js");
     const panel = await load("/ui/js/panel-chat.js");
+    // #2188: a chat shown under THREAD_PASS_MS is passed through (not kept); unless a test says otherwise, each read of
+    // the clock is 5 s later (every chat here is stayed on).
+    let threadClock = 0; panel.setThreadClock(() => (threadClock += 5000));
     const fx = fetchMock();
     const toasts: Array<[string, boolean]> = [];
     const timers: Array<() => void> = [];        // the store's 60-second clocks: recorded, run only when a test says so
@@ -846,11 +849,62 @@ describe("the chat panel (the real page modules)", () => {
     list.getBoundingClientRect = () => ({ top: 0, left: 0, right: 0, bottom: h, width: 600, height: h });
     c.stream.emit("message", msg(41, "w", "two", { instance: "w" })); await settle();
     expect(Number.parseFloat(list.style["--thread-snap"])).toBeCloseTo(0.64, 6);
+    // #2188: the same height again writes nothing (a write would lay a long thread out again).
+    const set = vi.spyOn(list.style, "setProperty");
+    c.stream.emit("message", msg(43, "w", "same height", { instance: "w" })); await settle();
+    expect(set.mock.calls.filter(([k]) => k === "--thread-snap")).toEqual([]);
+    set.mockRestore();
     h = 2000;
     c.stream.emit("message", msg(42, "w", "three", { instance: "w" })); await settle();
     expect(list.style["--thread-snap"]).toBe("0px");
     const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8");
     expect(css).toContain(".thread { max-width: var(--col); margin: var(--thread-snap, 0px) auto 0;");
+  });
+  it("#2188: a history read for a chat left before it answered is aborted and not merged; the next visit reads again", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w"), inst("x")));
+    let answer!: (v: unknown) => void;
+    c.fx.respond = (path: string) => path.startsWith("/ui/history?instance=w") ? new Promise((r) => { answer = r; }) : { messages: [] };
+    await c.mount("w"); await settle();
+    const read = c.fx.calls.find((x) => x.path.startsWith("/ui/history?instance=w"))!;
+    expect(read.signal?.aborted).toBe(false);
+    await c.mount("x"); await settle();
+    expect(read.signal?.aborted, "left on the way to x: aborted").toBe(true);
+    answer({ messages: [msg(70, "w", "late history", { instance: "w" })] }); await settle();
+    expect((c.store().state.msgs.w ?? []).map((m: any) => m.text)).not.toContain("late history");
+    c.fx.respond = (path: string) => path.startsWith("/ui/history?instance=w") ? { messages: [msg(71, "w", "read again", { instance: "w" })] } : { messages: [] };
+    await c.mount("w"); await settle();
+    expect(c.fx.calls.filter((x) => x.path.startsWith("/ui/history?instance=w"))).toHaveLength(2);
+    expect(c.p.root.querySelector(".thread").textContent).toContain("read again");
+  });
+  it("#2188: passing through a chat (under THREAD_PASS_MS) does not keep it — the chats in use stay kept; a kept one passed through stays kept", async () => {
+    const c = await chatPage();
+    let t = 0; c.panel.setThreadClock(() => t);
+    const names = ["a", "b", ...Array.from({ length: 14 }, (_, i) => `p${i}`)];
+    c.stream.emit("status", frame(...names.map((n) => inst(n))));
+    for (const [i, n] of names.entries()) c.stream.emit("message", msg(80 + i, n, `hi ${n}`, { instance: n }));
+    const shown = async (n: string, stay: number) => { await c.mount(n); await settle(); const list = c.p.root.querySelector(".thread"); t += stay; return list; };
+    const a = await shown("a", 5000), b = await shown("b", 5000);
+    const passed: Record<string, unknown> = {};
+    for (const n of names.slice(2)) passed[n] = await shown(n, 100);   // 14 chats, 100 ms each: more than the 12 kept
+    expect(c.panel.THREAD_PASS_MS).toBe(1000);
+    expect(await shown("a", 100), "a: still kept (the same list)").toBe(a);
+    expect(await shown("p3", 5000), "p3 was passed through: drawn anew").not.toBe(passed.p3);
+    expect(await shown("b", 5000), "b: still kept").toBe(b);
+    // a was kept already: passing through it again (100 ms above) did not let it go.
+    expect(await shown("a", 5000)).toBe(a);
+  });
+  it("#2188: with the budget full (12 kept), passing through other chats lets none of the 12 go", async () => {
+    const c = await chatPage();
+    let t = 0; c.panel.setThreadClock(() => t);
+    const used = Array.from({ length: 12 }, (_, i) => `u${i}`), pass = Array.from({ length: 6 }, (_, i) => `q${i}`);
+    c.stream.emit("status", frame(...[...used, ...pass].map((n) => inst(n))));
+    for (const [i, n] of [...used, ...pass].entries()) c.stream.emit("message", msg(200 + i, n, `hi ${n}`, { instance: n }));
+    const lists: Record<string, unknown> = {};
+    const shown = async (n: string, stay: number) => { await c.mount(n); await settle(); const l = c.p.root.querySelector(".thread"); t += stay; return l; };
+    for (const n of used) lists[n] = await shown(n, 5000);
+    for (const n of pass) await shown(n, 100);
+    for (const n of used) expect(await shown(n, 5000), n).toBe(lists[n]);
   });
   it("#2184: a narrow screen keeps THREAD_KEEP_NARROW; a favourite outlives non-favourites shown after it", async () => {
     const c = await chatPage();

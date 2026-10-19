@@ -105,12 +105,23 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     const name = navStore.get().route?.instance, v = value.instances?.find(i => i.name === name)?.effect_chat_v;
     return typeof v === "string" && /^[a-f0-9]{32}$/.test(v) ? v : null;
   }
+  // #2188: whether a dialog, menu or popover is open — a whole-document query when none is (the usual case), asked
+  // several times per sync. Read once per task: the cached value is dropped at the next microtask, and whenever the
+  // document changes (the MutationObserver below drops it before it reads).
+  let modalCache = null;
+  function modalOpen() {
+    if (modalCache === null) {
+      modalCache = !!doc.querySelector("dialog[open],.menu-list,.pop,[role=alertdialog],.oc-keep,.shell.sb-open");
+      Promise.resolve().then(() => { modalCache = null; });
+    }
+    return modalCache;
+  }
   function context() {
     return { safe: safeMode(), publicLink: doc.body.dataset.publicLink === "1", reducedMotion: motionBlocked(host), saveData: host.navigator?.connection?.saveData === true,
       hidden: doc.visibilityState !== "visible", enabled: entry.api?.playbackAvailable !== false && typeof host.OffscreenCanvas === "function" && typeof host.Worker === "function" && typeof host.MutationObserver === "function" && typeof host.ResizeObserver === "function",
       show: themesShown(), transportReady: effectBootstrapReady(host, host.location?.origin, doc.body.dataset.effectBoot),
       constrained: constrainedDevice({ memory: host.navigator?.deviceMemory, cores: host.navigator?.hardwareConcurrency, coarse: coarse?.matches === true, width: host.innerWidth }),
-      modal: !!doc.querySelector("dialog[open],.menu-list,.pop,[role=alertdialog],.oc-keep,.shell.sb-open"), openInstance: null };
+      modal: modalOpen(), openInstance: null };
   }
   function trialCurrent(name) {
     const intent = trialIntent, nav = navStore.get();
@@ -221,6 +232,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     };
     const barriers = typeof host.MutationObserver === "function" ? new host.MutationObserver(records => {
       if (entry.dead) return;
+      modalCache = null;      // the document changed: a dialog may have opened or closed (read it again)
       const value = context().modal, drag = cursorDragging(); if (value !== modal || drag !== dragging) { modal = value; dragging = drag; sync(); }
       if (Array.isArray(records) && records.some(r => r.target?.closest?.("#app") || r.target === doc.getElementById?.("app"))) surfaceChanged();
     }) : null;

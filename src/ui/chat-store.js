@@ -61,9 +61,10 @@ export function createChatStore(deps) {
 
   /** Tell subscribers what changed: `kind` "msgs" (the thread redraws) or "state" (everything else). */
   function changed(instance, kind = "state") { for (const fn of [...subs]) fn(instance, kind); }
-  async function api(method, path, body) {
+  async function api(method, path, body, signal) {
     const o = { method, headers: { "Content-Type": "application/json" } };
     if (body) o.body = JSON.stringify(body);
+    if (signal) o.signal = signal;
     const r = await deps.fetch(path, o);
     return r.json();
   }
@@ -143,12 +144,17 @@ export function createChatStore(deps) {
     if (!r || !r.answered) deps.toast(r && r.error ? r.error : t("chat.disconnected"), false);
   }
 
-  /** Read an instance's history once per page (the first time a person opens its chat). */
-  async function openHistory(name, lease) {
-    if (s.historyRead.has(name)) return false;
+  /**
+   * Read an instance's history once per page (the first time a person opens its chat). #2188: `signal` — the chat was
+   * left before the answer came (clicking down the sidebar): the read is aborted, nothing is merged, and the next visit
+   * reads again.
+   */
+  async function openHistory(name, lease, signal) {
+    if (s.historyRead.has(name) || signal?.aborted) return false;
     s.historyRead.add(name);
     try {
-      const r = await api("GET", `/ui/history?instance=${encodeURIComponent(name)}&limit=200`);
+      const r = await api("GET", `/ui/history?instance=${encodeURIComponent(name)}&limit=200`, undefined, signal);
+      if (signal?.aborted) { s.historyRead.delete(name); return false; }
       if (!r || !Array.isArray(r.messages)) { s.historyRead.delete(name); return true; }
       // Kept even when the person has moved on: the store is page-lived, and the answer belongs to `name`.
       for (const m of r.messages) liveReplies.message(m);
