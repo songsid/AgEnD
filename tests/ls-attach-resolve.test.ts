@@ -3,7 +3,10 @@
  * Covers: CJK display names, row numbers, ambiguity, fuzzy suggestions.
  */
 import { describe, expect, it } from "vitest";
-import { resolveCandidate, applyLsFilters, pickerDefaultIdx, validateNamesOnlyFilters } from "../src/ls-attach-resolve.js";
+import {
+  resolveCandidate, applyLsFilters, pickerDefaultIdx, validateNamesOnlyFilters,
+  ambiguityLine, pickerLine,
+} from "../src/ls-attach-resolve.js";
 import type { Candidate, LsRow } from "../src/ls-attach-resolve.js";
 
 /** Build a minimal fleet candidate list (no tmux calls needed). */
@@ -361,39 +364,61 @@ describe("P2-4: pickerDefaultIdx uses first displayed candidate", () => {
 
 // ── Long real name never truncated in picker/ambiguity lines ─────────────────
 
-describe("long real names are never truncated in picker and ambiguity output", () => {
-  /** Capture console.log calls from a function. */
-  async function captureLog(fn: () => void): Promise<string[]> {
-    const lines: string[] = [];
-    const orig = console.log;
-    console.log = (...args: unknown[]) => lines.push(args.map(String).join(" "));
-    try { fn(); } finally { console.log = orig; }
-    return lines;
-  }
+describe("ambiguityLine and pickerLine: full real name, no truncation", () => {
+  const LONG = "rd1-a89-dev-fable-t1532671461406277715"; // 38 chars
+  const SHORT = "alpha-t1";
 
-  it("ambiguity message shows the full real name (no slice/truncation)", () => {
-    const longName = "rd1-a89-dev-fable-t1532671461406277715";  // 38 chars
-    const cs: Candidate[] = [
-      { idx: 3, realName: longName, displayLabel: "鑄碼副手 Fable", status: "running", teams: ["rd1"] },
-      { idx: 7, realName: "rd1-a89-dev-codex-t9999999999999", displayLabel: "鑄碼 Codex", status: "running", teams: ["rd1"] },
-    ];
-    // Both contain "rd1-a89" → ambiguous; the ambiguity printer must show fullName
-    const r = resolveCandidate("rd1-a89", cs);
-    expect(r.kind).toBe("ambiguous");
-    // Verify the long name is not sliced
-    if (r.kind === "ambiguous") {
-      expect(r.candidates.find(c => c.realName === longName)).toBeTruthy();
-      // The test for cli.ts printing is that we don't apply .slice() in the source —
-      // here we verify the candidate object carries the full name unmodified.
-      expect(r.candidates[0]!.realName.length).toBe(longName.length);
-    }
+  const cLong: Candidate = {
+    idx: 3, realName: LONG, displayLabel: "鑄碼副手 Fable",
+    status: "running", teams: ["rd1"],
+  };
+  const cShort: Candidate = {
+    idx: 7, realName: SHORT, displayLabel: "Alpha",
+    status: "paused", teams: [],
+  };
+
+  it("ambiguityLine contains the full 38-char real name", () => {
+    const line = ambiguityLine(cLong, LONG.length);
+    expect(line).toContain(LONG);
+    // The full name must be present; the line must NOT end at the 32-char truncation point
+    expect(line.includes(LONG.slice(0, 32) + "2")).toBe(true); // char 33 is "2"
+    expect(line).toContain("(鑄碼副手 Fable)");
+    expect(line).toContain("[running]");
+    expect(line).toContain("rd1");
   });
 
-  it("resolveCandidate returns full realName in exact result", () => {
-    const longName = "agend-dev1-t1503382407284265082";
-    const cs = fleet({ name: longName, displayLabel: "agend-dev1-t265082" });
-    const r = resolveCandidate("agend-dev1-t265082", cs);
-    expect(r.kind).toBe("exact");
-    if (r.kind === "exact") expect(r.candidate.realName).toBe(longName);
+  it("ambiguityLine omits display suffix when label equals realName", () => {
+    const c: Candidate = { idx: 1, realName: "general", displayLabel: "general", status: "running", teams: [] };
+    const line = ambiguityLine(c, "general".length);
+    expect(line).not.toContain("(general)");
+  });
+
+  it("pickerLine contains the full real name, status glyph, and teams", () => {
+    const line = pickerLine(cLong, LONG.length);
+    expect(line).toContain(LONG);
+    expect(line).toContain("●");
+    expect(line).toContain("(鑄碼副手 Fable)");
+    expect(line).toContain("rd1");
+  });
+
+  it("pickerLine uses ○ for paused", () => {
+    const line = pickerLine(cShort, SHORT.length);
+    expect(line).toContain("○");
+    expect(line).toContain(SHORT);
+    // Alpha != SHORT so... wait SHORT == "alpha-t1", displayLabel == "Alpha" — different!
+    expect(line).toContain("(Alpha)");
+  });
+
+  it("names are padded to maxNameW so status/teams columns align", () => {
+    const maxW = Math.max(LONG.length, SHORT.length); // = 38
+    // Use candidates where displayLabel === realName (no suffix) for clean alignment check
+    const cA: Candidate = { idx: 3, realName: LONG,  displayLabel: LONG,  status: "running", teams: ["rd1"] };
+    const cB: Candidate = { idx: 7, realName: SHORT, displayLabel: SHORT, status: "paused",  teams: [] };
+    const lineA = ambiguityLine(cA, maxW);
+    const lineB = ambiguityLine(cB, maxW);
+    // Both should have the same position for the [status] bracket
+    const posA = lineA.indexOf("[");
+    const posB = lineB.indexOf("[");
+    expect(posA).toBe(posB);
   });
 });

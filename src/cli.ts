@@ -2906,10 +2906,10 @@ async function resolveInstance(query: string | undefined, config: import("./type
   if (result.kind === "ambiguous") {
     if (process.stdin.isTTY && process.stdout.isTTY) {
       console.log(`"${query}" matches multiple instances:`);
+      const { ambiguityLine } = await import("./ls-attach-resolve.js");
+      const maxNameW = Math.max(...result.candidates.map(c => c.realName.length));
       for (const c of result.candidates) {
-        const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
-        const dispSuffix = c.displayLabel !== c.realName ? `  (${c.displayLabel})` : "";
-        console.log(`  ${String(c.idx).padStart(2)}) ${c.realName}${dispSuffix}  [${c.status}]  ${teams}`);
+        console.log(ambiguityLine(c, maxNameW));
       }
       return interactivePicker(result.candidates);
     }
@@ -2939,12 +2939,12 @@ async function interactivePicker(candidates: import("./ls-attach-resolve.js").Ca
   const { pickerDefaultIdx } = await import("./ls-attach-resolve.js");
   const defaultIdx = pickerDefaultIdx(ordered);
 
+  const { pickerLine } = await import("./ls-attach-resolve.js");
+  const maxNameW = Math.max(...ordered.map(c => c.realName.length));
+
   console.log("Select an instance:");
   for (const c of ordered) {
-    const statusGlyph = c.status === "running" ? "●" : c.status === "paused" ? "○" : "✗";
-    const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
-    const dispSuffix = c.displayLabel !== c.realName ? `  (${c.displayLabel})` : "";
-    console.log(`  ${String(c.idx).padStart(2)}) ${statusGlyph} ${c.realName}${dispSuffix}  ${teams}`);
+    console.log(pickerLine(c, maxNameW));
   }
 
   const { createInterface } = await import("node:readline");

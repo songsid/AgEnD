@@ -157,6 +157,28 @@ export function pickerDefaultIdx(displayedCandidates: Pick<Candidate, "idx">[]):
 }
 
 /**
+ * Format one line of the ambiguity candidate list.
+ * `maxNameW` is the max real-name width across all displayed candidates —
+ * each name is padded to that width so [status] and teams columns align.
+ */
+export function ambiguityLine(c: Candidate, maxNameW: number): string {
+  const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
+  const dispSuffix = c.displayLabel !== c.realName ? `  (${c.displayLabel})` : "";
+  return `  ${String(c.idx).padStart(2)}) ${c.realName.padEnd(maxNameW)}${dispSuffix}  [${c.status}]  ${teams}`;
+}
+
+/**
+ * Format one line of the interactive picker list.
+ * `maxNameW` is the max real-name width across all displayed candidates.
+ */
+export function pickerLine(c: Candidate, maxNameW: number): string {
+  const statusGlyph = c.status === "running" ? "●" : c.status === "paused" ? "○" : "✗";
+  const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
+  const dispSuffix = c.displayLabel !== c.realName ? `  (${c.displayLabel})` : "";
+  return `  ${String(c.idx).padStart(2)}) ${statusGlyph} ${c.realName.padEnd(maxNameW)}${dispSuffix}  ${teams}`;
+}
+
+/**
  * Validate that `--names-only` (shell completion fast path) is not combined
  * with filters. Returns an error string to print, or null if OK.
  * Pure so the CLI dispatch path can be tested without spawning a subprocess.
