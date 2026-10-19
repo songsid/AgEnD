@@ -59,6 +59,7 @@ import { readFleetMemory, type FleetMemory } from "./process-memory.js";
 import { MemoryPressure, type MemoryPressureSnapshot } from "./memory-pressure.js";
 import { replyDedupText, ReplyDeduper } from "./reply-dedup.js";
 import { isMap, isScalar, parseDocument } from "yaml";
+import { changedOutside, detachForWrite } from "./yaml-shared-nodes.js";
 import { kiroLogGate } from "./kiro-log-gate.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -999,6 +1000,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   fleetConfig: FleetConfig | null = null;
   private rawFleetConfig: RawFleetConfig = {};
   private rawFleetDocument: ReturnType<typeof parseDocument> | null = null;
+  /** #2208: the paths a saveFleetConfig() wrote, for its check that nothing else changed. */
+  private fleetDocumentWrites: Array<Array<string | number>> | null = null;
   private savedFleetConfigSnapshot: FleetConfig | null = null;
   adapter: ChannelAdapter | null = null;
   readonly worlds = new Map<string, AdapterWorld>();
@@ -11254,7 +11257,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       throw new Error(`Refusing to overwrite invalid fleet.yaml: ${this.rawFleetDocument.errors[0].message}`);
     }
     this.rawFleetConfig = loadRawFleetConfig(this.configPath);
-
+    // #2208: what the file says before this save, aliases expanded — every write below is recorded, and anything that
+    // changes outside them (a place sharing a node with one written) refuses the save.
+    const fileBefore = this.rawFleetDocument.toJS({ maxAliasCount: -1 });
+    const writes: Array<Array<string | number>> = this.fleetDocumentWrites = [];      // a throw below leaves it to the next save
     this.patchFleetDocument(
       this.rawFleetDocument,
       [],
@@ -11271,6 +11277,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // (or a legacy scalar occupies that parent). Removing an override which
         // is already absent is an idempotent no-op, not a failed Settings save.
         if (this.rawFleetDocument.hasIn(patch.path)) {
+          this.writingFleetDocument(this.rawFleetDocument, patch.path);
           this.rawFleetDocument.deleteIn(patch.path);
         }
       } else {
@@ -11282,16 +11289,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const rawAfterPatches = this.rawFleetDocument.toJS() as RawFleetConfig;
     const redundantPaths = collectRedundantInstanceDefaultPaths(rawAfterPatches);
     for (const path of redundantPaths) {
-      if (this.rawFleetDocument.hasIn(path)) this.rawFleetDocument.deleteIn(path);
+      if (this.rawFleetDocument.hasIn(path)) { this.writingFleetDocument(this.rawFleetDocument, path); this.rawFleetDocument.deleteIn(path); }
       // Avoid leaving empty operational maps such as `terminal: {}` while
       // preserving the instance mapping itself and all surrounding comments.
       for (let depth = path.length - 1; depth > 2; depth--) {
         const parentPath = path.slice(0, depth);
         const parent = this.rawFleetDocument.getIn(parentPath, true);
         if (!isMap(parent) || parent.items.length > 0) break;
+        this.writingFleetDocument(this.rawFleetDocument, parentPath);
         this.rawFleetDocument.deleteIn(parentPath);
       }
     }
+    this.fleetDocumentWrites = null;
+    const stray = changedOutside(fileBefore, this.rawFleetDocument.toJS({ maxAliasCount: -1 }), writes);
+    if (stray) throw new Error(`Refusing to save fleet.yaml: this change would also change ${stray}, which shares a value with what it edits. Give each its own value in fleet.yaml.`);
 
     noteSettingsWrite(this.configPath, this.savedFleetConfigSnapshot, this.fleetConfig);
     const output = String(this.rawFleetDocument);
@@ -11405,9 +11416,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Remove from the end so YAML sequence indexes do not shift underneath us.
       for (let i = before.length - 1; i >= after.length; i--) {
         const itemPath = [...path, i];
-        if (document.hasIn(itemPath)) document.deleteIn(itemPath);
+        if (document.hasIn(itemPath)) { this.writingFleetDocument(document, itemPath); document.deleteIn(itemPath); }
       }
-      for (let i = shared; i < after.length; i++) document.setIn([...path, i], after[i]);
+      for (let i = shared; i < after.length; i++) { this.writingFleetDocument(document, [...path, i]); document.setIn([...path, i], after[i]); }
       return;
     }
 
@@ -11425,6 +11436,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (isMap(fresh)) {
           const list = document.createNode([]) as ReturnType<typeof document.createNode> & { items: unknown[] };
           list.items.push(fresh.clone());
+          this.writingFleetDocument(document, ["channels"]);
           document.setIn(["channels"], list);
         }
       }
@@ -11445,10 +11457,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Effective config contains inherited objects that may not exist in the
       // raw YAML at all. yaml.deleteIn() is not idempotent for a missing nested
       // parent, so guard it explicitly.
-      if (document.hasIn(path)) document.deleteIn(path);
+      if (document.hasIn(path)) { this.writingFleetDocument(document, path); document.deleteIn(path); }
     } else if (path.length === 0) {
+      this.writingFleetDocument(document, path);
       document.contents = document.createNode(after);
     } else {
+      this.writingFleetDocument(document, path);
       const currentNode = document.getIn(path, true);
       if (isScalar(currentNode) && (after === null || typeof after !== "object")) {
         currentNode.value = after;
@@ -11461,6 +11475,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           : after);
       }
     }
+  }
+
+  /**
+   * #2208: before every write to the raw document — the place is unshared first (an alias on the way becomes its own
+   * copy; an anchor's other aliases get theirs), so the write changes that place only; and it is recorded for the
+   * save's check that nothing else changed.
+   */
+  private writingFleetDocument(document: ReturnType<typeof parseDocument>, path: Array<string | number>): void {
+    detachForWrite(document, path);
+    this.fleetDocumentWrites?.push([...path]);
   }
 
   getSettingsConfigPath(): string { return this.configPath; }
