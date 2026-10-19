@@ -95,7 +95,9 @@ try {
       await page.evaluate(()=>(window as any).stock.dialog());await page.locator('dialog[open]').waitFor();assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().front),false);overlays.push('native-dialog');await page.evaluate(()=>(window as any).stock.closeDialog());
       await page.evaluate(()=>(window as any).stock.keep());await page.locator('.oc-keep').waitFor();assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().front),false);overlays.push('keep');await page.evaluate(()=>(window as any).stock.revert());
       await page.evaluate(()=>(window as any).stock.tour());await page.locator('#tour').waitFor();assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().front),false);overlays.push('tour-portal');await page.evaluate(()=>(window as any).stock.stopTour());
-      await page.locator('.composer textarea').focus();assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().front),false);overlays.push('composer-focus');await page.locator('.composer textarea').blur();
+      // #2129: the stock composer's focus no longer blocks unrelated drawing (its protected pixels and editable-focus pointer
+      // denial stay — checked by their own probes); #2220: this probe had kept the old rule.
+      await page.locator('.composer textarea').focus();assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().front),true);overlays.push('composer-focus');await page.locator('.composer textarea').blur();
       if(width<900){await page.evaluate(()=>(window as any).stock.openDrawer());assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().front),false);overlays.push('drawer');await page.evaluate(()=>(window as any).stock.closeDrawer());}
       const controls=[];
       for(const change of ['missing-trust','root-z','negative-content','isolation','transform']){
@@ -122,15 +124,20 @@ try {
       await page.locator('.tc-show').click();await page.waitForFunction(()=>document.querySelectorAll('.thread .pv-note').length>=3);
       const noteKinds=await page.locator('.thread .pv-note').evaluateAll(xs=>xs.map(x=>x.getAttribute('data-trust')));assert.ok(noteKinds.every(x=>x==='thread-control'));
       for(const index of [0,2]){await page.locator('.thread .pv-note').nth(index).scrollIntoViewIfNeeded();const noteBase=await page.screenshot(),np=await page.locator('.thread .pv-note').nth(index).evaluate(el=>{const r=el.getBoundingClientRect();return{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2)};});assert.equal(await page.evaluate(()=>(window as any).stock.paint('front')),true);const noteFront=await page.screenshot();assert.deepEqual(pixel(noteFront,np.x,np.y),pixel(noteBase,np.x,np.y));await page.evaluate(()=>(window as any).stock.removePaint());await page.locator('.thread .pv-note').nth(index).evaluate(x=>x.removeAttribute('data-trust'));assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().ok),false);await page.locator('.thread .pv-note').nth(index).evaluate(x=>x.setAttribute('data-trust','thread-control'));}
-      // Actual inert host offer renderer: text is protected paint, never a Start action or effect execution.
+      // Actual host offer renderer: its text is protected paint and never markup. #2041: a signed-in local admin's card has
+      // the host's own Try button (an explicit click is the consent); #2193: the card is drawn once while the effects
+      // runtime wakes ("checking") and again with the runtime's answer — so it is located after that settles (#2220).
       await page.evaluate(() => (window as any).stock.store.ingest({boot:'probe',id:900,instance:'worker',role:'status',sender:'agend',text:'Host trial offer',ts:new Date().toISOString(),effectTrial:{v:1,offer:'e'.repeat(32),id:'f'.repeat(32),title:'<b>Host offer</b>',expiresAt:Date.now()+600000}}));
-      const card=page.locator('.thread .effect-trial-offer');await card.waitFor();await card.scrollIntoViewIfNeeded();
-      assert.equal(await card.getAttribute('data-trust'),'thread-control');assert.equal(await card.locator('b,button,a,iframe,canvas,input').count(),0);
+      const checking=lang==='zh-TW'?'正在確認工作階段':'Checking this session';
+      await page.waitForFunction(c=>{const el=document.querySelector('.thread .effect-trial-offer');return !!el&&!(el.textContent||'').includes(c);},checking,{timeout:15000});
+      const card=page.locator('.thread .effect-trial-offer');await card.scrollIntoViewIfNeeded();
+      assert.equal(await card.getAttribute('data-trust'),'thread-control');assert.equal(await card.locator('b,a,iframe,canvas,input').count(),0);
+      const offerButtons=await card.locator('button').evaluateAll(xs=>xs.map(x=>x.className));assert.ok(offerButtons.every(c=>c==='btn btn-sm effect-trial-start'),'only the host Try button: '+offerButtons.join());
       assert.equal(await card.locator('strong').textContent(),(lang==='zh-TW'?'效果試播':'Effect trial')+': <b>Host offer</b>');
       const offerBase=await page.screenshot(),offerPoints=await card.evaluate(el=>{const r=el.getBoundingClientRect();return[{x:Math.floor(r.x+3),y:Math.floor(r.y+3)},{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2)},{x:Math.floor(r.right-3),y:Math.floor(r.bottom-3)}];});
       assert.equal(await page.evaluate(()=>(window as any).stock.paint('front')),true);const offerFront=await page.screenshot();
       for(const point of offerPoints)assert.deepEqual(pixel(offerFront,point.x,point.y),pixel(offerBase,point.x,point.y),'offer protected pixel');
-      await page.evaluate(()=>(window as any).stock.removePaint());const beforeOfferClick=actions.length;await card.click();assert.equal(actions.length,beforeOfferClick);
+      await page.evaluate(()=>(window as any).stock.removePaint());const beforeOfferClick=actions.length;await card.locator('strong').click();assert.equal(actions.length,beforeOfferClick);
       for(const marker of [null,'reply']){await card.evaluate((el,value)=>value===null?el.removeAttribute('data-trust'):el.setAttribute('data-trust',value),marker);assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().ok),false);await card.evaluate(el=>el.setAttribute('data-trust','thread-control'));}
       assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().ok),true);
       // Main carry: the actual click chip is a protected stock control, including its full child paint.
