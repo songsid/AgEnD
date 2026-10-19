@@ -238,7 +238,12 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   }, [themeKey]);
   useEffect(() => { wrapListeners.add(setWrap); return () => wrapListeners.delete(setWrap); }, []);
   // First visit to this instance's chat on this page: its history (a navigation — it counts as use). Back again: nothing.
-  useEffect(() => { store.openHistory(name, lease); }, [name]);
+  // #2188: left before it answered (passing through on the way to another chat) — the read is aborted.
+  useEffect(() => {
+    const ac = typeof AbortController === "function" ? new AbortController() : null;
+    store.openHistory(name, lease, ac?.signal);
+    return () => ac?.abort();
+  }, [name]);
   useEffect(() => { try { localStorage.setItem("agend_last_instance", name); } catch { /* none */ } }, [name]);
   // Files dragged over the chat show where they go; a drop attaches them (counted, so moving over messages does not flicker).
   useEffect(() => {
@@ -332,6 +337,15 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
 export const THREAD_KEEP = 12;
 export const THREAD_KEEP_NARROW = 6;
 export const THREAD_KEEP_NODES = 2400;
+/**
+ * #2188: a chat shown for less than this, on the way to another (clicking down the sidebar), is not kept: it is let go
+ * as it leaves, so passing through chats never evicts the ones in use. One that was already kept stays kept.
+ */
+export const THREAD_PASS_MS = 1000;
+const monotonic = () => (typeof performance === "object" && typeof performance.now === "function" ? performance.now() : Date.now());
+let now = monotonic;
+/** Tests only: the clock THREAD_PASS_MS is measured on (null: the page's monotonic clock). */
+export function setThreadClock(fn) { now = typeof fn === "function" ? fn : monotonic; }
 /**
  * The kept threads to let go, in order. `kept`: [name, drawn messages], least recently shown first; `current`: the
  * one on screen (never let go).
@@ -428,7 +442,9 @@ function Thread({ name, th }) {
     if (e) keptThreads.delete(name);
     else e = threadEntry(name, doc);
     keptThreads.set(name, e);                                              // the most recent last
-    trimKept(name);
+    // A thread already kept is trimmed against at once; a new one first has to stay (see THREAD_PASS_MS).
+    if (kept) trimKept(name);
+    const shownAt = now();
     const thread = e.thread, sc = scroller.current, ls = e.list;
     e.sink = { setJump, setEmpty };
     host.current.append(ls);
@@ -447,7 +463,9 @@ function Thread({ name, th }) {
       ls.removeEventListener("click", thread.onClick);
       e.sink = null;
       th.current = null;
-      if (keptThreads.get(name) === e) { thread.park(); ls.remove(); }   // kept for a later visit: the chat left
+      // Passed through (new, and shown under THREAD_PASS_MS): let go. Otherwise kept for a later visit, within the budget.
+      if (keptThreads.get(name) === e && !kept && now() - shownAt < THREAD_PASS_MS) { keptThreads.delete(name); letGo(e, false); }
+      else if (keptThreads.get(name) === e) { thread.park(); ls.remove(); trimKept(null); }   // kept for a later visit: the chat left
       else letGo(e, false);                                                // let go meanwhile (a new language)
     };
   }, [name]);

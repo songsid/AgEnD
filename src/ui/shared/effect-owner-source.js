@@ -74,7 +74,14 @@ export function createOwnerEffectSource({ current, readMetadata, readResource, r
     },
     descriptors() {
       if (!alive() || !metadata || error) return [];
-      const body = metadata, gen = generation, proof = safe(() => effectStockSnapshot(stock()));
+      const body = metadata, gen = generation;
+      // #2188: the stock snapshot walks the whole page (thousands of computed styles). With no slot holding an effect
+      // that could play, there is nothing for it to admit: skipped — every page change (a status, a chat switch) ran it.
+      if (!SLOTS.some(slot => body.slots[slot]?.status === "available" && failed.get(slot) !== body.slots[slot].id)) {
+        for (const slot of SLOTS) drop(slot);
+        return [];
+      }
+      const proof = safe(() => effectStockSnapshot(stock()));
       if (!fresh(body, gen)) return [];
       if (!proof) { clear(); return []; }
       const result = [];

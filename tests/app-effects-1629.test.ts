@@ -82,6 +82,14 @@ describe("#1629 app lifetime effect bridge", () => {
     const h = await rig(); env.nav.set({ seq: 2, route: { panel: "chat", instance: "a" } }); h.entry.attachChat({ name: "a", current: () => true }); const old = h.parts[0];
     env.nav.set({ seq: 3, route: { panel: "chat", instance: "a" } }); expect(old.current()).toBe(false); expect(h.api.detachChat).toHaveBeenCalledTimes(3); h.entry.dispose();
   });
+  it("#2188: the dialog check (a whole-document query) is read once per task; a microtask or a DOM change reads it again", async () => {
+    const h = await rig(); let open = false; const q = vi.fn(() => (open ? {} : null)); h.doc.querySelector = q; await Promise.resolve();
+    q.mockClear(); expect(h.entry.gates().modal).toBe(false); expect(h.entry.gates().modal).toBe(false); expect(q).toHaveBeenCalledOnce();
+    open = true; expect(h.entry.gates().modal, "same task: the value read").toBe(false);
+    await Promise.resolve(); expect(h.entry.gates().modal, "next microtask: read again").toBe(true); expect(q).toHaveBeenCalledTimes(2);
+    open = false; h.observer.fn(); expect(h.entry.gates().modal, "after a DOM change: read again").toBe(false);
+    h.entry.dispose();
+  });
   it("the global barrier observer syncs once per actual modal transition and retains optional device gates", async () => {
     const h = await rig(); h.api.sync.mockClear(); h.doc.querySelector = () => ({}); h.observer.fn(); h.observer.fn(); expect(h.api.sync).toHaveBeenCalledOnce(); expect(h.entry.gates().modal).toBe(true);
     h.doc.querySelector = () => null; h.observer.fn(); expect(h.api.sync).toHaveBeenCalledTimes(2); h.media.matches = true; h.host.navigator.connection.saveData = true; env.safe = true;

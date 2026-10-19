@@ -8,10 +8,23 @@ const body = (id = A, rev = 1) => ({ rev, slots: { ...Object.fromEntries(slots.m
 const held = () => { let resolve!: (value: any) => void; const promise = new Promise<any>(r => { resolve = r; }); return { resolve, promise }; };
 function rig() {
   let live = true; const elements: any = Object.fromEntries(slots.map(slot => [slot, { isConnected: true }])), change = vi.fn(), unavailable = vi.fn(), data: any = { value: body(), proof: { ok: true, front: true, agentFront: true, rects: [] } };
-  const options = { current: () => live, readMetadata: vi.fn(async (_signal: any): Promise<any> => data.value), readResource: vi.fn(async (spec: any, _signal: any): Promise<any> => ({ id: spec.id, params: {} })), resolveTarget: vi.fn((slot: string) => elements[slot]), stock: () => data.proof, onChange: change, onUnavailable: unavailable };
+  const options = { current: () => live, readMetadata: vi.fn(async (_signal: any): Promise<any> => data.value), readResource: vi.fn(async (spec: any, _signal: any): Promise<any> => ({ id: spec.id, params: {} })), resolveTarget: vi.fn((slot: string) => elements[slot]), stock: vi.fn(() => data.proof), onChange: change, onUnavailable: unavailable };
   const api = createOwnerEffectSource(options); return { api, elements, options, data, change, unavailable, stale() { live = false; } };
 }
 describe("#1629 optional personal effect source model", () => {
+  it("#2188: no slot holds an effect that could play — no stock snapshot (a whole-page walk) is read; one that does reads it", async () => {
+    const none = { rev: 1, slots: { ...Object.fromEntries(slots.map(slot => [slot, { status: "none", id: null }])), "fx.cursor": { status: "none", id: null } } };
+    const h = rig(); h.data.value = none; expect(await h.api.read()).toBe(true);
+    expect(h.api.descriptors()).toEqual([]); expect(h.options.stock).not.toHaveBeenCalled(); expect(h.options.resolveTarget).not.toHaveBeenCalled();
+    // An available one that already failed here counts as none, too.
+    const failedOnly = rig(); await failedOnly.api.read(); const row = failedOnly.api.descriptors()[0];
+    for (const r of failedOnly.api.descriptors()) { failedOnly.options.readResource.mockResolvedValueOnce(null); await failedOnly.api.load(failedOnly.api.binding(r.key, A)); }
+    failedOnly.options.stock.mockClear(); expect(failedOnly.api.descriptors()).toEqual([]); expect(failedOnly.options.stock).not.toHaveBeenCalled(); void row;
+    // One available: read as before.
+    const one = rig(); one.data.value = { ...none, slots: { ...none.slots, "fx.box": { status: "available", id: A, manifest: manifest() } } };
+    await one.api.read(); expect(one.api.descriptors().map((r: any) => r.region)).toEqual(["box"]); expect(one.options.stock).toHaveBeenCalledOnce();
+    h.api.dispose(); failedOnly.api.dispose(); one.api.dispose();
+  });
   it("is a static inert helper and does no eager I/O or target resolution", () => { const h = rig(); expect(h.api.ok).toBe(true); expect(isServedAsset("effect-owner-source.js")).toBe(true); expect(h.options.readMetadata).not.toHaveBeenCalled(); expect(h.options.resolveTarget).not.toHaveBeenCalled(); h.api.dispose(); });
   it("projects four human owner descriptors in fixed order, never cursor, Chat instance or agent provenance", async () => {
     const h = rig(); expect(await h.api.read()).toBe(true); const rows = h.api.descriptors(); expect(rows.map((r: any) => r.region)).toEqual(["page", "header", "sidebar", "box"]); expect(new Set(rows.map((r: any) => r.key)).size).toBe(4);
