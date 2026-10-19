@@ -5,7 +5,7 @@
  */
 
 export interface Candidate {
-  /** 1-based row number as shown in `agend ls`. */
+  /** 1-based global row number as shown in `agend ls` — stable across filters. */
   idx: number;
   realName: string;
   /** The display label `agend ls` shows (display_name or shortened real name). */
@@ -23,8 +23,10 @@ export type ResolveResult =
  * Resolve a query string against an ordered candidate list.
  *
  * Resolution order:
- *  1. Integer string → 1-based row number from `agend ls`.
- *  2. Exact real name (case-insensitive).
+ *  1. Exact real name (case-insensitive) — wins over everything, including
+ *     digit-string real names (prevents numeric instance names from being
+ *     mistaken for row numbers).
+ *  2. Integer string → 1-based global row number from `agend ls`.
  *  3. Exact display label (case-insensitive).
  *  4. Unique substring of display label (case-insensitive).
  *  5. Unique prefix of real name (case-insensitive).
@@ -35,17 +37,18 @@ export type ResolveResult =
 export function resolveCandidate(query: string, candidates: Candidate[]): ResolveResult {
   const q = query.trim().toLowerCase();
 
-  // 1. Row number
+  // 1. Exact real name ALWAYS wins — must come before integer check so that
+  //    a numeric instance name like "2" is not consumed as a row number.
+  const exactReal = candidates.find(c => c.realName.toLowerCase() === q);
+  if (exactReal) return { kind: "exact", candidate: exactReal };
+
+  // 2. Row number — only when query is all digits AND no exact real name matched.
   if (/^\d+$/.test(q)) {
     const idx = parseInt(q, 10);
     const found = candidates.find(c => c.idx === idx);
     if (found) return { kind: "exact", candidate: found };
     return { kind: "none", suggestions: fuzzyTopN(q, candidates) };
   }
-
-  // 2. Exact real name
-  const exactReal = candidates.find(c => c.realName.toLowerCase() === q);
-  if (exactReal) return { kind: "exact", candidate: exactReal };
 
   // 3. Exact display label
   const exactDisp = candidates.filter(c => c.displayLabel.toLowerCase() === q);
@@ -71,13 +74,16 @@ export function resolveCandidate(query: string, candidates: Candidate[]): Resolv
   return { kind: "none", suggestions: fuzzyTopN(q, candidates) };
 }
 
-/** Top-N candidates by longest common subsequence score. */
+/** Top-N candidates by character-bag overlap score.
+ * charOverlapScore counts characters shared between the two strings (respecting
+ * multiplicity). Unlike a greedy subsequence approach, a single leading-char
+ * typo does not drop the score to zero. */
 function fuzzyTopN(q: string, candidates: Candidate[], n = 5): Candidate[] {
   const scored = candidates.map(c => ({
     c,
     score: Math.max(
-      lcsLength(q, c.realName.toLowerCase()),
-      lcsLength(q, c.displayLabel.toLowerCase()),
+      charOverlapScore(q, c.realName.toLowerCase()),
+      charOverlapScore(q, c.displayLabel.toLowerCase()),
     ),
   }));
   return scored
@@ -87,12 +93,50 @@ function fuzzyTopN(q: string, candidates: Candidate[], n = 5): Candidate[] {
     .map(s => s.c);
 }
 
-/** Greedy longest common subsequence length. */
-function lcsLength(a: string, b: string): number {
-  let ai = 0, bi = 0, count = 0;
-  while (ai < a.length && bi < b.length) {
-    if (a[ai] === b[bi]) { count++; ai++; bi++; }
-    else bi++;
+/** Character-bag overlap: number of chars in `a` that also appear in `b`
+ * (counting multiplicity). Tolerant of leading-char typos. */
+function charOverlapScore(a: string, b: string): number {
+  const freq = new Map<string, number>();
+  for (const c of b) freq.set(c, (freq.get(c) ?? 0) + 1);
+  let score = 0;
+  for (const c of a) {
+    const n = freq.get(c) ?? 0;
+    if (n > 0) { score++; freq.set(c, n - 1); }
   }
-  return count;
+  return score;
+}
+
+// ── Filter helpers for ls — extracted so tests can cover the filter path ──────
+
+export interface LsRow {
+  globalIdx: number;
+  realName: string;
+  displayLabel: string;
+  status: string;
+  teams: string[];
+  backend: string;
+}
+
+/**
+ * Apply ls CLI filters to a row array that already carries stable globalIdx
+ * values. The global indices are NOT renumbered after filtering, so `attach N`
+ * always selects the same instance regardless of which filters ls used.
+ */
+export function applyLsFilters(
+  rows: LsRow[],
+  opts: { running?: boolean; team?: string; backend?: string },
+): LsRow[] {
+  let result = rows;
+  if (opts.running) result = result.filter(r => r.status === "running");
+  if (opts.team) {
+    const t = opts.team.toLowerCase();
+    result = result.filter(r => r.teams.some(team => team.toLowerCase() === t));
+  }
+  if (opts.backend) result = result.filter(r => r.backend === opts.backend);
+  return result;
+}
+
+/** Return the global idx to use as the picker default (first displayed row). */
+export function pickerDefaultIdx(displayedCandidates: Pick<Candidate, "idx">[]): number {
+  return displayedCandidates[0]?.idx ?? 1;
 }

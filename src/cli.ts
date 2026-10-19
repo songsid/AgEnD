@@ -2935,6 +2935,9 @@ async function interactivePicker(candidates: import("./ls-attach-resolve.js").Ca
   const rest = candidates.filter(c => c.status !== "running");
   const ordered = [...running, ...rest];
 
+  const { pickerDefaultIdx } = await import("./ls-attach-resolve.js");
+  const defaultIdx = pickerDefaultIdx(ordered);
+
   console.log("Select an instance:");
   for (const c of ordered) {
     const statusGlyph = c.status === "running" ? "●" : c.status === "paused" ? "○" : "✗";
@@ -2944,9 +2947,9 @@ async function interactivePicker(candidates: import("./ls-attach-resolve.js").Ca
 
   const { createInterface } = await import("node:readline");
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const answer = await new Promise<string>(resolve => rl.question("\nRow number or name [1]: ", resolve));
+  const answer = await new Promise<string>(resolve => rl.question(`\nRow number or name [${defaultIdx}]: `, resolve));
   rl.close();
-  const trimmed = answer.trim() || "1";
+  const trimmed = answer.trim() || String(defaultIdx);
 
   // Accept a number or re-run resolution.
   const { resolveCandidate } = await import("./ls-attach-resolve.js");
@@ -3200,18 +3203,31 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
       }
     } catch { /* fleet not running or API unreachable */ }
 
-    if (opts.json) {
-      console.log(JSON.stringify(rows, null, 2));
-      return;
-    }
+    // Assign stable global indices BEFORE any filtering (#P2-1 — filters must not
+    // renumber rows, so `agend attach N` always resolves the same instance).
+    const { applyLsFilters } = await import("./ls-attach-resolve.js");
+    const allRowsIndexed = rows.map((r, i) => ({ ...r, globalIdx: i + 1 }));
 
-    // Apply --running and --team CLI filters (separate from the MCP-style filterName etc.)
-    if (opts.running) {
-      rows.splice(0, rows.length, ...rows.filter(r => r.status === "running"));
-    }
-    if (opts.team) {
-      const filterTeam = opts.team.toLowerCase();
-      rows.splice(0, rows.length, ...rows.filter(r => r.teams.some(t => t.toLowerCase() === filterTeam)));
+    // Apply --running / --team / --backend CLI filters. Done before --json so
+    // `ls --json --running` honours the flag (#P2-2).
+    const filteredMeta = applyLsFilters(
+      allRowsIndexed.map(r => ({
+        globalIdx: r.globalIdx,
+        realName: r.name,
+        displayLabel: r.name,
+        status: (r.status ?? "stopped") as "running" | "paused" | "stopped" | "crashed",
+        teams: r.teams,
+        backend: r.backend,
+      })),
+      { running: opts.running, team: opts.team, backend: opts.backend },
+    );
+    const filteredNames = new Set(filteredMeta.map(m => m.realName));
+    const displayRows = allRowsIndexed.filter(r => filteredNames.has(r.name));
+
+    if (opts.json) {
+      // Strip internal globalIdx from JSON output to keep the schema stable.
+      console.log(JSON.stringify(displayRows.map(({ globalIdx: _idx, ...rest }) => rest), null, 2));
+      return;
     }
 
     // Merged State column (#1052): one glyph per lifecycle/execution state,
@@ -3224,17 +3240,17 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     // across the fleet (#1305 P2-1). --json and --names-only above keep the
     // real names (machine use + attach target).
     const { assignDisplayLabels } = await import("./topic-commands.js");
-    const lsLabels = assignDisplayLabels(rows.map((r) => ({
+    const lsLabels = assignDisplayLabels(displayRows.map((r) => ({
       name: r.name,
       displayName: (config.instances[r.name] as { display_name?: string } | undefined)?.display_name,
     })));
     const displayLabel = (row: { name: string; classic: boolean }): string =>
       lsLabels.get(row.name) ?? row.name;
 
-    // Columns: # (row number), Name (real, full, copyable), then the rest.
+    // Columns: # (global row number), Name (real, full, copyable), then the rest.
     // Display name (if set) appears at the end of the row as context — secondary.
     const numW = 3;
-    const nameW = Math.max(16, ...rows.map(r => r.name.length + 1));
+    const nameW = Math.max(16, ...displayRows.map(r => r.name.length + 1));
     const backendW = 14;
     const statusW = 12;
     const teamW = 20;
@@ -3255,8 +3271,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     );
     console.log("\u2500".repeat(numW + nameW + backendW + statusW + teamW + srcW + ctxW + memW + 10));
 
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i]!;
+    for (const r of displayRows) {
       const teamStr = r.teams.length > 0 ? r.teams.join(",") : "-";
       const ctxStr = r.context != null ? `${Math.round(r.context)}%` : "-";
       const memStr = r.memMb != null ? `${r.memMb}MB` : "-";
@@ -3264,7 +3279,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
       const dispAnnotation = displayLabel(r) !== r.name ? `  (${displayLabel(r)})` : "";
 
       console.log(
-        String(i + 1).padEnd(numW) +
+        String(r.globalIdx).padEnd(numW) +
         r.name.padEnd(nameW) +
         r.backend.padEnd(backendW) +
         statusIcon(r.status, r.idle, (r as any).state) + " " + statusLabel(r.status, r.idle, (r as any).state).padEnd(statusW - 2) +
@@ -3278,9 +3293,9 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     }
 
     // System memory footer
-    const totalMemMb = rows.reduce((sum, r) => sum + (r.memMb ?? 0), 0);
-    const runningCount = rows.filter(r => r.status === "running").length;
-    const pausedCount = rows.filter(r => r.status === "paused").length;
+    const totalMemMb = displayRows.reduce((sum, r) => sum + (r.memMb ?? 0), 0);
+    const runningCount = displayRows.filter(r => r.status === "running").length;
+    const pausedCount = displayRows.filter(r => r.status === "paused").length;
     const totalGB = totalmem() / (1024 ** 3);
     const usedGB = (totalmem() - freemem()) / (1024 ** 3);
     console.log(`\nInstances: ${runningCount} running, ${pausedCount} paused | Fleet Mem: ${(totalMemMb / 1024).toFixed(1)} GB | System Memory: ${usedGB.toFixed(1)} / ${totalGB.toFixed(1)} GB`);

@@ -3,8 +3,8 @@
  * Covers: CJK display names, row numbers, ambiguity, fuzzy suggestions.
  */
 import { describe, expect, it } from "vitest";
-import { resolveCandidate } from "../src/ls-attach-resolve.js";
-import type { Candidate } from "../src/ls-attach-resolve.js";
+import { resolveCandidate, applyLsFilters, pickerDefaultIdx } from "../src/ls-attach-resolve.js";
+import type { Candidate, LsRow } from "../src/ls-attach-resolve.js";
 
 /** Build a minimal fleet candidate list (no tmux calls needed). */
 function fleet(...items: Array<{ name: string; displayLabel?: string; status?: Candidate["status"]; teams?: string[] }>): Candidate[] {
@@ -132,6 +132,20 @@ describe("resolveCandidate — no-match suggestions", () => {
     expect(r.kind).toBe("none");
     if (r.kind === "none") expect(r.suggestions).toHaveLength(0);
   });
+
+  it("leading-char typo still gets a suggestion (charOverlapScore, not greedy LCS)", () => {
+    // "xreviewer" vs "agend-reviewer": shared chars r,e,v,i,e,w,e,r → score > 0
+    const cs = fleet(
+      { name: "agend-reviewer-t1503382598640996543", displayLabel: "稜鏡 Prism" },
+      { name: "unrelated-t000", displayLabel: "Zephyr" },
+    );
+    const r = resolveCandidate("xreviewer", cs);
+    expect(r.kind).toBe("none");
+    if (r.kind === "none") {
+      expect(r.suggestions.length).toBeGreaterThan(0);
+      expect(r.suggestions[0]?.realName).toBe("agend-reviewer-t1503382598640996543");
+    }
+  });
 });
 
 describe("resolveCandidate — real name resolution", () => {
@@ -159,5 +173,103 @@ describe("resolveCandidate — real name resolution", () => {
       { name: "agend-dev1-t1503382407284265082", displayLabel: "agend-dev1-t265082" },
     );
     expect(resolveCandidate("agend-dev1-t265082", cs)).toEqual({ kind: "exact", candidate: cs[0] });
+  });
+});
+
+// ── P2-3: numeric instance names ────────────────────────────────────────────
+
+describe("P2-3: numeric real name wins over row number", () => {
+  it("instance named '2' is found by exact real name before row-2 lookup", () => {
+    // Object.keys order: "2" at idx=1 (row 1), "alpha" at idx=2 (row 2).
+    // attach "2" must resolve to the instance named "2", not to row 2 ("alpha").
+    const cs: Candidate[] = [
+      { idx: 1, realName: "2",     displayLabel: "2",     status: "running", teams: [] },
+      { idx: 2, realName: "alpha", displayLabel: "Alpha", status: "running", teams: [] },
+    ];
+    expect(resolveCandidate("2", cs)).toEqual({ kind: "exact", candidate: cs[0] });
+  });
+
+  it("row-number lookup still works when no exact real name matches the digit string", () => {
+    const cs: Candidate[] = [
+      { idx: 1, realName: "alpha", displayLabel: "Alpha", status: "running", teams: [] },
+      { idx: 2, realName: "beta",  displayLabel: "Beta",  status: "running", teams: [] },
+    ];
+    expect(resolveCandidate("2", cs)).toEqual({ kind: "exact", candidate: cs[1] });
+  });
+});
+
+// ── P2-1: stable global indices survive filtering ────────────────────────────
+
+describe("P2-1: applyLsFilters — stable global indices", () => {
+  function rows(...items: Array<{ realName: string; status?: string; teams?: string[]; backend?: string }>): LsRow[] {
+    return items.map((item, i) => ({
+      globalIdx: i + 1,
+      realName: item.realName,
+      displayLabel: item.realName,
+      status: item.status ?? "running",
+      teams: item.teams ?? [],
+      backend: item.backend ?? "claude-code",
+    }));
+  }
+
+  it("--team filter preserves global indices (beta stays at #2 even when alpha is filtered out)", () => {
+    const all = rows(
+      { realName: "alpha", teams: ["teamA"] },
+      { realName: "beta",  teams: ["teamB"] },
+      { realName: "gamma", teams: ["teamA"] },
+    );
+    const filtered = applyLsFilters(all, { team: "teamB" });
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0]!.globalIdx).toBe(2); // beta's global idx is 2, not 1
+    expect(filtered[0]!.realName).toBe("beta");
+  });
+
+  it("--running filter preserves global indices", () => {
+    const all = rows(
+      { realName: "running-1", status: "running" },
+      { realName: "paused-1",  status: "paused" },
+      { realName: "running-2", status: "running" },
+    );
+    const filtered = applyLsFilters(all, { running: true });
+    expect(filtered).toHaveLength(2);
+    expect(filtered[0]!.globalIdx).toBe(1);
+    expect(filtered[1]!.globalIdx).toBe(3); // running-2 keeps global idx=3
+  });
+
+  it("--backend filter preserves global indices", () => {
+    const all = rows(
+      { realName: "kiro-1", backend: "kiro-cli" },
+      { realName: "claude-1", backend: "claude-code" },
+      { realName: "kiro-2", backend: "kiro-cli" },
+    );
+    const filtered = applyLsFilters(all, { backend: "kiro-cli" });
+    expect(filtered[1]!.globalIdx).toBe(3); // kiro-2 keeps global idx=3
+  });
+
+  it("no filters returns all rows unchanged", () => {
+    const all = rows({ realName: "a" }, { realName: "b" });
+    expect(applyLsFilters(all, {})).toHaveLength(2);
+  });
+});
+
+// ── P2-4: picker default matches first displayed row ─────────────────────────
+
+describe("P2-4: pickerDefaultIdx uses first displayed candidate", () => {
+  it("returns first candidate's idx even when it is not 1", () => {
+    const displayed: Pick<Candidate, "idx">[] = [
+      { idx: 3 }, { idx: 4 },
+    ];
+    expect(pickerDefaultIdx(displayed)).toBe(3);
+  });
+
+  it("returns 1 when first displayed row has idx=1", () => {
+    const displayed: Pick<Candidate, "idx">[] = [
+      { idx: 1 }, { idx: 2 },
+    ];
+    expect(pickerDefaultIdx(displayed)).toBe(1);
+  });
+
+  it("returns 1 for empty list (safe fallback)", () => {
+    expect(pickerDefaultIdx([])).toBe(1);
   });
 });
