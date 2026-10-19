@@ -1302,17 +1302,17 @@ Four things change how the dashboard looks, each with its own owner:
 
 What a viewer sees is theirs to choose: **Settings → Web appearance → Show agents' themes, effects and widgets** turns agents' themes and widgets off on all their devices, and `?safe=1` loads any page without themes or custom CSS. Agents can check how they appear with `get_web_appearance` and draw it with `preview_web_appearance`; the `web-appearance` skill walks them through it.
 
-A **mod** is one file that carries such a look: a theme with its pictures, card text, widgets, effects and custom CSS. **Settings → Web appearance → Mods** imports one in two steps, showing everything in it first and applying only the parts you tick, all at once. Custom CSS from a file is never ticked for you. The same card exports a look as a file.
+A **mod** is one file that carries such a look: a theme with its pictures, card text, widgets, effects (Canvas Worker effects are still 2.3 beta) and custom CSS. **Settings → Web appearance → Mods** imports one in two steps, showing everything in it first and applying only the parts you tick, all at once. Custom CSS from a file is never ticked for you. The same card exports a look as a file.
 
 `web.themes.agent_edit: false` refuses every agent's appearance change; `web.appearance` sets the card's upload limits. An agent's changes are at least 30 s apart and at most 10 an hour.
 
-**Uploads are not counted (2.2.5, #2083).** An agent's uploads (pictures, effects, proposed mods) are not counted. Each picture slot's size limits, the agent's picture quota and each file's own caps still apply.
+**Uploads are not counted (2.2.5, #2083).** An agent's uploads (pictures, effects, proposed mods; effects are Canvas Worker, still 2.3 beta) are not counted. Each picture slot's size limits, the agent's picture quota and each file's own caps still apply.
 
 **The Web appearance page (2.2.5, #2071)** groups its cards under five headings, each card with a **?** that opens its section of the guide. Over a public link it shows only a notice.
 - **Look:** agents' themes on or off; identity colours, with a sample row; card size.
 - **Your layout:** your sidebar widget.
 - **Styles you write:** custom CSS, and turning it off on this device.
-- **Add-ons:** mods, effects and your effect choices.
+- **Add-ons:** mods, effects and your effect choices (Canvas Worker effects are still 2.3 beta).
 - **Advanced:** card upload limits, and Restore defaults.
 
 **Banner focus (2.2.5, #2086).**
@@ -1413,7 +1413,7 @@ General, coordinators and full-profile instances can read and change Settings �
 - **A banner's focus.**
 - **A person's custom CSS** (`person`; the host operator by default): save (it goes on trial), keep, revert, switch to an earlier saved version, or off. The 64 KiB, no-remote-URL and `asset:` rules still apply (#2081).
 - **A mod an agent proposed:** review, install the parts ticked (custom CSS is never ticked by itself), cancel, dismiss or uninstall. A mod the person imported from a file is theirs, and is refused.
-- **Effects:** apply or remove one on a chat, and a person's effect slots (sidebar, header, page, box, cursor).
+- **Effects** (Canvas Worker effects, still 2.3 beta): apply or remove one on a chat, and a person's effect slots (sidebar, header, page, box, cursor).
 - **An agent's ambient effect** (`what: "ambient"`): set one (it becomes the person's) or clear it.
 - **Restore defaults:** the host settings and that person's custom CSS. This device's custom-CSS switch is left to the person.
 

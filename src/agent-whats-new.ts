@@ -64,9 +64,9 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // install would never be told. The ids keep their 2.3- names: the record is by id, so an instance already told on a
   // 2.3.0 beta is not told again. An entry added before 2.2.5 is cut takes `since: "2.2.5"` too.
   { id: "2.3-web-appearance-topic", since: "2.2.5",
-    text: "Web appearance — your own look on the web dashboard: theme, identity card and identity colour, widgets, mods, and Canvas Worker effects with Try (`get_web_appearance`, `set_web_theme`, `set_web_widget`, `export_web_mod`, `upload_web_effect`, …). Load the `web-appearance` skill before using these tools: it has their parameters, limits and rules." },
+    text: "Web appearance — your own look on the web dashboard: theme, identity card and identity colour, widgets and mods, and Canvas Worker effects with Try, which are still beta (2.3) (`get_web_appearance`, `set_web_theme`, `set_web_widget`, `export_web_mod`, `upload_web_effect`, …). Load the `web-appearance` skill before using these tools: it has their parameters, limits and rules." },
   { id: "2.3-web-settings-for-the-user", since: "2.2.5", audience: ["general", "coordinator"],
-    text: "General (and coordinators): `get_web_settings` / `set_web_settings` read and change the user's Settings → Web appearance the way the page does — host settings, an agent's colour, custom CSS, proposed mods, effects, Restore defaults. Load the `web-appearance` skill first." },
+    text: "General (and coordinators): `get_web_settings` / `set_web_settings` read and change the user's Settings → Web appearance the way the page does — host settings, an agent's colour, custom CSS, proposed mods, Canvas Worker effects (still beta (2.3)), Restore defaults. Load the `web-appearance` skill first." },
   { id: "2.3-web-ambient", since: "2.2.5",
     text: "Ambient effects: `set_web_ambient` puts falling petals, snow, rising lanterns, twinkles or stars on a click in your web chat — data only, drawn by the dashboard, no Try needed (`clear_web_ambient` removes it). Load the `web-appearance` skill." },
   { id: "2.3-repo-tools", since: "2.2.5",

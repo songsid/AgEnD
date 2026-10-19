@@ -46,3 +46,16 @@ describe("what's new for agents, upgrading to and from 2.2.5", () => {
     expect(AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.5")! > 0).map(e => `${e.id} (${e.since})`)).toEqual([]);
   });
 });
+
+describe("Canvas Worker effects stay beta in what a 2.2.5 install is told", () => {
+  const CW = /Canvas Worker|upload_web_effect|apply_web_effect/;
+  it("every entry that names Canvas Worker effects or their tools says they are still beta", () => {
+    for (const e of AGENT_WHATS_NEW.filter(x => compareVersions(x.since, "2.2.5")! <= 0 && CW.test(x.text))) expect(e.text, e.id).toMatch(/still beta/);
+  });
+  it("the real 2.2.1 → 2.2.5 notice never announces them as stable", () => {
+    const plan = planWhatsNew({ record: { announced: idsUpTo("2.2.1") }, fresh: false, version: "2.2.5" });
+    const notice = plan && "notice" in plan ? plan.notice : "";
+    expect(notice).toContain("AgEnD is now 2.2.5");
+    for (const line of notice.split("\n").filter(l => /Canvas Worker/.test(l))) expect(line).toMatch(/still beta \(2\.3\)/);
+  });
+});
