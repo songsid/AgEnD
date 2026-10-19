@@ -205,7 +205,7 @@ function TrafficLayer({ edges, q }) {
   const still = reducedMotion();
   return html`<g class="oc-flows" aria-hidden="true">${edges.map((e) => {
     const dim = q && !e.names.some((n) => n.toLowerCase().includes(q));
-    return html`<g key=${e.key} class=${`oc-fl${dim ? " dim" : ""}`}>
+    return html`<g key=${e.key} class=${`oc-fl${dim ? " dim" : ""}`} data-routed=${e.routed ? "1" : undefined}>
       <path class="oc-flow-halo" d=${e.d} />
       <path class=${`oc-flow h-${e.hue} ph-${e.phase}`} d=${e.d} marker-start=${`url(#oc-src-${MARKER(e)})`} marker-end=${`url(#oc-ah-${MARKER(e)})`} />
       ${e.phase === "live" && !still ? html`<circle class=${`oc-pulse h-${e.hue}`} r="4"><animateMotion dur=${`${Math.max(1.6, e.pts.length * 0.3)}s`} repeatCount="indefinite" path=${e.d} /></circle>` : null}

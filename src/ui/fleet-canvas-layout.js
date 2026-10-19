@@ -8,7 +8,7 @@
  * tighter GAP_NARROW and PAD_NARROW, so General and the first team still open at a readable size. A layout says which
  * it used (L.gap, L.pad).
  */
-export const OC = { NW: 184, NH: 56, GAP: 28, PAD: 32, GAP_NARROW: 18, PAD_NARROW: 24, HEAD: 34, TEAM_GAP: 56, ROW_GAP: 96, ROW_MAX: 1400, ROW_MAX_NARROW: 460, LW: 232, LH: 68, TOP_Y: 20, BUS: 44, FOLDED: 64, TRUNK: -30 };
+export const OC = { NW: 184, NH: 56, GAP: 28, PAD: 32, GAP_NARROW: 18, PAD_NARROW: 24, HEAD: 34, TEAM_GAP: 72, ROW_GAP: 96, ROW_MAX: 1400, ROW_MAX_NARROW: 460, LW: 232, LH: 68, TOP_Y: 20, BUS: 44, FOLDED: 64, TRUNK: -30 };
 const colsFor = (n, narrow) => (n <= 1 ? 1 : n <= 4 || narrow ? 2 : 3);
 /** The key a team folds by (per device): its name; the instances in no team have one of their own no team name can be. */
 export const REST_KEY = "\u0000rest";

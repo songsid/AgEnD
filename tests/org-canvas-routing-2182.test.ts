@@ -12,7 +12,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error — a JS module of the app, with no types
 import { OC, canvasLayout } from "../src/ui/fleet-canvas-layout.js";
 // @ts-expect-error — a JS module of the app, with no types
-import { ROUTE, routeOk, routeScene, routeWith, sceneOk } from "../src/ui/fleet-route-scene.js";
+import { ROUTE, SEPARATE, routeOk, routeScene, routeWith, sceneOk, separate } from "../src/ui/fleet-route-scene.js";
 // @ts-expect-error — a JS module of the app, with no types
 import { createRouteClient, TIMEOUT_MS, WASM_URL, WORKER_URL } from "../src/ui/fleet-route.js";
 // @ts-expect-error — a JS module of the app, with no types
@@ -183,30 +183,62 @@ describe("the scene", () => {
     const a = { kind: "top", c: open.tops[0], key: open.tops[0].key }, z = { kind: "box", b: open.boxes[0], key: `box:${open.boxes[0].key}` };
     expect(routeScene(open, [{ key: "k", a, z }]).conns).toEqual([]);
   });
-  it("a card with more lines than pins shares its pins (no line is left without an end)", () => {
+  it("a card with more lines than pins gets more pins on its long sides: two lines never leave one point", () => {
     const L = screenshotLayout();
     const names = [...L.boxes.flatMap((b: any) => b.cells)].map((c: any) => c.node.name);
     const kinds = ["task", "send", "report", "broadcast"];
     const items = names.flatMap((n: string, i: number) => kinds.map((k) => msg(`${i}${k}`, n, "general", k)));
     const scene = routeScene(L, trafficEdges(items, L));
-    expect([scene.conns.length > ROUTE.PINS * 2 + 2, scene.shapes[0].pins]).toEqual([true, 2]);
-    expect(routeWith(A, scene).size).toBe(scene.conns.length);
+    const n = scene.conns.length, out = routeWith(A, scene);
+    const atGeneral = [...out.values()].map((p: Pt[]) => `${p[p.length - 1].x},${p[p.length - 1].y}`);
+    expect([n > ROUTE.PINS * 2 + 2, scene.shapes[0].pins, out.size, new Set(atGeneral).size]).toEqual([true, Math.ceil((n - 2) / 2), n, n]);
+  });
+});
+
+describe("the separation pass (where libavoid's nudging leaves lines too close)", () => {
+  // Two cards far apart, a wide channel; two lines whose middle runs are 2 px apart.
+  const scene = { shapes: [{ x: 0, y: 0, w: 40, h: 20, pins: 1 }, { x: 0, y: 200, w: 40, h: 20, pins: 1 }, { x: 300, y: 0, w: 40, h: 20, pins: 1 }, { x: 300, y: 200, w: 40, h: 20, pins: 1 }],
+    conns: [{ key: "a", a: 0, z: 1 }, { key: "b", a: 2, z: 3 }], boxes: [] as any[] };
+  const lineA = [{ x: 40, y: 10 }, { x: 150, y: 10 }, { x: 150, y: 210 }, { x: 40, y: 210 }];
+  it("moves a middle run to SEPARATE from its neighbour, its two joining runs following; the ends stay on their pins", () => {
+    const out = separate(new Map([["a", lineA], ["b", [{ x: 300, y: 12 }, { x: 152, y: 12 }, { x: 152, y: 208 }, { x: 300, y: 208 }]]]), scene);
+    const a = out.get("a"), b = out.get("b");
+    expect([Math.abs(a[1].x - b[1].x) >= SEPARATE, a[0], a[3], b[0], b[3], a[1].x === a[2].x, b[1].x === b[2].x]).toEqual([true, lineA[0], lineA[3], { x: 300, y: 12 }, { x: 300, y: 208 }, true, true]);
+  });
+  it("never into a shape's buffer, never onto a box's border, never flipping a joining run — or it stays as it was", () => {
+    // A wall right beside the run on one side and a box border on the other: no room; left as libavoid gave it.
+    // Obstacles just left of A's run and just right of B's, wide enough that every place either could go (up to six
+    // SEPARATE steps) is inside one: neither moves.
+    const tight = { ...scene, shapes: [...scene.shapes, { x: 100, y: 30, w: 44, h: 160, pins: 0 }, { x: 156, y: 30, w: 40, h: 160, pins: 0 }] };
+    const b0 = [{ x: 300, y: 12 }, { x: 152, y: 12 }, { x: 152, y: 208 }, { x: 300, y: 208 }];
+    const out = separate(new Map([["a", lineA], ["b", b0]]), tight);
+    expect(["shapes", out.get("a"), out.get("b")]).toEqual(["shapes", lineA, b0]);
+    // And a box's border: every place A's run could go (SEPARATE steps from B's, leftwards; a wall on the right) is
+    // within 7 px of a border.
+    const edge = separate(new Map([["a", lineA], ["b", b0]]), { ...scene, shapes: [...scene.shapes, { x: 156, y: 30, w: 40, h: 160, pins: 0 }],
+      boxes: [{ x: 0, y: -50, w: 144, h: 320 }, { x: 0, y: -50, w: 131, h: 320 }, { x: 0, y: -50, w: 119, h: 320 }] });
+    expect(["border", edge.get("a"), edge.get("b")]).toEqual(["border", lineA, b0]);
+  });
+  it("first and last runs (on a pin) are never moved", () => {
+    const short = new Map([["a", [{ x: 40, y: 10 }, { x: 300, y: 10 }]], ["b", [{ x: 40, y: 12 }, { x: 300, y: 12 }]]]);
+    expect([...separate(short, { ...scene, conns: [] }).values()]).toEqual([...short.values()]);
   });
 });
 
 describe("what crosses to and from the worker is checked", () => {
-  const ok = () => ({ shapes: [{ x: 0, y: 0, w: 10, h: 10, pins: 1 }, { x: 50, y: 0, w: 10, h: 10, pins: 1 }], conns: [{ key: "k", a: 0, z: 1 }] });
-  it("a scene: finite numbers in range, known pins, indexes it has, ends with pins, bounded sizes", () => {
+  const ok = () => ({ shapes: [{ x: 0, y: 0, w: 10, h: 10, pins: 1 }, { x: 50, y: 0, w: 10, h: 10, pins: 1 }], conns: [{ key: "k", a: 0, z: 1 }], boxes: [{ x: -20, y: -20, w: 100, h: 60 }] });
+  it("a scene: finite numbers in range, pin counts in range, indexes it has, ends with pins, bounded sizes", () => {
     const bad = [
-      null, {}, { shapes: [], conns: null },
+      null, {}, { shapes: [], conns: null, boxes: [] }, { ...ok(), boxes: undefined }, { ...ok(), boxes: [{ x: 0, y: 0, w: -1, h: 5 }] },
       { ...ok(), shapes: [{ x: NaN, y: 0, w: 10, h: 10, pins: 1 }, ok().shapes[1]] },
       { ...ok(), shapes: [{ x: 0, y: 0, w: 0, h: 10, pins: 1 }, ok().shapes[1]] },
-      { ...ok(), shapes: [{ x: 0, y: 0, w: 10, h: 10, pins: 3 }, ok().shapes[1]] },
+      { ...ok(), shapes: [{ x: 0, y: 0, w: 10, h: 10, pins: 1.5 }, ok().shapes[1]] },
+      { ...ok(), shapes: [{ x: 0, y: 0, w: 10, h: 10, pins: ROUTE.MAX_PINS + 1 }, ok().shapes[1]] },
       { ...ok(), conns: [{ key: "k", a: 0, z: 2 }] },
       { ...ok(), conns: [{ key: "k", a: 0, z: 1.5 }] },
-      { shapes: [ok().shapes[0], { ...ok().shapes[1], pins: 0 }], conns: ok().conns },
+      { ...ok(), shapes: [ok().shapes[0], { ...ok().shapes[1], pins: 0 }] },
       { ...ok(), conns: [{ key: 7, a: 0, z: 1 }] },
-      { shapes: Array.from({ length: ROUTE.MAX_SHAPES + 1 }, () => ok().shapes[0]), conns: [] },
+      { shapes: Array.from({ length: ROUTE.MAX_SHAPES + 1 }, () => ok().shapes[0]), conns: [], boxes: [] },
       { ...ok(), shapes: [{ x: 2e6, y: 0, w: 10, h: 10, pins: 1 }, ok().shapes[1]] },
     ];
     expect([sceneOk(ok()) !== null, bad.map((s) => sceneOk(s))]).toEqual([true, bad.map(() => null)]);
