@@ -75,6 +75,20 @@ describe("Fleet opens the tab this device used last", () => {
     expect([first, after, b.navStore.get().route, b.pg.root.querySelector(".p-fleet .seg-item.active")?.getAttribute("href")])
       .toEqual([["/ui/fleet/org", "/ui/fleet/org"], ["/ui/fleet/cache", "/ui/fleet/cache", "cache"], { panel: "fleet", tab: "cache" }, "/ui/fleet/cache"]);
   });
+  it("#2185 review: on a Fleet tab, Fleet is that tab at once — Org → Cache with nothing else re-rendering, and a direct load of Cache over an older saved tab", async () => {
+    const { pg, navStore } = await shell("/ui/fleet/org", { narrow: true });
+    const hrefs = () => [entry(pg).getAttribute("href"), tabs(pg).find((t: any) => t[0] === "Fleet")?.[1]];
+    const first = hrefs();
+    fire(pg.root.querySelector('.p-fleet a.seg-item[href="/ui/fleet/cache"]'), "click", { button: 0 }); await settle(6);   // no status, no store refresh
+    const onCache = hrefs();
+    fire(pg.root.querySelector('nav.tabs a.tab[href="/ui/fleet/cache"]') ?? pg.root.querySelector("nav.tabs a.tab.active"), "click", { button: 0 }); await settle(6);
+    const afterTap = [navStore.get().route, pg.window.location.pathname];
+    const p = mounted.pop()!; await p.unmount(); p.restore();
+    const b = await shell("/ui/fleet/cache", { storage: { agend_last_fleet_tab: "org" } });
+    const direct = [entry(b.pg).getAttribute("href"), tabs(b.pg).find((t: any) => t[0] === "Fleet")?.[1]];
+    expect([first, onCache, afterTap, direct]).toEqual([["/ui/fleet/org", "/ui/fleet/org"], ["/ui/fleet/cache", "/ui/fleet/cache"],
+      [{ panel: "fleet", tab: "cache" }, "/ui/fleet/cache"], ["/ui/fleet/cache", "/ui/fleet/cache"]]);
+  });
   it("/ui/fleet (Tasks) is remembered as tasks; a stored value that is not a tab falls back to the Org chart", async () => {
     const out: unknown[] = [];
     for (const stored of ["tasks", "nope", "__proto__", "agent", ""]) {
@@ -115,7 +129,7 @@ describe("a phone's tabs: Chat · Needs you · Fleet · Settings", () => {
   it("Chat is current on an agent's Chat, View, Log and Details and goes to its chat; Fleet is current on the Fleet panel only", async () => {
     const { pg } = await shell("/ui/chat/web-dev", { narrow: true });
     const out: unknown[] = [];
-    for (const path of ["/ui/chat/web-dev", "/view/reviewer", "/ui/log/reviewer", "/ui/fleet/agent/reviewer", "/ui/fleet/org", "/ui/needs", "/settings"]) {
+    for (const path of ["/ui/chat/web-dev", "/view/reviewer", "/ui/log/reviewer", "/ui/fleet/agent/reviewer", "/ui/fleet/org", "/ui/needs", "/settings", "/ui"]) {
       await go(path);
       out.push([path, tabs(pg).map((t: any) => t[2] ? `${t[0]}*` : t[0]), tabs(pg)[0][1]]);
     }
@@ -127,6 +141,7 @@ describe("a phone's tabs: Chat · Needs you · Fleet · Settings", () => {
       ["/ui/fleet/org", ["Chat", "Needs you", "Fleet*", "Settings"], "/ui"],
       ["/ui/needs", ["Chat", "Needs you*", "Fleet", "Settings"], "/ui"],
       ["/settings", ["Chat", "Needs you", "Fleet", "Settings*"], "/ui"],
+      ["/ui", ["Chat*", "Needs you", "Fleet", "Settings"], "/ui"],   // #2185 review: the pick-an-agent page is Chat's
     ]);
   });
   it("in zh-TW", async () => {

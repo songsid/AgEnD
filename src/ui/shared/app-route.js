@@ -57,6 +57,13 @@ export function lastFleetTab() {
   try { tab = localStorage.getItem(LAST_FLEET_TAB_KEY); } catch { /* storage blocked: the default */ }
   return FLEET_TABS.includes(tab) ? tab : "org";
 }
+/**
+ * #2183: where Fleet (the sidebar's entry, the phone's tab) goes — on a Fleet tab, that tab (the route, not storage: the
+ * panel stores it in an effect after this render, and a storage write re-renders nothing); anywhere else, the last one.
+ */
+export function fleetEntryPath(route) {
+  return fleetPath(route && route.panel === "fleet" ? route.tab : lastFleetTab());   // parseRoute names only FLEET_TABS
+}
 export function rememberFleetTab(tab) {
   if (!FLEET_TABS.includes(tab)) return;
   try { localStorage.setItem(LAST_FLEET_TAB_KEY, tab); } catch { /* this page only */ }

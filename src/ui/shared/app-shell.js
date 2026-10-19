@@ -9,7 +9,7 @@ import { ColorDialogHost } from "./identity-color.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
 import { appStore, createStore, guestBadge, guestPage, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
-import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, fleetPath, lastFleetTab } from "./app-route.js";
+import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, fleetEntryPath } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
 import { savePref } from "./app-prefs.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
@@ -309,7 +309,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   // one Fleet entry ("Fleet" / "Fleet 概覽"), on the tab this device used last (the Org chart the first time); an agent's
   // View, Log and Details are its header's tabs, so the sidebar has no "Fleet" (Details) or "View" row of its own.
   const onFleet = !!route && route.panel === "fleet";
-  const overview = html`<a class=${`side-row side-overview${onFleet ? " active" : ""}`} href=${fleetPath(lastFleetTab())}
+  const overview = html`<a class=${`side-row side-overview${onFleet ? " active" : ""}`} href=${fleetEntryPath(route)}
     aria-current=${onFleet ? "page" : undefined} onClick=${closeDrawer}><${Icon} name="org" /><span class="grow">${t("app.fleetOverview")}</span></a>`;
   return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
     <div class="side-head" data-trust="navigation">
@@ -434,11 +434,12 @@ function BottomTabs({ route, viewOnly }) {
   }
   // #1920: a guest has only its chats (the drawer lists them): no tabs to switch between.
   if (guestPage()) return null;
-  // #2183 (the user's call): four tabs — Chat, Needs you, Fleet (on its last tab), Settings.
+  // #2183 (the user's call): four tabs — Chat (current on /ui and on any of an agent's pages), Needs you, Fleet (on its
+  // last tab), Settings.
   return html`<nav data-trust="navigation" class="tabs" aria-label=${t("app.menu")}>
-    ${tab(chatHref, "chat", t("app.chat"), !!open, anyAwaiting)}
+    ${tab(chatHref, "chat", t("app.chat"), !!open || (!!route && route.panel === "chat"), anyAwaiting)}
     ${tab(NEEDS_PATH, "inbox", t("app.needsTab"), route && route.panel === "needs", (app.needs || []).length, t("app.needsCount", (app.needs || []).length))}
-    ${tab(fleetPath(lastFleetTab()), "fleet", t("app.fleet"), route && route.panel === "fleet")}
+    ${tab(fleetEntryPath(route), "fleet", t("app.fleet"), route && route.panel === "fleet")}
     ${tab(settingsPath(), "settings", t("app.settings"), route && route.panel === "settings")}
   </nav>`;
 }
