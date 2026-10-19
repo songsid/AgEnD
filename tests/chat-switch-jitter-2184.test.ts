@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { displaySize, jpegOrientation } from "../src/web-image-meta.js";
 import { publicAttachment, sniffUpload, WebFileLedger } from "../src/web-upload.js";
 import { WebChatHistory } from "../src/web-chat-history.js";
@@ -69,6 +69,20 @@ describe("#2184: the size reaches the page", () => {
     expect("width" in n || "width" in publicAttachment(n)).toBe(false);
     const bad = join(d, "bad.jpg"); writeFileSync(bad, "not a picture");
     expect("width" in publicAttachment(ledger.registerServed({ path: bad, instance: "w", kind: "photo" })!)).toBe(false);
+  });
+  it("one header buffer for every photo (not 256 KB each); a shorter file after a longer one reads only its own bytes", () => {
+    const d = scratch();
+    const ledger = new WebFileLedger();
+    const big = join(d, "big.png"); writeFileSync(big, Buffer.concat([Buffer.from(png(1280, 960)), Buffer.alloc(300 * 1024, 7)]));
+    const cut = join(d, "cut.png"); writeFileSync(cut, png(64, 32).subarray(0, 20));      // no room for the size
+    const small = join(d, "small.gif"); writeFileSync(small, Uint8Array.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, ...u16(64, true), ...u16(32, true)]));
+    const spy = vi.spyOn(Buffer, "allocUnsafe"), spyAlloc = vi.spyOn(Buffer, "alloc");
+    try {
+      const sizes = [big, cut, small, big].map((p) => { const f = ledger.registerServed({ path: p, instance: "w", kind: "photo" })!; return f.width ? [f.width, f.height] : null; });
+      expect(sizes).toEqual([[1280, 960], null, [64, 32], [1280, 960]]);
+      const heads = (fn: typeof spy) => fn.mock.calls.filter(([n]) => n === 256 * 1024).length;
+      expect(heads(spy) + heads(spyAlloc as any), "at most one head buffer is made, and only once").toBeLessThanOrEqual(1);
+    } finally { spy.mockRestore(); spyAlloc.mockRestore(); }
   });
   it("an upload the person sends carries it too (the message they see is drawn from it)", () => {
     const d = scratch();

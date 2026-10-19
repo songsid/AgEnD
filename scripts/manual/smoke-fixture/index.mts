@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { fixtureInstances, CLASSIC_ROOMS, TEAMS, type FixtureInstance } from "./data.mts";
 import { drawPicture, PICTURES, type PictureSpec } from "./pictures.mts";
-import { LAN_HOST } from "./from-defaults.mts";
+import { DPR, LAN_HOST } from "./from-defaults.mts";
 
 export * from "./data.mts";
 export * from "./pictures.mts";
@@ -167,7 +167,7 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
       // Every case starts from the same prefs: what a previous case set (a card size, a filter) is cleared first.
       const stale = Object.keys(fm.webPrefs.read("operator").values ?? {}).map(k => [k, null] as [string, null]);
       fm.webPrefs.write("operator", new Map<string, unknown>([...stale, ["theme", c.theme], ["lang", c.lang], ...Object.entries(opts.prefs ?? {})]));
-      const ctx = await browser.newContext({ viewport: VIEWPORTS[c.device], deviceScaleFactor: 1, colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US",
+      const ctx = await browser.newContext({ viewport: VIEWPORTS[c.device], deviceScaleFactor: DPR, colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US",
         isMobile: c.device === "phone", hasTouch: c.device === "phone" });
       const storage = { agend_tour_done: "1", agend_firstrun_dismissed: "1", agend_usage_rail: "0", agend_lang: c.lang, ...(opts.storage ?? {}) };
       await ctx.addInitScript({ content: `try { ${Object.entries(storage).map(([k, v]) => `localStorage.setItem(${q(k)}, ${q(v)});`).join(" ")} } catch {}

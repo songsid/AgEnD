@@ -682,13 +682,19 @@ export function publicAttachment(f: { id: string; kind: UploadKind; name: string
 
 /** The first bytes a photo's headers are read from (a JPEG's EXIF segment, with its thumbnail, comes before the size). */
 const PHOTO_HEAD_BYTES = 256 * 1024;
+/**
+ * The one buffer every photo's head is read into (made on first use): the read and the parse are synchronous and keep
+ * nothing of it, so no two photos ever share it at once — rather than 256 KB allocated per photo (a restore registers
+ * every photo the history shows). Only the bytes this read put there are looked at.
+ */
+let photoHead: Buffer | null = null;
 
 /** A photo's drawn size from its first bytes (never decoded), or null when they do not say or it cannot be read. */
 function photoSize(path: string): { width: number; height: number } | null {
   let fd: number | null = null;
   try {
     fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
-    const head = Buffer.alloc(PHOTO_HEAD_BYTES);
+    const head = photoHead ??= Buffer.allocUnsafe(PHOTO_HEAD_BYTES);
     const n = readSync(fd, head, 0, PHOTO_HEAD_BYTES, 0);
     return displaySize(head.subarray(0, n));
   } catch {

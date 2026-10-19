@@ -22,6 +22,11 @@ import type { MatrixCase } from "./index.mts";
 
 /** The non-loopback name a LAN browser uses; the fixture's browser resolves it to 127.0.0.1. */
 export const LAN_HOST = "dashboard.lan.example";
+/**
+ * #2184 follow-up: PW_DPR=<n> (default 1) opens every page at that device pixel ratio — Windows laptops often run at
+ * 1.25 or 1.5, where a whole CSS pixel is not a whole device pixel (a sub-pixel shift shows there first).
+ */
+export const DPR = (() => { const v = Number(process.env.PW_DPR ?? 1); return Number.isFinite(v) && v > 0 && v <= 4 ? v : 1; })();
 const VIEWPORTS = { desk: { width: 1366, height: 900 }, phone: { width: 390, height: 844 } } as const;
 
 /** A synthetic Discord account of its own for each fresh case (demo ids, never a real one). */
@@ -58,7 +63,7 @@ export interface FreshPage {
 }
 
 async function freshContext(browser: any, c: MatrixCase, reducedMotion: boolean) {
-  return browser.newContext({ viewport: VIEWPORTS[c.device], deviceScaleFactor: 1, colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US",
+  return browser.newContext({ viewport: VIEWPORTS[c.device], deviceScaleFactor: DPR, colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US",
     isMobile: c.device === "phone", hasTouch: c.device === "phone", reducedMotion: reducedMotion ? "reduce" : "no-preference" });
 }
 
