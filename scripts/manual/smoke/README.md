@@ -160,6 +160,13 @@ authority) uses the harness and stubs two more things, both outside the product:
 
 The demo connection's fleet-admin list is fleet config the smoke writes, as an operator would.
 
+`scripts/manual/smoke/smoke-2170-web-verified-apply.mts` (#2170 a web-verified admin's own Apply confirms a held
+change) builds on the same stubs: two demo Discord connections — the agents' and General's — whose admin lists the smoke
+writes; General's adapter records what would be posted there (a chat card or the notice, the notice drawn on a neutral
+page and shot). The held change is Settings → Agents → Delete agent, with the lifecycle's stop stubbed as in
+`smoke-delete-agent.mts`. The admin lists are two arrays, never one shared: one shared array would be written as a YAML
+alias between them (writing through one is #2208's own smoke). `PW_ENGINE=webkit` runs the same cases.
+
 `scripts/manual/smoke/smoke-2208-yaml-shared-nodes.mts` (#2208) writes the operator's own fleet.yaml with two
 connections sharing one admin list through `&admins` / `*admins`, then loads it, and puts it back before each case. It
 adds a user to one connection through Settings → Connections, and the admin's confirmation is the store's decide (as

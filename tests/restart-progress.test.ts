@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GrammyError } from "grammy";
-import { PROGRESS_THROTTLE_MS, RestartProgress } from "../src/restart-progress.js";
+import { PROGRESS_THROTTLE_MS, RestartProgress, TERMINAL_BACKGROUND_WINDOW_MS } from "../src/restart-progress.js";
 import type { ChannelAdapter } from "../src/channel/types.js";
 import { setLocale } from "../src/locale.js";
 
@@ -285,9 +285,11 @@ describe("RestartProgress", () => {
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
 
-    await expect(finishing).resolves.toBe(false);
+    // #2213: it may still land — no fresh post beside it (a duplicate); its outcome is awaited, not given up.
+    await expect(finishing).resolves.toBe(true);
     expect(adapter.sendText).toHaveBeenCalledTimes(1); // initial progress only
-    expect(logger.error).toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith({ timeout_ms: 30_000 }, "Fleet completion call did not settle in time — waiting for its outcome before any other write");
+    expect(progress.terminalDeferred).toBe(true);
   });
 
   it("coalesces slow periodic edits to the latest frame before terminal delivery", async () => {
@@ -415,13 +417,19 @@ describe("RestartProgress", () => {
     await progress.resume({ adapter, chatId: "fleet" }, "update-1");
     const finishing = progress.finish({ running: 1, total: 1, version: "2.1.5", pausedNames: [] });
 
-    await expect(finishing).resolves.toBe(false);
+    // #2213: refused (nothing landed): once within the startup budget, then the background retry owns it — edit
+    // first, a new message after — until its window, then one loud error.
+    await expect(finishing).resolves.toBe(true);
     expect(adapter.editMessage).toHaveBeenCalled();
     expect(adapter.sendText).toHaveBeenCalledTimes(1);
-    expect(logger.error).toHaveBeenCalledWith(
-      { timeout_ms: 30_000 },
-      "Fleet completion could not be delivered after adapter recovery wait",
+    expect(progress.terminalDeferred).toBe(true);
+    await vi.advanceTimersByTimeAsync(TERMINAL_BACKGROUND_WINDOW_MS + 60_000);
+    expect(logger.error).toHaveBeenCalledExactlyOnceWith(
+      { window_ms: TERMINAL_BACKGROUND_WINDOW_MS },
+      "Fleet completion could not be delivered in the background window",
     );
+    expect(progress.terminalDeferred).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   // ── #965: throttle + 429 handling ───────────────────────────────────────────

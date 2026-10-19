@@ -116,6 +116,14 @@ export function validateTimezone(tz: string, field: string): void {
   }
 }
 
+/**
+ * A connection as a load gives it: `id` defaults to its `type`, `mode` to `topic`. Every channels write is judged and
+ * kept in this shape too (#2211), so a key the file leaves to its default is never "changed" by being absent.
+ */
+export function channelWithDefaults<T extends { id?: string; type?: string; mode?: string }>(ch: T): T & { id: string | undefined; mode: NonNullable<T["mode"]> | "topic" } {
+  return { ...ch, id: ch.id ?? ch.type, mode: ch.mode ?? "topic" as const };
+}
+
 export function loadFleetConfig(configPath: string): FleetConfig {
   if (!existsSync(configPath)) {
     return { defaults: {}, instances: {} };
@@ -182,10 +190,10 @@ export function loadFleetConfig(configPath: string): FleetConfig {
 
   // Normalize channel → channels (backward compat: single channel auto-wraps into array)
   const channelSingle = parsed.channel
-    ? { ...parsed.channel, id: parsed.channel.id ?? parsed.channel.type, mode: parsed.channel.mode ?? "topic" as const }
+    ? channelWithDefaults(parsed.channel)
     : undefined;
   const channels: FleetConfig["channels"] = parsed.channels
-    ? parsed.channels.map(ch => ({ ...ch, id: ch.id ?? ch.type, mode: ch.mode ?? "topic" as const }))
+    ? parsed.channels.map(ch => channelWithDefaults(ch))
     : channelSingle ? [channelSingle] : undefined;
 
   // Always set channel to first entry (fallback for code using fleetConfig.channel)

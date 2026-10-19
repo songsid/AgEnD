@@ -45,7 +45,7 @@ function ChatCard({ name, card }) {
   </div>`;
 }
 import "./chat-strings.js";
-import { confirmedWrite } from "./settings-confirm.js";
+import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
 import { createThread, msgKey } from "./chat-thread.js";
 import { createEmojiIndex } from "./chat-emojis.js";
@@ -688,7 +688,7 @@ function DeleteDialog({ name, onClose }) {
     // navigates anything (the person may be anywhere by then).
     try {
       const res = await confirmedWrite(`/ui/instances/${encodeURIComponent(name)}/delete`, { method: "POST", body: { confirm: typed }, label: t("chat.deleteTitle", name),
-        onPending: () => { handedOver = true; toast(t("app.pendingSent")); if (lease.current()) { setBusy(false); onClose(); } } });
+        onPending: (_id, view) => { handedOver = true; toast(t(selfConfirmed(view) ? "app.pendingSelfSent" : "app.pendingSent")); if (lease.current()) { setBusy(false); onClose(); } } });
       r = res.ok ? res.body || {} : { error: (res.body && res.body.error) || `HTTP ${res.status}` };
     } catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
     if (r && r.error) { toast(r.error, false); if (!handedOver && lease.current()) setBusy(false); return; }
