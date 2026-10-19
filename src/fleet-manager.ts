@@ -896,6 +896,9 @@ function emojiListFilter(opts: Record<string, unknown>): {
 }
 
 
+/** #1660 cleanup watch; `frozen` is the warning text made once per outcome (#2175). */
+type CleanupWatch = { receipt: UpdateReceipt; summary: RestartProgressSummary; frozen?: { key: string; text: string } };
+
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
@@ -1139,6 +1142,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // Adapter restart: prevents re-entrant restart attempts
   private adapterRestarting = new Set<string>();
   // Adapter isolation: track state per adapter for retry + visibility
+  /** #2175: this boot's progress message, whose completion may still be owed by its background retry. */
+  private startupProgress: RestartProgress | null = null;
   private adapterState = new Map<string, { status: "connected" | "retrying" | "failed"; retryCount: number; lastError?: string; retryTimer?: ReturnType<typeof setTimeout> }>();
   /** Web Settings secret rotation is deliberately separate from reconnect
    * recovery: a rotation must build a fresh provider client with the new token,
@@ -1196,7 +1201,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * cleanup outcome to the same receipt instead of letting stage edits
    * clobber it — and refuses a receipt that no longer matches (checklist 3/5).
    */
-  private updateCleanupWatch: { receipt: UpdateReceipt; summary: RestartProgressSummary } | null = null;
+  private updateCleanupWatch: CleanupWatch | null = null;
   /** Injectable only to keep the chat→CLI reload hand-off deterministic in tests. */
   private fullRestartLauncher: () => Promise<FullRestartHelperHandle> = launchFullRestartHelper;
   private eventLogPruneTimer: ReturnType<typeof setInterval> | null = null;
@@ -6168,24 +6173,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async appendCleanupWarning(
     target: { adapterId: string; chatId: string; messageId: string; threadId?: string },
-    watch: { receipt: UpdateReceipt; summary: RestartProgressSummary },
+    watch: CleanupWatch,
     warning: string,
     cleanupCommand?: string,
   ): Promise<void> {
-    const text = formatRestartProgressCompletion("update", {
-      ...watch.summary,
-      warningText: warning,
-      warningCommand: cleanupCommand,
-    }, watch.receipt.startedAt);
+    // #2175: one text per outcome, frozen at its first tick. The completion carries elapsed seconds, so a text made
+    // anew each tick would never equal the one already handed over and landed (terminalLanded compares exactly).
+    const key = JSON.stringify([warning, cleanupCommand ?? null]);
+    if (watch.frozen?.key !== key) {
+      watch.frozen = { key, text: formatRestartProgressCompletion("update", {
+        ...watch.summary,
+        warningText: warning,
+        warningCommand: cleanupCommand,
+      }, watch.receipt.startedAt) };
+    }
+    const text = watch.frozen.text;
     const stopWatching = () => {
       this.updateCleanupWatch = null;
       if (this.updateProgressTimer) clearInterval(this.updateProgressTimer);
       this.updateProgressTimer = null;
     };
     if (text !== this.lastUpdateProgressText) {
-      const adapter = this.adapters.get(target.adapterId);
-      if (!adapter) return; // retry on a later tick
-      await adapter.editMessage(target.chatId, target.messageId, text, target.threadId);
+      // #2175: while the completion is still owed by the background retry, that retry is the message's only
+      // writer — this text (the completion plus the warning) goes to it rather than racing it. Handing it over is not
+      // delivery: the receipt and this watch stay until the retry reports this exact text landed (a later tick).
+      const progress = this.startupProgress;
+      if (progress?.terminalLanded(text)) {
+        // landed through the retry
+      } else if (progress?.replaceTerminalText(text)) {
+        return;
+      } else {
+        const adapter = this.adapters.get(target.adapterId);
+        if (!adapter) return; // retry on a later tick
+        await adapter.editMessage(target.chatId, target.messageId, text, target.threadId);
+      }
       this.lastUpdateProgressText = text;
     }
     const verdict = cleanupWatchVerdict(readUpdateProgress(this.dataDir), watch.receipt);
@@ -6596,6 +6617,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger,
       { mode: pendingProgressOperation === "full-restart" ? "reload" : pendingUpdateProgress ? "update" : "restart" },
     );
+    this.startupProgress = startupProgress;
 
     if (generals.length > 0) {
       for (const [name, cfg] of generals) {

@@ -604,10 +604,14 @@ describe("RestartProgress", () => {
     // worker to drain before attempting the terminal edit.
     const finishing = progress.finish({ running: 8, total: 8, version: "2.1.5", pausedNames: [] });
 
-    // The backoff is interrupted immediately; terminal edit fires without waiting 35s
+    // The backoff is interrupted immediately — but the provider named a 35s window, longer than the terminal budget:
+    // the terminal edit is not sent into it (#2168); finish() returns at once and the background retry owns it.
     await vi.advanceTimersByTimeAsync(0);
     await expect(finishing).resolves.toBe(true);
-    expect(editMessage).toHaveBeenCalledTimes(2); // non-terminal (429) + terminal (success)
+    expect(editMessage).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(35_000);
+    expect(editMessage).toHaveBeenCalledTimes(2); // non-terminal (429) + terminal (success, after the window)
+    expect(editMessage).toHaveBeenLastCalledWith("fleet", "progress-1", expect.stringContaining("8/8"), undefined);
     expect(logger.error).not.toHaveBeenCalled();
   });
 });
