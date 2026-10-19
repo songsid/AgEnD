@@ -4,7 +4,7 @@
 //   card    — the offer shows in the chat, leaves "checking" once the runtime woke, and has the host's Try button;
 //   plays   — a trusted click on Try opens the trial panel, its Canvas Worker frame loads, and the panel's pixels move
 //             (two screenshots a second apart differ inside it);
-//   ends    — leaving the chat ends it (the panel goes; Stop trial sits in the panel's closed shadow root, out of reach of
+//   ends    — leaving the chat ends it (the panel and every /effect-bootstrap frame go; Stop trial sits in the panel's closed shadow root, out of reach of
 //             a page locator).
 // The second case opens the same chat, whose thread already holds the first offer: that wakes the runtime on open.
 // No page error (the effect bootstrap's own CSP line and WebKit's own lines only).
@@ -61,7 +61,9 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
   const other2 = fx.instances.filter((i: any) => i.status === "running" && !i.general && i.name !== NAME)[0].name;
   await page.evaluate(`(() => { const a = document.querySelector('a[href="/ui/chat/' + encodeURIComponent(${JSON.stringify(other2)}) + '"]'); if (a) a.click(); })()`);
   const ended = await until(page, () => !document.querySelector("aside.effect-trial-panel"), null);
-  verdict(`${tag} ends`, ended, { ended, framesLeft: page.frames().filter((f: any) => /\/effect-bootstrap/.test(f.url())).length });
+  // The panel AND its effect frame(s): wait (bounded) for every /effect-bootstrap frame to be gone.
+  let framesLeft = -1; for (let i = 0; i < 50; i++) { framesLeft = page.frames().filter((f: any) => /\/effect-bootstrap/.test(f.url())).length; if (framesLeft === 0) break; await page.waitForTimeout(100); }
+  verdict(`${tag} ends`, ended && framesLeft === 0, { ended, framesLeft });
   first = false;
   await p.ctx.close();
 }

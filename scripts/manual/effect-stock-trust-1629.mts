@@ -132,7 +132,7 @@ try {
       await page.waitForFunction(c=>{const el=document.querySelector('.thread .effect-trial-offer');return !!el&&!(el.textContent||'').includes(c);},checking,{timeout:15000});
       const card=page.locator('.thread .effect-trial-offer');await card.scrollIntoViewIfNeeded();
       assert.equal(await card.getAttribute('data-trust'),'thread-control');assert.equal(await card.locator('b,a,iframe,canvas,input').count(),0);
-      const offerButtons=await card.locator('button').evaluateAll(xs=>xs.map(x=>x.className));assert.ok(offerButtons.every(c=>c==='btn btn-sm effect-trial-start'),'only the host Try button: '+offerButtons.join());
+      const offerButtons=await card.locator('button').evaluateAll(xs=>xs.map(x=>x.className));assert.deepEqual(offerButtons,['btn btn-sm effect-trial-start'],'exactly the host Try button');
       assert.equal(await card.locator('strong').textContent(),(lang==='zh-TW'?'效果試播':'Effect trial')+': <b>Host offer</b>');
       const offerBase=await page.screenshot(),offerPoints=await card.evaluate(el=>{const r=el.getBoundingClientRect();return[{x:Math.floor(r.x+3),y:Math.floor(r.y+3)},{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2)},{x:Math.floor(r.right-3),y:Math.floor(r.bottom-3)}];});
       assert.equal(await page.evaluate(()=>(window as any).stock.paint('front')),true);const offerFront=await page.screenshot();
