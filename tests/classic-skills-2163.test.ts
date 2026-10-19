@@ -126,6 +126,18 @@ describe("#2163: skills for a ClassicBot room's agent", () => {
     expect(readdirSync(outside)).toEqual([]);
     expect(existsSync(join(work, ".agents", "skills", "web-dashboard", "SKILL.md"))).toBe(true);
   });
+  it("a manifest replaced by a link to a file elsewhere: that file is not overwritten", async () => {
+    const home = scratch(); process.env.AGEND_HOME = home;
+    const work = join(home, "workspaces", "room-bot");
+    await startClassic(work);
+    const outside = scratch("agend-2163-user-");
+    writeFileSync(join(outside, "theirs.json"), "keep\n");
+    const manifest = join(work, ".agents", "skills", ".agend-managed-skills.json");
+    rmSync(manifest);
+    symlinkSync(join(outside, "theirs.json"), manifest);
+    await startClassic(work);
+    expect(readFileSync(join(outside, "theirs.json"), "utf8")).toBe("keep\n");
+  });
   it("the bundled frontmatter marks exactly those three for classic", () => {
     const classic = listBundledSkills().map(s => s.name).filter(n => /roles:\s*\[[^\]]*\bclassic\b/.test(readFileSync(join(__dirname, "..", "src", "general-knowledge", "skills", n, "SKILL.md"), "utf8")));
     expect(classic).toEqual(CLASSIC);

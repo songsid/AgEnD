@@ -16627,7 +16627,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     };
     if (refuse(destSkills)) return;
     mkdirSync(destSkills, { recursive: true });
-    if (refuse(destSkills)) return;
     const manifestPath = join(destSkills, ".agend-managed-skills.json");
     const hadManifest = existsSync(manifestPath);
     let previouslyManaged: string[] = [];
