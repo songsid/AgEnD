@@ -207,4 +207,3 @@ describe("#2181 review: the anonymous View reader — no reply times there, so a
     expect([pg.root.querySelector(".nav-sort-btn"), pg.root.querySelector(".v-recent"), pg.root.querySelector(".inst-when")]).toEqual([null, null, null]);
   });
 });
-
