@@ -310,7 +310,7 @@ describe("no agent path reaches it", () => {
     // #2198: the tool keeps only through the store's keepForAgent (the trial in force, or the one that just went back —
     // its own index's last trial, put back by the store's restore); it never names a trial or a version itself.
     expect(tools.match(/store\.keep\(/g)).toBeNull();
-    expect([...tools.matchAll(/store\.keepForAgent\(([^)]*)\)/g)].map(m => m[1])).toEqual(["person"]);
+    expect([...tools.matchAll(/store\.keepForAgent\(([^)]*)\)/g)].map(m => m[1])).toEqual(["person, c.trial"]);
     expect([...tools.matchAll(/store\.save\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(['c.text, { by: "agent" }']);
     expect([...tools.matchAll(/store\.restore\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(["null", "c.version"]);
     expect(tools).not.toMatch(/setOwnerCss|writeIndex|ownerCssActive/);

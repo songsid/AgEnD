@@ -270,18 +270,21 @@ export class OwnerCssStore {
    * #2198: an agent's "keep" (the person said so in chat). The trial still on: kept. The one that just went back by
    * itself — the most recent trial, expired within OWNER_CSS_AGENT_WAIT_MS, its version still saved — is put back in
    * force, as `use` of it — if a page had shown it. One reverted on purpose (Revert), one no screen ever showed, or
-   * anything else: not_on_trial (an earlier version is `use`).
+   * anything else: not_on_trial (an earlier version is `use`). Only the trial named (`trial`, the id its save returned):
+   * another one on now — the person saved a new one on their page since — is not kept in its place (trial_mismatch).
    */
-  keepForAgent(person: string): OwnerCssResult<{ active: string; restored: boolean }> {
+  keepForAgent(person: string, trial: unknown): OwnerCssResult<{ active: string; restored: boolean }> {
+    if (typeof trial !== "string" || !SHA.test(trial)) return { ok: false, status: 400, error: "trial" };
     this.settle(person);
     const index = this.readIndex(person);
     if (index.pending) {
-      const kept = this.keep(person, index.pending.id);
+      if (index.pending.id !== trial) return { ok: false, status: 409, error: "trial_mismatch" };
+      const kept = this.keep(person, trial);
       return kept.ok ? { ok: true, active: kept.active, restored: false } : kept;
     }
     const last = index.last, now = this.now();
     // Never shown (it expired waiting): nobody saw it — it is not put in force without its keep window.
-    if (last && last.how === "expire" && last.shown && now >= last.at && now - last.at <= OWNER_CSS_AGENT_WAIT_MS && index.versions.some(v => v.sha === last.sha)) {
+    if (last && last.id === trial && last.how === "expire" && last.shown && now >= last.at && now - last.at <= OWNER_CSS_AGENT_WAIT_MS && index.versions.some(v => v.sha === last.sha)) {
       const r = this.restore(person, last.sha);
       if (!r.ok) return r;
       this.writeIndex(person, { ...this.readIndex(person), last: { ...last, how: "keep" } });

@@ -104,7 +104,7 @@ describe("set_web_settings: as the page changes it", () => {
     try {
       vi.setSystemTime(new Date("2026-10-19T10:00:00Z"));
       const r = set({ what: "custom_css", action: "save", text: "body { outline: 4px solid #ff00ff }" });
-      expect(r).toMatchObject({ ok: true, on_trial: true });
+      expect(r).toMatchObject({ ok: true, on_trial: true, trial: expect.stringMatching(/^[a-f0-9]{32}$/) });
       expect(String(r.note)).toMatch(/waits until they open the dashboard/);
       expect(String(r.note)).toMatch(/20 s after it is on their screen/);
       const pending = fm.ownerCss.state(OPERATOR).pending;
@@ -113,11 +113,12 @@ describe("set_web_settings: as the page changes it", () => {
       expect(fm.ownerCss.shown(OPERATOR, pending.id)).toMatchObject({ ok: true, started: true });
       vi.setSystemTime(new Date("2026-10-19T10:03:40Z"));                // "keep it" reaches General 40 s later
       expect(fm.ownerCss.state(OPERATOR).pending, "the dead-man switch reverted it at 20 s").toBeNull();
-      const kept = set({ what: "custom_css", action: "keep" });
+      expect(set({ what: "custom_css", action: "keep" }), "keep names its trial").toMatchObject({ ok: false, error: "trial" });
+      const kept = set({ what: "custom_css", action: "keep", trial: r.trial });
       expect(kept).toMatchObject({ ok: true, active: pending.sha });
       expect(String(kept.note)).toMatch(/in force again/);
       expect(fm.ownerCss.state(OPERATOR)).toMatchObject({ active: pending.sha, pending: null });
-      const none = set({ what: "custom_css", action: "keep" });
+      const none = set({ what: "custom_css", action: "keep", trial: r.trial });
       expect(none).toMatchObject({ ok: false, error: "not_on_trial" });
       expect(JSON.stringify(none)).toMatch(/use/);
       set({ what: "custom_css", action: "off" });
@@ -135,13 +136,18 @@ describe("set_web_settings: as the page changes it", () => {
     expect(set({ what: "custom_css", action: "revert" })).toMatchObject({ ok: true, active: null });
     expect(fm.ownerCss.state(OPERATOR).pending).toBeNull();
     // #2198: reverted on purpose, it is not kept back (only one that expired by itself is); the answer points at use.
-    expect(set({ what: "custom_css", action: "keep" }), "nothing on trial").toMatchObject({ ok: false, error: "not_on_trial" });
-    set({ what: "custom_css", action: "save", text: "body { outline: 1px solid #0000ff }" });
+    expect(set({ what: "custom_css", action: "keep", trial: trial.id }), "nothing on trial").toMatchObject({ ok: false, error: "not_on_trial" });
+    const saved1 = set({ what: "custom_css", action: "save", text: "body { outline: 1px solid #0000ff }" });
     const first = fm.ownerCss.state(OPERATOR).pending.sha;
-    expect(set({ what: "custom_css", action: "keep" })).toMatchObject({ ok: true, active: first });
+    expect(set({ what: "custom_css", action: "keep", trial: saved1.trial })).toMatchObject({ ok: true, active: first });
     expect(fm.ownerCss.state(OPERATOR)).toMatchObject({ active: first, pending: null });
-    set({ what: "custom_css", action: "save", text: "body { outline: 3px solid #00ff00 }" });
-    set({ what: "custom_css", action: "keep" });
+    const saved2 = set({ what: "custom_css", action: "save", text: "body { outline: 3px solid #00ff00 }" });
+    expect(fm.webSettings.read().custom_css.trial, "get_web_settings names the trial on now").toBe(saved2.trial);
+    // #2198 follow-up: a newer trial on now (theirs, from the page) is not kept in place of the one General saved.
+    expect(set({ what: "custom_css", action: "keep", trial: saved1.trial })).toMatchObject({ ok: false, error: "trial_mismatch" });
+    expect(fm.ownerCss.state(OPERATOR).pending?.id).toBe(saved2.trial);
+    set({ what: "custom_css", action: "keep", trial: saved2.trial });
+    expect(fm.webSettings.read().custom_css.trial).toBeNull();
     // An earlier version: only one the person's store holds (each passed the safe rules when saved).
     expect(set({ what: "custom_css", action: "use", version: first })).toMatchObject({ ok: true, active: first });
     expect(set({ what: "custom_css", action: "use", version: "f".repeat(32) })).toMatchObject({ ok: false, error: "no_such_version" });
@@ -159,7 +165,7 @@ describe("set_web_settings: as the page changes it", () => {
     }
     // #2198: keep also puts back the version that just went back (as use of it); revert and use as before.
     const appearance = readFileSync("src/general-knowledge/skills/web-appearance/SKILL.md", "utf8");
-    expect(appearance).toContain("`keep` (the trial; or, kept after that 20 s ran out, it is put back in force as `use` of it), `revert` (the trial), `use` (with `version`");
+    expect(appearance).toContain("`keep` (with `trial`: the id `save` returned — a different trial on now, say one they saved on their page since, is refused with `trial_mismatch`, never kept instead; or, kept after that 20 s ran out, it is put back in force as `use` of it), `revert` (the trial), `use` (with `version`");
     expect(appearance).toContain("waits until they open the dashboard");
     expect(readFileSync("src/general-knowledge/skills/web-dashboard/SKILL.md", "utf8")).toContain("keep or revert\nthe trial, switch to an earlier saved version");
   });

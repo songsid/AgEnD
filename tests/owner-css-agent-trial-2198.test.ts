@@ -38,7 +38,7 @@ describe("#2198: an agent's custom CSS trial", () => {
     expect(s.state(P).pending?.waiting).toBeUndefined();
     expect(s.shown(P, saved.trial)).toMatchObject({ ok: true, started: false });   // a second page: the same window
     tick(15_000);                                                       // they say "keep it" in chat, General keeps
-    expect(s.keepForAgent(P)).toEqual({ ok: true, active: saved.sha, restored: false });
+    expect(s.keepForAgent(P, saved.trial)).toEqual({ ok: true, active: saved.sha, restored: false });
     expect([s.state(P).pending, active()]).toEqual([null, saved.sha]);
   });
   it("saved, shown, gone back after 20 s, then kept (the ~40 s round trip): put back in force, as use of it", () => {
@@ -49,9 +49,9 @@ describe("#2198: an agent's custom CSS trial", () => {
     tick(OWNER_CSS_KEEP_MS + 1);
     expect([s.state(P).pending, active()]).toEqual([null, before.sha]);     // the dead-man switch did its job
     tick(20_000);
-    expect(s.keepForAgent(P)).toEqual({ ok: true, active: saved.sha, restored: true });
+    expect(s.keepForAgent(P, saved.trial)).toEqual({ ok: true, active: saved.sha, restored: true });
     expect([s.state(P).pending, active()]).toEqual([null, saved.sha]);
-    expect(s.keepForAgent(P), "once: then it is simply in force").toMatchObject({ ok: false, error: "not_on_trial" });
+    expect(s.keepForAgent(P, saved.trial), "once: then it is simply in force").toMatchObject({ ok: false, error: "not_on_trial" });
   });
   it("saved and never shown: it goes back at the wait's end, and a keep then does not put it in force (nobody saw it)", () => {
     const { s, tick, active } = rig();
@@ -60,7 +60,7 @@ describe("#2198: an agent's custom CSS trial", () => {
     expect(s.state(P).pending?.id).toBe(saved.trial);
     tick(2);
     expect([s.state(P).pending, active()]).toEqual([null, null]);
-    expect(s.keepForAgent(P)).toMatchObject({ ok: false, error: "not_on_trial" });
+    expect(s.keepForAgent(P, saved.trial)).toMatchObject({ ok: false, error: "not_on_trial" });
     expect(active()).toBeNull();
   });
   it("reverted on purpose (Revert): not kept back", () => {
@@ -68,14 +68,14 @@ describe("#2198: an agent's custom CSS trial", () => {
     const saved = s.save(P, A, { by: "agent" }); if (!saved.ok) throw new Error(saved.error);
     s.shown(P, saved.trial); tick(5_000);
     expect(s.revertTrial(P, saved.trial)).toMatchObject({ ok: true, active: null });
-    expect(s.keepForAgent(P)).toMatchObject({ ok: false, error: "not_on_trial" });
+    expect(s.keepForAgent(P, saved.trial)).toMatchObject({ ok: false, error: "not_on_trial" });
   });
   it("an expired one is kept back only within the window, and only while its version is still saved", () => {
     const { s, tick, active } = rig();
     const saved = s.save(P, A, { by: "agent" }); if (!saved.ok) throw new Error(saved.error);
     s.shown(P, saved.trial); tick(OWNER_CSS_KEEP_MS + 1); expect(s.state(P).pending).toBeNull();
     tick(OWNER_CSS_AGENT_WAIT_MS + 1);
-    expect(s.keepForAgent(P)).toMatchObject({ ok: false, error: "not_on_trial" });
+    expect(s.keepForAgent(P, saved.trial)).toMatchObject({ ok: false, error: "not_on_trial" });
     expect(active()).toBeNull();
   });
   it("a person's own trial (saved on their page) is as before: 20 s from the save, no wait, shown() changes nothing", () => {
@@ -86,6 +86,21 @@ describe("#2198: an agent's custom CSS trial", () => {
     tick(OWNER_CSS_KEEP_MS + 1);
     expect([s.state(P).pending, active()]).toEqual([null, null]);
     expect(s.keep(P, saved.trial)).toMatchObject({ ok: false, error: "not_on_trial" });
+  });
+  it("follow-up: keep names its trial — a newer trial on now (saved on their page since) is refused, never kept instead", () => {
+    const { s, tick, active } = rig();
+    const saved = s.save(P, A, { by: "agent" }); if (!saved.ok) throw new Error(saved.error);
+    s.shown(P, saved.trial); tick(5_000);
+    const mine = s.save(P, B); if (!mine.ok) throw new Error(mine.error);              // the person saves another on their page
+    expect(s.keepForAgent(P, saved.trial)).toMatchObject({ ok: false, status: 409, error: "trial_mismatch" });
+    expect(s.state(P).pending?.id, "theirs is still on trial, untouched").toBe(mine.trial);
+    expect(active(), "theirs is what is on the page").toBe(mine.sha);
+    // Gone back by itself: General's keep does not revive its own over theirs either (theirs is the last trial).
+    tick(OWNER_CSS_KEEP_MS + 1);
+    expect(s.keepForAgent(P, saved.trial)).toMatchObject({ ok: false, error: "not_on_trial" });
+    expect(active()).toBeNull();
+    expect(s.keepForAgent(P, "x")).toMatchObject({ ok: false, status: 400, error: "trial" });
+    expect(s.keepForAgent(P, undefined)).toMatchObject({ ok: false, status: 400, error: "trial" });
   });
   it("shown() names its trial: another id, a malformed one, or none on trial is refused", () => {
     const { s } = rig();
