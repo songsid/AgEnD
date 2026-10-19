@@ -96,7 +96,8 @@ describe("#2163: agend-agent skill", () => {
     expect(list.find(s => s.name === "web-appearance")!.description).toMatch(/web dashboard/);
     const r = readBundledSkill("web-appearance");
     expect(r.ok && r.text.startsWith("---\nname: web-appearance")).toBe(true);
-    for (const bad of ["../../etc/passwd", "web-appearance/../x", "", "WEB-APPEARANCE", "no-such-skill"]) expect(readBundledSkill(bad).ok, bad).toBe(false);
+    // Including a path that WOULD reach a real SKILL.md by traversal: only a bundled skill's own name is read.
+    for (const bad of ["../../etc/passwd", "web-appearance/../x", "../skills/web-appearance", "./web-appearance", "", "WEB-APPEARANCE", "no-such-skill"]) expect(readBundledSkill(bad).ok, bad).toBe(false);
   });
   it("the command works with no instance and no fleet (a Classic agent's shell)", async () => {
     const run = (...argv: string[]) => new Promise<{ code: number; out: string }>(resolve => execFile(process.execPath,
