@@ -179,7 +179,9 @@ function endOf(L, name) {
 // ── Routing: lanes the layout keeps empty ──
 
 /** A side lane's offset from the middle of the box's padding: at least 6 px from the box's border and from its cards. */
-const laneOffset = (o) => Math.max(-OC.PAD / 2 + 6, Math.min(OC.PAD / 2 - 6, o * 0.5));
+const laneOffset = (o, PAD = OC.PAD) => Math.max(-PAD / 2 + 6, Math.min(PAD / 2 - 6, o * 0.5));
+/** The layout's own box padding and gutter (a phone's are narrower). */
+const spacing = (L) => ({ PAD: L.pad ?? OC.PAD, GAP: L.gap ?? OC.GAP });
 
 const firstBusOf = (L) => Math.min(...L.boxes.map((b) => b.busY));
 /** From an end up to its row's bus lane: the points, and the lane's y. `o` spreads lines sharing a lane. */
@@ -194,9 +196,9 @@ function outward(L, end, o) {
     const x = b.x + b.w / 2 + o * 1.5;
     return { pts: [{ x, y: b.y }, { x, y: b.busY + o }], bus: b.busY + o };
   }
-  const { PAD, GAP, NW, NH } = OC;
+  const { NW, NH } = OC, { PAD, GAP } = spacing(L);
   const card = end.c, col = end.i % b.cols, rowI = Math.floor(end.i / b.cols), lines = Math.ceil(b.cells.length / b.cols);
-  const io = laneOffset(o);
+  const io = laneOffset(o, PAD);
   const leftLane = b.x + PAD / 2 + io, rightLane = b.x + b.w - PAD / 2 + io;
   let pts;
   if (col === 0 || col === b.cols - 1) {
@@ -217,9 +219,9 @@ function outward(L, end, o) {
  * else down into the gutter under its row (no card is there) and across. The last point is on the lane.
  */
 function toLane(L, end, lane, o) {
-  const { PAD, GAP, NW, NH } = OC;
+  const { NW, NH } = OC, { PAD, GAP } = spacing(L);
   const b = end.b, card = end.c, col = end.i % b.cols, rowI = Math.floor(end.i / b.cols), lines = Math.ceil(b.cells.length / b.cols);
-  const io = laneOffset(o);
+  const io = laneOffset(o, PAD);
   const left = lane < b.x + b.w / 2;
   if ((left && col === 0) || (!left && col === b.cols - 1)) {
     const cy = card.y + NH / 2 + io;
@@ -230,8 +232,8 @@ function toLane(L, end, lane, o) {
 }
 /** Two cards in one open box: joined inside it, through the side lane nearer to them both (never out to the bus). */
 function inBox(L, a, z, o) {
-  const b = a.b, { PAD } = OC;
-  const io = laneOffset(o);
+  const b = a.b, { PAD } = spacing(L);
+  const io = laneOffset(o, PAD);
   const mid = ((a.i % b.cols) + (z.i % b.cols)) / 2;
   const lane = mid <= (b.cols - 1) / 2 ? b.x + PAD / 2 + io : b.x + b.w - PAD / 2 + io;
   return [...toLane(L, a, lane, o), ...toLane(L, z, lane, o).reverse()];
@@ -289,9 +291,12 @@ const settled = (phase) => (phase === "fading" || phase === "stale" ? "fading" :
 
 /**
  * The lines to draw from the store's items on layout `L`. `far`: zoomed out (one line per team pair). Each edge:
- * { key, hue, phase, n, from, to, d, pts, badge } — `from`/`to` the instance (or team) names it joins, for search.
+ * { key, hue, phase, n, from, to, d, pts, badge, a, z, routed } — `from`/`to` the instance (or team) names it joins, for
+ * search; `a`/`z` its two ends (fleet-route-scene.js routes the ones on cards). `routed` (#2182): the router's points by
+ * line key (fleet-route.js); a line it has none for keeps its lane route — or, while a new answer is on its way, the
+ * points the same two ends and kind had in the last one (a line changing phase keeps its place).
  */
-export function trafficEdges(items, L, { far = false, max = MAX_EDGES } = {}) {
+export function trafficEdges(items, L, { far = false, max = MAX_EDGES, routed = null } = {}) {
   if (!L.boxes.length && L.tops.length < 2) return [];
   // A top's way out is the first row's bus: with no box there is none, so only top ↔ top lines (betweenTops) are drawn.
   const groups = new Map();
@@ -321,10 +326,21 @@ export function trafficEdges(items, L, { far = false, max = MAX_EDGES } = {}) {
     add(`${a.key}>${z.key}|${hue(it.kind)}|${phase}`, { a, z, hue: hue(it.kind), phase, n: 1, names });
   }
   const list = [...groups.entries()].sort((x, y) => RANK[x[1].phase] - RANK[y[1].phase]).slice(0, max);
+  const lent = new Set();
+  const routedBy = (key) => {
+    if (!routed || far) return null;
+    const exact = routed.get(key);
+    if (exact) return exact;
+    const kin = key.slice(0, key.lastIndexOf("|") + 1);
+    for (const [k, pts] of routed) if (k.startsWith(kin) && !groups.has(k) && !lent.has(k)) { lent.add(k); return pts; }
+    return null;
+  };
   return list.map(([key, g], i) => {
     const o = ((i % 7) - 3) * 7;                                                    // neighbours 7 px apart (within the ±22 px bus lane)
-    const pts = route(L, g.a, g.z, o);
-    return { key, hue: g.hue, phase: g.phase, n: g.n, names: [...new Set(g.names)], d: pathOf(pts), pts, badge: g.n > 1 ? badgeAt(pts) : null };
+    const viaRouter = routedBy(key);
+    const pts = viaRouter ?? route(L, g.a, g.z, o);
+    return { key, hue: g.hue, phase: g.phase, n: g.n, names: [...new Set(g.names)], d: pathOf(pts), pts, badge: g.n > 1 ? badgeAt(pts) : null,
+      a: g.a, z: g.z, routed: !!viaRouter };
   });
 }
 

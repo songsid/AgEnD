@@ -195,7 +195,11 @@ Colour by kind — task (delegate_task) purple, send/query/update teal, report p
 read. "×N" = several messages share a line; failed ones belong in Needs you. A `delegate_task` also draws the work: a
 slow-moving purple line, delegator → worker, **in progress** until the worker's `report_result` with the same
 correlation id comes back (then one pink line returns); none after 4 h fades as **no report yet**. Reloads and the
-public link show the open ones. Every line ends on a card or a folded team's box. No message
+public link show the open ones. Every line ends on a card or a folded team's box. #2182: lines are routed card to card
+by libavoid (libavoid-js 0.4.5, LGPL) in a worker — around cards, through gaps in team borders, never along a border or
+across a team's name, lines sharing a stretch drawn apart; zoomed out, or where the router can't run (no WebAssembly,
+an old browser), they follow the gaps between teams as before. The worker alone may run WebAssembly and reaches nothing
+(its own CSP); the dashboard's CSP is unchanged. No message
 text is ever shown; instances with `cross_instance_visibility: hidden` are left out. On a public link it refreshes
 every 5 s.
 
@@ -219,8 +223,13 @@ to that instance's Log).
 - **Log** — [the Log tab](#the-log-tab).
 - **Details** — Configuration (display name, description, directory, bound to, tags; "Read only — change it in
   Settings." with **Edit in Settings**), Runtime (backend, model, effort, cost, context, 5 h and 7 d rate), Recent
-  activity, its identity card and widget. The ⋯ menu: Start / Restart / Stop instance, Pause / Wake, Colour…, and
+  activity, its identity card and widget. The ⋯ menu: Start / Restart / Stop instance, Pause / Wake, Colour…, **Page
+  colours** (#2196: the agent's choice / on the whole page / only its chat — host prefs `theme.pageByInstance`), and
   the theme lock/reset.
+- **Page colours (#2196):** an agent's theme with `page.on` (or a person's "on the whole page") colours the sidebar,
+  the header and the usage rail (a phone: drawer, header, tabs) while that agent's Chat/View/Log/Details is open —
+  colours only; status colours (Needs you count, state dots, errors, focus ring) never change. The header follows the
+  page, not the chat. Off with agents' themes off or `?safe=1`.
 
 Phone layout: bottom tabs Chat, Needs you, Fleet, Settings. Chat is current on any of an agent's pages and goes to its
 chat; View, Log and Details are the switch under the header.

@@ -14,6 +14,7 @@ can shape how you look there — **only your own look, and only on the surfaces 
 | Your name and role line | display name, description | `set_display_name`, `set_description` |
 | Your status stamp | persona emoji | `set_persona_emoji` (see the `persona-emoji` skill) |
 | Your chat | theme: colours, accent, bubbles, font, background picture, working label | `set_web_theme`, `set_web_theme_asset` |
+| The whole page, while your chat is open | your theme's colours on the sidebar, the header, the usage rail (a phone: the drawer, the header, the tabs) — colours only | `set_web_theme` (`page`) |
 | Your face and ring | theme picture and accent | `set_web_theme`, `set_web_theme_asset` |
 | Your identity card | portrait, banner, tagline, bio | `set_web_theme` (`card.*`), `set_web_theme_asset` |
 | Your identity colour | the colour people find you by in the sidebar, and where it shows (name, bar, ring) | `set_web_theme` (`identity`) |
@@ -23,7 +24,7 @@ can shape how you look there — **only your own look, and only on the surfaces 
 | Effects in your chat | Canvas Worker animations, and Try cards an admin outside the public link may start | `upload_web_effect`, `apply_web_effect`, `preview_web_effect`, … (see Effects) |
 
 None of these tools takes a target: they always act on you. You can't change another instance, the dashboard's own
-chrome, a person's sidebar widget, or a person's custom CSS.
+chrome (beyond your colours on it while your chat is open), a person's sidebar widget, or a person's custom CSS.
 
 ## For the user: Settings → Web appearance (General, coordinators, full)
 
@@ -40,8 +41,9 @@ of this skill).
 
 | `what` | Changes | Example |
 |---|---|---|
-| `host` | `themes_shown`, `card_size` (s/m/l), `card_sizes` ({instance: s/m/l}), `colour_places` (name/bar/ring), `colours_off`, `sidebar_widget` ({spec, data}) — null puts one back to its default | `{ what: "host", set: { colour_places: ["name","ring"] } }` |
+| `host` | `themes_shown`, `card_size` (s/m/l), `card_sizes` ({instance: s/m/l}), `page_colours` ({instance: page/chat}), `colour_places` (name/bar/ring), `colours_off`, `sidebar_widget` ({spec, data}) — null puts one back to its default | `{ what: "host", set: { colour_places: ["name","ring"] } }` |
 | `agent_colour` | one agent's colour (`preset:<name>` or `#rrggbb`) and places; null resets each | `{ what: "agent_colour", instance: "atlas", colour: "preset:teal" }` |
+| `page_colours` | where one agent's theme colours go: `page` (the whole page), `chat` (only its chat) or `agent` (its own `page.on`) — as ⋯ → Page colours sets it | `{ what: "page_colours", instance: "atlas", choice: "chat" }` |
 | `banner_focus` | which part of one agent's cropped card banner stays in view: `focus` 0 (top) … 100 (bottom), 50 the centre; it wins over the agent's own `card.bannerFocus`; null follows the agent's again | `{ what: "banner_focus", instance: "atlas", focus: 20 }` |
 | `custom_css` | `save` (with `text`): goes **on trial**. It waits until they open the dashboard (up to 10 minutes; never opened, it goes back unseen), then goes back by itself 20 s after it is on their screen unless kept (#2198). `keep` (with `trial`: the id `save` returned — a different trial on now, say one they saved on their page since, is refused with `trial_mismatch`, never kept instead; or, kept after that 20 s ran out, it is put back in force as `use` of it), `revert` (the trial), `use` (with `version`: an earlier saved one, at once), `off` | `{ what: "custom_css", action: "save", text: "…" }`; tell them to open the dashboard and look, then `keep` (with that `trial`) only when they say so — a `keep` that comes too late (`not_on_trial`) means use `use` with the version from `get_web_settings` |
 | `mod` | an agent's proposal: `review` (instance → `stage`, `plan`, `plan_hash`), then `install` (stage, plan_hash, `include`: the parts, `target`: the agent); `cancel`, `dismiss`, `uninstall` (id) | review, show the user the plan, install only what they asked for — never custom CSS unasked. A person has one review open at a time: while theirs is open (`mod_review_open`) ask them to finish it; a mod they imported from a file is theirs to install (`mod_not_from_an_agent`) |
@@ -107,6 +109,17 @@ Typed values only; anything else is refused with `{ errors: [{ path, problem }] 
   - `show` is a list of `name`, `bar` and `ring` (`[]` for nowhere). Left out, the host's default applies (name, bar and ring).
   - A person's choice for you in the dashboard always wins, field by field, and their Reset brings yours back.
     `get_web_appearance` says which is in force.
+- `page` (#2196): `{ on?: true | false, sidebar?: { light?, dark? } }` — `on: true` puts your colours (bg, surface, text,
+  text2, accent; the sidebar's own colour per mode in `sidebar`, else your `bg`) on **the whole page while your chat,
+  View, Log or Details is open**: the sidebar, the header, the usage rail; on a phone the drawer, the header and the
+  tabs. Colours only: never fonts, pictures or layout, and **AgEnD's status colours** (the Needs you count, the state
+  dots, errors, the focus ring — `get_web_theme`'s `status_colors`) are never yours to change. With `on: true` the
+  contrast check adds: `text` and `text2` 4.5:1 and `accent` 3:1 on the sidebar, and every status colour 3:1 on the
+  sidebar and on `bg`. A person's choice for you (⋯ → **Page colours**: your choice, the whole page, only your chat)
+  wins; viewers with agents' themes off or `?safe=1` see the page's own look.
+- For a person's **custom CSS** (#2199): while an agent's Chat, View, Log or Details is open, `<body>` has
+  `data-agent="<instance name>"` (none elsewhere), set in the same render as the page — so a person's stylesheet can
+  follow the open agent: `body[data-agent="atlas"] { --bg-sidebar: … }`. It is the person's, not yours to set.
 - `bubble`: `{ radius: 0..24, border: "none" | "thin" | "accent" }`.
 - `font`: `"inter"`, `"system"` or `"mono"`.
 - `background`: `{ image: <asset id>, fit: "cover" | "contain", opacity: 0.05..1 }`.

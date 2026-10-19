@@ -128,6 +128,15 @@ const VALIDATORS = new Map<string, (v: unknown) => unknown>([
     for (const k of keys) if (!name(k) || !["s", "m", "l"].includes(v[k] as string)) return bad("card.sizeByInstance: { <instance>: s | m | l }");
     return v;
   }],
+  // #2196: a person's choice, per instance, of where its theme's colours go — the whole page ("page") or only its chat
+  // ("chat"); an instance not listed follows its agent's (theme.page.on). Host-wide, like the identity colour.
+  ["theme.pageByInstance", (v) => {
+    if (!plain(v)) return bad("theme.pageByInstance: { <instance>: page | chat }");
+    const keys = Object.keys(v);
+    if (keys.length > MAX_CARD_SIZES) return bad(`theme.pageByInstance: at most ${MAX_CARD_SIZES} instances`);
+    for (const k of keys) if (!name(k) || (v[k] !== "page" && v[k] !== "chat")) return bad("theme.pageByInstance: { <instance>: page | chat }");
+    return Object.fromEntries(keys.map((k) => [k, v[k]]));
+  }],
   // #1629 r4-4: the person's own sidebar widget — a declarative spec and its values (web-widget.ts), checked as an
   // agent's is, with the fleet's counts as the only binds. Never an agent's: no tool or agent path writes a person's keys.
   ["widget.sidebar", (v) => {

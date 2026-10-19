@@ -29,7 +29,14 @@ export interface Theme {
    * choice for this instance wins, field by field.
    */
   identity?: ThemeIdentity;
+  /**
+   * #2196: the agent's colours on the whole page (the sidebar, the header, the usage rail; on a phone the drawer, the
+   * header and the tabs) while its chat, View, Log or Details is open — colours only, `sidebar` its own sidebar colour
+   * per mode (else its background). A person's choice for this instance wins (web prefs `theme.pageByInstance`).
+   */
+  page?: ThemePage;
 }
+export interface ThemePage { on?: boolean; sidebar?: { light?: Color; dark?: Color } }
 export interface ThemeIdentity { color?: IdentityColor; show?: Placement[] }
 /** #2086: `bannerFocus` — which part of a cropped banner stays in view, 0 (top) … 100 (bottom); absent: the centre. */
 export interface ThemeCard { portrait?: AssetId; banner?: AssetId; tagline?: string; bio?: string; bannerFocus?: number }
@@ -51,6 +58,41 @@ export const THEME_DEFAULTS: Record<ThemeMode, Required<Palette>> = {
   dark: { bg: "#212121", surface: "#2f2f2f", text: "#ececec", text2: "#b4b4b4", accent: "#7ab7ff", userBubble: "#2f2f2f", agentBubble: "#212121" },
   light: { bg: "#ffffff", surface: "#f4f4f4", text: "#0d0d0d", text2: "#5d5d5d", accent: "#0a62c2", userBubble: "#f4f4f4", agentBubble: "#ffffff" },
 };
+/**
+ * #2196: AgEnD's own status colours (src/ui/shared/tokens.css --ok, --warn, --danger, --danger-fill, --focus) — never
+ * themed. A page theme must leave each one readable (3:1, a component's contrast) on its sidebar and its background, so
+ * no agent's look can hide the Needs you count, a state, an error or the focus ring. A test pins these to the stylesheet.
+ */
+export const STATUS_COLORS: Record<ThemeMode, Record<"ok" | "warn" | "danger" | "dangerFill" | "focus", Color>> = {
+  dark: { ok: "#4cc38a", warn: "#e3b341", danger: "#ff8a80", dangerFill: "#c9372c", focus: "#7ab7ff" },
+  light: { ok: "#1a7f37", warn: "#8a5a00", danger: "#c4222b", dangerFill: "#c4222b", focus: "#0a62c2" },
+};
+/** #2196: the page's colours for `mode` — the theme's palette, and its sidebar colour (else its background). */
+export function pagePalette(theme: Theme, mode: ThemeMode): Required<Palette> & { sidebar: Color } {
+  const pal = effectivePalette(theme, mode);
+  return { ...pal, sidebar: theme.page?.sidebar?.[mode] ?? pal.bg };
+}
+/**
+ * #2196: what a page theme must read at on its sidebar (text as on the page; AgEnD's status colours too) and, `whole`,
+ * AgEnD's status colours on its background. A sidebar colour is checked whenever it is set — a person may put the
+ * agent's colours on the page though the agent never turned it on (#2202 review) — the background only with page.on.
+ */
+export function pageContrastProblems(theme: Theme, mode: ThemeMode, whole = true): ThemeProblem[] {
+  const out: ThemeProblem[] = [];
+  const p = pagePalette(theme, mode);
+  const need = (fg: Color, bg: Color, min: number, path: string, what: string) => {
+    const r = contrastRatio(fg, bg);
+    if (r + 1e-9 < min) out.push({ path, problem: `contrast ${what} is ${r.toFixed(2)}:1, at least ${min}:1 is needed` });
+  };
+  need(p.text, p.sidebar, 4.5, `page.sidebar.${mode}`, "text on the sidebar");
+  need(p.text2, p.sidebar, 4.5, `page.sidebar.${mode}`, "text2 on the sidebar");
+  need(p.accent, p.sidebar, 3, `page.sidebar.${mode}`, "accent on the sidebar");
+  for (const [k, c] of Object.entries(STATUS_COLORS[mode])) {
+    need(c, p.sidebar, 3, `page.sidebar.${mode}`, `AgEnD's ${k} colour on the sidebar`);
+    if (whole) need(c, p.bg, 3, `colors.${mode}.bg`, `AgEnD's ${k} colour on the page background`);
+  }
+  return out;
+}
 /** WCAG AA: [foreground, background, minimum ratio]. */
 export const CONTRAST_PAIRS: ReadonlyArray<readonly [keyof Palette, keyof Palette, number]> = [
   ["text", "bg", 4.5], ["text", "surface", 4.5], ["text", "agentBubble", 4.5], ["text", "userBubble", 4.5],
@@ -143,7 +185,7 @@ export function checkTheme(input: unknown, ctx: ThemeContext): { ok: true; theme
   const bad = (path: string, problem: string) => { errors.push({ path, problem }); };
   if (!isObj(input)) return { ok: false, errors: [{ path: "", problem: "must be an object" }] };
   const out: Theme = { v: 1 };
-  const known = new Set(["v", "colors", "accent", "bubble", "font", "background", "avatar", "workingLabel", "card", "identity"]);
+  const known = new Set(["v", "colors", "accent", "bubble", "font", "background", "avatar", "workingLabel", "card", "identity", "page"]);
   for (const k of Object.keys(input)) if (!known.has(k)) bad(k, "unknown key");
   if (input.v !== undefined && input.v !== 1) bad("v", "must be 1");
 
@@ -258,6 +300,28 @@ export function checkTheme(input: unknown, ctx: ThemeContext): { ok: true; theme
       if (Object.keys(identity).length) out.identity = identity;
     }
   }
+  if (input.page !== undefined) {
+    const pg = input.page;
+    if (!isObj(pg)) bad("page", "must be an object");
+    else {
+      const page: ThemePage = {};
+      for (const k of Object.keys(pg)) if (k !== "on" && k !== "sidebar") bad(`page.${k}`, "unknown key");
+      if (pg.on !== undefined) { if (typeof pg.on !== "boolean") bad("page.on", "true or false"); else page.on = pg.on; }
+      if (pg.sidebar !== undefined) {
+        if (!isObj(pg.sidebar)) bad("page.sidebar", "must be an object");
+        else {
+          const sb: NonNullable<ThemePage["sidebar"]> = {};
+          for (const k of Object.keys(pg.sidebar)) {
+            if (!(MODES as readonly string[]).includes(k)) { bad(`page.sidebar.${k}`, "unknown key (light or dark)"); continue; }
+            const c = canonicalColor(pg.sidebar[k]);
+            if (!c) bad(`page.sidebar.${k}`, "must be a colour #rgb or #rrggbb"); else sb[k as ThemeMode] = c;
+          }
+          if (Object.keys(sb).length) page.sidebar = sb;
+        }
+      }
+      if (Object.keys(page).length) out.page = page;
+    }
+  }
   if (errors.length) return { ok: false, errors };
 
   for (const mode of MODES) {
@@ -266,6 +330,10 @@ export function checkTheme(input: unknown, ctx: ThemeContext): { ok: true; theme
       const ratio = contrastRatio(pal[fg], pal[bgKey]);
       if (ratio + 1e-9 < min) bad(`colors.${mode}.${fg}`, `contrast ${fg} on ${bgKey} is ${ratio.toFixed(2)}:1, at least ${min}:1 is needed`);
     }
+    // #2196: on the whole page, its sidebar too — and AgEnD's status colours stay readable on it. A sidebar colour of
+    // its own is checked even with page off (a person may turn the page on for it).
+    if (out.page?.on) for (const pr of pageContrastProblems(out, mode)) bad(pr.path, pr.problem);
+    else if (out.page?.sidebar?.[mode]) for (const pr of pageContrastProblems(out, mode, false)) bad(pr.path, pr.problem);
   }
   if (errors.length) return { ok: false, errors };
   const canonical = canonicalTheme(out);
@@ -296,6 +364,10 @@ export function canonicalTheme(t: Theme): Theme {
   }
   if (t.identity && (t.identity.color || t.identity.show)) {
     out.identity = { ...(t.identity.color ? { color: t.identity.color } : {}), ...(t.identity.show ? { show: [...t.identity.show] } : {}) };
+  }
+  if (t.page && (typeof t.page.on === "boolean" || t.page.sidebar)) {
+    const sb = t.page.sidebar ? { ...(t.page.sidebar.light ? { light: t.page.sidebar.light } : {}), ...(t.page.sidebar.dark ? { dark: t.page.sidebar.dark } : {}) } : null;
+    out.page = { ...(typeof t.page.on === "boolean" ? { on: t.page.on } : {}), ...(sb && Object.keys(sb).length ? { sidebar: sb } : {}) };
   }
   return out;
 }

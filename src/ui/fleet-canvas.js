@@ -15,6 +15,8 @@
 //   change). The live state is the app store's (fleet-org.js buildOrgView), so the canvas moves with the stream.
 // - Live traffic (fleet-traffic.js): the messages between instances, drawn between the team boxes and the cards (never
 //   hidden under a box, never across a name). Live on or off per device; the list says it in words ("Sending: …").
+//   #2182: routed around the cards and through the boxes' doors by libavoid in a worker (fleet-route-scene.js), each
+//   line from card to card; the lanes are the fallback.
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { appStore } from "/assets/app-store.js";
 import { t, register } from "/assets/app-i18n.js";
@@ -27,6 +29,8 @@ import { identityClasses, identityOf, paintIdentity, useIdentityColors } from "/
 import { buildOrgView, OrgChart, OrgSummary } from "./fleet-org.js";
 import { OC, REST_KEY, SUM_LINE, canvasLayout, openingRegion, summaryRows } from "./fleet-canvas-layout.js";
 import { createTrafficStore, FAR_K, POLL_MS, sendingBy, trafficEdges } from "./fleet-traffic.js";
+import { routeScene } from "./fleet-route-scene.js";
+import { createRouteClient } from "./fleet-route.js";
 
 register("orgc", {
   en: {
@@ -201,7 +205,7 @@ function TrafficLayer({ edges, q }) {
   const still = reducedMotion();
   return html`<g class="oc-flows" aria-hidden="true">${edges.map((e) => {
     const dim = q && !e.names.some((n) => n.toLowerCase().includes(q));
-    return html`<g key=${e.key} class=${`oc-fl${dim ? " dim" : ""}`}>
+    return html`<g key=${e.key} class=${`oc-fl${dim ? " dim" : ""}`} data-routed=${e.routed ? "1" : undefined}>
       <path class="oc-flow-halo" d=${e.d} />
       <path class=${`oc-flow h-${e.hue} ph-${e.phase}`} d=${e.d} marker-start=${`url(#oc-src-${MARKER(e)})`} marker-end=${`url(#oc-ah-${MARKER(e)})`} />
       ${e.phase === "live" && !still ? html`<circle class=${`oc-pulse h-${e.hue}`} r="4"><animateMotion dur=${`${Math.max(1.6, e.pts.length * 0.3)}s`} repeatCount="indefinite" path=${e.d} /></circle>` : null}
@@ -269,6 +273,32 @@ function useTraffic(lease, on) {
   return useMemo(() => (on ? store.items() : []), [rev, on]);
 }
 
+/**
+ * #2182: the traffic lines, routed around the canvas by libavoid in a worker (fleet-route.js) once it answers; until
+ * then, and zoomed out (one line per team pair), along the lanes (fleet-traffic.js route()). An answer is kept while the
+ * layout it was routed on is the one drawn: a line it has not seen yet takes its lane until the next answer.
+ */
+let routeClient = null;
+function useTrafficRoutes(traffic, L, far) {
+  const lanes = useMemo(() => (traffic ? trafficEdges(traffic, L, { far }) : []), [traffic, L, far]);
+  const scene = useMemo(() => (far || !lanes.length ? null : routeScene(L, lanes)), [lanes, L, far]);
+  const [answer, setAnswer] = useState(null);                          // { shapes, map }
+  // The layout as the router sees it: a status frame re-making the same layout keeps the answer (and asks nothing).
+  const shapes = scene ? JSON.stringify(scene.shapes) : null;
+  const ask = scene && scene.conns.length ? JSON.stringify(scene) : null;
+  useEffect(() => {
+    if (!ask) return undefined;
+    routeClient ??= createRouteClient();
+    if (!routeClient.available) return undefined;
+    let live = true;
+    routeClient.route(JSON.parse(ask)).then((map) => { if (live && map) setAnswer({ shapes, map }); });
+    return () => { live = false; };
+  }, [ask]);
+  useEffect(() => () => { routeClient?.close(); routeClient = null; }, []);
+  return useMemo(() => (answer && answer.shapes === shapes && traffic ? trafficEdges(traffic, L, { far, routed: answer.map }) : lanes),
+    [lanes, answer, shapes, L, far, traffic]);
+}
+
 /** The canvas body: `view` buildOrgView's answer; `folded` the folded teams' keys; `q` the search needle; `traffic` the live items (null: Live is off). */
 function Canvas({ view, folded, onFold, q, jump, traffic }) {
   const [narrow] = useState(() => typeof matchMedia === "function" && matchMedia("(max-width: 640px)").matches);
@@ -308,7 +338,7 @@ function Canvas({ view, folded, onFold, q, jump, traffic }) {
     vp.current = narrow ? fitView(openingRegion(L), size(), { margin: 12, minK: 0.75 }) : fitView(whole(), size(), { widthOnly: true, maxK: 1, minK: 0.6 });
     setFar(vp.current.k < FAR_K);
   }, []);
-  const edges = useMemo(() => (traffic ? trafficEdges(traffic, L, { far }) : []), [traffic, L, far]);
+  const edges = useTrafficRoutes(traffic, L, far);
   // Preact owns the markup, not the transform: put it back after every render.
   useLayoutEffect(apply);
   // A search's Enter: the first match, unfolded (by the panel) and then brought into view — once. It waits for the

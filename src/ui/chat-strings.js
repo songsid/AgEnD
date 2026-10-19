@@ -122,6 +122,7 @@ register("chat", {
     dNoActivity: "No activity in the last hour.", dWorking: "Working…",
     // #1629: a person's control over an agent's own web theme.
     themeLock: "Lock theme", themeUnlock: "Unlock theme", themeReset: "Reset theme…", themeResetGo: "Reset",
+    pageColours: "Page colours", pageAgentOn: "The agent's choice (on)", pageAgentOff: "The agent's choice (off)", pageWhole: "On the whole page", pageChatOnly: "Only its chat",
     themeResetConfirm: "Reset {0}'s theme to the default? Its colours, picture and working label go; a lock stays.",
     themeResetDone: "{0}'s theme was reset.", themeLocked: "{0}'s theme is locked: the agent can't change it.", themeUnlocked: "{0}'s theme is unlocked.",
     themeFailed: "The theme was not changed ({0}).",
@@ -252,6 +253,7 @@ register("chat", {
     dEditInSettings: "到設定編輯", dPause: "暫停", dWake: "喚醒", dPaused: "{0} 已暫停", dWoken: "{0} 正在喚醒", dActionFailed: "沒有成功，請再試一次。",
     dNoActivity: "最近一小時沒有活動。", dWorking: "處理中…",
     themeLock: "鎖定主題", themeUnlock: "解除主題鎖定", themeReset: "重設主題…", themeResetGo: "重設",
+    pageColours: "頁面配色", pageAgentOn: "依 agent 的設定（開）", pageAgentOff: "依 agent 的設定（關）", pageWhole: "整個頁面", pageChatOnly: "只在它的聊天",
     themeResetConfirm: "要把 {0} 的主題重設為預設嗎？顏色、圖片和處理中文字都會移除；鎖定會保留。",
     themeResetDone: "已重設 {0} 的主題。", themeLocked: "已鎖定 {0} 的主題：agent 無法變更。", themeUnlocked: "已解除 {0} 的主題鎖定。",
     themeFailed: "主題沒有變更（{0}）。",

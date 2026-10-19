@@ -216,7 +216,7 @@ export const SetPersonaEmojiArgs = z.object({
 export const GetWebThemeArgs = z.object({});
 export const SetWebThemeArgs = z.object({
   set: z.record(z.string(), z.unknown()).optional()
-    .describe("Theme fields to set, merged into your current theme: colors.light|dark.{bg,surface,text,text2,accent,userBubble,agentBubble} as #rrggbb, accent, bubble.{radius 0..24, border none|thin|accent}, font inter|system|mono, background {image: asset id, fit cover|contain, opacity 0.05..1}, avatar (asset id), workingLabel (1..24 characters), card.{portrait, banner} (asset ids uploaded for those slots), card.tagline (1..60 characters, one line), card.bio (1..280 characters, at most 3 line breaks), card.bannerFocus (0 top … 100 bottom: which part of your banner stays in view when it is cropped; 50 the centre)"),
+    .describe("Theme fields to set, merged into your current theme: colors.light|dark.{bg,surface,text,text2,accent,userBubble,agentBubble} as #rrggbb, accent, bubble.{radius 0..24, border none|thin|accent}, font inter|system|mono, background {image: asset id, fit cover|contain, opacity 0.05..1}, avatar (asset id), workingLabel (1..24 characters), card.{portrait, banner} (asset ids uploaded for those slots), card.tagline (1..60 characters, one line), card.bio (1..280 characters, at most 3 line breaks), card.bannerFocus (0 top … 100 bottom: which part of your banner stays in view when it is cropped; 50 the centre), page.on (true: your colours on the whole page — the sidebar, the header, the usage rail, a phone's tabs — while your chat is open; a person's choice wins; text, accent and AgEnD's status colours must read on it), page.sidebar.light|dark (#rrggbb; else your bg)"),
   clear: z.array(z.string().max(64)).max(32).optional().describe("Dotted paths to remove, e.g. [\"colors.dark.bg\", \"workingLabel\"]"),
 });
 export const SetWebThemeAssetArgs = z.object({
@@ -362,6 +362,7 @@ export const SetWebSettingsArgs = z.object({
         themes_shown: z.boolean().nullable().optional().describe("Show agents' themes, effects and widgets (null: the default, shown)"),
         card_size: z.enum(["s", "m", "l"]).nullable().optional().describe("Identity cards' size (null: the default, m)"),
         card_sizes: z.record(z.string(), z.enum(["s", "m", "l"])).nullable().optional().describe("Cards set apart from it: { <instance>: s|m|l } (null: none)"),
+        page_colours: z.record(z.string(), z.enum(["page", "chat"])).nullable().optional().describe("Where agents' theme colours go, set apart from each agent's own choice: { <instance>: page (the whole page) | chat (only its chat) } (null: every agent's own)"),
         colour_places: Places.nullable().optional().describe("Where identity colours show where nobody chose: name, bar, ring ([] nowhere; null: the default, all three)"),
         colours_off: z.boolean().nullable().optional().describe("Turn every identity colour off on this host (picks are kept)"),
         sidebar_widget: z.object({ spec: z.record(z.string(), z.unknown()), data: z.record(z.string(), z.unknown()) }).strict().nullable().optional()
@@ -371,6 +372,10 @@ export const SetWebSettingsArgs = z.object({
     z.object({
       what: z.literal("banner_focus"), instance: NonEmptyString,
       focus: z.number().int().min(0).max(100).nullable().describe("Which part of that agent's cropped banner stays in view: 0 top … 100 bottom (50 the centre); null follows the agent's own"),
+    }).strict(),
+    z.object({
+      what: z.literal("page_colours"), instance: NonEmptyString,
+      choice: z.enum(["agent", "page", "chat"]).describe("Where that agent's theme colours go while its chat is open: page (the whole page: sidebar, header, usage rail, a phone's tabs), chat (only its chat), or agent (its own choice, theme.page.on)"),
     }).strict(),
     z.object({
       what: z.literal("agent_colour"), instance: NonEmptyString,
