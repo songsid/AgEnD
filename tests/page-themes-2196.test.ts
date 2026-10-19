@@ -67,6 +67,10 @@ describe("the host's check of `page`", () => {
     // …but not its background against the status colours: a chat-only theme keeps the freedom it had before #2196.
     const red = { colors: { light: { bg: "#c42a2b", surface: "#c42a2b", text: "#ffffff", text2: "#ffffff", accent: "#ffffff", userBubble: "#c42a2b", agentBubble: "#c42a2b" } } };
     expect(checkTheme({ ...red, page: { on: false } }, ctx).ok).toBe(true);
+    // A readable sidebar of its own with page off: its background is not held to the status colours (page.on is).
+    const darkRed = { colors: { dark: { bg: "#c9372c", text: "#ffffff", text2: "#ffffff", accent: "#ffffff" } }, page: { on: false, sidebar: { dark: "#101010" } } };
+    const on = checkTheme({ ...darkRed, page: { ...darkRed.page, on: true } }, ctx);
+    expect([checkTheme(darkRed, ctx).ok, !on.ok && on.errors.every((e) => /on the page background/.test(e.problem))]).toEqual([true, true]);
   });
   it("…and on its background, where the sidebar reads but the page is the colour of the Needs you count", () => {
     const t = { colors: { light: { bg: "#e05555", surface: "#ffffff", text: "#000000", text2: "#000000", accent: "#000000" } }, page: { on: true, sidebar: { light: "#ffffff" } } };
@@ -179,6 +183,12 @@ describe("the page: the open agent's colours on the shell", () => {
     const p = mounted.pop()!; await p.unmount(); p.restore();
     const again = await shell("/ui/chat/dim", { themes: { dim } });
     expect(again.themes.themeMenuItems("dim").find((i: any) => i.key === "page-page").disabled).toBe(true);
+  });
+  it("#2202 review: the page's sidebar check is its own — secondary text that fails only on the sidebar keeps the page in its own look", async () => {
+    // Everything reads but text2 on the sidebar (3.9:1): as an older host might have stored it, with page off.
+    const t = { v: 1, colors: { dark: { bg: "#000000", surface: "#000000", text: "#e2f3f0", text2: "#6b7b79", accent: "#2dd4bf" } }, page: { on: false, sidebar: { dark: "#1a1a1a" } } };
+    const { pg, themes } = await shell("/ui/chat/t2", { themes: { t2: t }, choices: { t2: "page" }, mode: "dark" });
+    expect([look(pg), themes.pageNow("dark")]).toEqual([null, null]);
   });
   it("#2202 review: only an agent's own pages — Chat, View, Log, Details — take its colours; no other route that names it", async () => {
     const { themes } = await shell("/ui/chat/harbor");
