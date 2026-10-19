@@ -11,6 +11,12 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'AgEnD Docs',
+      favicon: '/favicon.svg',
+      logo: { src: './src/assets/logo.svg', alt: 'AgEnD' },
+      head: [
+        { tag: 'link', attrs: { rel: 'alternate icon', type: 'image/x-icon', href: '/AgEnD/favicon.ico' } },
+        { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/AgEnD/apple-touch-icon.png' } },
+      ],
       defaultLocale: 'root',
       locales: {
         root: { label: 'English', lang: 'en' },
