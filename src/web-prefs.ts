@@ -94,6 +94,10 @@ const VALIDATORS = new Map<string, (v: unknown) => unknown>([
     return v;
   }],
   ["nav.collapsed", (v) => uniqueStrings(v, 200, groupName, "nav.collapsed")],
+  // #2179: how the sidebar sorts — the person's own order (custom, the default), or the last reply first (recent); in
+  // recent, the favorites keep their order (fixed) or are sorted the same way (recent).
+  ["nav.sort", (v) => (plain(v) && exactly(v, ["mode", "favs"]) && (v.mode === "custom" || v.mode === "recent") && (v.favs === "fixed" || v.favs === "recent")
+    ? { mode: v.mode, favs: v.favs } : bad("nav.sort: { mode: custom or recent, favs: fixed or recent }"))],
   ["nav.filter", (v) => {
     if (!plain(v) || !exactly(v, ["q", "status", "cli"])) return bad("nav.filter: { q, status, cli }");
     if (!shortText(v.q, 200)) return bad("nav.filter: q at most 200 characters");

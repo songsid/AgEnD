@@ -31,6 +31,7 @@ export const SYNCED = {
   "nav.collapsed": { ls: "agend_instance_collapsed", ...json },
   "nav.filter": { ls: "agend_instance_filter", ...json },
   "nav.favorites": { ls: "agend_favorites", ...json },   // #1664
+  "nav.sort": { ls: "agend_nav_sort", ...json },          // #2179
   "preview.optIn": { ls: "agend_html_preview", toLocal: (v) => (v ? "on" : null), fromLocal: (s) => (s === "on" ? true : undefined) },
   "names.primary": { ls: "agend_names_primary", toLocal: (v) => (v === "instance" ? v : null), fromLocal: (s) => (s === "instance" ? s : undefined) },   // #1722
   // #1629 r2 (d): "Show agents' themes and effects" — on unless turned off (only "off" is cached).
