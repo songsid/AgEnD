@@ -27,9 +27,22 @@ export function retireDiscordClient(client: Client, report: (error: Error) => vo
   // later timeout then emits an unhandled EventEmitter error in the fleet.
   // These are deliberately scoped private internals of the default in-process
   // strategy; a Client without a gateway (including before login) has no sockets.
-  const shards = (client.ws as unknown as {
-    _ws?: { strategy?: { shards?: Map<number, { connection?: GatewaySocket; internalConnect?: () => Promise<void> }> } };
-  })?._ws?.strategy?.shards;
+  const strategy = (client.ws as unknown as {
+    _ws?: { strategy?: {
+      shards?: Map<number, { connection?: GatewaySocket; internalConnect?: () => Promise<void> }>;
+      spawn?: (...args: unknown[]) => Promise<void>;
+      connect?: () => Promise<void>;
+    } };
+  })?._ws?.strategy;
+  // A pending GET gateway/bot can resume Client.login after destroy has finished.
+  // Fence the strategy permanently before our first await: spawning/connecting
+  // after retirement would create sockets outside the snapshot below. A spawn
+  // already awaiting gateway info may still finish, but cannot connect them.
+  if (strategy) {
+    strategy.spawn = async () => {};
+    strategy.connect = async () => {};
+  }
+  const shards = strategy?.shards;
   for (const shard of shards?.values() ?? []) {
     // A HELLO timeout can already have scheduled native recovery in 1.2.3's
     // 500ms backoff. A retired shard must never open another socket after the
