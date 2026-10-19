@@ -93,7 +93,7 @@ try {
 
 if ((Test-Path $ProgressFile) -and -not $Force) {
     Write-Warn "偵測到上次安裝進度，將從中斷處繼續"
-    Write-Info "如需重新安裝，請執行: .\install-agend.ps1 -Force"
+    Write-Info "如需全部重新安裝：用一行指令安裝的，先執行 `$env:AGEND_INSTALL_FORCE = '1'，再貼上同一行指令；直接執行腳本的，請執行 .\install-agend.ps1 -Force"
     Write-Host ""
 }
 
@@ -129,7 +129,7 @@ if (Stage-Done 1) {
         Mark-Stage "1a"
         $reboot = Read-Host "  是否現在重新開機？(Y/n)"
         if ($reboot -ne "n" -and $reboot -ne "N") { Restart-Computer -Force }
-        Write-Info "請手動重新開機後，再次執行此腳本"
+        Write-Info "請手動重新開機後，再次執行同一行安裝指令（或此腳本），會從中斷處繼續"
         exit 0
     } else {
         Write-Ok "WSL 功能已啟用"
@@ -154,7 +154,7 @@ if (Stage-Done 1) {
                     Write-Ok "WSL $($release.tag_name) 已從 GitHub 安裝"
                 } elseif ($msiProc.ExitCode -eq 3010) {
                     Write-Warn "WSL 已安裝但需要重新開機才能生效"
-                    Write-Info "請重新開機後再次執行此腳本"
+                    Write-Info "請重新開機後，再次執行同一行安裝指令（或此腳本），會從中斷處繼續"
                     Read-Host "按 Enter 結束"; exit 0
                 } else {
                     Write-Err "MSI 安裝失敗 (exit code: $($msiProc.ExitCode))"
@@ -179,7 +179,7 @@ if (Stage-Done 1) {
             Mark-Stage "1b"
             $reboot = Read-Host "  是否現在重新開機？(Y/n)"
             if ($reboot -ne "n" -and $reboot -ne "N") { Restart-Computer -Force }
-            Write-Info "請手動重新開機後，再次執行此腳本"
+            Write-Info "請手動重新開機後，再次執行同一行安裝指令（或此腳本），會從中斷處繼續"
             exit 0
         }
     } else {

@@ -44,7 +44,7 @@ for (const variant of variants) {
       await page.evaluate(`localStorage.setItem("agend_card_size", ${JSON.stringify(size)})`);
       const one = async (surface: string, path: string, sel: string) => {
         await page.goto(`${fx.base}${path}`); await page.waitForTimeout(900);
-        if (surface === "chat" && !(await page.$(".chat-card .id-card"))) { await page.click(".chat-card-toggle").catch(() => {}); await page.waitForTimeout(400); }
+        if (surface === "chat" && !(await page.$(".chat-card .id-card"))) { await page.click(".chat-card-show").catch(() => {}); await page.waitForTimeout(400); }
         const el = await page.$(sel);
         if (!el) { results.cases.push({ variant: variant.id, width, theme, size, surface, missing: sel }); return; }
         const m: any = await page.evaluate(`(() => { const card = document.querySelector(${JSON.stringify(sel)}); const box = (q) => { const e = card.querySelector(q); if (!e) return null; const r = e.getBoundingClientRect(); return { l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), w: Math.round(r.width), h: Math.round(r.height) }; };

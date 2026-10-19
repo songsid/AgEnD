@@ -22,6 +22,12 @@ curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 
 This installs Node.js 22 through nvm if you have no Node or one that is too old, installs tmux, installs `agend`, then tells you to run `agend quickstart`. When the script runs in an interactive terminal rather than through a pipe, it offers to start it right away.
 
+On Windows, run this in PowerShell instead. It sets up WSL 2 and Ubuntu, then installs your AI backend and AgEnD inside it and connects your bot. It asks once for Administrator approval, and after the restart WSL may need, running the same line again resumes it. See the [Windows installation guide](/AgEnD/install-windows/).
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"
+```
+
 Already have Node and tmux:
 
 ```bash

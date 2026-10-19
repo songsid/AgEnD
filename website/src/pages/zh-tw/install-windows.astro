@@ -7,6 +7,9 @@ const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
 const ps1 = `${base}install-agend.ps1`;
 const enHref = `${base}install-windows/`;
 const homeHref = `${base}zh-tw/`;
+const oneLiner = 'powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"';
+const forceLine = "$env:AGEND_INSTALL_FORCE = '1'";
+const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
 ---
 
 <Base locale={locale}>
@@ -27,18 +30,22 @@ const homeHref = `${base}zh-tw/`;
       </p>
     </div>
 
-    <!-- Download -->
-    <div class="mb-14 rounded-2xl border border-border bg-surface p-6">
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <div class="font-semibold text-text-primary">下載安裝腳本</div>
-          <div class="text-sm text-text-secondary mt-1"><code class="font-mono text-accent">install-agend.ps1</code> — PowerShell，需以系統管理員身分執行</div>
-        </div>
-        <a href={ps1} download
-           class="shrink-0 bg-accent text-bg font-semibold text-sm px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity text-center">
-          下載 install-agend.ps1
-        </a>
-      </div>
+    <!-- One line -->
+    <div class="mb-14 rounded-2xl border border-accent/40 bg-surface p-6">
+      <div class="font-semibold text-text-primary">一行指令安裝</div>
+      <p class="text-sm text-text-secondary mt-1">
+        開啟 PowerShell（按 <kbd class="font-mono">Win+X</kbd> →「終端機」），貼上這一行後按 Enter：
+      </p>
+      <pre class="mt-3 bg-raised border border-border rounded-lg p-4 whitespace-pre-wrap break-words text-sm font-mono text-text-primary">{oneLiner}</pre>
+      <ul class="mt-4 space-y-2 text-sm text-text-secondary">
+        <li>• 安裝程式要啟用 WSL，所以 Windows 會詢問一次<b class="text-text-primary">系統管理員</b>權限。選「是」之後，安裝程式會在新視窗裡執行。如果你開的已經是系統管理員 PowerShell，就直接在原視窗執行。</li>
+        <li>• <code class="font-mono text-accent">-ExecutionPolicy ByPass</code> 只對這一個指令有效，不會改動你的執行原則，也不需要解除封鎖檔案。</li>
+        <li>• <b class="text-text-primary">如果要求重新開機</b>，重開之後再貼上同一行指令，就會從中斷處繼續。</li>
+      </ul>
+      <p class="mt-4 text-sm text-text-secondary">
+        想自己下載腳本再執行？請看<a href="#manual" class="text-accent hover:underline">手動安裝</a>。
+        macOS 或 Linux 的一行安裝指令是 <code class="font-mono text-accent break-words">{unixLine}</code>。
+      </p>
     </div>
 
     <!-- Prerequisites -->
@@ -67,8 +74,33 @@ const homeHref = `${base}zh-tw/`;
       Telegram：你在群組傳 <code class="font-mono text-accent">/start</code> 時，quickstart 會找出群組和你的 User ID。Discord：quickstart 會從你的伺服器訊息或 bot 私訊偵測帳號，請你確認；失敗時須手填有效 ID，另需 General 頻道 ID，請看 <a href={`${base}zh-tw/setup-discord/`} class="text-accent hover:underline">Discord Bot 設定教學</a>。
     </div>
 
+    <!-- Stages -->
+    <h2 class="text-2xl font-bold text-text-primary mb-3">安裝程式會做什麼</h2>
+    <p class="text-sm text-text-secondary mb-5">
+      跟著畫面上的中文提示操作即可，全程約 10–20 分鐘（視網路速度而定）。安裝程式分成 5 個階段：
+    </p>
+    <div class="mb-14 rounded-xl border border-border bg-surface p-6">
+      <ol class="space-y-3 text-sm text-text-secondary">
+        <li><b class="text-text-primary">[1/5] 安裝 WSL 2 + Ubuntu</b> —— 選擇 Linux 版本（預設 Ubuntu-24.04）與安裝磁碟（選你的 SSD）。可能需要重開機一次；重開後再貼上同一行指令（或再執行一次腳本）即可自動接續。</li>
+        <li><b class="text-text-primary">[2/5] 安裝 AI 後端（可多選）</b> —— 用逗號分隔選擇一個以上（直接 Enter 只裝 Kiro CLI）：
+          <ol class="mt-2 ml-4 space-y-1 list-decimal list-inside text-text-secondary/90">
+            <li>Kiro CLI（免費，需 AWS Builder ID / GitHub / Google）</li>
+            <li>Claude Code（需 Anthropic 帳號，Claude Pro $20/月+）</li>
+            <li>Antigravity CLI（免費，需 Google 帳號）</li>
+            <li>OpenAI Codex（需 ChatGPT 帳號或 API Key）</li>
+          </ol>
+        </li>
+        <li><b class="text-text-primary">[3/5] 登入各後端</b> —— 腳本會帶你依序登入所選的每個後端。Kiro 會顯示一個網址，複製到瀏覽器用 AWS Builder ID / GitHub / Google 授權；Claude / Antigravity / Codex 則在首次執行時各自導向對應的登入頁。完成授權後自動繼續。</li>
+        <li><b class="text-text-primary">[4/5] 安裝 AgEnD</b> —— 全自動（透過官方安裝腳本裝 Node.js 22 LTS + tmux）。</li>
+        <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 執行 <code class="font-mono text-accent">agend quickstart</code>：選擇 Discord 或 Telegram，貼上 Bot Token。Telegram 要在群組傳 <code class="font-mono text-accent">/start</code> 讓 quickstart 找到群組；Discord 先從訊息偵測帳號並請你確認；失敗時須填有效 ID，另需 General 頻道 ID。接著寫入設定，再詢問要不要安裝服務並啟動。</li>
+      </ol>
+    </div>
+
     <!-- Steps -->
-    <h2 class="text-2xl font-bold text-text-primary mb-6">安裝步驟</h2>
+    <h2 id="manual" class="text-2xl font-bold text-text-primary mb-3">手動安裝</h2>
+    <p class="text-sm text-text-secondary mb-6">
+      不用一行指令，改用同一支安裝腳本：<a href={ps1} download class="text-accent hover:underline">下載 install-agend.ps1</a>，自己執行。
+    </p>
     <div class="space-y-6 mb-14">
       <!-- Step 1 -->
       <div class="rounded-xl border border-border bg-surface p-6">
@@ -102,29 +134,16 @@ Unblock-File .\install-agend.ps1</pre>
         </div>
         <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">.\install-agend.ps1</pre>
         <p class="text-sm text-text-secondary mt-3">
-          跟著畫面上的中文提示操作即可，全程約 10–20 分鐘（視網路速度而定）。腳本分成 5 個階段：
+          跟著畫面上的中文提示操作即可，階段和上面說明的 5 個相同。
         </p>
-        <ol class="mt-4 space-y-3 text-sm text-text-secondary">
-          <li><b class="text-text-primary">[1/5] 安裝 WSL 2 + Ubuntu</b> —— 選擇 Linux 版本（預設 Ubuntu-24.04）與安裝磁碟（選你的 SSD）。可能需要重開機一次；重開後再執行一次腳本即可自動接續。</li>
-          <li><b class="text-text-primary">[2/5] 安裝 AI 後端（可多選）</b> —— 用逗號分隔選擇一個以上（直接 Enter 只裝 Kiro CLI）：
-            <ol class="mt-2 ml-4 space-y-1 list-decimal list-inside text-text-secondary/90">
-              <li>Kiro CLI（免費，需 AWS Builder ID / GitHub / Google）</li>
-              <li>Claude Code（需 Anthropic 帳號，Claude Pro $20/月+）</li>
-              <li>Antigravity CLI（免費，需 Google 帳號）</li>
-              <li>OpenAI Codex（需 ChatGPT 帳號或 API Key）</li>
-            </ol>
-          </li>
-          <li><b class="text-text-primary">[3/5] 登入各後端</b> —— 腳本會帶你依序登入所選的每個後端。Kiro 會顯示一個網址，複製到瀏覽器用 AWS Builder ID / GitHub / Google 授權；Claude / Antigravity / Codex 則在首次執行時各自導向對應的登入頁。完成授權後自動繼續。</li>
-          <li><b class="text-text-primary">[4/5] 安裝 AgEnD</b> —— 全自動（透過官方安裝腳本裝 Node.js 22 LTS + tmux）。</li>
-          <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 執行 <code class="font-mono text-accent">agend quickstart</code>：選擇 Discord 或 Telegram，貼上 Bot Token。Telegram 要在群組傳 <code class="font-mono text-accent">/start</code> 讓 quickstart 找到群組；Discord 先從訊息偵測帳號並請你確認；失敗時須填有效 ID，另需 General 頻道 ID。接著寫入設定，再詢問要不要安裝服務並啟動。</li>
-        </ol>
       </div>
     </div>
 
     <!-- Interrupted -->
     <div class="mb-14 rounded-xl border border-border bg-surface p-5 text-sm text-text-secondary">
-      <b class="text-text-primary">安裝中斷怎麼辦？</b>直接重新執行 <code class="font-mono text-accent">.\install-agend.ps1</code> 即可 —— 腳本會自動偵測已完成的步驟並從中斷處繼續。
-      若想完全重頭來過，執行 <code class="font-mono text-accent">.\install-agend.ps1 -Force</code>。
+      <b class="text-text-primary">安裝中斷怎麼辦？</b>再貼上同一行指令即可（手動安裝的話，重新執行 <code class="font-mono text-accent">.\install-agend.ps1</code>）—— 安裝程式會自動偵測已完成的步驟並從中斷處繼續。
+      若想完全重頭來過，先在同一個 PowerShell 視窗執行 <code class="font-mono text-accent">{forceLine}</code>，再貼上那一行指令；
+      手動安裝的話，執行 <code class="font-mono text-accent">.\install-agend.ps1 -Force</code>。
     </div>
 
     <!-- Auto-start -->

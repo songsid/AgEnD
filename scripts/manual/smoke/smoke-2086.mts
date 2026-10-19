@@ -50,7 +50,7 @@ for (const focus of foci) {
       await page.evaluate(`localStorage.setItem("agend_card_size", ${JSON.stringify(size)})`);
       const one = async (surface: string, path: string, sel: string) => {
         await page.goto(`${fx.base}${path}`); await page.waitForTimeout(900);
-        if (surface === "chat" && !(await page.$(".chat-card .id-card"))) { await page.click(".chat-card-toggle").catch(() => {}); await page.waitForTimeout(400); }
+        if (surface === "chat" && !(await page.$(".chat-card .id-card"))) { await page.click(".chat-card-show").catch(() => {}); await page.waitForTimeout(400); }
         const el = await page.$(sel);
         if (!el) { results.cases.push({ focus, width, size, surface, missing: sel }); return; }
         const m: any = await page.evaluate(`(() => { const b = document.querySelector(${JSON.stringify(sel)}).querySelector(".id-banner"); if (!b) return null; const r = b.getBoundingClientRect();
@@ -79,7 +79,7 @@ if (TAG !== "before") {
   const { ctx, page } = await fx.page(c, { storage: { agend_chat_card: "open" } });
   await page.setViewportSize({ width: 1920, height: 1000 });
   await page.goto(`${fx.base}/ui/chat/${enc(NAME)}`); await page.waitForTimeout(1200);
-  if (!(await page.$(".chat-card .id-card"))) { await page.click(".chat-card-toggle").catch(() => {}); await page.waitForTimeout(400); }
+  if (!(await page.$(".chat-card .id-card"))) { await page.click(".chat-card-show").catch(() => {}); await page.waitForTimeout(400); }
   const trust = async () => page.evaluate(`import("/assets/effect-stock-trust.js").then((m) => { const r = m.stockEffectTrust(window, { ownerCss: "off" }); return { ok: r.ok, reason: r.reason, fill: getComputedStyle(document.querySelector(".id-banner-fill")).filter }; })`);
   results.stock = { stock: await trust() };
   await page.evaluate(`document.querySelector(".id-banner-fill").style.setProperty("filter", "blur(30px)")`);
@@ -111,7 +111,7 @@ if (TAG !== "before") {
       fm.webPrefs.write("operator", new Map<string, unknown>([["card.size", size]]));
       for (const [surface, path, sel] of [["details", `/ui/fleet/agent/${enc(NAME)}`, ".p-details .id-card"], ["view", `/view/${enc(NAME)}`, ".v-id .id-card"], ["chat", `/ui/chat/${enc(NAME)}`, ".chat-card"]] as const) {
         await page.goto(`${fx.base}${path}`); await page.waitForTimeout(800);
-        if (surface === "chat" && !(await page.$(".chat-card .id-card"))) { await page.click(".chat-card-toggle").catch(() => {}); await page.waitForTimeout(300); }
+        if (surface === "chat" && !(await page.$(".chat-card .id-card"))) { await page.click(".chat-card-show").catch(() => {}); await page.waitForTimeout(300); }
         const m: any = await page.evaluate(`(() => { const c = document.querySelector(${JSON.stringify(sel)}); const b = c && c.querySelector(".id-banner"); if (!b) return null; const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })()`);
         results.layouts.push({ label, size, surface, box: m, ar: m ? +(m[0] / m[1]).toFixed(3) : null });
       }

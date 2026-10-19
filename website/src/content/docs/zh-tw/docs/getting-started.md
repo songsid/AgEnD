@@ -22,6 +22,12 @@ curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 
 沒有 Node.js 或版本太舊時，會用 nvm 裝 Node.js 22，接著裝 tmux、裝 `agend`，然後提示你執行 `agend quickstart`。腳本在互動式終端機裡執行（不是透過管線）時，會詢問要不要直接開始。
 
+在 Windows 上，改在 PowerShell 執行這一行。它會裝好 WSL 2 和 Ubuntu，在裡面裝 AI 後端和 AgEnD，再串接你的 bot。過程中會詢問一次系統管理員權限；WSL 需要重新開機時，重開後再執行同一行即可接續。詳見 [Windows 安裝指南](/AgEnD/zh-tw/install-windows/)。
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"
+```
+
 已經有 Node 和 tmux：
 
 ```bash
