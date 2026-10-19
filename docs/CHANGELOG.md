@@ -19,6 +19,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Fixes:** among them, chat text no longer jitters after a switch, a message to a paused agent wakes it, the Antigravity usage row shows its Gemini quota again, and the update message on Telegram reaches its last step.
 
 ### Added
+- **Mods: one file that carries a look (#1629).** **Settings → Web appearance → Mods** imports a `.agendmod.json` file in two steps.
+  - The whole file is checked and everything in it is shown first: theme and pictures, card text, widgets as they will look, effects (Canvas Worker effects are still beta, 2.3), and the full custom CSS.
+  - Only the parts you tick are applied, all at once; if any part fails, nothing changes. Custom CSS from a file is never ticked for you, and it starts as a trial you keep or revert.
+  - Installed mods can be downloaded again, replaced by a newer version (after a confirmation), or uninstalled. **Export a mod** makes a file from what is in force now.
+  - Mods are a signed-in person's action, never over a temporary public link.
+- **Agents: General can change Settings → Web appearance for you (#2056).** Ask it in chat.
+  - **The tools:** `get_web_settings` describes every setting on that page in plain words. `set_web_settings` changes one, through the page's own checks.
+  - **What it covers:** host settings (agents' themes shown, identity colours and where they show, card sizes, the sidebar widget), one agent's colour, an effect on a chat or an effect slot (Canvas Worker effects are still beta, 2.3), an agent's proposed mod (review, then install only the parts you asked for), and Restore defaults.
+  - **Custom CSS:** it keeps its safe rules. General can only put it on trial, revert the trial or turn it off; keeping it is still your own click on your screen.
+  - **Who has the tools:** General, coordinators and full-profile instances. Other agents still change only their own look and propose mods.
+  - **What stays on the page:** choosing a file from your computer, this browser's own switches and the card upload limits.
+- **Custom CSS General saves: it keeps it when you say so (#2056, #2198).** The entry above gives #2056's first rule. In 2.2.5, General keeps a stylesheet on trial when you tell it to in chat, and can put back one that has just gone back by itself; see "General can keep your custom CSS for you" under Changed and #2198 under Fixed.
 - **Web: agents' themes (#1629).** An agent can give its own web chat a look with the `set_web_theme` tools: colours for light and dark, accent, bubbles, font, a background picture, its own picture and its working label.
   - A theme changes only that agent's chat and its picture and ring in the sidebar. Values are checked on the host and again on the page, and pictures are served by the dashboard itself with their metadata removed.
   - In a chat's or Details' **⋯** menu, a signed-in admin can **Lock** or **Reset** an agent's theme; neither is offered over a temporary public link.
@@ -115,6 +127,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - **Guests** see no reply times, and the anonymous View page (which has none) always lists in your Custom order.
 
 ### Changed
+- **Agents hear about 2.3 in two short lines (#2012).** An agent that was already running before the update gets two notices: one says the web appearance tools exist (theme, identity card and colour, widgets, mods, Canvas Worker effects with Try, which are still beta in 2.3) and asks it to load the `web-appearance` skill, and one says `checkout_repo` accepts branch names again and `release_repo` releases only the agent's own checkouts. The skill now holds every detail, including the effect tools and the identity colour. The tool descriptions that still said Try and effect profiles were unavailable, and the old **Settings → Appearance** name, are fixed.
+- **Agents' appearance uploads are no longer counted (#2083).** An agent may upload as many theme pictures, effects (Canvas Worker effects are still beta, 2.3) and proposed mods as it needs. The old limit was 3 an hour.
+  - **Still in force:** each picture's size and dimension limits, the agent's picture quota, an effect's and a mod's own size caps, at least 30 seconds between changes and at most 10 changes an hour, the widget-data limits, `web.themes.agent_edit` and a person's lock.
+  - **`get_web_theme`:** its `limits` no longer list uploads left.
 - **Web: an instance in the sidebar opens its chat from the Fleet pages (#1917).** On the Fleet overview, Tasks, schedules and the other Fleet tabs, clicking an instance in the sidebar now opens its Chat instead of its Details. On a Details page, the sidebar still switches to another instance's Details, and `/ui/fleet/agent/<name>` still opens Details.
 - **The org canvas shows the work, not just the message (#1918).**
   - **Delegations stay until their report.** A `delegate_task` draws a slow-moving line from the delegator to the worker that stays **in progress** until the worker's `report_result` with the same correlation id comes back. Then one line returns to the delegator, and it goes. With no report after 4 hours it fades as **no report yet**. A reload or the public link shows the open ones too.
@@ -182,6 +198,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - someone reading `/view` without signing in sees the same sidebar and tabs as before.
 
 ### Fixed
+- **Web asset tools work in an instance’s own managed workspace (#2025).** Picture and effect uploads (Canvas Worker effects are still beta, 2.3), mod proposals, appearance previews and mod exports now accept the caller’s own `~/.agend/workspaces/<instance>` directory while retaining the working-directory boundary. Other instances’ workspaces and other AgEnD state remain refused, including through symlinks. Staging subdirectories are optional.
+- Allow web-appearance assets and effect packages (Canvas Worker effects are still beta, 2.3) from an instance's exclusively configured workspace under `workspaces/`, including folders whose name differs from the instance. Other instances' configured and standard workspaces (including stopped or paused ClassicBot peers), shared or overlapping directories, symlinks, hard-linked state files and sensitive files remain refused; General-style state directories still require staging.
+- **Keep retired Discord startup offline (#2191).** A late gateway response can no longer create a new socket after retirement and expose an unhandled handshake error during native recovery.
+- **Recover after a network outage (#2191).** Discord gateway rebuilds contain retiring WebSocket handshake errors. Failed connections keep retrying and offer **Settings → Connections → Retry now**. Fleet-internal tools work without a chat adapter, and suppressed MCP recovery is reconsidered after its cooldown. Fatal fleet errors record their reason before shutdown.
+- **Custom CSS General saves for you no longer goes back before you can answer (#2198).** The 20-second keep window started when General saved it, but your "keep it" comes back through chat (about 40 seconds), so General's keep always failed. Now:
+  - The version waits until you open the dashboard (up to 10 minutes), and the 20 seconds start once it's on your screen. CSS that hides its own Keep button still reverts.
+  - If "keep it" arrives after the 20 seconds, General puts that version back in force.
+  - A version you save yourself on the Settings page works as before.
 - The shared atomic file writer completes positive short UTF-8 writes before publication and preserves the old file if writing stalls or fails.
 - **Click down the sidebar as fast as you like (#2188).** Clicking several chats in a row could leave the page stuck for seconds, and every switch felt slow. The cause was mostly the effects code: with nothing to play, it still checked the whole page's styles on every change (each status update, each click, every mouse move). Now:
   - With no effect placed, that check doesn't run at all; the dialog check runs once per change instead of several times.
