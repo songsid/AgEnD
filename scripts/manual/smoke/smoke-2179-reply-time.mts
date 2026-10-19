@@ -7,7 +7,8 @@
 //   - a reply under 10 minutes old is highlighted (--reply-a), a newer one under a minute pulses once — not under
 //     reduced motion (its animation is none);
 //   - Custom (the default, said on the sort button): a new reply in the middle of the list moves no row, and its time
-//     reads "just now" / 剛剛 at once;
+//     reads "just now" / 剛剛 with the next status frame (sent here at once; the fleet sends one at least every 10 s, the
+//     public link's poll carries one each time — so this shows the rendering, not the natural delay);
 //   - the menu → Recent replies: one list by last reply, the button says so, the choice is saved (POST /ui/prefs 200)
 //     and a reload keeps it (then put back to Custom for the next case);
 //   - the temporary public link (it never writes preferences): the times show, no sort button (blocked: no way to
@@ -107,7 +108,7 @@ async function runCase(name: string, open: () => Promise<FreshPage>, lang: "en" 
     const freshOpen = await bgOf("billing-reconciliation");
     chk.tintNotOverHoverOrOpen = freshHover === plainHover && freshOpen === plainHover && freshOpen !== row(a, "billing-reconciliation").bg;
   }
-  // Custom: a new reply in the middle of the list moves no row; its time reads "just now" at once.
+  // Custom: a new reply in the middle of the list moves no row; its time reads "just now" with the next status frame.
   const before = JSON.stringify(a.groups);
   reply("nightly-benchmarks", 0); status();
   await p.page.waitForFunction(([n, j]: string[]) => [...document.querySelectorAll("#instanceList a.inst")].some((x) => x.querySelector(".inst-name").textContent === n && x.querySelector(".inst-when")?.textContent === j),
