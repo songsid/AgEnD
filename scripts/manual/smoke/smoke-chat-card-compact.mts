@@ -8,7 +8,8 @@
 //   B / C    — no banner: Hide card on the row, nothing to fold; C (no bio) still folds;
 //   switch   — A → B → A with the card shown: no layout shift (Chromium's layout-shift entries; #2184 / #2188);
 //   hide     — Hide card: gone, Show card back, kept over a reload;
-//   ?safe=1 and the public link (desk light, Chromium): the same controls work; no page error anywhere.
+//   ?safe=1, the public link and a guest (desk light, Chromium): the same controls work — a guest's header has no ⋯
+//              menu, which is why Show card is a header button; no page error anywhere.
 // Heights: the header's bottom to the chat's first row (the card's share), per state; a screenshot of the top per state.
 //   PW_DIR=… REPO=… OUT=… [PW_ENGINE=webkit] [TAG=before|after] npx --prefix <checkout> tsx scripts/manual/smoke/smoke-chat-card-compact.mts
 import { writeFileSync } from "node:fs";
@@ -22,7 +23,7 @@ const WEBKIT_OWN = new Set(["Refused to apply a stylesheet because its hash, its
 const CANCEL = /^(EventSource|Fetch API) cannot load https?:\s*\/+[^\s/]+\/(ui\/(events|poll|traffic)|auth\/sessions?)(\?\S*)? due to access control checks\.$/;
 const other = (errors: string[]) => errors.filter((e) => { const t = e.replace(/ @ \S+$/, ""); return !(ENGINE === "webkit" && (WEBKIT_OWN.has(t) || CANCEL.test(t))); });
 
-const fx = await bootFixture({ port: Number(process.env.HP ?? 48700), classic: false });
+const fx = await bootFixture({ port: Number(process.env.HP ?? 48700), classic: false, webYaml: "  guests:\n    enabled: true" });
 const fm = fx.fm;
 const running = fx.instances.filter((i: any) => i.status === "running" && !i.general).map((i: any) => i.name);
 const [A, B, C] = running;
@@ -163,6 +164,38 @@ if (ENGINE === "chromium") {
   await shot(q.page, "public", "folded");
   verdict("public link", pShow && pCard && pFold && other(q.errors).length === 0, { pShow, pCard, pFold, errors: other(q.errors) });
   await q.ctx.close(); await link.close();
+
+  // A guest (#1920): a session scoped to A, as an accepted invite gives one (minted here; nothing seeded in the browser).
+  const { tokenEpoch } = await import(process.env.REPO + "/src/web-session.ts");
+  fm.guestScope = () => new Set([A]);
+  const owner = { adapterId: "discord", userId: "424242424242424242" };
+  fm.webPrefs.setProfileName(`person:${owner.adapterId}:${owner.userId}`, "Guest Person");
+  fm.initializeWebSessions();
+  const sid = fm.webSessions.create({ tier: "guest", surface: "local", label: "smoke-2217", tokenEpoch: tokenEpoch(fm.webToken), owner }).sessionId;
+  const gctx = await fx.browser.newContext({ viewport: { width: 1366, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
+  await gctx.addCookies([{ name: "agend_session", value: sid, url: fx.base }]);
+  const g = await gctx.newPage();
+  const gErrors: string[] = [];
+  g.on("pageerror", (e: any) => gErrors.push(String(e).slice(0, 200)));
+  g.on("console", (m: any) => { if (m.type() === "error") gErrors.push(m.text().slice(0, 200)); });
+  await g.goto(`${fx.base}/ui/chat/${enc(A)}`); await g.waitForSelector("#msgIn", { timeout: 30000 }); await g.waitForTimeout(1200);
+  const gGuest = await g.evaluate(`({ tier: document.body.dataset.tier, menu: !!document.querySelector(".p-chat .panel-head .menu-btn, .p-chat .panel-head [aria-haspopup='menu']") })`);
+  const gShowBtn = await until(g, () => !!document.querySelector(".p-chat .panel-head .chat-card-show"), null);
+  await g.screenshot({ path: shotPath(SMOKE, `${TAG}-${ENGINE}-guest`, "1-hidden"), clip: { x: 0, y: 0, width: 1366, height: 560 } });
+  if (gShowBtn) await g.click(".p-chat .panel-head .chat-card-show");
+  const gShown = await until(g, () => !!document.querySelector(".p-chat .id-banner-box .id-hide") && !!document.querySelector(".p-chat .id-row .id-fold"), null);
+  await g.screenshot({ path: shotPath(SMOKE, `${TAG}-${ENGINE}-guest`, "2-shown"), clip: { x: 0, y: 0, width: 1366, height: 560 } });
+  if (gShown) await g.click(".p-chat .id-row .id-fold");
+  const gFolded = await until(g, () => !document.querySelector(".p-chat .id-row") && !!document.querySelector(".p-chat .id-banner-box .id-unfold"), null);
+  await g.screenshot({ path: shotPath(SMOKE, `${TAG}-${ENGINE}-guest`, "3-folded"), clip: { x: 0, y: 0, width: 1366, height: 560 } });
+  if (gFolded) await g.click(".p-chat .id-banner-box .id-unfold");
+  const gUnfolded = await until(g, () => !!document.querySelector(".p-chat .id-row .id-fold"), null);
+  if (gUnfolded) await g.click(".p-chat .id-banner-box .id-hide");
+  const gHidden = await until(g, () => !document.querySelector(".p-chat .chat-card") && !!document.querySelector(".p-chat .panel-head .chat-card-show"), null);
+  const gKept = await g.evaluate(`[localStorage.getItem("agend_chat_card"), localStorage.getItem("agend_chat_card_row")]`);
+  verdict("guest", gGuest.tier === "guest" && !gGuest.menu && gShowBtn && gShown && gFolded && gUnfolded && gHidden && gErrors.length === 0,
+    { ...gGuest, gShowBtn, gShown, gFolded, gUnfolded, gHidden, kept: gKept, errors: gErrors });
+  await gctx.close();
 }
 
 writeFileSync(shotPath(SMOKE, "results", `${TAG}-${ENGINE}`).replace(/\.png$/, ".json"), JSON.stringify(results, null, 1));
