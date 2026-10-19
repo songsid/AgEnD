@@ -208,6 +208,12 @@ describe("FleetManager: deletes keep what other places share with the deleted va
     const raw = loadRawFleetConfig(f.path).instances as any;
     expect([Object.keys(raw), raw.helper.description, raw.helper.tags_note, parseDocument(f.file()).errors]).toEqual([["general", "helper"], "shared words", "info", []]);
   });
+  it("an explicit removal alone (memory unchanged): the value it removes stays where another place shares it", () => {
+    const f = fleetOn(FLEET.replace("  worker:\n    working_directory: /tmp\n", "  worker:\n    working_directory: /tmp\n    log_level: &lvl debug\n  helper:\n    working_directory: /tmp\n    tags_note: *lvl\n"));
+    f.fm.saveFleetConfig([{ path: ["instances", "worker", "log_level"], remove: true }]);
+    const raw = loadRawFleetConfig(f.path).instances as any;
+    expect([raw.worker.log_level, raw.helper.tags_note, parseDocument(f.file()).errors]).toEqual([undefined, "debug", []]);
+  });
   it("a value equal to the default, removed on save, that another place shares", () => {
     const f = fleetOn(AGENTS);
     f.fm.fleetConfig.instances.general.description = "something else changed";        // any save
