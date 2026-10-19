@@ -8,7 +8,8 @@
  * - showing a message that isn't drawn yet draws the rest first; a disposed thread draws nothing more;
  * - filling in never re-renders a message already drawn (Markdown is not run again);
  * - #1908 review (Board 38f25eca): a frame draws exactly one chunk more (never everything in the first fill-in), and
- *   asking for the next chunk twice before a frame still queues one frame and draws one chunk.
+ *   asking for the next chunk twice before a frame still queues one frame and draws one chunk; #2222 review (Board
+ *   4bbbb4a6): so does asking again after the frame ran and before its timer did.
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, type AppPage } from "./helpers/app-harness.js";
@@ -204,7 +205,11 @@ describe("#1908 review: one chunk per frame", () => {
     g.cancelAnimationFrame = (id: number) => { queued[id - 1] = () => {}; };
     return {
       queued: () => queued.length,
-      async step() { const run = queued.splice(0); for (const cb of run) cb(); await new Promise(r => setTimeout(r, 0)); },
+      /** Run the queued frames only (each sets the timer that draws). */
+      frame() { const run = queued.splice(0); for (const cb of run) cb(); },
+      /** Let the timers the frames set run. */
+      async timers() { await new Promise(r => setTimeout(r, 0)); },
+      async step() { this.frame(); await this.timers(); },
       restore() { g.requestAnimationFrame = saved.raf; g.cancelAnimationFrame = saved.caf; },
     };
   }
@@ -231,6 +236,21 @@ describe("#1908 review: one chunk per frame", () => {
       expect(f.queued()).toBe(1);
       await f.step();
       expect(list.children.length).toBe(THREAD_TAIL + 1 + THREAD_CHUNK);
+    } finally { f.restore(); }
+  });
+  it("asked again after the frame ran, before its timer drew: still one chunk, and one frame queued after it", async () => {
+    const { list, thread } = threadAt();
+    const f = frames();
+    try {
+      const all = many(200);
+      thread.render(all, { restore: null });
+      f.frame();                                                           // the frame ran; its timer has not
+      thread.render([...all, msg(201)], {});                              // a live message in between
+      expect(f.queued()).toBe(0);                                         // the timer already owns the next chunk
+      await f.timers();
+      expect([list.children.length, f.queued()]).toEqual([THREAD_TAIL + 1 + THREAD_CHUNK, 1]);
+      await f.step();
+      expect(list.children.length).toBe(THREAD_TAIL + 1 + 2 * THREAD_CHUNK);
     } finally { f.restore(); }
   });
 });
