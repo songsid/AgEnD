@@ -193,7 +193,11 @@ Colour by kind — task (delegate_task) purple, send/query/update teal, report p
 read. "×N" = several messages share a line; failed ones belong in Needs you. A `delegate_task` also draws the work: a
 slow-moving purple line, delegator → worker, **in progress** until the worker's `report_result` with the same
 correlation id comes back (then one pink line returns); none after 4 h fades as **no report yet**. Reloads and the
-public link show the open ones. Every line ends on a card or a folded team's box. No message
+public link show the open ones. Every line ends on a card or a folded team's box. #2182: lines are routed card to card
+by libavoid (libavoid-js 0.4.5, LGPL) in a worker — around cards, through gaps in team borders, never along a border or
+across a team's name, lines sharing a stretch drawn apart; zoomed out, or where the router can't run (no WebAssembly,
+an old browser), they follow the gaps between teams as before. The worker alone may run WebAssembly and reaches nothing
+(its own CSP); the dashboard's CSP is unchanged. No message
 text is ever shown; instances with `cross_instance_visibility: hidden` are left out. On a public link it refreshes
 every 5 s.
 

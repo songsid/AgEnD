@@ -31,7 +31,8 @@ import type { SendOpts } from "./channel/types.js";
 import { t } from "./locale.js";
 import { isSafeInstanceName } from "./web-shell-routes.js";
 import { MAX_COMMAND_ARGS } from "./web-commands.js";
-import { sendPanelHtml } from "./web-host-guard.js";
+import { ROUTE_WORKER_CSP, ROUTE_WORKER_PATH, sendPanelHtml } from "./web-host-guard.js";
+import { libavoidFile } from "./web-libavoid.js";
 import { shellRoute } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createReadStream, createWriteStream, readFileSync } from "node:fs";
@@ -925,8 +926,23 @@ export function handleWebRequest(
     try {
       const js = readFileSync(join(__dirname, "ui", fileName), "utf-8");
       res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+      // #2182: the route worker's own, narrower-reaching policy (ROUTE_WORKER_CSP); every other file keeps the page's.
+      if (path === ROUTE_WORKER_PATH) res.setHeader("Content-Security-Policy", ROUTE_WORKER_CSP);
       res.writeHead(200);
       res.end(js);
+    } catch {
+      json(res, 404, { error: "File not found" });
+    }
+    return true;
+  }
+
+  // #2182: libavoid (libavoid-js, LGPL-2.1-or-later) — the npm package's own two files, unmodified, at a versioned path.
+  const vendor = method === "GET" ? libavoidFile(path) : null;
+  if (vendor) {
+    try {
+      const body = readFileSync(vendor.file);
+      res.writeHead(200, { "Content-Type": vendor.type, "Cache-Control": "private, max-age=31536000, immutable" });
+      res.end(body);
     } catch {
       json(res, 404, { error: "File not found" });
     }

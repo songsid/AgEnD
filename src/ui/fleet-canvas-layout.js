@@ -1,8 +1,14 @@
 // #1918: the org canvas's layout (fleet-canvas.js draws it; fleet-traffic.js routes lines through its empty lanes).
 // Fixed slots, no layout engine: the same structure always gives the same picture.
 
-/** Sizes in canvas units. NW×NH a member card, LW×LH a General card; FOLDED a folded (or empty) team's height. */
-export const OC = { NW: 184, NH: 56, GAP: 18, PAD: 24, HEAD: 34, TEAM_GAP: 56, ROW_GAP: 96, ROW_MAX: 1400, ROW_MAX_NARROW: 460, LW: 232, LH: 68, TOP_Y: 20, BUS: 44, FOLDED: 64, TRUNK: -30 };
+/**
+ * Sizes in canvas units. NW×NH a member card, LW×LH a General card; FOLDED a folded (or empty) team's height. GAP and
+ * PAD (#2182): the gutters between cards and a box's padding are the traffic lines' channels inside a box — wide
+ * enough that the router (fleet-route-scene.js) keeps a few lines apart in each; a phone's narrow packing keeps the
+ * tighter GAP_NARROW and PAD_NARROW, so General and the first team still open at a readable size. A layout says which
+ * it used (L.gap, L.pad).
+ */
+export const OC = { NW: 184, NH: 56, GAP: 28, PAD: 32, GAP_NARROW: 18, PAD_NARROW: 24, HEAD: 34, TEAM_GAP: 72, ROW_GAP: 96, ROW_MAX: 1400, ROW_MAX_NARROW: 460, LW: 232, LH: 68, TOP_Y: 20, BUS: 44, FOLDED: 64, TRUNK: -30 };
 const colsFor = (n, narrow) => (n <= 1 ? 1 : n <= 4 || narrow ? 2 : 3);
 /** The key a team folds by (per device): its name; the instances in no team have one of their own no team name can be. */
 export const REST_KEY = "\u0000rest";
@@ -13,7 +19,7 @@ export const REST_KEY = "\u0000rest";
  * size of the whole. `narrow`: a phone's packing.
  */
 export function canvasLayout(view, folded = new Set(), { narrow = false, label = (s, n) => `${n} ${s}` } = {}) {
-  const { NW, NH, GAP, PAD, HEAD } = OC;
+  const { NW, NH, HEAD } = OC, GAP = narrow ? OC.GAP_NARROW : OC.GAP, PAD = narrow ? OC.PAD_NARROW : OC.PAD;
   const groups = [...view.teams.map((tm) => ({ key: tm.name, name: tm.name, loose: false, nodes: tm.nodes, counts: tm.counts })),
     ...(view.rest.nodes.length ? [{ key: REST_KEY, name: null, loose: true, nodes: view.rest.nodes, counts: view.rest.counts }] : [])];
   const rows = [];
@@ -49,7 +55,7 @@ export function canvasLayout(view, folded = new Set(), { narrow = false, label =
   const width = Math.max(rowsW, topW);
   const tops = view.top.map((node, i) => ({ node, key: `\u0000top/${node.name}`, x: width / 2 - topW / 2 + i * (OC.LW + GAP), y: OC.TOP_Y, w: OC.LW, h: OC.LH }));
   const height = boxes.length ? y - OC.ROW_GAP : tops.length ? OC.TOP_Y + OC.LH : 0;
-  return { tops, boxes, width, height, tree: treeLines(tops, boxes) };
+  return { tops, boxes, width, height, tree: treeLines(tops, boxes), gap: GAP, pad: PAD };
 }
 
 /** A folded team's summary line height, and a label's width estimate (canvas units: wide for CJK, narrow otherwise). */

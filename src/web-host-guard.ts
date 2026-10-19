@@ -105,6 +105,18 @@ export function isHostAllowed(hostHeader: string | string[] | undefined, allowed
 }
 
 /**
+ * #2182: the policy of one response only — the org canvas's route worker (src/ui/fleet-route-worker.js, at
+ * ROUTE_WORKER_PATH). A dedicated worker runs under the policy its own script arrives with, not the page's, so this is
+ * the one context where WebAssembly may compile (`'wasm-unsafe-eval'`): libavoid routes the traffic lines there. The
+ * threat it names is compiled code with the page's reach — so the worker has none: no DOM, `connect-src blob:` (the
+ * page fetches the .wasm and hands over its bytes; nothing in the worker can make a request with the person's
+ * cookie), scripts from this origin only, and no `'unsafe-eval'` (libavoid-js 0.4.5's glue builds no code from
+ * strings). The page's own policy (WEB_CONTENT_SECURITY_POLICY) is unchanged and still refuses WebAssembly.
+ */
+export const ROUTE_WORKER_CSP = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src blob:";
+export const ROUTE_WORKER_PATH = "/ui/js/fleet-route-worker.js";
+
+/**
  * Headers for every response the listener sends, set before routing so the
  * rejections carry them too.
  *

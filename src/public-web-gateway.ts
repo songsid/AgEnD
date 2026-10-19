@@ -6,6 +6,7 @@ import { isServedAsset } from "./auth-api.js";
 import { shellRoute } from "./web-shell-routes.js";
 import { isWebIconPath } from "./web-icons.js";
 import { UPLOAD_REQUEST_TIMEOUT_MS } from "./web-upload.js";
+import { LIBAVOID_PATHS } from "./web-libavoid.js";
 
 /** #1937: how long a public-link request other than an upload may take to arrive whole (the gateway's old requestTimeout). */
 export const PUBLIC_GATEWAY_RECEIVE_MS = 10_000;
@@ -34,6 +35,8 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "DELETE" && /^\/api\/card\/[^/]+$/.test(path)) return true;   // Clear card
   if (method === "POST" && (/^\/stop\/[^/]+$/.test(path) || /^\/api\/instance\/[^/]+\/start$/.test(path))) return true;
   if (method === "GET" && /^\/ui\/js\/[a-z0-9_-]+\.js$/.test(path)) return true;
+  // #2182: the org canvas's router, libavoid's two files (the route worker itself is under /ui/js/ above).
+  if (method === "GET" && LIBAVOID_PATHS.includes(path)) return true;
   if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|traffic|cache|usage-report|prefs|preview-status|steps)$/.test(path)) return true;
   // #1629: agents' themes and their pictures, read-only — the public link views themes; reset and lock are not here.
   if (method === "GET" && (path === "/ui/themes" || /^\/ui\/img\/theme\/[^/]+\/[0-9a-f]{32}$/.test(path))) return true;

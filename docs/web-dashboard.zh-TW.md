@@ -230,6 +230,7 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。�
   - 畫布：拖曳平移，滾輪或雙指縮放，**Zoom in / Zoom out / Fit to screen**，以及按鍵 `+`、`-`、`0`（符合畫面）和方向鍵。**Overview**（右下角，手機上沒有）顯示整張圖，點一下就移過去。點 team 標題可以收合（這台裝置會記住）。**Find** 會把不符合的變暗；按 Enter 展開並跳到第一個符合的。卡片顯示頭像、狀態、名稱和 backend，點一下（或按 Enter）開啟聊天。
   - 清單模式顯示每個 instance 的顯示名稱、負責的工作、backend 與模型、即時狀態（工作中、閒置、等你回應、似乎卡住、已暫停、已停止、已當掉）、它的 Discord 討論串或 Telegram topic 連結，以及 **Open chat**。
   - **Live**（預設開啟）會畫出 instance 之間正在傳送的訊息（#1918）。**Key**（在工具列；打開後說明列位在畫布上方，不會蓋住畫布）說明線條：顏色代表種類（delegate_task、send_to_instance、report_result、broadcast）——排隊中是點線、傳送中會移動、送達或被讀取後淡出 12 秒。**×N** 表示好幾則共用一條線；縮小時，線改成連接整個 team。`delegate_task` 也會畫出工作：一條從委派者到執行者、緩慢移動的線會保持**進行中**，直到執行者的 `report_result`（相同 correlation id）回來，接著一條線回傳後消失；4 小時後仍沒有回報的會以**尚未回報**淡出。重新整理或公開連結也看得到進行中的委派。每條線都終止於卡片或收合的 team 方框，同一方框內的兩張卡片會在方框內相連。絕不顯示訊息內容，`cross_instance_visibility: hidden` 的 instance 不會出現。透過公開連結時每 5 秒更新一次。
+  - **線條怎麼走（#2182）：** 每條線從卡片連到卡片，繞過其他卡片，從 team 外框的缺口進出（不會沿著外框走，也不會穿過 team 的名稱），走最短的空路；共用一段路的線會分開畫（空隙很擠時會靠得比較近），箭頭也不會壓在外框上。縮小時，或瀏覽器無法執行路由器時，線條照舊沿著 team 之間的空隙走。路由器是 [libavoid](https://www.adaptagrams.org/)（透過 `libavoid-js` 0.4.5，LGPL-2.1-or-later，AgEnD 以 npm 相依套件原樣提供）；它在自己的 worker 裡執行——這是 dashboard 唯一能執行 WebAssembly 的地方，而且這個 worker 連不到任何地方。
   - 組織圖只負責顯示：操作請在 Discord 或聊天裡進行。
 - **快取**（`/ui/fleet/cache`）：在 24 小時、7 天或 30 天內，每個 Claude Code 與 Codex instance 的提示快取在兩次請求之間過期的頻率、重寫的成本，以及保溫 ping 是否划算。
   - 資料來自本機的 transcript，不呼叫任何供應商 API；每個 instance 只保存一份小摘要（`cache-ledger.json`）。
