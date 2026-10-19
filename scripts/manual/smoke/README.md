@@ -177,6 +177,11 @@ console lines (a `<select>`'s internal sheet, the viewport meta's interactive-wi
 in smoke-ambient; a poll or stream a navigation cancels (and the Settings page's own fetch it cancels, "Load failed")
 only within the smoke's own navigations, for those URLs — anywhere else they fail.
 
+`scripts/manual/smoke/smoke-usage-bar-caps.mts` (the usage page's per-row bar) seeds three Claude Code instances the
+same way, at 100%, 95% and 5% of the top row. On desk and phone it checks that every bar is drawn at a uniform scale (its
+screen matrix scales x and y alike, so the rounded ends stay circles) and that each fill is its share of the track, and
+shoots the 100% and 95% bars with a margin. `PW_ENGINE=webkit` runs it in WebKit, as above.
+
 ## Pitfalls (each one cost a run)
 
 - **Language** is the host pref `lang` (`fx.page` writes it). `localStorage.agend_lang` alone leaves the page in English.

@@ -113,6 +113,15 @@ describe("what it shows", () => {
     expect(p.root.querySelectorAll(".us-totals dt").map((e: any) => e.textContent)).toEqual(["API-equivalent", "Total tokens", "Requests", "Messages"]);
     expect(p.root.querySelectorAll(".us-totals dd")[0].textContent).toMatch(/^\$\d+\.\d\d \(partial\)$/);
   });
+  it("each row's bar is drawn at its real width: round caps, never a stretched viewBox (#2136 follow-up)", async () => {
+    await mount();
+    for (const bar of p.root.querySelectorAll(".us-bar")) {
+      expect([bar.getAttribute("viewBox"), bar.getAttribute("preserveAspectRatio")]).toEqual([null, null]);
+      expect(bar.querySelector(".us-bar-bg").getAttribute("width")).toBe("100%");
+    }
+    expect(rows().map((r: any) => r.querySelector(".us-bar-fg").getAttribute("width"))[0]).toBe("100%");   // the top row: full
+    expect(rows().every((r: any) => /^\d+%$/.test(r.querySelector(".us-bar-fg").getAttribute("width")) && r.querySelector(".us-bar-fg").getAttribute("rx") === "3")).toBe(true);
+  });
   it("not measured and shared agents: below, with their reason — never a $0 row", async () => {
     await mount();
     const rest = p.root.querySelectorAll(".us-rest .row-item").map((li: any) => li.textContent);

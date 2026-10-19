@@ -287,7 +287,7 @@ function Row({ r, group, max, measure }) {
   const meta = [r.backends.join(", "), r.models.join(", "), r.profiles.join(", ")].filter(Boolean).join(" · ");
   return html`<tr class="us-row">
     <th scope="row" class="us-name"><span class="mono">${keyText(group, r.key)}</span>
-      <svg class="us-bar" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="us-bar-bg" width="100" height="6" rx="3" /><rect class="us-bar-fg" width=${Math.round(share * 100)} height="6" rx="3" /></svg>
+      <svg class="us-bar" aria-hidden="true"><rect class="us-bar-bg" width="100%" height="6" rx="3" /><rect class="us-bar-fg" width=${`${Math.round(share * 100)}%`} height="6" rx="3" /></svg>
       ${group !== "instance" || meta ? html`<span class="us-meta">${meta}</span>` : null}
       ${r.flags.length ? html`<span class="us-flags">${r.flags.map((f) => html`<span key=${f} class="ch-tag">${flagText(f, r)}</span>`)}</span>` : null}</th>
     <td data-label=${tu("amount")} class=${`num${r.amount === null ? " muted" : ""}`}>${amountText(r)}</td>
