@@ -99,6 +99,32 @@ describe("adapter startup recovers beyond the old ten-retry limit", () => {
     expect(provider.calls.get("persona")).toBe(1);
   });
 
+  it("uses Telegram polling readiness even when the startup record still says connected", async () => {
+    const { fm } = fixture(); vi.useFakeTimers();
+    fm.fleetConfig.channels = [{ ...channel("telegram"), type: "telegram" }];
+    let ready = true;
+    const adapter = Object.assign(new EventEmitter(), { type: "telegram",
+      connectionEvidence: () => ({ ready, authRejected: false }),
+      stop: vi.fn(async () => { ready = false; }), start: vi.fn(async () => { ready = true; }),
+    });
+    fm.adapter = adapter; fm.adapters.set("telegram", adapter);
+    fm.worlds.set("telegram", { adapter, botUserId: "demo-telegram", botUsername: "demo_telegram" });
+    fm.adapterState.set("telegram", { status: "connected", retryCount: 0 });
+    expect(fm.listSecureConnections()[0].status).toBe("connected");
+    expect(fm.retryAdapterNow("telegram")).toEqual({ queued: false });
+    expect(adapter.stop).not.toHaveBeenCalled();
+    ready = false; // Polling failed after start() resolved, without a fatal error event.
+    expect(fm.adapterState.get("telegram").status).toBe("connected");
+    expect(fm.listSecureConnections()[0].status).toBe("retrying");
+    expect(fm.retryAdapterNow("telegram")).toEqual({ queued: true });
+    expect(fm.retryAdapterNow("telegram")).toEqual({ queued: true, already_running: true });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(adapter.stop).toHaveBeenCalledOnce(); expect(adapter.start).toHaveBeenCalledOnce();
+    expect(fm.listSecureConnections()[0].status).toBe("connected");
+    expect(fm.retryAdapterNow("telegram")).toEqual({ queued: false });
+    expect(adapter.stop).toHaveBeenCalledOnce();
+  });
+
   it.each(["removed", "changed", "stopping"])("retires an in-flight login whose configuration is %s", async change => {
     const { fm } = fixture(); vi.useFakeTimers(); provider.failures.set("discord", 1);
     await fm.startSharedAdapter(fm.fleetConfig);

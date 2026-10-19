@@ -954,7 +954,7 @@ export class InstanceLifecycle {
       const incident = this.mcpIncident(name);
       const generation = ++incident.gen;
       incident.deathNoticeSent = false;
-      this.ctx.eventLog?.insert(name, "mcp_died", { pid: data.pid, neverConnected: data.neverConnected === true });
+      this.ctx.eventLog?.insert(name, "mcp_died", { pid: data.pid, ...(data.neverConnected ? { neverConnected: true } : {}) });
       this.ctx.logger.error({ name, pid: data.pid, neverConnected: data.neverConnected === true }, data.neverConnected
         ? "MCP server never connected — instance cannot use agend tools"
         : "MCP server died — instance cannot use agend tools");

@@ -7821,7 +7821,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const state = this.adapterState.get(adapterId);
     if (state?.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = undefined; }
     const adapter = this.adapters.get(adapterId);
-    if (adapter && state?.status === "connected") return { queued: false };
+    if (adapter && this.connectionStatus(adapterId, state, this.worlds.get(adapterId)).status === "connected") return { queued: false };
     const run = adapter ? this.restartAdapter(adapter, adapterId) : this.attemptAdapterRetry(adapterId);
     void run.catch(err => this.logger.warn({ adapterId, err }, "Requested adapter retry failed"));
     return { queued: true };
@@ -9695,7 +9695,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Fleet tools resolve their own targets. A missing chat world must not prevent local
     // delivery, inspection or receipt lookup; only channel tools need reply routing below.
     const handler = outboundHandlers.get(tool);
-    if (handler) {
+    if (handler && !usesChannelAddress(tool)) {
       this.eventLog?.logActivity("tool_call", senderSessionName ?? instanceName, this.summarizeToolCall(tool, args));
       await handler(this, args, respond, {
         instanceName, requestId, fleetRequestId, senderSessionName, operationId, sourceDaemonBootId,
@@ -9884,7 +9884,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    respond(null, `Unknown tool: ${tool}`);
+    if (handler) {
+      this.eventLog?.logActivity("tool_call", senderSessionName ?? instanceName, this.summarizeToolCall(tool, args));
+      await handler(this, args, respond, {
+        instanceName, requestId, fleetRequestId, senderSessionName, operationId, sourceDaemonBootId,
+      });
+    } else respond(null, `Unknown tool: ${tool}`);
   }
 
   /** Side effects of a routed reply: cancel-button lifecycle, logs, SSE, chat log. */

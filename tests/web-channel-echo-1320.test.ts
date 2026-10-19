@@ -73,6 +73,7 @@ async function harness(type: "telegram" | "discord", botId = "777") {
     };
   } else {
     const client = Object.assign(new EventEmitter(), {
+      destroy: vi.fn(async () => {}),
       user: { id: botId, username: "EchoBot" }, isReady: () => true,
       channels: { fetch: vi.fn(async (id: string) => ({ isTextBased: () => true, send: async (value: string | { content: string }) => { discordPayloads.push(value); const text = typeof value === "string" ? value : value.content; const result = await api(chatId, id, text); return { id: result.messageId }; } })) },
     });
