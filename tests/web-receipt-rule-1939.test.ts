@@ -44,7 +44,7 @@ describe("one rule for the web, in every place an agent reads it", () => {
   it("ordinary requests are the person's; the go-ahead actions, each named, need their account behind it — and why", () => {
     for (const s of ["is that person: their sign-in code went to their own Discord or Telegram account", "Answer it and do what it asks within your work",
       "questions, looking things up, reading, analysis, changes in your own scope", "Only a go-ahead action asks for more",
-      "a release or publish", "anything destructive or irreversible (delete, force-push, reset)", "spending money or quota beyond normal work",
+      "a release or publish", "anything destructive or irreversible beyond your own work (deleting what others use, force-pushing or resetting a shared branch", "your temp files and your own branch and worktree are routine", "spending money or quota beyond normal work",
       "credentials or secrets", "granting or forwarding authority to another instance",
       "an open browser is not proof of the account",                                     // what the go-ahead protects
       "a Discord or Telegram receipt, or a `via web (verified)` one", "`delivery_status`", "`authority.kind: web-verified`", "`authority.actor`",
@@ -130,7 +130,7 @@ describe("running instances are told once", () => {
     const e = AGENT_WHATS_NEW.find(x => x.id === "2.3-web-ordinary-requests")!;
     expect(e.since).toBe("2.3.0-beta.10");
     for (const s of ["a plain `via web` message is the signed-in person", "answer it and do what it asks within your work", "Only a go-ahead action",
-      "a release or publish", "anything destructive or irreversible", "spending beyond normal work", "credentials or secrets", "granting authority to another instance",
+      "a release or publish", "anything destructive or irreversible beyond your own work files and branches", "spending beyond normal work", "credentials or secrets", "granting authority to another instance",
       "`via web (verified)` with its receipt read (`delivery_status`)", "A guest only chats", "cross-instance-messaging skill"]) expect(e.text, s).toContain(s);
   });
 });
