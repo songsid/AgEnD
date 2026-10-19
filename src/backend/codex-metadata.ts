@@ -8,6 +8,36 @@ import { getAgendHome } from "../paths.js";
 
 export const CODEX_MODELS_CACHE_MAX_BYTES = 5 * 1024 * 1024;
 
+/**
+ * #1956 item 2: what a codex file says, read and parsed once per version of the file. The fleet's status asks for every
+ * codex instance's effort levels on every build (every open dashboard, every 10 s), and each ask parsed the whole
+ * models_cache.json (hundreds of KB) again. The key is the file's stat — inode, size, mtime and ctime in nanoseconds —
+ * so a rewritten or replaced file (or a chmod) is read again on the next ask. A file that can't be stat'd is never
+ * cached (the caller answers as before), and a parse that throws is not kept (it is retried, as before).
+ * "Racy" files (git's rule): a filesystem's clock is coarse, so two writes inside one tick can leave the same size,
+ * mtime and ctime. A file is trusted from the cache only once its last change (the later of mtime and ctime: a chmod or a
+ * touch moves only ctime) was at least FILE_SETTLED_MS old when it was read; one changed more recently than that is read
+ * again on every ask until it has settled.
+ */
+const fileCache = new Map<string, { stamp: string; value: unknown; settled: boolean }>();
+export const FILE_CACHE_MAX = 256;
+export const FILE_SETTLED_MS = 1000;
+/** The wall clock the files' times are compared with (a seam for tests: a file's ctime can't be set back). */
+export const codexMetadataClock = { now: (): number => Date.now() };
+function stamped<T>(kind: string, path: string, stat: import("node:fs").BigIntStats, read: () => T): T {
+  const key = `${kind}:${path}`, stamp = `${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
+  const hit = fileCache.get(key);
+  if (hit && hit.settled && hit.stamp === stamp) return hit.value as T;
+  // The wall clock against the file's own times (both realtime).
+  const settled = codexMetadataClock.now() - Math.max(Number(stat.mtimeMs), Number(stat.ctimeMs)) >= FILE_SETTLED_MS;
+  const value = read();
+  if (fileCache.size >= FILE_CACHE_MAX && !fileCache.has(key)) fileCache.clear();
+  fileCache.set(key, { stamp, value, settled });
+  return value;
+}
+/** For tests: forget every cached file. */
+export function resetCodexMetadataCache(): void { fileCache.clear(); }
+
 /** The persistent short path only; never creates or migrates a home. */
 export function codexShortHomeFor(instanceDir: string): string {
   const hash = createHash("sha256").update(resolve(instanceDir)).digest("hex").slice(0, 8);
@@ -79,15 +109,27 @@ function readCodexModelEffortLevelsSync(homes: {
     if (!model) return { model, levels: null };
     const isolatedCache = join(homes.isolatedHome, "models_cache.json");
     const cachePath = existsSync(isolatedCache) ? isolatedCache : join(homes.sharedHome, "models_cache.json");
-    if (statSync(cachePath).size > CODEX_MODELS_CACHE_MAX_BYTES) return { model, levels: null };
-    const parsed = JSON.parse(readFileSync(cachePath, "utf-8")) as { models?: unknown };
-    if (!Array.isArray(parsed.models)) return { model, levels: null };
-    const entry = parsed.models.find((m): m is Record<string, unknown> =>
-      !!m && typeof m === "object" && (m as Record<string, unknown>).slug === model);
-    const levels = (entry?.supported_reasoning_levels as { effort?: unknown }[] | undefined)
-      ?.map(l => l?.effort)
-      .filter((e): e is string => typeof e === "string" && canonical.has(e));
-    return { model, levels: levels?.length ? levels : null };
+    const stat = statSync(cachePath, { bigint: true });
+    if (stat.size > BigInt(CODEX_MODELS_CACHE_MAX_BYTES)) return { model, levels: null };
+    // Each model's levels, as the first entry with its slug lists them (null: no models list at all).
+    const bySlug = stamped("models", cachePath, stat, () => {
+      const parsed = JSON.parse(readFileSync(cachePath, "utf-8")) as { models?: unknown };
+      if (!Array.isArray(parsed.models)) return null;
+      const out = new Map<string, string[] | null>();
+      for (const m of parsed.models) {
+        if (!m || typeof m !== "object") continue;
+        const slug = (m as Record<string, unknown>).slug;
+        if (typeof slug !== "string" || out.has(slug)) continue;
+        const levels = ((m as Record<string, unknown>).supported_reasoning_levels as { effort?: unknown }[] | undefined)
+          ?.map(l => l?.effort)
+          .filter((e): e is string => typeof e === "string" && canonical.has(e));
+        out.set(slug, levels?.length ? levels : null);
+      }
+      return out;
+    });
+    if (!bySlug) return { model, levels: null };
+    const levels = bySlug.get(model) ?? null;
+    return { model, levels: levels ? [...levels] : null };
   } catch {
     return { model, levels: null };
   }
@@ -98,9 +140,14 @@ const isTable = (v: unknown): v is TomlTable => !!v && typeof v === "object" && 
 
 /** A TOML file's root table; undefined when there is no file, null when it cannot be read or parsed. */
 function readTomlTable(path: string): TomlTable | null | undefined {
-  let text: string;
-  try { text = readFileSync(path, "utf-8"); } catch (err) { return (err as NodeJS.ErrnoException).code === "ENOENT" ? undefined : null; }
-  try { const parsed = parseToml(text); return isTable(parsed) ? parsed : null; } catch { return null; }
+  let stat: import("node:fs").BigIntStats;
+  try { stat = statSync(path, { bigint: true }); } catch (err) { return (err as NodeJS.ErrnoException).code === "ENOENT" ? undefined : null; }
+  // #1956: parsed once per version of the file (see stamped); callers only read the table.
+  return stamped("toml", path, stat, () => {
+    let text: string;
+    try { text = readFileSync(path, "utf-8"); } catch (err) { return (err as NodeJS.ErrnoException).code === "ENOENT" ? undefined : null; }
+    try { const parsed = parseToml(text); return isTable(parsed) ? parsed : null; } catch { return null; }
+  });
 }
 
 /**

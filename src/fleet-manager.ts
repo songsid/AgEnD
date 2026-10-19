@@ -107,7 +107,7 @@ import { escapeTelegramHtml, scheduleClock, scheduleRetryLabel } from "./schedul
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { Task } from "./scheduler/types.js";
 import type { FleetContext } from "./fleet-context.js";
-import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, parseCompactCommand, SAVE_FILENAME_RE, resolveInstanceContext, forgetInstanceContext, readStatuslineModel } from "./topic-commands.js";
+import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, parseCompactCommand, SAVE_FILENAME_RE, resolveInstanceContext, forgetInstanceContext, readStatuslineJson, statuslineModel } from "./topic-commands.js";
 import type { HangDetector } from "./hang-detector.js";
 import { DailySummary } from "./daily-summary.js";
 import { WebhookEmitter } from "./webhook-emitter.js";
@@ -22023,14 +22023,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     try { bots = this.webBots(); } catch (err) { this.logger.debug({ err }, "bots unreadable (getUiStatus)"); }
 
     const instances = names.map(name => {
-      const statusFile = join(this.getInstanceDir(name), "statusline.json");
-      let cost = 0;
-      try {
-        const data = JSON.parse(readFileSync(statusFile, "utf-8"));
-        cost = data.cost?.total_cost_usd ?? 0;
-      } catch (err) {
-        this.logger.debug({ err, name }, "statusline.json read failed (getUiStatus)");
-      }
+      // #1956: read once for this instance; its cost, context and model come from it.
+      const statusline = readStatuslineJson(this.dataDir, name) as { cost?: { total_cost_usd?: unknown } } | undefined;
+      const cost = (statusline?.cost?.total_cost_usd as number | undefined) ?? 0;
       // Align with /ctx: statusline for claude-code, pane scrape for kiro/grok/codex.
       const classic = classicOnly.includes(name);
       const backend = classic
@@ -22038,14 +22033,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         : (this.fleetConfig?.instances[name]?.backend
           ?? this.fleetConfig?.defaults?.backend
           ?? "claude-code");
-      const { context } = resolveInstanceContext(this.dataDir, name, backend, { source: this.getPaneContextSource(name) });
+      const { context } = resolveInstanceContext(this.dataDir, name, backend, { source: this.getPaneContextSource(name), statusline });
       // context_pct: null when unavailable, not 0
       const context_pct = context ?? null;
       // Model: Only Claude Code has live statusline; others use the effective resolver.
-      // readStatuslineModel provides the /ctx-aligned display_name+id combo for Claude.
+      // statuslineModel gives the /ctx-aligned display_name+id combo for Claude (readStatuslineModel's rule).
       // Non-Claude backends must NOT read statusline.json model (may be stale from previous Claude run).
       const resolved = this.resolveInstanceModel(name);
-      const liveModel = backend === "claude-code" ? readStatuslineModel(this.dataDir, name) : null;
+      const liveModel = backend === "claude-code" ? statuslineModel(statusline) : null;
       // Display value: live model for Claude, resolved.display for others (includes "auto (default)" for Kiro)
       const model = liveModel ?? resolved.display;
       // model_source: "live" when Claude statusline succeeded, else the resolver's source
