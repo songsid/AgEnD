@@ -95,8 +95,10 @@ describe("the saver never commits a file that would not load or adds an error (#
     const real = internals.patchFleetDocument.bind(fm);
     vi.spyOn(internals, "patchFleetDocument").mockImplementation((doc: any, p: unknown[], b: unknown, a: unknown) => {
       if (p.length === 0) {
-        doc.deleteIn(["channel"]);
-        doc.setIn(["channels"], doc.createNode([{ options: { status_emojis: { delivered: "✅" } } }]));
+        // Through the write primitive every real write uses (#2208), so the save's validity check is what refuses.
+        const write = (at: unknown[]) => (fm as any).writingFleetDocument(doc, at);
+        write(["channel"]); doc.deleteIn(["channel"]);
+        write(["channels"]); doc.setIn(["channels"], doc.createNode([{ options: { status_emojis: { delivered: "✅" } } }]));
         return;
       }
       real(doc, p, b, a);
@@ -114,11 +116,12 @@ describe("the saver never commits a file that would not load or adds an error (#
     const before = readFileSync(path, "utf8");
     const internals = fm as unknown as { patchFleetDocument: (doc: any, path: unknown[], before: unknown, after: unknown) => void };
     vi.spyOn(internals, "patchFleetDocument").mockImplementation((doc: any) => {
-      doc.deleteIn(["channel"]);
-      doc.setIn(["channels"], doc.createNode([null, { type: "telegram", bot_token_env: "TG" }]));
+      const write = (at: unknown[]) => (fm as any).writingFleetDocument(doc, at);   // the write primitive (#2208)
+      write(["channel"]); doc.deleteIn(["channel"]);
+      write(["channels"]); doc.setIn(["channels"], doc.createNode([null, { type: "telegram", bot_token_env: "TG" }]));
     });
     fm.fleetConfig!.instances.worker.description = "changed";
-    expect(() => fm.saveFleetConfig()).toThrow(/^Refusing to save fleet\.yaml/);
+    expect(() => fm.saveFleetConfig()).toThrow(/^Refusing to save fleet\.yaml: (the result would not load|it would be invalid)/);
     expect(readFileSync(path, "utf8")).toBe(before);
   });
 

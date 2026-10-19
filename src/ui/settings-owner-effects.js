@@ -3,7 +3,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { useStore } from "/assets/app-store.js";
 import { OWNER_EFFECT_PREF_KEYS } from "/assets/app-prefs.js";
-import { getAppEffects } from "./app-effects.js";
+import { getAppEffects, wakeEffects } from "./effects-waker.js";
 import { ownerEffectsStore, watchOwnerEffects, refreshOwnerEffects, saveOwnerEffects } from "/assets/owner-effect-prefs.js";
 register("ownerEffects", {
   en: {
@@ -38,9 +38,11 @@ export function OwnerEffects({ catalog, busy = false }) {
   const state = useStore(ownerEffectsStore), [message, setMessage] = useState(null), life = useRef({ alive: false, seq: 0 }), [runtime, setRuntime] = useState(null);
   useEffect(() => { life.current.alive = true; const stop = watchOwnerEffects(); return () => { life.current.alive = false; life.current.seq++; stop(); }; }, []);
   useEffect(() => {
-    let live = true; const entry = getAppEffects();
+    // #2193: managing personal effects needs the runtime's view of them: it is woken here (it may still be asleep).
+    let live = true, entry = getAppEffects(), off = null, end = null;
     const pull = () => { if (!live) return; const gates = entry?.gates(); setRuntime({ entry, snapshot: entry?.api?.ownerSnapshot?.(), cursor: entry?.cursorSnapshot?.(), available: !!entry && !entry.dead && gates.enabled && gates.show && gates.transportReady && !gates.safe && !gates.publicLink && !gates.reducedMotion }); };
-    const off = entry?.subscribe(pull), end = entry?.onEnd(pull); pull();
+    const bind = () => { off = entry?.subscribe(pull) ?? null; end = entry?.onEnd(pull) ?? null; pull(); };
+    if (entry) bind(); else { pull(); void wakeEffects().then(() => { if (!live) return; entry = getAppEffects(); bind(); }); }
     return () => { live = false; off?.(); end?.(); };
   }, []);
   const reload = () => { getAppEffects()?.api?.changedOwner?.(); return refreshOwnerEffects(); };
@@ -54,7 +56,7 @@ export function OwnerEffects({ catalog, busy = false }) {
     const seq = ++life.current.seq; setMessage(null);
     const result = await saveOwnerEffects({ [key]: id });
     if (!life.current.alive || seq !== life.current.seq) return;
-    if (result.ok || result.saved) getAppEffects()?.api?.changedOwner?.();
+    if (result.ok || result.saved) getAppEffects()?.api?.changedOwner?.();   // #2193: asleep, the saved slot wakes it (app-prefs)
     setMessage(text(result.ok ? "saved" : result.saved ? "savedRefresh" : "failed"));
   };
   return html`<section class="s-fx-owner" aria-label=${text(state.scope === "operator" ? "operatorTitle" : "title")}><h4>${text(state.scope === "operator" ? "operatorTitle" : "title")}</h4><p class="sub">${text(state.scope === "operator" ? "operator" : "person")}</p>

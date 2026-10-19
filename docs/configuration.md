@@ -6,6 +6,12 @@ Complete reference for all AgEnD configuration files.
 
 Located at `~/.agend/fleet.yaml`. The primary configuration file for the fleet.
 
+**YAML anchors and aliases** (`&admins` … `*admins`) work. Each place still has its own value: a change made in the
+dashboard's Settings (or by an agent's config tools) changes only the place it names. If that place is an alias, it
+gets its own copy. If it is the anchor, the other places keep the value they had. Anchors the change doesn't touch
+stay as you wrote them. A save that would still change anything else is refused with the place it would have changed
+(#2208).
+
 ### Top-level fields
 
 | Field | Type | Required | Default | Description |
