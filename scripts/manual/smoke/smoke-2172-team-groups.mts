@@ -6,6 +6,9 @@
 //   - the team member is under its team's heading (marked as a team), not under "#wiki";
 //   - the agent in no team is under "#wiki" (marked as a tag);
 //   - a second team's member is under that team; teams come before tags, "Other" last;
+//   - folding the team is saved (POST /ui/prefs 200) and kept: after a reload it is still folded (#2173 review: a team's
+//     key once failed the store's name check, so a fold or a drag snapped back) — not on the public link, which never
+//     writes preferences;
 //   - no page error (WebKit's own two lines only, as #2138's smoke).
 // Cases: desk light (English), phone dark (zh-TW, reduced motion, a LAN origin in Chromium), the temporary public link
 // (desk light, reduced motion; stubbed as the harness says).
@@ -36,10 +39,9 @@ const READ = `(() => [...document.querySelectorAll(".v-group:not(.v-fav):not(.v-
   head: (g.querySelector(".v-group-head .grow") || {}).textContent || "",
   agents: [...g.querySelectorAll("a[href^='/ui/chat/']")].map((a) => decodeURIComponent(a.getAttribute("href").slice(9))),
 })))()`;
+const { OPERATOR } = await import(process.env.REPO + "/src/web-prefs.ts");
 const results: any[] = [];
-async function runCase(name: string, open: () => Promise<FreshPage>, other: string) {
-  const p = await open();
-  await mounted(p.page, 30000);
+async function openDrawer(p: FreshPage) {
   // A phone reads the sidebar in its drawer: ☰ opens it (as #2053's smoke does — the first visible one, retried).
   if (p.page.viewportSize().width < 760 && !(await p.page.locator(".shell.sb-open").count())) {
     const all = p.page.locator('button[aria-controls="sidebar"]'), end = Date.now() + 10000;
@@ -50,11 +52,33 @@ async function runCase(name: string, open: () => Promise<FreshPage>, other: stri
     }
     await p.page.waitForSelector(".shell.sb-open", { timeout: 5000 });
   }
+}
+const teamHead = (p: FreshPage) => p.page.locator(".v-group:not(.v-fav) .v-group-head").filter({ has: p.page.locator(".v-group-kind.team") }).filter({ hasText: "platform-team" }).first();
+async function runCase(name: string, open: () => Promise<FreshPage>, other: string, saves: boolean) {
+  const p = await open();
+  await mounted(p.page, 30000);
+  await openDrawer(p);
   await p.page.waitForSelector(".v-group .v-group-head", { timeout: 15000 });
   await p.page.waitForTimeout(600);
   const groups = await p.page.evaluate(READ) as Array<{ mark: string; head: string; agents: string[] }>;
   await p.page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-${name}`, "sidebar") });
   const at = (agent: string) => groups.find((g) => g.agents.includes(agent));
+  // Fold the team: saved, and still folded after a reload.
+  let foldSaved: boolean | null = null, foldKept: boolean | null = null;
+  if (saves) {
+    const saved = p.page.waitForResponse((r: any) => new URL(r.url()).pathname === "/ui/prefs" && r.request().method() === "POST", { timeout: 10000 }).then((r: any) => r.status()).catch(() => 0);
+    await teamHead(p).click();
+    foldSaved = (await saved) === 200;
+    await p.page.waitForTimeout(500);
+    await p.page.reload();
+    await mounted(p.page, 30000);
+    await openDrawer(p);
+    await p.page.waitForSelector(".v-group .v-group-head", { timeout: 15000 });
+    await p.page.waitForTimeout(600);
+    foldKept = (await teamHead(p).getAttribute("aria-expanded")) === "false";
+    await p.page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-${name}`, "folded-after-reload") });
+    for (const who of [p.personKey, OPERATOR]) fm.webPrefs.write(who, new Map([["nav.collapsed", null], ["nav.order", null]]));   // the next case from defaults
+  }
   const errors = p.errors.filter((e) => !(ENGINE === "webkit" && WEBKIT_OWN.has(e.replace(/ @ \S+$/, ""))));
   const chk = {
     teamMemberUnderTeam: at("search-indexer")?.head === "platform-team" && at("search-indexer")?.mark === "team",
@@ -65,6 +89,7 @@ async function runCase(name: string, open: () => Promise<FreshPage>, other: stri
     restUnderOther: at("customer-support-macros")?.head === other && at("customer-support-macros")?.mark === "",
     // platform-team, release-crew (teams), #wiki (the tag), Other — in that order.
     teamsFirstOtherLast: JSON.stringify(groups.map((g) => [g.mark, g.head])) === JSON.stringify([["team", "platform-team"], ["team", "release-crew"], ["#", "wiki"], ["", other]]),
+    ...(saves ? { foldSaved: !!foldSaved, foldKeptAfterReload: !!foldKept } : {}),
     noErrors: errors.length === 0,
   };
   const failed = Object.entries(chk).filter(([, v]) => !v).map(([k]) => k);
@@ -72,11 +97,11 @@ async function runCase(name: string, open: () => Promise<FreshPage>, other: stri
   console.log(`${failed.length ? "FAIL" : "ok  "} ${ENGINE}-${name}${failed.length ? ` [${failed.join(", ")}] ${JSON.stringify({ groups, errors }).slice(0, 800)}` : ""}`);
   await p.ctx.close();
 }
-await runCase("desk-light-en", () => freshPage(fx, { device: "desk", theme: "light", lang: "en" }), "Other");
+await runCase("desk-light-en", () => freshPage(fx, { device: "desk", theme: "light", lang: "en" }), "Other", true);
 await runCase(ENGINE === "webkit" ? "phone-dark-zh-TW-reduced" : "phone-dark-zh-TW-lan-reduced",
-  () => freshPage(fx, { device: "phone", theme: "dark", lang: "zh-TW" }, ENGINE === "webkit" ? { reducedMotion: true } : { origin: "lan", reducedMotion: true }), "其他");
+  () => freshPage(fx, { device: "phone", theme: "dark", lang: "zh-TW" }, ENGINE === "webkit" ? { reducedMotion: true } : { origin: "lan", reducedMotion: true }), "其他", true);
 const link = await openPublicLink(fx);
-await runCase("public-link-desk-light-en-reduced", () => link.publicPage({ device: "desk", theme: "light", lang: "en" }, { reducedMotion: true }), "Other");
+await runCase("public-link-desk-light-en-reduced", () => link.publicPage({ device: "desk", theme: "light", lang: "en" }, { reducedMotion: true }), "Other", false);
 await link.close();
 const bad = results.filter((r) => !r.ok);
 console.log(bad.length ? `FAIL ${bad.map((b) => b.name).join(", ")}` : `PASS (${ENGINE})`);
