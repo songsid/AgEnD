@@ -234,6 +234,13 @@ describe("the fleet: who may confirm by applying", () => {
     vi.setSystemTime(Date.UTC(2026, 9, 21, 11, 0, 0));                                       // 49 h later: past the 48 h default
     expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)).toBeNull();
   });
+  it("an account on another platform whose user id is the same as an admin's here: none (ids are per platform)", () => {
+    const f = fleet(), p = f.propose();
+    const other = { id: "c", type: "discord", mode: "topic", group_id: "300", access: { mode: "open", allowed_users: ["a-F"] } };
+    f.fm.fleetConfig!.channels!.push(other as any);
+    f.fm.worlds.set("c", { id: "c", adapter: { type: "discord" }, groupId: "300", channelConfig: other, accessManager: new AccessManager(other.access as any, join(f.any.dataDir, "c.json")) } as any);
+    expect(f.any.settingsSelfConfirmation(f.store, f.session({ adapterId: "c", userId: "a-F" }).req, p.view.id)).toBeNull();
+  });
   it("discord too: the same rule", async () => {
     const f = fleet("discord"), p = f.propose();
     expect([f.any.settingsSelfConfirmation(f.store, f.session({ adapterId: "a", userId: "a-F" }).req, p.view.id) !== null,
