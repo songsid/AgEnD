@@ -21,14 +21,14 @@ const SKILL = readFileSync(PATH, "utf8");
 const MB = 1024 * 1024, HOUR = 3_600_000;
 
 describe("the web-dashboard skill", () => {
-  it("has the skill frontmatter, for General and workers", () => {
+  it("has the skill frontmatter, for General, workers and ClassicBot agents (#2163)", () => {
     const m = SKILL.match(/^---\n([\s\S]*?)\n---\n/);
     expect(m, "frontmatter").toBeTruthy();
     const fm = parseDocument(m![1]!).toJS() as { name: string; description: string; roles: string[] };
     expect(fm.name).toBe("web-dashboard");
     expect(fm.description.length).toBeGreaterThan(40);
     expect(fm.description.length).toBeLessThan(400);
-    expect(fm.roles).toEqual(["general", "worker"]);
+    expect(fm.roles).toEqual(["general", "worker", "classic"]);   // #2163: a ClassicBot room's agent too
   });
 
   it("is published to a worker's native skill directory, as one SKILL.md (the publisher copies nothing else)", () => {
@@ -39,7 +39,7 @@ describe("the web-dashboard skill", () => {
       const published = join(work, ".claude/skills/web-dashboard/SKILL.md");
       expect(existsSync(published), "published to the worker").toBe(true);
       expect(readFileSync(published, "utf8")).toBe(SKILL);
-      expect((fm as any).readManagedSkillRoles(PATH)).toEqual(["general", "worker"]);
+      expect((fm as any).readManagedSkillRoles(PATH)).toEqual(["general", "worker", "classic"]);
     } finally { rmSync(dataDir, { recursive: true, force: true }); rmSync(work, { recursive: true, force: true }); }
   });
 

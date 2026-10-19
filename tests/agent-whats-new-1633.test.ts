@@ -112,7 +112,8 @@ describe("what an instance is told", () => {
     for (const s of ["[system:whats-new] AgEnD is now 2.2.0-beta.2.", "`buttons: [{label, value?}]` (1–10)", "`[button] <label>`", "`[button] <label> (value: <value>)` when the value differs", "`stickers` (up to 3 ids from `list_stickers`",
       "`preview_stickers`", "`[user:… via web, …]`", "`message_id`", "`consumed_at` / `consumed_via`", "`filter_status`", "`verbose: true`", "`create_instance` refuses `tool_set` and `skipPermissions`; `update_instance_config` refuses `tool_set` and ignores `skipPermissions`",
       "a resumed session keeps the copy it first loaded, and reloading it does not refresh it", "Use them anyway — AgEnD's server accepts them.", "Do not reply to this message."]) expect(text, s).toContain(s);
-    expect(text.split("\n").length).toBe(AGENT_WHATS_NEW.length + 2);
+    // + the #2163 line on reading a skill the entries name.
+    expect(text.split("\n").length).toBe(AGENT_WHATS_NEW.length + 3);
   });
 });
 
