@@ -49,9 +49,9 @@ for (const label of labels) {
       await page.goto(`${fx.base}/ui/fleet/agent/${enc(LONG)}`); await page.waitForTimeout(1000);
       await shot("details", ".p-details .id-card");
       await page.goto(`${fx.base}/ui/chat/${enc(LONG)}`); await page.waitForTimeout(1000);
-      if (size === "m") await shot("chatFolded", ".chat-card");
+      if (size === "m") await shot("chatFolded", ".p-chat .panel-head");   // hidden: only the header's Show card
       // Open the card only when it is folded: the toggle keeps its state from the previous size.
-      if (!(await page.$(".chat-card .id-card"))) { await page.click(".chat-card-toggle").catch(() => {}); await page.waitForTimeout(500); }
+      if (!(await page.$(".chat-card .id-card"))) { await page.click(".chat-card-show").catch(() => {}); await page.waitForTimeout(500); }
       await shot("chatOpen", ".chat-card");
       await page.goto(`${fx.base}/view/${enc(LONG)}`); await page.waitForTimeout(1000);
       await shot("view", ".v-id .id-card");

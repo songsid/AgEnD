@@ -300,19 +300,22 @@ describe("#1629 r4 §1: the identity card", () => {
     const pg = await app("/ui/fleet/agent/web-dev");
     expect([pg.root.querySelector(".p-details .id-card"), calls.filter(c => c.startsWith("GET /api/card/"))]).toEqual([null, []]);
   });
-  it("Chat: folded into the header by default (the tagline peeks); open is this device's choice, at the chat's own compact size", async () => {
+  it("Chat: hidden by default — a card button in the header shows it (no row of its own); shown or not is this device's choice, at the chat's own compact size", async () => {
     const pg = await app("/ui/chat/loner");
-    const toggle = () => pg.root.querySelector(".p-chat .chat-card-toggle");
-    expect([toggle().getAttribute("aria-expanded"), pg.root.querySelector(".p-chat .id-card"), pg.root.querySelector(".chat-card-peek").textContent]).toEqual(["false", null, "<b>Reviews</b> your PRs"]);
-    toggle().click(); await settle(2);
-    expect([pg.root.querySelector(".p-chat .id-card").getAttribute("class"), pg.root.querySelector(".p-chat .card-size"), pg.storage.get("agend_chat_card")]).toEqual(["id-card card-c bs-m", null, "open"]);
+    const show = () => pg.root.querySelector(".p-chat .panel-head .chat-card-show");
+    expect([pg.root.querySelector(".p-chat .chat-card"), pg.root.querySelector(".chat-card-toggle"), show().getAttribute("aria-label")]).toEqual([null, null, "Show card"]);
+    show().click(); await settle(2);
+    expect([pg.root.querySelector(".p-chat .id-card").getAttribute("class"), pg.root.querySelector(".p-chat .card-size"), pg.storage.get("agend_chat_card"), show()]).toEqual(["id-card card-c bs-m", null, "open", null]);
+    // This card has no banner (another card's path is dropped): Hide card sits on its row, and its row cannot fold.
+    const hide = pg.root.querySelector(".p-chat .id-row .id-hide");
+    expect([hide.getAttribute("aria-label"), hide.getAttribute("title"), pg.root.querySelector(".p-chat .id-fold")]).toEqual(["Hide card", "Hide card", null]);
     // #2038: its banner follows this card's size choice (made on Details or in View).
     const { setCardSize } = await import("/assets/identity-card.js");
     setCardSize("loner", "l"); await settle(2);
     expect(pg.root.querySelector(".p-chat .id-card").getAttribute("class")).toBe("id-card card-c bs-l");
     setCardSize("loner", "m"); await settle(2);
-    toggle().click(); await settle(2);
-    expect([pg.root.querySelector(".p-chat .id-card"), pg.storage.get("agend_chat_card") ?? null]).toEqual([null, null]);
+    pg.root.querySelector(".p-chat .id-hide").click(); await settle(2);
+    expect([pg.root.querySelector(".p-chat .id-card"), pg.storage.get("agend_chat_card") ?? null, !!show()]).toEqual([null, null, true]);
   });
   it("#2038: the banner's height follows the card's width (an aspect per size) between a floor and a ceiling — never half the size token", async () => {
     const css = (await import("node:fs")).readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");

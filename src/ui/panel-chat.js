@@ -8,7 +8,7 @@
 // that apply to its state are offered (#1408 rough edges 4 and 7).
 import { html, useCallback, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { lang, t } from "/assets/app-i18n.js";
-import { appStore, guestPage, useStore } from "/assets/app-store.js";
+import { appStore, createStore, guestPage, useStore } from "/assets/app-store.js";
 import { AuthorizeChip } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
 import { modelText, namesOf, namesStore, navStore as instanceNavStore } from "/assets/instance-nav.js";
@@ -29,20 +29,31 @@ import { colorMenuItem } from "/assets/identity-color.js";
 import { IdentityCard, useCard } from "/assets/identity-card.js";
 import { AgentWidget, instanceBinds, widgetFor } from "/assets/agent-widget.js";
 
-// #1629 r4 §1: the identity card folded into the chat's header — folded by default; open or not is this device's choice.
+// #1629 r4 §1: the identity card under the chat's header — hidden by default; shown or not is this device's choice.
+// #2217 (the user, 2026-10-19): no row of its own. Shown, its banner sits right under the header with Hide card on it, and its
+// picture and bio can be folded away (the banner stays) — this device's choice too, kept the same way. Hidden, a card
+// button in the header brings it back (a guest's header too: it has no ⋯ menu).
 const CHAT_CARD_KEY = "agend_chat_card";
-const chatCardOpen = () => { try { return localStorage.getItem(CHAT_CARD_KEY) === "open"; } catch { return false; } };
+const CHAT_CARD_ROW_KEY = "agend_chat_card_row";
+const readKey = (k, v) => { try { return localStorage.getItem(k) === v; } catch { return false; } };
+const writeKey = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch { /* this page only */ } };
+/** Shared by the header's Show card and the card itself, so the two never disagree. */
+export const chatCardPrefs = createStore({ open: readKey(CHAT_CARD_KEY, "open"), rowHidden: readKey(CHAT_CARD_ROW_KEY, "hidden") });
+export const setChatCardOpen = (open) => { writeKey(CHAT_CARD_KEY, open ? "open" : null); chatCardPrefs.set((s) => ({ ...s, open })); };
+export const setChatCardRowHidden = (rowHidden) => { writeKey(CHAT_CARD_ROW_KEY, rowHidden ? "hidden" : null); chatCardPrefs.set((s) => ({ ...s, rowHidden })); };
 function ChatCard({ name, card }) {
-  const [open, setOpen] = useState(chatCardOpen);
-  if (!card) return null;
-  const toggle = () => { const next = !open; setOpen(next); try { if (next) localStorage.setItem(CHAT_CARD_KEY, "open"); else localStorage.removeItem(CHAT_CARD_KEY); } catch { /* this page only */ } };
-  return html`<div data-trust="card" class=${`chat-card${open ? " open" : ""}`}>
-    <button type="button" class="chat-card-toggle" aria-expanded=${open ? "true" : "false"} onClick=${toggle}>
-      <${Icon} name="chevron" size=${14} cls=${open ? "caret" : "caret flipped"} /><span>${t(open ? "card.hide" : "card.show")}</span>
-      ${!open && card.tagline ? html`<span class="chat-card-peek">${card.tagline.text}</span>` : null}
-    </button>
-    ${open ? html`<${IdentityCard} name=${name} card=${card} compact=${true} />` : null}
+  const prefs = useStore(chatCardPrefs);
+  if (!card || !prefs.open) return null;
+  return html`<div data-trust="card" class="chat-card open">
+    <${IdentityCard} name=${name} card=${card} compact=${true} onHide=${() => setChatCardOpen(false)}
+      rowHidden=${prefs.rowHidden} onToggleRow=${() => setChatCardRowHidden(!prefs.rowHidden)} />
   </div>`;
+}
+/** The header's way back to a hidden card. */
+function ShowCardButton({ card }) {
+  const prefs = useStore(chatCardPrefs);
+  if (!card || prefs.open) return null;
+  return html`<button type="button" class="icon-btn chat-card-show" aria-label=${t("card.show")} title=${t("card.show")} onClick=${() => setChatCardOpen(true)}><${Icon} name="idcard" /></button>`;
 }
 import "./chat-strings.js";
 import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
@@ -304,7 +315,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelText(inst)}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
-    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`} notice=${html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onPlayback=${publishCanvasPlayback} onClose=${() => setDialog(null)} active=${fxHere} />`}>${fxHere ? html`<${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} />` : null}<${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
+    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`} notice=${html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onPlayback=${publishCanvasPlayback} onClose=${() => setDialog(null)} active=${fxHere} />`}>${fxHere ? html`<${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} />` : null}<${ShowCardButton} card=${card} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>
