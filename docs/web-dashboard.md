@@ -337,7 +337,7 @@ Each agent has a colour you can find it by in the sidebar.
   - a temporary public link (a different person, who can't reach Settings);
   - the anonymous `/view` reader.
 - **Save and try.** A saved version is on trial. A bar on every page asks **Keep this custom CSS?** Choose **Keep** within 15 seconds, or it reverts on its own. It also reverts if the tab is closed or the CSS hides the bar.
-- **Saved by General for you.** When you ask General to change your custom CSS, the version waits until you open the dashboard (up to 10 minutes; if you don't, it goes back without ever showing). Its 20 seconds start once it is on your screen, so CSS that hides the bar still reverts. Tell General "keep it" in chat: if that arrives after the 20 seconds, General puts that version back in force.
+- **Saved by General for you.** When you ask General to change your custom CSS, the version waits until you open the dashboard (up to 10 minutes; if you don't, it goes back without ever showing). Its 20 seconds start once it is on your screen, so CSS that hides the bar still reverts. Tell General "keep it" in chat: if that arrives after the 20 seconds, General puts that version back in force. If you saved a different version on your page in the meantime, General doesn't keep that one instead: it asks you which you want.
 - **What it may contain.** At most 64 KiB, and it never loads anything from the internet:
   - `@import`, `@namespace` and `@charset` are refused.
   - Any `url()` or `src()` is refused, except `url("asset:<id>")` naming a file under **Assets**.

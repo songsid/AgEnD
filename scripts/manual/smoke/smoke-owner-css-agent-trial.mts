@@ -49,7 +49,7 @@ const CSS_A = "body { outline: 6px solid #e91e63 }", CSS_B = "body { outline: 6p
   // "Keep it", 40 s after it was on their screen (the chat round trip): General keeps.
   const wait = shownAt ? Math.max(0, shownAt + 40000 - Date.now()) : 0;
   await p.page.waitForTimeout(wait);
-  const kept = fm.webSettings.change(p.personKey, { what: "custom_css", action: "keep" });
+  const kept = fm.webSettings.change(p.personKey, { what: "custom_css", action: "keep", trial: saved.trial });
   const keptAt = Date.now();
   const relinked = await until(p.page, (s: string) => (document.getElementById("owner-css") as HTMLLinkElement | null)?.getAttribute("href") === `/ui/owner-css.css?v=${s}` && !document.querySelector(".oc-keep"), sha, 15000);
   const hostEnd = fm.ownerCss.state(p.personKey);

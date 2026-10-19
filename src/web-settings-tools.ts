@@ -106,7 +106,7 @@ export class WebSettingsTools {
       host: { themes_shown: host["fx.show"] !== false, card_size: cardSize, card_sizes: host["card.sizeByInstance"] ?? {}, colour_places: places,
         colour_places_default: host["color.show"] === undefined, colours_off: host["color.off"] === true, sidebar_widget: host["widget.sidebar"] ?? null },
       agents,
-      custom_css: { active: css.active, on_trial: css.pending !== null, versions: css.versions.map((v) => ({ sha: v.sha, bytes: v.bytes })) },
+      custom_css: { active: css.active, on_trial: css.pending !== null, trial: css.pending?.id ?? null, versions: css.versions.map((v) => ({ sha: v.sha, bytes: v.bytes })) },
       mods: { installed: mods.mods, proposals },
       effect_slots: slots,
       page_only: ["choosing a file from the person's computer (a mod file, an effect folder, a CSS asset, a card picture)",
@@ -187,16 +187,19 @@ export class WebSettingsTools {
     };
     switch (c.action) {
       // #2198: an agent's save waits for the person's page; the 20 s keep window starts when it is on their screen.
-      case "save": { const r = store.save(person, c.text, { by: "agent" }); return r.ok ? done(r, { on_trial: true, previous: r.previous, note: "on trial: it waits until they open the dashboard (up to 10 minutes), then goes back by itself 20 s after it is on their screen unless kept — by them there, or by you (keep) when they say so. Kept too late, it is put back in force (as use of this version)." }) : done(r, {}); }
+      case "save": { const r = store.save(person, c.text, { by: "agent" }); return r.ok ? done(r, { on_trial: true, trial: r.trial, previous: r.previous, note: "on trial: it waits until they open the dashboard (up to 10 minutes), then goes back by itself 20 s after it is on their screen unless kept — by them there, or by you (keep with this trial) when they say so. Kept too late, it is put back in force (as use of this version)." }) : done(r, {}); }
       case "keep": {
-        const r = store.keepForAgent(person);
+        // #2198 follow-up: keep names its trial, so a newer one the person saved on their page meanwhile is never kept instead.
+        const r = store.keepForAgent(person, c.trial);
         if (r.ok) return done(r, { active: r.active, ...(r.restored ? { note: "it had gone back: this version is in force again (as use)" } : {}) });
-        return r.error === "not_on_trial" ? failed("not_on_trial", "nothing on trial and no version that just went back: put a saved one back with use (version from get_web_settings' custom_css.versions)") : done(r, {});
+        if (r.error === "trial") return failed("trial", "keep needs trial: the id save returned (or get_web_settings' custom_css.trial for the one on trial now)");
+        if (r.error === "trial_mismatch") return failed("trial_mismatch", "a different trial is on now (saved since, on their page or by another save): not kept. Ask them which they want; keep that one with its id from get_web_settings' custom_css.trial, or put yours back with use");
+        return r.error === "not_on_trial" ? failed("not_on_trial", "that trial is no longer on and did not just go back: put a saved one back with use (version from get_web_settings' custom_css.versions)") : done(r, {});
       }
       case "revert": { const r = store.revertTrial(person, store.state(person).pending?.id); return r.ok ? done(r, { active: r.active }) : done(r, {}); }
       case "off": { const r = store.restore(person, null); return r.ok ? done(r, { active: r.active }) : done(r, {}); }
       case "use": { const r = store.restore(person, c.version); return r.ok ? done(r, { active: r.active }) : done(r, {}); }
-      default: return failed("custom_css", "action: save (with text: on trial), keep (the trial), revert (the trial), use (with version: an earlier saved one) or off");
+      default: return failed("custom_css", "action: save (with text: on trial), keep (with trial: the id save returned), revert (the trial), use (with version: an earlier saved one) or off");
     }
   }
 

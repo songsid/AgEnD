@@ -183,6 +183,38 @@ export function zonesChanged(report) {
   return zones.length > 1 || (zones.length === 1 && zones[0] !== report.zone) ? zones : null;
 }
 
+/** Estimated pixel width of one character in the 9 px `.us-axis` label. */
+const LABEL_CHAR_W = 5.5;
+
+/**
+ * The 0-based indices of dates that should receive an x-axis label.
+ * Keeps the first (0) and last (n-1) when they are far enough apart not to
+ * overlap. When first and last are too close (n-1 < step), only the last
+ * (most recent) is shown — overlap-free takes precedence over keeping both
+ * ends. Intermediate labels are thinned so that no two consecutive shown
+ * labels are closer than `labelWidthPx` pixels apart.
+ *
+ * @param {number} n            Number of data points (dates).
+ * @param {number} slotPx       Pixels per slot (bar + gap).
+ * @param {number} labelWidthPx Estimated rendered width of one label.
+ * @returns {Set<number>}
+ */
+export function thinXLabels(n, slotPx, labelWidthPx) {
+  if (n <= 0) return new Set();
+  if (n === 1) return new Set([0]);
+  // Minimum slot steps between label centres (+ 2 px breathing room).
+  const step = Math.max(1, Math.ceil((labelWidthPx + 2) / slotPx));
+  // If first and last are too close to both be shown without overlap, keep
+  // only the last (most recent). The caller's "always first+last" contract
+  // is relaxed here: overlap-free takes precedence.
+  if (n - 1 < step) return new Set([n - 1]);
+  const idx = [0];
+  // Add intermediates that are at least `step` slots away from n-1.
+  for (let i = step; i < n - step; i += step) idx.push(i);
+  idx.push(n - 1); // always include last
+  return new Set(idx);
+}
+
 /** The trend's series: the top `TOP` agents by the measure over the range, then "others"; one value per date. */
 export function trendSeries(report, dates) {
   const priced = report.totals && report.totals.amount !== null && report.totals.amount > 0;
@@ -230,6 +262,8 @@ function Trend({ report, dates }) {
   const max = Math.max(...sums, 0) || 1;
   const what = s.priced ? tu("amount") : tu("trendTokens"), others = s.names.length > TOP;
   const label = others ? tu("trendLabel", what, TOP, dates[0], dates[dates.length - 1]) : tu("trendLabelAll", what, s.names.length, dates[0], dates[dates.length - 1]);
+  // Thin x-axis labels: "MM-DD" (5 chars) × LABEL_CHAR_W ≈ 27.5 px at 9 px sans-serif.
+  const shownLabels = thinXLabels(dates.length, slot, 5 * LABEL_CHAR_W);
   return html`<section class="us-trend card" aria-labelledby="us-trend-h">
     <h3 id="us-trend-h">${tu("trend")} <span class="note">· ${s.priced ? tu("amount") : tu("trendTokens")}</span></h3>
     <p class="note us-scale">${tu("scale", fmtMeasure(s.priced, max))}</p>
@@ -243,7 +277,7 @@ function Trend({ report, dates }) {
           const h = v[i] > 0 ? Math.max(1, ((base - top) * v[i]) / max) : 0;
           y -= h;
           return h ? html`<rect key=${k} class=${`us-s${k}`} x=${left + i * slot + 2} y=${y} width=${slot - 4} height=${h}><title>${`${date} · ${s.names[k]}: ${fmtMeasure(s.priced, v[i])}`}</title></rect>` : null;
-        })}${(dates.length - 1 - i) % 7 === 0 || dates.length <= 8 ? html`<text class="us-axis" x=${left + i * slot + slot / 2} y=${H - 6} text-anchor="middle">${date.slice(5)}</text>` : null}</g>`;
+        })}${shownLabels.has(i) ? html`<text class="us-axis us-xlabel" x=${left + i * slot + slot / 2} y=${H - 6} text-anchor="middle">${date.slice(5)}</text>` : null}</g>`;
       })}
     </svg></div>
     <${EarlierHint} wide=${wide} />

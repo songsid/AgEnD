@@ -379,8 +379,9 @@ export const SetWebSettingsArgs = z.object({
     }).strict(),
     z.object({
       what: z.literal("custom_css"), action: z.enum(["save", "keep", "revert", "use", "off"]),
-      text: z.string().optional().describe("save: the stylesheet (same rules as the page: no remote URLs, assets as url(\"asset:<id>\"), at most 64 KiB). It goes on trial: it waits until they open the dashboard (up to 10 minutes), then goes back by itself 20 s after it is on their screen unless kept — keep it (keep) once they say they like it; kept after it went back, it is put back in force (as use)."),
+      text: z.string().optional().describe("save: the stylesheet (same rules as the page: no remote URLs, assets as url(\"asset:<id>\"), at most 64 KiB). It goes on trial: it waits until they open the dashboard (up to 10 minutes), then goes back by itself 20 s after it is on their screen unless kept — keep it (keep, with the trial id save returned) once they say they like it; kept after it went back, it is put back in force (as use)."),
       version: z.string().optional().describe("use: an earlier saved version's sha, from get_web_settings' custom_css.versions; it applies at once"),
+      trial: z.string().optional().describe("keep: the trial's id, as save returned it (or get_web_settings' custom_css.trial); a different trial on now is not kept"),
     }).strict(),
     z.object({
       what: z.literal("mod"), action: z.enum(["review", "install", "cancel", "dismiss", "uninstall"]),
