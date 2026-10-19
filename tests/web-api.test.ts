@@ -196,7 +196,7 @@ describe("web chat delivery", () => {
     expect((await callAndWait("POST", "/ui/send", { instance: "target", message: text }, ctx)).status).toBe(200);
     expect(deliverHumanToInstance).toHaveBeenCalledWith("target", expect.objectContaining({ content: text }),
       { platform: "web", adapter_id: null, user_id: null, username: null, platform_message_id: null, ingress: "web",
-        authority: { kind: "none", actor: null, authority_epoch: 0 } }, text);              // #1939: no session here, so none
+        authority: { kind: "none", actor: null, authority_epoch: 0 } }, text, { stillCurrent: expect.any(Function) });              // #1939: no session here, so none
     expect(deliverToInstance).not.toHaveBeenCalled();
     expect((await callAndWait("POST", "/ui/send", { instance: "target", message: "forged", origin: { platform: "telegram", user_id: "42" } }, ctx)).status).toBe(400);
     expect((await callAndWait("POST", "/ui/send", { instance: "target", message: "forged", authority: { kind: "web-session" } }, ctx)).status).toBe(400);
@@ -222,7 +222,7 @@ describe("web chat delivery", () => {
       type: "fleet_inbound",
       content: "wake up",
       targetSession: "target",
-    }));
+    }), { stillCurrent: expect.any(Function) });
   });
 });
 

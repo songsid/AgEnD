@@ -109,6 +109,9 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - Messages are not read out as they arrive. A screen reader hears the coarse events once each: the agent started, finished, replied, or is waiting for your input. The conversation itself is a log to browse.
 
 ### Writing
+
+**Paused agents.** Sending a message wakes a paused instance, including a ClassicBot room. The composer shows “Waking…” until delivery. If waking is refused (for example, no warm slot is free), the page explains why, keeps your text and files, and offers **Retry send**. Retry never runs automatically. A stopped instance still needs to be started; opening history or attaching a file does not wake it. Guest and public-link send permissions are unchanged.
+
 - **Enter** sends; **Shift+Enter** adds a line. If sending fails, your text is given back.
 - Messages render **Markdown**: headings, **bold**, *italics*, ~~strike-through~~, `code`, code blocks, lists, quotes, rules and links. Also:
   - **Tables** (`| a | b |` with a `|---|---|` row under the header, and `:--` / `--:` / `:-:` for alignment). Write `\|` for a pipe inside a cell.

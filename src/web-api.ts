@@ -243,8 +243,8 @@ export interface WebApiContext {
   /** #1920 §5.2: a web message's channel copy was sent — guests of that channel may see it now. */
   webMessageInChannel?(instance: string, messageId: string): void;
   /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
-  deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<boolean | void>;
-  deliverHumanToInstance?(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin, originalBody: string): Promise<boolean | void>;
+  deliverToInstance(instanceName: string, payload: Record<string, unknown>, options?: { stillCurrent?: () => boolean }): Promise<boolean | void>;
+  deliverHumanToInstance?(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin, originalBody: string, options?: { stillCurrent?: () => boolean }): Promise<boolean | void>;
   getUiStatus(): unknown;
   /** Current owned pane reader shared with status; absent means context is unavailable. */
   getPaneContextSource?(name: string): PaneContextSource | null;
@@ -1561,7 +1561,7 @@ export function handleWebRequest(
     let name: string;
     try { name = decodeURIComponent(cancelMatch[1]!); } catch { json(res, 400, { error: "Bad instance name" }); return true; }
     // Own keys only: "constructor" is in every object and names no instance.
-    const known = (ctx.fleetConfig ? Object.hasOwn(ctx.fleetConfig.instances, name) : false) || ctx.daemons.has(name);
+    const known = registeredChatInstance(ctx, name) || ctx.daemons.has(name);
     if (!ctx.cancelInstance || !known) {
       json(res, 404, { error: `Instance not found: ${name}` });
       return true;
@@ -2124,6 +2124,24 @@ function webEchoPreview(message: string, names: string[]): string {
   return wellFormed(preview.slice(0, 1400)) + (truncated ? ` … (${t("web.echo_full_text")})` : "");
 }
 
+/** Registration and liveness are different: a paused CLI may have neither daemon nor IPC. */
+function registeredChatInstance(ctx: WebApiContext, name: string): boolean {
+  return (!!ctx.fleetConfig && Object.hasOwn(ctx.fleetConfig.instances, name)) || ctx.isClassicInstance?.(name) === true;
+}
+function uploadRecipient(ctx: WebApiContext, name: string): boolean {
+  return registeredChatInstance(ctx, name)
+    && (ctx.instanceIpcClients.has(name) || ctx.getInstanceStatus?.(name) === "paused");
+}
+/** Closed, path-free explanations; arbitrary launch errors stay in the host log. */
+function webDeliveryFailure(err: unknown): { reason: string; error: string } {
+  const message = err instanceof Error ? err.message : "";
+  if (/No warm slot is free/.test(message)) return { reason: "wake_capacity", error: "No slot is free to wake this instance. Retry when another instance is idle." };
+  if (/login|log in|sign in|\bauth(?:entication|orization)?\b|credential|api.?key/i.test(message)) return { reason: "wake_credentials", error: "The instance could not sign in. Check its account on the host, then retry." };
+  if (/timed? out|timeout/i.test(message)) return { reason: "wake_timeout", error: "The instance did not become ready in time. Retry, or check its status on the host." };
+  if (/Cannot wake stopped|no longer configured/.test(message)) return { reason: "instance_stopped", error: "This instance was stopped or removed. Start it on the host before retrying." };
+  return { reason: "delivery_unavailable", error: "The instance could not receive this message. Check its status on the host, then retry." };
+}
+
 /** Handle POST /ui/send — extracted for readability. */
 function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebApiContext): void {
   const arrival = webAuthorityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);   // #1939 §3: again after the body
@@ -2154,8 +2172,8 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       const refused = guestChatRefusal(guest, instance);
       if (refused) { json(res, refused.status, { error: refused.error }); return; }
       if (guest && guestCommandText(typed)) { json(res, 403, { error: "guest_no_commands" }); return; }
-      const ipc = ctx.instanceIpcClients.get(instance);
-      if (!ipc) {
+      const registered = registeredChatInstance(ctx, instance);
+      if (!registered && !ctx.instanceIpcClients.has(instance)) {
         json(res, 404, { error: `Instance not found: ${instance}` });
         return;
       }
@@ -2175,6 +2193,12 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         json(res, 403, { error: t("web.raw_public_refused") });
         return;
       }
+      // Recheck the same admission all the way through a wake, before the facade's actual IPC handoff.
+      const requestUrl = new URL(req.url ?? "/", "http://localhost");
+      const admission = admissionOf(req, requestUrl, ctx);
+      const stillCurrent = () => !res.destroyed && admission !== null && admissionOf(req, requestUrl, ctx) === admission
+        && (!guest || (guest.current() && !guestChatRefusal(guest, instance)))
+        && (registered ? registeredChatInstance(ctx, instance) : ctx.instanceIpcClients.has(instance));
       const message = typed;
       // #1827: who is writing — the name agents and chats see, and the id they tell people apart by. Asked now that the
       // body is in: a session revoked meanwhile sends nothing (not as the operator).
@@ -2215,8 +2239,8 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       let delivered: boolean | void;
       try {
         const deliver = (name: string, payload: Record<string, unknown>) => ctx.deliverHumanToInstance
-          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority), typed)
-          : ctx.deliverToInstance(name, payload);
+          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority), typed, { stillCurrent })
+          : ctx.deliverToInstance(name, payload, { stillCurrent });
         delivered = await deliver(instance, {
           type: "fleet_inbound",
           content: delivery.text,
@@ -2241,7 +2265,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         settleClassicEcho?.(false);
         ctx.webFiles?.release(files);                  // not delivered: the same ids can be sent again
         ctx.logger.error({ err, instance }, "Web message delivery failed");
-        json(res, 503, { error: "Instance delivery failed" });
+        json(res, 503, webDeliveryFailure(err));
         return;
       }
       if (delivered === false) {
@@ -2249,7 +2273,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         settleClassicEcho?.(false);
         ctx.webFiles?.release(files);
         ctx.logger.error({ instance }, "Web message not delivered (the instance went away or restarted)");
-        json(res, 503, { error: "Instance delivery failed" });
+        json(res, 503, { reason: "delivery_changed", error: "The session or instance changed before this message was sent. Sign in again if needed, then retry." });
         return;
       }
       settleEcho?.(true);
@@ -2289,7 +2313,7 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
   // #1920 step 2b: a guest's upload is for an in-scope instance's message, while guests may chat.
   const guestRefused = guestChatRefusal(guestRequestOf(req), instance);
   if (guestRefused) { req.resume(); json(res, guestRefused.status, { error: guestRefused.error }); return; }
-  if (!instance || instance.length > 128 || !safeInstanceSegment(instance) || !ctx.instanceIpcClients.has(instance)) {
+  if (!instance || instance.length > 128 || !safeInstanceSegment(instance) || !uploadRecipient(ctx, instance)) {
     json(res, 404, { error: `Instance not found: ${instance}` });
     return;
   }
@@ -2340,11 +2364,9 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
   });
   req.on("error", () => drop());                              // the client went away
   req.on("close", () => { if (!over && req.complete === false) drop(); });
-  // The instance is checked again now the whole body is here: it may have been deleted (and its files
-  // forgotten) or stopped while the upload streamed in; storing now would bring its id back (#1252 review).
-  // Still deliverable means: its IPC is up (a paused one is woken by the send) and it is still registered —
-  // in fleet.yaml, or as a ClassicBot room in classicBot.yaml. Asked when the body ends and again just before storing.
-  const deliverable = () => ctx.instanceIpcClients.has(instance) && (!!ctx.fleetConfig?.instances?.[instance] || ctx.isClassicInstance?.(instance) === true);
+  // Recheck registration and delivery readiness after both waits. A paused recipient may have no IPC;
+  // staging a file never wakes it. A stopped or deleted recipient must not regain an upload id.
+  const deliverable = () => uploadRecipient(ctx, instance);
   const gone = () => drop(() => json(res, 404, { error: `Instance not found: ${instance}` }));
   req.on("end", () => {
     if (over) return;
