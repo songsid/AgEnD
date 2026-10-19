@@ -439,6 +439,7 @@ export class RestartProgress {
     if (!adapter) return this.adapterNotReady(text);
 
     // Retry terminal edit with 429-aware backoff until the deadline (#2213: no message to edit → straight to the post).
+    const after = this.messageId ? " after edit failure" : "";
     while (this.messageId) {
       // #2175: a 429 window still open from the progress edits (finish() cut that sleep short) is waited out here;
       // one that outlasts the budget goes to the background retry instead of an edit the provider would refuse.
@@ -503,10 +504,10 @@ export class RestartProgress {
         return this.deferTerminal(text, this.rateLimitedUntil, "rate limited (429)");
       }
       // #2213: refused (an outage's fetch failure, a network error): nothing landed — the background retry owns it.
-      this.logger.warn({ err: sent.reason }, "Failed to post fresh fleet completion after edit failure");
+      this.logger.warn({ err: sent.reason }, `Failed to post fresh fleet completion${after}`);
       return this.deferTerminal(text, Date.now() + TERMINAL_BACKGROUND_RETRY_MS, "delivery refused");
     }
-    this.logger.warn({}, "Timed out posting fresh fleet completion after edit failure");
+    this.logger.warn({}, `Timed out posting fresh fleet completion${after}`);
     // #2213: it may still land: a second post could duplicate it, so only its own settlement decides.
     return this.awaitOutcome(text, posting, true);
   }

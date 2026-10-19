@@ -98,7 +98,7 @@ describe("fleet start completion fallback", () => {
     vi.setSystemTime(0);
     const sendText = vi.fn().mockResolvedValue({ messageId: "done-1", chatId: "group" });
     const { fleet } = makeFleet({ sendText } as unknown as ChannelAdapter);
-    fleet["adapterState"] = new Map([["discord", { status: "reconnecting", retryCount: 3 }]]);
+    fleet["adapterState"] = new Map([["discord", { status: "retrying", retryCount: 3 }]]);
 
     const sending = (fleet as any).sendFleetStartCompletionFallback("group", "complete", "1");
     await vi.advanceTimersByTimeAsync(3 * 60_000);
