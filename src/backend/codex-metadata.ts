@@ -20,7 +20,7 @@ export const CODEX_MODELS_CACHE_MAX_BYTES = 5 * 1024 * 1024;
  * again on every ask until it has settled.
  */
 const fileCache = new Map<string, { stamp: string; value: unknown; settled: boolean }>();
-const FILE_CACHE_MAX = 256;
+export const FILE_CACHE_MAX = 256;
 export const FILE_SETTLED_MS = 1000;
 /** The wall clock the files' times are compared with (a seam for tests: a file's ctime can't be set back). */
 export const codexMetadataClock = { now: (): number => Date.now() };

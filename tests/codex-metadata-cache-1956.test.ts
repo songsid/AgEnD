@@ -18,7 +18,7 @@ vi.mock("node:fs", async (original) => {
   const actual = await original<typeof import("node:fs")>();
   return { ...actual, readFileSync: (...args: Parameters<typeof actual.readFileSync>) => { reads.push(String(args[0])); return actual.readFileSync(...args); } };
 });
-const { CODEX_MODELS_CACHE_MAX_BYTES, FILE_SETTLED_MS, codexMetadataClock, readCodexEffortLevels, readCodexModelEffortLevels, resetCodexMetadataCache } = await import("../src/backend/codex-metadata.js");
+const { CODEX_MODELS_CACHE_MAX_BYTES, FILE_CACHE_MAX, FILE_SETTLED_MS, codexMetadataClock, readCodexEffortLevels, readCodexModelEffortLevels, resetCodexMetadataCache } = await import("../src/backend/codex-metadata.js");
 /** Files changed now look a minute old to the cache: settled, so a cached answer is trusted (ctime can't be set back). */
 const settledClock = () => { codexMetadataClock.now = () => Date.now() + 60_000; };
 const realClock = () => { codexMetadataClock.now = () => Date.now(); };
@@ -80,6 +80,44 @@ describe("read once per version of the file", () => {
     expect(statSync(file).size).toBe(was.size);
     utimesSync(file, was.atime, was.mtime);                                                // inside one coarse tick: the same stamp
     expect(readCodexEffortLevels(homes())).toEqual(["low", "high"]);
+  });
+  // #2224 review (Fable): the stamp's ctime, proven with the cache trusting the old version (a settled clock) — the
+  // racy rule can't be what re-reads it. A filesystem clock tick is waited out, so the change's ctime is a new one.
+  const nextTick = () => new Promise((r) => setTimeout(r, 50));
+  it("trusted, then rewritten at the same size with its mtime put back (cp -p, rsync -t, touch -r): read again by its ctime", async () => {
+    const file = join(shared, "models_cache.json");
+    writeFileSync(file, cache({ "demo-a": ["high", "low"] })); age(file);
+    resetCodexMetadataCache();
+    expect(readCodexEffortLevels(homes())).toEqual(["high", "low"]);
+    const was = statSync(file);
+    await nextTick();
+    writeFileSync(file, cache({ "demo-a": ["low", "high"] }));                             // same inode, same size
+    utimesSync(file, was.atime, was.mtime);                                               // and its mtime as it was
+    const now = statSync(file);
+    expect([now.ino, now.size, now.mtimeMs, now.ctimeMs === was.ctimeMs]).toEqual([was.ino, was.size, was.mtimeMs, false]);
+    expect(codexMetadataClock.now() - Math.max(now.mtimeMs, now.ctimeMs)).toBeGreaterThanOrEqual(FILE_SETTLED_MS);   // still "settled"
+    expect(readCodexEffortLevels(homes())).toEqual(["low", "high"]);
+  });
+  it("trusted while unreadable, then made readable (a chmod: only its ctime moves): read again", async () => {
+    if (process.getuid?.() === 0) return;                                                 // root reads anything
+    const file = join(shared, "config.toml");
+    chmodSync(file, 0o000); age(file);
+    resetCodexMetadataCache();
+    expect(readCodexModelEffortLevels(homes())).toEqual({ model: null, levels: null });
+    await nextTick();
+    chmodSync(file, 0o644);
+    expect(readCodexModelEffortLevels(homes())).toEqual({ model: "demo-a", levels: ["low", "high"] });
+  });
+  it(`at most FILE_CACHE_MAX files are kept: past ${256}, the oldest is read again`, () => {
+    readCodexEffortLevels(homes());
+    expect(readsOf("config.toml")).toBe(1);
+    for (let i = 0; i < FILE_CACHE_MAX; i++) {                                           // that many other homes' files
+      const h = join(root, `h${i}`); mkdirSync(h); writeFileSync(join(h, "config.toml"), 'model = "demo-a"\n'); age(join(h, "config.toml"));
+      readCodexModelEffortLevels({ isolatedHome: h, sharedHome: shared });
+    }
+    reads.length = 0;
+    readCodexEffortLevels(homes());
+    expect(readsOf(join(shared, "config.toml"))).toBe(1);                                 // it was let go
   });
   it("replaced by a rename (codex writes a new file): read again", () => {
     readCodexEffortLevels(homes());
