@@ -881,6 +881,56 @@ function sseClock(): string { return `event: clock\ndata: ${JSON.stringify({ now
 /**
  * Handle a Web UI request. Returns true if handled, false to pass through.
  */
+/**
+ * #1956: the status the SSE heartbeat sends, built once per tick for every open stream instead of once per stream.
+ * Every open dashboard tab sent its own heartbeat every 10 s, each rebuilding and serializing the whole fleet's status
+ * on the fleet's loop (#1235): T tabs cost T builds. Now one timer per server ticks for all of them:
+ *   - each stream's own check runs first (its session, a guest's exact session); one that fails is closed, as before;
+ *   - if any stream is left, the status is built once (measured as web.sseStatus);
+ *   - the admin frame is serialized once; a guest's frame is projected per scope (guestStatus) from that same build,
+ *     never from another stream's frame.
+ * A stream's first frame (on connecting) is still its own build.
+ */
+interface StatusTickStream {
+  /** Whether it may still be sent to: false when it was just closed. */
+  alive(): boolean;
+  /** A guest's scope, read at the tick; null for an admin's stream (the whole status). */
+  scope: (() => ReadonlySet<string>) | null;
+  write(frame: string): void;
+}
+const statusTicks = new WeakMap<WebApiContext, { streams: Set<StatusTickStream>; timer: ReturnType<typeof setInterval> | null }>();
+function subscribeStatusTick(ctx: WebApiContext, stream: StatusTickStream): () => void {
+  let tick = statusTicks.get(ctx);
+  if (!tick) statusTicks.set(ctx, tick = { streams: new Set(), timer: null });
+  const t = tick;
+  t.streams.add(stream);
+  t.timer ??= setInterval(() => statusTick(ctx, t), ctx.sseHeartbeatMs ?? SSE_HEARTBEAT_MS);
+  return () => {
+    t.streams.delete(stream);
+    if (!t.streams.size && t.timer) { clearInterval(t.timer); t.timer = null; }
+  };
+}
+function statusTick(ctx: WebApiContext, t: { streams: Set<StatusTickStream> }): void {
+  const live = [...t.streams].filter((s) => s.alive());
+  if (!live.length) return;
+  let status: unknown, admin: string | null = null;
+  const guests = new Map<string, string>();
+  try { status = measureSyncWork("web.sseStatus", () => ctx.getUiStatus()); }
+  catch { return; }                                           // nothing to send this tick; the next one tries again
+  const frameFor = (s: StatusTickStream): string => {
+    if (!s.scope) return admin ??= `event: status\ndata: ${JSON.stringify(status)}\n\n`;
+    const scope = s.scope(), key = [...scope].sort().join("\u0000");
+    let frame = guests.get(key);
+    if (frame === undefined) guests.set(key, frame = `event: status\ndata: ${JSON.stringify(guestStatus(status, scope))}\n\n`);
+    return frame;
+  };
+  for (const s of live) {
+    let frame: string;
+    try { frame = frameFor(s); } catch { continue; }
+    s.write(frame);
+  }
+}
+
 export function handleWebRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -1081,33 +1131,32 @@ export function handleWebRequest(
     // #1386: and "Needs you" as it is now; changes follow as `needs` events.
     if (!guest && ctx.needsYouItems) res.write(`event: needs\ndata: ${JSON.stringify({ items: ctx.needsYouItems() })}\n\n`);
     ctx.sseClients.add(res);
-    const interval = setInterval(() => {
+    // #1956: the heartbeat's status comes from the one build every open stream shares each tick (statusTick), with
+    // this stream's own projection; this stream's checks stay its own.
+    const unsubscribe = subscribeStatusTick(ctx, {
       // A stream authorized once must not outlive the authorization. Re-checked
       // without counting as activity, or an open tab would keep an idle session
       // alive forever; a revoked, expired or rotated-away session ends here.
       // #2049 review: a guest's stream also needs the exact session that opened it — another cookie on the same request
       // still authenticating does not keep a revoked device's stream (with its scope) alive.
-      if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false }) || (guest && !guest.current())) {
+      alive: () => {
+        if (isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false }) && (!guest || guest.current())) return true;
         // Close the connection too, not just the response: an ended response leaves the socket idle in
         // keep-alive, still held open by whoever's session just ended.
         const socket = req.socket;
         try { res.end(() => socket?.destroy()); } catch { /* already closed */ }
         cleanup();
-        return;
-      }
-      try {
-        // Every open dashboard tab, every 10 s: the status of every instance, serialized on the fleet's loop (#1235).
-        res.write(measureSyncWork("web.sseStatus", statusFrame) + sseClock());
-      } catch {
-        cleanup();
-      }
-    }, ctx.sseHeartbeatMs ?? SSE_HEARTBEAT_MS);
+        return false;
+      },
+      scope: guest ? () => guest.scope() : null,
+      write: (frame) => { try { res.write(frame + sseClock()); } catch { cleanup(); } },
+    });
     let cleanedUp = false;
     const cleanup = (): void => {
       if (cleanedUp) return;
       cleanedUp = true;
       ctx.sseClients.delete(res);
-      clearInterval(interval);
+      unsubscribe();
     };
     // The *response's* `close` is the one that means the stream is over: it fires when the connection
     // goes away or the response is finished. The request's `close` means "the request has been read"
