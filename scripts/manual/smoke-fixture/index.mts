@@ -155,7 +155,9 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
   const engine = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";
   const pw = createRequire(PW + "/")("playwright-core");
   browser = engine === "webkit" ? await pw.webkit.launch()
-    : await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox", `--host-resolver-rules=MAP ${LAN_HOST} 127.0.0.1`] });
+    : await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox", `--host-resolver-rules=MAP ${LAN_HOST} 127.0.0.1`],
+      // PW_SCROLLBARS=1: classic scrollbars that take width, as on Windows (headless hides them by default).
+      ...(process.env.PW_SCROLLBARS === "1" ? { ignoreDefaultArgs: ["--hide-scrollbars"] } : {}) });
   const base = `http://127.0.0.1:${o.port}`;
   const painter = await browser.newPage();
   return {

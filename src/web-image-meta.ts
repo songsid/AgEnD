@@ -66,6 +66,53 @@ export function imageSize(b: Uint8Array, kind: MediaKind): { width: number; heig
   return null;
 }
 
+/**
+ * A JPEG's EXIF orientation (1–8), or 1 when it has none or it cannot be read. Read from the first APP1 "Exif" segment
+ * before the first scan: IFD0's tag 0x0112, in either byte order.
+ */
+export function jpegOrientation(b: Uint8Array): number {
+  let k = 2;
+  while (k + 4 <= b.length) {
+    if (b[k] !== 0xff) return 1;
+    const m = b[k + 1]!;
+    if (m === 0xff) { k++; continue; }
+    if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { k += 2; continue; }
+    if (m === 0xda || m === 0xd9) return 1;
+    const len = u16be(b, k + 2), end = Math.min(b.length, k + 2 + len);
+    if (m === 0xe1 && k + 10 <= end && String.fromCharCode(...b.subarray(k + 4, k + 10)) === "Exif\0\0") {
+      const t = k + 10;
+      if (t + 8 > end) return 1;
+      const le = b[t] === 0x49 && b[t + 1] === 0x49;
+      if (!le && !(b[t] === 0x4d && b[t + 1] === 0x4d)) return 1;
+      const r16 = (o: number) => (le ? u16le(b, o) : u16be(b, o));
+      const r32 = (o: number) => (le ? u32le(b, o) : u32be(b, o));
+      const ifd = t + r32(t + 4);
+      if (ifd + 2 > end) return 1;
+      const n = r16(ifd);
+      for (let i = 0; i < n; i++) {
+        const e = ifd + 2 + i * 12;
+        if (e + 12 > end) return 1;
+        if (r16(e) === 0x0112) { const v = r16(e + 8); return v >= 1 && v <= 8 ? v : 1; }
+      }
+      return 1;
+    }
+    k += 2 + len;
+  }
+  return 1;
+}
+
+/**
+ * #2184: the size a browser draws a picture at, from its first bytes — width and height
+ * from the headers, swapped when a JPEG's EXIF orientation turns it (5–8; browsers apply it). Null when unknown.
+ */
+export function displaySize(b: Uint8Array): { width: number; height: number } | null {
+  const kind = sniffMedia(b);
+  if (!kind || kind === "woff2") return null;
+  const size = imageSize(b, kind);
+  if (!size || size.width < 1 || size.height < 1 || size.width > 65535 || size.height > 65535) return null;
+  return kind === "jpeg" && jpegOrientation(b) >= 5 ? { width: size.height, height: size.width } : size;
+}
+
 const PNG_DROP = new Set(["tEXt", "zTXt", "iTXt", "eXIf", "tIME"]);
 const WEBP_DROP = new Set(["EXIF", "XMP "]);
 

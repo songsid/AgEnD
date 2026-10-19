@@ -580,6 +580,21 @@
    * With { htmlCards: true } (a server-marked agent reply, as for renderMarkdown) each .html/.htm file also gets an
    * empty card placeholder <div class="html-card" data-att="<id>"> after the list — the id is 32 hex, nothing else.
    */
+  // The box a photo is drawn in (app.css: .msg .att-img img, max 260 × 220): its own size, scaled down to fit.
+  var PHOTO_MAX_W = 260, PHOTO_MAX_H = 220;
+  /**
+   * #2184: a photo's drawn size as width/height attributes, from the size the server read from its headers: the box is there
+   * before the picture loads, so the text around it never moves when it does (a chat opened cold jittered, as each
+   * photo grew from nothing). Nothing when the size is not known (drawn as before).
+   */
+  function photoBox(a) {
+    var w = a.width, h = a.height;
+    var ok = function (v) { return typeof v === "number" && v >= 1 && v <= 65535 && Math.floor(v) === v; };
+    if (!ok(w) || !ok(h)) return "";
+    var k = Math.min(1, PHOTO_MAX_W / w, PHOTO_MAX_H / h);
+    return ' width="' + Math.max(1, Math.round(w * k)) + '" height="' + Math.max(1, Math.round(h * k)) + '"';
+  }
+
   function attachmentsHtml(attachments, opts) {
     if (!Array.isArray(attachments)) return "";
     var cards = !!(opts && opts.htmlCards);
@@ -602,7 +617,7 @@
       else if (kind) after.push('<div class="text-card" data-att="' + a.id + '" data-type="' + kind + '"></div>');
       var name = escapeHtml(a.name || "file");
       if (a.kind === "photo") {
-        out.push('<a class="att-img" href="' + url + '" target="_blank" rel="noopener noreferrer"><img src="' + url + '" alt="' + name + '" loading="lazy"></a>');
+        out.push('<a class="att-img" href="' + url + '" target="_blank" rel="noopener noreferrer"><img src="' + url + '" alt="' + name + '"' + photoBox(a) + ' loading="lazy"></a>');
       } else {
         out.push('<a class="att-file" href="' + url + '" download="' + name + '">📎 ' + name + ' <span class="att-size">' + escapeHtml(formatSize(a.size)) + "</span></a>");
       }
