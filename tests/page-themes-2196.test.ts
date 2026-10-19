@@ -190,6 +190,18 @@ describe("the page: the open agent's colours on the shell", () => {
     const { pg, themes } = await shell("/ui/chat/t2", { themes: { t2: t }, choices: { t2: "page" }, mode: "dark" });
     expect([look(pg), themes.pageNow("dark")]).toEqual([null, null]);
   });
+  it("#2199: body[data-agent] is the agent open now — on its Chat, View, Log and Details, gone elsewhere — themes shown or not", async () => {
+    const { pg } = await shell("/ui/chat/harbor", { fxOff: true });
+    const seen: unknown[] = [];
+    for (const p of ["/ui/chat/harbor", "/view/amber", "/ui/log/plain", "/ui/fleet/agent/bare", "/ui/fleet/org", "/settings", "/ui/needs", "/ui/chat/harbor"]) {
+      await go(p); seen.push([p, pg.document.body.dataset.agent ?? null]);
+    }
+    expect(seen).toEqual([["/ui/chat/harbor", "harbor"], ["/view/amber", "amber"], ["/ui/log/plain", "plain"], ["/ui/fleet/agent/bare", "bare"],
+      ["/ui/fleet/org", null], ["/settings", null], ["/ui/needs", null], ["/ui/chat/harbor", "harbor"]]);
+    const { navigate } = await import("/assets/app-nav.js");
+    navigate("/ui/chat/amber"); await settle(1);
+    expect([pg.document.body.dataset.agent, look(pg)]).toEqual(["amber", null]);   // the same render; themes off: no colours
+  });
   it("#2202 review: only an agent's own pages — Chat, View, Log, Details — take its colours; no other route that names it", async () => {
     const { themes } = await shell("/ui/chat/harbor");
     const on = (route: Record<string, unknown> | null) => themes.pageNow("light", route) !== null;

@@ -12,6 +12,8 @@
 //     its colours (the header follows the page); Settings: the page's own look;
 //   - ⋯ → Page colours → Only its chat (a person's choice wins): ota-builder's page in the page's own look; back to
 //     the agent's choice: its colours again (desk);
+//   - #2199: body[data-agent] is the agent open (every sampled frame of the switch too; none on Settings; kept with
+//     agents' themes off — it is for a person's own custom CSS);
 //   - no page error (WebKit's own lines only; the opening navigation's stream/poll/session cancels by position).
 // Viewer cases: Settings → Web appearance → "Show agents' themes…" off (clicked); ?safe=1 — the page's own look.
 // Cases: desk light (English), phone dark (zh-TW, reduced motion, a LAN origin in Chromium), the public link (desk
@@ -77,6 +79,7 @@ const READ = `(() => {
   const tabs = document.querySelector("nav.tabs");
   return { sidebar: bg("#sidebar"), header: bg(".p-chat > .panel-head"), headerText: fg(".p-chat > .panel-head"), rail: bg(".u-rail"), tabs: tabs && getComputedStyle(tabs).display !== "none" ? getComputedStyle(tabs).backgroundColor : null,
     chat: bg(".p-chat"), sideText: fg("#sidebar .side-row"), count: bg(".nav-count") || bg(".tab-badge"), themed: document.querySelector(".shell").classList.contains("th-page"),
+    agent: document.body.dataset.agent ?? null,
     sideW: Math.round(document.querySelector("#sidebar").getBoundingClientRect().width), main: JSON.stringify(["x", "y", "width", "height"].map((k) => Math.round(document.querySelector("#main").getBoundingClientRect()[k]))),
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
 })()`;
@@ -111,6 +114,7 @@ async function main(name: string, open: () => Promise<FreshPage>, mode: "light" 
   }
   const h = await read(p);
   c.harborSidebar = h.sidebar === hex(T.H.side) && h.themed;
+  c.dataAgent = h.agent === H;
   c.harborHeader = h.header === hex(T.H.bg);
   if (!phone) c.harborRail = h.rail === hex(T.H.bg);
   if (phone) c.harborTabs = h.tabs === hex(T.H.side);
@@ -118,12 +122,14 @@ async function main(name: string, open: () => Promise<FreshPage>, mode: "light" 
   c.needsCountAgEnDs = !h.count || h.count === hex(HOST[mode].dangerFill);
   await p.page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-${name}`, "1-harbor") });
   // The switch, sampled every frame from before the click.
-  await p.page.evaluate(`(() => { window.__frames = []; const f = () => { const s = document.querySelector("#sidebar"); window.__frames.push([location.pathname, getComputedStyle(s).backgroundColor]); if (window.__frames.length < 90) requestAnimationFrame(f); }; requestAnimationFrame(f); })()`);
+  await p.page.evaluate(`(() => { window.__frames = []; const f = () => { const s = document.querySelector("#sidebar"); window.__frames.push([location.pathname, getComputedStyle(s).backgroundColor, document.body.dataset.agent ?? null]); if (window.__frames.length < 90) requestAnimationFrame(f); }; requestAnimationFrame(f); })()`);
   await openAgent(p, A);
   await p.page.waitForTimeout(600);
-  const frames = await p.page.evaluate("window.__frames") as Array<[string, string]>;
+  const frames = await p.page.evaluate("window.__frames") as Array<[string, string, string | null]>;
   const want = (path: string) => (path.endsWith(`/${A}`) ? hex(T.A.side) : path.endsWith(`/${H}`) ? hex(T.H.side) : null);
-  const wrong = frames.filter(([path, col]) => want(path) !== null && col !== want(path));
+  const agentOf = (path: string) => (path.endsWith(`/${A}`) ? A : path.endsWith(`/${H}`) ? H : null);
+  // #2199: body[data-agent] follows in the same frames as the colours.
+  const wrong = frames.filter(([path, col, ag]) => want(path) !== null && (col !== want(path) || ag !== agentOf(path)));
   c.switchEveryFrameRight = frames.some(([path]) => path.endsWith(`/${A}`)) && wrong.length === 0;
   const a = await read(p);
   c.amberSidebar = a.sidebar === hex(T.A.side) && a.header === hex(T.A.bg);
@@ -152,7 +158,8 @@ async function main(name: string, open: () => Promise<FreshPage>, mode: "light" 
   await p.page.goto(`${p.base}/settings`);
   await mounted(p.page, 30000);
   await p.page.waitForTimeout(400);
-  c.settingsOwn = (await read(p)).sidebar === hex(HOST[mode].sidebar);
+  const st = await read(p);
+  c.settingsOwn = st.sidebar === hex(HOST[mode].sidebar) && st.agent === null;
   c.noOverflow = !(await read(p)).overflow;
   const errs = ownErrors(p, Infinity);   // the case ends with its own navigation (Settings)
   c.noErrors = errs.length === 0;
@@ -184,7 +191,7 @@ if (only("off")) {
   await openAgent(p, H);
   const o = await read(p);
   await p.page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-themes-off-desk-dark-en`, "1-harbor") });
-  record("themes-off-desk-dark-en", { pageOwn: o.sidebar === hex(HOST.dark.sidebar) && !o.themed, chatOwn: o.header === hex(HOST.dark.bg), noErrors: ownErrors(p, Infinity).length === 0 }, { o, errs: ownErrors(p, Infinity) });
+  record("themes-off-desk-dark-en", { pageOwn: o.sidebar === hex(HOST.dark.sidebar) && !o.themed, dataAgentStill: o.agent === H, chatOwn: o.header === hex(HOST.dark.bg), noErrors: ownErrors(p, Infinity).length === 0 }, { o, errs: ownErrors(p, Infinity) });
   await p.ctx.close();
   // The switch is the host's (every signed-in screen): back to its default for the next fresh profile.
   const { OPERATOR } = await import(process.env.REPO + "/src/web-prefs.ts");

@@ -580,6 +580,14 @@ function usePageTheme(ref, route) {
   const p = pageNow(mode, route);
   const key = p ? `${mode}|${JSON.stringify(p)}` : "";
   useLayoutEffect(() => { applyPageTheme(ref.current, p, mode); }, [key]);
+  // #2199: the agent open now, as body[data-agent] — for a person's own custom CSS to follow (body[data-agent="x"]
+  // { --bg-sidebar: … }); set and cleared in the same render as the page colours, whatever the themes switch says.
+  const agent = openInstanceOf(route);
+  useLayoutEffect(() => {
+    const body = typeof document !== "undefined" ? document.body : null;
+    if (!body || !body.dataset) return;
+    if (agent) body.dataset.agent = agent; else delete body.dataset.agent;
+  }, [agent]);
 }
 
 export function Shell({ panels, onNewInstance, viewOnly = false }) {

@@ -5,4 +5,5 @@ section: Added
   - **agent 自己開啟：** `set_web_theme {"set": {"page": {"on": true}}}`，也可以為淺色與深色各指定自己的側欄顏色（`page.sidebar.light` / `dark`）。
   - **你可以逐一決定：** ⋯ → **頁面配色**：依 agent 的設定（預設）、整個頁面，或只在它的聊天。General 也可以用 `set_web_settings`（`page_colours`）替你設定。關閉 agent 主題或使用 `?safe=1` 時也會關閉。
   - **只有顏色。** 不會改字型、圖片、CSS 或版面。AgEnD 的狀態顏色（等你處理的數字、狀態圓點、錯誤、焦點框）永遠不變；文字、強調色和這些顏色在側欄與背景上讀不清楚的頁面配色會被拒絕。
+  - **給你自己的自訂 CSS（#2199）：** agent 的聊天、View、紀錄或詳細資訊開著時，`<body>` 會帶有 `data-agent="<它的 instance 名稱>"`，讓你的樣式表可以跟著你正在看的 agent 變化（`body[data-agent="atlas"] { … }`）。
   - **頁首跟著頁面走。** 以前聊天的頁首其實已經會跟著 agent 的聊天配色，雖然文件說不會；現在除非開啟頁面配色，頁首都是你自己的樣子。

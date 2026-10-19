@@ -117,6 +117,9 @@ Typed values only; anything else is refused with `{ errors: [{ path, problem }] 
   contrast check adds: `text` and `text2` 4.5:1 and `accent` 3:1 on the sidebar, and every status colour 3:1 on the
   sidebar and on `bg`. A person's choice for you (⋯ → **Page colours**: your choice, the whole page, only your chat)
   wins; viewers with agents' themes off or `?safe=1` see the page's own look.
+- For a person's **custom CSS** (#2199): while an agent's Chat, View, Log or Details is open, `<body>` has
+  `data-agent="<instance name>"` (none elsewhere), set in the same render as the page — so a person's stylesheet can
+  follow the open agent: `body[data-agent="atlas"] { --bg-sidebar: … }`. It is the person's, not yours to set.
 - `bubble`: `{ radius: 0..24, border: "none" | "thin" | "accent" }`.
 - `font`: `"inter"`, `"system"` or `"mono"`.
 - `background`: `{ image: <asset id>, fit: "cover" | "contain", opacity: 0.05..1 }`.

@@ -354,6 +354,7 @@ An agent can give its own web chat a look: colours for light and dark, an accent
   - **Colours only.** Never fonts, pictures, CSS or the layout, so switching never moves anything. AgEnD's status colours (the Needs you count, the state dots, errors, the focus ring) are never themed, and a page theme is refused unless text, its accent and those status colours stay readable on its sidebar and background.
   - **Your choice wins.** A chat's or Details' **⋯ → Page colours**: *the agent's choice* (the default), *on the whole page* or *only its chat* — kept for this host, like the colour you pick for an agent.
   - It never changes Settings or any other agent's chat.
+- **For your own custom CSS (#2199).** While an agent's chat, View, Log or Details is open, `<body>` carries `data-agent="<its instance name>"`; elsewhere it has none. It switches in the same moment as the page, with or without agents' themes shown, so your stylesheet can follow the agent you are looking at — for example `body[data-agent="atlas"] { --bg-sidebar: #e2f0ed; }`.
 - **Checked twice.** The host stores only values that pass the checks (fixed colour, font and border choices, text that stays readable in both modes). The page checks again before drawing, and drops anything else.
 - **Pictures stay on the host.** They are served from the dashboard itself, with their metadata removed, and never loaded from the internet.
 - **People decide.** In a chat's or Details' **⋯** menu:

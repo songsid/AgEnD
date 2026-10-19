@@ -5,4 +5,5 @@ section: Added
   - **The agent turns it on** with `set_web_theme {"set": {"page": {"on": true}}}`, optionally with its own sidebar colour per mode (`page.sidebar.light` / `dark`).
   - **You decide per agent:** ⋯ → **Page colours**: the agent's choice (the default), on the whole page, or only its chat. General can set the same for you with `set_web_settings` (`page_colours`). Agents' themes off and `?safe=1` turn it off too.
   - **Colours only.** No fonts, pictures, CSS or layout. AgEnD's status colours (the Needs you count, the state dots, errors, the focus ring) never change, and a page theme is refused unless text, its accent and those colours stay readable on its sidebar and background.
+  - **For your own custom CSS (#2199):** while an agent's chat, View, Log or Details is open, `<body>` carries `data-agent="<its instance name>"`, so your stylesheet can follow the agent you are looking at (`body[data-agent="atlas"] { … }`).
   - **The header follows the page.** Before, a chat's header already took the agent's chat colours, though the docs said it never did. Now it is in your own look unless the page colours are on.
