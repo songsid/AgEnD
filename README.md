@@ -112,6 +112,12 @@ One-liner (macOS / Linux — installs Node.js via nvm + tmux + agend, then runs 
 curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 ```
 
+One-liner (Windows — in PowerShell; sets up WSL 2 + Ubuntu, your AI backend and AgEnD inside it, then your bot. It asks once for Administrator approval; after a restart, run the same line again and it resumes. See the [Windows installation guide](https://songsid.github.io/AgEnD/install-windows/)):
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"
+```
+
 Or install manually:
 
 ```bash

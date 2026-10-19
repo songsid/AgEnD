@@ -112,6 +112,12 @@ AgEnD 是住在 Discord、Telegram 和你的瀏覽器裡的 AI 個人助理，�
 curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 ```
 
+一行安裝（Windows — 在 PowerShell 執行；裝好 WSL 2 + Ubuntu，在裡面裝 AI 後端和 AgEnD，再串接 bot。會詢問一次系統管理員權限；重新開機後再執行同一行即可接續。詳見 [Windows 安裝指南](https://songsid.github.io/AgEnD/zh-tw/install-windows/)）：
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"
+```
+
 或手動安裝：
 
 ```bash
