@@ -471,6 +471,9 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
     ${s.failedSends[name] ? html`<div class="failed-send" role="alert"><span>${t("chat.notSent")}</span><span class="txt">${s.failedSends[name]}</span>
       <button type="button" class="btn btn-primary btn-sm" onClick=${() => store.putBack(name)}>${t("chat.putBack")}</button>
       <button type="button" class="btn btn-sm" onClick=${() => store.discardFailed(name)}>${t("chat.discard")}</button></div>` : null}
+    ${s.waking[name] ? html`<p class="send-waking" role="status">${t("chat.waking", name)}</p>` : null}
+    ${s.sendFailures[name] ? html`<div class="failed-send send-failure" role="alert"><span>${s.sendFailures[name].error}</span>
+      <button type="button" class="btn btn-sm" disabled=${!store.canRetrySend(name)} onClick=${() => store.retrySend(name)}>${t("chat.retrySend")}</button></div>` : null}
     <${Composer} name=${name} lease=${lease} busy=${R().isBusy(exec)} />
     <p class="hint" title=${t(guestPage() ? "chat.guestMore" : "chat.composerMore")}>${t("chat.composerHint")}</p>
     ${guestPage() ? html`<p class="guest-note">${t("chat.guestNote")}</p>` : html`<${AuthorizeChip} />`}

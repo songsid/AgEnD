@@ -42,7 +42,7 @@ const COMPACT_PAGE_LIMIT_MS = 11 * 60_000;
 /** Build a store. `deps` (fetch, toast, announce, t, now) are injected so tests can drive every path. */
 export function createChatStore(deps) {
   const s = {
-    msgs: {}, drafts: {}, failedSends: {}, pendingFiles: {}, sending: {}, inFlightFiles: {},
+    msgs: {}, drafts: {}, failedSends: {}, pendingFiles: {}, sending: {}, inFlightFiles: {}, sendFailures: {}, instanceStatus: {}, waking: {},
     prompts: {}, workingSince: {}, stopping: {}, cancelling: {}, scrollMemo: {}, historyRead: new Set(), rbBusy: new Set(),
     pollMine: readPollMine(),
     // #1823 (#1828 review): the server's clock minus this device's. A poll's deadline is the server's; a page whose clock
@@ -82,6 +82,7 @@ export function createChatStore(deps) {
   function applyStatus(d) {
     if (!d || !Array.isArray(d.instances)) return;
     for (const i of d.instances) {
+      s.instanceStatus[i.name] = i.status;
       noteExec(i.name, (i.execution_state !== undefined ? i.execution_state : i.state) ?? null);
       const waits = i.state === "awaiting_input" ? (typeof i.interaction_summary === "string" ? i.interaction_summary : "") : null;
       if (i.name === s.current && waits != null && s.awaiting[i.name] == null) deps.announce(tf("chat.awaiting", i.name));
@@ -246,6 +247,8 @@ export function createChatStore(deps) {
     const files = (s.pendingFiles[target] || []).slice();
     if ((!txt && !files.length) || !target || s.sending[target]) return;
     s.sending[target] = true;
+    s.waking[target] = s.instanceStatus[target] === "paused";
+    delete s.sendFailures[target];
     s.drafts[target] = "";
     s.pendingFiles[target] = []; s.inFlightFiles[target] = files;
     changed(target);
@@ -257,6 +260,7 @@ export function createChatStore(deps) {
       r = await api("POST", "/ui/send", ids.length ? { instance: target, message: txt, attachments: ids } : { instance: target, message: txt });
     } catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
     s.sending[target] = false;
+    delete s.waking[target];
     delete s.inFlightFiles[target];
     if (r && !r.error) { changed(target); return; }
     if (files.length) s.pendingFiles[target] = R().checkFiles(files, s.pendingFiles[target] || []).kept;
@@ -265,9 +269,21 @@ export function createChatStore(deps) {
       if (R().settleFailedSend(target, s.current, shown, shown ? (s.drafts[target] || "") : "") === "restore") s.drafts[target] = txt;
       else s.failedSends[target] = s.failedSends[target] ? `${s.failedSends[target]}\n${txt}` : txt;
     }
+    const why = r && r.reason;
+    const key = typeof why === "string" ? `chat.sendFailure_${why}` : "";
+    const localized = key ? t(key) : "";
+    const error = localized && localized !== key ? localized : (r && r.error ? r.error : t("chat.disconnected"));
+    s.sendFailures[target] = { error, text: txt, files };
     changed(target);
-    deps.toast(r && r.error ? r.error : t("chat.disconnected"), false);
+    deps.toast(error, false);
   }
+  function canRetrySend(target) {
+    const failed = s.sendFailures[target], files = s.pendingFiles[target] || [];
+    return !!failed && !s.sending[target] && !s.failedSends[target]
+      && (s.drafts[target] || "").trim() === failed.text
+      && files.length === failed.files.length && files.every((f, i) => f === failed.files[i]);
+  }
+  function retrySend(target) { if (canRetrySend(target)) return send(target); }
   function addFiles(target, list) {
     if (!target) return;
     const inFlight = s.inFlightFiles[target] || [];
@@ -307,8 +323,8 @@ export function createChatStore(deps) {
     changed(target);
   }
   function discardFailed(target) { delete s.failedSends[target]; changed(target); }
-  /** Typing: kept for its chat, no redraw (the composer already shows it). */
-  function setDraft(target, value) { s.drafts[target] = value; }
+  /** Typing stays local, except a failed send's Retry button must follow edits too. */
+  function setDraft(target, value) { s.drafts[target] = value; if (s.sendFailures[target]) changed(target); }
 
   // ── Stop the reply under way (the composer's Stop, or Esc). Set before the request goes, so a held Esc or a second
   // click sends nothing more (#1317); "Stopping…" until the agent goes idle, or a minute passes.
@@ -402,7 +418,7 @@ export function createChatStore(deps) {
     attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory,
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
     applyReplyButtons, clickReplyButton,
-    uploadFile, send, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, putBack, discardFailed, setDraft,
+    uploadFile, send, canRetrySend, retrySend, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, putBack, discardFailed, setDraft,
     cancelReply, isUser, runCommand, dismissCommand, commandFree,
   };
 }

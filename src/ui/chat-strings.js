@@ -3,6 +3,14 @@ import { register } from "/assets/app-i18n.js";
 
 register("chat", {
   en: {
+    waking: "Waking {0}…", retrySend: "Retry send",
+    sendFailure_wake_capacity: "No slot is free to wake this instance. Retry when another instance is idle.",
+    sendFailure_wake_credentials: "The instance could not sign in. Check its account on the host, then retry.",
+    sendFailure_wake_timeout: "The instance did not become ready in time. Retry, or check its status on the host.",
+    sendFailure_instance_stopped: "This instance was stopped or removed. Start it on the host before retrying.",
+    sendFailure_delivery_unavailable: "The instance could not receive this message. Check its status on the host, then retry.",
+    sendFailure_delivery_changed: "The session or instance changed before this message was sent. Sign in again if needed, then retry.",
+
     effectTrialReason_checking: "Checking this session…",
     effectTrialReason_localAdmin: "Sign in as an admin outside the public link to Try.",
     effectTrialReason_chatChanged: "Open the chat that offered this trial.",
@@ -128,6 +136,14 @@ register("chat", {
     configured: "(configured)", fleetDefault: "(fleet default)",
   },
   "zh-TW": {
+    waking: "正在喚醒 {0}…", retrySend: "重試傳送",
+    sendFailure_wake_capacity: "目前沒有空位可喚醒這個實例。請等其他實例閒置後重試。",
+    sendFailure_wake_credentials: "實例無法登入。請先在主機檢查它的帳號，再重試。",
+    sendFailure_wake_timeout: "實例未能及時就緒。請重試，或在主機檢查它的狀態。",
+    sendFailure_instance_stopped: "這個實例已停止或移除。請先在主機啟動它，再重試。",
+    sendFailure_delivery_unavailable: "實例目前無法接收這則訊息。請在主機檢查它的狀態，再重試。",
+    sendFailure_delivery_changed: "訊息送出前，登入或實例狀態已改變。必要時請重新登入，再重試。",
+
     effectTrialReason_checking: "正在確認工作階段…",
     effectTrialReason_localAdmin: "請在公開連結以外的儀表板以管理員登入後試播。",
     effectTrialReason_chatChanged: "請開啟發出試播邀請的聊天。",
