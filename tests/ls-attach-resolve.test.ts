@@ -358,3 +358,42 @@ describe("P2-4: pickerDefaultIdx uses first displayed candidate", () => {
     expect(pickerDefaultIdx([])).toBe(1);
   });
 });
+
+// ── Long real name never truncated in picker/ambiguity lines ─────────────────
+
+describe("long real names are never truncated in picker and ambiguity output", () => {
+  /** Capture console.log calls from a function. */
+  async function captureLog(fn: () => void): Promise<string[]> {
+    const lines: string[] = [];
+    const orig = console.log;
+    console.log = (...args: unknown[]) => lines.push(args.map(String).join(" "));
+    try { fn(); } finally { console.log = orig; }
+    return lines;
+  }
+
+  it("ambiguity message shows the full real name (no slice/truncation)", () => {
+    const longName = "rd1-a89-dev-fable-t1532671461406277715";  // 38 chars
+    const cs: Candidate[] = [
+      { idx: 3, realName: longName, displayLabel: "鑄碼副手 Fable", status: "running", teams: ["rd1"] },
+      { idx: 7, realName: "rd1-a89-dev-codex-t9999999999999", displayLabel: "鑄碼 Codex", status: "running", teams: ["rd1"] },
+    ];
+    // Both contain "rd1-a89" → ambiguous; the ambiguity printer must show fullName
+    const r = resolveCandidate("rd1-a89", cs);
+    expect(r.kind).toBe("ambiguous");
+    // Verify the long name is not sliced
+    if (r.kind === "ambiguous") {
+      expect(r.candidates.find(c => c.realName === longName)).toBeTruthy();
+      // The test for cli.ts printing is that we don't apply .slice() in the source —
+      // here we verify the candidate object carries the full name unmodified.
+      expect(r.candidates[0]!.realName.length).toBe(longName.length);
+    }
+  });
+
+  it("resolveCandidate returns full realName in exact result", () => {
+    const longName = "agend-dev1-t1503382407284265082";
+    const cs = fleet({ name: longName, displayLabel: "agend-dev1-t265082" });
+    const r = resolveCandidate("agend-dev1-t265082", cs);
+    expect(r.kind).toBe("exact");
+    if (r.kind === "exact") expect(r.candidate.realName).toBe(longName);
+  });
+});

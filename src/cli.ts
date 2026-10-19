@@ -2908,7 +2908,8 @@ async function resolveInstance(query: string | undefined, config: import("./type
       console.log(`"${query}" matches multiple instances:`);
       for (const c of result.candidates) {
         const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
-        console.log(`  ${String(c.idx).padStart(2)}) ${c.displayLabel.padEnd(24)}  ${c.realName.slice(0, 32)}  [${c.status}]  ${teams}`);
+        const dispSuffix = c.displayLabel !== c.realName ? `  (${c.displayLabel})` : "";
+        console.log(`  ${String(c.idx).padStart(2)}) ${c.realName}${dispSuffix}  [${c.status}]  ${teams}`);
       }
       return interactivePicker(result.candidates);
     }
@@ -2942,7 +2943,8 @@ async function interactivePicker(candidates: import("./ls-attach-resolve.js").Ca
   for (const c of ordered) {
     const statusGlyph = c.status === "running" ? "●" : c.status === "paused" ? "○" : "✗";
     const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
-    console.log(`  ${String(c.idx).padStart(2)}) ${statusGlyph} ${c.displayLabel.padEnd(22)}  ${c.realName.slice(0, 30)}  ${teams}`);
+    const dispSuffix = c.displayLabel !== c.realName ? `  (${c.displayLabel})` : "";
+    console.log(`  ${String(c.idx).padStart(2)}) ${statusGlyph} ${c.realName}${dispSuffix}  ${teams}`);
   }
 
   const { createInterface } = await import("node:readline");
