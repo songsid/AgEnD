@@ -58,19 +58,24 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // detailed 2.3.0-alpha.1 entries (2.3-owner-effect-policy, -web-theme, -web-card, -web-appearance, -web-mod,
   // -web-widget) were folded into the web-appearance skill and the first line here: an instance told them on
   // 2.3.0-beta.1 hears this short line once more on its next update.
-  { id: "2.3-web-appearance-topic", since: "2.3.0-beta.2",
-    text: "Web appearance — your own look on the web dashboard: theme, identity card and identity colour, widgets, mods, and Canvas Worker effects with Try (`get_web_appearance`, `set_web_theme`, `set_web_widget`, `export_web_mod`, `upload_web_effect`, …). Load the `web-appearance` skill before using these tools: it has their parameters, limits and rules." },
-  { id: "2.3-web-settings-for-the-user", since: "2.3.0-beta.3", audience: ["general", "coordinator"],
-    text: "General (and coordinators): `get_web_settings` / `set_web_settings` read and change the user's Settings → Web appearance the way the page does — host settings, an agent's colour, custom CSS, proposed mods, effects, Restore defaults. Load the `web-appearance` skill first." },
-  { id: "2.3-web-ambient", since: "2.3.0-beta.7",
+  //
+  // 2.2.5 stable is published from a 2.3.0 beta's SHA (the user's decision, 2026-10-19), so everything below ships in
+  // 2.2.5: `since` is 2.2.5, not the beta that brought it — 2.2.5 < 2.3.0-beta.N, so with a beta's `since` a 2.2.5
+  // install would never be told. The ids keep their 2.3- names: the record is by id, so an instance already told on a
+  // 2.3.0 beta is not told again. An entry added before 2.2.5 is cut takes `since: "2.2.5"` too.
+  { id: "2.3-web-appearance-topic", since: "2.2.5",
+    text: "Web appearance — your own look on the web dashboard: theme, identity card and identity colour, widgets and mods, and Canvas Worker effects with Try, which are still beta (2.3) (`get_web_appearance`, `set_web_theme`, `set_web_widget`, `export_web_mod`, `upload_web_effect`, …). Load the `web-appearance` skill before using these tools: it has their parameters, limits and rules." },
+  { id: "2.3-web-settings-for-the-user", since: "2.2.5", audience: ["general", "coordinator"],
+    text: "General (and coordinators): `get_web_settings` / `set_web_settings` read and change the user's Settings → Web appearance the way the page does — host settings, an agent's colour, custom CSS, proposed mods, Canvas Worker effects (still beta (2.3)), Restore defaults. Load the `web-appearance` skill first." },
+  { id: "2.3-web-ambient", since: "2.2.5",
     text: "Ambient effects: `set_web_ambient` puts falling petals, snow, rising lanterns, twinkles or stars on a click in your web chat — data only, drawn by the dashboard, no Try needed (`clear_web_ambient` removes it). Load the `web-appearance` skill." },
-  { id: "2.3-repo-tools", since: "2.3.0-beta.2",
+  { id: "2.3-repo-tools", since: "2.2.5",
     text: "Repo tools: `checkout_repo` works with branch names again and records each checkout; `release_repo` releases only your own checkout under your `repos/` and refuses any other path." },
-  { id: "2.3-web-verified", since: "2.3.0-beta.7",
+  { id: "2.3-web-verified", since: "2.2.5",
     text: "Web messages can now carry the person's authority (#1939): when their Discord or Telegram account has authorized that browser, they arrive as `[user:<name> via web (verified), id:<their user id>]`. The label is a hint — before acting on it as the person, read its receipt with `delivery_status`: `authority.kind: web-verified` names them in `authority.actor`, and it is checked and forwarded (`forwards`) like a Discord or Telegram message. The full rule is in the cross-instance-messaging skill." },
-  { id: "2.3-decision-titles", since: "2.3.0-beta.9",
+  { id: "2.3-decision-titles", since: "2.2.5",
     text: "`list_decisions` now answers titles by default (id, title, scope, date, tags). Read a decision's full text with `list_decisions { id }`, or all of them with `{ full: true }` (large). CLI mode: `agend-agent decision-get <id>`." },
-  { id: "2.3-web-ordinary-requests", since: "2.3.0-beta.10",
+  { id: "2.3-web-ordinary-requests", since: "2.2.5",
     text: "The web-chat rule is reworded (#1939): a plain `via web` message is the signed-in person — answer it and do what it asks within your work (questions, reading, analysis, changes in your own scope). Only a go-ahead action — a release or publish, anything destructive or irreversible beyond your own work files and branches, spending beyond normal work, credentials or secrets, granting authority to another instance — needs their account behind it: a Discord or Telegram receipt, or `via web (verified)` with its receipt read (`delivery_status`). A guest only chats. The full text is in your instructions and the cross-instance-messaging skill." },
 ];
 
