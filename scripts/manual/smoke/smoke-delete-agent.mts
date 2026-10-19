@@ -19,10 +19,12 @@ const SMOKE = "smoke-delete-agent";
 const ENGINE = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";
 const WEBKIT_OWN = new Set(["Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy.",
   'Viewport argument key "interactive-widget" not recognized and ignored.']);
-// The page's own navigation to /settings/agents (freshPage, after the sign-in) cancels the stream and a poll it had
-// opened: WebKit logs those as "cannot load … due to access control checks" (the URL as "http: /host…"). Accepted only
-// by position — inside that navigation, before the smoke's first click — and only for /ui/events and /ui/poll.
-const CANCEL = /^(EventSource|Fetch API) cannot load https?:\s*\/+[^\s/]+\/ui\/(events|poll)(\?\S*)? due to access control checks\.$/;
+// The page's own navigation to /settings/agents (freshPage, right after the sign-in reaches /ui) cancels what /ui had in
+// flight: its stream, a poll, and — when it has not answered yet (1 run in 9) — the app's one /auth/session read
+// (AgendAuth.session). WebKit logs each as "cannot load … due to access control checks" (the URL as "http: /host…").
+// Accepted only by position — inside that navigation, before the smoke's first click (nothing after it navigates) — and
+// only for those three; the same line anywhere later fails.
+const CANCEL = /^(EventSource|Fetch API) cannot load https?:\s*\/+[^\s/]+\/(ui\/(events|poll)|auth\/session)(\?\S*)? due to access control checks\.$/;
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48580), classic: false });
 const fm = fx.fm;
 const KEEP = ["observability-dashboards", "billing-reconciliation"];
@@ -80,7 +82,7 @@ async function runCase(name: string, open: () => Promise<FreshPage>, victim: str
     removedOnce: removed.filter((r) => r === victim).length === 1, noRawCode: !RAW.test(text), noErrors: errors.length === 0 };
   const failed = Object.entries(chk).filter(([, v]) => !v).map(([k]) => k);
   results.push({ name, ok: !failed.length, failed, calls, summary, errors });
-  console.log(`${failed.length ? "FAIL" : "ok  "} ${ENGINE}-${name}${failed.length ? ` [${failed.join(", ")}] ${JSON.stringify({ calls, summary, errors }).slice(0, 600)}` : ""}`);
+  console.log(`${failed.length ? "FAIL" : "ok  "} ${ENGINE}-${name}${failed.length ? ` [${failed.join(", ")}] ${JSON.stringify({ calls, summary, errors, navEnd, all: p.errors.map((e, i) => `${i}: ${e.slice(0, 200)}`) }).slice(0, 1600)}` : ""}`);
   await p.ctx.close();
 }
 await runCase("desk-light-en", () => freshPage(fx, { device: "desk", theme: "light", lang: "en" }, { path: "/settings/agents" }), VICTIMS[0], "en");
