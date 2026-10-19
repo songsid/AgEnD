@@ -47,9 +47,9 @@ for (const c of matrix()) {
   }
   await page.locator(".p-details .card-size .seg-item").nth(1).click(); await page.waitForTimeout(300);
   await page.goto(`${fx.base}/ui/chat/${enc(LONG)}`); await page.waitForTimeout(1500);
-  r.chatFolded = await page.evaluate(`({ show: !!document.querySelector(".p-chat .panel-head .chat-card-show"), card: !!document.querySelector(".p-chat .id-card"), row: !!document.querySelector(".p-chat .chat-card") })`);
+  r.chatFolded = await page.evaluate(`({ show: !!document.querySelector(".p-chat .panel-head .chat-card-menu > button"), card: !!document.querySelector(".p-chat .id-card"), row: !!document.querySelector(".p-chat .chat-card") })`);
   await page.screenshot({ path: shotPath(SMOKE, c, "chat-folded") });
-  await page.click(".chat-card-show"); await page.waitForTimeout(500);
+  await page.click(".chat-card-menu > button").then(() => page.click(".chat-card-menu [role=menuitemcheckbox]")).then(() => page.keyboard.press("Escape")); await page.waitForTimeout(500);
   r.chatOpen = await probe(".p-chat .id-card");
   await page.screenshot({ path: shotPath(SMOKE, c, "chat-open") });
   await page.goto(`${fx.base}/view/${enc(LONG)}`); await page.waitForTimeout(1500);

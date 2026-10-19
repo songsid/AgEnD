@@ -4,21 +4,25 @@ import { html, useEffect, useRef, useState } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 import { t } from "./app-i18n.js";
 
-/** items: [{ key, label, icon?, onSelect, danger?, disabled? }] (falsy entries are skipped). */
-export function Menu({ items, label, icon = "more", cls = "" }) {
+/**
+ * items: [{ key, label, icon?, onSelect, danger?, disabled? }] (falsy entries are skipped). `checked` makes a radio item;
+ * `checkbox: true` with `checked` a checkbox item (#2217 hotfix: the chat's card menu), which toggles and keeps the menu
+ * open. `active`: the button shows a pressed look (what it controls is on), without changing its role.
+ */
+export function Menu({ items, label, icon = "more", cls = "", active = false }) {
   const [open, setOpen] = useState(false);
   const btn = useRef(null), list = useRef(null);
   const shown = (items || []).filter(Boolean);
   useEffect(() => {
     if (!open) return undefined;
-    const first = list.current && list.current.querySelector("[role=menuitem]:not([disabled])");
+    const first = list.current && list.current.querySelector("[role=menuitem]:not([disabled]), [role=menuitemradio]:not([disabled]), [role=menuitemcheckbox]:not([disabled])");
     if (first) first.focus();
     const outside = (e) => { if (list.current && !list.current.contains(e.target) && btn.current && !btn.current.contains(e.target)) setOpen(false); };
     document.addEventListener("pointerdown", outside, true);
     return () => document.removeEventListener("pointerdown", outside, true);
   }, [open]);
   function onKey(e) {
-    const all = [...list.current.querySelectorAll("[role=menuitem]:not([disabled]), [role=menuitemradio]:not([disabled])")];
+    const all = [...list.current.querySelectorAll("[role=menuitem]:not([disabled]), [role=menuitemradio]:not([disabled]), [role=menuitemcheckbox]:not([disabled])")];
     const i = all.indexOf(document.activeElement);
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); btn.current && btn.current.focus(); }
     else if (e.key === "ArrowDown") { e.preventDefault(); (all[(i + 1) % all.length] || all[0])?.focus(); }
@@ -29,11 +33,14 @@ export function Menu({ items, label, icon = "more", cls = "" }) {
   }
   function choose(item) { setOpen(false); btn.current && btn.current.focus(); item.onSelect(); }
   return html`<div class=${`menu ${cls}`}>
-    <button ref=${btn} type="button" class="icon-btn" aria-haspopup="menu" aria-expanded=${open ? "true" : "false"}
+    <button ref=${btn} type="button" class=${`icon-btn${active ? " active" : ""}`} aria-haspopup="menu" aria-expanded=${open ? "true" : "false"}
       aria-label=${label || t("app.more")} title=${label || t("app.more")} onClick=${() => setOpen(!open)}><${Icon} name=${icon} /></button>
     ${open ? html`<div data-trust="menu" ref=${list} class="menu-list" role="menu" aria-label=${label || t("app.more")} onKeyDown=${onKey}>
       ${shown.map(item => item.heading
         ? html`<div key=${item.key} class="menu-heading" role="presentation">${item.label}</div>`
+        : item.checkbox
+          ? html`<button key=${item.key} type="button" role="menuitemcheckbox" aria-checked=${item.checked ? "true" : "false"} class="menu-item menu-radio"
+            disabled=${!!item.disabled} onClick=${() => item.onSelect()}><span class="menu-tick" aria-hidden="true">${item.checked ? html`<${Icon} name="check" size=${16} />` : null}</span><span>${item.label}</span></button>`
         : item.checked !== undefined
           // #2196: one of a group of choices (Page colours): a radio item, the chosen one ticked.
           ? html`<button key=${item.key} type="button" role="menuitemradio" aria-checked=${item.checked ? "true" : "false"} class="menu-item menu-radio"

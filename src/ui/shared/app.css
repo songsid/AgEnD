@@ -1616,16 +1616,8 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .side-widget { padding: 0 var(--s-3) var(--s-2); }
 .aw-sidebar { max-height: 240px; overflow: auto; }
 
-/* The card's own controls (the chat's Hide card, Hide picture and bio): small and round. On the banner they sit on its
-   corners over a dark disc, so they read on any picture; on the row, Hide picture and bio takes the row's bottom-right. */
-.id-ctl { flex-shrink: 0; display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-full); background: var(--surface); color: var(--text-2); cursor: pointer; }
-.id-ctl:hover { color: var(--text); border-color: var(--border-strong); }
-.id-row .id-ctl { margin-left: auto; border-color: var(--border-strong); background: var(--surface-2); color: var(--text); }
-.id-row .id-fold { align-self: flex-end; }
-.id-banner-box .id-ctl { position: absolute; z-index: 1; right: var(--s-2); border-color: rgba(255, 255, 255, .35); background: rgba(0, 0, 0, .5); color: #fff; }
-.id-banner-box .id-ctl:hover { background: rgba(0, 0, 0, .7); color: #fff; }
-.id-banner-box .id-hide { top: var(--s-2); }
-.id-banner-box .id-unfold { bottom: var(--s-2); }
+/* The chat header's card menu button (the user, 2026-10-20: no control on the card): pressed-looking while the card shows. */
+.chat-card-menu > .icon-btn.active { background: var(--accent-dim); color: var(--accent); }
 /* A phone: the portrait stays on the text's row, smaller (the user's ask: never a portrait alone on a line with the text
    under it); the S / M / L control takes the line below. The chat header's card is trimmed further: a smaller portrait
    and banner, and its tagline and bio cut to a few lines (Details and View show them whole). */
@@ -1638,7 +1630,6 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   .id-card.card-c.bs-l { --id-bmin: 96px; --id-bmax: 130px; }
   .id-row { flex-wrap: wrap; gap: var(--s-2) var(--s-3); padding: var(--s-2) var(--s-3); }
   .card-size { flex-basis: 100%; justify-content: flex-end; }
-  .id-ctl { width: 32px; height: 32px; }
   .id-card.card-c .id-tagline, .id-card.card-c .id-bio { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
   .id-card.card-c .id-tagline { -webkit-line-clamp: 2; line-clamp: 2; }
   .id-card.card-c .id-bio { -webkit-line-clamp: 3; line-clamp: 3; }
