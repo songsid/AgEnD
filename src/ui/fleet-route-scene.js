@@ -91,6 +91,12 @@ export function routeOk(pts, scene, c) {
   return pts.map((p) => ({ x: p.x, y: p.y }));
 }
 
+/** The worker's answer to a route request `m`: its scene checked (sceneOk) before libavoid sees any of it. */
+export function answerRoute(A, m) {
+  const scene = sceneOk(m && m.scene);
+  return { type: "routes", id: m.id, routes: scene ? [...routeWith(A, scene)] : null };
+}
+
 /**
  * libavoid nudges lines that share a run apart, but not always: in a channel shared by many lines it packs them closer
  * than ROUTE.NUDGE, and lines fanning out of one card can come back on the very same run. This pass moves the middle

@@ -12,7 +12,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error — a JS module of the app, with no types
 import { OC, canvasLayout } from "../src/ui/fleet-canvas-layout.js";
 // @ts-expect-error — a JS module of the app, with no types
-import { ROUTE, SEPARATE, routeOk, routeScene, routeWith, sceneOk, separate } from "../src/ui/fleet-route-scene.js";
+import { ROUTE, SEPARATE, answerRoute, routeOk, routeScene, routeWith, sceneOk, separate } from "../src/ui/fleet-route-scene.js";
 // @ts-expect-error — a JS module of the app, with no types
 import { createRouteClient, TIMEOUT_MS, WASM_URL, WORKER_URL } from "../src/ui/fleet-route.js";
 // @ts-expect-error — a JS module of the app, with no types
@@ -269,6 +269,18 @@ describe("what crosses to and from the worker is checked", () => {
   });
 });
 
+describe("the worker's answer (#2194 review)", () => {
+  it("checks the scene before libavoid sees it: a scene sceneOk refuses gets no routes, though libavoid could route it", () => {
+    const L = screenshotLayout();
+    const good = routeScene(L, trafficEdges([msg("1", "general", "awp-ota-1")], L));
+    // One card with more pins than ROUTE.MAX_PINS: sceneOk refuses it, though libavoid would route it.
+    const many = { ...good, shapes: good.shapes.map((sh: any, i: number) => (i === good.conns[0].a ? { ...sh, pins: ROUTE.MAX_PINS + 1 } : sh)) };
+    expect(routeWith(A, many).size).toBe(1);
+    const ok = answerRoute(A, { type: "route", id: 7, scene: good }), refused = answerRoute(A, { type: "route", id: 8, scene: many });
+    expect([ok.type, ok.id, ok.routes.length, refused.id, refused.routes]).toEqual(["routes", 7, 1, 8, null]);
+  });
+});
+
 describe("the lines fall back to their lanes", () => {
   const items = [msg("1", "general", "awp-ota-1"), msg("2", "general", "loner-2")];
   it("a line the answer has no route for keeps its lane; zoomed out, no routed line at all", () => {
@@ -350,6 +362,37 @@ describe("the page's client", () => {
     await r.tick(); await r.tick();
     r.workers[1].answer({ type: "failed" });
     expect([await q, r.client.available, await r.client.route(scene()), r.workers.length]).toEqual([null, false, null, 2]);
+  });
+  it("#2194 review: closed, timed out or replaced while the .wasm is on its way — no worker is left behind, and never two", async () => {
+    let workers: any[] = [], timers: any[] = [];
+    let release: (() => void) | null = null;
+    class W2 { terminated = false; onmessage: any = null; onerror: any = null; sent: any[] = []; constructor() { workers.push(this); } postMessage(m: any) { this.sent.push(m); } terminate() { this.terminated = true; } }
+    /** A fresh client (no .wasm yet), whose fetches the test releases. */
+    const fresh = () => { workers = []; timers = []; return createRouteClient({
+      Worker: W2,
+      fetch: () => new Promise((r) => { release = () => r({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(8) }); }),
+      timers: { set: (f: () => void, ms: number) => { const t = { f, ms, live: true }; timers.push(t); return t; }, clear: (t: any) => { if (t) t.live = false; } },
+    }); };
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    // Closed while fetching: nothing is started when the bytes arrive.
+    let client = fresh();
+    const p = client.route(scene()); await tick();
+    client.close();
+    release!(); await tick(); await tick();
+    expect([await p, workers.length]).toEqual([null, 0]);
+    // Timed out while fetching, then asked again: the first start makes nothing; the second makes the one worker.
+    client = fresh();
+    const q = client.route(scene()); await tick();
+    const first = release!;
+    timers.find((t) => t.live && t.ms === TIMEOUT_MS).f();
+    expect(await q).toBeNull();
+    const r = client.route(scene()); await tick();
+    const second = release!;
+    first(); await tick(); await tick();
+    second(); await tick(); await tick();
+    expect([workers.length, workers.filter((w) => !w.terminated).length]).toEqual([1, 1]);
+    workers[0].onmessage({ data: { type: "routes", id: workers[0].sent[1].id, routes: [["k", [{ x: 10, y: 5 }, { x: 50, y: 5 }]]] } });
+    expect((await r)!.size).toBe(1);
   });
   it("no wasm (a 404): null, and a later try; no Worker at all: null, never a throw", async () => {
     const r = rig({ wasmOk: false });

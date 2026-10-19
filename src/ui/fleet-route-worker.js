@@ -3,7 +3,7 @@
 // and it may reach nothing — the page fetches libavoid.wasm and hands the bytes over; they are instantiated from a
 // blob: URL. It receives numbers and answers numbers; the page checks both.
 import { AvoidLib } from "/ui/vendor/libavoid-0.4.5/libavoid.js";
-import { routeWith, sceneOk } from "./fleet-route-scene.js";
+import { answerRoute } from "./fleet-route-scene.js";
 
 let ready = null;
 self.onmessage = (ev) => {
@@ -16,10 +16,6 @@ self.onmessage = (ev) => {
     return;
   }
   if (m.type === "route" && ready && Number.isInteger(m.id)) {
-    const scene = sceneOk(m.scene);
-    ready.then((A) => {
-      const routes = scene ? [...routeWith(A, scene)] : null;
-      self.postMessage({ type: "routes", id: m.id, routes });
-    }).catch(() => self.postMessage({ type: "routes", id: m.id, routes: null }));
+    ready.then((A) => self.postMessage(answerRoute(A, m))).catch(() => self.postMessage({ type: "routes", id: m.id, routes: null }));
   }
 };

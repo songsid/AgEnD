@@ -28,12 +28,15 @@ export function createRouteClient(deps = {}) {
     if (fails >= FAIL_LIMIT && waiting) { waiting.resolve(null); waiting = null; }
     pump();
   };
-  async function start() {
+  async function start(job) {
     if (!wasm) {
       const res = await get(WASM_URL, { credentials: "same-origin" });
       if (!res.ok) throw new Error(`libavoid.wasm: ${res.status}`);
       wasm = await res.arrayBuffer();
     }
+    // #2194 review: closed, timed out or replaced while the .wasm was on its way — start nothing (a worker made now
+    // would be nobody's, and a later start would make another).
+    if (busy !== job || worker) return;
     const w = new W(WORKER_URL, { type: "module" });
     w.onmessage = (ev) => {
       const m = ev.data;
@@ -65,7 +68,7 @@ export function createRouteClient(deps = {}) {
     busy = waiting; waiting = null;
     const job = busy;
     job.timer = timers.set(() => { if (busy === job) fail(); }, TIMEOUT_MS);
-    (worker ? Promise.resolve() : start()).then(() => {
+    (worker ? Promise.resolve() : start(job)).then(() => {
       if (busy === job) worker.postMessage({ type: "route", id: job.id, scene: job.scene });
     }, () => { if (busy === job) fail(); });
   }
