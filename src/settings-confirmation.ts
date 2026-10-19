@@ -31,7 +31,8 @@ export interface SettingsPendingView {
   source: "web_session" | "public_link" | "setup_session";
   execution?: { phase: "queued" | "running" | "cleanup"; job_id?: string; reason_code?: string };
   summary: readonly string[];
-  confirmation: { kind: "chat" | "host_cli"; code?: string };
+  /** #2170: "web" — confirmed by the requester's own web-verified account (its Apply), not in chat or on the host. */
+  confirmation: { kind: "chat" | "host_cli" | "web"; code?: string };
   can_withdraw: boolean;
   outcome: SettingsChangeOutcome | null;
 }
@@ -191,7 +192,7 @@ export class SettingsConfirmationStore {
     if (entry.view.state === "pending") this.finish(entry, "rejected", "withdrawn", "Change withdrawn.");
     return this.snapshot(entry);
   }
-  async decide(id: string, decision: "confirm" | "reject", actor: { label: string; current(): boolean }): Promise<SettingsPendingView> {
+  async decide(id: string, decision: "confirm" | "reject", actor: { label: string; current(): boolean; via?: "web" }): Promise<SettingsPendingView> {
     const entry = this.records.get(id);
     if (entry) this.expire(entry);
     if (!entry || this.closed || entry.view.state !== "pending") throw new SettingsConfirmationError(409, "confirmation_not_pending");
@@ -201,6 +202,7 @@ export class SettingsConfirmationStore {
     if (decision === "reject") { this.finish(entry, "rejected", "rejected", "Change rejected.", actor.label); return this.snapshot(entry); }
     // Both surfaces claim before the first await, so neither can execute twice.
     entry.view.state = "applying"; clearTimeout(entry.timer); entry.retire?.(); entry.retire = undefined;
+    if (actor.via === "web") entry.view.confirmation = { kind: "web" };
     this.audit("confirmed", entry, { decided_by: this.display(actor.label) });
     const current = (): boolean => !this.closed && entry.view.state === "applying"
       && this.now() < entry.deadline && actor.current() && proposal.current();

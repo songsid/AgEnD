@@ -1,7 +1,7 @@
 import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
 import { SettingsConfirmationStore, type SettingsPendingView } from "./settings-confirmation.js";
-import { SettingsHttpConfirmation } from "./settings-http-confirmation.js";
+import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
 import { SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
 import { performance } from "node:perf_hooks";
@@ -27,7 +27,7 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { freemem, totalmem, cpus, homedir } from "node:os";
 import { access } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server } from "node:http";
 import { Worker } from "node:worker_threads";
 import { ProbeWorkerPool, type ProbeWorker } from "./probe-worker-pool.js";
 import type { BackendProbeInput, BackendProbeResult } from "./backend/cli-env-probe.js";
@@ -290,7 +290,7 @@ import { authorizeSession, decideWebGate, loadOrCreateWebToken, readWebToken } f
 import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
-import { authorityNow, evaluateWebAuthority, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
+import { authorityNow, classifyWebPeer, evaluateWebAuthority, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
@@ -1649,6 +1649,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           current: () => current() && sessions === this.webSessions && !!this.webToken
             && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
       }, baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
+      selfConfirm: (req, id) => this.settingsSelfConfirmation(store, req, id),
       job: async id => {
         const settlement = this.settingsJobSettlements.get(id);
         if (!settlement) return false;
@@ -1660,6 +1661,75 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
     });
     this.settingsConfirmation = gate; return gate;
+  }
+
+  /**
+   * #2170: a held change confirmed by the request itself — only when ALL hold, else the chat card or the host CLI, as
+   * before:
+   *   - the session is web-verified (#1939: its account confirmed this browser on Discord or Telegram), asked now;
+   *   - the change's effect owners are known and on one platform (settingsChatAuthority — the chat card's own rule), the
+   *     verified account is on that platform and an admin of every one of them;
+   *   - a chat card could have been asked: a connected General on that platform the change does not affect (else the
+   *     change goes to the host CLI, as before) — the General that then hears of it;
+   *   - and, at execution (store.decide asks `current()` again): still web-verified under the same session and account
+   *     (not expired, revoked, signed out or the switch turned off), still those owners' admin, the fleet unchanged.
+   * The threat the chat step stops — a session acting without its account (a stolen cookie, a browser left signed in) —
+   * is what web verification already answers; a public link never qualifies (evaluateWebAuthority refuses it). General
+   * still hears it: a notice, not a step.
+   */
+  private settingsSelfConfirmation(store: SettingsConfirmationStore, req: IncomingMessage, id: string): SettingsSelfConfirmation | null {
+    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+    if (auth.kind !== "ok") return null;
+    const record = auth.session, gateway = !!gatewayRequestContext(req), peer = classifyWebPeer(req);
+    const verified = (): { adapter_id: string; user_id: string } | null => {
+      const now = this.webAuthority({ session: record, gateway, peer });
+      return !now.refusal && now.authority.kind === "web-verified" && now.authority.actor && now.authority.session?.handle === record.handle ? now.authority.actor : null;
+    };
+    const actor = verified();
+    if (!actor) return null;
+    const chat = this.settingsChatAuthority(store, id);
+    if (!chat) return null;
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    const own = channels.filter(ch => (ch.id ?? ch.type) === actor.adapter_id);
+    if (own.length !== 1 || own[0].type !== chat.platform || !chat.admin(actor.user_id)) return null;
+    const affected = [...store.affectedConnections(id)];                 // read now: a finished change no longer has them
+    if (!this.settingsNoticeGenerals(affected, chat.platform).length) return null;
+    const name = this.webPerson({ adapterId: actor.adapter_id, userId: actor.user_id }).name;
+    return {
+      label: `${name} (web-verified)`,
+      current: () => {
+        const still = verified();
+        return !!still && still.adapter_id === actor.adapter_id && still.user_id === actor.user_id && chat.current() && chat.admin(actor.user_id);
+      },
+      done: view => this.settingsWebConfirmedNotice(view, affected, name, chat.platform),
+    };
+  }
+
+  /** #2170: the Generals a chat card could be posted in (promptSettingsChange's rule): connected, on the platform, unaffected. */
+  private settingsNoticeGenerals(affected: readonly string[], platform: "telegram" | "discord"): Array<{ adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string }> {
+    const excluded = new Set(affected), found: Array<{ adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string }> = [];
+    for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
+      if (!config.general_topic || !this.daemons.get(name)) continue;
+      const adapterId = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name);
+      if (!adapterId || !adapter || excluded.has(adapterId) || adapter.type !== platform || this.adapterState.get(adapterId)?.status !== "connected") continue;
+      const chatId = this.getGroupIdForInstance(name), topic = String(config.topic_id ?? "");
+      if (chatId && topic) found.push({ adapterId, adapter, chatId, topic });
+    }
+    return found;
+  }
+
+  /**
+   * #2170: General's notice of a change confirmed from the web — the first General a chat card could have been posted
+   * in, plain text, no mentions. Information only: nothing waits on it.
+   */
+  private async settingsWebConfirmedNotice(view: SettingsPendingView, affected: readonly string[], who: string, platform: "telegram" | "discord"): Promise<void> {
+    const outcome = view.outcome ? view.outcome.message : view.state;
+    const text = `✅ Settings change confirmed from the web by ${who} (web-verified)\nSource: ${view.source}\nRequester: ${view.requested_by}\n${view.summary.join("\n")}\nOutcome: ${outcome}`;
+    for (const { adapterId, adapter, chatId, topic } of this.settingsNoticeGenerals(affected, platform)) {
+      try { await adapter.sendText(chatId, text, { threadId: topic, allowedMentions: { parse: [] } }); return; }
+      catch { this.logger.info({ id: view.id, adapterId }, "Settings web-confirmation notice unavailable; trying another General"); }
+    }
+    this.logger.info({ id: view.id }, "Settings change confirmed from the web: no General reachable for the notice");
   }
 
   /** Exact configured effect owners; this does not depend on prompt location. */
