@@ -19,6 +19,10 @@ const SMOKE = "smoke-delete-agent";
 const ENGINE = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";
 const WEBKIT_OWN = new Set(["Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy.",
   'Viewport argument key "interactive-widget" not recognized and ignored.']);
+// The page's own navigation to /settings/agents (freshPage, after the sign-in) cancels the stream and a poll it had
+// opened: WebKit logs those as "cannot load … due to access control checks" (the URL as "http: /host…"). Accepted only
+// by position — inside that navigation, before the smoke's first click — and only for /ui/events and /ui/poll.
+const CANCEL = /^(EventSource|Fetch API) cannot load https?:\s*\/+[^\s/]+\/ui\/(events|poll)(\?\S*)? due to access control checks\.$/;
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48580), classic: false });
 const fm = fx.fm;
 const KEEP = ["observability-dashboards", "billing-reconciliation"];
@@ -50,6 +54,9 @@ async function deleteThroughUi(p: FreshPage, victim: string, lang: string) {
 }
 async function runCase(name: string, open: () => Promise<FreshPage>, victim: string, lang: string) {
   const p = await open();
+  await mounted(p.page, 30000);
+  await p.page.waitForTimeout(800);
+  const navEnd = p.errors.length;                   // the opening navigation's lines end here
   const calls: any[] = [];
   p.page.on("response", (r: any) => { const u = new URL(r.url()); if (r.request().method() !== "GET" && u.pathname.startsWith("/api/settings")) calls.push(`${r.request().method()} ${u.pathname} ${r.status()}`); });
   await deleteThroughUi(p, victim, lang);
@@ -64,7 +71,8 @@ async function runCase(name: string, open: () => Promise<FreshPage>, victim: str
   await p.page.waitForTimeout(1500);
   await p.page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-${name}`, "2-deleted") });
   const text = await p.page.evaluate(() => document.body.innerText);
-  const errors = p.errors.filter((e) => !(ENGINE === "webkit" && WEBKIT_OWN.has(e.replace(/ @ \S+$/, ""))));
+  const errors = p.errors.filter((e, i) => { const text = e.replace(/ @ \S+$/, "");
+    return !(ENGINE === "webkit" && (WEBKIT_OWN.has(text) || (i < navEnd && CANCEL.test(text)))); });
   const chk = { heldForConfirmation: calls.some((c) => c === `DELETE /api/settings/fleet/instances/${victim} 202`) && pending.length === 1,
     // The confirmation says what it does in one line (the operation, then "<the agent>: deleted"), none of its fields.
     oneLineSummary: summary.length === 2 && /^fleet\.instances\..+: deleted$/.test(summary[1]) && !summary.join().includes("custom"),
