@@ -85,6 +85,15 @@ describe("Fleet opens the tab this device used last", () => {
     const { pg } = await shell("/ui/fleet");
     expect([out, pg.storage.get("agend_last_fleet_tab")]).toEqual([[["tasks", "/ui/fleet"], ["nope", "/ui/fleet/org"], ["__proto__", "/ui/fleet/org"], ["agent", "/ui/fleet/org"], ["", "/ui/fleet/org"]], "tasks"]);
   });
+  it("only a Fleet tab is written: anything else leaves the remembered tab as it was", async () => {
+    const pg = page({ url: "http://127.0.0.1:19280/ui", storage: { agend_last_fleet_tab: "teams" } });
+    mounted.push(pg);
+    const { rememberFleetTab } = await import("/assets/app-route.js");
+    for (const t of ["nope", "agent", "__proto__", "", undefined, null]) rememberFleetTab(t);
+    const kept = pg.storage.get("agend_last_fleet_tab");
+    rememberFleetTab("usage");
+    expect([kept, pg.storage.get("agend_last_fleet_tab")]).toEqual(["teams", "usage"]);
+  });
   it("an instance's Details (/ui/fleet/agent/<name>) is not a Fleet tab: it leaves the remembered tab alone", async () => {
     const { pg } = await shell("/ui/fleet/agent/web-dev", { storage: { agend_last_fleet_tab: "usage" } });
     expect([pg.storage.get("agend_last_fleet_tab"), entry(pg).getAttribute("href")]).toEqual(["usage", "/ui/fleet/usage"]);
