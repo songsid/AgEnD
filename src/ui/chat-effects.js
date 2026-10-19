@@ -9,7 +9,7 @@ import { navigate } from "/assets/app-nav.js";
 import { toast } from "/assets/ui-toast.js";
 import { setThemesShown, themesShown, themesStore } from "/assets/app-themes.js";
 import { setFollowsReducedMotion } from "/assets/fx-motion.js";
-import { getAppEffects } from "./app-effects.js";
+import { getAppEffects, wakeEffects, effectsLoaded, onEffectsAwake } from "./effects-waker.js";
 
 register("chatFx", {
   en: { stock: "Off: the page layout could not be verified ({0}). Reload and report this code if it persists.", transport: "Off: the isolated effect frame could not start. Reload to try again.", enableHere: "Turn effects on here", playMotion: "Play effects anyway", leaveSafe: "Leave safe mode", viewerShow: "Show themes, effects and widgets here", clock: "Off: the page timing clock is unavailable. Reload to try again.", gatesUnknown: "Off: the playback conditions could not be verified.", resource: "Off: this effect could not be loaded or verified. Reload to try again.", frontQueue: "Waiting for a foreground slot.", consent: "This page has older playback information. Reload to use the isolated effect player.", previewMissing: "Off: the isolated effect frame is unavailable. Reload to try again.", unsupported: "Off: this browser lacks required Canvas Worker or layout support.", calibration: "Starting the effect.", baseline: "This page has older playback information. Reload to try again.", safetyUnknown: "Stopped: this device's safety history could not be verified. Reload to check it.", rawReason: "Playback blocked: {0}", missingRow: "Playback state is unavailable (runtime_unavailable).", region: "Off: this effect does not declare the chat region.", blocked: "Placed effects are blocked for this viewer:", deviceSetting: "Open device preferences", webSetting: "Open Web settings", reloadHint: "Reload page",
@@ -78,8 +78,13 @@ function ReasonAction({ reason, onClose = () => {} }) {
 }
 
 const NO_PLAYBACK = () => {};
-export function ChatEffects({ name, lease, element, store, open, onClose, onPlayback = NO_PLAYBACK }) {
+export function ChatEffects({ name, lease, element, store, open, onClose, onPlayback = NO_PLAYBACK, active = true }) {
   const cssLife = useStore(ownerCssLifecycle);
+  // #2193: `active` — this chat has placements (its status row says so). While the runtime sleeps, a chat with none
+  // attaches and reads nothing (the dialog says "No effects in this chat"); one with some wakes it and attaches once it
+  // runs. Once it runs (woken by anything — a Try card needs its chat attached), every chat attaches as before.
+  const [awake, setAwake] = useState(() => getAppEffects() !== null || effectsLoaded());
+  useEffect(() => (awake ? undefined : onEffectsAwake(() => setAwake(true))), [awake]);
   useStore(themesStore); // Viewer-local off/on is visible immediately, independent of runtime callbacks.
   // Which effects were running just before this dialog opened ("was running" is said in the past, never shown as
   // current). The ⋯ menu that opens it is a barrier too, so "just before" is within RECENT_MS of the observed stop.
@@ -100,6 +105,8 @@ export function ChatEffects({ name, lease, element, store, open, onClose, onPlay
     lease.hold(cleanup);
     try {
       setBusy(false); onClose(); setCanWrite(false); setState(null);
+      if (!active && !awake) { setState({ error: null, rows: [], effects: [], loading: false }); return cleanup; }
+      if (!awake) { void wakeEffects(); return cleanup; }        // "Checking effects…" until it runs
       const host = window, owner = getAppEffects(host);
       const current = () => live && lease.current();
       if (!owner) { setState({ error: null, rows: [], effects: [], unavailable: true, reason: typeof host.OffscreenCanvas !== "function" || typeof host.Worker !== "function" ? "unsupported_host" : "runtime_unavailable" }); return cleanup; }
@@ -132,7 +139,7 @@ export function ChatEffects({ name, lease, element, store, open, onClose, onPlay
       if (lease.current()) setState({ error: "runtime_unavailable", rows: [], effects: [] });
       return cleanup;
     }
-  }, [name, lease]);
+  }, [name, lease, active, awake]);
   const rows = state?.rows ?? [], effects = state?.effects ?? [];
   if (open && !wasOpen.current) {
     const now = performance.now();

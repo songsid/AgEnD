@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fire } from "./helpers/mini-dom.js";
 import { page, settle, type AppPage } from "./helpers/app-harness.js";
-const M = vi.hoisted(() => ({ apis: [] as any[], opts: [] as any[], unavailable: false, owner: null as any }));
+const M = vi.hoisted(() => ({ apis: [] as any[], opts: [] as any[], unavailable: false, owner: null as any, active: true }));
 vi.mock("/ui/js/app-effects.js", () => ({ getAppEffects: () => M.owner }));
 let pg: AppPage | null = null;
-afterEach(async () => { if (pg) { await pg.unmount(); pg.restore(); pg = null; } vi.unstubAllGlobals(); M.apis.length = 0; M.opts.length = 0; M.unavailable = false; M.owner = null; });
+afterEach(async () => { if (pg) { await pg.unmount(); pg.restore(); pg = null; } vi.unstubAllGlobals(); M.apis.length = 0; M.opts.length = 0; M.unavailable = false; M.owner = null; M.active = true; });
 async function fixture(unavailable = false) {
   vi.resetModules(); M.unavailable = unavailable; pg = page(); pg.document.body.dataset.mode = "full"; pg.document.documentElement.setAttribute("data-prefs", JSON.stringify({ ownerScope: "operator", ownerEpoch: "e".repeat(16) })); const host = pg.window;
   Object.assign(host, { matchMedia: globalThis.matchMedia, navigator: globalThis.navigator, OffscreenCanvas: function () {}, Worker: function () {}, ResizeObserver: function () {},
@@ -22,7 +22,7 @@ async function fixture(unavailable = false) {
   const store = { onAgentReply: () => () => {} }, element = { current: pg.document.body }, playback = vi.fn();
   function Parent({ lease }: any) {
     const [shown, setShown] = P.useState(false); open = setShown;
-    return P.h(ChatEffects, { name: "own", lease, element, store, open: shown, onPlayback: playback, onClose: () => setShown(false) });
+    return P.h(ChatEffects, { name: "own", lease, element, store, open: shown, onPlayback: playback, onClose: () => setShown(false), active: M.active });
   }
   const mount = async () => { P.render(P.h(Parent, { lease: currentLease }), pg!.root); await settle(); };
   const owner = { gates: () => ({ enabled: !M.unavailable, show: true, transportReady: true, optIn: true, reducedMotion: false, saveData: false }), onEnd: () => () => {}, attachChat(options: any) {
@@ -186,5 +186,26 @@ describe("#2115 persistent named block notices", () => {
     await h.publishRows([{ id: "a".repeat(32), phase: null, reason: "reduced_motion" }]);
     expect(pg!.root.querySelector(".chat-fx-notice")!.textContent).toContain("reduced motion"); expect(pg!.root.textContent).not.toContain("older playback information");
     await h.publish(); expect(pg!.root.querySelector(".chat-fx-notice")).toBeNull(); h.cleanup();
+  });
+});
+// #2193 — last in the file: the harness unmounts with its own Preact, which matches the fixture's only for the first test.
+describe("#2193 a chat with no placements", () => {
+  it("#2193: a chat with no placements attaches nothing and wakes nothing; its dialog says there are none", async () => {
+    M.active = false;
+    const h = await fixture();
+    expect(M.apis).toHaveLength(0);
+    expect((await import("/ui/js/effects-waker.js")).effectsLoaded()).toBe(false);
+    await h.open();
+    expect(pg!.root.textContent).toContain("No effects in this chat.");
+    expect(pg!.root.textContent).not.toContain("runtime_unavailable");
+    h.cleanup();
+  });
+  it("#2193: once the runtime is awake (woken by anything — a Try card needs its chat attached), a chat with none attaches", async () => {
+    M.active = false;
+    const h = await fixture();
+    expect(M.apis).toHaveLength(0);
+    await (await import("/ui/js/effects-waker.js")).wakeEffects(); await settle(); await settle();
+    expect(M.apis).toHaveLength(1);
+    h.cleanup();
   });
 });

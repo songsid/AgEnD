@@ -164,8 +164,15 @@ The demo connection's fleet-admin list is fleet config the smoke writes, as an o
 change) builds on the same stubs: two demo Discord connections — the agents' and General's — whose admin lists the smoke
 writes; General's adapter records what would be posted there (a chat card or the notice, the notice drawn on a neutral
 page and shot). The held change is Settings → Agents → Delete agent, with the lifecycle's stop stubbed as in
-`smoke-delete-agent.mts`. The admin lists are two arrays, never one shared: fleet.yaml would be written with a YAML
-alias between them, which a delete's document edit cannot walk. `PW_ENGINE=webkit` runs the same cases.
+`smoke-delete-agent.mts`. The admin lists are two arrays, never one shared: one shared array would be written as a YAML
+alias between them (writing through one is #2208's own smoke). `PW_ENGINE=webkit` runs the same cases.
+
+`scripts/manual/smoke/smoke-2208-yaml-shared-nodes.mts` (#2208) writes the operator's own fleet.yaml with two
+connections sharing one admin list through `&admins` / `*admins`, then loads it, and puts it back before each case. It
+adds a user to one connection through Settings → Connections, and the admin's confirmation is the store's decide (as
+in `smoke-delete-agent.mts`). An access edit only writes fleet.yaml and marks a restart as needed, so no adapter
+starts. The same smoke on a checkout without the fix fails: the anchor holder's edit also lands on the other
+connection, and the alias holder's never applies.
 
 `scripts/manual/smoke/smoke-2122-usage.mts` (#2122 Fleet → Usage) uses the harness with what the product reads made
 real: Claude Code transcripts and a Codex rollout in their real shapes (`tests/fixtures/cache-1468`, copied onto recent

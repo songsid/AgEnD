@@ -59,7 +59,7 @@ import { ChatEffectPosters } from "/ui/js/chat-effect-posters.js";
 import { ChatEffects, chatEffectsMenuAvailable } from "./chat-effects.js";
 import { setFollowsReducedMotion } from "/assets/fx-motion.js";
 import { AmbientMotionNote, ChatAmbient, ambientMenuItems } from "./chat-ambient.js";
-import { startAppEffects, getAppEffects } from "./app-effects.js";
+import { startEffectsWaker, getAppEffects, wakeEffects, effectsLoaded, onEffectsAwake, chatHasEffects } from "./effects-waker.js";
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -119,8 +119,9 @@ export function boot({ stream, boot: bootData, deps = {} }) {
   }
   // #1604: the preview opt-in and Tour live in Settings → This device now (and on each preview card's menu).
   installTour();
-  // #2118: viewing current in-scope Chat effects needs no management or personal-slot authority.
-  startAppEffects({ store });
+  // #2118: viewing current in-scope Chat effects needs no management or personal-slot authority. #2193: the runtime
+  // itself loads only when there is something to play (effects-waker.js).
+  startEffectsWaker({ store });
   return store;
 }
 
@@ -276,6 +277,8 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     else if (r && r.held) toast(r.message);
     else toast(t(verb === "start" ? "chat.started" : verb === "stop" ? "chat.stoppedInst" : "chat.restarted", name));
   };
+  // #2193: this chat's Canvas Worker placements (its status row's effect_chat_v): none, no effects code runs for it.
+  const fxHere = chatHasEffects(name);
   const items = [
     // #1523 N2: Details is a page now (the Fleet side of this instance), not a dialog.
     { key: "details", label: t("chat.details"), icon: "info", onSelect: () => navigate(detailsPath(name)) },
@@ -301,7 +304,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelText(inst)}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
-    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`} notice=${html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onPlayback=${publishCanvasPlayback} onClose=${() => setDialog(null)} />`}><${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
+    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`} notice=${html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onPlayback=${publishCanvasPlayback} onClose=${() => setDialog(null)} active=${fxHere} />`}>${fxHere ? html`<${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} />` : null}<${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>
@@ -385,7 +388,8 @@ function threadEntry(name, doc) {
   const thread = createThread(list, doc.createElement("div"), {
     t, tf: t, isUser: (x) => store.isUser(x, name), onJump: (j) => e.sink?.setJump(j), onEmpty: (v) => e.sink?.setEmpty(v),
     setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
-    effectTrialStatus: x => getAppEffects()?.trialStatus(x) ?? "localAdmin",
+    // #2193: an offer shown while the effects runtime sleeps wakes it; until it answers, the offer is being checked.
+    effectTrialStatus: x => { const fx = getAppEffects(); if (fx) return fx.trialStatus(x); if (!effectsLoaded()) { void wakeEffects(); return "checking"; } return "localAdmin"; },
     effectTrialFailure: x => getAppEffects()?.trialFailure(x),
     fixEffectTrial: (x, reason) => {
       if (reason === "reducedMotion") setFollowsReducedMotion(false);
@@ -423,7 +427,12 @@ function follow(name, thread) {
     else if (kind === "sent") thread.jumpLatest();
   }));
   offs.push(P() ? P().onChange(() => thread.refreshCards()) : () => {});
-  offs.push(getAppEffects()?.subscribeTrial(() => thread.render(store.state.msgs[name] || [])) ?? (() => {}));
+  // #2193: the runtime may start later (an offer shown wakes it): its trial updates are followed from then.
+  let trialOff = null;
+  const watchTrial = () => { trialOff = getAppEffects()?.subscribeTrial(() => thread.render(store.state.msgs[name] || [])) ?? null; };
+  watchTrial();
+  if (!trialOff) offs.push(onEffectsAwake(() => { watchTrial(); thread.render(store.state.msgs[name] || []); }));
+  offs.push(() => trialOff?.());
   offs.push(panelStore.subscribe(() => thread.refreshCards()));   // a card shows whether the panel has its block
   return () => { for (const off of offs) off(); };
 }
