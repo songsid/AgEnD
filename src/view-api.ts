@@ -111,6 +111,14 @@ export function resolveInstanceIdentity(input: {
     tags: tags.filter((t): t is string => typeof t === "string"),
   };
 }
+/**
+ * The teams an instance is a member of (fleet.yaml `teams.<name>.members`), in fleet.yaml's order — what the sidebar
+ * groups it under first (#2172): an agent in a team sits with its team, whatever its tags say. Strings only.
+ */
+export function instanceTeams(teams: Record<string, { members?: unknown }> | undefined | null, name: string): string[] {
+  if (!teams || typeof teams !== "object") return [];
+  return Object.keys(teams).filter(team => Array.isArray(teams[team]?.members) && (teams[team]!.members as unknown[]).includes(name));
+}
 /** Profiles by instance, for a status read: only when profiles.db already exists — a status read never creates it. */
 export function profileIdentities(dataDir: string): Map<string, Pick<ProfileRow, "display_name" | "description" | "role" | "avatar_path">> {
   if (!existsSync(join(dataDir, "profiles.db"))) return new Map();
@@ -415,6 +423,7 @@ export function handleViewRequest(
             : ctx.fleetConfig?.defaults?.backend)
           ?? "claude-code",
         tags: identity.tags,
+        teams: instanceTeams(ctx.fleetConfig?.teams, name),
         display_name: identity.display_name,
         role: identity.role,
         avatar_path: p?.avatar_path ?? null,

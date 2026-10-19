@@ -200,7 +200,7 @@ describe("the lists are rows with a Settings button", () => {
     }
     // ...and does something with it. Reading the box and rendering everything anyway is the same as not searching.
     expect(sources["settings-model.js"]).toMatch(/groupAgents\(/);
-    expect(functionBody("Agents")).toMatch(/groupAgents\(insts, ctx\.live, search\)/);
+    expect(functionBody("Agents")).toMatch(/groupAgents\(insts, ctx\.live, search, \(name\) => navGroupOf\(/);
   });
 
   it("shows the connection's access on its row", () => {

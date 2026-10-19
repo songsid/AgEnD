@@ -38,6 +38,13 @@ const isInvalid = (v: unknown): v is Invalid => !!v && typeof v === "object" && 
 const plain = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
 const shortText = (v: unknown, max: number): v is string => typeof v === "string" && v.length <= max;
 const name = (v: unknown): v is string => typeof v === "string" && v.length >= 1 && v.length <= 128 && !/[\u0000-\u001f\u007f]/.test(v);
+/**
+ * #2172: a sidebar group's key — a tag's name, or a team's: the one control-character prefix instance-nav.js gives it
+ * (TEAM_GROUP), so a tag named like a team stays its own group — followed by the team's name. Only that prefix; any other
+ * control character is refused as before, and an instance's own name never takes it.
+ */
+export const TEAM_GROUP_PREFIX = "\u0001team:";
+const groupName = (v: unknown): v is string => name(v) || (typeof v === "string" && v.startsWith(TEAM_GROUP_PREFIX) && name(v.slice(TEAM_GROUP_PREFIX.length)));
 /** Only the listed fields, each present: an extra field is a value this version does not understand. */
 function exactly(v: Record<string, unknown>, fields: string[]): boolean {
   const keys = Object.keys(v);
@@ -80,13 +87,13 @@ const VALIDATORS = new Map<string, (v: unknown) => unknown>([
       if (!plain(row) || !exactly(row, ["item_type", "item_name", "sort_index", "group_name"])) return bad("nav.order: rows of item_type, item_name, sort_index, group_name");
       const groupRow = row.item_type === "group";
       if (!groupRow && row.item_type !== "instance") return bad("nav.order: item_type group or instance");
-      if (!name(row.item_name)) return bad("nav.order: item_name of 1–128 characters");
+      if (!(groupRow ? groupName(row.item_name) : name(row.item_name))) return bad("nav.order: item_name of 1–128 characters");
       if (!Number.isSafeInteger(row.sort_index) || (row.sort_index as number) < 0) return bad("nav.order: sort_index a whole number from 0");
-      if (groupRow ? row.group_name !== null : !name(row.group_name)) return bad("nav.order: group_name null for a group, the group's name for an instance");
+      if (groupRow ? row.group_name !== null : !groupName(row.group_name)) return bad("nav.order: group_name null for a group, the group's name for an instance");
     }
     return v;
   }],
-  ["nav.collapsed", (v) => uniqueStrings(v, 200, name, "nav.collapsed")],
+  ["nav.collapsed", (v) => uniqueStrings(v, 200, groupName, "nav.collapsed")],
   ["nav.filter", (v) => {
     if (!plain(v) || !exactly(v, ["q", "status", "cli"])) return bad("nav.filter: { q, status, cli }");
     if (!shortText(v.q, 200)) return bad("nav.filter: q at most 200 characters");

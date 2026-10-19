@@ -20,7 +20,7 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { groupLabel, modelText } from "/assets/instance-nav.js";
+import { GroupMark, groupLabel, groupOf as navGroupOf, modelText } from "/assets/instance-nav.js";
 import "./settings-strings.js";
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
@@ -464,7 +464,9 @@ function Agents({ ctx, search, openDialog }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [busy, setBusy] = useState(() => new Map());     // name → the action under way
   const chs = channelsOf(ctx.fleet);
-  const groups = groupAgents(insts, ctx.live, search);
+  // #2172: the sidebar's grouping — an agent in a team under its team, else under its first tag.
+  const teamsOf = (name) => Object.keys(ctx.fleet.teams || {}).filter((t) => Array.isArray(ctx.fleet.teams[t]?.members) && ctx.fleet.teams[t].members.includes(name));
+  const groups = groupAgents(insts, ctx.live, search, (name) => navGroupOf({ tags: insts[name]?.tags, teams: teamsOf(name) }), groupLabel);
   // One action per agent at a time: the whole row is off (Settings and ⋯ too), and the pressed button says it is working.
   const run = async (name, action, work) => {
     if (busy.has(name)) return;
@@ -480,7 +482,7 @@ function Agents({ ctx, search, openDialog }) {
     return html`<section key=${group} class="s-group">
       <button type="button" class="s-group-head" aria-expanded=${folded ? "false" : "true"}
         onClick=${() => setCollapsed((c) => { const n = new Set(c); n.has(group) ? n.delete(group) : n.add(group); return n; })}>
-        <${Icon} name="chevron" size=${14} cls=${folded ? "caret folded" : "caret"} /><span class="grow">${groupLabel(group)}</span><span class="count">${names.length}</span></button>
+        <${Icon} name="chevron" size=${14} cls=${folded ? "caret folded" : "caret"} /><${GroupMark} group=${group} /><span class="grow">${groupLabel(group)}</span><span class="count">${names.length}</span></button>
       ${folded ? null : names.map((name) => {
         const inst = insts[name];
         const st = (ctx.live[name] && ctx.live[name].status) || "stopped";

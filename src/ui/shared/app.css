@@ -840,6 +840,9 @@ img.amb-p { object-fit: contain; }
   color: var(--text-3); font-size: var(--fs-xs); font-weight: var(--fw-semibold); text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; text-align: left;
 }
 .v-group-head:hover { color: var(--text); }
+/* #2172: what a group is — a team's icon, or "#" before a tag — muted, before its name (sidebar and Settings). */
+.v-group-kind { display: inline-flex; align-items: center; flex: none; color: var(--text-3); font-weight: var(--fw-medium); }
+.v-group-kind.tag { min-width: 0.7em; justify-content: center; }
 .v-group-head .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .v-group-head .count { font-weight: var(--fw-medium); letter-spacing: 0; text-transform: none; padding: 0 var(--s-2); border-radius: var(--r-full); background: var(--surface-2); }
 .caret { transition: transform var(--t-fast) var(--ease); }

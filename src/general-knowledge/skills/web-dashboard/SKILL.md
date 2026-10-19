@@ -196,7 +196,9 @@ every 5 s.
 
 ## Finding an instance
 
-**The sidebar list.** **Filter: name, model, backend** (Esc clears), facets **Status** and **CLI**, "N / M shown".
+**The sidebar list.** Grouped by team (an instance in `teams.<name>.members` under its first team, whatever its tags), else by
+its first tag ("#" before the heading), ClassicBot rooms under Classic, the rest under Other; Settings → Agents the same (#2172).
+**Filter: name, model, backend** (Esc clears), facets **Status** and **CLI**, "N / M shown".
 While a filter is on, the instance you have open stays on top under **Current**. **Favorites**: the star on a row;
 **Edit** to reorder (at most 50; "Clear the filter to reorder favorites"). Drag to reorder the full list; groups fold.
 Order, folding, filter and favorites follow you across devices. A row keeps you on the same kind of page (from a Log

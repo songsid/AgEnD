@@ -15,7 +15,7 @@ import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { handleWebRequest, serveAppShell } from "../src/web-api.js";
 import { handleViewRequest } from "../src/view-api.js";
 import { isPassiveWebRead } from "../src/web-auth.js";
-import { OPERATOR, WebPrefsStore, WEB_PREF_KEYS, parseWebPrefsPatch } from "../src/web-prefs.js";
+import { OPERATOR, TEAM_GROUP_PREFIX, WebPrefsStore, WEB_PREF_KEYS, parseWebPrefsPatch } from "../src/web-prefs.js";
 
 const token = "c".repeat(48), local = "http://127.0.0.1:19280", pub = "https://sample.trycloudflare.com", exposureId = "a".repeat(32);
 const dirs: string[] = [];
@@ -268,6 +268,39 @@ describe("/ui/prefs", () => {
     h.feed({ set: { theme: "dark" } });
     await flush();
     expect([h.status(), t.prefs.read().values]).toEqual([401, {}]);
+  });
+});
+
+describe("#2172: a team's sidebar group is folded and ordered like a tag's — saved, read back, kept across a restart", () => {
+  const team = `${TEAM_GROUP_PREFIX}platform-team`;
+  const order = [{ item_type: "group", item_name: team, sort_index: 0, group_name: null }, { item_type: "group", item_name: "wiki", sort_index: 1, group_name: null },
+    { item_type: "instance", item_name: "search-indexer", sort_index: 0, group_name: team }, { item_type: "instance", item_name: "docs-writer", sort_index: 0, group_name: "wiki" }];
+  it("the client's team key is the one the store accepts (instance-nav.js TEAM_GROUP)", () => {
+    expect(readFileSync(join(process.cwd(), "src", "ui", "shared", "instance-nav.js"), "utf8")).toContain('export const TEAM_GROUP = "\\u0001team:";');
+    expect(TEAM_GROUP_PREFIX).toBe("\u0001team:");
+  });
+  it("through /ui/prefs: folding a team and an order holding it (a group row and its instance's group_name) — 200, read back the same", async () => {
+    const t = setup();
+    const w = t.write({ set: { "nav.collapsed": [team, "wiki"], "nav.order": order } });
+    await flush();
+    expect(w.status()).toBe(200);
+    const r = t.read();
+    expect(r.json().values).toEqual({ "nav.collapsed": [team, "wiki"], "nav.order": order });
+  });
+  it("kept across a restart (the file read back by a new store)", () => {
+    const dir = tmp(), a = new WebPrefsStore(dir);
+    const parsed = parseWebPrefsPatch({ "nav.collapsed": [team], "nav.order": order });
+    expect(parsed.ok).toBe(true);
+    expect(a.write(OPERATOR, (parsed as { patch: Map<string, unknown> }).patch).ok).toBe(true);
+    expect(new WebPrefsStore(dir).read(OPERATOR).values).toEqual({ "nav.collapsed": [team], "nav.order": order });
+  });
+  it("only that prefix and a valid team name: every other control character, an empty team, and an instance named like a team stay refused", () => {
+    for (const key of ["\u0001other:platform-team", "\u0002team:platform-team", TEAM_GROUP_PREFIX, `${TEAM_GROUP_PREFIX}a\u0001b`, `${TEAM_GROUP_PREFIX}${"x".repeat(129)}`, "wiki\u0000", "\u007fwiki"]) {
+      expect(parseWebPrefsPatch({ "nav.collapsed": [key] }).ok, JSON.stringify(key)).toBe(false);
+      expect(parseWebPrefsPatch({ "nav.order": [{ item_type: "group", item_name: key, sort_index: 0, group_name: null }] }).ok, JSON.stringify(key)).toBe(false);
+      expect(parseWebPrefsPatch({ "nav.order": [{ item_type: "instance", item_name: "a", sort_index: 0, group_name: key }] }).ok, JSON.stringify(key)).toBe(false);
+    }
+    expect(parseWebPrefsPatch({ "nav.order": [{ item_type: "instance", item_name: team, sort_index: 0, group_name: "wiki" }] }).ok, "an instance's own name never takes it").toBe(false);
   });
 });
 
