@@ -80,6 +80,7 @@ function sync() {
     let valid = false;
     try { valid = link.disabled !== true && !!link.sheet && link.sheet.ownerNode === link && link.sheet.disabled !== true && link.sheet.href === new URL(href, location.href).href; } catch { /* unknown stylesheet */ }
     linkState = valid ? "on" : "unknown"; life(linkState, valid ? "loaded" : "load_unverified");
+    if (valid) shownHere(sha);                                          // #2198: an agent's trial is on this screen now
   });
   link.addEventListener("error", () => { if (!current()) return; linkState = "unknown"; life("unknown", "load_failed"); });
   life("loading", "loading");
@@ -189,12 +190,40 @@ async function reread() {
     if (body && mine === gen) reconcile(body);                         // nothing newer happened since this was asked
   } catch { /* the next change tries again */ }
 }
+/**
+ * #2198: an agent's trial (General saved it) waits on the host until a person's page shows it. This page shows it once
+ * its stylesheet has loaded on screen, and says so: the host starts the keep window then (the dead-man switch, from when
+ * a person can see the Keep button). If the host cannot be told, this page reverts it itself at KEEP_SECONDS, as it does
+ * for a version it saved.
+ */
+let waitingShown = null;   // { id, sha } of an agent's trial this page is showing and has not reported yet
+function shownHere(sha) {
+  const w = waitingShown;
+  if (!w || w.sha !== sha) return;
+  waitingShown = null;
+  const trial = ownerCssTrial.get();
+  if (!trial || trial.id !== w.id) return;
+  post("/ui/owner-css/shown", { trial: w.id }).then((r) => {
+    if (ownerCssTrial.get() !== trial) return;
+    const ms = r.ok && r.body && Number.isFinite(r.body.remaining_ms) ? r.body.remaining_ms : null;
+    if (ms === null) { startOwnerCssTrial(w.id, w.sha, trial.previous, KEEP_SECONDS, true); return; }
+    startOwnerCssTrial(w.id, w.sha, trial.previous, ms / 1000 + 1, false);
+  }, () => { if (ownerCssTrial.get() === trial) startOwnerCssTrial(w.id, w.sha, trial.previous, KEEP_SECONDS, true); });
+}
 /** Match the host: the version in force, and whether one is on trial (another device's included) — or none any more. */
 function reconcile(state) {
   const pending = state.pending && state.pending.sha === state.active && typeof state.pending.id === "string" ? state.pending : null;
   const trial = ownerCssTrial.get();
-  if (!pending) { if (trial) dropTrial(); showActive(state.active, state.effectState); return; }
+  if (!pending) { waitingShown = null; if (trial) dropTrial(); showActive(state.active, state.effectState); return; }
   if (trial && trial.id === pending.id) return;                        // already asking about this one
+  if (pending.waiting === true) {
+    // Shown here: its stylesheet goes in, and once it has loaded this page reports it (shownHere). Until then the bar
+    // waits on the host's word, as for another device's trial.
+    waitingShown = { id: pending.id, sha: pending.sha };
+    startOwnerCssTrial(pending.id, pending.sha, pending.previous, HOST_TRIAL_SECONDS, false);
+    if (linkState === "on" && ownedLink && ownedLink.getAttribute("href") === `/ui/owner-css.css?v=${encodeURIComponent(pending.sha)}`) shownHere(pending.sha);
+    return;
+  }
   // The host's own remaining time and a second (never this device's clock): it has settled the trial by then.
   const remaining = typeof pending.remaining_ms === "number" && Number.isFinite(pending.remaining_ms) ? pending.remaining_ms : 0;
   startOwnerCssTrial(pending.id, pending.sha, pending.previous, remaining / 1000 + 1, false);

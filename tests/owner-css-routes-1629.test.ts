@@ -102,7 +102,7 @@ describe("who may use it", () => {
 
   it("the public link: absent from its manifest — every route, read or write — and refused by the handler on its own", async () => {
     for (const [m, p] of [["GET", "/ui/owner-css.css"], ["GET", "/ui/owner-css/state"], ["GET", `/ui/owner-css/asset/${"a".repeat(32)}`], ["POST", "/ui/owner-css"],
-      ["POST", "/ui/owner-css/keep"], ["POST", "/ui/owner-css/revert"], ["POST", "/ui/owner-css/restore"], ["POST", "/ui/owner-css/asset"], ["DELETE", `/ui/owner-css/asset/${"a".repeat(32)}`]] as const) {
+      ["POST", "/ui/owner-css/shown"], ["POST", "/ui/owner-css/keep"], ["POST", "/ui/owner-css/revert"], ["POST", "/ui/owner-css/restore"], ["POST", "/ui/owner-css/asset"], ["DELETE", `/ui/owner-css/asset/${"a".repeat(32)}`]] as const) {
       expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(false);
     }
     const f = await fleet();
@@ -226,6 +226,28 @@ describe("#1883 r1 (P2-2): a revert names its trial", () => {
   }, 30_000);
 });
 
+describe("#2198: a page says it shows an agent's trial (POST /ui/owner-css/shown)", () => {
+  it("starts that person's waiting trial's keep window — once; another person's, a person's own trial, or a stale id is not", async () => {
+    const f = await fleet();
+    try {
+      const a = f.session({ owner: A }), b = f.session({ owner: B });
+      const post = (s: typeof a, path: string, body: unknown) => raw(f.port, "POST", path, { ...s.write, ...JSON_H }, JSON.stringify(body));
+      const saved = f.fm.ownerCss.save("person:discord:111", ".agent{}", { by: "agent" });
+      if (!saved.ok) throw new Error(saved.error);
+      expect(JSON.parse((await raw(f.port, "GET", "/ui/owner-css/state", a.read)).body).pending).toMatchObject({ id: saved.trial, waiting: true });
+      const other = await post(b, "/ui/owner-css/shown", { trial: saved.trial });
+      expect([other.status, JSON.parse(other.body).error], "another person's trial").toEqual([409, "not_on_trial"]);
+      const first = await post(a, "/ui/owner-css/shown", { trial: saved.trial });
+      expect([first.status, JSON.parse(first.body).remaining_ms]).toEqual([200, 20_000]);
+      expect(JSON.parse((await raw(f.port, "GET", "/ui/owner-css/state", a.read)).body).pending.waiting).toBeUndefined();
+      expect((await post(a, "/ui/owner-css/shown", { trial: saved.trial })).status).toBe(200);
+      expect((await post(a, "/ui/owner-css/shown", { trial: "f".repeat(32) })).status).toBe(409);
+      expect((await post(a, "/ui/owner-css/shown", { trial: "nope" })).status).toBe(400);
+      expect((await raw(f.port, "POST", "/ui/owner-css/shown", { ...a.read, ...JSON_H }, JSON.stringify({ trial: saved.trial }))).status, "a read-only session").not.toBe(200);
+    } finally { await f.stop(); }
+  }, 30_000);
+});
+
 describe("the page names the version in force only where it may be linked (data-owner-css)", () => {
   const bodyTag = (html: string) => /<body[^>]*>/.exec(html)![0];
   it("the signed-in person's full app: yes; the operator's session with none, the CLI token, the anonymous View reader: no", async () => {
@@ -285,7 +307,11 @@ describe("no agent path reaches it", () => {
     expect(files).toContain("reservedStateRoots.has(parts[0]!)");
     expect(files).not.toMatch(/from\s*["']\.\/web-owner-css|import\(\s*["']\.\/web-owner-css|\/ui\/owner-css|setOwnerCss|OwnerCssStore/);
     const tools = readFileSync(join(src, "web-settings-tools.ts"), "utf8");
-    expect([...tools.matchAll(/store\.keep\(person, (.*?)\); return/g)].map(m => m[1])).toEqual(["store.state(person).pending?.id"]);
+    // #2198: the tool keeps only through the store's keepForAgent (the trial in force, or the one that just went back —
+    // its own index's last trial, put back by the store's restore); it never names a trial or a version itself.
+    expect(tools.match(/store\.keep\(/g)).toBeNull();
+    expect([...tools.matchAll(/store\.keepForAgent\(([^)]*)\)/g)].map(m => m[1])).toEqual(["person"]);
+    expect([...tools.matchAll(/store\.save\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(['c.text, { by: "agent" }']);
     expect([...tools.matchAll(/store\.restore\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(["null", "c.version"]);
     expect(tools).not.toMatch(/setOwnerCss|writeIndex|ownerCssActive/);
     expect([...tools.matchAll(/ownerCss\.restore\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(["null"]);

@@ -8,6 +8,7 @@ import { page, settle, type AppPage } from "./helpers/app-harness.js";
 
 const S1 = "1".repeat(32), S2 = "2".repeat(32), T1 = "a".repeat(32), T2 = "b".repeat(32);
 let p: AppPage | null = null;
+let shownAnswer: () => unknown = () => ({ ok: true, status: 200, json: async () => ({ remaining_ms: 20_000 }) });
 const g = globalThis as any;
 afterEach(async () => { vi.useRealTimers(); if (p) { try { const { render } = await import("/assets/app-html.js"); render(null, p.root); } catch { /* none */ } p.restore(); p = null; } delete g.fetch; vi.resetModules(); });
 
@@ -22,6 +23,7 @@ async function boot(opts: { url?: string; owner?: string | null; mode?: string; 
   g.fetch = vi.fn(async (url: string, init: any = {}) => {
     calls.push({ url, ...(init.body ? { body: JSON.parse(init.body) } : {}) });
     if (url === "/ui/owner-css/state") return { ok: true, status: 200, json: async () => ({ active: state.active, pending: state.pending }) };
+    if (url === "/ui/owner-css/shown") return shownAnswer();
     return { ok: true, status: 200, json: async () => ({}) };
   });
   const state: { active: string | null; pending: unknown } = { active: opts.owner === null ? null : opts.owner ?? S1, pending: opts.pending ?? null };
@@ -191,5 +193,38 @@ describe("keep or revert", () => {
     const { oc } = await boot({ owner: S2, pending: { id: T1, sha: S2, previous: S1, remaining_ms: 3_600_000 } });
     await settle(); await settle();
     expect(oc.ownerCssTrial.get().deadline - performance.now()).toBeLessThanOrEqual(21_000);
+  });
+});
+
+describe("#2198: an agent's trial waits for a page that shows it", () => {
+  const loaded = (el: any) => {
+    Object.assign(el, { disabled: false, sheet: { ownerNode: el, href: new URL(el.getAttribute("href"), g.location.href).href, disabled: false } });
+    el.dispatchEvent(new g.Event("load"));
+  };
+  afterEach(() => { shownAnswer = () => ({ ok: true, status: 200, json: async () => ({ remaining_ms: 20_000 }) }); });
+  it("the page puts it in, and once its stylesheet loaded says so — then the bar runs on the host's window", async () => {
+    const { calls, link, oc } = await boot({ owner: S2, pending: { id: T2, sha: S2, previous: S1, remaining_ms: 540_000, waiting: true } });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance"] });
+    expect(link()?.getAttribute("href")).toBe(`/ui/owner-css.css?v=${S2}`);
+    expect(calls.some((c) => c.url === "/ui/owner-css/shown"), "not before it is on screen").toBe(false);
+    loaded(link());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls.filter((c) => c.url === "/ui/owner-css/shown").map((c) => c.body)).toEqual([{ trial: T2 }]);
+    expect(oc.ownerCssTrial.get()).toMatchObject({ id: T2, local: false });
+    expect(calls.some((c) => c.url === "/ui/owner-css/revert")).toBe(false);
+  });
+  it("the host cannot be told: this page reverts it itself after 15 s (the dead-man switch holds)", async () => {
+    shownAnswer = () => ({ ok: false, status: 503, json: async () => ({ error: "prefs_unwritable" }) });
+    const { calls, link, oc } = await boot({ owner: S2, pending: { id: T2, sha: S2, previous: S1, remaining_ms: 540_000, waiting: true } });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance"] });
+    loaded(link()); await vi.advanceTimersByTimeAsync(0);
+    expect(oc.ownerCssTrial.get()).toMatchObject({ id: T2, local: true });
+    await vi.advanceTimersByTimeAsync(15_100);
+    expect(calls.find((c) => c.url === "/ui/owner-css/revert")?.body).toEqual({ trial: T2 });
+  });
+  it("on Settings it is not linked, so not reported shown", async () => {
+    const { calls } = await boot({ owner: S2, pending: { id: T2, sha: S2, previous: S1, remaining_ms: 540_000, waiting: true }, route: { panel: "settings", section: "appearance" } });
+    await settle();
+    expect(calls.some((c) => c.url === "/ui/owner-css/shown")).toBe(false);
   });
 });
