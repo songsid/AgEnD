@@ -511,7 +511,30 @@ function Agents({ ctx, search, openDialog }) {
   })}</div>`;
 }
 
+function ConnectionRetry({ id, ctx }) {
+  const lease = useLease(`connection-retry:${id}`);
+  const claimed = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const retry = async () => {
+    if (claimed.current) return;
+    claimed.current = true; setBusy(true);
+    try {
+      const response = await lease.fetch(`/api/settings/connections/${encodeURIComponent(id)}/retry`, { method: "POST" });
+      if (!lease.current()) return;
+      toast(response.ok ? tn("connRetryQueued") : tn("connRetryFailed"));
+      await ctx.reload();
+    } catch {
+      if (lease.current()) toast(tn("connRetryFailed"));
+    } finally {
+      claimed.current = false;
+      if (lease.current()) setBusy(false);
+    }
+  };
+  return html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${retry}>${tn("connRetryNow")}</button>`;
+}
+
 function Bots({ ctx, search, openDialog }) {
+  const overPublicLink = globalThis.document?.body?.dataset?.publicLink === "1";
   const all = channelsOf(ctx.fleet);
   const needle = search.trim().toLowerCase();
   const rows = all.map((ch, i) => ({ ch, i })).filter(({ ch }) => !needle || [ch.id, ch.type, ch.group_id, ch.bot_token_env].some((v) => String(v ?? "").toLowerCase().includes(needle)));
@@ -540,6 +563,7 @@ function Bots({ ctx, search, openDialog }) {
         <span class="s-actions">
           <span class=${`tag${token ? "" : " warn"}`}>${token ? tn("tokenConfigured") : tn("tokenMissing")}</span>
           <span class=${`s-state ${state.cls}`} title=${stateText}>${stateText}</span>
+          ${!overPublicLink && ctx.fleetUp && meta.status !== "connected" ? html`<${ConnectionRetry} id=${channelId(ch, i)} ctx=${ctx} />` : null}
           <button type="button" class="btn btn-sm" onClick=${() => openDialog({ kind: "bot", id: channelId(ch, i) })}>${tn("settingsButton")}</button></span>
       </div>`;
     })}</div>`}

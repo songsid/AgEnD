@@ -293,6 +293,8 @@ What an agent did, step by step: what it was asked, its replies (never its think
 
 ## `/settings`
 
+**Connections → Retry now** asks a disconnected connection to try again immediately, without restarting AgEnD. An ongoing attempt is reused. Startup failures keep retrying with a capped five-minute delay while the fleet runs; a long outage no longer exhausts them permanently. This control requires a local admin sign-in and is unavailable over a public link. It does not change the token, permissions or saved binding. Refresh Connections to see a later recovery.
+
 **Preferences**, **Web appearance**, **Agents**, **Connections**, **ClassicBot**, **General**, **Web** and **Developer** (the whole `fleet.yaml` as YAML or JSON; **Edit**, **Copy**, **Download fleet.yaml**, and **Apply & save**, which applies at once without the bar) are tabs, each with its own address. The search box filters agents, connections and ClassicBot rooms; **Setup wizard** runs the same four steps as `agend quickstart`; it always adds a connection, for a new agent or one you already have.
 
 A fleet with no chat connection yet (web only) shows a card above the Agents and Connections tabs (not on Chat, which has one instruction: choose an agent, or create one): **Connect a chat app** opens the setup wizard, **Use the web only** hides the card in this browser.

@@ -287,6 +287,8 @@ running; kiro shows fleet events only; other backends say they have no readable 
 
 ## Settings
 
+**Connections → Retry now** retries a disconnected connection without a fleet restart; a running login is reused. Startup retries continue with a five-minute cap. Local admin only, unavailable over public links. It changes no token or binding; refresh to read the later result.
+
 Tabs (`/settings/<tab>`): **Preferences**, **Web appearance**, **Agents**, **Connections**, **ClassicBot**,
 **General**, **Web**, **Developer**. Header: version, **Setup wizard**, **Help**.
 
