@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-10-18
+
+### Fixed
+- **The `[system:whats-new]` notice is sent at most once (#2140).** On long-lived Claude sessions it was sent again before almost every message. Such a session gets a long notice, and once it was submitted its first line scrolled off the screen AgEnD checks, so the paste could never be confirmed and the notice stayed pending. A notice whose paste reached the agent is now recorded as told. One that never reaches the agent is tried at most 3 times, then recorded with a warning in the log.
+
 ## [2.2.0] - 2026-10-16
 
 ### Upgrade Notes
@@ -300,6 +305,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Web: a Docs link on Fleet overview (#1844).** The Fleet panel's header has **Docs**, which opens the project's docs site in a new tab — the English pages, or the 繁體中文 ones when the dashboard is in Chinese. On a phone it is a book icon.
 
 ### Changed
+- **The README opens with a picture (#1959).** It shows the web dashboard, rendered with made-up demo data, beside an illustrated phone with the same conversation, in light and dark to match your theme. The script that renders it lives in `docs/assets/readme/src/`, so the picture can be regenerated after UI changes.
 - **A message to a busy Claude Code instance is handed to Claude's own queue instead of waiting for the turn to end
   (#1169), as Codex already does.** Verified on the real Claude Code 2.1.293 TUI:
   - A message sent while Claude works is queued and sent once the turn ends. The running turn is not interrupted, and
@@ -551,6 +557,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - **Memory:** uploads stream to disk instead of being held in memory, and large downloads stream too. An upload that stalls for a minute, or runs past 30 minutes, is dropped with its partial file.
 
 ### Fixed
+- **`/update` is far less likely to fail when the clock is adjusted during the install.** The install check that lets only the running update's own npm install proceed compared the updater's start time as wall-clock text. A clock adjustment while npm ran (NTP, a VM or WSL resyncing its clock) could make the update look gone, so the install was refused with only "npm error code 1" in chat, and a retry usually worked. On Linux, a lock written by this version identifies the update by the kernel's process start time and the current boot, so no clock change affects it. On macOS, and for locks written by an earlier 2.2 beta's updater (the first hop onto this version), a clock change of up to 2 seconds is tolerated; a larger one can still refuse that install, and a retry then works. The process check also gets more time on a busy host. When the install is refused, the chat now shows AgEnD's own reason ("AgEnD cannot be installed here: …") instead of npm's exit code. Hops whose updater is already this version or newer show it. (#1947)
 - **`update_instance_config` explicitly refuses `tool_set` (privilege boundary #804/#814).** Passing `tool_set` in the config patch now returns a clear error — `"tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)"` — and nothing is written. Previously the field was silently dropped. To mark an instance as coordinator: edit `fleet.yaml` and add `tool_set: coordinator`, or use the **Settings** panel in the web UI.
 - Kiro's native TUI trust-all-tools prompt now uses the same structural selector at startup and runtime (#849, part A). AgEnD sends one Down from “No, exit”, then confirms only a freshly observed cursor on the per-session “Yes, I accept”. Unknown layouts, a cursor that did not move, and “Yes, and don't ask again” stay held for human input; copied history cannot receive consent keys. Existing model-picker holds and engine/session pins remain intact. This does not enable `kiro_ui: v3`; v3 startup/enablement and further steering verification are parked pending native evidence and user demand.
 
