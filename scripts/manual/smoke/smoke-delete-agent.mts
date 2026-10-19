@@ -61,28 +61,44 @@ async function runCase(name: string, open: () => Promise<FreshPage>, victim: str
   const navEnd = p.errors.length;                   // the opening navigation's lines end here
   const calls: any[] = [];
   p.page.on("response", (r: any) => { const u = new URL(r.url()); if (r.request().method() !== "GET" && u.pathname.startsWith("/api/settings")) calls.push(`${r.request().method()} ${u.pathname} ${r.status()}`); });
+  const names = () => p.page.locator(".s-row .s-name").allTextContents();
+  await p.page.waitForSelector(".s-row", { timeout: 15000 });
+  const before = await names();
   await deleteThroughUi(p, victim, lang);
-  // Held for a fleet admin: the row says it waits.
-  const waiting = await p.page.waitForFunction((l: string) => document.body.innerText.includes(l === "en" ? "Waiting for confirmation in chat" : "等待在聊天中確認"), lang, { timeout: 10000 }).then(() => true, () => false);
+  // Held for a fleet admin: the pending card says what it waits for, where to confirm it, and offers Withdraw — on screen.
+  const card = await p.page.waitForSelector(".pending-card.pending", { timeout: 10000 }).then(() => true, () => false);
+  await p.page.waitForTimeout(1500);                                      // the "queued" toast has had its moment
+  const waitingCard = await p.page.evaluate(() => {
+    const c = document.querySelector(".pending-card.pending") as HTMLElement | null; if (!c) return null;
+    const r = c.getBoundingClientRect();
+    return { text: c.innerText, inView: r.height > 0 && r.top >= 0 && r.bottom <= innerHeight, top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight };
+  });
   await p.page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-${name}`, "1-waiting") });
   const gate = (fm as any).settingsGate();
   const pending = [...gate.store.records.values()].filter((e: any) => e.view.state === "pending");
   const summary = pending.map((e: any) => e.view.summary).flat();
   for (const e of pending) await gate.store.decide(e.view.id, "confirm", { label: "fleet admin (smoke)", current: () => true });
-  const gone = await p.page.waitForFunction((v: string) => ![...document.querySelectorAll(".s-row .s-name")].some((e) => e.textContent === `${v} ✨`), victim, { timeout: 20000 }).then(() => true, () => false);
-  await p.page.waitForTimeout(1500);
+  // The card turns to "Confirmed and applied" (the page follows it every 2 s) and the agent's row goes.
+  const applied = await p.page.waitForSelector(".pending-card.applied", { timeout: 10000 }).then(() => true, () => false);
+  const gone = await p.page.waitForFunction((v: string) => ![...document.querySelectorAll(".s-row .s-name")].some((e) => (e.textContent ?? "").includes(v)), victim, { timeout: 20000 }).then(() => true, () => false);
+  await p.page.waitForTimeout(500);
   await p.page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-${name}`, "2-deleted") });
+  const after = await names();
   const text = await p.page.evaluate(() => document.body.innerText);
   const errors = p.errors.filter((e, i) => { const text = e.replace(/ @ \S+$/, "");
     return !(ENGINE === "webkit" && (WEBKIT_OWN.has(text) || (i < navEnd && CANCEL.test(text)))); });
   const chk = { heldForConfirmation: calls.some((c) => c === `DELETE /api/settings/fleet/instances/${victim} 202`) && pending.length === 1,
     // The confirmation says what it does in one line (the operation, then "<the agent>: deleted"), none of its fields.
     oneLineSummary: summary.length === 2 && /^fleet\.instances\..+: deleted$/.test(summary[1]) && !summary.join().includes("custom"),
-    pageSaysWaiting: waiting, goneFromPage: gone, goneFromConfig: !Object.hasOwn(fm.fleetConfig.instances, victim), goneFromDisk: !onDisk().includes(victim),
+    // What it waits for, where to confirm it (General, or the host command when no chat can take it), and Withdraw.
+    pageSaysWaiting: card && !!waitingCard && waitingCard.text.includes(lang === "en" ? "Waiting for confirmation" : "等待確認")
+      && (lang === "en" ? /General|agend settings confirm/ : /General|agend settings confirm/).test(waitingCard.text) && waitingCard.text.includes(lang === "en" ? "Withdraw" : "撤回"),
+    waitingCardOnScreen: !!waitingCard?.inView,
+    cardSaysApplied: applied, goneFromPage: gone && before.some((n: string) => n.includes(victim)) && !after.some((n: string) => n.includes(victim)) && after.length === before.length - 1, goneFromConfig: !Object.hasOwn(fm.fleetConfig.instances, victim), goneFromDisk: !onDisk().includes(victim),
     removedOnce: removed.filter((r) => r === victim).length === 1, noRawCode: !RAW.test(text), noErrors: errors.length === 0 };
   const failed = Object.entries(chk).filter(([, v]) => !v).map(([k]) => k);
-  results.push({ name, ok: !failed.length, failed, calls, summary, errors });
-  console.log(`${failed.length ? "FAIL" : "ok  "} ${ENGINE}-${name}${failed.length ? ` [${failed.join(", ")}] ${JSON.stringify({ calls, summary, errors, navEnd, all: p.errors.map((e, i) => `${i}: ${e.slice(0, 200)}`) }).slice(0, 1600)}` : ""}`);
+  results.push({ name, ok: !failed.length, failed, calls, summary, errors, waitingCard, before, after });
+  console.log(`${failed.length ? "FAIL" : "ok  "} ${ENGINE}-${name}${failed.length ? ` [${failed.join(", ")}] ${JSON.stringify({ calls, summary, errors, waitingCard, before, after }).slice(0, 1600)}` : ""}`);
   await p.ctx.close();
 }
 await runCase("desk-light-en", () => freshPage(fx, { device: "desk", theme: "light", lang: "en" }, { path: "/settings/agents" }), VICTIMS[0], "en");

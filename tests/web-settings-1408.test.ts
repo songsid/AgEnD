@@ -435,6 +435,40 @@ describe("#1423: a change an admin must confirm", () => {
   });
 });
 
+describe("#2168: a request that starts waiting is brought into view in Settings", () => {
+  it("once per request, in the column (a phone applied far down the list); the corner card elsewhere never scrolls the page", async () => {
+    const proto = Object.getPrototypeOf(p.root.ownerDocument.createElement("section"));       // the element class's own
+    const had = Object.getOwnPropertyDescriptor(proto, "scrollIntoView");
+    const calls: Array<{ id: string | null; opts: unknown }> = [];
+    proto.scrollIntoView = function (this: any, opts: unknown) { calls.push({ id: this.getAttribute?.("data-pending") ?? null, opts }); };
+    try {
+      const pending = (id: string) => ({ id, state: "pending", section: "access", requested_at: 1, requested_by: "Chrome", expires_at: 2, source: "web_session",
+        summary: ["DELETE /api/settings/fleet/instances/beta", "fleet.instances.beta: deleted"], confirmation: { kind: "chat" }, outcome: null,
+        label: "Delete beta", deadline: performance.now() + 60_000, withdraw: () => {}, dismiss: null });
+      app.appStore.set({ pendingChanges: [pending("d".repeat(32))] });
+      await mount("agents", "settings:agents|scroll|en"); await settle(6);
+      expect(calls).toEqual([{ id: "d".repeat(32), opts: { block: "nearest", behavior: "smooth" } }]);
+      app.appStore.set({ pendingChanges: [{ ...pending("d".repeat(32)) }] }); await settle(4);
+      expect(calls.length, "the same request again: not scrolled to again").toBe(1);
+      app.appStore.set({ pendingChanges: [pending("d".repeat(32)), pending("e".repeat(32))] }); await settle(4);
+      expect(calls.map(c => c.id), "a new one is").toEqual(["d".repeat(32), "e".repeat(32)]);
+      await p.unmount();
+      // Outside Settings the card sits in the corner, over the page: nothing scrolls.
+      calls.length = 0;
+      app.appStore.set({ pendingChanges: [pending("f".repeat(32))] });
+      nav.navigate("/ui/fleet");
+      const panels = new Map([["fleet", { load: async () => () => h("div", { class: "panel" }, "fleet") }]]);
+      await p.mount(h(shell.Shell, { panels })); await settle(6);
+      expect(!!p.root.querySelector(".pending-card"), "the corner card is drawn").toBe(true);
+      expect(calls).toEqual([]);
+      await p.unmount();
+    } finally {
+      if (had) Object.defineProperty(proto, "scrollIntoView", had); else delete proto.scrollIntoView;
+      app.appStore.set({ pendingChanges: [], settingsOp: null });
+    }
+  });
+});
+
 describe("the other ways in: Developer YAML and the setup wizard hand over to the same runner", () => {
   it("alpha.2 sweep: the toolbar keeps a name on its icon buttons, and the editor scrolls instead of wrapping", async () => {
     await mount("advanced", "settings:advanced|1|en"); await settle(6);
