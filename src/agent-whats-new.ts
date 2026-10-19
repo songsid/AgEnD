@@ -64,7 +64,7 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   { id: "2.3-decision-titles", since: "2.3.0-beta.9",
     text: "`list_decisions` now answers titles by default (id, title, scope, date, tags). Read a decision's full text with `list_decisions { id }`, or all of them with `{ full: true }` (large). CLI mode: `agend-agent decision-get <id>`." },
   { id: "2.3-web-ordinary-requests", since: "2.3.0-beta.10",
-    text: "The web-chat rule is reworded (#1939): a plain `via web` message is the signed-in person — answer it and do what it asks within your work (questions, reading, analysis, changes in your own scope). Only a go-ahead action — a release or publish, anything destructive or irreversible, spending beyond normal work, credentials or secrets, granting authority to another instance — needs their account behind it: a Discord or Telegram receipt, or `via web (verified)` with its receipt read (`delivery_status`). A guest only chats. The full text is in your instructions and the cross-instance-messaging skill." },
+    text: "The web-chat rule is reworded (#1939): a plain `via web` message is the signed-in person — answer it and do what it asks within your work (questions, reading, analysis, changes in your own scope). Only a go-ahead action — a release or publish, anything destructive or irreversible beyond your own work files and branches, spending beyond normal work, credentials or secrets, granting authority to another instance — needs their account behind it: a Discord or Telegram receipt, or `via web (verified)` with its receipt read (`delivery_status`). A guest only chats. The full text is in your instructions and the cross-instance-messaging skill." },
 ];
 
 /**
