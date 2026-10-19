@@ -47,6 +47,10 @@ import { GuestsCard } from "./settings-guests.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
+/** What a refused change says to a person: the server's code in words (the code itself only for one not listed). */
+const APPLY_ERRORS = new Set(["unsupported_sensitive_effect", "confirmation_diff_too_large", "session_required", "admin_required", "settings_changed",
+  "request_no_longer_current", "too_many_pending_changes", "fleet_unavailable", "invalid_settings_effect", "settings_confirmation_unavailable", "failed"]);
+export const applyErrorText = (code) => (APPLY_ERRORS.has(code) ? tn(`applyError_${code}`) : tn("applyErrorOther", String(code)));
 const ICONS = { device: "user", appearance: "palette", agents: "bot", bots: "plug", classic: "room", general: "sliders", web: "globe", advanced: "code" };
 const RELEASES = "https://github.com/songsid/AgEnD/releases";
 
@@ -953,7 +957,7 @@ function OperationCard({ op, schema }) {
   const mismatch = schema && schema.fleet_signature_mismatch;
   const title = op.phase === "failed" ? tn("applyPartial") : fleetRestarting ? tn("restartFleetTitle") : busy ? tn("applying")
     : failedRows ? tn("applyPartial") : needsRestart ? tn("applyRestartNeeded") : tn("applyDone");
-  const note = op.phase === "failed" ? (op.error === "busy" ? tn("applyBusy") : op.error ? tn("applyStepFailed", op.error) : "")
+  const note = op.phase === "failed" ? (op.error === "busy" ? tn("applyBusy") : op.error ? tn("applyStepFailed", applyErrorText(op.error)) : "")
     : fleetRestarting ? tn("restartFleetWaiting") : op.lostJob ? tn("applyLostJob")
     : job && job.overdue ? tn("applyStillWorking", Math.round((job.elapsed_ms || 0) / 1000))
     : mismatch && needsRestart ? tn("signatureMismatch", mismatch.join(", ")) : needsRestart ? tn("applyRestartHint") : "";
@@ -980,7 +984,7 @@ function OperationCard({ op, schema }) {
     ${op.steps.length ? html`<ul class="s-op-steps">${op.steps.map((s, i) => html`<li key=${i} class=${`s-step ${s.status}`}>
       <span class="s-step-icon" aria-hidden="true">${icon(s.status) ? html`<${Icon} name=${icon(s.status)} size=${14} />` : "·"}</span>
       <span class="grow">${s.label}</span>
-      <span class="note">${s.status === "waiting" ? tn("stepWaiting") : s.status === "skipped" ? tn("stepSkipped") : s.status === "failed" ? (s.error || tn("applyFailed")) : s.note || impactText(s.impact)}</span></li>`)}</ul>` : null}
+      <span class="note">${s.status === "waiting" ? tn("stepWaiting") : s.status === "skipped" ? tn("stepSkipped") : s.status === "failed" ? (s.error ? applyErrorText(s.error) : tn("applyFailed")) : s.note || impactText(s.impact)}</span></li>`)}</ul>` : null}
     ${rows.length ? html`<ul class="s-op-steps">${rows.map((r) => html`<li key=${r.target} class=${`s-step ${r.status}`}>
       <span class="s-step-icon" aria-hidden="true">${r.status === "done" ? html`<${Icon} name="check" size=${14} />` : r.status === "failed" ? html`<${Icon} name="alert" size=${14} />` : r.status === "restart-required" ? html`<${Icon} name="restart" size=${14} />` : "·"}</span>
       <span class="grow">${r.target === "fleet" ? "AgEnD" : shortName(r.target, {})}</span>

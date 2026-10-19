@@ -116,7 +116,8 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "fleet.spawn_stagger_ms": "fleet",
   "classic.admin_users": "fleet",
   "classic.allowed_guilds": "fleet",
-  "instance.delete": "fleet",
+  // #2168: a confirmed delete stops and removes the agent at once (removeInstance) — no AgEnD restart.
+  "instance.delete": "now",
 };
 
 /** Split a config into what a live daemon can take and what needs a restart. */

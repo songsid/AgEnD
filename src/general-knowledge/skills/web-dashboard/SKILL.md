@@ -299,7 +299,8 @@ in the General chat ("Waiting for confirmation", **Withdraw**). After a failure,
 **Web appearance** — see [Web appearance](#web-appearance) for the cards and what they mean.
 
 **Agents** — **New agent**; per agent **Settings**, **Pause / Wake**, **Start / Stop** (direct), ⋯ **Delete agent**
-(staged, restarts AgEnD). The agent dialog writes `instances.<name>.*` (an "Inherit" box removes the key):
+(staged; on Apply it waits for a fleet admin's confirmation in General, then the agent is stopped and removed, as
+`delete_instance` does — no restart). The agent dialog writes `instances.<name>.*` (an "Inherit" box removes the key):
 | Label | Key | Applies |
 |---|---|---|
 | Display name, Description | `display_name`, `description` | now |

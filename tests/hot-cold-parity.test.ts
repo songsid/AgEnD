@@ -226,6 +226,7 @@ describe("settings impact schema", () => {
     for (const [path, impact] of Object.entries(schema.impacts)) {
       if (!path.startsWith("instance.") || impact !== "now") continue;
       const key = path.slice("instance.".length);
+      if (key === "delete") continue;                    // #2168: an operation (removeInstance applies it at once), not a field
       expect(HOT_INSTANCE_CONFIG_KEYS.has(key as keyof InstanceConfig), path).toBe(true);
     }
   });

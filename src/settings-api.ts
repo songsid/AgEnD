@@ -37,6 +37,7 @@ import { redactInlineSecrets, restoreRedactedSecrets } from "./settings-redactio
  * written; warnings are non-blocking and returned alongside the result.
  */
 import { serveAppShell, type AppShellContext } from "./web-api.js";
+import { authorizeExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { isSettingsPage } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync, statSync } from "node:fs";
@@ -103,6 +104,9 @@ export interface SettingsApiContext extends AppShellContext {
     wake(name: string, timeoutMs?: number): Promise<void>;
   };
   isClassicInstance?(name: string): boolean;
+  /** Delete an agent the way delete_instance and the chat's Delete do (FleetManager.removeInstance): stopped, its schedules
+   *  and team places dropped, its fleet.yaml entry removed. Absent in unit contexts that only exercise CRUD. */
+  removeInstance?(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution): Promise<void>;
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
   explicitWake?(name: string, timeoutMs?: number): Promise<void>;
   restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[], execution?: SettingsExecution): Promise<void>;
@@ -1256,6 +1260,15 @@ export function handleSettingsRequest(
 
     if (method === "DELETE") {
       if (!Object.hasOwn(cfg.instances, name)) { json(res, 404, { error: "instance not found" }); return true; }
+      if (ctx.removeInstance) {
+        // Settings → Agents → Delete, confirmed: the same removal as delete_instance — the agent stops, nothing of it is
+        // left behind (schedules, team places), and its fleet.yaml entry goes.
+        const execution = settingsRequestExecution(req), authorization = authorizeExplicitInstanceRemoval("dashboard-confirmed");
+        (execution ? ctx.removeInstance(name, authorization, execution) : ctx.removeInstance(name, authorization)).then(
+          () => json(res, 200, { ok: true, deleted: name, warnings: validateFleetConfig(cfg).warnings }),
+          (err: unknown) => json(res, 500, { error: (err as Error).message }));
+        return true;
+      }
       // DELETE never blocks on validation; surface any resulting warnings.
       settingsWrite(req, () => {
         delete cfg.instances[name]; clearPausedMarker(join(ctx.dataDir, "instances", name)); ctx.saveFleetConfig();
