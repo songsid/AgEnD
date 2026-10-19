@@ -85,7 +85,9 @@ describe("the roster row: the CLI on the avatar (#1722), the context figure", ()
     await mountView();
     const alpha = rowOf("alpha");
     const kids = alpha.children.map((c: any) => c.className.split(" ")[0]);
-    expect(kids[kids.length - 1]).toBe("v-meta");
+    // #2179 (B5): the figure ends the name's line, inside the row's text; nothing after that text.
+    expect(kids[kids.length - 1]).toBe("inst-text");
+    expect(alpha.querySelector(".inst-line").children.map((c: any) => c.className.split(" ")[0]).at(-1)).toBe("v-meta");
     expect(alpha.querySelector(".v-meta").textContent).toBe("40%");
     expect([rowOf("beta").querySelector(".av-cli").textContent, rowOf("beta").querySelector(".av-cli").getAttribute("title")]).toEqual(["·", "mystery"]);
   });

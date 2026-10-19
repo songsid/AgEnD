@@ -148,6 +148,7 @@ const SIDEBAR_ORDER_KEY = "agend_view_sidebar_order";   // View's key since #999
 const COLLAPSED_KEY = "agend_instance_collapsed";
 const FILTER_KEY = "agend_instance_filter";
 const FAVORITES_KEY = "agend_favorites";   // #1664
+const SORT_KEY = "agend_nav_sort";         // #2179
 /**
  * A synced sidebar preference, as the JSON its reader parses: the value in force in memory (app-prefs.js — this
  * page's own change, else the host's; a full or blocked storage never brings an old one back), else this browser's copy.
@@ -177,6 +178,13 @@ function readFilter() {
     const f = JSON.parse(inForce("nav.filter", FILTER_KEY) || "{}");
     return { q: f && typeof f.q === "string" ? f.q : "", status: strings(f && f.status).filter((s) => STATUS_FACETS.includes(s)), cli: strings(f && f.cli) };
   } catch { return { q: "", status: [], cli: [] }; }
+}
+/** #2179: how the list sorts — { mode: "custom" (the person's order; the default) | "recent", favs: "fixed" | "recent" }. */
+function readSort() {
+  try {
+    const s = JSON.parse(inForce("nav.sort", SORT_KEY) || "{}");
+    return { mode: s && s.mode === "recent" ? "recent" : "custom", favs: s && s.favs === "recent" ? "recent" : "fixed" };
+  } catch { return { mode: "custom", favs: "fixed" }; }
 }
 function readFavorites() {
   try { const a = JSON.parse(inForce("nav.favorites", FAVORITES_KEY) || "[]"); return Array.isArray(a) ? [...new Set(a.filter((x) => typeof x === "string"))] : []; } catch { return []; }
@@ -216,11 +224,17 @@ function moveIn(arr, moving, target, before) {
 }
 
 /** The list's state for the page's life: this browser's order, folded groups and filter (each also kept in storage). */
-export const navStore = createStore({ order: readOrder(), collapsed: readCollapsed(), filter: readFilter(), favorites: readFavorites() });
+export const navStore = createStore({ order: readOrder(), collapsed: readCollapsed(), filter: readFilter(), favorites: readFavorites(), sort: readSort() });
 /** Read them again from this browser's storage — what a page load does (the store above is made that way). */
 export function loadNavPrefs() {
-  navStore.set({ order: readOrder(), collapsed: readCollapsed(), filter: readFilter(), favorites: readFavorites() });
+  navStore.set({ order: readOrder(), collapsed: readCollapsed(), filter: readFilter(), favorites: readFavorites(), sort: readSort() });
   namesStore.set({ primary: readNamesPrimary() });
+}
+/** #2179: change how the list sorts ({ mode?, favs? }): the same on every page and device. */
+export function setNavSort(patch) {
+  const sort = { ...navStore.get().sort, ...patch };
+  navStore.set({ sort });
+  savePref("nav.sort", { mode: sort.mode, favs: sort.favs });
 }
 /** Change the filter ({ q?, status?, cli? }): the same on every page, and kept by this browser. */
 export function setNavFilter(patch) {
@@ -230,7 +244,7 @@ export function setNavFilter(patch) {
 }
 function setCollapsed(collapsed) { navStore.set({ collapsed }); savePref("nav.collapsed", [...collapsed]); }
 // Another device rearranged, folded or filtered: this page's list follows (its cache is already updated).
-onPrefsChanged((keys) => { if (keys.has("nav.order") || keys.has("nav.collapsed") || keys.has("nav.filter") || keys.has("nav.favorites")) loadNavPrefs(); });
+onPrefsChanged((keys) => { if (keys.has("nav.order") || keys.has("nav.collapsed") || keys.has("nav.filter") || keys.has("nav.favorites") || keys.has("nav.sort")) loadNavPrefs(); });
 
 // ── #1664: favorites — starred instances, pinned at the top in the order they were starred (or moved) ──
 export const MAX_FAVORITES = 50;
@@ -381,6 +395,71 @@ export function InstanceAvatar({ it, state, cli = false }) {
 const statusText = (facet) => (facet === "needs" ? t("app.needsYou") : facet === "working" ? t("app.statusWorking") : facet === "idle" ? t("app.statusIdle")
   : facet === "crashed" ? t("app.statusCrashed") : t("app.statusStopped"));
 
+// ── #2179: when each instance last replied to a person (the status frame's last_reply) ──
+/** A reply this recent (minutes) is highlighted; the highlight fades to nothing over this time. */
+export const REPLY_FRESH_MIN = 10;
+/** Minutes since the instance last replied to a person, or null (none kept, or no time on this row). */
+export function replyAge(it, now = Date.now()) {
+  const at = it && typeof it.last_reply === "string" ? Date.parse(it.last_reply) : NaN;
+  return Number.isFinite(at) ? Math.max(0, (now - at) / 60000) : null;
+}
+/** "just now", "2 min ago", "3 h ago", "yesterday", "4 d ago" — in the page's language. */
+export function replyText(mins) {
+  if (mins < 1) return tn("replyJustNow");
+  if (mins < 60) return tn("replyMinutes", { n: Math.floor(mins) });
+  if (mins < 1440) return tn("replyHours", { n: Math.floor(mins / 60) });
+  if (mins < 2880) return tn("replyYesterday");
+  return tn("replyDays", { n: Math.floor(mins / 1440) });
+}
+/** How strong the highlight is: 1 just after a reply, down to 0 at REPLY_FRESH_MIN minutes. */
+export function replyFade(mins) { return mins == null || mins >= REPLY_FRESH_MIN ? 0 : 1 - mins / REPLY_FRESH_MIN; }
+/** The highlight's strength on the row, through the CSSOM (style-src has no 'unsafe-inline'). */
+function paintReply(el, fade) {
+  if (!el) return;
+  if (fade > 0) el.style.setProperty("--reply-a", fade.toFixed(3)); else el.style.removeProperty("--reply-a");
+}
+/** Most recent reply first; rows with none keep their order after them (a stable sort). */
+function byRecentReply(age) {
+  return (a, b) => {
+    const x = age(a), y = age(b);
+    if (x == null || y == null) return x == null ? (y == null ? 0 : 1) : -1;
+    return x - y;
+  };
+}
+/** The group that holds every non-favorite row in "recent" mode: no tag or team can be it, and it is never saved. */
+const RECENT_GROUP = "\u0000recent";
+
+/** #2179: the sort button and its menu — how the list sorts, said on the button. */
+function SortMenu({ sort }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef(null);
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const doc = box.current && box.current.ownerDocument;
+    if (!doc) return undefined;
+    const away = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") { e.preventDefault(); setOpen(false); } };
+    doc.addEventListener("pointerdown", away, true);
+    doc.addEventListener("keydown", esc, true);
+    return () => { doc.removeEventListener("pointerdown", away, true); doc.removeEventListener("keydown", esc, true); };
+  }, [open]);
+  const recent = sort.mode === "recent";
+  const radio = (group, value, label, hint) => html`<label class="nav-sort-opt"><input type="radio" name=${`nav-sort-${group}`} value=${value}
+      checked=${sort[group] === value} onChange=${() => setNavSort({ [group]: value })} /><span>${label}${hint ? html`<span class="nav-sort-hint">${hint}</span>` : null}</span></label>`;
+  return html`<div class="nav-sort" ref=${box}>
+    <button type="button" class=${`chip-btn nav-sort-btn${recent ? " on" : ""}`} aria-haspopup="dialog" aria-expanded=${open ? "true" : "false"}
+      title=${tn("sortTitle")} onClick=${() => setOpen(!open)}><${Icon} name="sort" size=${12} /><span>${tn(recent ? "sortRecent" : "sortCustom")}</span></button>
+    ${open ? html`<div class="nav-sort-menu" role="dialog" aria-label=${tn("sortTitle")}>
+      <fieldset><legend>${tn("sortTitle")}</legend>
+        ${radio("mode", "custom", tn("sortCustom"), tn("sortCustomHint"))}
+        ${radio("mode", "recent", tn("sortRecent"), tn("sortRecentHint"))}</fieldset>
+      <fieldset><legend>${tn("sortFavs")}</legend>
+        ${radio("favs", "fixed", tn("sortFavsFixed"), "")}
+        ${radio("favs", "recent", tn("sortFavsRecent"), "")}</fieldset>
+    </div>` : null}
+  </div>`;
+}
+
 /**
  * The sidebar's instance list. `route`: the page's (which instance is open, and which view a row opens). `items`: the
  * rows (status frames' instances, or View's roster for an anonymous reader); `loaded` false shows a skeleton.
@@ -394,6 +473,9 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const filterRef = useRef(null);
   const list = useRef(null);
   const drag = useRef(null);
+  // #2179: the reply times and their highlight move on by themselves — the list is drawn again every 30 s.
+  const [, setTick] = useState(0);
+  useLayoutEffect(() => { const id = setInterval(() => setTick((n) => n + 1), 30000); return () => clearInterval(id); }, []);
   // #1700: which facet groups are open — this device's (screen layout, not a synced preference), read when the list mounts.
   const [facetOpen, setFacetOpen] = useState(readFacetsOpen);
   const toggleFacet = (key) => setFacetOpen((cur) => { const next = { ...cur, [key]: !cur[key] }; writeFacetsOpen(next); return next; });
@@ -420,9 +502,26 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   // #1920: a guest's list is to pick from — no reordering and no filters (one this device kept would hide rows with no
   // way to clear it).
   const guest = guestPage();
-  const shownGroups = favs.length ? [FAV_GROUP, ...groupNames] : groupNames;
-  const shownInsts = new Map([...instByGroup].map(([g, names]) => [g, names.filter((n) => !favSet.has(n))]));
-  if (favs.length) shownInsts.set(FAV_GROUP, favs);
+  // #2179: when each row last replied (a guest's list has no times). "recent" mode (never a guest's): the favorites keep
+  // their order or are sorted too, and every other row is one list, the last reply first. "custom" (the default) is the
+  // person's own order — a reply never moves a row.
+  const now = Date.now();
+  // The anonymous View reader (viewOnly) has no reply times (/api/profiles carries none) and no way to change the sort:
+  // its list is always Custom, whatever this browser kept from a signed-in page (#2181 review).
+  const ageOf = (n) => (guest || viewOnly ? null : replyAge(byName.get(n), now));
+  const recent = !guest && !viewOnly && nav.sort.mode === "recent";
+  const favsSorted = recent && nav.sort.favs === "recent";
+  let shownGroups, shownInsts;
+  if (recent) {
+    const sortRecent = byRecentReply(ageOf);
+    const rest = groupNames.flatMap((g) => instByGroup.get(g) || []).filter((n) => !favSet.has(n)).sort(sortRecent);
+    shownGroups = [...(favs.length ? [FAV_GROUP] : []), ...(rest.length ? [RECENT_GROUP] : [])];
+    shownInsts = new Map([[FAV_GROUP, favsSorted ? [...favs].sort(sortRecent) : favs], [RECENT_GROUP, rest]]);
+  } else {
+    shownGroups = favs.length ? [FAV_GROUP, ...groupNames] : groupNames;
+    shownInsts = new Map([...instByGroup].map(([g, names]) => [g, names.filter((n) => !favSet.has(n))]));
+    if (favs.length) shownInsts.set(FAV_GROUP, favs);
+  }
   const f = guest ? { q: "", status: [], cli: [] } : nav.filter;
   const shown = filterSidebar(shownGroups, shownInsts, byName, f.q, backendLabel, { status: f.status, cli: f.cli, statusOf: facetOf });
   // #1936: while a filter is on, the instance you have open stays on top, pinned and marked "Current", whether or not
@@ -437,7 +536,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const flip = (key, value) => { const cur = new Set(navStore.get().filter[key]); if (cur.has(value)) cur.delete(value); else cur.add(value); setNavFilter({ [key]: [...cur] }); };
   // Drag to reorder: only the full list (a filtered subset would be ambiguous), groups among groups, instances within
   // their group.
-  const dragProps = (item) => shown.active || guest ? {} : {
+  const dragProps = (item) => shown.active || guest || recent ? {} : {     // #2179: not while sorted by reply
     draggable: true,
     onDragStart: (e) => { drag.current = item; e.currentTarget.classList.add("dragging"); try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", item.name); } catch { /* Firefox needs data */ } },
     onDragEnd: (e) => { e.currentTarget.classList.remove("dragging"); drag.current = null; },
@@ -492,18 +591,24 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     // #1958: its identity colour — the ring, a left bar and/or the name, as resolved; painted through the CSSOM.
     const id = identityOf(it);
     const full = !starred && favs.length >= MAX_FAVORITES;
-    return html`<li key=${name} class="v-li"><a class=${`inst v-inst${on ? " active" : ""} ${identityClasses(id)}`} ref=${(el) => paintIdentity(el, id)} href=${rowPath(name)} title=${instanceTooltip(it)}
+    // #2179 (B5, the user's pick): the % (and the ★ beside the row) on the name's line; the time of the last reply at the
+    // end of the second line, highlighted for REPLY_FRESH_MIN minutes, fading by itself (a reply under a minute pulses once).
+    const mins = ageOf(name), fade = replyFade(mins);
+    const two = !!secondary || mins != null;
+    return html`<li key=${name} class=${`v-li${two ? " two-line" : ""}`}><a class=${`inst v-inst${on ? " active" : ""}${fade > 0 ? " replied" : ""}${mins != null && mins < 1 ? " just" : ""} ${identityClasses(id)}`}
+        ref=${(el) => { paintIdentity(el, id); paintReply(el, fade); }} href=${rowPath(name)} title=${instanceTooltip(it)}
         aria-current=${on ? "page" : undefined} onClick=${onPick} ...${fav ? {} : dragProps({ type: "instance", name, group: g })}>
       <${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} cli=${true} />
-      <span class="inst-text"><span class="inst-name" title=${label}>${label}</span>
-        ${secondary ? html`<span class="inst-alt" title=${secondary}>${secondary}</span>` : null}
+      <span class="inst-text"><span class="inst-line"><span class="inst-name" title=${label}>${label}</span>
+          <span class="v-meta">${it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span></span>
+        ${two ? html`<span class="inst-line inst-line2"><span class="inst-alt" title=${secondary || undefined}>${secondary || ""}</span>
+          ${mins != null ? html`<span class=${`inst-when${fade > 0 ? " fresh" : ""}`} title=${tn("replyTitle", { time: new Date(Date.parse(it.last_reply)).toLocaleString() })}>${replyText(mins)}</span>` : null}</span>` : null}
         ${facet === "needs" ? html`<span class="inst-sub"><span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span></span>` : null}
         <span class="sr-only">${tn("tooltipBackend", { value: backendLabel(it.backend) })}</span></span>
-      <span class="v-meta">${it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span>
     </a>${fav && editing && canStar ? html`<button type="button" class="icon-btn inst-move" aria-label=${tn("favUp", { name: label })}
-        title=${shown.active ? tn("favFiltered") : tn("favUp", { name: label })} disabled=${shown.active || i === 0} onClick=${() => { if (!shown.active) moveFavorite(name, -1, known); }}><${Icon} name="up" size=${14} /></button><button type="button" class="icon-btn inst-move"
-        aria-label=${tn("favDown", { name: label })} title=${shown.active ? tn("favFiltered") : tn("favDown", { name: label })} disabled=${shown.active || i === count - 1}
-        onClick=${() => { if (!shown.active) moveFavorite(name, 1, known); }}><${Icon} name="down" size=${14} /></button>` : null}${canStar
+        title=${shown.active ? tn("favFiltered") : favsSorted ? tn("favSorted") : tn("favUp", { name: label })} disabled=${shown.active || favsSorted || i === 0} onClick=${() => { if (!shown.active && !favsSorted) moveFavorite(name, -1, known); }}><${Icon} name="up" size=${14} /></button><button type="button" class="icon-btn inst-move"
+        aria-label=${tn("favDown", { name: label })} title=${shown.active ? tn("favFiltered") : favsSorted ? tn("favSorted") : tn("favDown", { name: label })} disabled=${shown.active || favsSorted || i === count - 1}
+        onClick=${() => { if (!shown.active && !favsSorted) moveFavorite(name, 1, known); }}><${Icon} name="down" size=${14} /></button>` : null}${canStar
       ? html`<button type="button" class=${`icon-btn inst-star${starred ? " on" : ""}`} aria-pressed=${starred ? "true" : "false"} disabled=${full}
           aria-label=${tn(starred ? "favRemove" : "favAdd", { name: label })} title=${full ? tn("favFull", { max: MAX_FAVORITES }) : tn(starred ? "favRemove" : "favAdd", { name: label })}
           onClick=${() => toggleFavorite(name, known)}><${Icon} name="star" size=${14} /></button>` : null}</li>`;
@@ -512,6 +617,8 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   return html`<div class=${`view-roster inst-nav${editing && canStar ? " fav-editing" : ""}`}>
     <div data-trust="navigation" class="side-section" id="instanceList" ref=${list}>
     <div class="inst-head"><h2 class="side-label">${tn("instancesLabel")}</h2>
+      ${canStar && items.length && !guest ? html`<${SortMenu} sort=${nav.sort} />`
+        : recent ? html`<span class="chip-btn nav-sort-btn on nav-sort-static"><${Icon} name="sort" size=${12} /><span>${tn("sortRecent")}</span></span>` : null}
       ${canStar && items.length ? html`<button type="button" class="chip-btn fav-edit" aria-pressed=${editing ? "true" : "false"} onClick=${() => setEditing(!editing)}>
         ${editing ? tn("favDone") : html`<${Icon} name="star" size=${12} />${tn("favEdit")}`}</button>` : null}</div>
     ${!loaded ? html`<${Skeleton} lines=${4} />` : !items.length ? html`<p class="side-empty">${t("app.noInstances")}</p>` : null}
@@ -519,6 +626,10 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
       <div class="v-group-head pinned-head"><span class="grow">${tn("pinnedCurrent")}</span></div>
       <ul class="inst-list">${row(pinned, PINNED_GROUP, 0, 1)}</ul></div>` : null}
     ${listed.map(({ group: g, names }) => {
+      // #2179: in "recent" mode every other row is one list — open, not dragged, not saved as a group.
+      if (g === RECENT_GROUP) return html`<div key=${g} class="v-group v-recent" role="group" aria-label=${tn("recentOthers")}>
+        <div class="v-group-head recent-head"><${Icon} name="clock" size=${14} /><span class="grow">${tn("recentOthers")}</span><span class="count">${names.length}</span></div>
+        <ul class="inst-list">${names.map((name, i) => row(name, g, i, names.length))}</ul></div>`;
       // #1664: Favorites — always open, not dragged (↑ ↓ in Edit), named in the page's language.
       if (g === FAV_GROUP) return html`<div key=${g} class="v-group v-fav" role="group" aria-label=${tn("favorites")}>
         <div class="v-group-head fav-head"><${Icon} name="star" size=${14} cls="fav-mark" /><span class="grow">${tn("favorites")}</span><span class="count">${names.length}</span></div>

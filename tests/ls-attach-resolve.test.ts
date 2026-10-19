@@ -3,7 +3,10 @@
  * Covers: CJK display names, row numbers, ambiguity, fuzzy suggestions.
  */
 import { describe, expect, it } from "vitest";
-import { resolveCandidate, applyLsFilters, pickerDefaultIdx, validateNamesOnlyFilters } from "../src/ls-attach-resolve.js";
+import {
+  resolveCandidate, applyLsFilters, pickerDefaultIdx, validateNamesOnlyFilters,
+  ambiguityLine, pickerLine, lsDisplayAnnotation,
+} from "../src/ls-attach-resolve.js";
 import type { Candidate, LsRow } from "../src/ls-attach-resolve.js";
 
 /** Build a minimal fleet candidate list (no tmux calls needed). */
@@ -356,5 +359,84 @@ describe("P2-4: pickerDefaultIdx uses first displayed candidate", () => {
 
   it("returns 1 for empty list (safe fallback)", () => {
     expect(pickerDefaultIdx([])).toBe(1);
+  });
+});
+
+// ── Long real name never truncated in picker/ambiguity lines ─────────────────
+
+describe("ambiguityLine and pickerLine: full real name, no truncation", () => {
+  const LONG = "rd1-a89-dev-fable-t1532671461406277715"; // 38 chars
+  const SHORT = "alpha-t1";
+
+  const cLong: Candidate = {
+    idx: 3, realName: LONG, displayLabel: "鑄碼副手 Fable",
+    status: "running", teams: ["rd1"],
+  };
+  const cShort: Candidate = {
+    idx: 7, realName: SHORT, displayLabel: "Alpha",
+    status: "paused", teams: [],
+  };
+
+  it("ambiguityLine contains the full 38-char real name", () => {
+    const line = ambiguityLine(cLong, LONG.length);
+    expect(line).toContain(LONG);
+    // The full name must be present; the line must NOT end at the 32-char truncation point
+    expect(line.includes(LONG.slice(0, 32) + "2")).toBe(true); // char 33 is "2"
+    expect(line).not.toContain("鑄碼副手"); // display label no longer printed
+    expect(line).toContain("[running]");
+    expect(line).toContain("rd1");
+  });
+
+  it("ambiguityLine omits display suffix always (user decision: too many chars)", () => {
+    const c: Candidate = { idx: 1, realName: "general", displayLabel: "General Display", status: "running", teams: [] };
+    const line = ambiguityLine(c, "general".length);
+    expect(line).not.toContain("General Display");
+    expect(line).toContain("general");
+  });
+
+  it("pickerLine contains the full real name and status glyph, no display label", () => {
+    const line = pickerLine(cLong, LONG.length);
+    expect(line).toContain(LONG);
+    expect(line).toContain("●");
+    expect(line).not.toContain("鑄碼副手"); // display label no longer printed
+    expect(line).toContain("rd1");
+  });
+
+  it("pickerLine uses ○ for paused, no display label", () => {
+    const line = pickerLine(cShort, SHORT.length);
+    expect(line).toContain("○");
+    expect(line).toContain(SHORT);
+    expect(line).not.toContain("Alpha"); // display label no longer printed
+  });
+
+  it("names are padded to maxNameW so status/teams columns align", () => {
+    const maxW = Math.max(LONG.length, SHORT.length); // = 38
+    // Use candidates where displayLabel === realName (no suffix) for clean alignment check
+    const cA: Candidate = { idx: 3, realName: LONG,  displayLabel: LONG,  status: "running", teams: ["rd1"] };
+    const cB: Candidate = { idx: 7, realName: SHORT, displayLabel: SHORT, status: "paused",  teams: [] };
+    const lineA = ambiguityLine(cA, maxW);
+    const lineB = ambiguityLine(cB, maxW);
+    // Both should have the same position for the [status] bracket
+    const posA = lineA.indexOf("[");
+    const posB = lineB.indexOf("[");
+    expect(posA).toBe(posB);
+  });
+});
+
+// ── P2-3: lsDisplayAnnotation — --display flag ──────────────────────────────
+
+describe("P2-3: lsDisplayAnnotation (agend ls --display flag)", () => {
+  it("returns empty string when show=false, regardless of label", () => {
+    expect(lsDisplayAnnotation("alpha-t001", "Sentinel", false)).toBe("");
+    expect(lsDisplayAnnotation("general", "general", false)).toBe("");
+  });
+
+  it("returns '  (label)' when show=true and label differs from realName", () => {
+    const a = lsDisplayAnnotation("agend-reviewer-t1503382598640996543", "稜鏡 Prism", true);
+    expect(a).toBe("  (稜鏡 Prism)");
+  });
+
+  it("returns empty string when show=true but label equals realName (no annotation)", () => {
+    expect(lsDisplayAnnotation("general", "general", true)).toBe("");
   });
 });

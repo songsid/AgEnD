@@ -872,6 +872,35 @@ img.amb-p { object-fit: contain; }
 @media (max-width: 899px) { .fav-editing .inst-star, .fav-editing .inst-move { width: 36px; height: 36px; } }
 .v-inst .dot { margin-top: 0; }
 .v-meta { color: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.v-meta { flex: none; }
+/* #2179 (B5, the user's pick): the name and its % on the first line; the other name and the last reply's time on the
+   second, the time at its end — one column of times down the list. The ★ beside a two-line row sits on the first line. */
+.inst-line { display: flex; align-items: baseline; gap: var(--s-2); min-width: 0; }
+.inst-line > .inst-name, .inst-line2 > .inst-alt { flex: 1; min-width: 0; }
+.inst-when { flex: none; font-size: var(--fs-xs); line-height: var(--lh-xs); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.inst-when.fresh { color: var(--accent); font-weight: var(--fw-semibold); }
+.v-li.two-line > .inst-star, .v-li.two-line > .inst-move { align-self: flex-start; margin-top: 6px; }
+/* A fresh reply: an accent tint that fades with --reply-a (1 → 0 over ten minutes, set on the row), never over the open
+   or a hovered row; one under a minute old pulses once — not under reduced motion. Nothing to click or clear. */
+.inst.replied:not(.active):not(:hover) { background: color-mix(in srgb, var(--accent) calc(var(--reply-a, 0) * 22%), transparent); }
+.inst.just:not(.active) { animation: inst-just 2.4s ease-out 1; }
+@keyframes inst-just { from { box-shadow: inset 0 0 0 1.5px var(--accent); } to { box-shadow: inset 0 0 0 1.5px transparent; } }
+@media (prefers-reduced-motion: reduce) { .inst.just:not(.active) { animation: none; } }   /* as specific as the rule it stops */
+/* #2179: how the list sorts — the button says it (the accent while "Recent replies" is on); its menu under it. */
+.inst-head { position: relative; }
+.nav-sort { position: static; flex: none; }   /* the menu spans the header's width, under it — never past the sidebar's edge */
+.nav-sort-btn { display: inline-flex; align-items: center; gap: 4px; }
+.nav-sort-btn.on { color: var(--accent); }
+.nav-sort-static { cursor: default; }
+.nav-sort-menu { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30; padding: var(--s-3);
+  border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  display: flex; flex-direction: column; gap: var(--s-3); }
+.nav-sort-menu fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.nav-sort-menu legend { padding: 0 0 4px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
+.nav-sort-opt { display: flex; align-items: flex-start; gap: var(--s-2); min-height: 36px; padding: 4px 2px; font-size: var(--fs-sm); cursor: pointer; }
+.nav-sort-opt input { margin-top: 3px; flex: none; }
+.nav-sort-hint { display: block; font-size: var(--fs-xs); color: var(--text-3); }
+.recent-head { cursor: default; }
 /* #1722: the sidebar's width — a separator on its right edge (drag, arrows, Home/End, double-click resets); not on a phone */
 .side-resize { position: absolute; top: 0; right: -3px; width: 6px; height: 100%; z-index: 5; cursor: col-resize; touch-action: none; }
 .side-resize:hover, .side-resize:focus-visible, .side-resize.dragging { background: var(--accent-dim, var(--border-strong)); }

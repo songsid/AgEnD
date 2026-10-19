@@ -151,9 +151,42 @@ export function applyLsFilters(
   return result;
 }
 
+/**
+ * The display-name annotation appended to an `agend ls` row.
+ * Returns `"  (label)"` when `show` is true and the label differs from the
+ * real name; otherwise returns `""`.
+ * Extracted as a pure function so the --display flag can be tested without
+ * running lsAction.
+ */
+export function lsDisplayAnnotation(realName: string, displayLabel: string, show: boolean): string {
+  if (!show || displayLabel === realName) return "";
+  return `  (${displayLabel})`;
+}
+
 /** Return the global idx to use as the picker default (first displayed row). */
 export function pickerDefaultIdx(displayedCandidates: Pick<Candidate, "idx">[]): number {
   return displayedCandidates[0]?.idx ?? 1;
+}
+
+/**
+ * Format one line of the ambiguity candidate list.
+ * Shows: `  #) realName  [status]  teams` — no display label in output.
+ * `maxNameW` pads names for column alignment.
+ */
+export function ambiguityLine(c: Candidate, maxNameW: number): string {
+  const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
+  return `  ${String(c.idx).padStart(2)}) ${c.realName.padEnd(maxNameW)}  [${c.status}]  ${teams}`;
+}
+
+/**
+ * Format one line of the interactive picker list.
+ * Shows: `  #) statusGlyph realName  teams` — no display label in output.
+ * `maxNameW` pads names for column alignment.
+ */
+export function pickerLine(c: Candidate, maxNameW: number): string {
+  const statusGlyph = c.status === "running" ? "●" : c.status === "paused" ? "○" : "✗";
+  const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
+  return `  ${String(c.idx).padStart(2)}) ${statusGlyph} ${c.realName.padEnd(maxNameW)}  ${teams}`;
 }
 
 /**
