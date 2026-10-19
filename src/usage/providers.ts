@@ -637,6 +637,8 @@ let agyTokenCache: { token: string; until: number } | null = null;
 interface AgyBucket {
   bucketId?: string; displayName?: string; window?: string; disabled?: boolean;
   remainingFraction?: number; resetTime?: string; group?: string;
+  /** Not on the summary's wire: the model's `modelProvider` (MODEL_PROVIDER_GOOGLE …), copied on by agyModelBuckets. */
+  provider?: string;
 }
 interface AgyQuotaSummary { groups?: { displayName?: string; buckets?: AgyBucket[] }[]; buckets?: AgyBucket[] }
 
@@ -647,6 +649,34 @@ export function agyQuotaBuckets(body: AgyQuotaSummary): AgyBucket[] {
   return grouped.length ? grouped : (body.buckets ?? []);
 }
 
+/** `fetchAvailableModels`: each model's own quota (agy's proto: ModelDetails.quotaInfo). */
+interface AgyModels { models?: Record<string, { displayName?: string; modelProvider?: string; quotaInfo?: { remainingFraction?: number; resetTime?: string } }> }
+
+/**
+ * Each model's quota as a per-model bucket. Only models with a reset time count: agy's internal models (tab completion,
+ * `chat_…`) report a bare 1 with none, which is no limit anyone runs into.
+ */
+export function agyModelBuckets(body: AgyModels): AgyBucket[] {
+  return Object.entries(body.models ?? {}).flatMap(([id, m]) => m?.quotaInfo?.resetTime
+    ? [{ bucketId: id, remainingFraction: m.quotaInfo.remainingFraction, resetTime: m.quotaInfo.resetTime, provider: m.modelProvider }]
+    : []);
+}
+
+/**
+ * The buckets to show: the summary's, then — for each pool the summary does not name — the models' own quotas
+ * (#2174). agy 1.4 (2026-10-19, this machine's live account) answered the summary with only the "Claude and GPT
+ * models" group while every Gemini model still had a quota of its own, so the Gemini pool vanished from the row.
+ */
+export function agyUsageBuckets(summary: AgyQuotaSummary, models: AgyModels | null): AgyBucket[] {
+  const fromSummary = agyQuotaBuckets(summary);
+  const named = new Set(fromSummary.map(b => { const id = agyBucketId(b); return id ? agyPool(b, id) : null; }));
+  return [...fromSummary, ...(models ? agyModelBuckets(models).filter(b => !named.has(agyPool(b, b.bucketId!))) : [])];
+}
+
+function agyBucketId(b: AgyBucket): string | undefined {
+  return b.bucketId?.trim() || (b.group ? b.displayName?.trim() : undefined);
+}
+
 type AgyWindow = "session" | "weekly";
 const AGY_POOLED: Record<string, { pool: string; window: AgyWindow }> = {
   "gemini-5h": { pool: "Gemini", window: "session" },
@@ -655,7 +685,11 @@ const AGY_POOLED: Record<string, { pool: string; window: AgyWindow }> = {
   "3p-weekly": { pool: "Claude & others", window: "weekly" },
 };
 
-/** The pool a bucket belongs to: its group when the summary names one (#1898), else a guess from the bucket id. */
+/**
+ * The pool a bucket belongs to: its group when the summary names one (#1898), else its model's provider, else its id.
+ * One nobody recognises is a pool of its own under its own name — never folded into another, so a vendor rename shows
+ * up as a new row instead of hiding one (#2174).
+ */
 function agyPool(b: AgyBucket, id: string): string {
   const pooled = AGY_POOLED[id];
   if (pooled) return pooled.pool;
@@ -665,7 +699,15 @@ function agyPool(b: AgyBucket, id: string): string {
     if (/claude|gpt|third.?party|\b3p\b/i.test(group)) return "Claude & others";
     return group;
   }
-  return id.startsWith("gemini") ? "Gemini" : "Claude & others";
+  const provider = b.provider?.replace(/^MODEL_PROVIDER_/, "");
+  if (provider) {
+    if (provider === "GOOGLE") return "Gemini";
+    if (provider === "ANTHROPIC" || provider === "OPENAI") return "Claude & others";
+    if (provider !== "UNSPECIFIED") return provider.replace(/_/g, " ");
+  }
+  if (/^gemini/i.test(id)) return "Gemini";
+  if (/^(claude|gpt|3p)\b/i.test(id)) return "Claude & others";
+  return id;
 }
 
 /** The limit a bucket counts against ("Five Hour Limit", window "5h" …), or null for a per-model bucket. */
@@ -717,7 +759,7 @@ function agyLabel(pool: string, window: AgyWindow | null): { text: string; i18n:
 export function agyPoolMetrics(buckets: AgyBucket[]): UsageMetric[] {
   const entries = new Map<string, { pool: string; window: AgyWindow | null; fraction: number; resetsAt: string | null; models: number }>();
   for (const b of buckets) {
-    const id = b.bucketId?.trim() || (b.group ? b.displayName?.trim() : undefined);
+    const id = agyBucketId(b);
     if (!id || b.disabled === true || typeof b.remainingFraction !== "number" || !Number.isFinite(b.remainingFraction)) continue;
     const pool = agyPool(b, id);
     const window = agyWindow(b, id);
@@ -826,7 +868,25 @@ async function agyAccessToken(): Promise<{ token: string } | { error: string; er
   }
 }
 
-async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
+/**
+ * The models' own quotas (`fetchAvailableModels`, the list agy's model picker reads), from the same base as the
+ * summary. Only what the summary leaves out is taken from it, so a failure here costs nothing: null.
+ */
+async function agyModels(base: string, token: string): Promise<AgyModels | null> {
+  try {
+    const res = await fetch(`${base}/v1internal:fetchAvailableModels`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "antigravity" },
+      body: "{}",
+      signal: AbortSignal.timeout(LONGEST_SINGLE_FETCH_MS),
+    });
+    if (!res.ok) return null;
+    const body = await res.json() as AgyModels | null;
+    return body && typeof body === "object" ? body : null;
+  } catch { return null; }
+}
+
+export async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
   // A CLI-observed rate limit outranks anything the quota API says. The bucket
   // summary cannot see the account-level individual cap: verified live, it
   // reported every bucket 0% used in the same minute the CLI was refusing work
@@ -853,6 +913,9 @@ async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name
   if ("error" in auth) return { status: "error", error: auth.error, errorI18n: auth.errorI18n, metrics: [] };
 
   for (const base of AGY_CLOUDCODE_URLS) {
+    // Alongside the summary, not after it: one more round trip in the chain would push a slow-but-healthy pair past
+    // the provider deadline. Unused when the summary fails (it never rejects).
+    const models = agyModels(base, auth.token);
     let res: Response;
     try {
       res = await fetch(`${base}/v1internal:retrieveUserQuotaSummary`, {
@@ -872,7 +935,7 @@ async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name
     if (!res.ok) continue; // try the other base
     let body: AgyQuotaSummary;
     try { body = await res.json() as typeof body; } catch { continue; }
-    const metrics = agyPoolMetrics(agyQuotaBuckets(body ?? {}));
+    const metrics = agyPoolMetrics(agyUsageBuckets(body ?? {}, await models));
     return metrics.length
       ? { status: "ok", plan: null, metrics }
       : { status: "ok", plan: null, hint: "No quota information reported for this account.", hintI18n: i18n("usage.hint.no_quota"), metrics: [] };
