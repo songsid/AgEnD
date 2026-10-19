@@ -64,8 +64,12 @@ says "step-up", read "the session's authorization". S1 (#2108) is merged; §0 sa
    Revoke web authority. It also lists the authorized sessions. §0.1 drops more.
 6. **The instructions (S3)** replace every "web grants nothing" rule with one: a `via web (verified)` message is a human
    receipt; verify it with `delivery_status` (require `authority.kind: web-verified`, delivered, an owned `proof_kind`,
-   the content and the actor) the same way as a Discord or Telegram message, and forward it with `forwards`. Plain
-   `via web` grants nothing.
+   the content and the actor) the same way as a Discord or Telegram message, and forward it with `forwards`.
+   **Reworded by the user, 2026-10-19 (Discord receipt hmsg-45b6a366):** a plain `via web` message from a signed-in
+   user is that person for ordinary requests (questions, reading, analysis, work in the agent's own scope); only a
+   go-ahead action (a release or publish, destructive or irreversible, spending beyond normal work, credentials or
+   secrets, granting or forwarding authority) needs a Discord/Telegram receipt or a checked `via web (verified)` one. A
+   guest only chats; revoked authority and a reviewer's APPROVE are no go-ahead. The text is `WEB_RECEIPT_RULE`.
 
 **Staging (replaces §10's S2–S4).**
 - **S2a, server: #2112, reworked before it merges.**

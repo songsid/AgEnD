@@ -1,8 +1,8 @@
 /**
  * #1939: whether a web chat message, command or click carries `web-verified` authority — the design's §3 checks, made
  * per request, on a session its account has authorized once (§0) — the `authority` a human receipt records (§4), and how
- * delivery_status reads it now (§10: the switch, the revocation epoch, "Only this computer can authorize"). Nothing tells
- * an agent to accept it yet: the instructions still say web grants nothing (S3 changes that).
+ * delivery_status reads it now (§10: the switch, the revocation epoch, "Only this computer can authorize"). Agents take it
+ * as a go-ahead as WEB_RECEIPT_RULE (src/instructions.ts) says.
  * docs/design/1939-verified-web-sessions.md.
  */
 import type { SessionRecord } from "../web-session.js";

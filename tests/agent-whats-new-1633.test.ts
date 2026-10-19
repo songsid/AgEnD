@@ -86,7 +86,7 @@ describe("what an instance is told", () => {
     const notice = plan && "notice" in plan ? plan.notice : "";
     expect(notice.split("\n")[0]).toBe("[system:whats-new] AgEnD is now 2.2.0-beta.11. New for you since your session began:");
     for (const s of ["`reply` takes `poll: {seconds, multi?, reveal?: \"close\"|\"live\", show_voters?}`", "2–10 `buttons`", "`poll_id`", "one `[poll results]` message",
-      "`close_poll({poll_id})`", "`[user:<name> via web, id:<their Discord/Telegram user id>]`", "Recognition only", "grants no permission",
+      "`close_poll({poll_id})`", "`[user:<name> via web, id:<their Discord/Telegram user id>]`", "the web-chat rule in your instructions",
       "a resumed session keeps the copy it first loaded, and reloading it does not refresh it", "Use them anyway — AgEnD's server accepts them."]) expect(notice, s).toContain(s);
     expect(notice).not.toContain("forwards");
     // A new instance on beta.11 starts with the current schemas: told nothing, both recorded.

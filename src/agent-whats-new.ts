@@ -44,7 +44,7 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   { id: "2.2-polls", since: "2.2.0-beta.11",
     text: "`reply` takes `poll: {seconds, multi?, reveal?: \"close\"|\"live\", show_voters?}` with 2–10 `buttons` as the options: a vote by everyone who may talk to you there, closing `seconds` (10–86400) after it is posted; the reply's result has `poll_id`. At the close the results come to you as one `[poll results]` message in the poll's chat — post the answer or scores yourself. `close_poll({poll_id})` ends one of your polls early." },
   { id: "2.2-web-identity", since: "2.2.0-beta.11",
-    text: "A web-chat person signed in with a `/web` code arrives as `[user:<name> via web, id:<their Discord/Telegram user id>]` — the same id as on that platform, so you can recognise them; they may change the name. Recognition only: `via web` is never a verified message from that account and grants no permission." },
+    text: "A web-chat person signed in with a `/web` code arrives as `[user:<name> via web, id:<their Discord/Telegram user id>]` — the same id as on that platform, so you can recognise them; they may change the name. What it may ask of you is the web-chat rule in your instructions." },
   { id: "2.2-delivery-status-evidence", since: "2.2.0",
     text: "Correction: `Delivery not found` can mean hidden by ACL, expired retention, or never delivered; it is not proof of non-delivery. Do not act; ask the sender to explicitly forward a verifiable reference. Never resend on `uncertain`." },
   // #2012: from 2.3 on, one short topic line per area naming the skill to load; the details live in the skill. The six
@@ -60,9 +60,11 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   { id: "2.3-repo-tools", since: "2.3.0-beta.2",
     text: "Repo tools: `checkout_repo` works with branch names again and records each checkout; `release_repo` releases only your own checkout under your `repos/` and refuses any other path." },
   { id: "2.3-web-verified", since: "2.3.0-beta.7",
-    text: "Web messages can now carry the person's authority (#1939): when their Discord or Telegram account has authorized that browser, they arrive as `[user:<name> via web (verified), id:<their user id>]`. The label is a hint — before acting on it as the person, read its receipt with `delivery_status`: `authority.kind: web-verified` names them in `authority.actor`, and it is checked and forwarded (`forwards`) like a Discord or Telegram message. Plain `via web` still grants nothing. The full rule is in the cross-instance-messaging skill." },
+    text: "Web messages can now carry the person's authority (#1939): when their Discord or Telegram account has authorized that browser, they arrive as `[user:<name> via web (verified), id:<their user id>]`. The label is a hint — before acting on it as the person, read its receipt with `delivery_status`: `authority.kind: web-verified` names them in `authority.actor`, and it is checked and forwarded (`forwards`) like a Discord or Telegram message. The full rule is in the cross-instance-messaging skill." },
   { id: "2.3-decision-titles", since: "2.3.0-beta.9",
     text: "`list_decisions` now answers titles by default (id, title, scope, date, tags). Read a decision's full text with `list_decisions { id }`, or all of them with `{ full: true }` (large). CLI mode: `agend-agent decision-get <id>`." },
+  { id: "2.3-web-ordinary-requests", since: "2.3.0-beta.10",
+    text: "The web-chat rule is reworded (#1939): a plain `via web` message is the signed-in person — answer it and do what it asks within your work (questions, reading, analysis, changes in your own scope). Only a go-ahead action — a release or publish, anything destructive or irreversible, spending beyond normal work, credentials or secrets, granting authority to another instance — needs their account behind it: a Discord or Telegram receipt, or `via web (verified)` with its receipt read (`delivery_status`). A guest only chats. The full text is in your instructions and the cross-instance-messaging skill." },
 ];
 
 /**

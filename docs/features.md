@@ -656,7 +656,7 @@ The recommended setup wizard detects installed backends and generates a minimal 
 
 ## Web Dashboard
 
-The fleet serves a web dashboard on `127.0.0.1` (`health_port`, default 19280). Its `/ui` is **web chat**: pick an instance and talk to it from the browser. It is the same conversation as that instance's Telegram or Discord chat: what you send from the web is echoed into the topic as `🌐 web · <your name>: …`, and the agent's replies show in both. Signed in with a `/web` code, you are your Discord or Telegram account to the agent (its user id, `via web`, for recognition only until you authorize that browser, then `via web (verified)` with your account's authority — see [web-dashboard.md](web-dashboard.md#who-the-agent-sees-1827)). Files and images (📎, paste or drop), Stop, and ticks showing how far each message got all work there, and a fleet with no chat platform can be run from the dashboard alone. `/view` is the read-mostly overview and `/settings` the fleet settings.
+The fleet serves a web dashboard on `127.0.0.1` (`health_port`, default 19280). Its `/ui` is **web chat**: pick an instance and talk to it from the browser. It is the same conversation as that instance's Telegram or Discord chat: what you send from the web is echoed into the topic as `🌐 web · <your name>: …`, and the agent's replies show in both. Signed in with a `/web` code, you are your Discord or Telegram account to the agent (its user id, `via web`: the agent does your ordinary requests as you; a release, anything destructive, spending or secrets need your account's go-ahead, which authorizing that browser gives — then `via web (verified)` — see [web-dashboard.md](web-dashboard.md#who-the-agent-sees-1827)). Files and images (📎, paste or drop), Stop, and ticks showing how far each message got all work there, and a fleet with no chat platform can be run from the dashboard alone. `/view` is the read-mostly overview and `/settings` the fleet settings.
 
 Sign in with a one-time code: send `/web` (fleet admin) or run `agend web` on the host. With [guest sign-in](#guest-web-sign-in-23-beta) on (2.3 beta, off by default), anyone else's `/web` signs them in as a guest who sees only the agents they already use in chat. To use it from a phone or another computer, see [Reaching it from elsewhere](web-dashboard.md#reaching-it-from-elsewhere). The full guide is [web-dashboard.md](web-dashboard.md).
 
@@ -1265,7 +1265,7 @@ A fleet admin is never a guest.
 **What a guest can do.**
 - **Chat:** with those agents only. That means the history its channel showed, files, reply buttons and Cancel, unless `chat: false` makes guests read-only.
 - **No commands:** text starting with `/` is refused.
-- **What the agent sees:** `[user:<name> via web (guest), id:<id>]`, for typed messages and button clicks alike. Like every web message, that is recognition only.
+- **What the agent sees:** `[user:<name> via web (guest), id:<id>]`, for typed messages and button clicks alike. A guest only chats: the agent takes nothing they ask as an admin's.
 - **Its app:** no Fleet, View, Settings, Needs you, New agent or widgets; a **Guest** chip says who is signed in.
 - **Preferences:** it reads the host's look (theme, language) but no preference that names an agent, and it can set its own web name.
 

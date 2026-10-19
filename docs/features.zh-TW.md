@@ -631,7 +631,7 @@ resume 預算、resume 重試和故障短路只針對 kiro（屬於後端能力�
 
 ## Web Dashboard
 
-Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板。其中的 `/ui` 就是**網頁聊天**：選一個 instance，就能在瀏覽器裡跟它對話。這和那個 instance 在 Telegram 或 Discord 上的是同一段對話：從網頁送出的訊息會以 `🌐 web · <你的名字>: …` 出現在 topic，Agent 的回覆兩邊都看得到。用 `/web` 的驗證碼登入時，對 Agent 來說你就是你的 Discord 或 Telegram 帳號（用它的使用者 id，`via web`，在你授權那個瀏覽器之前只用來辨認，授權後是帶有你帳號授權的 `via web (verified)`；見 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md#agent-看到的是誰1827)）。可以傳檔案和圖片（📎、貼上或拖進來）、按 Stop，也看得到每則訊息送到哪一步；沒有設定任何聊天平台的 fleet，也能只靠儀表板操作。`/view` 是以檢視為主的總覽，`/settings` 是 fleet 設定。
+Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板。其中的 `/ui` 就是**網頁聊天**：選一個 instance，就能在瀏覽器裡跟它對話。這和那個 instance 在 Telegram 或 Discord 上的是同一段對話：從網頁送出的訊息會以 `🌐 web · <你的名字>: …` 出現在 topic，Agent 的回覆兩邊都看得到。用 `/web` 的驗證碼登入時，對 Agent 來說你就是你的 Discord 或 Telegram 帳號（用它的使用者 id，`via web`：一般的請求 agent 會當作是你本人提出的；發布、破壞性操作、花費或密鑰則要你帳號點頭，授權那個瀏覽器即可——之後就是 `via web (verified)`；見 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md#agent-看到的是誰1827)）。可以傳檔案和圖片（📎、貼上或拖進來）、按 Stop，也看得到每則訊息送到哪一步；沒有設定任何聊天平台的 fleet，也能只靠儀表板操作。`/view` 是以檢視為主的總覽，`/settings` 是 fleet 設定。
 
 用一次性登入碼登入：傳 `/web`（fleet 管理員），或在主機上執行 `agend web`。開啟[訪客登入](#訪客網頁登入-guest-web-sign-in-23-beta)後（2.3 beta，預設關閉），其他人傳 `/web` 會以訪客身分登入，只看得到他們在聊天中本來就能用的 agent。要從手機或其他電腦使用，請看[從別的裝置連線](web-dashboard.zh-TW.md#從別的裝置連線)。完整說明在 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md)。
 
@@ -1189,7 +1189,7 @@ web:
 
 fleet 管理員永遠不會是訪客。
 
-**訪客能做什麼。** 和這些 agent 聊天，包括它的頻道顯示過的歷史、檔案、回覆按鈕與「取消」；`chat: false` 時訪客只能讀。它永遠不能下指令：以 `/` 開頭的文字會被拒絕。agent 看到的是 `[user:<名稱> via web (guest), id:<id>]`，打字的訊息和按鈕點擊都一樣；和所有網頁訊息一樣，這只用來辨認。它的介面只有這些：沒有 Fleet、View、設定、等你處理、新增 agent 或小工具，並有一個**訪客**標籤標出登入的是誰。它讀得到主機的外觀（主題、語言），但讀不到任何提到 agent 的偏好，也可以設定自己的網頁名稱。
+**訪客能做什麼。** 和這些 agent 聊天，包括它的頻道顯示過的歷史、檔案、回覆按鈕與「取消」；`chat: false` 時訪客只能讀。它永遠不能下指令：以 `/` 開頭的文字會被拒絕。agent 看到的是 `[user:<名稱> via web (guest), id:<id>]`，打字的訊息和按鈕點擊都一樣。訪客只能聊天：agent 不會把訪客的要求當成管理者的。它的介面只有這些：沒有 Fleet、View、設定、等你處理、新增 agent 或小工具，並有一個**訪客**標籤標出登入的是誰。它讀得到主機的外觀（主題、語言），但讀不到任何提到 agent 的偏好，也可以設定自己的網頁名稱。
 
 **Session。** 預設絕對時限 12 小時、閒置 2 小時（`web.guests.session`），絕不超過所在介面本身的時限（公開連結是 4 小時／30 分鐘）；每個帳號最多 4 個、全部最多 64 個，和管理員分開計算，所以訪客永遠不會把管理員擠掉。範圍變成空的訪客會被登出；關閉訪客登入會結束所有訪客 session，並忘記所有訪客記住的裝置，再次開啟也不會讓任何一個恢復。
 
