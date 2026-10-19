@@ -114,6 +114,11 @@ describe("the gate: the request's own confirmation", () => {
     const again = await h.request(h.candidate(), "same");
     expect([again.body.pending_change.id, h.asked.mock.calls.length]).toEqual([first.body.pending_change.id, 1]);
   });
+  it("…and two sent at once with that key (both past the replay check, the second joins the first at propose): asked once", async () => {
+    const h = gateHarness(() => null);
+    const [one, two] = await Promise.all([h.request(h.candidate(), "twin"), h.request(h.candidate(), "twin")]);
+    expect([two.body.pending_change.id, h.asked.mock.calls.length]).toEqual([one.body.pending_change.id, 1]);
+  });
 });
 
 // ── The fleet: who qualifies ──

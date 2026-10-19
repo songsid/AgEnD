@@ -600,4 +600,16 @@ does not give that bot's admins permission to confirm; admin membership is
 checked again before applying. Cross-platform or unknown targets require host
 CLI confirmation. First-time Setup still uses host confirmation.
 
+**Your own Apply confirms it when this browser is web-verified (#2170).** After **Authorize this browser** (see
+[the chat](#the-chat-ui)), a change that would wait for a chat card is confirmed by your Apply itself when all of these
+hold: your account is on the platform of the connections the change affects, and a fleet admin of every one of them
+(the rule above); the change's scope is known; and there is a General the chat card could have gone to (connected, on
+that platform, not one the change affects). The card then says "Confirmed by your account", and that General gets a
+plain notice: who confirmed it from the web, the source, the requester, the summary and the outcome. Every check runs
+again when the change executes: if the authorization was revoked or ran out, you signed out, or you are no longer an
+admin of those connections, nothing is applied (the change ends as stale). Anything else waits for chat or the host
+exactly as before: a browser that is not web-verified, a guest, the public link, the host's own `agend web` session,
+an account on another platform, or a change that needs host CLI confirmation. The threat the chat step stops — a
+session acting without its account (a copied cookie, a browser left signed in) — is what web verification answers.
+
 First-time Setup also returns a pending request. Confirm it on the host, then explicitly choose **Start AgEnD**. A pending response, an old successful commit or a changed configuration cannot hand over the setup listener to the fleet.
