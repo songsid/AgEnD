@@ -350,6 +350,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--surface-2); outline: none; }
 .menu-item.danger { color: var(--danger); }
 .menu-item:disabled { opacity: 0.45; }
+/* #2196: a group's heading in a menu (Page colours) and its radio items (the chosen one ticked). */
+.menu-heading { padding: var(--s-2) var(--s-3) var(--s-1); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); border-top: 1px solid var(--border); margin-top: var(--s-1); }
+.menu-heading:first-child { border-top: 0; margin-top: 0; }
+.menu-radio .menu-tick { width: 16px; display: inline-flex; color: var(--accent); }
 
 /* ── Dialog: centred on a desktop, a bottom sheet on a phone ── */
 .dlg { border: 0; padding: 0; border-radius: var(--r-lg); background: var(--bg); color: var(--text); box-shadow: var(--shadow-2); width: min(480px, calc(100vw - 32px)); max-height: 85vh; }
@@ -560,6 +564,14 @@ html.lb-open .scroller { overflow: hidden; }
 .chat-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 /* #1629: an agent's theme on its own chat surface — custom properties set on .p-chat through the CSSOM, choices as
    these tokens. The surface paints its own background (the page's body is not its). */
+/*
+ * #2196: an agent's colours on the whole page (app-themes.js applyPageTheme, on .shell): the shell paints its own
+ * background then, under the sidebar, the header, the usage rail and a phone's tabs. The header follows the page, not
+ * the chat: it takes the shell's colours back (--chrome-*: resolved on .shell, so the page's theme or the page's own).
+ */
+.shell.th-page { background: var(--bg); color: var(--text); }
+.shell { --chrome-bg: var(--bg); --chrome-surface: var(--surface); --chrome-text: var(--text); --chrome-text-2: var(--text-2); --chrome-accent: var(--accent); }
+.p-chat > .panel-head { --bg: var(--chrome-bg); --surface: var(--chrome-surface); --text: var(--chrome-text); --text-2: var(--chrome-text-2); --accent: var(--chrome-accent); background: var(--bg); color: var(--text); }
 .p-chat.th { background: var(--bg); color: var(--text); }
 .p-chat.th .msg.user .body { border-radius: var(--bubble-radius, var(--r-xl)); }
 .p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea { font-family: system-ui, -apple-system, "Segoe UI", sans-serif, var(--font-emoji); }

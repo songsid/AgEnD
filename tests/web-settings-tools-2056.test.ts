@@ -99,6 +99,19 @@ describe("set_web_settings: as the page changes it", () => {
     expect(set({ what: "agent_colour", instance: "alpha", colour: null, places: null })).toMatchObject({ ok: true, color: null, show: null });
     expect(set({ what: "agent_colour", instance: "nobody", colour: "preset:teal" })).toEqual({ ok: false, error: "unknown_instance" });
   });
+  it("#2196 page colours: one agent's (page / chat / agent: its own) kept with the host's prefs, another's untouched; read back", () => {
+    expect(set({ what: "page_colours", instance: "alpha", choice: "chat" })).toEqual({ ok: true, instance: "alpha", choice: "chat" });
+    expect(set({ what: "page_colours", instance: "beta", choice: "page" })).toMatchObject({ ok: true });
+    expect(host()["theme.pageByInstance"]).toEqual({ alpha: "chat", beta: "page" });
+    expect(fm.webSettings.read().host.page_colours).toEqual({ alpha: "chat", beta: "page" });
+    expect(fm.webSettings.read().summary.join("\n")).toContain("Page colours a person chose: alpha only its chat, beta on the whole page.");
+    expect(set({ what: "page_colours", instance: "alpha", choice: "agent" })).toMatchObject({ ok: true });
+    expect(host()["theme.pageByInstance"]).toEqual({ beta: "page" });
+    expect([set({ what: "page_colours", instance: "nobody", choice: "page" }), set({ what: "page_colours", instance: "beta", choice: "on" })])
+      .toEqual([{ ok: false, error: "unknown_instance" }, { ok: false, error: "page_colours", detail: "choice: agent (its own), page (the whole page) or chat (only its chat)" }]);
+    expect(set({ what: "page_colours", instance: "beta", choice: "agent" })).toMatchObject({ ok: true });
+    expect(Object.hasOwn(host(), "theme.pageByInstance")).toBe(false);                       // the last one gone: unset
+  });
   it("custom CSS: the same safe rules (no bypass); a tool saves on trial, keeps or reverts it, uses an earlier version, turns it off", () => {
     const remote = "body { background: url(https://example.com/x.png) }";
     expect(checkOwnerCss(remote, new Set()).ok).toBe(false);

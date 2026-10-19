@@ -9,7 +9,7 @@ import { html, useEffect, useState } from "./app-html.js";
 import { createStore, useStore } from "./app-store.js";
 import { onPrefsChanged, prefInForce, savePref } from "./app-prefs.js";
 import { register, t } from "./app-i18n.js";
-import { themesShown, themesStore } from "./app-themes.js";
+import { pageNow, themesShown, themesStore } from "./app-themes.js";
 import { Dialog } from "./ui-dialog.js";
 import { toast } from "./ui-toast.js";
 
@@ -63,16 +63,20 @@ export function contrast(a, b) {
   const [l1, l2] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (l1 + 0.05) / (l2 + 0.05);
 }
-/** The shade of `hex` name text uses: itself if readable, else the nearest step toward black (light) or white (dark). */
-export function readableShade(hex, mode) {
-  if (!HEX.test(hex)) return TEXT[mode];
+/**
+ * The shade of `hex` name text uses: itself if readable, else the nearest step toward black (light) or white (dark).
+ * `page` (#2196): an agent's colours on the page now — names must read on its background and sidebar instead.
+ */
+export function readableShade(hex, mode, page = null) {
+  const backgrounds = page ? [page.bg, page.sidebar] : BG[mode], text = page ? page.text : TEXT[mode];
+  if (!HEX.test(hex)) return text;
   const toward = mode === "light" ? 0 : 255;
   const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
   for (let step = 0; step <= 20; step++) {
     const shade = `#${ch.map((c) => Math.round(c + (toward - c) * (step / 20)).toString(16).padStart(2, "0")).join("")}`;
-    if (BG[mode].every((bg) => contrast(shade, bg) >= 4.5)) return shade;
+    if (backgrounds.every((bg) => contrast(shade, bg) >= 4.5)) return shade;
   }
-  return TEXT[mode];
+  return text;
 }
 
 // ── Resolution ──
@@ -135,7 +139,7 @@ export function identityOf(it, opts = {}) {
   const light = colorValue(c.color, "light"), dark = colorValue(c.color, "dark");
   return {
     color: c.color, source: c.source, show: p.show, showSource: p.source, off: opts.off ?? colorsOff(),
-    light, dark, nameLight: readableShade(light, "light"), nameDark: readableShade(dark, "dark"),
+    light, dark, nameLight: readableShade(light, "light", pageNow("light")), nameDark: readableShade(dark, "dark", pageNow("dark")),
   };
 }
 /** The row's classes for its identity colour ("" when colours are off or shown nowhere). */

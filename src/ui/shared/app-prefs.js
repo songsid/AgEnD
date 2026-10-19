@@ -43,6 +43,7 @@ export const SYNCED = {
   "widget.sidebar": { ls: "agend_widget_sidebar", ...json },
   // #1958: where identity colours show by default (#2056: name, bar and ring unless chosen), and the host's switch to turn them off.
   "color.show": { ls: "agend_color_show", ...json },
+  "theme.pageByInstance": { ls: "agend_theme_page", ...json },   // #2196
   "color.off": { ls: "agend_color_off", toLocal: (v) => (v === true ? "on" : null), fromLocal: (s) => (s === "on" ? true : undefined) },
 };
 // #1629: fixed personal scope. A separate session-bound owner-effect store synchronizes these, never this host cache.

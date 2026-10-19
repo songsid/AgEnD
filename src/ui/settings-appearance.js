@@ -84,7 +84,8 @@ function IdentityColorCard() {
 /**
  * #1958 decision 5: Restore defaults — the host's appearance settings back to their defaults after a confirm that says
  * what it resets; this person's custom CSS turned off (its versions stay). Not settings, so never touched: the colours
- * people picked per instance, installed mods, uploaded effects and the fleet's card limits.
+ * people picked per instance (and where each agent's colours go, #2196), installed mods, uploaded effects and the
+ * fleet's card limits.
  */
 export async function restoreAppearanceDefaults() {
   setThemesShown(true);
