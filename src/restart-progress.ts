@@ -194,6 +194,8 @@ export class RestartProgress {
   private lastEditSentAt = Number.NEGATIVE_INFINITY;
   /** #2175: the background terminal retry, while one is owed. */
   private deferredTerminal: DeferredTerminal | null = null;
+  /** #2175: the last terminal text the provider acknowledged on the message. */
+  private landedText: string | null = null;
 
   constructor(
     readonly total: number,
@@ -439,7 +441,7 @@ export class RestartProgress {
         () => editAdapter.editMessage(target.chatId, this.messageId!, text, target.threadId),
         deadline,
       );
-      if (edit.status === "fulfilled") return true;
+      if (edit.status === "fulfilled") { this.landedText = text; return true; }
       if (edit.status === "timeout") {
         this.logger.warn({}, "Timed out editing fleet restart progress terminal state");
         break; // no point retrying after timeout
@@ -477,6 +479,7 @@ export class RestartProgress {
       deadline,
     );
     if (sent.status === "fulfilled") {
+      this.landedText = text;
       this.logger.warn({}, "Posted fresh fleet completion after terminal progress edit was unavailable");
       return true;
     }
@@ -527,11 +530,11 @@ export class RestartProgress {
   }
 
   /** One provider call for the deferred terminal; resolves "unknown" when its deadline passes unsettled. */
-  private async deferredCall<T>(call: () => Promise<T>, onLate: (ok: boolean, value?: T) => void)
+  private async deferredCall<T>(call: () => Promise<T>, onLate: (ok: boolean, value?: T, reason?: unknown) => void)
     : Promise<{ status: "fulfilled"; value: T } | { status: "rejected"; reason: unknown } | { status: "unknown" }> {
     const op = Promise.resolve().then(call);
     let late = false;
-    op.then(v => { if (late) onLate(true, v); }, () => { if (late) onLate(false); });
+    op.then(v => { if (late) onLate(true, v); }, reason => { if (late) onLate(false, undefined, reason); });
     const result = await this.beforeDeadline(() => op, Date.now() + RESTART_PROGRESS_TERMINAL_TIMEOUT_MS);
     if (result.status === "timeout") {
       late = true;
@@ -541,14 +544,17 @@ export class RestartProgress {
   }
 
   /** A call that settled after its deadline: the message holds `sent` if it landed; write a newer text it missed. */
-  private settleLate(state: DeferredTerminal, sent: string, ok: boolean): void {
+  private settleLate(state: DeferredTerminal, sent: string, ok: boolean, reason?: unknown): void {
     if (this.deferredTerminal !== state) return;
     if (!ok) {
-      // Settled as refused: nothing landed, so another write is safe again.
-      this.logger.warn({}, "A fleet completion call that had timed out was refused; retrying in the background");
+      // Settled as refused: nothing landed, so another write is safe again — after the window a 429 names.
+      const backoff = retryAfterMs(reason);
+      if (backoff > 0) this.rateLimitedUntil = Math.max(this.rateLimitedUntil, Date.now() + backoff);
+      this.logger.warn({ err: reason }, "A fleet completion call that had timed out was refused; retrying in the background");
       this.scheduleDeferred(state, Math.max(Date.now() + TERMINAL_BACKGROUND_RETRY_MS, this.rateLimitedUntil));
       return;
     }
+    this.landedText = sent;
     if (state.text !== sent) {
       this.logger.warn({}, "A late fleet completion call landed; writing the newer text it missed");
       this.scheduleDeferred(state, Math.max(Date.now(), this.rateLimitedUntil));
@@ -567,7 +573,7 @@ export class RestartProgress {
     const sent = state.text;
     const messageId = this.messageId;
     const edit = await this.deferredCall(() => adapter.editMessage(target.chatId, messageId, sent, target.threadId),
-      ok => this.settleLate(state, sent, ok));
+      (ok, _value, reason) => this.settleLate(state, sent, ok, reason));
     if (this.deferredTerminal !== state) return;
     if (edit.status === "unknown") {
       return this.loud({ timeout_ms: RESTART_PROGRESS_TERMINAL_TIMEOUT_MS },
@@ -583,9 +589,9 @@ export class RestartProgress {
     this.logger.warn({ err: edit.reason }, "Background fleet completion edit failed; posting it as a new message");
     const fresh = state.text;
     const posted = await this.deferredCall(() => adapter.sendText(target.chatId, fresh, { threadId: target.threadId }),
-      (ok, value) => {
+      (ok, value, reason) => {
         if (ok && value) this.messageId = value.messageId;
-        this.settleLate(state, fresh, ok);
+        this.settleLate(state, fresh, ok, reason);
       });
     if (this.deferredTerminal !== state) return;
     if (posted.status === "unknown") {
@@ -605,6 +611,7 @@ export class RestartProgress {
 
   private deferredDelivered(state: DeferredTerminal, sent: string, message: string): void {
     this.logger.warn({}, message);
+    this.landedText = sent;
     if (state.text !== sent) return this.scheduleDeferred(state, Math.max(Date.now(), this.rateLimitedUntil));
     if (state.timer) clearTimeout(state.timer);
     this.deferredTerminal = null;
@@ -636,6 +643,12 @@ export class RestartProgress {
     state.text = text;
     return true;
   }
+
+  /**
+   * #2175: whether this exact text is known to have landed on the message (the provider acknowledged it). A text
+   * handed over with replaceTerminalText is not landed until then.
+   */
+  terminalLanded(text: string): boolean { return this.landedText === text; }
 
   /** #2175: whether the terminal state is still owed by the background retry. */
   get terminalDeferred(): boolean { return this.deferredTerminal !== null; }

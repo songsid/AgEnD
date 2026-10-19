@@ -6870,8 +6870,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
     if (text !== this.lastUpdateProgressText) {
       // #2175: while the completion is still owed by the background retry, that retry is the message's only
-      // writer — this text (the completion plus the warning) goes to it rather than racing it.
-      if (!this.startupProgress?.replaceTerminalText(text)) {
+      // writer — this text (the completion plus the warning) goes to it rather than racing it. Handing it over is not
+      // delivery: the receipt and this watch stay until the retry reports this exact text landed (a later tick).
+      const progress = this.startupProgress;
+      if (progress?.terminalLanded(text)) {
+        // landed through the retry
+      } else if (progress?.replaceTerminalText(text)) {
+        return;
+      } else {
         const adapter = this.adapters.get(target.adapterId);
         if (!adapter) return; // retry on a later tick
         await adapter.editMessage(target.chatId, target.messageId, text, target.threadId);
