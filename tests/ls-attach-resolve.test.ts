@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveCandidate, applyLsFilters, pickerDefaultIdx, validateNamesOnlyFilters,
-  ambiguityLine, pickerLine,
+  ambiguityLine, pickerLine, lsDisplayAnnotation,
 } from "../src/ls-attach-resolve.js";
 import type { Candidate, LsRow } from "../src/ls-attach-resolve.js";
 
@@ -420,5 +420,23 @@ describe("ambiguityLine and pickerLine: full real name, no truncation", () => {
     const posA = lineA.indexOf("[");
     const posB = lineB.indexOf("[");
     expect(posA).toBe(posB);
+  });
+});
+
+// ── P2-3: lsDisplayAnnotation — --display flag ──────────────────────────────
+
+describe("P2-3: lsDisplayAnnotation (agend ls --display flag)", () => {
+  it("returns empty string when show=false, regardless of label", () => {
+    expect(lsDisplayAnnotation("alpha-t001", "Sentinel", false)).toBe("");
+    expect(lsDisplayAnnotation("general", "general", false)).toBe("");
+  });
+
+  it("returns '  (label)' when show=true and label differs from realName", () => {
+    const a = lsDisplayAnnotation("agend-reviewer-t1503382598640996543", "稜鏡 Prism", true);
+    expect(a).toBe("  (稜鏡 Prism)");
+  });
+
+  it("returns empty string when show=true but label equals realName (no annotation)", () => {
+    expect(lsDisplayAnnotation("general", "general", true)).toBe("");
   });
 });

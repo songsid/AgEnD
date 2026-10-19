@@ -3247,6 +3247,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     // across the fleet (#1305 P2-1). --json and --names-only above keep the
     // real names (machine use + attach target).
     const { assignDisplayLabels } = await import("./topic-commands.js");
+    const { lsDisplayAnnotation } = await import("./ls-attach-resolve.js");
     const lsLabels = assignDisplayLabels(displayRows.map((r) => ({
       name: r.name,
       displayName: (config.instances[r.name] as { display_name?: string } | undefined)?.display_name,
@@ -3283,7 +3284,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
       const ctxStr = r.context != null ? `${Math.round(r.context)}%` : "-";
       const memStr = r.memMb != null ? `${r.memMb}MB` : "-";
       const actStr = r.lastActivity ?? "-";
-      const dispAnnotation = opts.display && displayLabel(r) !== r.name ? `  (${displayLabel(r)})` : "";
+      const dispAnnotation = lsDisplayAnnotation(r.name, displayLabel(r), opts.display ?? false);
 
       console.log(
         String(r.globalIdx).padEnd(numW) +

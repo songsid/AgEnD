@@ -151,6 +151,18 @@ export function applyLsFilters(
   return result;
 }
 
+/**
+ * The display-name annotation appended to an `agend ls` row.
+ * Returns `"  (label)"` when `show` is true and the label differs from the
+ * real name; otherwise returns `""`.
+ * Extracted as a pure function so the --display flag can be tested without
+ * running lsAction.
+ */
+export function lsDisplayAnnotation(realName: string, displayLabel: string, show: boolean): string {
+  if (!show || displayLabel === realName) return "";
+  return `  (${displayLabel})`;
+}
+
 /** Return the global idx to use as the picker default (first displayed row). */
 export function pickerDefaultIdx(displayedCandidates: Pick<Candidate, "idx">[]): number {
   return displayedCandidates[0]?.idx ?? 1;
