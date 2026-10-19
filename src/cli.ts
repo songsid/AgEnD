@@ -3224,7 +3224,6 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     // across the fleet (#1305 P2-1). --json and --names-only above keep the
     // real names (machine use + attach target).
     const { assignDisplayLabels } = await import("./topic-commands.js");
-    const { truncateDisplay } = await import("./ls-rows.js");
     const lsLabels = assignDisplayLabels(rows.map((r) => ({
       name: r.name,
       displayName: (config.instances[r.name] as { display_name?: string } | undefined)?.display_name,
@@ -3232,10 +3231,10 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     const displayLabel = (row: { name: string; classic: boolean }): string =>
       lsLabels.get(row.name) ?? row.name;
 
-    // Columns: # (row number), Display (label), Name (real, copyable), then the rest.
+    // Columns: # (row number), Name (real, full, copyable), then the rest.
+    // Display name (if set) appears at the end of the row as context — secondary.
     const numW = 3;
-    const dispW = Math.min(24, Math.max(16, ...rows.map(r => displayWidth(displayLabel(r)) + 1)));
-    const nameW = Math.min(32, Math.max(16, ...rows.map(r => r.name.length + 1)));
+    const nameW = Math.max(16, ...rows.map(r => r.name.length + 1));
     const backendW = 14;
     const statusW = 12;
     const teamW = 20;
@@ -3245,7 +3244,6 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
 
     console.log(
       "#".padEnd(numW) +
-      "Display".padEnd(dispW) +
       "Name".padEnd(nameW) +
       "Backend".padEnd(backendW) +
       "Status".padEnd(statusW) +
@@ -3255,7 +3253,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
       "Mem".padEnd(memW) +
       "Activity"
     );
-    console.log("\u2500".repeat(numW + dispW + nameW + backendW + statusW + teamW + srcW + ctxW + memW + 10));
+    console.log("\u2500".repeat(numW + nameW + backendW + statusW + teamW + srcW + ctxW + memW + 10));
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i]!;
@@ -3263,20 +3261,19 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
       const ctxStr = r.context != null ? `${Math.round(r.context)}%` : "-";
       const memStr = r.memMb != null ? `${r.memMb}MB` : "-";
       const actStr = r.lastActivity ?? "-";
-      const label = truncateDisplay(displayLabel(r), dispW - 1);
-      const shortName = r.name.length > nameW - 1 ? r.name.slice(0, nameW - 2) + "…" : r.name;
+      const dispAnnotation = displayLabel(r) !== r.name ? `  (${displayLabel(r)})` : "";
 
       console.log(
         String(i + 1).padEnd(numW) +
-        padDisplay(label, dispW) +
-        shortName.padEnd(nameW) +
+        r.name.padEnd(nameW) +
         r.backend.padEnd(backendW) +
         statusIcon(r.status, r.idle, (r as any).state) + " " + statusLabel(r.status, r.idle, (r as any).state).padEnd(statusW - 2) +
         padDisplay(teamStr, teamW) +
         r.source.padEnd(srcW) +
         ctxStr.padEnd(ctxW) +
         memStr.padEnd(memW) +
-        actStr
+        actStr +
+        dispAnnotation
       );
     }
 
