@@ -6,7 +6,9 @@
  * - a reader scrolled up keeps their place while older messages arrive above, and they never count as "new below";
  * - live messages, a reorder and the cap's trimming never drop what is drawn;
  * - showing a message that isn't drawn yet draws the rest first; a disposed thread draws nothing more;
- * - filling in never re-renders a message already drawn (Markdown is not run again).
+ * - filling in never re-renders a message already drawn (Markdown is not run again);
+ * - #1908 review (Board 38f25eca): a frame draws exactly one chunk more (never everything in the first fill-in), and
+ *   asking for the next chunk twice before a frame still queues one frame and draws one chunk.
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, type AppPage } from "./helpers/app-harness.js";
@@ -189,5 +191,46 @@ describe("#2053: rendered Markdown is kept, and always what renderMarkdown would
       renderedMarkdown("k0", false);
       expect(n, "k0, least recently used, went").toBe(at + 1);
     } finally { R().renderMarkdown = real; }
+  });
+});
+
+describe("#1908 review: one chunk per frame", () => {
+  /** requestAnimationFrame held in a queue, so a test runs exactly one frame (and the timer it sets) at a time. Installed
+   *  after the page is made (the page sets its own). */
+  function frames() {
+    const queued: Array<() => void> = [];
+    const g = globalThis as any, saved = { raf: g.requestAnimationFrame, caf: g.cancelAnimationFrame };
+    g.requestAnimationFrame = (cb: () => void) => { queued.push(cb); return queued.length; };
+    g.cancelAnimationFrame = (id: number) => { queued[id - 1] = () => {}; };
+    return {
+      queued: () => queued.length,
+      async step() { const run = queued.splice(0); for (const cb of run) cb(); await new Promise(r => setTimeout(r, 0)); },
+      restore() { g.requestAnimationFrame = saved.raf; g.cancelAnimationFrame = saved.caf; },
+    };
+  }
+  it("a frame draws the tail plus exactly one chunk — not everything at the first fill-in", async () => {
+    const { list, thread } = threadAt();
+    const f = frames();                                                    // after the page: it brings its own
+    try {
+      const all = many(200);
+      thread.render(all, { restore: null });
+      expect([list.children.length, f.queued()]).toEqual([THREAD_TAIL, 1]);
+      await f.step();
+      expect(ids(list)).toEqual(all.slice(-(THREAD_TAIL + THREAD_CHUNK)).map(m => m.id));
+      await f.step();
+      expect(list.children.length).toBe(THREAD_TAIL + 2 * THREAD_CHUNK);
+    } finally { f.restore(); }
+  });
+  it("asked twice before a frame (a second render): one frame queued, one chunk drawn", async () => {
+    const { list, thread } = threadAt();
+    const f = frames();                                                    // after the page: it brings its own
+    try {
+      const all = many(200);
+      thread.render(all, { restore: null });
+      thread.render([...all, msg(201)], {});                              // a live message before the frame ran
+      expect(f.queued()).toBe(1);
+      await f.step();
+      expect(list.children.length).toBe(THREAD_TAIL + 1 + THREAD_CHUNK);
+    } finally { f.restore(); }
   });
 });
