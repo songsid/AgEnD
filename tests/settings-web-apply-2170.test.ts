@@ -263,6 +263,22 @@ describe("the fleet: who may confirm by applying", () => {
     release();
     expect([(await decided).state, p.apply.mock.calls.length, f.any.webAuthority({ session: s.record, gateway: false, peer: "loopback" }).authority.kind]).toEqual(["stale", 0, "web-verified"]);
   });
+  // #2205 review P2: the General a card could go to is asked again too — gone between Apply and execution, the change
+  // is the host CLI's, as it would have been at Apply; another one left, it applies.
+  it.each([
+    ["General's agent stops", ["a", "b"], (f: any) => f.any.daemons.delete("general_b"), "stale", 0],
+    ["General's connection drops (retrying)", ["a", "b"], (f: any) => f.any.adapterState.set("b", { status: "retrying", retryCount: 1 }), "stale", 0],
+    ["one General's agent stops, another is still there", ["a", "b", "c"], (f: any) => f.any.daemons.delete("general_b"), "applied", 1],
+  ] as const)("between Apply and execution, %s", async (_n, ids, change, state, applied) => {
+    let release!: () => void;
+    const f = fleet("telegram", [...ids]), s = f.session({ adapterId: "a", userId: "a-F" });
+    const p = f.propose({ unchanged: () => new Promise<boolean>((r) => { release = () => r(true); }) });
+    const self = f.any.settingsSelfConfirmation(f.store, s.req, p.view.id);
+    const decided = f.store.decide(p.view.id, "confirm", { ...self, via: "web" });
+    change(f);
+    release();
+    expect([(await decided).state, p.apply.mock.calls.length]).toEqual([state, applied]);
+  });
   it("expired (max_session_hours past): none", () => {
     vi.useFakeTimers({ toFake: ["Date"], now: Date.UTC(2026, 9, 19, 10, 0, 0) });
     const f = fleet(), s = f.session({ adapterId: "a", userId: "a-F" }), p = f.propose();

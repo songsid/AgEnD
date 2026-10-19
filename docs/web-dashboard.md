@@ -606,10 +606,14 @@ hold: your account is on the platform of the connections the change affects, and
 (the rule above); the change's scope is known; and there is a General the chat card could have gone to (connected, on
 that platform, not one the change affects). The card then says "Confirmed by your account", and that General gets a
 plain notice: who confirmed it from the web, the source, the requester, the summary and the outcome. Every check runs
-again when the change executes: if the authorization was revoked or ran out, you signed out, or you are no longer an
-admin of those connections, nothing is applied (the change ends as stale). Anything else waits for chat or the host
+again when the change executes: if the authorization was revoked or ran out, you signed out, you are no longer an
+admin of those connections, or no General a chat card could go to is left (disconnected, its agent stopped), nothing is
+applied (the change ends as stale). Anything else waits for chat or the host
 exactly as before: a browser that is not web-verified, a guest, the public link, the host's own `agend web` session,
-an account on another platform, or a change that needs host CLI confirmation. The threat the chat step stops — a
-session acting without its account (a copied cookie, a browser left signed in) — is what web verification answers.
+an account on another platform, or a change that needs host CLI confirmation. Know what this rests on: authorizing
+the browser is **one** confirmation in your DM, kept for that session until it is revoked, runs out or signs out — not
+a fresh confirmation for each Apply. Anyone using that verified, signed-in browser (one left unattended, or a copy of
+its session cookie) can confirm such changes the same way. Sign out, or revoke it (Settings → Web → **Revoke web authority**, or **Not
+me** on the DM card), when you leave the browser.
 
 First-time Setup also returns a pending request. Confirm it on the host, then explicitly choose **Start AgEnD**. A pending response, an old successful commit or a changed configuration cannot hand over the setup listener to the fleet.

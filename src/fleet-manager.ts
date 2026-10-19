@@ -1672,9 +1672,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    *   - a chat card could have been asked: a connected General on that platform the change does not affect (else the
    *     change goes to the host CLI, as before) — the General that then hears of it;
    *   - and, at execution (store.decide asks `current()` again): still web-verified under the same session and account
-   *     (not expired, revoked, signed out or the switch turned off), still those owners' admin, the fleet unchanged.
-   * The threat the chat step stops — a session acting without its account (a stolen cookie, a browser left signed in) —
-   * is what web verification already answers; a public link never qualifies (evaluateWebAuthority refuses it). General
+   *     (not expired, revoked, signed out or the switch turned off), still those owners' admin, still a General a card
+   *     could go to, the fleet unchanged.
+   * What it rests on: the account's one confirmation of this browser (#1939), kept for the session until it is revoked,
+   * expires or signs out — not a fresh confirmation per Apply. Whoever uses that verified session (a browser left signed
+   * in, its cookie) confirms the same way. A public link never qualifies (evaluateWebAuthority refuses it). General
    * still hears it: a notice, not a step.
    */
   private settingsSelfConfirmation(store: SettingsConfirmationStore, req: IncomingMessage, id: string): SettingsSelfConfirmation | null {
@@ -1698,7 +1700,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const name = this.webPerson({ adapterId: actor.adapter_id, userId: actor.user_id }).name;
     return {
       label: `${name} (web-verified)`,
-      current: () => !!verified() && chat.admin(actor.user_id),                 // admin() asks chat.current() too
+      // admin() asks chat.current() too; a General a card could go to must still be there (else the host CLI's).
+      current: () => !!verified() && chat.admin(actor.user_id) && this.settingsNoticeGenerals(affected, chat.platform).length > 0,
       done: view => this.settingsWebConfirmedNotice(view, affected, name, chat.platform),
     };
   }
