@@ -64,22 +64,25 @@ try {
     browser = await pw[engine].launch({ headless: true, env: { HOME: join(scratch, "home"), TMPDIR: join(scratch, "tmp"), PATH: "/usr/bin:/bin", LANG: "C.UTF-8" } });
     for (const [width,lang,dark] of [[1366,"en",false],[390,"zh-TW",true]] as const) {
     const context = await browser.newContext({ viewport: { width, height: 900 } }), page = await context.newPage(), errors: string[] = [], resources: string[] = [];
+    // #2217: the chat's card is hidden by default and has no toggle row; shown (this device's choice), its own Hide card
+    // control (.id-ctl, on the row of this banner-less card) is the stock control probed here.
+    await context.addInitScript({ content: 'try { localStorage.setItem("agend_chat_card", "open"); } catch {}' });
     page.on("pageerror", (e: Error) => { errors.push(e.message); console.error("pageerror", e.message); });
     await page.route("**/*", (r: any) => { const u = new URL(r.request().url()); resources.push(u.pathname); return u.hostname === "127.0.0.1" && u.port === String(port) ? r.continue() : r.abort(); });
     try {
-      await page.goto(`http://127.0.0.1:${port}/?lang=${lang}&dark=${dark?1:0}`); await page.locator('.rb-row').waitFor({timeout:5000}); await page.locator('.prompts').waitFor({timeout:5000}); await page.locator('.chat-card-toggle').waitFor({timeout:5000});
+      await page.goto(`http://127.0.0.1:${port}/?lang=${lang}&dark=${dark?1:0}`); await page.locator('.rb-row').waitFor({timeout:5000}); await page.locator('.prompts').waitFor({timeout:5000}); await page.locator('.chat-card .id-ctl').waitFor({timeout:5000});
       await page.waitForTimeout(150);
       await page.evaluate(() => { const el=document.activeElement; if(el instanceof HTMLElement)el.blur(); });
       const snapshot = await page.evaluate(() => (window as any).stock.snapshot());
       const diagnostics = await page.evaluate(() => ({ active: document.activeElement?.tagName, barriers: [...document.querySelectorAll('[role=menu],[role=dialog],[role=alertdialog],[role=listbox],dialog[open],details[open],.toast,.pending-stack:not(.inline),.oc-keep,.shell.sb-open,.p-chat.dragging,.agend-session-ended')].filter(e=>e.getClientRects().length>0&&getComputedStyle(e).display!=="none"&&getComputedStyle(e).visibility==="visible").map(e=>e.className), markers: [...document.querySelectorAll('[data-trust]')].map(e => ({ tag: e.tagName, cls: e.className, kind: e.getAttribute('data-trust') })), style: [...document.querySelectorAll('html,body,#app,.shell,.main,.p-chat,.chat-split,.chat-main,.scroller,.dock,.panel-head')].map(e => { const s=getComputedStyle(e); return { cls:e.className,tag:e.tagName,z:s.zIndex,opacity:s.opacity,isolation:s.isolation,contain:s.contain,will:s.willChange,transform:s.transform,mask:s.maskImage,clip:s.clipPath,zoom:s.zoom,blend:s.mixBlendMode }; }) }));
       assert.deepEqual(errors, []); assert.equal(snapshot.ok, true, JSON.stringify({snapshot,diagnostics})); assert.equal(snapshot.agentFront, true);
       const baseline = await page.screenshot({ path: join(out, `${engine}-${width}-stock.png`) });
-      const points = await page.evaluate(() => ['.composer-box','.rb-btn','.prompts .btn','.chat-card-toggle',...(innerWidth>=900?['.side-resize']:[])].map(q=>{const r=document.querySelector(q).getBoundingClientRect();return{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2),q};}));
+      const points = await page.evaluate(() => ['.composer-box','.rb-btn','.prompts .btn','.chat-card .id-ctl',...(innerWidth>=900?['.side-resize']:[])].map(q=>{const r=document.querySelector(q).getBoundingClientRect();return{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2),q};}));
       const permissionPaint=await page.locator('.prompt').evaluate(el=>{const r=el.getBoundingClientRect();return{x:Math.floor(r.x+8),y:Math.floor(r.y+r.height/2)};});
       assert.equal(await page.evaluate(()=>(window as any).stock.paint('behind')),true);
       const behind=await page.screenshot({path:join(out,`${engine}-${width}-behind.png`)});
       // Card toggle / resize use transparent stock backgrounds; their front protection is tested below.
-      for(const p of points.filter(p=>!['.chat-card-toggle','.side-resize'].includes(p.q)))assert.deepEqual(pixel(behind,p.x,p.y),pixel(baseline,p.x,p.y),'behind '+p.q);
+      for(const p of points.filter(p=>!['.chat-card .id-ctl','.side-resize'].includes(p.q)))assert.deepEqual(pixel(behind,p.x,p.y),pixel(baseline,p.x,p.y),'behind '+p.q);
       const free=await page.evaluate(()=>{const r=document.querySelector('.chat-main > .scroller').getBoundingClientRect(),holes=(window as any).stock.snapshot().rects;for(let y=Math.ceil(r.y+8);y<r.y+r.height-8;y+=8)for(const x of [Math.ceil(r.x+8),Math.floor(r.x+r.width-8)])if(holes.every(h=>x<h.x-10||x>h.x+h.width+10||y<h.y-10||y>h.y+h.height+10))return{x,y};throw Error('no uncovered sample');});
       assert.notDeepEqual(pixel(behind,free.x,free.y),pixel(baseline,free.x,free.y),'behind must actually paint');
       assert.equal(await page.evaluate(()=>(window as any).stock.paint('front')),true);const front=await page.screenshot({path:join(out,`${engine}-${width}-front.png`)});

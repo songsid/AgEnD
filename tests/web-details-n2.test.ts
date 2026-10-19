@@ -317,6 +317,26 @@ describe("#1629 r4 §1: the identity card", () => {
     pg.root.querySelector(".p-chat .id-hide").click(); await settle(2);
     expect([pg.root.querySelector(".p-chat .id-card"), pg.storage.get("agend_chat_card") ?? null, !!show()]).toEqual([null, null, true]);
   });
+  it("#2217: in the chat, with a banner — the chat's own choice reaches the card: Hide picture and bio folds the row away (the banner stays), kept on this device, and back", async () => {
+    const saved = CARD.banner.src;
+    CARD.banner.src = `/api/card/loner/banner?v=${PIC}`;                      // this card's own banner this time
+    try {
+      const pg = await app("/ui/chat/loner");
+      // A new card version: the card store is module-wide, and v1 was read (without a banner) by the tests above.
+      const { applyStatus } = await import("/assets/app-store.js");
+      applyStatus({ instances: INSTANCES.map((i: any) => i.name === "loner" ? { ...i, card_v: "v2-banner" } : i) }); await settle(6);
+      pg.root.querySelector(".p-chat .panel-head .chat-card-show").click(); await settle(2);
+      const q = (sel: string) => pg.root.querySelector(`.p-chat ${sel}`);
+      expect([!!q(".id-banner-box .id-hide"), !!q(".id-row .id-fold"), q(".id-row .id-fold")?.getAttribute("aria-expanded")]).toEqual([true, true, "true"]);
+      q(".id-row .id-fold").click(); await settle(2);
+      expect([q(".id-row"), q(".id-portrait"), q(".id-bio"), !!q(".id-banner"), q(".id-card").getAttribute("class"), pg.storage.get("agend_chat_card_row")])
+        .toEqual([null, null, null, true, "id-card card-c bs-m row-hidden", "hidden"]);
+      expect(q(".id-banner-box .id-unfold").getAttribute("aria-label")).toBe("Show picture and bio");
+      q(".id-banner-box .id-unfold").click(); await settle(2);
+      expect([!!q(".id-row"), !!q(".id-bio"), q(".id-unfold"), q(".id-card").getAttribute("class"), pg.storage.get("agend_chat_card_row") ?? null])
+        .toEqual([true, true, null, "id-card card-c bs-m", null]);
+    } finally { CARD.banner.src = saved; }
+  });
   it("#2038: the banner's height follows the card's width (an aspect per size) between a floor and a ceiling — never half the size token", async () => {
     const css = (await import("node:fs")).readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
     const rule = (sel: string) => { const i = css.indexOf(`${sel} {`); expect(i, sel).toBeGreaterThanOrEqual(0); return css.slice(i, css.indexOf("}", i)); };
