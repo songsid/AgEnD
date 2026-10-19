@@ -1,19 +1,28 @@
 /**
  * The docs' pictures of the web dashboard, rendered by this repository's own code with made-up demo data only:
  * - the README hero (docs/assets/readme/hero-{light,dark}.webp): the chat view beside an illustrated phone (hero.html);
- * - the "What's new in 2.2" shots (docs/assets/whats-new-2.2/<scene>-{light,dark}.webp), each framed by frame.html.
+ * - the "What's new in 2.2" shots (docs/assets/whats-new-2.2/<scene>-{light,dark}.webp), each framed by frame.html:
+ *   chat, preview, needs, usage, org, and (2.2.5) appearance — an agent's own theme, identity card, header widget and
+ *   ambient petals —, usage-page (Fleet → Usage) and guests (Settings → Web → Guests). No Canvas Worker effect is shown.
  *
  * What it does, and does not do:
  * - A FleetManager on a scratch AGEND_HOME (a temporary folder) serves the dashboard on 127.0.0.1. No fleet is started,
  *   no agent CLI runs, nothing connects to Discord or Telegram, and nothing is read from your own AgEnD home.
  * - Every name, message, number and file in the pictures is written below (DEMO). Each scene sets what it shows (the
- *   thread, Needs you, the usage rows, who is working) just before it is drawn.
+ *   thread, Needs you, the usage rows, who is working) just before it is drawn. The usage report and the guest list are
+ *   built from made-up numbers and accounts here (no transcript is read, no guest ever signs in); the appearance scene's
+ *   pictures are drawn by Chromium like the chart.
+ * - The fleet has a General (the org chart's top); the committed README hero was rendered before it was added.
  * - Chromium draws each page in light and dark at 2×; the result is encoded as WebP by the browser itself.
  *
  * Run it from the repository root, with playwright-core, a Chromium build, and a color emoji font that fontconfig
  * finds (Noto Color Emoji; without one, every emoji is an empty box):
  *   PW_DIR=<a folder whose node_modules has playwright-core> CHROME=<path to chrome> \
  *     FONTCONFIG_FILE=<a fonts.conf that includes the emoji font> npx tsx docs/assets/readme/src/render.mts
+ * No colour emoji font on the host? Run it in the Playwright image (it has Noto Color Emoji) with the host's Node:
+ *   docker run --rm --network host --user $(id -u):$(id -g) -e HOME=/tmp -e PW_DIR=/pw -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+ *     -v $PWD:$PWD -v <PW_DIR>:/pw:ro -v <node dir>:/node:ro -w $PWD mcr.microsoft.com/playwright:v1.64.1-noble \
+ *     /node/bin/node node_modules/tsx/dist/cli.mjs docs/assets/readme/src/render.mts
  * Optional: SCENES=hero,chat,… (default: all), OUT=<folder> (default: docs/assets), PORT=<n> (default 47990),
  * QUALITY=<0..1> (default 0.86), MEASURE=1 (print where things are, for laying out hero.html).
  */
@@ -112,6 +121,21 @@ const HISTORY: Record<string, Msg[]> = {
     { role: "user", text: "[button] Apply on staging", at: 20, click: { label: "Apply on staging", of: "a".repeat(32) } },
     { role: "agent", at: 3, text: "Done. p95 on /search is back to **44 ms**:", image: "latency.png" },
   ],
+  // The appearance shot (Sage): its own theme, card, header widget and ambient petals around an ordinary exchange.
+  Sage: [
+    { role: "user", text: "Is the upgrade page ready for the release?", at: 14 },
+    { role: "agent", at: 12, text: [
+      "Almost. Three of the four sections are reviewed:",
+      "",
+      "- **Upgrade in one step**: done",
+      "- **Make the dashboard yours**: done",
+      "- **Guests**: done",
+      "- **Usage**: waiting for the new screenshots",
+      "",
+      "I'll post the last one as soon as the pictures land.",
+    ].join("\n") },
+    { role: "user", text: "Great, thanks!", at: 2 },
+  ],
   // The preview shot (Quill): a page the agent made, sent as a file and run in the side panel.
   Quill: [
     { role: "user", text: "Draft a one-page release checklist I can share.", at: 12 },
@@ -165,6 +189,52 @@ const NEEDS = () => {
   ];
 };
 
+// Fleet → Usage: 30 days of made-up daily rows per agent, in the rollup's own shape (usage-rollup.ts DayRow), turned
+// into the page's report by the product's buildUsageReport. Totals: [requests, uncached, read, write5m, write1h, write, output].
+const USAGE_MODELS: Record<string, { model: string; profile: string; scale: number; until?: number }> = {
+  Pixel: { model: "claude-opus-5-5", profile: "default", scale: 1.0 },
+  Atlas: { model: "gpt-6.1-sol", profile: "unrecorded", scale: 0.8 },
+  Quill: { model: "claude-sonnet-5-5", profile: "default", scale: 0.7 },
+  Sage: { model: "claude-sonnet-5-5", profile: "default", scale: 0.45 },
+  Orbit: { model: "gpt-6.1-sol", profile: "unrecorded", scale: 0.55 },
+  Comet: { model: "claude-opus-5-5", profile: "default", scale: 0.35, until: 4 },   // stopped four days ago
+};
+const USAGE_REPORT_INPUT = (zone: string) => {
+  const now = Date.now();
+  const day = (k: number) => new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now - k * DAY));
+  const teamOf = (n: string) => Object.entries(TEAMS).find(([, t]) => (t.members as readonly string[]).includes(n))?.[0] ?? null;
+  const instances = Object.entries(USAGE_MODELS).map(([name, u], i) => {
+    const codex = u.model.startsWith("gpt-");
+    const rows = [];
+    for (let k = 29; k >= 0; k--) {
+      if (u.until !== undefined && k < u.until) continue;
+      const weekend = [0, 6].includes(new Date(now - k * DAY).getDay()) ? 0.35 : 1;
+      const f = u.scale * weekend * (0.55 + 0.45 * Math.sin(i * 1.7 + k * 0.9) ** 2);
+      const t = (n: number) => Math.round(n * f);
+      rows.push({ date: day(k), zone, be: codex ? "codex" : "claude-code", pf: u.profile,
+        m: { [`${u.model}|0`]: codex ? [t(90), t(320_000), t(6_400_000), 0, 0, 0, t(210_000)] : [t(130), t(42_000), t(18_000_000), t(900_000), t(240_000), 0, t(560_000)] } });
+    }
+    return { name, backend: codex ? "codex" : "claude-code", team: teamOf(name), status: "ok" as const,
+      days: { v: 1 as const, checkpoint: Math.floor(now / HOUR) * HOUR, rows, coverage: [[now - 40 * DAY, now]] as Array<[number, number]> } };
+  });
+  const messages = Object.entries(USAGE_MODELS).flatMap(([instance, u], i) => Array.from({ length: 30 }, (_, k) => k)
+    .filter(k => u.until === undefined || k >= u.until).map(k => ({ instance, hour: Math.floor((now - k * DAY) / HOUR) * HOUR, count: 3 + ((i * 7 + k * 3) % 11) })));
+  return { now, zone, instances, messages, scanning: { active: false, caughtUp: true, pendingBytes: 0, pendingFiles: 0 } };
+};
+// Settings → Web → Guests: three made-up accounts on an open Discord server (ids are not anyone's).
+const GUEST_OVERVIEW = () => {
+  const now = Date.now();
+  return {
+    enabled: true, chat: true, instances: ["Atlas", "Comet", "General", "Orbit", "Pixel", "Quill", "Sage"],
+    connections: [{ id: "discord", type: "discord", mode: "open", named: ["Sage", "Quill"] }],
+    guests: [
+      { adapterId: "discord", userId: "900000000000000101", name: "Mina Park", platform: "discord", scope: ["Quill", "Sage"], reach: ["Quill", "Sage"], sessions: 1, lastSeen: now - 12 * 60_000, devices: 1, narrow: null },
+      { adapterId: "discord", userId: "900000000000000102", name: "Ana Silva", platform: "discord", scope: ["Quill", "Sage"], reach: ["Quill", "Sage"], sessions: 2, lastSeen: now - 3 * HOUR, devices: 2, narrow: null },
+      { adapterId: "discord", userId: "900000000000000103", name: "Leo", platform: "discord", scope: ["Sage"], reach: ["Quill", "Sage"], sessions: 0, lastSeen: now - 2 * DAY, devices: 1, narrow: ["Sage"] },
+    ],
+  };
+};
+
 type Theme = "light" | "dark";
 interface Scene {
   name: string;
@@ -199,11 +269,19 @@ const clipTo = (selectors: string[], pad = 0, side = 0, within = "body") => asyn
   const w = Math.min(lim.right, innerWidth, Math.max(...rs.map((r) => r.right)) + ${side}) - x, h = Math.min(innerHeight, Math.max(...rs.map((r) => r.bottom)) + ${pad}) - y;
   return { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) };
 })()`);
+/** A chat panel without the line under the composer about this browser's authority (the demo session has no account). */
+const chatClip = (extra: string[] = []) => async (page: any) => page.evaluate(`(() => {
+  const rs = [".p-chat", ...${JSON.stringify(extra)}].map((s) => document.querySelector(s)).filter(Boolean).map((e) => e.getBoundingClientRect());
+  const chip = document.querySelector(".p-chat .webauth-chip");
+  const x = Math.min(...rs.map((r) => r.left)), y = Math.min(...rs.map((r) => r.top)), right = Math.max(...rs.map((r) => r.right));
+  const bottom = chip ? chip.getBoundingClientRect().top - 6 : Math.max(...rs.map((r) => r.bottom));
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(right - x), height: Math.round(bottom - y) };
+})()`);
 const SCENES: Scene[] = [
   { name: "hero", out: "readme/hero", hero: true, path: "/ui/chat/Pixel", viewport: { width: Number(process.env.DASH_W ?? 1240), height: Number(process.env.DASH_H ?? 1000) },
     rail: true, usage: USAGE_ALL },
-  { name: "chat", out: "whats-new-2.2/chat", path: "/ui/chat/Atlas", viewport: { width: 1060, height: 1000 }, exec: { Atlas: "idle" },
-    before: async (theme) => { await hooks.drawChart!(theme); }, clip: clipTo([".p-chat"]),
+  { name: "chat", out: "whats-new-2.2/chat", path: "/ui/chat/Atlas", viewport: { width: 1060, height: 1090 }, exec: { Atlas: "idle" },
+    before: async (theme) => { await hooks.drawChart!(theme); }, clip: chatClip(),
     prepare: async (page) => {
       // Two files waiting above the composer (nothing is uploaded until Send).
       await page.setInputFiles(".composer input[type=file]", [
@@ -223,6 +301,10 @@ const SCENES: Scene[] = [
       }
       await page.waitForFunction(() => !document.querySelector(".pv-banner"), null, { timeout: 5_000 }).catch(() => {});
       await page.waitForTimeout(1200);
+      // The line under the composer about this browser's authority: the demo session has no account, so it would read
+      // as an error. Cropping it would cut the preview panel, so it is hidden instead (its box is kept; CSSOM, as the
+      // dashboard's CSP allows no style tag).
+      await page.evaluate(() => { for (const e of document.querySelectorAll<HTMLElement>(".p-chat .webauth-chip")) e.style.visibility = "hidden"; });
     } },
   { name: "needs", out: "whats-new-2.2/needs", path: "/ui/needs", viewport: { width: 1060, height: 980 }, needs: true, clip: clipTo([".p-needs .panel-title", ".p-needs .n-group"], 16, 40, ".p-needs"),
     prepare: async (page) => { await page.waitForSelector(".p-needs", { timeout: 15_000 }); await page.waitForTimeout(800); } },
@@ -236,6 +318,32 @@ const SCENES: Scene[] = [
     })()`) },
   { name: "org", out: "whats-new-2.2/org", path: "/ui/fleet/org", viewport: { width: 1100, height: 760 }, clip: clipTo([".p-fleet"]),
     prepare: async (page) => { await page.waitForSelector(".p-fleet", { timeout: 15_000 }); await page.waitForTimeout(800); } },
+  // 2.2.5: an agent's own look (theme, identity card, header widget, ambient petals).
+  { name: "appearance", out: "whats-new-2.2/appearance", path: "/ui/chat/Sage", viewport: { width: 1060, height: 1120 }, exec: { Sage: "idle" }, clip: chatClip(),
+    prepare: async (page) => {
+      await page.click(".chat-card-toggle");                                         // the card, open
+      await page.waitForSelector(".chat-card.open img", { timeout: 10_000 });
+      await page.waitForTimeout(4000);                                               // the petals spread down the chat
+    } },
+  { name: "usage-page", out: "whats-new-2.2/usage-page", path: "/ui/fleet/usage", viewport: { width: 1180, height: 2000 },
+    // The page down to the end of the daily trend.
+    clip: async (page) => page.evaluate(`(() => {
+      const p = document.querySelector(".p-fleet").getBoundingClientRect(), t = document.querySelector(".us-heat") ?? document.querySelector(".us-trend");
+      const bottom = t ? t.getBoundingClientRect().bottom + 16 : p.bottom;
+      return { x: Math.round(p.left), y: Math.round(p.top), width: Math.round(p.width), height: Math.round(Math.min(bottom, p.bottom) - p.top) };
+    })()`),
+    prepare: async (page) => {
+      await page.waitForSelector(".us-row", { timeout: 15_000 });
+      await page.click('.us-bar-top button:has-text("All")');                         // 30 days: the trend and the heatmap
+      await page.waitForSelector(".us-heat", { timeout: 15_000 });
+      await page.waitForTimeout(1200);
+    } },
+  { name: "guests", out: "whats-new-2.2/guests", path: "/settings/web", viewport: { width: 1000, height: 1100 }, clip: clipTo([".s-guests"], 0, 0),
+    prepare: async (page) => {
+      await page.waitForSelector(".s-guests .guest-row", { timeout: 15_000 });
+      await page.evaluate(() => document.querySelector(".s-guests")!.scrollIntoView({ block: "start" }));
+      await page.waitForTimeout(600);
+    } },
 ];
 
 // ── the dashboard, on a scratch home ─────────────────────────────────────────────────────────────────────────────
@@ -250,6 +358,9 @@ try {
   const yaml = [
     `health_port: ${PORT}`,
     "instances:",
+    // General: the org chart's top. Not in AGENTS (the hero's six agents).
+    "  General:", `    working_directory: ${home}`, "    backend: claude-code", "    model: opus", "    general_topic: true", "    description: Runs the fleet",
+    "    status_emojis:", "      delivered: \"🧭\"",
     ...AGENTS.flatMap(a => [
       `  ${a.name}:`,
       `    working_directory: ${home}`,
@@ -264,6 +375,8 @@ try {
     ...Object.entries(TEAMS).flatMap(([n, t]) => [`  ${n}:`, `    description: ${t.description}`, `    members: [${t.members.join(", ")}]`]),
     "web:",
     `  preview_port: ${PORT + 1}`,
+    // The guests scene: guest sign-in on, and the agents an open Discord server's guests may reach.
+    "  guests:", "    enabled: true", "    chat: true", "    open_instances:", "      discord: [Sage, Quill]", "    narrow:", "      \"discord:900000000000000103\": [Sage]",
   ].join("\n") + "\n";
   writeFileSync(join(home, "fleet.yaml"), yaml);
 
@@ -280,9 +393,16 @@ try {
   const byName = new Map<string, (typeof AGENTS)[number]>(AGENTS.map(a => [a.name, a]));
   let execOverride: Partial<Record<string, Exec>> = {};
   let needsOn = false;
-  fm.getInstanceStatus = (n: string) => byName.get(n)?.status ?? "stopped";
+  fm.getInstanceStatus = (n: string) => (n === "General" ? "running" : byName.get(n)?.status ?? "stopped");
   fm.getInstanceExecutionState = (n: string) => (n in execOverride ? execOverride[n] : byName.get(n)?.exec) ?? null;
   fm.needsYouItems = () => (needsOn ? NEEDS() : []);
+  // Fleet → Usage: a report built by the product's own code from made-up daily rows (no transcript is read).
+  const { buildUsageReport } = await import(join(REPO, "src/usage-report.ts"));
+  const { emptyLedger } = await import(join(REPO, "src/cache-ledger.ts"));
+  fm.usageReport = async (params: { range: unknown; group: unknown; only?: string }) => buildUsageReport({ ...USAGE_REPORT_INPUT(fm.usageZone()), range: params.range, group: params.group,
+    instances: USAGE_REPORT_INPUT(fm.usageZone()).instances.filter(i => params.only === undefined || i.name === params.only).map(i => ({ ...i, ledger: emptyLedger() })) });
+  // Settings → Web → Guests: made-up guest accounts (no guest signs in).
+  fm.guestOverview = () => GUEST_OVERVIEW();
   let usageNow: unknown[] = USAGE_ALL;
   fm.getActiveUsageProviderIds = () => new Set((usageNow as Array<{ id: string }>).map(p => p.id));
 
@@ -316,6 +436,38 @@ try {
   hooks.drawChart = drawChart;
   await drawChart("light");
   writeFileSync(join(home, "demo", "release-checklist.html"), CHECKLIST);
+  // The appearance scene: Sage's own look, written through the agent tools' own checks (a limiter that never refuses:
+  // the real one spaces an agent's changes 30 s apart). Its pictures are drawn by Chromium; no effect is placed.
+  {
+    const { WebAppearance } = await import(join(REPO, "src/web-appearance.ts"));
+    const looks = new WebAppearance(fm.themeStore, () => fm.fleetConfig?.web ?? null, () => {},
+      { check: () => ({ ok: true }), record() {}, remaining: () => ({}), forget() {} } as never);
+    const ok = (r: any, what: string) => { if (!r || r.error || r.errors) throw new Error(`${what}: ${JSON.stringify(r)}`); return r; };
+    const draw = async (w: number, h: number, body: string) => {
+      const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
+      const page = await ctx.newPage(); await page.setContent(`<body style="margin:0">${body}</body>`);
+      const png = await page.screenshot({ type: "png" }); await ctx.close();
+      return Buffer.from(png).toString("base64");
+    };
+    const shelf = (n: number, h: number) => Array.from({ length: n }, (_, i) => `<div style="width:${18 + (i * 7) % 14}px;height:${h - (i * 13) % 40}px;border-radius:3px;background:${["#0f766e", "#14b8a6", "#f59e0b", "#e11d48", "#6366f1", "#84cc16"][i % 6]}"></div>`).join("");
+    const avatar = ok(looks.handleTool("Sage", "set_web_theme_asset", { slot: "avatar", data_b64: await draw(256, 256,
+      `<div style="width:256px;height:256px;display:grid;place-items:center;background:radial-gradient(circle at 30% 25%,#5eead4,#0f766e);font:150px/1 system-ui">📚</div>`) }), "avatar");
+    const portrait = ok(looks.handleTool("Sage", "set_web_theme_asset", { slot: "portrait", data_b64: await draw(600, 900,
+      `<div style="width:600px;height:900px;background:linear-gradient(160deg,#ccfbf1,#0f766e);display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:0">
+        <div style="font:280px/1 system-ui;margin-bottom:60px">📚</div><div style="display:flex;gap:6px;align-items:flex-end;height:150px;padding:0 40px 40px">${shelf(14, 150)}</div></div>`) }), "portrait");
+    const banner = ok(looks.handleTool("Sage", "set_web_theme_asset", { slot: "banner", data_b64: await draw(1600, 600,
+      `<div style="width:1600px;height:600px;background:linear-gradient(115deg,#f0fdfa 0%,#99f6e4 45%,#0f766e 100%);display:flex;align-items:flex-end;justify-content:center;padding-bottom:150px;box-sizing:border-box">
+        <div style="display:flex;gap:8px;align-items:flex-end;height:200px">${shelf(40, 200)}</div></div>`) }), "banner");
+    ok(looks.handleTool("Sage", "set_web_theme", { set: {
+      colors: { light: { bg: "#f3fbf9", accent: "#0f766e" }, dark: { bg: "#0d1918", accent: "#5eead4" } },
+      bubble: { radius: 14, border: "accent" }, font: "inter", workingLabel: "Writing", avatar: avatar.id,
+      card: { tagline: "Keeps the docs true to the code", bio: "I write and review the user guides.\nAsk me where something is documented, or to check a page against the code.", portrait: portrait.id, banner: banner.id },
+    } }), "theme");
+    ok(looks.handleTool("Sage", "set_web_widget", { slot: "chat_header", spec: { v: 1, title: "Docs", items: [
+      { type: "progress", label: "Reviewed", key: "reviewed" }, { type: "stat", label: "Open PRs", key: "prs" },
+      { type: "badge", label: "State", bind: "state", tones: { working: "info", idle: "ok" } }] }, data: { reviewed: 75, prs: 2 } }), "widget");
+    ok(looks.handleTool("Sage", "set_web_ambient", { preset: "fall", glyphs: ["🌸", "❀", "✿"], colors: ["#f4a7b9", "#ffd1dc"], count: 14, duration: [9, 19] }), "ambient");
+  }
   // The threads: recorded before any page loads (the page reads them from the history).
   for (const [instance, msgs] of Object.entries(HISTORY)) {
     for (const m of msgs) {
