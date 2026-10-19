@@ -70,6 +70,8 @@ describe("#2213: the fleet completion survives an outage at fleet start", () => 
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(sendText, "nothing while its outcome is unknown").toHaveBeenCalledTimes(1);
     first.resolve({ messageId: "m-1", chatId: "g" });                  // it had landed
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount(), "landed: nothing left waiting").toBe(0);
     await vi.advanceTimersByTimeAsync(TERMINAL_BACKGROUND_WINDOW_MS);
     expect(sendText).toHaveBeenCalledTimes(1);
     expect(poster.terminalDeferred).toBe(false);
@@ -89,6 +91,7 @@ describe("#2213: the fleet completion survives an outage at fleet start", () => 
     await vi.advanceTimersByTimeAsync(20_000);
     expect(sendText).toHaveBeenCalledTimes(2);
     expect(poster.terminalLanded("Fleet ready")).toBe(true);
+    expect(vi.getTimerCount(), "landed: the wait for the first call's outcome is gone too").toBe(0);
     await vi.advanceTimersByTimeAsync(TERMINAL_BACKGROUND_WINDOW_MS);
     expect(sendText).toHaveBeenCalledTimes(2);
   });

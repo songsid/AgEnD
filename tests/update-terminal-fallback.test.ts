@@ -92,4 +92,20 @@ describe("fleet start completion fallback", () => {
     );
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("an adapter with no health snapshot (Telegram) follows the fleet's connection state: nothing while it reconnects (#2213)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const sendText = vi.fn().mockResolvedValue({ messageId: "done-1", chatId: "group" });
+    const { fleet } = makeFleet({ sendText } as unknown as ChannelAdapter);
+    fleet["adapterState"] = new Map([["discord", { status: "reconnecting", retryCount: 3 }]]);
+
+    const sending = (fleet as any).sendFleetStartCompletionFallback("group", "complete", "1");
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    await expect(sending).resolves.toBe(true);
+    expect(sendText).not.toHaveBeenCalled();
+    fleet["adapterState"] = new Map([["discord", { status: "connected", retryCount: 0 }]]);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(sendText).toHaveBeenCalledExactlyOnceWith("group", "complete", { threadId: "1" });
+  });
 });
