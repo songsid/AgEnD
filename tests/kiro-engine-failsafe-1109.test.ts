@@ -1,7 +1,7 @@
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   KIRO_TESTED_MAX,
   KiroBackend,
@@ -326,6 +326,11 @@ describe("P2: a kiro-cli replaced in place is re-read at every launch (Prism #2)
 });
 
 describe("P3: version gate", () => {
+  // Its own, empty kiro data dir: the run's shared XDG_DATA_HOME may hold a kiro data.sqlite3 another test file wrote
+  // (an order-dependent "no such table" launch warning otherwise).
+  let xdg = "";
+  beforeEach(() => { xdg = mkdtempSync(join(tmpdir(), "agend-1109-xdg-")); vi.stubEnv("XDG_DATA_HOME", xdg); });
+  afterEach(() => { vi.unstubAllEnvs(); rmSync(xdg, { recursive: true, force: true }); });
   it("a version AgEnD has run is answered from the table — no second CLI call", () => {
     expect(probe(KIRO_TESTED_MAX, help("2.27.0")).calls).toEqual([["--version"]]);
   });
