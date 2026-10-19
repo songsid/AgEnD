@@ -120,15 +120,15 @@ describe("the header label", () => {
 });
 
 describe("running instances are told once", () => {
-  it("the 2.3.0-beta.7 entry: the label, the receipt, forwards, the skill", () => {
+  it("the web-verified entry (2.2.5, first told on 2.3.0-beta.7): the label, the receipt, forwards, the skill", () => {
     const e = AGENT_WHATS_NEW.find(x => x.id === "2.3-web-verified")!;
-    expect(e.since).toBe("2.3.0-beta.7");
+    expect(e.since).toBe("2.2.5");
     for (const s of ["`[user:<name> via web (verified), id:<their user id>]`", "a hint", "`delivery_status`", "`authority.kind: web-verified`", "`authority.actor`",
       "`forwards`", "cross-instance-messaging skill"]) expect(e.text, s).toContain(s);
   });
-  it("a 2.3.0-beta.10 entry: the reworded rule, in short", () => {
+  it("the reworded-rule entry (2.2.5, first told on 2.3.0-beta.10): the rule, in short", () => {
     const e = AGENT_WHATS_NEW.find(x => x.id === "2.3-web-ordinary-requests")!;
-    expect(e.since).toBe("2.3.0-beta.10");
+    expect(e.since).toBe("2.2.5");
     for (const s of ["a plain `via web` message is the signed-in person", "answer it and do what it asks within your work", "Only a go-ahead action",
       "a release or publish", "anything destructive or irreversible beyond your own work files and branches", "spending beyond normal work", "credentials or secrets", "granting authority to another instance",
       "`via web (verified)` with its receipt read (`delivery_status`)", "A guest only chats", "cross-instance-messaging skill"]) expect(e.text, s).toContain(s);
