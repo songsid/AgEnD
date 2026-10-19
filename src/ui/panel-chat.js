@@ -26,7 +26,7 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { savePref } from "/assets/app-prefs.js";
 import { applyTheme, clearAmbient, resolvedMode, themeFor, themeImageUrl, themeMenuItems, themesStore } from "/assets/app-themes.js";
 import { colorMenuItem } from "/assets/identity-color.js";
-import { cardFoldable, IdentityCard, useCard } from "/assets/identity-card.js";
+import { brokenPictures, cardFoldable, IdentityCard, useCard } from "/assets/identity-card.js";
 import { AgentWidget, instanceBinds, widgetFor } from "/assets/agent-widget.js";
 
 // #1629 r4 §1: the identity card under the chat's header — hidden by default; shown or not is this device's choice.
@@ -53,6 +53,7 @@ function ChatCard({ name, card }) {
 /** The header's card menu: ☑ Show card, ☑ Show picture and bio. */
 function CardMenu({ card }) {
   const prefs = useStore(chatCardPrefs);
+  useStore(brokenPictures);                        // a banner that failed to load: the card cannot fold, the item greys out
   if (!card) return null;
   const items = [
     { key: "card", checkbox: true, checked: prefs.open, label: t("card.show"), onSelect: () => setChatCardOpen(!prefs.open) },

@@ -42,6 +42,14 @@ describe("the chat card: no control on the card (the user, 2026-10-20)", () => {
       card.cardFoldable({ banner: FULL.banner, portrait: FULL.portrait }), card.cardFoldable({ banner: FULL.banner, tagline: FULL.tagline }), card.cardFoldable(null)])
       .toEqual([true, false, false, true, true, false]);
   });
+  it("a banner that failed to load (its img error): the card cannot fold — the row stays even when rowHidden, and cardFoldable says no (Prism)", async () => {
+    const { pg, card } = await mount({ card: FULL, rowHidden: true });
+    expect([card.cardFoldable(FULL), !!pg.root.querySelector(".id-row")], "drawn: it folds").toEqual([true, false]);
+    pg.root.querySelector("img.id-banner").dispatchEvent(new (globalThis as any).Event("error"));
+    const { settle } = await import("./helpers/app-harness.js"); await settle(2);
+    expect([pg.root.querySelector("img.id-banner"), !!pg.root.querySelector(".id-row"), !!pg.root.querySelector(".id-bio"), card.cardFoldable(FULL), card.brokenPictures.get()[FULL.banner.src]])
+      .toEqual([null, true, true, false, true]);
+  });
   it("no button class of the old on-card controls is left in the page code", () => {
     const src = readFileSync(new URL("../src/ui/shared/identity-card.js", import.meta.url), "utf8") + readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
     expect(src).not.toMatch(/id-ctl|id-hide|id-unfold|id-fold/);

@@ -341,6 +341,9 @@ describe("#1629 r4 §1: the identity card", () => {
       item(1).click(); await settle(2);
       expect([!!q(".id-row"), !!q(".id-bio"), q(".id-card").getAttribute("class"), pg.storage.get("agend_chat_card_row") ?? null, item(1).getAttribute("aria-checked")])
         .toEqual([true, true, "id-card card-c bs-m", null, "true"]);
+      // Prism (#2227): the banner fails to load — the card shows its row, and the menu's second item greys out with it.
+      q("img.id-banner").dispatchEvent(new (globalThis as any).Event("error")); await settle(2);
+      expect([q("img.id-banner"), !!q(".id-row"), item(1).hasAttribute("disabled"), item(1).getAttribute("aria-checked")]).toEqual([null, true, true, "false"]);
     } finally { CARD.banner.src = saved; }
   });
   it("#2038: the banner's height follows the card's width (an aspect per size) between a floor and a ceiling — never half the size token", async () => {

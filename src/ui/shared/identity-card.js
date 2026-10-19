@@ -160,8 +160,18 @@ function SizeControl({ name, size }) {
   </div>`;
 }
 
-/** #2217: whether a card can fold its row away and keep the banner — a banner, and something on the row (the header's fold button shows only then). */
-export const cardFoldable = (card) => !!(card && card.banner && (card.portrait || card.tagline || card.bio));
+/**
+ * #2217 hotfix (Prism): pictures that failed to load on this page, by src — shared, so the chat's card menu judges a card
+ * as drawn (a broken banner is not drawn, and then the card cannot fold), not by its metadata alone.
+ */
+export const brokenPictures = createStore({});
+const markBroken = (src) => { if (src && !brokenPictures.get()[src]) brokenPictures.set((s) => ({ ...s, [src]: true })); };
+const drawn = (card, slot) => !!(card && card[slot] && !brokenPictures.get()[card[slot].src]);
+/**
+ * #2217: whether a card can fold its row away and keep the banner — a banner drawn, and something on its row (a picture
+ * drawn, a tagline or a bio). The chat's card menu enables Show picture and bio only then.
+ */
+export const cardFoldable = (card) => !!(card && drawn(card, "banner") && (drawn(card, "portrait") || card.tagline || card.bio));
 
 /**
  * The card. `compact`: the chat header's own small size (no size control; the banner still follows the size choice,
@@ -173,14 +183,14 @@ export const cardFoldable = (card) => !!(card && card.banner && (card.portrait |
  */
 export function IdentityCard({ name, card, compact = false, sizeControl = !compact, rowHidden = false }) {
   useStore(cardSizeStore);
-  const [broken, setBroken] = useState({});
+  const broken = useStore(brokenPictures);
   if (!card) return null;
   const size = compact ? "c" : cardSizeFor(name);
   // #2038: the chat header's card is its own small size, but its banner follows the person's size choice too.
   const bannerSize = compact ? ` bs-${cardSizeFor(name)}` : "";
   const whose = (f) => t(f.by === "human" ? "card.byHuman" : "card.byAgent");
-  const pic = (slot, cls, alt) => card[slot] && broken[slot] !== card[slot].src
-    ? html`<img class=${cls} src=${card[slot].src} alt=${alt} title=${whose(card[slot])} decoding="async" onError=${() => setBroken({ ...broken, [slot]: card[slot].src })} />` : null;
+  const pic = (slot, cls, alt) => card[slot] && !broken[card[slot].src]
+    ? html`<img class=${cls} src=${card[slot].src} alt=${alt} title=${whose(card[slot])} decoding="async" onError=${() => markBroken(card[slot].src)} />` : null;
   // #2086: the banner at its focus; on a screen wider than BANNER_MAX_ASPECT it is centred over a blurred copy of itself.
   const focus = card.banner_focus ? card.banner_focus.value : 50;
   const atFocus = (el) => { if (el && el.style) el.style.setProperty("--id-focus", `${focus}%`); };

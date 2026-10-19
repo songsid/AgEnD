@@ -189,6 +189,28 @@ for (const k of CASES) {
   await p.ctx.close();
 }
 
+// Prism (#2227): a banner that fails to load is not drawn, and then the card cannot fold — the menu's second item greys out
+// with it (a positive control first: the same card with its banner loading folds). Each engine, desk.
+{
+  const p = await freshPage(fx, { device: "desk", theme: "light", lang: "en" } as any, { reducedMotion: true });
+  const page = p.page;
+  const itemState = () => page.evaluate(`(() => { const b = document.querySelectorAll(".p-chat .chat-card-menu [role=menuitemcheckbox]")[1]; return b ? { disabled: b.disabled, checked: b.getAttribute("aria-checked") } : null; })()`);
+  await go(page, p.base, `/ui/chat/${enc(A)}`); await ui.ready(page); await ui.show(page);
+  await ui.open(page); const okItem = await itemState(); await ui.close(page);
+  const okFolds = await ui.fold(page); await ui.unfold(page);
+  await page.route(/\/api\/card\/[^/]+\/banner\?/, (r: any) => r.abort());
+  await go(page, p.base, `/ui/chat/${enc(A)}`);
+  await until(page, () => !!document.querySelector(".p-chat .id-row") && !document.querySelector(".p-chat img.id-banner"), null);
+  await ui.open(page); const brokenItem = await itemState();
+  await page.click(ITEM(1), { force: true }).catch(() => {}); await page.waitForTimeout(300);
+  const afterClick = await itemState(); await ui.close(page);
+  const brokenRow = await page.evaluate(`({ banner: !!document.querySelector(".p-chat img.id-banner"), row: !!document.querySelector(".p-chat .id-row"), kept: localStorage.getItem("agend_chat_card_row") })`);
+  await shot(page, "broken-banner", "menu");
+  verdict("broken banner", !!okItem && !okItem.disabled && okFolds && !!brokenItem && brokenItem.disabled && brokenItem.checked === "false" && afterClick?.disabled && !brokenRow.banner && brokenRow.row && brokenRow.kept === null,
+    { okItem, okFolds, brokenItem, afterClick, brokenRow, errors: other(p.errors) });
+  await p.ctx.close();
+}
+
 // ?safe=1 and the public link: the same controls (desk light, Chromium only).
 if (ENGINE === "chromium") {
   const p = await freshPage(fx, { device: "desk", theme: "light", lang: "en" } as any, { reducedMotion: true });
