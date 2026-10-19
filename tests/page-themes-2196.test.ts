@@ -61,6 +61,11 @@ describe("the host's check of `page`", () => {
     expect(checkTheme({ ...red, page: { on: false } }, ctx).ok).toBe(true);
     expect(checkTheme({ colors: red.colors }, ctx).ok).toBe(true);
   });
+  it("…and on its background, where the sidebar reads but the page is the colour of the Needs you count", () => {
+    const t = { colors: { light: { bg: "#e05555", surface: "#ffffff", text: "#000000", text2: "#000000", accent: "#000000" } }, page: { on: true, sidebar: { light: "#ffffff" } } };
+    const r = checkTheme(t, ctx);
+    expect(r.ok ? [] : [...new Set(r.errors.map((e) => `${e.path} ${/on the page background/.test(e.problem)}`))]).toEqual(["colors.light.bg true"]);
+  });
   it("set and clear through set_web_theme's patch; `clear: [\"page\"]` takes it away", () => {
     const set = applyThemePatch({ v: 1 }, { set: HARBOR }, ctx);
     expect(set.ok && set.theme.page?.on).toBe(true);
@@ -164,6 +169,9 @@ describe("the page: the open agent's colours on the shell", () => {
     const p = pageNow("light");
     const shade = readableShade("#14b8a6", "light", p);   // a teal name on a teal page
     expect([p.sidebar, contrast(shade, p.sidebar) >= 4.5, contrast(shade, p.bg) >= 4.5, readableShade("#14b8a6", "light") === shade]).toEqual(["#e2f0ed", true, true, false]);
+    // …as a row's identity is drawn (identityOf): its name shade is the page's while the page is themed.
+    const { identityOf } = await import("/assets/identity-color.js");
+    expect(identityOf({ name: "x", color: { person: "#14b8a6" } }).nameLight).toBe(shade);
   });
   it("the header follows the page, not the chat: the stylesheet gives a chat's header the shell's colours back", () => {
     const css = readFileSync(join(process.cwd(), "src/ui/shared/app.css"), "utf8");
