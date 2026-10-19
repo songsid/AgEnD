@@ -165,7 +165,8 @@ tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `n
 ## Fleet
 
 `/ui/fleet/<tab>`: **Tasks**, **Schedules**, **Teams**, **Org chart**, **Cache**, **Config**, plus a **Docs** link.
-The sidebar's **Fleet overview** opens the Org chart.
+The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet tab open the Fleet tab this device used last
+(`agend_last_fleet_tab`; the Org chart the first time). The sidebar has no separate Fleet (Details) or View row.
 - **Tasks** — the task board: **New task** (title, description, priority, assignee), **Claim**, **Done**. No delete.
 - **Schedules** — every schedule (silent ones included): when it runs in words, "next …", the target. **New
   schedule** (Repeat with a cron expression, or Once at a date and time; message, target, label, timezone),
@@ -212,7 +213,8 @@ to that instance's Log).
   activity, its identity card and widget. The ⋯ menu: Start / Restart / Stop instance, Pause / Wake, Colour…, and
   the theme lock/reset.
 
-Phone layout: bottom tabs Chat, Needs you, Fleet, View, Settings.
+Phone layout: bottom tabs Chat, Needs you, Fleet, Settings. Chat is current on any of an agent's pages and goes to its
+chat; View, Log and Details are the switch under the header.
 
 ## Usage and the cache report
 

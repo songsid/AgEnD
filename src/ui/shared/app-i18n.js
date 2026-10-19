@@ -60,7 +60,7 @@ export function t(key, ...values) {
 
 register("app", {
   en: {
-    brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet overview", view: "View", settings: "Settings", instances: "Instances", newInstance: "New instance", newAgent: "New agent",
+    brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet", view: "View", settings: "Settings", instances: "Instances", newInstance: "New instance", newAgent: "New agent",
     collapse: "Hide the sidebar", expand: "Show the sidebar", openMenu: "Open the sidebar", closeMenu: "Close the sidebar",
     resizeSidebar: "Sidebar width", resizeSidebarHint: "Drag to resize · double-click to reset",
     names: "Names", namesNickname: "Nickname first", namesInstance: "Real name first",

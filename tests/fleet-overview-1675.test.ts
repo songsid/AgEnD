@@ -3,7 +3,8 @@
  * (#1523 N2) — with an instance open (chat, View, Details) the Fleet panel and its Org chart (#1389) were out of reach.
  * "Fleet overview" at the top of the sidebar (the drawer on a phone) opens the Fleet panel on the Org chart from any
  * page; the deep link /ui/fleet/org still routes; an instance row still opens that instance. The real Shell, router and
- * Fleet panel in a mini DOM.
+ * Fleet panel in a mini DOM. #2183: the sidebar's "Fleet" (Details) and "View" rows are gone; the entry is "Fleet" in
+ * English and opens the tab this device used last (tests/nav-trim-2183.test.ts).
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { fire } from "./helpers/mini-dom.js";
@@ -43,20 +44,18 @@ const click = (el: any) => fire(el, "click", { button: 0 });
 const navRows = (pg: AppPage) => [...pg.root.querySelectorAll("#sidebar .side-nav a")].map((a: any) => a.textContent.trim());
 
 describe("Fleet overview", () => {
-  it("is the first row at the top of the sidebar, before Needs you / Fleet / View", async () => {
+  it("is the first row at the top of the sidebar, before Needs you — and the only Fleet row (#2183: no Fleet / View rows)", async () => {
     const { pg } = await shell("/ui/chat/web-dev");
-    expect([navRows(pg)[0], entry(pg)?.getAttribute("href")]).toEqual(["Fleet overview", "/ui/fleet/org"]);
+    expect([navRows(pg), entry(pg)?.getAttribute("href")]).toEqual([["Fleet", "Needs you"], "/ui/fleet/org"]);
   });
-  it("from an instance's chat it opens the Fleet panel on the Org chart (where the old Fleet row goes to Details)", async () => {
+  it("from an instance's chat it opens the Fleet panel on the Org chart (the first time)", async () => {
     const { pg, navStore } = await shell("/ui/chat/web-dev");
-    const fleetRow = [...pg.root.querySelectorAll("#sidebar .side-nav a")].find((a: any) => a.textContent.trim() === "Fleet") as any;
-    expect(fleetRow.getAttribute("href")).toBe("/ui/fleet/agent/web-dev");          // #1523 N2, unchanged
     click(entry(pg)); await settle(6);
     const active = pg.root.querySelector(".p-fleet .seg-item.active") as any;
     expect([navStore.get().route, pg.window.location.pathname, active?.getAttribute("href"), entry(pg).getAttribute("aria-current")])
       .toEqual([{ panel: "fleet", tab: "org" }, "/ui/fleet/org", "/ui/fleet/org", "page"]);
   });
-  it("marks itself current on every Fleet tab, and nowhere else — one current row (the Fleet row has Details)", async () => {
+  it("marks itself current on every Fleet tab, and nowhere else — one current row (an instance's Details has none, #2183)", async () => {
     const outcomes: unknown[] = [];
     for (const path of ["/ui/fleet", "/ui/fleet/org", "/ui/fleet/cache", "/ui/chat/web-dev", "/ui/fleet/agent/web-dev"]) {
       const { pg } = await shell(path);
@@ -64,8 +63,8 @@ describe("Fleet overview", () => {
       outcomes.push([path, entry(pg)?.getAttribute("aria-current") ?? null, current]);
       const p = mounted.pop()!; await p.unmount(); p.restore();
     }
-    expect(outcomes).toEqual([["/ui/fleet", "page", ["Fleet overview"]], ["/ui/fleet/org", "page", ["Fleet overview"]], ["/ui/fleet/cache", "page", ["Fleet overview"]],
-      ["/ui/chat/web-dev", null, []], ["/ui/fleet/agent/web-dev", null, ["Fleet"]]]);
+    expect(outcomes).toEqual([["/ui/fleet", "page", ["Fleet"]], ["/ui/fleet/org", "page", ["Fleet"]], ["/ui/fleet/cache", "page", ["Fleet"]],
+      ["/ui/chat/web-dev", null, []], ["/ui/fleet/agent/web-dev", null, []]]);
   });
   it("the deep link /ui/fleet/org still opens the Org chart", async () => {
     const { pg, navStore } = await shell("/ui/fleet/org");
@@ -103,11 +102,11 @@ describe("Fleet overview", () => {
     const { pg, navStore } = await shell("/ui/chat/web-dev", { narrow: true });
     const { shellStore } = await import("/assets/app-shell.js");
     shellStore.set({ drawer: true }); await settle();
-    expect(navRows(pg)[0]).toBe("Fleet overview");
+    expect(navRows(pg)[0]).toBe("Fleet");
     click(entry(pg)); await settle(6);
     expect([navStore.get().route, shellStore.get().drawer]).toEqual([{ panel: "fleet", tab: "org" }, false]);
   });
-  it("in zh-TW: Fleet 概覽", async () => {
+  it("in zh-TW: Fleet 概覽 (#2183: plain \"Fleet\" in English)", async () => {
     const { pg } = await shell("/ui/chat/web-dev");
     const { setLang } = await import("/assets/app-i18n.js");
     setLang("zh-TW"); await settle();

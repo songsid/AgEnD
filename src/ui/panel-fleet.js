@@ -11,7 +11,7 @@ import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { renavigate } from "/assets/app-nav.js";
-import { chatPath, fleetPath, FLEET_TABS } from "/assets/app-route.js";
+import { chatPath, fleetPath, FLEET_TABS, rememberFleetTab } from "/assets/app-route.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -142,6 +142,7 @@ export function FleetPanel({ route, navKey }) {
   const lease = useLease(navKey);
   const tab = route.tab;
   useEffect(() => { setTitle(`${t("fleet.title")} · ${t(`fleet.${tab}`)}`); }, [tab, navKey]);
+  useEffect(() => { rememberFleetTab(tab); }, [tab]);   // #2183: the sidebar's and the phone's Fleet reopen it
   const Body = { tasks: Tasks, schedules: Schedules, teams: Teams, org: Org, cache: Cache, usage: UsageTab, config: Config }[tab] || Tasks;
   // #1685: host memory pressure slowing or holding new agents — shown here, where macOS's routine "elevated" is not a chat notice.
   const { hostMemory, hostMemoryTop } = useStore(appStore);

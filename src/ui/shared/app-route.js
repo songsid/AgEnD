@@ -50,6 +50,17 @@ export function viewPath(instance) { return instance ? `/view/${encodeURICompone
 export function detailsPath(instance) { return `/ui/fleet/agent/${encodeURIComponent(instance)}`; }
 export function logPath(instance) { return `/ui/log/${encodeURIComponent(instance)}`; }
 export function fleetPath(tab) { return tab && tab !== "tasks" ? `/ui/fleet/${tab}` : "/ui/fleet"; }
+/** #2183: this device's last Fleet tab (Fleet remembers it; the Org chart the first time). */
+export const LAST_FLEET_TAB_KEY = "agend_last_fleet_tab";
+export function lastFleetTab() {
+  let tab = null;
+  try { tab = localStorage.getItem(LAST_FLEET_TAB_KEY); } catch { /* storage blocked: the default */ }
+  return FLEET_TABS.includes(tab) ? tab : "org";
+}
+export function rememberFleetTab(tab) {
+  if (!FLEET_TABS.includes(tab)) return;
+  try { localStorage.setItem(LAST_FLEET_TAB_KEY, tab); } catch { /* this page only */ }
+}
 export const NEEDS_PATH = "/ui/needs";
 export function settingsPath(section) { return section && section !== "agents" ? `/settings/${section}` : "/settings"; }
 export function routePath(route) {

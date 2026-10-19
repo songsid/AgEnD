@@ -1,7 +1,8 @@
 /**
  * #1523 N2 (docs/design/web-unified-instance-nav.md §3.2, §3.3; decisions Q1 = B, Q4 = A): one instance's Details at
- * /ui/fleet/agent/<name>, the Chat | View | Details switch that keeps the instance, and "Fleet" with an instance open
- * going to that instance's Details (with none: Tasks, as before). The real Shell, router, store and panels in the mini
+ * /ui/fleet/agent/<name> and the Chat | View | Details switch that keeps the instance. #2183 (the user's call): the
+ * sidebar's "Fleet" row that went to the open instance's Details, and the phone's Fleet-as-Details tab, are gone — Details
+ * is the switch's. The real Shell, router, store and panels in the mini
  * DOM; fetch is a fake that records what is called.
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -98,9 +99,8 @@ async function app(path: string) {
 async function reload(prev: AppPage, path: string) { await prev.unmount(); prev.restore(); mounted.splice(mounted.indexOf(prev), 1); return app(path); }
 const go = async (path: string) => { const { navigate } = await import("/assets/app-nav.js"); navigate(path); await settle(6); };
 const route = async () => (await import("/assets/app-nav.js")).navStore.get().route;
-// The "Fleet" row (#1675's "Fleet overview" above it, also a /ui/fleet link, is another row).
-const fleetLink = (pg: AppPage) => (pg.root.querySelectorAll(".side-nav a.side-row").find((a: any) => a.getAttribute("href")?.startsWith("/ui/fleet") && !a.classList.contains("side-overview")) as any) ?? null;
-const fleetTab = (pg: AppPage) => (pg.root.querySelectorAll("nav.tabs a.tab").find((a: any) => a.getAttribute("href")?.startsWith("/ui/fleet")) as any) ?? null;
+const sideLinks = (pg: AppPage) => pg.root.querySelectorAll(".side-nav a.side-row").map((a: any) => a.getAttribute("href"));
+const tabs = (pg: AppPage) => pg.root.querySelectorAll("nav.tabs a.tab").map((a: any) => [a.getAttribute("href"), a.getAttribute("aria-current") ?? null]);
 const sw = (pg: AppPage) => pg.root.querySelectorAll(".inst-switch a.seg-item").map((a: any) => [a.textContent, a.getAttribute("href"), a.getAttribute("aria-current") ?? null]);
 const menuItems = async (pg: AppPage) => {
   pg.root.querySelector(".p-details .menu > button").click(); await settle();
@@ -111,24 +111,22 @@ const choose = async (pg: AppPage, label: string) => {
   pg.root.querySelectorAll(".p-details .menu-list .menu-item").find((b: any) => b.textContent.trim() === label).click(); await settle(4);
 };
 
-describe("Fleet goes to the open instance's Details (the user's complaint)", () => {
-  it("from Chat, View or Details of an instance: its Details; from Tasks or Settings: Tasks — sidebar and phone tab alike", async () => {
+describe("#2183: an instance's Details is its header's tab — no sidebar row or phone tab of its own", () => {
+  it("from Chat, View, Log or Details of an instance: the sidebar has only Fleet and Needs you; the phone's Chat tab is current and goes to its chat", async () => {
     const pg = await app("/ui/chat/web-dev");
-    expect([fleetLink(pg)?.getAttribute("href") ?? null, fleetTab(pg)?.getAttribute("href") ?? null]).toEqual(["/ui/fleet/agent/web-dev", "/ui/fleet/agent/web-dev"]);
-    await go("/view/api-server");
-    expect(fleetLink(pg)?.getAttribute("href") ?? null).toBe("/ui/fleet/agent/api-server");
-    await go("/ui/fleet/agent/qa-bot");
-    expect([fleetLink(pg)?.getAttribute("href") ?? null, fleetLink(pg)?.getAttribute("aria-current") ?? null]).toEqual(["/ui/fleet/agent/qa-bot", "page"]);
-    await go("/ui/fleet/org");
-    expect(fleetLink(pg)?.getAttribute("href") ?? null).toBe("/ui/fleet");
-    await go("/settings");
-    expect([fleetLink(pg)?.getAttribute("href") ?? null, fleetTab(pg)?.getAttribute("href") ?? null]).toEqual(["/ui/fleet", "/ui/fleet"]);
-  });
-  it("a click on Fleet from an instance's chat lands on its Details (a client navigation)", async () => {
-    const pg = await app("/ui/chat/web-dev");
-    fire(fleetLink(pg), "click", { button: 0 }); await settle(6);
-    expect([await route(), pg.window.location.pathname]).toEqual([{ panel: "details", instance: "web-dev" }, "/ui/fleet/agent/web-dev"]);
-    expect(pg.root.querySelector(".p-details h1")?.textContent ?? null).toBe("web-dev");
+    const out: unknown[] = [];
+    for (const path of ["/ui/chat/web-dev", "/view/api-server", "/ui/log/qa-bot", "/ui/fleet/agent/qa-bot", "/settings"]) {
+      await go(path);
+      out.push([path, sideLinks(pg), tabs(pg)]);
+    }
+    const four = (chat: string, cur: string | null) => [[chat, cur === "chat" ? "page" : null], ["/ui/needs", null], ["/ui/fleet/org", null], ["/settings", cur === "settings" ? "page" : null]];
+    expect(out).toEqual([
+      ["/ui/chat/web-dev", ["/ui/fleet/org", "/ui/needs"], four("/ui/chat/web-dev", "chat")],
+      ["/view/api-server", ["/ui/fleet/org", "/ui/needs"], four("/ui/chat/api-server", "chat")],
+      ["/ui/log/qa-bot", ["/ui/fleet/org", "/ui/needs"], four("/ui/chat/qa-bot", "chat")],
+      ["/ui/fleet/agent/qa-bot", ["/ui/fleet/org", "/ui/needs"], four("/ui/chat/qa-bot", "chat")],
+      ["/settings", ["/ui/fleet/org", "/ui/needs"], four("/ui/chat/web-dev", "settings")],   // the last chat opened (agend_last_instance)
+    ]);
   });
 });
 

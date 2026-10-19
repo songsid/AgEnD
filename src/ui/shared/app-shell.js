@@ -9,7 +9,7 @@ import { ColorDialogHost } from "./identity-color.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
 import { appStore, createStore, guestBadge, guestPage, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
-import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, detailsPath, fleetPath } from "./app-route.js";
+import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, fleetPath, lastFleetTab } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
 import { savePref } from "./app-prefs.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
@@ -267,9 +267,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   const app = useStore(appStore);
   const shell = useStore(shellStore);
   const canCreate = useCanCreate();
-  // #1675: the Fleet panel is "Fleet overview"'s (one current row); the "Fleet" row is current on an instance's Details.
-  const on = (panel) => !!route && (panel === "fleet" ? route.panel === "details" : route.panel === panel);
-  const openInstance = openInstanceOf(route);
+  const on = (panel) => !!route && route.panel === panel;
   // A count badge is hidden at 0; its number is also in the link's accessible name.
   const navLink = (panel, href, icon, label, count = 0) => html`<a class=${`side-row${on(panel) ? " active" : ""}`} href=${href}
     aria-current=${on(panel) ? "page" : undefined} aria-label=${count ? `${label} (${t("app.needsCount", count)})` : undefined} onClick=${closeDrawer}>
@@ -307,10 +305,11 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
       <${SidebarResize} />
     </aside>`;
   }
-  // #1675: the whole fleet, on its Org chart (#1389), from anywhere — top left, so at the top of a phone's drawer too. The
-  // "Fleet" row under it goes to the open instance's Details (#1523 N2); this one is the Fleet panel, any of its tabs.
+  // #1675: the whole fleet, from anywhere — top left, so at the top of a phone's drawer too. #2183 (the user's call): the
+  // one Fleet entry ("Fleet" / "Fleet 概覽"), on the tab this device used last (the Org chart the first time); an agent's
+  // View, Log and Details are its header's tabs, so the sidebar has no "Fleet" (Details) or "View" row of its own.
   const onFleet = !!route && route.panel === "fleet";
-  const overview = html`<a class=${`side-row side-overview${onFleet ? " active" : ""}`} href=${fleetPath("org")}
+  const overview = html`<a class=${`side-row side-overview${onFleet ? " active" : ""}`} href=${fleetPath(lastFleetTab())}
     aria-current=${onFleet ? "page" : undefined} onClick=${closeDrawer}><${Icon} name="org" /><span class="grow">${t("app.fleetOverview")}</span></a>`;
   return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
     <div class="side-head" data-trust="navigation">
@@ -320,8 +319,6 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${overview}
       ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
-      ${navLink("fleet", openInstance ? detailsPath(openInstance) : "/ui/fleet", "fleet", t("app.fleet"))}
-      ${navLink("view", "/view", "view", t("app.view"))}
       ${canCreate && onNewInstance ? html`<button type="button" class="side-row side-new" onClick=${onNewInstance}><${Icon} name="plus" /><span class="grow">${t("app.newAgent")}</span></button>` : null}
     </nav>
     ${shell.side ? html`<${shell.side.Component} />` : html`<${InstanceNav} route=${route} items=${app.instances} loaded=${app.ready !== false}
@@ -409,8 +406,8 @@ export function PanelHeader({ title, sub, children, headingRef, nav, notice }) {
 }
 
 /**
- * #1523 N2: the instance a page is about — Chat, View, Log (#1218) or Details of it — or null. With one open, Fleet goes to its
- * Details (the user's complaint: Fleet always landed on Tasks), and Chat and View keep it; with none, as before.
+ * #1523 N2: the instance a page is about — Chat, View, Log (#1218) or Details of it — or null. #2183: with one open, the
+ * phone's Chat tab is current and goes to its chat.
  */
 export function openInstanceOf(route) {
   return route && (route.panel === "chat" || route.panel === "view" || route.panel === "log" || route.panel === "details") && route.instance ? route.instance : null;
@@ -421,14 +418,15 @@ function BottomTabs({ route, viewOnly }) {
   let last = null;
   try { last = localStorage.getItem("agend_last_instance"); } catch { /* none */ }
   const open = openInstanceOf(route);
-  const chatHref = open && route.panel !== "view" ? chatPath(open) : route && route.panel === "chat" && route.instance ? chatPath(route.instance) : last ? chatPath(last) : "/ui";
+  // #2183: Chat stands for the open agent's pages (its View, Log and Details are the tabs under its header), so it goes to that agent's chat.
+  const chatHref = open ? chatPath(open) : last ? chatPath(last) : "/ui";
   const anyAwaiting = Object.keys(app.awaiting).length;
   const tab = (href, icon, label, active, badge, badgeLabel) => html`<a class=${`tab${active ? " active" : ""}`} href=${href} aria-current=${active ? "page" : undefined}>
     <${Icon} name=${icon} size=${20} /><span>${label}</span>${badge ? html`<span class="tab-badge" aria-label=${badgeLabel || t("app.needsYou")}>${badge}</span>` : null}</a>`;
-  let lastView = null;
-  try { lastView = localStorage.getItem("agend_last_view"); } catch { /* none */ }
-  const viewHref = route && (route.panel === "view" || route.panel === "log" || route.panel === "details") && route.instance ? viewPath(route.instance) : viewPath(lastView);
   if (viewOnly) {
+    let lastView = null;
+    try { lastView = localStorage.getItem("agend_last_view"); } catch { /* none */ }
+    const viewHref = route && route.panel === "view" && route.instance ? viewPath(route.instance) : viewPath(lastView);
     return html`<nav data-trust="navigation" class="tabs" aria-label=${t("app.menu")}>
       ${tab(viewHref, "view", t("app.view"), route && route.panel === "view")}
       ${tab(signInHref(), "user", t("app.signIn"), false)}
@@ -436,11 +434,11 @@ function BottomTabs({ route, viewOnly }) {
   }
   // #1920: a guest has only its chats (the drawer lists them): no tabs to switch between.
   if (guestPage()) return null;
+  // #2183 (the user's call): four tabs — Chat, Needs you, Fleet (on its last tab), Settings.
   return html`<nav data-trust="navigation" class="tabs" aria-label=${t("app.menu")}>
-    ${tab(chatHref, "chat", t("app.chat"), route && route.panel === "chat", anyAwaiting)}
+    ${tab(chatHref, "chat", t("app.chat"), !!open, anyAwaiting)}
     ${tab(NEEDS_PATH, "inbox", t("app.needsTab"), route && route.panel === "needs", (app.needs || []).length, t("app.needsCount", (app.needs || []).length))}
-    ${tab(open ? detailsPath(open) : "/ui/fleet", "fleet", t("app.fleet"), route && (route.panel === "fleet" || route.panel === "details"))}
-    ${tab(viewHref, "view", t("app.view"), route && route.panel === "view")}
+    ${tab(fleetPath(lastFleetTab()), "fleet", t("app.fleet"), route && route.panel === "fleet")}
     ${tab(settingsPath(), "settings", t("app.settings"), route && route.panel === "settings")}
   </nav>`;
 }
