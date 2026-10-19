@@ -103,9 +103,9 @@ describe("Settings → Agents groups the same way", () => {
   it("groupAgents with the sidebar's rule: teams first, then tags, Other last; without it, the first tag as before", async () => {
     const nav = await import("/assets/instance-nav.js");
     const insts = { "wiki-keeper": { tags: ["wiki", "docs"] }, "docs-writer": { tags: ["wiki"] }, loner: {} };
-    const teams: Record<string, string[]> = { "wiki-keeper": ["agend-dev"] };
+    const teams: Record<string, string[]> = { "wiki-keeper": ["zeta-team"] };          // after "wiki" by name: first only as a team
     const grouped = groupAgents(insts, {}, "", (n: string) => nav.groupOf({ tags: (insts as any)[n].tags, teams: teams[n] ?? [] }), nav.groupLabel);
-    expect(grouped.map((g: any) => [nav.groupLabel(g.group), g.names])).toEqual([["agend-dev", ["wiki-keeper"]], ["wiki", ["docs-writer"]], ["Other", ["loner"]]]);
+    expect(grouped.map((g: any) => [nav.groupLabel(g.group), g.names])).toEqual([["zeta-team", ["wiki-keeper"]], ["wiki", ["docs-writer"]], ["Other", ["loner"]]]);
     expect(groupAgents(insts, {}, "").map((g: any) => g.group)).toEqual(["wiki", "Other"]);
   });
 });
