@@ -1,4 +1,0 @@
----
-section: Added
----
-- **Agents can read the prompt-cache report: `get_cache_report` (#2001).** It returns the report the dashboard shows under **Fleet → cache**, per instance: the TTL as written and the mix of 5-minute and 1-hour cache writes, the effective TTL and its gap-miss rate (#2010), requests, gaps past the TTL, expired-then-rewritten requests and tokens, expiry cost, the keep-warm simulation and its recommendation, whether figures are estimates or priced, and coverage. It answers from the last scan and never reads transcripts itself; `scanning` says whether the scan has caught up. General, coordinators and full-profile instances see every instance plus a fleet summary, at most `top` rows (default 10). Any other instance sees only its own row. The dashboard card now also shows the 5m / 1h write mix.
