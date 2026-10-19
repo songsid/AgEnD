@@ -197,6 +197,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - someone reading `/view` without signing in sees the same sidebar and tabs as before.
 
 ### Fixed
+- **Click down the sidebar as fast as you like (#2188).** Clicking several chats in a row could leave the page stuck for seconds, and every switch felt slow. The cause was mostly the effects code: with nothing to play, it still checked the whole page's styles on every change (each status update, each click, every mouse move). Now:
+  - With no effect placed, that check doesn't run at all; the dialog check runs once per change instead of several times.
+  - The highlight and header follow the last click at once (at a 4× slower CPU: about 70–150 ms, from 220–1,100 ms).
+  - A chat you only pass on the way isn't kept and doesn't push out the chats you use, and its history read is dropped.
+  - Switching back to a kept chat no longer lays the whole conversation out twice.
 - **Web chat: emoji no longer show as boxes (#1630).** Every font the dashboard uses, each agent theme's font included, now ends with the system's colour emoji fonts (Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji).
   - A Discord server emoji whose picture can't be loaded reads `:name:` instead of an empty box. One the dashboard doesn't know reads `:name:` too, never the raw `<:name:id>`. The page still never loads anything from Discord.
 - **Settings → Web → Guests is no longer shown over the public link (#1920).** It could never load there: the server never serves the guest list over the public link, so the card only said it could not be loaded. Web authority isn't shown there either.
