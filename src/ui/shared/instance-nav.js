@@ -30,14 +30,38 @@ const stored = (k) => { try { return localStorage.getItem(k); } catch { return n
 const nameOf = (it) => (it && (it.name != null ? it.name : it.instance_name)) || "";
 
 // ── Groups, labels, the filter ──
+/** A team's group key: no tag can be it (a group name is never a control character), so a tag named like a team stays apart. */
+export const TEAM_GROUP = "\u0001team:";
+/**
+ * #2172: an agent in a team (fleet.yaml `teams.<name>.members`; `teams` on a status or roster row, in fleet.yaml's
+ * order) sits under its first team, whatever its tags say; one in no team under its first tag; a ClassicBot room under
+ * "Classic"; the rest under "Other".
+ */
 export function groupOf(it) {
   const tags = Array.isArray(it.tags) ? it.tags : [];
   if (tags.includes("classic")) return "Classic";
+  const teams = Array.isArray(it.teams) ? it.teams.filter((x) => typeof x === "string" && x) : [];
+  if (teams.length) return TEAM_GROUP + teams[0];
   if (tags.length) return tags[0];
   return "Other";
 }
-/** A group's heading: the fallback group ("Other") is a key, shown in the page's language; a tag is shown as it is. */
-export function groupLabel(g) { return g === "Other" ? tn("groupOther") : g; }
+/** "team" for a team's group, "tag" for a tag's; null for Classic, Other and Favorites. */
+export function groupKind(g) {
+  if (typeof g !== "string") return null;
+  if (g.startsWith(TEAM_GROUP)) return "team";
+  return g === "Other" || g === "Classic" || g.charCodeAt(0) < 32 ? null : "tag";
+}
+/** A group's heading: a team's name; the fallback group ("Other") in the page's language; a tag as it is. */
+export function groupLabel(g) { return g === "Other" ? tn("groupOther") : groupKind(g) === "team" ? g.slice(TEAM_GROUP.length) : g; }
+/** #2172: what a group is, said on its heading — a team's icon, or "#" before a tag — so the grouping can be read. */
+export function GroupMark({ group }) {
+  const kind = groupKind(group);
+  if (!kind) return null;
+  const what = tn(kind === "team" ? "groupTeam" : "groupTag");
+  return kind === "team"
+    ? html`<span class="v-group-kind team" title=${what}><${Icon} name="team" size=${13} /><span class="sr-only">${what}: </span></span>`
+    : html`<span class="v-group-kind tag" title=${what} aria-hidden="true">#</span>`;
+}
 /**
  * #2050: the model as a person reads it. The server's resolver writes English for a model it has not resolved yet
  * ("default (detected when it starts)") and for a CLI's own default ("x (default)"); those are shown in the page's language.
@@ -167,7 +191,9 @@ export function computeOrder(roster, order) {
     if (ia !== ib) return ia - ib;
     if (a === "Other") return 1;
     if (b === "Other") return -1;
-    return a.localeCompare(b);
+    const ta = groupKind(a) === "team", tb = groupKind(b) === "team";
+    if (ta !== tb) return ta ? -1 : 1;                   // #2172: teams first, then tags
+    return groupLabel(a).localeCompare(groupLabel(b));
   });
   const instByGroup = new Map();
   for (const [g, items] of groups) {
@@ -501,7 +527,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
       return html`<div key=${g} class="v-group">
         <button type="button" class="v-group-head" aria-expanded=${folded ? "false" : "true"} onClick=${() => toggle(g)}
           title=${tn(folded ? "expandGroup" : "collapseGroup", { group: groupLabel(g) })} ...${dragProps({ type: "group", name: g })}>
-          <${Icon} name="chevron" size=${14} cls=${folded ? "caret folded" : "caret"} /><span class="grow">${groupLabel(g)}</span><span class="count">${names.length}</span></button>
+          <${Icon} name="chevron" size=${14} cls=${folded ? "caret folded" : "caret"} /><${GroupMark} group=${g} /><span class="grow">${groupLabel(g)}</span><span class="count">${names.length}</span></button>
         ${folded ? null : html`<ul class="inst-list">${names.map((name, i) => row(name, g, i, names.length))}</ul>`}
       </div>`;
     })}

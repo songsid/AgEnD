@@ -97,15 +97,20 @@ export function effectiveSummary(live, config, fleetDefaults, classicDefaults) {
   return { backend, model, effort };
 }
 
-/** Group by first tag, "Other" last; within a group Running → Paused → Crashed → Stopped, then by name. */
-export function groupAgents(instances, live, filter) {
+/**
+ * Group by `groupFor(name)` — #2172: the sidebar's rule (instance-nav groupOf: its first team, else its first tag); the
+ * first tag when not given — teams first, then tags, "Other" last; within a group Running → Paused → Crashed → Stopped,
+ * then by name. `labelOf(group)` sorts by what the heading says.
+ */
+export function groupAgents(instances, live, filter, groupFor = (n) => groupOf(instances[n]), labelOf = (g) => g) {
   const needle = String(filter || "").trim().toLowerCase();
   let names = Object.keys(instances || {});
   if (needle) names = names.filter((n) => n.toLowerCase().includes(needle) || shortName(n, instances[n]).toLowerCase().includes(needle));
   const groups = {};
-  for (const n of names) (groups[groupOf(instances[n])] ??= []).push(n);
+  for (const n of names) (groups[groupFor(n)] ??= []).push(n);
   const order = (n) => STATUS_ORDER[(live[n] && live[n].status) || "stopped"] ?? 9;
-  return Object.keys(groups).sort((a, b) => (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b)))
+  const team = (g) => g.charCodeAt(0) < 32;                     // a team's key (instance-nav TEAM_GROUP)
+  return Object.keys(groups).sort((a, b) => (a === "Other" ? 1 : b === "Other" ? -1 : team(a) !== team(b) ? (team(a) ? -1 : 1) : labelOf(a).localeCompare(labelOf(b))))
     .map((g) => ({ group: g, names: groups[g].sort((a, b) => order(a) - order(b) || a.localeCompare(b)) }));
 }
 

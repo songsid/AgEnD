@@ -211,7 +211,7 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { parsePoll, type PollRender } from "./reply-polls.js";
 import { isUploadRequest, limitRequestReceive, publicAttachment, sweepOrphanedUploads, UPLOAD_REQUEST_TIMEOUT_MS, uploadLimits, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
-import { cardPicture, handleViewRequest, humanCards, identityColors, isViewPath, personBannerFocus, personIdentityColour, profileIdentities, resolveInstanceIdentity, setPersonBannerFocus, setPersonIdentityColour } from "./view-api.js";
+import { cardPicture, handleViewRequest, humanCards, identityColors, instanceTeams, isViewPath, personBannerFocus, personIdentityColour, profileIdentities, resolveInstanceIdentity, setPersonBannerFocus, setPersonIdentityColour } from "./view-api.js";
 import { autoIdentityColor } from "./web-identity-color.js";
 import { AppearanceTools } from "./web-appearance-tools.js";
 import type { FrameEntry } from "./web-appearance-view.js";
@@ -21939,6 +21939,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         description: identity.description || undefined,
         role: identity.role || undefined,
         tags: identity.tags,
+        teams: instanceTeams(this.fleetConfig?.teams, name),     // #2172: the sidebar groups a team's members under it
         status: this.getInstanceStatus(name),
         // `state` (presentation: may be awaiting_input) and `execution_state` (working / idle / stuck, or null —
         // what the dashboard's activity events carry) come from instancePresentation (#1212).
