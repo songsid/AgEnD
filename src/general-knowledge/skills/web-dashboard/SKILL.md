@@ -84,10 +84,12 @@ View, Settings or Needs you. To invite someone: turn it on, then tell them to se
 Settings over the public link.
 
 **Web authority (#1939, 2.3 beta).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
-account. Under the composer (and in the session menu) the line says **Not verified · Authorize this browser**. Pressing it
+account. The one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
+session menu says **Not verified · Authorize this browser**. Pressing it
 sends a card to that account's DM, saying which browser (device, on this computer or the network, when, until when), with
 **Confirm** and **Not me**. A card left for 5 minutes is marked expired on the card, and the line offers Authorize
-again. Confirm within 5 minutes and the line says **Verified · speaks as you until …**. That
+again. Confirm within 5 minutes and the session menu says **Verified · speaks as you until …**; the composer's row says
+just **✓ Verified**, with the until-when in its tooltip, its accessible name and a tap. That
 browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
 Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
 per account. Never on the public link or for a guest; when a browser can't be authorized, the line says why (with a

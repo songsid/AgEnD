@@ -9,7 +9,7 @@
 import { html, useCallback, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { lang, t } from "/assets/app-i18n.js";
 import { appStore, guestPage, useStore } from "/assets/app-store.js";
-import { AuthorizeChip } from "/assets/web-authorize.js";
+import { ComposerAuth } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
 import { modelText, namesOf, namesStore, navStore as instanceNavStore } from "/assets/instance-nav.js";
 import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
@@ -502,8 +502,8 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
     ${s.sendFailures[name] ? html`<div class="failed-send send-failure" role="alert"><span>${s.sendFailures[name].error}</span>
       <button type="button" class="btn btn-sm" disabled=${!store.canRetrySend(name)} onClick=${() => store.retrySend(name)}>${t("chat.retrySend")}</button></div>` : null}
     <${Composer} name=${name} lease=${lease} busy=${R().isBusy(exec)} />
-    <p class="hint" title=${t(guestPage() ? "chat.guestMore" : "chat.composerMore")}>${t("chat.composerHint")}</p>
-    ${guestPage() ? html`<p class="guest-note">${t("chat.guestNote")}</p>` : html`<${AuthorizeChip} />`}
+    <div class="composer-row">${guestPage() ? html`<span class="guest-note" title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
+      class="hint" title=${t(guestPage() ? "chat.guestMore" : "chat.composerMore")}>${t("chat.composerHint")}</span></div>
   </div></div>`;
 }
 

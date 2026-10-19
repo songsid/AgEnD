@@ -67,7 +67,7 @@ describe("#1854 rank 7: an agent's first chat", () => {
       app.applyStatus(AGENTS);
       await mount("alpha");
       for (let n = 0; n < 6; n++) await new Promise(r => setTimeout(r, 0));
-      const hint = p.root.querySelector(".composer .hint, p.hint") as any;
+      const hint = p.root.querySelector(".composer-row .hint") as any;                        // the composer's one row
       expect([shown().title, shown().hint, hint?.textContent, hint?.getAttribute("title")]).toEqual([task, null, keys, more]);
       expect(keys.split(" · ")).toHaveLength(2);
     });
