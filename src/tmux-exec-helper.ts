@@ -51,7 +51,7 @@ export const HELPER_SOURCE = String.raw`
 const { execFile } = require("node:child_process");
 const { writeSync } = require("node:fs");
 const allow = new Set(JSON.parse(process.argv[1] || "[]"));
-const parent = process.ppid;
+const parent = Number(process.argv[2]) || process.ppid;     // the fleet passes none (tests: a given pid)
 function send(o) {
   const b = Buffer.from(JSON.stringify(o) + "\n");
   let off = 0;

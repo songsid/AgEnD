@@ -9,8 +9,8 @@
  * - Not used when not running, refused, not allowlisted, or another binary on the call's PATH: direct.
  * - Restarted only by maintain(), after its backoff; ends with the fleet (stop, its parent dying).
  */
-import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { chmodSync, closeSync, constants as fsConstants, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -182,20 +182,32 @@ ${body}`); return f; };
     h.stop();
     await vi.waitFor(() => expect(alive(pid)).toBe(false), { timeout: 3000 });
   });
+  it("a helper whose parent no longer exists exits, though its stdin is still open (the rule itself)", async () => {
+    const gone = spawn(process.execPath, ["-e", ""]);
+    const deadPid = gone.pid!;
+    await new Promise((r) => gone.on("close", r));
+    const h = spawn(process.execPath, ["-e", HELPER_SOURCE, "[]", String(deadPid)], { stdio: ["pipe", "ignore", "ignore"] });
+    try {
+      // Its stdin is never ended here: only its parent check can end it.
+      await vi.waitFor(() => expect(h.exitCode).toBe(0), { timeout: 5000 });
+    } finally { try { h.kill("SIGKILL"); } catch { /* gone */ } h.stdin!.destroy(); }
+  });
   it("its parent dying (SIGKILL) ends it, though something else still holds its stdin", async () => {
-    // A stand-in parent starts the helper, hands the helper's stdin to a grandchild that lives on, and is killed.
-    const src = join(root, "helper.js"), stand = join(root, "stand-in.js");
+    // A stand-in parent starts the helper on its own stdin — a FIFO this test also holds open (read/write), so the
+    // helper's stdin never ends — and is killed: only the helper's parent check can end it.
+    const src = join(root, "helper.js"), stand = join(root, "stand-in.js"), fifo = join(root, "fifo");
     writeFileSync(src, HELPER_SOURCE);
     writeFileSync(stand, `const { spawn } = require("node:child_process");
-const h = spawn(process.execPath, [${JSON.stringify(src)}, "[]"], { stdio: ["pipe", "ignore", "ignore"] });
-const keeper = spawn("sleep", ["30"], { stdio: [h.stdin, "ignore", "ignore"] });
-process.stdout.write(h.pid + " " + keeper.pid + "\\n"); setInterval(() => {}, 1000);`);
-    const parent = spawn(process.execPath, [stand], { stdio: ["ignore", "pipe", "ignore"] });
-    const [hpid, kpid] = await new Promise<number[]>((r) => parent.stdout!.once("data", (d) => r(String(d).trim().split(" ").map(Number))));
+const h = spawn(process.execPath, [${JSON.stringify(src)}, "[]"], { stdio: ["inherit", "ignore", "ignore"] });
+process.stdout.write(h.pid + "\\n"); setInterval(() => {}, 1000);`);
+    expect(spawnSync("mkfifo", [fifo]).status).toBe(0);
+    const fd = openSync(fifo, fsConstants.O_RDWR);                                          // never EOF while this is open
+    const parent = spawn(process.execPath, [stand], { stdio: [fd, "pipe", "ignore"] });
+    const hpid = await new Promise<number>((r) => parent.stdout!.once("data", (d) => r(Number(String(d).trim()))));
     try {
-      expect(alive(hpid)).toBe(true);
+      expect(alive(hpid), "the helper runs").toBe(true);
       parent.kill("SIGKILL");
       await vi.waitFor(() => expect(alive(hpid)).toBe(false), { timeout: 5000 });
-    } finally { for (const pid of [kpid, hpid]) { try { process.kill(pid, "SIGKILL"); } catch { /* gone */ } } }
+    } finally { closeSync(fd); try { process.kill(hpid, "SIGKILL"); } catch { /* gone */ } }
   });
 });
