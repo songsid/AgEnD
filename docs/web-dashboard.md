@@ -66,7 +66,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - A message you send from the web is echoed into the topic as `🌐 web · <your name>: …` (see *Who the agent sees* below).
 - The agent's reply goes to Telegram/Discord as usual and also appears here.
 - You can switch between the web and your phone mid-conversation.
-- **Switching chats:** the last 12 chats you opened (6 on a phone) come back at once, where you left them; when they hold more than 2,400 messages in all, fewer are kept. The least recently opened goes first, and a favourite only after every chat that isn't one. A chat you have not opened for a while is drawn again, and nothing on screen moves as it fills in: photos keep their size from the start.
+- **Switching chats:** the last 12 chats you opened (6 on a phone) come back at once, where you left them; when they hold more than 2,400 messages in all, fewer are kept. The least recently opened goes first, and a favourite only after every chat that isn't one. A chat you only pass through on the way to another (open for under a second, as when clicking down the list) is not kept, so it never pushes out the ones you use; and the last click always wins: what a chat passed on the way was still loading is dropped. A chat you have not opened for a while is drawn again, and nothing on screen moves as it fills in: photos keep their size from the start.
 - **No chat platform at all?** With no `channel` / `channels` in `fleet.yaml`, the dashboard alone is enough: an agent's replies come to the web chat.
 - **A tour, when you want one.** **Settings → Preferences → Chat tour** opens an agent's chat (the last one you had open) and points out the agent list, files, Stop and the *needs you* badge. It never starts by itself. With no agent to open, it says so.
 
@@ -294,6 +294,8 @@ What an agent did, step by step: what it was asked, its replies (never its think
 
 ## `/settings`
 
+**Connections → Retry now** asks a disconnected connection to try again immediately, without restarting AgEnD. An ongoing attempt is reused. Startup failures keep retrying with a capped five-minute delay while the fleet runs; a long outage no longer exhausts them permanently. This control requires a local admin sign-in and is unavailable over a public link. It does not change the token, permissions or saved binding. Refresh Connections to see a later recovery.
+
 **Preferences**, **Web appearance**, **Agents**, **Connections**, **ClassicBot**, **General**, **Web** and **Developer** (the whole `fleet.yaml` as YAML or JSON; **Edit**, **Copy**, **Download fleet.yaml**, and **Apply & save**, which applies at once without the bar) are tabs, each with its own address. The search box filters agents, connections and ClassicBot rooms; **Setup wizard** runs the same four steps as `agend quickstart`; it always adds a connection, for a new agent or one you already have.
 
 A fleet with no chat connection yet (web only) shows a card above the Agents and Connections tabs (not on Chat, which has one instruction: choose an agent, or create one): **Connect a chat app** opens the setup wizard, **Use the web only** hides the card in this browser.
@@ -336,6 +338,7 @@ Each agent has a colour you can find it by in the sidebar.
   - a temporary public link (a different person, who can't reach Settings);
   - the anonymous `/view` reader.
 - **Save and try.** A saved version is on trial. A bar on every page asks **Keep this custom CSS?** Choose **Keep** within 15 seconds, or it reverts on its own. It also reverts if the tab is closed or the CSS hides the bar.
+- **Saved by General for you.** When you ask General to change your custom CSS, the version waits until you open the dashboard (up to 10 minutes; if you don't, it goes back without ever showing). Its 20 seconds start once it is on your screen, so CSS that hides the bar still reverts. Tell General "keep it" in chat: if that arrives after the 20 seconds, General puts that version back in force. If you saved a different version on your page in the meantime, General doesn't keep that one instead: it asks you which you want.
 - **What it may contain.** At most 64 KiB, and it never loads anything from the internet:
   - `@import`, `@namespace` and `@charset` are refused.
   - Any `url()` or `src()` is refused, except `url("asset:<id>")` naming a file under **Assets**.

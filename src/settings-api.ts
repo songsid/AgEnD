@@ -84,6 +84,7 @@ function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: s
 }
 
 export interface SettingsApiContext extends AppShellContext {
+  retryAdapterNow?(id: string): { queued: boolean; already_running?: boolean };
   /** #1920 phase 3: Settings → Web sign-ins → Guests. */
   guestOverview?(): unknown;
   revokeGuestWebSessions?(owner: { adapterId: string; userId: string }): { count: number; durable: boolean };
@@ -411,6 +412,20 @@ export function handleSettingsRequest(
       ...connection,
       token_present: !!connection.token_present,
     })), true);
+    return true;
+  }
+
+  const retryConnection = path.match(/^\/api\/settings\/connections\/([^/]+)\/retry$/);
+  if (method === "POST" && retryConnection) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "Connection retries are not permitted over a public link" }); return true; }
+    if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "An admin sign-in is required" }); return true; }
+    if (!ctx.retryAdapterNow) { json(res, 503, { error: "The fleet is not running" }); return true; }
+    try {
+      const result = ctx.retryAdapterNow(decodeURIComponent(retryConnection[1]));
+      json(res, result.queued ? 202 : 200, result);
+    } catch {
+      json(res, 409, { error: "This connection cannot be retried. Check that it is configured and the fleet is running." });
+    }
     return true;
   }
 

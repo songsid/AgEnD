@@ -1808,6 +1808,7 @@ export class Daemon extends EventEmitter {
   private windowQueryFailureTicks = 0;
     private mcpRestartPending = false;
   private mcpRestartStaleTimer: ReturnType<typeof setTimeout> | null = null;
+  private mcpRestartCooldownTimer: ReturnType<typeof setTimeout> | null = null;
   /** In-flight replacement grace; also the guard against three triggers stacking. */
   private mcpRestartGraceTimer: ReturnType<typeof setTimeout> | null = null;
   /**
@@ -2839,6 +2840,22 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  /** Keep a cooldown-suppressed revival alive without bypassing the idle gate. */
+  deferMcpRestart(delayMs: number): void {
+    this.clearMcpRestartRequest();
+    if (this.config.mcp_auto_restart === false || this.authFailureUnresolved
+      || this.mcpRestartCancelledByRecovery("cooldown")) return;
+    this.mcpRestartPending = true;
+    this.mcpRestartCooldownTimer = setTimeout(() => {
+      this.mcpRestartCooldownTimer = null;
+      if (this.mcpRestartCancelledByRecovery("cooldown_expired")) return;
+      this.clearMcpRestartRequest();
+      if (this.config.mcp_auto_restart === false || this.authFailureUnresolved || this.mcpServerAlive().alive) return;
+      this.armMcpRestartWhenIdle();
+    }, Math.max(0, delayMs));
+    this.mcpRestartCooldownTimer.unref?.();
+  }
+
   /**
    * Single chokepoint for all three revival triggers (already_idle, idle_edge,
    * stale_timeout) — and therefore the one place worth re-checking reality.
@@ -2855,6 +2872,7 @@ export class Daemon extends EventEmitter {
    */
   private fireMcpRestartRequest(trigger: "already_idle" | "idle_edge" | "stale_timeout"): void {
     if (this.mcpRestartCancelledByRecovery(trigger)) return;
+    if (this.mcpRestartCooldownTimer) return;
 
     // Authoritative re-read — the CLI may have replaced the server since the
     // health tick that armed this.
@@ -3043,6 +3061,10 @@ export class Daemon extends EventEmitter {
 
   private clearMcpRestartRequest(): void {
     this.mcpRestartPending = false;
+    if (this.mcpRestartCooldownTimer) {
+      clearTimeout(this.mcpRestartCooldownTimer);
+      this.mcpRestartCooldownTimer = null;
+    }
     if (this.mcpRestartStaleTimer) {
       clearTimeout(this.mcpRestartStaleTimer);
       this.mcpRestartStaleTimer = null;

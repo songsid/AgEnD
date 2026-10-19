@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 import ts from "typescript";
+import { installFleetProcessHandlers } from "../src/fleet-process-handlers.js";
 
 // Production command callback; all process/IO/lifecycle seams are inert.
 // Never import the self-executing CLI or construct the real FleetManager.
@@ -34,6 +35,7 @@ function harness() {
   };
   const process = { env: {}, getuid: () => 1000, on: (name: string, action: (...args: unknown[]) => unknown) => events.set(name, action), exit: vi.fn() };
   const context = createContext({
+    installFleetProcessHandlers: (options: Parameters<typeof installFleetProcessHandlers>[0]) => installFleetProcessHandlers({ ...options, writeFatal: vi.fn() }),
     process, console: { log: vi.fn(), warn: vi.fn(), error: vi.fn() }, DATA_DIR: "/private-unused", FLEET_CONFIG_PATH: "/private-unused/fleet.yaml",
     claimFleetSingleton: vi.fn(() => true), startCpuProfileFromEnvironment: startProfile,
     loadFleetManager: async () => ({ FleetManager: class { constructor() { return manager; } } }),

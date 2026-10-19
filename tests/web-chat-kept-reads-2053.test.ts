@@ -28,6 +28,9 @@ beforeAll(async () => {
   pp = await import("../src/ui/preview-panel.js");
   const { appStore } = await import("/assets/app-store.js");
   panel.boot({ stream: { on() {} }, boot: ON, deps: { fetch: () => new Promise(() => {}) } });
+  // #2188: a chat shown under THREAD_PASS_MS is passed through (not kept); these tests stay on each chat, so each read
+  // of the clock is 5 s later.
+  let clock = 0; panel.setThreadClock(() => (clock += 5000));
   appStore.set({ ready: true, instances: [{ name: "w", status: "running" }, { name: "x", status: "running" }] });
   base.restore();
 });

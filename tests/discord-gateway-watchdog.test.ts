@@ -8,6 +8,7 @@ class FakeDiscordClient extends EventEmitter {
   destroyed = false;
   loginError: Error | null = null;
   loginGate: Promise<void> | null = null;
+  destroyHook: (() => void) | null = null;
   sent: string[] = [];
   user = { id: "bot-id", username: "bot", setActivity: vi.fn() };
   application = { commands: { set: vi.fn(async () => []) } };
@@ -39,6 +40,7 @@ class FakeDiscordClient extends EventEmitter {
     return "redacted-token";
   }
   destroy(): void {
+    this.destroyHook?.();
     this.destroyed = true;
     this.ready = false;
     this.ws.status = Status.Disconnected;
@@ -80,6 +82,26 @@ afterEach(() => {
 });
 
 describe("Discord gateway watchdog", () => {
+  it("retires a connecting shard's native socket when rebuilding the adapter", async () => {
+    const h = harness();
+    await h.adapter.start();
+    const oldClient = h.clients[1];
+    const socket = Object.assign(new EventEmitter(), { readyState: 0, onerror: null as unknown,
+      terminate: vi.fn() });
+    socket.terminate.mockImplementation(() => {
+      socket.emit("error", new Error("Opening handshake has timed out"));
+      socket.readyState = 3;
+      socket.emit("close");
+    });
+    (oldClient.ws as any)._ws = { strategy: { shards: new Map([[0, { connection: socket }]]) } };
+    oldClient.destroyHook = () => { socket.onerror = null; };
+    await h.adapter.reconnectGateway("stale connecting shard");
+    expect(socket.terminate).toHaveBeenCalledTimes(1);
+    expect(socket.listenerCount("error")).toBe(0);
+    expect(h.adapter.getHealthSnapshot().status).toBe("connected");
+    await h.adapter.stop();
+  });
+
   it("runs its ready step on clientReady, the event discord.js v15 keeps (#1131)", async () => {
     const h = harness({ registerCommands: true });
     await h.adapter.start();

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createContext, runInContext } from "node:vm";
 import ts from "typescript";
+import { installFleetProcessHandlers } from "../src/fleet-process-handlers.js";
 
 const native = vi.hoisted(() => ({ sessions: 0, post: vi.fn(), disconnect: vi.fn() }));
 vi.mock("node:inspector", () => ({ Session: class {
@@ -37,6 +38,7 @@ function cli(manager: FleetManager) {
     on: (name: string, handler: (...args: unknown[]) => unknown) => events.set(name, handler),
     exit: vi.fn((code: number) => { exited.resolve(code); }) };
   const context = createContext({ process, console: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    installFleetProcessHandlers: (options: Parameters<typeof installFleetProcessHandlers>[0]) => installFleetProcessHandlers({ ...options, writeFatal: vi.fn() }),
     DATA_DIR: "/private-unused", FLEET_CONFIG_PATH: "/private-unused/fleet.yaml",
     claimFleetSingleton: () => true, describeSignalSource: () => "fake signal", Promise,
     loadFleetManager: async () => ({ FleetManager: class { constructor() { return manager; } } }),

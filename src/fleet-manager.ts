@@ -1208,6 +1208,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #2175: this boot's progress message, whose completion may still be owed by its background retry. */
   private startupProgress: RestartProgress | null = null;
   private adapterState = new Map<string, { status: "connected" | "retrying" | "failed"; retryCount: number; lastError?: string; retryTimer?: ReturnType<typeof setTimeout> }>();
+  private adapterRetryInFlight = new Map<string, Promise<void>>();
   /** Web Settings secret rotation is deliberately separate from reconnect
    * recovery: a rotation must build a fresh provider client with the new token,
    * and stale callbacks from the old client must not win. */
@@ -7738,50 +7739,92 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const err = (results[i] as PromiseRejectedResult).reason;
         this.logger.error({ adapterId, err: (err as Error)?.message ?? err }, "Adapter startup failed — scheduling background retry");
         this.adapterState.set(adapterId, { status: "retrying", retryCount: 0, lastError: (err as Error)?.message ?? String(err) });
-        this.scheduleAdapterRetry(adapterId, channelConfigs[i], i === 0 ? fleet : undefined);
+        this.scheduleAdapterRetry(adapterId);
         // Notify admin via whichever adapter is already up
         this.notifyAdapterFailure(adapterId, (err as Error)?.message ?? String(err));
       }
     }
   }
 
-  /** Exponential backoff retry for a single failed adapter (background, non-blocking). */
-  private scheduleAdapterRetry(adapterId: string, channelConfig: ChannelConfig, fleet?: FleetConfig): void {
-    const MAX_RETRIES = 10;
+  /** Keep trying while the fleet runs, with a five-minute cap even after a long outage. */
+  private scheduleAdapterRetry(adapterId: string): void {
     const INITIAL_DELAY_MS = 5_000;
     const MAX_DELAY_MS = 5 * 60_000;
-
     const state = this.adapterState.get(adapterId);
-    if (!state || state.retryCount >= MAX_RETRIES) {
-      if (state) {
-        state.status = "failed";
-        this.logger.error({ adapterId, retries: state.retryCount }, "Adapter retry exhausted — giving up");
-        this.notifyAdapterFailure(adapterId, `Retry exhausted after ${state.retryCount} attempts. Check token/network and restart fleet.`);
-      }
-      return;
-    }
-
-    const delay = Math.min(INITIAL_DELAY_MS * Math.pow(2, state.retryCount), MAX_DELAY_MS);
+    if (this.shuttingDown || !state || state.retryTimer || this.adapterRetryInFlight.has(adapterId)) return;
+    const delay = Math.min(INITIAL_DELAY_MS * Math.pow(2, Math.min(state.retryCount, 6)), MAX_DELAY_MS);
     this.logger.info({ adapterId, attempt: state.retryCount + 1, delay_ms: delay }, "Scheduling adapter retry");
+    const timer = setTimeout(() => {
+      const current = this.adapterState.get(adapterId);
+      if (this.shuttingDown || current?.retryTimer !== timer) return;
+      current.retryTimer = undefined;
+      void this.attemptAdapterRetry(adapterId);
+    }, delay);
+    state.retryTimer = timer;
+    timer.unref?.();
+  }
 
-    state.retryTimer = setTimeout(async () => {
+  /** One login per connection, shared by the background timer and the operator's Retry now. */
+  private attemptAdapterRetry(adapterId: string): Promise<void> {
+    const pending = this.adapterRetryInFlight.get(adapterId);
+    if (pending) return pending;
+    if (this.shuttingDown || !this.secureConnectionChannel(adapterId)) return Promise.resolve();
+    const attempt = Promise.resolve().then(async () => {
+      const channel = this.secureConnectionChannel(adapterId);
+      if (this.shuttingDown || !channel) return;
+      const generation = this.settingsGeneration;
+      const binding = JSON.stringify([channel, this.getPrimaryAdapterId()]);
+      const token = process.env[channel.bot_token_env];
+      const operation = { owner: Symbol("adapter-retry"), assert: () => {
+        if (this.shuttingDown || generation !== this.settingsGeneration
+          || JSON.stringify([this.secureConnectionChannel(adapterId), this.getPrimaryAdapterId()]) !== binding
+          || process.env[channel.bot_token_env] !== token) throw new Error("adapter retry superseded");
+      } };
+      const state = this.adapterState.get(adapterId) ?? { status: "retrying" as const, retryCount: 0 };
+      state.status = "retrying";
       state.retryCount++;
+      this.adapterState.set(adapterId, state);
       try {
-        if (fleet) {
-          await this.startSingleAdapter(fleet, channelConfig);
-        } else {
-          await this.startAdditionalAdapter(channelConfig);
-        }
-        state.status = "connected";
-        state.lastError = undefined;
+        if (this.getPrimaryAdapterId() === adapterId) await this.startSingleAdapter(this.fleetConfig!, channel, undefined, operation);
+        else await this.startAdditionalAdapter(channel, true, undefined, operation);
+        if (this.shuttingDown || generation !== this.settingsGeneration) return;
+        if (!this.adapters.has(adapterId)) throw new Error("Adapter token is not configured");
+        // Health events can replace the state object during login. Update its current owner.
+        const current = this.adapterState.get(adapterId)!;
+        current.status = "connected";
+        current.lastError = undefined;
         this.logger.info({ adapterId, attempts: state.retryCount }, "Adapter reconnected on retry");
         this.notifyAdapterRecovery(adapterId, state.retryCount);
       } catch (err) {
-        state.lastError = (err as Error)?.message ?? String(err);
-        this.logger.warn({ adapterId, attempt: state.retryCount, err: state.lastError }, "Adapter retry failed");
-        this.scheduleAdapterRetry(adapterId, channelConfig, fleet);
+        if (this.shuttingDown || generation !== this.settingsGeneration) return;
+        const current = this.adapterState.get(adapterId)!;
+        current.status = "retrying";
+        current.lastError = (err as Error)?.message ?? String(err);
+        this.logger.warn({ adapterId, attempt: state.retryCount, err: current.lastError }, "Adapter retry failed");
       }
-    }, delay);
+    }).finally(() => {
+      if (this.adapterRetryInFlight.get(adapterId) !== attempt) return;
+      this.adapterRetryInFlight.delete(adapterId);
+      const channel = this.secureConnectionChannel(adapterId);
+      if (!this.shuttingDown && channel && this.adapterState.get(adapterId)?.status !== "connected") {
+        this.scheduleAdapterRetry(adapterId);
+      }
+    });
+    this.adapterRetryInFlight.set(adapterId, attempt);
+    return attempt;
+  }
+
+  retryAdapterNow(adapterId: string): { queued: boolean; already_running?: boolean } {
+    if (this.shuttingDown) throw new Error("The fleet is stopping");
+    if (!this.secureConnectionChannel(adapterId)) throw new Error("Connection not found");
+    if (this.adapterRetryInFlight.has(adapterId) || this.adapterRestarting.has(adapterId)) return { queued: true, already_running: true };
+    const state = this.adapterState.get(adapterId);
+    if (state?.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = undefined; }
+    const adapter = this.adapters.get(adapterId);
+    if (adapter && this.connectionStatus(adapterId, state, this.worlds.get(adapterId)).status === "connected") return { queued: false };
+    const run = adapter ? this.restartAdapter(adapter, adapterId) : this.attemptAdapterRetry(adapterId);
+    void run.catch(err => this.logger.warn({ adapterId, err }, "Requested adapter retry failed"));
+    return { queued: true };
   }
 
   /** Notify admin about adapter failure (uses any available adapter). */
@@ -7838,6 +7881,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         : snapshot.status === "stopped" ? "failed"
           : "retrying";
       this.adapterState.set(adapterId, {
+        ...previous,
         status,
         retryCount: previous?.retryCount ?? 0,
         lastError: status === "connected" ? undefined : snapshot.lastReconnectReason ?? previous?.lastError,
@@ -9648,6 +9692,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
+    // Fleet tools resolve their own targets. A missing chat world must not prevent local
+    // delivery, inspection or receipt lookup; only channel tools need reply routing below.
+    const handler = outboundHandlers.get(tool);
+    if (handler && !usesChannelAddress(tool)) {
+      this.eventLog?.logActivity("tool_call", senderSessionName ?? instanceName, this.summarizeToolCall(tool, args));
+      await handler(this, args, respond, {
+        instanceName, requestId, fleetRequestId, senderSessionName, operationId, sourceDaemonBootId,
+      });
+      return;
+    }
+
     // A fleet with no chat platform at all is driven from the web dashboard alone: a reply has nowhere
     // else to go, and "retry shortly" would have the agent retry forever. It goes to the web chat.
     const webOnlyReply = tool === "reply" && this.worlds.size === 0 && this.isWebOnlyFleet();
@@ -9829,19 +9884,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    // Log tool calls for activity visualization
-    const senderLabel = senderSessionName ?? instanceName;
-    this.eventLog?.logActivity("tool_call", senderLabel, this.summarizeToolCall(tool, args));
-
-    // Dispatch fleet-specific tools via handler map
-    const handler = outboundHandlers.get(tool);
     if (handler) {
+      this.eventLog?.logActivity("tool_call", senderSessionName ?? instanceName, this.summarizeToolCall(tool, args));
       await handler(this, args, respond, {
         instanceName, requestId, fleetRequestId, senderSessionName, operationId, sourceDaemonBootId,
       });
-    } else {
-      respond(null, `Unknown tool: ${tool}`);
-    }
+    } else respond(null, `Unknown tool: ${tool}`);
   }
 
   /** Side effects of a routed reply: cancel-button lifecycle, logs, SSE, chat log. */
@@ -20778,7 +20826,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         all = false;
         const message = (err as Error)?.message ?? String(err);
         this.adapterState.set(id, { status: "retrying", retryCount: 0, lastError: message });
-        this.scheduleAdapterRetry(id, channel);
+        this.scheduleAdapterRetry(id);
       }
     }
     this.classicChannels?.configureAdapters(this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []));

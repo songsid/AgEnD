@@ -85,6 +85,7 @@ async function harness(type: "telegram" | "discord", opts: { webOnly?: boolean }
       messages: { fetch: async (mid: string) => ({ id: mid, edit: async () => ({}), delete: async () => { calls.push({ method: "delete", thread: id, messageId: mid }); } }) },
     });
     const client = Object.assign(new EventEmitter(), {
+      destroy: vi.fn(async () => {}),
       user: { id: "777", username: "Bot" }, isReady: () => true,
       channels: { fetch: vi.fn(async (id: string) => channel(id)), cache: new Map() },
     });

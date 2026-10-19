@@ -193,6 +193,7 @@ describe("classic echo never re-enters a sibling bot (#1320 B)", () => {
     const sent: Array<{ text: string; opts: unknown }> = [];
     const mkAdapter = (id: string, botId: string) => {
       const client = Object.assign(new EventEmitter(), {
+        destroy: vi.fn(async () => {}),
         user: { id: botId, username: "Bot" }, isReady: () => true,
         channels: { fetch: vi.fn(async () => ({ isTextBased: () => true, send: async (value: any) => { sent.push({ text: typeof value === "string" ? value : value.content, opts: value?.allowedMentions }); return { id: "m" }; } })) },
       });

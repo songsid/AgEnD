@@ -532,10 +532,13 @@ export function createThread(list, scroller, opts) {
    * were drawn above, the whole view moved by the change in that fraction (0.6–0.7 px — the faint jitter of a chat
    * opened cold). A sub-pixel margin above the list keeps the thread's height whole, so the bottom never moves.
    */
+  // #2188: one read (the list's box excludes its own margin, so nothing is reset first) and a write only on a change —
+  // a reset-then-measure laid a 200-message thread out twice on every pinned draw (2.3 s at 4× CPU on a kept chat).
+  let snapped = null;
   function snap() {
-    list.style.setProperty("--thread-snap", "0px");
     const h = list.getBoundingClientRect().height, f = h - Math.floor(h);
-    if (f > 0.001 && f < 0.999) list.style.setProperty("--thread-snap", (1 - f) + "px");
+    const want = f > 0.001 && f < 0.999 ? (1 - f) + "px" : "0px";
+    if (want !== snapped) { snapped = want; list.style.setProperty("--thread-snap", want); }
   }
   // Sizes change without a scroll event (layout after the render, the dock under the thread): while pinned, the view
   // stays flush with the bottom; a reader who scrolled up is never moved.
