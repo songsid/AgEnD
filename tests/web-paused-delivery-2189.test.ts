@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -65,6 +65,8 @@ describe("web paused delivery uses the channel facade, never a cached IPC", () =
     ["No warm slot is free for alpha", "wake_capacity"], ["account login expired /private/key", "wake_credentials"],
     ["wake ready timeout", "wake_timeout"], ["Cannot wake stopped instance alpha", "instance_stopped"],
     ["secret=/private/sensitive/token", "delivery_unavailable"],
+    ["author metadata unavailable", "delivery_unavailable"], ["authority snapshot unavailable", "delivery_unavailable"],
+    ["Authentication expired", "wake_credentials"],
   ])("reports a bounded actionable failure for %s", async (error, reason) => {
     const { c, delivered } = fixture(); delivered.mockRejectedValueOnce(new Error(error));
     const r = await request(c, "/ui/send", text).done;
@@ -108,6 +110,29 @@ describe("web paused delivery uses the channel facade, never a cached IPC", () =
     if (classic) c.isClassicInstance = () => false; else delete c.fleetConfig!.instances.alpha;
     late.end(); expect((await late.done).status).toBe(404);
     expect(readdirSync(join(dir, "workspaces", "alpha", "inbox"))).toHaveLength(1);
+  });
+  it.each([
+    ["stopped", "admission"], ["stopped", "body"], ["stopped", "finish"],
+    ["crashed", "admission"], ["crashed", "body"], ["crashed", "finish"],
+  ] as const)("refuses a registered %s recipient at %s", async (status, phase) => {
+    const { c, dir, delivered } = fixture();
+    let current: "paused" | "stopped" | "crashed" = phase === "admission" ? status : "paused";
+    c.getInstanceStatus = () => current;
+    const upload = request(c, "/ui/upload?instance=alpha", Buffer.from("do not store"), undefined, true);
+    const atAdmission = upload.res.status;
+    if (phase === "body") current = status;
+    upload.end();
+    const atBodyEnd = upload.res.status;
+    // out.end's callback is a separate wait after the body-end admission.
+    if (phase === "finish") current = status;
+    const answer = await upload.done;
+    expect(atAdmission).toBe(phase === "admission" ? 404 : 0);
+    expect(atBodyEnd).toBe(phase === "finish" ? 0 : 404);
+    expect(answer.status).toBe(404);
+    expect(answer.body).not.toHaveProperty("id");
+    const inbox = join(dir, "workspaces", "alpha", "inbox");
+    expect(existsSync(inbox) ? readdirSync(inbox) : []).toEqual([]);
+    expect(delivered).not.toHaveBeenCalled();
   });
   it("Cancel recognizes a paused Classic room, returns not-running, and never wakes", async () => {
     const { c, delivered } = fixture(true);

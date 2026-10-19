@@ -2136,7 +2136,7 @@ function uploadRecipient(ctx: WebApiContext, name: string): boolean {
 function webDeliveryFailure(err: unknown): { reason: string; error: string } {
   const message = err instanceof Error ? err.message : "";
   if (/No warm slot is free/.test(message)) return { reason: "wake_capacity", error: "No slot is free to wake this instance. Retry when another instance is idle." };
-  if (/login|log in|sign in|auth|credential|api.?key/i.test(message)) return { reason: "wake_credentials", error: "The instance could not sign in. Check its account on the host, then retry." };
+  if (/login|log in|sign in|\bauth(?:entication|orization)?\b|credential|api.?key/i.test(message)) return { reason: "wake_credentials", error: "The instance could not sign in. Check its account on the host, then retry." };
   if (/timed? out|timeout/i.test(message)) return { reason: "wake_timeout", error: "The instance did not become ready in time. Retry, or check its status on the host." };
   if (/Cannot wake stopped|no longer configured/.test(message)) return { reason: "instance_stopped", error: "This instance was stopped or removed. Start it on the host before retrying." };
   return { reason: "delivery_unavailable", error: "The instance could not receive this message. Check its status on the host, then retry." };
