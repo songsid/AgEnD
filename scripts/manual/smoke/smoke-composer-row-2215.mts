@@ -154,7 +154,22 @@ for (const k of CASES) {
     if (k.state === "verified") await authorize(p.page, a);
     else await p.page.waitForSelector('.dock [data-state="none"]', { timeout: 10000 });
     await judge(name, p, navEnd, k.state, k.c.lang, async (m) => {
-      if (k.state !== "verified") return { saysNotVerified: /Not verified|未驗證|Authorize|授權/.test(m.text), keepsPlaceOnSwitch: await switchKeepsPlace(p.page, name) };
+      if (k.state !== "verified") {
+        const kept = await switchKeepsPlace(p.page, name);
+        // #2216 review: press Authorize — what it answered ("Sent —") is said in the row, in the hint's place; nothing is
+        // laid over the composer (Attach and the text box still take a click), and the row stays one row.
+        await clickVisible(p.page, ".dock .webauth-ask");
+        await p.page.waitForSelector('.dock [data-state="pending"] .webauth-notice', { timeout: 10000 });
+        await p.page.fill("#msgIn", "hello");
+        const after = await p.page.evaluate(MEASURE);
+        const hits = await p.page.evaluate(`(() => [document.getElementById("attachBtn"), document.getElementById("msgIn")].map((el) => {
+          const r = el.getBoundingClientRect(); const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!at && (at === el || el.contains(at)); }))()`);
+        const tipShown = await p.page.evaluate(`[...document.querySelectorAll(".dock .webauth-tip")].some((t) => !t.hidden && t.getBoundingClientRect().height > 0)`);
+        await shoot(p.page, `${name}-pending`);
+        return { saysNotVerified: /Not verified|未驗證/.test(m.text) && /Authorize|授權/.test(m.text), keepsPlaceOnSwitch: kept,
+          pendingSaysSentInRow: /Sent —|已送出/.test(after.text) && after.rows === 1 && after.lines <= (phone(p.page) ? 2 : 1),
+          pendingCoversNothing: hits.every(Boolean) && !tipShown };
+      }
       const ok = p.page.locator(".dock .webauth-ok").first();
       const title = (await ok.getAttribute("title")) ?? "", label = (await ok.getAttribute("aria-label")) ?? "";
       const described = await ok.evaluate((el: Element) => { const id = el.getAttribute("aria-describedby"); return id ? (document.getElementById(id)?.textContent ?? "") : ""; });

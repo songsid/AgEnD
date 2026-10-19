@@ -151,33 +151,35 @@ export function AuthorizeChip() {
  * The composer's row (#2215, the user's request, 2026-10-19): the same states as AuthorizeChip, each kept to a few words so
  * they share one row with the key hint. What a state would have said at length is in its tooltip and its accessible
  * name: when "Verified" ends, why it can't be authorized, the countdown's ask. A tap on "✓ Verified" shows when it
- * ends (touch has no hover), and what pressing Authorize answered (sent, refused) shows the same way — in a bubble
- * above the row, so the row never grows.
+ * ends (touch has no hover) in a bubble above the row, until the next tap, a tap elsewhere or Escape. What pressing
+ * Authorize answered (sent, refused) is said in the row itself, in the hint's place (#2216 review: a bubble left over the
+ * composer covered Attach and what was being typed, with nothing to close it).
  */
 export function ComposerAuth() {
   const a = useWebAuthorization();
   const [open, setOpen] = useState(false);
   const tip = useRef("wa-tip-" + Math.random().toString(36).slice(2, 8));
-  useEffect(() => { setOpen(false); }, [a.st && a.st.state]);              // a new state closes the bubble…
-  useEffect(() => { if (a.notice) setOpen(true); }, [a.notice]);           // …unless it came with what Authorize answered
+  useEffect(() => { setOpen(false); }, [a.st && a.st.state]);              // a new state closes the bubble
   if (guestPage()) return null;
   if (publicLink()) return html`<span class="webauth-row note" data-state="public" title=${tn("publicLink")}>${tn("publicLink")}</span>`;
   if (!a.st) return null;
   const st = a.st, id = tip.current;
-  const bubble = (text) => html`<span id=${id} class="webauth-tip" role="status" hidden=${!open || !text}>${text}</span>`;
+  const said = a.notice ? html`<span class="webauth-notice" role="status">${a.notice}</span>` : null;
   if (st.state === "verified") {
     const until = tn("verified", clock(st.until));
     return html`<span class="webauth-row" data-state="verified">
       <button type="button" class="webauth-ok" title=${until} aria-label=${`✓ ${until}`} aria-expanded=${open ? "true" : "false"}
-        aria-controls=${id} onClick=${() => setOpen((v) => !v)} onBlur=${() => setOpen(false)}>✓ ${tn("verifiedShort")}</button>${bubble(a.notice || until)}</span>`;
+        aria-controls=${id} onClick=${() => setOpen((v) => !v)} onBlur=${() => setOpen(false)}
+        onKeyDown=${(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); setOpen(false); } }}>✓ ${tn("verifiedShort")}</button><span
+        id=${id} class="webauth-tip" role="tooltip" hidden=${!open}>${until}</span>${said}</span>`;
   }
   if (st.state === "pending") {
     const asks = tn("waiting", mmss(a.left));
-    return html`<span class="webauth-row" data-state="pending"><span class="note" title=${a.notice ? `${asks} — ${a.notice}` : asks}>${tn("waitingShort", mmss(a.left))}</span>${bubble(a.notice)}</span>`;
+    return html`<span class="webauth-row" data-state="pending"><span class="note" title=${a.notice ? `${asks} — ${a.notice}` : asks}>${tn("waitingShort", mmss(a.left))}</span>${said}</span>`;
   }
   if (st.reason === "not_authorized" || st.reason === "authorization_expired") {
     return html`<span class="webauth-row" data-state="none"><span class="note" aria-hidden="true">${tn("notVerified")} ·</span><button type="button" class="webauth-ask"
-      title=${tn("authorizeWhy")} aria-label=${tn("authorizeWhy")} onClick=${a.ask}>${tn("authorizeShort")}</button>${bubble(a.notice)}</span>`;
+      title=${tn("authorizeWhy")} aria-label=${tn("authorizeWhy")} onClick=${a.ask}>${tn("authorizeShort")}</button>${said}</span>`;
   }
   const why = REASONS.includes(st.reason) ? tn(`reason_${st.reason}`) : tn("reason_other");
   return html`<span class="webauth-row" data-state="none"><span class="note" title=${why}>${tn("notVerified")}<span class="sr-only">: ${why}</span></span>${st.reason === "disabled" || st.reason === "loopback_only"
