@@ -27,6 +27,12 @@ export async function observeCliOomIdentity(panePid: number, binaryName: string,
     // A journal PID is in the host namespace. Do not guess container mappings.
     const ns = status?.match(/^NSpid:\s+(.+)$/m)?.[1]?.trim().split(/\s+/);
     if (!stat || !ns || ns.length !== 1 || Number(ns[0]) !== pid) return null;
+    // NSpid is relative to the procfs mount, so one entry does NOT prove a
+    // host PID. Linux reserves 0xEFFFFFFC for the initial PID namespace:
+    // include/uapi/linux/nsfs.h PID_NS_INIT_INO (older: linux/proc_ns.h).
+    // Decline unknown/nested namespaces rather than match container IDs to
+    // unrelated host-journal victims. No namespace translation is attempted.
+    try { if (await readlink(`${proc}/${pid}/ns/pid`) !== "pid:[4026531836]") return null; } catch { return null; }
     const start = processStart(stat);
     const ppid = Number(stat.slice(stat.lastIndexOf(")") + 2).trim().split(/\s+/)[1]);
     if (!start || (parent !== null && ppid !== parent)) return null;

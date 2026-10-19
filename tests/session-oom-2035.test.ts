@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, unlinkSync, readFileSync, readdirSync, existsSync, readlinkSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, unlinkSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,7 +8,7 @@ const io = vi.hoisted(() => ({ root: "", journal: "", failure: false, hold: fals
   forbidden: vi.fn(() => { throw new Error("Forbidden host effect"); }) }));
 vi.mock("node:fs/promises", async original => {
   const fs = await original<typeof import("node:fs/promises")>();
-  return { ...fs, readlink: async (path: any) => readlinkSync(String(path).startsWith("/proc/") ? io.root + String(path).slice(5) : path), readFile: async (path: any, ...args: any[]) => {
+  return { ...fs, readlink: async (path: any) => String(path).startsWith("/proc/") ? readFileSync(io.root + String(path).slice(5), "utf8") : fs.readlink(path), readFile: async (path: any, ...args: any[]) => {
     if (String(path).startsWith("/proc/") && io.procError && String(path).endsWith("/stat")) throw Object.assign(new Error("unreadable procfs"), { code: io.procError });
     if (String(path).startsWith("/proc/")) return readFileSync(io.root + String(path).slice(5), "utf8");
     return (fs.readFile as any)(path, ...args);
@@ -31,13 +31,16 @@ import { observeCliOomIdentity, confirmedCliOom, parseKernelOoms, consecutiveSes
 import { Daemon } from "../src/daemon.js";
 import { InstanceLifecycle, type LifecycleContext } from "../src/instance-lifecycle.js";
 import { TmuxManager } from "../src/tmux-manager.js";
+import { IpcServer } from "../src/channel/ipc-bridge.js";
 
 let dir: string;
 function proc(pid: number, comm: string, children = "", start = "123", parent = pid === 100 ? 1 : 100, executable = comm) {
   const d = join(io.root, String(pid));
   mkdirSync(join(d, "task", String(pid)), { recursive: true });
+  mkdirSync(join(d, "ns"), { recursive: true });
+  writeFileSync(join(d, "ns/pid"), "pid:[4026531836]");
   writeFileSync(join(d, "comm"), comm);
-  rmSync(join(d, "exe"), { force: true }); symlinkSync(`/usr/bin/${executable}`, join(d, "exe"));
+  writeFileSync(join(d, "exe"), `/usr/bin/${executable}`);
   const fields = Array.from({ length: 20 }, (_, i) => i === 0 ? "S" : i === 1 ? String(parent) : i === 19 ? start : "0");
   writeFileSync(join(d, "stat"), `${pid} (${comm}) ${fields.join(" ")}`);
   writeFileSync(join(d, "status"), `NSpid:\t${pid}\n`);
@@ -106,7 +109,7 @@ describe("definitive evidence rather than pressure or an arbitrary SIGKILL", () 
   });
 });
 
-function harness() {
+async function harness() {
   const instance = join(dir, "instance"); mkdirSync(instance);
   const transcript = join(dir, "original-transcript.jsonl"); writeFileSync(transcript, "original conversation\n");
   const session = { id: "old-session" };
@@ -133,6 +136,8 @@ function harness() {
     await daemon.observeOomIdentity();
     return true;
   });
+  // The initial fake child is already ready, just like finishStartupScan.
+  await daemon.observeOomIdentity();
   const notices: any[] = []; daemon.on("session_oom", (notice: any) => notices.push(notice));
   const die = async (oom = true, code = 137) => {
     child.alive = false; child.exitCode = code;
@@ -145,7 +150,7 @@ function harness() {
 
 describe("the real daemon health + respawn decision with a fake OOM'd child", () => {
   it("resumes once, then starts fresh after the second OOM and stops if that fresh child OOMs", async () => {
-    const h = harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000);
+    const h = await harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000);
     await h.die(); expect(h.launches).toEqual(["inert --resume old-session"]);
     await h.die(); expect(h.launches).toEqual(["inert --resume old-session", "inert --fresh"]);
     expect(h.notices).toContainEqual(expect.objectContaining({ action: "fresh", session: "old-session" }));
@@ -156,13 +161,13 @@ describe("the real daemon health + respawn decision with a fake OOM'd child", ()
     expect(h.notices).toContainEqual(expect.objectContaining({ action: "stopped", reason: "fresh_oom" }));
   });
   it("a SIGKILL with no matching OOM evidence retains normal resume behavior", async () => {
-    const h = harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000);
+    const h = await harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000);
     await h.die(false); await h.die(false);
     expect(h.launches).toEqual(["inert --resume old-session", "inert --resume old-session"]);
     expect(h.notices).toEqual([]);
   });
   it("a stop during the evidence read revokes the decision and cannot launch a replacement", async () => {
-    const h = harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000);
+    const h = await harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000);
     io.hold = true; h.child.alive = false; unlinkSync(join(io.root, String(h.child.pid), "stat")); io.journal = record(h.child.pid);
     await vi.advanceTimersByTimeAsync(1000); expect(io.release).not.toBeNull();
     h.daemon.healthCheckPaused = true; io.release!(); await vi.advanceTimersByTimeAsync(4000);
@@ -170,10 +175,46 @@ describe("the real daemon health + respawn decision with a fake OOM'd child", ()
     expect(h.daemon.oomCount).toBeNull();
     expect(h.daemon.tmux.killWindow).not.toHaveBeenCalled();
   });
+  it("discards an old OOM recovery after an operator replaces its launch during backoff", async () => {
+    const h = await harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000);
+    await h.die();
+    h.child.alive = false; unlinkSync(join(io.root, String(h.child.pid), "stat")); io.journal = record(h.child.pid);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(h.daemon.oomCount.count).toBe(2);
+    h.session.id = "operator-new-session";
+    await h.daemon.spawnClaudeWindow();
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(h.launches).toEqual(["inert --resume old-session", "inert --resume operator-new-session"]);
+    expect(h.notices).toEqual([]);
+    expect(existsSync(join(h.instance, "crash-state.json"))).toBe(false);
+    expect(readdirSync(h.instance).filter(f => f.startsWith("session-id.oom-"))).toEqual([]);
+    expect(h.daemon.injectSnapshotMessage).not.toHaveBeenCalled();
+  });
+  it("does not give a later launch the old replacement's snapshot or OOM identity", async () => {
+    const h = await harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000); await h.die();
+    let release!: () => void;
+    let admit!: () => void;
+    h.daemon.injectSnapshotMessage.mockImplementation(async (admission: () => void) => {
+      admit = admission;
+      await new Promise<void>(resolve => { release = resolve; });
+      admission();
+    });
+    await h.die();
+    expect(release).toBeTypeOf("function");
+    const newer = JSON.stringify({ resumeDisabled: true, reason: "operator-request" });
+    writeFileSync(join(h.instance, "crash-state.json"), newer);
+    h.session.id = "operator-new-session";
+    await h.daemon.spawnClaudeWindow();
+    expect(admit).toThrow(/superseded/);
+    release(); await vi.advanceTimersByTimeAsync(1000);
+    expect(h.daemon.oomFreshGeneration).not.toBe(h.daemon.spawnGeneration);
+    expect(existsSync(join(h.instance, "crash-state.json"))).toBe(true);
+    expect(readFileSync(join(h.instance, "crash-state.json"), "utf8")).toBe(newer);
+  });
 });
 
 it("keeps a changed session out of the old session's consecutive OOM count", async () => {
-  const h = harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000);
+  const h = await harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000);
   await h.die(); h.session.id = "user-new-session";
   await h.die();
   expect(h.launches).toEqual(["inert --resume old-session", "inert --resume user-new-session"]);
@@ -181,7 +222,7 @@ it("keeps a changed session out of the old session's consecutive OOM count", asy
 });
 
 it("stops rather than resuming when fresh intent cannot be saved", async () => {
-  const h = harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000);
+  const h = await harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000);
   await h.die(); mkdirSync(join(h.instance, "crash-state.json"));
   await h.die();
   expect(h.launches).toEqual(["inert --resume old-session"]);
@@ -224,7 +265,7 @@ it("treats unreadable procfs as unknown rather than proof the observed PID disap
 });
 
 it("does not consume a newer fresh-start intent written while its replacement was starting", async () => {
-  const h = harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000); await h.die();
+  const h = await harness(); h.daemon.startHealthCheck(); await vi.advanceTimersByTimeAsync(1000); await h.die();
   const start = h.daemon.trySpawn.getMockImplementation();
   const newer = JSON.stringify({ resumeDisabled: true, reason: "operator-request" });
   h.daemon.trySpawn.mockImplementation(async () => {
@@ -244,4 +285,52 @@ it("does not walk through an unknown primary to misidentify its tool or subagent
   // The same named shell script is just a launcher; the real direct CLI is its child.
   proc(101, "claude", "102", "123", 100, "bash");
   expect(await observeCliOomIdentity(100, "claude")).toMatchObject({ pid: 102, comm: "claude" });
+});
+
+it("rejects a container procfs view even when NSpid contains only one local PID", async () => {
+  proc(100, "claude");
+  writeFileSync(join(io.root, "100/ns/pid"), "pid:[4026539999]");
+  expect(await observeCliOomIdentity(100, "claude")).toBeNull();
+});
+
+it.each([false, true])("booted session-OOM intent remains until successful fresh recovery (startup succeeds=%s)", async success => {
+  const h = await harness();
+  h.daemon.config.lightweight = true;
+  const intent = JSON.stringify({ resumeDisabled: true, reason: "session_oom", session: "old-session" });
+  writeFileSync(join(h.instance, "crash-state.json"), intent);
+  vi.spyOn(IpcServer.prototype, "listen").mockResolvedValue(undefined);
+  vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
+  vi.spyOn(TmuxManager.prototype, "getPaneStatus").mockImplementation(async () => ({
+    alive: h.child.alive, ...(h.child.alive ? {} : { exitCode: h.child.exitCode }),
+  }));
+  vi.spyOn(TmuxManager.prototype, "killWindow").mockResolvedValue(undefined);
+  vi.spyOn(TmuxManager.prototype, "capturePaneWithHistory").mockResolvedValue("fake killed child");
+  h.daemon.maybeResumeInterruptedTurn = vi.fn(async () => {});
+  h.daemon.runWarmupInstructionNotice = vi.fn(async () => {});
+  if (!success) {
+    const failed = new Error("inert CLI startup interrupted");
+    h.daemon.trySpawn.mockRejectedValue(failed);
+    await expect(h.daemon.start()).rejects.toBe(failed);
+    expect(h.daemon.oomFreshGeneration).toBe(-1);
+    expect(existsSync(join(h.instance, "crash-state.json"))).toBe(true);
+    expect(readFileSync(join(h.instance, "crash-state.json"), "utf8")).toBe(intent);
+    return;
+  }
+  let release!: () => void;
+  h.daemon.injectSnapshotMessage.mockImplementation(async (admission: () => void) => {
+    expect(existsSync(join(h.instance, "crash-state.json"))).toBe(true);
+    await new Promise<void>(resolve => { release = resolve; });
+    admission();
+  });
+  const startup = h.daemon.start();
+  void startup.catch(() => {}); // observe a reversal failure while the snapshot is held
+  await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+  expect(h.launches).toEqual(["inert --fresh"]);
+  expect(existsSync(join(h.instance, "crash-state.json"))).toBe(true);
+  release(); await startup;
+  expect(existsSync(join(h.instance, "crash-state.json"))).toBe(false);
+  expect(h.daemon.oomFreshGeneration).toBe(h.daemon.spawnGeneration);
+  await h.die();
+  expect(h.launches).toEqual(["inert --fresh"]);
+  expect(h.notices).toContainEqual(expect.objectContaining({ action: "stopped", reason: "fresh_oom" }));
 });
