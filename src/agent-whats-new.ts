@@ -143,11 +143,14 @@ export function recordWhatsNew(instanceDir: string, ids: readonly string[], vers
 /** #2163: the line a notice adds when it names a skill — a way to read it that works on every instance. */
 export const SKILL_READ_HINT = "A skill named here that you can't find among your skills: `agend-agent skill <name>` prints it (in your shell).";
 
+/** "the `scheduling` skill", or a hyphenated name without backticks: "the cross-instance-messaging skill". */
+const NAMES_A_SKILL = /`[a-z][a-z0-9-]*` skill\b|(?:^|[^a-z0-9-])[a-z][a-z0-9]*(?:-[a-z0-9]+)+ skill\b/;
+
 export function whatsNewNotice(version: string, entries: readonly WhatsNewEntry[]): string {
   return [
     `[system:whats-new] AgEnD is now ${version}. New for you since your session began:`,
     ...entries.map(e => `- ${e.text}`),
-    ...(entries.some(e => /\bskill\b/.test(e.text) && /`[a-z][a-z0-9-]*` skill/.test(e.text)) ? [SKILL_READ_HINT] : []),
+    ...(entries.some(e => NAMES_A_SKILL.test(e.text)) ? [SKILL_READ_HINT] : []),
     "A tool description you loaded earlier may not show these: a resumed session keeps the copy it first loaded, and reloading it does not refresh it. Use them anyway — AgEnD's server accepts them. Do not reply to this message.",
   ].join("\n");
 }

@@ -82,6 +82,49 @@ describe("#2163: skills for a ClassicBot room's agent", () => {
     expect(insideManagedWorkspaces(join(home, "workspaces"), home)).toBe(false);          // the root itself
     expect(insideManagedWorkspaces(join(home, "workspaces", "a", "b"), home)).toBe(true);  // not created yet: by path
     expect(insideManagedWorkspaces(join(home, "workspaces-x", "a"), home)).toBe(false);
+    expect(insideManagedWorkspaces(join(home, "workspaces", "linked", "new-child"), home)).toBe(false);  // missing, under a link out
+    symlinkSync(join(outside, "gone"), join(home, "workspaces", "broken"));
+    expect(insideManagedWorkspaces(join(home, "workspaces", "broken"), home)).toBe(false);              // a broken link
+    expect(insideManagedWorkspaces(join(home, "workspaces", "broken", "x"), home)).toBe(false);
+  });
+  it("a missing working folder under a link out of workspaces/: nothing is created out there", async () => {
+    const home = scratch(); process.env.AGEND_HOME = home;
+    const outside = scratch("agend-2163-user-");
+    mkdirSync(join(home, "workspaces"), { recursive: true });
+    symlinkSync(outside, join(home, "workspaces", "linked"));
+    await startClassic(join(home, "workspaces", "linked", "new-child"));
+    expect(readdirSync(outside)).toEqual([]);
+  });
+  it("a managed workspace whose skills folder is a link out: nothing written there — no skill, no manifest", async () => {
+    for (const [backend, segs] of [["codex", [".agents", "skills"]], ["claude-code", [".claude", "skills"]]] as const) {
+      const home = scratch(); process.env.AGEND_HOME = home;
+      const outside = scratch("agend-2163-user-");
+      writeFileSync(join(outside, "theirs.md"), "x\n");
+      const work = join(home, "workspaces", "room-bot");
+      mkdirSync(join(work, segs[0]), { recursive: true });
+      symlinkSync(outside, join(work, ...segs));
+      await startClassic(work, backend);
+      expect(readdirSync(outside), backend).toEqual(["theirs.md"]);
+      // the folder holding it (.agents / .claude) linked out instead: the same
+      const home2 = scratch(); process.env.AGEND_HOME = home2;
+      const outside2 = scratch("agend-2163-user-");
+      const work2 = join(home2, "workspaces", "room-bot");
+      mkdirSync(work2, { recursive: true });
+      symlinkSync(outside2, join(work2, segs[0]));
+      await startClassic(work2, backend);
+      expect(readdirSync(outside2), backend).toEqual([]);
+    }
+  });
+  it("a managed skill folder replaced by a link out later: that skill is skipped, the rest still published", async () => {
+    const home = scratch(); process.env.AGEND_HOME = home;
+    const work = join(home, "workspaces", "room-bot");
+    await startClassic(work);
+    const outside = scratch("agend-2163-user-");
+    rmSync(join(work, ".agents", "skills", "web-appearance"), { recursive: true });
+    symlinkSync(outside, join(work, ".agents", "skills", "web-appearance"));
+    await startClassic(work);
+    expect(readdirSync(outside)).toEqual([]);
+    expect(existsSync(join(work, ".agents", "skills", "web-dashboard", "SKILL.md"))).toBe(true);
   });
   it("the bundled frontmatter marks exactly those three for classic", () => {
     const classic = listBundledSkills().map(s => s.name).filter(n => /roles:\s*\[[^\]]*\bclassic\b/.test(readFileSync(join(__dirname, "..", "src", "general-knowledge", "skills", n, "SKILL.md"), "utf8")));
@@ -138,6 +181,17 @@ describe("#2163: what's-new by role", () => {
     expect(whatsNewNotice(V, AGENT_WHATS_NEW.filter(e => e.id === "2.3-web-ambient"))).toContain(SKILL_READ_HINT);
     expect(whatsNewNotice(V, AGENT_WHATS_NEW.filter(e => e.id === "2.3-repo-tools"))).not.toContain(SKILL_READ_HINT);
     expect(SKILL_READ_HINT).toContain("agend-agent skill <name>");
+  });
+  it("every entry that names a bundled skill — with or without backticks — carries the hint on its own", () => {
+    const names = listBundledSkills().map(s => s.name);
+    // An unquoted one-word name ("scheduling skill") is not told apart from "the skill"; entries quote those.
+    const naming = AGENT_WHATS_NEW.filter(e => names.some(n => (n.includes("-") && e.text.includes(`${n} skill`)) || e.text.includes(`\`${n}\` skill`)));
+    for (const n of names.filter(n => !n.includes("-"))) {
+      expect(AGENT_WHATS_NEW.filter(e => new RegExp(`(?<!\`)\\b${n} skill`).test(e.text)).map(e => e.id), n).toEqual([]);
+    }
+    expect(whatsNewNotice(V, [{ id: "t", since: "0", text: "Load the `scheduling` skill." }])).toContain(SKILL_READ_HINT);
+    expect(naming.map(e => e.id)).toContain("2.3-web-verified");          // "the cross-instance-messaging skill", unquoted
+    for (const e of AGENT_WHATS_NEW) expect(whatsNewNotice(V, [e]).includes(SKILL_READ_HINT), e.id).toBe(naming.includes(e));
   });
 
   function daemonWith(config: Record<string, unknown>, kind: "classic" | "fleet-topic", name = "room-bot") {

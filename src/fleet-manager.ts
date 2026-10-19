@@ -22,7 +22,7 @@ import { measureSyncWork } from "./sync-work-attribution.js";
 import { RuntimeCpuProfiler, ProfileBusyError, profileDuration, type ProfileTicket } from "./runtime-cpu-profile.js";
 import { ProfileControlServer } from "./profile-control.js";
 import type { CpuProfile } from "./cpu-profile.js";
-import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, constants as fsConstants, type Dirent, openSync, closeSync, fsyncSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, lstatSync, constants as fsConstants, type Dirent, openSync, closeSync, fsyncSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { freemem, totalmem, cpus, homedir } from "node:os";
@@ -445,12 +445,30 @@ export function selectLruEvictions(
  * must match here, or a deleted instance's CLI is left running (#1305 P2-3).
  */
 /**
+ * #2163: where `p` really is — symlinks resolved. A path that does not exist yet is resolved through its deepest
+ * existing ancestor (a missing child of a link elsewhere is elsewhere too).
+ */
+function realPathThroughAncestors(p: string): string | null {
+  const missing: string[] = [];
+  let at = resolvePath(p);
+  for (;;) {
+    try { return join(realpathSync(at), ...missing.reverse()); } catch { /* not there yet: try its parent */ }
+    try { lstatSync(at); return null; } catch { /* truly absent — not a broken link whose target is unknown */ }
+    const up = dirname(at);
+    if (up === at) return resolvePath(p);
+    missing.push(basename(at));
+    at = up;
+  }
+}
+
+/**
  * #2163: whether `dir` is inside AgEnD's own workspaces (<AGEND_HOME>/workspaces/<name>/…), compared after resolving
- * symlinks on both sides (a link elsewhere is not inside). A folder that does not exist yet is judged by its path.
+ * symlinks on both sides — including a missing folder's existing ancestors — so a link elsewhere is not inside, nor is a broken link.
  */
 export function insideManagedWorkspaces(dir: string, agendHome: string = getAgendHome()): boolean {
-  const real = (p: string) => { try { return realpathSync(p); } catch { return resolvePath(p); } };
-  const rel = relative(real(join(agendHome, "workspaces")), real(dir));
+  const root = realPathThroughAncestors(join(agendHome, "workspaces")), real = realPathThroughAncestors(dir);
+  if (root === null || real === null) return false;
+  const rel = relative(root, real);
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
 }
 
@@ -16514,6 +16532,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       join(root, "skills"),
       role,
       adoptLegacyUnmanaged,
+      // #2163: a Classic bot's skills folder (or a skill in it) may be a link out of its workspace; every path is
+      // checked where it really lands, just before it is written.
+      role === "classic" ? (path: string) => insideManagedWorkspaces(path) : undefined,
     );
     this.logger.debug({ workDir, backend, role }, "Synced role-based bundled skills");
   }
@@ -16596,9 +16617,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     srcSkills: string,
     role: ManagedSkillRole,
     adoptLegacyUnmanaged = false,
+    confined?: (path: string) => boolean,
   ): void {
     if (!existsSync(srcSkills)) return;
+    const refuse = (path: string) => {
+      if (!confined || confined(path)) return false;
+      this.logger.warn({ path, destSkills }, "Not publishing skills — the path leads out of the managed workspace");
+      return true;
+    };
+    if (refuse(destSkills)) return;
     mkdirSync(destSkills, { recursive: true });
+    if (refuse(destSkills)) return;
     const manifestPath = join(destSkills, ".agend-managed-skills.json");
     const hadManifest = existsSync(manifestPath);
     let previouslyManaged: string[] = [];
@@ -16653,6 +16682,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
       managed.push(name);
       const newContent = readFileSync(join(srcSkills, name, "SKILL.md"), "utf-8");
+      if (refuse(dest)) continue;
       try { if (existsSync(dest) && readFileSync(dest, "utf-8") === newContent) continue; } catch { /* rewrite */ }
       mkdirSync(destDir, { recursive: true });
       writeFileSync(dest, newContent);
@@ -16671,6 +16701,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
     }
 
+    if (refuse(manifestPath)) return;
     try {
       writeFileSync(manifestPath, JSON.stringify(managed, null, 2) + "\n");
     } catch (err) {
