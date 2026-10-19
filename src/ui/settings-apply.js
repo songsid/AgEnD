@@ -11,7 +11,7 @@ import { appStore } from "/assets/app-store.js";
 import { t } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
 import "./settings-strings.js";
-import { api, confirmedWrite, newKey } from "./settings-confirm.js";
+import { api, confirmedWrite, newKey, selfConfirmed } from "./settings-confirm.js";
 
 const WATCH_LIMIT_MS = 10 * 60_000;
 const POST_RETRIES = [1000, 2000, 4000];
@@ -114,7 +114,7 @@ async function perform(step, o) {
   if (step.request) {
     const { method, url, body } = step.request;
     return confirmedWrite(url, { method, body, key: step.key, label: step.label,
-      onPending: (id) => { if (mine(o)) { step.pendingId = id; step.status = "waiting"; publish(); } } });
+      onPending: (id, view) => { if (mine(o)) { step.pendingId = id; step.status = selfConfirmed(view) ? "running" : "waiting"; publish(); } } });
   }
   if (step.connectionSecret) return rotateConnectionSecret(step, o);
   return { ok: false, body: { error: "unknown change" } };
@@ -129,7 +129,7 @@ async function rotateConnectionSecret(step, o) {
   if (!verified.ok) return verified;
   const applied = await confirmedWrite(`${base}/apply`, { method: "POST", key: step.key, label: step.label,
     body: { verification_id: verified.body && verified.body.verification_id, idempotency_key: step.key },
-    onPending: (pid) => { if (mine(o)) { step.pendingId = pid; step.status = "waiting"; publish(); } } });
+    onPending: (pid, view) => { if (mine(o)) { step.pendingId = pid; step.status = selfConfirmed(view) ? "running" : "waiting"; publish(); } } });
   if (!applied.ok && applied.status !== 409) return applied;
   let result = applied.body || {};
   for (let n = 0; result.job_id && result.result === "applying" && n < 60; n++) {

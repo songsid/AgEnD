@@ -2,6 +2,7 @@ import { normalizeSettingsInstancePatch } from "./settings-instance-patch.js";
 import { basename } from "node:path";
 import { agentConflict, draftQuickstart, newConnectionConflict, planQuickstart, validateWizardInput, withExistingAgent, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
 import type { FleetConfig } from "./types.js";
+import { channelWithDefaults } from "./config.js";
 import { settingsChangeDiff, type SettingsChangeDiff } from "./settings-change.js";
 import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
 import { SettingsConfirmationError } from "./settings-confirmation.js";
@@ -60,7 +61,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       const ch = structuredClone(record(item));
       if (typeof ch.group_id === "number") { if (!Number.isSafeInteger(ch.group_id)) throw new SettingsConfirmationError(400, "invalid_channel_id"); ch.group_id = String(ch.group_id); }
       if (typeof ch.options?.general_channel_id === "number") { if (!Number.isSafeInteger(ch.options.general_channel_id)) throw new SettingsConfirmationError(400, "invalid_channel_id"); ch.options.general_channel_id = String(ch.options.general_channel_id); }
-      return ch;
+      return channelWithDefaults(ch);                                       // #2211: absent = the default, as a load says
     }); delete after.fleet.channel;
     before.fleet.channels = cfg.channels ?? (cfg.channel ? [cfg.channel] : []); delete before.fleet.channel;
   } else if (path === "/api/settings/fleet/defaults") {

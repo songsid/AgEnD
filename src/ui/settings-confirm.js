@@ -33,6 +33,10 @@ export async function api(path, opts = {}) {
 
 /** A request id we can follow: a non-empty string (the server's are 32 hex characters). */
 const usableId = (v) => typeof v === "string" && v.length > 0;
+/** #2170: a held request its own web-verified account confirmed (the server's answer says so): applying, no wait for chat. */
+export function selfConfirmed(view) {
+  return !!view && !!view.confirmation && view.confirmation.kind === "web";
+}
 /** The 202 that means "waiting for an admin", not "done". */
 export function isPendingResponse(res) {
   return !!res && res.status === 202 && !!res.body && res.body.result === "pending_confirmation" && !!res.body.pending_change
@@ -159,13 +163,14 @@ export async function attach() {
  * itself would have been: applied → { ok: true, body: what the write answered }, anything else → { ok: false } with
  * the reason. An accepted answer that cannot be read is { ok: false, ambiguous: true } (see isUnreadableAccept); a
  * network failure throws. Every other answer is returned as it is. `key` is the request's Idempotency-Key: pass the same one to
- * retry the same request. `onPending(id)` is told when it starts waiting.
+ * retry the same request. `onPending(id, view)` is told when it starts waiting — or, held and confirmed by its own
+ * web-verified account (selfConfirmed(view), #2170), applying.
  */
 export async function confirmedWrite(path, { method = "POST", body, key = newKey("w"), label, headers, onPending } = {}) {
   const res = await api(path, { method, headers: { ...(headers || {}), "Idempotency-Key": key }, body: body === undefined ? undefined : JSON.stringify(body) });
   if (isUnreadableAccept(res)) return { ok: false, status: 202, ambiguous: true, body: { error: "unreadable_confirmation_response" } };
   if (!isPendingResponse(res)) return res;
-  if (onPending) onPending(res.body.pending_change.id);
+  if (onPending) onPending(res.body.pending_change.id, res.body.pending_change);
   const final = await track(res.body.pending_change, label);
   return outcomeResponse(final);
 }

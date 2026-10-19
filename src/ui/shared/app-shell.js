@@ -508,6 +508,7 @@ export function PendingChanges({ inline = false } = {}) {
     ${p.label ? html`<div class="pending-label">${p.label}</div>` : null}
     ${Array.isArray(p.summary) && p.summary.length ? html`<ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${line}</li>`)}</ul>` : null}
     ${p.state === "pending" ? html`<p class="note">${p.confirmation && p.confirmation.kind === "host_cli" ? t("app.pendingHost", `agend settings confirm ${p.id}`) : t("app.pendingChat")}</p>` : null}
+    ${(p.state === "applying" || p.state === "applied") && p.confirmation && p.confirmation.kind === "web" ? html`<p class="note">${t("app.pendingWeb")}</p>` : null}
     ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" && p.outcome && p.outcome.message ? html`<p class="note">${p.outcome.message}</p>` : null}
     ${p.withdraw ? html`<div class="pending-actions"><button type="button" class="btn btn-sm" onClick=${p.withdraw}>${t("app.withdraw")}</button></div>` : null}
   </section>`)}</div>`;

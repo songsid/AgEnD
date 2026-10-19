@@ -44,6 +44,7 @@ import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync, statSy
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import yaml from "js-yaml";
+import { channelWithDefaults } from "./config.js";
 import type { Logger } from "./logger.js";
 import type { FleetConfig, RawFleetConfig } from "./types.js";
 import { KNOWN_BACKENDS, validateFleetConfig, validateClassicBotConfig, type ValidationResult } from "./config-validator.js";
@@ -955,7 +956,9 @@ export function handleSettingsRequest(
       const previous = { channels: cfg.channels, channel: cfg.channel, hadChannel: "channel" in cfg };
       try {
         settingsWrite(req, () => {
-          cfg.channels = normalizedBody as FleetConfig["channels"];
+          // #2211: kept as a load gives it (id and mode defaults filled in), so memory and the next diff agree with the file.
+          cfg.channels = normalizedBody.map(item => item && typeof item === "object" && !Array.isArray(item)
+            ? channelWithDefaults(item as Record<string, unknown> & { id?: string; type?: string; mode?: string }) : item) as FleetConfig["channels"];
           delete (cfg as { channel?: unknown }).channel; ctx.saveFleetConfig();
         });
       } catch (err) {

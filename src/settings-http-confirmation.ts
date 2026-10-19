@@ -12,6 +12,11 @@ export interface SettingsPrincipal {
   id: string; label: string; source: SettingsPendingView["source"]; current(): boolean;
 }
 export interface SettingsBaseline extends SettingsEffectContext { fingerprint: string }
+/**
+ * #2170: the requester's own confirmation — a web-verified session whose account is an admin of exactly the change's
+ * effect owners. `current()` is asked again at execution (store.decide); `done` hears the outcome (General's notice).
+ */
+export interface SettingsSelfConfirmation { label: string; current(): boolean; done?(view: SettingsPendingView): void | Promise<void> }
 export type SettingsRequestHandler = (req: IncomingMessage, res: ServerResponse, url: URL) => boolean;
 function json(res: ServerResponse, status: number, body: unknown): void {
   if (res.destroyed || res.headersSent) return;
@@ -26,6 +31,8 @@ export class SettingsHttpConfirmation {
     snapshot(): unknown;
     job?(id: string): Promise<boolean>;
     applied?(path: string, result: unknown, execution: SettingsExecution): void | Promise<void>;
+    /** #2170: this request's own confirmation, or null (the chat or host confirmation, as before). */
+    selfConfirm?(req: IncomingMessage, id: string): SettingsSelfConfirmation | null;
   }) {}
   handle(req: IncomingMessage, res: ServerResponse, url: URL, next: SettingsRequestHandler): boolean {
     if (settingsRequestExecution(req) || this.passed.has(req)) return false;
@@ -97,6 +104,16 @@ export class SettingsHttpConfirmation {
         return response.body;
       }, discard: () => { payload.body.fill(0); effect.proof?.discard(); },
     });
+    // #2170: a web-verified admin of exactly this change's effect owners confirms it by applying it. The store claims it
+    // (state "applying") before the chat prompt is queued to run, so no card is posted; every check of a confirmation
+    // still runs at execution, with this requester's authority asked again (self.current()).
+    const self = result.reused ? null : this.options.selfConfirm?.(req, result.view.id) ?? null;
+    if (self) {
+      const decided = this.store.decide(result.view.id, "confirm", { ...self, via: "web" });
+      void decided.then(view => self.done?.(view)).catch(() => {});
+      json(res, 202, { ok: true, result: "pending_confirmation", pending_change: this.store.get(result.view.id, principal.id) ?? result.view });
+      return;
+    }
     json(res, 202, { ok: true, result: "pending_confirmation", pending_change: result.view });
   }
 }
