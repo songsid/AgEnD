@@ -203,7 +203,8 @@ describe("phones and assistive tech (segment 3)", () => {
     const NAV = readFileSync(join(process.cwd(), "src", "ui", "shared", "instance-nav.js"), "utf8");
     // (#1664: the row's <li> carries a class for the star beside the link.)
     // #1958: the row also carries its identity colour's classes and a ref that paints it (still a real link).
-    expect(NAV).toMatch(/<li key=\$\{name\}(?: class="v-li")?><a class=\$\{`inst v-inst\$\{on \? " active" : ""\}(?: \$\{identityClasses\(id\)\})?`\}(?: ref=\$\{[^}]+\})? href=\$\{rowPath\(name\)\}/);
+    // #2179: the row's classes and ref grew (the reply highlight); it is still one <a href> per row, inside its <li>.
+    expect(NAV).toMatch(/<li key=\$\{name\} class=\$\{`v-li[^`]*`\}><a class=\$\{`inst v-inst\$\{on \? " active" : ""\}[^`]*\$\{identityClasses\(id\)\}`\}\s+ref=\$\{\(el\) => \{[^}]*\}\} href=\$\{rowPath\(name\)\}/);
     for (const src of [APP_SHELL, NAV]) expect(src).not.toMatch(/role="button"|data-act=/);
   });
 });

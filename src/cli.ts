@@ -2906,9 +2906,10 @@ async function resolveInstance(query: string | undefined, config: import("./type
   if (result.kind === "ambiguous") {
     if (process.stdin.isTTY && process.stdout.isTTY) {
       console.log(`"${query}" matches multiple instances:`);
+      const { ambiguityLine } = await import("./ls-attach-resolve.js");
+      const maxNameW = Math.max(...result.candidates.map(c => c.realName.length));
       for (const c of result.candidates) {
-        const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
-        console.log(`  ${String(c.idx).padStart(2)}) ${c.displayLabel.padEnd(24)}  ${c.realName.slice(0, 32)}  [${c.status}]  ${teams}`);
+        console.log(ambiguityLine(c, maxNameW));
       }
       return interactivePicker(result.candidates);
     }
@@ -2938,11 +2939,12 @@ async function interactivePicker(candidates: import("./ls-attach-resolve.js").Ca
   const { pickerDefaultIdx } = await import("./ls-attach-resolve.js");
   const defaultIdx = pickerDefaultIdx(ordered);
 
+  const { pickerLine } = await import("./ls-attach-resolve.js");
+  const maxNameW = Math.max(...ordered.map(c => c.realName.length));
+
   console.log("Select an instance:");
   for (const c of ordered) {
-    const statusGlyph = c.status === "running" ? "●" : c.status === "paused" ? "○" : "✗";
-    const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
-    console.log(`  ${String(c.idx).padStart(2)}) ${statusGlyph} ${c.displayLabel.padEnd(22)}  ${c.realName.slice(0, 30)}  ${teams}`);
+    console.log(pickerLine(c, maxNameW));
   }
 
   const { createInterface } = await import("node:readline");
@@ -3033,7 +3035,7 @@ async function listInstanceNames(config: import("./types.js").FleetConfig): Prom
   return names;
 }
 
-async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string }): Promise<void> {
+async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string; display?: boolean }): Promise<void> {
     const yaml = (await import("js-yaml")).default;
     const config = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) as import("./types.js").FleetConfig;
     const names = Object.keys(config.instances);
@@ -3245,6 +3247,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     // across the fleet (#1305 P2-1). --json and --names-only above keep the
     // real names (machine use + attach target).
     const { assignDisplayLabels } = await import("./topic-commands.js");
+    const { lsDisplayAnnotation } = await import("./ls-attach-resolve.js");
     const lsLabels = assignDisplayLabels(displayRows.map((r) => ({
       name: r.name,
       displayName: (config.instances[r.name] as { display_name?: string } | undefined)?.display_name,
@@ -3281,7 +3284,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
       const ctxStr = r.context != null ? `${Math.round(r.context)}%` : "-";
       const memStr = r.memMb != null ? `${r.memMb}MB` : "-";
       const actStr = r.lastActivity ?? "-";
-      const dispAnnotation = displayLabel(r) !== r.name ? `  (${displayLabel(r)})` : "";
+      const dispAnnotation = lsDisplayAnnotation(r.name, displayLabel(r), opts.display ?? false);
 
       console.log(
         String(r.globalIdx).padEnd(numW) +
@@ -3323,7 +3326,8 @@ program
   .option("--running", "Show only running instances")
   .option("--team <name>", "Filter by team name")
   .option("--backend <name>", "Filter by backend (exact match)")
-  .action(async (opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string }) => {
+  .option("--display", "Show display names as last column")
+  .action(async (opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string; display?: boolean }) => {
     await lsAction(opts);
   });
 

@@ -345,6 +345,18 @@ export class WebChatHistory {
     return r.message;
   }
 
+  /**
+   * #2179: when the instance last replied to a person — its newest kept `agent` message (a reply through the reply tool,
+   * shown in a channel or the web chat; a cross-instance line is never one), restored history included. Null when none
+   * is kept.
+   */
+  lastAgentReply(instance: string): string | null {
+    const slot = this.byInstance.get(instance);
+    if (!slot) return null;
+    for (let i = slot.messages.length - 1; i >= 0; i--) if (slot.messages[i]!.role === "agent") return slot.messages[i]!.ts;
+    return null;
+  }
+
   /** The id the next message will get minus one: the newest id handed out so far (0 when none). */
   get lastId(): number { return this.nextId - 1; }
 

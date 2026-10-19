@@ -249,7 +249,9 @@ describe("the row: a star slot, the CLI on the avatar", () => {
     expect(starRules.some((r) => /position:\s*(absolute|fixed)/.test(r)), "no rule lifts the star out of the row").toBe(false);
     // Hidden until hover or focus by visibility (its width stays reserved), not display — on a desktop.
     expect(appCss).toMatch(/\.inst-nav:not\(\.fav-editing\) \.inst-star:not\(\.on\) \{ visibility: hidden; \}/);
-    expect(rowOf(pg, "agend-reviewer-t1").children.map((c: any) => c.className.split(" ")[0]).at(-1), "nothing after the context figure").toBe("v-meta");
+    // #2179 (B5): the context figure ends the name's line (the reply time ends the second); nothing after the row's text.
+    expect(rowOf(pg, "agend-reviewer-t1").children.map((c: any) => c.className.split(" ")[0]).at(-1), "nothing after the row's text").toBe("inst-text");
+    expect(rowOf(pg, "agend-reviewer-t1").querySelector(".inst-line").children.map((c: any) => c.className.split(" ")[0]).at(-1), "nothing after the context figure").toBe("v-meta");
   });
 
   it("the CLI is announced: in the row's text for a screen reader (en and zh-TW), a letter on the avatar for the eye", async () => {

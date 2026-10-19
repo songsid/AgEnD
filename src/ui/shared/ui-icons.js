@@ -37,6 +37,7 @@ const P = {
   type: () => html`<path d="M4 7V5h16v2M9 19h6M12 5v14"/>`,
   chart: () => html`<path d="M3 20h18M6 16v-4M11 16V8M16 16v-6"/>`,
   up: () => html`<path d="M12 19V5M5 12l7-7 7 7"/>`,
+  sort: () => html`<path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/>`,   // #2179: the sidebar's sort
   star: () => html`<path d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.54L12 17.5l-5.87 3.08 1.12-6.54L2.5 9.41l6.56-.95L12 2.5z"/>`,
   eye: () => html`<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
   check: () => html`<path d="M20 6L9 17l-5-5"/>`,

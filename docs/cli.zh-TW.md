@@ -83,7 +83,11 @@ agend fleet cleanup --dry-run   # 只預覽，不刪除
 agend ls                        # 列出實例（狀態、backend、team、context、活動）
 agend ls --json                 # JSON 輸出
 agend ls --names-only           # 每行一個名稱（shell 補全用）
-agend attach [name]             # 接入實例的 tmux 視窗（模糊比對、互動選單）
+agend ls --running              # 只列出執行中的實例
+agend ls --team <name>          # 依 team 篩選
+agend ls --backend <name>       # 依 backend 篩選
+agend ls --display              # 在最後一欄顯示 display name（預設隱藏）
+agend attach [name]             # 接入實例的 tmux 視窗（接受真名、display name、列號或子字串）
 agend logs                      # 顯示 fleet 日誌
 agend logs -n 100               # 顯示最後 100 行（預設 50）
 agend logs -f                   # 追蹤模式（tail -f）

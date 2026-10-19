@@ -82,7 +82,11 @@ agend fleet cleanup --dry-run   # Preview cleanup without deleting
 agend ls                        # List instances with status, backend, team, context, activity
 agend ls --json                 # JSON output
 agend ls --names-only           # Names one per line (used by shell completion)
-agend attach [name]             # Attach to instance tmux window (fuzzy match, interactive menu)
+agend ls --running              # Running instances only
+agend ls --team <name>          # Filter by team
+agend ls --backend <name>       # Filter by backend
+agend ls --display              # Add display names as last column (hidden by default)
+agend attach [name]             # Attach to instance tmux window (accepts real name, display name, row number, or substring)
 agend logs                      # Show fleet log
 agend logs -n 100               # Show last 100 lines (default: 50)
 agend logs -f                   # Follow mode (tail -f)

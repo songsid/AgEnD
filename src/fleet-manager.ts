@@ -21962,6 +21962,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         role: identity.role || undefined,
         tags: identity.tags,
         teams: instanceTeams(this.fleetConfig?.teams, name),     // #2172: the sidebar groups a team's members under it
+        last_reply: this.webChatHistory.lastAgentReply(name) ?? undefined,   // #2179: its last reply to a person (ISO)
         status: this.getInstanceStatus(name),
         // `state` (presentation: may be awaiting_input) and `execution_state` (working / idle / stuck, or null —
         // what the dashboard's activity events carry) come from instancePresentation (#1212).
