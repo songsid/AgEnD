@@ -72,8 +72,12 @@ export function pagePalette(theme: Theme, mode: ThemeMode): Required<Palette> & 
   const pal = effectivePalette(theme, mode);
   return { ...pal, sidebar: theme.page?.sidebar?.[mode] ?? pal.bg };
 }
-/** #2196: what a page theme must read at on its sidebar (text as on the page; AgEnD's status colours too). */
-export function pageContrastProblems(theme: Theme, mode: ThemeMode): ThemeProblem[] {
+/**
+ * #2196: what a page theme must read at on its sidebar (text as on the page; AgEnD's status colours too) and, `whole`,
+ * AgEnD's status colours on its background. A sidebar colour is checked whenever it is set — a person may put the
+ * agent's colours on the page though the agent never turned it on (#2202 review) — the background only with page.on.
+ */
+export function pageContrastProblems(theme: Theme, mode: ThemeMode, whole = true): ThemeProblem[] {
   const out: ThemeProblem[] = [];
   const p = pagePalette(theme, mode);
   const need = (fg: Color, bg: Color, min: number, path: string, what: string) => {
@@ -85,7 +89,7 @@ export function pageContrastProblems(theme: Theme, mode: ThemeMode): ThemeProble
   need(p.accent, p.sidebar, 3, `page.sidebar.${mode}`, "accent on the sidebar");
   for (const [k, c] of Object.entries(STATUS_COLORS[mode])) {
     need(c, p.sidebar, 3, `page.sidebar.${mode}`, `AgEnD's ${k} colour on the sidebar`);
-    need(c, p.bg, 3, `colors.${mode}.bg`, `AgEnD's ${k} colour on the page background`);
+    if (whole) need(c, p.bg, 3, `colors.${mode}.bg`, `AgEnD's ${k} colour on the page background`);
   }
   return out;
 }
@@ -326,8 +330,10 @@ export function checkTheme(input: unknown, ctx: ThemeContext): { ok: true; theme
       const ratio = contrastRatio(pal[fg], pal[bgKey]);
       if (ratio + 1e-9 < min) bad(`colors.${mode}.${fg}`, `contrast ${fg} on ${bgKey} is ${ratio.toFixed(2)}:1, at least ${min}:1 is needed`);
     }
-    // #2196: on the whole page, its sidebar too — and AgEnD's status colours stay readable on it.
+    // #2196: on the whole page, its sidebar too — and AgEnD's status colours stay readable on it. A sidebar colour of
+    // its own is checked even with page off (a person may turn the page on for it).
     if (out.page?.on) for (const pr of pageContrastProblems(out, mode)) bad(pr.path, pr.problem);
+    else if (out.page?.sidebar?.[mode]) for (const pr of pageContrastProblems(out, mode, false)) bad(pr.path, pr.problem);
   }
   if (errors.length) return { ok: false, errors };
   const canonical = canonicalTheme(out);

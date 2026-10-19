@@ -61,6 +61,13 @@ describe("the host's check of `page`", () => {
     expect(checkTheme({ ...red, page: { on: false } }, ctx).ok).toBe(true);
     expect(checkTheme({ colors: red.colors }, ctx).ok).toBe(true);
   });
+  it("#2202 review: a sidebar colour of its own is checked even with page off (a person may turn the page on for it)", () => {
+    const r = checkTheme({ ...HARBOR, page: { on: false, sidebar: { light: "#0c1f1d" } } }, ctx);
+    expect(!r.ok && r.errors.some((e) => e.path === "page.sidebar.light" && e.problem.startsWith("contrast text on the sidebar"))).toBe(true);
+    // …but not its background against the status colours: a chat-only theme keeps the freedom it had before #2196.
+    const red = { colors: { light: { bg: "#c42a2b", surface: "#c42a2b", text: "#ffffff", text2: "#ffffff", accent: "#ffffff", userBubble: "#c42a2b", agentBubble: "#c42a2b" } } };
+    expect(checkTheme({ ...red, page: { on: false } }, ctx).ok).toBe(true);
+  });
   it("…and on its background, where the sidebar reads but the page is the colour of the Needs you count", () => {
     const t = { colors: { light: { bg: "#e05555", surface: "#ffffff", text: "#000000", text2: "#000000", accent: "#000000" } }, page: { on: true, sidebar: { light: "#ffffff" } } };
     const r = checkTheme(t, ctx);
@@ -161,6 +168,24 @@ describe("the page: the open agent's colours on the shell", () => {
     const red = { v: 1, colors: { light: { bg: "#c42a2b", surface: "#c42a2b", text: "#ffffff", text2: "#ffffff", accent: "#ffffff" } } };
     const { pg, themes } = await shell("/ui/chat/red", { themes: { red }, choices: { red: "page" } });
     expect([look(pg), themes.pageReadable(themes.pagePalette(themes.themeFor("red"), "light"), "light")]).toEqual([null, false]);
+  });
+  it("#2202 review: the page checks the sidebar itself — a stored theme with page off and an unreadable sidebar, put on the page by a person: nothing drawn, the choice unavailable", async () => {
+    // As an older host might have stored it (today's refuses it, above): page off, a sidebar the colour of its text.
+    const dim = { v: 1, ...HARBOR, page: { on: false, sidebar: { light: "#0c1f1d" } } };
+    const { pg, themes } = await shell("/ui/chat/dim", { themes: { dim }, choices: { dim: "page" } });
+    const item = themes.themeMenuItems("dim").find((i: any) => i.key === "page-page");
+    expect([look(pg), themes.pageNow("light"), themes.pageReadable(themes.pagePalette(themes.themeFor("dim"), "light"), "light")]).toEqual([null, null, false]);
+    expect([item.checked, item.disabled]).toEqual([true, false]);           // chosen already: it stays choosable (to leave)
+    const p = mounted.pop()!; await p.unmount(); p.restore();
+    const again = await shell("/ui/chat/dim", { themes: { dim } });
+    expect(again.themes.themeMenuItems("dim").find((i: any) => i.key === "page-page").disabled).toBe(true);
+  });
+  it("#2202 review: only an agent's own pages — Chat, View, Log, Details — take its colours; no other route that names it", async () => {
+    const { themes } = await shell("/ui/chat/harbor");
+    const on = (route: Record<string, unknown>) => themes.pageNow("light", route) !== null;
+    expect([{ panel: "chat", instance: "harbor" }, { panel: "view", instance: "harbor" }, { panel: "log", instance: "harbor" }, { panel: "details", instance: "harbor" },
+      { panel: "fleet", instance: "harbor" }, { panel: "settings", instance: "harbor" }, { panel: "needs", instance: "harbor" }, { panel: "chat" }, null].map(on))
+      .toEqual([true, true, true, true, false, false, false, false, false]);
   });
   it("names in identity colours read on the page's sidebar and background while it is drawn", async () => {
     await shell("/ui/chat/harbor", { mode: "light" });
