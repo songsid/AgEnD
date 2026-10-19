@@ -506,8 +506,10 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   // their order or are sorted too, and every other row is one list, the last reply first. "custom" (the default) is the
   // person's own order — a reply never moves a row.
   const now = Date.now();
-  const ageOf = (n) => (guest ? null : replyAge(byName.get(n), now));
-  const recent = !guest && nav.sort.mode === "recent";
+  // The anonymous View reader (viewOnly) has no reply times (/api/profiles carries none) and no way to change the sort:
+  // its list is always Custom, whatever this browser kept from a signed-in page (#2181 review).
+  const ageOf = (n) => (guest || viewOnly ? null : replyAge(byName.get(n), now));
+  const recent = !guest && !viewOnly && nav.sort.mode === "recent";
   const favsSorted = recent && nav.sort.favs === "recent";
   let shownGroups, shownInsts;
   if (recent) {

@@ -202,7 +202,7 @@ Each row (#2179): name and context % on the first line, the time of the agent's 
 second ("2 min ago"; cross-instance messages don't count); a reply under 10 minutes old is highlighted, fading by itself
 (nothing to mark read). The sort button beside Edit: **Custom** (default; a reply never moves a row) or **Recent replies**
 (the rest by last reply, no groups, no dragging; favorites pinned in their order, or **Sorted by last reply too**); synced
-as `nav.sort`. Guests: no times, no sort.
+as `nav.sort`. Guests and the anonymous View reader: no times, no sort (always Custom).
 **Filter: name, model, backend** (Esc clears), facets **Status** and **CLI**, "N / M shown".
 While a filter is on, the instance you have open stays on top under **Current**. **Favorites**: the star on a row;
 **Edit** to reorder (at most 50; "Clear the filter to reorder favorites"). Drag to reorder the full list; groups fold.

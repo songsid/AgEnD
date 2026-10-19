@@ -16,6 +16,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebChatHistory } from "../src/web-chat-history.js";
 import { guestStatus } from "../src/web-guest-access.js";
+import { handleViewRequest } from "../src/view-api.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fire } from "./helpers/mini-dom.js";
 import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 
@@ -170,3 +174,37 @@ describe("the sidebar", () => {
     expect(groups(pg)).toEqual([["ops", ["a", "b"]]]);
   });
 });
+
+describe("#2181 review: the anonymous View reader — no reply times there, so always Custom", () => {
+  const mounted: AppPage[] = [];
+  const dirs: string[] = [];
+  afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+  /** A real /api/profiles answer: the status frame has the reply times (beta replied last), the projection carries none. */
+  function profiles(): Array<Record<string, unknown>> {
+    const dir = mkdtempSync(join(tmpdir(), "rt-2179-")); dirs.push(dir);
+    let body = "";
+    const res = { writeHead() { return res; }, setHeader() {}, end(b?: string) { body = b ?? ""; } } as any;
+    handleViewRequest({ method: "GET", headers: {} } as any, res, new URL("http://localhost/api/profiles"), {
+      webToken: null, dataDir: dir, logger: { debug() {}, info() {}, warn() {}, error() {} },
+      fleetConfig: { defaults: { backend: "claude-code" }, instances: { alpha: { working_directory: dir, tags: ["G"] }, beta: { working_directory: dir, tags: ["G"] } } },
+      getInstanceStatus: () => "running", resolveInstanceModel: () => ({ model: "" }),
+      getUiStatus: () => ({ instances: [{ name: "alpha", status: "running", last_reply: ago(50) }, { name: "beta", status: "running", last_reply: ago(1) }] }),
+    } as never);
+    return JSON.parse(body);
+  }
+  it("a Recent replies choice kept in this browser: the anonymous list stays in its own order, says no mode, shows no times", async () => {
+    const roster = profiles();
+    expect(roster.map((r) => [r.instance_name, "last_reply" in r]), "the projection carries no reply time").toEqual([["alpha", false], ["beta", false]]);
+    const pg = page({ url: "http://127.0.0.1:19280/view", storage: { agend_tour_done: "1", agend_nav_sort: JSON.stringify({ mode: "recent", favs: "fixed" }) } });
+    mounted.push(pg);
+    const nav = await import("/assets/instance-nav.js");
+    nav.loadNavPrefs();
+    expect(nav.navStore.get().sort.mode, "the kept choice is read").toBe("recent");
+    await pg.mount(h(nav.InstanceNav, { route: { panel: "view", instance: null }, items: roster, viewOnly: true }));
+    await settle(3);
+    const groups = [...pg.root.querySelectorAll(".v-group")].map((g: any) => [g.querySelector(".v-group-head .grow").textContent, [...g.querySelectorAll(".inst-name")].map((n: any) => n.textContent)]);
+    expect(groups).toEqual([["G", ["alpha", "beta"]]]);
+    expect([pg.root.querySelector(".nav-sort-btn"), pg.root.querySelector(".v-recent"), pg.root.querySelector(".inst-when")]).toEqual([null, null, null]);
+  });
+});
+

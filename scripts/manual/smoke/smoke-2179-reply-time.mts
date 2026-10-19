@@ -59,7 +59,7 @@ const READ = `(() => {
     const r = a.getBoundingClientRect(), w = when ? when.getBoundingClientRect() : null, nm = name.getBoundingClientRect();
     const cs = getComputedStyle(a);
     return { name: name.textContent, when: when ? when.textContent : null, fresh: !!(when && when.classList.contains("fresh")),
-      replied: a.classList.contains("replied"), fade: a.style.getPropertyValue("--reply-a"), just: a.classList.contains("just"), anim: cs.animationName,
+      replied: a.classList.contains("replied"), fade: a.style.getPropertyValue("--reply-a"), just: a.classList.contains("just"), anim: cs.animationName, bg: cs.backgroundColor,
       pctOnNameLine: !!meta && meta.parentElement === name.parentElement,   // the % ends the name's line (empty without a context figure)
       whenOnScreen: !!w && w.width > 0 && w.top >= 0 && w.bottom <= innerHeight && w.left >= 0 && w.right <= innerWidth,
       whenBelowName: !!w && w.top >= nm.bottom - 2, whenAtEnd: !!w && r.right - w.right < 60 };
@@ -92,6 +92,21 @@ async function runCase(name: string, open: () => Promise<FreshPage>, lang: "en" 
     pulseUnderAMinute: row(a, "observability-dashboards").just && (reduced ? row(a, "observability-dashboards").anim === "none" : row(a, "observability-dashboards").anim === "inst-just"),
     customByDefault: writes ? a.sort === L.custom && a.sortIsButton : a.sort === null,
   };
+  // #2181 review: the tint as painted — a fresh row's background is tinted, an expired one's is not; hovering or opening
+  // a fresh row shows the plain hover / open colour, never the tint over it (a desk: a phone has no hover).
+  const clear = (c: string) => c === "transparent" || /rgba\(0, 0, 0, 0\)/.test(c);
+  chk.tintPainted = !clear(row(a, "billing-reconciliation").bg) && clear(row(a, "search-indexer").bg);
+  if (p.page.viewportSize().width >= 760) {
+    const link = (n: string) => p.page.locator("#instanceList a.inst").filter({ has: p.page.locator(".inst-name", { hasText: new RegExp(`^${n}$`) }) }).first();
+    const bgOf = (n: string) => link(n).evaluate((el: Element) => getComputedStyle(el).backgroundColor);
+    await link("search-indexer").hover(); await p.page.waitForTimeout(150);
+    const plainHover = await bgOf("search-indexer");
+    await link("billing-reconciliation").hover(); await p.page.waitForTimeout(150);
+    const freshHover = await bgOf("billing-reconciliation");
+    await link("billing-reconciliation").click(); await p.page.mouse.move(2, 2); await p.page.waitForTimeout(400);
+    const freshOpen = await bgOf("billing-reconciliation");
+    chk.tintNotOverHoverOrOpen = freshHover === plainHover && freshOpen === plainHover && freshOpen !== row(a, "billing-reconciliation").bg;
+  }
   // Custom: a new reply in the middle of the list moves no row; its time reads "just now" at once.
   const before = JSON.stringify(a.groups);
   reply("nightly-benchmarks", 0); status();
