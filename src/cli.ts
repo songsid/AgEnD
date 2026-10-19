@@ -2868,29 +2868,98 @@ async function fuzzyMatch(query: string, names: string[]): Promise<string | null
   return null;
 }
 
-async function resolveInstance(query: string, config: import("./types.js").FleetConfig): Promise<string> {
+async function resolveInstance(query: string | undefined, config: import("./types.js").FleetConfig): Promise<string> {
   const namesRaw = await listInstanceNames(config);
-  const names = [...new Set(namesRaw)]; // P3-3: deduplicate (a classicBot instanceName can equal a fleet name)
+  const names = [...new Set(namesRaw)];
 
-  const { resolveName } = await import("./topic-commands.js");
-  const entries = names.map((name) => ({
+  const { assignDisplayLabels } = await import("./topic-commands.js");
+  const entries = names.map(name => ({
     name,
-    displayName: (config.instances[name] as { display_name?: string } | undefined)?.display_name,
+    displayName: (config.instances[name] as { display_name?: string } | undefined)?.display_name ?? null,
   }));
-  const result = resolveName(query, entries);
-  if (result.kind === "name") return result.realName;
+  const labelMap = assignDisplayLabels(entries);
+
+  // Build candidates with 1-based row index and status, matching ls order.
+  const candidates: import("./ls-attach-resolve.js").Candidate[] = names.map((name, i) => ({
+    idx: i + 1,
+    realName: name,
+    displayLabel: labelMap.get(name) ?? name,
+    teams: getTeamsForInstance(config, name),
+    status: getInstanceStatusStandalone(name),
+  }));
+
+  const { resolveCandidate } = await import("./ls-attach-resolve.js");
+
+  // No argument on a TTY: show interactive picker.
+  if (query === undefined) {
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      console.error("No instance specified.");
+      process.exit(1);
+    }
+    return interactivePicker(candidates);
+  }
+
+  const result = resolveCandidate(query, candidates);
+
+  if (result.kind === "exact") return result.candidate.realName;
+
   if (result.kind === "ambiguous") {
-    console.error(`"${query}" matches multiple instances: ${result.realNames.join(", ")}. Use the real name.`);
+    if (process.stdin.isTTY && process.stdout.isTTY) {
+      console.log(`"${query}" matches multiple instances:`);
+      for (const c of result.candidates) {
+        const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
+        console.log(`  ${String(c.idx).padStart(2)}) ${c.displayLabel.padEnd(24)}  ${c.realName.slice(0, 32)}  [${c.status}]  ${teams}`);
+      }
+      return interactivePicker(result.candidates);
+    }
+    const names2 = result.candidates.map(c => `${c.displayLabel} (${c.realName})`).join(", ");
+    console.error(`"${query}" matches multiple instances: ${names2}. Use the real name.`);
     process.exit(1);
   }
 
-  // Fall through to the original fuzzy match on real names.
-  const match = await fuzzyMatch(query, names);
-  if (!match) {
-    console.error(`No instance matching "${query}". Available: ${names.join(", ")}`);
-    process.exit(1);
+  // kind === "none" — show top-5 fuzzy suggestions, not the full list.
+  const suggestions = result.suggestions;
+  if (suggestions.length > 0) {
+    console.error(`No instance matching "${query}". Did you mean:`);
+    for (const c of suggestions) {
+      console.error(`  ${String(c.idx).padStart(2)}) ${c.displayLabel}  (${c.realName})`);
+    }
+  } else {
+    console.error(`No instance matching "${query}". Run "agend ls" to see all instances.`);
   }
-  return match;
+  process.exit(1);
+}
+
+async function interactivePicker(candidates: import("./ls-attach-resolve.js").Candidate[]): Promise<string> {
+  const running = candidates.filter(c => c.status === "running");
+  const rest = candidates.filter(c => c.status !== "running");
+  const ordered = [...running, ...rest];
+
+  const { pickerDefaultIdx } = await import("./ls-attach-resolve.js");
+  const defaultIdx = pickerDefaultIdx(ordered);
+
+  console.log("Select an instance:");
+  for (const c of ordered) {
+    const statusGlyph = c.status === "running" ? "●" : c.status === "paused" ? "○" : "✗";
+    const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
+    console.log(`  ${String(c.idx).padStart(2)}) ${statusGlyph} ${c.displayLabel.padEnd(22)}  ${c.realName.slice(0, 30)}  ${teams}`);
+  }
+
+  const { createInterface } = await import("node:readline");
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  // Use the unambiguous #N form so Enter always selects the displayed-first
+  // row, even when its global idx matches a digit-string real name.
+  const answer = await new Promise<string>(resolve => rl.question(`\nRow number or name [#${defaultIdx}]: `, resolve));
+  rl.close();
+  const trimmed = answer.trim() || `#${defaultIdx}`;
+
+  // Accept a number or re-run resolution.
+  const { resolveCandidate } = await import("./ls-attach-resolve.js");
+  const reResult = resolveCandidate(trimmed, candidates);
+  if (reResult.kind === "exact") return reResult.candidate.realName;
+
+  console.error(`Invalid selection "${trimmed}".`);
+  process.exit(1);
 }
 
 
@@ -2964,7 +3033,7 @@ async function listInstanceNames(config: import("./types.js").FleetConfig): Prom
   return names;
 }
 
-async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?: boolean }): Promise<void> {
+async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string }): Promise<void> {
     const yaml = (await import("js-yaml")).default;
     const config = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) as import("./types.js").FleetConfig;
     const names = Object.keys(config.instances);
@@ -2973,6 +3042,9 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     // status work (a tab press should not wait on the fleet) and must print
     // nothing but names — a "no instances" notice would become a candidate.
     if (opts.namesOnly) {
+      const { validateNamesOnlyFilters } = await import("./ls-attach-resolve.js");
+      const filterErr = validateNamesOnlyFilters(opts);
+      if (filterErr) { console.error(filterErr); process.exit(1); }
       for (const n of await listInstanceNames(config)) console.log(n);
       return;
     }
@@ -3136,8 +3208,30 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
       }
     } catch { /* fleet not running or API unreachable */ }
 
+    // Assign stable global indices BEFORE any filtering (#P2-1 — filters must not
+    // renumber rows, so `agend attach N` always resolves the same instance).
+    const { applyLsFilters } = await import("./ls-attach-resolve.js");
+    const allRowsIndexed = rows.map((r, i) => ({ ...r, globalIdx: i + 1 }));
+
+    // Apply --running / --team / --backend CLI filters. Done before --json so
+    // `ls --json --running` honours the flag (#P2-2).
+    const filteredMeta = applyLsFilters(
+      allRowsIndexed.map(r => ({
+        globalIdx: r.globalIdx,
+        realName: r.name,
+        displayLabel: r.name,
+        status: (r.status ?? "stopped") as "running" | "paused" | "stopped" | "crashed",
+        teams: r.teams,
+        backend: r.backend,
+      })),
+      { running: opts.running, team: opts.team, backend: opts.backend },
+    );
+    const filteredNames = new Set(filteredMeta.map(m => m.realName));
+    const displayRows = allRowsIndexed.filter(r => filteredNames.has(r.name));
+
     if (opts.json) {
-      console.log(JSON.stringify(rows, null, 2));
+      // Strip internal globalIdx from JSON output to keep the schema stable.
+      console.log(JSON.stringify(displayRows.map(({ globalIdx: _idx, ...rest }) => rest), null, 2));
       return;
     }
 
@@ -3151,13 +3245,17 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     // across the fleet (#1305 P2-1). --json and --names-only above keep the
     // real names (machine use + attach target).
     const { assignDisplayLabels } = await import("./topic-commands.js");
-    const lsLabels = assignDisplayLabels(rows.map((r) => ({
+    const lsLabels = assignDisplayLabels(displayRows.map((r) => ({
       name: r.name,
       displayName: (config.instances[r.name] as { display_name?: string } | undefined)?.display_name,
     })));
-    const displayName = (row: { name: string; classic: boolean }): string =>
+    const displayLabel = (row: { name: string; classic: boolean }): string =>
       lsLabels.get(row.name) ?? row.name;
-    const nameW = Math.max(20, ...rows.map(r => displayWidth(displayName(r)) + 2));
+
+    // Columns: # (global row number), Name (real, full, copyable), then the rest.
+    // Display name (if set) appears at the end of the row as context — secondary.
+    const numW = 3;
+    const nameW = Math.max(16, ...displayRows.map(r => r.name.length + 1));
     const backendW = 14;
     const statusW = 12;
     const teamW = 20;
@@ -3166,6 +3264,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     const memW = 8;
 
     console.log(
+      "#".padEnd(numW) +
       "Name".padEnd(nameW) +
       "Backend".padEnd(backendW) +
       "Status".padEnd(statusW) +
@@ -3175,30 +3274,33 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
       "Mem".padEnd(memW) +
       "Activity"
     );
-    console.log("\u2500".repeat(nameW + backendW + statusW + teamW + srcW + ctxW + memW + 10));
+    console.log("\u2500".repeat(numW + nameW + backendW + statusW + teamW + srcW + ctxW + memW + 10));
 
-    for (const r of rows) {
+    for (const r of displayRows) {
       const teamStr = r.teams.length > 0 ? r.teams.join(",") : "-";
       const ctxStr = r.context != null ? `${Math.round(r.context)}%` : "-";
       const memStr = r.memMb != null ? `${r.memMb}MB` : "-";
       const actStr = r.lastActivity ?? "-";
+      const dispAnnotation = displayLabel(r) !== r.name ? `  (${displayLabel(r)})` : "";
 
       console.log(
-        padDisplay(displayName(r), nameW) +
+        String(r.globalIdx).padEnd(numW) +
+        r.name.padEnd(nameW) +
         r.backend.padEnd(backendW) +
         statusIcon(r.status, r.idle, (r as any).state) + " " + statusLabel(r.status, r.idle, (r as any).state).padEnd(statusW - 2) +
         padDisplay(teamStr, teamW) +
         r.source.padEnd(srcW) +
         ctxStr.padEnd(ctxW) +
         memStr.padEnd(memW) +
-        actStr
+        actStr +
+        dispAnnotation
       );
     }
 
     // System memory footer
-    const totalMemMb = rows.reduce((sum, r) => sum + (r.memMb ?? 0), 0);
-    const runningCount = rows.filter(r => r.status === "running").length;
-    const pausedCount = rows.filter(r => r.status === "paused").length;
+    const totalMemMb = displayRows.reduce((sum, r) => sum + (r.memMb ?? 0), 0);
+    const runningCount = displayRows.filter(r => r.status === "running").length;
+    const pausedCount = displayRows.filter(r => r.status === "paused").length;
     const totalGB = totalmem() / (1024 ** 3);
     const usedGB = (totalmem() - freemem()) / (1024 ** 3);
     console.log(`\nInstances: ${runningCount} running, ${pausedCount} paused | Fleet Mem: ${(totalMemMb / 1024).toFixed(1)} GB | System Memory: ${usedGB.toFixed(1)} / ${totalGB.toFixed(1)} GB`);
@@ -3218,7 +3320,10 @@ program
   .option("--json", "Output as JSON")
   .option("--names-only", "Print instance names one per line (for shell completion)")
   .option("--resources", "Also report workspace disk usage, unregistered instance directories, and host memory/swap (text only)")
-  .action(async (opts: { json?: boolean; namesOnly?: boolean; resources?: boolean }) => {
+  .option("--running", "Show only running instances")
+  .option("--team <name>", "Filter by team name")
+  .option("--backend <name>", "Filter by backend (exact match)")
+  .action(async (opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string }) => {
     await lsAction(opts);
   });
 
@@ -3466,9 +3571,9 @@ program
 
 program
   .command("attach")
-  .description("Attach to an instance's tmux window (fuzzy match)")
-  .argument("<name>", "Instance name (supports fuzzy matching)")
-  .action(async (query: string) => {
+  .description("Attach to an instance's tmux window. Accepts display name, instance name, row number from ls, or a substring. No argument: interactive picker.")
+  .argument("[name]", "Instance name, display name, row number, or substring (omit for interactive picker)")
+  .action(async (query: string | undefined) => {
     const yaml = (await import("js-yaml")).default;
     const config = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) as import("./types.js").FleetConfig;
     const name = await resolveInstance(query, config);

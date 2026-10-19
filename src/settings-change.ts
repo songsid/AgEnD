@@ -195,6 +195,10 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
   };
   const walk = (old: unknown, next: unknown, path: string[]): void => {
     if (same(old, next)) return;
+    // An agent deleted whole is one line: its fields go with it — nothing in it is set or shown — so none of them is
+    // classified. Walking them refused every agent with a free-text or unknown field (a description, a display name),
+    // and an agent could not be deleted from Settings at all.
+    if (path.at(-2) === "instances" && old !== undefined && next === undefined) { add(`${settingsDisplay(path.join("."))}: deleted`); return; }
     if (path.length === SESSION_LOCAL.length && SESSION_LOCAL.every((k, i) => path[i] === k)) {
       const looser = sessionChange(old, next);
       if (looser) {

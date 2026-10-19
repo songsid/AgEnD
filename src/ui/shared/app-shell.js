@@ -487,8 +487,21 @@ export function PendingChanges({ inline = false } = {}) {
   const { pendingChanges } = useStore(appStore);
   const list = pendingChanges || [];
   useTick(list.some(p => p.state === "pending"));
+  // #2168: inline (Settings' own column), a request that has just started waiting is brought into view — on a phone the
+  // person applied far down the list, and the card that says where to confirm it sat above the screen. Once per request.
+  const box = useRef(null), shown = useRef(new Set());
+  useEffect(() => {
+    if (!inline || !box.current) return;
+    for (const p of list) {
+      if (p.state !== "pending" || shown.current.has(p.id)) continue;
+      shown.current.add(p.id);
+      const card = box.current.querySelector(`[data-pending="${p.id}"]`);
+      const still = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (card && typeof card.scrollIntoView === "function") card.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
+    }
+  });
   if (!list.length) return null;
-  return html`<div data-trust="confirmation" class=${`pending-stack${inline ? " inline" : ""}`} role="region" aria-label=${t("app.pendingTitle")}>${list.map(p => html`<section key=${p.id} class=${`pending-card ${p.state}`} role="status">
+  return html`<div data-trust="confirmation" ref=${box} class=${`pending-stack${inline ? " inline" : ""}`} role="region" aria-label=${t("app.pendingTitle")}>${list.map(p => html`<section key=${p.id} data-pending=${p.id} class=${`pending-card ${p.state}`} role="status">
     <div class="pending-head"><${Icon} name=${p.state === "applied" ? "check" : p.state === "pending" || p.state === "applying" ? "clock" : "alert"} size=${16} />
       <strong>${t(`app.pending_${p.state}`)}</strong>
       ${p.state === "pending" ? html`<span class="pending-left">${t("app.pendingLeft", mmss(p.deadline - NOW()))}</span>` : null}
