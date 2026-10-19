@@ -89,6 +89,8 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 
 瀏覽器 session（本機或公開連結）可以提出存取／F／C 名單、憑證、connection 目的地／順序、公開曝光及控制類 instance 設定的變更，不能自行提交。伺服器將不可變的請求留在記憶體最多五分鐘，綁定有效 session 與設定快照。General 顯示完整且有界的 diff 和 Confirm／Reject 按鈕；只有其所屬 adapter 的 fleet admin 能確認。Secret 值只顯示 key 與 fingerprint。一般 model／display 變更仍可直接套用，但寫入前會核對快照。
 
+**例外（#2170）：通過網頁驗證的帳號，按套用本身就是確認。** 通過網頁驗證的本機 session（#1939：帳號已在 Discord 或 Telegram 私訊確認過這個瀏覽器），當它的帳號和變更在同一平台、是每一個 effect owner 的 fleet admin（聊天卡片的規則）、變更範圍已知、且那個平台上有一個不受影響且已連線的 General 時，本身就是第二次確認。伺服器會在聊天提示送出之前先認領這個請求，所以不會出現卡片；執行時會再確認 session 仍以同一個帳號通過網頁驗證（沒有到期、被撤銷、登出或關閉開關），也仍是那些 owner 的 admin，否則以 stale 結束。那個 General 會收到一則純文字通知（不 mention 任何人）。執行時也會再確認仍有能收到聊天卡片的 General。這改變的邊界是：第二次確認變成帳號對這個 session 的**一次**授權（#1939），直到被撤銷、到期或 session 結束都有效——不是每次套用都證明帳號本人在場。任何操作這個已驗證 session 的人（無人看管但仍登入的瀏覽器，或持有它 session cookie 的人）都能以同樣方式確認；登出或撤銷授權（設定 → 網頁 → **撤銷網頁授權**，或私訊卡片上的 **不是我**）即結束。公開連結、訪客、未驗證的 session 與 host 沒有帳號的 `agend web` session 永遠不適用，需要 host CLI 確認的變更也照舊。
+
 受影響的 connection 無法安全收到提示時，AgEnD 先找另一個 world 的 General，否則要求本機執行 `agend settings confirm <id>`。該命令走獨立、同使用者的 Unix socket（父目錄 0700、socket 0600），拒絕 agent 環境。它先列出權威的來源、請求人及 diff，再接受互動確認或明確的 `--yes`。HTTP／MCP 沒有確認入口。Fleet 尚未存在的 Setup 也需要同樣的 host 確認；pending 回應絕不啟動 fleet。
 
 撤銷、到期、shutdown 或快照變動都會阻止新的 effect。已進入執行的操作會持有資源 lease，直到實際完成及條件式清理；等待 native 工作時可能持續顯示 `applying`。Rollback 只恢復仍屬於該操作的欄位，保留後來的修改。刻意放在最後的 session 撤銷可回傳完成 receipt，但不能授權後續 effect。Pending 請求重啟後消失，需重新提出。這個邊界不防禦以同一 host 使用者執行的其他程序；獨立檔案修改會盡可能被偵測，但不宣稱跨程序原子性。

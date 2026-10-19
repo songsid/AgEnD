@@ -63,9 +63,10 @@ export const TELEGRAM_PROGRESS_EDIT_SPACING_MS = 6_000;
 /**
  * #2175: how long a terminal state that could not land within RESTART_PROGRESS_TERMINAL_TIMEOUT_MS (a 429 window
  * longer than that, or the adapter not ready yet) keeps being retried in the background — after startup, never
- * holding it.
+ * holding it. #2213: a network outage at fleet start (an update over a dropped link) is retried too; 30 minutes
+ * covers an ordinary outage without posting a completion long after anyone looked.
  */
-export const TERMINAL_BACKGROUND_WINDOW_MS = 10 * 60_000;
+export const TERMINAL_BACKGROUND_WINDOW_MS = 30 * 60_000;
 const TERMINAL_BACKGROUND_RETRY_MS = 15_000;
 /** #2175: a 429 window must leave this much of the terminal budget for the attempt after it, else it is deferred. */
 const TERMINAL_ATTEMPT_MARGIN_MS = 5_000;
@@ -284,6 +285,19 @@ export class RestartProgress {
     return this.deliverTerminal(text, progressEditWorker);
   }
 
+  /**
+   * #2213: post the completion as a new message when there is no progress message to edit (fewer than six instances,
+   * or its first post failed) — FleetManager's fallback. Same delivery as finish(): bounded at startup, then the
+   * background retry once the adapter is ready again, and never a second post after one whose outcome is unknown.
+   */
+  async postCompletion(target: RestartProgressTarget, text: string): Promise<boolean> {
+    this.finished = true;
+    if (this.updateTimer) { clearInterval(this.updateTimer); this.updateTimer = null; }
+    this.target = target;
+    this.messageId = null;
+    return this.deliverTerminal(text, null);
+  }
+
   get readyCount(): number { return this.ready; }
 
   /**
@@ -407,7 +421,7 @@ export class RestartProgress {
    */
   private async deliverTerminal(text: string, progressEditWorker: Promise<void> | null): Promise<boolean> {
     const target = this.target;
-    if (!target || !this.messageId) return false;
+    if (!target) return false;
     const deadline = Date.now() + RESTART_PROGRESS_TERMINAL_TIMEOUT_MS;
 
     if (progressEditWorker) {
@@ -424,8 +438,9 @@ export class RestartProgress {
     let adapter = await this.waitForReadyAdapter(deadline);
     if (!adapter) return this.adapterNotReady(text);
 
-    // Retry terminal edit with 429-aware backoff until the deadline.
-    while (true) {
+    // Retry terminal edit with 429-aware backoff until the deadline (#2213: no message to edit → straight to the post).
+    const after = this.messageId ? " after edit failure" : "";
+    while (this.messageId) {
       // #2175: a 429 window still open from the progress edits (finish() cut that sleep short) is waited out here;
       // one that outlasts the budget goes to the background retry instead of an edit the provider would refuse.
       if (this.rateLimitedUntil > Date.now()) {
@@ -437,14 +452,13 @@ export class RestartProgress {
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
       const editAdapter = adapter;
-      const edit = await this.beforeDeadline(
-        () => editAdapter.editMessage(target.chatId, this.messageId!, text, target.threadId),
-        deadline,
-      );
+      const editing = Promise.resolve().then(() => editAdapter.editMessage(target.chatId, this.messageId!, text, target.threadId));
+      const edit = await this.beforeDeadline(() => editing, deadline);
       if (edit.status === "fulfilled") { this.landedText = text; return true; }
       if (edit.status === "timeout") {
         this.logger.warn({}, "Timed out editing fleet restart progress terminal state");
-        break; // no point retrying after timeout
+        // #2213: it may still land — no fresh post beside it; its own settlement decides what comes next.
+        return this.awaitOutcome(text, editing, false);
       }
       // rejected
       const backoff = retryAfterMs(edit.reason);
@@ -474,13 +488,13 @@ export class RestartProgress {
     adapter = await this.waitForReadyAdapter(deadline);
     if (!adapter) return this.adapterNotReady(text);
     const sendAdapter = adapter;
-    const sent = await this.beforeDeadline(
-      () => sendAdapter.sendText(target.chatId, text, { threadId: target.threadId }),
-      deadline,
-    );
+    const posting = Promise.resolve().then(() => sendAdapter.sendText(target.chatId, text, { threadId: target.threadId }));
+    const sent = await this.beforeDeadline(() => posting, deadline);
     if (sent.status === "fulfilled") {
       this.landedText = text;
-      this.logger.warn({}, "Posted fresh fleet completion after terminal progress edit was unavailable");
+      const hadMessage = this.messageId !== null;
+      this.messageId = sent.value.messageId;
+      if (hadMessage) this.logger.warn({}, "Posted fresh fleet completion after terminal progress edit was unavailable");
       return true;
     }
     if (sent.status === "rejected") {
@@ -489,11 +503,38 @@ export class RestartProgress {
         this.rateLimitedUntil = Math.max(this.rateLimitedUntil, Date.now() + sendBackoff);
         return this.deferTerminal(text, this.rateLimitedUntil, "rate limited (429)");
       }
-      this.logger.warn({ err: sent.reason }, "Failed to post fresh fleet completion after edit failure");
-    } else {
-      this.logger.warn({}, "Timed out posting fresh fleet completion after edit failure");
+      // #2213: refused (an outage's fetch failure, a network error): nothing landed — the background retry owns it.
+      this.logger.warn({ err: sent.reason }, `Failed to post fresh fleet completion${after}`);
+      return this.deferTerminal(text, Date.now() + TERMINAL_BACKGROUND_RETRY_MS, "delivery refused");
     }
-    return this.terminalDeliveryFailed();
+    this.logger.warn({}, `Timed out posting fresh fleet completion${after}`);
+    // #2213: it may still land: a second post could duplicate it, so only its own settlement decides.
+    return this.awaitOutcome(text, posting, true);
+  }
+
+  /**
+   * #2213: a terminal call that did not settle by its deadline may still land. Nothing else is written until it
+   * settles: refused, the background retry takes over (within TERMINAL_BACKGROUND_WINDOW_MS); landed, done. One that
+   * never settles within the window is given up loudly. Returns true: the completion is owed here.
+   */
+  private awaitOutcome(text: string, call: Promise<unknown>, posted: boolean): true {
+    const state: DeferredTerminal = { text, timer: null, giveUpAt: Date.now() + TERMINAL_BACKGROUND_WINDOW_MS };
+    this.deferredTerminal = state;
+    this.logger.warn({ timeout_ms: RESTART_PROGRESS_TERMINAL_TIMEOUT_MS },
+      "Fleet completion call did not settle in time — waiting for its outcome before any other write");
+    state.timer = setTimeout(() => {
+      state.timer = null;
+      if (this.deferredTerminal !== state) return;
+      this.deferredTerminal = null;
+      this.loud({ window_ms: TERMINAL_BACKGROUND_WINDOW_MS }, "Fleet completion call never settled in the background window — its outcome is unknown");
+    }, TERMINAL_BACKGROUND_WINDOW_MS);
+    state.timer.unref?.();
+    call.then(value => {
+      const id = posted ? (value as { messageId?: unknown } | undefined)?.messageId : undefined;
+      if (typeof id === "string" && this.deferredTerminal === state) this.messageId = id;
+      this.settleLate(state, text, true);
+    }, reason => this.settleLate(state, text, false, reason));
+    return true;
   }
 
   /**
@@ -546,6 +587,7 @@ export class RestartProgress {
   /** A call that settled after its deadline: the message holds `sent` if it landed; write a newer text it missed. */
   private settleLate(state: DeferredTerminal, sent: string, ok: boolean, reason?: unknown): void {
     if (this.deferredTerminal !== state) return;
+    if (state.timer) { clearTimeout(state.timer); state.timer = null; }
     if (!ok) {
       // Settled as refused: nothing landed, so another write is safe again — after the window a 429 names.
       const backoff = retryAfterMs(reason);
@@ -567,9 +609,10 @@ export class RestartProgress {
   private async attemptDeferred(state: DeferredTerminal): Promise<void> {
     if (this.deferredTerminal !== state) return;
     const target = this.target;
-    if (!target || !this.messageId) { this.deferredTerminal = null; return; }
+    if (!target) { this.deferredTerminal = null; return; }
     const adapter = this.resolveAdapter();
     if (!adapter || !this.adapterReady(adapter)) return this.scheduleDeferred(state, Date.now() + TERMINAL_BACKGROUND_RETRY_MS);
+    if (this.messageId === null) return this.postDeferred(state, adapter, target);
     const sent = state.text;
     const messageId = this.messageId;
     const edit = await this.deferredCall(() => adapter.editMessage(target.chatId, messageId, sent, target.threadId),
@@ -587,6 +630,11 @@ export class RestartProgress {
       return this.scheduleDeferred(state, this.rateLimitedUntil);
     }
     this.logger.warn({ err: edit.reason }, "Background fleet completion edit failed; posting it as a new message");
+    return this.postDeferred(state, adapter, target);
+  }
+
+  /** The background retry's new message: no message to edit, or its edit was refused. */
+  private async postDeferred(state: DeferredTerminal, adapter: ChannelAdapter, target: RestartProgressTarget): Promise<void> {
     const fresh = state.text;
     const posted = await this.deferredCall(() => adapter.sendText(target.chatId, fresh, { threadId: target.threadId }),
       (ok, value, reason) => {

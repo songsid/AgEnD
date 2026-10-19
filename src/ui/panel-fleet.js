@@ -17,7 +17,7 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
-import { confirmedWrite } from "./settings-confirm.js";
+import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
 import { OrgCanvas } from "./fleet-canvas.js";
 import { labelOf } from "/assets/instance-nav.js";
 import { CacheReport } from "./fleet-cache.js";
@@ -320,7 +320,7 @@ function Config({ lease }) {
     // A change to access or the connection may need a fleet admin's confirmation (#1423): the shell follows it.
     try {
       const res = await confirmedWrite("/ui/config", { method: "POST", body, label: t("fleet.config"),
-        onPending: () => { toast(t("app.pendingSent")); done(); } });
+        onPending: (_id, view) => { toast(t(selfConfirmed(view) ? "app.pendingSelfSent" : "app.pendingSent")); done(); } });
       r = res.ok ? res.body || {} : { error: (res.body && res.body.error) || `HTTP ${res.status}` };
     } catch (err) { r = { error: err.message }; }
     done();
@@ -367,7 +367,7 @@ export function FormDialog({ title, onClose, submit, children, ready = true }) {
     // said in a toast, and nothing here closes, refreshes or acts again.
     try {
       const res = await confirmedWrite(submit.path, { method: submit.method || "POST", body, label: title,
-        onPending: () => { handedOver = true; toast(t("app.pendingSent")); if (lease.current()) { setBusy(false); onClose(); } } });
+        onPending: (_id, view) => { handedOver = true; toast(t(selfConfirmed(view) ? "app.pendingSelfSent" : "app.pendingSent")); if (lease.current()) { setBusy(false); onClose(); } } });
       r = res.ok ? res.body || {} : { error: (res.body && res.body.error) || `HTTP ${res.status}` };
     } catch (err) { r = { error: err.message }; }
     if (r.error) { toast(r.error, false); if (!handedOver && lease.current()) setBusy(false); return; }

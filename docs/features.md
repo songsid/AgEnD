@@ -1152,8 +1152,11 @@ or a stable of a later minor, never about a beta.
 The chat that asked for the update gets one message that follows it through the restart, ending in "✅ AgEnD updated
 to vX; N/M agents running". On Telegram that message is edited at most every 6 s (a group allows a bot about 20
 messages a minute, and every topic shares it with the fleet's other startup messages). When the last step can't land
-during startup (a rate-limit window, or the connection not up yet), startup goes on and the final step is retried for
-up to 10 minutes: edited in place, or posted as a new message if the old one can't be edited (#2175).
+during startup (a rate-limit window, the connection not up yet, or the network down), startup goes on and the final
+step is retried for up to 30 minutes: edited in place, or posted as a new message if the old one can't be edited
+(#2175, #2213). The same holds for the "Fleet ready" message of any start or restart, including a small fleet's. A
+send that timed out on AgEnD's side may still have landed, so nothing else is sent until it settles: you never get it
+twice.
 
 A release is a pushed `v*` tag. The publish workflow maps it strictly: `vX.Y.Z` → `@latest`, `vX.Y.Z-beta.N`
 → `@beta`, `vX.Y.Z-alpha.N` → `@alpha`. Any other tag (an `-rc.N`, a typo) fails the job before anything is

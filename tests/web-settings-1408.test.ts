@@ -367,6 +367,25 @@ describe("#1423: a change an admin must confirm", () => {
     expect(vi.getTimerCount(), "nothing left ticking once it is decided").toBe(0);
   }, 20_000);
 
+  it("#2170 confirmed by its own web-verified account: applying at once (never 'waiting in chat'), the card says who, then the one apply", async () => {
+    let decided = false;
+    const self = VIEW("applying", { confirmation: { kind: "web" } });
+    routes.push(r => (r.method === "PUT" && r.url === "/api/settings/fleet/channels" ? { status: 202, body: { ok: true, result: "pending_confirmation", pending_change: self } } : undefined));
+    routes.push(r => (r.url === `/api/settings/pending/${"d".repeat(32)}` ? { body: decided ? VIEW("applied", { confirmation: { kind: "web" }, outcome: { state: "applied", result: { ok: true } } }) : self } : undefined));
+    await stageAccess();
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "performance"] });
+    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(op().steps[0].status).toBe("running");
+    await vi.advanceTimersByTimeAsync(50);
+    const card = p.root.querySelector(".pending-card");
+    expect([card?.textContent.includes("Confirmed by your account (this browser is web-verified)"), card?.textContent.includes("confirms this in chat")]).toEqual([true, false]);
+    expect(p.root.querySelector(".s-op")?.textContent).not.toContain("Waiting for confirmation");
+    decided = true;
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect([op().phase, writes().filter(r => r.url === "/api/settings/apply").length]).toEqual(["done", 1]);
+  }, 20_000);
+
   it("refused: the operation stops, the apply is never posted, and the change is staged again", async () => {
     routes.push(r => (r.method === "PUT" && r.url === "/api/settings/fleet/channels" ? pendingAnswer : undefined));
     routes.push(r => (r.url.startsWith("/api/settings/pending/") ? { body: VIEW("rejected", { outcome: { state: "rejected", reason_code: "rejected", message: "Rejected in chat." } }) } : undefined));
@@ -416,6 +435,20 @@ describe("#1423: a change an admin must confirm", () => {
     expect(p.root.querySelector(".op-line")).toBeNull();          // Settings shows the operation itself
     // …and the request too, in its own column (alpha.2 sweep): the shell's corner card is not drawn over it.
     expect(!!p.root.querySelector(".pending-stack"), "no corner card in Settings").toBe(false);
+    await p.unmount();
+    app.appStore.set({ pendingChanges: [], settingsOp: null });
+  });
+
+  it("#2170 the card says 'Confirmed by your account' only for a request its own verified account confirmed", async () => {
+    nav.navigate("/ui/fleet");
+    const panels = new Map([["fleet", { load: async () => () => h("div", { class: "panel" }, "fleet") }]]);
+    const says = async (confirmation: string) => {
+      app.appStore.set({ pendingChanges: [{ ...VIEW("applied", { confirmation: { kind: confirmation } }), label: "Update main access", deadline: performance.now() + 60_000, withdraw: null, dismiss: null }] });
+      await settle(4);
+      return p.root.querySelector(".pending-card")?.textContent.includes("Confirmed by your account");
+    };
+    await p.mount(h(shell.Shell, { panels }));
+    expect([await says("web"), await says("chat"), await says("host_cli")]).toEqual([true, false, false]);
     await p.unmount();
     app.appStore.set({ pendingChanges: [], settingsOp: null });
   });

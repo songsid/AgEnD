@@ -231,7 +231,7 @@ describe("#2175: the final update step lands on Telegram", () => {
     expect(log.error).toHaveBeenCalledWith(expect.anything(), "Fleet completion could not be delivered in the background window");
     expect(progress.terminalDeferred).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
-    expect(editMessage.mock.calls.length, "each retry waits the window out").toBeLessThan(15);
+    expect(editMessage.mock.calls.length, "each retry waits the window out").toBeLessThan(TERMINAL_BACKGROUND_WINDOW_MS / 60_000 + 5);
   });
 
   it("the terminal edit itself drawing a long 429: finish() does not spend its budget waiting", async () => {
