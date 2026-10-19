@@ -860,6 +860,16 @@ export class InstanceLifecycle {
       }, this.ctx.logger, `hangDetector[${name}]`));
     }
 
+    daemon.on("session_oom", safeHandler((data: { action: "fresh" | "stopped"; reason: string; session: string | null }) => {
+      this.ctx.eventLog?.insert(name, "session_oom", data);
+      const key = data.action === "fresh" ? "inst.oom_fresh" : data.reason === "intent_failed" ? "inst.oom_intent_failed" : "inst.oom_stopped";
+      const message = t(key, name, data.session ?? "unknown");
+      this.notifyIncident(name, "session_oom", message);
+      const general = this.findGeneralInstance();
+      if (general && general !== name) this.notifyIncident(general, "session_oom", message);
+      if (data.action === "stopped") this.ctx.setTopicIcon(name, "red");
+    }, this.ctx.logger, `daemon.session_oom[${name}]`));
+
     daemon.on("crash_respawn", safeHandler(() => {
       this.ctx.eventLog?.insert(name, "crash_respawn", {});
       this.ctx.logger.warn({ name }, "Instance crashed and respawned");
