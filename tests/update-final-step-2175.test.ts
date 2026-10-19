@@ -182,6 +182,26 @@ describe("#2175: the final update step lands on Telegram", () => {
     expect(progress.terminalDeferred).toBe(false);
   });
 
+  it("a newer text arriving while the fresh message is being posted is written onto that new message", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(0);
+    let post!: (v: { messageId: string; chatId: string }) => void;
+    const editMessage = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(grammy429(40))
+      .mockRejectedValueOnce(new Error("message to edit not found")).mockResolvedValue(undefined);
+    const sendText = vi.fn().mockImplementationOnce(() => new Promise(r => { post = r; }));
+    const adapter = { id: "telegram", type: "telegram", editMessage, sendText } as unknown as ChannelAdapter;
+    const progress = new RestartProgress(14, 0, logger(), { mode: "update" });
+    await progress.resume({ adapter, chatId: "fleet" }, "update-1");
+    await vi.advanceTimersByTimeAsync(TELEGRAM_PROGRESS_EDIT_SPACING_MS);
+    await progress.finish(SUMMARY);
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(sendText).toHaveBeenCalledTimes(1);
+    progress.replaceTerminalText("✅ newer");
+    post({ messageId: "fresh-7", chatId: "fleet" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(editMessage).toHaveBeenLastCalledWith("fleet", "fresh-7", "✅ newer", undefined);
+    expect(progress.terminalDeferred).toBe(false);
+  });
+
   it("a fresh message refused by the same 429 window is retried after it, not dropped", async () => {
     vi.useFakeTimers(); vi.setSystemTime(0);
     const editMessage = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValue(new Error("message can't be edited"));
@@ -250,46 +270,194 @@ describe("#2175: the final update step lands on Telegram", () => {
     expect(progress.terminalDeferred).toBe(false);
   });
 
-  it("cancelled while a background edit is in flight: its 429 does not start another round", async () => {
+  // ── Prism r1 on #2177 ──────────────────────────────────────────────────────────────────────────────────────
+
+  /** A provider that applies edits in the order they SETTLE, so a late success is visible as the final text. */
+  function heldTelegram() {
+    let applied = "";
+    const held: Array<{ text: string; resolve: () => void; reject: (e: unknown) => void }> = [];
+    let mode: "pass" | "hold" = "pass";
+    const queue: Array<(text: string) => Promise<void> | void> = [];
+    const editMessage = vi.fn((_c: string, _m: string, text: string) => {
+      const next = queue.shift();
+      if (next) return Promise.resolve(next(text)).then(() => { applied = text; });
+      if (mode === "hold") return new Promise<void>((resolve, reject) => held.push({ text, resolve: () => { applied = text; resolve(); }, reject }));
+      applied = text;
+      return Promise.resolve();
+    });
+    const sendText = vi.fn();
+    const adapter = { id: "telegram", type: "telegram", editMessage, sendText } as unknown as ChannelAdapter;
+    return {
+      adapter, editMessage, sendText, held, queue,
+      hold() { mode = "hold"; }, pass() { mode = "pass"; },
+      get applied() { return applied; },
+    };
+  }
+
+  it("P2-1: a 429 answered after finish() began goes to the terminal path — deferred, nothing written in its window", async () => {
     vi.useFakeTimers(); vi.setSystemTime(0);
-    let refuse!: (e: unknown) => void;
-    const editMessage = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(grammy429(40))
-      .mockImplementationOnce(() => new Promise<void>((_, rej) => { refuse = rej; }))
-      .mockResolvedValue(undefined);
-    const adapter = { id: "telegram", type: "telegram", editMessage } as unknown as ChannelAdapter;
-    const progress = new RestartProgress(14, 0, logger(), { mode: "update" });
-    await progress.resume({ adapter, chatId: "fleet" }, "update-1");
-    await vi.advanceTimersByTimeAsync(TELEGRAM_PROGRESS_EDIT_SPACING_MS);
-    await progress.finish(SUMMARY);
-    await vi.advanceTimersByTimeAsync(40_000);               // the background edit is now in flight
-    expect(editMessage).toHaveBeenCalledTimes(3);
-    progress.cancelDeferredTerminal();
-    refuse(grammy429(30));
-    await vi.advanceTimersByTimeAsync(120_000);
-    expect(editMessage).toHaveBeenCalledTimes(3);
+    const tg = heldTelegram();
+    const log = logger();
+    const progress = new RestartProgress(14, 0, log, { mode: "update" });
+    tg.hold();
+    await progress.resume({ adapter: tg.adapter, chatId: "fleet" }, "update-1");   // the first frame is held
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tg.held).toHaveLength(1);
+    let settled = false;
+    const finishing = progress.finish(SUMMARY).then(v => { settled = true; return v; });
+    await vi.advanceTimersByTimeAsync(1_000);
+    tg.held[0].reject(grammy429(45));                       // answered after finish() began
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(true);
+    await expect(finishing).resolves.toBe(true);
+    expect(progress.terminalDeferred).toBe(true);
+    tg.pass();
+    await vi.advanceTimersByTimeAsync(44_000);
+    expect(tg.editMessage).toHaveBeenCalledTimes(1);         // nothing into the window
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(tg.applied).toContain("✅ AgEnD updated to v2.3.0-beta.10");
+    expect(log.error).not.toHaveBeenCalled();
   });
 
-  it("a newer text taking the message over (the cleanup warning) stops the owed completion", async () => {
+  it("P2-1: a window exactly as long as the budget is deferred too (no edit at the deadline, no false failure)", async () => {
     vi.useFakeTimers(); vi.setSystemTime(0);
-    const editMessage = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(grammy429(40)).mockResolvedValue(undefined);
-    const adapter = { id: "telegram", type: "telegram", editMessage } as unknown as ChannelAdapter;
-    const progress = new RestartProgress(14, 0, logger(), { mode: "update" });
+    const editMessage = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(grammy429(30)).mockResolvedValue(undefined);
+    const adapter = { id: "discord", type: "discord", editMessage, sendText: vi.fn() } as unknown as ChannelAdapter;
+    const log = logger();
+    const progress = new RestartProgress(14, 0, log, { mode: "update" });
     await progress.resume({ adapter, chatId: "fleet" }, "update-1");
-    await vi.advanceTimersByTimeAsync(TELEGRAM_PROGRESS_EDIT_SPACING_MS);
+    await vi.advanceTimersByTimeAsync(0);
+    const finishing = progress.finish(SUMMARY);
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(finishing).resolves.toBe(true);
+    expect(progress.terminalDeferred).toBe(true);
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(editMessage).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(editMessage).toHaveBeenCalledTimes(3);
+    expect(editMessage).toHaveBeenLastCalledWith("fleet", "update-1", expect.stringContaining("✅"), undefined);
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  /** Gets a background attempt going: resume, a frame refused by 429(40), finish() deferring, the window passing. */
+  async function deferredWithAttemptHeld(tg: ReturnType<typeof heldTelegram>, log = logger()) {
+    vi.useFakeTimers(); vi.setSystemTime(0);
+    const progress = new RestartProgress(14, 0, log, { mode: "update" });
+    await progress.resume({ adapter: tg.adapter, chatId: "fleet" }, "update-1");
+    await vi.advanceTimersByTimeAsync(0);
+    tg.queue.push(() => { throw grammy429(40); });
+    await vi.advanceTimersByTimeAsync(TELEGRAM_PROGRESS_EDIT_SPACING_MS);   // this frame draws the window
     await progress.finish(SUMMARY);
-    const calls = editMessage.mock.calls.length;
-    progress.cancelDeferredTerminal();
+    expect(progress.terminalDeferred).toBe(true);
+    tg.hold();
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(tg.held).toHaveLength(1);                          // background edit A in flight
+    return { progress, log };
+  }
+
+  it("P2-2: a newer text while background edit A is in flight is written after A — even when A lands late", async () => {
+    const tg = heldTelegram();
+    const { progress } = await deferredWithAttemptHeld(tg);
+    const withWarning = "✅ AgEnD updated to v2.3.0-beta.10; 14/14 agents running.\n\n⚠️ old copy left";
+    expect(progress.replaceTerminalText(withWarning)).toBe(true);
+    tg.pass();
+    tg.held[0].resolve();                                    // A lands (applied) after the newer text arrived
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tg.applied).toBe(withWarning);
+    expect(progress.terminalDeferred).toBe(false);
+  });
+
+  it("P2-2: the same when A settles only after its deadline (outcome unknown, then landed)", async () => {
+    const tg = heldTelegram();
+    const { progress, log } = await deferredWithAttemptHeld(tg);
+    await vi.advanceTimersByTimeAsync(RESTART_PROGRESS_TERMINAL_TIMEOUT_MS);
+    expect(log.error).toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/did not settle/));
+    const withWarning = "✅ … ⚠️ old copy left";
+    expect(progress.replaceTerminalText(withWarning)).toBe(true);
+    tg.pass();
+    tg.held[0].resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tg.applied).toBe(withWarning);
+  });
+
+  it("P2-3: a background edit unsettled at its deadline: no further write while it is outstanding; landing late ends it", async () => {
+    const tg = heldTelegram();
+    const { progress, log } = await deferredWithAttemptHeld(tg);
+    await vi.advanceTimersByTimeAsync(RESTART_PROGRESS_TERMINAL_TIMEOUT_MS);
+    expect(log.error).toHaveBeenCalledWith({ timeout_ms: 30_000 }, "Background fleet completion edit did not settle — not retried, its outcome is unknown");
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(tg.editMessage).toHaveBeenCalledTimes(3);          // resume, the refused frame, A — nothing more
+    expect(tg.sendText).not.toHaveBeenCalled();
+    tg.pass();
+    tg.held[0].resolve();
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(editMessage).toHaveBeenCalledTimes(calls);
-    expect(vi.getTimerCount()).toBe(0);
+    expect(tg.editMessage).toHaveBeenCalledTimes(3);
+    expect(tg.applied).toContain("✅");
+    expect(progress.terminalDeferred).toBe(false);
   });
 
-  it("the cleanup-warning append cancels the owed completion only after its own edit landed", () => {
-    const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "src", "fleet-manager.ts"), "utf8") as string;
-    const body = src.slice(src.indexOf("private async appendCleanupWarning("), src.indexOf("private startUpdateProgressMonitor("));
-    const edit = body.indexOf("await adapter.editMessage(target.chatId, target.messageId, text, target.threadId);");
-    const cancel = body.indexOf("this.startupProgress?.cancelDeferredTerminal();");
-    expect(edit).toBeGreaterThan(0);
-    expect(cancel).toBeGreaterThan(edit);
+  it("P2-3: a late-refused edit is a known outcome — the retry resumes", async () => {
+    const tg = heldTelegram();
+    const { progress } = await deferredWithAttemptHeld(tg);
+    await vi.advanceTimersByTimeAsync(RESTART_PROGRESS_TERMINAL_TIMEOUT_MS);
+    tg.pass();
+    tg.held[0].reject(new Error("Bad Gateway"));
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(tg.editMessage).toHaveBeenCalledTimes(4);
+    expect(tg.applied).toContain("✅");
+    expect(progress.terminalDeferred).toBe(false);
+  });
+
+  it("P2-3: a fresh message unsettled at its deadline is never sent twice; landing late adopts it", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(0);
+    let post!: (v: { messageId: string; chatId: string }) => void;
+    const editMessage = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(grammy429(40))
+      .mockRejectedValueOnce(new Error("message to edit not found")).mockResolvedValue(undefined);
+    const sendText = vi.fn().mockImplementationOnce(() => new Promise(r => { post = r; }));
+    const adapter = { id: "telegram", type: "telegram", editMessage, sendText } as unknown as ChannelAdapter;
+    const log = logger();
+    const progress = new RestartProgress(14, 0, log, { mode: "update" });
+    await progress.resume({ adapter, chatId: "fleet" }, "update-1");
+    await vi.advanceTimersByTimeAsync(TELEGRAM_PROGRESS_EDIT_SPACING_MS);
+    await progress.finish(SUMMARY);
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(sendText).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(RESTART_PROGRESS_TERMINAL_TIMEOUT_MS + 5 * 60_000);
+    expect(log.error).toHaveBeenCalledWith(expect.anything(), "Background fleet completion message did not settle — not retried, its outcome is unknown");
+    expect(sendText).toHaveBeenCalledTimes(1);
+    progress.replaceTerminalText("✅ newer");
+    post({ messageId: "fresh-9", chatId: "fleet" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sendText).toHaveBeenCalledTimes(1);
+    expect(editMessage).toHaveBeenLastCalledWith("fleet", "fresh-9", "✅ newer", undefined);  // the newer text, on the posted message
+  });
+
+  it("the cleanup-warning append hands its text to an owed completion instead of racing it; edits itself otherwise", async () => {
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const home = mkdtempSync(join(tmpdir(), "agend-2175-"));
+    const saved = process.env.AGEND_HOME;
+    process.env.AGEND_HOME = home;
+    try {
+      const { FleetManager } = await import("../src/fleet-manager.js");
+      const fm = new FleetManager(home) as any;
+      const editMessage = vi.fn().mockResolvedValue(undefined);
+      fm.adapters.set("telegram", { id: "telegram", type: "telegram", editMessage });
+      const target = { adapterId: "telegram", chatId: "fleet", messageId: "update-1" };
+      const watch = { receipt: { startedAt: 0, messageId: "update-1", operation: "update" }, summary: SUMMARY };
+      const owed = { replaceTerminalText: vi.fn().mockReturnValue(true) };
+      fm.startupProgress = owed;
+      await fm.appendCleanupWarning(target, watch, "old copy left");
+      expect(owed.replaceTerminalText).toHaveBeenCalledWith(expect.stringContaining("old copy left"));
+      expect(editMessage).not.toHaveBeenCalled();
+      fm.startupProgress = { replaceTerminalText: vi.fn().mockReturnValue(false) };
+      fm.lastUpdateProgressText = null;
+      await fm.appendCleanupWarning(target, watch, "old copy left");
+      expect(editMessage).toHaveBeenCalledWith("fleet", "update-1", expect.stringContaining("old copy left"), undefined);
+    } finally {
+      if (saved === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = saved;
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

@@ -6869,13 +6869,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.updateProgressTimer = null;
     };
     if (text !== this.lastUpdateProgressText) {
-      const adapter = this.adapters.get(target.adapterId);
-      if (!adapter) return; // retry on a later tick
-      await adapter.editMessage(target.chatId, target.messageId, text, target.threadId);
+      // #2175: while the completion is still owed by the background retry, that retry is the message's only
+      // writer — this text (the completion plus the warning) goes to it rather than racing it.
+      if (!this.startupProgress?.replaceTerminalText(text)) {
+        const adapter = this.adapters.get(target.adapterId);
+        if (!adapter) return; // retry on a later tick
+        await adapter.editMessage(target.chatId, target.messageId, text, target.threadId);
+      }
       this.lastUpdateProgressText = text;
-      // #2175: this text carries the completion too; a completion still owed by the background retry must not
-      // overwrite it later.
-      this.startupProgress?.cancelDeferredTerminal();
     }
     const verdict = cleanupWatchVerdict(readUpdateProgress(this.dataDir), watch.receipt);
     if (verdict.action === "drop") {
