@@ -870,23 +870,41 @@ async function agyAccessToken(): Promise<{ token: string } | { error: string; er
 
 /**
  * The models' own quotas (`fetchAvailableModels`, the list agy's model picker reads), from the same base as the
- * summary. Only what the summary leaves out is taken from it, so a failure here costs nothing: null.
+ * summary. Only what the summary leaves out is taken from it, so a failure here costs nothing: null. Optional, so it
+ * never costs the row the summary already in hand (#2176 review, as the Codex ticket list, #1246): once the summary
+ * has answered it gets only what is left before the provider deadline, less a margin, and is then cancelled.
  */
-async function agyModels(base: string, token: string): Promise<AgyModels | null> {
-  try {
+const AGY_MODELS_DEADLINE_MARGIN_MS = 1_000;
+
+function agyModels(base: string, token: string): { within(budgetMs: number): Promise<AgyModels | null>; cancel(): void } {
+  const abort = new AbortController();
+  const result = (async () => {
     const res = await fetch(`${base}/v1internal:fetchAvailableModels`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "antigravity" },
       body: "{}",
-      signal: AbortSignal.timeout(LONGEST_SINGLE_FETCH_MS),
+      signal: AbortSignal.any([abort.signal, AbortSignal.timeout(LONGEST_SINGLE_FETCH_MS)]),
     });
     if (!res.ok) return null;
     const body = await res.json() as AgyModels | null;
     return body && typeof body === "object" ? body : null;
-  } catch { return null; }
+  })().catch(() => null);
+  return {
+    cancel: () => abort.abort(),
+    async within(budgetMs) {
+      // No time left: an answer already in hand still counts (it settles first), nothing is waited for.
+      if (!(budgetMs > 0)) return Promise.race([result, Promise.resolve(null)]);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      // The timer settles the race, so a fetch that ignores its signal cannot hold the row; the caller then cancels it.
+      const timedOut = new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), budgetMs); });
+      try { return await Promise.race([result, timedOut]); } finally { clearTimeout(timer); }
+    },
+  };
 }
 
 export async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
+  // Monotonic: the deadline the models' budget is measured against is a timer, which a wall-clock change does not move.
+  const startedAt = performance.now();
   // A CLI-observed rate limit outranks anything the quota API says. The bucket
   // summary cannot see the account-level individual cap: verified live, it
   // reported every bucket 0% used in the same minute the CLI was refusing work
@@ -914,31 +932,36 @@ export async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" 
 
   for (const base of AGY_CLOUDCODE_URLS) {
     // Alongside the summary, not after it: one more round trip in the chain would push a slow-but-healthy pair past
-    // the provider deadline. Unused when the summary fails (it never rejects).
+    // the provider deadline. Cancelled when the summary fails (it never rejects).
     const models = agyModels(base, auth.token);
-    let res: Response;
     try {
-      res = await fetch(`${base}/v1internal:retrieveUserQuotaSummary`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${auth.token}`,
-          "Content-Type": "application/json",
-          "User-Agent": "antigravity",
-        },
-        body: "{}",
-        signal: AbortSignal.timeout(LONGEST_SINGLE_FETCH_MS),
-      });
-    } catch { continue; }
-    if (res.status === 401 || res.status === 403) {
-      return { status: "error", error: "Token rejected. Run `agy` once to refresh the login.", errorI18n: i18n("usage.error.token_rejected", "agy"), metrics: [] };
+      let res: Response;
+      try {
+        res = await fetch(`${base}/v1internal:retrieveUserQuotaSummary`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${auth.token}`,
+            "Content-Type": "application/json",
+            "User-Agent": "antigravity",
+          },
+          body: "{}",
+          signal: AbortSignal.timeout(LONGEST_SINGLE_FETCH_MS),
+        });
+      } catch { continue; }
+      if (res.status === 401 || res.status === 403) {
+        return { status: "error", error: "Token rejected. Run `agy` once to refresh the login.", errorI18n: i18n("usage.error.token_rejected", "agy"), metrics: [] };
+      }
+      if (!res.ok) continue; // try the other base
+      let body: AgyQuotaSummary;
+      try { body = await res.json() as typeof body; } catch { continue; }
+      const budgetMs = providerDeadlineMs - (performance.now() - startedAt) - AGY_MODELS_DEADLINE_MARGIN_MS;
+      const metrics = agyPoolMetrics(agyUsageBuckets(body ?? {}, await models.within(budgetMs)));
+      return metrics.length
+        ? { status: "ok", plan: null, metrics }
+        : { status: "ok", plan: null, hint: "No quota information reported for this account.", hintI18n: i18n("usage.hint.no_quota"), metrics: [] };
+    } finally {
+      models.cancel();                                  // a base given up on, or a read already settled: nothing left to wait for
     }
-    if (!res.ok) continue; // try the other base
-    let body: AgyQuotaSummary;
-    try { body = await res.json() as typeof body; } catch { continue; }
-    const metrics = agyPoolMetrics(agyUsageBuckets(body ?? {}, await models));
-    return metrics.length
-      ? { status: "ok", plan: null, metrics }
-      : { status: "ok", plan: null, hint: "No quota information reported for this account.", hintI18n: i18n("usage.hint.no_quota"), metrics: [] };
   }
   return { status: "error", error: "Could not reach the Cloud Code quota endpoints.", errorI18n: i18n("usage.error.unreachable", "Cloud Code quota endpoints"), metrics: [] };
 }

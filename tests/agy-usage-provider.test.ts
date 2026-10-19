@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { agyModelBuckets, agyPoolMetrics, agyQuotaBuckets, agyUsageBuckets, fetchAntigravityUsage, readAgyToken } from "../src/usage/providers.js";
+import { agyModelBuckets, agyPoolMetrics, agyQuotaBuckets, agyUsageBuckets, DEFAULT_PROVIDER_DEADLINE_MS, fetchAllUsage, fetchAntigravityUsage, readAgyToken, setUsageProvidersForTests } from "../src/usage/providers.js";
 
 const fixture = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"));
 const grouped = fixture("agy-quota-summary-grouped-2026-10.json");
@@ -236,6 +236,72 @@ describe("fetchAntigravityUsage asks for the models' quotas beside the summary (
     vi.stubGlobal("fetch", vi.fn(async (url: string) => { if (url.endsWith(":retrieveUserQuotaSummary")) return json(summary142); throw new TypeError("fetch failed"); }));
     const r = await fetchAntigravityUsage();
     expect([r.status, r.metrics.map(m => m.label)]).toEqual(["ok", ["Claude & others (session)", "Claude & others (weekly)"]]);
+  });
+});
+
+describe("the models' read never costs the row its summary (#2176 review: the 16s provider deadline)", () => {
+  // The real fetchAntigravityUsage inside the real fetchAllUsage deadline, on fake timers. The models' read is optional:
+  // once the summary has answered it gets what is left before the deadline, less a 1s margin, and is then cancelled.
+  const DAILY = "https://daily-cloudcode-pa.googleapis.com/v1internal:", PROD = "https://cloudcode-pa.googleapis.com/v1internal:";
+  const dirs: string[] = [];
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); setUsageProvidersForTests(null); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+  type Answer = { at: number; status?: number; body?: unknown } | "stall" | "stall-ignoring-abort";
+  async function run(answers: Record<string, Answer>, token: Record<string, string> = { access_token: "test-token", expiry: "2026-10-19T04:20:00Z" }) {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
+    vi.setSystemTime(new Date("2026-10-19T03:20:00Z"));
+    const t0 = performance.now(), elapsed = () => performance.now() - t0;
+    const home = mkdtempSync(join(tmpdir(), "agy-2176-")); dirs.push(home);
+    mkdirSync(join(home, "antigravity-cli"), { recursive: true });
+    writeFileSync(join(home, "antigravity-cli", "antigravity-oauth-token"), JSON.stringify({ token }));
+    vi.stubEnv("GEMINI_HOME", home);
+    const calls: Array<{ url: string; at: number; signal?: AbortSignal }> = [];
+    vi.stubGlobal("fetch", vi.fn((url: string, init: { signal?: AbortSignal } = {}) => {
+      calls.push({ url, at: elapsed(), signal: init.signal });
+      const a = answers[url] ?? { at: 0, status: 404 };
+      if (a === "stall" || a === "stall-ignoring-abort") return new Promise((_resolve, reject) => {
+        if (a === "stall") init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+      });
+      return new Promise(resolve => setTimeout(() => resolve(new Response(JSON.stringify(a.body ?? {}), { status: a.status ?? 200 })), a.at));
+    }));
+    setUsageProvidersForTests([{ id: "antigravity", name: "Antigravity", fetch: fetchAntigravityUsage }]);
+    let settledAt: number | null = null;
+    const snapshot = fetchAllUsage(null as never).then(r => { settledAt = elapsed(); return r; });
+    while (calls.length === 0) await new Promise(r => setImmediate(r));   // the token file is read for real first
+    await vi.advanceTimersByTimeAsync(DEFAULT_PROVIDER_DEADLINE_MS + 1_000);
+    const row = (await snapshot).providers.find(p => p.id === "antigravity")!;
+    return { row, settledAt: settledAt as number | null, calls, labels: row.metrics.map(m => m.label) };
+  }
+  const CLAUDE = ["Claude & others (session)", "Claude & others (weekly)"];
+
+  it("the first base fails at 3s, the second's summary answers, its models stall: the summary's rows, at 15s", async () => {
+    const { row, settledAt, calls, labels } = await run({
+      [`${DAILY}retrieveUserQuotaSummary`]: { at: 3_000, status: 503 }, [`${DAILY}fetchAvailableModels`]: "stall",
+      [`${PROD}retrieveUserQuotaSummary`]: { at: 0, body: summary142 }, [`${PROD}fetchAvailableModels`]: "stall",
+    });
+    expect([row.status, labels]).toEqual(["ok", CLAUDE]);
+    expect(settledAt).toBe(DEFAULT_PROVIDER_DEADLINE_MS - 1_000);          // what was left, less the margin
+    expect(calls.every(c => c.signal?.aborted || c.url.endsWith("retrieveUserQuotaSummary")), "both stalled models reads are cancelled").toBe(true);
+  });
+  it("even a models read that ignores its cancel cannot hold the row", async () => {
+    const { row, settledAt, labels } = await run({ [`${DAILY}retrieveUserQuotaSummary`]: { at: 2_000, body: summary142 }, [`${DAILY}fetchAvailableModels`]: "stall-ignoring-abort" });
+    expect([row.status, labels, settledAt]).toEqual(["ok", CLAUDE, DEFAULT_PROVIDER_DEADLINE_MS - 1_000]);
+  });
+  it("the summary at 15.5s: no time left for the models — the summary's rows, inside the deadline", async () => {
+    const { row, labels, settledAt } = await run({ [`${DAILY}retrieveUserQuotaSummary`]: { at: 15_500, body: summary142 }, [`${DAILY}fetchAvailableModels`]: "stall" });
+    expect([row.status, labels, settledAt]).toEqual(["ok", CLAUDE, 15_500]);
+  });
+  it("a token refresh first (2s) counts against the same deadline: the summary's rows at 15s", async () => {
+    vi.stubEnv("AGY_OAUTH_CLIENT_ID", "test-client"); vi.stubEnv("AGY_OAUTH_CLIENT_SECRET", "test-secret");
+    const { row, labels, settledAt, calls } = await run({
+      "https://oauth2.googleapis.com/token": { at: 2_000, body: { access_token: "refreshed", expires_in: 3600 } },
+      [`${DAILY}retrieveUserQuotaSummary`]: { at: 0, body: summary142 }, [`${DAILY}fetchAvailableModels`]: "stall",
+    }, { access_token: "old", refresh_token: "test-refresh", expiry: "2026-10-19T03:00:00Z" });
+    expect(calls[0]!.url).toBe("https://oauth2.googleapis.com/token");
+    expect([row.status, labels, settledAt]).toEqual(["ok", CLAUDE, DEFAULT_PROVIDER_DEADLINE_MS - 1_000]);
+  });
+  it("models that answer in time bring Gemini back", async () => {
+    const { row, labels, settledAt } = await run({ [`${DAILY}retrieveUserQuotaSummary`]: { at: 2_000, body: summary142 }, [`${DAILY}fetchAvailableModels`]: { at: 4_000, body: models142 } });
+    expect([row.status, labels, settledAt]).toEqual(["ok", [...CLAUDE, "Gemini"], 4_000]);
   });
 });
 
