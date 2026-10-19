@@ -40,8 +40,15 @@ const results: any[] = [];
 async function runCase(name: string, open: () => Promise<FreshPage>, other: string) {
   const p = await open();
   await mounted(p.page, 30000);
+  // A phone reads the sidebar in its drawer: ☰ opens it (as #2053's smoke does — the first visible one, retried).
   if (p.page.viewportSize().width < 760 && !(await p.page.locator(".shell.sb-open").count())) {
-    for (const b of await p.page.locator('button[aria-controls="sidebar"]').all()) if (await b.isVisible()) { await b.click(); break; }
+    const all = p.page.locator('button[aria-controls="sidebar"]'), end = Date.now() + 10000;
+    let clicked = false;
+    while (!clicked && Date.now() < end) {
+      for (let i = 0; i < await all.count() && !clicked; i++) if (await all.nth(i).isVisible()) { await all.nth(i).click(); clicked = true; }
+      if (!clicked) await p.page.waitForTimeout(150);
+    }
+    await p.page.waitForSelector(".shell.sb-open", { timeout: 5000 });
   }
   await p.page.waitForSelector(".v-group .v-group-head", { timeout: 15000 });
   await p.page.waitForTimeout(600);
