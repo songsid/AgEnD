@@ -188,9 +188,11 @@ const LABEL_CHAR_W = 5.5;
 
 /**
  * The 0-based indices of dates that should receive an x-axis label.
- * Always includes index 0 (first) and n-1 (last). Intermediate labels are
- * thinned so that no two consecutive shown labels are closer than
- * `labelWidthPx` pixels apart at the given `slotPx` spacing.
+ * Keeps the first (0) and last (n-1) when they are far enough apart not to
+ * overlap. When first and last are too close (n-1 < step), only the last
+ * (most recent) is shown — overlap-free takes precedence over keeping both
+ * ends. Intermediate labels are thinned so that no two consecutive shown
+ * labels are closer than `labelWidthPx` pixels apart.
  *
  * @param {number} n            Number of data points (dates).
  * @param {number} slotPx       Pixels per slot (bar + gap).

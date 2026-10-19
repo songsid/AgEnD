@@ -133,33 +133,35 @@ describe("thinXLabels (#2201)", () => {
 // ── Trend render regression (catches revert to old modulo/<=8 logic) ─────────
 
 describe("Trend render via mini-dom (#2201)", () => {
-  it("7-day: at most ceil(7/step) labels rendered — catches old dates.length<=8 regression", async () => {
-    // Old code: dates.length <= 8 → all 7 labels shown (overlap!).
-    // New code: thinXLabels(7,14,27.5) → step=3 → 3 labels.
-    // If this test sees 7 labels, thinXLabels is not being called.
-    // us-xlabel is added only to x-axis date labels (not y-axis).
+  it("7-day: exactly 3 labels at correct dates — catches old dates.length<=8 and new Set() regressions", async () => {
+    // thinXLabels(7,14,27.5) → step=3 → indices {0,3,6} → "10-12","10-15","10-18".
+    // Old code (<=8): 7 labels. new Set() regression: 0 labels. Both fail this.
     const r = buildReport("2026-10-12", "2026-10-18");
     answer = { status: 200, body: r };
     await p.unmount(); reqs = [];
     await mount();
     const labels = p.root.querySelectorAll(".us-chart .us-xlabel");
-    // With old code all 7 dates get labels; with new code ≤ 3 do.
-    expect(labels.length, "7-day range must have fewer than 7 x-axis labels").toBeLessThan(7);
-    // And the ones shown must not overlap (x attribute spacing = step * slot).
+    expect(labels.length, "7-day: must have exactly 3 x-axis labels (indices 0,3,6)").toBe(3);
+    const texts = Array.from(labels).map((el: any) => el.textContent);
+    expect(texts).toContain("10-12"); // first
+    expect(texts).toContain("10-15"); // middle (index 3)
+    expect(texts).toContain("10-18"); // last
+    // Spacing must be >= LABEL_W
     const xs = Array.from(labels).map((el: any) => parseFloat(el.getAttribute("x")));
     for (let i = 1; i < xs.length; i++) {
       expect(xs[i]! - xs[i - 1]!, `consecutive x gap`).toBeGreaterThanOrEqual(LABEL_W);
     }
   });
 
-  it("2-day custom range: at most 1 label rendered (n=2 overlap regression)", async () => {
-    // thinXLabels(2,14,27.5) = {1} only. Old code: dates.length<=8 → both shown.
+  it("2-day custom range: exactly 1 label, the most recent date (n=2 overlap regression)", async () => {
+    // thinXLabels(2,14,27.5) = {1} only: shows last date "10-18".
+    // Old code (<=8): 2 labels. new Set() regression: 0 labels. Both fail this.
     const r = buildReport("2026-10-17", "2026-10-18");
     answer = { status: 200, body: r };
     await p.unmount(); reqs = [];
     await mount();
     const labels = p.root.querySelectorAll(".us-chart .us-xlabel");
-    // With old code 2 labels at 14px apart (14 < 27.5 → overlap).
-    expect(labels.length, "2-day range must have at most 1 x-axis label").toBeLessThanOrEqual(1);
+    expect(labels.length, "2-day: must have exactly 1 x-axis label (last only)").toBe(1);
+    expect(labels[0].textContent, "2-day: label must be the most recent date").toBe("10-18");
   });
 });
