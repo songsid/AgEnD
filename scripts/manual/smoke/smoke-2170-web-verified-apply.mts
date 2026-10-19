@@ -130,8 +130,9 @@ async function deleteAndApply(p: FreshPage, victim: string, lang: string) {
   await p.page.click("dialog[open] .btn-danger");
   await p.page.getByRole("button", { name: lang === "en" ? "Apply changes" : "套用變更" }).click();
 }
+/** The card's text once it is in that state — scrolled into view for the shot that follows (a phone's list is long). */
 const cardText = (p: FreshPage, state: string) => p.page.waitForSelector(`.pending-card.${state}`, { timeout: 10000 })
-  .then(async (el: any) => (await el.innerText()) as string, () => null);
+  .then(async (el: any) => { await el.scrollIntoViewIfNeeded().catch(() => {}); return (await el.innerText()) as string; }, () => null);
 const overflow = (p: FreshPage) => p.page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth");
 const gate = () => (fm as any).settingsGate();
 const heldIds = () => [...gate().store.records.values()].filter((e: any) => e.view.state === "pending").map((e: any) => e.view.id);
