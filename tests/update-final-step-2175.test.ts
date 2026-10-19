@@ -543,6 +543,86 @@ describe("#2175: the final update step lands on Telegram", () => {
     expect(progress.terminalLanded("✅ completion\n\n⚠️ old copy left")).toBe(false);
   });
 
+  it("r3 P2-2: the warning lands on the fresh message seconds later; the next tick clears — no edit back to the old id", async () => {
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const marker = await import("../src/update-marker.js");
+    const home = mkdtempSync(join(tmpdir(), "agend-2175-"));
+    const saved = process.env.AGEND_HOME;
+    process.env.AGEND_HOME = home;
+    try {
+      vi.useFakeTimers(); vi.setSystemTime(0);
+      let frames = 0;
+      const editMessage = vi.fn(async (_c: string, id: string) => {
+        if (id !== "update-1") return;                              // the fresh message accepts edits
+        if (++frames === 1) return;                                 // resume's first frame
+        if (frames === 2) throw grammy429(40);                      // the next frame draws a window
+        throw new Error("Bad Request: message can't be edited");    // from then on, refused for good
+      });
+      let post!: (v: { messageId: string; chatId: string }) => void;
+      const sendText = vi.fn().mockImplementationOnce(() => new Promise(r => { post = r; }));
+      const adapter = { id: "telegram", type: "telegram", editMessage, sendText } as unknown as ChannelAdapter;
+      const progress = new RestartProgress(14, 0, logger(), { mode: "update" });
+      await progress.resume({ adapter, chatId: "fleet" }, "update-1");
+      await vi.advanceTimersByTimeAsync(TELEGRAM_PROGRESS_EDIT_SPACING_MS);
+      await progress.finish(SUMMARY);
+      await vi.advanceTimersByTimeAsync(40_000);                    // background: edit refused, fresh send held
+      expect(sendText).toHaveBeenCalledTimes(1);
+
+      const target = { adapterId: "telegram", chatId: "fleet", messageId: "update-1" };
+      marker.beginUpdateProgress(home, target, 0);
+      const receipt = marker.markCleanupPending(home)!;
+      marker.writeCleanupOutcome(home, receipt, { warning: "old copy left" });
+      const { FleetManager } = await import("../src/fleet-manager.js");
+      const fm = new FleetManager(home) as any;
+      fm.adapters.set("telegram", adapter);
+      fm.startupProgress = progress;
+      const watch = { receipt, summary: SUMMARY };
+      fm.updateCleanupWatch = watch;
+
+      await fm.appendCleanupWarning(target, watch, "old copy left");  // handed over (elapsed ~46 s)
+      expect(marker.readUpdateProgress(home)).not.toBeNull();
+      await vi.advanceTimersByTimeAsync(1_500);
+      post({ messageId: "fresh-1", chatId: "fleet" });              // the completion lands as a new message…
+      await vi.advanceTimersByTimeAsync(0);                         // …and the warning text is edited onto it
+      expect(editMessage).toHaveBeenLastCalledWith("fleet", "fresh-1", expect.stringContaining("old copy left"), undefined);
+      const toOriginal = editMessage.mock.calls.filter(c => c[1] === "update-1").length;
+      await vi.advanceTimersByTimeAsync(2_000);                     // the clock moved on before the next tick
+
+      await fm.appendCleanupWarning(target, watch, "old copy left");
+      expect(editMessage.mock.calls.filter(c => c[1] === "update-1").length).toBe(toOriginal);   // no edit back to the old id
+      expect(marker.readUpdateProgress(home)).toBeNull();
+      expect(fm.updateCleanupWatch).toBeNull();
+    } finally {
+      if (saved === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = saved;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("r3 P2-2: a different outcome (another warning) is a new text, not the frozen one", async () => {
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const home = mkdtempSync(join(tmpdir(), "agend-2175-"));
+    try {
+      const fm = new FleetManager(home) as any;
+      const handed: string[] = [];
+      fm.startupProgress = { terminalLanded: () => false, replaceTerminalText: (t: string) => { handed.push(t); return true; } };
+      const target = { adapterId: "telegram", chatId: "fleet", messageId: "update-1" };
+      const watch = { receipt: { startedAt: 0, messageId: "update-1", operation: "update" }, summary: SUMMARY };
+      await fm.appendCleanupWarning(target, watch, "first");
+      await fm.appendCleanupWarning(target, watch, "first");
+      await fm.appendCleanupWarning(target, watch, "second", "sudo rm x");
+      expect(handed[0]).toBe(handed[1]);
+      expect(handed[2]).toContain("second");
+      expect(handed[2]).toContain("sudo rm x");
+      await fm.appendCleanupWarning(target, watch, "second", "sudo rm y");     // same warning, another command
+      expect(handed[3]).toContain("sudo rm y");
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+
   it("r2 P2-2: a retry that gave up leaves the warning to the watch's own edit (it is not lost)", async () => {
     const { mkdtempSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
