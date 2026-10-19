@@ -192,7 +192,7 @@ describe("the page: the open agent's colours on the shell", () => {
   });
   it("#2202 review: only an agent's own pages — Chat, View, Log, Details — take its colours; no other route that names it", async () => {
     const { themes } = await shell("/ui/chat/harbor");
-    const on = (route: Record<string, unknown>) => themes.pageNow("light", route) !== null;
+    const on = (route: Record<string, unknown> | null) => themes.pageNow("light", route) !== null;
     expect([{ panel: "chat", instance: "harbor" }, { panel: "view", instance: "harbor" }, { panel: "log", instance: "harbor" }, { panel: "details", instance: "harbor" },
       { panel: "fleet", instance: "harbor" }, { panel: "settings", instance: "harbor" }, { panel: "needs", instance: "harbor" }, { panel: "chat" }, null].map(on))
       .toEqual([true, true, true, true, false, false, false, false, false]);
