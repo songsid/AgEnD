@@ -18,7 +18,7 @@ export function Menu({ items, label, icon = "more", cls = "" }) {
     return () => document.removeEventListener("pointerdown", outside, true);
   }, [open]);
   function onKey(e) {
-    const all = [...list.current.querySelectorAll("[role=menuitem]:not([disabled])")];
+    const all = [...list.current.querySelectorAll("[role=menuitem]:not([disabled]), [role=menuitemradio]:not([disabled])")];
     const i = all.indexOf(document.activeElement);
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); btn.current && btn.current.focus(); }
     else if (e.key === "ArrowDown") { e.preventDefault(); (all[(i + 1) % all.length] || all[0])?.focus(); }
@@ -32,8 +32,14 @@ export function Menu({ items, label, icon = "more", cls = "" }) {
     <button ref=${btn} type="button" class="icon-btn" aria-haspopup="menu" aria-expanded=${open ? "true" : "false"}
       aria-label=${label || t("app.more")} title=${label || t("app.more")} onClick=${() => setOpen(!open)}><${Icon} name=${icon} /></button>
     ${open ? html`<div data-trust="menu" ref=${list} class="menu-list" role="menu" aria-label=${label || t("app.more")} onKeyDown=${onKey}>
-      ${shown.map(item => html`<button key=${item.key} type="button" role="menuitem" class=${`menu-item${item.danger ? " danger" : ""}`}
-        disabled=${!!item.disabled} onClick=${() => choose(item)}>${item.icon ? html`<${Icon} name=${item.icon} size=${16} />` : null}<span>${item.label}</span></button>`)}
+      ${shown.map(item => item.heading
+        ? html`<div key=${item.key} class="menu-heading" role="presentation">${item.label}</div>`
+        : item.checked !== undefined
+          // #2196: one of a group of choices (Page colours): a radio item, the chosen one ticked.
+          ? html`<button key=${item.key} type="button" role="menuitemradio" aria-checked=${item.checked ? "true" : "false"} class="menu-item menu-radio"
+            disabled=${!!item.disabled} onClick=${() => choose(item)}><span class="menu-tick" aria-hidden="true">${item.checked ? html`<${Icon} name="check" size=${16} />` : null}</span><span>${item.label}</span></button>`
+          : html`<button key=${item.key} type="button" role="menuitem" class=${`menu-item${item.danger ? " danger" : ""}`}
+            disabled=${!!item.disabled} onClick=${() => choose(item)}>${item.icon ? html`<${Icon} name=${item.icon} size=${16} />` : null}<span>${item.label}</span></button>`)}
     </div>` : null}
   </div>`;
 }

@@ -221,8 +221,13 @@ to that instance's Log).
 - **Log** — [the Log tab](#the-log-tab).
 - **Details** — Configuration (display name, description, directory, bound to, tags; "Read only — change it in
   Settings." with **Edit in Settings**), Runtime (backend, model, effort, cost, context, 5 h and 7 d rate), Recent
-  activity, its identity card and widget. The ⋯ menu: Start / Restart / Stop instance, Pause / Wake, Colour…, and
+  activity, its identity card and widget. The ⋯ menu: Start / Restart / Stop instance, Pause / Wake, Colour…, **Page
+  colours** (#2196: the agent's choice / on the whole page / only its chat — host prefs `theme.pageByInstance`), and
   the theme lock/reset.
+- **Page colours (#2196):** an agent's theme with `page.on` (or a person's "on the whole page") colours the sidebar,
+  the header and the usage rail (a phone: drawer, header, tabs) while that agent's Chat/View/Log/Details is open —
+  colours only; status colours (Needs you count, state dots, errors, focus ring) never change. The header follows the
+  page, not the chat. Off with agents' themes off or `?safe=1`.
 
 Phone layout: bottom tabs Chat, Needs you, Fleet, Settings. Chat is current on any of an agent's pages and goes to its
 chat; View, Log and Details are the switch under the header.

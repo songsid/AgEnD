@@ -55,6 +55,7 @@ const HOST = {
   themes_shown: { key: "fx.show", store: (v: unknown) => (v === true ? null : v) },
   card_size: { key: "card.size", store: (v: unknown) => (v === "m" ? null : v) },
   card_sizes: { key: "card.sizeByInstance", store: (v: unknown) => (isObj(v) && !Object.keys(v).length ? null : v) },
+  page_colours: { key: "theme.pageByInstance", store: (v: unknown) => (isObj(v) && !Object.keys(v).length ? null : v) },   // #2196
   colour_places: { key: "color.show", store: (v: unknown) => (Array.isArray(v) && sameSet(v, DEFAULT_PLACEMENTS) ? null : v) },
   colours_off: { key: "color.off", store: (v: unknown) => (v === false ? null : v) },
   sidebar_widget: { key: "widget.sidebar", store: (v: unknown) => v },
@@ -94,6 +95,7 @@ export class WebSettingsTools {
       `Identity colours: ${host["color.off"] === true ? "turned off on this host" : `shown on ${places.length ? places.join(", ") : "nowhere"}${host["color.show"] === undefined ? " (the default)" : ""}`}.`,
       `Agents with a person's own colour: ${agents.filter((a) => a.color || a.show).map((a) => `${a.name} (${a.color ?? "their own colour"}${a.show ? `, on ${a.show.join(", ") || "nowhere"}` : ""})`).join("; ") || "none"}.`,
       `Identity cards: ${sizeWord[cardSize] ?? cardSize}${isObj(host["card.sizeByInstance"]) && Object.keys(host["card.sizeByInstance"]).length ? `, set apart: ${Object.entries(host["card.sizeByInstance"]).map(([n, s]) => `${n} ${sizeWord[s as string] ?? s}`).join(", ")}` : ""}.`,
+      `Page colours a person chose: ${isObj(host["theme.pageByInstance"]) && Object.keys(host["theme.pageByInstance"]).length ? Object.entries(host["theme.pageByInstance"]).map(([n, v]) => `${n} ${v === "page" ? "on the whole page" : "only its chat"}`).join(", ") : "none (each agent's own choice)"}.`,
       `Sidebar widget: ${isObj(host["widget.sidebar"]) ? `"${String((host["widget.sidebar"] as { spec?: { title?: unknown } }).spec?.title ?? "untitled")}"` : "none"}.`,
       `Custom CSS (${person === OPERATOR ? "the host operator" : person}): ${css.active ? `in force (version ${css.active.slice(0, 8)})` : "off"}${css.pending ? `, on trial (${Math.ceil(css.pending.remaining_ms / 1000)} s left): keep or revert it` : ""}; ${css.versions.length} saved version(s).`,
       `Mods installed: ${mods.mods.map((m) => `${m.name} ${m.version}`).join(", ") || "none"}; proposed by agents: ${proposals.map((p) => p.instance).join(", ") || "none"}.`,
@@ -103,7 +105,7 @@ export class WebSettingsTools {
     ];
     return {
       ok: true, summary, person, people: this.people(),
-      host: { themes_shown: host["fx.show"] !== false, card_size: cardSize, card_sizes: host["card.sizeByInstance"] ?? {}, colour_places: places,
+      host: { themes_shown: host["fx.show"] !== false, card_size: cardSize, card_sizes: host["card.sizeByInstance"] ?? {}, page_colours: host["theme.pageByInstance"] ?? {}, colour_places: places,
         colour_places_default: host["color.show"] === undefined, colours_off: host["color.off"] === true, sidebar_widget: host["widget.sidebar"] ?? null },
       agents,
       custom_css: { active: css.active, on_trial: css.pending !== null, trial: css.pending?.id ?? null, versions: css.versions.map((v) => ({ sha: v.sha, bytes: v.bytes })) },
@@ -123,6 +125,7 @@ export class WebSettingsTools {
     switch (change.what) {
       case "host": return this.host(change.set);
       case "agent_colour": return this.agentColour(change);
+      case "page_colours": return this.pageColours(change);
       case "banner_focus": return this.bannerFocus(change);
       case "custom_css": return this.css(person, change);
       case "mod": return this.mod(person, change);
@@ -167,6 +170,21 @@ export class WebSettingsTools {
     if (!Object.hasOwn(c, "focus")) return failed("banner_focus", "focus: 0 (top) … 100 (bottom), or null to follow the agent's");
     const w = this.deps.setBannerFocus(c.instance, c.focus);
     return w.ok ? { ok: true, instance: c.instance, focus: this.deps.bannerFocus(c.instance) } : failed(w.error, w.detail);
+  }
+
+  /**
+   * #2196: where one agent's theme colours go for the people on this host — the whole page, only its chat, or the
+   * agent's own choice (its theme.page.on) — as the chat's and Details' ⋯ → Page colours sets it.
+   */
+  private pageColours(c: Record<string, unknown>): Result {
+    if (typeof c.instance !== "string" || !this.deps.instances().includes(c.instance)) return failed("unknown_instance");
+    if (c.choice !== "agent" && c.choice !== "page" && c.choice !== "chat") return failed("page_colours", "choice: agent (its own), page (the whole page) or chat (only its chat)");
+    const now = this.deps.prefs.read(OPERATOR).values["theme.pageByInstance"];
+    const next: Record<string, unknown> = Object.create(null);
+    if (isObj(now)) for (const k of Object.keys(now)) if (Object.hasOwn(now, k) && k !== c.instance) next[k] = now[k];
+    if (c.choice !== "agent") next[c.instance] = c.choice;
+    const w = this.writePrefs(OPERATOR, { "theme.pageByInstance": Object.keys(next).length ? { ...next } : null });
+    return w.ok ? { ok: true, instance: c.instance, choice: c.choice } : w;
   }
 
   private agentColour(c: Record<string, unknown>): Result {

@@ -11,7 +11,8 @@ import { appStore, createStore, guestBadge, guestPage, useStore } from "./app-st
 import { navStore } from "./app-nav.js";
 import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, fleetEntryPath } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
-import { savePref } from "./app-prefs.js";
+import { onPrefsChanged, savePref } from "./app-prefs.js";
+import { applyPageTheme, pageNow, resolvedMode, themesStore } from "./app-themes.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { InstanceNav, RosterNav, namesStore, setNamesPrimary } from "./instance-nav.js";
 import { UsageRail, usageRailStore } from "./header-tools.js";
@@ -558,9 +559,43 @@ function Outlet({ route, seq, panels }) {
   return html`<${C} route=${route} navKey=${`${routeKey(route)}|${seq}|${lang()}`} />`;
 }
 
+/**
+ * #2196: the open agent's colours on the whole page (its theme's page section, or a person's choice), drawn on the
+ * shell in the same render that opens it — no fetch (the themes are on the page already), no flash, colours only, so
+ * no layout moves. Redrawn when the themes, the person's choices, the viewer's switch or the light/dark mode move.
+ */
+function usePageTheme(ref, route) {
+  useStore(themesStore);
+  const [, bump] = useState(0);
+  useEffect(() => onPrefsChanged((changed) => { if (changed.has("theme.pageByInstance") || changed.has("fx.show")) bump((n) => n + 1); }), []);
+  useEffect(() => {
+    const T = globalThis.AgendTheme;
+    const off = T && typeof T.onChange === "function" ? T.onChange(() => bump((n) => n + 1)) : null;
+    let mq = null;
+    try { mq = globalThis.matchMedia ? globalThis.matchMedia("(prefers-color-scheme: light)") : null; } catch { mq = null; }
+    const onMq = () => bump((n) => n + 1);
+    if (mq && typeof mq.addEventListener === "function") mq.addEventListener("change", onMq);
+    return () => { if (typeof off === "function") off(); if (mq && typeof mq.removeEventListener === "function") mq.removeEventListener("change", onMq); };
+  }, []);
+  const mode = resolvedMode();
+  const p = pageNow(mode, route);
+  const key = p ? `${mode}|${JSON.stringify(p)}` : "";
+  useLayoutEffect(() => { applyPageTheme(ref.current, p, mode); }, [key]);
+  // #2199: the agent open now, as body[data-agent] — for a person's own custom CSS to follow (body[data-agent="x"]
+  // { --bg-sidebar: … }); set and cleared in the same render as the page colours, whatever the themes switch says.
+  const agent = openInstanceOf(route);
+  useLayoutEffect(() => {
+    const body = typeof document !== "undefined" ? document.body : null;
+    if (!body || !body.dataset) return;
+    if (agent) body.dataset.agent = agent; else delete body.dataset.agent;
+  }, [agent]);
+}
+
 export function Shell({ panels, onNewInstance, viewOnly = false }) {
   const nav = useStore(navStore);
   const shell = useStore(shellStore);
+  const root = useRef(null);
+  usePageTheme(root, nav.route);
   const [, relang] = useState(0);
   // A language switch re-renders everything and gives the panel a new lease (its key includes the language).
   useEffect(() => onLang(() => relang(n => n + 1)), []);
@@ -575,7 +610,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
   }, []);
   const guest = guestPage();             // #1920: a guest's page — no operations, usage, pending changes or owner CSS
   const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");
-  return html`<div class=${cls}>
+  return html`<div ref=${root} class=${cls}>
     <a data-trust="navigation" class="skip" href="#main">${t("app.skip")}</a>
     <${Sidebar} route=${nav.route} onNewInstance=${onNewInstance} viewOnly=${viewOnly} />
     <div class="scrim" onClick=${closeDrawer} aria-hidden="true"></div>

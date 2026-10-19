@@ -8,7 +8,7 @@
  * failed call costs nothing. A person's reset and lock are never limited.
  */
 import { type AppearanceBucket, AppearanceLimiter, agentAppearanceEditAllowed } from "./web-appearance-policy.js";
-import { applyThemePatch, type Theme, THEME_DEFAULTS } from "./web-theme.js";
+import { applyThemePatch, STATUS_COLORS, type Theme, THEME_DEFAULTS } from "./web-theme.js";
 import { createHash, randomBytes } from "node:crypto";
 import { slotLimit, THEME_ASSET_SLOTS, type ThemeAssetSlot, type ThemeStore } from "./web-theme-store.js";
 import { ASSET_PART_BYTES, ASSET_UPLOAD_MAX_BYTES } from "./web-asset-parts.js";
@@ -55,6 +55,8 @@ export class WebAppearance {
       effects: r.placements.effects,
       theme: r.theme, by: r.by, locked: r.locked, agent_edit: agentAppearanceEditAllowed(this.webConfig()),
       defaults: THEME_DEFAULTS,
+      // #2196: never themed; a page theme (page.on) must leave each readable (3:1) on its sidebar and background.
+      status_colors: STATUS_COLORS,
       assets: r.assets.map(a => ({ id: a.id, slot: a.slot, bytes: a.bytes })),
       widgets: Object.fromEntries(AGENT_WIDGET_SLOTS.flatMap(slot => { const w = r.placements.widgets[slot]; return w ? [[slot, { spec: w.spec, data: w.data, by: w.by }]] : []; })),
       ambient: Object.fromEntries(AMBIENT_KINDS.flatMap(k => { const a = r.placements.ambient[k]; return a ? [[k, { spec: a.spec, by: a.by }]] : []; })),

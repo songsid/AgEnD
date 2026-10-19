@@ -352,7 +352,11 @@ Each agent has a colour you can find it by in the sidebar.
 
 An agent can give its own web chat a look: colours for light and dark, an accent, the bubbles' corners and border, a font, a background picture, its own picture, and the words it shows while working. It sets them with the `set_web_theme`, `set_web_theme_asset` and `reset_web_theme` tools (`agend-agent theme` from a shell).
 
-- **Only its own chat.** A theme changes that agent's chat panel and its picture and ring in the sidebar. It never changes the sidebar itself, the header, Settings or any other agent's chat.
+- **Its own chat, and optionally the whole page (#2196).** A theme changes that agent's chat panel and its picture and ring in the sidebar. The agent can also put its colours on **the whole page while its chat, View, Log or Details is open**: the sidebar, the header and the usage rail (on a phone, the drawer, the header and the bottom tabs). Open another agent and the page takes its look; open one without page colours, or anything else, and the page is in your own look again. The header follows the page: without page colours it is in your look, even while the chat below it is themed.
+  - **Colours only.** Never fonts, pictures, CSS or the layout, so switching never moves anything. AgEnD's status colours (the Needs you count, the state dots, errors, the focus ring) are never themed, and a page theme is refused unless text, its accent and those status colours stay readable on its sidebar and background.
+  - **Your choice wins.** A chat's or Details' **⋯ → Page colours**: *the agent's choice* (the default), *on the whole page* or *only its chat* — kept for this host, like the colour you pick for an agent.
+  - It never changes Settings or any other agent's chat.
+- **For your own custom CSS (#2199).** While an agent's chat, View, Log or Details is open, `<body>` carries `data-agent="<its instance name>"`; elsewhere it has none. It switches in the same moment as the page, with or without agents' themes shown, so your stylesheet can follow the agent you are looking at — for example `body[data-agent="atlas"] { --bg-sidebar: #e2f0ed; }`.
 - **Checked twice.** The host stores only values that pass the checks (fixed colour, font and border choices, text that stays readable in both modes). The page checks again before drawing, and drops anything else.
 - **Pictures stay on the host.** They are served from the dashboard itself, with their metadata removed, and never loaded from the internet.
 - **People decide.** In a chat's or Details' **⋯** menu:

@@ -67,7 +67,7 @@ describe("the registry: each key validated on its own, unknown keys refused", ()
     "nav.order": [{ item_type: "group", item_name: "Ops", sort_index: 0, group_name: null }, { item_type: "instance", item_name: "alpha", sort_index: 0, group_name: "Ops" }],
     "nav.collapsed": ["Ops"], "nav.filter": { q: "rev", status: ["working"], cli: ["claude-code"] }, "nav.sort": { mode: "recent", favs: "fixed" },
     "nav.favorites": ["alpha"], "preview.optIn": true, "names.primary": "instance", "fx.show": false,
-    "card.size": "l", "card.sizeByInstance": { alpha: "s", __proto__x: "m" },
+    "card.size": "l", "card.sizeByInstance": { alpha: "s", __proto__x: "m" }, "theme.pageByInstance": { alpha: "page", beta: "chat" },
     "color.show": ["name", "ring"], "color.off": true,
     "widget.sidebar": { spec: { v: 1, title: "Fleet", items: [{ type: "stat", label: "Idle", bind: "fleet.idle" }] }, data: {} },
   };
@@ -89,6 +89,7 @@ describe("the registry: each key validated on its own, unknown keys refused", ()
     "color.show": ["ring", ["ring", "ring"], ["glow"], [1], ["name", "bar", "ring", "name"]],
     "color.off": [false, "true", 1],
     "card.sizeByInstance": [[], { a: "xl" }, { "": "s" }, Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`n${i}`, "s"]))],
+    "theme.pageByInstance": [[], "page", { a: "on" }, { a: true }, { "": "page" }, Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`n${i}`, "page"]))],
     "widget.sidebar": ["x", { spec: { v: 1, title: "x", items: [{ type: "stat", label: "Cost", bind: "cost_usd" }] }, data: {} }, { spec: { v: 1, title: "x", items: [] }, data: {} }],
   };
   it("covers every key the store knows", () => {
