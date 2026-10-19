@@ -186,8 +186,13 @@ export class WebSettingsTools {
       return { ok: true, ...body };
     };
     switch (c.action) {
-      case "save": { const r = store.save(person, c.text); return r.ok ? done(r, { on_trial: true, previous: r.previous, note: "on trial on their screens: it goes back by itself unless kept — by them, or by you (keep) when they say so" }) : done(r, {}); }
-      case "keep": { const r = store.keep(person, store.state(person).pending?.id); return r.ok ? done(r, { active: r.active }) : done(r, {}); }
+      // #2198: an agent's save waits for the person's page; the 20 s keep window starts when it is on their screen.
+      case "save": { const r = store.save(person, c.text, { by: "agent" }); return r.ok ? done(r, { on_trial: true, previous: r.previous, note: "on trial: it waits until they open the dashboard (up to 10 minutes), then goes back by itself 20 s after it is on their screen unless kept — by them there, or by you (keep) when they say so. Kept too late, it is put back in force (as use of this version)." }) : done(r, {}); }
+      case "keep": {
+        const r = store.keepForAgent(person);
+        if (r.ok) return done(r, { active: r.active, ...(r.restored ? { note: "it had gone back: this version is in force again (as use)" } : {}) });
+        return r.error === "not_on_trial" ? failed("not_on_trial", "nothing on trial and no version that just went back: put a saved one back with use (version from get_web_settings' custom_css.versions)") : done(r, {});
+      }
       case "revert": { const r = store.revertTrial(person, store.state(person).pending?.id); return r.ok ? done(r, { active: r.active }) : done(r, {}); }
       case "off": { const r = store.restore(person, null); return r.ok ? done(r, { active: r.active }) : done(r, {}); }
       case "use": { const r = store.restore(person, c.version); return r.ok ? done(r, { active: r.active }) : done(r, {}); }

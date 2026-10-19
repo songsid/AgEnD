@@ -19,6 +19,13 @@ import { checkOwnerCss, OWNER_CSS_ASSET_ID, ownerCssAssetRefs, serializeOwnerCss
 export const OWNER_CSS_VERSIONS = 5;
 /** How long a saved version waits to be kept (the page asks for 15 s; the host allows a little more for the round trip). */
 export const OWNER_CSS_KEEP_MS = 20_000;
+/**
+ * #2198: a version an agent saved (General, set_web_settings) waits this long for a person's page to show it. The keep
+ * window above is a dead-man switch for CSS that hides its own Keep button: it starts when a page shows the trial, not
+ * when the agent saves it — an agent's save reaches the person only when they open the dashboard, and their "keep it"
+ * comes back through a chat round trip (~40 s). Never shown by then, it goes back without having been on any screen.
+ */
+export const OWNER_CSS_AGENT_WAIT_MS = 10 * 60_000;
 export const OWNER_CSS_MAX_ASSETS = 16;
 export const OWNER_CSS_MAX_ASSET_BYTES = 1024 * 1024;   // all of a person's assets together
 const ASSET_KINDS: ReadonlySet<MediaKind> = new Set(["png", "webp", "jpeg", "gif", "woff2"]);
@@ -41,8 +48,13 @@ export interface OwnerCssPointer {
  * One trial: `id` is random per save, so the same text saved twice is two trials — a keep or revert names its trial,
  * never content (#1883 r2). `css.trial` holds the id, so a new trial always moves the person's revision.
  */
-interface Pending { id: string; sha: string; previous: string | null; at: number; until: number }
-interface Index { versions: Array<{ sha: string; at: number }>; assets: Array<{ id: string; kind: MediaKind; bytes: number }>; pending?: Pending }
+interface Pending { id: string; sha: string; previous: string | null; at: number; until: number; by?: "agent"; shown?: true }
+/**
+ * #2198: how the last trial ended — kept, reverted by someone (Revert), or expired (its window ran out). An agent's keep
+ * may put back the one that just expired (as `use` of it), never one a person or agent reverted on purpose.
+ */
+interface LastTrial { id: string; sha: string; at: number; how: "keep" | "revert" | "expire"; shown: boolean }
+interface Index { versions: Array<{ sha: string; at: number }>; assets: Array<{ id: string; kind: MediaKind; bytes: number }>; pending?: Pending; last?: LastTrial }
 export interface OwnerCssState {
   /** B2 admission evidence; nullable active alone cannot distinguish missing from unreadable. */
   effectState: "off" | "on" | "unknown";
@@ -51,7 +63,7 @@ export interface OwnerCssState {
    * The active version is on trial (`id`): kept within `remaining_ms` — the host's own clock, so a device's clock never
    * stretches or shortens it — or reverted to `previous`.
    */
-  pending: { id: string; sha: string; previous: string | null; remaining_ms: number } | null;
+  pending: { id: string; sha: string; previous: string | null; remaining_ms: number; waiting?: true } | null;
   /** The active version's text as uploaded (for the editor). */
   text: string | null;
   versions: Array<{ sha: string; at: number; bytes: number }>;
@@ -81,13 +93,16 @@ export class OwnerCssStore {
       const versions = Array.isArray(raw.versions) ? raw.versions.filter(v => v && SHA.test(String(v.sha)) && Number.isFinite(v.at)) : [];
       const assets = Array.isArray(raw.assets) ? raw.assets.filter(a => a && SHA.test(String(a.id)) && ASSET_KINDS.has(a.kind) && Number.isSafeInteger(a.bytes)) : [];
       const p = raw.pending;
-      const pending = p && SHA.test(String(p.id)) && SHA.test(String(p.sha)) && (p.previous === null || SHA.test(String(p.previous))) && Number.isFinite(p.at) && Number.isFinite(p.until) ? p : undefined;
+      const pending = p && SHA.test(String(p.id)) && SHA.test(String(p.sha)) && (p.previous === null || SHA.test(String(p.previous))) && Number.isFinite(p.at) && Number.isFinite(p.until)
+        ? { id: p.id, sha: p.sha, previous: p.previous, at: p.at, until: p.until, ...(p.by === "agent" ? { by: "agent" as const } : {}), ...(p.shown === true ? { shown: true as const } : {}) } : undefined;
+      const l = raw.last;
+      const last = l && SHA.test(String(l.id)) && SHA.test(String(l.sha)) && Number.isFinite(l.at) && (l.how === "keep" || l.how === "revert" || l.how === "expire") ? { id: l.id, sha: l.sha, at: l.at, how: l.how, shown: l.shown === true } : undefined;
       if (evidence) evidence.known = Array.isArray(raw.versions) && Array.isArray(raw.assets)
         && versions.length === raw.versions.length && versions.every(v => typeof v.sha === "string")
         && assets.length === raw.assets.length && assets.every(a => typeof a.id === "string" && a.bytes >= 0)
         && (raw.pending === undefined || !!pending && typeof pending.id === "string" && typeof pending.sha === "string"
           && (pending.previous === null || typeof pending.previous === "string"));
-      return { versions, assets, ...(pending ? { pending } : {}) };
+      return { versions, assets, ...(pending ? { pending } : {}), ...(last ? { last } : {}) };
     } catch (err) { if (evidence) evidence.known = (err as NodeJS.ErrnoException)?.code === "ENOENT"; return { versions: [], assets: [] }; }
   }
   private writeIndex(person: string, index: Index): void {
@@ -110,23 +125,24 @@ export class OwnerCssStore {
     if (!p) return;
     const now = this.now();
     if (now <= p.until && now >= p.at) return;
-    this.endTrial(person, index, "revert");
+    this.endTrial(person, index, "expire");
   }
   /**
    * End the trial in `index`: "keep" leaves its version in force; "revert" puts back the one before it (if that one is
    * still kept, else none). Either way `css.trial` is cleared in the same write, so every device hears of it.
    */
-  private endTrial(person: string, index: Index, how: "keep" | "revert"): boolean {
+  private endTrial(person: string, index: Index, how: "keep" | "revert" | "expire"): boolean {
     const p = index.pending;
     if (!p) return false;
     const change: { active?: string | null; trial: null } = { trial: null };
-    if (how === "revert" && this.pointer.ownerCssActive(person) === p.sha) {
+    if (how !== "keep" && this.pointer.ownerCssActive(person) === p.sha) {
       change.active = p.previous && index.versions.some(v => v.sha === p.previous) ? p.previous : null;
     }
     if (!this.pointer.setOwnerCss(person, change).ok) return false;    // the pointer cannot be written: try at the next read
     const { pending: _done, ...rest } = index;
     void _done;
-    this.writeIndex(person, rest);
+    // Shown: a person's own trial always was (their page saved it); an agent's once a page said so.
+    this.writeIndex(person, { ...rest, last: { id: p.id, sha: p.sha, at: this.now(), how, shown: p.by !== "agent" || p.shown === true } });
     return true;
   }
 
@@ -180,11 +196,13 @@ export class OwnerCssStore {
     const index = this.readIndex(person);
     const active = this.pointer.ownerCssActive(person);
     const kept = active && index.versions.some(v => v.sha === active) ? active : null;
+    const p = index.pending, waiting = !!p && p.by === "agent" && !p.shown;
     return {
       effectState: this.effectState(person),
       active: kept,
-      pending: index.pending && index.pending.sha === kept
-        ? { id: index.pending.id, sha: index.pending.sha, previous: index.pending.previous, remaining_ms: Math.max(0, Math.min(OWNER_CSS_KEEP_MS, index.pending.until - this.now())) }
+      // #2198: an agent's trial no page has shown yet waits (`waiting`): the page that shows it says so (shown()).
+      pending: p && p.sha === kept
+        ? { id: p.id, sha: p.sha, previous: p.previous, remaining_ms: Math.max(0, Math.min(waiting ? OWNER_CSS_AGENT_WAIT_MS : OWNER_CSS_KEEP_MS, p.until - this.now())), ...(waiting ? { waiting: true as const } : {}) }
         : null,
       text: kept ? this.readText(person, kept) : null,
       versions: index.versions.map(v => ({ ...v, bytes: Buffer.byteLength(this.readText(person, v.sha) ?? "", "utf8") })),
@@ -197,7 +215,7 @@ export class OwnerCssStore {
    * Check, store and select a new version — on trial until kept (keep()). `previous`: the version in force before,
    * which an unkept trial goes back to.
    */
-  save(person: string, text: unknown): OwnerCssResult<{ sha: string; previous: string | null; trial: string }> {
+  save(person: string, text: unknown, opts: { by?: "agent" } = {}): OwnerCssResult<{ sha: string; previous: string | null; trial: string }> {
     if (typeof text !== "string") return { ok: false, status: 400, error: "css: text" };
     const index = this.readIndex(person);
     const checked = checkOwnerCss(text, this.assetIds(index));
@@ -216,7 +234,9 @@ export class OwnerCssStore {
     const dropped = versions.filter(v => !keepList.includes(v));
     const at = this.now();
     const trial = randomBytes(16).toString("hex");
-    this.writeIndex(person, { ...index, versions: keepList, pending: { id: trial, sha, previous, at, until: at + OWNER_CSS_KEEP_MS } });
+    // #2198: an agent's save waits for a page to show it (OWNER_CSS_AGENT_WAIT_MS); a person's, on their page, is shown.
+    const pending: Pending = opts.by === "agent" ? { id: trial, sha, previous, at, until: at + OWNER_CSS_AGENT_WAIT_MS, by: "agent" } : { id: trial, sha, previous, at, until: at + OWNER_CSS_KEEP_MS };
+    this.writeIndex(person, { ...index, versions: keepList, pending });
     const set = this.pointer.setOwnerCss(person, { active: sha, trial });
     if (!set.ok) return set;
     for (const v of dropped) { try { unlinkSync(join(this.dir(person), `${v.sha}.css`)); } catch { /* already gone */ } }
@@ -229,6 +249,45 @@ export class OwnerCssStore {
     this.settle(person);
     const index = this.readIndex(person);
     return index.pending && index.pending.id === id && this.pointer.ownerCssActive(person) === index.pending.sha ? index : null;
+  }
+
+  /**
+   * #2198: a page is showing this trial (its stylesheet loaded on screen). An agent's waiting trial starts its keep window
+   * now — the dead-man switch, from when a person can see it. Already shown, or a person's own trial: as it is.
+   */
+  shown(person: string, trial: unknown): OwnerCssResult<{ remaining_ms: number; started: boolean }> {
+    if (typeof trial !== "string" || !SHA.test(trial)) return { ok: false, status: 400, error: "trial" };
+    const index = this.trialOf(person, trial);
+    if (!index) return { ok: false, status: 409, error: "not_on_trial" };
+    const p = index.pending!;
+    if (p.by !== "agent" || p.shown) return { ok: true, remaining_ms: Math.max(0, Math.min(OWNER_CSS_KEEP_MS, p.until - this.now())), started: false };
+    const now = this.now();
+    this.writeIndex(person, { ...index, pending: { ...p, shown: true, until: now + OWNER_CSS_KEEP_MS } });
+    return { ok: true, remaining_ms: OWNER_CSS_KEEP_MS, started: true };
+  }
+
+  /**
+   * #2198: an agent's "keep" (the person said so in chat). The trial still on: kept. The one that just went back by
+   * itself — the most recent trial, expired within OWNER_CSS_AGENT_WAIT_MS, its version still saved — is put back in
+   * force, as `use` of it — if a page had shown it. One reverted on purpose (Revert), one no screen ever showed, or
+   * anything else: not_on_trial (an earlier version is `use`).
+   */
+  keepForAgent(person: string): OwnerCssResult<{ active: string; restored: boolean }> {
+    this.settle(person);
+    const index = this.readIndex(person);
+    if (index.pending) {
+      const kept = this.keep(person, index.pending.id);
+      return kept.ok ? { ok: true, active: kept.active, restored: false } : kept;
+    }
+    const last = index.last, now = this.now();
+    // Never shown (it expired waiting): nobody saw it — it is not put in force without its keep window.
+    if (last && last.how === "expire" && last.shown && now >= last.at && now - last.at <= OWNER_CSS_AGENT_WAIT_MS && index.versions.some(v => v.sha === last.sha)) {
+      const r = this.restore(person, last.sha);
+      if (!r.ok) return r;
+      this.writeIndex(person, { ...this.readIndex(person), last: { ...last, how: "keep" } });
+      return { ok: true, active: last.sha, restored: true };
+    }
+    return { ok: false, status: 409, error: "not_on_trial" };
   }
 
   /** Keep this trial (the person answered "Keep"). Too late, or another trial (even of the same text): 409. */
