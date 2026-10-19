@@ -1149,6 +1149,12 @@ that is what you want. The "update available" notice follows the same channel. A
 a newer beta: beta users stay on the beta line after a stable ships. An alpha install is told about a newer alpha
 or a stable of a later minor, never about a beta.
 
+The chat that asked for the update gets one message that follows it through the restart, ending in "✅ AgEnD updated
+to vX; N/M agents running". On Telegram that message is edited at most every 6 s (a group allows a bot about 20
+messages a minute, and every topic shares it with the fleet's other startup messages). When the last step can't land
+during startup (a rate-limit window, or the connection not up yet), startup goes on and the final step is retried for
+up to 10 minutes: edited in place, or posted as a new message if the old one can't be edited (#2175).
+
 A release is a pushed `v*` tag. The publish workflow maps it strictly: `vX.Y.Z` → `@latest`, `vX.Y.Z-beta.N`
 → `@beta`, `vX.Y.Z-alpha.N` → `@alpha`. Any other tag (an `-rc.N`, a typo) fails the job before anything is
 built, and a stable older than the current `@latest` is refused. When a minor goes stable (2.2.0), point

@@ -1202,6 +1202,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // Adapter restart: prevents re-entrant restart attempts
   private adapterRestarting = new Set<string>();
   // Adapter isolation: track state per adapter for retry + visibility
+  /** #2175: this boot's progress message, whose completion may still be owed by its background retry. */
+  private startupProgress: RestartProgress | null = null;
   private adapterState = new Map<string, { status: "connected" | "retrying" | "failed"; retryCount: number; lastError?: string; retryTimer?: ReturnType<typeof setTimeout> }>();
   /** Web Settings secret rotation is deliberately separate from reconnect
    * recovery: a rotation must build a fresh provider client with the new token,
@@ -6871,6 +6873,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!adapter) return; // retry on a later tick
       await adapter.editMessage(target.chatId, target.messageId, text, target.threadId);
       this.lastUpdateProgressText = text;
+      // #2175: this text carries the completion too; a completion still owed by the background retry must not
+      // overwrite it later.
+      this.startupProgress?.cancelDeferredTerminal();
     }
     const verdict = cleanupWatchVerdict(readUpdateProgress(this.dataDir), watch.receipt);
     if (verdict.action === "drop") {
@@ -7285,6 +7290,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger,
       { mode: pendingProgressOperation === "full-restart" ? "reload" : pendingUpdateProgress ? "update" : "restart" },
     );
+    this.startupProgress = startupProgress;
 
     if (generals.length > 0) {
       for (const [name, cfg] of generals) {
