@@ -1,7 +1,7 @@
 ---
 name: web-appearance
 description: How you look on the AgEnD web dashboard — check it, change your own theme, identity card, identity colour and widgets, set an ambient effect (falling petals, click stars), play Canvas Worker effects in your chat (and offer a Try), preview the result, share it as a mod; and, for General, changing Settings → Web appearance for the user
-roles: [general, worker]
+roles: [general, worker, classic]
 ---
 
 ## What it is

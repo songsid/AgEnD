@@ -1,5 +1,5 @@
 import type { PaneContextSource } from "./pane-context-cache.js";
-import { AGENT_WHATS_NEW, agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, whatsNewNotice } from "./agent-whats-new.js";
+import { AGENT_WHATS_NEW, agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, type WhatsNewAudience, whatsNewNotice } from "./agent-whats-new.js";
 import { join, dirname, basename, resolve } from "node:path";
 import { checkoutTarget, readCheckouts, releaseCandidate, reposRoot, verifyWorktree, writeCheckouts } from "./repo-worktree-guard.js";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
@@ -11299,15 +11299,34 @@ export class Daemon extends EventEmitter {
     const ids = pending.ids.filter(id => !known.has(id));
     if (!ids.length) { this.pendingWhatsNew = null; return null; }
     if (ids.length === pending.ids.length) return pending;
-    const narrowed = { notice: whatsNewNotice(pending.version, AGENT_WHATS_NEW.filter(e => ids.includes(e.id))), ids, version: pending.version };
+    // #2163: rebuilt as planned — only the entries this instance's roles are told; the rest are recorded with them.
+    const roles = this.whatsNewRoles();
+    const shown = AGENT_WHATS_NEW.filter(e => ids.includes(e.id) && (!e.audience || e.audience.some(r => roles.includes(r))));
+    if (!shown.length) {
+      this.pendingWhatsNew = null;
+      try { recordWhatsNew(this.instanceDir, ids, pending.version); } catch (err) { this.logger.warn({ err }, "what's-new record not written — the notice may repeat once"); }
+      return null;
+    }
+    const narrowed = { notice: whatsNewNotice(pending.version, shown), ids, version: pending.version };
     this.pendingWhatsNew = narrowed;
     return narrowed;
+  }
+
+  /**
+   * #2163: who this instance is to the what's-new notices — a ClassicBot room's agent, General, or a fleet worker (with
+   * `coordinator` too when its tool set is coordinator or full, the ones that carry get_/set_web_settings).
+   */
+  private whatsNewRoles(): WhatsNewAudience[] {
+    if (this.runtimeIdentity?.kind === "classic") return ["classic"];
+    if (this.config.general_topic === true || this.name === "general") return ["general"];
+    const set = resolveToolSet(this.config, this.name);
+    return set === "coordinator" || set === "full" ? ["worker", "coordinator"] : ["worker"];
   }
 
   /** #1633: what this instance has not been told about its AgEnD version yet (see agent-whats-new.ts). */
   private prepareWhatsNew(fresh: boolean, version: string | null = agendVersion()): void {
     try {
-      const plan = planWhatsNew({ record: readWhatsNewRecord(this.instanceDir), fresh, version });
+      const plan = planWhatsNew({ record: readWhatsNewRecord(this.instanceDir), fresh, version, roles: this.whatsNewRoles() });
       if (!plan) { this.pendingWhatsNew = null; return; }
       if ("silent" in plan) { recordWhatsNew(this.instanceDir, plan.silent, plan.version); this.pendingWhatsNew = null; return; }
       this.pendingWhatsNew = plan;

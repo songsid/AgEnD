@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { splitFlags } from "./cli-flags.js";
 import { agentTokenHeader } from "./agent-token-header.js";
 import { readAgentFile } from "./agent-file-read.js";
+import { listBundledSkills, readBundledSkill } from "./bundled-skills.js";
 import { ASSET_UPLOAD_MAX_BYTES, MOD_FILE, MOD_MAX_PARTS, MOD_UPLOAD_MAX_BYTES, receiveFiles, receivePreview, sendAssetInParts, THEME_ASSET_SLOTS, writeModFile, writePreview } from "./web-asset-parts.js";
 
 const PORT = parseInt(process.env.AGEND_PORT ?? "19280", 10);
@@ -96,6 +97,14 @@ async function main(): Promise<void> {
     : first === "mod" ? `mod-${given[0] ?? ""}` : first === "ambient" ? `ambient-${given[0] ?? ""}` : first;
   const rest = first === "theme" || first === "widget" || first === "effect" || first === "mod" || first === "ambient" || (first === "appearance" && given.length) ? given.slice(1) : given;
   const widgetData = first === "widget" && given[0] === "data";
+  // #2163: `skill [name]` reads a skill AgEnD ships, locally (no fleet, no instance needed): the list, or one whole.
+  if (first === "skill") {
+    if (!given[0]) { for (const s of listBundledSkills()) console.log(`${s.name}\t${s.description}`); return; }
+    const r = readBundledSkill(given[0]);
+    if (!r.ok) die(r.error);
+    process.stdout.write(r.text.endsWith("\n") ? r.text : r.text + "\n");
+    return;
+  }
   if (!INSTANCE) die("AGEND_INSTANCE_NAME not set");
 
   let args: Record<string, unknown> = {};

@@ -1,7 +1,7 @@
 ---
 name: persona-emoji
 description: Pick your own persona emoji — list what your platform accepts, choose one that stands for you, set it
-roles: [worker]
+roles: [worker, classic]
 ---
 
 ## What it is

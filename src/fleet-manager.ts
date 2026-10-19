@@ -31,7 +31,7 @@ import { createServer, type Server } from "node:http";
 import { Worker } from "node:worker_threads";
 import { ProbeWorkerPool, type ProbeWorker } from "./probe-worker-pool.js";
 import type { BackendProbeInput, BackendProbeResult } from "./backend/cli-env-probe.js";
-import { join, dirname, basename, delimiter, isAbsolute, resolve as resolvePath } from "node:path";
+import { join, dirname, basename, delimiter, isAbsolute, relative, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
@@ -391,7 +391,8 @@ import {
 
 import { getTmuxSession } from "./config.js";
 
-type ManagedSkillRole = "general" | "worker";
+/** #2163: `classic` — a ClassicBot room's agent: only the skills about its own look and the dashboard. */
+type ManagedSkillRole = "general" | "worker" | "classic";
 
 export function resolveReplyThreadId(
   argsThreadId: unknown,
@@ -443,6 +444,16 @@ export function selectLruEvictions(
  * fleet.yaml. Keep in sync with `uniqueInstanceName` — every name it emits
  * must match here, or a deleted instance's CLI is left running (#1305 P2-3).
  */
+/**
+ * #2163: whether `dir` is inside AgEnD's own workspaces (<AGEND_HOME>/workspaces/<name>/…), compared after resolving
+ * symlinks on both sides (a link elsewhere is not inside). A folder that does not exist yet is judged by its path.
+ */
+export function insideManagedWorkspaces(dir: string, agendHome: string = getAgendHome()): boolean {
+  const real = (p: string) => { try { return realpathSync(p); } catch { return resolvePath(p); } };
+  const rel = relative(real(join(agendHome, "workspaces")), real(dir));
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
 export function isOrphanInstanceWindowName(name: string): boolean {
   return /-t\d+$/.test(name) || /^classic-/.test(name);
 }
@@ -5014,6 +5025,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // workspace must not turn an otherwise valid worker startup into a
         // fleet outage.
         this.logger.warn({ err, name, backend }, "Failed to sync worker skills — continuing startup");
+      }
+    } else if (kind === "classic") {
+      // #2163: a Classic bot gets only the skills marked `classic` (its own look, the dashboard) — never the fleet's
+      // coordination playbooks (#557 kept those out of end-user bots) — and only into a workspace AgEnD manages: the
+      // room's own folder under <AGEND_HOME>/workspaces/. Anywhere else, nothing is written; `agend-agent skill <name>`
+      // reads any bundled skill on demand.
+      try {
+        const skillsWorkDir = this.resolveKnowledgeWorkDir(config.working_directory, backend, name);
+        if (insideManagedWorkspaces(skillsWorkDir)) measureSyncWork("fleet.classicSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "classic"));
+        else this.logger.debug({ name, skillsWorkDir }, "Classic workspace is not AgEnD-managed — no skills published");
+      } catch (err) {
+        this.logger.warn({ err, name, backend }, "Failed to sync classic skills — continuing startup");
       }
     }
     const receipt = execution ? this.classicSettingsOwners.get(execution) : undefined;
@@ -16609,9 +16632,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     const eligible = bundled.filter(name => {
       const roles = this.readManagedSkillRoles(join(srcSkills, name, "SKILL.md"));
-      // General is the coordinator and receives both coordinator and worker
-      // playbooks. Workers receive only skills explicitly marked for workers.
-      return role === "general" || roles.includes("worker");
+      // General is the coordinator and receives every playbook. Workers and Classic bots receive only skills
+      // explicitly marked for their role (#2163).
+      return role === "general" || roles.includes(role);
     });
     const managed: string[] = [];
 
@@ -16668,9 +16691,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (!frontmatter || frontmatter.roles === undefined) return fallback;
       if (!Array.isArray(frontmatter.roles)) throw new Error("roles must be an array");
       const roles = [...new Set(frontmatter.roles)]
-        .filter((value): value is ManagedSkillRole => value === "general" || value === "worker");
+        .filter((value): value is ManagedSkillRole => value === "general" || value === "worker" || value === "classic");
       if (roles.length !== frontmatter.roles.length || roles.length === 0) {
-        throw new Error("roles must contain only general and/or worker");
+        throw new Error("roles must contain only general, worker and/or classic");
       }
       return roles;
     } catch (err) {
