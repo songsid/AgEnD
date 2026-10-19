@@ -425,15 +425,21 @@ export function readStatuslineContextPct(dataDir: string, instanceName: string):
   return measureSyncWork("topic.readStatuslineContextPct", () => readStatuslineContextPctSync(dataDir, instanceName));
 }
 function readStatuslineContextPctSync(dataDir: string, instanceName: string): number | null {
-  try {
-    const statusFile = join(dataDir, "instances", instanceName, "statusline.json");
-    if (!existsSync(statusFile)) return null;
-    const data = JSON.parse(readFileSync(statusFile, "utf-8"));
-    const pct = data.context_window?.used_percentage;
-    return clampContextPercent(pct);
-  } catch {
-    return null;
-  }
+  return statuslineContextPct(readStatuslineJson(dataDir, instanceName));
+}
+/**
+ * #1956 step 3: an instance's statusline.json, parsed — undefined when there is none or it is not JSON. A caller that
+ * needs several of its fields reads it once (the fleet's status read it three times per instance per build).
+ */
+export function readStatuslineJson(dataDir: string, instanceName: string): unknown {
+  // One call: a missing file is the read's ENOENT (no existsSync first).
+  try { return JSON.parse(readFileSync(join(dataDir, "instances", instanceName, "statusline.json"), "utf-8")); }
+  catch { return undefined; }
+}
+/** The context percentage a parsed statusline reports (readStatuslineContextPct's rule). */
+export function statuslineContextPct(data: unknown): number | null {
+  try { return clampContextPercent((data as { context_window?: { used_percentage?: unknown } } | null | undefined)?.context_window?.used_percentage); }
+  catch { return null; }
 }
 
 /**
@@ -445,14 +451,14 @@ export function readStatuslineModel(dataDir: string, instanceName: string): stri
   return measureSyncWork("topic.readStatuslineModel", () => readStatuslineModelSync(dataDir, instanceName));
 }
 function readStatuslineModelSync(dataDir: string, instanceName: string): string | null {
+  return statuslineModel(readStatuslineJson(dataDir, instanceName));
+}
+/** The model a parsed statusline reports (readStatuslineModel's rule). */
+export function statuslineModel(data: unknown): string | null {
   try {
-    const statusFile = join(dataDir, "instances", instanceName, "statusline.json");
-    if (!existsSync(statusFile)) return null;
-    const data = JSON.parse(readFileSync(statusFile, "utf-8"));
-    const id = typeof data.model?.id === "string" ? data.model.id.trim() : "";
-    const displayName = typeof data.model?.display_name === "string"
-      ? data.model.display_name.trim()
-      : "";
+    const model = (data as { model?: { id?: unknown; display_name?: unknown } } | null | undefined)?.model;
+    const id = typeof model?.id === "string" ? model.id.trim() : "";
+    const displayName = typeof model?.display_name === "string" ? model.display_name.trim() : "";
     if (displayName && id && displayName !== id) return `${displayName} (${id})`;
     return id || displayName || null;
   } catch {
@@ -501,10 +507,11 @@ export function resolveInstanceContext(
   dataDir: string,
   instanceName: string,
   backend: string,
-  opts?: { bypassCache?: boolean; source?: import("./pane-context-cache.js").PaneContextSource | null },
+  opts?: { bypassCache?: boolean; source?: import("./pane-context-cache.js").PaneContextSource | null; statusline?: unknown },
 ): { context: number | null; tokenRatio: TokenContextRatio | null } {
   if (backend === "claude-code") {
-    const fromFile = readStatuslineContextPct(dataDir, instanceName);
+    // #1956: a caller that already read the statusline passes it (`statusline` present, even undefined: no file).
+    const fromFile = opts && "statusline" in opts ? statuslineContextPct(opts.statusline) : readStatuslineContextPct(dataDir, instanceName);
     if (fromFile != null) return { context: fromFile, tokenRatio: null };
   }
 
