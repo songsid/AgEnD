@@ -83,6 +83,8 @@ No configuration is needed.
 
 After an upgrade, each existing instance gets one short notice delivered just before the next message it receives — never in the middle of a turn, never to an instance nobody writes to. The notice lists agent-facing changes with their exact parameter names and tells the agent to reload any tool description that looks older than the current version. Each item is sent at most once per instance; the record survives daemon restarts. New instances start with the current tools and receive nothing. A version with no agent-facing changes sends nothing.
 
+**Who is told what, and the skills it names (2.3 beta, #2163).** An item meant for General or for coordinators (the web-settings tools, for example) reaches only General and instances with the coordinator or full tool set; the others record it as known without being told. A notice that names a skill also says how to read it anywhere: `agend-agent skill <name>` prints a skill AgEnD ships, and `agend-agent skill` lists them. The skills are published as files by role: General gets them all, fleet workers the ones marked for workers, and a ClassicBot room's agent only `web-appearance`, `persona-emoji` and `web-dashboard`, and only into its own AgEnD-managed folder under `<AGEND_HOME>/workspaces/`. A Classic folder elsewhere gets nothing written, nor does a link inside that folder to one elsewhere.
+
 ## Instance status indicators
 
 `agend ls` (columns Name, Backend, Status, Team, Src, Ctx, Mem, Activity) and the `/status` chat command show one state per instance. The state comes from the daemon's execution state (idle / working / stuck / paused) combined with the lifecycle (running / paused / stopped / crashed):

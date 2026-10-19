@@ -83,6 +83,8 @@ instance 啟動時，daemon 會把剛組好的 fleet 指示，和上次告訴 ag
 
 升級後，每個既有的 instance 會在收到下一則訊息前收到一則簡短通知——不會在 turn 進行中插入，也不會發給沒人傳訊息的 instance。通知列出與 agent 相關的變更與確切參數名稱，並提醒重新載入看起來比目前版本還舊的工具說明。每一項每個 instance 只會收到一次；紀錄在 daemon 重啟後仍保留。新 instance 一開始就是最新的工具，不會收到通知。沒有 agent 相關變更的版本不會發送任何通知。
 
+**誰會收到哪些項目，以及提到的 skill（2.3 beta，#2163）。** 給 General 或 coordinator 的項目（例如網頁設定工具）只會送給 General，以及工具組為 coordinator 或 full 的 instance；其他 instance 會直接記為已知，不會收到。通知若提到某個 skill，也會說明在任何地方都能讀取的方式：`agend-agent skill <name>` 會印出 AgEnD 內建的 skill，`agend-agent skill` 則列出全部。Skill 依角色以檔案發佈：General 會拿到全部，fleet worker 拿到標給 worker 的那些，ClassicBot 房間的 agent 只拿到 `web-appearance`、`persona-emoji` 與 `web-dashboard`，而且只寫進它自己在 `<AGEND_HOME>/workspaces/` 底下、由 AgEnD 管理的資料夾；位於其他位置的 Classic 資料夾什麼都不會寫入，資料夾裡連到別處的連結也一樣。
+
 ## Instance 狀態圖示 (Instance status indicators)
 
 `agend ls`（欄位為 Name、Backend、Status、Team、Src、Ctx、Mem、Activity）和聊天裡的 `/status` 指令，每個 instance 都只顯示一種狀態。這個狀態由 daemon 的執行狀態（idle / working / stuck / paused）和生命週期（running / paused / stopped / crashed）合併而成：

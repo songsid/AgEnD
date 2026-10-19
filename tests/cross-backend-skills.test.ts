@@ -207,7 +207,7 @@ describe("cross-backend skill publishing", () => {
     expect((fm as any).lifecycle.start).toHaveBeenCalledOnce();
   });
 
-  it("Classic startup does not publish bundled skills", async () => {
+  it("Classic startup publishes nothing into a workspace AgEnD does not manage (#2163: outside <AGEND_HOME>/workspaces/)", async () => {
     const config: InstanceConfig = {
       ...DEFAULT_INSTANCE_CONFIG,
       working_directory: workDir,

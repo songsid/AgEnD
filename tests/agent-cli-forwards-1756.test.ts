@@ -22,7 +22,7 @@ async function client() {
   await new Promise<void>((r, j) => { server.once("error", j); server.listen(0, "127.0.0.1", r); });
   const port = (server.address() as { port: number }).port;
   // Real client source transpiled to its own private module tree. Only a loopback stub HTTP server is reachable.
-  for (const name of ["agent-cli", "cli-flags", "agent-token-header", "agent-file-read", "instance-names", "web-asset-parts"]) {   // #1629: theme asset reads its file here and sends it in parts
+  for (const name of ["agent-cli", "cli-flags", "agent-token-header", "agent-file-read", "instance-names", "web-asset-parts", "bundled-skills"]) {   // #2163: `skill` reads bundled skills   // #1629: theme asset reads its file here and sends it in parts
     const source = readFileSync(join(import.meta.dirname, "../src/" + name + ".ts"), "utf8");
     writeFileSync(join(root, name + ".js"), ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText);
   }

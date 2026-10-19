@@ -18,12 +18,19 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+/**
+ * #2163: who an entry is for — General, an instance with the coordinator or full tool set, a fleet worker, a ClassicBot
+ * room's agent. No audience: everyone.
+ */
+export type WhatsNewAudience = "general" | "coordinator" | "worker" | "classic";
 export interface WhatsNewEntry {
   /** Stable: the record keeps it. */
   readonly id: string;
   /** The first AgEnD version that has it. */
   readonly since: string;
   readonly text: string;
+  /** #2163: only these roles are told; the others record it as known (never pending, never shown). */
+  readonly audience?: readonly WhatsNewAudience[];
 }
 
 export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
@@ -53,7 +60,7 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // 2.3.0-beta.1 hears this short line once more on its next update.
   { id: "2.3-web-appearance-topic", since: "2.3.0-beta.2",
     text: "Web appearance — your own look on the web dashboard: theme, identity card and identity colour, widgets, mods, and Canvas Worker effects with Try (`get_web_appearance`, `set_web_theme`, `set_web_widget`, `export_web_mod`, `upload_web_effect`, …). Load the `web-appearance` skill before using these tools: it has their parameters, limits and rules." },
-  { id: "2.3-web-settings-for-the-user", since: "2.3.0-beta.3",
+  { id: "2.3-web-settings-for-the-user", since: "2.3.0-beta.3", audience: ["general", "coordinator"],
     text: "General (and coordinators): `get_web_settings` / `set_web_settings` read and change the user's Settings → Web appearance the way the page does — host settings, an agent's colour, custom CSS, proposed mods, effects, Restore defaults. Load the `web-appearance` skill first." },
   { id: "2.3-web-ambient", since: "2.3.0-beta.7",
     text: "Ambient effects: `set_web_ambient` puts falling petals, snow, rising lanterns, twinkles or stars on a click in your web chat — data only, drawn by the dashboard, no Try needed (`clear_web_ambient` removes it). Load the `web-appearance` skill." },
@@ -133,10 +140,17 @@ export function recordWhatsNew(instanceDir: string, ids: readonly string[], vers
   renameSync(tmp, path);
 }
 
+/** #2163: the line a notice adds when it names a skill — a way to read it that works on every instance. */
+export const SKILL_READ_HINT = "A skill named here that you can't find among your skills: `agend-agent skill <name>` prints it (in your shell).";
+
+/** "the `scheduling` skill", or a hyphenated name without backticks: "the cross-instance-messaging skill". */
+const NAMES_A_SKILL = /`[a-z][a-z0-9-]*` skill\b|(?:^|[^a-z0-9-])[a-z][a-z0-9]*(?:-[a-z0-9]+)+ skill\b/;
+
 export function whatsNewNotice(version: string, entries: readonly WhatsNewEntry[]): string {
   return [
     `[system:whats-new] AgEnD is now ${version}. New for you since your session began:`,
     ...entries.map(e => `- ${e.text}`),
+    ...(entries.some(e => NAMES_A_SKILL.test(e.text)) ? [SKILL_READ_HINT] : []),
     "A tool description you loaded earlier may not show these: a resumed session keeps the copy it first loaded, and reloading it does not refresh it. Use them anyway — AgEnD's server accepts them. Do not reply to this message.",
   ].join("\n");
 }
@@ -145,7 +159,11 @@ export function whatsNewNotice(version: string, entries: readonly WhatsNewEntry[
  * What this instance should be told now. `fresh`: it never launched before (told nothing; everything current recorded
  * as known). Returns the notice and the ids it covers, `{ silent: ids }` when they are only to be recorded, or null.
  */
-export function planWhatsNew(input: { record: WhatsNewRecord | null | "unreadable"; fresh: boolean; version: string | null; entries?: readonly WhatsNewEntry[] }):
+export function planWhatsNew(input: {
+  record: WhatsNewRecord | null | "unreadable"; fresh: boolean; version: string | null; entries?: readonly WhatsNewEntry[];
+  /** #2163: this instance's roles. An entry for none of them is recorded with the others but not shown. Absent: all. */
+  roles?: readonly WhatsNewAudience[];
+}):
   | { notice: string; ids: string[]; version: string }
   | { silent: string[]; version: string }
   | null {
@@ -156,5 +174,8 @@ export function planWhatsNew(input: { record: WhatsNewRecord | null | "unreadabl
   const unseen = current.filter(e => !known.has(e.id));
   if (!unseen.length) return null;
   if (fresh && !record) return { silent: unseen.map(e => e.id), version };
-  return { notice: whatsNewNotice(version, unseen), ids: unseen.map(e => e.id), version };
+  const roles = input.roles;
+  const told = roles ? unseen.filter(e => !e.audience || e.audience.some(r => roles.includes(r))) : unseen;
+  if (!told.length) return { silent: unseen.map(e => e.id), version };
+  return { notice: whatsNewNotice(version, told), ids: unseen.map(e => e.id), version };
 }

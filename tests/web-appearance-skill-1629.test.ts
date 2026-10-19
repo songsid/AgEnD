@@ -111,7 +111,7 @@ describe("what's new for 2.3 (#1633, #2012: topic lines; the details are the ski
     const line = AGENT_WHATS_NEW.find(e => e.id === "2.3-web-settings-for-the-user")!;
     expect([line.since, line.text.includes("Load the `web-appearance` skill")]).toEqual(["2.3.0-beta.3", true]);
     for (const tool of ["get_web_settings", "set_web_settings"]) { expect(line.text).toContain(`\`${tool}\``); expect(SKILL).toContain(`\`${tool}`); expect(TOOLS.some(t => t.name === tool)).toBe(true); }
-    expect(SKILL).toMatch(/^roles: \[general, worker\]$/m);
+    expect(SKILL).toMatch(/^roles: \[general, worker, classic\]$/m);   // #2163: a ClassicBot room's agent too
   });
   it("what the six folded 2.3.0-alpha.1 entries said is in the skill", () => {
     const facts = [

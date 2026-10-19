@@ -30,6 +30,7 @@ agend-agent report TARGET "summary" [CORRELATION_ID]  # Report results (echo the
 agend-agent ask TARGET "question"                 # Request info
 agend-agent broadcast "message"                   # Message all agents
 agend-agent delivery-status --operation-id ID      # Check a previously accepted delivery
+agend-agent skill [NAME]                          # List AgEnD's bundled skills, or print one (when a notice names a skill)
 
 # Instance Management
 agend-agent usage                                 # AI subscription usage (all providers)

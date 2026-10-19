@@ -1,7 +1,7 @@
 ---
 name: web-dashboard
 description: Where things are on the AgEnD web dashboard and what they do — signing in, the chat, Needs you, Fleet (org chart, live traffic), usage and the cache report, the Log, schedules, every Settings tab and control with its config key, and troubleshooting. Use it to answer "where is X / what does Y do / how do I Z" about the web.
-roles: [general, worker]
+roles: [general, worker, classic]
 ---
 
 ## How to use this skill
