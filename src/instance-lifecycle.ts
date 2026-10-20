@@ -34,6 +34,7 @@ import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { BACKEND_AUTH_CHECKS, checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileEnv, credentialProfileLoginCommand } from "./backend/credential-profile.js";
 import { fetchClaudeUsage, fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
+import type { CapacityNudgePauseGuard } from "./daemon.js";
 import type { SpawnGate } from "./spawn-gate.js";
 import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageTracker } from "./backend-outage.js";
@@ -324,6 +325,7 @@ export interface IncidentEventSource {
   /** `nudge_continue`: arm / drop the daemon's "tell the agent to keep going" for the error just reported. */
   armCapacityNudge?(pattern: RegExp, delayMs: number): boolean;
   cancelCapacityNudge?(reason: string): void;
+  prepareCapacityNudgePause?(): Promise<CapacityNudgePauseGuard | null>;
   /** Real daemons buffer `pty_error` raised by the startup scan until the lifecycle can handle it. */
   holdStartupIncidents?(): void;
   releaseStartupIncidents?(): void;
@@ -1463,6 +1465,11 @@ export class InstanceLifecycle {
       this.ctx.checkModelFailover(name, 100);
     }
     if (attempts >= InstanceLifecycle.CAPACITY_BACKOFF_MAX) {
+      if (rateLimit) {
+        void this.pauseAfterRateLimitNudges(name, daemon, attempts)
+          .catch(err => this.ctx.logger.warn({ err, name }, "rate-limit-exhausted pause failed"));
+        return;
+      }
       this.ctx.logger.warn({ name, attempts }, "Model still at capacity after max nudges — pausing");
       daemon.cancelCapacityNudge?.("retries exhausted");
       if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t(rateLimit ? "inst.codex_rate_retry_exhausted" : "inst.codex_capacity_backoff_exhausted", name, String(attempts)));
@@ -1485,6 +1492,25 @@ export class InstanceLifecycle {
     if (notificationTarget) {
       this.notifyIncident(notificationTarget, "pty_error", t(rateLimit ? "inst.codex_rate_retry_scheduled" : "inst.codex_capacity_nudge_scheduled", name,
         String(attempts + 1), String(InstanceLifecycle.CAPACITY_BACKOFF_MAX), String(Math.round(delayMs / 1000))));
+    }
+  }
+
+  /** An exhausted error must not pause a draft, new delivery or replacement launch. */
+  private async pauseAfterRateLimitNudges(name: string, daemon: IncidentEventSource, attempts: number): Promise<void> {
+    const admission = await daemon.prepareCapacityNudgePause?.();
+    if (!admission || this.daemons.get(name) !== daemon || !admission.current()) return;
+    this.ctx.logger.warn({ name, attempts }, "HTTP 429 recovery exhausted — pausing the unchanged failed turn");
+    const target = this.ptyErrorNotificationTarget(name);
+    if (target) this.notifyIncident(target, "pty_error", t("inst.codex_rate_retry_exhausted", name, String(attempts)));
+    try {
+      await this.pause(name, "error", admission);
+    } finally {
+      // pause advances its own monitor fence, so use the captured launch and
+      // episode identity plus a fresh pane read, rather than that fence alone.
+      if (this.daemons.get(name) === daemon && !this.isPaused(name) && await admission.revalidate()
+        && this.daemons.get(name) === daemon && !this.isPaused(name) && admission.current()) {
+        daemon.requestPauseWhenIdle({ reason: "error" });
+      }
     }
   }
 
@@ -1784,7 +1810,7 @@ export class InstanceLifecycle {
     return this.daemons.get(name)?.lastPausedAt ?? readPausedAt(this.ctx.getInstanceDir(name));
   }
 
-  async pause(name: string, reason: PauseReason = "operator"): Promise<void> {
+  async pause(name: string, reason: PauseReason = "operator", admission?: CapacityNudgePauseGuard): Promise<void> {
     // Final backstop shared by slash, MCP, Settings, warm-cap, and any future
     // caller. General is the coordinator and must remain resident to route work.
     if (isGeneralInstance(this.ctx.fleetConfig, name)) {
@@ -1807,7 +1833,8 @@ export class InstanceLifecycle {
     }
     this.ctx.stopStatuslineWatcher(name);
     try {
-      await daemon.pause(reason);
+      if (admission) await daemon.pause(reason, admission);
+      else await daemon.pause(reason);
     } finally {
       // A rejected/no-op pause leaves the instance active and must not strand
       // its fleet-level statusline watcher in the frozen state.

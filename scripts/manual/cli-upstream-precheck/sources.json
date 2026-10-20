@@ -31,7 +31,7 @@
         "surfaces": { "getStartupDialogs": "dialog", "getRuntimeDialogs": "dialog", "getReadyPattern": "idle-busy", "getBusyPattern": "idle-busy",
           "getBottomReadyPattern": "idle-busy", "getQueuedInputMarker": "input-box", "CODEX_NATIVE_FOOTER_FIELDS": "idle-busy",
           "CODEX_STATUS_LINE_VALUE_PATTERNS": "idle-busy", "USAGE_LIMIT_ESC_HINT": "error", "USAGE_LIMIT_OPTION": "error",
-          "USAGE_LIMIT_CONTINUE": "error", "codexUsageLimitMenuVisible": "error", "codexRateSwitchVisible": "error",
+          "USAGE_LIMIT_CONTINUE": "error", "CODEX_EXHAUSTED_429_ROW": "error", "codexUsageLimitMenuVisible": "error", "codexRateSwitchVisible": "error",
           "codexRateSwitchPickerVisible": "error", "rateSwitchPickerDialog": "error", "usageLimitLunaReserveDialog": "error",
           "CODEX_CTRL": "resume", "CODEX_SESSION_LOCK_FOOTER": "resume", "CODEX_RESUME_CWD_FOOTER": "resume",
           "codexUpdatePickerVisible": "dialog", "updatePickerDialog": "dialog", "unknownSelectionHoldDialog": "dialog",

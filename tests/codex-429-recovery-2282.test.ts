@@ -77,7 +77,7 @@ describe("#2282 real daemon + lifecycle, all process/pane boundaries inert", () 
       await r.poll(delay+5100); p = p.replace(IDLE.split("\n")[0], `› retry failed request\n\n${ROW}\n\n${IDLE.split("\n")[0]}`);
     }
     expect(r.sent).toHaveLength(3); r.screen.text = p; await r.poll();
-    expect(r.lc.pause).toHaveBeenCalledWith("w", "error"); expect(r.sent).toHaveLength(3);
+    expect(r.lc.pause).toHaveBeenCalledWith("w", "error", expect.objectContaining({ current: expect.any(Function) })); expect(r.sent).toHaveLength(3);
     expect(r.notify).toHaveBeenLastCalledWith("w", expect.stringMatching(/HTTP 429 persisted after 3 recovery attempts.*pausing/)); r.stop();
   });
   it.each(["first live history","startup then history"])("never nudges old scrollback: %s", async mode => {
@@ -124,6 +124,89 @@ describe("#2282 real daemon + lifecycle, all process/pane boundaries inert", () 
     expect(r.lc.pause).toHaveBeenCalledOnce();
     const next = { requestPauseWhenIdle: vi.fn() }; r.lc.daemons.set("w",next); release(); await r.poll(0);
     expect(next.requestPauseWhenIdle).not.toHaveBeenCalled(); r.stop();
+  });
+  it.each(["same launch", "new spawn"])("deferred exhaustion pause belongs to its launch: %s", async mode => {
+    const r = rig(); await r.poll();
+    r.lc.rateLimitNudgeAttempts.set("w", { count:3,lastAt:Date.now() });
+    let release!: () => void;
+    const pending = vi.spyOn(r.d, "requestPauseWhenIdle");
+    r.lc.pause.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+    r.screen.text = fixture("exhausted429"); await r.poll();
+    expect(r.lc.pause).toHaveBeenCalledOnce();
+    if (mode === "new spawn") { r.d.beginSpawn(); r.d.endSpawn(); }
+    else {
+      // A normal pause advances this fence itself, even if it later fails.
+      r.d.freezeRuntimeMonitors(); r.d.runtimeMonitorsFrozen = false;
+    }
+    release(); await r.poll(0);
+    expect(pending).toHaveBeenCalledTimes(mode === "same launch" ? 1 : 0);
+    expect(r.d.pausePending).toBe(mode === "same launch"); r.stop();
+  });
+  it.each(["draft", "queued message"])("exhaustion cannot pause current input/work: %s", async why => {
+    const r = rig(); await r.poll();
+    r.lc.rateLimitNudgeAttempts.set("w", { count:3,lastAt:Date.now() });
+    // Use real daemon pause if called: its queued-work no-op must not leave a deferred pause.
+    // Even a mutation that wrongly admits the draft cannot reach process/tmux teardown.
+    r.d.checkpointSessionId = vi.fn(async () => { throw new Error("inert teardown boundary"); });
+    r.d.resumeRuntimeMonitors = vi.fn(() => { r.d.runtimeMonitorsFrozen = false; });
+    r.lc.pause.mockImplementation((_: string, reason: any, admission: any) => r.d.pause(reason, admission));
+    r.screen.text = fixture("exhausted429");
+    if (why === "draft") r.screen.text = r.screen.text.replace("› Ask Codex to do anything", "› my unsent next request");
+    else r.d.pasteQueueDepth = 1;
+    await r.poll();
+    expect(r.events).toHaveLength(1); expect(r.lc.pause).not.toHaveBeenCalled();
+    expect(r.d.pausePending).toBe(false); expect(r.d.getPauseWakeState()).toBe("active");
+    expect(r.sent).toEqual([]);
+    expect(r.notify.mock.calls.some(([, text]: string[]) => /persisted.*pausing/.test(text))).toBe(false); r.stop();
+  });
+  it("new work during exhaustion admission cancels it after the pane await", async () => {
+    const r = rig(); await r.poll(); r.lc.rateLimitNudgeAttempts.set("w", { count:3,lastAt:Date.now() });
+    const prepare = r.d.prepareCapacityNudgePause.bind(r.d);
+    let capture: any;
+    vi.spyOn(r.d, "prepareCapacityNudgePause").mockImplementationOnce(() => {
+      capture = vi.spyOn(r.d.tmux, "capturePane").mockImplementationOnce(async () => {
+        r.d.pasteQueueDepth = 1; return r.screen.text;
+      });
+      return prepare();
+    });
+    r.screen.text = fixture("exhausted429"); await r.poll();
+    expect(capture).toHaveBeenCalled(); expect(r.lc.pause).not.toHaveBeenCalled();
+    expect(r.d.pausePending).toBe(false); r.stop();
+  });
+  it("a queue admitted just before real pause leaves no deferred pause", async () => {
+    const r = rig(); await r.poll(); r.lc.rateLimitNudgeAttempts.set("w", { count:3,lastAt:Date.now() });
+    const pause = vi.spyOn(r.d, "pause");
+    r.lc.pause.mockImplementation((_: string, reason: any, admission: any) => {
+      r.d.pasteQueueDepth = 1;
+      return r.d.pause(reason, admission);
+    });
+    r.screen.text = fixture("exhausted429"); await r.poll();
+    expect(pause).toHaveBeenCalledOnce(); expect(r.d.pausePending).toBe(false);
+    expect(r.d.getPauseWakeState()).toBe("active"); expect(r.sent).toEqual([]); r.stop();
+  });
+  it("a draft during the real pause capture cancels both pause and deferred pause", async () => {
+    const r = rig(); await r.poll(); r.lc.rateLimitNudgeAttempts.set("w", { count:3,lastAt:Date.now() });
+    r.lc.pause.mockImplementation((_: string, reason: any, admission: any) => {
+      vi.spyOn(r.d.tmux, "capturePane").mockImplementationOnce(async () => {
+        r.screen.text = r.screen.text.replace("› Ask Codex to do anything", "› my unsent next request");
+        return r.screen.text;
+      });
+      return r.d.pause(reason, admission);
+    });
+    r.screen.text = fixture("exhausted429"); await r.poll();
+    expect(r.lc.pause).toHaveBeenCalledOnce(); expect(r.d.getPauseWakeState()).toBe("active");
+    expect(r.d.pausePending).toBe(false); expect(r.sent).toEqual([]); r.stop();
+  });
+  it("an unchanged failed real pause can defer after its own monitor freeze", async () => {
+    const r = rig(); await r.poll(); r.lc.rateLimitNudgeAttempts.set("w", { count:3,lastAt:Date.now() });
+    r.lc.ctx.stopStatuslineWatcher = vi.fn(); r.lc.ctx.startStatuslineWatcher = vi.fn();
+    r.lc.pause.mockImplementation((name: string, reason: any, admission: any) => InstanceLifecycle.prototype.pause.call(r.lc, name, reason, admission));
+    r.d.checkpointSessionId = vi.fn(async () => { throw new Error("inert checkpoint failure after freeze"); });
+    r.d.resumeRuntimeMonitors = vi.fn(() => { r.d.runtimeMonitorsFrozen = false; });
+    r.screen.text = fixture("exhausted429"); await r.poll();
+    expect(r.d.checkpointSessionId).toHaveBeenCalledOnce(); expect(r.d.launchFenceEpoch).toBe(1);
+    expect(r.d.getPauseWakeState()).toBe("active"); expect(r.d.pausePending).toBe(true);
+    expect(r.lc.ctx.startStatuslineWatcher).toHaveBeenCalledWith("w"); r.stop();
   });
   it("capacity and429 budgets are independent, and a retired owner cannot pause its replacement", async () => {
     const r = rig(); r.arm.mockReturnValue(true);
