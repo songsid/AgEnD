@@ -327,7 +327,7 @@ describe("CodexBackend", () => {
       const LINE = "Selected model is at capacity. Please try a different model.";
       /** The capacity entry's own pattern: other entries may match the same pane first (a pane can hold several errors). */
       const isCapacity = (pane: string) => new CodexBackend(TEST_DIR).getErrorPatterns()
-        .find(entry => entry.action === "nudge_continue")!.pattern.test(pane);
+        .find(entry => entry.type === "model_error" && entry.action === "nudge_continue")!.pattern.test(pane);
       const fixture = (name: string) => readFileSync(join(__dirname, "..", "fixtures", name), "utf8");
 
       it.each([

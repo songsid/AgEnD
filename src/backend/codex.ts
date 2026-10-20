@@ -569,6 +569,9 @@ function codexUnknownSelectionVisible(pane: string): boolean {
  * pattern excludes, so they stay valid there too.
  */
 export const CODEX_STATUS_GLYPH = String.raw`■|⚠`;
+/** A completed failed turn, not Codex's in-progress retry spinner (#2282). */
+const CODEX_EXHAUSTED_429_ROW = String.raw`(?:${CODEX_STATUS_GLYPH})[ \t]+exceeded retry limit,[ \t]+last status:[ \t]+429 Too Many Requests[^\r\n]*`;
+
 
 /**
  * Whether a decorated row is the LIVE transcript item — the last transcript
@@ -1815,7 +1818,7 @@ export class CodexBackend implements CliBackend {
       // cannot repair an exhausted account and would only start a failover loop.
       {
         pattern: new RegExp(
-          String.raw`^\s*(?:${CODEX_STATUS_GLYPH}|Error:|API Error:)\s*[\s\S]{0,240}?\b(?:insufficient_quota|billing_hard_limit_reached|exceeded\s+your\s+current\s+quota)\b`,
+          String.raw`^\s*(?:${CODEX_STATUS_GLYPH}|Error:|API Error:)\s*[\s\S]{0,240}?\b(?:insufficient_quota|billing_hard_limit_reached|exceeded\s+your\s+current\s+quota)\b|^(?:${CODEX_STATUS_GLYPH}) Quota exceeded\. Check your plan and billing details\.\r?$`,
           "im",
         ),
         type: "quota",
@@ -1823,12 +1826,23 @@ export class CodexBackend implements CliBackend {
         message: "OpenAI quota exceeded",
       },
       {
+        // Codex already exhausted HTTP retries and returned to its composer.
+        // The existing conditional continuation preserves context without
+        // replaying earlier tool effects. Quota remains a preceding pause.
+        pattern: new RegExp(`^${CODEX_EXHAUSTED_429_ROW}$`, "im"),
+        type: "rate_limit",
+        action: "nudge_continue",
+        message: t("inst.codex_rate_retry_stopped"),
+        skipCooldown: true,
+        skipRecoveryWait: true,
+      },
+      {
         // Pane history contains the agent's own prose, source code and search
         // results. Bare `rate limit` used to fail over an otherwise healthy
         // Codex merely for discussing this regex. Match machine-readable API
         // forms or an error-decorated terminal line instead.
         pattern: new RegExp(
-          String.raw`^\s*unexpected\s+status\s+429\b|^\s*(?:${CODEX_STATUS_GLYPH}|Error:|API Error:)\s*[\s\S]{0,240}?(?:["'](?:status|code)["']\s*:\s*429\b|\b(?:rate_limit_exceeded|too_many_requests)\b|\brate limit(?:ed| exceeded| reached)?\b|\btoo many requests\b)`,
+          String.raw`^\s*unexpected\s+status\s+429\b|^(?![\s\S]{0,240}?${CODEX_EXHAUSTED_429_ROW})[ \t]*(?:${CODEX_STATUS_GLYPH}|Error:|API Error:)\s*[\s\S]{0,240}?(?:["'](?:status|code)["']\s*:\s*429\b|\b(?:rate_limit_exceeded|too_many_requests)\b|\brate limit(?:ed| exceeded| reached)?\b|\btoo many requests\b)`,
           "im",
         ),
         type: "rate_limit",

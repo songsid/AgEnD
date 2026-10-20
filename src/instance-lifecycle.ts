@@ -34,6 +34,7 @@ import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { BACKEND_AUTH_CHECKS, checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileEnv, credentialProfileLoginCommand } from "./backend/credential-profile.js";
 import { fetchClaudeUsage, fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
+import type { CapacityNudgePauseGuard } from "./daemon.js";
 import type { SpawnGate } from "./spawn-gate.js";
 import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageTracker } from "./backend-outage.js";
@@ -324,6 +325,7 @@ export interface IncidentEventSource {
   /** `nudge_continue`: arm / drop the daemon's "tell the agent to keep going" for the error just reported. */
   armCapacityNudge?(pattern: RegExp, delayMs: number): boolean;
   cancelCapacityNudge?(reason: string): void;
+  prepareCapacityNudgePause?(): Promise<CapacityNudgePauseGuard | null>;
   /** Real daemons buffer `pty_error` raised by the startup scan until the lifecycle can handle it. */
   holdStartupIncidents?(): void;
   releaseStartupIncidents?(): void;
@@ -531,6 +533,9 @@ export class InstanceLifecycle {
    * Stored on the lifecycle (not the daemon) so the count survives daemon restarts.
    */
   private capacityBackoffAttempts = new Map<string, { count: number; lastAt: number }>();
+  /** #2282: transient429 recovery has its own budget; capacity errors cannot spend it. */
+  private rateLimitNudgeAttempts = new Map<string, { count: number; lastAt: number }>();
+  private static readonly RATE_LIMIT_NUDGE_DELAYS_MS = [30_000, 60_000, 120_000] as const;
   /** Active backoff restart timers, keyed by instance name. One per instance max. */
   private capacityBackoffTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Old Codex capacity rows to baseline in the replacement daemon (#949). */
@@ -1320,7 +1325,7 @@ export class InstanceLifecycle {
         this.ctx.restartSingleInstance(name, { freshStart: true }).catch(err =>
           this.ctx.logger.error({ err, name }, "pty_error restart failed"));
       } else if (data.action === "nudge_continue") {
-        this.scheduleContinueNudge(name, daemon, data.pattern);
+        this.scheduleContinueNudge(name, daemon, data.pattern, data.type === "rate_limit");
       } else if (data.action === "backoff_restart") {
         // Transient model capacity error (#905). The CLI already returned to its
         // prompt (skipRecoveryWait: true in the error pattern), so no additional
@@ -1433,32 +1438,79 @@ export class InstanceLifecycle {
    * going after a minute — at most CAPACITY_BACKOFF_MAX times per 30 minutes, then pause like the old ladder did.
    * The daemon owns the nudge itself (its fences, its pane lock); this owns only whether one is allowed.
    */
-  private scheduleContinueNudge(name: string, daemon: IncidentEventSource, pattern: unknown): void {
+  private scheduleContinueNudge(name: string, daemon: IncidentEventSource, pattern: unknown, rateLimit = false): void {
+    // A retired daemon must never pause its replacement after exhausting an
+    // old budget. Arming itself also checks the captured spawn and pane.
+    if (rateLimit && this.daemons.get(name) !== daemon) return;
+    const budget = rateLimit ? this.rateLimitNudgeAttempts : this.capacityBackoffAttempts;
     const now = Date.now();
-    const prev = this.capacityBackoffAttempts.get(name);
+    const prev = budget.get(name);
     // A wall clock that stepped back must not make an old window look current forever.
     const elapsed = prev ? now - prev.lastAt : -1;
     const attempts = prev && elapsed >= 0 && elapsed < InstanceLifecycle.CAPACITY_BACKOFF_WINDOW_MS ? prev.count : 0;
     const notificationTarget = this.ptyErrorNotificationTarget(name);
+    const delayMs = rateLimit
+      ? InstanceLifecycle.RATE_LIMIT_NUDGE_DELAYS_MS[Math.min(attempts, InstanceLifecycle.CAPACITY_BACKOFF_MAX - 1)]
+      : InstanceLifecycle.CAPACITY_NUDGE_DELAY_MS;
+    // Validate the fresh/live episode BEFORE a budget-exhaustion pause too.
+    // Arming only records a due time; on the fourth incident it is cancelled
+    // synchronously below, before any monitor tick can send a fourth nudge.
+    if (rateLimit) {
+      if (!(pattern instanceof RegExp) || !daemon.armCapacityNudge?.(pattern, delayMs)) {
+        if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_rate_retry_stopped"));
+        return;
+      }
+      // Preserve next-spawn failover bookkeeping only for a vouched fresh
+      // failure. It does not itself recover this already-failed turn.
+      this.ctx.checkModelFailover(name, 100);
+    }
     if (attempts >= InstanceLifecycle.CAPACITY_BACKOFF_MAX) {
+      if (rateLimit) {
+        void this.pauseAfterRateLimitNudges(name, daemon, attempts)
+          .catch(err => this.ctx.logger.warn({ err, name }, "rate-limit-exhausted pause failed"));
+        return;
+      }
       this.ctx.logger.warn({ name, attempts }, "Model still at capacity after max nudges — pausing");
       daemon.cancelCapacityNudge?.("retries exhausted");
-      if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_capacity_backoff_exhausted", name, String(attempts)));
+      if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t(rateLimit ? "inst.codex_rate_retry_exhausted" : "inst.codex_capacity_backoff_exhausted", name, String(attempts)));
       void this.pause(name, "error")
         .catch(err => this.ctx.logger.warn({ err, name }, "capacity-exhausted pause failed"))
-        .finally(() => { if (!this.isPaused(name)) this.daemons.get(name)?.requestPauseWhenIdle({ reason: "error" }); });
+        .finally(() => {
+          if (!this.isPaused(name) && (!rateLimit || this.daemons.get(name) === daemon)) {
+            (rateLimit ? daemon : this.daemons.get(name))?.requestPauseWhenIdle({ reason: "error" });
+          }
+        });
       return;
     }
-    if (!(pattern instanceof RegExp) || !daemon.armCapacityNudge?.(pattern, InstanceLifecycle.CAPACITY_NUDGE_DELAY_MS)) {
+    if (!rateLimit && (!(pattern instanceof RegExp) || !daemon.armCapacityNudge?.(pattern, delayMs))) {
       // Nothing to arm (the screen already moved on): the user still hears about the capacity error, no attempt is used.
-      if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_model_capacity"));
+      if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t(rateLimit ? "inst.codex_rate_retry_stopped" : "inst.codex_model_capacity"));
       return;
     }
-    this.capacityBackoffAttempts.set(name, { count: attempts + 1, lastAt: now });
+    budget.set(name, { count: attempts + 1, lastAt: now });
     this.ctx.logger.info({ name, attempt: attempts + 1 }, "Model at capacity — will tell it to keep going");
     if (notificationTarget) {
-      this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_capacity_nudge_scheduled", name,
-        String(attempts + 1), String(InstanceLifecycle.CAPACITY_BACKOFF_MAX), String(Math.round(InstanceLifecycle.CAPACITY_NUDGE_DELAY_MS / 1000))));
+      this.notifyIncident(notificationTarget, "pty_error", t(rateLimit ? "inst.codex_rate_retry_scheduled" : "inst.codex_capacity_nudge_scheduled", name,
+        String(attempts + 1), String(InstanceLifecycle.CAPACITY_BACKOFF_MAX), String(Math.round(delayMs / 1000))));
+    }
+  }
+
+  /** An exhausted error must not pause a draft, new delivery or replacement launch. */
+  private async pauseAfterRateLimitNudges(name: string, daemon: IncidentEventSource, attempts: number): Promise<void> {
+    const admission = await daemon.prepareCapacityNudgePause?.();
+    if (!admission || this.daemons.get(name) !== daemon || !admission.current()) return;
+    this.ctx.logger.warn({ name, attempts }, "HTTP 429 recovery exhausted — pausing the unchanged failed turn");
+    const target = this.ptyErrorNotificationTarget(name);
+    if (target) this.notifyIncident(target, "pty_error", t("inst.codex_rate_retry_exhausted", name, String(attempts)));
+    try {
+      await this.pause(name, "error", admission);
+    } finally {
+      // pause advances its own monitor fence, so use the captured launch and
+      // episode identity plus a fresh pane read, rather than that fence alone.
+      if (this.daemons.get(name) === daemon && !this.isPaused(name) && await admission.revalidate()
+        && this.daemons.get(name) === daemon && !this.isPaused(name) && admission.current()) {
+        daemon.requestPauseWhenIdle({ reason: "error" });
+      }
     }
   }
 
@@ -1758,7 +1810,7 @@ export class InstanceLifecycle {
     return this.daemons.get(name)?.lastPausedAt ?? readPausedAt(this.ctx.getInstanceDir(name));
   }
 
-  async pause(name: string, reason: PauseReason = "operator"): Promise<void> {
+  async pause(name: string, reason: PauseReason = "operator", admission?: CapacityNudgePauseGuard): Promise<void> {
     // Final backstop shared by slash, MCP, Settings, warm-cap, and any future
     // caller. General is the coordinator and must remain resident to route work.
     if (isGeneralInstance(this.ctx.fleetConfig, name)) {
@@ -1781,7 +1833,8 @@ export class InstanceLifecycle {
     }
     this.ctx.stopStatuslineWatcher(name);
     try {
-      await daemon.pause(reason);
+      if (admission) await daemon.pause(reason, admission);
+      else await daemon.pause(reason);
     } finally {
       // A rejected/no-op pause leaves the instance active and must not strand
       // its fleet-level statusline watcher in the frozen state.

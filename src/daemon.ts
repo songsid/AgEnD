@@ -709,6 +709,13 @@ const STARTUP_DIALOG_BUDGET_MS = 30_000;
 export const OWN_SWITCH_WAIT_MS = 6_000;
 /** #1690: after an answer to that dialog, how long it gets to go away. */
 const OWN_SWITCH_SETTLE_MS = 3_000;
+/** Admission and revalidation for pausing one exhausted recovery episode. */
+export interface CapacityNudgePauseGuard {
+  current(): boolean;
+  accepts(pane: string): boolean;
+  revalidate(): Promise<boolean>;
+}
+
 /** #1690: what AgEnD's own runtime switch came to — sent back to the fleet (IPC runtime_switch_result). */
 export type OwnSwitchOutcome =
   | { outcome: "switched"; confirmed: boolean; shown?: string }
@@ -3914,6 +3921,17 @@ export class Daemon extends EventEmitter {
       const count = countMatches(ep.pattern);
       const seen = this.lastErrorCount.get(key) ?? 0;
 
+      // #2282: a resumed exhausted429 row is history, not even a new
+      // notification/failover incident. Wait for the first live composer to
+      // establish its baseline; later appended occurrences remain eligible.
+      if (ep.type === "rate_limit" && ep.action === "nudge_continue") {
+        const baseline = this.nudgeBaselines?.get(key);
+        if (baseline === undefined || count <= baseline) {
+          if (baseline !== undefined) this.lastErrorCount.set(key, count);
+          continue;
+        }
+      }
+
       // The generic Codex usage-limit line remains in scrollback after the
       // user selects Luna Reserve. What proves that is NOT a live composer —
       // codex paints one after a plain hit too, and the old live-composer guard
@@ -4891,12 +4909,14 @@ export class Daemon extends EventEmitter {
   /** Why the deferred pause was requested; what its marker records (Phase 2a). */
   private pendingPauseReason: PauseReason = "auth";
 
-  async pause(reason: PauseReason = "operator"): Promise<void> {
+  async pause(reason: PauseReason = "operator", admission?: CapacityNudgePauseGuard): Promise<void> {
+    if (admission && !admission.current()) return;
     if (this.pauseWakeState === "paused") return;
     if (this.pauseWakeState === "pausing" || this.pauseWakeState === "waking") {
       await this.pauseWakeTransition;
       if (this.getPauseWakeState() !== "active") return;
     }
+    if (admission && !admission.current()) return;
     // `pauseAllowStuck` is consumed here, not merely read: it authorises exactly
     // one pause from a stuck pane (the auth-deferred one) and must never leak
     // into an ordinary idle-timeout pause of a busy instance.
@@ -4916,7 +4936,7 @@ export class Daemon extends EventEmitter {
     // this cycle while the backend reports background work; the next idle
     // tick retries once the task ends. A pane-capture failure proceeds (the
     // quit-menu handler below stays the backstop), never wedges unpaused.
-    if (this.backend?.backgroundWorkRunning && this.tmux) {
+    if ((admission || this.backend?.backgroundWorkRunning) && this.tmux) {
       const tmux = this.tmux;
       const windowId = tmux.getWindowId?.();
       const generation = this.spawnGeneration;
@@ -4927,7 +4947,8 @@ export class Daemon extends EventEmitter {
       // #1730 P2-2: the await yields — the pane read is only valid for the
       // world it was taken from. Revalidate owner, phase, state and queue
       // before acting on it; anything that moved defers this cycle.
-      if (this.tmux !== tmux
+      if ((admission && (!admission.current() || pane === null || !admission.accepts(pane)))
+        || this.tmux !== tmux
         || this.tmux?.getWindowId?.() !== windowId
         || this.spawnGeneration !== generation
         || this.getPauseWakeState() !== "active"
@@ -7783,6 +7804,40 @@ export class Daemon extends EventEmitter {
     };
     this.logger.info({ delayMs }, "Model-capacity nudge armed");
     return true;
+  }
+
+  /**
+   * Consume an exhausted nudge only if its failed turn still owns an empty,
+   * idle pane. Unlike arming, this verifies all input/work gates before pause.
+   * The returned owner survives pause's own monitor freeze (which advances the
+   * launch fence), but never another spawn/launch, cancel, delivery or episode.
+   */
+  async prepareCapacityNudgePause(): Promise<CapacityNudgePauseGuard | null> {
+    const nudge = this.capacityNudge, episode = this.lastErrorEpisode;
+    const tmux = this.tmux, attempt = this.launchAttempt, boot = this.bootId;
+    this.cancelCapacityNudge("retries exhausted");
+    if (!nudge || !episode || !tmux) return null;
+    const window = tmux.getWindowId?.();
+    const current = (): boolean => this.tmux === tmux && tmux.getWindowId?.() === window
+      && boot === this.bootId && nudge.spawn === this.spawnGeneration && attempt === this.launchAttempt
+      && episode === this.lastErrorEpisode && this.isDeliveryEpochCurrent(nudge.epoch)
+      && !this.startupAborted && !this.spawning && !this.isPaused
+      && this.getProcessStatus() === "running" && this.instanceState === "idle" && this.pasteQueueDepth === 0;
+    const accepts = (pane: string): boolean => pane === nudge.pane && this.paneAuthoritativelyIdle(pane)
+      && this.backend?.isPeriodicRedrawIdlePane?.(pane) === true
+      && codexLiveRowMatches(pane, nudge.pattern) && !this.backend?.backgroundWorkRunning?.(pane);
+    const revalidate = (): Promise<boolean> => this.paneWriteLock.run(async () => {
+      if (!current()) return false;
+      try {
+        const pane = await tmux.capturePane();
+        return current() && accepts(pane);
+      } catch { return false; }
+    });
+    // Initial admission must also respect the captured monitor fence. Later
+    // revalidation deliberately tolerates only pause's own fence advancement.
+    if (nudge.fence !== this.launchFenceEpoch || this.healthCheckPaused || this.runtimeMonitorsFrozen) return null;
+    if (!await revalidate() || nudge.fence !== this.launchFenceEpoch || this.healthCheckPaused || this.runtimeMonitorsFrozen) return null;
+    return { current, accepts, revalidate };
   }
 
   /** Drop an armed nudge (the user stopped / paused the instance, or the lifecycle gave up on it). */
