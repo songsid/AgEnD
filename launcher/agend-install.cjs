@@ -180,7 +180,12 @@ var lockReaders = require("./install-admission.cjs");
  * line names node or agend — then, and when even that cannot be read, null. macOS: lsof (exit 1 with no output = none).
  * Elsewhere: null.
  */
+/** Why the last openedBy answered as it did (a refusal names it, so a stuck host says exactly what could not be read). */
+var openedWhy = "";
 function openedBy(file, deps) {
+  openedWhy = "";
+  var unknown = function (why) { openedWhy = why; return null; };
+  var because = function (e, what) { return (e && e.code ? e.code : String(e)) + " on " + what; };
   if (deps.openedBy) return deps.openedBy(file);
   // Only a definite "it is gone" (ENOENT) may be skipped; a permission, I/O or any other error proves nothing (Prism r5:
   // /proc/<pid>/fd is behind ptrace checks) → unknown, which blocks.
@@ -188,38 +193,42 @@ function openedBy(file, deps) {
   var readdir = deps.procReaddir || fs.readdirSync;
   var gone = function (e) { return e && e.code === "ENOENT"; };
   var st;
-  try { st = stat(file); } catch (e) { return gone(e) ? false : null; }
+  try { st = stat(file); } catch (e) { return gone(e) ? false : unknown(because(e, file)); }
   if (process.platform === "linux") {
     var pids;
-    try { pids = fs.readdirSync("/proc").filter(function (n) { return /^\d+$/.test(n); }); } catch (e) { return null; }
+    try { pids = fs.readdirSync("/proc").filter(function (n) { return /^\d+$/.test(n); }); } catch (e) { return unknown(because(e, "/proc")); }
     for (var k = 0; k < pids.length; k++) {
       var owner;
-      try { owner = stat("/proc/" + pids[k]).uid; } catch (e) { if (gone(e)) continue; return null; }   // gone meanwhile, or unknown
+      try { owner = stat("/proc/" + pids[k]).uid; } catch (e) { if (gone(e)) continue; return unknown(because(e, "/proc/" + pids[k])); }   // gone meanwhile, or unknown
       if (owner !== st.uid) continue;
       var fds;
       try { fds = readdir("/proc/" + pids[k] + "/fd"); } catch (e) {
         if (gone(e)) continue;
-        if (e.code !== "EACCES") return null;
+        if (e.code !== "EACCES") return unknown(because(e, "/proc/" + pids[k] + "/fd"));
         var cmdline = null;
         try { cmdline = fs.readFileSync("/proc/" + pids[k] + "/cmdline", "utf8"); } catch (e2) { if (gone(e2)) continue; }
-        if (cmdline === null || /node|agend/i.test(cmdline)) return null;
+        if (cmdline === null || /node|agend/i.test(cmdline)) return unknown("EACCES on /proc/" + pids[k] + "/fd (" + (cmdline === null ? "its command line unreadable" : JSON.stringify(cmdline.replace(/\0/g, " ").trim().slice(0, 80))) + ")");
         continue;
       }
       for (var f = 0; f < fds.length; f++) {
         var seen;
-        try { seen = stat("/proc/" + pids[k] + "/fd/" + fds[f]); } catch (e) { if (gone(e)) continue; return null; }   // closed meanwhile, or unknown
-        if (seen.dev === st.dev && seen.ino === st.ino) return true;
+        try { seen = stat("/proc/" + pids[k] + "/fd/" + fds[f]); } catch (e) { if (gone(e)) continue; return unknown(because(e, "/proc/" + pids[k] + "/fd/" + fds[f])); }   // closed meanwhile, or unknown
+        if (seen.dev === st.dev && seen.ino === st.ino) { openedWhy = "pid " + pids[k] + " has it open"; return true; }
       }
     }
     return false;
   }
   if (process.platform === "darwin") {
     var r = deps.run(fs.existsSync("/usr/sbin/lsof") ? "/usr/sbin/lsof" : "lsof", ["-nP", "-t", "--", file], { timeoutMs: 15000 });
-    if (r.status === 0 && String(r.stdout).trim()) return true;
+    if (r.status === 0 && String(r.stdout).trim()) { openedWhy = "pid " + String(r.stdout).trim().split("\n").join(", ") + " has it open"; return true; }
     if (r.status === 1 && !String(r.stdout).trim() && !String(r.stderr).trim()) return false;
-    return null;
+    return unknown("lsof exited " + (r.status === null ? r.error || r.signal : r.status) + (String(r.stderr).trim() ? ": " + String(r.stderr).trim().slice(0, 120) : ""));
   }
-  return null;
+  return unknown("no way to see open files on " + process.platform);
+}
+/** An unreadable lock that may still be being written: refused, saying what was seen. */
+function beingWritten(lock, why) {
+  return "the install lock " + lock + " is being written by another AgEnD install, or whether it still is cannot be told" + (why ? " (" + why + ")" : "") + "; run this again in a moment";
 }
 function legacyRecord(prefix, deps, spec, home) {
   var r = deps.lockReaders || lockReaders;
@@ -236,7 +245,8 @@ function legacyState(text, file, deps) {
   var holder = r.parse(text);
   if (holder) return { state: holder.pid === deps.pid ? "stale" : r.holderState(holder, { exists: deps.alive, processStart: r.processStart, startTicks: r.startTicks, bootId: r.bootId }), pid: holder.pid };
   if (!fs.existsSync(file)) return { state: "gone" };
-  return { state: openedBy(file, deps) === false ? "stale" : "unknown", unreadable: true };
+  var open = openedBy(file, deps);
+  return { state: open === false ? "stale" : "unknown", unreadable: true, why: openedWhy };
 }
 /** Move a stale legacy lock away by their rule: only under `<lock>.reclaim`, and only the bytes judged. */
 function reclaimLegacy(prefix, lock, judged, judgedState, record, deps) {
@@ -252,7 +262,7 @@ function reclaimLegacy(prefix, lock, judged, judgedState, record, deps) {
     // Under the marker the lock changes only by its own (gone) holder: still the one judged, else nothing is moved.
     if (readText(lock) !== judged) return { changed: true };
     // An unreadable one: still not open anywhere (no writer can open it again: theirs is open(wx) on a new file).
-    if (judgedState.unreadable && openedBy(lock, deps) !== false) return { refuse: "the install lock " + lock + " is being written by another AgEnD install; run this again in a moment" };
+    if (judgedState.unreadable && openedBy(lock, deps) !== false) return { refuse: beingWritten(lock, openedWhy) };
     quarantine(prefix, lock, deps);
     return { moved: true };
   } finally {
@@ -326,7 +336,7 @@ function admit(prefix, deps, opts) {
     if (judged.state !== "stale") {
       withdraw();
       return { refuse: judged.unreadable
-        ? "the install lock " + lock + " is being written by another AgEnD install; run this again in a moment"
+        ? beingWritten(lock, judged.why)
         : "another AgEnD install (pid " + judged.pid + ") is running in " + prefix + "; let it finish, then run this again" };
     }
     if (deps.onStep) deps.onStep("legacy-judged");
