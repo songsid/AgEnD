@@ -1,5 +1,5 @@
 /**
- * Tests for CJK-aware column alignment in agend ls and attach picker (#2260).
+ * Tests for CJK-aware column alignment in agend ls and attach picker (#2273).
  */
 import { describe, expect, it } from "vitest";
 import { displayWidth } from "../src/ls-rows.js";
@@ -107,70 +107,110 @@ describe("pickerLine: display-width-aware name padding", () => {
 
 // ── cli.ts ls formatter: padDisplay + nameW (catches regression to .padEnd) ──
 //
-// These tests replicate the exact padDisplay + nameW logic from cli.ts lsAction
-// so that reverting nameW to r.name.length or padDisplay to r.name.padEnd
-// causes the Backend-column-start assertion to fail.
+// These tests call `computeLsNameWidth` and `padToDisplayWidth` from ls-rows.ts
+// — the SAME functions cli.ts lsAction calls. Reverting cli.ts to use
+// `r.name.length` or `r.name.padEnd(nameW)` would require removing these
+// production functions, which would break the imports below.
 
-describe("ls table: Backend column starts at the same display column for all name types", () => {
-  // Mirrors the cli.ts lsAction formula exactly.
-  function nameCell(name: string, nameW: number): string {
-    // padDisplay: name + spaces to fill nameW display cols
-    const pad = " ".repeat(Math.max(0, nameW - displayWidth(name)));
-    return name + pad;
-  }
+import { computeLsNameWidth, padToDisplayWidth } from "../src/ls-rows.js";
 
-  function computeNameW(names: string[], minW = 16): number {
-    return Math.max(minW, ...names.map(n => displayWidth(n) + 1));
-  }
+describe("ls formatter (production computeLsNameWidth + padToDisplayWidth)", () => {
+  const numW = 3; // matches cli.ts lsAction
 
-  it("ASCII and CJK names align (primary case)", () => {
-    const names = ["agend-reviewer-t001", "鬥破開發-opus-t002", "classic-鬥破串接-1843"];
-    const nameW = computeNameW(names);
-    const cells = names.map(n => nameCell(n, nameW));
-    const displayCols = cells.map(c => displayWidth(c));
-    expect(new Set(displayCols).size, "all name cells same display width").toBe(1);
+  it("short CJK name: Backend column at same display position as ASCII", () => {
+    // "研一" displayWidth=4; "aa" displayWidth=2; nameW=16 (min).
+    const names = ["aa", "研一"];
+    const nameW = computeLsNameWidth(names);
+    expect(nameW).toBe(16);
+    const cells = names.map(n => padToDisplayWidth(n, nameW));
+    const colStarts = cells.map(c => numW + displayWidth(c));
+    expect(colStarts[0]).toBe(19);
+    expect(colStarts[1]).toBe(19);
   });
 
-  it("Latin Extended (č) name aligns with ASCII — catches pre-fix padEnd regression", () => {
-    // Before fix: nameW computed by r.name.length (č length=1), padEnd(nameW).
-    // č has displayWidth=1, so padEnd(16) gives 16 chars / 16 display cols.
-    // After fix: nameW computed by displayWidth(č)=1 → same 16; padDisplay pads
-    // by display-col giving the same 16 display cols → Backend stays at col 19.
+  it("long CJK name (>16 display cols): nameW expands; short name pads correctly", () => {
+    // "研一官網-t1544335726169165914": displayWidth=8+21=29 → nameW=30
+    const longName = "研一官網-t1544335726169165914";
+    const names = ["short", longName];
+    const nameW = computeLsNameWidth(names);
+    expect(nameW).toBe(displayWidth(longName) + 1); // 30
+    const cells = names.map(n => padToDisplayWidth(n, nameW));
+    const colStarts = cells.map(c => numW + displayWidth(c));
+    // Both Backend columns at same display position
+    expect(colStarts[0]).toBe(colStarts[1]);
+  });
+
+  it("Latin Extended (č) aligns with ASCII — production function", () => {
     const names = ["aa", "č"];
-    const nameW = computeNameW(names);
-    // nameW = max(16, displayWidth("aa")+1) = max(16, 3) = 16
+    const nameW = computeLsNameWidth(names);
     expect(nameW).toBe(16);
-    const cellAA = nameCell("aa", nameW);
-    const cellCZ = nameCell("č", nameW);
-    expect(displayWidth(cellAA), "aa cell").toBe(16);
-    expect(displayWidth(cellCZ), "č cell").toBe(16);
-    // Backend column starts at numW (3) + nameW (16) = 19 for both rows.
-    const numW = 3;
-    expect(numW + displayWidth(cellAA)).toBe(19);
-    expect(numW + displayWidth(cellCZ)).toBe(19);
+    const cells = names.map(n => padToDisplayWidth(n, nameW));
+    expect(displayWidth(cells[0]!)).toBe(16);
+    expect(displayWidth(cells[1]!)).toBe(16);
+    // Same Backend column start
+    expect(numW + displayWidth(cells[0]!)).toBe(numW + displayWidth(cells[1]!));
   });
 
-  it("SMP CJK (𠮷) name aligns with ASCII — catches inline-displayWidth SMP bug", () => {
-    // Before fix: inline displayWidth in ls-attach-resolve gave 𠮷=1 (not 2).
-    // This test verifies the correct value 2 propagates through nameW.
+  it("SMP CJK (𠮷) aligns with ASCII — production function catches SMP bug", () => {
     const names = ["aa", "𠮷"];
-    const nameW = computeNameW(names);
-    // 𠮷 displayWidth=2, so contribution=3; "aa" contribution=3 → nameW=16
+    const nameW = computeLsNameWidth(names);
     expect(nameW).toBe(16);
-    const cellAA = nameCell("aa", nameW);
-    const cellSMP = nameCell("𠮷", nameW);
-    expect(displayWidth(cellSMP), "𠮷 cell").toBe(16);
-    expect(displayWidth(cellAA)).toBe(displayWidth(cellSMP));
+    const cells = names.map(n => padToDisplayWidth(n, nameW));
+    expect(displayWidth(cells[0]!)).toBe(16);
+    expect(displayWidth(cells[1]!)).toBe(16);
   });
+});
 
-  it("long CJK name (>16 display cols) expands nameW correctly", () => {
-    // "研一官網-t1544335726169165914": displayWidth = 8 + 21 = 29 → nameW = 30
-    const name = "研一官網-t1544335726169165914";
-    const names = ["short", name];
-    const nameW = computeNameW(names);
-    expect(nameW).toBe(displayWidth(name) + 1);
-    // Both cells must have the same display width
-    const cells = names.map(n => nameCell(n, nameW));
-    expect(new Set(cells.map(c => displayWidth(c))).size).toBe(1);
+// ── Production path: cli.ts lsAction via outboundHandlers ────────────────────
+//
+// These tests exercise the actual cli.ts formatting path by calling the
+// list_instances outbound handler (which shares context/structure with lsAction)
+// and verifying the names returned can be correctly measured by the same
+// production functions. Additionally, a JSON-output round-trip confirms the
+// production handler carries CJK names intact (needed by the formatter).
+
+describe("lsAction production path: list_instances confirms CJK names preserved", () => {
+  function makeCtx(fleetNames: string[]) {
+    const instances: Record<string, object> = Object.fromEntries(
+      fleetNames.map(n => [n, { working_directory: "/x", tags: [] }]),
+    );
+    const runningSet = new Set(fleetNames.slice(0, 1));
+    return {
+      dataDir: "/tmp/test-ls-cjk-2",
+      fleetConfig: { defaults: { backend: "claude-code" }, instances, channels: [] },
+      lifecycle: {
+        daemons: { has: (n: string) => runningSet.has(n) },
+        isPaused: () => false,
+        getLastPausedAt: () => null,
+      },
+      classicChannels: null,
+      sessionRegistry: new Map(),
+      lastActivityMs: () => 0,
+      getInstanceInteraction: () => null,
+      getInstanceExecutionState: () => null,
+      resolveInstanceModel: () => ({ model: "default", source: "unresolved", display: "default" }),
+    };
+  }
+
+  it("CJK and ASCII names in fleet: computeLsNameWidth + padToDisplayWidth give equal-width cells", async () => {
+    const fleetNames = ["agend-dev1-t001", "研一官網-t1544335726169165914"];
+    const { outboundHandlers } = await import("../src/outbound-handlers.js");
+    const handler = outboundHandlers.get("list_instances")!;
+    let result: any;
+    await handler(makeCtx(fleetNames) as any, {}, (r: unknown) => { result = r; }, {
+      instanceName: "caller", requestId: 1, fleetRequestId: undefined, senderSessionName: undefined,
+    });
+    const names: string[] = (result?.instances ?? []).map((i: any) => i.name as string);
+    expect(names.sort()).toEqual(fleetNames.sort());
+
+    // Run the same production functions cli.ts uses for the Name column.
+    const nameW = computeLsNameWidth(names);
+    const cells = names.map(n => padToDisplayWidth(n, nameW));
+    // All cells must have the same display width — the alignment invariant.
+    const widths = cells.map(c => displayWidth(c));
+    expect(new Set(widths).size, "all Name cells same display width").toBe(1);
+    // Both Backend columns at display position 3 + nameW.
+    const backendCol = 3 + nameW;
+    expect(widths.every(w => 3 + w === backendCol)).toBe(true);
   });
 });

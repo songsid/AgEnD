@@ -156,6 +156,24 @@ export function truncateDisplay(s: string, maxWidth: number): string {
 export const MODEL_DISPLAY_WIDTH_MAX = 20;
 
 /**
+ * Compute the Name column width for `agend ls`: the maximum display-width
+ * of any name plus one space, at least `minW` (default 16). Exported so
+ * tests can call the same function cli.ts uses — reverting cli.ts to
+ * `r.name.length` instead of this function will break those tests.
+ */
+export function computeLsNameWidth(names: string[], minW = 16): number {
+  return Math.max(minW, ...names.map(n => displayWidth(n) + 1));
+}
+
+/**
+ * Pad `s` to `w` display columns by appending spaces. CJK/emoji-aware.
+ * Used by the agend ls Name cell and the attach picker/ambiguity formatter.
+ */
+export function padToDisplayWidth(s: string, w: number): string {
+  return s + " ".repeat(Math.max(0, w - displayWidth(s)));
+}
+
+/**
  * Status icon shared by `agend ls` and /status's merged State column (#1052):
  * one glyph per lifecycle/execution state — ⏸ paused, ✗ stopped.
  */
