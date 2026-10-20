@@ -70,10 +70,13 @@ export function UsageMetric({ m }) {
 /**
  * #2014: a row's title. A credential profile's row (`profile`; its API `name` is "Claude (<profile>)") shows the
  * provider name on the title line beside the plan badge, and the profile on its own full-width muted line under it;
- * the full name is the tooltip, and the dialog shows the profile unclipped. Any other row: its name.
+ * the full name is the tooltip, and the dialog shows the profile unclipped. The default login's row beside profiles
+ * (`defaultLogin`; "Claude (default)", #2236) does the same with "default" in the page's language, never a clipped
+ * "Claude (d…". Any other row: its name.
  */
 export function providerTitle(p) {
   const name = String((p && p.name) || ""), profile = p && typeof p.profile === "string" && p.profile ? p.profile : "";
+  if (!profile && p && p.defaultLogin === true && name.endsWith(" (default)")) return { base: name.slice(0, -" (default)".length), profile: tn("usage.default_login") };
   const suffix = ` (${profile})`;
   return profile && name.endsWith(suffix) ? { base: name.slice(0, -suffix.length), profile } : { base: name, profile };
 }

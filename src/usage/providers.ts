@@ -81,6 +81,11 @@ export interface ProviderUsage {
   name: string;
   /** #2014: the credential profile this row reads (its `name` ends in ` (<profile>)`); the page shows it on its own line. */
   profile?: string;
+  /**
+   * The default (shared) login's row beside profiles: its `name` ends in ` (default)`. The page shows "default", in the
+   * page's language, on its own line, as a profile row shows its profile; the chat text says it in the fleet's.
+   */
+  defaultLogin?: true;
   status: "ok" | "error" | "no-credentials";
   /** A non-metered subscription whose entitlement is unlimited (not 0/100%). */
   unlimited?: boolean;
@@ -1645,7 +1650,7 @@ export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderU
 
 // ── Registry ─────────────────────────────────────────────────────────────────
 
-type UsageProvider = { id: string; name: string; profile?: string; fetch: (storeHome?: string, scope?: ClaudeUsageScope) => Promise<Omit<ProviderUsage, "id" | "name">> };
+type UsageProvider = { id: string; name: string; profile?: string; defaultLogin?: true; fetch: (storeHome?: string, scope?: ClaudeUsageScope) => Promise<Omit<ProviderUsage, "id" | "name">> };
 
 type UsageFleetConfig = Parameters<typeof listConfiguredProfiles>[0];
 
@@ -1751,6 +1756,7 @@ export function providersForConfig(
       rows.push({
         id: provider.id,
         name: provider.id === "codex" ? `${provider.name} (default)` : provider.name,
+        ...(provider.id === "codex" ? { defaultLogin: true as const } : {}),
         // Claude's shared row keeps its statusline fallback to the shared instances (#1699); others ignore the scope.
         fetch: () => provider.fetch(undefined, { besideProfiles: true }),
       });
@@ -1778,7 +1784,7 @@ function claudeHostRows(config: UsageFleetConfig, provider: UsageProvider, backe
   if (profiles.length === 0) return [provider];
   const homes = profiles.map(profile => credentialProfileStoreHome(getAgendHome(), backendName, profile));
   return [
-    { id: provider.id, name: `${provider.name} (default)`, fetch: () => provider.fetch(undefined, { besideProfiles: true }) },
+    { id: provider.id, name: `${provider.name} (default)`, defaultLogin: true, fetch: () => provider.fetch(undefined, { besideProfiles: true }) },
     ...profiles.map((profile, i) => ({
       id: `${provider.id}:${profile}`,
       name: `${provider.name} (${profile})`,
@@ -1786,6 +1792,11 @@ function claudeHostRows(config: UsageFleetConfig, provider: UsageProvider, backe
       fetch: () => provider.fetch(homes[i], inUse.includes(profile) ? { profile } : { profile, hostOnly: true }),
     })),
   ];
+}
+
+/** What a row says about whose login it reads: its profile (#2014), or that it is the default login beside profiles. */
+function rowTags(p: UsageProvider): Pick<ProviderUsage, "profile" | "defaultLogin"> {
+  return { ...(p.profile ? { profile: p.profile } : {}), ...(p.defaultLogin ? { defaultLogin: true as const } : {}) };
 }
 
 /** #2236: the Claude credential profiles on this host (their directories), whether or not an instance uses them. */
@@ -1994,15 +2005,15 @@ export async function fetchAllUsage(
         // Fail soft: this row says it could not be read, the rest still answer,
         // and the snapshot returns in bounded time.
         return {
-          id: p.id, name: p.name, ...(p.profile ? { profile: p.profile } : {}), status: "error",
+          id: p.id, name: p.name, ...rowTags(p), status: "error",
           error: `Could not reach ${p.name}.`,
           errorI18n: i18n("usage.error.unreachable", p.name),
           metrics: [],
         };
       }
-      return { id: p.id, name: p.name, ...(p.profile ? { profile: p.profile } : {}), ...outcome };
+      return { id: p.id, name: p.name, ...rowTags(p), ...outcome };
     } catch (err) {
-      return { id: p.id, name: p.name, ...(p.profile ? { profile: p.profile } : {}), status: "error", error: String((err as Error)?.message ?? err), metrics: [] };
+      return { id: p.id, name: p.name, ...rowTags(p), status: "error", error: String((err as Error)?.message ?? err), metrics: [] };
     }
   }));
   return {
