@@ -214,3 +214,49 @@ describe("lsAction production path: list_instances confirms CJK names preserved"
     expect(widths.every(w => 3 + w === backendCol)).toBe(true);
   });
 });
+
+// ── Source-structure checks: cli.ts call sites (catches cli.ts reversal) ────
+//
+// These are the same kind of source-text checks used throughout the test suite
+// (e.g. tool-permissions.test.ts, daemon.ts). Reverting cli.ts to r.name.length
+// or r.name.padEnd(nameW) makes the negation assertions below fail.
+
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join, dirname } from "node:path";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+describe("cli.ts call sites use the production functions (source-structure check)", () => {
+  it("lsAction uses computeLsNameWidth — reverts to r.name.length breaks this", () => {
+    const src = readFileSync(join(ROOT, "src/cli.ts"), "utf-8");
+    const lsStart = src.indexOf("async function lsAction");
+    const lsBlock = src.slice(lsStart, lsStart + 8000);
+    // Production call must be present
+    expect(lsBlock).toContain("computeLsNameWidth");
+    // Old pattern must be absent from the formatter section
+    const fmtStart = lsBlock.indexOf("const numW");
+    const fmtEnd = lsBlock.indexOf("System memory footer");
+    const fmtBlock = lsBlock.slice(fmtStart, fmtEnd);
+    expect(fmtBlock).not.toContain("r.name.length");
+  });
+
+  it("lsAction row loop uses padToDisplayWidth — reverts to r.name.padEnd breaks this", () => {
+    const src = readFileSync(join(ROOT, "src/cli.ts"), "utf-8");
+    const loopStart = src.indexOf("for (const r of displayRows)");
+    const loopEnd = src.indexOf("System memory footer");
+    const loopBlock = src.slice(loopStart, loopEnd);
+    // Production pad function must be in the row loop
+    expect(loopBlock).toContain("padToDisplayWidth(r.name");
+    // Old code-unit padEnd must be absent from the name cell
+    expect(loopBlock).not.toContain("r.name.padEnd");
+  });
+
+  it("picker maxNameW uses computeLsNameWidth — reverts to Math.max+displayWidth breaks this", () => {
+    const src = readFileSync(join(ROOT, "src/cli.ts"), "utf-8");
+    // The picker helper (interactivePicker) must call computeLsNameWidth
+    const pickerStart = src.indexOf("async function interactivePicker");
+    const pickerBlock = src.slice(pickerStart, pickerStart + 2000);
+    expect(pickerBlock).toContain("computeLsNameWidth");
+  });
+});
