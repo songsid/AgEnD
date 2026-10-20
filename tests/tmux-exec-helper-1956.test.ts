@@ -6,6 +6,8 @@
  * - Exactly once: no "started" in time → the helper is ended and, once it is gone, the call goes direct; "started"
  *   with no answer → the error a timed-out direct call gives, never a second run; the helper killed mid-command →
  *   the command ran once, and is not run again.
+ * - The fleet's own loop held past the start timeout retires nothing; a helper taken as wedged while its commands run
+ *   is not killed: they answer, and only then does it exit (so does stop()).
  * - Not used when not running, refused, not allowlisted, or another binary on the call's PATH: direct.
  * - Restarted only by maintain(), after its backoff; ends with the fleet (stop, its parent dying).
  */
@@ -14,7 +16,7 @@ import { chmodSync, closeSync, constants as fsConstants, existsSync, mkdirSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ExecHelper, HELPER_SOURCE, type HelperExecOptions } from "../src/tmux-exec-helper.js";
+import { ExecHelper, HELPER_SOURCE, type HelperExecOptions, type HelperExecResult } from "../src/tmux-exec-helper.js";
 
 let root: string, bin: string, log: string, helpers: ExecHelper[] = [];
 /** A private socket, as every test tmux call needs (the test process guard; the stub skips it). */
@@ -44,8 +46,11 @@ function helper(over: Partial<ConstructorParameters<typeof ExecHelper>[0]> = {})
   return { h, direct };
 }
 /** A helper program that reads requests and answers as `answer` says (tests of the protocol's failure cases). */
-function fakeHelper(answer: "never" | "started-only"): (allow: string[]) => ChildProcess {
+function fakeHelper(answer: "never" | "started-only" | "first-only"): (allow: string[]) => ChildProcess {
+  // first-only: starts the first request and answers it after 600 ms, never starts another; exits once its stdin has
+  // ended and that answer is out (as the helper does).
   const src = answer === "never" ? `process.stdin.on("data", () => {}); setInterval(() => {}, 1000);`
+    : answer === "first-only" ? `const { writeSync } = require("node:fs"); let b = "", first = true, busy = false, ended = false; process.stdin.setEncoding("utf8"); process.stdin.on("data", (c) => { b += c; let i; while ((i = b.indexOf("\\n")) >= 0) { const r = JSON.parse(b.slice(0, i)); b = b.slice(i + 1); if (!first) continue; first = false; busy = true; writeSync(1, JSON.stringify({ id: r.id, started: true }) + "\\n"); setTimeout(() => { writeSync(1, JSON.stringify({ id: r.id, done: true, stdout: "first", stderr: "", error: null }) + "\\n"); busy = false; if (ended) process.exit(0); }, 600); } }); process.stdin.on("end", () => { ended = true; if (!busy) process.exit(0); }); setInterval(() => {}, 1000);`
     : `const { writeSync } = require("node:fs"); let b = ""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (c) => { b += c; let i; while ((i = b.indexOf("\\n")) >= 0) { const r = JSON.parse(b.slice(0, i)); b = b.slice(i + 1); writeSync(1, JSON.stringify({ id: r.id, started: true }) + "\\n"); } }); setInterval(() => {}, 1000);`;
   return () => spawn(process.execPath, ["-e", src], { stdio: ["pipe", "pipe", "ignore"] });
 }
@@ -117,6 +122,51 @@ describe("exactly once", () => {
     (h as any).proc.kill("SIGKILL");
     expect((await Promise.all([a, b])).map((r) => r.stdout)).toEqual(["direct:tmux -L agend-test-1956 a", "direct:tmux -L agend-test-1956 b"]);
     expect(direct.mock.calls.length).toBe(2);
+  });
+});
+
+describe("a stalled fleet, a slow helper", () => {
+  it("the fleet's loop held past the start timeout in a check-phase callback: nothing retired, nothing failed, each ran once", async () => {
+    // As reviewed: a slow command runs; then, in a setImmediate callback, a write is sent and the fleet's loop is held
+    // past the start timeout, so the timers phase comes before the poll that reads its "started".
+    const events: string[] = [];
+    const { h, direct } = helper({ startTimeoutMs: 300, log: (e) => events.push(e) }); h.start();
+    const slow = h.exec("tmux", [...SOCK, "slow", "1.5"], { env: env() });
+    await vi.waitFor(() => expect(ran()).toEqual(["slow 1.5"]));
+    const write = await new Promise<{ p: Promise<HelperExecResult> }>((resolve) => setImmediate(() => {
+      const p = h.exec("tmux", [...SOCK, "send-keys", "Enter"], { env: env() });
+      const until = performance.now() + 360; while (performance.now() < until) { /* the fleet's loop, held */ }
+      resolve({ p });
+    }));
+    expect((await Promise.all([slow, write.p])).map((r) => r.stdout)).toEqual(["slow", "ok:send-keys Enter"]);
+    expect([events, direct.mock.calls.length, h.usable(), ran()]).toEqual([[], 0, true, ["slow 1.5", "send-keys Enter"]]);
+  });
+  it("taken as wedged while its command runs: not killed — that command answers, and the call it never started goes direct once it has exited", async () => {
+    const events: string[] = [];
+    const { h, direct } = helper({ spawnHelper: fakeHelper("first-only"), startTimeoutMs: 10_000, log: (e, d) => events.push(`${e}:${String(d?.why)}`) }); h.start();
+    const pid = (h as any).proc.pid as number;
+    const first = h.exec("tmux", [...SOCK, "slow"], { env: env() });
+    await vi.waitFor(() => expect([...(h as any).pending.values()].some((p: { started: boolean }) => p.started)).toBe(true));
+    (h as any).options.startTimeoutMs = 200;                                                // the helper has booted: now a short wait
+    const second = h.exec("tmux", [...SOCK, "send-keys", "Enter"], { env: env() });
+    const order: string[] = [];
+    first.then(() => order.push("first")); second.then(() => order.push(`second exited=${!alive(pid)}`));
+    expect((await Promise.all([first, second])).map((r) => r.stdout)).toEqual(["first", "direct:tmux -L agend-test-1956 send-keys Enter"]);
+    expect([events, direct.mock.calls.length, order]).toEqual([["retired:no_start"], 1, ["first", "second exited=true"]]);
+  });
+  it("stop() while a command runs: it answers (not a timeout), then the helper exits", async () => {
+    const { h } = helper(); h.start();
+    const pid = (h as any).proc.pid as number;
+    const call = h.exec("tmux", [...SOCK, "slow", "0.4"], { env: env() });
+    await vi.waitFor(() => expect(ran()).toEqual(["slow 0.4"]));
+    h.stop();
+    expect((await call).stdout).toBe("slow");
+    await vi.waitFor(() => expect(alive(pid)).toBe(false), { timeout: 3000 });
+  });
+  it("an error names the command as the direct call does (tmux …, not the helper's absolute path)", async () => {
+    const { h } = helper(); h.start();
+    const err = await h.exec("tmux", [...SOCK, "fail"], { env: env() }).catch((e) => e);
+    expect(err.message.split("\n")[0]).toBe("Command failed: tmux -L agend-test-1956 fail");
   });
 });
 

@@ -14,6 +14,8 @@
 //     output read to the end, which carries every "started" it wrote), so it can never start the command later;
 //   - a call it has said "started" for is the helper's: its answer, or — if none comes by its deadline — the error a
 //     timed-out direct call would give. It is never run again directly.
+// A helper taken as wedged while commands it started still run is not killed (that would not stop them, and their calls
+// would fail though they ran): it gets no more calls, its stdin is ended, and it exits once they have answered.
 // A helper that is not running, or not trusted, is not used: the call goes direct, as before. Only the fleet starts
 // and restarts the helper (start/maintain, from its own lifecycle and timer), never a tool handler.
 import { execFile, spawn, type ChildProcess } from "node:child_process";
@@ -60,18 +62,26 @@ function send(o) {
     catch (e) { if (e && e.code === "EAGAIN") { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2); continue; } process.exit(0); }
   }
 }
+let running = 0, ending = false;
+function finish() { if (ending && running === 0) process.exit(0); }
 function handle(line) {
   let r; try { r = JSON.parse(line); } catch { return; }
   if (!r || typeof r.id !== "number") return;
   if (typeof r.file !== "string" || !allow.has(r.file) || !Array.isArray(r.args)) return send({ id: r.id, refused: "not-allowed" });
   send({ id: r.id, started: true });                          // in the pipe before the fork: see the fleet side
   let child;
+  running++;
   try {
     child = execFile(r.file, r.args, { timeout: r.timeout || 0, maxBuffer: r.maxBuffer || 1048576, env: r.env || process.env, encoding: "utf8" },
-      (err, stdout, stderr) => send({ id: r.id, done: true, stdout: String(stdout || ""), stderr: String(stderr || ""),
-        error: err ? { message: err.message, code: err.code === undefined ? null : err.code, signal: err.signal || null, killed: !!err.killed } : null }));
+      (err, stdout, stderr) => {
+        send({ id: r.id, done: true, stdout: String(stdout || ""), stderr: String(stderr || ""),
+          error: err ? { message: err.message, code: err.code === undefined ? null : err.code, signal: err.signal || null, killed: !!err.killed } : null });
+        running--; finish();
+      });
   } catch (e) {
-    return send({ id: r.id, done: true, stdout: "", stderr: "", error: { message: String(e && e.message || e), code: e && e.code || null, signal: null, killed: false } });
+    running--;
+    send({ id: r.id, done: true, stdout: "", stderr: "", error: { message: String(e && e.message || e), code: e && e.code || null, signal: null, killed: false } });
+    return finish();
   }
   if (typeof r.input === "string") {
     if (child.stdin) { child.stdin.on("error", () => {}); child.stdin.end(r.input); }
@@ -80,8 +90,10 @@ function handle(line) {
 let buf = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (c) => { buf += c; let i; while ((i = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); handle(line); } });
-process.stdin.on("end", () => process.exit(0));
-process.stdin.on("close", () => process.exit(0));
+// Its stdin ended (the fleet stopped, or no longer trusts it): every request has been read; it exits once the commands
+// it started have answered.
+process.stdin.on("end", () => { ending = true; finish(); });
+process.stdin.on("close", () => { ending = true; finish(); });
 // Its parent gone (the fleet died while something else holds the pipe): process.ppid is read once by node, so ask
 // whether that process still exists (ESRCH: it does not).
 setInterval(() => { try { process.kill(parent, 0); } catch (e) { if (e && e.code === "ESRCH") process.exit(0); } }, 1000);
@@ -102,7 +114,7 @@ interface Pending {
   id: number;
   started: boolean;
   settled: boolean;
-  file: string; args: string[]; opts: HelperExecOptions;
+  file: string; abs: string; args: string[]; opts: HelperExecOptions;
   resolve(r: HelperExecResult): void;
   reject(e: unknown): void;
   direct(): void;
@@ -183,7 +195,7 @@ export class ExecHelper {
   /** A fleet started again after a stop may start the helper again. */
   reopen(): void { this.stopped = false; this.restartAt = 0; this.backoffMs = RESTART_BACKOFF_MIN_MS; }
 
-  /** The fleet is stopping: no more calls go to the helper; it is closed (its stdin ends, so it exits). */
+  /** The fleet is stopping: no more calls go to the helper; its stdin ends, and it exits once its commands have answered. */
   stop(): void {
     this.stopped = true;
     const proc = this.proc;
@@ -199,7 +211,7 @@ export class ExecHelper {
     const abs = this.usable() ? this.absoluteFor(file, opts.env) : null;
     if (!abs) return goDirect();
     return new Promise<R>((resolve, reject) => {
-      const p: Pending = { id: this.nextId++, started: false, settled: false, file, args, opts, resolve: resolve as (r: HelperExecResult) => void, reject, startTimer: null, answerTimer: null,
+      const p: Pending = { id: this.nextId++, started: false, settled: false, file, abs, args, opts, resolve: resolve as (r: HelperExecResult) => void, reject, startTimer: null, answerTimer: null,
         direct: () => { goDirect().then(resolve, reject); } };
       this.pending.set(p.id, p);
       this.holdOpen();
@@ -207,7 +219,12 @@ export class ExecHelper {
         env: opts.env ?? process.env, ...(opts.input !== undefined ? { input: opts.input } : {}) };
       try { this.proc!.stdin!.write(JSON.stringify(request) + "\n"); }
       catch { this.pending.delete(p.id); this.retire(this.proc!, "write_failed"); goDirect().then(resolve, reject); return; }
-      p.startTimer = setTimeout(() => { p.startTimer = null; if (!p.started && !p.settled) this.retire(this.proc!, "no_start"); }, this.options.startTimeoutMs ?? HELPER_START_TIMEOUT_MS);
+      // The fleet's own loop may have been held (a GC, a long sync read, its own spawn) while the "started" sat in the
+      // pipe: the timers phase runs before the poll that would read it, so look once that poll has run (setImmediate).
+      p.startTimer = setTimeout(() => {
+        p.startTimer = null;
+        setImmediate(() => { if (!p.started && !p.settled) this.retire(this.proc, "no_start"); });
+      }, this.options.startTimeoutMs ?? HELPER_START_TIMEOUT_MS);
       p.startTimer.unref?.();
     });
   }
@@ -256,7 +273,9 @@ export class ExecHelper {
       this.backoffMs = RESTART_BACKOFF_MIN_MS;
       const stdout = m.stdout ?? "", stderr = m.stderr ?? "";
       if (!m.error) { p.resolve({ stdout, stderr }); return; }
-      const err = new Error(m.error.message) as ExecError;
+      // The message names the command as the direct call would ("tmux …", not the helper's absolute path).
+      const message = p.abs !== p.file ? m.error.message.replace(p.abs, p.file) : m.error.message;
+      const err = new Error(message) as ExecError;
       err.code = m.error.code; err.signal = m.error.signal; err.killed = m.error.killed;
       err.cmd = [p.file, ...p.args].join(" "); err.stdout = stdout; err.stderr = stderr;
       p.reject(err);
@@ -291,11 +310,19 @@ export class ExecHelper {
     return err;
   }
 
-  /** Stop trusting this helper and end it; the calls it never started go direct once it is gone (gone()). */
+  /**
+   * Stop trusting this helper and end it; the calls it never started go direct once it is gone (gone()). Taken as
+   * wedged (no_start) while commands it started still run, it is not killed — killing it would not stop them, and their
+   * calls would fail though they ran: its stdin is ended, and it exits once they have answered (or their deadline kills it).
+   */
   private retire(proc: ChildProcess | null, why: string): void {
     if (!proc || proc !== this.proc) return;
     if (this.trusted) this.options.log?.("retired", { why });
     this.trusted = false;
+    if (why === "no_start" && [...this.pending.values()].some((p) => p.started)) {
+      try { proc.stdin?.end(); } catch { /* gone */ }
+      return;
+    }
     try { proc.kill("SIGKILL"); } catch { /* gone */ }
   }
 
