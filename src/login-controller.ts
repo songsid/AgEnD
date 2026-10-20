@@ -18,7 +18,9 @@ import type { TunnelReservation } from "./tunnel/purpose-lane.js";
  *   - every start goes through a risk confirmation button (design §3.2); the
  *     kiro variant also states that the CLI will be logged out first
  *   - the link (no secret) goes to the requesting chat; the one-time access
- *     token goes ONLY to the requester privately (adapter.sendDirect). If the
+ *     token goes ONLY to the requester privately (adapter.sendDirect), or for a
+ *     dashboard requester (#2233, `LoginChat.web`) to the one web session that
+ *     asked, read back from here (webAccessToken) — never pushed anywhere. If the
  *     private route fails the token is never posted in the channel: the
  *     admin gets a requester-only "resend" button. If neither the link nor a
  *     token route can be delivered, the session is cancelled — never left
@@ -145,6 +147,26 @@ export interface LoginChat {
   threadId?: string;
   /** The human who issued the command / pressed the button. Required in web mode. */
   userId?: string;
+  /**
+   * #2233: the requester is a signed-in dashboard session, not a chat user. Its admin check replaces isFleetAdmin, and
+   * what chat gets as buttons, a link, a DM or a device code goes to the sink instead (structured, for the dialog);
+   * `adapter.sendText` still carries the status lines.
+   */
+  web?: WebLoginSink;
+}
+
+/** #2233: where a dashboard-started sign-in's parts go — only to the session that started it (web-backend-login.ts). */
+export interface WebLoginSink {
+  /** Still a live local admin session (re-read every time, as isFleetAdmin is for a chat requester). */
+  isAdmin(): boolean;
+  /** The pre-check's answer: what the dialog asks before anything runs (chat's confirmation buttons). */
+  confirm(info: { tokenPresent: boolean; logoutFirst: string | null; publicLink: boolean; deviceAuth: boolean }): void;
+  /** The provider's sign-in URL and code, seen in the pane. */
+  hint(url: string, code: string | null): void;
+  /** The browser terminal is listening (no secret in the URL; the token is read back with webAccessToken). */
+  terminal(info: { url: string; ttlMinutes: number; command: string; loopback: boolean; public: boolean }): void;
+  /** The session ended (any way); its words still come through adapter.sendText. */
+  ended(result: { ok: boolean }): void;
 }
 
 export interface LoginStartOptions {
@@ -297,7 +319,7 @@ export class LoginController {
   /** One tunnel owner for the process: the lease it writes is fleet-wide, so this must not be per-login. */
   private managedTunnel: ManagedTunnel | null = null;
   /** A public-link start between its claim and its session: getting cloudflared (#1141 review). */
-  private pendingTunnelStart: { backend: string; abort: AbortController } | null = null;
+  private pendingTunnelStart: { backend: string; abort: AbortController; sink?: WebLoginSink } | null = null;
 
   constructor(private readonly deps: LoginControllerDeps) {}
 
@@ -322,7 +344,7 @@ export class LoginController {
     if (this.stopping) return t("login.web_shutting_down");
     const generation = this.shutdownGeneration;
     // Authorization is decided HERE, not by whoever called us.
-    if (!chat.userId || !this.deps.isFleetAdmin(chat.userId, chat.adapterId)) {
+    if (!chat.userId || !(chat.web ? chat.web.isAdmin() : this.deps.isFleetAdmin(chat.userId, chat.adapterId))) {
       this.audit("denied", { backend, requester: chat.userId ?? null, adapterId: chat.adapterId });
       return t("permission.denied");
     }
@@ -400,6 +422,11 @@ export class LoginController {
       this.deps.releaseWindow(claim);                       // nothing runs until the button is pressed
       const logoutFirst = tokenPresent && flow.preCommand?.when === "token-present";
       const publicLink = this.tunnelAllowed(cfg, flow);
+      if (chat.web) {
+        // The dashboard asks in its own dialog; the start it then sends runs every check again, like a button press.
+        chat.web.confirm({ tokenPresent, logoutFirst: logoutFirst ? flow.preCommand!.command : null, publicLink, deviceAuth: flow.deviceAuth === true });
+        return null;
+      }
       const confirmation = t(flow.deviceAuth ? "login.device_confirm" : "login.web_confirm", shown)
         + (publicLink ? t("login.tunnel_confirm_extra") : "");
       try {
@@ -448,7 +475,7 @@ export class LoginController {
     if (wantTunnel) {
       // The window is claimed but no session exists yet: this owner is what
       // `/login cancel` and a shutdown reach while cloudflared downloads.
-      const pending = { backend, abort: new AbortController() };
+      const pending = { backend, abort: new AbortController(), ...(chat.web ? { sink: chat.web } : {}) };
       this.pendingTunnelStart = pending;
       let got: Awaited<ReturnType<LoginController["obtainCloudflared"]>>;
       try {
@@ -496,6 +523,11 @@ export class LoginController {
       // and the channel is the one place this mode promises not to put anything. Local and device-auth
       // logins keep their contract.
       onHint: (url, code) => {
+        if (chat.web) {
+          // The session's own dialog, also in public mode: it is not the channel, and nobody else reads it.
+          try { chat.web.hint(url, code); } catch { /* the dialog's state only */ }
+          return Promise.resolve();
+        }
         if (wantTunnel) {
           this.audit("hint_not_relayed", { backend, requester: userId, hadCode: code !== null });
           return Promise.resolve();
@@ -507,6 +539,7 @@ export class LoginController {
         // is over must not leave its listener reachable while the fleet believes it is free.
         await this.closeTunnel(entry);
         this.releaseEntry(entry);
+        try { chat.web?.ended({ ok: result.ok }); } catch { /* the dialog's state only */ }
         if (!entry.silent) await this.reportDone(chat, entry, result);
       },
       onAudit: (event, fields) => this.audit(event.replace(/^web_terminal_/, ""), fields),
@@ -584,6 +617,32 @@ export class LoginController {
     }
     if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
     return t("login.web_started", shown);
+  }
+
+  /**
+   * #2233: the access token of the running sign-in, for the dashboard session that started it (the sink it gave) and
+   * only while that session is still a local admin; null otherwise, and once redeemed.
+   */
+  webAccessToken(sink: WebLoginSink): string | null {
+    const entry = this.active;
+    if (!entry || entry.chat.web !== sink || !entry.http || !sink.isAdmin()) return null;
+    return entry.session.peekAccessToken();
+  }
+
+  /** #2233: whether the running sign-in is the one this dashboard sink started. */
+  isActiveFor(sink: WebLoginSink): boolean { return this.active?.chat.web === sink; }
+
+  /**
+   * #2233: end the sign-in this dashboard sink started — still getting its cloudflared, or running (its listener or
+   * tunnel still coming up included) — and nothing else: a later sign-in that took the window is never touched.
+   * True when there was one to end.
+   */
+  async cancelFor(sink: WebLoginSink): Promise<boolean> {
+    if (this.pendingTunnelStart?.sink === sink) { this.pendingTunnelStart.abort.abort(); return true; }
+    const entry = this.active;
+    if (!entry || entry.chat.web !== sink) return false;
+    await entry.session.cancel("cancelled");
+    return true;
   }
 
   /** `/login cancel` in web mode. */
@@ -829,6 +888,11 @@ export class LoginController {
   /** First of the two private messages: the public link. Never the channel. Returns delivery success. */
   private async sendTunnelLink(entry: ActiveLogin, ttlMinutes: number, command: string): Promise<boolean> {
     const { chat } = entry;
+    if (chat.web) {
+      chat.web.terminal({ url: entry.url, ttlMinutes, command, loopback: false, public: true });
+      this.audit("tunnel_link_sent", { backend: entry.backend, requester: entry.requesterUserId, via: "web-session" });
+      return true;
+    }
     if (typeof chat.adapter.sendDirect !== "function") {
       this.audit("tunnel_link_failed", { backend: entry.backend, requester: entry.requesterUserId, via: "none" });
       return false;
@@ -867,6 +931,11 @@ export class LoginController {
     const { chat } = entry;
     const bind = this.deps.fleetConfig()?.web_terminal?.bind ?? "127.0.0.1";
     const loopback = bind === "localhost" || bind === "::1" || /^127\./.test(bind);
+    if (chat.web) {
+      chat.web.terminal({ url: entry.url, ttlMinutes, command, loopback, public: false });
+      this.audit("link_sent", { backend: entry.backend, requester: entry.requesterUserId, host: hostOf(entry.url), via: "web-session" });
+      return true;
+    }
     const text = t("login.web_link", entry.shown, String(ttlMinutes), command, entry.url)
       + "\n" + t(loopback ? "login.web_loopback" : "login.web_lan_help");
     try {
@@ -889,6 +958,12 @@ export class LoginController {
     const { chat } = entry;
     const token = entry.session.peekAccessToken();
     if (token === null) return true;                          // already redeemed: nothing to deliver
+    if (chat.web) {
+      // Nothing is sent: the session that asked reads it back (webAccessToken), and no one else can.
+      entry.tokenDelivered = true;
+      this.audit(o.isResend ? "token_resent" : "token_sent", { backend: entry.backend, requester: entry.requesterUserId, via: "web-session" });
+      return true;
+    }
     const body = chat.adapter.type === "telegram"
       ? `${escapeHtml(t("login.web_token", entry.backend))}\n<tg-spoiler>${escapeHtml(token)}</tg-spoiler>`
       : `${t("login.web_token", entry.backend)}\n\`${token}\``;

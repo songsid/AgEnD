@@ -208,6 +208,8 @@ export interface WebApiContext {
   modelCatalogFor?(backend: string, instance: string | null): Array<{ id: string; label: string; description?: string }>;
   /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
   readonly webSessions?: WebSessionStore | null;
+  /** #2233: dashboard-started backend sign-ins (FleetManager); absent in a hand-built context. */
+  readonly webBackendLogins?: import("./web-backend-login.js").WebBackendLogins;
   readonly dataDir: string;
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
@@ -570,6 +572,52 @@ function handleEffectTrials(req: IncomingMessage, res: ServerResponse, url: URL,
       answer(service.trialStop(route![1]!, now.actor));
     }
   })().catch(() => { try { json(res, 500, { error: "trial_request_failed" }); } catch { /* response ended */ } });
+  return true;
+}
+
+/**
+ * #2233: signing a backend in from the dashboard (web-backend-login.ts). A signed-in admin session on the local surface
+ * only — never the CLI's header token (an agent's), a guest, a read session or the public link (refused before the body
+ * is read, and again after it). Every answer is no-store: the starter's view carries the terminal's access code.
+ */
+function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  const reading = method === "GET";
+  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "sign_in_not_over_public_link" }); return true; }
+  const who = (): { handle: string; label: string } | { error: string; status: number } => {
+    const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
+    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "sign_in_needs_a_local_admin", status: 403 };
+    return { handle: v.session.handle, label: v.session.label };
+  };
+  const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
+  const logins = ctx.webBackendLogins;
+  if (!logins) { json(res, 404, { error: "sign_in_unavailable" }); return true; }
+  const action = /^\/ui\/backend-login\/(check|start|cancel)$/.exec(path)?.[1];
+  if (reading && path === "/ui/backend-login" && [...url.searchParams.keys()].length === 0) { json(res, 200, { login: logins.view(first.handle) }); return true; }
+  if (method !== "POST" || !action) { json(res, 404, { error: "not_found" }); return true; }
+  (async () => {
+    let bytes: Buffer;
+    try { bytes = await readBoundedWebBody(req, 4 * 1024); } catch { json(res, 413, { error: "sign_in_body_bound" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
+    if (now.handle !== first.handle) { json(res, 409, { error: "sign_in_session_changed" }); return; }
+    let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "sign_in_json" }); return; }
+    if (action === "check") {
+      const parsed = z.strictObject({ backend: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/i), profile: z.string().min(1).max(64).optional() }).safeParse(body);
+      if (!parsed.success) { json(res, 400, { error: "sign_in_args" }); return; }
+      json(res, 200, await logins.check(now, parsed.data.backend, parsed.data.profile));
+    } else if (action === "start") {
+      const parsed = z.strictObject({ confirm: z.string().regex(/^[0-9a-f]{32}$/), tunnel: z.boolean().optional() }).safeParse(body);
+      if (!parsed.success) { json(res, 400, { error: "sign_in_args" }); return; }
+      const result = await logins.begin(now, parsed.data.confirm, parsed.data.tunnel === true);
+      json(res, "error" in result ? 409 : 200, result);
+    } else {
+      if (!z.strictObject({}).safeParse(body).success) { json(res, 400, { error: "sign_in_args" }); return; }
+      json(res, 200, { message: await logins.cancel() });
+    }
+  })().catch(() => { try { json(res, 500, { error: "sign_in_request_failed" }); } catch { /* response ended */ } });
   return true;
 }
 
@@ -1540,6 +1588,8 @@ export function handleWebRequest(
 
   // Canvas effects are absent from the public gateway manifest and independently refused above.
   if (path === "/ui/effect-trials" || path.startsWith("/ui/effect-trials/")) return handleEffectTrials(req, res, url, ctx, path, method);
+  // #2233: backend sign-in — absent from the public manifest and the guest table, and refused here too.
+  if (path === "/ui/backend-login" || path.startsWith("/ui/backend-login/")) return handleBackendLogin(req, res, url, ctx, path, method);
   if (path === "/ui/effects" || path.startsWith("/ui/effects/")) return handleEffects(req, res, url, ctx, path, method);
 
   // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header
