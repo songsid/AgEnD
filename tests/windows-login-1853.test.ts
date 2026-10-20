@@ -11,7 +11,7 @@
  * the user's Windows checklist.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -19,7 +19,8 @@ import { afterAll, describe, expect, it } from "vitest";
 const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-agend.ps1");
 const text = readFileSync(INSTALLER, "utf8");
 const code = text.split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
-const stage3 = code.slice(code.indexOf("Write-Step 3 $TOTAL"), code.indexOf("Write-Step 4 $TOTAL"));
+const stage3 = code.slice(code.indexOf("function Invoke-LoginStage"), code.indexOf("function Complete-LoginStage"));
+const stage3Top = code.slice(code.indexOf("Write-Step 3 $TOTAL"), code.indexOf("Write-Step 4 $TOTAL"));
 const agySh = text.slice(text.indexOf("$AGY_LOGIN_SH = @'") + "$AGY_LOGIN_SH = @'".length + 1, text.indexOf("\n'@", text.indexOf("$AGY_LOGIN_SH = @'")));
 
 describe("stage 3 signs in through each backend's own login (static)", () => {
@@ -32,6 +33,9 @@ describe("stage 3 signs in through each backend's own login (static)", () => {
     expect(stage3).toMatch(/if \(Test-WslLogin \$b\.Key\) \{ Write-Ok \("\{0\} 已經登入，跳過" -f \$b\.Name\); continue \}/);
     expect(stage3).toMatch(/\$loginFile, \$loginWsl = New-WslScriptFile \(Get-LoginScript \$b\.Key\)/);
     expect(stage3).toMatch(/按 Enter 再試一次；輸入 s 再按 Enter 先跳過/);
+    expect(stage3).not.toMatch(/^\s*wsl -d/m);                                   // the login runs on the console (Start-Process), never inline
+    expect(stage3Top).toMatch(/\$skippedLogins = @\(\)\nif \(Stage-Done 3\) \{[\s\S]*\$skippedLogins = @\(Complete-LoginStage \$selected\)/);
+    expect(stage3Top).not.toMatch(/Mark-Stage 3/);                                // only Complete-LoginStage marks it, and only with nothing skipped
   });
   it("agy: its own tmux socket, a leftover session reattached (never killed), and nothing that kills", () => {
     expect(agySh).toMatch(/tmux -L agend-install has-session -t agy-login/);
@@ -158,10 +162,79 @@ describe.skipIf(!bash)("the agy watcher (bash, tmux and agy stubbed)", { timeout
     expect(r.sent).toBeNull();
     expect(r.done).toBe(true);
   });
+  it("an equal-length rewrite is a change: no /quit while the token is rewritten, one once it really stops (#2239 review)", async () => {
+    let stoppedAt = 0;
+    const r = await agyWatch(async (dir) => {
+      writeFileSync(join(dir, "pane"), "? for shortcuts\n"); writeFileSync(join(dir, "agy-ok"), "");
+      for (let i = 0; i < 12; i++) { writeFileSync(join(dir, "token"), `tok-${String(i).padStart(4, "0")}`); await sleep(500); }   // 8 bytes, every 0.5 s
+      stoppedAt = Date.now();
+    }, 20_000);
+    expect(r.sent).toBe("-L agend-install send-keys -t agy-login /quit Enter\n");
+    expect(r.ms).toBeGreaterThan(6000 + 2500);                                     // only after the writes stopped and it stayed still
+    expect(stoppedAt).toBeGreaterThan(0);
+  });
+  it("a rewrite that keeps the size and puts the old modification time back is still a change (the content checksum)", async () => {
+    const r = await agyWatch(async (dir) => {
+      writeFileSync(join(dir, "pane"), "? for shortcuts\n"); writeFileSync(join(dir, "agy-ok"), "");
+      const tok = join(dir, "token");
+      writeFileSync(tok, "tok-0000"); const { atime, mtime } = statSync(tok);
+      for (let i = 1; i < 10; i++) { await sleep(700); writeFileSync(tok, `tok-${String(i).padStart(4, "0")}`); utimesSync(tok, atime, mtime); }
+      rmSync(join(dir, "alive"));
+    }, 20_000);
+    expect(r.sent).toBeNull();
+    expect(r.done).toBe(true);
+  });
+  it("an atomic replace with the same content, or the token missing for a moment, starts the count again", async () => {
+    const r = await agyWatch(async (dir) => {
+      writeFileSync(join(dir, "pane"), "? for shortcuts\n"); writeFileSync(join(dir, "agy-ok"), "");
+      for (let i = 0; i < 4; i++) {                                               // replaced by rename every 0.8 s: a new inode each time
+        writeFileSync(join(dir, "token.new"), "same-token"); renameSync(join(dir, "token.new"), join(dir, "token")); await sleep(800);
+      }
+      for (let i = 0; i < 3; i++) { rmSync(join(dir, "token"), { force: true }); await sleep(900); writeFileSync(join(dir, "token"), "same-token"); await sleep(1200); }
+      rmSync(join(dir, "alive"));                                                  // the person quit it: nothing was ever stable for 3 s
+    }, 20_000);
+    expect(r.sent).toBeNull();
+    expect(r.done).toBe(true);
+  });
   it("agy ending by itself ends the watcher, with nothing sent", async () => {
     const r = await agyWatch(async (dir) => { await sleep(1500); rmSync(join(dir, "alive")); });
     expect(r.sent).toBeNull();
     expect(r.done).toBe(true);
     expect(r.ms).toBeLessThan(5000);
+  });
+});
+
+describe.skipIf(!pwsh)("with pwsh: a skipped login keeps stage 3 open (#2239 review)", { timeout: 90_000 }, () => {
+  it("skip one → stage 3 not marked; after an interruption the resumed run asks again; once signed in it is marked", () => {
+    const { out } = withHelpers(`$ProgressFile = Join-Path $env:TMPDIR 'progress'
+$UBUNTU_DISTRO = 'Ubuntu-24.04'; $Force = $false
+$ALL = @([PSCustomObject]@{ Id = 1; Key = 'kiro'; Name = 'Kiro CLI' }, [PSCustomObject]@{ Id = 4; Key = 'codex'; Name = 'OpenAI Codex' })
+$script:signedIn = @('codex'); $script:answers = @('s'); $script:attempts = 0
+function Invoke-WslStep { return 0 }
+function New-WslScriptFile { return @((Join-Path $env:TMPDIR 'x.sh'), '/x.sh') }
+function Start-Process { $script:attempts++ }
+function Test-WslLogin([string]$key) { return ($script:signedIn -contains $key) }
+function Read-Host { $a = $script:answers[0]; $script:answers = @($script:answers | Select-Object -Skip 1); return $a }
+$first = @(Complete-LoginStage $ALL)
+Write-Output ("FIRST skipped=" + (($first | ForEach-Object { $_.Key }) -join ',') + " attempts=" + $script:attempts + " stage3=" + (Stage-Done 3))
+# Stages 4/5 are interrupted; the same line again resumes, and stage 3 runs again: kiro is now signed in.
+$script:signedIn = @('codex', 'kiro'); $script:attempts = 0
+$second = @(Complete-LoginStage $ALL)
+Write-Output ("SECOND skipped=" + $second.Count + " attempts=" + $script:attempts + " stage3=" + (Stage-Done 3))`);
+    expect(out).toContain("FIRST skipped=kiro attempts=1 stage3=False\n");
+    expect(out).toContain("還沒登入：Kiro CLI。之後接續安裝時會再請你登入；已登入的會跳過。");
+    expect(out).toContain("SECOND skipped=0 attempts=0 stage3=True\n");      // checked again, found signed in, marked
+  });
+  it("everything signed in: no attempt, marked at once", () => {
+    const { out } = withHelpers(`$ProgressFile = Join-Path $env:TMPDIR 'progress'
+$UBUNTU_DISTRO = 'Ubuntu-24.04'
+$ALL = @([PSCustomObject]@{ Id = 1; Key = 'kiro'; Name = 'Kiro CLI' })
+$script:attempts = 0
+function Invoke-WslStep { return 0 }
+function Start-Process { $script:attempts++ }
+function Test-WslLogin([string]$key) { return $true }
+$r = @(Complete-LoginStage $ALL)
+Write-Output ("skipped=" + $r.Count + " attempts=" + $script:attempts + " stage3=" + (Stage-Done 3))`);
+    expect(out).toContain("skipped=0 attempts=0 stage3=True\n");
   });
 });

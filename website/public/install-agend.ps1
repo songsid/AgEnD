@@ -138,17 +138,20 @@ function Get-LoginCheck([string]$key) {
 # agy 的登入：tmux 用專用的 socket（agend-install，不碰其他 tmux）；上次中斷留下的同名 session 就接回去，不殺掉重開。
 $AGY_LOGIN_SH = @'
 agend_agy_quit_when_logged_in() {
-  # $1 憑證檔、$2 tmux socket、$3 session：憑證檔連續 3 秒大小不變、agy models 成功、畫面回到提示，才送 /quit。
-  token="$1"; sock="$2"; sess="$3"; last=-1; same=0
+  # $1 憑證檔、$2 tmux socket、$3 session。憑證檔連續 3 秒沒有變動（inode、大小、修改時間和內容的 checksum 都相同；
+  # 只比大小會漏掉等長的覆寫，#2239 審查）、agy models 成功、畫面回到提示，才送 /quit。檔案不見或讀不到就重新計算。
+  token="$1"; sock="$2"; sess="$3"; last=""; same=0
   while tmux -L "$sock" has-session -t "$sess" 2>/dev/null; do
+    fp=""
     if [ -s "$token" ]; then
-      size=$(stat -c %s "$token" 2>/dev/null || echo -1)
-      if [ "$size" = "$last" ]; then same=$((same + 1)); else same=0; last="$size"; fi
-      if [ "$same" -ge 3 ] && agy models >/dev/null 2>&1 \
-        && tmux -L "$sock" capture-pane -p -t "$sess" | grep -Eq '\? for shortcuts|^>[[:space:]]*$'; then
-        tmux -L "$sock" send-keys -t "$sess" '/quit' Enter
-        return 0
-      fi
+      st=$(stat -c '%i %s %y' "$token" 2>/dev/null) && ck=$(cksum < "$token" 2>/dev/null) && fp="$st $ck"
+    fi
+    if [ -n "$fp" ] && [ "$fp" = "$last" ]; then same=$((same + 1)); else same=0; fi
+    last="$fp"
+    if [ -n "$fp" ] && [ "$same" -ge 3 ] && agy models >/dev/null 2>&1 \
+      && tmux -L "$sock" capture-pane -p -t "$sess" | grep -Eq '\? for shortcuts|^>[[:space:]]*$'; then
+      tmux -L "$sock" send-keys -t "$sess" '/quit' Enter
+      return 0
     fi
     sleep 1
   done
@@ -190,6 +193,64 @@ function Get-OpenUrlScript {
 function Test-WslLogin([string]$key) {
     $r = wsl -d $UBUNTU_DISTRO -u root -- bash -lc ('export PATH=/root/.local/bin:$HOME/.claude/local:$PATH; if ' + (Get-LoginCheck $key) + '; then echo LOGIN_OK; else echo LOGIN_NO; fi') 2>&1 | Out-String
     return ($r -match 'LOGIN_OK')
+}
+
+# 第 3 階段：逐一登入所選的後端。回傳沒有登入就跳過的後端；有任何一個跳過，這一階段就不算完成（#2239 審查），
+# 中斷後接續時會再檢查一次（已登入的跳過、沒登入的再請你登入）。
+function Invoke-LoginStage($backends) {
+    $skipped = @()
+    # 登入網址在 Windows 的瀏覽器打開（見 Get-LoginScript）。
+    $null = Invoke-WslStep -Label "準備登入" -Usually "通常幾秒鐘" -UpperMinutes 1 -Script (Get-OpenUrlScript)
+    foreach ($b in $backends) {
+        Write-Host ""
+        if (Test-WslLogin $b.Key) { Write-Ok ("{0} 已經登入，跳過" -f $b.Name); continue }
+        $loggedIn = $false
+        while (-not $loggedIn) {
+            Write-Warn "═══════════════════════════════════════════════════════"
+            Write-Warn ("  登入 {0}" -f $b.Name)
+            Write-Warn ""
+            switch ($b.Key) {
+                "kiro" {
+                    Write-Warn "  瀏覽器會打開登入頁，用 AWS Builder ID / GitHub / Google 登入並授權。"
+                    Write-Warn "  畫面上如果要你選登入方式：用上下方向鍵選，按 Enter。完成後這裡會自動繼續。"
+                    Write-Warn "  沒有 AWS Builder ID？先到 https://profile.aws.amazon.com/ 註冊"
+                }
+                "claude" {
+                    Write-Warn "  瀏覽器會打開 Anthropic 的登入頁；登入並授權後，網頁會給你一段代碼。"
+                    Write-Warn "  把代碼複製下來，回到這個視窗按一下右鍵貼上，再按 Enter。完成後這裡會自動繼續。"
+                }
+                "codex" { Write-Warn "  瀏覽器會打開 ChatGPT 的登入頁；登入後這裡會自動繼續。" }
+                "antigravity" {
+                    Write-Warn "  畫面會顯示 Google 的登入網址和一組代碼：在瀏覽器打開網址、輸入代碼並登入。"
+                    Write-Warn "  登入完成、Antigravity 準備好之後，安裝程式會自動幫你結束它，不用按任何鍵。"
+                }
+            }
+            Write-Warn ""
+            Write-Warn "  瀏覽器沒有自己打開：用滑鼠選取畫面上的網址，按右鍵複製，再貼到瀏覽器。"
+            Write-Warn "  登入時請不要按 Ctrl+C：它會直接關掉登入程式。"
+            Write-Warn "═══════════════════════════════════════════════════════"
+            Write-Host ""
+            $loginFile, $loginWsl = New-WslScriptFile (Get-LoginScript $b.Key)
+            # 登入程式直接接在這個視窗上；不能在函式裡直接執行 wsl，它的輸出會進到函式的回傳值。
+            try { Start-Process -FilePath 'wsl.exe' -NoNewWindow -Wait -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', $loginWsl)) } catch { }
+            Remove-Item -LiteralPath $loginFile -Force -ErrorAction SilentlyContinue
+            if (Test-WslLogin $b.Key) {
+                Write-Ok ("{0} 登入成功" -f $b.Name)
+                $loggedIn = $true
+            } else {
+                Write-Warn ("{0} 還沒有登入。" -f $b.Name)
+                $again = Read-Host "  按 Enter 再試一次；輸入 s 再按 Enter 先跳過（安裝完成時會告訴你怎麼補登入）"
+                if ($again -match '^\s*[sS]') { Write-Info ("已跳過 {0}" -f $b.Name); $skipped += $b; break }
+            }
+        }
+    }
+    return $skipped                                                     # callers wrap it: @(...)
+}
+function Complete-LoginStage($backends) {
+    $skipped = @(Invoke-LoginStage $backends)
+    if ($skipped.Count -eq 0) { Mark-Stage 3 }
+    else { Write-Warn ("還沒登入：" + (($skipped | ForEach-Object { $_.Name }) -join "、") + "。之後接續安裝時會再請你登入；已登入的會跳過。") }
+    return $skipped                                                     # callers wrap it: @(...)
 }
 
 # ── 在瀏覽器裡設定（#1853：取代主控台裡的 agend quickstart）─────────────
@@ -924,57 +985,13 @@ if (Stage-Done 2) {
 
 Write-Step 3 $TOTAL "登入 AI 後端"
 
+$skippedLogins = @()
 if (Stage-Done 3) {
     Write-Ok "AI 後端已登入，跳過此步驟"
 } else {
-    # 登入網址在 Windows 的瀏覽器打開（見 Get-LoginScript）。
-    $null = Invoke-WslStep -Label "準備登入" -Usually "通常幾秒鐘" -UpperMinutes 1 -Script (Get-OpenUrlScript)
-    foreach ($b in $selected) {
-        Write-Host ""
-        if (Test-WslLogin $b.Key) { Write-Ok ("{0} 已經登入，跳過" -f $b.Name); continue }
-        $loggedIn = $false
-        while (-not $loggedIn) {
-            Write-Warn "═══════════════════════════════════════════════════════"
-            Write-Warn ("  登入 {0}" -f $b.Name)
-            Write-Warn ""
-            switch ($b.Key) {
-                "kiro" {
-                    Write-Warn "  瀏覽器會打開登入頁，用 AWS Builder ID / GitHub / Google 登入並授權。"
-                    Write-Warn "  畫面上如果要你選登入方式：用上下方向鍵選，按 Enter。完成後這裡會自動繼續。"
-                    Write-Warn "  沒有 AWS Builder ID？先到 https://profile.aws.amazon.com/ 註冊"
-                }
-                "claude" {
-                    Write-Warn "  瀏覽器會打開 Anthropic 的登入頁；登入並授權後，網頁會給你一段代碼。"
-                    Write-Warn "  把代碼複製下來，回到這個視窗按一下右鍵貼上，再按 Enter。完成後這裡會自動繼續。"
-                }
-                "codex" { Write-Warn "  瀏覽器會打開 ChatGPT 的登入頁；登入後這裡會自動繼續。" }
-                "antigravity" {
-                    Write-Warn "  畫面會顯示 Google 的登入網址和一組代碼：在瀏覽器打開網址、輸入代碼並登入。"
-                    Write-Warn "  登入完成、Antigravity 準備好之後，安裝程式會自動幫你結束它，不用按任何鍵。"
-                }
-            }
-            Write-Warn ""
-            Write-Warn "  瀏覽器沒有自己打開：用滑鼠選取畫面上的網址，按右鍵複製，再貼到瀏覽器。"
-            Write-Warn "  登入時請不要按 Ctrl+C：它會直接關掉登入程式。"
-            Write-Warn "═══════════════════════════════════════════════════════"
-            Write-Host ""
-            $loginFile, $loginWsl = New-WslScriptFile (Get-LoginScript $b.Key)
-            $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-            wsl -d $UBUNTU_DISTRO -u root -- bash $loginWsl
-            $ErrorActionPreference = $prevEAP
-            Remove-Item -LiteralPath $loginFile -Force -ErrorAction SilentlyContinue
-            if (Test-WslLogin $b.Key) {
-                Write-Ok ("{0} 登入成功" -f $b.Name)
-                $loggedIn = $true
-            } else {
-                Write-Warn ("{0} 還沒有登入。" -f $b.Name)
-                $again = Read-Host "  按 Enter 再試一次；輸入 s 再按 Enter 先跳過（之後再執行同一行安裝指令可以補上）"
-                if ($again -match '^\s*[sS]') { Write-Info ("已跳過 {0}" -f $b.Name); break }
-            }
-        }
-    }
-    Mark-Stage 3
+    $skippedLogins = @(Complete-LoginStage $selected)
 }
+
 
 # ═══════════════════════════════════════════════════════════
 # 階段 4: 安裝 AgEnD（官方安裝腳本，含 Node.js 22）
@@ -1070,7 +1087,12 @@ Write-Host "  全部安裝完成！" -ForegroundColor Green
 Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Green
 Write-Host ""
 Write-Info "  [OK] WSL ($UBUNTU_DISTRO) 已安裝"
-Write-Info ("  [OK] AI 後端已安裝並登入：" + (($selected | ForEach-Object { $_.Name }) -join "、"))
+$signedIn = @($selected | Where-Object { $s = $_; -not (@($skippedLogins) | Where-Object { $_.Key -eq $s.Key }) })
+if ($signedIn.Count -gt 0) { Write-Info ("  [OK] AI 後端已安裝並登入：" + (($signedIn | ForEach-Object { $_.Name }) -join "、")) }
+foreach ($b in @($skippedLogins)) {
+    $cmd = if ($b.Key -eq 'antigravity') { 'agy' } else { Get-LoginCommand $b.Key }
+    Write-Warn ("  [!!] {0} 已安裝但還沒登入。要登入，在 PowerShell 執行：wsl -d {1} -u root -- bash -lc `"export PATH=/root/.local/bin:`$HOME/.claude/local:`$PATH; {2}`"" -f $b.Name, $UBUNTU_DISTRO, $cmd)
+}
 Write-Info "  [OK] AgEnD 已安裝並啟動（systemd 服務）"
 Write-Info "  [OK] 通訊軟體已串接"
 Write-Info "  [OK] 開機自動啟動已設定"
