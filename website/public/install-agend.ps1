@@ -13,6 +13,7 @@ $ProgressFile = "$env:USERPROFILE\.agend-install-progress"
 
 # ── 固定版本（避免環境不一致）──────────────────────────────
 $UBUNTU_DISTRO = "Ubuntu-24.04"
+$AGEND_USER = "root"  # AgEnD 安裝在這個 Linux 使用者底下（記到 install.json，捷徑用它，不寫死）
 $NODE_VERSION = "22"  # LTS 穩定版，AgEnD 需要 22+
 
 # ── 輔助函式 ─────────────────────────────────────────────
@@ -269,6 +270,19 @@ function Complete-LoginStage($backends) {
 # 儀表板用一次性登入碼登入（不會放在網址裡）：在 WSL 裡執行 agend web --code 取得登入頁和登入碼，在 Windows 的瀏覽器打開
 # 登入頁，把登入碼放進剪貼簿並放大顯示。桌面上的「AgEnD 儀表板」捷徑做同一件事，所以之後不用再打任何指令。
 # 這段函式的文字同時是捷徑執行的腳本：安裝程式和捷徑用的是同一份。
+# 兩個捷徑送進 WSL 的指令都用這裡組（#2252 審查）：agend 可能是 nvm 裝的，登入 shell 不一定載入 nvm，所以先補上 PATH 和 nvm。
+# 指令裡不放雙引號：Windows PowerShell 5.1 傳給 wsl.exe 的參數不會跳脫內含的雙引號，指令會被拆開。印給人貼上的
+# 「啟動 AgEnD」指令也用同一個組法，貼上就能用。
+$WSL_COMMAND_FN = @'
+function Get-WslAgendCommand([string]$command) {
+    return ('export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; ' + $command)
+}
+function Get-AgendStartHint([string]$distro, [string]$user) {
+    return ("wsl -d {0} -u {1} -- bash -lc '{2}'" -f $distro, $user, (Get-WslAgendCommand 'agend start'))
+}
+'@
+. ([scriptblock]::Create($WSL_COMMAND_FN))
+
 $DASHBOARD_OPENER_FN = @'
 function Get-DashboardSignIn([string]$text) {
     $url = [regex]::Match($text, 'Sign-in page:\s*(https?://\S+)')
@@ -276,7 +290,7 @@ function Get-DashboardSignIn([string]$text) {
     if (-not $url.Success -or -not $code.Success) { return $null }
     return @{ Url = $url.Groups[1].Value; Code = $code.Groups[1].Value }
 }
-function Invoke-OpenDashboard([string]$distro, [switch]$Wait) {
+function Invoke-OpenDashboard([string]$distro, [string]$user = 'root', [switch]$Wait) {
     # agend web --code 失敗時（AgEnD 沒在跑、沒有 token、連不上）會寫到 stderr 並以 1 結束。Windows PowerShell 5.1 會把重導的
     # stderr 變成錯誤紀錄，在 ErrorActionPreference=Stop 下直接中止（#2242 審查）：取得輸出的這段改用 Continue、每一筆都轉成文字，
     # 結束碼不是 0、啟動不了 wsl，都走下面「打不開」的說明。原本的設定在 finally 還原。
@@ -284,7 +298,7 @@ function Invoke-OpenDashboard([string]$distro, [switch]$Wait) {
     $prevEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $text = ((& wsl.exe -d $distro -u root -- bash -lc 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend web --code' 2>&1) | ForEach-Object { "$_" } | Out-String)
+        $text = ((& wsl.exe -d $distro -u $user -- bash -lc (Get-WslAgendCommand 'agend web --code') 2>&1) | ForEach-Object { "$_" } | Out-String)
         $exit = $LASTEXITCODE
     } catch {
         $text = "$_"; $exit = 1
@@ -294,7 +308,7 @@ function Invoke-OpenDashboard([string]$distro, [switch]$Wait) {
     $signIn = if ($exit -eq 0) { Get-DashboardSignIn $text } else { $null }
     if (-not $signIn) {
         Write-Host "  [!!] 現在打不開 AgEnD 儀表板：AgEnD 可能還沒啟動。" -ForegroundColor Yellow
-        Write-Host ("  稍等一下再試一次；或在 PowerShell 執行：wsl -d {0} -u root -- bash -lc 'agend start'" -f $distro)
+        Write-Host ("  稍等一下再試一次；或在 PowerShell 執行：" + (Get-AgendStartHint $distro $user))
         if ($Wait) { Read-Host "按 Enter 關閉" }
         return $false
     }
@@ -314,27 +328,222 @@ function Invoke-OpenDashboard([string]$distro, [switch]$Wait) {
 '@
 . ([scriptblock]::Create($DASHBOARD_OPENER_FN))
 
-# 捷徑執行的腳本：上面的函式加上一行呼叫（UTF-8 有 BOM：Windows PowerShell 5.1 才會正確顯示中文）。
-function Get-DashboardOpenerScript([string]$distro) {
-    return ("# AgEnD 儀表板（AgEnD 安裝程式建立）`n" + $DASHBOARD_OPENER_FN + "`n" + ("Invoke-OpenDashboard '{0}' -Wait | Out-Null" -f $distro) + "`n")
-}
-# 寫好腳本並在桌面建立「AgEnD 儀表板」捷徑。回傳捷徑路徑；不是 Windows 或建立失敗時回傳 $null。
-function New-DashboardShortcut([string]$distro) {
-    if (-not $script:OnWindows) { return $null }
+# 「AgEnD 重新啟動」捷徑（#1853，使用者 2026-10-20 核准）：先問，預設不重啟；確定才在安裝時記下的 Linux 和使用者裡執行
+# agend restart，接著顯示 agend status，等你按 Enter。WSL 或 AgEnD 不在時直接說明；絕不執行 wsl --shutdown。
+# 這段函式的文字同時是捷徑執行的腳本（和儀表板捷徑一樣，安裝程式與捷徑共用同一份）。
+$RESTART_FN = @'
+function Invoke-AgendInWsl([string]$distro, [string]$user, [string]$command) {
+    # 在 WSL 裡以登入 shell 執行一個 agend 指令，回傳 @{ Code; Text }。Linux 的輸出是 UTF-8；stderr 不讓 5.1 中止（#2242）。
+    $prevEAP = $ErrorActionPreference; $prevEnc = [Console]::OutputEncoding
     try {
-        $dir = Join-Path $env:LOCALAPPDATA 'AgEnD'
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-        $file = Join-Path $dir 'open-dashboard.ps1'
-        [IO.File]::WriteAllText($file, (Get-DashboardOpenerScript $distro), (New-Object System.Text.UTF8Encoding $true))
-        $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'AgEnD 儀表板.lnk'
-        $shell = New-Object -ComObject WScript.Shell
-        $sc = $shell.CreateShortcut($lnk)
-        $sc.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-        $sc.Arguments = ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $file)
-        $sc.Description = 'AgEnD 網頁儀表板（自動帶入登入碼）'
-        $sc.Save()
-        return $lnk
-    } catch { return $null }
+        $ErrorActionPreference = 'Continue'
+        try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+        $text = ((& wsl.exe -d $distro -u $user -- bash -lc (Get-WslAgendCommand $command) 2>&1) | ForEach-Object { "$_" } | Out-String)
+        return @{ Code = $LASTEXITCODE; Text = $text }
+    } catch {
+        return @{ Code = -1; Text = "$_" }
+    } finally {
+        $ErrorActionPreference = $prevEAP
+        try { [Console]::OutputEncoding = $prevEnc } catch { }
+    }
+}
+function Invoke-RestartAgend([string]$distro, [string]$user, [switch]$Wait, [int]$SettleSeconds = 3) {
+    Write-Host ""
+    $answer = Read-Host "  確定要重啟 AgEnD 嗎？所有 agent 會重新啟動，正在進行的工作會中斷。(y/N)"
+    if ($answer -notmatch '^\s*[yY]') {
+        Write-Host "  沒有重啟。"
+        if ($Wait) { $null = Read-Host "按 Enter 關閉" }
+        return 'cancelled'
+    }
+    $r = Invoke-AgendInWsl $distro $user 'agend restart'
+    $result = 'restarted'
+    if ($r.Code -eq 0) {
+        Write-Host "  [OK] AgEnD 正在重新啟動。" -ForegroundColor Green
+    } else {
+        $result = 'failed'
+        if ($r.Code -eq -1) { Write-Host "  [!!] 找不到 WSL（wsl.exe），所以沒有重啟。" -ForegroundColor Yellow }
+        elseif ($r.Text -match 'Fleet not running') { Write-Host ("  [!!] AgEnD 沒有在執行，所以沒有可以重啟的。要啟動它：" + (Get-AgendStartHint $distro $user)) -ForegroundColor Yellow }
+        elseif ($r.Text -match 'command not found|agend: not found|no such file') { Write-Host ("  [!!] 在 {0} 裡找不到 AgEnD（agend 指令），所以沒有重啟。" -f $distro) -ForegroundColor Yellow }
+        else { Write-Host ("  [!!] 沒有重啟成功：{0} 不存在、WSL 沒有啟動，或 AgEnD 回報了錯誤。" -f $distro) -ForegroundColor Yellow }
+        if ($r.Text.Trim()) { Write-Host ("  " + ($r.Text.Trim() -replace "`r?`n", "`n  ")) }
+    }
+    if ($result -eq 'restarted') {
+        Start-Sleep -Seconds $SettleSeconds
+        Write-Host ""
+        $s = Invoke-AgendInWsl $distro $user 'agend status'
+        if ($s.Text.Trim()) { Write-Host ("  " + ($s.Text.Trim() -replace "`r?`n", "`n  ")) }
+    }
+    if ($Wait) { $null = Read-Host "按 Enter 關閉" }
+    return $result
+}
+'@
+. ([scriptblock]::Create($RESTART_FN))
+
+# 捷徑執行的腳本：共用的函式加上一行呼叫（UTF-8 有 BOM：Windows PowerShell 5.1 才會正確顯示中文）。Linux 與使用者是安裝時記下的。
+function Get-DashboardOpenerScript([string]$distro, [string]$user) {
+    return ("# AgEnD 儀表板（AgEnD 安裝程式建立）`n" + $WSL_COMMAND_FN + "`n" + $DASHBOARD_OPENER_FN + "`n" + ("Invoke-OpenDashboard '{0}' '{1}' -Wait | Out-Null" -f $distro, $user) + "`n")
+}
+function Get-RestartScript([string]$distro, [string]$user) {
+    return ("# AgEnD 重新啟動（AgEnD 安裝程式建立）`n" + $WSL_COMMAND_FN + "`n" + $RESTART_FN + "`n" + ("Invoke-RestartAgend '{0}' '{1}' -Wait | Out-Null" -f $distro, $user) + "`n")
+}
+# 安裝時記下的 Linux 與使用者（%LOCALAPPDATA%\AgEnD\install.json）：捷徑、重新執行安裝指令時的快速路徑都讀它。
+function Get-AgendShortcutDir { return (Join-Path $env:LOCALAPPDATA 'AgEnD') }
+function Read-InstallRecord {
+    try {
+        $r = Get-Content -Raw -LiteralPath (Join-Path (Get-AgendShortcutDir) 'install.json') -ErrorAction Stop | ConvertFrom-Json
+        if ($r.distro -and $r.user) { return @{ Distro = [string]$r.distro; User = [string]$r.user } }
+    } catch { }
+    return $null
+}
+# 一個桌面捷徑：腳本寫在 %LOCALAPPDATA%\AgEnD，捷徑以 Windows PowerShell 執行它（-ExecutionPolicy Bypass 只對那個行程）。
+function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptText, [string]$description) {
+    $dir = Get-AgendShortcutDir
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $file = Join-Path $dir $scriptName
+    [IO.File]::WriteAllText($file, $scriptText, (New-Object System.Text.UTF8Encoding $true))
+    $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) ($name + '.lnk')
+    $shell = New-Object -ComObject WScript.Shell
+    $sc = $shell.CreateShortcut($lnk)
+    $sc.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $sc.Arguments = ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $file)
+    $sc.Description = $description
+    $sc.Save()
+    return $lnk
+}
+# 建立（或更新）兩個桌面捷徑、記下 Linux 與使用者。兩個各自建立，一個失敗不會擋住另一個；回傳建立好的捷徑路徑，
+# 呼叫端用 Write-ShortcutResult 分清楚兩個都好、只好一個、都沒好（#2252 審查）。兩個都好才在 WSL 裡留記號（agend update
+# 之後的提示就不會再出現）。不是 Windows 時回傳空陣列。
+function Install-AgendShortcuts([string]$distro, [string]$user) {
+    if (-not $script:OnWindows) { return @() }
+    $made = @()
+    try { $made += New-AgendShortcut 'AgEnD 儀表板' 'open-dashboard.ps1' (Get-DashboardOpenerScript $distro $user) 'AgEnD 網頁儀表板（自動帶入登入碼）' } catch { }
+    try { $made += New-AgendShortcut 'AgEnD 重新啟動' 'restart-agend.ps1' (Get-RestartScript $distro $user) '重新啟動 AgEnD（會先詢問）' } catch { }
+    try {
+        New-Item -ItemType Directory -Path (Get-AgendShortcutDir) -Force | Out-Null
+        $record = @{ distro = $distro; user = $user } | ConvertTo-Json -Compress
+        [IO.File]::WriteAllText((Join-Path (Get-AgendShortcutDir) 'install.json'), $record, (New-Object System.Text.UTF8Encoding $false))
+        if ($made.Count -eq 2) { $null = Invoke-AgendInWsl $distro $user 'd=${AGEND_HOME:-$HOME/.agend}; mkdir -p $d && date -u +%FT%TZ > $d/windows-shortcuts' }
+    } catch { }
+    return $made
+}
+# 重新執行安裝指令時：這台電腦是不是已經裝好 AgEnD？先看安裝時記下的，再看預設的 Ubuntu。回傳 @{ Distro; User } 或 $null。
+# 只有現在真的有 Store/MSI 版 WSL（看檔案，不執行）時才問 WSL：乾淨的 Windows 上 wsl.exe 會停在「按任意鍵安裝」等按鍵
+# （#2228）。安裝紀錄只用來挑 Linux 和使用者，不能代表 WSL 還在：移除 WSL 後紀錄可能還留著（#2252 審查）。
+function Find-ExistingAgend {
+    if (-not (Get-InstalledWslVersion)) { return $null }
+    $record = Read-InstallRecord
+    $candidates = @()
+    if ($record) { $candidates += ,@($record.Distro, $record.User) }
+    foreach ($d in @('Ubuntu-24.04', 'Ubuntu-22.04', 'Ubuntu')) { $candidates += ,@($d, 'root') }
+    foreach ($c in $candidates) {
+        $r = Invoke-AgendInWsl $c[0] $c[1] 'command -v agend >/dev/null 2>&1 && echo AGEND_FOUND'
+        if ($r.Code -eq 0 -and $r.Text -match 'AGEND_FOUND') { return @{ Distro = $c[0]; User = $c[1] } }
+    }
+    return $null
+}
+
+# 說明捷徑建立的結果：兩個都好、只好一個（說是哪一個）、都沒好。兩個都好時回傳 $true。
+function Write-ShortcutResult($made) {
+    $names = @($made | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension([string]$_) })
+    if ($names.Count -ge 2) { Write-Ok "桌面上已建立「AgEnD 儀表板」和「AgEnD 重新啟動」捷徑"; return $true }
+    if ($names.Count -eq 1) { Write-Warn ("只建立了「{0}」捷徑，另一個沒有建立成功。之後可以再貼一次安裝指令重試。" -f $names[0]) }
+    else { Write-Warn "桌面捷徑沒有建立成功。之後可以再貼一次安裝指令重試。" }
+    return $false
+}
+
+# ── WSL 更新：已經是 2 以上就不強制更新（#1853：使用者在共用對外 IP 的辦公室實測）──────────
+# GitHub 對沒登入的請求，每個 IP 每小時只給 60 次（超過回 403/429）；很多人共用一個對外 IP 時，wsl --update --web-download
+# 和下面的 MSI 備案都會被擋。所以：已安裝的 WSL（Store／MSI 版裝在 %ProgramFiles%\WSL\wsl.exe）版本 2.0.0 以上就略過更新；
+# 版本只看檔案，不執行 wsl.exe。要更新時先走 Microsoft Store（wsl --update 的預設，不受 GitHub 次數限制），GitHub 只當備案；
+# 更新失敗但這台電腦已經有可以用的 WSL，就警告後繼續，不中止。
+function Get-FileVersionString([string]$path) {
+    try { return (Get-Item -LiteralPath $path -ErrorAction Stop).VersionInfo.FileVersion } catch { return $null }
+}
+function Get-InstalledWslVersion([string]$ProgramFiles = $env:ProgramFiles) {
+    if (-not $ProgramFiles) { return $null }
+    $exe = Join-Path (Join-Path $ProgramFiles 'WSL') 'wsl.exe'
+    if (-not (Test-Path -LiteralPath $exe)) { return $null }
+    $m = [regex]::Match([string](Get-FileVersionString $exe), '^\s*\d+\.\d+(\.\d+){0,2}')
+    if (-not $m.Success) { return $null }
+    return [version]$m.Value.Trim()
+}
+function Test-WslCurrent($version) { return ($null -ne $version -and $version -ge [version]'2.0.0') }
+# 下載失敗的原因：GitHub 的次數限制、網路（逾時、連不上、被擋），或其他。
+function Get-DownloadFailureKind($err) {
+    $status = $null
+    try { $status = [int]$err.Exception.Response.StatusCode } catch { }
+    $text = [string]$err
+    if ($status -eq 403 -or $status -eq 429 -or $text -match 'rate limit|\(403\)|\(429\)|\b429\b') { return 'ratelimit' }
+    if ($text -match 'timed out|timeout|逾時|could not be resolved|無法解析|unable to connect|無法連線|actively refused|connection was closed') { return 'network' }
+    return 'other'
+}
+function Write-DownloadFailure([string]$kind) {
+    switch ($kind) {
+        'ratelimit' {
+            Write-Warn "GitHub 暫時限制了這個網路的下載次數（很多人共用同一個對外網路時，例如公司網路，很常遇到）。"
+            Write-Info "請過一小時左右再執行同一行安裝指令，或換一個網路（例如手機熱點）再試。"
+        }
+        'network' {
+            Write-Warn "連不上 GitHub（逾時、連線失敗，或被防火牆擋住）。"
+            Write-Info "請確認網路正常後再執行同一行安裝指令，或換一個網路（例如手機熱點）再試。"
+        }
+        default { Write-Info "請稍後再執行同一行安裝指令；也可以手動到 https://github.com/microsoft/WSL/releases 下載 x64 的 .msi 安裝。" }
+    }
+}
+# 第 1 階段的 WSL 更新。回傳：skipped（已是 2 以上）、updated、usable（更新失敗但現有的 WSL 可用）、reboot（MSI 要求重開機）、
+# verify-reboot（裝好但要重開機才能用）、failed（不能繼續；原因已經說明）。
+function Invoke-WslUpdateStage {
+    $installed = Get-InstalledWslVersion
+    if (Test-WslCurrent $installed) { Write-Ok ("WSL {0} 已安裝，略過更新" -f $installed); return 'skipped' }
+    $seen = @{ RateLimited = $false }
+    $watch = { param($line) if ($line -match 'rate limit|\b403\b|\b429\b') { $seen.RateLimited = $true } }
+    Write-Info "更新 WSL 核心元件..."
+    $code = Invoke-Watched -Label "更新 WSL 核心元件" -Usually "通常需要 1–5 分鐘" -UpperMinutes 8 -Encoding utf16 -File "wsl.exe" -Arguments @("--update")
+    if ($code -ne 0) {
+        # Microsoft Store 被擋（公司電腦常見）時，改從 GitHub 下載同一個更新。
+        Write-Warn "從 Microsoft Store 更新失敗，改從 GitHub 下載..."
+        $code = Invoke-Watched -Label "從 GitHub 更新 WSL" -Usually "通常需要 1–5 分鐘" -UpperMinutes 8 -OnLine $watch -Encoding utf16 -File "wsl.exe" -Arguments @("--update", "--web-download")
+    }
+    if ($code -eq 0) { Write-Ok "WSL 核心已更新"; return 'updated' }
+    $now = Get-InstalledWslVersion
+    if (Test-WslCurrent $now) {
+        Write-Warn ("WSL 更新沒有完成，但這台電腦已經有可以用的 WSL {0}，繼續安裝。" -f $now)
+        if ($seen.RateLimited) { Write-DownloadFailure 'ratelimit' }
+        return 'usable'
+    }
+    if ($seen.RateLimited) {
+        Write-DownloadFailure 'ratelimit'
+        return 'failed'
+    }
+    Write-Warn "wsl --update 失敗，從 GitHub 下載最新版 WSL..."
+    try {
+        $release = Invoke-RestMethod "https://api.github.com/repos/microsoft/WSL/releases/latest" -TimeoutSec 30
+        $msiAsset = $release.assets | Where-Object { $_.name -match "x64\.msi$" } | Select-Object -First 1
+        if (-not $msiAsset) {
+            Write-Err "找不到 MSI 下載連結"
+            Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 x64 .msi 安裝"
+            return 'failed'
+        }
+        $wslMsi = "$env:TEMP\wsl-latest.msi"
+        Write-Info "  下載中: $($msiAsset.name) ($($release.tag_name))..."
+        Invoke-WebRequest -Uri $msiAsset.browser_download_url -OutFile $wslMsi -UseBasicParsing
+        $msiCode = Invoke-Watched -Label "安裝 WSL" -Usually "通常需要 1–2 分鐘" -UpperMinutes 5 -Encoding oem -File "msiexec.exe" -Arguments @("/i", $wslMsi, "/quiet", "/norestart")
+        Remove-Item $wslMsi -Force -ErrorAction SilentlyContinue
+        if ($msiCode -eq 3010) { return 'reboot' }
+        if ($msiCode -ne 0) {
+            Write-Err "MSI 安裝失敗 (exit code: $msiCode)"
+            Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 .msi 安裝"
+            return 'failed'
+        }
+        Write-Ok "WSL $($release.tag_name) 已從 GitHub 安裝"
+    } catch {
+        Write-Err "從 GitHub 下載 WSL 失敗。"
+        Write-DownloadFailure (Get-DownloadFailureKind $_)
+        return 'failed'
+    }
+    $null = wsl --version 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { return 'verify-reboot' }
+    return 'updated'
 }
 
 # ── 在瀏覽器裡設定（#1853：取代主控台裡的 agend quickstart）─────────────
@@ -756,6 +965,23 @@ Write-Info "    自動安裝的步驟中不小心按到，會先問你要不要�
 Write-Info "  自動安裝時點到視窗也沒關係，不會讓安裝暫停。"
 Write-Host ""
 
+# 重新執行同一行安裝指令、而這台電腦已經裝好 AgEnD（不是中斷後的接續，也不是 -Force）：只更新桌面捷徑和它們的腳本，
+# 不碰 WSL、後端、設定，絕不重做已經裝好的東西（#1853，給 agend update 升級上來、沒有捷徑的人）。
+if (-not $Force -and -not (Test-Path $ProgressFile)) {
+    $existing = Find-ExistingAgend
+    if ($existing) {
+        Write-Ok ("這台電腦已經裝好 AgEnD（{0}，使用者 {1}）。不會重新安裝，也不會動到現有的設定。" -f $existing.Distro, $existing.User)
+        $ans = Read-Host "  要更新桌面捷徑嗎？（「AgEnD 儀表板」和「AgEnD 重新啟動」）(Y/n)"
+        if ($ans -notmatch '^\s*[nN]') {
+            $made = @(Install-AgendShortcuts $existing.Distro $existing.User)
+            $null = Write-ShortcutResult $made
+        } else { Write-Info "沒有改動任何東西。" }
+        Write-Info "要全部重新安裝：先在這個視窗執行 `$env:AGEND_INSTALL_FORCE = '1'，再貼上同一行安裝指令。"
+        Clear-ResumeAtLogon
+        Read-Host "按 Enter 結束"; exit 0
+    }
+}
+
 # 網路檢查
 Write-Info "檢查網路連線..."
 try {
@@ -813,53 +1039,11 @@ if (Stage-Done 1) {
         Write-Ok "WSL 功能已啟用"
     }
 
-    # ── 1b: 更新 WSL 核心 ──
-    Write-Info "更新 WSL 核心元件..."
-    $wslUpdateCode = Invoke-Watched -Label "更新 WSL 核心元件" -Usually "通常需要 1–5 分鐘" -UpperMinutes 8 -Encoding utf16 -File "wsl.exe" -Arguments @("--update")
-    if ($wslUpdateCode -ne 0) {
-        # Microsoft Store 被擋（公司電腦常見）時，改從 GitHub 下載同一個更新。
-        Write-Warn "從 Microsoft Store 更新失敗，改從 GitHub 下載..."
-        $wslUpdateCode = Invoke-Watched -Label "從 GitHub 更新 WSL" -Usually "通常需要 1–5 分鐘" -UpperMinutes 8 -Encoding utf16 -File "wsl.exe" -Arguments @("--update", "--web-download")
-    }
-    if ($wslUpdateCode -ne 0) {
-        Write-Warn "wsl --update 失敗，從 GitHub 下載最新版 WSL..."
-        try {
-            $release = Invoke-RestMethod "https://api.github.com/repos/microsoft/WSL/releases/latest" -TimeoutSec 30
-            $msiAsset = $release.assets | Where-Object { $_.name -match "x64\.msi$" } | Select-Object -First 1
-            if ($msiAsset) {
-                $wslMsi = "$env:TEMP\wsl-latest.msi"
-                Write-Info "  下載中: $($msiAsset.name) ($($release.tag_name))..."
-                Invoke-WebRequest -Uri $msiAsset.browser_download_url -OutFile $wslMsi -UseBasicParsing
-                $msiCode = Invoke-Watched -Label "安裝 WSL" -Usually "通常需要 1–2 分鐘" -UpperMinutes 5 -Encoding oem -File "msiexec.exe" -Arguments @("/i", $wslMsi, "/quiet", "/norestart")
-                Remove-Item $wslMsi -Force -ErrorAction SilentlyContinue
-                if ($msiCode -eq 0) {
-                    Write-Ok "WSL $($release.tag_name) 已從 GitHub 安裝"
-                } elseif ($msiCode -eq 3010) {
-                    Request-Reboot "WSL 已安裝，需要重新開機才能生效"
-                } else {
-                    Write-Err "MSI 安裝失敗 (exit code: $msiCode)"
-                    Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 .msi 安裝"
-                    Read-Host "按 Enter 結束"; exit 1
-                }
-            } else {
-                Write-Err "找不到 MSI 下載連結"
-                Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 x64 .msi 安裝"
-                Read-Host "按 Enter 結束"; exit 1
-            }
-        } catch {
-            Write-Err "下載失敗: $_"
-            Write-Info "可能原因: 網路被防火牆擋住 / 無法連線 GitHub"
-            Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 .msi 安裝"
-            Read-Host "按 Enter 結束"; exit 1
-        }
-        # 驗證安裝
-        $verifyVer = wsl --version 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) {
-            Mark-Stage "1b"
-            Request-Reboot "WSL 安裝完成，但還需要重新開機才能使用"
-        }
-    } else {
-        Write-Ok "WSL 核心已更新"
+    # ── 1b: 更新 WSL 核心（已經是 2 以上就略過；見 Invoke-WslUpdateStage）──
+    switch (Invoke-WslUpdateStage) {
+        'reboot' { Request-Reboot "WSL 已安裝，需要重新開機才能生效" }
+        'verify-reboot' { Mark-Stage "1b"; Request-Reboot "WSL 安裝完成，但還需要重新開機才能使用" }
+        'failed' { Read-Host "按 Enter 結束"; exit 1 }
     }
 
     # ── 1c: 設定 WSL 預設版本為 2 ──
@@ -1179,12 +1363,14 @@ foreach ($b in @($skippedLogins)) {
 Write-Info "  [OK] AgEnD 已安裝並啟動（systemd 服務）"
 Write-Info "  [OK] 通訊軟體已串接"
 Write-Info "  [OK] 開機自動啟動已設定"
-$shortcut = New-DashboardShortcut $UBUNTU_DISTRO
-if ($shortcut) { Write-Info "  [OK] 桌面上已建立「AgEnD 儀表板」捷徑" }
+$shortcuts = @(Install-AgendShortcuts $UBUNTU_DISTRO $AGEND_USER)
+$null = Write-ShortcutResult $shortcuts
+$shortcutNames = @($shortcuts | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension([string]$_) })
 Write-Host ""
 Write-Host "  日常使用：" -ForegroundColor Cyan
 Write-Info "    直接在 Discord/Telegram 跟 Bot 對話即可，不需要手動開啟任何程式"
-if ($shortcut) { Write-Info "    要看網頁儀表板：按兩下桌面上的「AgEnD 儀表板」，登入碼會自動帶入" }
+if ($shortcutNames -contains 'AgEnD 儀表板') { Write-Info "    要看網頁儀表板：按兩下桌面上的「AgEnD 儀表板」，登入碼會自動帶入" }
+if ($shortcutNames -contains 'AgEnD 重新啟動') { Write-Info "    要重新啟動 AgEnD：按兩下「AgEnD 重新啟動」（會先問你）" }
 Write-Info "    電腦重開機後 AgEnD 會自己啟動"
 Write-Host ""
 Write-Host "  ── 進階（需要用主控台時才看）──" -ForegroundColor DarkGray
@@ -1193,7 +1379,7 @@ Write-Info "    agend ls                # 查看所有 agent 狀態"
 Write-Info "    agend attach <名稱>     # 進入 agent 操作畫面"
 Write-Info "    agend update            # 更新到最新版"
 Write-Info "    agend web               # 取得儀表板的一次性登入碼"
-Write-Info "    手動重新啟動：wsl -d $UBUNTU_DISTRO -u root -- bash -lc 'agend start'"
+Write-Info ("    手動啟動：" + (Get-AgendStartHint $UBUNTU_DISTRO $AGEND_USER))
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Green
 
@@ -1204,7 +1390,7 @@ Clear-ResumeAtLogon
 # 最後直接打開儀表板（和桌面捷徑相同的流程）。
 Write-Host ""
 Write-Info "正在打開 AgEnD 網頁儀表板..."
-$null = Invoke-OpenDashboard $UBUNTU_DISTRO
+$null = Invoke-OpenDashboard $UBUNTU_DISTRO $AGEND_USER
 
 Read-Host "按 Enter 結束"
 

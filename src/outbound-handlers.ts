@@ -1036,11 +1036,37 @@ const stopInstance: Handler = async (ctx, rawArgs, respond) => {
 
 const getFleetStatus: Handler = (ctx, rawArgs, respond) => {
   const instances = ctx.fleetConfig?.instances ?? {};
-  const names = Object.keys(instances);
-  const running = names.filter(n => ctx.lifecycle.daemons.has(n) && !ctx.lifecycle.isPaused(n)).length;
-  const paused = names.filter(n => ctx.lifecycle.isPaused(n)).length;
-  const stopped = names.length - running - paused;
-  respond({ total: names.length, running, paused, stopped });
+  const fleetNames = Object.keys(instances);
+  const fleetRunning = fleetNames.filter(n => ctx.lifecycle.daemons.has(n) && !ctx.lifecycle.isPaused(n)).length;
+  const fleetPaused = fleetNames.filter(n => ctx.lifecycle.isPaused(n)).length;
+  const fleetStopped = fleetNames.length - fleetRunning - fleetPaused;
+
+  // Classic channels — same status source as list_instances and agend ls.
+  // Dedup: skip names already in the fleet (same-name fleet instance wins),
+  // AND skip classic names already seen (two channels can share an instanceName).
+  const fleetNameSet = new Set(fleetNames);
+  const seenClassic = new Set<string>();
+  const classicAll: string[] = [];
+  if (ctx.classicChannels) {
+    for (const ch of ctx.classicChannels.getAll()) {
+      if (fleetNameSet.has(ch.instanceName)) continue;
+      if (seenClassic.has(ch.instanceName)) continue;
+      seenClassic.add(ch.instanceName);
+      classicAll.push(ch.instanceName);
+    }
+  }
+  const classicRunning = classicAll.filter(n => ctx.lifecycle.daemons.has(n) && !ctx.lifecycle.isPaused(n)).length;
+  const classicPaused = classicAll.filter(n => ctx.lifecycle.isPaused(n)).length;
+  const classicStopped = classicAll.length - classicRunning - classicPaused;
+
+  respond({
+    total: fleetNames.length + classicAll.length,
+    running: fleetRunning + classicRunning,
+    paused: fleetPaused + classicPaused,
+    stopped: fleetStopped + classicStopped,
+    fleet: { total: fleetNames.length, running: fleetRunning, paused: fleetPaused, stopped: fleetStopped },
+    classic: { total: classicAll.length, running: classicRunning, paused: classicPaused, stopped: classicStopped },
+  });
 };
 
 const kiroEngineStatusHandler: Handler = (ctx, rawArgs, respond) => {

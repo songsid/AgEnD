@@ -242,6 +242,11 @@ Codex, Muse, Grok, Kiro, Antigravity; every Claude login on the host, used or no
 rows, "binding" on the window that will stop you, **Extra usage** in dollars. "high" at 70%, "near limit" at 90%.
 Refreshes every 60 s while open; **Refresh** forces it (at most once per 30 s); **Move up / Move down** reorders rows.
 `web.usage_panel: false` hides the rail and dialog (the `/usage` chat command and `get_usage` still work).
+**A failed read keeps the last numbers** (#2236 follow-up): an expired token, a rate limit, a network blip or any other
+error shows the numbers from the last good read (up to a week old), greyed, with "expired · cached at 14:05" (or "not
+updated" / "couldn't read") and what to do under it; a window that has reset since says "reset since …" with no number.
+`get_usage` rows carry `stale: true`, `cachedAt`, `staleCause` (expired / transient / error) and `resetPassed` on such
+metrics; read them as old. A provider never read successfully still shows its error. A good read clears the mark.
 
 **Profiles and plan badges.** Each Claude credential profile has its own row: the card says "Claude" with the
 profile on its own line (the API and chat call it "Claude (<profile>)"); a shared row appears only while some
