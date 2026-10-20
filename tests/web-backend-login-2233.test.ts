@@ -88,6 +88,7 @@ async function fixture(over: { checkAuth?: LoginControllerDeps["checkAuth"]; con
     return !!r && r.tier === "admin" && r.surface === "local" && sessions.isCurrent(r, tokenEpoch(token));
   };
   const notices: Array<{ shown: string; label: string; handle: string }> = [];
+  const changes = { n: 0 };
   const logins = new WebBackendLogins({
     isLocalAdmin,
     start: (backend, chat, opts) => over.installed === false ? Promise.resolve(t("login.web_dashboard_not_installed", backend, "curl …")) : controller.start(backend, chat, opts),
@@ -96,6 +97,7 @@ async function fixture(over: { checkAuth?: LoginControllerDeps["checkAuth"]; con
     cancelFor: sink => controller.cancelFor(sink),
     cancel: () => controller.isActive() ? controller.cancel() : Promise.resolve(t("login.no_session")),
     notice: info => { notices.push(info); },
+    changed: () => { changes.n++; },
     now: () => wall,
   });
   registries.push(logins);
@@ -119,7 +121,7 @@ async function fixture(over: { checkAuth?: LoginControllerDeps["checkAuth"]; con
   const check = (s: ReturnType<typeof session>, backend: string, profile?: string) => call("POST", "/ui/backend-login/check", s.headers, { backend, ...(profile ? { profile } : {}) });
   const start = (s: ReturnType<typeof session>, confirm: string, tunnel?: boolean) => call("POST", "/ui/backend-login/start", s.headers, { confirm, ...(tunnel !== undefined ? { tunnel } : {}) });
   const view = (s: ReturnType<typeof session>) => call("GET", "/ui/backend-login", s.headers);
-  return { controller, logins, sessions, lock, terminals, events, recover, notices, ctx, token, origin, session, call, check, start, view, at: (ms: number) => { wall = ms; }, now: () => wall };
+  return { controller, logins, sessions, lock, terminals, events, recover, notices, changes, ctx, token, origin, session, call, check, start, view, at: (ms: number) => { wall = ms; }, now: () => wall };
 }
 
 describe("#2233 who may sign a backend in from the dashboard", () => {
@@ -214,6 +216,9 @@ describe("#2233 a terminal sign-in (claude-code) from the dashboard", () => {
       terminal: { url: `http://localhost:40001/t/${"ab".repeat(16)}/`, loopback: true, public: false, command: "claude auth login" } });
     expect(f.terminals[0]!.spec.command).toBe("claude auth login");
     expect(f.notices).toEqual([{ shown: "claude-code", label: "Chrome on Windows", handle: a.handle }]);
+    expect(f.changes.n, "the pages are told once it starts").toBe(1);
+    const view = await f.view(a);
+    expect(view.body.targets, "GET carries Settings' list (none in a hand-built context)").toEqual([]);
     const again = await f.view(a);
     expect(again.headers["cache-control"]).toBe("private, no-store");
     expect(again.body.login.accessCode).toBe(TOKEN);
@@ -333,6 +338,7 @@ describe("#2233 a terminal sign-in (claude-code) from the dashboard", () => {
     const v = (await f.view(a)).body.login;
     expect(v).toMatchObject({ phase: "ended", ok: true, accessCode: null, terminal: null });
     expect(v.lines[0]).toBe(t("login.completed", "claude-code"));
+    expect(f.changes.n, "started, then ended").toBe(2);
     expect(v.lines.join("\n")).toContain("agent-a");
     expect(f.recover).toHaveBeenCalledWith("claude-code");
   });

@@ -525,6 +525,11 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
   </div></div>`;
 }
 
+/** #2233: a backend's "not signed in" choice offers Sign in (the module behind the session gate, loaded when asked). */
+function openBackendSignIn(backend) {
+  import("./backend-signin.js").then((m) => m.openSignIn({ backend }), () => toast(t("app.loadFailed"), false));
+}
+
 /** #1269: what the last chat command answered — its text, why it was refused, or a list to choose from. */
 function CommandCard({ name, lease }) {
   const c = store.state.commands[name];
@@ -543,6 +548,8 @@ function CommandCard({ name, lease }) {
     ${c.choices ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdChoose")}>${c.choices.options.map((o) => html`<button key=${o.id} type="button"
       class=${`btn btn-sm${o.id === c.choices.current ? " current" : ""}`} aria-current=${o.id === c.choices.current ? "true" : undefined}
       disabled=${!!o.disabled} title=${o.disabled || undefined} onClick=${() => { if (!o.disabled) run(o.id); }}>${o.label}</button>`)}</div>` : null}
+    ${c.choices && c.choices.options.some((o) => o.signIn) ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdSignIn")}>${c.choices.options.filter((o) => o.signIn).map((o) => html`<button
+      key=${`signin:${o.signIn}`} type="button" class="btn btn-sm btn-primary" onClick=${() => openBackendSignIn(o.signIn)}>${t("chat.cmdSignInTo", o.signIn)}</button>`)}</div>` : null}
   </div>`;
 }
 

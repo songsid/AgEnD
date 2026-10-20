@@ -45,6 +45,7 @@ import "./chat-strings.js";
 import { AppearanceSection } from "./settings-appearance.js";
 import { GuestsCard } from "./settings-guests.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
+import { SignInList } from "./backend-signin.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 /** What a refused change says to a person: the server's code in words (the code itself only for one not listed). */
@@ -475,8 +476,10 @@ function Agents({ ctx, search, openDialog }) {
   };
   const head = html`<div class="list-head"><span>${Object.keys(insts).length === 1 ? tn("countAgent") : tn("countAgents", Object.keys(insts).length)}</span>
     <button type="button" class="btn btn-primary" onClick=${() => openDialog({ kind: "create" })}><${Icon} name="plus" size=${16} />${tn("newAgent")}</button></div>`;
-  if (!Object.keys(insts).length) return html`${head}<${Empty} icon="bot" title=${tn("noAgents")} />`;
-  if (!groups.length) return html`${head}<${Empty} icon="search" title=${tn("noAgentMatch", search.trim())} />`;
+  // #2233: after the agents, each login on this machine with Sign in (backend-signin.js).
+  const signIns = html`<${SignInList} />`;
+  if (!Object.keys(insts).length) return html`${head}<${Empty} icon="bot" title=${tn("noAgents")} />${signIns}`;
+  if (!groups.length) return html`${head}<${Empty} icon="search" title=${tn("noAgentMatch", search.trim())} />${signIns}`;
   return html`${head}<div class="s-list">${groups.map(({ group, names }) => {
     const folded = collapsed.has(group) && !search.trim();      // searching opens every group
     return html`<section key=${group} class="s-group">
@@ -508,7 +511,7 @@ function Agents({ ctx, search, openDialog }) {
         </div>`;
       })}
     </section>`;
-  })}</div>`;
+  })}</div>${signIns}`;
 }
 
 function ConnectionRetry({ id, ctx }) {

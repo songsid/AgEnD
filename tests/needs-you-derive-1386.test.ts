@@ -204,3 +204,13 @@ describe("§3.4 the outbox: acknowledgement and the bounded attention query", ()
     box.close?.();
   });
 });
+
+describe("#2233: an auth pause carries the login the dashboard can sign in", () => {
+  it("present when the fleet names one, absent otherwise", () => {
+    const items = deriveNeedsYou(inputs({ instances: [
+      { name: "a", pauseReason: "auth", pausedAt: 5, signIn: { backend: "claude-code", profile: "work" } },
+      { name: "b", pauseReason: "auth", pausedAt: 6, signIn: null },
+    ] }));
+    expect(items.map(i => [i.instance, i.signIn])).toEqual([["a", { backend: "claude-code", profile: "work" }], ["b", undefined]]);
+  });
+});

@@ -32,7 +32,8 @@
 // #1218: steps_tick — an instance's transcript moved while a Log watches it (SSE only: a poll page asks the Log itself).
 // #1918: traffic — a message between instances moved; delegation — a task opened, or its report closed it (SSE only: the
 // org canvas reads /ui/traffic when it has no stream).
-const EVENTS = ["status", "message", "agent_reply_live", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs", "reply_buttons", "steps_tick", "clock", "traffic", "delegation"];
+// #2233: backend_login — a dashboard sign-in started, moved or ended (no details: the page reads its own view).
+const EVENTS = ["status", "message", "agent_reply_live", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs", "reply_buttons", "steps_tick", "clock", "traffic", "delegation", "backend_login"];
 const MAX_HELD = 1000;                    // live events held during one catch-up read; more → read again afterwards
 const RETRY_DELAYS = [1000, 2000, 4000];  // after the first failed catch-up read; then it waits for Retry
 const POLL_LIMIT_MS = 10000;              // a poll that has not answered by then counts as failed
