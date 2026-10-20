@@ -3,8 +3,8 @@
  * usage doesn't show everything." Every claude-code instance had moved to named profiles, so the default login — the
  * full one — got no row: rows were built only for logins an instance used, and the snapshot then kept only logins a
  * running instance used. Now every Claude login on the host has a row: the default ("Claude (default)") and every
- * profile there, used or not — unless the default is the same account as a profile (one subscription, one row), or an
- * unused profile is signed out (not set up). A login at its limit shows its 100% and reset time; a 429 is an error row,
+ * profile there, used or not — except an unused profile that is signed out (not set up). No row is dropped as "the
+ * same account as another" (Prism, #2237: config files cannot prove which account a login is). A login at its limit shows its 100% and reset time; a 429 is an error row,
  * never a missing one. The usage API is a stub; every token is a dummy.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -100,16 +100,36 @@ describe("#2236: every Claude login on the host has a row", () => {
     expect(row(s, "claude:jefflin").hintI18n?.key).toMatch(/claude_profile_signed_out/);
     expect(row(s, "claude:spare").metrics[0].used).toBe(33);
   });
-  it("the default login signed in as a profile's account: one subscription, one row (the profile's)", async () => {
+  it("Prism (#2237): no row is dropped as \"the same account\" — both signed in to one account: both rows", async () => {
     login(process.env.CLAUDE_HOME!, "dummy-default", "acct-same");
     login(profileHome("hsinlin"), "dummy-hsinlin", "acct-same");
     const s = await snapshot();
-    expect(s.providers.map(p => p.id)).toEqual(["claude:hsinlin", "claude:jefflin"]);   // jefflin: used, signed out (#1699)
+    expect(s.providers.map(p => p.id)).toEqual(["claude", "claude:hsinlin", "claude:jefflin"]);   // jefflin: used, signed out (#1699)
   });
-  it("control: a different account, or no account file to compare, keeps the default row", async () => {
-    login(process.env.CLAUDE_HOME!, "dummy-default");                 // no ~/.claude.json
-    login(profileHome("hsinlin"), "dummy-hsinlin", "acct-h");
-    expect((await snapshot()).providers.map(p => p.id)).toEqual(["claude", "claude:hsinlin", "claude:jefflin"]);
+  it("Prism (#2237): the default at 100% beside an unused profile whose stale account file names the same account but which is signed out — the default stays", async () => {
+    login(process.env.CLAUDE_HOME!, "dummy-default", "acct-same");
+    mkdirSync(profileHome("retired"), { recursive: true });
+    writeFileSync(join(profileHome("retired"), ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "acct-same" } }));
+    answers = { "dummy-default": 100 };
+    setUsageProvidersForTests(BASE as never);
+    const s = filterUsageProviders(await fetchAllUsage({ defaults: {}, instances: {} } as never), [], { hostLogins: true });
+    expect(s.providers.map(p => [p.id, (p as any).metrics[0]?.used])).toEqual([["claude", 100]]);
+  });
+  it("Prism (#2237): the default signed in by CLAUDE_CODE_OAUTH_TOKEN, ~/.claude.json naming a profile's account — the default row reads the env login", async () => {
+    writeFileSync(join(root, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "acct-same" } }));
+    login(profileHome("retired"), "dummy-retired", "acct-same");
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "dummy-env";
+    answers = { "dummy-env": 100, "dummy-retired": 20 };
+    setUsageProvidersForTests(BASE as never);
+    const s = filterUsageProviders(await fetchAllUsage({ defaults: {}, instances: {} } as never), [], { hostLogins: true });
+    expect(s.providers.map(p => [p.id, (p as any).metrics[0]?.used])).toEqual([["claude", 100], ["claude:retired", 20]]);
+  });
+  it("Prism (#2237): a bot running only on the default login keeps its Claude row in its own scoped list, a same-account profile beside it or not", async () => {
+    login(process.env.CLAUDE_HOME!, "dummy-default", "acct-same");
+    login(profileHome("retired"), "dummy-retired", "acct-same");
+    setUsageProvidersForTests(BASE as never);
+    const scoped = filterUsageProviders(await fetchAllUsage({ defaults: {}, instances: { a: { backend: "claude-code" } } } as never), ["claude"]);
+    expect(scoped.providers.map(p => p.id)).toEqual(["claude"]);
   });
   it("no default login and no profile: no Claude row at all (as before)", async () => {
     setUsageProvidersForTests(BASE as never);

@@ -418,26 +418,11 @@ export async function getClaudeOAuthToken(storeHome?: string): Promise<string | 
 /**
  * Which subscription a Claude row is (#1699): a profile's (with its name), or the shared one beside profiles.
  * #2236: `hostOnly` — a profile on the host that no instance uses: shown only when it has a login (signed out, it is
- * not set up, not something to act on). `profileHomes` — the profiles beside the shared row: when the shared login is
- * the same account as one of them, it is that profile's subscription and has no row of its own.
+ * not set up, not something to act on). No row is ever dropped as "the same account as another": which account a
+ * login is cannot be proven from config files (a stale `.claude.json`, an env token), and a hidden quota in use is
+ * worse than two rows of one subscription (Prism, #2237 review).
  */
-export interface ClaudeUsageScope { profile?: string; besideProfiles?: boolean; hostOnly?: boolean; profileHomes?: string[] }
-
-/** #2236: the account a Claude config is signed in as (`oauthAccount.accountUuid` in its `.claude.json`), or null. */
-function claudeAccountId(configJson: string): string | null {
-  try {
-    const id = (JSON.parse(readFileSync(configJson, "utf8")) as { oauthAccount?: { accountUuid?: unknown } }).oauthAccount?.accountUuid;
-    return typeof id === "string" && id.length > 0 ? id : null;
-  } catch { return null; }
-}
-
-/**
- * #2236: the shared login's account file. claude keeps it beside its config: `$CLAUDE_CONFIG_DIR/.claude.json` when
- * that is set, else `~/.claude.json`.
- */
-function sharedClaudeAccountFile(): string {
-  return process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, ".claude.json") : join(homedir(), ".claude.json");
-}
+export interface ClaudeUsageScope { profile?: string; besideProfiles?: boolean; hostOnly?: boolean }
 
 /**
  * Exported for tests — the statusline/API preference order is the subject.
@@ -449,13 +434,6 @@ function sharedClaudeAccountFile(): string {
  */
 export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageScope = {}): Promise<Omit<ProviderUsage, "id" | "name">> {
   const profileHome = storeHome !== undefined ? resolve(storeHome) : null;
-  if (profileHome === null && scope.profileHomes?.length) {
-    // #2236: the shared login signed in as a profile's account is that profile's subscription — one row for it.
-    const shared = claudeAccountId(sharedClaudeAccountFile());
-    if (shared && scope.profileHomes.some(home => claudeAccountId(join(home, ".claude.json")) === shared)) {
-      return { status: "no-credentials", hint: "Same account as a credential profile (shown on that row).", metrics: [] };
-    }
-  }
   const file = profileHome !== null
     ? await readClaudeProfileLogin(profileHome)
     : await readClaudeCredentialsFile(process.env.CLAUDE_HOME || join(homedir(), ".claude"));
@@ -1725,9 +1703,8 @@ export function providersForConfig(
  * #2236: one row per Claude login ON THE HOST, used by an instance or not — the default (shared) login and every
  * credential profile there. A subscription at its limit is exactly the one a person stops using; it must not vanish
  * because nothing runs on it (a user's first account, full, had no row once every instance moved to new profiles).
- * The shared row is "Claude (default)" beside profiles; a profile no instance uses shows only when signed in, and the
- * shared login shows only when it is not one of the profiles' own accounts. isHostLoginUsageProvider keeps these rows
- * through the snapshot's running-instances filter.
+ * The shared row is "Claude (default)" beside profiles (shown whenever that login exists); a profile no instance uses
+ * shows only when signed in. isHostLoginUsageProvider keeps these rows through the snapshot's running-instances filter.
  */
 function claudeHostRows(config: UsageFleetConfig, provider: UsageProvider, backendName: string): UsageProvider[] {
   const inUse = effectiveCredentialProfiles(config, backendName);
@@ -1735,7 +1712,7 @@ function claudeHostRows(config: UsageFleetConfig, provider: UsageProvider, backe
   if (profiles.length === 0) return [provider];
   const homes = profiles.map(profile => credentialProfileStoreHome(getAgendHome(), backendName, profile));
   return [
-    { id: provider.id, name: `${provider.name} (default)`, fetch: () => provider.fetch(undefined, { besideProfiles: true, profileHomes: homes }) },
+    { id: provider.id, name: `${provider.name} (default)`, fetch: () => provider.fetch(undefined, { besideProfiles: true }) },
     ...profiles.map((profile, i) => ({
       id: `${provider.id}:${profile}`,
       name: `${provider.name} (${profile})`,
