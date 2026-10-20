@@ -31,7 +31,7 @@ describe("the real 2026-10-20 shapes (no Argon in them)", () => {
   it("production base: Gemini and Claude & others, each with its session and weekly limit", () => {
     expect(lines(summaryProd, modelsDaily).map(l => l[0])).toEqual(["Gemini (session)", "Gemini (weekly)", "Claude & others (session)", "Claude & others (weekly)"]);
   });
-  it("daily base: no Gemini group — the Gemini line falls back to the busiest model (why the production base is read first)", () => {
+  it("daily base asked WITHOUT a current client version (the old \"antigravity\" / 1.4.2-style User-Agent): no Gemini group — the Gemini line falls back to the busiest model: a visible gap, not wrong numbers", () => {
     expect(lines(summaryDaily, modelsDaily).map(l => l[0])).toEqual(["Claude & others (session)", "Claude & others (weekly)", "Gemini"]);
   });
 });

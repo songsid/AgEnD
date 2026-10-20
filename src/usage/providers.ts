@@ -600,14 +600,29 @@ export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageSco
 
 const AGY_TOKEN_FILE = ["antigravity-cli", "antigravity-oauth-token"];
 /**
- * The production base first: checked live 2026-10-20 (a user's account, read-only), the daily base's quota summary had
- * only the "Claude and GPT models" group while the production base's had "Gemini Models" too — the Gemini line then
- * fell back to the busiest single model. The daily base stays as the fallback.
+ * The daily base first, the production base as the fallback. Checked live 2026-10-20 (#2240, a user's Google AI Pro
+ * account, read-only) against agy's own /quota: only the daily base, asked as a current Antigravity client
+ * (AGY_CLIENT_VERSION), answers with the plan's Gemini quota — agy's numbers exactly. The production base answers with
+ * a free-tier Gemini bucket whatever the client says.
  */
 const AGY_CLOUDCODE_URLS = [
-  "https://cloudcode-pa.googleapis.com",
   "https://daily-cloudcode-pa.googleapis.com",
+  "https://cloudcode-pa.googleapis.com",
 ];
+/**
+ * The Antigravity client version AgEnD names itself as. The daily base gates the plan's "Gemini Models" quota on it
+ * (#2240, 2026-10-20): as "antigravity" or "antigravity/1.4.2" or "/2.0.0" its summary had no Gemini group at all;
+ * from 2.9.1 on it had the paid bucket. 2.24.0 is the value OpenUsage (MIT, robinebers/openusage) sends. If Google
+ * raises the gate past it, the Gemini group disappears again and the row falls back to the busiest model's quota — a
+ * visible gap, never wrong numbers. Bump it here.
+ */
+export const AGY_CLIENT_VERSION = "2.24.0";
+/** agy's own User-Agent shape (`%s/%s (aidev_client; os_type=…; arch=…)`), for this host. */
+export function agyUserAgent(platform: string = process.platform, arch: string = process.arch): string {
+  const os = platform === "win32" ? "windows" : platform;
+  const cpu = arch === "x64" ? "amd64" : arch;
+  return `antigravity/${AGY_CLIENT_VERSION} (aidev_client; os_type=${os}; arch=${cpu})`;
+}
 /**
  * The Google installed-app OAuth client pair, READ FROM THE INSTALLED agy
  * BINARY rather than committed here.
@@ -907,7 +922,7 @@ function agyModels(base: string, token: string): { within(budgetMs: number): Pro
   const result = (async () => {
     const res = await fetch(`${base}/v1internal:fetchAvailableModels`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "antigravity" },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": agyUserAgent() },
       body: "{}",
       signal: AbortSignal.any([abort.signal, AbortSignal.timeout(LONGEST_SINGLE_FETCH_MS)]),
     });
@@ -968,7 +983,7 @@ export async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" 
           headers: {
             Authorization: `Bearer ${auth.token}`,
             "Content-Type": "application/json",
-            "User-Agent": "antigravity",
+            "User-Agent": agyUserAgent(),
           },
           body: "{}",
           signal: AbortSignal.timeout(LONGEST_SINGLE_FETCH_MS),
