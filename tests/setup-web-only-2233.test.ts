@@ -50,6 +50,17 @@ describe("#2233 web-only setup on the real SetupHost", () => {
     expect(h.spawnFleet).toHaveBeenCalledOnce();
   });
 
+  it("a write that fails after the file was saved is undone: no agent in memory, no fleet.yaml, no hand-over", async () => {
+    const h = await harness();
+    const pending = await setupHttp(h.port, h.path + "api/settings/quickstart/commit", "POST", WEB, h.cookie);
+    (h.host as any).setupContext.settingsCommitted = () => { throw new Error("inert receipt failure"); };
+    expect((await decideSetup(h.dir, pending.body.pending_change.id)).pending_change.state).toBe("failed");
+    expect((h.host as any).setupContext.fleetConfig.instances).toEqual({});
+    expect(existsSync(join(h.dir, "fleet.yaml"))).toBe(false);
+    expect((await setupHttp(h.port, h.path + "setup/finish", "POST", undefined, h.cookie)).status).toBe(409);
+    expect(h.spawnFleet).not.toHaveBeenCalled();
+  });
+
   it("a web-only body carrying any connection field (a token included) is refused before anything is proposed", async () => {
     const h = await harness();
     for (const extra of [{ token: "123:abc" }, { token_env: "AGEND_BOT_TOKEN" }, { platform: "telegram" }, { admin_user_id: "1" }, { group_id: "-100" }, { connection_only: true }]) {
