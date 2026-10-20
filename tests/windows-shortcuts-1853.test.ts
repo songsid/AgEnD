@@ -224,7 +224,8 @@ Write-Output ("RECORD=" + (Get-Content -Raw -LiteralPath (Join-Path (Get-AgendSh
     expect(out).toContain("BOTH=False");
     expect(out).not.toContain("[OK] 桌面上已建立");
     expect(calls(bin)).toBe("");
-    expect(out).toContain('RECORD={"distro":"Ubuntu-22.04","user":"han"}');          // the record still names this Linux and user
+    // The record still names this Linux and user (as an object: a hashtable's ConvertTo-Json has no fixed key order).
+    expect(JSON.parse(out.match(/^RECORD=(.*)$/m)![1]!)).toEqual({ distro: "Ubuntu-22.04", user: "han" });
   });
   it("the first one fails: the second is still made", () => {
     const { out } = withHelpers(fakeShortcut("AgEnD 儀表板"), fakeWsl());
