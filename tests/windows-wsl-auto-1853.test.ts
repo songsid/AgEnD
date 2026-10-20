@@ -49,7 +49,9 @@ describe("the WSL stage decides for itself (static)", () => {
   });
   it("the chosen distro is saved with the progress and read back on a resumed run", () => {
     expect(body).toMatch(/Add-Content -Path \$ProgressFile -Value "DISTRO=\$UBUNTU_DISTRO"\n\s+Mark-Stage 1\n/);
-    expect(body).toMatch(/"DISTRO=\(\\S\+\)"\)\n\s+if \(\$savedDistro\.Success\) \{ \$UBUNTU_DISTRO = \$savedDistro\.Groups\[1\]\.Value \}/);
+    expect(body).toMatch(/\$savedDistro = Get-ProgressValue 'DISTRO'\n\s+if \(\$savedDistro\) \{ \$UBUNTU_DISTRO = \$savedDistro \}/);
+    expect(body.match(/^Start-FreshProgress \$Force\.IsPresent$/gm)).toHaveLength(1);                     // -Force starts fresh …
+    expect(body.indexOf("Start-FreshProgress $Force.IsPresent")).toBeLessThan(body.indexOf("$savedDistro"));   // … before anything is read
     expect(body.indexOf("$savedDistro")).toBeLessThan(body.indexOf("Write-Step 1 $TOTAL"));
   });
 });
@@ -125,6 +127,29 @@ function Restart-Computer { param([switch]$Force) }
 Request-Reboot 'x'`, "n\n");
     expect(out).toContain("重新開機後，請再執行一次同一行安裝指令，會從中斷處繼續。");
     expect(out).not.toContain("登入後一樣會自動繼續");
+  });
+  it("progress: -Force starts fresh, so a -Force run that changed the distro and was interrupted resumes on the new one (#2238 review)", () => {
+    const { out } = withHelpers(`$ProgressFile = Join-Path $env:TMPDIR 'progress'
+# An old install left Ubuntu-22.04 and its backends behind.
+Set-Content -LiteralPath $ProgressFile -Value "STAGE_1_DONE\`nDISTRO=Ubuntu-22.04\`nBACKENDS=3\`nSTAGE_2_DONE"
+# The person runs with -Force, keeps the Ubuntu-24.04 already there, and the run stops after stage 1.
+$Force = $true
+Start-FreshProgress $true
+$UBUNTU_DISTRO = 'Ubuntu-24.04'
+Add-Content -Path $ProgressFile -Value "DISTRO=$UBUNTU_DISTRO"
+Mark-Stage 1
+# The same line again, without -Force: what does the resumed run read?
+$Force = $false
+Start-FreshProgress $false
+Write-Output ("RESUMED=" + (Get-ProgressValue 'DISTRO') + " STAGE1=" + (Stage-Done 1) + " STAGE2=" + (Stage-Done 2) + " BACKENDS=" + (Get-SavedBackends))
+# Two entries for one key (any older file): the last one is this run's.
+Set-Content -LiteralPath $ProgressFile -Value "DISTRO=Ubuntu-22.04\`nBACKENDS=1\`nDISTRO=Ubuntu-24.04\`nBACKENDS=1,4"
+Write-Output ("LAST=" + (Get-ProgressValue 'DISTRO') + " " + (Get-SavedBackends))
+Remove-Item -LiteralPath $ProgressFile
+Write-Output ("NONE=[" + (Get-ProgressValue 'DISTRO') + "] " + (Get-SavedBackends))`);
+    expect(out).toContain("RESUMED=Ubuntu-24.04 STAGE1=True STAGE2=False BACKENDS=1\n");     // stage 2 runs again, its old choice gone
+    expect(out).toContain("LAST=Ubuntu-24.04 1,4\n");
+    expect(out).toContain("NONE=[] 1\n");
   });
   it("clearing the resume when there is none is quiet", () => {
     const { out } = withHelpers(`function Remove-ItemProperty { param($Path, $Name, $ErrorAction) throw 'no such value' }
