@@ -50,6 +50,8 @@ describe("shortcuts and the fast path (static)", () => {
 });
 
 /** agend may be an nvm install: a login shell need not load nvm, so every command gets this first (as the dashboard's does). */
+/** The installer's probe of a Linux for AgEnD (found / broken / none), as it reaches bash. */
+const PROBE = /^\$AGEND_PROBE = '((?:[^']|'')*)'$/m.exec(text)![1]!.replace(/''/g, "'");
 const PRELUDE = "export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; ";
 const pwsh = spawnSync("pwsh", ["-NoProfile", "-c", "1"], { encoding: "utf8" }).status === 0;
 const dirs: string[] = [];
@@ -64,7 +66,7 @@ printf '%s\\n' "$*" >> '${join(bin, "calls.txt")}'
 case "$*" in
   *"agend restart"*) echo '${rout}'; exit ${rc} ;;
   *"agend status"*) echo '${o.status ?? "worker  running"}'; exit 0 ;;
-  *"command -v agend"*) for d in ${(o.found ?? []).map(d => `'${d}'`).join(" ")}; do case "$2" in "$d") echo AGEND_FOUND; exit 0 ;; esac; done; exit 1 ;;
+  *"echo AGEND_FOUND"*) for d in ${(o.found ?? []).map(d => `'${d}'`).join(" ")}; do case "$2" in "$d") echo AGEND_FOUND; exit 0 ;; esac; done; exit 1 ;;
 esac
 exit 0
 `);
@@ -97,7 +99,7 @@ function withHelpers(body: string, bin: string, input = "", env: Record<string, 
 $t = $null; $e = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
 foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$(WSL_COMMAND_FN|RESTART_FN|DASHBOARD_OPENER_FN)$' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
+foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$(WSL_COMMAND_FN|RESTART_FN|DASHBOARD_OPENER_FN|AGEND_PROBE)$' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
 . ([scriptblock]::Create($WSL_COMMAND_FN)); . ([scriptblock]::Create($DASHBOARD_OPENER_FN)); . ([scriptblock]::Create($RESTART_FN))
 $script:OnWindows = $false
 $env:LOCALAPPDATA = Join-Path $env:TMPDIR 'localappdata'; $env:ProgramFiles = Join-Path $env:TMPDIR 'pf'
@@ -167,7 +169,7 @@ function Get-InstalledWslVersion { return [version]'2.6.1.0' }
 $r = Find-ExistingAgend
 Write-Output ("FOUND=" + $r.Distro + "/" + $r.User)`, bin);
     expect(out).toContain("FOUND=Debian-AgEnD/han");
-    expect(calls(bin).split("\n")[0]).toBe(`-d Debian-AgEnD -u han -- bash -lc ${PRELUDE}command -v agend >/dev/null 2>&1 && echo AGEND_FOUND`);
+    expect(calls(bin).split("\n")[0]).toBe(`-d Debian-AgEnD -u han -- bash -lc ${PRELUDE}${PROBE}`);
   });
   it("a clean Windows (no record, no Store WSL): nothing found, and wsl.exe never asked", () => {
     const bin = fakeWsl({ found: ["Ubuntu-24.04"] });

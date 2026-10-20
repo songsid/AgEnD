@@ -611,6 +611,13 @@ function Install-AgendShortcuts([string]$distro, [string]$user) {
 # 重新執行安裝指令時：這台電腦是不是已經裝好 AgEnD？先看安裝時記下的，再看預設的 Ubuntu。回傳 @{ Distro; User } 或 $null。
 # 只有現在真的有 Store/MSI 版 WSL（看檔案，不執行）時才問 WSL：乾淨的 Windows 上 wsl.exe 會停在「按任意鍵安裝」等按鍵
 # （#2228）。安裝紀錄只用來挑 Linux 和使用者，不能代表 WSL 還在：移除 WSL 後紀錄可能還留著（#2252 審查）。
+# 一個 Linux 裡的 AgEnD 是什麼狀態（#2264 的後續：更新中斷後 agend 不見了）。agend --version 能執行：AGEND_FOUND。
+# 執行不了、但還留著 AgEnD 的東西（fleet.yaml，或 npm 全域目錄裡的 @songsid，包括中斷的安裝移到旁邊的 .agend-*）：
+# AGEND_BROKEN，並帶回磁碟上找得到的版本（AGEND_VERSION=…，修復時裝回同一版）。兩者都不是：什麼都不印。
+# 指令裡不放雙引號（Windows PowerShell 5.1）；sed 的程式用單引號，萬用字元才不會被 shell 展開。
+$AGEND_PROBE = 'if agend --version >/dev/null 2>&1; then echo AGEND_FOUND; else r=$(npm root -g 2>/dev/null); r=${r:-/nonexistent}; h=${AGEND_HOME:-$HOME/.agend}; if [ -f $h/fleet.yaml ] || [ -d $r/@songsid ]; then echo AGEND_BROKEN; for f in $r/@songsid/agend/package.json $r/@songsid/.agend-*/package.json; do [ -f $f ] && sed -n ''s/^[[:space:]]*.version.:[[:space:]]*.\([0-9][0-9A-Za-z.+-]*\).,*[[:space:]]*$/AGEND_VERSION=\1/p'' $f; done | head -1; fi; fi'
+# 重新執行安裝指令時：這台電腦是不是已經裝好 AgEnD？先看安裝時記下的，再看 AgEnD 專用的和預設的 Ubuntu。回傳
+# @{ Distro; User; Broken; Version } 或 $null。只有現在真的有 Store/MSI 版 WSL 時才問 WSL（#2228、#2252 審查）。
 function Find-ExistingAgend {
     if (-not (Get-InstalledWslVersion)) { return $null }
     $record = Read-InstallRecord
@@ -618,10 +625,26 @@ function Find-ExistingAgend {
     if ($record) { $candidates += ,@($record.Distro, $record.User) }
     foreach ($d in @($AGEND_DISTRO_BASE, 'Ubuntu-24.04', 'Ubuntu-22.04', 'Ubuntu')) { $candidates += ,@($d, 'root') }
     foreach ($c in $candidates) {
-        $r = Invoke-AgendInWsl $c[0] $c[1] 'command -v agend >/dev/null 2>&1 && echo AGEND_FOUND'
-        if ($r.Code -eq 0 -and $r.Text -match 'AGEND_FOUND') { return @{ Distro = $c[0]; User = $c[1] } }
+        $r = Invoke-AgendInWsl $c[0] $c[1] $AGEND_PROBE
+        if ($r.Code -ne 0) { continue }
+        if ($r.Text -match 'AGEND_FOUND') { return @{ Distro = $c[0]; User = $c[1]; Broken = $false } }
+        if ($r.Text -match 'AGEND_BROKEN') {
+            $v = [regex]::Match($r.Text, 'AGEND_VERSION=([0-9][0-9A-Za-z.+-]*)')
+            return @{ Distro = $c[0]; User = $c[1]; Broken = $true; Version = $(if ($v.Success) { $v.Groups[1].Value } else { $null }) }
+        }
     }
     return $null
+}
+# 修復「已安裝但壞掉」的 AgEnD：在那個 Linux 裡重跑官方的安裝指令。它會放回中斷的安裝移走的東西、裝好、證明
+# agend --version、重新設定服務；已經設定好的 fleet 不會重新設定，資料和設定都保留（#2264）。磁碟上找得到原本的
+# 版本就裝回同一版（beta 不會被換成穩定版）。修好、agend --version 能執行才回傳 $true。
+function Invoke-AgendRepair([string]$distro, [string]$user, [string]$version) {
+    $pin = if ($version -match '^[0-9][0-9A-Za-z.+-]*$') { 'AGEND_VERSION=' + $version + ' ' } else { '' }
+    $cmd = Get-WslAgendCommand ('set -o pipefail; curl -fsSL https://songsid.github.io/AgEnD/install.sh | ' + $pin + 'bash')
+    $code = Invoke-Watched -Label "修復 AgEnD" -Usually "通常需要 1–3 分鐘" -UpperMinutes 15 -File 'wsl.exe' -Arguments @('-d', $distro, '-u', $user, '--', 'bash', '-lc', $cmd)
+    if ($code -ne 0) { return $false }
+    $after = Invoke-AgendInWsl $distro $user 'agend --version'
+    return ($after.Code -eq 0)
 }
 
 # 說明捷徑建立的結果：兩個都好、只好一個（說是哪一個）、都沒好。兩個都好時回傳 $true。
@@ -1152,6 +1175,15 @@ Write-Host ""
 if (-not $Force -and -not (Test-Path $ProgressFile)) {
     $existing = Find-ExistingAgend
     if ($existing) {
+        # 有 AgEnD 的資料，但 agend 指令不能用（例如更新中斷）：只修復安裝，不重新設定任何東西（#2264 的後續）。
+        if ($existing.Broken) {
+            Write-Warn ("這台電腦有 AgEnD（{0}，使用者 {1}），但 agend 指令無法執行。只修復安裝，不會重新設定，也不會動到 fleet 的設定和資料。" -f $existing.Distro, $existing.User)
+            if (-not (Invoke-AgendRepair $existing.Distro $existing.User $existing.Version)) {
+                Write-Err "修復沒有完成；你的資料和設定都還在。請看上方的原因，之後再執行同一行安裝指令。"
+                Read-Host "按 Enter 結束"; exit 1
+            }
+            Write-Ok "AgEnD 修好了，agend 指令可以用了"
+        }
         Write-Ok ("這台電腦已經裝好 AgEnD（{0}，使用者 {1}）。不會重新安裝，也不會動到現有的設定。" -f $existing.Distro, $existing.User)
         # 捷徑目前指向另一個 Linux 或使用者（例如 AgEnD 專用的 Linux 和原本的 Ubuntu）：先說，預設不改（絕不悄悄改指向）。
         $prior = Get-InstallRecordConflict $existing.Distro $existing.User
