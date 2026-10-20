@@ -265,6 +265,78 @@ function Complete-LoginStage($backends) {
     return $skipped                                                     # callers wrap it: @(...)
 }
 
+# ── 安裝完成後：打開網頁儀表板、桌面捷徑（#1853：使用者核准的第 ④ 步）──────────
+# 儀表板用一次性登入碼登入（不會放在網址裡）：在 WSL 裡執行 agend web --code 取得登入頁和登入碼，在 Windows 的瀏覽器打開
+# 登入頁，把登入碼放進剪貼簿並放大顯示。桌面上的「AgEnD 儀表板」捷徑做同一件事，所以之後不用再打任何指令。
+# 這段函式的文字同時是捷徑執行的腳本：安裝程式和捷徑用的是同一份。
+$DASHBOARD_OPENER_FN = @'
+function Get-DashboardSignIn([string]$text) {
+    $url = [regex]::Match($text, 'Sign-in page:\s*(https?://\S+)')
+    $code = [regex]::Match($text, 'Code:\s*([A-Z2-7]{4}-?[A-Z2-7]{4})\b')
+    if (-not $url.Success -or -not $code.Success) { return $null }
+    return @{ Url = $url.Groups[1].Value; Code = $code.Groups[1].Value }
+}
+function Invoke-OpenDashboard([string]$distro, [switch]$Wait) {
+    # agend web --code 失敗時（AgEnD 沒在跑、沒有 token、連不上）會寫到 stderr 並以 1 結束。Windows PowerShell 5.1 會把重導的
+    # stderr 變成錯誤紀錄，在 ErrorActionPreference=Stop 下直接中止（#2242 審查）：取得輸出的這段改用 Continue、每一筆都轉成文字，
+    # 結束碼不是 0、啟動不了 wsl，都走下面「打不開」的說明。原本的設定在 finally 還原。
+    $text = ''; $exit = 1
+    $prevEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $text = ((& wsl.exe -d $distro -u root -- bash -lc 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend web --code' 2>&1) | ForEach-Object { "$_" } | Out-String)
+        $exit = $LASTEXITCODE
+    } catch {
+        $text = "$_"; $exit = 1
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
+    $signIn = if ($exit -eq 0) { Get-DashboardSignIn $text } else { $null }
+    if (-not $signIn) {
+        Write-Host "  [!!] 現在打不開 AgEnD 儀表板：AgEnD 可能還沒啟動。" -ForegroundColor Yellow
+        Write-Host ("  稍等一下再試一次；或在 PowerShell 執行：wsl -d {0} -u root -- bash -lc 'agend start'" -f $distro)
+        if ($Wait) { Read-Host "按 Enter 關閉" }
+        return $false
+    }
+    $copied = $false; try { Set-Clipboard -Value $signIn.Code; $copied = $true } catch { }
+    $opened = $false; try { Start-Process $signIn.Url; $opened = $true } catch { }
+    $spaced = ($signIn.Code.ToCharArray() | ForEach-Object { [string]$_ }) -join ' '
+    Write-Host ""
+    Write-Host ("  ┌──────────────────────────────────────┐") -ForegroundColor Green
+    Write-Host ("  │   儀表板登入碼：  " + $spaced + "    │") -ForegroundColor Green
+    Write-Host ("  └──────────────────────────────────────┘") -ForegroundColor Green
+    if ($opened) { Write-Host "  [OK] 登入頁已在瀏覽器打開。" -ForegroundColor Green } else { Write-Host ("  請自己在瀏覽器打開：" + $signIn.Url) }
+    if ($copied) { Write-Host "  [OK] 登入碼已複製：在登入頁的輸入框按 Ctrl+V。這組登入碼只能用一次，幾分鐘內有效。" -ForegroundColor Green }
+    else { Write-Host "  在登入頁輸入上面的登入碼。這組登入碼只能用一次，幾分鐘內有效。" }
+    if ($Wait) { Read-Host "按 Enter 關閉" }
+    return $true
+}
+'@
+. ([scriptblock]::Create($DASHBOARD_OPENER_FN))
+
+# 捷徑執行的腳本：上面的函式加上一行呼叫（UTF-8 有 BOM：Windows PowerShell 5.1 才會正確顯示中文）。
+function Get-DashboardOpenerScript([string]$distro) {
+    return ("# AgEnD 儀表板（AgEnD 安裝程式建立）`n" + $DASHBOARD_OPENER_FN + "`n" + ("Invoke-OpenDashboard '{0}' -Wait | Out-Null" -f $distro) + "`n")
+}
+# 寫好腳本並在桌面建立「AgEnD 儀表板」捷徑。回傳捷徑路徑；不是 Windows 或建立失敗時回傳 $null。
+function New-DashboardShortcut([string]$distro) {
+    if (-not $script:OnWindows) { return $null }
+    try {
+        $dir = Join-Path $env:LOCALAPPDATA 'AgEnD'
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $file = Join-Path $dir 'open-dashboard.ps1'
+        [IO.File]::WriteAllText($file, (Get-DashboardOpenerScript $distro), (New-Object System.Text.UTF8Encoding $true))
+        $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'AgEnD 儀表板.lnk'
+        $shell = New-Object -ComObject WScript.Shell
+        $sc = $shell.CreateShortcut($lnk)
+        $sc.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $sc.Arguments = ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $file)
+        $sc.Description = 'AgEnD 網頁儀表板（自動帶入登入碼）'
+        $sc.Save()
+        return $lnk
+    } catch { return $null }
+}
+
 # ── 在瀏覽器裡設定（#1853：取代主控台裡的 agend quickstart）─────────────
 # agend setup 在 WSL 裡開一個設定頁，印出網址和設定碼。安裝程式讀到這兩行，就在 Windows 的瀏覽器打開網址、
 # 把設定碼放進剪貼簿並放大顯示；使用者在網頁上選 Discord 或 Telegram、貼上 Bot Token，不必在這個視窗打字。
@@ -1107,26 +1179,32 @@ foreach ($b in @($skippedLogins)) {
 Write-Info "  [OK] AgEnD 已安裝並啟動（systemd 服務）"
 Write-Info "  [OK] 通訊軟體已串接"
 Write-Info "  [OK] 開機自動啟動已設定"
+$shortcut = New-DashboardShortcut $UBUNTU_DISTRO
+if ($shortcut) { Write-Info "  [OK] 桌面上已建立「AgEnD 儀表板」捷徑" }
 Write-Host ""
 Write-Host "  日常使用：" -ForegroundColor Cyan
-Write-Info "    直接在 Discord/Telegram 跟 Bot 對話即可"
-Write-Info "    不需要手動開啟任何程式"
+Write-Info "    直接在 Discord/Telegram 跟 Bot 對話即可，不需要手動開啟任何程式"
+if ($shortcut) { Write-Info "    要看網頁儀表板：按兩下桌面上的「AgEnD 儀表板」，登入碼會自動帶入" }
+Write-Info "    電腦重開機後 AgEnD 會自己啟動"
 Write-Host ""
-Write-Host "  管理指令（進入 WSL 後直接輸入）：" -ForegroundColor Cyan
+Write-Host "  ── 進階（需要用主控台時才看）──" -ForegroundColor DarkGray
 Write-Info "    wsl -d $UBUNTU_DISTRO          # 從 PowerShell 進入 WSL"
 Write-Info "    agend ls                # 查看所有 agent 狀態"
 Write-Info "    agend attach <名稱>     # 進入 agent 操作畫面"
 Write-Info "    agend update            # 更新到最新版"
-Write-Host ""
-Write-Host "  注意事項：" -ForegroundColor Yellow
-Write-Info "    - 電腦重開機後 WSL 會自動啟動，systemd 會自動拉起 AgEnD"
-Write-Info "    - 手動重新啟動：wsl -d $UBUNTU_DISTRO -u root -- bash -lc 'agend start'"
+Write-Info "    agend web               # 取得儀表板的一次性登入碼"
+Write-Info "    手動重新啟動：wsl -d $UBUNTU_DISTRO -u root -- bash -lc 'agend start'"
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Green
 
 # 清除進度檔與自動接續的登記
 Remove-Item $ProgressFile -Force -ErrorAction SilentlyContinue
 Clear-ResumeAtLogon
+
+# 最後直接打開儀表板（和桌面捷徑相同的流程）。
+Write-Host ""
+Write-Info "正在打開 AgEnD 網頁儀表板..."
+$null = Invoke-OpenDashboard $UBUNTU_DISTRO
 
 Read-Host "按 Enter 結束"
 
