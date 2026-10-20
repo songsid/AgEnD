@@ -20,11 +20,12 @@ import { Empty } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { notifyStore, notifySupport, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
+import { openSignIn, signInOffered } from "./backend-signin.js";
 
 register("needs", {
   en: {
     title: "Needs you", empty: "Nothing needs you right now", emptyHint: "When an agent waits for you, it shows here — and in your chat app's General.", emptyHintWeb: "When an agent waits for you, it shows here.",
-    open: "Open chat", acknowledge: "Acknowledge", acknowledging: "Acknowledging…", answering: "Answering…",
+    open: "Open chat", signIn: "Sign in", acknowledge: "Acknowledge", acknowledging: "Acknowledging…", answering: "Answering…",
     ageNow: "just now", ageMin: "{0} min", ageHour: "{0} h", ageDay: "{0} d",
     notifyTitle: "Notify me on this device", notifyOn: "Notifications are on for this browser while a tab is open.",
     notifyOff: "Get a desktop notification when something new needs you while this tab is in the background.",
@@ -36,7 +37,7 @@ register("needs", {
   },
   "zh-TW": {
     title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
-    open: "開啟聊天", acknowledge: "確認", acknowledging: "確認中…", answering: "回覆中…",
+    open: "開啟聊天", signIn: "登入", acknowledge: "確認", acknowledging: "確認中…", answering: "回覆中…",
     ageNow: "剛剛", ageMin: "{0} 分鐘", ageHour: "{0} 小時", ageDay: "{0} 天",
     notifyTitle: "在這台裝置通知我", notifyOn: "這個瀏覽器的通知已開啟（需要開著分頁）。",
     notifyOff: "分頁在背景時，有新的事等你處理就跳出桌面通知。",
@@ -185,6 +186,7 @@ function NeedsItem({ item, nowMs, owner }) {
             disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
         ${item.type === "delivery" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
             <${Icon} name="check" size=${14} />${ack === "busy" ? tn("acknowledging") : tn("acknowledge")}</button>` : null}
+        ${item.reason === "auth_paused" && item.signIn && signInOffered() ? html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => openSignIn(item.signIn)}>${tn("signIn")}</button>` : null}
         <a class="btn btn-sm btn-ghost" href=${chatPath(item.instance)}>${tn("open")}</a>
       </div>
     </div>

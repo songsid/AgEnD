@@ -14,7 +14,9 @@
 import { randomBytes } from "node:crypto";
 import type { ChannelAdapter } from "./channel/types.js";
 import type { LoginChat, LoginStartOptions, WebLoginSink } from "./login-controller.js";
-import { LOGIN_BACKEND_ALIASES } from "./login-flows.js";
+import { LOGIN_BACKEND_ALIASES, LOGIN_FLOWS } from "./login-flows.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS } from "./backend/credential-profile.js";
+import type { AvailabilityState } from "./backend-availability.js";
 
 /** How long the dialog's "go ahead" stays valid after the pre-check (chat's buttons expire as stale too). */
 export const WEB_LOGIN_CONFIRM_TTL_MS = 5 * 60_000;
@@ -45,6 +47,27 @@ export function linkableLoginUrl(backend: string, url: string): boolean {
   return (LOGIN_LINK_HOSTS[backend] ?? []).some(domain => host === domain || host.endsWith(`.${domain}`));
 }
 
+/** Whether the dashboard can run this sign-in (the same rule as chat's /login: a reviewed flow, profiles where chat signs them in). */
+export function dashboardSignInSupported(backend: string, profile?: string | null): boolean {
+  const flow = LOGIN_FLOWS[backend];
+  if (!flow || flow.remoteLogin === "unsupported" || flow.noShellEscape !== true) return false;
+  return !profile || CHAT_PROFILE_LOGIN_BACKENDS.has(backend);
+}
+
+/** One row of Settings → Agents' sign-in list: a backend's default login, or a credential profile one of the agents uses. */
+export interface SignInTarget {
+  backend: string;
+  profile?: string;
+  state: AvailabilityState;
+  /** The dashboard can sign it in (else: `hostCommand`, run on the machine, or nothing to sign in). */
+  signIn: boolean;
+  hostCommand?: string;
+  /** Not installed: the command that installs it. */
+  install?: string;
+  /** Too old: the command that installs the current version over it. */
+  update?: string;
+}
+
 export interface WebLoginRequester {
   /** The session's handle (web-session.ts): what the sign-in is bound to. */
   handle: string;
@@ -65,6 +88,8 @@ export interface WebBackendLoginDeps {
   cancel(): Promise<string>;
   /** A sign-in started from the dashboard: said where a chat login would be seen (General, or the Log). */
   notice(info: { shown: string; label: string; handle: string }): void;
+  /** The current sign-in started, changed phase or went: the pages are told to read it again (no details in the event). */
+  changed?(): void;
   now?(): number;
 }
 
@@ -181,6 +206,7 @@ export class WebBackendLogins {
         run.phase = "ended"; run.ok = result.ok; run.endedAt = this.now();
         this.live.delete(run);
         if (!this.live.size) this.stopWatch();
+        if (this.run === run) this.changed();
       },
     };
     // Watched from admission, not from publication: a session revoked while its listener, tunnel or cloudflared is
@@ -201,6 +227,7 @@ export class WebBackendLogins {
     // A start that took longer than a later one (its listener held, then cancelled) never replaces what that one shows.
     if (this.run && this.run.seq > run.seq) return running ? { login: this.viewOf(run, who.handle) } : { message: message ?? run.lines.join("\n") };
     this.run = run;
+    this.changed();
     if (running) {
       try { this.deps.notice({ shown: asked.profile ? `${asked.backend} (${asked.profile})` : asked.backend, label: who.label, handle: who.handle }); } catch { /* a notice never stops a sign-in */ }
     }
@@ -233,6 +260,8 @@ export class WebBackendLogins {
       accessCode: running && run.terminal ? this.deps.accessToken(run.sink) : null,
     };
   }
+
+  private changed(): void { try { this.deps.changed?.(); } catch { /* the pages read it on their own next time */ } }
 
   private chatFor(who: WebLoginRequester, sink: WebLoginSink, lines: string[]): LoginChat {
     // The status lines chat would post (done, recovery, a download notice) — this sign-in's own, shown to its session.

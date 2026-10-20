@@ -78,6 +78,11 @@ export interface WizardPlanInput {
   /** #1519 P1: "New connection" — add the connection only; no agent is written. */
   connection_only?: boolean;
   /**
+   * #2233: "Web only (no bot)" — the agent alone, on a fleet with no chat connection (run from the web dashboard). No
+   * platform, token, admin id or connection: those fields must be absent. Only while the fleet has no connection.
+   */
+  web_only?: boolean;
+  /**
    * #1519 P7: `instance_name` is an agent that already exists — bind it to the new connection and leave its directory
    * and backend as they are. Without it, an existing name is refused: the wizard never overwrites an agent.
    */
@@ -409,8 +414,35 @@ export function wizardChannels(cfg: FleetConfig | null): WizardEnvironment["chan
   }));
 }
 
+/** The fields a web-only setup must not carry: they belong to a connection, which it does not make. */
+const CONNECTION_FIELDS = ["platform", "token", "token_env", "token_env_generated", "channel_id", "admin_user_id", "group_id", "guild_id", "general_channel_id", "connection_only", "existing_agent"] as const;
+
+/** #2233: a web-only setup is one new agent (its name, backend and directory) and nothing else. */
+function validateWebOnlyInput(input: Partial<WizardPlanInput> & { token?: unknown }): string | null {
+  const extra = CONNECTION_FIELDS.find(field => input[field as keyof typeof input] !== undefined);
+  if (extra) return `${extra} does not apply to a web-only setup`;
+  if (!input.instance_name || !/^[A-Za-z0-9._-]{1,128}$/.test(input.instance_name)) return "instance_name must be [A-Za-z0-9._-]";
+  if (!input.backend || !KNOWN_BACKENDS.includes(input.backend)) return "backend must be a known backend";
+  if (!input.working_directory || !input.working_directory.startsWith("/")) return "working_directory must be an absolute path";
+  return null;
+}
+
+/** #2233: why this fleet cannot take a web-only setup, or null — it already has a chat connection (add agents there). */
+export function webOnlyConflict(cfg: FleetConfig | null): string | null {
+  return wizardChannels(cfg).length ? "this fleet already has a chat connection — add the agent with New agent instead" : null;
+}
+
+/** #2233: the web-only draft — the new agent, bound to no connection; channels untouched (none). */
+export function draftWebOnly(cfg: FleetConfig, body: Pick<WizardPlanInput, "instance_name" | "backend" | "working_directory">): FleetConfig {
+  const draft = structuredClone(cfg);
+  draft.instances = { ...draft.instances, [body.instance_name]: { working_directory: body.working_directory, backend: body.backend } } as FleetConfig["instances"];
+  return draft;
+}
+
 /** Reject anything that would land in fleet.yaml or a shell env file unchecked. */
 export function validateWizardInput(input: Partial<WizardPlanInput>, opts: { tokenEnvOptional?: boolean } = {}): string | null {
+  if (input.web_only !== undefined && typeof input.web_only !== "boolean") return "web_only must be a boolean";
+  if (input.web_only === true) return validateWebOnlyInput(input);
   if (input.platform !== "telegram" && input.platform !== "discord") return "platform must be telegram or discord";
   if (!isAdminUserId(input.platform, input.admin_user_id)) return t(`setup.admin.${input.platform}_invalid`);
   if (input.connection_only !== undefined && typeof input.connection_only !== "boolean") return "connection_only must be a boolean";
@@ -433,6 +465,38 @@ export function validateWizardInput(input: Partial<WizardPlanInput>, opts: { tok
     if (value !== undefined && value !== "" && !/^-?\d{1,20}$/.test(String(value))) return `${field} must be numeric`;
   }
   return null;
+}
+
+/**
+ * #2233: write a web-only setup — the agent only. No secret is written and no connection is touched, so no .env lease;
+ * the config write and its undo are the same ones the bot path uses.
+ */
+function commitWebOnly(req: IncomingMessage, res: ServerResponse, ctx: QuickstartApiContext, cfg: FleetConfig, body: WizardPlanInput): void {
+  const conflict = webOnlyConflict(cfg) ?? agentConflict(body, cfg);
+  if (conflict) return json(res, 409, { error: conflict });
+  const draft = draftWebOnly(cfg, body);
+  const validation = validateFleetConfig(draft);
+  if (!validation.valid) return json(res, 400, { error: validation.errors.map(e => `${e.path}: ${e.message}`).join("; ") });
+  const execution = settingsRequestExecution(req);
+  const rollback: { config?: () => boolean } = {};
+  try {
+    execution?.assert();
+    settingsWrite(req, () => {
+      Object.defineProperty(cfg.instances, body.instance_name, { value: draft.instances[body.instance_name], enumerable: true, writable: true, configurable: true });
+      const undo = ctx.saveFleetConfig();
+      if (typeof undo === "function") rollback.config = undo;
+      ctx.settingsCommitted?.(execution);
+    });
+  } catch (err) {
+    delete cfg.instances[body.instance_name];
+    let cleanupFailed = false;
+    try { if (rollback.config && !rollback.config()) cleanupFailed = true; } catch { cleanupFailed = true; }
+    if (cleanupFailed) return json(res, 500, { error: "setup cleanup failed; inspect configuration on the host" });
+    return json(res, err instanceof SettingsExecutionError ? 409 : 500, { error: "setup was not committed" });
+  }
+  ctx.logger.info({ instance: body.instance_name, web_only: true }, "settings: quickstart committed (web only)");
+  const plan = { web_only: true, instance: { name: body.instance_name, working_directory: body.working_directory, backend: body.backend }, env_keys: [], warnings: [] as string[] };
+  json(res, 200, { ok: true, plan, warnings: plan.warnings });
 }
 
 /** Handle one wizard route. Returns false when the path is not one of ours. */
@@ -493,6 +557,12 @@ export function handleQuickstartRequest(
       catch { return json(res, 400, { error: "invalid JSON" }); }
       const invalid = validateWizardInput(body, { tokenEnvOptional: true });
       if (invalid) return json(res, 400, { error: invalid });
+      if (body.web_only) {
+        const conflict = webOnlyConflict(cfg) ?? agentConflict(body, cfg);
+        if (conflict) return json(res, 409, { error: conflict });
+        const warnings = detectWizardBackends(ctx).includes(body.backend) ? [] : [`${body.backend} was not found on this host; the agent will fail to start until it is installed.`];
+        return json(res, 200, { web_only: true, instance: { name: body.instance_name, working_directory: body.working_directory, backend: body.backend }, env_keys: [], warnings });
+      }
       const channels = wizardChannels(cfg);
       const conflict = newConnectionConflict(body, { channels }) ?? agentConflict(body, cfg);
       if (conflict) return json(res, 409, { error: conflict });
@@ -520,6 +590,7 @@ export function handleQuickstartRequest(
       catch { return json(res, 400, { error: "invalid JSON" }); }
       const invalid = validateWizardInput(body);
       if (invalid) return json(res, 400, { error: invalid });
+      if (body.web_only) { commitWebOnly(req, res, ctx, cfg, body); return; }
       if (!body.token) return json(res, 400, { error: "token required" });
 
       const summary = wizardChannels(cfg);

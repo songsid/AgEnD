@@ -6,7 +6,8 @@
     "tips": "提示",
     "faq": "常見問題",
     "docs": "文件",
-    "langSwitch": "EN"
+    "langSwitch": "EN",
+    "notes": "技術日誌"
   },
   "hero": {
     "tagline": "你的 AI 艦隊，",
@@ -327,5 +328,13 @@
         "alt": "組織圖：產品團隊（Pixel、Atlas、Quill）和支援團隊（Sage、Orbit、Comet），每個 agent 都顯示狀態。示範資料。"
       }
     ]
+  },
+  "notes": {
+    "title": "技術日誌",
+    "subtitle": "AgEnD 是怎麼做、怎麼修的：我們量了什麼、改了什麼，還有哪些問題沒解決。",
+    "empty": "目前還沒有文章。",
+    "back": "← 所有文章",
+    "home": "← 回到首頁",
+    "readMore": "閱讀 →"
   }
 }

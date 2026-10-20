@@ -93,6 +93,8 @@ if (mode === "full") {
     panels.set("log", { load: () => loadLog().then((m) => m.LogPanel) });
     // #1386 §6.3: desktop notifications for new "Needs you" items, in any panel, while this signed-in page is open.
     startNeedsNotifier({ open: (instance) => navigate(chatPath(instance)) });
+    // #2233: a backend sign-in running anywhere is shown on every admin page (the module lives behind the session gate).
+    import("/ui/js/backend-signin.js").then((m) => m.installSignIn(), () => {});
   }
   // #1665: this device's first upload of its own choices (once), then another device's changes at each status frame.
   // A guest's page only reads them (prefsWritable is false there).

@@ -1186,6 +1186,18 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .op-line { display: flex; align-items: center; justify-content: center; gap: var(--s-2); }
 .op-line.ok { color: var(--ok); }
 .op-line.bad { color: var(--danger); }
+/* #2233: the backend sign-in dialog and Settings' list */
+.signin-field { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; margin: var(--s-2) 0; }
+.signin-label { color: var(--text-2); font-size: var(--fs-xs); min-width: 6em; }
+.signin-value { font-size: var(--fs-md); letter-spacing: 0.04em; user-select: all; word-break: break-all; }
+.signin-url { color: var(--text-2); font-size: var(--fs-xs); word-break: break-all; }
+.signin-note { color: var(--text-2); font-size: var(--fs-xs); }
+.signin-ok { color: var(--ok); }
+.signin-message { white-space: pre-wrap; }
+.signin-lines { margin: var(--s-2) 0 0; padding-left: 1.2em; color: var(--text-2); font-size: var(--fs-xs); white-space: pre-wrap; }
+.signin-list { margin-top: var(--s-4); }
+.signin-list code { font-size: var(--fs-xs); word-break: break-all; }
+.signin-list .s-meta { white-space: normal; max-width: none; overflow: visible; }
 @media (max-width: 899px) {
   .grid2 { grid-template-columns: minmax(0, 1fr); }
   .se-row { grid-template-columns: minmax(0, 1fr) auto auto; }

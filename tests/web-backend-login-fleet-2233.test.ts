@@ -67,3 +67,40 @@ describe("#2233 FleetManager: a dashboard sign-in", () => {
     fm.webBackendLogins.dispose();
   });
 });
+
+describe("#2233 part 2: what the dashboard offers to sign in", () => {
+  it("Settings' list: each backend's default login as the snapshot has it, then each credential profile an agent uses (once)", () => {
+    const { fm } = makeFleet(["claude", "codex"]);
+    fm.fleetConfig = { defaults: {}, instances: {
+      a: { working_directory: "/w", backend: "claude-code", backend_options: { "claude-code": { credential_profile: "work" } } },
+      b: { working_directory: "/w", backend: "claude-code", backend_options: { "claude-code": { credential_profile: "work" } } },
+      c: { working_directory: "/w", backend: "codex" },
+    } };
+    vi.spyOn(fm, "backendAvailabilityRows").mockReturnValue([
+      { backend: "claude-code", state: "usable" }, { backend: "codex", state: "not_signed_in" },
+      { backend: "antigravity", state: "not_signed_in" }, { backend: "grok", state: "not_installed" }, { backend: "opencode", state: "usable" },
+      { backend: "kiro-cli", state: "too_old" },
+    ]);
+    expect(fm.backendSignInTargets()).toEqual([
+      { backend: "claude-code", state: "usable", signIn: true },
+      { backend: "codex", state: "not_signed_in", signIn: true },
+      { backend: "antigravity", state: "not_signed_in", signIn: false, hostCommand: "agy" },
+      { backend: "grok", state: "not_installed", signIn: false, install: BACKEND_INSTALLATION_INFO.grok!.install },
+      { backend: "opencode", state: "usable", signIn: false },
+      { backend: "kiro-cli", state: "too_old", signIn: false, update: BACKEND_INSTALLATION_INFO["kiro-cli"]!.install },
+      { backend: "claude-code", profile: "work", state: "not_signed_in", signIn: true },
+    ]);
+  });
+
+  it("a paused-for-sign-in agent's item names its login when the dashboard can sign it in (a claude profile included), else nothing", () => {
+    const { fm } = makeFleet([]);
+    fm.fleetConfig = { defaults: {}, instances: {
+      a: { working_directory: "/w", backend: "claude-code", backend_options: { "claude-code": { credential_profile: "work" } } },
+      k: { working_directory: "/w", backend: "kiro-cli", backend_options: { "kiro-cli": { credential_profile: "team" } } },
+      g: { working_directory: "/w", backend: "antigravity" },
+      x: { working_directory: "/w", backend: "codex" },
+    } };
+    expect(["a", "k", "g", "x"].map(n => fm.signInFor(n))).toEqual([
+      { backend: "claude-code", profile: "work" }, null, null, { backend: "codex" }]);
+  });
+});

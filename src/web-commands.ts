@@ -24,7 +24,7 @@ export const PUBLIC_LINK_REFUSED: ReadonlySet<WebCommand> = new Set<WebCommand>(
 export const MAX_COMMAND_ARGS = 4000;
 
 export interface WebChoices {
-  current: string | null; options: Array<{ id: string; label: string; disabled?: string }>;
+  current: string | null; options: Array<{ id: string; label: string; disabled?: string; signIn?: string }>;
   /** What the choice is for, when the command asks more than one thing (/backend: backend, then model, then effort). */
   prompt?: string;
 }
@@ -45,7 +45,8 @@ export interface WebCommandDeps {
   applyEffort(instance: string, level: string): Promise<string>;
   effortChoices(instance: string): WebChoices | null;
   /** #1806: the next `/backend` step for these arguments (each choice's id is the arguments with it added). */
-  backendStep(instance: string, args: string): Promise<WebBackendAnswer>;
+  /** `publicLink`: the request came over the public link, where the dashboard's Sign in is refused (#2233). */
+  backendStep(instance: string, args: string, opts?: { publicLink: boolean }): Promise<WebBackendAnswer>;
   /** #1806: switch, if the token is live, for these same arguments, and the instance is still on the backend asked about. */
   backendConfirm(instance: string, args: string, token: string): Promise<{ status: number; text: string }>;
   cancel(instance: string): boolean;
@@ -102,7 +103,7 @@ export async function runWebCommand(deps: WebCommandDeps, input: WebCommandInput
     case "backend": {
       // #1806: backend → model → effort, one call per step; the last answers a confirmation, as /clear does.
       if (input.confirm) { const r = await deps.backendConfirm(instance, args, input.confirm); return { status: r.status, body: r.status === 200 ? { text: r.text } : { error: r.text } }; }
-      const r = await deps.backendStep(instance, args);
+      const r = await deps.backendStep(instance, args, { publicLink: opts.publicLink });
       if ("choices" in r) return { status: 200, body: { choices: r.choices } };
       if ("confirm" in r) return { status: 200, body: { confirm: r.confirm } };
       return "error" in r ? { status: 400, body: { error: r.error } } : ok(r.text);

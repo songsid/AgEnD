@@ -440,6 +440,16 @@ describe("the web chat", () => {
     expect(f.any.restartSingleInstance).toHaveBeenCalledTimes(1);
   });
 
+  it("#2233: a not-signed-in choice offers Sign in on the dashboard itself; over the public link (refused there) it keeps \"(use /login)\" and offers nothing", async () => {
+    const f = fleet();
+    f.any.backendAvailabilityRows = vi.fn(() => [{ backend: "claude-code", state: "usable" }, { backend: "codex", state: "not_signed_in" }, { backend: "antigravity", state: "not_signed_in" }]);
+    const codex = async (publicLink: boolean) => (await f.fm.webCommand({ instance: "worker", command: "backend", args: "" }, { publicLink })).body.choices!.options.find((o: { id: string }) => o.id === "codex");
+    expect(await codex(false)).toEqual({ id: "codex", label: `codex — ${t("backend.reason_not_signed_in_web")}`, disabled: t("backend.reason_not_signed_in_web"), signIn: "codex" });
+    expect(await codex(true)).toEqual({ id: "codex", label: `codex — ${t("backend.reason_not_signed_in")}`, disabled: t("backend.reason_not_signed_in") });
+    const agy = (await f.fm.webCommand({ instance: "worker", command: "backend", args: "" }, { publicLink: false })).body.choices!.options.find((o: { id: string }) => o.id === "antigravity");
+    expect(agy, "no dashboard sign-in for agy: the chat wording stays").toEqual({ id: "antigravity", label: `antigravity — ${t("backend.reason_not_signed_in")}`, disabled: t("backend.reason_not_signed_in") });
+  });
+
   it("refusals are errors; the backend it runs is a word, not an error", async () => {
     const f = fleet();
     expect((await f.fm.webCommand({ instance: "worker", command: "backend", args: "codex nope" }, { publicLink: false })).status).toBe(400);

@@ -1,6 +1,6 @@
 import { normalizeSettingsInstancePatch } from "./settings-instance-patch.js";
 import { basename } from "node:path";
-import { agentConflict, draftQuickstart, newConnectionConflict, planQuickstart, validateWizardInput, withExistingAgent, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
+import { agentConflict, draftQuickstart, draftWebOnly, newConnectionConflict, planQuickstart, validateWizardInput, webOnlyConflict, withExistingAgent, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
 import type { FleetConfig } from "./types.js";
 import { channelWithDefaults } from "./config.js";
 import { settingsChangeDiff, type SettingsChangeDiff } from "./settings-change.js";
@@ -127,6 +127,15 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       if (patch.defaults.model) after.fleet.defaults.model = patch.defaults.model;
     }
     if (patch.project_roots) after.fleet.project_roots = patch.project_roots;
+  } else if (path === "/api/settings/quickstart/commit" && record(body).web_only === true) {
+    // #2233: a web-only setup — the agent alone; no connection and no secret, so nothing in the diff is one.
+    const patch = record(body);
+    if (!cfg || validateWizardInput(patch)) throw new SettingsConfirmationError(400, "invalid_quickstart");
+    if (webOnlyConflict(cfg)) throw new SettingsConfirmationError(409, "connection_exists");
+    if (agentConflict(patch as WizardPlanInput, cfg)) throw new SettingsConfirmationError(409, "agent_conflict");
+    const draft = draftWebOnly(cfg, patch as WizardPlanInput);
+    before.fleet = structuredClone(cfg); after.fleet = draft;
+    return { diff: scoped(settingsChangeDiff(before.fleet, draft, { operation: `${operation} instance ${patch.instance_name} (web only)`, force: true })) };
   } else if (path === "/api/settings/quickstart/commit") {
     const patch = record(body); if (!cfg || typeof patch.token !== "string" || typeof patch.token_env !== "string") throw new SettingsConfirmationError(400, "invalid_quickstart");
     if (validateWizardInput(patch)) throw new SettingsConfirmationError(400, "invalid_quickstart");

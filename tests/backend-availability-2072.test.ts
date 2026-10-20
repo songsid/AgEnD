@@ -153,7 +153,8 @@ describe("the /backend steps read the snapshot", () => {
     const step = await backendStep(deps(rows), "w", []);
     expect(step.kind === "choose" && step.choices).toEqual([
       { token: "claude-code", label: "✓ claude-code" },
-      { token: "codex", label: "codex — backend.reason_not_signed_in", disabled: "backend.reason_not_signed_in" },
+      // #2233: not signed in — the backend a surface may offer to sign in (the web's /backend card shows Sign in).
+      { token: "codex", label: "codex — backend.reason_not_signed_in", disabled: "backend.reason_not_signed_in", signIn: "codex" },
       { token: "kiro-cli", label: "kiro-cli — backend.reason_too_old|2.21.0", disabled: "backend.reason_too_old|2.21.0" },
       { token: "grok", label: "grok — backend.reason_not_installed", disabled: "backend.reason_not_installed" },
       { token: "opencode", label: "opencode — backend.reason_unchecked" },

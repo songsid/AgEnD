@@ -163,6 +163,7 @@ agend doctor                    # Run fleet health diagnostics
 agend doctor mcp                # Fleet-wide MCP health check (IPC, config paths, duplicates, binary PATH)
 agend health                    # Fleet health check — shows problems and diagnostics
 agend validate                  # Validate fleet.yaml and classicBot.yaml
+agend validate --connections    # Print CONNECTIONS=<n>: chat connections in fleet.yaml (for scripts)
 agend backend doctor [backend]  # Check backend environment (binary, auth, tmux, TERM)
 agend delivery scan-forged-envelopes --instance <name>  # Check a kiro instance's transcript for peer envelopes the fleet never delivered (--all, --json)
 ```
@@ -199,6 +200,13 @@ anyone who found the host could close your setup page without ever finding it.
 
 The page closes itself when you finish, after 15 minutes, or after 10 minutes
 idle — a setup form left open is a surface nobody is watching.
+
+**Web only (no bot)** (#2233) is the third choice next to Telegram and Discord: no
+bot token, no admin ID, nothing to verify. It writes the first agent and no chat
+connection, so AgEnD is used from its web dashboard (sign in with
+`agend web --code` on the machine), and backend CLIs are signed in there too
+(Settings → Agents → Sign-ins). Discord or Telegram can be added later from
+Settings. The host confirmation (`agend settings confirm <id>`) is the same.
 
 ### Setting up from a phone
 
@@ -466,3 +474,23 @@ agend settings reject <id>
 ```
 
 Run on the host as the same user as the fleet or SetupHost. This never starts a fleet; a private local socket owns confirmation. Agent sessions (`AGEND_INSTANCE_NAME` present) cannot use it. The id, socket owner generation and inspected effect/summary are checked again before applying. A stale/expired request must be submitted again; pending requests are not persisted across restart.
+
+## Redacted bug reports
+
+General/coordinators have the managed `bug-report` skill. It collects a report locally, attaches the redacted Markdown file in chat, and asks you to approve the exact issue title, body and file before generating a GitHub link. You can also use the CLI:
+
+```bash
+agend bug-report --since 30m --out report.json --description-file problem.txt --steps-file steps.txt
+# Inspect report.json and report.json.md. Approval is the SHA256 printed by collection:
+agend bug-report --draft report.json --approve <SHA256>
+```
+
+The second command prints a prefilled GitHub new-issue link; it does not open a browser or submit an issue. You submit with your own GitHub account. Without GitHub, keep/share `report.json.md` yourself. There is no community channel, project webhook, bundled token or automatic upload.
+
+The default window is the last 30 minutes; `--since` accepts positive `m`, `h`, `d` durations up to 7 days. Each `daemon.log`/`fleet.log` read is limited to a 256 KiB tail and 1,500 lines, plus an optional bounded 5-second systemd user-unit journal query. Timestamps in the requested window are selected; untimestamped stderr diagnostics are labelled time-unknown, not claimed to fall within that window. Rotated logs are not collected. The report states omissions/unavailable sources. Environment includes the installed AgEnD version, Node/runtime, OS and WSL/distro. Backend versions use existing unprofiled `cli-env` cache version/date fields and structured log evidence, without launching CLIs; unknown or stale evidence is labelled. No transcripts, credential configuration, environment dump or model catalog is exported.
+
+One shared redactor covers credential formats/fields/headers/cookies and personal identifiers. Chat/topic/user identifiers and free-form log prose are withheld; recognized error codes, crash phrases and sanitized stack locations are retained. This deliberately removes some useful detail. `--keep-identifiers` explicitly retains email, IP/hostname and path username information; it never disables secret or chat-identifier redaction. Inspect the draft: arbitrary unrecognized secrets in a supplied description cannot be guaranteed safe by pattern matching.
+
+Both files are new, mode 0600; existing files/symlinks are not overwritten. The JSON review snapshot binds the exact title, issue body, full Markdown and delivery mode. An edit requires fresh approval. Links are capped at 7,500 encoded characters. Larger reports keep their complete redacted Markdown locally; the approved link body explicitly asks you to add that file manually rather than silently dropping evidence. Review the file you actually attach.
+
+Optional existing host GitHub CLI login: choose `--submit` during collection, review that delivery mode and exact text, then repeat `--submit` with `--draft`/`--approve`. Authentication is checked only after approval. AgEnD never logs in or stores a token. Overflow needs manual attachment and uses link mode. If creation times out or has an uncertain result, check GitHub before trying again.

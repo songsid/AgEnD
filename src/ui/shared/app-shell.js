@@ -20,7 +20,7 @@ import { OwnerCssKeepBar } from "./owner-css.js";
 import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
 
 /** Shell state shared with panels: the phone drawer, the collapsed sidebar, extensions a panel module adds. */
-export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), keyboard: false, dialog: null, side: null });
+export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), keyboard: false, dialog: null, side: null, banner: null });
 
 /**
  * The mounted panel's own sidebar section, in place of the instance list (View's roster: its groups, filter and order,
@@ -617,6 +617,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>
       <${ConnectionLine} />
       ${viewOnly || guest ? null : html`<${OperationLine} route=${nav.route} />`}
+      ${viewOnly || guest || !shell.banner ? null : html`<${shell.banner} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>
     ${guest ? null : html`<${UsageRail} route=${nav.route} />`}

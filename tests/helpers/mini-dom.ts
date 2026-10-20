@@ -361,6 +361,7 @@ export function installDom(opts: { url?: string; lang?: string; storage?: Record
   const url = new URL(opts.url ?? "http://127.0.0.1:19280/ui");
   const location: any = {
     get href() { return url.href; }, get origin() { return url.origin; }, get pathname() { return url.pathname; }, get search() { return url.search; }, get hash() { return url.hash; },
+    get host() { return url.host; }, get hostname() { return url.hostname; },
     assign: (h: string) => { location.assigned = h; }, replace: (h: string) => { location.replaced = h; }, assigned: null as string | null, replaced: null as string | null,
   };
   const history: any = {

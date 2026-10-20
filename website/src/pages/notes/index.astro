@@ -1,0 +1,13 @@
+---
+import Base from '../../layouts/Base.astro';
+import NotesIndex from '../../components/NotesIndex.astro';
+import { t } from '../../i18n/utils';
+import { notePath } from '../../i18n/notes';
+
+const locale = 'en' as const;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<Base locale={locale} title={t(locale, 'notes.title')} description={t(locale, 'notes.subtitle')} altHref={notePath(base, 'zh-tw')}>
+  <NotesIndex locale={locale} />
+</Base>

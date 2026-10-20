@@ -67,7 +67,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
         <ul class="space-y-2 text-sm text-text-secondary">
           <li>• 你選的 AI 後端所需帳號 —— 例如 Kiro CLI 用免費的 <a href="https://profile.aws.amazon.com/" class="text-accent hover:underline">AWS Builder ID</a>，其餘則需 Anthropic / Google / OpenAI / xAI 帳號</li>
           <li>• Discord 或 Telegram 帳號</li>
-          <li>• <b class="text-text-primary">Bot Token</b>（Discord：<a href="https://discord.com/developers/applications" class="text-accent hover:underline">Developer Portal</a>；Telegram：BotFather）</li>
+          <li>• <b class="text-text-primary">Bot Token</b>（Discord：<a href="https://discord.com/developers/applications" class="text-accent hover:underline">Developer Portal</a>；Telegram：BotFather）——也可以完全不用：在設定頁選 <b class="text-text-primary">Web only (no bot)</b>，只用網頁儀表板</li>
         </ul>
       </div>
     </div>
@@ -94,7 +94,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
         </li>
         <li><b class="text-text-primary">[3/5] 登入各後端</b> —— 登入頁會自己在 Windows 的瀏覽器打開，在那裡登入即可。Claude Code 會在網頁上給你一段代碼：複製下來，在安裝程式的視窗按右鍵貼上，再按 Enter。每個登入完成後都會自己結束；Antigravity 準備好之後，安裝程式也會幫你結束它。已經登入的後端會跳過；沒完成的可以再試一次或先跳過；跳過的在安裝接續時會再詢問，安裝完成時也會顯示補登入的指令。</li>
         <li><b class="text-text-primary">[4/5] 安裝 AgEnD</b> —— 全自動（透過官方安裝腳本裝 Node.js 22 LTS + tmux）。</li>
-        <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 在瀏覽器裡完成，不用在主控台打字：安裝程式會打開 AgEnD 的設定頁，並幫你複製設定碼（在網頁上按 Ctrl+V 貼上）。在網頁上選擇 Discord 或 Telegram，貼上 Bot Token（按 <b class="text-text-primary">Verify</b> 會顯示這是哪個 bot）；Telegram 要在群組傳 <code class="font-mono text-accent">/start</code> 讓它找到群組；Discord 要確認偵測到的帳號，並填入 General 頻道 ID。完成後 AgEnD 會啟動，並安裝成系統服務。如果設定頁打不開，安裝程式會改在主控台進行同樣的設定（<code class="font-mono text-accent">agend quickstart</code>）。最後它會幫你打開網頁儀表板（一次性登入碼已經複製好，按 Ctrl+V 貼上即可），並在桌面放兩個捷徑：<b class="text-text-primary">AgEnD 儀表板</b> 之後隨時按兩下都能用同樣方式打開，<b class="text-text-primary">AgEnD 重新啟動</b> 會先問過你再重啟 AgEnD。這台電腦本來就裝了 AgEnD（例如一直用 <code class="font-mono text-accent">agend update</code> 更新）？再貼一次同一行指令即可：它會偵測到已經裝好，只提供新增或更新這兩個捷徑，不會重做任何設定。主控台指令放在「進階」裡，需要時再看。</li>
+        <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 在瀏覽器裡完成，不用在主控台打字：安裝程式會打開 AgEnD 的設定頁，並幫你複製設定碼（在網頁上按 Ctrl+V 貼上）。在網頁上選擇 Discord 或 Telegram，貼上 Bot Token（按 <b class="text-text-primary">Verify</b> 會顯示這是哪個 bot），或選 <b class="text-text-primary">Web only (no bot)</b>，不用 bot、只用網頁儀表板（後端登入也在那裡：設定 → Agent → 登入）；Telegram 要在群組傳 <code class="font-mono text-accent">/start</code> 讓它找到群組；Discord 要確認偵測到的帳號，並填入 General 頻道 ID。完成後 AgEnD 會啟動，並安裝成系統服務。如果設定頁打不開，安裝程式會改在主控台進行同樣的設定（<code class="font-mono text-accent">agend quickstart</code>）。最後它會幫你打開網頁儀表板（一次性登入碼已經複製好，按 Ctrl+V 貼上即可），並在桌面放兩個捷徑：<b class="text-text-primary">AgEnD 儀表板</b> 之後隨時按兩下都能用同樣方式打開，<b class="text-text-primary">AgEnD 重新啟動</b> 會先問過你再重啟 AgEnD。這台電腦本來就裝了 AgEnD（例如一直用 <code class="font-mono text-accent">agend update</code> 更新）？再貼一次同一行指令即可：它會偵測到已經裝好，只提供新增或更新這兩個捷徑，不會重做任何設定。主控台指令放在「進階」裡，需要時再看。</li>
       </ol>
     </div>
 

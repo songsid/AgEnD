@@ -29,6 +29,8 @@ export interface NeedsYouItem {
   promptAt?: { adapterId: string; chatId: string; threadId?: string; messageId?: string };
   /** delivery: the outbox row; Acknowledge offered. */
   deliveryId?: string;
+  /** auth_paused (#2233): the login the dashboard can sign in for it (its backend, and its credential profile). */
+  signIn?: { backend: string; profile?: string };
 }
 
 export type NeedsYouReason =
@@ -64,6 +66,8 @@ export interface InstanceInput {
   pausedAt?: number | null;
   /** "crashed" with the time the fleet first saw it so (§3.3). */
   crashedAt?: number | null;
+  /** Paused for sign-in: the login the dashboard can sign in for it, or null (#2233). */
+  signIn?: { backend: string; profile?: string } | null;
 }
 
 export interface DeliveryInput {
@@ -134,7 +138,8 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     }
     // §3.3 instance: paused for sign-in, or crashed.
     if (inst.pauseReason === "auth") {
-      items.push({ id: `auth:${inst.name}:${inst.pausedAt ?? 0}`, type: "instance", instance: inst.name, reason: "auth_paused", detail: "", since: inst.pausedAt ?? 0 });
+      items.push({ id: `auth:${inst.name}:${inst.pausedAt ?? 0}`, type: "instance", instance: inst.name, reason: "auth_paused", detail: "", since: inst.pausedAt ?? 0,
+        ...(inst.signIn ? { signIn: { backend: inst.signIn.backend, ...(inst.signIn.profile ? { profile: inst.signIn.profile } : {}) } } : {}) });
     }
     if (inst.crashedAt != null) {
       items.push({ id: `crashed:${inst.name}:${inst.crashedAt}`, type: "instance", instance: inst.name, reason: "crashed", detail: "", since: inst.crashedAt });

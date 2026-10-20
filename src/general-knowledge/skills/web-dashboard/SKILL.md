@@ -162,7 +162,7 @@ tab title. Items, grouped by instance, oldest first:
 - deliveries from the last 24 h: "Could not confirm delivery", "Delivery failed" (source → target · kind).
 
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
-every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
+"Paused: sign-in needed" has **Sign in** when the dashboard can run that login (#2233); every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
 `needs_you.dm` (default off).
 
@@ -329,6 +329,16 @@ link, an unverified browser or a change that needs the host CLI. After a failure
 | Chat tour (this device) | replays the chat tour | browser |
 
 **Web appearance** — see [Web appearance](#web-appearance) for the cards and what they mean.
+
+**Signing a backend in (#2233)** — local admin sessions only (never a guest or the public link): Settings → Agents →
+**Sign-ins** (each backend's login and each credential profile an agent uses: state, **Sign in** / **Sign in again**,
+or the host command / install command where the dashboard cannot), the web `/backend` picker's **Sign in to
+<backend>** on a "not signed in" choice, and Needs you's **Sign in**. The dialog: the pre-check's question (still
+signed in? kiro logs out first; **Use a temporary public link** where allowed), then a device code, or **Open the
+sign-in terminal** + its one-time access code (this browser only, no DM). While it runs every admin page shows
+"Signing in to X (started on <device>)" with **Open**; another browser sees no code and may **Cancel sign-in**. Ends
+when the browser session ends. A missing CLI is not installed here (the dialog says the install command). agy and
+opencode: no dashboard sign-in. Config: `web_terminal.*` (as `/login`).
 
 **Agents** — **New agent**; per agent **Settings**, **Pause / Wake**, **Start / Stop** (direct), ⋯ **Delete agent**
 (staged; on Apply it waits for a fleet admin's confirmation in General, then the agent is stopped and removed, as
