@@ -18,24 +18,18 @@ const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-
 const text = readFileSync(INSTALLER, "utf8");
 const code = text.split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
 const stage5 = code.slice(code.indexOf("Write-Step 5 $TOTAL"), code.indexOf('Write-Info "檢查 AgEnD 狀態..."'));
+const setupFn = code.slice(code.indexOf("function Invoke-SetupAndService"), code.indexOf("# ── AI 後端定義") > 0 ? code.indexOf("$ALL_BACKENDS") : undefined);
 
 describe("stage 5 sets up in the browser (static)", () => {
-  it("runs agend setup through the watched runner, with the hook that opens the page", () => {
-    expect(stage5).toMatch(/Invoke-BrowserSetup \{ param\(\$hook\) Invoke-WslStep -Label "等待你在瀏覽器完成設定"[^\n]*-OnLine \$hook -Script \(\$agendEnv \+ 'agend setup'\) \}/);
+  it("stage 5 is marked done only after setup and the service both succeeded; otherwise it ends with its progress kept", () => {
+    expect(stage5).toMatch(/if \(-not \(Invoke-SetupAndService\)\) \{\n\s+Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"\n\s+Read-Host "按 Enter 結束"; exit 1\n\s+\}/);
     expect(stage5).not.toMatch(/準備好了嗎/);                                       // nothing to press before the page opens
+    expect(code.indexOf("Mark-Stage 5")).toBeGreaterThan(code.indexOf("if (-not (Invoke-SetupAndService))"));
   });
-  it("done or set up before (a resumed install) both go on; a page that closed unfinished is offered again", () => {
-    expect(stage5).toMatch(/if \(\$setup\.Done -or \$setup\.Already\) \{ \$configured = \$true; break \}/);
-    expect(stage5).toMatch(/按 Enter 重新打開設定頁；輸入 n 再按 Enter 結束/);
-  });
-  it("the console quickstart only as the fallback when no page appeared", () => {
-    const quick = stage5.indexOf("agend quickstart");
-    expect(quick).toBeGreaterThan(stage5.indexOf("設定頁沒有出現。"));
-    expect(stage5.match(/agend quickstart/g)).toHaveLength(1);
-  });
-  it("makes AgEnD the service only when the service isn't already running", () => {
-    expect(stage5).toMatch(/if systemctl --user is-active --quiet com\.agend\.fleet; then echo "AgEnD service is already running"; else agend install; fi/);
-    expect(stage5).not.toMatch(/'agend install'\)/);
+  it("runs agend setup through the watched runner, with the hook that opens the page; the service only when not already running", () => {
+    expect(setupFn).toMatch(/Invoke-BrowserSetup \{ param\(\$hook\) Invoke-WslStep -Label "等待你在瀏覽器完成設定"[^\n]*-OnLine \$hook -Script \(\$AGEND_ENV \+ 'agend setup'\) \}/);
+    expect(setupFn).toMatch(/if systemctl --user is-active --quiet com\.agend\.fleet; then echo "AgEnD service is already running"; else agend install; fi/);
+    expect(code.match(/agend quickstart/g)).toHaveLength(1);                      // only Invoke-ConsoleQuickstart, the no-page fallback
   });
 });
 
@@ -97,5 +91,49 @@ function Set-SetupClipboard([string]$text) { return $false }
 $null = Invoke-BrowserSetup (FakeSetup 'echo "  Setup page: http://127.0.0.1:19280/s/q/"; echo "  Setup code: CCCC-DDDD"')`);
     expect(out).toContain("瀏覽器沒有自動打開，請自己打開這個網址：http://127.0.0.1:19280/s/q/");
     expect(out).toContain("在網頁的輸入框輸入上面的設定碼。");
+  });
+});
+
+/** Stage 5's own decisions (Invoke-SetupAndService) with its steps, the console and the answers stubbed. */
+function stage5Run(setupLines: string[][], serviceCodes: number[], answers: string[], quickstartCodes: number[] = []) {
+  return withHelpers(`$UBUNTU_DISTRO = 'Ubuntu-24.04'
+foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$AGEND_ENV' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
+$script:setups = [System.Collections.ArrayList]::new()
+${setupLines.map(ls => "[void]$script:setups.Add([string[]]@(" + [...ls.map(l => `'${l}'`), "''"].join(",") + "))").join("\n")}
+$script:services = @(${serviceCodes.join(",") || "@()"}); $script:answers = @(${answers.map(a => `'${a}'`).join(",") || "@()"}); $script:quick = @(${quickstartCodes.join(",") || "@()"})
+$script:log = @()
+function Invoke-WslStep { param($Label, $Usually, $Script, $UpperMinutes, $OnLine)
+  if ($Script -match 'agend setup') { $lines = $script:setups[0]; $script:setups.RemoveAt(0); $script:log += 'setup'; foreach ($l in $lines) { if ($l -and $OnLine) { & $OnLine $l } }; return 0 }
+  $c = $script:services[0]; $script:services = @($script:services | Select-Object -Skip 1); $script:log += "service:$c"; return $c }
+function Read-Host { param($p) $a = $script:answers[0]; $script:answers = @($script:answers | Select-Object -Skip 1); $script:log += "ask:$a"; return $a }
+function wsl { $c = $script:quick[0]; $script:quick = @($script:quick | Select-Object -Skip 1); $script:log += "quickstart:$c"; $global:LASTEXITCODE = $c }
+$ok = Invoke-SetupAndService
+Write-Output ("RESULT=" + $ok + " LOG=" + ($script:log -join ','))`);
+}
+const PAGE = ["  Setup page: http://127.0.0.1:19280/s/a/", "  Setup code: AAAA-BBBB"];
+
+describe.skipIf(!pwsh)("with pwsh: stage 5's decisions (#2235 review: done only when the commands succeeded)", { timeout: 90_000 }, () => {
+  it("the page finished and the service installed: done", () => {
+    expect(stage5Run([[...PAGE, "Setup complete — starting AgEnD."]], [0], []).out).toContain("RESULT=True LOG=setup,service:0\n");
+  });
+  it("the service failed: said so, offered again — Enter retries and a success is done", () => {
+    const { out } = stage5Run([[...PAGE, "Setup complete — starting AgEnD."]], [1, 0], [""]);
+    expect(out).toContain("AgEnD 服務沒有安裝成功（結束碼 1）。設定已經存好，不用重新設定。");
+    expect(out).toContain("RESULT=True LOG=setup,service:1,ask:,service:0\n");
+  });
+  it("the service failed and the person stops: not done (progress kept, stage 5 not marked)", () => {
+    expect(stage5Run([[...PAGE, "Setup complete — starting AgEnD."]], [1], ["n"]).out).toContain("RESULT=False LOG=setup,service:1,ask:n\n");
+  });
+  it("no page: the console quickstart counts only when it succeeded", () => {
+    const { out } = stage5Run([[], []], [0], ["", ""], [1, 0]);
+    expect(out).toContain("主控台的設定沒有完成（結束碼 1）。");
+    expect(out).toContain("RESULT=True LOG=setup,ask:,quickstart:1,setup,ask:,quickstart:0,service:0\n");
+  });
+  it("a page closed unfinished and the person stops: not done, and no service install", () => {
+    expect(stage5Run([[...PAGE, "Setup host stopped (ttl). Run `agend setup` again to reopen it."]], [], ["n"]).out).toContain("RESULT=False LOG=setup,ask:n\n");
+  });
+  it("set up before (a resumed install): straight to the service", () => {
+    expect(stage5Run([["Setup has already been completed. Use `agend setup --reset` to run it again, or edit settings from the dashboard."]], [0], []).out)
+      .toContain("RESULT=True LOG=setup,service:0\n");
   });
 });

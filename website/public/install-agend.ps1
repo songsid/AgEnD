@@ -78,6 +78,47 @@ function Invoke-BrowserSetup([scriptblock]$Run) {
     return @{ Exit = $exit; Done = $setupSeen.Done; Already = $setupSeen.Already; Shown = $setupSeen.Shown }
 }
 
+# 第 5 階段的設定與服務（#2235 審查：每一步都要命令成功才算完成）。回傳 $true 才可以標記完成；$false 表示使用者選擇結束，
+# 進度保留，下次執行同一行指令會從這一步繼續。
+$AGEND_ENV = 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; '
+function Invoke-ConsoleQuickstart {
+    Write-Warn "要貼上 Bot Token：在視窗裡按一下右鍵。"
+    Write-Warn "設定時請不要按 Ctrl+C：它會直接結束設定。"
+    $prevEAP5 = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    wsl -d $UBUNTU_DISTRO -u root -- bash -lc ($AGEND_ENV + 'agend quickstart')
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP5
+    return $code
+}
+function Invoke-SetupAndService {
+    $configured = $false
+    while (-not $configured) {
+        $setup = Invoke-BrowserSetup { param($hook) Invoke-WslStep -Label "等待你在瀏覽器完成設定" -Usually "設定頁 15 分鐘沒完成會自動關閉" -UpperMinutes 15 -OnLine $hook -Script ($AGEND_ENV + 'agend setup') }
+        if ($setup.Done -or $setup.Already) { $configured = $true; break }
+        Write-Host ""
+        if ($setup.Shown) {
+            Write-Warn "設定頁已經關閉，設定還沒完成（15 分鐘沒完成、閒置太久，或設定碼輸錯太多次）。"
+            $again = Read-Host "  按 Enter 重新打開設定頁；輸入 n 再按 Enter 結束"
+            if ($again -match '^\s*[nN]') { return $false }
+        } else {
+            Write-Warn "設定頁沒有出現。"
+            $console = Read-Host "  改在這個視窗設定嗎？(Y/n)"
+            if ($console -match '^\s*[nN]') { return $false }
+            $qs = Invoke-ConsoleQuickstart
+            if ($qs -eq 0) { $configured = $true } else { Write-Warn "主控台的設定沒有完成（結束碼 $qs）。" }
+        }
+    }
+    # 設定頁完成時，AgEnD 是以一般程序啟動的：改成系統服務（開機自動啟動），agend install 會先停掉手動啟動的那一個。
+    # 服務已經在跑（主控台設定時已安裝，或上次中斷前已裝好）就不再裝：agend install 會停掉它，而正常結束的服務不會被重新拉起。
+    while ($true) {
+        $code = Invoke-WslStep -Label "安裝並啟動 AgEnD 服務" -Usually "通常不到 1 分鐘" -UpperMinutes 3 -Script ($AGEND_ENV + 'if systemctl --user is-active --quiet com.agend.fleet; then echo "AgEnD service is already running"; else agend install; fi')
+        if ($code -eq 0) { return $true }
+        Write-Err "AgEnD 服務沒有安裝成功（結束碼 $code）。設定已經存好，不用重新設定。"
+        $again = Read-Host "  按 Enter 再試一次；輸入 n 再按 Enter 結束"
+        if ($again -match '^\s*[nN]') { return $false }
+    }
+}
+
 # ── AI 後端定義（可多選安裝）─────────────────────────────
 # Note/Install 用單引號避免 PowerShell 內插（$ 為字面）
 $ALL_BACKENDS = @(
@@ -905,31 +946,10 @@ if (Stage-Done 5) {
     Write-Host ""
     Write-Info "接下來在瀏覽器裡完成設定：選擇 Discord 或 Telegram、貼上 Bot Token。"
     Write-Info "設定頁會自動打開，設定碼也會幫你複製好；這個視窗不用打字。"
-    $agendEnv = 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; '
-    $configured = $false
-    while (-not $configured) {
-        $setup = Invoke-BrowserSetup { param($hook) Invoke-WslStep -Label "等待你在瀏覽器完成設定" -Usually "設定頁 15 分鐘沒完成會自動關閉" -UpperMinutes 15 -OnLine $hook -Script ($agendEnv + 'agend setup') }
-        if ($setup.Done -or $setup.Already) { $configured = $true; break }
-        Write-Host ""
-        if ($setup.Shown) {
-            Write-Warn "設定頁已經關閉，設定還沒完成（15 分鐘沒完成、閒置太久，或設定碼輸錯太多次）。"
-            $again = Read-Host "  按 Enter 重新打開設定頁；輸入 n 再按 Enter 結束"
-            if ($again -match '^\s*[nN]') { Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"; Read-Host "按 Enter 結束"; exit 1 }
-        } else {
-            Write-Warn "設定頁沒有出現。"
-            $console = Read-Host "  改在這個視窗設定嗎？(Y/n)"
-            if ($console -match '^\s*[nN]') { Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"; Read-Host "按 Enter 結束"; exit 1 }
-            Write-Warn "要貼上 Bot Token：在視窗裡按一下右鍵。"
-            Write-Warn "設定時請不要按 Ctrl+C：它會直接結束設定。"
-            $prevEAP5 = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-            wsl -d $UBUNTU_DISTRO -u root -- bash -lc ($agendEnv + 'agend quickstart')
-            $ErrorActionPreference = $prevEAP5
-            $configured = $true
-        }
+    if (-not (Invoke-SetupAndService)) {
+        Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"
+        Read-Host "按 Enter 結束"; exit 1
     }
-    # 設定頁完成時，AgEnD 是以一般程序啟動的：改成系統服務（開機自動啟動），agend install 會先停掉手動啟動的那一個。
-    # 服務已經在跑（主控台設定時已安裝，或上次中斷前已裝好）就不再裝：agend install 會停掉它，而正常結束的服務不會被重新拉起。
-    $null = Invoke-WslStep -Label "安裝並啟動 AgEnD 服務" -Usually "通常不到 1 分鐘" -UpperMinutes 3 -Script ($agendEnv + 'if systemctl --user is-active --quiet com.agend.fleet; then echo "AgEnD service is already running"; else agend install; fi')
 
     # 驗證是否啟動成功
     Write-Host ""
