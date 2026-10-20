@@ -157,7 +157,7 @@ export function createThread(list, scroller, opts) {
     const words = q.hidden ? tr("chat.replyHidden")
       : (typeof q.text === "string" && q.text) || (q.media === "photo" ? tr("chat.replyPhoto") : q.media === "document" ? tr("chat.replyFile") : "");
     const who = !q.hidden && typeof q.sender === "string" && q.sender ? `<span class="quote-sender">${escAttr(q.sender)}</span> ` : "";
-    return `<button type="button" data-trust="thread-control" class="msg-quote" data-act="jumpQuote" data-arg="${escAttr(`${q.boot}-${q.id}`)}" title="${escAttr(tr("chat.replyJump"))}"><span class="quote-mark" aria-hidden="true">↩︎</span> ${who}<span class="quote-text">${escAttr(words)}</span></button>`;
+    return `<button type="button" data-trust="thread-control" class="msg-quote" data-act="jumpQuote" data-arg="${escAttr(`${q.boot}-${q.id}`)}" title="${escAttr(tr("chat.replyJump"))}"><span class="quote-mark">${REPLY}</span> ${who}<span class="quote-text">${escAttr(words)}</span></button>`;
   }
   /**
    * A button click as a chip: 🔘 and the label (escaped: the label is the agent's text). With `of` (live, while its

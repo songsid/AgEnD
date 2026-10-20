@@ -688,7 +688,7 @@ function Composer({ name, lease, busy }) {
         : html`<li class="cmd-none" role="option" aria-selected="false">${t("chat.cmdNotCommand")}</li>`}
     </ul>` : null}
     ${reply ? html`<div class="reply-bar" data-trust="composer" role="status">
-      <span class="reply-mark" aria-hidden="true">↩︎</span><span class="reply-label">${t("chat.replyingTo", reply.sender)}</span>
+      <span class="reply-mark" aria-hidden="true"><svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></span><span class="reply-label">${t("chat.replyingTo", reply.sender)}</span>
       <span class="reply-text">${replySnippet(reply)}</span>
       <button type="button" class="icon-btn reply-cancel" title=${t("chat.replyCancel")} aria-label=${t("chat.replyCancel")} onClick=${() => { store.clearReply(name); input.current?.focus(); }}><${Icon} name="close" size=${14} /></button>
     </div>` : null}
