@@ -32,12 +32,12 @@ export function defaultBugReportDeps(version: string): BugReportDeps {
     },
     submit: async (title, body) => {
       // Existing host login only. Never prompt for, read or persist a GitHub credential.
-      await run('gh', ['auth', 'status'], { timeout: 10_000, maxBuffer: 16_384 });
+      await run('gh', ['auth', 'status', '--hostname', 'github.com'], { timeout: 10_000, maxBuffer: 16_384 });
       const temporary = await mkdtemp(join(tmpdir(), 'agend-bug-report-'));
       try {
         const bodyPath = join(temporary, 'body.md');
         await writePrivate(bodyPath, body);
-        const { stdout } = await run('gh', ['issue', 'create', '-R', 'songsid/AgEnD', '--title', title, '--body-file', bodyPath], { timeout: 30_000, maxBuffer: 16_384 });
+        const { stdout } = await run('gh', ['issue', 'create', '-R', 'github.com/songsid/AgEnD', '--title', title, '--body-file', bodyPath], { timeout: 30_000, maxBuffer: 16_384 });
         const url = stdout.trim();
         if (!/^https:\/\/github\.com\/songsid\/AgEnD\/issues\/\d+$/.test(url)) throw new Error('Issue submission result was unclear; check GitHub before trying again.');
         return url;

@@ -80,22 +80,34 @@ export function redactDiagnostics(input: string, options: RedactionOptions = {})
     .replace(/\b\d{5,}:[A-Za-z0-9_-]{15,}\b/g, REDACTED)
     .replace(/\b(?:ya29\.[\w.-]+|1\/\/[\w.-]+|sk-[\w-]+|gh[pousr]_[\w]+|github_pat_[\w]+|xox[baprs]-[\w-]+|AKIA[A-Z0-9]{12,}|ASIA[A-Z0-9]{12,}|AIza[\w-]{20,}|npm_[\w]+|glpat-[\w-]+)\b/g, REDACTED)
     .replace(/\beyJ[\w-]*\.[\w-]+\.[\w-]+\b/g, REDACTED)
-    .replace(/\b[a-z][a-z\d+.-]{0,127}:\/\/[^\s<>"']+/gi, REDACTED)
+    .replace(/\b[a-z][a-z\d+.-]{0,127}:\/\/[^\s<>"']+/gi, REDACTED);
+  // Protect only recognized diagnostic locations/fields AFTER explicit credential rules.
+  // Do not treat scoped npm paths as emails, long module names as opaque tokens, or
+  // trusted line numbers/durations as chat IDs during the general privacy pass.
+  const kept = new Map<string, string>();
+  const keep = (value: string): string => { const marker = 'AGENDKEEP' + kept.size.toString(36) + 'Q'; kept.set(marker, value); return marker; };
+  const safePath = (value: string): string => value.split(/[\\/]/).map(part => part.replace(/[A-Za-z0-9_+=]{24,}|\b\d{5,}\b/g, REDACTED)).join('/');
+  text = text.replace(/(?:…+)?(?:[a-z]:[\\/]|\/)[^\r\n<>"()]{0,512}?@songsid[\\/]agend[\\/]((?:[@\w.-]+[\\/]){0,12}[\w.-]+\.(?:[cm]?js|ts)):(\d{1,7}):(\d{1,7})/gi,
+    (_all, relative: string, line: string, column: string) => keep('…/@songsid/agend/' + safePath(relative) + ':' + line + ':' + column))
+    .replace(/\bnode:([a-z_]+(?:\/[\w.-]+){0,12}):(\d{1,7}):(\d{1,7})/g,
+      (_all, relative: string, line: string, column: string) => keep('node:' + safePath(relative) + ':' + line + ':' + column))
+    .replace(/"(?:duration|durationMs|attempt|exitCode|statusCode)"\s*:\s*-?\d{1,24}(?:\.\d{1,12})?(?:e[+-]?\d{1,3})?/gi, keep);
+  text = text
     // Opaque unknown keys and unlabelled IDs. Over-redaction is intentional.
     .replace(/[A-Za-z0-9_+/=-]{24,}/g, REDACTED)
     .replace(/\b\d{5,}\b/g, REDACTED)
     .replace(/[\"']?\b[\w.-]{0,128}(?:topic|chat|user|sender|recipient|instance|channel|guild)[_-]?id[\"']?\s*[=:]\s*(?:\[REDACTED\]|[^\s,;]+)/gi, REDACTED)
     .replace(/\b(?:message|content|prompt|chat[_-]?text)\s*[=:]\s*[^\r\n]*/gi, REDACTED);
   if (!options.keepIdentifiers) {
-    text = text.replace(/[^\s@<>"'(),;]{1,320}@[^\s@<>"'(),;]{1,320}/gu, REDACTED)
+    text = text.replace(/[^\s@<>"'(),;\[\]\\/:]{1,320}@[^\s@<>"'(),;\[\]\\/:]{1,320}/gu, REDACTED)
       .replace(/(?:\b\d{1,3}\.){3}\d{1,3}\b/g, REDACTED)
       .replace(/\[?[a-f\d:.]{0,64}:[a-f\d:.]{1,64}(?:%[\w.-]{1,64})?\]?/gi, value => isIP(value.replace(/^\[|\]$/g, '').split('%')[0]) === 6 ? REDACTED : value)
-      .replace(/(?<![\p{L}\p{N}_-])[\p{L}\p{N}-][\p{L}\p{N}.-]{0,252}\.[\p{L}][\p{L}\p{N}-]{0,62}(?![\p{L}\p{N}_-])/gu, REDACTED)
+      .replace(/(?<![\p{L}\p{N}_-])[\p{L}\p{N}-][\p{L}\p{N}.-]{0,252}\.[\p{L}][\p{L}\p{N}-]{0,62}(?![\p{L}\p{N}_-])/gu, value => /\.(?:ya?ml|json|log|[cm]?js|tsx?|md|txt|sh|ps1)$/i.test(value) || /^(?:e\.g|i\.e)$/i.test(value) ? value : REDACTED)
       .replace(/(\/(?:home|Users|mnt\/[a-z]\/Users)\/)[^\/\s]+/gi, '$1' + REDACTED)
       .replace(/([a-z]:\\Users\\)[^\\\s]+/gi, '$1' + REDACTED)
       .replace(/[\"']?\b(?:host(?:name)?|user(?:name)?)[\"']?\s*[=:]\s*(?:\[REDACTED\]|[^\s,;]+)/gi, REDACTED);
   }
-  return text;
+  return text.replace(/AGENDKEEP[0-9a-z]+Q/g, value => kept.get(value) ?? value);
 }
 
 /** Log prose may itself be chat. Export only recognized diagnostics and stack locations. */

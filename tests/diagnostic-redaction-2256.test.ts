@@ -95,6 +95,28 @@ describe('shared diagnostic redaction', () => {
     const colored = credential.slice(0, 16) + '\x1b[31m' + credential.slice(16) + '\x1b[0m';
     expect(redactDiagnostics(colored)).toBe(REDACTED);
   });
+  it('preserves useful real AgEnD and Node stack locations through repeated whole-report redaction', () => {
+    for (const path of ['/usr/lib/node_modules/@songsid/agend/dist/fleet-manager.js', '/home/alice/.nvm/versions/node/v22.23.3/lib/node_modules/@songsid/agend/dist/fleet-manager.js', 'C:\\Users\\alice\\node_modules\\@songsid\\agend\\dist\\fleet-manager.js']) {
+      const result = diagnosticLine('    at FleetManager.start (' + path + ':120:7)');
+      expect(result).toBe('at …/@songsid/agend/dist/fleet-manager.js:120:7'); expect(result).not.toContain('alice');
+      expect(redactDiagnostics(result!)).toBe(result);
+    }
+    const dependency = diagnosticLine('at WebSocketShard.connect (/usr/lib/node_modules/@songsid/agend/node_modules/@discordjs/ws/dist/index.js:123:4)');
+    expect(dependency).toBe('at …/@songsid/agend/node_modules/@discordjs/ws/dist/index.js:123:4');
+    expect(redactDiagnostics(dependency!)).toBe(dependency);
+    const internal = 'at node:internal/process/task_queues:95:5';
+    expect(diagnosticLine(internal)).toBe(internal); expect(redactDiagnostics(internal)).toBe(internal);
+    const secret = cases[4][1];
+    expect(diagnosticLine('at fn (/usr/lib/node_modules/@songsid/agend/dist/' + secret + '.js:120:7)')).not.toContain(secret);
+  });
+  it('preserves filenames and abbreviations in titles/descriptions while still hiding hosts and credentials', () => {
+    const prose = 'After editing fleet.yaml and daemon.log grew, e.g. agend crashed; see cli.js and i.e. notes.md';
+    expect(redactDiagnostics(prose)).toBe(prose);
+    expect(redactDiagnostics('crash after fleet.yaml edit')).toBe('crash after fleet.yaml edit');
+    for (const host of ['machine.example.com', 'office.lan', 'workstation.internal']) expect(redactDiagnostics(host)).toBe(REDACTED);
+    expect(redactDiagnostics('hostname=private.sh')).toBe(REDACTED);
+    const token = cases[0][1]; expect(redactDiagnostics('fleet.yaml token=' + token)).not.toContain(token);
+  });
   it('property: seeded generated known-shape secrets never survive wrappers (8400 checked cases)', () => {
     let state = 2256, checked = 0;
     const random = () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state; };

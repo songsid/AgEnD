@@ -19,13 +19,13 @@ describe('diagnostic external command boundary', () => {
     expect(file).toBe('journalctl'); expect(args).toEqual(['--user', '-u', 'com.agend.fleet', '--since', new Date(1000).toISOString(), '--until', new Date(2000).toISOString(), '--no-pager', '-o', 'short-iso', '-n', '1500']);
     expect(options).toEqual({ timeout: 5000, maxBuffer: 256 * 1024 });
   });
-  it('gh uses existing auth only, exact approved body in private file, and cleans up afterward', async () => {
+  it('gh pins the approved project host, uses existing auth only, writes exact private body and cleans up afterward', async () => {
     let bodyFile = '';
     child.exec.mockImplementation((file, args, options, callback) => {
       expect(file).toBe('gh');
-      if (args[0] === 'auth') { expect(args).toEqual(['auth', 'status']); callback(null, '', ''); }
+      if (args[0] === 'auth') { expect(args).toEqual(['auth', 'status', '--hostname', 'github.com']); callback(null, '', ''); }
       else {
-        expect(args.slice(0, 6)).toEqual(['issue', 'create', '-R', 'songsid/AgEnD', '--title', 'Exact title']);
+        expect(args.slice(0, 6)).toEqual(['issue', 'create', '-R', 'github.com/songsid/AgEnD', '--title', 'Exact title']);
         bodyFile = args[7]; expect(readFileSync(bodyFile, 'utf8')).toBe('Exact reviewed body'); expect(statSync(bodyFile).mode & 0o777).toBe(0o600);
         callback(null, 'https://github.com/songsid/AgEnD/issues/123\n', '');
       }
@@ -37,6 +37,6 @@ describe('diagnostic external command boundary', () => {
   it('failed auth never starts issue create or login', async () => {
     child.exec.mockImplementation((file, args, options, callback) => { callback(new Error('not logged in'), '', ''); return {}; });
     await expect(defaultBugReportDeps('2.3.0').submit('title', 'body')).rejects.toThrow('not logged in');
-    expect(child.exec).toHaveBeenCalledTimes(1); expect(child.exec.mock.calls[0][1]).toEqual(['auth', 'status']);
+    expect(child.exec).toHaveBeenCalledTimes(1); expect(child.exec.mock.calls[0][1]).toEqual(['auth', 'status', '--hostname', 'github.com']);
   });
 });

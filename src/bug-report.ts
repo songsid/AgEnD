@@ -57,7 +57,12 @@ export function logExcerpt(text: string, since: number, until: number, options: 
     const current = typeof timestamp === 'number' ? timestamp : typeof timestamp === 'string' ? Date.parse(timestamp) : match ? Date.parse(match[0]) : null;
     if (current !== null) active = Number.isFinite(current) ? current : -1;
     if (active !== null && (active < since || active > until)) continue;
-    const safe = record ? diagnosticRecord(record, options) : diagnosticLine(line.replace(/^.*?\b(?:INFO|WARN|ERROR|DEBUG|FATAL)\b[^:]*:\s*/, ''), options);
+    // Inspect one bounded prefix once. Repeated INFO tokens without a colon must
+    // not trigger a fresh scan of the remaining line for every token.
+    const level = /\b(?:INFO|WARN|ERROR|DEBUG|FATAL)\b/.exec(line.slice(0, 256));
+    const colon = level ? line.indexOf(':', level.index + level[0].length) : -1;
+    const plain = colon >= 0 && colon <= 256 ? line.slice(colon + 1).trimStart() : line;
+    const safe = record ? diagnosticRecord(record, options) : diagnosticLine(plain, options);
     if (!safe || safe === '{}') { withheld++; continue; }
     // fleet stderr often lacks timestamps; explicitly separate unverified-time evidence.
     if (active === null) unknown++;

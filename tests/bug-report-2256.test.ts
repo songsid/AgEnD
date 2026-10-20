@@ -62,6 +62,19 @@ describe('bug report approval and collection', () => {
     for (const word of ['private catalog', 'privateuser', secrets[0]]) expect(snapshot).not.toContain(word);
     expect(f.deps.submit).not.toHaveBeenCalled();
   });
+  it('final report and approved body preserve scoped stack frames, filename title, durations and exit codes without re-exposing IDs', () => {
+    const draft = sample({ title: 'crash after fleet.yaml edit', description: 'daemon.log grew; see cli.js', logs: [{ source: 'daemon log', text: JSON.stringify({ time: until - 1000, durationMs: 123456, exitCode: 137, userId: 123456789, err: { stack: 'Error: failed\n    at FleetManager.start (/usr/lib/node_modules/@songsid/agend/dist/fleet-manager.js:120:7)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)' } }) }] });
+    expect(logExcerpt('2026-10-20T09:29:00Z ERROR (fleet): at FleetManager.start (/usr/lib/node_modules/@songsid/agend/dist/fleet-manager.js:120:7)', since, until)).toContain('…/@songsid/agend/dist/fleet-manager.js:120:7');
+    expect(draft.title).toBe('crash after fleet.yaml edit'); expect(draft.report).toContain('daemon.log grew; see cli.js');
+    expect(draft.report).toContain('…/@songsid/agend/dist/fleet-manager.js:120:7'); expect(draft.report).toContain('node:internal/process/task_queues:95:5');
+    expect(draft.report).toContain('"durationMs":123456'); expect(draft.report).toContain('"exitCode":137'); expect(draft.report).not.toContain('123456789');
+    const serialized = serializeDraft(draft); const url = approvedIssueLink(serialized, draftDigest(serialized));
+    expect(new URL(url).searchParams.get('body')).toBe(draft.body);
+  });
+  it('handles a bounded line with fifty thousand INFO tokens without repeated suffix scanning', () => {
+    const start = performance.now(); const result = logExcerpt('INFO '.repeat(50_000) + 'EAI_AGAIN', since, until);
+    expect(result).toContain('EAI_AGAIN'); expect(performance.now() - start).toBeLessThan(2000);
+  });
   it('withholds unknown timestamp prose but labels canonical untimestamped stderr evidence', () => {
     const output = logExcerpt('Uncaught exception: Error: Opening handshake has timed out\n at connect (/home/alice/x.js:5:3)\nprivate phrase', since, until);
     expect(output).toContain('[time unknown]'); expect(output).toContain('Opening handshake has timed out'); expect(output).not.toContain('private phrase'); expect(output).not.toContain('alice');
