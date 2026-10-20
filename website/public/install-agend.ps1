@@ -337,6 +337,101 @@ function New-DashboardShortcut([string]$distro) {
     } catch { return $null }
 }
 
+# ── WSL 更新：已經是 2 以上就不強制更新（#1853：使用者在共用對外 IP 的辦公室實測）──────────
+# GitHub 對沒登入的請求，每個 IP 每小時只給 60 次（超過回 403/429）；很多人共用一個對外 IP 時，wsl --update --web-download
+# 和下面的 MSI 備案都會被擋。所以：已安裝的 WSL（Store／MSI 版裝在 %ProgramFiles%\WSL\wsl.exe）版本 2.0.0 以上就略過更新；
+# 版本只看檔案，不執行 wsl.exe。要更新時先走 Microsoft Store（wsl --update 的預設，不受 GitHub 次數限制），GitHub 只當備案；
+# 更新失敗但這台電腦已經有可以用的 WSL，就警告後繼續，不中止。
+function Get-FileVersionString([string]$path) {
+    try { return (Get-Item -LiteralPath $path -ErrorAction Stop).VersionInfo.FileVersion } catch { return $null }
+}
+function Get-InstalledWslVersion([string]$ProgramFiles = $env:ProgramFiles) {
+    if (-not $ProgramFiles) { return $null }
+    $exe = Join-Path (Join-Path $ProgramFiles 'WSL') 'wsl.exe'
+    if (-not (Test-Path -LiteralPath $exe)) { return $null }
+    $m = [regex]::Match([string](Get-FileVersionString $exe), '^\s*\d+\.\d+(\.\d+){0,2}')
+    if (-not $m.Success) { return $null }
+    return [version]$m.Value.Trim()
+}
+function Test-WslCurrent($version) { return ($null -ne $version -and $version -ge [version]'2.0.0') }
+# 下載失敗的原因：GitHub 的次數限制、網路（逾時、連不上、被擋），或其他。
+function Get-DownloadFailureKind($err) {
+    $status = $null
+    try { $status = [int]$err.Exception.Response.StatusCode } catch { }
+    $text = [string]$err
+    if ($status -eq 403 -or $status -eq 429 -or $text -match 'rate limit|\(403\)|\(429\)|\b429\b') { return 'ratelimit' }
+    if ($text -match 'timed out|timeout|逾時|could not be resolved|無法解析|unable to connect|無法連線|actively refused|connection was closed') { return 'network' }
+    return 'other'
+}
+function Write-DownloadFailure([string]$kind) {
+    switch ($kind) {
+        'ratelimit' {
+            Write-Warn "GitHub 暫時限制了這個網路的下載次數（很多人共用同一個對外網路時，例如公司網路，很常遇到）。"
+            Write-Info "請過一小時左右再執行同一行安裝指令，或換一個網路（例如手機熱點）再試。"
+        }
+        'network' {
+            Write-Warn "連不上 GitHub（逾時、連線失敗，或被防火牆擋住）。"
+            Write-Info "請確認網路正常後再執行同一行安裝指令，或換一個網路（例如手機熱點）再試。"
+        }
+        default { Write-Info "請稍後再執行同一行安裝指令；也可以手動到 https://github.com/microsoft/WSL/releases 下載 x64 的 .msi 安裝。" }
+    }
+}
+# 第 1 階段的 WSL 更新。回傳：skipped（已是 2 以上）、updated、usable（更新失敗但現有的 WSL 可用）、reboot（MSI 要求重開機）、
+# verify-reboot（裝好但要重開機才能用）、failed（不能繼續；原因已經說明）。
+function Invoke-WslUpdateStage {
+    $installed = Get-InstalledWslVersion
+    if (Test-WslCurrent $installed) { Write-Ok ("WSL {0} 已安裝，略過更新" -f $installed); return 'skipped' }
+    $seen = @{ RateLimited = $false }
+    $watch = { param($line) if ($line -match 'rate limit|\b403\b|\b429\b') { $seen.RateLimited = $true } }
+    Write-Info "更新 WSL 核心元件..."
+    $code = Invoke-Watched -Label "更新 WSL 核心元件" -Usually "通常需要 1–5 分鐘" -UpperMinutes 8 -Encoding utf16 -File "wsl.exe" -Arguments @("--update")
+    if ($code -ne 0) {
+        # Microsoft Store 被擋（公司電腦常見）時，改從 GitHub 下載同一個更新。
+        Write-Warn "從 Microsoft Store 更新失敗，改從 GitHub 下載..."
+        $code = Invoke-Watched -Label "從 GitHub 更新 WSL" -Usually "通常需要 1–5 分鐘" -UpperMinutes 8 -OnLine $watch -Encoding utf16 -File "wsl.exe" -Arguments @("--update", "--web-download")
+    }
+    if ($code -eq 0) { Write-Ok "WSL 核心已更新"; return 'updated' }
+    $now = Get-InstalledWslVersion
+    if (Test-WslCurrent $now) {
+        Write-Warn ("WSL 更新沒有完成，但這台電腦已經有可以用的 WSL {0}，繼續安裝。" -f $now)
+        if ($seen.RateLimited) { Write-DownloadFailure 'ratelimit' }
+        return 'usable'
+    }
+    if ($seen.RateLimited) {
+        Write-DownloadFailure 'ratelimit'
+        return 'failed'
+    }
+    Write-Warn "wsl --update 失敗，從 GitHub 下載最新版 WSL..."
+    try {
+        $release = Invoke-RestMethod "https://api.github.com/repos/microsoft/WSL/releases/latest" -TimeoutSec 30
+        $msiAsset = $release.assets | Where-Object { $_.name -match "x64\.msi$" } | Select-Object -First 1
+        if (-not $msiAsset) {
+            Write-Err "找不到 MSI 下載連結"
+            Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 x64 .msi 安裝"
+            return 'failed'
+        }
+        $wslMsi = "$env:TEMP\wsl-latest.msi"
+        Write-Info "  下載中: $($msiAsset.name) ($($release.tag_name))..."
+        Invoke-WebRequest -Uri $msiAsset.browser_download_url -OutFile $wslMsi -UseBasicParsing
+        $msiCode = Invoke-Watched -Label "安裝 WSL" -Usually "通常需要 1–2 分鐘" -UpperMinutes 5 -Encoding oem -File "msiexec.exe" -Arguments @("/i", $wslMsi, "/quiet", "/norestart")
+        Remove-Item $wslMsi -Force -ErrorAction SilentlyContinue
+        if ($msiCode -eq 3010) { return 'reboot' }
+        if ($msiCode -ne 0) {
+            Write-Err "MSI 安裝失敗 (exit code: $msiCode)"
+            Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 .msi 安裝"
+            return 'failed'
+        }
+        Write-Ok "WSL $($release.tag_name) 已從 GitHub 安裝"
+    } catch {
+        Write-Err "從 GitHub 下載 WSL 失敗。"
+        Write-DownloadFailure (Get-DownloadFailureKind $_)
+        return 'failed'
+    }
+    $null = wsl --version 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { return 'verify-reboot' }
+    return 'updated'
+}
+
 # ── 在瀏覽器裡設定（#1853：取代主控台裡的 agend quickstart）─────────────
 # agend setup 在 WSL 裡開一個設定頁，印出網址和設定碼。安裝程式讀到這兩行，就在 Windows 的瀏覽器打開網址、
 # 把設定碼放進剪貼簿並放大顯示；使用者在網頁上選 Discord 或 Telegram、貼上 Bot Token，不必在這個視窗打字。
@@ -813,53 +908,11 @@ if (Stage-Done 1) {
         Write-Ok "WSL 功能已啟用"
     }
 
-    # ── 1b: 更新 WSL 核心 ──
-    Write-Info "更新 WSL 核心元件..."
-    $wslUpdateCode = Invoke-Watched -Label "更新 WSL 核心元件" -Usually "通常需要 1–5 分鐘" -UpperMinutes 8 -Encoding utf16 -File "wsl.exe" -Arguments @("--update")
-    if ($wslUpdateCode -ne 0) {
-        # Microsoft Store 被擋（公司電腦常見）時，改從 GitHub 下載同一個更新。
-        Write-Warn "從 Microsoft Store 更新失敗，改從 GitHub 下載..."
-        $wslUpdateCode = Invoke-Watched -Label "從 GitHub 更新 WSL" -Usually "通常需要 1–5 分鐘" -UpperMinutes 8 -Encoding utf16 -File "wsl.exe" -Arguments @("--update", "--web-download")
-    }
-    if ($wslUpdateCode -ne 0) {
-        Write-Warn "wsl --update 失敗，從 GitHub 下載最新版 WSL..."
-        try {
-            $release = Invoke-RestMethod "https://api.github.com/repos/microsoft/WSL/releases/latest" -TimeoutSec 30
-            $msiAsset = $release.assets | Where-Object { $_.name -match "x64\.msi$" } | Select-Object -First 1
-            if ($msiAsset) {
-                $wslMsi = "$env:TEMP\wsl-latest.msi"
-                Write-Info "  下載中: $($msiAsset.name) ($($release.tag_name))..."
-                Invoke-WebRequest -Uri $msiAsset.browser_download_url -OutFile $wslMsi -UseBasicParsing
-                $msiCode = Invoke-Watched -Label "安裝 WSL" -Usually "通常需要 1–2 分鐘" -UpperMinutes 5 -Encoding oem -File "msiexec.exe" -Arguments @("/i", $wslMsi, "/quiet", "/norestart")
-                Remove-Item $wslMsi -Force -ErrorAction SilentlyContinue
-                if ($msiCode -eq 0) {
-                    Write-Ok "WSL $($release.tag_name) 已從 GitHub 安裝"
-                } elseif ($msiCode -eq 3010) {
-                    Request-Reboot "WSL 已安裝，需要重新開機才能生效"
-                } else {
-                    Write-Err "MSI 安裝失敗 (exit code: $msiCode)"
-                    Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 .msi 安裝"
-                    Read-Host "按 Enter 結束"; exit 1
-                }
-            } else {
-                Write-Err "找不到 MSI 下載連結"
-                Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 x64 .msi 安裝"
-                Read-Host "按 Enter 結束"; exit 1
-            }
-        } catch {
-            Write-Err "下載失敗: $_"
-            Write-Info "可能原因: 網路被防火牆擋住 / 無法連線 GitHub"
-            Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 .msi 安裝"
-            Read-Host "按 Enter 結束"; exit 1
-        }
-        # 驗證安裝
-        $verifyVer = wsl --version 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) {
-            Mark-Stage "1b"
-            Request-Reboot "WSL 安裝完成，但還需要重新開機才能使用"
-        }
-    } else {
-        Write-Ok "WSL 核心已更新"
+    # ── 1b: 更新 WSL 核心（已經是 2 以上就略過；見 Invoke-WslUpdateStage）──
+    switch (Invoke-WslUpdateStage) {
+        'reboot' { Request-Reboot "WSL 已安裝，需要重新開機才能生效" }
+        'verify-reboot' { Mark-Stage "1b"; Request-Reboot "WSL 安裝完成，但還需要重新開機才能使用" }
+        'failed' { Read-Host "按 Enter 結束"; exit 1 }
     }
 
     # ── 1c: 設定 WSL 預設版本為 2 ──
