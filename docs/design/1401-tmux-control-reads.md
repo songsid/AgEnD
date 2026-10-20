@@ -45,7 +45,13 @@ by a tool handler; stopped when `stopAll` ends), so the fork is the helper's and
 - Never twice: the helper writes "started" with a synchronous write before it forks. A call it never said "started" for
   goes direct only after the helper has been ended and its output read to the end (`close`), so it can no longer start
   it. A call it did say "started" for is answered by it, or — no answer by the command's timeout plus a grace — fails
-  the way a timed-out direct call fails; it is never run again directly.
+  the way a timed-out direct call fails; it is never run again directly. A call with no timeout of its own gets a
+  deadline of 125 s through the helper (a direct call would wait forever).
+- A stall is the fleet's, not the helper's: the 1.5 s start timeout is judged only once the poll after it has run
+  (`setImmediate`), so a fleet loop held past it (a GC, a long sync read, its own spawn) does not miss a "started" that
+  sat in the pipe. A helper taken as wedged while commands it started still run is not killed (that would not stop
+  them, and their calls would fail though they ran): its stdin is ended and it exits once they have answered. `stop()`
+  does the same.
 - It dies with the fleet: its stdin closes (the fleet's end of the pipe), and it also exits when its parent no longer
   exists (`kill(parent, 0)` is ESRCH) — node reads `process.ppid` once, so the parent's death is not seen through it.
   It is a plain child in the fleet's process group and cgroup (systemd's control-group kill takes it too). While a call
