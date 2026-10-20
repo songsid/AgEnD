@@ -4,7 +4,8 @@
  * and a post only in zh-TW. It checks what the pages say, not the source: drafts are neither listed nor routed, the
  * list is newest first, a post has its own title, description and date, the language switch goes to the translation
  * or (none, or a draft) to the other list, and the shared nav links lead to the home page's sections.
- * Needs the website's own dependencies (website/node_modules); without them it is skipped.
+ * Needs the website's own dependencies (website/node_modules). Without them it is skipped — unless
+ * AGEND_WEBSITE_BUILD_TEST=1 (CI sets it where it installs them): then it fails, so CI never skips it silently.
  */
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -16,9 +17,12 @@ const SITE = join(ROOT, "website");
 const ASTRO = join(SITE, "node_modules", "astro", "bin", "astro.mjs");
 const FIXTURES = join(ROOT, "tests", "fixtures", "website-notes");
 
-describe.skipIf(!existsSync(ASTRO))("Engineering Notes, built from fixtures", { timeout: 240_000 }, () => {
+const REQUIRED = process.env.AGEND_WEBSITE_BUILD_TEST === "1";
+
+describe.skipIf(!existsSync(ASTRO) && !REQUIRED)("Engineering Notes, built from fixtures", { timeout: 240_000 }, () => {
   let dir = "", dist = "";
   beforeAll(() => {
+    if (!existsSync(ASTRO)) throw new Error("AGEND_WEBSITE_BUILD_TEST=1 but the website's dependencies are not installed: npm ci --prefix website");
     // Inside website/, so the copy finds the website's node_modules the usual way (a parent directory), not via a link.
     dir = mkdtempSync(join(SITE, ".notes-fixture-build-"));
     for (const entry of ["src", "public", "astro.config.mjs", "package.json", "tsconfig.json"]) cpSync(join(SITE, entry), join(dir, entry), { recursive: true });
