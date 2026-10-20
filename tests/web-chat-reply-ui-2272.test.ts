@@ -55,6 +55,9 @@ describe("the thread", () => {
     expect(list.querySelectorAll(".msg-quote").map((q: any) => q.querySelector(".quote-text").textContent)).toEqual(["an earlier message", "[Photo]", "[File]"]);
     expect(list.querySelectorAll(".msg-quote")[0].querySelector(".quote-sender"), "hidden: no sender").toBeNull();
     dom?.restore(); dom = null;
+    const leaky = await threadWith([row({ id: 2, role: "user", replyTo: { boot: "ab12", id: 1, hidden: true, sender: "who", text: "what" } })]);
+    expect([leaky.list.querySelector(".quote-sender"), leaky.list.querySelector(".quote-text").textContent], "hidden wins over any sender or text").toEqual([null, "an earlier message"]);
+    dom?.restore(); dom = null;
     const zh = await threadWith([row({ id: 3, role: "user", replyTo: { boot: "ab12", id: 1, sender: "atlas", text: "", media: "photo" } }), row({ id: 4, role: "user", replyTo: { boot: "ab12", id: 1, sender: "atlas", text: "", media: "document" } })], {}, "zh-TW");
     expect(zh.list.querySelectorAll(".quote-text").map((q: any) => q.textContent)).toEqual(["[圖片]", "[檔案]"]);
   });
@@ -159,6 +162,18 @@ describe("the gestures", () => {
     expect(g.menu()?.querySelectorAll("button").length).toBe(3);
     const click = ev("click"); g.body.dispatchEvent(click);
     expect(click.defaultPrevented, "the click the long press would also cause is swallowed").toBe(true);
+  });
+  it("Android: its long press also fires contextmenu — one menu, and the press's own timer never fires after it", async () => {
+    const g = await gestures();
+    vi.useFakeTimers();
+    g.body.dispatchEvent(ev("touchstart", { touches: [{ clientX: 100, clientY: 300 }] }));
+    vi.advanceTimersByTime(450);
+    g.body.dispatchEvent(ev("contextmenu", { clientX: 100, clientY: 300 }));
+    const first = g.menu();
+    vi.advanceTimersByTime(300);
+    expect(g.menu(), "the same menu, not opened again").toBe(first);
+    const click = ev("click"); g.body.dispatchEvent(click);
+    expect(click.defaultPrevented, "nothing swallowed: the press never completed").toBe(false);
   });
 });
 
