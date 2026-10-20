@@ -82,7 +82,7 @@ Step-by-step bot guides: [Telegram](/AgEnD/setup-telegram/), [Discord](/AgEnD/se
 
 Run `agend quickstart` again later to add users, a second platform, or a Discord persona bot to an existing config.
 
-To set up from your phone instead of the terminal, see [`agend setup --tunnel`](/AgEnD/docs/cli/#web-dashboard).
+To set up from your phone instead of the terminal, see [`agend setup --tunnel`](/AgEnD/docs/cli/#web-dashboard). The setup page (`agend setup`) also offers **Web only (no bot)**: no token, the first agent only, and the web dashboard for everything else.
 
 ## Start the fleet
 
@@ -134,6 +134,8 @@ agend update
 ```
 
 It stays on the channel you installed from (a beta stays on beta), installs the new version, checks it, and restarts the fleet. Coming from 2.1, read [Upgrading from 2.1 to 2.2](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.md) first. From 2.1.0–2.1.11, or on a host without AgEnD's built-in Node, follow its manual steps instead.
+
+On Windows, the desktop shortcuts **AgEnD 儀表板** (the dashboard, its sign-in code filled in) and **AgEnD 重新啟動** (restart, after asking) come with the Windows installer. If you installed earlier, paste the [Windows one-liner](/AgEnD/install-windows/) again: it finds AgEnD already installed and only offers to add or update the shortcuts.
 
 ## Next steps
 

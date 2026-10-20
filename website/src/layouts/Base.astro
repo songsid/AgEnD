@@ -5,11 +5,24 @@ import '../styles/global.css';
 
 interface Props {
   locale: Locale;
+  /** A page's own title and description (default: the site's tagline). */
+  title?: string;
+  description?: string;
+  /** Where the language switch goes (default: the other language's home page). */
+  altHref?: string;
 }
 
-const { locale } = Astro.props;
+const { locale, title, description, altHref } = Astro.props;
 const lang = locale === 'zh-tw' ? 'zh-TW' : 'en';
 const base = import.meta.env.BASE_URL;
+const pageTitle = title ? `${title} — AgEnD` : `AgEnD — ${t(locale, 'hero.tagline')} ${t(locale, 'hero.taglineAccent')}`;
+const pageDescription = description ?? t(locale, 'hero.subtitle');
+const notesHref = locale === 'en' ? `${base}/notes/` : `${base}/zh-tw/notes/`;
+// The section links are the home page's: on any other page (a note, the install guide) they lead back there.
+const root = base.replace(/\/$/, '');
+const home = locale === 'en' ? `${root}/` : `${root}/zh-tw/`;
+const onHome = Astro.url.pathname.replace(/\/$/, '') === home.replace(/\/$/, '');
+const section = (id: string) => (onHome ? `#${id}` : `${home}#${id}`);
 ---
 
 <!doctype html>
@@ -19,11 +32,11 @@ const base = import.meta.env.BASE_URL;
     <script>document.documentElement.classList.add('js')</script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AgEnD — {t(locale, 'hero.tagline')} {t(locale, 'hero.taglineAccent')}</title>
-    <meta name="description" content={t(locale, 'hero.subtitle')} />
-    <meta property="og:title" content={`AgEnD — ${t(locale, 'hero.tagline')} ${t(locale, 'hero.taglineAccent')}`} />
-    <meta property="og:description" content={t(locale, 'hero.subtitle')} />
-    <meta property="og:type" content="website" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDescription} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDescription} />
+    <meta property="og:type" content={title ? 'article' : 'website'} />
     <meta property="og:image" content={`${Astro.site}${base.slice(1)}/og-image.svg`} />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -47,30 +60,33 @@ const base = import.meta.env.BASE_URL;
     <!-- Nav -->
     <nav class="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-bg/80 backdrop-blur-lg">
       <div class="mx-auto flex max-w-6xl items-center justify-between px-6 h-16">
-        <a href={locale === 'en' ? base : `${base}zh-tw/`} class="flex items-center gap-2">
+        <a href={home} class="flex items-center gap-2">
           <img src={`${base}/favicon.svg`} alt="" width="24" height="24" class="w-6 h-6" aria-hidden="true" />
           <span class="text-accent font-bold text-lg font-mono">AgEnD</span>
         </a>
-        <div class="hidden md:flex items-center gap-8 text-sm text-text-secondary">
-          <a href="#features" class="hover:text-text-primary transition-colors">{t(locale, 'nav.features')}</a>
-          <a href="#quickstart" class="hover:text-text-primary transition-colors">{t(locale, 'nav.quickstart')}</a>
-          <a href="#howitworks" class="hover:text-text-primary transition-colors">{t(locale, 'nav.workflow')}</a>
+        <!-- Seven links: tighter between 768 and 1279 px, where they share the bar with the language switch and Get Started -->
+        <div class="hidden md:flex items-center gap-4 xl:gap-8 text-sm text-text-secondary whitespace-nowrap">
+          <a href={section('features')} class="hover:text-text-primary transition-colors">{t(locale, 'nav.features')}</a>
+          <a href={section('quickstart')} class="hover:text-text-primary transition-colors">{t(locale, 'nav.quickstart')}</a>
+          <a href={section('howitworks')} class="hover:text-text-primary transition-colors">{t(locale, 'nav.workflow')}</a>
           <a href={`${base}/tips-${locale === 'en' ? 'en' : 'zh'}.html`} class="hover:text-text-primary transition-colors">{t(locale, 'nav.tips')}</a>
           <a href={locale === 'en' ? `${base}/docs/getting-started/` : `${base}/zh-tw/docs/getting-started/`} class="hover:text-text-primary transition-colors">{t(locale, 'nav.docs')}</a>
-          <a href="#faq" class="hover:text-text-primary transition-colors">{t(locale, 'nav.faq')}</a>
+          <a href={section('faq')} class="hover:text-text-primary transition-colors">{t(locale, 'nav.faq')}</a>
+          <a href={notesHref} class="hover:text-text-primary transition-colors">{t(locale, 'nav.notes')}</a>
         </div>
-        <div class="flex items-center gap-4">
-          <a href={langSwitchHref(locale, base)}
+        <div class="flex shrink-0 items-center gap-4 whitespace-nowrap">
+          <a href={altHref ?? langSwitchHref(locale, base)}
              class="text-sm text-text-secondary border border-border rounded-lg px-3 py-1.5 hover:text-text-primary hover:border-text-secondary transition-colors">
             {t(locale, 'nav.langSwitch')}
           </a>
           <a href="https://github.com/songsid/AgEnD"
-             class="hidden sm:flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors">
+             class="hidden sm:flex md:hidden lg:flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors">
             <svg class="w-4 h-4" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
             GitHub
           </a>
-          <a href="#quickstart"
-             class="bg-accent text-bg font-semibold text-sm px-4 py-2 rounded-xl hover:opacity-90 transition-opacity">
+          <!-- Between 768 and 1023 px the nav's own Quick Start link is the way there: no room for both -->
+          <a href={section('quickstart')}
+             class="md:hidden lg:inline bg-accent text-bg font-semibold text-sm px-4 py-2 rounded-xl hover:opacity-90 transition-opacity">
             {t(locale, 'hero.cta')}
           </a>
         </div>
@@ -90,12 +106,14 @@ const base = import.meta.env.BASE_URL;
           <span class="text-text-secondary">·</span>
           <span>{t(locale, 'footer.tagline')}</span>
         </div>
-        <div class="flex items-center gap-4">
+        <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
           <a href="https://github.com/songsid/AgEnD" class="hover:text-text-secondary transition-colors">GitHub</a>
           <span>·</span>
           <a href="https://www.npmjs.com/package/@songsid/agend" class="hover:text-text-secondary transition-colors">npm</a>
           <span>·</span>
           <a href="https://github.com/songsid/AgEnD/tree/main/docs" class="hover:text-text-secondary transition-colors">Docs</a>
+          <span>·</span>
+          <a href={notesHref} class="hover:text-text-secondary transition-colors">{t(locale, 'nav.notes')}</a>
           <span>·</span>
           <span>{t(locale, 'footer.license')}</span>
         </div>

@@ -396,6 +396,15 @@ import { getTmuxSession } from "./config.js";
 /** #2163: `classic` — a ClassicBot room's agent: only the skills about its own look and the dashboard. */
 type ManagedSkillRole = "general" | "worker" | "classic";
 
+// Closed migration cohort: these 11 names existed immediately before the first
+// managed-skill publisher (a1ac499f; parent e267e684). Never grow this set when
+// adding a bundled skill: its new name is not proof of old AgEnD ownership.
+const PRE_MANIFEST_KIRO_SKILLS = new Set([
+  "backend-providers", "cross-instance-messaging", "fleet-config", "fleet-health",
+  "fleet-restart", "instance-lifecycle", "model-discovery", "multi-channel",
+  "scheduling", "session-management", "tui-effort",
+]);
+
 export function resolveReplyThreadId(
   argsThreadId: unknown,
   instanceConfig?: InstanceConfig,
@@ -16878,16 +16887,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       .sort();
 
     // Pre-manifest Kiro General copied bundled skills directly into
-    // .kiro/skills. If every existing skill is still a bundled name, this is
-    // the unambiguous legacy layout: adopt it once, update it below, and write
-    // the ownership manifest. Any extra skill name keeps the directory fully
+    // .kiro/skills. If every existing skill is still bundled AND belongs to
+    // the closed pre-manifest cohort, adopt it once, update it below, and
+    // write the ownership manifest. Any extra skill name keeps the directory fully
     // on the user-owned/collision path.
     if (!hadManifest && adoptLegacyUnmanaged) {
       const existing = readdirSync(destSkills, { withFileTypes: true })
         .filter(entry => entry.isDirectory() && existsSync(join(destSkills, entry.name, "SKILL.md")))
         .map(entry => entry.name)
         .sort();
-      if (existing.length > 0 && existing.every(name => bundled.includes(name))) {
+      if (existing.length > 0 && existing.every(name => bundled.includes(name) && PRE_MANIFEST_KIRO_SKILLS.has(name))) {
         previouslyManaged = existing;
         this.logger.info(
           { skills: existing, destSkills },

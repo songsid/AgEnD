@@ -69,7 +69,9 @@ describe("stale-while-rate-limited", () => {
     expect(md).not.toContain("🔴");
   });
 
-  it("keeps a genuine auth error loud — stale data must not hide it", async () => {
+  it("an auth error keeps the last numbers, marked expired, with the error as the hint (#2236 follow-up)", async () => {
+    // The user, 2026-10-20: an expired or refused login no longer wipes the row; the error stays visible beside the
+    // numbers (what to do), and the row says when they were read.
     const fetcher = vi.fn()
       .mockResolvedValueOnce(OK)
       .mockResolvedValueOnce(AUTH_FAILED);
@@ -78,8 +80,9 @@ describe("stale-while-rate-limited", () => {
     await getUsageSnapshot();
     const result = await forceAfterFloor();
 
-    expect(result.providers[0].status).toBe("error");
-    expect(result.providers[0].error).toContain("Token rejected");
+    expect([result.providers[0].status, result.providers[0].stale, result.providers[0].staleCause]).toEqual(["ok", true, "expired"]);
+    expect(result.providers[0].hint).toContain("Token rejected");
+    expect(formatUsageSummary(result)).toMatch(/expired · cached at [\d/ ]*\d\d:\d\d — .*Token rejected/);
   });
 
   it("shows a gentler error when there is nothing good to fall back on (no-data 429)", async () => {
@@ -108,10 +111,10 @@ describe("stale-while-rate-limited", () => {
 
     const md = renderUsageMarkdown(result);
     expect(md).toContain("15% Weekly");
-    expect(md).toMatch(/> data from \d+ min ago/);  // hintI18n renders the i18n string
+    expect(md).toMatch(/> not updated · cached at [\d/ ]*\d\d:\d\d$/m);  // when the numbers were read (#2236 follow-up)
     const plain = formatUsageSummary(result);
     expect(plain).toContain("Weekly 15%");
-    expect(plain).toMatch(/data from \d+ min ago/);
+    expect(plain).toMatch(/not updated · cached at [\d/ ]*\d\d:\d\d/);
   });
 });
 

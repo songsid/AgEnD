@@ -1026,6 +1026,11 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .u-meter { height: 10px; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
 .u-fill { height: 100%; width: 0; min-width: 3px; border-radius: var(--r-full); background: var(--accent); transition: width 0.3s var(--ease); }
 .u-fill.warn { background: var(--warn); } .u-fill.crit { background: var(--danger); }
+/* Last known numbers (the live read failed): greyed, so they never read as live; the mark says when they were read. */
+.u-provider.is-stale .u-pct, .u-provider.is-stale .u-val, .u-provider.is-stale .u-status { color: var(--text-3); }
+.u-provider.is-stale .u-fill { background: var(--text-3); }
+.u-stale { font-weight: var(--fw-semibold); }
+.u-stale-detail { color: var(--text-3); font-size: var(--fs-xs); }
 .u-sub { color: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 .u-err { color: var(--warn); font-size: var(--fs-sm); }
 .u-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }

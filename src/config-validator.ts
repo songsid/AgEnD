@@ -702,3 +702,15 @@ function validateWebSession(session: unknown, err: (path: string, message: strin
     err("web.session.local.idle_hours", `must not exceed absolute_hours (${idle} > ${absolute}${abs === null ? ", the default" : ""})`);
   }
 }
+
+/**
+ * #2233: how many chat connections a parsed fleet.yaml configures — as the fleet reads them (`channels` when present,
+ * even empty; else the legacy singular `channel`). Null when it is not a mapping. For `agend validate --connections`
+ * (the Windows installer asks it whether the setup page made a web-only fleet).
+ */
+export function configuredConnectionCount(config: unknown): number | null {
+  if (!config || typeof config !== "object" || Array.isArray(config)) return null;
+  const c = config as { channels?: unknown; channel?: unknown };
+  if (c.channels !== undefined) return Array.isArray(c.channels) ? c.channels.length : null;
+  return c.channel && typeof c.channel === "object" && !Array.isArray(c.channel) ? 1 : 0;
+}

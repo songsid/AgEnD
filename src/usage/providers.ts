@@ -74,7 +74,15 @@ export interface UsageMetric {
    */
   expiresAt?: string | null;
   windowMs?: number | null;
+  /**
+   * On a row showing its last known numbers (`stale`): this metric's window has reset since they were read, so its
+   * number (`used`, `value`) is dropped — it was for a window that has ended. Shown as "reset since <resetsAt>".
+   */
+  resetPassed?: true;
 }
+
+/** Why a row shows its last known numbers instead of a live read. */
+export type UsageStaleCause = "expired" | "transient" | "error";
 
 export interface ProviderUsage {
   id: string;
@@ -94,8 +102,16 @@ export interface ProviderUsage {
   errorI18n?: UsageI18nRef;
   hint?: string;
   hintI18n?: UsageI18nRef;
-  /** True when the row shows last-good data because the live query was rate-limited. */
+  /** True when the row shows last-good data because the live query failed (rate limit, jitter, expiry, any error). */
   stale?: boolean;
+  /** On a `stale` row: when its numbers were read (ISO). */
+  cachedAt?: string;
+  /**
+   * On a `stale` row: why. "expired": the login's token expired or was refused (`hint` says how to refresh);
+   * "transient": a rate limit, a network or vendor blip, a token being refreshed; "error": any other failed read
+   * (`hint` is that error).
+   */
+  staleCause?: UsageStaleCause;
   /** True when a rate-limit error has no stale data — a transient, non-alarming failure. */
   transient?: boolean;
   metrics: UsageMetric[];

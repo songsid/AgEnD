@@ -19,11 +19,12 @@ const ending = code.slice(code.indexOf("全部安裝完成！"));
 
 describe("the installer ends on the dashboard (static)", () => {
   it("the shortcut is made and the dashboard opened, after the progress is cleared; console commands only under 進階", () => {
-    expect(ending).toMatch(/\$shortcut = New-DashboardShortcut \$UBUNTU_DISTRO/);
+    expect(ending).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER\)/);
+    expect(ending).toMatch(/\$null = Invoke-OpenDashboard \$UBUNTU_DISTRO \$AGEND_USER\n/);
     expect(ending.indexOf("Invoke-OpenDashboard $UBUNTU_DISTRO")).toBeGreaterThan(ending.indexOf("Clear-ResumeAtLogon"));
     const advanced = ending.indexOf("── 進階（需要用主控台時才看）──");
     expect(advanced).toBeGreaterThan(ending.indexOf("日常使用："));
-    for (const cmd of ["agend ls", "agend attach", "agend update", "agend web", "agend start"]) expect(ending.indexOf(cmd)).toBeGreaterThan(advanced);
+    for (const cmd of ["agend ls", "agend attach", "agend update", "agend web", "Get-AgendStartHint $UBUNTU_DISTRO $AGEND_USER"]) expect(ending.indexOf(cmd)).toBeGreaterThan(advanced);
     expect(ending).not.toMatch(/管理指令/);
   });
 });
@@ -46,8 +47,8 @@ function withHelpers(body: string, bin: string, input = "") {
 $t = $null; $e = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
 foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$DASHBOARD_OPENER_FN' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
-. ([scriptblock]::Create($DASHBOARD_OPENER_FN))
+foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$(WSL_COMMAND_FN|DASHBOARD_OPENER_FN)$' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
+. ([scriptblock]::Create($WSL_COMMAND_FN)); . ([scriptblock]::Create($DASHBOARD_OPENER_FN))
 $script:OnWindows = $false
 ${body}`);
   const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000, input, env: { ...process.env, TMPDIR: dir, PATH: `${bin}:${process.env.PATH}` } });
@@ -69,18 +70,19 @@ Write-Output ("A=" + $a.Url + " " + $a.Code + " B=" + $b.Code + " C=" + ($null -
     const bin = fakeWsl(SIGNIN);
     const { out, dir } = withHelpers(`function Start-Process { param($FilePath) Add-Content (Join-Path $env:TMPDIR 'opened.txt') $FilePath }
 function Set-Clipboard { param($Value) Add-Content (Join-Path $env:TMPDIR 'clip.txt') $Value }
-Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04'))`, bin);
+Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04' 'han'))`, bin);
     expect(readFileSync(join(dir, "opened.txt"), "utf8")).toBe("http://localhost:19280/signin\n");
     expect(readFileSync(join(dir, "clip.txt"), "utf8")).toBe("K7QM-3XRD\n");
     expect(out).toContain("儀表板登入碼：  K 7 Q M - 3 X R D");
     expect(out).toContain("RESULT=True");
-    expect(readFileSync(join(bin, "args.txt"), "utf8")).toBe("-d Ubuntu-24.04 -u root -- bash -lc export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend web --code\n");
+    // The user AgEnD was installed as, and its own home — never a hard-coded root.
+    expect(readFileSync(join(bin, "args.txt"), "utf8")).toBe("-d Ubuntu-24.04 -u han -- bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend web --code\n");
   });
   it("AgEnD not running: says so and how to start it; nothing opened", () => {
     const { out, dir } = withHelpers(`function Start-Process { param($FilePath) Add-Content (Join-Path $env:TMPDIR 'opened.txt') $FilePath }
-Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04'))`, fakeWsl("Web token not found. Is the fleet running?\n"));
+Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04' 'han'))`, fakeWsl("Web token not found. Is the fleet running?\n"));
     expect(out).toContain("現在打不開 AgEnD 儀表板：AgEnD 可能還沒啟動。");
-    expect(out).toContain("wsl -d Ubuntu-24.04 -u root -- bash -lc 'agend start'");
+    expect(out).toContain("wsl -d Ubuntu-24.04 -u han -- bash -lc 'export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend start'"); // the recorded user, not root
     expect(out).toContain("RESULT=False");
     expect(() => readFileSync(join(dir, "opened.txt"))).toThrow();
   });
@@ -142,11 +144,11 @@ Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04'))`, bin);
   it("the shortcut's script is the same function plus one call: it parses, and run on its own it shows the code and waits for Enter", () => {
     const bin = fakeWsl(SIGNIN);
     const { out, dir } = withHelpers(`$f = Join-Path $env:TMPDIR 'open-dashboard.ps1'
-[IO.File]::WriteAllText($f, (Get-DashboardOpenerScript 'Ubuntu-22.04'), (New-Object System.Text.UTF8Encoding $true))
+[IO.File]::WriteAllText($f, (Get-DashboardOpenerScript 'Ubuntu-22.04' 'root'), (New-Object System.Text.UTF8Encoding $true))
 $t2 = $null; $e2 = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile($f, [ref]$t2, [ref]$e2)
 Write-Output ("PARSE-ERRORS=" + $e2.Count)
 Write-Output ("BOM=" + (([IO.File]::ReadAllBytes($f)[0..2] | ForEach-Object { '{0:X2}' -f $_ }) -join ''))
-Write-Output ("NEW-SHORTCUT-OFF-WINDOWS=[" + (New-DashboardShortcut 'Ubuntu-22.04') + "]")`, bin);
+Write-Output ("NEW-SHORTCUT-OFF-WINDOWS=[" + (@(Install-AgendShortcuts 'Ubuntu-22.04' 'root') -join ',') + "]")`, bin);
     expect(out).toContain("PARSE-ERRORS=0");
     expect(out).toContain("BOM=EFBBBF");
     expect(out).toContain("NEW-SHORTCUT-OFF-WINDOWS=[]");

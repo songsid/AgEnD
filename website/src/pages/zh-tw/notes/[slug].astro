@@ -1,0 +1,22 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../../layouts/Base.astro';
+import NotePost from '../../../components/NotePost.astro';
+import { notePath, noteSlug } from '../../../i18n/notes';
+
+const locale = 'zh-tw' as const;
+export async function getStaticPaths() {
+  const all = await getCollection('notes', (p) => !p.data.draft);
+  return all.filter((p) => p.id.startsWith('zh-tw/')).map((post) => ({
+    params: { slug: noteSlug(post.id) },
+    // The same file name in the other language is its translation; without one, the switch goes to that language's list.
+    props: { post, translated: all.some((p) => p.id === 'en/' + noteSlug(post.id)) },
+  }));
+}
+const { post, translated } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<Base locale={locale} title={post.data.title} description={post.data.summary} altHref={notePath(base, 'en', translated ? noteSlug(post.id) : undefined)}>
+  <NotePost locale={locale} post={post} />
+</Base>

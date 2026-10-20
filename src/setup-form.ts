@@ -124,11 +124,12 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     <div class="row">
       <button id="pickTelegram" class="primary">Telegram</button>
       <button id="pickDiscord">Discord</button>
+      <button id="pickWeb">Web only (no bot)</button>
     </div>
     <div class="sub" id="platformHint">Create a bot with @BotFather, then add it to a group.</div>
   </div>
 
-  <div class="step">
+  <div class="step" id="credStep">
     <h2>3 · Credentials</h2>
     <label for="token">Bot token</label>
     <input id="token" type="password" placeholder="123456:ABC-DEF…">
@@ -179,9 +180,14 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     state.identity = null; $("verifyMsg").textContent = "";
     $("pickTelegram").className = platform === "telegram" ? "primary" : "";
     $("pickDiscord").className = platform === "discord" ? "primary" : "";
+    $("pickWeb").className = platform === "web" ? "primary" : "";
     $("platformHint").textContent = platform === "telegram"
       ? "Create a bot with @BotFather, then add it to a group."
-      : "Create an application in the Discord developer portal and invite the bot to your server.";
+      : platform === "discord" ? "Create an application in the Discord developer portal and invite the bot to your server."
+      : "No bot: you use AgEnD from its web dashboard (chat, sign-ins, settings). Discord or Telegram can be added later in Settings.";
+    // #2233: web only has no credentials step — no token, no admin id, nothing to verify.
+    $("credStep").hidden = platform === "web";
+    state.plan = null; $("planOut").hidden = true; $("finish").disabled = true;
     renderPlatformFields();
   }
 
@@ -189,6 +195,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   function renderPlatformFields() {
     if (formFrozen) return;
     const host = $("platformFields"); host.innerHTML = "";
+    if (state.platform === "web") return;
     const field = (id, labelText, hint) => {
       const label = document.createElement("label"); label.textContent = labelText; label.htmlFor = id;
       const input = document.createElement("input"); input.id = id;
@@ -229,6 +236,8 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   }
 
   function input() {
+    // #2233: the agent alone; a web-only setup carries no connection field at all.
+    if (state.platform === "web") return { web_only: true, backend: $("backend").value, working_directory: $("dir").value.trim(), instance_name: $("name").value.trim() };
     return {
       platform: state.platform,
       token_env: $("tokenEnv").value.trim(),
@@ -267,7 +276,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     state.plan = res.body;
     $("planOut").hidden = false;
     $("planOut").textContent = JSON.stringify(res.body, null, 2);
-    $("finish").disabled = !state.identity?.valid;
+    $("finish").disabled = !(state.platform === "web" || state.identity?.valid);
   };
 
   let approvedSetup = false;
@@ -276,7 +285,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   let pollGeneration = 0;
   const freezeFields = (frozen) => {
     formFrozen = frozen;
-    for (const field of document.querySelectorAll("main input, main select, #verify, #preview, #pickTelegram, #pickDiscord, #detect")) field.disabled = frozen;
+    for (const field of document.querySelectorAll("main input, main select, #verify, #preview, #pickTelegram, #pickDiscord, #pickWeb, #detect")) field.disabled = frozen;
   };
   const restoreEditing = (message) => {
     pollGeneration++; approvedSetup = false; submission = null; state.identity = null;
@@ -311,13 +320,13 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
       if (approvedSetup) {
         const finished = await api("setup/finish", { method: "POST" });
         if (!finished.ok) { restoreEditing(finished.body?.error || "Confirmation is no longer current."); return; }
-        $("finishMsg").textContent = "AgEnD is starting. Continue in the channel you configured.";
+        $("finishMsg").textContent = state.platform === "web" ? "AgEnD is starting. Its dashboard link shows here once it is up." : "AgEnD is starting. Continue in the channel you configured.";
         if (finished.body?.watch !== false) waitForFleet();
         return;
       }
       // Preserve bytes and key on a lost HTTP response; a deliberate retry after
       // a terminal outcome receives a new key and requires secret reentry.
-      submission ||= { key: crypto.randomUUID(), body: JSON.stringify(Object.assign({}, input(), { token: $("token").value.trim() })) };
+      submission ||= { key: crypto.randomUUID(), body: JSON.stringify(state.platform === "web" ? input() : Object.assign({}, input(), { token: $("token").value.trim() })) };
       freezeFields(true);
       $("finishMsg").textContent = "Requesting host confirmation…";
       const commit = await api("api/settings/quickstart/commit", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": submission.key }, body: submission.body });
@@ -348,8 +357,14 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
         if (res.status) {
           $("finishMsg").className = "msg ok";
           // #1519 P7: the fleet answers on this address now — its dashboard is here too.
-          $("finishMsg").textContent = "AgEnD is up. Talk to it in the channel you just set up, or open its dashboard: ";
           const link = document.createElement("a"); link.href = "/"; link.textContent = location.origin + "/";
+          if (state.platform === "web") {
+            // #2233: no bot — the dashboard is where AgEnD is used; its sign-in code comes from the machine.
+            $("finishMsg").textContent = "AgEnD is up. Open its dashboard: ";
+            $("finishMsg").append(link, " — sign in with the code from agend web --code on the machine running AgEnD. Sign your agents' CLIs in from Settings → Agents → Sign-ins.");
+            return;
+          }
+          $("finishMsg").textContent = "AgEnD is up. Talk to it in the channel you just set up, or open its dashboard: ";
           $("finishMsg").append(link, " (sign in with agend web --code on the machine running AgEnD, or send /web to your bot).");
           return;
         }
@@ -366,6 +381,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
 
   $("pickTelegram").onclick = () => setPlatform("telegram");
   $("pickDiscord").onclick = () => setPlatform("discord");
+  $("pickWeb").onclick = () => setPlatform("web");
   loadEnvironment();
   setPlatform("telegram");
 })();
