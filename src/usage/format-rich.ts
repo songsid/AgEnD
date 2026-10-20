@@ -13,7 +13,7 @@
 import type { ProviderUsage, UsageMetric } from "./providers.js";
 import { isVisibleUsageMetric, type UsagePayload } from "./usage-api.js";
 import { t } from "../locale.js";
-import { usageExpiryText, usageResetSinceText, usageResetText, usageStaleText, usageText } from "./i18n.js";
+import { usageExpiryText, usageResetSinceText, usageResetText, usageRowName, usageStaleText, usageText } from "./i18n.js";
 
 const BAR_WIDTH = 10;
 
@@ -96,7 +96,7 @@ interface ProviderBlock {
 function toBlocks(payload: UsagePayload): ProviderBlock[] {
   return payload.providers.map(p => ({
     dot: statusDot(p),
-    name: p.name,
+    name: usageRowName(p),
     plan: p.plan ?? null,
     // An ok row can carry a hint too — e.g. "cached 3m ago — live query is rate
     // limited" from the stale fallback. Shown under the metrics, not instead of

@@ -4,7 +4,7 @@
  * locale surface before a mixed-language release can ship.
  */
 export const USAGE_I18N_KEYS = [
-  "usage.title", "usage.title_plain", "usage.empty_active", "usage.not_logged_in",
+  "usage.title", "usage.title_plain", "usage.empty_active", "usage.not_logged_in", "usage.default_login",
   "usage.error_fallback", "usage.no_data", "usage.reset.in", "usage.reset.soon",
   "usage.duration.days_hours", "usage.duration.hours_minutes", "usage.duration.minutes",
   "usage.metric.session", "usage.metric.weekly", "usage.metric.monthly", "usage.metric.days_window",

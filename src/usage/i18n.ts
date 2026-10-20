@@ -31,6 +31,12 @@ export function usageResetSinceText(resetsAt?: string | null): string {
   return t("usage.metric.reset_since", usageClock(resetsAt));
 }
 
+/** A row's name in the chat and MCP text: the default login's "Claude (default)" says "default" in the fleet's language. */
+export function usageRowName(p: Pick<ProviderUsage, "name" | "defaultLogin">): string {
+  const suffix = " (default)";
+  return p.defaultLogin && p.name.endsWith(suffix) ? `${p.name.slice(0, -suffix.length)} (${t("usage.default_login")})` : p.name;
+}
+
 /** Minute-precision duration shared by the chat and MCP usage renderers. */
 export function usageResetText(resetsAt?: string | null): string {
   if (!resetsAt) return "";
