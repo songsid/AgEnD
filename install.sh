@@ -262,10 +262,11 @@ if npm view "$AGEND_SPEC" bin --json 2>/dev/null | grep -q '"agend-install"'; th
   installer_rc=0
   $SUDO npm exec --yes --package "$AGEND_SPEC" -- agend-install || installer_rc=$?
   if [ "$installer_rc" -eq 75 ]; then
-    # #2284: another AgEnD update holds the install lock (the installer said whose). Nothing broke: let it finish.
+    # #2284: the installer could not take the install lock and said why above — most often another AgEnD install that
+    # is still running (then: let it finish), sometimes something left behind that it names. Not a failed install.
     case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in
-      zh*) warn "另一個 AgEnD 更新正在進行中（見上方）。不需要做任何事，等它完成即可；想確認的話，稍後再執行一次這個安裝指令。" ;;
-      *) warn "Another AgEnD update is in progress (see above). Nothing to do: let it finish. To check, run this installer again in a moment." ;;
+      zh*) warn "AgEnD 這次沒有安裝：無法取得安裝鎖（原因見上方）。如果上方說另一個 AgEnD 安裝正在進行，等它完成即可；否則照上方的說明處理，再執行一次這個安裝指令。" ;;
+      *) warn "AgEnD was not installed this time: the install lock could not be taken (the reason is above). If it says another AgEnD install is running, let it finish; otherwise do what it says, then run this installer again." ;;
     esac
     exit 75
   elif [ "$installer_rc" -ne 0 ]; then
