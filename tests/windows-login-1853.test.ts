@@ -70,6 +70,22 @@ describe.skipIf(!pwsh)("with pwsh: the installer's login helpers", { timeout: 90
     const b = withHelpers(`Write-Output ("P=" + (Get-WindowsExplorerWslPath))`, { SystemRoot: "D:\\WINNT" });
     expect(b.out).toContain("P=/mnt/d/WINNT/explorer.exe\n");
   });
+  it("the printed follow-up command keeps $HOME and $PATH for Linux when pasted into PowerShell (#2239 review)", () => {
+    const { out } = withHelpers(`$UBUNTU_DISTRO = 'Ubuntu-24.04'
+$env:HOME = '/windows-home'                                                     # what PowerShell would expand them to
+function wsl { $script:got = $args }
+foreach ($k in @('kiro', 'antigravity')) {
+  $c = Get-LoginFollowUpCommand $k
+  Invoke-Expression $c                                                          # pasted into PowerShell
+  Write-Output ("CMD=" + $c)
+  Write-Output ("WSL-GOT=" + ($script:got -join ' | '))
+}`);
+    expect(out).toContain("CMD=wsl -d Ubuntu-24.04 -u root -- bash -lc 'export PATH=/root/.local/bin:$HOME/.claude/local:$PATH; kiro-cli login'\n");
+    // (A PowerShell function's $args drops the "--" that the real wsl.exe receives.)
+    expect(out).toContain("WSL-GOT=-d | Ubuntu-24.04 | -u | root | bash | -lc | export PATH=/root/.local/bin:$HOME/.claude/local:$PATH; kiro-cli login\n");
+    expect(out).toContain("WSL-GOT=-d | Ubuntu-24.04 | -u | root | bash | -lc | export PATH=/root/.local/bin:$HOME/.claude/local:$PATH; agy\n");
+    expect(out).not.toContain("/windows-home");
+  });
   it("claude's check is the fleet's authCheck: logged in only when status says \"loggedIn\": true", () => {
     const { out } = withHelpers(`Write-Output ("C=" + (Get-LoginCheck 'claude'))`);
     const check = out.match(/^C=(.*)$/m)![1];
@@ -104,7 +120,11 @@ case "$*" in
   *send-keys*) echo "$*" >> "$D/sent"; rm -f "$D/alive" ;;
 esac
 `); chmodSync(join(bin, "tmux"), 0o755);
-  writeFileSync(join(bin, "agy"), `#!/bin/sh\n[ "$1" = models ] && [ -e '${dir}/agy-ok' ]\n`); chmodSync(join(bin, "agy"), 0o755);
+  // agy models can be held (a "hold" file): it says it was called, then waits until the test releases it.
+  writeFileSync(join(bin, "agy"), `#!/bin/sh
+if [ "$1" = models ] && [ -e '${dir}/hold' ]; then touch '${dir}/models-called'; while [ -e '${dir}/hold' ]; do sleep 0.05; done; fi
+[ "$1" = models ] && [ -e '${dir}/agy-ok' ]
+`); chmodSync(join(bin, "agy"), 0o755);
   writeFileSync(join(dir, "alive"), "");
   writeFileSync(join(dir, "watch.sh"), `${agySh}\nagend_agy_quit_when_logged_in '${dir}/token' agend-install agy-login\necho WATCHER-DONE\n`);
   return new Promise<{ sent: string | null; log: string; done: boolean; ms: number }>((resolve) => {
@@ -113,12 +133,13 @@ esac
     let out = "";
     child.stdout.on("data", (c: Buffer) => { out += c; });
     const timer = setTimeout(() => child.kill(), budgetMs);
-    child.on("close", () => {
+    let tl: Promise<void> = Promise.resolve();
+    child.on("close", () => tl.catch(() => {}).then(() => {                       // the timeline's own measurements finish first
       clearTimeout(timer);
       resolve({ sent: existsSync(join(dir, "sent")) ? readFileSync(join(dir, "sent"), "utf8") : null, log: readFileSync(join(dir, "tmux.log"), "utf8"),
         done: out.includes("WATCHER-DONE"), ms: Date.now() - started });
-    });
-    void timeline(dir);
+    }));
+    tl = timeline(dir);
   });
 }
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -183,6 +204,33 @@ describe.skipIf(!bash)("the agy watcher (bash, tmux and agy stubbed)", { timeout
     }, 20_000);
     expect(r.sent).toBeNull();
     expect(r.done).toBe(true);
+  });
+  it("a token rewritten while agy models was being waited on is checked again before /quit, and the count starts over (#2239 review)", async () => {
+    let afterRewrite = -1;
+    const r = await agyWatch(async (dir) => {
+      writeFileSync(join(dir, "pane"), "? for shortcuts\n"); writeFileSync(join(dir, "agy-ok"), ""); writeFileSync(join(dir, "hold"), "");
+      writeFileSync(join(dir, "token"), "tok-0000");                               // stable for 3 s, then models is asked …
+      while (!existsSync(join(dir, "models-called"))) await sleep(50);
+      writeFileSync(join(dir, "token"), "tok-0001");                               // … and the token changes while it waits
+      const at = Date.now(); rmSync(join(dir, "hold"));
+      while (!existsSync(join(dir, "sent")) && Date.now() - at < 10_000) await sleep(50);
+      afterRewrite = Date.now() - at;
+    }, 20_000);
+    expect(r.sent).toBe("-L agend-install send-keys -t agy-login /quit Enter\n");
+    expect(afterRewrite).toBeGreaterThan(2500);                                    // only once the new token stayed still again
+  });
+  it("control: models waited on, the token unchanged — /quit right after the wait", async () => {
+    let afterRelease = -1;
+    const r = await agyWatch(async (dir) => {
+      writeFileSync(join(dir, "pane"), "? for shortcuts\n"); writeFileSync(join(dir, "agy-ok"), ""); writeFileSync(join(dir, "hold"), "");
+      writeFileSync(join(dir, "token"), "tok-0000");
+      while (!existsSync(join(dir, "models-called"))) await sleep(50);
+      const at = Date.now(); rmSync(join(dir, "hold"));
+      while (!existsSync(join(dir, "sent")) && Date.now() - at < 10_000) await sleep(50);
+      afterRelease = Date.now() - at;
+    }, 20_000);
+    expect(r.sent).toBe("-L agend-install send-keys -t agy-login /quit Enter\n");
+    expect(afterRelease).toBeLessThan(1500);
   });
   it("an atomic replace with the same content, or the token missing for a moment, starts the count again", async () => {
     const r = await agyWatch(async (dir) => {

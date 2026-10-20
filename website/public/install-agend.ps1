@@ -150,8 +150,14 @@ agend_agy_quit_when_logged_in() {
     last="$fp"
     if [ -n "$fp" ] && [ "$same" -ge 3 ] && agy models >/dev/null 2>&1 \
       && tmux -L "$sock" capture-pane -p -t "$sess" | grep -Eq '\? for shortcuts|^>[[:space:]]*$'; then
-      tmux -L "$sock" send-keys -t "$sess" '/quit' Enter
-      return 0
+      # agy models 和讀畫面都要等：等的時候 token 可能又被寫入（#2239 審查）。送出前再取一次指紋，不同就重新計算。
+      now=""
+      st=$(stat -c '%i %s %y' "$token" 2>/dev/null) && ck=$(cksum < "$token" 2>/dev/null) && now="$st $ck"
+      if [ -n "$now" ] && [ "$now" = "$fp" ]; then
+        tmux -L "$sock" send-keys -t "$sess" '/quit' Enter
+        return 0
+      fi
+      same=0; last="$now"
     fi
     sleep 1
   done
@@ -189,6 +195,12 @@ function Get-OpenUrlScript {
         'SH'
         'chmod 755 /usr/local/bin/agend-open-url'
     ) -join "`n"
+}
+# 安裝完成後補登入的指令（給人貼回 PowerShell）。bash 的程式用 PowerShell 的單引號包住，$HOME、$PATH 原樣交給 Linux，
+# 不會先被 PowerShell 展開（#2239 審查）。
+function Get-LoginFollowUpCommand([string]$key) {
+    $cmd = if ($key -eq 'antigravity') { 'agy' } else { Get-LoginCommand $key }
+    return ("wsl -d {0} -u root -- bash -lc 'export PATH=/root/.local/bin:`$HOME/.claude/local:`$PATH; {1}'" -f $UBUNTU_DISTRO, $cmd)
 }
 function Test-WslLogin([string]$key) {
     $r = wsl -d $UBUNTU_DISTRO -u root -- bash -lc ('export PATH=/root/.local/bin:$HOME/.claude/local:$PATH; if ' + (Get-LoginCheck $key) + '; then echo LOGIN_OK; else echo LOGIN_NO; fi') 2>&1 | Out-String
@@ -1090,8 +1102,7 @@ Write-Info "  [OK] WSL ($UBUNTU_DISTRO) 已安裝"
 $signedIn = @($selected | Where-Object { $s = $_; -not (@($skippedLogins) | Where-Object { $_.Key -eq $s.Key }) })
 if ($signedIn.Count -gt 0) { Write-Info ("  [OK] AI 後端已安裝並登入：" + (($signedIn | ForEach-Object { $_.Name }) -join "、")) }
 foreach ($b in @($skippedLogins)) {
-    $cmd = if ($b.Key -eq 'antigravity') { 'agy' } else { Get-LoginCommand $b.Key }
-    Write-Warn ("  [!!] {0} 已安裝但還沒登入。要登入，在 PowerShell 執行：wsl -d {1} -u root -- bash -lc `"export PATH=/root/.local/bin:`$HOME/.claude/local:`$PATH; {2}`"" -f $b.Name, $UBUNTU_DISTRO, $cmd)
+    Write-Warn ("  [!!] {0} 已安裝但還沒登入。要登入，在 PowerShell 執行：{1}" -f $b.Name, (Get-LoginFollowUpCommand $b.Key))
 }
 Write-Info "  [OK] AgEnD 已安裝並啟動（systemd 服務）"
 Write-Info "  [OK] 通訊軟體已串接"
