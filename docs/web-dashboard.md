@@ -118,6 +118,16 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 **Paused agents.** Sending a message wakes a paused instance, including a ClassicBot room. The composer shows “Waking…” until delivery. If waking is refused (for example, no warm slot is free), the page explains why, keeps your text and files, and offers **Retry send**. Retry never runs automatically. A stopped instance still needs to be started; opening history or attaching a file does not wake it. Guest and public-link send permissions are unchanged.
 
 - **Enter** sends; **Shift+Enter** adds a line. If sending fails, your text is given back.
+- **Reply to a message (#2272).**
+  - **Starting a reply:**
+    - **Desktop:** hover a message and press **↩** at its top right, or right-click it for **Reply / Copy text / Copy link**. Shift+right-click, or right-click over selected text, still gives the browser's own menu.
+    - **Phone:** swipe left on a message (as in Telegram), or long-press it for the same menu. A swipe right still opens the drawer, on a message too.
+    - **Keyboard:** **R** on a focused message.
+  - **While replying:** a bar above the composer reads "Replying to *sender*" with the first words, or [Photo] / [File]. **✕** or **Esc** cancels it.
+  - **The sent message** shows the quote above it. Click the quote to jump to the original and flash it; if the chat no longer keeps it, the page says so.
+  - **What the agent gets:** the same `(reply_to: "…")` line as a Discord or Telegram reply. The server reads it from the quoted message: one line, at most 500 characters.
+  - **Who can reply:** you can reply only to a message this chat still keeps. A guest can reply only to messages it can see. A guest who sees a reply to a message it can't see gets "an earlier message" in place of the quote.
+  - **The web echo** to Discord or Telegram starts with "↩ *sender*: *first words*" when the quoted message was already in that channel. A web-only original is only named ("↩ an earlier web chat message"), never copied out.
 - **The row under the composer** is one line at the bottom left: this browser's web authority, then the key hint (`✓ Verified · Enter to send · Shift+Enter for a new line`). When it ends ("speaks as you until …") is in the tooltip of **✓ Verified**; on a touch screen, tap it. A guest sees their note there, and the temporary public link says why it can't authorize. On a phone the key hint is left out.
 - Messages render **Markdown**: headings, **bold**, *italics*, ~~strike-through~~, `code`, code blocks, lists, quotes, rules and links. Also:
   - **Tables** (`| a | b |` with a `|---|---|` row under the header, and `:--` / `--:` / `:-:` for alignment). Write `\|` for a pipe inside a cell.

@@ -66,6 +66,7 @@ import "./chat-strings.js";
 import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
 import { createThread, msgKey } from "./chat-thread.js";
+import { installMessageActions } from "./chat-msg-actions.js";
 import { createEmojiIndex } from "./chat-emojis.js";
 import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
@@ -419,6 +420,10 @@ function threadEntry(name, doc) {
     canTryEffect: x => getAppEffects()?.canTry(x) === true,
     startEffectTrial: x => { const seq = navStore.get().seq; void getAppEffects()?.startTrial(x).then(ok => { if (!ok && e.sink && navStore.get().seq === seq && document.hasFocus?.() === true && document.visibilityState === "visible") toast(t("chat.effectTrialUnavailable")); }); },
     clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
+    // #2272: reply to a message (the bar above the composer), and show the one a reply quotes.
+    startReply: (x) => { store.startReply(name, x); doc.getElementById("msgIn")?.focus(); },
+    findQuoted: (key) => store.findQuoted(name, key),
+    notice: (text) => toast(text, false),
     replyButtonBusy: (id) => store.state.rbBusy.has(id),
     pollMine: (id) => store.state.pollMine[id],                            // #1823: this device's own vote
     serverNow: () => Date.now() + store.state.clockSkew,                   // #1823: the deadline is the server's
@@ -484,8 +489,18 @@ function Thread({ name, th }) {
     const onScroll = () => { store.state.scrollMemo[name] = thread.onScroll(); };
     sc.addEventListener("scroll", onScroll, { passive: true });
     ls.addEventListener("click", thread.onClick);
+    // #2272: the message menu, swipe left / long-press on a phone, R on a focused message.
+    const offActions = installMessageActions(ls, {
+      t, messageOf: thread.messageOf, rove: thread.rove, reply: (x) => { store.startReply(name, x); document.getElementById("msgIn")?.focus(); },
+      copyText, notice: (text, ok = true) => toast(text, ok),
+      linkOf: (x) => `${location.origin}/ui/chat/${encodeURIComponent(name)}#m=${msgKey(x)}`,
+    });
+    // A copied message link (#m=<boot>-<id>): show that message, flashed.
+    const linked = /^#m=([0-9a-f]{1,32}-\d{1,15})$/.exec(location.hash);
+    if (linked) void thread.jumpTo(linked[1]);
     return () => {
       unfollow();
+      offActions();
       sc.removeEventListener("scroll", onScroll);
       ls.removeEventListener("click", thread.onClick);
       e.sink = null;
@@ -598,6 +613,12 @@ function WorkBar({ name, lease, exec, awaiting, workingLabel }) {
       : html`<span class="elapsed" title=${t("chat.elapsedTitle")} aria-hidden="true">${since == null ? "" : R().formatElapsed(performance.now() - since)}</span>`}</div>`;
 }
 
+/** #2272: the reply bar's quote — the first ~80 characters, or what it had instead of text. */
+function replySnippet(r) {
+  const text = r.text ? (r.text.length > 80 ? `${r.text.slice(0, 79).trimEnd()}…` : r.text) : "";
+  return text || (r.media === "photo" ? t("chat.replyPhoto") : r.media === "document" ? t("chat.replyFile") : "");
+}
+
 function Composer({ name, lease, busy }) {
   const s = store.state;
   const input = useRef(null), fileIn = useRef(null);
@@ -606,6 +627,7 @@ function Composer({ name, lease, busy }) {
   const [closedFor, setClosedFor] = useState(null);    // the draft the palette was closed on (Esc); it opens again on change
   const value = s.drafts[name] || "";
   const files = s.pendingFiles[name] || [];
+  const reply = s.replies[name];                       // #2272: the message this one will reply to
   const content = !!value.trim() || files.length > 0;
   // A file waiting: what goes is a message with its file, never a command (no palette, no command line). A guest never
   // runs one (#1920: the server refuses its slash text), so it has no palette either.
@@ -646,6 +668,7 @@ function Composer({ name, lease, busy }) {
     }
     if (pick && e.key === "Tab" && !e.shiftKey) { e.preventDefault(); complete(pick); return; }
     if (palette && e.key === "Escape" && !e.isComposing) { e.preventDefault(); setClosedFor(value); return; }
+    if (reply && e.key === "Escape" && !e.isComposing) { e.preventDefault(); store.clearReply(name); return; }   // #2272
     if (R().composerKey(e) === "send") { e.preventDefault(); submit(); }
   };
   const onInput = (e) => { setValue(e.target.value); };
@@ -664,6 +687,11 @@ function Composer({ name, lease, busy }) {
           <span class="cmd-name mono">/${c.name}${c.arg ? html` <span class="cmd-arg">${c.arg}</span>` : null}</span><span class="cmd-desc">${t(`chat.cmd_${c.name}`)}</span></li>`)
         : html`<li class="cmd-none" role="option" aria-selected="false">${t("chat.cmdNotCommand")}</li>`}
     </ul>` : null}
+    ${reply ? html`<div class="reply-bar" data-trust="composer" role="status">
+      <span class="reply-mark" aria-hidden="true"><svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></span><span class="reply-label">${t("chat.replyingTo", reply.sender)}</span>
+      <span class="reply-text">${replySnippet(reply)}</span>
+      <button type="button" class="icon-btn reply-cancel" title=${t("chat.replyCancel")} aria-label=${t("chat.replyCancel")} onClick=${() => { store.clearReply(name); input.current?.focus(); }}><${Icon} name="close" size=${14} /></button>
+    </div>` : null}
     ${files.length ? html`<div class="pending-files">${files.map((f, i) => html`<${FileChip} key=${`${f.name}-${i}`} f=${f} i=${i} name=${name} />`)}</div>` : null}
     <div class="composer">
       <button id="attachBtn" type="button" class="icon-btn" title=${t("chat.attachTitle")} aria-label=${t("chat.attachTitle")} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>

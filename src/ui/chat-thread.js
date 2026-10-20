@@ -28,6 +28,7 @@ const P = () => globalThis.AgendPreview;
 /** #1672: a status line longer than this (lines, or characters) is folded until it is opened. */
 export const STATUS_FOLD_LINES = 6;
 export const STATUS_FOLD_CHARS = 600;
+const REPLY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
 const COPY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 
 /** Escapes & " ' < >: safe for text and inside a quoted attribute. */
@@ -141,7 +142,22 @@ export function createThread(list, scroller, opts) {
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
     // A person's click on a reply button shows as the button's label, never the line the agent was given (its value).
     const clicked = x.role === "user" && x.click && typeof x.click.label === "string";
-    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div><div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
+    // #2272: reply to it — a hover strip at its top right (phones: swipe left or long-press; R on a focused message).
+    const key = msgKey(x);
+    const act = opts.canReply?.() === false ? "" : `<div data-trust="thread-control" class="msg-actions"><button type="button" class="chip-btn icon-only" data-act="reply" data-arg="${escAttr(key)}" title="${escAttr(tr("chat.reply"))}" aria-label="${escAttr(tr("chat.reply"))}">${REPLY}</button></div>`;
+    return `<div class="msg ${u ? "user" : "agent"}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
+  }
+  /**
+   * #2272: what a reply quotes, above its body — the quoted sender and first words (or that it had files), as the server
+   * read them when it was sent; a button that shows that message. A guest that may not see it gets only "an earlier
+   * message". Text only: everything is escaped.
+   */
+  function quoteHtml(q) {
+    if (!q || typeof q !== "object" || typeof q.boot !== "string" || typeof q.id !== "number") return "";
+    const words = q.hidden ? tr("chat.replyHidden")
+      : (typeof q.text === "string" && q.text) || (q.media === "photo" ? tr("chat.replyPhoto") : q.media === "document" ? tr("chat.replyFile") : "");
+    const who = !q.hidden && typeof q.sender === "string" && q.sender ? `<span class="quote-sender">${escAttr(q.sender)}</span> ` : "";
+    return `<button type="button" data-trust="thread-control" class="msg-quote" data-act="jumpQuote" data-arg="${escAttr(`${q.boot}-${q.id}`)}" title="${escAttr(tr("chat.replyJump"))}"><span class="quote-mark">${REPLY}</span> ${who}<span class="quote-text">${escAttr(words)}</span></button>`;
   }
   /**
    * A button click as a chip: 🔘 and the label (escaped: the label is the agent's text). With `of` (live, while its
@@ -656,7 +672,19 @@ export function createThread(list, scroller, opts) {
     }
     armDay();
     armPolls();
+    rove();
     return added;
+  }
+  /**
+   * #2272 (review): one message in the thread is in the Tab order — the last one focused while it is still drawn, else
+   * the newest; ↑/↓ move between messages (chat-msg-actions.js). The rest are -1, so Tab passes the thread in one step.
+   */
+  let roving = null;
+  function rove(key) {
+    if (key !== undefined) roving = key;
+    const at = (roving && nodes.has(roving) ? nodes.get(roving).node : null) || [...list.querySelectorAll(".msg[data-key]")].at(-1) || null;
+    for (const el of list.querySelectorAll('.msg[data-key][tabindex="0"]')) if (el !== at) el.setAttribute("tabindex", "-1");
+    if (at) at.setAttribute("tabindex", "0");
   }
 
   function onScroll() {
@@ -742,7 +770,21 @@ export function createThread(list, scroller, opts) {
       if (trialStatus(row) === "ready" && opts.canTryEffect?.(row) === true) opts.startEffectTrial?.(row);
       else opts.fixEffectTrial?.(row, trialStatus(row));
     } else if (act === "showButtons") { const x = msgs.find(y => y.buttons && y.buttons.id === el.dataset.arg); if (x) reveal(msgKey(x)); }
+    else if (act === "reply") { const x = msgs.find(y => msgKey(y) === el.dataset.arg); if (x) opts.startReply?.(x); }
+    else if (act === "jumpQuote") void jumpTo(el.dataset.arg);
   }
+  /**
+   * #2272: show the message a reply quotes, flashed — drawn now, or after the chat reads back the longest history the
+   * server keeps; otherwise it says it is no longer there.
+   */
+  async function jumpTo(key) {
+    if (typeof key !== "string" || !key) return;
+    if (reveal(key)) return;
+    const found = opts.findQuoted ? await opts.findQuoted(key) : false;
+    if (!found || !reveal(key)) opts.notice?.(tr("chat.replyGone"));
+  }
+  /** #2272: a drawn message's row (for the message menu and gestures), or undefined. */
+  function messageOf(key) { return msgs.find(y => msgKey(y) === key); }
 
   /** The thread goes (the chat left, or another instance opened): every preview in it stops first. */
   /**
@@ -785,5 +827,5 @@ export function createThread(list, scroller, opts) {
     armPolls();
   }
 
-  return { render, onScroll, onClick, jumpLatest, reveal, refreshCards, park, attach, dispose, nodes, get unseen() { return unseen; } };
+  return { render, onScroll, onClick, jumpLatest, reveal, jumpTo, messageOf, rove, refreshCards, park, attach, dispose, nodes, get unseen() { return unseen; } };
 }

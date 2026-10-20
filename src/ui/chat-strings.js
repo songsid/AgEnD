@@ -10,6 +10,9 @@ register("chat", {
     sendFailure_instance_stopped: "This instance was stopped or removed. Start it on the host before retrying.",
     sendFailure_delivery_unavailable: "The instance could not receive this message. Check its status on the host, then retry.",
     sendFailure_delivery_changed: "The session or instance changed before this message was sent. Sign in again if needed, then retry.",
+    sendFailure_reply_gone: "The message you replied to is no longer in this chat. Your text is still here: send it without the reply, or reply to another message.",
+    reply: "Reply", replyingTo: "Replying to {0}", replyCancel: "Cancel the reply (Esc)", replyHidden: "an earlier message", replyPhoto: "[Photo]", replyFile: "[File]",
+    replyGone: "That message is no longer in this chat.", replyJump: "Show the message this replies to", copyText: "Copy text", copyLink: "Copy link", msgMenu: "Message",
 
     effectTrialReason_checking: "Checking this session…",
     effectTrialReason_localAdmin: "Sign in as an admin outside the public link to Try.",
@@ -144,6 +147,9 @@ register("chat", {
     sendFailure_instance_stopped: "這個實例已停止或移除。請先在主機啟動它，再重試。",
     sendFailure_delivery_unavailable: "實例目前無法接收這則訊息。請在主機檢查它的狀態，再重試。",
     sendFailure_delivery_changed: "訊息送出前，登入或實例狀態已改變。必要時請重新登入，再重試。",
+    sendFailure_reply_gone: "你回覆的訊息已不在這個聊天裡。內容還在：可以不帶回覆直接送出，或改回覆其他訊息。",
+    reply: "回覆", replyingTo: "回覆 {0}", replyCancel: "取消回覆（Esc）", replyHidden: "之前的一則訊息", replyPhoto: "[圖片]", replyFile: "[檔案]",
+    replyGone: "那則訊息已不在這個聊天裡。", replyJump: "顯示被回覆的訊息", copyText: "複製文字", copyLink: "複製連結", msgMenu: "訊息",
 
     effectTrialReason_checking: "正在確認工作階段…",
     effectTrialReason_localAdmin: "請在公開連結以外的儀表板以管理員登入後試播。",
