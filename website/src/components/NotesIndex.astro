@@ -1,0 +1,40 @@
+---
+// Engineering Notes / 技術日誌: every post in this language, newest first.
+import { getCollection } from 'astro:content';
+import type { Locale } from '../i18n/utils';
+import { t } from '../i18n/utils';
+import { notePath, noteSlug, formatNoteDate } from '../i18n/notes';
+
+interface Props { locale: Locale }
+const { locale } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const posts = (await getCollection('notes', (p) => p.id.startsWith(`${locale}/`) && !p.data.draft))
+  .sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+---
+
+<section class="mx-auto max-w-3xl px-6 pt-28 pb-16">
+  <a href={locale === 'en' ? `${base}/` : `${base}/zh-tw/`} class="text-sm text-text-secondary hover:text-text-primary transition-colors">{t(locale, 'notes.home')}</a>
+  <h1 class="mt-4 text-4xl font-extrabold tracking-tight text-text-primary">{t(locale, 'notes.title')}</h1>
+  <p class="mt-4 text-lg text-text-secondary leading-relaxed">{t(locale, 'notes.subtitle')}</p>
+
+  {posts.length === 0 ? (
+    <p class="mt-12 text-text-secondary">{t(locale, 'notes.empty')}</p>
+  ) : (
+    <ul class="mt-12 space-y-6">
+      {posts.map((post) => (
+        <li class="rounded-xl border border-border bg-surface p-5 hover:border-text-secondary transition-colors">
+          <a href={notePath(base, locale, noteSlug(post.id))} class="block">
+            <time datetime={post.data.date.toISOString().slice(0, 10)} class="text-xs font-mono text-text-secondary">{formatNoteDate(post.data.date)}</time>
+            <h2 class="mt-1 text-xl font-bold text-text-primary">{post.data.title}</h2>
+            <p class="mt-2 text-sm text-text-secondary leading-relaxed">{post.data.summary}</p>
+            {post.data.tags.length > 0 && (
+              <ul class="mt-3 flex flex-wrap gap-2">
+                {post.data.tags.map((tag) => <li class="text-xs font-mono text-accent bg-accent-dim rounded px-2 py-0.5">{tag}</li>)}
+              </ul>
+            )}
+          </a>
+        </li>
+      ))}
+    </ul>
+  )}
+</section>

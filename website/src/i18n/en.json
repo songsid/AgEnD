@@ -6,7 +6,8 @@
     "tips": "Tips",
     "faq": "FAQ",
     "docs": "Docs",
-    "langSwitch": "中文"
+    "langSwitch": "中文",
+    "notes": "Engineering Notes"
   },
   "hero": {
     "tagline": "Your AI fleet,",
@@ -327,5 +328,13 @@
         "alt": "The org chart: the product team (Pixel, Atlas, Quill) and the support team (Sage, Orbit, Comet), each agent with its state. Made-up demo data."
       }
     ]
+  },
+  "notes": {
+    "title": "Engineering Notes",
+    "subtitle": "How AgEnD is built and fixed: what we measured, what we changed, and what is still open.",
+    "empty": "No posts yet.",
+    "back": "← All notes",
+    "home": "← Back to home",
+    "readMore": "Read →"
   }
 }
