@@ -319,7 +319,7 @@ export class LoginController {
   /** One tunnel owner for the process: the lease it writes is fleet-wide, so this must not be per-login. */
   private managedTunnel: ManagedTunnel | null = null;
   /** A public-link start between its claim and its session: getting cloudflared (#1141 review). */
-  private pendingTunnelStart: { backend: string; abort: AbortController } | null = null;
+  private pendingTunnelStart: { backend: string; abort: AbortController; sink?: WebLoginSink } | null = null;
 
   constructor(private readonly deps: LoginControllerDeps) {}
 
@@ -475,7 +475,7 @@ export class LoginController {
     if (wantTunnel) {
       // The window is claimed but no session exists yet: this owner is what
       // `/login cancel` and a shutdown reach while cloudflared downloads.
-      const pending = { backend, abort: new AbortController() };
+      const pending = { backend, abort: new AbortController(), ...(chat.web ? { sink: chat.web } : {}) };
       this.pendingTunnelStart = pending;
       let got: Awaited<ReturnType<LoginController["obtainCloudflared"]>>;
       try {
@@ -631,6 +631,19 @@ export class LoginController {
 
   /** #2233: whether the running sign-in is the one this dashboard sink started. */
   isActiveFor(sink: WebLoginSink): boolean { return this.active?.chat.web === sink; }
+
+  /**
+   * #2233: end the sign-in this dashboard sink started — still getting its cloudflared, or running (its listener or
+   * tunnel still coming up included) — and nothing else: a later sign-in that took the window is never touched.
+   * True when there was one to end.
+   */
+  async cancelFor(sink: WebLoginSink): Promise<boolean> {
+    if (this.pendingTunnelStart?.sink === sink) { this.pendingTunnelStart.abort.abort(); return true; }
+    const entry = this.active;
+    if (!entry || entry.chat.web !== sink) return false;
+    await entry.session.cancel("cancelled");
+    return true;
+  }
 
   /** `/login cancel` in web mode. */
   async cancel(): Promise<string> {

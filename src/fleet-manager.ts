@@ -15639,6 +15639,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       start: (backend, chat, opts) => this.startWebDashboardLogin(backend, chat, opts),
       accessToken: sink => this.loginController?.webAccessToken(sink) ?? null,
       isActiveFor: sink => this.loginController?.isActiveFor(sink) ?? false,
+      cancelFor: sink => this.loginController?.cancelFor(sink) ?? Promise.resolve(false),
       cancel: () => this.cancelLoginSession(),
       notice: ({ shown, label, handle }) => this.notifyFleetError(t("login.web_dashboard_notice", shown, label, handle.slice(0, 8))),
     });

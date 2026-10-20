@@ -32,20 +32,30 @@ class FakeSession extends EventEmitter {
   }
 }
 class FakeHttp {
-  constructor(readonly session: FakeSession, readonly opts: { hostname?: string }) {}
-  async listen() { return { port: 40001, url: `http://${this.opts.hostname ?? "localhost"}:40001/t/${"ab".repeat(16)}/` }; }
+  /** The next listener's listen() waits for this (taken by that one listener only). */
+  static gate: Promise<void> | null = null;
+  private readonly held = FakeHttp.gate;
+  constructor(readonly session: FakeSession, readonly opts: { hostname?: string }) { FakeHttp.gate = null; }
+  async listen() { if (this.held) await this.held; return { port: 40001, url: `http://${this.opts.hostname ?? "localhost"}:40001/t/${"ab".repeat(16)}/` }; }
   async close() {}
+  setExternalHost() {}
+  readonly readinessMarker = "ready";
+}
+function hold(): { gate: Promise<void>; release: () => void } {
+  let release!: () => void;
+  const gate = new Promise<void>(r => { release = r; });
+  return { gate, release };
 }
 
 const servers: Server[] = [];
 const registries: WebBackendLogins[] = [];
 afterEach(async () => {
-  vi.useRealTimers(); setLocale("en");
+  vi.useRealTimers(); setLocale("en"); FakeHttp.gate = null;
   for (const r of registries.splice(0)) r.dispose();
   await Promise.all(servers.splice(0).map(s => new Promise<void>(r => { s.closeAllConnections(); s.close(() => r()); })));
 });
 
-async function fixture(over: { checkAuth?: LoginControllerDeps["checkAuth"]; config?: Record<string, unknown>; installed?: boolean } = {}) {
+async function fixture(over: { checkAuth?: LoginControllerDeps["checkAuth"]; config?: Record<string, unknown>; installed?: boolean; ensureCloudflared?: LoginControllerDeps["ensureCloudflared"] } = {}) {
   let wall = 1_000_000;
   const token = "backend-login-scratch-token";
   const sessions = new WebSessionStore({ now: () => wall });
@@ -68,6 +78,10 @@ async function fixture(over: { checkAuth?: LoginControllerDeps["checkAuth"]; con
     createSession: (spec, ev) => { const s = new FakeSession(spec, ev); terminals.push(s); return s as never; },
     createHttp: (s, _l, o) => new FakeHttp(s as unknown as FakeSession, o) as never,
     now: () => wall,
+    ...(over.ensureCloudflared ? {
+      ensureCloudflared: over.ensureCloudflared,
+      createTunnel: () => ({ start: async () => ({ ok: false, errorKind: "cancelled", message: "", leaseHeld: false }) as never, stop: async () => ({ confirmed: true, reason: "", pid: null, identity: null }) }),
+    } : {}),
   });
   const isLocalAdmin = (handle: string) => {
     const r = sessions.findByHandle(handle);
@@ -79,6 +93,7 @@ async function fixture(over: { checkAuth?: LoginControllerDeps["checkAuth"]; con
     start: (backend, chat, opts) => over.installed === false ? Promise.resolve(t("login.web_dashboard_not_installed", backend, "curl …")) : controller.start(backend, chat, opts),
     accessToken: sink => controller.webAccessToken(sink),
     isActiveFor: sink => controller.isActiveFor(sink),
+    cancelFor: sink => controller.cancelFor(sink),
     cancel: () => controller.isActive() ? controller.cancel() : Promise.resolve(t("login.no_session")),
     notice: info => { notices.push(info); },
     now: () => wall,
@@ -253,10 +268,68 @@ describe("#2233 a terminal sign-in (claude-code) from the dashboard", () => {
     expect(f.terminals[0]!.state).toBe("finished");
   });
 
+  it("watched from admission: a session revoked while its listener is still coming up ends that sign-in (two ticks)", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const f = await fixture(), a = f.session(), held = hold();
+    const id = (await f.check(a, "claude-code")).body.confirm.id;
+    FakeHttp.gate = held.gate;
+    const starting = f.start(a, id);
+    await vi.waitFor(() => expect(f.terminals).toHaveLength(1));
+    f.sessions.revokeByHandle(a.handle);
+    await vi.advanceTimersByTimeAsync(2 * WEB_LOGIN_WATCH_MS);
+    expect(f.terminals[0]!.state).toBe("finished");
+    expect(f.lock.isHeld).toBe(false);
+    held.release();
+    expect((await starting).status).toBe(200);
+    expect(f.controller.isActive()).toBe(false);
+  });
+
+  it("watched from admission: a session revoked while its public link's cloudflared is still downloading stops that download; nothing opens", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    let aborted = false;
+    const f = await fixture({ ensureCloudflared: (_on, signal) => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => { aborted = true; reject(Object.assign(new Error("aborted"), { kind: "download-failed" })); });
+    }) }), a = f.session();
+    const asked = (await f.check(a, "claude-code")).body.confirm;
+    expect(asked.publicLink).toBe(true);
+    const starting = f.start(a, asked.id, true);
+    await vi.waitFor(() => expect(f.controller.isActive()).toBe(true));
+    f.sessions.revokeByHandle(a.handle);
+    await vi.advanceTimersByTimeAsync(2 * WEB_LOGIN_WATCH_MS);
+    expect(aborted).toBe(true);
+    await starting;
+    expect(f.terminals).toHaveLength(0);
+    expect(f.controller.isActive()).toBe(false);
+    expect(f.lock.isHeld).toBe(false);
+  });
+
+  it("a slower start never replaces a later one: A held, cancelled, B started; A's late end leaves B shown, and B's session revoked ends B", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const f = await fixture(), a = f.session("admin", "A"), b = f.session("admin", "B"), held = hold();
+    const idA = (await f.check(a, "claude-code")).body.confirm.id;
+    FakeHttp.gate = held.gate;
+    const startingA = f.start(a, idA);
+    await vi.waitFor(() => expect(f.terminals).toHaveLength(1));
+    await f.call("POST", "/ui/backend-login/cancel", b.headers, {});
+    expect(f.terminals[0]!.state).toBe("finished");
+    const startedB = await f.start(b, (await f.check(b, "claude-code")).body.confirm.id);
+    expect(startedB.body.login).toMatchObject({ mine: true, phase: "running", accessCode: TOKEN });
+    held.release();
+    await startingA;
+    expect((await f.view(b)).body.login, "B is still what is shown").toMatchObject({ mine: true, phase: "running", startedOn: "B", accessCode: TOKEN });
+    f.sessions.revokeByHandle(a.handle);
+    await vi.advanceTimersByTimeAsync(2 * WEB_LOGIN_WATCH_MS);
+    expect(f.terminals[1]!.state, "revoking A never touches B").toBe("running");
+    f.sessions.revokeByHandle(b.handle);
+    await vi.advanceTimersByTimeAsync(2 * WEB_LOGIN_WATCH_MS);
+    expect(f.terminals[1]!.state).toBe("finished");
+    expect(f.lock.isHeld).toBe(false);
+  });
+
   it("success: the outcome and the recovery lines reach the starter's view; the code is gone", async () => {
     const f = await fixture(), a = f.session();
     await f.start(a, (await f.check(a, "claude-code")).body.confirm.id);
-    await f.terminals[0]!.finish({ ok: true });
+    await f.terminals[0]!.finish({ ok: true, reason: "exit", detail: "success reported" });
     const v = (await f.view(a)).body.login;
     expect(v).toMatchObject({ phase: "ended", ok: true, accessCode: null, terminal: null });
     expect(v.lines[0]).toBe(t("login.completed", "claude-code"));
