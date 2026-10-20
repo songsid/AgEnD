@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.6] - 2026-10-20
+
+### Fixed
+- **Browser login terminal:** an HTTP listener error after startup now ends only that login and reports a reason and next step in chat, instead of taking down the fleet (#2245).
+- **Public login tunnel:** errors on cloudflared’s stdout or stderr now end the affected login with a reason in chat, instead of escaping as an uncaught error (#2245).
+  The WSL watchdog/kernel-wait hang (#1880/#2243) remains open and is not fixed in 2.2.6.
+
 ## [2.2.5] - 2026-10-19
 
 2.2.5 is the 2.2 stable release with most of what the 2.3 betas brought. Canvas Worker effects are not part of it: they stay in the 2.3 beta. The highlights:
