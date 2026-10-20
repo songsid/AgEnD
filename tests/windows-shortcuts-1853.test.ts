@@ -33,13 +33,24 @@ describe("shortcuts and the fast path (static)", () => {
     expect(block).toMatch(/Read-Host "按 Enter 結束"; exit 0/);
     expect(block).not.toMatch(/Invoke-WslStep|wsl --install|agend setup|Mark-Stage/);
   });
+  it("no double quote in a command sent to WSL: Windows PowerShell 5.1 does not escape one inside a native argument", () => {
+    // pwsh 7 (these tests) escapes it, so only this check sees it. Every literal the shortcuts hand to bash -lc / Invoke-AgendInWsl.
+    const shared = text.slice(text.indexOf("$DASHBOARD_OPENER_FN = @'"), text.indexOf("function Get-FileVersionString"));
+    const sent = [...shared.matchAll(/(?:bash -lc \(?|Invoke-AgendInWsl \S+ \S+ )'([^']*)'/g)].map(m => m[1]);
+    expect(sent.length).toBeGreaterThanOrEqual(5);
+    for (const command of sent) expect(command).not.toContain('"');
+  });
   it("the end of the install makes both shortcuts with the recorded user; the restart never shuts WSL down", () => {
     expect(code).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER\)/);
     expect(restartFn).not.toMatch(/--shutdown/);
     expect(restartFn).not.toMatch(/-u root/);
+    const openerFn = text.slice(text.indexOf("$DASHBOARD_OPENER_FN = @'"), text.indexOf("\n'@", text.indexOf("$DASHBOARD_OPENER_FN = @'")));
+    expect(openerFn).not.toMatch(/-u root/);
   });
 });
 
+/** agend may be an nvm install: a login shell need not load nvm, so every command gets this first (as the dashboard's does). */
+const PRELUDE = "export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; ";
 const pwsh = spawnSync("pwsh", ["-NoProfile", "-c", "1"], { encoding: "utf8" }).status === 0;
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
@@ -91,7 +102,7 @@ describe.skipIf(!pwsh)("with pwsh: the restart shortcut", { timeout: 90_000 }, (
   it("y: exactly agend restart, then agend status, in the given Linux as the given user", () => {
     const bin = fakeWsl({ status: "worker  running  claude-code" });
     const { out } = withHelpers(`Write-Output ("RESULT=" + (Invoke-RestartAgend 'Ubuntu-22.04' 'han' -SettleSeconds 0))`, bin, "y\n");
-    expect(calls(bin)).toBe("-d Ubuntu-22.04 -u han -- bash -lc agend restart\n-d Ubuntu-22.04 -u han -- bash -lc agend status\n");
+    expect(calls(bin)).toBe(`-d Ubuntu-22.04 -u han -- bash -lc ${PRELUDE}agend restart\n-d Ubuntu-22.04 -u han -- bash -lc ${PRELUDE}agend status\n`);
     expect(out).toContain("AgEnD 正在重新啟動。");
     expect(out).toContain("worker  running  claude-code");
     expect(out).toContain("RESULT=restarted");
@@ -118,7 +129,7 @@ if ($e2.Count) { throw "parse errors" }`, bin);
     const r = spawnSync("pwsh", ["-NoProfile", "-File", join(dir, "restart-agend.ps1")], { encoding: "utf8", timeout: 60_000, input: "y\n\n", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("確定要重啟 AgEnD 嗎？所有 agent 會重新啟動，正在進行的工作會中斷。(y/N)");
-    expect(calls(bin)).toMatch(/^-d Ubuntu-22\.04 -u han -- bash -lc agend restart\n-d Ubuntu-22\.04 -u han -- bash -lc agend status\n$/);
+    expect(calls(bin)).toBe(`-d Ubuntu-22.04 -u han -- bash -lc ${PRELUDE}agend restart\n-d Ubuntu-22.04 -u han -- bash -lc ${PRELUDE}agend status\n`);
   });
 });
 
@@ -130,7 +141,7 @@ Set-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'AgEnD/install.json') -Val
 $r = Find-ExistingAgend
 Write-Output ("FOUND=" + $r.Distro + "/" + $r.User)`, bin);
     expect(out).toContain("FOUND=Debian-AgEnD/han");
-    expect(calls(bin).split("\n")[0]).toBe("-d Debian-AgEnD -u han -- bash -lc command -v agend >/dev/null 2>&1 && echo AGEND_FOUND");
+    expect(calls(bin).split("\n")[0]).toBe(`-d Debian-AgEnD -u han -- bash -lc ${PRELUDE}command -v agend >/dev/null 2>&1 && echo AGEND_FOUND`);
   });
   it("a clean Windows (no record, no Store WSL): nothing found, and wsl.exe never asked", () => {
     const bin = fakeWsl({ found: ["Ubuntu-24.04"] });

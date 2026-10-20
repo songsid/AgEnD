@@ -285,7 +285,7 @@ function Invoke-OpenDashboard([string]$distro, [string]$user = 'root', [switch]$
     $prevEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $text = ((& wsl.exe -d $distro -u $user -- bash -lc 'export PATH=$HOME/.local/bin:$PATH; [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"; agend web --code' 2>&1) | ForEach-Object { "$_" } | Out-String)
+        $text = ((& wsl.exe -d $distro -u $user -- bash -lc 'export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend web --code' 2>&1) | ForEach-Object { "$_" } | Out-String)
         $exit = $LASTEXITCODE
     } catch {
         $text = "$_"; $exit = 1
@@ -295,7 +295,7 @@ function Invoke-OpenDashboard([string]$distro, [string]$user = 'root', [switch]$
     $signIn = if ($exit -eq 0) { Get-DashboardSignIn $text } else { $null }
     if (-not $signIn) {
         Write-Host "  [!!] 現在打不開 AgEnD 儀表板：AgEnD 可能還沒啟動。" -ForegroundColor Yellow
-        Write-Host ("  稍等一下再試一次；或在 PowerShell 執行：wsl -d {0} -u root -- bash -lc 'agend start'" -f $distro)
+        Write-Host ("  稍等一下再試一次；或在 PowerShell 執行：wsl -d {0} -u {1} -- bash -lc 'agend start'" -f $distro, $user)
         if ($Wait) { Read-Host "按 Enter 關閉" }
         return $false
     }
@@ -325,7 +325,9 @@ function Invoke-AgendInWsl([string]$distro, [string]$user, [string]$command) {
     try {
         $ErrorActionPreference = 'Continue'
         try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
-        $text = ((& wsl.exe -d $distro -u $user -- bash -lc $command 2>&1) | ForEach-Object { "$_" } | Out-String)
+        # agend 可能是 nvm 裝的：登入 shell 不一定載入 nvm，先補上（和儀表板捷徑一樣）。指令裡不放雙引號：Windows PowerShell 5.1
+        # 傳給 wsl.exe 的參數不會跳脫內含的雙引號，指令會被拆開。
+        $text = ((& wsl.exe -d $distro -u $user -- bash -lc ('export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; ' + $command) 2>&1) | ForEach-Object { "$_" } | Out-String)
         return @{ Code = $LASTEXITCODE; Text = $text }
     } catch {
         return @{ Code = -1; Text = "$_" }
@@ -407,7 +409,7 @@ function Install-AgendShortcuts([string]$distro, [string]$user) {
         $made += New-AgendShortcut 'AgEnD 重新啟動' 'restart-agend.ps1' (Get-RestartScript $distro $user) '重新啟動 AgEnD（會先詢問）'
         $record = @{ distro = $distro; user = $user } | ConvertTo-Json -Compress
         [IO.File]::WriteAllText((Join-Path (Get-AgendShortcutDir) 'install.json'), $record, (New-Object System.Text.UTF8Encoding $false))
-        $null = Invoke-AgendInWsl $distro $user 'mkdir -p "${AGEND_HOME:-$HOME/.agend}" && date -u +%FT%TZ > "${AGEND_HOME:-$HOME/.agend}/windows-shortcuts"'
+        $null = Invoke-AgendInWsl $distro $user 'd=${AGEND_HOME:-$HOME/.agend}; mkdir -p $d && date -u +%FT%TZ > $d/windows-shortcuts'
     } catch { }
     return $made
 }

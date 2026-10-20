@@ -76,13 +76,13 @@ Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04' 'han'))`, bin);
     expect(out).toContain("儀表板登入碼：  K 7 Q M - 3 X R D");
     expect(out).toContain("RESULT=True");
     // The user AgEnD was installed as, and its own home — never a hard-coded root.
-    expect(readFileSync(join(bin, "args.txt"), "utf8")).toBe('-d Ubuntu-24.04 -u han -- bash -lc export PATH=$HOME/.local/bin:$PATH; [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"; agend web --code\n');
+    expect(readFileSync(join(bin, "args.txt"), "utf8")).toBe("-d Ubuntu-24.04 -u han -- bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend web --code\n");
   });
   it("AgEnD not running: says so and how to start it; nothing opened", () => {
     const { out, dir } = withHelpers(`function Start-Process { param($FilePath) Add-Content (Join-Path $env:TMPDIR 'opened.txt') $FilePath }
-Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04'))`, fakeWsl("Web token not found. Is the fleet running?\n"));
+Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04' 'han'))`, fakeWsl("Web token not found. Is the fleet running?\n"));
     expect(out).toContain("現在打不開 AgEnD 儀表板：AgEnD 可能還沒啟動。");
-    expect(out).toContain("wsl -d Ubuntu-24.04 -u root -- bash -lc 'agend start'");
+    expect(out).toContain("wsl -d Ubuntu-24.04 -u han -- bash -lc 'agend start'");          // the recorded user, not root
     expect(out).toContain("RESULT=False");
     expect(() => readFileSync(join(dir, "opened.txt"))).toThrow();
   });
