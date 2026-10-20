@@ -27,6 +27,7 @@ register("signin", {
     close: "Close",
     starting: "Starting…",
     deviceStep: "Open this page and enter the code:",
+    linkStep: "Open this page to sign in; if it gives you a code, paste it into the sign-in terminal:",
     terminalStep: "Open the sign-in terminal and enter this access code there. It works once, for {0} minutes.",
     openTerminal: "Open the sign-in terminal",
     accessCode: "Access code",
@@ -72,6 +73,7 @@ register("signin", {
     close: "關閉",
     starting: "啟動中…",
     deviceStep: "開啟這個頁面並輸入代碼：",
+    linkStep: "開啟這個頁面登入；如果它給你一組代碼，請貼到登入終端機：",
     terminalStep: "開啟登入終端機，在那裡輸入這個存取碼。只能用一次，{0} 分鐘內有效。",
     openTerminal: "開啟登入終端機",
     accessCode: "存取碼",
@@ -163,7 +165,7 @@ function Running({ login }) {
   const { hint, terminal, accessCode } = login;
   const away = terminal && terminal.loopback && typeof location !== "undefined" && !loopbackHost(location.hostname);
   return html`<div class="signin-run">
-    ${hint ? html`<p>${tn("deviceStep")}</p>
+    ${hint ? html`<p>${hint.code ? tn("deviceStep") : tn("linkStep")}</p>
       ${hint.linkable ? html`<p><a data-trust="navigation" class="btn btn-primary" href=${hint.url} target="_blank" rel="noopener noreferrer">${tn("open")}</a> <span class="signin-url">${hint.url}</span></p>`
         : html`<${CopyField} label="URL" value=${hint.url} />`}
       ${hint.code ? html`<${CopyField} label=${tn("code")} value=${hint.code} />` : null}` : null}
