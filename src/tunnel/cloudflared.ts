@@ -278,10 +278,11 @@ export class CloudflaredProvider implements TunnelProvider {
       // Host through to the origin, so the origin has to be expecting it or it
       // will refuse our own readiness check.
       ctx.onCandidateHost?.(new URL(base).host);
-      await this.probeReady(pageUrl, ctx, deadline, now, () => state.hasExited);
+      await this.probeReady(pageUrl, ctx, deadline, now, () => state.hasExited, () => state.checkOutput());
       // A probe can succeed against a tunnel that has already died (the edge answers for a while) or been
       // cancelled. Publishing that would hand back a handle whose exit nobody will ever be told about.
       if (ctx.signal.aborted) throw new TunnelStartError("cancelled", "cancelled before the tunnel was published");
+      state.checkOutput();
       if (state.hasExited) throw new TunnelStartError("no-url", "cloudflared exited before the tunnel became ready");
       state.publish(base, pageUrl);
       return state;
@@ -300,7 +301,7 @@ export class CloudflaredProvider implements TunnelProvider {
     }
   }
 
-  private async probeReady(pageUrl: string, ctx: TunnelStartContext, deadline: number, now: () => number, isDead: () => boolean): Promise<void> {
+  private async probeReady(pageUrl: string, ctx: TunnelStartContext, deadline: number, now: () => number, isDead: () => boolean, checkOutput: () => void): Promise<void> {
     const fetchPage = this.opts.fetchPage ?? ((url: string, signal: AbortSignal) => fetchViaPublicResolver(url, signal, {
       resolvers: this.opts.publicResolvers,
       resolve4: this.opts.resolve4,
@@ -309,6 +310,7 @@ export class CloudflaredProvider implements TunnelProvider {
     }));
     let lastDetail = "no attempt completed";
     while (now() < deadline) {
+      checkOutput();
       if (ctx.signal.aborted) throw new TunnelStartError("cancelled", "cancelled during readiness probe");
       // No point asking the edge about a tunnel whose process is gone.
       if (isDead()) throw new TunnelStartError("no-url", "cloudflared exited while waiting for the tunnel to become ready");
@@ -361,6 +363,9 @@ class CloudflaredHandle implements TunnelHandle {
   /** Set once we asked it to stop: from then on an exit is expected, never "unexpected". */
   private stopRequested = false;
   private stopping: Promise<TunnelStopResult> | null = null;
+  private outputError = false;
+  private outputFailed: (() => void) | null = null;
+  private failureListeners = new Set<(kind: "transport-failed") => void>();
 
   constructor(
     private readonly child: ChildProcess,
@@ -383,6 +388,18 @@ class CloudflaredHandle implements TunnelHandle {
     };
     child.stdout?.on("data", absorb);
     child.stderr?.on("data", absorb);
+    const onOutputError = () => {
+      if (this.outputError) return;
+      this.outputError = true;
+      this.outputFailed?.();
+      if (this.published && !this.stopRequested) {
+        for (const listener of this.failureListeners) listener("transport-failed");
+      }
+    };
+    // Pipes emit errors independently of ChildProcess. Keep these listeners
+    // even after stop; a queued pipe error must never escape during teardown.
+    child.stdout?.on("error", onOutputError);
+    child.stderr?.on("error", onOutputError);
     child.on("close", () => { this.outputClosed = true; });
     child.on("exit", (code, signal) => {
       this.exit = { code, signal };
@@ -410,6 +427,7 @@ class CloudflaredHandle implements TunnelHandle {
   }
 
   async awaitUrl(deadline: number, signal: AbortSignal, now: () => number): Promise<string> {
+    this.checkOutput();
     if (this.foundBase) return this.foundBase;
     if (this.neverStarted) {
       throw new TunnelStartError("spawn-failed", `could not start cloudflared: ${this.spawnError!.message}`);
@@ -440,15 +458,29 @@ class CloudflaredHandle implements TunnelHandle {
         this.child.off("exit", onExit);
         this.urlResolved = null;
         this.spawnFailed = null;
+        this.outputFailed = null;
       };
       this.urlResolved = base => settle(() => resolve(base));
       this.spawnFailed = onSpawnFail;
+      this.outputFailed = () => settle(() => reject(new TunnelStartError("transport-failed", "cloudflared output stream failed")));
       signal.addEventListener("abort", onAbort, { once: true });
       this.child.on("exit", onExit);
       if (this.exit) onExit();
       else if (this.neverStarted) onSpawnFail(this.spawnError!);
       else if (signal.aborted) onAbort();
     });
+  }
+
+  checkOutput(): void {
+    if (this.outputError) throw new TunnelStartError("transport-failed", "cloudflared output stream failed");
+  }
+
+  onFailure(listener: (kind: "transport-failed") => void): () => void {
+    this.failureListeners.add(listener);
+    if (this.outputError && !this.stopRequested) {
+      queueMicrotask(() => { if (this.failureListeners.has(listener) && !this.stopRequested) listener("transport-failed"); });
+    }
+    return () => { this.failureListeners.delete(listener); };
   }
 
   onUnexpectedExit(listener: (exit: TunnelExit) => void): () => void {
@@ -473,6 +505,7 @@ class CloudflaredHandle implements TunnelHandle {
     void reason;
     this.stopRequested = true;
     this.exitListeners.clear();
+    this.failureListeners.clear();
     if (this.exit) return { confirmed: true };
     // Proven, not assumed: Node reported the spawn itself failed and never
     // handed us a pid, so there is no process. Reporting this as unconfirmed
