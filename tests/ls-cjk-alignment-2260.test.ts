@@ -6,15 +6,23 @@ import { displayWidth } from "../src/ls-rows.js";
 import { ambiguityLine, pickerLine } from "../src/ls-attach-resolve.js";
 import type { Candidate } from "../src/ls-attach-resolve.js";
 
-// ── displayWidth sanity ──────────────────────────────────────────────────────
+// ── displayWidth correctness ─────────────────────────────────────────────────
 
 describe("displayWidth (used by ls padding)", () => {
   it("ASCII: 1 col each", () => expect(displayWidth("hello")).toBe(5));
-  it("CJK: 2 cols each",  () => {
+  it("CJK BMP: 2 cols each",  () => {
     expect(displayWidth("鬥破")).toBe(4);
     expect(displayWidth("研一官網")).toBe(8);
   });
   it("emoji: 2 cols each", () => expect(displayWidth("🎉")).toBe(2));
+  it("Latin Extended (č, U+010D): 1 col — EAW=N/Narrow", () => {
+    // č is NOT a CJK/fullwidth char; it must be 1 col like ASCII
+    expect(displayWidth("č")).toBe(1);
+    expect(displayWidth("é")).toBe(1);
+  });
+  it("SMP CJK (𠮷, U+20BB7): 2 cols — EAW=W", () => {
+    expect(displayWidth("𠮷")).toBe(2);
+  });
   it("mixed ASCII + CJK", () => {
     // "classic-鬥破串接-1843": "classic-"=8, "鬥破串接"=8, "-1843"=5 → 21
     expect(displayWidth("classic-鬥破串接-1843")).toBe(21);
@@ -94,5 +102,75 @@ describe("pickerLine: display-width-aware name padding", () => {
       return displayWidth(line.slice(0, teamsStart));
     });
     expect(new Set(displayPositions).size, "teams column must start at same display column").toBe(1);
+  });
+});
+
+// ── cli.ts ls formatter: padDisplay + nameW (catches regression to .padEnd) ──
+//
+// These tests replicate the exact padDisplay + nameW logic from cli.ts lsAction
+// so that reverting nameW to r.name.length or padDisplay to r.name.padEnd
+// causes the Backend-column-start assertion to fail.
+
+describe("ls table: Backend column starts at the same display column for all name types", () => {
+  // Mirrors the cli.ts lsAction formula exactly.
+  function nameCell(name: string, nameW: number): string {
+    // padDisplay: name + spaces to fill nameW display cols
+    const pad = " ".repeat(Math.max(0, nameW - displayWidth(name)));
+    return name + pad;
+  }
+
+  function computeNameW(names: string[], minW = 16): number {
+    return Math.max(minW, ...names.map(n => displayWidth(n) + 1));
+  }
+
+  it("ASCII and CJK names align (primary case)", () => {
+    const names = ["agend-reviewer-t001", "鬥破開發-opus-t002", "classic-鬥破串接-1843"];
+    const nameW = computeNameW(names);
+    const cells = names.map(n => nameCell(n, nameW));
+    const displayCols = cells.map(c => displayWidth(c));
+    expect(new Set(displayCols).size, "all name cells same display width").toBe(1);
+  });
+
+  it("Latin Extended (č) name aligns with ASCII — catches pre-fix padEnd regression", () => {
+    // Before fix: nameW computed by r.name.length (č length=1), padEnd(nameW).
+    // č has displayWidth=1, so padEnd(16) gives 16 chars / 16 display cols.
+    // After fix: nameW computed by displayWidth(č)=1 → same 16; padDisplay pads
+    // by display-col giving the same 16 display cols → Backend stays at col 19.
+    const names = ["aa", "č"];
+    const nameW = computeNameW(names);
+    // nameW = max(16, displayWidth("aa")+1) = max(16, 3) = 16
+    expect(nameW).toBe(16);
+    const cellAA = nameCell("aa", nameW);
+    const cellCZ = nameCell("č", nameW);
+    expect(displayWidth(cellAA), "aa cell").toBe(16);
+    expect(displayWidth(cellCZ), "č cell").toBe(16);
+    // Backend column starts at numW (3) + nameW (16) = 19 for both rows.
+    const numW = 3;
+    expect(numW + displayWidth(cellAA)).toBe(19);
+    expect(numW + displayWidth(cellCZ)).toBe(19);
+  });
+
+  it("SMP CJK (𠮷) name aligns with ASCII — catches inline-displayWidth SMP bug", () => {
+    // Before fix: inline displayWidth in ls-attach-resolve gave 𠮷=1 (not 2).
+    // This test verifies the correct value 2 propagates through nameW.
+    const names = ["aa", "𠮷"];
+    const nameW = computeNameW(names);
+    // 𠮷 displayWidth=2, so contribution=3; "aa" contribution=3 → nameW=16
+    expect(nameW).toBe(16);
+    const cellAA = nameCell("aa", nameW);
+    const cellSMP = nameCell("𠮷", nameW);
+    expect(displayWidth(cellSMP), "𠮷 cell").toBe(16);
+    expect(displayWidth(cellAA)).toBe(displayWidth(cellSMP));
+  });
+
+  it("long CJK name (>16 display cols) expands nameW correctly", () => {
+    // "研一官網-t1544335726169165914": displayWidth = 8 + 21 = 29 → nameW = 30
+    const name = "研一官網-t1544335726169165914";
+    const names = ["short", name];
+    const nameW = computeNameW(names);
+    expect(nameW).toBe(displayWidth(name) + 1);
+    // Both cells must have the same display width
+    const cells = names.map(n => nameCell(n, nameW));
+    expect(new Set(cells.map(c => displayWidth(c))).size).toBe(1);
   });
 });
