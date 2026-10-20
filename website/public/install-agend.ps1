@@ -277,8 +277,21 @@ function Get-DashboardSignIn([string]$text) {
     return @{ Url = $url.Groups[1].Value; Code = $code.Groups[1].Value }
 }
 function Invoke-OpenDashboard([string]$distro, [switch]$Wait) {
-    $text = (& wsl.exe -d $distro -u root -- bash -lc 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend web --code' 2>&1 | Out-String)
-    $signIn = Get-DashboardSignIn $text
+    # agend web --code 失敗時（AgEnD 沒在跑、沒有 token、連不上）會寫到 stderr 並以 1 結束。Windows PowerShell 5.1 會把重導的
+    # stderr 變成錯誤紀錄，在 ErrorActionPreference=Stop 下直接中止（#2242 審查）：取得輸出的這段改用 Continue、每一筆都轉成文字，
+    # 結束碼不是 0、啟動不了 wsl，都走下面「打不開」的說明。原本的設定在 finally 還原。
+    $text = ''; $exit = 1
+    $prevEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $text = ((& wsl.exe -d $distro -u root -- bash -lc 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend web --code' 2>&1) | ForEach-Object { "$_" } | Out-String)
+        $exit = $LASTEXITCODE
+    } catch {
+        $text = "$_"; $exit = 1
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
+    $signIn = if ($exit -eq 0) { Get-DashboardSignIn $text } else { $null }
     if (-not $signIn) {
         Write-Host "  [!!] 現在打不開 AgEnD 儀表板：AgEnD 可能還沒啟動。" -ForegroundColor Yellow
         Write-Host ("  稍等一下再試一次；或在 PowerShell 執行：wsl -d {0} -u root -- bash -lc 'agend start'" -f $distro)

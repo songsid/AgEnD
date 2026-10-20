@@ -84,6 +84,61 @@ Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04'))`, fakeWsl("Web 
     expect(out).toContain("RESULT=False");
     expect(() => readFileSync(join(dir, "opened.txt"))).toThrow();
   });
+  it("agend web --code failing as the real CLI does (stderr, exit 1): the message, nothing opened, the window waits; the caller's preference untouched (#2242 review)", () => {
+    const bin = scratch("agend-1853dash-err-");
+    writeFileSync(join(bin, "wsl.exe"), `#!/bin/sh\necho "Web token not found. Is the fleet running?" >&2\nexit 1\n`); chmodSync(join(bin, "wsl.exe"), 0o755);
+    const { out, dir } = withHelpers(`function Start-Process { param($FilePath) Add-Content (Join-Path $env:TMPDIR 'opened.txt') $FilePath }
+function Set-Clipboard { param($Value) Add-Content (Join-Path $env:TMPDIR 'clip.txt') $Value }
+function Read-Host { param($p) Add-Content (Join-Path $env:TMPDIR 'waited.txt') $p }
+$ErrorActionPreference = 'Stop'
+$r = Invoke-OpenDashboard 'Ubuntu-24.04' -Wait
+Write-Output ("RESULT=" + $r + " EAP=" + $ErrorActionPreference)`, bin);
+    expect(out).toContain("現在打不開 AgEnD 儀表板：AgEnD 可能還沒啟動。");
+    expect(out).toContain("RESULT=False EAP=Stop\n");
+    expect(readFileSync(join(dir, "waited.txt"), "utf8")).toBe("按 Enter 關閉\n");
+    expect(() => readFileSync(join(dir, "opened.txt"))).toThrow();
+    expect(() => readFileSync(join(dir, "clip.txt"))).toThrow();
+  });
+  it("Windows PowerShell 5.1's boundary, modelled: the native stderr arrives as an error record under Stop — still the message, never a throw", () => {
+    // 5.1 wraps a redirected native stderr line in a NativeCommandError record that ErrorActionPreference=Stop turns
+    // into a terminating error; pwsh 7.2+ does not. A wsl.exe *function* writing that record reproduces it here.
+    const { out, dir } = withHelpers(`function wsl.exe { $global:LASTEXITCODE = 1; Write-Error -Message 'Web token not found. Is the fleet running?' -ErrorId NativeCommandError }
+function Start-Process { param($FilePath) Add-Content (Join-Path $env:TMPDIR 'opened.txt') $FilePath }
+function Read-Host { param($p) Add-Content (Join-Path $env:TMPDIR 'waited.txt') $p }
+$ErrorActionPreference = 'Stop'
+try { $r = Invoke-OpenDashboard 'Ubuntu-24.04' -Wait; Write-Output ("RESULT=" + $r + " EAP=" + $ErrorActionPreference) } catch { Write-Output ("THREW=" + $_.FullyQualifiedErrorId) }`, fakeWsl(""));
+    expect(out).not.toContain("THREW=");
+    expect(out).toContain("RESULT=False EAP=Stop\n");
+    expect(readFileSync(join(dir, "waited.txt"), "utf8")).toBe("按 Enter 關閉\n");
+    expect(() => readFileSync(join(dir, "opened.txt"))).toThrow();
+  });
+  it("5.1's boundary, modelled: stderr noise as an error record, then the sign-in and exit 0 — still opens the page", () => {
+    const { out, dir } = withHelpers(`function wsl.exe { Write-Error -Message 'nvm: a warning' -ErrorId NativeCommandError; "Sign-in page: http://localhost:19280/signin"; "Code:         K7QM-3XRD   (works once, valid ~5 min)"; $global:LASTEXITCODE = 0 }
+function Start-Process { param($FilePath) Add-Content (Join-Path $env:TMPDIR 'opened.txt') $FilePath }
+function Set-Clipboard { param($Value) Add-Content (Join-Path $env:TMPDIR 'clip.txt') $Value }
+$ErrorActionPreference = 'Stop'
+Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04'))`, fakeWsl(""));
+    expect(out).toContain("RESULT=True");
+    expect(readFileSync(join(dir, "clip.txt"), "utf8")).toBe("K7QM-3XRD\n");
+  });
+  it("no wsl.exe to start: the message, not a crash", () => {
+    const { out } = withHelpers(`$env:PATH = '/nonexistent'
+$ErrorActionPreference = 'Stop'
+Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04') + " EAP=" + $ErrorActionPreference)`, fakeWsl(""));
+    expect(out).toContain("現在打不開 AgEnD 儀表板");
+    expect(out).toContain("RESULT=False EAP=Stop\n");
+  });
+  it("success with stderr noise (exit 0) still opens the page and copies the code", () => {
+    const bin = scratch("agend-1853dash-noise-");
+    writeFileSync(join(bin, "wsl.exe"), `#!/bin/sh\necho "nvm: a warning" >&2\nprintf '%s' '${SIGNIN}'\nexit 0\n`); chmodSync(join(bin, "wsl.exe"), 0o755);
+    const { out, dir } = withHelpers(`function Start-Process { param($FilePath) Add-Content (Join-Path $env:TMPDIR 'opened.txt') $FilePath }
+function Set-Clipboard { param($Value) Add-Content (Join-Path $env:TMPDIR 'clip.txt') $Value }
+$ErrorActionPreference = 'Stop'
+Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04'))`, bin);
+    expect(out).toContain("RESULT=True");
+    expect(readFileSync(join(dir, "opened.txt"), "utf8")).toBe("http://localhost:19280/signin\n");
+    expect(readFileSync(join(dir, "clip.txt"), "utf8")).toBe("K7QM-3XRD\n");
+  });
   it("the shortcut's script is the same function plus one call: it parses, and run on its own it shows the code and waits for Enter", () => {
     const bin = fakeWsl(SIGNIN);
     const { out, dir } = withHelpers(`$f = Join-Path $env:TMPDIR 'open-dashboard.ps1'
