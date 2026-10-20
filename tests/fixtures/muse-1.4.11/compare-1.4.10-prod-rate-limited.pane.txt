@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.10
+
+❯ please run the command
+
+◇ Thinking (1s · esc to interrupt)
+└ Meta Model API rate limited (HTTP 429) · retrying in 1s · attempt 2/10
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  mock-model · high · /tmp/muse-audit/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

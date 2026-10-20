@@ -1,0 +1,36 @@
+
+
+  Muse Code 1.4.10
+
+  resumed session 01a15977-e0b0-7cb3-9226-96297f002900
+
+❯ echo audit turn
+
+◆ echo: echo audit turn
+
+  session 01a15977-e0b0-7cb3-9226-96297f002900 does not record a usable model for provider echo; using the provider
+  default model
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  echo · /tmp/muse-audit/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
