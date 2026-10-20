@@ -13,6 +13,7 @@ $ProgressFile = "$env:USERPROFILE\.agend-install-progress"
 
 # ── 固定版本（避免環境不一致）──────────────────────────────
 $UBUNTU_DISTRO = "Ubuntu-24.04"
+$AGEND_USER = "root"  # AgEnD 安裝在這個 Linux 使用者底下（記到 install.json，捷徑用它，不寫死）
 $NODE_VERSION = "22"  # LTS 穩定版，AgEnD 需要 22+
 
 # ── 輔助函式 ─────────────────────────────────────────────
@@ -276,7 +277,7 @@ function Get-DashboardSignIn([string]$text) {
     if (-not $url.Success -or -not $code.Success) { return $null }
     return @{ Url = $url.Groups[1].Value; Code = $code.Groups[1].Value }
 }
-function Invoke-OpenDashboard([string]$distro, [switch]$Wait) {
+function Invoke-OpenDashboard([string]$distro, [string]$user = 'root', [switch]$Wait) {
     # agend web --code 失敗時（AgEnD 沒在跑、沒有 token、連不上）會寫到 stderr 並以 1 結束。Windows PowerShell 5.1 會把重導的
     # stderr 變成錯誤紀錄，在 ErrorActionPreference=Stop 下直接中止（#2242 審查）：取得輸出的這段改用 Continue、每一筆都轉成文字，
     # 結束碼不是 0、啟動不了 wsl，都走下面「打不開」的說明。原本的設定在 finally 還原。
@@ -284,7 +285,7 @@ function Invoke-OpenDashboard([string]$distro, [switch]$Wait) {
     $prevEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $text = ((& wsl.exe -d $distro -u root -- bash -lc 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend web --code' 2>&1) | ForEach-Object { "$_" } | Out-String)
+        $text = ((& wsl.exe -d $distro -u $user -- bash -lc 'export PATH=$HOME/.local/bin:$PATH; [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"; agend web --code' 2>&1) | ForEach-Object { "$_" } | Out-String)
         $exit = $LASTEXITCODE
     } catch {
         $text = "$_"; $exit = 1
@@ -314,27 +315,115 @@ function Invoke-OpenDashboard([string]$distro, [switch]$Wait) {
 '@
 . ([scriptblock]::Create($DASHBOARD_OPENER_FN))
 
-# 捷徑執行的腳本：上面的函式加上一行呼叫（UTF-8 有 BOM：Windows PowerShell 5.1 才會正確顯示中文）。
-function Get-DashboardOpenerScript([string]$distro) {
-    return ("# AgEnD 儀表板（AgEnD 安裝程式建立）`n" + $DASHBOARD_OPENER_FN + "`n" + ("Invoke-OpenDashboard '{0}' -Wait | Out-Null" -f $distro) + "`n")
-}
-# 寫好腳本並在桌面建立「AgEnD 儀表板」捷徑。回傳捷徑路徑；不是 Windows 或建立失敗時回傳 $null。
-function New-DashboardShortcut([string]$distro) {
-    if (-not $script:OnWindows) { return $null }
+# 「AgEnD 重新啟動」捷徑（#1853，使用者 2026-10-20 核准）：先問，預設不重啟；確定才在安裝時記下的 Linux 和使用者裡執行
+# agend restart，接著顯示 agend status，等你按 Enter。WSL 或 AgEnD 不在時直接說明；絕不執行 wsl --shutdown。
+# 這段函式的文字同時是捷徑執行的腳本（和儀表板捷徑一樣，安裝程式與捷徑共用同一份）。
+$RESTART_FN = @'
+function Invoke-AgendInWsl([string]$distro, [string]$user, [string]$command) {
+    # 在 WSL 裡以登入 shell 執行一個 agend 指令，回傳 @{ Code; Text }。Linux 的輸出是 UTF-8；stderr 不讓 5.1 中止（#2242）。
+    $prevEAP = $ErrorActionPreference; $prevEnc = [Console]::OutputEncoding
     try {
-        $dir = Join-Path $env:LOCALAPPDATA 'AgEnD'
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-        $file = Join-Path $dir 'open-dashboard.ps1'
-        [IO.File]::WriteAllText($file, (Get-DashboardOpenerScript $distro), (New-Object System.Text.UTF8Encoding $true))
-        $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'AgEnD 儀表板.lnk'
-        $shell = New-Object -ComObject WScript.Shell
-        $sc = $shell.CreateShortcut($lnk)
-        $sc.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-        $sc.Arguments = ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $file)
-        $sc.Description = 'AgEnD 網頁儀表板（自動帶入登入碼）'
-        $sc.Save()
-        return $lnk
-    } catch { return $null }
+        $ErrorActionPreference = 'Continue'
+        try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+        $text = ((& wsl.exe -d $distro -u $user -- bash -lc $command 2>&1) | ForEach-Object { "$_" } | Out-String)
+        return @{ Code = $LASTEXITCODE; Text = $text }
+    } catch {
+        return @{ Code = -1; Text = "$_" }
+    } finally {
+        $ErrorActionPreference = $prevEAP
+        try { [Console]::OutputEncoding = $prevEnc } catch { }
+    }
+}
+function Invoke-RestartAgend([string]$distro, [string]$user, [switch]$Wait, [int]$SettleSeconds = 3) {
+    Write-Host ""
+    $answer = Read-Host "  確定要重啟 AgEnD 嗎？所有 agent 會重新啟動，正在進行的工作會中斷。(y/N)"
+    if ($answer -notmatch '^\s*[yY]') {
+        Write-Host "  沒有重啟。"
+        if ($Wait) { $null = Read-Host "按 Enter 關閉" }
+        return 'cancelled'
+    }
+    $r = Invoke-AgendInWsl $distro $user 'agend restart'
+    $result = 'restarted'
+    if ($r.Code -eq 0) {
+        Write-Host "  [OK] AgEnD 正在重新啟動。" -ForegroundColor Green
+    } else {
+        $result = 'failed'
+        if ($r.Code -eq -1) { Write-Host "  [!!] 找不到 WSL（wsl.exe），所以沒有重啟。" -ForegroundColor Yellow }
+        elseif ($r.Text -match 'Fleet not running') { Write-Host ("  [!!] AgEnD 沒有在執行，所以沒有可以重啟的。要啟動它：wsl -d {0} -u {1} -- bash -lc 'agend start'" -f $distro, $user) -ForegroundColor Yellow }
+        elseif ($r.Text -match 'command not found|agend: not found|no such file') { Write-Host ("  [!!] 在 {0} 裡找不到 AgEnD（agend 指令），所以沒有重啟。" -f $distro) -ForegroundColor Yellow }
+        else { Write-Host ("  [!!] 沒有重啟成功：{0} 不存在、WSL 沒有啟動，或 AgEnD 回報了錯誤。" -f $distro) -ForegroundColor Yellow }
+        if ($r.Text.Trim()) { Write-Host ("  " + ($r.Text.Trim() -replace "`r?`n", "`n  ")) }
+    }
+    if ($result -eq 'restarted') {
+        Start-Sleep -Seconds $SettleSeconds
+        Write-Host ""
+        $s = Invoke-AgendInWsl $distro $user 'agend status'
+        if ($s.Text.Trim()) { Write-Host ("  " + ($s.Text.Trim() -replace "`r?`n", "`n  ")) }
+    }
+    if ($Wait) { $null = Read-Host "按 Enter 關閉" }
+    return $result
+}
+'@
+. ([scriptblock]::Create($RESTART_FN))
+
+# 捷徑執行的腳本：共用的函式加上一行呼叫（UTF-8 有 BOM：Windows PowerShell 5.1 才會正確顯示中文）。Linux 與使用者是安裝時記下的。
+function Get-DashboardOpenerScript([string]$distro, [string]$user) {
+    return ("# AgEnD 儀表板（AgEnD 安裝程式建立）`n" + $DASHBOARD_OPENER_FN + "`n" + ("Invoke-OpenDashboard '{0}' '{1}' -Wait | Out-Null" -f $distro, $user) + "`n")
+}
+function Get-RestartScript([string]$distro, [string]$user) {
+    return ("# AgEnD 重新啟動（AgEnD 安裝程式建立）`n" + $RESTART_FN + "`n" + ("Invoke-RestartAgend '{0}' '{1}' -Wait | Out-Null" -f $distro, $user) + "`n")
+}
+# 安裝時記下的 Linux 與使用者（%LOCALAPPDATA%\AgEnD\install.json）：捷徑、重新執行安裝指令時的快速路徑都讀它。
+function Get-AgendShortcutDir { return (Join-Path $env:LOCALAPPDATA 'AgEnD') }
+function Read-InstallRecord {
+    try {
+        $r = Get-Content -Raw -LiteralPath (Join-Path (Get-AgendShortcutDir) 'install.json') -ErrorAction Stop | ConvertFrom-Json
+        if ($r.distro -and $r.user) { return @{ Distro = [string]$r.distro; User = [string]$r.user } }
+    } catch { }
+    return $null
+}
+# 一個桌面捷徑：腳本寫在 %LOCALAPPDATA%\AgEnD，捷徑以 Windows PowerShell 執行它（-ExecutionPolicy Bypass 只對那個行程）。
+function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptText, [string]$description) {
+    $dir = Get-AgendShortcutDir
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $file = Join-Path $dir $scriptName
+    [IO.File]::WriteAllText($file, $scriptText, (New-Object System.Text.UTF8Encoding $true))
+    $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) ($name + '.lnk')
+    $shell = New-Object -ComObject WScript.Shell
+    $sc = $shell.CreateShortcut($lnk)
+    $sc.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $sc.Arguments = ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $file)
+    $sc.Description = $description
+    $sc.Save()
+    return $lnk
+}
+# 建立（或更新）兩個桌面捷徑、記下 Linux 與使用者，並在 WSL 裡留一個記號（agend update 之後的提示就不會再出現）。
+# 回傳建立好的捷徑路徑；不是 Windows 或失敗時回傳空陣列。
+function Install-AgendShortcuts([string]$distro, [string]$user) {
+    if (-not $script:OnWindows) { return @() }
+    $made = @()
+    try {
+        $made += New-AgendShortcut 'AgEnD 儀表板' 'open-dashboard.ps1' (Get-DashboardOpenerScript $distro $user) 'AgEnD 網頁儀表板（自動帶入登入碼）'
+        $made += New-AgendShortcut 'AgEnD 重新啟動' 'restart-agend.ps1' (Get-RestartScript $distro $user) '重新啟動 AgEnD（會先詢問）'
+        $record = @{ distro = $distro; user = $user } | ConvertTo-Json -Compress
+        [IO.File]::WriteAllText((Join-Path (Get-AgendShortcutDir) 'install.json'), $record, (New-Object System.Text.UTF8Encoding $false))
+        $null = Invoke-AgendInWsl $distro $user 'mkdir -p "${AGEND_HOME:-$HOME/.agend}" && date -u +%FT%TZ > "${AGEND_HOME:-$HOME/.agend}/windows-shortcuts"'
+    } catch { }
+    return $made
+}
+# 重新執行安裝指令時：這台電腦是不是已經裝好 AgEnD？先看安裝時記下的，再看預設的 Ubuntu。回傳 @{ Distro; User } 或 $null。
+# 只有在有安裝紀錄、或已經有 Store/MSI 版 WSL 時才問 WSL：乾淨的 Windows 上 wsl.exe 會停在「按任意鍵安裝」等按鍵（#2228）。
+function Find-ExistingAgend {
+    $record = Read-InstallRecord
+    if (-not $record -and -not (Get-InstalledWslVersion)) { return $null }
+    $candidates = @()
+    if ($record) { $candidates += ,@($record.Distro, $record.User) }
+    foreach ($d in @('Ubuntu-24.04', 'Ubuntu-22.04', 'Ubuntu')) { $candidates += ,@($d, 'root') }
+    foreach ($c in $candidates) {
+        $r = Invoke-AgendInWsl $c[0] $c[1] 'command -v agend >/dev/null 2>&1 && echo AGEND_FOUND'
+        if ($r.Code -eq 0 -and $r.Text -match 'AGEND_FOUND') { return @{ Distro = $c[0]; User = $c[1] } }
+    }
+    return $null
 }
 
 # ── WSL 更新：已經是 2 以上就不強制更新（#1853：使用者在共用對外 IP 的辦公室實測）──────────
@@ -851,6 +940,23 @@ Write-Info "    自動安裝的步驟中不小心按到，會先問你要不要�
 Write-Info "  自動安裝時點到視窗也沒關係，不會讓安裝暫停。"
 Write-Host ""
 
+# 重新執行同一行安裝指令、而這台電腦已經裝好 AgEnD（不是中斷後的接續，也不是 -Force）：只更新桌面捷徑和它們的腳本，
+# 不碰 WSL、後端、設定，絕不重做已經裝好的東西（#1853，給 agend update 升級上來、沒有捷徑的人）。
+if (-not $Force -and -not (Test-Path $ProgressFile)) {
+    $existing = Find-ExistingAgend
+    if ($existing) {
+        Write-Ok ("這台電腦已經裝好 AgEnD（{0}，使用者 {1}）。不會重新安裝，也不會動到現有的設定。" -f $existing.Distro, $existing.User)
+        $ans = Read-Host "  要更新桌面捷徑嗎？（「AgEnD 儀表板」和「AgEnD 重新啟動」）(Y/n)"
+        if ($ans -notmatch '^\s*[nN]') {
+            $made = @(Install-AgendShortcuts $existing.Distro $existing.User)
+            if ($made.Count -gt 0) { Write-Ok "桌面捷徑已更新" } else { Write-Warn "桌面捷徑沒有建立成功" }
+        } else { Write-Info "沒有改動任何東西。" }
+        Write-Info "要全部重新安裝：先在這個視窗執行 `$env:AGEND_INSTALL_FORCE = '1'，再貼上同一行安裝指令。"
+        Clear-ResumeAtLogon
+        Read-Host "按 Enter 結束"; exit 0
+    }
+}
+
 # 網路檢查
 Write-Info "檢查網路連線..."
 try {
@@ -1232,12 +1338,15 @@ foreach ($b in @($skippedLogins)) {
 Write-Info "  [OK] AgEnD 已安裝並啟動（systemd 服務）"
 Write-Info "  [OK] 通訊軟體已串接"
 Write-Info "  [OK] 開機自動啟動已設定"
-$shortcut = New-DashboardShortcut $UBUNTU_DISTRO
-if ($shortcut) { Write-Info "  [OK] 桌面上已建立「AgEnD 儀表板」捷徑" }
+$shortcuts = @(Install-AgendShortcuts $UBUNTU_DISTRO $AGEND_USER)
+if ($shortcuts.Count -gt 0) { Write-Info "  [OK] 桌面上已建立「AgEnD 儀表板」和「AgEnD 重新啟動」捷徑" }
 Write-Host ""
 Write-Host "  日常使用：" -ForegroundColor Cyan
 Write-Info "    直接在 Discord/Telegram 跟 Bot 對話即可，不需要手動開啟任何程式"
-if ($shortcut) { Write-Info "    要看網頁儀表板：按兩下桌面上的「AgEnD 儀表板」，登入碼會自動帶入" }
+if ($shortcuts.Count -gt 0) {
+    Write-Info "    要看網頁儀表板：按兩下桌面上的「AgEnD 儀表板」，登入碼會自動帶入"
+    Write-Info "    要重新啟動 AgEnD：按兩下「AgEnD 重新啟動」（會先問你）"
+}
 Write-Info "    電腦重開機後 AgEnD 會自己啟動"
 Write-Host ""
 Write-Host "  ── 進階（需要用主控台時才看）──" -ForegroundColor DarkGray
@@ -1257,7 +1366,7 @@ Clear-ResumeAtLogon
 # 最後直接打開儀表板（和桌面捷徑相同的流程）。
 Write-Host ""
 Write-Info "正在打開 AgEnD 網頁儀表板..."
-$null = Invoke-OpenDashboard $UBUNTU_DISTRO
+$null = Invoke-OpenDashboard $UBUNTU_DISTRO $AGEND_USER
 
 Read-Host "按 Enter 結束"
 
