@@ -182,26 +182,32 @@ var lockReaders = require("./install-admission.cjs");
  */
 function openedBy(file, deps) {
   if (deps.openedBy) return deps.openedBy(file);
+  // Only a definite "it is gone" (ENOENT) may be skipped; a permission, I/O or any other error proves nothing (Prism r5:
+  // /proc/<pid>/fd is behind ptrace checks) → unknown, which blocks.
+  var stat = deps.procStat || fs.statSync;
+  var readdir = deps.procReaddir || fs.readdirSync;
+  var gone = function (e) { return e && e.code === "ENOENT"; };
   var st;
-  try { st = fs.statSync(file); } catch (e) { return false; }
+  try { st = stat(file); } catch (e) { return gone(e) ? false : null; }
   if (process.platform === "linux") {
     var pids;
     try { pids = fs.readdirSync("/proc").filter(function (n) { return /^\d+$/.test(n); }); } catch (e) { return null; }
     for (var k = 0; k < pids.length; k++) {
       var owner;
-      try { owner = fs.statSync("/proc/" + pids[k]).uid; } catch (e) { continue; }   // gone meanwhile
+      try { owner = stat("/proc/" + pids[k]).uid; } catch (e) { if (gone(e)) continue; return null; }   // gone meanwhile, or unknown
       if (owner !== st.uid) continue;
       var fds;
-      try { fds = fs.readdirSync("/proc/" + pids[k] + "/fd"); } catch (e) {
-        if (e.code === "ENOENT") continue;
+      try { fds = readdir("/proc/" + pids[k] + "/fd"); } catch (e) {
+        if (gone(e)) continue;
+        if (e.code !== "EACCES") return null;
         var cmdline = null;
-        try { cmdline = fs.readFileSync("/proc/" + pids[k] + "/cmdline", "utf8"); } catch (e2) { if (e2.code === "ENOENT") continue; }
+        try { cmdline = fs.readFileSync("/proc/" + pids[k] + "/cmdline", "utf8"); } catch (e2) { if (gone(e2)) continue; }
         if (cmdline === null || /node|agend/i.test(cmdline)) return null;
         continue;
       }
       for (var f = 0; f < fds.length; f++) {
         var seen;
-        try { seen = fs.statSync("/proc/" + pids[k] + "/fd/" + fds[f]); } catch (e) { continue; }   // closed meanwhile
+        try { seen = stat("/proc/" + pids[k] + "/fd/" + fds[f]); } catch (e) { if (gone(e)) continue; return null; }   // closed meanwhile, or unknown
         if (seen.dev === st.dev && seen.ino === st.ino) return true;
       }
     }
@@ -504,5 +510,5 @@ function main(argv, injected) {
   }
 }
 
-module.exports = { main: main, repair: repair, admit: admit, setStage: setStage, claimMarker: claimMarker, npmIdleFromProcessList: npmIdleFromProcessList, npmCommands: npmCommands, LOCK: LOCK };
+module.exports = { main: main, repair: repair, admit: admit, openedBy: openedBy, setStage: setStage, claimMarker: claimMarker, npmIdleFromProcessList: npmIdleFromProcessList, npmCommands: npmCommands, LOCK: LOCK };
 if (require.main === module) process.exit(main(process.argv.slice(2)));

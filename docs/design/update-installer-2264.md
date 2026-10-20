@@ -41,7 +41,9 @@ npm exec --yes --package @songsid/agend@<target> -- agend-install [--upgrade]
    is proven that no process has it open: their create-then-write holds the file open from `open(wx)` to the write, and
    no one can open it to write it again. Linux: every `/proc/<pid>/fd` of the file owner's processes, matched by device
    and inode (a non-dumpable process — sd-pam, ssh-agent — whose descriptors cannot be read is skipped unless its
-   command line names node or agend, then: unknown); macOS: `lsof`; anything that cannot be told blocks. Checked when
+   command line names node or agend, then: unknown); macOS: `lsof`; anything that cannot be told blocks — only a
+   definite "gone" (ENOENT: the process exited, the descriptor closed) is skipped, never a permission or I/O error
+   (Prism r5: `/proc/<pid>/fd` is behind ptrace checks). Checked when
    judged and again under `.reclaim` right before the move. Age is no evidence (Prism r4: a writer paused a minute
    between open and write is still admitted when it resumes). The prefix
    stays this installer's through the repair, the install, its retry and the rollback; the repair never reads or moves
@@ -180,7 +182,9 @@ Callers:
     `.reclaim` an old updater cannot take over, and afterwards reads the new installer as the live holder; a live or a
     dead reclaim marker refuses; a pid that now belongs to another process is stale; an unreadable lock that a real
     process created with `open(wx)` and still holds is refused however old (its write then lands in the lock it
-    claimed), moved once its writer is gone; "cannot be told" refuses; during repair, every install, the retry and the rollback the prefix is this
+    claimed), moved once its writer is gone; "cannot be told" refuses; EACCES/EIO on the
+    writer's `/proc` entry, a descriptor, its descriptor list or the lock itself → refused (also when only the check
+    under `.reclaim` meets it), EIO on any other process's list → refused; during repair, every install, the retry and the rollback the prefix is this
     installer's and a peer is refused;
   - the service per manager (legacy system unit, user unit, launchd job; running → `install --no-activate` +
     `restart --yes`, stopped → + `start`; hand-started → restart on upgrade only);

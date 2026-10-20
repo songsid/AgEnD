@@ -679,6 +679,62 @@ describe("#2264 review (Prism r3 P1): mixed with updaters from before #2264 — 
     got.release!();
   });
 
+  // Prism r5: /proc/<pid>/fd is behind ptrace checks — only "gone" (ENOENT) may be skipped; anything else is unknown.
+  it.skipIf(process.platform !== "linux")("the writer's /proc entry or one of its descriptors cannot be read (EACCES, EIO): refused, at judgment and under .reclaim — never taken for gone", async () => {
+    const r = unitRig();
+    const writer = spawn(process.execPath, ["-e", `require("fs").openSync(${JSON.stringify(r.lock)}, "wx", 0o600); process.stdout.write("opened\\n"); setTimeout(() => {}, 60000);`], { stdio: ["ignore", "pipe", "ignore"] });
+    await new Promise<void>(resolve => writer.stdout!.once("data", () => resolve()));
+    try {
+      const failing = (match: (p: string) => boolean, code: string) => (p: string) => {
+        if (match(p)) throw Object.assign(new Error(`${code}: injected`), { code });
+        return statSync(p);
+      };
+      const pid = writer.pid!;
+      for (const [what, procStat] of [
+        ["its descriptors, EACCES", failing(p => p.startsWith(`/proc/${pid}/fd/`), "EACCES")],
+        ["its /proc entry, EACCES", failing(p => p === `/proc/${pid}`, "EACCES")],
+        ["its descriptors, EIO", failing(p => p.startsWith(`/proc/${pid}/fd/`), "EIO")],
+        ["the lock itself, EACCES", failing(p => p === r.lock, "EACCES")],
+      ] as const) {
+        expect(installer.admit(r.prefix, { ...realDepsFor(r), procStat }, {}).refuse, what).toMatch(/is being written by another AgEnD install/);
+        expect(existsSync(r.lock), `${what}: the lock stays`).toBe(true);
+      }
+      // Its descriptor list cannot be read: EIO → unknown; EACCES (non-dumpable) on a process whose command line names
+      // node → unknown too (an old updater is a node process).
+      for (const code of ["EIO", "EACCES"]) {
+        const procReaddir = (p: string) => { if (p === `/proc/${pid}/fd`) throw Object.assign(new Error(code), { code }); return readdirSync(p); };
+        expect(installer.admit(r.prefix, { ...realDepsFor(r), procReaddir }, {}).refuse, `descriptor list ${code}`).toMatch(/is being written by another AgEnD install/);
+      }
+    } finally { writer.kill("SIGKILL"); }
+  });
+
+  it.skipIf(process.platform !== "linux")("any process whose descriptor list fails other than by permission (EIO) is unknown, whatever its command line (not only node)", async () => {
+    const r = unitRig();
+    writeFileSync(r.lock, '{"pid":');   // cut short, its writer gone
+    const other = spawn("sleep", ["60"], { stdio: "ignore" });
+    try {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const procReaddir = (p: string) => { if (p === `/proc/${other.pid}/fd`) throw Object.assign(new Error("EIO"), { code: "EIO" }); return readdirSync(p); };
+      expect(installer.admit(r.prefix, { ...realDepsFor(r), procReaddir }, {}).refuse).toMatch(/is being written by another AgEnD install/);
+      expect(readFileSync(r.lock, "utf8")).toBe('{"pid":');
+    } finally { other.kill("SIGKILL"); }
+  });
+
+  it.skipIf(process.platform !== "linux")("the check under .reclaim alone cannot read a live process's descriptors: refused there too, the lock untouched; with every read answered, the same lock is moved", () => {
+    const r = unitRig();
+    writeFileSync(r.lock, '{"pid":');   // cut short, its writer gone: judged stale
+    let underMarker = false;
+    const second = { ...realDepsFor(r), onStep: (step: string) => { if (step === "legacy-reclaimed") underMarker = true; },
+      // This test's own process (alive, the lock owner's uid): its descriptors cannot be read, under the marker only.
+      procStat: (p: string) => { if (underMarker && p.startsWith(`/proc/${process.pid}/fd/`)) throw Object.assign(new Error("EACCES"), { code: "EACCES" }); return statSync(p); } };
+    expect(installer.admit(r.prefix, second, {}).refuse).toMatch(/is being written by another AgEnD install/);
+    expect(underMarker, "it got as far as the marker").toBe(true);
+    expect(readFileSync(r.lock, "utf8")).toBe('{"pid":');
+    const got = installer.admit(r.prefix, realDepsFor(r), {});
+    expect(got.refuse, "control: every read answered → moved").toBeUndefined();
+    got.release!();
+  });
+
   it("whether a cut-short lock is open cannot be told: refused (unknown blocks)", () => {
     const r = unitRig();
     writeFileSync(r.lock, '{"pid":');
