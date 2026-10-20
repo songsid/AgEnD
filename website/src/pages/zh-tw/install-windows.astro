@@ -40,7 +40,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
       <ul class="mt-4 space-y-2 text-sm text-text-secondary">
         <li>• 安裝程式要啟用 WSL，所以 Windows 會詢問一次<b class="text-text-primary">系統管理員</b>權限。選「是」之後，安裝程式會在新視窗裡執行。如果你開的已經是系統管理員 PowerShell，就直接在原視窗執行。</li>
         <li>• <code class="font-mono text-accent">-ExecutionPolicy ByPass</code> 只對這一個指令有效，不會改動你的執行原則，也不需要解除封鎖檔案。</li>
-        <li>• <b class="text-text-primary">如果要求重新開機</b>，重開之後再貼上同一行指令，就會從中斷處繼續。</li>
+        <li>• <b class="text-text-primary">如果要求重新開機</b>，按 Enter 就好：重新登入 Windows 後，安裝會自己繼續（Windows 會先問一次，請選「是」）。如果沒有自動繼續，再貼上同一行指令，就會從中斷處繼續。</li>
         <li>• 每個比較久的步驟都會顯示已經過多久、通常需要多久，下面還有那個工具自己的進度。</li>
         <li>• <b class="text-text-primary">請不要按 Ctrl+C</b>：在那個視窗裡，它是「停止程式」，不是「複製」（自動安裝的步驟中按到，會先問你）。要複製，用滑鼠選取文字再按右鍵；要貼上，按右鍵。</li>
       </ul>
@@ -83,7 +83,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
     </p>
     <div class="mb-14 rounded-xl border border-border bg-surface p-6">
       <ol class="space-y-3 text-sm text-text-secondary">
-        <li><b class="text-text-primary">[1/5] 安裝 WSL 2 + Ubuntu</b> —— 選擇 Linux 版本（預設 Ubuntu-24.04）與安裝磁碟（選你的 SSD）。可能需要重開機一次；重開後再貼上同一行指令（或再執行一次腳本）即可自動接續。</li>
+        <li><b class="text-text-primary">[1/5] 安裝 WSL 2 + Ubuntu</b> —— 不用選：系統碟有 20 GB 以上可用空間就裝在系統碟（否則裝在可用空間最大的本機磁碟），安裝 Ubuntu-24.04，並顯示裝在哪裡。如果電腦裡已經有 Ubuntu，會先說明會改動什麼並詢問你（預設不改）。可能需要重開機一次；重新登入後會自動從中斷處繼續。</li>
         <li><b class="text-text-primary">[2/5] 安裝 AI 後端（可多選）</b> —— 用逗號分隔選擇一個以上（直接 Enter 只裝 Kiro CLI）：
           <ol class="mt-2 ml-4 space-y-1 list-decimal list-inside text-text-secondary/90">
             <li>Kiro CLI（免費，需 AWS Builder ID / GitHub / Google）</li>

@@ -34,6 +34,67 @@ function Stage-Done($stage) {
 }
 function Mark-Stage($stage) { Add-Content -Path $ProgressFile -Value "STAGE_${stage}_DONE" }
 
+# ── 重新開機後自動接續、自動選擇（#1853：使用者核准的第 ② 步）──────────────
+# 需要重新開機時，登記一個「登入後執行一次」（HKCU RunOnce）：登入後自動再跑同一行安裝指令，從中斷處繼續。
+# 每次安裝程式一開始就先清掉它，只在要重新開機前才登記，所以完成或失敗都不會留下舊的登記。Windows 執行它之前也會先刪掉它。
+# 接續一律用一行指令（它會請你同意一次系統管理員權限），不帶 -Force：接續只是繼續，不是重來。
+$RESUME_KEY = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce'
+$RESUME_NAME = 'AgEnDInstallResume'
+$RESUME_COMMAND = 'powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"'
+function Register-ResumeAtLogon {
+    try {
+        if (-not (Test-Path $RESUME_KEY)) { New-Item -Path $RESUME_KEY -Force | Out-Null }
+        Set-ItemProperty -Path $RESUME_KEY -Name $RESUME_NAME -Value $RESUME_COMMAND
+        return $true
+    } catch { return $false }
+}
+function Clear-ResumeAtLogon {
+    try { Remove-ItemProperty -Path $RESUME_KEY -Name $RESUME_NAME -ErrorAction Stop } catch { }
+}
+# 要重新開機時：登記接續，說明會發生什麼，問一次要不要現在重開。
+function Request-Reboot([string]$why) {
+    Write-Warn $why
+    $registered = Register-ResumeAtLogon
+    if ($registered) {
+        Write-Info "重新開機並登入 Windows 後，安裝會自動繼續（會先跳出一個 Windows 確認視窗，請選「是」）。"
+    } else {
+        Write-Info "重新開機後，請再執行一次同一行安裝指令，會從中斷處繼續。"
+    }
+    $reboot = Read-Host "  按 Enter 立刻重新開機；輸入 n 再按 Enter 先不重開"
+    if ($reboot -notmatch '^\s*[nN]') { Restart-Computer -Force }
+    if ($registered) { Write-Info "好的。之後你自己重新開機，登入後一樣會自動繼續。" }
+    exit 0
+}
+
+# 安裝位置：系統碟有 20 GB 以上就用它（通常是 SSD），否則用可用空間最大、至少 5 GB 的本機磁碟。$disks 的每一項有 Root 和 Free。
+function Select-InstallDrive($disks, [string]$systemDrive) {
+    $sys = @($disks | Where-Object { $_.Root -ieq $systemDrive }) | Select-Object -First 1
+    if ($sys -and $sys.Free -ge 20GB) { return $sys }
+    return (@($disks | Where-Object { $_.Free -ge 5GB } | Sort-Object -Property Free -Descending) | Select-Object -First 1)
+}
+function Get-LocalDisks {
+    try {
+        return @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop | ForEach-Object { [PSCustomObject]@{ Root = ($_.DeviceID + '\'); Free = [double]$_.FreeSpace } })
+    } catch {
+        return @(Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free } | ForEach-Object { [PSCustomObject]@{ Root = $_.Root; Free = [double]$_.Free } })
+    }
+}
+
+# 以 root 確認 WSL 能用；不行就整個重新啟動 WSL（wsl --shutdown）再試，最多三次。不開 Ubuntu 的設定視窗：
+# 那個視窗會要你建立 Linux 使用者和密碼（輸入密碼時畫面不顯示任何字），而我們本來就以 root 執行。
+function Wait-WslRoot([string]$distro, [int]$tries = 3, [int]$pauseSeconds = 5) {
+    for ($i = 1; $i -le $tries; $i++) {
+        $r = wsl -d $distro -u root -- echo "WSL_OK" 2>&1 | Out-String
+        if ($r -match "WSL_OK") { return $true }
+        if ($i -lt $tries) {
+            Write-Info "WSL 還沒準備好，重新啟動 WSL 後再試一次（$i/$($tries - 1)）..."
+            wsl --shutdown 2>&1 | Out-Null
+            Start-Sleep -Seconds $pauseSeconds
+        }
+    }
+    return $false
+}
+
 # ── 在瀏覽器裡設定（#1853：取代主控台裡的 agend quickstart）─────────────
 # agend setup 在 WSL 裡開一個設定頁，印出網址和設定碼。安裝程式讀到這兩行，就在 Windows 的瀏覽器打開網址、
 # 把設定碼放進剪貼簿並放大顯示；使用者在網頁上選 Discord 或 Telegram、貼上 Bot Token，不必在這個視窗打字。
@@ -458,7 +519,13 @@ try {
     Read-Host "按 Enter 結束"; exit 1
 }
 
+# 這一次已經在執行：重新開機後的自動接續（如果有登記）已經用掉或不再需要。
+Clear-ResumeAtLogon
+
 if ((Test-Path $ProgressFile) -and -not $Force) {
+    # 上次選定的 Linux（例如沿用已經裝好的 Ubuntu-22.04）：接續時沿用，不要回到預設。
+    $savedDistro = [regex]::Match((Get-Content $ProgressFile -Raw), "DISTRO=(\S+)")
+    if ($savedDistro.Success) { $UBUNTU_DISTRO = $savedDistro.Groups[1].Value }
     Write-Warn "偵測到上次安裝進度，將從中斷處繼續"
     Write-Info "如需全部重新安裝：用一行指令安裝的，先執行 `$env:AGEND_INSTALL_FORCE = '1'，再貼上同一行指令；直接執行腳本的，請執行 .\install-agend.ps1 -Force"
     Write-Host ""
@@ -492,12 +559,8 @@ if (Stage-Done 1) {
         $null = Invoke-Watched -Label "啟用虛擬機器平台" -Usually "通常需要 1–3 分鐘" -UpperMinutes 5 -Encoding oem -File "dism.exe" -Arguments @("/online", "/enable-feature", "/featurename:VirtualMachinePlatform", "/all", "/norestart")
         Write-Ok "WSL 功能已啟用"
 
-        Write-Warn "WSL 功能剛啟用，需要重新開機才能繼續"
         Mark-Stage "1a"
-        $reboot = Read-Host "  是否現在重新開機？(Y/n)"
-        if ($reboot -ne "n" -and $reboot -ne "N") { Restart-Computer -Force }
-        Write-Info "請手動重新開機後，再次執行同一行安裝指令（或此腳本），會從中斷處繼續"
-        exit 0
+        Request-Reboot "WSL 功能剛啟用，需要重新開機才能繼續"
     } else {
         Write-Ok "WSL 功能已啟用"
     }
@@ -524,9 +587,7 @@ if (Stage-Done 1) {
                 if ($msiCode -eq 0) {
                     Write-Ok "WSL $($release.tag_name) 已從 GitHub 安裝"
                 } elseif ($msiCode -eq 3010) {
-                    Write-Warn "WSL 已安裝但需要重新開機才能生效"
-                    Write-Info "請重新開機後，再次執行同一行安裝指令（或此腳本），會從中斷處繼續"
-                    Read-Host "按 Enter 結束"; exit 0
+                    Request-Reboot "WSL 已安裝，需要重新開機才能生效"
                 } else {
                     Write-Err "MSI 安裝失敗 (exit code: $msiCode)"
                     Write-Info "請手動到 https://github.com/microsoft/WSL/releases 下載 .msi 安裝"
@@ -546,12 +607,8 @@ if (Stage-Done 1) {
         # 驗證安裝
         $verifyVer = wsl --version 2>&1 | Out-String
         if ($LASTEXITCODE -ne 0) {
-            Write-Warn "WSL 安裝完成但 wsl --version 仍失敗，可能需要重新開機"
             Mark-Stage "1b"
-            $reboot = Read-Host "  是否現在重新開機？(Y/n)"
-            if ($reboot -ne "n" -and $reboot -ne "N") { Restart-Computer -Force }
-            Write-Info "請手動重新開機後，再次執行同一行安裝指令（或此腳本），會從中斷處繼續"
-            exit 0
+            Request-Reboot "WSL 安裝完成，但還需要重新開機才能使用"
         }
     } else {
         Write-Ok "WSL 核心已更新"
@@ -574,71 +631,28 @@ if (Stage-Done 1) {
     }
 
     if ($distroInstalled) {
-        Write-Ok "偵測到已安裝: $installedDistroName"
-        Write-Warn "此腳本將設定 $installedDistroName 為 root 模式（systemd + 關閉 Windows PATH）"
-        $cont = Read-Host "  是否繼續？(Y/n)"
-        if ($cont -eq "n" -or $cont -eq "N") {
-            Write-Info "已取消。如需安裝到獨立環境，請手動移除現有 distro 後重試"
+        Write-Ok "這台電腦已經有 $installedDistroName。"
+        Write-Warn "要用它繼續的話，安裝程式會修改它的設定：開啟 systemd、預設以 root 登入、不再把 Windows 的 PATH 帶進 Linux。"
+        Write-Warn "裡面的檔案不會被刪除，但你在這個 $installedDistroName 裡原本的使用習慣（預設使用者、PATH）會改變。"
+        $cont = Read-Host "  要用這個 $installedDistroName 繼續嗎？輸入 y 再按 Enter 繼續；直接按 Enter 就不動它、結束安裝 (y/N)"
+        if ($cont -notmatch '^\s*[yY]') {
+            Write-Info "已取消，沒有改動任何東西。"
+            Write-Info "如果想讓 AgEnD 用獨立的環境：先移除或改名現有的 $installedDistroName，再執行同一行安裝指令。"
             Read-Host "按 Enter 結束"; exit 0
         }
         $UBUNTU_DISTRO = $installedDistroName
     } else {
-        # 查詢可用清單
-        Write-Info "正在查詢可用的 Linux 版本..."
-        $onlineRaw = wsl --list --online 2>&1
-
-        $ubuntuOptions = @()
-        foreach ($line in $onlineRaw) {
-            $lineStr = $line.ToString().Trim()
-            if ($lineStr -match "^(Ubuntu\S*)\s") {
-                $ubuntuOptions += $Matches[1]
-            }
+        # 自動選擇：Linux 版本固定（$UBUNTU_DISTRO），安裝位置見 Select-InstallDrive。不必再輸入數字。
+        $disk = Select-InstallDrive (Get-LocalDisks) ($env:SystemDrive + '\')
+        if (-not $disk) {
+            Write-Err "找不到可用空間 5 GB 以上的本機磁碟，無法安裝 Linux"
+            Write-Info "請先清出一些空間，再執行同一行安裝指令"
+            Read-Host "按 Enter 結束"; exit 1
         }
-
-        if ($ubuntuOptions.Count -eq 0) {
-            Write-Warn "無法自動解析版本清單，提供預設選項："
-            $ubuntuOptions = @("Ubuntu-24.04", "Ubuntu-22.04", "Ubuntu")
-        }
-
+        $wslPath = "$($disk.Root)WSL\Ubuntu"
+        Write-Ok "Linux 版本：$UBUNTU_DISTRO"
+        Write-Ok ("安裝位置：{0}（可用 {1} GB）" -f $wslPath, [math]::Round($disk.Free / 1GB, 1))
         Write-Host ""
-        Write-Info "請選擇要安裝的 Linux 版本："
-        Write-Host ""
-        for ($i = 0; $i -lt $ubuntuOptions.Count; $i++) {
-            $rec = if ($i -eq 0) { "（推薦）" } else { "" }
-            Write-Info "  [$($i+1)] $($ubuntuOptions[$i]) $rec"
-        }
-        Write-Host ""
-        $distroChoice = Read-Host "  請輸入數字 (預設 1)"
-        if ([string]::IsNullOrEmpty($distroChoice)) { $distroChoice = "1" }
-        $UBUNTU_DISTRO = $ubuntuOptions[[int]$distroChoice - 1]
-        Write-Ok "選擇安裝: $UBUNTU_DISTRO"
-
-        # 選擇安裝磁碟槽
-        Write-Host ""
-        Write-Info "請選擇 WSL 安裝位置（建議選擇 SSD 磁碟）："
-        Write-Host ""
-        $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free -gt 5GB }
-        $i = 1; $driveOptions = @()
-        foreach ($d in $drives) {
-            $freeGB = [math]::Round($d.Free / 1GB, 1)
-            Write-Info "  [$i] $($d.Root) (可用空間: ${freeGB} GB)"
-            $driveOptions += $d.Root; $i++
-        }
-        Write-Host ""
-        $choice = Read-Host "  請輸入數字選擇 (預設 1)"
-        if ([string]::IsNullOrEmpty($choice)) { $choice = "1" }
-        $selectedDrive = $driveOptions[[int]$choice - 1]
-        $wslPath = "${selectedDrive}WSL\Ubuntu"
-        Write-Info "WSL 將安裝到: $wslPath"
-        Write-Host ""
-
-        # 安裝提示
-        Write-Warn "═══════════════════════════════════════════════════════"
-        Write-Warn "  即將開始安裝 $UBUNTU_DISTRO"
-        Write-Warn "  下載可能需要 3-10 分鐘，請耐心等待"
-        Write-Warn "═══════════════════════════════════════════════════════"
-        Write-Host ""
-        Read-Host "  了解了嗎？按 Enter 開始安裝"
 
         # 安裝
         Write-Info "正在安裝 $UBUNTU_DISTRO，請不要關閉視窗..."
@@ -647,57 +661,30 @@ if (Stage-Done 1) {
         # 驗證
         Write-Info "正在驗證安裝結果..."
         Start-Sleep -Seconds 3
-        $verifyResult = wsl -d $UBUNTU_DISTRO -u root -- echo "WSL_OK" 2>&1 | Out-String
-
-        if ($verifyResult -match "WSL_OK") {
+        if (Wait-WslRoot $UBUNTU_DISTRO) {
             Write-Ok "$UBUNTU_DISTRO 安裝完成"
         } else {
-            Write-Info "嘗試初始化 $UBUNTU_DISTRO..."
-            $proc = Start-Process "wsl.exe" -ArgumentList "-d",$UBUNTU_DISTRO -PassThru
-            Write-Info "如果出現設定畫面，請完成後輸入 exit"
-            $proc.WaitForExit()
-            Start-Sleep -Seconds 2
-
-            $verifyResult2 = wsl -d $UBUNTU_DISTRO -u root -- echo "WSL_OK" 2>&1 | Out-String
-            if ($verifyResult2 -match "WSL_OK") {
-                Write-Ok "$UBUNTU_DISTRO 安裝完成"
-            } else {
-                Write-Err "Ubuntu 安裝失敗！"
-                Write-Info "可能原因："
-                Write-Info "  - 需要重新開機（請重開機後再執行腳本）"
-                Write-Info "  - 網路問題（無法下載 Ubuntu）"
-                Write-Info "  - Windows 版本太舊（需要 Win10 2004 以上或 Win11）"
-                Read-Host "按 Enter 結束"; exit 1
-            }
+            Write-Err "Ubuntu 安裝失敗！"
+            Write-Info "可能原因："
+            Write-Info "  - 需要重新開機（請重開機後再執行同一行安裝指令）"
+            Write-Info "  - 網路問題（無法下載 Ubuntu）"
+            Write-Info "  - Windows 版本太舊（需要 Win10 2004 以上或 Win11）"
+            Read-Host "按 Enter 結束"; exit 1
         }
     }
 
+    Add-Content -Path $ProgressFile -Value "DISTRO=$UBUNTU_DISTRO"
     Mark-Stage 1
 }
 
 # ── 階段 1.5: WSL 環境防護 ────────────────────
 
 # 確認 WSL 可以正常執行
-$wslReady = $false
-$testOutput = wsl -d $UBUNTU_DISTRO -u root -- echo "ready" 2>&1 | Out-String
-if ($testOutput -match "ready") { $wslReady = $true }
-
-if (-not $wslReady) {
-    Write-Warn "WSL 尚未就緒，開啟設定視窗..."
-    Write-Warn "如果出現設定畫面，請完成後輸入 exit"
-    $proc = Start-Process "wsl.exe" -ArgumentList "-d",$UBUNTU_DISTRO -PassThru
-    $proc.WaitForExit()
-    Start-Sleep -Seconds 2
-
-    $testOutput2 = wsl -d $UBUNTU_DISTRO -u root -- echo "ready" 2>&1 | Out-String
-    if ($testOutput2 -match "ready") {
-        Write-Ok "WSL 已就緒"
-    } else {
-        Write-Err "WSL 無法正常執行，請重新開機後再試"
-        Read-Host "按 Enter 結束"; exit 1
-    }
-} else {
+if (Wait-WslRoot $UBUNTU_DISTRO) {
     Write-Ok "WSL 已就緒"
+} else {
+    Write-Err "WSL 無法正常執行，請重新開機後再執行同一行安裝指令"
+    Read-Host "按 Enter 結束"; exit 1
 }
 
 # 防護：設定 wsl.conf（systemd + 關閉 Windows PATH + 預設 root）
@@ -997,8 +984,9 @@ Write-Info "    - 手動重新啟動：wsl -d $UBUNTU_DISTRO -u root -- bash -lc
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Green
 
-# 清除進度檔
+# 清除進度檔與自動接續的登記
 Remove-Item $ProgressFile -Force -ErrorAction SilentlyContinue
+Clear-ResumeAtLogon
 
 Read-Host "按 Enter 結束"
 

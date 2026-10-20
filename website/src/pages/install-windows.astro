@@ -39,7 +39,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
       <ul class="mt-4 space-y-2 text-sm text-text-secondary">
         <li>• Windows asks once for <b class="text-text-primary">Administrator</b> approval, because the installer enables WSL. Choose <i>Yes</i>: the installer opens in a new window. Already in an Administrator PowerShell? It runs right there.</li>
         <li>• <code class="font-mono text-accent">-ExecutionPolicy ByPass</code> applies to that one command only. Your execution policy is not changed, and there is no file to unblock.</li>
-        <li>• <b class="text-text-primary">If it asks you to restart Windows</b>, restart, then paste the same line again: it resumes where it stopped.</li>
+        <li>• <b class="text-text-primary">If it asks you to restart Windows</b>, press Enter: after you log back in, the install carries on by itself (Windows asks once for approval; choose <i>Yes</i>). If it doesn't, paste the same line again: it resumes where it stopped.</li>
         <li>• Every long step shows how long it has been running and how long it usually takes, with the tool's own progress under it.</li>
         <li>• <b class="text-text-primary">Don't press Ctrl+C</b> in that window: there it stops the program, it doesn't copy. (During an automatic step it asks first.) To copy, select the text with the mouse and right-click; to paste, right-click.</li>
       </ul>
@@ -83,7 +83,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
     </p>
     <div class="mb-14 rounded-xl border border-border bg-surface p-6">
       <ol class="space-y-3 text-sm text-text-secondary">
-        <li><b class="text-text-primary">[1/5] Install WSL 2 + Ubuntu</b> — pick a Linux version (default: Ubuntu-24.04) and an install drive (choose your SSD). A reboot may be required; afterwards, paste the same line again (or run the script again) and it continues where it left off.</li>
+        <li><b class="text-text-primary">[1/5] Install WSL 2 + Ubuntu</b> — nothing to choose: it installs Ubuntu-24.04 on your system drive when it has 20 GB free (otherwise on the local disk with the most room) and shows where. If you already have Ubuntu, it says what it would change and asks first (the default is no). A reboot may be required; after you log back in, it continues where it left off.</li>
         <li><b class="text-text-primary">[2/5] Install AI backend(s)</b> — pick one or more (comma-separated; just press Enter for Kiro CLI only):
           <ol class="mt-2 ml-4 space-y-1 list-decimal list-inside text-text-secondary/90">
             <li>Kiro CLI (free — AWS Builder ID / GitHub / Google)</li>

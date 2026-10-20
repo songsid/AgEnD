@@ -9,7 +9,8 @@
 # one UAC prompt opens it in a new window. -ExecutionPolicy Bypass applies to that one process; the execution policy
 # you have set is never changed.
 #
-# After the reboot WSL asks for, paste the same line again: the installer resumes where it stopped.
+# After the reboot WSL asks for, the installer carries on by itself once you log back in (a one-time RunOnce entry
+# runs this same line); if it does not, paste the same line again: it resumes where it stopped.
 # To run every stage again (install-agend.ps1 -Force), set this first, in the same PowerShell window:
 #   $env:AGEND_INSTALL_FORCE = '1'
 & {
