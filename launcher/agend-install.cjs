@@ -88,32 +88,43 @@ function setStage(home, claimed, stage, details, deps) {
  * Is npm provably idle on this host — is no npm process changing installed packages? Only an npm that installs,
  * uninstalls, updates, links or rebuilds can be reifying this prefix. `npm exec` (this installer's own ancestor; AgEnD
  * fleets run their MCP servers that way, for hours), `npm view`, `npm run` cannot, so they do not count. npm rewrites its
- * process title to `npm <command> <args>` without its flags, but argv as started shows them: a flag's value is skipped
- * (`npm --prefix /x install`), and an npm whose command cannot be told for sure counts as busy. A process list that
- * cannot be read (ps failed, a row that does not parse, this process missing from it) is not idle (#2264 review).
+ * process title to `npm <command> <args>` without its flags, but argv as started shows them, and a flag is read the way
+ * npm reads it (Prism r2): one that takes a value consumes the next word whatever it is (`npm --prefix run install` is an
+ * install); one that takes none consumes nothing; an unknown one may be either, and both readings are kept. The npm
+ * counts as idle only if every reading's command is one that cannot reify; an unknown word as the command is busy. A
+ * process list that cannot be read (ps failed, a row that does not parse, this process missing from it) is not idle.
  */
 var NPM_CHANGES = /^(?:install|i|in|ins|inst|insta|instal|isnt|isnta|isntal|isntall|add|uninstall|un|unlink|remove|rm|r|update|up|upgrade|udpate|link|ln|ci|clean-install|install-clean|ic|isntall-clean|install-ci-test|cit|install-test|it|dedupe|ddp|find-dupes|prune|rebuild|rb)$/;
 var NPM_READS = /^(?:exec|x|access|adduser|add-user|login|logout|audit|bugs|issues|cache|completion|config|c|get|set|deprecate|diff|dist-tag|dist-tags|docs|home|doctor|edit|explain|why|explore|fund|help|help-search|hook|init|create|innit|ls|list|la|ll|org|ogr|outdated|owner|author|pack|ping|pkg|prefix|profile|publish|query|repo|restart|root|run|run-script|rum|urn|sbom|search|find|s|se|shrinkwrap|star|stars|start|stop|team|test|tst|t|token|unpublish|unstar|version|verison|view|v|info|show|whoami)$/;
+// npm's flags that take a value (npm 10 config definitions) and the common ones that take none.
+var NPM_VALUE_FLAGS = /^(?:--(?:prefix|userconfig|globalconfig|cache|registry|loglevel|workspace|tag|otp|package|call|omit|include|before|access|scope|script-shell|shell|node-options|location|install-strategy|depth|auth-type|cafile|cert|key|proxy|https-proxy|noproxy|local-address|fetch-retries|fetch-timeout|maxsockets|user-agent|editor|browser|viewer|init-module|tag-version-prefix|preid|message|logs-dir|logs-max|replace-registry-host|cidr|expect-results|expect-result-count|sbom-format|sbom-type|lockfile-version|os|cpu|libc)|-w|-C|-c|-m)$/;
+var NPM_BOOLEAN_FLAGS = /^(?:-g|-y|-f|-s|-q|-d|-dd|-ddd|-S|-D|-O|-E|-B|-P|-l|-a|-h|-H|-v|--(?:no-[a-z0-9-]+|global|yes|force|silent|quiet|dry-run|json|offline|prefer-offline|prefer-online|ignore-scripts|foreground-scripts|legacy-peer-deps|strict-peer-deps|package-lock-only|save|save-dev|save-optional|save-exact|save-prod|save-peer|save-bundle|global-style|install-links|link|verbose|long|parseable|audit|fund|workspaces|include-workspace-root|if-present|production|usage|help|version|all|unicode|progress|update-notifier|bin-links|rebuild-bundle|engine-strict|prefer-dedupe|read-only|provenance|timing|umask))$/;
 function isNpmCommand(word) { return NPM_CHANGES.test(word) || NPM_READS.test(word); }
-function npmCommand(args) {
-  var words = args.split(/\s+/);
+function npmCommands(args) {
+  var words = args.split(/\s+/).filter(function (w) { return w !== ""; });
   var at = -1;
   for (var k = 0; k < words.length && k < 3; k++) {
     if (/(?:^|\/)(?:npm|npx)$/.test(words[k]) || /(?:^|\/)(?:npm|npx)-cli\.js$/.test(words[k])) { at = k; break; }
   }
   if (at < 0) return null;
-  if (/npx(?:-cli\.js)?$/.test(words[at])) return "exec";
-  for (var w = at + 1; w < words.length; w++) {
-    var word = words[w];
-    if (!word) continue;
-    if (word.charAt(0) === "-") {
-      // `--flag value`: the next word is its value unless it is itself a command (`--global install`).
-      if (word.indexOf("=") < 0 && w + 1 < words.length && words[w + 1].charAt(0) !== "-" && !isNpmCommand(words[w + 1])) w++;
-      continue;
+  if (/npx(?:-cli\.js)?$/.test(words[at])) return ["exec"];
+  // Every command this argv can mean: `pending` = the next word may be an unknown flag's value.
+  var readings = function (from, pending) {
+    for (var w = from; w < words.length; w++) {
+      var word = words[w];
+      if (word.charAt(0) === "-") {
+        if (word.indexOf("=") >= 0 || NPM_BOOLEAN_FLAGS.test(word)) { pending = false; continue; }
+        if (NPM_VALUE_FLAGS.test(word)) { w++; pending = false; continue; }   // its value, whatever it says
+        pending = true;   // unknown: a value may follow, or not
+        continue;
+      }
+      var asCommand = isNpmCommand(word) ? [word] : ["?"];
+      return pending ? asCommand.concat(readings(w + 1, false)) : asCommand;
     }
-    return isNpmCommand(word) ? word : "?";
-  }
-  return "?";
+    return pending ? [] : ["?"];
+  };
+  var all = readings(at + 1, false);
+  return all.length ? all : ["?"];
 }
 function npmIdleFromProcessList(output, ownPid) {
   var rows = String(output).trim().split("\n").map(function (line) {
@@ -123,8 +134,8 @@ function npmIdleFromProcessList(output, ownPid) {
   if (!rows.length || rows.some(function (row) { return !row; })) return false;
   if (!rows.some(function (row) { return row.pid === ownPid; })) return false;
   return !rows.some(function (row) {
-    var command = npmCommand(row.args);
-    return command !== null && !NPM_READS.test(command);
+    var commands = npmCommands(row.args);
+    return commands !== null && !commands.every(function (c) { return NPM_READS.test(c); });
   });
 }
 function npmIdle(deps) {
@@ -133,10 +144,10 @@ function npmIdle(deps) {
 }
 
 /** Move a leftover into `<prefix>/.agend-quarantine/<time>-<pid>/` — kept as evidence, never deleted here. */
-function quarantine(prefix, source, deps) {
+function quarantine(prefix, source, deps, name) {
   var dir = path.join(prefix, ".agend-quarantine", new Date(deps.now()).toISOString().replace(/[:.]/g, "-") + "-" + deps.pid);
   fs.mkdirSync(dir, { recursive: true });
-  var to = path.join(dir, path.basename(source));
+  var to = path.join(dir, name || path.basename(source));
   fs.renameSync(source, to);
   return to;
 }
@@ -150,67 +161,86 @@ function createWhole(file, text, deps) {
 }
 
 /**
- * Move a lock whose holder is gone out of the way, without ever moving one a live installer took since it was judged.
- * Takers go one at a time (a `.takeover` claim held for a few milliseconds); under it, the lock is re-read, and only the
- * very bytes that were judged stale are moved. A `.takeover` left by a killed taker is itself replaced the same way:
- * moved aside, compared, and put back if it was not the one judged.
+ * Move `file` into quarantine only if it still holds the bytes judged stale: renamed aside under a name of this
+ * installer's own, compared, and put back (link: never over a newer one) if it was not the one judged. Used only for the
+ * lock of updaters from before #2264 (below), never between two of these installers.
  */
-function takeOver(prefix, file, judged, deps) {
-  var gate = file + ".takeover";
-  var mine = JSON.stringify({ pid: deps.pid, createdAt: new Date(deps.now()).toISOString() });
-  if (!createWhole(gate, mine, deps)) {
-    var held = readText(gate);
-    var holder = null;
-    try { holder = JSON.parse(held); } catch (e) { holder = null; }
-    if (held === null || (holder && typeof holder.pid === "number" && deps.alive(holder.pid))) return "busy";
-    if (!moveIfUnchanged(prefix, gate, held, deps) || !createWhole(gate, mine, deps)) return "busy";
-  }
-  try {
-    if (deps.onStep) deps.onStep("takeover");
-    var now = readText(file);
-    if (now === null) return "gone";
-    if (now !== judged) return "changed";
-    quarantine(prefix, file, deps);
-    return "taken";
-  } finally {
-    if (readText(gate) === mine) { try { fs.unlinkSync(gate); } catch (e) { /* gone */ } }
-  }
-}
 function moveIfUnchanged(prefix, file, judged, deps) {
   var aside = file + ".aside." + deps.pid;
   try { fs.renameSync(file, aside); } catch (e) { return false; }
-  if (readText(aside) === judged) { quarantine(prefix, aside, deps); return true; }
-  try { fs.linkSync(aside, file); } catch (e) { /* a third one claimed it meanwhile: it holds it */ }
+  if (readText(aside) === judged) { quarantine(prefix, aside, deps, path.basename(file)); return true; }
+  try { fs.linkSync(aside, file); } catch (e) { /* another claimed it meanwhile: it holds it */ }
   try { fs.unlinkSync(aside); } catch (e) { /* gone */ }
   return false;
 }
 
+var ENTRIES = ".agend-install.d";
+function holderOf(text) {
+  var holder = null;
+  try { holder = JSON.parse(text); } catch (e) { holder = null; }
+  return holder && typeof holder.pid === "number" ? holder : null;
+}
+
 /**
- * Admission: this installer owns the prefix before anything in it is touched, and keeps it through the repair, the
- * install, its retry and the rollback (#2264 review). A live installer's lock → refuse, nothing changed. One whose
- * writer is gone, or that cannot be read, is moved to quarantine (takeOver) and the prefix claimed. The record appears
- * whole or not at all. Returns { release, notes } or { refuse }.
+ * Admission (#2264 review): this installer owns the prefix before anything in it is touched, and keeps it through the
+ * repair, the install, its retry and the rollback.
+ *
+ * Between these installers it is announce-then-check — nothing of another installer is ever moved to decide it (Prism
+ * r2: a takeover of a shared lock path can always move a newer owner's lock by a stale reader). Each installer writes an
+ * entry of its own, `<prefix>/.agend-install.d/<pid>-<random>` (whole, written aside and linked), and only then lists the
+ * others: one whose writer runs → it withdraws its own entry and refuses (75). Of two that race, at least the later one
+ * sees the earlier's entry, so two are never admitted (both may refuse: run again). An entry whose writer is gone has a
+ * name no one else will ever write, so it is moved to quarantine without a race.
+ *
+ * The admitted installer then also holds `<prefix>/.agend-install.lock`, the lock updaters from before #2264 take: one
+ * of theirs that runs → refuse; one whose writer is gone, or that cannot be read (the user's, cut short), is moved to
+ * quarantine — only these bytes (moveIfUnchanged), and by the one admitted installer alone.
+ * Returns { release, notes } or { refuse }.
  */
 function admit(prefix, deps) {
-  var file = path.join(prefix, LOCK);
+  var dir = path.join(prefix, ENTRIES);
+  var name = deps.pid + "-" + (deps.nonce ? deps.nonce() : require("crypto").randomBytes(8).toString("hex"));
+  var mine = path.join(dir, name);
   var record = JSON.stringify({ pid: deps.pid, by: "agend-install", createdAt: new Date(deps.now()).toISOString() }) + "\n";
   var notes = [];
-  for (var attempt = 0; attempt < 5; attempt++) {
-    if (createWhole(file, record, deps)) {
-      return { notes: notes, release: function () { if (readText(file) === record) { try { fs.unlinkSync(file); } catch (e) { /* gone */ } } } };
-    }
-    var text = readText(file);
-    if (text === null) continue;
-    var holder = null;
-    try { holder = JSON.parse(text); } catch (e) { holder = null; }
-    if (holder && typeof holder.pid === "number" && holder.pid !== deps.pid && deps.alive(holder.pid)) {
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* the create below says */ }
+  if (!createWhole(mine, record, deps)) return { refuse: "cannot write an install entry in " + dir };
+  var withdraw = function () { if (readText(mine) === record) { try { fs.unlinkSync(mine); } catch (e) { /* gone */ } } };
+  if (deps.onStep) deps.onStep("announced");
+  var others = [];
+  try { others = fs.readdirSync(dir).filter(function (n) { return n !== name && !/\.tmp$/.test(n); }); } catch (e) { withdraw(); return { refuse: "cannot list " + dir }; }
+  for (var k = 0; k < others.length; k++) {
+    var holder = holderOf(readText(path.join(dir, others[k])));
+    if (holder && holder.pid !== deps.pid && deps.alive(holder.pid)) {
+      withdraw();
       return { refuse: "another AgEnD install (pid " + holder.pid + ") is running in " + prefix + "; let it finish, then run this again" };
     }
-    var taken = takeOver(prefix, file, text, deps);
-    if (taken === "busy") return { refuse: "another AgEnD install is taking over " + file + " right now; run this again in a moment" };
-    if (taken === "taken") notes.push(holder ? "moved aside an install lock left by pid " + holder.pid + " (no longer running)" : "moved aside an install lock that could not be read");
   }
-  return { refuse: "another AgEnD install keeps claiming " + prefix + "; let it finish, then run this again" };
+  others.forEach(function (n) {
+    // Gone (or written by no installer): its name is its writer's alone.
+    try { quarantine(prefix, path.join(dir, n), deps); notes.push("moved aside an install entry left by an installer that is no longer running"); } catch (e) { /* gone */ }
+  });
+
+  var lock = path.join(prefix, LOCK);
+  for (var attempt = 0; attempt < 3; attempt++) {
+    if (createWhole(lock, record, deps)) {
+      return { notes: notes, release: function () {
+        if (readText(lock) === record) { try { fs.unlinkSync(lock); } catch (e) { /* gone */ } }
+        withdraw();
+      } };
+    }
+    var text = readText(lock);
+    if (text === null) continue;
+    var old = holderOf(text);
+    if (old && old.pid !== deps.pid && deps.alive(old.pid)) {
+      withdraw();
+      return { refuse: "another AgEnD install (pid " + old.pid + ") is running in " + prefix + "; let it finish, then run this again" };
+    }
+    if (deps.onStep) deps.onStep("legacy-judged");
+    if (moveIfUnchanged(prefix, lock, text, deps)) notes.push(old ? "moved aside an install lock left by pid " + old.pid + " (no longer running)" : "moved aside an install lock that could not be read");
+  }
+  withdraw();
+  return { refuse: "another AgEnD install keeps claiming " + lock + "; let it finish, then run this again" };
 }
 
 /**
@@ -385,5 +415,5 @@ function main(argv, injected) {
   }
 }
 
-module.exports = { main: main, repair: repair, admit: admit, setStage: setStage, claimMarker: claimMarker, npmIdleFromProcessList: npmIdleFromProcessList, npmCommand: npmCommand, LOCK: LOCK };
+module.exports = { main: main, repair: repair, admit: admit, setStage: setStage, claimMarker: claimMarker, npmIdleFromProcessList: npmIdleFromProcessList, npmCommands: npmCommands, LOCK: LOCK };
 if (require.main === module) process.exit(main(process.argv.slice(2)));

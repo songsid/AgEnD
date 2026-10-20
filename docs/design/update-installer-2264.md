@@ -24,12 +24,18 @@ npm exec --yes --package @songsid/agend@<target> -- agend-install [--upgrade]
 
 `launcher/agend-install.cjs` (new, ~400 lines, plain Node built-ins, old-Node syntax) is the **only** install logic:
 
-1. **own the prefix first** (Prism r1): before anything in the prefix is touched, the installer claims it — the lock
-   record is written aside and `link()`ed into place (whole or not at all). A live `agend-install` holds it → stop
-   (exit 75), nothing changed. One whose writer is gone, or that cannot be read, is taken over: takers go one at a time
-   (a `.takeover` claim held for milliseconds), and under it the lock is re-read and only the very bytes judged stale are
-   moved — a lock a live installer took since is never moved. The prefix stays this installer's through the repair, the
-   install, its retry and the rollback; the repair never reads or moves a lock;
+1. **own the prefix first** (Prism r1, r2): before anything in the prefix is touched. Between these installers it is
+   announce-then-check, and nothing of another installer is ever moved to decide it (r2: any takeover of one shared
+   lock path can move a newer owner's lock by a reader that judged an older one). Each installer writes an entry of its
+   own, `<prefix>/.agend-install.d/<pid>-<random>` (whole: written aside and linked), then lists the others; one whose
+   writer runs → it withdraws its own entry and refuses (exit 75), nothing changed. Of two that race, the later lister
+   sees the earlier one, so two are never admitted (both may refuse: run again). An entry whose writer is gone has a name
+   no one else will write, so it is moved to quarantine without a race. The admitted installer then also holds
+   `<prefix>/.agend-install.lock`, the lock updaters from before #2264 take: theirs running → refuse; one whose writer
+   is gone or that cannot be read (the user's, cut short) is moved to quarantine — only those bytes (renamed aside under
+   its own name, compared, put back if it was not the one judged), and by the one admitted installer only. The prefix
+   stays this installer's through the repair, the install, its retry and the rollback; the repair never reads or moves
+   a lock;
 2. **repair** npm's leftovers, **only when npm is provably idle** (below): npm's retire sibling `@songsid/.agend-*` is put
    back when it is the only whole copy of AgEnD (`agend` runs again immediately; a partial new package in its place goes
    to quarantine), any other sibling and npm's retired bin links `bin/.agend-*` go to quarantine. **Nothing is deleted**:
@@ -53,8 +59,10 @@ npm exec --yes --package @songsid/agend@<target> -- agend-install [--upgrade]
 **npm is provably idle** (Sentinel's rule from #2267 c284ce9d, refined twice): `ps -A -o pid=,ppid=,args=` shows no npm
 whose command changes installed packages (`install`/`i`/`add`, `uninstall`/`rm`, `update`, `link`, `ci`, `dedupe`,
 `prune`, `rebuild` and their aliases). npm retitles itself `npm <command> <args>` without flags, so `-g` is invisible and
-any such npm counts; argv as started still shows flags, and a flag's value is skipped (`npm --prefix /x install` is an
-install). An npm whose command cannot be told for sure counts as busy. Commands that cannot reify a prefix — `exec`/`npx`,
+any such npm counts. argv as started still shows flags, and a flag is read the way npm reads it (r2): one that takes a
+value consumes the next word whatever it says (`npm --prefix run install` is an install), one that takes none consumes
+nothing, and an unknown one may be either — every reading is kept, and the npm is idle only if every reading's command
+cannot reify. An npm whose command cannot be told for sure counts as busy. Commands that cannot reify a prefix — `exec`/`npx`,
 `view`, `run`, … — are not counted, which is also why this installer's own `npm exec` ancestor needs no exemption (an
 `npm install` ancestor is busy like any other). "Any npm" would have made every real AgEnD host busy: fleets run their
 MCP servers as long-lived `npm exec mcp-remote …`. A process list that cannot be read (ps fails, an unparseable row, our
@@ -152,10 +160,12 @@ Callers:
   - npm idleness: `npm exec` (own ancestor, mcp-remote servers, behind flags with values) idle; any changing npm
     (titled, `node …/npm-cli.js`, behind `--prefix /x`, or an ancestor) busy; a command that cannot be told busy; an
     unreadable process list busy;
-  - Prism r1 interleavings (the installer's logic, npm and `agend` stubbed, a real prefix): a live installer that takes
-    a stale lock over between this one's judgment and its takeover keeps its lock byte for byte (75); during repair,
-    every install, the retry and the rollback the lock is this installer's and a peer is refused; a takeover claim left
-    by a killed taker is replaced, a live one respected;
+  - admission (the installer's logic, npm and `agend` stubbed, a real prefix): two installers in both orders of
+    announce and check — never both admitted, a refused one withdraws only its own entry; **12 real processes** racing
+    for one prefix — no two admissions overlap, every entry withdrawn afterwards; an entry whose writer is gone
+    quarantined; a live pre-#2264 lock refuses; one judged stale and claimed by a running old updater before the move
+    is put back byte for byte (75); during repair, every install, the retry and the rollback the prefix is this
+    installer's and a peer is refused;
   - the service per manager (legacy system unit, user unit, launchd job; running → `install --no-activate` +
     `restart --yes`, stopped → + `start`; hand-started → restart on upgrade only);
   - the marker: a refused installer leaves another update's marker (and an abandoned one) byte for byte, and fails

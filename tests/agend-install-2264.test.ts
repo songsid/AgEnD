@@ -13,7 +13,7 @@
  * npm's retire name is deterministic (`.<name>-` + 8 alphanumerics of sha1(<path>) in base64 — the user's
  * `.agend-RmEK4vIL`), so the sibling left here is exactly the one npm itself collides with.
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -297,13 +297,17 @@ describe("#2264 review: npm is provably idle — no npm that changes packages ru
     expect(npmIdleFromProcessList(ps(own), 300)).toBe(true);
     expect(npmIdleFromProcessList(ps([...own, "400     1 npm exec mcp-remote https://example.invalid/mcp", "401   400 sh -c mcp-remote", "402     1 npm view @songsid/agend version", "403     1 npm run build"]), 300), "a fleet's MCP servers run under npm exec for hours").toBe(true);
     expect(npmIdleFromProcessList(ps([...own, "404     1 node /usr/lib/node_modules/npm/bin/npm-cli.js exec something", "405     1 npx -y mcp-remote x", "406     1 npm --loglevel=silent exec y",
-      "407     1 node /x/npm-cli.js --userconfig /tmp/npmrc exec mcp-remote z"]), 300), "a flag's value is skipped, not taken for the command").toBe(true);
+      "407     1 node /x/npm-cli.js --userconfig /tmp/npmrc exec mcp-remote z", "408     1 npm --loglevel silent exec y", "409     1 npm -y exec z"]), 300), "a flag's value is skipped, not taken for the command").toBe(true);
   });
   it("any npm that installs, uninstalls, updates or links — titled, as `node …/npm-cli.js`, behind flags with values, or an ancestor — is not idle", () => {
     for (const row of ["npm install /tmp/x.tgz", "node /home/u/.nvm/versions/node/v22/bin/npm install -g other", "/usr/bin/node /usr/lib/node_modules/npm/bin/npm-cli.js uninstall -g x",
       "npm i x", "npm update", "npm link", "npm uninstall @songsid/agend",
       // Prism r1: argv as started, before npm retitles itself — a flag's value is not the command.
-      "node /opt/npm/bin/npm-cli.js --userconfig /tmp/npmrc install -g @songsid/agend", "npm --prefix /tmp/prefix install -g @songsid/agend", "npm --global install x"]) {
+      "node /opt/npm/bin/npm-cli.js --userconfig /tmp/npmrc install -g @songsid/agend", "npm --prefix /tmp/prefix install -g @songsid/agend", "npm --global install x",
+      // Prism r2: a flag that takes a value takes the next word whatever it says — even a command's name.
+      "npm --prefix run install -g @songsid/agend", "node /opt/npm/bin/npm-cli.js --userconfig config install -g @songsid/agend",
+      // An unknown flag may or may not take a value: every reading counts.
+      "npm --foo run install", "npm --foo exec mcp-remote"]) {
       expect(npmIdleFromProcessList(ps([...own, `400     1 ${row}`]), 300), row).toBe(false);
     }
     expect(npmIdleFromProcessList(ps([...own.slice(0, 2), "100    50 npm install -g @songsid/agend", ...own.slice(3)]), 300), "an `npm install` ancestor is an install").toBe(false);
@@ -364,16 +368,77 @@ function unitRig(opts: { onInstall?: (n: number) => void; installStatus?: number
 }
 
 describe("#2264 review (Prism r1 P1): the installer owns the prefix before it touches anything, until it is done", () => {
-  it("a stale lock judged, then a live installer claims the prefix before the takeover: its lock is never moved, this one refuses (75)", () => {
+  // Prism r2: admission is announce-then-check — nothing of another installer is moved to decide it.
+  it("two installers racing: whoever lists second sees the first and refuses — never both admitted (both orders)", () => {
+    // A announces; B then announces AND checks (inside A's window): B sees A and refuses; A then sees no live B.
+    const r = unitRig();
+    let b: { refuse?: string; release?: () => void } = {};
+    r.deps.onStep = (step: string) => { if (step === "announced") b = installer.admit(r.prefix, { ...r.deps, pid: 7777, onStep: undefined, alive: (pid: number) => pid === 4242 }); };
+    const a = installer.admit(r.prefix, r.deps);
+    expect(b.refuse, "B listed second").toMatch(/pid 4242/);
+    expect(a.refuse, "A is admitted").toBeUndefined();
+    a.release?.();
+    // Both announced before either checks: A lists first, sees B, and refuses (withdrawing); B, listing after, is admitted.
+    const r2 = unitRig({ live: [7777] });
+    r2.deps.onStep = (step: string) => {
+      if (step === "announced") writeFileSync(join(r2.prefix, ".agend-install.d", "7777-b"), JSON.stringify({ pid: 7777, by: "agend-install" }));
+    };
+    expect(installer.admit(r2.prefix, r2.deps).refuse).toMatch(/pid 7777/);
+    expect(readdirSync(join(r2.prefix, ".agend-install.d")), "A withdrew its own entry, and only its own").toEqual(["7777-b"]);
+    const later = installer.admit(r2.prefix, { ...r2.deps, pid: 7777, onStep: undefined, alive: () => false });
+    expect(later.refuse).toBeUndefined();
+    later.release?.();
+  });
+
+  it("real processes racing for one prefix (12 at once): never two admitted at the same time, and the prefix is free afterwards", () => {
+    const r = unitRig();
+    const driver = join(r.root, "race.cjs");
+    writeFileSync(driver, `const fs = require("fs");
+const inst = require(${JSON.stringify(join(REPO, "launcher", "agend-install.cjs"))});
+const deps = { pid: process.pid, now: Date.now, alive: pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } } };
+const t0 = Date.now(); while (Date.now() < Number(process.argv[3])) {}   // start together
+const got = inst.admit(process.argv[2], deps);
+if (got.release) {
+  const from = process.hrtime.bigint();
+  const until = Date.now() + 150; while (Date.now() < until) {}
+  const to = process.hrtime.bigint();
+  got.release();
+  fs.appendFileSync(process.argv[4], from + " " + to + "\\n");
+}
+`);
+    const log = join(r.root, "admitted.log"); writeFileSync(log, "");
+    const start = Date.now() + 600;
+    const children = Array.from({ length: 12 }, () => spawn(process.execPath, [driver, r.prefix, String(start), log], { stdio: "ignore" }));
+    return Promise.all(children.map(c => new Promise(resolve => c.on("exit", resolve)))).then(() => {
+      const spans = readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => l.split(" ").map(BigInt)).sort((x, y) => (x[0] < y[0] ? -1 : 1));
+      expect(spans.length, "at least one was admitted").toBeGreaterThan(0);
+      for (let k = 1; k < spans.length; k++) expect(spans[k]![0] > spans[k - 1]![1], "no two admissions overlap").toBe(true);
+      expect(readdirSync(join(r.prefix, ".agend-install.d")), "every entry withdrawn").toEqual([]);
+      expect(existsSync(r.lock), "and the lock released").toBe(false);
+    });
+  });
+
+  it("an entry whose writer is gone is moved to quarantine; a live one refuses; a live pre-#2264 lock refuses", () => {
     const r = unitRig({ live: [5555] });
-    writeFileSync(r.lock, '{"pid":');   // cut short: cannot be read
-    const peer = JSON.stringify({ pid: 5555, by: "agend-install", createdAt: "now" }) + "\n";
-    // Between this installer's judgment and its takeover, another installer took the stale lock over and claimed.
-    r.deps.onStep = (step: string) => { if (step === "takeover") writeFileSync(r.lock, peer); };
+    mkdirSync(join(r.prefix, ".agend-install.d"), { recursive: true });
+    writeFileSync(join(r.prefix, ".agend-install.d", "999999-dead"), JSON.stringify({ pid: 999999, by: "agend-install" }));
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(0);
+    expect(r.log.join("\n")).toMatch(/install entry left by an installer that is no longer running/);
+    const live = unitRig({ live: [5555] });
+    writeFileSync(live.lock, JSON.stringify({ pid: 5555, by: "agend update (2.2)" }));
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], live.deps)).toBe(75);
+    expect(live.read(live.lock)).toBe(JSON.stringify({ pid: 5555, by: "agend update (2.2)" }));
+    expect(readdirSync(join(live.prefix, ".agend-install.d")), "withdrawn").toEqual([]);
+  });
+
+  it("a pre-#2264 lock judged stale, then claimed by a running old updater before it is moved: its lock is put back, untouched, and this one refuses", () => {
+    const r = unitRig({ live: [5555] });
+    writeFileSync(r.lock, '{"pid":');
+    const theirs = JSON.stringify({ pid: 5555, by: "agend update (2.2)" });
+    r.deps.onStep = (step: string) => { if (step === "legacy-judged") writeFileSync(r.lock, theirs); };
     expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(75);
-    expect(r.read(r.lock), "the live installer's lock, byte for byte").toBe(peer);
-    expect(r.quarantined()).not.toContain(peer);
-    expect(r.calls, "nothing installed").toEqual([]);
+    expect(r.read(r.lock), "the old updater's lock, byte for byte").toBe(theirs);
+    expect(r.quarantined()).not.toContain(theirs);
   });
 
   it("while it repairs, installs, retries and rolls back, the prefix stays this installer's: its own lock is never moved, and no other installer is admitted", () => {
@@ -413,19 +478,6 @@ describe("#2264 review (Prism r1 P1): the installer owns the prefix before it to
     };
     expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(0);
     expect(peer).toBe("refused");
-  });
-
-  it("a takeover claim left by a killed taker is replaced; a live taker's is respected (refused, nothing moved)", () => {
-    const r = unitRig({ live: [6666] });
-    writeFileSync(r.lock, '{"pid":');
-    writeFileSync(r.lock + ".takeover", JSON.stringify({ pid: 999999 }));
-    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(0);
-    expect(r.read(r.lock + ".takeover")).toBeNull();
-    const busy = unitRig({ live: [6666] });
-    writeFileSync(busy.lock, '{"pid":');
-    writeFileSync(busy.lock + ".takeover", JSON.stringify({ pid: 6666 }));
-    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], busy.deps)).toBe(75);
-    expect(busy.read(busy.lock)).toBe('{"pid":');
   });
 });
 
