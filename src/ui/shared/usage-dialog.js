@@ -39,6 +39,24 @@ function resetText(iso) {
   if (ms <= 0) return tn("usage.reset.soon");
   return usageText("", { key: "usage.reset.in", args: [usageDuration(ms)] });
 }
+/** "14:05" today, "10/19 14:05" another day, in this browser's time: when last known numbers were read, a window reset. */
+export function usageClock(iso, now = Date.now()) {
+  const at = new Date(iso || "");
+  if (Number.isNaN(at.getTime())) return "";
+  const hm = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+  return new Date(now).toDateString() === at.toDateString() ? hm : `${at.getMonth() + 1}/${at.getDate()} ${hm}`;
+}
+/**
+ * A row showing its last known numbers (the live read failed; #2236 follow-up): "已過期 · 快取於 14:05" and, for an expiry
+ * or another failure, what to do on a second line (its full text is the mark's tooltip too). A row from an older
+ * server (no `cachedAt`) says its hint, as before.
+ */
+export function staleNote(p) {
+  if (!p.stale) return null;
+  if (!p.cachedAt || !p.staleCause) return { mark: usageText(p.hint || "", p.hintI18n), detail: "" };
+  const detail = p.staleCause !== "transient" && (p.hint || p.hintI18n) ? usageText(p.hint || "", p.hintI18n) : "";
+  return { mark: usageText("", { key: `usage.stale.${p.staleCause}`, args: [usageClock(p.cachedAt)] }), detail };
+}
 function expiryText(iso) {
   if (!iso) return "";
   const at = new Date(iso), ms = at.getTime() - Date.now();
@@ -48,6 +66,8 @@ function expiryText(iso) {
 export function UsageMetric({ m }) {
   const bar = useRef(null);
   const label = usageText(m.label, m.labelI18n);
+  // Its window has reset since these numbers were read: no number and no bar — an old one is never shown as current.
+  if (m.resetPassed) return html`<div class="u-metric u-reset-since"><div class="u-row"><span class="u-label">${label}</span><span class="u-val">${usageText("", { key: "usage.metric.reset_since", args: [usageClock(m.resetsAt)] })}</span></div></div>`;
   const note = m.note ? usageText(m.note, m.noteI18n) : "";
   const pct = m.type === "percent" ? Math.min(100, Math.max(0, m.used ?? 0)) : 0;
   useLayoutEffect(() => { if (bar.current) bar.current.style.width = `${pct}%`; }, [pct]);   // CSSOM (#1300)
@@ -70,10 +90,13 @@ export function UsageMetric({ m }) {
 /**
  * #2014: a row's title. A credential profile's row (`profile`; its API `name` is "Claude (<profile>)") shows the
  * provider name on the title line beside the plan badge, and the profile on its own full-width muted line under it;
- * the full name is the tooltip, and the dialog shows the profile unclipped. Any other row: its name.
+ * the full name is the tooltip, and the dialog shows the profile unclipped. The default login's row beside profiles
+ * (`defaultLogin`; "Claude (default)", #2236) does the same with "default" in the page's language, never a clipped
+ * "Claude (d…". Any other row: its name.
  */
 export function providerTitle(p) {
   const name = String((p && p.name) || ""), profile = p && typeof p.profile === "string" && p.profile ? p.profile : "";
+  if (!profile && p && p.defaultLogin === true && name.endsWith(" (default)")) return { base: name.slice(0, -" (default)".length), profile: tn("usage.default_login") };
   const suffix = ` (${profile})`;
   return profile && name.endsWith(suffix) ? { base: name.slice(0, -suffix.length), profile } : { base: name, profile };
 }
@@ -145,14 +168,14 @@ export function UsageBody({ owner }) {
   else {
     const providers = ordered(data.providers);
     content = html`${!providers.length ? html`<p class="note">${tn("usage.empty_active")}</p>` : null}
-      ${providers.map((p, i) => html`<section key=${key(p)} class="u-provider">
+      ${providers.map((p, i) => html`<section key=${key(p)} class=${p.stale ? "u-provider is-stale" : "u-provider"}>
         <div class="u-head"><strong title=${p.name}>${providerTitle(p).base}</strong>${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
           <span class="u-order">
             <button type="button" class="icon-btn" disabled=${i === 0} aria-label=${tn("usageMoveUp")} title=${tn("usageMoveUp")} onClick=${() => move(key(p), -1, data.providers)}><${Icon} name="up" size=${14} /></button>
             <button type="button" class="icon-btn" disabled=${i === providers.length - 1} aria-label=${tn("usageMoveDown")} title=${tn("usageMoveDown")} onClick=${() => move(key(p), 1, data.providers)}><${Icon} name="down" size=${14} /></button>
           </span></div>
         ${providerTitle(p).profile ? html`<div class="u-profile" title=${p.name}>${providerTitle(p).profile}</div>` : null}
-        ${p.stale ? html`<p class="note">${usageText(p.hint || "", p.hintI18n)}</p>` : null}
+        ${p.stale ? html`<p class="note u-stale" title=${staleNote(p).detail || null}>${staleNote(p).mark}</p>${staleNote(p).detail ? html`<p class="note u-stale-detail">${staleNote(p).detail}</p>` : null}` : null}
         ${p.status === "error" && !p.transient ? html`<p class="u-err">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`
           : p.status === "error" && p.transient ? html`<p class="note">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`
           : p.status === "no-credentials" ? html`<p class="note">${tn("usage.not_logged_in")}</p>${p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : null}`
