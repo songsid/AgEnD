@@ -33,6 +33,17 @@ function Stage-Done($stage) {
     return $false
 }
 function Mark-Stage($stage) { Add-Content -Path $ProgressFile -Value "STAGE_${stage}_DONE" }
+# 進度檔裡某個鍵最後一次存的值（沒有就 $null）。用最後一筆：同一個鍵可能存過不只一次（#2238 審查）。
+function Get-ProgressValue([string]$key, [string]$pattern = '\S+') {
+    if (-not (Test-Path $ProgressFile)) { return $null }
+    $all = [regex]::Matches((Get-Content $ProgressFile -Raw), "(?m)^$key=($pattern)\s*$")
+    if ($all.Count -eq 0) { return $null }
+    return $all[$all.Count - 1].Groups[1].Value
+}
+# -Force 是全部重來：舊的進度（含上次選的 Linux 與後端）一開始就清掉，之後中斷再接續，讀到的才是這一次的選擇。
+function Start-FreshProgress([bool]$force) {
+    if ($force -and (Test-Path $ProgressFile)) { Remove-Item -LiteralPath $ProgressFile -Force -ErrorAction SilentlyContinue }
+}
 
 # ── 重新開機後自動接續、自動選擇（#1853：使用者核准的第 ② 步）──────────────
 # 需要重新開機時，登記一個「登入後執行一次」（HKCU RunOnce）：登入後自動再跑同一行安裝指令，從中斷處繼續。
@@ -198,8 +209,8 @@ $BACKEND_PATH = 'export PATH=/root/.local/bin:$HOME/.claude/local:$PATH'
 function Save-Backends($csv) { Add-Content -Path $ProgressFile -Value "BACKENDS=$csv" }
 function Get-SavedBackends {
     if (Test-Path $ProgressFile) {
-        $m = [regex]::Match((Get-Content $ProgressFile -Raw), "BACKENDS=([\d,]+)")
-        if ($m.Success) { return $m.Groups[1].Value }
+        $saved = Get-ProgressValue 'BACKENDS' '[\d,]+'
+        if ($saved) { return $saved }
     }
     return "1"  # 向後相容：預設 Kiro CLI
 }
@@ -521,11 +532,12 @@ try {
 
 # 這一次已經在執行：重新開機後的自動接續（如果有登記）已經用掉或不再需要。
 Clear-ResumeAtLogon
+Start-FreshProgress $Force.IsPresent
 
 if ((Test-Path $ProgressFile) -and -not $Force) {
     # 上次選定的 Linux（例如沿用已經裝好的 Ubuntu-22.04）：接續時沿用，不要回到預設。
-    $savedDistro = [regex]::Match((Get-Content $ProgressFile -Raw), "DISTRO=(\S+)")
-    if ($savedDistro.Success) { $UBUNTU_DISTRO = $savedDistro.Groups[1].Value }
+    $savedDistro = Get-ProgressValue 'DISTRO'
+    if ($savedDistro) { $UBUNTU_DISTRO = $savedDistro }
     Write-Warn "偵測到上次安裝進度，將從中斷處繼續"
     Write-Info "如需全部重新安裝：用一行指令安裝的，先執行 `$env:AGEND_INSTALL_FORCE = '1'，再貼上同一行指令；直接執行腳本的，請執行 .\install-agend.ps1 -Force"
     Write-Host ""
