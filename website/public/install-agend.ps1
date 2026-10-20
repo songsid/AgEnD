@@ -147,15 +147,31 @@ function Get-WslDistroNames {
         if ($null -eq $prev) { Remove-Item Env:WSL_UTF8 -ErrorAction SilentlyContinue } else { $env:WSL_UTF8 = $prev }
         try { [Console]::OutputEncoding = $prevEnc } catch { }
     }
-    return (Get-WslRegisteredNames)
+    # 先存進變數再用 , 回傳：空陣列（確定一個都沒有）直接 return 會被攤開成沒有輸出，變成 $null（#2279 審查）。
+    $registered = Get-WslRegisteredNames
+    if ($null -eq $registered) { return $null }
+    return ,$registered
 }
-# WSL 登記的 Linux 名稱（HKCU\...\Lxss 底下每一個的 DistributionName）：沒有這個機碼就是一個都沒有；讀不到是 $null。
+# WSL 登記的 Linux 名稱（HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss 底下每一個的 DistributionName）。
+# 確定沒有這個機碼：一個都沒有（空陣列）。沒有 HKCU 可讀（不是 Windows）或讀取出錯：$null。
 function Get-WslRegisteredNames {
     $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss'
     try {
-        if (-not (Test-Path -LiteralPath $key)) { return $null }
-        return ,@(Get-ChildItem -LiteralPath $key -ErrorAction Stop | ForEach-Object { [string](Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction Stop).DistributionName } | Where-Object { $_ })
+        if (-not (Get-PSDrive -Name HKCU -ErrorAction SilentlyContinue)) { return $null }
+        if (-not (Test-Path -LiteralPath $key -ErrorAction Stop)) { return ,@() }
+        $names = @(Get-ChildItem -LiteralPath $key -ErrorAction Stop | ForEach-Object { [string](Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction Stop).DistributionName } | Where-Object { $_ })
+        return ,$names
     } catch { return $null }
+}
+# 第 1 階段要做什麼：'unknown'（讀不到清單：停下來）、'reuse'（之前裝過 AgEnD 專用的）、'ubuntu'（有 Ubuntu：問）、
+# 'none'（確定一個都沒有：照常安裝）。回傳 @{ State; Agend; Ubuntu }。
+function Get-DistroSituation($names) {
+    if ($null -eq $names) { return @{ State = 'unknown' } }
+    $agend = Get-ExistingAgendDistro $names
+    if ($agend) { return @{ State = 'reuse'; Agend = $agend } }
+    $ubuntu = @(@('Ubuntu-24.04', 'Ubuntu-22.04', 'Ubuntu') | Where-Object { $names -contains $_ })[0]
+    if ($ubuntu) { return @{ State = 'ubuntu'; Ubuntu = $ubuntu } }
+    return @{ State = 'none' }
 }
 # 第一個沒有被占用的名稱：AgEnD、AgEnD-2、AgEnD-3…（WSL 的名稱不分大小寫）。
 function Get-FreeAgendDistroName($names) {
@@ -1231,15 +1247,16 @@ if (Stage-Done 1) {
     # ── 1d: 這台電腦已經有哪些 Linux（只看清單，不啟動任何一個）──
     # 之前裝過 AgEnD 專用的就沿用；有 Ubuntu 就問（建議另外裝一個）；都沒有就照常安裝 $UBUNTU_DISTRO。
     $names = Get-WslDistroNames
-    if ($null -eq $names) {
+    $situation = Get-DistroSituation $names
+    if ($situation.State -eq 'unknown') {
         Write-Err "讀不到這台電腦上的 Linux 清單。為了不動到你原本的 Linux，先停在這裡，沒有安裝或修改任何東西。"
         Write-Info "  請稍後再執行同一行安裝指令；如果一直這樣，先重新開機 Windows。"
         Read-Host "按 Enter 結束"; exit 1
     }
-    $agendDistro = Get-ExistingAgendDistro $names
-    $installedDistroName = @(@('Ubuntu-24.04', 'Ubuntu-22.04', 'Ubuntu') | Where-Object { $names -contains $_ })[0]
+    $agendDistro = $situation.Agend
+    $installedDistroName = $situation.Ubuntu
     $choice = 'fresh'
-    if ($agendDistro) { $choice = 'reuse' } elseif ($installedDistroName) { $choice = Read-DistroChoice $installedDistroName }
+    if ($situation.State -eq 'reuse') { $choice = 'reuse' } elseif ($situation.State -eq 'ubuntu') { $choice = Read-DistroChoice $installedDistroName }
 
     if ($choice -eq 'quit') {
         Write-Info "已取消，沒有改動任何東西。"

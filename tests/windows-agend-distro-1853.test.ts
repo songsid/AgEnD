@@ -25,10 +25,10 @@ const body = code.slice(code.indexOf("Clear-Host"));
 describe("the existing-Ubuntu choice (static)", () => {
   it("stage 1 reads the Linux list (starts none), reuses an AgEnD Linux, else asks when there is an Ubuntu", () => {
     const stage = body.slice(body.indexOf("$names = Get-WslDistroNames"), body.indexOf('Add-Content -Path $ProgressFile -Value "DISTRO=$UBUNTU_DISTRO"'));
-    expect(stage).toMatch(/\$agendDistro = Get-ExistingAgendDistro \$names/);
+    expect(stage).toMatch(/\$agendDistro = \$situation\.Agend/);
     // #2279 review: an unreadable list stops stage 1 before any choice, install or reuse.
-    expect(stage).toMatch(/^\$names = Get-WslDistroNames\n\s*if \(\$null -eq \$names\) \{\n[^\n]*讀不到這台電腦上的 Linux 清單[^\n]*\n[^\n]*\n\s*Read-Host "按 Enter 結束"; exit 1\n\s*\}\n\s*\$agendDistro/);
-    expect(stage).toMatch(/if \(\$agendDistro\) \{ \$choice = 'reuse' \} elseif \(\$installedDistroName\) \{ \$choice = Read-DistroChoice \$installedDistroName \}/);
+    expect(stage).toMatch(/^\$names = Get-WslDistroNames\n\s*\$situation = Get-DistroSituation \$names\n\s*if \(\$situation\.State -eq 'unknown'\) \{\n[^\n]*讀不到這台電腦上的 Linux 清單[^\n]*\n[^\n]*\n\s*Read-Host "按 Enter 結束"; exit 1\n\s*\}\n\s*\$agendDistro/);
+    expect(stage).toMatch(/if \(\$situation\.State -eq 'reuse'\) \{ \$choice = 'reuse' \} elseif \(\$situation\.State -eq 'ubuntu'\) \{ \$choice = Read-DistroChoice \$installedDistroName \}/);
     expect(stage).toMatch(/if \(\$choice -eq 'separate'\) \{ \$UBUNTU_DISTRO = Get-FreeAgendDistroName \$names \}/);
     expect(stage).toMatch(/if \(\$choice -eq 'separate'\) \{ "\$\(\$disk\.Root\)WSL\\\$UBUNTU_DISTRO" \}/);
     expect(stage).toMatch(/if \(-not \(Install-AgendDistro \$UBUNTU_DISTRO \$wslPath\)\) \{/);
@@ -117,6 +117,32 @@ Write-Output ("FREE0=" + (Get-FreeAgendDistroName @('Ubuntu')))`, bin);
     expect(failing).toContain("NULL=True");                                         // and no registry to fall back on here
     const empty = withHelpers(`$n = Get-WslDistroNames; Write-Output ("NULL=" + ($null -eq $n) + " COUNT=" + @($n).Count)`, fakeWsl([])).out;
     expect(empty).toContain("NULL=False COUNT=0");
+  });
+  // #2279 R1: `wsl --list` failing (some WSL versions do when there is no Linux at all) falls back to WSL's own records.
+  // The registry commands are modeled by functions of the same name (they come before the cmdlets).
+  const registry = (o: { drive?: boolean; key?: boolean | "throws"; items?: string[] | "throws" }) => `
+${o.drive === false ? "" : "function Get-PSDrive { param($Name, $ErrorAction) return [pscustomobject]@{ Name = 'HKCU' } }"}
+function Test-Path { param([string]$LiteralPath, $ErrorAction) ${o.key === "throws" ? "throw 'access denied'" : `return $${o.key !== false}`} }
+function Get-ChildItem { param([string]$LiteralPath, $ErrorAction) ${o.items === "throws" ? "throw 'access denied'" : `return @(${(o.items ?? []).map(n => `[pscustomobject]@{ PSPath = '${n}' }`).join(", ")})`} }
+function Get-ItemProperty { param([string]$LiteralPath, $ErrorAction) return [pscustomobject]@{ DistributionName = $LiteralPath } }`;
+  it.each([
+    ["two Linux registered", { items: ["Ubuntu-24.04", "AgEnD"] }, "NULL=False COUNT=2 NAMES=Ubuntu-24.04,AgEnD STATE=reuse"],
+    ["the key there, nothing in it", { items: [] }, "NULL=False COUNT=0 NAMES= STATE=none"],
+    ["no key at all (known: none)", { key: false }, "NULL=False COUNT=0 NAMES= STATE=none"],
+    ["reading the key throws", { items: "throws" as const }, "NULL=True COUNT=n/a NAMES= STATE=unknown"],
+    ["checking for the key throws", { key: "throws" as const }, "NULL=True COUNT=n/a NAMES= STATE=unknown"],
+    ["no registry (not Windows)", { drive: false }, "NULL=True COUNT=n/a NAMES= STATE=unknown"],
+  ])("#2279 R1: wsl --list fails, the records say: %s", (_n, reg, want) => {
+    const { out } = withHelpers(`${registry(reg)}
+$n = Get-WslDistroNames
+Write-Output ("NULL=" + ($null -eq $n) + " COUNT=" + $(if ($null -eq $n) { 'n/a' } else { @($n).Count }) + " NAMES=" + (@($n) -join ',') + " STATE=" + (Get-DistroSituation $n).State)`, fakeWsl([], { listFails: true }));
+    expect(out).toContain(want);
+  });
+  it("#2279 R1: what stage 1 does with each answer: unknown stops, none installs, an Ubuntu asks, AgEnD's own is reused", () => {
+    const { out } = withHelpers(`Write-Output ("S=" + (Get-DistroSituation $null).State + "," + (Get-DistroSituation @()).State + "," + (Get-DistroSituation @('Ubuntu-22.04')).State + "," + (Get-DistroSituation @('Ubuntu-22.04', 'AgEnD')).State)
+Write-Output ("U=" + (Get-DistroSituation @('Debian', 'Ubuntu')).Ubuntu)`, fakeWsl([]));
+    expect(out).toContain("S=unknown,none,ubuntu,reuse\n");
+    expect(out).toContain("U=Ubuntu\n");
   });
   it("#2279 review: the list unreadable after --install: unknown, so no import and no 'installed'", () => {
     const bin = fakeWsl(["Ubuntu-24.04"], { listFailsAfterInstall: true });
