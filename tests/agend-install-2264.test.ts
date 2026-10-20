@@ -13,16 +13,18 @@
  * npm's retire name is deterministic (`.<name>-` + 8 alphanumerics of sha1(<path>) in base64 — the user's
  * `.agend-RmEK4vIL`), so the sibling left here is exactly the one npm itself collides with.
  */
-import { spawn, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
+import { chmodSync, cpSync, realpathSync, utimesSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import { ensureUserSystemd, type UserSystemdDeps } from "../src/user-systemd.js";
+import { acquireInstallLock, type InstallLock } from "../src/install-lock.js";
 
 const REPO = join(import.meta.dirname, "..");
+const lockReaders = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null; startTicks(pid: number): string | null; bootId(): string | null; parse(t: string): unknown; holderState(l: unknown, d: unknown): string };
 const roots: string[] = [];
 afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
 
@@ -39,6 +41,7 @@ exit 0
 `);
   chmodSync(join(pkg, "bin", "agend"), 0o755);
   cpSync(join(REPO, "launcher", "agend-install.cjs"), join(pkg, "launcher", "agend-install.cjs"));
+  cpSync(join(REPO, "launcher", "install-admission.cjs"), join(pkg, "launcher", "install-admission.cjs"));   // the lock's process readers
   chmodSync(join(pkg, "launcher", "agend-install.cjs"), 0o755);
   const packed = spawnSync("npm", ["pack", "--silent", "--pack-destination", dir], { cwd: pkg, encoding: "utf8", env: npmEnv(dir) });
   if (packed.status !== 0) throw new Error(`npm pack: ${packed.stderr}`);
@@ -103,6 +106,7 @@ function interruptedUpdate(s: ReturnType<typeof scratch>, partialVersion: string
   writeFileSync(join(s.pkgDir, "package.json"), JSON.stringify({ name: "@songsid/agend", version: partialVersion, bin: { agend: "./launcher/agend" } }));
   // The install lock, cut short (written, never flushed): "cannot be read as a lock".
   writeFileSync(join(s.root, "prefix", ".agend-install.lock"), '{"pid":');
+  const longAgo = new Date(Date.now() - 10 * 60_000); utimesSync(join(s.root, "prefix", ".agend-install.lock"), longAgo, longAgo);   // left there since
   // The chat's progress, stuck at "downloading".
   writeFileSync(join(s.home, "update-in-progress.json"), JSON.stringify({ startedAt: Date.now() - 60_000, pid: 999999, progress: { operation: "update", stage: "downloading", target: { adapterId: "telegram", chatId: "1", messageId: "2" } } }));
   writeFileSync(join(s.home, "fleet.yaml"), "instances: {}\n");
@@ -227,7 +231,7 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     const s = scratch();
     const v1 = release(s.root, "1.0.0"), v2 = release(s.root, "2.0.0");
     expect(s.npm(["install", "-g", v1]).status).toBe(0);
-    writeFileSync(join(s.root, "prefix", ".agend-install.lock"), JSON.stringify({ pid: process.pid, by: "agend-install" }));
+    writeFileSync(join(s.root, "prefix", ".agend-install.lock"), oldLock(process.pid, lockReaders.processStart(process.pid)!));
     const run = s.npm(["exec", "--yes", "--package", v2, "--", "agend-install", "--spec", v2]);
     expect(run.status).toBe(75);
     expect(run.stdout).toMatch(/another AgEnD install \(pid \d+\) is running/);
@@ -326,10 +330,15 @@ describe("#2264 review: npm is provably idle — no npm that changes packages ru
 
 type Installer = {
   main(argv: string[], deps: Record<string, unknown>): number;
-  admit(prefix: string, deps: Record<string, unknown>): { release?: () => void; refuse?: string; notes?: string[] };
+  admit(prefix: string, deps: Record<string, unknown>, opts?: { spec?: string; home?: string }): { release?: () => void; refuse?: string; notes?: string[] };
 };
 const installer = createRequire(import.meta.url)("../launcher/agend-install.cjs") as Installer;
 const OWN_VERSION = (JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { version: string }).version;
+/** A lock in the format updaters from before #2264 write and read (src/install-lock.ts). */
+const FAKE_START = "Mon Oct 20 10:00:00 2026";
+function oldLock(pid: number, processStart = FAKE_START): string {
+  return JSON.stringify({ pid, processStart, prefix: "/p", targetSpec: "@songsid/agend@2.2.0", agendHome: "/h", token: "c".repeat(32), createdAt: "2026-10-20T10:00:00.000Z" }) + "\n";
+}
 
 /**
  * The installer's own logic with the outside world stubbed (Prism r1 interleavings): a real scratch prefix and AGEND_HOME
@@ -345,7 +354,9 @@ function unitRig(opts: { onInstall?: (n: number) => void; installStatus?: number
   let installs = 0;
   const deps = {
     pid: 4242, uid: 1000, now: () => Date.now(), log: (line: string) => log.push(line), alive: (pid: number) => live.has(pid),
-    env: { HOME: userHome, AGEND_HOME: home }, systemUnit: join(root, "etc-agend.service"), onStep: opts.onStep,
+    env: { HOME: userHome, AGEND_HOME: home }, systemUnit: join(root, "etc-agend.service"), onStep: opts.onStep as ((step: string) => void) | undefined,
+    // Old-format lock holders: a live pid "started" at FAKE_START (no start ticks), as install-admission.cjs judges them.
+    lockReaders: { ...lockReaders, processStart: (pid: number) => (live.has(pid) ? FAKE_START : null), startTicks: () => null, bootId: () => null } as unknown,
     run: (cmd: string, args: string[]) => {
       const line = `${cmd} ${args.join(" ")}`;
       if (line === "npm root -g") return { status: 0, stdout: nodeModules + "\n", stderr: "" };
@@ -430,16 +441,16 @@ for (let attempt = 0; attempt < 400; attempt++) {
     expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(0);
     expect(r.log.join("\n")).toMatch(/install entry left by an installer that is no longer running/);
     const live = unitRig({ live: [5555] });
-    writeFileSync(live.lock, JSON.stringify({ pid: 5555, by: "agend update (2.2)" }));
+    writeFileSync(live.lock, oldLock(5555));
     expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], live.deps)).toBe(75);
-    expect(live.read(live.lock)).toBe(JSON.stringify({ pid: 5555, by: "agend update (2.2)" }));
+    expect(live.read(live.lock)).toBe(oldLock(5555));
     expect(readdirSync(join(live.prefix, ".agend-install.d")), "withdrawn").toEqual([]);
   });
 
   it("a pre-#2264 lock judged stale, then claimed by a running old updater before it is moved: its lock is put back, untouched, and this one refuses", () => {
     const r = unitRig({ live: [5555] });
-    writeFileSync(r.lock, '{"pid":');
-    const theirs = JSON.stringify({ pid: 5555, by: "agend update (2.2)" });
+    writeFileSync(r.lock, oldLock(999999));
+    const theirs = oldLock(5555);
     r.deps.onStep = (step: string) => { if (step === "legacy-judged") writeFileSync(r.lock, theirs); };
     expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(75);
     expect(r.read(r.lock), "the old updater's lock, byte for byte").toBe(theirs);
@@ -525,21 +536,21 @@ describe("#2264 review (Prism r1 P2): the update marker is written only by the i
   const marker = (pid: number, stage = "downloading") => JSON.stringify({ startedAt: 1_000, pid, progress: { operation: "update", stage, target: { adapterId: "t", chatId: "1", messageId: "2" } } });
   it("refused by a live installer's lock: another update's marker is left byte for byte", () => {
     const r = unitRig({ live: [5555] });
-    writeFileSync(r.lock, JSON.stringify({ pid: 5555, by: "agend-install" }));
+    writeFileSync(r.lock, oldLock(5555));
     writeFileSync(join(r.home, "update-in-progress.json"), marker(5555));
     expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(75);
     expect(readFileSync(join(r.home, "update-in-progress.json"), "utf8")).toBe(marker(5555));
   });
   it("refused: a marker whose writer is gone (an abandoned update) is left too — the installer that holds the prefix takes it", () => {
     const r = unitRig({ live: [5555] });
-    writeFileSync(r.lock, JSON.stringify({ pid: 5555, by: "agend-install" }));
+    writeFileSync(r.lock, oldLock(5555));
     writeFileSync(join(r.home, "update-in-progress.json"), marker(999999));
     expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(75);
     expect(readFileSync(join(r.home, "update-in-progress.json"), "utf8")).toBe(marker(999999));
   });
   it("refused, but started by `agend update` (its marker): the chat is told it failed", () => {
     const r = unitRig({ live: [5555, 3131] });
-    writeFileSync(r.lock, JSON.stringify({ pid: 5555, by: "agend-install" }));
+    writeFileSync(r.lock, oldLock(5555));
     writeFileSync(join(r.home, "update-in-progress.json"), marker(3131));
     r.deps.env = { ...r.deps.env, AGEND_UPDATE_OWNER_PID: "3131" } as typeof r.deps.env;
     expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(75);
@@ -570,5 +581,88 @@ describe("#2264 review (Prism r1 P2): only the chosen release's own installer in
     expect(installer.main(["--upgrade", "--target", "0.0.1"], r.deps)).toBe(1);
     expect(r.calls).toEqual([]);
     expect(r.log.join("\n")).toMatch(new RegExp(`installer of AgEnD v${OWN_VERSION.replace(/\./g, "\\.")}, not of v0\\.0\\.1`));
+  });
+});
+
+describe("#2264 review (Prism r3 P1): mixed with updaters from before #2264 — their lock kept by their own rules", () => {
+  // Real old-updater admission (src/install-lock.ts) for B and C, real process identities; A is the new installer.
+  const oldUpdater = (pid: number) => ({
+    pid, processStart: lockReaders.processStart, startTicks: lockReaders.startTicks, bootId: lockReaders.bootId,
+    newToken: () => randomBytes(16).toString("hex"), now: () => new Date(), log: () => {},
+  });
+  const sleepers: ChildProcess[] = [];
+  afterAll(() => { for (const c of sleepers) c.kill("SIGKILL"); });
+  const livePid = () => { const c = spawn(process.execPath, ["-e", "setTimeout(() => {}, 120000)"], { stdio: "ignore" }); sleepers.push(c); return c.pid!; };
+  const realDeps = (r: ReturnType<typeof unitRig>, pid: number) => ({ ...r.deps, pid, lockReaders: undefined, alive: (p: number) => { try { process.kill(p, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM"; } } });
+  const staleOld = (r: ReturnType<typeof unitRig>) => writeFileSync(r.lock, oldLock(999999));   // a dead holder's record
+
+  it("Prism's interleaving: an old updater (B) takes the stale lock over after the new installer (A) judged it; A never moves B's lock, and a third (C, old) is refused — never two admitted", () => {
+    const r = unitRig();
+    staleOld(r);
+    const realPrefix = realpathSync(r.prefix);
+    let b: InstallLock | null = null;
+    const a = realDeps(r, livePid());
+    a.onStep = (step: string) => { if (step === "legacy-judged" && !b) b = acquireInstallLock(r.prefix, { spec: "@songsid/agend@2.2.0", agendHome: "/h" }, oldUpdater(process.pid)); };
+    const aAdmitted = installer.admit(r.prefix, a, { spec: "x", home: "/h" });
+    expect(b!.ok, "B took the stale lock over by its own protocol").toBe(true);
+    expect(aAdmitted.refuse, "A sees B running and stays out").toMatch(new RegExp(`pid ${process.pid}`));
+    const bBytes = readFileSync(join(realPrefix, ".agend-install.lock"), "utf8");
+    expect(JSON.parse(bBytes).pid, "B's lock is in place").toBe(process.pid);
+    const c = acquireInstallLock(r.prefix, { spec: "@songsid/agend@2.2.0", agendHome: "/h" }, oldUpdater(livePid()));
+    expect(c.ok, "C is refused: B holds it").toBe(false);
+    expect(readFileSync(join(realPrefix, ".agend-install.lock"), "utf8"), "B's lock, byte for byte").toBe(bBytes);
+    expect(r.quarantined().join("\n")).not.toContain(`"pid":${process.pid}`);
+    (b as unknown as { release(): void }).release();
+  });
+
+  it("while the new installer holds the old updaters' reclaim marker, an old updater cannot take the stale lock over (it waits), and after it, it sees the new installer as the live holder", () => {
+    const r = unitRig();
+    staleOld(r);
+    let b: InstallLock | null = null;
+    const a = realDeps(r, livePid());
+    a.onStep = (step: string) => { if (step === "legacy-reclaimed") b = acquireInstallLock(r.prefix, { spec: "@songsid/agend@2.2.0", agendHome: "/h" }, oldUpdater(process.pid)); };
+    const got = installer.admit(r.prefix, a, { spec: "x", home: "/h" });
+    expect(b!.ok).toBe(false);
+    expect((b as unknown as { reason: string }).reason).toMatch(/replacing the stale lock/);
+    expect(got.refuse, "A moved the stale lock under the marker and holds the prefix").toBeUndefined();
+    const c = acquireInstallLock(r.prefix, { spec: "@songsid/agend@2.2.0", agendHome: "/h" }, oldUpdater(livePid()));
+    expect(c.ok).toBe(false);
+    expect((c as unknown as { reason: string }).reason, "the old updater reads the new installer's lock as a live holder").toMatch(new RegExp(`another AgEnD install is running .*pid ${a.pid}`));
+    got.release!();
+    expect(existsSync(r.lock), "released").toBe(false);
+  });
+
+  it("a reclaim marker of a live old updater refuses; one left by a dead one refuses with its path (their rule: never taken automatically)", () => {
+    const r = unitRig();
+    staleOld(r);
+    writeFileSync(r.lock + ".reclaim", oldLock(process.pid, lockReaders.processStart(process.pid)!));
+    const live = installer.admit(r.prefix, realDeps(r, livePid()), { spec: "x", home: "/h" });
+    expect(live.refuse).toMatch(/another install is replacing the stale lock/);
+    writeFileSync(r.lock + ".reclaim", oldLock(999999));
+    const dead = installer.admit(r.prefix, realDeps(r, livePid()), { spec: "x", home: "/h" });
+    expect(dead.refuse).toMatch(/a reclaim marker .*\.reclaim was left behind \(pid 999999\)/);
+    expect(readFileSync(r.lock, "utf8"), "the stale lock untouched").toBe(oldLock(999999));
+  });
+
+  it("an old lock whose pid now belongs to another process (another start time) is stale, as old updaters judge it", () => {
+    const r = unitRig({ live: [5555] });
+    writeFileSync(r.lock, oldLock(5555, "Sun Jan  4 00:00:00 2026"));
+    const got = installer.admit(r.prefix, r.deps, {});
+    expect(got.refuse).toBeUndefined();
+    expect(r.quarantined().join("\n")).toContain("Sun Jan  4 00:00:00 2026");
+    got.release!();
+  });
+
+  it("a lock that cannot be read: refused while it may still be being written (fresh); moved once it has stayed so (the user's, cut short)", () => {
+    const fresh = unitRig();
+    writeFileSync(fresh.lock, '{"pid":');
+    expect(installer.admit(fresh.prefix, fresh.deps, {}).refuse).toMatch(/is being written by another AgEnD install/);
+    const old = unitRig();
+    writeFileSync(old.lock, '{"pid":');
+    const longAgo = new Date(Date.now() - 10 * 60_000); utimesSync(old.lock, longAgo, longAgo);
+    const got = installer.admit(old.prefix, old.deps, {});
+    expect(got.refuse).toBeUndefined();
+    expect(old.quarantined()).toContain('{"pid":');
+    got.release!();
   });
 });

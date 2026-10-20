@@ -31,9 +31,14 @@ npm exec --yes --package @songsid/agend@<target> -- agend-install [--upgrade]
    writer runs → it withdraws its own entry and refuses (exit 75), nothing changed. Of two that race, the later lister
    sees the earlier one, so two are never admitted (both may refuse: run again). An entry whose writer is gone has a name
    no one else will write, so it is moved to quarantine without a race. The admitted installer then also holds
-   `<prefix>/.agend-install.lock`, the lock updaters from before #2264 take: theirs running → refuse; one whose writer
-   is gone or that cannot be read (the user's, cut short) is moved to quarantine — only those bytes (renamed aside under
-   its own name, compared, put back if it was not the one judged), and by the one admitted installer only. The prefix
+   `<realpath(prefix)>/.agend-install.lock`, the lock updaters from before #2264 take — **by their rules** (Prism r3: they
+   do not read `.agend-install.d`, so moving their lock even for a moment breaks their exclusion): its record is in their
+   format (pid + start time), so a running old updater sees a live holder and waits; a holder is judged as they judge it
+   (live / stale / unknown, start ticks or start time — unknown blocks); a stale lock is moved only by the holder of their
+   `<lock>.reclaim` marker, under which the lock can change only by its own (gone) holder — re-read, then moved; nothing
+   is ever moved aside to be judged afterwards. A reclaim marker left by a dead updater is never taken automatically
+   (their rule). One addition: a lock that cannot be read counts as stale once it has stayed exactly so for 60 s (their
+   create-then-write takes milliseconds; the user's, cut short, had stayed for hours). The prefix
    stays this installer's through the repair, the install, its retry and the rollback; the repair never reads or moves
    a lock;
 2. **repair** npm's leftovers, **only when npm is provably idle** (below): npm's retire sibling `@songsid/.agend-*` is put
@@ -164,8 +169,12 @@ Callers:
     announce and check — never both admitted, a refused one withdraws only its own entry; **12 real processes** racing
     for one prefix, each running again when refused — all 12 get a turn, no two admissions overlap, every entry
     withdrawn afterwards; an entry whose writer is gone
-    quarantined; a live pre-#2264 lock refuses; one judged stale and claimed by a running old updater before the move
-    is put back byte for byte (75); during repair, every install, the retry and the rollback the prefix is this
+    quarantined; a live pre-#2264 lock refuses; with **the real old `acquireInstallLock`** (src/install-lock.ts) and real
+    processes: an old updater that takes the stale lock over after the new installer judged it keeps its lock byte for
+    byte and a third (old) one is refused — never two admitted (Prism's interleaving); while the new installer holds
+    `.reclaim` an old updater cannot take over, and afterwards reads the new installer as the live holder; a live or a
+    dead reclaim marker refuses; a pid that now belongs to another process is stale; an unreadable lock refused while
+    fresh, moved once old; during repair, every install, the retry and the rollback the prefix is this
     installer's and a peer is refused;
   - the service per manager (legacy system unit, user unit, launchd job; running → `install --no-activate` +
     `restart --yes`, stopped → + `start`; hand-started → restart on upgrade only);

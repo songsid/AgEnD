@@ -161,17 +161,57 @@ function createWhole(file, text, deps) {
 }
 
 /**
- * Move `file` into quarantine only if it still holds the bytes judged stale: renamed aside under a name of this
- * installer's own, compared, and put back (link: never over a newer one) if it was not the one judged. Used only for the
- * lock of updaters from before #2264 (below), never between two of these installers.
+ * The lock of updaters from before #2264 (src/install-lock.ts acquireInstallLock), which they alone understand — so it is
+ * kept by their own rules (Prism r3): a record in their format (pid + start time, read by install-admission.cjs, so a
+ * running old updater sees this installer as a live holder and waits); a holder judged as they judge it (live, stale or
+ * unknown — unknown blocks); and a stale lock moved only by the holder of `<lock>.reclaim` (claimed whole), under which
+ * the lock can change only by its own holder — proven gone. Nothing is ever moved aside to be judged afterwards. One
+ * thing more than they do: a lock that cannot be read (written, never filled: the user's, cut short) counts as stale
+ * once it has stayed exactly so for UNREADABLE_STALE_MS — their create-then-write takes milliseconds.
  */
-function moveIfUnchanged(prefix, file, judged, deps) {
-  var aside = file + ".aside." + deps.pid;
-  try { fs.renameSync(file, aside); } catch (e) { return false; }
-  if (readText(aside) === judged) { quarantine(prefix, aside, deps, path.basename(file)); return true; }
-  try { fs.linkSync(aside, file); } catch (e) { /* another claimed it meanwhile: it holds it */ }
-  try { fs.unlinkSync(aside); } catch (e) { /* gone */ }
-  return false;
+var lockReaders = require("./install-admission.cjs");
+var UNREADABLE_STALE_MS = 60000;
+function legacyRecord(prefix, deps, spec, home) {
+  var r = deps.lockReaders || lockReaders;
+  var ticks = r.startTicks(deps.pid), boot = r.bootId();
+  var record = { pid: deps.pid, processStart: r.processStart(deps.pid) || "" };
+  if (ticks !== null && boot !== null) { record.startTicks = ticks; record.bootId = boot; }
+  record.prefix = prefix; record.targetSpec = spec; record.agendHome = home;
+  record.token = require("crypto").randomBytes(16).toString("hex");
+  record.createdAt = new Date(deps.now()).toISOString();
+  return JSON.stringify(record) + "\n";
+}
+function legacyState(text, file, deps) {
+  var r = deps.lockReaders || lockReaders;
+  var holder = r.parse(text);
+  if (holder) return { state: holder.pid === deps.pid ? "stale" : r.holderState(holder, { exists: deps.alive, processStart: r.processStart, startTicks: r.startTicks, bootId: r.bootId }), pid: holder.pid };
+  var st = null;
+  try { st = fs.statSync(file); } catch (e) { return { state: "gone" }; }
+  return { state: deps.now() - st.mtimeMs >= UNREADABLE_STALE_MS ? "stale" : "unknown", unreadable: true, mtimeMs: st.mtimeMs };
+}
+/** Move a stale legacy lock away by their rule: only under `<lock>.reclaim`, and only the bytes judged. */
+function reclaimLegacy(prefix, lock, judged, judgedState, record, deps) {
+  var marker = lock + ".reclaim";
+  if (!createWhole(marker, record, deps)) {
+    var other = (deps.lockReaders || lockReaders).parse(readText(marker) || "");
+    var otherState = other ? legacyState(readText(marker) || "", marker, deps).state : "unknown";
+    return otherState === "live" ? { refuse: "another install is replacing the stale lock on " + prefix + "; run this again in a moment" }
+      : { refuse: "a reclaim marker " + marker + " was left behind (pid " + (other ? other.pid : "unknown") + "); if no `agend update` runs, remove it and run this again" };
+  }
+  try {
+    if (deps.onStep) deps.onStep("legacy-reclaimed");
+    // Under the marker the lock changes only by its own (gone) holder: still the one judged, else nothing is moved.
+    if (readText(lock) !== judged) return { changed: true };
+    if (judgedState.unreadable) {
+      var st = null;
+      try { st = fs.statSync(lock); } catch (e) { return { changed: true }; }
+      if (st.mtimeMs !== judgedState.mtimeMs) return { changed: true };
+    }
+    quarantine(prefix, lock, deps);
+    return { moved: true };
+  } finally {
+    if (readText(marker) === record) { try { fs.unlinkSync(marker); } catch (e) { /* gone */ } }
+  }
 }
 
 var ENTRIES = ".agend-install.d";
@@ -192,12 +232,15 @@ function holderOf(text) {
  * sees the earlier's entry, so two are never admitted (both may refuse: run again). An entry whose writer is gone has a
  * name no one else will ever write, so it is moved to quarantine without a race.
  *
- * The admitted installer then also holds `<prefix>/.agend-install.lock`, the lock updaters from before #2264 take: one
- * of theirs that runs → refuse; one whose writer is gone, or that cannot be read (the user's, cut short), is moved to
- * quarantine — only these bytes (moveIfUnchanged), and by the one admitted installer alone.
+ * The admitted installer then also holds `<prefix>/.agend-install.lock`, the lock updaters from before #2264 take, by
+ * their rules (above): one of theirs that runs, or whose holder cannot be told → refuse; a stale one is moved to
+ * quarantine under their `.reclaim` marker.
  * Returns { release, notes } or { refuse }.
  */
-function admit(prefix, deps) {
+function admit(prefix, deps, opts) {
+  opts = opts || {};
+  // The prefix as old updaters name it (realpath): one lock however the prefix was reached.
+  try { prefix = fs.realpathSync(prefix); } catch (e) { /* the writes below say */ }
   var dir = path.join(prefix, ENTRIES);
   var name = deps.pid + "-" + (deps.nonce ? deps.nonce() : require("crypto").randomBytes(8).toString("hex"));
   var mine = path.join(dir, name);
@@ -222,22 +265,28 @@ function admit(prefix, deps) {
   });
 
   var lock = path.join(prefix, LOCK);
+  var legacy = legacyRecord(prefix, deps, opts.spec || "", opts.home || "");
   for (var attempt = 0; attempt < 3; attempt++) {
-    if (createWhole(lock, record, deps)) {
+    if (createWhole(lock, legacy, deps)) {
       return { notes: notes, release: function () {
-        if (readText(lock) === record) { try { fs.unlinkSync(lock); } catch (e) { /* gone */ } }
+        if (readText(lock) === legacy) { try { fs.unlinkSync(lock); } catch (e) { /* gone */ } }
         withdraw();
       } };
     }
     var text = readText(lock);
     if (text === null) continue;
-    var old = holderOf(text);
-    if (old && old.pid !== deps.pid && deps.alive(old.pid)) {
+    var judged = legacyState(text, lock, deps);
+    if (judged.state === "gone") continue;
+    if (judged.state !== "stale") {
       withdraw();
-      return { refuse: "another AgEnD install (pid " + old.pid + ") is running in " + prefix + "; let it finish, then run this again" };
+      return { refuse: judged.unreadable
+        ? "the install lock " + lock + " is being written by another AgEnD install; run this again in a moment"
+        : "another AgEnD install (pid " + judged.pid + ") is running in " + prefix + "; let it finish, then run this again" };
     }
     if (deps.onStep) deps.onStep("legacy-judged");
-    if (moveIfUnchanged(prefix, lock, text, deps)) notes.push(old ? "moved aside an install lock left by pid " + old.pid + " (no longer running)" : "moved aside an install lock that could not be read");
+    var taken = reclaimLegacy(prefix, lock, text, judged, legacy, deps);
+    if (taken.refuse) { withdraw(); return { refuse: taken.refuse }; }
+    if (taken.moved) notes.push(judged.unreadable ? "moved aside an install lock that could not be read" : "moved aside an install lock left by pid " + judged.pid + " (no longer running)");
   }
   withdraw();
   return { refuse: "another AgEnD install keeps claiming " + lock + "; let it finish, then run this again" };
@@ -341,7 +390,7 @@ function main(argv, injected) {
     claimed = claimMarker(home, deps, { ownOnly: true });
     return fail("install", "npm did not say where it installs global packages (npm root -g / npm prefix -g)");
   }
-  var admitted = admit(prefix, deps);
+  var admitted = admit(prefix, deps, { spec: spec, home: home });
   admitted.notes && admitted.notes.forEach(function (n) { log("  ↺ " + n); });
   if (admitted.refuse) {
     // Refused: another installer owns the prefix. Only the marker of the `agend update` that started THIS installer

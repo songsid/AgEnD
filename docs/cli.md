@@ -436,8 +436,9 @@ An update rewrites the user unit with the line. `agend restart` adds it to an ol
 installer: `npm exec --yes --package @songsid/agend@<version> -- agend-install`. Re-running the one-liner is how to
 repair any interrupted update. The installer:
 - first takes its install lock, before it touches anything. If another installer is running, it stops and changes
-  nothing (including that update's chat message). A lock left by an installer that has exited, or one that cannot be
-  read, is moved aside. It keeps the lock until it is done;
+  nothing (including that update's chat message). A lock left by an installer that has exited is moved aside, and so is
+  one that cannot be read once it has stayed that way for a minute. Older AgEnD updaters see the installer's lock and
+  wait for it. It keeps the lock until it is done;
 - puts back npm's moved-aside copy of AgEnD (`@songsid/.agend-…`) when it is the only whole copy, so `agend` runs again.
   It does this only when no npm is installing, removing or updating packages on the host; otherwise it leaves npm's
   leftovers alone and says so. Nothing is deleted: what it moves aside goes to `<npm prefix>/.agend-quarantine/`;
