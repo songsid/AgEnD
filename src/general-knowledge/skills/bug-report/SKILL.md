@@ -6,7 +6,7 @@ roles: [general]
 
 Offer this when someone wants to report an AgEnD bug, especially a crash, hang or failed login. A person without GitHub can still share the report file themselves. This skill grants no permission to post a public issue.
 
-Ask for a short description, reproduction steps, the incident time and time zone. Use a relevant `--since` window (default 30m, maximum 7d); explain that old/rotated logs may be unavailable. Use the installed CLI, not hand-written log collection or a second redaction implementation:
+Ask for a short description, reproduction steps, the incident time and time zone. If timing is still unknown, you may prepare a provisional default-window report locally while asking; label the provisional window in chat and recollect if the supplied incident time needs another window. Use a relevant `--since` window (default 30m, maximum 7d); explain that old/rotated logs may be unavailable. Use the installed CLI, not hand-written log collection or a second redaction implementation:
 
 ```sh
 agend bug-report --since 30m --out /private/new-report.json --description-file /private/description.txt --steps-file /private/steps.txt

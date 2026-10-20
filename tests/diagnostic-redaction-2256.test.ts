@@ -34,7 +34,7 @@ describe('shared diagnostic redaction', () => {
       expect(redactDiagnostics(output)).toBe(output);
     }
   });
-  it.each(['token', 'api_key', 'apiKey', 'client_secret', 'refresh_token', 'password', 'session_id', 'credentials'])('removes short, quoted multiline %s values', key => {
+  it.each(['token', 'api_key', 'apiKey', 'client_secret', 'refresh_token', 'password', 'session_id', 'credentials', 'AWS_SECRET_ACCESS_KEY', 'client_secret_key', 'cookieJar', 'session'])('removes short, quoted multiline %s values', key => {
     for (const s of [`${key}=tiny`, `{"${key}":"tiny\\nsecret"}`, `${key}: 'tiny\nsecret'`]) {
       const result = redactDiagnostics(s); expect(result).not.toContain('tiny'); expect(result).not.toContain('secret\'');
     }
@@ -61,7 +61,7 @@ describe('shared diagnostic redaction', () => {
     expect(redactDiagnostics('2026-10-20T13:27:16.123Z ECONNRESET')).toBe('2026-10-20T13:27:16.123Z ECONNRESET');
   });
   it('removes whole credential objects/arrays and escaped short chat IDs', () => {
-    const text = redactDiagnostics(JSON.stringify({ cookies: { session: 'tiny' }, access_token: ['short', 'hidden'], safe: { password: 'small' }, userId: 123, msg: 'chat' }));
+    const text = redactDiagnostics(JSON.stringify({ cookieJar: { session: 'tiny' }, access_token: ['short', 'hidden'], safe: { password: 'small' }, userId: 123, msg: 'chat' }));
     for (const word of ['tiny', 'short', 'hidden', 'small', '123', 'chat']) expect(text).not.toContain(word);
     expect(redactDiagnostics('instance_topic_id=42')).not.toContain('42');
     expect(redactDiagnostics(text)).toBe(text);
@@ -69,6 +69,25 @@ describe('shared diagnostic redaction', () => {
   it('withholds nested credential containers and YAML blocks even in non-JSON error prose', () => {
     for (const text of ['failed: cookies: {"session":"tiny", "nested":["small"]} end', 'credentials: ["tiny", "small"]', 'api_key: |\n  tiny\n  small\nsafe: fine', 'failed: secret: {"incomplete":"tiny"']) {
       const safe = redactDiagnostics(text); expect(safe).not.toContain('tiny'); expect(safe).not.toContain('small'); expect(safe).toContain(REDACTED); expect(redactDiagnostics(safe)).toBe(safe);
+    }
+  });
+  it('preserves ordinary bot stops/continues prose while removing provider bot credentials', () => {
+    expect(redactDiagnostics('the bot stops answering')).toBe('the bot stops answering');
+    expect(redactDiagnostics('the bot continues answering')).toBe('the bot continues answering');
+    const secret = cases[0][1]; expect(redactDiagnostics('Bot ' + secret)).not.toContain(secret);
+    expect(redactDiagnostics('Authorization: Bot tiny')).not.toContain('tiny');
+  });
+  it('redacts international email/hostnames and JSON host labels, with a deliberate identifier opt-in', () => {
+    const input = '使用者@主機.台灣 主機.台灣';
+    expect(redactDiagnostics(input)).toBe('[REDACTED] [REDACTED]');
+    expect(redactDiagnostics(input, { keepIdentifiers: true })).toBe(input);
+    const json = JSON.stringify({ host: 'workstation', email: 'person@example.test', username: 'alice', token: 'tiny' });
+    const hidden = redactDiagnostics(json); expect(hidden).not.toContain('workstation'); expect(hidden).not.toContain('alice');
+    const kept = redactDiagnostics(json, { keepIdentifiers: true }); expect(kept).toContain('workstation'); expect(kept).toContain('alice'); expect(kept).not.toContain('tiny');
+  });
+  it('handles bounded but adversarial long free-form lines without unbounded field/domain backtracking', () => {
+    for (const text of ['a'.repeat(64 * 1024), '1.'.repeat(32 * 1024) + '1', 'a.'.repeat(32 * 1024) + 'z', 'x'.repeat(32 * 1024) + '@host.test']) {
+      const safe = redactDiagnostics(text); expect(typeof safe).toBe('string'); expect(safe.length).toBeLessThanOrEqual(text.length * 2 + REDACTED.length);
     }
   });
   it('property: seeded generated known-shape secrets never survive wrappers (6300 checked cases)', () => {

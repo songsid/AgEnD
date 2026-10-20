@@ -4,8 +4,9 @@ import { constants as osConstants } from "node:os";
 export const REDACTED = '[REDACTED]';
 export interface RedactionOptions { keepIdentifiers?: boolean }
 
-const credentialKey = /^(?:.*(?:tokens?|secrets?|passwords?|passwd|credentials?[\w.-]*|authorization|cookies?|api[_-]?key|private[_-]?key|session[_-]?(?:key|id))|code|state)$/i;
-const contentKey = /(?:^msg$|message|content|prompt|text|body|conversation|transcript|topic|chat|user|sender|recipient|instance|channel|guild|email|hostname|address|url|path|argv|args)/i;
+const credentialKey = /(?:token|secret|password|passwd|credential|authorization|cookie|api[_-]?key|private[_-]?key|session|^code$|^state$)/i;
+const contentKey = /(?:^msg$|^host$|^ip$|message|content|prompt|text|body|conversation|transcript|topic|chat|user|sender|recipient|instance|channel|guild|email|hostname|address|url|path|argv|args)/i;
+const personalKey = /^(?:emails?|ip(?:v[46])?(?:address)?|host(?:name)?|user[_-]?name|path)$/i;
 const safeCodes = /\b(?:E[A-Z_]{3,30}|SIG[A-Z]{2,10}|ERR_[A-Z_]+)\b/g;
 const knownCodes = new Set([...Object.keys(osConstants.errno), ...Object.keys(osConstants.signals),
   'EAI_AGAIN', 'EAI_NONAME', 'ERR_STREAM_DESTROYED', 'ERR_STREAM_PREMATURE_CLOSE', 'ERR_UNHANDLED_ERROR',
@@ -28,7 +29,7 @@ function decode(text: string): string {
 
 /** A credential field can contain a whole object/list or YAML block, not just a string. */
 function redactContainers(text: string): string {
-  const fields = /["']?[\w.-]*(?:token|secret|password|passwd|credential|authorization|cookie|api[_-]?key|private[_-]?key)[\w.-]*["']?\s*[:=]\s*/gi;
+  const fields = /["']?[\w.-]{0,128}(?:token|secret|password|passwd|credential|authorization|cookie|session|api[_-]?key|private[_-]?key)[\w.-]{0,128}["']?\s*[:=]\s*/gi;
   let cursor = 0, out = '', match: RegExpExecArray | null;
   while ((match = fields.exec(text))) {
     const start = fields.lastIndex, opener = text[start];
@@ -49,7 +50,7 @@ function redactContainers(text: string): string {
     cursor = end; fields.lastIndex = end;
   }
   text = out + text.slice(cursor);
-  return text.replace(/^([ \t]*["']?[\w.-]*(?:token|secret|password|passwd|credential|cookie|api[_-]?key)[\w.-]*["']?\s*:\s*)[>|][-+]?[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*/gmi, '$1' + REDACTED);
+  return text.replace(/^([ \t]*["']?[\w.-]{0,128}(?:token|secret|password|passwd|credential|cookie|api[_-]?key)[\w.-]{0,128}["']?\s*:\s*)[>|][-+]?[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*/gmi, '$1' + REDACTED);
 }
 
 export function redactDiagnostics(input: string, options: RedactionOptions = {}): string {
@@ -61,7 +62,7 @@ export function redactDiagnostics(input: string, options: RedactionOptions = {})
         if (depth > 16) return REDACTED;
         if (typeof value === 'string') return redactDiagnostics(value, options);
         if (Array.isArray(value)) return value.map(v => scrub(v, depth + 1));
-        if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, v]) => [redactDiagnostics(key, options), credentialKey.test(key) || contentKey.test(key) ? REDACTED : scrub(v, depth + 1)]));
+        if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, v]) => [redactDiagnostics(key, options), credentialKey.test(key) || (contentKey.test(key) && !(options.keepIdentifiers && personalKey.test(key))) ? REDACTED : scrub(v, depth + 1)]));
         return value;
       };
       return JSON.stringify(scrub(parsed, 0));
@@ -72,26 +73,26 @@ export function redactDiagnostics(input: string, options: RedactionOptions = {})
   // Entire header values, including folded continuation lines; not just Bearer tokens.
   text = text.replace(/\b(?:authorization|proxy-authorization|cookie|set-cookie)\s*:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*/gi, REDACTED);
   // Quoted JSON/YAML/env/query credential values, including whitespace and multiline strings.
-  text = text.replace(/(["']?[\w.-]*(?:tokens?|secrets?|passwords?|passwd|credentials?[\w.-]*|authorization|cookies?|api[_-]?key|private[_-]?key|session[_-]?(?:key|id))["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\[REDACTED\]|[^\s,;&}\]\r\n]+)/gi, '$1' + REDACTED);
-  text = text.replace(/\b(?:Bot|Bearer|Basic)\s+[^\s,;"'<>]+/gi, REDACTED)
+  text = text.replace(/(["']?[\w.-]{0,128}(?:tokens?|secrets?|passwords?|passwd|credentials?[\w.-]{0,128}|authorization|cookies?|api[_-]?key|private[_-]?key|session(?:[_-]?(?:key|id))?)[\w.-]{0,128}["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\[REDACTED\]|[^\s,;&}\]\r\n]+)/gi, '$1' + REDACTED);
+  text = text.replace(/\b(?:Bearer|Basic)\s+[^\s,;"'<>]+/gi, REDACTED)
     .replace(/\b(?:mfa\.[\w-]+|[\w-]{20,}\.[\w-]{6,}\.[\w-]{20,})\b/g, REDACTED)
     .replace(/\b\d{5,}:[A-Za-z0-9_-]{15,}\b/g, REDACTED)
     .replace(/\b(?:ya29\.[\w.-]+|1\/\/[\w.-]+|sk-[\w-]+|gh[pousr]_[\w]+|github_pat_[\w]+|xox[baprs]-[\w-]+|AKIA[A-Z0-9]{12,}|ASIA[A-Z0-9]{12,}|AIza[\w-]{20,}|npm_[\w]+|glpat-[\w-]+)\b/g, REDACTED)
     .replace(/\beyJ[\w-]*\.[\w-]+\.[\w-]+\b/g, REDACTED)
-    .replace(/\b[a-z][a-z\d+.-]*:\/\/[^\s<>"']+/gi, REDACTED)
+    .replace(/\b[a-z][a-z\d+.-]{0,127}:\/\/[^\s<>"']+/gi, REDACTED)
     // Opaque unknown keys and unlabelled IDs. Over-redaction is intentional.
     .replace(/[A-Za-z0-9_+/=-]{24,}/g, REDACTED)
     .replace(/\b\d{5,}\b/g, REDACTED)
-    .replace(/[\"']?\b[\w.-]*(?:topic|chat|user|sender|recipient|instance|channel|guild)[_-]?id[\"']?\s*[=:]\s*(?:\[REDACTED\]|[^\s,;]+)/gi, REDACTED)
+    .replace(/[\"']?\b[\w.-]{0,128}(?:topic|chat|user|sender|recipient|instance|channel|guild)[_-]?id[\"']?\s*[=:]\s*(?:\[REDACTED\]|[^\s,;]+)/gi, REDACTED)
     .replace(/\b(?:message|content|prompt|chat[_-]?text)\s*[=:]\s*[^\r\n]*/gi, REDACTED);
   if (!options.keepIdentifiers) {
-    text = text.replace(/[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+/g, REDACTED)
+    text = text.replace(/[^\s@<>"'(),;]{1,320}@[^\s@<>"'(),;]{1,320}/gu, REDACTED)
       .replace(/(?:\b\d{1,3}\.){3}\d{1,3}\b/g, REDACTED)
-      .replace(/\[?[a-f\d:.]*:[a-f\d:.]+(?:%[\w.-]+)?\]?/gi, value => isIP(value.replace(/^\[|\]$/g, '').split('%')[0]) === 6 ? REDACTED : value)
-      .replace(/\b(?:[a-z\d](?:[a-z\d-]*[a-z\d])?\.)+[a-z][a-z\d-]*\b/gi, REDACTED)
+      .replace(/\[?[a-f\d:.]{0,64}:[a-f\d:.]{1,64}(?:%[\w.-]{1,64})?\]?/gi, value => isIP(value.replace(/^\[|\]$/g, '').split('%')[0]) === 6 ? REDACTED : value)
+      .replace(/(?<![\p{L}\p{N}_-])[\p{L}\p{N}-][\p{L}\p{N}.-]{0,252}\.[\p{L}][\p{L}\p{N}-]{0,62}(?![\p{L}\p{N}_-])/gu, REDACTED)
       .replace(/(\/(?:home|Users|mnt\/[a-z]\/Users)\/)[^\/\s]+/gi, '$1' + REDACTED)
       .replace(/([a-z]:\\Users\\)[^\\\s]+/gi, '$1' + REDACTED)
-      .replace(/\b(?:host(?:name)?|user(?:name)?)\s*[=:]\s*[^\s,;]+/gi, REDACTED);
+      .replace(/[\"']?\b(?:host(?:name)?|user(?:name)?)[\"']?\s*[=:]\s*(?:\[REDACTED\]|[^\s,;]+)/gi, REDACTED);
   }
   return text;
 }

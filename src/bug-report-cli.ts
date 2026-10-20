@@ -60,9 +60,9 @@ async function cachedBackendVersions(deps: BugReportDeps): Promise<string> {
         }
       }
     } catch { /* No probe or refresh: reading cached evidence is deliberately passive. */ }
-    lines.push(backend + ': ' + version);
+    lines.push(backend + ' cache: ' + version);
   }
-  return 'Backend CLI versions (existing caches only):\n' + lines.join('\n');
+  return 'Cached backend CLI versions (may differ from incident log evidence):\n' + lines.join('\n');
 }
 export async function runBugReport(options: BugReportOptions, deps: BugReportDeps): Promise<void> {
   if (options.approve || options.draft) {
