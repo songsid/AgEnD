@@ -14,7 +14,8 @@ import { installDom, MiniEvent, type MiniPage } from "./helpers/mini-dom.js";
 
 let dom: MiniPage | null = null;
 const offs: Array<() => void> = [];
-afterEach(() => { for (const f of offs.splice(0)) f(); dom?.restore(); dom = null; vi.useRealTimers(); });
+const resetDom = () => { (dom as MiniPage | null)?.restore(); dom = null; };
+afterEach(() => { for (const f of offs.splice(0)) f(); resetDom(); vi.useRealTimers(); });
 
 async function i18n(lang: "en" | "zh-TW" = "en") {
   const { t, setLang } = await import("/assets/app-i18n.js") as any;
@@ -54,15 +55,15 @@ describe("the thread", () => {
       row({ id: 4, role: "user", replyTo: { boot: "ab12", id: 1, sender: "atlas", text: "", media: "document" } })]);
     expect(list.querySelectorAll(".msg-quote").map((q: any) => q.querySelector(".quote-text").textContent)).toEqual(["an earlier message", "[Photo]", "[File]"]);
     expect(list.querySelectorAll(".msg-quote")[0].querySelector(".quote-sender"), "hidden: no sender").toBeNull();
-    dom?.restore(); dom = null;
+    resetDom();
     const leaky = await threadWith([row({ id: 2, role: "user", replyTo: { boot: "ab12", id: 1, hidden: true, sender: "who", text: "what" } })]);
     expect([leaky.list.querySelector(".quote-sender"), leaky.list.querySelector(".quote-text").textContent], "hidden wins over any sender or text").toEqual([null, "an earlier message"]);
-    dom?.restore(); dom = null;
+    resetDom();
     const zh = await threadWith([row({ id: 3, role: "user", replyTo: { boot: "ab12", id: 1, sender: "atlas", text: "", media: "photo" } }), row({ id: 4, role: "user", replyTo: { boot: "ab12", id: 1, sender: "atlas", text: "", media: "document" } })], {}, "zh-TW");
     expect(zh.list.querySelectorAll(".quote-text").map((q: any) => q.textContent)).toEqual(["[圖片]", "[檔案]"]);
   });
   it("Reply starts a reply with the row; the quote shows the message — drawn, read back, or said to be gone", async () => {
-    const startReply = vi.fn(), notice = vi.fn(), findQuoted = vi.fn(async () => false);
+    const startReply = vi.fn(), notice = vi.fn(), findQuoted = vi.fn(async (_key: string) => false);
     const { list, thread } = await threadWith([row(), row({ id: 2, role: "user", replyTo: { boot: "ab12", id: 1, sender: "atlas", text: "the plan" } }),
       row({ id: 3, role: "user", replyTo: { boot: "ab12", id: 999, sender: "atlas", text: "old" } })], { startReply, notice, findQuoted });
     const fire = (el: any) => thread.onClick({ target: el, preventDefault() {}, defaultPrevented: false, button: 0 });
@@ -113,7 +114,7 @@ describe("the store", () => {
 
 describe("the gestures", () => {
   async function gestures() {
-    const reply = vi.fn(), copyText = vi.fn(async () => true), notice = vi.fn();
+    const reply = vi.fn(), copyText = vi.fn(async (_text: string) => true), notice = vi.fn();
     const { doc, list, thread, t } = await threadWith([row(), row({ id: 2, role: "user", sender: "Ops", text: "mine" })]);
     const { installMessageActions } = await import("/ui/js/chat-msg-actions.js") as any;
     offs.push(installMessageActions(list, { t, messageOf: thread.messageOf, reply, copyText, notice, linkOf: (x: any) => `L:${x.boot}-${x.id}` }));
