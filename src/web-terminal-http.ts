@@ -32,6 +32,7 @@ import { fileURLToPath } from "node:url";
 import { acceptWebSocket, rejectUpgrade, type WsConnection } from "./ws-server.js";
 import type { WebTerminalSession, TerminalLogger } from "./web-terminal.js";
 import { hostnameOf, LOOPBACK_HOST_NAMES } from "./web-host-guard.js";
+import { t } from "./locale.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ASSETS_DIR = join(__dirname, "ui", "web-terminal");
@@ -162,6 +163,17 @@ export class WebTerminalHttpServer {
         try { this.text(res, 500, "internal error"); } catch { res.destroy(); }
       });
     });
+    // listen()'s one-shot rejection only covers startup. Keep an owner for
+    // later server errors too: an unhandled EventEmitter error is fleet-fatal.
+    let listening = false;
+    let failed = false;
+    server.on("error", () => {
+      if (!listening || failed || this.server !== server) return;
+      failed = true;
+      this.logger.warn({ sid: this.session.sid }, "web terminal listener failed");
+      void Promise.resolve().then(() => this.session.cancel(t("login.web_listener_failed")))
+        .catch(() => this.logger.warn({ sid: this.session.sid }, "web terminal listener cleanup failed"));
+    });
     server.on("upgrade", (req, socket, head) => {
       try {
         this.handleUpgrade(req, socket as Socket, head);
@@ -193,11 +205,11 @@ export class WebTerminalHttpServer {
     this.server = server;
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
-      server.listen(0, this.bind, () => { server.off("error", reject); resolve(); });
+      server.listen(0, this.bind, () => { listening = true; server.off("error", reject); resolve(); });
     });
     const address = server.address();
     this.port = typeof address === "object" && address ? address.port : 0;
-    const onFinished = () => { void this.close(); };
+    const onFinished = () => { void this.close().catch(() => this.logger.warn({}, "web terminal close failed")); };
     this.session.once("finished", onFinished);
     this.unsubscribeFinished = () => this.session.off("finished", onFinished);
     return { port: this.port, url: this.pageUrl };

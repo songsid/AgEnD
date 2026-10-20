@@ -531,12 +531,25 @@ export class LoginController {
         allowedHosts: allowedHostNames(cfg),
       });
       entry.http = http;
-      const listening = await http.listen();
+      let listening: { port: number; url: string };
+      try { listening = await http.listen(); }
+      catch (err) {
+        const code = (err as { code?: unknown })?.code;
+        const reason = typeof code === "string" && ["EADDRNOTAVAIL", "EADDRINUSE", "EACCES", "ENOTFOUND", "EMFILE"].includes(code) ? code : "";
+        return this.abort(entry, t("login.web_listener_start_failed", reason), "startup failed");
+      }
       entry.url = listening.url;
+      if (entry.session.state !== "running") {
+        // finished may have fired before listen() could subscribe to it.
+        // Close this entry's late listener without reporting the end twice.
+        await http.close().catch(err => logger.warn(safeErr(err), "ended login listener cleanup failed"));
+        return null;
+      }
       if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
       if (wantTunnel) {
         const failed = await this.openTunnel(entry, http, listening.port, cfg, ttlMs);
         if (failed !== null) return failed;
+        if (entry.session.state !== "running") return null;
         if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
       }
     } catch (err) {
@@ -736,10 +749,15 @@ export class LoginController {
     try {
       result = await tunnel.starting;
     } catch (err) {
+      if (entry.session.state !== "running") { await this.closeTunnel(entry); return null; }
       http.setExternalHost(null);
       const kind = tunnelErrorKind((err as { errorKind?: unknown } | null)?.errorKind);
       this.audit("tunnel_failed", { backend: entry.backend, requester: entry.requesterUserId, errorKind: kind });
       return this.abort(entry, t("login.tunnel_failed", t(`login.tunnel_reason.${kind}`)), "tunnel failed");
+    }
+    if (entry.session.state !== "running") {
+      await this.closeTunnel(entry);
+      return null;
     }
     // The login ended (cancel, TTL, shutdown) while the tunnel was coming up: closeTunnel is already
     // on its way to stop it, and nothing here may re-publish a host it just took away.
@@ -765,6 +783,11 @@ export class LoginController {
       this.audit("tunnel_lost", { backend: entry.backend, requester: entry.requesterUserId });
       // The page is gone the moment the tunnel is: end the login rather than leave a window open on nothing.
       void entry.session.cancel(t("login.tunnel_lost")).catch(err => this.deps.logger.warn(safeErr(err), "web login tunnel-loss cancel failed"));
+    });
+    result.handle.onFailure?.(() => {
+      this.audit("tunnel_lost", { backend: entry.backend, requester: entry.requesterUserId, errorKind: "transport-failed" });
+      void entry.session.cancel(t("login.tunnel_transport_lost"))
+        .catch(err => this.deps.logger.warn(safeErr(err), "web login transport-failure cancel failed"));
     });
     return null;
   }
@@ -842,7 +865,10 @@ export class LoginController {
   /** The link carries no secret: it may go to the requesting chat. Returns delivery success. */
   private async sendLink(entry: ActiveLogin, ttlMinutes: number, command: string): Promise<boolean> {
     const { chat } = entry;
-    const text = t("login.web_link", entry.shown, String(ttlMinutes), command, entry.url);
+    const bind = this.deps.fleetConfig()?.web_terminal?.bind ?? "127.0.0.1";
+    const loopback = bind === "localhost" || bind === "::1" || /^127\./.test(bind);
+    const text = t("login.web_link", entry.shown, String(ttlMinutes), command, entry.url)
+      + "\n" + t(loopback ? "login.web_loopback" : "login.web_lan_help");
     try {
       await chat.adapter.sendText(chat.chatId, text, { threadId: chat.threadId, disablePreview: true });
       this.audit("link_sent", { backend: entry.backend, requester: entry.requesterUserId, host: hostOf(entry.url) });
@@ -957,6 +983,7 @@ export class LoginController {
 const TUNNEL_ERROR_KINDS: ReadonlySet<string> = new Set([
   "binary-missing", "binary-not-executable", "not-logged-in", "spawn-failed", "no-url",
   "bad-url", "readiness-failed", "timeout", "cancelled", "lease-held",
+  "transport-failed", "rate-limited", "provisioning-failed",
   // AgEnD's own cloudflared (#1137)
   "unsupported-platform", "download-failed", "checksum-mismatch", "install-failed",
 ]);

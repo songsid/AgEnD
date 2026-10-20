@@ -21,6 +21,7 @@ export type TunnelErrorKind =
   | "binary-not-executable"
   | "not-logged-in"
   | "spawn-failed"
+  | "transport-failed"
   | "no-url"
   /** #1767: Cloudflare refused to provision a quick tunnel with HTTP 429 (rate limited for this network). */
   | "rate-limited"
@@ -105,6 +106,8 @@ export interface TunnelHandle {
   stop(reason: string): Promise<TunnelStopResult>;
   /** Returns an unsubscribe. Fires only for an exit nobody asked for. */
   onUnexpectedExit(listener: (exit: TunnelExit) => void): () => void;
+  /** Transport failed without proving process death. The owner must still stop on proof. */
+  onFailure?(listener: (kind: TunnelErrorKind) => void): () => void;
 }
 
 export interface TunnelProvider {
