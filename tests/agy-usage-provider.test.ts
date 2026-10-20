@@ -224,7 +224,8 @@ describe("fetchAntigravityUsage asks for the models' quotas beside the summary (
     const r = await fetchAntigravityUsage();
     expect(r.status).toBe("ok");
     expect(r.metrics.map(m => m.label)).toEqual(["Claude & others (session)", "Claude & others (weekly)", "Gemini"]);
-    expect(calls).toEqual(["https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels", "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"]);
+    // The production base first (2026-10-20: its summary has the Gemini group the daily base's lacks); daily is the fallback.
+    expect(calls).toEqual(["https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels", "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"]);
   });
   it("a failing models read costs nothing: the summary's rows", async () => {
     login();
@@ -242,7 +243,8 @@ describe("fetchAntigravityUsage asks for the models' quotas beside the summary (
 describe("the models' read never costs the row its summary (#2176 review: the 16s provider deadline)", () => {
   // The real fetchAntigravityUsage inside the real fetchAllUsage deadline, on fake timers. The models' read is optional:
   // once the summary has answered it gets what is left before the deadline, less a 1s margin, and is then cancelled.
-  const DAILY = "https://daily-cloudcode-pa.googleapis.com/v1internal:", PROD = "https://cloudcode-pa.googleapis.com/v1internal:";
+  // The order the provider reads them in (#2240): production first, then the daily base.
+  const FIRST = "https://cloudcode-pa.googleapis.com/v1internal:", SECOND = "https://daily-cloudcode-pa.googleapis.com/v1internal:";
   const dirs: string[] = [];
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); setUsageProvidersForTests(null); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
   type Answer = { at: number; status?: number; body?: unknown } | "stall" | "stall-ignoring-abort";
@@ -275,32 +277,37 @@ describe("the models' read never costs the row its summary (#2176 review: the 16
 
   it("the first base fails at 3s, the second's summary answers, its models stall: the summary's rows, at 15s", async () => {
     const { row, settledAt, calls, labels } = await run({
-      [`${DAILY}retrieveUserQuotaSummary`]: { at: 3_000, status: 503 }, [`${DAILY}fetchAvailableModels`]: "stall",
-      [`${PROD}retrieveUserQuotaSummary`]: { at: 0, body: summary142 }, [`${PROD}fetchAvailableModels`]: "stall",
+      [`${FIRST}retrieveUserQuotaSummary`]: { at: 3_000, status: 503 }, [`${FIRST}fetchAvailableModels`]: "stall",
+      [`${SECOND}retrieveUserQuotaSummary`]: { at: 0, body: summary142 }, [`${SECOND}fetchAvailableModels`]: "stall",
     });
     expect([row.status, labels]).toEqual(["ok", CLAUDE]);
+    // Both bases were really asked: the first failed at 3s, the second took over then (Prism #2241 r1).
+    expect(calls.map(c => [c.url.replace(/^https:\/\/([a-z-]+)\.googleapis\.com\/v1internal:/, "$1 "), c.at])).toEqual([
+      ["cloudcode-pa fetchAvailableModels", 0], ["cloudcode-pa retrieveUserQuotaSummary", 0],
+      ["daily-cloudcode-pa fetchAvailableModels", 3_000], ["daily-cloudcode-pa retrieveUserQuotaSummary", 3_000],
+    ]);
     expect(settledAt).toBe(DEFAULT_PROVIDER_DEADLINE_MS - 1_000);          // what was left, less the margin
     expect(calls.every(c => c.signal?.aborted || c.url.endsWith("retrieveUserQuotaSummary")), "both stalled models reads are cancelled").toBe(true);
   });
   it("even a models read that ignores its cancel cannot hold the row", async () => {
-    const { row, settledAt, labels } = await run({ [`${DAILY}retrieveUserQuotaSummary`]: { at: 2_000, body: summary142 }, [`${DAILY}fetchAvailableModels`]: "stall-ignoring-abort" });
+    const { row, settledAt, labels } = await run({ [`${FIRST}retrieveUserQuotaSummary`]: { at: 2_000, body: summary142 }, [`${FIRST}fetchAvailableModels`]: "stall-ignoring-abort" });
     expect([row.status, labels, settledAt]).toEqual(["ok", CLAUDE, DEFAULT_PROVIDER_DEADLINE_MS - 1_000]);
   });
   it("the summary at 15.5s: no time left for the models — the summary's rows, inside the deadline", async () => {
-    const { row, labels, settledAt } = await run({ [`${DAILY}retrieveUserQuotaSummary`]: { at: 15_500, body: summary142 }, [`${DAILY}fetchAvailableModels`]: "stall" });
+    const { row, labels, settledAt } = await run({ [`${FIRST}retrieveUserQuotaSummary`]: { at: 15_500, body: summary142 }, [`${FIRST}fetchAvailableModels`]: "stall" });
     expect([row.status, labels, settledAt]).toEqual(["ok", CLAUDE, 15_500]);
   });
   it("a token refresh first (2s) counts against the same deadline: the summary's rows at 15s", async () => {
     vi.stubEnv("AGY_OAUTH_CLIENT_ID", "test-client"); vi.stubEnv("AGY_OAUTH_CLIENT_SECRET", "test-secret");
     const { row, labels, settledAt, calls } = await run({
       "https://oauth2.googleapis.com/token": { at: 2_000, body: { access_token: "refreshed", expires_in: 3600 } },
-      [`${DAILY}retrieveUserQuotaSummary`]: { at: 0, body: summary142 }, [`${DAILY}fetchAvailableModels`]: "stall",
+      [`${FIRST}retrieveUserQuotaSummary`]: { at: 0, body: summary142 }, [`${FIRST}fetchAvailableModels`]: "stall",
     }, { access_token: "old", refresh_token: "test-refresh", expiry: "2026-10-19T03:00:00Z" });
     expect(calls[0]!.url).toBe("https://oauth2.googleapis.com/token");
     expect([row.status, labels, settledAt]).toEqual(["ok", CLAUDE, DEFAULT_PROVIDER_DEADLINE_MS - 1_000]);
   });
   it("models that answer in time bring Gemini back", async () => {
-    const { row, labels, settledAt } = await run({ [`${DAILY}retrieveUserQuotaSummary`]: { at: 2_000, body: summary142 }, [`${DAILY}fetchAvailableModels`]: { at: 4_000, body: models142 } });
+    const { row, labels, settledAt } = await run({ [`${FIRST}retrieveUserQuotaSummary`]: { at: 2_000, body: summary142 }, [`${FIRST}fetchAvailableModels`]: { at: 4_000, body: models142 } });
     expect([row.status, labels, settledAt]).toEqual(["ok", [...CLAUDE, "Gemini"], 4_000]);
   });
 });

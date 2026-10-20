@@ -599,9 +599,14 @@ export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageSco
 // required for the refresh-token grant.
 
 const AGY_TOKEN_FILE = ["antigravity-cli", "antigravity-oauth-token"];
+/**
+ * The production base first: checked live 2026-10-20 (a user's account, read-only), the daily base's quota summary had
+ * only the "Claude and GPT models" group while the production base's had "Gemini Models" too — the Gemini line then
+ * fell back to the busiest single model. The daily base stays as the fallback.
+ */
 const AGY_CLOUDCODE_URLS = [
-  "https://daily-cloudcode-pa.googleapis.com",
   "https://cloudcode-pa.googleapis.com",
+  "https://daily-cloudcode-pa.googleapis.com",
 ];
 /**
  * The Google installed-app OAuth client pair, READ FROM THE INSTALLED agy
@@ -703,6 +708,10 @@ const AGY_POOLED: Record<string, { pool: string; window: AgyWindow }> = {
 function agyPool(b: AgyBucket, id: string): string {
   const pooled = AGY_POOLED[id];
   if (pooled) return pooled.pool;
+  // #2240: Gemini 4 Argon has a quota of its own on paid Pro plans ("Argon quota is separate", as agy shows it): its own pool,
+  // from a summary group or from its models (gemini-4-argon-*), never folded into Gemini's worst-of by the rule below.
+  const argon = agyArgonPool(b.group) ?? agyArgonPool(id);
+  if (argon) return argon;
   const group = b.group;
   if (group) {
     if (/gemini/i.test(group)) return "Gemini";
@@ -718,6 +727,13 @@ function agyPool(b: AgyBucket, id: string): string {
   if (/^gemini/i.test(id)) return "Gemini";
   if (/^(claude|gpt|3p)\b/i.test(id)) return "Claude & others";
   return id;
+}
+
+/** "Gemini 4 Argon", "GEMINI 4 ARGON", "gemini-4-argon-high" → "Gemini 4 Argon"; any other Argon → "Argon"; else null. */
+function agyArgonPool(text: string | undefined): string | null {
+  if (!text || !/argon/i.test(text)) return null;
+  const version = /gemini[\s_-]*(\d+(?:\.\d+)?)[\s_-]*argon/i.exec(text);
+  return version ? `Gemini ${version[1]} Argon` : "Argon";
 }
 
 /** The limit a bucket counts against ("Five Hour Limit", window "5h" …), or null for a per-model bucket. */
