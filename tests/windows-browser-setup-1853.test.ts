@@ -9,7 +9,7 @@
  * and WSL localhost forwarding are the user's Windows checklist.
  */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -36,7 +36,7 @@ describe("stage 5 sets up in the browser (static)", () => {
 const pwsh = spawnSync("pwsh", ["-NoProfile", "-c", "1"], { encoding: "utf8" }).status === 0;
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
-function withHelpers(body: string) {
+function withHelpers(body: string, input?: string, env: Record<string, string> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agend-1853setup-")); dirs.push(dir);
   const file = join(dir, "t.ps1");
   writeFileSync(file, `$ErrorActionPreference = 'Stop'
@@ -49,7 +49,7 @@ function Open-InBrowser([string]$url) { Add-Content -LiteralPath (Join-Path $env
 function Set-SetupClipboard([string]$text) { Add-Content -LiteralPath (Join-Path $env:TMPDIR 'clip.txt') -Value $text; return $true }
 function FakeSetup([string]$script) { return { param($hook) Invoke-Watched -Label '等待你在瀏覽器完成設定' -Usually 'x' -File 'sh' -Arguments @('-c', $script) -OnLine $hook -HeartbeatSeconds 60 }.GetNewClosure() }
 ${body}`);
-  const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000, env: { ...process.env, TMPDIR: dir } });
+  const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000, input: input ?? "", env: { ...process.env, TMPDIR: dir, ...env } });
   if (r.error || r.signal || r.status !== 0) throw new Error(`pwsh ended ${r.error ?? r.signal ?? r.status}:\n${r.stdout}${r.stderr}`);
   const read = (f: string) => { try { return readFileSync(join(dir, f), "utf8"); } catch { return null; } };
   return { out: r.stdout + r.stderr, opened: read("opened.txt"), clip: read("clip.txt") };
@@ -95,7 +95,22 @@ $null = Invoke-BrowserSetup (FakeSetup 'echo "  Setup page: http://127.0.0.1:192
 });
 
 /** Stage 5's own decisions (Invoke-SetupAndService) with its steps, the console and the answers stubbed. */
-function stage5Run(setupLines: string[][], serviceCodes: number[], answers: string[], quickstartCodes: number[] = []) {
+function stage5Run(setupLines: string[][], serviceCodes: number[], answers: string[], quickstartCodes: number[] = [], input?: string) {
+  // A native wsl.exe (#2235 review): it prints a prompt without a newline, waits for a line on stdin, prints it back and
+  // exits with the next code — its output must reach the console, not the function's result.
+  const bin = mkdtempSync(join(tmpdir(), "agend-1853wsl-")); dirs.push(bin);
+  const codes = join(bin, "codes.txt"), qlog = join(bin, "qlog.txt");
+  writeFileSync(codes, quickstartCodes.map(c => `${c}\n`).join(""));
+  writeFileSync(join(bin, "wsl.exe"), `#!/bin/sh
+printf 'CHOICE-PROMPT> '
+read answer
+echo "ANSWER=$answer ARGS=$*"
+c=$(head -n 1 '${codes}')
+sed -i 1d '${codes}'
+echo "quickstart:$c" >> '${qlog}'
+exit "$c"
+`);
+  chmodSync(join(bin, "wsl.exe"), 0o755);
   return withHelpers(`$UBUNTU_DISTRO = 'Ubuntu-24.04'
 foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$AGEND_ENV' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
 $script:setups = [System.Collections.ArrayList]::new()
@@ -106,9 +121,10 @@ function Invoke-WslStep { param($Label, $Usually, $Script, $UpperMinutes, $OnLin
   if ($Script -match 'agend setup') { $lines = $script:setups[0]; $script:setups.RemoveAt(0); $script:log += 'setup'; foreach ($l in $lines) { if ($l -and $OnLine) { & $OnLine $l } }; return 0 }
   $c = $script:services[0]; $script:services = @($script:services | Select-Object -Skip 1); $script:log += "service:$c"; return $c }
 function Read-Host { param($p) $a = $script:answers[0]; $script:answers = @($script:answers | Select-Object -Skip 1); $script:log += "ask:$a"; return $a }
-function wsl { $c = $script:quick[0]; $script:quick = @($script:quick | Select-Object -Skip 1); $script:log += "quickstart:$c"; $global:LASTEXITCODE = $c }
 $ok = Invoke-SetupAndService
-Write-Output ("RESULT=" + $ok + " LOG=" + ($script:log -join ','))`);
+$q = $env:QLOG
+if (Test-Path $q) { $script:log = @($script:log) + @(Get-Content $q) }
+Write-Output ("RESULT=" + $ok + " LOG=" + ($script:log -join ','))`, input, { PATH: `${bin}:${process.env.PATH}`, QLOG: qlog });
 }
 const PAGE = ["  Setup page: http://127.0.0.1:19280/s/a/", "  Setup code: AAAA-BBBB"];
 
@@ -124,10 +140,18 @@ describe.skipIf(!pwsh)("with pwsh: stage 5's decisions (#2235 review: done only 
   it("the service failed and the person stops: not done (progress kept, stage 5 not marked)", () => {
     expect(stage5Run([[...PAGE, "Setup complete — starting AgEnD."]], [1], ["n"]).out).toContain("RESULT=False LOG=setup,service:1,ask:n\n");
   });
-  it("no page: the console quickstart counts only when it succeeded", () => {
-    const { out } = stage5Run([[], []], [0], ["", ""], [1, 0]);
-    expect(out).toContain("主控台的設定沒有完成（結束碼 1）。");
-    expect(out).toContain("RESULT=True LOG=setup,ask:,quickstart:1,setup,ask:,quickstart:0,service:0\n");
+  it("no page: the console quickstart runs on the console (its prompt shown, its input read) and counts only when it exits 0", () => {
+    const { out } = stage5Run([[], []], [0], ["", ""], [1, 0], "first\nsecond\n");
+    expect(out).toContain("CHOICE-PROMPT> ANSWER=first ARGS=-d Ubuntu-24.04 -u root -- bash -lc export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend quickstart\n");
+    expect(out).toContain("CHOICE-PROMPT> ANSWER=second");
+    expect(out).toContain("主控台的設定沒有完成（結束碼 1）。");                // one exit code, never its output
+    expect(out).toContain("RESULT=True LOG=setup,ask:,setup,ask:,service:0,quickstart:1,quickstart:0\n");
+  });
+  it("no page: a quickstart that exits 0 the first time goes straight to the service", () => {
+    const { out } = stage5Run([[]], [0], [""], [0], "yes\n");
+    expect(out).toContain("CHOICE-PROMPT> ANSWER=yes");
+    expect(out).not.toContain("主控台的設定沒有完成");
+    expect(out).toContain("RESULT=True LOG=setup,ask:,service:0,quickstart:0\n");
   });
   it("a page closed unfinished and the person stops: not done, and no service install", () => {
     expect(stage5Run([[...PAGE, "Setup host stopped (ttl). Run `agend setup` again to reopen it."]], [], ["n"]).out).toContain("RESULT=False LOG=setup,ask:n\n");

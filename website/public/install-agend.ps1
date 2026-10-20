@@ -81,14 +81,17 @@ function Invoke-BrowserSetup([scriptblock]$Run) {
 # 第 5 階段的設定與服務（#2235 審查：每一步都要命令成功才算完成）。回傳 $true 才可以標記完成；$false 表示使用者選擇結束，
 # 進度保留，下次執行同一行指令會從這一步繼續。
 $AGEND_ENV = 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; '
+# 主控台版的 quickstart：子程序直接接在這個視窗上（它的提示和你的輸入都在這裡），函式只回傳它的結束碼。不能直接在
+# 函式裡執行 wsl：原生程式的輸出會進到函式的回傳值，提示就看不到，結束碼也會變成一個陣列（#2235 審查）。
 function Invoke-ConsoleQuickstart {
     Write-Warn "要貼上 Bot Token：在視窗裡按一下右鍵。"
     Write-Warn "設定時請不要按 Ctrl+C：它會直接結束設定。"
-    $prevEAP5 = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    wsl -d $UBUNTU_DISTRO -u root -- bash -lc ($AGEND_ENV + 'agend quickstart')
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prevEAP5
-    return $code
+    try {
+        $p = Start-Process -FilePath 'wsl.exe' -NoNewWindow -Wait -PassThru `
+            -ArgumentList (Join-ProcessArguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', '-lc', ($AGEND_ENV + 'agend quickstart')))
+        if ($null -eq $p.ExitCode) { return 1 }
+        return [int]$p.ExitCode
+    } catch { return 1 }
 }
 function Invoke-SetupAndService {
     $configured = $false
