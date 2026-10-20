@@ -308,17 +308,26 @@ const resumeMenuActive = (pane: string): boolean => claudeResumeMenuState(pane).
  * which needs no cursor — never Enter, never an arrow. Only this exact shape is answered: the title row, the
  * inactivity sentence and exactly the two options, bottom-anchored (only the description and footer rows may follow
  * the last option). Any other screen carrying the title is held for a human.
+ *
+ * 2.1.304 (binary `yrt`; the changelog's "warning before resuming an inactive conversation on Pro and Max"): the idle
+ * trigger labels the same key "Esc to dismiss" — the action behind it is unchanged (`onCancel` → "dismiss" in both
+ * versions: the prompt goes, the conversation stays) — and the description row under "Start a new conversation" is
+ * shown only when the server offers the look-up. Both are this shape.
  */
 const COLD_RESUME_TITLE = /^[ \t]*Resume this conversation\?[ \t]*$/;
 const COLD_RESUME_RESUME_ROW = /^[ \t]*(?:[❯›][ \t]*)?(?:1\.[ \t]*)?Resume[ \t]*$/;
 const COLD_RESUME_NEW_ROW = /^[ \t]*(?:[❯›][ \t]*)?(?:2\.[ \t]*)?Start a new conversation[ \t]*$/;
 const COLD_RESUME_NEW_DESCRIPTION = /^[ \t]*Claude can look this one up if you refer to it later[ \t]*$/;
-/** The input guide's parts, joined by " · " (the idle trigger adds the arrow hint when a draft is waiting). */
-const COLD_RESUME_FOOTER_PARTS = new Set(["Enter to confirm", "Esc to resume", "↑/↓ pick a row first", "↑↓ pick a row first"]);
+/**
+ * The input guide's parts, joined by " · " (the idle trigger adds the arrow hint when a draft is waiting). Escape's
+ * label is "resume", or "dismiss" on 2.1.304's idle trigger — one of them, exactly once.
+ */
+const COLD_RESUME_ESC_PARTS = new Set(["Esc to resume", "Esc to dismiss"]);
+const COLD_RESUME_FOOTER_PARTS = new Set(["Enter to confirm", ...COLD_RESUME_ESC_PARTS, "↑/↓ pick a row first", "↑↓ pick a row first"]);
 function coldResumeFooter(row: string): boolean {
   const parts = row.trim().split(" · ");
   return new Set(parts).size === parts.length && parts.every(part => COLD_RESUME_FOOTER_PARTS.has(part))
-    && parts.includes("Enter to confirm") && parts.includes("Esc to resume");
+    && parts.includes("Enter to confirm") && parts.filter(part => COLD_RESUME_ESC_PARTS.has(part)).length === 1;
 }
 /** The body, joined across its wrapped rows: exactly the inactivity sentence, and the draft line when one is waiting. */
 const COLD_RESUME_BODY = /^This conversation has been inactive for [^.]+? and is \S+ tokens long\. Resuming it will use (?:all|about \d+%) of your 5-hour usage limit\.(?: Your unsent message will still be there after you answer\.)?$/;
@@ -351,7 +360,7 @@ const coldResumeExact = (pane: string): boolean => claudeColdResumePromptState(p
 const coldResumeUnknown = (pane: string): boolean => { const s = claudeColdResumePromptState(pane); return s.titled && !s.exact; };
 
 const COLD_RESUME_TITLE_ANY = /^[ \t]*Resume this conversation\?[ \t]*$/m;
-const COLD_RESUME_DESCRIPTION = "Claude cold-cache resume prompt — Escape (its own 'resume'): keep the full context";
+const COLD_RESUME_DESCRIPTION = "Claude cold-cache resume prompt — Escape (its own 'resume', or 'dismiss' on 2.1.304's idle trigger): keep the full context";
 const COLD_RESUME_HOLD_DESCRIPTION = "Claude cold-cache resume prompt (unrecognised shape) — holding for a human, never 'Start a new conversation'";
 
 
