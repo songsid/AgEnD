@@ -4,6 +4,21 @@
  * and fuzzy suggestions without spawning a process.
  */
 
+/** East-Asian-Fullwidth-aware display column width. Re-exported from ls-rows for purity. */
+const eastAsianWideRe = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33BF\u33FF-\uA4CF\uA960-\uA97F\uAC00-\uD7FF\uF900-\uFAFF\uFE10-\uFE1F\uFE30-\uFE6F\uFF01-\uFF60\uFFE0-\uFFE6]/;
+function displayWidth(s: string): number {
+  let w = 0;
+  for (const ch of s) {
+    const code = ch.codePointAt(0) ?? 0;
+    // Surrogate halves → 0; combining marks → 0; wide/fullwidth → 2; else → 1
+    if (code === 0) continue;
+    if (/\p{M}/u.test(ch)) continue;
+    if (/\p{Cf}/u.test(ch) && code !== 0x200D) continue; // format chars (ZWJ allowed)
+    w += eastAsianWideRe.test(ch) || (code >= 0x1F300 && code <= 0x1FAFF) ? 2 : 1;
+  }
+  return w;
+}
+
 export interface Candidate {
   /** 1-based global row number as shown in `agend ls` — stable across filters. */
   idx: number;
@@ -171,22 +186,27 @@ export function pickerDefaultIdx(displayedCandidates: Pick<Candidate, "idx">[]):
 /**
  * Format one line of the ambiguity candidate list.
  * Shows: `  #) realName  [status]  teams` — no display label in output.
- * `maxNameW` pads names for column alignment.
+ * `maxNameW` is the max DISPLAY width across all shown candidates;
+ * padding is display-width-aware so CJK names align correctly.
  */
 export function ambiguityLine(c: Candidate, maxNameW: number): string {
   const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
-  return `  ${String(c.idx).padStart(2)}) ${c.realName.padEnd(maxNameW)}  [${c.status}]  ${teams}`;
+  const nameW = displayWidth(c.realName);
+  const pad = " ".repeat(Math.max(0, maxNameW - nameW));
+  return `  ${String(c.idx).padStart(2)}) ${c.realName}${pad}  [${c.status}]  ${teams}`;
 }
 
 /**
  * Format one line of the interactive picker list.
  * Shows: `  #) statusGlyph realName  teams` — no display label in output.
- * `maxNameW` pads names for column alignment.
+ * `maxNameW` is the max DISPLAY width across all shown candidates.
  */
 export function pickerLine(c: Candidate, maxNameW: number): string {
   const statusGlyph = c.status === "running" ? "●" : c.status === "paused" ? "○" : "✗";
   const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
-  return `  ${String(c.idx).padStart(2)}) ${statusGlyph} ${c.realName.padEnd(maxNameW)}  ${teams}`;
+  const nameW = displayWidth(c.realName);
+  const pad = " ".repeat(Math.max(0, maxNameW - nameW));
+  return `  ${String(c.idx).padStart(2)}) ${statusGlyph} ${c.realName}${pad}  ${teams}`;
 }
 
 /**

@@ -2869,7 +2869,8 @@ async function resolveInstance(query: string | undefined, config: import("./type
     if (process.stdin.isTTY && process.stdout.isTTY) {
       console.log(`"${query}" matches multiple instances:`);
       const { ambiguityLine } = await import("./ls-attach-resolve.js");
-      const maxNameW = Math.max(...result.candidates.map(c => c.realName.length));
+      const { displayWidth: dw } = await import("./ls-rows.js");
+      const maxNameW = Math.max(...result.candidates.map(c => dw(c.realName)));
       for (const c of result.candidates) {
         console.log(ambiguityLine(c, maxNameW));
       }
@@ -2902,7 +2903,8 @@ async function interactivePicker(candidates: import("./ls-attach-resolve.js").Ca
   const defaultIdx = pickerDefaultIdx(ordered);
 
   const { pickerLine } = await import("./ls-attach-resolve.js");
-  const maxNameW = Math.max(...ordered.map(c => c.realName.length));
+  const { displayWidth: dw } = await import("./ls-rows.js");
+  const maxNameW = Math.max(...ordered.map(c => dw(c.realName)));
 
   console.log("Select an instance:");
   for (const c of ordered) {
@@ -3220,7 +3222,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     // Columns: # (global row number), Name (real, full, copyable), then the rest.
     // Display name (if set) appears at the end of the row as context — secondary.
     const numW = 3;
-    const nameW = Math.max(16, ...displayRows.map(r => r.name.length + 1));
+    const nameW = Math.max(16, ...displayRows.map(r => displayWidth(r.name) + 1));
     const backendW = 14;
     const statusW = 12;
     const teamW = 20;
@@ -3250,7 +3252,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
 
       console.log(
         String(r.globalIdx).padEnd(numW) +
-        r.name.padEnd(nameW) +
+        padDisplay(r.name, nameW) +
         r.backend.padEnd(backendW) +
         statusIcon(r.status, r.idle, (r as any).state) + " " + statusLabel(r.status, r.idle, (r as any).state).padEnd(statusW - 2) +
         padDisplay(teamStr, teamW) +
