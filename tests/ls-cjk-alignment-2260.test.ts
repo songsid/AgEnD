@@ -218,8 +218,9 @@ describe("lsAction production path: list_instances confirms CJK names preserved"
 // ── Source-structure checks: cli.ts call sites (catches cli.ts reversal) ────
 //
 // These are the same kind of source-text checks used throughout the test suite
-// (e.g. tool-permissions.test.ts, daemon.ts). Reverting cli.ts to r.name.length
-// or r.name.padEnd(nameW) makes the negation assertions below fail.
+// (e.g. tool-permissions.test.ts, daemon.ts). Each test asserts the exact
+// CALL EXPRESSION present in cli.ts, not just the import name. Reverting the
+// call site in cli.ts while leaving imports unchanged still breaks the test.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -228,35 +229,37 @@ import { join, dirname } from "node:path";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("cli.ts call sites use the production functions (source-structure check)", () => {
-  it("lsAction uses computeLsNameWidth — reverts to r.name.length breaks this", () => {
-    const src = readFileSync(join(ROOT, "src/cli.ts"), "utf-8");
-    const lsStart = src.indexOf("async function lsAction");
-    const lsBlock = src.slice(lsStart, lsStart + 8000);
-    // Production call must be present
-    expect(lsBlock).toContain("computeLsNameWidth");
-    // Old pattern must be absent from the formatter section
-    const fmtStart = lsBlock.indexOf("const numW");
-    const fmtEnd = lsBlock.indexOf("System memory footer");
-    const fmtBlock = lsBlock.slice(fmtStart, fmtEnd);
-    expect(fmtBlock).not.toContain("r.name.length");
+  let src: string;
+  beforeAll(() => { src = readFileSync(join(ROOT, "src/cli.ts"), "utf-8"); });
+
+  it("lsAction nameW: call expression is computeLsNameWidth(displayRows.map(r => r.name))", () => {
+    // Assert the CALL EXPRESSION, not just the import. Reverting to
+    // Math.max(16,...displayRows.map(r => r.name.length+1)) fails this.
+    const callExpr = "computeLsNameWidth(displayRows.map(r => r.name))";
+    expect(src, "lsAction nameW must use computeLsNameWidth call").toContain(callExpr);
+    // Old pattern must be absent from the production source
+    expect(src).not.toContain("displayRows.map(r => r.name.length");
   });
 
-  it("lsAction row loop uses padToDisplayWidth — reverts to r.name.padEnd breaks this", () => {
-    const src = readFileSync(join(ROOT, "src/cli.ts"), "utf-8");
-    const loopStart = src.indexOf("for (const r of displayRows)");
-    const loopEnd = src.indexOf("System memory footer");
-    const loopBlock = src.slice(loopStart, loopEnd);
-    // Production pad function must be in the row loop
-    expect(loopBlock).toContain("padToDisplayWidth(r.name");
-    // Old code-unit padEnd must be absent from the name cell
-    expect(loopBlock).not.toContain("r.name.padEnd");
+  it("lsAction row cell: call expression is padToDisplayWidth(r.name, nameW)", () => {
+    // Reverting to r.name.padEnd(nameW) fails this.
+    const callExpr = "padToDisplayWidth(r.name, nameW)";
+    expect(src, "row Name cell must use padToDisplayWidth call").toContain(callExpr);
+    // Old pattern must be absent
+    expect(src).not.toContain("r.name.padEnd(nameW)");
   });
 
-  it("picker maxNameW uses computeLsNameWidth — reverts to Math.max+displayWidth breaks this", () => {
-    const src = readFileSync(join(ROOT, "src/cli.ts"), "utf-8");
-    // The picker helper (interactivePicker) must call computeLsNameWidth
-    const pickerStart = src.indexOf("async function interactivePicker");
-    const pickerBlock = src.slice(pickerStart, pickerStart + 2000);
-    expect(pickerBlock).toContain("computeLsNameWidth");
+  it("ambiguity maxNameW: call expression is cnw(result.candidates.map(c => c.realName), 0)", () => {
+    // Reverting to Math.max(...result.candidates.map(c => c.realName.length)) fails.
+    const callExpr = "cnw(result.candidates.map(c => c.realName), 0)";
+    expect(src, "ambiguity maxNameW must use cnw call").toContain(callExpr);
+    expect(src).not.toContain("result.candidates.map(c => c.realName.length)");
+  });
+
+  it("picker maxNameW: call expression is cnwPicker(ordered.map(c => c.realName), 0)", () => {
+    // Reverting to Math.max(...ordered.map(c => c.realName.length)) fails.
+    const callExpr = "cnwPicker(ordered.map(c => c.realName), 0)";
+    expect(src, "picker maxNameW must use cnwPicker call").toContain(callExpr);
+    expect(src).not.toContain("ordered.map(c => c.realName.length)");
   });
 });
