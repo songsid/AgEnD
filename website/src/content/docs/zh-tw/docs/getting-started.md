@@ -82,7 +82,7 @@ agend quickstart
 
 之後要在現有設定加使用者、第二個平台或 Discord persona bot，再跑一次 `agend quickstart`。
 
-想用手機設定而不是在終端機設定，見 [`agend setup --tunnel`](/AgEnD/zh-tw/docs/cli/#web-儀表板)。
+想用手機設定而不是在終端機設定，見 [`agend setup --tunnel`](/AgEnD/zh-tw/docs/cli/#web-儀表板)。設定頁（`agend setup`）也有 **Web only (no bot)**：不用 token，只寫入第一個 agent，其餘都在網頁儀表板完成。
 
 ## 啟動 fleet
 

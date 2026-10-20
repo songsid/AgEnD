@@ -159,6 +159,8 @@ agend setup --tunnel            # ……並公開出去，讓手機也能開
 
 頁面在完成、15 分鐘到、或閒置 10 分鐘後自己關掉——沒人看著的設定表單就是暴露面。
 
+**Web only (no bot)**（#2233）是 Telegram、Discord 之外的第三個選項：不用 bot token、不用管理員 ID、也沒有要驗證的東西。它只寫入第一個 agent、不建立聊天連線，所以 AgEnD 從網頁儀表板使用（在機器上用 `agend web --code` 取得登入碼），後端 CLI 也在那裡登入（設定 → Agent → 登入）。之後可以在設定加上 Discord 或 Telegram。主機確認（`agend settings confirm <id>`）一樣要做。
+
 `--tunnel` 每次都要你親口確認，沒有旗標或設定可以預先答應；沒有終端的執行直接拒絕，不當作你同意了。手機設定走 Cloudflare 通道，你打進去的 bot token 會經過 Cloudflare 的邊緣——不能接受就回機器上設。
 
 ### 儀表板登入與 session

@@ -82,7 +82,7 @@ Step-by-step bot guides: [Telegram](/AgEnD/setup-telegram/), [Discord](/AgEnD/se
 
 Run `agend quickstart` again later to add users, a second platform, or a Discord persona bot to an existing config.
 
-To set up from your phone instead of the terminal, see [`agend setup --tunnel`](/AgEnD/docs/cli/#web-dashboard).
+To set up from your phone instead of the terminal, see [`agend setup --tunnel`](/AgEnD/docs/cli/#web-dashboard). The setup page (`agend setup`) also offers **Web only (no bot)**: no token, the first agent only, and the web dashboard for everything else.
 
 ## Start the fleet
 

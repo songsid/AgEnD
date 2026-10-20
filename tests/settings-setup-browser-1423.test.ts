@@ -65,3 +65,23 @@ it("lost-response retry freezes dynamic destination, admin, platform and delayed
   expect(writes).toHaveLength(2); expect(writes[1][1]).toEqual(writes[0][1]);
   expect(JSON.parse(writes[1][1].body)).toMatchObject({ platform: "telegram", group_id: "-100111", admin_user_id: "42" });
 });
+it("#2233 Web only: no credentials step, no Verify; the commit carries the agent alone — never a token or a connection field", async () => {
+  const h = browser(); await h.flush();
+  h.edit("token", "typed-before-switching"); h.edit("backend", "kiro-cli"); h.edit("dir", "/tmp/app"); h.edit("name", "worker");
+  await h.click("pickWeb");
+  expect(h.$("credStep").hidden).toBe(true);
+  expect(h.$("pickWeb").className).toBe("primary");
+  expect(h.$("finish").disabled, "nothing previewed yet").toBe(true);
+  await h.click("preview");
+  expect(h.$("finish").disabled, "no Verify for web only").toBe(false);
+  expect(h.fetch.mock.calls.some(([path]) => path === "api/settings/quickstart/probe")).toBe(false);
+  await h.click("finish");
+  const writes = h.fetch.mock.calls.filter(([path]) => path === "api/settings/quickstart/commit");
+  expect(writes).toHaveLength(1);
+  expect(JSON.parse(writes[0][1].body)).toEqual({ web_only: true, backend: "kiro-cli", working_directory: "/tmp/app", instance_name: "worker" });
+  expect(writes[0][1].body).not.toContain("typed-before-switching");
+  // Back to a bot: the credentials step returns and Verify is needed again.
+  const fresh = browser(); await fresh.flush(); await fresh.click("pickWeb"); await fresh.click("pickTelegram");
+  expect(fresh.$("credStep").hidden).toBe(false);
+  await fresh.click("preview"); expect(fresh.$("finish").disabled).toBe(true);
+});

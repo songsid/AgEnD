@@ -200,6 +200,13 @@ anyone who found the host could close your setup page without ever finding it.
 The page closes itself when you finish, after 15 minutes, or after 10 minutes
 idle — a setup form left open is a surface nobody is watching.
 
+**Web only (no bot)** (#2233) is the third choice next to Telegram and Discord: no
+bot token, no admin ID, nothing to verify. It writes the first agent and no chat
+connection, so AgEnD is used from its web dashboard (sign in with
+`agend web --code` on the machine), and backend CLIs are signed in there too
+(Settings → Agents → Sign-ins). Discord or Telegram can be added later from
+Settings. The host confirmation (`agend settings confirm <id>`) is the same.
+
 ### Setting up from a phone
 
 `agend setup --tunnel` asks you to confirm first, every time — there is no flag

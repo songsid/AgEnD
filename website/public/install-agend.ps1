@@ -202,6 +202,11 @@ function Get-LoginFollowUpCommand([string]$key) {
     $cmd = if ($key -eq 'antigravity') { 'agy' } else { Get-LoginCommand $key }
     return ("wsl -d {0} -u root -- bash -lc 'export PATH=/root/.local/bin:`$HOME/.claude/local:`$PATH; {1}'" -f $UBUNTU_DISTRO, $cmd)
 }
+# #2233：設定頁選了「Web only (no bot)」時，fleet.yaml 沒有 channel／channels：完成畫面就不說「通訊軟體已串接」。
+function Test-WebOnlyFleet([string]$distro) {
+    $r = wsl -d $distro -u root -- bash -lc 'f=/root/.agend/fleet.yaml; if [ -f "$f" ] && ! grep -Eq "^(channel|channels):" "$f"; then echo WEB_ONLY; else echo HAS_CHAT; fi' 2>&1 | Out-String
+    return ($r -match 'WEB_ONLY')
+}
 function Test-WslLogin([string]$key) {
     $r = wsl -d $UBUNTU_DISTRO -u root -- bash -lc ('export PATH=/root/.local/bin:$HOME/.claude/local:$PATH; if ' + (Get-LoginCheck $key) + '; then echo LOGIN_OK; else echo LOGIN_NO; fi') 2>&1 | Out-String
     return ($r -match 'LOGIN_OK')
@@ -356,7 +361,7 @@ function Show-SetupCode([string]$code, [bool]$copied, [bool]$opened, [string]$ur
     Write-Host "  └──────────────────────────────────────┘" -ForegroundColor Green
     if ($opened) { Write-Ok "設定頁已在瀏覽器打開。" } else { Write-Warn "瀏覽器沒有自動打開，請自己打開這個網址：$url" }
     if ($copied) { Write-Ok "設定碼已複製：在網頁的輸入框按 Ctrl+V（或右鍵 → 貼上）。" } else { Write-Info "在網頁的輸入框輸入上面的設定碼。" }
-    Write-Info "在網頁上選擇 Discord 或 Telegram、貼上 Bot Token，最後按完成。這個視窗會等你，不用在這裡打字。"
+    Write-Info "在網頁上選擇 Discord 或 Telegram 並貼上 Bot Token，或選「Web only (no bot)」只用網頁；最後按完成。這個視窗會等你，不用在這裡打字。"
     Write-Host ""
 }
 # 跑一次設定頁。$Run 收到一個每行呼叫的 hook，回傳結束碼。結果：Done（完成、AgEnD 已啟動）、Already（之前就設定好了）、
@@ -1142,7 +1147,7 @@ if (Stage-Done 5) {
     Write-Ok "已完成，跳過此步驟"
 } else {
     Write-Host ""
-    Write-Info "接下來在瀏覽器裡完成設定：選擇 Discord 或 Telegram、貼上 Bot Token。"
+    Write-Info "接下來在瀏覽器裡完成設定：選擇 Discord 或 Telegram 並貼上 Bot Token；或選「Web only (no bot)」，不用 Bot、只用網頁儀表板。"
     Write-Info "設定頁會自動打開，設定碼也會幫你複製好；這個視窗不用打字。"
     if (-not (Invoke-SetupAndService)) {
         Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"
@@ -1177,13 +1182,19 @@ foreach ($b in @($skippedLogins)) {
     Write-Warn ("  [!!] {0} 已安裝但還沒登入。要登入，在 PowerShell 執行：{1}" -f $b.Name, (Get-LoginFollowUpCommand $b.Key))
 }
 Write-Info "  [OK] AgEnD 已安裝並啟動（systemd 服務）"
-Write-Info "  [OK] 通訊軟體已串接"
+$webOnly = Test-WebOnlyFleet $UBUNTU_DISTRO
+if ($webOnly) { Write-Info "  [OK] 只用網頁儀表板（沒有串接通訊軟體；之後可在 設定 → 連線 加上 Discord 或 Telegram）" }
+else { Write-Info "  [OK] 通訊軟體已串接" }
 Write-Info "  [OK] 開機自動啟動已設定"
 $shortcut = New-DashboardShortcut $UBUNTU_DISTRO
 if ($shortcut) { Write-Info "  [OK] 桌面上已建立「AgEnD 儀表板」捷徑" }
 Write-Host ""
 Write-Host "  日常使用：" -ForegroundColor Cyan
-Write-Info "    直接在 Discord/Telegram 跟 Bot 對話即可，不需要手動開啟任何程式"
+if ($webOnly) {
+    Write-Info "    在網頁儀表板跟 agent 對話；後端 CLI 要重新登入時，到 設定 → Agent → 登入 按「登入」"
+} else {
+    Write-Info "    直接在 Discord/Telegram 跟 Bot 對話即可，不需要手動開啟任何程式"
+}
 if ($shortcut) { Write-Info "    要看網頁儀表板：按兩下桌面上的「AgEnD 儀表板」，登入碼會自動帶入" }
 Write-Info "    電腦重開機後 AgEnD 會自己啟動"
 Write-Host ""
