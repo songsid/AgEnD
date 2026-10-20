@@ -4,9 +4,12 @@ section: Fixed
 - **An update can no longer leave a host without `agend`, and re-running the installer always repairs it (#2264).**
   - Updates are now run by the new release's own installer: `agend update` runs it via `npm exec`, and so does the install one-liner. Install, upgrade and repair are one program.
   - The installer first fixes what an interrupted install left behind:
-    - npm's moved-aside copy of AgEnD is put back or removed;
-    - an install lock that nobody holds, or that cannot be read, is removed.
-  - It then installs the new release and checks that `agend --version` runs. If the new release fails that check, it reinstalls the previous one.
+    - an install lock that nobody holds, or that cannot be read, is moved aside (another running installer is waited for, and nothing is touched);
+    - npm's moved-aside copy of AgEnD is put back when it is the only whole copy. This happens only while no other npm is installing packages on the host;
+    - nothing is deleted: anything else it moves aside is kept in `<npm prefix>/.agend-quarantine/`.
+  - It then installs the new release and checks that `agend --version` runs. If npm fails but the previous version still runs, nothing else is done, and the answer says so. If no working `agend` is left, it reinstalls the previous version.
+  - The removal of old plugin packages from the install script is gone.
+  - Under sudo, a system-wide copy is retired after a move to nvm only if it is a 2.1 release.
   - A manual `npm install -g` is never refused because of a lock.
-  - The fleet's user service now turns on systemd linger and finds its own runtime directory, so `agend start`/`restart` work from any shell, root on WSL included. An update is also no longer cut off when the login that started it ends.
+  - `agend install`, `start` and `restart` now turn on systemd linger, and every service command finds the user's runtime directory, so `agend start`/`restart` work from any shell, root on WSL included. An update is also no longer cut off when the login that started it ends.
   - The chat's update message ends with a final state. If the fleet comes back on a different version than the one the update aimed for, it says so, and gives the one-liner to finish.

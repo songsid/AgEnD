@@ -471,7 +471,8 @@ describe("upgrade path: the restart runs through the newly installed binary (bui
     const log = join(home, "calls.log");
     writeFileSync(log, "");
     // npm: a newer version is published; install is a no-op that "lands" it.
-    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '99.0.0-beta.3';; "config get prefix") echo '${home}';; "root -g") echo '${join(home, "lib", "node_modules")}';; "prefix -g") echo '${home}';; esac\nexit 0\n`);
+    // #2264: \`npm exec … agend-install\` runs the REAL installer from this checkout, with this stub as its npm.
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in "exec --yes --package "*) exec node '${join(process.cwd(), "launcher", "agend-install.cjs")}' "$7" --spec "$4";; view*) echo '99.0.0-beta.3';; "config get prefix") echo '${home}';; "root -g") echo '${join(home, "lib", "node_modules")}';; "prefix -g") echo '${home}';; esac\nexit 0\n`);
     // `agend` on PATH = the freshly installed binary: this build, inside a global package npm "installed" (#1446: the
     // updater checks it reports the target version and that the package opens a database on its node).
     const globalPkg = join(home, "lib", "node_modules", "@songsid", "agend");

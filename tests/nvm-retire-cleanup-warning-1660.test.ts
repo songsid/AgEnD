@@ -188,7 +188,7 @@ describe("cleanup receipt owner fence (update-marker helpers)", () => {
 });
 
 /** Exact production activateVerified closure with inert effects, adapted from activation-cli-1490. */
-function cliRig(sudoUninstallStatus: number) {
+function cliRig(sudoUninstallStatus: number, installedVersion = "2.1.12") {
   const root = fs.mkdtempSync(join(tmpdir(), "agend-1660-")); roots.push(root);
   const w = activationWorld(root), process = { exitCode: 0, getuid: () => 1000 };
   const console = { log: vi.fn(), error: vi.fn() }, stages: { stage: string; details?: unknown }[] = [], commands: string[][] = [];
@@ -237,7 +237,8 @@ function cliRig(sudoUninstallStatus: number) {
     },
     "node:fs": fs, "./package-preimage.js": { restorePackagePreimage: vi.fn(preimage.restorePackagePreimage), prunePreimages: vi.fn(preimage.prunePreimages) },
   };
-  const context = createContext({ process, console, join, Promise, DATA_DIR: dataDir, nvmSh: join(root, "unused-nvm.sh"), SYSTEMD_RESTART_TIMEOUT_MS: 1,
+  // #2264 review: the copy this updater runs from — the system copy retired only when it is a 2.1-era release.
+  const context = createContext({ process, console, join, Promise, pkgVersion: installedVersion, DATA_DIR: dataDir, nvmSh: join(root, "unused-nvm.sh"), SYSTEMD_RESTART_TIMEOUT_MS: 1,
     spawnSync, readFileSync: fs.readFileSync, writeFileSync: fs.writeFileSync, realpathSync: fs.realpathSync, statSync: fs.statSync,
     withOrigin: () => ({}), setUpdateProgressStage: (dir: string, stage: string, details?: unknown) => { stages.push({ stage, details }); return true; }, clearUpdateMarker: vi.fn(),
     reportUpdateRestart: (value: number | null) => reportUpdateRestart(value, console),
@@ -268,6 +269,17 @@ describe("CLI: refused removal exits 0, prints once, records against its receipt
     expect(stored?.cleanup).toBe("done");
     expect(stored?.warning).toContain("Old system install was not removed");
     expect(stored?.cleanupCommand).toBe(`sudo '${NPM}' uninstall -g @songsid/agend`);
+  });
+});
+
+describe("#2264 review: the system copy is retired only for a 2.1-era layout", () => {
+  it("an updater running from a 2.2+ system copy keeps it: no sudo, no cleanup owed, and it says so", async () => {
+    const h = cliRig(1, "2.2.6");
+    beginUpdateProgress(h.dataDir, { adapterId: "a", chatId: "c", messageId: "m" });
+    await h.activate(h.verified, true);
+    expect(h.commands.filter(c => c[0] === "sudo")).toEqual([]);
+    expect(h.console.log.mock.calls.flat().join("\n")).toContain("the system install (v2.2.6) is kept");
+    expect(readUpdateProgress(h.dataDir)?.progress.cleanup).toBeUndefined();
   });
 });
 

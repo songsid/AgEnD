@@ -289,6 +289,15 @@ Detached restart 使用非同步 polling 與 monotonic deadline。期限到了�
   - 下一次 `agend restart` 會執行這次啟用，只做一次：一次 `bootout`、一次 `bootstrap`。接著 `launchctl print` 必須顯示新的 job 正在執行；若沒有，會重新 bootstrap 先前的 plist 並確認。
   - 只能用 SSH 連線、沒有人登入的 Mac 沒有 `gui/<uid>` domain（`launchctl` 回報錯誤 125）。在那裡 job 只能以 `LimitLoadToSessionType=Background` 載入 `user/<uid>`；`agend install` 不會這樣寫，這種 job 需要你自行管理。
 
+**更新怎麼安裝（#2264）。** `agend update` 和安裝的一行指令都執行目標版本自己的安裝程式：
+`npm exec --yes --package @songsid/agend@<版本> -- agend-install`。任何中斷的更新，再執行一次一行指令就能修好。安裝程式會：
+- 先檢查安裝鎖。另一個安裝程式正在執行時，它會停下、不做任何改動。已結束的安裝程式留下的鎖，或讀不懂的鎖，會被移到一旁；
+- 把 npm 移到旁邊的那份 AgEnD（`@songsid/.agend-…`）在它是唯一完整的一份時放回去，讓 `agend` 恢復可用。只有在主機上沒有 npm 正在安裝、移除或更新套件時才會這麼做；否則不碰 npm 留下的東西，並說明原因。不會刪除任何東西：移到一旁的都放在 `<npm prefix>/.agend-quarantine/`；
+- 安裝該版本，並確認 `agend --version` 回報的是它。npm 失敗但前一版仍能執行時，不再做其他事，並如實說明。沒有任何能執行的 `agend` 時，才重新裝回前一版；
+- 執行新版本的 `agend install`，更新時再執行 `agend restart`。在 Linux 上，`agend install`、`start`、`restart` 會為使用者開啟 systemd linger，並從任何 shell（包括 WSL 上的 root）找到使用者的 systemd。`status` 和 `stop` 只補上 `XDG_RUNTIME_DIR` 與 bus 位址，不改動主機設定。
+
+npm prefix 需要 sudo 時，`agend update` 沿用下面說明的舊更新流程。在那條流程裡，搬到 nvm 之後只有 2.1 版的系統層副本會被退役。
+
 **更新的啟用結果（#1490）。** 套件驗證通過不代表 fleet 正在執行。確認重啟完成才算成功；未完成的重啟回傳 exit 75（pending），保留更新標記與所有修復備份，不還原或移除套件。重啟失敗回傳 exit 1。Systemd 路徑只有在載入的目標相同、unit bytes 未變、沒有待執行 job、main/control PID 都為零，且確認停止之後，才可還原本次更新的套件與 unit 備份。重新載入並核對舊定義後，才啟動原本正在執行的服務；原本停止的服務維持停止。即使回復成功，仍回報本次更新失敗。Ownership 變更或讀不到、沒有備份、detached owner、自訂而無法追蹤停止的模式或回復未完成，都需要管理者檢查，不能回報回復成功。重試前請以 `systemctl [--user] status <unit>` 檢查選定的服務。這些核對不能讓外部的服務／套件修改變成原子操作；更新期間請勿同時執行其他安裝或服務管理操作。
 回復會恢復舊執行檔的政策，不會還原資料目錄。備份來自較舊版本時，請先看[降版相容性限制](downgrade-compatibility.zh-TW.md)。
 

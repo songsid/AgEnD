@@ -1456,6 +1456,12 @@ program
       // the cleanup write later can prove it still owns the marker (checklist
       // 3/5). A missed capture only skips the marker write; retire still runs.
       let cleanupReceipt: UpdateReceipt | null = null;
+      // #2264 review: the old system copy is retired only for a confirmed 2.1-era layout — the copy this updater runs
+      // from is a 2.1.x release (2.1's updater left it there). Never from "nvm" or "root" alone: a 2.2+ copy stays.
+      if (verified.retireSystemCopy && !/^2\.1\./.test(pkgVersion)) {
+        console.log(`  Note: the system install (v${pkgVersion}) is kept; only a 2.1-era copy is retired after a move to nvm.`);
+        delete verified.retireSystemCopy;
+      }
       if (verified.retireSystemCopy) {
         try {
           const { markCleanupPending } = await import("./update-marker.js");

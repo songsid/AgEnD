@@ -27,8 +27,10 @@ describe("install.sh parity (#1296)", () => {
       expect(line, `install line must not mention agend-plugin-discord: ${line}`)
         .not.toContain("agend-plugin-discord");
     }
-    // #2264: the release's own installer removes it (install.sh runs that installer).
+    // #2264 review: no removal step at all — the built-in adapter wins over the plugin, and one more reify only gets in
+    // the way of a repair. install.sh runs the release's own installer.
     expect(repo).toContain("-- agend-install");
-    expect(readFileSync(join(root, "launcher", "agend-install.cjs"), "utf-8")).toContain('"uninstall", "-g", "@songsid/agend-plugin-discord"');
+    expect(repo).not.toContain("agend-plugin-discord");
+    expect(readFileSync(join(root, "launcher", "agend-install.cjs"), "utf-8")).not.toContain("agend-plugin-discord");
   });
 });

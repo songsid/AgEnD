@@ -335,8 +335,9 @@ describe("the service-level commands, behind inert stubs", () => {
 
   it("an internal origin lets the command through but is not handed to what it starts", async () => {
     await run(["update"], "agend-leader", { AGEND_RESTART_ORIGIN: "slash /update by discord:admin" });
-    expect(calls()).toContain("npm install");                       // it went ahead without --yes
-    expect(calls()).toMatch(/npm install .*ORIGIN=\n/);              // …and npm, like any replacement fleet, saw no marker
+    // #2264: the update hands the install to the target's installer through `npm exec`.
+    expect(calls()).toContain("npm exec");                          // it went ahead without --yes
+    expect(calls()).toMatch(/npm exec .*ORIGIN=agend-update\n/);    // …npm is the update's own child (its marker), never the caller's origin
     expect(calls()).not.toContain("slash /update");
   });
 
@@ -363,7 +364,7 @@ describe("the service-level commands, behind inert stubs", () => {
 
   it("control: with --yes `update` does reach the (stubbed) npm", async () => {
     await run(["update", "--yes"], "agend-leader");
-    expect(calls()).toContain("npm install");
+    expect(calls()).toContain("npm exec");   // #2264: the target's installer, through npm exec
   });
 
   it("an interactive user is not asked: `stop` just looks for a service", async () => {

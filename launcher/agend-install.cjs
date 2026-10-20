@@ -6,10 +6,11 @@
 //
 // install.sh (and so the Windows installer) and `agend update` both end here, so the newest install logic runs on every
 // install — never an old updater that happens to be on the host. It installs exactly the version it ships in, and:
-//   1. repairs what an interrupted install left in the npm prefix — npm's retire sibling `@songsid/.agend-XXXX` (the old
-//      package is put back when it is the only copy, otherwise removed), and an install lock nobody holds;
-//   2. `npm install -g @songsid/agend@<this version>` (one retry after repairing again, for a sibling npm itself left);
-//   3. proves `<prefix>/bin/agend --version` is this version, else puts the previous version back the same way;
+//   1. repairs what an interrupted install left in the npm prefix (see repair(): the lock first; npm's leftovers only
+//      while no other npm runs; the only copy of AgEnD put back, anything else moved to quarantine, never deleted);
+//   2. `npm install -g @songsid/agend@<this version>` (once more only if repairing moved something npm itself left);
+//   3. proves `<prefix>/bin/agend --version` is this version; otherwise says what runs now — the previous version that
+//      npm kept is left as it is, and only an `agend` that does not run is reinstalled;
 //   4. on a host with a fleet: `agend install` (the service, enabling linger) and, for --upgrade, `agend restart`;
 //   5. records each step in the update marker the fleet edits its chat message from, ending in a final state.
 // Nothing here refuses a manual `npm install -g`: the lock only keeps two of THESE installers from running at once.
@@ -40,7 +41,13 @@ function defaultDeps() {
 
 function readJson(file) { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { return null; } }
 function last(text) { var lines = String(text || "").trim().split("\n"); return (lines[lines.length - 1] || "").trim(); }
-function isAgendPackage(dir) { var p = readJson(path.join(dir, "package.json")); return p && p.name === "@songsid/agend" && typeof p.version === "string" ? p.version : null; }
+/** A whole AgEnD package in `dir` — its package.json and every bin it names — gives its version; a partial one, null. */
+function isAgendPackage(dir) {
+  var p = readJson(path.join(dir, "package.json"));
+  if (!p || p.name !== "@songsid/agend" || typeof p.version !== "string" || !p.bin || typeof p.bin !== "object") return null;
+  var bins = Object.keys(p.bin).map(function (k) { return p.bin[k]; });
+  return bins.length && bins.every(function (b) { return typeof b === "string" && fs.existsSync(path.join(dir, b)); }) ? p.version : null;
+}
 
 /** The update marker the fleet edits its chat message from (src/update-marker.ts): a stage, kept with its target. */
 function setStage(home, stage, details, deps) {
@@ -58,36 +65,70 @@ function setStage(home, stage, details, deps) {
 }
 
 /**
- * What an interrupted install leaves, put right. npm moves the installed package to `@songsid/.agend-<random>` before it
- * writes the new one, and moves it back on failure; killed in between, it leaves the sibling (and every later
- * `npm install -g` fails ENOTEMPTY on it) and `bin/agend` dangling. The only copy of AgEnD there is put back; any other
- * sibling is removed. A lock whose writer is gone, or that cannot be read, is removed.
+ * Is npm provably idle on this host — is no npm process changing installed packages? Only an npm that installs,
+ * uninstalls, updates, links or rebuilds can be reifying this prefix; `npm exec` (AgEnD fleets run their MCP servers
+ * that way, for hours), `npm view`, `npm run` cannot. This installer's own `npm exec` ancestors are never counted (the
+ * ancestor walk is Sentinel's, #2267 c284ce9d). npm rewrites its process title to `npm <command> <args>` without its
+ * flags, so `-g` cannot be seen: any changing npm counts. A process list that cannot be read is not idle.
+ */
+var NPM_CHANGES = /^(?:install|i|in|ins|inst|insta|instal|isnt|isnta|isntal|isntall|add|uninstall|un|unlink|remove|rm|r|update|up|upgrade|udpate|link|ln|ci|clean-install|install-clean|ic|isntall-clean|install-ci-test|cit|install-test|it|dedupe|ddp|find-dupes|prune|rebuild|rb)$/;
+function npmCommand(args) {
+  var words = args.split(/\s+/);
+  var at = -1;
+  for (var k = 0; k < words.length && k < 3; k++) {
+    if (/(?:^|\/)(?:npm|npx)$/.test(words[k]) || /(?:^|\/)(?:npm|npx)-cli\.js$/.test(words[k])) { at = k; break; }
+  }
+  if (at < 0) return null;
+  if (/npx/.test(words[at])) return "exec";
+  for (var w = at + 1; w < words.length; w++) if (words[w] && words[w].charAt(0) !== "-") return words[w];
+  return "";
+}
+function npmIdleFromProcessList(output, ownPid) {
+  var rows = String(output).trim().split("\n").map(function (line) {
+    var m = /^\s*(\d+)\s+(\d+)\s+(.+)$/.exec(line);
+    return m ? { pid: Number(m[1]), parent: Number(m[2]), args: m[3] } : null;
+  });
+  if (!rows.length || rows.some(function (row) { return !row; })) return false;
+  var ancestors = {};
+  var pid = ownPid;
+  while (pid > 1 && !ancestors[pid]) {
+    ancestors[pid] = true;
+    var row = rows.filter(function (r) { return r.pid === pid; })[0];
+    if (!row) return false;
+    pid = row.parent;
+  }
+  return !rows.some(function (row) {
+    if (ancestors[row.pid]) return false;
+    var command = npmCommand(row.args);
+    return command !== null && NPM_CHANGES.test(command);
+  });
+}
+function npmIdle(deps) {
+  var r = deps.run("ps", ["-A", "-o", "pid=,ppid=,args="], { timeoutMs: 5000 });
+  return r.status === 0 && npmIdleFromProcessList(r.stdout, deps.pid);
+}
+
+/** Move a leftover into `<prefix>/.agend-quarantine/<time>-<pid>/` — kept as evidence, never deleted here. */
+function quarantine(prefix, source, deps) {
+  var dir = path.join(prefix, ".agend-quarantine", new Date(deps.now()).toISOString().replace(/[:.]/g, "-") + "-" + deps.pid);
+  fs.mkdirSync(dir, { recursive: true });
+  var to = path.join(dir, path.basename(source));
+  fs.renameSync(source, to);
+  return to;
+}
+
+/**
+ * What an interrupted install leaves, put right — in this order (#2264 review):
+ *   1. the install lock: another installer alive → stop here, touch nothing; one whose writer is gone, or that cannot be
+ *      read, is moved to quarantine;
+ *   2. npm must be provably idle (above) before anything of npm's is touched — otherwise its leftovers are left alone;
+ *   3. npm's retire sibling `@songsid/.agend-<hash>` (npm moves the installed package there before it writes the new
+ *      one; killed in between, every later `npm install -g` fails ENOTEMPTY on it): the only copy of AgEnD is put back
+ *      (a partial new package in its place goes to quarantine); any other sibling, and npm's retired bin links
+ *      `bin/.agend-<hash>`, go to quarantine.
  */
 function repair(root, prefix, deps) {
   var notes = [];
-  var scope = path.join(root, "@songsid");
-  var current = path.join(scope, "agend");
-  var siblings = [];
-  try { siblings = fs.readdirSync(scope).filter(function (n) { return /^\.agend-/.test(n); }); } catch (e) { siblings = []; }
-  siblings.forEach(function (name) {
-    var dir = path.join(scope, name);
-    var version = isAgendPackage(dir);
-    if (version && !isAgendPackage(current)) {
-      try { fs.rmSync(current, { recursive: true, force: true }); } catch (e) { /* none */ }
-      fs.renameSync(dir, current);
-      notes.push("put back AgEnD v" + version + " that an interrupted install had moved aside (" + name + ")");
-      return;
-    }
-    fs.rmSync(dir, { recursive: true, force: true });
-    notes.push("removed " + name + ", left by an interrupted install");
-  });
-  // npm retires each bin link the same way (`bin/.agend-<hash>`): a link left there is only in the way.
-  var binDir = path.join(prefix, "bin");
-  var binSiblings = [];
-  try { binSiblings = fs.readdirSync(binDir).filter(function (n) { return /^\.agend(-agent|-install)?-[A-Za-z0-9]{8}$/.test(n); }); } catch (e) { binSiblings = []; }
-  binSiblings.forEach(function (name) {
-    try { fs.unlinkSync(path.join(binDir, name)); notes.push("removed bin/" + name + ", left by an interrupted install"); } catch (e) { /* gone */ }
-  });
   var lockFile = path.join(prefix, LOCK);
   var text = null;
   try { text = fs.readFileSync(lockFile, "utf8"); } catch (e) { text = null; }
@@ -95,11 +136,37 @@ function repair(root, prefix, deps) {
     var holder = null;
     try { holder = JSON.parse(text); } catch (e) { holder = null; }
     var live = holder && typeof holder.pid === "number" && holder.pid !== deps.pid && deps.alive(holder.pid);
-    if (live) return { ok: false, notes: notes, reason: "another AgEnD install (pid " + holder.pid + ") is running in " + prefix + "; let it finish, then run this again" };
-    try { fs.unlinkSync(lockFile); } catch (e) { /* gone */ }
-    notes.push(holder ? "removed an install lock left by pid " + holder.pid + " (no longer running)" : "removed an install lock that could not be read");
+    if (live) return { ok: false, notes: notes, changed: false, reason: "another AgEnD install (pid " + holder.pid + ") is running in " + prefix + "; let it finish, then run this again" };
+    try { quarantine(prefix, lockFile, deps); } catch (e) { /* gone meanwhile */ }
+    notes.push(holder ? "moved aside an install lock left by pid " + holder.pid + " (no longer running)" : "moved aside an install lock that could not be read");
   }
-  return { ok: true, notes: notes };
+  var scope = path.join(root, "@songsid");
+  var current = path.join(scope, "agend");
+  var siblings = [];
+  try { siblings = fs.readdirSync(scope).filter(function (n) { return /^\.agend-/.test(n); }); } catch (e) { siblings = []; }
+  var binDir = path.join(prefix, "bin");
+  var binSiblings = [];
+  try { binSiblings = fs.readdirSync(binDir).filter(function (n) { return /^\.agend(-agent|-install)?-[A-Za-z0-9]{8}$/.test(n); }); } catch (e) { binSiblings = []; }
+  if (!siblings.length && !binSiblings.length) return { ok: true, notes: notes, changed: false };
+  if (!(deps.npmIdle || npmIdle)(deps)) {
+    notes.push("another npm is running on this host, so what an earlier install left in " + scope + " was not touched");
+    return { ok: true, notes: notes, changed: false };
+  }
+  siblings.forEach(function (name) {
+    var dir = path.join(scope, name);
+    var version = isAgendPackage(dir);
+    if (version && !isAgendPackage(current)) {
+      if (fs.existsSync(current)) quarantine(prefix, current, deps);
+      fs.renameSync(dir, current);
+      notes.push("put back AgEnD v" + version + " that an interrupted install had moved aside (" + name + ")");
+      return;
+    }
+    notes.push("moved " + name + ", left by an interrupted install, to " + quarantine(prefix, dir, deps));
+  });
+  binSiblings.forEach(function (name) {
+    try { quarantine(prefix, path.join(binDir, name), deps); notes.push("moved bin/" + name + ", left by an interrupted install, to quarantine"); } catch (e) { /* gone */ }
+  });
+  return { ok: true, notes: notes, changed: true };
 }
 
 /** Claim the prefix for this installer: the whole record appears at once (written aside, then linked into place). */
@@ -162,26 +229,27 @@ function main(argv, injected) {
   if (!release) return fail("lock", "another AgEnD install started in " + prefix + " just now; let it finish, then run this again");
   try {
     var previous = isAgendPackage(path.join(root, "@songsid", "agend"));
-    // Discord is built in since 2.0: the old plugin package only gets in the way.
-    if (isAgendPackage(path.join(root, "@songsid", "agend-plugin-discord")) || fs.existsSync(path.join(root, "@songsid", "agend-plugin-discord"))) {
-      deps.run("npm", ["uninstall", "-g", "@songsid/agend-plugin-discord"], { inherit: true });
-    }
+    var bin = path.join(prefix, "bin", "agend");
     var install = function () { return deps.run("npm", ["install", "-g", spec], { inherit: true }); };
     var done = install();
     if (done.status !== 0) {
-      // npm itself can leave its sibling behind (a failure inside its own move): repair and try once more.
-      repair(root, prefix, deps).notes.forEach(function (n) { log("  ↺ " + n); });
-      done = install();
+      // npm itself can leave its sibling behind (a failure inside its own move): once more, only if repairing moved one.
+      var again = repair(root, prefix, deps);
+      again.notes.forEach(function (n) { log("  ↺ " + n); });
+      if (again.changed) done = install();
     }
-    var bin = path.join(prefix, "bin", "agend");
     var got = done.status === 0 ? versionOf(bin, deps) : null;
     if (got !== version) {
       var why = done.status !== 0 ? "npm install -g " + spec + " failed (exit " + (done.status === null ? done.signal : done.status) + ")"
         : "after npm install, " + bin + " reports " + (got || "nothing") + ", not v" + version;
+      // What actually runs now. npm rolls a failed install back itself: when the previous version still runs, nothing
+      // else is done and that is what is said. Only an `agend` that does not run is reinstalled.
+      var running = versionOf(bin, deps);
+      if (running && done.status !== 0) return fail("install", why + "; v" + running + " is still installed and runs — nothing was changed");
       if (previous && previous !== version) {
         repair(root, prefix, deps);
         var back = deps.run("npm", ["install", "-g", previousAt >= 0 ? args[previousAt + 1] : "@songsid/agend@" + previous], { inherit: true });
-        if (back.status === 0 && versionOf(bin, deps) === previous) return fail("install", why + "; v" + previous + " is back in place and works");
+        if (back.status === 0 && versionOf(bin, deps) === previous) return fail("install", why + "; v" + previous + " was reinstalled and runs");
       }
       return fail("install", why + (previous ? "; v" + previous + " could not be put back — run the installer again" : ""));
     }
@@ -213,5 +281,5 @@ function main(argv, injected) {
   }
 }
 
-module.exports = { main: main, repair: repair, claimLock: claimLock, setStage: setStage, LOCK: LOCK };
+module.exports = { main: main, repair: repair, claimLock: claimLock, setStage: setStage, npmIdleFromProcessList: npmIdleFromProcessList, LOCK: LOCK };
 if (require.main === module) process.exit(main(process.argv.slice(2)));

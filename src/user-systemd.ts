@@ -35,25 +35,31 @@ const defaultDeps = (): UserSystemdDeps => ({
 
 export interface UserSystemdResult { lingerEnabled: boolean; managerUp: boolean; envFilled: string[] }
 
-let done: UserSystemdResult | null = null;
+const done = new Map<boolean, UserSystemdResult>();
 
-/** Make the user's systemd manager reachable (see the header). Idempotent per process unless `deps` are given. */
-export function ensureUserSystemd(deps?: UserSystemdDeps, opts: { waitMs?: number } = {}): UserSystemdResult {
-  if (!deps && done) return done;
+/**
+ * Make the user's systemd manager reachable (see the header). `linger`: only for commands that change state (install,
+ * start, restart) — a query (status, stop) only fills in the environment and never changes the host (#2264 review).
+ * Idempotent per process and per kind unless `deps` are given.
+ */
+export function ensureUserSystemd(deps?: UserSystemdDeps, opts: { waitMs?: number; linger?: boolean } = {}): UserSystemdResult {
+  const linger = opts.linger ?? false;
+  if (!deps && done.has(linger)) return done.get(linger)!;
+  const remember = (r: UserSystemdResult) => { if (!deps) done.set(linger, r); return r; };
   const d = deps ?? defaultDeps();
   const result: UserSystemdResult = { lingerEnabled: false, managerUp: false, envFilled: [] };
-  if (process.platform !== "linux" && !deps) return (done = result);
+  if (process.platform !== "linux" && !deps) return remember(result);
   // A test run never touches the host's systemd or linger (fleet decision: tests stub what reaches the live host).
-  if (!deps && process.env.VITEST) return (done = result);
-  if (d.uid < 0 || !d.user) return deps ? result : (done = result);
+  if (!deps && process.env.VITEST) return remember(result);
+  if (d.uid < 0 || !d.user) return remember(result);
   const runtime = d.env.XDG_RUNTIME_DIR || `/run/user/${d.uid}`;
   if (!d.env.XDG_RUNTIME_DIR) { d.env.XDG_RUNTIME_DIR = runtime; result.envFilled.push("XDG_RUNTIME_DIR"); }
   // Linger: the manager starts at boot and no logout ends it (or an update running inside it).
   if (d.exists(`/var/lib/systemd/linger/${d.user}`)) result.lingerEnabled = true;
-  else result.lingerEnabled = d.run("loginctl", ["enable-linger", d.user]).status === 0;
+  else if (linger) result.lingerEnabled = d.run("loginctl", ["enable-linger", d.user]).status === 0;
   const privateSocket = `${runtime}/systemd/private`;
   const deadline = opts.waitMs ?? 10_000;
-  for (let waited = 0; !d.exists(privateSocket) && waited < deadline; waited += 250) {
+  for (let waited = 0; linger && !d.exists(privateSocket) && waited < deadline; waited += 250) {
     if (waited === 0 && d.uid === 0) d.run("systemctl", ["start", `user@${d.uid}.service`]);
     d.sleep(250);
   }
@@ -62,6 +68,5 @@ export function ensureUserSystemd(deps?: UserSystemdDeps, opts: { waitMs?: numbe
     d.env.DBUS_SESSION_BUS_ADDRESS = `unix:path=${runtime}/bus`;
     result.envFilled.push("DBUS_SESSION_BUS_ADDRESS");
   }
-  if (!deps) done = result;
-  return result;
+  return remember(result);
 }
