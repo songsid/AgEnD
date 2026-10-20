@@ -34,7 +34,7 @@ Already have Node and tmux:
 npm install -g @songsid/agend
 ```
 
-On WSL, the installer avoids the Windows `node.exe` on your PATH. If commands still resolve to Windows binaries, add this to `/etc/wsl.conf` and run `wsl --shutdown`:
+On WSL, the installer avoids the Windows `node.exe` on your PATH. If commands still resolve to Windows binaries, add this to `/etc/wsl.conf`. It applies the next time this Linux starts; to restart only this one, run `wsl --terminate <distro>` in PowerShell (AgEnD in it stops too: run `agend start` once you are back in):
 
 ```ini
 [interop]

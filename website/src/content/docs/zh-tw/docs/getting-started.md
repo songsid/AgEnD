@@ -34,7 +34,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/insta
 npm install -g @songsid/agend
 ```
 
-在 WSL 上，安裝腳本會避開 PATH 裡的 Windows `node.exe`。如果指令還是指到 Windows 的執行檔，在 `/etc/wsl.conf` 加上這段，然後執行 `wsl --shutdown`：
+在 WSL 上，安裝腳本會避開 PATH 裡的 Windows `node.exe`。如果指令還是指到 Windows 的執行檔，在 `/etc/wsl.conf` 加上這段。設定在這個 Linux 下次啟動時生效；只想重新啟動這一個，就在 PowerShell 執行 `wsl --terminate <發行版名稱>`（裡面的 AgEnD 也會停止，回到 Linux 後執行 `agend start`）：
 
 ```ini
 [interop]

@@ -187,7 +187,7 @@ graph LR
 > [interop]
 > appendWindowsPath=false
 > ```
-> 然後重新啟動 WSL（`wsl --shutdown`）。安裝指令：`curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash`
+> 這個設定在這個 Linux 下次啟動時生效。只想重新啟動這一個，就在 PowerShell 執行 `wsl --terminate <發行版名稱>`（裡面的 AgEnD 也會停止，回到 Linux 後執行 `agend start`）。安裝指令：`curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash`
 
 > **不支援原生 Windows**：`agend` 與 `agend-agent` 指令是 POSIX `sh` 啟動腳本，而且 AgEnD 的 instance 都跑在 tmux 裡。在 Windows 上請於 WSL 內安裝與執行 AgEnD。
 
