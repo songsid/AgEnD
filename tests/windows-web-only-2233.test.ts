@@ -54,16 +54,16 @@ describe("#2233 how many connections fleet.yaml configures (as the fleet reads i
     expect(count("channels: nope\n")).toBeNull();
   });
   it("agend validate --connections: CONNECTIONS=<n>, or CONNECTIONS=unknown and exit 1 without a readable fleet.yaml", () => {
-    const run = (home: string) => spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", "validate", "--connections"], { cwd: process.cwd(), env: { ...process.env, AGEND_HOME: home }, encoding: "utf8", timeout: 20_000 });
+    const run = (home: string) => spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", "validate", "--connections"], { cwd: process.cwd(), env: { ...process.env, AGEND_HOME: home }, encoding: "utf8", timeout: 60_000 });
+    const answer = (home: string) => { const r = run(home); return [r.stdout, r.status]; };   // one CLI start per case
     const web = scratch(); writeFileSync(join(web, "fleet.yaml"), "instances:\n  a: {working_directory: /w, backend: claude-code}\n");
-    expect([run(web).stdout, run(web).status]).toEqual(["CONNECTIONS=0\n", 0]);
+    expect(answer(web)).toEqual(["CONNECTIONS=0\n", 0]);
     const chat = scratch(); writeFileSync(join(chat, "fleet.yaml"), '"channel": {"type": "telegram", "bot_token_env": "T"}\n');
-    expect(run(chat).stdout).toBe("CONNECTIONS=1\n");
-    const none = scratch();
-    expect([run(none).stdout, run(none).status]).toEqual(["CONNECTIONS=unknown\n", 1]);
+    expect(answer(chat)).toEqual(["CONNECTIONS=1\n", 0]);
+    expect(answer(scratch())).toEqual(["CONNECTIONS=unknown\n", 1]);
     const broken = scratch(); writeFileSync(join(broken, "fleet.yaml"), "channels: [\n");
-    expect([run(broken).stdout, run(broken).status]).toEqual(["CONNECTIONS=unknown\n", 1]);
-  });
+    expect(answer(broken)).toEqual(["CONNECTIONS=unknown\n", 1]);
+  }, 120_000);                                                  // four CLI starts (tsx): seconds each under a loaded runner
 });
 
 const pwsh = spawnSync("pwsh", ["-NoProfile", "-c", "1"], { encoding: "utf8" }).status === 0;
