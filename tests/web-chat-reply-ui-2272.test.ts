@@ -178,7 +178,7 @@ describe("the gestures", () => {
       g.body.dispatchEvent(ev("touchmove", { touches: [{ clientX: x1, clientY: y1 }] }));
       g.body.dispatchEvent(ev("touchend", { touches: [] }));
     };
-    swipe(30, 305); swipe(60, 300); swipe(70, 380); swipe(180, 300);   // left 70: a reply; left 40, vertical, right: not
+    swipe(30, 305); swipe(60, 300); swipe(30, 460); swipe(180, 300);   // left 70: a reply; left 40, left 70 but mostly down, right: not
     expect(g.reply.mock.calls.map(c => c[0].id)).toEqual([1]);
     expect(g.msg.style.transform, "the bubble goes back").toBe("");
     vi.useFakeTimers();
