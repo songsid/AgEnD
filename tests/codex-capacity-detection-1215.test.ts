@@ -15,7 +15,7 @@ import { Daemon } from "../src/daemon.js";
 
 const SENTENCE = "Selected model is at capacity. Please try a different model.";
 const patterns = new CodexBackend("/tmp/codex-capacity-detection-1215").getErrorPatterns();
-const capacity = patterns.find(p => p.action === "nudge_continue")!;
+const capacity = patterns.find(p => p.type === "model_error" && p.action === "nudge_continue")!;
 const byType = (type: string) => patterns.filter(p => p.type === type);
 
 describe("glyph table: what opens a capacity line (#1215)", () => {

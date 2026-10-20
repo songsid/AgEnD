@@ -531,6 +531,9 @@ export class InstanceLifecycle {
    * Stored on the lifecycle (not the daemon) so the count survives daemon restarts.
    */
   private capacityBackoffAttempts = new Map<string, { count: number; lastAt: number }>();
+  /** #2282: transient429 recovery has its own budget; capacity errors cannot spend it. */
+  private rateLimitNudgeAttempts = new Map<string, { count: number; lastAt: number }>();
+  private static readonly RATE_LIMIT_NUDGE_DELAYS_MS = [30_000, 60_000, 120_000] as const;
   /** Active backoff restart timers, keyed by instance name. One per instance max. */
   private capacityBackoffTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Old Codex capacity rows to baseline in the replacement daemon (#949). */
@@ -1320,7 +1323,7 @@ export class InstanceLifecycle {
         this.ctx.restartSingleInstance(name, { freshStart: true }).catch(err =>
           this.ctx.logger.error({ err, name }, "pty_error restart failed"));
       } else if (data.action === "nudge_continue") {
-        this.scheduleContinueNudge(name, daemon, data.pattern);
+        this.scheduleContinueNudge(name, daemon, data.pattern, data.type === "rate_limit");
       } else if (data.action === "backoff_restart") {
         // Transient model capacity error (#905). The CLI already returned to its
         // prompt (skipRecoveryWait: true in the error pattern), so no additional
@@ -1433,32 +1436,55 @@ export class InstanceLifecycle {
    * going after a minute — at most CAPACITY_BACKOFF_MAX times per 30 minutes, then pause like the old ladder did.
    * The daemon owns the nudge itself (its fences, its pane lock); this owns only whether one is allowed.
    */
-  private scheduleContinueNudge(name: string, daemon: IncidentEventSource, pattern: unknown): void {
+  private scheduleContinueNudge(name: string, daemon: IncidentEventSource, pattern: unknown, rateLimit = false): void {
+    // A retired daemon must never pause its replacement after exhausting an
+    // old budget. Arming itself also checks the captured spawn and pane.
+    if (rateLimit && this.daemons.get(name) !== daemon) return;
+    const budget = rateLimit ? this.rateLimitNudgeAttempts : this.capacityBackoffAttempts;
     const now = Date.now();
-    const prev = this.capacityBackoffAttempts.get(name);
+    const prev = budget.get(name);
     // A wall clock that stepped back must not make an old window look current forever.
     const elapsed = prev ? now - prev.lastAt : -1;
     const attempts = prev && elapsed >= 0 && elapsed < InstanceLifecycle.CAPACITY_BACKOFF_WINDOW_MS ? prev.count : 0;
     const notificationTarget = this.ptyErrorNotificationTarget(name);
+    const delayMs = rateLimit
+      ? InstanceLifecycle.RATE_LIMIT_NUDGE_DELAYS_MS[Math.min(attempts, InstanceLifecycle.CAPACITY_BACKOFF_MAX - 1)]
+      : InstanceLifecycle.CAPACITY_NUDGE_DELAY_MS;
+    // Validate the fresh/live episode BEFORE a budget-exhaustion pause too.
+    // Arming only records a due time; on the fourth incident it is cancelled
+    // synchronously below, before any monitor tick can send a fourth nudge.
+    if (rateLimit) {
+      if (!(pattern instanceof RegExp) || !daemon.armCapacityNudge?.(pattern, delayMs)) {
+        if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_rate_retry_stopped"));
+        return;
+      }
+      // Preserve next-spawn failover bookkeeping only for a vouched fresh
+      // failure. It does not itself recover this already-failed turn.
+      this.ctx.checkModelFailover(name, 100);
+    }
     if (attempts >= InstanceLifecycle.CAPACITY_BACKOFF_MAX) {
       this.ctx.logger.warn({ name, attempts }, "Model still at capacity after max nudges — pausing");
       daemon.cancelCapacityNudge?.("retries exhausted");
-      if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_capacity_backoff_exhausted", name, String(attempts)));
+      if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t(rateLimit ? "inst.codex_rate_retry_exhausted" : "inst.codex_capacity_backoff_exhausted", name, String(attempts)));
       void this.pause(name, "error")
         .catch(err => this.ctx.logger.warn({ err, name }, "capacity-exhausted pause failed"))
-        .finally(() => { if (!this.isPaused(name)) this.daemons.get(name)?.requestPauseWhenIdle({ reason: "error" }); });
+        .finally(() => {
+          if (!this.isPaused(name) && (!rateLimit || this.daemons.get(name) === daemon)) {
+            (rateLimit ? daemon : this.daemons.get(name))?.requestPauseWhenIdle({ reason: "error" });
+          }
+        });
       return;
     }
-    if (!(pattern instanceof RegExp) || !daemon.armCapacityNudge?.(pattern, InstanceLifecycle.CAPACITY_NUDGE_DELAY_MS)) {
+    if (!rateLimit && (!(pattern instanceof RegExp) || !daemon.armCapacityNudge?.(pattern, delayMs))) {
       // Nothing to arm (the screen already moved on): the user still hears about the capacity error, no attempt is used.
-      if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_model_capacity"));
+      if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t(rateLimit ? "inst.codex_rate_retry_stopped" : "inst.codex_model_capacity"));
       return;
     }
-    this.capacityBackoffAttempts.set(name, { count: attempts + 1, lastAt: now });
+    budget.set(name, { count: attempts + 1, lastAt: now });
     this.ctx.logger.info({ name, attempt: attempts + 1 }, "Model at capacity — will tell it to keep going");
     if (notificationTarget) {
-      this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_capacity_nudge_scheduled", name,
-        String(attempts + 1), String(InstanceLifecycle.CAPACITY_BACKOFF_MAX), String(Math.round(InstanceLifecycle.CAPACITY_NUDGE_DELAY_MS / 1000))));
+      this.notifyIncident(notificationTarget, "pty_error", t(rateLimit ? "inst.codex_rate_retry_scheduled" : "inst.codex_capacity_nudge_scheduled", name,
+        String(attempts + 1), String(InstanceLifecycle.CAPACITY_BACKOFF_MAX), String(Math.round(delayMs / 1000))));
     }
   }
 

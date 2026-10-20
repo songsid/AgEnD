@@ -3914,6 +3914,17 @@ export class Daemon extends EventEmitter {
       const count = countMatches(ep.pattern);
       const seen = this.lastErrorCount.get(key) ?? 0;
 
+      // #2282: a resumed exhausted429 row is history, not even a new
+      // notification/failover incident. Wait for the first live composer to
+      // establish its baseline; later appended occurrences remain eligible.
+      if (ep.type === "rate_limit" && ep.action === "nudge_continue") {
+        const baseline = this.nudgeBaselines?.get(key);
+        if (baseline === undefined || count <= baseline) {
+          if (baseline !== undefined) this.lastErrorCount.set(key, count);
+          continue;
+        }
+      }
+
       // The generic Codex usage-limit line remains in scrollback after the
       // user selects Luna Reserve. What proves that is NOT a live composer —
       // codex paints one after a plain hit too, and the old live-composer guard

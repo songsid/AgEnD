@@ -288,7 +288,7 @@ describe("the daemon's continue nudge", () => {
       // is already proven by the "sent once" tests above.)
       const r = rig();
       const pattern = new CodexBackend(join(dir, "inst")).getErrorPatterns()
-        .find(p => p.action === "nudge_continue")!.pattern;
+        .find(p => p.type === "model_error" && p.action === "nudge_continue")!.pattern;
       const quoted = "• you asked about Selected model is at capacity. Please try a different model. huh"
         + "\n\n• yes, then continued\n\nWorked for 14s\n\n› Ask Codex to do anything\n  Context 100% left";
       expect(r.d.paneAuthoritativelyIdle(quoted)).toBe(true);

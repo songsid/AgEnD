@@ -1,2 +1,3 @@
 # Terminal captures retain the actual blank rows below the prompt (idle evidence).
 tests/fixtures/muse-1.4.11/*.pane.txt whitespace=-blank-at-eof
+tests/fixtures/codex-429-2282/*.pane.txt whitespace=-blank-at-eof

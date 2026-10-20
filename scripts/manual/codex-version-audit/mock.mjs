@@ -26,6 +26,13 @@ createServer((req, res) => {
       res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ models: [] })); return;
     }
     if (!(req.method === "POST" && req.url.startsWith("/v1/responses"))) { res.writeHead(404); res.end(); return; }
+    // #2282: transient429 exhaustion and account quota are different Codex errors.
+    if (m === "e429" || m === "insufficient") {
+      const quota = m === "insufficient";
+      res.writeHead(429, { "content-type": "application/json", "retry-after": "0" });
+      res.end(JSON.stringify({ error: { message: quota ? "You exceeded your current quota" : "Too many requests", type: quota ? "insufficient_quota" : "rate_limit_exceeded", code: quota ? "insufficient_quota" : "rate_limit_exceeded" } }));
+      return;
+    }
     if (m === "e401") { res.writeHead(401, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { message: "Incorrect API key provided", type: "invalid_request_error", code: "invalid_api_key" } })); return; }
     if (m === "e500") { res.writeHead(500, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { message: "internal", type: "server_error" } })); return; }
     if (m === "usage") {
