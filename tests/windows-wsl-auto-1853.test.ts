@@ -47,13 +47,13 @@ describe("the WSL stage decides for itself (static)", () => {
   it("wsl --shutdown runs in one place only, after an explicit y (the installer's rule)", () => {
     expect(code.match(/wsl(?:\.exe)? --shutdown/g)).toHaveLength(1);
     const fn = code.slice(code.indexOf("function Wait-WslRoot"), code.indexOf("function Write-WslDeclined"));
-    expect(fn).toMatch(/if \(\(\[string\]\$answer\) -notmatch '\^\\s\*\[yY\]'\) \{ return 'declined' \}\n[^\n]*\n\s*wsl --shutdown/);
+    expect(fn).toMatch(/if \(\(\[string\]\$answer\) -notmatch '\^\\s\*\[yY\]\\s\*\$'\) \{ return 'declined' \}\n[^\n]*\n\s*wsl --shutdown/);
     expect(body).toMatch(/Write-Ok "Linux 版本：\$UBUNTU_DISTRO"/);
     expect(body).toMatch(/安裝位置：\{0\}（可用 \{1\} GB）/);
   });
   it("an Ubuntu already there: what would change is said, and the default is no", () => {
     expect(body).toContain("安裝程式會修改它的設定：開啟 systemd、預設以 root 登入、不再把 Windows 的 PATH 帶進 Linux。");
-    expect(body).toMatch(/\(y\/N\)"\n\s+if \(\(\[string\]\$cont\) -notmatch '\^\\s\*\[yY\]'\) \{/);    // no input to read is a no too
+    expect(body).toMatch(/\(y\/N\)"\n\s+if \(\(\[string\]\$cont\) -notmatch '\^\\s\*\[yY\]\\s\*\$'\) \{/);    // no input to read is a no too
   });
   it("the chosen distro is saved with the progress and read back on a resumed run", () => {
     expect(body).toMatch(/Add-Content -Path \$ProgressFile -Value "DISTRO=\$UBUNTU_DISTRO"\n\s+Mark-Stage 1\n/);
@@ -109,7 +109,7 @@ Write-Output ("STATE=" + (Wait-WslRoot 'Ubuntu-24.04' 3 0)); Write-Output ("CALL
     expect(out).toContain("Ubuntu-24.04 還沒準備好，只重新啟動這個 Linux 後再試一次（1/2）...");
     expect(out).not.toContain(ASK);
   });
-  it.each([["Enter", "\n"], ["n", "n\n"], ["N", "N\n"], ["no answer at all", ""]])("still not ready: it asks before restarting all of WSL; %s → no wsl --shutdown, a clean stop", (_n, answer) => {
+  it.each([["Enter", "\n"], ["n", "n\n"], ["N", "N\n"], ["no answer at all", ""], ["the prompt's own y/N", "y/N\n"], ["yes", "yes\n"], ["yesterday", "yesterday\n"], ["no", "no\n"]])("still not ready: it asks before restarting all of WSL; %s → no wsl --shutdown, a clean stop", (_n, answer) => {
     const { out } = withHelpers(`${wslStub(Infinity)}
 Write-Output ("STATE=" + (Wait-WslRoot 'Ubuntu-24.04' 3 0)); Write-Output ("CALLS=" + ($script:calls -join ' | '))
 Write-WslDeclined`, answer);
@@ -120,13 +120,13 @@ Write-WslDeclined`, answer);
     expect(out).toContain("沒有重新啟動 WSL，所以先停在這裡；你的其他 Linux 都沒有被動到。");
     expect(out).toContain("晚一點再貼一次同一行安裝指令，它會從這一步繼續。");
   });
-  it("an explicit y restarts all of WSL once and tries again: ready, or failed", () => {
+  it.each([["y", "y\n"], ["Y", "Y\n"], ["y with spaces", "  y \n"]])("an explicit y (%s) restarts all of WSL once and tries again: ready, or failed", (_n, yes) => {
     const ok = withHelpers(`${wslStub(3)}
-Write-Output ("STATE=" + (Wait-WslRoot 'Ubuntu-24.04' 3 0)); Write-Output ("CALLS=" + ($script:calls -join ' | '))`, "y\n").out;
+Write-Output ("STATE=" + (Wait-WslRoot 'Ubuntu-24.04' 3 0)); Write-Output ("CALLS=" + ($script:calls -join ' | '))`, yes).out;
     expect(ok).toContain("STATE=ready");
     expect(ok).toMatch(/CALLS=(?:[^|]*\| ){5}--shutdown \| -d Ubuntu-24\.04 -u root echo WSL_OK\n/);
     const bad = withHelpers(`${wslStub(Infinity)}
-Write-Output ("STATE=" + (Wait-WslRoot 'Ubuntu-24.04' 3 0)); Write-Output ("SHUTDOWNS=" + @($script:calls | Where-Object { $_ -eq '--shutdown' }).Count)`, "y\n").out;
+Write-Output ("STATE=" + (Wait-WslRoot 'Ubuntu-24.04' 3 0)); Write-Output ("SHUTDOWNS=" + @($script:calls | Where-Object { $_ -eq '--shutdown' }).Count)`, yes).out;
     expect(bad).toContain("STATE=failed");
     expect(bad).toContain("SHUTDOWNS=1\n");
   });

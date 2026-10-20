@@ -112,8 +112,9 @@ function Wait-WslRoot([string]$distro, [int]$tries = 3, [int]$pauseSeconds = 5) 
     }
     Write-Host ""
     $answer = Read-Host "  要重新啟動整個 WSL 嗎？這會停掉這台電腦上所有的 Linux（包括其他發行版和裡面正在跑的程式）。(y/N)"
-    # [string]：沒有輸入可讀時 Read-Host 回傳 $null，而 $null -notmatch '…' 不是 $true，會被當成同意。
-    if (([string]$answer) -notmatch '^\s*[yY]') { return 'declined' }
+    # 只有一個 y（前後空白可以）才算同意；y/N、yes、yesterday 都不算（#2265 審查）。[string]：沒有輸入可讀時
+    # Read-Host 回傳 $null，而 $null -notmatch '…' 不是 $true，會被當成同意。
+    if (([string]$answer) -notmatch '^\s*[yY]\s*$') { return 'declined' }
     Write-Info "正在重新啟動整個 WSL..."
     wsl --shutdown 2>&1 | Out-Null
     Start-Sleep -Seconds $pauseSeconds
@@ -392,8 +393,8 @@ function Invoke-AgendInWsl([string]$distro, [string]$user, [string]$command) {
 function Invoke-RestartAgend([string]$distro, [string]$user, [switch]$Wait, [int]$SettleSeconds = 3) {
     Write-Host ""
     $answer = Read-Host "  確定要重啟 AgEnD 嗎？所有 agent 會重新啟動，正在進行的工作會中斷。(y/N)"
-    # [string]：沒有輸入可讀時 Read-Host 回傳 $null，而 $null -notmatch '…' 不是 $true（會被當成同意）。
-    if (([string]$answer) -notmatch '^\s*[yY]') {
+    # 只有一個 y 才算同意（y/N、yes 都不算）；[string]：沒有輸入時 Read-Host 回傳 $null，而 $null -notmatch '…' 不是 $true。
+    if (([string]$answer) -notmatch '^\s*[yY]\s*$') {
         Write-Host "  沒有重啟。"
         if ($Wait) { $null = Read-Host "按 Enter 關閉" }
         return 'cancelled'
@@ -950,7 +951,7 @@ function Confirm-StopInstall($proc) {
     Write-Warn "安裝還在背景繼續進行，沒有中斷。"
     Write-Host "  要停止安裝嗎？輸入 y 再按 Enter 就停止；直接按 Enter 會繼續。" -ForegroundColor Yellow -NoNewline
     $answer = Read-Answer
-    if ($answer -match '^\s*[yY]') {
+    if (([string]$answer) -match '^\s*[yY]\s*$') {
         if (-not $proc.HasExited) {
             if ($script:OnWindows) { & taskkill.exe /PID $proc.Id /T /F 2>&1 | Out-Null } else { try { $proc.Kill() } catch { } }
         }
@@ -1110,7 +1111,7 @@ if (Stage-Done 1) {
         Write-Warn "要用它繼續的話，安裝程式會修改它的設定：開啟 systemd、預設以 root 登入、不再把 Windows 的 PATH 帶進 Linux。"
         Write-Warn "裡面的檔案不會被刪除，但你在這個 $installedDistroName 裡原本的使用習慣（預設使用者、PATH）會改變。"
         $cont = Read-Host "  要用這個 $installedDistroName 繼續嗎？輸入 y 再按 Enter 繼續；直接按 Enter 就不動它、結束安裝 (y/N)"
-        if (([string]$cont) -notmatch '^\s*[yY]') {
+        if (([string]$cont) -notmatch '^\s*[yY]\s*$') {
             Write-Info "已取消，沒有改動任何東西。"
             Write-Info "如果想讓 AgEnD 用獨立的環境：先移除或改名現有的 $installedDistroName，再執行同一行安裝指令。"
             Read-Host "按 Enter 結束"; exit 0

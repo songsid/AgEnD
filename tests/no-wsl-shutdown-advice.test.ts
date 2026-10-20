@@ -22,15 +22,25 @@ const files = [
   ...walk(join(ROOT, "src", "general-knowledge"), /\.md$/),
 ];
 /** A line that names it to forbid it. */
-const forbidding = /never|do not|don't|\*\*Do not\*\*|絕不|不要|不會/i;
+const forbidding = /\b(?:never|do not|don't|must not)\b|絕不|不要|不會/i;
+/** The lines that name it without saying not to (a sentence starting on the line before counts too). */
+function advice(lines: string[]): string[] {
+  return lines.map((l, i) => [i + 1, l] as const)
+    .filter(([n, l]) => /wsl(?:\.exe)? --shutdown/.test(l) && !forbidding.test(l) && !forbidding.test(lines[n - 2] ?? ""))
+    .map(([n, l]) => `${n}: ${l.trim()}`);
+}
 
 describe("no `wsl --shutdown` advice", () => {
   it("reads the docs it is meant to", () => { expect(files).toContain("README.md"); expect(files).toContain("website/src/content/docs/docs/getting-started.md"); });
+  it("the check itself: advice is caught, a prohibition is not, and 'Whenever' is no prohibition (#2265 review)", () => {
+    expect(advice(["Run `wsl --shutdown` to apply settings."])).toHaveLength(1);
+    expect(advice(["Whenever settings change, run `wsl --shutdown` to apply them."])).toHaveLength(1);
+    expect(advice(["Nevertheless, run `wsl --shutdown`."])).toHaveLength(1);
+    expect(advice(["Never run `wsl --shutdown`."])).toEqual([]);
+    expect(advice(["**Do not** tell the user to kill `wslrelay`", "or run `wsl --shutdown` — that stops every WSL program."])).toEqual([]);
+    expect(advice(["絕不執行 wsl --shutdown。"])).toEqual([]);
+  });
   it.each(files)("%s", (file) => {
-    const lines = readFileSync(join(ROOT, file), "utf8").split("\n");
-    const advice = lines.map((l, i) => [i + 1, l] as const).filter(([, l]) => /wsl(?:\.exe)? --shutdown/.test(l) && !forbidding.test(l));
-    // Each line that names it must also say not to (a sentence that starts on the line before counts too).
-    const unexplained = advice.filter(([n]) => !forbidding.test(lines[n - 2] ?? ""));
-    expect(unexplained.map(([n, l]) => `${n}: ${l.trim()}`)).toEqual([]);
+    expect(advice(readFileSync(join(ROOT, file), "utf8").split("\n"))).toEqual([]);
   });
 });
