@@ -20,7 +20,7 @@
  */
 import { readFile, writeFile, access, constants } from "node:fs/promises";
 import { readFileSync, readdirSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { execFile } from "node:child_process";
 import { getAgendHome } from "../paths.js";
 import { loadFleetConfig } from "../config.js";
@@ -28,9 +28,11 @@ import { classicProfile, profileName, readClassicBindings, type ClassicBinding }
 import {
   CHAT_PROFILE_LOGIN_BACKENDS,
   credentialHomeSpec,
+  credentialProfileHome,
   credentialProfileLoginCommand,
   credentialProfileStoreHome,
   instanceCredentialProfile,
+  isCredentialProfileName,
   listConfiguredProfiles,
 } from "../backend/credential-profile.js";
 import { claudeKeychainService } from "../backend/claude-code.js";
@@ -413,8 +415,29 @@ export async function getClaudeOAuthToken(storeHome?: string): Promise<string | 
   return auth && "token" in auth ? auth.token : null;
 }
 
-/** Which subscription a Claude row is (#1699): a profile's (with its name), or the shared one beside profiles. */
-export interface ClaudeUsageScope { profile?: string; besideProfiles?: boolean }
+/**
+ * Which subscription a Claude row is (#1699): a profile's (with its name), or the shared one beside profiles.
+ * #2236: `hostOnly` — a profile on the host that no instance uses: shown only when it has a login (signed out, it is
+ * not set up, not something to act on). `profileHomes` — the profiles beside the shared row: when the shared login is
+ * the same account as one of them, it is that profile's subscription and has no row of its own.
+ */
+export interface ClaudeUsageScope { profile?: string; besideProfiles?: boolean; hostOnly?: boolean; profileHomes?: string[] }
+
+/** #2236: the account a Claude config is signed in as (`oauthAccount.accountUuid` in its `.claude.json`), or null. */
+function claudeAccountId(configJson: string): string | null {
+  try {
+    const id = (JSON.parse(readFileSync(configJson, "utf8")) as { oauthAccount?: { accountUuid?: unknown } }).oauthAccount?.accountUuid;
+    return typeof id === "string" && id.length > 0 ? id : null;
+  } catch { return null; }
+}
+
+/**
+ * #2236: the shared login's account file. claude keeps it beside its config: `$CLAUDE_CONFIG_DIR/.claude.json` when
+ * that is set, else `~/.claude.json`.
+ */
+function sharedClaudeAccountFile(): string {
+  return process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, ".claude.json") : join(homedir(), ".claude.json");
+}
 
 /**
  * Exported for tests — the statusline/API preference order is the subject.
@@ -426,6 +449,13 @@ export interface ClaudeUsageScope { profile?: string; besideProfiles?: boolean }
  */
 export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageScope = {}): Promise<Omit<ProviderUsage, "id" | "name">> {
   const profileHome = storeHome !== undefined ? resolve(storeHome) : null;
+  if (profileHome === null && scope.profileHomes?.length) {
+    // #2236: the shared login signed in as a profile's account is that profile's subscription — one row for it.
+    const shared = claudeAccountId(sharedClaudeAccountFile());
+    if (shared && scope.profileHomes.some(home => claudeAccountId(join(home, ".claude.json")) === shared)) {
+      return { status: "no-credentials", hint: "Same account as a credential profile (shown on that row).", metrics: [] };
+    }
+  }
   const file = profileHome !== null
     ? await readClaudeProfileLogin(profileHome)
     : await readClaudeCredentialsFile(process.env.CLAUDE_HOME || join(homedir(), ".claude"));
@@ -446,6 +476,8 @@ export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageSco
     // API key, which the usage endpoint rejects outright), and it wrote its
     // limits down. This is the case the whole statusline source exists for.
     if (statusline) return statuslineUsage(statusline, null);
+    // #2236: a profile on the host that no instance uses, signed out: not set up here — no row.
+    if (profileHome !== null && scope.hostOnly) return { status: "no-credentials", hint: "Not logged in.", metrics: [] };
     if (profileHome !== null) {
       // On screen (`ok`, as kiro's signed-out row), with what signs this profile in — never a fallback: from chat
       // (`/login claude-code <profile>`, #1699 part 2), or the exact line on the host — the same words as the auth alert.
@@ -1657,6 +1689,7 @@ export function providersForConfig(
   return base.flatMap(provider => {
     const backendName = usageBackendForProviderId(provider.id);
     if (!backendName || !credentialHomeSpec(backendName)) return [provider];
+    if (provider.id === "claude") return claudeHostRows(config, provider, backendName);
     const profiles = effectiveCredentialProfiles(config, backendName);
     if (profiles.length === 0) return [provider];
 
@@ -1686,6 +1719,46 @@ export function providersForConfig(
     })));
     return rows;
   });
+}
+
+/**
+ * #2236: one row per Claude login ON THE HOST, used by an instance or not — the default (shared) login and every
+ * credential profile there. A subscription at its limit is exactly the one a person stops using; it must not vanish
+ * because nothing runs on it (a user's first account, full, had no row once every instance moved to new profiles).
+ * The shared row is "Claude (default)" beside profiles; a profile no instance uses shows only when signed in, and the
+ * shared login shows only when it is not one of the profiles' own accounts. isHostLoginUsageProvider keeps these rows
+ * through the snapshot's running-instances filter.
+ */
+function claudeHostRows(config: UsageFleetConfig, provider: UsageProvider, backendName: string): UsageProvider[] {
+  const inUse = effectiveCredentialProfiles(config, backendName);
+  const profiles = [...new Set([...inUse, ...claudeProfilesOnHost()])].sort();
+  if (profiles.length === 0) return [provider];
+  const homes = profiles.map(profile => credentialProfileStoreHome(getAgendHome(), backendName, profile));
+  return [
+    { id: provider.id, name: `${provider.name} (default)`, fetch: () => provider.fetch(undefined, { besideProfiles: true, profileHomes: homes }) },
+    ...profiles.map((profile, i) => ({
+      id: `${provider.id}:${profile}`,
+      name: `${provider.name} (${profile})`,
+      profile,
+      fetch: () => provider.fetch(homes[i], inUse.includes(profile) ? { profile } : { profile, hostOnly: true }),
+    })),
+  ];
+}
+
+/** #2236: the Claude credential profiles on this host (their directories), whether or not an instance uses them. */
+function claudeProfilesOnHost(): string[] {
+  try {
+    return readdirSync(dirname(credentialProfileHome(getAgendHome(), "claude-code", "x")), { withFileTypes: true })
+      .filter(e => e.isDirectory() && isCredentialProfileName(e.name))
+      .map(e => e.name);
+  } catch {
+    return [];
+  }
+}
+
+/** #2236: a Claude login's row — kept on screen whether or not a running instance uses it. */
+export function isHostLoginUsageProvider(id: string): boolean {
+  return id === "claude" || id.startsWith("claude:");
 }
 
 /**

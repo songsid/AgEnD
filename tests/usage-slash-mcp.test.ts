@@ -268,7 +268,7 @@ describe("getUsageSnapshot", () => {
 });
 
 describe("/usage active backend filter", () => {
-  it("renders only providers used by running or paused instances", async () => {
+  it("renders only providers used by running or paused instances — and every Claude login on the host (#2236)", async () => {
     setUsageFetcherForTests(async () => PAYLOAD);
     const sendText = vi.fn().mockResolvedValue({ messageId: "usage" });
     const commands = new TopicCommands({
@@ -287,7 +287,7 @@ describe("/usage active backend filter", () => {
     expect(sendText).toHaveBeenCalledTimes(1);
     const rendered = sendText.mock.calls[0][1] as string;
     expect(rendered).toContain("Codex");
-    expect(rendered).not.toContain("Claude");
+    expect(rendered).toContain("Claude");                 // #2236: a Claude login on the host stays though nothing runs on it
     expect(rendered).not.toContain("Grok");
     expect(rendered).not.toContain("Kiro");
   });

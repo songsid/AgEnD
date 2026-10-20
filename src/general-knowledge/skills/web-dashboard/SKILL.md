@@ -238,7 +238,7 @@ chat; View, Log and Details are the switch under the header.
 
 **Usage.** The **Usage** header button: a right-hand rail at 1200 px or wider (shown/hidden per device; on Chat,
 View, Log, Details and Fleet), otherwise a dialog — **AI Subscription Usage**. One row per provider in use (Claude,
-Codex, Muse, Grok, Kiro, Antigravity): Claude's **Session** (5-hour window) and **Weekly** (7-day), per-model weekly
+Codex, Muse, Grok, Kiro, Antigravity; every Claude login on the host, used or not — `Claude (default)` and each profile, #2236): Claude's **Session** (5-hour window) and **Weekly** (7-day), per-model weekly
 rows, "binding" on the window that will stop you, **Extra usage** in dollars. "high" at 70%, "near limit" at 90%.
 Refreshes every 60 s while open; **Refresh** forces it (at most once per 30 s); **Move up / Move down** reorders rows.
 `web.usage_panel: false` hides the rail and dialog (the `/usage` chat command and `get_usage` still work).

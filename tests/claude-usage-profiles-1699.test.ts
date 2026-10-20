@@ -56,6 +56,8 @@ const profileHome = (profile: string) => credentialProfileHome(agend, "claude-co
 const onProfile = (profile?: string) => ({ backend: "claude-code", ...(profile ? { backend_options: { "claude-code": { credential_profile: profile } } } : {}) });
 const BASE = [{ id: "claude", name: "Claude", fetch: fetchClaudeUsage }];
 const session = (row: { metrics: Array<{ used?: number }> }) => row.metrics[0]?.used ?? null;
+/** #2236: a row by id — the shared "Claude (default)" row now sits first beside profiles. */
+const rowOf = <T extends { id: string }>(rows: T[], id: string): T => { const r = rows.find(x => x.id === id); if (!r) throw new Error(`no row ${id} in ${rows.map(x => x.id)}`); return r; };
 /** An instance's statusline.json: its 5-hour %, where claude said its conversation is, written `ageMs` ago. */
 function statusline(instance: string, used: number, transcriptPath: string, ageMs: number) {
   const dir = join(agend, "instances", instance);
@@ -67,15 +69,15 @@ function statusline(instance: string, used: number, transcriptPath: string, ageM
 }
 
 describe("one row per Claude subscription", () => {
-  it("two profiles: two claude:<profile> rows, each read with its own token — never the shared one", async () => {
+  it("two profiles: two claude:<profile> rows, each read with its own token — never the shared one; the default login on the host has its own row (#2236)", async () => {
     credentials(process.env.CLAUDE_HOME!, "dummy-shared");
     credentials(profileHome("work"), "dummy-work");
     credentials(profileHome("team"), "dummy-team");
     const rows = providersForConfig({ defaults: {}, instances: { a: onProfile("work"), b: onProfile("team") } } as never, BASE as never);
-    expect(rows.map(r => [r.id, r.name])).toEqual([["claude:team", "Claude (team)"], ["claude:work", "Claude (work)"]]);
+    expect(rows.map(r => [r.id, r.name])).toEqual([["claude", "Claude (default)"], ["claude:team", "Claude (team)"], ["claude:work", "Claude (work)"]]);
     const results = [];
     for (const r of rows) { bearers = []; const u = await r.fetch(); results.push([r.id, bearers, session(u)]); }
-    expect(results).toEqual([["claude:team", ["dummy-team"], 33], ["claude:work", ["dummy-work"], 22]]);
+    expect(results).toEqual([["claude", ["dummy-shared"], 11], ["claude:team", ["dummy-team"], 33], ["claude:work", ["dummy-work"], 22]]);
   });
 
   it("a fleet mixing the shared login and a profile: the shared row too, each with its own numbers", async () => {
@@ -97,7 +99,7 @@ describe("one row per Claude subscription", () => {
 });
 
 describe("an instance that names no backend runs Claude Code (the fleet default)", () => {
-  it("its profile gets a row too; with none, the one shared row as before", async () => {
+  it("its profile gets a row too; a profile on the host gets one even when no instance names it (#2236)", async () => {
     credentials(profileHome("work"), "dummy-work");
     const implicit = (profile?: string) => (profile ? { backend_options: { "claude-code": { credential_profile: profile } } } : {});
     const rows = providersForConfig({ defaults: {}, instances: { a: implicit(), b: implicit("work") } } as never, BASE as never);
@@ -105,10 +107,11 @@ describe("an instance that names no backend runs Claude Code (the fleet default)
     bearers = [];
     await rows[1].fetch();
     expect(bearers).toEqual(["dummy-work"]);
+    // #2236: "work" is a Claude login on this host — its row stays though no instance names it.
     const plain = providersForConfig({ defaults: {}, instances: { a: implicit(), b: implicit() } } as never, BASE as never);
-    expect(plain.length === 1 && plain[0] === BASE[0]).toBe(true);
+    expect(plain.map(r => [r.id, r.name])).toEqual([["claude", "Claude (default)"], ["claude:work", "Claude (work)"]]);
     const otherDefault = providersForConfig({ defaults: { backend: "codex" }, instances: { a: implicit("work") } } as never, BASE as never);
-    expect(otherDefault.map(r => r.id), "the fleet default is another backend: not a Claude binding").toEqual(["claude"]);
+    expect(otherDefault.map(r => r.id), "the fleet default is another backend: not a Claude binding — but the login is on the host").toEqual(["claude", "claude:work"]);
   });
 });
 
@@ -117,7 +120,7 @@ describe("a profile with no login", () => {
     credentials(process.env.CLAUDE_HOME!, "dummy-shared");
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "dummy-shared";
     statusline("shared-one", 70, join(root, ".claude", "projects", "-w", "s.jsonl"), 1000);   // the shared account's limits
-    const [row] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
+    const row = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
     const u = await row.fetch();
     const host = `CLAUDE_CONFIG_DIR=${JSON.stringify(profileHome("work"))} claude auth login`;
     expect([row.id, bearers, u.status, u.metrics, u.hint, u.hintI18n]).toEqual([
@@ -147,10 +150,10 @@ describe("what /usage and get_usage carry", () => {
     const snapshot = await fetchAllUsage({ defaults: {}, instances: { a: onProfile(), b: onProfile("work"), c: onProfile("team") } } as never);
     const active = filterUsageProviders(snapshot, ["claude", "claude:work", "claude:team"]);
     expect(active.providers.map(p => [p.id, p.name, p.status])).toEqual([
-      ["claude", "Claude", "ok"], ["claude:team", "Claude (team)", "ok"], ["claude:work", "Claude (work)", "ok"],
+      ["claude", "Claude (default)", "ok"], ["claude:team", "Claude (team)", "ok"], ["claude:work", "Claude (work)", "ok"],
     ]);
     const text = formatUsageSummary(active);
-    expect(text).toMatch(/· Claude \(Team Standard \(1\.25x\)\): [^\n]*11%/);
+    expect(text).toMatch(/· Claude \(default\) \(Team Standard \(1\.25x\)\): [^\n]*11%/);
     expect(text).toMatch(/· Claude \(work\) \(Team Standard \(1\.25x\)\): [^\n]*22%/);
     expect(text).toContain(`· Claude (team): `);
     expect(text).toContain(`Not logged in — sign in with \`/login claude-code team\` (or run \`CLAUDE_CONFIG_DIR=${JSON.stringify(profileHome("team"))} claude auth login\` on the host).`);
@@ -165,7 +168,7 @@ describe("macOS: the profile's own Keychain item", () => {
     const asked: Array<[string, string]> = [];
     process.env.USER = "someone";
     setClaudeKeychainForTests({ platform: "darwin", read: async (service, account) => { asked.push([service, account]); return JSON.stringify({ claudeAiOauth: { accessToken: "dummy-keychain-work" } }); } });
-    const [row] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
+    const row = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
     const u = await row.fetch();
     expect([claudeKeychainService(launched), asked, bearers, session(u)]).toEqual([expected, [[expected, "someone"]], ["dummy-keychain-work"], 44]);
   });
@@ -181,8 +184,8 @@ describe("macOS: the profile's own Keychain item", () => {
   it("no Keychain item: the profile's .credentials.json; neither: not logged in", async () => {
     setClaudeKeychainForTests({ platform: "darwin", read: async () => null });
     credentials(profileHome("work"), "dummy-work");
-    const [work] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
-    const [team] = providersForConfig({ defaults: {}, instances: { a: onProfile("team") } } as never, BASE as never);
+    const work = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
+    const team = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("team") } } as never, BASE as never), "claude:team");
     const w = await work.fetch(), t = await team.fetch();
     expect([session(w), bearers, t.hintI18n?.key]).toEqual([22, ["dummy-work"], "usage.hint.claude_profile_signed_out_chat"]);
   });
@@ -193,7 +196,7 @@ describe("review r1: the Keychain as claude reads it", () => {
   const keychain = (account: string, secret: string, username: () => string = () => "unused") =>
     setClaudeKeychainForTests({ platform: "darwin", username, read: async (service, acct) => (service === claudeKeychainService(profileHome("work")) && acct === account ? secret : null) });
   const KEY = JSON.stringify({ claudeAiOauth: { accessToken: "dummy-keychain-work" } });
-  const workRow = () => providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never)[0];
+  const workRow = () => rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
 
   it("no $USER: the OS user name is the account", async () => {
     delete process.env.USER;
@@ -253,7 +256,7 @@ describe("statusline rate limits stay with their subscription", () => {
     statusline("on-work", 71, join(profileHome("work"), "projects", "-w", "s.jsonl"), 1_000);
     apiDown();
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "dummy-shared";
-    const workRow = () => providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never)[0];
+    const workRow = () => rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
     const signedOut = await workRow().fetch();                        // (a) no login of its own
     credentials(profileHome("work"), "dummy-work");
     const failing = await workRow().fetch();                          // (b) its own login, API down
@@ -265,7 +268,7 @@ describe("statusline rate limits stay with their subscription", () => {
     credentials(profileHome("work"), "dummy-work");
     apiDown();
     writeFileSync(join(root, ".bashrc"), "export CLAUDE_CODE_OAUTH_TOKEN=dummy-shared\n");
-    const [work] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
+    const work = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
     const u = await work.fetch();
     expect([session(u), u.status]).toEqual([null, "error"]);
   });
@@ -277,7 +280,7 @@ describe("statusline rate limits stay with their subscription", () => {
       credentials(profileHome("work"), "dummy-work");
       apiDown();
       writeFileSync(join(root, ".bashrc"), rc);
-      const [work] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
+      const work = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
       const u = await work.fetch();
       outcomes.push([u.status, session(u)]);
     }
@@ -289,7 +292,7 @@ describe("statusline rate limits stay with their subscription", () => {
     credentials(profileHome("work"), "dummy-work");
     apiDown();
     writeFileSync(join(root, ".bashrc"), "export SHARED_TOKEN=dummy-shared\n");
-    const [work] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
+    const work = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
     const u = await work.fetch();
     expect([u.status, session(u)]).toEqual(["ok", 71]);
   });
@@ -311,7 +314,7 @@ describe("statusline rate limits stay with their subscription", () => {
     statusline("on-work", 71, join(profileHome("work"), "projects", "-w", "s.jsonl"), 1_000);
     credentials(profileHome("work"), "dummy-work");
     apiDown();
-    const [work] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
+    const work = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
     expect(session(await work.fetch())).toBe(71);
   });
 
@@ -319,13 +322,13 @@ describe("statusline rate limits stay with their subscription", () => {
     credentials(profileHome("work"), "dummy-work");
     statusline("on-team", 77, join(profileHome("team"), "projects", "-w", "s.jsonl"), 1_000);
     apiDown();
-    const [work] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
+    const work = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
     const w = await work.fetch();
     expect([w.status, session(w)]).toEqual(["error", null]);
     const dir = join(agend, "instances", "old-cli");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "statusline.json"), JSON.stringify({ rate_limits: { five_hour: { used_percentage: 5, resets_at: Math.floor(Date.now() / 1000) + 3600 } } }));
-    const [shared] = providersForConfig({ defaults: {}, instances: { a: onProfile(), b: onProfile("work") } } as never, BASE as never);
+    const shared = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile(), b: onProfile("work") } } as never, BASE as never), "claude");
     expect(session(await shared.fetch())).toBe(5);
   });
 
@@ -333,14 +336,14 @@ describe("statusline rate limits stay with their subscription", () => {
     credentials(profileHome("work"), "dummy-work");
     statusline("sibling", 66, join(profileHome("work"), "projects-old", "-w", "s.jsonl"), 1_000);
     apiDown();
-    const [work] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
+    const work = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never), "claude:work");
     expect(session(await work.fetch())).toBe(null);
   });
 
   it("no profiles: every instance's reading counts, as before (the freshest wins)", async () => {
     statusline("x", 40, join(profileHome("old"), "projects", "-w", "s.jsonl"), 1_000);   // even one under a profile dir
     statusline("y", 20, join(root, ".claude", "projects", "-w", "s.jsonl"), 60_000);
-    const [row] = providersForConfig({ defaults: {}, instances: { a: onProfile() } } as never, BASE as never);
+    const row = rowOf(providersForConfig({ defaults: {}, instances: { a: onProfile() } } as never, BASE as never), "claude");
     expect(session(await row.fetch())).toBe(40);
   });
 });

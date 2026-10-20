@@ -88,7 +88,7 @@ describe("GET /api/ai-usage", () => {
     vi.useRealTimers();
   });
 
-  it("filters the web panel to providers used by running or paused instances", async () => {
+  it("filters the web panel to providers used by running or paused instances — a Claude login on the host stays (#2236)", async () => {
     setUsageFetcherForTests(async () => ({
       fetchedAt: "2026-01-01T00:00:00.000Z",
       providers: [
@@ -104,7 +104,8 @@ describe("GET /api/ai-usage", () => {
     await out.done;
 
     expect(out.code).toBe(200);
-    expect(JSON.parse(out.body).providers.map((provider: { id: string }) => provider.id)).toEqual(["codex"]);
+    // #2236: Claude rows are the logins on the host (providersForConfig lists only those): kept with no running instance.
+    expect(JSON.parse(out.body).providers.map((provider: { id: string }) => provider.id)).toEqual(["claude", "codex"]);
   });
 
   it("filters unused model-scoped metrics from the shared web/chat/MCP snapshot", async () => {

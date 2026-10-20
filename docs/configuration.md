@@ -658,6 +658,13 @@ with `/login claude-code <profile>` and the exact line that signs it in on the h
 and never another account's numbers. A fleet
 without Claude profiles shows the one `Claude` row exactly as before.
 
+Every Claude login on this host has a row, whether or not an instance runs on it (#2236): the default login
+(`Claude (default)` beside profiles) and every profile under `credential-profiles/claude-code/`. A subscription at its
+limit is usually the one nothing runs on any more, so it stays on screen, at 100% with its reset time, or saying the
+usage endpoint rate-limited the request. Two exceptions: a profile no instance uses and that is not logged in has no
+row, and the default login has no row of its own when it is signed in as the same account as a profile. A bot's own
+`/usage` list in a group still shows only the subscriptions its own running instances use.
+
 An active Kiro profile without a readable login retains a signed-out hint.
 Visibility also depends on the provider: Codex rows without OAuth usage
 credentials, including API-key-only profiles, are omitted. Rows are not combined,

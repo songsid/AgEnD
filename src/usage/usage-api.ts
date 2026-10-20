@@ -14,7 +14,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { FleetConfig } from "../types.js";
 import type { Logger } from "pino";
-import { fetchAllUsage, type ProviderUsage, type UsageMetric } from "./providers.js";
+import { fetchAllUsage, isHostLoginUsageProvider, type ProviderUsage, type UsageMetric } from "./providers.js";
 import { museUsageRevision } from "../muse-usage-relay.js";
 import { statSync } from "node:fs";
 import { join } from "node:path";
@@ -60,6 +60,7 @@ export function usageProviderIdForBackend(backend: string | undefined): string |
 export function filterUsageProviders(
   payload: UsagePayload,
   providerIds?: Iterable<string>,
+  opts: { hostLogins?: boolean } = {},
 ): UsagePayload {
   const active = providerIds
     ? (providerIds instanceof Set ? providerIds : new Set(providerIds))
@@ -67,7 +68,8 @@ export function filterUsageProviders(
   return {
     ...payload,
     providers: payload.providers
-      .filter(provider => !active || active.has(provider.id))
+      // #2236: with `hostLogins`, a Claude login on the host stays though no running instance uses it.
+      .filter(provider => !active || active.has(provider.id) || (opts.hostLogins === true && isHostLoginUsageProvider(provider.id)))
       .map(provider => ({
         ...provider,
         metrics: provider.metrics.filter(isVisibleUsageMetric),
@@ -337,7 +339,7 @@ function fetchFor(owner: UsageOwner, effectiveForce: boolean, again: () => Promi
  * second entry point that bypassed it would defeat that.
  */
 export async function getUsageSnapshot(force = false, providerIds?: Iterable<string>, opts: { allowStale?: boolean } = {}): Promise<UsagePayload> {
-  return filterUsageProviders(await usage(force, opts.allowStale === true), providerIds);
+  return filterUsageProviders(await usage(force, opts.allowStale === true), providerIds, { hostLogins: true });
 }
 
 /**

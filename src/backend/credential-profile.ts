@@ -31,6 +31,8 @@ import { kiroStoreHasLogin } from "./kiro-auth-store.js";
 
 /** Profile names become a directory; keep them boring. */
 const PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** Whether `name` is a profile name a profile directory can have (#2236: listing the profiles on the host). */
+export const isCredentialProfileName = (name: string): boolean => PROFILE_NAME.test(name);
 
 /**
  * The two shapes a credential home comes in.

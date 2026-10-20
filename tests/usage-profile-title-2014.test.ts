@@ -23,14 +23,14 @@ const BASE = [{ id: "claude", name: "Claude", fetch: async () => ({ status: "ok"
 afterEach(() => { setUsageProvidersForTests(null); setUsageProviderDeadlineForTests(null); });
 
 describe("the rows", () => {
-  it("a profile row carries its profile; the API name is unchanged; the shared row has none", () => {
+  it("a profile row carries its profile; the API name is unchanged; the shared row has none (and is \"Claude (default)\" beside profiles, #2236)", () => {
     const rows = providersForConfig(configWith(["team-alpha", null]), BASE);
-    expect(rows.map(r => [r.id, r.name, r.profile])).toEqual([["claude", "Claude", undefined], ["claude:team-alpha", "Claude (team-alpha)", "team-alpha"]]);
+    expect(rows.map(r => [r.id, r.name, r.profile])).toEqual([["claude", "Claude (default)", undefined], ["claude:team-alpha", "Claude (team-alpha)", "team-alpha"]]);
   });
   it("the snapshot keeps it, on a good read and on a failed one", async () => {
     setUsageProvidersForTests([{ id: "claude", name: "Claude", fetch: async (home?: string) => { if (home?.includes("team-beta")) throw new Error("boom"); return { status: "ok" as const, metrics: [] }; } }]);
     const { providers } = await fetchAllUsage(configWith(["team-alpha", "team-beta", null]));
-    expect(providers.map(p => [p.id, p.name, p.profile, p.status])).toEqual([["claude", "Claude", undefined, "ok"],
+    expect(providers.map(p => [p.id, p.name, p.profile, p.status])).toEqual([["claude", "Claude (default)", undefined, "ok"],
       ["claude:team-alpha", "Claude (team-alpha)", "team-alpha", "ok"], ["claude:team-beta", "Claude (team-beta)", "team-beta", "error"]]);
     expect(Object.hasOwn(providers[0]!, "profile"), "no profile key on a shared row").toBe(false);
   });

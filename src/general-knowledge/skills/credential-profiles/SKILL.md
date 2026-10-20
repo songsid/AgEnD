@@ -212,7 +212,10 @@ and log it in, so report it as such rather than as a missing subscription.
   Two profiles logged into the same account do not double anything, and it is
   worth saying so before someone sets this up expecting more headroom.
 - Claude Code profiles now each have their own usage row (`Claude (<profile>)`),
-  reading quota from that profile's own login.
+  reading quota from that profile's own login. Every Claude login on the host has a row, whether or not an
+  instance runs on it (#2236): `Claude (default)` for the default login, plus every profile. A full subscription
+  nothing runs on any more still shows, at 100% with its reset time. Asked "where is my other account?", it is one
+  of these rows; it is not missing because no agent uses it.
 - Switching a kiro profile does not carry the conversation across; the agent
   gets a summary of the work, not the transcript. Say anything that must survive
   verbatim in the channel before switching. For claude-code, AgEnD copies the
