@@ -5,7 +5,8 @@
   "type": "module",
   "bin": {
     "agend": "./launcher/agend",
-    "agend-agent": "./launcher/agend-agent"
+    "agend-agent": "./launcher/agend-agent",
+    "agend-install": "./launcher/agend-install.cjs"
   },
   "exports": {
     ".": "./dist/cli.js",

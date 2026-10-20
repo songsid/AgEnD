@@ -86,7 +86,9 @@ const ENOTEMPTY_10 = [
   "npm error ENOTEMPTY: directory not empty, rename '/usr/lib/node_modules/@songsid/agend' -> '/usr/lib/node_modules/@songsid/.agend-pW3rL0aX'",
   "npm error A complete log of this run can be found in: /root/.npm/_logs/2026-10-14T13_00_00_000Z-debug-0.log",
 ].join("\n");
-const RM = (dir: string) => `remove the directory an interrupted install left, then update again: \`rm -rf '${dir}' && agend update\``;
+// #2264: the repair is the installer (it clears exactly what npm left), for the version this run was installing.
+const INSTALLER = (version?: string) => `\`curl -fsSL https://songsid.github.io/AgEnD/install.sh | ${version ? `AGEND_VERSION=${version} ` : ""}bash\``;
+const RM = (_dir: string) => `an interrupted install left a directory in the way; run the installer, which clears it and finishes: ${INSTALLER("2.2.0-beta.11")}`;
 
 describe("updateFixHint (#1829): a small lookup", () => {
   it("npm ENOTEMPTY: remove exactly the directory npm names (npm 10 `dest`, npm 9 `ERR!`, or its rename message)", () => {
@@ -128,8 +130,8 @@ describe("updateFixHint (#1829): a small lookup", () => {
   });
 
   it("agend gone → reinstall it, ahead of anything else in the output", () => {
-    expect(updateFixHint(ENOTEMPTY_10, { agendGone: true })).toBe("`npm install -g @songsid/agend@2.2.0-beta.11`");
-    expect(updateFixHint("", { agendGone: true })).toBe("`npm install -g @songsid/agend@<version>`");
+    expect(updateFixHint(ENOTEMPTY_10, { agendGone: true })).toBe(INSTALLER("2.2.0-beta.11"));
+    expect(updateFixHint("", { agendGone: true })).toBe(INSTALLER());
   });
 
   it("anything else → null (the generic advice stays)", () => {
@@ -167,7 +169,7 @@ describe("watchUpdateLaunch: the fix goes into the failure message", () => {
     const agend = join(dir, "agend");
     writeFileSync(agend, "#!/bin/sh\n");
     const [gone] = run("  Updating AgEnD v2.2.0-beta.10 → v2.2.0-beta.11...\nnpm error code E500\n", agend, () => unlinkSync(agend));
-    expect(gone).toContain("Fix: `npm install -g @songsid/agend@2.2.0-beta.11`");
+    expect(gone).toContain(`Fix: ${INSTALLER("2.2.0-beta.11")}`);
     const [never] = run("npm error code E500\n", join(dir, "never-there"));
     expect(never).toContain("Run `agend update` from a host shell.");
     expect(never).not.toContain("Fix:");

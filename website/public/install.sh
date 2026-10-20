@@ -251,19 +251,23 @@ elif command_exists agend; then
   fi
 fi
 
-# Discord is now a built-in adapter — the standalone plugin is no longer needed.
-# Remove it if a previous (beta) install left it behind (best-effort; the
-# built-in adapter takes precedence over the plugin regardless, so this is just
-# cleanup, not a correctness requirement).
-if npm list -g @songsid/agend-plugin-discord >/dev/null 2>&1; then
-  warn "Removing obsolete @songsid/agend-plugin-discord (Discord is now built in)..."
-  $SUDO npm uninstall -g @songsid/agend-plugin-discord 2>/dev/null || true
+# #2264: install, upgrade and repair are one program — the release's own installer (launcher/agend-install.cjs),
+# fetched pinned by npm with its integrity checks. It puts back what an interrupted install moved aside, installs,
+# proves `agend --version`, links agend/node into /usr/local/bin for root under nvm, and on a host that already runs
+# a fleet sets the service up again. Re-running this one-liner is the repair. AGEND_VERSION picks a version or a
+# dist-tag (default: latest; beta: AGEND_VERSION=beta).
+AGEND_SPEC="@songsid/agend@${AGEND_VERSION:-latest}"
+if npm view "$AGEND_SPEC" bin --json 2>/dev/null | grep -q '"agend-install"'; then
+  if ! $SUDO npm exec --yes --package "$AGEND_SPEC" -- agend-install; then
+    error "Installation failed (see above). Run this installer again; it repairs what an interrupted install left."
+  fi
+else
+  # A release from before the installer (this page can be newer than the release it installs).
+  $SUDO npm install -g "$AGEND_SPEC" || error "Installation failed. Try: npm install -g $AGEND_SPEC"
 fi
-
-$SUDO npm install -g @songsid/agend
-
+hash -r 2>/dev/null || true
 if ! command_exists agend; then
-  error "Installation failed. Try: npm install -g @songsid/agend"
+  error "Installation finished, but \`agend\` is not on PATH. Open a new terminal (or: source ~/.profile)."
 fi
 info "AgEnD $(agend --version) installed"
 
@@ -282,18 +286,11 @@ if [ -z "${AGEND_NO_COMPLETION:-}" ] && command_exists agend; then
   fi
 fi
 
-# ── Ensure binaries are accessible without nvm sourced ────
-# Root user: create symlinks in /usr/local/bin (for systemd, cron, non-login shells)
-# Normal user: nvm PATH in .bashrc/.profile is sufficient
-AGEND_BIN=$(command -v agend 2>/dev/null)
-NODE_BIN=$(command -v node 2>/dev/null)
-if [ -n "$AGEND_BIN" ] && [[ "$AGEND_BIN" == */.nvm/* ]] && [ "$(id -u)" -eq 0 ]; then
-  ln -sf "$AGEND_BIN" /usr/local/bin/agend 2>/dev/null && info "Symlinked agend → /usr/local/bin/agend" || true
-  ln -sf "$NODE_BIN" /usr/local/bin/node 2>/dev/null && info "Symlinked node → /usr/local/bin/node" || true
-  KIRO_BIN=$(command -v kiro-cli 2>/dev/null)
-  if [ -n "$KIRO_BIN" ]; then
-    ln -sf "$KIRO_BIN" /usr/local/bin/kiro-cli 2>/dev/null && info "Symlinked kiro-cli → /usr/local/bin/kiro-cli" || true
-  fi
+# ── Binaries without nvm sourced: the installer links agend and node into /usr/local/bin for root (#2264);
+# kiro-cli is not AgEnD's, so it is linked here.
+KIRO_BIN=$(command -v kiro-cli 2>/dev/null || true)
+if [ -n "$KIRO_BIN" ] && [[ "$KIRO_BIN" == */.nvm/* ]] && [ "$(id -u)" -eq 0 ]; then
+  ln -sf "$KIRO_BIN" /usr/local/bin/kiro-cli 2>/dev/null && info "Symlinked kiro-cli → /usr/local/bin/kiro-cli" || true
 fi
 
 # ── Step 5: Detect backend ───────────────────────────────

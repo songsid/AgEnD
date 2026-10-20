@@ -71,12 +71,14 @@ function updateTarget(output: string): string {
  */
 export function updateFixHint(output: string, opts: { agendGone?: boolean } = {}): string | null {
   const target = updateTarget(output);
-  if (opts.agendGone) return `\`npm install -g @songsid/agend@${target}\``;
+  // #2264: one repair for an install left half-done — the installer, which puts back or removes what npm left aside.
+  const installer = `\`curl -fsSL https://songsid.github.io/AgEnD/install.sh | ${target === "<version>" ? "" : `AGEND_VERSION=${target} `}bash\``;
+  if (opts.agendGone) return installer;
   if (/^npm (?:ERR!|error) code ENOTEMPTY\b/im.test(output)) {
     const named = /^npm (?:ERR!|error) dest (.+)$/im.exec(output)?.[1] ?? /ENOTEMPTY[^\n]*rename '[^'\n]+' -> '([^'\n]+)'/.exec(output)?.[1];
     const ours = named && isAbsolute(named) && !/['"\s\\`$]/.test(named)
       && basename(dirname(named)) === "@songsid" && /^\.agend[A-Za-z0-9._-]*$/.test(basename(named));
-    if (ours) return t("update.failure.remove_staging", `\`rm -rf '${named}' && agend update\``);
+    if (ours) return t("update.failure.remove_staging", installer);
     return null;
   }
   if (/systemd does not know /.test(output)) return `\`npm i -g @songsid/agend@${target} && agend restart\``;

@@ -47,6 +47,9 @@ case "$*" in
   "config get prefix") echo '${home}';;
   "root -g") echo '${join(home, "lib", "node_modules")}';;
   "prefix -g") echo '${home}';;
+  # #2264: \`agend update\` hands the install to the target's own installer: the REAL launcher/agend-install.cjs runs
+  # here, with this stub as its npm (npm exec … --package <spec> -- agend-install --upgrade).
+  "exec --yes --package "*) exec node '${join(process.cwd(), "launcher", "agend-install.cjs")}' "$7" --spec "$4";;
   "install -g "*) v=$(echo "$3" | sed 's/.*@//'); echo "$v" > '${installed}'
     printf '{"name":"@songsid/agend","version":"%s","bin":{"agend":"dist/cli.js"}}' "$v" > '${join(globalPkg, "package.json")}';;
 esac
@@ -89,25 +92,26 @@ describe("#1631 A: a hand-started fleet, no reachable user manager — every upd
     const w = updateWorld();
     const first = w.update("2.2.0-beta.3");
     expect(first.r.status, first.out).toBe(0);
-    expect(first.calls).toContain("agend restart");
+    // #2264: the target's installer restarts the fleet through the new binary; with no unit it never asks for one.
+    expect(first.calls, first.out).toContain("agend restart --yes");
     expect(first.calls.filter(c => c.startsWith("agend install")), "the updater never asks for a service file").toEqual([]);
     expect(existsSync(unitOf(w.home)), "no unit after the first update").toBe(false);
     const second = w.update("2.2.0-beta.4");
     expect(second.r.status, second.out).toBe(0);
     expect(readFileSync(w.installed, "utf8").trim()).toBe("2.2.0-beta.4");
-    expect(second.calls).toContain("agend restart");
+    expect(second.calls).toContain("agend restart --yes");
     expect(second.out).not.toContain("back in place");
     expect(existsSync(unitOf(w.home)), "no unit after the second update").toBe(false);
   });
 
-  it("control — a unit already there (an earlier `agend install`): the r5 fail-safe stands, the update is rolled back", { timeout: 120_000 }, () => {
+  it("control — a unit already there (an earlier `agend install`): the new release's `agend install` rewrites it, then the restart", { timeout: 120_000 }, () => {
     const w = updateWorld();
     mkdirSync(join(w.home, ".config", "systemd", "user"), { recursive: true });
     writeFileSync(unitOf(w.home), "[Service]\nExecStart=/old/node /old/cli.js fleet start\n");
     const r = w.update("2.2.0-beta.3");
-    expect(r.r.status, r.out).toBe(1);
-    expect(r.calls, "the existing unit is refreshed").toContain("agend install --no-activate");
-    expect(r.out).toContain("back in place");
+    expect(r.r.status, r.out).toBe(0);
+    const service = r.calls.filter(c => c === "agend install" || c === "agend restart --yes");
+    expect(service, "the existing unit is rewritten by the NEW binary, then the fleet restarted onto it").toEqual(["agend install", "agend restart --yes"]);
   });
 });
 

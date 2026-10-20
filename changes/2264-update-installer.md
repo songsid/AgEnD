@@ -1,0 +1,12 @@
+---
+section: Fixed
+---
+- **An update can no longer leave a host without `agend`, and re-running the installer always repairs it (#2264).**
+  - Updates are now run by the new release's own installer: `agend update` runs it via `npm exec`, and so does the install one-liner. Install, upgrade and repair are one program.
+  - The installer first fixes what an interrupted install left behind:
+    - npm's moved-aside copy of AgEnD is put back or removed;
+    - an install lock that nobody holds, or that cannot be read, is removed.
+  - It then installs the new release and checks that `agend --version` runs. If the new release fails that check, it reinstalls the previous one.
+  - A manual `npm install -g` is never refused because of a lock.
+  - The fleet's user service now turns on systemd linger and finds its own runtime directory, so `agend start`/`restart` work from any shell, root on WSL included. An update is also no longer cut off when the login that started it ends.
+  - The chat's update message ends with a final state. If the fleet comes back on a different version than the one the update aimed for, it says so, and gives the one-liner to finish.

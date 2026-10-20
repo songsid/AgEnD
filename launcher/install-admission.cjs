@@ -1,12 +1,7 @@
 "use strict";
-// #1450 C1: may this install of @songsid/agend proceed? Called by the postinstall, inside npm's transaction (a refusal
-// makes npm roll the install back). The lock is the updater's (src/install-lock.ts): `<prefix>/.agend-install.lock`,
-// next to the package it guards. The prefix comes from WHERE this package is — never from the environment.
-//   - no lock, no token            → a plain external install: proceed (the documented restriction covers the rest);
-//   - a live lock, its own token   → the updater's own npm child: proceed;
-//   - a live lock, other/no token  → a foreign install while AgEnD owns the prefix: refuse;
-//   - a token, but no live lock    → late or stale (it cannot authorise a successor): refuse;
-//   - a lock that cannot be read   → refuse, naming the file (unknown ownership blocks).
+// #1450 C1, reduced by #2264: the install lock's process readers (start time, start ticks, boot id), shared by the
+// updater's lock (src/install-lock.ts). Nothing here decides whether an install may run any more — a manual
+// `npm install -g` is never refused because of a lock (#2264: one that could not be read blocked every install).
 // Same syntax constraints as runtime-platform.cjs: this may run on an old Node.
 var fs = require("fs");
 var path = require("path");
@@ -124,37 +119,7 @@ function parse(text) {
       || (typeof r.startTicks === "string" && /^\d+$/.test(r.startTicks) && typeof r.bootId === "string" && /^[0-9a-f-]{36}$/.test(r.bootId))) ? r : null;
 }
 
-/** { ok: true, why } or { ok: false, reason }. deps (tests): env, processStart. */
-function admit(pkgDir, deps) {
-  var d = deps || {};
-  var env = d.env || process.env;
-  var token = env[TOKEN_ENV] || "";
-  var real;
-  try { real = fs.realpathSync(pkgDir); } catch (e) { real = pkgDir; }
-  var prefix = globalPrefix(real);
-  if (!prefix) return token ? { ok: false, reason: "an AgEnD install token was presented, but this is not a global install it could belong to" } : { ok: true, why: "not a global install" };
-  try { prefix = fs.realpathSync(prefix); } catch (e) { /* as derived */ }
-  var lockPath = path.join(prefix, LOCK);
-  var text = null;
-  try { text = fs.readFileSync(lockPath, "utf8"); } catch (e) {
-    if (e.code !== "ENOENT") return { ok: false, reason: "the install lock " + lockPath + " cannot be read (" + e.code + ")" };
-  }
-  if (text === null) {
-    return token ? { ok: false, reason: "an AgEnD install token was presented, but no update holds " + lockPath + " (a late or stale token)" } : { ok: true, why: "no lock: an external install" };
-  }
-  var lock = parse(text);
-  if (!lock) return { ok: false, reason: "the install lock " + lockPath + " cannot be read as a lock; if no `agend update` is running, remove it and retry" };
-  var state = holderState(lock, d);
-  if (state === "unknown") return { ok: false, reason: "whether the AgEnD update that holds " + lockPath + " (pid " + lock.pid + ") is still running cannot be told; retry" };
-  if (state === "stale") {
-    return token ? { ok: false, reason: "the AgEnD update that held " + lockPath + " is gone, so its token cannot authorise this install" } : { ok: true, why: "a stale lock and no token: an external install" };
-  }
-  if (lock.prefix !== prefix) return { ok: false, reason: "the install lock " + lockPath + " names another prefix (" + lock.prefix + ")" };
-  if (token && token === lock.token) return { ok: true, why: "the updater's own install" };
-  return { ok: false, reason: "an `agend update` (pid " + lock.pid + ") is installing into " + prefix + " right now; wait for it, then retry" };
-}
-
 module.exports = {
-  LOCK: LOCK, TOKEN_ENV: TOKEN_ENV, admit: admit, globalPrefix: globalPrefix, processStart: processStart, startTicks: startTicks, bootId: bootId,
+  LOCK: LOCK, TOKEN_ENV: TOKEN_ENV, globalPrefix: globalPrefix, processStart: processStart, startTicks: startTicks, bootId: bootId,
   sameStartText: sameStartText, START_TOLERANCE_MS: START_TOLERANCE_MS, exists: exists, holderState: holderState, parse: parse,
 };

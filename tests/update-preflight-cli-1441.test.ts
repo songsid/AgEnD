@@ -56,6 +56,9 @@ case "$*" in
   "config get prefix") echo '${c.nvm ? join(home, "read-only-prefix") : home}';;
   "root -g") echo '${join(home, "lib", "node_modules")}';;
   "prefix -g") echo '${home}';;
+  # #2264: \`agend update\` hands the install to the target's own installer: the REAL launcher/agend-install.cjs runs
+  # here, with this stub as its npm (npm exec … --package <spec> -- agend-install --upgrade).
+  "exec --yes --package "*) exec node '${join(process.cwd(), "launcher", "agend-install.cjs")}' "$7" --spec "$4";;
   "install -g "*) v=$(echo "$3" | sed 's/.*@//'); echo "$v" > '${installedVersion}'
     printf '{"name":"@songsid/agend","version":"%s","bin":{"agend":"dist/cli.js"}}' "$v" > '${join(globalPkg, "package.json")}';;
 esac

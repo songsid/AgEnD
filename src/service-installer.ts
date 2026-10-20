@@ -3,6 +3,7 @@ import { join, dirname } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { execFileSync, execSync, spawnSync } from "node:child_process";
+import { ensureUserSystemd } from "./user-systemd.js";
 import ejs from "ejs";
 const { render } = ejs;
 import { homedir, platform } from "node:os";
@@ -282,6 +283,7 @@ function servicePathForLabel(label: string): string {
 
 /** Inspect the user service without changing it. `null` means manager unavailable. */
 export function inspectService(label = SERVICE_LABEL): ServiceInfo {
+  if (detectPlatform() === "linux") ensureUserSystemd();   // #2264
   const plat = detectPlatform();
   const path = servicePathForLabel(label);
   const manager = plat === "macos" ? "launchd" : "systemd --user";
@@ -418,6 +420,7 @@ export function launchdPlistPath(label: string): string {
 }
 
 export function installService(vars: ServiceVars): string {
+  if (detectPlatform() === "linux") ensureUserSystemd();   // #2264
   const plat = detectPlatform();
   if (plat === "macos") {
     const plistPath = launchdPlistPath(vars.label);
@@ -772,6 +775,7 @@ export function classifySystemdServiceState(result: {
 }
 
 export function getSystemdServiceState(label: string, user = true): ServiceState {
+  if (detectPlatform() === "linux") ensureUserSystemd();   // #2264
   const args = [...(user ? ["--user"] : []), "is-active", label];
   const result = spawnSync("systemctl", args, { encoding: "utf8", timeout: 5000 });
   return classifySystemdServiceState(result);
@@ -820,6 +824,7 @@ export function restartSystemdService(
   user = true,
   run: SystemctlRunner = execFileSync,
 ): boolean {
+  if (user && run === execFileSync) ensureUserSystemd();   // #2264
   return systemdRestartOutcome(label, user, run) === "restarted";
 }
 
@@ -848,6 +853,7 @@ export function stopService(): boolean {
       const uid = process.getuid?.() ?? 501;
       execSync(`launchctl bootout gui/${uid}/${SERVICE_LABEL}`, { stdio: "inherit" });
     } else {
+      ensureUserSystemd();   // #2264: linger, and the bus a non-login shell left out
       execSync(`systemctl --user stop ${SERVICE_LABEL}`, { stdio: "inherit" });
     }
     return true;
@@ -867,6 +873,7 @@ export function startService(): boolean {
       execSync(`launchctl bootstrap ${domain} ${plistPath}`, { stdio: "inherit" });
       execSync(`launchctl enable ${domain}/${SERVICE_LABEL}`, { stdio: "inherit" });
     } else {
+      ensureUserSystemd();   // #2264: without it, root on WSL got "Failed to connect to bus" and no fleet
       try { execSync("systemctl --user daemon-reload", { stdio: "pipe" }); } catch {}
       execSync(`systemctl --user start ${SERVICE_LABEL}`, { stdio: "inherit" });
     }
@@ -912,6 +919,7 @@ export function activateService(plistPath: string, pidPath: string): void {
     reloadLaunchdJob(domain, label, plistPath);
   } else {
     const serviceName = plistPath.replace(/.*\//, "").replace(/\.service$/, "");
+    ensureUserSystemd();   // #2264: linger on, so the fleet outlives the login that installed it
     execSync("systemctl --user daemon-reload", { stdio: "inherit" });
     execSync(`systemctl --user enable --now ${serviceName}`, { stdio: "inherit" });
   }

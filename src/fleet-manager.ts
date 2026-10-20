@@ -7582,6 +7582,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // a plain boot — nothing was stopped by an operation, report nothing.
       const backgroundWorkEndedNames = this.collectBackgroundWorkEndedNames(
         configuredNames, pendingUpdateProgress?.startedAt ?? null);
+      // #2264: an update whose fleet comes back on another version did not land — say so in its final message (the
+      // version it aimed for, the one running, and the one repair), never just "updated".
+      const aimedAt = pendingProgressOperation === "update" ? pendingUpdateProgress?.progress.version : undefined;
+      const notLanded = aimedAt && agendVersion !== "unknown" && aimedAt !== agendVersion ? t("update.not_landed", aimedAt, agendVersion) : null;
       const completionSummary: RestartProgressSummary = {
         running: started,
         total,
@@ -7591,7 +7595,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         backgroundWorkEndedNames,
         ...(cleanupOutcome && "render" in cleanupOutcome
           ? { warningText: cleanupOutcome.render.warning, warningCommand: cleanupOutcome.render.cleanupCommand }
-          : {}),
+          : notLanded ? { warningText: notLanded } : {}),
       };
       const progressCompleted = await startupProgress.finish(completionSummary);
       // Armed only after the completion posted: an append racing ahead of it would be overwritten by it.

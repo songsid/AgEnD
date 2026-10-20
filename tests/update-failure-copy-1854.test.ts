@@ -78,10 +78,11 @@ describe.each(["en", "zh-TW"] as const)("#1854 watcher in %s", locale => {
     setLocale(locale);
     const staging = "/usr/lib/node_modules/@songsid/.agend-fixture";
     const output = `npm error code ENOTEMPTY\nnpm error dest ${staging}\n`;
-    const command = `\`rm -rf '${staging}' && agend update\``;
+    // #2264: the repair is the installer (no version in this output: the plain one-liner).
+    const command = "`curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash`";
     const explanation = locale === "en"
-      ? `remove the directory an interrupted install left, then update again: ${command}`
-      : `移除安裝中斷留下的目錄，再更新：${command}`;
+      ? `an interrupted install left a directory in the way; run the installer, which clears it and finishes: ${command}`
+      : `安裝中斷留下了一個擋路的目錄；請執行安裝程式，它會清掉並完成安裝：${command}`;
     expect(updateFixHint(output)).toBe(explanation);
     expect(updateFixHint(output.replace(staging, "/usr/lib/node_modules/@other/.agend-fixture"))).toBeNull();
     const path = updateLogPath(dir), log = openUpdateLog(path, "--- run ---")!;

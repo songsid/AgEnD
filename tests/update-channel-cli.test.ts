@@ -61,6 +61,9 @@ case "$*" in
   "config get prefix") echo '${home}';;
   "root -g") echo '${join(home, "lib", "node_modules")}';;
   "prefix -g") echo '${home}';;
+  # #2264: \`agend update\` hands the install to the target's own installer: the REAL launcher/agend-install.cjs runs
+  # here, with this stub as its npm (npm exec … --package <spec> -- agend-install --upgrade).
+  "exec --yes --package "*) exec node '${join(process.cwd(), "launcher", "agend-install.cjs")}' "$7" --spec "$4";;
   "install -g "*) v=$(echo "$3" | sed 's/.*@//'); echo "$v" > '${installedVersion}'
     printf '{"name":"@songsid/agend","version":"%s","bin":{"agend":"dist/cli.js"}}' "$v" > '${join(globalPkg, "package.json")}';;
 esac
@@ -172,7 +175,9 @@ describe("agend update stays on the installed channel (built CLI, stubbed npm)",
 
   it("a registry answer that is not a version installs from the tag, as when the lookup fails", () => {
     const { installs, out } = update("2.1.11-beta.2", { beta: "not-a-version", latest: "2.1.10" }, []);
-    expect(installs, out).toEqual(["npm install -g @songsid/agend@beta"]);
+    // #2264: the installer is handed the tag (here it runs from this checkout, whose own version is not the tag's, so it
+    // then puts the previous one back — under `npm exec` the installer IS the tag's release).
+    expect(installs[0], out).toBe("npm install -g @songsid/agend@beta");
   });
 
   it("`update --version` reaches the update command, and `agend --version` still prints the version (#1182 review)", () => {

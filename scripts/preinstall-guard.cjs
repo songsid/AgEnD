@@ -15,8 +15,7 @@
 // pins none) AND a system Node older than ENGINES — AgEnD would install and then not start.
 // Old syntax only (var, no ?. ??, no trailing call commas): this runs under whatever Node runs npm.
 //
-// Exiting 1 aborts the install. A previous install stays — except when AgEnD 2.1's updater started this one: it
-// removes the previous AgEnD first (#1487), so the refusal says so and gives the restore commands (old-updater-note.cjs).
+// Exiting 1 aborts the install; a previous install stays (#2264: no 2.1-era restore note — the repair is the installer).
 // --ignore-scripts bypasses this check; see Upgrade Notes in the changelog.
 
 "use strict";
@@ -24,7 +23,6 @@
 var path = require("path");
 var fs = require("fs");
 var platform = require(path.join(__dirname, "..", "launcher", "runtime-platform.cjs"));
-var oldUpdater = require(path.join(__dirname, "..", "launcher", "old-updater-note.cjs"));
 
 var ENGINES = "^22.14.0 || ^23.6.0 || >=24";
 var running = process.versions.node;
@@ -52,7 +50,6 @@ process.stderr.write(
   "\n" +
   "  Update Node to a compatible version, then retry:\n" +
   "    npm install -g @songsid/agend\n" +
-  "\n" +
-  (function () { var note = oldUpdater.oldUpdaterNote(oldUpdater.oldUpdaterState(process.env)); return note ? note + "\n" : ""; })()
+  "\n"
 );
 process.exit(1);

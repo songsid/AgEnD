@@ -56,7 +56,7 @@ import {
   pidAlive,
   processStartMs,
 } from "./update-check.js";
-import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage, type UpdateReceipt } from "./update-marker.js";
+import { clearUpdateMarker, markUpdateInProgress, readUpdateProgress, setUpdateProgressStage, type UpdateReceipt } from "./update-marker.js";
 import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
 import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
@@ -1656,6 +1656,29 @@ program
         return;
       }
       if (verdict.kind === "unknown") console.log(verdict.note);
+    }
+
+    // ── #2264: the target release installs itself ──
+    // `agend update` only chooses the version; the install — repair, `npm install -g`, proof, service, restart, the
+    // chat's progress — is that release's own installer (launcher/agend-install.cjs), fetched pinned by npm with its
+    // integrity checks. So every update runs the NEWEST install logic, never this (possibly old) package's, and the
+    // one-liner runs the same program. The code below this branch is the compatibility path for a prefix that needs
+    // sudo (the nvm route), unchanged.
+    if (!needsSudo) {
+      console.log(`\n  Updating AgEnD v${pkgVersion} → ${targetVersion ? `v${targetVersion}` : tag} (its own installer)...\n`);
+      markUpdateInProgress(DATA_DIR);
+      setUpdateProgressStage(DATA_DIR, "downloading", targetVersion ? { version: targetVersion } : {});
+      const installer = spawnSync("npm", ["exec", "--yes", "--package", pkg, "--", "agend-install", "--upgrade"], {
+        stdio: "inherit", env: withOrigin("agend-update"),
+      });
+      if (installer.status === 0 || installer.status === 75) { process.exitCode = installer.status ?? 0; return; }
+      // The installer records its own failure; one that never started (npm could not fetch it) is recorded here.
+      const progress = readUpdateProgress(DATA_DIR)?.progress;
+      if (progress && progress.stage !== "failed" && progress.stage !== "complete") {
+        setUpdateProgressStage(DATA_DIR, "failed", { error: `the installer for ${pkg} did not run (npm exec exited ${installer.status ?? installer.signal ?? installer.error?.message}); nothing was changed` });
+      }
+      process.exitCode = installer.status || 1;
+      return;
     }
 
     if (targetVersion) {

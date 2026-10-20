@@ -14,8 +14,6 @@ var crypto = require("crypto");
 var childProcess = require("child_process");
 var platform = require("./runtime-platform.cjs");
 var select = require("./runtime-select.cjs");
-var admission = require("./install-admission.cjs");
-var oldUpdater = require("./old-updater-note.cjs");
 
 /** Runs on the candidate Node with argv[1] = the package dir: version, N-API, and a real DB open in both threads. */
 var PROOF = [
@@ -33,13 +31,9 @@ var PROOF = [
 ].join("\n");
 
 function refuse(reason, recovery) {
-  // #1487: "the previous install stays" is true only when AgEnD 2.1's updater did not start this install.
-  var state = oldUpdater.oldUpdaterState(process.env);
-  var back = state === "removed" ? "npm is rolling this install back.\n"
-    : state === "kept" ? "npm is rolling this install back; the previous install stays.\n"
-    : "npm is rolling this install back; a previous install, if any, stays — unless AgEnD 2.1's updater started this.\n";
-  var note = oldUpdater.oldUpdaterNote(state);
-  process.stderr.write("\n  AgEnD cannot be installed here: " + reason + ".\n  " + back + "  " + recovery + "\n" + (note ? note : "") + "\n");
+  // #2264: one repair, whatever happened before: the installer (it puts back what an interrupted install moved aside).
+  process.stderr.write("\n  AgEnD cannot be installed here: " + reason + ".\n  npm is rolling this install back; a previous install, if any, stays.\n  " + recovery
+    + "\n  If `agend` is missing afterwards, run the installer again: curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash\n\n");
   process.exit(1);
 }
 
@@ -62,9 +56,8 @@ function main(deps) {
     try { fs.unlinkSync(file); } catch (e) { /* checked below */ }
     if (!select.absent(file)) refuse("an old runtime receipt at " + file + " cannot be removed", "remove it, then: npm install -g @songsid/agend@" + pkg.manifest.version);
   });
-  // C1: an `agend update` owns this prefix right now → only its own npm child may install (install-admission.cjs).
-  var admitted = admission.admit(pkg.dir, { env: d.env, processStart: d.processStart });
-  if (!admitted.ok) refuse(admitted.reason, "Never run two installs of @songsid/agend into one prefix at once, or one while `agend update` runs.");
+  // #2264: no install lock is consulted here. A manual `npm install -g` is never refused because of one (a lock that
+  // could not be read used to block every install until removed by hand); only two installers exclude each other.
   var host = d.host || platform.hostPlatform();
   var running = d.versions || { node: process.versions.node, napi: Number(process.versions.napi) };
   var engines = (pkg.manifest.engines && pkg.manifest.engines.node) || ">=22.14.0";

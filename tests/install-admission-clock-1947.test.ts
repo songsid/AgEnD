@@ -46,70 +46,6 @@ function lock(p: string, extra: Record<string, unknown> = {}) {
 const own = { AGEND_INSTALL_TOKEN: TOKEN };
 const alive = () => true;
 
-describe("install admission across a clock step (#1947)", () => {
-  it("a lock without start ticks (every 2.2 beta's): the updater's own child is admitted when the clock stepped by up to 2 s", () => {
-    const p = prefix();
-    lock(p.prefix);
-    for (const seen of [BEFORE, "Fri Oct 16 09:00:59 2026", "Fri Oct 16 09:00:56 2026"]) {
-      expect(admission.admit(p.pkg, { env: own, exists: alive, processStart: () => seen }), seen).toMatchObject({ ok: true, why: "the updater's own install" });
-    }
-  });
-
-  it("…but a start more than 2 s off is another process (a reused pid): refused, and a foreign token too", () => {
-    const p = prefix();
-    lock(p.prefix);
-    expect(admission.admit(p.pkg, { env: own, exists: alive, processStart: () => "Fri Oct 16 09:01:05 2026" })).toMatchObject({ ok: false, reason: expect.stringContaining("is gone") });
-    expect(admission.admit(p.pkg, { env: { AGEND_INSTALL_TOKEN: "f".repeat(32) }, exists: alive, processStart: () => BEFORE })).toMatchObject({ ok: false, reason: expect.stringContaining("is installing into") });
-    expect(admission.admit(p.pkg, { env: {}, exists: alive, processStart: () => BEFORE })).toMatchObject({ ok: false, reason: expect.stringContaining("is installing into") });
-  });
-
-  it("a lock with start ticks (Linux): judged by ticks and boot, never the wall clock", () => {
-    const p = prefix();
-    lock(p.prefix, { startTicks: "123456", bootId: BOOT });
-    // The wall clock moved a whole minute: lstart says another time; the same boot and ticks say the same process.
-    expect(admission.admit(p.pkg, { env: own, exists: alive, bootId: thisBoot, startTicks: () => "123456", processStart: () => "Fri Oct 16 09:02:00 2026" })).toMatchObject({ ok: true });
-    // Other ticks this boot: a reused pid → gone; a foreign token stays refused.
-    expect(admission.admit(p.pkg, { env: own, exists: alive, bootId: thisBoot, startTicks: () => "999999", processStart: () => BEFORE })).toMatchObject({ ok: false, reason: expect.stringContaining("is gone") });
-    expect(admission.admit(p.pkg, { env: { AGEND_INSTALL_TOKEN: "f".repeat(32) }, exists: alive, bootId: thisBoot, startTicks: () => "123456" })).toMatchObject({ ok: false, reason: expect.stringContaining("is installing into") });
-  });
-
-  it("#1949 review P2-1: a ticks lock whose ticks or boot cannot be read is UNKNOWN — never judged by wall time", () => {
-    const p = prefix();
-    lock(p.prefix, { startTicks: "123456", bootId: BOOT });
-    const moved = () => "Fri Oct 16 09:02:00 2026";   // 60 s off: the wall-time rule would call it stale
-    for (const d of [{ bootId: thisBoot, startTicks: () => null }, { bootId: () => null, startTicks: () => "123456" }]) {
-      expect(admission.admit(p.pkg, { env: {}, exists: alive, processStart: moved, ...d })).toMatchObject({ ok: false, reason: expect.stringContaining("cannot be told") });
-      expect(admission.admit(p.pkg, { env: own, exists: alive, processStart: moved, ...d })).toMatchObject({ ok: false, reason: expect.stringContaining("cannot be told") });
-    }
-  });
-
-  it("#1949 review P2-2: a ticks lock from another boot is stale, even if a process now has the same pid and ticks", () => {
-    const p = prefix();
-    lock(p.prefix, { startTicks: "123456", bootId: OTHER_BOOT });
-    const same = { exists: alive, bootId: thisBoot, startTicks: () => "123456", processStart: () => BEFORE };
-    expect(admission.admit(p.pkg, { env: {}, ...same })).toMatchObject({ ok: true, why: "a stale lock and no token: an external install" });
-    expect(admission.admit(p.pkg, { env: own, ...same })).toMatchObject({ ok: false, reason: expect.stringContaining("is gone") });
-  });
-
-  it("the beta-era lock fixture (no ticks) is still a lock, and admits its updater's own child", () => {
-    const p = prefix();
-    const text = readFileSync(join(import.meta.dirname, "fixtures", "install-lock-1947", "beta-lock.json"), "utf8").replace("__PREFIX__", p.prefix);
-    writeFileSync(join(p.prefix, ".agend-install.lock"), text);
-    expect(parseInstallLock(text)).not.toBeNull();
-    expect(admission.admit(p.pkg, { env: own, exists: alive, processStart: () => "Fri Oct 16 09:00:59 2026" })).toMatchObject({ ok: true });
-  });
-
-  it.each([
-    ["a malformed startTicks", { startTicks: "12x", bootId: BOOT }],
-    ["startTicks without its boot", { startTicks: "123" }],
-    ["a boot without startTicks", { bootId: BOOT }],
-  ])("%s makes the lock unreadable (blocks), never silently ignored", (_n, extra) => {
-    const p = prefix();
-    lock(p.prefix, extra);
-    expect(admission.admit(p.pkg, { env: own, exists: alive, bootId: thisBoot, processStart: () => BEFORE })).toMatchObject({ ok: false, reason: expect.stringContaining("cannot be read as a lock") });
-  });
-});
-
 describe("the updater side follows the same rule (src/install-lock.ts)", () => {
   const base = (over: Partial<InstallLockDeps> = {}): InstallLockDeps => ({
     pid: 100, processStart: () => BEFORE, newToken: () => TOKEN, now: () => new Date("2026-10-16T09:01:00Z"), log: () => {}, ...over,
@@ -154,21 +90,6 @@ describe("the updater side follows the same rule (src/install-lock.ts)", () => {
     expect(holderState({ pid: 7, processStart: BEFORE }, { exists: alive, processStart: () => null })).toBe("unknown");
   });
 
-  it("with REAL processes on this OS: a lock acquired with the real readers admits its own child, and not after the holder exits", async () => {
-    const p = prefix();
-    const holder = spawn(process.execPath, ["-e", "setTimeout(() => {}, 20000)"], { stdio: "ignore" });
-    try {
-      await new Promise(r => setTimeout(r, 300));
-      const got = acquireInstallLock(p.prefix, { spec: "x", agendHome: "/h" }, {
-        pid: holder.pid!, processStart: admission.processStart, startTicks: admission.startTicks, bootId: admission.bootId, newToken: () => TOKEN, now: () => new Date(), log: () => {},
-      });
-      expect(got.ok).toBe(true);
-      if (process.platform === "linux") expect(parseInstallLock(readFileSync(join(p.prefix, ".agend-install.lock"), "utf8"))).toMatchObject({ startTicks: expect.stringMatching(/^\d+$/), bootId: admission.bootId() });
-      expect(admission.admit(p.pkg, { env: own })).toMatchObject({ ok: true });
-    } finally { holder.kill(); }
-    await new Promise(r => setTimeout(r, 300));
-    expect(admission.admit(p.pkg, { env: own })).toMatchObject({ ok: false, reason: expect.stringContaining("is gone") });
-  });
 });
 
 describe("the chat shows AgEnD's own refusal, not npm's code/path lines (#1947)", () => {
