@@ -168,11 +168,35 @@ export function setUsageLastGoodFileForTests(path: string | null): Promise<void>
   return lastGoodWrite;
 }
 
-function isLastGood(v: unknown): v is LastGood {
-  const e = v as LastGood | null;
-  return !!e && typeof e === "object" && typeof e.at === "number" && Number.isFinite(e.at) && !!e.provider
-    && typeof e.provider === "object" && typeof e.provider.id === "string" && typeof e.provider.name === "string"
-    && e.provider.status === "ok" && Array.isArray(e.provider.metrics);
+/** The latest time a Date can hold (ECMAScript: ±8.64e15 ms). */
+const MAX_DATE_MS = 8.64e15;
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const opt = (v: unknown, ok: (x: unknown) => boolean) => v === undefined || ok(v);
+const isStr = (v: unknown) => typeof v === "string";
+const isNum = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+const isTime = (v: unknown) => v === null || (typeof v === "string" && Number.isFinite(Date.parse(v)));
+const isI18n = (v: unknown) => isObj(v) && typeof v.key === "string"
+  && opt(v.args, a => Array.isArray(a) && a.every(x => typeof x === "string" || isNum(x)));
+
+/** A metric as the renderers read it: every field it has is of its type (a persisted file is not trusted). */
+function isUsageMetric(v: unknown): v is UsageMetric {
+  return isObj(v) && isStr(v.label) && (v.type === "percent" || v.type === "dollars" || v.type === "count" || v.type === "text")
+    && opt(v.labelI18n, isI18n) && opt(v.scope, x => x === "model") && opt(v.used, isNum) && opt(v.limit, isNum)
+    && opt(v.value, x => isNum(x) || isStr(x)) && opt(v.valueI18n, isI18n) && opt(v.unit, isStr) && opt(v.unitI18n, isI18n)
+    && opt(v.note, isStr) && opt(v.noteI18n, isI18n) && opt(v.resetsAt, isTime) && opt(v.resetKind, x => x === "expiry")
+    && opt(v.expiresAt, isTime) && opt(v.windowMs, x => x === null || isNum(x)) && opt(v.resetPassed, x => x === true);
+}
+
+/**
+ * A persisted entry, checked whole before it is admitted (Prism #2257 P2): a good read at a time a Date can hold, not in
+ * the future, of a row whose every field is of its type. One bad entry is skipped; the rest still load.
+ */
+function isLastGood(v: unknown, now: number): v is LastGood {
+  if (!isObj(v) || !isNum(v.at) || (v.at as number) > now || (v.at as number) < -MAX_DATE_MS) return false;
+  const p = v.provider;
+  return isObj(p) && isStr(p.id) && isStr(p.name) && p.status === "ok" && Array.isArray(p.metrics) && p.metrics.every(isUsageMetric)
+    && opt(p.plan, x => x === null || isStr(x)) && opt(p.unlimited, x => typeof x === "boolean") && opt(p.profile, isStr)
+    && opt(p.defaultLogin, x => x === true) && opt(p.hint, isStr) && opt(p.hintI18n, isI18n);
 }
 
 /** Read the persisted rows once (a missing or unreadable file is no rows); a row read since wins. */
@@ -184,7 +208,7 @@ function loadLastGood(now: number): void {
     const data = JSON.parse(readFileSync(lastGoodFile(), "utf8")) as { v?: number; rows?: Record<string, unknown> };
     if (data?.v !== 1 || !data.rows || typeof data.rows !== "object") return;
     for (const [id, entry] of Object.entries(data.rows)) {
-      if (!isLastGood(entry) || entry.provider.id !== id || now - entry.at >= LAST_KNOWN_MAX_MS || lastGood.has(id)) continue;
+      if (!isLastGood(entry, now) || entry.provider.id !== id || now - entry.at >= LAST_KNOWN_MAX_MS || lastGood.has(id)) continue;
       lastGood.set(id, entry);
     }
   } catch { /* none yet, or unreadable: memory only until the next good read */ }
@@ -203,21 +227,10 @@ function saveLastGood(): void {
 }
 
 /**
- * Swap rate-limited provider rows for their last good snapshot, visibly.
- *
- * A vendor 429 on OUR usage query says nothing about the user's subscription —
- * showing a red error where numbers stood a minute ago reads as "something
- * broke", when the truth is "the numbers are 3 minutes old". Only rate-limit
- * errors are softened this way: an auth failure or a schema error must stay
- * loud, because stale data would hide a problem the user needs to act on.
- */
-/**
- * Transient fetch failures worth the same last-good softening as a 429: a
- * network jitter, a timed-out query or an overloaded vendor's 5xx says
- * nothing about the user's subscription — showing red where numbers stood a
- * minute ago reads as "something broke". Auth, login and schema errors match
- * none of these patterns and stay loud, because stale data would hide a
- * problem the user needs to act on.
+ * Transient fetch failures — a network jitter, a timed-out query, an overloaded vendor's 5xx: like a 429 they say
+ * nothing about the user's subscription, so their last known numbers are marked "transient" (when, nothing more).
+ * Every other failure (an expired or refused login, a schema error) keeps its numbers too since #2236's follow-up,
+ * marked "expired" or "error" with the error itself beside them — never hidden (withStaleFallback).
  */
 const TRANSIENT_ERROR_PATTERNS = [
   /could not reach/i, // provider fail-soft rows (fetch + 16s-deadline alike)
@@ -267,6 +280,9 @@ function ageMetric(m: UsageMetric, now: number): UsageMetric {
 function lastKnown(p: ProviderUsage, now: number, cause: UsageStaleCause, hint: Pick<ProviderUsage, "hint" | "hintI18n">): ProviderUsage | null {
   const good = lastGood.get(p.id);
   if (!good || now - good.at >= LAST_KNOWN_MAX_MS) return null;
+  try { return lastKnownRow(p, good, now, cause, hint); } catch { return null; }   // never break the read: the error row stands
+}
+function lastKnownRow(p: ProviderUsage, good: LastGood, now: number, cause: UsageStaleCause, hint: Pick<ProviderUsage, "hint" | "hintI18n">): ProviderUsage {
   const { hint: _hint, hintI18n: _hintI18n, profile: _profile, defaultLogin: _defaultLogin, ...row } = good.provider;
   return {
     ...row,
@@ -430,7 +446,17 @@ function fetchFor(owner: UsageOwner, effectiveForce: boolean, again: () => Promi
  * second entry point that bypassed it would defeat that.
  */
 export async function getUsageSnapshot(force = false, providerIds?: Iterable<string>, opts: { allowStale?: boolean } = {}): Promise<UsagePayload> {
-  return filterUsageProviders(await usage(force, opts.allowStale === true), providerIds, { hostLogins: true });
+  return filterUsageProviders(reageStale(await usage(force, opts.allowStale === true), Date.now()), providerIds, { hostLogins: true });
+}
+
+/**
+ * Last known numbers age while they are served (Prism #2257 P2): a snapshot is reused for minutes, and a window may
+ * reset in between. Every read re-marks a stale row's metrics against now — the cached snapshot itself is left as it
+ * is (ageMetric is idempotent), and nothing is fetched for it.
+ */
+function reageStale(payload: UsagePayload, now: number): UsagePayload {
+  if (!payload.providers.some(p => p.stale && p.cachedAt)) return payload;
+  return { ...payload, providers: payload.providers.map(p => (p.stale && p.cachedAt ? { ...p, metrics: p.metrics.map(m => ageMetric(m, now)) } : p)) };
 }
 
 /**

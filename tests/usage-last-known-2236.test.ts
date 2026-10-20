@@ -132,6 +132,25 @@ describe("the server keeps the last known numbers", () => {
     expect([weekly!.resetPassed, weekly!.used]).toEqual([undefined, 64]);
     expect([bonus!.resetPassed, bonus!.value], "an expiry is not a reset").toEqual([undefined, 30]);
   });
+  it("a reset that passes while the snapshot is reused is marked on the next read, with no new fetch (Prism #2257 P2)", async () => {
+    vi.useFakeTimers({ now: Date.UTC(2030, 0, 1, 6, 0) });
+    const t0 = Date.now();
+    let fetches = 0;
+    const row0 = { ...good(t0), metrics: [{ type: "percent" as const, label: "Session", used: 91, resetsAt: iso(t0 + 11 * 60_000) },
+      { type: "count" as const, label: "Bonus", value: 30, resetsAt: iso(t0 + 11 * 60_000), resetKind: "expiry" as const }] };
+    let next: ProviderUsage = row0;
+    setUsageFetcherForTests(async () => { fetches++; return { fetchedAt: iso(Date.now()), providers: [next] }; });
+    await read();
+    await later(10 * 60_000);
+    next = expired;
+    const before = await read();
+    expect([before.stale, before.metrics[0]!.used, before.metrics[0]!.resetPassed, fetches]).toEqual([true, 91, undefined, 2]);
+    await later(60_000 + 1);                                                    // past the reset, inside the snapshot's 5 minutes
+    const after = await read();
+    expect([after.stale, "used" in after.metrics[0]!, after.metrics[0]!.resetPassed, after.cachedAt, after.staleCause, fetches])
+      .toEqual([true, false, true, before.cachedAt, "expired", 2]);
+    expect([after.metrics[1]!.value, after.metrics[1]!.resetPassed], "an expiry is not a reset").toEqual([30, undefined]);
+  });
 });
 
 describe("kept across a restart", () => {
@@ -149,6 +168,22 @@ describe("kept across a restart", () => {
       scripted(expired); await setUsageLastGoodFileForTests(file);
       const row = await read();
       expect([row.stale, row.cachedAt, row.staleCause, row.metrics[1]!.used]).toEqual([true, iso(t0), "expired", 64]);
+      // One bad entry is skipped, the valid one beside it still loads, and a read never breaks (Prism #2257 P2).
+      const valid = { at: t0, provider: good(t0) };
+      for (const [why, bad] of [
+        ["a null metric", { at: t0, provider: { ...good(t0), id: "codex", metrics: [null] } }],
+        ["a metric of the wrong shape", { at: t0, provider: { ...good(t0), id: "codex", metrics: [{ type: "percent", label: "S", used: "91" }] } }],
+        ["an unparsable reset", { at: t0, provider: { ...good(t0), id: "codex", metrics: [{ type: "percent", label: "S", used: 1, resetsAt: "soon" }] } }],
+        ["a time no Date can hold", { at: Number.MAX_VALUE, provider: { ...good(t0), id: "codex" } }],
+        ["a time in the future", { at: t0 + 8 * 24 * HOUR, provider: { ...good(t0), id: "codex" } }],
+        ["a plan of the wrong type", { at: t0, provider: { ...good(t0), id: "codex", plan: 5 } }],
+      ] as const) {
+        writeFileSync(file, JSON.stringify({ v: 1, rows: { claude: valid, codex: bad } }));
+        setUsageFetcherForTests(async () => ({ fetchedAt: iso(Date.now()), providers: [expired, { ...expired, id: "codex", name: "Codex" }] }));
+        await setUsageLastGoodFileForTests(file);
+        const [c, x] = (await getUsageSnapshot()).providers;
+        expect([c!.stale, c!.metrics[1]!.used, x!.status, x!.stale], why).toEqual([true, 64, "error", undefined]);
+      }
       // An unreadable file, an entry older than a week, or one whose id is not its key: nothing.
       for (const body of ["{not json", JSON.stringify({ v: 1, rows: { claude: { at: t0 - 8 * 24 * HOUR, provider: good(t0) } } }),
         JSON.stringify({ v: 1, rows: { claude: { at: t0, provider: { ...good(t0), id: "codex" } } } }), JSON.stringify({ v: 2, rows: {} })]) {
