@@ -83,7 +83,8 @@ function Invoke-AgendInWsl([string]$distro, [string]$user, [string]$command) {
 function Invoke-RestartAgend([string]$distro, [string]$user, [switch]$Wait, [int]$SettleSeconds = 3) {
     Write-Host ""
     $answer = Read-Host "  確定要重啟 AgEnD 嗎？所有 agent 會重新啟動，正在進行的工作會中斷。(y/N)"
-    if ($answer -notmatch '^\s*[yY]') {
+    # [string]：沒有輸入可讀時 Read-Host 回傳 $null，而 $null -notmatch '…' 不是 $true（會被當成同意）。
+    if (([string]$answer) -notmatch '^\s*[yY]') {
         Write-Host "  沒有重啟。"
         if ($Wait) { $null = Read-Host "按 Enter 關閉" }
         return 'cancelled'

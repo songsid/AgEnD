@@ -108,8 +108,8 @@ ${body}`);
 }
 
 describe.skipIf(!pwsh)("with pwsh: the restart shortcut", { timeout: 90_000 }, () => {
-  it("N (or just Enter): nothing runs", () => {
-    for (const answer of ["n\n", "\n"]) {
+  it("N, just Enter, or no input to read at all: nothing runs", () => {
+    for (const answer of ["n\n", "\n", ""]) {                                 // "": Read-Host gets $null (#2264-era review of the y/N checks)
       const bin = fakeWsl();
       const { out } = withHelpers(`Write-Output ("RESULT=" + (Invoke-RestartAgend 'Ubuntu-22.04' 'han' -SettleSeconds 0))`, bin, answer);
       expect(out).toContain("沒有重啟。");
