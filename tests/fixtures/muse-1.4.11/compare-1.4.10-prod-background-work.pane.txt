@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.10
+
+❯ start background work
+
+◆ Backgrounded · audit sleep · 0.4s · ctrl+o
+
+◆ mock reply ok
+
+  (↓ to view terminals)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+main · ↓ to select
+└ ◆ audit sleep  running                                                                                              2s
+  mock-model · high · /tmp/muse-audit/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

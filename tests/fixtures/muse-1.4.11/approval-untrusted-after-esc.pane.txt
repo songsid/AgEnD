@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.11
+
+❯ please run the command
+
+◆ Ran echo harmless-audit — denied
+  └ approval aborted
+    The user rejected this action. Don't retry it unless they ask.
+
+◆ mock reply ok
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  mock-model · high · /tmp/muse-audit/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
