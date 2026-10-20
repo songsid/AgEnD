@@ -50,10 +50,10 @@ describe("the rows", () => {
 });
 
 describe("the chat and MCP text", () => {
-  const payload = (): UsagePayload => ({ fetchedAt: Date.now(), providers: [
+  const payload = (): UsagePayload => ({ fetchedAt: new Date().toISOString(), providers: [
     { id: "claude", name: "Claude (default)", defaultLogin: true, status: "ok", plan: "Max (20x)", metrics: [] },
     { id: "claude:hsinlin", name: "Claude (hsinlin)", profile: "hsinlin", status: "no-credentials", metrics: [] },
-  ] } as UsagePayload);
+  ] });
   it("say \"default\" in the fleet's language; a profile row is as it was", () => {
     setLocale("zh-TW");
     for (const text of [renderUsageMarkdown(payload()), renderUsageHtml(payload()), formatUsageSummary(payload())]) {
