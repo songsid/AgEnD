@@ -18,6 +18,23 @@ describe('bug report managed publication', () => {
       expect(readFileSync(skill, 'utf8')).toContain('agend bug-report');
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
+  it.each([false, true])('does not adopt a user-owned new skill as pre-manifest Kiro ownership (with legacy=%s)', withLegacy => {
+    const root = mkdtempSync(join(tmpdir(), 'agend-bug2256-kiro-'));
+    try {
+      const skills = join(root, '.kiro/skills'), user = join(skills, 'bug-report/SKILL.md');
+      mkdirSync(join(skills, 'bug-report'), { recursive: true }); writeFileSync(user, 'user-owned bug reporter');
+      if (withLegacy) { mkdirSync(join(skills, 'fleet-health'), { recursive: true }); writeFileSync(join(skills, 'fleet-health/SKILL.md'), 'old user-edited health helper'); }
+      const fm = new FleetManager(join(root, 'data'));
+      (fm as any).syncRoleSkills(root, 'kiro-cli', 'general', join(process.cwd(), 'src/general-knowledge'));
+      expect(readFileSync(user, 'utf8')).toBe('user-owned bug reporter');
+      const manifest = JSON.parse(readFileSync(join(skills, '.agend-managed-skills.json'), 'utf8'));
+      expect(manifest).not.toContain('bug-report');
+      if (withLegacy) {
+        expect(readFileSync(join(skills, 'fleet-health/SKILL.md'), 'utf8')).toBe('old user-edited health helper');
+        expect(manifest).not.toContain('fleet-health');
+      }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
   it('preserves user-owned collision and does not publish General-only reporting into worker/classic roles', () => {
     const root = mkdtempSync(join(tmpdir(), 'agend-bug2256-roles-'));
     try {
