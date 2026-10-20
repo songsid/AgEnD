@@ -45,7 +45,9 @@ npm exec --yes --package @songsid/agend@<target> -- agend-install [--upgrade]
    definite "gone" (ENOENT: the process exited, the descriptor closed) is skipped, never a permission or I/O error
    (Prism r5: `/proc/<pid>/fd` is behind ptrace checks). A descriptor whose target cannot be stat'ed (a security
    module: CI runners refuse `stat /proc/<pid>/fd/0`) is skipped only when its link names no file on disk (a pipe, a
-   socket, an anonymous inode, a terminal or `/dev/null`); a refusal names the path and error it met. Checked when
+   socket, an anonymous inode, a terminal or `/dev/null`). A process none of whose descriptors may be inspected (target
+   and link both EACCES: the kernel's ptrace check on a process with other credentials — CI has one) is treated as a
+   non-dumpable one: skipped unless its command line names node or agend. A refusal names the path and error it met. Checked when
    judged and again under `.reclaim` right before the move. Age is no evidence (Prism r4: a writer paused a minute
    between open and write is still admitted when it resumes). The prefix
    stays this installer's through the repair, the install, its retry and the rollback; the repair never reads or moves

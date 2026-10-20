@@ -723,11 +723,33 @@ describe("#2264 review (Prism r3 P1): mixed with updaters from before #2264 — 
         got.release!();
         writeFileSync(r.lock, '{"pid":');
       }
-      for (const procReadlink of [() => r.lock, () => "/home/u/somefile", () => { throw Object.assign(new Error("EACCES"), { code: "EACCES" }); }]) {
+      for (const procReadlink of [() => r.lock, () => "/home/u/somefile", () => { throw Object.assign(new Error("EIO"), { code: "EIO" }); }]) {
         expect(installer.admit(r.prefix, { ...realDepsFor(r), procStat, procReadlink }, {}).refuse).toMatch(/cannot be told \(EACCES on \/proc\/\d+\/fd\/\d+/);
         expect(readFileSync(r.lock, "utf8")).toBe('{"pid":');
       }
     } finally { other.kill("SIGKILL"); }
+  });
+
+  // CI (GitHub runner): a process whose descriptors' targets AND links are both refused (EACCES) — the kernel's ptrace
+  // check on a process with other credentials. Not an old updater unless its command line names node or agend.
+  it.skipIf(process.platform !== "linux")("a process none of whose descriptors may be inspected (stat and link both EACCES): skipped unless its command line names node/agend — then unknown, naming it", async () => {
+    const r = unitRig();
+    writeFileSync(r.lock, '{"pid":');   // cut short, its writer gone
+    const deny = (pid: number) => ({
+      procStat: (p: string) => { if (p.startsWith(`/proc/${pid}/fd/`)) throw Object.assign(new Error("EACCES"), { code: "EACCES" }); return statSync(p); },
+      procReadlink: (p: string) => { if (p.startsWith(`/proc/${pid}/fd/`)) throw Object.assign(new Error("EACCES"), { code: "EACCES" }); return readlinkSync(p); },
+    });
+    const sleeper = spawn("sleep", ["60"], { stdio: "ignore" });
+    const nodeOne = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
+    try {
+      await new Promise(resolve => setTimeout(resolve, 150));
+      const asSleep = installer.admit(r.prefix, { ...realDepsFor(r), ...deny(sleeper.pid!) }, {});
+      expect(asSleep.refuse, "`sleep` is no old updater").toBeUndefined();
+      asSleep.release!();
+      writeFileSync(r.lock, '{"pid":');
+      expect(installer.admit(r.prefix, { ...realDepsFor(r), ...deny(nodeOne.pid!) }, {}).refuse).toMatch(new RegExp(`cannot be told \\(EACCES on /proc/${nodeOne.pid}/fd/\\d+ \\(".*node`));
+      expect(readFileSync(r.lock, "utf8")).toBe('{"pid":');
+    } finally { sleeper.kill("SIGKILL"); nodeOne.kill("SIGKILL"); }
   });
 
   it.skipIf(process.platform !== "linux")("any process whose descriptor list fails other than by permission (EIO) is unknown, whatever its command line (not only node)", async () => {

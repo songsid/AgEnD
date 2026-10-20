@@ -204,13 +204,20 @@ function openedBy(file, deps) {
       try { owner = stat("/proc/" + pids[k]).uid; } catch (e) { if (gone(e)) continue; return unknown(because(e, "/proc/" + pids[k])); }   // gone meanwhile, or unknown
       if (owner !== st.uid) continue;
       var fds;
+      // A process this one may not inspect (EACCES: non-dumpable, or other credentials — the kernel's ptrace check on
+      // its descriptors) is not an old updater, a plain node process of this user, unless its command line says so.
+      var notInspectable = function (pid, what) {
+        var cmdline = null;
+        try { cmdline = fs.readFileSync("/proc/" + pid + "/cmdline", "utf8"); } catch (e2) { if (gone(e2)) return "gone"; }
+        if (cmdline === null || /node|agend/i.test(cmdline)) return "EACCES on " + what + " (" + (cmdline === null ? "its command line unreadable" : JSON.stringify(cmdline.replace(/\0/g, " ").trim().slice(0, 80))) + ")";
+        return "skip";
+      };
       try { fds = readdir("/proc/" + pids[k] + "/fd"); } catch (e) {
         if (gone(e)) continue;
         if (e.code !== "EACCES") return unknown(because(e, "/proc/" + pids[k] + "/fd"));
-        var cmdline = null;
-        try { cmdline = fs.readFileSync("/proc/" + pids[k] + "/cmdline", "utf8"); } catch (e2) { if (gone(e2)) continue; }
-        if (cmdline === null || /node|agend/i.test(cmdline)) return unknown("EACCES on /proc/" + pids[k] + "/fd (" + (cmdline === null ? "its command line unreadable" : JSON.stringify(cmdline.replace(/\0/g, " ").trim().slice(0, 80))) + ")");
-        continue;
+        var verdict = notInspectable(pids[k], "/proc/" + pids[k] + "/fd");
+        if (verdict === "gone" || verdict === "skip") continue;
+        return unknown(verdict);
       }
       for (var f = 0; f < fds.length; f++) {
         var seen;
@@ -219,9 +226,15 @@ function openedBy(file, deps) {
           if (gone(e)) continue;   // closed meanwhile
           // Its target cannot be stat'ed (a security module, as on CI runners): the link itself still names it. A pipe,
           // a socket, an anonymous inode or a terminal/null device is not the lock (a regular file in the prefix).
-          var target = null;
-          try { target = (deps.procReadlink || fs.readlinkSync)(fdPath); } catch (e2) { if (gone(e2)) continue; }
+          var target = null, linkError = null;
+          try { target = (deps.procReadlink || fs.readlinkSync)(fdPath); } catch (e2) { if (gone(e2)) continue; linkError = e2; }
           if (target !== null && NOT_A_FILE.test(target)) continue;
+          if (target === null && e.code === "EACCES" && linkError && linkError.code === "EACCES") {
+            // Neither its target nor its link may be read: the process is not inspectable at all (CI runners have one).
+            var seenAs = notInspectable(pids[k], fdPath);
+            if (seenAs === "gone" || seenAs === "skip") break;
+            return unknown(seenAs);
+          }
           return unknown(because(e, fdPath) + (target !== null ? " → " + target : ""));
         }
         if (seen.dev === st.dev && seen.ino === st.ino) { openedWhy = "pid " + pids[k] + " has it open"; return true; }
