@@ -170,8 +170,9 @@ screen and layout. `card.bannerFocus` (0 top … 100 bottom; default 50, the cen
 near the top at `bannerFocus: 0`. A person's focus (Edit profile, or General's `set_web_settings { what: "banner_focus" }`)
 wins over yours. `preview_web_appearance` draws the banner cropped at its focus, as the page does (an M card).
 
-**In your chat** the card is hidden until the person shows it (a card button in the chat header). Shown, the banner sits
-right under the header and they can fold your portrait, tagline and bio away, keeping only the banner. Their choice,
+**In your chat** the card is hidden until the person shows it (the card menu in the chat header: Show card, Show picture
+and bio). Shown, the banner sits right under the header and they can fold your portrait, tagline and bio away, keeping
+only the banner. Their choice,
 kept on their device; you cannot change it. So a banner that says who you are on its own reads well in your chat too.
 
 ## Your identity colour

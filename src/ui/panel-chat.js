@@ -26,13 +26,15 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { savePref } from "/assets/app-prefs.js";
 import { applyTheme, clearAmbient, resolvedMode, themeFor, themeImageUrl, themeMenuItems, themesStore } from "/assets/app-themes.js";
 import { colorMenuItem } from "/assets/identity-color.js";
-import { IdentityCard, useCard } from "/assets/identity-card.js";
+import { brokenPictures, cardFoldable, IdentityCard, useCard } from "/assets/identity-card.js";
 import { AgentWidget, instanceBinds, widgetFor } from "/assets/agent-widget.js";
 
 // #1629 r4 §1: the identity card under the chat's header — hidden by default; shown or not is this device's choice.
-// #2217 (the user, 2026-10-19): no row of its own. Shown, its banner sits right under the header with Hide card on it, and its
-// picture and bio can be folded away (the banner stays) — this device's choice too, kept the same way. Hidden, a card
-// button in the header brings it back (a guest's header too: it has no ⋯ menu).
+// #2217 (the user, 2026-10-19): no row of its own; its picture and bio can be folded away (the banner stays) — this
+// device's choice too, kept the same way. The user (2026-10-20): no control on the card — one card button in the header
+// (a guest's and the public link's header too: they have no ⋯ menu), pressed-looking while the card is shown, opens a
+// small menu of two checkboxes: Show card, and Show picture and bio (disabled while the card is hidden, or when it cannot
+// fold: no banner, or nothing on its row).
 const CHAT_CARD_KEY = "agend_chat_card";
 const CHAT_CARD_ROW_KEY = "agend_chat_card_row";
 const readKey = (k, v) => { try { return localStorage.getItem(k) === v; } catch { return false; } };
@@ -45,15 +47,20 @@ function ChatCard({ name, card }) {
   const prefs = useStore(chatCardPrefs);
   if (!card || !prefs.open) return null;
   return html`<div data-trust="card" class="chat-card open">
-    <${IdentityCard} name=${name} card=${card} compact=${true} onHide=${() => setChatCardOpen(false)}
-      rowHidden=${prefs.rowHidden} onToggleRow=${() => setChatCardRowHidden(!prefs.rowHidden)} />
+    <${IdentityCard} name=${name} card=${card} compact=${true} rowHidden=${prefs.rowHidden} />
   </div>`;
 }
-/** The header's way back to a hidden card. */
-function ShowCardButton({ card }) {
+/** The header's card menu: ☑ Show card, ☑ Show picture and bio. */
+function CardMenu({ card }) {
   const prefs = useStore(chatCardPrefs);
-  if (!card || prefs.open) return null;
-  return html`<button type="button" class="icon-btn chat-card-show" aria-label=${t("card.show")} title=${t("card.show")} onClick=${() => setChatCardOpen(true)}><${Icon} name="idcard" /></button>`;
+  useStore(brokenPictures);                        // a banner that failed to load: the card cannot fold, the item greys out
+  if (!card) return null;
+  const items = [
+    { key: "card", checkbox: true, checked: prefs.open, label: t("card.show"), onSelect: () => setChatCardOpen(!prefs.open) },
+    { key: "row", checkbox: true, checked: !prefs.rowHidden && cardFoldable(card), disabled: !prefs.open || !cardFoldable(card), label: t("card.showRow"),
+      onSelect: () => setChatCardRowHidden(!prefs.rowHidden) },
+  ];
+  return html`<${Menu} items=${items} label=${t("card.menu")} icon="idcard" cls="chat-card-menu" active=${prefs.open} />`;
 }
 import "./chat-strings.js";
 import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
@@ -315,7 +322,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelText(inst)}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
-    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`} notice=${html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onPlayback=${publishCanvasPlayback} onClose=${() => setDialog(null)} active=${fxHere} />`}>${fxHere ? html`<${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} />` : null}<${ShowCardButton} card=${card} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
+    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`} notice=${html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onPlayback=${publishCanvasPlayback} onClose=${() => setDialog(null)} active=${fxHere} />`}>${fxHere ? html`<${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} />` : null}<${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>

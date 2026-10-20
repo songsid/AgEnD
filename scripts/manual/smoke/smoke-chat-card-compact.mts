@@ -1,15 +1,17 @@
-// #2217: the chat's identity card, compact (the user, 2026-10-19), from defaults (fleet decision a78ebdc5): a fresh profile signed
-// in through the visible /signin, nothing seeded in the browser. Agents: A (banner, portrait, tagline, bio, a chat_header
-// widget), B (no banner), C (banner and tagline: no portrait, no bio).
-//   default  — hidden: no row under the header, the header's Show card button;
-//   shown    — the banner flush under the header, Hide card on its top-right corner, Hide picture and bio on the row;
-//   folded   — picture, tagline and bio gone, the banner and the widget strip stay; the way back on the banner; kept
+// #2217: the chat's identity card, compact, from defaults (fleet decision a78ebdc5): a fresh profile signed in through the
+// visible /signin, nothing seeded in the browser. Agents: A (banner, portrait, tagline, bio, a chat_header widget),
+// B (no banner), C (banner and tagline: no portrait, no bio). The user (2026-10-20, hotfix): NO control on the card — not
+// on the banner, not in its body; showing / hiding the card and folding / unfolding its picture and bio are the chat
+// header's (the `ui` helpers below are the only place that knows how).
+//   default  — hidden: no row under the header, the header's card control says Show card;
+//   shown    — the banner flush under the header; not one button on the card;
+//   folded   — picture, tagline and bio gone, the banner and the widget strip stay; still no button on the card; kept
 //              over a reload (this device's choice, like Hide card);
-//   B / C    — no banner: Hide card on the row, nothing to fold; C (no bio) still folds;
-//   switch   — A → B → A with the card shown: no layout shift (Chromium's layout-shift entries; #2184 / #2188);
-//   hide     — Hide card: gone, Show card back, kept over a reload;
-//   ?safe=1, the public link and a guest (desk light, Chromium): the same controls work — a guest's header has no ⋯
-//              menu, which is why Show card is a header button; no page error anywhere.
+//   B / C    — no banner: nothing to fold; C (no bio) still folds;
+//   hide     — Hide card: gone, kept over a reload;
+//   ?safe=1, the public link and a guest (desk light, Chromium): the same header controls — a guest's header has no ⋯
+//              menu; no page error anywhere.
+// Also, Chromium: chat switch with the card shown — warm switches shift 0 (#2184 / #2188).
 // Heights: the header's bottom to the chat's first row (the card's share), per state; a screenshot of the top per state.
 //   PW_DIR=… REPO=… OUT=… [PW_ENGINE=webkit] [TAG=before|after] npx --prefix <checkout> tsx scripts/manual/smoke/smoke-chat-card-compact.mts
 import { writeFileSync } from "node:fs";
@@ -44,9 +46,12 @@ const measure = (page: any) => page.evaluate(`(() => {
   const q = (s) => document.querySelector(s);
   const box = (s) => { const e = q(s); if (!e) return null; const r = e.getBoundingClientRect(); return { t: Math.round(r.top), b: Math.round(r.bottom), l: Math.round(r.left), r: Math.round(r.right), h: Math.round(r.height) }; };
   const head = box(".p-chat .panel-head"), main = box(".p-chat .chat-main");
-  const ctl = [...document.querySelectorAll(".p-chat .id-ctl")].map((b) => { const r = b.getBoundingClientRect(); return { cls: b.getAttribute("class"), in: b.parentElement && b.parentElement.getAttribute("class"), label: b.getAttribute("aria-label"), title: b.getAttribute("title"), w: Math.round(r.width), h: Math.round(r.height) }; });
+  const cardButtons = document.querySelectorAll(".p-chat .chat-card button, .p-chat .chat-card [role=button]").length;
+  const head2 = q(".p-chat .panel-head");
+  const mb = head2 && head2.querySelector(".chat-card-menu > button");
+  const ctl = mb ? { cls: mb.getAttribute("class"), label: mb.getAttribute("aria-label"), haspopup: mb.getAttribute("aria-haspopup") } : null;
   return { head, card: box(".p-chat .chat-card"), banner: box(".p-chat .id-banner-box"), row: box(".p-chat .id-row"), strip: box(".p-chat .aw-chat_header"), main,
-    toggleRow: !!q(".chat-card-toggle"), show: !!q(".p-chat .panel-head .chat-card-show"), portrait: !!q(".p-chat .id-portrait"), bio: !!q(".p-chat .id-bio"), ctl,
+    toggleRow: !!q(".chat-card-toggle"), portrait: !!q(".p-chat .id-portrait"), bio: !!q(".p-chat .id-bio"), ctl, cardButtons,
     used: head && main ? main.t - head.b : null, overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
 })()`);
 const shot = async (page: any, tag: string, name: string) => {
@@ -54,6 +59,26 @@ const shot = async (page: any, tag: string, name: string) => {
   await page.screenshot({ path: shotPath(SMOKE, `${TAG}-${ENGINE}-${tag}`, name), clip: { x: 0, y: 0, width: vp.width, height: Math.min(vp.height, 560) } });
 };
 const go = async (page: any, base: string, path: string) => { await page.goto(`${base}${path}`); await mounted(page, 30000); await page.waitForTimeout(1200); };
+/**
+ * The header's card controls — the one place that knows the layout. The user's choice (2026-10-20, option B): one card
+ * button opening a menu of two checkboxes, ☑ Show card and ☑ Show picture and bio.
+ */
+const MENU_BTN = ".p-chat .panel-head .chat-card-menu > button";
+const ITEM = (k: number) => `.p-chat .chat-card-menu [role=menuitemcheckbox]:nth-of-type(${k + 1})`;
+const ui = {
+  ready: (page: any) => until(page, () => !!document.querySelector(".p-chat .panel-head .chat-card-menu > button"), null),
+  isShown: (page: any) => page.evaluate(`!!document.querySelector(".p-chat .chat-card .id-card")`),
+  isFolded: (page: any) => page.evaluate(`!!document.querySelector(".p-chat .id-card.row-hidden")`),
+  async open(page: any) { if (!(await page.$(".p-chat .chat-card-menu [role=menu]"))) await page.click(MENU_BTN); return until(page, () => !!document.querySelector(".p-chat .chat-card-menu [role=menu]"), null); },
+  async close(page: any) { if (await page.$(".p-chat .chat-card-menu [role=menu]")) await page.keyboard.press("Escape"); return until(page, () => !document.querySelector(".p-chat .chat-card-menu [role=menu]"), null); },
+  async toggle(page: any, k: number) { await ui.open(page); await page.click(ITEM(k)); },
+  async show(page: any) { if (!(await ui.isShown(page))) await ui.toggle(page, 0); const ok = await until(page, () => !!document.querySelector(".p-chat .chat-card .id-card"), null); await ui.close(page); return ok; },
+  async hide(page: any) { if (await ui.isShown(page)) await ui.toggle(page, 0); const ok = await until(page, () => !document.querySelector(".p-chat .chat-card"), null); await ui.close(page); return ok; },
+  async fold(page: any) { if (!(await ui.isFolded(page))) await ui.toggle(page, 1); const ok = await until(page, () => !!document.querySelector(".p-chat .id-card.row-hidden") && !document.querySelector(".p-chat .id-row"), null); await ui.close(page); return ok; },
+  async unfold(page: any) { if (await ui.isFolded(page)) await ui.toggle(page, 1); const ok = await until(page, () => !!document.querySelector(".p-chat .id-row"), null); await ui.close(page); return ok; },
+  /** Whether this card offers a fold at all (its Show picture and bio item enabled while the card is shown). */
+  async canFold(page: any) { await ui.open(page); const on = await page.evaluate(`(() => { const b = document.querySelectorAll(".p-chat .chat-card-menu [role=menuitemcheckbox]")[1]; return !!b && !b.disabled; })()`); await ui.close(page); return on; },
+};
 
 /**
  * #2184 / #2188: switching chats with the card shown — layout-shift entries per switch (Chromium), the card opened the
@@ -99,47 +124,90 @@ for (const k of CASES) {
   const page = p.page;
   if ("width" in k) await page.setViewportSize({ width: k.width, height: 800 });
   await go(page, p.base, `/ui/chat/${enc(A)}`);
-  await until(page, () => !!document.querySelector(".p-chat .panel-head .chat-card-show"), null);
+  const readyOk = await ui.ready(page);
   const hidden = await measure(page); await shot(page, k.tag, "1-hidden");
-  await page.click(".p-chat .panel-head .chat-card-show");
-  await until(page, () => !!document.querySelector(".p-chat .id-banner-box .id-hide"), null);
-  await page.waitForTimeout(600);
+  const showOk = await ui.show(page); await page.waitForTimeout(600);
   const shown = await measure(page); await shot(page, k.tag, "2-shown");
-  await page.click(".p-chat .id-row .id-fold");
-  await until(page, () => !document.querySelector(".p-chat .id-row") && !!document.querySelector(".p-chat .id-banner-box .id-unfold"), null);
-  await page.waitForTimeout(300);
+  const foldOk = await ui.fold(page); await page.waitForTimeout(300);
   const folded = await measure(page); await shot(page, k.tag, "3-folded");
   await go(page, p.base, `/ui/chat/${enc(A)}`);
-  await until(page, () => !!document.querySelector(".p-chat .id-banner-box .id-unfold"), null);
+  await until(page, () => !!document.querySelector(".p-chat .id-card.row-hidden"), null);
   const reloaded = await measure(page);
   const store = await page.evaluate(`[localStorage.getItem("agend_chat_card"), localStorage.getItem("agend_chat_card_row")]`);
-  await page.click(".p-chat .id-banner-box .id-unfold");
-  await until(page, () => !!document.querySelector(".p-chat .id-row .id-fold"), null);
+  const unfoldOk = await ui.unfold(page);
   await go(page, p.base, `/ui/chat/${enc(B)}`);
-  const noBanner = await measure(page); await shot(page, k.tag, "4-no-banner");
+  const noBanner = await measure(page); const noBannerFold = await ui.canFold(page); await shot(page, k.tag, "4-no-banner");
   await go(page, p.base, `/ui/chat/${enc(C)}`);
-  const noBio = await measure(page); await shot(page, k.tag, "5-no-bio");
+  const noBio = await measure(page); const noBioFold = await ui.canFold(page); await shot(page, k.tag, "5-no-bio");
   await go(page, p.base, `/ui/chat/${enc(A)}`);
-  await page.click(".p-chat .id-banner-box .id-hide");
-  await until(page, () => !document.querySelector(".p-chat .chat-card") && !!document.querySelector(".p-chat .chat-card-show"), null);
+  const hideOk = await ui.hide(page);
   await go(page, p.base, `/ui/chat/${enc(A)}`);
   const hiddenAgain = await measure(page);
   const errors = other(p.errors);
   const flush = shown.banner && shown.head ? shown.banner.t - shown.head.b : null;
-  const ok = !hidden.toggleRow && hidden.show && !hidden.card && hidden.used !== null
-    && shown.card && flush !== null && Math.abs(flush) <= 1 && !shown.toggleRow && !shown.show
-    && shown.ctl.some((c: any) => c.cls === "id-ctl id-hide" && c.in === "id-banner-box" && c.label && c.title === c.label)
-    && shown.ctl.some((c: any) => c.cls === "id-ctl id-fold" && c.in === "id-row")
-    && !folded.row && folded.banner && !folded.portrait && !folded.bio && !!folded.strip && folded.ctl.some((c: any) => c.cls === "id-ctl id-fold id-unfold" && c.in === "id-banner-box")
+  const ok = readyOk && showOk && foldOk && unfoldOk && hideOk
+    && !hidden.toggleRow && !hidden.card && hidden.used !== null
+    && shown.card && flush !== null && Math.abs(flush) <= 1 && !shown.toggleRow && shown.cardButtons === 0
+    && !folded.row && folded.banner && !folded.portrait && !folded.bio && !!folded.strip && folded.cardButtons === 0
     && folded.used! < shown.used! && !reloaded.row && !!reloaded.banner && store[0] === "open" && store[1] === "hidden"
-    && !noBanner.banner && noBanner.ctl.length === 1 && noBanner.ctl[0].cls === "id-ctl id-hide" && noBanner.ctl[0].in === "id-row" && noBanner.bio
-    && noBio.banner && noBio.ctl.map((c: any) => c.cls).join() === "id-ctl id-hide,id-ctl id-fold"
-    && !hiddenAgain.card && hiddenAgain.show
+    && !noBanner.banner && noBanner.bio && !noBannerFold && noBanner.cardButtons === 0
+    && noBio.banner && noBioFold && noBio.cardButtons === 0
+    && !hiddenAgain.card
     && ![hidden, shown, folded, noBanner, noBio].some((m) => m.overflow) && errors.length === 0;
   const px = (m: any) => m.used;
   verdict(k.tag, !!ok, { heights: { hidden: px(hidden), shown: px(shown), folded: px(folded), saved: px(shown) - px(folded), noBanner: px(noBanner), noBio: px(noBio) },
-    bannerFlushPx: flush, controls: shown.ctl.map((c: any) => [c.cls, c.in, c.label, `${c.w}×${c.h}`]), foldedControls: folded.ctl.map((c: any) => [c.cls, c.in]),
-    strip: !!folded.strip, kept: store, noBanner: noBanner.ctl.map((c: any) => [c.cls, c.in]), noBio: noBio.ctl.map((c: any) => c.cls), errors });
+    bannerFlushPx: flush, cardButtons: [shown.cardButtons, folded.cardButtons, noBanner.cardButtons, noBio.cardButtons],
+    header: { hidden: hidden.ctl, shown: shown.ctl, folded: folded.ctl }, strip: !!folded.strip, kept: store, fold: { noBanner: noBannerFold, noBio: noBioFold }, errors });
+  await p.ctx.close();
+}
+
+// The card menu by keyboard and touch (each engine, desk): the first item takes focus, arrows move, Space toggles, Esc
+// closes and gives focus back to the button; an outside tap closes it too.
+{
+  const p = await freshPage(fx, { device: "desk", theme: "light", lang: "en" } as any, { reducedMotion: true });
+  const page = p.page;
+  await go(page, p.base, `/ui/chat/${enc(A)}`); await ui.ready(page);
+  await page.focus(MENU_BTN); await page.keyboard.press("Enter");
+  const opened = await until(page, () => !!document.querySelector(".p-chat .chat-card-menu [role=menu]"), null);
+  await until(page, () => !!document.activeElement && document.activeElement.getAttribute("role") === "menuitemcheckbox", null, 3000);   // the menu focuses its first item once drawn
+  const first = await page.evaluate(`document.activeElement && document.activeElement.getAttribute("role") + "|" + document.activeElement.textContent`);
+  await page.keyboard.press("Space");
+  const shownByKey = await until(page, () => !!document.querySelector(".p-chat .chat-card .id-card"), null);
+  const stillOpen = !!(await page.$(".p-chat .chat-card-menu [role=menu]"));
+  await page.keyboard.press("ArrowDown");
+  const second = await page.evaluate(`document.activeElement && document.activeElement.textContent`);
+  await page.keyboard.press("Escape");
+  const closedByEsc = await until(page, () => !document.querySelector(".p-chat .chat-card-menu [role=menu]"), null);
+  const focusBack = await page.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(MENU_BTN)})`);
+  await page.click(MENU_BTN); await until(page, () => !!document.querySelector(".p-chat .chat-card-menu [role=menu]"), null);
+  const sc = await page.locator(".p-chat .scroller").boundingBox();                  // an outside tap: the middle of the thread
+  await page.mouse.click(Math.round(sc.x + sc.width / 2), Math.round(sc.y + sc.height / 2));
+  const closedByOutside = await until(page, () => !document.querySelector(".p-chat .chat-card-menu [role=menu]"), null);
+  await ui.open(page); await shot(page, "menu", "open"); await ui.close(page);
+  verdict("menu keyboard", opened && first === "menuitemcheckbox|Show card" && shownByKey && stillOpen && second === "Show picture and bio" && closedByEsc && focusBack && closedByOutside && other(p.errors).length === 0,
+    { opened, first, shownByKey, stillOpen, second, closedByEsc, focusBack, closedByOutside, errors: other(p.errors) });
+  await p.ctx.close();
+}
+
+// Prism (#2227): a banner that fails to load is not drawn, and then the card cannot fold — the menu's second item greys out
+// with it (a positive control first: the same card with its banner loading folds). Each engine, desk.
+{
+  const p = await freshPage(fx, { device: "desk", theme: "light", lang: "en" } as any, { reducedMotion: true });
+  const page = p.page;
+  const itemState = () => page.evaluate(`(() => { const b = document.querySelectorAll(".p-chat .chat-card-menu [role=menuitemcheckbox]")[1]; return b ? { disabled: b.disabled, checked: b.getAttribute("aria-checked") } : null; })()`);
+  await go(page, p.base, `/ui/chat/${enc(A)}`); await ui.ready(page); await ui.show(page);
+  await ui.open(page); const okItem = await itemState(); await ui.close(page);
+  const okFolds = await ui.fold(page); await ui.unfold(page);
+  await page.route(/\/api\/card\/[^/]+\/banner\?/, (r: any) => r.abort());
+  await go(page, p.base, `/ui/chat/${enc(A)}`);
+  await until(page, () => !!document.querySelector(".p-chat .id-row") && !document.querySelector(".p-chat img.id-banner"), null);
+  await ui.open(page); const brokenItem = await itemState();
+  await page.click(ITEM(1), { force: true }).catch(() => {}); await page.waitForTimeout(300);
+  const afterClick = await itemState(); await ui.close(page);
+  const brokenRow = await page.evaluate(`({ banner: !!document.querySelector(".p-chat img.id-banner"), row: !!document.querySelector(".p-chat .id-row"), kept: localStorage.getItem("agend_chat_card_row") })`);
+  await shot(page, "broken-banner", "menu");
+  verdict("broken banner", !!okItem && !okItem.disabled && okFolds && !!brokenItem && brokenItem.disabled && brokenItem.checked === "false" && afterClick?.disabled && !brokenRow.banner && brokenRow.row && brokenRow.kept === null,
+    { okItem, okFolds, brokenItem, afterClick, brokenRow, errors: other(p.errors) });
   await p.ctx.close();
 }
 
@@ -147,22 +215,21 @@ for (const k of CASES) {
 if (ENGINE === "chromium") {
   const p = await freshPage(fx, { device: "desk", theme: "light", lang: "en" } as any, { reducedMotion: true });
   await go(p.page, p.base, `/ui/chat/${enc(A)}?safe=1`);
-  const okShow = await until(p.page, () => !!document.querySelector(".p-chat .chat-card-show"), null);
-  if (okShow) await p.page.click(".p-chat .chat-card-show");
-  const safe = await until(p.page, () => !!document.querySelector(".p-chat .id-banner-box .id-hide") && !!document.querySelector(".p-chat .id-row .id-fold"), null);
+  const okShow = (await ui.ready(p.page)) && (await ui.show(p.page));
+  const safeFold = okShow && (await ui.fold(p.page)) && (await ui.unfold(p.page));
+  const safeBtns = await measure(p.page);
   await shot(p.page, "safe", "shown");
-  verdict("safe=1", okShow && safe && other(p.errors).length === 0, { okShow, safe, errors: other(p.errors) });
+  verdict("safe=1", okShow && safeFold && safeBtns.cardButtons === 0 && other(p.errors).length === 0, { okShow, safeFold, cardButtons: safeBtns.cardButtons, errors: other(p.errors) });
   await p.ctx.close();
   const link = await openPublicLink(fx);
   const q = await link.publicPage({ device: "desk", theme: "light", lang: "en" } as any, { reducedMotion: true, path: `/ui/chat/${enc(A)}` });
   await mounted(q.page, 30000); await q.page.waitForTimeout(1200);
-  const pShow = await until(q.page, () => !!document.querySelector(".p-chat .chat-card-show"), null);
-  if (pShow) await q.page.click(".p-chat .chat-card-show");
-  const pCard = await until(q.page, () => !!document.querySelector(".p-chat .id-banner-box .id-hide"), null);
-  if (pCard) await q.page.click(".p-chat .id-row .id-fold");
-  const pFold = await until(q.page, () => !document.querySelector(".p-chat .id-row") && !!document.querySelector(".p-chat .id-unfold"), null);
+  const pShow = (await ui.ready(q.page)) && (await ui.show(q.page));
+  const pFold = pShow && (await ui.fold(q.page));
   await shot(q.page, "public", "folded");
-  verdict("public link", pShow && pCard && pFold && other(q.errors).length === 0, { pShow, pCard, pFold, errors: other(q.errors) });
+  const pBtns = await measure(q.page);
+  const pHide = pFold && (await ui.unfold(q.page)) && (await ui.hide(q.page));
+  verdict("public link", pShow && pFold && pHide && pBtns.cardButtons === 0 && other(q.errors).length === 0, { pShow, pFold, pHide, cardButtons: pBtns.cardButtons, errors: other(q.errors) });
   await q.ctx.close(); await link.close();
 
   // A guest (#1920): a session scoped to A, as an accepted invite gives one (minted here; nothing seeded in the browser).
@@ -179,19 +246,15 @@ if (ENGINE === "chromium") {
   g.on("pageerror", (e: any) => gErrors.push(String(e).slice(0, 200)));
   g.on("console", (m: any) => { if (m.type() === "error") gErrors.push(m.text().slice(0, 200)); });
   await g.goto(`${fx.base}/ui/chat/${enc(A)}`); await g.waitForSelector("#msgIn", { timeout: 30000 }); await g.waitForTimeout(1200);
-  const gGuest = await g.evaluate(`({ tier: document.body.dataset.tier, menu: !!document.querySelector(".p-chat .panel-head .menu-btn, .p-chat .panel-head [aria-haspopup='menu']") })`);
-  const gShowBtn = await until(g, () => !!document.querySelector(".p-chat .panel-head .chat-card-show"), null);
+  const gGuest = await g.evaluate(`({ tier: document.body.dataset.tier, menu: [...document.querySelectorAll(".p-chat .panel-head [aria-haspopup='menu']")].some((b) => !b.closest(".chat-card-menu")) })`);
+  const gShowBtn = await ui.ready(g);
   await g.screenshot({ path: shotPath(SMOKE, `${TAG}-${ENGINE}-guest`, "1-hidden"), clip: { x: 0, y: 0, width: 1366, height: 560 } });
-  if (gShowBtn) await g.click(".p-chat .panel-head .chat-card-show");
-  const gShown = await until(g, () => !!document.querySelector(".p-chat .id-banner-box .id-hide") && !!document.querySelector(".p-chat .id-row .id-fold"), null);
+  const gShown = gShowBtn && (await ui.show(g));
   await g.screenshot({ path: shotPath(SMOKE, `${TAG}-${ENGINE}-guest`, "2-shown"), clip: { x: 0, y: 0, width: 1366, height: 560 } });
-  if (gShown) await g.click(".p-chat .id-row .id-fold");
-  const gFolded = await until(g, () => !document.querySelector(".p-chat .id-row") && !!document.querySelector(".p-chat .id-banner-box .id-unfold"), null);
+  const gFolded = gShown && (await ui.fold(g));
   await g.screenshot({ path: shotPath(SMOKE, `${TAG}-${ENGINE}-guest`, "3-folded"), clip: { x: 0, y: 0, width: 1366, height: 560 } });
-  if (gFolded) await g.click(".p-chat .id-banner-box .id-unfold");
-  const gUnfolded = await until(g, () => !!document.querySelector(".p-chat .id-row .id-fold"), null);
-  if (gUnfolded) await g.click(".p-chat .id-banner-box .id-hide");
-  const gHidden = await until(g, () => !document.querySelector(".p-chat .chat-card") && !!document.querySelector(".p-chat .panel-head .chat-card-show"), null);
+  const gUnfolded = gFolded && (await ui.unfold(g));
+  const gHidden = gUnfolded && (await ui.hide(g));
   const gKept = await g.evaluate(`[localStorage.getItem("agend_chat_card"), localStorage.getItem("agend_chat_card_row")]`);
   verdict("guest", gGuest.tier === "guest" && !gGuest.menu && gShowBtn && gShown && gFolded && gUnfolded && gHidden && gErrors.length === 0,
     { ...gGuest, gShowBtn, gShown, gFolded, gUnfolded, gHidden, kept: gKept, errors: gErrors });

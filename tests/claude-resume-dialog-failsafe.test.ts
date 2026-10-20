@@ -78,6 +78,8 @@ function makeDaemon(backendOverrides: Record<string, unknown> = {}) {
     getErrorPatterns: () => [],
     ...backendOverrides,
   } as any, undefined, { child: () => logger } as any) as any;
+  // This fixture models dialog/liveness evidence, with no host CLI identity.
+  daemon.observeOomIdentity = vi.fn(async () => {});
   const state = { pane: READY, silent: true, outputSince: true };
   const keys: string[] = [];
   const paste = vi.fn(async () => true);

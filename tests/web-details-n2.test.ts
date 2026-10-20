@@ -300,24 +300,28 @@ describe("#1629 r4 §1: the identity card", () => {
     const pg = await app("/ui/fleet/agent/web-dev");
     expect([pg.root.querySelector(".p-details .id-card"), calls.filter(c => c.startsWith("GET /api/card/"))]).toEqual([null, []]);
   });
-  it("Chat: hidden by default — a card button in the header shows it (no row of its own); shown or not is this device's choice, at the chat's own compact size", async () => {
+  it("Chat: hidden by default — the header's card menu (one button, pressed-looking while shown) shows and hides it; nothing on the card; this device's choice, at the chat's own compact size", async () => {
     const pg = await app("/ui/chat/loner");
-    const show = () => pg.root.querySelector(".p-chat .panel-head .chat-card-show");
-    expect([pg.root.querySelector(".p-chat .chat-card"), pg.root.querySelector(".chat-card-toggle"), show().getAttribute("aria-label")]).toEqual([null, null, "Show card"]);
-    show().click(); await settle(2);
-    expect([pg.root.querySelector(".p-chat .id-card").getAttribute("class"), pg.root.querySelector(".p-chat .card-size"), pg.storage.get("agend_chat_card"), show()]).toEqual(["id-card card-c bs-m", null, "open", null]);
-    // This card has no banner (another card's path is dropped): Hide card sits on its row, and its row cannot fold.
-    const hide = pg.root.querySelector(".p-chat .id-row .id-hide");
-    expect([hide.getAttribute("aria-label"), hide.getAttribute("title"), pg.root.querySelector(".p-chat .id-fold")]).toEqual(["Hide card", "Hide card", null]);
+    const btn = () => pg.root.querySelector(".p-chat .panel-head .chat-card-menu > button");
+    const item = (k: number) => pg.root.querySelectorAll(".p-chat .chat-card-menu [role=menuitemcheckbox]")[k];
+    const items = () => [...pg.root.querySelectorAll(".p-chat .chat-card-menu [role=menuitemcheckbox]")].map((b: any) => [b.textContent, b.getAttribute("aria-checked"), b.hasAttribute("disabled")]);
+    expect([pg.root.querySelector(".p-chat .chat-card"), pg.root.querySelector(".chat-card-toggle"), btn().getAttribute("aria-label"), btn().getAttribute("aria-haspopup"), btn().getAttribute("class")])
+      .toEqual([null, null, "Identity card", "menu", "icon-btn"]);
+    btn().click(); await settle(2);
+    // This card has no banner (another card's path is dropped): it cannot fold, so its second item is disabled.
+    expect(items()).toEqual([["Show card", "false", false], ["Show picture and bio", "false", true]]);
+    item(0).click(); await settle(2);
+    expect([pg.root.querySelector(".p-chat .id-card").getAttribute("class"), pg.root.querySelector(".p-chat .card-size"), pg.storage.get("agend_chat_card"), btn().getAttribute("class"), items()[0], pg.root.querySelectorAll(".p-chat .id-card button").length])
+      .toEqual(["id-card card-c bs-m", null, "open", "icon-btn active", ["Show card", "true", false], 0]);
     // #2038: its banner follows this card's size choice (made on Details or in View).
     const { setCardSize } = await import("/assets/identity-card.js");
     setCardSize("loner", "l"); await settle(2);
     expect(pg.root.querySelector(".p-chat .id-card").getAttribute("class")).toBe("id-card card-c bs-l");
     setCardSize("loner", "m"); await settle(2);
-    pg.root.querySelector(".p-chat .id-hide").click(); await settle(2);
-    expect([pg.root.querySelector(".p-chat .id-card"), pg.storage.get("agend_chat_card") ?? null, !!show()]).toEqual([null, null, true]);
+    item(0).click(); await settle(2);
+    expect([pg.root.querySelector(".p-chat .id-card"), pg.storage.get("agend_chat_card") ?? null, btn().getAttribute("class")]).toEqual([null, null, "icon-btn"]);
   });
-  it("#2217: in the chat, with a banner — the chat's own choice reaches the card: Hide picture and bio folds the row away (the banner stays), kept on this device, and back", async () => {
+  it("#2217: in the chat, with a banner — the card menu's Show picture and bio folds the row away (the banner stays) and back, kept on this device; disabled while the card is hidden", async () => {
     const saved = CARD.banner.src;
     CARD.banner.src = `/api/card/loner/banner?v=${PIC}`;                      // this card's own banner this time
     try {
@@ -325,16 +329,21 @@ describe("#1629 r4 §1: the identity card", () => {
       // A new card version: the card store is module-wide, and v1 was read (without a banner) by the tests above.
       const { applyStatus } = await import("/assets/app-store.js");
       applyStatus({ instances: INSTANCES.map((i: any) => i.name === "loner" ? { ...i, card_v: "v2-banner" } : i) }); await settle(6);
-      pg.root.querySelector(".p-chat .panel-head .chat-card-show").click(); await settle(2);
       const q = (sel: string) => pg.root.querySelector(`.p-chat ${sel}`);
-      expect([!!q(".id-banner-box .id-hide"), !!q(".id-row .id-fold"), q(".id-row .id-fold")?.getAttribute("aria-expanded")]).toEqual([true, true, "true"]);
-      q(".id-row .id-fold").click(); await settle(2);
-      expect([q(".id-row"), q(".id-portrait"), q(".id-bio"), !!q(".id-banner"), q(".id-card").getAttribute("class"), pg.storage.get("agend_chat_card_row")])
-        .toEqual([null, null, null, true, "id-card card-c bs-m row-hidden", "hidden"]);
-      expect(q(".id-banner-box .id-unfold").getAttribute("aria-label")).toBe("Show picture and bio");
-      q(".id-banner-box .id-unfold").click(); await settle(2);
-      expect([!!q(".id-row"), !!q(".id-bio"), q(".id-unfold"), q(".id-card").getAttribute("class"), pg.storage.get("agend_chat_card_row") ?? null])
-        .toEqual([true, true, null, "id-card card-c bs-m", null]);
+      const item = (k: number) => pg.root.querySelectorAll(".p-chat .chat-card-menu [role=menuitemcheckbox]")[k];
+      q(".panel-head .chat-card-menu > button").click(); await settle(2);
+      expect([item(1).getAttribute("aria-checked"), item(1).hasAttribute("disabled")], "hidden card: picture and bio greyed").toEqual(["true", true]);
+      item(0).click(); await settle(2);
+      expect([item(1).getAttribute("aria-checked"), item(1).hasAttribute("disabled"), pg.root.querySelectorAll(".p-chat .id-card button").length]).toEqual(["true", false, 0]);
+      item(1).click(); await settle(2);
+      expect([q(".id-row"), q(".id-portrait"), q(".id-bio"), !!q(".id-banner"), q(".id-card").getAttribute("class"), pg.storage.get("agend_chat_card_row"), item(1).getAttribute("aria-checked"), pg.root.querySelectorAll(".p-chat .id-card button").length])
+        .toEqual([null, null, null, true, "id-card card-c bs-m row-hidden", "hidden", "false", 0]);
+      item(1).click(); await settle(2);
+      expect([!!q(".id-row"), !!q(".id-bio"), q(".id-card").getAttribute("class"), pg.storage.get("agend_chat_card_row") ?? null, item(1).getAttribute("aria-checked")])
+        .toEqual([true, true, "id-card card-c bs-m", null, "true"]);
+      // Prism (#2227): the banner fails to load — the card shows its row, and the menu's second item greys out with it.
+      q("img.id-banner").dispatchEvent(new (globalThis as any).Event("error")); await settle(2);
+      expect([q("img.id-banner"), !!q(".id-row"), item(1).hasAttribute("disabled"), item(1).getAttribute("aria-checked")]).toEqual([null, true, true, "false"]);
     } finally { CARD.banner.src = saved; }
   });
   it("#2038: the banner's height follows the card's width (an aspect per size) between a floor and a ceiling — never half the size token", async () => {

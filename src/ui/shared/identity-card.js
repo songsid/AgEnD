@@ -11,7 +11,6 @@ import { html, useEffect, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
 import { createStore, useStore } from "./app-store.js";
 import { onPrefsChanged, prefInForce, savePref } from "./app-prefs.js";
-import { Icon } from "./ui-icons.js";
 import "./card-strings.js";
 
 export const CARD_SIZES = ["s", "m", "l"];
@@ -161,43 +160,45 @@ function SizeControl({ name, size }) {
   </div>`;
 }
 
-/** A small round control on the card (the chat's Hide card and Hide picture and bio). */
-function CardControl({ cls, icon, label, onClick, expanded }) {
-  return html`<button type="button" class=${`id-ctl ${cls}`} aria-label=${label} title=${label}
-    aria-expanded=${expanded === undefined ? undefined : expanded ? "true" : "false"} onClick=${onClick}><${Icon} name=${icon} size=${16} /></button>`;
-}
+/**
+ * #2217 hotfix (Prism): pictures that failed to load on this page, by src — shared, so the chat's card menu judges a card
+ * as drawn (a broken banner is not drawn, and then the card cannot fold), not by its metadata alone.
+ */
+export const brokenPictures = createStore({});
+const markBroken = (src) => { if (src && !brokenPictures.get()[src]) brokenPictures.set((s) => ({ ...s, [src]: true })); };
+const drawn = (card, slot) => !!(card && card[slot] && !brokenPictures.get()[card[slot].src]);
+/**
+ * #2217: whether a card can fold its row away and keep the banner — a banner drawn, and something on its row (a picture
+ * drawn, a tagline or a bio). The chat's card menu enables Show picture and bio only then.
+ */
+export const cardFoldable = (card) => !!(card && drawn(card, "banner") && (drawn(card, "portrait") || card.tagline || card.bio));
 
 /**
  * The card. `compact`: the chat header's own small size (no size control; the banner still follows the size choice,
  * #2038). Nothing when the card is empty. The
  * tagline and bio say whose they are (title), since a person's field wins over the agent's.
- * #2217: the chat's controls, on the card itself (the user, 2026-10-19): `onHide` — Hide card, on the banner's top-right corner
- * (on the row when there is no banner); `onToggleRow` — hide the picture, tagline and bio and keep the banner, from the
- * row's bottom-right corner, and back from the banner's bottom-right while they are hidden (`rowHidden`). Only a card
- * with a banner and something on its row can fold its row (else it would be the card hidden).
+ * #2217: `rowHidden` — the chat's picture and bio folded away, the banner kept. The user (2026-10-20): no control on the
+ * card at all — the chat header's two buttons show / hide the card and fold / unfold its row. Only a card with a banner
+ * and something on its row folds (cardFoldable; else it would be the card hidden).
  */
-export function IdentityCard({ name, card, compact = false, sizeControl = !compact, onHide = null, rowHidden = false, onToggleRow = null }) {
+export function IdentityCard({ name, card, compact = false, sizeControl = !compact, rowHidden = false }) {
   useStore(cardSizeStore);
-  const [broken, setBroken] = useState({});
+  const broken = useStore(brokenPictures);
   if (!card) return null;
   const size = compact ? "c" : cardSizeFor(name);
   // #2038: the chat header's card is its own small size, but its banner follows the person's size choice too.
   const bannerSize = compact ? ` bs-${cardSizeFor(name)}` : "";
   const whose = (f) => t(f.by === "human" ? "card.byHuman" : "card.byAgent");
-  const pic = (slot, cls, alt) => card[slot] && broken[slot] !== card[slot].src
-    ? html`<img class=${cls} src=${card[slot].src} alt=${alt} title=${whose(card[slot])} decoding="async" onError=${() => setBroken({ ...broken, [slot]: card[slot].src })} />` : null;
+  const pic = (slot, cls, alt) => card[slot] && !broken[card[slot].src]
+    ? html`<img class=${cls} src=${card[slot].src} alt=${alt} title=${whose(card[slot])} decoding="async" onError=${() => markBroken(card[slot].src)} />` : null;
   // #2086: the banner at its focus; on a screen wider than BANNER_MAX_ASPECT it is centred over a blurred copy of itself.
   const focus = card.banner_focus ? card.banner_focus.value : 50;
   const atFocus = (el) => { if (el && el.style) el.style.setProperty("--id-focus", `${focus}%`); };
   const banner = pic("banner", "id-banner", "");
   const portrait = pic("portrait", "id-portrait", t("card.portraitAlt", name));
-  const foldable = !!(onToggleRow && banner && (portrait || card.tagline || card.bio));
-  const rowShown = !(foldable && rowHidden);
-  const hide = onHide ? html`<${CardControl} cls="id-hide" icon="eyeOff" label=${t("card.hide")} onClick=${onHide} />` : null;
-  const fold = foldable ? html`<${CardControl} cls=${rowShown ? "id-fold" : "id-fold id-unfold"} icon=${rowShown ? "up" : "user"}
-    label=${t(rowShown ? "card.hideRow" : "card.showRow")} expanded=${rowShown} onClick=${onToggleRow} />` : null;
+  const rowShown = !(rowHidden && banner && cardFoldable(card));
   return html`<section class=${`id-card card-${size}${bannerSize}${rowShown ? "" : " row-hidden"}`} aria-label=${t("card.label", name)}>
-    ${banner ? html`<div class="id-banner-box" ref=${atFocus}><img class="id-banner-fill" src=${card.banner.src} alt="" aria-hidden="true" decoding="async" />${banner}${hide}${rowShown ? null : fold}</div>` : null}
+    ${banner ? html`<div class="id-banner-box" ref=${atFocus}><img class="id-banner-fill" src=${card.banner.src} alt="" aria-hidden="true" decoding="async" />${banner}</div>` : null}
     ${rowShown ? html`<div class="id-row">
       ${portrait}
       <div class="id-text">
@@ -205,7 +206,6 @@ export function IdentityCard({ name, card, compact = false, sizeControl = !compa
         ${card.bio ? html`<p class="id-bio" title=${whose(card.bio)}>${card.bio.text}</p>` : null}
       </div>
       ${sizeControl ? html`<${SizeControl} name=${name} size=${size} />` : null}
-      ${banner ? null : hide}${fold}
     </div>` : null}
   </section>`;
 }

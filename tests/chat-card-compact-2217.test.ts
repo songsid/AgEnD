@@ -1,67 +1,73 @@
 /**
- * #2217: the chat's identity card, compact (the user, 2026-10-19): no toggle row — Hide card is on the card (the banner's
- * top-right corner, or the row's when there is no banner), and the picture and bio fold away from the row's bottom-right,
- * leaving the banner, with the way back on the banner's bottom-right. Both are this device's choice, kept like the
- * hide-card choice always was (localStorage). Details and View pass no handlers: their cards have no such controls.
+ * #2217: the chat's identity card, compact. The user (2026-10-19): no toggle row; the picture and bio fold away, leaving the
+ * banner. The user (2026-10-20, a hotfix): no control on the card at all — never on the banner, nor in its body. The chat
+ * header carries one card button opening a menu of two checkboxes: Show card, and Show picture and bio (disabled while
+ * the card is hidden, or when it cannot fold). Both choices are this device's, kept like the hide-card choice always was (localStorage). The header
+ * buttons on the real chat page: web-details-n2.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 
 const PIC = "a".repeat(32);
 const FULL = { banner: { src: `/api/card/a/banner?v=${PIC}`, by: "agent" }, portrait: { src: `/api/card/a/portrait?v=${PIC}`, by: "agent" },
   tagline: { text: "Reviews your PRs", by: "agent" }, bio: { text: "Line one\nLine two", by: "human" } };
 const pages: any[] = [];
 afterEach(async () => { for (const pg of pages.splice(0)) { await pg.unmount().catch(() => {}); pg.restore(); } });
-async function mount(props: Record<string, unknown>, lang = "en") {
+async function mount(props: Record<string, unknown>) {
   vi.resetModules();
   const { page, h, settle } = await import("./helpers/app-harness.js");
   const pg = page({ url: "http://127.0.0.1:19280/ui/chat/a" }); pages.push(pg);
-  (await import("/assets/app-i18n.js")).setLang(lang, { store: false });
   const card = await import("/assets/identity-card.js");
   await pg.mount(h(card.IdentityCard, { name: "a", compact: true, ...props }));
   await settle(2);
-  return { pg, h, settle, card };
+  return { pg, card };
 }
-const ctl = (pg: any) => [...pg.root.querySelectorAll(".id-ctl")].map((b: any) => [b.parentNode.getAttribute("class"), b.getAttribute("class"), b.getAttribute("aria-label"), b.getAttribute("aria-expanded")]);
+const controls = (pg: any) => pg.root.querySelectorAll(".id-card button").length;
 
-describe("the chat card's own controls", () => {
-  it("with a banner: Hide card on the banner; Hide picture and bio at the row's end; folded, only the banner and the way back", async () => {
-    const onHide = vi.fn(), onToggleRow = vi.fn();
-    const { pg, h, settle, card } = await mount({ card: FULL, onHide, onToggleRow });
-    expect(ctl(pg)).toEqual([["id-banner-box", "id-ctl id-hide", "Hide card", null], ["id-row", "id-ctl id-fold", "Hide picture and bio", "true"]]);
-    expect(pg.root.querySelector(".id-hide").getAttribute("title")).toBe("Hide card");
-    pg.root.querySelector(".id-fold").click(); pg.root.querySelector(".id-hide").click();
-    expect([onToggleRow.mock.calls.length, onHide.mock.calls.length]).toEqual([1, 1]);
-    await pg.unmount();
-    await pg.mount(h(card.IdentityCard, { name: "a", compact: true, card: FULL, onHide, onToggleRow, rowHidden: true })); await settle(2);
-    expect([pg.root.querySelector(".id-card").getAttribute("class"), pg.root.querySelector(".id-row"), pg.root.querySelector(".id-portrait"), pg.root.querySelector(".id-bio"), !!pg.root.querySelector(".id-banner")])
-      .toEqual(["id-card card-c bs-m row-hidden", null, null, null, true]);
-    expect(ctl(pg)).toEqual([["id-banner-box", "id-ctl id-hide", "Hide card", null], ["id-banner-box", "id-ctl id-fold id-unfold", "Show picture and bio", "false"]]);
+describe("the chat card: no control on the card (the user, 2026-10-20)", () => {
+  it("shown: banner and row, and not one button anywhere on the card", async () => {
+    const { pg } = await mount({ card: FULL });
+    expect([!!pg.root.querySelector(".id-banner"), !!pg.root.querySelector(".id-row"), controls(pg)]).toEqual([true, true, 0]);
   });
-  it("no banner: Hide card on the row, and nothing to fold (hiding the row would be hiding the card) — even when asked to", async () => {
-    const { pg } = await mount({ card: { ...FULL, banner: undefined }, onHide() {}, onToggleRow() {}, rowHidden: true });
-    expect(ctl(pg)).toEqual([["id-row", "id-ctl id-hide", "Hide card", null]]);
-    expect(!!pg.root.querySelector(".id-bio")).toBe(true);
+  it("folded (rowHidden): only the banner — no row, no picture, no bio — and still no button", async () => {
+    const { pg } = await mount({ card: FULL, rowHidden: true });
+    expect([pg.root.querySelector(".id-card").getAttribute("class"), pg.root.querySelector(".id-row"), pg.root.querySelector(".id-portrait"), pg.root.querySelector(".id-bio"), !!pg.root.querySelector(".id-banner"), controls(pg)])
+      .toEqual(["id-card card-c bs-m row-hidden", null, null, null, true, 0]);
   });
-  it("a banner and nothing else: Hide card only", async () => {
-    const { pg } = await mount({ card: { banner: FULL.banner }, onHide() {}, onToggleRow() {} });
-    expect(ctl(pg)).toEqual([["id-banner-box", "id-ctl id-hide", "Hide card", null]]);
+  it("a card that cannot fold ignores rowHidden: no banner (it would be the card hidden), or a banner with nothing on the row", async () => {
+    const noBanner = await mount({ card: { ...FULL, banner: undefined }, rowHidden: true });
+    expect([!!noBanner.pg.root.querySelector(".id-row"), !!noBanner.pg.root.querySelector(".id-bio")]).toEqual([true, true]);
+    const { card } = noBanner;
+    expect([card.cardFoldable(FULL), card.cardFoldable({ ...FULL, banner: undefined }), card.cardFoldable({ banner: FULL.banner }),
+      card.cardFoldable({ banner: FULL.banner, portrait: FULL.portrait }), card.cardFoldable({ banner: FULL.banner, tagline: FULL.tagline }), card.cardFoldable(null)])
+      .toEqual([true, false, false, true, true, false]);
   });
-  it("no bio, a picture: it still folds (the picture is on the row)", async () => {
-    const { pg } = await mount({ card: { banner: FULL.banner, portrait: FULL.portrait }, onHide() {}, onToggleRow() {} });
-    expect(ctl(pg).map((c) => c[1])).toEqual(["id-ctl id-hide", "id-ctl id-fold"]);
+  it("a banner that failed to load (its img error): the card cannot fold — the row stays even when rowHidden, and cardFoldable says no (Prism)", async () => {
+    const { pg, card } = await mount({ card: FULL, rowHidden: true });
+    expect([card.cardFoldable(FULL), !!pg.root.querySelector(".id-row")], "drawn: it folds").toEqual([true, false]);
+    pg.root.querySelector("img.id-banner").dispatchEvent(new (globalThis as any).Event("error"));
+    const { settle } = await import("./helpers/app-harness.js"); await settle(2);
+    expect([pg.root.querySelector("img.id-banner"), !!pg.root.querySelector(".id-row"), !!pg.root.querySelector(".id-bio"), card.cardFoldable(FULL), card.brokenPictures.get()[FULL.banner.src]])
+      .toEqual([null, true, true, false, true]);
   });
-  it("Details and View (no handlers): no controls on the card", async () => {
-    const { pg } = await mount({ card: FULL, compact: false });
-    expect(pg.root.querySelectorAll(".id-ctl").length).toBe(0);
+  it("no button class of the old on-card controls is left in the page code", () => {
+    const src = readFileSync(new URL("../src/ui/shared/identity-card.js", import.meta.url), "utf8") + readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
+    expect(src).not.toMatch(/id-ctl|id-hide|id-unfold|id-fold/);
   });
-  it("zh-TW names", async () => {
-    const { pg } = await mount({ card: FULL, onHide() {}, onToggleRow() {} }, "zh-TW");
-    expect(ctl(pg).map((c) => c[2])).toEqual(["隱藏卡片", "隱藏小圖與介紹"]);
+  it("the card menu's words, en and zh-TW (the user's 顯示小圖和介紹)", async () => {
+    vi.resetModules();
+    const { page } = await import("./helpers/app-harness.js");
+    const pg = page({ url: "http://127.0.0.1:19280/ui/chat/a" }); pages.push(pg);
+    const i18n = await import("/assets/app-i18n.js"); await import("/assets/card-strings.js");
+    const words = () => ["card.menu", "card.show", "card.showRow"].map((k) => i18n.t(k));
+    i18n.setLang("en", { store: false }); const en = words();
+    i18n.setLang("zh-TW", { store: false }); const zh = words();
+    expect([en, zh]).toEqual([["Identity card", "Show card", "Show picture and bio"], ["身分卡", "顯示卡片", "顯示小圖和介紹"]]);
   });
 });
 
 describe("the chat's choice, kept on this device like Hide card's", () => {
-  it("both start from localStorage and write back there; the header button and the card share one store", async () => {
+  it("both start from localStorage and write back there; the header menu and the card share one store", async () => {
     vi.resetModules();
     const { page } = await import("./helpers/app-harness.js");
     const pg = page({ url: "http://127.0.0.1:19280/ui/chat/a", storage: { agend_chat_card: "open", agend_chat_card_row: "hidden" } }); pages.push(pg);
