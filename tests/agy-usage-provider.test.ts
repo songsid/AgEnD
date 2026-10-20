@@ -224,7 +224,8 @@ describe("fetchAntigravityUsage asks for the models' quotas beside the summary (
     const r = await fetchAntigravityUsage();
     expect(r.status).toBe("ok");
     expect(r.metrics.map(m => m.label)).toEqual(["Claude & others (session)", "Claude & others (weekly)", "Gemini"]);
-    expect(calls).toEqual(["https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels", "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"]);
+    // The production base first (2026-10-20: its summary has the Gemini group the daily base's lacks); daily is the fallback.
+    expect(calls).toEqual(["https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels", "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"]);
   });
   it("a failing models read costs nothing: the summary's rows", async () => {
     login();
