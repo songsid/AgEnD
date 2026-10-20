@@ -35,7 +35,7 @@ async function chip(st: any) {
 
 describe("this browser's authorization line", () => {
   it("verified: says until when", async () => {
-    const c = await chip({ state: "verified", until: Date.UTC(2026, 9, 20, 9, 0) });
+    const c = await chip({ state: "verified", until: Date.now() + 3_600_000 });               // an hour ahead: never a fixed date (it expired 2026-10-20 09:00 UTC)
     expect(c.dataset.state).toBe("verified");
     expect(c.textContent).toMatch(/Verified · speaks as you until /);
     expect(c.querySelector("button")).toBeNull();
@@ -121,7 +121,7 @@ describe("this browser's authorization line", () => {
     expect(sent.filter(s => s.path === "/ui/authorization")).toEqual([]);
   });
   it("one read per page load: a second line (the session menu's) and coming back read nothing", async () => {
-    const c = await chip({ state: "verified", until: Date.UTC(2026, 9, 20, 9, 0) });
+    const c = await chip({ state: "verified", until: Date.now() + 3_600_000 });               // an hour ahead: never a fixed date (it expired 2026-10-20 09:00 UTC)
     expect(c).not.toBeNull();
     const { AuthorizeChip } = await import("/assets/web-authorize.js");
     sent.length = 0;
