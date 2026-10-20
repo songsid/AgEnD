@@ -4,8 +4,8 @@
  * and a post only in zh-TW. It checks what the pages say, not the source: drafts are neither listed nor routed, the
  * list is newest first, a post has its own title, description and date, the language switch goes to the translation
  * or (none, or a draft) to the other list, and the shared nav links lead to the home page's sections.
- * Needs the website's own dependencies (website/node_modules). Without them it is skipped — unless
- * AGEND_WEBSITE_BUILD_TEST=1 (CI sets it where it installs them): then it fails, so CI never skips it silently.
+ * Needs the website's own dependencies (website/node_modules). Without them it is skipped, and says so by name; with
+ * AGEND_WEBSITE_BUILD_TEST=1 a missing dependency fails it instead.
  */
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -18,8 +18,13 @@ const ASTRO = join(SITE, "node_modules", "astro", "bin", "astro.mjs");
 const FIXTURES = join(ROOT, "tests", "fixtures", "website-notes");
 
 const REQUIRED = process.env.AGEND_WEBSITE_BUILD_TEST === "1";
+// PR CI does not install the website's dependencies (the leader's call, 2026-10-20: deploy-website builds the real site
+// on every main push). The skip says so, in the suite's name and on the console, so it never reads as a pass.
+const SKIP_REASON = "skipped: website deps not installed (run `npm ci --prefix website`)";
+const SKIPPED = !existsSync(ASTRO) && !REQUIRED;
+if (SKIPPED) console.warn(`[website-notes-render] ${SKIP_REASON}`);
 
-describe.skipIf(!existsSync(ASTRO) && !REQUIRED)("Engineering Notes, built from fixtures", { timeout: 240_000 }, () => {
+describe.skipIf(SKIPPED)(SKIPPED ? `Engineering Notes, built from fixtures — ${SKIP_REASON}` : "Engineering Notes, built from fixtures", { timeout: 240_000 }, () => {
   let dir = "", dist = "";
   beforeAll(() => {
     if (!existsSync(ASTRO)) throw new Error("AGEND_WEBSITE_BUILD_TEST=1 but the website's dependencies are not installed: npm ci --prefix website");
