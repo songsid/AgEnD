@@ -180,6 +180,8 @@ var lockReaders = require("./install-admission.cjs");
  * line names node or agend — then, and when even that cannot be read, null. macOS: lsof (exit 1 with no output = none).
  * Elsewhere: null.
  */
+/** What a descriptor's link names when it is no file on disk: it cannot be the lock. */
+var NOT_A_FILE = /^(?:(?:pipe|socket):\[\d+\]|anon_inode:.*|\/dev\/(?:null|zero|u?random|full|tty\w*|console|ptmx|pts\/\d+))$/;
 /** Why the last openedBy answered as it did (a refusal names it, so a stuck host says exactly what could not be read). */
 var openedWhy = "";
 function openedBy(file, deps) {
@@ -212,7 +214,16 @@ function openedBy(file, deps) {
       }
       for (var f = 0; f < fds.length; f++) {
         var seen;
-        try { seen = stat("/proc/" + pids[k] + "/fd/" + fds[f]); } catch (e) { if (gone(e)) continue; return unknown(because(e, "/proc/" + pids[k] + "/fd/" + fds[f])); }   // closed meanwhile, or unknown
+        var fdPath = "/proc/" + pids[k] + "/fd/" + fds[f];
+        try { seen = stat(fdPath); } catch (e) {
+          if (gone(e)) continue;   // closed meanwhile
+          // Its target cannot be stat'ed (a security module, as on CI runners): the link itself still names it. A pipe,
+          // a socket, an anonymous inode or a terminal/null device is not the lock (a regular file in the prefix).
+          var target = null;
+          try { target = (deps.procReadlink || fs.readlinkSync)(fdPath); } catch (e2) { if (gone(e2)) continue; }
+          if (target !== null && NOT_A_FILE.test(target)) continue;
+          return unknown(because(e, fdPath) + (target !== null ? " → " + target : ""));
+        }
         if (seen.dev === st.dev && seen.ino === st.ino) { openedWhy = "pid " + pids[k] + " has it open"; return true; }
       }
     }

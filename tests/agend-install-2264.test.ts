@@ -708,6 +708,28 @@ describe("#2264 review (Prism r3 P1): mixed with updaters from before #2264 — 
     } finally { writer.kill("SIGKILL"); }
   });
 
+  // CI (GitHub runner): a process whose descriptor 0 cannot be stat'ed (EACCES) — the link still names it.
+  it.skipIf(process.platform !== "linux")("a descriptor that cannot be stat'ed is skipped only when its link names no file (pipe, socket, /dev/null…); a file, or an unreadable link, is unknown", async () => {
+    const r = unitRig();
+    writeFileSync(r.lock, '{"pid":');   // cut short, its writer gone
+    const other = spawn("sleep", ["60"], { stdio: "ignore" });
+    try {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const prefixFd = `/proc/${other.pid}/fd/`;
+      const procStat = (p: string) => { if (p.startsWith(prefixFd)) throw Object.assign(new Error("EACCES"), { code: "EACCES" }); return statSync(p); };
+      for (const target of ["pipe:[4242]", "socket:[17]", "anon_inode:[eventfd]", "/dev/null", "/dev/pts/3"]) {
+        const got = installer.admit(r.prefix, { ...realDepsFor(r), procStat, procReadlink: () => target }, {});
+        expect(got.refuse, target).toBeUndefined();
+        got.release!();
+        writeFileSync(r.lock, '{"pid":');
+      }
+      for (const procReadlink of [() => r.lock, () => "/home/u/somefile", () => { throw Object.assign(new Error("EACCES"), { code: "EACCES" }); }]) {
+        expect(installer.admit(r.prefix, { ...realDepsFor(r), procStat, procReadlink }, {}).refuse).toMatch(/cannot be told \(EACCES on \/proc\/\d+\/fd\/\d+/);
+        expect(readFileSync(r.lock, "utf8")).toBe('{"pid":');
+      }
+    } finally { other.kill("SIGKILL"); }
+  });
+
   it.skipIf(process.platform !== "linux")("any process whose descriptor list fails other than by permission (EIO) is unknown, whatever its command line (not only node)", async () => {
     const r = unitRig();
     writeFileSync(r.lock, '{"pid":');   // cut short, its writer gone
@@ -725,8 +747,9 @@ describe("#2264 review (Prism r3 P1): mixed with updaters from before #2264 — 
     writeFileSync(r.lock, '{"pid":');   // cut short, its writer gone: judged stale
     let underMarker = false;
     const second = { ...realDepsFor(r), onStep: (step: string) => { if (step === "legacy-reclaimed") underMarker = true; },
-      // This test's own process (alive, the lock owner's uid): its descriptors cannot be read, under the marker only.
-      procStat: (p: string) => { if (underMarker && p.startsWith(`/proc/${process.pid}/fd/`)) throw Object.assign(new Error("EACCES"), { code: "EACCES" }); return statSync(p); } };
+      // This test's own process (a node process of the lock owner's uid): its descriptor list cannot be read, under the
+      // marker only.
+      procReaddir: (p: string) => { if (underMarker && p === `/proc/${process.pid}/fd`) throw Object.assign(new Error("EACCES"), { code: "EACCES" }); return readdirSync(p); } };
     expect(installer.admit(r.prefix, second, {}).refuse).toMatch(/is being written by another AgEnD install/);
     expect(underMarker, "it got as far as the marker").toBe(true);
     expect(readFileSync(r.lock, "utf8")).toBe('{"pid":');
