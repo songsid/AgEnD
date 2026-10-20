@@ -1192,6 +1192,7 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .signin-lines { margin: var(--s-2) 0 0; padding-left: 1.2em; color: var(--text-2); font-size: var(--fs-xs); white-space: pre-wrap; }
 .signin-list { margin-top: var(--s-4); }
 .signin-list code { font-size: var(--fs-xs); word-break: break-all; }
+.signin-list .s-meta { white-space: normal; max-width: none; overflow: visible; }
 @media (max-width: 899px) {
   .grid2 { grid-template-columns: minmax(0, 1fr); }
   .se-row { grid-template-columns: minmax(0, 1fr) auto auto; }

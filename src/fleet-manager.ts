@@ -14332,8 +14332,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (step.kind === "refuse") return step.noop ? { text: step.text } : { error: step.text };
         if (step.kind === "choose") {
           const id = (token: string) => joinBackendArgs([...step.args, token]);
-          return { choices: { prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => ({ id: id(c.token), label: c.label, ...(c.disabled ? { disabled: c.disabled } : {}),
-            ...(c.signIn && dashboardSignInSupported(c.signIn) ? { signIn: c.signIn } : {}) })) } };
+          return { choices: { prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => {
+            // #2233: the web offers Sign in beside it, so its reason is no longer "use /login".
+            const signIn = c.signIn && dashboardSignInSupported(c.signIn) ? c.signIn : null;
+            const disabled = signIn ? t("backend.reason_not_signed_in_web") : c.disabled;
+            return { id: id(c.token), label: signIn ? `${c.token} — ${disabled}` : c.label, ...(disabled ? { disabled } : {}), ...(signIn ? { signIn } : {}) };
+          }) } };
         }
         const now = performance.now();
         for (const [k, v] of this.webBackendTokens) if (v.deadline < now) this.webBackendTokens.delete(k);

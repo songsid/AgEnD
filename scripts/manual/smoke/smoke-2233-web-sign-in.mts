@@ -106,10 +106,12 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
   const box = page.locator(".composer textarea, textarea").first();
   await box.click(); await box.fill("/backend"); await page.keyboard.press("Enter");
   const offered = await until(page, () => [...document.querySelectorAll(".cmd-card button")].some((b) => /Sign in to codex|登入 codex/.test(b.textContent || "")), null);
+  const choiceLabels = await page.evaluate(`[...document.querySelectorAll(".cmd-card .cmd-choices button")].map((b) => b.textContent.trim())`);
   await page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-${tag}`, "4-backend-picker") });
   await page.evaluate(`(() => { const b = [...document.querySelectorAll(".cmd-card button")].find((x) => /Sign in to codex|登入 codex/.test(x.textContent)); b && b.click(); })()`);
   const pickerDialog = await until(page, () => /codex/.test(document.querySelector("dialog.dlg[open] .dlg-title")?.textContent || ""), null);
-  verdict(`${tag} picker`, offered && pickerDialog, { offered, pickerDialog });
+  // The not-signed-in choice says so without "(use /login)": Sign in sits beside it.
+  verdict(`${tag} picker`, offered && pickerDialog && choiceLabels.some((l: string) => /^codex — (not signed in|未登入)$/.test(l)) && !choiceLabels.some((l: string) => /\/login/.test(l) && /codex/.test(l)), { offered, pickerDialog, choiceLabels });
   await clickInDialog(page, zh ? /^取消$/ : /^Cancel$/);
   await page.waitForTimeout(300);
   // needs
@@ -126,6 +128,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
   await clickInDialog(page, zh ? /^關閉$/ : /^Close$/);
   await page.goto(`${p.base}/settings/agents`); await mounted(page, 30000);
   const line = await until(page, () => /claude-code/.test(document.querySelector(".signin-line")?.textContent || ""), null);
+  await until(page, () => !!document.querySelector(".signin-list .s-row"), null, 5000);
   await page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-${tag}`, "7-line") });
   // The terminal: the access code at its gate, then the fake claude's prompt takes a sign-in code.
   const term = await p.ctx.newPage();
