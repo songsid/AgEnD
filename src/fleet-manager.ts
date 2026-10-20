@@ -243,7 +243,7 @@ import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
-import { WebBackendLogins } from "./web-backend-login.js";
+import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
@@ -360,7 +360,7 @@ type ReconcileObserver = (
   status: ApplyTargetStatus,
   error?: string,
 ) => void;
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
 import {
@@ -13557,6 +13557,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         interactionSummary: p.interaction_summary ?? null,
         pauseReason, pausedAt,
         crashedAt: crashed ? (this.needsCrashedAt.get(name) ?? null) : null,
+        signIn: pauseReason === "auth" ? this.signInFor(name) : null,
       });
     }
     return out;
@@ -14331,7 +14332,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (step.kind === "refuse") return step.noop ? { text: step.text } : { error: step.text };
         if (step.kind === "choose") {
           const id = (token: string) => joinBackendArgs([...step.args, token]);
-          return { choices: { prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => ({ id: id(c.token), label: c.label, ...(c.disabled ? { disabled: c.disabled } : {}) })) } };
+          return { choices: { prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => ({ id: id(c.token), label: c.label, ...(c.disabled ? { disabled: c.disabled } : {}),
+            ...(c.signIn && dashboardSignInSupported(c.signIn) ? { signIn: c.signIn } : {}) })) } };
         }
         const now = performance.now();
         for (const [k, v] of this.webBackendTokens) if (v.deadline < now) this.webBackendTokens.delete(k);
@@ -15641,8 +15643,48 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       isActiveFor: sink => this.loginController?.isActiveFor(sink) ?? false,
       cancel: () => this.cancelLoginSession(),
       notice: ({ shown, label, handle }) => this.notifyFleetError(t("login.web_dashboard_notice", shown, label, handle.slice(0, 8))),
+      // No details in the event: each page reads its own view (GET /ui/backend-login), as its session may see it.
+      changed: () => broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")),
     });
     return this.webBackendLoginsInstance;
+  }
+
+  /** #2233: the login a paused-for-sign-in instance needs, when the dashboard can sign it in. */
+  private signInFor(name: string): { backend: string; profile?: string } | null {
+    const backend = this.backendNameForInstance(name);
+    const profile = this.credentialProfileOf(name, backend);
+    return dashboardSignInSupported(backend, profile) ? { backend, ...(profile ? { profile } : {}) } : null;
+  }
+
+  /**
+   * #2233: Settings → Agents' sign-in list — every backend's default login as the availability snapshot has it, then
+   * each credential profile an agent uses (its own login state, read offline).
+   */
+  backendSignInTargets(): SignInTarget[] {
+    const out: SignInTarget[] = [];
+    for (const row of this.backendAvailabilityRows()) {
+      const flow = LOGIN_FLOWS[row.backend];
+      const install = BACKEND_INSTALLATION_INFO[row.backend]?.install;
+      out.push({
+        backend: row.backend, state: row.state, signIn: row.state !== "not_installed" && dashboardSignInSupported(row.backend),
+        ...(flow?.remoteLogin === "unsupported" ? { hostCommand: flow.command } : {}),
+        ...(row.state === "not_installed" && install ? { install } : {}),
+      });
+    }
+    const seen = new Set<string>();
+    for (const name of Object.keys(this.fleetConfig?.instances ?? {}).sort()) {
+      const backend = this.backendNameForInstance(name);
+      const profile = this.credentialProfileOf(name, backend);
+      if (!profile || seen.has(`${backend}\0${profile}`)) continue;
+      seen.add(`${backend}\0${profile}`);
+      let login: ReturnType<typeof credentialProfileLogin>["state"] = "unknown";
+      try { login = credentialProfileLogin(this.dataDir, backend, profile).state; } catch { /* unknown */ }
+      const signIn = dashboardSignInSupported(backend, profile);
+      const hostCommand = signIn ? null : credentialProfileLoginCommand(this.dataDir, backend, profile);
+      out.push({ backend, profile, state: login === "logged-in" ? "usable" : login === "signed-out" ? "not_signed_in" : "unknown", signIn,
+        ...(hostCommand ? { hostCommand } : {}) });
+    }
+    return out;
   }
 
   /** #2233: the session with this handle is live, admin, local and of the current dashboard token. */

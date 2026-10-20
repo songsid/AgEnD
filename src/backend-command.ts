@@ -52,7 +52,11 @@ export interface BackendPlan { backend: string; model: string | null; effort: st
  * One choice of a step. `token` is the argument it adds; `label` what the button says. `disabled`: why it cannot be
  * chosen here (shown, not hidden — a surface that cannot disable an option shows the reason and the step refuses it).
  */
-export interface BackendChoice { token: string; label: string; disabled?: string }
+export interface BackendChoice {
+  token: string; label: string; disabled?: string;
+  /** Disabled because its CLI is not signed in (#2233): the backend a surface may offer to sign in. */
+  signIn?: string;
+}
 
 /** Why a backend cannot be chosen, or null when it can (usable, or unknown: checked again when applied). */
 export function backendUnusable(t: BackendCommandDeps["t"], row: { backend: string; state: AvailabilityState; minVersion?: string | null }): string | null {
@@ -120,7 +124,9 @@ export async function backendStep(deps: BackendCommandDeps, instance: string, ar
       choices: rows.map(row => {
         const reason = why(row);
         const label = row.backend === from ? `✓ ${row.backend}` : row.state === "unknown" ? `${row.backend} — ${t("backend.reason_unchecked")}` : row.backend;
-        return reason ? { token: row.backend, label: `${row.backend} — ${reason}`, disabled: reason } : { token: row.backend, label };
+        return reason
+          ? { token: row.backend, label: `${row.backend} — ${reason}`, disabled: reason, ...(row.state === "not_signed_in" ? { signIn: row.backend } : {}) }
+          : { token: row.backend, label };
       }),
     };
   }

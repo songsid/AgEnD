@@ -210,6 +210,8 @@ export interface WebApiContext {
   readonly webSessions?: WebSessionStore | null;
   /** #2233: dashboard-started backend sign-ins (FleetManager); absent in a hand-built context. */
   readonly webBackendLogins?: import("./web-backend-login.js").WebBackendLogins;
+  /** #2233: Settings → Agents' sign-in list (FleetManager.backendSignInTargets). */
+  backendSignInTargets?(): import("./web-backend-login.js").SignInTarget[];
   readonly dataDir: string;
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
@@ -595,7 +597,7 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
   const logins = ctx.webBackendLogins;
   if (!logins) { json(res, 404, { error: "sign_in_unavailable" }); return true; }
   const action = /^\/ui\/backend-login\/(check|start|cancel)$/.exec(path)?.[1];
-  if (reading && path === "/ui/backend-login" && [...url.searchParams.keys()].length === 0) { json(res, 200, { login: logins.view(first.handle) }); return true; }
+  if (reading && path === "/ui/backend-login" && [...url.searchParams.keys()].length === 0) { json(res, 200, { login: logins.view(first.handle), targets: ctx.backendSignInTargets?.() ?? [] }); return true; }
   if (method !== "POST" || !action) { json(res, 404, { error: "not_found" }); return true; }
   (async () => {
     let bytes: Buffer;
