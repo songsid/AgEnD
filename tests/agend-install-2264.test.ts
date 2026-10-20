@@ -390,20 +390,25 @@ describe("#2264 review (Prism r1 P1): the installer owns the prefix before it to
     later.release?.();
   });
 
-  it("real processes racing for one prefix (12 at once): never two admitted at the same time, and the prefix is free afterwards", () => {
+  it("real processes racing for one prefix (12 at once, each running again when refused): never two admitted at the same time, every one gets its turn, and the prefix is free afterwards", { timeout: 60_000 }, () => {
     const r = unitRig();
     const driver = join(r.root, "race.cjs");
     writeFileSync(driver, `const fs = require("fs");
 const inst = require(${JSON.stringify(join(REPO, "launcher", "agend-install.cjs"))});
 const deps = { pid: process.pid, now: Date.now, alive: pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } } };
 const t0 = Date.now(); while (Date.now() < Number(process.argv[3])) {}   // start together
-const got = inst.admit(process.argv[2], deps);
-if (got.release) {
-  const from = process.hrtime.bigint();
-  const until = Date.now() + 150; while (Date.now() < until) {}
-  const to = process.hrtime.bigint();
-  got.release();
-  fs.appendFileSync(process.argv[4], from + " " + to + "\\n");
+// Refused (another holds it, or all refused at once): run again a moment later — as a user re-runs the one-liner.
+for (let attempt = 0; attempt < 400; attempt++) {
+  const got = inst.admit(process.argv[2], deps);
+  if (got.release) {
+    const from = process.hrtime.bigint();
+    const until = Date.now() + 100; while (Date.now() < until) {}
+    const to = process.hrtime.bigint();
+    got.release();
+    fs.appendFileSync(process.argv[4], from + " " + to + "\\n");
+    break;
+  }
+  const wait = Date.now() + 5 + Math.floor(Math.random() * 40); while (Date.now() < wait) {}
 }
 `);
     const log = join(r.root, "admitted.log"); writeFileSync(log, "");
@@ -411,7 +416,7 @@ if (got.release) {
     const children = Array.from({ length: 12 }, () => spawn(process.execPath, [driver, r.prefix, String(start), log], { stdio: "ignore" }));
     return Promise.all(children.map(c => new Promise(resolve => c.on("exit", resolve)))).then(() => {
       const spans = readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => l.split(" ").map(BigInt)).sort((x, y) => (x[0] < y[0] ? -1 : 1));
-      expect(spans.length, "at least one was admitted").toBeGreaterThan(0);
+      expect(spans.length, "every one was admitted in turn").toBe(12);
       for (let k = 1; k < spans.length; k++) expect(spans[k]![0] > spans[k - 1]![1], "no two admissions overlap").toBe(true);
       expect(readdirSync(join(r.prefix, ".agend-install.d")), "every entry withdrawn").toEqual([]);
       expect(existsSync(r.lock), "and the lock released").toBe(false);

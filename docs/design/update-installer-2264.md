@@ -162,7 +162,8 @@ Callers:
     unreadable process list busy;
   - admission (the installer's logic, npm and `agend` stubbed, a real prefix): two installers in both orders of
     announce and check — never both admitted, a refused one withdraws only its own entry; **12 real processes** racing
-    for one prefix — no two admissions overlap, every entry withdrawn afterwards; an entry whose writer is gone
+    for one prefix, each running again when refused — all 12 get a turn, no two admissions overlap, every entry
+    withdrawn afterwards; an entry whose writer is gone
     quarantined; a live pre-#2264 lock refuses; one judged stale and claimed by a running old updater before the move
     is put back byte for byte (75); during repair, every install, the retry and the rollback the prefix is this
     installer's and a peer is refused;
