@@ -14324,7 +14324,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const current = this.resolveInstanceEffort(instance).effort;
         return { current, options: levels.map(l => ({ id: l, label: this.effortChoiceLabel(l, current) })) };
       },
-      backendStep: async (instance, args) => {
+      backendStep: async (instance, args, stepOpts) => {
         const refusal = this.backendCommandRefusal(instance);
         if (refusal) return { error: refusal };
         // The cached model lists only, as the web's /model: never a live probe on this path.
@@ -14334,7 +14334,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const id = (token: string) => joinBackendArgs([...step.args, token]);
           return { choices: { prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => {
             // #2233: the web offers Sign in beside it, so its reason is no longer "use /login".
-            const signIn = c.signIn && dashboardSignInSupported(c.signIn) ? c.signIn : null;
+            // Not over the public link: Sign in is refused there, so the choice keeps its "(use /login)" (#2262 review).
+            const signIn = c.signIn && !stepOpts?.publicLink && dashboardSignInSupported(c.signIn) ? c.signIn : null;
             const disabled = signIn ? t("backend.reason_not_signed_in_web") : c.disabled;
             return { id: id(c.token), label: signIn ? `${c.token} — ${disabled}` : c.label, ...(disabled ? { disabled } : {}), ...(signIn ? { signIn } : {}) };
           }) } };
@@ -15671,9 +15672,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const flow = LOGIN_FLOWS[row.backend];
       const install = BACKEND_INSTALLATION_INFO[row.backend]?.install;
       out.push({
-        backend: row.backend, state: row.state, signIn: row.state !== "not_installed" && dashboardSignInSupported(row.backend),
+        // Not installed or too old: signing in would not help — the row says how to install (or update) it instead.
+        backend: row.backend, state: row.state, signIn: row.state !== "not_installed" && row.state !== "too_old" && dashboardSignInSupported(row.backend),
         ...(flow?.remoteLogin === "unsupported" ? { hostCommand: flow.command } : {}),
         ...(row.state === "not_installed" && install ? { install } : {}),
+        ...(row.state === "too_old" && install ? { update: install } : {}),
       });
     }
     const seen = new Set<string>();

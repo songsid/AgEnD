@@ -20,7 +20,7 @@ import { Empty } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { notifyStore, notifySupport, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
-import { openSignIn } from "./backend-signin.js";
+import { openSignIn, signInOffered } from "./backend-signin.js";
 
 register("needs", {
   en: {
@@ -186,7 +186,7 @@ function NeedsItem({ item, nowMs, owner }) {
             disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
         ${item.type === "delivery" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
             <${Icon} name="check" size=${14} />${ack === "busy" ? tn("acknowledging") : tn("acknowledge")}</button>` : null}
-        ${item.reason === "auth_paused" && item.signIn ? html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => openSignIn(item.signIn)}>${tn("signIn")}</button>` : null}
+        ${item.reason === "auth_paused" && item.signIn && signInOffered() ? html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => openSignIn(item.signIn)}>${tn("signIn")}</button>` : null}
         <a class="btn btn-sm btn-ghost" href=${chatPath(item.instance)}>${tn("open")}</a>
       </div>
     </div>

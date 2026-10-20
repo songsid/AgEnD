@@ -64,6 +64,8 @@ export interface SignInTarget {
   hostCommand?: string;
   /** Not installed: the command that installs it. */
   install?: string;
+  /** Too old: the command that installs the current version over it. */
+  update?: string;
 }
 
 export interface WebLoginRequester {

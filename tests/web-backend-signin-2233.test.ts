@@ -126,6 +126,33 @@ describe("#2233 the Sign in dialog", () => {
   });
 });
 
+describe("#2262 review", () => {
+  it("over the public link: a refusal is said plainly (where to sign in instead), and Needs you offers no Sign in", async () => {
+    answer = r => r.url === "/ui/backend-login/check" ? { __status: 403, error: "sign_in_not_over_public_link" } : {};
+    await dialog({ backend: "codex" });
+    expect(text()).toContain("Signing in is not available over the public link");
+    await p.unmount();
+    p.document.body.setAttribute("data-public-link", "1");
+    try {
+      app.appStore.set({ instances: [], needs: [{ id: "auth:a:1", type: "instance", instance: "a", reason: "auth_paused", detail: "", since: Date.now(), signIn: { backend: "codex" } }] });
+      await p.mount(h(N.NeedsPanel, { route: { panel: "needs" }, navKey: "needs:|1|en" })); await settle(6);
+      expect(p.root.querySelectorAll(".n-item button").map((b: any) => b.textContent.trim())).toEqual([]);
+      expect(S.signInOffered()).toBe(false);
+    } finally { p.document.body.removeAttribute("data-public-link"); }
+  });
+
+  it("an event that lands while a read is on its way is not lost: one more read follows, and its answer is what shows", async () => {
+    let release!: (v: unknown) => void, reads = 0;
+    answer = () => { reads++; return reads === 1 ? new Promise(r => { release = r; }) : { login: { ...TERMINAL, mine: false }, targets: [] }; };
+    const first = S.refreshSignIn();
+    S.refreshSignIn();                                        // the event, while the first read is on its way
+    release({ login: null, targets: [] });                    // the first read's (older) answer
+    await first; await settle(6);
+    expect(reads).toBe(2);
+    expect(S.signInStore.get().login).toMatchObject({ phase: "running", startedOn: "Firefox on Linux" });
+  });
+});
+
 describe("#2233 where Sign in is offered", () => {
   it("the line every admin page shows: only while a sign-in runs, and Open shows it", async () => {
     await p.mount(h(S.SignInLine, {})); await settle(4);
@@ -142,14 +169,16 @@ describe("#2233 where Sign in is offered", () => {
       { backend: "codex", state: "not_signed_in", signIn: true },
       { backend: "antigravity", state: "not_signed_in", signIn: false, hostCommand: "agy" },
       { backend: "grok", state: "not_installed", signIn: false, install: "curl -fsSL https://x.ai/cli/install.sh | bash" },
+      { backend: "kiro-cli", state: "too_old", signIn: false, update: "curl -fsSL https://cli.kiro.dev/install | bash" },
       { backend: "claude-code", profile: "work", state: "not_signed_in", signIn: true },
     ] });
     await p.mount(h(S.SignInList, {})); await settle(6);
     const rows = p.root.querySelectorAll(".s-row").map((r: any) => r.querySelectorAll("span").map((s: any) => s.textContent.trim()).filter(Boolean).join(" "));
     expect(rows).toEqual([
       "claude-code signed in Sign in again", "codex not signed in Sign in", "antigravity not signed in Sign in on the machine: agy",
-      "grok not installed Install on the machine: curl -fsSL https://x.ai/cli/install.sh | bash", "claude-code · profile work not signed in Sign in"]);
-    fire(p.root.querySelectorAll(".s-row")[4].querySelector("button"), "click"); await settle(2);
+      "grok not installed Install on the machine: curl -fsSL https://x.ai/cli/install.sh | bash",
+      "kiro-cli too old Update on the machine: curl -fsSL https://cli.kiro.dev/install | bash", "claude-code · profile work not signed in Sign in"]);
+    fire(p.root.querySelectorAll(".s-row")[5].querySelector("button"), "click"); await settle(2);
     expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "work" });
     S.signInStore.set({ login: { ...TERMINAL, mine: false } }); await settle(4);
     expect(p.root.querySelectorAll(".s-row button").every((b: any) => b.disabled)).toBe(true);

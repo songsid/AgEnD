@@ -79,6 +79,7 @@ describe("#2233 part 2: what the dashboard offers to sign in", () => {
     vi.spyOn(fm, "backendAvailabilityRows").mockReturnValue([
       { backend: "claude-code", state: "usable" }, { backend: "codex", state: "not_signed_in" },
       { backend: "antigravity", state: "not_signed_in" }, { backend: "grok", state: "not_installed" }, { backend: "opencode", state: "usable" },
+      { backend: "kiro-cli", state: "too_old" },
     ]);
     expect(fm.backendSignInTargets()).toEqual([
       { backend: "claude-code", state: "usable", signIn: true },
@@ -86,6 +87,7 @@ describe("#2233 part 2: what the dashboard offers to sign in", () => {
       { backend: "antigravity", state: "not_signed_in", signIn: false, hostCommand: "agy" },
       { backend: "grok", state: "not_installed", signIn: false, install: BACKEND_INSTALLATION_INFO.grok!.install },
       { backend: "opencode", state: "usable", signIn: false },
+      { backend: "kiro-cli", state: "too_old", signIn: false, update: BACKEND_INSTALLATION_INFO["kiro-cli"]!.install },
       { backend: "claude-code", profile: "work", state: "not_signed_in", signIn: true },
     ]);
   });

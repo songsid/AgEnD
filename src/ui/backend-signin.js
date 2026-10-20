@@ -44,6 +44,8 @@ register("signin", {
     running: "Signing in to {0} (started on {1}).",
     open: "Open",
     expired: "That took too long — start again.",
+    notHere: "Signing in is not available over the public link. Open the dashboard on the machine running AgEnD, or use /login in your chat.",
+    notAdmin: "Only a fleet admin signed in on this machine or its network can sign a backend in.",
     notOffered: "A public link is not offered for this sign-in.",
     failed: "That did not work.",
     listTitle: "Sign-ins",
@@ -57,6 +59,7 @@ register("signin", {
     signInAgain: "Sign in again",
     onHost: "Sign in on the machine: {0}",
     install: "Install on the machine: {0}",
+    update: "Update on the machine: {0}",
     profile: "{0} · profile {1}",
   },
   "zh-TW": {
@@ -90,6 +93,8 @@ register("signin", {
     running: "正在登入 {0}（從 {1} 啟動）。",
     open: "開啟",
     expired: "等太久了——請重新開始。",
+    notHere: "公開連結上不能登入。請在執行 AgEnD 的機器上開啟儀表板，或在聊天裡用 /login。",
+    notAdmin: "只有在這台機器或它的網路上登入的 fleet 管理員，才能讓後端登入。",
     notOffered: "這次登入不提供公開連結。",
     failed: "沒有成功。",
     listTitle: "登入",
@@ -103,6 +108,7 @@ register("signin", {
     signInAgain: "重新登入",
     onHost: "在機器上登入：{0}",
     install: "在機器上安裝：{0}",
+    update: "在機器上更新：{0}",
     profile: "{0} · 設定檔 {1}",
   },
 });
@@ -112,21 +118,25 @@ const shownOf = (backend, profile) => (profile ? tn("profile", backend, profile)
 /** What this page knows: the current sign-in as this session may see it, and Settings' list. */
 export const signInStore = createStore({ loaded: false, login: null, targets: [] });
 
-let reading = null;
-/** Read GET /ui/backend-login (one read at a time). */
+let reading = null, again = false;
+/**
+ * Read GET /ui/backend-login (one read at a time). Asked again while one is on its way (an event that came after it was
+ * sent): one more read follows it, so the last change is never missed (#2262 review).
+ */
 export function refreshSignIn() {
-  reading ??= fetch("/ui/backend-login", { cache: "no-store" })
+  if (reading) { again = true; return reading; }
+  reading = fetch("/ui/backend-login", { cache: "no-store" })
     .then((r) => (r.ok ? r.json() : null))
     .then((b) => { if (b) signInStore.set({ loaded: true, login: b.login || null, targets: Array.isArray(b.targets) ? b.targets : [] }); return b; })
     .catch(() => null)
-    .finally(() => { reading = null; });
+    .finally(() => { reading = null; if (again) { again = false; void refreshSignIn(); } });
   return reading;
 }
 
 let installed = false;
 /** Once per admin page: listen for `backend_login`, read once, and show the line while a sign-in runs. */
 export function installSignIn() {
-  if (installed) return;
+  if (installed || !signInOffered()) return;
   installed = true;
   const on = appStore.get().streamOn;
   if (typeof on === "function") on("backend_login", () => { void refreshSignIn(); });
@@ -150,7 +160,10 @@ async function post(path, body) {
   } catch { return { ok: false, status: 0, body: null }; }
 }
 
-const errorText = (code) => (code === "confirm_expired" ? tn("expired") : code === "tunnel_not_offered" ? tn("notOffered") : tn("failed"));
+const errorText = (code) => (code === "confirm_expired" ? tn("expired") : code === "tunnel_not_offered" ? tn("notOffered")
+  : code === "sign_in_not_over_public_link" ? tn("notHere") : code === "sign_in_needs_a_local_admin" ? tn("notAdmin") : tn("failed"));
+/** The public link's page (#2233: Sign in is refused there — never offered). */
+export const signInOffered = () => !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1");
 const loopbackHost = (h) => h === "localhost" || h === "::1" || h === "[::1]" || /^127\./.test(h);
 
 function CopyField({ label, value }) {
@@ -275,6 +288,7 @@ export function SignInList() {
       <span class="tag">${tn(STATE_KEY[x.state] || "stUnknown")}</span>
       <span class="s-br" aria-hidden="true"></span>
       ${x.install ? html`<span class="s-meta"><code>${tn("install", x.install)}</code></span>` : null}
+      ${x.update ? html`<span class="s-meta"><code>${tn("update", x.update)}</code></span>` : null}
       ${x.hostCommand ? html`<span class="s-meta"><code>${tn("onHost", x.hostCommand)}</code></span>` : null}
       <span class="s-actions">${x.signIn ? html`<button type="button" class=${x.state === "not_signed_in" ? "btn btn-sm btn-primary" : "btn btn-sm"} disabled=${!!running}
         onClick=${() => openSignIn(x)}>${x.state === "usable" ? tn("signInAgain") : tn("signIn")}</button>` : null}</span>
