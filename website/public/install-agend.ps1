@@ -95,6 +95,92 @@ function Wait-WslRoot([string]$distro, [int]$tries = 3, [int]$pauseSeconds = 5) 
     return $false
 }
 
+# ── 登入 AI 後端（#1853：使用者核准的第 ③ 步）──────────────────────────
+# 登入網址自動在 Windows 的瀏覽器打開：WSL 裡的 BROWSER 指向 /usr/local/bin/agend-open-url，用 Windows 的 explorer.exe
+# 開網址（WSL interop）。有獨立登入指令的後端用那個指令，登入完成它就自己結束。Antigravity 沒有，就在專用的 tmux 裡跑 agy：
+# 等憑證檔寫完（連續 3 秒不再變動）、agy models 確認能用、畫面回到可輸入的提示，才送它自己的 /quit。
+# 絕不在登入中途結束它，也絕不強制終止；送了 /quit 它沒結束，就留給使用者。指令與判斷和 fleet 的 /login 一致（src/login-flows.ts）。
+$AGY_TOKEN = '/root/.gemini/antigravity-cli/antigravity-oauth-token'
+function Get-WindowsExplorerWslPath {
+    $root = $env:SystemRoot; if (-not $root) { $root = 'C:\Windows' }
+    return ('/mnt/' + $root.Substring(0, 1).ToLower() + ($root.Substring(2) -replace '\\', '/') + '/explorer.exe')
+}
+function Get-LoginCommand([string]$key) {
+    switch ($key) {
+        'kiro' { return 'kiro-cli login' }
+        'claude' { return 'claude auth login' }
+        'codex' { return 'codex login' }
+        'antigravity' { return 'agend_agy_login' }
+    }
+    return $null
+}
+# 已登入時結束碼 0（和 fleet 的 authCheck 相同）。
+function Get-LoginCheck([string]$key) {
+    switch ($key) {
+        'kiro' { return 'kiro-cli whoami --format json >/dev/null 2>&1' }
+        'claude' { return "claude auth status 2>/dev/null | grep -Eq '`"loggedIn`":[[:space:]]*true'" }
+        'codex' { return 'codex login status >/dev/null 2>&1' }
+        'antigravity' { return 'agy models >/dev/null 2>&1' }
+    }
+    return 'false'
+}
+# agy 的登入：tmux 用專用的 socket（agend-install，不碰其他 tmux）；上次中斷留下的同名 session 就接回去，不殺掉重開。
+$AGY_LOGIN_SH = @'
+agend_agy_quit_when_logged_in() {
+  # $1 憑證檔、$2 tmux socket、$3 session：憑證檔連續 3 秒大小不變、agy models 成功、畫面回到提示，才送 /quit。
+  token="$1"; sock="$2"; sess="$3"; last=-1; same=0
+  while tmux -L "$sock" has-session -t "$sess" 2>/dev/null; do
+    if [ -s "$token" ]; then
+      size=$(stat -c %s "$token" 2>/dev/null || echo -1)
+      if [ "$size" = "$last" ]; then same=$((same + 1)); else same=0; last="$size"; fi
+      if [ "$same" -ge 3 ] && agy models >/dev/null 2>&1 \
+        && tmux -L "$sock" capture-pane -p -t "$sess" | grep -Eq '\? for shortcuts|^>[[:space:]]*$'; then
+        tmux -L "$sock" send-keys -t "$sess" '/quit' Enter
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+  return 0
+}
+agend_agy_login() {
+  command -v tmux >/dev/null 2>&1 || apt-get install -y -qq tmux >/dev/null 2>&1
+  if ! tmux -L agend-install has-session -t agy-login 2>/dev/null; then
+    tmux -L agend-install new-session -d -s agy-login "BROWSER=$BROWSER PATH=$PATH agy"
+  fi
+  agend_agy_quit_when_logged_in "$AGY_TOKEN" agend-install agy-login &
+  tmux -L agend-install attach -t agy-login
+  wait
+}
+'@
+# 一個後端的登入腳本（在 WSL 裡以 root、接在這個視窗上執行）。
+function Get-LoginScript([string]$key) {
+    $lines = @(
+        'export PATH=/root/.local/bin:$HOME/.claude/local:$PATH'
+        'export BROWSER=/usr/local/bin/agend-open-url'
+        ('AGY_TOKEN=' + $AGY_TOKEN)
+    )
+    if ($key -eq 'antigravity') { $lines += $AGY_LOGIN_SH }
+    $lines += (Get-LoginCommand $key)
+    return ($lines -join "`n")
+}
+# 在 WSL 裡打開網址用的小腳本（BROWSER 指向它）。
+function Get-OpenUrlScript {
+    return @(
+        "cat > /usr/local/bin/agend-open-url <<'SH'"
+        '#!/bin/sh'
+        '# AgEnD 安裝程式：在 Windows 的瀏覽器打開網址（登入用）。'
+        ("'" + (Get-WindowsExplorerWslPath) + "' " + '"$1" >/dev/null 2>&1')
+        'exit 0'
+        'SH'
+        'chmod 755 /usr/local/bin/agend-open-url'
+    ) -join "`n"
+}
+function Test-WslLogin([string]$key) {
+    $r = wsl -d $UBUNTU_DISTRO -u root -- bash -lc ('export PATH=/root/.local/bin:$HOME/.claude/local:$PATH; if ' + (Get-LoginCheck $key) + '; then echo LOGIN_OK; else echo LOGIN_NO; fi') 2>&1 | Out-String
+    return ($r -match 'LOGIN_OK')
+}
+
 # ── 在瀏覽器裡設定（#1853：取代主控台裡的 agend quickstart）─────────────
 # agend setup 在 WSL 裡開一個設定頁，印出網址和設定碼。安裝程式讀到這兩行，就在 Windows 的瀏覽器打開網址、
 # 把設定碼放進剪貼簿並放大顯示；使用者在網頁上選 Discord 或 Telegram、貼上 Bot Token，不必在這個視窗打字。
@@ -468,16 +554,21 @@ function Confirm-StopInstall($proc) {
     return $false
 }
 
-# 在 WSL 裡以 root 執行一段 bash 腳本，作為長步驟（見 Invoke-Watched）。腳本放在沒有空白的 ProgramData 路徑。
-function Invoke-WslStep {
-    param([string]$Label, [string]$Usually, [string]$Script, [double]$UpperMinutes = 0, [scriptblock]$OnLine = $null)
+# 把一段 bash 腳本寫到沒有空白的 ProgramData 路徑（LF、UTF-8 無 BOM），回傳 Windows 路徑和 WSL 裡的路徑。
+function New-WslScriptFile([string]$Script) {
     $dir = Join-Path $env:ProgramData 'AgEnD-install'
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     $file = Join-Path $dir ('step-' + [Guid]::NewGuid().ToString('N') + '.sh')
     [IO.File]::WriteAllText($file, ($Script -replace "`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
+    $wslFile = (wsl -d $UBUNTU_DISTRO -u root -- wslpath -u ($file -replace '\\', '\\') 2>$null | Out-String).Trim()
+    if (-not $wslFile.StartsWith('/')) { $wslFile = '/mnt/' + $file.Substring(0, 1).ToLower() + ($file.Substring(2) -replace '\\', '/') }
+    return @($file, $wslFile)
+}
+# 在 WSL 裡以 root 執行一段 bash 腳本，作為長步驟（見 Invoke-Watched）。
+function Invoke-WslStep {
+    param([string]$Label, [string]$Usually, [string]$Script, [double]$UpperMinutes = 0, [scriptblock]$OnLine = $null)
+    $file, $wslFile = New-WslScriptFile $Script
     try {
-        $wslFile = (wsl -d $UBUNTU_DISTRO -u root -- wslpath -u ($file -replace '\\', '\\') 2>$null | Out-String).Trim()
-        if (-not $wslFile.StartsWith('/')) { $wslFile = '/mnt/' + $file.Substring(0, 1).ToLower() + ($file.Substring(2) -replace '\\', '/') }
         return (Invoke-Watched -Label $Label -Usually $Usually -UpperMinutes $UpperMinutes -OnLine $OnLine -File 'wsl.exe' -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', $wslFile))
     } finally {
         Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
@@ -824,46 +915,50 @@ Write-Step 3 $TOTAL "登入 AI 後端"
 if (Stage-Done 3) {
     Write-Ok "AI 後端已登入，跳過此步驟"
 } else {
+    # 登入網址在 Windows 的瀏覽器打開（見 Get-LoginScript）。
+    $null = Invoke-WslStep -Label "準備登入" -Usually "通常幾秒鐘" -UpperMinutes 1 -Script (Get-OpenUrlScript)
     foreach ($b in $selected) {
         Write-Host ""
-        Write-Warn "═══════════════════════════════════════════════════════"
-        Write-Warn ("  登入 {0}（使用瀏覽器授權）" -f $b.Name)
-        Write-Warn ""
-        switch ($b.Key) {
-            "kiro" {
-                Write-Warn "  1. 畫面會顯示一個網址（URL）"
-                Write-Warn "  2. 複製該網址，貼到任何電腦的瀏覽器開啟"
-                Write-Warn "  3. 用 AWS Builder ID / GitHub / Google 登入授權"
-                Write-Warn "  4. 授權完成後，這裡會自動繼續"
-                Write-Warn ""
-                Write-Warn "  [!!] 沒有 AWS Builder ID？先到 https://profile.aws.amazon.com/ 註冊"
+        if (Test-WslLogin $b.Key) { Write-Ok ("{0} 已經登入，跳過" -f $b.Name); continue }
+        $loggedIn = $false
+        while (-not $loggedIn) {
+            Write-Warn "═══════════════════════════════════════════════════════"
+            Write-Warn ("  登入 {0}" -f $b.Name)
+            Write-Warn ""
+            switch ($b.Key) {
+                "kiro" {
+                    Write-Warn "  瀏覽器會打開登入頁，用 AWS Builder ID / GitHub / Google 登入並授權。"
+                    Write-Warn "  畫面上如果要你選登入方式：用上下方向鍵選，按 Enter。完成後這裡會自動繼續。"
+                    Write-Warn "  沒有 AWS Builder ID？先到 https://profile.aws.amazon.com/ 註冊"
+                }
+                "claude" {
+                    Write-Warn "  瀏覽器會打開 Anthropic 的登入頁；登入並授權後，網頁會給你一段代碼。"
+                    Write-Warn "  把代碼複製下來，回到這個視窗按一下右鍵貼上，再按 Enter。完成後這裡會自動繼續。"
+                }
+                "codex" { Write-Warn "  瀏覽器會打開 ChatGPT 的登入頁；登入後這裡會自動繼續。" }
+                "antigravity" {
+                    Write-Warn "  畫面會顯示 Google 的登入網址和一組代碼：在瀏覽器打開網址、輸入代碼並登入。"
+                    Write-Warn "  登入完成、Antigravity 準備好之後，安裝程式會自動幫你結束它，不用按任何鍵。"
+                }
             }
-            "claude"      { Write-Warn "  首次執行會導向 Anthropic OAuth 登入；完成後在畫面輸入 /quit 離開" }
-            "antigravity" { Write-Warn "  首次執行會導向 Google Sign-In；完成後離開 CLI（依畫面提示，或按 Ctrl+D）" }
-            "codex"       { Write-Warn "  首次執行會導向 ChatGPT 登入（或先設定 OPENAI_API_KEY）；完成後輸入 /quit 離開" }
-        }
-        Write-Warn ""
-        Write-Warn "  要複製畫面上的網址：用滑鼠選取，再按右鍵。要貼上：按右鍵。"
-        Write-Warn "  登入時請不要按 Ctrl+C：它會直接關掉登入程式。"
-        Write-Warn "═══════════════════════════════════════════════════════"
-        Write-Host ""
-        Read-Host ("  準備好了嗎？按 Enter 開始登入 {0}" -f $b.Name)
-
-        $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        switch ($b.Key) {
-            "kiro"        { wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; kiro-cli login" }
-            "claude"      { wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; claude" }
-            "antigravity" { wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; agy" }
-            "codex"       { wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; codex" }
-        }
-        $ErrorActionPreference = $prevEAP
-
-        if ($b.Key -eq "kiro") {
-            $loginCheck = wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; kiro-cli profile 2>/dev/null; if [ `$? -eq 0 ]; then echo LOGIN_OK; else echo LOGIN_FAIL; fi" 2>&1
-            if ($loginCheck -match "LOGIN_OK") { Write-Ok "Kiro CLI 登入成功！" }
-            else { Write-Warn "無法自動確認 Kiro 登入狀態（若已在瀏覽器完成授權通常沒問題）" }
-        } else {
-            Write-Ok ("{0} 登入流程完成" -f $b.Name)
+            Write-Warn ""
+            Write-Warn "  瀏覽器沒有自己打開：用滑鼠選取畫面上的網址，按右鍵複製，再貼到瀏覽器。"
+            Write-Warn "  登入時請不要按 Ctrl+C：它會直接關掉登入程式。"
+            Write-Warn "═══════════════════════════════════════════════════════"
+            Write-Host ""
+            $loginFile, $loginWsl = New-WslScriptFile (Get-LoginScript $b.Key)
+            $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+            wsl -d $UBUNTU_DISTRO -u root -- bash $loginWsl
+            $ErrorActionPreference = $prevEAP
+            Remove-Item -LiteralPath $loginFile -Force -ErrorAction SilentlyContinue
+            if (Test-WslLogin $b.Key) {
+                Write-Ok ("{0} 登入成功" -f $b.Name)
+                $loggedIn = $true
+            } else {
+                Write-Warn ("{0} 還沒有登入。" -f $b.Name)
+                $again = Read-Host "  按 Enter 再試一次；輸入 s 再按 Enter 先跳過（之後再執行同一行安裝指令可以補上）"
+                if ($again -match '^\s*[sS]') { Write-Info ("已跳過 {0}" -f $b.Name); break }
+            }
         }
     }
     Mark-Stage 3

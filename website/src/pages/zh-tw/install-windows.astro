@@ -92,7 +92,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
             <li>OpenAI Codex（需 ChatGPT 帳號或 API Key）</li>
           </ol>
         </li>
-        <li><b class="text-text-primary">[3/5] 登入各後端</b> —— 腳本會帶你依序登入所選的每個後端。Kiro 會顯示一個網址，複製到瀏覽器用 AWS Builder ID / GitHub / Google 授權；Claude / Antigravity / Codex 則在首次執行時各自導向對應的登入頁。完成授權後自動繼續。</li>
+        <li><b class="text-text-primary">[3/5] 登入各後端</b> —— 登入頁會自己在 Windows 的瀏覽器打開，在那裡登入即可。Claude Code 會在網頁上給你一段代碼：複製下來，在安裝程式的視窗按右鍵貼上，再按 Enter。每個登入完成後都會自己結束；Antigravity 準備好之後，安裝程式也會幫你結束它。已經登入的後端會跳過；沒完成的可以再試一次，或先跳過、之後再補。</li>
         <li><b class="text-text-primary">[4/5] 安裝 AgEnD</b> —— 全自動（透過官方安裝腳本裝 Node.js 22 LTS + tmux）。</li>
         <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 在瀏覽器裡完成，不用在主控台打字：安裝程式會打開 AgEnD 的設定頁，並幫你複製設定碼（在網頁上按 Ctrl+V 貼上）。在網頁上選擇 Discord 或 Telegram，貼上 Bot Token（按 <b class="text-text-primary">Verify</b> 會顯示這是哪個 bot）；Telegram 要在群組傳 <code class="font-mono text-accent">/start</code> 讓它找到群組；Discord 要確認偵測到的帳號，並填入 General 頻道 ID。完成後 AgEnD 會啟動，並安裝成系統服務。如果設定頁打不開，安裝程式會改在主控台進行同樣的設定（<code class="font-mono text-accent">agend quickstart</code>）。</li>
       </ol>
