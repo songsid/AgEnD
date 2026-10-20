@@ -42,7 +42,7 @@ const COMPACT_PAGE_LIMIT_MS = 11 * 60_000;
 /** Build a store. `deps` (fetch, toast, announce, t, now) are injected so tests can drive every path. */
 export function createChatStore(deps) {
   const s = {
-    msgs: {}, drafts: {}, failedSends: {}, pendingFiles: {}, sending: {}, inFlightFiles: {}, sendFailures: {}, instanceStatus: {}, waking: {},
+    msgs: {}, drafts: {}, replies: {}, failedSends: {}, pendingFiles: {}, sending: {}, inFlightFiles: {}, sendFailures: {}, instanceStatus: {}, waking: {},
     prompts: {}, workingSince: {}, stopping: {}, cancelling: {}, scrollMemo: {}, historyRead: new Set(), rbBusy: new Set(),
     pollMine: readPollMine(),
     // #1823 (#1828 review): the server's clock minus this device's. A poll's deadline is the server's; a page whose clock
@@ -250,6 +250,7 @@ export function createChatStore(deps) {
   }
   async function send(target) {
     const txt = (s.drafts[target] || "").trim();
+    const quote = s.replies[target];         // #2272: the message this one replies to (its row; the server reads the rest)
     const files = (s.pendingFiles[target] || []).slice();
     if ((!txt && !files.length) || !target || s.sending[target]) return;
     s.sending[target] = true;
@@ -263,12 +264,16 @@ export function createChatStore(deps) {
     try {
       const ids = [];
       for (const f of files) ids.push((await uploadFile(target, f)).id);
-      r = await api("POST", "/ui/send", ids.length ? { instance: target, message: txt, attachments: ids } : { instance: target, message: txt });
+      const body = ids.length ? { instance: target, message: txt, attachments: ids } : { instance: target, message: txt };
+      if (quote) body.replyTo = { boot: quote.boot, id: quote.id };
+      r = await api("POST", "/ui/send", body);
     } catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
     s.sending[target] = false;
     delete s.waking[target];
     delete s.inFlightFiles[target];
-    if (r && !r.error) { changed(target); return; }
+    if (r && !r.error) { if (s.replies[target] === quote) delete s.replies[target]; changed(target); return; }
+    // #2272: the quoted message is gone: the reply goes, the text and files stay (sent again without it, or re-aimed).
+    if (r && r.reason === "reply_gone" && s.replies[target] === quote) delete s.replies[target];
     if (files.length) s.pendingFiles[target] = R().checkFiles(files, s.pendingFiles[target] || []).kept;
     if (txt) {
       const shown = s.current === target;
@@ -331,6 +336,30 @@ export function createChatStore(deps) {
   function discardFailed(target) { delete s.failedSends[target]; changed(target); }
   /** Typing stays local, except a failed send's Retry button must follow edits too. */
   function setDraft(target, value) { s.drafts[target] = value; if (s.sendFailures[target]) changed(target); }
+  /**
+   * #2272: reply to a message of this chat — what the bar above the composer shows (its sender and first words); only
+   * its row is sent. One at a time per chat: a new one replaces it.
+   */
+  function startReply(target, m) {
+    if (!target || !m || typeof m.boot !== "string" || typeof m.id !== "number") return;
+    s.replies[target] = { boot: m.boot, id: m.id, sender: String(m.sender || ""), text: String(m.click?.label ?? m.text ?? "").replace(/\s+/g, " ").trim().slice(0, 160),
+      media: (m.attachments || []).length ? ((m.attachments || []).some(a => a.kind === "photo") ? "photo" : "document") : undefined };
+    changed(target);
+  }
+  function clearReply(target) { if (s.replies[target]) { delete s.replies[target]; changed(target); } }
+  /**
+   * #2272: the quoted message, drawn for a jump: in what this chat holds, or after reading the longest history the
+   * server keeps for it (the newest 500). false: no longer kept.
+   */
+  async function findQuoted(name, key) {
+    const has = () => (s.msgs[name] || []).some(m => `${m.boot}-${m.id}` === key);
+    if (has()) return true;
+    try {
+      const r = await api("GET", `/ui/history?instance=${encodeURIComponent(name)}&limit=500`);
+      if (r && Array.isArray(r.messages)) { s.msgs[name] = R().mergeMessages(s.msgs[name], r.messages, 500); changed(name, "msgs"); }
+    } catch { /* the jump says it is not there */ }
+    return has();
+  }
 
   // ── Stop the reply under way (the composer's Stop, or Esc). Set before the request goes, so a held Esc or a second
   // click sends nothing more (#1317); "Stopping…" until the agent goes idle, or a minute passes.
@@ -425,6 +454,7 @@ export function createChatStore(deps) {
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
     applyReplyButtons, clickReplyButton,
     uploadFile, send, canRetrySend, retrySend, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, putBack, discardFailed, setDraft,
+    startReply, clearReply, findQuoted,
     cancelReply, isUser, runCommand, dismissCommand, commandFree,
   };
 }

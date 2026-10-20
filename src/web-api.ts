@@ -47,7 +47,7 @@ import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js
 import { z } from "zod";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
-import { newWebMessageId, parseLastEventId, type WebChatHistory } from "./web-chat-history.js";
+import { newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatHistory, type WebChatMessage } from "./web-chat-history.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore, SessionRecord } from "./web-session.js";
@@ -114,6 +114,8 @@ const SendMessageSchema = z.object({
   message: z.string().max(MAX_TEXT),
   /** Ids from POST /ui/upload, for this instance, not yet sent. */
   attachments: z.array(z.string().regex(/^[0-9a-f]{32}$/)).max(UPLOAD_LIMITS.maxFiles).optional(),
+  /** #2272: the message of this chat this one replies to — its row only; the server reads what it quotes. */
+  replyTo: z.object({ boot: z.string().regex(/^[0-9a-f]{1,32}$/), id: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER) }).strict().optional(),
 }).strict().refine(v => v.message.trim().length > 0 || (v.attachments?.length ?? 0) > 0, { message: "a message or at least one file", path: ["message"] });
 
 /** An instance name that is safe as one path segment (no separator, no NUL, not a dot name). */
@@ -2238,6 +2240,17 @@ export function handleWebRequest(
   return true;
 }
 
+/**
+ * #2272: the line a web reply's channel copy opens with — the quoted sender and first words when that message reached
+ * the channel (its members saw it); a web-only one is only named, never copied out to the channel.
+ */
+export function webReplyEchoLine(quoted: WebChatMessage): string {
+  if (!quoted.channel) return t("web.echo_reply_web_only");
+  const ref = webChatReplyRef(quoted);
+  const words = ref.text.slice(0, 120) || (ref.media === "photo" ? "[photo]" : ref.media ? "[file]" : "");
+  return t("web.echo_reply", quoted.sender.slice(0, 80), words);
+}
+
 /** Keep the echo in a single platform message, including its attachment names. */
 function webEchoPreview(message: string, names: string[]): string {
   const text = wellFormed(message.slice(0, 500));
@@ -2289,12 +2302,22 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         json(res, 400, { error: `${issue.path.join(".") || "body"}: ${issue.message}` });
         return;
       }
-      const { instance, message: typed, attachments = [] } = parsed.data;
+      const { instance, message: typed, attachments = [], replyTo } = parsed.data;
       // #1920 step 2b: a guest writes only to an in-scope instance, while guests may chat, and never a command.
       const guest = guestRequestOf(req);
       const refused = guestChatRefusal(guest, instance);
       if (refused) { json(res, refused.status, { error: refused.error }); return; }
       if (guest && guestCommandText(typed)) { json(res, 403, { error: "guest_no_commands" }); return; }
+      // #2272: a reply names a message this chat still keeps — and, for a guest, one it may see. What it quotes is read
+      // from that row here, never taken from the page.
+      let quoted: WebChatMessage | undefined;
+      if (replyTo) {
+        quoted = ctx.webChatHistory?.find(instance, replyTo.boot, replyTo.id);
+        if (!quoted || quoted.effectTrial || (guest && !guestSeesMessage(quoted, guest, guest.scope()))) {
+          json(res, 409, { error: t("web.reply_gone"), reason: "reply_gone" });
+          return;
+        }
+      }
       const registered = registeredChatInstance(ctx, instance);
       if (!registered && !ctx.instanceIpcClients.has(instance)) {
         json(res, 404, { error: `Instance not found: ${instance}` });
@@ -2341,8 +2364,10 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       const topicId = ctx.fleetConfig?.instances[instance]?.topic_id;
       const canEcho = ctx.fleetConfig?.web?.echo_to_channel !== false
         && !ctx.isClassicInstance?.(instance) && syncAdapter && groupId && topicId != null;
-      // Add no runtime credentials or local attachment paths to the display copy.
-      const preview = webEchoPreview(message, files.map(f => f.name));
+      // Add no runtime credentials or local attachment paths to the display copy. A reply opens with the line it
+      // answers (#2272) — quoted only if that message reached the channel; a web-only one is named, never copied out.
+      const quoteLine = quoted ? webReplyEchoLine(quoted) : "";
+      const preview = (quoteLine ? `${quoteLine}\n` : "") + webEchoPreview(message, files.map(f => f.name));
       // ClassicBot echo (#1320 part B): same ordering lane, each room's setting (#2054: on unless it says false, or
       // the fleet-wide switch is off for a room that is unset) resolved at send time inside sendClassicWebEcho.
       const canClassicEcho = ctx.isClassicInstance?.(instance) === true && !!ctx.sendClassicWebEcho;
@@ -2378,6 +2403,8 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
             ...(guest ? { web_guest: "1" } : {}),          // #1920: "[user:… via web (guest), id:…]" (authority none)
             adapter_id: syncAdapter?.id,
             ...delivery.meta,
+            // #2272: `(reply_to: "…")`, as a Discord or Telegram reply gives the agent.
+            ...(quoted ? { reply_to_text: webChatReplyText(quoted) } : {}),
           },
         });
       } catch (err) {
@@ -2412,7 +2439,8 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       ctx.lastInboundUser.set(instance, person.name);
       ctx.eventLog?.logActivity("message", person.name, (message || `[${files.length} file(s)]`).slice(0, 200), instance);
       // #1920: the account that wrote it (a guest sees its own); channel-visible once its copy was sent (above).
-      ctx.emitSseEvent("message", { instance, sender: person.name, role: "user", text: message, ts, attachments: files.map(publicAttachment), messageId, ...(person.bound ? { from: person.voterKey } : {}) });
+      ctx.emitSseEvent("message", { instance, sender: person.name, role: "user", text: message, ts, attachments: files.map(publicAttachment), messageId, ...(person.bound ? { from: person.voterKey } : {}),
+        ...(quoted ? { replyTo: webChatReplyRef(quoted) } : {}) });
       json(res, 200, { sent: true, messageId });
     } catch {
       json(res, 400, { error: "Invalid JSON" });

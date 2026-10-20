@@ -142,6 +142,52 @@ export interface WebChatMessage {
    * across a restart is still sent it.
    */
   seenSeq?: number;
+  /**
+   * #2272: the message a person's message replies to — its row (`boot`, `id`) and what the bubble quotes: who wrote it
+   * and its first words, taken by the server from that row when the reply was sent (never from the page). `media`: a
+   * row with files and no text. A person's messages only.
+   */
+  replyTo?: WebChatReplyRef;
+}
+
+/** #2272: a reply's reference to an earlier message of the same chat (see WebChatMessage.replyTo). */
+export interface WebChatReplyRef { boot: string; id: number; sender: string; text: string; media?: "photo" | "document" }
+/** #2272: how much of the quoted message a reply keeps for its bubble (the agent's `reply_to` is longer). */
+export const WEB_CHAT_REPLY_SNIPPET_MAX = 160;
+/** #2272: the agent's `(reply_to: "…")` — at most this many characters of the quoted message. */
+export const WEB_CHAT_REPLY_TEXT_MAX = 500;
+const BOOT_RE = /^[0-9a-f]{1,32}$/;
+
+/** One line: runs of whitespace (newlines too) become one space. */
+const oneLine = (s: string): string => s.replace(/\s+/g, " ").trim();
+const cut = (s: string, max: number): string => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
+
+/** #2272: what a reply quotes from a row: its sender, its first words on one line (a click's label), its files' kind. */
+export function webChatReplyRef(row: WebChatMessage): WebChatReplyRef {
+  const words = oneLine(row.click?.label ?? row.text);
+  const media = !words && row.attachments?.length ? (row.attachments.some(a => a.kind === "photo") ? "photo" : "document") : undefined;
+  return { boot: row.boot, id: row.id, sender: row.sender.slice(0, 256), text: cut(words, WEB_CHAT_REPLY_SNIPPET_MAX), ...(media ? { media } : {}) };
+}
+
+/**
+ * #2272: the quoted message as the agent gets it — `(reply_to: "…")`, like a Discord or Telegram reply: one line (a
+ * newline in it could start a line that reads as another header), its double quotes made typographic so the quote
+ * cannot end early, at most WEB_CHAT_REPLY_TEXT_MAX characters; a message of files only names them.
+ */
+export function webChatReplyText(row: WebChatMessage): string {
+  const words = oneLine(row.click?.label ?? row.text);
+  const files = (row.attachments ?? []).map(a => `[${a.kind === "photo" ? "photo" : "file"}: ${oneLine(a.name)}]`).join(" ");
+  return cut((words || files).replace(/"/g, "\u201d"), WEB_CHAT_REPLY_TEXT_MAX);
+}
+
+/** A stored or sent reply reference, checked field by field (one that fails is dropped, never repaired). */
+function webChatReplyRefOf(raw: unknown): WebChatReplyRef | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.boot !== "string" || !BOOT_RE.test(r.boot) || typeof r.id !== "number" || !Number.isSafeInteger(r.id) || r.id < 1) return undefined;
+  if (typeof r.sender !== "string" || typeof r.text !== "string") return undefined;
+  const media = r.media === "photo" || r.media === "document" ? r.media : undefined;
+  return { boot: r.boot, id: r.id, sender: r.sender.slice(0, 256), text: cut(oneLine(r.text), WEB_CHAT_REPLY_SNIPPET_MAX), ...(media ? { media } : {}) };
 }
 
 /** #1920: an account as a row names it — the connection id and the user id, one line. */
@@ -196,6 +242,8 @@ export interface StoredWebChatMessage {
   from?: string;
   /** #1920: when, in its boot's id sequence, it became the channel's (see WebChatMessage). */
   seenSeq?: number;
+  /** #2272: what a person's reply quotes (see WebChatMessage). */
+  replyTo?: WebChatReplyRef;
 }
 
 /** #1565: what the history needs of the file ledger (web-upload.ts). */
@@ -265,7 +313,8 @@ export class WebChatHistory {
   /** #1565: a message as kept on disk: no buttons, no delivery, no message id; a file with the path it is served from. */
   private stored(m: WebChatMessage): StoredWebChatMessage {
     const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.click ? { click: { label: m.click.label } } : {}), ...(m.links ? { links: m.links } : {}),
-      ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.channel && m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}) };
+      ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.channel && m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}),
+      ...(m.replyTo ? { replyTo: m.replyTo } : {}) };
     if (m.attachments?.length) {
       row.attachments = m.attachments.map((a) => {
         const base = { kind: a.kind, name: a.name, size: a.size, mime: a.mime };
@@ -361,7 +410,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; effectTrial?: unknown; links?: unknown; channel?: unknown; from?: unknown }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; effectTrial?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown }): WebChatMessage {
     return this.recordEntry(msg, null);
   }
 
@@ -396,6 +445,9 @@ export class WebChatHistory {
     // #1920: only `true` marks a channel's message; only a person's message names its account.
     if (msg.channel === true) entry.channel = true;
     if (entry.role === "user" && typeof msg.from === "string" && FROM.test(msg.from)) entry.from = msg.from;
+    // #2272: only a person's message replies to another.
+    const replyTo = entry.role === "user" ? webChatReplyRefOf(msg.replyTo) : undefined;
+    if (replyTo) entry.replyTo = replyTo;
     let slot = this.byInstance.get(entry.instance);
     if (!slot) { slot = { messages: [], chars: 0 }; this.byInstance.set(entry.instance, slot); }
     slot.messages.push(entry);
@@ -455,6 +507,11 @@ export class WebChatHistory {
   }
 
   /** #1920: a kept message by the `message_id` the agent was given (a web message, a web click). */
+  /** #2272: one kept message of an instance's chat by its row (`boot`, `id`), or undefined (never sent, or no longer kept). */
+  find(instance: string, boot: string, id: number): WebChatMessage | undefined {
+    return this.byInstance.get(instance)?.messages.find(m => m.boot === boot && m.id === id);
+  }
+
   findByMessageId(instance: string, messageId: string): WebChatMessage | undefined {
     const messages = this.byInstance.get(instance)?.messages ?? [];
     for (let i = messages.length - 1; i >= 0; i--) if (messages[i]!.messageId === messageId) return messages[i];
@@ -629,6 +686,8 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   if (r.channel === true) message.channel = true;
   if (role === "user" && typeof r.from === "string" && FROM.test(r.from)) message.from = r.from;
   if (message.channel && typeof r.seenSeq === "number" && Number.isSafeInteger(r.seenSeq) && r.seenSeq > r.id) message.seenSeq = r.seenSeq;
+  const replyTo = role === "user" ? webChatReplyRefOf(r.replyTo) : undefined;
+  if (replyTo) message.replyTo = replyTo;
   const files = !Array.isArray(r.attachments) ? [] : r.attachments.slice(0, 20).flatMap((a): RestoredFile[] => {
     if (!a || typeof a !== "object" || Array.isArray(a)) return [];
     const f = a as Record<string, unknown>;

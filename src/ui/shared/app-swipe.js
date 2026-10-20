@@ -5,7 +5,7 @@
 // - the left screen edge (the first EDGE px) belongs to the browser: on iOS Safari a swipe from there is "back";
 // - a gesture that starts in something that scrolls sideways (a code block, a wide table or CSV card — found as the
 //   nearest horizontally scrollable ancestor, not a fixed list), in the terminal view (xterm), in the composer or any
-//   input, or while a dialog, the image lightbox or the preview panel is open, is left alone;
+//   input, on a chat message (its swipe right replies, #2272), or while a dialog, the image lightbox or the preview panel is open, is left alone;
 // - vertical scrolling is never taken: only a mostly-horizontal swipe counts (dx ≥ MIN_DX and |dy| < |dx|/2), and the
 //   listeners are passive — nothing is ever prevented, the browser scrolls as it always does.
 
@@ -18,7 +18,9 @@ function owns(el) {
   if (el.isContentEditable || (el.getAttribute && el.getAttribute("contenteditable") === "true")) return true;
   const cl = el.classList;
   return !!cl && (cl.contains("xterm") || cl.contains("composer") || cl.contains("composer-box") || cl.contains("pv-panel")
-    || cl.contains("lb") || cl.contains("csv-card") || cl.contains("codeblock"));
+    || cl.contains("lb") || cl.contains("csv-card") || cl.contains("codeblock")
+    // #2272: a chat message's swipe right is a reply (chat-msg-actions.js) — the drawer opens from anywhere else.
+    || (cl.contains("msg") && !!el.getAttribute && el.getAttribute("data-key") !== null));
 }
 /** Scrolls sideways (and has room to): the gesture is the content's. */
 function scrollsSideways(el, win) {
