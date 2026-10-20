@@ -32,11 +32,12 @@ afterEach(() => {
 const profileHome = (p: string) => credentialProfileHome(agendHome, "claude-code", p);
 
 class FakeSession extends EventEmitter {
+  state: "created" | "running" | "finished" = "created";
   constructor(readonly spec: WebTerminalSpec, readonly events: WebTerminalEvents) { super(); }
-  async start(): Promise<void> {}
+  async start(): Promise<void> { this.state = "running"; }
   peekAccessToken(): string | null { return "ABCDEFGHJKMNPQRSTVWX"; }
   async cancel(detail = "cancelled"): Promise<void> { await this.finish({ ok: false, reason: "cancel", detail }); }
-  async finish(result: WebTerminalResult): Promise<void> { this.emit("finished", result); await this.events.onDone(result); }
+  async finish(result: WebTerminalResult): Promise<void> { this.state = "finished"; this.emit("finished", result); await this.events.onDone(result); }
 }
 class FakeHttp {
   constructor(readonly session: FakeSession) {}

@@ -18,16 +18,19 @@ type InertHttpServer = EventEmitter & {
   address(): { port: number };
   close(done: () => void): void;
 };
-const http = vi.hoisted(() => ({ servers: [] as InertHttpServer[], listenError: null as Error | null }));
+const http = vi.hoisted(() => ({ servers: [] as InertHttpServer[], listenError: null as Error | null,
+  holdReady: false, ready: [] as Array<() => void> }));
 vi.mock("node:http", async () => {
   const { EventEmitter } = await import("node:events");
   return { createServer: () => {
     const server = new EventEmitter() as InertHttpServer;
     server.listen = (_port: number, _bind: string, ready: () => void) => queueMicrotask(() => {
-      if (http.listenError) server.emit("error", http.listenError); else ready();
+      if (http.listenError) server.emit("error", http.listenError);
+      else if (http.holdReady) http.ready.push(ready);
+      else ready();
     });
     server.address = () => ({ port: 43123 });
-    server.close = (done: () => void) => done();
+    server.close = vi.fn((done: () => void) => done());
     http.servers.push(server);
     return server;
   } };
@@ -85,13 +88,54 @@ function fixture(opts: { bind?: string; installError?: Error; readinessFails?: b
   fixtures.push(f);
   return f;
 }
-beforeEach(() => { http.servers = []; http.listenError = null; setLocale("en"); });
+beforeEach(() => { http.servers = []; http.listenError = null; http.holdReady = false; http.ready = []; setLocale("en"); });
 afterEach(async () => {
   for (const f of fixtures.splice(0)) { await f.controller.shutdown(); rmSync(f.home, { recursive: true, force: true }); }
   vi.unstubAllEnvs();
 });
 
 describe("/login failures stay within their session", () => {
+  it("a session finishing before held listen readiness still closes the late listener", async () => {
+    http.holdReady = true;
+    const f = fixture();
+    const starting = f.start();
+    await vi.waitFor(() => expect(http.ready).toHaveLength(1));
+    await f.session().cancel("test finish");
+    expect(f.controller.isActive()).toBe(false);
+    expect(f.lock.isHeld).toBe(false);
+    expect(http.servers[0].close).not.toHaveBeenCalled();
+    http.ready[0]();
+    expect(await starting).toBeNull();
+    expect(http.servers[0].close, "finished session must not leave a listener alive").toHaveBeenCalledOnce();
+    expect(f.sendText).toHaveBeenCalledOnce();
+    expect(f.adapter.sendDirect).not.toHaveBeenCalled();
+  });
+
+  it("normal listen readiness followed by session finish closes its listener", async () => {
+    const f = fixture();
+    await f.start();
+    expect(http.servers[0].close).not.toHaveBeenCalled();
+    await f.session().cancel("test finish");
+    expect(http.servers[0].close).toHaveBeenCalledOnce();
+    expect(f.lock.isHeld).toBe(false);
+  });
+
+  it("late listen cleanup cannot release a newer login's window", async () => {
+    http.holdReady = true;
+    const f = fixture();
+    const oldStart = f.start();
+    await vi.waitFor(() => expect(http.ready).toHaveLength(1));
+    await f.session().cancel("old finish");
+    http.holdReady = false;
+    await f.start();
+    http.ready[0]();
+    await oldStart;
+    expect(http.servers[0].close).toHaveBeenCalledOnce();
+    expect(http.servers[1].close).not.toHaveBeenCalled();
+    expect(f.controller.isActive()).toBe(true);
+    expect(f.lock.isHeld).toBe(true);
+  });
+
   it("a listener error after listening closes the login and tells Telegram what to do", async () => {
     const f = fixture();
     await f.start();

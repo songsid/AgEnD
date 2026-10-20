@@ -539,7 +539,12 @@ export class LoginController {
         return this.abort(entry, t("login.web_listener_start_failed", reason), "startup failed");
       }
       entry.url = listening.url;
-      if (entry.session.state !== "running") return null; // a lifetime listener error already reports its end
+      if (entry.session.state !== "running") {
+        // finished may have fired before listen() could subscribe to it.
+        // Close this entry's late listener without reporting the end twice.
+        await http.close().catch(err => logger.warn(safeErr(err), "ended login listener cleanup failed"));
+        return null;
+      }
       if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
       if (wantTunnel) {
         const failed = await this.openTunnel(entry, http, listening.port, cfg, ttlMs);
