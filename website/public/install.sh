@@ -256,15 +256,26 @@ fi
 # proves `agend --version`, links agend/node into /usr/local/bin for root under nvm, and on a host that already runs
 # a fleet sets the service up again. Re-running this one-liner is the repair. AGEND_VERSION picks a version or a
 # dist-tag (default: latest; beta: AGEND_VERSION=beta).
+# >>> agend-installer step (tests/install-sh-busy-2284.test.ts runs this block)
 AGEND_SPEC="@songsid/agend@${AGEND_VERSION:-latest}"
 if npm view "$AGEND_SPEC" bin --json 2>/dev/null | grep -q '"agend-install"'; then
-  if ! $SUDO npm exec --yes --package "$AGEND_SPEC" -- agend-install; then
+  installer_rc=0
+  $SUDO npm exec --yes --package "$AGEND_SPEC" -- agend-install || installer_rc=$?
+  if [ "$installer_rc" -eq 75 ]; then
+    # #2284: another AgEnD update holds the install lock (the installer said whose). Nothing broke: let it finish.
+    case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in
+      zh*) warn "另一個 AgEnD 更新正在進行中（見上方）。不需要做任何事，等它完成即可；想確認的話，稍後再執行一次這個安裝指令。" ;;
+      *) warn "Another AgEnD update is in progress (see above). Nothing to do: let it finish. To check, run this installer again in a moment." ;;
+    esac
+    exit 75
+  elif [ "$installer_rc" -ne 0 ]; then
     error "Installation failed (see above). Run this installer again; it repairs what an interrupted install left."
   fi
 else
   # A release from before the installer (this page can be newer than the release it installs).
   $SUDO npm install -g "$AGEND_SPEC" || error "Installation failed. Try: npm install -g $AGEND_SPEC"
 fi
+# <<< agend-installer step
 hash -r 2>/dev/null || true
 if ! command_exists agend; then
   error "Installation finished, but \`agend\` is not on PATH. Open a new terminal (or: source ~/.profile)."
