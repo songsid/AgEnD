@@ -601,27 +601,28 @@ export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageSco
 const AGY_TOKEN_FILE = ["antigravity-cli", "antigravity-oauth-token"];
 /**
  * The daily base first, the production base as the fallback. Checked live 2026-10-20 (#2240, a user's Google AI Pro
- * account, read-only) against agy's own /quota: only the daily base, asked as a current Antigravity client
- * (AGY_CLIENT_VERSION), answers with the plan's Gemini quota — agy's numbers exactly. The production base answers with
- * a free-tier Gemini bucket whatever the client says.
+ * account, read-only) against agy's own /quota: only the daily base, asked as agy's CLI asks (agyUserAgent), answers with
+ * the plan's Gemini quota and the Gemini 4 Argon group — agy's numbers exactly. The production base answers with a
+ * free-tier Gemini bucket and no Argon whatever the client says.
  */
 const AGY_CLOUDCODE_URLS = [
   "https://daily-cloudcode-pa.googleapis.com",
   "https://cloudcode-pa.googleapis.com",
 ];
 /**
- * The Antigravity client version AgEnD names itself as. The daily base gates the plan's "Gemini Models" quota on it
- * (#2240, 2026-10-20): as "antigravity" or "antigravity/1.4.2" or "/2.0.0" its summary had no Gemini group at all;
- * from 2.9.1 on it had the paid bucket. 2.24.0 is the value OpenUsage (MIT, robinebers/openusage) sends. If Google
- * raises the gate past it, the Gemini group disappears again and the row falls back to the busiest model's quota — a
- * visible gap, never wrong numbers. Bump it here.
+ * The agy CLI version AgEnD names itself as, in agy's own User-Agent (`antigravity/cli/<version> (aidev_client; …)`, as
+ * captured from agy 1.4.3's /quota, #2240, 2026-10-20). The daily base gates its summary on it: as `antigravity/cli/1.2.0`
+ * there was no Argon group, from 1.3.0 on there was; as `antigravity/cli/1.0.0` no Gemini group either; without the
+ * `cli/` segment (`antigravity/2.24.0`, OpenUsage's value) Gemini but never Argon. If Google raises the gate past it, a
+ * group disappears again and the row falls back to the busiest model's quota — a visible gap, never wrong numbers.
+ * Bump it here.
  */
-export const AGY_CLIENT_VERSION = "2.24.0";
-/** agy's own User-Agent shape (`%s/%s (aidev_client; os_type=…; arch=…)`), for this host. */
+export const AGY_CLIENT_VERSION = "1.4.3";
+/** agy's own User-Agent shape (`antigravity/cli/%s (aidev_client; os_type=…; arch=…)`), for this host. */
 export function agyUserAgent(platform: string = process.platform, arch: string = process.arch): string {
   const os = platform === "win32" ? "windows" : platform;
   const cpu = arch === "x64" ? "amd64" : arch;
-  return `antigravity/${AGY_CLIENT_VERSION} (aidev_client; os_type=${os}; arch=${cpu})`;
+  return `antigravity/cli/${AGY_CLIENT_VERSION} (aidev_client; os_type=${os}; arch=${cpu})`;
 }
 /**
  * The Google installed-app OAuth client pair, READ FROM THE INSTALLED agy
@@ -931,12 +932,18 @@ interface AgyCodeAssist { paidTier?: { id?: unknown; name?: unknown }; currentTi
 function agyCodeAssist(base: string, token: string): AgyOptionalRead<AgyCodeAssist> {
   return agyOptionalRead<AgyCodeAssist>(base, token, "loadCodeAssist", AGY_LOAD_CODE_ASSIST_BODY);
 }
-/** The plan's name from loadCodeAssist: the paid tier's, else the current tier's (its name, else its id), else null. */
+/** The plan's name from loadCodeAssist: the paid tier's, else the current tier's (its name, else its id), else null; at most
+ *  AGY_PLAN_MAX characters (it is a badge on one line, and the text comes from the server). */
 export function agyPlan(body: AgyCodeAssist | null): string | null {
   for (const tier of [body?.paidTier, body?.currentTier]) {
-    for (const v of [tier?.name, tier?.id]) if (typeof v === "string" && v.trim()) return v.trim();
+    for (const v of [tier?.name, tier?.id]) if (typeof v === "string" && v.trim()) return truncatePlan(v.trim());
   }
   return null;
+}
+const AGY_PLAN_MAX = 64;
+function truncatePlan(name: string): string {
+  const chars = [...name];
+  return chars.length <= AGY_PLAN_MAX ? name : `${chars.slice(0, AGY_PLAN_MAX - 1).join("")}…`;
 }
 
 type AgyOptionalRead<T> = { within(budgetMs: number): Promise<T | null>; cancel(): void };
