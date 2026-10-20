@@ -150,3 +150,9 @@ export function shortcutsHintOnce(o: { host: ShortcutsHost; dataDir: string; tty
   try { o.write(join(o.dataDir, SHORTCUTS_HINT_MARKER), new Date().toISOString() + "\n"); } catch { /* shown again next time */ }
   return t("shortcuts.hint");
 }
+
+/** After `agend update`: print the one-time line, if it is due (#1853). */
+export function printUpdateShortcutsHint(dataDir: string): void {
+  const line = shortcutsHintOnce({ host: realHost(), dataDir, tty: !!process.stdout.isTTY, write: (path, content) => writeFileSync(path, content) });
+  if (line) console.log(`  ${line}\n`);
+}

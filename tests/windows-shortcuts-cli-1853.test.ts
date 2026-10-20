@@ -156,8 +156,9 @@ describe("the hint after agend update", () => {
   it("agend update calls it after a successful activation and when already up to date; it never makes a shortcut", () => {
     const cli = readFileSync(join(ROOT, "src", "cli.ts"), "utf8");
     const update = cli.slice(cli.indexOf('.command("update")\n  .description("Update AgEnD'), cli.indexOf('\nprogram\n  .command(', cli.indexOf('.command("update")\n  .description("Update AgEnD')));
-    expect(update).toMatch(/if \(outcome\.ok\) await printShortcutsHint\(\);/);
-    expect(update).toMatch(/Already up to date[^\n]*\n[^\n]*setUpdateProgressStage[^\n]*\n\s*await printShortcutsHint\(\);/);
+    const hint = String.raw`await import\("./windows-shortcuts.js"\)\.then\(m => m\.printUpdateShortcutsHint\(DATA_DIR\)\)\.catch\(`;
+    expect(update).toMatch(new RegExp(String.raw`if \(outcome\.ok\) ` + hint));
+    expect(update).toMatch(new RegExp(String.raw`Already up to date[^\n]*\n[^\n]*setUpdateProgressStage[^\n]*\n\s*` + hint));      // a hint never fails an update
     expect(update).not.toMatch(/runShortcuts|Install-AgendShortcuts|powershell/);
   });
 });
