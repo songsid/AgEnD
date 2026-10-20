@@ -313,3 +313,23 @@ agend settings reject <id>
 ```
 
 在 host 上以 fleet 或 SetupHost 的相同使用者執行。它不會啟動 fleet；確認由私有本機 socket 負責。Agent session（存在 `AGEND_INSTANCE_NAME`）不能使用。套用前會再次核對 id、socket owner generation，以及檢查過的 effect／summary。過期或 stale 請求需重新提出；pending 不會跨重啟保存。
+
+## 遮蔽敏感資料的問題回報
+
+General／協調者的受管理 `bug-report` 技能會先在本機整理回報，於聊天附上遮蔽後的 Markdown 檔，再請你核准確切的標題、內文與檔案，才產生 GitHub 預填連結。也可以直接使用：
+
+```bash
+agend bug-report --since 30m --out report.json --description-file problem.txt --steps-file steps.txt
+# 檢查 report.json 與 report.json.md，使用收集時印出的 SHA256 核准：
+agend bug-report --draft report.json --approve <SHA256>
+```
+
+第二個命令只印出 GitHub 新問題的預填連結，不會開啟瀏覽器或提交。請用自己的 GitHub 帳號提交；沒有帳號也能自行保存、分享 `report.json.md`。本功能不含社群頻道、專案 webhook、內建憑證或自動上傳。
+
+預設收集最近 30 分鐘；`--since` 可用正整數 `m`、`h`、`d`，上限 7 天。`daemon.log` 與 `fleet.log` 各只讀取尾端最多 256 KiB、1,500 行，另嘗試最多 5 秒的 systemd 使用者服務日誌查詢。只選擇時間範圍內的記錄；沒有時間戳記的錯誤會標示時間未知，不宣稱發生於該區間。不讀取輪替舊檔，缺漏或無法讀取的來源會註明。環境包含已安裝的 AgEnD、Node／執行環境、作業系統與 WSL／發行版。後端 CLI 版本只讀取既有 `cli-env` 快取的版本、日期及結構化日誌，不啟動 CLI；資料未知、可能過期皆會標示。不匯出對話逐字稿、憑證設定、環境變數全集或模型目錄。
+
+共用遮蔽模組會移除憑證格式、敏感欄位、授權標頭、Cookie 與個人識別資訊。聊天內容、主題／使用者識別碼及任意日誌文字不會匯出；保留已知錯誤代碼、崩潰訊息與遮蔽後的堆疊位置，因此會損失部分細節。只有明確選用 `--keep-identifiers` 才保留郵件、IP／主機名稱、路徑中的使用者名稱；憑證與聊天識別碼仍會遮蔽。請親自檢查：自行填寫的描述若含未知格式的秘密，規則比對無法保證辨識。
+
+兩個新檔的權限皆為 0600，不覆寫既有檔案或符號連結。JSON 審閱快照綁定確切標題、內文、完整 Markdown 與提交方式；修改後須重新核准。預填網址上限為編碼後 7,500 字元；超出時完整回報仍保存在本機，核准的預填內文會請你手動附檔，不會暗中刪除證據。請核對實際附上的檔案。
+
+若你要求使用主機既有的 GitHub CLI 登入，可在收集時加 `--submit`，審閱該提交方式及文字，核准時也加 `--submit`。只有核准後才檢查登入，不會代為登入或儲存 token。超出連結容量的回報須改用連結方式手動附檔。提交逾時或結果不明時，先查 GitHub 再決定是否重試。
