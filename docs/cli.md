@@ -449,7 +449,10 @@ is inside a service cgroup, it starts the updater in an independent user scope
 before the existing two-second delay. `detached` alone does not survive a
 systemd service stop. The scope inherits the fleet's environment and working
 directory; credentials are not put in command arguments. This requires a
-reachable same-user systemd manager and `systemd-run` 240 or newer. An unknown
+reachable same-user systemd manager and `systemd-run` 240 or newer. A fleet under
+the system manager (the legacy `/etc/systemd/system/agend.service`, run as root)
+gets a scope from the system manager instead, which only root can ask for; a
+system service's fleet that is not root refuses the chat update (#2274). An unknown
 cgroup, unsupported helper or launch failure refuses the chat update and asks
 you to run `agend update` from a host shell; it never falls back into the fleet's
 cgroup. Detached Linux fleets outside service cgroups and macOS keep the

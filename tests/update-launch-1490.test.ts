@@ -36,7 +36,7 @@ vi.mock("../src/update-dispatch.js", async original => {
 vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn() }));
 import { FleetManager } from "../src/fleet-manager.js";
 import { TopicCommands } from "../src/topic-commands.js";
-import { defaultUpdateLaunchDeps, inServiceCgroup, resolveUpdateLaunch, watchUpdateLaunch, type UpdateLaunchDeps } from "../src/update-launch.js";
+import { defaultUpdateLaunchDeps, inServiceCgroup, resolveUpdateLaunch, serviceManagerOf, watchUpdateLaunch, type UpdateLaunchDeps } from "../src/update-launch.js";
 import { DELAYED_UPDATE_SCRIPT, resolveInstalledAgend } from "../src/update-dispatch.js";
 import { setLocale } from "../src/locale.js";
 
@@ -50,13 +50,32 @@ const deps = (extra: Partial<UpdateLaunchDeps> = {}): UpdateLaunchDeps => ({ pla
   version: async () => "systemd 255 (255.4-1ubuntu8)\n+PAM", nonce: () => ID, ...extra });
 
 describe("independent chat updater plan", () => {
-  it.each([CGROUP, "1:name=systemd:/system.slice/com.agend.fleet.service\n2:cpu:/\n", "0::/fleet.service/nested\n"])("service containment requires a scope: %s", async cgroup => {
+  it.each([CGROUP, "1:name=systemd:/user.slice/user-1000.slice/user@1000.service/app.slice/com.agend.fleet.service\n2:cpu:/\n"])("a user unit's containment requires a user-manager scope: %s", async cgroup => {
     const plan = await resolveUpdateLaunch(agend, deps({ cgroup: async () => cgroup }));
     expect(plan).toEqual({ ok: true, command: "systemd-run", scope: `agend-updater-${ID}.scope`, args: [
       "--user", "--scope", "--quiet", "--collect", "--no-ask-password", `--unit=agend-updater-${ID}.scope`,
       "--expand-environment=no", "--", "sh", "-c", DELAYED_UPDATE_SCRIPT, "sh", agend,
     ] });
     expect(plan).not.toHaveProperty("env");
+  });
+  // #2274: the legacy /etc/systemd/system/agend.service (root, the 2.1-era layout) has no user bus: `systemd-run --user`
+  // failed with "Failed to connect to bus" and every chat /update stopped at preparation.
+  it.each(["0::/system.slice/agend.service\n", "1:name=systemd:/system.slice/agend.service\n2:cpu:/\n", "0::/fleet.service/nested\n"])("a system unit's containment, as root, requires a system-manager scope (no --user): %s", async cgroup => {
+    const plan = await resolveUpdateLaunch(agend, deps({ cgroup: async () => cgroup, uid: () => 0 }));
+    expect(plan).toEqual({ ok: true, command: "systemd-run", scope: `agend-updater-${ID}.scope`, args: [
+      "--scope", "--quiet", "--collect", "--no-ask-password", `--unit=agend-updater-${ID}.scope`,
+      "--expand-environment=no", "--", "sh", "-c", DELAYED_UPDATE_SCRIPT, "sh", agend,
+    ] });
+  });
+  it.each([1000, -1])("a system unit's fleet that is not root (uid %i) refuses — never a scope it cannot get, never the fleet's own cgroup", async uid => {
+    const plan = await resolveUpdateLaunch(agend, deps({ cgroup: async () => "0::/system.slice/agend.service\n", uid: () => uid }));
+    expect(plan).toEqual({ ok: false, reason: "the fleet runs as a system service, and only root can give its updater a scope of its own" });
+  });
+  it("the manager comes from the path: units below user@UID.service are the user's, any other is the system's; rows that disagree are unknown", () => {
+    expect(serviceManagerOf(CGROUP)).toBe("user");
+    expect(serviceManagerOf("0::/system.slice/agend.service\n")).toBe("system");
+    expect(serviceManagerOf("0::/user.slice/user-0.slice/user@0.service/init.scope\n")).toBe(false);
+    expect(serviceManagerOf("1:name=systemd:/system.slice/agend.service\n0::/user.slice/user-1000.slice/user@1000.service/app.slice/com.agend.fleet.service\n")).toBeNull();
   });
   it.each(["0::/\n", "0::/user.slice/user-1000.slice/session-1.scope\n", "0::/user.slice/user-1000.slice/user@1000.service/app.slice/terminal.scope\n"])("proven detached owner keeps positional shell argv: %s", async cgroup => {
     const version = vi.fn();

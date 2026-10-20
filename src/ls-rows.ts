@@ -80,9 +80,55 @@ export function displayWidth(s: string): number {
   let w = 0;
   for (const ch of s) {
     const cp = ch.codePointAt(0)!;
-    // … and ─ render one column despite being above ASCII; zero-width
-    // space renders none.
-    w += (cp > 0x7f && cp !== 0x200b && cp !== 0x2026 && !(cp >= 0x2500 && cp <= 0x257f)) ? 2 : 1;
+    // Combining marks (Mn, Mc, Me) contribute 0 columns.
+    if (/\p{M}/u.test(ch)) continue;
+    // Format characters (Cf) other than ZWJ (U+200D) contribute 0 columns.
+    if (/\p{Cf}/u.test(ch) && cp !== 0x200D) continue;
+    // East-Asian Wide / Fullwidth characters take 2 terminal columns.
+    // Covers: CJK Unified Ideographs (BMP + SMP extensions), Hangul, wide
+    // punctuation, fullwidth Latin, and emoji. Latin Extended chars (é, č …)
+    // are EAW=Narrow and correctly get 1 column.
+    // Box-drawing U+2500–U+257F are 1-col despite being > U+007F; ─ and │
+    // are used in the ls table border.
+    if (cp >= 0x2500 && cp <= 0x257F) { w += 1; continue; }
+    // U+200B zero-width space.
+    if (cp === 0x200B) continue;
+    // U+2026 … is used in truncation and renders as 1 column.
+    if (cp === 0x2026) { w += 1; continue; }
+    // Emoji and pictographs (most, not all, are 2-col).
+    if (cp >= 0x1F300 && cp <= 0x1FAFF) { w += 2; continue; }
+    // SMP CJK Unified Ideographs Extension B–F (U+20000–U+2FA1F).
+    if (cp >= 0x20000 && cp <= 0x2FA1F) { w += 2; continue; }
+    // BMP East-Asian Wide / Fullwidth blocks (comprehensive).
+    if (
+      (cp >= 0x1100 && cp <= 0x115F) ||   // Hangul Jamo
+      (cp >= 0x2E80 && cp <= 0x2EFF) ||   // CJK Radicals Supplement
+      (cp >= 0x2F00 && cp <= 0x2FDF) ||   // Kangxi Radicals
+      (cp >= 0x2FF0 && cp <= 0x2FFF) ||   // Ideographic Description
+      (cp >= 0x3000 && cp <= 0x303F) ||   // CJK Symbols and Punctuation
+      (cp >= 0x3040 && cp <= 0x309F) ||   // Hiragana
+      (cp >= 0x30A0 && cp <= 0x30FF) ||   // Katakana
+      (cp >= 0x3100 && cp <= 0x312F) ||   // Bopomofo
+      (cp >= 0x3130 && cp <= 0x318F) ||   // Hangul Compatibility Jamo
+      (cp >= 0x3190 && cp <= 0x319F) ||   // Kanbun
+      (cp >= 0x31A0 && cp <= 0x31BF) ||   // Bopomofo Extended
+      (cp >= 0x31F0 && cp <= 0x31FF) ||   // Katakana Phonetic Extensions
+      (cp >= 0x3200 && cp <= 0x32FF) ||   // Enclosed CJK
+      (cp >= 0x3300 && cp <= 0x33FF) ||   // CJK Compatibility
+      (cp >= 0x3400 && cp <= 0x4DBF) ||   // CJK Extension A
+      (cp >= 0x4E00 && cp <= 0x9FFF) ||   // CJK Unified Ideographs
+      (cp >= 0xA000 && cp <= 0xA48F) ||   // Yi Syllables
+      (cp >= 0xA490 && cp <= 0xA4CF) ||   // Yi Radicals
+      (cp >= 0xA960 && cp <= 0xA97F) ||   // Hangul Jamo Extended-A
+      (cp >= 0xAC00 && cp <= 0xD7AF) ||   // Hangul Syllables
+      (cp >= 0xF900 && cp <= 0xFAFF) ||   // CJK Compatibility Ideographs
+      (cp >= 0xFE10 && cp <= 0xFE1F) ||   // Vertical Forms
+      (cp >= 0xFE30 && cp <= 0xFE4F) ||   // CJK Compatibility Forms
+      (cp >= 0xFE50 && cp <= 0xFE6F) ||   // Small Form Variants
+      (cp >= 0xFF01 && cp <= 0xFF60) ||   // Fullwidth Latin/punctuation
+      (cp >= 0xFFE0 && cp <= 0xFFE6)      // Fullwidth signs
+    ) { w += 2; continue; }
+    w += 1;
   }
   return w;
 }
@@ -108,6 +154,24 @@ export function truncateDisplay(s: string, maxWidth: number): string {
 
 /** Max model column: fits claude-sonnet-4.6 whole, truncates the 21+ ones. */
 export const MODEL_DISPLAY_WIDTH_MAX = 20;
+
+/**
+ * Compute the Name column width for `agend ls`: the maximum display-width
+ * of any name plus one space, at least `minW` (default 16). Exported so
+ * tests can call the same function cli.ts uses — reverting cli.ts to
+ * `r.name.length` instead of this function will break those tests.
+ */
+export function computeLsNameWidth(names: string[], minW = 16): number {
+  return Math.max(minW, ...names.map(n => displayWidth(n) + 1));
+}
+
+/**
+ * Pad `s` to `w` display columns by appending spaces. CJK/emoji-aware.
+ * Used by the agend ls Name cell and the attach picker/ambiguity formatter.
+ */
+export function padToDisplayWidth(s: string, w: number): string {
+  return s + " ".repeat(Math.max(0, w - displayWidth(s)));
+}
 
 /**
  * Status icon shared by `agend ls` and /status's merged State column (#1052):

@@ -182,19 +182,23 @@ export function guestSeesMessage(m: WebChatMessage, guest: GuestRequest, scope: 
 }
 /**
  * A message as a guest gets it: without whose account wrote it (`mine` says it was the guest), and without another
- * person's message id and ticks; never an effect Try (effects stay admin-only).
+ * person's message id and ticks; never an effect Try (effects stay admin-only). A reply's quote (#2272) only when the
+ * guest may see the message it quotes — otherwise just that it replies to an earlier message (`hidden`).
  */
-export function guestMessage(m: WebChatMessage, guest: GuestRequest): Record<string, unknown> {
-  const { from, channel: _channel, messageId, delivery, effectTrial: _trial, seenSeq: _seen, ...rest } = m;
+export function guestMessage(m: WebChatMessage, guest: GuestRequest, scope?: ReadonlySet<string>): Record<string, unknown> {
+  const { from, channel: _channel, messageId, delivery, effectTrial: _trial, seenSeq: _seen, replyTo, ...rest } = m;
   void _channel; void _trial; void _seen;
   const mine = from === accountOf(guest.owner);
   // #2085 review: a click's `text` is what the agent was given — the button's value too, which the platform never
   // shows. A guest gets the label, as the channel showed it.
   const click = rest.click ? { text: rest.click.label } : {};
-  return { ...rest, ...click, ...(mine ? { mine: true } : {}), ...(mine && messageId ? { messageId } : {}), ...(mine && delivery ? { delivery } : {}) };
+  const quotedRow = replyTo && scope ? guest.history?.()?.find(m.instance, replyTo.boot, replyTo.id) : undefined;
+  const quote = !replyTo ? {} : quotedRow && scope && guestSeesMessage(quotedRow, guest, scope)
+    ? { replyTo } : { replyTo: { boot: replyTo.boot, id: replyTo.id, hidden: true } };
+  return { ...rest, ...click, ...quote, ...(mine ? { mine: true } : {}), ...(mine && messageId ? { messageId } : {}), ...(mine && delivery ? { delivery } : {}) };
 }
 const visibleList = (rows: readonly WebChatMessage[], guest: GuestRequest, scope: ReadonlySet<string>) =>
-  rows.filter((m) => !m.effectTrial && guestSeesMessage(m, guest, scope)).map((m) => guestMessage(m, guest));
+  rows.filter((m) => !m.effectTrial && guestSeesMessage(m, guest, scope)).map((m) => guestMessage(m, guest, scope));
 
 /**
  * One stream event as a guest gets it, or undefined (not sent). Default deny:
@@ -211,7 +215,7 @@ export function guestFrameData(event: string, data: unknown, scope: ReadonlySet<
   if (!guest) return undefined;
   if (event === "message") {
     const m = data as WebChatMessage;
-    return typeof m?.instance === "string" && guestSeesMessage(m, guest, scope) ? guestMessage(m, guest) : undefined;
+    return typeof m?.instance === "string" && guestSeesMessage(m, guest, scope) ? guestMessage(m, guest, scope) : undefined;
   }
   const history = guest.history?.();
   if (!history || typeof d.instance !== "string" || !scope.has(d.instance)) return undefined;

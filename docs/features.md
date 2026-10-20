@@ -754,7 +754,7 @@ When `project_roots` is configured in `fleet.yaml`, `create_instance` validates 
 
 ## reply_to_text injection
 
-When a user replies to a previous message in Telegram, the quoted text is included in the formatted message delivered to the agent. This gives agents context about what the user is referring to.
+When a user replies to a previous message in Telegram, Discord or the web chat (#2272), the quoted text is included in the formatted message delivered to the agent as `(reply_to: "…")`. This gives agents context about what the user is referring to.
 
 ## delete_instance team cleanup
 

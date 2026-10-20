@@ -296,6 +296,8 @@ Detached restart 使用非同步 polling 與 monotonic deadline。期限到了�
 會先把 updater 移到獨立的 user scope，再等待原有的兩秒延遲。單靠 `detached`
 無法讓程序活過 systemd 服務停止。Scope 繼承 fleet 的環境與工作目錄；憑證不會放進
 命令參數。這需要可連線的同使用者 systemd manager，以及 240 以上的 `systemd-run`。
+由系統 manager 執行的 fleet（舊的 `/etc/systemd/system/agend.service`，以 root 執行）
+改用系統 manager 的 scope，只有 root 能申請；不是 root 的系統服務 fleet 會拒絕聊天更新（#2274）。
 Cgroup 不明、helper 不支援或啟動失敗時，聊天更新會拒絕並提示從主機 shell 執行
 `agend update`，不會退回 fleet 的 cgroup。Linux 上不在服務 cgroup 內的 detached
 fleet 與 macOS 維持原有啟動路徑。Scope 隔離的是 fleet 停止，無法抵抗主機關機，

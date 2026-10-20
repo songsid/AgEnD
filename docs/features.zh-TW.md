@@ -723,7 +723,7 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 
 ## reply_to_text 注入 (reply_to_text injection)
 
-使用者在 Telegram 裡回覆先前的訊息時，被引用的文字會包含在送給 agent 的格式化訊息中，讓 agent 知道使用者指的是哪件事。
+使用者在 Telegram、Discord 或 web chat（#2272）裡回覆先前的訊息時，被引用的文字會以 `(reply_to: "…")` 包含在送給 agent 的格式化訊息中，讓 agent 知道使用者指的是哪件事。
 
 ## delete_instance 自動清理 team (delete_instance team cleanup)
 

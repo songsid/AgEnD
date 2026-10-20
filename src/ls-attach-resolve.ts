@@ -4,6 +4,8 @@
  * and fuzzy suggestions without spawning a process.
  */
 
+import { displayWidth } from "./ls-rows.js";
+
 export interface Candidate {
   /** 1-based global row number as shown in `agend ls` — stable across filters. */
   idx: number;
@@ -171,22 +173,27 @@ export function pickerDefaultIdx(displayedCandidates: Pick<Candidate, "idx">[]):
 /**
  * Format one line of the ambiguity candidate list.
  * Shows: `  #) realName  [status]  teams` — no display label in output.
- * `maxNameW` pads names for column alignment.
+ * `maxNameW` is the max DISPLAY width across all shown candidates;
+ * padding is display-width-aware so CJK names align correctly.
  */
 export function ambiguityLine(c: Candidate, maxNameW: number): string {
   const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
-  return `  ${String(c.idx).padStart(2)}) ${c.realName.padEnd(maxNameW)}  [${c.status}]  ${teams}`;
+  const nameW = displayWidth(c.realName);
+  const pad = " ".repeat(Math.max(0, maxNameW - nameW));
+  return `  ${String(c.idx).padStart(2)}) ${c.realName}${pad}  [${c.status}]  ${teams}`;
 }
 
 /**
  * Format one line of the interactive picker list.
  * Shows: `  #) statusGlyph realName  teams` — no display label in output.
- * `maxNameW` pads names for column alignment.
+ * `maxNameW` is the max DISPLAY width across all shown candidates.
  */
 export function pickerLine(c: Candidate, maxNameW: number): string {
   const statusGlyph = c.status === "running" ? "●" : c.status === "paused" ? "○" : "✗";
   const teams = c.teams.filter(t => t !== "(classic)").join(",") || "-";
-  return `  ${String(c.idx).padStart(2)}) ${statusGlyph} ${c.realName.padEnd(maxNameW)}  ${teams}`;
+  const nameW = displayWidth(c.realName);
+  const pad = " ".repeat(Math.max(0, maxNameW - nameW));
+  return `  ${String(c.idx).padStart(2)}) ${statusGlyph} ${c.realName}${pad}  ${teams}`;
 }
 
 /**
