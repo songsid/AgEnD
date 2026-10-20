@@ -17,8 +17,8 @@
  *      it, or a conflict resolved to one side that dropped the other side's entries) is refused unless that merge is
  *      marked.
  * Whatever the PR does to the CHANGELOG:
- *   3. every fragment the PR deletes has its entry in the head's CHANGELOG (same language), so a merge that resolved
- *      the CHANGELOG back to the base branch's after the assemble commit cannot lose the entries it moved.
+ *   3. every fragment the PR deletes has its entry in the head's CHANGELOG (same language), unless explicitly
+ *      withdrawn and never present in any v* release tag. Release age alone is not withdrawal intent.
  *
  * This is judged on content, not on merge topology: a long-lived line whose old merge-syncs combined both sides'
  * CHANGELOG changes passes once its files equal the base branch's and its entries are fragments (docs/development.md).
@@ -53,6 +53,57 @@ function blocksAt(cwd, commit, file) {
 }
 
 const firstLine = block => block.split("\n")[0].slice(0, 80);
+
+/** Net additions since the base's release boundary; unknown history grants no exemption. */
+function unreleasedFragments(cwd, base, mergeBase) {
+  try {
+    const release = git(cwd, ["describe", "--tags", "--abbrev=0", "--match", "v*", base]).trim();
+    // A PR behind a newer release cannot compare that release's removed
+    // fragments backwards and mistake them for new, unshipped additions.
+    git(cwd, ["merge-base", "--is-ancestor", release, mergeBase]);
+    return new Set(lines(git(cwd, ["diff", "--name-only", "--no-renames", "--diff-filter=A", release, mergeBase, "--", "changes/"])));
+  } catch {
+    return new Set(); // no reachable release, unavailable history, or a newer boundary
+  }
+}
+
+/** A withdrawal marker vouches only for paths deleted in that commit's parent diff. */
+function declaredWithdrawals(cwd, base, head) {
+  const withdrawn = new Set();
+  for (const commit of lines(git(cwd, ["rev-list", `${base}..${head}`]))) {
+    const declared = new Set(git(cwd, ["log", "-1", "--format=%B", commit]).split(/\r?\n/)
+      .map(line => /^Changelog: withdraw (changes\/[^\s]+\.md)$/.exec(line.trim())?.[1]).filter(Boolean));
+    if (!declared.size) continue;
+    const parents = git(cwd, ["rev-list", "--parents", "-n", "1", commit]).trim().split(/\s+/).slice(1);
+    for (const parent of parents) {
+      for (const file of lines(git(cwd, ["diff", "--name-only", "--no-renames", "--diff-filter=D", parent, commit, "--", "changes/"]))) {
+        // Restoring a fragment revokes an earlier withdrawal; a later
+        // accidental deletion must carry its own declaration.
+        if (declared.has(file) && !git(cwd, ["log", "--format=%H", "--full-history", "--ancestry-path", "-m",
+          "--diff-filter=A", `${commit}..${head}`, "--", file]).trim()) withdrawn.add(file);
+      }
+    }
+  }
+  return withdrawn;
+}
+
+/** Every available release tag counts, including tags outside the base's history. */
+function releasedFragments(cwd) {
+  try {
+    if (git(cwd, ["rev-parse", "--is-shallow-repository"]).trim() !== "false") return null;
+    const released = { paths: new Set(), en: new Set(), zh: new Set() };
+    for (const tag of lines(git(cwd, ["for-each-ref", "--format=%(refname)", "refs/tags/v*"]))) {
+      for (const file of lines(git(cwd, ["ls-tree", "-r", "--name-only", tag, "--", "changes/"]))) released.paths.add(file);
+      // Assembly removes the file before tagging. Its shipped entry still
+      // counts even when no release tree contains the fragment path itself.
+      for (const block of blocksAt(cwd, tag, CHANGELOG_FILES[0])) released.en.add(block);
+      for (const block of blocksAt(cwd, tag, CHANGELOG_FILES[1])) released.zh.add(block);
+    }
+    return released;
+  } catch {
+    return null; // unavailable tag/history is not proof that a fragment never shipped
+  }
+}
 
 /** Returns { ok: true } or { ok: false, reason }. Throws on a git failure. */
 export function checkChangelogEdits(cwd, base, head) {
@@ -91,13 +142,20 @@ export function checkChangelogEdits(cwd, base, head) {
     }
   }
 
-  // 3. A deleted fragment's entry is in the head's CHANGELOG.
+  // 3. Released/unknown fragments must retain their entries; a post-release
+  // addition may be withdrawn without inventing a shipped CHANGELOG entry.
+  const unreleased = deleted.length ? unreleasedFragments(cwd, base, mb) : new Set();
+  const withdrawn = deleted.length ? declaredWithdrawals(cwd, base, head) : new Set();
+  const released = deleted.some(file => withdrawn.has(file) && unreleased.has(file)) ? releasedFragments(cwd) : null;
   const headBlocks = { en: blocksAt(cwd, head, CHANGELOG_FILES[0]), zh: blocksAt(cwd, head, CHANGELOG_FILES[1]) };
   for (const file of deleted) {
     const parsed = parseFragment(git(cwd, ["show", `${mb}:${file}`]));
     if (parsed.error) continue;                   // was never a valid fragment; --check reported it when it landed
-    const have = headBlocks[file.endsWith(".zh-TW.md") ? "zh" : "en"];
-    if (!entryBlocks(parsed.body.split("\n")).every(b => have.has(b))) {
+    const lang = file.endsWith(".zh-TW.md") ? "zh" : "en";
+    const entries = entryBlocks(parsed.body.split("\n"));
+    if (withdrawn.has(file) && unreleased.has(file) && released && !released.paths.has(file)
+      && entries.every(block => !released[lang].has(block))) continue;
+    if (!entries.every(b => headBlocks[lang].has(b))) {
       problems.push(`${file} is deleted but its entry is not in the CHANGELOG: ${firstLine(parsed.body)}`);
     }
   }

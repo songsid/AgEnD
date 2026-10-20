@@ -41,6 +41,8 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
         <li>• 安裝程式要啟用 WSL，所以 Windows 會詢問一次<b class="text-text-primary">系統管理員</b>權限。選「是」之後，安裝程式會在新視窗裡執行。如果你開的已經是系統管理員 PowerShell，就直接在原視窗執行。</li>
         <li>• <code class="font-mono text-accent">-ExecutionPolicy ByPass</code> 只對這一個指令有效，不會改動你的執行原則，也不需要解除封鎖檔案。</li>
         <li>• <b class="text-text-primary">如果要求重新開機</b>，重開之後再貼上同一行指令，就會從中斷處繼續。</li>
+        <li>• 每個比較久的步驟都會顯示已經過多久、通常需要多久，下面還有那個工具自己的進度。</li>
+        <li>• <b class="text-text-primary">請不要按 Ctrl+C</b>：在那個視窗裡，它是「停止程式」，不是「複製」（自動安裝的步驟中按到，會先問你）。要複製，用滑鼠選取文字再按右鍵；要貼上，按右鍵。</li>
       </ul>
       <p class="mt-4 text-sm text-text-secondary">
         想自己下載腳本再執行？請看<a href="#manual" class="text-accent hover:underline">手動安裝</a>。

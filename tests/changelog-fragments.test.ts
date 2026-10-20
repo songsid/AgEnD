@@ -371,8 +371,9 @@ type CiStep = { name?: string; run?: string; if?: string; uses?: string; with?: 
 // In the refactored multi-job CI (post-#1391), changelog guards live in the
 // dedicated `changelog` job (no npm ci), not in the monolithic `build` job.
 const ciSteps = (yaml.load(readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8")) as { jobs: { changelog: { steps: CiStep[] } } }).jobs.changelog.steps;
+const withdrawPair = (n: string) => `Changelog: withdraw changes/${n}.md\nChangelog: withdraw changes/${n}.zh-TW.md`;
 
-function gitRepo() {
+function gitRepo(releaseTag?: "lightweight" | "annotated") {
   const dir = scratch("agend-changelog-guard-");
   const env = { ...process.env, HOME: dir, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.invalid" };
   const git = (...args: string[]) => {
@@ -391,6 +392,7 @@ function gitRepo() {
   };
   git("init", "-q", "-b", "main");
   const base = commit("init", { "docs/CHANGELOG.md": EN, "docs/CHANGELOG.zh-TW.md": ZH, "src/a.ts": "1\n" });
+  if (releaseTag) git("tag", ...(releaseTag === "annotated" ? ["-a", "-m", "release"] : []), "v1.0.0", base);
   git("checkout", "-q", "-b", "pr");
   // Runs ci.yml's guard step the way Actions does: bash -e, its env, from the checkout.
   const step = ciSteps.find(s => s.name === "CHANGELOG is assembled, not edited")!;
@@ -553,8 +555,8 @@ describe("changelog-guard (ci.yml's step, on a scratch repository)", () => {
   });
 
   // Prism #1333 r1: a conflict between the PR's assemble commit and main, resolved to one side by an unmarked merge.
-  const conflicted = () => {
-    const r = gitRepo();
+  const conflicted = (releaseTag?: "lightweight" | "annotated") => {
+    const r = gitRepo(releaseTag);
     r.git("checkout", "-q", "main");
     r.commit("fragments land on main", { "changes/5.md": frag("Fixed", "- **five (#5).** f"), "changes/5.zh-TW.md": frag("Fixed", "- **五（#5）。** f") });
     r.git("checkout", "-q", "pr");
@@ -582,6 +584,15 @@ describe("changelog-guard (ci.yml's step, on a scratch repository)", () => {
     const res = r.guard(mainTip, r.git("rev-parse", "HEAD"));
     expect(res.status).toBe(1);
     expect(res.stdout).toMatch(why);
+  });
+
+  it.each(["lightweight", "annotated"] as const)("a %s release tag does not excuse entries lost after an assemble merge", tag => {
+    const { r, mainTip } = conflicted(tag);
+    r.git("checkout", "--theirs", "--", "docs/CHANGELOG.md");
+    r.git("add", "-A"); r.git("commit", "-q", "--no-edit");
+    const res = r.guard(mainTip, r.git("rev-parse", "HEAD"));
+    expect(res.status).toBe(1);
+    expect(res.stdout).toMatch(/changes\/5\.md is deleted but its entry is not in the CHANGELOG/);
   });
 
   it("the same conflict, resolved to keep both and the merge marked → passes", () => {
@@ -617,6 +628,148 @@ describe("changelog-guard (ci.yml's step, on a scratch repository)", () => {
     const res = r.guard(mainTip, r.git("rev-parse", "HEAD"));
     expect(res.status).toBe(1);
     expect(res.stdout).toMatch(/changes\/30\.md is deleted but its entry is not in the CHANGELOG/);
+  });
+
+  it.each(["lightweight", "annotated"] as const)("a %s release tag does not authorize an unmarked fragment deletion", tag => {
+    const r = gitRepo(tag);
+    r.git("checkout", "-q", "main");
+    const mainTip = r.commit("fragments", { "changes/30.md": frag("Fixed", "- x"), "changes/30.zh-TW.md": frag("Fixed", "- y") });
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/30.md", "changes/30.zh-TW.md");
+    const res = r.guard(mainTip, r.commit("tidy without withdrawal intent", {}));
+    expect(res.status).toBe(1);
+    expect(res.stdout).toMatch(/changes\/30\.md is deleted but its entry is not in the CHANGELOG/);
+  });
+
+  it.each([false, true])("removing a fragment added after the base's latest release passes (annotated=%s)", annotated => {
+    const r = gitRepo();
+    r.git("tag", ...(annotated ? ["-a", "-m", "release"] : []), "v1.0.0", r.base);
+    r.git("checkout", "-q", "main");
+    const mainTip = r.commit("unreleased fragments", {
+      "changes/31.md": frag("Fixed", "- x"), "changes/31.zh-TW.md": frag("Fixed", "- y"),
+    });
+    r.git("tag", "build-latest"); // A non-release tag must not change the boundary.
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/31.md", "changes/31.zh-TW.md");
+    const head = r.commit(`withdraw unreleased feature\n\n${withdrawPair("31")}`, {});
+    r.git("tag", "v99.0.0", head); // A tag reachable only from the PR cannot authorize its deletion.
+    const res = r.guard(mainTip, head);
+    expect(res.status, res.stdout + res.stderr).toBe(0);
+  });
+
+  it("a fragment present at the latest release still needs its entry, even if edited afterwards", () => {
+    const r = gitRepo(); r.git("tag", "v1.0.0", r.base);
+    r.git("checkout", "-q", "main");
+    r.commit("fragments", { "changes/32.md": frag("Fixed", "- x"), "changes/32.zh-TW.md": frag("Fixed", "- y") });
+    r.git("tag", "v1.1.0");
+    const mainTip = r.commit("edit fragment after release", {
+      "changes/32.md": frag("Fixed", "- edited"), "changes/32.zh-TW.md": frag("Fixed", "- edited zh"),
+    });
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/32.md", "changes/32.zh-TW.md");
+    const res = r.guard(mainTip, r.commit(`drop released fragment\n\n${withdrawPair("32")}`, {}));
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain("changes/32.md is deleted but its entry is not in the CHANGELOG");
+  });
+
+  it("a PR behind a release cannot treat that release's assembled fragment as new", () => {
+    const r = gitRepo(); r.git("tag", "v1.0.0", r.base);
+    r.git("checkout", "-q", "main");
+    r.commit("fragments", { "changes/33.md": frag("Fixed", "- x"), "changes/33.zh-TW.md": frag("Fixed", "- y") });
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/33.md", "changes/33.zh-TW.md");
+    const head = r.commit(`drop fragment without entry\n\n${withdrawPair("33")}`, {});
+    r.git("checkout", "-q", "main");
+    r.git("rm", "-q", "changes/33.md", "changes/33.zh-TW.md");
+    const mainTip = r.commit("release assembled entry\n\nChangelog: assemble", {
+      "docs/CHANGELOG.md": EN.replace("### Fixed\n", "### Fixed\n- x\n"),
+      "docs/CHANGELOG.zh-TW.md": ZH.replace("### 修正 (Fixed)\n", "### 修正 (Fixed)\n- y\n"),
+    });
+    r.git("tag", "v1.1.0");
+    const res = r.guard(mainTip, head);
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain("changes/33.md is deleted but its entry is not in the CHANGELOG");
+  });
+
+  it.each([false, true])("a marked withdrawal cannot remove a fragment shipped outside the base's history (assembled=%s)", assembled => {
+    const r = gitRepo("lightweight"); r.git("checkout", "-q", "main");
+    const mainTip = r.commit("fragments", { "changes/34.md": frag("Fixed", "- x"), "changes/34.zh-TW.md": frag("Fixed", "- y") });
+    r.git("checkout", "-q", "-b", "release-side");
+    if (assembled) r.git("rm", "-q", "changes/34.md", "changes/34.zh-TW.md");
+    r.commit("release-side work", assembled ? {
+      "docs/CHANGELOG.md": EN.replace("### Fixed\n", "### Fixed\n- x\n"),
+      "docs/CHANGELOG.zh-TW.md": ZH.replace("### 修正 (Fixed)\n", "### 修正 (Fixed)\n- y\n"),
+    } : { "src/released.ts": "1\n" });
+    r.git("tag", "v2.0.0");
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/34.md", "changes/34.zh-TW.md");
+    const res = r.guard(mainTip, r.commit(`withdraw\n\n${withdrawPair("34")}`, {}));
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain("changes/34.md is deleted but its entry is not in the CHANGELOG");
+  });
+
+  it("merge-sync declarations work in PR history and in a squash push only when its body preserves them", () => {
+    const r = gitRepo("lightweight"); r.git("checkout", "-q", "main");
+    r.commit("fragments", { "changes/35.md": frag("Fixed", "- x"), "changes/35.zh-TW.md": frag("Fixed", "- y") });
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/35.md", "changes/35.zh-TW.md"); r.commit("unmodified revert", {});
+    r.git("checkout", "-q", "main"); const mainTip = r.commit("guard prerequisite", { "src/main.ts": "1\n" });
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-commit", "main");
+    const body = `User-requested withdrawal\n\n${withdrawPair("35")}`;
+    const head = r.commit(`Merge main\n\n${withdrawPair("35")}`, {});
+    const pr = r.guard(mainTip, head);
+    expect(pr.status, pr.stdout + pr.stderr).toBe(0);
+    // gate-support.mjs prepare copies the PR body to gh --body-file.
+    for (const marked of [false, true]) {
+      r.git("checkout", "-q", "-b", marked ? "squash-marked" : "squash-unmarked", mainTip);
+      r.git("merge", "-q", "--squash", "pr");
+      const pushed = r.commit(marked ? body : "Squash without withdrawal declaration", {});
+      const push = r.guard(mainTip, pushed);
+      expect(push.status, push.stdout + push.stderr).toBe(marked ? 0 : 1);
+    }
+  });
+
+  it("a declaration covers only its named paths that the declaring commit actually deletes", () => {
+    const r = gitRepo("lightweight"); r.git("checkout", "-q", "main");
+    const mainTip = r.commit("fragments", { "changes/36.md": frag("Fixed", "- x"), "changes/36.zh-TW.md": frag("Fixed", "- y") });
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.commit(`premature marker\n\n${withdrawPair("36")}`, { "src/a.ts": "2\n" });
+    r.git("rm", "-q", "changes/36.md", "changes/36.zh-TW.md");
+    const res = r.guard(mainTip, r.commit("undeclared deletion", {}));
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain("changes/36.md is deleted but its entry is not in the CHANGELOG");
+  });
+
+  it("marking one half does not authorize deleting its unmarked pair", () => {
+    const r = gitRepo("lightweight"); r.git("checkout", "-q", "main");
+    const mainTip = r.commit("fragments", { "changes/37.md": frag("Fixed", "- x"), "changes/37.zh-TW.md": frag("Fixed", "- y") });
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/37.md", "changes/37.zh-TW.md");
+    const res = r.guard(mainTip, r.commit("withdraw\n\nChangelog: withdraw changes/37.md", {}));
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain("changes/37.zh-TW.md is deleted but its entry is not in the CHANGELOG");
+  });
+
+  it("restoring a withdrawn fragment revokes old intent before another deletion", () => {
+    const r = gitRepo("lightweight"); r.git("checkout", "-q", "main");
+    const pair = { "changes/38.md": frag("Fixed", "- x"), "changes/38.zh-TW.md": frag("Fixed", "- y") };
+    const mainTip = r.commit("fragments", pair);
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/38.md", "changes/38.zh-TW.md"); r.commit(`withdraw\n\n${withdrawPair("38")}`, {});
+    r.commit("restore fragment", pair);
+    r.git("rm", "-q", "changes/38.md", "changes/38.zh-TW.md");
+    expect(r.guard(mainTip, r.commit("accidental second deletion", {})).status).toBe(1);
+  });
+
+  it.each(["bare", "inline"])("a %s mention is not a per-path withdrawal trailer", kind => {
+    const r = gitRepo("lightweight"); r.git("checkout", "-q", "main");
+    const mainTip = r.commit("fragments", { "changes/39.md": frag("Fixed", "- x"), "changes/39.zh-TW.md": frag("Fixed", "- y") });
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/39.md", "changes/39.zh-TW.md");
+    const marker = kind === "bare" ? "Changelog: withdraw" : withdrawPair("39").split("\n").map(line => `Prose mentions ${line}`).join("\n");
+    const res = r.guard(mainTip, r.commit(`tidy\n\n${marker}`, {}));
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain("changes/39.md is deleted but its entry is not in the CHANGELOG");
   });
 
   it("an edit the PR reverted, while main moved on with CHANGELOG changes of its own → passes (counted from the merge-base)", () => {

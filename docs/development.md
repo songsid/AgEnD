@@ -194,7 +194,30 @@ node scripts/changelog-assemble.mjs --check                         # validate o
     That covers an edit slipped into a merge, or a conflict resolved to one
     side that dropped the other side's entries. A merge that resolves a
     CHANGELOG conflict on purpose carries the trailer too;
-  - a fragment the PR deletes does not have its entry in the CHANGELOG.
+  - a fragment the PR deletes does not have its entry in the CHANGELOG,
+    unless its withdrawal is explicitly declared and it never shipped.
+
+For an intentional withdrawal, add exact per-file trailers to the deleting
+commit (or a merge commit whose parent diff deletes those files):
+
+```text
+Changelog: withdraw changes/1328.md
+Changelog: withdraw changes/1328.zh-TW.md
+```
+
+Include the same lines in the PR body: `gate-support.mjs` copies that body
+into the squash commit, preserving the declaration for push-history checks.
+A marker covers only its named paths actually deleted by that commit; a
+later restoration revokes its intent. An inline mention or a bare marker
+without a path does not declare a withdrawal.
+
+Only net additions after the newest `v*` release tag reachable from the
+base are eligible (`git describe --tags --abbrev=0 --match 'v*' <base>`).
+Neither the fragment path nor its assembled entries may appear in **any**
+`v*` tag, including releases outside the base's history. Release age alone
+does not excuse lost assemble entries or unmarked deletions. A release newer
+than the merge-base, shallow or unavailable history, or missing release
+evidence keeps the strict entry-preservation rule.
 
 #### A long-lived line landing on `main`
 

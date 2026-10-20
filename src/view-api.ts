@@ -37,6 +37,7 @@ import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { tmuxExecHelper } from "./tmux-exec-helper.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import Database from "better-sqlite3";
 import type { FleetConfig } from "./types.js";
@@ -284,10 +285,13 @@ async function capturePane(ctx: ViewApiContext, name: string): Promise<{ text: s
   const target = paneTarget(ctx, name);
   if (!target) return { text: "", size: null };
   const [text, size] = await Promise.all([
-    execFileP("tmux", tmuxArgs(["capture-pane", "-p", "-e", "-t", target]), { maxBuffer: 8 * 1024 * 1024 })
+    // #1956: through the fleet's spawn helper when it runs (a viewer polls this every 800 ms).
+    tmuxExecHelper.exec("tmux", tmuxArgs(["capture-pane", "-p", "-e", "-t", target]), { maxBuffer: 8 * 1024 * 1024 },
+      () => execFileP("tmux", tmuxArgs(["capture-pane", "-p", "-e", "-t", target]), { maxBuffer: 8 * 1024 * 1024 }))
       .then(r => r.stdout),
     // display-message resolves the window's *active* pane, matching capture-pane.
-    execFileP("tmux", tmuxArgs(["display-message", "-p", "-t", target, "#{pane_width}x#{pane_height}"]))
+    tmuxExecHelper.exec("tmux", tmuxArgs(["display-message", "-p", "-t", target, "#{pane_width}x#{pane_height}"]), {},
+      () => execFileP("tmux", tmuxArgs(["display-message", "-p", "-t", target, "#{pane_width}x#{pane_height}"])))
       .then(r => parsePaneSize(r.stdout))
       // A missing size must not fail the whole capture — the client falls back
       // to its last known size (or skips refitting) when the headers are absent.

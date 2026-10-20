@@ -28,6 +28,36 @@ Registration tokens prevent unregister/re-register ABA; connection ownership pre
 
 Health uses the strict list path: lane saturation, timeout, transport failure or stopped reads reject and enter the existing consecutive-query-failure defer policy. They never become a successful empty list or immediate proof that a healthy window vanished. The broad best-effort list API remains for callers that intentionally accept an empty fallback.
 
+## The commands that still start a process: the spawn helper (#1956)
+
+Writes (send-keys, load-buffer/paste-buffer, create/kill, set-option), stty, `/view`'s capture, and the managers built
+without a read port still start one `tmux` process per command. Node starts it by forking the fleet synchronously, and
+that fork's cost grows with the fleet's resident memory (measured: ~3 ms per 100 MB on an idle host — 17 ms at 550 MB —
+and ~110 ms per call, up to 750 ms, on the live host's busy one). `src/tmux-exec-helper.ts` hands those commands to a
+small helper process started once with the fleet (`startAll`; restarted with backoff by the fleet's own 5 s timer, never
+by a tool handler; stopped when `stopAll` ends), so the fork is the helper's and the fleet's loop only writes to a pipe.
+
+- Semantics are the direct call's: the same file (tmux or stty only, by the absolute path the helper resolved when it
+  started; a call whose PATH resolves the name to another binary goes direct), argv, env, timeout, maxBuffer and stdin
+  input; the same result and the same error shape. Requests run concurrently in the helper; a caller that awaits each
+  call keeps its order. Each call site passes its own original direct call, used byte for byte whenever the helper is
+  not used (not started, stopped, retired, or the binary not on its list).
+- Never twice: the helper writes "started" with a synchronous write before it forks. A call it never said "started" for
+  goes direct only after the helper has been ended and its output read to the end (`close`), so it can no longer start
+  it. A call it did say "started" for is answered by it, or — no answer by the command's timeout plus a grace — fails
+  the way a timed-out direct call fails; it is never run again directly. A call with no timeout of its own gets a
+  deadline of 125 s through the helper (a direct call would wait forever).
+- A stall is the fleet's, not the helper's: the 1.5 s start timeout is judged only once the poll after it has run
+  (`setImmediate`), so a fleet loop held past it (a GC, a long sync read, its own spawn) does not miss a "started" that
+  sat in the pipe. A helper taken as wedged while commands it started still run is not killed (that would not stop
+  them, and their calls would fail though they ran): its stdin is ended and it exits once they have answered. `stop()`
+  does the same.
+- It dies with the fleet: its stdin closes (the fleet's end of the pipe), and it also exits when its parent no longer
+  exists (`kill(parent, 0)` is ESRCH) — node reads `process.ppid` once, so the parent's death is not seen through it.
+  It is a plain child in the fleet's process group and cgroup (systemd's control-group kill takes it too). While a call
+  waits on it, it keeps the fleet's process alive as a direct call's child would; idle, it never does.
+- Reads through the control lane are unchanged (the lane's own spawn fallback still spawns directly).
+
 ## Validation and limits
 
 Unit tests use real client/manager/Daemon handler methods with fake child processes, streams and monotonic clocks. The benchmark declares 40 fixture instances over `(30.001s,90.001s]`, includes the whole 60–89.25s staggered sweep, and injects six output-driven captures per instance. Legacy reads total `40 × (24 monitor + 2 health + 1 sweep + 6 output) = 1,320` subprocess starts; connected control reads start zero. One control attachment per connection is outside the steady-state read count. A 1ms inert native-start cost is injected; measured synchronous API submission wall times are fixture results, not production loop/CPU measurements.

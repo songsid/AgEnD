@@ -1,16 +1,19 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { measureSyncWork } from "./sync-work-attribution.js";
 import type { TerminalConfig } from "./types.js";
 import { tmuxReadArgs, type TmuxReadPort, type TmuxReadQuery } from "./tmux-read.js";
+import { tmuxExecHelper } from "./tmux-exec-helper.js";
+import { measureSyncWork } from "./sync-work-attribution.js";
 
 const execAsync = promisify(execFile);
 /**
- * Every `tmux` call here. Starting the child process is synchronous on the fleet's loop (fork/exec of a large process),
- * and a sweep starts one per instance in the same tick (the shared control client's 60 s safety sweep): the spawn is
- * attributed so a stall made of N of them names itself (#1235). The promise itself is unchanged.
+ * Every `tmux` (and `stty`) call here. Starting a child process is synchronous on the fleet's loop — a fork whose cost
+ * grows with the fleet's memory (#1235, #1956) — so the fleet's spawn helper starts it when it is running; otherwise it
+ * is the direct call, attributed as "tmux.spawn" as before. Either way: the same command, once; the same result.
  */
-const exec = ((...args: Parameters<typeof execAsync>) => measureSyncWork("tmux.spawn", () => execAsync(...args))) as typeof execAsync;
+const exec = ((file: string, args: string[], opts?: { timeout?: number; maxBuffer?: number }) =>
+  tmuxExecHelper.exec(file, args, opts ?? {}, () => measureSyncWork("tmux.spawn", () => opts === undefined ? execAsync(file, args) : execAsync(file, args, opts)))
+) as unknown as typeof execAsync;
 /** `exec`, bounded when a timeout is given — and in exactly the old (file, args) form when it is not. */
 const execBounded = (args: string[], timeoutMs?: number) => timeoutMs ? exec("tmux", args, { timeout: timeoutMs }) : exec("tmux", args);
 /** Keys sendKeySequence may send: cursor moves and deletions inside an input line. */
@@ -48,12 +51,21 @@ function execTmuxWithInput(tmuxArgs: string[], input: string, timeoutMs?: number
       if (detail && !error.message.includes(detail)) error.message = `${error.message}: ${detail}`;
       reject(error);
     };
-    // Options only when a bound is asked for: every other caller keeps execFile's (file, args, callback) form.
-    const child = measureSyncWork("tmux.spawn", () => timeoutMs
-      ? execFile("tmux", tmuxArgs, { timeout: timeoutMs }, done)
-      : execFile("tmux", tmuxArgs, done));
-    child?.stdin?.on("error", reject);
-    child?.stdin?.end(input);
+    // Through the spawn helper when it runs (#1956); else the direct call as it always was. The input goes to the
+    // command's stdin either way.
+    const direct = (): Promise<{ stdout: string; stderr: string }> => new Promise((ok, fail) => {
+      const cb = (error: Error | null, stdout: string | Buffer, stderr: string | Buffer) => {
+        if (error) { Object.assign(error, { stdout: String(stdout ?? ""), stderr: String(stderr ?? "") }); fail(error); } else ok({ stdout: String(stdout ?? ""), stderr: String(stderr ?? "") });
+      };
+      // Options only when a bound is asked for: every other caller keeps execFile's (file, args, callback) form.
+      const child = measureSyncWork("tmux.spawn", () => timeoutMs
+        ? execFile("tmux", tmuxArgs, { timeout: timeoutMs }, cb)
+        : execFile("tmux", tmuxArgs, cb));
+      child?.stdin?.on("error", fail);
+      child?.stdin?.end(input);
+    });
+    tmuxExecHelper.exec("tmux", tmuxArgs, { ...(timeoutMs ? { timeout: timeoutMs } : {}), input }, direct)
+      .then(({ stdout, stderr }) => done(null, stdout, stderr), (err: Error & { stdout?: string; stderr?: string }) => done(err, err.stdout ?? "", err.stderr ?? ""));
   });
 }
 

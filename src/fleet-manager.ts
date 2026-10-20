@@ -60,6 +60,7 @@ import { MemoryPressure, type MemoryPressureSnapshot } from "./memory-pressure.j
 import { replyDedupText, ReplyDeduper } from "./reply-dedup.js";
 import { isMap, isScalar, parseDocument } from "yaml";
 import { changedOutside, detachForWrite } from "./yaml-shared-nodes.js";
+import { tmuxExecHelper } from "./tmux-exec-helper.js";
 import { kiroLogGate } from "./kiro-log-gate.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -7047,6 +7048,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       () => !this.shuttingDown && this.settingsGeneration === settingsGeneration, performance.now() + 30_000);
     try { this.loadEnvFile(envLease.owner); } finally { envLease.release(); }
     this.ensureDeliveryOutbox();
+    // #1956: the spawn helper the fleet's tmux/stty commands are started by (its fork is cheap; the fleet's is not).
+    // Started here and by the fleet's own timer — never by a tool handler — and stopped with the fleet.
+    tmuxExecHelper.reopen();
+    tmuxExecHelper.start();
+    this.tmuxExecHelperTimer ??= setInterval(() => tmuxExecHelper.maintain(), 5_000);
+    this.tmuxExecHelperTimer.unref?.();
 
     this.rotateFleetLogs();
 
@@ -19263,9 +19270,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * settles, so a later genuine stop (after a restart) still does the work.
    */
   stopAll(): Promise<void> {
-    this.stopAllInFlight ??= this.doStopAll().finally(() => { this.stopAllInFlight = null; });
+    this.stopAllInFlight ??= this.doStopAll().finally(() => {
+      this.stopAllInFlight = null;
+      // #1956: after the stop's own tmux work; anything later goes direct. A later startAll starts it again.
+      if (this.tmuxExecHelperTimer) { clearInterval(this.tmuxExecHelperTimer); this.tmuxExecHelperTimer = null; }
+      tmuxExecHelper.stop();
+    });
     return this.stopAllInFlight;
   }
+  private tmuxExecHelperTimer: ReturnType<typeof setInterval> | null = null;
 
   private stopAllInFlight: Promise<void> | null = null;
 

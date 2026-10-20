@@ -40,6 +40,8 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
         <li>• Windows asks once for <b class="text-text-primary">Administrator</b> approval, because the installer enables WSL. Choose <i>Yes</i>: the installer opens in a new window. Already in an Administrator PowerShell? It runs right there.</li>
         <li>• <code class="font-mono text-accent">-ExecutionPolicy ByPass</code> applies to that one command only. Your execution policy is not changed, and there is no file to unblock.</li>
         <li>• <b class="text-text-primary">If it asks you to restart Windows</b>, restart, then paste the same line again: it resumes where it stopped.</li>
+        <li>• Every long step shows how long it has been running and how long it usually takes, with the tool's own progress under it.</li>
+        <li>• <b class="text-text-primary">Don't press Ctrl+C</b> in that window: there it stops the program, it doesn't copy. (During an automatic step it asks first.) To copy, select the text with the mouse and right-click; to paste, right-click.</li>
       </ul>
       <p class="mt-4 text-sm text-text-secondary">
         Prefer to download the script and run it yourself? See <a href="#manual" class="text-accent hover:underline">Manual install</a>.
