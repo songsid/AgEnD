@@ -4,10 +4,13 @@ section: Fixed
 - **An update can no longer leave a host without `agend`, and re-running the installer always repairs it (#2264).**
   - Updates are now run by the new release's own installer: `agend update` runs it via `npm exec`, and so does the install one-liner. Install, upgrade and repair are one program.
   - The installer first fixes what an interrupted install left behind:
-    - an install lock that nobody holds, or that cannot be read, is moved aside (another running installer is waited for, and nothing is touched);
+    - it takes the install lock before anything else and keeps it until it is done. If another installer is running, nothing is touched, that update's chat message included. A lock that nobody holds, or that cannot be read, is moved aside;
     - npm's moved-aside copy of AgEnD is put back when it is the only whole copy. This happens only while no other npm is installing packages on the host;
     - nothing is deleted: anything else it moves aside is kept in `<npm prefix>/.agend-quarantine/`.
   - It then installs the new release and checks that `agend --version` runs. If npm fails but the previous version still runs, nothing else is done, and the answer says so. If no working `agend` is left, it reinstalls the previous version.
+  - The service keeps the manager it has (a system-wide unit stays system-wide): it is refreshed without being started, then the fleet is restarted, or started if its service was stopped.
+  - `agend update` only runs a release's own installer, and only when that release has one; an older target is updated the previous way.
+  - On a Mac (or any host) whose Node is older than 22, the update no longer stops before the installer starts: the copy npm fetches only to run the installer is not refused for its bundled Node.
   - The removal of old plugin packages from the install script is gone.
   - Under sudo, a system-wide copy is retired after a move to nvm only if it is a 2.1 release.
   - A manual `npm install -g` is never refused because of a lock.

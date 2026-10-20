@@ -52,7 +52,7 @@ function rig(status: number | null, kind: "systemd" | "detached" = "systemd") {
     "./service-installer.js": { getSystemServicePath: () => null, getServicePath: () => kind === "systemd" ? w.unitPath : null, detectPlatform: () => "linux" },
     "node:fs": fs, "./package-preimage.js": { restorePackagePreimage: restore, prunePreimages: prune },
   };
-  const context = createContext({ process, console, join, Promise, DATA_DIR: join(root, "data"), nvmSh: join(root, "unused-nvm.sh"), SYSTEMD_RESTART_TIMEOUT_MS: 1,
+  const context = createContext({ process, console, join, Promise, pkgVersion: "2.1.12", DATA_DIR: join(root, "data"), nvmSh: join(root, "unused-nvm.sh"), SYSTEMD_RESTART_TIMEOUT_MS: 1,
     spawnSync, readFileSync: fs.readFileSync, writeFileSync: fs.writeFileSync, realpathSync: fs.realpathSync, statSync: fs.statSync,
     withOrigin: () => ({}), setUpdateProgressStage: (_dir: string, stage: string) => { stages.push(stage); return true; }, clearUpdateMarker: vi.fn(),
     reportUpdateRestart: (value: number | null) => reportUpdateRestart(value, console),

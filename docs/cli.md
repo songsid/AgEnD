@@ -435,19 +435,25 @@ An update rewrites the user unit with the line. `agend restart` adds it to an ol
 **How an update installs (#2264).** `agend update` and the install one-liner both run the target release's own
 installer: `npm exec --yes --package @songsid/agend@<version> -- agend-install`. Re-running the one-liner is how to
 repair any interrupted update. The installer:
-- first checks its install lock. If another installer is running, it stops and changes nothing. A lock left by an
-  installer that has exited, or one that cannot be read, is moved aside;
+- first takes its install lock, before it touches anything. If another installer is running, it stops and changes
+  nothing (including that update's chat message). A lock left by an installer that has exited, or one that cannot be
+  read, is moved aside. It keeps the lock until it is done;
 - puts back npm's moved-aside copy of AgEnD (`@songsid/.agend-…`) when it is the only whole copy, so `agend` runs again.
   It does this only when no npm is installing, removing or updating packages on the host; otherwise it leaves npm's
   leftovers alone and says so. Nothing is deleted: what it moves aside goes to `<npm prefix>/.agend-quarantine/`;
 - installs the release and checks that `agend --version` reports it. If npm fails but the previous version still runs,
   nothing else is done and the answer says so. If no working `agend` is left, the previous version is reinstalled;
-- runs the new release's `agend install` and, for an update, `agend restart`. On Linux, `agend install`, `start` and
-  `restart` turn on systemd linger for the user and find the user manager from any shell (root on WSL included).
-  `status` and `stop` only fill in `XDG_RUNTIME_DIR` and the bus address; they change no host setting.
+- refreshes the service with the new release's `agend install --no-activate`, under the service manager it already
+  has (a system-wide `/etc/systemd/system/agend.service` stays one). Then it restarts the fleet if it is running, or
+  starts it if the service is installed but stopped. A fleet started by hand gets no service, and only an update
+  restarts it. On Linux, `agend install`, `start` and `restart` turn on systemd linger for the user and find the user
+  manager from any shell (root on WSL included). `status` and `stop` only fill in `XDG_RUNTIME_DIR` and the bus
+  address; they change no host setting.
 
-When the npm prefix needs sudo, `agend update` keeps the older update path described below. There, a system-wide copy
-is retired after a move to nvm only if that copy is a 2.1 release.
+`agend update` runs a release's installer only when that release has one. For an older release (for example
+`agend update --version` back to a release from before this change), and when the npm prefix needs sudo, it keeps the
+older update path described below. There, a system-wide copy is retired after a move to nvm only if that copy is a 2.1
+release.
 
 **Update activation outcomes (#1490).** A verified package is not a running fleet. A confirmed restart succeeds;
 an unfinished restart returns exit 75 (pending), keeps the update marker and all repair copies, and does not restore

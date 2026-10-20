@@ -65,6 +65,15 @@ function main(deps) {
   var support = platform.runtimeSupport(host);
   var log = d.log || function (line) { process.stdout.write(line + "\n"); };
   var installed = function () { log(NEXT_STEP); return 0; };
+  // #2264: `npm exec --package @songsid/agend@<v> -- agend-install` fetches a release only to run its installer. npm
+  // hoists the bundled Node out of <pkg>/node_modules there, and nothing runs `agend` from that copy: the installer's own
+  // `npm install -g` proves the bundled Node where AgEnD is installed. Refusing here (an old Node running npm, the
+  // runtime not at its exact path) would stop the update before the installer starts — the real Mac rehearsal.
+  var env = d.env || process.env;
+  if (env.npm_command === "exec" && !(pin && support.supported && select.runtimeCandidate(pkg.dir, pin).exists)) {
+    log("  ℹ Fetched to run its installer (npm exec); the bundled Node is checked by the install itself.");
+    return 0;
+  }
 
   if (pin && support.supported) {
     var candidate = select.runtimeCandidate(pkg.dir, pin);

@@ -46,15 +46,16 @@ exit 0
 }
 
 /**
- * A scratch HOME (the installer looks for the service unit there, never in the real one) and a `ps` that shows only this
- * test's npm processes among the host's: the installer's npm-idle check then judges this test's npm exec ancestry for
- * real, and an npm another test file runs at the same time is not this prefix's (it would read as "npm is running").
+ * A scratch HOME (the installer looks for the service unit there, never in the real one) and a `ps` that shows only the
+ * caller's own ancestry (the installer, its `npm exec`, this test's runner): the installer's npm-idle check judges that
+ * for real, and an npm another test file runs at the same time — CI runs files in parallel — never reads as "npm is
+ * running" here. `foreignNpm` adds one npm that is installing.
  */
 function npmEnv(root: string, home?: string, opts: { foreignNpm?: boolean } = {}): NodeJS.ProcessEnv {
   const tools = join(root, "tools");
   mkdirSync(tools, { recursive: true });
   writeFileSync(join(tools, "ps"), `#!/bin/sh
-/bin/ps "$@" | awk 'index($0, "${root}") || index($0, "agend-install") || !($3 ~ /(^|\\/)(npm|npx)$/ || $4 ~ /(npm|npx)(-cli\\.js)?$/)'
+/bin/ps -A -o pid=,ppid=,args= | awk -v start=$PPID '{ parent[$1] = $2; line[$1] = $0 } END { p = start; while (p > 1 && (p in line) && !(p in seen)) { seen[p] = 1; print line[p]; p = parent[p] } }'
 ${opts.foreignNpm ? `echo "  999999       1 npm install something-else"` : ""}
 `);
   chmodSync(join(tools, "ps"), 0o755);
@@ -65,12 +66,14 @@ ${opts.foreignNpm ? `echo "  999999       1 npm install something-else"` : ""}
     ...(home ? { AGEND_HOME: home } : {}),
   };
 }
-/** The user's systemd unit (what `agend install` made before): the installer then runs the new release's `agend install`. */
+/** The user's systemd unit (what `agend install` made before): the installer then refreshes it through the new release. */
 function withUnit(root: string) {
   const dir = join(root, "user-home", ".config", "systemd", "user");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "com.agend.fleet.service"), "[Service]\nExecStart=/old/agend fleet start\n");
 }
+/** A fleet that runs now: fleet.pid names a live process (this test's own). */
+const fleetRuns = (home: string) => writeFileSync(join(home, "fleet.pid"), String(process.pid));
 
 function scratch() {
   const root = mkdtempSync(join(tmpdir(), "agend-2264-")); roots.push(root);
@@ -125,6 +128,7 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     expect(s.npm(["install", "-g", v1]).status).toBe(0);
     const sibling = interruptedUpdate(s, "2.0.0");
     withUnit(s.root);   // the user's host: the fleet runs as the systemd user service `agend install` made
+    fleetRuns(s.home);
     const run = s.npm(["exec", "--yes", "--package", v2, "--", "agend-install", "--upgrade", "--spec", v2]);
     expect(run.status, run.stdout + run.stderr).toBe(0);
     expect(s.version()).toBe("2.0.0");
@@ -137,9 +141,9 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     expect(readdirSync(dirname(s.bin)).filter(n => n.startsWith(".agend")), "and npm's retired bin link").toEqual([]);
     expect(existsSync(join(s.root, "prefix", ".agend-install.lock")), "the unreadable lock is gone, and so is the installer's own").toBe(false);
     expect(run.stdout).toMatch(/moved aside an install lock that could not be read/);
-    // The service is the new release's: its `agend install` (the unit rewritten; linger on — ensureUserSystemd below),
-    // then the restart onto it.
-    expect(readFileSync(join(s.home, "agend-calls.log"), "utf8").trim().split("\n")).toEqual(["install", "restart --yes"]);
+    // The service is the new release's: its `agend install --no-activate` (the unit rewritten under the manager it has;
+    // linger on — ensureUserSystemd below), then the restart onto it.
+    expect(readFileSync(join(s.home, "agend-calls.log"), "utf8").trim().split("\n")).toEqual(["install --no-activate", "restart --yes"]);
     // The chat's progress moved on from "downloading": installed, v2.0.0 (the new fleet takes it to its final message).
     const marker = JSON.parse(readFileSync(join(s.home, "update-in-progress.json"), "utf8"));
     expect(marker.progress).toMatchObject({ stage: "installed", version: "2.0.0", target: { messageId: "2" } });
@@ -163,9 +167,21 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     const v1 = release(s.root, "1.0.0"), v2 = release(s.root, "2.0.0");
     expect(s.npm(["install", "-g", v1]).status).toBe(0);
     interruptedUpdate(s, "2.0.0");
+    fleetRuns(s.home);
     const run = s.npm(["exec", "--yes", "--package", v2, "--", "agend-install", "--upgrade", "--spec", v2]);
     expect(run.status, run.stdout + run.stderr).toBe(0);
     expect(readFileSync(join(s.home, "agend-calls.log"), "utf8").trim().split("\n")).toEqual(["restart --yes"]);
+  });
+
+  it("the user's host after the session ended: the service is installed but stopped — refreshed, then started (re-running the one-liner)", () => {
+    const s = scratch();
+    const v1 = release(s.root, "1.0.0"), v2 = release(s.root, "2.0.0");
+    expect(s.npm(["install", "-g", v1]).status).toBe(0);
+    interruptedUpdate(s, "2.0.0");
+    withUnit(s.root);
+    const run = s.npm(["exec", "--yes", "--package", v2, "--", "agend-install", "--spec", v2]);
+    expect(run.status, run.stdout + run.stderr).toBe(0);
+    expect(readFileSync(join(s.home, "agend-calls.log"), "utf8").trim().split("\n")).toEqual(["install --no-activate", "start"]);
   });
 
   it("another npm running on the host: npm's leftovers are not touched (the installer says so), and npm then fails as before", () => {
@@ -184,7 +200,7 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     const v1 = release(s.root, "1.0.0");
     expect(s.npm(["install", "-g", v1]).status).toBe(0);
     const v2 = release(s.root, "2.0.0");
-    writeFileSync(join(s.home, "update-in-progress.json"), JSON.stringify({ startedAt: Date.now(), pid: 1, progress: { operation: "update", stage: "downloading", target: { adapterId: "t", chatId: "1", messageId: "2" } } }));
+    writeFileSync(join(s.home, "update-in-progress.json"), JSON.stringify({ startedAt: Date.now(), pid: 999999, progress: { operation: "update", stage: "downloading", target: { adapterId: "t", chatId: "1", messageId: "2" } } }));
     const missing = join(s.root, "no-such-release.tgz");
     const run = s.npm(["exec", "--yes", "--package", v2, "--", "agend-install", "--spec", missing]);
     expect(run.status).toBe(1);
@@ -197,7 +213,7 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     const s = scratch();
     const v1 = release(s.root, "1.0.0"), bad = release(s.root, "2.0.0", { brokenVersion: "0.0.0" });
     expect(s.npm(["install", "-g", v1]).status).toBe(0);
-    writeFileSync(join(s.home, "update-in-progress.json"), JSON.stringify({ startedAt: Date.now(), pid: 1, progress: { operation: "update", stage: "downloading", target: { adapterId: "t", chatId: "1", messageId: "2" } } }));
+    writeFileSync(join(s.home, "update-in-progress.json"), JSON.stringify({ startedAt: Date.now(), pid: 999999, progress: { operation: "update", stage: "downloading", target: { adapterId: "t", chatId: "1", messageId: "2" } } }));
     // The fallback reinstalls `@songsid/agend@1.0.0` from the registry; offline here, from its tarball.
     const run = s.npm(["exec", "--yes", "--package", bad, "--", "agend-install", "--spec", bad, "--previous-spec", v1]);
     expect(run.status).toBe(1);
@@ -272,29 +288,230 @@ describe("#2264 the user's systemd is reached before any `systemctl --user` (the
   });
 });
 
-describe("#2264 review: npm is provably idle (the ancestor walk is Sentinel's, #2267 c284ce9d)", () => {
+describe("#2264 review: npm is provably idle — no npm that changes packages runs (Prism r1: flag values, ancestors)", () => {
   const { npmIdleFromProcessList } = createRequire(import.meta.url)("../launcher/agend-install.cjs") as { npmIdleFromProcessList(out: string, pid: number): boolean };
   const ps = (rows: string[]) => rows.join("\n");
   // npm's own process title: `npm <command> <args>` without flags (observed: `npm install /x.tgz` for `npm install -g /x.tgz`).
   const own = ["  1     0 /sbin/init", " 50     1 bash", "100    50 npm exec agend-install --upgrade", "200   100 sh -c agend-install --upgrade", "300   200 node /x/agend-install.cjs --upgrade"];
-  it("this installer's own `npm exec` ancestors, and npm that changes nothing (exec servers, view, run): idle", () => {
+  it("this installer's own `npm exec` ancestor, and npm that changes nothing (exec servers, view, run, npx): idle", () => {
     expect(npmIdleFromProcessList(ps(own), 300)).toBe(true);
     expect(npmIdleFromProcessList(ps([...own, "400     1 npm exec mcp-remote https://example.invalid/mcp", "401   400 sh -c mcp-remote", "402     1 npm view @songsid/agend version", "403     1 npm run build"]), 300), "a fleet's MCP servers run under npm exec for hours").toBe(true);
-    expect(npmIdleFromProcessList(ps([...own, "404     1 node /usr/lib/node_modules/npm/bin/npm-cli.js exec something"]), 300)).toBe(true);
+    expect(npmIdleFromProcessList(ps([...own, "404     1 node /usr/lib/node_modules/npm/bin/npm-cli.js exec something", "405     1 npx -y mcp-remote x", "406     1 npm --loglevel=silent exec y",
+      "407     1 node /x/npm-cli.js --userconfig /tmp/npmrc exec mcp-remote z"]), 300), "a flag's value is skipped, not taken for the command").toBe(true);
   });
-  it("any npm that installs, uninstalls, updates or links — titled or as `node …/npm-cli.js`, an npm install ancestor included — is not idle", () => {
-    expect(npmIdleFromProcessList(ps([...own, "400     1 npm install /tmp/x.tgz"]), 300)).toBe(false);
-    expect(npmIdleFromProcessList(ps([...own, "401     1 node /home/u/.nvm/versions/node/v22/bin/npm install -g other"]), 300)).toBe(false);
-    expect(npmIdleFromProcessList(ps([...own, "402     1 /usr/bin/node /usr/lib/node_modules/npm/bin/npm-cli.js uninstall -g x"]), 300)).toBe(false);
-    expect(npmIdleFromProcessList(ps([...own, "403     1 npm i x"]), 300)).toBe(false);
-    expect(npmIdleFromProcessList(ps([...own, "404     1 npm update"]), 300)).toBe(false);
-    expect(npmIdleFromProcessList(ps([...own, "405     1 npm link"]), 300)).toBe(false);
-    expect(npmIdleFromProcessList(ps([...own, "406     1 npm uninstall @songsid/agend"]), 300)).toBe(false);
-    expect(npmIdleFromProcessList(ps([...own.slice(0, 2), "100    50 npm install -g @songsid/agend", ...own.slice(3)]), 300), "not our exec: an install ancestor of a stray copy").toBe(true);
+  it("any npm that installs, uninstalls, updates or links — titled, as `node …/npm-cli.js`, behind flags with values, or an ancestor — is not idle", () => {
+    for (const row of ["npm install /tmp/x.tgz", "node /home/u/.nvm/versions/node/v22/bin/npm install -g other", "/usr/bin/node /usr/lib/node_modules/npm/bin/npm-cli.js uninstall -g x",
+      "npm i x", "npm update", "npm link", "npm uninstall @songsid/agend",
+      // Prism r1: argv as started, before npm retitles itself — a flag's value is not the command.
+      "node /opt/npm/bin/npm-cli.js --userconfig /tmp/npmrc install -g @songsid/agend", "npm --prefix /tmp/prefix install -g @songsid/agend", "npm --global install x"]) {
+      expect(npmIdleFromProcessList(ps([...own, `400     1 ${row}`]), 300), row).toBe(false);
+    }
+    expect(npmIdleFromProcessList(ps([...own.slice(0, 2), "100    50 npm install -g @songsid/agend", ...own.slice(3)]), 300), "an `npm install` ancestor is an install").toBe(false);
+  });
+  it("an npm whose command cannot be told — none, or a word npm has no command for — is not idle", () => {
+    for (const row of ["npm", "npm --prefix", "/usr/bin/npm frobnicate x", "node /x/npm-cli.js --cache"]) {
+      expect(npmIdleFromProcessList(ps([...own, `400     1 ${row}`]), 300), row).toBe(false);
+    }
   });
   it("a process list that cannot be read — empty, an unparseable row, our own pid missing — is not idle", () => {
     expect(npmIdleFromProcessList("", 300)).toBe(false);
     expect(npmIdleFromProcessList(ps([...own, "garbage"]), 300)).toBe(false);
     expect(npmIdleFromProcessList(ps(own), 999)).toBe(false);
+  });
+});
+
+type Installer = {
+  main(argv: string[], deps: Record<string, unknown>): number;
+  admit(prefix: string, deps: Record<string, unknown>): { release?: () => void; refuse?: string; notes?: string[] };
+};
+const installer = createRequire(import.meta.url)("../launcher/agend-install.cjs") as Installer;
+const OWN_VERSION = (JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { version: string }).version;
+
+/**
+ * The installer's own logic with the outside world stubbed (Prism r1 interleavings): a real scratch prefix and AGEND_HOME
+ * on disk, npm and the new `agend` as recorded stubs. `onInstall` runs inside each `npm install -g`; `live` are the pids
+ * that count as running.
+ */
+function unitRig(opts: { onInstall?: (n: number) => void; installStatus?: number[]; live?: number[]; onStep?: (step: string) => void } = {}) {
+  const root = mkdtempSync(join(tmpdir(), "agend-2264-unit-")); roots.push(root);
+  const prefix = join(root, "prefix"), nodeModules = join(prefix, "lib", "node_modules"), home = join(root, "agend-home"), userHome = join(root, "user-home");
+  for (const d of [nodeModules, home, userHome, join(prefix, "bin")]) mkdirSync(d, { recursive: true });
+  const calls: string[] = [], log: string[] = [];
+  const live = new Set([...(opts.live ?? []), 4242]);
+  let installs = 0;
+  const deps = {
+    pid: 4242, uid: 1000, now: () => Date.now(), log: (line: string) => log.push(line), alive: (pid: number) => live.has(pid),
+    env: { HOME: userHome, AGEND_HOME: home }, systemUnit: join(root, "etc-agend.service"), onStep: opts.onStep,
+    run: (cmd: string, args: string[]) => {
+      const line = `${cmd} ${args.join(" ")}`;
+      if (line === "npm root -g") return { status: 0, stdout: nodeModules + "\n", stderr: "" };
+      if (line === "npm prefix -g") return { status: 0, stdout: prefix + "\n", stderr: "" };
+      if (line === "ps -A -o pid=,ppid=,args=") return { status: 0, stdout: "4242 1 node agend-install.cjs\n", stderr: "" };
+      if (cmd === "npm" && args[0] === "install") {
+        installs += 1; opts.onInstall?.(installs);
+        calls.push(line);
+        return { status: opts.installStatus?.[installs - 1] ?? 0, stdout: "", stderr: "" };
+      }
+      if (args[0] === "--version") return { status: 0, stdout: OWN_VERSION + "\n", stderr: "" };
+      calls.push(`agend ${args.join(" ")}`);
+      return { status: 0, stdout: "", stderr: "" };
+    },
+  };
+  const lock = join(prefix, ".agend-install.lock");
+  const read = (f: string) => existsSync(f) ? readFileSync(f, "utf8") : null;
+  const quarantined = () => { const q = join(prefix, ".agend-quarantine"); return existsSync(q) ? readdirSync(q).flatMap(d => readdirSync(join(q, d)).map(n => readFileSync(join(q, d, n), "utf8").slice(0, 200))) : []; };
+  return { root, prefix, nodeModules, home, userHome, deps, calls, log, lock, read, quarantined, live };
+}
+
+describe("#2264 review (Prism r1 P1): the installer owns the prefix before it touches anything, until it is done", () => {
+  it("a stale lock judged, then a live installer claims the prefix before the takeover: its lock is never moved, this one refuses (75)", () => {
+    const r = unitRig({ live: [5555] });
+    writeFileSync(r.lock, '{"pid":');   // cut short: cannot be read
+    const peer = JSON.stringify({ pid: 5555, by: "agend-install", createdAt: "now" }) + "\n";
+    // Between this installer's judgment and its takeover, another installer took the stale lock over and claimed.
+    r.deps.onStep = (step: string) => { if (step === "takeover") writeFileSync(r.lock, peer); };
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(75);
+    expect(r.read(r.lock), "the live installer's lock, byte for byte").toBe(peer);
+    expect(r.quarantined()).not.toContain(peer);
+    expect(r.calls, "nothing installed").toEqual([]);
+  });
+
+  it("while it repairs, installs, retries and rolls back, the prefix stays this installer's: its own lock is never moved, and no other installer is admitted", () => {
+    const seen: string[] = [];
+    const r = unitRig({
+      installStatus: [1, 1, 0],
+      onInstall: () => {
+        seen.push(JSON.parse(readFileSync(join(r.prefix, ".agend-install.lock"), "utf8")).pid);
+        const peer = installer.admit(r.prefix, { ...r.deps, pid: 7777, alive: (pid: number) => pid === 4242 });
+        seen.push(peer.refuse ? "peer refused" : "PEER ADMITTED");
+        peer.release?.();
+        // npm left its retire sibling behind: the retry's repair moves it (the case that used to drop the lock).
+        mkdirSync(join(r.nodeModules, "@songsid", ".agend-AbCdEfGh"), { recursive: true });
+      },
+    });
+    const pkg = join(r.nodeModules, "@songsid", "agend");
+    mkdirSync(join(pkg, "bin"), { recursive: true });
+    writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: "@songsid/agend", version: "0.0.1", bin: { agend: "bin/agend" } }));
+    writeFileSync(join(pkg, "bin", "agend"), "");
+    // `agend --version` never answers: npm's failures leave no working `agend`, so the rollback runs too.
+    const run = r.deps.run;
+    r.deps.run = ((cmd: string, args: string[]) => args[0] === "--version" ? { status: 1, stdout: "", stderr: "" } : run(cmd, args)) as typeof r.deps.run;
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(1);
+    expect(seen).toEqual([4242, "peer refused", 4242, "peer refused", 4242, "peer refused"]);
+    expect(r.calls.filter(c => c.startsWith("npm install -g"))).toEqual([`npm install -g @songsid/agend@${OWN_VERSION}`, `npm install -g @songsid/agend@${OWN_VERSION}`, "npm install -g @songsid/agend@0.0.1"]);
+    expect(r.read(r.lock), "released at the end").toBeNull();
+  });
+
+  it("a peer asking while the repair runs is refused (the repair happens under this installer's lock)", () => {
+    let peer = "";
+    const r = unitRig();
+    mkdirSync(join(r.nodeModules, "@songsid", ".agend-AbCdEfGh"), { recursive: true });
+    (r.deps as Record<string, unknown>).npmIdle = () => {
+      const p = installer.admit(r.prefix, { ...r.deps, pid: 7777, alive: (pid: number) => pid === 4242 });
+      peer = p.refuse ? "refused" : "ADMITTED"; p.release?.();
+      return true;
+    };
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(0);
+    expect(peer).toBe("refused");
+  });
+
+  it("a takeover claim left by a killed taker is replaced; a live taker's is respected (refused, nothing moved)", () => {
+    const r = unitRig({ live: [6666] });
+    writeFileSync(r.lock, '{"pid":');
+    writeFileSync(r.lock + ".takeover", JSON.stringify({ pid: 999999 }));
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(0);
+    expect(r.read(r.lock + ".takeover")).toBeNull();
+    const busy = unitRig({ live: [6666] });
+    writeFileSync(busy.lock, '{"pid":');
+    writeFileSync(busy.lock + ".takeover", JSON.stringify({ pid: 6666 }));
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], busy.deps)).toBe(75);
+    expect(busy.read(busy.lock)).toBe('{"pid":');
+  });
+});
+
+describe("#2264 review (Prism r1 P1): the service stays under the manager it has — refreshed without activating, then restarted or started", () => {
+  const spec = () => ["--upgrade", "--spec", `@songsid/agend@${OWN_VERSION}`];
+  const cases: Array<[string, (r: ReturnType<typeof unitRig>) => void]> = [
+    ["a legacy system unit (/etc/systemd/system/agend.service)", r => writeFileSync(r.deps.systemUnit, "[Service]\n")],
+    ["the user unit", r => { mkdirSync(join(r.userHome, ".config", "systemd", "user"), { recursive: true }); writeFileSync(join(r.userHome, ".config", "systemd", "user", "com.agend.fleet.service"), "[Service]\n"); }],
+    ["the launchd job", r => { mkdirSync(join(r.userHome, "Library", "LaunchAgents"), { recursive: true }); writeFileSync(join(r.userHome, "Library", "LaunchAgents", "com.agend.fleet.plist"), "<plist/>"); }],
+  ];
+  it.each(cases)("%s, fleet running: `install --no-activate`, then `restart --yes` — never a plain `install` that writes and starts a user unit", (_name, setup) => {
+    const r = unitRig({ live: [9191] });
+    setup(r);
+    writeFileSync(join(r.home, "fleet.pid"), "9191");
+    expect(installer.main(spec(), r.deps)).toBe(0);
+    expect(r.calls.filter(c => c.startsWith("agend"))).toEqual(["agend install --no-activate", "agend restart --yes"]);
+  });
+  it.each(cases)("%s, fleet stopped: `install --no-activate`, then `start`", (_name, setup) => {
+    const r = unitRig();
+    setup(r);
+    expect(installer.main(spec(), r.deps)).toBe(0);
+    expect(r.calls.filter(c => c.startsWith("agend"))).toEqual(["agend install --no-activate", "agend start"]);
+  });
+  it("a hand-started fleet: an upgrade restarts it and makes no unit (#1631); the one-liner leaves it alone; no fleet at all: nothing", () => {
+    const up = unitRig({ live: [9191] });
+    writeFileSync(join(up.home, "fleet.pid"), "9191");
+    expect(installer.main(spec(), up.deps)).toBe(0);
+    expect(up.calls.filter(c => c.startsWith("agend"))).toEqual(["agend restart --yes"]);
+    const oneLiner = unitRig({ live: [9191] });
+    writeFileSync(join(oneLiner.home, "fleet.pid"), "9191");
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], oneLiner.deps)).toBe(0);
+    expect(oneLiner.calls.filter(c => c.startsWith("agend"))).toEqual([]);
+    const none = unitRig();
+    expect(installer.main(spec(), none.deps)).toBe(0);
+    expect(none.calls.filter(c => c.startsWith("agend"))).toEqual([]);
+  });
+});
+
+describe("#2264 review (Prism r1 P2): the update marker is written only by the installer that owns it", () => {
+  const marker = (pid: number, stage = "downloading") => JSON.stringify({ startedAt: 1_000, pid, progress: { operation: "update", stage, target: { adapterId: "t", chatId: "1", messageId: "2" } } });
+  it("refused by a live installer's lock: another update's marker is left byte for byte", () => {
+    const r = unitRig({ live: [5555] });
+    writeFileSync(r.lock, JSON.stringify({ pid: 5555, by: "agend-install" }));
+    writeFileSync(join(r.home, "update-in-progress.json"), marker(5555));
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(75);
+    expect(readFileSync(join(r.home, "update-in-progress.json"), "utf8")).toBe(marker(5555));
+  });
+  it("refused: a marker whose writer is gone (an abandoned update) is left too — the installer that holds the prefix takes it", () => {
+    const r = unitRig({ live: [5555] });
+    writeFileSync(r.lock, JSON.stringify({ pid: 5555, by: "agend-install" }));
+    writeFileSync(join(r.home, "update-in-progress.json"), marker(999999));
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(75);
+    expect(readFileSync(join(r.home, "update-in-progress.json"), "utf8")).toBe(marker(999999));
+  });
+  it("refused, but started by `agend update` (its marker): the chat is told it failed", () => {
+    const r = unitRig({ live: [5555, 3131] });
+    writeFileSync(r.lock, JSON.stringify({ pid: 5555, by: "agend-install" }));
+    writeFileSync(join(r.home, "update-in-progress.json"), marker(3131));
+    r.deps.env = { ...r.deps.env, AGEND_UPDATE_OWNER_PID: "3131" } as typeof r.deps.env;
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(75);
+    expect(JSON.parse(readFileSync(join(r.home, "update-in-progress.json"), "utf8")).progress).toMatchObject({ stage: "failed", error: expect.stringContaining("pid 5555") });
+  });
+  it("a marker a live process (not this update) writes is never claimed; one whose writer is gone is (the user's stuck \"downloading\")", () => {
+    const live = unitRig({ live: [5555] });
+    writeFileSync(join(live.home, "update-in-progress.json"), marker(5555));
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], live.deps)).toBe(0);
+    expect(readFileSync(join(live.home, "update-in-progress.json"), "utf8")).toBe(marker(5555));
+    const dead = unitRig();
+    writeFileSync(join(dead.home, "update-in-progress.json"), marker(999999));
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], dead.deps)).toBe(0);
+    expect(JSON.parse(readFileSync(join(dead.home, "update-in-progress.json"), "utf8")).progress.stage).toBe("installed");
+  });
+  it("replaced while the install runs (a new update, a new fleet): the new marker is left as it is", () => {
+    const fresh = JSON.stringify({ startedAt: 2_000, pid: 8888, progress: { operation: "update", stage: "downloading", target: { adapterId: "t", chatId: "9", messageId: "9" } } });
+    const r = unitRig({ live: [8888], onInstall: () => writeFileSync(join(r.home, "update-in-progress.json"), fresh) });
+    writeFileSync(join(r.home, "update-in-progress.json"), marker(999999));
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(0);
+    expect(readFileSync(join(r.home, "update-in-progress.json"), "utf8")).toBe(fresh);
+  });
+});
+
+describe("#2264 review (Prism r1 P2): only the chosen release's own installer installs", () => {
+  it("`--target` names another version: this installer refuses and changes nothing", () => {
+    const r = unitRig();
+    expect(installer.main(["--upgrade", "--target", "0.0.1"], r.deps)).toBe(1);
+    expect(r.calls).toEqual([]);
+    expect(r.log.join("\n")).toMatch(new RegExp(`installer of AgEnD v${OWN_VERSION.replace(/\./g, "\\.")}, not of v0\\.0\\.1`));
   });
 });

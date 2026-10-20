@@ -472,7 +472,7 @@ describe("upgrade path: the restart runs through the newly installed binary (bui
     writeFileSync(log, "");
     // npm: a newer version is published; install is a no-op that "lands" it.
     // #2264: \`npm exec … agend-install\` runs the REAL installer from this checkout, with this stub as its npm.
-    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in "exec --yes --package "*) exec node '${join(process.cwd(), "launcher", "agend-install.cjs")}' "$7" --spec "$4";; view*) echo '99.0.0-beta.3';; "config get prefix") echo '${home}';; "root -g") echo '${join(home, "lib", "node_modules")}';; "prefix -g") echo '${home}';; esac\nexit 0\n`);
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in "exec --yes --package "*) exec node '${join(process.cwd(), "launcher", "agend-install.cjs")}' "$7" --spec "$4";; "view "*" bin --json") echo '{"agend":"launcher/agend","agend-install":"launcher/agend-install.cjs"}';; view*) echo '99.0.0-beta.3';; "config get prefix") echo '${home}';; "root -g") echo '${join(home, "lib", "node_modules")}';; "prefix -g") echo '${home}';; esac\nexit 0\n`);
     // `agend` on PATH = the freshly installed binary: this build, inside a global package npm "installed" (#1446: the
     // updater checks it reports the target version and that the package opens a database on its node).
     const globalPkg = join(home, "lib", "node_modules", "@songsid", "agend");
@@ -490,6 +490,10 @@ exit 0
     writeFileSync(join(bin, "busctl"), fakeBusctl(log, join(home, ".config", "systemd", "user", "com.agend.fleet.service")));
     chmodSync(join(bin, "busctl"), 0o755);
     for (const f of ["npm", "systemctl"]) chmodSync(join(bin, f), 0o755);
+    // #2264: the fleet runs (fleet.pid names a live process — this test's; systemctl is a stub), so the installer
+    // restarts it rather than starting it.
+    mkdirSync(agendHome, { recursive: true });
+    writeFileSync(join(agendHome, "fleet.pid"), String(process.pid));
     const r = spawnSync(process.execPath, [cli, "update", "--beta"], {
       env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
       encoding: "utf8", timeout: 120_000,

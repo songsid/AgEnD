@@ -1668,14 +1668,28 @@ program
     // `agend update` only chooses the version; the install — repair, `npm install -g`, proof, service, restart, the
     // chat's progress — is that release's own installer (launcher/agend-install.cjs), fetched pinned by npm with its
     // integrity checks. So every update runs the NEWEST install logic, never this (possibly old) package's, and the
-    // one-liner runs the same program. The code below this branch is the compatibility path for a prefix that needs
-    // sudo (the nvm route), unchanged.
-    if (!needsSudo) {
-      console.log(`\n  Updating AgEnD v${pkgVersion} → ${targetVersion ? `v${targetVersion}` : tag} (its own installer)...\n`);
+    // one-liner runs the same program. The code below this branch is the compatibility path, unchanged: for a prefix
+    // that needs sudo (the nvm route), and for a target from before the installer.
+    // Only a known target that ships the installer runs it: `npm exec --package <a release without agend-install>` would
+    // run whatever agend-install PATH has (#2264 review). An older target, or one npm cannot describe, takes the
+    // compatibility path below; `--target` makes any other installer refuse.
+    const shipsInstaller = (): boolean => {
+      const viewed = spawnSync("npm", ["view", pkg, "bin", "--json"], { encoding: "utf-8", timeout: 60_000, stdio: ["ignore", "pipe", "ignore"] });
+      try {
+        const parsed: unknown = JSON.parse(viewed.stdout || "null");
+        const bin = Array.isArray(parsed) ? parsed[parsed.length - 1] : parsed;
+        return viewed.status === 0 && !!bin && typeof bin === "object" && Object.hasOwn(bin, "agend-install");
+      } catch { return false; }
+    };
+    const viaInstaller = !needsSudo && targetVersion !== null && shipsInstaller();
+    if (!needsSudo && !viaInstaller) console.log(`  ℹ ${pkg} has no installer of its own (a release from before #2264); this updater installs it.`);
+    if (viaInstaller) {
+      console.log(`\n  Updating AgEnD v${pkgVersion} → v${targetVersion} (its own installer)...\n`);
       markUpdateInProgress(DATA_DIR);
-      setUpdateProgressStage(DATA_DIR, "downloading", targetVersion ? { version: targetVersion } : {});
-      const installer = spawnSync("npm", ["exec", "--yes", "--package", pkg, "--", "agend-install", "--upgrade"], {
-        stdio: "inherit", env: withOrigin("agend-update"),
+      setUpdateProgressStage(DATA_DIR, "downloading", { version: targetVersion! });
+      // AGEND_UPDATE_OWNER_PID: the marker this process just wrote is the installer's to carry on (and no one else's).
+      const installer = spawnSync("npm", ["exec", "--yes", "--package", pkg, "--", "agend-install", "--upgrade", "--target", targetVersion!], {
+        stdio: "inherit", env: { ...withOrigin("agend-update"), AGEND_UPDATE_OWNER_PID: String(process.pid) },
       });
       if (installer.status === 0 || installer.status === 75) { process.exitCode = installer.status ?? 0; return; }
       // The installer records its own failure; one that never started (npm could not fetch it) is recorded here.

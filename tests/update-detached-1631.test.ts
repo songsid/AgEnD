@@ -42,6 +42,8 @@ function updateWorld() {
 echo "npm $*" >> '${log}'
 case "$*" in
   "view @songsid/agend@beta version") cat '${beta}';;
+  # #2264: the target ships its own installer (agend update checks its bin before \`npm exec\`).
+  "view "*" bin --json") echo '{"agend":"dist/cli.js","agend-install":"launcher/agend-install.cjs"}';;
   *"--json") exit 1;;
   view*) echo "$2" | sed 's/.*@//';;
   "config get prefix") echo '${home}';;
@@ -69,6 +71,8 @@ exit 0
   writeFileSync(join(bin, "launchctl"), `#!/bin/sh\necho "launchctl $*" >> '${log}'\nexit 0\n`);
   for (const f of ["npm", "systemctl", "busctl", "launchctl"]) chmodSync(join(bin, f), 0o755);
   symlinkSync(process.execPath, join(bin, "node"));
+  // The hand-started fleet runs (fleet.pid names a live process — this test's): the installer restarts it.
+  writeFileSync(join(agendHome, "fleet.pid"), String(process.pid));
   const update = (next: string) => {
     writeFileSync(beta, next);
     const from = readFileSync(installed, "utf8").trim();
@@ -110,8 +114,8 @@ describe("#1631 A: a hand-started fleet, no reachable user manager — every upd
     writeFileSync(unitOf(w.home), "[Service]\nExecStart=/old/node /old/cli.js fleet start\n");
     const r = w.update("2.2.0-beta.3");
     expect(r.r.status, r.out).toBe(0);
-    const service = r.calls.filter(c => c === "agend install" || c === "agend restart --yes");
-    expect(service, "the existing unit is rewritten by the NEW binary, then the fleet restarted onto it").toEqual(["agend install", "agend restart --yes"]);
+    const service = r.calls.filter(c => c.startsWith("agend install") || c === "agend restart --yes");
+    expect(service, "the existing unit is refreshed by the NEW binary (not activated), then the fleet restarted onto it").toEqual(["agend install --no-activate", "agend restart --yes"]);
   });
 });
 
