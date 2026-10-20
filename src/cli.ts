@@ -1868,7 +1868,7 @@ program
     const { runShortcuts, realShortcutsDeps } = await import("./windows-shortcuts.js");
     const { spawnSync } = await import("node:child_process");
     const { userInfo } = await import("node:os");
-    process.exitCode = runShortcuts(realShortcutsDeps(DATA_DIR, userInfo().username, (command, args) => {
+    process.exitCode = await runShortcuts(realShortcutsDeps(DATA_DIR, userInfo().username, (command, args) => {
       const r = spawnSync(command, args, { encoding: "utf-8", timeout: 120_000, stdio: ["ignore", "pipe", "pipe"] });
       return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "", error: r.error };
     }));

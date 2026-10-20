@@ -36,7 +36,7 @@ describe("shortcuts and the fast path (static)", () => {
   it("no double quote in a command sent to WSL: Windows PowerShell 5.1 does not escape one inside a native argument", () => {
     // pwsh 7 (these tests) escapes it, so only this check sees it. Every literal the shortcuts hand to bash -lc / Invoke-AgendInWsl.
     const shared = text.slice(text.indexOf("$WSL_COMMAND_FN = @'"), text.indexOf("function Get-FileVersionString"));
-    const sent = [...shared.matchAll(/(?:bash -lc \(?|Invoke-AgendInWsl \S+ \S+ |Get-WslAgendCommand |return \()'([^']*)'/g)].map(m => m[1]);
+    const sent = [...shared.matchAll(/(?:bash -lc \(?|Invoke-AgendInWsl \S+ \S+ |Get-WslAgendCommand |return \()'((?!Write-Host)[^']*)'/g)].map(m => m[1]);
     expect(sent.length).toBeGreaterThanOrEqual(5);
     for (const command of sent) expect(command).not.toContain('"');
   });
@@ -199,7 +199,7 @@ Set-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'AgEnD/install.json') -Val
 function Get-InstalledWslVersion { return [version]'2.6.1.0' }
 Write-Output ("FOUND=[" + ((Find-ExistingAgend) -ne $null) + "]")`, bin);
     expect(out).toContain("FOUND=[False]");
-    expect(calls(bin).trim().split("\n")).toHaveLength(4);                       // the record, then the three default Ubuntus
+    expect(calls(bin).trim().split("\n")).toHaveLength(5);                       // the record, then AgEnD's own and the three default Ubuntus
   });
 });
 

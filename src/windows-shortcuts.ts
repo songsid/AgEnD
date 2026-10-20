@@ -19,6 +19,8 @@ export const SHORTCUTS_MARKER = "windows-shortcuts";
 /** Written once the update hint has been shown. */
 export const SHORTCUTS_HINT_MARKER = "windows-shortcuts-hint";
 const MADE_LINE = /^AGEND_SHORTCUTS_MADE=(\d+)\s*$/m;
+/** install.json names another Linux or user: the script changed nothing and said which (distro|user). */
+const OTHER_LINE = /^AGEND_RECORD_OTHER=([^|\r\n]*)\|([^\r\n]*?)\s*$/m;
 const SYSTEM_POWERSHELL = "Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
 
 export interface ShortcutsHost {
@@ -73,12 +75,21 @@ export function sharedShortcutsPs(templateText?: string): string {
 
 const psQuote = (value: string) => `'${value.replace(/'/g, "''")}'`;
 
-/** The whole script Windows PowerShell runs: the shared code, then both shortcuts for this Linux and user. */
-export function buildShortcutsScript(shared: string, distro: string, user: string): string {
+/**
+ * The whole script Windows PowerShell runs: the shared code, then both shortcuts for this Linux and user. Unless
+ * `switchConfirmed`, an install.json that names another Linux or user stops it first, changing nothing: the shortcuts
+ * are never repointed without asking (the leader, 2026-10-20).
+ */
+export function buildShortcutsScript(shared: string, distro: string, user: string, switchConfirmed = false): string {
   return [
     "$ErrorActionPreference = 'Stop'",
+    "try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }",
     "$script:OnWindows = $true",
     shared,
+    ...(switchConfirmed ? [] : [
+      `$other = Get-InstallRecordConflict ${psQuote(distro)} ${psQuote(user)}`,
+      "if ($other) { Write-Output ('AGEND_RECORD_OTHER=' + $other.Distro + '|' + $other.User); exit 0 }",
+    ]),
     `$made = @(Install-AgendShortcuts ${psQuote(distro)} ${psQuote(user)})`,
     "Write-Output ('AGEND_SHORTCUTS_MADE=' + $made.Count)",
     "",
@@ -105,17 +116,27 @@ export interface ShortcutsDeps {
   writeMarker: (path: string, content: string) => void;
   log: (line: string) => void;
   now: () => Date;
+  /** Ask a yes/no question in the terminal: true only for an explicit y. null: there is no terminal to ask in. */
+  confirm: (question: string) => Promise<boolean | null>;
 }
 
-/** `agend shortcuts`. Returns the exit code. */
-export function runShortcuts(deps: ShortcutsDeps): number {
+/** `agend shortcuts`. Resolves to the exit code. */
+export async function runShortcuts(deps: ShortcutsDeps): Promise<number> {
   const { wsl, distro } = detectWsl(deps.host);
   if (!wsl) { deps.log(t("shortcuts.not_wsl")); return 1; }
   if (!distro) { deps.log(t("shortcuts.no_distro")); return 1; }
   const powershell = findPowershell(deps.host);
   if (interopState(deps.host) === "off" || !powershell) { deps.log(t("shortcuts.no_interop")); return 1; }
   deps.log(t("shortcuts.making", distro, deps.user));
-  const result = deps.run(powershell, powershellArgs(buildShortcutsScript(deps.shared(), distro, deps.user)));
+  let result = deps.run(powershell, powershellArgs(buildShortcutsScript(deps.shared(), distro, deps.user)));
+  const other = OTHER_LINE.exec(result.stdout ?? "");
+  if (other) {
+    // The shortcuts (and install.json) point at another Linux or user: say so, and switch only on an explicit y.
+    const [, otherDistro, otherUser] = other;
+    const yes = await deps.confirm(t("shortcuts.other_target", otherDistro!, otherUser!, distro, deps.user));
+    if (yes !== true) { deps.log(t(yes === null ? "shortcuts.kept_no_tty" : "shortcuts.kept", otherDistro!, otherUser!)); return 1; }
+    result = deps.run(powershell, powershellArgs(buildShortcutsScript(deps.shared(), distro, deps.user, true)));
+  }
   const made = MADE_LINE.exec(result.stdout ?? "");
   if (!made) {
     // No answer from the script: Windows was never reached (interop) or PowerShell failed before it ran.
@@ -137,6 +158,12 @@ export function realShortcutsDeps(dataDir: string, user: string, run: ShortcutsD
     writeMarker: (path, content) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, content); },
     log: line => console.log(line),
     now: () => new Date(),
+    confirm: async (question) => {
+      if (!process.stdin.isTTY) return null;
+      const { createInterface } = await import("node:readline/promises");
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      try { return /^\s*[yY]\s*$/.test(await rl.question(`${question} `)); } finally { rl.close(); }
+    },
   };
 }
 
