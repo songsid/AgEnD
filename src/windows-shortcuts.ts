@@ -75,21 +75,26 @@ export function sharedShortcutsPs(templateText?: string): string {
 
 const psQuote = (value: string) => `'${value.replace(/'/g, "''")}'`;
 
+/** The target install.json named when the person was asked (and said yes to replacing). */
+export interface ShortcutsTarget { distro: string; user: string }
+
 /**
- * The whole script Windows PowerShell runs: the shared code, then both shortcuts for this Linux and user. Unless
- * `switchConfirmed`, an install.json that names another Linux or user stops it first, changing nothing: the shortcuts
- * are never repointed without asking (the leader, 2026-10-20).
+ * The whole script Windows PowerShell runs: the shared code, then both shortcuts for this Linux and user. An
+ * install.json that names another Linux or user stops it first, changing nothing (the shortcuts are never repointed
+ * without asking, the leader 2026-10-20) — unless it is exactly the one the person was shown and said yes to
+ * (`confirmedOver`), read again right before writing: changed while they answered, it stops again (#2279 review).
  */
-export function buildShortcutsScript(shared: string, distro: string, user: string, switchConfirmed = false): string {
+export function buildShortcutsScript(shared: string, distro: string, user: string, confirmedOver?: ShortcutsTarget): string {
+  const seen = confirmedOver ? `@{ Distro = ${psQuote(confirmedOver.distro)}; User = ${psQuote(confirmedOver.user)} }` : "$null";
   return [
     "$ErrorActionPreference = 'Stop'",
     "try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }",
     "$script:OnWindows = $true",
     shared,
-    ...(switchConfirmed ? [] : [
-      `$other = Get-InstallRecordConflict ${psQuote(distro)} ${psQuote(user)}`,
-      "if ($other) { Write-Output ('AGEND_RECORD_OTHER=' + $other.Distro + '|' + $other.User); exit 0 }",
-    ]),
+    `if (-not (Test-InstallRecordAsSeen ${seen} ${psQuote(distro)} ${psQuote(user)})) {`,
+    `  $other = Get-InstallRecordConflict ${psQuote(distro)} ${psQuote(user)}`,
+    "  Write-Output ('AGEND_RECORD_OTHER=' + $other.Distro + '|' + $other.User); exit 0",
+    "}",
     `$made = @(Install-AgendShortcuts ${psQuote(distro)} ${psQuote(user)})`,
     "Write-Output ('AGEND_SHORTCUTS_MADE=' + $made.Count)",
     "",
@@ -135,7 +140,10 @@ export async function runShortcuts(deps: ShortcutsDeps): Promise<number> {
     const [, otherDistro, otherUser] = other;
     const yes = await deps.confirm(t("shortcuts.other_target", otherDistro!, otherUser!, distro, deps.user));
     if (yes !== true) { deps.log(t(yes === null ? "shortcuts.kept_no_tty" : "shortcuts.kept", otherDistro!, otherUser!)); return 1; }
-    result = deps.run(powershell, powershellArgs(buildShortcutsScript(deps.shared(), distro, deps.user, true)));
+    result = deps.run(powershell, powershellArgs(buildShortcutsScript(deps.shared(), distro, deps.user, { distro: otherDistro!, user: otherUser! })));
+    // Changed while the person answered: what they agreed to replace is no longer there — nothing is written.
+    const again = OTHER_LINE.exec(result.stdout ?? "");
+    if (again) { deps.log(t("shortcuts.changed_meanwhile", again[1]!, again[2]!)); return 1; }
   }
   const made = MADE_LINE.exec(result.stdout ?? "");
   if (!made) {

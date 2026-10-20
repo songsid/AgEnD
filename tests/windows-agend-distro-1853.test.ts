@@ -26,6 +26,8 @@ describe("the existing-Ubuntu choice (static)", () => {
   it("stage 1 reads the Linux list (starts none), reuses an AgEnD Linux, else asks when there is an Ubuntu", () => {
     const stage = body.slice(body.indexOf("$names = Get-WslDistroNames"), body.indexOf('Add-Content -Path $ProgressFile -Value "DISTRO=$UBUNTU_DISTRO"'));
     expect(stage).toMatch(/\$agendDistro = Get-ExistingAgendDistro \$names/);
+    // #2279 review: an unreadable list stops stage 1 before any choice, install or reuse.
+    expect(stage).toMatch(/^\$names = Get-WslDistroNames\n\s*if \(\$null -eq \$names\) \{\n[^\n]*讀不到這台電腦上的 Linux 清單[^\n]*\n[^\n]*\n\s*Read-Host "按 Enter 結束"; exit 1\n\s*\}\n\s*\$agendDistro/);
     expect(stage).toMatch(/if \(\$agendDistro\) \{ \$choice = 'reuse' \} elseif \(\$installedDistroName\) \{ \$choice = Read-DistroChoice \$installedDistroName \}/);
     expect(stage).toMatch(/if \(\$choice -eq 'separate'\) \{ \$UBUNTU_DISTRO = Get-FreeAgendDistroName \$names \}/);
     expect(stage).toMatch(/if \(\$choice -eq 'separate'\) \{ "\$\(\$disk\.Root\)WSL\\\$UBUNTU_DISTRO" \}/);
@@ -40,6 +42,8 @@ describe("the existing-Ubuntu choice (static)", () => {
     const fast = body.slice(body.indexOf("$existing = Find-ExistingAgend"), body.indexOf('Write-Info "檢查網路連線..."'));
     expect(fast).toMatch(/\$prior = Get-InstallRecordConflict \$existing\.Distro \$existing\.User/);
     expect(fast).toMatch(/\(y\/N\)"\n\s*\$update = \(\[string\]\$ans\) -match '\^\\s\*\[yY\]\\s\*\$'/);
+    // #2279 review: what was asked about is read again before anything is written.
+    expect(fast).toMatch(/if \(\$update -and -not \(Test-InstallRecordAsSeen \$prior \$existing\.Distro \$existing\.User\)\) \{/);
   });
 });
 
@@ -48,14 +52,14 @@ const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 const scratch = (p: string) => { const d = mkdtempSync(join(tmpdir(), p)); dirs.push(d); return d; };
 /** A fake native wsl.exe: `--list --quiet` prints the names file; `--install … --name X` and `--import X` add X (unless told not to). */
-function fakeWsl(names: string[], o: { ignoreName?: boolean } = {}) {
+function fakeWsl(names: string[], o: { ignoreName?: boolean; listFails?: boolean; listFailsAfterInstall?: boolean } = {}) {
   const bin = scratch("agend-1853distro-bin-");
   writeFileSync(join(bin, "names.txt"), names.map(n => n + "\n").join(""));
   writeFileSync(join(bin, "wsl.exe"), `#!/bin/sh
 printf '%s\\n' "$*" >> '${join(bin, "calls.txt")}'
 case "$1" in
-  --list) cat '${join(bin, "names.txt")}' ;;
-  --install) ${o.ignoreName ? "echo 'Invalid command line option: --name'; exit 1" : `while [ "$#" -gt 0 ]; do if [ "$1" = "--name" ]; then echo "$2" >> '${join(bin, "names.txt")}'; fi; shift; done`} ;;
+  --list) ${o.listFails ? "echo 'Error: 0x80070005'; exit 1" : o.listFailsAfterInstall ? `if [ -f '${join(bin, "installed")}' ]; then exit 1; fi; cat '${join(bin, "names.txt")}'` : `cat '${join(bin, "names.txt")}'`} ;;
+  --install) touch '${join(bin, "installed")}'; ${o.ignoreName ? "echo 'Invalid command line option: --name'; exit 1" : `while [ "$#" -gt 0 ]; do if [ "$1" = "--name" ]; then echo "$2" >> '${join(bin, "names.txt")}'; fi; shift; done`} ;;
   --import) echo "$2" >> '${join(bin, "names.txt")}' ;;
 esac
 exit 0
@@ -107,6 +111,22 @@ Write-Output ("FREE0=" + (Get-FreeAgendDistroName @('Ubuntu')))`, bin);
     expect(out).toContain("FREE=AgEnD-3\n");
     expect(out).toContain("FREE0=AgEnD\n");
     expect(calls(bin)).toBe("--list --quiet\n");
+  });
+  it("#2279 review: a list that cannot be read is unknown ($null), never 'no Linux'; an empty list is empty", () => {
+    const failing = withHelpers(`$n = Get-WslDistroNames; Write-Output ("NULL=" + ($null -eq $n))`, fakeWsl(["Ubuntu-24.04"], { listFails: true })).out;
+    expect(failing).toContain("NULL=True");                                         // and no registry to fall back on here
+    const empty = withHelpers(`$n = Get-WslDistroNames; Write-Output ("NULL=" + ($null -eq $n) + " COUNT=" + @($n).Count)`, fakeWsl([])).out;
+    expect(empty).toContain("NULL=False COUNT=0");
+  });
+  it("#2279 review: the list unreadable after --install: unknown, so no import and no 'installed'", () => {
+    const bin = fakeWsl(["Ubuntu-24.04"], { listFailsAfterInstall: true });
+    const { out, dir } = withHelpers(`${imageStubs()}
+function Get-InstalledWslVersion { return [version]'2.6.3.0' }
+Write-Output ("OK=" + (Install-AgendDistro 'AgEnD' 'D:\\WSL\\AgEnD'))`, bin);
+    expect(out).toContain("OK=False");
+    expect(out).toContain("裝完之後讀不到 Linux 清單，無法確認 AgEnD 有沒有裝好；沒有再做任何事。");
+    expect(calls(bin)).not.toMatch(/--import/);
+    expect(existsSync(join(dir, "downloads.txt"))).toBe(false);
   });
   it("an AgEnD Linux from an earlier install is reused: the recorded one, else the one named AgEnD; an Ubuntu record is not AgEnD's own", () => {
     const { out } = withHelpers(`New-Item -ItemType Directory -Path (Join-Path $env:LOCALAPPDATA 'AgEnD') -Force | Out-Null

@@ -128,9 +128,9 @@ describe("agend shortcuts", () => {
   describe("install.json names another Linux (the leader, 2026-10-20: never repoint silently)", () => {
     const other: RunResult = { status: 0, stdout: "AGEND_RECORD_OTHER=Ubuntu-24.04|root\r\n", stderr: "" };
     const made: RunResult = { status: 0, stdout: "AGEND_SHORTCUTS_MADE=2\r\n", stderr: "" };
-    function sequenced(answer: boolean | null) {
+    function sequenced(answer: boolean | null, second: RunResult = made) {
       const runs: string[] = [], lines: string[] = [], markers: string[] = [], asked: string[] = [];
-      const answers = [other, made];
+      const answers = [other, second];
       const d = {
         host: host({ env: { WSL_DISTRO_NAME: "AgEnD", PATH: "/usr/bin" } }), user: "root", dataDir: "/root/.agend", shared: () => shared,
         run: (_c: string, args: string[]) => { runs.push(decode(args)); return answers.shift()!; },
@@ -143,11 +143,19 @@ describe("agend shortcuts", () => {
       const { d, runs, markers, asked } = sequenced(true);
       expect(await runShortcuts(d)).toBe(0);
       expect(runs).toHaveLength(2);
-      expect(runs[0]).toContain("$other = Get-InstallRecordConflict 'AgEnD' 'root'");
-      expect(runs[1]).not.toContain("Get-InstallRecordConflict 'AgEnD'");
+      expect(runs[0]).toContain("if (-not (Test-InstallRecordAsSeen $null 'AgEnD' 'root')) {");
+      // #2279 review: the yes is bound to what was shown — the second run checks the record is still that one.
+      expect(runs[1]).toContain("if (-not (Test-InstallRecordAsSeen @{ Distro = 'Ubuntu-24.04'; User = 'root' } 'AgEnD' 'root')) {");
       expect(runs[1]).toContain("$made = @(Install-AgendShortcuts 'AgEnD' 'root')");
       expect(asked).toEqual(["The desktop shortcuts now open Ubuntu-24.04 (user root). Point them at AgEnD (user root) instead? (y/N)"]);
       expect(markers).toEqual(["/root/.agend/windows-shortcuts"]);
+    });
+    it("#2279 review: changed while the person answered (the second run finds another record): nothing written, said", async () => {
+      const { d, runs, markers, lines } = sequenced(true, { status: 0, stdout: "AGEND_RECORD_OTHER=Ubuntu-B|root\r\n", stderr: "" });
+      expect(await runShortcuts(d)).toBe(1);
+      expect(runs).toHaveLength(2);
+      expect(markers).toEqual([]);
+      expect(lines.join("\n")).toContain("while you answered, the shortcuts were pointed at Ubuntu-B (user root) instead");
     });
     it.each([[false, "Nothing changed: the shortcuts still open Ubuntu-24.04 (user root)."], [null, "Run agend shortcuts in a terminal to answer."]])("no (%s): nothing more runs, nothing changes, it says what stays", async (answer, said) => {
       const { d, runs, markers, lines } = sequenced(answer);
@@ -277,9 +285,23 @@ Write-Output ("ERRORS=" + $e.Count); Write-Output ("USER=" + $c.CommandElements[
     mkdirSync(join(same.local, "AgEnD"), { recursive: true });
     writeFileSync(join(same.local, "AgEnD", "install.json"), '{"distro":"AgEnD","user":"root"}');
     expect(same.run(buildShortcutsScript(shared, "AgEnD", "root")).stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
-    const second = w.run(buildShortcutsScript(shared, "AgEnD", "root", true));
+    // #2279 review: a yes to replacing Ubuntu-24.04 does not replace a record changed meanwhile to Ubuntu-B.
+    writeFileSync(join(w.local, "AgEnD", "install.json"), '{"distro":"Ubuntu-B","user":"root"}');
+    const raced = w.run(buildShortcutsScript(shared, "AgEnD", "root", { distro: "Ubuntu-24.04", user: "root" }));
+    expect(raced.stdout).toMatch(/^AGEND_RECORD_OTHER=Ubuntu-B\|root$/m);
+    expect(JSON.parse(readFileSync(join(w.local, "AgEnD", "install.json"), "utf8"))).toEqual({ distro: "Ubuntu-B", user: "root" });
+    expect(existsSync(join(w.local, "AgEnD", "restart-agend.ps1"))).toBe(false);
+    writeFileSync(join(w.local, "AgEnD", "install.json"), '{"distro":"Ubuntu-24.04","user":"root"}');
+    const second = w.run(buildShortcutsScript(shared, "AgEnD", "root", { distro: "Ubuntu-24.04", user: "root" }));
     expect(second.stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
     expect(JSON.parse(readFileSync(join(w.local, "AgEnD", "install.json"), "utf8"))).toEqual({ distro: "AgEnD", user: "root" });
+  });
+  it("#2279 review: the Linux name compares without case, the user name with it (Han and han are two people)", () => {
+    const w = scratchWindows();
+    mkdirSync(join(w.local, "AgEnD"), { recursive: true });
+    writeFileSync(join(w.local, "AgEnD", "install.json"), '{"distro":"AgEnD","user":"Han"}');
+    expect(w.run(buildShortcutsScript(shared, "agend", "han")).stdout).toMatch(/^AGEND_RECORD_OTHER=AgEnD\|Han$/m);
+    expect(w.run(buildShortcutsScript(shared, "agend", "Han")).stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
   });
   it("both saved scripts say first which Linux and user they open, then run wsl -d <that> -u <that>", () => {
     const w = scratchWindows();

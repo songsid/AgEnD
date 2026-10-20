@@ -137,8 +137,16 @@ function Read-InstallRecord {
 # 捷徑絕不悄悄改指向：agend shortcuts 遇到這種情況會先問。
 function Get-InstallRecordConflict([string]$distro, [string]$user) {
     $record = Read-InstallRecord
-    if ($record -and ($record.Distro -ne $distro -or $record.User -ne $user)) { return $record }
+    # WSL 的名稱不分大小寫；Linux 的使用者名稱分（Han 和 han 是兩個人，#2279 審查）。
+    if ($record -and ($record.Distro -ne $distro -or $record.User -cne $user)) { return $record }
     return $null
+}
+# 真正寫入前再讀一次：詢問時看到的是 $seen（$null：當時沒有衝突）。現在沒有衝突，或衝突的還是同一個，才可以寫；
+# 在等回答的時候被別的安裝程式或終端機改掉了，就不寫（#2279 審查）。
+function Test-InstallRecordAsSeen($seen, [string]$distro, [string]$user) {
+    $now = Get-InstallRecordConflict $distro $user
+    if ($null -eq $now) { return $true }
+    return ($null -ne $seen -and $now.Distro -eq $seen.Distro -and $now.User -ceq $seen.User)
 }
 # 一個桌面捷徑：腳本寫在 %LOCALAPPDATA%\AgEnD，捷徑以 Windows PowerShell 執行它（-ExecutionPolicy Bypass 只對那個行程）。
 function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptText, [string]$description) {
