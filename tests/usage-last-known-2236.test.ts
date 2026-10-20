@@ -85,6 +85,15 @@ describe("the server keeps the last known numbers", () => {
     expect([row.status, row.stale, row.staleCause, row.metrics[0]!.used]).toEqual(["ok", true, cause, 91]);
     expect(row.hint).toMatch(hint);
   });
+  it("the row is as it is now (its name, its profile), with the numbers as they were", async () => {
+    vi.useFakeTimers({ now: Date.UTC(2030, 0, 1, 6, 0) });
+    const s = scripted(good(Date.now()));
+    await read();
+    await later(10 * 60_000);
+    s.next = { ...expired, name: "Claude (default)" };                          // the same login, named beside profiles since
+    const row = await read();
+    expect([row.id, row.name, row.stale, row.metrics[1]!.used]).toEqual(["claude", "Claude (default)", true, 64]);
+  });
   it("never made up: a provider never read successfully keeps its error row; a signed-out row is left as it is", async () => {
     vi.useFakeTimers({ now: Date.UTC(2030, 0, 1, 6, 0) });
     const s = scripted(expired);
