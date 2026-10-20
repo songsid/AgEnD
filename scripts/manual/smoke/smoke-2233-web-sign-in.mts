@@ -161,9 +161,12 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
   // A guest is refused by the gate (401 while guest sign-in is off, 403 guest_forbidden when it is on) or the route (403).
   verdict("refused", none.status === 401 && (asGuest.status === 401 || asGuest.status === 403), { none: none.status, guest: asGuest.status });
 }
-// No login tmux server left behind (the terminal's own servers are agend-term-*; never the caller's).
+// No login tmux server left running (the terminal's own servers are agend-term-*; never the caller's).
+// A socket file may outlive its server; what must not survive is a running server (a login CLI still alive).
+const { spawnSync } = await import("node:child_process");
 const leftovers = (await termSockets()).filter((s) => !socketsBefore.has(s));
-verdict("cleanup", leftovers.length === 0, { leftovers });
+const alive = leftovers.filter((s) => spawnSync("tmux", ["-L", s, "list-sessions"], { encoding: "utf8" }).status === 0);
+verdict("cleanup", alive.length === 0, { alive, socketFilesLeft: leftovers.length });
 writeFileSync(shotPath(SMOKE, "results", ENGINE).replace(/\.png$/, ".json"), JSON.stringify(results, null, 1));
 console.log(`${failed ? "FAIL" : "PASS"} ${ENGINE}`);
 await fx.close();
