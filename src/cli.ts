@@ -17,6 +17,7 @@ import { checkNodeVersion } from "./node-version-guard.js";
 checkNodeVersion();
 
 import { Command } from "commander";
+import { registerBugReportCommand } from "./bug-report-cli.js";
 import { join, dirname } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
 import { Cron } from "croner";
@@ -165,6 +166,8 @@ program
   // The root's own options only before a subcommand: otherwise `agend update --version 2.1.9` is read as
   // `agend --version`, prints this version and installs nothing.
   .enablePositionalOptions();
+
+registerBugReportCommand(program, pkgVersion);
 
 function signalFleetReload(): void {
   const pidPath = join(DATA_DIR, "fleet.pid");

@@ -254,19 +254,19 @@ describe("stale fallback for transient fetch failures", () => {
     expect(row.hint).toMatch(/^cached \d+m ago/);
   });
 
-  it("keeps auth failures loud even with last good numbers", async () => {
+  // #2236 follow-up (the user, 2026-10-20): any failure keeps the last numbers, marked with why and when; the error is
+  // the hint, so it is still said.
+  it("an auth failure keeps the last good numbers, marked expired, the error as the hint", async () => {
     const row = await fetchAfterJitter(() => "Invalid API key (401)");
 
-    expect(row.status).toBe("error");
-    expect(row.error).toBe("Invalid API key (401)");
-    expect(row.hint).toBeUndefined();
+    expect([row.status, row.stale, row.staleCause, row.hint]).toEqual(["ok", true, "expired", "Invalid API key (401)"]);
+    expect(row.metrics[0]).toMatchObject({ used: 12 });
   });
 
-  it("keeps schema errors loud even with last good numbers", async () => {
+  it("a schema error keeps them too, marked as a failed read", async () => {
     const row = await fetchAfterJitter(() => "Invalid response from usage endpoint.");
 
-    expect(row.status).toBe("error");
-    expect(row.hint).toBeUndefined();
+    expect([row.status, row.stale, row.staleCause, row.hint]).toEqual(["ok", true, "error", "Invalid response from usage endpoint."]);
   });
 
   it("stays loud when nothing good was ever fetched", async () => {

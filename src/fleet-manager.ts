@@ -242,7 +242,8 @@ import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
-import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
+import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
+import { WebBackendLogins } from "./web-backend-login.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
@@ -394,6 +395,15 @@ import { getTmuxSession } from "./config.js";
 
 /** #2163: `classic` — a ClassicBot room's agent: only the skills about its own look and the dashboard. */
 type ManagedSkillRole = "general" | "worker" | "classic";
+
+// Closed migration cohort: these 11 names existed immediately before the first
+// managed-skill publisher (a1ac499f; parent e267e684). Never grow this set when
+// adding a bundled skill: its new name is not proof of old AgEnD ownership.
+const PRE_MANIFEST_KIRO_SKILLS = new Set([
+  "backend-providers", "cross-instance-messaging", "fleet-config", "fleet-health",
+  "fleet-restart", "instance-lifecycle", "model-discovery", "multi-channel",
+  "scheduling", "session-management", "tui-effort",
+]);
 
 export function resolveReplyThreadId(
   argsThreadId: unknown,
@@ -15630,6 +15640,43 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.loginController;
   }
 
+  /** #2233: sign-ins started from the web dashboard (local admin sessions), on the same controller as chat's. */
+  private webBackendLoginsInstance: WebBackendLogins | null = null;
+  get webBackendLogins(): WebBackendLogins {
+    this.webBackendLoginsInstance ??= new WebBackendLogins({
+      isLocalAdmin: handle => this.isLocalAdminSession(handle),
+      start: (backend, chat, opts) => this.startWebDashboardLogin(backend, chat, opts),
+      accessToken: sink => this.loginController?.webAccessToken(sink) ?? null,
+      isActiveFor: sink => this.loginController?.isActiveFor(sink) ?? false,
+      cancelFor: sink => this.loginController?.cancelFor(sink) ?? Promise.resolve(false),
+      cancel: () => this.cancelLoginSession(),
+      notice: ({ shown, label, handle }) => this.notifyFleetError(t("login.web_dashboard_notice", shown, label, handle.slice(0, 8))),
+    });
+    return this.webBackendLoginsInstance;
+  }
+
+  /** #2233: the session with this handle is live, admin, local and of the current dashboard token. */
+  private isLocalAdminSession(handle: string): boolean {
+    const sessions = this.webSessions, token = this.webToken;
+    const record = sessions?.findByHandle(handle);
+    return !!record && !!token && record.tier === "admin" && record.surface === "local" && sessions!.isCurrent(record, tokenEpoch(token));
+  }
+
+  /**
+   * #2233: `/login` for a dashboard requester. The same controller and checks; a CLI that is not installed is refused
+   * with its install command (chat's install-first runs a terminal of its own, which the dashboard does not offer).
+   */
+  private startWebDashboardLogin(backendArg: string, chat: LoginChat, opts: LoginStartOptions): Promise<string | null> {
+    const wanted = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
+    if (isRemovedBackend(wanted)) return Promise.resolve(removedBackendMessage(wanted));
+    const info = BACKEND_INSTALLATION_INFO[wanted];
+    if (info && LOGIN_FLOWS[wanted]?.remoteLogin !== "unsupported" && !this.isCliInstalled(wanted)) {
+      return Promise.resolve(t("login.web_dashboard_not_installed", wanted, info.install));
+    }
+    if (!opts.skipAuthCheck) this.recordLoginFlow(wanted, "login", chat.userId);
+    return this.webLogin.start(backendArg, chat, opts);
+  }
+
   /**
    * Post the backend chooser for a bare `/login`. Caller enforces admin.
    * Returns why the chooser could not be posted, for the caller to tell the
@@ -16791,16 +16838,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       .sort();
 
     // Pre-manifest Kiro General copied bundled skills directly into
-    // .kiro/skills. If every existing skill is still a bundled name, this is
-    // the unambiguous legacy layout: adopt it once, update it below, and write
-    // the ownership manifest. Any extra skill name keeps the directory fully
+    // .kiro/skills. If every existing skill is still bundled AND belongs to
+    // the closed pre-manifest cohort, adopt it once, update it below, and
+    // write the ownership manifest. Any extra skill name keeps the directory fully
     // on the user-owned/collision path.
     if (!hadManifest && adoptLegacyUnmanaged) {
       const existing = readdirSync(destSkills, { withFileTypes: true })
         .filter(entry => entry.isDirectory() && existsSync(join(destSkills, entry.name, "SKILL.md")))
         .map(entry => entry.name)
         .sort();
-      if (existing.length > 0 && existing.every(name => bundled.includes(name))) {
+      if (existing.length > 0 && existing.every(name => bundled.includes(name) && PRE_MANIFEST_KIRO_SKILLS.has(name))) {
         previouslyManaged = existing;
         this.logger.info(
           { skills: existing, destSkills },

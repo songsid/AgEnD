@@ -135,6 +135,8 @@ agend update
 
 It stays on the channel you installed from (a beta stays on beta), installs the new version, checks it, and restarts the fleet. Coming from 2.1, read [Upgrading from 2.1 to 2.2](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.md) first. From 2.1.0–2.1.11, or on a host without AgEnD's built-in Node, follow its manual steps instead.
 
+On Windows, the desktop shortcuts **AgEnD 儀表板** (the dashboard, its sign-in code filled in) and **AgEnD 重新啟動** (restart, after asking) come with the Windows installer. If you installed earlier, paste the [Windows one-liner](/AgEnD/install-windows/) again: it finds AgEnD already installed and only offers to add or update the shortcuts.
+
 ## Next steps
 
 - [Web Guide](/AgEnD/docs/web-guide/) — sign in, use it from a phone, sign out

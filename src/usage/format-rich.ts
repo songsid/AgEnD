@@ -13,7 +13,7 @@
 import type { ProviderUsage, UsageMetric } from "./providers.js";
 import { isVisibleUsageMetric, type UsagePayload } from "./usage-api.js";
 import { t } from "../locale.js";
-import { usageExpiryText, usageResetText, usageRowName, usageText } from "./i18n.js";
+import { usageExpiryText, usageResetSinceText, usageResetText, usageRowName, usageStaleText, usageText } from "./i18n.js";
 
 const BAR_WIDTH = 10;
 
@@ -55,6 +55,8 @@ interface MetricLine {
 function metricLine(m: UsageMetric): MetricLine | null {
   const pct = metricPercent(m);
   const label = usageText(m.label, m.labelI18n);
+  // Its window has reset since these numbers were read: no number, no bar — never an old one as current.
+  if (m.resetPassed) return { bar: null, text: `${label}: ${usageResetSinceText(m.resetsAt)}` };
   const note = m.note ? usageText(m.note, m.noteI18n) : "";
   switch (m.type) {
     case "percent":
@@ -102,7 +104,7 @@ function toBlocks(payload: UsagePayload): ProviderBlock[] {
     note: p.status === "no-credentials" ? t("usage.not_logged_in")
       : p.status === "error" ? `⚠️ ${usageText(p.error ?? t("usage.error_fallback"), p.errorI18n)}`
         : null,
-    okHint: (p.status === "ok" || p.stale) && p.hint ? usageText(p.hint, p.hintI18n) : null,
+    okHint: usageStaleText(p) ?? ((p.status === "ok" || p.stale) && p.hint ? usageText(p.hint, p.hintI18n) : null),
     lines: p.status === "ok"
       ? p.metrics.filter(isVisibleUsageMetric).map(metricLine).filter((l): l is MetricLine => l !== null)
       : [],
