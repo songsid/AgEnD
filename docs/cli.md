@@ -163,6 +163,7 @@ agend doctor                    # Run fleet health diagnostics
 agend doctor mcp                # Fleet-wide MCP health check (IPC, config paths, duplicates, binary PATH)
 agend health                    # Fleet health check — shows problems and diagnostics
 agend validate                  # Validate fleet.yaml and classicBot.yaml
+agend validate --connections    # Print CONNECTIONS=<n>: chat connections in fleet.yaml (for scripts)
 agend backend doctor [backend]  # Check backend environment (binary, auth, tmux, TERM)
 agend delivery scan-forged-envelopes --instance <name>  # Check a kiro instance's transcript for peer envelopes the fleet never delivered (--all, --json)
 ```

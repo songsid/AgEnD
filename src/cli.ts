@@ -2518,9 +2518,18 @@ program
   program
   .command("validate")
   .description("Validate fleet.yaml and classicBot.yaml")
-  .action(async () => {
-    const { validateFleetConfig, validateClassicBotConfig } = await import("./config-validator.js");
+  .option("--connections", "Only print how many chat connections fleet.yaml has, as CONNECTIONS=<n> (for scripts; CONNECTIONS=unknown and exit 1 when it cannot be read)")
+  .action(async (opts: { connections?: boolean }) => {
+    const { validateFleetConfig, validateClassicBotConfig, configuredConnectionCount } = await import("./config-validator.js");
     const yaml = (await import("js-yaml")).default;
+    if (opts.connections) {
+      // #2233: the Windows installer's question — did the setup page make a web-only fleet? Parsed, never grepped.
+      let count: number | null = null;
+      try { count = configuredConnectionCount(yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8"))); } catch { count = null; }
+      console.log(`CONNECTIONS=${count ?? "unknown"}`);
+      if (count === null) process.exit(1);
+      return;
+    }
     const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
     const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
     const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;

@@ -202,10 +202,22 @@ function Get-LoginFollowUpCommand([string]$key) {
     $cmd = if ($key -eq 'antigravity') { 'agy' } else { Get-LoginCommand $key }
     return ("wsl -d {0} -u root -- bash -lc 'export PATH=/root/.local/bin:`$HOME/.claude/local:`$PATH; {1}'" -f $UBUNTU_DISTRO, $cmd)
 }
-# #2233：設定頁選了「Web only (no bot)」時，fleet.yaml 沒有 channel／channels：完成畫面就不說「通訊軟體已串接」。
-function Test-WebOnlyFleet([string]$distro) {
-    $r = wsl -d $distro -u root -- bash -lc 'f=/root/.agend/fleet.yaml; if [ -f "$f" ] && ! grep -Eq "^(channel|channels):" "$f"; then echo WEB_ONLY; else echo HAS_CHAT; fi' 2>&1 | Out-String
-    return ($r -match 'WEB_ONLY')
+# #2233：設定頁選了「Web only (no bot)」嗎？問 AgEnD 自己（agend validate --connections 解析 fleet.yaml，和 fleet 讀的一樣），
+# 不用 grep 猜。回傳 'web'（0 個連線）、'chat'（有連線）或 'unknown'（讀不到、舊版沒有這個選項、WSL 沒回應）——不知道就不說「已串接」。
+# 傳給 wsl 的指令裡沒有雙引號：Windows PowerShell 5.1 傳原生參數時會把內嵌的雙引號弄掉（#2261 審查）。
+function Get-FleetConnections([string]$distro) {
+    $text = ''
+    $prevEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $text = ((& wsl.exe -d $distro -u root -- bash -lc 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend validate --connections' 2>&1) | ForEach-Object { "$_" } | Out-String)
+    } catch {
+        $text = ''
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
+    if ($text -match '(?m)^CONNECTIONS=(\d+)\s*$') { if ([int]$Matches[1] -eq 0) { return 'web' } else { return 'chat' } }
+    return 'unknown'
 }
 function Test-WslLogin([string]$key) {
     $r = wsl -d $UBUNTU_DISTRO -u root -- bash -lc ('export PATH=/root/.local/bin:$HOME/.claude/local:$PATH; if ' + (Get-LoginCheck $key) + '; then echo LOGIN_OK; else echo LOGIN_NO; fi') 2>&1 | Out-String
@@ -1182,18 +1194,21 @@ foreach ($b in @($skippedLogins)) {
     Write-Warn ("  [!!] {0} 已安裝但還沒登入。要登入，在 PowerShell 執行：{1}" -f $b.Name, (Get-LoginFollowUpCommand $b.Key))
 }
 Write-Info "  [OK] AgEnD 已安裝並啟動（systemd 服務）"
-$webOnly = Test-WebOnlyFleet $UBUNTU_DISTRO
-if ($webOnly) { Write-Info "  [OK] 只用網頁儀表板（沒有串接通訊軟體；之後可在 設定 → 連線 加上 Discord 或 Telegram）" }
-else { Write-Info "  [OK] 通訊軟體已串接" }
+$connections = Get-FleetConnections $UBUNTU_DISTRO
+if ($connections -eq 'web') { Write-Info "  [OK] 只用網頁儀表板（沒有串接通訊軟體；之後可在 設定 → 連線 加上 Discord 或 Telegram）" }
+elseif ($connections -eq 'chat') { Write-Info "  [OK] 通訊軟體已串接" }
+else { Write-Warn "  [!!] 無法確認通訊軟體是否已串接：在網頁儀表板的 設定 → 連線 可以看到" }
 Write-Info "  [OK] 開機自動啟動已設定"
 $shortcut = New-DashboardShortcut $UBUNTU_DISTRO
 if ($shortcut) { Write-Info "  [OK] 桌面上已建立「AgEnD 儀表板」捷徑" }
 Write-Host ""
 Write-Host "  日常使用：" -ForegroundColor Cyan
-if ($webOnly) {
+if ($connections -eq 'web') {
     Write-Info "    在網頁儀表板跟 agent 對話；後端 CLI 要重新登入時，到 設定 → Agent → 登入 按「登入」"
-} else {
+} elseif ($connections -eq 'chat') {
     Write-Info "    直接在 Discord/Telegram 跟 Bot 對話即可，不需要手動開啟任何程式"
+} else {
+    Write-Info "    在 Discord/Telegram 跟 Bot 對話，或在網頁儀表板跟 agent 對話"
 }
 if ($shortcut) { Write-Info "    要看網頁儀表板：按兩下桌面上的「AgEnD 儀表板」，登入碼會自動帶入" }
 Write-Info "    電腦重開機後 AgEnD 會自己啟動"

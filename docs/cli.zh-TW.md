@@ -139,6 +139,7 @@ agend doctor                    # 執行 fleet 健康診斷
 agend doctor mcp                # 全 fleet MCP 健康檢查（IPC、配置路徑、重複、binary PATH）
 agend health                    # Fleet 健康檢查——列出問題與診斷
 agend validate                  # 驗證 fleet.yaml 與 classicBot.yaml
+agend validate --connections    # 印出 CONNECTIONS=<n>：fleet.yaml 的聊天連線數（給腳本用）
 agend backend doctor [backend]  # 檢查後端環境（執行檔、驗證、tmux、TERM）
 agend delivery scan-forged-envelopes --instance <name>  # 檢查 kiro instance 的 transcript 裡是否有 fleet 從未投遞過的 peer envelope（--all、--json）
 ```
