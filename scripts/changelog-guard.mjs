@@ -17,8 +17,8 @@
  *      it, or a conflict resolved to one side that dropped the other side's entries) is refused unless that merge is
  *      marked.
  * Whatever the PR does to the CHANGELOG:
- *   3. every fragment the PR deletes has its entry in the head's CHANGELOG (same language), so a merge that resolved
- *      the CHANGELOG back to the base branch's after the assemble commit cannot lose the entries it moved.
+ *   3. every fragment the PR deletes has its entry in the head's CHANGELOG (same language), unless added after the
+ *      base's latest reachable v* release tag. A withdrawn unreleased entry need not be recorded as shipped.
  *
  * This is judged on content, not on merge topology: a long-lived line whose old merge-syncs combined both sides'
  * CHANGELOG changes passes once its files equal the base branch's and its entries are fragments (docs/development.md).
@@ -53,6 +53,19 @@ function blocksAt(cwd, commit, file) {
 }
 
 const firstLine = block => block.split("\n")[0].slice(0, 80);
+
+/** Net additions since the base's release boundary; unknown history grants no exemption. */
+function unreleasedFragments(cwd, base, mergeBase) {
+  try {
+    const release = git(cwd, ["describe", "--tags", "--abbrev=0", "--match", "v*", base]).trim();
+    // A PR behind a newer release cannot compare that release's removed
+    // fragments backwards and mistake them for new, unshipped additions.
+    git(cwd, ["merge-base", "--is-ancestor", release, mergeBase]);
+    return new Set(lines(git(cwd, ["diff", "--name-only", "--no-renames", "--diff-filter=A", release, mergeBase, "--", "changes/"])));
+  } catch {
+    return new Set(); // no reachable release, unavailable history, or a newer boundary
+  }
+}
 
 /** Returns { ok: true } or { ok: false, reason }. Throws on a git failure. */
 export function checkChangelogEdits(cwd, base, head) {
@@ -91,9 +104,12 @@ export function checkChangelogEdits(cwd, base, head) {
     }
   }
 
-  // 3. A deleted fragment's entry is in the head's CHANGELOG.
+  // 3. Released/unknown fragments must retain their entries; a post-release
+  // addition may be withdrawn without inventing a shipped CHANGELOG entry.
+  const unreleased = deleted.length ? unreleasedFragments(cwd, base, mb) : new Set();
   const headBlocks = { en: blocksAt(cwd, head, CHANGELOG_FILES[0]), zh: blocksAt(cwd, head, CHANGELOG_FILES[1]) };
   for (const file of deleted) {
+    if (unreleased.has(file)) continue;
     const parsed = parseFragment(git(cwd, ["show", `${mb}:${file}`]));
     if (parsed.error) continue;                   // was never a valid fragment; --check reported it when it landed
     const have = headBlocks[file.endsWith(".zh-TW.md") ? "zh" : "en"];

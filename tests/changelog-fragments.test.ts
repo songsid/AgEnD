@@ -619,6 +619,56 @@ describe("changelog-guard (ci.yml's step, on a scratch repository)", () => {
     expect(res.stdout).toMatch(/changes\/30\.md is deleted but its entry is not in the CHANGELOG/);
   });
 
+  it.each([false, true])("removing a fragment added after the base's latest release passes (annotated=%s)", annotated => {
+    const r = gitRepo();
+    r.git("tag", ...(annotated ? ["-a", "-m", "release"] : []), "v1.0.0", r.base);
+    r.git("checkout", "-q", "main");
+    const mainTip = r.commit("unreleased fragments", {
+      "changes/31.md": frag("Fixed", "- x"), "changes/31.zh-TW.md": frag("Fixed", "- y"),
+    });
+    r.git("tag", "build-latest"); // A non-release tag must not change the boundary.
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/31.md", "changes/31.zh-TW.md");
+    const head = r.commit("withdraw unreleased feature", {});
+    r.git("tag", "v99.0.0", head); // A tag reachable only from the PR cannot authorize its deletion.
+    const res = r.guard(mainTip, head);
+    expect(res.status, res.stdout + res.stderr).toBe(0);
+  });
+
+  it("a fragment present at the latest release still needs its entry, even if edited afterwards", () => {
+    const r = gitRepo(); r.git("tag", "v1.0.0", r.base);
+    r.git("checkout", "-q", "main");
+    r.commit("fragments", { "changes/32.md": frag("Fixed", "- x"), "changes/32.zh-TW.md": frag("Fixed", "- y") });
+    r.git("tag", "v1.1.0");
+    const mainTip = r.commit("edit fragment after release", {
+      "changes/32.md": frag("Fixed", "- edited"), "changes/32.zh-TW.md": frag("Fixed", "- edited zh"),
+    });
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/32.md", "changes/32.zh-TW.md");
+    const res = r.guard(mainTip, r.commit("drop released fragment", {}));
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain("changes/32.md is deleted but its entry is not in the CHANGELOG");
+  });
+
+  it("a PR behind a release cannot treat that release's assembled fragment as new", () => {
+    const r = gitRepo(); r.git("tag", "v1.0.0", r.base);
+    r.git("checkout", "-q", "main");
+    r.commit("fragments", { "changes/33.md": frag("Fixed", "- x"), "changes/33.zh-TW.md": frag("Fixed", "- y") });
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/33.md", "changes/33.zh-TW.md");
+    const head = r.commit("drop fragment without entry", {});
+    r.git("checkout", "-q", "main");
+    r.git("rm", "-q", "changes/33.md", "changes/33.zh-TW.md");
+    const mainTip = r.commit("release assembled entry\n\nChangelog: assemble", {
+      "docs/CHANGELOG.md": EN.replace("### Fixed\n", "### Fixed\n- x\n"),
+      "docs/CHANGELOG.zh-TW.md": ZH.replace("### 修正 (Fixed)\n", "### 修正 (Fixed)\n- y\n"),
+    });
+    r.git("tag", "v1.1.0");
+    const res = r.guard(mainTip, head);
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain("changes/33.md is deleted but its entry is not in the CHANGELOG");
+  });
+
   it("an edit the PR reverted, while main moved on with CHANGELOG changes of its own → passes (counted from the merge-base)", () => {
     const r = gitRepo();
     r.commit("oops", { "docs/CHANGELOG.md": EN + "x\n" });

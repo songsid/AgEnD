@@ -194,7 +194,12 @@ node scripts/changelog-assemble.mjs --check                         # validate o
     That covers an edit slipped into a merge, or a conflict resolved to one
     side that dropped the other side's entries. A merge that resolves a
     CHANGELOG conflict on purpose carries the trailer too;
-  - a fragment the PR deletes does not have its entry in the CHANGELOG.
+  - a fragment the PR deletes does not have its entry in the CHANGELOG,
+    unless it was added after the newest `v*` release tag reachable from the
+    PR's base (`git describe --tags --abbrev=0 --match 'v*' <base>`). This lets
+    an unreleased approach be withdrawn without claiming it shipped. The
+    tag must also precede the merge-base; a PR behind a newer release, or
+    missing release history, keeps the stricter entry-preservation rule.
 
 #### A long-lived line landing on `main`
 
