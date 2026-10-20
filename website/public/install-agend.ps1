@@ -34,6 +34,50 @@ function Stage-Done($stage) {
 }
 function Mark-Stage($stage) { Add-Content -Path $ProgressFile -Value "STAGE_${stage}_DONE" }
 
+# ── 在瀏覽器裡設定（#1853：取代主控台裡的 agend quickstart）─────────────
+# agend setup 在 WSL 裡開一個設定頁，印出網址和設定碼。安裝程式讀到這兩行，就在 Windows 的瀏覽器打開網址、
+# 把設定碼放進剪貼簿並放大顯示；使用者在網頁上選 Discord 或 Telegram、貼上 Bot Token，不必在這個視窗打字。
+# WSL 2 預設會把 localhost 轉給 Windows，所以 Windows 的瀏覽器開得了 127.0.0.1 的網址。
+function Get-SetupPrompt([string]$line) {
+    if ($line -match 'Setup page:\s*(https?://\S+)') { return @{ Url = $Matches[1] } }
+    if ($line -match 'Setup code:\s*([A-Z2-7]{4}-[A-Z2-7]{4})') { return @{ Code = $Matches[1] } }
+    return $null
+}
+function Open-InBrowser([string]$url) { try { Start-Process $url; return $true } catch { return $false } }
+function Set-SetupClipboard([string]$text) { try { Set-Clipboard -Value $text; return $true } catch { return $false } }
+function Show-SetupCode([string]$code, [bool]$copied, [bool]$opened, [string]$url) {
+    $spaced = ($code.ToCharArray() | ForEach-Object { [string]$_ }) -join ' '
+    Write-Host ""
+    Write-Host "  ┌──────────────────────────────────────┐" -ForegroundColor Green
+    Write-Host ("  │   設定碼：  " + $spaced + "    │") -ForegroundColor Green
+    Write-Host "  └──────────────────────────────────────┘" -ForegroundColor Green
+    if ($opened) { Write-Ok "設定頁已在瀏覽器打開。" } else { Write-Warn "瀏覽器沒有自動打開，請自己打開這個網址：$url" }
+    if ($copied) { Write-Ok "設定碼已複製：在網頁的輸入框按 Ctrl+V（或右鍵 → 貼上）。" } else { Write-Info "在網頁的輸入框輸入上面的設定碼。" }
+    Write-Info "在網頁上選擇 Discord 或 Telegram、貼上 Bot Token，最後按完成。這個視窗會等你，不用在這裡打字。"
+    Write-Host ""
+}
+# 跑一次設定頁。$Run 收到一個每行呼叫的 hook，回傳結束碼。結果：Done（完成、AgEnD 已啟動）、Already（之前就設定好了）、
+# Shown（設定頁有沒有出現過）。
+function Invoke-BrowserSetup([scriptblock]$Run) {
+    $setupSeen = @{ Url = $null; Code = $null; Shown = $false; Done = $false; Already = $false }
+    $hook = {
+        param([string]$line)
+        $prompt = Get-SetupPrompt $line
+        if ($prompt -and $prompt.Url) { $setupSeen.Url = $prompt.Url }
+        if ($prompt -and $prompt.Code) { $setupSeen.Code = $prompt.Code }
+        if ($line -match 'Setup complete') { $setupSeen.Done = $true }
+        if ($line -match 'Setup has already been completed') { $setupSeen.Already = $true }
+        if ($setupSeen.Url -and $setupSeen.Code -and -not $setupSeen.Shown) {
+            $setupSeen.Shown = $true
+            $copied = Set-SetupClipboard $setupSeen.Code
+            $opened = Open-InBrowser $setupSeen.Url
+            Show-SetupCode $setupSeen.Code $copied $opened $setupSeen.Url
+        }
+    }
+    $exit = & $Run $hook
+    return @{ Exit = $exit; Done = $setupSeen.Done; Already = $setupSeen.Already; Shown = $setupSeen.Shown }
+}
+
 # ── AI 後端定義（可多選安裝）─────────────────────────────
 # Note/Install 用單引號避免 PowerShell 內插（$ 為字面）
 $ALL_BACKENDS = @(
@@ -196,9 +240,10 @@ function Split-ToolOutput([string]$text) {
 #   $Usually：「通常需要 3–10 分鐘」；$UpperMinutes：超過就補一句「比平常久，仍在進行中」。
 #   $HeartbeatSeconds：輸出被導向（不是真主控台）時，每隔幾秒印一行心跳（真主控台則每秒原地更新同一行）。
 #   $Encoding：它輸出的編碼（見 New-OutputTail）。
+#   $OnLine：每印出一行就呼叫一次（例如從 agend setup 的輸出讀出設定頁網址）。
 function Invoke-Watched {
     param([string]$Label, [string]$Usually, [string]$File, [string[]]$Arguments = @(), [double]$UpperMinutes = 0, [int]$HeartbeatSeconds = 30,
-        [string]$Encoding = 'utf8')
+        [string]$Encoding = 'utf8', [scriptblock]$OnLine = $null)
     $dir = Join-Path ([IO.Path]::GetTempPath()) ('agend-step-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     $outFile = Join-Path $dir 'out.txt'; $errFile = Join-Path $dir 'err.txt'; $inFile = Join-Path $dir 'in.txt'
@@ -238,6 +283,7 @@ function Invoke-Watched {
     $printLine = {
         param([string]$line)
         & $clearStatus; Write-Host ("    " + $line) -ForegroundColor DarkGray
+        if ($OnLine) { & $OnLine $line }
     }
     $emit = {
         param([bool]$final)
@@ -319,7 +365,7 @@ function Confirm-StopInstall($proc) {
 
 # 在 WSL 裡以 root 執行一段 bash 腳本，作為長步驟（見 Invoke-Watched）。腳本放在沒有空白的 ProgramData 路徑。
 function Invoke-WslStep {
-    param([string]$Label, [string]$Usually, [string]$Script, [double]$UpperMinutes = 0)
+    param([string]$Label, [string]$Usually, [string]$Script, [double]$UpperMinutes = 0, [scriptblock]$OnLine = $null)
     $dir = Join-Path $env:ProgramData 'AgEnD-install'
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     $file = Join-Path $dir ('step-' + [Guid]::NewGuid().ToString('N') + '.sh')
@@ -327,7 +373,7 @@ function Invoke-WslStep {
     try {
         $wslFile = (wsl -d $UBUNTU_DISTRO -u root -- wslpath -u ($file -replace '\\', '\\') 2>$null | Out-String).Trim()
         if (-not $wslFile.StartsWith('/')) { $wslFile = '/mnt/' + $file.Substring(0, 1).ToLower() + ($file.Substring(2) -replace '\\', '/') }
-        return (Invoke-Watched -Label $Label -Usually $Usually -UpperMinutes $UpperMinutes -File 'wsl.exe' -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', $wslFile))
+        return (Invoke-Watched -Label $Label -Usually $Usually -UpperMinutes $UpperMinutes -OnLine $OnLine -File 'wsl.exe' -Arguments @('-d', $UBUNTU_DISTRO, '-u', 'root', '--', 'bash', $wslFile))
     } finally {
         Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
     }
@@ -857,20 +903,33 @@ if (Stage-Done 5) {
     Write-Ok "已完成，跳過此步驟"
 } else {
     Write-Host ""
-    Write-Info "接下來將執行 AgEnD quickstart（互動式設定）"
-    Write-Info "  - 選擇通訊軟體（Discord / Telegram）"
-    Write-Info "  - 輸入 Bot Token"
-    Write-Info "  - 在群組發一則訊息讓 Bot 偵測"
-    Write-Info "  - 自動產生設定 + 安裝 service + 啟動"
-    Write-Host ""
-    Write-Warn "要貼上 Bot Token：在視窗裡按一下右鍵。"
-    Write-Warn "設定時請不要按 Ctrl+C：它會直接結束設定。"
-    Write-Host ""
-    Read-Host "  準備好了嗎？按 Enter 開始"
-
-    $prevEAP5 = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    wsl -d $UBUNTU_DISTRO -u root -- bash -lc 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend quickstart'
-    $ErrorActionPreference = $prevEAP5
+    Write-Info "接下來在瀏覽器裡完成設定：選擇 Discord 或 Telegram、貼上 Bot Token。"
+    Write-Info "設定頁會自動打開，設定碼也會幫你複製好；這個視窗不用打字。"
+    $agendEnv = 'export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; '
+    $configured = $false
+    while (-not $configured) {
+        $setup = Invoke-BrowserSetup { param($hook) Invoke-WslStep -Label "等待你在瀏覽器完成設定" -Usually "設定頁 15 分鐘沒完成會自動關閉" -UpperMinutes 15 -OnLine $hook -Script ($agendEnv + 'agend setup') }
+        if ($setup.Done -or $setup.Already) { $configured = $true; break }
+        Write-Host ""
+        if ($setup.Shown) {
+            Write-Warn "設定頁已經關閉，設定還沒完成（15 分鐘沒完成、閒置太久，或設定碼輸錯太多次）。"
+            $again = Read-Host "  按 Enter 重新打開設定頁；輸入 n 再按 Enter 結束"
+            if ($again -match '^\s*[nN]') { Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"; Read-Host "按 Enter 結束"; exit 1 }
+        } else {
+            Write-Warn "設定頁沒有出現。"
+            $console = Read-Host "  改在這個視窗設定嗎？(Y/n)"
+            if ($console -match '^\s*[nN]') { Write-Info "之後再執行同一行安裝指令，會從這一步繼續。"; Read-Host "按 Enter 結束"; exit 1 }
+            Write-Warn "要貼上 Bot Token：在視窗裡按一下右鍵。"
+            Write-Warn "設定時請不要按 Ctrl+C：它會直接結束設定。"
+            $prevEAP5 = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+            wsl -d $UBUNTU_DISTRO -u root -- bash -lc ($agendEnv + 'agend quickstart')
+            $ErrorActionPreference = $prevEAP5
+            $configured = $true
+        }
+    }
+    # 設定頁完成時，AgEnD 是以一般程序啟動的：改成系統服務（開機自動啟動），agend install 會先停掉手動啟動的那一個。
+    # 服務已經在跑（主控台設定時已安裝，或上次中斷前已裝好）就不再裝：agend install 會停掉它，而正常結束的服務不會被重新拉起。
+    $null = Invoke-WslStep -Label "安裝並啟動 AgEnD 服務" -Usually "通常不到 1 分鐘" -UpperMinutes 3 -Script ($agendEnv + 'if systemctl --user is-active --quiet com.agend.fleet; then echo "AgEnD service is already running"; else agend install; fi')
 
     # 驗證是否啟動成功
     Write-Host ""
