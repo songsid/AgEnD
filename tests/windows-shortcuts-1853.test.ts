@@ -29,19 +29,19 @@ describe("shortcuts and the fast path (static)", () => {
     expect(at).toBeLessThan(code.indexOf('Write-Info "檢查網路連線..."'));          // … before the network check, so before anything is installed
     expect(at).toBeLessThan(code.indexOf("Write-Step 1 $TOTAL"));
     const block = code.slice(at, code.indexOf('Write-Info "檢查網路連線..."'));
-    expect(block).toMatch(/Install-AgendShortcuts \$existing\.Distro \$existing\.User/);
+    expect(block).toMatch(/\$made = @\(Install-AgendShortcuts \$existing\.Distro \$existing\.User\)\n\s*\$null = Write-ShortcutResult \$made/);
     expect(block).toMatch(/Read-Host "按 Enter 結束"; exit 0/);
     expect(block).not.toMatch(/Invoke-WslStep|wsl --install|agend setup|Mark-Stage/);
   });
   it("no double quote in a command sent to WSL: Windows PowerShell 5.1 does not escape one inside a native argument", () => {
     // pwsh 7 (these tests) escapes it, so only this check sees it. Every literal the shortcuts hand to bash -lc / Invoke-AgendInWsl.
-    const shared = text.slice(text.indexOf("$DASHBOARD_OPENER_FN = @'"), text.indexOf("function Get-FileVersionString"));
-    const sent = [...shared.matchAll(/(?:bash -lc \(?|Invoke-AgendInWsl \S+ \S+ )'([^']*)'/g)].map(m => m[1]);
+    const shared = text.slice(text.indexOf("$WSL_COMMAND_FN = @'"), text.indexOf("function Get-FileVersionString"));
+    const sent = [...shared.matchAll(/(?:bash -lc \(?|Invoke-AgendInWsl \S+ \S+ |Get-WslAgendCommand |return \()'([^']*)'/g)].map(m => m[1]);
     expect(sent.length).toBeGreaterThanOrEqual(5);
     for (const command of sent) expect(command).not.toContain('"');
   });
   it("the end of the install makes both shortcuts with the recorded user; the restart never shuts WSL down", () => {
-    expect(code).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER\)/);
+    expect(code).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER\)\n\$null = Write-ShortcutResult \$shortcuts/);
     expect(restartFn).not.toMatch(/--shutdown/);
     expect(restartFn).not.toMatch(/-u root/);
     const openerFn = text.slice(text.indexOf("$DASHBOARD_OPENER_FN = @'"), text.indexOf("\n'@", text.indexOf("$DASHBOARD_OPENER_FN = @'")));
@@ -71,6 +71,24 @@ exit 0
   chmodSync(join(bin, "wsl.exe"), 0o755);
   return bin;
 }
+/**
+ * Run a printed "start AgEnD" line the way a person would: pasted into PowerShell. Its wsl runs the bash command in a
+ * clean environment whose home has only an nvm-provided agend (an inert one that says it ran).
+ */
+function runPrinted(line: string): string {
+  const d = scratch("agend-1853paste-");
+  const home = join(d, "home"), nvmBin = join(d, "nvmbin"), wslBin = join(d, "wslbin");
+  for (const dir of [join(home, ".nvm"), nvmBin, wslBin]) mkdirSync(dir, { recursive: true });
+  writeFileSync(join(home, ".nvm", "nvm.sh"), `export PATH=${nvmBin}:$PATH\n`);
+  writeFileSync(join(nvmBin, "agend"), "#!/bin/sh\necho INERT_START_OK \"$@\"\n");
+  chmodSync(join(nvmBin, "agend"), 0o755);
+  for (const name of ["wsl", "wsl.exe"]) {
+    writeFileSync(join(wslBin, name), `#!/bin/sh\nwhile [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done; shift\nexec env -i HOME='${home}' PATH=/usr/bin:/bin "$@"\n`);
+    chmodSync(join(wslBin, name), 0o755);
+  }
+  const r = spawnSync("pwsh", ["-NoProfile", "-Command", line], { encoding: "utf8", timeout: 60_000, env: { ...process.env, PATH: `${wslBin}:${process.env.PATH}` } });
+  return r.stdout + r.stderr;
+}
 const calls = (bin: string) => existsSync(join(bin, "calls.txt")) ? readFileSync(join(bin, "calls.txt"), "utf8") : "";
 function withHelpers(body: string, bin: string, input = "", env: Record<string, string> = {}) {
   const dir = scratch("agend-1853sc-");
@@ -79,8 +97,8 @@ function withHelpers(body: string, bin: string, input = "", env: Record<string, 
 $t = $null; $e = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
 foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$(RESTART_FN|DASHBOARD_OPENER_FN)$' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
-. ([scriptblock]::Create($RESTART_FN))
+foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$(WSL_COMMAND_FN|RESTART_FN|DASHBOARD_OPENER_FN)$' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
+. ([scriptblock]::Create($WSL_COMMAND_FN)); . ([scriptblock]::Create($DASHBOARD_OPENER_FN)); . ([scriptblock]::Create($RESTART_FN))
 $script:OnWindows = $false
 $env:LOCALAPPDATA = Join-Path $env:TMPDIR 'localappdata'; $env:ProgramFiles = Join-Path $env:TMPDIR 'pf'
 ${body}`);
@@ -110,7 +128,9 @@ describe.skipIf(!pwsh)("with pwsh: the restart shortcut", { timeout: 90_000 }, (
   it("AgEnD not running: says so and how to start it; no status", () => {
     const bin = fakeWsl({ restart: [1, "Fleet not running. Start with: agend start"] });
     const { out } = withHelpers(`Write-Output ("RESULT=" + (Invoke-RestartAgend 'Ubuntu-24.04' 'root' -SettleSeconds 0))`, bin, "y\n");
-    expect(out).toContain("AgEnD 沒有在執行，所以沒有可以重啟的。要啟動它：wsl -d Ubuntu-24.04 -u root -- bash -lc 'agend start'");
+    expect(out).toContain("AgEnD 沒有在執行，所以沒有可以重啟的。要啟動它：wsl -d Ubuntu-24.04 -u root -- bash -lc '");
+    // #2252 review: the line it prints is one a person can paste — with nvm loaded, so an nvm-only agend is found.
+    expect(runPrinted(out.match(/要啟動它：(wsl .*)$/m)![1]!)).toContain("INERT_START_OK start");
     expect(out).toContain("RESULT=failed");
     expect(calls(bin)).not.toMatch(/agend status/);
   });
@@ -138,6 +158,7 @@ describe.skipIf(!pwsh)("with pwsh: finding an existing install", { timeout: 90_0
     const bin = fakeWsl({ found: ["Debian-AgEnD"] });
     const { out } = withHelpers(`New-Item -ItemType Directory -Path (Join-Path $env:LOCALAPPDATA 'AgEnD') -Force | Out-Null
 Set-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'AgEnD/install.json') -Value '{"distro":"Debian-AgEnD","user":"han"}'
+function Get-InstalledWslVersion { return [version]'2.6.1.0' }
 $r = Find-ExistingAgend
 Write-Output ("FOUND=" + $r.Distro + "/" + $r.User)`, bin);
     expect(out).toContain("FOUND=Debian-AgEnD/han");
@@ -158,12 +179,66 @@ $r = Find-ExistingAgend
 Write-Output ("FOUND=" + $r.Distro + "/" + $r.User)`, bin);
     expect(out).toContain("FOUND=Ubuntu-24.04/root");
   });
+  it("#2252 review: an old record with no WSL there now (removed since): nothing found, and wsl.exe never asked", () => {
+    const bin = fakeWsl({ found: ["Debian-AgEnD", "Ubuntu-24.04"] });
+    const { out } = withHelpers(`New-Item -ItemType Directory -Path (Join-Path $env:LOCALAPPDATA 'AgEnD') -Force | Out-Null
+Set-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'AgEnD/install.json') -Value '{"distro":"Debian-AgEnD","user":"han"}'
+Write-Output ("FOUND=[" + ((Find-ExistingAgend) -ne $null) + "]")`, bin);
+    expect(out).toContain("FOUND=[False]");
+    expect(calls(bin)).toBe("");
+  });
   it("installed nowhere: nothing found", () => {
     const bin = fakeWsl({ found: [] });
     const { out } = withHelpers(`New-Item -ItemType Directory -Path (Join-Path $env:LOCALAPPDATA 'AgEnD') -Force | Out-Null
 Set-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'AgEnD/install.json') -Value '{"distro":"Gone","user":"han"}'
+function Get-InstalledWslVersion { return [version]'2.6.1.0' }
 Write-Output ("FOUND=[" + ((Find-ExistingAgend) -ne $null) + "]")`, bin);
     expect(out).toContain("FOUND=[False]");
     expect(calls(bin).trim().split("\n")).toHaveLength(4);                       // the record, then the three default Ubuntus
+  });
+});
+
+describe.skipIf(!pwsh)("with pwsh: making the two shortcuts (#2252 review)", { timeout: 90_000 }, () => {
+  const fakeShortcut = (failing: string) => `$script:OnWindows = $true
+function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptText, [string]$description) {
+  if ($name -eq '${failing}') { throw 'COM failed' }
+  return ('/Desktop/' + $name + '.lnk')
+}
+$made = @(Install-AgendShortcuts 'Ubuntu-22.04' 'han')
+Write-Output ("COUNT=" + $made.Count)
+Write-Output ("BOTH=" + (Write-ShortcutResult $made))
+Write-Output ("RECORD=" + (Get-Content -Raw -LiteralPath (Join-Path (Get-AgendShortcutDir) 'install.json')))`;
+  it("both made: says both, and leaves the WSL marker", () => {
+    const bin = fakeWsl();
+    const { out } = withHelpers(fakeShortcut("none"), bin);
+    expect(out).toContain("COUNT=2");
+    expect(out).toContain("[OK] 桌面上已建立「AgEnD 儀表板」和「AgEnD 重新啟動」捷徑");
+    expect(out).toContain("BOTH=True");
+    expect(calls(bin)).toMatch(/windows-shortcuts\n$/);
+  });
+  it("the second one fails: the first is still made, it says which one is missing, and no marker (the update hint stays)", () => {
+    const bin = fakeWsl();
+    const { out } = withHelpers(fakeShortcut("AgEnD 重新啟動"), bin);
+    expect(out).toContain("COUNT=1");
+    expect(out).toContain("只建立了「AgEnD 儀表板」捷徑，另一個沒有建立成功。");
+    expect(out).toContain("BOTH=False");
+    expect(out).not.toContain("[OK] 桌面上已建立");
+    expect(calls(bin)).toBe("");
+    expect(out).toContain('RECORD={"distro":"Ubuntu-22.04","user":"han"}');          // the record still names this Linux and user
+  });
+  it("the first one fails: the second is still made", () => {
+    const { out } = withHelpers(fakeShortcut("AgEnD 儀表板"), fakeWsl());
+    expect(out).toContain("COUNT=1");
+    expect(out).toContain("只建立了「AgEnD 重新啟動」捷徑");
+  });
+  it("the dashboard's 'not running' line can be pasted as it is: nvm loaded, the recorded user", () => {
+    const bin = scratch("agend-1853dash-down-");
+    writeFileSync(join(bin, "wsl.exe"), "#!/bin/sh\necho 'Web token not found. Is the fleet running?' >&2\nexit 1\n");
+    chmodSync(join(bin, "wsl.exe"), 0o755);
+    const { out } = withHelpers(`$null = Invoke-OpenDashboard 'Ubuntu-22.04' 'han'`, bin);
+    const line = out.match(/執行：(wsl .*)$/m)![1]!;
+    expect(line.startsWith("wsl -d Ubuntu-22.04 -u han -- bash -lc '")).toBe(true);
+    expect(line).not.toContain('"');                                          // Windows PowerShell 5.1 would split it
+    expect(runPrinted(line)).toContain("INERT_START_OK start");
   });
 });

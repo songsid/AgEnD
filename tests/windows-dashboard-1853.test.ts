@@ -24,7 +24,7 @@ describe("the installer ends on the dashboard (static)", () => {
     expect(ending.indexOf("Invoke-OpenDashboard $UBUNTU_DISTRO")).toBeGreaterThan(ending.indexOf("Clear-ResumeAtLogon"));
     const advanced = ending.indexOf("── 進階（需要用主控台時才看）──");
     expect(advanced).toBeGreaterThan(ending.indexOf("日常使用："));
-    for (const cmd of ["agend ls", "agend attach", "agend update", "agend web", "agend start"]) expect(ending.indexOf(cmd)).toBeGreaterThan(advanced);
+    for (const cmd of ["agend ls", "agend attach", "agend update", "agend web", "Get-AgendStartHint $UBUNTU_DISTRO $AGEND_USER"]) expect(ending.indexOf(cmd)).toBeGreaterThan(advanced);
     expect(ending).not.toMatch(/管理指令/);
   });
 });
@@ -47,8 +47,8 @@ function withHelpers(body: string, bin: string, input = "") {
 $t = $null; $e = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
 foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$DASHBOARD_OPENER_FN' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
-. ([scriptblock]::Create($DASHBOARD_OPENER_FN))
+foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$(WSL_COMMAND_FN|DASHBOARD_OPENER_FN)$' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
+. ([scriptblock]::Create($WSL_COMMAND_FN)); . ([scriptblock]::Create($DASHBOARD_OPENER_FN))
 $script:OnWindows = $false
 ${body}`);
   const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000, input, env: { ...process.env, TMPDIR: dir, PATH: `${bin}:${process.env.PATH}` } });
@@ -82,7 +82,7 @@ Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04' 'han'))`, bin);
     const { out, dir } = withHelpers(`function Start-Process { param($FilePath) Add-Content (Join-Path $env:TMPDIR 'opened.txt') $FilePath }
 Write-Output ("RESULT=" + (Invoke-OpenDashboard 'Ubuntu-24.04' 'han'))`, fakeWsl("Web token not found. Is the fleet running?\n"));
     expect(out).toContain("現在打不開 AgEnD 儀表板：AgEnD 可能還沒啟動。");
-    expect(out).toContain("wsl -d Ubuntu-24.04 -u han -- bash -lc 'agend start'");          // the recorded user, not root
+    expect(out).toContain("wsl -d Ubuntu-24.04 -u han -- bash -lc 'export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; agend start'"); // the recorded user, not root
     expect(out).toContain("RESULT=False");
     expect(() => readFileSync(join(dir, "opened.txt"))).toThrow();
   });

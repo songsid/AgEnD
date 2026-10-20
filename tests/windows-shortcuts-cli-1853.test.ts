@@ -51,8 +51,8 @@ function deps(h: ShortcutsHost, answer: RunResult = { status: 0, stdout: "AGEND_
 const decode = (args: string[]) => Buffer.from(args[args.indexOf("-EncodedCommand") + 1]!, "base64").toString("utf16le");
 
 describe("one copy of the shortcut code", () => {
-  it("the template below its header is byte-for-byte the installer's, from the dashboard opener to Install-AgendShortcuts", () => {
-    expect(shared.startsWith("$DASHBOARD_OPENER_FN = @'\n")).toBe(true);
+  it("the template below its header is byte-for-byte the installer's, from the WSL command builder to Install-AgendShortcuts", () => {
+    expect(shared.startsWith("$WSL_COMMAND_FN = @'\n")).toBe(true);
     expect(shared.trimEnd().endsWith("    return $made\n}")).toBe(true);
     expect(installer.includes(shared)).toBe(true);
     expect(shared).toContain("function Install-AgendShortcuts([string]$distro, [string]$user)");
