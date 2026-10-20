@@ -208,17 +208,6 @@ describe("#835 recovery intent reaches the real Daemon.start reader", () => {
     expect(internals(captured!).buildBackendConfig().skipResume).toBe(false);
   });
 
-  it("keeps session-OOM intent across repeated interrupted boots before CLI startup", async () => {
-    const content = JSON.stringify({ resumeDisabled: true, reason: "session_oom", session: "old-session" });
-    writeFileSync(marker, content);
-    for (let attempt = 0; attempt < 2; attempt++) {
-      await expect(lifecycle().start("worker", config, false)).rejects.toBe(ipcBoundary);
-      expect(internals(captured!).buildBackendConfig().skipResume).toBe(true);
-      expect(existsSync(marker)).toBe(true);
-      expect(readFileSync(marker, "utf8")).toBe(content);
-    }
-  });
-
   it("successful stubbed CLI startup resets the flag for subsequent spawns", async () => {
     writeFileSync(marker, '{"resumeDisabled":true}');
     const d = daemon();

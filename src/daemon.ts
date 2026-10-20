@@ -14,7 +14,6 @@ import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./
 import { rotateLogIfNeededAsync, type Logger } from "./logger.js";
 import { coredumpFilterLaunchPrefix } from "./coredump-filter.js";
 import { mcpServerState } from "./mcp-liveness.js";
-import { observeCliOomIdentity, confirmedCliOom, consecutiveSessionOoms, type CliOomIdentity, type SessionOomCount } from "./session-oom.js";
 import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-marker.js";
 import { writeBackgroundWorkEndedMarker } from "./background-work-ended.js";
 import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
@@ -1438,10 +1437,6 @@ export class Daemon extends EventEmitter {
    */
   private launchAttempt = 0;
   private skipResume = false;
-  private oomIdentity: CliOomIdentity | null = null;
-  private oomCount: SessionOomCount | null = null;
-  private oomFreshGeneration = -1;
-  private oomFreshIntent: string | null = null;
   /**
    * #1209: whether THIS boot was asked to skip resume by a crash-loop
    * (crash-state.json). Captured at boot before spawnClaudeWindow resets
@@ -2403,29 +2398,23 @@ export class Daemon extends EventEmitter {
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
     this.logger.info(`Starting ${this.name}`);
 
-    // Ordinary crash markers are one-shot. Session-OOM intent must survive
-    // interrupted startup until its own fresh replacement is up.
+    // Recovery intent is one-shot, but only the reader may consume it. Keep
+    // an unreadable marker for a later start; clear successfully read bytes
+    // even when the JSON is corrupt so it cannot remain forever.
     const crashStatePath = join(this.instanceDir, "crash-state.json");
     this.bootSkippedResume = false;
     try {
       if (existsSync(crashStatePath)) {
         const content = readFileSync(crashStatePath, "utf-8");
-        let retainOomIntent = false;
         try {
           const state = JSON.parse(content);
           if (state?.resumeDisabled === true) {
             this.skipResume = true;
             this.bootSkippedResume = true;
-            if (state.reason === "session_oom") {
-              this.oomFreshIntent = content;
-              retainOomIntent = true;
-            }
             this.logger.warn("Previous crash loop detected — starting without resume");
           }
         } finally {
-          if (!retainOomIntent) {
-            try { unlinkSync(crashStatePath); } catch { /* best effort */ }
-          }
+          try { unlinkSync(crashStatePath); } catch { /* best effort */ }
         }
       }
     } catch { /* unreadable or corrupt file — ignore */ }
@@ -2544,9 +2533,14 @@ export class Daemon extends EventEmitter {
       }
     }
 
-    const resumed = await this.spawnWithRecoverySnapshot(this.startupAdmission);
-    this.startupAdmission?.();
+    const resumed = await this.spawnClaudeWindow(); this.startupAdmission?.();
     this.isNewSession = !resumed;
+    if (!resumed) {
+      await this.injectSnapshotMessage(this.startupAdmission); this.startupAdmission?.();
+    } else {
+      // Clean up stale snapshot file — resume restored full context, snapshot not needed
+      try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
+    }
 
     // #1209: conditional continuation for the turn interrupted by the last
     // restart, if the gates allow. Detached like the warmup notice; the gate
@@ -3082,83 +3076,6 @@ export class Daemon extends EventEmitter {
     this.mcpRestartGraceTrigger = null;
   }
 
-  private readStoredSessionId(): string | null {
-    try { return readFileSync(join(this.instanceDir, "session-id"), "utf8").trim() || null; } catch { return null; }
-  }
-
-  private async observeOomIdentity(): Promise<void> {
-    if (process.platform !== "linux" || !this.tmux || !this.backend) return;
-    const tmux = this.tmux, owner = this.interactionOwner();
-    const current = () => this.tmux === tmux && sameInteractionOwner(owner, this.interactionOwner())
-      && !this.runtimeMonitorsFrozen && !this.healthCheckPaused;
-    try {
-      const pid = await TmuxManager.getPanePid(this.tmuxSessionName, tmux.getWindowId());
-      if (!current() || !pid) return;
-      const identity = await observeCliOomIdentity(pid, this.backend.binaryName);
-      const alive = await tmux.getPaneStatus();
-      if (current() && alive?.alive) this.oomIdentity = identity;
-    } catch { /* uncertain identity preserves ordinary crash handling */ }
-  }
-
-  private prepareOomFreshStart(session: string): boolean {
-    const intent = JSON.stringify({ resumeDisabled: true, reason: "session_oom", session });
-    try {
-      // Keep a recoverable ID without reading or rewriting the provider's
-      // transcript. Persist fresh intent before any launch can resume it.
-      writeFileSync(join(this.instanceDir, `session-id.oom-${Date.now()}-${randomBytes(4).toString("hex")}`), session, { mode: 0o600, flag: "wx" });
-      writeFileSync(join(this.instanceDir, "crash-state.json"), intent, { mode: 0o600 });
-      this.skipResume = true;
-      this.oomFreshIntent = intent;
-      this.emit("session_oom", { name: this.name, action: "fresh", reason: "repeated_oom", session });
-      return true;
-    } catch (err) {
-      this.healthCheckPaused = true;
-      this.logger.error({ err }, "Could not preserve OOM recovery intent — not resuming the suspect session");
-      this.emit("session_oom", { name: this.name, action: "stopped", reason: "intent_failed", session });
-      return false;
-    }
-  }
-
-  /** Snapshot and intent belong to this launch, never to a later replacement. */
-  private async spawnWithRecoverySnapshot(admission?: () => void): Promise<boolean> {
-    admission?.();
-    const intent = this.oomFreshIntent;
-    const launch = this.spawnClaudeWindow();
-    // beginSpawn runs synchronously before spawnClaudeWindow's first await.
-    const generation = this.spawnGeneration, fence = this.launchFenceEpoch;
-    const resumed = await launch;
-    admission?.();
-    if (generation !== this.spawnGeneration || fence !== this.launchFenceEpoch) {
-      throw new Error("Recovery launch was superseded");
-    }
-    const owner = this.interactionOwner(), tmux = this.tmux;
-    const ownLaunch = () => {
-      admission?.();
-      if (this.tmux !== tmux || !sameInteractionOwner(owner, this.interactionOwner())
-        || this.runtimeMonitorsFrozen || this.healthCheckPaused || this.startupAborted
-        || this.spawning || this.isPaused || this.pauseWakeState === "waking") {
-        throw new Error("Recovery launch was stopped or superseded");
-      }
-    };
-    ownLaunch();
-    if (!resumed) {
-      await this.injectSnapshotMessage(ownLaunch);
-      ownLaunch();
-    } else {
-      try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
-    }
-    if (intent && !resumed && this.oomFreshIntent === intent) {
-      this.oomFreshGeneration = generation;
-      // A later lifecycle request may have written another marker during startup.
-      try {
-        const marker = join(this.instanceDir, "crash-state.json");
-        if (readFileSync(marker, "utf8") === intent) unlinkSync(marker);
-      } catch { /* a later start conservatively stays fresh */ }
-      this.oomFreshIntent = null;
-    }
-    return resumed;
-  }
-
   private startHealthCheck(): void {
     if (this.runtimeMonitorsFrozen || this.healthCheckTimer) return;
     const { max_retries, backoff, reset_after } = this.config.restart_policy;
@@ -3368,26 +3285,10 @@ export class Daemon extends EventEmitter {
           this.setProcessStatus("crashed");
           this.logPaneDeath(cliLabel, exitCode, lastOutput);
 
-          // A dead pane is not proof of OOM. Only its observed CLI's explicit
-          // kernel victim record may change recovery; this read is bounded and
-          // asynchronous. A stop/pause/replacement while it waits revokes it.
-          const oom = paneStatus ? await confirmedCliOom(this.oomIdentity, Date.now()) : null;
-          if (discardStaleHealth()) return;
-          const session = oom ? (this.backend?.getSessionId() ?? this.readStoredSessionId()) : null;
-          const sessionKey = session ? `${this.config.backend ?? "claude-code"}:${session}` : null;
-          this.oomCount = consecutiveSessionOoms(this.oomCount, sessionKey, oom !== null);
-          if (oom) this.logger.warn({ pid: oom.pid, session, consecutive: this.oomCount?.count }, "CLI was an explicit kernel OOM victim");
-
           // Kill the dead window (remain-on-exit keeps it around) before respawn
           if (paneStatus) {
             await healthTmux.killWindow();
             if (discardStaleHealth()) return;
-          }
-
-          if (oom && this.oomFreshGeneration === this.spawnGeneration) {
-            this.healthCheckPaused = true;
-            this.emit("session_oom", { name: this.name, action: "stopped", reason: "fresh_oom", session });
-            return;
           }
 
           // Detect claude-code background session conflict — recover without counting as crash
@@ -3509,21 +3410,17 @@ export class Daemon extends EventEmitter {
           await new Promise(r => setTimeout(r, delay));
 
           try {
-            if (discardStaleHealth()) return;
             await this.checkpointSessionId();
             // stop() / pause() may have landed while this tick sat in the backoff delay or in the
             // (bounded) session lookup. They only stop LATER ticks; this continuation is already
             // past that check and must not clear the process/window or respawn an instance that
             // was just stopped or paused (#1160 review).
-            if (discardStaleHealth()) return;
-            if (this.oomCount && this.oomCount.count >= 2 && session) {
-              if (!this.prepareOomFreshStart(session)) return;
-            }
+            if (this.runtimeMonitorsFrozen || this.healthCheckPaused) return;
             // Reset is synchronous for file sources, but Kiro's baseline is
             // read off-thread. Finish it before starting the replacement CLI,
             // otherwise its first work could become part of that baseline.
             if (!await this.resetTranscriptBeforeAdmission()) return;
-            if (discardStaleHealth()) return;
+            if (this.runtimeMonitorsFrozen || this.healthCheckPaused) return;
             // Kill orphan MCP server from the crashed CLI session.
             // MCP server writes its PID to channel.mcp.pid on startup.
             try {
@@ -3537,24 +3434,24 @@ export class Daemon extends EventEmitter {
             // must not block spawnClaudeWindow (which calls ensureSession).
             try {
               const windows = await TmuxManager.listWindows(this.tmuxSessionName);
-              if (discardStaleHealth()) return;
               for (const w of windows) {
                 if (w.name === this.name) {
                   const tm = new TmuxManager(this.tmuxSessionName, w.id);
                   await tm.killWindow();
-                  if (discardStaleHealth()) return;
                 }
               }
             } catch { /* tmux server may be dead — ensureSession in trySpawn will recover */ }
-            if (discardStaleHealth()) return;
             // Write snapshot before spawn — consumed only if resume fails
             this.writeRotationSnapshot("crash");
             // Try --resume first; spawnClaudeWindow falls back to fresh session if resume fails
-            const recovery = this.spawnWithRecoverySnapshot();
-            const recoveryGeneration = this.spawnGeneration, recoveryFence = this.launchFenceEpoch;
-            const resumed = await recovery;
-            if (recoveryGeneration !== this.spawnGeneration || recoveryFence !== this.launchFenceEpoch
-              || this.runtimeMonitorsFrozen || this.healthCheckPaused) return;
+            const resumed = await this.spawnClaudeWindow();
+            if (!resumed) {
+              // Resume failed → fresh session → inject snapshot for context
+              await this.injectSnapshotMessage();
+            } else {
+              // Clean up stale snapshot — resume restored full context
+              try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
+            }
             this.setProcessStatus("running");
             this.logger.info({ resumed }, `Respawned ${cliLabel} window after crash`);
             this.emit("crash_respawn", this.name);
@@ -10686,7 +10583,6 @@ export class Daemon extends EventEmitter {
     this.sawBlockedInput = false;
     if (this.spawnDepth === 0) {
       this.spawnGeneration++;
-      this.oomIdentity = null;
       this.interactionObservation.reset(this.interactionOwner());
       this.clearInteractionConfirmation();
       this.inputTransientGuardGeneration = (this.backend?.getInputUnavailableTransients?.().length ?? 0) > 0
@@ -11662,10 +11558,7 @@ export class Daemon extends EventEmitter {
     // A fatal startup screen returns true (the spawn is over — respawning
     // would only re-show the same screen) but is NOT ready-for-delivery:
     // fatalStartupBlocked gates every pane write in deliverMessage.
-    if (ready && !this.fatalStartupBlocked) {
-      this.firstDeliveryDelay.recordReady();
-      await this.observeOomIdentity();
-    }
+    if (ready && !this.fatalStartupBlocked) this.firstDeliveryDelay.recordReady();
     return ready;
   }
 

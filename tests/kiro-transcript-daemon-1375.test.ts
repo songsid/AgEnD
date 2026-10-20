@@ -38,10 +38,6 @@ function fixture() {
   Object.assign(d, {name:"fixture", instanceDir:dir, config:{backend:"kiro-cli",working_directory:dir,hang_detector:{enabled:false}},
     tmuxSessionName:"never-connect", logger:{info:vi.fn(),warn:vi.fn(),debug:vi.fn(),error:vi.fn()},
     startupAborted:false, launchFenceEpoch:0, transcriptTurns:new TranscriptTurnLedger(),
-    // Object.create skips the constructor; model an active, owned launch for
-    // the real startup/snapshot admission checks before the baseline barrier.
-    pauseWakeState:"active", spawnGeneration:0, launchAttempt:0, bootId:"fixture-boot",
-    runtimeMonitorsFrozen:false, healthCheckPaused:false, spawning:false, oomFreshIntent:null,
     spawnClaudeWindow:vi.fn(async()=>false), injectSnapshotMessage:vi.fn(async()=>{}),
     maybeResumeInterruptedTurn:vi.fn(async()=>{}), runWarmupInstructionNotice:vi.fn(async()=>{}),
     attachPipePaneLog:vi.fn(async()=>{}), credentialProfileStore:vi.fn(()=>undefined),
