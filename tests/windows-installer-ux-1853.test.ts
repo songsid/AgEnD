@@ -183,6 +183,12 @@ Write-Output ("STOP=" + $stop + " ALIVE=" + (-not $p.HasExited)); $p.Kill()`, "\
     expect(keep.out).toContain("Ctrl+C 是「停止」，不是「複製」");
     expect(keep.out).toContain("安裝還在背景繼續進行，沒有中斷。");
     expect(keep.out).toContain("STOP=False ALIVE=True");
+    for (const unclear of ["yes\n", "y/N\n"]) {                                    // only a lone y stops (#2265 review)
+      const more = withHelpers(`$p = Start-Process sleep -ArgumentList 30 -PassThru
+$stop = Confirm-StopInstall $p
+Write-Output ("STOP=" + $stop + " ALIVE=" + (-not $p.HasExited)); $p.Kill()`, unclear);
+      expect(more.out).toContain("STOP=False ALIVE=True");
+    }
     const stop = withHelpers(`$p = Start-Process sleep -ArgumentList 30 -PassThru
 $stop = Confirm-StopInstall $p
 Start-Sleep -Milliseconds 300

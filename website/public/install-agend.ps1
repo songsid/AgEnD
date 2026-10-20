@@ -92,19 +92,39 @@ function Get-LocalDisks {
     }
 }
 
-# 以 root 確認 WSL 能用；不行就整個重新啟動 WSL（wsl --shutdown）再試，最多三次。不開 Ubuntu 的設定視窗：
-# 那個視窗會要你建立 Linux 使用者和密碼（輸入密碼時畫面不顯示任何字），而我們本來就以 root 執行。
+# 以 root 確認 WSL 能用。不行時先只重新啟動這個 Linux（wsl --terminate，只動到我們自己的發行版）再試，最多兩次；
+# 還是不行才問要不要重新啟動整個 WSL，預設不要。wsl --shutdown 會停掉這台電腦上所有的 Linux（其他發行版和裡面正在
+# 跑的程式），所以只有明確回答 y 才執行（leader 2026-10-20：安裝程式絕不在沒有 y 的情況下執行它）。
+# 不開 Ubuntu 的設定視窗：那個視窗會要你建立 Linux 使用者和密碼，而我們本來就以 root 執行。
+# 回傳 'ready'、'failed'（試過了還是不行），或 'declined'（不同意重新啟動整個 WSL）。
+function Test-WslRoot([string]$distro) {
+    $r = wsl -d $distro -u root -- echo "WSL_OK" 2>&1 | Out-String
+    return ($r -match "WSL_OK")
+}
 function Wait-WslRoot([string]$distro, [int]$tries = 3, [int]$pauseSeconds = 5) {
     for ($i = 1; $i -le $tries; $i++) {
-        $r = wsl -d $distro -u root -- echo "WSL_OK" 2>&1 | Out-String
-        if ($r -match "WSL_OK") { return $true }
+        if (Test-WslRoot $distro) { return 'ready' }
         if ($i -lt $tries) {
-            Write-Info "WSL 還沒準備好，重新啟動 WSL 後再試一次（$i/$($tries - 1)）..."
-            wsl --shutdown 2>&1 | Out-Null
+            Write-Info "$distro 還沒準備好，只重新啟動這個 Linux 後再試一次（$i/$($tries - 1)）..."
+            wsl --terminate $distro 2>&1 | Out-Null
             Start-Sleep -Seconds $pauseSeconds
         }
     }
-    return $false
+    Write-Host ""
+    $answer = Read-Host "  要重新啟動整個 WSL 嗎？這會停掉這台電腦上所有的 Linux（包括其他發行版和裡面正在跑的程式）。(y/N)"
+    # 只有一個 y（前後空白可以）才算同意；y/N、yes、yesterday 都不算（#2265 審查）。[string]：沒有輸入可讀時
+    # Read-Host 回傳 $null，而 $null -notmatch '…' 不是 $true，會被當成同意。
+    if (([string]$answer) -notmatch '^\s*[yY]\s*$') { return 'declined' }
+    Write-Info "正在重新啟動整個 WSL..."
+    wsl --shutdown 2>&1 | Out-Null
+    Start-Sleep -Seconds $pauseSeconds
+    if (Test-WslRoot $distro) { return 'ready' }
+    return 'failed'
+}
+# 沒有同意重新啟動整個 WSL：乾淨地停下來，說明之後怎麼繼續（重新執行同一行安裝指令會從這一步接著做）。
+function Write-WslDeclined {
+    Write-Warn "沒有重新啟動 WSL，所以先停在這裡；你的其他 Linux 都沒有被動到。"
+    Write-Info "  之後可以重新開機 Windows，或晚一點再貼一次同一行安裝指令，它會從這一步繼續。"
 }
 
 # ── 登入 AI 後端（#1853：使用者核准的第 ③ 步）──────────────────────────
@@ -373,7 +393,8 @@ function Invoke-AgendInWsl([string]$distro, [string]$user, [string]$command) {
 function Invoke-RestartAgend([string]$distro, [string]$user, [switch]$Wait, [int]$SettleSeconds = 3) {
     Write-Host ""
     $answer = Read-Host "  確定要重啟 AgEnD 嗎？所有 agent 會重新啟動，正在進行的工作會中斷。(y/N)"
-    if ($answer -notmatch '^\s*[yY]') {
+    # 只有一個 y 才算同意（y/N、yes 都不算）；[string]：沒有輸入時 Read-Host 回傳 $null，而 $null -notmatch '…' 不是 $true。
+    if (([string]$answer) -notmatch '^\s*[yY]\s*$') {
         Write-Host "  沒有重啟。"
         if ($Wait) { $null = Read-Host "按 Enter 關閉" }
         return 'cancelled'
@@ -930,7 +951,7 @@ function Confirm-StopInstall($proc) {
     Write-Warn "安裝還在背景繼續進行，沒有中斷。"
     Write-Host "  要停止安裝嗎？輸入 y 再按 Enter 就停止；直接按 Enter 會繼續。" -ForegroundColor Yellow -NoNewline
     $answer = Read-Answer
-    if ($answer -match '^\s*[yY]') {
+    if (([string]$answer) -match '^\s*[yY]\s*$') {
         if (-not $proc.HasExited) {
             if ($script:OnWindows) { & taskkill.exe /PID $proc.Id /T /F 2>&1 | Out-Null } else { try { $proc.Kill() } catch { } }
         }
@@ -1090,7 +1111,7 @@ if (Stage-Done 1) {
         Write-Warn "要用它繼續的話，安裝程式會修改它的設定：開啟 systemd、預設以 root 登入、不再把 Windows 的 PATH 帶進 Linux。"
         Write-Warn "裡面的檔案不會被刪除，但你在這個 $installedDistroName 裡原本的使用習慣（預設使用者、PATH）會改變。"
         $cont = Read-Host "  要用這個 $installedDistroName 繼續嗎？輸入 y 再按 Enter 繼續；直接按 Enter 就不動它、結束安裝 (y/N)"
-        if ($cont -notmatch '^\s*[yY]') {
+        if (([string]$cont) -notmatch '^\s*[yY]\s*$') {
             Write-Info "已取消，沒有改動任何東西。"
             Write-Info "如果想讓 AgEnD 用獨立的環境：先移除或改名現有的 $installedDistroName，再執行同一行安裝指令。"
             Read-Host "按 Enter 結束"; exit 0
@@ -1116,8 +1137,12 @@ if (Stage-Done 1) {
         # 驗證
         Write-Info "正在驗證安裝結果..."
         Start-Sleep -Seconds 3
-        if (Wait-WslRoot $UBUNTU_DISTRO) {
+        $wslState = Wait-WslRoot $UBUNTU_DISTRO
+        if ($wslState -eq 'ready') {
             Write-Ok "$UBUNTU_DISTRO 安裝完成"
+        } elseif ($wslState -eq 'declined') {
+            Write-WslDeclined
+            Read-Host "按 Enter 結束"; exit 1
         } else {
             Write-Err "Ubuntu 安裝失敗！"
             Write-Info "可能原因："
@@ -1135,8 +1160,12 @@ if (Stage-Done 1) {
 # ── 階段 1.5: WSL 環境防護 ────────────────────
 
 # 確認 WSL 可以正常執行
-if (Wait-WslRoot $UBUNTU_DISTRO) {
+$wslState = Wait-WslRoot $UBUNTU_DISTRO
+if ($wslState -eq 'ready') {
     Write-Ok "WSL 已就緒"
+} elseif ($wslState -eq 'declined') {
+    Write-WslDeclined
+    Read-Host "按 Enter 結束"; exit 1
 } else {
     Write-Err "WSL 無法正常執行，請重新開機後再執行同一行安裝指令"
     Read-Host "按 Enter 結束"; exit 1

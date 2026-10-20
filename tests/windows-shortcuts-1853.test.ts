@@ -108,14 +108,19 @@ ${body}`);
 }
 
 describe.skipIf(!pwsh)("with pwsh: the restart shortcut", { timeout: 90_000 }, () => {
-  it("N (or just Enter): nothing runs", () => {
-    for (const answer of ["n\n", "\n"]) {
+  it("N, just Enter, or no input to read at all: nothing runs", () => {
+    for (const answer of ["n\n", "\n", "", "y/N\n", "yes\n", "yesterday\n"]) {     // only a lone y agrees (#2265 review)                                 // "": Read-Host gets $null (#2264-era review of the y/N checks)
       const bin = fakeWsl();
       const { out } = withHelpers(`Write-Output ("RESULT=" + (Invoke-RestartAgend 'Ubuntu-22.04' 'han' -SettleSeconds 0))`, bin, answer);
       expect(out).toContain("沒有重啟。");
       expect(out).toContain("RESULT=cancelled");
       expect(calls(bin)).toBe("");
     }
+  });
+  it("a lone Y with spaces around it is a yes too", () => {
+    const bin = fakeWsl();
+    const { out } = withHelpers(`Write-Output ("RESULT=" + (Invoke-RestartAgend 'Ubuntu-22.04' 'han' -SettleSeconds 0))`, bin, "  Y \n");
+    expect(out).toContain("RESULT=restarted");
   });
   it("y: exactly agend restart, then agend status, in the given Linux as the given user", () => {
     const bin = fakeWsl({ status: "worker  running  claude-code" });

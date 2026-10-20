@@ -5,8 +5,10 @@
  *   entry is ever left; it is registered only right before the reboot exit.
  * - The Linux version is the fixed one and the disk is chosen (the system drive with 20 GB free, else the local disk
  *   with the most room, at least 5 GB), and both are shown; no numbers to type, no "got it?" prompt.
- * - Ubuntu's first-run window (a Linux user and a password that shows nothing as you type) is never opened: WSL is
- *   restarted (`wsl --shutdown`) and root init retried.
+ * - Ubuntu's first-run window (a Linux user and a password that shows nothing as you type) is never opened: root init
+ *   is retried after restarting only that Linux (`wsl --terminate <distro>`). Restarting all of WSL (`wsl --shutdown`,
+ *   which stops every Linux on the PC) is asked first, no by default, and runs only on an explicit y (the leader,
+ *   2026-10-20); a no stops cleanly, saying how to carry on.
  * - An Ubuntu that is already there is still asked about, with what would change, and the default is no.
  * - The distro chosen is saved with the progress, so a resumed install keeps using it.
  * The helpers are the installer's own, run in pwsh (the registry, `wsl` and Restart-Computer stubbed). Real RunOnce,
@@ -39,13 +41,19 @@ describe("the WSL stage decides for itself (static)", () => {
     expect(body).not.toMatch(/請輸入數字 \(預設 1\)|請輸入數字選擇|了解了嗎/);
     expect(body).not.toMatch(/Start-Process "wsl\.exe"/);
     expect(body).not.toMatch(/請完成後輸入 exit/);
-    expect(body.match(/Wait-WslRoot \$UBUNTU_DISTRO/g)).toHaveLength(2);
+    expect(body.match(/\$wslState = Wait-WslRoot \$UBUNTU_DISTRO\n\s*if \(\$wslState -eq 'ready'\) \{/g)).toHaveLength(2);
+    expect(body.match(/\} elseif \(\$wslState -eq 'declined'\) \{\n\s*Write-WslDeclined\n\s*Read-Host "按 Enter 結束"; exit 1/g)).toHaveLength(2);
+  });
+  it("wsl --shutdown runs in one place only, after an explicit y (the installer's rule)", () => {
+    expect(code.match(/wsl(?:\.exe)? --shutdown/g)).toHaveLength(1);
+    const fn = code.slice(code.indexOf("function Wait-WslRoot"), code.indexOf("function Write-WslDeclined"));
+    expect(fn).toMatch(/if \(\(\[string\]\$answer\) -notmatch '\^\\s\*\[yY\]\\s\*\$'\) \{ return 'declined' \}\n[^\n]*\n\s*wsl --shutdown/);
     expect(body).toMatch(/Write-Ok "Linux 版本：\$UBUNTU_DISTRO"/);
     expect(body).toMatch(/安裝位置：\{0\}（可用 \{1\} GB）/);
   });
   it("an Ubuntu already there: what would change is said, and the default is no", () => {
     expect(body).toContain("安裝程式會修改它的設定：開啟 systemd、預設以 root 登入、不再把 Windows 的 PATH 帶進 Linux。");
-    expect(body).toMatch(/\(y\/N\)"\n\s+if \(\$cont -notmatch '\^\\s\*\[yY\]'\) \{/);
+    expect(body).toMatch(/\(y\/N\)"\n\s+if \(\(\[string\]\$cont\) -notmatch '\^\\s\*\[yY\]\\s\*\$'\) \{/);    // no input to read is a no too
   });
   it("the chosen distro is saved with the progress and read back on a resumed run", () => {
     expect(body).toMatch(/Add-Content -Path \$ProgressFile -Value "DISTRO=\$UBUNTU_DISTRO"\n\s+Mark-Stage 1\n/);
@@ -88,20 +96,39 @@ Write-Output ("D=" + ($null -eq (Select-InstallDrive @(${disk("C:\\", 2)}, ${dis
     expect(out).toContain("C=C:\\\n");                                        // 8 GB on C: beats nothing elsewhere
     expect(out).toContain("D=True\n");
   });
-  it("root init that fails is retried after wsl --shutdown — never a first-run window", () => {
-    const { out } = withHelpers(`$script:calls = @()
-function wsl { $script:calls += ($args -join ' '); if ($args[0] -eq '--shutdown') { return }; if (@($script:calls | Where-Object { $_ -like '-d *' }).Count -ge 2) { 'WSL_OK' } else { 'Error: 0x8007019e' } }
-$ok = Wait-WslRoot 'Ubuntu-24.04' 3 0
-Write-Output ("OK=" + $ok); Write-Output ("CALLS=" + ($script:calls -join ' | '))
-$script:calls = @()
-function wsl { $script:calls += ($args -join ' '); 'still failing' }
-Write-Output ("FAIL=" + (Wait-WslRoot 'Ubuntu-24.04' 3 0)); Write-Output ("CALLS2=" + $script:calls.Count)`);
-    expect(out).toContain("OK=True");
+  // A wsl stub: answers root's echo with WSL_OK once `okAfter` echo calls have failed (Infinity: never), logs every call.
+  const wslStub = (okAfter: number) => `$script:calls = @(); $script:echoes = 0
+function wsl { $script:calls += ($args -join ' '); if ($args[0] -like '--*') { return }; $script:echoes++; if ($script:echoes -gt ${okAfter === Infinity ? 999 : okAfter}) { 'WSL_OK' } else { 'Error: 0x8007019e' } }`;
+  const ASK = "要重新啟動整個 WSL 嗎？這會停掉這台電腦上所有的 Linux（包括其他發行版和裡面正在跑的程式）。(y/N)";
+  it("root init that fails is retried after restarting only this Linux — never a first-run window, nothing asked", () => {
+    const { out } = withHelpers(`${wslStub(1)}
+Write-Output ("STATE=" + (Wait-WslRoot 'Ubuntu-24.04' 3 0)); Write-Output ("CALLS=" + ($script:calls -join ' | '))`);
+    expect(out).toContain("STATE=ready");
     // (A PowerShell function's $args drops the "--" that the real wsl.exe receives.)
-    expect(out).toContain("CALLS=-d Ubuntu-24.04 -u root echo WSL_OK | --shutdown | -d Ubuntu-24.04 -u root echo WSL_OK\n");
-    expect(out).toContain("WSL 還沒準備好，重新啟動 WSL 後再試一次（1/2）...");
-    expect(out).toContain("FAIL=False");
-    expect(out).toContain("CALLS2=5\n");                                       // three tries, two restarts between them
+    expect(out).toContain("CALLS=-d Ubuntu-24.04 -u root echo WSL_OK | --terminate Ubuntu-24.04 | -d Ubuntu-24.04 -u root echo WSL_OK\n");
+    expect(out).toContain("Ubuntu-24.04 還沒準備好，只重新啟動這個 Linux 後再試一次（1/2）...");
+    expect(out).not.toContain(ASK);
+  });
+  it.each([["Enter", "\n"], ["n", "n\n"], ["N", "N\n"], ["no answer at all", ""], ["the prompt's own y/N", "y/N\n"], ["yes", "yes\n"], ["yesterday", "yesterday\n"], ["no", "no\n"]])("still not ready: it asks before restarting all of WSL; %s → no wsl --shutdown, a clean stop", (_n, answer) => {
+    const { out } = withHelpers(`${wslStub(Infinity)}
+Write-Output ("STATE=" + (Wait-WslRoot 'Ubuntu-24.04' 3 0)); Write-Output ("CALLS=" + ($script:calls -join ' | '))
+Write-WslDeclined`, answer);
+    expect(out).toContain(ASK);
+    expect(out).toContain("STATE=declined");
+    expect(out).not.toMatch(/--shutdown/);
+    expect(out.match(/--terminate Ubuntu-24\.04/g)).toHaveLength(2);                // the two retries on our own Linux only
+    expect(out).toContain("沒有重新啟動 WSL，所以先停在這裡；你的其他 Linux 都沒有被動到。");
+    expect(out).toContain("晚一點再貼一次同一行安裝指令，它會從這一步繼續。");
+  });
+  it.each([["y", "y\n"], ["Y", "Y\n"], ["y with spaces", "  y \n"]])("an explicit y (%s) restarts all of WSL once and tries again: ready, or failed", (_n, yes) => {
+    const ok = withHelpers(`${wslStub(3)}
+Write-Output ("STATE=" + (Wait-WslRoot 'Ubuntu-24.04' 3 0)); Write-Output ("CALLS=" + ($script:calls -join ' | '))`, yes).out;
+    expect(ok).toContain("STATE=ready");
+    expect(ok).toMatch(/CALLS=(?:[^|]*\| ){5}--shutdown \| -d Ubuntu-24\.04 -u root echo WSL_OK\n/);
+    const bad = withHelpers(`${wslStub(Infinity)}
+Write-Output ("STATE=" + (Wait-WslRoot 'Ubuntu-24.04' 3 0)); Write-Output ("SHUTDOWNS=" + @($script:calls | Where-Object { $_ -eq '--shutdown' }).Count)`, yes).out;
+    expect(bad).toContain("STATE=failed");
+    expect(bad).toContain("SHUTDOWNS=1\n");
   });
   it("a reboot: the resume registered (the one-liner), Enter reboots, n doesn't — both exit for the reboot", () => {
     const stubs = `$script:reg = @{}

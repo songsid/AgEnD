@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.304
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   ~/audit/w/p304
+
+
+❯ hello from the audit
+
+● mock reply 1
+
+✻ Brewed for 0s · done 9:11 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Resume this conversation?
+  This conversation has been inactive for 1h 4m and is 1.2m tokens long. Resuming it will use all of your 5-hour
+  usage limit.
+
+  ❯ Resume
+    Start a new conversation
+
+  Enter to confirm · Esc to dismiss
