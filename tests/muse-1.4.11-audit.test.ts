@@ -9,12 +9,20 @@ const pane = (name: string) => readFileSync(join(dir, `${name}.pane.txt`), "utf8
 const backend = new MuseBackend("/tmp/agend-muse-1411-audit");
 const dialogs = (p: string) => backend.getRuntimeDialogs().filter(d => d.pattern.test(p) && (!d.isActive || d.isActive(p)));
 const errors = (p: string) => backend.getErrorPatterns().filter(e => e.pattern.test(p)).map(e => ({ type: e.type, action: e.action }));
-const verdict = (p: string) => ({ busy: backend.getBusyPattern().test(p), idle: backend.isPeriodicRedrawIdlePane(p), draft: backend.inputDraft(p)?.rows ?? null, dialogs: dialogs(p).map(d => d.description), errors: errors(p) });
+const verdict = (p: string) => ({ background: backend.backgroundWorkRunning(p), busy: backend.getBusyPattern().test(p), idle: backend.isPeriodicRedrawIdlePane(p), draft: backend.inputDraft(p)?.rows ?? null, dialogs: dialogs(p).map(d => d.description), errors: errors(p) });
 
 describe("Muse 1.4.11: actual ready, busy, cancel and resume surfaces", () => {
   it.each(["echo-idle", "echo-done", "echo-resumed", "meta-idle", "meta-done", "prod-escalation-denied", "prod-background-work", "prod-quit-after-esc"])("%s proves an empty idle composer", name => {
     expect(backend.getReadyPattern().test(pane(name))).toBe(true);
     expect(verdict(pane(name))).toMatchObject({ busy: false, idle: true, draft: [], dialogs: [], errors: [] });
+  });
+  it.each(["prod-background-work", "compare-1.4.10-prod-background-work"])("%s is idle with active local work, preventing automatic pause", name => {
+    expect(backend.isPeriodicRedrawIdlePane(pane(name))).toBe(true);
+    expect(backend.backgroundWorkRunning(pane(name))).toBe(true);
+  });
+  it("ordinary idle without background work remains eligible for automatic pause", () => {
+    expect(backend.isPeriodicRedrawIdlePane(pane("echo-idle"))).toBe(true);
+    expect(backend.backgroundWorkRunning(pane("echo-idle"))).toBe(false);
   });
   it("the prompt is visible while generating but cannot prove idle", () => {
     expect(backend.getReadyPattern().test(pane("echo-busy"))).toBe(true);
