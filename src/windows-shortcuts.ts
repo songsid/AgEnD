@@ -142,17 +142,20 @@ export function realShortcutsDeps(dataDir: string, user: string, run: ShortcutsD
 
 /**
  * The one-time line after `agend update`: only in a terminal (a chat /update's log has no reader), only in WSL, only
- * while the shortcuts were never made, and only once. Returns the line, or null.
+ * while the shortcuts were never made, and only once. Returns the line, or null. "Once" is claimed by creating the
+ * hint marker exclusively (`write` must fail with EEXIST when it exists): two updates in two terminals at the same
+ * moment show it once between them (#2260 review). Any other write failure still shows it (it may show again).
  */
 export function shortcutsHintOnce(o: { host: ShortcutsHost; dataDir: string; tty: boolean; write: (path: string, content: string) => void }): string | null {
   if (!o.tty || !detectWsl(o.host).wsl) return null;
   if (o.host.exists(join(o.dataDir, SHORTCUTS_MARKER)) || o.host.exists(join(o.dataDir, SHORTCUTS_HINT_MARKER))) return null;
-  try { o.write(join(o.dataDir, SHORTCUTS_HINT_MARKER), new Date().toISOString() + "\n"); } catch { /* shown again next time */ }
+  try { o.write(join(o.dataDir, SHORTCUTS_HINT_MARKER), new Date().toISOString() + "\n"); }
+  catch (err) { if ((err as NodeJS.ErrnoException).code === "EEXIST") return null; /* otherwise: shown, and may show again */ }
   return t("shortcuts.hint");
 }
 
 /** After `agend update`: print the one-time line, if it is due (#1853). */
 export function printUpdateShortcutsHint(dataDir: string): void {
-  const line = shortcutsHintOnce({ host: realHost(), dataDir, tty: !!process.stdout.isTTY, write: (path, content) => writeFileSync(path, content) });
+  const line = shortcutsHintOnce({ host: realHost(), dataDir, tty: !!process.stdout.isTTY, write: (path, content) => writeFileSync(path, content, { flag: "wx" }) });
   if (line) console.log(`  ${line}\n`);
 }

@@ -243,3 +243,27 @@ Write-Output ("RECORD=" + (Get-Content -Raw -LiteralPath (Join-Path (Get-AgendSh
     expect(runPrinted(line)).toContain("INERT_START_OK start");
   });
 });
+
+describe.skipIf(!pwsh)("with pwsh: a name with a quote in it (#2260 review)", { timeout: 90_000 }, () => {
+  /** Parse a generated text as PowerShell: its error count, and the arguments of its last command (as values). */
+  const parsed = (expr: string, name: string) => withHelpers(`$text = ${expr}
+$t = $null; $e = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$t, [ref]$e)
+$cmd = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq '${name}' }, $true))[-1]
+$values = @($cmd.CommandElements | Select-Object -Skip 1 | ForEach-Object { if ($_ -is [System.Management.Automation.Language.StringConstantExpressionAst]) { $_.Value } else { $_.Extent.Text } })
+Write-Output ("PARSED=" + (@{ errors = $e.Count; command = $cmd.GetCommandName(); args = $values } | ConvertTo-Json -Compress))`, fakeWsl()).out;
+  const result = (out: string) => JSON.parse(out.match(/^PARSED=(.*)$/m)![1]!);
+  it.each([["Get-RestartScript", "Invoke-RestartAgend"], ["Get-DashboardOpenerScript", "Invoke-OpenDashboard"]])("%s: the saved script parses and calls with the exact names", (builder, command) => {
+    const r = result(parsed(`(${builder} "Ubuntu's" "o'neil")`, command));
+    expect(r.errors).toBe(0);
+    expect(r.command).toBe(command);
+    expect(r.args.slice(0, 2)).toEqual(["Ubuntu's", "o'neil"]);
+  });
+  it("the printed start command, pasted, passes the exact names to wsl; a plain name stays unquoted", () => {
+    const r = result(parsed(`(Get-AgendStartHint "Ubuntu's" "o'neil")`, "wsl"));
+    expect(r.errors).toBe(0);
+    expect(r.command).toBe("wsl");
+    expect(r.args.slice(0, 4)).toEqual(["-d", "Ubuntu's", "-u", "o'neil"]);
+    expect(withHelpers(`Write-Output ("HINT=" + (Get-AgendStartHint 'Ubuntu-24.04' 'han'))`, fakeWsl()).out).toContain("HINT=wsl -d Ubuntu-24.04 -u han -- bash -lc '");
+  });
+});

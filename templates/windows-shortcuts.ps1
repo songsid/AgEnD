@@ -6,8 +6,12 @@ $WSL_COMMAND_FN = @'
 function Get-WslAgendCommand([string]$command) {
     return ('export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; ' + $command)
 }
+# 放進 PowerShell 文字裡的值（Linux、使用者名稱）一律用這個轉成字面字串：名稱裡的單引號（例如 o'neil）不會讓產生的
+# 腳本或貼上的指令壞掉（#2260 審查）。印給人看的指令，名稱沒有特殊字元時維持原樣、不加引號。
+function ConvertTo-PsLiteral([string]$value) { return ("'" + ($value -replace "'", "''") + "'") }
+function ConvertTo-PsArgument([string]$value) { if ($value -match '^[\w.-]+$') { return $value } else { return (ConvertTo-PsLiteral $value) } }
 function Get-AgendStartHint([string]$distro, [string]$user) {
-    return ("wsl -d {0} -u {1} -- bash -lc '{2}'" -f $distro, $user, (Get-WslAgendCommand 'agend start'))
+    return ("wsl -d {0} -u {1} -- bash -lc '{2}'" -f (ConvertTo-PsArgument $distro), (ConvertTo-PsArgument $user), (Get-WslAgendCommand 'agend start'))
 }
 '@
 . ([scriptblock]::Create($WSL_COMMAND_FN))
@@ -110,10 +114,10 @@ function Invoke-RestartAgend([string]$distro, [string]$user, [switch]$Wait, [int
 
 # 捷徑執行的腳本：共用的函式加上一行呼叫（UTF-8 有 BOM：Windows PowerShell 5.1 才會正確顯示中文）。Linux 與使用者是安裝時記下的。
 function Get-DashboardOpenerScript([string]$distro, [string]$user) {
-    return ("# AgEnD 儀表板（AgEnD 安裝程式建立）`n" + $WSL_COMMAND_FN + "`n" + $DASHBOARD_OPENER_FN + "`n" + ("Invoke-OpenDashboard '{0}' '{1}' -Wait | Out-Null" -f $distro, $user) + "`n")
+    return ("# AgEnD 儀表板（AgEnD 安裝程式建立）`n" + $WSL_COMMAND_FN + "`n" + $DASHBOARD_OPENER_FN + "`n" + ("Invoke-OpenDashboard {0} {1} -Wait | Out-Null" -f (ConvertTo-PsLiteral $distro), (ConvertTo-PsLiteral $user)) + "`n")
 }
 function Get-RestartScript([string]$distro, [string]$user) {
-    return ("# AgEnD 重新啟動（AgEnD 安裝程式建立）`n" + $WSL_COMMAND_FN + "`n" + $RESTART_FN + "`n" + ("Invoke-RestartAgend '{0}' '{1}' -Wait | Out-Null" -f $distro, $user) + "`n")
+    return ("# AgEnD 重新啟動（AgEnD 安裝程式建立）`n" + $WSL_COMMAND_FN + "`n" + $RESTART_FN + "`n" + ("Invoke-RestartAgend {0} {1} -Wait | Out-Null" -f (ConvertTo-PsLiteral $distro), (ConvertTo-PsLiteral $user)) + "`n")
 }
 # 安裝時記下的 Linux 與使用者（%LOCALAPPDATA%\AgEnD\install.json）：捷徑、重新執行安裝指令時的快速路徑都讀它。
 function Get-AgendShortcutDir { return (Join-Path $env:LOCALAPPDATA 'AgEnD') }

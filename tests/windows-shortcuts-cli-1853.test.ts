@@ -138,6 +138,13 @@ describe("the hint after agend update", () => {
   const dataDir = () => { const dir = mkdtempSync(join(tmpdir(), "agend-1853hint-")); dirs.push(dir); return dir; };
   const real = (h: ShortcutsHost): ShortcutsHost => ({ ...h, exists: existsSync });
   const hint = (dir: string, h: ShortcutsHost, tty = true) => shortcutsHintOnce({ host: real(h), dataDir: dir, tty, write: (p, c) => writeFileSync(p, c) });
+  it("#2260 review: two updates at the same moment (both saw no marker) — exactly one shows it", () => {
+    const dir = dataDir();
+    const racing: ShortcutsHost = { ...host(), exists: () => false };              // each checked before either wrote
+    const claim = () => shortcutsHintOnce({ host: racing, dataDir: dir, tty: true, write: (p, c) => writeFileSync(p, c, { flag: "wx" }) });
+    expect([claim(), claim()].filter(Boolean)).toHaveLength(1);
+    expect(readFileSync(join(ROOT, "src", "windows-shortcuts.ts"), "utf8")).toMatch(/printUpdateShortcutsHint[\s\S]*writeFileSync\(path, content, \{ flag: "wx" \}\)/);
+  });
   it("in a WSL terminal without the shortcuts: once, then never again", () => {
     const dir = dataDir();
     expect(hint(dir, host())).toBe("Windows desktop shortcuts: run `agend shortcuts` to make them.");
@@ -167,7 +174,7 @@ const pwsh = spawnSync("pwsh", ["-NoProfile", "-c", "1"], { encoding: "utf8" }).
 describe.skipIf(!pwsh)("with pwsh: the encoded script itself", { timeout: 90_000 }, () => {
   const dirs: string[] = [];
   afterAll(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force: true }); });
-  it("decodes, defines the shared code, writes both scripts and the record, and asks WSL for the marker as this user", () => {
+  it.each(["han", "o'neil"])("decodes, defines the shared code, writes both scripts and the record, and asks WSL for the marker as this user (%s)", (user) => {
     const dir = mkdtempSync(join(tmpdir(), "agend-1853cli-")); dirs.push(dir);
     const bin = join(dir, "bin"); mkdirSync(bin);
     writeFileSync(join(bin, "wsl.exe"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${join(dir, "wsl-calls.txt")}'\nexit 0\n`);
@@ -187,7 +194,7 @@ describe.skipIf(!pwsh)("with pwsh: the encoded script itself", { timeout: 90_000
   return Microsoft.PowerShell.Utility\\New-Object -TypeName $TypeName
 }
 `;
-    const args = powershellArgs(fakeCom + buildShortcutsScript(shared, "Ubuntu-22.04", "han"));
+    const args = powershellArgs(fakeCom + buildShortcutsScript(shared, "Ubuntu-22.04", user));
     const local = join(dir, "local");
     mkdirSync(join(dir, "Desktop"));                                                // .NET on Linux names no Desktop until it exists
     const r = spawnSync("pwsh", args, { encoding: "utf8", timeout: 60_000, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, LOCALAPPDATA: local, HOME: dir, SystemRoot: join(dir, "Windows") } });
@@ -195,13 +202,22 @@ describe.skipIf(!pwsh)("with pwsh: the encoded script itself", { timeout: 90_000
     expect(r.stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
     const restart = readFileSync(join(local, "AgEnD", "restart-agend.ps1"));
     expect([...restart.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);                // UTF-8 with BOM, for 5.1's Chinese
-    expect(restart.toString("utf8")).toContain("Invoke-RestartAgend 'Ubuntu-22.04' 'han' -Wait | Out-Null");
-    expect(readFileSync(join(local, "AgEnD", "open-dashboard.ps1"), "utf8")).toContain("Invoke-OpenDashboard 'Ubuntu-22.04' 'han' -Wait | Out-Null");
-    expect(JSON.parse(readFileSync(join(local, "AgEnD", "install.json"), "utf8"))).toEqual({ distro: "Ubuntu-22.04", user: "han" });
+    // #2260 review: each saved script, parsed as PowerShell, has no error and calls with this user exactly.
+    const q = user.replace(/'/g, "''");
+    expect(restart.toString("utf8")).toContain(`Invoke-RestartAgend 'Ubuntu-22.04' '${q}' -Wait | Out-Null`);
+    expect(readFileSync(join(local, "AgEnD", "open-dashboard.ps1"), "utf8")).toContain(`Invoke-OpenDashboard 'Ubuntu-22.04' '${q}' -Wait | Out-Null`);
+    for (const [file, call] of [["restart-agend.ps1", "Invoke-RestartAgend"], ["open-dashboard.ps1", "Invoke-OpenDashboard"]]) {
+      const check = spawnSync("pwsh", ["-NoProfile", "-Command", `$t = $null; $e = $null; $a = [System.Management.Automation.Language.Parser]::ParseFile('${join(local, "AgEnD", file)}', [ref]$t, [ref]$e)
+$c = @($a.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq '${call}' }, $true))[-1]
+Write-Output ("ERRORS=" + $e.Count); Write-Output ("USER=" + $c.CommandElements[2].Value)`], { encoding: "utf8" });
+      expect(check.stdout, file).toContain("ERRORS=0");
+      expect(check.stdout, file).toContain(`USER=${user}\n`);
+    }
+    expect(JSON.parse(readFileSync(join(local, "AgEnD", "install.json"), "utf8"))).toEqual({ distro: "Ubuntu-22.04", user });
     const lnk = readFileSync(join(local, "lnk.txt"), "utf8");
     expect(lnk).toMatch(/AgEnD 儀表板\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*open-dashboard\.ps1"/);
     expect(lnk).toMatch(/AgEnD 重新啟動\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*restart-agend\.ps1"/);
-    expect(readFileSync(join(dir, "wsl-calls.txt"), "utf8")).toBe("-d Ubuntu-22.04 -u han -- bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; d=${AGEND_HOME:-$HOME/.agend}; mkdir -p $d && date -u +%FT%TZ > $d/windows-shortcuts\n");
+    expect(readFileSync(join(dir, "wsl-calls.txt"), "utf8")).toBe(`-d Ubuntu-22.04 -u ${user} -- bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; d=\${AGEND_HOME:-$HOME/.agend}; mkdir -p $d && date -u +%FT%TZ > $d/windows-shortcuts\n`);
   });
   it("UTF-16LE base64 is what -EncodedCommand reads: Chinese comes through", () => {
     const r = spawnSync("pwsh", ["-NoProfile", "-EncodedCommand", encodePowershell("Write-Output '重新啟動 OK'")], { encoding: "utf8" });
