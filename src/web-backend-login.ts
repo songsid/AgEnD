@@ -80,6 +80,8 @@ export interface WebBackendLoginDeps {
   start(backend: string, chat: LoginChat, opts: LoginStartOptions): Promise<string | null>;
   accessToken(sink: WebLoginSink): string | null;
   isActiveFor(sink: WebLoginSink): boolean;
+  /** End the sign-in this sink started (pending or running) and nothing else; true when there was one. */
+  cancelFor(sink: WebLoginSink): Promise<boolean>;
   /** `/login cancel`: whatever sign-in or install is running. */
   cancel(): Promise<string>;
   /** A sign-in started from the dashboard: said where a chat login would be seen (General, or the Log). */
@@ -103,6 +105,8 @@ interface Pending {
 
 interface Run {
   id: string;
+  /** Admission order: a slower start never replaces a later one that was already shown. */
+  seq: number;
   backend: string;
   profile?: string;
   handle: string;
@@ -149,6 +153,9 @@ export interface WebLoginView {
 export class WebBackendLogins {
   private readonly pending = new Map<string, Pending>();
   private run: Run | null = null;
+  /** Every admitted sign-in not yet ended — starting (its listener, tunnel or cloudflared still coming) or running. */
+  private readonly live = new Set<Run>();
+  private seq = 0;
   private watch: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly deps: WebBackendLoginDeps) {}
@@ -184,7 +191,7 @@ export class WebBackendLogins {
     if (tunnel && !asked.publicLink) return { error: "tunnel_not_offered" };
     this.pending.delete(confirmId);
     const run: Run = {
-      id: randomBytes(16).toString("hex"), backend: asked.backend, ...(asked.profile !== undefined ? { profile: asked.profile } : {}),
+      id: randomBytes(16).toString("hex"), seq: ++this.seq, backend: asked.backend, ...(asked.profile !== undefined ? { profile: asked.profile } : {}),
       handle: who.handle, label: who.label, startedAt: this.now(), phase: "running", ok: null, endedAt: null,
       hint: null, terminal: null, lines: [], sink: null as unknown as WebLoginSink,
     };
@@ -195,20 +202,31 @@ export class WebBackendLogins {
       terminal: info => { run.terminal = { ...info }; },
       ended: result => {
         run.phase = "ended"; run.ok = result.ok; run.endedAt = this.now();
-        if (this.run === run) { this.stopWatch(); this.changed(); }
+        this.live.delete(run);
+        if (!this.live.size) this.stopWatch();
+        if (this.run === run) this.changed();
       },
     };
+    // Watched from admission, not from publication: a session revoked while its listener, tunnel or cloudflared is
+    // still coming up ends its own attempt (cancelFor) — never one that replaced it.
+    this.live.add(run);
+    this.startWatch();
     const message = await this.deps.start(asked.backend, this.chatFor(who, run.sink, run.lines), {
       skipAuthCheck: true, tokenPresent: asked.tokenPresent, ...(tunnel ? { tunnel: true } : {}),
       ...(asked.profile !== undefined ? { profile: asked.profile } : {}),
     });
     const running = run.phase === "running" && this.deps.isActiveFor(run.sink);
-    if (!running && run.phase !== "ended") return { message: message ?? "" };   // refused: nothing ran
+    if (!running && run.phase !== "ended") {                                     // refused: nothing ran
+      this.live.delete(run);
+      if (!this.live.size) this.stopWatch();
+      return { message: message ?? "" };
+    }
     if (message && !running) pushLine(run.lines, message);                       // ended while starting: why
+    // A start that took longer than a later one (its listener held, then cancelled) never replaces what that one shows.
+    if (this.run && this.run.seq > run.seq) return running ? { login: this.viewOf(run, who.handle) } : { message: message ?? run.lines.join("\n") };
     this.run = run;
     this.changed();
     if (running) {
-      this.startWatch();
       try { this.deps.notice({ shown: asked.profile ? `${asked.backend} (${asked.profile})` : asked.backend, label: who.label, handle: who.handle }); } catch { /* a notice never stops a sign-in */ }
     }
     return { login: this.viewOf(run, who.handle) };
@@ -225,7 +243,7 @@ export class WebBackendLogins {
   /** Any local admin may stop it (it only takes something away); a chat-started sign-in or install included. */
   cancel(): Promise<string> { return this.deps.cancel(); }
 
-  dispose(): void { this.stopWatch(); this.pending.clear(); }
+  dispose(): void { this.stopWatch(); this.pending.clear(); this.live.clear(); }
 
   private viewOf(run: Run, viewerHandle: string): WebLoginView {
     const mine = run.handle === viewerHandle && this.deps.isLocalAdmin(viewerHandle);
@@ -258,14 +276,15 @@ export class WebBackendLogins {
   }
 
   private startWatch(): void {
-    this.stopWatch();
+    if (this.watch) return;
     this.watch = setInterval(() => {
-      const run = this.run;
-      if (!run || run.phase !== "running") { this.stopWatch(); return; }
-      if (this.deps.isLocalAdmin(run.handle)) return;
-      // The session that holds the code is gone (signed out, expired, revoked): the sign-in goes with it.
-      this.stopWatch();
-      if (this.deps.isActiveFor(run.sink)) void this.deps.cancel().catch(() => { /* ends by TTL */ });
+      for (const run of [...this.live]) {
+        if (this.deps.isLocalAdmin(run.handle)) continue;
+        // The session that holds the code is gone (signed out, expired, revoked): its own sign-in goes with it.
+        this.live.delete(run);
+        void this.deps.cancelFor(run.sink).catch(() => false);
+      }
+      if (!this.live.size) this.stopWatch();
     }, WEB_LOGIN_WATCH_MS);
     this.watch.unref?.();
   }
