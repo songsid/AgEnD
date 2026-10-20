@@ -166,11 +166,55 @@ function createWhole(file, text, deps) {
  * running old updater sees this installer as a live holder and waits); a holder judged as they judge it (live, stale or
  * unknown — unknown blocks); and a stale lock moved only by the holder of `<lock>.reclaim` (claimed whole), under which
  * the lock can change only by its own holder — proven gone. Nothing is ever moved aside to be judged afterwards. One
- * thing more than they do: a lock that cannot be read (written, never filled: the user's, cut short) counts as stale
- * once it has stayed exactly so for UNREADABLE_STALE_MS — their create-then-write takes milliseconds.
+ * thing more than they do: a lock that cannot be read (created, never filled: the user's, cut short) — their
+ * create-then-write keeps the file open from the create to the write, and no one else can open it to write it (theirs is
+ * open(wx)). So it counts as stale only when it is proven that no process has it open (openedBy); its age is no evidence
+ * (Prism r4: an old writer paused between open and write for a minute is still admitted when it resumes).
  */
 var lockReaders = require("./install-admission.cjs");
-var UNREADABLE_STALE_MS = 60000;
+/**
+ * Does any process have `file` open? true / false, or null when that cannot be told — which blocks. Only processes of the
+ * file's owner can have created it and hold it open to write (its creator is its owner). Linux: every such process's
+ * /proc/<pid>/fd, matched by device and inode. A process of the same user whose descriptors cannot be read is one that
+ * made itself non-dumpable (sd-pam, ssh-agent, gpg-agent); Node never does, so it is an old updater only if its command
+ * line names node or agend — then, and when even that cannot be read, null. macOS: lsof (exit 1 with no output = none).
+ * Elsewhere: null.
+ */
+function openedBy(file, deps) {
+  if (deps.openedBy) return deps.openedBy(file);
+  var st;
+  try { st = fs.statSync(file); } catch (e) { return false; }
+  if (process.platform === "linux") {
+    var pids;
+    try { pids = fs.readdirSync("/proc").filter(function (n) { return /^\d+$/.test(n); }); } catch (e) { return null; }
+    for (var k = 0; k < pids.length; k++) {
+      var owner;
+      try { owner = fs.statSync("/proc/" + pids[k]).uid; } catch (e) { continue; }   // gone meanwhile
+      if (owner !== st.uid) continue;
+      var fds;
+      try { fds = fs.readdirSync("/proc/" + pids[k] + "/fd"); } catch (e) {
+        if (e.code === "ENOENT") continue;
+        var cmdline = null;
+        try { cmdline = fs.readFileSync("/proc/" + pids[k] + "/cmdline", "utf8"); } catch (e2) { if (e2.code === "ENOENT") continue; }
+        if (cmdline === null || /node|agend/i.test(cmdline)) return null;
+        continue;
+      }
+      for (var f = 0; f < fds.length; f++) {
+        var seen;
+        try { seen = fs.statSync("/proc/" + pids[k] + "/fd/" + fds[f]); } catch (e) { continue; }   // closed meanwhile
+        if (seen.dev === st.dev && seen.ino === st.ino) return true;
+      }
+    }
+    return false;
+  }
+  if (process.platform === "darwin") {
+    var r = deps.run(fs.existsSync("/usr/sbin/lsof") ? "/usr/sbin/lsof" : "lsof", ["-nP", "-t", "--", file], { timeoutMs: 15000 });
+    if (r.status === 0 && String(r.stdout).trim()) return true;
+    if (r.status === 1 && !String(r.stdout).trim() && !String(r.stderr).trim()) return false;
+    return null;
+  }
+  return null;
+}
 function legacyRecord(prefix, deps, spec, home) {
   var r = deps.lockReaders || lockReaders;
   var ticks = r.startTicks(deps.pid), boot = r.bootId();
@@ -185,9 +229,8 @@ function legacyState(text, file, deps) {
   var r = deps.lockReaders || lockReaders;
   var holder = r.parse(text);
   if (holder) return { state: holder.pid === deps.pid ? "stale" : r.holderState(holder, { exists: deps.alive, processStart: r.processStart, startTicks: r.startTicks, bootId: r.bootId }), pid: holder.pid };
-  var st = null;
-  try { st = fs.statSync(file); } catch (e) { return { state: "gone" }; }
-  return { state: deps.now() - st.mtimeMs >= UNREADABLE_STALE_MS ? "stale" : "unknown", unreadable: true, mtimeMs: st.mtimeMs };
+  if (!fs.existsSync(file)) return { state: "gone" };
+  return { state: openedBy(file, deps) === false ? "stale" : "unknown", unreadable: true };
 }
 /** Move a stale legacy lock away by their rule: only under `<lock>.reclaim`, and only the bytes judged. */
 function reclaimLegacy(prefix, lock, judged, judgedState, record, deps) {
@@ -202,11 +245,8 @@ function reclaimLegacy(prefix, lock, judged, judgedState, record, deps) {
     if (deps.onStep) deps.onStep("legacy-reclaimed");
     // Under the marker the lock changes only by its own (gone) holder: still the one judged, else nothing is moved.
     if (readText(lock) !== judged) return { changed: true };
-    if (judgedState.unreadable) {
-      var st = null;
-      try { st = fs.statSync(lock); } catch (e) { return { changed: true }; }
-      if (st.mtimeMs !== judgedState.mtimeMs) return { changed: true };
-    }
+    // An unreadable one: still not open anywhere (no writer can open it again: theirs is open(wx) on a new file).
+    if (judgedState.unreadable && openedBy(lock, deps) !== false) return { refuse: "the install lock " + lock + " is being written by another AgEnD install; run this again in a moment" };
     quarantine(prefix, lock, deps);
     return { moved: true };
   } finally {

@@ -15,7 +15,7 @@
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, cpSync, realpathSync, utimesSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, realpathSync, statSync, utimesSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -378,6 +378,9 @@ function unitRig(opts: { onInstall?: (n: number) => void; installStatus?: number
   return { root, prefix, nodeModules, home, userHome, deps, calls, log, lock, read, quarantined, live };
 }
 
+/** The rig's deps with this host's real process readers (pids, start times, open files). */
+const realDepsFor = (r: ReturnType<typeof unitRig>) => ({ ...r.deps, lockReaders: undefined, alive: (p: number) => { try { process.kill(p, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM"; } } });
+
 describe("#2264 review (Prism r1 P1): the installer owns the prefix before it touches anything, until it is done", () => {
   // Prism r2: admission is announce-then-check — nothing of another installer is moved to decide it.
   it("two installers racing: whoever lists second sees the first and refuses — never both admitted (both orders)", () => {
@@ -653,16 +656,33 @@ describe("#2264 review (Prism r3 P1): mixed with updaters from before #2264 — 
     got.release!();
   });
 
-  it("a lock that cannot be read: refused while it may still be being written (fresh); moved once it has stayed so (the user's, cut short)", () => {
-    const fresh = unitRig();
-    writeFileSync(fresh.lock, '{"pid":');
-    expect(installer.admit(fresh.prefix, fresh.deps, {}).refuse).toMatch(/is being written by another AgEnD install/);
-    const old = unitRig();
-    writeFileSync(old.lock, '{"pid":');
-    const longAgo = new Date(Date.now() - 10 * 60_000); utimesSync(old.lock, longAgo, longAgo);
-    const got = installer.admit(old.prefix, old.deps, {});
+  // Prism r4: their create-then-write keeps the file open from open(wx) to the write; an empty lock's age proves nothing.
+  it.skipIf(process.platform !== "linux")("a lock an old writer has created and still holds open (not written yet), however old: refused, its inode untouched — and once that writer is gone, moved (the user's, cut short)", async () => {
+    const r = unitRig();
+    // The old updater's claim(), paused between open(wx) and its write: a real process holding the descriptor.
+    const writer = spawn(process.execPath, ["-e", `const fs = require("fs"); const fd = fs.openSync(${JSON.stringify(r.lock)}, "wx", 0o600); process.stdout.write("opened\\n"); process.stdin.once("data", () => { fs.writeSync(fd, "late"); fs.closeSync(fd); process.exit(0); });`], { stdio: ["pipe", "pipe", "ignore"] });
+    await new Promise<void>(resolve => writer.stdout!.once("data", () => resolve()));
+    const longAgo = new Date(Date.now() - 60 * 60_000); utimesSync(r.lock, longAgo, longAgo);   // an hour old: age is no evidence
+    const inode = statSync(r.lock).ino;
+    const real = realDepsFor(r);
+    expect(installer.admit(r.prefix, real, {}).refuse).toMatch(/is being written by another AgEnD install/);
+    expect(statSync(r.lock).ino, "the writer's file stays where its claim will find it").toBe(inode);
+    writer.stdin!.write("go\n");
+    await new Promise(resolve => writer.on("exit", resolve));
+    expect(readFileSync(r.lock, "utf8"), "its write landed in the lock it claimed").toBe("late");
+    // The user's state: created, never written, its writer gone.
+    const cut = unitRig();
+    writeFileSync(cut.lock, '{"pid":');
+    const got = installer.admit(cut.prefix, realDepsFor(cut), {});
     expect(got.refuse).toBeUndefined();
-    expect(old.quarantined()).toContain('{"pid":');
+    expect(cut.quarantined()).toContain('{"pid":');
     got.release!();
+  });
+
+  it("whether a cut-short lock is open cannot be told: refused (unknown blocks)", () => {
+    const r = unitRig();
+    writeFileSync(r.lock, '{"pid":');
+    expect(installer.admit(r.prefix, { ...r.deps, openedBy: () => null }, {}).refuse).toMatch(/is being written by another AgEnD install/);
+    expect(readFileSync(r.lock, "utf8")).toBe('{"pid":');
   });
 });

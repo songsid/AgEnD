@@ -37,8 +37,13 @@ npm exec --yes --package @songsid/agend@<target> -- agend-install [--upgrade]
    (live / stale / unknown, start ticks or start time — unknown blocks); a stale lock is moved only by the holder of their
    `<lock>.reclaim` marker, under which the lock can change only by its own (gone) holder — re-read, then moved; nothing
    is ever moved aside to be judged afterwards. A reclaim marker left by a dead updater is never taken automatically
-   (their rule). One addition: a lock that cannot be read counts as stale once it has stayed exactly so for 60 s (their
-   create-then-write takes milliseconds; the user's, cut short, had stayed for hours). The prefix
+   (their rule). One addition: a lock that cannot be read (created, never filled — the user's) counts as stale only when it
+   is proven that no process has it open: their create-then-write holds the file open from `open(wx)` to the write, and
+   no one can open it to write it again. Linux: every `/proc/<pid>/fd` of the file owner's processes, matched by device
+   and inode (a non-dumpable process — sd-pam, ssh-agent — whose descriptors cannot be read is skipped unless its
+   command line names node or agend, then: unknown); macOS: `lsof`; anything that cannot be told blocks. Checked when
+   judged and again under `.reclaim` right before the move. Age is no evidence (Prism r4: a writer paused a minute
+   between open and write is still admitted when it resumes). The prefix
    stays this installer's through the repair, the install, its retry and the rollback; the repair never reads or moves
    a lock;
 2. **repair** npm's leftovers, **only when npm is provably idle** (below): npm's retire sibling `@songsid/.agend-*` is put
@@ -173,8 +178,9 @@ Callers:
     processes: an old updater that takes the stale lock over after the new installer judged it keeps its lock byte for
     byte and a third (old) one is refused — never two admitted (Prism's interleaving); while the new installer holds
     `.reclaim` an old updater cannot take over, and afterwards reads the new installer as the live holder; a live or a
-    dead reclaim marker refuses; a pid that now belongs to another process is stale; an unreadable lock refused while
-    fresh, moved once old; during repair, every install, the retry and the rollback the prefix is this
+    dead reclaim marker refuses; a pid that now belongs to another process is stale; an unreadable lock that a real
+    process created with `open(wx)` and still holds is refused however old (its write then lands in the lock it
+    claimed), moved once its writer is gone; "cannot be told" refuses; during repair, every install, the retry and the rollback the prefix is this
     installer's and a peer is refused;
   - the service per manager (legacy system unit, user unit, launchd job; running → `install --no-activate` +
     `restart --yes`, stopped → + `start`; hand-started → restart on upgrade only);
