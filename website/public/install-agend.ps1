@@ -121,6 +121,125 @@ function Wait-WslRoot([string]$distro, [int]$tries = 3, [int]$pauseSeconds = 5) 
     if (Test-WslRoot $distro) { return 'ready' }
     return 'failed'
 }
+# ── 另外安裝一個 AgEnD 專用的 Ubuntu（#1853，使用者 2026-10-20 實測後的要求）──────────
+# 已經有 Ubuntu 的電腦：建議另外裝一個只給 AgEnD 用的（名稱 AgEnD，被占用就 AgEnD-2、AgEnD-3…），原本的完全不動。
+# WSL 2.4.4 以上用 `wsl --install Ubuntu-24.04 --name <名稱> --location <位置> --no-launch`（tar 格式的發行版才能指定
+# 名稱，見 Microsoft 文件 build-custom-distro）；較舊的 WSL，或裝完沒看到這個名稱，就從 Microsoft 的發行版清單取官方
+# 的 .wsl（比對 SHA256）再 `wsl --import`。選定的名稱記在安裝進度和 install.json，之後的每一步、兩個捷徑、
+# agend shortcuts 和修復都用它。之前已經裝過的 AgEnD 專用 Linux 會直接沿用，不會再裝一個。
+$AGEND_DISTRO_BASE = 'AgEnD'
+$WSL_NAME_MIN = [version]'2.4.4'
+$DISTRO_LIST_URL = 'https://raw.githubusercontent.com/microsoft/WSL/master/distributions/DistributionInfo.json'
+
+# 這台電腦上的 Linux 名稱：只看清單，不啟動任何一個。wsl.exe 自己的輸出要設 WSL_UTF8=1 才是 UTF-8（否則 UTF-16LE）。
+# 回傳名稱陣列（可能是空的），或 $null：讀不到（#2279 審查）。讀不到絕不能當成「沒有 Linux」——那會不問就安裝、
+# 甚至改到原本的 Ubuntu。wsl --list 失敗時（有的版本在一個都沒有時也回非 0）改讀 WSL 自己的登記（HKCU 的 Lxss），兩者都讀不到才是 $null。
+function Get-WslDistroNames {
+    $prev = $env:WSL_UTF8; $prevEnc = [Console]::OutputEncoding
+    try {
+        $env:WSL_UTF8 = '1'
+        try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+        $out = @((& wsl.exe --list --quiet 2>$null) | ForEach-Object { ("$_" -replace "`0", '').Trim() } | Where-Object { $_ })
+        if ($LASTEXITCODE -eq 0) { return ,$out }
+    } catch {
+        # wsl.exe 不能執行：改讀登記
+    } finally {
+        if ($null -eq $prev) { Remove-Item Env:WSL_UTF8 -ErrorAction SilentlyContinue } else { $env:WSL_UTF8 = $prev }
+        try { [Console]::OutputEncoding = $prevEnc } catch { }
+    }
+    # 先存進變數再用 , 回傳：空陣列（確定一個都沒有）直接 return 會被攤開成沒有輸出，變成 $null（#2279 審查）。
+    $registered = Get-WslRegisteredNames
+    if ($null -eq $registered) { return $null }
+    return ,$registered
+}
+# WSL 登記的 Linux 名稱（HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss 底下每一個的 DistributionName）。
+# 確定沒有這個機碼：一個都沒有（空陣列）。沒有 HKCU 可讀（不是 Windows）或讀取出錯：$null。
+function Get-WslRegisteredNames {
+    $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss'
+    try {
+        if (-not (Get-PSDrive -Name HKCU -ErrorAction SilentlyContinue)) { return $null }
+        if (-not (Test-Path -LiteralPath $key -ErrorAction Stop)) { return ,@() }
+        $names = @(Get-ChildItem -LiteralPath $key -ErrorAction Stop | ForEach-Object { [string](Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction Stop).DistributionName } | Where-Object { $_ })
+        return ,$names
+    } catch { return $null }
+}
+# 第 1 階段要做什麼：'unknown'（讀不到清單：停下來）、'reuse'（之前裝過 AgEnD 專用的）、'ubuntu'（有 Ubuntu：問）、
+# 'none'（確定一個都沒有：照常安裝）。回傳 @{ State; Agend; Ubuntu }。
+function Get-DistroSituation($names) {
+    if ($null -eq $names) { return @{ State = 'unknown' } }
+    $agend = Get-ExistingAgendDistro $names
+    if ($agend) { return @{ State = 'reuse'; Agend = $agend } }
+    $ubuntu = @(@('Ubuntu-24.04', 'Ubuntu-22.04', 'Ubuntu') | Where-Object { $names -contains $_ })[0]
+    if ($ubuntu) { return @{ State = 'ubuntu'; Ubuntu = $ubuntu } }
+    return @{ State = 'none' }
+}
+# 第一個沒有被占用的名稱：AgEnD、AgEnD-2、AgEnD-3…（WSL 的名稱不分大小寫）。
+function Get-FreeAgendDistroName($names) {
+    $taken = @($names | ForEach-Object { ([string]$_).ToLowerInvariant() })
+    if ($taken -notcontains $AGEND_DISTRO_BASE.ToLowerInvariant()) { return $AGEND_DISTRO_BASE }
+    for ($i = 2; $i -lt 100; $i++) { $n = "$AGEND_DISTRO_BASE-$i"; if ($taken -notcontains $n.ToLowerInvariant()) { return $n } }
+    return $null
+}
+# 之前為 AgEnD 裝過的專用 Linux：安裝紀錄裡那個（名稱是 AgEnD 開頭、而且還在），否則名稱正好是 AgEnD 的。回傳名稱或 $null。
+function Get-ExistingAgendDistro($names) {
+    $record = Read-InstallRecord
+    if ($record -and $record.Distro -like "$AGEND_DISTRO_BASE*" -and ($names -contains $record.Distro)) { return $record.Distro }
+    $hit = @($names | Where-Object { $_ -ieq $AGEND_DISTRO_BASE })
+    if ($hit.Count -gt 0) { return $hit[0] }
+    return $null
+}
+# 已經有 Ubuntu 時問一次。回傳 'separate'（另外裝一個，建議）、'existing'（用原本的）或 'quit'。只認 1 或 2，其他都是結束。
+function Read-DistroChoice([string]$existing) {
+    Write-Ok "這台電腦已經有 $existing。"
+    Write-Host ""
+    Write-Info "  [1] 另外安裝一個 AgEnD 專用的 Ubuntu（建議，不動你原本的）"
+    Write-Info "  [2] 用原本的 $existing（會修改它的設定：開啟 systemd、預設以 root 登入、不再把 Windows 的 PATH 帶進 Linux；裡面的檔案不會被刪除）"
+    Write-Info "  [Enter] 結束，不動任何東西"
+    # "$(…)"：沒有輸入可讀時 Read-Host 回傳的不是字串（[string] 轉型也會得到 $null），內插一定是字串。
+    $answer = "$(Read-Host '  請輸入 1 或 2 再按 Enter；直接按 Enter 就結束')".Trim()
+    if ($answer -eq '1') { return 'separate' }
+    if ($answer -eq '2') { return 'existing' }
+    return 'quit'
+}
+# Microsoft 發行版清單裡 Ubuntu 24.04 的官方 .wsl（這台電腦的架構）：@{ Url; Sha256 }，拿不到就 $null。
+function Get-UbuntuWslImage([string]$version = 'Ubuntu-24.04') {
+    try { $list = Invoke-RestMethod -Uri $DISTRO_LIST_URL -TimeoutSec 30 -UseBasicParsing } catch { return $null }
+    $entry = @($list.ModernDistributions.Ubuntu | Where-Object { $_.Name -eq $version })[0]
+    if (-not $entry) { return $null }
+    $image = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { $entry.Arm64Url } else { $entry.Amd64Url }
+    if (-not $image -or -not $image.Url -or -not $image.Sha256) { return $null }
+    return @{ Url = [string]$image.Url; Sha256 = (([string]$image.Sha256) -replace '^0x', '').ToUpperInvariant() }
+}
+# 另外安裝 AgEnD 專用的 Ubuntu，名稱 $name，放在 $location。回傳 $true：這個名稱的 Linux 已經在了。
+function Install-AgendDistro([string]$name, [string]$location) {
+    $version = Get-InstalledWslVersion
+    if ($version -and $version -ge $WSL_NAME_MIN) {
+        $null = Invoke-Watched -Label "下載並安裝 AgEnD 專用的 Ubuntu（$name）" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", "Ubuntu-24.04", "--name", $name, "--location", $location, "--no-launch")
+        $after = Get-WslDistroNames
+        if ($null -eq $after) { Write-Err "裝完之後讀不到 Linux 清單，無法確認 $name 有沒有裝好；沒有再做任何事。"; return $false }
+        if ($after -contains $name) { return $true }
+        Write-Warn "WSL 沒有用 $name 這個名稱裝好，改用官方的 Ubuntu 映像檔匯入..."
+    }
+    $image = Get-UbuntuWslImage
+    if (-not $image) { Write-Err "拿不到官方 Ubuntu 映像檔的清單（可能是網路問題），沒有安裝。"; return $false }
+    $file = Join-Path ([IO.Path]::GetTempPath()) ("agend-ubuntu-" + [Guid]::NewGuid().ToString('N') + ".wsl")
+    $prevProgress = $ProgressPreference
+    try {
+        Write-Info "正在下載官方的 Ubuntu 24.04（幾百 MB，請稍候）..."
+        $ProgressPreference = 'SilentlyContinue'    # Windows PowerShell 5.1 的下載進度列會讓下載慢很多
+        try { Invoke-WebRequest -Uri $image.Url -OutFile $file -UseBasicParsing -TimeoutSec 1800 } catch { Write-Err "下載 Ubuntu 失敗：$_"; return $false }
+        $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash
+        if ($hash -ne $image.Sha256) { Write-Err "下載的 Ubuntu 和官方的檢查碼不符，沒有安裝。"; return $false }
+        New-Item -ItemType Directory -Path $location -Force | Out-Null
+        $null = Invoke-Watched -Label "匯入 AgEnD 專用的 Ubuntu（$name）" -Usually "通常需要 1–3 分鐘" -UpperMinutes 10 -Encoding utf16 -File "wsl.exe" -Arguments @("--import", $name, $location, $file, "--version", "2")
+        $after = Get-WslDistroNames
+        return ($null -ne $after -and $after -contains $name)
+    } finally {
+        $ProgressPreference = $prevProgress
+        Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # 沒有同意重新啟動整個 WSL：乾淨地停下來，說明之後怎麼繼續（重新執行同一行安裝指令會從這一步接著做）。
 function Write-WslDeclined {
     Write-Warn "沒有重新啟動 WSL，所以先停在這裡；你的其他 Linux 都沒有被動到。"
@@ -424,11 +543,15 @@ function Invoke-RestartAgend([string]$distro, [string]$user, [switch]$Wait, [int
 . ([scriptblock]::Create($RESTART_FN))
 
 # 捷徑執行的腳本：共用的函式加上一行呼叫（UTF-8 有 BOM：Windows PowerShell 5.1 才會正確顯示中文）。Linux 與使用者是安裝時記下的。
+# 捷徑腳本印出的第一行：它要打開的 Linux 和使用者，指錯了一眼就看得出來。
+function Get-ShortcutTargetLine([string]$distro, [string]$user) {
+    return ('Write-Host ("AgEnD（Linux：{0}，使用者：{1}）" -f ' + (ConvertTo-PsLiteral $distro) + ', ' + (ConvertTo-PsLiteral $user) + ')')
+}
 function Get-DashboardOpenerScript([string]$distro, [string]$user) {
-    return ("# AgEnD 儀表板（AgEnD 安裝程式建立）`n" + $WSL_COMMAND_FN + "`n" + $DASHBOARD_OPENER_FN + "`n" + ("Invoke-OpenDashboard {0} {1} -Wait | Out-Null" -f (ConvertTo-PsLiteral $distro), (ConvertTo-PsLiteral $user)) + "`n")
+    return ("# AgEnD 儀表板（AgEnD 安裝程式建立）`n" + (Get-ShortcutTargetLine $distro $user) + "`n" + $WSL_COMMAND_FN + "`n" + $DASHBOARD_OPENER_FN + "`n" + ("Invoke-OpenDashboard {0} {1} -Wait | Out-Null" -f (ConvertTo-PsLiteral $distro), (ConvertTo-PsLiteral $user)) + "`n")
 }
 function Get-RestartScript([string]$distro, [string]$user) {
-    return ("# AgEnD 重新啟動（AgEnD 安裝程式建立）`n" + $WSL_COMMAND_FN + "`n" + $RESTART_FN + "`n" + ("Invoke-RestartAgend {0} {1} -Wait | Out-Null" -f (ConvertTo-PsLiteral $distro), (ConvertTo-PsLiteral $user)) + "`n")
+    return ("# AgEnD 重新啟動（AgEnD 安裝程式建立）`n" + (Get-ShortcutTargetLine $distro $user) + "`n" + $WSL_COMMAND_FN + "`n" + $RESTART_FN + "`n" + ("Invoke-RestartAgend {0} {1} -Wait | Out-Null" -f (ConvertTo-PsLiteral $distro), (ConvertTo-PsLiteral $user)) + "`n")
 }
 # 安裝時記下的 Linux 與使用者（%LOCALAPPDATA%\AgEnD\install.json）：捷徑、重新執行安裝指令時的快速路徑都讀它。
 function Get-AgendShortcutDir { return (Join-Path $env:LOCALAPPDATA 'AgEnD') }
@@ -438,6 +561,21 @@ function Read-InstallRecord {
         if ($r.distro -and $r.user) { return @{ Distro = [string]$r.distro; User = [string]$r.user } }
     } catch { }
     return $null
+}
+# install.json 已經指向另一個 Linux 或使用者時回傳那筆紀錄（例如 AgEnD 專用的 Linux 和原本的 Ubuntu），否則 $null。
+# 捷徑絕不悄悄改指向：agend shortcuts 遇到這種情況會先問。
+function Get-InstallRecordConflict([string]$distro, [string]$user) {
+    $record = Read-InstallRecord
+    # WSL 的名稱不分大小寫；Linux 的使用者名稱分（Han 和 han 是兩個人，#2279 審查）。
+    if ($record -and ($record.Distro -ne $distro -or $record.User -cne $user)) { return $record }
+    return $null
+}
+# 真正寫入前再讀一次：詢問時看到的是 $seen（$null：當時沒有衝突）。現在沒有衝突，或衝突的還是同一個，才可以寫；
+# 在等回答的時候被別的安裝程式或終端機改掉了，就不寫（#2279 審查）。
+function Test-InstallRecordAsSeen($seen, [string]$distro, [string]$user) {
+    $now = Get-InstallRecordConflict $distro $user
+    if ($null -eq $now) { return $true }
+    return ($null -ne $seen -and $now.Distro -eq $seen.Distro -and $now.User -ceq $seen.User)
 }
 # 一個桌面捷徑：腳本寫在 %LOCALAPPDATA%\AgEnD，捷徑以 Windows PowerShell 執行它（-ExecutionPolicy Bypass 只對那個行程）。
 function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptText, [string]$description) {
@@ -478,7 +616,7 @@ function Find-ExistingAgend {
     $record = Read-InstallRecord
     $candidates = @()
     if ($record) { $candidates += ,@($record.Distro, $record.User) }
-    foreach ($d in @('Ubuntu-24.04', 'Ubuntu-22.04', 'Ubuntu')) { $candidates += ,@($d, 'root') }
+    foreach ($d in @($AGEND_DISTRO_BASE, 'Ubuntu-24.04', 'Ubuntu-22.04', 'Ubuntu')) { $candidates += ,@($d, 'root') }
     foreach ($c in $candidates) {
         $r = Invoke-AgendInWsl $c[0] $c[1] 'command -v agend >/dev/null 2>&1 && echo AGEND_FOUND'
         if ($r.Code -eq 0 -and $r.Text -match 'AGEND_FOUND') { return @{ Distro = $c[0]; User = $c[1] } }
@@ -1015,8 +1153,21 @@ if (-not $Force -and -not (Test-Path $ProgressFile)) {
     $existing = Find-ExistingAgend
     if ($existing) {
         Write-Ok ("這台電腦已經裝好 AgEnD（{0}，使用者 {1}）。不會重新安裝，也不會動到現有的設定。" -f $existing.Distro, $existing.User)
-        $ans = Read-Host "  要更新桌面捷徑嗎？（「AgEnD 儀表板」和「AgEnD 重新啟動」）(Y/n)"
-        if ($ans -notmatch '^\s*[nN]') {
+        # 捷徑目前指向另一個 Linux 或使用者（例如 AgEnD 專用的 Linux 和原本的 Ubuntu）：先說，預設不改（絕不悄悄改指向）。
+        $prior = Get-InstallRecordConflict $existing.Distro $existing.User
+        if ($prior) {
+            Write-Warn ("桌面捷徑目前打開的是 {0}（使用者 {1}）；更新後會改成打開 {2}（使用者 {3}）。" -f $prior.Distro, $prior.User, $existing.Distro, $existing.User)
+            $ans = Read-Host "  要改成打開這個並更新桌面捷徑嗎？(y/N)"
+            $update = ([string]$ans) -match '^\s*[yY]\s*$'
+        } else {
+            $ans = Read-Host "  要更新桌面捷徑嗎？（「AgEnD 儀表板」和「AgEnD 重新啟動」）(Y/n)"
+            $update = $ans -notmatch '^\s*[nN]'
+        }
+        if ($update -and -not (Test-InstallRecordAsSeen $prior $existing.Distro $existing.User)) {
+            Write-Warn "桌面捷徑的設定在你回答的時候被改過了，這次沒有更新捷徑；請再執行一次同一行安裝指令。"
+            $update = $false
+        }
+        if ($update) {
             $made = @(Install-AgendShortcuts $existing.Distro $existing.User)
             $null = Write-ShortcutResult $made
         } else { Write-Info "沒有改動任何東西。" }
@@ -1093,46 +1244,55 @@ if (Stage-Done 1) {
     # ── 1c: 設定 WSL 預設版本為 2 ──
     wsl --set-default-version 2 2>&1 | Out-Null
 
-    # ── 1d: 檢查是否已有 Ubuntu distro ──
-    $distroInstalled = $false
-    $installedDistroName = $null
-    $distroNames = @("Ubuntu-24.04", "Ubuntu-22.04", "Ubuntu")
-    foreach ($name in $distroNames) {
-        $testResult = wsl -d $name -u root -- echo "EXISTS" 2>&1 | Out-String
-        if ($testResult -match "EXISTS") {
-            $distroInstalled = $true
-            $installedDistroName = $name
-            break
-        }
+    # ── 1d: 這台電腦已經有哪些 Linux（只看清單，不啟動任何一個）──
+    # 之前裝過 AgEnD 專用的就沿用；有 Ubuntu 就問（建議另外裝一個）；都沒有就照常安裝 $UBUNTU_DISTRO。
+    $names = Get-WslDistroNames
+    $situation = Get-DistroSituation $names
+    if ($situation.State -eq 'unknown') {
+        Write-Err "讀不到這台電腦上的 Linux 清單。為了不動到你原本的 Linux，先停在這裡，沒有安裝或修改任何東西。"
+        Write-Info "  請稍後再執行同一行安裝指令；如果一直這樣，先重新開機 Windows。"
+        Read-Host "按 Enter 結束"; exit 1
     }
+    $agendDistro = $situation.Agend
+    $installedDistroName = $situation.Ubuntu
+    $choice = 'fresh'
+    if ($situation.State -eq 'reuse') { $choice = 'reuse' } elseif ($situation.State -eq 'ubuntu') { $choice = Read-DistroChoice $installedDistroName }
 
-    if ($distroInstalled) {
-        Write-Ok "這台電腦已經有 $installedDistroName。"
-        Write-Warn "要用它繼續的話，安裝程式會修改它的設定：開啟 systemd、預設以 root 登入、不再把 Windows 的 PATH 帶進 Linux。"
-        Write-Warn "裡面的檔案不會被刪除，但你在這個 $installedDistroName 裡原本的使用習慣（預設使用者、PATH）會改變。"
-        $cont = Read-Host "  要用這個 $installedDistroName 繼續嗎？輸入 y 再按 Enter 繼續；直接按 Enter 就不動它、結束安裝 (y/N)"
-        if (([string]$cont) -notmatch '^\s*[yY]\s*$') {
-            Write-Info "已取消，沒有改動任何東西。"
-            Write-Info "如果想讓 AgEnD 用獨立的環境：先移除或改名現有的 $installedDistroName，再執行同一行安裝指令。"
-            Read-Host "按 Enter 結束"; exit 0
-        }
+    if ($choice -eq 'quit') {
+        Write-Info "已取消，沒有改動任何東西。"
+        Read-Host "按 Enter 結束"; exit 0
+    }
+    if ($choice -eq 'reuse') {
+        Write-Ok "沿用之前為 AgEnD 安裝的 $agendDistro（不會再裝一個）"
+        $UBUNTU_DISTRO = $agendDistro
+    } elseif ($choice -eq 'existing') {
+        Write-Warn "會修改 $installedDistroName 的設定：開啟 systemd、預設以 root 登入、不再把 Windows 的 PATH 帶進 Linux。"
         $UBUNTU_DISTRO = $installedDistroName
     } else {
-        # 自動選擇：Linux 版本固定（$UBUNTU_DISTRO），安裝位置見 Select-InstallDrive。不必再輸入數字。
+        if ($choice -eq 'separate') { $UBUNTU_DISTRO = Get-FreeAgendDistroName $names }
+        # 安裝位置見 Select-InstallDrive，不必再輸入數字。
         $disk = Select-InstallDrive (Get-LocalDisks) ($env:SystemDrive + '\')
         if (-not $disk) {
             Write-Err "找不到可用空間 5 GB 以上的本機磁碟，無法安裝 Linux"
             Write-Info "請先清出一些空間，再執行同一行安裝指令"
             Read-Host "按 Enter 結束"; exit 1
         }
-        $wslPath = "$($disk.Root)WSL\Ubuntu"
+        $wslPath = if ($choice -eq 'separate') { "$($disk.Root)WSL\$UBUNTU_DISTRO" } else { "$($disk.Root)WSL\Ubuntu" }
         Write-Ok "Linux 版本：$UBUNTU_DISTRO"
         Write-Ok ("安裝位置：{0}（可用 {1} GB）" -f $wslPath, [math]::Round($disk.Free / 1GB, 1))
         Write-Host ""
 
         # 安裝
         Write-Info "正在安裝 $UBUNTU_DISTRO，請不要關閉視窗..."
-        $null = Invoke-Watched -Label "下載並安裝 $UBUNTU_DISTRO" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", "-d", $UBUNTU_DISTRO, "--location", $wslPath, "--no-launch")
+        if ($choice -eq 'separate') {
+            if (-not (Install-AgendDistro $UBUNTU_DISTRO $wslPath)) {
+                Write-Err "AgEnD 專用的 Ubuntu 沒有安裝成功；你原本的 Linux 都沒有被動到。"
+                Write-Info "  請確認網路正常，再執行同一行安裝指令。"
+                Read-Host "按 Enter 結束"; exit 1
+            }
+        } else {
+            $null = Invoke-Watched -Label "下載並安裝 $UBUNTU_DISTRO" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", "-d", $UBUNTU_DISTRO, "--location", $wslPath, "--no-launch")
+        }
 
         # 驗證
         Write-Info "正在驗證安裝結果..."
@@ -1418,6 +1578,9 @@ if ($connections -eq 'web') { Write-Info "  [OK] 只用網頁儀表板（沒有�
 elseif ($connections -eq 'chat') { Write-Info "  [OK] 通訊軟體已串接" }
 else { Write-Warn "  [!!] 無法確認通訊軟體是否已串接：在網頁儀表板的 設定 → 連線 可以看到" }
 Write-Info "  [OK] 開機自動啟動已設定"
+# 這次安裝選定的 Linux（例如另外裝的 AgEnD 專用 Linux）和捷徑原本指的不同：明說改指向哪裡。
+$priorTarget = Get-InstallRecordConflict $UBUNTU_DISTRO $AGEND_USER
+if ($priorTarget) { Write-Warn ("桌面捷徑原本打開 {0}（使用者 {1}），現在改成這次安裝的 {2}（使用者 {3}）。" -f $priorTarget.Distro, $priorTarget.User, $UBUNTU_DISTRO, $AGEND_USER) }
 $shortcuts = @(Install-AgendShortcuts $UBUNTU_DISTRO $AGEND_USER)
 $null = Write-ShortcutResult $shortcuts
 $shortcutNames = @($shortcuts | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension([string]$_) })

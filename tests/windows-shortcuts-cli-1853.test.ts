@@ -33,7 +33,7 @@ function host(o: Partial<ShortcutsHost> & { files?: string[] } = {}): ShortcutsH
     exists: o.exists ?? (p => files.has(p)),
   };
 }
-function deps(h: ShortcutsHost, answer: RunResult = { status: 0, stdout: "AGEND_SHORTCUTS_MADE=2\r\n", stderr: "" }) {
+function deps(h: ShortcutsHost, result: RunResult = { status: 0, stdout: "AGEND_SHORTCUTS_MADE=2\r\n", stderr: "" }, answer?: boolean | null) {
   const runs: Array<{ command: string; args: string[] }> = [];
   const markers: Array<[string, string]> = [];
   const lines: string[] = [];
@@ -41,10 +41,11 @@ function deps(h: ShortcutsHost, answer: RunResult = { status: 0, stdout: "AGEND_
     runs, markers, lines,
     d: {
       host: h, user: "han", dataDir: "/home/han/.agend", shared: () => shared,
-      run: (command: string, args: string[]) => { runs.push({ command, args }); return answer; },
+      run: (command: string, args: string[]) => { runs.push({ command, args }); return result; },
       writeMarker: (path: string, content: string) => { markers.push([path, content]); },
       log: (line: string) => { lines.push(line); },
       now: () => new Date("2026-10-20T12:00:00Z"),
+      confirm: async () => answer ?? null,
     },
   };
 }
@@ -86,9 +87,9 @@ describe("where it runs", () => {
 });
 
 describe("agend shortcuts", () => {
-  it("makes both through Windows PowerShell for this Linux and user, then leaves the marker", () => {
+  it("makes both through Windows PowerShell for this Linux and user, then leaves the marker", async () => {
     const { d, runs, markers, lines } = deps(host());
-    expect(runShortcuts(d)).toBe(0);
+    expect(await runShortcuts(d)).toBe(0);
     expect(runs).toHaveLength(1);
     expect(runs[0]!.command).toBe(PS);
     expect(runs[0]!.args.slice(0, 5)).toEqual(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand"]);
@@ -109,24 +110,64 @@ describe("agend shortcuts", () => {
     ["WSL without WSL_DISTRO_NAME", host({ env: {} }), "WSL_DISTRO_NAME is not set"],
     ["interop off (this host's own state: the .exe is there, the binfmt entry is not)", host({ binfmt: ["register", "status", "python3.10"] }), "interop is off"],
     ["no powershell.exe anywhere", host({ files: [] }), "interop is off"],
-  ])("%s: says why, runs nothing, no marker", (_n, h, why) => {
+  ])("%s: says why, runs nothing, no marker", async (_n, h, why) => {
     const { d, runs, markers, lines } = deps(h);
-    expect(runShortcuts(d)).toBe(1);
+    expect(await runShortcuts(d)).toBe(1);
     expect(runs).toEqual([]);
     expect(markers).toEqual([]);
     expect(lines.join("\n")).toContain(why);
     if (why === "interop is off") expect(lines.join("\n")).toContain("irm https://songsid.github.io/AgEnD/install.ps1 | iex");
   });
-  it("no answer from the script (interop off read the .exe as a shell script): the interop message, no marker", () => {
+  it("no answer from the script (interop off read the .exe as a shell script): the interop message, no marker", async () => {
     const { d, markers, lines } = deps(host({ binfmt: null }), { status: 2, stdout: "", stderr: `${PS}: 1: MZ\u0090: not found\n${PS}: 11: Syntax error: ")" unexpected\n` });
-    expect(runShortcuts(d)).toBe(1);
+    expect(await runShortcuts(d)).toBe(1);
     expect(markers).toEqual([]);
     expect(lines.join("\n")).toContain("interop is off");
     expect(lines.join("\n")).toContain("Syntax error");
   });
-  it("only one of the two made: says so, no marker", () => {
+  describe("install.json names another Linux (the leader, 2026-10-20: never repoint silently)", () => {
+    const other: RunResult = { status: 0, stdout: "AGEND_RECORD_OTHER=Ubuntu-24.04|root\r\n", stderr: "" };
+    const made: RunResult = { status: 0, stdout: "AGEND_SHORTCUTS_MADE=2\r\n", stderr: "" };
+    function sequenced(answer: boolean | null, second: RunResult = made) {
+      const runs: string[] = [], lines: string[] = [], markers: string[] = [], asked: string[] = [];
+      const answers = [other, second];
+      const d = {
+        host: host({ env: { WSL_DISTRO_NAME: "AgEnD", PATH: "/usr/bin" } }), user: "root", dataDir: "/root/.agend", shared: () => shared,
+        run: (_c: string, args: string[]) => { runs.push(decode(args)); return answers.shift()!; },
+        writeMarker: (path: string) => { markers.push(path); }, log: (l: string) => { lines.push(l); },
+        now: () => new Date("2026-10-20T12:00:00Z"), confirm: async (q: string) => { asked.push(q); return answer; },
+      };
+      return { d, runs, lines, markers, asked };
+    }
+    it("the first run checks and changes nothing; y: the second run, without the check, makes both", async () => {
+      const { d, runs, markers, asked } = sequenced(true);
+      expect(await runShortcuts(d)).toBe(0);
+      expect(runs).toHaveLength(2);
+      expect(runs[0]).toContain("if (-not (Test-InstallRecordAsSeen $null 'AgEnD' 'root')) {");
+      // #2279 review: the yes is bound to what was shown — the second run checks the record is still that one.
+      expect(runs[1]).toContain("if (-not (Test-InstallRecordAsSeen @{ Distro = 'Ubuntu-24.04'; User = 'root' } 'AgEnD' 'root')) {");
+      expect(runs[1]).toContain("$made = @(Install-AgendShortcuts 'AgEnD' 'root')");
+      expect(asked).toEqual(["The desktop shortcuts now open Ubuntu-24.04 (user root). Point them at AgEnD (user root) instead? (y/N)"]);
+      expect(markers).toEqual(["/root/.agend/windows-shortcuts"]);
+    });
+    it("#2279 review: changed while the person answered (the second run finds another record): nothing written, said", async () => {
+      const { d, runs, markers, lines } = sequenced(true, { status: 0, stdout: "AGEND_RECORD_OTHER=Ubuntu-B|root\r\n", stderr: "" });
+      expect(await runShortcuts(d)).toBe(1);
+      expect(runs).toHaveLength(2);
+      expect(markers).toEqual([]);
+      expect(lines.join("\n")).toContain("while you answered, the shortcuts were pointed at Ubuntu-B (user root) instead");
+    });
+    it.each([[false, "Nothing changed: the shortcuts still open Ubuntu-24.04 (user root)."], [null, "Run agend shortcuts in a terminal to answer."]])("no (%s): nothing more runs, nothing changes, it says what stays", async (answer, said) => {
+      const { d, runs, markers, lines } = sequenced(answer);
+      expect(await runShortcuts(d)).toBe(1);
+      expect(runs).toHaveLength(1);
+      expect(markers).toEqual([]);
+      expect(lines.join("\n")).toContain(said);
+    });
+  });
+  it("only one of the two made: says so, no marker", async () => {
     const { d, markers, lines } = deps(host(), { status: 0, stdout: "AGEND_SHORTCUTS_MADE=1\n", stderr: "" });
-    expect(runShortcuts(d)).toBe(1);
+    expect(await runShortcuts(d)).toBe(1);
     expect(markers).toEqual([]);
     expect(lines.join("\n")).toContain("were not both made");
   });
@@ -174,26 +215,38 @@ const pwsh = spawnSync("pwsh", ["-NoProfile", "-c", "1"], { encoding: "utf8" }).
 describe.skipIf(!pwsh)("with pwsh: the encoded script itself", { timeout: 90_000 }, () => {
   const dirs: string[] = [];
   afterAll(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force: true }); });
+  // WScript.Shell is Windows-only: a function named New-Object comes before the cmdlet and fakes just the COM object.
+  const fakeCom = `function New-Object {
+param([Parameter(Position = 0)][string]$TypeName, [Parameter(Position = 1)][object[]]$ArgumentList, [string]$ComObject)
+if ($ComObject) {
+  $shell = [pscustomobject]@{}
+  $shell | Add-Member ScriptMethod CreateShortcut { param($p)
+    $sc = [pscustomobject]@{ Path = $p; TargetPath = ''; Arguments = ''; Description = '' }
+    $sc | Add-Member ScriptMethod Save { Add-Content (Join-Path $env:LOCALAPPDATA 'lnk.txt') ($this.Path + ' | ' + $this.TargetPath + ' | ' + $this.Arguments) }
+    return $sc }
+  return $shell
+}
+if ($PSBoundParameters.ContainsKey('ArgumentList')) { return Microsoft.PowerShell.Utility\\New-Object -TypeName $TypeName -ArgumentList $ArgumentList }
+return Microsoft.PowerShell.Utility\\New-Object -TypeName $TypeName
+}
+`;
+  /** A scratch Windows: a fake native wsl.exe that logs its calls, LOCALAPPDATA, a Desktop; runs an encoded script there. */
+  function scratchWindows() {
+    const dir = mkdtempSync(join(tmpdir(), "agend-1853cli-")); dirs.push(dir);
+    const bin = join(dir, "bin"); mkdirSync(bin);
+    writeFileSync(join(bin, "wsl.exe"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${join(dir, "wsl-calls.txt")}'\nexit 0\n`);
+    chmodSync(join(bin, "wsl.exe"), 0o755);
+    const local = join(dir, "local");
+    mkdirSync(join(dir, "Desktop"));
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, LOCALAPPDATA: local, HOME: dir, SystemRoot: join(dir, "Windows") };
+    const run = (script: string) => spawnSync("pwsh", powershellArgs(fakeCom + script), { encoding: "utf8", timeout: 60_000, env });
+    return { dir, bin, local, env, run };
+  }
   it.each(["han", "o'neil"])("decodes, defines the shared code, writes both scripts and the record, and asks WSL for the marker as this user (%s)", (user) => {
     const dir = mkdtempSync(join(tmpdir(), "agend-1853cli-")); dirs.push(dir);
     const bin = join(dir, "bin"); mkdirSync(bin);
     writeFileSync(join(bin, "wsl.exe"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${join(dir, "wsl-calls.txt")}'\nexit 0\n`);
     chmodSync(join(bin, "wsl.exe"), 0o755);
-    // WScript.Shell is Windows-only: a function named New-Object comes before the cmdlet and fakes just the COM object.
-    const fakeCom = `function New-Object {
-  param([Parameter(Position = 0)][string]$TypeName, [Parameter(Position = 1)][object[]]$ArgumentList, [string]$ComObject)
-  if ($ComObject) {
-    $shell = [pscustomobject]@{}
-    $shell | Add-Member ScriptMethod CreateShortcut { param($p)
-      $sc = [pscustomobject]@{ Path = $p; TargetPath = ''; Arguments = ''; Description = '' }
-      $sc | Add-Member ScriptMethod Save { Add-Content (Join-Path $env:LOCALAPPDATA 'lnk.txt') ($this.Path + ' | ' + $this.TargetPath + ' | ' + $this.Arguments) }
-      return $sc }
-    return $shell
-  }
-  if ($PSBoundParameters.ContainsKey('ArgumentList')) { return Microsoft.PowerShell.Utility\\New-Object -TypeName $TypeName -ArgumentList $ArgumentList }
-  return Microsoft.PowerShell.Utility\\New-Object -TypeName $TypeName
-}
-`;
     const args = powershellArgs(fakeCom + buildShortcutsScript(shared, "Ubuntu-22.04", user));
     const local = join(dir, "local");
     mkdirSync(join(dir, "Desktop"));                                                // .NET on Linux names no Desktop until it exists
@@ -218,6 +271,49 @@ Write-Output ("ERRORS=" + $e.Count); Write-Output ("USER=" + $c.CommandElements[
     expect(lnk).toMatch(/AgEnD 儀表板\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*open-dashboard\.ps1"/);
     expect(lnk).toMatch(/AgEnD 重新啟動\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*restart-agend\.ps1"/);
     expect(readFileSync(join(dir, "wsl-calls.txt"), "utf8")).toBe(`-d Ubuntu-22.04 -u ${user} -- bash -lc export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; d=\${AGEND_HOME:-$HOME/.agend}; mkdir -p $d && date -u +%FT%TZ > $d/windows-shortcuts\n`);
+  });
+  it("an install.json for another Linux: the unconfirmed script changes nothing and says which; confirmed, it repoints", () => {
+    const w = scratchWindows();
+    mkdirSync(join(w.local, "AgEnD"), { recursive: true });
+    writeFileSync(join(w.local, "AgEnD", "install.json"), '{"distro":"Ubuntu-24.04","user":"root"}');
+    const first = w.run(buildShortcutsScript(shared, "AgEnD", "root"));
+    expect(first.stdout).toMatch(/^AGEND_RECORD_OTHER=Ubuntu-24\.04\|root$/m);
+    expect(first.stdout).not.toMatch(/AGEND_SHORTCUTS_MADE/);
+    expect(existsSync(join(w.local, "AgEnD", "restart-agend.ps1"))).toBe(false);
+    expect(JSON.parse(readFileSync(join(w.local, "AgEnD", "install.json"), "utf8"))).toEqual({ distro: "Ubuntu-24.04", user: "root" });
+    const same = scratchWindows();                                                   // the same Linux and user: no question at all
+    mkdirSync(join(same.local, "AgEnD"), { recursive: true });
+    writeFileSync(join(same.local, "AgEnD", "install.json"), '{"distro":"AgEnD","user":"root"}');
+    expect(same.run(buildShortcutsScript(shared, "AgEnD", "root")).stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
+    // #2279 review: a yes to replacing Ubuntu-24.04 does not replace a record changed meanwhile to Ubuntu-B.
+    writeFileSync(join(w.local, "AgEnD", "install.json"), '{"distro":"Ubuntu-B","user":"root"}');
+    const raced = w.run(buildShortcutsScript(shared, "AgEnD", "root", { distro: "Ubuntu-24.04", user: "root" }));
+    expect(raced.stdout).toMatch(/^AGEND_RECORD_OTHER=Ubuntu-B\|root$/m);
+    expect(JSON.parse(readFileSync(join(w.local, "AgEnD", "install.json"), "utf8"))).toEqual({ distro: "Ubuntu-B", user: "root" });
+    expect(existsSync(join(w.local, "AgEnD", "restart-agend.ps1"))).toBe(false);
+    writeFileSync(join(w.local, "AgEnD", "install.json"), '{"distro":"Ubuntu-24.04","user":"root"}');
+    const second = w.run(buildShortcutsScript(shared, "AgEnD", "root", { distro: "Ubuntu-24.04", user: "root" }));
+    expect(second.stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
+    expect(JSON.parse(readFileSync(join(w.local, "AgEnD", "install.json"), "utf8"))).toEqual({ distro: "AgEnD", user: "root" });
+  });
+  it("#2279 review: the Linux name compares without case, the user name with it (Han and han are two people)", () => {
+    const w = scratchWindows();
+    mkdirSync(join(w.local, "AgEnD"), { recursive: true });
+    writeFileSync(join(w.local, "AgEnD", "install.json"), '{"distro":"AgEnD","user":"Han"}');
+    expect(w.run(buildShortcutsScript(shared, "agend", "han")).stdout).toMatch(/^AGEND_RECORD_OTHER=AgEnD\|Han$/m);
+    expect(w.run(buildShortcutsScript(shared, "agend", "Han")).stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
+  });
+  it("both saved scripts say first which Linux and user they open, then run wsl -d <that> -u <that>", () => {
+    const w = scratchWindows();
+    expect(w.run(buildShortcutsScript(shared, "AgEnD", "root")).stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
+    rmSync(join(w.dir, "wsl-calls.txt"), { force: true });
+    for (const [file, input] of [["restart-agend.ps1", "y\n\n"], ["open-dashboard.ps1", "\n"]] as const) {
+      const r = spawnSync("pwsh", ["-NoProfile", "-File", join(w.local, "AgEnD", file)], { encoding: "utf8", timeout: 60_000, input, env: w.env });
+      expect(r.stdout.split("\n").find(l => l.trim())!.trim(), file).toBe("AgEnD（Linux：AgEnD，使用者：root）");
+    }
+    const calls = readFileSync(join(w.dir, "wsl-calls.txt"), "utf8").trim().split("\n");
+    expect(calls.length).toBeGreaterThanOrEqual(3);                                  // restart, status, the dashboard's sign-in
+    for (const call of calls) expect(call).toMatch(/^-d AgEnD -u root -- bash -lc /);
   });
   it("UTF-16LE base64 is what -EncodedCommand reads: Chinese comes through", () => {
     const r = spawnSync("pwsh", ["-NoProfile", "-EncodedCommand", encodePowershell("Write-Output '重新啟動 OK'")], { encoding: "utf8" });

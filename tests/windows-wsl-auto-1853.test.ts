@@ -51,9 +51,11 @@ describe("the WSL stage decides for itself (static)", () => {
     expect(body).toMatch(/Write-Ok "Linux 版本：\$UBUNTU_DISTRO"/);
     expect(body).toMatch(/安裝位置：\{0\}（可用 \{1\} GB）/);
   });
-  it("an Ubuntu already there: what would change is said, and the default is no", () => {
-    expect(body).toContain("安裝程式會修改它的設定：開啟 systemd、預設以 root 登入、不再把 Windows 的 PATH 帶進 Linux。");
-    expect(body).toMatch(/\(y\/N\)"\n\s+if \(\(\[string\]\$cont\) -notmatch '\^\\s\*\[yY\]\\s\*\$'\) \{/);    // no input to read is a no too
+  it("an Ubuntu already there: a separate AgEnD Ubuntu is offered first (recommended); using it says what changes; Enter quits", () => {
+    expect(code).toContain('Write-Info "  [1] 另外安裝一個 AgEnD 專用的 Ubuntu（建議，不動你原本的）"');
+    expect(code).toContain("[2] 用原本的 $existing（會修改它的設定：開啟 systemd、預設以 root 登入、不再把 Windows 的 PATH 帶進 Linux；裡面的檔案不會被刪除）");
+    expect(code).toContain('Write-Info "  [Enter] 結束，不動任何東西"');
+    expect(body).toMatch(/if \(\$choice -eq 'quit'\) \{\n\s*Write-Info "已取消，沒有改動任何東西。"\n\s*Read-Host "按 Enter 結束"; exit 0/);
   });
   it("the chosen distro is saved with the progress and read back on a resumed run", () => {
     expect(body).toMatch(/Add-Content -Path \$ProgressFile -Value "DISTRO=\$UBUNTU_DISTRO"\n\s+Mark-Stage 1\n/);

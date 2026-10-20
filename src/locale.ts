@@ -1103,6 +1103,10 @@ const enMessages = {
     "shortcuts.done": "✓ Desktop shortcuts updated: \"AgEnD 儀表板\" opens the dashboard, and \"AgEnD 重新啟動\" restarts AgEnD (it asks first).",
     "shortcuts.failed": "✗ Windows PowerShell ran, but the desktop shortcuts were not both made. In Windows PowerShell, run the installer again: irm https://songsid.github.io/AgEnD/install.ps1 | iex",
     "shortcuts.hint": "Windows desktop shortcuts: run `agend shortcuts` to make them.",
+    "shortcuts.other_target": "The desktop shortcuts now open {0} (user {1}). Point them at {2} (user {3}) instead? (y/N)",
+    "shortcuts.kept": "Nothing changed: the shortcuts still open {0} (user {1}).",
+    "shortcuts.changed_meanwhile": "Nothing changed: while you answered, the shortcuts were pointed at {0} (user {1}) instead. Run agend shortcuts again to decide.",
+    "shortcuts.kept_no_tty": "Nothing changed: the shortcuts open {0} (user {1}), and switching them needs a yes. Run agend shortcuts in a terminal to answer.",
 
 } as const;
 
@@ -2185,6 +2189,10 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "shortcuts.done": "✓ 桌面捷徑已更新：「AgEnD 儀表板」打開儀表板，「AgEnD 重新啟動」重新啟動 AgEnD（會先詢問）。",
     "shortcuts.failed": "✗ Windows PowerShell 有執行，但兩個桌面捷徑沒有都建立成功。請在 Windows PowerShell 重新執行安裝指令：irm https://songsid.github.io/AgEnD/install.ps1 | iex",
     "shortcuts.hint": "Windows 桌面捷徑：執行 `agend shortcuts` 建立",
+    "shortcuts.other_target": "桌面捷徑目前打開的是 {0}（使用者 {1}）。要改成打開 {2}（使用者 {3}）嗎？(y/N)",
+    "shortcuts.kept": "沒有改動：捷徑仍然打開 {0}（使用者 {1}）。",
+    "shortcuts.changed_meanwhile": "沒有改動：你回答的時候，捷徑已經被改成打開 {0}（使用者 {1}）。請再執行一次 agend shortcuts 重新決定。",
+    "shortcuts.kept_no_tty": "沒有改動：捷徑打開的是 {0}（使用者 {1}），要切換必須先回答「是」。請在終端機裡執行 agend shortcuts 來回答。",
 
 };
 

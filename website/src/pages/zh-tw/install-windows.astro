@@ -83,7 +83,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
     </p>
     <div class="mb-14 rounded-xl border border-border bg-surface p-6">
       <ol class="space-y-3 text-sm text-text-secondary">
-        <li><b class="text-text-primary">[1/5] 安裝 WSL 2 + Ubuntu</b> —— 不用選：系統碟有 20 GB 以上可用空間就裝在系統碟（否則裝在可用空間最大的本機磁碟），安裝 Ubuntu-24.04，並顯示裝在哪裡。如果電腦裡已經有 Ubuntu，會先說明會改動什麼並詢問你（預設不改）。已經是 2 以上的 WSL 不會再更新；較舊的會先透過 Microsoft Store 更新，GitHub 只是備案（很多人共用同一個對外網路時，GitHub 可能暫時拒絕下載；安裝程式會說明狀況，現有的 WSL 能用時就繼續）。可能需要重開機一次；重新登入後會自動從中斷處繼續。</li>
+        <li><b class="text-text-primary">[1/5] 安裝 WSL 2 + Ubuntu</b> —— 不用選：系統碟有 20 GB 以上可用空間就裝在系統碟（否則裝在可用空間最大的本機磁碟），安裝 Ubuntu-24.04，並顯示裝在哪裡。如果電腦裡已經有 Ubuntu，會讓你選：另外安裝一個 AgEnD 專用的 Ubuntu，名稱是 <code class="font-mono text-accent">AgEnD</code>（建議，你原本的完全不動）；或用原本的那個（會修改它的設定，並說明改什麼）；直接按 Enter 就結束、不動任何東西。之後再執行時會沿用這個 AgEnD 專用的 Linux，不會再裝第三個。已經是 2 以上的 WSL 不會再更新；較舊的會先透過 Microsoft Store 更新，GitHub 只是備案（很多人共用同一個對外網路時，GitHub 可能暫時拒絕下載；安裝程式會說明狀況，現有的 WSL 能用時就繼續）。可能需要重開機一次；重新登入後會自動從中斷處繼續。</li>
         <li><b class="text-text-primary">[2/5] 安裝 AI 後端（可多選）</b> —— 用逗號分隔選擇一個以上（直接 Enter 只裝 Kiro CLI）：
           <ol class="mt-2 ml-4 space-y-1 list-decimal list-inside text-text-secondary/90">
             <li>Kiro CLI（免費，需 AWS Builder ID / GitHub / Google）</li>
