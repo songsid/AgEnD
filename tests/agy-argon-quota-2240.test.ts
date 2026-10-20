@@ -6,9 +6,9 @@
  *
  * Fixtures: tests/fixtures/agy-quota-2026-10-20/ are REAL response shapes from a user's agy login (2026-10-20,
  * read-only, user-approved), redacted to quota metadata: the daily and production bases' quota summaries and the daily
- * base's per-model quotas. That account's responses had NO Argon in them (not from any endpoint AgEnD can call); the
- * Argon group and models below are SYNTHETIC, written in the summary's own shape from what agy shows. A captured real
- * Argon response will replace them.
+ * base's per-model quotas. Those responses had NO Argon in them (AgEnD did not yet ask as agy's CLI does); the Argon group
+ * and models below are SYNTHETIC, written in the summary's own shape from what agy shows. The real Argon group, captured
+ * from agy 1.4.3 itself, is checked in agy-client-ua-2240.test.ts (summary-daily-cli-ua.json).
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";

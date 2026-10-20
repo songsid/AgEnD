@@ -5,12 +5,16 @@
  * gemini-weekly 0.78095853 resetting 2026-10-24T00:00:26Z — agy's numbers exactly; as plain "antigravity" or
  * `antigravity/1.4.2` it had no Gemini group; the production base had a free-tier bucket (0.9725, resetting 10-21)
  * whatever the client said. Fixtures are those REAL responses, redacted (tests/fixtures/agy-quota-2026-10-20/).
+ *
+ * Then agy 1.4.3's own /quota, captured the same day (summary-daily-cli-ua.json): it asks as
+ * `antigravity/cli/1.4.3 (aidev_client; …)`, and the `cli/` segment is what brings the "Gemini 4 Argon" group (asked
+ * without it, never; as cli/1.2.0 or older, never). So AgEnD now asks exactly as agy does.
  */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AGY_CLIENT_VERSION, agyPoolMetrics, agyUsageBuckets, agyUserAgent, fetchAntigravityUsage } from "../src/usage/providers.js";
+import { AGY_CLIENT_VERSION, agyPlan, agyPoolMetrics, agyUsageBuckets, agyUserAgent, fetchAntigravityUsage } from "../src/usage/providers.js";
 
 const real = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/agy-quota-2026-10-20/${name}`, import.meta.url), "utf8"));
 const lines = (summary: unknown, models: unknown = null) => agyPoolMetrics(agyUsageBuckets(summary as never, models as never))
@@ -27,13 +31,26 @@ describe("#2240: asked as a current Antigravity client, the daily base gives the
     expect(lines(real("summary-daily.json"), real("models-daily.json")).map(l => l[0])).toEqual(["Claude & others (session)", "Claude & others (weekly)", "Gemini"]);
     expect(lines(real("summary-daily.json")).map(l => l[0]), "without models: Claude's lines, never a made-up Gemini").toEqual(["Claude & others (session)", "Claude & others (weekly)"]);
   });
-  it("the User-Agent: agy's own shape, with the named version, this host's OS and CPU", () => {
-    expect(AGY_CLIENT_VERSION).toBe("2.24.0");
-    expect([agyUserAgent("linux", "x64"), agyUserAgent("darwin", "arm64"), agyUserAgent("win32", "x64")]).toEqual([
-      "antigravity/2.24.0 (aidev_client; os_type=linux; arch=amd64)",
-      "antigravity/2.24.0 (aidev_client; os_type=darwin; arch=arm64)",
-      "antigravity/2.24.0 (aidev_client; os_type=windows; arch=amd64)",
+  it("agy 1.4.3's real daily summary (asked as agy's CLI): Gemini, Claude & others, and Gemini 4 Argon as a line of its own", () => {
+    expect(lines(real("summary-daily-cli-ua.json"))).toEqual([
+      ["Gemini (session)", 0, "2026-10-20T13:11:26Z"], ["Gemini (weekly)", 21, "2026-10-24T00:00:26Z"],
+      ["Claude & others (session)", 0, "2026-10-20T13:11:26Z"], ["Claude & others (weekly)", 2.4, "2026-10-23T08:04:22Z"],
+      ["Gemini 4 Argon (weekly)", 0, "2026-10-27T08:11:26Z"],
     ]);
+  });
+  it("the User-Agent: agy's CLI's own shape (`antigravity/cli/<version>`), with the named version, this host's OS and CPU", () => {
+    expect(AGY_CLIENT_VERSION).toBe("1.4.3");
+    expect([agyUserAgent("linux", "x64"), agyUserAgent("darwin", "arm64"), agyUserAgent("win32", "x64")]).toEqual([
+      "antigravity/cli/1.4.3 (aidev_client; os_type=linux; arch=amd64)",
+      "antigravity/cli/1.4.3 (aidev_client; os_type=darwin; arch=arm64)",
+      "antigravity/cli/1.4.3 (aidev_client; os_type=windows; arch=amd64)",
+    ]);
+  });
+  it("the plan name is one badge: at most 64 characters, a longer one cut with an ellipsis", () => {
+    expect(agyPlan({ paidTier: { name: "Google AI Pro" } })).toBe("Google AI Pro");
+    expect(agyPlan({ paidTier: { name: "x".repeat(64) } })).toBe("x".repeat(64));
+    expect(agyPlan({ paidTier: { name: "x".repeat(65) } })).toBe(`${"x".repeat(63)}…`);
+    expect(agyPlan({ currentTier: { id: "🙂".repeat(70) } }), "counted in code points, never a split surrogate").toBe(`${"🙂".repeat(63)}…`);
   });
 });
 
