@@ -1042,13 +1042,21 @@ const getFleetStatus: Handler = (ctx, rawArgs, respond) => {
   const fleetStopped = fleetNames.length - fleetRunning - fleetPaused;
 
   // Classic channels — same status source as list_instances and agend ls.
-  // Dedup: skip names already in the fleet (same-name fleet instance wins).
+  // Dedup: skip names already in the fleet (same-name fleet instance wins),
+  // AND skip classic names already seen (two channels can share an instanceName).
   const fleetNameSet = new Set(fleetNames);
-  const classicAll = ctx.classicChannels
-    ? ctx.classicChannels.getAll().filter(ch => !fleetNameSet.has(ch.instanceName))
-    : [];
-  const classicRunning = classicAll.filter(ch => ctx.lifecycle.daemons.has(ch.instanceName) && !ctx.lifecycle.isPaused(ch.instanceName)).length;
-  const classicPaused = classicAll.filter(ch => ctx.lifecycle.isPaused(ch.instanceName)).length;
+  const seenClassic = new Set<string>();
+  const classicAll: string[] = [];
+  if (ctx.classicChannels) {
+    for (const ch of ctx.classicChannels.getAll()) {
+      if (fleetNameSet.has(ch.instanceName)) continue;
+      if (seenClassic.has(ch.instanceName)) continue;
+      seenClassic.add(ch.instanceName);
+      classicAll.push(ch.instanceName);
+    }
+  }
+  const classicRunning = classicAll.filter(n => ctx.lifecycle.daemons.has(n) && !ctx.lifecycle.isPaused(n)).length;
+  const classicPaused = classicAll.filter(n => ctx.lifecycle.isPaused(n)).length;
   const classicStopped = classicAll.length - classicRunning - classicPaused;
 
   respond({
