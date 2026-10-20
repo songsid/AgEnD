@@ -267,11 +267,11 @@ function ageMetric(m: UsageMetric, now: number): UsageMetric {
 function lastKnown(p: ProviderUsage, now: number, cause: UsageStaleCause, hint: Pick<ProviderUsage, "hint" | "hintI18n">): ProviderUsage | null {
   const good = lastGood.get(p.id);
   if (!good || now - good.at >= LAST_KNOWN_MAX_MS) return null;
-  const { hint: _hint, hintI18n: _hintI18n, ...row } = good.provider;
+  const { hint: _hint, hintI18n: _hintI18n, profile: _profile, defaultLogin: _defaultLogin, ...row } = good.provider;
   return {
     ...row,
-    // The row as it is now (a profile, the default login), with the numbers as they were.
-    id: p.id, name: p.name, ...(p.profile ? { profile: p.profile } : {}),
+    // The row as it is now (its name, a profile, the default login), with the numbers as they were.
+    id: p.id, name: p.name, ...(p.profile ? { profile: p.profile } : {}), ...(p.defaultLogin ? { defaultLogin: true as const } : {}),
     stale: true, cachedAt: new Date(good.at).toISOString(), staleCause: cause,
     ...(hint.hint !== undefined ? { hint: hint.hint } : {}), ...(hint.hintI18n ? { hintI18n: hint.hintI18n } : {}),
     metrics: good.provider.metrics.map(m => ageMetric(m, now)),

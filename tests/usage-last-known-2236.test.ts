@@ -90,9 +90,16 @@ describe("the server keeps the last known numbers", () => {
     const s = scripted(good(Date.now()));
     await read();
     await later(10 * 60_000);
-    s.next = { ...expired, name: "Claude (default)" };                          // the same login, named beside profiles since
+    s.next = { ...expired, name: "Claude (default)", defaultLogin: true };      // the same login, beside profiles since (#2250)
     const row = await read();
-    expect([row.id, row.name, row.stale, row.metrics[1]!.used]).toEqual(["claude", "Claude (default)", true, 64]);
+    expect([row.id, row.name, row.defaultLogin, row.stale, row.metrics[1]!.used]).toEqual(["claude", "Claude (default)", true, true, 64]);
+    await later(10 * 60_000);
+    s.next = { ...good(Date.now()), id: "claude:work", name: "Claude (work)", profile: "work", defaultLogin: true } as ProviderUsage;
+    await read();
+    await later(10 * 60_000);
+    s.next = { ...expired, id: "claude:work", name: "Claude (work)", profile: "work" };
+    const prof = await read();
+    expect([prof.profile, prof.defaultLogin, prof.stale], "nothing of the cached row's own tags").toEqual(["work", undefined, true]);
   });
   it("never made up: a provider never read successfully keeps its error row; a signed-out row is left as it is", async () => {
     vi.useFakeTimers({ now: Date.UTC(2030, 0, 1, 6, 0) });
