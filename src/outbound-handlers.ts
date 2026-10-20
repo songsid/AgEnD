@@ -1036,11 +1036,29 @@ const stopInstance: Handler = async (ctx, rawArgs, respond) => {
 
 const getFleetStatus: Handler = (ctx, rawArgs, respond) => {
   const instances = ctx.fleetConfig?.instances ?? {};
-  const names = Object.keys(instances);
-  const running = names.filter(n => ctx.lifecycle.daemons.has(n) && !ctx.lifecycle.isPaused(n)).length;
-  const paused = names.filter(n => ctx.lifecycle.isPaused(n)).length;
-  const stopped = names.length - running - paused;
-  respond({ total: names.length, running, paused, stopped });
+  const fleetNames = Object.keys(instances);
+  const fleetRunning = fleetNames.filter(n => ctx.lifecycle.daemons.has(n) && !ctx.lifecycle.isPaused(n)).length;
+  const fleetPaused = fleetNames.filter(n => ctx.lifecycle.isPaused(n)).length;
+  const fleetStopped = fleetNames.length - fleetRunning - fleetPaused;
+
+  // Classic channels — same status source as list_instances and agend ls.
+  // Dedup: skip names already in the fleet (same-name fleet instance wins).
+  const fleetNameSet = new Set(fleetNames);
+  const classicAll = ctx.classicChannels
+    ? ctx.classicChannels.getAll().filter(ch => !fleetNameSet.has(ch.instanceName))
+    : [];
+  const classicRunning = classicAll.filter(ch => ctx.lifecycle.daemons.has(ch.instanceName) && !ctx.lifecycle.isPaused(ch.instanceName)).length;
+  const classicPaused = classicAll.filter(ch => ctx.lifecycle.isPaused(ch.instanceName)).length;
+  const classicStopped = classicAll.length - classicRunning - classicPaused;
+
+  respond({
+    total: fleetNames.length + classicAll.length,
+    running: fleetRunning + classicRunning,
+    paused: fleetPaused + classicPaused,
+    stopped: fleetStopped + classicStopped,
+    fleet: { total: fleetNames.length, running: fleetRunning, paused: fleetPaused, stopped: fleetStopped },
+    classic: { total: classicAll.length, running: classicRunning, paused: classicPaused, stopped: classicStopped },
+  });
 };
 
 const kiroEngineStatusHandler: Handler = (ctx, rawArgs, respond) => {

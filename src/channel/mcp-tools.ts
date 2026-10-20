@@ -102,7 +102,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["stop_instance", schemas.StopInstanceArgs,
     "Stop a running instance (terminates the daemon)."],
   ["get_fleet_status", schemas.GetFleetStatusArgs,
-    "Get fleet summary: count of running, paused, and stopped instances."],
+    "Get fleet summary: count of running, paused, and stopped instances — fleet instances and ClassicBot channels combined. Returns top-level totals (total, running, paused, stopped) plus a breakdown by kind: fleet (fleet.yaml instances) and classic (ClassicBot channels)."],
   ["get_effort", schemas.GetEffortArgs,
     "Get the reasoning-effort setting for an instance: the level in force, the levels its CLI backend accepts, and whether changing it takes effect immediately or needs a restart. Defaults to yourself."],
   ["kiro_engine_status", schemas.KiroEngineStatusArgs,
