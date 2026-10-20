@@ -372,7 +372,10 @@ agend uninstall                 # Remove system service
 agend export [path]             # Export config for device migration
 agend export --full [path]      # Export config + all instance data
 agend import <file>             # Import config from export file
+agend shortcuts                 # WSL: create or update the Windows desktop shortcuts
 ```
+
+**Windows desktop shortcuts from WSL (#1853).** `agend shortcuts` makes (or refreshes) **AgEnD 儀表板** and **AgEnD 重新啟動** on the Windows desktop, for an install that predates them or that is only ever updated with `agend update`. It runs the Windows installer's own shortcut code in Windows PowerShell through WSL interop, for this Linux (`WSL_DISTRO_NAME`) and the user running it, and records them in `%LOCALAPPDATA%\AgEnD\install.json` as the installer does. Outside WSL it changes nothing. When interop is off (no `WSLInterop` binfmt entry, or no `powershell.exe`), it says so and points to the other way: paste the Windows one-liner again, which on a PC that already has AgEnD only offers the shortcuts. After `agend update` in a WSL terminal without the shortcuts, one line suggests `agend shortcuts`, once (not in a chat `/update`, which has no terminal). An update never creates desktop items itself.
 
 `agend quickstart` detects a Discord admin from a new message in the selected server or a DM to the bot, then asks you to confirm the displayed username and ID. Follow the send-message prompt after it connects. After at most 30 seconds, or if you decline, it requires a manual user ID (17–20 digits, no leading zero) and re-asks invalid input. Settings → Setup wizard and New connection also require a valid admin ID; Discord detection in the web form is not included yet. Telegram keeps its message detection, with a required positive user ID for manual web setup. Existing access lists are not migrated.
 

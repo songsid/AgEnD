@@ -270,6 +270,7 @@ function Complete-LoginStage($backends) {
 # 儀表板用一次性登入碼登入（不會放在網址裡）：在 WSL 裡執行 agend web --code 取得登入頁和登入碼，在 Windows 的瀏覽器打開
 # 登入頁，把登入碼放進剪貼簿並放大顯示。桌面上的「AgEnD 儀表板」捷徑做同一件事，所以之後不用再打任何指令。
 # 這段函式的文字同時是捷徑執行的腳本：安裝程式和捷徑用的是同一份。
+# 從這裡到 Install-AgendShortcuts 結束，和 templates/windows-shortcuts.ps1 一字不差（WSL 裡的 agend shortcuts 用它）：兩邊一起改。
 $DASHBOARD_OPENER_FN = @'
 function Get-DashboardSignIn([string]$text) {
     $url = [regex]::Match($text, 'Sign-in page:\s*(https?://\S+)')

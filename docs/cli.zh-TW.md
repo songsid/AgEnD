@@ -252,7 +252,10 @@ agend uninstall                 # 移除系統服務
 agend export [path]             # 匯出配置以用於遷移
 agend export --full [path]      # 匯出配置＋所有實例資料
 agend import <file>             # 從匯出檔案匯入配置
+agend shortcuts                 # WSL：建立或更新 Windows 桌面捷徑
 ```
+
+**從 WSL 建立 Windows 桌面捷徑（#1853）。** `agend shortcuts` 會在 Windows 桌面建立（或更新）**AgEnD 儀表板**和 **AgEnD 重新啟動**，給安裝時還沒有這兩個捷徑、或平常只用 `agend update` 更新的人使用。它透過 WSL interop，在 Windows PowerShell 裡執行 Windows 安裝程式自己的捷徑程式碼，對象是目前這個 Linux（`WSL_DISTRO_NAME`）和執行它的使用者，並和安裝程式一樣記到 `%LOCALAPPDATA%\AgEnD\install.json`。不在 WSL 裡時不做任何變更。interop 關閉時（沒有 `WSLInterop` 的 binfmt 項目，或找不到 `powershell.exe`），它會直接說明，並指出另一個方法：再貼一次 Windows 一行安裝指令，已經裝好 AgEnD 的電腦上它只會問要不要更新捷徑。在還沒有捷徑的 WSL 終端機裡執行 `agend update` 之後，會出現一行提示建議執行 `agend shortcuts`，只出現一次（聊天裡的 `/update` 沒有終端機，所以不會出現）。更新本身絕不會在桌面上建立任何東西。
 
 `agend quickstart` 會從所選伺服器的新訊息或 bot 私訊偵測 Discord 管理員，再請你確認顯示的使用者名稱與 ID。連線後看到提示再發訊息。最多等待 30 秒；如果未偵測到或你不確認，就必須手動輸入使用者 ID（17–20 位數字，開頭不能是 0），格式錯誤會重新詢問。設定 → 設定精靈與新增連線也必須填入有效管理員 ID；網頁表單這次尚未加入 Discord 自動偵測。Telegram 保留訊息偵測，手動網頁設定時也必須填入正整數使用者 ID。既有存取名單不會遷移。
 

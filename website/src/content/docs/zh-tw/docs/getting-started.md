@@ -135,7 +135,7 @@ agend update
 
 它會留在你安裝的頻道（beta 就留在 beta），安裝新版、檢查它，然後重啟 fleet。從 2.1 升級，請先看[從 2.1 升級到 2.2](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.zh-TW.md)。從 2.1.0–2.1.11 升級，或主機沒有 AgEnD 內建的 Node 時，請改照它的手動步驟。
 
-在 Windows 上，桌面捷徑 **AgEnD 儀表板**（打開儀表板並帶入登入碼）和 **AgEnD 重新啟動**（先詢問再重啟）是由 Windows 安裝程式建立的。如果你是之前安裝的，再貼一次 [Windows 一行安裝指令](/AgEnD/zh-tw/install-windows/)：它會偵測到 AgEnD 已經裝好，只提供新增或更新捷徑。
+在 Windows 上，桌面捷徑 **AgEnD 儀表板**（打開儀表板並帶入登入碼）和 **AgEnD 重新啟動**（先詢問再重啟）是由 Windows 安裝程式建立的。如果你是之前安裝的，再貼一次 [Windows 一行安裝指令](/AgEnD/zh-tw/install-windows/)：它會偵測到 AgEnD 已經裝好，只提供新增或更新捷徑。也可以在 WSL 裡執行 `agend shortcuts`。在還沒有捷徑的 WSL 終端機裡執行 `agend update` 之後，會出現一行提示，只會出現一次；除非你自己執行上面其中一種方式，否則不會在桌面上放任何東西。
 
 ## 下一步
 

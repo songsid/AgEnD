@@ -1414,6 +1414,13 @@ program
       return restartOutcome;
     };
 
+    // #1853: in a WSL terminal without the Windows desktop shortcuts, say once how to make them. Never makes them itself.
+    const printShortcutsHint = async () => {
+      const { realHost, shortcutsHintOnce } = await import("./windows-shortcuts.js");
+      const line = shortcutsHintOnce({ host: realHost(), dataDir: DATA_DIR, tty: !!process.stdout.isTTY, write: (path, content) => writeFileSync(path, content) });
+      if (line) console.log(`  ${line}\n`);
+    };
+
     const nvmSh = join(homedir(), ".nvm", "nvm.sh");
     /**
      * Activate a VERIFIED install (#1449 review), on both the update path and the already-installed retry: refresh the
@@ -1528,6 +1535,7 @@ program
         const { planPath } = await import("./service-plan.js");
         planDeps().removeFile(planPath(DATA_DIR));
       }
+      if (outcome.ok) await printShortcutsHint();
       if (outcome.ok && outcome.via === "launchd-activation") {
         console.log("  ✓ Service restarted (launchd loaded the verified job)");
         // The new fleet clears the update marker once it is up.
@@ -1609,6 +1617,7 @@ program
       }
       console.log(`\n  ✓ Already up to date (v${pkgVersion})\n`);
       setUpdateProgressStage(DATA_DIR, "complete", { version: pkgVersion });
+      await printShortcutsHint();
       return;
     }
 
@@ -1852,6 +1861,20 @@ program
     } else {
       console.log(t("install.updated"));
     }
+  });
+
+program
+  .command("shortcuts")
+  .description("WSL: create or update the Windows desktop shortcuts (AgEnD 儀表板, AgEnD 重新啟動)")
+  .action(async () => {
+    // #1853: for an install that predates the installer's shortcuts, or that is only ever updated with `agend update`.
+    const { runShortcuts, realShortcutsDeps } = await import("./windows-shortcuts.js");
+    const { spawnSync } = await import("node:child_process");
+    const { userInfo } = await import("node:os");
+    process.exitCode = runShortcuts(realShortcutsDeps(DATA_DIR, userInfo().username, (command, args) => {
+      const r = spawnSync(command, args, { encoding: "utf-8", timeout: 120_000, stdio: ["ignore", "pipe", "pipe"] });
+      return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "", error: r.error };
+    }));
   });
 
 program

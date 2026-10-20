@@ -1083,6 +1083,15 @@ const enMessages = {
     "delivery.telegram_transport_failed": "Telegram could not complete the request after reconnecting. {2}\nmethod={0}; details={1}",
     "delivery.telegram_retry_failed": "Telegram could not complete the request after retrying.\nmethod={0}; details={1}",
 
+    // #1853 `agend shortcuts`: the Windows desktop shortcuts, made from inside WSL.
+    "shortcuts.not_wsl": "agend shortcuts makes the Windows desktop shortcuts for an AgEnD that runs in WSL. This is not WSL, so nothing was changed.",
+    "shortcuts.no_distro": "This looks like WSL, but WSL_DISTRO_NAME is not set, so it is not known which Linux the shortcuts should open. Run agend shortcuts in a WSL terminal.",
+    "shortcuts.no_interop": "Windows can't be reached from this WSL (interop is off, or powershell.exe can't be found), so no shortcut was made.\nInstead, in Windows PowerShell run the installer again: irm https://songsid.github.io/AgEnD/install.ps1 | iex\nOn a PC that already has AgEnD it only offers to update the desktop shortcuts.",
+    "shortcuts.making": "Making the Windows desktop shortcuts for {0} (user {1})…",
+    "shortcuts.done": "✓ Desktop shortcuts updated: \"AgEnD 儀表板\" opens the dashboard, and \"AgEnD 重新啟動\" restarts AgEnD (it asks first).",
+    "shortcuts.failed": "✗ Windows PowerShell ran, but the desktop shortcuts were not both made. In Windows PowerShell, run the installer again: irm https://songsid.github.io/AgEnD/install.ps1 | iex",
+    "shortcuts.hint": "Windows desktop shortcuts: run `agend shortcuts` to make them.",
+
 } as const;
 
 const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
@@ -2144,6 +2153,14 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
 
     "delivery.telegram_transport_failed": "Telegram 重新連線後仍無法完成請求。{2}\nmethod={0}；詳細原因：{1}",
     "delivery.telegram_retry_failed": "Telegram 重試後仍無法完成請求。\nmethod={0}；詳細原因：{1}",
+
+    "shortcuts.not_wsl": "agend shortcuts 是替在 WSL 裡執行的 AgEnD 建立 Windows 桌面捷徑。這裡不是 WSL，所以沒有做任何變更。",
+    "shortcuts.no_distro": "這裡看起來是 WSL，但沒有設定 WSL_DISTRO_NAME，所以不知道捷徑該打開哪一個 Linux。請在 WSL 的終端機裡執行 agend shortcuts。",
+    "shortcuts.no_interop": "從這個 WSL 連不到 Windows（interop 已關閉，或找不到 powershell.exe），所以沒有建立捷徑。\n請改在 Windows PowerShell 重新執行安裝指令：irm https://songsid.github.io/AgEnD/install.ps1 | iex\n已經裝好 AgEnD 的電腦上，它只會問要不要更新桌面捷徑。",
+    "shortcuts.making": "正在替 {0}（使用者 {1}）建立 Windows 桌面捷徑…",
+    "shortcuts.done": "✓ 桌面捷徑已更新：「AgEnD 儀表板」打開儀表板，「AgEnD 重新啟動」重新啟動 AgEnD（會先詢問）。",
+    "shortcuts.failed": "✗ Windows PowerShell 有執行，但兩個桌面捷徑沒有都建立成功。請在 Windows PowerShell 重新執行安裝指令：irm https://songsid.github.io/AgEnD/install.ps1 | iex",
+    "shortcuts.hint": "Windows 桌面捷徑：執行 `agend shortcuts` 建立",
 
 };
 
