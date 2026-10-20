@@ -27,7 +27,7 @@ const cases: [string, string][] = [
 ];
 describe('shared diagnostic redaction', () => {
   it.each(cases)('removes %s in bare, JSON, URL-encoded and escaped representations', (_, secret) => {
-    for (const input of [secret, `failure ${secret} end`, JSON.stringify({ error: secret }), encodeURIComponent(secret), [...secret].map(c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')).join('')]) {
+    for (const input of [secret, `failure ${secret} end`, JSON.stringify({ error: secret }), encodeURIComponent(secret), secret.slice(0, 12) + '\x1b[31m' + secret.slice(12) + '\x1b[0m', [...secret].map(c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')).join('')]) {
       const output = redactDiagnostics(input);
       expect(output).not.toContain(secret);
       expect(output).toContain(REDACTED);
@@ -90,18 +90,23 @@ describe('shared diagnostic redaction', () => {
       const safe = redactDiagnostics(text); expect(typeof safe).toBe('string'); expect(safe.length).toBeLessThanOrEqual(text.length * 2 + REDACTED.length);
     }
   });
-  it('property: seeded generated known-shape secrets never survive wrappers (6300 checked cases)', () => {
+  it('removes an opaque credential split into short pieces by terminal color codes', () => {
+    const credential = ['AzByCxDw', 'EvFuGtHs', 'IrJqKpLo', 'MnNmOpPq'].join('');
+    const colored = credential.slice(0, 16) + '\x1b[31m' + credential.slice(16) + '\x1b[0m';
+    expect(redactDiagnostics(colored)).toBe(REDACTED);
+  });
+  it('property: seeded generated known-shape secrets never survive wrappers (8400 checked cases)', () => {
     let state = 2256, checked = 0;
     const random = () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state; };
     for (let i = 0; i < 100; i++) {
       const noise = Array.from({ length: 40 }, () => 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'[random() % 63]).join('');
       const secrets = ['sk-' + noise, 'ya29.' + noise, '1//' + noise, 'ghp_' + noise, 'github_pat_' + noise, `${100000 + random()}:${noise}`, 'eyJhbGciOiJIUzI1NiJ9.' + noise + '.abcdefghijk'];
-      for (const secret of secrets) for (const wrapper of [(s: string) => s, (s: string) => JSON.stringify({ token: s }), (s: string) => encodeURIComponent(s)]) for (const context of ['prefix ', 'Error: ', '\n']) {
+      for (const secret of secrets) for (const wrapper of [(s: string) => s, (s: string) => JSON.stringify({ token: s }), (s: string) => encodeURIComponent(s), (s: string) => s.slice(0, 12) + '\x1b[31m' + s.slice(12) + '\x1b[0m']) for (const context of ['prefix ', 'Error: ', '\n']) {
         const output = redactDiagnostics(context + wrapper(secret));
         expect(output).not.toContain(secret); expect(output).not.toContain(noise); expect(output).not.toMatch(/(?:sk-|ya29\.|ghp_|github_pat_|1\/\/)[A-Za-z0-9_]{8,}/);
         expect(redactDiagnostics(output)).toBe(output); checked++;
       }
     }
-    expect(checked).toBe(6300);
+    expect(checked).toBe(8400);
   });
 });

@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import { stripVTControlCharacters } from "node:util";
 import { constants as osConstants } from "node:os";
 /** Public diagnostic export boundary. Never use a privacy opt-in to disable credentials. */
 export const REDACTED = '[REDACTED]';
@@ -24,7 +25,7 @@ function decode(text: string): string {
     if (text === previous) break;
   }
   // Ambiguous deeply encoded data is withheld, not partially decoded and exported.
-  return text.replace(/(?:%[0-9a-f]{2})+/gi, REDACTED).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, '');
+  return stripVTControlCharacters(text).replace(/(?:%[0-9a-f]{2})+/gi, REDACTED).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, '');
 }
 
 /** A credential field can contain a whole object/list or YAML block, not just a string. */
