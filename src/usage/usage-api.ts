@@ -20,7 +20,7 @@ import { statSync } from "node:fs";
 import { join } from "node:path";
 import { getAgendHome } from "../paths.js";
 import { t } from "../locale.js";
-import { usageExpiryText, usageResetText, usageText } from "./i18n.js";
+import { usageExpiryText, usageResetText, usageRowName, usageText } from "./i18n.js";
 
 export interface UsageApiContext {
   readonly fleetConfig: FleetConfig | null;
@@ -356,7 +356,7 @@ export function formatUsageSummary(payload: UsagePayload): string {
     lines.push(t("usage.empty_active"));
   }
   for (const provider of payload.providers) {
-    const name = provider.plan ? `${provider.name} (${provider.plan})` : provider.name;
+    const name = provider.plan ? `${usageRowName(provider)} (${provider.plan})` : usageRowName(provider);
     if (provider.status === "no-credentials") {
       lines.push(`· ${name}: ${t("usage.not_logged_in")}`);
       continue;

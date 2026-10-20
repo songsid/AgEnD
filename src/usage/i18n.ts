@@ -1,9 +1,15 @@
 import { t } from "../locale.js";
-import type { UsageI18nRef } from "./providers.js";
+import type { ProviderUsage, UsageI18nRef } from "./providers.js";
 
 /** Resolve AgEnD-owned usage copy while preserving raw vendor text as fallback. */
 export function usageText(fallback: string, ref?: UsageI18nRef): string {
   return ref ? t(ref.key, ...(ref.args ?? [])) : fallback;
+}
+
+/** A row's name in the chat and MCP text: the default login's "Claude (default)" says "default" in the fleet's language. */
+export function usageRowName(p: Pick<ProviderUsage, "name" | "defaultLogin">): string {
+  const suffix = " (default)";
+  return p.defaultLogin && p.name.endsWith(suffix) ? `${p.name.slice(0, -suffix.length)} (${t("usage.default_login")})` : p.name;
 }
 
 /** Minute-precision duration shared by the chat and MCP usage renderers. */
