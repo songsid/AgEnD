@@ -917,17 +917,41 @@ async function agyAccessToken(): Promise<{ token: string } | { error: string; er
  */
 const AGY_MODELS_DEADLINE_MARGIN_MS = 1_000;
 
-function agyModels(base: string, token: string): { within(budgetMs: number): Promise<AgyModels | null>; cancel(): void } {
+function agyModels(base: string, token: string): AgyOptionalRead<AgyModels> {
+  return agyOptionalRead<AgyModels>(base, token, "fetchAvailableModels", "{}");
+}
+
+/**
+ * The plan's name for the row (Google AI Pro …): `loadCodeAssist`, asked as agy asks it (its client metadata), read
+ * like the models' quotas — alongside the summary, optional, cancelled at the deadline. The paid tier wins over the
+ * current one, as OpenUsage reads it: a Pro account's current tier is "free-tier" (named "Antigravity").
+ */
+const AGY_LOAD_CODE_ASSIST_BODY = JSON.stringify({ metadata: { ideType: "ANTIGRAVITY", platform: "PLATFORM_UNSPECIFIED", pluginType: "GEMINI" } });
+interface AgyCodeAssist { paidTier?: { id?: unknown; name?: unknown }; currentTier?: { id?: unknown; name?: unknown } }
+function agyCodeAssist(base: string, token: string): AgyOptionalRead<AgyCodeAssist> {
+  return agyOptionalRead<AgyCodeAssist>(base, token, "loadCodeAssist", AGY_LOAD_CODE_ASSIST_BODY);
+}
+/** The plan's name from loadCodeAssist: the paid tier's, else the current tier's (its name, else its id), else null. */
+export function agyPlan(body: AgyCodeAssist | null): string | null {
+  for (const tier of [body?.paidTier, body?.currentTier]) {
+    for (const v of [tier?.name, tier?.id]) if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+type AgyOptionalRead<T> = { within(budgetMs: number): Promise<T | null>; cancel(): void };
+/** One optional Cloud Code read beside the summary: its body, or null on any failure; bounded by the caller's budget. */
+function agyOptionalRead<T extends object>(base: string, token: string, method: string, requestBody: string): AgyOptionalRead<T> {
   const abort = new AbortController();
   const result = (async () => {
-    const res = await fetch(`${base}/v1internal:fetchAvailableModels`, {
+    const res = await fetch(`${base}/v1internal:${method}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": agyUserAgent() },
-      body: "{}",
+      body: requestBody,
       signal: AbortSignal.any([abort.signal, AbortSignal.timeout(LONGEST_SINGLE_FETCH_MS)]),
     });
     if (!res.ok) return null;
-    const body = await res.json() as AgyModels | null;
+    const body = await res.json() as T | null;
     return body && typeof body === "object" ? body : null;
   })().catch(() => null);
   return {
@@ -975,6 +999,7 @@ export async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" 
     // Alongside the summary, not after it: one more round trip in the chain would push a slow-but-healthy pair past
     // the provider deadline. Cancelled when the summary fails (it never rejects).
     const models = agyModels(base, auth.token);
+    const codeAssist = agyCodeAssist(base, auth.token);
     try {
       let res: Response;
       try {
@@ -996,12 +1021,15 @@ export async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" 
       let body: AgyQuotaSummary;
       try { body = await res.json() as typeof body; } catch { continue; }
       const budgetMs = providerDeadlineMs - (performance.now() - startedAt) - AGY_MODELS_DEADLINE_MARGIN_MS;
-      const metrics = agyPoolMetrics(agyUsageBuckets(body ?? {}, await models.within(budgetMs)));
+      const [modelList, assist] = await Promise.all([models.within(budgetMs), codeAssist.within(budgetMs)]);
+      const metrics = agyPoolMetrics(agyUsageBuckets(body ?? {}, modelList));
+      const plan = agyPlan(assist);
       return metrics.length
-        ? { status: "ok", plan: null, metrics }
-        : { status: "ok", plan: null, hint: "No quota information reported for this account.", hintI18n: i18n("usage.hint.no_quota"), metrics: [] };
+        ? { status: "ok", plan, metrics }
+        : { status: "ok", plan, hint: "No quota information reported for this account.", hintI18n: i18n("usage.hint.no_quota"), metrics: [] };
     } finally {
       models.cancel();                                  // a base given up on, or a read already settled: nothing left to wait for
+      codeAssist.cancel();
     }
   }
   return { status: "error", error: "Could not reach the Cloud Code quota endpoints.", errorI18n: i18n("usage.error.unreachable", "Cloud Code quota endpoints"), metrics: [] };

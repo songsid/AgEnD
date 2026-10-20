@@ -225,7 +225,7 @@ describe("fetchAntigravityUsage asks for the models' quotas beside the summary (
     expect(r.status).toBe("ok");
     expect(r.metrics.map(m => m.label)).toEqual(["Claude & others (session)", "Claude & others (weekly)", "Gemini"]);
     // The daily base first, as a current Antigravity client (#2240); production is the fallback.
-    expect(calls).toEqual(["https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels", "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"]);
+    expect(calls).toEqual(["https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels", "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist", "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"]);
   });
   it("a failing models read costs nothing: the summary's rows", async () => {
     login();
@@ -283,8 +283,8 @@ describe("the models' read never costs the row its summary (#2176 review: the 16
     expect([row.status, labels]).toEqual(["ok", CLAUDE]);
     // Both bases were really asked: the first failed at 3s, the second took over then (Prism #2241 r1).
     expect(calls.map(c => [c.url.replace(/^https:\/\/([a-z-]+)\.googleapis\.com\/v1internal:/, "$1 "), c.at])).toEqual([
-      ["daily-cloudcode-pa fetchAvailableModels", 0], ["daily-cloudcode-pa retrieveUserQuotaSummary", 0],
-      ["cloudcode-pa fetchAvailableModels", 3_000], ["cloudcode-pa retrieveUserQuotaSummary", 3_000],
+      ["daily-cloudcode-pa fetchAvailableModels", 0], ["daily-cloudcode-pa loadCodeAssist", 0], ["daily-cloudcode-pa retrieveUserQuotaSummary", 0],
+      ["cloudcode-pa fetchAvailableModels", 3_000], ["cloudcode-pa loadCodeAssist", 3_000], ["cloudcode-pa retrieveUserQuotaSummary", 3_000],
     ]);
     expect(settledAt).toBe(DEFAULT_PROVIDER_DEADLINE_MS - 1_000);          // what was left, less the margin
     expect(calls.every(c => c.signal?.aborted || c.url.endsWith("retrieveUserQuotaSummary")), "both stalled models reads are cancelled").toBe(true);

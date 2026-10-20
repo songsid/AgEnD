@@ -52,7 +52,7 @@ describe("#2240: what the provider sends", () => {
       return new Response(JSON.stringify(body), { status: 200 });
     }));
     const row = await fetchAntigravityUsage();
-    expect(sent).toEqual([["daily-cloudcode-pa fetchAvailableModels", agyUserAgent()], ["daily-cloudcode-pa retrieveUserQuotaSummary", agyUserAgent()]]);
+    expect(sent).toEqual([["daily-cloudcode-pa fetchAvailableModels", agyUserAgent()], ["daily-cloudcode-pa loadCodeAssist", agyUserAgent()], ["daily-cloudcode-pa retrieveUserQuotaSummary", agyUserAgent()]]);
     expect(row.metrics.find(m => m.label === "Gemini (weekly)")?.resetsAt).toBe("2026-10-24T00:00:26Z");
   });
 });
