@@ -14,13 +14,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { FleetConfig } from "../types.js";
 import type { Logger } from "pino";
-import { fetchAllUsage, isHostLoginUsageProvider, type ProviderUsage, type UsageMetric } from "./providers.js";
+import { fetchAllUsage, isHostLoginUsageProvider, type ProviderUsage, type UsageMetric, type UsageStaleCause } from "./providers.js";
 import { museUsageRevision } from "../muse-usage-relay.js";
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
+import { rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getAgendHome } from "../paths.js";
 import { t } from "../locale.js";
-import { usageExpiryText, usageResetText, usageText } from "./i18n.js";
+import { usageExpiryText, usageResetSinceText, usageResetText, usageStaleText, usageText } from "./i18n.js";
 
 export interface UsageApiContext {
   readonly fleetConfig: FleetConfig | null;
@@ -88,8 +89,13 @@ const TRANSIENT_CACHE_MS = 30 * 1000;
  * so our margin there is thinner than it looks.
  */
 const FORCE_FLOOR_MS = 30 * 1000;
-/** How old a last-good snapshot may be and still stand in for a rate-limited row. */
+/** How old an expired snapshot may be and still be answered at once to the dashboard panel (#1585). */
 const STALE_MAX_MS = 60 * 60 * 1000;
+/**
+ * How old a provider's last good numbers may be and still stand in for a failed read: a week. Older weekly numbers
+ * say nothing; a window that has reset since is marked as such (`resetPassed`) at any age.
+ */
+const LAST_KNOWN_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 /** Cap for Retry-After backoff. Prevents a single 429 from locking /usage for days.
  * Note: the backoff is global — one provider's 429 blocks force-refresh for all
  * providers (because fetchAllUsage fetches all at once). Per-provider backoff would
@@ -128,8 +134,16 @@ const sameOwner = (a: UsageOwner, b: UsageOwner) =>
   a.configKey !== null && a.configKey === b.configKey && a.museRevision === b.museRevision;
 let inflight: { promise: Promise<UsagePayload>; owner: UsageOwner } | null = null;
 let lastForcedFetchStartedAt: number | null = null;
-/** Last successful per-provider rows, for stale-while-rate-limited. */
-const lastGood = new Map<string, { at: number; provider: ProviderUsage }>();
+/**
+ * Last successful per-provider rows: a failed read shows these, marked (withStaleFallback). Kept on disk too
+ * (usage-last-good.json in AGEND_HOME), so a restart with an expired token still shows the numbers it had.
+ */
+type LastGood = { at: number; provider: ProviderUsage };
+const lastGood = new Map<string, LastGood>();
+/** Where lastGood persists (null: memory only, as in tests); read once, on first use. */
+let lastGoodFile: (() => string) | null = () => join(getAgendHome(), "usage-last-good.json");
+let lastGoodLoaded = false;
+let lastGoodWrite: Promise<void> = Promise.resolve();
 /** Retry-After deadline per provider: do not fetch until after this timestamp. */
 const retryAfterUntil = new Map<string, number>();
 // Test seam: lets tests stub the network layer without real credentials.
@@ -142,7 +156,50 @@ export function setUsageFetcherForTests(fn: (() => Promise<UsagePayload>) | null
   inflight = null;
   lastForcedFetchStartedAt = null;
   lastGood.clear();
+  lastGoodFile = null;
+  lastGoodLoaded = true;
   retryAfterUntil.clear();
+}
+
+/** Tests: persist lastGood at `path` (read it on the next use), or not at all (null). */
+export function setUsageLastGoodFileForTests(path: string | null): Promise<void> {
+  lastGoodFile = path === null ? null : () => path;
+  lastGoodLoaded = false;
+  return lastGoodWrite;
+}
+
+function isLastGood(v: unknown): v is LastGood {
+  const e = v as LastGood | null;
+  return !!e && typeof e === "object" && typeof e.at === "number" && Number.isFinite(e.at) && !!e.provider
+    && typeof e.provider === "object" && typeof e.provider.id === "string" && typeof e.provider.name === "string"
+    && e.provider.status === "ok" && Array.isArray(e.provider.metrics);
+}
+
+/** Read the persisted rows once (a missing or unreadable file is no rows); a row read since wins. */
+function loadLastGood(now: number): void {
+  if (lastGoodLoaded) return;
+  lastGoodLoaded = true;
+  if (!lastGoodFile) return;
+  try {
+    const data = JSON.parse(readFileSync(lastGoodFile(), "utf8")) as { v?: number; rows?: Record<string, unknown> };
+    if (data?.v !== 1 || !data.rows || typeof data.rows !== "object") return;
+    for (const [id, entry] of Object.entries(data.rows)) {
+      if (!isLastGood(entry) || entry.provider.id !== id || now - entry.at >= LAST_KNOWN_MAX_MS || lastGood.has(id)) continue;
+      lastGood.set(id, entry);
+    }
+  } catch { /* none yet, or unreadable: memory only until the next good read */ }
+}
+
+/** Write the rows (atomically: a temp file renamed over it), one write at a time, off the fleet's loop. */
+function saveLastGood(): void {
+  if (!lastGoodFile) return;
+  const path = lastGoodFile();
+  const body = JSON.stringify({ v: 1, rows: Object.fromEntries(lastGood) });
+  lastGoodWrite = lastGoodWrite.then(async () => {
+    const tmp = `${path}.${process.pid}.tmp`;
+    await writeFile(tmp, body, { mode: 0o600 });
+    await rename(tmp, path);
+  }).catch(() => { /* the next good read writes again */ });
 }
 
 /**
@@ -176,26 +233,73 @@ function isTransientFailure(p: ProviderUsage): boolean {
     && TRANSIENT_ERROR_PATTERNS.some(re => re.test(p.error ?? ""));
 }
 
+/**
+ * Usage copy keys whose error means the login's token expired or was refused: the row says "expired" and the error is
+ * how to refresh it.
+ */
+const EXPIRED_ERROR_KEYS = new Set<string>([
+  "usage.error.token_rejected", "usage.error.claude_token_expired", "usage.error.codex_token_expired",
+  "usage.error.grok_expired", "usage.error.agy_no_refresh", "usage.error.agy_token_expired",
+  "usage.error.agy_login_expired", "usage.error.grok_auth_readonly", "usage.error.grok_no_refresh",
+]);
+function isExpiredFailure(p: ProviderUsage): boolean {
+  return EXPIRED_ERROR_KEYS.has(p.errorI18n?.key ?? "")
+    || /expired|unauthori[sz]ed|\b401\b|\b403\b|invalid api key|token (?:was )?(?:rejected|revoked)/i.test(p.error ?? "");
+}
+
+/**
+ * A metric of the last known numbers whose window has reset since they were read: its number is dropped (it was for
+ * a window that has ended) and it says so. An expiry (`resetKind: "expiry"`) is not a reset and is left alone.
+ */
+function ageMetric(m: UsageMetric, now: number): UsageMetric {
+  if (!m.resetsAt || m.resetKind === "expiry") return m;
+  const at = Date.parse(m.resetsAt);
+  if (!(at <= now)) return m;
+  const { used: _used, value: _value, valueI18n: _valueI18n, ...rest } = m;
+  return { ...rest, resetPassed: true };
+}
+
+/**
+ * A failed read's row, shown as its last known numbers: marked `stale` with when they were read (`cachedAt`) and why
+ * (`staleCause`); `hint` says what to do (an expiry or another error) or how old the numbers are (a transient failure).
+ * Never made up: with no good read in the last week, the failed row stands as it is.
+ */
+function lastKnown(p: ProviderUsage, now: number, cause: UsageStaleCause, hint: Pick<ProviderUsage, "hint" | "hintI18n">): ProviderUsage | null {
+  const good = lastGood.get(p.id);
+  if (!good || now - good.at >= LAST_KNOWN_MAX_MS) return null;
+  const { hint: _hint, hintI18n: _hintI18n, ...row } = good.provider;
+  return {
+    ...row,
+    // The row as it is now (a profile, the default login), with the numbers as they were.
+    id: p.id, name: p.name, ...(p.profile ? { profile: p.profile } : {}),
+    stale: true, cachedAt: new Date(good.at).toISOString(), staleCause: cause,
+    ...(hint.hint !== undefined ? { hint: hint.hint } : {}), ...(hint.hintI18n ? { hintI18n: hint.hintI18n } : {}),
+    metrics: good.provider.metrics.map(m => ageMetric(m, now)),
+  };
+}
+
+/**
+ * A row whose live read failed keeps its last known numbers, marked (#2236 follow-up, the user's request): a token
+ * that expired, a rate limit, a network blip or any other failure shows the numbers from the last good read, with when
+ * that was and what went wrong, instead of wiping the row. A provider never read successfully keeps its error row.
+ * A good read replaces them (and clears the mark).
+ */
 function withStaleFallback(payload: UsagePayload): UsagePayload {
   const now = Date.now();
+  loadLastGood(now);
+  let changed = false;
   const providers = payload.providers.map(p => {
     if (p.status === "ok" && p.metrics.length > 0) {
       lastGood.set(p.id, { at: now, provider: p });
+      changed = true;
       return p;
     }
-    if (isTransientEmpty(p)) {
-      const good = lastGood.get(p.id);
-      if (good && now - good.at < STALE_MAX_MS) {
-        const ageMin = Math.max(1, Math.round((now - good.at) / 60_000));
-        return {
-          ...good.provider,
-          stale: true,
-          hint: `cached ${ageMin}m ago — ${p.hint}`,
-          hintI18n: { key: "usage.stale_rate_limited" as import("./i18n-keys.js").UsageI18nKey, args: [ageMin] },
-        };
-      }
-      return p;
-    }
+    const ageMin = (): number => Math.max(1, Math.round((now - (lastGood.get(p.id)?.at ?? now)) / 60_000));
+    const transientHint = (why: string): Pick<ProviderUsage, "hint" | "hintI18n"> => ({
+      hint: `cached ${ageMin()}m ago — ${why}`,
+      hintI18n: { key: "usage.stale_rate_limited" as import("./i18n-keys.js").UsageI18nKey, args: [ageMin()] },
+    });
+    if (isTransientEmpty(p)) return lastKnown(p, now, "transient", transientHint(p.hint ?? "")) ?? p;
     if (p.status === "error" && /rate.?limit/i.test(p.error ?? "")) {
       // Parse Retry-After from the hint field (set by providers.ts on 429)
       const retryAfterMatch = p.hint?.match(/^retry-after:(\d+)$/);
@@ -209,16 +313,8 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
         // Prune any expired entries from previous fetches.
         for (const [id, until] of retryAfterUntil) { if (until <= now) retryAfterUntil.delete(id); }
       }
-      const good = lastGood.get(p.id);
-      if (good && now - good.at < STALE_MAX_MS) {
-        const ageMin = Math.max(1, Math.round((now - good.at) / 60_000));
-        return {
-          ...good.provider,
-          stale: true,
-          hint: `cached ${ageMin}m ago — live query is rate limited`,
-          hintI18n: { key: "usage.stale_rate_limited" as import("./i18n-keys.js").UsageI18nKey, args: [ageMin] },
-        };
-      }
+      const known = lastKnown(p, now, "transient", transientHint("live query is rate limited"));
+      if (known) return known;
       // No stale data: use a gentler message and mark as transient so format-rich
       // shows a neutral icon instead of alarming 🔴.
       return {
@@ -229,20 +325,15 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
         errorI18n: { key: "usage.error.rate_limited_transient" as import("./i18n-keys.js").UsageI18nKey, args: [p.name] },
       };
     }
-    if (isTransientFailure(p)) {
-      const good = lastGood.get(p.id);
-      if (good && now - good.at < STALE_MAX_MS) {
-        const ageMin = Math.max(1, Math.round((now - good.at) / 60_000));
-        return {
-          ...good.provider,
-          stale: true,
-          hint: `cached ${ageMin}m ago — live query failed, will retry`,
-          hintI18n: { key: "usage.stale_rate_limited" as import("./i18n-keys.js").UsageI18nKey, args: [ageMin] },
-        };
-      }
+    if (isTransientFailure(p)) return lastKnown(p, now, "transient", transientHint("live query failed, will retry")) ?? p;
+    if (p.status === "error") {
+      // An expired login or any other failure: the numbers stay, and the error is what to do about it.
+      const detail = { hint: p.error ?? "", ...(p.errorI18n ? { hintI18n: p.errorI18n } : {}) };
+      return lastKnown(p, now, isExpiredFailure(p) ? "expired" : "error", detail) ?? p;
     }
     return p;
   });
+  if (changed) saveLastGood();
   return { ...payload, providers };
 }
 
@@ -370,7 +461,8 @@ export function formatUsageSummary(payload: UsagePayload): string {
       continue;
     }
     const parts = provider.metrics.filter(isVisibleUsageMetric).map(formatMetric).filter(Boolean);
-    const staleness = provider.hint ? ` (${usageText(provider.hint, provider.hintI18n)})` : "";
+    const marked = usageStaleText(provider);
+    const staleness = marked ? ` (${marked})` : provider.hint ? ` (${usageText(provider.hint, provider.hintI18n)})` : "";
     lines.push(`· ${name}: ${parts.length ? parts.join(" | ") : t("usage.no_data")}${staleness}`);
   }
   return lines.join("\n");
@@ -430,7 +522,7 @@ export function formatDiscordUsageActivity(payload: UsagePayload): string {
       .filter(metric => metric.type === "percent" && typeof metric.used === "number")
       .sort((a, b) => Number(/weekly/i.test(b.label)) - Number(/weekly/i.test(a.label)))[0];
     if (!percent) return [];
-    const stale = /^cached\s+/i.test(provider.hint ?? "");
+    const stale = provider.stale === true || /^cached\s+/i.test(provider.hint ?? "");
     if (stale) return [{ text: `${name}: stale`, stale: true, index }];
     // A glance, not a report: `<Backend> <pct>%` plus a compact `(<XdYh>)`
     // countdown for a single backend, entries joined by ` | ` for several. No
@@ -462,6 +554,7 @@ export function formatDiscordUsageActivity(payload: UsagePayload): string {
 
 function formatMetric(m: UsageMetric): string {
   const label = usageText(m.label, m.labelI18n);
+  if (m.resetPassed) return `${label} ${usageResetSinceText(m.resetsAt)}`;
   const note = m.note ? usageText(m.note, m.noteI18n) : "";
   switch (m.type) {
     case "percent":
