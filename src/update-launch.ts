@@ -132,6 +132,8 @@ function readRunTail(logPath: string, offset: number): string | null {
 
 export interface UpdateLaunchDeps {
   platform: string;
+  /** This process's uid: a system manager's scope is root's to ask for (#2274). */
+  uid?(): number;
   cgroup(): Promise<string>;
   version(): Promise<string | null>;
   nonce(): string;
@@ -139,6 +141,7 @@ export interface UpdateLaunchDeps {
 
 export const defaultUpdateLaunchDeps: UpdateLaunchDeps = {
   platform: process.platform,
+  uid: () => (typeof process.getuid === "function" ? process.getuid() : -1),
   cgroup: async () => {
     const started = performance.now();
     const result = await readFile("/proc/self/cgroup", { encoding: "utf8", signal: AbortSignal.timeout(2000) });
@@ -157,18 +160,34 @@ export const defaultUpdateLaunchDeps: UpdateLaunchDeps = {
   nonce: () => randomBytes(16).toString("hex"),
 };
 
-/** Unknown is not proof that a detached child can escape a service's KillMode. */
-export function inServiceCgroup(text: string): boolean | null {
+/**
+ * Which systemd manager runs the service the fleet is in: "user" (a unit below user@UID.service — com.agend.fleet),
+ * "system" (a unit of the system manager — the legacy /etc/systemd/system/agend.service, #2274), false (no service: a
+ * detached fleet), null (unknown: unreadable, or rows that disagree). Unknown is not proof that a detached child can
+ * escape a service's KillMode.
+ */
+export function serviceManagerOf(text: string): "user" | "system" | false | null {
   if (!text || text.length > 64 * 1024 || text.includes("\0")) return null;
   const rows = text.trimEnd().split("\n");
-  let service = false;
+  const managers = new Set<"user" | "system">();
   for (const row of rows) {
     const parsed = /^(\d+):([^:]*):(\/[^\r\n]*)$/.exec(row);
     if (!parsed || parsed[3].split("/").some(part => part === "." || part === "..")) return null;
-    // user@UID.service is the user manager itself, not a fleet stop boundary.
-    service ||= parsed[3].split("/").some(part => part.endsWith(".service") && !/^user@\d+\.service$/.test(part));
+    // user@UID.service is the user manager itself, not a fleet stop boundary: the units below it are the user's.
+    let underUserManager = false;
+    for (const part of parsed[3].split("/")) {
+      if (/^user@\d+\.service$/.test(part)) underUserManager = true;
+      else if (part.endsWith(".service")) managers.add(underUserManager ? "user" : "system");
+    }
   }
-  return service;
+  if (managers.size > 1) return null;
+  return managers.size ? [...managers][0]! : false;
+}
+
+/** Unknown is not proof that a detached child can escape a service's KillMode. */
+export function inServiceCgroup(text: string): boolean | null {
+  const manager = serviceManagerOf(text);
+  return manager === null ? null : manager !== false;
 }
 
 export type UpdateLaunch = { ok: true; command: string; args: string[]; scope?: string }
@@ -181,9 +200,14 @@ export async function resolveUpdateLaunch(agend: string, deps: UpdateLaunchDeps 
   let before: string;
   try { before = await deps.cgroup(); }
   catch { return { ok: false, reason: "cannot read the fleet's service cgroup" }; }
-  const service = inServiceCgroup(before);
-  if (service === null) return { ok: false, reason: "cannot identify the fleet's service cgroup" };
-  if (!service) return { ok: true, ...plain };
+  const manager = serviceManagerOf(before);
+  if (manager === null) return { ok: false, reason: "cannot identify the fleet's service cgroup" };
+  if (!manager) return { ok: true, ...plain };
+  // #2274: a fleet under the system manager (the legacy agend.service, root) has no user bus; its updater's scope is the
+  // system manager's — which only root may ask for.
+  if (manager === "system" && (deps.uid?.() ?? -1) !== 0) {
+    return { ok: false, reason: "the fleet runs as a system service, and only root can give its updater a scope of its own" };
+  }
   let version: string | null;
   try { version = await deps.version(); } catch { version = null; }
   const major = /^systemd (\d+)\b/.exec(version ?? "")?.[1];
@@ -198,7 +222,7 @@ export async function resolveUpdateLaunch(agend: string, deps: UpdateLaunchDeps 
   } catch { return { ok: false, reason: "cannot recheck the fleet's service cgroup" }; }
   const scope = `agend-updater-${nonce}.scope`;
   return { ok: true, command: "systemd-run", scope, args: [
-    "--user", "--scope", "--quiet", "--collect", "--no-ask-password", `--unit=${scope}`,
+    ...(manager === "user" ? ["--user"] : []), "--scope", "--quiet", "--collect", "--no-ask-password", `--unit=${scope}`,
     ...expansion, "--", plain.command, ...plain.args,
   ] };
 }
