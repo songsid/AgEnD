@@ -88,6 +88,7 @@ describe("the page", () => {
     i18n.setLang("zh-TW");
     expect(usage.providerTitle({ name: "Claude (default)", defaultLogin: true })).toEqual({ base: "Claude", profile: "預設" });
     expect(usage.providerTitle({ name: "Claude (default)", profile: "default" }), "a profile named default is that profile").toEqual({ base: "Claude", profile: "default" });
+    expect(usage.providerTitle({ name: "Claude (default)", profile: "default", defaultLogin: true }), "a profile wins over the flag").toEqual({ base: "Claude", profile: "default" });
     expect(usage.providerTitle({ name: "Codex (default)" }), "no flag: the name as it is").toEqual({ base: "Codex (default)", profile: "" });
     expect(usage.providerTitle({ name: "Claude", defaultLogin: true }), "a flag on a name without the suffix: as it is").toEqual({ base: "Claude", profile: "" });
   });
