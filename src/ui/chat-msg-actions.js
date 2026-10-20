@@ -1,14 +1,15 @@
 // #2272: a chat message's own actions, beyond the hover strip — the message menu (right-click, long-press on a phone),
-// swipe right to reply (as in Telegram), and R on a focused message. One install per thread element.
+// swipe left to reply (as in Telegram), and R on a focused message. One install per thread element.
 //
 // - Right-click on a message opens Reply / Copy text / Copy link. Shift+right-click, a right-click with text selected,
 //   or one on a link, an image or a field keeps the browser's own menu.
 // - A long press (500 ms without moving) opens the same menu; the click and the browser menu it would also cause are
 //   swallowed.
-// - Swipe right on a message: it follows the finger (up to 64 px); let go past 56 px and it is a reply. A mostly
-//   vertical move is scrolling, never a reply. The phone drawer's own swipe leaves messages alone (app-swipe.js), so the
+// - Swipe left on a message: it follows the finger (up to 64 px); let go past 56 px and it is a reply. A mostly
+//   vertical move is scrolling, never a reply. A swipe right is the phone drawer's (app-swipe.js), on a message too: the
 //   two never fight.
-// - R (no modifier) on a focused message replies; Escape closes the menu.
+// - R (no modifier) on a focused message replies; ↑/↓ move to the message before or after (one message is in the Tab
+//   order); Escape closes the menu.
 
 const LONG_PRESS_MS = 500, MOVE_TOLERANCE = 10, SWIPE_REPLY_PX = 56, SWIPE_MAX_PX = 64;
 
@@ -93,6 +94,14 @@ export function installMessageActions(list, deps) {
     openMenu(row, e.clientX, e.clientY);
   }
   function onKeyDown(e) {
+    // ↑/↓ on a focused message: the one before or after it (one message is in the Tab order: the thread's rove()).
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey
+      && e.target && e.target.matches && e.target.matches(".msg[data-key]") && list.contains(e.target)) {
+      const all = [...list.querySelectorAll(".msg[data-key]")], i = all.indexOf(e.target);
+      const to = all[i + (e.key === "ArrowDown" ? 1 : -1)];
+      if (to) { e.preventDefault(); deps.rove?.(to.dataset.key); to.focus(); to.scrollIntoView?.({ block: "nearest" }); }
+      return;
+    }
     if (e.key !== "r" && e.key !== "R") return;
     if (e.ctrlKey || e.metaKey || e.altKey || deps.canReply?.() === false) return;
     const el = e.target && e.target.matches && e.target.matches(".msg[data-key]") && list.contains(e.target) ? e.target : null;
@@ -122,10 +131,10 @@ export function installMessageActions(list, deps) {
     if (press && (Math.abs(p.clientX - press.x) > MOVE_TOLERANCE || Math.abs(p.clientY - press.y) > MOVE_TOLERANCE)) cancelPress();
     if (!swipe) return;
     const dx = p.clientX - swipe.x, dy = p.clientY - swipe.y;
-    if (swipe.locked === null && (Math.abs(dx) > MOVE_TOLERANCE || Math.abs(dy) > MOVE_TOLERANCE)) swipe.locked = dx > 0 && Math.abs(dy) < dx / 2 ? "x" : "no";
+    if (swipe.locked === null && (Math.abs(dx) > MOVE_TOLERANCE || Math.abs(dy) > MOVE_TOLERANCE)) swipe.locked = dx < 0 && Math.abs(dy) < -dx / 2 ? "x" : "no";
     if (swipe.locked !== "x") return;
-    swipe.dx = Math.max(0, Math.min(dx, SWIPE_MAX_PX));
-    swipe.el.style.transform = `translateX(${swipe.dx}px)`;
+    swipe.dx = Math.max(0, Math.min(-dx, SWIPE_MAX_PX));               // how far left, as a positive distance
+    swipe.el.style.transform = `translateX(${-swipe.dx}px)`;
     swipe.el.classList.toggle("swipe-ready", swipe.dx >= SWIPE_REPLY_PX);
   }
   function onTouchEnd() {
@@ -143,6 +152,9 @@ export function installMessageActions(list, deps) {
   }
   function onClickCapture(e) { if (swallowClick) { e.preventDefault(); e.stopPropagation(); } }
 
+  // A message focused by a click or a tap becomes the one Tab comes back to.
+  function onFocusIn(e) { const el = e.target && e.target.matches && e.target.matches(".msg[data-key]") ? e.target : null; if (el && list.contains(el)) deps.rove?.(el.dataset.key); }
+  list.addEventListener("focusin", onFocusIn);
   list.addEventListener("contextmenu", onContextMenu);
   list.addEventListener("keydown", onKeyDown);
   list.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -152,6 +164,7 @@ export function installMessageActions(list, deps) {
   list.addEventListener("click", onClickCapture, true);
   return () => {
     closeMenu(); cancelPress(); cancelSwipe();
+    list.removeEventListener("focusin", onFocusIn);
     list.removeEventListener("contextmenu", onContextMenu);
     list.removeEventListener("keydown", onKeyDown);
     list.removeEventListener("touchstart", onTouchStart);

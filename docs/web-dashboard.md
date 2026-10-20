@@ -121,7 +121,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - **Reply to a message (#2272).**
   - **Starting a reply:**
     - **Desktop:** hover a message and press **↩** at its top right, or right-click it for **Reply / Copy text / Copy link**. Shift+right-click, or right-click over selected text, still gives the browser's own menu.
-    - **Phone:** swipe right on a message, or long-press it for the same menu. A swipe right that starts on a message replies; one that starts anywhere else still opens the drawer.
+    - **Phone:** swipe left on a message (as in Telegram), or long-press it for the same menu. A swipe right still opens the drawer, on a message too.
     - **Keyboard:** **R** on a focused message.
   - **While replying:** a bar above the composer reads "Replying to *sender*" with the first words, or [Photo] / [File]. **✕** or **Esc** cancels it.
   - **The sent message** shows the quote above it. Click the quote to jump to the original and flash it; if the chat no longer keeps it, the page says so.

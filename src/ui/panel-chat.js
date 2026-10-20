@@ -489,9 +489,9 @@ function Thread({ name, th }) {
     const onScroll = () => { store.state.scrollMemo[name] = thread.onScroll(); };
     sc.addEventListener("scroll", onScroll, { passive: true });
     ls.addEventListener("click", thread.onClick);
-    // #2272: the message menu, swipe right / long-press on a phone, R on a focused message.
+    // #2272: the message menu, swipe left / long-press on a phone, R on a focused message.
     const offActions = installMessageActions(ls, {
-      t, messageOf: thread.messageOf, reply: (x) => { store.startReply(name, x); document.getElementById("msgIn")?.focus(); },
+      t, messageOf: thread.messageOf, rove: thread.rove, reply: (x) => { store.startReply(name, x); document.getElementById("msgIn")?.focus(); },
       copyText, notice: (text, ok = true) => toast(text, ok),
       linkOf: (x) => `${location.origin}/ui/chat/${encodeURIComponent(name)}#m=${msgKey(x)}`,
     });

@@ -142,10 +142,10 @@ export function createThread(list, scroller, opts) {
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
     // A person's click on a reply button shows as the button's label, never the line the agent was given (its value).
     const clicked = x.role === "user" && x.click && typeof x.click.label === "string";
-    // #2272: reply to it — a hover strip at its top right (phones: swipe right or long-press; R on a focused message).
+    // #2272: reply to it — a hover strip at its top right (phones: swipe left or long-press; R on a focused message).
     const key = msgKey(x);
     const act = opts.canReply?.() === false ? "" : `<div data-trust="thread-control" class="msg-actions"><button type="button" class="chip-btn icon-only" data-act="reply" data-arg="${escAttr(key)}" title="${escAttr(tr("chat.reply"))}" aria-label="${escAttr(tr("chat.reply"))}">${REPLY}</button></div>`;
-    return `<div class="msg ${u ? "user" : "agent"}" data-key="${escAttr(key)}" tabindex="0">${act}<div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
   }
   /**
    * #2272: what a reply quotes, above its body — the quoted sender and first words (or that it had files), as the server
@@ -672,7 +672,19 @@ export function createThread(list, scroller, opts) {
     }
     armDay();
     armPolls();
+    rove();
     return added;
+  }
+  /**
+   * #2272 (review): one message in the thread is in the Tab order — the last one focused while it is still drawn, else
+   * the newest; ↑/↓ move between messages (chat-msg-actions.js). The rest are -1, so Tab passes the thread in one step.
+   */
+  let roving = null;
+  function rove(key) {
+    if (key !== undefined) roving = key;
+    const at = (roving && nodes.has(roving) ? nodes.get(roving).node : null) || [...list.querySelectorAll(".msg[data-key]")].at(-1) || null;
+    for (const el of list.querySelectorAll('.msg[data-key][tabindex="0"]')) if (el !== at) el.setAttribute("tabindex", "-1");
+    if (at) at.setAttribute("tabindex", "0");
   }
 
   function onScroll() {
@@ -815,5 +827,5 @@ export function createThread(list, scroller, opts) {
     armPolls();
   }
 
-  return { render, onScroll, onClick, jumpLatest, reveal, jumpTo, messageOf, refreshCards, park, attach, dispose, nodes, get unseen() { return unseen; } };
+  return { render, onScroll, onClick, jumpLatest, reveal, jumpTo, messageOf, rove, refreshCards, park, attach, dispose, nodes, get unseen() { return unseen; } };
 }

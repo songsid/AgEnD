@@ -3,7 +3,8 @@
 // - desk: the hover ↩ on the agent's message → the reply bar → send → the agent is handed `reply_to_text`; the sent
 //   bubble's quote shows the original, flashed; right-click → Reply / Copy text / Copy link; Esc cancels; R on a focused
 //   message replies.
-// - phone: swipe right on the message → the reply bar (the drawer stays shut) → send → handed; a long press → the menu.
+// - phone: swipe left on the message (as in Telegram) → the reply bar (the drawer stays shut) → send → handed; a long
+//   press → the menu; and a swipe right on that same message still opens the drawer (#1605).
 // The agent is a stub at the IPC boundary (no CLI, tmux, vendor or account); its message is a synthetic SSE row.
 // Output: 2272/<case>-*.png and result.json.
 //   PW_DIR=… REPO=<checkout> OUT=<dir> npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2272-reply.mts
@@ -63,8 +64,8 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
       await agentMsg.hover();
       await agentMsg.locator('.msg-actions button[data-act="reply"]').click();
     } else {
-      // A swipe right on the message (synthetic touches: the same events a finger sends).
-      await agentMsg.evaluate(RUN, `(el) => { ${TOUCH} const r0 = el.getBoundingClientRect(), y = r0.top + r0.height / 2; for (const [type, dx] of [["touchstart", 40], ["touchmove", 70], ["touchmove", 110], ["touchend", 110]]) touch(el, type, r0.left + dx, y, 1); }`);
+      // A swipe left on the message (synthetic touches: the same events a finger sends).
+      await agentMsg.evaluate(RUN, `(el) => { ${TOUCH} const r0 = el.getBoundingClientRect(), y = r0.top + r0.height / 2; for (const [type, dx] of [["touchstart", 200], ["touchmove", 170], ["touchmove", 130], ["touchend", 130]]) touch(el, type, r0.left + dx, y, 1); }`);
       ok(res, "drawerShut", await page.locator("#main[inert]").count() === 0);
     }
     const bar = page.locator(".reply-bar");
@@ -94,6 +95,12 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
     await bar.waitFor();
     await page.locator("#msgIn").press("Escape");
     ok(res, "escCancels", await bar.waitFor({ state: "detached", timeout: 5000 }).then(() => true, () => false));
+    if (c.device === "phone") {
+      // A swipe right on that same message is the drawer's (#1605), as everywhere in the chat.
+      await agentMsg.evaluate(RUN, `(el) => { ${TOUCH} const r0 = el.getBoundingClientRect(), y = r0.top + r0.height / 2; for (const [type, dx] of [["touchstart", 40], ["touchmove", 80], ["touchmove", 130], ["touchend", 130]]) touch(el, type, r0.left + dx, y, 3); }`);
+      ok(res, "swipeRightOpensDrawer", await page.locator("#main[inert]").waitFor({ timeout: 3000 }).then(() => true, () => false));
+      ok(res, "swipeRightNoReply", await bar.count() === 0);
+    }
     if (c.device === "desk") {
       await agentMsg.focus(); await page.keyboard.press("r");
       ok(res, "rReplies", await bar.count() === 1);

@@ -6,8 +6,9 @@
  * - the store: a reply sends its row only ({ boot, id }), is cleared by a sent message and by "reply_gone", kept on any
  *   other failure;
  * - the gestures: right-click → Reply / Copy text / Copy link (Shift or selected text: the browser's menu); a long press
- *   → the same menu; a swipe right ≥ 56 px → reply, a vertical move → nothing; R on a focused message → reply;
- * - the phone drawer's swipe leaves a message alone (its swipe is a reply) and still opens from the thread around it.
+ *   → the same menu; a swipe LEFT ≥ 56 px → reply (as in Telegram; the review), a right or vertical one → nothing; R on a
+ *   focused message → reply;
+ * - the phone drawer's swipe right still opens it from anywhere — on an agent's full-width message too (the review).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installDom, MiniEvent, type MiniPage } from "./helpers/mini-dom.js";
@@ -43,7 +44,7 @@ describe("the thread", () => {
     const { list } = await threadWith([row(), row({ id: 2, role: "user", sender: "Ops", text: "yes", replyTo: quote })]);
     const msgs = list.querySelectorAll(".msg");
     expect(msgs.map((m: any) => [m.getAttribute("data-key"), m.getAttribute("tabindex"), !!m.querySelector('.msg-actions button[data-act="reply"]')]))
-      .toEqual([["ab12-1", "0", true], ["ab12-2", "0", true]]);
+      .toEqual([["ab12-1", "-1", true], ["ab12-2", "0", true]]);              // one message in the Tab order: the newest
     const q = msgs[1].querySelector(".msg-quote");
     expect([q.getAttribute("data-act"), q.getAttribute("data-arg"), q.querySelector(".quote-sender").textContent, q.querySelector(".quote-text").textContent])
       .toEqual(["jumpQuote", "ab12-1", "<b>atlas</b>", "say <i>hi</i>"]);
@@ -74,6 +75,29 @@ describe("the thread", () => {
     expect([list.querySelector('[data-key="ab12-1"]').classList.contains("flash"), findQuoted.mock.calls.length]).toEqual([true, 0]);
     fire(toGone.querySelector(".msg-quote")); await new Promise(r => setTimeout(r, 0));
     expect([findQuoted.mock.calls.map(c => c[0]), notice.mock.calls.map(c => c[0])]).toEqual([["ab12-999"], ["That message is no longer in this chat."]]);
+  });
+});
+
+describe("the Tab order (review P3): one message, ↑/↓ between them", () => {
+  it("the newest is in the Tab order; a focused one takes its place while drawn; ↑/↓ move focus and the place", async () => {
+    const reply = vi.fn();
+    const { list, thread, t } = await threadWith([row(), row({ id: 2 }), row({ id: 3 })]);
+    const tab = () => list.querySelectorAll(".msg").map((m: any) => m.getAttribute("tabindex"));
+    expect(tab()).toEqual(["-1", "-1", "0"]);
+    const { installMessageActions } = await import("/ui/js/chat-msg-actions.js") as any;
+    offs.push(installMessageActions(list, { t, messageOf: thread.messageOf, rove: thread.rove, reply, copyText: vi.fn(), notice: vi.fn(), linkOf: () => "" }));
+    const [first, second, third] = list.querySelectorAll(".msg");
+    third.dispatchEvent(new MiniEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowUp" }));
+    expect([tab(), (dom!.document as any).activeElement === second]).toEqual([["-1", "0", "-1"], true]);
+    second.dispatchEvent(new MiniEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowUp" }));
+    first.dispatchEvent(new MiniEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowUp" }));   // no message above: stays
+    expect([tab(), (dom!.document as any).activeElement === first]).toEqual([["0", "-1", "-1"], true]);
+    first.dispatchEvent(new MiniEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown", shiftKey: true }));
+    expect(tab(), "a modifier: not a move").toEqual(["0", "-1", "-1"]);
+    second.dispatchEvent(new MiniEvent("focusin", { bubbles: true }));
+    expect(tab(), "a click's focus takes the place").toEqual(["-1", "0", "-1"]);
+    thread.render([row(), row({ id: 3 }), row({ id: 4 })]);                    // the focused one is gone: the newest
+    expect(tab()).toEqual(["-1", "-1", "0"]);
   });
 });
 
@@ -147,14 +171,14 @@ describe("the gestures", () => {
     g.body.dispatchEvent(ev("keydown", { key: "r" }));
     expect(g.reply.mock.calls.map(c => c[0].id)).toEqual([1]);
   });
-  it("a swipe right past 56 px replies; a short one, a vertical one or a leftward one does not; a long press opens the menu", async () => {
+  it("a swipe left past 56 px replies (as in Telegram); a short one, a vertical one or a rightward one does not; a long press opens the menu", async () => {
     const g = await gestures();
     const swipe = (x1: number, y1: number) => {
       g.body.dispatchEvent(ev("touchstart", { touches: [{ clientX: 100, clientY: 300 }] }));
       g.body.dispatchEvent(ev("touchmove", { touches: [{ clientX: x1, clientY: y1 }] }));
       g.body.dispatchEvent(ev("touchend", { touches: [] }));
     };
-    swipe(170, 305); swipe(140, 300); swipe(130, 380); swipe(20, 300);
+    swipe(30, 305); swipe(60, 300); swipe(70, 380); swipe(180, 300);   // left 70: a reply; left 40, vertical, right: not
     expect(g.reply.mock.calls.map(c => c[0].id)).toEqual([1]);
     expect(g.msg.style.transform, "the bubble goes back").toBe("");
     vi.useFakeTimers();
@@ -179,7 +203,7 @@ describe("the gestures", () => {
 });
 
 describe("the phone drawer's swipe", () => {
-  it("leaves a message alone (its swipe is a reply) and still opens from the thread around it", async () => {
+  it("still opens it from anywhere: on an agent's full-width message, on text in it, and around it (the review)", async () => {
     dom = installDom({ matchNarrow: true });
     const doc = dom.document as any;
     const main = doc.createElement("main"); main.id = "main"; doc.body.append(main);
@@ -196,8 +220,9 @@ describe("the phone drawer's swipe", () => {
       target.dispatchEvent(new MiniEvent("touchend", { bubbles: true, touches: [], changedTouches: [{ clientX: 160, clientY: 410 }] }));
     };
     swipe(inside);
-    expect(state.opens).toBe(0);
-    swipe(thread);
-    expect(state.opens).toBe(1);
+    expect(state.opens, "a swipe right on a message opens the drawer").toBe(1);
+    state.open = false;
+    swipe(msg); state.open = false; swipe(thread);
+    expect(state.opens).toBe(3);
   });
 });

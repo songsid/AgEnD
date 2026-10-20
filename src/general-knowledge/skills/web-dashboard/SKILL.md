@@ -117,7 +117,7 @@ binaries, `.html`/`.svg` and other markup) is stored as **download-only**. The a
 workspace `inbox/`; an unused upload is deleted after 30 minutes.
 
 **Replying to a message (#2272).**
-- **How:** the ↩ on hover, a right-click (Reply / Copy text / Copy link), a swipe right or long-press on a phone, or R on a focused message. A bar above the composer shows what is answered; ✕ or Esc cancels.
+- **How:** the ↩ on hover, a right-click (Reply / Copy text / Copy link), a swipe left (as in Telegram; a swipe right still opens the drawer) or long-press on a phone, or R on a focused message. A bar above the composer shows what is answered; ✕ or Esc cancels.
 - **The sent bubble** shows the quote, and clicking it jumps to the original.
 - **The agent** gets `(reply_to: "…")`, exactly as from a Discord or Telegram reply, read by the server from the quoted message (one line, at most 500 characters). Nothing new for guests: they reply only to what they can see.
 - **The channel echo** quotes only a message that was already in that channel.
