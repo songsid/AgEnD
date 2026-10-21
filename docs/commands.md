@@ -87,7 +87,7 @@ Registered globally via `client.application.commands.set()`.
 | `/steer <message>` | Interject into the current turn (not admin-gated; `claude-code`/`codex`/`grok`/`muse`, and `kiro-cli` on its verified TUI; others reply "not supported") | All |
 | `/btw <message>` | Side question that doesn't interrupt the current task (not admin-gated; `claude-code` only, others reply "not supported") | All |
 | `/tips [mode]` | Draw a random usage tip, posted in the current channel (`mode` empty); `mode: on\|off` toggles the daily auto-send; `mode: advanced on` manually unlocks the advanced tier fleet-wide (no visible effect yet — beginner-only rollout stage) | All / 🔒 for `on`\|`off`\|`advanced on` |
-| 🔒 `/web` (`/dashboard` alias) | General admin menu with private local/public sign-in; public link is opt-in. `/dashboard` stays listed as deprecated (#1569 / #2359): same gate, same replies and `action: revoke`, after a one-line “use /web” notice | Admin |
+| 🔒 `/web` (`/dashboard`) | General admin menu with private local/public sign-in; public link is opt-in. `/dashboard` is a listed deprecated Discord slash (#1569 / #2359): same gate, same replies and `action: revoke`, after a one-line “use /web” notice. Typed `/dashboard` still goes to the slash menu | Admin |
 | 🔒 `/status` | Fleet table: Instance, Backend, Model, Ctx, Effort, Cost, State (State merges paused/stopped/crashed with the execution state) | Admin |
 | 🔒 `/pause [instance]` | Pause an idle instance | Admin |
 | 🔒 `/wake [instance]` | Wake a paused instance | Admin |
