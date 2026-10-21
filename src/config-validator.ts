@@ -401,7 +401,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     // #1629 r4.1 Q3 (b): never an error — a value out of its bound is clamped, a wrong one falls back to its default.
     if (config.web.appearance !== undefined) for (const w of effectiveAppearanceLimits(config.web.appearance).warnings) warn(w.path, w.message);
-    if (config.web.public_link !== undefined && !validPublicLinkPatch(config.web.public_link)) err("web.public_link", "expected allow_public boolean, ttl_minutes integer 1..480, protocol http2/quic/auto");
+    if (config.web.public_link !== undefined && !validPublicLinkPatch(config.web.public_link)) err("web.public_link", "expected allow_public boolean, ttl_minutes integer 1..480, protocol http2/quic/auto, optional named hostname/token reference/origin port");
     if (config.web.echo_to_channel !== undefined && typeof config.web.echo_to_channel !== "boolean") {
       err("web.echo_to_channel", "must be a boolean");
     }

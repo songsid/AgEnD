@@ -89,18 +89,36 @@ export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> 
 
 /** Effective instance defaults, including AgEnD built-ins and fleet overrides. */
 export function getEffectiveInstanceDefaults(
-  fleetDefaults: Partial<InstanceConfig> = {},
+  fleetDefaults: FleetDefaults = {},
 ): Partial<InstanceConfig> {
   // Fleet-only controls live under defaults for YAML ergonomics but must not
   // leak into every daemon's InstanceConfig (where an on/off toggle would look
   // like an unknown cold field and restart the whole fleet).
+  //
+  // Rule: strip every key that exists in FleetDefaults but NOT in InstanceConfig.
+  // (cost_guard, hang_detector appear in both → keep them as instance defaults.)
   const {
+    // Already stripped in the original code:
     tips: _tips,
     max_cross_instance_message_bytes: _maxCrossInstanceMessageBytes,
     // #1302: read by the fleet when it posts a notice, so changing the default never touches a daemon's config.
     cross_instance_visibility: _crossInstanceVisibility,
+    // Fleet-level startup controls (concurrency, stagger_delay_ms) are read
+    // directly from fleetConfig.defaults.startup by the fleet manager and must
+    // NOT be merged into instance configs — they have no meaning there and cause
+    // every instance to appear "changed" when defaults.startup is updated.
+    startup: _startup,
+    // All remaining fleet-only keys (not in InstanceConfig):
+    locale: _locale,
+    progress_min_elapsed: _progressMinElapsed,
+    reply_overdue_minutes: _replyOverdueMinutes,
+    reply_obligation_ttl_hours: _replyObligationTtlHours,
+    scheduler: _scheduler,
+    retention_days: _retentionDays,
+    daily_summary: _dailySummary,
+    webhooks: _webhooks,
     ...instanceDefaults
-  } = fleetDefaults as FleetDefaults;
+  } = fleetDefaults;
   return deepMergeGeneric(
     DEFAULT_INSTANCE_CONFIG as Partial<InstanceConfig>,
     instanceDefaults,

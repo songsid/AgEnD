@@ -120,7 +120,7 @@ describe("PublicWebLink.openSignin", () => {
     let permitted = true;
     const link = new PublicWebLink({ dataDir: tmpdir(), web: () => undefined, permitted: () => permitted, now: () => 0 } as never) as any;
     const owner = { adapterId: "owner", userId: "admin", chatId: "G" };
-    const entry = { id: X, owner, phase: "starting", url: `${ORIGIN}/signin`, deadline: 1_000, closing: undefined, abort: new AbortController() };
+    const entry = { configuration: "quick", id: X, owner, phase: "starting", url: `${ORIGIN}/signin`, deadline: 1_000, closing: undefined, abort: new AbortController() };
     link.entry = entry;
     expect(link.openSignin(), "starting").toBeNull();
     entry.phase = "open";

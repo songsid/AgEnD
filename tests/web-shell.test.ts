@@ -281,12 +281,12 @@ describe("the panels adopt the shell", () => {
       expect(ui(file), file).not.toMatch(/["'`(=]\s*https?:\/\//i);
       expect(ui(file), file).not.toMatch(/\bimport\(\s*["'`]https?:/i);
     }
-    // Settings' modules: nothing is loaded from another origin (its one external URL is a link to the release notes).
+    // Settings loads no foreign resources; the two external URLs are navigation links (release notes and setup docs).
     for (const file of ["panel-settings.js", "settings-dialogs.js", "settings-wizard.js", "settings-apply.js", "settings-confirm.js", "settings-model.js", "settings-strings.js"]) {
       const src = ui(file);
       expect(src, file).not.toMatch(/\b(?:import|fetch)\(\s*["'`]https?:/i);
       expect(src, file).not.toMatch(/\bsrc=\$?\{?\s*["'`]https?:/i);
-      expect([...src.matchAll(/https?:\/\/[^\s"'`]+/g)].map(m => m[0]), file).toEqual(file === "panel-settings.js" ? ["https://github.com/songsid/AgEnD/releases"] : []);
+      expect([...src.matchAll(/https?:\/\/[^\s"'`]+/g)].map(m => m[0]), file).toEqual(file === "panel-settings.js" ? ["https://github.com/songsid/AgEnD/releases", "https://github.com/songsid/AgEnD/blob/main/docs/named-tunnel.md"] : []);
     }
     for (const file of ["app.html", "signin.html"]) {
       const html = ui(file);

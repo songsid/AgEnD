@@ -1,3 +1,4 @@
+import { PUBLIC_TUNNEL_TOKEN_ENV, validPublicTunnelToken } from "./public-tunnel-config.js";
 import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
 import { SettingsConfirmationStore, type SettingsPendingView } from "./settings-confirmation.js";
@@ -195,7 +196,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 import { handleWebRequest, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment } from "./web-chat-history.js";
-import { WEB_ECHO_COPIES_MAX, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
+import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { OPERATOR, WebPrefsStore } from "./web-prefs.js";
@@ -329,6 +330,7 @@ import {
 import { verifyDiscordToken, verifyTelegramToken } from "./provider-probe.js";
 import {
   PROVIDER_SECRET_SPECS,
+  PUBLIC_TUNNEL_SECRET_SPEC,
   providerSecretSpec,
   providerRegistryEnvKeys,
   isReservedProviderEnvKey,
@@ -4148,27 +4150,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * #2305: an instance's reaction to a web chat message (`messageId`, the id it was handed): its minimal reply, as on
    * the platforms. Kept on the message's row (and on disk), shown live (`reactions` on the stream), and put on the
-   * message's channel copies when this process sent them (best effort: a copy's failure is logged, never the tool's).
+   * message's channel copies when this process sent them — in the background, each within WEB_MIRROR_TIMEOUT_MS, so a
+   * slow or rate-limited platform never holds the tool's answer (best effort: a copy's failure or timeout is logged,
+   * never the tool's). `mirrored`: how many copies took it, when that is known.
    * The tool's errors: an emoji outside the web set or one of the instance's delivery marks (web-reactions.ts), or a
    * message the chat does not have. An emoji the message already has is a success that changes nothing.
    */
-  async reactToWebMessage(instance: string, messageId: string, raw: unknown): Promise<{ ok: true; mirrored: number } | { ok: false; error: string }> {
+  async reactToWebMessage(instance: string, messageId: string, raw: unknown): Promise<{ ok: true; mirrored: Promise<number> } | { ok: false; error: string }> {
     const problem = webReactionProblem(raw, this.statusEmojiAvoidList(instance));
     if (problem) return { ok: false, error: problem };
     const emoji = webReactionEmoji(raw)!;
     const r = this.webChatHistory.addReaction(instance, messageId, emoji);
     if (!r) return { ok: false, error: `react: ${messageId} is not a message in ${instance}'s web chat now (it left the history, or it is from before AgEnD restarted) — answer with reply instead` };
-    if (!r.added) return { ok: true, mirrored: 0 };
+    if (!r.added) return { ok: true, mirrored: Promise.resolve(0) };
     this.emitSseEvent("reactions", { instance, boot: r.message.boot, id: r.message.id, reactions: r.message.reactions ?? [] });
-    let mirrored = 0;
-    for (const copy of this.webEchoCopies.get(messageId) ?? []) {
-      try {
-        await copy.adapter.react(copy.chatId, copy.messageId, reactionForm(copy.adapter.type, emoji), copy.threadId);
-        mirrored++;
-      } catch (err) {
-        this.logger.warn({ err, instance, adapter: copy.adapter.type }, "Reaction on a web message's channel copy failed (shown on the web)");
-      }
-    }
+    const mirrorOne = (copy: WebEchoCopy): Promise<number> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`no answer in ${WEB_MIRROR_TIMEOUT_MS} ms`)), WEB_MIRROR_TIMEOUT_MS);
+        timer.unref?.();
+      });
+      return Promise.race([Promise.resolve().then(() => copy.adapter.react(copy.chatId, copy.messageId, reactionForm(copy.adapter.type, emoji), copy.threadId)), timeout])
+        .then(() => 1, (err: unknown) => {
+          this.logger.warn({ err, instance, adapter: copy.adapter.type }, "Reaction on a web message's channel copy failed (shown on the web)");
+          return 0;
+        })
+        .finally(() => clearTimeout(timer));
+    };
+    const mirrored = Promise.all((this.webEchoCopies.get(messageId) ?? []).map(mirrorOne)).then(n => n.reduce((a, b) => a + b, 0));
     return { ok: true, mirrored };
   }
 
@@ -6136,7 +6145,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       dataDir: this.dataDir, web: () => this.fleetConfig?.web,
       permitted: owner => this.publicOwnerCurrent(owner),
       reserve: id => this.getTunnelLane().reserve("dashboard", id),
-      createGateway: (exposureId, current, open, failed) => createPublicWebGateway({ exposureId, isCurrent: current, isOpen: open, onError: failed,
+      createGateway: (exposureId, current, open, failed, named) => createPublicWebGateway({ ...named, exposureId, isCurrent: current, isOpen: open, onError: failed,
         dispatch: (req, res) => this.dispatchWebHttp(req, res, this.fleetConfig?.health_port ?? 19280) }),
       revoke: id => {
         this.webLoginCodes?.revokeAudience(id);
@@ -9846,8 +9855,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // #2305: a reaction to a web chat message is the web chat's own (any fleet, web-only included): never an adapter's.
     if (tool === "react" && typeof args.message_id === "string" && isWebMessageId(args.message_id)) {
-      const owner = senderSessionName && this.webChatHistory.findByMessageId(senderSessionName, args.message_id) ? senderSessionName : instanceName;
-      const r = await this.reactToWebMessage(owner, args.message_id, args.emoji);
+      // The socket's own instance, never a session name the caller wrote itself (as checkToolPermission: it was not
+      // identified) — a channel tool's call from a daemon carries none anyway (#2310 review).
+      const r = await this.reactToWebMessage(instanceName, args.message_id, args.emoji);
       if (r.ok) respond("ok"); else respond(null, r.error);
       return;
     }
@@ -20380,12 +20390,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   listProviderSecrets(): ProviderSecretStatus[] {
-    return PROVIDER_SECRET_SPECS.map(spec => ({
+    return [...PROVIDER_SECRET_SPECS, PUBLIC_TUNNEL_SECRET_SPEC].map(spec => ({
       id: spec.id,
       display_name: spec.displayName,
       kind: spec.kind,
       token_present: !!process.env[spec.envKey],
-      verifier: spec.verifier ? "available" : "unsupported",
+      verifier: spec.kind === "tunnel_token" ? "local_format" : spec.verifier ? "available" : "unsupported",
       activation: spec.activation,
       stale_consumers: this.providerSecretStaleConsumers(spec.envKey),
     }));
@@ -20396,7 +20406,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // a child process's private environment safely, so report the conservative
     // set of already-running children; the UI can then say "restart these"
     // rather than claiming an existing process reloaded.
-    if (envKey === "GROQ_API_KEY") return [];
+    if (envKey === "GROQ_API_KEY" || envKey === PUBLIC_TUNNEL_TOKEN_ENV) return [];
     return [...this.children.keys()].sort();
   }
 
@@ -20414,6 +20424,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   async verifyProviderSecret(input: {
     specId: string;
     secret: string;
+    clear?: boolean;
     sessionBinding: string;
     idempotencyKey: string;
   }): Promise<
@@ -20424,8 +20435,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!spec || !this.providerSecretEnvAllowed(spec.envKey)) {
       return { ok: false, status: "invalid", error: "provider secret is not configured" };
     }
-    if (!spec.verifier) return { ok: false, status: "unsupported_verifier", error: "this provider has no supported verifier" };
-    if (!input.secret || input.secret.length > 4096 || /[\r\n\0]/.test(input.secret) || /[^\x20-\x7e]/.test(input.secret)) {
+    const tunnel = spec.kind === "tunnel_token";
+    if (!tunnel && !spec.verifier) return { ok: false, status: "unsupported_verifier", error: "this provider has no supported verifier" };
+    if (input.clear && (!tunnel || input.secret !== "") || tunnel && !(input.clear === true && input.secret === "" || validPublicTunnelToken(input.secret))
+      || !input.clear && (!input.secret || input.secret.length > 4096 || /[\r\n\0]/.test(input.secret) || /[^\x20-\x7e]/.test(input.secret))) {
       return { ok: false, status: "invalid", error: "secret is invalid" };
     }
     const challengeKey = `${input.sessionBinding}:api_key:${spec.id}:${spec.envKey}:${input.idempotencyKey}`;
@@ -20436,7 +20449,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     if (existingId) this.providerSecretChallengesByKey.delete(challengeKey);
 
-    const result = await verifyProviderSecret(spec, input.secret, this.providerSecretHttpClient);
+    const result = tunnel ? { ok: true as const } : await verifyProviderSecret(spec, input.secret, this.providerSecretHttpClient);
     if (!result.ok) {
       // Do not log provider detail: the HTTP verifier already redacted it and
       // this endpoint has no need to disclose whether a key was close to valid.
@@ -20530,6 +20543,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   private async runProviderSecretApply(job: ProviderSecretApplyJob, secret: string, execution?: SettingsExecution): Promise<void> {
     const spec = providerSecretSpec(job.specId);
     const allowed = new Set([
+      PUBLIC_TUNNEL_TOKEN_ENV,
       ...PROVIDER_SECRET_SPECS.map(item => item.envKey),
       ...(this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).map(channel => channel.bot_token_env),
     ]);
@@ -20542,7 +20556,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // Construct inside the transaction: symlink/permission refusal must
       // settle the job as a safe failure, not escape the queued microtask.
       store = new SecretStore(join(this.dataDir, ".env"), allowed, { owner: execution?.owner });
-      const write = (): void => { before = store!.write(job.envKey, secret); wrote = true; process.env[job.envKey] = secret; };
+      const write = (): void => { before = spec.kind === "tunnel_token" && !secret ? store!.clear(job.envKey) : store!.write(job.envKey, secret); wrote = true;
+        if (secret) process.env[job.envKey] = secret; else delete process.env[job.envKey]; };
       if (execution) execution.mutate(write); else write();
       if (spec.activation === "reload_hook" && spec.reloadHookId) {
         await this.runProviderSecretReloadHook(spec.reloadHookId, secret, previousProcessValue);
@@ -20556,12 +20571,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       job.status = "done";
       job.finishedAt = Date.now();
     } catch (err) {
-      const safe = safeSecretError(err, secret);
+      const safe = spec?.kind === "tunnel_token" ? "connector token change failed" : safeSecretError(err, secret);
       this.logger.warn({ specId: job.specId, reason: safe }, "Provider API-key apply failed");
       try {
         // Memory and disk have separate receipts: a host-edited file must
         // remain, but cannot strand our owned process value or hook snapshot.
-        if (wrote && process.env[job.envKey] === secret) {
+        if (wrote && (process.env[job.envKey] ?? "") === secret) {
           if (previousProcessValue === undefined) delete process.env[job.envKey]; else process.env[job.envKey] = previousProcessValue;
         }
         if (spec?.reloadHookId && this.providerSecretHotSnapshots.get(spec.reloadHookId) === secret) {
@@ -20592,6 +20607,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * hot activation contract explicit and gives tests a failure seam; no generic
    * SIGHUP or caller-provided hook is ever executed. */
   private async runProviderSecretReloadHook(hookId: string, _next: string, _previous: string | undefined): Promise<void> {
+    if (hookId === "cloudflare.public_link") { await this.publicWebLink?.close("connector token changed"); return; }
     if (hookId !== "groq.voice") throw new Error("unknown provider secret reload hook");
     const before = this.providerSecretHotSnapshots.get(hookId);
     this.providerSecretHotSnapshots.set(hookId, _next);

@@ -813,13 +813,13 @@ function WebSection({ ctx, staged }) {
     echo: web.echo_to_channel ?? true,
     log: web.log_tab === true,                                                  // #1218: off by default
     usagePub: web.usage_report_on_public_link === true,                         // #2122: off by default
-    pub: { allow_public: (web.public_link && web.public_link.allow_public) ?? true, ttl_minutes: (web.public_link && web.public_link.ttl_minutes) ?? 120, protocol: (web.public_link && web.public_link.protocol) ?? "http2" },
+    pub: { allow_public: (web.public_link && web.public_link.allow_public) ?? true, ttl_minutes: (web.public_link && web.public_link.ttl_minutes) ?? 120, protocol: (web.public_link && web.public_link.protocol) ?? "http2", hostname: (web.public_link && web.public_link.hostname) ?? "", tunnel_token_env: (web.public_link && web.public_link.tunnel_token_env) ?? "", origin_port: (web.public_link && web.public_link.origin_port) ?? 19282 },
     session: { absolute_hours: local.absolute_hours ?? null, idle_hours: local.idle_hours ?? null },
     terminal: { enabled: term.enabled ?? null, ttl_minutes: term.ttl_minutes ?? null },
   }), []);
   const text = (v) => (v === null || v === undefined ? "" : String(v));
   const [f, setF] = useState(() => ({
-    echo: original.echo, log: original.log, usagePub: original.usagePub, pub: original.pub.allow_public, ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol,
+    echo: original.echo, log: original.log, usagePub: original.usagePub, pub: original.pub.allow_public, ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol, hostname: original.pub.hostname, originPort: String(original.pub.origin_port),
     abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours),
     termOn: original.terminal.enabled !== false, termTtl: text(original.terminal.ttl_minutes),
   }));
@@ -832,6 +832,8 @@ function WebSection({ ctx, staged }) {
   // the store and the validator apply it — so only an idle time that is typed can exceed the session length.
   const abs = value(f.abs) ?? 48, idle = value(f.idle) ?? Math.min(48, abs);
   const errors = {
+    hostname: f.hostname && !/^(?:https:\/\/)?[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+\/?$/.test(f.hostname) ? "namedHostnameInvalid" : "",
+    originPort: !Number.isInteger(Number(f.originPort)) || Number(f.originPort) < 1024 || Number(f.originPort) > 65535 ? "namedPortInvalid" : "",
     ttl: !Number.isInteger(Number(f.ttl)) || Number(f.ttl) < 1 || Number(f.ttl) > 480 ? "publicTtl" : "",
     abs: hours(f.abs),
     idle: hours(f.idle) || (!hours(f.abs) && idle > abs ? "sessionIdleOver" : ""),
@@ -840,7 +842,7 @@ function WebSection({ ctx, staged }) {
   const ready = !overPublicLink && !Object.values(errors).some(Boolean);
   const review = () => {
     if (!ready) return;
-    const publicPatch = changedFields({ allow_public: f.pub, ttl_minutes: Number(f.ttl), protocol: f.protocol }, original.pub);
+    const publicPatch = changedFields({ allow_public: f.pub, ttl_minutes: Number(f.ttl), protocol: f.protocol, hostname: f.hostname, tunnel_token_env: f.hostname ? "AGEND_CLOUDFLARE_TUNNEL_TOKEN" : "", origin_port: Number(f.originPort) }, original.pub);
     const sessionPatch = changedFields({ absolute_hours: value(f.abs), idle_hours: value(f.idle) }, original.session);
     // The checkbox shows the default (on) for an unset key: only a real toggle is written; on again = back to the default.
     const terminalPatch = changedFields({ enabled: f.termOn === (original.terminal.enabled !== false) ? original.terminal.enabled : f.termOn ? null : false,
@@ -903,12 +905,17 @@ function WebSection({ ctx, staged }) {
       <label class="check"><input id="publicWebLink" type="checkbox" checked=${f.pub} onChange=${(e) => set("pub")(e.target.checked)} /><span>${tn("publicLink")}</span><${Impact} schema=${schema} field="web.public_link.allow_public" /></label>
       <p class="note">${tn("publicLinkHint")}</p>
       <div class="grid2">
+        <div class="field"><label for="publicWebHostname">${tn("namedHostname")}</label><input id="publicWebHostname" type="text" value=${f.hostname} placeholder="agend.example.com" class=${errors.hostname ? "invalid" : ""} onInput=${(e) => set("hostname")(e.target.value)} /><${Feedback} error=${errors.hostname} /></div>
+        <div class="field"><label for="publicWebOriginPort">${tn("namedOriginPort")}</label><input id="publicWebOriginPort" type="number" min="1024" max="65535" value=${f.originPort} class=${errors.originPort ? "invalid" : ""} onInput=${(e) => set("originPort")(e.target.value)} /><${Feedback} error=${errors.originPort} /></div>
+      </div>
+      <p class="note">${tn("namedTunnelHint")} <a href="https://github.com/songsid/AgEnD/blob/main/docs/named-tunnel.md" target="_blank" rel="noopener noreferrer">${tn("namedTunnelSetup")}</a></p>
+      <div class="grid2">
         <div class="field"><label for="publicWebTtl">${tn("publicTtl")}</label><input id="publicWebTtl" type="number" min="1" max="480" class=${errors.ttl ? "invalid" : ""} value=${f.ttl} onInput=${(e) => set("ttl")(e.target.value)} /><${Feedback} error=${errors.ttl} /></div>
         <div class="field"><label for="publicWebProtocol">${tn("publicProtocol")}</label><${Select} id="publicWebProtocol" value=${f.protocol} onChange=${set("protocol")} options=${["http2", "quic", "auto"]} /></div>
       </div>
     </section>
     </fieldset>
-    ${overPublicLink ? null : html`<${GuestsCard} ctx=${ctx} staged=${staged} /><${WebAuthorityCard} ctx=${ctx} staged=${staged} />`}
+    ${overPublicLink ? null : html`<${PublicTunnelToken} /><${GuestsCard} ctx=${ctx} staged=${staged} /><${WebAuthorityCard} ctx=${ctx} staged=${staged} />`}
     <section class="card s-web-readonly"><h3>${tn("webReadOnlyTitle")}</h3>
       <p class="note">${tn("webReadOnlyLead")}</p>
       <dl class="s-web-ro">${WEB_READ_ONLY.map((k) => html`<div key=${k}><dt><code>${k}</code></dt><dd>${shown(k)}</dd></div>`)}</dl>
@@ -1033,3 +1040,49 @@ function HelpDialog({ onClose }) {
 }
 
 export { worstImpact, ACCESS_MODES };
+
+function PublicTunnelToken() {
+  const lease = useLease("public-tunnel-token");
+  const [secret, setSecret] = useState("");
+  const [present, setPresent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const [message, setMessage] = useState("");
+  const base = "/api/settings/public-tunnel-token";
+  const refresh = async () => {
+    const result = await api(base);
+    if (lease.current() && result.ok) setPresent(result.body?.[0]?.token_present === true);
+  };
+  useEffect(() => { refresh().catch(() => {}); }, []);
+  const go = async (clear) => {
+    if (inFlight.current || !clear && !secret) return;
+    const value = secret;
+    setSecret(""); inFlight.current = true; setBusy(true); setMessage("");
+    const key = newKey("tunnel-token");
+    try {
+      const prepared = await api(`${base}/verify`, { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify(clear ? { clear: true } : { secret: value }) });
+      if (!lease.current()) return;
+      if (!prepared.ok) throw Error("refused");
+      const applied = await confirmedWrite(`${base}/apply`, { method: "POST", key, label: tn(clear ? "namedTokenClear" : "namedTokenSet"), body: { verification_id: prepared.body?.verification_id, idempotency_key: key } });
+      let body = applied.body || {};
+      for (let n = 0; applied.ok && body.job_id && body.result === "applying" && n < 60; n++) {
+        await new Promise(r => setTimeout(r, 250));
+        const status = await api(`${base}/apply/${encodeURIComponent(body.job_id)}`);
+        if (status.ok) body = status.body || body;
+      }
+      if (lease.current()) {
+        setMessage(tn(applied.ok && body.result === "reloaded" ? "namedTokenSaved" : body.result === "pending_confirmation" ? "awaitingConfirmation" : "applyFailed"));
+        await refresh();
+      }
+    } catch { if (lease.current()) setMessage(tn("applyFailed")); }
+    finally { inFlight.current = false; if (lease.current()) setBusy(false); }
+  };
+  return html`<section class="card"><h3>${tn("namedToken")}</h3>
+    <p class="note">${tn("namedTokenHint")}</p>
+    <span class="tag">${present ? tn("keyConfigured") : tn("keyNotConfigured")}</span>
+    <input id="publicTunnelToken" type="password" autocomplete="new-password" aria-label=${tn("namedToken")} value=${secret} onInput=${e => setSecret(e.target.value)} />
+    <button type="button" class="btn btn-sm" disabled=${busy || !secret} onClick=${() => go(false)}>${tn("namedTokenSet")}</button>
+    <button type="button" class="btn btn-sm" disabled=${busy || !present} onClick=${() => go(true)}>${tn("namedTokenClear")}</button>
+    ${message ? html`<p class="note" role="status">${message}</p>` : null}
+  </section>`;
+}
