@@ -13,11 +13,11 @@
  * original provider design.
  */
 
+import type { NamedTunnelFailureKind } from "./named-diagnostics.js";
+
 export type TunnelVisibility = "public" | "tailnet" | "loopback" | "manual";
 
 /** Why a provider cannot run, in bounded terms — never a vendor error string. */
-import type { NamedTunnelFailureKind } from "./named-diagnostics.js";
-
 export type TunnelErrorKind =
   | NamedTunnelFailureKind
   | "binary-missing"

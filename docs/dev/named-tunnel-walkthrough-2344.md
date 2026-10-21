@@ -19,6 +19,10 @@ no useful reason.
   failure code. The provider, progress protocol and logger expose only static
   messages for token refusal, missing route, wrong readiness page, unreachable
   origin, connection failure or an occupied origin port. Unknown text stays generic.
+- Node fetch wraps network failures in `cause` (often with only `fetch failed` in
+  the outer message). The probe reads a bounded cause/aggregate chain: `ENOTFOUND`
+  selects the hostname/DNS/route reason; transient DNS, timeout and connection
+  codes select the connection reason. Raw error objects are never serialized.
 
 The feature still requires this exposure's own readiness marker and proven process
 cleanup. No failed route becomes ready, no fallback tunnel is created, and raw vendor

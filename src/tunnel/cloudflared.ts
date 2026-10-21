@@ -12,13 +12,13 @@
  * `~/.cloudflared/config.yaml` can stop quick tunnels working, and we cannot
  * assume the operator's home is empty.
  */
-import { classifyNamedTunnelOutput, namedTunnelFailureMessage, type NamedTunnelFailureKind } from "./named-diagnostics.js";
 import { publicTunnelHostname, validPublicTunnelToken } from "../public-tunnel-config.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 import { probeProcess } from "../web-terminal.js";
 import { fetchViaPublicResolver, fetchViaSystemResolver, type ProbeResponse } from "./public-fetch.js";
+import { classifyNamedTunnelOutput, classifyNamedTunnelProbeError, namedTunnelFailureMessage, type NamedTunnelFailureKind } from "./named-diagnostics.js";
 import {
   TunnelStartError,
   TUNNEL_STARTUP_DEADLINE_MS,
@@ -349,7 +349,7 @@ export class CloudflaredProvider implements TunnelProvider {
       } catch (err) {
         lastDetail = err instanceof Error ? err.message : "request failed";
         if (this.opts.named) {
-          const kind = classifyNamedTunnelOutput(lastDetail, this.opts.named.token);
+          const kind = classifyNamedTunnelProbeError(err, this.opts.named.token);
           if (kind) namedFailure(kind);
         }
       } finally {

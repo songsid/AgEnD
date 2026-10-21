@@ -1,9 +1,9 @@
-import { namedTunnelFailureMessage } from "./tunnel/named-diagnostics.js";
 import { createHash } from "node:crypto";
 import { publicTunnelHostname, PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_ORIGIN_PORT, validPublicTunnelToken } from "./public-tunnel-config.js";
 import { performance } from "node:perf_hooks";
 import { newTunnelSid } from "./tunnel/manager.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
+import { namedTunnelFailureMessage } from "./tunnel/named-diagnostics.js";
 import { CloudflaredInstallError, ensureCloudflared, type CloudflaredInstallProgress } from "./tunnel/cloudflared-install.js";
 import { PublicLinkProgressTracker, failureOf, type PublicLinkFailure, type PublicLinkProgress } from "./public-link-progress.js";
 import type { TunnelReservation } from "./tunnel/purpose-lane.js";

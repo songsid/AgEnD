@@ -23,24 +23,26 @@ class Child extends EventEmitter {
   stdout = new Readable({ read() {} }); stderr = new Readable({ read() {} }); pid = 2344001;
   kill = vi.fn(() => { this.emit("exit", 0, null); this.emit("close"); return true; });
 }
-function fixture(log: string, response = { status: 503, contentType: "text/html", body: "not ready" }, lateExit = false) {
+function fixture(log: string, response = { status: 503, contentType: "text/html", body: "not ready" }, lateExit = false, options: { quiet?: boolean; error?: unknown; controller?: AbortController; deadlineMs?: number } = {}) {
   const binary = join(tmp(), "inert-cloudflared"); writeFileSync(binary, "#!/bin/sh\n", { mode: 0o755 });
   const child = new Child();
   const spawn = vi.fn(() => child);
   const output = `${log}\n${PRIVATE} ${TOKEN} ${OTHER} Bearer ${OTHER}`;
   const p = new CloudflaredProvider({ binaryName: binary, named: { hostname: "agend.example.com", token: TOKEN }, spawnProcess: spawn as never,
-    probe: () => ({ kind: "gone" }), deadlineMs: 5, graceMs: 1,
+    probe: () => ({ kind: "gone" }), deadlineMs: options.deadlineMs ?? 5, graceMs: 1,
     fetchPage: async () => {
       if (lateExit) {
         child.emit("exit", 1, null);
         setTimeout(() => { child.stderr.emit("data", Buffer.from(output)); child.emit("close"); }, 510);
-      } else {
+      } else if (!options.quiet) {
         child.stdout.emit("data", Buffer.from(output.slice(0, 15)));
         child.stderr.emit("data", Buffer.from(output.slice(15)));
       }
+      options.controller?.abort();
+      if (options.error !== undefined) throw options.error;
       return response;
     } });
-  const ctx: TunnelStartContext = { sid: "inert2344", origin: new URL("http://127.0.0.1:19282"), pagePath: "/signin", readinessMarker: "marker2344", expiresAt: Date.now() + 60_000, signal: new AbortController().signal };
+  const ctx: TunnelStartContext = { sid: "inert2344", origin: new URL("http://127.0.0.1:19282"), pagePath: "/signin", readinessMarker: "marker2344", expiresAt: Date.now() + 60_000, signal: options.controller?.signal ?? new AbortController().signal };
   return { p, child, spawn, ctx };
 }
 const cases = [
@@ -101,6 +103,85 @@ describe("named tunnel closed failure classifications", () => {
       expect(reason).toBe("named-auth-failed");
       expect(Object.hasOwn(NAMED_TUNNEL_FAILURE_MESSAGES, reason!)).toBe(true);
     }
+  });
+});
+
+describe("credential redaction is part of classification, not only output masking", () => {
+  it("removes an exact non-JWT configured token containing classification words", () => {
+    const credential = "my-expired-token-test";
+    expect(classifyNamedTunnelOutput(credential, credential)).toBeUndefined();
+    expect(classifyNamedTunnelOutput("Provided Tunnel token is not valid", credential)).toBe("named-auth-failed");
+  });
+  it("applies the real shared redactor to another credential before interpreting its words", () => {
+    expect(classifyNamedTunnelOutput("Bearer my-expired-token-test", TOKEN)).toBeUndefined();
+    expect(classifyNamedTunnelOutput("Provided Tunnel token is not valid", TOKEN)).toBe("named-auth-failed");
+  });
+});
+
+describe("quiet readiness fetch failures retain structured transport evidence", () => {
+  const quietCases = [
+    ["direct Error.code DNS", () => Object.assign(new Error("request failed"), { code: "ENOTFOUND" }), "named-route-missing"],
+    ["direct Error.code timeout", () => Object.assign(new Error("request failed"), { code: "ETIMEDOUT" }), "named-connection-failed"],
+    ["actual TypeError fetch DNS cause", () => new TypeError("fetch failed", { cause: { code: "ENOTFOUND" } }), "named-route-missing"],
+    ["actual TypeError fetch timeout cause", () => new TypeError("fetch failed", { cause: { code: "ETIMEDOUT" } }), "named-connection-failed"],
+    ["actual TypeError undici connect timeout cause", () => new TypeError("fetch failed", { cause: { code: "UND_ERR_CONNECT_TIMEOUT" } }), "named-connection-failed"],
+    ["temporary DNS cause", () => new TypeError("fetch failed", { cause: { code: "EAI_AGAIN" } }), "named-connection-failed"],
+    ["connection reset cause", () => new TypeError("fetch failed", { cause: { code: "ECONNRESET" } }), "named-connection-failed"],
+    ["nested cause.message without code", () => new TypeError("fetch failed", { cause: new Error("getaddrinfo EAI_AGAIN agend.example.com") }), "named-connection-failed"],
+    ["nested AggregateError cause", () => new TypeError("fetch failed", { cause: new AggregateError([new Error("unknown"), new TypeError("fetch failed", { cause: { code: "ETIMEDOUT" } })], "all addresses failed") }), "named-connection-failed"],
+  ] as const;
+  it.each(quietCases)("classifies %s with no child output", async (_name, error, expected) => {
+    vi.useFakeTimers();
+    const f = fixture("", undefined, false, { quiet: true, error: error() });
+    const stdout = vi.spyOn(f.child.stdout, "emit"), stderr = vi.spyOn(f.child.stderr, "emit");
+    const failure = await startFailure(f);
+    expect(failure).not.toBeNull();
+    expect(failure.errorKind).toBe(expected);
+    expect(failure.message).toBe(NAMED_TUNNEL_FAILURE_MESSAGES[expected]);
+    expect(stdout.mock.calls.some(call => call[0] === "data")).toBe(false);
+    expect(stderr.mock.calls.some(call => call[0] === "data")).toBe(false);
+    expect(f.child.kill).toHaveBeenCalled();
+    for (const secret of [TOKEN, OTHER, PRIVATE]) expect(JSON.stringify({ failure, text: String(failure) })).not.toContain(secret);
+  });
+  it("does not search beyond the bounded eight-node cause budget", async () => {
+    vi.useFakeTimers();
+    let cause: unknown = { code: "ETIMEDOUT" };
+    for (let i = 0; i < 8; i++) cause = { message: "unknown cause", cause };
+    const f = fixture("", undefined, false, { quiet: true, error: new TypeError("fetch failed", { cause }) });
+    const failure = await startFailure(f);
+    expect(failure).not.toBeNull();
+    expect(failure.errorKind).toBe("readiness-failed");
+    expect(failure.message).toMatch(/^named tunnel failed;/);
+  });
+  it.each(["unknown", "cyclic"])("keeps %s causes bounded and generic", async shape => {
+    vi.useFakeTimers();
+    const cause: { code: string; cause?: unknown } = { code: "UNKNOWN_VENDOR_CODE" };
+    if (shape === "cyclic") cause.cause = cause;
+    const f = fixture("", undefined, false, { quiet: true, error: new TypeError("fetch failed", { cause }) });
+    const failure = await startFailure(f);
+    expect(failure).not.toBeNull();
+    expect(failure.errorKind).toBe("readiness-failed");
+    expect(failure.message).toMatch(/^named tunnel failed;/);
+    expect(String(failure)).not.toContain("UNKNOWN_VENDOR_CODE");
+  });
+});
+
+describe("cancellation keeps precedence over startup diagnostic hints", () => {
+  it.each([false, true])("keeps cancelled over %s buffered-auth/quiet-network evidence", async quiet => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const f = fixture("Unauthorized tunnel credentials", undefined, false, { quiet, controller, deadlineMs: 1000, error: new Error("ETIMEDOUT") });
+    const failure = await startFailure(f);
+    expect(failure).not.toBeNull();
+    expect(failure.errorKind).toBe("cancelled");
+    expect(failure.message).not.toContain(TOKEN);
+    expect(f.child.kill).toHaveBeenCalled();
+  });
+  it("keeps actual buffered authentication evidence ahead of an unrelated readiness 404", async () => {
+    vi.useFakeTimers();
+    const f = fixture("Unauthorized tunnel credentials", { status: 404, contentType: "text/html", body: "not found" });
+    const failure = await startFailure(f);
+    expect(failure.errorKind).toBe("named-auth-failed");
   });
 });
 
