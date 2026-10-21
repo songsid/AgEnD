@@ -5,8 +5,7 @@
 //   colour: a person's pick > the agent's (themes shown) > its own bot's role colour > automatic (a few soft colours)
 //   places: a person's choice > the agent's (themes shown) > this host's default (color.show) > all three (#2056)
 //   Settings → Web appearance can turn colours off for the host (color.off): nothing is painted, every pick is kept.
-import { html, useEffect, useRef, useState } from "./app-html.js";
-import { recordEdit } from "./text-undo.js";
+import { html, useEffect, useState } from "./app-html.js";
 import { createStore, useStore } from "./app-store.js";
 import { onPrefsChanged, prefInForce, savePref } from "./app-prefs.js";
 import { register, t } from "./app-i18n.js";
@@ -183,7 +182,6 @@ function ColorDialog({ name, it, onClose }) {
   const [loaded, setLoaded] = useState(null);           // the person's choice as stored: { color, color_show }
   const [color, setColor] = useState(null);             // the colour picked here (null: none — the next tier)
   const [hex, setHex] = useState("");
-  const hexField = useRef(null);
   const [places, setPlaces] = useState(null);           // null: the default places
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -198,8 +196,9 @@ function ColorDialog({ name, it, onClose }) {
   }, [name]);
   // The preview: the instance as it would be drawn with the choice here.
   const preview = identityOf({ ...(it || {}), color: { ...((it && it.color) || {}), person: color || undefined }, color_show: { ...((it && it.color_show) || {}), person: places || undefined } }, { off: false });
-  // #2342: a swatch (or "no pick") replaces the hex field's text as a step Ctrl+Z goes back from.
-  const pick = (c) => { recordEdit(hexField.current); setColor(c); setHex(c && HEX.test(c) ? c : ""); setError(""); };
+  // #2342: a swatch (or "no pick") is a choice, not text: it starts the hex field's undo history afresh (undoing the
+  // text back to a typed colour would leave the box and the chosen colour apart — Save would send the other one).
+  const pick = (c) => { setColor(c); setHex(c && HEX.test(c) ? c : ""); setError(""); };
   const togglePlace = (p) => {
     const base = places || preview.show;
     setPlaces(base.includes(p) ? base.filter((x) => x !== p) : PLACEMENTS.filter((x) => x === p || base.includes(x)));
@@ -231,7 +230,7 @@ function ColorDialog({ name, it, onClose }) {
         onClick=${() => pick(`preset:${p.id}`)}></button>`)}
       <label class="idc-custom">${t("color.custom")}
         <input type="color" value=${HEX.test(hex.trim()) ? hex.trim() : "#808080"} onInput=${(e) => onHex(e.currentTarget.value)} aria-label=${t("color.custom")} />
-        <input ref=${hexField} type="text" class="idc-hex" inputmode="text" spellcheck=${false} maxlength="7" placeholder="#rrggbb" value=${hex} onInput=${(e) => onHex(e.currentTarget.value)} aria-label=${t("color.hex")} /></label>
+        <input type="text" class="idc-hex" inputmode="text" spellcheck=${false} maxlength="7" placeholder="#rrggbb" value=${hex} onInput=${(e) => onHex(e.currentTarget.value)} aria-label=${t("color.hex")} /></label>
       <button type="button" class="btn btn-sm" disabled=${!color} onClick=${() => pick(null)}>${t("color.noPick")}</button>
     </fieldset>
     <fieldset class="idc-places"><legend>${t("color.places")}</legend>

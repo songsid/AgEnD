@@ -176,6 +176,29 @@ describe("IME composition", () => {
   });
 });
 
+describe("the browser's own Undo and Redo (Edit menu, context menu)", () => {
+  const native = (el: any, redo: boolean, cancelable = true) => fire(el, "beforeinput", { inputType: redo ? "historyRedo" : "historyUndo", cancelable, isComposing: false });
+  it("cancelled and done by the field's history, mixed freely with the keys", () => {
+    const { els: [a] } = setup();
+    type(a, "alpha one");
+    const seen: string[] = [];
+    const e1 = native(a, false); seen.push(a.value);
+    undo(a); seen.push(a.value);
+    const e2 = native(a, true); seen.push(a.value);
+    key(a, "y", { ctrlKey: true }); seen.push(a.value);
+    undo(a); seen.push(a.value);
+    expect([e1.defaultPrevented, e2.defaultPrevented, seen]).toEqual([true, true, ["alpha ", "", "alpha ", "alpha one", "alpha "]]);
+  });
+  it("where the browser cannot cancel it, its own undo goes ahead and resets the history (never a step undoing the undo)", () => {
+    const { els: [a] } = setup();
+    type(a, "alpha one");
+    const e = native(a, false, false);
+    write(a, ""); fire(a, "input", { inputType: "historyUndo" });       // what the browser's undo did
+    undo(a);
+    expect([e.defaultPrevented, a.value, historyOf(a).undo]).toEqual([false, "", []]);
+  });
+});
+
 describe("the keys mid-composition", () => {
   it("a browser that does not flag its composition events: still one step, and the history is not reset", () => {
     const { els: [a] } = setup();
@@ -357,31 +380,54 @@ describe("other text the page puts in a box is a step", () => {
   afterEach(async () => { if (off) { off(); off = null; } g.fetch = realFetch; for (const pg of pages.splice(0)) { await pg.unmount(); pg.restore(); } });
   const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
   let H: typeof h = h;                                          // the harness's h, from the same Preact as the modules
+  let posts: Array<{ url: string; body: any }> = [];
   async function at(url: string) {
     vi.resetModules();
     const harness = await import("./helpers/app-harness.js");
     const pg = harness.page({ url, storage: { agend_tour_done: "1" } }); pages.push(pg);
     H = harness.h;
-    g.fetch = async (u: string) => ok(u.startsWith("/api/profile/") ? { instance_name: "alpha", color: "#112233", color_show: null } : u === "/ui/prefs" ? { values: {}, rev: 1 } : {});
+    posts = [];
+    g.fetch = async (u: string, init: any = {}) => {
+      if (init.method === "POST") posts.push({ url: u, body: typeof init.body === "string" ? JSON.parse(init.body) : init.body });
+      return ok(u.startsWith("/api/profile/") && init.method !== "POST" ? { instance_name: "alpha", color: "#112233", color_show: null } : u === "/ui/prefs" ? { values: {}, rev: 1 } : { ok: true });
+    };
     const undoMod = await import("/assets/text-undo.js" as string);
     off = undoMod.installTextUndo({ doc: pg.document, win: { Event: MiniEvent }, mac: false });
     return pg;
   }
-  it("the colour dialog: a swatch replaces the hex text — Ctrl+Z brings the typed colour back, Ctrl+Y the swatch again", async () => {
+  async function colourDialog() {
     const pg = await at("http://127.0.0.1:19280/ui/chat/alpha");
     const C = await import("/assets/identity-color.js" as string);
     await pg.mount(H(C.ColorDialogHost, {}));
     C.openColorDialog("alpha", { name: "alpha", status: "running", backend: "codex", tags: [], color: { auto: "auto:sea" }, color_show: {} });
     await settle(3);
-    const d = pg.root.querySelector("dialog") as any;
-    const hex = () => d.querySelector(".idc-hex");
-    const loaded = hex().value;
-    d.querySelector('.idc-swatch[aria-label="Blue"]').click(); await settle();
-    const picked = hex().value;
-    fire(hex(), "keydown", { key: "z", ctrlKey: true, cancelable: true }); await settle();
-    const back = hex().value;
-    fire(hex(), "keydown", { key: "y", ctrlKey: true, cancelable: true }); await settle();
-    expect([loaded, picked, back, hex().value]).toEqual(["#112233", "", "#112233", ""]);
+    const d = () => pg.root.querySelector("dialog") as any;
+    const hex = () => d().querySelector(".idc-hex");
+    const press = async (k: string, mods: Record<string, boolean>) => { fire(hex(), "keydown", { key: k, cancelable: true, ...mods }); await settle(); };
+    const button = (text: string) => [...d().querySelectorAll("button")].find((b: any) => b.textContent.trim() === text) as any;
+    const save = async () => { button("Save").click(); await settle(3); return posts.filter((p) => p.url === "/api/profile/alpha").map((p) => p.body.color); };
+    return { d, hex, press, button, save };
+  }
+  it("the colour dialog: a swatch is a choice, not text — Ctrl+Z / Ctrl+Y leave it chosen, and Save sends it", async () => {
+    const c = await colourDialog();
+    const loaded = c.hex().value;
+    c.d().querySelector('.idc-swatch[aria-label="Blue"]').click(); await settle();
+    await c.press("z", { ctrlKey: true }); await c.press("y", { ctrlKey: true });
+    const blue = c.d().querySelector('.idc-swatch[aria-label="Blue"]');
+    expect([loaded, c.hex().value, blue.getAttribute("aria-pressed"), await c.save()]).toEqual(["#112233", "", "true", ["preset:blue"]]);
+  });
+  it("the colour dialog: Not chosen, then Ctrl+Z: still not chosen — Save sends no colour", async () => {
+    const c = await colourDialog();
+    c.button("Not chosen").click(); await settle();
+    await c.press("z", { ctrlKey: true });
+    expect([c.hex().value, await c.save()]).toEqual(["", [null]]);
+  });
+  it("the colour dialog: a typed colour undone back to the loaded one — the colour follows the text, and Save sends it", async () => {
+    const c = await colourDialog();
+    fire(c.hex(), "beforeinput", { inputType: "insertFromPaste", isComposing: false });
+    c.hex().value = "#aabbcc"; fire(c.hex(), "input", {}); await settle();
+    await c.press("z", { ctrlKey: true });
+    expect([c.hex().value, await c.save()]).toEqual(["#112233", ["#112233"]]);
   });
   it("the colour dialog: a typed hex keeps a space (the colour still taken from it)", async () => {
     const pg = await at("http://127.0.0.1:19280/ui/chat/alpha");

@@ -4,7 +4,8 @@
 //   argument fill undone to what was typed; a failed send's Put back and a long paste's "As text" undone to the draft
 //   before; a sent message not undone back into the box; one field's undo never touching another (the sidebar filter
 //   and the composer); the sidebar filter's Esc clear undone; Settings → Web: the session-hours number box keeps
-//   "1.50" as typed and undoes it; Ctrl+Z on a button is not taken.
+//   "1.50" as typed and undoes it; Ctrl+Z on a button is not taken; in Chromium, the browser's own Undo/Redo commands
+//   (CDP) mixed with the keys walk the same history.
 // - phone: typing and sending unchanged; no console error.
 // The agent is a stub at the IPC boundary (no CLI, tmux, vendor or account). A failed send is a refused /ui/send (a
 // route on the page). Output: 2342/<case>-*.png and result.json.
@@ -62,6 +63,25 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
     await page.keyboard.type("hello world");
     ok(res, "typing", JSON.stringify(await steps(box, UNDO, UNDO, REDO, REDO_Y)) === JSON.stringify(["hello ", "", "hello ", "hello world"]), await val());
     await shot("1-typed");
+    // 1b. The browser's own Undo/Redo commands (an Edit or context menu; sent through CDP in Chromium, which WebKit has no
+    // way to send here), mixed with the keys: one history.
+    if (r.engine === "chromium") {
+      const cdp = await page.context().newCDPSession(page);
+      const cmd = async (c: string) => { await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", commands: [c] }); await cdp.send("Input.dispatchKeyEvent", { type: "keyUp" }); };
+      await keys("Control+a", "Delete");
+      await page.waitForTimeout(1100);                           // a new typing step
+      await page.keyboard.type("alpha one");
+      // The browser offers its own Redo only after its own undo (cancelled here): its Redo then changes nothing — the
+      // keys redo. Its Undo always goes through the field's history.
+      const seen: string[] = [];
+      await cmd("Undo"); seen.push(await val());
+      await keys(UNDO); seen.push(await val());
+      await cmd("Redo"); seen.push(await val());
+      await keys(REDO_Y); seen.push(await val());
+      await keys(REDO); seen.push(await val());
+      await cmd("Undo"); seen.push(await val());
+      ok(res, "nativeMenuMixed", JSON.stringify(seen) === JSON.stringify(["alpha ", "", "", "alpha ", "alpha one", "alpha "]), seen);
+    } else res.nativeMenuMixed = "n/a (no CDP in WebKit)";
     // 2. A slash completion and an argument fill.
     await keys("Control+a", "Delete");
     await page.keyboard.type("/co");

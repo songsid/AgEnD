@@ -8,6 +8,9 @@
 // - a field's steps are recorded from its edits (beforeinput, input): typing is grouped into one step until a pause
 //   (UNDO.PAUSE_MS), a space, a different kind of edit (typing ↔ deleting), a paste, a line break or the caret moving
 //   elsewhere; an IME composition is one step, recorded when it ends.
+// - the browser's own Undo and Redo commands (its Edit menu, a context menu: a trusted beforeinput historyUndo /
+//   historyRedo) go through the same history: cancelled and done here. Where a browser cannot cancel them, its own undo
+//   goes ahead and what it leaves resets the field's history (never a step that would undo the undo).
 // - a script's change to a field's value the person should be able to undo (a completion, a pick, putting text back)
 //   calls recordEdit(field) first: the change becomes a step. Any other change (a clear after send, a reload after
 //   save) resets the field's history, as the browser's own undo does — a sent message is never undone back into the box.
@@ -129,6 +132,11 @@ export function installTextUndo({ doc = document, win = typeof window !== "undef
     if (!el || e.isComposing || /Composition/.test(e.inputType || "")) return;
     const h = historyFor(el);
     if (h.applying || h.composing) return;          // a browser that does not flag its composition events
+    if (e.inputType === "historyUndo" || e.inputType === "historyRedo") {
+      if (e.cancelable) { e.preventDefault(); step(el, e.inputType === "historyRedo", win); }
+      else h.native = true;
+      return;
+    }
     sync(el, h);
     const kind = kindOf(e), now = Date.now(), at = snap(el);
     // The same run of typing (or deleting) goes on: one step. A space ends a word's step (the next word is a new one).
@@ -144,6 +152,7 @@ export function installTextUndo({ doc = document, win = typeof window !== "undef
     if (!el) return;
     const h = historyFor(el);
     if (h.applying) return;
+    if (h.native) { h.native = false; h.undo = []; h.redo = []; h.kind = null; }   // the browser's own undo went ahead
     h.last = snap(el);                              // mid-composition too: the value the next edit starts from
   };
   const onCompStart = (e) => {

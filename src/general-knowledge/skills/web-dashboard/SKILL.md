@@ -196,8 +196,9 @@ open (the fleet log says why); "Still indexing": the first fill after an upgrade
 Every text box has its own undo history (#2342): **Ctrl+Z** undoes, **Ctrl+Shift+Z** or **Ctrl+Y** redoes (**⌘Z** / **⌘⇧Z** on a
 Mac), only while typing in a box. Undo never changes another box (the browser's own stack is page-wide). Typing undoes a
 word (or a pause) at a time; an IME composition is one step. Undoable too: a Tab-completed `/command`, Put back, As
-text, a recent search picked, the filter's Esc/× clear, a status-emoji pick, a widget example, a restored CSS version, a
-colour swatch. Not undoable on purpose: a sent message (never back into the composer), text cleared after Add/Send,
+text, a recent search picked, the filter's Esc/× clear, a status-emoji pick, a widget example, a restored CSS version
+(a colour swatch is a choice, not text: it starts the hex box afresh). The browser's own Edit-menu Undo goes through the
+same history; its Redo is offered only after its own undo (use the keys). Not undoable on purpose: a sent message (never back into the composer), text cleared after Add/Send,
 values reloaded after Save. Password fields keep the browser's behaviour.
 
 ## Fleet
