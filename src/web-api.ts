@@ -2309,7 +2309,10 @@ export function handleWebRequest(
         const cards = board.boardCards(undefined, allDone).filter((c) => !hidden(c));
         // #2352: over the public link a hidden lead is not named (the project reads as having none).
         const projects = board.listProjects(true).map((p) => (p.leadInstance && hiddenName(p.leadInstance) ? { ...p, leadInstance: null } : p));
-        const body = JSON.stringify({ rev, cards: board.views(cards, scope), projects, stats: board.projectStats() });
+        // #2355 review: the names a project's lead may be — the fleet's instances (a Classic-only room is not one); over the
+        // public link, not a hidden one.
+        const leads = Object.keys(ctx.fleetConfig?.instances ?? {}).filter((n) => !hiddenName(n)).sort();
+        const body = JSON.stringify({ rev, cards: board.views(cards, scope), projects, leads, stats: board.projectStats() });
         if (key) boardBodies.set(board, { key, body });
         jsonText(res, 200, body);
         return true;

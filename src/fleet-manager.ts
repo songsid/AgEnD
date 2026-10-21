@@ -13830,6 +13830,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return this.classicChannels?.getChannelIdByInstance(instance) ?? undefined;
       },
       laneTarget: instance => this.instanceChannelTarget(instance),
+      taskRoute: code => this.needsYouRoute(code),
       isFleetAdmin: (userId, world) => this.isFleetAdmin(userId, world),
       fleetAdmins: world => (this.getChannelConfig(world)?.access?.allowed_users ?? []).map(String),
       emitSse: (event, data) => this.emitSseEvent(event, data),
@@ -13878,6 +13879,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (dispatcher) return usable(dispatcher) ? dispatcher : undefined;
     const lead = card.projectId != null ? leads.get(card.projectId) : null;
     return usable(lead) ? lead : undefined;
+  }
+
+  /**
+   * #2355 review: where a card's Needs you buttons belong now — read from the board and the fleet at the moment of a click
+   * or a reply, never from the last render. null: it no longer waits for the person.
+   */
+  private needsYouRoute(code: string): { lane?: string } | null {
+    const board = this.scheduler?.db.board;
+    const card = board?.findCard(code);
+    if (!board || !card || !(card.status === "blocked" || (card.status === "review" && card.needsReview))) return null;
+    const leads = new Map(board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
+    const lane = this.needsYouLane(card, leads);
+    return lane ? { lane } : {};
   }
 
   /**
@@ -16850,6 +16864,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       card: (uuid) => db.board.findCard(uuid),
       // #2352: the card's Needs you buttons are in this instance's own channel (it is the card's lane).
       buttonsHere: (instance, uuid) => {
+        // #2355 review: no live message, no buttons — the old words then.
+        if (this.fleetConfig?.needs_you?.live_message === false) return false;
         const card = db.board.findCard(uuid);
         if (!card) return false;
         const leads = new Map(db.board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
@@ -16860,7 +16876,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     db.board.onChange(({ rev, ids, projects, wakes }) => {
       this.emitSseEvent("tasks", { rev, ids, projects });
       waker.note(wakes);
-      if (ids.length) this.needsYou?.poke();                       // step 3: cards waiting for the person are Needs you items
+      // step 3: cards waiting for the person are Needs you items; #2355 review: a project's lead routes them too.
+      if (ids.length || projects) this.needsYou?.poke();
     });
   }
 

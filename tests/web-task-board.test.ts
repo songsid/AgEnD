@@ -27,7 +27,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { handleAuthRequest, type AuthApiContext } from "../src/auth-api.js";
 import { handleWebRequest } from "../src/web-api.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
-import { setLocale } from "../src/locale.js";
+import { setLocale, t as tr } from "../src/locale.js";
 import { SchedulerDb } from "../src/scheduler/db.js";
 import { deriveNeedsYou } from "../src/needs-you.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
@@ -692,6 +692,8 @@ describe("#2352 a project's lead instance, and where a waiting card's buttons go
     expect(JSON.stringify(link)).not.toMatch(/spy/);
     const local = (await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig, local: true })).body;
     expect(local.projects.map((p: any) => p.leadInstance)).toEqual(["spy", "dev-a"]);
+    // #2355 review: the names a lead may be — the fleet's instances; over the link, not a hidden one.
+    expect([local.leads, link.leads]).toEqual([["dev-a", "spy"], ["dev-a"]]);
   });
 });
 
@@ -751,5 +753,100 @@ describe("#2341 review r2: an answer to a prompt is judged by the prompt's world
     await r.copy("owner", { userId: "admin", username: "admin", replyTo: "something-else", messageId: "in-4", text: "hi" });   // the room's own admin: flows
     expect(r.routed).toEqual(["owner: hi"]);
     await r.stop();
+  });
+});
+
+describe("#2355 review: a click or a reply is judged by where the card routes NOW, not by the last render", () => {
+  /** The real hub on the rig's world; a project led by `lead` (topic T5), `lead2` (T6); two waiting cards of `dev-a`'s. */
+  async function routed() {
+    const h = rig();
+    const at = (topic: string) => ({ working_directory: h.dir, channel_id: "owner", topic_id: topic });
+    (h.fm.fleetConfig as any).instances = { ...(h.fm.fleetConfig as any).instances, lead: at("T5"), lead2: at("T6"), "dev-a": at("T7") };
+    h.fm.routing.rebuild(h.fm.fleetConfig!);
+    h.s.worlds.get("owner").id = "owner";                                                             // the hub lists worlds by id
+    const adapter = h.s.adapters.get("owner");
+    let n = 0;
+    adapter.notifyAlert = vi.fn(async (chat: string, _a: any, o?: any) => ({ chatId: chat, threadId: o?.threadId, messageId: `live-${++n}` }));
+    adapter.editAlert = vi.fn(async () => {});
+    adapter.deleteMessage = vi.fn(async () => {});
+    adapter.sendText = vi.fn(async (chat: string, _t: string, o?: any) => ({ chatId: chat, threadId: o?.threadId, messageId: `prompt-${++n}` }));
+    const ann = { kind: "person" as const, name: "Ann" }, dev = { kind: "instance" as const, name: "dev-a" };
+    const project = h.db.board.createProject(ann, { name: "Led", leadInstance: "lead" });
+    const [blocked, review] = h.db.board.createCards(ann, { project: project.id, cards: [{ title: "Ties", assignee: "dev-a" }, { title: "Cache", assignee: "dev-a" }] }).cards;
+    h.db.board.moveCard(dev, blocked!.code, "claimed"); h.db.board.moveCard(dev, blocked!.code, "blocked", { reason: "same rank?" });
+    h.db.board.moveCard(dev, review!.code, "claimed"); h.db.board.moveCard(dev, review!.code, "review", { result: "done" });
+    h.s.attachTaskBoard(h.db);                                                                        // the board's changes poke the hub
+    h.s.startNeedsYou();
+    const settle = async () => { for (let i = 0; i < 6; i++) { await flush(); await vi.advanceTimersByTimeAsync(0); } };
+    await settle();
+    /** The lane message posted in `thread`, its buttons. */
+    const message = (thread: string) => {
+      const call = adapter.notifyAlert.mock.calls.filter((c: any) => c[2]?.threadId === thread).at(-1);
+      const sent = adapter.notifyAlert.mock.results[adapter.notifyAlert.mock.calls.indexOf(call)];
+      return { call, sent };
+    };
+    const click = async (thread: string, label: RegExp) => {
+      const { call, sent } = message(thread);
+      const choice = (call![1].choices as Array<{ id: string; label: string }>).find((c) => label.test(c.label))!;
+      const acks: string[] = [];
+      h.s.needsYou.handleCallback({ callbackData: choice.id, chatId: "G", threadId: thread, messageId: (await sent!.value).messageId, userId: "admin", username: "admin", ack: (x?: string) => acks.push(x ?? "") }, "owner");
+      return acks;
+    };
+    const reply = (prompt: string, thread: string, text: string) => h.s.handleInboundMessage({ source: "telegram", adapterId: "owner", chatId: "G", threadId: thread, messageId: `in-${++n}`,
+      userId: "admin", username: "admin", replyTo: prompt, text, timestamp: new Date() });
+    const status = (code: string) => h.db.board.getCard(code).status;
+    // A refused answer is the topic's ordinary input: recorded here instead of reaching an instance.
+    const routedInput: string[] = [];
+    h.s.topicCommands.handleInstanceCommand = vi.fn(async (msg: { text: string }) => { routedInput.push(msg.text); return true; });
+    return { h, project, blocked: blocked!, review: review!, settle, message, click, reply, status, adapter, routedInput };
+  }
+
+  it("the lead changes (the card's version does not): the old lane's Confirm, Send back and Answer are refused at once; the new lane's work", async () => {
+    const r = await routed();
+    expect(r.message("T5").call, "posted in lead's topic").toBeDefined();
+    const version = r.h.db.board.getCard(r.review.code).version;
+    // A Send back asked for in the old lane before the change: its prompt waits for a reply.
+    expect(await r.click("T5", /Send back/)).toEqual([tr("needs.task_reply_asked")]);
+    await r.settle();
+    const prompt = (await r.adapter.sendText.mock.results.at(-1).value).messageId;
+
+    r.h.db.board.updateProject({ kind: "person", name: "Ann" }, r.project.id, { leadInstance: "lead2" });   // no recompute here
+    expect(r.h.db.board.getCard(r.review.code).version).toBe(version);
+    expect(await r.click("T5", /Confirm/)).toEqual([tr("needs.task_moved")]);
+    expect(await r.click("T5", /Answer/)).toEqual([tr("needs.task_moved")]);
+    expect(await r.click("T5", /Send back/)).toEqual([tr("needs.task_moved")]);
+    await r.reply(prompt, "T5", "tick the list");
+    expect([r.status(r.review.code), r.status(r.blocked.code), r.routedInput]).toEqual(["review", "blocked", ["tick the list"]]);
+
+    // Control: the new lane's message, once rendered (the hub's renders are debounced), acts.
+    await r.settle(); await vi.advanceTimersByTimeAsync(60_000); await r.settle();
+    expect(r.message("T6").call, "posted in lead2's topic").toBeDefined();
+    expect(await r.click("T6", /Confirm/)).toEqual([expect.not.stringMatching(/another channel|wrong place|no longer|stale/i)]);
+    expect(r.status(r.review.code)).toBe("done");
+  });
+
+  it("the lead's topic moves (or goes): the old topic's buttons are refused at once, though the lane's name is the same", async () => {
+    const r = await routed();
+    (r.h.fm.fleetConfig as any).instances.lead.topic_id = "T8";                                        // the same lane, another place
+    expect(await r.click("T5", /Confirm/)).toEqual([tr("needs.task_moved")]);
+    delete (r.h.fm.fleetConfig as any).instances.lead.topic_id;                                        // no channel at all
+    expect(await r.click("T5", /Answer/)).toEqual([tr("needs.task_moved")]);
+    expect([r.status(r.review.code), r.status(r.blocked.code)]).toEqual(["review", "blocked"]);
+    // Control: put back, the same buttons act.
+    (r.h.fm.fleetConfig as any).instances.lead.topic_id = "T5";
+    expect(await r.click("T5", /Confirm/)).toEqual([expect.not.stringMatching(/another channel|wrong place|no longer|stale/i)]);
+    expect(r.status(r.review.code)).toBe("done");
+  });
+
+  it("with needs_you.live_message off, the dispatcher's wake keeps the ordinary words (no buttons exist)", () => {
+    const h = rig();
+    (h.fm.fleetConfig as any).instances = { ...(h.fm.fleetConfig as any).instances, lead: { working_directory: h.dir, channel_id: "owner", topic_id: "T5" } };
+    h.fm.routing.rebuild(h.fm.fleetConfig!);
+    const card = h.db.board.createCards({ kind: "instance", name: "lead" }, { cards: [{ title: "Ties", assignee: "dev-a" }] }).cards[0]!;
+    const here = () => h.s.taskBoardWaker ? (h.s.taskBoardWaker as any).deps.buttonsHere("lead", card.uuid) : undefined;
+    h.s.attachTaskBoard?.(h.db);
+    expect(here()).toBe(true);
+    (h.fm.fleetConfig as any).needs_you = { live_message: false };
+    expect(here()).toBe(false);
   });
 });

@@ -105,6 +105,8 @@ export function TaskBoardTab({ lease }) {
   if (state.error) return html`<${ErrorState} message=${t("tasks.loadFailed")} onRetry=${reload} />`;
   const cards = Array.isArray(state.data.cards) ? state.data.cards : [];
   const projects = Array.isArray(state.data.projects) ? state.data.projects : [];
+  // #2355 review: the names a project's lead may be, as the server accepts them (the fleet's instances).
+  const leads = Array.isArray(state.data.leads) ? state.data.leads : [];
   // The server's numbers cover every card (finished ones are not all on the board); computed here only without them.
   const stats = (key) => (state.data.stats && state.data.stats[String(key)]) || projectStats(key, cards);
   const project = at === null ? null : at === NO_PROJECT ? NO_PROJECT : projects.find((p) => p.id === at) || null;
@@ -120,7 +122,7 @@ export function TaskBoardTab({ lease }) {
     ${dialog && dialog.kind === "main" ? html`<${CreateMainDialog} projects=${projects} project=${dialog.project} onClose=${() => setDialog(null)}
       onCreated=${(id) => { if (!lease.current()) return; setDialog(null); reload(); openCard(id); }} />` : null}
     ${dialog && dialog.kind === "instances" ? html`<${InstancesDrawer} tick=${tick} onClose=${() => setDialog(null)} onOpen=${(id) => { setDialog(null); openCard(id); }} />` : null}
-    ${dialog && dialog.kind === "project" ? html`<${ProjectDialog} project=${dialog.project} onClose=${() => setDialog(null)}
+    ${dialog && dialog.kind === "project" ? html`<${ProjectDialog} project=${dialog.project} leads=${leads} onClose=${() => setDialog(null)}
       onSaved=${(p) => { if (!lease.current()) return; setDialog(null); reload(); if (!dialog.project) setAt(p.id); }} />` : null}
     <${AskHost} />
   </div>`;
@@ -509,18 +511,27 @@ function CreateMainDialog({ projects, project, onClose, onCreated }) {
     </fieldset></form></${Dialog}>`;
 }
 
-function ProjectDialog({ project, onClose, onSaved }) {
-  const { instances } = useStore(appStore);
-  const [f, setF] = useState({ name: project ? project.name : "", description: project ? project.description : "", leadInstance: (project && project.leadInstance) || "" });
-  // #2352: a lead no longer in the fleet stays listed (marked) until it is changed.
-  const leadGone = !!f.leadInstance && !instances.some((i) => i.name === f.leadInstance);
+/**
+ * #2355 review: what an edit of a project sends — its fields, and its lead only when it changed (an unchanged retired
+ * lead would be refused on an unrelated rename); "" is no lead.
+ */
+export function projectPatch(was, f) {
+  const { leadInstance, ...rest } = f;
+  return leadInstance !== (was || "") ? { ...rest, leadInstance: leadInstance || null } : rest;
+}
+
+function ProjectDialog({ project, leads = [], onClose, onSaved }) {
+  const was = (project && project.leadInstance) || "";
+  const [f, setF] = useState({ name: project ? project.name : "", description: project ? project.description : "", leadInstance: was });
+  // #2352: a lead no longer in the fleet stays listed (marked) until it is changed; #2355 review: only the server's names.
+  const leadGone = !!f.leadInstance && !leads.includes(f.leadInstance);
   const [busy, setBusy] = useState(false);
   async function submit() {
     if (!f.name.trim()) return;
     setBusy(true);
     try {
-      const body = { ...f, leadInstance: f.leadInstance || null };
-      const r = project ? await boardApi.updateProject(project.id, body) : await boardApi.createProject(f.name, f.description, body.leadInstance);
+      const body = projectPatch(was, f);
+      const r = project ? await boardApi.updateProject(project.id, body) : await boardApi.createProject(f.name, f.description, f.leadInstance || null);
       toast(t(project ? "tasks.projectSaved" : "tasks.projectCreated"));
       onSaved(r.project);
     } catch (err) { toast(errorText(err), false); setBusy(false); }
@@ -534,7 +545,7 @@ function ProjectDialog({ project, onClose, onSaved }) {
       <label class="field"><span>${t("tasks.projectLead")}</span><select class="tb-project-lead" value=${f.leadInstance} onChange=${(e) => { const v = e.target.value; setF((c) => ({ ...c, leadInstance: v })); }}>
         <option value="">${t("tasks.projectLeadNone")}</option>
         ${leadGone ? html`<option value=${f.leadInstance}>${t("tasks.projectLeadGone", f.leadInstance)}</option>` : null}
-        ${instances.map((i) => html`<option key=${i.name} value=${i.name}>${i.name}</option>`)}</select>
+        ${leads.map((n) => html`<option key=${n} value=${n}>${n}</option>`)}</select>
         <small class="note">${t("tasks.projectLeadHint")}</small></label>
     </fieldset></form></${Dialog}>`;
 }

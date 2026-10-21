@@ -66,6 +66,11 @@ export interface NeedsYouHubContext {
   noticeTarget(world: string): LiveTarget | null;
   /** #2352: an instance's own channel (its topic in its world's group, or its ClassicBot room), or null. */
   laneTarget?(instance: string): LiveTarget | null;
+  /**
+   * #2355 review: where a card's buttons belong NOW, read from the board (not from the last render): `{ lane }` (no lane:
+   * General), or null when the card no longer waits for the person (the board answers a move by its version).
+   */
+  taskRoute?(code: string): { lane?: string } | null;
   /** An instance's own thread/topic id, for its link. */
   instanceTopic(instance: string): string | undefined;
   isFleetAdmin(userId: string, world: string): boolean;
@@ -449,7 +454,10 @@ export class NeedsYouHub {
     // §5.0: the item must still belong to this world — for a laned card, its lane's world (#2352).
     if (this.ctx.ownerOf(entry.lane ?? entry.instance) !== adapterId) { data.ack?.(this.ctx.t("needs.ack_not_this_world")); return true; }
     // #2352: and a card must still wait where this button showed it (its lead or dispatcher changed: elsewhere now).
-    if (entry.card && !this.stillInLane(entry.card.code, entry.lane)) { data.ack?.(this.ctx.t("needs.task_moved")); return true; }
+    // #2355 review: read now — the card's route (a lead changed) and the list's place (a lane's topic moved or went).
+    if (entry.card && (!this.stillInLane(entry.card.code, entry.lane) || !this.placeStill(adapterId, entry.lane, entry.chatId, entry.threadId))) {
+      data.ack?.(this.ctx.t("needs.task_moved")); return true;
+    }
     const platform = this.ctx.worlds().find(w => w.id === adapterId)?.place.type ?? "chat";
     if (entry.verb === "ack") {
       data.ack?.(this.ctx.t(`needs.ack_${this.acknowledge(entry.deliveryId!, `${platform}:${data.userId}`)}`));
@@ -476,12 +484,23 @@ export class NeedsYouHub {
   }
 
   /**
-   * #2352: a card is still listed in this lane (or, for no lane, in General). One the list no longer has — confirmed,
-   * answered, gone — is left to the board, which answers by its version.
+   * #2352: a card still routes to this lane (or, for no lane, to General) — asked of the board now (#2355 review: a
+   * project's lead can change with the card's version unchanged, and the last render may not have seen it yet). One
+   * that no longer waits for the person is left to the board, which answers by its version.
    */
   private stillInLane(code: string, lane: string | undefined): boolean {
+    if (this.ctx.taskRoute) {
+      const route = this.ctx.taskRoute(code);
+      return route === null || (route.lane ?? undefined) === lane;
+    }
     const now = this.items.find(i => i.type === "task" && i.card?.code === code);
     return !now || (now.lane ?? undefined) === lane;
+  }
+
+  /** #2355 review: a list's place (its lane's channel, or General) is still where this button or prompt is. */
+  private placeStill(world: string, lane: string | undefined, chatId: string, threadId: string | undefined): boolean {
+    const target = this.listTarget(world, lane);
+    return !!target && samePlace(target, { chatId, ...(threadId !== undefined ? { threadId } : {}) });
   }
 
   /** A prompt for this reservation still waits for its reply. */
@@ -509,8 +528,7 @@ export class NeedsYouHub {
     if (!now || now.adapter !== p.adapter || placeKey(now.place) !== p.placeKey) return false;
     // #2352: the card still waits in this lane, and the lane's (or General's) place is still where the prompt is.
     if (p.code !== undefined && !this.stillInLane(p.code, p.lane)) return false;
-    const target = this.listTarget(p.world, p.lane);
-    return !!target && samePlace(target, { chatId: p.chatId, ...(p.threadId !== undefined ? { threadId: p.threadId } : {}) });
+    return this.placeStill(p.world, p.lane, p.chatId, p.threadId);
   }
 
   /** Post the prompt for a Send back's reason or an answer, and wait for the clicker's reply to it. */
@@ -521,6 +539,8 @@ export class NeedsYouHub {
       if (!world || this.stopped) return;
       const target = { world: entry.world, instance: entry.instance, ...(entry.lane ? { lane: entry.lane } : {}), code: card.code,
         adapter: world.adapter, placeKey: placeKey(world.place), chatId: entry.chatId, ...(entry.threadId !== undefined ? { threadId: entry.threadId } : {}) };
+      // #2355 review: and again before the prompt goes out — the card's route and the place as they are now.
+      if (!this.stillHere(target)) return;
       const who = by.username ? ` (@${by.username})` : "";
       const text = this.ctx.t(verb === "back" ? "needs.task_back_prompt" : "needs.task_answer_prompt", card.code, who, Math.round(TASK_REPLY_TTL_MS / 60_000));
       const sent = await world.adapter.sendText(entry.chatId, text, entry.threadId !== undefined ? { threadId: entry.threadId } : undefined);
