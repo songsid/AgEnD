@@ -10,6 +10,7 @@ import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { api } from "./settings-confirm.js";
 import { Feedback } from "./settings-dialogs.js";
+import { DEFAULT_SCHEMA, impactOf } from "./settings-model.js";
 import { resetWebAuthorization } from "/assets/web-authorize.js";
 import "./settings-strings.js";
 
@@ -57,7 +58,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
   const review = () => {
     if (hoursError) return;
     const body = verifiedAuthorityBody(original, f);
-    if (body) ctx.stage("verified_authority", { label: tn("vaTitle"), impact: "now", request: { method: "PUT", url: "/api/settings/fleet/web", body: { verified_authority: body } } });
+    if (body) ctx.stage("verified_authority", { label: tn("vaTitle"), impact: impactOf(ctx.schema || DEFAULT_SCHEMA, "web.verified_authority"), request: { method: "PUT", url: "/api/settings/fleet/web", body: { verified_authority: body } } });
     else if (staged.has("verified_authority")) ctx.unstage("verified_authority");
     setMsg(tn("readyApply"));
   };

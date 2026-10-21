@@ -1,0 +1,4 @@
+---
+section: Fixed
+---
+- **Web Settings: six fields no longer fail at Apply, and the restart badges tell the truth (#2346).** Log level, agent mode, bot-to-bot messages, tags and fallback models (an agent's and the fleet defaults) were refused by the server's confirmation check when you pressed **Apply changes**. They now apply directly. Tool set, which decides whether an agent gets the fleet's own tools, is shown and waits for a fleet admin's OK. Startup concurrency and stagger now apply directly too, and are used from the next agent start. The badges are fixed as well: the bot reply language needs AgEnD restarted (it said "Immediately"); startup concurrency and stagger apply from the next start (they said "Restart AgEnD"); a new connection starts without a restart when another one is running; Guests and Web authority take their cost from the server; and an edit dialog's footer names only what your changes cost, not every field in the dialog.

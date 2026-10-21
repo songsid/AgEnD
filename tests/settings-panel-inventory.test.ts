@@ -47,7 +47,7 @@ function badgedFields(): string[] {
   ];
   const built = [
     ...literalKeys(sources["settings-model.js"]!, "const next = {").map(k => `instance.${k}`),
-    ...literalKeys(sources["settings-dialogs.js"]!, "const patch = changedFields({").map(k => `classic.${k}`),
+    ...literalKeys(sources["settings-dialogs.js"]!, "const pending = () => changedFields({").map(k => `classic.${k}`),
     // A defaults key is its own field, except `startup`: the fleet's spawn settings, which the schema names on their own
     // (settings-model.js defaultsImpact).
     ...literalKeys(sources["panel-settings.js"]!, "const defaultsPatch = changedFields({")
@@ -114,7 +114,7 @@ describe("the redesigned panel loses nothing", () => {
   });
 
   it("can still write every ClassicBot channel setting", () => {
-    expect(patchKeys("settings-dialogs.js", "const patch = changedFields({")).toEqual([
+    expect(patchKeys("settings-dialogs.js", "const pending = () => changedFields({")).toEqual([
       "auto_pause_after", "backend", "collab", "context_lines", "model",
       "reply_completion_guard", "tool_progress", "web_echo",
     ]);

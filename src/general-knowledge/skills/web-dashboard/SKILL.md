@@ -414,10 +414,10 @@ forum topic with **Verify the new binding** (applies directly after a confirmati
 `channels.<key>.*`: Backend, Model, Auto-pause after, **Collaboration mode** (`collab`), **Web echo** (`web_echo`),
 Advanced **Context lines** (these restart the room's agent); Tool progress and Require a delivered reply (now).
 
-**General** — fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW), default
+**General** — fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW; read at startup: restart AgEnD), default
 backend and model, auto-pause, tool progress, bot-to-bot visibility, reply guard; Advanced: tool set, agent mode, log
 level, **Hang detector enabled** / **Stuck timeout** (`hang_detector.*`), **Startup concurrency** (1–20) and
-**Stagger delay** (`startup.*`, restart AgEnD). ClassicBot card (`classicBot.yaml defaults.*`): default backend, tool
+**Stagger delay** (`startup.*`, used from the next agent start, no restart). ClassicBot card (`classicBot.yaml defaults.*`): default backend, tool
 progress, reply guard, **ClassicBot admins**, **Allowed guilds**.
 
 **Web** — all apply at once; loosening waits for an admin; disabled over a public link.

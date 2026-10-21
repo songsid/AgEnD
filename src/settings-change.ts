@@ -13,12 +13,19 @@ const immediate = new Set([
   "tips", "tips_enabled", "auto_pause_after", "context_lines", "tool_progress", "reply_completion_guard", "web_echo",
   "echo_to_channel", "status_emojis", "persona", "emoji", "hang_detector", "guardian", "watchdog", "timeout_minutes",
   "enabled", "startup_concurrency", "spawn_concurrency", "spawn_stagger_ms", "warm_cap", "idle_timeout",
+  // #2346: offered by Settings (General → Defaults / Advanced, the agent dialog) and refused here before — a small set of
+  // values that changes how an agent logs, talks to its tools or shows bot-to-bot messages, not who may reach it.
+  "log_level", "agent_mode", "cross_instance_visibility",
+  // #2346: defaults.startup.{concurrency, stagger_delay_ms} (its children, below), read at each spawn.
+  "startup",
 ]);
 /** A config key whose value is a credential: confirmed by fingerprint, never shown (and redacted on read, #1490). */
 export const SETTINGS_SECRET_KEY = /^(?:token|secret|password|api_key|bot_token|web_token|tunnel_token)$/i;
 const publicKeys = new Set(["id", "type", "group_id", "general_channel_id", "bot_token_env", "token_env", "mode",
   "working_directory", "project_roots", "adapter_id", "adapterId", "channelId", "instanceName", "createdBy", "createdAt",
-  "hostname", "tunnel_token_env", "origin_port", "allowed_hosts", "protocol", "name", "directory", "topic_name", "topic_id", "channel_id", "systemPrompt", "workflow", "primary", "pre_task_command", "instructions", "tool_permissions", "mcp_tools", "skip_permissions"]);
+  "hostname", "tunnel_token_env", "origin_port", "allowed_hosts", "protocol", "name", "directory", "topic_name", "topic_id", "channel_id", "systemPrompt", "workflow", "primary", "pre_task_command", "instructions", "tool_permissions", "mcp_tools", "skip_permissions",
+  // #2346: which tools an agent gets (full: the fleet's own) — shown and confirmed, never applied quietly.
+  "tool_set"]);
 const idLists = new Set(["allowed_users", "admin_users", "allowed_groups", "allowed_guilds"]);
 /** Literal text, never an ANSI/control sequence or a clickable mention. */
 export function settingsDisplay(value: unknown): string {
@@ -40,7 +47,13 @@ function object(value: unknown): value is Record<string, unknown> { return !!val
 const IMMEDIATE_CHILDREN: Readonly<Record<string, ReadonlySet<string>>> = {
   status_emojis: new Set<string>(STATUS_EMOJI_CONFIG_KEYS),
   hang_detector: new Set(["enabled", "timeout_minutes"]),
+  startup: new Set(["concurrency", "stagger_delay_ms"]),
 };
+/**
+ * #2346: lists of plain labels the agent dialog edits (tags, fallback models) apply directly, like the immediate scalars
+ * — never under an access, credential or control key, and only while every item is a string.
+ */
+const PLAIN_LISTS = new Set(["tags", "model_failover"]);
 const SENSITIVE_SEGMENT = /access|permission|admin|credential|secret|public_link|mcp|auth|pre_task|instruction|project_roots/i;
 const scalar = (value: unknown): boolean => value === undefined || value === null || typeof value !== "object";
 /**
@@ -168,6 +181,11 @@ function ordinary(path: readonly string[], old: unknown, next: unknown): boolean
   if (parent !== undefined && !namedEntry(path, -2) && immediate.has(parent)) return IMMEDIATE_CHILDREN[parent]?.has(key) ?? false;
   return immediate.has(key);
 }
+function plainList(path: readonly string[], old: unknown, next: unknown): boolean {
+  if (!PLAIN_LISTS.has(path.at(-1) ?? "") || namedEntry(path, -1) || path.some(key => SENSITIVE_SEGMENT.test(key))) return false;
+  const strings = (v: unknown): boolean => v === undefined || v === null || (Array.isArray(v) && v.every(item => typeof item === "string"));
+  return strings(old) && strings(next);
+}
 /** A child of an immediate key that is not one of its known children (see IMMEDIATE_CHILDREN). */
 function unknownImmediateChild(path: readonly string[]): boolean {
   const key = path.at(-1), parent = path.at(-2);
@@ -226,7 +244,7 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     const direction = loosens(path, old, next);
     if (direction === false) return;                             // #1620: tightening applies directly
     if (direction === true) { section = section === "secret" ? section : "access"; add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "default")} → ${settingsDisplay(next ?? "default")}`); return; }
-    if (ordinary(path, old, next)) return;
+    if (ordinary(path, old, next) || plainList(path, old, next)) return;
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));
     // Under an immediate key, only its known children are settings; a secret or an id list is still confirmed below.

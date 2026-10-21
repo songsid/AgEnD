@@ -298,7 +298,10 @@ describe("GET /api/settings/schema", () => {
     expect(impacts["instance.tool_progress"]).toBe("now");
     expect(impacts["instance.backend"]).toBe("instance");
     expect(impacts["classic.auto_pause_after"]).toBe("instance");
-    expect(impacts["fleet.spawn_concurrency"]).toBe("fleet");
+    // #2346: read at each spawn (RUNTIME_READ_FLEET_KEYS): the next start uses it — no AgEnD restart.
+    expect(impacts["fleet.spawn_concurrency"]).toBe("now");
+    // #2346: read once at startup (STARTUP_ONLY_FLEET_KEYS): AgEnD restarts for it.
+    expect(impacts["defaults.locale"]).toBe("fleet");
   });
 
   it("says whether this fleet offers provider secrets (alpha.2 sweep: the page reads them only then)", async () => {

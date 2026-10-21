@@ -9,7 +9,7 @@ import { useLease } from "/assets/app-ctx.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { api } from "./settings-confirm.js";
 import { startOperation } from "./settings-apply.js";
-import { BACKENDS, DEFAULT_SCHEMA, impactOf, toYaml } from "./settings-model.js";
+import { BACKENDS, newConnectionImpact, toYaml } from "./settings-model.js";
 import { Drawer, Select } from "./settings-dialogs.js";
 import { adminUserIdError, adminUserIdPattern, botHandle, TokenEnvNote, TokenField, verifyBotToken } from "./settings-token.js";
 import { DiscordServerPicker } from "./settings-discord.js";
@@ -121,7 +121,7 @@ export function SetupWizard({ ctx, onClose }) {
     // either if it was taken since, instead of quietly picking another.
     const body = { ...input(), channel_id: w.plan.channel_id, token_env: w.plan.token_env, token_env_generated: true, token: w.token };
     // It writes the connection and the first agent: it costs what a connection change does (the server's schema).
-    const handed = startOperation([{ label: tn("wizardTitle"), impact: impactOf((ctx && ctx.schema) || DEFAULT_SCHEMA, "fleet.channels"),
+    const handed = startOperation([{ label: tn("wizardTitle"), impact: newConnectionImpact(ctx && ctx.schema),
       request: { method: "POST", url: "/api/settings/quickstart/commit", body, sensitive: true } }]);
     if (!handed) { setErr(tn("applyBusyLocal")); return; }
     setW((x) => ({ ...x, token: "" }));

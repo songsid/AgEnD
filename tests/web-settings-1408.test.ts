@@ -185,6 +185,27 @@ describe("Apply belongs to the app before the first write (§5)", () => {
   }, 10_000);
 });
 
+describe("#2346: a dialog's footer says what its changes cost — only the fields that changed", () => {
+  const foot = () => p.root.querySelector("dialog .dlg-impact")?.textContent ?? null;
+  it("the agent dialog: nothing until a change; a description applies now", async () => {
+    await mount(); await settle(6);
+    const row = p.root.querySelectorAll(".s-row").find((r: any) => r.querySelector(".s-name")?.textContent === "alpha");
+    btn(row, "Settings").click(); await settle(4);
+    const before = foot();
+    const input = p.root.querySelector("#ag-desc");
+    input.value = "Docs and reviews"; fire(input, "input"); await settle(2);
+    expect([before, foot()]).toEqual([null, "Immediately"]);
+  });
+  it("the bot dialog: nothing until a change; an allowed user costs what the access does", async () => {
+    await mount("bots", "settings:bots|1|en"); await settle(6);
+    btn(p.root.querySelector(".s-row"), "Settings").click(); await settle(4);
+    const before = foot();
+    const input = p.root.querySelector("dialog .chips-box input");
+    input.value = "9"; fire(input, "input"); await settle(2); fire(input, "keydown", { key: "Enter" }); await settle(2);
+    expect([before, foot()]).toEqual([null, "Restart AgEnD"]);
+  });
+});
+
 describe("staged changes and leaving", () => {
   it("a section change is the same panel: no reload, nothing asked, the staged change stays", async () => {
     await mount("agents", "settings:agents|1|en"); await settle(6);

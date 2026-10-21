@@ -20179,6 +20179,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   /** Non-null when startup found the running config and fleet.yaml disagreeing. */
+  /** #2346 (settings schema): a connection appended now starts at once — another one is running (canHotAddConnections). */
+  connectionsStartLive(): boolean { return this.adapters.size > 0; }
+
   fleetSignatureMismatchKeys(): string[] | null {
     return this.fleetSignatureMismatch;
   }
