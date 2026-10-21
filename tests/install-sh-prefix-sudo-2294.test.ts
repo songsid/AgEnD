@@ -31,7 +31,9 @@ fi
 const dirs: string[] = [];
 afterAll(() => {
   for (const d of dirs) {
-    try { chmodSync(join(d, "locked"), 0o755); } catch { /* may not exist */ }
+    for (const p of [join(d, "locked"), join(d, "home", ".npm-global", "lib")]) {
+      try { chmodSync(p, 0o755); } catch { /* may not exist */ }
+    }
     rmSync(d, { recursive: true, force: true });
   }
 });
@@ -148,6 +150,23 @@ describe("#2294 install.sh: a missing npm prefix is not a reason to use sudo", (
     expect(existsSync(h.sudoLog)).toBe(false);
   });
 
+  it("prefix is writable but existing lib/ is not: keep sudo (mkdir does not fix lib perms)", () => {
+    const h = host();
+    const prefix = join(h.home, ".npm-global");
+    const lib = join(prefix, "lib");
+    mkdirSync(lib, { recursive: true });
+    chmodSync(lib, 0o555);
+    try {
+      const { r, sudo } = runBlock(h, prefix);
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      expect(sudo).toBe("sudo");
+      expect(existsSync(join(lib, "node_modules"))).toBe(false);
+      expect(existsSync(h.sudoLog)).toBe(false);
+    } finally {
+      chmodSync(lib, 0o755);
+    }
+  });
+
   describe("mutation: the pre-#2294 -w lib check", () => {
     it("still picks sudo when the prefix is missing under $HOME (the defect)", () => {
       const h = host();
@@ -194,6 +213,25 @@ fi
       const { sudo } = runBlock(h, prefix, mutant);
       expect(sudo).toBe("sudo");
       expect(existsSync(prefix)).toBe(false);
+    });
+
+    it("putting back || [ -w prefix ] skips sudo even when existing lib/ is not writable", () => {
+      const mutant = step.replace(
+        /if \[ -w "\$NPM_PREFIX\/lib\/node_modules" \] 2>\/dev\/null \|\| \[ -w "\$NPM_PREFIX\/lib" \] 2>\/dev\/null; then/,
+        'if [ -w "$NPM_PREFIX/lib/node_modules" ] 2>/dev/null || [ -w "$NPM_PREFIX/lib" ] 2>/dev/null || [ -w "$NPM_PREFIX" ] 2>/dev/null; then',
+      );
+      expect(mutant).not.toBe(step);
+      expect(step).not.toMatch(/\[ -w "\$NPM_PREFIX" \]/);
+      const h = host();
+      const prefix = join(h.home, ".npm-global");
+      const lib = join(prefix, "lib");
+      mkdirSync(lib, { recursive: true });
+      chmodSync(lib, 0o555);
+      try {
+        expect(runBlock(h, prefix, mutant).sudo).toBe("");
+      } finally {
+        chmodSync(lib, 0o755);
+      }
     });
   });
 });

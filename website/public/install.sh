@@ -230,7 +230,9 @@ fi
 # >>> npm-prefix sudo (tests/install-sh-prefix-sudo-2294.test.ts runs this block)
 # #2294: a prefix that does not exist yet (for example ~/.npm-global with no lib/)
 # is not unwritable. Judge from the nearest existing parent; if that is writable,
-# or the prefix is under $HOME, create the missing directories and skip sudo.
+# or the prefix is under $HOME, create the missing directories. After that, pick
+# sudo from whether lib/node_modules or lib is writable. A writable prefix must
+# not override an existing unwritable lib (mkdir -p does not chmod it).
 NPM_PREFIX=$(npm config get prefix 2>/dev/null || echo "/usr/local")
 npm_prefix_existing="$NPM_PREFIX"
 while [ ! -e "$npm_prefix_existing" ]; do
@@ -245,7 +247,7 @@ esac
 if [ "$npm_prefix_under_home" = true ] || [ -w "$npm_prefix_existing" ]; then
   mkdir -p "$NPM_PREFIX/lib" "$NPM_PREFIX/bin" 2>/dev/null || true
 fi
-if [ -w "$NPM_PREFIX/lib/node_modules" ] 2>/dev/null || [ -w "$NPM_PREFIX/lib" ] 2>/dev/null || [ -w "$NPM_PREFIX" ] 2>/dev/null; then
+if [ -w "$NPM_PREFIX/lib/node_modules" ] 2>/dev/null || [ -w "$NPM_PREFIX/lib" ] 2>/dev/null; then
   SUDO=""
 else
   SUDO="sudo"
