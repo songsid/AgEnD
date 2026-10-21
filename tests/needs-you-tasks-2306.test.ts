@@ -19,7 +19,7 @@ const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 const task = (over: Partial<TaskInput>): TaskInput => ({
-  uuid: "u1", code: "M-1", title: "Weekly leaderboard", status: "review", version: 4, assignee: "alpha", note: "", relayed: false, since: 990_000, ...over,
+  uuid: "u1", code: "M-1", title: "Weekly leaderboard", status: "review", version: 4, assignee: "alpha", note: "", since: 990_000, ...over,
 });
 
 function adapterFor(name: string, calls: string[]) {

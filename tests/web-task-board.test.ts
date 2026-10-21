@@ -562,7 +562,7 @@ describe("7. a reply to a Needs you prompt is the card's words, not an instance'
   it("the admin's reply to the prompt stops there; any other message in the topic flows on to the instance", async () => {
     const h = rig();
     const replies: Array<{ replyTo?: string; userId: string; text: string }> = [];
-    h.s.needsYou = { handleReply: vi.fn((m: { replyTo?: string; userId: string; text: string }) => { replies.push(m); return m.replyTo === "prompt-1"; }), poke() {}, stop: async () => {} };
+    h.s.needsYou = { handleReply: vi.fn((m: { replyTo?: string; userId: string; text: string }) => { replies.push(m); return m.replyTo === "prompt-1"; }), wasTakenReply: () => false, poke() {}, stop: async () => {} };
     const routed: string[] = [];
     h.s.topicCommands.handleInstanceCommand = vi.fn(async (msg: { text: string }) => { routed.push(msg.text); return true; });
     const say = (over: Record<string, unknown>) => h.s.handleInboundMessage({ source: "telegram", adapterId: "owner", chatId: "G", threadId: "T0", messageId: `in-${Math.random()}`,
