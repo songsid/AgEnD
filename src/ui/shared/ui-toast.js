@@ -1,4 +1,5 @@
-// Toasts: one stack in a corner (under the header on a phone), each gone after a few seconds. Text only.
+// Toasts: one stack in a corner (under the header on a phone; above the tabs on the task board), each gone after a few
+// seconds. Text only. A manual popover, so it stands in the top layer above an open dialog (#2299).
 import { html, useEffect, useRef, useState } from "./app-html.js";
 import { createStore } from "./app-store.js";
 

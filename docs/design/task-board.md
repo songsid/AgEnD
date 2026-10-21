@@ -138,7 +138,7 @@ opens a card. Bars are SVG rects (the CSP allows no style attribute); a bar fill
   Alt+←/→ moves it to the status before or after, Alt+↑/↓ within its column. The card's dialog has Move to… and a
   Position row (up, down) — reordering on a phone, where HTML5 dragging does not fire.
 - **The public link** shows the board with a read-only note and no write controls (see above): a card's project, priority, size and review are text, not disabled controls (#2299).
-- **Toasts** are a manual popover (the top layer): a toast raised while a card's dialog is open is above its backdrop, not dimmed under it. On a phone the board's toasts come in above the tabs (two at most), not over its title and search; while a card's sheet is open, at the top (#2299).
+- **Toasts** are a manual popover (the top layer): a toast raised while a card's dialog is open is above its backdrop, not dimmed under it. On a phone the board's toasts come in above the tabs (an older confirmation gives way to two newer toasts; an error stays), not over its title and search; while a card's sheet is open, at the top (#2299).
 
 ## Agents: the `task` tool on the board
 

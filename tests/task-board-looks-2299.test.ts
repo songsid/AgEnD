@@ -1,12 +1,14 @@
 /**
  * #2299: the task board's looks, after the #2246 acceptance run (shots before and after are on the PR).
- *  1. A 0 % project's bar never looks full: done fills it; review, in progress and blocked are a thin strip under it.
+ *  1. A 0 % project's bar never looks full: only done work fills it (the percentage); what is blocked or waiting is
+ *     named by the card's chips.
  *  2. The waiting row: the pill and the card's number and title in one line (.tb-wait-main), the reason under the title,
  *     the assignee and buttons together after them (.tb-wait-actions).
  *  3. Over the public link a card's details are text, not disabled controls that look usable.
  *  4. The toasts are a manual popover (the top layer: an open dialog's backdrop does not dim them), shown when there is one.
  *  5. The CSS: five columns fit beside the sidebar from 1280 px; a phone's gutter 16 px and header targets 44 px; the
- *     board's toasts above the tabs on a phone (not over its title and search), two at most; the actions' buttons wide.
+ *     board's toasts above the tabs on a phone (not over its title and search), older confirmations giving way to two
+ *     newer toasts (an error never hidden); the actions' buttons wide.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -103,7 +105,8 @@ describe("#2299 the task board's looks", () => {
     const phone = CSS.slice(CSS.indexOf("@media (max-width: 899px)"));
     expect(CSS).toMatch(/\n  \.col \{ padding: var\(--s-3\) var\(--s-4\) var\(--s-8\); \}/);
     expect(CSS).toMatch(/\.panel-head \.icon-btn \{ min-width: var\(--tap\); min-height: var\(--tap\); \}/);
-    expect(CSS).toMatch(/\.toasts > \.toast:nth-last-child\(n\+3\) \{ display: none; \}/);
+    expect(CSS).toMatch(/\.shell:has\(\.tb-home, \.tb-board-page\) \.toasts > \.toast\.ok:nth-last-child\(n\+3\) \{ display: none; \}/);
+    expect(CSS, "not every phone page: the board's own rule").not.toMatch(/\n  \.toasts > \.toast:nth-last-child/);
     expect(CSS).toMatch(/\.shell:has\(\.tb-home, \.tb-board-page\):not\(:has\(dialog\[open\]\)\) \.toasts \{ top: auto; bottom: calc\(56px/);
     expect(CSS).toMatch(/\.tb-wait-actions \.btn \{ min-width: 88px; padding: 0 var\(--s-4\); \}/);
     expect(CSS).toMatch(/:where\(\.toasts\) \{ inset: auto; margin: 0; padding: 0; border: 0; background: none;/);

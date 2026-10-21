@@ -885,8 +885,6 @@ img.amb-p { object-fit: contain; }
   .main { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
   .kb-open .main { padding-bottom: 0; }
   .toasts { top: calc(60px + env(safe-area-inset-top)); bottom: auto; left: var(--s-4); right: var(--s-4); align-items: stretch; }
-  /* #2299: two at most on a phone — the newest; older ones do not pile down the page. */
-  .toasts > .toast:nth-last-child(n+3) { display: none; }
   .tour { left: var(--s-4); right: var(--s-4); width: auto; top: calc(64px + env(safe-area-inset-top)); }
   .dlg { width: 100vw; max-width: 100vw; margin: auto 0 0; border-radius: var(--r-lg) var(--r-lg) 0 0; max-height: 90vh; }
   .dlg-box { max-height: 90vh; }
@@ -1929,6 +1927,8 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   /* #2299: on the board its toasts come in above the tabs, not over its title, search and progress — unless a card's
      sheet is open (its buttons are at the bottom). */
   .shell:has(.tb-home, .tb-board-page):not(:has(dialog[open])) .toasts { top: auto; bottom: calc(56px + env(safe-area-inset-bottom) + var(--s-3)); }
+  /* …and they do not pile down the board: an older confirmation gives way to two newer toasts; an error never does. */
+  .shell:has(.tb-home, .tb-board-page) .toasts > .toast.ok:nth-last-child(n+3) { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .tb-tile.flash { animation: none; }
