@@ -126,30 +126,95 @@ exit 0
     expect(readFileSync(tmuxLog, "utf8").trim()).toBe(`-L ${paths(rootB).SOCK} kill-server`);
   });
 
-  it("kill signals only the app-server whose CODEX_HOME is under its own home", async () => {
-    const fake = (root: string) => {
-      const child = spawn("bash", ["-c", "exec -a codex-app-server-fake sleep 60"], {
-        env: { ...process.env, CODEX_HOME: `${paths(root).AH}/cx/deadbeef` }, stdio: "ignore",
-      });
-      children.push(child);
-      return child;
-    };
-    const a = fake(rootA), b = fake(rootB);
-    // #1618: not a fixed sleep — on a loaded runner `exec -a` may not have applied yet when the kill scans. Both fakes
-    // are what the scan looks for (their cmdline names the app-server) before it runs; b has gone before a is checked.
-    // Bounded, on the monotonic clock.
-    const cmdline = (pid: number | undefined) => { try { return readFileSync(`/proc/${pid}/cmdline`, "utf8"); } catch { return ""; } };
-    const until = async (cond: () => boolean, ms = 10_000) => {
-      const end = performance.now() + ms;
-      while (!cond()) { if (performance.now() > end) return false; await new Promise(r => setTimeout(r, 20)); }
-      return true;
-    };
-    expect(await until(() => [a, b].every(c => cmdline(c.pid).startsWith("codex-app-server-fake"))), "both fakes are running as the app-server").toBe(true);
-    const out = rig(rootB, ["kill"]);
-    expect(out.stdout).toContain(`kill ${b.pid}`);
-    expect(out.stdout).not.toContain(`kill ${a.pid}`);
-    expect(await until(() => b.exitCode !== null || b.signalCode !== null), "b exited").toBe(true);
-    expect(a.exitCode === null && a.signalCode === null).toBe(true);
+  const until = async (cond: () => boolean, ms = 10_000) => {
+    const end = performance.now() + ms;
+    while (!cond()) { if (performance.now() > end) return false; await new Promise(r => setTimeout(r, 5)); }
+    return true;
+  };
+  const procText = (pid: number | undefined, file: string) => {
+    try { return readFileSync(`/proc/${pid}/${file}`, "utf8"); } catch { return ""; }
+  };
+  const fake = (audit: string, holdExec = false) => {
+    const home = `${paths(audit).AH}/cx/deadbeef`;
+    // User code emits ready only AFTER the final exec. A cmdline alone can already name the new executable while
+    // Linux create_elf_tables is still populating env_start/env_end. No exec may follow the ready acknowledgement.
+    const program = "process.stdout.write('ready\\n'); setInterval(() => {}, 1000)";
+    const env = { ...process.env };
+    delete env.CODEX_HOME;
+    const child = spawn("bash", ["--noprofile", "--norc", "-c",
+      `exec -a codex-app-server-fake bash --noprofile --norc -c '
+        if [ "$1" = hold ]; then printf "starting\\n"; read -r release; fi
+        export CODEX_HOME="$2"
+        exec -a codex-app-server-fake "$3" -e "$4"
+      ' bash "$1" "$2" "$3" "$4"`,
+      "bash", holdExec ? "hold" : "go", home, process.execPath, program],
+    { env, stdio: ["pipe", "pipe", "ignore"] });
+    let output = "";
+    child.stdout!.on("data", chunk => { output += chunk.toString(); });
+    children.push(child);
+    return { child, home, output: () => output, release: () => child.stdin!.end("go\n") };
+  };
+  const waitReady = async (f: ReturnType<typeof fake>) => {
+    // Keep both /proc checks: the acknowledgement proves execution reached user code, and these prove the exact
+    // cmdline + namespace predicate used by the rig. Empty environ during exec must never be accepted as ready.
+    expect(await until(() => f.output().includes("ready\n") &&
+      procText(f.child.pid, "cmdline").startsWith("codex-app-server-fake") &&
+      procText(f.child.pid, "environ").split("\0").includes(`CODEX_HOME=${f.home}`)), "fake acknowledged its final exec and namespace").toBe(true);
+  };
+
+  it.each([false, true])("kill signals only its own app-server (held final exec: %s)", async (held) => {
+    const a = fake(rootA), b = fake(rootB, held);
+    try {
+      await waitReady(a);
+      if (held) {
+        expect(await until(() => b.output().includes("starting\n"))).toBe(true);
+        // Deterministically widen the old readiness bug: argv already matches but the final CODEX_HOME exec is held.
+        expect(procText(b.child.pid, "cmdline").startsWith("codex-app-server-fake")).toBe(true);
+        expect(procText(b.child.pid, "environ").split("\0")).not.toContain(`CODEX_HOME=${b.home}`);
+        let admitted = false;
+        const pending = waitReady(b).then(() => { admitted = true; });
+        // Flush the immediate readiness promise without a timed release. A cmdline-only guard admits b here;
+        // the fixed guard must stay pending until this test explicitly releases the final exec.
+        await new Promise<void>(resolve => setImmediate(resolve));
+        expect(admitted, "matching argv without its namespace must not be admitted").toBe(false);
+        b.release();
+        await pending;
+      } else {
+        await waitReady(b);
+      }
+      const out = rig(rootB, ["kill"]);
+      expect(out.status, out.stderr).toBe(0);
+      expect(out.stdout, out.stderr).toContain(`kill ${b.child.pid}`);
+      expect(out.stdout).not.toContain(`kill ${a.child.pid}`);
+      expect(await until(() => b.child.exitCode !== null || b.child.signalCode !== null), "b exited").toBe(true);
+      expect(a.child.exitCode === null && a.child.signalCode === null).toBe(true);
+    } finally {
+      a.child.kill("SIGKILL"); b.child.kill("SIGKILL");
+    }
+  });
+
+  it("a missed scan reports the candidate pids and only their CODEX_HOME, never the rest of environ", async () => {
+    const b = fake(rootB);
+    try {
+      await waitReady(b);
+      const candidates = join(tools, "pgrep");
+      writeFileSync(candidates, `#!/bin/sh\nprintf '%s\\n' '${b.child.pid}'\n`);
+      chmodSync(candidates, 0o755);
+      const out = rig(rootA, ["kill"]);
+      expect(out.status).toBe(0);
+      expect(out.stdout).toBe("");
+      expect(out.stderr).toContain(`pgrep candidates: ${b.child.pid}`);
+      expect(out.stderr).toContain(`pid=${b.child.pid} CODEX_HOME=${b.home}`);
+      expect(out.stderr).not.toContain("PATH=");
+      expect(b.child.exitCode === null && b.child.signalCode === null).toBe(true);
+      writeFileSync(candidates, "#!/bin/sh\nexit 1\n");
+      const empty = rig(rootA, ["kill"]);
+      expect(empty.status).toBe(0);
+      expect(empty.stderr).toContain("pgrep candidates: <none>");
+    } finally {
+      rmSync(join(tools, "pgrep"), { force: true });
+      b.child.kill("SIGKILL");
+    }
   });
 
   it("a second run whose mock cannot bind its port fails loudly instead of using the other run's mock", async () => {
