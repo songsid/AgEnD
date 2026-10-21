@@ -36,8 +36,11 @@ export interface NeedsYouItem {
    * question (blocked) and what it lacks (to confirm), for a page to say in its own language.
    */
   card?: { code: string; version: number; title?: string; question?: string; gap?: { unchecked: number; noResult: boolean } };
-  /** Listed on the web only: an instance that handed the card out tells the person in the chat (taskhall 78ad9eb). */
-  webOnly?: boolean;
+  /**
+   * task (#2352): the instance whose own channel lists the card — the instance that handed it out, else its project's
+   * lead. Its world owns the item; absent: the item sits in its assignee's world's General, as every other item.
+   */
+  lane?: string;
 }
 
 export type NeedsYouReason =
@@ -100,8 +103,11 @@ export interface TaskInput {
   note: string;
   /** What it lacks, as numbers (a card to confirm that is not wrapped up). */
   gap?: { unchecked: number; noResult: boolean };
-  /** An instance handed it out and tells the person itself: the chat leaves it to that instance. */
-  relayed: boolean;
+  /**
+   * #2352: the channel that lists it — the dispatcher instance, else the project's lead — already checked by the fleet
+   * to be usable (an instance of a live world with a channel of its own); absent: its assignee's world's General.
+   */
+  lane?: string;
   /** Epoch ms since it has waited (its move to review or to blocked). */
   since: number;
 }
@@ -190,13 +196,15 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
       reason: c.status === "review" ? "task_review" : "task_blocked",
       detail: oneLine(`${c.code} ${c.title}${c.note ? ` — ${c.note}` : ""}`), since: c.since,
       card: { code: c.code, version: c.version, title: c.title, ...(c.status === "blocked" && c.note ? { question: c.note } : {}), ...(c.gap ? { gap: c.gap } : {}) },
-      ...(c.relayed ? { webOnly: true } : {}),
+      ...(c.lane ? { lane: c.lane } : {}),
     });
   }
 
   for (const item of items) {
-    if (item.webOnly || !item.instance) continue;                   // the web's only: no chat world lists it
-    const owner = inputs.ownerOf(item.instance);
+    // #2352: a laned card belongs to its lane's world (the admins where its buttons are); the rest to their instance's.
+    const home = item.lane ?? item.instance;
+    if (!home) continue;                                            // a card nobody is assigned: the web's only
+    const owner = inputs.ownerOf(home);
     if (owner !== undefined) item.owner = owner;
   }
 
@@ -210,6 +218,19 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
 /** §5.0: the items a world's chat surfaces show — only those whose instance it owns. */
 export function itemsForWorld(items: readonly NeedsYouItem[], world: string): NeedsYouItem[] {
   return items.filter(item => item.owner === world);
+}
+
+/**
+ * #2352: one live message's items — a world's General (`lane` null: everything of the world without a lane) or one
+ * lane's channel (that lane's cards only).
+ */
+export function itemsForLane(items: readonly NeedsYouItem[], world: string, lane: string | null): NeedsYouItem[] {
+  return items.filter(item => item.owner === world && (item.lane ?? null) === lane);
+}
+
+/** #2352: the lanes a world's items name now. */
+export function lanesOf(items: readonly NeedsYouItem[], world: string): string[] {
+  return [...new Set(items.filter(item => item.owner === world && item.lane).map(item => item.lane!))].sort();
 }
 
 /** The age bucket shown next to an item: changes of it re-render, nothing finer does. */
@@ -232,6 +253,7 @@ export function renderSignature(items: readonly NeedsYouItem[], nowMs: number): 
     i.promptAt ? [i.promptAt.adapterId, i.promptAt.chatId, i.promptAt.threadId ?? null, i.promptAt.messageId ?? null] : null,
     // A card's buttons carry the version it was shown at: a newer card renders (and mints) again.
     i.card ? i.card.version : null,
+    i.lane ?? null,
   ]));
 }
 
@@ -261,6 +283,8 @@ export function renderLiveMessage(
   lines: readonly LiveLine[],
   nowMs: number,
   t: (key: string, ...args: Array<string | number>) => string,
+  /** #2352: a lane's message says it lists what waits here (`needs.live_header_lane`). */
+  header = "needs.live_header",
 ): { text: string; ackable: NeedsYouItem[] } {
   if (lines.length === 0) return { text: t("needs.live_empty"), ackable: [] };
   const shown = lines.slice(0, LIVE_MAX_LINES);
@@ -273,5 +297,5 @@ export function renderLiveMessage(
   const ackable = shown.filter(l => l.item.type === "delivery").map(l => l.item)
     .sort((a, b) => b.since - a.since).slice(0, LIVE_MAX_ACKS);
   const tasks = shown.filter(l => l.item.type === "task" && l.item.card).map(l => l.item).slice(0, LIVE_MAX_TASKS);
-  return { text: [t("needs.live_header", lines.length), ...body].join("\n"), ackable: [...ackable, ...tasks] };
+  return { text: [t(header, lines.length), ...body].join("\n"), ackable: [...ackable, ...tasks] };
 }

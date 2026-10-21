@@ -13805,6 +13805,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (topic != null) return String(topic);
         return this.classicChannels?.getChannelIdByInstance(instance) ?? undefined;
       },
+      laneTarget: instance => this.instanceChannelTarget(instance),
       isFleetAdmin: (userId, world) => this.isFleetAdmin(userId, world),
       fleetAdmins: world => (this.getChannelConfig(world)?.access?.allowed_users ?? []).map(String),
       emitSse: (event, data) => this.emitSseEvent(event, data),
@@ -13826,19 +13827,49 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * #2246 step 3: the task board's cards that wait for the person, for Needs you — under each card's assignee. A card an
-   * instance handed out is the web's only: that instance tells the person in the chat (its "to confirm" or "decide"
-   * wake), the list there does not repeat it.
+   * #2352: where an instance's own notices go — its topic in its world's group, or its ClassicBot room — as a Needs you
+   * lane's place; null when it has neither (or its world has no group).
+   */
+  private instanceChannelTarget(instance: string): { chatId: string; threadId?: string } | null {
+    const cfg = this.fleetConfig?.instances && Object.hasOwn(this.fleetConfig.instances, instance) ? this.fleetConfig.instances[instance] : undefined;
+    if (!cfg) return null;
+    const groupId = this.getChannelConfig(this.getInstanceAdapterId(instance))?.group_id;
+    if (cfg.topic_id != null && groupId != null) return { chatId: String(groupId), threadId: String(cfg.topic_id) };
+    const classic = this.classicChannels?.getChannelIdByInstance(instance);
+    return classic ? { chatId: classic } : null;
+  }
+
+  /**
+   * #2352: the instance whose own channel lists a waiting card — the instance that handed it out, else its project's
+   * lead — when that channel can be used now (a fleet instance of a live world, with a topic or room). undefined: its
+   * assignee's world's General, as before.
+   */
+  private needsYouLane(card: import("./scheduler/task-board.js").Card, leads: ReadonlyMap<number, string | null>): string | undefined {
+    const usable = (name: string | null | undefined): name is string => {
+      if (!name || !this.fleetConfig?.instances || !Object.hasOwn(this.fleetConfig.instances, name)) return false;
+      const world = this.getInstanceAdapterId(name);
+      return world !== undefined && this.worlds.has(world) && this.instanceChannelTarget(name) !== null;
+    };
+    const dispatcher = card.dispatcher?.kind === "instance" && card.dispatcher.name !== card.assignee ? card.dispatcher.name : null;
+    if (dispatcher) return usable(dispatcher) ? dispatcher : undefined;
+    const lead = card.projectId != null ? leads.get(card.projectId) : null;
+    return usable(lead) ? lead : undefined;
+  }
+
+  /**
+   * #2246 step 3: the task board's cards that wait for the person, for Needs you — under each card's assignee, listed in
+   * its lane's channel (#2352: the instance that handed it out, else the project's lead), else in General.
    */
   private needsYouTasks(): import("./needs-you.js").TaskInput[] {
     const board = this.scheduler?.db.board;
     if (!board) return [];
+    const leads = new Map(board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
     return board.waitingForPerson().map(({ card, since }) => {
       const gap = card.status === "review" ? wrapUpGap(card) : null;
-      const relayed = card.dispatcher?.kind === "instance" && card.dispatcher.name !== card.assignee && this.fleetConfig?.instances?.[card.dispatcher.name] != null;
+      const lane = this.needsYouLane(card, leads);
       return {
         uuid: card.uuid, code: card.code, title: card.title, status: card.status as "review" | "blocked", version: card.version,
-        assignee: card.assignee, relayed, since: Date.parse(since) || 0, ...(gap ? { gap } : {}),
+        assignee: card.assignee, since: Date.parse(since) || 0, ...(gap ? { gap } : {}), ...(lane ? { lane } : {}),
         note: card.status === "blocked" ? card.blockedReason : gap ? t("needs.task_gap", [
           gap.unchecked ? t("needs.task_gap_unchecked", gap.unchecked) : "", gap.noResult ? t("needs.task_gap_no_result") : "",
         ].filter(Boolean).join(t("needs.task_gap_join"))) : "",

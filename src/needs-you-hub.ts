@@ -6,6 +6,10 @@
  * for task board cards (#2246 step 3), Confirm, Send back and Answer from the live message — the two that need words
  * ask for them as a reply to a prompt the bot posts, which only the admin who clicked may answer.
  *
+ * #2352: a card with a lane (the instance that handed it out, else its project's lead) is listed in that instance's own
+ * channel instead — one live message per lane, the same renderer, its buttons and prompts bound to that message and
+ * place. A world's General keeps everything else.
+ *
  * The Acknowledge capabilities live in this hub's own registry, not in the fleet's prompt map: the map's walkers
  * (per-instance clear, shutdown retire, prompt expiry) edit the message an entry points at, and the live message must
  * only ever be edited by its own renderer. The checks are the same as every other button's: a 128-bit nonce, bound
@@ -18,7 +22,7 @@ import { writeFileAtomic } from "./backend/kiro-engine-ledger.js";
 import type { ChannelAdapter } from "./channel/types.js";
 import { isMessageEditLoss } from "./channel/message-edit-errors.js";
 import {
-  deriveNeedsYou, itemsForWorld, renderLiveMessage, renderSignature, messageLink, instanceLink,
+  deriveNeedsYou, itemsForWorld, itemsForLane, lanesOf, renderLiveMessage, renderSignature, messageLink, instanceLink,
   type DeliveryInput, type InstanceInput, type NeedsYouItem, type PromptInput, type TaskInput, type WorldPlace,
 } from "./needs-you.js";
 import { GroupMembership, topicUrl } from "./topic-link.js";
@@ -60,6 +64,8 @@ export interface NeedsYouHubContext {
   worlds(): NeedsYouWorld[];
   /** Where a world's fleet notices go (its General), or null. */
   noticeTarget(world: string): LiveTarget | null;
+  /** #2352: an instance's own channel (its topic in its world's group, or its ClassicBot room), or null. */
+  laneTarget?(instance: string): LiveTarget | null;
   /** An instance's own thread/topic id, for its link. */
   instanceTopic(instance: string): string | undefined;
   isFleetAdmin(userId: string, world: string): boolean;
@@ -98,6 +104,8 @@ export interface TaskAction {
 interface PendingReply {
   world: string;
   instance: string;
+  /** #2352: the lane whose channel the prompt is in (absent: General). */
+  lane?: string;
   adapter: ChannelAdapter;
   placeKey: string;
   /** Its reservation: one prompt per world, card, person and verb at a time. */
@@ -140,6 +148,8 @@ interface AckEntry {
   deliveryId?: string;
   card?: { code: string; version: number };
   instance: string;
+  /** #2352: the lane whose message showed it (absent: General). */
+  lane?: string;
 }
 
 export interface AckCallback {
@@ -160,6 +170,12 @@ function placeKey(place: WorldPlace): string {
   return `${place.type}|${place.groupId ?? ""}`;
 }
 
+/** #2352: a live message's key — its world (General, as before #2352) or `<world>#lane:<instance>` (a lane's channel). */
+export function liveKey(world: string, lane: string | null): string {
+  return lane ? `${world}#lane:${lane}` : world;
+}
+const LANE_SEP = "#lane:";
+
 export class NeedsYouHub {
   private items: NeedsYouItem[] = [];
   private webSignature = "";
@@ -167,7 +183,7 @@ export class NeedsYouHub {
   private readonly worldSeen = new Map<string, Set<string>>();
   /** Each world's renderer, pinned to the adapter and place it was built for (#1398 review): a replaced adapter or
    *  moved place gets a new renderer, and the old one can no longer publish. */
-  private readonly live = new Map<string, { renderer: NeedsYouLiveMessage; adapter: ChannelAdapter; placeKey: string }>();
+  private readonly live = new Map<string, { renderer: NeedsYouLiveMessage; adapter: ChannelAdapter; placeKey: string; world: string; lane: string | null }>();
   private readonly acks = new Map<string, AckEntry>();
   /** Send back / Answer prompts waiting for the clicker's reply, by `${world}|${chatId}|${messageId}`. */
   /** Pending replies by where their prompt is (`<chatId>|<messageId>`), whichever bot receives the reply. */
@@ -234,41 +250,54 @@ export class NeedsYouHub {
     const settings = this.ctx.settings();
     const worlds = this.ctx.worlds();
     const worldIds = new Set(worlds.map(w => w.id));
-    for (const [id, pinned] of this.live) {
-      const current = worlds.find(w => w.id === id);
+    for (const [key, pinned] of this.live) {
+      const current = worlds.find(w => w.id === pinned.world);
       if (!settings.liveMessage || !current) {
-        this.live.delete(id); this.worldSignature.delete(id);
+        this.live.delete(key); this.worldSignature.delete(key); this.worldSeen.delete(key);
         void pinned.renderer.disable();
       } else if (current.adapter !== pinned.adapter || placeKey(current.place) !== pinned.placeKey) {
         // Another adapter (or place) under the same id: the old renderer stops without touching anything — its adapter
         // may be gone — and a new one picks up from the persisted pointer.
-        this.live.delete(id); this.worldSignature.delete(id);
+        this.live.delete(key); this.worldSignature.delete(key); this.worldSeen.delete(key);
         pinned.renderer.abandon();
+      } else if (pinned.lane !== null && !this.laneUsable(pinned.lane, pinned.world)) {
+        // #2352: the lane is gone from this world (its instance removed or moved, its channel gone): its message says
+        // so, without buttons, and is forgotten. A lane that is merely empty stays, saying nothing waits.
+        this.live.delete(key); this.worldSignature.delete(key); this.worldSeen.delete(key);
+        void pinned.renderer.disable(this.ctx.t("needs.live_moved"));
       }
     }
     if (!settings.dm) for (const id of [...this.dmPending.keys()]) this.cancelDms(id);
     for (const id of [...this.dmPending.keys()]) if (!worldIds.has(id)) this.cancelDms(id);
     const seeding = !this.seeded;
     this.seeded = true;
+    const saved = settings.liveMessage ? Object.keys(this.readPointers()) : [];
     for (const world of worlds) {
       const mine = itemsForWorld(this.items, world.id);
-      if (seeding) {
-        this.worldSeen.set(world.id, new Set(mine.map(i => i.id)));
-        this.dmSeen.set(world.id, new Set(mine.map(i => i.id)));
-      }
-      const seen = this.worldSeen.get(world.id) ?? new Set<string>();
-      const fresh = mine.filter(i => !seen.has(i.id));
-      this.worldSeen.set(world.id, new Set(mine.map(i => i.id)));
+      if (seeding) this.dmSeen.set(world.id, new Set(mine.map(i => i.id)));
       if (settings.liveMessage) {
-        let pinned = this.live.get(world.id);
-        if (!pinned) {
-          pinned = { renderer: this.makeLive(world), adapter: world.adapter, placeKey: placeKey(world.place) };
-          this.live.set(world.id, pinned);
-        }
-        const sig = renderSignature(mine, now);
-        if (sig !== this.worldSignature.get(world.id)) {
-          this.worldSignature.set(world.id, sig);
-          pinned.renderer.changed(fresh.length > 0);
+        // General, every lane with cards now, and every lane whose message is still out there (from before a restart,
+        // or emptied since): those render too, so a stale list never keeps its old lines.
+        const lanes = new Set<string>(lanesOf(this.items, world.id));
+        for (const k of saved) if (k.startsWith(world.id + LANE_SEP)) lanes.add(k.slice(world.id.length + LANE_SEP.length));
+        for (const [, pinned] of this.live) if (pinned.world === world.id && pinned.lane !== null) lanes.add(pinned.lane);
+        for (const lane of [null, ...[...lanes].filter(l => this.laneUsable(l, world.id))]) {
+          const key = liveKey(world.id, lane);
+          const listed = itemsForLane(this.items, world.id, lane);
+          if (seeding) this.worldSeen.set(key, new Set(listed.map(i => i.id)));
+          const seen = this.worldSeen.get(key) ?? new Set<string>();
+          const fresh = listed.filter(i => !seen.has(i.id));
+          this.worldSeen.set(key, new Set(listed.map(i => i.id)));
+          let pinned = this.live.get(key);
+          if (!pinned) {
+            pinned = { renderer: this.makeLive(world, lane), adapter: world.adapter, placeKey: placeKey(world.place), world: world.id, lane };
+            this.live.set(key, pinned);
+          }
+          const sig = renderSignature(listed, now);
+          if (sig !== this.worldSignature.get(key)) {
+            this.worldSignature.set(key, sig);
+            pinned.renderer.changed(fresh.length > 0);
+          }
         }
       }
       if (settings.dm) this.queueDms(world, mine, now);
@@ -307,26 +336,38 @@ export class NeedsYouHub {
     return item.type === "task" && item.detail ? `${reason}: ${item.detail}` : reason;
   }
 
-  private makeLive(world: NeedsYouWorld): NeedsYouLiveMessage {
+  /** #2352: a lane can carry a list here: its instance is this world's now, and has a channel of its own. */
+  private laneUsable(lane: string, world: string): boolean {
+    return this.ctx.ownerOf(lane) === world && !!this.ctx.laneTarget?.(lane);
+  }
+
+  /** Where a list (General, or a lane's) is posted now, or null. */
+  private listTarget(world: string, lane: string | null | undefined): LiveTarget | null {
+    if (!lane) return this.ctx.noticeTarget(world);
+    return this.laneUsable(lane, world) ? this.ctx.laneTarget!(lane) : null;
+  }
+
+  private makeLive(world: NeedsYouWorld, lane: string | null): NeedsYouLiveMessage {
     const ctx = this.ctx;
-    const owner = Symbol(world.id);
+    const key = liveKey(world.id, lane);
+    const owner = Symbol(key);
     return new NeedsYouLiveMessage({
-      world: world.id,
+      world: key,
       now: () => ctx.mono(),
       setTimer: (fn, ms) => ctx.setTimer(fn, ms),
       clearTimer: h => ctx.clearTimer(h),
-      target: () => { const t = ctx.noticeTarget(world.id); return t ? canonicalTarget(t) : null; },
+      target: () => { const t = this.listTarget(world.id, lane); return t ? canonicalTarget(t) : null; },
       enabled: () => ctx.settings().liveMessage,
       stopping: () => ctx.stopping() || this.stopped,
       // The same world means the same adapter object and place it was built for, not just the same id.
       worldExists: () => ctx.worlds().some(w => w.id === world.id && w.adapter === world.adapter && placeKey(w.place) === placeKey(world.place)),
       content: () => {
-        const mine = itemsForWorld(this.items, world.id);
+        const mine = itemsForLane(this.items, world.id, lane);
         const lines = mine.map(item => ({
           item, title: this.lineTitle(item),
           link: item.promptAt ? messageLink(world.place, item.promptAt) : instanceLink(world.place, ctx.instanceTopic(item.instance)),
         }));
-        const rendered = renderLiveMessage(lines, ctx.now(), (k, ...a) => ctx.t(k, ...a));
+        const rendered = renderLiveMessage(lines, ctx.now(), (k, ...a) => ctx.t(k, ...a), lane ? "needs.live_header_lane" : "needs.live_header");
         return { empty: mine.length === 0, ...rendered };
       },
       post: async (target, text, choices) => {
@@ -341,22 +382,22 @@ export class NeedsYouHub {
       },
       isEditLoss: isMessageEditLoss,
       remove: async pointer => { await world.adapter.deleteMessage?.(pointer.chatId, pointer.messageId, pointer.threadId); },
-      loadPointer: () => this.readPointers()[world.id] ?? null,
-      savePointer: pointer => this.writePointer(world.id, pointer),
-      mintAcks: (generation, place, items) => this.mintAcks(world.id, owner, generation, place, items),
+      loadPointer: () => this.readPointers()[key] ?? null,
+      savePointer: pointer => this.writePointer(key, pointer),
+      mintAcks: (generation, place, items) => this.mintAcks(world.id, owner, generation, place, items, lane),
       revokeAcks: () => this.revokeAcks(owner),
       log: (message, extra) => ctx.log("info", `Needs you: ${message}`, extra),
       text: { stopped: ctx.t("needs.live_stopped"), off: ctx.t("needs.live_off") },
     });
   }
 
-  private mintAcks(world: string, owner: symbol, generation: number, place: LiveTarget & { messageId?: string }, items: NeedsYouItem[]): LiveAcks {
+  private mintAcks(world: string, owner: symbol, generation: number, place: LiveTarget & { messageId?: string }, items: NeedsYouItem[], lane: string | null = null): LiveAcks {
     const minted: AckEntry[] = [];
     const mint = (item: NeedsYouItem, verb: AckEntry["verb"], label: string) => {
       const nonce = randomBytes(16).toString("hex");
       const entry: AckEntry = {
         world, owner, generation, deadline: this.ctx.mono() + ACK_TTL_MS, chatId: place.chatId, ...(place.threadId !== undefined ? { threadId: place.threadId } : {}),
-        ...(place.messageId ? { messageId: place.messageId } : {}), verb, instance: item.instance,
+        ...(place.messageId ? { messageId: place.messageId } : {}), verb, instance: item.instance, ...(lane ? { lane } : {}),
         ...(item.deliveryId ? { deliveryId: item.deliveryId } : {}), ...(item.card ? { card: { ...item.card } } : {}),
       };
       this.acks.set(nonce, entry);
@@ -400,8 +441,10 @@ export class NeedsYouHub {
       || data.messageId !== entry.messageId;
     if (wrongPlace) { data.ack?.(this.ctx.t("buttons.wrong_place")); return true; }
     if (!data.userId || !this.ctx.isFleetAdmin(data.userId, adapterId)) { data.ack?.(this.ctx.t("buttons.admin_only")); return true; }
-    // §5.0: the item must still belong to this world.
-    if (this.ctx.ownerOf(entry.instance) !== adapterId) { data.ack?.(this.ctx.t("needs.ack_not_this_world")); return true; }
+    // §5.0: the item must still belong to this world — for a laned card, its lane's world (#2352).
+    if (this.ctx.ownerOf(entry.lane ?? entry.instance) !== adapterId) { data.ack?.(this.ctx.t("needs.ack_not_this_world")); return true; }
+    // #2352: and a card must still wait where this button showed it (its lead or dispatcher changed: elsewhere now).
+    if (entry.card && !this.stillInLane(entry.card.code, entry.lane)) { data.ack?.(this.ctx.t("needs.task_moved")); return true; }
     const platform = this.ctx.worlds().find(w => w.id === adapterId)?.place.type ?? "chat";
     if (entry.verb === "ack") {
       data.ack?.(this.ctx.t(`needs.ack_${this.acknowledge(entry.deliveryId!, `${platform}:${data.userId}`)}`));
@@ -427,6 +470,15 @@ export class NeedsYouHub {
     return true;
   }
 
+  /**
+   * #2352: a card is still listed in this lane (or, for no lane, in General). One the list no longer has — confirmed,
+   * answered, gone — is left to the board, which answers by its version.
+   */
+  private stillInLane(code: string, lane: string | undefined): boolean {
+    const now = this.items.find(i => i.type === "task" && i.card?.code === code);
+    return !now || (now.lane ?? undefined) === lane;
+  }
+
   /** A prompt for this reservation still waits for its reply. */
   private pendingFor(askKey: string): boolean {
     const now = this.ctx.mono();
@@ -446,11 +498,13 @@ export class NeedsYouHub {
    * place still where the prompt is: else a reply there is not this world's to take (#2306 review — an instance that
    * moved to another world, a replaced connection, a new notice room).
    */
-  private stillHere(p: { world: string; instance: string; adapter: ChannelAdapter; placeKey: string; chatId: string; threadId?: string }): boolean {
-    if (this.ctx.ownerOf(p.instance) !== p.world) return false;
+  private stillHere(p: { world: string; instance: string; lane?: string; code?: string; adapter: ChannelAdapter; placeKey: string; chatId: string; threadId?: string }): boolean {
+    if (this.ctx.ownerOf(p.lane ?? p.instance) !== p.world) return false;
     const now = this.ctx.worlds().find(w => w.id === p.world);
     if (!now || now.adapter !== p.adapter || placeKey(now.place) !== p.placeKey) return false;
-    const target = this.ctx.noticeTarget(p.world);
+    // #2352: the card still waits in this lane, and the lane's (or General's) place is still where the prompt is.
+    if (p.code !== undefined && !this.stillInLane(p.code, p.lane)) return false;
+    const target = this.listTarget(p.world, p.lane);
     return !!target && samePlace(target, { chatId: p.chatId, ...(p.threadId !== undefined ? { threadId: p.threadId } : {}) });
   }
 
@@ -460,8 +514,8 @@ export class NeedsYouHub {
     try {
       const world = this.ctx.worlds().find(w => w.id === entry.world);
       if (!world || this.stopped) return;
-      const target = { world: entry.world, instance: entry.instance, adapter: world.adapter, placeKey: placeKey(world.place),
-        chatId: entry.chatId, ...(entry.threadId !== undefined ? { threadId: entry.threadId } : {}) };
+      const target = { world: entry.world, instance: entry.instance, ...(entry.lane ? { lane: entry.lane } : {}), code: card.code,
+        adapter: world.adapter, placeKey: placeKey(world.place), chatId: entry.chatId, ...(entry.threadId !== undefined ? { threadId: entry.threadId } : {}) };
       const who = by.username ? ` (@${by.username})` : "";
       const text = this.ctx.t(verb === "back" ? "needs.task_back_prompt" : "needs.task_answer_prompt", card.code, who, Math.round(TASK_REPLY_TTL_MS / 60_000));
       const sent = await world.adapter.sendText(entry.chatId, text, entry.threadId !== undefined ? { threadId: entry.threadId } : undefined);

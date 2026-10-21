@@ -274,8 +274,11 @@ export class NeedsYouLiveMessage {
     this.generation++;
   }
 
-  /** live_message turned off (or the world removed): revoke, mark the message, forget it. */
-  async disable(): Promise<void> {
+  /**
+   * live_message turned off (or the world removed): revoke, mark the message, forget it. `note`: what the message says
+   * instead of "turned off" (#2352: a lane whose list moved elsewhere).
+   */
+  async disable(note?: string): Promise<void> {
     if (this.timer !== null) { this.deps.clearTimer(this.timer); this.timer = null; }
     this.retired = true;
     this.deps.revokeAcks();
@@ -283,6 +286,6 @@ export class NeedsYouLiveMessage {
     const pointer = this.pointer;
     this.pointer = null;
     this.deps.savePointer(null);
-    if (pointer) await this.deps.edit(pointer, this.deps.text.off, []).catch(() => {});
+    if (pointer) await this.deps.edit(pointer, note ?? this.deps.text.off, []).catch(() => {});
   }
 }
