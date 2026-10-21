@@ -159,7 +159,9 @@ export function savePref(key, value) {
 
 function hold(key, value) {
   const k = SYNCED[key];
-  if (!heldFrom.has(key)) heldFrom.set(key, readLocal(k.ls));
+  // What was in force before, as cached: never read back from this browser's copy, which the caller may have written
+  // already (theme.js stores the theme as it sets it).
+  if (!heldFrom.has(key)) { const f = prefInForce(key); heldFrom.set(key, f ? (f.value == null ? null : k.toLocal(f.value)) : readLocal(k.ls)); }
   cache(key, value);
   if ((value == null ? null : k.toLocal(value)) === heldFrom.get(key)) {          // back to what it was: no change
     held.delete(key); heldFrom.delete(key);

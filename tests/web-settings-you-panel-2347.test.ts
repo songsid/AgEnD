@@ -10,7 +10,11 @@ import { fire } from "./helpers/mini-dom.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 
 const prefsAttr = (values: Record<string, unknown>, rev = 1) => JSON.stringify({ rev, values });
-const themeStub = (shown: string, record: (v: string) => void) => { let cur = shown; return { get: () => cur, set: (v: string) => { cur = v; record(v); } }; };
+/** AgendTheme as theme.js has it: `set` shows the theme and stores it in this browser at once (before savePref). */
+const themeStub = (shown: string, record: (v: string) => void) => { let cur = shown; return { get: () => cur, set: (v: string) => {
+  cur = v; record(v);
+  try { if (v === "system") (globalThis as any).localStorage.removeItem("agend_theme"); else (globalThis as any).localStorage.setItem("agend_theme", v); } catch { /* none */ }
+} }; };
 
 describe("the Settings panel: the \"You\" group saves with the bar", () => {
   const schema = buildSettingsImpactSchema();

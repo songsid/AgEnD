@@ -10,7 +10,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installDom, type MiniPage } from "./helpers/mini-dom.js";
 
 const prefsAttr = (values: Record<string, unknown>, rev = 1) => JSON.stringify({ rev, values });
-const themeStub = (shown: string, record: (v: string) => void) => { let cur = shown; return { get: () => cur, set: (v: string) => { cur = v; record(v); } }; };
+/** AgendTheme as theme.js has it: `set` shows the theme and stores it in this browser at once (before savePref). */
+const themeStub = (shown: string, record: (v: string) => void) => { let cur = shown; return { get: () => cur, set: (v: string) => {
+  cur = v; record(v);
+  try { if (v === "system") (globalThis as any).localStorage.removeItem("agend_theme"); else (globalThis as any).localStorage.setItem("agend_theme", v); } catch { /* none */ }
+} }; };
 
 describe("app-prefs: holding the \"You\" preferences while Settings is open", () => {
   let pg: MiniPage, requests: Array<{ method: string; body: any }>, hostValues: Record<string, unknown>, hostRev: number, failPost: boolean;
