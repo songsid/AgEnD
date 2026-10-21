@@ -132,6 +132,16 @@ describe("lanes: a card waits in its lane's channel, not in General", () => {
     expect(r.state.actions.map(a => [a.verb, a.code, a.version])).toEqual([["confirm", "M-2", 4]]);
   });
 
+  it("a laned card's world is its lane's, not its assignee's: the lane's admins act even when the assignee is in no world", async () => {
+    const r = rig();
+    delete r.owners.alpha;                                                          // the assignee: no chat world at all
+    r.state.tasks = [task({ uuid: "u2", code: "M-2", lane: "lead" })];
+    r.hub.start();
+    await r.advance(0);
+    expect(r.click("needs.task_confirm_button(M-2)", { ...r.at("55")!, threadId: "55" })).toEqual(["done"]);
+    expect(r.state.actions.map(a => a.code)).toEqual(["M-2"]);
+  });
+
   it("a card routed elsewhere since its button showed (its lead or dispatcher changed) is told so, and nothing moves", async () => {
     const r = rig();
     r.state.tasks = [task({ uuid: "u2", code: "M-2", lane: "lead" })];

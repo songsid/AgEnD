@@ -20,7 +20,7 @@ const wake = (over: Partial<Wake>): Wake => {
   return { instance: "dev-a", uuid: "u1", code: "S-1", title: "Build the API", parent: "M-1", reasons, texts: {}, ...over, by: Object.fromEntries(reasons.map((r) => [r, (over as { who?: string }).who ?? "Ann"])) };
 };
 
-function waker(opts: { instances?: string[]; holds?: (w: Wake) => Wake | null } = {}) {
+function waker(opts: { instances?: string[]; holds?: (w: Wake) => Wake | null; buttonsHere?: (instance: string, uuid: string) => boolean } = {}) {
   const sent: Array<{ instance: string; message: string }> = [];
   const timers: Array<{ fn: () => void; ms: number; live: boolean }> = [];
   const w = new TaskBoardWaker({
@@ -28,12 +28,29 @@ function waker(opts: { instances?: string[]; holds?: (w: Wake) => Wake | null } 
     isInstance: (n) => (opts.instances ?? ["dev-a", "dev-b", "lead"]).includes(n),
     holds: opts.holds ?? ((x) => x),
     card: () => undefined,
+    ...(opts.buttonsHere ? { buttonsHere: opts.buttonsHere } : {}),
     log: () => {},
     timers: { set: (fn, ms) => { const t = { fn, ms, live: true }; timers.push(t); return t; }, clear: (h) => { (h as { live: boolean }).live = false; } },
   });
   const fire = () => { for (const t of timers.splice(0)) if (t.live) t.fn(); };
   return { w, sent, timers, fire };
 }
+
+describe("#2352: the waker asks, per card and instance, whether the buttons are in that instance's channel", () => {
+  it("the dispatcher whose channel lists the card is told so; another instance, or another card, gets the old words", () => {
+    const asked: string[] = [];
+    const { w, sent, fire } = waker({ buttonsHere: (instance, uuid) => { asked.push(`${instance}/${uuid}`); return instance === "lead" && uuid === "u1"; } });
+    w.note([wake({ instance: "lead", reasons: ["decide"], texts: { decide: "codes?" } }), wake({ instance: "lead", uuid: "u2", code: "S-2", reasons: ["decide"], texts: { decide: "names?" } })]);
+    w.note([wake({ instance: "dev-b", reasons: ["decide"], texts: { decide: "codes?" } })]);
+    fire();
+    const to = (i: string) => sent.find((x) => x.instance === i)!.message;
+    const line = (code: string) => to("lead").split("\n").find((l) => l.includes(`${code} "`))!;
+    expect(line("S-1")).toContain("Answer for it in your channel");
+    expect(line("S-2")).toContain("ask the person, then answer it");
+    expect(to("dev-b")).toMatch(/ask the person, then answer it/);
+    expect(asked.sort()).toEqual(["dev-b/u1", "lead/u1", "lead/u2"]);
+  });
+});
 
 describe("gathering an instance's news", () => {
   it("one message per instance per window; a card's news merged, each reason keeping its own words", () => {
@@ -112,8 +129,9 @@ describe("the message", () => {
     // Per wake: only the one whose card is laned here.
     const two = wakeMessage([wake({ instance: "lead", reasons: ["to_confirm"] }), wake({ uuid: "u2", code: "S-2", instance: "lead", reasons: ["to_confirm"] })],
       () => ({ assignee: "dev-a", kind: "sub", acceptance: [], result: "done" }) as never, (w) => w.code === "S-2");
-    expect(two).toMatch(/S-1 [^;]*tell the person to confirm it/);
-    expect(two).toMatch(/S-2 [^;]*Confirm \/ Send back for it in your channel/);
+    const at = (code: string) => two.split("\n").find((l) => l.includes(`${code} "`))!;
+    expect(at("S-1")).toContain("tell the person to confirm it");
+    expect(at("S-2")).toContain("Confirm / Send back for it in your channel");
   });
 });
 
