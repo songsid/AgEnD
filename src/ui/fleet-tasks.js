@@ -14,7 +14,7 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { AskHost, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, UNASSIGNED, answerBlocked, boardApi, dropNeighbours, errorText, followsSubs, moveCard, onPublicLink, projectKey, projectStats, readStored, recentlyDone, relTime, writeStored } from "./fleet-task-common.js";
+import { AskHost, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, UNASSIGNED, answerBlocked, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, onPublicLink, projectKey, projectStats, readStored, recentlyDone, relTime, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { CardDialog } from "./fleet-task-card.js";
 
 const PROJECT_KEY = "agend_tasks_project";
@@ -177,6 +177,8 @@ function ProjectTile({ project, stats, onOpen, onDialog, reload }) {
  * at a time: claimed before the first await, so a double click sends one move.
  */
 function Waiting({ cards, writable, onOpen, reload }) {
+  const { instances } = useStore(appStore);
+  const fleetNames = new Set(instances.map((i) => i.name));
   const pending = useRef(new Set());
   const [busy, setBusy] = useState(() => new Set());
   const review = cards.filter((c) => c.status === "review");
@@ -195,7 +197,10 @@ function Waiting({ cards, writable, onOpen, reload }) {
       <div class="tb-wait-main">
         <${StatusPill} status=${c.status} />
         <button type="button" class="tb-wait-title" onClick=${() => onOpen(c.id)}><span class="tb-code">${c.id}</span> ${c.title}
-          ${c.status === "blocked" && c.blockedReason ? html`<span class="tb-wait-reason">${c.blockedReason}</span>` : null}</button>
+          ${c.status === "blocked" && c.blockedReason ? html`<span class="tb-wait-reason">${c.blockedReason}</span>` : null}
+          ${c.status === "blocked" && c.dispatcher && c.dispatcher.kind === "instance" && c.dispatcher.name !== c.assignee && fleetNames.has(c.dispatcher.name)
+            ? html`<span class="tb-wait-asked muted">${t("tasks.askedFirst", c.dispatcher.name)}</span>` : null}
+          ${c.status === "review" && wrapUpText(c) ? html`<span class="tb-wait-reason wrapup">${t("tasks.wrapLine", wrapUpText(c))}</span>` : null}</button>
       </div>
       <div class="tb-wait-actions">
         ${c.assignee ? html`<span class="muted">${c.assignee}</span>` : null}
@@ -400,6 +405,10 @@ function Tile({ card, dragging, flash, subs = [], expanded, writable, onToggleSu
   // The board carries only recently finished sub tasks; older ones are counted, not listed.
   const older = hasSubs ? progress.total - subs.length : 0;
   const replied = card.lastComment && card.lastComment.authorKind !== "person";
+  const gap = card.status === "review" ? wrapUpText(card) : "";
+  // Who works on a main task now (a step may be its reviewer's), rather than who owns it.
+  const now = hasSubs ? currentWork(card, subs) : null;
+  const workers = now ? workersOf(now.cards) : [];
   // The tile is a group, not a button: its title is the control (keyboard, screen readers); a click anywhere opens it.
   return html`<div class=${`tb-tile st-${card.status}${dragging ? " dragging" : ""}${flash ? " flash" : ""}`} data-tile=${card.id}
     draggable=${writable} onDragStart=${writable ? onDragStart : undefined} onDragEnd=${writable ? onDragEnd : undefined}
@@ -408,6 +417,7 @@ function Tile({ card, dragging, flash, subs = [], expanded, writable, onToggleSu
       <span class="tb-code">${card.id}</span>
       ${card.priority === "urgent" || card.priority === "high" ? html`<span class=${`tb-tag p-${card.priority}`}>${t(card.priority === "urgent" ? "tasks.urgentTag" : "tasks.highTag")}</span>` : null}
       ${card.kind === "sub" && card.needsReview && card.status !== "done" ? html`<span class="tb-tag st-review" title=${t("tasks.needsReviewTitle")}>${t("tasks.needsReview")}</span>` : null}
+      ${gap ? html`<span class="tb-tag wrapup" title=${t("tasks.wrapLine", gap)}>${t("tasks.wrapTag")}</span>` : null}
       <span class="tb-grow"></span>
       ${card.size ? html`<span class="tb-size" title=${t("tasks.size")}>${t(`tasks.size${card.size}`)}</span>` : null}
     </div>
@@ -428,8 +438,13 @@ function Tile({ card, dragging, flash, subs = [], expanded, writable, onToggleSu
         ${s.status === "blocked" && s.blockedReason ? html`<div class="tb-sub-blocked">${s.blockedReason}</div>` : null}</li>`)}
       ${older > 0 ? html`<li class="muted tb-sub-more">${t("tasks.olderSubs", older)}</li>` : null}
     </ul>` : null}
+    ${now ? html`<div class="tb-tile-now" title=${now.cards.map((c) => `${c.id} ${c.title}`).join("\n")}>
+      <span class=${`tb-now-label st-${now.tone}`}>${t(now.label)}</span><span class="tb-code">${now.cards[0].id}</span>
+      <span class="tb-now-title">${now.cards[0].title}</span>${now.cards.length > 1 ? html`<span class="muted">${t("tasks.moreCards", now.cards.length - 1)}</span>` : null}</div>` : null}
     <div class="tb-tile-foot">
-      <span class="tb-who">${card.assignee || "—"}</span>
+      ${now ? html`<span class="tb-who" title=${t("tasks.ownerTip", card.assignee || t("tasks.nobody"))}>${workers.map((w) => w || t("tasks.nobody")).join(", ")}</span>`
+        : hasSubs && card.status === "review" ? html`<span class="tb-who tb-now-label st-review" title=${t("tasks.ownerTip", card.assignee || t("tasks.nobody"))}>${t("tasks.review")}</span>`
+        : html`<span class="tb-who">${card.assignee || "—"}</span>`}
       <span class="tb-tile-stats">
         ${card.acceptance.length ? html`<span class=${accepted === card.acceptance.length ? "all" : ""} title=${t(card.kind === "main" ? "tasks.definition" : "tasks.acceptance")}><${Icon} name="check" size=${13} />${accepted}/${card.acceptance.length}</span>` : null}
         ${card.unmetDeps.length ? html`<span title=${t("tasks.waitsFor", card.unmetDeps.join(", "))}><${Icon} name="clock" size=${13} /></span>` : null}

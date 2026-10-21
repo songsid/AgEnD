@@ -145,7 +145,7 @@ describe("2. a delete that finishes late never takes over the page", () => {
 const PROJECT = { id: 1, name: "Game", description: "", archived: false, sort: 1, createdAt: "2026-10-20T00:00:00.000Z" };
 const REVIEW_CARD = { id: "M-1", uuid: "u1", kind: "main", projectId: 1, parentId: null, title: "One", status: "review", assignee: "alpha",
   priority: "normal", size: null, needsReview: true, dependsOn: [], goal: "", scope: "", acceptance: [], context: "", state: "", blockedReason: "",
-  result: "", sort: 1, createdBy: "Ann", version: 3, createdAt: "2026-10-20T00:00:00.000Z", updatedAt: "2026-10-20T00:00:00.000Z",
+  result: "GET /leaderboard answers in 40 ms", sort: 1, createdBy: "Ann", version: 3, createdAt: "2026-10-20T00:00:00.000Z", updatedAt: "2026-10-20T00:00:00.000Z",
   startedAt: null, submittedAt: null, doneAt: null, progress: { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 },
   unmetDeps: [], commentCount: 0, newCommentCount: 0, lastComment: null };
 const BOARD = { projects: [PROJECT], cards: [REVIEW_CARD] };
@@ -325,6 +325,83 @@ describe("3e. a send-back that meets an agent's write keeps what the person type
       'POST /ui/tasks/cards/M-1/move {"to":"claimed","reason":"the login page 500s","version":5}',
     ]);
     expect(p.root.querySelector("dialog")).toBeNull();
+  });
+});
+
+describe("3f. confirming work that is not wrapped up asks first", () => {
+  const RAW = { ...REVIEW_CARD, result: "", acceptance: [{ text: "resets Monday", done: false }] };
+  const posts = () => requests.filter(r => r.startsWith("POST"));
+  beforeEach(() => {
+    handler = (path, init) => {
+      if (path === "/ui/tasks/board") return { projects: [PROJECT], cards: [RAW] };
+      if (init.method === "POST") return { card: { ...RAW, status: "done" }, notes: [] };
+      return {};
+    };
+  });
+
+  it("the waiting row says what is missing; Confirm asks, backing out sends nothing, Confirm anyway sends the note", async () => {
+    await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|wrap|en" }));
+    await settle(6);
+    expect(p.root.querySelector(".tb-wait-reason.wrapup").textContent).toBe("Not wrapped up yet: 1 checklist item unchecked, no result");
+    p.root.querySelector(".tb-wait-row .btn-primary").click(); await settle(4);
+    expect(p.root.querySelector("dialog .dlg-title, dialog h2")?.textContent ?? p.root.querySelector("dialog").textContent).toContain("Confirm M-1?");
+    [...p.root.querySelectorAll("dialog .btn")].find((b: any) => b.textContent === "Cancel")!.click(); await settle(6);
+    expect(posts()).toEqual([]);
+    p.root.querySelector(".tb-wait-row .btn-primary").click(); await settle(4);
+    const note = p.root.querySelector("dialog textarea"); note.value = "fine for now"; fire(note, "input"); await settle();
+    const anyway = p.root.querySelector("dialog .btn-primary");
+    expect(anyway.textContent).toBe("Confirm anyway");
+    anyway.click(); await settle(8);
+    expect(posts()).toEqual(['POST /ui/tasks/cards/M-1/move {"to":"done","reason":"fine for now","version":3}']);
+  });
+
+  it("its tile says To fill in; a wrapped-up card is confirmed without a question", async () => {
+    handler = (path, init) => {
+      if (path === "/ui/tasks/board") return { projects: [PROJECT], cards: [{ ...REVIEW_CARD }, { ...RAW, id: "M-2", uuid: "u2" }] };
+      if (init.method === "POST") return { card: { ...REVIEW_CARD, status: "done" }, notes: [] };
+      return {};
+    };
+    await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|wrap2|en" }));
+    await settle(6);
+    p.root.querySelector(".tb-project-open").click(); await settle(6);
+    expect(p.root.querySelector('[data-tile="M-1"] .tb-tag.wrapup')).toBeNull();
+    expect(p.root.querySelector('[data-tile="M-2"] .tb-tag.wrapup').textContent).toBe("To fill in");
+    p.root.querySelector(".tb-bar-head .btn-ghost").click(); await settle(6);
+    p.root.querySelector(".tb-wait-row .btn-primary").click(); await settle(8);      // M-1 is first: wrapped up
+    expect(p.root.querySelector("dialog")).toBeNull();
+    expect(posts()).toEqual(['POST /ui/tasks/cards/M-1/move {"to":"done","version":3}']);
+  });
+});
+
+describe("3g. a main task's tile says who works on it now, not only who owns it", () => {
+  const SUB = { ...REVIEW_CARD, kind: "sub", parentId: "M-1", needsReview: false, progress: null, title: "Review the API" };
+  const board = (mainStatus: string, subs: Array<Record<string, unknown>>) => ({ projects: [PROJECT], cards: [
+    { ...REVIEW_CARD, status: mainStatus, progress: { total: subs.length, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 } },
+    ...subs.map((x, i) => ({ ...SUB, id: `S-${i + 1}`, uuid: `s${i + 1}`, sort: i + 1, ...x })),
+  ] });
+  async function tile(b: unknown, key: string) {
+    handler = (path) => (path === "/ui/tasks/board" ? b : {});
+    await p.unmount();
+    (globalThis as any).localStorage.removeItem("agend_tasks_project");
+    await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: `fleet:tasks|${key}|en` }));
+    await settle(6);
+    p.root.querySelector(".tb-project-open").click(); await settle(6);
+    return p.root.querySelector('[data-tile="M-1"]');
+  }
+
+  it("the sub task in progress and its worker; else a blocked one; else the next one that can start", async () => {
+    let t = await tile(board("claimed", [{ status: "claimed", assignee: "beta" }, { status: "open", assignee: "alpha" }]), "now1");
+    expect(t.querySelector(".tb-tile-now").textContent).toBe("Working onS-1Review the API");
+    expect(t.querySelector(".tb-tile-foot .tb-who").textContent).toBe("beta");
+    expect(t.querySelector(".tb-tile-foot .tb-who").getAttribute("title")).toBe("Main task owner: alpha");
+    t = await tile(board("blocked", [{ status: "blocked", assignee: "beta" }]), "now2");
+    expect(t.querySelector(".tb-now-label").textContent).toBe("Blocked");
+    t = await tile(board("open", [{ status: "open", assignee: null, unmetDeps: [] }, { status: "open", assignee: "beta", unmetDeps: ["S-1"] }]), "now3");
+    expect(t.querySelector(".tb-tile-now").textContent).toBe("NextS-1Review the API");
+    expect(t.querySelector(".tb-tile-foot .tb-who").textContent).toBe("Unassigned");
+    t = await tile(board("review", [{ status: "done", assignee: "beta" }]), "now4");
+    expect(t.querySelector(".tb-tile-now")).toBeNull();
+    expect(t.querySelector(".tb-tile-foot .tb-who").textContent).toBe("Waiting for you");
   });
 });
 

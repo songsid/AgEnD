@@ -63,7 +63,7 @@ const BATCH_MAX = 30;
  */
 export class TaskBoardError extends Error {
   constructor(
-    readonly code: "not_found" | "invalid" | "too_long" | "forbidden" | "conflict" | "blocked_by_deps" | "needs_review",
+    readonly code: "not_found" | "invalid" | "too_long" | "forbidden" | "conflict" | "blocked_by_deps" | "needs_review" | "one_at_a_time",
     message: string,
     readonly key?: string,
     readonly args: Array<string | number> = [],
@@ -93,6 +93,18 @@ export interface AcceptanceItem {
   done: boolean;
 }
 
+/**
+ * Who handed a card out: the person who opened it on the dashboard, or the instance that opened it for another one (a
+ * coordinator such as a lead). A blocked card's question goes to an instance dispatcher first (step 2's wakes); it may
+ * answer it on the card and edit the card. Sub tasks take their main task's.
+ */
+export interface Dispatcher {
+  kind: "person" | "instance";
+  name: string;
+}
+/** What a write sets a dispatcher to: an instance by name, the person writing ({ kind: "person" }), or nobody. */
+export type DispatcherInput = { kind: "instance"; name: string } | { kind: "person" } | null;
+
 /** A row as the rules see it: `uuid` is the key, `code` (M-3, S-34) the number people and agents use. */
 export interface Card {
   uuid: string;
@@ -104,6 +116,7 @@ export interface Card {
   title: string;
   status: CardStatus;
   assignee: string | null;
+  dispatcher: Dispatcher | null;
   priority: CardPriority;
   size: CardSize | null;
   needsReview: boolean;
@@ -157,6 +170,7 @@ export interface CardView {
   title: string;
   status: CardStatus;
   assignee: string | null;
+  dispatcher: Dispatcher | null;
   priority: CardPriority;
   size: CardSize | null;
   needsReview: boolean;
@@ -207,6 +221,30 @@ export interface CardEvent {
   data: Record<string, unknown>;
 }
 
+/**
+ * Why an instance hears about one of its cards (step 2's wakes, task-board-waker.ts): someone else assigned it,
+ * started it, sent it back, answered its blocked question, commented, or finished the last card it waited for; the
+ * person confirmed it (its assignee and its dispatcher hear); it is blocked and the instance handed it out (decide);
+ * a main task went to the person by itself before its owner wrapped it up (wrap_up); or someone else cancelled it — a
+ * main task's cancel takes its unfinished sub tasks down with it, and their assignees hear (cancelled).
+ */
+export type WakeReason = "assigned" | "start" | "sent_back" | "answered" | "comment" | "ready" | "decide" | "approved" | "wrap_up" | "cancelled";
+
+/** One card's news for one instance from one committed write. Never sent to a page (it carries titles and text). */
+export interface Wake {
+  instance: string;
+  uuid: string;
+  code: string;
+  title: string;
+  /** The main task's number, for a sub task. */
+  parent: string | null;
+  reasons: WakeReason[];
+  /** Who did each (the last one, when several did the same). */
+  by: Partial<Record<WakeReason, string>>;
+  /** The words that came with a reason: a send-back's, an answer's, a comment's, a question's, a confirmation note. */
+  texts: Partial<Record<WakeReason, string>>;
+}
+
 /** What one committed write changed, for live views: the card numbers touched (none for a project change). */
 export interface BoardChange {
   /** The board's revision after this write (revision()). */
@@ -214,6 +252,8 @@ export interface BoardChange {
   ids: string[];
   actors: string[];
   projects: boolean;
+  /** Whom to wake about what (the fleet's waker); a page is sent the rest. */
+  wakes: Wake[];
 }
 
 export interface CardDetail {
@@ -242,6 +282,11 @@ export interface NewCard {
   /** Card numbers, or "#n" for the n-th card of the same batch. */
   dependsOn?: string[];
   assignee?: string | null;
+  /**
+   * Who handed it out. By default: the main task's for a sub task; else the person opening it on the dashboard, or the
+   * instance opening it for another one.
+   */
+  dispatcher?: DispatcherInput;
   /** Defaults to true for a main task and false for a sub task. */
   needsReview?: boolean;
 }
@@ -258,6 +303,7 @@ export interface CardPatch {
   size?: CardSize | null;
   priority?: CardPriority;
   assignee?: string | null;
+  dispatcher?: DispatcherInput;
   needsReview?: boolean;
   dependsOn?: string[];
   acceptance?: string[];
@@ -297,6 +343,14 @@ export interface MyWork {
   sentBack: Array<{ card: Card; entry: Entry }>;
   /** Main tasks it coordinates (they have sub tasks). */
   mains: Array<{ card: Card; progress: Progress }>;
+}
+
+/**
+ * What a read leaves out: the comments, logs and send-backs of these authors (instances kept out of sight, over the
+ * public link — #2304 review). Their entries are not counted, named as a card's last comment, or found by search.
+ */
+export interface ReadScope {
+  leaveOutAuthors?: readonly string[];
 }
 
 export interface SearchHit {
@@ -345,6 +399,24 @@ function checkAcceptance(items: string[], existing: AcceptanceItem[] = []): Acce
   });
 }
 
+/** A dispatcher as written: an instance by name, the person writing it, or nobody (null, "", "none"). */
+function toDispatcher(input: DispatcherInput, actor: Actor): Dispatcher | null {
+  if (input === null) return null;
+  if (input.kind === "person") {
+    if (!isPerson(actor)) throw new TaskBoardError("forbidden", "only a person can name themselves the dispatcher");
+    return { kind: "person", name: actor.name };
+  }
+  const name = normalizeAssignee(input.name);
+  return name ? { kind: "instance", name } : null;
+}
+/**
+ * A card an instance opened for itself and nobody handed out (its own review, its own notes): its own business, so it
+ * neither counts toward nor is held to the cards-at-once limit (#2303's busy-fleet check: a reviewer opens one per
+ * review and runs several). A sub task it splits off a card handed to it takes that card's dispatcher, so it counts.
+ */
+const openedForItself = (c: Card) => c.assignee !== null && c.createdBy === c.assignee && c.dispatcher === null;
+const isDispatcher = (card: Card, actor: Actor) => card.dispatcher?.kind === "instance" && !isPerson(actor) && card.dispatcher.name === actor.name;
+
 function normalizeAssignee(raw: string | null | undefined): string | null {
   const v = raw?.trim() ?? "";
   if (v === "" || v.toLowerCase() === "none") return null;
@@ -361,6 +433,16 @@ export function cardCode(raw: string): string | null {
 /** A card waits for the person's confirmation when it is finished. */
 export function requiresReview(card: Pick<Card, "needsReview">): boolean {
   return card.needsReview;
+}
+
+/**
+ * What a finished card still lacks for the person's confirmation: unchecked acceptance items, no result. A main task
+ * goes to review by itself when its last sub task is done (often a reviewer's), before its owner wrapped it up.
+ */
+export function wrapUpGap(card: Pick<Card, "acceptance" | "result">): { unchecked: number; noResult: boolean } | null {
+  const unchecked = card.acceptance.filter((a) => !a.done).length;
+  const noResult = !card.result.trim();
+  return unchecked || noResult ? { unchecked, noResult } : null;
 }
 
 function parseJsonArray<T>(raw: unknown, fallback: T[]): T[] {
@@ -383,6 +465,7 @@ function toCard(r: Row): Card {
     title: r.title as string,
     status: r.status as CardStatus,
     assignee: (r.assignee as string | null) ?? null,
+    dispatcher: r.dispatcher ? { kind: r.dispatcher_kind === "person" ? "person" : "instance", name: r.dispatcher as string } : null,
     priority: (r.priority as CardPriority) ?? "normal",
     size: (r.size as CardSize | null) ?? null,
     needsReview: Number(r.needs_review) === 1,
@@ -419,7 +502,8 @@ function toProject(r: Row): Project {
 
 export class TaskBoard {
   private listeners: Array<(change: BoardChange) => void> = [];
-  private pending: Array<{ code: string; actor: string }> = [];
+  private cardLimit: (name: string) => number = () => 1;
+  private pending: Array<{ code: string; uuid: string; actor: Actor; type: CardEventType; data: Record<string, unknown> }> = [];
   private projectsChanged = false;
   private notes: Note[] = [];
   /** The notes of the last write, until a caller of the `task` tool's old actions takes them (takeNotes). */
@@ -465,6 +549,8 @@ export class TaskBoard {
     add("submitted_at", "TEXT");
     add("done_at", "TEXT");
     add("seen_entry_id", "INTEGER NOT NULL DEFAULT 0");
+    add("dispatcher", "TEXT");
+    add("dispatcher_kind", "TEXT");
     this.db.exec(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_code ON tasks(code);
       CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
@@ -715,8 +801,14 @@ export class TaskBoard {
     return out;
   }
 
-  view(card: Card): CardView {
-    return this.views([card])[0]!;
+  view(card: Card, scope: ReadScope = {}): CardView {
+    return this.views([card], scope)[0]!;
+  }
+
+  /** ` AND <column> NOT IN (…)` for a scope's left-out authors, with its values (empty when none). */
+  private notBy(scope: ReadScope, column: string): { sql: string; args: string[] } {
+    const names = scope.leaveOutAuthors ?? [];
+    return names.length ? { sql: ` AND ${column} NOT IN (${names.map(() => "?").join(", ")})`, args: [...names] } : { sql: "", args: [] };
   }
 
   /**
@@ -725,7 +817,7 @@ export class TaskBoard {
    * queries per card: a board read stays a handful of statements however many cards it has (it runs on the fleet's
    * event loop). Same answers as progress(), unmetDeps() and newComments() card by card.
    */
-  views(cards: Card[]): CardView[] {
+  views(cards: Card[], scope: ReadScope = {}): CardView[] {
     if (!cards.length) return [];
     type Light = { code: string; status: CardStatus; deps: string[]; parent: string | null };
     const all = new Map<string, Light>();
@@ -740,15 +832,16 @@ export class TaskBoard {
         progress.set(light.parent, p);
       }
     }
+    const by = this.notBy(scope, "author"), eBy = this.notBy(scope, "e.author");
     const comments = new Map((this.db.prepare(
       `SELECT e.task_id AS task_id, n.n AS n, e.author AS author, e.author_kind AS author_kind, e.at AS at FROM task_entries e
-       JOIN (SELECT task_id, COUNT(*) AS n, MAX(id) AS last FROM task_entries WHERE kind IN ('comment', 'reject', 'approve') GROUP BY task_id) n ON e.id = n.last`,
-    ).all() as Array<{ task_id: string; n: number; author: string; author_kind: Actor["kind"]; at: string }>).map((r) => [r.task_id, r]));
+       JOIN (SELECT task_id, COUNT(*) AS n, MAX(id) AS last FROM task_entries WHERE kind IN ('comment', 'reject', 'approve')${by.sql} GROUP BY task_id) n ON e.id = n.last`,
+    ).all(...by.args) as Array<{ task_id: string; n: number; author: string; author_kind: Actor["kind"]; at: string }>).map((r) => [r.task_id, r]));
     const unseen = new Map((this.db.prepare(
       `SELECT t.id AS id, COUNT(e.id) AS n FROM tasks t JOIN task_entries e
-         ON e.task_id = t.id AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.author IS NOT t.assignee
+         ON e.task_id = t.id AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.author IS NOT t.assignee${eBy.sql}
        GROUP BY t.id`,
-    ).all() as Array<{ id: string; n: number }>).map((r) => [r.id, r.n]));
+    ).all(...eBy.args) as Array<{ id: string; n: number }>).map((r) => [r.id, r.n]));
     const code = (uuid: string) => all.get(uuid)?.code ?? uuid.slice(0, 8);
     /** unmetDeps(), on the light rows: own dependencies not done, then the main task's, each once. */
     const unmet = (deps: string[], parent: string | null, seen = new Set<string>()): string[] => {
@@ -768,6 +861,7 @@ export class TaskBoard {
         title: card.title,
         status: card.status,
         assignee: card.assignee,
+        dispatcher: card.dispatcher,
         priority: card.priority,
         size: card.size,
         needsReview: card.needsReview,
@@ -796,13 +890,13 @@ export class TaskBoard {
     });
   }
 
-  detail(ref: string): CardDetail {
+  detail(ref: string, scope: ReadScope = {}): CardDetail {
     const card = this.getCard(ref);
     const parent = card.parent ? this.byUuid(card.parent) : undefined;
     return {
-      card: this.view(card),
+      card: this.view(card, scope),
       parent: parent ? { id: parent.code, title: parent.title, status: parent.status } : null,
-      children: this.views(this.children(card.uuid)),
+      children: this.views(this.children(card.uuid), scope),
       comments: this.entries(card.uuid, ["comment", "reject", "approve"], 200),
       logs: this.entries(card.uuid, ["log"], 200),
       history: this.events(card.uuid, 200).filter((e) => e.type !== "reordered"),
@@ -852,7 +946,7 @@ export class TaskBoard {
    * Cards matching a phrase in their number, title, text fields, checklist or comments; live cards first, newest
    * first. `match` says where it matched when it is not the title.
    */
-  search(query: string, limit = 20): SearchHit[] {
+  search(query: string, limit = 20, scope: ReadScope = {}): SearchHit[] {
     const q = query.trim();
     if (!q) return [];
     const max = Math.min(Math.max(limit, 1), 50);
@@ -862,22 +956,25 @@ export class TaskBoard {
       if (exact) hits.push({ card: exact, match: null });
     }
     const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    // Named, as the rest of this statement: the left-out authors are :a0, :a1, …
+    const names = scope.leaveOutAuthors ?? [];
+    const notBy = { sql: names.length ? ` AND e.author NOT IN (${names.map((_, i) => `:a${i}`).join(", ")})` : "", params: Object.fromEntries(names.map((n, i) => [`a${i}`, n])) };
     const text = ["title", "description", "scope", "context", "state", "result", "blocked_reason"].map((f) => `t.${f} LIKE :q ESCAPE '\\'`).join(" OR ");
     const rows = this.db.prepare(
       `SELECT * FROM tasks t
        WHERE ${text}
          OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(t.acceptance) THEN t.acceptance ELSE '[]' END) j WHERE json_extract(j.value, '$.text') LIKE :q ESCAPE '\\')
-         OR EXISTS (SELECT 1 FROM task_entries e WHERE e.task_id = t.id AND e.text LIKE :q ESCAPE '\\')
+         OR EXISTS (SELECT 1 FROM task_entries e WHERE e.task_id = t.id AND e.text LIKE :q ESCAPE '\\'${notBy.sql})
        ORDER BY CASE WHEN t.status IN ('done', 'cancelled') THEN 1 ELSE 0 END, t.updated_at DESC
        LIMIT :max`,
-    ).all({ q: like, max }) as Row[];
+    ).all({ q: like, max, ...notBy.params }) as Row[];
     for (const card of rows.map(toCard)) {
-      if (!hits.some((h) => h.card.uuid === card.uuid)) hits.push({ card, match: this.matchOf(card, q, like) });
+      if (!hits.some((h) => h.card.uuid === card.uuid)) hits.push({ card, match: this.matchOf(card, q, like, notBy) });
     }
     return hits.slice(0, max);
   }
 
-  private matchOf(card: Card, q: string, like: string): SearchHit["match"] {
+  private matchOf(card: Card, q: string, like: string, notBy: { sql: string; params: Record<string, string> } = { sql: "", params: {} }): SearchHit["match"] {
     const needle = q.toLowerCase();
     if (card.title.toLowerCase().includes(needle)) return null;
     const snippet = (value: string) => {
@@ -891,8 +988,8 @@ export class TaskBoard {
     }
     const item = card.acceptance.find((a) => a.text.toLowerCase().includes(needle));
     if (item) return { field: "acceptance", text: snippet(item.text) };
-    const entry = this.db.prepare("SELECT kind, text FROM task_entries WHERE task_id = :id AND text LIKE :q ESCAPE '\\' ORDER BY id DESC LIMIT 1")
-      .get({ id: card.uuid, q: like }) as { kind: EntryKind; text: string } | undefined;
+    const entry = this.db.prepare(`SELECT kind, text FROM task_entries e WHERE task_id = :id AND text LIKE :q ESCAPE '\\'${notBy.sql} ORDER BY id DESC LIMIT 1`)
+      .get({ id: card.uuid, q: like, ...notBy.params }) as { kind: EntryKind; text: string } | undefined;
     if (entry) return { field: entry.kind === "log" ? "log" : "comment", text: snippet(entry.text) };
     return null;
   }
@@ -993,6 +1090,9 @@ export class TaskBoard {
           const needsReview = spec.needsReview ?? kind === "main";
           if (!needsReview && kind === "main" && !isPerson(actor)) throw new TaskBoardError("forbidden", "only a person can open a main task that skips their confirmation");
           const now = this.nowIso();
+          const assignee = spec.assignee !== undefined ? normalizeAssignee(spec.assignee) : isPerson(actor) ? null : actor.name;
+          const opener: Dispatcher | null = isPerson(actor) ? { kind: "person", name: actor.name }
+            : actor.kind === "instance" && assignee && assignee !== actor.name ? { kind: "instance", name: actor.name } : null;
           const card: Card = {
             uuid: randomUUID(),
             code: this.nextCode(kind === "main" ? "M" : "S"),
@@ -1001,7 +1101,8 @@ export class TaskBoard {
             parent: parent?.uuid ?? null,
             title,
             status: "open",
-            assignee: spec.assignee !== undefined ? normalizeAssignee(spec.assignee) : isPerson(actor) ? null : actor.name,
+            assignee,
+            dispatcher: spec.dispatcher !== undefined ? toDispatcher(spec.dispatcher, actor) : (parent?.dispatcher ?? opener),
             priority: spec.priority ?? "normal",
             size: spec.size ?? null,
             needsReview,
@@ -1025,7 +1126,7 @@ export class TaskBoard {
           };
           this.insert(card);
           this.codes.set(card.uuid, card.code);
-          this.event(actor, card, "created", { kind, project: projectId, parent: parent?.code ?? null, title, assignee: card.assignee });
+          this.event(actor, card, "created", { kind, project: projectId, parent: parent?.code ?? null, title, assignee: card.assignee, ...(card.dispatcher ? { dispatcher: card.dispatcher.name } : {}) });
           created.push(card);
           if (card.parent) mains.add(card.parent);
         } catch (err) {
@@ -1044,7 +1145,7 @@ export class TaskBoard {
       const card = this.getCard(ref);
       this.checkVersion(card, patch.version);
       const ai = !isPerson(actor);
-      const editsContent = (["title", "goal", "scope", "context", "state", "result", "blockedReason", "size", "priority", "needsReview", "dependsOn", "acceptance", "addAcceptance", "check", "uncheck"] as const)
+      const editsContent = (["title", "goal", "scope", "context", "state", "result", "blockedReason", "size", "priority", "needsReview", "dependsOn", "acceptance", "addAcceptance", "check", "uncheck", "dispatcher"] as const)
         .some((k) => patch[k] !== undefined);
       if (ai && editsContent && !this.canEdit(card, actor)) {
         throw new TaskBoardError("forbidden", `${card.code} belongs to ${card.assignee}; you can only comment on it`);
@@ -1079,6 +1180,7 @@ export class TaskBoard {
       }
       if (patch.size !== undefined) set("size", patch.size);
       if (patch.priority !== undefined) set("priority", patch.priority);
+      if (patch.dispatcher !== undefined) set("dispatcher", toDispatcher(patch.dispatcher, actor), "dispatcher", (d) => d?.name ?? null);
       if (patch.needsReview !== undefined) {
         if (ai && card.needsReview && !patch.needsReview) throw new TaskBoardError("forbidden", "only a person can clear \"needs review\"");
         set("needsReview", patch.needsReview);
@@ -1174,10 +1276,30 @@ export class TaskBoard {
         }
       }
 
-      if (card.kind === "main" && this.activeSubs(card.uuid).length) this.checkDerivedMove(card, actor, to, reason);
-      else this.checkManualMove(card, actor, to, reason);
+      // Back from blocked a reason has nothing else to be: it is the answer, a comment its assignee reads.
+      const comment = options.comment ?? (from === "blocked" && to === "claimed" && reason ? reason : undefined);
+      const derived = card.kind === "main" && this.activeSubs(card.uuid).length > 0;
+      // A dispatcher's answer does not start work its assignee has no room for (#2303 review): the answer is kept on the
+      // card as a comment the assignee reads, and the card waits, blocked, until the assignee resumes it.
+      if (from === "blocked" && to === "claimed" && !derived && card.assignee && card.assignee !== actor.name && isDispatcher(card, actor) && this.isOnBoard(card)) {
+        this.checkAnswer(card, comment);
+        const busy = this.busyWith(card, card.assignee);
+        if (busy.length) {
+          const text = checkText("the comment", comment!, CARD_LIMITS.comment);
+          this.entry(card, "comment", actor, text);
+          this.event(actor, card, "commented", { text });
+          card.version++;
+          card.updatedAt = this.nowIso();
+          this.save(card);
+          const codes = busy.map((c) => c.code).join(", ");
+          this.say("answer_kept", [card.assignee, codes, card.code], `${card.assignee} is working on ${codes}: your answer is on ${card.code} as a comment, and it stays blocked until ${card.assignee} resumes it`);
+          return { card, from, ...this.spoken() };
+        }
+      }
+      if (derived) this.checkDerivedMove(card, actor, to, reason, { comment });
+      else this.checkManualMove(card, actor, to, reason, { comment });
 
-      this.applyMove(card, actor, to, reason, options.comment);
+      this.applyMove(card, actor, to, reason, comment);
       return { card, from, ...this.spoken() };
     });
   }
@@ -1219,6 +1341,8 @@ export class TaskBoard {
       const card: Card = {
         uuid: randomUUID(), code: this.nextCode("M"), kind: "main", projectId: null, parent: null, title: params.title, status: "open",
         assignee: params.assignee ?? null, priority: params.priority ?? "normal", size: null, needsReview: false,
+        // Opened for another instance: the opener handed it out (its blocked question goes to it).
+        dispatcher: actor.kind === "instance" && params.assignee && params.assignee !== actor.name ? { kind: "instance", name: actor.name } : null,
         deps: this.checkDeps({ uuid: null, kind: "main", parent: null }, params.depends_on ?? []),
         goal: params.description ?? "", scope: "", acceptance: [], context: "", state: "", blockedReason: "", result: "", sort: this.nextSort(),
         createdBy: actor.name, version: 1, createdAt: now, updatedAt: now, startedAt: null, submittedAt: null, doneAt: null, seenEntryId: 0,
@@ -1285,7 +1409,7 @@ export class TaskBoard {
       const to: CardStatus = requiresReview(card) && !isPerson(actor) ? "review" : "done";
       if (this.heldToBoardRules(card, actor)) {
         if (card.status === "open") {
-          this.checkManualMove(card, actor, "claimed", "");
+          this.checkManualMove(card, actor, "claimed", "", { finishing: true });
           this.applyMove(card, actor, "claimed", "");
         }
         this.checkManualMove(card, actor, to, "");
@@ -1357,11 +1481,15 @@ export class TaskBoard {
 
   // ── Rules ───────────────────────────────────────────────
 
-  /** Cards moved by hand: sub tasks, and main tasks that have no sub tasks. */
-  private checkManualMove(card: Card, actor: Actor, to: CardStatus, reason: string): void {
+  /**
+   * Cards moved by hand: sub tasks, and main tasks that have no sub tasks. `comment` is the move's own comment (a
+   * dispatcher's answer); `finishing`: a claim on the way to done (the `task` tool's done of an open card).
+   */
+  private checkManualMove(card: Card, actor: Actor, to: CardStatus, reason: string, opts: { comment?: string; finishing?: boolean } = {}): void {
     const ai = !isPerson(actor);
     const from = card.status;
     const own = card.assignee === actor.name;
+    const startsWork = ai && !opts.finishing && this.isOnBoard(card);
     if (card.kind === "sub" && to !== "cancelled") {
       const main = card.parent ? this.byUuid(card.parent) : undefined;
       if (main?.status === "cancelled") throw new TaskBoardError("invalid", `main task ${main.code} is cancelled; restore it first to keep working on this`, "main_cancelled", [main.code]);
@@ -1377,15 +1505,20 @@ export class TaskBoard {
             if (unmet.length) {
               throw new TaskBoardError("blocked_by_deps", `${card.code} waits for ${unmet.map((c) => `${c.code} (${c.status})`).join(", ")}; do those first or take another card`);
             }
+            if (startsWork) this.checkOneAtATime(card, actor);
             if (!card.assignee) this.assign(card, actor.name, actor);
           } else if (unmet.length) {
             this.say("deps_unmet", [unmet.map((c) => c.code).join(", ")], `note: ${unmet.map((c) => c.code).join(", ")} ${unmet.length === 1 ? "is" : "are"} not done yet`);
           }
         } else if (from === "blocked") {
-          if (ai && !own) throw notOwner();
+          if (ai && !own) {
+            if (!isDispatcher(card, actor)) throw notOwner();
+            this.checkAnswer(card, opts.comment);
+          } else if (startsWork) this.checkOneAtATime(card, actor);
         } else if (from === "review") {
           if (ai) {
             if (!own) throw notOwner();
+            if (startsWork) this.checkOneAtATime(card, actor);
             // Out of the person's queue: they read why.
             if (!reason) throw new TaskBoardError("invalid", "taking a card back from review needs a reason (the person reads it)");
             this.entry(card, "comment", actor, `withdrawn from review: ${reason}`);
@@ -1452,7 +1585,7 @@ export class TaskBoard {
    * A main task with sub tasks follows them. By hand: block and unblock it, resubmit it after a rejection (its owner),
    * and for a person approve, reject, reopen, cancel and restore it.
    */
-  private checkDerivedMove(card: Card, actor: Actor, to: CardStatus, reason: string): void {
+  private checkDerivedMove(card: Card, actor: Actor, to: CardStatus, reason: string, opts: { comment?: string } = {}): void {
     const ai = !isPerson(actor);
     const from = card.status;
     const own = card.assignee === actor.name;
@@ -1470,7 +1603,10 @@ export class TaskBoard {
       return;
     }
     if (from === "blocked" && to === "claimed") {
-      if (ai && !own) throw notOwner();
+      if (ai && !own) {
+        if (!isDispatcher(card, actor)) throw notOwner();
+        this.checkAnswer(card, opts.comment);
+      }
       return;
     }
     if (ai) {
@@ -1511,7 +1647,59 @@ export class TaskBoard {
   }
 
   private canEdit(card: Card, actor: Actor): boolean {
-    return card.assignee === null || card.assignee === actor.name || card.createdBy === actor.name;
+    return card.assignee === null || card.assignee === actor.name || card.createdBy === actor.name || isDispatcher(card, actor);
+  }
+
+  /** Its dispatcher answering a blocked card says what was decided: the assignee reads it. */
+  private checkAnswer(card: Card, comment: string | undefined): void {
+    if (!comment?.trim()) throw new TaskBoardError("invalid", `answering ${card.code}'s blocked question takes the decision as a comment`);
+  }
+
+  /**
+   * An instance works on one card of the board at a time — or as many as its `board_cards_at_once` allows: starting
+   * another (claiming, resuming a blocked one, taking one back from review) at its limit is refused. Blocked cards,
+   * main tasks that follow their sub tasks and cards it opened for itself do not count; the `task` tool's own tasks and
+   * cards it opened for itself are not limited, nor is a person.
+   */
+  private checkOneAtATime(card: Card, actor: Actor): void {
+    if (openedForItself(card)) return;
+    const busy = this.busyWith(card, actor.name);
+    if (!busy.length) return;
+    const list = busy.map((c) => `${c.code} "${c.title.length > 30 ? `${c.title.slice(0, 30)}…` : c.title}"`).join(", ");
+    const limit = this.limitOf(actor.name);
+    throw new TaskBoardError("one_at_a_time", limit === 1
+      ? `you already have ${list} in progress. One card at a time: finish it first; if you cannot go on, move it to blocked with a reason, then start ${card.code}`
+      : `you already have ${list} in progress: at most ${limit} cards at a time. Finish one first; if you cannot go on, move one to blocked with a reason, then start ${card.code}`);
+  }
+
+  /** The cards that keep `name` from starting `card` now: those it has in progress, once they reach its limit. */
+  private busyWith(card: Card, name: string): Card[] {
+    const counted = this.inProgress(name).filter((c) => c.uuid !== card.uuid && !openedForItself(c));
+    return counted.length >= this.limitOf(name) ? counted : [];
+  }
+
+  /** The fleet's `board_cards_at_once` for an instance: a whole number of at least 1, else 1. */
+  private limitOf(name: string): number {
+    const n = this.cardLimit(name);
+    return Number.isInteger(n) && n >= 1 ? n : 1;
+  }
+
+  /** For `mine`: the cards that count toward an instance's limit, when there are more than it allows (a person moved them). */
+  overLimit(name: string): { count: number; limit: number } | null {
+    const count = this.inProgress(name).filter((c) => !openedForItself(c)).length;
+    const limit = this.limitOf(name);
+    return count > limit ? { count, limit } : null;
+  }
+
+  /** How many handed-out cards each instance may have in progress (the fleet reads its config; default 1). */
+  setCardLimit(limit: (name: string) => number): void {
+    this.cardLimit = limit;
+  }
+
+  /** The board cards an instance works on itself right now (main tasks that follow their sub tasks aside). */
+  inProgress(name: string): Card[] {
+    return (this.db.prepare("SELECT * FROM tasks WHERE assignee = ? AND status = 'claimed' ORDER BY sort").all(name) as Row[]).map(toCard)
+      .filter((c) => this.isOnBoard(c) && !(c.kind === "main" && this.activeSubs(c.uuid).length));
   }
 
   private personOnly(actor: Actor, what: string): void {
@@ -1648,6 +1836,108 @@ export class TaskBoard {
     return notes;
   }
 
+  // ── Wakes ───────────────────────────────────────────────
+
+  /**
+   * Whom this write wakes, read from its events once it is all written (still inside it): an instance hears only about
+   * what someone else did to a card that is its own — or that it handed out (a blocked question, a confirmation). The
+   * board's own catch-up wakes nobody, except that a card finishing — by hand or by itself — readies the cards that
+   * waited only for it. wakeHolds() then drops what no longer stands.
+   */
+  private settleWakes(events: TaskBoard["pending"]): Wake[] {
+    const out = new Map<string, Wake>();
+    const add = (card: Card, instance: string | null | undefined, reason: WakeReason, by: Actor, text?: string) => {
+      if (!instance || instance === by.name) return;
+      const key = `${instance}\u0000${card.uuid}`;
+      const w = out.get(key) ?? { instance, uuid: card.uuid, code: card.code, title: card.title, parent: card.parent ? this.codeOf(card.parent) : null, reasons: [], by: {}, texts: {} };
+      if (!w.reasons.includes(reason)) w.reasons.push(reason);
+      if (text) w.texts[reason] = text;
+      w.by[reason] = by.name;
+      out.set(key, w);
+    };
+    const comments = new Map<string, string>();
+    for (const e of events) if (e.type === "commented") comments.set(e.uuid, String(e.data.text ?? ""));
+    for (const e of events) {
+      const card = this.byUuid(e.uuid);
+      if (!card) continue;
+      const d = e.data as { from?: CardStatus; to?: CardStatus; auto?: boolean; reason?: string; assignee?: string | null; text?: string; cascade?: string };
+      const dispatcherOf = () => (card.dispatcher?.kind === "instance" && card.dispatcher.name !== card.assignee ? card.dispatcher.name : null);
+      // The `task` tool's own tasks are handed over with a message of their own (delegate_task): no notice besides.
+      if (e.type === "created") { if (this.isOnBoard(card)) add(card, d.assignee ?? null, "assigned", e.actor); }
+      else if (e.type === "assigned") { if (this.isOnBoard(card)) add(card, (d.to as string | null) ?? null, "assigned", e.actor); }
+      else if (e.type === "commented") add(card, card.assignee, "comment", e.actor, d.text);
+      else if (e.type === "moved") {
+        if (d.to === "done") this.wakeReady(card, e.actor, add);
+        if (d.to === "cancelled") {
+          // Taken down with its main task: why the main task was cancelled.
+          const main = d.cascade ? events.find((x) => x.code === d.cascade && x.type === "moved" && x.data.to === "cancelled") : undefined;
+          const why = d.cascade ? `with its main task ${d.cascade}${main?.data.reason ? `: ${String(main.data.reason)}` : ""}` : d.reason;
+          add(card, card.assignee, "cancelled", e.actor, why);
+          continue;
+        }
+        if (d.auto) {
+          if (d.to === "review" && card.kind === "main" && wrapUpGap(card)) add(card, card.assignee, "wrap_up", e.actor);
+          continue;
+        }
+        if (d.from === "open" && d.to === "claimed") add(card, card.assignee, "start", e.actor);
+        else if (d.from === "blocked" && d.to === "claimed") add(card, card.assignee, "answered", e.actor, comments.get(card.uuid));
+        else if (d.from === "review" && (d.to === "claimed" || d.to === "open") && isPerson(e.actor)) add(card, card.assignee, "sent_back", e.actor, d.reason);
+        else if (d.from === "review" && d.to === "done" && isPerson(e.actor)) {
+          add(card, card.assignee, "approved", e.actor, d.reason);
+          add(card, dispatcherOf(), "approved", e.actor, d.reason);
+        }
+        if (d.to === "blocked" && !isPerson(e.actor)) add(card, dispatcherOf(), "decide", e.actor, d.reason);
+      }
+    }
+    return [...out.values()].map((w) => this.wakeHolds(w)).filter((w): w is Wake => w !== null);
+  }
+
+  /** A finished card readies the open cards that waited only for it (a sub task also waits for its main task's). */
+  private wakeReady(done: Card, by: Actor, add: (card: Card, instance: string | null, reason: WakeReason, by: Actor) => void): void {
+    const rows = this.db.prepare("SELECT * FROM tasks WHERE status = 'open' AND assignee IS NOT NULL AND (depends_on LIKE ? OR parent_id IN (SELECT id FROM tasks WHERE depends_on LIKE ?))")
+      .all(`%"${done.uuid}"%`, `%"${done.uuid}"%`) as Row[];
+    for (const card of rows.map(toCard)) if (!this.unmetDeps(card).length) add(card, card.assignee, "ready", by);
+  }
+
+  /**
+   * What of a wake still stands now (at the end of its write, and again when the fleet sends it): a finished card is
+   * news only as a confirmation; a card that is no longer the instance's is not; a question only while the card is
+   * blocked and the instance still handed it out; a wrap-up only while it waits unfinished; and an assignment or a
+   * comment only once the card can start (its "ready" wakes it then). What asks the instance to act holds only while
+   * it still can (#2303 review): "ready" while the card is open with nothing left to wait for, "start" and "answered"
+   * while it is in progress, "sent back" while it is back with the instance; a comment only while its assignee has not
+   * read it (its own write since showed it, as the `task` tool's answer). null when nothing is left.
+   */
+  wakeHolds(wake: Wake): Wake | null {
+    const card = this.byUuid(wake.uuid);
+    if (!card) return null;
+    const handedOut = card.dispatcher?.kind === "instance" && card.dispatcher.name === wake.instance;
+    const own = card.assignee === wake.instance;
+    const waiting = this.unmetDeps(card).length > 0;
+    let reasons = wake.reasons.filter((r) => {
+      if (r === "approved") return card.status === "done" && (own || handedOut);
+      if (r === "cancelled") return card.status === "cancelled" && own;
+      if (isFinished(card)) return false;
+      if (r === "decide") return handedOut && card.status === "blocked";
+      if (!own) return false;
+      if (r === "wrap_up") return card.status === "review" && wrapUpGap(card) !== null;
+      if (r === "assigned") return !waiting;
+      if (r === "comment") return !waiting && this.newComments(card).length > 0;
+      if (r === "ready") return card.status === "open" && !waiting;
+      if (r === "start" || r === "answered") return card.status === "claimed";
+      if (r === "sent_back") return card.status === "claimed" || card.status === "open";
+      return true;
+    });
+    // One piece of news says it all: the answer is the comment, a send-back outweighs the rest.
+    if (reasons.includes("answered")) reasons = reasons.filter((r) => r !== "comment");
+    if (reasons.includes("sent_back")) reasons = reasons.filter((r) => r !== "comment" && r !== "start");
+    if (reasons.includes("assigned")) reasons = reasons.filter((r) => r !== "start" && r !== "ready");
+    if (reasons.includes("cancelled")) reasons = ["cancelled"];
+    if (!reasons.length) return null;
+    const keep = <T>(o: Partial<Record<WakeReason, T>>) => Object.fromEntries(Object.entries(o).filter(([r]) => reasons.includes(r as WakeReason))) as Partial<Record<WakeReason, T>>;
+    return { ...wake, title: card.title, reasons, texts: keep(wake.texts), by: keep(wake.by) };
+  }
+
   // ── Helpers ─────────────────────────────────────────────
 
   /**
@@ -1660,16 +1950,18 @@ export class TaskBoard {
     this.projectsChanged = false;
     this.notes = [];
     try {
+      let wakes: Wake[] = [];
       const result = this.db.transaction(() => {
         const r = fn();
         if (this.pending.length || this.projectsChanged) this.db.prepare("UPDATE task_counters SET next = next + 1 WHERE prefix = 'R'").run();
+        wakes = this.settleWakes(this.pending);
         return r;
       }).immediate();
       this.lastNotes = this.notes.map((n) => n.text);
       const touched = this.pending;
       const projects = this.projectsChanged;
       if (touched.length || projects) {
-        const change: BoardChange = { rev: this.revision(), ids: [...new Set(touched.map((e) => e.code))], actors: [...new Set(touched.map((e) => e.actor))], projects };
+        const change: BoardChange = { rev: this.revision(), ids: [...new Set(touched.map((e) => e.code))], actors: [...new Set(touched.map((e) => e.actor.name))], projects, wakes };
         for (const listener of this.listeners) {
           try { listener(change); } catch { /* a listener must not break a write that already committed */ }
         }
@@ -1791,17 +2083,17 @@ export class TaskBoard {
   private event(actor: Actor, card: Card, type: CardEventType, data: Record<string, unknown>): void {
     this.db.prepare("INSERT INTO task_events (at, actor, actor_kind, task_id, type, data) VALUES (?, ?, ?, ?, ?, ?)")
       .run(this.nowIso(), actor.name, actor.kind, card.uuid, type, JSON.stringify(data));
-    this.pending.push({ code: card.code, actor: actor.name });
+    this.pending.push({ code: card.code, uuid: card.uuid, actor, type, data });
   }
 
   private insert(card: Card): void {
     this.db.prepare(
-      `INSERT INTO tasks (id, code, kind, project_id, parent_id, title, description, status, priority, assignee, created_by, depends_on, result,
+      `INSERT INTO tasks (id, code, kind, project_id, parent_id, title, description, status, priority, assignee, dispatcher, dispatcher_kind, created_by, depends_on, result,
         scope, acceptance, context, state, blocked_reason, size, needs_review, version, sort, created_at, updated_at, started_at, submitted_at, done_at, seen_entry_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       card.uuid, card.code, card.kind, card.projectId, card.parent, card.title, card.goal === "" ? null : card.goal, card.status, card.priority,
-      card.assignee, card.createdBy, card.deps.length ? JSON.stringify(card.deps) : null, card.result === "" ? null : card.result,
+      card.assignee, card.dispatcher?.name ?? null, card.dispatcher?.kind ?? null, card.createdBy, card.deps.length ? JSON.stringify(card.deps) : null, card.result === "" ? null : card.result,
       card.scope, JSON.stringify(card.acceptance), card.context, card.state, card.blockedReason, card.size, card.needsReview ? 1 : 0,
       card.version, card.sort, card.createdAt, card.updatedAt, card.startedAt, card.submittedAt, card.doneAt, card.seenEntryId,
     );
@@ -1810,12 +2102,13 @@ export class TaskBoard {
   /** Empty text is stored as NULL in the columns the `task` tool has always had (description, result, depends_on). */
   private save(card: Card): void {
     this.db.prepare(
-      `UPDATE tasks SET project_id = ?, title = ?, description = ?, status = ?, priority = ?, assignee = ?, depends_on = ?, result = ?,
-        scope = ?, acceptance = ?, context = ?, state = ?, blocked_reason = ?, size = ?, needs_review = ?, version = ?, sort = ?,
-        updated_at = ?, started_at = ?, submitted_at = ?, done_at = ?, seen_entry_id = ?
+      `UPDATE tasks SET project_id = ?, title = ?, description = ?, status = ?, priority = ?, assignee = ?, dispatcher = ?, dispatcher_kind = ?,
+        depends_on = ?, result = ?, scope = ?, acceptance = ?, context = ?, state = ?, blocked_reason = ?, size = ?, needs_review = ?, version = ?,
+        sort = ?, updated_at = ?, started_at = ?, submitted_at = ?, done_at = ?, seen_entry_id = ?
        WHERE id = ?`,
     ).run(
       card.projectId, card.title, card.goal === "" ? null : card.goal, card.status, card.priority, card.assignee,
+      card.dispatcher?.name ?? null, card.dispatcher?.kind ?? null,
       card.deps.length ? JSON.stringify(card.deps) : null, card.result === "" ? null : card.result,
       card.scope, JSON.stringify(card.acceptance), card.context, card.state, card.blockedReason, card.size, card.needsReview ? 1 : 0,
       card.version, card.sort, card.updatedAt, card.startedAt, card.submittedAt, card.doneAt, card.seenEntryId, card.uuid,

@@ -102,6 +102,7 @@ const HOT_KEY_PROBES: Record<string, unknown> = {
   tags: ["one", "two"],
   log_level: "debug",
   cross_instance_visibility: "summary",
+  board_cards_at_once: 3,
 };
 
 describe("hot/cold parity between the fleet's hot set and the daemon", () => {

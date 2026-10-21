@@ -92,6 +92,8 @@ const TaskUpdateSchema = z.object({
 // The task board (scheduler/task-board.ts). Coarse bounds here; the board checks each field's own limit.
 const BOARD_TEXT = 8_192;
 const CardRef = z.string().min(1).max(64);
+/** Who handed a card out: an instance, the person writing ({ kind: "person" }), or nobody. */
+const DispatcherSchema = z.union([z.object({ kind: z.literal("instance"), name: z.string().min(1).max(128) }).strict(), z.object({ kind: z.literal("person") }).strict()]).nullable();
 const CardCreateSchema = z.object({
   kind: z.enum(["main", "sub"]).optional(),
   project: z.union([z.number().int(), z.string().max(256)]).nullable().optional(),
@@ -105,6 +107,7 @@ const CardCreateSchema = z.object({
   priority: z.enum(CARD_PRIORITIES).optional(),
   dependsOn: z.array(CardRef).max(50).optional(),
   assignee: z.string().max(128).nullable().optional(),
+  dispatcher: DispatcherSchema.optional(),
   needsReview: z.boolean().optional(),
 }).strict();
 
@@ -120,6 +123,7 @@ const CardPatchSchema = z.object({
   size: z.enum(CARD_SIZES).nullable().optional(),
   priority: z.enum(CARD_PRIORITIES).optional(),
   assignee: z.string().max(128).nullable().optional(),
+  dispatcher: DispatcherSchema.optional(),
   needsReview: z.boolean().optional(),
   dependsOn: z.array(CardRef).max(50).optional(),
   acceptance: z.array(z.string().max(1024)).max(50).optional(),
@@ -2134,8 +2138,22 @@ export function handleWebRequest(
     if (gateway && method !== "GET") { json(res, 403, { error: "task_board_not_over_public_link", code: "forbidden", key: "not_over_public_link" }); return true; }
     // …nor shows the cards of instances kept out of sight (cross_instance_visibility: hidden).
     const fleet = ctx.fleetConfig as Parameters<typeof crossInstanceVisibility>[0];
-    const hidden = (c: { assignee: string | null; createdBy: string }) => !!gateway
-      && [c.assignee, c.createdBy].some((n) => !!n && !!ctx.fleetConfig?.instances?.[n] && crossInstanceVisibility(fleet, n) === "hidden");
+    const hiddenName = (n: unknown) => !!gateway && typeof n === "string" && !!n && !!ctx.fleetConfig?.instances?.[n] && crossInstanceVisibility(fleet, n) === "hidden";
+    const hidden = (c: { assignee: string | null; createdBy: string; dispatcher: { name: string } | null }) => [c.assignee, c.createdBy, c.dispatcher?.name].some(hiddenName);
+    // #2303 review: what a visible card shows of the cards around it follows the same rule — its children, its main
+    // task (a search hit's too) — and so do the words and the history a hidden instance left on it.
+    // …and a hidden instance's words on a visible card are not counted, named or found there (#2304 review).
+    const scope = { leaveOutAuthors: gateway ? Object.keys(ctx.fleetConfig?.instances ?? {}).filter(hiddenName) : [] };
+    const hiddenRef = (ref: string | null) => { const c = ref ? board.findCard(ref) : undefined; return !!c && hidden(c); };
+    const mentionsHidden = (v: unknown): boolean => (typeof v === "string" ? hiddenName(v) : !!v && typeof v === "object" && Object.values(v).some(mentionsHidden));
+    const shown = (d: ReturnType<typeof board.detail>): typeof d => !gateway ? d : {
+      ...d,
+      parent: d.card.parentId && hiddenRef(d.card.parentId) ? null : d.parent,
+      children: d.children.filter((c) => !hidden(c)),
+      comments: d.comments.filter((e) => !hiddenName(e.author)),
+      logs: d.logs.filter((e) => !hiddenName(e.author)),
+      history: d.history.filter((e) => !hiddenName(e.actor) && !mentionsHidden(e.data)),
+    };
     const card = /^\/ui\/tasks\/cards\/([^/]+)(?:\/(move|reorder))?$/.exec(path);
     const project = /^\/ui\/tasks\/projects\/(\d+)$/.exec(path);
     try {
@@ -2152,20 +2170,20 @@ export function handleWebRequest(
         const kept = key ? boardBodies.get(board) : undefined;
         if (kept && kept.key === key) { jsonText(res, 200, kept.body); return true; }
         const cards = board.boardCards(undefined, allDone).filter((c) => !hidden(c));
-        const body = JSON.stringify({ rev, cards: board.views(cards), projects: board.listProjects(true), stats: board.projectStats() });
+        const body = JSON.stringify({ rev, cards: board.views(cards, scope), projects: board.listProjects(true), stats: board.projectStats() });
         if (key) boardBodies.set(board, { key, body });
         jsonText(res, 200, body);
         return true;
       }
       if (method === "GET" && path === "/ui/tasks/search") {
         const names = new Map(board.listProjects(true).map((p) => [p.id, p.name]));
-        const hits = board.search(url.searchParams.get("q") ?? "", Number(url.searchParams.get("limit")) || 20).filter((h) => !hidden(h.card));
-        const views = board.views(hits.map((h) => h.card));
+        const hits = board.search(url.searchParams.get("q") ?? "", Number(url.searchParams.get("limit")) || 20, scope).filter((h) => !hidden(h.card));
+        const views = board.views(hits.map((h) => h.card), scope);
         const results = hits.map(({ card: c, match }, i) => ({
           card: views[i],
           match,
           project: c.projectId === null ? null : names.get(c.projectId) ?? null,
-          parentTitle: c.parent ? board.findCard(c.parent)?.title ?? null : null,
+          parentTitle: c.parent && !hiddenRef(c.parent) ? board.findCard(c.parent)?.title ?? null : null,
         }));
         json(res, 200, { results });
         return true;
@@ -2173,7 +2191,7 @@ export function handleWebRequest(
       if (method === "GET" && card && !card[2]) {
         const found = board.getCard(ref);
         if (hidden(found)) { json(res, 404, { error: "no such card", code: "not_found" }); return true; }
-        json(res, 200, board.detail(ref));
+        json(res, 200, shown(board.detail(ref, scope)));
         return true;
       }
       if (method === "POST" && path === "/ui/tasks/cards") {

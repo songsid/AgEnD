@@ -23,7 +23,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SchedulerDb } from "../src/scheduler/db.js";
-import { cardCode, TaskBoardError, type Actor, type BoardChange, type TaskBoard } from "../src/scheduler/task-board.js";
+import { cardCode, TaskBoardError, type Actor, type BoardChange, type TaskBoard, type WakeReason } from "../src/scheduler/task-board.js";
 
 const ANN: Actor = { kind: "person", name: "Ann" };
 const DEV: Actor = { kind: "instance", name: "dev-a" };
@@ -206,8 +206,9 @@ describe("4. who confirms what", () => {
     const m = main(board, DEV);
     const plain = sub(board, DEV, m.code);
     const flagged = sub(board, DEV, m.code, { needsReview: true });
-    for (const c of [plain, flagged]) board.moveCard(DEV, c.code, "claimed");
+    board.moveCard(DEV, plain.code, "claimed");
     board.moveCard(DEV, plain.code, "done", { result: "r" });
+    board.moveCard(DEV, flagged.code, "claimed");                 // one card at a time (section 13)
     expect(refusal(() => board.moveCard(DEV, flagged.code, "done", { result: "r" }))).toBe("needs_review");
     expect(refusal(() => board.updateCard(DEV, flagged.code, { needsReview: false }))).toBe("forbidden");
     board.moveCard(DEV, flagged.code, "review", { result: "r" });
@@ -409,10 +410,10 @@ describe("9. change notifications and search", () => {
     expect(() => board.moveCard(DEV, s.code, "done")).toThrow();
     board.createProject(ANN, { name: "Other" });
     expect(heard).toEqual([
-      { rev: 2, ids: ["M-1"], actors: ["dev-a"], projects: false },
-      { rev: 3, ids: ["S-1"], actors: ["dev-a"], projects: false },
-      { rev: 4, ids: ["S-1", "M-1"], actors: ["dev-a"], projects: false },
-      { rev: 5, ids: [], actors: [], projects: true },
+      { rev: 2, ids: ["M-1"], actors: ["dev-a"], projects: false, wakes: [] },
+      { rev: 3, ids: ["S-1"], actors: ["dev-a"], projects: false, wakes: [] },
+      { rev: 4, ids: ["S-1", "M-1"], actors: ["dev-a"], projects: false, wakes: [] },
+      { rev: 5, ids: [], actors: [], projects: true, wakes: [] },
     ]);
   });
 
@@ -713,5 +714,191 @@ describe("12. retention keeps the board's record", () => {
     expect(again.board.findCard(s.code)).toBeUndefined();
     expect(count(path, "SELECT COUNT(*) AS n FROM task_entries")).toBe(0);
     expect(count(path, "SELECT COUNT(*) AS n FROM task_events")).toBe(0);
+  });
+});
+
+describe("13. an instance works on one card of the board at a time", () => {
+  it("a second card is refused while one is in progress — claiming, resuming a blocked one, taking one back from review", () => {
+    const { board } = withProject();
+    const m = main(board, ANN, { assignee: "dev-a" });
+    const [a, b, c] = [sub(board, ANN, m.code, { assignee: "dev-a" }), sub(board, ANN, m.code, { assignee: "dev-a" }), sub(board, ANN, m.code, { assignee: "dev-a", needsReview: true })];
+    board.moveCard(DEV, a.code, "claimed");
+    expect(refusal(() => board.moveCard(DEV, b.code, "claimed"))).toBe("one_at_a_time");
+    expect(() => board.moveCard(DEV, b.code, "claimed")).toThrow(/you already have S-1 "A step" in progress/);
+    // Blocked work does not count: block it, start the next.
+    board.moveCard(DEV, a.code, "blocked", { reason: "which scores count?" });
+    board.moveCard(DEV, b.code, "claimed");
+    expect(refusal(() => board.moveCard(DEV, a.code, "claimed"))).toBe("one_at_a_time");
+    board.moveCard(DEV, b.code, "done", { result: "r" });
+    board.moveCard(DEV, c.code, "claimed");
+    board.moveCard(DEV, c.code, "review", { result: "r" });
+    board.moveCard(DEV, a.code, "claimed");
+    expect(refusal(() => board.moveCard(DEV, c.code, "claimed", { reason: "found a bug" }))).toBe("one_at_a_time");
+    // The main task that follows these sub tasks is in progress too, and does not count.
+    expect(board.getCard(m.code).status).toBe("claimed");
+    expect(board.inProgress("dev-a").map((x) => x.code)).toEqual([a.code]);
+  });
+
+  it("the person is not limited, the tool's own tasks neither count nor are counted, and `task done` of an open card passes", () => {
+    const { db, board } = withProject();
+    const [x, y] = [main(board, ANN, { assignee: "dev-a" }), main(board, ANN, { assignee: "dev-a" })];
+    board.moveCard(ANN, x.code, "claimed");
+    board.moveCard(ANN, y.code, "claimed");                       // the person moves the instance's cards as they like
+    expect(board.inProgress("dev-a")).toHaveLength(2);
+    const plain = [db.createTask({ title: "P1", created_by: "dev-a" }), db.createTask({ title: "P2", created_by: "dev-a" })];
+    for (const t of plain) db.claimTask(t.id, "dev-a", DEV);       // the tool's own tasks: as before
+    expect(board.inProgress("dev-a").map((c) => c.code)).toEqual([x.code, y.code]);
+    board.moveCard(ANN, y.code, "open");
+    const z = main(board, ANN, { assignee: "dev-a", needsReview: false });
+    expect(db.completeTask(z.uuid, "r", DEV).status).toBe("done");   // claimed on the way to done: no new work started
+  });
+});
+
+describe("14. who handed a card out (dispatcher)", () => {
+  it("defaults: the person who opened it, the instance that opened it for another, nobody for its own; sub tasks take their main task's", () => {
+    const { db, board } = withProject();
+    expect(main(board, ANN).dispatcher).toEqual({ kind: "person", name: "Ann" });
+    const lead: Actor = { kind: "instance", name: "lead" };
+    const forDev = main(board, lead, { assignee: "dev-a" });
+    expect(forDev.dispatcher).toEqual({ kind: "instance", name: "lead" });
+    expect(main(board, DEV).dispatcher).toBeNull();
+    expect(sub(board, DEV, forDev.code, { assignee: "dev-a" }).dispatcher).toEqual({ kind: "instance", name: "lead" });
+    expect(main(board, DEV, { dispatcher: { kind: "instance", name: "lead" } }).dispatcher).toEqual({ kind: "instance", name: "lead" });
+    // The tool's plain create for another instance, too; and it is stored.
+    const t = db.createTask({ title: "For dev-b", created_by: "lead", assignee: "dev-b" });
+    expect(board.getCard(t.id).dispatcher).toEqual({ kind: "instance", name: "lead" });
+  });
+
+  it("the dispatcher edits the card and answers its blocked question with the decision; another instance does neither", () => {
+    const { board } = withProject();
+    const lead: Actor = { kind: "instance", name: "lead" };
+    // Opened by the person, handed out through the lead: the lead neither opened it nor owns it.
+    const card = main(board, ANN, { assignee: "dev-a", dispatcher: { kind: "instance", name: "lead" } });
+    board.moveCard(DEV, card.code, "claimed");
+    board.moveCard(DEV, card.code, "blocked", { reason: "error codes or messages?" });
+    expect(board.updateCard(lead, card.code, { context: "decided by the person: codes" }).card.context).toBe("decided by the person: codes");
+    expect(refusal(() => board.updateCard(DEV2, card.code, { context: "x" }))).toBe("forbidden");
+    expect(refusal(() => board.moveCard(DEV2, card.code, "claimed", { comment: "codes" }))).toBe("forbidden");
+    expect(() => board.moveCard(lead, card.code, "claimed")).toThrow(/takes the decision as a comment/);
+    board.moveCard(lead, card.code, "claimed", { comment: "the person says: codes" });
+    expect(board.getCard(card.code)).toMatchObject({ status: "claimed", assignee: "dev-a" });
+    expect(board.detail(card.code).comments.map((e) => e.text)).toEqual(["the person says: codes"]);
+    expect(board.newComments(board.getCard(card.code)).map((e) => e.author)).toEqual(["lead"]);       // new to its assignee
+  });
+
+  it("changed like a field: an instance names one, a person names themselves; only a person is a person", () => {
+    const { board } = withProject();
+    const card = main(board, DEV);
+    expect(board.updateCard(DEV, card.code, { dispatcher: { kind: "instance", name: "lead" } }).card.dispatcher).toEqual({ kind: "instance", name: "lead" });
+    expect(refusal(() => board.updateCard(DEV, card.code, { dispatcher: { kind: "person" } }))).toBe("forbidden");
+    expect(board.updateCard(ANN, card.code, { dispatcher: { kind: "person" } }).card.dispatcher).toEqual({ kind: "person", name: "Ann" });
+    expect(board.updateCard(ANN, card.code, { dispatcher: null }).card.dispatcher).toBeNull();
+    expect(board.detail(card.code).history.filter((e) => e.type === "updated").map((e) => (e.data.changes as Record<string, unknown>).dispatcher))
+      .toEqual([{ from: null, to: "lead" }, { from: "lead", to: "Ann" }, { from: "Ann", to: null }]);
+  });
+});
+
+describe("15. whom a write wakes (step 2)", () => {
+  function heard(board: TaskBoard) {
+    const wakes: Array<{ to: string; code: string; reasons: string[]; by: string; texts: Record<string, string> }> = [];
+    board.onChange((c) => { for (const w of c.wakes) wakes.push({ to: w.instance, code: w.code, reasons: w.reasons, by: Object.values(w.by).join(","), texts: w.texts as Record<string, string> }); });
+    return { all: wakes, take: () => wakes.splice(0) };
+  }
+  const LEAD: Actor = { kind: "instance", name: "lead" };
+
+  it("assigned by someone else, not by itself; an assignment waiting on dependencies wakes when they are done", () => {
+    const { board } = withProject();
+    const h = heard(board);
+    const first = main(board, ANN, { assignee: "dev-a" });
+    expect(h.take()).toEqual([{ to: "dev-a", code: first.code, reasons: ["assigned"], by: "Ann", texts: {} }]);
+    main(board, DEV);                                                   // its own card: nobody hears
+    expect(h.take()).toEqual([]);
+    const later = main(board, ANN, { assignee: "dev-b", dependsOn: [first.code] });
+    board.updateCard(ANN, later.code, { comment: "read the spec first" });
+    expect(h.take()).toEqual([]);                                       // waits for M-1: read when it can start
+    board.moveCard(DEV, first.code, "claimed");
+    board.moveCard(ANN, first.code, "done");
+    expect(h.take()).toEqual([{ to: "dev-b", code: later.code, reasons: ["ready"], by: "Ann", texts: {} }]);
+  });
+
+  it("a main task that finishes by itself readies what waited for it (the board's own move)", () => {
+    const { board } = withProject();
+    const h = heard(board);
+    const m = main(board, ANN, { needsReview: false });
+    const s = sub(board, ANN, m.code, { assignee: "dev-a" });
+    const next = main(board, ANN, { assignee: "dev-b", dependsOn: [m.code] });
+    h.take();
+    board.moveCard(DEV, s.code, "claimed");
+    board.moveCard(DEV, s.code, "done", { result: "r" });
+    expect(board.getCard(m.code).status).toBe("done");
+    expect(h.take()).toEqual([{ to: "dev-b", code: next.code, reasons: ["ready"], by: "dev-a", texts: {} }]);
+  });
+
+  it("comments, a send-back, an answer and a confirmation, each with its own words", () => {
+    const { board } = withProject();
+    const card = main(board, LEAD, { assignee: "dev-a" });
+    const h = heard(board);
+    board.updateCard(ANN, card.code, { comment: "cache it 30 s" });
+    expect(h.take()).toEqual([{ to: "dev-a", code: card.code, reasons: ["comment"], by: "Ann", texts: { comment: "cache it 30 s" } }]);
+    board.moveCard(DEV, card.code, "claimed");
+    board.moveCard(DEV, card.code, "blocked", { reason: "codes or messages?" });
+    // Its dispatcher hears the question, and answers it on the card.
+    expect(h.take()).toEqual([{ to: "lead", code: card.code, reasons: ["decide"], by: "dev-a", texts: { decide: "codes or messages?" } }]);
+    board.moveCard(LEAD, card.code, "claimed", { comment: "the person says codes" });
+    expect(h.take()).toEqual([{ to: "dev-a", code: card.code, reasons: ["answered"], by: "lead", texts: { answered: "the person says codes" } }]);
+    board.moveCard(DEV, card.code, "review", { result: "r", reason: "no checklist" });
+    board.moveCard(ANN, card.code, "claimed", { reason: "ties share a rank" });
+    expect(h.take()).toEqual([{ to: "dev-a", code: card.code, reasons: ["sent_back"], by: "Ann", texts: { sent_back: "ties share a rank" } }]);
+    board.moveCard(DEV, card.code, "review", { result: "r2", reason: "no checklist" });
+    board.moveCard(ANN, card.code, "done", { reason: "nice" });
+    expect(h.take()).toEqual([
+      { to: "dev-a", code: card.code, reasons: ["approved"], by: "Ann", texts: { approved: "nice" } },
+      { to: "lead", code: card.code, reasons: ["approved"], by: "Ann", texts: { approved: "nice" } },
+    ]);
+  });
+
+  it("a main task sent to the person by its last sub task, not wrapped up, wakes its owner to fill it in", () => {
+    const { board } = withProject();
+    const m = main(board, ANN, { assignee: "dev-a", acceptance: ["resets Monday"] });
+    const review = sub(board, ANN, m.code, { assignee: "dev-b" });
+    const h = heard(board);
+    board.moveCard(DEV2, review.code, "claimed");
+    h.take();
+    board.moveCard(DEV2, review.code, "done", { result: "looks good" });
+    expect(board.getCard(m.code).status).toBe("review");
+    expect(h.take()).toEqual([{ to: "dev-a", code: m.code, reasons: ["wrap_up"], by: "dev-b", texts: {} }]);
+  });
+
+  it("cancelling a main task tells the assignees of the sub tasks it takes down, and why", () => {
+    const { board } = withProject();
+    const m = main(board, { kind: "instance", name: "lead" }, { assignee: "lead" });
+    const [a, b] = [sub(board, ANN, m.code, { assignee: "dev-a" }), sub(board, ANN, m.code, { assignee: "dev-b" })];
+    board.moveCard(DEV2, b.code, "claimed");
+    board.moveCard(DEV2, b.code, "done", { result: "r" });
+    const h = heard(board);
+    board.moveCard(ANN, m.code, "cancelled", { reason: "the feature is dropped" });
+    expect(h.take()).toEqual([
+      { to: "lead", code: m.code, reasons: ["cancelled"], by: "Ann", texts: { cancelled: "the feature is dropped" } },
+      { to: "dev-a", code: a.code, reasons: ["cancelled"], by: "Ann", texts: { cancelled: `with its main task ${m.code}: the feature is dropped` } },
+    ]);                                                                   // dev-b's was done: not taken down
+  });
+
+  it("what no longer stands is dropped: a finished card, one now someone else's, a question already answered", () => {
+    const { board } = withProject();
+    const card = main(board, LEAD, { assignee: "dev-a" });
+    board.updateCard(ANN, card.code, { comment: "a word" });          // a comment holds while it is unread (#2303)
+    const wake = { instance: "dev-a", uuid: card.uuid, code: card.code, title: card.title, parent: null, reasons: ["comment"] as WakeReason[], by: { comment: "Ann" }, texts: {} };
+    expect(board.wakeHolds(wake)?.reasons).toEqual(["comment"]);
+    board.updateCard(ANN, card.code, { assignee: "dev-b" });
+    expect(board.wakeHolds(wake)).toBeNull();
+    board.updateCard(ANN, card.code, { assignee: "dev-a" });
+    board.moveCard(DEV, card.code, "claimed");
+    board.moveCard(DEV, card.code, "blocked", { reason: "?" });
+    const question = { ...wake, instance: "lead", reasons: ["decide"] as WakeReason[] };
+    expect(board.wakeHolds(question)?.reasons).toEqual(["decide"]);
+    board.moveCard(ANN, card.code, "claimed", { comment: "answered by the person" });
+    expect(board.wakeHolds(question)).toBeNull();
+    board.moveCard(ANN, card.code, "done");
+    expect(board.wakeHolds(wake)).toBeNull();
   });
 });

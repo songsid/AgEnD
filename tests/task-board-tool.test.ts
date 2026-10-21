@@ -51,7 +51,7 @@ describe("the task tool's board actions", () => {
     db.board.updateCard(ANN, "S-1", { comment: "cache it 30 s" });
     expect(await call("dev-a", { action: "get", id: "s1" })).toBe([
       "S-1 sub task · API [in progress] @dev-a v4",
-      "main M-1 Leaderboard · finish it yourself",
+      "main M-1 Leaderboard · dispatched by lead · finish it yourself",
       "state:", " done: handler", " next: tests",
       "comments (1 new):", ` Ann ${db.board.detail("S-1").comments[0]!.at.slice(5, 16).replace("T", " ")} [new]: cache it 30 s`,
     ].join("\n"));
@@ -77,6 +77,34 @@ describe("the task tool's board actions", () => {
     expect(await call("dev-b", { action: "move", id: "M-1", to: "done" })).toEqual({ error: "M-1 is waiting for the person's confirmation: only they finish it" });
   });
 
+  it("who handed it out, one card at a time, and what to fill in before the person confirms", async () => {
+    const { db, call } = fleet();
+    db.board.createProject(ANN, { name: "Game" });
+    expect(await call("lead", { action: "create", title: "Leaderboard", project: "Game", assignee: "dev-a", acceptance: ["resets Monday", "top 100"] }))
+      .toBe("ok M-1 Leaderboard [to do] @dev-a (v1)");
+    expect((await call("dev-a", { action: "get", id: "M-1" }) as string).split("\n")[1]).toBe("project Game · dispatched by lead · the person confirms it");
+    expect(await call("dev-a", { action: "create", title: "Archive", project: "Game", dispatcher: "lead" })).toBe("ok M-2 Archive [to do] @dev-a (v1)");
+    expect(db.board.getCard("M-2").dispatcher).toEqual({ kind: "instance", name: "lead" });
+    expect(await call("dev-a", { action: "update", id: "M-2", dispatcher: null })).toBe("ok M-2 Archive [to do] @dev-a (v2)");
+    expect(db.board.getCard("M-2").dispatcher).toBeNull();
+    // Handed out, it counts toward the limit; opened for itself with nobody handing it out, it would not (#2303).
+    await call("dev-a", { action: "update", id: "M-2", dispatcher: "lead" });
+    await call("dev-a", { action: "move", id: "M-1", to: "claimed" });
+    expect(await call("dev-a", { action: "move", id: "M-2", to: "claimed" }))
+      .toEqual({ error: "you already have M-1 \"Leaderboard\" in progress. One card at a time: finish it first; if you cannot go on, move it to blocked with a reason, then start M-2" });
+    db.board.moveCard(ANN, "M-2", "claimed");                    // the person may; mine says to settle them
+    expect(await call("dev-a", { action: "mine" })).toContain(" ⚠ 2 cards in progress: one at a time — finish one (or block it with a reason) before the next");
+    db.board.moveCard(ANN, "M-2", "open");
+    // Blocked on a question: its dispatcher answers with the decision (`agend-agent task move M-1 claimed "…"`).
+    await call("dev-a", { action: "move", id: "M-1", to: "blocked", reason: "weekly or daily?" });
+    expect(await call("lead", { action: "move", id: "M-1", to: "claimed", reason: "weekly, the person says" })).toBe("ok M-1 blocked → in progress (v4)");
+    expect(db.board.detail("M-1").comments.map((e) => `${e.author}: ${e.text}`)).toEqual(["lead: weekly, the person says"]);
+    // In review before it is wrapped up (the person moved it there): what is missing, in get and in mine.
+    db.board.moveCard(ANN, "M-1", "review");
+    expect(await call("dev-a", { action: "get", id: "M-1" })).toContain("before the person confirms it: 2 definition-of-done items unchecked, no result (fill in with update)");
+    expect(await call("dev-a", { action: "mine" })).toContain("M-1 Leaderboard — fill in before they confirm: 2 definition-of-done items unchecked, no result");
+  });
+
   it("the tool's own tasks are answered as before", async () => {
     const { call } = fleet();
     const ack = await call("dev-a", { action: "create", title: "Plain" }) as { id: string; status: string };
@@ -97,7 +125,8 @@ describe("the task tool's board actions", () => {
   it("the tool's schema takes the board's fields", () => {
     expect(TaskBoardArgs.safeParse({ action: "move", id: "M-1", to: "blocked", reason: "who?" }).success).toBe(true);
     expect(TaskBoardArgs.safeParse({ action: "update", id: "S-1", check: [1, 2], state: "next: x", comment: "c", version: 3 }).success).toBe(true);
-    expect(TaskBoardArgs.safeParse({ action: "create", title: "x", parent: "M-1", acceptance: ["a"], needs_review: true, size: "M" }).success).toBe(true);
+    expect(TaskBoardArgs.safeParse({ action: "create", title: "x", parent: "M-1", acceptance: ["a"], needs_review: true, size: "M", dispatcher: "lead" }).success).toBe(true);
+    expect(TaskBoardArgs.safeParse({ action: "update", id: "M-1", dispatcher: null }).success).toBe(true);
     expect(TaskBoardArgs.safeParse({ action: "move", id: "M-1", to: "finished" }).success).toBe(false);
   });
 });

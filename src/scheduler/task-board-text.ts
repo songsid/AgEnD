@@ -3,7 +3,7 @@
  * line per card in lists, a card in a dozen short lines — what an instance needs to pick up work after a reset,
  * without JSON keys or empty fields eating its context.
  */
-import type { Card, CardStatus, MyWork, Project, ProjectStats, TaskBoard } from "./task-board.js";
+import { wrapUpGap, type Card, type CardStatus, type MyWork, type Project, type ProjectStats, type TaskBoard } from "./task-board.js";
 
 export const STATUS_WORD: Record<CardStatus, string> = {
   open: "to do", claimed: "in progress", blocked: "blocked", review: "waiting for the person", done: "done", cancelled: "cancelled",
@@ -36,8 +36,11 @@ export function cardText(board: TaskBoard, card: Card): string {
     const unmet = new Set(board.unmetDeps(card).map((c) => c.code));
     where.push(`waits for ${card.deps.map((d) => board.codeOf(d)).map((c) => `${c}${unmet.has(c) ? "" : " (done)"}`).join(", ")}`);
   }
+  if (card.dispatcher && card.dispatcher.name !== card.assignee) where.push(`dispatched by ${card.dispatcher.kind === "person" ? `the person (${card.dispatcher.name})` : card.dispatcher.name}`);
   where.push(card.needsReview ? "the person confirms it" : "finish it yourself");
   lines.push(where.join(" · "));
+  const gap = card.status === "review" ? wrapUpGap(card) : null;
+  if (gap) lines.push(`before the person confirms it: ${gapText(gap, card.kind === "main")} (fill in with update)`);
   if (card.goal) lines.push(`goal: ${card.goal}`);
   if (card.scope) lines.push(`scope: ${card.scope}`);
   if (card.acceptance.length) {
@@ -72,6 +75,12 @@ export function cardText(board: TaskBoard, card: Card): string {
   return lines.join("\n");
 }
 
+/** "3 definition-of-done items unchecked, no result". */
+export function gapText(gap: { unchecked: number; noResult: boolean }, main: boolean): string {
+  const items = gap.unchecked ? `${gap.unchecked} ${main ? "definition-of-done" : "acceptance"} item${gap.unchecked === 1 ? "" : "s"} unchecked` : "";
+  return [items, gap.noResult ? "no result" : ""].filter(Boolean).join(", ");
+}
+
 /** `task mine`: an instance's work, a section per kind, one line per card; empty sections left out. */
 export function myWorkText(board: TaskBoard, name: string, work: MyWork): string {
   const out: string[] = [];
@@ -79,8 +88,16 @@ export function myWorkText(board: TaskBoard, name: string, work: MyWork): string
   const parentOf = (c: Card) => (c.parent ? ` (${board.codeOf(c.parent)})` : "");
   section("sent back to you", work.sentBack.map(({ card, entry }) => `${card.code} ${card.title} — ${entry.author}: ${oneLine(entry.text, 160)}`));
   section("in progress", work.doing.map((c) => `${c.code} ${c.title}${parentOf(c)}`));
+  // Over its limit (a person moved them there); cards it opened for itself do not count (#2303).
+  const over = board.overLimit(name);
+  if (over) out.push(over.limit === 1
+    ? ` ⚠ ${over.count} cards in progress: one at a time — finish one (or block it with a reason) before the next`
+    : ` ⚠ ${over.count} cards in progress: at most ${over.limit} at a time — finish one (or block it with a reason) before the next`);
   section("blocked", work.blocked.map((c) => `${c.code} ${c.title} — on: ${oneLine(c.blockedReason, 120)}`));
-  section("waiting for the person's confirmation", work.review.map((c) => `${c.code} ${c.title}`));
+  section("waiting for the person's confirmation", work.review.map((c) => {
+    const gap = wrapUpGap(c);
+    return `${c.code} ${c.title}${gap ? ` — fill in before they confirm: ${gapText(gap, c.kind === "main")}` : ""}`;
+  }));
   section("ready to start", work.ready.map((c) => `${c.code} ${c.title}${parentOf(c)}${c.assignee ? "" : " (unassigned)"}`));
   section("waiting on dependencies", work.waiting.map(({ card, waitsFor }) => `${card.code} ${card.title} — waits for ${waitsFor.join(", ")}`));
   section("new comments", work.newComments.map(({ card, entries }) => `${card.code} ${card.title} — ${entries.length} from ${[...new Set(entries.map((e) => e.author))].join(", ")}`));

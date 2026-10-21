@@ -11,13 +11,13 @@
  * belongs to; the board's rules (scheduler/task-board.ts) decide what it may do. Answers are plain text.
  */
 import type { SchedulerDb } from "./scheduler/db.js";
-import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, type Actor, type CardPatch, type CardPriority, type CardSize, type CardStatus, type NewCard } from "./scheduler/task-board.js";
+import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, type Actor, type CardPatch, type CardPriority, type CardSize, type CardStatus, type DispatcherInput, type NewCard } from "./scheduler/task-board.js";
 import { cardLine, cardText, myWorkText, projectsText, writeText } from "./scheduler/task-board-text.js";
 
 /** A `create` naming one of these opens a board card; without them it is the tool's plain task. */
-const BOARD_CREATE = ["project", "parent", "scope", "acceptance", "context", "needs_review", "size"] as const;
+const BOARD_CREATE = ["project", "parent", "scope", "acceptance", "context", "needs_review", "size", "dispatcher"] as const;
 /** An `update` naming one of these edits the card on the board's terms; without them it is the tool's plain update. */
-const BOARD_UPDATE = ["title", "description", "scope", "context", "state", "acceptance", "check", "uncheck", "log", "comment", "needs_review", "size", "depends_on", "version"] as const;
+const BOARD_UPDATE = ["title", "description", "scope", "context", "state", "acceptance", "check", "uncheck", "log", "comment", "needs_review", "size", "depends_on", "version", "dispatcher"] as const;
 /** Words agents bring from other boards. */
 const STATUS_ALIAS: Record<string, CardStatus> = { todo: "open", "to do": "open", doing: "claimed", in_progress: "claimed", "in progress": "claimed", waiting: "review" };
 
@@ -26,7 +26,8 @@ const strs = (v: unknown): string[] | undefined => (Array.isArray(v) && v.every(
 const nums = (v: unknown): number[] | undefined => (Array.isArray(v) && v.every((x) => typeof x === "number") ? (v as number[]) : undefined);
 const int = (v: unknown): number | undefined => (typeof v === "number" && Number.isInteger(v) ? v : undefined);
 const bool = (v: unknown): boolean | undefined => (typeof v === "boolean" ? v : undefined);
-const has = (args: Record<string, unknown>, keys: readonly string[]) => keys.some((k) => args[k] !== undefined && args[k] !== null);
+// A dispatcher of null is a value (nobody), not an absent field.
+const has = (args: Record<string, unknown>, keys: readonly string[]) => keys.some((k) => args[k] !== undefined && (args[k] !== null || k === "dispatcher"));
 
 function status(v: unknown, param = "to"): CardStatus {
   const s = typeof v === "string" ? v.trim().toLowerCase() : "";
@@ -35,6 +36,12 @@ function status(v: unknown, param = "to"): CardStatus {
   return known;
 }
 const priority = (v: unknown): CardPriority | undefined => ((CARD_PRIORITIES as readonly unknown[]).includes(v) ? (v as CardPriority) : undefined);
+/** An instance's name; null, "" or "none": nobody. */
+const dispatcher = (v: unknown): DispatcherInput | undefined => {
+  if (v === undefined) return undefined;
+  const name = typeof v === "string" ? v.trim() : "";
+  return !name || name.toLowerCase() === "none" ? null : { kind: "instance", name };
+};
 const size = (v: unknown): CardSize | null | undefined => (v === null || v === "" ? null : (CARD_SIZES as readonly unknown[]).includes(v) ? (v as CardSize) : undefined);
 function need(v: unknown, what: string): string {
   const s = str(v)?.trim();
@@ -72,6 +79,7 @@ export function boardToolAction(db: SchedulerDb, instance: string, args: Record<
         size: size(args.size) ?? undefined,
         dependsOn: strs(args.depends_on),
         needsReview: bool(args.needs_review),
+        dispatcher: dispatcher(args.dispatcher),
         ...(str(args.parent) ? { parent: str(args.parent) } : { project: str(args.project) ?? (typeof args.project === "number" ? args.project : undefined) }),
         ...(args.assignee !== undefined ? { assignee: str(args.assignee) ?? null } : {}),
       };
@@ -94,6 +102,7 @@ export function boardToolAction(db: SchedulerDb, instance: string, args: Record<
         log: str(args.log),
         comment: str(args.comment),
         needsReview: bool(args.needs_review),
+        dispatcher: dispatcher(args.dispatcher),
         size: size(args.size),
         priority: priority(args.priority),
         dependsOn: strs(args.depends_on),
@@ -137,4 +146,13 @@ export function boardActivity(args: Record<string, unknown>): string | null {
   if (args.action !== "move") return null;
   const to = typeof args.to === "string" ? args.to : typeof args.status === "string" ? args.status : "";
   return { claimed: `claimed: ${id}`, done: `completed: ${id}`, review: `submitted for review: ${id}`, blocked: `blocked: ${id}`, cancelled: `cancelled: ${id}`, open: `put back: ${id}` }[STATUS_ALIAS[to] ?? to] ?? null;
+}
+
+/**
+ * #2303: how many handed-out board cards an instance may have in progress at once — its `board_cards_at_once`, else
+ * 1 (the validator holds it to a whole number of at least 1; anything else here counts as 1).
+ */
+export function boardCardLimit(fleet: { instances?: Record<string, { board_cards_at_once?: unknown } | undefined> } | null | undefined, name: string): number {
+  const own = fleet?.instances && Object.prototype.hasOwnProperty.call(fleet.instances, name) ? fleet.instances[name]?.board_cards_at_once : undefined;
+  return typeof own === "number" && Number.isInteger(own) && own >= 1 ? own : 1;
 }

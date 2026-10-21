@@ -1,8 +1,9 @@
 # Task board: projects, main and sub tasks, the person's confirmation
 
 Status: step 1 (#2246) — the board's model and rules, the Fleet › Tasks page, and the `task` tool on the board (an
-agent reads its work, moves its cards and hears the person's send-back reason). Step 2 — wakes; step 3 — the person in
-the chat. Both below.
+agent reads its work, moves its cards and hears the person's send-back reason). Step 2 — agents working together: wakes,
+who handed a card out (its dispatcher), one card at a time, wrapping a main task up before the person confirms it, and
+who works on a main task now (taskhall's later rules). Step 3 — the person in the chat. Below.
 Ported from taskhall (任務會所), a board an AgEnD fleet ran beside AgEnD; its rules are kept, its plumbing is AgEnD's.
 
 ## Why
@@ -26,7 +27,8 @@ did not fit it, and nothing in it waited for the person:
 
 Cards keep the `tasks` table's columns and add: `code` (M-n / S-n, never reused), `kind`, `project_id`, `parent_id`,
 `scope`, `acceptance` (a checklist, JSON), `context`, `state`, `blocked_reason`, `size`, `needs_review`, `version`,
-`sort`, `started_at`, `submitted_at`, `done_at`, `seen_entry_id`. `description` is the card's goal; `depends_on` stays
+`sort`, `started_at`, `submitted_at`, `done_at`, `seen_entry_id`, and (step 2) `dispatcher` with `dispatcher_kind`.
+`description` is the card's goal; `depends_on` stays
 a JSON array of task ids. New tables: `task_projects`, `task_entries` (comments, the progress log, send-back and
 confirm notes), `task_events` (history: who changed what, from what, to what) and `task_counters`.
 
@@ -63,6 +65,25 @@ or the board itself.
   the person holds an instance to these rules through the tool too (claim, done and update go through the same
   move checks; result and priority are its owner's; reassigning is its owner's or creator's). The tool's own tasks
   outside all of that move as they always have. `id` takes a card number; `list` counts `review` as live.
+- **Who handed it out (step 2).** A card's dispatcher is the person who opened it on the dashboard, or the instance
+  that opened it for another one (a lead handing out work); a sub task takes its main task's; an instance's card for
+  itself has none, and cards from before step 2 have none. A dispatcher is set like a field (an instance names one; a
+  person can name themselves). An instance dispatcher edits the card, and answers its blocked question: blocked →
+  in progress with the decision as the comment (a `move` reason counts), which its assignee reads.
+- **One card at a time (step 2).** An instance has one board card in progress: starting another — claiming, resuming a
+  blocked one, taking one back from review — while one is in progress is refused (finish it, or block it with the
+  question). Blocked cards and main tasks that follow their sub tasks do not count; the `task` tool's own tasks are not
+  limited, nor is a person, and `task done` of an open card (claimed on its way to done) passes. `mine` warns when
+  several are in progress (a person moved them there).
+  - *Cards an instance opened for itself* (it created it, it is the assignee, nobody handed it out) neither count nor
+    are limited: a reviewer opens one per review and runs several (#2303's busy-fleet check: 142 refusals in a week,
+    79 of them a reviewer's, if the fleet's work had been board cards). A sub task it splits off a card handed to it
+    takes that card's dispatcher, so it counts.
+  - *`board_cards_at_once`* (per instance, a whole number of at least 1, default 1; docs/configuration.md) raises the
+    limit for a role that works on several handed-out cards. The fleet reads it at each claim.
+  - *A dispatcher's answer* to a blocked card whose assignee is at its limit does not start the card: the answer is
+    kept on it as a comment (the assignee is told), the card stays blocked, and the assignee resumes it when it has
+    room (#2303 review).
 - **Taking a card back out of review.** An instance that withdraws its own card from `review` says why: the reason is
   a comment on the card ("withdrawn from review: …"), so the card never leaves the person's queue silently.
 - **Comments an assignee has not seen.** Comments and send-backs by others after the assignee's last write are new to
@@ -87,9 +108,11 @@ reaches the board anyway is refused (403 `not_over_public_link`) — the old tas
 (`POST /ui/tasks`, `/ui/tasks/<id>`) too, since they write the board's rows — and a request through the gateway is
 never the person (actor `script`, "public-link"). The page says it is read-only there and shows no write controls.
 
-**Instances kept out of sight.** Over the public link the board leaves out the cards whose assignee or creator is an
-instance with `cross_instance_visibility: hidden` (in lists, search and by number); a project's numbers still count
-them. On the dashboard itself the person sees every card: hiding is about what instances and outsiders see, and the
+**Instances kept out of sight.** Over the public link the board leaves out the cards whose assignee, creator or
+dispatcher is an instance with `cross_instance_visibility: hidden` (in lists, search and by number); a project's numbers
+still count them. A visible card follows the same rule for what it shows around it (#2303 review): its sub tasks, its
+main task (also a search hit's main task title), and the comments, logs and history such an instance left on it —
+which also do not count in a card's comment numbers, name its last comment, or make search find it (#2304 review). On the dashboard itself the person sees every card: hiding is about what instances and outsiders see, and the
 board is the person's record.
 
 ## Storage and other releases
@@ -105,6 +128,11 @@ A release without the board reads and writes the same rows and ignores the new c
 not know. Its prune knows no projects: after a rollback it deletes finished board cards past `retention_days`, leaving
 their entries and events. Before rolling back, raise `retention_days`; the next prune here clears what an old one left.
 `scripts/data-downgrade-phase.mjs` runs 2.1.12 against board data (docs/downgrade-compatibility.md).
+
+Step 2's `dispatcher` / `dispatcher_kind` columns: a release from before step 2 neither reads nor writes them (its
+`UPDATE` leaves them as they are), so dispatchers survive a downgrade and the upgrade after it. A card opened while
+downgraded has none: back on step 2, its blocked question goes to nobody first (the person sees it on Home), until a
+dispatcher is set on it.
 
 **Retention** (`retention_days`) is the board's too. It prunes old finished work with no project (the tool's own tasks
 among it, and a no-project main task with its sub tasks once all of them are finished and old), and in an archived
@@ -139,6 +167,13 @@ opens a card. Bars are SVG rects (the CSP allows no style attribute); a bar fill
   Position row (up, down) — reordering on a phone, where HTML5 dragging does not fire.
 - **The public link** shows the board with a read-only note and no write controls (see above): a card's project, priority, size and review are text, not disabled controls (#2299).
 - **Toasts** are a manual popover (the top layer): a toast raised while a card's dialog is open is above its backdrop, not dimmed under it. On a phone the board's toasts come in above the tabs (an older confirmation gives way to two newer toasts; an error stays), not over its title and search; while a card's sheet is open, at the top (#2299).
+- **Wrapped up before you confirm (step 2).** A main task goes to review by itself when its last sub task is done —
+  often a reviewer's — before its owner ticked its definition of done or wrote its result. Such a card shows "To fill
+  in", the waiting row and the card say what is missing, and Confirm asks first (send it back, or confirm anyway with
+  an optional note). Agents read the same in `get` and `mine`.
+- **Who works on a main task now (step 2).** Its owner is not always the one at work (a review step is the
+  reviewer's): a main task with sub tasks shows the sub task in progress and its worker, else a blocked one, else the
+  next one that can start; waiting for you, it says so. The owner is in the tooltip; the card has a "Now" row.
 
 ## Agents: the `task` tool on the board
 
@@ -169,19 +204,42 @@ it on purpose, and #1267 (a Kanban) left that to the person. What this PR takes,
   the fleet's channel, with Confirm and Send back (a reason) as buttons. Until then a card waiting for review is a
   board-only question; the maintainers decide whether that ships before step 3.
 
-## Step 2: wakes (next PR)
+## Step 2: wakes
 
-Each committed write says which instances heard news about their own cards from someone else: assigned, sent back
-(with the reason), commented (with the text), its blocked question answered, started for it, or every card it waited
-for done (direct dependents, and the sub tasks of a main task that waited). Never its own write, never the board's
-catch-up, never a finished card; "assigned" and "start" wait for the card's dependencies. The fleet gathers an
-instance's news for a few seconds into one `[Task board]` message, delivered like a schedule's (sender `task-board`,
-waiting for the instance to be idle) and tried again a few times. Not durable across a fleet restart: the card keeps
-the news (`mine`, the comments new to its assignee). Cancelling a main task tells the other assignees whose sub tasks
-it took down.
+**Who hears what** (`TaskBoard.settleWakes`, read from a write's events once it is all written, still inside it): an
+instance hears what someone else did to a card that is its own, or that it handed out —
+
+| News | Who | When |
+|---|---|---|
+| assigned | the assignee | a board card opened for it, or given to it (once the card can start); not the `task` tool's own tasks, which are handed over with a message of their own (`delegate_task`) |
+| start | the assignee | someone else moved its open card to in progress |
+| sent back | the assignee | the person sent it back from review, with the reason |
+| answered | the assignee | its blocked question answered (by the person or its dispatcher), with the answer |
+| comment | the assignee | a comment by someone else (once the card can start) |
+| ready | the assignee | every card it waited for is done — by hand or by the board's own move |
+| decide | the dispatcher | its card got blocked on a question: ask the person, answer it on the card |
+| approved | the assignee and the dispatcher | the person confirmed it, with their note |
+| wrap up | the main task's owner | it went to review by itself, its definition of done or result still missing |
+| cancelled | the assignee | someone else cancelled it — or its main task, taking it down — with why |
+
+Never its own write, never a finished card (but for a confirmation or a cancel), never a name that is not one of the
+fleet's instances. `TaskBoard.wakeHolds` drops what no longer stands — at the end of the write and again when it goes
+out: a card finished meanwhile, no longer the instance's, a question already answered, a card wrapped up meanwhile.
+What asks the instance to act holds only while it can (#2303 review): `ready` while the card is open with nothing
+left to wait for, `start` and `answered` while it is in progress, `sent back` while it is back with the instance; a
+comment only while its assignee has not read it (any write of its own on the card since shows it the comment, as the
+`task` tool's answer, and counts it as seen).
+
+**Sending** (`src/task-board-waker.ts`). The fleet gathers an instance's news for 10 s into one `[Task board]` notice:
+a line per card, each reason with its own words and who did it; a main task assigned with its sub tasks is one line;
+more than three assignments at once (a whole plan) are a count ("You were assigned 6 main tasks (M-11–M-16) and 9 sub
+tasks… one at a time, by priority"). The notice is AgEnD's own (`admitSystemNotice`: sender AgEnD, not a person's
+words) and the delivery outbox holds it until the instance can take it, across a fleet restart too. News still
+gathering when the fleet stops is lost; the card keeps it (`mine`, the comments new to its assignee). Blocked cards
+with an instance dispatcher still wait for you on Home, marked as asked first.
 
 ## Next
 
 - **Step 3 — the person in the chat.** Cards waiting for review or blocked in Needs you and the fleet's notification
-  channel, with Confirm / Send back there; a daily summary; importing a taskhall database; durable wakes through the
-  delivery outbox.
+  channel, with Confirm / Send back there (a blocked card with an instance dispatcher goes to it first); a daily
+  summary; importing a taskhall database; each instance's board work on its details page.

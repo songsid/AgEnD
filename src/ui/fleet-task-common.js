@@ -48,6 +48,11 @@ register("tasks", {
     readOnly: "The public link shows the board read-only. To change it, open the dashboard on the machine running AgEnD.",
     tileHint: "Enter opens it · Alt+↑/↓ moves it in its column · Alt+←/→ to the next status",
     conflictAgain: "{0} changed meanwhile (it is now {1}). Your text is kept — send it again?", sendAgain: "Send again", conflictLabel: "What you wrote",
+    nowDoing: "Working on", nowBlocked: "Blocked", nowNext: "Next", ownerTip: "Main task owner: {0}", moreCards: "+{0}",
+    wrapTag: "To fill in", wrapLine: "Not wrapped up yet: {0}", gapUnchecked: "{0} checklist items unchecked", gapUncheckedOne: "1 checklist item unchecked",
+    gapNoResult: "no result", confirmGapTitle: "Confirm {0}?", confirmAnyway: "Confirm anyway",
+    askedFirst: "{0} handed it out and has been asked; you can answer it here too",
+    confirmGapLabel: "{0}. You can send it back to have it filled in — or confirm anyway, with a note if you like",
     "err.too_long": "{0} is too long: {1} characters, at most {2}", "err.state_lines": "State is at most {0} lines (it has {1})",
     "err.acceptance_empty": "An acceptance item cannot be empty", "err.acceptance_max": "At most {0} acceptance items",
     "err.acceptance_no_item": "There is no acceptance item {0} (there are {1})", "err.project_not_found": "There is no project “{0}”",
@@ -108,6 +113,11 @@ register("tasks", {
     readOnly: "公開連結上的任務板只能看。要修改，請在執行 AgEnD 的那台機器上開啟儀表板。",
     tileHint: "Enter 打開 · Alt+↑/↓ 在欄內移動 · Alt+←/→ 移到前一個／下一個狀態",
     conflictAgain: "{0} 在這之間被改過（現在是{1}）。你寫的內容還在，要再送一次嗎？", sendAgain: "再送一次", conflictLabel: "你寫的內容",
+    nowDoing: "執行中", nowBlocked: "卡住", nowNext: "下一步", ownerTip: "主任務負責人：{0}", moreCards: "+{0}",
+    wrapTag: "待補齊", wrapLine: "負責人還沒補齊：{0}", gapUnchecked: "還有 {0} 項沒勾", gapUncheckedOne: "還有 1 項沒勾",
+    gapNoResult: "沒有產出總結", confirmGapTitle: "確認 {0}？", confirmAnyway: "還是確認",
+    askedFirst: "已先通知派工者 {0}；你也可以直接在這裡回覆",
+    confirmGapLabel: "{0}。可以先退回請負責人補齊；還是要確認的話，可以留一句確認意見",
     "err.too_long": "{0}太長：{1} 字，上限 {2} 字", "err.state_lines": "目前狀態最多 {0} 行（現在 {1} 行）",
     "err.acceptance_empty": "驗收條件不能是空的", "err.acceptance_max": "驗收條件最多 {0} 項",
     "err.acceptance_no_item": "驗收條件沒有第 {0} 項（共 {1} 項）", "err.project_not_found": "找不到專案「{0}」",
@@ -226,6 +236,38 @@ export function relTime(iso, now = Date.now()) {
 
 // ── Requests ──────────────────────────────────────────────
 
+/**
+ * What a finished card still lacks for your confirmation, in words ("" when nothing): unchecked checklist items, no
+ * result. A main task goes to review by itself when its last sub task is done — often a reviewer's — before its owner
+ * wrapped it up (scheduler/task-board.ts wrapUpGap).
+ */
+export function wrapUpText(card) {
+  const unchecked = (card.acceptance || []).filter((a) => !a.done).length;
+  const parts = [];
+  if (unchecked) parts.push(unchecked === 1 ? t("tasks.gapUncheckedOne") : t("tasks.gapUnchecked", unchecked));
+  if (!String(card.result || "").trim()) parts.push(t("tasks.gapNoResult"));
+  return parts.join(lang() === "zh-TW" ? "、" : ", ");
+}
+
+/**
+ * Who works on a main task right now: its sub tasks in progress, else the blocked ones, else those that can start
+ * (dependencies done). Null when there are none, or when the main task waits for you or is finished. Its owner is not
+ * always the one at work: a review step belongs to the reviewer.
+ */
+export function currentWork(main, subs) {
+  if (["review", "done", "cancelled"].includes(main.status)) return null;
+  const live = subs.filter((s) => s.status !== "cancelled");
+  for (const [status, label, tone] of [["claimed", "tasks.nowDoing", "claimed"], ["blocked", "tasks.nowBlocked", "blocked"]]) {
+    const cards = live.filter((s) => s.status === status);
+    if (cards.length) return { label, tone, cards };
+  }
+  const ready = live.filter((s) => s.status === "open" && !(s.unmetDeps || []).length);
+  return ready.length ? { label: "tasks.nowNext", tone: "open", cards: ready } : null;
+}
+
+/** The instances behind some cards, each once ("" for a card nobody has taken). */
+export const workersOf = (cards) => [...new Set(cards.map((c) => c.assignee || ""))];
+
 /** A board request: the answer's JSON, or a thrown Error carrying the HTTP status and the board's code. */
 export async function boardCall(method, path, body) {
   const o = { method, headers: { "Content-Type": "application/json" } };
@@ -340,6 +382,13 @@ export async function moveCard(card, to, extra = {}) {
     const r = await askText({ title: t("tasks.sendBackTitle", card.id), label: t("tasks.sendBackLabel"), required: true, confirmLabel: t("tasks.sendBack") });
     if (r === null) return null;
     input.reason = r;
+  }
+  // Confirming work that is not wrapped up (checklist unticked, no result) asks first; a note there is the approval's.
+  const gap = card.status === "review" && to === "done" && input.reason === undefined ? wrapUpText(card) : "";
+  if (gap) {
+    const r = await askText({ title: t("tasks.confirmGapTitle", card.id), label: t("tasks.confirmGapLabel", gap), confirmLabel: t("tasks.confirmAnyway") });
+    if (r === null) return null;
+    if (r) input.reason = r;
   }
   if (to === "cancelled" && input.reason === undefined) {
     const r = await askText({ title: t("tasks.cancelTitle", card.id), label: t("tasks.cancelLabel"), confirmLabel: t("tasks.cancelConfirm"), danger: true });

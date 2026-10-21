@@ -103,7 +103,8 @@ import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
-import { boardActivity, boardToolAction } from "./task-board-tool.js";
+import { boardActivity, boardCardLimit, boardToolAction } from "./task-board-tool.js";
+import { TaskBoardWaker } from "./task-board-waker.js";
 import type { SchedulerDb } from "./scheduler/db.js";
 import type { Schedule, ScheduleRetry, ScheduleRetryDrop, SchedulerConfig } from "./scheduler/index.js";
 import { escapeTelegramHtml, scheduleClock, scheduleRetryLabel } from "./scheduler/retry-label.js";
@@ -1083,6 +1084,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private statuslineWatcher: StatuslineWatcher;
   private dailySummary: DailySummary | null = null;
   private dailyTipScheduler: DailyTipScheduler | null = null;
+  /** The task board's wakes (step 2): an instance hears when someone else changes a card it owns or handed out. */
+  private taskBoardWaker: TaskBoardWaker | null = null;
   private webhookEmitter: WebhookEmitter | null = null;
 
   // Topic icon + auto-archive state
@@ -16651,10 +16654,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * The task board's live side: every committed change goes to the open pages (never to a guest) — the board's new
    * revision and the card numbers it touched; not who touched them (the page does not need it, and a public-link page
-   * must not learn a hidden instance's name from it).
+   * must not learn a hidden instance's name from it). Its news goes to the instances whose cards someone else changed:
+   * one "[Task board]" notice per instance, gathered for 10 s, held by the delivery outbox until it is taken
+   * (task-board-waker.ts).
    */
   private attachTaskBoard(db: SchedulerDb): void {
-    db.board.onChange(({ rev, ids, projects }) => this.emitSseEvent("tasks", { rev, ids, projects }));
+    this.taskBoardWaker?.stop();
+    // #2303: each instance's cards at once, read at every claim (a fleet.yaml edit applies to the next one).
+    db.board.setCardLimit((name) => boardCardLimit(this.fleetConfig, name));
+    const waker = this.taskBoardWaker = new TaskBoardWaker({
+      deliver: (instance, message, key) => this.admitTaskBoardNotice(instance, message, key),
+      isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
+      holds: (wake) => db.board.wakeHolds(wake),
+      card: (uuid) => db.board.findCard(uuid),
+      log: (level, message, extra) => this.logger[level](extra ?? {}, message),
+    });
+    db.board.onChange(({ rev, ids, projects, wakes }) => {
+      this.emitSseEvent("tasks", { rev, ids, projects });
+      waker.note(wakes);
+    });
+  }
+
+  /** A task board notice, as AgEnD's own (not a person's words): through the delivery outbox, held until delivered. */
+  private admitTaskBoardNotice(instance: string, message: string, key: string): boolean {
+    this.ensureDeliveryOutbox();
+    const outbox = this.deliveryOutbox;
+    if (!outbox) return false;
+    outbox.admitSystemNotice(instance, key, message, new Date());
+    return true;
   }
 
   listClaimedTasks(assignee: string): Array<{ id: string; title: string }> {
@@ -19621,6 +19648,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     await this.retirePendingNoncePrompts();
     this.topicArchiver.stop();
 
+    this.taskBoardWaker?.stop();
     this.scheduler?.shutdown();
     // What it was sent is written first (bounded: search-index.ts close()).
     const search = this.searchIndex;

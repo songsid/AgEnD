@@ -8,7 +8,7 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
-import { StatusPill, answerBlocked, askText, boardApi, errorText, followsSubs, moveCard, notesForPeople, relTime } from "./fleet-task-common.js";
+import { StatusPill, answerBlocked, askText, boardApi, currentWork, errorText, followsSubs, moveCard, notesForPeople, relTime, wrapUpText } from "./fleet-task-common.js";
 
 register("taskcard", {
   en: {
@@ -33,6 +33,8 @@ register("taskcard", {
     fTitle: "title", fGoal: "goal", fScope: "scope", fContext: "context", fState: "state", fResult: "result", fBlockedReason: "blocked reason", fSize: "size",
     fPriority: "priority", fNeedsReview: "needs review", fDependsOn: "dependencies", fAcceptance: "acceptance", fProjectId: "project",
     position: "Position", moveUp: "Move up", moveDown: "Move down",
+    dispatcher: "Dispatched by", dispatcherHint: "A blocked card's question goes to them first", dispatcherMe: "Me", dispatcherNone: "Nobody",
+    dispatcherPerson: "{0} (a person)", now: "Now", nowNone: "No sub task in progress", fDispatcher: "dispatcher",
   },
   "zh-TW": {
     loading: "載入中…", missing: "找不到 {0}", version: "v{0}", copyLink: "複製這張卡的連結", linkCopied: "已複製連結",
@@ -56,6 +58,8 @@ register("taskcard", {
     fTitle: "標題", fGoal: "目標", fScope: "範圍", fContext: "背景", fState: "目前狀態", fResult: "產出", fBlockedReason: "卡住原因", fSize: "大小",
     fPriority: "優先度", fNeedsReview: "需要確認", fDependsOn: "相依", fAcceptance: "驗收條件", fProjectId: "專案",
     position: "位置", moveUp: "往上移", moveDown: "往下移",
+    dispatcher: "派工", dispatcherHint: "卡住要決定的事會先通知派工者", dispatcherMe: "我", dispatcherNone: "（沒有）",
+    dispatcherPerson: "{0}（人）", now: "目前", nowNone: "沒有正在進行的子任務", fDispatcher: "派工者",
   },
 });
 
@@ -147,6 +151,9 @@ export function CardDialog({ id, tick, projects, writable = true, place = null, 
     }
     await save({ assignee: value === "\u0000none" ? null : value });
   }
+  async function chooseDispatcher(value) {
+    await save({ dispatcher: value === "\u0000none" ? null : value === "\u0000me" ? { kind: "person" } : { kind: "instance", name: value } });
+  }
   async function editDeps() {
     const text = await askText({ title: t("taskcard.depsTitle", card.id), label: t("taskcard.depsLabel"), initial: card.dependsOn.join(", ") });
     if (text !== null) await save({ dependsOn: text.split(/[\s,，、]+/).filter(Boolean) }, null);
@@ -172,7 +179,8 @@ export function CardDialog({ id, tick, projects, writable = true, place = null, 
         ${writable ? html`
         ${card.status === "review" ? html`
           <button type="button" class="btn btn-primary btn-sm" disabled=${busy} onClick=${() => moved(() => moveCard(card, "done"))}><${Icon} name="check" size=${14} />${isMain ? t("taskcard.confirmMain") : t("tasks.confirm")}</button>
-          <button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => moved(() => moveCard(card, "claimed"))}>${t("tasks.sendBack")}</button>` : null}
+          <button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => moved(() => moveCard(card, "claimed"))}>${t("tasks.sendBack")}</button>
+          ${wrapUpText(card) ? html`<span class="tc-hint wrapup">${t("tasks.wrapLine", wrapUpText(card))}</span>` : null}` : null}
         ${card.status === "blocked" ? html`<button type="button" class="btn btn-primary btn-sm" disabled=${busy} onClick=${() => moved(() => answerBlocked(card))}>${t("tasks.answer")}</button>` : null}
         ${!derived && !finished ? html`<select class="tb-select" value="" aria-label=${t("taskcard.moveLabel")} onChange=${(e) => { const to = e.target.value; e.target.value = ""; if (to) void moved(() => moveCard(card, to)); }} disabled=${busy}>
           <option value="">${t("taskcard.moveTo")}</option>
@@ -193,6 +201,22 @@ export function CardDialog({ id, tick, projects, writable = true, place = null, 
             ${card.assignee ? html`<option value="\u0000none">${t("taskcard.unassign")}</option>` : null}
             ${names.filter((n) => n !== card.assignee).map((n) => html`<option key=${n} value=${n}>${n}</option>`)}
             <option value="\u0000other">${t("taskcard.other")}</option>
+          </select>` : null}</dd>
+        ${isMain && children.length ? html`<dt>${t("taskcard.now")}</dt><dd>${(() => {
+          const now = currentWork(card, children);
+          if (!now) return html`<span class="muted">${card.status === "review" ? t("tasks.review") : t("taskcard.nowNone")}</span>`;
+          return now.cards.map((c) => html`<button key=${c.id} type="button" class="tc-now" onClick=${() => onOpen(c.id)} title=${c.title}>
+            <span class=${`tb-now-label st-${now.tone}`}>${t(now.label)}</span><span class="tb-code">${c.id}</span><span class="tc-child-title">${c.title}</span>
+            <span class="tb-who">${c.assignee || t("tasks.nobody")}</span></button>`);
+        })()}</dd>` : null}
+        <dt>${t("taskcard.dispatcher")}</dt>
+        <dd><span class="tb-who" title=${t("taskcard.dispatcherHint")}>${!card.dispatcher ? t("taskcard.dispatcherNone")
+            : card.dispatcher.kind === "person" ? t("taskcard.dispatcherPerson", card.dispatcher.name) : card.dispatcher.name}</span>
+          ${writable ? html`<select class="tb-select" value="\u0000pick" aria-label=${t("taskcard.dispatcher")} title=${t("taskcard.dispatcherHint")} onChange=${(e) => { const v = e.target.value; e.target.value = "\u0000pick"; void chooseDispatcher(v); }}>
+            <option value="\u0000pick" disabled hidden>${t("taskcard.change")}</option>
+            <option value="\u0000me">${t("taskcard.dispatcherMe")}</option>
+            ${card.dispatcher ? html`<option value="\u0000none">${t("taskcard.dispatcherNone")}</option>` : null}
+            ${names.filter((n) => !(card.dispatcher && card.dispatcher.kind === "instance" && card.dispatcher.name === n)).map((n) => html`<option key=${n} value=${n}>${n}</option>`)}
           </select>` : null}</dd>
         ${isMain ? html`<dt>${t("taskcard.project")}</dt>
           <dd>${writable ? html`<select class="tb-select" value=${card.projectId === null ? "" : String(card.projectId)} aria-label=${t("taskcard.project")}

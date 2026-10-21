@@ -151,6 +151,7 @@ export const TaskBoardArgs = z.object({
   comment: z.string().optional().describe("A comment on the card (update/move)"),
   needs_review: z.boolean().optional().describe("Stop at review for the person's confirmation when finished (create/update)"),
   size: z.enum(["S", "M", "L"]).optional().describe("S small, M one unit, L too big: split it (create/update)"),
+  dispatcher: z.string().nullable().optional().describe("Who handed the work out (an instance, e.g. your lead); a blocked card's question goes to them first. Default: the main task's, or you when you assign it to someone else (create/update)"),
   to: z.enum(["open", "claimed", "review", "done", "blocked", "cancelled"]).optional().describe("New status (move)"),
   reason: z.string().optional().describe("move: why blocked (who must answer what), cancelled, or acceptance left unchecked"),
   version: z.number().int().optional().describe("The card version you read; a newer one refuses the write (update/move)"),

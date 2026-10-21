@@ -1805,6 +1805,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   .search-foot { display: none; }
   .search-row { padding: var(--s-3); }
   .search-filters-toggle, .search-chips .chip-btn { min-height: var(--tap); }
+}
 /* The task board (Fleet › Tasks: fleet-tasks.js, fleet-task-card.js). Status colours: to do neutral, in progress the
    accent, blocked danger, waiting for you warn, done ok. Bars are SVG rects (no style attribute: the CSP). */
 .tb { display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; }
@@ -1915,6 +1916,18 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .tb-tile-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .tb-tile:has(.tb-tile-title:focus-visible) { border-color: var(--focus); }
 .tb-tile-note { display: flex; gap: var(--s-1); align-items: flex-start; font-size: var(--fs-xs); color: var(--text-2); overflow-wrap: anywhere; }
+/* A main task's sub task at work now (its worker in the foot), and what a card waiting for you still lacks. */
+.tb-tile-now { display: flex; align-items: baseline; gap: var(--s-1); min-width: 0; font-size: var(--fs-xs); color: var(--text-2); }
+.tb-now-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-now-label { flex-shrink: 0; font-size: 11px; font-weight: var(--fw-semibold); color: var(--text-2); }
+.tb-now-label.st-claimed { color: var(--accent); }
+.tb-now-label.st-blocked { color: var(--danger); }
+.tb-now-label.st-review { color: var(--warn); }
+.tb-tag.wrapup { background: var(--warn-bg); color: var(--warn); }
+.tb-wait-reason.wrapup, .tc-hint.wrapup { color: var(--warn); }
+.tb-wait-asked { flex-basis: 100%; font-size: var(--fs-xs); }
+.tc-now { display: flex; align-items: baseline; gap: var(--s-2); width: 100%; padding: 0; background: none; border: 0; color: var(--text); text-align: left; cursor: pointer; font-size: var(--fs-sm); }
+.tc-now:hover .tc-child-title { text-decoration: underline; }
 .tb-tile-note.st-blocked { color: var(--danger); }
 .tb-tile-progress { display: flex; align-items: center; gap: var(--s-2); width: 100%; padding: 0; background: none; border: 0; color: var(--text-2); font-size: var(--fs-xs); cursor: pointer; }
 .tb-tile-progress > span { white-space: nowrap; }

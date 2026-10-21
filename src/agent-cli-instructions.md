@@ -45,7 +45,7 @@ agend-agent task claim ID                         # Claim task
 agend-agent task done ID "result"                 # Complete task
 agend-agent task mine                             # Your work on the board (start here after a reset)
 agend-agent task get M-3                          # One card, with comments new to you
-agend-agent task move M-3 STATUS ["text"]         # claimed; blocked "who must answer what"; review/done "result"
+agend-agent task move M-3 STATUS ["text"]         # claimed (from blocked: "the answer"); blocked "who must answer what"; review/done "result"
 agend-agent task comment M-3 "text"               # Comment on a card
 
 # Decisions
