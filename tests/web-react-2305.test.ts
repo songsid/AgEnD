@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WEB_REACTIONS_MAX, WEB_REACTION_SUGGESTIONS, webReactionEmoji, webReactionProblem, webReactionsOf } from "../src/web-reactions.js";
+import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, WEB_REACTIONS_MAX, WEB_REACTION_SUGGESTIONS, webReactionEmoji, webReactionProblem, webReactionsOf } from "../src/web-reactions.js";
 import { WebChatHistory, type StoredWebChatMessage } from "../src/web-chat-history.js";
 import { guestFrameData, guestPollBody } from "../src/web-guest-access.js";
 import { dispatchAgentOperation } from "../src/agent-endpoint.js";
@@ -29,7 +29,7 @@ const ts = "2026-10-21T08:00:00.000Z";
 
 describe("the web reaction set", () => {
   it("one emoji of Telegram's reaction set, spelled as the set spells it; a variation selector is accepted", () => {
-    expect([webReactionEmoji("👍"), webReactionEmoji("👍️"), webReactionEmoji("❤️"), webReactionEmoji(" 🙏 ")]).toEqual(["👍", "👍", "❤", "🙏"]);
+    expect([webReactionEmoji("👍"), webReactionEmoji("👍\uFE0F"), webReactionEmoji("❤\uFE0F"), webReactionEmoji(" 🙏 ")]).toEqual(["👍", "👍", "❤", "🙏"]);
     for (const bad of ["👍👍", "OK", "", "<:ok:123456789012345678>", "🦊", 42, null]) expect(webReactionEmoji(bad), String(bad)).toBeNull();
   });
   it("refused: outside the set, or one of the instance's delivery marks — the error names allowed ones, never a mark", () => {
@@ -113,7 +113,7 @@ describe("the fleet takes a react on a web id (MCP path)", () => {
   it("a web-only fleet: on the row, live on the stream; again: ok, no second event", async () => {
     const { fm, react, events } = await fleet();
     fm.emitSseEvent("message", { instance: "dev", sender: "han", text: "OK", ts, role: "user", messageId: "web-ok1" });
-    expect(await react({ message_id: "web-ok1", emoji: "👍️", chat_id: "" })).toEqual({ result: "ok", error: undefined });
+    expect(await react({ message_id: "web-ok1", emoji: "👍\uFE0F", chat_id: "" })).toEqual({ result: "ok", error: undefined });
     const row = fm.webChatHistory.findByMessageId("dev", "web-ok1");
     expect(row.reactions).toEqual(["👍"]);
     expect(events.filter(([e]) => e === "reactions")).toEqual([["reactions", { instance: "dev", boot: row.boot, id: row.id, reactions: ["👍"] }]]);
@@ -135,12 +135,47 @@ describe("the fleet takes a react on a web id (MCP path)", () => {
     const tg = { type: "telegram", react: vi.fn(async () => {}) };
     const dc = { type: "discord", react: vi.fn(async () => { throw new Error("Missing Permissions"); }) };
     fm.webMessageInChannel("dev", "web-t1", [{ adapter: tg, chatId: "-100", threadId: "7", messageId: "555" }, { adapter: dc, chatId: "g", messageId: "777" }]);
-    expect(await react({ message_id: "web-t1", emoji: "❤️" })).toEqual({ result: "ok", error: undefined });
+    expect(await react({ message_id: "web-t1", emoji: "❤\uFE0F" })).toEqual({ result: "ok", error: undefined });
+    await vi.waitFor(() => expect(dc.react).toHaveBeenCalled());
     expect(tg.react).toHaveBeenCalledWith("-100", "555", "❤", "7");
     expect(dc.react).toHaveBeenCalledWith("g", "777", "❤", undefined);
     // Without a copy (none sent, or another process sent it): the web only.
     fm.emitSseEvent("message", { instance: "dev", sender: "han", text: "ok", ts, role: "user", messageId: "web-t2" });
-    expect(await fm.reactToWebMessage("dev", "web-t2", "👌")).toEqual({ ok: true, mirrored: 0 });
+    const none = await fm.reactToWebMessage("dev", "web-t2", "👌");
+    expect([none.ok, await none.mirrored]).toEqual([true, 0]);
+  });
+  it("#2310 review: the socket's own instance — a session name the caller wrote itself reaches no other chat", async () => {
+    const { fm, react } = await fleet();
+    fm.emitSseEvent("message", { instance: "other", sender: "han", text: "OK", ts, role: "user", messageId: "web-o1" });
+    await fm.handleOutboundFromInstance("dev", { tool: "react", args: { message_id: "web-o1", emoji: "👍" }, fleetRequestId: "tool_1_2", senderSessionName: "other" });
+    expect(fm.webChatHistory.findByMessageId("other", "web-o1").reactions).toBeUndefined();
+    expect((await react({ message_id: "web-o1", emoji: "👍" })).error).toMatch(/not a message in dev's web chat/);
+  });
+  it("#2310 review: copies are kept at most WEB_ECHO_COPIES_MAX (the oldest go), and only those whose adapter can react", async () => {
+    const { fm } = await fleet();
+    const adapter = { type: "discord", react: vi.fn(async () => {}) };
+    for (let i = 0; i <= WEB_ECHO_COPIES_MAX; i++) fm.webMessageInChannel("dev", `web-c${i}`, [{ adapter, chatId: "g", messageId: String(i) }]);
+    expect([fm.webEchoCopies.size, fm.webEchoCopies.has("web-c0"), fm.webEchoCopies.has(`web-c${WEB_ECHO_COPIES_MAX}`)]).toEqual([WEB_ECHO_COPIES_MAX, false, true]);
+    fm.webMessageInChannel("dev", "web-norx", [{ adapter: { type: "telegram" }, chatId: "c", messageId: "9" }]);
+    expect(fm.webEchoCopies.get("web-norx") ?? []).toEqual([]);
+  });
+  it("#2310 review: a copy that never answers holds neither the tool nor anything else — given up after WEB_MIRROR_TIMEOUT_MS", async () => {
+    const { fm } = await fleet();
+    fm.emitSseEvent("message", { instance: "dev", sender: "han", text: "OK", ts, role: "user", messageId: "web-slow" });
+    const hung = { type: "discord", react: vi.fn(() => new Promise<void>(() => {})) };
+    fm.webMessageInChannel("dev", "web-slow", [{ adapter: hung, chatId: "g", messageId: "1" }]);
+    vi.useFakeTimers();
+    const r = await fm.reactToWebMessage("dev", "web-slow", "👍");
+    expect(r.ok).toBe(true);                                         // answered: the copy is not waited for
+    let settled: number | null = null;
+    void r.mirrored.then((n: number) => { settled = n; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hung.react).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(WEB_MIRROR_TIMEOUT_MS - 1);
+    expect(settled).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(0);
+    vi.useRealTimers();
   });
   it("a react on a platform message still goes to the adapter path (not taken here)", async () => {
     const { react } = await fleet();
@@ -151,7 +186,7 @@ describe("the fleet takes a react on a web id (MCP path)", () => {
 describe("the HTTP agent path", () => {
   const ctx = (reactToWebMessage?: unknown) => ({ dataDir: "/nowhere", fleetConfig: { instances: { dev: {} } }, logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() }, ...(reactToWebMessage ? { reactToWebMessage } : {}) }) as never;
   it("a react on a web id goes to the fleet's web reaction, its error as the result's", async () => {
-    const fn = vi.fn(async (_i: string, id: string) => (id === "web-ok1" ? { ok: true, mirrored: 0 } : { ok: false, error: "react: nope" }));
+    const fn = vi.fn(async (_i: string, id: string) => (id === "web-ok1" ? { ok: true, mirrored: Promise.resolve(0) } : { ok: false, error: "react: nope" }));
     expect(await dispatchAgentOperation(ctx(fn), "dev", "react", { message_id: "web-ok1", emoji: "👍" })).toBe("ok");
     expect(fn).toHaveBeenCalledWith("dev", "web-ok1", "👍");
     expect(await dispatchAgentOperation(ctx(fn), "dev", "react", { message_id: "web-x", emoji: "👍" })).toEqual({ error: "react: nope" });
@@ -203,7 +238,7 @@ describe("the page", () => {
     expect(R.applyReactions(list, "zz", 1, ["👍"])).toBe(list);
     const html = R.reactionsHtml(["👍", "❤", "<b>"], 'dev "reacted"');
     expect(html).toContain('aria-label="dev &quot;reacted&quot;"');
-    expect(html).toContain("❤️");
+    expect(html).toContain("❤\uFE0F");
     expect(html).not.toContain("<b>");
     expect(R.reactionsHtml([], "x")).toBe("");
   });
