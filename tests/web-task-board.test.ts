@@ -818,8 +818,11 @@ describe("#2355 review: a click or a reply is judged by where the card routes NO
     await r.reply(prompt, "T5", "tick the list");
     expect([r.status(r.review.code), r.status(r.blocked.code), r.routedInput]).toEqual(["review", "blocked", ["tick the list"]]);
 
+    // The project change itself pokes the hub: its list follows the new lead at once (no backstop tick needed).
+    await r.settle();
+    expect((r.h.s.needsYou.webItems() as Array<{ lane?: string }>).map((i) => i.lane)).toEqual(["lead2", "lead2"]);
     // Control: the new lane's message, once rendered (the hub's renders are debounced), acts.
-    await r.settle(); await vi.advanceTimersByTimeAsync(60_000); await r.settle();
+    await vi.advanceTimersByTimeAsync(60_000); await r.settle();
     expect(r.message("T6").call, "posted in lead2's topic").toBeDefined();
     expect(await r.click("T6", /Confirm/)).toEqual([expect.not.stringMatching(/another channel|wrong place|no longer|stale/i)]);
     expect(r.status(r.review.code)).toBe("done");
