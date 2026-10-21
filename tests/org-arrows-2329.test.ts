@@ -140,12 +140,13 @@ describe("libavoid's pins", () => {
   });
   it("a card with no side pin and more lines than its pins gets more on its long sides (none of its lines share a pin)", () => {
     const L = devLayout();
-    const items = ["send", "task", "report", "broadcast"].flatMap((k) => ["dev-web", "reviewer-a", "dev-2"].map((a) => msg(`${a}${k}`, a, "coordinator", k)));
+    // 9 lines: one more than its 8 pins (4 on each long side, none on the short), fewer than a card with side pins has.
+    const items = ["send", "task", "report"].flatMap((k) => ["dev-web", "reviewer-a", "dev-2"].map((a) => msg(`${a}${k}`, a, "coordinator", k)));
     const scene = routeScene(L, trafficEdges(items, L));
     const c = cardOf(L, "coordinator"), sh = scene.shapes.find((x: any) => x.x === c.x && x.y === c.y && x.pins);
-    expect([sh.sides, items.length, sh.pins]).toEqual([0, 12, Math.ceil(12 / 2)]);
+    expect([sh.sides, items.length, sh.pins]).toEqual([0, 9, Math.ceil(9 / 2)]);
     const out = routeWith(A, scene), at = [...out.values()].map((p: Pt[]) => `${p[p.length - 1].x},${p[p.length - 1].y}`);
-    expect([out.size, new Set(at).size]).toEqual([12, 12]);
+    expect([out.size, new Set(at).size]).toEqual([9, 9]);
   });
   it("no routed line ends on a card's side across a narrow gutter (the head squeezed between two cards)", () => {
     for (const narrow of [false, true]) {
@@ -201,6 +202,11 @@ describe("lengthen()", () => {
     const low = { ...scene, shapes: [{ x: 0, y: 150, w: 40, h: 40, pins: 1 }, scene.shapes[1]] };
     const tight = [{ x: 20, y: 190 }, { x: 20, y: 194 }, { x: 220, y: 194 }, { x: 220, y: 200 }];
     expect(lengthen(new Map([["k", tight]]), low).get("k")).toEqual(tight);
+    // A middle run that would turn back (it comes down 5 px to the turn): the turn moves only as far as keeps it going
+    // down 4 px — never up past where it started.
+    const side = { ...scene, shapes: [{ x: 0, y: 170, w: 40, h: 40, pins: 1 }, scene.shapes[1]] };
+    const back = [{ x: 40, y: 190 }, { x: 100, y: 190 }, { x: 100, y: 195 }, { x: 220, y: 195 }, { x: 220, y: 200 }];
+    expect(lengthen(new Map([["k", back]]), side).get("k").slice(-3)).toEqual([{ x: 100, y: 194 }, { x: 220, y: 194 }, { x: 220, y: 200 }]);
   });
   it("keeps SEPARATE from a parallel line: a second line along the new run's height is passed by", () => {
     const other = [{ x: 30, y: 20 }, { x: 30, y: 60 }, { x: 140, y: 60 }, { x: 140, y: 200 - ROUTE.RUN }, { x: 300, y: 200 - ROUTE.RUN }, { x: 300, y: 300 }];
