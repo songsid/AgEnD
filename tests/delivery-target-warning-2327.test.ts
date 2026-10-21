@@ -139,4 +139,26 @@ describe("send_to_instance's recipient warning says only what is known (#2327)",
     const result = await send(makeContext(daemon));
     expect(result.warning).toBe("target's CLI is not running and is not being restarted automatically. The message is queued and may not be processed until it is started again.");
   });
+
+  it("an unsupervised CLI outranks a tmux recovery; a tmux recovery alone says so", async () => {
+    const daemon = grokDaemon();
+    daemon.stormWindow = { isActive: () => true };
+    expect((await send(makeContext(daemon))).warning).toBe("target is recovering from a tmux failure. The message is queued and may be delayed.");
+    daemon.healthCheckPaused = true;
+    expect((await send(makeContext(daemon))).warning).toContain("is not running and is not being restarted automatically");
+  });
+
+  it("a crash loop admitted during a planned restart keeps its crash warning, not the unsupervised one", async () => {
+    const daemon = grokDaemon();
+    // The 3-crash breaker sets both: supervision ended, and a crash loop.
+    daemon.healthCheckPaused = true;
+    daemon.crashCount = 3;
+    const ctx = makeContext(daemon);
+    // A crashed target is refused unless a planned restart admits it durably.
+    ctx.isInstanceRestarting = () => true;
+    ctx.admitDurableDelivery = () => ({ deliveryId: "d-2327", state: "queued", duplicate: false });
+    const result = await send(ctx);
+    expect(result.target_state).toBe("crashed");
+    expect(result.warning).toBe("target keeps crashing and needs a restart or replacement. The message is queued and may not be processed.");
+  });
 });
