@@ -8,7 +8,7 @@
 // Unrelated updates (a new message, another message's tick) stop nothing (#1306 §6.2, #1408 §4).
 import "./chat-render.js";
 import "./preview.js";
-import { effectTrialMessage } from "./effect-trial-offer.js";
+import { canvasWorkerEnabled, onCanvasWorkerChange, onCanvasMetadataChange, readCanvasTrialMessage } from "/assets/feature-flags.js";
 import { loadHtmlAttachment } from "./html-attachment.js";
 import { chatTime, chatTimeFull, onDayChange } from "./chat-time.js";
 import { textLinkSegments } from "/assets/app-route.js";
@@ -132,8 +132,8 @@ export function createThread(list, scroller, opts) {
     // #1770: the label ("17:38", "Yesterday 17:38", "10/11 17:38") depends on today, so it is not part of the html a node
     // is kept by: it is written into the node (timeLabels) — crossing midnight relabels in place and reloads no preview.
     const time = x.ts ? `<span class="time" data-ts="${escAttr(x.ts)}" title="${escAttr(chatTimeFull(x.ts))}"></span>` : `<span class="time"></span>`;
-    const trial = effectTrialMessage(x);
-    if (trial) return trialHtml(trial, time, x);
+    const trial = readCanvasTrialMessage(x);
+    if (trial) return canvasWorkerEnabled() ? trialHtml(trial, time, x) : "";
     if (x.role === "status") return statusHtml(x, time);
     const u = opts.isUser(x);
     // renderMarkdown escapes the whole text before it adds any tag of its own (chat-render.js).
@@ -186,7 +186,8 @@ export function createThread(list, scroller, opts) {
   }
   function armTrials() {
     if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
-    const now = trialNow(), next = msgs.map(x => effectTrialMessage(x)).filter(x => x && x.expiresAt > now).reduce((n, x) => Math.min(n, x.expiresAt), Infinity);
+    if (!canvasWorkerEnabled()) return;
+    const now = trialNow(), next = msgs.map(x => readCanvasTrialMessage(x)).filter(x => x && x.expiresAt > now).reduce((n, x) => Math.min(n, x.expiresAt), Infinity);
     if (Number.isFinite(next)) trialTimer = setTimeout(() => { trialTimer = null; render(msgs); }, Math.max(1, Math.min(2147483647, next - now)));
   }
   /**
@@ -649,7 +650,11 @@ export function createThread(list, scroller, opts) {
   }
   /** Put the messages from startIndex() on in the list (nodes reused when unchanged). Returns how many are new. */
   function draw(drawOpts) {
-    const shown = msgs.slice(startIndex());
+    const shown = msgs.slice(startIndex()).filter(message => {
+      // Volatile host offer records are hidden off and while their on-only parser is loading.
+      const hostOffer = message?.role === "status" && message.sender === "agend" && Object.hasOwn(message, "effectTrial") && message.effectTrial != null;
+      return !hostOffer || canvasWorkerEnabled() && readCanvasTrialMessage(message) !== undefined;
+    });
     const keep = new Set(shown.map(msgKey));
     for (const [k, v] of nodes) if (!keep.has(k)) { stopIn(v.node); v.node.remove(); nodes.delete(k); }
     let prev = null, added = 0;
@@ -764,7 +769,7 @@ export function createThread(list, scroller, opts) {
       if (m && opts.clickReplyButton) opts.clickReplyButton(m[1], Number(m[2]));
     } else if (act === "effectTrial") {
       // Only the current host-produced keyed card and a real local click can request admission. No token is read from DOM.
-      const key = el.dataset.arg, row = msgs.find(x => msgKey(x) === key), owner = nodes.get(key), node = owner?.node, offer = effectTrialMessage(row);
+      const key = el.dataset.arg, row = msgs.find(x => msgKey(x) === key), owner = nodes.get(key), node = owner?.node, offer = readCanvasTrialMessage(row);
       if (PUBLIC_LINK() || e.defaultPrevented || e.isTrusted !== true || owner?.trialButton !== el || el.className !== "btn btn-sm effect-trial-start" || !node?.contains(el) || el.closest(".effect-trial-offer")?.getAttribute("data-trust") !== "thread-control"
         || !offer || trialNow() >= offer.expiresAt) return;
       if (trialStatus(row) === "ready" && opts.canTryEffect?.(row) === true) opts.startEffectTrial?.(row);
@@ -816,8 +821,10 @@ export function createThread(list, scroller, opts) {
     if (ro) { ro.observe(list); ro.observe(sc); }
   }
   /** `own`: only this thread's previews stop (a thread let go while another chat is in view); else every one, as leaving. */
+  const redrawFeature = () => { if (!disposed && !parked) render(msgs); };
+  const featureOff = onCanvasWorkerChange(redrawFeature), metadataOff = onCanvasMetadataChange(redrawFeature);
   function dispose(own = false) {
-    disposed = true;
+    disposed = true; featureOff(); metadataOff();
     if (!parked) watchReader(scroller, false);
     if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
     if (ro) ro.disconnect();

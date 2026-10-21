@@ -30,6 +30,7 @@ import {
   resolveToolSet,
   toolRefusedMessage,
 } from "./tool-permissions.js";
+import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE, isCanvasWorkerTool } from "./web-experimental.js";
 import { isWebMessageId } from "./web-chat-history.js";
 
 export interface PersistedReplyContext {
@@ -93,6 +94,7 @@ const OP_MAP: Record<string, string> = {
 type CrudHandler = (ctx: OutboundContext, instance: string, args: Record<string, unknown>) => Promise<unknown>;
 
 export interface AgentEndpointContext extends OutboundContext {
+  canvasWorkerEnabled?(): boolean;
   /** #2305: an instance's reaction to a web chat message (FleetManager.reactToWebMessage). */
   reactToWebMessage?(instance: string, messageId: string, emoji: unknown): Promise<{ ok: true; mirrored: Promise<number> } | { ok: false; error: string }>;
   /** Absolute data directory (e.g. ~/.agend). Used to locate per-instance token files. */
@@ -330,6 +332,9 @@ export async function dispatchAgentOperation(
   // here; this does not isolate hostile shell processes sharing that identity.
   const requestedTool = toolForAgentOp(op);
   if (requestedTool) {
+    if (isCanvasWorkerTool(requestedTool) && ctx.canvasWorkerEnabled?.() !== true) {
+      throw new ToolNotPermittedError(CANVAS_WORKER_EXPERIMENTAL_MESSAGE);
+    }
     const profile = resolveToolSet(ctx.fleetConfig?.instances[instance], instance);
     if (!mayUseTool(profile, requestedTool)) {
       ctx.logger.warn(

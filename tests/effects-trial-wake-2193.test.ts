@@ -31,7 +31,8 @@ async function chatPage() {
   vi.resetModules();
   const harness = await import("./helpers/app-harness.js");
   const p = harness.page(); pages.push(p);
-  const app = await import("/assets/app-store.js");
+  const app = await import("/assets/app-store.js"); app.appStore.set({ canvasWorker: true });
+  await (await import("/assets/feature-flags.js")).loadCanvasWorkerMetadata();
   const panel = await import("/ui/js/panel-chat.js");
   const stream = fakeStream();
   stream.on("status", app.applyStatus);
@@ -47,7 +48,7 @@ const card = (c: { p: AppPage }) => (c.p.root.querySelector(".effect-trial-offer
 describe("#2193: a Try card wakes the sleeping effects runtime", () => {
   it("asleep, the offer says it is checking and starts the runtime; awake, the card is drawn with the runtime's status", async () => {
     const c = await chatPage();
-    c.stream.emit("status", { uptime: 1, instances: [{ name: "w", status: "running", state: "idle", backend: "claude-code" }] });   // no placements
+    c.stream.emit("status", { canvas_worker: true, uptime: 1, instances: [{ name: "w", status: "running", state: "idle", backend: "claude-code" }] });   // no placements
     await c.mount("w"); await settle();
     expect(M.starts, "nothing to play yet: asleep").toBe(0);
     c.stream.emit("message", offer(5));
@@ -65,7 +66,7 @@ describe("#2193: a Try card wakes the sleeping effects runtime", () => {
   });
   it("before the runtime answers, the card says checking (never a Try button)", async () => {
     const c = await chatPage();
-    c.stream.emit("status", { uptime: 1, instances: [{ name: "w", status: "running", state: "idle", backend: "claude-code" }] });
+    c.stream.emit("status", { canvas_worker: true, uptime: 1, instances: [{ name: "w", status: "running", state: "idle", backend: "claude-code" }] });
     await c.mount("w"); await settle();
     c.stream.emit("message", offer(6));
     // The first draw, synchronously after the message: the runtime's import has not resolved yet.

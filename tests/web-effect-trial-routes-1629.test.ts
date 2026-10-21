@@ -34,7 +34,7 @@ async function fixture(idleMs = 48 * 3600 * 1000) {
   const sessionOptions = { dataDir: root, now: () => wall, policy: { local: { absoluteMs: 48 * 3600 * 1000, idleMs } } };
   const sessions = new WebSessionStore(sessionOptions), changed = vi.fn();
   const service = new WebEffectService({ library, themes, profiles, trials, known: n => known && n === "agent", changed });
-  const ctx = { webToken: token, webSessions: sessions, effectService: service, ownerCss: { effectState: () => css } } as unknown as WebApiContext;
+  const ctx = { fleetConfig: { web: { experimental: { canvas_worker: true } } }, webToken: token, webSessions: sessions, effectService: service, ownerCss: { effectState: () => css } } as unknown as WebApiContext;
   const server = createServer((req, res) => { if (!handleWebRequest(req, res, new URL(req.url!, "http://localhost"), ctx)) { res.writeHead(404); res.end(); } }); servers.push(server);
   await new Promise<void>(r => server.listen(0, "127.0.0.1", r)); const port = (server.address() as { port: number }).port, origin = `http://127.0.0.1:${port}`;
   const session = (who: string | undefined = "alice", tier: "admin" | "read" = "admin") => {

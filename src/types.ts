@@ -344,6 +344,8 @@ export interface FleetTemplate {
 
 /** Web UI feature toggles (fleet.yaml `web:` section). */
 export interface WebConfig {
+  /** Canvas Worker effects are experimental and off unless explicitly enabled. Ambient effects are independent. */
+  experimental?: { canvas_worker?: boolean };
   /** Only menu availability; every exposure requires explicit admin consent. */
   public_link?: { allow_public?: boolean; ttl_minutes?: number; protocol?: "http2" | "quic" | "auto"; hostname?: string; tunnel_token_env?: string; origin_port?: number };
   /** Echo web chat to the owning fleet topic (default true); never ClassicBot rooms. */

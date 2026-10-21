@@ -195,7 +195,7 @@ describe("#1629 local-only /effect route", () => {
 
   it("serves exact GET only after Host admission; public extraOrigins widen /frame alone", async () => {
     let publicOrigin = "https://public.example";
-    const listener = createPreviewListener({ settings: { enabled: true, port: 0, origin: null }, healthPort: 19280, config: {}, bootId: BOOT, extraOrigins: () => [publicOrigin] });
+    const listener = createPreviewListener({ settings: { enabled: true, port: 0, origin: null }, healthPort: 19280, config: {}, bootId: BOOT, canvasWorkerEnabled: () => true, extraOrigins: () => [publicOrigin] });
     const port = await listen(listener.server);
     const effect = await get(port, "/effect");
     expect(effect.status).toBe(200);

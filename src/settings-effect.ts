@@ -78,6 +78,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if ("error" in parsed) throw new SettingsConfirmationError(400, "invalid_web_settings");
     const { session: sessionPatch, terminal: terminalPatch } = parsed;
     after.fleet.web = { ...cfg.web };
+    if (parsed.canvasWorker !== undefined) after.fleet.web.experimental = { ...cfg.web?.experimental, canvas_worker: parsed.canvasWorker };
     if (parsed.echo !== undefined) after.fleet.web.echo_to_channel = parsed.echo;
     if (parsed.logTab !== undefined) after.fleet.web.log_tab = parsed.logTab;
     if (parsed.usageOnPublicLink !== undefined) after.fleet.web.usage_report_on_public_link = parsed.usageOnPublicLink;

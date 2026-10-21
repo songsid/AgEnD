@@ -4,6 +4,7 @@
 // parts the person ticks are applied, all or nothing. Custom CSS from a file is never ticked by default. Installed
 // mods can be downloaded again or uninstalled (what they applied stays: Reset and the CSS controls work on it).
 // Export builds a file from what is in force now.
+import { canvasWorkerEnabled, useCanvasWorker } from "/assets/feature-flags.js";
 import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
@@ -45,7 +46,7 @@ export function defaultChoice(plan) {
   for (const it of plan.items) {
     if (it.part === "theme" || it.part === "identity" || it.part === "ambient") c[it.part] = true;
     else if (it.part === "widget") c.widgets[it.slot] = true;
-    else if (it.part === "effect") c.effects = true;
+    else if (it.part === "effect" && canvasWorkerEnabled()) c.effects = true;
     // ownerCss stays false: "read it before turning it on" (r4 §4).
   }
   return c;
@@ -80,7 +81,7 @@ export function ThemeDetail({ theme, pictures, effects }) {
     ${th.background ? pic(th.background.image, tn("modBackground")) : null}
     ${th.background ? row(tn("modBackgroundFit"), `${th.background.fit} · ${Math.round(th.background.opacity * 100)}%`) : null}
     ${th.avatar ? pic(th.avatar, tn("modAvatar")) : null}
-    ${(effects || []).map((e, i) => html`<div key=${i}>${row(tn("modPlacesEffect"), html`<span><code>${e.effect}</code>${e.id ? html` <span class="muted">${e.id.slice(0, 8)}</span>` : null}${Object.keys(e.params || {}).length ? html` · <code>${JSON.stringify(e.params)}</code>` : null}</span>`)}</div>`)}
+    ${(canvasWorkerEnabled() ? effects || [] : []).map((e, i) => html`<div key=${i}>${row(tn("modPlacesEffect"), html`<span><code>${e.effect}</code>${e.id ? html` <span class="muted">${e.id.slice(0, 8)}</span>` : null}${Object.keys(e.params || {}).length ? html` · <code>${JSON.stringify(e.params)}</code>` : null}</span>`)}</div>`)}
     <details class="s-mod-raw"><summary>${tn("modAllFields")}</summary><pre class="s-mod-css-text">${JSON.stringify(th, null, 2)}</pre></details>
   </div>`;
 }
@@ -114,6 +115,7 @@ function PlanItem({ it, choice, setChoice, binds, fleet }) {
         <details class="s-mod-raw"><summary>${tn("modAllFields")}</summary><pre class="s-mod-css-text">${JSON.stringify({ loop: it.loop, click: it.click }, null, 2)}</pre></details></div></li>`;
   }
   if (it.part === "effect") {
+    if (!canvasWorkerEnabled()) return null;
     return html`<li class="s-mod-item">${tick(tn("modPartEffect", it.title), choice.effects, (v) => setChoice({ ...choice, effects: v }))}
       <div class="s-mod-detail"><span>${kib(it.bytes)} · ${tn("modRegions", it.regions.join(", "))}</span>${it.wants.length ? html`<span>${tn("modWants", it.wants.join(", "))}</span>` : null}</div></li>`;
   }
@@ -137,7 +139,7 @@ function Plan({ staged, onDone }) {
   const names = (app.instances || []).map((i) => i.name);
   const install = async () => {
     setBusy(true); setError("");
-    const r = await postJson("/ui/mods/commit", { stage: staged.stage, plan_hash: staged.plan_hash, include: choice, ...(toInstance ? { target } : {}) });
+    const r = await postJson("/ui/mods/commit", { stage: staged.stage, plan_hash: staged.plan_hash, include: { ...choice, effects: canvasWorkerEnabled() && choice.effects }, ...(toInstance ? { target } : {}) });
     setBusy(false);
     // The stage this plan shows is gone or no longer this plan (replaced on another device, expired): read again —
     // the page then shows whatever is staged now, with its own, fresh choices (keyed by stage).
@@ -205,6 +207,7 @@ function ExportForm() {
 }
 
 export function ModsCard() {
+  useCanvasWorker();
   const [state, setState] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");

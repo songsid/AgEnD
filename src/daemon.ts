@@ -1,5 +1,5 @@
 import type { PaneContextSource } from "./pane-context-cache.js";
-import { AGENT_WHATS_NEW, agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, type WhatsNewAudience, whatsNewNotice } from "./agent-whats-new.js";
+import { agentWhatsNew, agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, type WhatsNewAudience, whatsNewNotice } from "./agent-whats-new.js";
 import { join, dirname, basename, resolve } from "node:path";
 import { checkoutTarget, readCheckouts, releaseCandidate, reposRoot, verifyWorktree, writeCheckouts } from "./repo-worktree-guard.js";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
@@ -23,6 +23,7 @@ import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-tur
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
+import { readCanvasWorkerEnabled, scopedFleetConfigEnvironment } from "./web-experimental.js";
 import { readAgentEffect, sendEffectInParts } from "./web-effect-upload.js";
 import { readAgentFile } from "./agent-file-read.js";
 import { ASSET_UPLOAD_MAX_BYTES, MOD_FILE, MOD_MAX_PARTS, MOD_UPLOAD_MAX_BYTES, receiveFiles, receivePreview, sendAssetInParts, writeModFile, writePreview } from "./web-asset-parts.js";
@@ -10487,7 +10488,11 @@ export class Daemon extends EventEmitter {
     }
 
     // ── MCP server env (dual-track: still passes env vars for MCP instructions fallback) ──
+    const configEnvironment = scopedFleetConfigEnvironment(join(this.instanceDir, "..", ".."));
     const mcpEnv: Record<string, string> = {
+      // Empty values clear an unrelated reference inherited by the CLI or tmux server.
+      AGEND_FLEET_DATA_DIR: configEnvironment.AGEND_FLEET_DATA_DIR ?? "",
+      AGEND_FLEET_CONFIG_PATH: configEnvironment.AGEND_FLEET_CONFIG_PATH ?? "",
       AGEND_SOCKET_PATH: sockPath,
       AGEND_INSTANCE_NAME: this.name,
       AGEND_WORKING_DIR: this.config.working_directory,
@@ -11388,10 +11393,11 @@ export class Daemon extends EventEmitter {
     const known = new Set(record?.announced ?? []);
     const ids = pending.ids.filter(id => !known.has(id));
     if (!ids.length) { this.pendingWhatsNew = null; return null; }
-    if (ids.length === pending.ids.length) return pending;
+    // Rebuild even when ids are unchanged: an experimental switch may have changed
+    // while this delivery waited. Never paste the old enabled capability text.
     // #2163: rebuilt as planned — only the entries this instance's roles are told; the rest are recorded with them.
     const roles = this.whatsNewRoles();
-    const shown = AGENT_WHATS_NEW.filter(e => ids.includes(e.id) && (!e.audience || e.audience.some(r => roles.includes(r))));
+    const shown = agentWhatsNew(readCanvasWorkerEnabled(join(this.instanceDir, "..", ".."))).filter(e => ids.includes(e.id) && (!e.audience || e.audience.some(r => roles.includes(r))));
     if (!shown.length) {
       this.pendingWhatsNew = null;
       try { recordWhatsNew(this.instanceDir, ids, pending.version); } catch (err) { this.logger.warn({ err }, "what's-new record not written — the notice may repeat once"); }
@@ -11416,7 +11422,7 @@ export class Daemon extends EventEmitter {
   /** #1633: what this instance has not been told about its AgEnD version yet (see agent-whats-new.ts). */
   private prepareWhatsNew(fresh: boolean, version: string | null = agendVersion()): void {
     try {
-      const plan = planWhatsNew({ record: readWhatsNewRecord(this.instanceDir), fresh, version, roles: this.whatsNewRoles() });
+      const plan = planWhatsNew({ record: readWhatsNewRecord(this.instanceDir), fresh, version, roles: this.whatsNewRoles(), canvasWorker: readCanvasWorkerEnabled(join(this.instanceDir, "..", "..")) });
       if (!plan) { this.pendingWhatsNew = null; return; }
       if ("silent" in plan) { recordWhatsNew(this.instanceDir, plan.silent, plan.version); this.pendingWhatsNew = null; return; }
       this.pendingWhatsNew = plan;
@@ -11500,7 +11506,8 @@ export class Daemon extends EventEmitter {
     // AGEND_HOME points the child's agent-cli at the same data dir the daemon
     // is using, so it can locate <instanceDir>/agent.token.
     const agendHome = join(this.instanceDir, "..", "..");
-    let envPrefix = `TERM=xterm-256color AGEND_INSTANCE_NAME=${shellQuote(this.name)} AGEND_HOME=${shellQuote(agendHome)}`;
+    const configEnvironment = scopedFleetConfigEnvironment(agendHome);
+    let envPrefix = `TERM=xterm-256color AGEND_INSTANCE_NAME=${shellQuote(this.name)} AGEND_HOME=${shellQuote(agendHome)} AGEND_FLEET_DATA_DIR=${shellQuote(configEnvironment.AGEND_FLEET_DATA_DIR ?? "")} AGEND_FLEET_CONFIG_PATH=${shellQuote(configEnvironment.AGEND_FLEET_CONFIG_PATH ?? "")}`;
     if (backendConfig.agentMode === "cli" && backendConfig.agentPort) {
       envPrefix += ` AGEND_PORT=${backendConfig.agentPort}`;
     }

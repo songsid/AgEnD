@@ -38,7 +38,7 @@ async function boot() {
 }
 beforeEach(() => {
   env.app.listeners.clear(); env.nav.listeners.clear(); env.ownerFxListeners.clear(); env.ownerFx = false;
-  env.app.set({ instances: [inst("a"), inst("b"), inst("c")] }); env.nav.set({ route: { panel: "chat", instance: "a" }, seq: 1 });
+  env.app.set({ canvasWorker: true, instances: [inst("a"), inst("b"), inst("c")] }); env.nav.set({ route: { panel: "chat", instance: "a" }, seq: 1 });
 });
 afterEach(() => { vi.restoreAllMocks(); });
 
@@ -47,7 +47,7 @@ describe("#2193: the effects waker", () => {
     const w = await boot();
     expect(w.EMPTY_CHAT_EFFECTS).toBe(EMPTY);
     expect(readFileSync(new URL("../src/fleet-manager.ts", import.meta.url), "utf8"))
-      .toContain('effect_chat_v: createHash("sha256").update(JSON.stringify(this.themeStore.get(name).placements.effects)).digest("hex").slice(0, 32)');
+      .toContain('createHash("sha256").update(JSON.stringify(this.themeStore.get(name).placements.effects)).digest("hex").slice(0, 32)');
   });
   it("nothing configured: no wake through status frames, chat switches and other chats' placements — nothing imported", async () => {
     const w = await boot();
@@ -111,4 +111,38 @@ describe("#2193: the effects waker", () => {
     expect(app).toMatch(/installOwnerCss\(\)/);
     expect(app).not.toMatch(/app-effects\.js|effects-waker\.js/);
   });
+});
+
+describe("#2275 experimental runtime admission", () => {
+  it("off rejects every wake reason and direct calls without scheduling a runtime import", async () => {
+    env.app.set({ canvasWorker: false, instances: [inst("a", SOME)] }); env.ownerFx = true;
+    const w = await boot(); await flush();
+    expect(w.effectsAwake()).toBe(false);
+    const rejected = w.wakeEffects(); expect(w.effectsAwake()).toBe(false);
+    expect(await rejected).toBeNull(); expect(w.effectsAwake()).toBe(false); expect(w.chatHasEffects("a")).toBe(false);
+    expect(w.getAppEffects()).toBeNull(); expect(env.start).not.toHaveBeenCalled(); expect(w.effectsLoaded()).toBe(false);
+  });
+  it("disable disposes current playback, preserves placement data and enabling restores playback", async () => {
+    env.app.set({ instances: [inst("a", SOME)] });
+    const w = await boot(); const dispose = vi.fn(() => { env.started = null; }); env.owner.dispose = dispose;
+    await flush(); expect(env.start).toHaveBeenCalledOnce();
+    env.app.set({ canvasWorker: false }); await flush();
+    expect(dispose).toHaveBeenCalledWith(true); expect(w.getAppEffects()).toBeNull();
+    expect(env.app.get().instances[0].effect_chat_v).toBe(SOME);
+    env.app.set({ canvasWorker: true }); await flush(); expect(env.start).toHaveBeenCalledTimes(2);
+  });
+  it("disable before the pending runtime import settles fences its startup", async () => {
+    const w = await boot(); const pending = w.wakeEffects(); env.app.set({ canvasWorker: false });
+    expect(await pending).toBeNull(); expect(env.start).not.toHaveBeenCalled();
+    env.app.set({ canvasWorker: true }); await w.wakeEffects(); expect(env.start).toHaveBeenCalledOnce();
+  });
+});
+
+it("#2275 re-enable waits for physical retirement and never overlaps the old owner's pending reads", async () => {
+  env.app.set({ instances: [inst("a", SOME)] }); const w = await boot(); await flush();
+  let release = () => {}; const retired = new Promise<void>(resolve => { release = resolve; });
+  env.owner.dispose = vi.fn(() => { env.started = null; return retired; });
+  env.app.set({ canvasWorker: false }); env.app.set({ canvasWorker: true }); await flush(); expect(env.start).toHaveBeenCalledOnce();
+  expect(w.effectsLoaded()).toBe(false); const awake = vi.fn(); w.onEffectsAwake(awake); expect(awake).not.toHaveBeenCalled();
+  release(); await flush(); expect(awake).toHaveBeenCalledOnce(); expect(w.effectsLoaded()).toBe(true); expect(env.start).toHaveBeenCalledTimes(2); expect(w.getAppEffects()).toBe(env.owner);
 });

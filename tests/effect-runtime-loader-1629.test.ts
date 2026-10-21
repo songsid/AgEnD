@@ -209,7 +209,8 @@ describe("#1629 bounded runtime HTTP projection (unmounted)", () => {
   it("one Window cannot reset physical capacity by replacing a disposed loader", async () => {
     const h = fixture(), construct = () => createEffectRuntimeLoader({ window: h.host, ownerEpoch: EPOCH, current: () => true }); expect(construct().ok).toBe(false);
     const pending = held<any>(); h.host.fetch.mockImplementationOnce(() => pending.promise); const job = h.api.resource({ id: ID, instance: "a" }); await flush(); h.api.dispose(); expect(await job).toBeNull(); expect(construct().ok).toBe(false);
-    pending.resolve(response()); await flush(); const fresh = construct(); expect(fresh.ok).toBe(true); h.host.fetch.mockImplementation(async () => response()); expect(await fresh.resource({ id: ID, instance: "a" })).not.toBeNull(); fresh.dispose();
+    let disposed = false; const retired = h.api.whenDisposed().then(() => { disposed = true; }); await flush(); expect(disposed).toBe(false);
+    pending.resolve(response()); await retired; await flush(); expect(disposed).toBe(true); const fresh = construct(); expect(fresh.ok).toBe(true); h.host.fetch.mockImplementation(async () => response()); expect(await fresh.resource({ id: ID, instance: "a" })).not.toBeNull(); fresh.dispose();
   });
   it("failed and reentrant construction cannot leak or duplicate the Window reservation", () => {
     const h = fixture(); h.api.dispose(); const nested = vi.fn();

@@ -7,6 +7,7 @@
  * check, then validation and the write, then — only once it is on disk — the limiter's record. A refused, invalid or
  * failed call costs nothing. A person's reset and lock are never limited.
  */
+import { canvasWorkerEnabled } from "./web-experimental.js";
 import { type AppearanceBucket, AppearanceLimiter, agentAppearanceEditAllowed } from "./web-appearance-policy.js";
 import { applyThemePatch, STATUS_COLORS, type Theme, THEME_DEFAULTS } from "./web-theme.js";
 import { createHash, randomBytes } from "node:crypto";
@@ -20,7 +21,7 @@ export const ASSET_UPLOAD_IDLE_MS = 60_000;
 interface Upload { id: string; slot: ThemeAssetSlot; count: number; next: number; bytes: number; sha256: string; parts: Buffer[]; received: number; last: number }
 
 export type ToolAnswer = Record<string, unknown>;
-type WebConfigView = { themes?: { agent_edit?: boolean } } | undefined | null;
+type WebConfigView = { themes?: { agent_edit?: boolean }; experimental?: { canvas_worker?: boolean } } | undefined | null;
 
 export class WebAppearance {
   readonly limiter: AppearanceLimiter;
@@ -52,7 +53,7 @@ export class WebAppearance {
   getTheme(instance: string): ToolAnswer {
     const r = this.store.get(instance);
     return {
-      effects: r.placements.effects,
+      ...(canvasWorkerEnabled(this.webConfig()) ? { effects: r.placements.effects } : {}),
       theme: r.theme, by: r.by, locked: r.locked, agent_edit: agentAppearanceEditAllowed(this.webConfig()),
       defaults: THEME_DEFAULTS,
       // #2196: never themed; a page theme (page.on) must leave each readable (3:1) on its sidebar and background.
@@ -151,10 +152,10 @@ export class WebAppearance {
     return { theme: { v: 1 } as Theme };
   }
 
-  /** A person's reset (Details, the chat menu): theme, placements and pictures go; the lock stays. Not limited. */
+  /** A person's reset: theme, widgets, ambient and pictures go; while CW is disabled its selections stay. The lock stays. */
   humanReset(instance: string): ToolAnswer {
     this.uploads.delete(instance);
-    const w = this.store.reset(instance, "human");
+    const w = this.store.reset(instance, "human", !canvasWorkerEnabled(this.webConfig()));
     if (!w.ok) return { error: w.error, status: w.status };
     this.changed();
     return { ok: true, rev: w.rev };

@@ -1,3 +1,5 @@
+import { canvasWorkerEnabled } from "./web-experimental.js";
+import { isCanvasWorkerHttpPath } from "./web-experimental-http.js";
 import { sameAccount } from "./web-guest-access.js";
 import { withAppIconLinks } from "./web-icons.js";
 import { readBoundedWebBody } from "./web-body.js";
@@ -58,6 +60,7 @@ export const LOGIN_PAUSED_MESSAGE = "Too many wrong codes — sign-in is paused 
 const MAX_LOGIN_BODY = 1024;
 
 export interface AuthApiContext {
+  readonly fleetConfig?: { web?: { experimental?: { canvas_worker?: boolean } } } | null;
   readonly webToken: string | null;
   readonly webSessions: WebSessionStore | null;
   readonly webLoginCodes: WebLoginCodes | null;
@@ -111,7 +114,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     // #1665: the host-kept preferences and their browser cache.
     "app-prefs.js",
     // #1629: static session-bound owner preference client; every data route remains session-gated.
-    "owner-effect-prefs.js",
+    "owner-effect-prefs.js", "feature-flags.js", "effect-display-metadata.js",
     // #1629: static host runtime closure; effect data stays behind session/epoch routes.
     "effect-posters.js", "effect-poster-reader.js",
     "effect-app-runtime.js", "effect-trial-source.js", "effect-owner-source.js", "effect-owner-regions.js", "effect-chat-runtime.js", "effect-runtime-loader.js", "effect-registry.js", "effect-safety.js",
@@ -223,6 +226,7 @@ export function handleAuthRequest(
   }
 
   if (path.startsWith("/assets/")) {
+    if (!canvasWorkerEnabled(ctx.fleetConfig?.web) && isCanvasWorkerHttpPath(path)) { json(res, 404, { error: "canvas_worker_experimental" }); return true; }
     const asset = method === "GET" ? ASSETS[path.slice("/assets/".length)] : undefined;
     if (!asset) { json(res, 404, { error: "not found" }); return true; }
     try {

@@ -679,3 +679,19 @@ and different profile names do not guarantee different billing accounts.
 Web chat echoes are enabled by default for fleet-topic instances. Set `web.echo_to_channel: false` to disable them, or use **Settings → Web → Web chat**. The copy goes to the instance's own Telegram or Discord topic as `🌐 web · <name>: …` (the web person's name, `web-user` when they have none — #1827), with attachment names and a note pointing to web chat for long text. It is display only: echoes never become a new agent turn. Web-only fleets are excluded. ClassicBot rooms echo too, group channels included: a room without `classicBot.yaml` → `channels.<key>.web_echo` follows `web.echo_to_channel` (so it is on by default and off when the fleet-wide switch is off); `web_echo: false` keeps one room off and `web_echo: true` keeps it on whatever the fleet-wide switch says (#2054). A failed echo is logged without failing or delaying web message delivery. Each echo has a five-second total ordering budget, including queue and admission waits. Replies proceed when the send settles or the budget expires. On expiry, queued copies are dropped with a warning; an already in-flight copy may land after the reply, and its late outcome is logged. No echo retry is attempted.
 
 Echo text and attachment names replace mention/command tokens with visible ASCII labels such as `[mention: 200]`, `[at: botname]` and `[command: cmd at bot]`. Compatibility normalisation and format-character removal happen first; URLs, email local parts and ordinary path slashes remain intact. Discord also sends with `allowedMentions: { parse: [] }`; Telegram sends plain text without mention entities. The common ingress drops the fixed `🌐 web · ` prefix when its author is one of the configured fleet bot accounts on that platform, independent of echo flags or send acknowledgements. While any configured world on the same platform has an unknown bot identity, bot-flagged prefix candidates are also dropped before trigger evaluation, with a debug log. This temporary quarantine never affects human copies; after all identities are known, non-fleet bots keep the existing admission/collab rules. No unknown author is classified as a fleet bot, and no recent-message cache is used.
+
+### Experimental Canvas Worker effects (#2275)
+
+`web.experimental.canvas_worker` is a strict boolean, **`false` by default**:
+
+```yaml
+web:
+  experimental:
+    canvas_worker: false
+```
+
+A local fleet administrator can enable it in **Settings → Web appearance → Experimental: Canvas Worker effects** (confirmation required). This setting cannot be changed over a public link or by a guest. It applies without restarting agents or reloading the dashboard.
+
+While off, Canvas Worker controls, Try offers, posters, libraries and playback are hidden on local, public and guest pages. No Canvas Worker runtime modules or workers load. CW-only tools, including web mod export/proposal, disappear from agent tool lists and refuse direct calls; mixed appearance tools retain their non-CW options. Managed skills and agent notices omit CW instructions. Turning it off stops running CW effects. Saved workers, placements, preferences and mods remain on disk; enabling it restores them, subject to the existing consent and trust checks.
+
+Ambient effects (falling petals, click stars and other data-only presets), themes, widgets and custom CSS are independent of this switch and keep working.

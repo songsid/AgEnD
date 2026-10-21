@@ -1,3 +1,4 @@
+import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 /**
  * #1629 r4 §4 (r4-5): installed mods, and a person's import in two steps.
  *
@@ -144,6 +145,8 @@ export class ModStore {
     prefs: ModPrefs;
     ownerCss: ModOwnerCss | null;
     effects: ModEffectLibrary | null;
+    /** The live policy when this store is used by the fleet; storage-only test clients may omit it. */
+    canvasWorkerEnabled?: () => boolean;
     context: () => ModContext;
     isKnownInstance: (name: string) => boolean;
     /** The preferences bucket the page reads (/ui/prefs: one, the operator's — web-prefs.ts). */
@@ -317,6 +320,7 @@ export class ModStore {
     const checked = checkModBundle(text, this.deps.context());
     if (!checked.ok) return { ok: false, status: 400, error: "mod_invalid", problems: checked.problems };
     const mod = checked.mod;
+    if (this.deps.canvasWorkerEnabled?.() === false && mod.effects.length) return { ok: false, status: 403, error: "canvas_worker_experimental", detail: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };
     // Provenance is the path the bytes came in by: what an agent proposed never carries custom CSS (r4 §4).
     if (from.proposal !== undefined && mod.ownerCss) return { ok: false, status: 400, error: "owner_css_not_from_agent" };
     const plan = modPlan(mod, idx.mods);
@@ -356,6 +360,7 @@ export class ModStore {
     const include = parseInclude(body.include);
     if (!include) return { ok: false, status: 400, error: "include", detail: "{ theme?, identity?, ambient?, effects?, ownerCss?, widgets?: { chat_header?, details?, sidebar? }, replace? } of booleans" };
     const mod = s.mod;
+    if (this.deps.canvasWorkerEnabled?.() === false && (mod.effects.length || include.effects)) return { ok: false, status: 403, error: "canvas_worker_experimental", detail: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };
     const want = {
       theme: !!(include.theme && mod.theme), identity: !!(include.identity && mod.identity), effects: !!(include.effects && mod.effects.length),
       ownerCss: !!(include.ownerCss && mod.ownerCss),
@@ -511,6 +516,10 @@ export class ModStore {
     if (idx === "unreadable") return { ok: false, status: 503, error: "mods_unreadable" };
     if (typeof id !== "string" || !idx.mods.has(id)) return { ok: false, status: 404, error: "no_such_mod" };
     const rec = idx.mods.get(id)!;
+    if (this.deps.canvasWorkerEnabled?.() === false) {
+      const contained = this.bundleEffects(id);
+      if (rec.effects.length || contained === "unknown" || (contained?.length ?? 0) > 0) return { ok: false, status: 403, error: "canvas_worker_experimental", detail: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };
+    }
     let released: string[] = [];
     let undo: (() => boolean) | null = null;
     if (rec.effects.length) {

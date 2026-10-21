@@ -28,7 +28,7 @@ export interface ValidationIssue {
 }
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
-const WEB_KEYS = ["public_link", "echo_to_channel", "usage_panel", "usage_report_on_public_link", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
+const WEB_KEYS = ["experimental", "public_link", "echo_to_channel", "usage_panel", "usage_report_on_public_link", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
   "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority", "search"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
@@ -391,6 +391,13 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       warn(`web.${key}`, key === "access"
         ? "web.access is not a setting; fleet admins come from channel(s).access.allowed_users — ignored"
         : `unknown key (known: ${WEB_KEYS.join(", ")}) — ignored`);
+    }
+    if (config.web.experimental !== undefined) {
+      if (!isObj(config.web.experimental)) err("web.experimental", "must be a mapping");
+      else {
+        for (const key of Object.keys(config.web.experimental)) if (key !== "canvas_worker") err(`web.experimental.${key}`, "unknown experimental feature");
+        if (config.web.experimental.canvas_worker !== undefined && typeof config.web.experimental.canvas_worker !== "boolean") err("web.experimental.canvas_worker", "must be a boolean");
+      }
     }
     if (config.web.themes !== undefined) {
       if (!isObj(config.web.themes)) err("web.themes", "must be a mapping");

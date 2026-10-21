@@ -94,6 +94,21 @@ describe("stock trust/paint prerequisite", () => {
       actual.setAttribute("data-trust", "reply"); expect(f.snapshot().ok).toBe(false);
     } finally { dom.restore(); }
   });
+  it.each([["div", "msg-actions"], ["button", "msg-quote"]])("admits the exact stock reply %s.%s producer and protects paint, rejecting other ancestry/markers", async (tag, cls) => {
+    const f = await fixture(), dom = installDom();
+    try {
+      const shell = dom.document.createElement("div"), thread = dom.document.createElement("div"), message = dom.document.createElement("div"), actual = dom.document.createElement(tag);
+      shell.className = "shell"; thread.className = "thread"; message.className = "msg"; actual.className = cls; actual.setAttribute("data-trust", "thread-control");
+      shell.append(thread); thread.append(message); message.append(actual); dom.document.body.append(shell);
+      const spec = f.m.STOCK_TRUST_INVENTORY.find((entry: any) => entry.kind === "thread-control"); expect(actual.matches(spec.selector)).toBe(true);
+      const el = f.node(), button = f.node(); el.r = { x: 300, y: 200, width: 200, height: 40 }; button.r = { x: 400, y: 210, width: 30, height: 20 }; el.children = [button];
+      el.getAttribute = () => actual.getAttribute("data-trust") ?? ""; f.extra.set(spec.selector, [el]); f.marked.push(el);
+      expect(f.snapshot()).toMatchObject({ ok: true, rects: expect.arrayContaining([{ x: 300, y: 200, width: 200, height: 40 }]) });
+      actual.setAttribute("data-trust", "reply"); expect(f.snapshot()).toMatchObject({ ok: false, reason: "stock_trust_unknown" }); actual.setAttribute("data-trust", "thread-control");
+      thread.append(actual); expect(actual.matches(spec.selector)).toBe(false);
+      f.extra.set(spec.selector, []); expect(f.snapshot()).toMatchObject({ ok: false, reason: "stock_trust_unknown" });
+    } finally { dom.restore(); }
+  });
   it("independently expects the actual inert offer root and protects its descendant paint", async () => {
     const f = await fixture(), dom = installDom();
     try {

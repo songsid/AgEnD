@@ -259,12 +259,14 @@ export class ThemeStore {
 
   /**
    * Reset. The agent's own (reset_web_theme): its theme only. A person's: the theme, its placements and assets — the
-   * lock stays (a reset is not an unlock).
+   * lock stays (a reset is not an unlock). Hidden experimental effect selections are preserved when requested.
    */
-  reset(name: string, by: AppearanceActor): StoreWrite {
+  reset(name: string, by: AppearanceActor, preserveEffects = false): StoreWrite {
     const prev = this.get(name);
     if (by === "agent") return this.commit(name, { ...prev, theme: { v: 1 }, by, updated: this.now() });
-    const w = this.commit(name, { ...emptyRecord(this.now()), by: "human", locked: prev.locked });
+    const empty = emptyRecord(this.now());
+    if (preserveEffects) empty.placements.effects = clone(prev.placements.effects);
+    const w = this.commit(name, { ...empty, by: "human", locked: prev.locked });
     if (w.ok) { try { rmSync(this.assetDir(name), { recursive: true, force: true }); } catch { /* best effort */ } }
     return w;
   }

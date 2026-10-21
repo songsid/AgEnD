@@ -61,7 +61,8 @@ describe("one status build per tick for every open stream", () => {
     expect(gb.statuses()).toEqual([guestStatus(FULL, new Set(["b"])), guestStatus(FULL, new Set(["b"])), guestStatus(FULL, new Set(["b"]))]);
     // Nothing admin-only reaches a guest from the shared build: no fleet fields, no other instance, no model, cost, prompt.
     for (const g of [ga, gb]) for (const st of g.statuses()) {
-      expect(Object.keys(st)).toEqual(["instances"]);
+      expect(Object.keys(st)).toEqual(["instances", "canvas_worker"]);
+      expect(st.canvas_worker).toBe(false);
       expect(st.instances).toHaveLength(1);
       expect(JSON.stringify(st)).not.toMatch(/publicLink|host_memory|uptime|opus|gpt|cost|secret role|rm -rf/);
     }
