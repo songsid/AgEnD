@@ -111,7 +111,8 @@ never the person (actor `script`, "public-link"). The page says it is read-only 
 **Instances kept out of sight.** Over the public link the board leaves out the cards whose assignee, creator or
 dispatcher is an instance with `cross_instance_visibility: hidden` (in lists, search and by number); a project's numbers
 still count them. A visible card follows the same rule for what it shows around it (#2303 review): its sub tasks, its
-main task (also a search hit's main task title), and the comments, logs and history such an instance left on it. On the dashboard itself the person sees every card: hiding is about what instances and outsiders see, and the
+main task (also a search hit's main task title), and the comments, logs and history such an instance left on it —
+which also do not count in a card's comment numbers, name its last comment, or make search find it (#2304 review). On the dashboard itself the person sees every card: hiding is about what instances and outsiders see, and the
 board is the person's record.
 
 ## Storage and other releases

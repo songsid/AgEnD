@@ -345,6 +345,14 @@ export interface MyWork {
   mains: Array<{ card: Card; progress: Progress }>;
 }
 
+/**
+ * What a read leaves out: the comments, logs and send-backs of these authors (instances kept out of sight, over the
+ * public link — #2304 review). Their entries are not counted, named as a card's last comment, or found by search.
+ */
+export interface ReadScope {
+  leaveOutAuthors?: readonly string[];
+}
+
 export interface SearchHit {
   card: Card;
   /** Where the phrase was found, when not in the title. */
@@ -793,8 +801,14 @@ export class TaskBoard {
     return out;
   }
 
-  view(card: Card): CardView {
-    return this.views([card])[0]!;
+  view(card: Card, scope: ReadScope = {}): CardView {
+    return this.views([card], scope)[0]!;
+  }
+
+  /** ` AND <column> NOT IN (…)` for a scope's left-out authors, with its values (empty when none). */
+  private notBy(scope: ReadScope, column: string): { sql: string; args: string[] } {
+    const names = scope.leaveOutAuthors ?? [];
+    return names.length ? { sql: ` AND ${column} NOT IN (${names.map(() => "?").join(", ")})`, args: [...names] } : { sql: "", args: [] };
   }
 
   /**
@@ -803,7 +817,7 @@ export class TaskBoard {
    * queries per card: a board read stays a handful of statements however many cards it has (it runs on the fleet's
    * event loop). Same answers as progress(), unmetDeps() and newComments() card by card.
    */
-  views(cards: Card[]): CardView[] {
+  views(cards: Card[], scope: ReadScope = {}): CardView[] {
     if (!cards.length) return [];
     type Light = { code: string; status: CardStatus; deps: string[]; parent: string | null };
     const all = new Map<string, Light>();
@@ -818,15 +832,16 @@ export class TaskBoard {
         progress.set(light.parent, p);
       }
     }
+    const by = this.notBy(scope, "author"), eBy = this.notBy(scope, "e.author");
     const comments = new Map((this.db.prepare(
       `SELECT e.task_id AS task_id, n.n AS n, e.author AS author, e.author_kind AS author_kind, e.at AS at FROM task_entries e
-       JOIN (SELECT task_id, COUNT(*) AS n, MAX(id) AS last FROM task_entries WHERE kind IN ('comment', 'reject', 'approve') GROUP BY task_id) n ON e.id = n.last`,
-    ).all() as Array<{ task_id: string; n: number; author: string; author_kind: Actor["kind"]; at: string }>).map((r) => [r.task_id, r]));
+       JOIN (SELECT task_id, COUNT(*) AS n, MAX(id) AS last FROM task_entries WHERE kind IN ('comment', 'reject', 'approve')${by.sql} GROUP BY task_id) n ON e.id = n.last`,
+    ).all(...by.args) as Array<{ task_id: string; n: number; author: string; author_kind: Actor["kind"]; at: string }>).map((r) => [r.task_id, r]));
     const unseen = new Map((this.db.prepare(
       `SELECT t.id AS id, COUNT(e.id) AS n FROM tasks t JOIN task_entries e
-         ON e.task_id = t.id AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.author IS NOT t.assignee
+         ON e.task_id = t.id AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.author IS NOT t.assignee${eBy.sql}
        GROUP BY t.id`,
-    ).all() as Array<{ id: string; n: number }>).map((r) => [r.id, r.n]));
+    ).all(...eBy.args) as Array<{ id: string; n: number }>).map((r) => [r.id, r.n]));
     const code = (uuid: string) => all.get(uuid)?.code ?? uuid.slice(0, 8);
     /** unmetDeps(), on the light rows: own dependencies not done, then the main task's, each once. */
     const unmet = (deps: string[], parent: string | null, seen = new Set<string>()): string[] => {
@@ -875,13 +890,13 @@ export class TaskBoard {
     });
   }
 
-  detail(ref: string): CardDetail {
+  detail(ref: string, scope: ReadScope = {}): CardDetail {
     const card = this.getCard(ref);
     const parent = card.parent ? this.byUuid(card.parent) : undefined;
     return {
-      card: this.view(card),
+      card: this.view(card, scope),
       parent: parent ? { id: parent.code, title: parent.title, status: parent.status } : null,
-      children: this.views(this.children(card.uuid)),
+      children: this.views(this.children(card.uuid), scope),
       comments: this.entries(card.uuid, ["comment", "reject", "approve"], 200),
       logs: this.entries(card.uuid, ["log"], 200),
       history: this.events(card.uuid, 200).filter((e) => e.type !== "reordered"),
@@ -931,7 +946,7 @@ export class TaskBoard {
    * Cards matching a phrase in their number, title, text fields, checklist or comments; live cards first, newest
    * first. `match` says where it matched when it is not the title.
    */
-  search(query: string, limit = 20): SearchHit[] {
+  search(query: string, limit = 20, scope: ReadScope = {}): SearchHit[] {
     const q = query.trim();
     if (!q) return [];
     const max = Math.min(Math.max(limit, 1), 50);
@@ -941,22 +956,25 @@ export class TaskBoard {
       if (exact) hits.push({ card: exact, match: null });
     }
     const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    // Named, as the rest of this statement: the left-out authors are :a0, :a1, …
+    const names = scope.leaveOutAuthors ?? [];
+    const notBy = { sql: names.length ? ` AND e.author NOT IN (${names.map((_, i) => `:a${i}`).join(", ")})` : "", params: Object.fromEntries(names.map((n, i) => [`a${i}`, n])) };
     const text = ["title", "description", "scope", "context", "state", "result", "blocked_reason"].map((f) => `t.${f} LIKE :q ESCAPE '\\'`).join(" OR ");
     const rows = this.db.prepare(
       `SELECT * FROM tasks t
        WHERE ${text}
          OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(t.acceptance) THEN t.acceptance ELSE '[]' END) j WHERE json_extract(j.value, '$.text') LIKE :q ESCAPE '\\')
-         OR EXISTS (SELECT 1 FROM task_entries e WHERE e.task_id = t.id AND e.text LIKE :q ESCAPE '\\')
+         OR EXISTS (SELECT 1 FROM task_entries e WHERE e.task_id = t.id AND e.text LIKE :q ESCAPE '\\'${notBy.sql})
        ORDER BY CASE WHEN t.status IN ('done', 'cancelled') THEN 1 ELSE 0 END, t.updated_at DESC
        LIMIT :max`,
-    ).all({ q: like, max }) as Row[];
+    ).all({ q: like, max, ...notBy.params }) as Row[];
     for (const card of rows.map(toCard)) {
-      if (!hits.some((h) => h.card.uuid === card.uuid)) hits.push({ card, match: this.matchOf(card, q, like) });
+      if (!hits.some((h) => h.card.uuid === card.uuid)) hits.push({ card, match: this.matchOf(card, q, like, notBy) });
     }
     return hits.slice(0, max);
   }
 
-  private matchOf(card: Card, q: string, like: string): SearchHit["match"] {
+  private matchOf(card: Card, q: string, like: string, notBy: { sql: string; params: Record<string, string> } = { sql: "", params: {} }): SearchHit["match"] {
     const needle = q.toLowerCase();
     if (card.title.toLowerCase().includes(needle)) return null;
     const snippet = (value: string) => {
@@ -970,8 +988,8 @@ export class TaskBoard {
     }
     const item = card.acceptance.find((a) => a.text.toLowerCase().includes(needle));
     if (item) return { field: "acceptance", text: snippet(item.text) };
-    const entry = this.db.prepare("SELECT kind, text FROM task_entries WHERE task_id = :id AND text LIKE :q ESCAPE '\\' ORDER BY id DESC LIMIT 1")
-      .get({ id: card.uuid, q: like }) as { kind: EntryKind; text: string } | undefined;
+    const entry = this.db.prepare(`SELECT kind, text FROM task_entries e WHERE task_id = :id AND text LIKE :q ESCAPE '\\'${notBy.sql} ORDER BY id DESC LIMIT 1`)
+      .get({ id: card.uuid, q: like, ...notBy.params }) as { kind: EntryKind; text: string } | undefined;
     if (entry) return { field: entry.kind === "log" ? "log" : "comment", text: snippet(entry.text) };
     return null;
   }

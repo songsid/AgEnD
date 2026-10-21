@@ -353,6 +353,38 @@ describe("4. the public link reads the board and changes nothing on it", () => {
   });
 });
 
+// #2304 review (Fable): a hidden instance's words on a visible card are not found by search, and do not count in the
+// board's comment count or name its last comment — over the link; the local page is unchanged.
+describe("4a. a hidden instance's comments on a visible card, over the link", () => {
+  it("search does not find them; the board's commentCount, newCommentCount and lastComment leave them out", async () => {
+    const db = scratchDb();
+    const fleetConfig = { defaults: {}, instances: { "dev-a": {}, spy: { cross_instance_visibility: "hidden" } } };
+    db.board.createCards(ANN, { cards: [{ title: "Open work", assignee: "dev-a" }, { title: "Other work", assignee: "dev-a" }] });
+    db.board.updateCard(ANN, "M-1", { comment: "Ann's note" });
+    db.board.updateCard({ kind: "instance", name: "spy" }, "M-1", { comment: "the vault code is 4711" });
+    db.board.updateCard({ kind: "instance", name: "spy" }, "M-2", { comment: "only the spy spoke here" });
+    db.board.updateCard({ kind: "instance", name: "spy" }, "M-1", { log: "vault log line" });
+    const link = (path: string) => viaLink(db, "GET", path, undefined, { fleetConfig });
+    const local = (path: string) => viaLink(db, "GET", path, undefined, { fleetConfig, local: true });
+    expect((await link("/ui/tasks/search?q=vault")).body.results).toEqual([]);
+    expect((await local("/ui/tasks/search?q=vault")).body.results.map((r: any) => [r.card.id, r.match.field])).toEqual([["M-1", "log"]]);
+    expect((await link("/ui/tasks/search?q=work")).body.results.map((r: any) => r.card.id).sort()).toEqual(["M-1", "M-2"]);
+    const pick = (body: any, id: string) => body.cards.find((c: any) => c.id === id);
+    const [b, l] = [(await link("/ui/tasks/board")).body, (await local("/ui/tasks/board")).body];
+    expect([pick(b, "M-1").commentCount, pick(b, "M-1").newCommentCount, pick(b, "M-1").lastComment?.author]).toEqual([1, 1, "Ann"]);
+    expect([pick(b, "M-2").commentCount, pick(b, "M-2").newCommentCount, pick(b, "M-2").lastComment]).toEqual([0, 0, null]);
+    expect([pick(l, "M-1").commentCount, pick(l, "M-1").newCommentCount, pick(l, "M-1").lastComment?.author]).toEqual([2, 2, "spy"]);
+    expect(JSON.stringify(b)).not.toMatch(/spy|vault/);
+    // The card's own read and its sub tasks' views follow the same rule.
+    db.board.createCards(ANN, { parent: "M-2", cards: [{ title: "A step", assignee: "dev-a" }] });
+    db.board.updateCard({ kind: "instance", name: "spy" }, "S-1", { comment: "spy on the step" });
+    const d = (await link("/ui/tasks/cards/M-2")).body;
+    expect([d.card.commentCount, d.card.lastComment, d.children[0].commentCount, d.children[0].lastComment]).toEqual([0, null, 0, null]);
+    expect(JSON.stringify(d)).not.toMatch(/spy/);
+    expect((await local("/ui/tasks/cards/M-2")).body.children[0].lastComment.author).toBe("spy");
+  });
+});
+
 describe("4b. who handed a card out, from the dashboard", () => {
   it("an instance, the person writing, or nobody; anything else is a 400", async () => {
     const db = scratchDb();

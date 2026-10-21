@@ -2139,6 +2139,8 @@ export function handleWebRequest(
     const hidden = (c: { assignee: string | null; createdBy: string; dispatcher: { name: string } | null }) => [c.assignee, c.createdBy, c.dispatcher?.name].some(hiddenName);
     // #2303 review: what a visible card shows of the cards around it follows the same rule — its children, its main
     // task (a search hit's too) — and so do the words and the history a hidden instance left on it.
+    // …and a hidden instance's words on a visible card are not counted, named or found there (#2304 review).
+    const scope = { leaveOutAuthors: gateway ? Object.keys(ctx.fleetConfig?.instances ?? {}).filter(hiddenName) : [] };
     const hiddenRef = (ref: string | null) => { const c = ref ? board.findCard(ref) : undefined; return !!c && hidden(c); };
     const mentionsHidden = (v: unknown): boolean => (typeof v === "string" ? hiddenName(v) : !!v && typeof v === "object" && Object.values(v).some(mentionsHidden));
     const shown = (d: ReturnType<typeof board.detail>): typeof d => !gateway ? d : {
@@ -2165,15 +2167,15 @@ export function handleWebRequest(
         const kept = key ? boardBodies.get(board) : undefined;
         if (kept && kept.key === key) { jsonText(res, 200, kept.body); return true; }
         const cards = board.boardCards(undefined, allDone).filter((c) => !hidden(c));
-        const body = JSON.stringify({ rev, cards: board.views(cards), projects: board.listProjects(true), stats: board.projectStats() });
+        const body = JSON.stringify({ rev, cards: board.views(cards, scope), projects: board.listProjects(true), stats: board.projectStats() });
         if (key) boardBodies.set(board, { key, body });
         jsonText(res, 200, body);
         return true;
       }
       if (method === "GET" && path === "/ui/tasks/search") {
         const names = new Map(board.listProjects(true).map((p) => [p.id, p.name]));
-        const hits = board.search(url.searchParams.get("q") ?? "", Number(url.searchParams.get("limit")) || 20).filter((h) => !hidden(h.card));
-        const views = board.views(hits.map((h) => h.card));
+        const hits = board.search(url.searchParams.get("q") ?? "", Number(url.searchParams.get("limit")) || 20, scope).filter((h) => !hidden(h.card));
+        const views = board.views(hits.map((h) => h.card), scope);
         const results = hits.map(({ card: c, match }, i) => ({
           card: views[i],
           match,
@@ -2186,7 +2188,7 @@ export function handleWebRequest(
       if (method === "GET" && card && !card[2]) {
         const found = board.getCard(ref);
         if (hidden(found)) { json(res, 404, { error: "no such card", code: "not_found" }); return true; }
-        json(res, 200, shown(board.detail(ref)));
+        json(res, 200, shown(board.detail(ref, scope)));
         return true;
       }
       if (method === "POST" && path === "/ui/tasks/cards") {
