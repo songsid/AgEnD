@@ -1,4 +1,4 @@
-import { PUBLIC_TUNNEL_SECRET_ID } from "./public-tunnel-config.js";
+import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
 import { settingsRequestExecution, settingsRequestLocalAdmin, settingsWrite } from "./settings-request-capability.js";
@@ -476,11 +476,14 @@ export function handleSettingsRequest(
       const secret = typeof body.secret === "string" ? body.secret : "";
       const key = typeof req.headers["idempotency-key"] === "string"
         ? req.headers["idempotency-key"] : typeof body.idempotency_key === "string" ? body.idempotency_key : "";
-      if (!secret && !(tunnelSecretRoute && body.clear === true)) return json(res, 400, { error: "secret required" }, true);
+      if (!secret && specId !== PUBLIC_TUNNEL_SECRET_ID) return json(res, 400, { error: "secret required" }, true);
       if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) return json(res, 400, { error: "Idempotency-Key required" }, true);
       const result = await ctx.verifyProviderSecret!({ specId, secret, ...(tunnelSecretRoute ? { clear: body.clear === true } : {}), sessionBinding: requestSessionBinding(req), idempotencyKey: key });
       if (!result.ok) {
         const code = result.status === "unsupported_verifier" ? 422 : result.status === "provider_unavailable" ? 503 : 422;
+        if (specId === PUBLIC_TUNNEL_SECRET_ID && result.status === "invalid") {
+          return json(res, code, { ok: false, result: "invalid", error_code: "invalid_tunnel_token", error: PUBLIC_TUNNEL_TOKEN_HINT }, true);
+        }
         return json(res, code, { ok: false, result: result.status, error: result.status === "unsupported_verifier" ? "unsupported verifier" : "provider secret verification failed" }, true);
       }
       json(res, 200, { ok: true, result: tunnelSecretRoute || specId === PUBLIC_TUNNEL_SECRET_ID ? "prepared" : "verified", verification_id: result.verification_id, expires_at: result.expires_at, spec_id: result.spec_id, activation: result.activation }, true);

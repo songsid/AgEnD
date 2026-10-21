@@ -16,7 +16,7 @@ applyNetworkReliabilityDefaults();
 import { checkNodeVersion } from "./node-version-guard.js";
 checkNodeVersion();
 
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { registerBugReportCommand } from "./bug-report-cli.js";
 import { join, dirname } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
@@ -61,7 +61,7 @@ import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceCon
 import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { limitFleetCoreDumps } from "./coredump-filter.js";
-import { SYSTEMD_RESTART_TIMEOUT_MS } from "./service-installer.js";
+import { SYSTEMD_RESTART_TIMEOUT_MS, getServicePath, getSystemServicePath } from "./service-installer.js";
 import {
   selectSystemdRestartTarget,
   SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE,
@@ -74,6 +74,7 @@ import type { CpuProfile } from "./cpu-profile.js";
 import { requestCpuProfile } from "./profile-control.js";
 import { requestSettingsConfirmation, type SettingsInspection } from "./settings-control.js";
 import { canonicalCliEntry, selfCommand } from "./cli-entry.js";
+import { DIRECT_FLEET_START_ENV, redirectsToService, startedByServiceManager } from "./service-owner.js";
 import { handOff, shouldHandOff } from "./launchd-handoff.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
@@ -201,7 +202,7 @@ settingsCommand.command("confirm <id>").option("--yes", "Explicit noninteractive
       if (result.pending_change.state !== "applied" && confirmed) process.exitCode = 1;
     } catch (err) { console.error((err as Error).message); process.exitCode = 1; }
   });
-settingsCommand.command("reject <id>").action(async (id: string) => {
+settingsCommand.command("reject <id>").description("Reject a pending Settings change on this host").action(async (id: string) => {
   try {
     const inspected = await requestSettingsConfirmation(DATA_DIR, { action: "inspect", id }) as SettingsInspection;
     console.log(`Source: ${inspected.pending_change.source}\nRequester: ${inspected.pending_change.requested_by}\n${inspected.pending_change.summary.join("\n")}`);
@@ -224,12 +225,23 @@ fleet
   .command("start")
   .description("Start fleet or specific instance")
   .argument("[instance]", "Specific instance to start")
-  .action(async (instance?: string) => {
+  .option("--direct", "Start here even though an AgEnD service is installed (operators only: the service cannot run on this host)")
+  .action(async (instance?: string, opts?: { direct?: boolean }) => {
     // Root running fleet = sandbox environment (e.g. Docker, WSL root service)
     // Set IS_SANDBOX so child processes (claude-code) don't refuse to run
     if (process.getuid?.() === 0 && !process.env.IS_SANDBOX) {
       process.env.IS_SANDBOX = "1";
     }
+    const marked = process.env[DIRECT_FLEET_START_ENV] === "1";
+    delete process.env[DIRECT_FLEET_START_ENV];
+    // #2356: the way out when the installed service cannot run here (never activated, no GUI session for launchd) — an
+    // operator's own decision, as `restart --force` is; the fleet's singleton lock still refuses a second fleet.
+    if (opts?.direct && !forceAllowed()) {
+      console.error("  ✗ --direct is for an operator's own shell, not a fleet agent session or the fleet's own commands. Nothing was started.");
+      process.exit(1);
+    }
+    const direct = marked || !!opts?.direct;
+    if (!instance && redirectToService("start", [], direct)) return;
 
     if (instance) {
       // If fleet daemon is already running, delegate via HTTP API
@@ -319,6 +331,7 @@ fleet
   .argument("[instance]", "Specific instance to stop")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .action(async (instance?: string, opts?: { yes?: boolean }) => {
+    if (!instance && redirectToService("stop", opts?.yes ? ["--yes"] : [], false)) return;
     if (instance) recordInstanceControl(DATA_DIR, "instance-stop", instance);
     else if (!gateFleetControl(DATA_DIR, "fleet-stop", { yes: opts?.yes })) process.exit(1);
     if (instance) {
@@ -382,150 +395,39 @@ fleet
 
 fleet
   .command("restart")
-  .description("Graceful restart: wait for instances to idle, then restart")
-  .argument("[instance]", "Specific instance to restart (immediate, no idle wait)")
-  .option("--reload", "Full process restart to load new code")
+  .description("Deprecated: runs `agend restart` (removed in 2.4)")
+  .argument("[instance]", "Restart only this instance (now `agend restart <instance>`)")
+  .option("--reload", "Ignored: every full restart is `agend restart`")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
-  .action(async (instance?: string, opts?: { reload?: boolean; yes?: boolean }) => {
+  .action((instance?: string, opts?: { reload?: boolean; yes?: boolean }) => {
     if (instance && opts?.reload) {
       console.error("--reload restarts the entire fleet process. Cannot combine with instance name.");
       process.exit(1);
     }
-    if (instance) recordInstanceControl(DATA_DIR, "instance-restart", instance);
-    else if (!gateFleetControl(DATA_DIR, opts?.reload ? "fleet-restart-reload" : "fleet-restart", { yes: opts?.yes })) process.exit(1);
-
-    if (instance) {
-      // Single instance restart via fleet's HTTP API
-      const { loadFleetConfig } = await import("./config.js");
-      const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
-      const port = fleet.health_port ?? 19280;
-      let token = "";
-      try { token = readFileSync(join(DATA_DIR, "web.token"), "utf-8").trim(); } catch { /* fleet may not be running */ }
-      try {
-        const resp = await fetch(`http://127.0.0.1:${port}/restart/${encodeURIComponent(instance)}`, {
-          method: "POST",
-          headers: token ? { "X-Agend-Token": token } : {},
-        });
-        const body = await resp.json() as Record<string, unknown>;
-        if (resp.ok) {
-          console.log(`Instance "${instance}" restarted (immediate)`);
-        } else {
-          console.error(`Restart failed: ${body.error ?? resp.statusText}`);
-          process.exit(1);
-        }
-      } catch (err) {
-        console.error(`Cannot connect to fleet (port ${port}). Is the fleet running?`);
-        process.exit(1);
-      }
-      return;
-    }
-
-    const pidPath = join(DATA_DIR, "fleet.pid");
-    if (!existsSync(pidPath)) {
-      console.error("Fleet is not running (no PID file found)");
-      process.exit(1);
-    }
-    const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
-    if (!Number.isInteger(pid) || pid <= 0) {
-      console.error(`Fleet PID file at ${pidPath} is corrupted`);
-      process.exit(1);
-    }
-
-    if (opts?.reload) {
-      // Check if managed by launchd — if so, just signal and let launchd restart
-      let managedByLaunchd = false;
-      try {
-        const ppid = parseInt(execFileSync("ps", ["-o", "ppid=", "-p", String(pid)]).toString().trim(), 10);
-        managedByLaunchd = ppid === 1;
-      } catch { /* ignore */ }
-
-      try {
-        process.kill(pid, "SIGUSR1");
-      } catch {
-        console.error("Failed to send reload signal (process may have exited)");
-        process.exit(1);
-      }
-
-      if (managedByLaunchd) {
-        console.log("Fleet is managed by launchd — sent reload signal.");
-        console.log("launchd will automatically restart with new code.");
-        // Wait briefly for old process to exit, then confirm new one started
-        const deadline = Date.now() + 6 * 60 * 1000;
-        while (Date.now() < deadline) {
-          try { process.kill(pid, 0); await new Promise(r => setTimeout(r, 500)); }
-          catch { break; }
-        }
-        // Wait for launchd to start new process
-        await new Promise(r => setTimeout(r, 2000));
-        if (existsSync(pidPath)) {
-          const newPid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
-          if (newPid !== pid) {
-            console.log(`New fleet process started (PID ${newPid})`);
-          }
-        }
-        return;
-      }
-
-      console.log("Full restart signal sent — waiting for fleet to stop...");
-
-      // Wait for old process to exit (up to 6 minutes: 5 min idle wait + buffer)
-      const deadline = Date.now() + 6 * 60 * 1000;
-      while (Date.now() < deadline) {
-        try {
-          process.kill(pid, 0); // check if alive
-          await new Promise(r => setTimeout(r, 500));
-        } catch {
-          break; // process exited
-        }
-      }
-      // Verify it actually exited
-      try {
-        process.kill(pid, 0);
-        console.error("Old fleet process still running after timeout — aborting");
-        process.exit(1);
-      } catch {
-        // Good, it exited
-      }
-
-      console.log("Old fleet stopped. Starting with new code...");
-
-      // Start new fleet in this process (new Node.js process = new code loaded)
-      if (!claimFleetSingleton()) return;
-      const { FleetManager } = await import("./fleet-manager.js");
-      const fm = new FleetManager(DATA_DIR);
-      const handlers = installFleetProcessHandlers({
-        dataDir: DATA_DIR, manager: fm, runtime: process, console,
-        describeSignal: () => describeSignalSource(DATA_DIR, "SIGTERM"),
-      });
-      if (handlers.stopping) return;
-      await fm.startAll(FLEET_CONFIG_PATH);
-      console.log("Fleet restarted with new code");
-    } else {
-      // Instance-only restart (existing behavior)
-      try {
-        process.kill(pid, "SIGUSR2");
-        console.log("Graceful restart signal sent — fleet will restart when all instances are idle");
-      } catch {
-        console.error("Failed to send restart signal (process may have exited)");
-        process.exit(1);
-      }
-    }
+    // #2356: no restart of its own any more. Its SIGUSR1 reload made the fleet exit 0 and took over in this process, so
+    // under a Restart=on-failure unit the fleet stayed down (and this process, in an agent pane, died with the unit's
+    // cgroup). It runs `agend restart` itself — this Node, this CLI — with the same gate, guard and exit code.
+    const args = instance ? ["restart", instance] : ["restart", ...(opts?.yes ? ["--yes"] : [])];
+    console.error(`⚠ \`agend fleet restart\` is deprecated and goes away in 2.4 — running \`agend ${args.join(" ")}\`.`);
+    const self = selfCommand(args);
+    const result = spawnSync(self.command, self.args, { stdio: "inherit" });
+    process.exit(result.status ?? 1);
   });
 
 fleet
-  .command("status")
-  .description("Show fleet status, workspace disk usage, unregistered instance directories, and host memory/swap")
+  .command("status", { hidden: true })
+  .description("Alias of `agend ls --resources`")
   .option("--json", "Output as JSON")
   .action(async (opts: { json?: boolean }) => {
-    // Delegate to the `ls` command implementation
     await lsAction({ ...opts, resources: true });
   });
 
 fleet
-  .command("logs")
-  .description("Alias for `agend logs`")
+  .command("logs", { hidden: true })
+  .description("Removed; use `agend logs`")
   .action(() => {
-    console.log("Use `agend logs` instead. Run `agend logs --help` for options.");
+    console.error("`agend fleet logs` was removed. Use `agend logs`.");
+    process.exitCode = 1;
   });
 
 fleet
@@ -850,9 +752,6 @@ backend
       console.error(`Unknown backend: ${backendName}. Available: ${BACKENDS.map(b => b.id).join(", ")}`);
       process.exit(1);
     }
-    if (info.deprecated) {
-      console.warn(`⚠️  ${info.label} is deprecated (stops 2026-06-18). Consider switching to backend: antigravity`);
-    }
 
     let issues = 0;
     const ok = (msg: string) => console.log(`  \x1b[32m✓\x1b[0m ${msg}`);
@@ -1102,7 +1001,7 @@ async function doctorMcp(): Promise<void> {
     }
     if (!ipcOk) {
       issues.push("IPC ✗ (socket not responding)");
-      suggestions.push("agend fleet restart");
+      suggestions.push("agend restart");
     }
 
     // 2. MCP config check
@@ -1814,9 +1713,12 @@ program
 program
   .command("install")
   .description("Install the AgEnD system service and start it by default")
-  .option("--activate", "Deprecated; service activation is now the default")
+  .addOption(new Option("--activate").hideHelp())
   .option("--no-activate", "Write the service file without activating it")
   .action(async (opts: { activate?: boolean }) => {
+    if (process.argv.includes("--activate")) {
+      console.error("`agend install --activate` was removed; service activation is the default.");
+    }
     const { installService, activateService, detectPlatform, renderLaunchdPlist, launchdPlistPath, getServicePath, getSystemServicePath, serviceHomeFor } = await import(
       "./service-installer.js"
     );
@@ -1985,7 +1887,14 @@ program
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .action(async (opts: { yes?: boolean }) => {
     if (!gateFleetControl(DATA_DIR, "stop", { yes: opts.yes })) process.exit(1);
-    const { getServicePath, stopService } = await import("./service-installer.js");
+    const { getServicePath, getSystemServicePath, stopService, stopSystemService } = await import("./service-installer.js");
+    // #2356: the system unit first, as `agend start` and `agend restart` choose it; a SIGTERM would only stop the process.
+    if (getSystemServicePath()) {
+      if (stopSystemService()) { console.log("Service stopped (system)."); return; }
+      console.error("Failed to stop the system service: systemctl stop agend (run it as root).");
+      process.exitCode = 1;
+      return;
+    }
     if (!getServicePath()) {
       // No service — try killing by PID
       const pidPath = join(DATA_DIR, "fleet.pid");
@@ -2023,7 +1932,7 @@ program
       const { spawn } = await import("node:child_process");
       // This Node on this CLI, not `sh -c "agend fleet start"` through PATH (#1450 C5).
       const start = selfCommand(["fleet", "start"]);
-      const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
+      const child = spawn(start.command, start.args, { detached: true, stdio: "ignore", env: { ...process.env, [DIRECT_FLEET_START_ENV]: "1" } });
       child.unref();
       console.log("Fleet starting in background.");
       return;
@@ -2035,17 +1944,70 @@ program
       // A service file means the service manager owns this fleet. Falling back
       // to a detached process here creates a second fleet when the bus recovers.
       console.error("Failed to start the installed AgEnD service; refusing to start a detached duplicate.");
-      console.error("Check your service manager, then retry: systemctl --user status com.agend.fleet");
+      console.error(`Check your service manager, then retry: ${process.platform === "darwin" ? "launchctl print gui/$(id -u)/com.agend.fleet" : systemServicePath ? "systemctl status agend" : "systemctl --user status com.agend.fleet"}`);
+      // #2356: a service file that cannot run here (never activated, no session for it) would otherwise leave no start.
+      console.error("If the service cannot run on this host, start the fleet without it: agend fleet start --direct");
       process.exitCode = 1;
     }
   });
 
+/**
+ * #2356 (user decision): on a host with an AgEnD service installed, a hand-run `fleet start` / `fleet stop` would run or
+ * kill a fleet the service manager does not own — a duplicate beside the unit, or a stop systemd undoes. Run `agend
+ * start` / `agend stop` instead (this Node, this CLI; their own gate and exit code). The manager's own `fleet start`
+ * (the unit's ExecStart, the launchd job) and AgEnD's marked detached start go ahead directly; so does every host
+ * without a service (Docker, manual setups). Exits when it redirected; false to go on.
+ */
+function redirectToService(command: "start" | "stop", extra: string[], directMarker: boolean): boolean {
+  let ownCgroup: string | null = null;
+  try { ownCgroup = readFileSync("/proc/self/cgroup", "utf-8"); } catch { /* not Linux */ }
+  const byServiceManager = startedByServiceManager({ platform: process.platform, env: process.env, ownCgroup, ppid: process.ppid, launchdLabel: "com.agend.fleet" });
+  const installed = getSystemServicePath() ?? getServicePath();
+  if (!redirectsToService({ command, directMarker, byServiceManager, installedServicePath: installed })) return false;
+  console.error(`ℹ An AgEnD service is installed here (${installed}): running \`agend ${[command, ...extra].join(" ")}\` so the service manager owns the fleet.`);
+  const self = selfCommand([command, ...extra]);
+  const result = spawnSync(self.command, self.args, { stdio: "inherit" });
+  process.exit(result.status ?? 1);
+}
+
+/** One instance, at once, through the running fleet's HTTP API; the fleet process keeps running. */
+async function restartOneInstance(instance: string): Promise<void> {
+  recordInstanceControl(DATA_DIR, "instance-restart", instance);
+  const { loadFleetConfig } = await import("./config.js");
+  const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
+  const port = fleet.health_port ?? 19280;
+  let token = "";
+  try { token = readFileSync(join(DATA_DIR, "web.token"), "utf-8").trim(); } catch { /* fleet may not be running */ }
+  try {
+    const resp = await fetch(`http://127.0.0.1:${port}/restart/${encodeURIComponent(instance)}`, {
+      method: "POST",
+      headers: token ? { "X-Agend-Token": token } : {},
+    });
+    const body = await resp.json() as Record<string, unknown>;
+    if (resp.ok) {
+      console.log(`Instance "${instance}" restarted (immediate)`);
+    } else {
+      console.error(`Restart failed: ${body.error ?? resp.statusText}`);
+      process.exit(1);
+    }
+  } catch {
+    console.error(`Cannot connect to fleet (port ${port}). Is the fleet running?`);
+    process.exit(1);
+  }
+}
+
 program
   .command("restart")
-  .description("Restart the AgEnD service (auto-detects systemd/launchd/detached)")
+  .description("Restart the AgEnD service (auto-detects systemd/launchd/detached) — the one full restart; or one instance")
+  .argument("[instance]", "Restart only this instance, immediately; the fleet keeps running")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .option("--force", "Restart even when the loaded service does not start this install on its selected Node (operators only)")
-  .action(async (opts: { yes?: boolean; force?: boolean }) => {
+  .action(async (instance: string | undefined, opts: { yes?: boolean; force?: boolean }) => {
+    if (instance) {
+      if (opts.force) { console.error("--force applies to the whole service, not one instance."); process.exit(1); }
+      await restartOneInstance(instance);
+      return;
+    }
     // --force overrides the C6 guard: an operator's own decision, never a fleet agent's or a fleet-internal spawn's.
     if (opts.force && !forceAllowed()) {
       console.error("  ✗ Not restarting: --force is for an operator's own shell, not a fleet agent session or the fleet's own commands. Nothing was stopped.");
@@ -2386,7 +2348,7 @@ program
           return;
         }
         try { unlinkSync(pidPath); } catch { /* old owner already removed it */ }
-        const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
+        const child = spawn(start.command, start.args, { detached: true, stdio: "ignore", env: { ...process.env, [DIRECT_FLEET_START_ENV]: "1" } });
         child.unref();
         console.log("Fleet restarting in background.");
         return;
@@ -2401,7 +2363,7 @@ program
 
 program
   .command("setup")
-  .description("Open the guided setup page in a browser (before a fleet exists)")
+  .description("Browser first-run page, before a fleet exists (not the CLI wizard; see `agend quickstart`)")
   .option("--reset", "Allow setup again after it has already been completed")
   .option("--port <port>", "Port for the setup page (default: the health port)")
   .option("--tunnel", "Expose the setup page through a Cloudflare quick tunnel so a phone can open it")
@@ -2489,7 +2451,7 @@ program
 
 program
   .command("quickstart")
-  .description("Guided setup for a Backend, chat channel, projects, and fleet service")
+  .description("CLI guided setup: backend, chat channel, projects, and fleet service (recommended)")
   .action(async () => {
     const { runQuickstart } = await import("./quickstart.js");
     await runQuickstart();
@@ -2497,7 +2459,7 @@ program
 
 program
   .command("init")
-  .description("Interactive setup wizard (advanced)")
+  .description("Interactive advanced wizard (setup-wizard); for first-run use `agend quickstart` or `agend setup`")
   .action(async () => {
     const { runSetupWizard } = await import("./setup-wizard.js");
     await runSetupWizard();
@@ -2792,11 +2754,11 @@ schedule
   });
 
 schedule
-  .command("trigger")
-  .description("Show how to manually trigger a schedule")
-  .argument("<id>", "Schedule ID")
-  .action((id) => {
-    console.log("Manual trigger requires fleet manager running. Use the Telegram interface instead.");
+  .command("trigger", { hidden: true })
+  .argument("[id]", "Schedule ID")
+  .action(() => {
+    console.error("`agend schedule trigger` was removed. There is no Telegram trigger; use `agend schedule enable` or the Task Board.");
+    process.exitCode = 1;
   });
 
 // === Chat Export ===
@@ -3335,16 +3297,23 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     }
 }
 
-program
-  .command("ls")
-  .description("List all instances with status, backend, team, and last activity")
-  .option("--json", "Output as JSON")
-  .option("--names-only", "Print instance names one per line (for shell completion)")
-  .option("--resources", "Also report workspace disk usage, unregistered instance directories, and host memory/swap (text only)")
-  .option("--running", "Show only running instances")
-  .option("--team <name>", "Filter by team name")
-  .option("--backend <name>", "Filter by backend (exact match)")
-  .option("--display", "Show display names as last column")
+function addLsOptions(cmd: Command) {
+  return cmd
+    .option("--json", "Output as JSON")
+    .option("--names-only", "Print instance names one per line (for shell completion)")
+    .option("--resources", "Also report workspace disk usage, unregistered instance directories, and host memory/swap (text only); `agend fleet status` is a hidden alias of this")
+    .option("--running", "Show only running instances")
+    .option("--team <name>", "Filter by team name")
+    .option("--backend <name>", "Filter by backend (exact match)")
+    .option("--display", "Show display names as last column");
+}
+
+addLsOptions(program.command("ls").description("List all instances with status, backend, team, and last activity"))
+  .action(async (opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string; display?: boolean }) => {
+    await lsAction(opts);
+  });
+
+addLsOptions(program.command("status", { hidden: true }).description("Alias of `agend ls`"))
   .action(async (opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string; display?: boolean }) => {
     await lsAction(opts);
   });
@@ -3372,9 +3341,11 @@ Then reload the shell. Tab-completes instance names for \`agend attach\` and
     // Subcommand names come from commander itself, so the script can't drift
     // out of sync with the CLI the way a hardcoded list would.
     const fleetCmd = program.commands.find(c => c.name() === "fleet");
+    const visible = (cmds: readonly Command[]) =>
+      cmds.filter(c => !(c as Command & { _hidden?: boolean })._hidden).map(c => c.name());
     const spec = {
-      topLevel: program.commands.map(c => c.name()),
-      fleetSub: fleetCmd?.commands.map(c => c.name()) ?? [],
+      topLevel: visible(program.commands),
+      fleetSub: visible(fleetCmd?.commands ?? []),
       instanceCommands: ["attach"],
       fleetInstanceCommands: ["start", "stop", "restart"],
     };
@@ -3430,7 +3401,7 @@ Then reload the shell. Tab-completes instance names for \`agend attach\` and
   });
 
 program
-  .command("health")  .description("Fleet health check — shows problems and diagnostics")
+  .command("health")  .description("Live fleet health of running instances (HTTP, tmux, IPC); for host/setup diagnostics use `agend doctor`")
   .option("--json", "Output as JSON")
   .option("-q, --quiet", "One-line summary only")
   .action(async (opts: { json?: boolean; quiet?: boolean }) => {
@@ -3675,7 +3646,7 @@ program
 
 program
   .command("logs")
-  .description("Show fleet log (alias for `agend fleet logs`)")
+  .description("Show fleet log (daemon.log, or fleet.log if the daemon log is not there yet)")
   .option("-n, --lines <count>", "Number of lines to show", "50")
   .option("-f, --follow", "Follow log output (like tail -f)")
   .option("--instance <name>", "Filter by instance name")

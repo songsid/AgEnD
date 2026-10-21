@@ -57,7 +57,7 @@ describe("/login command", () => {
   });
 });
 
-describe("/install-cli as a typed alias for 2.1.10 (#1131), and no /login reinstall (#1137)", () => {
+describe("/install-cli as a removed typed leftover (#2359), and no /login reinstall (#1137)", () => {
   it("/login reinstall is not an argument: a usage error", async () => {
     const { commands, ctx, sendText } = makeCommands();
     await commands.handleGeneralCommand(msg("/login reinstall codex"));
@@ -65,26 +65,28 @@ describe("/install-cli as a typed alias for 2.1.10 (#1131), and no /login reinst
     expect(sendText.mock.calls.at(-1)![1]).toContain("Usage");
   });
 
-  it("/install-cli <backend> (either spelling) says where it went, then runs /login <backend>", async () => {
+  it("/install-cli <backend> (either spelling) points at /login and does not run login", async () => {
     const { commands, ctx, sendText } = makeCommands();
     expect(await commands.handleGeneralCommand(msg("/install-cli grok"))).toBe(true);
     expect(await commands.handleGeneralCommand(msg("/install_cli codex"))).toBe(true);
-    expect(sendText.mock.calls.filter(c => String(c[1]).includes("now part of `/login`"))).toHaveLength(2);
-    expect(ctx.startLoginSession.mock.calls.map((c: unknown[]) => [c[0], c[2]])).toEqual([["grok", undefined], ["codex", undefined]]);
+    expect(sendText.mock.calls.filter(c => String(c[1]).includes("`/install-cli` was removed. Use `/login`."))).toHaveLength(2);
+    expect(ctx.startLoginSession).not.toHaveBeenCalled();
+    expect(ctx.promptLoginBackends).not.toHaveBeenCalled();
   });
 
-  it("bare /install-cli opens the /login picker, /install-cli cancel cancels", async () => {
-    const { commands, ctx } = makeCommands();
+  it("bare /install-cli and /install-cli cancel also only point at /login", async () => {
+    const { commands, ctx, sendText } = makeCommands();
     await commands.handleGeneralCommand(msg("/install-cli"));
-    expect(ctx.promptLoginBackends).toHaveBeenCalledTimes(1);
     await commands.handleGeneralCommand(msg("/install-cli cancel"));
-    expect(ctx.cancelLoginSession).toHaveBeenCalledTimes(1);
+    expect(ctx.promptLoginBackends).not.toHaveBeenCalled();
+    expect(ctx.cancelLoginSession).not.toHaveBeenCalled();
+    expect(sendText.mock.calls.filter(c => String(c[1]).includes("`/install-cli` was removed. Use `/login`."))).toHaveLength(2);
   });
 
-  it("a non-admin gets the pointer and then the same refusal as /login", async () => {
+  it("a non-admin gets the same one-line pointer, not a login refusal", async () => {
     const { commands, ctx, sendText } = makeCommands({ isFleetAdmin: vi.fn(() => false) });
     await commands.handleGeneralCommand(msg("/install-cli grok"));
     expect(ctx.startLoginSession).not.toHaveBeenCalled();
-    expect(sendText.mock.calls.at(-1)![1]).toContain("Permission denied");
+    expect(sendText.mock.calls.at(-1)![1]).toBe("`/install-cli` was removed. Use `/login`.");
   });
 });

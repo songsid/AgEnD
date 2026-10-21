@@ -47,23 +47,19 @@ agend fleet stop
 agend fleet stop <name>
 ```
 
-優雅重啟 — 它會先等 agent 進入 idle：
+重啟 AgEnD — 有 systemd 或 launchd 在管時就透過它們重啟，所以也會載入新版的 AgEnD 本身：
 
 ```bash
-agend fleet restart
+agend restart
 ```
 
-立即重啟指定的 instance（不等 idle — 可能中斷正在忙碌的工作）：
+立即重啟指定的 instance（不等 idle — 可能中斷正在忙碌的工作）；fleet 照常運作：
 
 ```bash
-agend fleet restart <name>
+agend restart <name>
 ```
 
-這會沿用正在跑的程式碼。要載入新版的 AgEnD 本身，重啟程序：
-
-```bash
-agend fleet restart --reload
-```
+`agend fleet restart` 在 2.4 之前仍可用，它會改執行 `agend restart`。
 
 看目前在跑什麼：
 
@@ -235,7 +231,7 @@ agend schedule delete <id>
 agend schedule history <id>
 ```
 
-`agend schedule trigger <id>` 目前只會印出指引，不會執行排程。
+`agend schedule trigger` 已移除。請用 CLI 啟用或停用排程，或用任務看板。
 
 ## 設定確認
 

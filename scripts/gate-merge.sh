@@ -207,10 +207,13 @@ fi
 # ── 5. CI on the exact head ─────────────────────────────────────────────────────────────────────────────────────
 # GitHub's CodeQL default setup does not run on release/** branches, so CodeQL and Analyze(*)
 # are optional there: their absence does not block, but a present FAILURE still does.
+# The same holds for feature branches (feat/*, e.g. feat/2.4-settings): default setup scans only PRs into the default
+# branch, so a PR into a feature branch never gets CodeQL. The feature branch's code is scanned whole when it lands on
+# main through its own PR, which keeps main's full gate.
 # build and scan are required regardless of base branch.
 # Only applies when GATE_REQUIRED_CHECKS is not set by the caller (i.e. using the default).
 EFFECTIVE_CHECKS="$REQUIRED_CHECKS"
-if [[ "$BASE_REF" == release/* ]] && [ -z "${GATE_REQUIRED_CHECKS+x}" ]; then
+if { [[ "$BASE_REF" == release/* ]] || [[ "$BASE_REF" == feat/* ]]; } && [ -z "${GATE_REQUIRED_CHECKS+x}" ]; then
   EFFECTIVE_CHECKS="build,scan"
 fi
 RULES="$(gh api "repos/$REPO/rules/branches/$BASE_REF" 2>/dev/null)" || blocked "the rules of $BASE_REF are unreadable"

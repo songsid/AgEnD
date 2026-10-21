@@ -1,4 +1,7 @@
-/** #1629 landing: temporary feature-branch workflow admission is retired; other triggers stay. */
+/**
+ * #1629 landing retired the 2.3 feature branch's own admission; 2.4 (#2347) admits every feature branch (feat/**) to the
+ * PR checks instead. Pushes stay main/release only.
+ */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -9,12 +12,12 @@ const on = (file: string) => {
   return (doc.on ?? doc[true as unknown as string]) as Record<string, { branches?: string[]; tags?: string[] } | null>;
 };
 
-describe("#1629 landing: workflows keep main/release admission only", () => {
+describe("PR admission: main, release/** and feat/** feature branches (#2347); pushes unchanged", () => {
   it.each([
-    ["ci.yml", ["main", "release/**"], { branches: ["main", "release/**"], tags: ["v*"] }],
-    ["gitleaks.yml", ["main", "release/**"], { branches: ["main", "release/**"] }],
+    ["ci.yml", ["main", "release/**", "feat/**"], { branches: ["main", "release/**"], tags: ["v*"] }],
+    ["gitleaks.yml", ["main", "release/**", "feat/**"], { branches: ["main", "release/**"] }],
     ["data-downgrade.yml", ["main"], { branches: ["main"] }],
-  ])("%s: pull_request admission retired; push unchanged", (file, prBranches, push) => {
+  ])("%s: pull_request admission; push unchanged", (file, prBranches, push) => {
     const triggers = on(file);
     expect(triggers.pull_request?.branches).toEqual(prBranches);
     expect(triggers.pull_request?.branches).not.toContain("feat/2.3-web-mod");

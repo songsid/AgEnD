@@ -660,7 +660,16 @@ export class TopicCommands {
     const text = msg.text?.trim();
     if (!text) return false;
     const command = typedCommand(GENERAL_FORMS, text, msg.source);
-    if (command === "dashboard" && this.ctx.isGuestWebAsk?.(msg.adapterId, msg.userId)) return this.guestWeb(msg);
+    if (command === "dashboard" && this.ctx.isGuestWebAsk?.(msg.adapterId, msg.userId)) {
+      await this.noteDeprecatedDashboard(msg);
+      return this.guestWeb(msg);
+    }
+    // #2359: a removed leftover answers with a pointer, not /login's admin gate.
+    if (command === "install-cli") {
+      const adapter = this.getReplyAdapter(msg);
+      if (adapter) await adapter.sendText(msg.chatId, t("login.install_cli_moved"), { threadId: msg.threadId }).catch(() => {});
+      return true;
+    }
     const refusal = this.tableRefusal(msg, command, "general");
     if (refusal) { await this.sendRefusal(msg, refusal); return true; }
 
@@ -705,26 +714,13 @@ export class TopicCommands {
       return true;
     }
 
-    // `/install-cli` became part of `/login` (#1131). Typed, it still works for
-    // one release (2.1.10) — with a line saying where it went — and is in no
-    // command menu. Both spellings: Telegram command names cannot contain "-".
-    if (command === "install-cli") {
-      const legacyInstall = text.match(LEGACY_INSTALL_RE)!;
-      const adapter = this.getReplyAdapter(msg);
-      if (adapter) await adapter.sendText(msg.chatId, t("login.install_cli_moved"), { threadId: msg.threadId }).catch(() => {});
-      const rest = (legacyInstall[1] ?? "").trim();
-      const mapped = rest === "" ? "/login" : `/login ${rest}`;
-      await this.handleLoginCommand({ ...msg, text: mapped });
-      return true;
-    }
-
-
     if (command === "update") {
       await this.handleUpdateCommand(msg);
       return true;
     }
 
     if (command === "dashboard") {
+      await this.noteDeprecatedDashboard(msg);
       await this.handleDashboardCommand(msg);
       return true;
     }
@@ -782,6 +778,17 @@ export class TopicCommands {
       replyHere: text => adapter.sendText(msg.chatId, text, { threadId: msg.threadId }) });
   }
 
+  /** #2359: typed `/dashboard` (not `/web`) still runs, after a one-line deprecation notice. */
+  private invokedDeprecatedDashboard(msg: InboundMessage): boolean {
+    return /^\/dashboard(?:@\S+)?(?:\s|$)/i.test((msg.text ?? "").trim());
+  }
+
+  private async noteDeprecatedDashboard(msg: InboundMessage): Promise<void> {
+    if (!this.invokedDeprecatedDashboard(msg)) return;
+    const adapter = this.getReplyAdapter(msg);
+    if (adapter) await adapter.sendText(msg.chatId, t("dashboard.deprecated"), { threadId: msg.threadId }).catch(() => {});
+  }
+
   /**
    * /dashboard (TG): admin-only menu in General; codes are sent privately.
    * `/dashboard revoke` also closes the public link and signs browsers out.
@@ -819,7 +826,10 @@ export class TopicCommands {
     // to General (#1148) instead of handing it to the agent. No branch below runs it.
     const command = typedCommand(INSTANCE_FORMS, text, msg.source)
       ?? (inGeneral ? undefined : typedCommand(GENERAL_FORMS, text, msg.source));
-    if (command === "dashboard" && this.ctx.isGuestWebAsk?.(msg.adapterId, msg.userId)) return this.guestWeb(msg);
+    if (command === "dashboard" && this.ctx.isGuestWebAsk?.(msg.adapterId, msg.userId)) {
+      await this.noteDeprecatedDashboard(msg);
+      return this.guestWeb(msg);
+    }
     const refusal = this.tableRefusal(msg, command, inGeneral ? "general" : "fleet");
     if (refusal) { await this.sendRefusal(msg, refusal); return true; }
 

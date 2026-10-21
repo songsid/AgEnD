@@ -1083,6 +1083,7 @@ function PublicTunnelToken() {
     try {
       const prepared = await api(`${base}/verify`, { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify(clear ? { clear: true } : { secret: value }) });
       if (!lease.current()) return;
+      if (!prepared.ok && prepared.body?.error_code === "invalid_tunnel_token") { setMessage(tn("namedTokenInvalid")); return; }
       if (!prepared.ok) throw Error("refused");
       const applied = await confirmedWrite(`${base}/apply`, { method: "POST", key, label: tn(clear ? "namedTokenClear" : "namedTokenSet"), body: { verification_id: prepared.body?.verification_id, idempotency_key: key } });
       let body = applied.body || {};

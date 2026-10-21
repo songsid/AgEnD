@@ -1,4 +1,4 @@
-import { PUBLIC_TUNNEL_TOKEN_ENV, validPublicTunnelToken } from "./public-tunnel-config.js";
+import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
 import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
 import { SettingsConfirmationStore, type SettingsPendingView } from "./settings-confirmation.js";
@@ -393,6 +393,7 @@ import {
   type RestartProgressTarget,
 } from "./restart-progress.js";
 import { launchFullRestartHelper, type FullRestartHelperHandle } from "./full-restart.js";
+import { fullReloadExitCode } from "./service-owner.js";
 import { SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE } from "./service-restart-selection.js";
 import { collectRedundantInstanceDefaultPaths } from "./fleet-yaml-slim.js";
 import { StormWindow, type StormSnapshot } from "./storm-window.js";
@@ -3202,8 +3203,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info(`Received SIGUSR1, initiating full restart (process reload)... ${describeSignalSource(this.dataDir, "SIGUSR1")}`);
     this.gracefulShutdownForReload()
       .then(() => {
-        this.logger.info("Full restart: shutdown complete, exiting for reload");
-        process.exit(0);
+        // #2356: under an AgEnD systemd unit a clean exit is a stop (Restart=on-failure); exit so the unit comes back.
+        let ownCgroup: string | null = null;
+        try { ownCgroup = readFileSync("/proc/self/cgroup", "utf-8"); } catch { /* not Linux */ }
+        const code = fullReloadExitCode(ownCgroup);
+        this.logger.info(code === 0
+          ? "Full restart: shutdown complete, exiting for reload"
+          : `Full restart: shutdown complete, exiting ${code} so the systemd unit restarts the fleet (#2356)`);
+        process.exit(code);
       })
       .catch(err => {
         this.logger.error({ err }, "Full restart: graceful shutdown failed");
@@ -4615,6 +4622,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async dispatchSlashCore(slash: ClassicStartSlashData, adapterId: string, adapter: ChannelAdapter): Promise<void> {
     // #1569: an alias (/web) is its command (/dashboard) from here on — the door, the table and the handler see one name.
     const data: ClassicStartSlashData = { ...slash, command: canonicalCommand(slash.command) };
+    // #2359: /dashboard stays listed; prefix its reply with the deprecation notice, then run /web's handler.
+    const noteDeprecatedDashboard = () => {
+      if (slash.command !== "dashboard") return;
+      const prefix = `${t("dashboard.deprecated")}\n\n`;
+      const respond = data.respond;
+      data.respond = async (text: string) => respond(prefix + text);
+      if (data.respondButtons) {
+        const respondButtons = data.respondButtons;
+        data.respondButtons = async (text, choices) => respondButtons(prefix + text, choices);
+      }
+    };
     const door = this.slashDoor(data, adapterId);
     if ("refusal" in door) {
       await data.respond(t(door.refusal)).catch(() => { /* the interaction may already be gone */ });
@@ -4625,6 +4643,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // — before the table, which keeps /web for fleet admins. Per account: it touches no instance binding.
     // Decided synchronously, so an admin's /web still reaches the table with no await after the door (#1399).
     if (data.command === "dashboard" && this.isGuestWebAsk(adapterId, data.userId)) {
+      noteDeprecatedDashboard();
       await this.guestWebCommand({ adapterId, userId: data.userId, username: data.username,
         arg: String(data.options?.action ?? "").trim().toLowerCase(), replyHere: text => data.respond(text), replyPrivately: text => data.respond(text) });
       return;
@@ -4653,6 +4672,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await data.respond(reply).catch(() => { /* the interaction may already be gone */ });
       return;
     }
+
+    noteDeprecatedDashboard();
 
     if (data.command === "start") {
       await this.handleClassicStartSlash(data, adapterId);
@@ -7768,7 +7789,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onRestart = () => this.onGracefulRestartSignal(() => process.once("SIGUSR2", onRestart));
     process.once("SIGUSR2", onRestart);
 
-    // SIGUSR1: full process reload (graceful stop → exit → CLI restarts)
+    // SIGUSR1: full process reload (graceful stop → exit). Nothing in this AgEnD sends it any more (#2356); an older
+    // CLI or a hand-sent signal still may, and the exit code then lets the owning manager start the next fleet.
     process.once("SIGUSR1", () => this.onFullRestartSignal());
 
     // A SIGHUP may arrive after the PID/general is available but before the
@@ -9284,6 +9306,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // #1920 step 4b-3: /web typed in a ClassicBot room (a group: `/web@ThisBot`) by someone who is not a fleet admin,
         // while guest sign-in is on: their guest code, privately — as anywhere else. An admin's goes on as before.
         if (/^\/(?:web|dashboard)(?:\s|$)/i.test(text) && msgAdapter && this.isGuestWebAsk(msg.adapterId, msg.userId)) {
+          // #2359: this door must not skip the deprecation notice TopicCommands shows on /dashboard.
+          if (/^\/dashboard(?:\s|$)/i.test(text)) {
+            await msgAdapter.sendText(chatId, t("dashboard.deprecated")).catch(() => {});
+          }
           await this.guestWebCommand({ adapterId: msg.adapterId!, userId: msg.userId, username: msg.username,
             arg: text.replace(/^\/(?:web|dashboard)/i, "").trim().toLowerCase(), replyHere: body => msgAdapter.sendText(chatId, body) });
           return;
@@ -20672,9 +20698,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     const tunnel = spec.kind === "tunnel_token";
     if (!tunnel && !spec.verifier) return { ok: false, status: "unsupported_verifier", error: "this provider has no supported verifier" };
-    if (input.clear && (!tunnel || input.secret !== "") || tunnel && !(input.clear === true && input.secret === "" || validPublicTunnelToken(input.secret))
-      || !input.clear && (!input.secret || input.secret.length > 4096 || /[\r\n\0]/.test(input.secret) || /[^\x20-\x7e]/.test(input.secret))) {
-      return { ok: false, status: "invalid", error: "secret is invalid" };
+    const secret = tunnel && !input.clear ? normalizePublicTunnelToken(input.secret) : input.secret;
+    if (input.clear && (!tunnel || input.secret !== "")
+      || !input.clear && (!secret || secret.length > 4096 || /[\r\n\0]/.test(secret) || /[^\x20-\x7e]/.test(secret))) {
+      return { ok: false, status: "invalid", error: tunnel ? PUBLIC_TUNNEL_TOKEN_HINT : "secret is invalid" };
     }
     const challengeKey = `${input.sessionBinding}:api_key:${spec.id}:${spec.envKey}:${input.idempotencyKey}`;
     const existingId = this.providerSecretChallengesByKey.get(challengeKey);
@@ -20702,7 +20729,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       operation: "provider-secret.apply",
       idempotencyKey: input.idempotencyKey,
       expiresAt, deadline: performance.now() + SECRET_CHALLENGE_TTL_MS,
-      secret: input.secret,
+      secret: secret!,
     };
     this.providerSecretChallenges.set(challenge.id, challenge);
     this.providerSecretChallengesByKey.set(challengeKey, challenge.id);

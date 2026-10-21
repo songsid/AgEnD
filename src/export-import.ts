@@ -177,7 +177,7 @@ export async function importConfig(
       for (const p of missing) {
         console.warn(`   • ${p}`);
       }
-      console.warn(`\nEdit ${fleetPath} to fix these before running 'agend fleet start'.`);
+      console.warn(`\nEdit ${fleetPath} to fix these before running 'agend start'.`);
     } else {
       console.log("\nAll paths in fleet.yaml verified.");
     }

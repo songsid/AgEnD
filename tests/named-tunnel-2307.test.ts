@@ -1,3 +1,4 @@
+import { syntheticTunnelToken } from "./helpers/named-tunnel-token.js";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -13,7 +14,7 @@ import { isSettingsMutation, prepareSettingsEffect } from "../src/settings-effec
 import { SecretStore } from "../src/secret-store.js";
 import type { TunnelStartContext } from "../src/tunnel/types.js";
 
-const TOKEN = "eyJNamedConnectorOnlySentinel2307Secret";
+const TOKEN = syntheticTunnelToken();
 const roots: string[] = [], managers: FleetManager[] = [];
 const previous = process.env[ENV];
 function root() { const dir = mkdtempSync(join(tmpdir(), "agend-named2307-")); roots.push(dir); return dir; }
@@ -41,6 +42,25 @@ function provider(over: Record<string, unknown> = {}) {
 }
 
 describe("named connector credentials and exact host policy", () => {
+  it("normalizes quoted credentials for both configuration and child env, never argv", async () => {
+    process.env[ENV] = ` \n'${TOKEN}'\t`;
+    expect(namedPublicLinkSettings({ public_link: { hostname: "agend.example.com" } })?.token).toBe(TOKEN);
+    const f = provider({ named: { hostname: "agend.example.com", token: ` \n"${TOKEN}"\t` } });
+    const handle = await f.p.start(context());
+    const call = f.spawn.mock.calls[0] as unknown as [string, string[], { env: Record<string, string> }];
+    expect(call[2].env.TUNNEL_TOKEN).toBe(TOKEN);
+    expect(JSON.stringify(call.slice(0, 2))).not.toContain(TOKEN);
+    await handle.stop("end");
+  });
+  it("rejects a malformed credential before spawning, without echoing decoded fields", async () => {
+    const bad = syntheticTunnelToken({ a: "private-account", t: "private-tunnel" });
+    const f = provider({ named: { hostname: "agend.example.com", token: bad } });
+    const error = await f.p.start(context()).catch(e => e);
+    expect(error.errorKind).toBe("bad-url");
+    expect(String(error)).not.toContain(bad);
+    expect(String(error)).not.toContain("private-account");
+    expect(f.spawn).not.toHaveBeenCalled();
+  });
   it("runs with only child env credentials, validates the configured host before probing, and preserves stop ownership", async () => {
     const f = provider({ env: { TUNNEL_TOKEN: "foreign", AWS_SECRET_ACCESS_KEY: "other", HTTPS_PROXY: "http://proxy:3128" } });
     const host = vi.fn(); const ctx = { ...context(), onCandidateHost: host };
@@ -128,8 +148,8 @@ describe("write-only connector secret transaction", () => {
     fm.providerSecretHttpClient = { request: vi.fn(() => { throw Error("unexpected network"); }) };
     return { fm, dir };
   }
-  async function apply(fm: any, clear = false, key = "tunnel-key") {
-    const verification = await fm.verifyProviderSecret({ specId: ID, secret: clear ? "" : TOKEN, clear, sessionBinding: "session", idempotencyKey: key });
+  async function apply(fm: any, clear = false, key = "tunnel-key", secret = TOKEN) {
+    const verification = await fm.verifyProviderSecret({ specId: ID, secret: clear ? "" : secret, clear, sessionBinding: "session", idempotencyKey: key });
     expect(verification.ok).toBe(true); expect(JSON.stringify(verification)).not.toContain(TOKEN);
     const accepted = fm.startProviderSecretApply({ specId: ID, verificationId: verification.verification_id, sessionBinding: "session", idempotencyKey: key });
     expect(accepted.job).toBeDefined();
@@ -155,6 +175,27 @@ describe("write-only connector secret transaction", () => {
     expect(fm.publicWebLink.close).toHaveBeenCalledTimes(2);
     expect(fm.providerSecretHttpClient.request).not.toHaveBeenCalled();
   });
+  it("stores only the normalized token after verification and confirmed apply", async () => {
+    const { fm, dir } = manager();
+    await apply(fm, false, "normalized-key", ` \n'${TOKEN}'\t`);
+    expect(readFileSync(join(dir, ".env"), "utf8")).toBe(`${ENV}=${TOKEN}\n`);
+    expect(process.env[ENV]).toBe(TOKEN);
+    expect(fm.providerSecretHttpClient.request).not.toHaveBeenCalled();
+  });
+  it("refuses malformed tokens with only a fixed hint, no challenge, log, disk write or network", async () => {
+    const { fm, dir } = manager();
+    const warn = vi.spyOn(fm.logger, "warn"), error = vi.spyOn(fm.logger, "error");
+    const bad = syntheticTunnelToken({ a: "private-account", s: "private-secret" });
+    for (const secret of [bad, `cloudflared.exe service install ${TOKEN}`, `--token ${TOKEN}`, "eyJ", "x".repeat(4097)]) {
+      const result = await fm.verifyProviderSecret({ specId: ID, secret, sessionBinding: "session", idempotencyKey: "malformed-key" });
+      expect(result).toEqual({ ok: false, status: "invalid", error: "Paste only the long string that starts with eyJ." });
+      if (secret.length > 4) expect(JSON.stringify(result)).not.toContain(secret);
+    }
+    expect(fm.providerSecretChallenges.size).toBe(0);
+    expect(fm.providerSecretHttpClient.request).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled(); expect(error).not.toHaveBeenCalled();
+    expect(() => readFileSync(join(dir, ".env"))).toThrow();
+  });
   it("rolls back disk and process on activation failure without logging either token", async () => {
     const { fm, dir } = manager();
     const old = "eyJPreviousConnectorPrivateValue2307";
@@ -173,9 +214,9 @@ describe("write-only connector secret transaction", () => {
     expect(JSON.stringify(warn.mock.calls)).not.toContain(TOKEN);
     expect(JSON.stringify(warn.mock.calls)).not.toContain(old);
   });
-  it("rejects bot env collisions, ambiguous clear and newline tokens before storing", async () => {
+  it("rejects bot env collisions, ambiguous clear and embedded newline tokens before storing", async () => {
     const { fm } = manager();
-    for (const input of [{ secret: TOKEN + "\n" }, { clear: true, secret: TOKEN }]) {
+    for (const input of [{ secret: TOKEN.slice(0, 20) + "\n" + TOKEN.slice(20) }, { clear: true, secret: TOKEN }]) {
       expect(await fm.verifyProviderSecret({ specId: ID, sessionBinding: "session", idempotencyKey: "test-key", ...input })).toMatchObject({ ok: false });
     }
     fm.fleetConfig.channels[0].bot_token_env = ENV;

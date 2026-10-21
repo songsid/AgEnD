@@ -294,7 +294,7 @@ describe("Discord /dashboard: the ephemeral menu is answered and edited through 
       return i;
     });
     const reply = await h.slash();
-    expect(reply.content).toBe(t("dashboard.menu_failed"));
+    expect(reply.content).toBe(`${t("dashboard.deprecated")}\n\n${t("dashboard.menu_failed")}`);
     expect(h.s.pendingNonceButtons.size).toBe(0);
   });
 
@@ -305,7 +305,7 @@ describe("Discord /dashboard: the ephemeral menu is answered and edited through 
     expect(h.discord.publicIn("T1")).toEqual([]);
     const ok = rig();
     const sent = await ok.slash("dashboard", "T1");
-    expect(sent.content).toBe(t("dashboard.private_sent_dm"));
+    expect(sent.content).toBe(`${t("dashboard.deprecated")}\n\n${t("dashboard.private_sent_dm")}`);
     expect(ok.discord.dms()[0].content).toMatch(CODE);
   });
 });

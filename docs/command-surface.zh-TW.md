@@ -2,7 +2,7 @@
 
 [English](command-surface.md) · [指令參考](commands.md) · [准入與憑證](permissions.md)
 
-數量對照 main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`：28 條命令規則、Telegram fleet／Classic 選單 23／11 項、Discord 29 個 slash 名稱（含 web 別名）。下方固定連結保留原始授權稽核；目前數量取代當時的 27 與 21／10。
+數量對照 main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`：28 條命令規則、Telegram fleet／Classic 選單 23／11 項、Discord 29 個 slash 名稱（`/web` 為主；`/dashboard` 列為已棄用）。下方固定連結保留原始授權稽核；目前數量取代當時的 27 與 21／10。
 
 ## 儲存格怎麼讀
 
@@ -18,7 +18,7 @@
 - `R(C)` / `R(F)`：未註冊 chat 的 handler 先檢查 C／F，再回沒有 agent；未註冊時 C 單獨不能通過 F-or-C helper。
 - `*`：不帶 mode 的 `/tips` 是資訊命令；變更設定的 mode 另需 F。
 
-✓ 是設定會註冊的選單，不是授權。所有 H 格仍受 backend 能力、參數、生命週期及來源限制。Telegram 選單註冊在整個 forum chat，因此 General 與 instance topic 共用建議。Discord 每個 bot 全域註冊 29 個 slash 名稱，包含 `/web` 別名；平台註冊失敗可能留下舊選單。
+✓ 是設定會註冊的選單，不是授權。所有 H 格仍受 backend 能力、參數、生命週期及來源限制。Telegram 選單註冊在整個 forum chat，因此 General 與 instance topic 共用建議。Discord 每個 bot 全域註冊 29 個 slash 名稱（`/web` 與已棄用的 `/dashboard`）；平台註冊失敗可能留下舊選單。
 
 ## Discord native slash
 
@@ -92,7 +92,7 @@
 - Discord Fleet/General 的純文字 `/xxx` 由 owner 回使用 slash menu 提示並消費；Classic 純文字 slash 靜默。receiving username 已知時，指向其他 bot 的 suffix 靜默。
 - Telegram Classic group 須用 `/cmd@ThisBot`；**bare slash 全部靜默**，包含 `/start`。receiving username 已知時，其他 bot suffix 靜默；private 接受 bare 形式。既有 Classic／有-thread 路徑在 username 不明時仍放行 suffix。已配置的 Telegram forum 根層，bare command-like 輸入固定使用 primary 連線的同群 General；primary 沒有同群 General 時，依配置順序選第一個。使用目標 bot 的管理員名單；停止或無法判定的目標不會改選 sibling。對其他 General 下指令用 `/restart@ThisBot full`、`/update@ThisBot` 或該 bot 自己的 topic。明確 suffix 在共用 dedup 前必須對應已知且唯一的 username：錯誤或未知 receiver 靜默，即使沒有 message ID 也一樣。根層普通對話沿用原路由。命令 suffix 不等於對話 mention。
 - 辨識採精確形式：`/STATUS`、`/status report`、`/update now`、`/pause one two` 等在 Fleet/General 仍是普通 agent 訊息；`/restart` 與 `/visibility` 不分大小寫。這是已測試釘住的既有行為，與「正常 `/status` 在 worker topic 被轉送」的舊 bug 不同。
-- Telegram `/sys-info`、`/sys_info` 是 General `/sysinfo` 別名；`/install-cli`、`/install_cli` 是 General `/login` 別名。都不在 menu。`/sys-info`、`/sys_info` 只辨識**無 suffix 的精確形式**，加 `@bot` 仍是普通文字；install 別名接受 suffix。worker topic 內已辨識的 General 別名會指向 General。
+- Telegram `/sys-info`、`/sys_info` 是 General `/sysinfo` 別名。`/install-cli`、`/install_cli` 已移除：打字只印一行指向 `/login`，不會執行登入。都不在 menu。`/sys-info`、`/sys_info` 只辨識**無 suffix 的精確形式**，加 `@bot` 仍是普通文字；install 殘留形式接受 suffix。worker topic 內已辨識的 General 別名會指向 General。
 - Telegram Fleet `/raw <text>` 不在 menu，經 F gate 後走 raw delivery。`/raw@bot ...` 是普通包裝訊息，不會绕過 raw gate。Classic `/raw <text>` 拒絕非 C；C 目前也沒有成功的 native raw 路徑，因 `/chat /raw ...` 被共用 helper 丟棄。Group 的某些 mention 形式只是普通包裝訊息。能力維持不動；[#1458](https://github.com/songsid/AgEnD/issues/1458) 記錄延後的決策。
 - 已設定的 Telegram forum 內，未註冊 topic 回未綁定提示，不走表中的 Classic 未註冊 chat 欄。沒有 General 時 no-thread 訊息可能靜默。
 - General `/pause`、`/wake` 須指定自己 bot 擁有的 instance；General 本身不可 pause。已授權的 Fleet restart/status/login/diagnostics 與設定仍作用於共用 fleet/host；owner 授權不代表作用範圍只限單一 world。
@@ -119,7 +119,7 @@
 
 ## 別名
 
-`/web` 是建議使用的名稱，`/dashboard` 保留為別名（#1569）。兩者是命令表裡的同一列，也就是兩張表裡上面 `/web` 的 cell：同樣的權限、同樣的停用回覆、同樣的拒絕訊息，也同樣支援 `revoke`。Discord 註冊兩個 slash 名稱；Telegram fleet 選單仍把 `/web` 列在 `/dashboard` 後面。
+`/web` 是主要名稱，`/dashboard` 仍列在選單上並標為已棄用（#1569／#2359）。兩者是命令表裡的同一列，也就是兩張表裡上面 `/web` 的 cell：同樣的權限、同樣的停用回覆、同樣的拒絕訊息，也同樣支援 `revoke`。Discord 註冊兩個 slash 名稱；Telegram fleet 選單兩個都列出。`/dashboard` 的選單／slash 說明是「已棄用 — 請用 /web」。執行 `/dashboard` 會先印這行提示，再做 `/web` 會做的事。
 
 ## 維護矩陣
 

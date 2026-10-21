@@ -53,6 +53,19 @@ function fleet(platform: "telegram" | "discord", admins: string[] = ["admin"]) {
 
 /** Everything a person sees, minus the per-run nonce/code. */
 const seen = (calls: unknown[][]) => JSON.parse(JSON.stringify(calls).replace(/[0-9a-f]{32}/g, "NONCE").replace(/[A-Z0-9]{4}-[A-Z0-9]{4}/g, "CODE"));
+const notice = () => t("dashboard.deprecated");
+function stripTelegramNotice<T extends { posts: unknown[][] }>(result: T): T {
+  if (result.posts[0]?.[1] === notice()) return { ...result, posts: result.posts.slice(1) };
+  return result;
+}
+function stripDiscordNotice<T extends { replies: unknown[][]; menus: unknown[][] }>(result: T): T {
+  const prefix = `${notice()}\n\n`;
+  const strip = (calls: unknown[][]) => calls.map(c => {
+    const text = c[0];
+    return typeof text === "string" && text.startsWith(prefix) ? [text.slice(prefix.length), ...c.slice(1)] : c;
+  });
+  return { ...result, replies: strip(result.replies), menus: strip(result.menus) };
+}
 
 async function slash(command: string, user: string, admins?: string[], action?: string, channel = "T0") {
   const f = fleet("discord", admins);
@@ -88,18 +101,18 @@ describe("#1569: the command table — one row, two names", () => {
     expect(canonicalCommand("constructor"), "only own keys are aliases").toBe("constructor");
   });
 
-  it("the Telegram fleet menu offers /web right after /dashboard, with the same lock and its own description", () => {
+  it("the Telegram fleet menu lists /web and /dashboard; /dashboard's description is deprecated", () => {
     const menu = telegramMenu("fleet");
-    const at = menu.findIndex(e => e.name === "dashboard");
-    expect(menu[at + 1]).toEqual({ name: "web", lock: menu[at]!.lock });
+    expect(menu.find(e => e.name === "web")).toEqual({ name: "web", lock: "🔒 " });
+    expect(menu.find(e => e.name === "dashboard")).toEqual({ name: "dashboard", lock: "🔒 " });
     expect(t("slash.web")).not.toContain("/dashboard");
-    expect(t("slash.dashboard")).toContain("/web");
+    expect(t("slash.dashboard")).toBe("Deprecated — use /web");
     setLocale("zh-TW"); expect(t("slash.web")).not.toContain("/dashboard");
-    expect(t("slash.dashboard")).toContain("/web");
+    expect(t("slash.dashboard")).toBe("已棄用 — 請用 /web");
   });
 });
 
-describe("#1569: Discord /web does exactly what /dashboard does", () => {
+describe("#1569 / #2359: Discord /dashboard shows the deprecation notice then does what /web does", () => {
   it.each([
     ["a fleet admin (the menu)", "admin", undefined, undefined],
     ["a member (the refusal)", "member", undefined, undefined],
@@ -109,12 +122,18 @@ describe("#1569: Discord /web does exactly what /dashboard does", () => {
   ])("%s", async (_n, user, admins, action) => {
     const dashboard = await slash("dashboard", user, admins, action);
     const web = await slash("web", user, admins, action);
-    expect(web).toEqual(dashboard);
+    expect(stripDiscordNotice(dashboard)).toEqual(web);
+    expect(JSON.stringify(web)).not.toContain(notice());
     // …and it is the real outcome, not two identical nothings:
     if (user === "member") expect(web.replies).toEqual([[t("not_authorized")]]);
     else if (admins && admins.length === 0) expect(web.replies).toEqual([[t("dashboard.disabled", "channels[id: owner].access.allowed_users")]]);
-    else if (action === "revoke") expect(web.revoked).toBe(1);
-    else expect(web.menus.length + web.dms.length).toBeGreaterThan(0);
+    else if (action === "revoke") {
+      expect(web.revoked).toBe(1);
+      expect(JSON.stringify(dashboard)).toContain(notice());
+    } else {
+      expect(web.menus.length + web.dms.length).toBeGreaterThan(0);
+      expect(JSON.stringify(dashboard)).toContain(notice());
+    }
   });
 });
 
@@ -140,13 +159,19 @@ describe("#1569: Telegram /web does exactly what /dashboard does", () => {
   ])("%s", async (_n, args, user, admins, thread) => {
     const dashboard = await typed(`/dashboard${args}`, user, admins, thread);
     const web = await typed(`/web${args}`, user, admins, thread);
-    expect(web).toEqual(dashboard);
+    expect(stripTelegramNotice(dashboard)).toEqual(web);
+    expect(JSON.stringify(web)).not.toContain(notice());
     expect(web.handled, "a command, not text for the agent").toBe(true);
     if (thread === "T1") expect(JSON.stringify(web.posts)).toContain(JSON.stringify(t("cmd.use_in_general", "/web")).slice(1, -1));
     else if (user === "member") expect(JSON.stringify(web.posts)).toContain(JSON.stringify(t("not_authorized")).slice(1, -1));
     else if (admins && admins.length === 0) expect(JSON.stringify(web.posts)).toContain(JSON.stringify(t("dashboard.disabled", "channels[id: owner].access.allowed_users")).slice(1, -1));
-    else if (args === " revoke") expect(web.revoked).toBe(1);
-    else expect(web.armed, "the menu was posted").toBe(1);
+    else if (args === " revoke") {
+      expect(web.revoked).toBe(1);
+      expect(dashboard.posts[0]?.[1]).toBe(notice());
+    } else {
+      expect(web.armed, "the menu was posted").toBe(1);
+      expect(dashboard.posts[0]?.[1]).toBe(notice());
+    }
   });
 
   it("only /web and /web <args>: /webhook, /website and /web@other-forms that are not the command stay text", async () => {

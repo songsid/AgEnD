@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { COMMANDS, TELEGRAM_MENUS, type CommandScope, type PlatformRule } from "../src/command-table.js";
+import { COMMANDS, COMMAND_ALIASES, TELEGRAM_MENUS, type CommandScope, type PlatformRule } from "../src/command-table.js";
+
+function telegramMenuHas(menu: "fleet" | "classic", specName: string): boolean {
+  const names = TELEGRAM_MENUS[menu].names as readonly string[];
+  if (names.includes(specName)) return true;
+  return Object.entries(COMMAND_ALIASES).some(([alias, target]) => target === specName && names.includes(alias));
+}
 
 // Data/docs only. The real-handler exceptions are also pinned by
 // command-gates-by-platform; no platform/backend/fleet construction here.
@@ -45,8 +51,8 @@ describe("#1148 bilingual real command surface", () => {
           return spec.name === "tips" ? value + "*" : value;
         })]);
         expect(tg, `Telegram /${spec.name}`).toEqual([
-          (TELEGRAM_MENUS.fleet.names as readonly string[]).includes(spec.name) ? "✓" : "—",
-          (TELEGRAM_MENUS.classic.names as readonly string[]).includes(spec.name) ? "✓" : "—",
+          telegramMenuHas("fleet", spec.name) ? "✓" : "—",
+          telegramMenuHas("classic", spec.name) ? "✓" : "—",
           ...telegramCells(spec),
         ]);
       }

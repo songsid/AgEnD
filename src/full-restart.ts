@@ -19,10 +19,10 @@ type SpawnProcess = (command: string, args: readonly string[], options: SpawnOpt
 /**
  * Start the canonical environment-aware service restart and wait until the OS
  * has actually spawned it. The top-level `agend restart` command selects
- * systemd, launchd, or the detached-process hand-off. Do not use
- * `fleet restart --reload` here: its SIGUSR1 path exits successfully, so a
- * systemd unit with Restart=on-failure would stay down and kill this helper as
- * part of the old service cgroup.
+ * systemd, launchd, or the detached-process hand-off. It is the only full
+ * restart (#2356): the old `fleet restart --reload` SIGUSR1 path exited 0, so a
+ * systemd unit with Restart=on-failure stayed down and killed its caller with
+ * the old service cgroup.
  */
 export function launchFullRestartHelper(
   spawnProcess: SpawnProcess = spawn,

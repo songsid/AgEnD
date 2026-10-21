@@ -51,9 +51,13 @@ describe("Telegram command-menu registration", () => {
     expect(fleetPayloads.map(p => p.scope.type)).toEqual(["chat", "chat_administrators"]);
     for (const payload of fleetPayloads) {
       expect(payload.commands.map((c: { command: string }) => c.command)).toEqual([
-        "status", "sysinfo", "dashboard", "web", "ctx", "compact", "steer", "btw", "clear", "model", "backend", "effort",
+        "status", "sysinfo", "web", "dashboard", "ctx", "compact", "steer", "btw", "clear", "model", "backend", "effort",
         "pause", "wake", "restart", "collab", "update", "profile", "doctor", "login", "usage", "tips", "visibility",
       ]);
+      expect(payload.commands.find((c: { command: string }) => c.command === "web")?.description)
+        .toBe("🔒 Sign in to the web dashboard and web chat (admin only)");
+      expect(payload.commands.find((c: { command: string }) => c.command === "dashboard")?.description)
+        .toBe("🔒 Deprecated — use /web");
       expect(payload.commands.find((c: { command: string }) => c.command === "login")?.description)
         .toBe("🔒 Sign in or install a CLI backend remotely (beta)");
       // One entry point since #1131: /login installs a missing CLI too.
