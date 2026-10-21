@@ -376,10 +376,14 @@ export async function answerBlocked(card) {
 
 // ── Small pieces ──────────────────────────────────────────
 
+/**
+ * #2299: the bar is the percentage beside it — only done work fills it, so 0 % never looks full (a project whose only
+ * card was blocked drew a full red bar). What waits for the person or is blocked is said by the card's chips.
+ */
 export function ProgressBar({ progress, wide = false }) {
   return html`<svg class=${`tb-bar${wide ? " wide" : ""}`} viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true" focusable="false">
     <rect class="tb-bar-track" width="100" height="6" />
-    ${barSegments(progress).map((s) => html`<rect key=${s.k} class=${`tb-seg st-${s.k}`} x=${s.x} width=${s.w} height="6" />`)}</svg>`;
+    ${barSegments(progress).filter((s) => s.k === "done").map((s) => html`<rect key=${s.k} class=${`tb-seg st-${s.k}`} x=${s.x} width=${s.w} height="6" />`)}</svg>`;
 }
 
 export function StatusPill({ status }) {
