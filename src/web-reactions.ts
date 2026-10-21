@@ -14,6 +14,8 @@ import { TELEGRAM_REACTION_EMOJIS, normalizeEmoji } from "./status-emojis.js";
 export interface WebEchoCopy { adapter: Pick<ChannelAdapter, "react" | "type">; chatId: string; threadId?: string; messageId: string }
 /** How many web messages' copies the fleet remembers (the newest; this process only). */
 export const WEB_ECHO_COPIES_MAX = 2000;
+/** How long one copy's reaction may take before it is given up (logged): it never holds the tool's answer. */
+export const WEB_MIRROR_TIMEOUT_MS = 10_000;
 
 /** The most distinct reactions one web message keeps. */
 export const WEB_REACTIONS_MAX = 8;

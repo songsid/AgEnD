@@ -195,7 +195,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 import { handleWebRequest, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment } from "./web-chat-history.js";
-import { WEB_ECHO_COPIES_MAX, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
+import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { OPERATOR, WebPrefsStore } from "./web-prefs.js";
@@ -4148,27 +4148,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * #2305: an instance's reaction to a web chat message (`messageId`, the id it was handed): its minimal reply, as on
    * the platforms. Kept on the message's row (and on disk), shown live (`reactions` on the stream), and put on the
-   * message's channel copies when this process sent them (best effort: a copy's failure is logged, never the tool's).
+   * message's channel copies when this process sent them — in the background, each within WEB_MIRROR_TIMEOUT_MS, so a
+   * slow or rate-limited platform never holds the tool's answer (best effort: a copy's failure or timeout is logged,
+   * never the tool's). `mirrored`: how many copies took it, when that is known.
    * The tool's errors: an emoji outside the web set or one of the instance's delivery marks (web-reactions.ts), or a
    * message the chat does not have. An emoji the message already has is a success that changes nothing.
    */
-  async reactToWebMessage(instance: string, messageId: string, raw: unknown): Promise<{ ok: true; mirrored: number } | { ok: false; error: string }> {
+  async reactToWebMessage(instance: string, messageId: string, raw: unknown): Promise<{ ok: true; mirrored: Promise<number> } | { ok: false; error: string }> {
     const problem = webReactionProblem(raw, this.statusEmojiAvoidList(instance));
     if (problem) return { ok: false, error: problem };
     const emoji = webReactionEmoji(raw)!;
     const r = this.webChatHistory.addReaction(instance, messageId, emoji);
     if (!r) return { ok: false, error: `react: ${messageId} is not a message in ${instance}'s web chat now (it left the history, or it is from before AgEnD restarted) — answer with reply instead` };
-    if (!r.added) return { ok: true, mirrored: 0 };
+    if (!r.added) return { ok: true, mirrored: Promise.resolve(0) };
     this.emitSseEvent("reactions", { instance, boot: r.message.boot, id: r.message.id, reactions: r.message.reactions ?? [] });
-    let mirrored = 0;
-    for (const copy of this.webEchoCopies.get(messageId) ?? []) {
-      try {
-        await copy.adapter.react(copy.chatId, copy.messageId, reactionForm(copy.adapter.type, emoji), copy.threadId);
-        mirrored++;
-      } catch (err) {
-        this.logger.warn({ err, instance, adapter: copy.adapter.type }, "Reaction on a web message's channel copy failed (shown on the web)");
-      }
-    }
+    const mirrorOne = (copy: WebEchoCopy): Promise<number> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`no answer in ${WEB_MIRROR_TIMEOUT_MS} ms`)), WEB_MIRROR_TIMEOUT_MS);
+        timer.unref?.();
+      });
+      return Promise.race([Promise.resolve().then(() => copy.adapter.react(copy.chatId, copy.messageId, reactionForm(copy.adapter.type, emoji), copy.threadId)), timeout])
+        .then(() => 1, (err: unknown) => {
+          this.logger.warn({ err, instance, adapter: copy.adapter.type }, "Reaction on a web message's channel copy failed (shown on the web)");
+          return 0;
+        })
+        .finally(() => clearTimeout(timer));
+    };
+    const mirrored = Promise.all((this.webEchoCopies.get(messageId) ?? []).map(mirrorOne)).then(n => n.reduce((a, b) => a + b, 0));
     return { ok: true, mirrored };
   }
 
@@ -9846,8 +9853,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // #2305: a reaction to a web chat message is the web chat's own (any fleet, web-only included): never an adapter's.
     if (tool === "react" && typeof args.message_id === "string" && isWebMessageId(args.message_id)) {
-      const owner = senderSessionName && this.webChatHistory.findByMessageId(senderSessionName, args.message_id) ? senderSessionName : instanceName;
-      const r = await this.reactToWebMessage(owner, args.message_id, args.emoji);
+      // The socket's own instance, never a session name the caller wrote itself (as checkToolPermission: it was not
+      // identified) — a channel tool's call from a daemon carries none anyway (#2310 review).
+      const r = await this.reactToWebMessage(instanceName, args.message_id, args.emoji);
       if (r.ok) respond("ok"); else respond(null, r.error);
       return;
     }
