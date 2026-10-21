@@ -1265,6 +1265,10 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .op-line { display: flex; align-items: center; justify-content: center; gap: var(--s-2); }
 .op-line.ok { color: var(--ok); }
 .op-line.bad { color: var(--danger); }
+/* #2347: saved changes waiting for an AgEnD restart — one line, the shared straight bar on its left. */
+.restart-line { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--s-2); color: var(--text);
+  --lbar-color: var(--warn); }
+.restart-line .restart-keys { font-family: var(--font-mono); }
 /* #2233: the backend sign-in dialog and Settings' list */
 .signin-field { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; margin: var(--s-2) 0; }
 .signin-label { color: var(--text-2); font-size: var(--fs-xs); min-width: 6em; }

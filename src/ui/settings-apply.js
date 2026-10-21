@@ -13,6 +13,12 @@ import { toast } from "/assets/ui-toast.js";
 import "./settings-strings.js";
 import { api, confirmedWrite, newKey, selfConfirmed } from "./settings-confirm.js";
 
+/**
+ * #2347 (leader's default, for the user to confirm): a Save that needs AgEnD restarted offers Restart now (its card, and
+ * the app-wide banner) and never restarts on its own. true restarts once such a Save settles cleanly.
+ */
+export const AUTO_RESTART_AFTER_SAVE = false;
+
 const WATCH_LIMIT_MS = 10 * 60_000;
 const POST_RETRIES = [1000, 2000, 4000];
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
@@ -199,6 +205,7 @@ async function watch(o, id) {
   const rows = (current && current.targets) || [];
   const failed = rows.some((r) => r.status === "failed"), restart = rows.some((r) => r.status === "restart-required");
   if (!o.lostJob) toast(t(failed ? "settings.applyPartial" : restart ? "settings.applyRestartNeeded" : "settings.changesApplied"), !(failed || restart));
+  if (AUTO_RESTART_AFTER_SAVE && restart && !failed && !o.lostJob && o.restart === "idle") restartFleet();
 }
 
 /**
@@ -227,6 +234,24 @@ export async function restartFleet(forJob) {
   o.phase = "watching"; publish();
   try { await watch(o, o.job.id); } finally { if (mine(o)) { o.restart = "idle"; publish(); } }
   return res;
+}
+
+/**
+ * #2347: Restart now from the app-wide banner, for the newest Save that needs it (`jobId`, the server's pick). The Save
+ * in hand when it is that job; otherwise that job, read now, becomes the operation, so its card and line follow the
+ * restart as they follow any other. The caller asked first.
+ */
+export async function restartPendingChanges(jobId) {
+  if (operationActive()) return { ok: false, busy: true };
+  if (!op || !op.job || op.job.id !== jobId) {
+    let res;
+    try { res = await api(`/api/settings/apply/${encodeURIComponent(jobId)}`); } catch { res = { ok: false, status: 0, body: null }; }
+    if (!res.ok || !res.body || !res.body.id) return { ok: false, status: res.status, body: res.body };
+    if (operationActive()) return { ok: false, busy: true };
+    op = { id: ++seq, phase: "done", error: null, job: res.body, lostJob: false, restart: "idle", leftover: [], steps: [] };
+    publish();
+  }
+  return restartFleet({ opId: op.id, jobId });
 }
 
 // Leaving while writes or the POST are still to come would lose them: the browser asks first. Once the job exists,

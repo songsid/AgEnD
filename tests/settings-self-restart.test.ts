@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { APPLY_FLEET_TARGET, ApplyJobStore, type ApplyJob } from "../src/apply-job.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
+import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import {
   checkSelfRestartAllowance,
   readSelfRestartAttempts,
@@ -340,6 +341,53 @@ describe("restarting AgEnD from Settings", () => {
 
 // ── The startup consistency check ───────────────────────────────────────────
 
+describe("#2347: saved changes waiting for a restart", () => {
+  it("names the keys and the job a restart can be asked for", async () => {
+    const { fm, job } = await fleetWithPendingRestart(tempDir());
+
+    expect(fm.settingsRestartPending()).toEqual({ keys: ["defaults.locale"], job_id: job.id });
+  });
+
+  it("offers the newest restartable job, never one whose restart was already asked for", async () => {
+    const { fm, job, configPath } = await fleetWithPendingRestart(tempDir());
+    writeFileSync(configPath, readFileSync(configPath, "utf-8").replace("instances: {}", "web:\n  port: 4321\ninstances: {}"));
+    fm.fleetConfig!.web = { port: 4321 } as never;
+    const { job: later } = fm.startSettingsApply("key-second-fleet-change") as { job: ApplyJob };
+    await vi.waitFor(() => expect(fm.applyJobs.get(later.id)!.status).toBe("done"));
+    fm.applyJobs.get(later.id)!.startedAt = fm.applyJobs.get(job.id)!.startedAt + 1;
+
+    expect(fm.settingsRestartPending()?.job_id).toBe(later.id);
+    expect(fm.settingsRestartPending()?.keys).toEqual(expect.arrayContaining(["defaults.locale"]));
+    await fm.requestSettingsSelfRestart(later.id, "key-restart-the-later-one");
+    // That job's row is in flight now: it is not offered again (the older one is, until this restart lands).
+    expect(fm.settingsRestartPending()?.job_id).toBe(job.id);
+  });
+
+  it("still says a restart is waiting when no job can carry it (a hand edit)", () => {
+    const dir = tempDir();
+    const { fm, configPath } = fleetWith(dir, ["defaults:", "  locale: en", "instances: {}", ""]);
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+    writeFileSync(configPath, ["defaults:", "  locale: zh-TW", "instances: {}", ""].join("\n"));
+
+    expect(fm.settingsRestartPending()).toEqual({ keys: ["defaults.locale"], job_id: null });
+  });
+
+  it("is null when nothing is pending, when the change was reverted, and when a restart could not clear it", async () => {
+    const dir = tempDir();
+    const { fm: clean } = fleetWith(dir, ["defaults:", "  locale: en", "instances: {}", ""]);
+    (clean as unknown as { finishStartup(): void }).finishStartup();
+    expect(clean.settingsRestartPending()).toBeNull();
+
+    const { fm, configPath } = await fleetWithPendingRestart(tempDir());
+    writeFileSync(configPath, readFileSync(configPath, "utf-8").replace("zh-TW", "en"));
+    expect(fm.settingsRestartPending()).toBeNull();
+
+    const { fm: mismatched } = await fleetWithPendingRestart(tempDir());
+    (mismatched as unknown as { fleetSignatureMismatch: string[] }).fleetSignatureMismatch = ["defaults.locale"];
+    expect(mismatched.settingsRestartPending()).toBeNull();
+  });
+});
+
 describe("startup signature consistency", () => {
   it("is clean when the file and the running config agree", () => {
     const dir = tempDir();
@@ -488,6 +536,24 @@ describe("POST /api/settings/restart-fleet", () => {
     expect(res.status).toBe(429);
     expect(res.headers["Retry-After"]).toBe("420");
     expect(res.body.retry_after_seconds).toBe(420);
+  });
+});
+
+describe("GET /api/settings/restart-pending", () => {
+  it("answers pending with the keys and job, or pending: false", async () => {
+    const dir = tempDir();
+    const ctx = apiContext(dir, async (jobId: string) => ({ ok: true as const, jobId }));
+    expect((await request("/api/settings/restart-pending", ctx, "GET")).body).toEqual({ pending: false });
+    (ctx as unknown as { settingsRestartPending(): unknown }).settingsRestartPending = () => ({ keys: ["web.port"], job_id: "job-1" });
+
+    const res = await request("/api/settings/restart-pending", ctx, "GET");
+
+    expect([res.status, res.body]).toEqual([200, { pending: true, keys: ["web.port"], job_id: "job-1" }]);
+  });
+
+  it("is read over the public link too (the page says a restart is waiting), and written by nothing", () => {
+    expect([isPublicWebRoute("GET", "/api/settings/restart-pending"), isPublicWebRoute("POST", "/api/settings/restart-pending")])
+      .toEqual([true, false]);
   });
 });
 
