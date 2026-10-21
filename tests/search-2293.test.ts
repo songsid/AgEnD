@@ -342,6 +342,19 @@ describe("SearchIndex (the fleet's lane)", () => {
     w().emit("message", { op: "ready", built: true });
     expect(w().sent.filter(m => m.op === "add")).toEqual([]);
   });
+  it("a removed instance's chat in an uncommitted batch is not sent again after the removal (a replay would restore it)", () => {
+    vi.useFakeTimers();
+    const { index, workers, w } = lane();
+    index.start(); w().emit("message", { op: "ready", built: true });
+    index.record(doc({ key: "chat:gone:b-1", instance: "gone", text: "old" }));
+    index.record(doc({ key: "chat:dev:b-2", instance: "dev", text: "kept" }));
+    vi.advanceTimersByTime(BATCH_MS);
+    index.removeInstance("gone");
+    workers[0]!.emit("exit", 1);
+    vi.advanceTimersByTime(1000);
+    w().emit("message", { op: "ready", built: true });
+    expect(w().sent.filter(m => m.op !== "prune").map(m => m.op === "add" ? m.docs.map((d: SearchDoc) => d.key) : m.op)).toEqual(["removeInstance", ["chat:dev:b-2"]]);
+  });
   it("a removal the worker did not confirm is sent first to the next worker; confirmed (or a later batch committed): not", () => {
     vi.useFakeTimers();
     const { index, workers, w } = lane();
