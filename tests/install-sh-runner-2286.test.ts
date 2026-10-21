@@ -1,8 +1,10 @@
 /**
- * #2286 review: install.sh's installer step for a target from before the installer (#2264) — a version pinned to repair a
- * host, an older tag. A plain `npm install -g` there is the very install that fails on what an interrupted one left
- * (npm's retired copy beside the package: ENOTEMPTY). So the step borrows the newest installer (latest, else beta),
- * which repairs first and then installs exactly that version (--spec) and proves it.
+ * #2286 HOTFIX: install.sh's installer step for a target from before the installer (#2264) — the default `latest` while
+ * that is 2.2.6, a version pinned, an older tag. #2286 had it borrow the newest installer (latest, else beta) with
+ * --spec. But that installer holds the install lock while it installs, and a release from before #2264 refuses that in
+ * its own postinstall unless the install presents the lock's token, which beta.18's installer does not: the default
+ * install of 2.2.6 failed. So such a target gets the plain `npm install -g` again (it still fails ENOTEMPTY on what an
+ * interrupted install left), until a release whose installer presents the token is both latest and beta.
  *
  * The step runs exactly as install.sh has it (the marked block, its helpers, `set -euo pipefail`) with a stub npm. The
  * stub's `exec` runs the REAL launcher/agend-install.cjs; its `install -g` fails ENOTEMPTY while a retired `.agend-*`
@@ -84,24 +86,15 @@ console.error("unexpected npm " + a.join(" ")); process.exit(9);
   return { prefix, scope, run, log };
 }
 
-describe("#2286 install.sh: a target from before the installer is installed by the newest installer", () => {
-  it("the user's state, a pre-installer version pinned: latest's installer repairs (npm's copy out of the way), then installs and proves exactly that version", () => {
-    const h = brokenHost({ latestHasInstaller: true, betaHasInstaller: true });
+describe("#2286 HOTFIX install.sh: a target from before the installer gets the plain npm install, never a borrowed installer", () => {
+  it.each([["today's registry: latest (2.2.6) without the installer, beta with it", false], ["latest and beta both with it", true]])("%s", (_n, latestHasInstaller) => {
+    const h = brokenHost({ latestHasInstaller, betaHasInstaller: true });
     const r = h.run("2.3.0-beta.16");
-    expect(r.status, r.stdout + r.stderr).toBe(0);
-    expect(r.stdout).toContain("AFTER THE STEP");
-    expect(h.log()).toMatch(/^npm exec --yes --package @songsid\/agend@latest -- agend-install --spec @songsid\/agend@2\.3\.0-beta\.16$/m);
     expect(h.log()).toMatch(/^npm install -g @songsid\/agend@2\.3\.0-beta\.16$/m);
-    expect(readdirSync(h.scope).filter((n) => n.startsWith(".agend-"))).toEqual([]);     // nothing left in npm's way
-    expect(JSON.parse(readFileSync(join(h.scope, "agend", "package.json"), "utf8")).version).toBe("2.3.0-beta.16");
-    expect(spawnSync(join(h.prefix, "bin", "agend"), ["--version"], { encoding: "utf8" }).stdout.trim()).toBe("2.3.0-beta.16");
+    expect(h.log()).not.toMatch(/npm exec/);
+    expect(r.stdout).toContain("npm error code ENOTEMPTY");                               // the known gap, as before #2286
   });
-  it("latest from before the installer too: beta's installer does it", () => {
-    const h = brokenHost({ latestHasInstaller: false, betaHasInstaller: true });
-    expect(h.run("2.3.0-beta.16").status).toBe(0);
-    expect(h.log()).toMatch(/^npm exec --yes --package @songsid\/agend@beta -- agend-install --spec @songsid\/agend@2\.3\.0-beta\.16$/m);
-  });
-  it("control — no installer published anywhere: the plain npm install, which fails on npm's own leftover (the gap this closes)", () => {
+  it("no installer published anywhere: the same plain npm install", () => {
     const h = brokenHost({ latestHasInstaller: false, betaHasInstaller: false });
     const r = h.run("2.3.0-beta.16");
     expect(r.status).toBe(1);
@@ -140,13 +133,16 @@ const npmEnv = (d: string, prefix: string) => ({
 });
 
 /** A host whose AgEnD is v2.3.0-beta.16 behind real npm. `state`: an update cut off (npm's copy aside), or no runnable agend. */
-function legacyHost(state: "interrupted" | "unrunnable") {
+function legacyHost(state: "interrupted" | "unrunnable" | "clean", o = { latestHasInstaller: true }) {
   const d = realpathSync(mkdtempSync(join(tmpdir(), "agend-2286-legacy-"))); dirs.push(d);
   const prefix = join(d, "prefix"), scope = join(prefix, "lib", "node_modules", "@songsid");
   const old = join(scope, state === "interrupted" ? ".agend-RmEK4vIL" : "agend");
-  mkdirSync(old, { recursive: true }); mkdirSync(join(prefix, "bin"));
-  writeFileSync(join(old, "package.json"), JSON.stringify({ name: "@songsid/agend", version: "2.3.0-beta.16", bin: { agend: "launcher/agend" } }));
-  mkdirSync(join(old, "launcher")); writeFileSync(join(old, "launcher", "agend"), "#!/bin/sh\necho 2.3.0-beta.16\n");   // whole; bin/agend not linked
+  mkdirSync(join(prefix, "bin"), { recursive: true });
+  if (state !== "clean") {
+    mkdirSync(join(old, "launcher"), { recursive: true });
+    writeFileSync(join(old, "package.json"), JSON.stringify({ name: "@songsid/agend", version: "2.3.0-beta.16", bin: { agend: "launcher/agend" } }));
+    writeFileSync(join(old, "launcher", "agend"), "#!/bin/sh\necho 2.3.0-beta.16\n");   // whole; bin/agend not linked
+  }
   if (state === "interrupted") { mkdirSync(join(scope, "agend")); writeFileSync(join(scope, "agend", "partial.tmp"), ""); }
   const tgz = legacyTarball(d);
   const bin = join(d, "bin"); mkdirSync(bin);
@@ -156,7 +152,7 @@ const fs = require("fs"), path = require("path"), cp = require("child_process");
 const a = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(join(d, "npm.log"))}, "npm " + a.join(" ") + "\\n");
 const prefix = ${JSON.stringify(prefix)};
-const view = { "2.3.0-beta.16": [${JSON.stringify(JSON.stringify({ agend: "launcher/agend" }))}, "2.3.0-beta.16"], "beta": [${JSON.stringify(withInstaller)}, "2.3.0-beta.17"], "latest": [${JSON.stringify(withInstaller)}, "2.2.7"] };
+const view = { "2.3.0-beta.16": [${JSON.stringify(JSON.stringify({ agend: "launcher/agend" }))}, "2.3.0-beta.16"], "beta": [${JSON.stringify(withInstaller)}, "2.3.0-beta.17"], "latest": [${JSON.stringify(o.latestHasInstaller ? withInstaller : JSON.stringify({ agend: "launcher/agend" }))}, "2.2.7"] };
 if (a[0] === "view") { const v = view[a[1].split("@").pop()]; if (!v) process.exit(1); console.log(a[2] === "bin" ? v[0] : v[1]); process.exit(0); }
 if (a[0] === "root") { console.log(path.join(prefix, "lib", "node_modules")); process.exit(0); }
 if (a[0] === "prefix") { console.log(prefix); process.exit(0); }
@@ -179,16 +175,28 @@ console.error("unexpected npm " + a.join(" ")); process.exit(9);
   const run = (version: string) => spawnSync("bash", ["-c", `set -euo pipefail\n${helpers}\nSUDO=""\n${step}\necho "AFTER THE STEP"`], {
     encoding: "utf8", env: { PATH: `${bin}:/usr/bin:/bin`, HOME: join(d, "home"), AGEND_HOME: join(d, "agend-home"), AGEND_VERSION: version, LANG: "C.UTF-8" },
   });
+  // The installer as `npm exec --package <newest> -- agend-install --spec <older>` runs it (the stub's PATH: its npm, its ps).
+  const runInstaller = (args: string[]) => spawnSync(process.execPath, [join(REPO, "launcher", "agend-install.cjs"), ...args], {
+    encoding: "utf8", env: { PATH: `${bin}:/usr/bin:/bin`, HOME: join(d, "home"), AGEND_HOME: join(d, "agend-home"), LANG: "C.UTF-8" },
+  });
   const admissions = () => (existsSync(join(d, "postinstall.log")) ? readFileSync(join(d, "postinstall.log"), "utf8").trim().split("\n").map(l => JSON.parse(l)) : []);
-  return { d, prefix, scope, tgz, run, admissions };
+  return { d, prefix, scope, tgz, run, runInstaller, admissions };
 }
 
 describe("#2286 Prism r1: a release from before #2264 behind real npm — its own postinstall admits the installer's install", () => {
-  it("the user's state, v2.3.0-beta.16 pinned: its postinstall sees the installer's live lock AND its token, so it installs", () => {
-    const h = legacyHost("interrupted");
+  it("HOTFIX, the live failure: today's registry (latest without the installer, beta with one) on a clean host — install.sh's plain npm install, admitted as an external install", () => {
+    const h = legacyHost("clean", { latestHasInstaller: false });
     const r = h.run("2.3.0-beta.16");
     expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(r.stdout).toContain("AFTER THE STEP");
+    expect(h.admissions()).toEqual([{ ok: true, why: "no lock: an external install" }]);
+    expect(spawnSync(join(h.prefix, "bin", "agend"), [], { encoding: "utf8" }).stdout.trim()).toBe("2.3.0-beta.16");
+  });
+
+  it("the installer with --spec of that release, on the user's state: its postinstall sees the installer's live lock AND its token, so it installs", () => {
+    const h = legacyHost("interrupted");
+    const r = h.runInstaller(["--spec", "@songsid/agend@2.3.0-beta.16"]);
+    expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(r.stdout).toContain("put back AgEnD v2.3.0-beta.16 that an interrupted install had moved aside");
     expect(h.admissions()).toEqual([{ ok: true, why: "the updater's own install" }]);   // the lock was live: the token is what admitted it
     expect(spawnSync(join(h.prefix, "bin", "agend"), [], { encoding: "utf8" }).stdout.trim()).toBe("2.3.0-beta.16");

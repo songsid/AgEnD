@@ -47,7 +47,7 @@ const NOT_TAKEN_ZH = "AgEnD 這次沒有安裝：無法取得安裝鎖（原因�
 
 describe("#2284 install.sh: an install lock that could not be taken is not reported as a failed install", () => {
   it("the marked step is install.sh's installer step, with its helpers; the website copy is identical", () => {
-    expect(step).toMatch(/npm exec --yes --package "\$INSTALLER_SPEC" -- agend-install/);
+    expect(step).toMatch(/npm exec --yes --package "\$AGEND_SPEC" -- agend-install/);
     expect(helpers).toMatch(/^warn\(\)/m);
     expect(readFileSync(join(REPO, "website", "public", "install.sh"), "utf8")).toBe(script);
   });
