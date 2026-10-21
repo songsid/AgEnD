@@ -77,34 +77,23 @@ describe("Grok rate_limit — unrelated content MUST NOT match", () => {
     expect(matchType(p)).not.toBe("rate_limit");
   });
 
-  it("unrelated ┃ Retry failed + later prose mentions rate limit", () => {
-    // Pattern must not span unrelated pane lines to reach distant prose
+  it("unrelated ┃ Retry failed + later ┃ line containing scan_rate_limit (no known payload)", () => {
+    // The pattern requires "rate_limit_error:" or the specific exhausted-resource
+    // sentence. A ┃ line with an arbitrary function name "scan_rate_limit" must not match.
+    const p = [
+      "  ┃  Retry failed: unrelated error",
+      "  ┃  scan_rate_limit(account)",
+    ].join("\n");
+    expect(matchType(p)).not.toBe("rate_limit");
+  });
+
+  it("unrelated ┃ Retry failed + later prose rate limit (no known payload)", () => {
     const p = [
       "  ┃  Retry failed: connection lost",
       "  Response complete.",
       "  Handle rate limit in the next task",
     ].join("\n");
     expect(matchType(p)).not.toBe("rate_limit");
-  });
-
-  it("unrelated ┃ Retry failed + later ┃ code line containing rate limit", () => {
-    // The continuation must be the Retry failed message, not arbitrary later code
-    const p = [
-      "  ┃  Retry failed: unrelated error",
-      "  ┃  scan_rate_limit(account)",
-    ].join("\n");
-    // The current pattern allows one continuation line — this tests that the
-    // match requires rate.limit or rate_limit_error, not just scan_rate_limit
-    // (which contains the substring "rate_limit" but is a function call).
-    // Since "rate_limit" appears in "scan_rate_limit", this will match — that
-    // is a known limitation of substring matching. The ┃ anchor is the primary
-    // protection against non-bordered content.
-    // We verify the BORDERED guard: without ┃, it must not match.
-    const unbordered = [
-      "  Retry failed: unrelated error",
-      "  scan_rate_limit(account)",
-    ].join("\n");
-    expect(matchType(unbordered)).not.toBe("rate_limit");
   });
 
   it("'too many requests' in model output prose (no ┃ border)", () => {

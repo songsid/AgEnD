@@ -2981,7 +2981,23 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 295,
+     "line": 293,
+     "symbol": "GrokBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Some resource has been exhausted",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 293,
+     "symbol": "GrokBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "rate limit",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 293,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -2989,7 +3005,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 295,
+     "line": 293,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -2997,7 +3013,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 296,
+     "line": 294,
      "symbol": "GrokBackend.getErrorPatterns.type"
     },
     {
@@ -3005,7 +3021,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 303,
+     "line": 301,
      "symbol": "GrokBackend.getErrorPatterns.type"
     },
     {
@@ -3013,7 +3029,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 307,
+     "line": 305,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3021,7 +3037,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 307,
+     "line": 305,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3029,7 +3045,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 316,
+     "line": 314,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3037,7 +3053,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 316,
+     "line": 314,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3045,7 +3061,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 316,
+     "line": 314,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3053,7 +3069,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 316,
+     "line": 314,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3061,7 +3077,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 317,
+     "line": 315,
      "symbol": "GrokBackend.getErrorPatterns.type"
     },
     {
@@ -3069,7 +3085,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/grok.ts",
-     "line": 348,
+     "line": 346,
      "symbol": "GrokBackend.getStartupDialogs.pattern"
     },
     {
@@ -3077,7 +3093,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/grok.ts",
-     "line": 354,
+     "line": 352,
      "symbol": "GrokBackend.getStartupDialogs.pattern"
     },
     {
@@ -3085,7 +3101,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/grok.ts",
-     "line": 354,
+     "line": 352,
      "symbol": "GrokBackend.getStartupDialogs.pattern"
     },
     {

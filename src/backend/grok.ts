@@ -282,17 +282,15 @@ export class GrokBackend implements CliBackend {
     return [
       {
         // 429: two confirmed formats (fixtures in tests/fixtures/grok-1.0.60-audit/):
-        //   1.0.60: "┃  Retry failed: rate_limit_error: Rate limit exceeded"
-        //   1.0.52: "┃  Retry failed: Some resource has been exhausted: Your team has exceeded\n  ┃  its rate limit. Please try again later."
+        //   1.0.60: "┃  Retry failed: rate_limit_error: …"
+        //   1.0.52: "┃  Retry failed: Some resource has been exhausted: Your team has exceeded
+        //            ┃  its rate limit. Please try again later."  (wraps at 80col)
         //
-        // The 1.0.52 form wraps at 80 columns onto a continuation ┃ line.
-        // The content check allows at most one such continuation (same-line ┃ prefix),
-        // so unrelated pane content after the Retry block cannot be matched.
-        //
-        // Pattern: start on a ┃ line with "Retry failed:", then either:
-        //   a) rate-limit keyword on the same line (1.0.60), or
-        //   b) a single ┃-bordered continuation line containing the keyword (1.0.52 80-col)
-        pattern: /^[ \t]*┃[ \t]+Retry failed:[ \t]+(?:.*(?:rate.?limit|rate_limit_error)|[^\n]*\n[ \t]*┃[ \t]+(?:.*?(?:rate.?limit|rate_limit_error)))/im,
+        // Require the specific known payload — either `rate_limit_error:` on the Retry
+        // line, or the exhausted-resource sentence (which may wrap to a ┃ continuation).
+        // This prevents matching unrelated ┃ Retry blocks followed by ┃ lines that merely
+        // contain the word "rate_limit" (e.g. a function call like scan_rate_limit()).
+        pattern: /^[ \t]*┃[ \t]+Retry failed:[ \t]+(?:rate_limit_error:|Some resource has been exhausted:[^\n]*(?:\n[ \t]*┃[ \t]+[^\n]*)*?rate limit)/im,
         type: "rate_limit",
         action: "failover",
         message: "Grok rate limit reached",
