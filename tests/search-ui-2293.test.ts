@@ -29,17 +29,18 @@ function fakeFetch(answer: (url: string) => { status?: number; body?: unknown })
   vi.stubGlobal("fetch", fn);
   return calls;
 }
-async function open(preset: Record<string, string> = {}, answer = (url: string) => (url.startsWith("/ui/teams") ? { body: { teams: { ops: { members: ["a"] } } } } : { body: { hits, limited: false, building: false } })) {
+type Answer = (url: string) => { status?: number; body?: unknown };
+async function open(preset: Record<string, string> = {}, answer: Answer = (url) => (url.startsWith("/ui/teams") ? { body: { teams: { ops: { members: ["a"] } } } } : { body: { hits, limited: false, building: false } })) {
   p = page();
   const calls = fakeFetch(answer);
   const m = await load();
   ((await import("/assets/app-nav.js" as string)) as Served).startRouter(window);
   const onClose = vi.fn();
   await p.mount(h(m.SearchDialog, { preset, onClose }));
-  const input = p.document.querySelector(".search-input");
+  const input: any = p.document.querySelector(".search-input");
   const type = async (text: string) => { input.value = text; fire(input, "input"); await new Promise(r => setTimeout(r, m.DEBOUNCE_MS + 20)); await settle(); };
   const key = async (k: string, init: Record<string, unknown> = {}) => { fire(input, "keydown", { key: k, ...init }); await settle(); };
-  return { m, calls, onClose, input, type, key, doc: p.document, searches: () => calls.filter(u => u.startsWith("/ui/search?")) };
+  return { m, calls, onClose, input, type, key, doc: p.document as any, searches: () => calls.filter(u => u.startsWith("/ui/search?")) };
 }
 
 describe("helpers", () => {
@@ -201,12 +202,12 @@ describe("the dialog", () => {
       return { ok: true, status: 200, json: () => (url.includes("q=old") ? new Promise(r => { release = () => r(body); }) : Promise.resolve(body)) };
     }));
     await p.mount(h(m.SearchDialog, { preset: {}, onClose: () => {} }));
-    const input = p.document.querySelector(".search-input");
+    const input: any = p.document.querySelector(".search-input");
     input.value = "old"; fire(input, "input"); await new Promise(r => setTimeout(r, m.DEBOUNCE_MS + 20));
     input.value = "new"; fire(input, "input"); await new Promise(r => setTimeout(r, m.DEBOUNCE_MS + 20)); await settle();
     release!(); await settle();
-    expect(p.document.querySelector(".search-badge").textContent).toBe("Chat");
-    expect(p.document.querySelectorAll(".search-row").length).toBe(1);
+    expect((p.document as any).querySelector(".search-badge").textContent).toBe("Chat");
+    expect((p.document as any).querySelectorAll(".search-row").length).toBe(1);
   });
   it("the kinds can't all be turned off: the last one on stays on", async () => {
     const d = await open({ instance: "dev" });
@@ -228,12 +229,12 @@ describe("the dialog", () => {
       else r({ ok: true, status: 200, json: async () => body });
     })));
     await p.mount(h(m.SearchDialog, { preset: {}, onClose: () => {} }));
-    const input = p.document.querySelector(".search-input");
+    const input: any = p.document.querySelector(".search-input");
     input.value = "old"; fire(input, "input"); await new Promise(r => setTimeout(r, m.DEBOUNCE_MS + 20));
     input.value = "new"; fire(input, "input"); await new Promise(r => setTimeout(r, m.DEBOUNCE_MS + 20)); await settle();
     release!(); await settle();
-    expect(p.document.querySelectorAll(".search-row").length).toBe(1);
-    expect(p.document.querySelector(".search-badge").textContent).toBe("Chat");
+    expect((p.document as any).querySelectorAll(".search-row").length).toBe(1);
+    expect((p.document as any).querySelector(".search-badge").textContent).toBe("Chat");
   });
 });
 
@@ -257,7 +258,7 @@ describe("how it opens", () => {
     expect(inChat.preventDefault).toHaveBeenCalled();
     await vi.waitFor(() => expect(shell.shellStore.get().dialog?.props?.preset).toEqual({ instance: "dev" }));
     shell.closeDialog();
-    const other = p.document.createElement("dialog"); other.setAttribute("open", ""); p.document.body.appendChild(other);
+    const other: any = p!.document.createElement("dialog"); other.setAttribute("open", ""); p!.document.body.appendChild(other);
     const blocked = ev("k"); shell.handleSearchKey(blocked);
     expect(blocked.preventDefault).not.toHaveBeenCalled();
   });
