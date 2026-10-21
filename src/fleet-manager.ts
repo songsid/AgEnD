@@ -5190,8 +5190,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /**
    * Start instances with configurable concurrency and stagger delay.
-   * Instances sharing the same working_directory are serialized within a group
-   * to avoid config file races. Stagger delay is group-to-group, not instance-to-instance.
+   * Instances sharing the same working_directory are serialized to avoid
+   * config file races. Stagger applies between outer lifecycle admissions.
    * TODO: per-instance startup timeout (existing issue, not introduced here)
    */
   private async startInstancesWithConcurrency(
@@ -5217,14 +5217,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         totalInstances: runnableEntries.length,
       }, "Adaptive startup concurrency");
     }
+    const startedAt = performance.now();
+    let active = 0, peakConcurrentStarts = 0, readyInstances = 0;
     await Promise.all(runnableEntries.map(([name, config]) => this.spawnGate.run({
       instanceName: name,
       workingDirectory: config.working_directory,
       reason: "startup",
       stage: "lifecycle",
     }, async () => {
-      if (await this.startInstanceUnattended(name, config, topicMode, "instance")) onReady?.(name);
+      peakConcurrentStarts = Math.max(peakConcurrentStarts, ++active);
+      try {
+        if (await this.startInstanceUnattended(name, config, topicMode, "instance")) {
+          readyInstances++;
+          onReady?.(name);
+        }
+      } finally { active--; }
     })));
+    this.logger.info({
+      totalInstances: runnableEntries.length, readyInstances,
+      elapsedSeconds: Math.round((performance.now() - startedAt) / 100) / 10,
+      peakConcurrentStarts,
+    }, "Fleet startup batch completed");
   }
 
   /**

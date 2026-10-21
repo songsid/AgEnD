@@ -33,6 +33,9 @@ describe("fleet host memory wiring", () => {
     const fm = new FleetManager(dir);
     fleets.push({ fm, dir });
     const internal = fm as any;
+    // This suite verifies pressure/admission and reminder counts. The host's
+    // async largest-process scan has its own suite and adds unrelated warnings.
+    vi.spyOn(internal, "memoryHogScan").mockResolvedValue([]);
     let current = initial;
     const read = vi.spyOn(fm.memoryPressure as unknown as { read(): HostMemory }, "read").mockImplementation(() => current);
     const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };

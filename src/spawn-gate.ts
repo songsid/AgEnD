@@ -36,6 +36,7 @@ export class SpawnGate {
   private activeDirectories = new Set<string>();
   private activeInstances = new Set<string>();
   private lastStartedAt = 0;
+  private lastPhysicalStartedAt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private capacityWait = false;
   private memoryWait = false;
@@ -149,7 +150,11 @@ export class SpawnGate {
         const stagger = Math.max(0, Math.min(30_000, this.options.staggerMs()), pressure === "normal" ? 0 : 5_000);
         const jitter = this.options.storm.isActive() ? Math.floor(this.random() * 500) : 0;
         // A healthy nested acquisition already owns its outer admission slot.
-        const delay = nested && pressure === "normal" ? 0 : Math.max(0, this.lastStartedAt + stagger + jitter - Date.now());
+        // Keep physical history even at normal pressure: if pressure rises,
+        // the next spawn must still be at least five seconds after that one.
+        const lastAdmission = pressure === "normal" ? this.lastStartedAt
+          : Math.max(this.lastStartedAt, this.lastPhysicalStartedAt);
+        const delay = nested && pressure === "normal" ? 0 : Math.max(0, lastAdmission + stagger + jitter - Date.now());
         if (delay > 0) { this.wait(delay, false, pressure !== "normal"); return; }
         const [item] = nested ? this.nestedQueue.splice(0, 1) : this.queue.splice(index, 1);
         if (this.pressureHeld) {
@@ -161,8 +166,13 @@ export class SpawnGate {
           this.activeDirectories.add(item.task.workingDirectory);
           this.activeInstances.add(item.task.instanceName);
         }
-        if (physical) this.physicalActive++;
-        this.lastStartedAt = Date.now();
+        if (physical) {
+          this.physicalActive++;
+          this.lastPhysicalStartedAt = Date.now();
+        }
+        // A normal nested spawn consumes its existing reservation, not a new
+        // stagger slot. Standalone work and pressure admission keep pacing.
+        if (!nested || pressure !== "normal") this.lastStartedAt = Date.now();
         let operation: Promise<unknown>;
         try { operation = item.run(); } catch (err) { operation = Promise.reject(err); }
         void operation.then(item.resolve, item.reject).finally(() => {
