@@ -7,6 +7,8 @@ const P = {
   menu: () => html`<path d="M4 6h16M4 12h16M4 18h16"/>`,
   sidebar: () => html`<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>`,
   plus: () => html`<path d="M12 5v14M5 12h14"/>`,
+  minus: () => html`<path d="M5 12h14"/>`,                                        // #2333: the lightbox's zoom out
+  fitwidth: () => html`<path d="M3 4v16M21 4v16M7 12h10M10 9l-3 3 3 3M14 9l3 3-3 3"/>`,   // #2333: fit width
   edit: () => html`<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>`,
   more: () => html`<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>`,
   chat: () => html`<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>`,

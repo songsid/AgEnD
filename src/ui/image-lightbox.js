@@ -5,10 +5,14 @@
 //
 // The native <dialog> opened with showModal(): the browser traps focus and makes the rest inert. No style attribute
 // (#1300): classes only. Only a file URL the chat itself rendered (/ui/file/<32 hex>) is ever shown.
+//
+// #2333: zoom and pan (image-zoom.js). The toolbar has −, the level (it toggles fit ↔ 100%), + and Fit width; the keys
+// + / − / 0 (fit) / 1 (100%) / W (fit width). Each image opens fitted; stepping to another fits it again.
 import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { Icon } from "/assets/ui-icons.js";
+import { createZoom, STEP } from "./image-zoom.js";
 
 const FILE_URL = /^\/ui\/file\/[0-9a-f]{32}$/;
 /** What is shown: { items: [{ src, name }], index, opener } or null. One per page; the chat that shows it owns it. */
@@ -54,6 +58,10 @@ function ImageLightbox({ items, index, opener, onClose }) {
   const [at, setAt] = useState(index);
   const ref = useRef(null);
   const close = useRef(null);
+  const stage = useRef(null);
+  const img = useRef(null);
+  const zoom = useRef(null);
+  const [level, setLevel] = useState(null);   // { scale, fit, mode } once the picture has loaded
   const item = items[at] || items[0];
   const many = items.length > 1;
   const step = (d) => setAt((n) => (n + d + items.length) % items.length);
@@ -70,6 +78,19 @@ function ImageLightbox({ items, index, opener, onClose }) {
     };
   }, []);
   useEffect(() => {
+    if (!stage.current || !img.current) return undefined;
+    const z = createZoom({ stage: stage.current, img: img.current, onChange: setLevel });
+    zoom.current = z;
+    return () => { z.destroy(); zoom.current = null; };
+  }, []);
+  // Another image: hidden until it has loaded and been fitted (its load resets the zoom).
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    if (img.current) img.current.classList.remove("lb-ready");
+    setLevel(null);
+  }, [at]);
+  useEffect(() => {
     const d = ref.current;
     if (!d) return undefined;
     // Esc: the browser fires "cancel"; closing goes through the store so its state stays the truth.
@@ -80,6 +101,12 @@ function ImageLightbox({ items, index, opener, onClose }) {
     // The dark area (the dialog itself, or the stage around the image) closes it; the image and the controls do not.
     const onClick = (e) => { if (e.target === d || (e.target && e.target.classList && e.target.classList.contains("lb-stage"))) onClose(); };
     const onKey = (e) => {
+      const z = zoom.current;
+      if (z && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const act = { "+": () => z.zoomBy(STEP), "=": () => z.zoomBy(STEP), "-": () => z.zoomBy(1 / STEP), "_": () => z.zoomBy(1 / STEP),
+          "0": () => z.fit(), "1": () => z.actual(), w: () => z.fitWidth(), W: () => z.fitWidth() }[e.key];
+        if (act) { e.preventDefault(); act(); return; }
+      }
       if (!many) return;
       if (e.key === "ArrowRight") { e.preventDefault(); step(1); } else if (e.key === "ArrowLeft") { e.preventDefault(); step(-1); }
     };
@@ -90,14 +117,25 @@ function ImageLightbox({ items, index, opener, onClose }) {
     return () => { d.removeEventListener("cancel", onCancel); d.removeEventListener("close", onNativeClose); d.removeEventListener("click", onClick); d.removeEventListener("keydown", onKey); };
   }, [onClose, many, items.length]);
   const label = item.name ? t("chat.lbLabel", item.name) : t("chat.lbLabelNoName");
+  const pct = level ? Math.round(level.scale * 100) : null;
   return html`<dialog data-trust="lightbox" ref=${ref} class="lb" role="dialog" aria-modal="true" aria-label=${label}>
     <div class="lb-bar">
       <span class="lb-name" title=${item.name}>${item.name}</span>
       ${many ? html`<span class="lb-count">${t("chat.lbCount", at + 1, items.length)}</span>` : null}
+      <span class="lb-zoom" role="group">
+        <button type="button" class="icon-btn lb-zoom-out" disabled=${!level} aria-label=${t("chat.lbZoomOut")} title=${t("chat.lbZoomOut")}
+          onClick=${() => zoom.current && zoom.current.zoomBy(1 / STEP)}><${Icon} name="minus" /></button>
+        <button type="button" class="btn btn-sm lb-level" disabled=${!level} aria-label=${t("chat.lbZoomLevel", pct ?? "")} title=${t("chat.lbZoomLevel", pct ?? "")}
+          onClick=${() => zoom.current && zoom.current.toggle()}>${pct === null ? "…" : `${pct}%`}</button>
+        <button type="button" class="icon-btn lb-zoom-in" disabled=${!level} aria-label=${t("chat.lbZoomIn")} title=${t("chat.lbZoomIn")}
+          onClick=${() => zoom.current && zoom.current.zoomBy(STEP)}><${Icon} name="plus" /></button>
+        <button type="button" class=${`icon-btn lb-fit-width${level && level.mode === "width" ? " on" : ""}`} disabled=${!level} aria-pressed=${level && level.mode === "width" ? "true" : "false"}
+          aria-label=${t("chat.lbFitWidth")} title=${t("chat.lbFitWidth")} onClick=${() => zoom.current && zoom.current.fitWidth()}><${Icon} name="fitwidth" /></button>
+      </span>
       <a class="btn btn-sm lb-orig" href=${item.src} target="_blank" rel="noopener noreferrer"><${Icon} name="external" size=${14} /><span class="lbl">${t("chat.lbOpenOriginal")}</span></a>
       <button type="button" class="icon-btn lb-close" ref=${close} aria-label=${t("chat.lbClose")} title=${t("chat.lbClose")} onClick=${onClose}><${Icon} name="close" /></button>
     </div>
-    <div class="lb-stage"><img class="lb-img" src=${item.src} alt=${item.name} /></div>
+    <div class="lb-stage" ref=${stage}><img class="lb-img" ref=${img} src=${item.src} alt=${item.name} draggable="false" /></div>
     ${many ? html`<button type="button" class="icon-btn lb-nav lb-prev" aria-label=${t("chat.lbPrev")} title=${t("chat.lbPrev")} onClick=${() => step(-1)}><${Icon} name="back" /></button>
       <button type="button" class="icon-btn lb-nav lb-next" aria-label=${t("chat.lbNext")} title=${t("chat.lbNext")} onClick=${() => step(1)}><${Icon} name="forward" /></button>` : null}
   </dialog>`;
