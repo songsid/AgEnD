@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 
 const roots: string[] = [];
 
-function runInstall(args: string[] = [], failSystemctl = false) {
+function runInstall(args: string[] = [], failSystemctl = false, notifyAccess = "all") {
   const root = mkdtempSync(join(tmpdir(), "agend-install-auto-enable-"));
   roots.push(root);
   const home = join(root, "home");
@@ -31,6 +31,11 @@ if [ "$SYSTEMCTL_FAIL" = "1" ]; then
   echo "mock systemctl failure" >&2
   exit 1
 fi
+# #2331: what systemd LOADED for the unit — NotifyAccess from $SYSTEMCTL_NOTIFY until AgEnD's own drop-in is there.
+case "$*" in *"show -p Type,NotifyAccess,"*)
+  echo Type=notify
+  if [ -f "$HOME/.config/systemd/user/com.agend.fleet.service.d/zz-agend-notify.conf" ]; then echo NotifyAccess=all; else echo "NotifyAccess=$SYSTEMCTL_NOTIFY"; fi;;
+esac
 `);
   chmodSync(systemctl, 0o755);
 
@@ -48,6 +53,7 @@ fi
         PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`,
         SYSTEMCTL_LOG: log,
         SYSTEMCTL_FAIL: failSystemctl ? "1" : "0",
+        SYSTEMCTL_NOTIFY: notifyAccess,
         NOTIFY_SOCKET: "",
       },
     },
@@ -65,11 +71,29 @@ describe("agend install service activation", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("✅ Fleet service installed and running.");
+    // #2331: reload, ask systemd what it loaded, then enable.
     expect(readFileSync(log, "utf8").trim().split("\n")).toEqual([
       "--user daemon-reload",
+      "--user show -p Type,NotifyAccess,TimeoutStartUSec,FragmentPath,DropInPaths com.agend.fleet",
       "--user enable --now com.agend.fleet",
     ]);
     expect(existsSync(join(home, ".config/systemd/user/com.agend.fleet.service"))).toBe(true);
+    expect(existsSync(join(home, ".config/systemd/user/com.agend.fleet.service.d/zz-agend-notify.conf"))).toBe(false);
+  });
+
+  it("#2331: a loaded NotifyAccess=main is repaired before the service is enabled (drop-in, reload, asked again)", () => {
+    const { result, home, log } = runInstall([], false, "main");
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("zz-agend-notify.conf: NotifyAccess=all — systemd had NotifyAccess=main loaded");
+    expect(readFileSync(log, "utf8").trim().split("\n")).toEqual([
+      "--user daemon-reload",
+      "--user show -p Type,NotifyAccess,TimeoutStartUSec,FragmentPath,DropInPaths com.agend.fleet",
+      "--user daemon-reload",
+      "--user show -p Type,NotifyAccess,TimeoutStartUSec,FragmentPath,DropInPaths com.agend.fleet",
+      "--user enable --now com.agend.fleet",
+    ]);
+    expect(readFileSync(join(home, ".config/systemd/user/com.agend.fleet.service.d/zz-agend-notify.conf"), "utf8")).toContain("[Service]\nNotifyAccess=all\n");
   });
 
   it("reports activation failure and prints the manual fallback command", () => {
