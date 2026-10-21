@@ -8,7 +8,7 @@ import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
-import { DEFAULT_INSTANCE_CONFIG, getTmuxSession } from "./config.js";
+import { DEFAULT_INSTANCE_CONFIG, getEffectiveInstanceDefaults, getTmuxSession } from "./config.js";
 import { readStatuslineModel, uniqueInstanceName } from "./topic-commands.js";
 import { isModelCompatible } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
@@ -2396,7 +2396,7 @@ export class InstanceLifecycle {
 
       const instanceConfig = {
         ...DEFAULT_INSTANCE_CONFIG,
-        ...this.ctx.fleetConfig!.defaults,
+        ...getEffectiveInstanceDefaults(this.ctx.fleetConfig!.defaults ?? {}),
         working_directory: workDir,
         topic_id: createdTopicId,
         ...(description ? { description } : {}),

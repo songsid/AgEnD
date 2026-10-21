@@ -1,5 +1,5 @@
 /**
- * Cloudflare Quick Tunnel as a transport, and only a transport.
+ * Cloudflare quick/named connectors as a transport, and only a transport.
  *
  * The URL this produces is not a credential and nothing here authorizes
  * anything. What it must get right is narrower and harder: never run a shell,
@@ -12,6 +12,7 @@
  * `~/.cloudflared/config.yaml` can stop quick tunnels working, and we cannot
  * assume the operator's home is empty.
  */
+import { publicTunnelHostname, validPublicTunnelToken } from "../public-tunnel-config.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
@@ -63,8 +64,8 @@ export function minimalChildEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.Pr
  * good quick-tunnel URL and must still be refused, because what the child
  * actually printed was a link to evil.example.
  */
-export function validateQuickTunnelUrl(candidate: string): string | null {
-  if (candidate.length > 200) return null;
+export function validateQuickTunnelUrl(candidate: string, configuredHostname?: string): string | null {
+  if (candidate.length > (configuredHostname ? 261 : 200)) return null;
   // Control characters never appear in a URL; their presence means the token
   // came out of an escape sequence or a mangled line, not a URL.
   if (/[\u0000-\u001f\u007f]/.test(candidate)) return null;
@@ -75,7 +76,7 @@ export function validateQuickTunnelUrl(candidate: string): string | null {
   if (url.port) return null;
   if (url.search || url.hash) return null;
   if (url.pathname !== "/") return null;
-  if (!QUICK_TUNNEL_HOST.test(url.hostname)) return null;
+  if (!QUICK_TUNNEL_HOST.test(url.hostname) && (!configuredHostname || publicTunnelHostname(configuredHostname) !== url.hostname)) return null;
   return `https://${url.hostname}`;
 }
 
@@ -190,6 +191,8 @@ export type CloudflaredProtocol = "http2" | "quic" | "auto";
 
 export interface CloudflaredOptions {
   binaryName?: string;
+  /** Dashboard-only remotely managed connector. Never put token in argv/errors. */
+  named?: { hostname: string; token: string };
   protocol?: CloudflaredProtocol;
   /** Public resolvers the readiness probe asks first. Empty disables that path (system DNS only). */
   publicResolvers?: readonly string[];
@@ -250,6 +253,9 @@ export class CloudflaredProvider implements TunnelProvider {
     const pre = await this.preflight(ctx.signal);
     if (!pre.ok) throw new TunnelStartError(pre.errorKind, pre.detail);
 
+    const named = this.opts.named;
+    const namedBase = named ? validateQuickTunnelUrl(`https://${named.hostname}`, named.hostname) : null;
+    if (named && (!namedBase || !validPublicTunnelToken(named.token))) throw new TunnelStartError("bad-url", "invalid named tunnel settings");
     const spawnProcess = this.opts.spawnProcess ?? spawn;
     let child: ChildProcess;
     try {
@@ -259,20 +265,20 @@ export class CloudflaredProvider implements TunnelProvider {
         "--no-autoupdate",
         "--config", "/dev/null",
         ...(protocol === "auto" ? [] : ["--protocol", protocol]),
-        "--url", ctx.origin.origin,
+        ...(named ? ["run"] : ["--url", ctx.origin.origin]),
       ], {
         // No shell, ever: the arguments are fixed and one of them is an origin.
         shell: false,
-        env: minimalChildEnv(this.env),
+        env: { ...minimalChildEnv(this.env), ...(named ? { TUNNEL_TOKEN: named.token } : {}) },
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (err) {
-      throw new TunnelStartError("spawn-failed", `could not start ${this.binaryName}: ${(err as Error).message}`);
+      throw new TunnelStartError("spawn-failed", named ? "could not start named tunnel" : `could not start ${this.binaryName}: ${(err as Error).message}`);
     }
 
     const state = new CloudflaredHandle(child, this.opts);
     try {
-      const base = await state.awaitUrl(deadline, ctx.signal, now);
+      const base = namedBase ?? await state.awaitUrl(deadline, ctx.signal, now);
       const pageUrl = `${base}${ctx.pagePath}`;
       // After the validator, before the probe: cloudflared passes the public
       // Host through to the origin, so the origin has to be expecting it or it
@@ -290,6 +296,11 @@ export class CloudflaredProvider implements TunnelProvider {
       // A child exists. Its death has to be proven before this failure can be
       // reported as a clean one, or a fallback would run beside a live tunnel.
       const stopped = await state.stop("startup failed");
+      // Named connectors can echo credentials in arbitrary vendor diagnostics.
+      // None of that output or the underlying spawn/fetch error crosses here.
+      if (named) throw new TunnelStartError(err instanceof TunnelStartError ? err.errorKind : "spawn-failed",
+        "named tunnel failed; check the connector token, hostname and published application route",
+        stopped.confirmed ? undefined : { pid: stopped.pid, identity: stopped.identity });
       if (!stopped.confirmed) {
         throw new TunnelStartError(
           err instanceof TunnelStartError ? err.errorKind : "spawn-failed",
@@ -379,7 +390,7 @@ class CloudflaredHandle implements TunnelHandle {
     this.identity = probe.kind === "identified" ? probe.identity : null;
 
     const absorb = (chunk: Buffer | string) => {
-      if (this.foundBase) return;
+      if (this.opts.named || this.foundBase) return;
       this.buffered = (this.buffered + String(chunk)).slice(-MAX_BUFFERED_OUTPUT);
       const base = extractTunnelUrl(this.buffered);
       if (!base) return;
@@ -472,6 +483,7 @@ class CloudflaredHandle implements TunnelHandle {
   }
 
   checkOutput(): void {
+    if (this.opts.named && this.spawnError) throw new TunnelStartError("spawn-failed", "named tunnel process failed");
     if (this.outputError) throw new TunnelStartError("transport-failed", "cloudflared output stream failed");
   }
 

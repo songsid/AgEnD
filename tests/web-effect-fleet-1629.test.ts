@@ -1,12 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import pino from "pino";
 vi.mock("node:child_process", async original => {
   const real = await original<typeof import("node:child_process")>();
   const refuse = () => { throw Error("effect tests must not spawn any process"); };
   return { ...real, spawn: refuse, spawnSync: refuse, exec: refuse, execSync: refuse, execFile: refuse, execFileSync: refuse, fork: refuse };
+});
+// #2320 (#1599/#1778): FleetManager's logger starts a pino transport whose worker opens <AGEND_HOME>/daemon.log on its
+// own clock — after a test's cleanup has begun, rmSync then fails ENOTEMPTY. Nothing here reads the log: silent.
+vi.mock("../src/logger.js", async original => {
+  const silent: Record<string, unknown> = new Proxy({}, { get: (_t, key) => (key === "child" ? () => silent : key === "level" ? "silent" : () => {}) });
+  return { ...await original<typeof import("../src/logger.js")>(), createLogger: () => silent };
 });
 import { AppearanceLimiter } from "../src/web-appearance-policy.js";
 import { WebAppearance } from "../src/web-appearance.js";
@@ -47,6 +53,15 @@ function install(f: Awaited<ReturnType<typeof fixture>>, version = "1.0.0", code
   return r;
 }
 describe("#1629 real Fleet effect tool integration", () => {
+  it("#2320: nothing writes into the scratch home after a fleet's work (no late daemon.log: rmSync would fail ENOTEMPTY)", async () => {
+    const f = await fixture();
+    await upload(f);
+    const listing = () => readdirSync(f.dir).sort().join(",");
+    const before = listing();
+    const end = performance.now() + 2000;
+    while (performance.now() < end) { await new Promise(r => setTimeout(r, 50)); expect(existsSync(join(f.dir, "daemon.log")), "daemon.log appeared").toBe(false); }
+    expect(listing()).toBe(before);
+  }, 30_000);   // the file's first test: the cold imports, an upload, then two seconds of watching
   it("agent endpoint → Fleet → real library/ThemeStore, scoped by caller and typed params", async () => {
     const f = await fixture(), id = await upload(f);
     expect(await f.op("other", "effect-apply", { id })).toMatchObject({ error: "not_found" });

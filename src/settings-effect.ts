@@ -1,3 +1,4 @@
+import { PUBLIC_TUNNEL_SECRET_ID } from "./public-tunnel-config.js";
 import { normalizeSettingsInstancePatch } from "./settings-instance-patch.js";
 import { basename } from "node:path";
 import { agentConflict, draftQuickstart, draftWebOnly, newConnectionConflict, planQuickstart, validateWizardInput, webOnlyConflict, withExistingAgent, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
@@ -19,6 +20,7 @@ export interface SettingsEffectContext {
   proof?(kind: "provider" | "secret" | "binding", target: string, verification: string, binding?: string, key?: string): SettingsSecretProof | null;
 }
 export function isSettingsMutation(method: string, path: string): boolean {
+  if (method === "POST" && path === "/api/settings/public-tunnel-token/apply") return true;
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
   return /^\/api\/settings\/(?:fleet\/(?:defaults|channels|web|appearance|instances(?:\/[^/]+)?)|classic\/(?:defaults|channels\/[^/]+)|(?:provider-secrets|secrets)\/[^/]+\/apply|connections\/[^/]+\/(?:secret|binding)\/apply|quickstart\/commit)$/.test(path)
     || path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path);
@@ -35,7 +37,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   const operation = `${method} ${path}`;
   const scoped = (diff: SettingsChangeDiff | null, authority?: SettingsChangeAuthority): SettingsChangeDiff | null => diff
     ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic) } : null;
-  const secret = path.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
+  const secret = (path === "/api/settings/public-tunnel-token/apply" ? `/api/settings/secrets/${PUBLIC_TUNNEL_SECRET_ID}/apply` : path).match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   const connection = path.match(/^\/api\/settings\/connections\/([^/]+)\/(secret|binding)\/apply$/);
   if (secret || connection) {
     const payload = record(body), kind = secret ? "provider" : connection![2] as "secret" | "binding", target = decodeURIComponent((secret ?? connection)![1]);

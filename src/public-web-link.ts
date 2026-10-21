@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { publicTunnelHostname, PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_ORIGIN_PORT, validPublicTunnelToken } from "./public-tunnel-config.js";
 import { performance } from "node:perf_hooks";
 import { newTunnelSid } from "./tunnel/manager.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
@@ -25,12 +27,32 @@ export function publicLinkSettings(web: WebConfig | undefined): { allowed: boole
 export function validPublicLinkPatch(value: unknown): value is NonNullable<WebConfig["public_link"]> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
-  return Object.keys(v).every(k => ["allow_public", "ttl_minutes", "protocol"].includes(k))
+  return Object.keys(v).every(k => ["allow_public", "ttl_minutes", "protocol", "hostname", "tunnel_token_env", "origin_port"].includes(k))
     && (v.allow_public === undefined || typeof v.allow_public === "boolean")
     && (v.ttl_minutes === undefined || (Number.isInteger(v.ttl_minutes) && Number(v.ttl_minutes) >= 1 && Number(v.ttl_minutes) <= PUBLIC_LINK_MAX_MINUTES))
+    && (v.hostname === undefined || v.hostname === "" || publicTunnelHostname(v.hostname) !== null)
+    && (v.tunnel_token_env === undefined || v.tunnel_token_env === "" || v.tunnel_token_env === PUBLIC_TUNNEL_TOKEN_ENV)
+    && (v.origin_port === undefined || Number.isInteger(v.origin_port) && Number(v.origin_port) >= 1024 && Number(v.origin_port) <= 65535)
     && (v.protocol === undefined || (typeof v.protocol === "string" && ["http2", "quic", "auto"].includes(v.protocol)));
 }
+export function namedPublicLinkSettings(web: WebConfig | undefined): { hostname: string; token: string; port: number } | undefined {
+  const settings = web?.public_link;
+  if (!settings?.hostname && !settings?.tunnel_token_env) return undefined;
+  const hostname = publicTunnelHostname(settings.hostname);
+  const token = process.env[PUBLIC_TUNNEL_TOKEN_ENV] ?? "";
+  const port = settings?.origin_port ?? PUBLIC_TUNNEL_ORIGIN_PORT;
+  if (!hostname || settings?.tunnel_token_env && settings.tunnel_token_env !== PUBLIC_TUNNEL_TOKEN_ENV
+    || !validPublicTunnelToken(token) || !Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("named tunnel configuration is incomplete");
+  return { hostname, token, port };
+}
+function configurationKey(web: WebConfig | undefined): string {
+  const settings = web?.public_link;
+  if (!settings?.hostname && !settings?.tunnel_token_env) return "quick";
+  return createHash("sha256").update(JSON.stringify([settings?.hostname, settings?.tunnel_token_env, settings?.origin_port, settings?.protocol,
+    settings?.hostname ? process.env[PUBLIC_TUNNEL_TOKEN_ENV] : null])).digest("hex");
+}
 interface Exposure {
+  configuration: string;
   id: string;
   owner: LoginCodeOwner;
   abort: AbortController;
@@ -84,7 +106,7 @@ export class PublicWebLink {
     web(): WebConfig | undefined;
     permitted(owner: LoginCodeOwner): boolean;
     reserve(id: string): TunnelReservation | null;
-    createGateway(id: string, current: () => boolean, open: () => boolean, failed: () => void): PublicGateway;
+    createGateway(id: string, current: () => boolean, open: () => boolean, failed: () => void, named?: { hostname: string; port: number }): PublicGateway;
     revoke(id: string): void;
     /** `detail` (#1767): why, in words fit for daemon.log (logDetail) — never a URL. */
     log(event: string, id: string, detail?: string): void;
@@ -92,7 +114,7 @@ export class PublicWebLink {
     now?: () => number;
     wallNow?: () => number;
     ensure?: typeof ensureCloudflared;
-    provider?: (binary: string, protocol: "http2" | "quic" | "auto") => CloudflaredProvider;
+    provider?: (binary: string, protocol: "http2" | "quic" | "auto", named?: { hostname: string; token: string }) => CloudflaredProvider;
     /**
      * #1723: this exposure's preview, or null when it gets none (web.preview off, web.preview_on_public_link off, or a
      * configured web.preview_origin used instead). Called once the binary is verified; its start is never awaited.
@@ -130,7 +152,7 @@ export class PublicWebLink {
     return e ? { state: e.phase, expiresAt: e.expiresAt, remainingSeconds: Math.max(0, Math.ceil((e.deadline - this.now()) / 1000)) } : { state: "closed" };
   }
   private current(e: Exposure): boolean {
-    return this.entry === e && !e.closing && !e.abort.signal.aborted && this.now() < e.deadline
+    return this.entry === e && e.configuration === configurationKey(this.deps.web()) && !e.closing && !e.abort.signal.aborted && this.now() < e.deadline
       && publicLinkSettings(this.deps.web()).allowed && this.deps.permitted(e.owner);
   }
   refresh(): void {
@@ -161,7 +183,7 @@ export class PublicWebLink {
         onProgress?.(refused.snapshot);
         return false;
       }
-      e = { id, owner: { ...owner }, reservation, abort: new AbortController(), deadline: this.now() + settings.ttlMs,
+      e = { configuration: configurationKey(this.deps.web()), id, owner: { ...owner }, reservation, abort: new AbortController(), deadline: this.now() + settings.ttlMs,
         expiresAt: (this.deps.wallNow ?? Date.now)() + settings.ttlMs, phase: "starting", gateway: null, starting: Promise.resolve(), requests: 0, delivered: false,
         progress: undefined as unknown as PublicLinkProgressTracker, watchers: new Set() };
       const watched = e;
@@ -222,13 +244,15 @@ export class PublicWebLink {
     }
   }
   private async start(e: Exposure, protocol: "http2" | "quic" | "auto"): Promise<void> {
+    const namedMode = !!(this.deps.web()?.public_link?.hostname || this.deps.web()?.public_link?.tunnel_token_env);
     try {
+      const named = namedPublicLinkSettings(this.deps.web());
       const binary = await (this.deps.ensure ?? ensureCloudflared)({ dataDir: this.deps.dataDir, pinnedOnly: true, signal: e.abort.signal,
         onProgress: p => applyInstallProgress(e.progress, p) });
       if (!this.current(e)) throw new Error("closed");
-      // #1723/#1767: the preview's quick tunnel is asked for only once the link's own tunnel has its address — the link
-      // always asks Cloudflare first (under a rate limit the preview can never take the request the link needed), a
-      // link that fails never spends one on a preview, and nothing below waits on the preview or reads it.
+      // #1723/#1767: preview starts only after the dashboard candidate is known. A quick dashboard tunnel requests
+      // its address first; named mode already knows its configured address. Either can still fail readiness after
+      // preview starts, in which case both close. Nothing below waits on the preview or reads it.
       const startPreview = (): void => {
         if (e.preview !== undefined || !this.current(e)) return;
         e.preview = this.deps.createPreview?.({ id: e.id, expiresAt: e.expiresAt, binary: binary.path, protocol,
@@ -236,11 +260,11 @@ export class PublicWebLink {
         e.preview?.start();
       };
       e.progress.begin("tunnel");
-      const gateway = this.deps.createGateway(e.id, () => this.current(e), () => e.phase === "open", () => { void this.close("gateway failed", e.id); });
+      const gateway = this.deps.createGateway(e.id, () => this.current(e), () => e.phase === "open", () => { void this.close("gateway failed", e.id); }, named ? { hostname: named.hostname, port: named.port } : undefined);
       e.gateway = gateway;
       const origin = await gateway.listen().catch(() => { throw new StartFailure("gateway-failed"); });
       if (!this.current(e)) throw new Error("closed");
-      const provider = (this.deps.provider ?? ((path, p) => new CloudflaredProvider({ binaryName: path, protocol: p })))(binary.path, protocol);
+      const provider = (this.deps.provider ?? ((path, p, n) => new CloudflaredProvider({ binaryName: path, protocol: p, named: n })))(binary.path, protocol, named);
       const result = await e.reservation.start(provider, {
         sid: e.id, origin, pagePath: "/signin", readinessMarker: gateway.readinessMarker, expiresAt: e.expiresAt,
         signal: e.abort.signal, onCandidateHost: host => { if (this.current(e)) { gateway.setHost(host); e.progress.begin("address"); startPreview(); } },
@@ -263,7 +287,7 @@ export class PublicWebLink {
       // deliver's finally joins close after this promise settles; no self-await.
       e.abort.abort(); e.gateway?.setHost(null); e.gateway?.close();
       // #1767: the reason and what the step said, so the next one is diagnosable from daemon.log.
-      this.deps.log(`startup failed: ${reason}`, e.id, logDetail(err instanceof StartFailure ? err.detail : (err as Error)?.message));
+      this.deps.log(`startup failed: ${reason}`, e.id, namedMode ? undefined : logDetail(err instanceof StartFailure ? err.detail : (err as Error)?.message));
       throw new Error("public link unavailable");
     }
   }

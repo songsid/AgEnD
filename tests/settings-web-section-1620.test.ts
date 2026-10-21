@@ -173,3 +173,45 @@ describe("Settings → Web, as rendered", () => {
     expect([p.root.querySelector(".s-web-fields").hasAttribute("disabled"), !!w.$("webPublicRefused")]).toEqual([false, false]);
   });
 });
+
+
+describe("#2307 fixed public link settings and write-only token", () => {
+  it("stages a named hostname and its fixed secret reference without token material", async () => {
+    const w = await open();
+    await w.type(w.$("publicWebHostname"), "agend.example.com");
+    await w.review(); await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ public_link: { hostname: "agend.example.com", tunnel_token_env: "AGEND_CLOUDFLARE_TUNNEL_TOKEN" } }]);
+    expect(w.$("publicTunnelToken").getAttribute("type")).toBe("password");
+  });
+  it("sends the token only to prepare, clears its field, and applies/clears using opaque proof", async () => {
+    let present = false;
+    (globalThis as any).fetch = async (path: string, init: any = {}) => {
+      if (!path.startsWith("/api/settings/public-tunnel-token")) return fakeFetch(path, init);
+      const body = init.body ? JSON.parse(init.body) : undefined;
+      sent.push({ method: init.method || "GET", path, body });
+      if (path.endsWith("/verify")) return { ok: true, status: 200, json: async () => ({ verification_id: body.clear ? "clear-proof" : "set-proof" }) };
+      if (path.endsWith("/apply")) { present = body.verification_id === "set-proof"; return { ok: true, status: 200, json: async () => ({ result: "reloaded" }) }; }
+      return { ok: true, status: 200, json: async () => [{ token_present: present }] };
+    };
+    try {
+      const w = await open(); const token = "eyJWriteOnlyConnectorTokenUI2307";
+      await w.type(w.$("publicTunnelToken"), token);
+      fire(w.button("Set token"), "click"); await settle(12);
+      expect(w.$("publicTunnelToken").value).toBe("");
+      expect(p.root.textContent).not.toContain(token);
+      const prepared = sent.filter(s => s.path.endsWith("/verify"));
+      expect(prepared[0].body).toEqual({ secret: token });
+      expect(sent.find(s => s.path.endsWith("/apply"))?.body.verification_id).toBe("set-proof");
+      expect(sent.filter(s => s.path.endsWith("/apply")).every(s => !JSON.stringify(s.body).includes(token))).toBe(true);
+      fire(w.button("Clear token"), "click"); await settle(12);
+      expect(sent.filter(s => s.path.endsWith("/verify"))[1].body).toEqual({ clear: true });
+      expect(sent.filter(s => s.path.endsWith("/apply"))[1].body.verification_id).toBe("clear-proof");
+    } finally { (globalThis as any).fetch = fakeFetch; }
+  });
+  it("does not expose connector inputs or token endpoints through a public-link settings page", async () => {
+    p.document.body.setAttribute("data-public-link", "1");
+    const w = await open();
+    expect(w.$("publicTunnelToken")).toBeNull();
+    expect(sent.filter(s => s.path.startsWith("/api/settings/public-tunnel-token"))).toHaveLength(0);
+  });
+});

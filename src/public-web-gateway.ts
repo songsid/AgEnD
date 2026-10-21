@@ -1,3 +1,4 @@
+import { publicTunnelHostname } from "./public-tunnel-config.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import { bindGatewayRequest } from "./web-request-context.js";
@@ -81,6 +82,8 @@ export interface PublicGateway {
   close(): void;
 }
 export function createPublicWebGateway(opts: {
+  hostname?: string;
+  port?: number;
   exposureId: string;
   isCurrent(): boolean;
   isOpen(): boolean;
@@ -135,7 +138,7 @@ export function createPublicWebGateway(opts: {
     server, readinessMarker: marker,
     listen: () => new Promise((resolve, rejectListen) => {
       server.once("error", rejectListen);
-      server.listen(0, "127.0.0.1", () => {
+      server.listen(opts.port ?? 0, "127.0.0.1", () => {
         server.off("error", rejectListen);
         const address = server.address();
         if (!address || typeof address === "string") { rejectListen(new Error("gateway not bound")); return; }
@@ -144,7 +147,7 @@ export function createPublicWebGateway(opts: {
     }),
     setHost: value => {
       // Provider-validated only, pinned again at this boundary.
-      if (value !== null && !/^[a-z0-9-]+\.trycloudflare\.com$/.test(value)) throw new Error("invalid tunnel host");
+      if (value !== null && !/^[a-z0-9-]+\.trycloudflare\.com$/.test(value) && (!opts.hostname || publicTunnelHostname(opts.hostname) !== value)) throw new Error("invalid tunnel host");
       host = value;
     },
     close: () => {
