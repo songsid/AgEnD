@@ -184,7 +184,7 @@ if [ "$IS_WSL" = true ] && [ -d "${NVM_DIR:-$HOME/.nvm}" ]; then
 fi
 
 # ── Step 3: tmux ─────────────────────────────────────────
-
+# >>> tmux install (tests/install-sh-tmux-sudo-2337.test.ts runs this block)
 step 3 "Checking tmux"
 
 if command_exists tmux; then
@@ -193,9 +193,16 @@ else
   echo "  Installing tmux..."
   case "$PKG_MGR" in
     brew)   brew install tmux ;;
-    apt)    sudo apt-get update -qq && sudo apt-get install -y -qq tmux ;;
-    dnf)    sudo dnf install -y tmux ;;
-    pacman) sudo pacman -S --noconfirm tmux ;;
+    apt|dnf|pacman)
+      if [ "$(id -u)" -ne 0 ] && ! command_exists sudo; then
+        error "Cannot install tmux automatically (sudo is not available). Please install tmux and re-run."
+      fi
+      case "$PKG_MGR" in
+        apt)    $SUDO apt-get update -qq && $SUDO apt-get install -y -qq tmux ;;
+        dnf)    $SUDO dnf install -y tmux ;;
+        pacman) $SUDO pacman -S --noconfirm tmux ;;
+      esac
+      ;;
     *)      error "Cannot install tmux automatically. Please install manually." ;;
   esac
 
@@ -204,6 +211,7 @@ else
   fi
   info "tmux $(tmux -V) installed"
 fi
+# <<< tmux install
 
 # ── Step 4: Install AgEnD ────────────────────────────────
 

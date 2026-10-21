@@ -7,7 +7,10 @@
 //   the box's padding and the gutters between its rows and columns (L.pad, L.gap: wide enough for a few lines each)
 //   — are the only doors, so a line crosses a border at right angles, through a door, and never runs along it.
 // - Ends: pins on each card's sides (several on the long sides, one on the short), facing out; a line ends on a card,
-//   never on a box. A card with more lines than pins gets more, so two lines never start at one point.
+//   never on a box. A card with more lines than pins gets more, so two lines never start at one point. A short side
+//   facing a neighbour across less than ROUTE.SIDE (a column gutter, a phone's box padding) has no pin (#2329): a line
+//   into it would turn in that narrow gap with no room left for its arrowhead. libavoid turns a line into its pin right
+//   at the card's buffer, which leaves a head no straight run: lengthen() moves that turn out where there is room.
 // - Separation: libavoid nudges lines that share a run ROUTE.NUDGE apart; the same two ends and kind are one line (×N)
 //   before they get here (fleet-traffic.js).
 // A route that comes back otherwise (not orthogonal, not ending on its two shapes) is not drawn: that line keeps the
@@ -15,10 +18,13 @@
 import { OC } from "./fleet-canvas-layout.js";
 
 /** Buffer around every obstacle, the distance nudging keeps between lines, the cost of a bend, pins on a long side. */
-export const ROUTE = { BUF: 5, NUDGE: 8, SEG: 60, PINS: 4, MAX_PINS: 64, MAX_POINTS: 64, MAX_SHAPES: 600, MAX_CONNS: 120 };
+export const ROUTE = { BUF: 5, NUDGE: 8, SEG: 60, PINS: 4, MAX_PINS: 64, MAX_POINTS: 64, MAX_SHAPES: 600, MAX_CONNS: 120, SIDE: 30, RUN: 16 };
 /** libavoid's ConnDirFlags: the way a line leaves a pin. */
 const UP = 1, DOWN = 2, LEFT = 4, RIGHT = 8;
-const PINS_PER_CARD = ROUTE.PINS * 2 + 2;
+/** A shape's `sides`: which short sides have a pin (absent: both). */
+const SIDE_L = 1, SIDE_R = 2;
+const sidesOf = (sh) => sh.sides ?? SIDE_L | SIDE_R;
+const pinsOn = (sh) => ROUTE.PINS * 2 + ((sidesOf(sh) & SIDE_L) ? 1 : 0) + ((sidesOf(sh) & SIDE_R) ? 1 : 0);
 
 /** The shape a line's end is on: a card (General's or a member's) or a folded team's box. Null: not routed here. */
 function endShape(end) {
@@ -30,8 +36,9 @@ function endShape(end) {
 
 /**
  * The scene for layout `L` and the lines `lines` ([{ key, a, z }], a and z ends as fleet-traffic.js endOf gives them):
- * { shapes: [{ x, y, w, h, pins }], conns: [{ key, a, z }], boxes: [{ x, y, w, h }] } — `pins` 0 none (an obstacle
- * only), 1 the usual pins, more: that many on each long side (a busy card); every pin takes one line; `a`/`z` index
+ * { shapes: [{ x, y, w, h, pins, sides? }], conns: [{ key, a, z }], boxes: [{ x, y, w, h }] } — `pins` 0 none (an
+ * obstacle only), 1 the usual pins, more: that many on each long side (a busy card); `sides` the short sides with a pin
+ * (1 left, 2 right; absent: both); every pin takes one line; `a`/`z` index
  * shapes; `boxes` the open teams' outlines (separate() keeps lines off them). A line whose end is not a card or a folded box is left out (it keeps its lane).
  */
 export function routeScene(L, lines) {
@@ -57,9 +64,22 @@ export function routeScene(L, lines) {
     conns.push({ key: ln.key, a: ia, z: iz });
     for (const i of [ia, iz]) demand.set(i, (demand.get(i) || 0) + 1);
   }
+  // A short side with a pin only where a line has room to turn into it with its head: ROUTE.SIDE to the nearest shape
+  // beside it (a neighbour card, a box's wall piece).
+  for (const sh of shapes) {
+    if (!sh.pins) continue;
+    let left = Infinity, right = Infinity;
+    for (const o of shapes) {
+      if (o === sh || o.y >= sh.y + sh.h || o.y + o.h <= sh.y) continue;
+      if (o.x + o.w <= sh.x) left = Math.min(left, sh.x - o.x - o.w);
+      if (o.x >= sh.x + sh.w) right = Math.min(right, o.x - sh.x - sh.w);
+    }
+    const sides = (left >= ROUTE.SIDE ? SIDE_L : 0) | (right >= ROUTE.SIDE ? SIDE_R : 0);
+    if (sides !== (SIDE_L | SIDE_R)) sh.sides = sides;
+  }
   // A line each: a shape with more lines than pins gets more pins on its long sides (two lines never leave one point:
   // libavoid cannot nudge apart runs that start at the same point).
-  for (const [i, n] of demand) if (n > PINS_PER_CARD) shapes[i].pins = Math.min(ROUTE.MAX_PINS, Math.ceil((n - 2) / 2));
+  for (const [i, n] of demand) if (n > pinsOn(shapes[i])) shapes[i].pins = Math.min(ROUTE.MAX_PINS, Math.ceil((n - (pinsOn(shapes[i]) - ROUTE.PINS * 2)) / 2));
   return { shapes, conns, boxes };
 }
 
@@ -69,7 +89,8 @@ export function sceneOk(s) {
     || s.boxes.length > ROUTE.MAX_SHAPES) return null;
   const num = (v) => typeof v === "number" && Number.isFinite(v) && Math.abs(v) < 1e6;
   for (const b of s.boxes) if (!b || ![b.x, b.y, b.w, b.h].every(num) || b.w <= 0 || b.h <= 0) return null;
-  for (const sh of s.shapes) if (!sh || ![sh.x, sh.y, sh.w, sh.h].every(num) || sh.w <= 0 || sh.h <= 0 || !Number.isInteger(sh.pins) || sh.pins < 0 || sh.pins > ROUTE.MAX_PINS) return null;
+  for (const sh of s.shapes) if (!sh || ![sh.x, sh.y, sh.w, sh.h].every(num) || sh.w <= 0 || sh.h <= 0 || !Number.isInteger(sh.pins) || sh.pins < 0 || sh.pins > ROUTE.MAX_PINS
+    || (sh.sides !== undefined && (!Number.isInteger(sh.sides) || sh.sides < 0 || sh.sides > (SIDE_L | SIDE_R)))) return null;
   for (const c of s.conns) {
     if (!c || typeof c.key !== "string" || c.key.length > 2048) return null;
     for (const i of [c.a, c.z]) if (!Number.isInteger(i) || i < 0 || i >= s.shapes.length || !s.shapes[i].pins) return null;
@@ -97,15 +118,8 @@ export function answerRoute(A, m) {
   return { type: "routes", id: m.id, routes: scene ? [...routeWith(A, scene)] : null };
 }
 
-/**
- * libavoid nudges lines that share a run apart, but not always: in a channel shared by many lines it packs them closer
- * than ROUTE.NUDGE, and lines fanning out of one card can come back on the very same run. This pass moves the middle
- * segments of such lines (never a line's first or last, which end on a pin) sideways to the nearest place at least
- * SEPARATE from every parallel line along them — only where the moved segment and the two it joins stay clear of
- * every shape's buffer and keep their direction. What cannot move stays as libavoid left it.
- */
-export const SEPARATE = 6;
-export function separate(routes, scene) {
+/** What separate() and lengthen() share, on `scene` and the routes' points `pts` (which they move in place). */
+function mover(scene, pts) {
   const B = ROUTE.BUF - 0.5, OVER = 8;
   const segsOf = (r, p) => p.slice(1).map((q, i) => ({ r, i, h: p[i].y === q.y }));
   const coord = (p, s) => (s.h ? p[s.i].y : p[s.i].x);
@@ -120,9 +134,7 @@ export function separate(routes, scene) {
       && (scene.boxes ?? []).every((bx) => (h ? [bx.y, bx.y + bx.h].every((v) => Math.abs(v - y0) >= SEPARATE + 1) || Math.min(x1, bx.x + bx.w) - Math.max(x0, bx.x) <= 12
         : [bx.x, bx.x + bx.w].every((v) => Math.abs(v - x0) >= SEPARATE + 1) || Math.min(y1, bx.y + bx.h) - Math.max(y0, bx.y) <= 12));
   };
-  const keys = [...routes.keys()];
   const connOf = new Map(scene.conns.map((c) => [c.key, c]));
-  const pts = keys.map((k) => routes.get(k).map((p) => ({ x: p.x, y: p.y })));
   /** The segments of other lines (and this one's) parallel to segment s of line r, overlapping it, closer than SEPARATE. */
   const near = (r, s, c, lo, hi) => {
     const out = [];
@@ -131,8 +143,23 @@ export function separate(routes, scene) {
       const [l2, h2] = span(p, t);
       if (Math.min(hi, h2) - Math.max(lo, l2) > OVER) out.push(coord(p, t));
     }));
-    return out.filter((c2) => Math.abs(c2 - c) < SEPARATE);
+    return out.filter((c2) => Math.abs(c2 - c) < SEPARATE - 1e-6);              // libavoid's points carry float noise
   };
+  return { segsOf, coord, span, clear, near, connOf };
+}
+
+/**
+ * libavoid nudges lines that share a run apart, but not always: in a channel shared by many lines it packs them closer
+ * than ROUTE.NUDGE, and lines fanning out of one card can come back on the very same run. This pass moves the middle
+ * segments of such lines (never a line's first or last, which end on a pin) sideways to the nearest place at least
+ * SEPARATE from every parallel line along them — only where the moved segment and the two it joins stay clear of
+ * every shape's buffer and keep their direction. What cannot move stays as libavoid left it.
+ */
+export const SEPARATE = 6;
+export function separate(routes, scene) {
+  const keys = [...routes.keys()];
+  const pts = keys.map((k) => routes.get(k).map((p) => ({ x: p.x, y: p.y })));
+  const { segsOf, coord, span, clear, near, connOf } = mover(scene, pts);
   for (let pass = 0; pass < 8; pass++) {
     let moved = false;
     pts.forEach((p, r) => segsOf(r, p).forEach((s) => {
@@ -164,6 +191,43 @@ export function separate(routes, scene) {
 }
 
 /**
+ * #2329: room for each line's arrowhead. libavoid turns a line into its last pin right at the card's buffer, so the
+ * last run (where the head goes) is a few px long. This pass moves the turn before it out from the card until the last
+ * run is ROUTE.RUN long (or up to 3 × SEPARATE more; where none fits, the longest that does): only where the moved segment and the two it joins stay clear of
+ * every shape's buffer, at least SEPARATE from every parallel line, and the run before the turn keeps its direction and
+ * 4 px. A line whose turn cannot move keeps its short run (fleet-traffic.js draws it with no head).
+ */
+export function lengthen(routes, scene) {
+  const keys = [...routes.keys()];
+  const pts = keys.map((k) => routes.get(k).map((p) => ({ x: p.x, y: p.y })));
+  const { coord, span, clear, near, connOf } = mover(scene, pts);
+  pts.forEach((p, r) => {
+    const n = p.length;
+    if (n < 4) return;                                                  // the turn's other end is the first pin
+    const z = p[n - 1], y = p[n - 2], x = p[n - 3], w = p[n - 4], h = y.y === z.y;
+    const at = (q) => (h ? q.x : q.y);
+    const u = Math.sign(at(y) - at(z));                                 // out from the card
+    if (!u || Math.abs(at(y) - at(z)) >= ROUTE.RUN) return;
+    const c0 = connOf.get(keys[r]);
+    const run = Math.abs(at(y) - at(z)), tries = [];
+    for (let t = ROUTE.RUN; t <= ROUTE.RUN + 3 * SEPARATE; t++) tries.push(t);
+    for (let t = ROUTE.RUN - 1; t > run; t--) tries.push(t);           // short of RUN (a phone's gutter): the longest that fits
+    for (const t of tries) {
+      const c2 = at(z) + u * t;
+      const a = h ? { x: c2, y: x.y } : { x: x.x, y: c2 }, b = h ? { x: c2, y: y.y } : { x: y.x, y: c2 };
+      if (Math.sign(at(a) - at(w)) !== Math.sign(at(x) - at(w)) || Math.abs(at(a) - at(w)) < 4) continue;
+      if (!clear(a, b) || !clear(w, a, n - 4 === 0 && c0 ? c0.a : -1) || !clear(b, z, c0 ? c0.z : -1)) continue;
+      const old = [p[n - 3], p[n - 2]];
+      p[n - 3] = a; p[n - 2] = b;
+      const ok = [n - 4, n - 3, n - 2].every((i) => { const s = { r, i, h: i === n - 3 ? !h : h }; const [lo, hi] = span(p, s); return !near(r, s, coord(p, s), lo, hi).length; });
+      if (ok) return;
+      [p[n - 3], p[n - 2]] = old;
+    }
+  });
+  return new Map(keys.map((k, i) => [k, pts[i]]));
+}
+
+/**
  * Route `scene` with libavoid instance `A` (libavoid-js 0.4.5's: its constants are numbers on `A`). A Map of
  * connection key → points, for the routes that pass routeOk only.
  */
@@ -186,7 +250,8 @@ export function routeWith(A, scene) {
         const k = s.pins === 1 ? ROUTE.PINS : s.pins;
         const pin = (x, y, dir) => new A.ShapeConnectionPin(ref, 1, x, y, true, 0, dir).setExclusive(true);
         for (let i = 1; i <= k; i++) { pin(i / (k + 1), 0, UP); pin(i / (k + 1), 1, DOWN); }
-        pin(0, 0.5, LEFT); pin(1, 0.5, RIGHT);
+        if (sidesOf(s) & SIDE_L) pin(0, 0.5, LEFT);
+        if (sidesOf(s) & SIDE_R) pin(1, 0.5, RIGHT);
       }
       return ref;
     });
@@ -200,7 +265,7 @@ export function routeWith(A, scene) {
       const ok = routeOk(pts, scene, c);
       if (ok) out.set(c.key, ok);
     });
-    return ROUTE.SEPARATE === false ? out : separate(out, scene);
+    return ROUTE.SEPARATE === false ? out : lengthen(separate(out, scene), scene);
   } finally {
     A.destroy(r);
   }
