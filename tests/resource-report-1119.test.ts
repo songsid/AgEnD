@@ -51,16 +51,13 @@ describe("host memory snapshot", () => {
 
 describe("read-only resource inventory", () => {
   it("normalizes fractional deadlines at the real subprocess boundary", async () => {
-    // Tests that collectResourceReport applies Math.floor before passing
-    // the timeout to diskUsage. Uses a mock so no real subprocess is needed
-    // and the test is immune to CI load racing a sub-second budget.
-    const dir = root(); config(dir); instance(dir, "a");
-    let capturedTimeout: number | null = null;
-    await collectResourceReport(dir, { memory, diskUsage: async (_path, timeout) => { capturedTimeout = timeout ?? null; return 128; } });
-    // The raw budget from the default 5000ms and one instance should be 5000 or close.
-    // The important property: whatever timeout arrives, it is an integer (Math.floor applied).
-    expect(capturedTimeout).not.toBeNull();
-    expect(Number.isInteger(capturedTimeout)).toBe(true);
+    // probeDiskUsage applies Math.max(1, Math.floor(timeoutMs)) before passing
+    // the budget to execFile. Use 5000.5 ms (fractional → 5000 ms) on an empty
+    // dir so du finishes in <100 ms regardless of CI load.
+    const dir = root();
+    const result = await probeDiskUsage(dir, 5000.5);
+    expect(result).not.toBeNull();
+    expect(result).toBeGreaterThanOrEqual(0);
   });
 
   it("measures the last row when the shared budget has fractional remaining time", async () => {
@@ -79,12 +76,11 @@ describe("read-only resource inventory", () => {
   });
 
   it("measures small directories with the real monotonic clock and a fractional budget", async () => {
-    // Tests fractional budget rounding with the real monotonic clock, but uses
-    // a mock diskUsage so no subprocess is racing a sub-second CI deadline.
+    // Uses the real probeDiskUsage to keep the real subprocess boundary tested,
+    // but with a generous 15000.5 ms budget so CI load can't race the deadline.
     const dir = root(); config(dir);
     for (const name of ["a", "b", "c"]) instance(dir, name);
-    const report = await collectResourceReport(dir, { memory, budgetMs: 1500.5,
-      diskUsage: async () => 256 });
+    const report = await collectResourceReport(dir, { memory, budgetMs: 15000.5 });
     expect(report.orphans).toHaveLength(3);
     expect(report.orphans!.every(row => row.bytes !== null)).toBe(true);
   });

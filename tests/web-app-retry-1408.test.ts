@@ -124,9 +124,11 @@ describe("Retry after a failed first load of the chat", () => {
       { text: "posted meanwhile", done: false, buttons: [true] },
     ]));
     // A later heartbeat, or a full prompts frame from a reconnect, keeps it so.
+    // Send both frames and let them process before asserting the state holds.
     s.send("status", STATUS);
     s.send("prompts", [prompt(P3, "posted meanwhile")]);
-    await vi.waitFor(() => expect(s.cards().find(c => c.text === "posted meanwhile")).toEqual({ text: "posted meanwhile", done: false, buttons: [true] }));
+    await settle(4);  // let the frames process
+    expect(s.cards().find(c => c.text === "posted meanwhile")).toEqual({ text: "posted meanwhile", done: false, buttons: [true] });
     expect(s.sources).toHaveLength(1);
   });
 
@@ -142,7 +144,9 @@ describe("Retry after a failed first load of the chat", () => {
     await vi.waitFor(() => expect(s.requests.filter(r => r.startsWith("GET /ui/poll"))).toHaveLength(1), { timeout: 8000 });
     s.retry();                                                // the chat loads now and catches up — on A
     await vi.waitFor(() => expect(s.app.querySelector("#msgIn")).not.toBeNull(), { timeout: 8000 });   // a slow load still joins A
-    await vi.waitFor(() => expect(s.polls()).toBe(0));        // (retry() cleared the log: no new read was made)
+    // polls=0 at this point: retry() cleared the log and no new read was issued.
+    // Assert immediately after the state is visible (msgIn), before h.open() can trigger more reads.
+    expect(s.polls()).toBe(0);
     h.open();
     await vi.waitFor(() => expect(s.cards()).toEqual([{ text: "still open", done: false, buttons: [true] }]));
     // A answered: the fleet is there; the stream is reopened on the backoff's next step — a new EventSource.
@@ -157,6 +161,10 @@ describe("Retry after a failed first load of the chat", () => {
       { text: "answered on Discord", done: true, buttons: [] },
       { text: "posted meanwhile", done: false, buttons: [true] },
     ]), { timeout: 10000 });
+    // "once": advance the frozen setInterval past two fallback poll cycles to confirm
+    // no second read was queued behind A.
+    await vi.advanceTimersByTimeAsync(12_000);  // two 5 s fallback intervals
+    expect(s.polls()).toBe(1);                  // still exactly 1 — nothing queued behind A
     expect(s.sources).toHaveLength(3);
     vi.useRealTimers();
   }, 25_000);
