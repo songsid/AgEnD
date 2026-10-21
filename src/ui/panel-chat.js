@@ -21,6 +21,7 @@ import { Menu } from "/assets/ui-menu.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
+import { recordEdit } from "/assets/text-undo.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { savePref } from "/assets/app-prefs.js";
@@ -79,6 +80,8 @@ import { ChatEffects, chatEffectsMenuAvailable } from "./chat-effects.js";
 import { setFollowsReducedMotion } from "/assets/fx-motion.js";
 import { AmbientMotionNote, ChatAmbient, ambientMenuItems } from "./chat-ambient.js";
 import { startEffectsWaker, getAppEffects, wakeEffects, effectsLoaded, onEffectsAwake, chatHasEffects } from "./effects-waker.js";
+/** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
+const composerField = () => (typeof document !== "undefined" ? document.getElementById("msgIn") : null);
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -537,7 +540,7 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
     ${s.failedSends[name] ? html`<div class="failed-send" role="alert"><span>${t("chat.notSent")}</span><span class="txt">${s.failedSends[name]}</span>
-      <button type="button" class="btn btn-primary btn-sm" onClick=${() => store.putBack(name)}>${t("chat.putBack")}</button>
+      <button type="button" class="btn btn-primary btn-sm" onClick=${() => { recordEdit(composerField()); store.putBack(name); }}>${t("chat.putBack")}</button>
       <button type="button" class="btn btn-sm" onClick=${() => store.discardFailed(name)}>${t("chat.discard")}</button></div>` : null}
     ${s.waking[name] ? html`<p class="send-waking" role="status">${t("chat.waking", name)}</p>` : null}
     ${s.sendFailures[name] ? html`<div class="failed-send send-failure" role="alert"><span>${s.sendFailures[name].error}</span>
@@ -654,7 +657,8 @@ function Composer({ name, lease, busy }) {
     setValue("");
     store.runCommand(name, cmd.command, cmd.args, { alive: () => lease.current() });
   };
-  const complete = (c) => setValue(`/${c.name}${c.arg ? " " : ""}`);
+  // #2342: a completion is a step Ctrl+Z goes back from (to what was typed); a command that runs consumes the line.
+  const complete = (c) => { recordEdit(input.current); setValue(`/${c.name}${c.arg ? " " : ""}`); };
   const submit = () => {
     if (pick) {
       if (value === `/${pick.name}` && !needsArgument(pick.name)) runLine({ command: pick.name, args: "" });
@@ -664,7 +668,7 @@ function Composer({ name, lease, busy }) {
     // #1920: a guest's "/…" would be refused as a command — said here, the draft kept to edit.
     if (guest && /^\s*\//.test(value)) { toast(t("chat.guestNoCommands"), false); return; }
     const cmd = files.length ? null : parseCommandLine(value);
-    if (cmd && needsArgument(cmd.command) && !cmd.args) { setValue(`/${cmd.command} `); return; }
+    if (cmd && needsArgument(cmd.command) && !cmd.args) { recordEdit(input.current); setValue(`/${cmd.command} `); return; }
     if (cmd) { runLine(cmd); return; }
     store.send(name);
   };
@@ -728,7 +732,7 @@ function FileChip({ f, i, name }) {
   return html`<span class="file-chip">
     ${isImage ? html`<img ref=${img} alt="" />` : html`<span class="ic"><${Icon} name="file" size=${16} /></span>`}
     <span class="nm">${f.name}</span><span class="sz">${R().formatSize(f.size)}</span>
-    ${store.isPasted(f) ? html`<button type="button" class="as-text" onClick=${() => store.fileBackAsText(name, i)}>${t("chat.asText")}</button>` : null}
+    ${store.isPasted(f) ? html`<button type="button" class="as-text" onClick=${() => { recordEdit(composerField()); store.fileBackAsText(name, i); }}>${t("chat.asText")}</button>` : null}
     <button type="button" class="chip-x" title=${t("chat.removeFile")} aria-label=${`${t("chat.removeFile")} ${f.name}`} onClick=${() => store.removeFile(name, i)}><${Icon} name="close" size=${14} /></button></span>`;
 }
 

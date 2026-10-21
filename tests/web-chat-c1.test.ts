@@ -674,7 +674,7 @@ describe("chat page: the composer and the history", () => {
     expect(store).toContain("s.failedSends[target] = s.failedSends[target] ? `${s.failedSends[target]}\\n${txt}` : txt;");
     expect(store).toContain("s.drafts[target] = R().putBack(kept, s.drafts[target] || \"\");");
     const panel = readFileSync(join(process.cwd(), "src", "ui", "panel-chat.js"), "utf8");
-    expect(panel).toContain("onClick=${() => store.putBack(name)}");
+    expect(panel).toContain("onClick=${() => { recordEdit(composerField()); store.putBack(name); }}");   // #2342: an undoable step
   });
 });
 

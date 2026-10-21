@@ -5,6 +5,7 @@
 // hands it back — afterwards a connection shows "Token set · @bot".
 import { html, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
+import { useTypedText } from "/assets/text-undo.js";
 import { Icon } from "/assets/ui-icons.js";
 import { api } from "./settings-confirm.js";
 
@@ -36,10 +37,11 @@ export const botHandle = (username) => (username ? `@${String(username).replace(
  */
 export function TokenField({ id, platform, value, onInput, identity, busy, onVerify, hint }) {
   const [shown, setShown] = useState(false);
+  const [text, onText] = useTypedText(value);            // #2342: the box keeps what was typed; the parent gets it trimmed
   return html`<div class="field token-field"><label for=${id}>${tn("wizardToken")}</label>
     <div class="token-row">
       <input id=${id} type=${shown ? "text" : "password"} autocomplete="off" autocapitalize="off" spellcheck=${false} disabled=${!!busy}
-        placeholder=${platform === "discord" ? "MTA…" : "123456:ABC-DEF…"} value=${value} onInput=${(e) => onInput(e.target.value.trim())} />
+        placeholder=${platform === "discord" ? "MTA…" : "123456:ABC-DEF…"} value=${text} onInput=${(e) => onInput(onText(e.target.value))} />
       <button type="button" class="icon-btn" aria-pressed=${shown ? "true" : "false"} title=${shown ? tn("tokenHide") : tn("tokenShow")}
         aria-label=${shown ? tn("tokenHide") : tn("tokenShow")} onClick=${() => setShown(!shown)}><${Icon} name="eye" size=${16} /></button>
     </div>

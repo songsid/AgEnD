@@ -9,6 +9,7 @@
 // B, nor after A again (an older A), nor once the page is gone.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
+import { useTypedText } from "/assets/text-undo.js";
 import { api } from "./settings-confirm.js";
 import { Select } from "./settings-dialogs.js";
 
@@ -23,6 +24,9 @@ const probe = (body) => api("/api/settings/quickstart/probe", { method: "POST", 
  */
 export function DiscordServerPicker({ idPrefix, token, bot, invite, portal, guilds, onGuilds, guild, onGuild, channel, onChannel }) {
   const [polling, setPolling] = useState(null);            // { timedOut } while waiting for the bot to join
+  // #2342: the typed IDs keep what was typed (a space, the undo history); the picks get them trimmed.
+  const [guildText, onGuildText] = useTypedText(guild);
+  const [channelText, onChannelText] = useTypedText(channel);
   const [channels, setChannels] = useState(null);          // null: not asked; { list } | { error }
   const live = useRef(true);
   const now = useRef({ token, guild, channel });
@@ -120,11 +124,11 @@ export function DiscordServerPicker({ idPrefix, token, bot, invite, portal, guil
     <div class="field"><label for=${`${idPrefix}-guild`}>${tn("guildIdField")}</label>
       ${guilds && guilds.length
         ? html`<${Select} id=${`${idPrefix}-guild`} value=${guild} onChange=${(v) => pickGuild(v, true)} options=${["", ...guilds.map((g) => ({ value: g.id, label: `${g.name} (${g.id})` }))]} />`
-        : html`<input id=${`${idPrefix}-guild`} type="text" value=${guild} placeholder=${tn("discordNoServerYet")} onInput=${(e) => pickGuild(e.target.value.trim(), true)} />`}</div>
+        : html`<input id=${`${idPrefix}-guild`} type="text" value=${guildText} placeholder=${tn("discordNoServerYet")} onInput=${(e) => pickGuild(onGuildText(e.target.value), true)} />`}</div>
     <div class="field"><label for=${`${idPrefix}-gen`}>${tn("wizardGeneralChannel")}</label>
       ${channels && channels.list && channels.list.length
         ? html`<${Select} id=${`${idPrefix}-gen`} value=${channel} onChange=${pickChannel} options=${["", ...channels.list.map((c) => ({ value: c.id, label: `#${c.name}` }))]} />`
-        : html`<input id=${`${idPrefix}-gen`} type="text" value=${channel} onInput=${(e) => pickChannel(e.target.value.trim())} />`}
+        : html`<input id=${`${idPrefix}-gen`} type="text" value=${channelText} onInput=${(e) => pickChannel(onChannelText(e.target.value))} />`}
       ${channels && channels.error ? html`<p class="feedback warning">${channels.error}</p>` : null}</div>
   </div>`;
 }

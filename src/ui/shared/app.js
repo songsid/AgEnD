@@ -8,8 +8,9 @@
 // #1665 first: the host's preferences go into this browser's cache before any module below reads its key.
 import { bootPrefs } from "./app-prefs.js";
 import { html, render } from "./app-html.js";
-import { Shell, handleKey, handleSearchKey, showDialog, closeDrawer, openDrawer, shellStore, retryable, setNewInstanceOpener } from "./app-shell.js";
+import { Shell, handleKey, handleSearchKey, showDialog, closeDrawer, openDrawer, shellStore, retryable, setNewInstanceOpener, isMacLike } from "./app-shell.js";
 import { installSwipe } from "./app-swipe.js";
+import { installTextUndo } from "./text-undo.js";
 import { startRouter, navStore, navigate } from "./app-nav.js";
 import { createStream } from "./app-stream.js";
 import { appStore, applyStatus, applyActivity, guestPage } from "./app-store.js";
@@ -125,6 +126,9 @@ if (!guest) installOwnerCss();
 document.addEventListener("keydown", handleKey);
 // #2293: Ctrl+K / ⌘K (and Ctrl+F in a chat) — an admin's full app only; the server refuses a guest's search anyway.
 if (mode === "full" && !guest) document.addEventListener("keydown", handleSearchKey);
+// #2342: Ctrl/⌘+Z and Ctrl+Shift+Z / Ctrl+Y / ⌘⇧Z in every text field, one history per field (the browser's is one
+// for the whole page, and any script write wipes it).
+installTextUndo({ mac: isMacLike() });
 // #1605: on a phone (the sidebar is a drawer), swipe right in the main area to open it, left to close it — the same
 // open/close as ☰ and the scrim. Nothing that owns a sideways drag (code, tables, the terminal, inputs, dialogs) and
 // never the left edge (iOS: "back").

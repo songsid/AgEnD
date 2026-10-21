@@ -8,6 +8,7 @@
 // need no drag.
 import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
+import { recordEdit } from "/assets/text-undo.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
@@ -233,7 +234,7 @@ function SearchBox({ onOpen }) {
     if (e.key === "ArrowDown") { e.preventDefault(); setActive((i) => (i + 1) % results.length); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setActive((i) => (i - 1 + results.length) % results.length); }
     else if (e.key === "Enter") { e.preventDefault(); pick(results[active].card.id); }
-    else if (e.key === "Escape") { e.stopPropagation(); setQ(""); }
+    else if (e.key === "Escape") { e.stopPropagation(); recordEdit(e.target); setQ(""); }       // #2342: Ctrl+Z brings it back
   }
   return html`<div class="tb-search">
     <${Icon} name="search" size=${16} cls="tb-search-icon" />

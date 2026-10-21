@@ -3,6 +3,7 @@
 // (owner-css.js removes the link here), so a stylesheet that hides things can always be fixed from this page.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
+import { recordEdit } from "/assets/text-undo.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { ModsCard } from "./settings-mods.js";
 import { EffectsCard } from "./settings-effects.js";
@@ -347,6 +348,7 @@ function SidebarWidgetCard() {
   const app = useStore(appStore);
   const saved = sidebarWidgetRaw();
   const [text, setText] = useState(() => (saved ? JSON.stringify(saved, null, 2) : ""));
+  const area = useRef(null);
   const [error, setError] = useState("");
   let parsed = null, problem = "";
   if (text.trim()) {
@@ -359,17 +361,17 @@ function SidebarWidgetCard() {
     setSidebarWidget(parsed);
     toast(tn("widgetSaved"));
   };
-  const remove = () => { setSidebarWidget(null); setText(""); setError(""); toast(tn("widgetRemoved")); };
+  const remove = () => { setSidebarWidget(null); recordEdit(area.current); setText(""); setError(""); toast(tn("widgetRemoved")); };
   return html`<section class="card s-appearance s-synced s-widget"><${CardTitle} title=${tn("widgetTitle")} topic="widgets" />
     <p class="sub">${tn("widgetLead")}</p>
     <label class="field"><span class="sr-only">${tn("widgetTitle")}</span>
-      <textarea class="s-widget-text" rows="10" spellcheck=${false} autocapitalize="off" autocomplete="off" value=${text}
+      <textarea ref=${area} class="s-widget-text" rows="10" spellcheck=${false} autocapitalize="off" autocomplete="off" value=${text}
         onInput=${(e) => { setText(e.target.value); setError(""); }}></textarea></label>
     ${error || problem ? html`<p class="err" role="alert">${error || problem}</p>` : null}
     ${preview ? html`<div class="s-widget-preview"><${AgentWidget} slot="sidebar" widget=${preview} binds=${fleetBinds(app.instances, app.exec, app.awaiting)} /></div>` : null}
     <div class="s-widget-actions">
       <button type="button" class="btn btn-primary" disabled=${!parsed || !!problem} onClick=${save}><${Icon} name="check" size=${16} />${tn("widgetSave")}</button>
-      ${!text.trim() ? html`<button type="button" class="btn" onClick=${() => setText(JSON.stringify(SIDEBAR_WIDGET_EXAMPLE, null, 2))}>${tn("widgetExample")}</button>` : null}
+      ${!text.trim() ? html`<button type="button" class="btn" onClick=${() => { recordEdit(area.current); setText(JSON.stringify(SIDEBAR_WIDGET_EXAMPLE, null, 2)); }}>${tn("widgetExample")}</button>` : null}
       ${saved ? html`<button type="button" class="btn" onClick=${remove}>${tn("widgetRemove")}</button>` : null}
     </div>
   </section>`;
@@ -378,6 +380,7 @@ function SidebarWidgetCard() {
 function OwnerCssCard() {
   const [state, setState] = useState(null);
   const [text, setText] = useState("");
+  const area = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const trial = useStore(ownerCssTrial);
@@ -386,6 +389,8 @@ function OwnerCssCard() {
     const r = await call("/ui/owner-css/state");
     if (!r.ok || !r.body) { setState({ failed: true }); return; }
     setState(r.body);
+    // #2342: a restored version replaces the editor's text as a step Ctrl+Z goes back from.
+    if (opts.undoable) recordEdit(area.current);
     if (opts.text !== false) setText(r.body.text || "");
   };
   useEffect(() => { load(); }, []);
@@ -409,7 +414,7 @@ function OwnerCssCard() {
     setBusy(false);
     if (!r.ok) { setError(refusal(r.body)); return; }
     setOwnerCssActive(r.body.active);
-    load();
+    load({ undoable: true });
   };
   const addAsset = async () => {
     const f = file.current && file.current.files && file.current.files[0];
@@ -440,7 +445,7 @@ function OwnerCssCard() {
     <p class="sub">${tn("cssLead")}</p>
     <p class="s-css-status" role="status">${inForce}</p>
     <label class="field"><span class="sr-only">${tn("cssTitle")}</span>
-      <textarea class="s-css-text" rows="14" spellcheck=${false} autocapitalize="off" autocomplete="off" value=${text} disabled=${busy}
+      <textarea ref=${area} class="s-css-text" rows="14" spellcheck=${false} autocapitalize="off" autocomplete="off" value=${text} disabled=${busy}
         onInput=${(e) => setText(e.target.value)}></textarea></label>
     ${error ? html`<p class="err" role="alert">${error}</p>` : null}
     <div class="s-css-actions">

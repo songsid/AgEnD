@@ -276,6 +276,10 @@ function Config({ lease }) {
   // Each save owns the form's busy state only while it is the latest: an older save that is decided later (it waited
   // for an admin's confirmation) never unlocks the form under a newer one still on its way (#1453 review).
   const saves = useRef(0);
+  // #2342: each project root's row keeps its own key — keyed by position, removing one shifted the texts below into
+  // the boxes above (each box's text rewritten, its undo history lost).
+  const rootKeys = useRef({ n: 0, list: [] });
+  const rootKey = (i) => { const k = rootKeys.current; while (k.list.length <= i) k.list.push(++k.n); return k.list[i]; };
   useEffect(() => {
     if (!state || !state.data) return;
     const c = state.data, ch = c.channel || {}, acc = ch.access || {};
@@ -314,9 +318,9 @@ function Config({ lease }) {
     <section class="card"><h3>${t("fleet.defaults")}</h3>
       <div class="field"><label for="cfg-be">${t("fleet.backend")}</label><${BackendSelect} id="cfg-be" value=${form.backend} onChange=${(v) => setForm({ ...form, backend: v })} /></div></section>
     <section class="card"><h3>${t("fleet.roots")}</h3>
-      ${form.roots.map((r, i) => html`<div key=${i} class="field-row"><input value=${r} placeholder="/path/to/projects" aria-label=${t("fleet.roots")}
+      ${form.roots.map((r, i) => html`<div key=${rootKey(i)} class="field-row"><input value=${r} placeholder="/path/to/projects" aria-label=${t("fleet.roots")}
         onInput=${(e) => { const roots = [...form.roots]; roots[i] = e.target.value; setForm({ ...form, roots }); }} />
-        <button type="button" class="icon-btn" aria-label=${t("fleet.removeRoot")} title=${t("fleet.removeRoot")} onClick=${() => setForm({ ...form, roots: form.roots.filter((_, j) => j !== i) })}><${Icon} name="close" size=${16} /></button></div>`)}
+        <button type="button" class="icon-btn" aria-label=${t("fleet.removeRoot")} title=${t("fleet.removeRoot")} onClick=${() => { rootKeys.current.list.splice(i, 1); setForm({ ...form, roots: form.roots.filter((_, j) => j !== i) }); }}><${Icon} name="close" size=${16} /></button></div>`)}
       <button type="button" class="btn btn-ghost" onClick=${() => setForm({ ...form, roots: [...form.roots, ""] })}><${Icon} name="plus" size=${16} />${t("fleet.addRoot")}</button></section>
     <div class="save-row"><button type="button" class="btn btn-primary" disabled=${saving} onClick=${save}>${t("fleet.save")}</button><span class="note">${t("fleet.saveNote")}</span></div>`}</${Loaded}>`;
 }
