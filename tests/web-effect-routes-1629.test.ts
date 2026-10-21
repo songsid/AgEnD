@@ -24,7 +24,7 @@ async function fixture(idleMs?:number){
  const library=new WebEffectLibrary(root),themes=new ThemeStore(root),profiles=new WebEffectProfiles(root);let wall=0;const sessions=new WebSessionStore({now:()=>wall,...(idleMs===undefined?{}:{policy:{local:{absoluteMs:60000,idleMs}}})}),token="test-effect-token",changed=vi.fn();
  library.registerReferenceSource("themes",()=>themes.placedEffects().flatMap(row=>row.ids.map(id=>({id,holder:`instance:${row.name}`}))));
  const service=new WebEffectService({library,themes,profiles,known:n=>n==="own",changed});
- const ctx={webToken:token,webSessions:sessions,effectService:service} as unknown as WebApiContext;
+ const ctx={fleetConfig: { web: { experimental: { canvas_worker: true } } }, webToken:token,webSessions:sessions,effectService:service} as unknown as WebApiContext;
  const server=createServer((req,res)=>{if(!handleWebRequest(req,res,new URL(req.url!,"http://localhost"),ctx)){res.writeHead(404);res.end();}});servers.push(server);
  await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));const port=(server.address() as {port:number}).port,origin=`http://127.0.0.1:${port}`;
  const session=(id="alice",tier:"admin"|"read"="admin")=>{const made=sessions.create({tier,surface:"local",label:"test",tokenEpoch:tokenEpoch(token),owner:owner(id)});return {id:made.sessionId,epoch:made.record.handle,cookie:`agend_session=${made.sessionId}`,headers:{cookie:`agend_session=${made.sessionId}`,origin,"x-agend-csrf":csrfTokenFor(made.sessionId)}};};

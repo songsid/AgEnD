@@ -27,8 +27,8 @@ describe("the validator warns on unknown keys under web (#1874)", () => {
   it("any other unknown key: a warning listing the known ones; known keys: none", () => {
     const r = validateFleetConfig({ ...base, web: { log_tab: true, view_acess: "session" } });
     expect(r.valid).toBe(true);
-    expect(r.warnings.filter(w => w.path.startsWith("web"))).toEqual([{ path: "web.view_acess", message: expect.stringMatching(/^unknown key \(known: public_link, .*view_access.*\) — ignored$/) }]);
-    const known = validateFleetConfig({ ...base, web: { public_link: { allow_public: true }, echo_to_channel: true, usage_panel: true, log_tab: true, provider_secrets: false,
+    expect(r.warnings.filter(w => w.path.startsWith("web"))).toEqual([{ path: "web.view_acess", message: expect.stringMatching(/^unknown key \(known: experimental, public_link, .*view_access.*\) — ignored$/) }]);
+    const known = validateFleetConfig({ ...base, web: { experimental: { canvas_worker: false }, public_link: { allow_public: true }, echo_to_channel: true, usage_panel: true, log_tab: true, provider_secrets: false,
       allowed_hosts: ["a.example"], view_access: "open", notify_login: true, session: {}, preview: true, preview_port: 19281, preview_on_public_link: false } });
     expect(known.warnings.filter(w => w.path.startsWith("web"))).toEqual([]);
   });

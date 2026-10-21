@@ -16,7 +16,8 @@ import { Icon } from "/assets/ui-icons.js";
 import "./chat-render.js";
 import "./preview.js";
 import { loadHtmlAttachment } from "./html-attachment.js";
-import { EffectTrialPanel } from "./effect-trial-panel.js";
+import { experimentalComponent, useCanvasWorker } from "/assets/feature-flags.js";
+const EffectTrialPanel = experimentalComponent(() => import("./effect-trial-panel.js"), m => m.EffectTrialPanel);
 import { chatTime, onDayChange } from "./chat-time.js";
 
 const R = () => globalThis.AgendChatRender;

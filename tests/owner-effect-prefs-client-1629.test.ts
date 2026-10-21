@@ -15,7 +15,7 @@ describe("owner-effect client", () => {
     let status = 0, text = ""; const headers: Record<string, string> = {};
     const res = { setHeader(k: string, v: string) { headers[k] = v; }, writeHead(n: number) { status = n; }, end(s: string) { text = String(s); } };
     const url = new URL("http://127.0.0.1:19280/assets/owner-effect-prefs.js");
-    expect(handleAuthRequest({ method: "GET", url: url.pathname, headers: {} } as any, res as any, url, {} as any)).toBe(true);
+    expect(handleAuthRequest({ method: "GET", url: url.pathname, headers: {} } as any, res as any, url, { fleetConfig: { web: { experimental: { canvas_worker: true } } } } as any)).toBe(true);
     expect(status).toBe(200); expect(text).toContain("export function watchOwnerEffects");
   });
   let pg: MiniPage, now: number, requests: Array<{ url: string; init: any }>, stop: (() => void) | undefined;

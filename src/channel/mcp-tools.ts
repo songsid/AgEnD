@@ -6,6 +6,7 @@
  * without pulling in channel infrastructure.
  */
 import { z, type ZodType } from "zod";
+import { isCanvasWorkerTool } from "../web-experimental.js";
 import * as schemas from "../outbound-schemas.js";
 
 /** Narrow JSON-schema fragment shape that MCP tool listings need. */
@@ -225,3 +226,34 @@ export const TOOLS: ToolDef[] = DEFS.map(([name, schema, description]) => ({
  * a control, so it stopped being defined next to the schemas and moved next to
  * the thing that enforces it.
  */
+
+/** #2275: keep non-CW appearance tools useful without advertising disabled branches. */
+export function toolsWithCanvasWorker(enabled: boolean, definitions: readonly ToolDef[] = TOOLS): ToolDef[] {
+  if (enabled) return [...definitions];
+  const descriptions: Readonly<Record<string, string>> = {
+    get_web_settings: "Read Settings → Web appearance: themes, colours, cards, widgets, custom CSS and ambient presets. General, coordinators and full profiles.",
+    set_web_settings: "Change Settings → Web appearance: host settings, colours, cards, custom CSS, ambient presets, or Restore defaults. General, coordinators and full profiles.",
+    get_web_appearance: "Read your own appearance on the dashboard: face, ring colour, identity card, theme, widgets, ambient presets and limits.",
+    set_web_ambient: "Set your own ambient preset (fall, rise, twinkle, burst-on-click) with glyphs, colours and numbers. Declarative data only; no code or preview is needed. Shares the theme-change limit and respects a person's lock.",
+  };
+  return definitions.filter(t => !isCanvasWorkerTool(t.name)).map(t => {
+    const schema = structuredClone(t.inputSchema);
+    if (t.name === "set_web_settings") {
+      const change = schema.properties?.change as Record<string, unknown> | undefined;
+      for (const key of ["oneOf", "anyOf"]) {
+        if (Array.isArray(change?.[key])) change[key] = (change[key] as Array<{ properties?: { what?: { const?: string } } }>).filter(branch => !["effect", "effect_slot", "mod"].includes(branch.properties?.what?.const ?? ""));
+      }
+    }
+    // `person` is shared with effect slots in the on schema; no disabled capability leaks via nested descriptions.
+    const stripDescriptions = (node: unknown): void => {
+      if (!node || typeof node !== "object") return;
+      for (const [key, value] of Object.entries(node)) {
+        if (key === "description" && typeof value === "string") {
+          (node as Record<string, unknown>)[key] = value.replace(/custom CSS, effect slots/g, "custom CSS").replace(/themes, effects and widgets/g, "themes and widgets");
+        } else stripDescriptions(value);
+      }
+    };
+    stripDescriptions(schema);
+    return { ...t, description: descriptions[t.name] ?? t.description, inputSchema: schema };
+  });
+}

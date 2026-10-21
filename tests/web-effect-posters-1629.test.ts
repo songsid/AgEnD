@@ -54,7 +54,7 @@ function httpCall(port: number, path: string, headers: Record<string, string> = 
 async function routes() {
   const f = stores(), token = "poster-private-token"; let now = 0, current = true, open = true;
   const sessions = new WebSessionStore({ now: () => now, policy: { local: { absoluteMs: 60000, idleMs: 1000 }, gateway: { absoluteMs: 60000, idleMs: 1000 } } });
-  const ctx = { webToken: token, webSessions: sessions, effectService: f.service } as unknown as WebApiContext;
+  const ctx = { fleetConfig: { web: { experimental: { canvas_worker: true } } }, webToken: token, webSessions: sessions, effectService: f.service } as unknown as WebApiContext;
   const dispatch: Parameters<typeof createPublicWebGateway>[0]["dispatch"] = (req, res) => { if (!handleWebRequest(req, res, new URL(req.url!, "http://localhost"), ctx)) { res.writeHead(404); res.end(); } };
   const local = createServer(dispatch); servers.push(local); await new Promise<void>(r => local.listen(0, "127.0.0.1", r));
   const gateway = createPublicWebGateway({ exposureId: "e".repeat(32), isCurrent: () => current, isOpen: () => open, dispatch });

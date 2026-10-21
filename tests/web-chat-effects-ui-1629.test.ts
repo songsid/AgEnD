@@ -15,6 +15,7 @@ async function fixture(unavailable = false) {
   vi.stubGlobal("innerWidth", 1366);
   const nav = await import("/assets/app-nav.js");
   nav.startRouter(host);
+  (await import("/assets/app-store.js")).appStore.set({ canvasWorker: true });
   const { ChatEffects } = await import("/ui/js/chat-effects.js");
   const P = await import("/assets/app-html.js");
   const { createLease } = await import("/assets/app-ctx.js");

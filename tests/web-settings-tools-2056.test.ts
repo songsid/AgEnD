@@ -21,7 +21,7 @@ const { DEFAULT_PLACEMENTS } = await import("../src/web-identity-palette.js");
 let fm: any, dir: string;
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), "agend-2056-fleet-"));
-  writeFileSync(join(dir, "fleet.yaml"), `instances:\n  general:\n    working_directory: ${dir}\n    general_topic: true\n  alpha:\n    working_directory: ${dir}\n  beta:\n    working_directory: ${dir}\n`);
+  writeFileSync(join(dir, "fleet.yaml"), `web:\n  experimental:\n    canvas_worker: true\ninstances:\n  general:\n    working_directory: ${dir}\n    general_topic: true\n  alpha:\n    working_directory: ${dir}\n  beta:\n    working_directory: ${dir}\n`);
   fm = new FleetManager(dir);
   const q = () => {}; fm.logger = { info: q, warn: q, error: q, debug: q, trace: q, fatal: q, child: () => fm.logger };
   fm.loadConfig(join(dir, "fleet.yaml"));

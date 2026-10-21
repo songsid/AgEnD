@@ -27,7 +27,7 @@ const files = (code = "agend.ready()") => new Map<string, Uint8Array>([["effect.
 async function fixture() {
   const parent = join(process.cwd(), ".artifacts"); mkdirSync(parent, { recursive: true }); const dir = mkdtempSync(join(parent, "effect-fleet-")); roots.push(dir); vi.stubEnv("AGEND_HOME", dir);
   const { FleetManager } = await import("../src/fleet-manager.js"); const fm = new FleetManager(dir) as any;
-  fm.logger = pino({ level: "silent" }); fm.fleetConfig = { defaults: {}, instances: Object.fromEntries(["own", "other", "constructor"].map(name => [name, { working_directory: dir, tool_set: "standard" }])), web: { themes: { agent_edit: true } } };
+  fm.logger = pino({ level: "silent" }); fm.fleetConfig = { defaults: {}, instances: Object.fromEntries(["own", "other", "constructor"].map(name => [name, { working_directory: dir, tool_set: "standard" }])), web: { experimental: { canvas_worker: true }, themes: { agent_edit: true } } };
   vi.spyOn(fm, "startAll").mockRejectedValue(Error("test must not start a fleet")); vi.spyOn(fm, "startInstance").mockRejectedValue(Error("test must not spawn an instance"));
   vi.spyOn(fm, "getUiStatus").mockReturnValue({}); const events = vi.spyOn(fm, "emitSseEvent").mockImplementation(() => {});
   let now = 0; fm.webAppearanceService = new WebAppearance(fm.themeStore, () => fm.fleetConfig.web, () => {}, new AppearanceLimiter(() => now));

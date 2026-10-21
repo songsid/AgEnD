@@ -71,7 +71,7 @@ describe("static host cursor projection", () => {
       let status = 0, body: any; const headers: Record<string, unknown> = {};
       const path = `/ui/effects/image/${id}/cursor.png?${query}`, req = Object.assign(new EventEmitter(), { method, url: path, headers: { host: "127.0.0.1:19280", cookie: `agend_session=${signed.sessionId}` }, resume() {} });
       const res: any = { setHeader(k: string, v: unknown) { headers[k] = v; }, writeHead(code: number, h: any) { status = code; Object.assign(headers, h); }, end(bytes: any) { body = bytes; } };
-      handleWebRequest(req as never, res, new URL(path, "http://127.0.0.1:19280"), { webToken: token, webSessions: sessions, effectService: service } as any); await flush(); return { status, body, headers };
+      handleWebRequest(req as never, res, new URL(path, "http://127.0.0.1:19280"), { fleetConfig: { web: { experimental: { canvas_worker: true } } }, webToken: token, webSessions: sessions, effectService: service } as any); await flush(); return { status, body, headers };
     };
     const output = await call(`slot=fx.cursor&ownerEpoch=${signed.record.handle}`); expect(output.status).toBe(200); expect(Buffer.from(output.body)).toEqual(png()); expect(output.headers).toMatchObject({ "Content-Type": "image/png", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" });
     for (const query of ["slot=fx.cursor", `slot=fx.cursor&ownerEpoch=${"f".repeat(16)}`, `slot=fx.cursor&instance=worker&ownerEpoch=${signed.record.handle}`]) expect((await call(query)).status).toBe(404);

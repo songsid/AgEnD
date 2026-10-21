@@ -27,7 +27,7 @@ async function fixture(guest = false) {
   const sessions = new WebSessionStore({ now: () => wall });
   library.registerReferenceSource("themes", () => themes.placedEffects().flatMap(row => row.ids.map(id => ({ id, holder: `instance:${row.name}` }))));
   const service = new WebEffectService({ library, themes, profiles, changed() {}, known: n => ["own", "peer"].includes(n) });
-  const ctx = { webToken: token, webSessions: sessions, effectService: service, webPrefs: prefs, effectBoot: "c".repeat(32) } as unknown as WebApiContext;
+  const ctx = { fleetConfig: { web: { experimental: { canvas_worker: true } } }, webToken: token, webSessions: sessions, effectService: service, webPrefs: prefs, effectBoot: "c".repeat(32) } as unknown as WebApiContext;
   const dispatch = (req: any, res: any) => {
     if (guest) bindGuestRequest(req, { owner: account, scope: () => scope, current: () => guestCurrent });
     if (!handleWebRequest(req, res, new URL(req.url, `https://${host}`), ctx)) { res.writeHead(404); res.end("{}"); }

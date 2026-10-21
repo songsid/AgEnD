@@ -16,6 +16,7 @@ const ticks = async () => { await settle(); await settle(); };
 afterEach(async () => { if (p) { await p.unmount(); p.restore(); p = null; } delete g.fetch; fx.entry = null; });
 async function mount(opts: { canWrite?: boolean; slots?: any; lang?: string; fail?: number; operator?: boolean } = {}) {
   p = page({ url: "http://127.0.0.1:19280/settings/appearance" });
+  (await import("/assets/app-store.js")).appStore.set({ canvasWorker: true });
   p.document.documentElement.setAttribute("data-prefs", JSON.stringify({ rev: 1, values: {}, ownerEpoch: E, ownerScope: "person" }));
   calls = []; rev++; view = opts.slots || empty(); override = null;
   g.fetch = async (url: string, init: any = {}) => {

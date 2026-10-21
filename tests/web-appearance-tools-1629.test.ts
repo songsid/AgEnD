@@ -77,6 +77,7 @@ function tools(opts: { big?: boolean; clock?: () => number; frame?: (name: strin
   };
   const asset = (name: string, aid: string) => { const k = Object.keys(ids).find(x => ids[x] === aid && x.startsWith(name + ":")); return k ? { bytes: pics[k]!, mime: "image/png" } : null; };
   const t = new AppearanceTools({
+    canvasWorkerEnabled: () => true, // Existing appearance contract with the experimental feature enabled.
     frame: opts.frame ?? ((name) => ({ name, display_name: name === "a" ? "Agent <A>" : "Agent B", avatar: { kind: "initial", text: name.toUpperCase() }, theme_avatar: { kind: "image", src: `/ui/img/theme/${name}/${themes[name].avatar}` }, theme_accent: themes[name].accent })),
     theme: (name) => ({ theme: themes[name], locked: false }),
     card: (name) => (name === "a" ? { portrait: { id: ids["a:portrait"]!, by: "agent", src: "/api/card/a/portrait" }, banner: { id: ids["a:banner"]!, by: "human", src: "/api/card/a/banner" }, tagline: { text: "Reviews <b>PRs</b>", by: "human" }, bio: { text: "one\ntwo", by: "agent" } } : {}),

@@ -11,7 +11,7 @@ const SPECS = [
   ["confirmation", ".shell > .pending-stack, .shell .p-settings > .panel-body > .col > .pending-stack.inline"], ["preview", ".shell .chat-split > .pv-panel, .shell .chat-split > .pv-divider"],
   ["preview-menu", ".shell .thread details.pv-menu"], ["palette", ".shell .dock .cmd-palette"],
   ["drop", ".shell .p-chat > .drop-overlay"],
-  ["thread-control", ".shell .chat-main > .amb-note, .shell .p-chat .jump-latest, .shell .thread .msg-tools, .shell .thread .st-more, .shell .thread .cb-head, .shell .thread .cb-more, .shell .thread .tc-head, .shell .thread .tc-more, .shell .thread .pv-head, .shell .thread .pv-note, .shell .thread .pv-banner, .shell .thread .effect-trial-offer, .shell .thread .click-chip"],
+  ["thread-control", ".shell .chat-main > .amb-note, .shell .p-chat .jump-latest, .shell .thread .msg-tools, .shell .thread .msg > div.msg-actions, .shell .thread .msg > button.msg-quote, .shell .thread .st-more, .shell .thread .cb-head, .shell .thread .cb-more, .shell .thread .tc-head, .shell .thread .tc-more, .shell .thread .pv-head, .shell .thread .pv-note, .shell .thread .pv-banner, .shell .thread .effect-trial-offer, .shell .thread .click-chip"],
   ["link", ".shell .thread .md a, .shell .thread .st-text > a.st-link, .shell .dock .prompts .txt > a.st-link"], ["attachment", ".shell .thread .atts"], ["media", ".shell .thread .att-media"],
   ["panel-navigation", ".shell .p-fleet > .seg, .shell .p-settings > .seg"],
   ["panel-content", ".shell .p-fleet > .panel-body, .shell .p-needs > .panel-body, .shell .p-settings > .panel-body, .shell .p-log > .panel-body, .shell .p-details > .panel-body, .shell .p-view > .panel-body, .shell .p-view > .v-term, .shell .p-view > .v-id, .shell .p-view > .v-card"],

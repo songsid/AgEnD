@@ -13,6 +13,8 @@ let check: any, messageOffer: any, createThread: any, t: any, setLang: any;
 beforeAll(async () => {
   ({ checkEffectTrialOffer: check, effectTrialMessage: messageOffer } = await import("/ui/js/effect-trial-offer.js"));
   ({ createThread } = await import("/ui/js/chat-thread.js"));
+  (await import("/assets/app-store.js")).appStore.set({ canvasWorker: true });
+  await (await import("/assets/feature-flags.js")).loadCanvasWorkerMetadata();
   await import("/ui/js/chat-strings.js");
   ({ t, setLang } = await import("/assets/app-i18n.js"));
 });
@@ -98,6 +100,14 @@ describe("the real thread's inert protected offer card", () => {
       expect(card.innerHTML).not.toContain("a".repeat(32)); expect(card.innerHTML).not.toContain("b".repeat(32));
       f.th.onClick({ target: card }); expect(f.start).not.toHaveBeenCalled();
     } finally { f.th.dispose(); f.dom.restore(); }
+  });
+  it("off hides an existing Try offer immediately without changing saved message data, and on restores it", async () => {
+    const { appStore } = await import("/assets/app-store.js"); const f = fixture(), row = message();
+    try {
+      appStore.set({ canvasWorker: true }); f.th.render([row]); expect(f.list.querySelector(".effect-trial-offer")).not.toBeNull();
+      appStore.set({ canvasWorker: false }); expect(f.list.querySelector(".effect-trial-offer")).toBeNull(); expect(row.effectTrial).toEqual(offer());
+      appStore.set({ canvasWorker: true }); expect(f.list.querySelector(".effect-trial-offer")).not.toBeNull();
+    } finally { f.th.dispose(); f.dom.restore(); appStore.set({ canvasWorker: true }); }
   });
   it("public link also gets only an inert local-admin explanation", () => {
     const f = fixture("en", true); try { f.th.render([message()]); expect(f.list.querySelector(".effect-trial-offer")!.textContent).toContain("Sign in as an admin outside the public link"); expect(f.list.querySelector("button,iframe")).toBeNull(); } finally { f.th.dispose(); f.dom.restore(); }

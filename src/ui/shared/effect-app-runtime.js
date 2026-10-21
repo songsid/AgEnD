@@ -13,7 +13,7 @@ const episodes = new WeakSet();
 
 /** `current` belongs to the page/session episode. Route cleanup only releases its contribution. */
 export function createAppEffectRuntime({ window: host, current, observe, onChange = () => {}, onDispose = () => {}, resolveOwnerTarget = null, onOwnerUnavailable = () => {}, factories = {} }) {
-  let dead = false, error = null, loader = null, registry = null, writer = null, source = null, personal = null, trial = null, pending = null, lastMetadata = null, serial = 0, revision = 0, stamp = null, syncing = false, queued = false;
+  let dead = false, claimed = false, error = null, loader = null, registry = null, writer = null, source = null, personal = null, trial = null, pending = null, lastMetadata = null, serial = 0, revision = 0, stamp = null, syncing = false, queued = false;
   const bindings = new Map(), profiles = new Map();
   let lastContext = null, playbackUnavailable = null;
   const identity = effectPlaybackIdentity(host), auth = host?.AgendAuth;
@@ -26,7 +26,7 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
   };
   const placementIdentity = p => JSON.stringify([p.by, p.manifest.layer, p.params]);
   const clock = () => host.performance.now();
-  let offAuth = null;
+  let offAuth = null, disposed = null;
   const snapshot = s => {
     const effects = s?.metadata?.effects ?? [], known = registry?.snapshot?.() ?? [];
     const rows = effects.map(p => {
@@ -76,16 +76,18 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
     if (pending?.source === s) safe(() => pending.controller.abort());
     revision++; stamp = null;
   }
-  function dispose() {
-    if (dead) return; dead = true; discard(source);
+  function dispose(restartable = false) {
+    if (dead) return disposed; dead = true; discard(source);
     safe(() => trial?.dispose()); safe(() => pending?.controller.abort()); safe(() => registry?.dispose?.()); safe(() => loader?.dispose?.()); safe(() => personal?.dispose()); safe(() => writer?.dispose()); safe(() => offAuth?.());
     safe(() => host?.removeEventListener?.("pagehide", dispose));
     for (const row of profiles.values()) safe(() => row.collector.dispose()); profiles.clear(); bindings.clear(); safe(() => onDispose({ error }));
+    disposed = Promise.all([safe(() => loader?.whenDisposed?.()), safe(() => registry?.whenDisposed?.())]).then(() => { if (restartable === true && claimed) episodes.delete(host); });
+    return disposed;
   }
   function fail(reason) { if (dead) return; error = reason; dispose(); safe(() => onChange({ error, rows: [], effects: [], loading: false })); }
   const unavailable = { ok: false, sync() {}, changedChat() {}, reply() {}, detachChat() {}, attachChat() { return null; }, attachTrial() { return null; }, stopTrial() {}, trialSnapshot: () => ({ rows: [] }), snapshot: () => snapshot(null), dispose };
   if (!host || typeof host !== "object" || episodes.has(host) || !identity || typeof current !== "function" || typeof observe !== "function" || typeof auth?.onSessionEnd !== "function" || typeof auth?.sessionEnded !== "function") return unavailable;
-  episodes.add(host); // Claim before invoking current/auth callbacks: one attempt per Window episode.
+  episodes.add(host); claimed = true; // Claim before invoking current/auth callbacks: one attempt per Window episode.
   if (!alive()) { dispose(); return unavailable; }
   try {
     offAuth = auth.onSessionEnd(dispose);

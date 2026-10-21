@@ -1,7 +1,7 @@
 import { PUBLIC_TUNNEL_SECRET_ID } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
-import { settingsRequestExecution, settingsWrite } from "./settings-request-capability.js";
+import { settingsRequestExecution, settingsRequestLocalAdmin, settingsWrite } from "./settings-request-capability.js";
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -101,6 +101,8 @@ export interface SettingsApiContext extends AppShellContext {
   logger: Logger;
   getRawFleetConfig(): RawFleetConfig;
   saveFleetConfig(explicitPatches?: RawConfigPatch[]): void;
+  /** Refresh managed guidance and web clients after a committed experimental setting change. */
+  canvasWorkerSettingChanged?(): void;
   lifecycle: {
     isPaused(name: string): boolean;
     pause(name: string): Promise<void>;
@@ -757,10 +759,20 @@ export function handleSettingsRequest(
       try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
       const parsed = parseWebSettingsBody(body);
       if ("error" in parsed) return json(res, 400, { error: parsed.error });
+      if (parsed.canvasWorker !== undefined && !settingsRequestLocalAdmin(req)) {
+        const actor = evaluateWebRequest(req as never, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+        if (actor.kind !== "allow" || actor.via !== "session" || actor.session.tier !== "admin" || actor.session.surface !== "local") {
+          return json(res, 403, { error: "canvas_worker_setting_needs_local_admin" });
+        }
+      }
       const { session: sessionPatch, terminal: terminalPatch } = parsed;
       const changes: RawConfigPatch[] = [];
       const web = { ...cfg.web };
       let webTerminal = cfg.web_terminal;
+      if (parsed.canvasWorker !== undefined) {
+        web.experimental = { ...web.experimental, canvas_worker: parsed.canvasWorker };
+        changes.push({ path: ["web", "experimental", "canvas_worker"], value: parsed.canvasWorker });
+      }
       if (parsed.echo !== undefined) { web.echo_to_channel = parsed.echo; changes.push({ path: ["web", "echo_to_channel"], value: parsed.echo }); }
       if (parsed.logTab !== undefined) { web.log_tab = parsed.logTab; changes.push({ path: ["web", "log_tab"], value: parsed.logTab }); }
       if (parsed.usageOnPublicLink !== undefined) { web.usage_report_on_public_link = parsed.usageOnPublicLink; changes.push({ path: ["web", "usage_report_on_public_link"], value: parsed.usageOnPublicLink }); }
@@ -810,6 +822,9 @@ export function handleSettingsRequest(
         if (previous.hadTerminal) cfg.web_terminal = previous.terminal; else delete (cfg as { web_terminal?: unknown }).web_terminal;
         ctx.logger.warn({ err }, "settings: web save refused");
         return json(res, 500, { ok: false, error: (err as Error).message });
+      }
+      if (parsed.canvasWorker !== undefined && (previous.web?.experimental?.canvas_worker === true) !== parsed.canvasWorker) {
+        ctx.canvasWorkerSettingChanged?.();
       }
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));

@@ -54,8 +54,8 @@ describe("Canvas Worker effects stay beta in what a 2.2.5 install is told", () =
     expect(named.map(e => e.id), "the entries that name them (the check below runs on each)").toEqual(["2.3-web-appearance-topic", "2.3-web-settings-for-the-user"]);
     for (const e of named) expect(e.text, e.id).toMatch(/still beta/);
   });
-  it("the real 2.2.1 → 2.2.5 notice never announces them as stable", () => {
-    const plan = planWhatsNew({ record: { announced: idsUpTo("2.2.1") }, fresh: false, version: "2.2.5" });
+  it("the enabled 2.2.1 → 2.2.5 notice never announces them as stable", () => {
+    const plan = planWhatsNew({ record: { announced: idsUpTo("2.2.1") }, fresh: false, version: "2.2.5", canvasWorker: true });
     const notice = plan && "notice" in plan ? plan.notice : "";
     expect(notice).toContain("AgEnD is now 2.2.5");
     const lines = notice.split("\n").filter(l => /Canvas Worker/.test(l));

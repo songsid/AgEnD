@@ -41,11 +41,11 @@ const FULL = {
 
 describe("the projections (pure)", () => {
   it("guestStatus: in-scope instances only; who, how they look, their state — nothing else, nothing of the fleet", () => {
-    expect(guestStatus(FULL, new Set(["a"]))).toEqual({ instances: [{ name: "a", display_name: "Atlas", avatar: { kind: "initial", text: "A" }, accent: "#123456", card_v: "v1",
+    expect(guestStatus(FULL, new Set(["a"]))).toEqual({ canvas_worker: false, instances: [{ name: "a", display_name: "Atlas", avatar: { kind: "initial", text: "A" }, accent: "#123456", card_v: "v1",
       color: { auto: "auto:sea" }, color_show: {}, status: "running", state: "working", execution_state: "working" }] });
-    expect(guestStatus(FULL, new Set())).toEqual({ instances: [] });
-    expect(guestStatus(null, new Set(["a"]))).toEqual({ instances: [] });
-    expect(guestStatus({ instances: [null, 7, { name: 1 }, { name: "a" }] }, new Set(["a"]))).toEqual({ instances: [{ name: "a" }] });
+    expect(guestStatus(FULL, new Set())).toEqual({ canvas_worker: false, instances: [] });
+    expect(guestStatus(null, new Set(["a"]))).toEqual({ canvas_worker: false, instances: [] });
+    expect(guestStatus({ instances: [null, 7, { name: 1 }, { name: "a" }] }, new Set(["a"]))).toEqual({ canvas_worker: false, instances: [{ name: "a" }] });
   });
   it("guestFrameData: status projected; an in-scope instance's activity; every other event is not sent", () => {
     const scope = new Set(["a"]);
@@ -107,7 +107,7 @@ describe("broadcastSseEvent: an admin's bytes unchanged; a guest's projected for
       written.guest = [];
       broadcastSseEvent(clients, "activity", { instance: "a", state: "idle" });
       broadcastSseEvent(clients, "status", FULL);
-      expect(written.guest).toEqual([sseFrame("status", { instances: [] })]);
+      expect(written.guest).toEqual([sseFrame("status", { instances: [], canvas_worker: false })]);
     } finally { adminRes.emit("close"); guestRes.emit("close"); }
   });
 });
@@ -229,7 +229,8 @@ describe("live: the stream, the poll and a file for a guest scoped to `a`", () =
       await vi.waitFor(() => expect(fm.sseClients.size).toBe(2));
       const first = g.chunks.join("");
       const status = JSON.parse(/event: status\ndata: (.*)\n/.exec(first)![1]!);
-      expect(Object.keys(status)).toEqual(["instances"]);
+      expect(Object.keys(status)).toEqual(["instances", "canvas_worker"]);
+      expect(status.canvas_worker).toBe(false);
       expect(status.instances.map((i: { name: string }) => i.name)).toEqual(["a"]);
       expect(Object.keys(status.instances[0]).filter((k) => ["model", "backend", "effort", "cost", "context_pct", "interaction", "description", "tags"].includes(k))).toEqual([]);
       expect(first).not.toMatch(/event: (prompts|needs)\n/);

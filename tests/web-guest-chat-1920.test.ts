@@ -184,6 +184,7 @@ describe("live: a guest scoped to `a`", () => {
   });
   it("a placed effect's poster: by its instance, in scope", async () => {
     scopedToA(); guestsChat();
+    fm.fleetConfig.web.experimental = { canvas_worker: true };
     const guest = session("guest", ALICE);
     expect((await raw(port, "GET", `/ui/effect-posters/${"e".repeat(32)}.png?instance=b`, { cookie: cookieOf(guest) })).status).toBe(404);
     expect((await raw(port, "GET", `/ui/effect-posters/${"e".repeat(32)}.png`, { cookie: cookieOf(guest) })).status).toBe(404);

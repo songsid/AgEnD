@@ -1,4 +1,4 @@
-# Claude Code version audits (2.1.292 → 2.1.294 → 2.1.295)
+# Claude Code version audits (2.1.292 → 2.1.294 → 2.1.295 → 2.1.306)
 
 These are the scripts behind the version-gate audits of the claude-code backend, under decisions ffb8104e and af2f9f41:
 - **#1427** compared 2.1.292 → 2.1.294. Its fixtures are `tests/fixtures/claude-2.1.294-*.pane.txt`, held by `tests/claude-2.1.294-surfaces.test.ts`.
@@ -97,3 +97,37 @@ The audit was run as `AUDIT_DIR=… OLD=294 NEW=295 PORT=18295 bash pass1.sh` (t
   - It is server-gated: `tengu_amber_tally` and `tengu_drifting_nova`, a subscription tier, and a cost of at least 5% of the 5-hour limit.
   - It never appeared in the rig. It is answered in #1434 (PR #1435) with Escape, its own "resume", and held on any other shape. That PR's fixtures are binary-derived.
 - **Upstream changelog:** about 150 entries (hooks, gateway, MCP, plugins, Bash permission checks, paste and vim input). None of the screens AgEnD acts on changed in the frames.
+
+## 2.1.304 → 2.1.306
+
+The binaries were 2.1.304 (sha256 `ea0f135784631619a7a409d07322ecec964f9cc4fd377508ed1ba3f141f27912`) and 2.1.306 (sha256 `520bc6c1f40af466bd03a278b5ae1af1a2938bc7de5b9e5cb15526da20d71cfe`).
+
+The audit was run as `AUDIT_DIR=… OLD=304 NEW=306 PORT=18306 TMUX_TMPDIR=<short dir> bash pass1.sh`, then `extra.sh` through `extra6.sh`, in that order.
+
+**Two notes on running the rig:**
+- Keep `TMUX_TMPDIR` short, for example `mktemp -d /tmp/ccNNN.XXXX`. Under the session scratchpad, the socket path goes over the Unix 108-byte limit. tmux then never starts, and every step prints SAME on two empty captures. Check the log for `error connecting` and check that the captures are not empty before trusting a SAME.
+- There is no `unshare -rn`. In a user namespace claude runs as uid 0 and refuses `--dangerously-skip-permissions`. It also checks that it can reach `api.anthropic.com` at startup. So the rig runs on the host network like the earlier audits, with every API call going to the local mock.
+
+**LIVE: no change on a screen AgEnD reads.** Of 50 steps, 31 are SAME. The 19 DIFFs are:
+- spinner and "Worked for" verbs;
+- the mock's reply counter and session ids;
+- the auto-deny countdown;
+- the ` · ← for agents` and `◐ medium · /effort` footer hints, whose timing varies. 2.1.304 paints them as well, and AgEnD matches neither.
+
+The trust, Bypass Permissions, Bash permission (4 options), dangerous-rm and MCP approval screens are unchanged.
+
+**Keys sent the instant a dialog paints (`extra3.sh`, `extra4.sh`, `extra5.sh`):**
+- **Startup trust dialog.** Both versions drop keys written the moment it appears: the Down is lost, and sometimes the Enter is kept, which picks `No, exit`. AgEnD is unaffected because it answers trust and bypass one key at a time from the cursor it reads (`claude-2.1.306-trust-keys-dropped`).
+- **Dangerous-command menu.** This changed in 2.1.305, with "an Enter meant for the prompt is less likely to be taken as Accept". With Down and Enter written together at once, 2.1.304 declines. 2.1.306 moves the cursor to `No` and drops the Enter (`claude-2.1.306-danger-enter-swallowed`).
+  - At AgEnD's cadence (Down, then 200 ms, then Enter) the command was declined on both versions at every delay tried: 0, 0.3, 0.6, 1, 2 and 4 s after the menu painted (`claude-2.1.306-danger-agend-timing-rejected`).
+  - A dropped Enter leaves the cursor on `No`. The next poll's `confirm No` entry sends Enter there, never Down.
+- **MCP approval.** An Enter at once takes the default, `Continue without using this MCP server`, on both versions. AgEnD never sends it.
+
+**400 errors (`extra6.sh`, one fresh session each).** Each 400 needs a fresh session: in `pass1.sh` the 400 came after the 529 retries in the same session and never reached the API.
+- The context-limit 400 paints `Prompt is too long · the request is ~N tokens (limit M) …` the same way in both versions.
+- Another `invalid_request_error` keeps its own text, `API Error: 400 <message>`, in both versions.
+- AgEnD has no pattern for either, and the composer stays ready. The 2.1.306 fix ("an API error being replaced by 'prompt is too long'") is not reached through this path, and nothing AgEnD reads depends on it.
+
+**Predicate literals:** 265 checked. Seven counts changed, all of them increases. `launch after` went from 0 to 2, but only in a code comment. None is missing.
+
+**Upstream note.** `Auto mode is now Claude Code's default permission mode` appears on both versions. In auto mode the mock's Bash call ran without a prompt (`95-bash-permission`). The 4-option Bash permission prompt needs `--permission-mode default` (`extra2.sh`, `claude-2.1.306-bash-permission-prompt`).
