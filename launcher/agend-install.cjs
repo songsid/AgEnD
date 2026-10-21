@@ -314,8 +314,10 @@ function holderOf(text) {
  *
  * The admitted installer then also holds `<prefix>/.agend-install.lock`, the lock updaters from before #2264 take, by
  * their rules (above): one of theirs that runs, or whose holder cannot be told → refuse; a stale one is moved to
- * quarantine under their `.reclaim` marker.
- * Returns { release, notes } or { refuse }.
+ * quarantine under their `.reclaim` marker. Its token is this installer's: every npm install it runs presents it
+ * (AGEND_INSTALL_TOKEN), because a release from before #2264 — a target installed by --spec, the previous version put
+ * back — admits its own postinstall only for the token of the live lock (#2286 review).
+ * Returns { release, notes, token } or { refuse }.
  */
 function admit(prefix, deps, opts) {
   opts = opts || {};
@@ -348,7 +350,7 @@ function admit(prefix, deps, opts) {
   var legacy = legacyRecord(prefix, deps, opts.spec || "", opts.home || "");
   for (var attempt = 0; attempt < 3; attempt++) {
     if (createWhole(lock, legacy, deps)) {
-      return { notes: notes, release: function () {
+      return { notes: notes, token: JSON.parse(legacy).token, release: function () {
         if (readText(lock) === legacy) { try { fs.unlinkSync(lock); } catch (e) { /* gone */ } }
         withdraw();
       } };
@@ -485,7 +487,10 @@ function main(argv, injected) {
     fixed.notes.forEach(function (n) { log("  ↺ " + n); });
     var previous = isAgendPackage(path.join(root, "@songsid", "agend"));
     var bin = path.join(prefix, "bin", "agend");
-    var install = function () { return deps.run("npm", ["install", "-g", spec], { inherit: true }); };
+    // #2286 review: the lock's token, for a release from before #2264 (its postinstall refuses any other install).
+    var npmEnv = Object.assign({}, deps.env);
+    npmEnv[lockReaders.TOKEN_ENV] = admitted.token;
+    var install = function () { return deps.run("npm", ["install", "-g", spec], { inherit: true, env: npmEnv }); };
     var done = install();
     if (done.status !== 0) {
       // npm itself can leave its sibling behind (a failure inside its own move): once more, only if repairing moved one.
@@ -503,7 +508,7 @@ function main(argv, injected) {
       if (running && done.status !== 0) return fail("install", why + "; v" + running + " is still installed and runs — nothing was changed");
       if (previous && previous !== version) {
         repair(root, prefix, deps);
-        var back = deps.run("npm", ["install", "-g", previousAt >= 0 ? args[previousAt + 1] : "@songsid/agend@" + previous], { inherit: true });
+        var back = deps.run("npm", ["install", "-g", previousAt >= 0 ? args[previousAt + 1] : "@songsid/agend@" + previous], { inherit: true, env: npmEnv });
         if (back.status === 0 && versionOf(bin, deps) === previous) return fail("install", why + "; v" + previous + " was reinstalled and runs");
       }
       return fail("install", why + (previous ? "; v" + previous + " could not be put back — run the installer again" : ""));
