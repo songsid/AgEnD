@@ -1805,6 +1805,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   .search-foot { display: none; }
   .search-row { padding: var(--s-3); }
   .search-filters-toggle, .search-chips .chip-btn { min-height: var(--tap); }
+}
 /* The task board (Fleet › Tasks: fleet-tasks.js, fleet-task-card.js). Status colours: to do neutral, in progress the
    accent, blocked danger, waiting for you warn, done ok. Bars are SVG rects (no style attribute: the CSP). */
 .tb { display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; }
