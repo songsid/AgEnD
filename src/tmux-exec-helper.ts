@@ -42,6 +42,8 @@ export const HELPER_START_TIMEOUT_MS = 1500;
 export const HELPER_ANSWER_GRACE_MS = 5000;
 export const HELPER_NO_TIMEOUT_DEADLINE_MS = 120_000;
 const RESTART_BACKOFF_MIN_MS = 1000, RESTART_BACKOFF_MAX_MS = 60_000;
+/** #2364: how long a stopping fleet waits for the helper to exit on its own (it answers what it runs first). */
+export const HELPER_STOP_WAIT_MS = 2000;
 const DEFAULT_MAX_BUFFER = 1024 * 1024;   // execFile's
 
 /**
@@ -195,11 +197,23 @@ export class ExecHelper {
   /** A fleet started again after a stop may start the helper again. */
   reopen(): void { this.stopped = false; this.restartAt = 0; this.backoffMs = RESTART_BACKOFF_MIN_MS; }
 
-  /** The fleet is stopping: no more calls go to the helper; its stdin ends, and it exits once its commands have answered. */
-  stop(): void {
+  /**
+   * The fleet is stopping: no more calls go to the helper; its stdin ends, and it exits once its commands have answered.
+   * Resolves when it has exited, or after `waitMs` (#2364): the fleet exits right after, and under a service manager
+   * whatever is left of its process group is then SIGKILLed (KillMode=mixed) — a helper still on its way out included.
+   */
+  stop(waitMs = HELPER_STOP_WAIT_MS): Promise<void> {
     this.stopped = true;
     const proc = this.proc;
-    if (proc) { this.trusted = false; try { proc.stdin?.end(); } catch { /* gone */ } }
+    if (!proc) return Promise.resolve();
+    this.trusted = false;
+    try { proc.stdin?.end(); } catch { /* gone */ }
+    if (proc.exitCode !== null || proc.signalCode !== null) return Promise.resolve();
+    return new Promise<void>(resolve => {
+      const done = () => { clearTimeout(timer); proc.removeListener("exit", done); resolve(); };
+      const timer = setTimeout(done, waitMs);
+      proc.once("exit", done);
+    });
   }
 
   /**

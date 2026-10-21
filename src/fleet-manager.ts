@@ -19777,11 +19777,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    */
   stopAll(): Promise<void> {
     this.stopAllInFlight ??= this.doStopAll().finally(() => {
-      this.stopAllInFlight = null;
       // #1956: after the stop's own tmux work; anything later goes direct. A later startAll starts it again.
       if (this.tmuxExecHelperTimer) { clearInterval(this.tmuxExecHelperTimer); this.tmuxExecHelperTimer = null; }
-      tmuxExecHelper.stop();
-    });
+      // #2364: and the stop waits (bounded) for the helper to leave on its own, before the caller exits the process.
+      return tmuxExecHelper.stop();
+    }).finally(() => { this.stopAllInFlight = null; });
     return this.stopAllInFlight;
   }
   private tmuxExecHelperTimer: ReturnType<typeof setInterval> | null = null;
