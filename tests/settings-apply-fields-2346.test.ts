@@ -109,6 +109,34 @@ describe("bot-to-bot visibility is judged by what each agent gets (review P2-1)"
   });
 });
 
+describe("a wider default names its inheritors on one line (review r2: within SETTINGS_DIFF_RECORDS)", () => {
+  const many = (n: number, own?: string) => {
+    const c: any = config();
+    c.defaults.cross_instance_visibility = "hidden";
+    c.instances = Object.fromEntries(Array.from({ length: n }, (_, i) => [`agent-${i + 1}`, { working_directory: `/tmp/a${i}`, ...(own ? { cross_instance_visibility: own } : {}) }]));
+    return c;
+  };
+  for (const n of [30, 31, 45]) it(`${n} agents inherit hidden → full: confirmed, the default's line counts them (the operation and one line)`, () => {
+    const res = gate("PUT", "/api/settings/fleet/defaults", { cross_instance_visibility: "full" }, many(n));
+    expect(Array.isArray(res)).toBe(true);
+    const lines = res as string[];
+    expect([lines.length, lines[1]!.includes(`${n} agent(s) inherit it`), lines[1]!.includes(n > 5 ? `+${n - 5} more` : "")]).toEqual([2, true, true]);
+  });
+  it("45 agents set full on their own: only the default's own widening (it covers names with no setting)", () => {
+    const res = gate("PUT", "/api/settings/fleet/defaults", { cross_instance_visibility: "full" }, many(45, "full")) as string[];
+    expect([res.length, /inherit it/.test(res.join("\n"))]).toEqual([2, false]);
+  });
+  it("an agent's own change stays its own line beside the counted inheritors", () => {
+    const before = { fleet: many(40), classic: {} };
+    const after: any = structuredClone(before);
+    after.fleet.defaults.cross_instance_visibility = "full";
+    after.fleet.instances["agent-1"].cross_instance_visibility = "summary";        // own: hidden (inherited) → summary
+    const diff = settingsChangeDiff(before, after, { operation: "mixed" })!;
+    expect([diff.summary.length, diff.summary.filter((l) => /agent-1/.test(l) && /summary/.test(l)).length, diff.summary.some((l) => /39 agent\(s\) inherit it/.test(l))])
+      .toEqual([3, 1, true]);
+  });
+});
+
 describe("the impact badges", () => {
   const impacts = buildSettingsImpactSchema().impacts as Record<string, string>;
   it("the bot reply language needs AgEnD restarted; the spawn settings apply to the next start", () => {

@@ -208,14 +208,23 @@ function visibilityWidening(before: unknown, after: unknown): string[] {
   const effective = (f: Record<string, any> | null, name: string): string => { const v = own(f, name); return valid(v) ? v : fallback(f); };
   const line = (label: string, from: string, to: string) => out.push(`${settingsDisplay(label)}: ${settingsDisplay(from)} → ${settingsDisplay(to)}`);
   // A value the validator would refuse is never applied quietly (the resolver would read it as unset).
-  const rawDefault = object(a.defaults) ? a.defaults[VISIBILITY] : undefined, wasDefault = object(b?.defaults) ? b!.defaults[VISIBILITY] : undefined;
-  if (rawDefault !== undefined && rawDefault !== null && !valid(rawDefault) && !same(rawDefault, wasDefault)) line(`defaults.${VISIBILITY}`, String(wasDefault ?? "default"), String(rawDefault));
-  else if (VISIBILITY_RANK[fallback(a)]! > VISIBILITY_RANK[fallback(b)]!) line(`defaults.${VISIBILITY} (in effect)`, fallback(b), fallback(a));
+  // An agent whose own setting changed is named on its own line; the agents a wider default opens up only through
+  // inheritance are counted on the default's line (#2346 review: one line each would pass SETTINGS_DIFF_RECORDS).
+  const inheritors: string[] = [];
   for (const name of Object.keys(object(a.instances) ? a.instances : {})) {
     if (!b || !object(b.instances) || !object(b.instances[name])) continue;          // a new agent is confirmed whole
-    const raw = own(a, name);
-    if (raw !== undefined && raw !== null && !valid(raw) && !same(raw, own(b, name))) { line(`instances.${name}.${VISIBILITY}`, String(own(b, name) ?? "default"), String(raw)); continue; }
-    if (VISIBILITY_RANK[effective(a, name)]! > VISIBILITY_RANK[effective(b, name)]!) line(`instances.${name}.${VISIBILITY} (in effect)`, effective(b, name), effective(a, name));
+    const raw = own(a, name), ownChanged = !same(raw, own(b, name));
+    if (raw !== undefined && raw !== null && !valid(raw) && ownChanged) { line(`instances.${name}.${VISIBILITY}`, String(own(b, name) ?? "default"), String(raw)); continue; }
+    if (VISIBILITY_RANK[effective(a, name)]! <= VISIBILITY_RANK[effective(b, name)]!) continue;
+    if (ownChanged) line(`instances.${name}.${VISIBILITY} (in effect)`, effective(b, name), effective(a, name));
+    else inheritors.push(name);
+  }
+  const rawDefault = object(a.defaults) ? a.defaults[VISIBILITY] : undefined, wasDefault = object(b?.defaults) ? b!.defaults[VISIBILITY] : undefined;
+  const shown = 5, more = inheritors.length > shown ? ` +${inheritors.length - shown} more` : "";
+  const who = inheritors.length ? ` — ${inheritors.length} agent(s) inherit it: ${settingsDisplay(inheritors.slice(0, shown).join(", "))}${more}` : "";
+  if (rawDefault !== undefined && rawDefault !== null && !valid(rawDefault) && !same(rawDefault, wasDefault)) out.unshift(`${settingsDisplay(`defaults.${VISIBILITY}`)}: ${settingsDisplay(String(wasDefault ?? "default"))} → ${settingsDisplay(String(rawDefault))}${who}`);
+  else if (VISIBILITY_RANK[fallback(a)]! > VISIBILITY_RANK[fallback(b)]! || inheritors.length) {
+    out.unshift(`${settingsDisplay(`defaults.${VISIBILITY} (in effect)`)}: ${settingsDisplay(fallback(b))} → ${settingsDisplay(fallback(a))}${who}`);
   }
   return out;
 }
