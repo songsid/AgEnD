@@ -25,6 +25,7 @@ Runner 自建唯一 scratch AGEND_HOME，依序執行三階段；每階段關閉
 | --- | --- | --- |
 | Delivery outbox | `user_version` **5 → 4 → 5**，不重建資料表。新 consumed/acknowledged 欄位保留；舊版新增列的新欄位為 NULL。Admission 去重不變；舊版重啟恢復只重排未 begin 的 claim，已 begin 保留 `reconciliation_pending`。Integrity/FK 通過。 | 四個 TEXT 欄位及 attention index 為 additive（[新版](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/delivery-outbox.ts#L609)); [舊版直接寫 version 4](https://github.com/songsid/AgEnD/blob/7a8160a12ac4024bffc5165b5b6e03af851cacf2/src/delivery-outbox.ts#L561)。舊版不蒐集新的 consumption/ack evidence，也無 Needs you；version 數字本身不是 schema fence。 |
 | Scheduler／decision／task | 舊版可讀寫既有列與歷史，task completion 回新版仍可讀。未刪 schedule 的 retry 保留；舊版刪 schedule 會 cascade retry。Integrity/FK 通過。 | [Retry 表](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/scheduler/db.ts#L99) 為 additive、帶 ON DELETE CASCADE。舊版不實作新的 usage-deferred retry；回新版時保留的 retry 可能再被評估。Probe 不跑 timer，不保證相同排程。 |
+| 任務板（#2246） | 舊版把任務板卡片當一般 task 讀（標題、狀態、負責人），寫入時只動舊欄位。回到新版後：舊版 claim 的子任務會帶動主任務狀態，留言保留，舊版新建的 task 會補上卡號。**舊版的 prune 不認得專案**：設 30 天會刪掉進行中專案裡已完成且夠舊的卡片（設 36500 天則保留），只留下它的留言與歷史；新版下一次 prune 會清掉這些殘留。 | 任務板的欄位與資料表都是 additive，開檔時補齊（[migrate](../src/scheduler/task-board.ts)、[prune](../src/scheduler/db.ts)）。舊版不執行任務板規則：它的 `task done` 會直接完成等待人確認的卡片（source audit），`review` 狀態也只會顯示成不認得的狀態。由 `scripts/data-downgrade-phase.mjs` 實測。 |
 | Event／activity／reaction | 舊版讀新事件、活動、消費 reaction，回新版可讀舊版新增事件。Integrity/FK 通過。 | [Store](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/event-log.ts#L47) API/schema 相容；不測 transcript 或 live delivery。 |
 | Needs you | Live-message pointer 逐 byte 保留，回新版可讀；新建 hub 無 acknowledgement capability。 | [Pointer](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/needs-you-hub.ts#L201) 非持久授權；[registry 在記憶體](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/needs-you-hub.ts#L107)。2.1.12 無此 hub；既有聊天訊息／按鈕可能殘留，但舊版不能操作。 |
 | #1423 pending | 只在記憶體；close 不執行 effect，新 store 無 pending。 | [Store](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/settings-confirmation.ts#L77)。未核准變更不轉移、不重播；在支援確認的版本重送。已提交設定仍在磁碟；舊 web handler 沒有新的 consent gate。 |
@@ -41,6 +42,8 @@ Runner 自建唯一 scratch AGEND_HOME，依序執行三階段；每階段關閉
 ## 建議與 rollback 界限
 
 實測 store 不需要破壞性 DB 降版 migration。不要讓兩版 fleet 同時存取同資料。操作員核准降版前先停 fleet，保留 AGEND_HOME 的一致備份（含 SQLite WAL）、fleet.yaml/.env，以及 workspace shared Kiro MCP/steering、agent JSON／backup。Live 時只 cp 一個 WAL DB 並非一致備份。
+
+有在用任務板的話，啟動舊版前先把 fleet.yaml 的 `defaults.retention_days` 調高（例如 36500），回到新版後再改回來。否則舊版 prune 會把進行中專案裡超過保留天數的已完成卡片刪掉，回新版也救不回來。
 
 保留 preimage：舊版 normalized YAML rewrite 或 shared Kiro write 會丟資訊。回新版可保留已測 DB metadata，但不能重建已丟 config、覆寫 workspace 檔、丟失 pending。整份還原舊 DB 備份亦會丟棄備份後的活動。用 2.1.12 對外開 web/channel 或共用 workspace 前，重新檢查政策。
 

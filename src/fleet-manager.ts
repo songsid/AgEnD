@@ -103,6 +103,8 @@ import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
+import { boardActivity, boardToolAction } from "./task-board-tool.js";
+import type { SchedulerDb } from "./scheduler/db.js";
 import type { Schedule, ScheduleRetry, ScheduleRetryDrop, SchedulerConfig } from "./scheduler/index.js";
 import { escapeTelegramHtml, scheduleClock, scheduleRetryLabel } from "./scheduler/retry-label.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
@@ -148,7 +150,8 @@ export const TASK_LIST_CAP = 100;
  * #1336: the non-terminal statuses a bare `list` returns by default. `done`
  * and `cancelled` are excluded unless the caller passes `filter_status`.
  */
-export const LIVE_TASK_STATUSES: string[] = ["open", "claimed", "blocked"];
+/** Not finished: `review` is done work waiting for the person (the task board), still live. */
+export const LIVE_TASK_STATUSES: string[] = ["open", "claimed", "blocked", "review"];
 
 /**
  * #1336 P2: shared normalization for filter_status across both task handlers
@@ -7356,6 +7359,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.scheduler.init();
       this.scheduler.db.onTaskChange = (task) => this.searchIndex?.record(taskDoc(task));
       this.logger.info("Scheduler initialized");
+      this.attachTaskBoard(this.scheduler.db);
 
       // Tips share the daily-report clock but remain an independent internal
       // job: disabling daily_summary must not disable tips (and vice versa).
@@ -10779,15 +10783,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const asPriority = (v: unknown): "low" | "normal" | "high" | "urgent" | undefined => {
       return (v === "low" || v === "normal" || v === "high" || v === "urgent") ? v : undefined;
     };
-    const asStatus = (v: unknown): "open" | "claimed" | "done" | "blocked" | "cancelled" | undefined => {
-      return (v === "open" || v === "claimed" || v === "done" || v === "blocked" || v === "cancelled") ? v : undefined;
+    const asStatus = (v: unknown): "open" | "claimed" | "review" | "done" | "blocked" | "cancelled" | undefined => {
+      return (v === "open" || v === "claimed" || v === "review" || v === "done" || v === "blocked" || v === "cancelled") ? v : undefined;
     };
     // #1336 P2: use the shared normalizer — trims whitespace AND drops empties,
     // so " \t " / [" ","\t"] are treated identically to undefined.
     const asStatusFilter = normalizeStatusFilter;
     // #1336: small write ack — identifying fields only.
     const ack = (t: Task) => ({ id: t.id, status: t.status, updated_at: t.updated_at });
+    // The board's notes for the write (a send-back reason, a comment the assignee had not seen): with the ack when any.
+    const noted = <T extends object>(a: T): T | (T & { notes: string[] }) => { const notes = db.board.takeNotes(); return notes.length ? { ...a, notes } : a; };
     try {
+      // The task board's own actions and fields (task-board-tool.ts); the rest is the tool's plain task, below.
+      const onBoard = boardToolAction(db, instance, args);
+      if (onBoard !== undefined) return onBoard;
       switch (action) {
         case "create": {
           const title = asStr(args.title);
@@ -10823,22 +10832,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         case "claim": {
           const id = asStr(args.id);
           if (!id) return { error: "id is required" };
-          return ack(db.claimTask(db.getTaskByPrefix(id).id, instance));
+          return noted(ack(db.claimTask(db.getTaskByPrefix(id).id, instance, { kind: "instance", name: instance })));
         }
         case "done": {
           const id = asStr(args.id);
           if (!id) return { error: "id is required" };
-          return ack(db.completeTask(db.getTaskByPrefix(id).id, asStr(args.result)));
+          return noted(ack(db.completeTask(db.getTaskByPrefix(id).id, asStr(args.result), { kind: "instance", name: instance })));
         }
         case "update": {
           const id = asStr(args.id);
           if (!id) return { error: "id is required" };
-          return ack(db.updateTask(db.getTaskByPrefix(id).id, {
+          return noted(ack(db.updateTask(db.getTaskByPrefix(id).id, {
             status: asStatus(args.status),
             assignee: asStr(args.assignee),
             result: asStr(args.result),
             priority: asPriority(args.priority),
-          }));
+          }, { kind: "instance", name: instance })));
         }
         default: return { error: `Unknown task action: ${action}` };
       }
@@ -10933,8 +10942,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // so " \t " / [" ","\t"] are treated identically to undefined.
     const asStatusFilter = normalizeStatusFilter;
     const ack = (t: Task) => ({ id: t.id, status: t.status, updated_at: t.updated_at });
+    const noted = <T extends object>(a: T): T | (T & { notes: string[] }) => { const notes = db.board.takeNotes(); return notes.length ? { ...a, notes } : a; };
 
     try {
+      // The task board's own actions and fields (task-board-tool.ts); the rest is the tool's plain task, below.
+      const onBoard = boardToolAction(db, meta.instance_name || instanceName, payload);
+      if (onBoard !== undefined) {
+        ipc.send({ type: "fleet_task_response", fleetRequestId, result: onBoard });
+        // The activity log hears of board work as it does of plain tasks.
+        const what = boardActivity(payload);
+        if (what) this.eventLog?.logActivity("task_update", instanceName, what);
+        return;
+      }
       let result: unknown;
       // Full task kept for activity logging; the IPC reply uses the compact ack.
       let logTask: Task | undefined;
@@ -10970,12 +10989,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           result = db.getTaskByPrefix(payload.id as string);
           break;
         case "claim":
-          logTask = db.claimTask(db.getTaskByPrefix(payload.id as string).id, meta.instance_name || instanceName);
-          result = ack(logTask);
+          logTask = db.claimTask(db.getTaskByPrefix(payload.id as string).id, meta.instance_name || instanceName, { kind: "instance", name: meta.instance_name || instanceName });
+          result = noted(ack(logTask));
           break;
         case "done":
-          logTask = db.completeTask(db.getTaskByPrefix(payload.id as string).id, payload.result as string | undefined);
-          result = ack(logTask);
+          logTask = db.completeTask(db.getTaskByPrefix(payload.id as string).id, payload.result as string | undefined, { kind: "instance", name: meta.instance_name || instanceName });
+          result = noted(ack(logTask));
           break;
         case "update":
           logTask = db.updateTask(db.getTaskByPrefix(payload.id as string).id, {
@@ -10983,8 +11002,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             assignee: payload.assignee as string | undefined,
             result: payload.result as string | undefined,
             priority: payload.priority as string | undefined,
-          } as Record<string, unknown>);
-          result = ack(logTask);
+          } as Record<string, unknown>, { kind: "instance", name: meta.instance_name || instanceName });
+          result = noted(ack(logTask));
           break;
         default:
           throw new Error(`Unknown task action: ${action}`);
@@ -16576,6 +16595,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.webChatHistory.updateButtons(String(u.instance ?? ""), u.buttons);
     }
     broadcastSseEvent(this.sseClients, event, data, onError);
+  }
+
+  /**
+   * The task board's live side: every committed change goes to the open pages (never to a guest) — the board's new
+   * revision and the card numbers it touched; not who touched them (the page does not need it, and a public-link page
+   * must not learn a hidden instance's name from it).
+   */
+  private attachTaskBoard(db: SchedulerDb): void {
+    db.board.onChange(({ rev, ids, projects }) => this.emitSseEvent("tasks", { rev, ids, projects }));
   }
 
   listClaimedTasks(assignee: string): Array<{ id: string; title: string }> {

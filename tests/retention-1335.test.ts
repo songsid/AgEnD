@@ -30,6 +30,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DeliveryOutbox, type DeliveryStatusSelector } from "../src/delivery-outbox.js";
 import { SchedulerDb } from "../src/scheduler/db.js";
+
+/** Who acts: the task tool's instance (the board requires one). */
+const AGENT = { kind: "instance" as const, name: "agent" };
 import { validateFleetConfig } from "../src/config-validator.js";
 import { outboundHandlers } from "../src/outbound-handlers.js";
 import { applyTaskListCap, TASK_LIST_CAP } from "../src/fleet-manager.js";
@@ -267,7 +270,7 @@ describe("SchedulerDb.pruneOldTasks (#1335)", () => {
     db.createTask({ title: "open", created_by: "t" });
     db.createTask({ title: "claimed", created_by: "t" });
     const tasks = db.listTasks();
-    db.claimTask(tasks.find(t => t.title === "claimed")!.id, "agent");
+    db.claimTask(tasks.find(t => t.title === "claimed")!.id, "agent", AGENT);
     const rawDb = (db as unknown as { db: import("better-sqlite3").Database }).db;
     rawDb.prepare("UPDATE tasks SET updated_at=?").run(daysAgo(60));
     const pruned = await db.pruneOldTasks(30);
@@ -298,7 +301,7 @@ describe("SchedulerDb.pruneOldTasks (#1335)", () => {
     // prereq is protected because "dependent" is still open and depends on it
     expect(pruned).toBe(0);
     // Verify the claimTask guard still works (prereq exists as cancelled)
-    expect(() => db.claimTask(db.listTasks().find(t => t.title === "dependent")!.id, "agent"))
+    expect(() => db.claimTask(db.listTasks().find(t => t.title === "dependent")!.id, "agent", AGENT))
       .toThrow();
     db.close();
   });

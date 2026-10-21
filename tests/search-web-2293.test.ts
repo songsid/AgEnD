@@ -269,13 +269,18 @@ describe("the fleet feeds the index", () => {
     const db = new SchedulerDb(join(dir, "scheduler.db"));
     const seen: string[] = [];
     db.onTaskChange = t => seen.push(`${t.status}:${t.title}`);
+    const dev = { kind: "instance", name: "dev" } as const;
     const t = db.createTask({ title: "nginx", created_by: "lead" });
-    db.claimTask(t.id, "dev");
-    db.completeTask(t.id, "done it");
+    db.claimTask(t.id, "dev", dev);
+    db.completeTask(t.id, "done it", dev);
     db.onTaskChange = () => { throw new Error("listener"); };
-    expect(() => db.updateTask(t.id, { priority: "high" })).not.toThrow();
+    expect(() => db.updateTask(t.id, { priority: "high" }, dev)).not.toThrow();
+    // The board's own writes (the dashboard's Task Board), not only the task tool's: a card created and edited there.
+    db.onTaskChange = t => seen.push(`${t.status}:${t.title}`);
+    const { cards } = db.board.createCards({ kind: "person", name: "han" } as never, { cards: [{ title: "board card" } as never] });
+    db.board.updateCard({ kind: "person", name: "han" } as never, cards[0]!.code ?? cards[0]!.uuid, { title: "board card renamed" } as never);
     db.close();
-    expect(seen).toEqual(["open:nginx", "claimed:nginx", "done:nginx"]);
+    expect(seen).toEqual(["open:nginx", "claimed:nginx", "done:nginx", "open:board card", "open:board card renamed"]);
   });
   it("fleet.yaml web.search: enabled a boolean, retention_days an integer 1–3650, unknown keys warned", () => {
     const web = (p: string) => p.startsWith("web.");

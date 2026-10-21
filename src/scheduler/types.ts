@@ -129,11 +129,14 @@ export interface UpdateDecisionParams {
 
 // ── Fleet Task Board ──────────────────────────────────────────
 
-export type TaskStatus = "open" | "claimed" | "done" | "blocked" | "cancelled";
+/** `review`: finished, waiting for the person's confirmation (the task board, task-board.ts). */
+export type TaskStatus = "open" | "claimed" | "review" | "done" | "blocked" | "cancelled";
 export type TaskPriority = "low" | "normal" | "high" | "urgent";
 
 export interface Task {
   id: string;
+  /** The task board's card number (M-3, S-12): what the dashboard shows. */
+  code: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -154,6 +157,8 @@ export interface Task {
  */
 export interface TaskCompact {
   id: string;
+  /** The task board's card number (M-3): how the dashboard and the person name it. */
+  code: string | null;
   title: string;
   status: TaskStatus;
   assignee: string | null;

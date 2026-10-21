@@ -54,6 +54,13 @@ function terminal(target, key, outcome) {
   assert.equal(outbox.complete(row.deliveryId, owner.targetDaemonBootId, owner.attemptNo, outcome, 'scratch evidence'), true);
   return owner;
 }
+/** Board rows' comments and history left for a task id (a release without the board prunes the task only). */
+function boardLeftovers(id) {
+  const db = new Database(schedulerPath, { readonly: true });
+  try {
+    return ['task_entries', 'task_events'].reduce((n, table) => n + db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE task_id = ?`).get(id).n, 0);
+  } finally { db.close(); }
+}
 function schedule(label) {
   return scheduler.create({ cron: '0 0 * * *', message: label, source: 'scratch-source', target: label,
     reply_chat_id: '-100123', reply_thread_id: '7', reply_adapter_id: 'scratch-world' });
@@ -77,6 +84,20 @@ if (phase === 'create') {
     scheduler.recordRun(keep.id, 'deferred → delivered (retry)', 'scratch-only history');
     state.decision = scheduler.createDecision({ project_root: scratch, scope: 'fleet', title: 'scratch decision', content: 'retained', tags: ['scratch'], created_by: 'scratch-source' }).id;
     state.task = scheduler.createTask({ title: 'scratch task', created_by: 'scratch-source', priority: 'urgent' }).id;
+  });
+  checked('new task board: a project, a main task with a comment and a sub task, an aged finished card', () => {
+    const person = { kind: 'person', name: 'scratch-person' };
+    const board = scheduler.board;
+    board.createProject(person, { name: 'Scratch' });
+    const main = board.createCards(person, { project: 'Scratch', cards: [{ title: 'board main' }] }).cards[0];
+    const sub = board.createCards(person, { cards: [{ parent: main.code, title: 'board sub', assignee: 'scratch-worker' }] }).cards[0];
+    board.updateCard(person, main.code, { comment: 'kept across the downgrade' });
+    const aged = board.createCards(person, { project: 'Scratch', cards: [{ title: 'aged and finished' }] }).cards[0];
+    board.updateCard(person, aged.code, { comment: 'left behind by the old prune' });
+    board.moveCard(person, aged.code, 'done');
+    const raw = new Database(schedulerPath);
+    try { raw.prepare("UPDATE tasks SET updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?").run(aged.uuid); } finally { raw.close(); }
+    state.board = { main: main.uuid, sub: sub.uuid, aged: aged.uuid };
   });
   checked('event log and reaction queue', () => {
     events.insert('scratch', 'new-event', { sentinel: 42 });
@@ -136,6 +157,15 @@ if (phase === 'create') {
     scheduler.claimTask(state.task, 'scratch-old'); scheduler.completeTask(state.task, 'old completion');
     state.oldSchedule = schedule('created-on-old').id;
   });
+  // docs/downgrade-compatibility.md: the old prune knows no projects — raise retention before rolling back.
+  assert.ok(scheduler.listTasks({ verbose: true }).some(t => t.id === state.board.main && t.title === 'board main'));
+  assert.equal(await scheduler.pruneOldTasks(36500), 0);
+  assert.ok(scheduler.getTask(state.board.aged));
+  assert.equal(await scheduler.pruneOldTasks(30), 1);
+  assert.equal(scheduler.getTask(state.board.aged), null);
+  scheduler.claimTask(state.board.sub, 'scratch-old');
+  state.oldTask = scheduler.createTask({ title: 'created on old', created_by: 'scratch-old' }).id;
+  checks.push('old reads board cards as tasks; its prune keeps a finished card at 36500 days, deletes it at 30');
   checked('old event/reaction read-write', () => {
     assert.deepEqual(events.query({ type: 'new-event' })[0].payload, { sentinel: 42 });
     assert.ok(events.listActivity().some(row => row.event === 'new-activity'));
@@ -189,6 +219,18 @@ if (phase === 'create') {
     assert.equal(scheduler.get(state.keepSchedule).message, 'edited on old');
     assert.ok(scheduler.get(state.oldSchedule)); assert.equal(scheduler.getTask(state.task).status, 'done');
   });
+  checked('board after old writes: main task follows its sub task, comment kept, old task numbered', () => {
+    const board = scheduler.board;
+    const main = board.getCard(state.board.main);
+    assert.equal(main.status, 'claimed');
+    assert.deepEqual(board.detail(main.code).comments.map(e => e.text), ['kept across the downgrade']);
+    assert.equal(board.getCard(state.board.sub).assignee, 'scratch-old');
+    assert.match(board.getCard(state.oldTask).code, /^M-\d+$/);
+  });
+  assert.ok(boardLeftovers(state.board.aged) > 0);
+  await scheduler.pruneOldTasks(30);
+  assert.equal(boardLeftovers(state.board.aged), 0);
+  checks.push('the next prune clears the comments and history the old prune left behind');
   checked('new event reads old write; consumed reaction stays consumed', () => {
     assert.deepEqual(events.query({ type: 'old-event' })[0].payload, { sentinel: 43 });
     assert.equal(events.pendingReactions('scratch'), null);
