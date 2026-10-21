@@ -2588,7 +2588,7 @@ export function handleWebRequest(
       if (gatewayRequestContext(req) && ctx.fleetConfig?.web?.usage_report_on_public_link !== true) return [403, "usage_report_not_over_public_link"];
       return null;
     };
-    // Over the public link, where to turn it on: Settings → Web on the dashboard reached directly (this computer's own
+    // Over the public link, where to turn it on: Settings → Web dashboard on the dashboard reached directly (this computer's own
     // address — the public link's Settings only reads). Never the public origin's own Settings, which cannot change it.
     const answer = ([status, error]: [number, string]) => json(res, status, {
       error, ...(status === 403 ? { settings: `http://localhost:${ctx.fleetConfig?.health_port ?? 19280}/settings/web-dashboard` } : {}) });

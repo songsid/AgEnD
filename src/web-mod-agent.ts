@@ -170,7 +170,7 @@ export class AgentMods {
     const m = checked.mod.manifest;
     this.deps.notice(instance, `Proposed a mod: ${m.title} (${m.name} ${m.version}). A person can review it in Settings → Look → Mods.`);
     this.deps.changed();
-    return { proposed: { id: checked.mod.id, name: m.name, version: m.version, title: m.title, bytes: checked.mod.bytes }, message: "A person reviews it in Settings → Web appearance → Mods; nothing changes until they install it." };
+    return { proposed: { id: checked.mod.id, name: m.name, version: m.version, title: m.title, bytes: checked.mod.bytes }, message: "A person reviews it in Settings → Look → Mods; nothing changes until they install it." };
   }
 
   /** An instance was removed. */
