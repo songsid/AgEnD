@@ -11,3 +11,11 @@ it("starts on /settings/classic → the address bar says /settings/chat#classicb
   nav.startRouter(p.window);
   expect([p.window.location.pathname, p.window.location.hash, nav.navStore.get().route]).toEqual(["/settings/chat", "#classicbot", { panel: "settings", section: "chat" }]);
 });
+
+it("#2382 review: loaded at an old address with a place of its own (/settings/web#guests) keeps it", async () => {
+  p.restore();
+  p = page({ url: "http://127.0.0.1:19284/settings/web#guests", storage: {} });
+  const nav = await import("/assets/app-nav.js");
+  nav.startRouter(p.window);
+  expect([p.window.location.pathname, p.window.location.hash]).toEqual(["/settings/access", "#guests"]);
+});

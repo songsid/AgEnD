@@ -67,6 +67,19 @@ describe("#2347: the sections in two groups, and the old addresses", () => {
       route.settingsPath("classic"), route.settingsPath("bots"), route.settingsPath("agents")])
       .toEqual(["/settings/chat#classicbot", "/settings/agent-defaults", null, "/settings/chat#classicbot", "/settings/chat", "/settings"]);
   });
+  it("#2382 review: only the names of the table are old names — constructor, __proto__, toString are no section", () => {
+    for (const name of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+      expect([route.parseRoute(`/settings/${name}`), shellRoute("GET", `/settings/${name}`), route.legacySettingsTarget(`/settings/${name}`), route.settingsPath(name)], name)
+        .toEqual([null, null, null, `/settings/${name}`]);
+    }
+  });
+  it("#2382 review: an old address with a place of its own keeps it (its new one names none)", () => {
+    nav.navigate("/settings/web#guests");
+    expect([p.window.location.pathname, p.window.location.hash]).toEqual(["/settings/access", "#guests"]);
+    nav.navigate("/settings/classic#other");                             // a new one with its own place keeps that
+    expect([p.window.location.pathname, p.window.location.hash]).toEqual(["/settings/chat", "#classicbot"]);
+    nav.navigate("/settings");
+  });
   it("going to an old address lands on the new one (the address bar too), with the place in it", () => {
     nav.navigate("/settings/general");
     expect([p.window.location.pathname, nav.navStore.get().route]).toEqual(["/settings/agent-defaults", { panel: "settings", section: "agent-defaults" }]);
