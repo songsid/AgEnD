@@ -280,6 +280,43 @@ describe("#2347: one save model — an edit is unsaved at once, the bar's Save w
     await vi.waitFor(() => expect(writes().filter((r) => r.url === "/api/settings/fleet/defaults")).toHaveLength(2), { timeout: 6000 });
     expect([model, writes().filter((r) => r.url === "/api/settings/fleet/defaults")[1].body]).toEqual(["other-admins-model", { auto_pause_after: 2 }]);
   });
+  it("#2367 r2: an edit made while a Save runs that puts a field back to its old value is an edit too", async () => {
+    const g = gate<{ body: unknown }>(), slow = gate<void>();
+    let sent: any = null;
+    const after_ = { body: { ...structuredClone(FLEET), defaults: { backend: "claude-code", auto_pause_after: 1 } } };
+    routes.push((r) => (r.method === "PUT" && r.url === "/api/settings/fleet/defaults" && !sent ? (sent = r.body, g.p) : undefined));
+    // The configuration is read back slowly (a slow link): nothing may be decided on the old one meanwhile.
+    routes.push((r) => (sent && r.method === "GET" && r.url === "/api/settings/fleet/raw" ? slow.p.then(() => after_) as any : undefined));
+    await general();
+    const was = p.root.querySelector("#g-auto").value;
+    await type("#g-auto", "1");
+    save().click(); await settle(4);
+    await type("#g-auto", was);                                   // back to what was saved before
+    g.open({ body: { ok: true } });
+    await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 6000 });
+    await settle(12);
+    slow.open();
+    await settle(12);
+    const after = [was, sent, p.root.querySelector("#g-auto").value, rowClass("#g-auto"), bar()?.textContent.includes("1 unsaved change(s)")];
+    save().click(); await settle(4);
+    await vi.waitFor(() => expect(writes().filter((r) => r.url === "/api/settings/fleet/defaults")).toHaveLength(2), { timeout: 6000 });
+    expect([...after, writes().filter((r) => r.url === "/api/settings/fleet/defaults")[1].body])
+      .toEqual(["0", { auto_pause_after: 1 }, "0", "field s-dirty", true, { auto_pause_after: 0 }]);
+  });
+  it("#2367 r2: over the public link the older /ui routes that change fleet.yaml are refused too; operations stay", async () => {
+    p.document.body.setAttribute("data-public-link", "1");
+    try {
+      const refused = [];
+      for (const [url, method] of [["/ui/instances", "POST"], ["/ui/config", "POST"], ["/ui/instances/alpha/delete", "POST"]] as const) {
+        refused.push((await confirmMod.api(url, { method, body: "{}" })).status);
+      }
+      await confirmMod.api("/api/settings/instances/alpha/pause", { method: "POST" });
+      await confirmMod.api("/ui/stop/alpha", { method: "POST" });
+      await confirmMod.api("/api/settings/status-emojis/preview", { method: "POST", body: "{}" });
+      expect([refused, writes().map((r) => r.url)])
+        .toEqual([[403, 403, 403], ["/api/settings/instances/alpha/pause", "/ui/stop/alpha", "/api/settings/status-emojis/preview"]]);
+    } finally { p.document.body.removeAttribute("data-public-link"); }
+  });
   it("#2367 review: over the public link Advanced offers no JSON edit, and no other control writes (startOperation, api)", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     try {

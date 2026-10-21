@@ -26,13 +26,22 @@ export function editsOf(form, saved) {
 export function useDraft(ctx, key, saved, init = saved) {
   const base = useMemo(saved, []);
   const [form, setForm] = useState(() => (ctx.drafts && ctx.drafts.has(key) ? { ...base, ...ctx.drafts.get(key) } : init()));
-  useEffect(() => {
-    if (!ctx.drafts) return;
-    const edits = editsOf(form, base);
-    if (Object.keys(edits).length) ctx.drafts.set(key, edits);
-    else ctx.drafts.delete(key);
-  }, [form]);
+  useEffect(() => { keepDraft(ctx, key, editsOf(form, base), form); }, [form]);
   return [form, setForm];
+}
+
+/**
+ * Keep `edits` as the draft `key` (none: no draft). #2367 review: while a Save runs, a field that Save is writing and
+ * the form has since put back to what was saved before is an edit too — once the Save lands, what is saved is the new
+ * value, and the person's last word was the old one.
+ */
+export function keepDraft(ctx, key, edits, form) {
+  if (!ctx.drafts) return;
+  const writing = typeof ctx.savingDrafts === "function" ? ctx.savingDrafts() : null;
+  const sent = writing && writing.get(key);
+  if (sent) for (const k of Object.keys(sent)) if (!(k in edits)) edits[k] = form[k];
+  if (Object.keys(edits).length) ctx.drafts.set(key, edits);
+  else ctx.drafts.delete(key);
 }
 
 /**

@@ -111,9 +111,7 @@ export function GuestsSection({ ctx, staged }) {
   const empty = f.grants ? Object.entries(f.grants).find(([, g]) => !g.instances.length) : null;
   // Stage on every edit: the shell's bar is this section's Save.
   useEffect(() => {
-    const diff = guestsBody(original, f);
-    if (!diff) { ctx.unstage("guests"); return; }
-    ctx.stage("guests", {
+    const change = (diff) => (diff ? {
       label: tn("guestsTitle"), impact: impactOf(ctx.schema || DEFAULT_SCHEMA, "web.guests"), count: diff.count, draft: cloneDraft(f),
       request: { method: "PUT", url: "/api/settings/fleet/web", body: { guests: diff.body } },
       ...(empty ? { invalid: tn("grantsNoAgents") } : {}),
@@ -122,7 +120,21 @@ export function GuestsSection({ ctx, staged }) {
         else if (outcome.status === "waiting") setStatus({ kind: "waiting" });
         else setStatus({ kind: "failed", error: outcome.error || "" });
       },
-    }, true);
+    } : null);
+    // #2367 r3: an edit made while a Save of this section runs is weighed against both ends of it — what is saved if
+    // that Save lands (its draft) and if it fails (what is saved now). The shell keeps the one that came true, so the
+    // latest word stands either way (also one that puts a field back where it was before the Save).
+    const writing = typeof ctx.savingStaged === "function" ? ctx.savingStaged() : null;
+    const sent = writing && writing.get("guests");
+    if (sent && sent.draft) {
+      const applied = change(guestsBody(cloneDraft(sent.draft), f)), failed = change(guestsBody(original, f));
+      if (!applied && !failed) { ctx.unstage("guests"); return; }
+      ctx.stage("guests", { ...(applied || failed), afterSave: { applied, failed } }, true);
+      return;
+    }
+    const now = change(guestsBody(original, f));
+    if (!now) { ctx.unstage("guests"); return; }
+    ctx.stage("guests", now, true);
   }, [f, original]);
 
   const set = (patch) => { setStatus(null); setF((x) => ({ ...x, ...patch })); };

@@ -11,7 +11,7 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { api } from "./settings-confirm.js";
 import { Feedback } from "./settings-dialogs.js";
 import { DEFAULT_SCHEMA, impactOf, sameValue } from "./settings-model.js";
-import { editsOf, syncStage } from "./settings-draft.js";
+import { editsOf, keepDraft, syncStage } from "./settings-draft.js";
 import { resetWebAuthorization } from "/assets/web-authorize.js";
 import "./settings-strings.js";
 
@@ -51,11 +51,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
   // #2347: every edit is unsaved at once — kept as the draft and staged (an invalid hours box: Save waits for it).
   useEffect(() => {
     if (!f || !original || !overview || disabled || ctx.readOnly) return;
-    if (ctx.drafts) {
-      const edits = editsOf(f, original);
-      if (Object.keys(edits).length) ctx.drafts.set("verified_authority", edits);
-      else ctx.drafts.delete("verified_authority");
-    }
+    keepDraft(ctx, "verified_authority", editsOf(f, original), f);
     const bad = f.hours !== null && (!Number.isFinite(f.hours) || f.hours < overview.hours.min || f.hours > overview.hours.max);
     if (bad) { syncStage(ctx, "verified_authority", { label: tn("vaTitle"), invalid: tn("vaHoursRange") }); return; }
     const body = verifiedAuthorityBody(original, f);

@@ -27,10 +27,11 @@ export function newKey(prefix = "k") {
 /**
  * #2347 (#2367 review): the Settings writes the page does not make over the temporary public link while the fleet's
  * settings are read-only there (FLEET_READ_ONLY_OVER_PUBLIC_LINK) — every config write, its apply, a restart and a
- * reload, whichever control asks (the bar's Save, Advanced's JSON, a connection's or a key's own button). Reads, the
- * emoji preview, pausing or waking an agent and withdrawing one's own request stay.
+ * reload, whichever control asks (the bar's Save, Advanced's JSON, a connection's or a key's own button), and the older
+ * /ui routes that change fleet.yaml too (New agent, Fleet's config, deleting an agent). Reads, the emoji preview,
+ * pausing, waking, starting or stopping an agent and withdrawing one's own request stay.
  */
-const FLEET_WRITE = /^\/api\/settings\/(fleet|classic|connections|provider-secrets|secrets|apply|restart-fleet|reload|quickstart\/commit)(\/|$)/;
+const FLEET_WRITE = /^(\/api\/settings\/(fleet|classic|connections|provider-secrets|secrets|apply|restart-fleet|reload|quickstart\/commit)(\/|$)|\/ui\/(config|instances)$|\/ui\/instances\/[^/]+\/delete$)/;
 export const refusedReadOnly = (path, method = "GET") => method !== "GET" && fleetReadOnly() && FLEET_WRITE.test(String(path));
 
 /** fetch → { ok, status, body } (body null when it is not JSON). A network failure throws, as fetch does. */

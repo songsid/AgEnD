@@ -19,10 +19,13 @@ let sent: Array<{ method: string; path: string; body: any }> = [];
 let webAnswer: { status: number; body: unknown } | null = null;
 /** #2367 review: a PUT /api/settings/fleet/web held until this opens (null: answered at once). */
 let webHold: Promise<void> | null = null;
+/** #2367 r3: a read of fleet/raw held until this opens (the configuration read back slowly after a Save). */
+let rawHold: Promise<void> | null = null;
 const realFetch = (globalThis as any).fetch;
 const fakeFetch = async (path: string, init: { method?: string; body?: string } = {}) => {
   const method = init.method ?? "GET";
   sent.push({ method, path, body: init.body ? JSON.parse(init.body) : undefined });
+  if (method === "GET" && path === "/api/settings/fleet/raw" && rawHold) { const held = rawHold; rawHold = null; await held; }
   if (method === "PUT" && path === "/api/settings/fleet/web" && webHold) { const held = webHold; webHold = null; await held; }
   if (method === "PUT" && path === "/api/settings/fleet/web" && webAnswer) {
     const a = webAnswer;
@@ -46,7 +49,7 @@ const fakeFetch = async (path: string, init: { method?: string; body?: string } 
 };
 beforeAll(() => { p = page({ url: "http://127.0.0.1:19280/settings/web" }); (globalThis as any).fetch = fakeFetch; });
 afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
-beforeEach(() => { sent = []; webAnswer = null; webHold = null; p.window.confirm = () => true; (globalThis as any).confirm = () => true; });
+beforeEach(() => { sent = []; webAnswer = null; webHold = null; rawHold = null; p.window.confirm = () => true; (globalThis as any).confirm = () => true; });
 afterEach(async () => {
   await p.unmount();
   p.document.body.removeAttribute("data-public-link");
@@ -180,6 +183,82 @@ describe("Settings → Guests, as rendered (#2348)", () => {
     await w.apply(); await settle(12);
     expect([after, w.writes().map((x) => x.body)]).toEqual([[true, true],
       [{ guests: { chat: false } }, { guests: { grants: { "dc:111": { name: "Alice", instances: ["alpha", "beta"] } } } }]]);
+  });
+  it("#2367 r2: a failed Save never puts its own version back over an edit made while it ran", async () => {
+    let release!: () => void;
+    webHold = new Promise<void>((r) => { release = r; });
+    webAnswer = { status: 400, body: { error: "refused" } };
+    const w = await open();
+    await w.check(w.$("#guestsChat"), false);
+    await w.apply(); await settle(4);
+    await w.check(w.$("#guestsEnabled"), false);                    // the newer word, while the Save is held
+    release();
+    const { appStore } = await import("/assets/app-store.js");
+    for (let i = 0; i < 50 && (appStore.get() as any).settingsOp?.phase !== "failed"; i++) await settle(4);
+    await settle(12);
+    const after = [w.$("#guestsEnabled").checked, w.$("#guestsChat").checked, !!p.root.querySelector(".s-pending")];
+    const { resetOperation } = await import("/ui/js/settings-apply.js");
+    resetOperation(); webAnswer = null; await settle(4);
+    await w.apply(); await settle(12);
+    expect([after, w.writes().map((x) => x.body).slice(1)]).toEqual([[false, false, true], [{ guests: { enabled: null, chat: false } }]]);          // off is the default: null
+  });
+  for (const outcome of ["lands", "fails"] as const) {
+    it(`#2367 r3: a field put back while its Save runs keeps that latest word when the Save ${outcome}`, async () => {
+      let release!: () => void;
+      webHold = new Promise<void>((r) => { release = r; });
+      if (outcome === "fails") webAnswer = { status: 400, body: { error: "refused" } };
+      const w = await open();
+      await w.check(w.$("#guestsChat"), false);
+      await w.apply(); await settle(4);
+      await w.check(w.$("#guestsChat"), true);                       // back to what was saved before
+      if (outcome === "lands") fleet = { ...fleet, web: { guests: { ...fleet.web.guests, chat: false } } };
+      release();
+      const { appStore } = await import("/assets/app-store.js");
+      for (let i = 0; i < 50 && !["done", "failed"].includes((appStore.get() as any).settingsOp?.phase); i++) await settle(4);
+      await settle(12);
+      const after = [w.$("#guestsChat").checked, !!p.root.querySelector(".s-pending")];
+      const { resetOperation } = await import("/ui/js/settings-apply.js");
+      resetOperation(); webAnswer = null; await settle(4);
+      await w.apply(); await settle(12);
+      // Landed: chat off is saved now, so on again is one unsaved change (on is the default: null). Failed: on is what
+      // is saved, so nothing is left to save.
+      expect([after, w.writes().map((x) => x.body).slice(1)])
+        .toEqual(outcome === "lands" ? [[true, true], [{ guests: { chat: null } }]] : [[true, false], []]);
+    });
+  }
+  const elsewhere = async () => {
+    const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "general" }, navKey: "settings:general" })); await settle(8);
+  };
+  const settled = async () => {
+    const { appStore } = await import("/assets/app-store.js");
+    for (let i = 0; i < 50 && !["done", "failed"].includes((appStore.get() as any).settingsOp?.phase); i++) await settle(4);
+    await settle(12);
+  };
+  it("#2367 r3: with the section no longer shown, the shell itself keeps the end that came true (a failed Save: nothing left)", async () => {
+    let release!: () => void;
+    webHold = new Promise<void>((r) => { release = r; });
+    webAnswer = { status: 400, body: { error: "refused" } };
+    const w = await open();
+    await w.check(w.$("#guestsChat"), false);
+    await w.apply(); await settle(4);
+    await w.check(w.$("#guestsChat"), true);
+    await elsewhere();
+    release(); await settled();
+    expect(!!p.root.querySelector(".s-pending"), "on is what is saved: nothing to save").toBe(false);
+  });
+  it("#2367 r3: an edit after the Save landed, before its configuration is read back, is weighed against what landed", async () => {
+    let read!: () => void;
+    const w = await open();
+    await w.check(w.$("#guestsChat"), false);
+    rawHold = new Promise<void>((r) => { read = r; });
+    fleet = { ...fleet, web: { guests: { ...fleet.web.guests, chat: false } } };
+    await w.apply(); await settled();
+    await w.check(w.$("#guestsChat"), true);
+    await w.check(w.$("#guestsChat"), false);                      // back to what that Save wrote
+    await elsewhere();
+    read(); await settle(12);
+    expect(!!p.root.querySelector(".s-pending"), "off is what is saved now: nothing to save").toBe(false);
   });
   it("#2367 review: the real Save tells the section how it went — failed (the section says why) and waiting", async () => {
     const { appStore } = await import("/assets/app-store.js");

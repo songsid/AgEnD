@@ -3055,6 +3055,11 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
   // staging a file never wakes it. A stopped or deleted recipient must not regain an upload id.
   const deliverable = () => uploadRecipient(ctx, instance);
   const gone = () => drop(() => json(res, 404, { error: `Instance not found: ${instance}` }));
+  // #2366: a guest's scope (and whether guests may chat) is asked again at each commit point — narrowed, revoked or made
+  // read-only while the body was arriving, the upload is refused and its part file removed, as it would have been at
+  // the start. Read now: the scope is never stored (guestRequestOf's scope() is the fleet's guestScope as it is now).
+  const guestNow = () => guestChatRefusal(guestRequestOf(req), instance);
+  const refuseGuest = (r: { status: number; error: string }) => drop(() => json(res, r.status, { error: r.error }));
   req.on("end", () => {
     if (over) return;
     clocks();
@@ -3062,11 +3067,15 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
     const name = displayName(typeof req.headers["x-agend-filename"] === "string" ? req.headers["x-agend-filename"] : "", "file");
     const type = sniffer.result(name);
     if (!type) { drop(() => json(res, 415, { error: "the file is empty" })); return; }
+    const refusedAtEnd = guestNow();
+    if (refusedAtEnd) { refuseGuest(refusedAtEnd); return; }
     if (!deliverable()) { gone(); return; }
     out.end(() => {
       if (over) return;
       // The write's finish is another wait (Prism #1941 P2-1): the session or the public link may have ended in it.
       if (!permitWebContinuation(req, res, ctx)) { drop(); return; }
+      const refusedAtFinish = guestNow();                     // #2366: and the guest's scope may have changed in it
+      if (refusedAtFinish) { refuseGuest(refusedAtFinish); return; }
       if (!deliverable()) { gone(); return; }
       over = true;
       try {
