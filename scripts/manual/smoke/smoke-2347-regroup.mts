@@ -26,7 +26,14 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   if (c.device === "desk") ok("leftColumn", nav.left);
   ok("noSideScroll", !nav.overflowX);
   await p.page.screenshot({ path: shotPath("2347g", c as any, "1-agents") });
-  for (const s of SECTIONS) { await go(`/settings/${s}`); ok(`drawn:${s}`, (await p.page.locator(".p-settings .panel-body .col").count()) === 1); }
+  for (const s of SECTIONS) {
+    await go(`/settings/${s}`);
+    ok(`drawn:${s}`, (await p.page.locator(".p-settings .panel-body .col").count()) === 1);
+    // The section shown is in view in the nav (on a phone, a row that scrolls sideways).
+    const seen = await p.page.evaluate(`(() => { const a = document.querySelector(".s-nav .seg-item.active"), n = document.querySelector(".s-nav");
+      const ar = a.getBoundingClientRect(), nr = n.getBoundingClientRect(); return ar.left >= nr.left - 1 && ar.right <= nr.right + 1; })()`);
+    ok(`activeInView:${s}`, seen === true);
+  }
   await go("/settings/access");
   await p.page.screenshot({ path: shotPath("2347g", c as any, "2-access") });
   await go("/settings/general");

@@ -375,6 +375,12 @@ export function SettingsPanel({ route, navKey }) {
     : section === "web-dashboard" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="dashboard" /><${AppearanceSection} ...${you} part="dashboard" />`
     : section === "access" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="access" />`
     : html`<${Developer} ctx=${ctx} /><${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="readonly" />`;
+  // #2347: on a phone the sections are one row that scrolls sideways: the one shown is brought into it.
+  useEffect(() => {
+    const item = typeof document !== "undefined" ? document.querySelector(".s-nav .seg-item.active") : null;
+    const row = item && item.closest ? item.closest(".s-nav") : null;
+    if (row && row.scrollWidth > row.clientWidth && typeof item.scrollIntoView === "function") item.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [section]);
   // #2347: a place in a section (`/settings/chat#classicbot`, an old /settings/classic link): there, once it is drawn.
   useEffect(() => {
     const id = (typeof location !== "undefined" && location.hash ? location.hash.slice(1) : "");
