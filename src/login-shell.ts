@@ -12,7 +12,7 @@
  * something still holds the pipe after the shell is gone. A background child that let go of the pipe is left alone,
  * as it always was.
  */
-import { spawn } from "node:child_process";
+import { spawn } from "./child-process.js";
 
 /** How long the login shell may take, as before. */
 export const LOGIN_SHELL_TIMEOUT_MS = 10_000;

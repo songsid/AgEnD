@@ -412,7 +412,8 @@ async function restartFleetIfRunning(): Promise<void> {
   try { process.kill(parseInt(readFileSync(pidPath, "utf-8").trim(), 10), 0); }
   catch { return; } // stale pid / not running
   console.log(`\n  Fleet is running. Restarting to apply changes...`);
-  const { execSync, spawn } = await import("node:child_process");
+  const { execSync } = await import("node:child_process");
+  const { spawn } = await import("./child-process.js");
   try {
     execSync("systemctl --user is-active com.agend.fleet", { stdio: "pipe" });
     execSync("systemctl --user restart com.agend.fleet", { stdio: "pipe" });
@@ -706,7 +707,8 @@ export async function runQuickstart(): Promise<void> {
           try {
             process.kill(pid, 0); // check alive
             console.log(`\n  Fleet is running. Restarting to apply new channel...`);
-            const { execSync, spawn } = await import("node:child_process");
+            const { execSync } = await import("node:child_process");
+            const { spawn } = await import("./child-process.js");
             let usedSystemd = false;
             try {
               execSync("systemctl --user is-active com.agend.fleet", { stdio: "pipe" });

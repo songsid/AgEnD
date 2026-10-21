@@ -41,7 +41,7 @@
  * the release's "SHA256 Checksums", one download checked against them.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn } from "../child-process.js";
 import { createReadStream } from "node:fs";
 import { chmod, lstat, mkdir, open, readFile, rename, rm, stat, writeFile, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";

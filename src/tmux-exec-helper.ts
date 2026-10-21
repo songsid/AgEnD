@@ -18,7 +18,8 @@
 // would fail though they ran): it gets no more calls, its stdin is ended, and it exits once they have answered.
 // A helper that is not running, or not trusted, is not used: the call goes direct, as before. Only the fleet starts
 // and restarts the helper (start/maintain, from its own lifecycle and timer), never a tool handler.
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { execFile, spawn } from "./child-process.js";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";

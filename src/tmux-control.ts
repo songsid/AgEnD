@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { spawn } from "./child-process.js";
 import { EventEmitter } from "node:events";
 import { StringDecoder } from "node:string_decoder";
 import { randomUUID } from "node:crypto";

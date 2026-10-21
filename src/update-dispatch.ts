@@ -7,7 +7,7 @@
  *
  * Runs on the fleet's event loop: every step is async and bounded.
  */
-import { execFile } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";

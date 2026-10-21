@@ -27,7 +27,7 @@
  * loses the first line; placeholder + respawn does not).
  */
 import { EventEmitter } from "node:events";
-import { execFile } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdtempSync, openSync, rmSync, readFileSync, unlinkSync, constants as fsConstants } from "node:fs";
 import { Socket as NetSocket } from "node:net";

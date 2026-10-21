@@ -6,15 +6,22 @@ import type { ChildProcess } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const spawned = vi.hoisted(() => [] as ChildProcess[]);
+const firstOutput = vi.hoisted(() => [] as Promise<unknown>[]);
 vi.mock("node:child_process", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:child_process")>();
-  return { ...real, spawn: vi.fn((...args: Parameters<typeof real.spawn>) => { const c = real.spawn(...args); spawned.push(c); return c; }) };
+  return { ...real, spawn: vi.fn((...args: Parameters<typeof real.spawn>) => {
+    const c = real.spawn(...args);
+    spawned.push(c);
+    firstOutput.push(new Promise(r => c.stdout?.once("data", r)));   // heard from the start: none of it is missed
+    return c;
+  }) };
 });
 
 const { runOnLoginShell } = await import("../src/login-shell.js");
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
 afterEach(() => {
+  firstOutput.length = 0;
   for (const c of spawned.splice(0)) if (c.pid !== undefined) try { process.kill(-c.pid, "SIGKILL"); } catch { /* gone */ }
 });
 
@@ -26,7 +33,8 @@ describe("#2243 the login shell's stdout pipe", () => {
       const pending = runOnLoginShell("printf /usr/bin/sh; sleep 30", { shell: "sh", env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, timeoutMs: 20_000 });
       await vi.waitFor(() => expect(spawned).toHaveLength(1));
       const child = spawned[0];
-      await new Promise(r => setTimeout(r, 50));
+      // #2374 (Prism on #2373): the pipe fails only once partial output has been read, so the discard is what's tested.
+      await firstOutput[0];
       child.stdout!.destroy(Object.assign(new Error("read EIO"), { code: "EIO" }));
       const started = performance.now();
       const r = await pending;

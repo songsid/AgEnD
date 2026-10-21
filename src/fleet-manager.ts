@@ -3230,7 +3230,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const chatId = String(this.getChannelConfig(adapterId)?.group_id ?? data.channelId);
       this.beginUpdateProgress(adapter, chatId, data.channelId, messageId);
     }
-    const { spawn } = await import("node:child_process");
+    const { spawn } = await import("./child-process.js");
     // Plain `agend update`: the CLI picks the channel from the version it is about to replace (a beta install
     // stays on beta). Deciding here, from the package.json next to THIS code, read a source checkout's 1.22.0 as
     // "not a beta" and sent a beta install to @latest. #1450 C5: the INSTALLED agend, verified, by absolute path.
@@ -8643,7 +8643,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             // means we cannot verify the pane, which is treated as dead (the same
             // conclusion the old code reached only by throwing).
             try {
-              const { execFile } = await import("node:child_process");
+              const { execFile } = await import("./child-process.js");
               const { promisify } = await import("node:util");
               const { getTmuxSocketName } = await import("./paths.js");
               // Honour socket isolation: without -L this queried the user's default
@@ -12866,7 +12866,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
     const backend = this.fleetConfig?.defaults?.backend || "claude-code";
     try {
-      const { execFile } = await import("node:child_process");
+      const { execFile } = await import("./child-process.js");
       const { promisify } = await import("node:util");
       // execFile with an argv array — no shell, so the backend name cannot be
       // interpreted as a command even if config is malformed.
@@ -21773,7 +21773,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // up to 15s each, and on a beta build BOTH ran — 30s with no WATCHDOG ping,
       // past WatchdogSec's half-interval and enough for systemd to SIGABRT the fleet
       // for a background version check.
-      const { execFile } = await import("node:child_process");
+      const { execFile } = await import("./child-process.js");
       const { promisify } = await import("node:util");
       const execFileP = promisify(execFile);
       const npmVersion = async (spec: string): Promise<string> => {

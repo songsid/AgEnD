@@ -21,7 +21,7 @@
 import { readFile, writeFile, access, constants } from "node:fs/promises";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
-import { execFile } from "node:child_process";
+import { execFile } from "../child-process.js";
 import { getAgendHome } from "../paths.js";
 import { loadFleetConfig } from "../config.js";
 import { classicProfile, profileName, readClassicBindings, type ClassicBinding } from "../classic-bindings.js";
