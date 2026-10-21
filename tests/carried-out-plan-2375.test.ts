@@ -42,8 +42,8 @@ function planned() {
   const out = refreshLaunchdWithoutActivating({ label: "com.agend.fleet", target: TARGET, plistPath: PLIST, newPlist: plist(NEW), expected: { node: RT, entry: ENTRY }, pkgDir: PKG, agendHome: HOME }, deps);
   expect(out).toMatchObject({ ok: true, planned: true });
   removed.length = 0;
-  // Only a read and a print: pendingPlan may not write, delete or move anything.
-  const restartDeps = { readFile: deps.readFile, run: deps.run };
+  // The deps `agend restart` really has (planDeps: it can write and delete): any removal pendingPlan made would show.
+  const restartDeps = deps;
   return { files, removed, deps, restartDeps, load: (next: Partial<CommandResult>) => { loaded = next; } };
 }
 
@@ -64,7 +64,7 @@ describe("pendingPlan (#2375)", () => {
     const RT2 = `${OTHER}/node_modules/@songsid/agend-node-darwin-arm64/bin/node`, ENTRY2 = `${OTHER}/dist/cli.js`;
     let published = "";
     const interleaved = {
-      readFile: w.restartDeps.readFile,
+      ...w.deps,
       run: (c: string, a: string[]) => {
         if (!published) {                                              // during pendingPlan's launchctl print: install B
           const out = refreshLaunchdWithoutActivating({ label: "com.agend.fleet", target: TARGET, plistPath: PLIST, newPlist: plist([RT2, ENTRY2, "fleet", "start"]), expected: { node: RT2, entry: ENTRY2 }, pkgDir: OTHER, agendHome: HOME },
@@ -77,6 +77,7 @@ describe("pendingPlan (#2375)", () => {
     };
     expect(pendingPlan(HOME, TARGET, interleaved)).toBeNull();          // A's answer, judged on what it read
     expect(w.files[PLAN]).toBe(published);                              // B's record is still there…
+    expect(w.removed).toEqual([PLAN]);                                  // (B's own refresh revoked A; nothing else removed)
     expect(pendingPlan(HOME, TARGET, w.restartDeps)).toMatchObject({ plistPath: PLIST, sha256: expect.any(String) });   // …and pending
     expect(JSON.parse(published).sha256).not.toBe(undefined);
   });
