@@ -451,6 +451,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 /* The search never makes the nav wider than its column or row (a flex item's min-content would: a long config key). */
 .s-find, .s-find-results, .s-find-group { min-width: 0; max-width: 100%; }
 .s-find .s-search { width: 100%; box-sizing: border-box; min-width: 0; }
+.s-find .s-search input { text-overflow: ellipsis; }
 .s-find-results { max-height: min(60vh, 420px); overflow-y: auto; margin-top: var(--s-1);
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s-1) 0; }
 .s-find-head { padding: var(--s-2) var(--s-3) var(--s-1); font-size: var(--fs-xs); color: var(--text-2); }
