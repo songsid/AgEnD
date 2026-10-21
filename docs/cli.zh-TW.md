@@ -2,14 +2,14 @@
 
 ## 聊天指令（Telegram fleet 選單／Discord slash）
 
-Telegram fleet 選單列出 22 個指令，ClassicBot 選單列出 11 個；Discord 註冊 28 個 slash 名稱。列出的是 `/web`；`/dashboard` 仍是可打字的別名，不在 Telegram 選單或 Discord slash 清單裡。Telegram 也處理未列入選單的 `/cancel`、`/save`。🔒 代表該範圍的管理員；所屬 fleet／ClassicBot 身分及平台差異請見[指令參考](commands.md)。選單與鎖頭由 `src/command-table.ts` 產生。
+Telegram fleet 選單列出 23 個指令，ClassicBot 選單列出 11 個；Discord 註冊 29 個 slash 名稱。主要指令是 `/web`；`/dashboard` 仍列在選單／slash 上，說明為「已棄用 — 請用 /web」，執行時先印一行提示再跑 `/web`。Telegram 也處理未列入選單的 `/cancel`、`/save`。🔒 代表該範圍的管理員；所屬 fleet／ClassicBot 身分及平台差異請見[指令參考](commands.md)。選單與鎖頭由 `src/command-table.ts` 產生。
 
 
 | 指令 | 描述 | 選項 / 參數 | 權限 |
 |---------|-------------|----------------|------------|
 | `/status` | Fleet 表格：Backend、Model、Context、推理強度、花費、執行狀態 | — | 🔒 管理員 |
 | `/sysinfo` | 詳細系統診斷（版本、負載、IPC 狀態、各 backend CLI 版本）；Telegram 另可用 `/sys-info`、`/sys_info` | — | 所有人 |
-| `/web` (`/dashboard` 別名) | 開啟登入選單，按登入按鈕才會私送一次性登入碼。Discord 私訊失敗可改用僅自己可見的回覆；Telegram 私送被拒時會說明如何先私訊啟動 bot。`/web revoke` 登出所有瀏覽器 | `[revoke]` | 🔒 管理員 |
+| `/web` (`/dashboard` 別名) | 開啟登入選單，按登入按鈕才會私送一次性登入碼。Discord 私訊失敗可改用僅自己可見的回覆；Telegram 私送被拒時會說明如何先私訊啟動 bot。`/web revoke` 登出所有瀏覽器。`/dashboard` 列為已棄用，會先印提示再做同一件事 | `[revoke]` | 🔒 管理員 |
 | `/backend` | 切換 fleet instance 的 backend；ClassicBot 用設定頁或 `classicBot.yaml` | 名稱或選單 | 🔒 管理員 |
 | `/visibility` | 跨 instance 訊息顯示方式 | `full\|summary\|hidden`；Telegram 限 General | 🔒 管理員 |
 | `/profile` | 在 General 錄製執行中 fleet 的 CPU profile（預設 60 秒，上限 1,800 秒） | `[seconds]` | 🔒 管理員 |

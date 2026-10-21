@@ -2,7 +2,7 @@
 
 [English](command-surface.md) · [指令參考](commands.md) · [准入與憑證](permissions.md)
 
-數量對照 main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`：28 條命令規則、Telegram fleet／Classic 選單 22／11 項、Discord 28 個 slash 名稱（列出 `/web`；`/dashboard` 是可打字的別名）。下方固定連結保留原始授權稽核；目前數量取代當時的 27 與 21／10。
+數量對照 main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`：28 條命令規則、Telegram fleet／Classic 選單 23／11 項、Discord 29 個 slash 名稱（`/web` 為主；`/dashboard` 列為已棄用）。下方固定連結保留原始授權稽核；目前數量取代當時的 27 與 21／10。
 
 ## 儲存格怎麼讀
 
@@ -18,7 +18,7 @@
 - `R(C)` / `R(F)`：未註冊 chat 的 handler 先檢查 C／F，再回沒有 agent；未註冊時 C 單獨不能通過 F-or-C helper。
 - `*`：不帶 mode 的 `/tips` 是資訊命令；變更設定的 mode 另需 F。
 
-✓ 是設定會註冊的選單，不是授權。所有 H 格仍受 backend 能力、參數、生命週期及來源限制。Telegram 選單註冊在整個 forum chat，因此 General 與 instance topic 共用建議。Discord 每個 bot 全域註冊 28 個 slash 名稱（列出 `/web`；`/dashboard` 只能打字）；平台註冊失敗可能留下舊選單。
+✓ 是設定會註冊的選單，不是授權。所有 H 格仍受 backend 能力、參數、生命週期及來源限制。Telegram 選單註冊在整個 forum chat，因此 General 與 instance topic 共用建議。Discord 每個 bot 全域註冊 29 個 slash 名稱（`/web` 與已棄用的 `/dashboard`）；平台註冊失敗可能留下舊選單。
 
 ## Discord native slash
 
@@ -119,7 +119,7 @@
 
 ## 別名
 
-`/web` 是列出的名稱，`/dashboard` 保留為可打字的別名（#1569／#2359）。兩者是命令表裡的同一列，也就是兩張表裡上面 `/web` 的 cell：同樣的權限、同樣的停用回覆、同樣的拒絕訊息，也同樣支援 `revoke`。Discord 只註冊 `/web`。Telegram fleet 選單只列出 `/web`。
+`/web` 是主要名稱，`/dashboard` 仍列在選單上並標為已棄用（#1569／#2359）。兩者是命令表裡的同一列，也就是兩張表裡上面 `/web` 的 cell：同樣的權限、同樣的停用回覆、同樣的拒絕訊息，也同樣支援 `revoke`。Discord 註冊兩個 slash 名稱；Telegram fleet 選單兩個都列出。`/dashboard` 的選單／slash 說明是「已棄用 — 請用 /web」。執行 `/dashboard` 會先印這行提示，再做 `/web` 會做的事。
 
 ## 維護矩陣
 

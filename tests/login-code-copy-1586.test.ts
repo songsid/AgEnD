@@ -229,7 +229,7 @@ describe("#1586 review (Prism r1): the follow-up's wait never outlives the owner
     if (demote) h.owner.access.allowed_users = ["admin2"];
     release(); await slash; await flush();
     expect(h.s.webLoginCodes.hasOutstandingCode).toBe(!demote);
-    expect(h.respond).toHaveBeenLastCalledWith(t(demote ? "dashboard.private_failed" : "dashboard.private_sent_dm"));
+    expect(h.respond).toHaveBeenLastCalledWith(`${t("dashboard.deprecated")}\n\n${t(demote ? "dashboard.private_failed" : "dashboard.private_sent_dm")}`);
   });
 
   it("a follow-up that never answers, with the clock already past the delivery's budget: the DM stands and is reported sent", async () => {
@@ -242,7 +242,7 @@ describe("#1586 review (Prism r1): the follow-up's wait never outlives the owner
     mono = 10_001;                                   // an event-loop stall: the 10 s delivery budget is spent
     await vi.advanceTimersByTimeAsync(5_000); await slash; await flush();
     expect(h.s.webLoginCodes.hasOutstandingCode).toBe(true);
-    expect(h.respond).toHaveBeenLastCalledWith(t("dashboard.private_sent_dm"));
+    expect(h.respond).toHaveBeenLastCalledWith(`${t("dashboard.deprecated")}\n\n${t("dashboard.private_sent_dm")}`);
   });
 });
 

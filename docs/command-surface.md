@@ -2,7 +2,7 @@
 
 [繁體中文](command-surface.zh-TW.md) · [Command reference](commands.md) · [Admission and credentials](permissions.md)
 
-Counts checked against main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`: 28 command rules, 22/11 Telegram fleet/Classic menu entries, and 28 Discord slash names (`/web` listed; `/dashboard` is a typed alias). The pinned links below preserve the original authorization audit; current registration counts supersede its old 27 and 21/10 counts.
+Counts checked against main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`: 28 command rules, 23/11 Telegram fleet/Classic menu entries, and 29 Discord slash names (`/web` primary; `/dashboard` listed as deprecated). The pinned links below preserve the original authorization audit; current registration counts supersede its old 27 and 21/10 counts.
 
 ## Reading a cell
 
@@ -18,7 +18,7 @@ Counts checked against main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`: 28 comma
 - `R(C)` / `R(F)`: the real unregistered-chat handler checks C / F first, then finds no agent. C alone does not pass the F-or-C helper without a registration.
 - `*`: `/tips` without a mode is informational; settings-changing modes require F.
 
-✓ is the configured menu entry, not a runtime grant. Backend support, arguments, lifecycle state and source checks still apply to every H cell. Telegram G/T menus are registered on the whole forum chat, so General and instance topics share their suggestions. Discord registers 28 slash names globally for each bot (`/web` listed; `/dashboard` is typed only); platform registration failure may leave an older menu.
+✓ is the configured menu entry, not a runtime grant. Backend support, arguments, lifecycle state and source checks still apply to every H cell. Telegram G/T menus are registered on the whole forum chat, so General and instance topics share their suggestions. Discord registers 29 slash names globally for each bot (`/web` and deprecated `/dashboard`); platform registration failure may leave an older menu.
 
 ## Discord native slash
 
@@ -119,7 +119,7 @@ Source: `src/fleet-manager.ts:10443`, `:11592`, `:14413`, `:14719`, `:11126`. St
 
 ## Aliases
 
-`/web` is the listed name; `/dashboard` remains a typed alias (#1569 / #2359). They share one command-table row, shown as `/web` in both tables above: the same gate, the same disabled reply, the same refusals and the same `revoke` subcommand. Discord registers `/web` only. The Telegram fleet menu lists `/web` only.
+`/web` is the primary name; `/dashboard` stays listed as deprecated (#1569 / #2359). They share one command-table row, shown as `/web` in both tables above: the same gate, the same disabled reply, the same refusals and the same `revoke` subcommand. Discord registers both slash names; Telegram's fleet menu lists both. `/dashboard`'s menu/slash description is “Deprecated — use /web”. Running `/dashboard` prints that notice, then does what `/web` does.
 
 ## Maintaining the matrix
 

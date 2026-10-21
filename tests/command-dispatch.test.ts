@@ -392,12 +392,13 @@ describe("the lock emoji is generated from the table", () => {
     expect(block).not.toContain("🔒");
     const registered = [...block.matchAll(/name: "(\w+)", description: (?:withFleetLabel\()?slashLock\("(\w+)"\)/g)];
     for (const [, name, locked] of registered) expect(locked).toBe(name);
-    // #2359: Discord registers the public alias (/web) and not the canonical slash name (/dashboard).
+    // #2359: Discord registers /web (primary) and /dashboard (listed, deprecated).
     const aliases = Object.entries(COMMAND_ALIASES).filter(([, target]) => COMMANDS.find(c => c.name === target)?.slash);
-    const listed = COMMANDS.filter(c => c.slash).map(c => c.name).filter(n => !aliases.some(([, target]) => target === n));
-    expect(registered.map(m => m[1]).sort()).toEqual([...listed, ...aliases.map(([alias]) => alias)].sort());
+    expect(registered.map(m => m[1]).sort()).toEqual(
+      [...COMMANDS.filter(c => c.slash).map(c => c.name), ...aliases.map(([alias]) => alias)].sort(),
+    );
     expect(registered.map(m => m[1])).toContain("web");
-    expect(registered.map(m => m[1])).not.toContain("dashboard");
+    expect(registered.map(m => m[1])).toContain("dashboard");
   });
 
   it("every reply a refusal can use exists in both languages", () => {

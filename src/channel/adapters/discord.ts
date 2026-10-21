@@ -1222,9 +1222,17 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           },
           { name: "status", description: slashLock("status") + t("slash.status") },
           { name: "sysinfo", description: slashLock("sysinfo") + t("slash.sysinfo") },
-          // #1569 / #2359: /web is the listed slash name; /dashboard stays a typed alias of the same row.
+          // #1569 / #2359: /web is the primary slash; /dashboard stays listed as deprecated (same options, same row).
           {
             name: "web", description: slashLock("web") + t("slash.web"),
+            options: [{
+              name: "action", description: t("slash.option.dashboard_action"),
+              type: ApplicationCommandOptionType.String, required: false,
+              choices: [{ name: "revoke", value: "revoke" }],
+            }],
+          },
+          {
+            name: "dashboard", description: slashLock("dashboard") + t("slash.dashboard"),
             options: [{
               name: "action", description: t("slash.option.dashboard_action"),
               type: ApplicationCommandOptionType.String, required: false,

@@ -4615,6 +4615,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async dispatchSlashCore(slash: ClassicStartSlashData, adapterId: string, adapter: ChannelAdapter): Promise<void> {
     // #1569: an alias (/web) is its command (/dashboard) from here on — the door, the table and the handler see one name.
     const data: ClassicStartSlashData = { ...slash, command: canonicalCommand(slash.command) };
+    // #2359: /dashboard stays listed; prefix its reply with the deprecation notice, then run /web's handler.
+    const noteDeprecatedDashboard = () => {
+      if (slash.command !== "dashboard") return;
+      const prefix = `${t("dashboard.deprecated")}\n\n`;
+      const respond = data.respond;
+      data.respond = async (text: string) => respond(prefix + text);
+      if (data.respondButtons) {
+        const respondButtons = data.respondButtons;
+        data.respondButtons = async (text, choices) => respondButtons(prefix + text, choices);
+      }
+    };
     const door = this.slashDoor(data, adapterId);
     if ("refusal" in door) {
       await data.respond(t(door.refusal)).catch(() => { /* the interaction may already be gone */ });
@@ -4625,6 +4636,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // — before the table, which keeps /web for fleet admins. Per account: it touches no instance binding.
     // Decided synchronously, so an admin's /web still reaches the table with no await after the door (#1399).
     if (data.command === "dashboard" && this.isGuestWebAsk(adapterId, data.userId)) {
+      noteDeprecatedDashboard();
       await this.guestWebCommand({ adapterId, userId: data.userId, username: data.username,
         arg: String(data.options?.action ?? "").trim().toLowerCase(), replyHere: text => data.respond(text), replyPrivately: text => data.respond(text) });
       return;
@@ -4653,6 +4665,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await data.respond(reply).catch(() => { /* the interaction may already be gone */ });
       return;
     }
+
+    noteDeprecatedDashboard();
 
     if (data.command === "start") {
       await this.handleClassicStartSlash(data, adapterId);

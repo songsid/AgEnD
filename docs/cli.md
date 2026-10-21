@@ -2,13 +2,13 @@
 
 ## Chat commands (Telegram fleet menu / Discord slash)
 
-The Telegram fleet menu lists 22 commands; the ClassicBot menu lists 11. Discord registers 28 slash names. `/web` is the listed name; `/dashboard` stays a typed alias and is not in the Telegram menu or the Discord slash list. `/cancel` and `/save` are also handled when typed on Telegram, outside its menus. 🔒 requires an admin for that scope; see [commands.md](commands.md) for the owning fleet/ClassicBot roles and platform details. The menus and locks come from `src/command-table.ts`.
+The Telegram fleet menu lists 23 commands; the ClassicBot menu lists 11. Discord registers 29 slash names. `/web` is the primary command; `/dashboard` stays listed as deprecated (menu/slash description “Deprecated — use /web”) and still runs `/web` after a one-line notice. `/cancel` and `/save` are also handled when typed on Telegram, outside its menus. 🔒 requires an admin for that scope; see [commands.md](commands.md) for the owning fleet/ClassicBot roles and platform details. The menus and locks come from `src/command-table.ts`.
 
 | Command | Description | Options / args | Permission |
 |---------|-------------|----------------|------------|
 | `/status` | Fleet table with Backend, Model, Ctx, Effort, Cost and State columns | — | 🔒 admin |
 | `/sysinfo` | Show detailed system diagnostics (version, load, IPC status, each backend CLI's version); also `/sys-info`, `/sys_info` on Telegram | — | All |
-| `/web` (`/dashboard` alias) | Open the web sign-in menu, then press a login button to get a private one-time code. Discord uses DM with an ephemeral fallback; Telegram DM refusal explains how to start the bot privately. `/web revoke` (on Discord, the `action: revoke` option) signs every browser out | `[revoke]` | 🔒 admin |
+| `/web` (`/dashboard` alias) | Open the web sign-in menu, then press a login button to get a private one-time code. Discord uses DM with an ephemeral fallback; Telegram DM refusal explains how to start the bot privately. `/web revoke` (on Discord, the `action: revoke` option) signs every browser out. `/dashboard` is listed as deprecated and prints a notice, then does the same | `[revoke]` | 🔒 admin |
 | `/backend` | Switch a fleet instance’s backend; ClassicBot uses Settings or `classicBot.yaml` | Backend name or menu | 🔒 admin |
 | `/visibility` | Set cross-instance message visibility | `full\|summary\|hidden`; Telegram General only | 🔒 admin |
 | `/profile` | Record the running fleet’s CPU profile in General (default 60 s, max 1,800 s) | `[seconds]` | 🔒 admin |
