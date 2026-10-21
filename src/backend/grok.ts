@@ -281,12 +281,18 @@ export class GrokBackend implements CliBackend {
     // auth flow uses a second-opinion check rather than a bare pattern match.
     return [
       {
-        // 429: "┃  Retry failed: rate_limit_error: …" (1.0.60)
-        //      "┃  Retry failed: Some resource has been exhausted: Your team has exceeded\n  ┃  its rate limit. …" (1.0.52, wraps at 80 col)
-        // Anchored on ┃ + "Retry failed:" to prevent false-positives from agent code.
-        // The content check (rate limit / rate_limit_error) is not anchored because the
-        // actual rate-limit text may wrap to the next ┃ line at narrow terminal widths.
-        pattern: /^[ \t]*┃[ \t]+Retry failed:[\s\S]{0,400}?(?:rate.?limit|rate_limit_error)/im,
+        // 429: two confirmed formats (fixtures in tests/fixtures/grok-1.0.60-audit/):
+        //   1.0.60: "┃  Retry failed: rate_limit_error: Rate limit exceeded"
+        //   1.0.52: "┃  Retry failed: Some resource has been exhausted: Your team has exceeded\n  ┃  its rate limit. Please try again later."
+        //
+        // The 1.0.52 form wraps at 80 columns onto a continuation ┃ line.
+        // The content check allows at most one such continuation (same-line ┃ prefix),
+        // so unrelated pane content after the Retry block cannot be matched.
+        //
+        // Pattern: start on a ┃ line with "Retry failed:", then either:
+        //   a) rate-limit keyword on the same line (1.0.60), or
+        //   b) a single ┃-bordered continuation line containing the keyword (1.0.52 80-col)
+        pattern: /^[ \t]*┃[ \t]+Retry failed:[ \t]+(?:.*(?:rate.?limit|rate_limit_error)|[^\n]*\n[ \t]*┃[ \t]+(?:.*?(?:rate.?limit|rate_limit_error)))/im,
         type: "rate_limit",
         action: "failover",
         message: "Grok rate limit reached",
