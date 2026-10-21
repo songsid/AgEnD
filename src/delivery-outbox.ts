@@ -1,3 +1,4 @@
+import { initializeSeenPeople, isSeenPerson, listSeenPeople, noteSeenPerson, pruneSeenPeople, SEEN_PEOPLE_KEEP_DAYS, type SeenPerson } from "./guest-seen-people.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
@@ -711,6 +712,7 @@ export class DeliveryOutbox extends EventEmitter {
     `);
     this.migrateReplyObligationExpiry();
     initializeHumanReceipts(this.db);
+    initializeSeenPeople(this.db);                                  // #2348: Settings → Guests' people (after the receipts: its backfill reads them)
     // Additive migration: existing Phase 1 databases keep their row identities,
     // foreign keys, and WAL while gaining reconciliation evidence columns.
     this.ensureColumn("deliveries", "reconciliation_pending", "INTEGER NOT NULL DEFAULT 0");
@@ -1165,8 +1167,19 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   createHumanReceipt(input: { targetInstance: string; originalBody: string; origin: HumanOrigin; inputKind: string; managerBootId: string }): HumanReceiptRow {
-    return createHumanReceipt(this.db, input);
+    const row = createHumanReceipt(this.db, input);
+    // #2348: a platform sender (never the web, never a bot: nativeHumanOrigin) is someone an admin may grant guest access.
+    const o = input.origin;
+    if ((o.platform === "discord" || o.platform === "telegram") && o.adapter_id && o.user_id) {
+      try { noteSeenPerson(this.db, { adapterId: o.adapter_id, userId: o.user_id, username: o.username, instance: input.targetInstance, at: row.created_at }); }
+      catch { /* the receipt is the evidence; the picker's list may miss one sender */ }
+    }
+    return row;
   }
+
+  /** #2348: the people seen in chat, for Settings → Guests (admin only), and whether one was. */
+  seenPeople(limit?: number): SeenPerson[] { return listSeenPeople(this.db, limit); }
+  isSeenPerson(adapterId: string, userId: string): boolean { return isSeenPerson(this.db, adapterId, userId); }
   /** #1939 §10: the highest epoch a stored receipt carries (authority-state.ts must not be behind it). */
   maxWebAuthorityEpoch(): number { return maxWebAuthorityEpoch(this.db); }
   /** #2122: delivered messages per instance and UTC hour in [from, to). */
@@ -1953,6 +1966,8 @@ export class DeliveryOutbox extends EventEmitter {
 
     // #2122: delivered-message counts are kept as long as the usage rollup (400 days), whatever `days` is.
     pruneMessageHours(this.db, Date.now() - 400 * 24 * 60 * 60_000);
+    // #2348: the people seen in chat, the same 400 days since last seen.
+    try { pruneSeenPeople(this.db, new Date(Date.now() - SEEN_PEOPLE_KEEP_DAYS * 24 * 60 * 60_000).toISOString()); } catch { /* next pass */ }
     // Human rows are evidence only: retention never schedules or retries them.
     for (;;) {
       if (!this.db.open) break;

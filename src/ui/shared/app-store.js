@@ -37,7 +37,9 @@ export function guestPage() {
 /**
  * #2347 (leader's default, for the user to confirm): over the temporary public link the fleet's settings are read-only —
  * Settings never offers Save for them there, and the restart banner says a restart is waiting without offering one. The
- * one switch for both.
+ * one switch for both. It is the page's policy: the server refuses Web, Guests and Web authority writes over the link,
+ * and takes the other fleet writes from an admin's session, so every Settings write the page makes checks it
+ * (settings-confirm.js api, settings-apply.js startOperation).
  */
 export const FLEET_READ_ONLY_OVER_PUBLIC_LINK = true;
 export const overPublicLink = () => typeof document !== "undefined" && document.body?.dataset?.publicLink === "1";

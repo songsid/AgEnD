@@ -254,6 +254,48 @@ describe("#2347: one save model — an edit is unsaved at once, the bar's Save w
     await settle(10);
     expect([saved, p.root.querySelector("#g-ll").value, rowClass("#g-ll"), !!bar()]).toEqual([true, "warn", "field", false]);
   });
+  it("#2367 review: edits made while a Save runs (this section's and another's) outlive it — it writes what it had", async () => {
+    const g = gate<{ body: unknown }>();
+    let sent: any = null;
+    routes.push((r) => (r.method === "PUT" && r.url === "/api/settings/fleet/defaults" && !sent ? (sent = r.body, g.p) : undefined));
+    routes.push((r) => (sent && r.method === "GET" && r.url === "/api/settings/fleet/raw" ? { body: { ...structuredClone(FLEET), defaults: { backend: "claude-code", auto_pause_after: 1, model: "other-admins-model" } } } : undefined));
+    await general();
+    await type("#g-auto", "1");
+    save().click(); await settle(4);
+    await type("#g-auto", "2");                                   // the form stays editable while the write is held
+    await mount("web", "settings:web|1|en"); await settle(6);
+    const log = p.root.querySelector("#webLogTab"); const logWas = log.checked; log.checked = !logWas; fire(log, "change"); await settle(4);
+    await mount("general", "settings:general|2|en"); await settle(6);
+    g.open({ body: { ok: true } });
+    await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 6000 });
+    await settle(12);
+    const after = [sent, p.root.querySelector("#g-auto").value, rowClass("#g-auto"), bar()?.textContent.includes("2 unsaved change(s)")];
+    await mount("web", "settings:web|2|en"); await settle(6);
+    expect([...after, p.root.querySelector("#webLogTab").checked === !logWas]).toEqual([{ auto_pause_after: 1 }, "2", "field s-dirty", true, true]);
+    // A kept draft is only its edits: a field never touched shows what is saved now (here another admin's model), and
+    // the next Save sends only the edit.
+    await mount("general", "settings:general|3|en"); await settle(6);
+    const model = p.root.querySelector("#g-model").value;
+    save().click(); await settle(4);
+    await vi.waitFor(() => expect(writes().filter((r) => r.url === "/api/settings/fleet/defaults")).toHaveLength(2), { timeout: 6000 });
+    expect([model, writes().filter((r) => r.url === "/api/settings/fleet/defaults")[1].body]).toEqual(["other-admins-model", { auto_pause_after: 2 }]);
+  });
+  it("#2367 review: over the public link Advanced offers no JSON edit, and no other control writes (startOperation, api)", async () => {
+    p.document.body.setAttribute("data-public-link", "1");
+    try {
+      await mount("advanced", "settings:advanced|1|en"); await settle(6);
+      const edit = btn(p.root, "Edit");
+      const handed = apply.startOperation([{ label: "x", impact: "fleet", request: { method: "PUT", url: "/api/settings/fleet/defaults", body: { model: "m" } } }]);
+      const direct = await confirmMod.api("/api/settings/fleet/channels", { method: "PUT", body: "[]" });
+      const reads = await confirmMod.api("/api/settings/schema");
+      expect([edit, handed, direct.status, direct.body.error, reads.ok, writes()])
+        .toEqual([undefined, false, 403, "Fleet settings can't be changed over a temporary public link.", true, []]);
+    } finally { p.document.body.removeAttribute("data-public-link"); }
+  });
+  it("#2367 review control: on the dashboard itself Advanced's JSON edit is there and saves", async () => {
+    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+    expect(!!btn(p.root, "Edit")).toBe(true);
+  });
   it("over the temporary public link: no Save bar, a note says why, and nothing is written (one switch: FLEET_READ_ONLY_OVER_PUBLIC_LINK)", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     try {

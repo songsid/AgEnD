@@ -472,6 +472,12 @@ export interface WebGuestsConfig {
   open_instances?: Record<string, string[]>;
   /** An admin's narrowing, per `<connection id>:<user id>`: intersected with the derived scope, never widening it. */
   narrow?: Record<string, string[]>;
+  /**
+   * #2348: an admin's explicit grants, per `<connection id>:<user id>` — the agents that person may see as a guest. Once
+   * this key exists it is the only scope there is (default deny): the derived scope above (connection access, rooms,
+   * open_instances, narrow) no longer gives anything. `name` is display only (who it was when granted).
+   */
+  grants?: Record<string, { name?: string; instances: string[] }>;
   /** A guest session's limits: absolute 1–24 h (default 12), idle 15–720 min (default 120). */
   session?: { absolute_hours?: number; idle_minutes?: number };
 }

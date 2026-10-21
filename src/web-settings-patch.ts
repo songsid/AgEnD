@@ -44,7 +44,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   const terminal = webTerminalPatch(patch.web_terminal);
   if (terminal === "invalid") return { error: "web_terminal must be { enabled?: boolean|null, ttl_minutes?: 1..20|null }" };
   const guests = guestsPatch(patch.guests);
-  if (guests === "invalid") return { error: "guests must be { enabled?, chat?: boolean|null, open_instances?: { <connection>: [instance…]|null }, narrow?: { \"<connection>:<user>\": [instance…]|null } }" };
+  if (guests === "invalid") return { error: "guests must be { enabled?, chat?: boolean|null, open_instances?: { <connection>: [instance…]|null }, narrow?: { \"<connection>:<user>\": [instance…]|null }, grants?: { \"<connection>:<user>\": { name?, instances: [instance…] }|null } }" };
   const verifiedAuthority = verifiedAuthorityPatch(patch.verified_authority);
   if (verifiedAuthority === "invalid") return { error: "verified_authority must be { enabled?, loopback_only?: boolean|null, max_session_hours?: number|null }" };
   return {
@@ -69,7 +69,21 @@ export type GuestsPatch = {
   chat?: boolean | null;
   open_instances?: Record<string, string[] | null>;
   narrow?: Record<string, string[] | null>;
+  /** #2348: per `<connection id>:<user id>` — the grant (replaced whole), or null to remove it. */
+  grants?: Record<string, { name?: string; instances: string[] } | null>;
 };
+const GUEST_ACCOUNT_KEY = /^[A-Za-z0-9_.-]{1,64}:[0-9A-Za-z_-]{1,64}$/;
+/** #2348: one grant as the patch carries it: `{ name?, instances }`, or null (removed). */
+function guestGrant(v: unknown): { name?: string; instances: string[] } | null | "invalid" {
+  if (v === null) return null;
+  if (!v || typeof v !== "object" || Array.isArray(v)) return "invalid";
+  const g = v as Record<string, unknown>;
+  if (Object.keys(g).some((k) => k !== "name" && k !== "instances")) return "invalid";
+  if (g.name !== undefined && (typeof g.name !== "string" || g.name.length > 100)) return "invalid";
+  const instances = guestList(g.instances);
+  if (instances === "invalid" || instances === null) return "invalid";
+  return { ...(typeof g.name === "string" && g.name ? { name: g.name } : {}), instances };
+}
 const GUEST_LIST_MAX = 200;
 function guestList(v: unknown): string[] | null | "invalid" {
   if (v === null) return null;
@@ -95,9 +109,24 @@ export function guestsPatch(raw: unknown): GuestsPatch | null | "invalid" {
   for (const [k, v] of Object.entries(raw)) {
     if (k === "enabled" || k === "chat") { if (v !== null && typeof v !== "boolean") return "invalid"; out[k] = v as boolean | null; continue; }
     if (k === "open_instances" || k === "narrow") {
-      const map = guestMap(v, k === "narrow" ? /^[A-Za-z0-9_.-]{1,64}:[0-9A-Za-z_-]{1,64}$/ : /^[A-Za-z0-9_.-]{1,64}$/);
+      const map = guestMap(v, k === "narrow" ? GUEST_ACCOUNT_KEY : /^[A-Za-z0-9_.-]{1,64}$/);
       if (map === "invalid") return "invalid";
       if (map) out[k] = map;
+      continue;
+    }
+    if (k === "grants") {
+      if (!v || typeof v !== "object" || Array.isArray(v)) return "invalid";
+      const grants: Record<string, { name?: string; instances: string[] } | null> = Object.create(null);
+      const entries = Object.entries(v);
+      if (entries.length > 500) return "invalid";
+      for (const [key, raw] of entries) {
+        if (!GUEST_ACCOUNT_KEY.test(key)) return "invalid";
+        const grant = guestGrant(raw);
+        if (grant === "invalid") return "invalid";
+        grants[key] = grant;
+      }
+      // #2365 review: `{}` is meaningful — it makes grants the scope with no one in it (default deny), so it is kept.
+      out.grants = grants;
       continue;
     }
     return "invalid";
@@ -126,6 +155,19 @@ export function applyGuestsPatch(current: WebGuestsConfig | undefined, patch: Gu
       else { merged[k] = list; changes.push({ path: ["web", "guests", key, k], value: list }); }
     }
     if (Object.keys(merged).length) next[key] = { ...merged }; else delete next[key];
+  }
+  // #2348: grants, each replaced whole or removed. An emptied map stays ({}): its presence is what makes grants the
+  // only scope, and taking the last person's access away must not bring the derived scope back.
+  if (patch.grants) {
+    const merged: Record<string, { name?: string; instances: string[] }> = Object.create(null);
+    for (const [k, grant] of Object.entries(current?.grants ?? {})) merged[k] = grant;
+    for (const [k, grant] of Object.entries(patch.grants)) {
+      if (grant === null) { delete merged[k]; changes.push({ path: ["web", "guests", "grants", k], value: undefined, remove: true }); }
+      else { merged[k] = grant; changes.push({ path: ["web", "guests", "grants", k], value: grant }); }
+    }
+    next.grants = { ...merged };
+    // Written when the map ends up empty — the last one removed, or grants turned on with no one in them yet.
+    if (!Object.keys(merged).length) changes.push({ path: ["web", "guests", "grants"], value: {} });
   }
   return { next: Object.keys(next).length ? next : undefined, changes };
 }

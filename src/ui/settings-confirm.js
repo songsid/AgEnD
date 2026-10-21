@@ -10,6 +10,9 @@
 // manifest): one request at a time, every POLL_MS while anything is open, nothing while nothing is. The countdown is
 // the server's remaining_ms against a monotonic clock, never the display timestamp.
 import { appStore } from "/assets/app-store.js";
+import { t } from "/assets/app-i18n.js";
+import { fleetReadOnly } from "./settings-draft.js";
+import "./settings-strings.js";
 
 const POLL_MS = 2000;
 const SHOW_DONE_MS = 4000;                       // an applied request stays on screen this long, then goes
@@ -21,8 +24,18 @@ export function newKey(prefix = "k") {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/**
+ * #2347 (#2367 review): the Settings writes the page does not make over the temporary public link while the fleet's
+ * settings are read-only there (FLEET_READ_ONLY_OVER_PUBLIC_LINK) — every config write, its apply, a restart and a
+ * reload, whichever control asks (the bar's Save, Advanced's JSON, a connection's or a key's own button). Reads, the
+ * emoji preview, pausing or waking an agent and withdrawing one's own request stay.
+ */
+const FLEET_WRITE = /^\/api\/settings\/(fleet|classic|connections|provider-secrets|secrets|apply|restart-fleet|reload|quickstart\/commit)(\/|$)/;
+export const refusedReadOnly = (path, method = "GET") => method !== "GET" && fleetReadOnly() && FLEET_WRITE.test(String(path));
+
 /** fetch → { ok, status, body } (body null when it is not JSON). A network failure throws, as fetch does. */
 export async function api(path, opts = {}) {
+  if (refusedReadOnly(path, opts.method)) return { ok: false, status: 403, body: { error: t("settings.fleetReadOnlyPublic") } };
   const headers = { ...(opts.headers || {}) };
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   const r = await fetch(path, { ...opts, headers });

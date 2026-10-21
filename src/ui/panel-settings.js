@@ -124,7 +124,18 @@ export function SettingsPanel({ route, navKey }) {
   // A staged change's onResult hears how its Save settled: "applied", "waiting" (for a fleet admin's OK) or "failed".
   const results = useRef(new Map());
   const readOnly = fleetReadOnly();
-  const dropDrafts = () => { drafts.current = new Map(); setDraftEpoch((n) => n + 1); };
+  // The drafts as they were when a Save began. #2367 review: the form stays editable while it runs, so a Save that went
+  // through drops only the drafts it saved — one edited since (in any section) stays, and stays staged.
+  const submitted = useRef(null);
+  // The staged changes as they were when that Save began (what comes back after a failure is them, whole: a section's
+  // draft and onResult included), and how a Save went for a change whose section was shown again since (#2367 review:
+  // a failed Save reloads, so the section that staged it is a new one by the time it could be told).
+  const submittedStaged = useRef(new Map());
+  const outcomes = useRef(new Map());
+  const dropDrafts = (saved = null) => {
+    drafts.current = saved ? new Map([...drafts.current].filter(([k, v]) => !saved.has(k) || !sameValue(v, saved.get(k)))) : new Map();
+    setDraftEpoch((n) => n + 1);
+  };
   const { settingsOp: op, pendingChanges } = useStore(appStore);
   const gen = useRef(0);
 
@@ -172,16 +183,33 @@ export function SettingsPanel({ route, navKey }) {
     if (!op || !op.leftover || !op.leftover.length) return;
     const back = takeLeftover();
     if (!back.length) return;
-    setStaged((s) => { const m = new Map(s); for (const c of back) m.set(c.stageKey || newKey("left"), c); return m; });
+    setStaged((s) => {
+      const m = new Map(s);
+      for (const c of back) { const k = c.stageKey || newKey("left"); m.set(k, { ...(submittedStaged.current.get(k) || {}), ...c, stageKey: k }); }
+      return m;
+    });
   }, [op && op.leftover]);
 
   // An Apply that finished, or a confirmed request that applied, changed the configuration: read it again.
   const lastPhase = useRef(op ? op.phase : null);
   useEffect(() => {
     const phase = op ? op.phase : null;
-    if (lastPhase.current !== phase && (phase === "done" || phase === "failed")) { settle(op); if (phase === "done") dropDrafts(); reload(); }
+    if (lastPhase.current !== phase && (phase === "done" || phase === "failed")) {
+      settle(op);
+      if (phase === "done" && submitted.current) dropDrafts(submitted.current);
+      submitted.current = null;
+      reload();
+    }
     lastPhase.current = phase;
   }, [op && op.phase]);
+  // A saved change that waits for a fleet admin's OK is told so while it waits (its section says it is not saved yet).
+  const waitingNow = op ? op.steps.filter((s) => s.status === "waiting" && s.stageKey).map((s) => s.stageKey).join(",") : "";
+  useEffect(() => {
+    for (const k of waitingNow ? waitingNow.split(",") : []) {
+      const fn = results.current.get(k);
+      try { if (fn) fn({ status: "waiting", error: null }); } catch { /* a section's own handler: never the Save's */ }
+    }
+  }, [waitingNow]);
   const applied = (pendingChanges || []).filter((p) => p.state === "applied").map((p) => p.id).join(",");
   useEffect(() => { if (applied) reload(); }, [applied]);
 
@@ -197,15 +225,22 @@ export function SettingsPanel({ route, navKey }) {
       return m;
     });
     if (!quiet) toast(tn("queued", change.label));
+    // A section shown again after its Save failed (or still waits) hears how it went as it stages its change again.
+    if (typeof change.onResult === "function" && outcomes.current.has(key)) {
+      const outcome = outcomes.current.get(key);
+      outcomes.current.delete(key);
+      try { change.onResult(outcome); } catch { /* a section's own handler: never the Save's */ }
+    }
   };
   const unstage = (key) => setStaged((s) => { if (!s.has(key)) return s; const m = new Map(s); m.delete(key); return m; });
-  const discard = () => { dropSecrets(staged); setStaged(new Map()); dropDrafts(); reload(); };
+  const discard = () => { dropSecrets(staged); setStaged(new Map()); outcomes.current = new Map(); dropDrafts(); reload(); };
   /** Tell each saved change's section how its Save settled (#2347: the onResult in the change it staged). */
   const settle = (o) => {
     for (const step of (o && o.steps) || []) {
       const fn = step.stageKey && results.current.get(step.stageKey);
       if (!fn) continue;
       const status = step.status === "done" ? "applied" : step.status === "waiting" ? "waiting" : "failed";
+      if (status !== "applied") outcomes.current.set(step.stageKey, { status, error: step.error || null });
       try { fn({ status, error: step.error || null }); } catch { /* a section's own handler: never the Save's */ }
     }
     results.current = new Map();
@@ -231,7 +266,10 @@ export function SettingsPanel({ route, navKey }) {
     if (!mount.current() || operationActive()) return;
     const list = [...stagedRef.current.values()].map(({ label, impact, request, connectionSecret, stageKey, key }) => ({ label, impact, request, connectionSecret, stageKey, key }));
     const handlers = new Map([...stagedRef.current.values()].filter((c) => typeof c.onResult === "function").map((c) => [c.stageKey, c.onResult]));
-    if (startOperation(list)) { results.current = handlers; setStaged(new Map()); }
+    if (startOperation(list)) {
+      results.current = handlers; submitted.current = new Map(drafts.current); submittedStaged.current = new Map(stagedRef.current);
+      outcomes.current = new Map(); setStaged(new Map());
+    }
   };
 
   // #2347: sections read `staged` (each change as staged, its extra fields kept: Guests carries its whole draft) and
@@ -718,7 +756,7 @@ function General({ ctx }) {
   const primary = channelsOf(ctx.fleet)[0];
   const original = useMemo(() => ({ c: structuredClone(c) }), []);
   const base = useMemo(() => generalForm(d, c), []);
-  const [f, setF] = useDraft(ctx, "general", () => generalForm(d, c));
+  const [f, setF] = useDraft(ctx, "general", () => base);
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   /** The class of a field's row: `field`, and `s-dirty` while one of its keys differs from what is saved. */
   const fc = (cls, ...keys) => `${cls}${keys.some((k) => !sameValue(f[k], base[k])) ? " s-dirty" : ""}`;
@@ -855,7 +893,12 @@ function WebSection({ ctx, staged }) {
     terminal: { enabled: term.enabled ?? null, ttl_minutes: term.ttl_minutes ?? null },
   }), []);
   const text = (v) => (v === null || v === undefined ? "" : String(v));
-  const [f, setF] = useDraft(ctx, "web", () => {
+  /** #2347: a field's row class: `s-dirty` while it differs from what is saved (the draft may come from before). */
+  const savedForm = useMemo(() => ({ echo: original.echo, log: original.log, usagePub: original.usagePub, pub: original.pub.allow_public,
+    ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol, hostname: original.pub.hostname, originPort: String(original.pub.origin_port),
+    abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours), termOn: original.terminal.enabled !== false,
+    termTtl: text(original.terminal.ttl_minutes) }), []);
+  const [f, setF] = useDraft(ctx, "web", () => savedForm, () => {
     // Settings sections share one draft. Reopening Web must show it as well as preserve it in the Apply bar, so a
     // subsequent field edit keeps earlier edits. The original disk values remain the diff/confirmation baseline.
     const request = staged.get("web")?.request;
@@ -871,11 +914,6 @@ function WebSection({ ctx, staged }) {
     };
   });
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
-  /** #2347: a field's row class: `s-dirty` while it differs from what is saved (the draft may come from before). */
-  const savedForm = useMemo(() => ({ echo: original.echo, log: original.log, usagePub: original.usagePub, pub: original.pub.allow_public,
-    ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol, hostname: original.pub.hostname, originPort: String(original.pub.origin_port),
-    abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours), termOn: original.terminal.enabled !== false,
-    termTtl: text(original.terminal.ttl_minutes) }), []);
   const fc = (cls, ...keys) => `${cls}${keys.some((k) => !sameValue(f[k], savedForm[k])) ? " s-dirty" : ""}`;
   // Empty = the default (null in the write: the key is removed from fleet.yaml).
   const value = (v) => (v.trim() === "" ? null : Number(v));
@@ -1020,11 +1058,11 @@ function Developer({ ctx }) {
     <div class="s-dev-bar">
       <div class="seg-inline" role="group" aria-label=${tn("format")}>
         ${["yaml", "json"].map((k) => html`<button key=${k} type="button" class=${`btn btn-sm${fmt === k ? " on" : ""}`} aria-pressed=${fmt === k ? "true" : "false"} onClick=${() => setFmt(k)}>${k.toUpperCase()}</button>`)}</div>
-      <button type="button" class="btn btn-sm" onClick=${() => setEditing(!editing)}>${editing ? tn("viewMode") : tn("editMode")}</button>
+      ${ctx.readOnly ? null : html`<button type="button" class="btn btn-sm" onClick=${() => setEditing(!editing)}>${editing ? tn("viewMode") : tn("editMode")}</button>`}
       <button type="button" class="btn btn-sm" title=${tn("copy")} onClick=${copy}><${Icon} name="copy" size=${14} /><span class="lbl">${tn("copy")}</span></button>
       <button type="button" class="btn btn-sm" title=${tn("devDownload")} onClick=${download}><${Icon} name="download" size=${14} /><span class="lbl">${tn("devDownload")}</span></button>
     </div>
-    ${editing ? html`<textarea class="s-yaml" aria-label=${tn("devEditor")} spellcheck=${false} wrap="off" value=${draft} onInput=${(e) => setDraft(e.target.value)}></textarea>
+    ${editing && !ctx.readOnly ? html`<textarea class="s-yaml" aria-label=${tn("devEditor")} spellcheck=${false} wrap="off" value=${draft} onInput=${(e) => setDraft(e.target.value)}></textarea>
         <div class="save-row"><button type="button" class="btn btn-primary" onClick=${save}>${tn("devApply")}</button><span class="note">${tn("devApplyHint")}</span></div>`
       : html`<pre class="s-yaml">${text}</pre>`}
     ${msg ? html`<p class=${`feedback${msg.error ? " error" : ""}`} role="status">${msg.error || msg.text}</p>` : null}

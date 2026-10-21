@@ -11,7 +11,7 @@ import { appStore } from "/assets/app-store.js";
 import { t } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
 import "./settings-strings.js";
-import { api, confirmedWrite, newKey, selfConfirmed } from "./settings-confirm.js";
+import { api, confirmedWrite, newKey, refusedReadOnly, selfConfirmed } from "./settings-confirm.js";
 
 /**
  * #2347 (leader's default, for the user to confirm): a Save that needs AgEnD restarted offers Restart now (its card, and
@@ -32,7 +32,8 @@ function view() {
   if (!op) return null;
   return {
     id: op.id, phase: op.phase, error: op.error, job: op.job, lostJob: op.lostJob, restart: op.restart,
-    steps: op.steps.map(({ label, impact, status, error, pendingId, note }) => ({ label, impact, status, error: error || null, pendingId: pendingId || null, ...(note ? { note } : {}) })),
+    // stageKey: which staged change a step is (#2367 review: the panel tells that change's section how it went).
+    steps: op.steps.map(({ label, impact, status, error, pendingId, note, stageKey }) => ({ label, impact, status, error: error || null, pendingId: pendingId || null, ...(note ? { note } : {}), ...(stageKey ? { stageKey } : {}) })),
     leftover: op.leftover,
   };
 }
@@ -53,6 +54,8 @@ export function operationActive() { return !!op && (ACTIVE.has(op.phase) || op.r
  */
 export function startOperation(changes) {
   if (operationActive()) return false;
+  // #2367 review: over the temporary public link the fleet's settings are read-only, whichever control asks.
+  if (changes.some((c) => (c.request ? refusedReadOnly(c.request.url, c.request.method) : refusedReadOnly("/api/settings/connections", "POST")))) return false;
   op = {
     id: ++seq,
     phase: "writing", error: null, job: null, lostJob: false, restart: "idle", leftover: [],
