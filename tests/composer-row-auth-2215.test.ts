@@ -93,7 +93,7 @@ describe("the composer row's authority: a few words, the rest in its tooltip", (
   it("can't be authorized here: 'Not verified', the reason in its tooltip and for screen readers; the switch off links to Settings → Web", async () => {
     const off = await row({ state: "none", reason: "disabled" });
     const note = off.querySelector(".note");
-    expect([note.getAttribute("title"), note.querySelector(".sr-only").textContent, off.querySelector('a[href="/settings/web"]')?.textContent])
+    expect([note.getAttribute("title"), note.querySelector(".sr-only").textContent, off.querySelector('a[href="/settings/access"]')?.textContent])
       .toEqual(["Web authority is turned off.", ": Web authority is turned off.", "Settings"]);
     expect(note.textContent.replace(note.querySelector(".sr-only").textContent, "")).toBe("Not verified");
     const admin = await row({ state: "none", reason: "not_admin" });

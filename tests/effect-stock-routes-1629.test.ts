@@ -86,7 +86,8 @@ describe("#1629 closed full-app stock producer topology", () => {
       const file = kind === "view" ? "src/ui/shared/panel-view.js" : `src/ui/panel-${kind}.js`, source = readFileSync(file, "utf8");
       expect(source).toContain(`data-effect-panel="${kind}" class="panel p-${kind}"`);
       expect(source).not.toMatch(/<div class="panel-body/);
-      if (["fleet", "settings"].includes(kind)) expect(source).toContain('data-trust="panel-navigation" class="seg"');
+      // The navigation is `.seg` (the stock route's own selector, `.p-<kind> > .seg`); #2347: Settings' carries a class of its own too.
+      if (["fleet", "settings"].includes(kind)) expect(source).toMatch(/data-trust="panel-navigation" class="seg[ "]/);
     }
   });
 });

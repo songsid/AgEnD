@@ -412,7 +412,7 @@ export function SettingsPanel({ route, navKey }) {
   // #2347: on a phone the sections are one row that scrolls sideways: the one shown is brought into it.
   useEffect(() => {
     const item = typeof document !== "undefined" ? document.querySelector(".s-nav .seg-item.active") : null;
-    const row = item && item.closest ? item.closest(".s-nav") : null;
+    const row = item && item.closest ? item.closest(".s-nav-groups") : null;
     if (row && row.scrollWidth > row.clientWidth && typeof item.scrollIntoView === "function") item.scrollIntoView({ block: "nearest", inline: "center" });
   }, [section]);
   // #2347: a place in a section (`/settings/chat#classicbot`, an old /settings/classic link): there, once it is drawn.
@@ -432,11 +432,10 @@ export function SettingsPanel({ route, navKey }) {
       <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx} onClick=${() => setDialog({ kind: "wizard", key: navKey })}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
       <button type="button" class="icon-btn" aria-label=${tn("helpButton")} title=${tn("helpButton")} onClick=${() => setDialog({ kind: "help", key: navKey })}><${Icon} name="info" /></button>
     </${PanelHeader}>
-    <div class="s-side"><${SettingsSearch} />
-    <nav data-trust="panel-navigation" class="seg s-nav" aria-label=${tn("title")}>${SETTINGS_GROUPS.map((g) => html`<div key=${g.id} class="s-nav-group" role="group" aria-labelledby=${`s-grp-${g.id}`}>
+    <nav data-trust="panel-navigation" class="seg s-nav" aria-label=${tn("title")}><${SettingsSearch} /><div class="s-nav-groups">${SETTINGS_GROUPS.map((g) => html`<div key=${g.id} class="s-nav-group" role="group" aria-labelledby=${`s-grp-${g.id}`}>
       <span class="s-nav-head" id=${`s-grp-${g.id}`}>${tn(`grp_${g.id}`)}</span>
       ${g.sections.map((k) => html`<a key=${k} href=${settingsPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
-        aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</div>`)}</nav></div>
+        aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</div>`)}</div></nav>
     <div data-trust="panel-content" class="panel-body"><div class="col">
       ${searchable ? html`<div class="s-toolbar"><label class="s-search"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("searchAll")}</span>
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}
