@@ -175,7 +175,7 @@ export function SettingsPanel({ route, navKey }) {
   const applied = (pendingChanges || []).filter((p) => p.state === "applied").map((p) => p.id).join(",");
   useEffect(() => { if (applied) reload(); }, [applied]);
 
-  const stage = (key, change) => {
+  const stage = (key, change, quiet = false) => {
     setStaged((s) => {
       const m = new Map(s);
       const prev = m.get(key);
@@ -186,7 +186,7 @@ export function SettingsPanel({ route, navKey }) {
       m.set(key, { ...change, stageKey: key });
       return m;
     });
-    toast(tn("queued", change.label));
+    if (!quiet) toast(tn("queued", change.label));
   };
   const unstage = (key) => setStaged((s) => { if (!s.has(key)) return s; const m = new Map(s); m.delete(key); return m; });
   const discard = () => { dropSecrets(staged); setStaged(new Map()); reload(); };
@@ -818,11 +818,21 @@ function WebSection({ ctx, staged }) {
     terminal: { enabled: term.enabled ?? null, ttl_minutes: term.ttl_minutes ?? null },
   }), []);
   const text = (v) => (v === null || v === undefined ? "" : String(v));
-  const [f, setF] = useState(() => ({
-    echo: original.echo, log: original.log, usagePub: original.usagePub, pub: original.pub.allow_public, ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol, hostname: original.pub.hostname, originPort: String(original.pub.origin_port),
-    abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours),
-    termOn: original.terminal.enabled !== false, termTtl: text(original.terminal.ttl_minutes),
-  }));
+  const [f, setF] = useState(() => {
+    // Settings sections share one draft. Reopening Web must show it as well as preserve it in the Apply bar, so a
+    // subsequent field edit keeps earlier edits. The original disk values remain the diff/confirmation baseline.
+    const request = staged.get("web")?.request;
+    const pending = request?.method === "PUT" && request.url === "/api/settings/fleet/web" ? request.body || {} : {};
+    const pub = pending.public_link || {}, session = pending.session?.local || {}, terminal = pending.web_terminal || {};
+    const pick = (obj, key, fallback) => Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : fallback;
+    return {
+      echo: pick(pending, "echo_to_channel", original.echo), log: pick(pending, "log_tab", original.log), usagePub: pick(pending, "usage_report_on_public_link", original.usagePub),
+      pub: pick(pub, "allow_public", original.pub.allow_public), ttl: String(pick(pub, "ttl_minutes", original.pub.ttl_minutes)), protocol: pick(pub, "protocol", original.pub.protocol),
+      hostname: pick(pub, "hostname", original.pub.hostname), originPort: String(pick(pub, "origin_port", original.pub.origin_port)),
+      abs: text(pick(session, "absolute_hours", original.session.absolute_hours)), idle: text(pick(session, "idle_hours", original.session.idle_hours)),
+      termOn: pick(terminal, "enabled", original.terminal.enabled) !== false, termTtl: text(pick(terminal, "ttl_minutes", original.terminal.ttl_minutes)),
+    };
+  });
   const [msg, setMsg] = useState(null);
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   // Empty = the default (null in the write: the key is removed from fleet.yaml).
@@ -840,9 +850,14 @@ function WebSection({ ctx, staged }) {
     termTtl: value(f.termTtl) !== null && (!Number.isInteger(value(f.termTtl)) || value(f.termTtl) < 1 || value(f.termTtl) > 20) ? "webTerminalTtlRange" : "",
   };
   const ready = !overPublicLink && !Object.values(errors).some(Boolean);
-  const review = () => {
-    if (!ready) return;
-    const publicPatch = changedFields({ allow_public: f.pub, ttl_minutes: Number(f.ttl), protocol: f.protocol, hostname: f.hostname, tunnel_token_env: f.hostname ? "AGEND_CLOUDFLARE_TUNNEL_TOKEN" : "", origin_port: Number(f.originPort) }, original.pub);
+  const review = (quiet = false) => {
+    // Invalid intermediate text must not leave an older valid draft available to Apply.
+    if (!ready) { if (staged.has("web")) ctx.unstage("web"); setMsg(null); return; }
+    // Keep an existing secret reference, including a custom one. Only a newly supplied hostname without any
+    // reference adopts the standard env key; mounting or editing an unrelated field never rewrites credentials.
+    const tokenEnv = f.hostname === original.pub.hostname ? original.pub.tunnel_token_env
+      : f.hostname ? original.pub.tunnel_token_env || "AGEND_CLOUDFLARE_TUNNEL_TOKEN" : "";
+    const publicPatch = changedFields({ allow_public: f.pub, ttl_minutes: Number(f.ttl), protocol: f.protocol, hostname: f.hostname, tunnel_token_env: tokenEnv, origin_port: Number(f.originPort) }, original.pub);
     const sessionPatch = changedFields({ absolute_hours: value(f.abs), idle_hours: value(f.idle) }, original.session);
     // The checkbox shows the default (on) for an unset key: only a real toggle is written; on again = back to the default.
     const terminalPatch = changedFields({ enabled: f.termOn === (original.terminal.enabled !== false) ? original.terminal.enabled : f.termOn ? null : false,
@@ -865,10 +880,16 @@ function WebSection({ ctx, staged }) {
     ];
     if (fields.length) {
       ctx.stage("web", { label: tn("sec_web"), impact: batchImpact(schema, fields, (k) => impactOf(schema, k)),
-        request: { method: "PUT", url: "/api/settings/fleet/web", body } });
+        request: { method: "PUT", url: "/api/settings/fleet/web", body } }, quiet);
     } else if (staged.has("web")) ctx.unstage("web");
-    setMsg(tn("readyApply"));
+    setMsg(fields.length ? tn("readyApply") : null);
   };
+  // This form already has validation and a single shared Web draft. Valid edits join that draft immediately;
+  // Apply, its confirmations and the leave guard still own all HTTP writes. Quiet staging avoids a toast per key.
+  // Returning from another Settings section remounts this form: its unchanged initial fields must not erase the
+  // parent's already-staged Web draft. Only an actual field edit replaces or removes that draft.
+  const formMounted = useRef(false);
+  useEffect(() => { if (!formMounted.current) { formMounted.current = true; return; } review(true); }, [f]);
   const shown = (path) => {
     const [top, key] = path.split(".");
     const v = (top === "web" ? web : term)[key];
@@ -920,7 +941,7 @@ function WebSection({ ctx, staged }) {
       <p class="note">${tn("webReadOnlyLead")}</p>
       <dl class="s-web-ro">${WEB_READ_ONLY.map((k) => html`<div key=${k}><dt><code>${k}</code></dt><dd>${shown(k)}</dd></div>`)}</dl>
     </section>
-    <div class="save-row"><button type="button" class="btn btn-primary" disabled=${!ready} onClick=${review}>${tn("reviewChanges")}</button>
+    <div class="save-row"><button type="button" class="btn btn-primary" disabled=${!ready} onClick=${() => review()}>${tn("reviewChanges")}</button>
       ${msg ? html`<span class="note" role="status">${msg}</span>` : null}</div>
   </div>`;
 }

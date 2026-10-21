@@ -18,6 +18,7 @@ import { accessSync, constants as fsConstants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 import { probeProcess } from "../web-terminal.js";
 import { fetchViaPublicResolver, fetchViaSystemResolver, type ProbeResponse } from "./public-fetch.js";
+import { classifyNamedTunnelOutput, classifyNamedTunnelProbeError, namedTunnelFailureMessage, type NamedTunnelFailureKind } from "./named-diagnostics.js";
 import {
   TunnelStartError,
   TUNNEL_STARTUP_DEADLINE_MS,
@@ -277,6 +278,7 @@ export class CloudflaredProvider implements TunnelProvider {
     }
 
     const state = new CloudflaredHandle(child, this.opts);
+    let namedReadinessFailure: NamedTunnelFailureKind | undefined;
     try {
       const base = namedBase ?? await state.awaitUrl(deadline, ctx.signal, now);
       const pageUrl = `${base}${ctx.pagePath}`;
@@ -284,7 +286,8 @@ export class CloudflaredProvider implements TunnelProvider {
       // Host through to the origin, so the origin has to be expecting it or it
       // will refuse our own readiness check.
       ctx.onCandidateHost?.(new URL(base).host);
-      await this.probeReady(pageUrl, ctx, deadline, now, () => state.hasExited, () => state.checkOutput());
+      await this.probeReady(pageUrl, ctx, deadline, now, () => state.hasExited, () => state.checkOutput(),
+        kind => { namedReadinessFailure = kind; });
       // A probe can succeed against a tunnel that has already died (the edge answers for a while) or been
       // cancelled. Publishing that would hand back a handle whose exit nobody will ever be told about.
       if (ctx.signal.aborted) throw new TunnelStartError("cancelled", "cancelled before the tunnel was published");
@@ -295,12 +298,17 @@ export class CloudflaredProvider implements TunnelProvider {
     } catch (err) {
       // A child exists. Its death has to be proven before this failure can be
       // reported as a clean one, or a fallback would run beside a live tunnel.
+      const exitedBeforeStop = state.hasExited;
       const stopped = await state.stop("startup failed");
       // Named connectors can echo credentials in arbitrary vendor diagnostics.
       // None of that output or the underlying spawn/fetch error crosses here.
-      if (named) throw new TunnelStartError(err instanceof TunnelStartError ? err.errorKind : "spawn-failed",
-        "named tunnel failed; check the connector token, hostname and published application route",
-        stopped.confirmed ? undefined : { pid: stopped.pid, identity: stopped.identity });
+      if (named) {
+        if (exitedBeforeStop) await state.drainOutput();
+        const originalKind = err instanceof TunnelStartError ? err.errorKind : "spawn-failed";
+        const kind = originalKind === "cancelled" ? originalKind : state.namedFailureKind() ?? namedReadinessFailure ?? originalKind;
+        throw new TunnelStartError(kind, namedTunnelFailureMessage(kind) ?? "named tunnel failed; check the connector token, hostname and published application route",
+          stopped.confirmed ? undefined : { pid: stopped.pid, identity: stopped.identity });
+      }
       if (!stopped.confirmed) {
         throw new TunnelStartError(
           err instanceof TunnelStartError ? err.errorKind : "spawn-failed",
@@ -312,7 +320,7 @@ export class CloudflaredProvider implements TunnelProvider {
     }
   }
 
-  private async probeReady(pageUrl: string, ctx: TunnelStartContext, deadline: number, now: () => number, isDead: () => boolean, checkOutput: () => void): Promise<void> {
+  private async probeReady(pageUrl: string, ctx: TunnelStartContext, deadline: number, now: () => number, isDead: () => boolean, checkOutput: () => void, namedFailure: (kind: NamedTunnelFailureKind) => void): Promise<void> {
     const fetchPage = this.opts.fetchPage ?? ((url: string, signal: AbortSignal) => fetchViaPublicResolver(url, signal, {
       resolvers: this.opts.publicResolvers,
       resolve4: this.opts.resolve4,
@@ -332,9 +340,18 @@ export class CloudflaredProvider implements TunnelProvider {
         if (res.status === 200 && res.contentType.startsWith("text/html") && res.body.includes(ctx.readinessMarker)) {
           return;
         }
+        if (this.opts.named) {
+          if (res.status === 404) namedFailure("named-route-missing");
+          else if (res.status === 502) namedFailure("named-origin-unreachable");
+          else if (res.status === 200) namedFailure("named-hostname-mismatch");
+        }
         lastDetail = `status ${res.status}, content-type ${res.contentType || "(none)"}`;
       } catch (err) {
-        lastDetail = (err as Error).message;
+        lastDetail = err instanceof Error ? err.message : "request failed";
+        if (this.opts.named) {
+          const kind = classifyNamedTunnelProbeError(err, this.opts.named.token);
+          if (kind) namedFailure(kind);
+        }
       } finally {
         clearTimeout(timer);
       }
@@ -390,8 +407,9 @@ class CloudflaredHandle implements TunnelHandle {
     this.identity = probe.kind === "identified" ? probe.identity : null;
 
     const absorb = (chunk: Buffer | string) => {
-      if (this.opts.named || this.foundBase) return;
+      if (this.foundBase || this.published) return;
       this.buffered = (this.buffered + String(chunk)).slice(-MAX_BUFFERED_OUTPUT);
+      if (this.opts.named) return; // Kept private and bounded, used only for a closed failure classification.
       const base = extractTunnelUrl(this.buffered);
       if (!base) return;
       this.foundBase = base;
@@ -422,6 +440,20 @@ class CloudflaredHandle implements TunnelHandle {
     });
   }
 
+  namedFailureKind(): NamedTunnelFailureKind | undefined {
+    return this.opts.named ? classifyNamedTunnelOutput(this.buffered, this.opts.named.token) : undefined;
+  }
+  /** An exit may precede the last pipe chunk; never wait beyond the existing bounded drain budget. */
+  async drainOutput(): Promise<void> {
+    if (this.outputClosed) return;
+    await new Promise<void>(resolve => {
+      const finish = () => { clearTimeout(timer); this.child.off("close", finish); resolve(); };
+      const timer = setTimeout(finish, OUTPUT_DRAIN_MS);
+      this.child.once("close", finish);
+      if (this.outputClosed) finish();
+    });
+  }
+
   private spawnFailed: ((err: Error) => void) | null = null;
 
   /** True when we can prove no process was ever created. */
@@ -435,6 +467,7 @@ class CloudflaredHandle implements TunnelHandle {
     this.baseUrl = base;
     this.pageUrl = pageUrl;
     this.published = true;
+    if (this.opts.named) this.buffered = ""; // No startup evidence is needed once readiness has been proven.
   }
 
   async awaitUrl(deadline: number, signal: AbortSignal, now: () => number): Promise<string> {

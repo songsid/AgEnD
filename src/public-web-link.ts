@@ -3,6 +3,7 @@ import { publicTunnelHostname, PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_ORIGIN_POR
 import { performance } from "node:perf_hooks";
 import { newTunnelSid } from "./tunnel/manager.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
+import { namedTunnelFailureMessage } from "./tunnel/named-diagnostics.js";
 import { CloudflaredInstallError, ensureCloudflared, type CloudflaredInstallProgress } from "./tunnel/cloudflared-install.js";
 import { PublicLinkProgressTracker, failureOf, type PublicLinkFailure, type PublicLinkProgress } from "./public-link-progress.js";
 import type { TunnelReservation } from "./tunnel/purpose-lane.js";
@@ -262,7 +263,7 @@ export class PublicWebLink {
       e.progress.begin("tunnel");
       const gateway = this.deps.createGateway(e.id, () => this.current(e), () => e.phase === "open", () => { void this.close("gateway failed", e.id); }, named ? { hostname: named.hostname, port: named.port } : undefined);
       e.gateway = gateway;
-      const origin = await gateway.listen().catch(() => { throw new StartFailure("gateway-failed"); });
+      const origin = await gateway.listen().catch((err: unknown) => { throw new StartFailure(named && (err as NodeJS.ErrnoException)?.code === "EADDRINUSE" ? "origin-port-in-use" : "gateway-failed"); });
       if (!this.current(e)) throw new Error("closed");
       const provider = (this.deps.provider ?? ((path, p, n) => new CloudflaredProvider({ binaryName: path, protocol: p, named: n })))(binary.path, protocol, named);
       const result = await e.reservation.start(provider, {
@@ -287,7 +288,7 @@ export class PublicWebLink {
       // deliver's finally joins close after this promise settles; no self-await.
       e.abort.abort(); e.gateway?.setHost(null); e.gateway?.close();
       // #1767: the reason and what the step said, so the next one is diagnosable from daemon.log.
-      this.deps.log(`startup failed: ${reason}`, e.id, namedMode ? undefined : logDetail(err instanceof StartFailure ? err.detail : (err as Error)?.message));
+      this.deps.log(`startup failed: ${reason}`, e.id, namedMode ? namedTunnelFailureMessage(reason) ?? "Named tunnel failed; check the connector token, hostname, published application route and network." : logDetail(err instanceof StartFailure ? err.detail : (err as Error)?.message));
       throw new Error("public link unavailable");
     }
   }
