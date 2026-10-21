@@ -151,6 +151,10 @@ describe("a grant changed: the next request follows it", () => {
     grants({ [`${ALICE.adapterId}:${ALICE.userId}`]: { instances: ["a"] } });
     expect((await raw(port, "GET", "/api/profile/a", { cookie: cookieOf(g) })).status, "revoked, not paused").toBe(401);
   });
+  it("a grant is exact: an old #1920 narrowing for the same account takes nothing from it (nor adds)", () => {
+    fm.fleetConfig.web.guests.narrow = { [`${ALICE.adapterId}:${ALICE.userId}`]: ["b"] };
+    try { expect([...fm.guestScope(ALICE)]).toEqual(["a"]); } finally { delete fm.fleetConfig.web.guests.narrow; }
+  });
   it("a granted agent that no longer exists gives nothing", () => {
     grants({ [`${ALICE.adapterId}:${ALICE.userId}`]: { instances: ["gone"] } });
     try { expect(fm.guestScope(ALICE).size).toBe(0); } finally { grants({ [`${ALICE.adapterId}:${ALICE.userId}`]: { instances: ["a"] } }); }

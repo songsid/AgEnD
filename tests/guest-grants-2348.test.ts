@@ -37,6 +37,7 @@ import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
 import { SettingsBaselines } from "../src/settings-baseline.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
 import { prepareSettingsEffect } from "../src/settings-effect.js";
+import { settingsChangeDiff } from "../src/settings-change.js";
 import { noteSettingsWrite } from "../src/settings-transaction.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { applyGuestsPatch, guestsPatch } from "../src/web-settings-patch.js";
@@ -96,6 +97,11 @@ describe("the gate: what waits for a fleet admin", () => {
     expect(named(judge({ grants: { "dc:111": { instances: ["a", "b"] } } }, G({ "dc:111": { instances: ["a"] } })))).toMatch(/grants\.dc:111/);
     // Turning grants on with someone in them: that person may now see more than nothing.
     expect(named(judge({ grants: { "dc:111": { instances: ["a"] } } }, { guests: { enabled: true } }))).toMatch(/grants\.dc:111/);
+  });
+  it("taking `grants` away altogether (a raw edit) brings the derived scope back: it waits", () => {
+    const diff = settingsChangeDiff({ fleet: { web: { guests: { enabled: true, grants: { "dc:111": { instances: ["a"] } } } } } },
+      { fleet: { web: { guests: { enabled: true } } } }, { operation: "PUT x" });
+    expect(diff?.summary.join(" | ")).toMatch(/grants/);
   });
   it("removing, narrowing, renaming, or turning grants on empty applies at once", () => {
     const before = G({ "dc:111": { name: "Ada", instances: ["a", "b"] } });
