@@ -62,6 +62,10 @@ for (const c of matrix(process.env.MATRIX ?? "quick")) {
     const reaction = bubble.locator(".msg-reactions .reaction");
     ok(res, "reactionLive", await reaction.first().waitFor({ timeout: 5000 }).then(() => true, () => false));
     ok(res, "isThumb", ((await reaction.first().textContent()) ?? "").startsWith("👍"));
+    // The chip as drawn: its box and colours (a chip, not a bare glyph), and the font that drew the emoji.
+    res.chip = await reaction.first().evaluate((el: HTMLElement) => { const cs = getComputedStyle(el), b = el.getBoundingClientRect();
+      return { w: Math.round(b.width), h: Math.round(b.height), bg: cs.backgroundColor, border: cs.borderTopColor + " " + cs.borderTopWidth, font: cs.fontFamily.slice(0, 60) }; });
+    ok(res, "chipDrawn", res.chip.w >= 24 && res.chip.h >= 20 && res.chip.bg !== "rgba(0, 0, 0, 0)");
     ok(res, "labelled", ((await bubble.locator(".msg-reactions").getAttribute("aria-label")) ?? "").includes(name));
     ok(res, "noNoReplyLine", !NO_REPLY.test((await page.locator(".thread").textContent()) ?? ""));
     await shot("reacted");
