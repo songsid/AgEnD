@@ -1757,7 +1757,10 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
   const operationId = ctx.admitDurableDelivery ? meta.operationId ?? randomUUID() : meta.operationId;
   const senderDisplay = ctx.fleetConfig?.instances[senderLabel]?.display_name;
-  const makeBroadcastMeta = (correlationId: string, messageId = `bcast-${Date.now()}`): Record<string, string> => {
+  // One message id for this broadcast — every target's row shares it (delivery_status by message_id finds them all) —
+  // and no other broadcast's: a millisecond alone is not unique (#2295 review; the search index keys on it).
+  const broadcastMessageId = `bcast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const makeBroadcastMeta = (correlationId: string, messageId = broadcastMessageId): Record<string, string> => {
     const ipcMeta: Record<string, string> = {
       chat_id: "", message_id: messageId, user: `instance:${senderLabel}`,
       user_id: `instance:${senderLabel}`, ts: new Date().toISOString(), thread_id: "",
@@ -1774,7 +1777,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   // this one does. Keeping this outside the loop prevents partial broadcasts.
   if (rejectOversizedCrossInstanceEnvelope(
     message,
-    makeBroadcastMeta("bcast-9999999999999-zzzzzz", "bcast-9999999999999"),
+    makeBroadcastMeta("bcast-9999999999999-zzzzzz", "bcast-9999999999999-zzzzzz"),
     respond,
     "either",
   )) return;
@@ -1812,9 +1815,10 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     const ipcMeta = makeBroadcastMeta(correlationId);
 
     const payload = { type: "fleet_inbound", targetSession: targetName, content: message, meta: ipcMeta };
+    let duplicate = false;
     if (ctx.admitDurableDelivery) {
       try {
-        ctx.admitDurableDelivery({
+        duplicate = ctx.admitDurableDelivery({
           operationId: operationId!,
           sourceDaemonBootId: meta.sourceDaemonBootId ?? ctx.getDaemonBootId?.(meta.instanceName),
           sourceInstance: meta.instanceName,
@@ -1823,7 +1827,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
           kind: "broadcast",
           correlationId,
           payload,
-        });
+        })?.duplicate === true;
       } catch (err) {
         ctx.logger.error({ err, target: targetName, source: meta.instanceName }, "Durable broadcast admission failed closed");
         failed.push(targetName);
@@ -1841,15 +1845,16 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
       );
     }
     sentTo.push(targetName);
-    sentMeta.set(targetName, ipcMeta);
+    // #2293: indexed as the outbox keeps it — a retried call the outbox admitted before keeps the first call's row.
+    if (!duplicate) sentMeta.set(targetName, ipcMeta);
   }
 
   ctx.logger.info(`📢 ${senderLabel} broadcast to ${sentTo.length} instances: ${(message).slice(0, 80)}`);
   const summary = task_summary || message.slice(0, 200);
   for (const target of sentTo) {
     ctx.eventLog?.logActivity("message", senderLabel, summary, target);
-    const sent = sentMeta.get(target)!;
-    ctx.indexCrossInstance?.({ messageId: sent.message_id, from: senderLabel, to: target, kind: sent.request_kind ?? "broadcast",
+    const sent = sentMeta.get(target);
+    if (sent) ctx.indexCrossInstance?.({ messageId: sent.message_id, from: senderLabel, to: target, kind: sent.request_kind ?? "broadcast",
       correlationId: sent.correlation_id, taskSummary: task_summary, content: message, ts: sent.ts });
   }
   // Mirror Topic is user-facing: display labels, never long ids (#1301),

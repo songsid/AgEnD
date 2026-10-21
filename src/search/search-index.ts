@@ -21,6 +21,8 @@ export const BATCH_MAX = 200;
 export const QUEUE_MAX = 5_000;
 export const QUERY_BUDGET_MS = 3_000;
 export const PENDING_MAX = 16;
+/** A query the worker still holds this long after it was asked: the worker is stuck, and is restarted. */
+export const STALL_MS = 30_000;
 export const PRUNE_EVERY_MS = 24 * 3600_000;
 export const BACKFILL_CHUNK = 200;
 /** web.search.retention_days when unset. */
@@ -66,7 +68,28 @@ export class SearchIndex {
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
   private restartDelay = RESTART_MIN_MS;
   private nextId = 0;
-  private pending = new Map<number, { timer?: ReturnType<typeof setTimeout>; resolve(v: { ok: boolean; value?: unknown; reason?: string }): void }>();
+  /**
+   * Queries the worker holds: PENDING_MAX counts these. Past QUERY_BUDGET_MS the caller is answered ("timeout"), but the
+   * entry stays until the worker replies or exits — the worker still runs or queues it. One still held at STALL_MS: the
+   * worker is retired (terminated) and started again.
+   */
+  private queries = new Map<number, { answered: boolean; timer: ReturnType<typeof setTimeout>; stall?: ReturnType<typeof setTimeout>; resolve(v: { ok: boolean; value?: unknown; reason?: string }): void }>();
+  /** The index's own requests (backfill, prune): no budget; settled on the reply or when the worker goes. */
+  private requests = new Map<number, (v: { ok: boolean; value?: unknown }) => void>();
+  /**
+   * Batches posted and not yet committed (the worker acks each after its write). A worker that goes, or reopens a fresh
+   * file, gets them again (an upsert by key: twice is harmless). Flushing waits while they hold QUEUE_MAX docs.
+   */
+  private inflight = new Map<number, SearchDoc[]>();
+  private inflightDocs = 0;
+  private nextBatch = 0;
+  /**
+   * Instance removals not yet known to be done, with the last batch posted before each: sent again before anything else
+   * to a worker that (re)starts. Done when the worker acks it, or acks a later batch (it works in order).
+   */
+  private removals = new Map<string, number>();
+  /** Instances removed while a backfill runs: the rest of it leaves their chat out (it read the history before). */
+  private removedDuringBackfill: Set<string> | null = null;
   /** Bumped on every (re)start and on close: a backfill of an older worker stops. */
   private epoch = 0;
   private closed = false;
@@ -87,12 +110,17 @@ export class SearchIndex {
     this.worker = worker;
     this.state = "starting";
     worker.unref();
-    worker.on("message", (m: { op: string; id?: number; ok?: boolean; value?: unknown; error?: string; built?: boolean; reason?: string }) => {
-      if (this.worker !== worker) return;
-      if (m.op === "reply" && m.id !== undefined) { this.settle(m.id, m.ok ? { ok: true, value: m.value } : { ok: false, reason: "unavailable" }); return; }
+    worker.on("message", (m: { op: string; id?: number; ok?: boolean; value?: unknown; error?: string; built?: boolean; reason?: string; batch?: number; instance?: string }) => {
+      if (this.worker !== worker) return;          // an old worker's late reply or ack changes nothing
+      if (m.op === "reply" && m.id !== undefined) { this.replied(m.id, m.ok ? { ok: true, value: m.value } : { ok: false, reason: "unavailable" }); return; }
+      if (m.op === "added" && m.batch !== undefined) { this.committed(m.batch); return; }
+      if (m.op === "removed" && typeof m.instance === "string") { this.removals.delete(m.instance); return; }
       if (m.op === "failed") { this.opts.log?.("warn", `search: the index cannot be opened (${m.reason ?? "unknown"}); search is unavailable`); this.state = "unavailable"; this.closed = true; return; }
       if (m.op !== "ready") return;
       this.restartDelay = RESTART_MIN_MS;
+      // Whatever this worker's file may be missing: removals first, then the batches no worker committed.
+      for (const instance of this.removals.keys()) this.post({ op: "removeInstance", instance });
+      for (const [batch, docs] of this.inflight) this.post({ op: "add", batch, docs });
       if (m.built) { this.state = "ready"; this.flush(); this.startPruning(); }
       else void this.backfill(epoch);
     });
@@ -100,7 +128,7 @@ export class SearchIndex {
     worker.on("exit", () => {
       if (this.worker !== worker) return;
       this.worker = null;
-      for (const id of [...this.pending.keys()]) this.settle(id, { ok: false, reason: "unavailable" });
+      this.dropWorkerWork();
       if (this.closed) { if (this.state !== "unavailable") this.state = "unavailable"; return; }
       this.state = "starting";
       this.scheduleRestart();
@@ -120,9 +148,21 @@ export class SearchIndex {
     else this.flushTimer ??= setTimeout(() => this.flush(), BATCH_MS);
   }
 
-  /** An instance removed from the fleet: its chat leaves the index (queued rows too; see SearchStore.removeInstance). */
+  /**
+   * An instance removed from the fleet: its chat leaves the index — queued and uncommitted docs, what the worker has, and
+   * the rest of a backfill running now (see SearchStore.removeInstance). Its later chat, under the same name, is a new
+   * instance's and is indexed as usual.
+   */
   removeInstance(instance: string): void {
-    this.queue = this.queue.filter(d => d.source !== "chat" || d.instance !== instance);
+    const gone = (d: SearchDoc) => d.source === "chat" && d.instance === instance;
+    this.queue = this.queue.filter(d => !gone(d));
+    for (const [batch, docs] of this.inflight) {
+      const kept = docs.filter(d => !gone(d));
+      this.inflightDocs -= docs.length - kept.length;
+      this.inflight.set(batch, kept);
+    }
+    this.removedDuringBackfill?.add(instance);
+    this.removals.set(instance, this.nextBatch);
     this.post({ op: "removeInstance", instance });
   }
 
@@ -137,37 +177,87 @@ export class SearchIndex {
     if (this.pruneTimer) clearInterval(this.pruneTimer);
     this.flushTimer = this.restartTimer = this.pruneTimer = null;
     this.flush(true);
-    for (const id of [...this.pending.keys()]) this.settle(id, { ok: false, reason: "unavailable" });
+    this.dropWorkerWork();
     this.post({ op: "close" });
     this.state = "unavailable";
   }
 
   private ask(op: "query" | "context", body: Record<string, unknown>): Promise<SearchAnswer<unknown>> {
     if (!this.worker || (this.state !== "ready" && this.state !== "building")) return Promise.resolve({ ok: false, reason: "unavailable" });
-    if (this.pending.size >= PENDING_MAX) return Promise.resolve({ ok: false, reason: "busy" });
-    const id = ++this.nextId, building = this.state === "building";
+    if (this.queries.size >= PENDING_MAX) return Promise.resolve({ ok: false, reason: "busy" });
+    const id = ++this.nextId, building = this.state === "building", worker = this.worker;
     return new Promise(resolve => {
-      this.pending.set(id, {
-        timer: setTimeout(() => this.settle(id, { ok: false, reason: "timeout" }), QUERY_BUDGET_MS),
-        resolve: r => resolve(r.ok ? { ok: true, value: r.value, building } : { ok: false, reason: (r.reason as "unavailable" | "timeout" | "busy") ?? "unavailable" }),
-      });
-      if (!this.post({ op, id, ...body })) this.settle(id, { ok: false, reason: "unavailable" });
+      const entry = {
+        answered: false,
+        resolve: (r: { ok: boolean; value?: unknown; reason?: string }) => resolve(r.ok ? { ok: true, value: r.value, building } : { ok: false, reason: (r.reason as "unavailable" | "timeout" | "busy") ?? "unavailable" }),
+        timer: setTimeout(() => {
+          this.answer(id, { ok: false, reason: "timeout" });
+          // Still held long after: the worker is stuck — retire it (its exit ends the hold, and it is started again).
+          const held = this.queries.get(id);
+          if (held) held.stall = setTimeout(() => { if (this.queries.has(id) && this.worker === worker) this.retire(); }, STALL_MS - QUERY_BUDGET_MS);
+        }, QUERY_BUDGET_MS),
+      } as { answered: boolean; timer: ReturnType<typeof setTimeout>; stall?: ReturnType<typeof setTimeout>; resolve(v: { ok: boolean; value?: unknown; reason?: string }): void };
+      this.queries.set(id, entry);
+      if (!this.post({ op, id, ...body })) this.replied(id, { ok: false, reason: "unavailable" });
     });
   }
-  private settle(id: number, r: { ok: boolean; value?: unknown; reason?: string }): void {
-    const p = this.pending.get(id);
-    if (!p) return;
-    this.pending.delete(id); clearTimeout(p.timer); p.resolve(r);
+  /** The caller's answer (once); the worker may still hold the query. */
+  private answer(id: number, r: { ok: boolean; value?: unknown; reason?: string }): void {
+    const q = this.queries.get(id);
+    if (!q || q.answered) return;
+    q.answered = true; clearTimeout(q.timer); q.resolve(r);
+  }
+  /** The worker is done with `id`: a query's hold ends (answered now if it was not), or a request settles. */
+  private replied(id: number, r: { ok: boolean; value?: unknown; reason?: string }): void {
+    if (this.queries.has(id)) {
+      this.answer(id, r);
+      const q = this.queries.get(id)!;
+      if (q.stall) clearTimeout(q.stall);
+      this.queries.delete(id);
+      return;
+    }
+    const request = this.requests.get(id);
+    if (request) { this.requests.delete(id); request({ ok: r.ok, value: r.value }); }
+  }
+  /** The worker went (or the index closes): nothing it held will be answered. Uncommitted batches are kept. */
+  private dropWorkerWork(): void {
+    for (const id of [...this.queries.keys()]) this.replied(id, { ok: false, reason: "unavailable" });
+    for (const id of [...this.requests.keys()]) this.replied(id, { ok: false });
+  }
+  private retire(): void {
+    const w = this.worker;
+    if (!w) return;
+    this.opts.log?.("warn", "search: a query held the index worker too long; restarting it");
+    try { void w.terminate().catch(() => {}); } catch { /* its exit (or none) decides */ }
+  }
+  private committed(batch: number): void {
+    const docs = this.inflight.get(batch);
+    if (docs) { this.inflight.delete(batch); this.inflightDocs -= docs.length; }
+    // The worker works in order: a removal posted before this batch is done too.
+    for (const [instance, before] of this.removals) if (before < batch) this.removals.delete(instance);
+    if (this.queue.length && (this.state === "ready" || this.state === "building")) this.flushTimer ??= setTimeout(() => this.flush(), BATCH_MS);
   }
   private post(message: Record<string, unknown>): boolean {
     if (!this.worker) return false;
     try { this.worker.postMessage(message); return true; } catch { return false; }
   }
+  /** A batch to the worker, kept until it is committed. False when there is no worker to take it. */
+  private postBatch(docs: SearchDoc[]): boolean {
+    if (!docs.length) return true;
+    const batch = ++this.nextBatch;
+    this.inflight.set(batch, docs); this.inflightDocs += docs.length;
+    if (this.post({ op: "add", batch, docs })) return true;
+    this.inflight.delete(batch); this.inflightDocs -= docs.length;
+    return false;
+  }
   private flush(force = false): void {
     if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
     if (!this.queue.length || (!force && this.state !== "ready" && this.state !== "building")) return;
-    const docs = this.queue; this.queue = [];
-    if (!this.post({ op: "add", docs })) this.queue = docs.concat(this.queue).slice(-QUEUE_MAX);
+    // Bounded: while QUEUE_MAX docs wait for their commit, new ones wait in the (capped) queue.
+    if (!force && this.inflightDocs >= QUEUE_MAX) return;
+    const docs = this.queue.splice(0, BATCH_MAX);
+    if (!this.postBatch(docs)) { this.queue = docs.concat(this.queue).slice(-QUEUE_MAX); return; }
+    if (this.queue.length) this.flushTimer = setTimeout(() => this.flush(), 0);
   }
   private scheduleRestart(): void {
     if (this.closed || this.restartTimer) return;
@@ -181,20 +271,23 @@ export class SearchIndex {
     this.state = "building";
     this.flush();
     const started = this.now();
+    const removed = this.removedDuringBackfill = new Set<string>();
+    const kept = (d: SearchDoc) => !(d.source === "chat" && removed.has(d.instance));
     let chats = 0;
     try {
       const cutoff = this.cutoff();
       let chunk: SearchDoc[] = [];
       for (const doc of this.opts.chatDocs()) {
-        if (doc.ts < cutoff) continue;
+        if (doc.ts < cutoff || !kept(doc)) continue;
         chunk.push(doc);
         if (chunk.length < BACKFILL_CHUNK) continue;
-        if (epoch !== this.epoch || !this.post({ op: "add", docs: chunk })) return;
+        if (epoch !== this.epoch || !this.postBatch(chunk)) return;
         chats += chunk.length; chunk = [];
         await new Promise<void>(resolve => setImmediate(resolve));
       }
       if (epoch !== this.epoch) return;
-      if (chunk.length && !this.post({ op: "add", docs: chunk })) return;
+      chunk = chunk.filter(kept);
+      if (!this.postBatch(chunk)) return;
       chats += chunk.length;
       const sql = await this.request("backfill", { outboxPath: this.opts.outboxPath, schedulerPath: this.opts.schedulerPath, cutoff });
       if (epoch !== this.epoch || !sql.ok) return;
@@ -206,14 +299,16 @@ export class SearchIndex {
       this.startPruning();
     } catch (err) {
       this.opts.log?.("warn", `search: backfill failed: ${String((err as Error)?.message ?? err)}`);
+    } finally {
+      if (this.removedDuringBackfill === removed) this.removedDuringBackfill = null;
     }
   }
   /** A worker request without the query budget (the backfill and prune run as long as they need). */
   private request(op: string, body: Record<string, unknown>): Promise<{ ok: boolean; value?: unknown }> {
     const id = ++this.nextId;
     return new Promise(resolve => {
-      this.pending.set(id, { resolve });
-      if (!this.post({ op, id, ...body })) this.settle(id, { ok: false });
+      this.requests.set(id, resolve);
+      if (!this.post({ op, id, ...body })) this.replied(id, { ok: false });
     });
   }
   private startPruning(): void {

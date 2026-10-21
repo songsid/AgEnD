@@ -75,6 +75,12 @@ export const RESULT_MAX = 200;
 export const SHORT_SCAN_ROWS = 5000;
 export const ROW_CAP = 300_000;
 export const TEXT_MAX = 16_000;
+/**
+ * Masking reads this much past TEXT_MAX before the text is cut (#2295 review): a secret cut at the edge loses what makes
+ * it recognisable (a closing quote), so the cut comes after the mask. One starting in the kept text and shorter than
+ * this is masked whole — a private key block is a few KB.
+ */
+export const MASK_MARGIN = 16_000;
 const SCHEMA_VERSION = "1";
 const SNIPPET_BEFORE = 60, SNIPPET_AFTER = 120;
 
@@ -153,7 +159,7 @@ export class SearchStore {
       for (const d of docs) {
         if (!valid(d)) continue;
         put.run({ key: d.key, source: d.source, instance: d.instance, peer: d.peer ?? null, sender: d.sender.slice(0, 256), role: d.role ?? null,
-          mine: d.mine ?? null, ts: Math.trunc(d.ts), ref: JSON.stringify(d.ref ?? {}), text: maskSecrets(d.text.slice(0, TEXT_MAX)).trim() });
+          mine: d.mine ?? null, ts: Math.trunc(d.ts), ref: JSON.stringify(d.ref ?? {}), text: maskSecrets(d.text.slice(0, TEXT_MAX + MASK_MARGIN)).slice(0, TEXT_MAX).trim() });
         n++;
       }
     })();

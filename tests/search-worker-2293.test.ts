@@ -64,6 +64,11 @@ describe("the search worker", () => {
     index.record(chatDoc({ instance: "ops", boot: "b1", id: 2, role: "agent", sender: "bot", text: "nginx restarted", ts: now } as never));
     await new Promise(r => setTimeout(r, 400));
     expect(await keysOf(index, "restarted")).toEqual(["chat:ops:b1-2"]);
+    // Every batch was committed and acked: nothing is held for a replay.
+    expect((index as any).inflight.size).toBe(0);
+    index.removeInstance("ops");
+    await new Promise(r => setTimeout(r, 200));
+    expect([await keysOf(index, "restarted"), (index as any).removals.size]).toEqual([[], 0]);
     const ctx = await index.context("chat:dev:b1-1");
     expect(ctx.ok && ctx.value?.doc.text).toBe("請改 nginx 設定");
   });

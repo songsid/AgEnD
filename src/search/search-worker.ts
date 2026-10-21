@@ -79,14 +79,15 @@ async function backfill(outboxPath: string | undefined, schedulerPath: string | 
   return { xmsg, tasks };
 }
 
-port.on("message", (m: { op: string; id?: number; docs?: unknown[]; filters?: unknown; key?: string; cutoff?: number; instance?: string; now?: number; outboxPath?: string; schedulerPath?: string }) => {
+port.on("message", (m: { op: string; id?: number; docs?: unknown[]; filters?: unknown; key?: string; cutoff?: number; instance?: string; now?: number; outboxPath?: string; schedulerPath?: string; batch?: number }) => {
   if (!store) return;
   const reply = (value: unknown) => { if (m.id !== undefined) port.postMessage({ op: "reply", id: m.id, ok: true, value }); };
   try {
     switch (m.op) {
-      case "add": store.add((m.docs ?? []) as never); break;
+      // Acked once written: the fleet keeps a batch until then, and sends it again to a worker that replaces this one.
+      case "add": store.add((m.docs ?? []) as never); if (m.batch !== undefined) port.postMessage({ op: "added", batch: m.batch }); break;
       case "markBuilt": store.markBuilt(Number(m.now) || Date.now()); break;
-      case "removeInstance": if (typeof m.instance === "string") store.removeInstance(m.instance); break;
+      case "removeInstance": if (typeof m.instance === "string") { store.removeInstance(m.instance); port.postMessage({ op: "removed", instance: m.instance }); } break;
       case "query": reply(store.search(m.filters as never)); break;
       case "context": reply(store.context(String(m.key ?? ""))); break;
       case "prune": reply(store.prune(Number(m.cutoff) || 0)); break;
@@ -98,7 +99,9 @@ port.on("message", (m: { op: string; id?: number; docs?: unknown[]; filters?: un
     }
   } catch (err) {
     if (m.id !== undefined) port.postMessage({ op: "reply", id: m.id, ok: false, error: String((err as Error)?.message ?? err) });
-    recover(err);
+    // A corrupt file: a fresh one, announced as not built (the fleet sends its uncommitted batches again and backfills).
+    // Any other failed write is let go (acked): sent again it would fail again.
+    if (!recover(err) && m.op === "add" && m.batch !== undefined) port.postMessage({ op: "added", batch: m.batch });
   }
 });
 open();

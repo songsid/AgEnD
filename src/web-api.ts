@@ -2144,7 +2144,9 @@ export function handleWebRequest(
       if (!r.ok) return failed(r.reason);
       // A chat row still in the history opens in place (#m=); one that has left it opens as the index's copy.
       const history = ctx.webChatHistory;
-      const hits = r.value.hits.map(h => h.source !== "chat" ? h
+      // The visibility as it is now (#2295 review): a name hidden while the query ran is left out too.
+      const now = visibility();
+      const hits = r.value.hits.filter(h => xmsgShown(h, now)).map(h => h.source !== "chat" ? h
         : { ...h, live: !!history?.find(h.instance, String(h.ref.boot ?? ""), Number(h.ref.id)) });
       finish(200, { hits, limited: r.value.limited, building: r.building });
     }, () => failed("unavailable"));

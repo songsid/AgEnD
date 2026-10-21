@@ -10,8 +10,10 @@ import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseQuery, snippetOf, SearchStore, SHORT_SCAN_ROWS, QUERY_MAX_TERMS, type SearchDoc } from "../src/search/search-store.js";
 import { chatDoc, taskDoc, xmsgDoc, xmsgFromOutbox, xmsgShown } from "../src/search/search-docs.js";
+import { maskSecrets } from "../src/log-steps.js";
 import { xmsgVisibility } from "../src/cross-instance-notice.js";
-import { BATCH_MAX, BATCH_MS, BACKFILL_CHUNK, PENDING_MAX, QUERY_BUDGET_MS, QUEUE_MAX, SearchIndex } from "../src/search/search-index.js";
+import { BATCH_MAX, BATCH_MS, BACKFILL_CHUNK, PENDING_MAX, QUERY_BUDGET_MS, QUEUE_MAX, STALL_MS, SearchIndex } from "../src/search/search-index.js";
+import { WebChatHistory } from "../src/web-chat-history.js";
 import type { WebChatMessage } from "../src/web-chat-history.js";
 
 const dirs: string[] = [];
@@ -197,6 +199,7 @@ class FakeWorker extends EventEmitter {
     this.emit("message", { op: "reply", id: m.id, ok, value });
   }
   ops() { return this.sent.map(m => m.op); }
+  ack(batch: number) { this.emit("message", { op: "added", batch }); }
 }
 function lane(chatDocs: () => Iterable<SearchDoc> = () => []) {
   const workers: FakeWorker[] = [];
@@ -221,14 +224,29 @@ describe("SearchIndex (the fleet's lane)", () => {
     for (let i = 0; i < BATCH_MAX; i++) index.record(doc({ text: "x" }));
     expect(w().sent.filter(m => m.op === "add").map(m => m.docs.length)).toEqual([1, BATCH_MAX]);
   });
-  it("while starting, records wait (at most QUEUE_MAX, the oldest go) and are sent once it is ready", () => {
+  it("while starting, records wait (at most QUEUE_MAX, the oldest go) and are sent once it is ready, BATCH_MAX a batch", () => {
+    vi.useFakeTimers();
     const { index, w } = lane();
     index.start();
     for (let i = 0; i < QUEUE_MAX + 3; i++) index.record(doc({ text: `q${i}` }));
     expect(w().ops()).toEqual([]);
     w().emit("message", { op: "ready", built: true });
-    const added = w().sent.filter(m => m.op === "add").flatMap(m => m.docs);
-    expect([added.length, added[0].text]).toEqual([QUEUE_MAX, "q3"]);
+    vi.advanceTimersByTime(100);
+    const adds = w().sent.filter(m => m.op === "add");
+    const added = adds.flatMap(m => m.docs);
+    expect([added.length, added[0].text, Math.max(...adds.map(m => m.docs.length))]).toEqual([QUEUE_MAX, "q3", BATCH_MAX]);
+  });
+  it("uncommitted docs are bounded: while QUEUE_MAX wait for their commit, new ones wait in the capped queue", () => {
+    vi.useFakeTimers();
+    const { index, w } = lane();
+    index.start(); w().emit("message", { op: "ready", built: true });
+    for (let i = 0; i < QUEUE_MAX + BATCH_MAX; i++) index.record(doc({ text: "x" }));
+    vi.advanceTimersByTime(10_000);
+    const posted = () => w().sent.filter(m => m.op === "add").reduce((n, m) => n + m.docs.length, 0);
+    expect(posted()).toBe(QUEUE_MAX);
+    w().ack(w().sent.find(m => m.op === "add").batch);
+    vi.advanceTimersByTime(BATCH_MS);
+    expect(posted()).toBe(QUEUE_MAX + BATCH_MAX);
   });
   it("a new index is backfilled: chat docs in chunks (inside retention), then the worker's SQLite read, then built", async () => {
     const chats = Array.from({ length: BACKFILL_CHUNK + 1 }, () => doc({ text: "c", ts: T0 + 99 * 86400_000 }));
@@ -253,17 +271,98 @@ describe("SearchIndex (the fleet's lane)", () => {
     expect(logs.some(l => /index built \(201 chat, 2 cross-instance, 1 task docs/.test(l))).toBe(true);
     expect(w().ops()).toContain("prune");
   });
-  it("a query past QUERY_BUDGET_MS: timeout; more than PENDING_MAX at once: busy; no worker: unavailable", async () => {
+  it("a query past QUERY_BUDGET_MS: answered timeout, but it holds its place until the worker is done with it", async () => {
     vi.useFakeTimers();
     const { index, w } = lane();
     expect(await index.query({ q: "x" })).toEqual({ ok: false, reason: "unavailable" });
     index.start(); w().emit("message", { op: "ready", built: true });
-    const slow = index.query({ q: "x" });
+    const held = Array.from({ length: PENDING_MAX }, () => index.query({ q: "x" }));
     vi.advanceTimersByTime(QUERY_BUDGET_MS);
-    expect(await slow).toEqual({ ok: false, reason: "timeout" });
-    const many = Array.from({ length: PENDING_MAX }, () => index.query({ q: "x" }));
+    expect(await Promise.all(held)).toEqual(Array(PENDING_MAX).fill({ ok: false, reason: "timeout" }));
+    // Timed out, still in the worker: no new query goes to it.
     expect(await index.query({ q: "x" })).toEqual({ ok: false, reason: "busy" });
-    vi.advanceTimersByTime(QUERY_BUDGET_MS); await Promise.all(many);
+    expect(w().sent.filter(m => m.op === "query")).toHaveLength(PENDING_MAX);
+    // The worker finishes one (late — its caller was answered): one place frees.
+    const first = w().sent.find(m => m.op === "query");
+    w().emit("message", { op: "reply", id: first.id, ok: true, value: { hits: [], limited: false } });
+    const next = index.query({ q: "y" });
+    expect(w().sent.filter(m => m.op === "query")).toHaveLength(PENDING_MAX + 1);
+    w().reply("query", { hits: [], limited: false });
+    expect(await next).toEqual({ ok: true, value: { hits: [], limited: false }, building: false });
+  });
+  it("a query still held STALL_MS after it was asked: the worker is retired and started again; its holds end", async () => {
+    vi.useFakeTimers();
+    const { index, workers, w, logs } = lane();
+    index.start(); w().emit("message", { op: "ready", built: true });
+    void index.query({ q: "x" });
+    vi.advanceTimersByTime(STALL_MS - 1);
+    expect(workers[0]!.terminated).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect([workers[0]!.terminated, logs.some(l => l.includes("held the index worker too long"))]).toEqual([true, true]);
+    workers[0]!.emit("exit", 1);
+    vi.advanceTimersByTime(1000);
+    expect(workers).toHaveLength(2);
+    w().emit("message", { op: "ready", built: true });
+    expect(index.status()).toBe("ready");
+    // The old hold is gone: a full set of new queries goes to the new worker.
+    for (let i = 0; i < PENDING_MAX; i++) void index.query({ q: "x" });
+    expect(w().sent.filter(m => m.op === "query")).toHaveLength(PENDING_MAX);
+  });
+  it("a query answered in time: no stall, no retire", async () => {
+    vi.useFakeTimers();
+    const { index, workers, w } = lane();
+    index.start(); w().emit("message", { op: "ready", built: true });
+    const q = index.query({ q: "x" });
+    w().reply("query", { hits: [], limited: false });
+    await q;
+    vi.advanceTimersByTime(STALL_MS * 2);
+    expect(workers[0]!.terminated).toBe(false);
+  });
+  it("a batch the worker had not committed when it went is sent again to the next one; a committed one is not", () => {
+    vi.useFakeTimers();
+    const { index, workers, w } = lane();
+    index.start(); w().emit("message", { op: "ready", built: true });
+    index.record(doc({ key: "chat:dev:b-c", text: "committed" }));
+    vi.advanceTimersByTime(BATCH_MS);
+    w().ack(w().sent.find(m => m.op === "add").batch);
+    index.record(doc({ key: "chat:dev:b-u", text: "uncommitted" }));
+    vi.advanceTimersByTime(BATCH_MS);
+    const lost = w().sent.filter(m => m.op === "add")[1];
+    workers[0]!.emit("exit", 1);
+    // The old worker's late ack changes nothing: the new worker gets the batch anyway.
+    workers[0]!.emit("message", { op: "added", batch: lost.batch });
+    vi.advanceTimersByTime(1000);
+    w().emit("message", { op: "ready", built: true });
+    const replayed = w().sent.filter(m => m.op === "add").flatMap(m => m.docs.map((d: SearchDoc) => d.key));
+    expect(replayed).toEqual(["chat:dev:b-u"]);
+    // Committed by the new worker: not sent a third time.
+    w().ack(lost.batch);
+    workers[1]!.emit("exit", 1);
+    vi.advanceTimersByTime(2000);
+    w().emit("message", { op: "ready", built: true });
+    expect(w().sent.filter(m => m.op === "add")).toEqual([]);
+  });
+  it("a removal the worker did not confirm is sent first to the next worker; confirmed (or a later batch committed): not", () => {
+    vi.useFakeTimers();
+    const { index, workers, w } = lane();
+    index.start(); w().emit("message", { op: "ready", built: true });
+    index.removeInstance("gone");
+    workers[0]!.emit("exit", 1);
+    vi.advanceTimersByTime(1000);
+    index.record(doc({ instance: "gone", text: "a new instance of the same name" }));
+    w().emit("message", { op: "ready", built: true });
+    expect(w().ops().slice(0, 2)).toEqual(["removeInstance", "add"]);
+    w().emit("message", { op: "removed", instance: "gone" });
+    index.removeInstance("other");
+    index.record(doc({ text: "later" }));
+    vi.advanceTimersByTime(BATCH_MS);
+    const later = w().sent.filter(m => m.op === "add").pop();
+    w().ack(later.batch);                                  // in order: "other" was removed before it
+    w().ack(w().sent.find(m => m.op === "add").batch);
+    workers[1]!.emit("exit", 1);
+    vi.advanceTimersByTime(2000);
+    w().emit("message", { op: "ready", built: true });
+    expect(w().ops().filter(o => o !== "prune")).toEqual([]);
   });
   it("a worker that exits is started again after a backoff that doubles; pending queries end unavailable", async () => {
     vi.useFakeTimers();
@@ -304,5 +403,76 @@ describe("SearchIndex (the fleet's lane)", () => {
     index.close();
     expect(w().ops().slice(-2)).toEqual(["add", "close"]);
     expect(index.status()).toBe("unavailable");
+  });
+  it("an instance removed while the backfill runs: none of its old chat stays; a new instance of the name shows only its own", async () => {
+    const s = store();
+    const history = new WebChatHistory({ boot: "b1" });
+    const ts = new Date(T0 + 99 * 86400_000).toISOString();
+    for (let i = 0; i < 500; i++) history.record({ instance: "gone", sender: "x", text: `old chat ${i}`, ts, role: "user" });
+    history.record({ instance: "kept", sender: "x", text: "kept chat", ts, role: "user" });
+    let index!: SearchIndex;
+    const worker = new StoreWorker(s, (adds) => { if (adds === 1) { history.forget("gone"); index.removeInstance("gone"); } });
+    index = new SearchIndex({ path: "/x", retentionDays: 90, chatDocs: function* () { for (const n of history.instances()) for (const m of history.list(n)) { const d = chatDoc(m); if (d) yield d; } },
+      factory: () => worker as never, now: () => T0 + 100 * 86400_000 });
+    index.start(); worker.ready(false);
+    for (let i = 0; i < 100 && index.status() !== "ready"; i++) await tick();
+    expect(index.status()).toBe("ready");
+    expect(worker.adds).toBeGreaterThan(1);                       // removed between the backfill's chunks
+    expect([history.list("gone").length, s.search({ q: "chat", instances: ["gone"] }).hits.length, s.search({ q: "kept chat" }).hits.length]).toEqual([0, 0, 1]);
+    const fresh = history.record({ instance: "gone", sender: "y", text: "new chat", ts, role: "user" });
+    index.record(chatDoc(fresh));
+    await new Promise(r => setTimeout(r, BATCH_MS + 50));
+    expect(s.search({ q: "chat", instances: ["gone"] }).hits.map(h => h.snippet)).toEqual(["new chat"]);
+    // A removal with no backfill running: the same.
+    index.removeInstance("kept");
+    await tick();
+    expect(s.search({ q: "kept chat" }).hits).toEqual([]);
+    index.close();
+  });
+});
+
+/** search-worker's ops over a real SearchStore, in this process (answered on the next microtask, in order). */
+class StoreWorker extends EventEmitter {
+  adds = 0;
+  constructor(private readonly s: SearchStore, private readonly onAdd: (adds: number) => void = () => {}) { super(); }
+  ready(built: boolean) { this.emit("message", { op: "ready", built }); }
+  postMessage(m: any) { queueMicrotask(() => this.handle(m)); }
+  terminate() { return Promise.resolve(0); }
+  unref() { return this; }
+  private handle(m: any) {
+    const reply = (value: unknown) => this.emit("message", { op: "reply", id: m.id, ok: true, value });
+    switch (m.op) {
+      case "add": this.s.add(m.docs); this.emit("message", { op: "added", batch: m.batch }); this.onAdd(++this.adds); break;
+      case "removeInstance": this.s.removeInstance(m.instance); this.emit("message", { op: "removed", instance: m.instance }); break;
+      case "query": reply(this.s.search(m.filters)); break;
+      case "backfill": reply({ xmsg: 0, tasks: 0 }); break;
+      case "prune": reply({ removed: 0, more: false }); break;
+      case "markBuilt": this.s.markBuilt(m.now); break;
+    }
+  }
+}
+
+describe("masking before the cut (#2295 review)", () => {
+  const pad = (n: number) => "x".repeat(n);
+  it("a secret across the TEXT_MAX edge is masked whole: a quoted password, a JSON password", () => {
+    const s = store();
+    s.add([
+      doc({ key: "chat:dev:q", text: `${pad(15976)} password="horse battery staple"` }),
+      doc({ key: "chat:dev:j", text: `${pad(15980)} {"password": "correct horse stapler"}` }),
+    ]);
+    for (const q of ["horse battery", "battery", "correct horse"]) expect(s.search({ q }).hits, q).toEqual([]);
+    expect(s.context("chat:dev:q")!.doc.text).not.toMatch(/horse/);
+    expect(s.context("chat:dev:j")!.doc.text).not.toMatch(/horse/);
+  });
+  it("controls: the same secrets inside the kept text are masked; ordinary words at the edge are kept and found", () => {
+    const s = store();
+    s.add([doc({ key: "chat:dev:in", text: 'deploy password="horse battery staple" now' }),
+      doc({ key: "chat:dev:edge", text: `${pad(15980)} nginx upstream` })]);
+    expect(s.search({ q: "horse" }).hits).toEqual([]);
+    expect(s.search({ q: "deploy" }).hits.map(h => h.key)).toEqual(["chat:dev:in"]);
+    expect(s.search({ q: "nginx upstream" }).hits.map(h => h.key)).toEqual(["chat:dev:edge"]);
+    expect(s.context("chat:dev:edge")!.doc.text.length).toBeLessThanOrEqual(16_000);
+    // The precondition the fix answers: cut first, the quoted secret is no longer recognised.
+    expect(maskSecrets(`${pad(15976)} password="horse battery staple"`.slice(0, 16_000))).toMatch(/horse battery/);
   });
 });

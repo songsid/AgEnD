@@ -143,6 +143,20 @@ describe("GET /ui/search: what it takes and answers", () => {
     const r = get("/ui/search?q=nginx", { index, history }); await settle();
     expect(r.json().hits.map((h: any) => h.live)).toEqual([true, false, undefined]);
   });
+  it("held while it searches: a name hidden meanwhile is left out of the answer (per instance or by default); unchanged: kept", async () => {
+    const answer = () => ({ limited: false, hits: [
+      { key: "xmsg:1:h", source: "xmsg", instance: "a", peer: "h", ref: {} },
+      { key: "task:t", source: "task", instance: "a", peer: null, ref: {} },
+    ] });
+    for (const [after, keys] of [[{ hidden: ["h"] }, ["task:t"]], [{ among: ["a"] }, ["task:t"]], [{ hidden: [] }, ["xmsg:1:h", "task:t"]], [{ among: ["a", "h"] }, ["xmsg:1:h", "task:t"]]] as const) {
+      const index = fakeIndex(answer); index.hold();
+      const o: Opts = { index, visibility: { hidden: [] } };
+      const r = get("/ui/search?q=x", o);
+      o.visibility = after;
+      index.release(); await settle(); await settle();
+      expect([JSON.stringify(after), r.status(), r.json().hits.map((h: any) => h.key)]).toEqual([JSON.stringify(after), 200, keys]);
+    }
+  });
   it("context: by key; a message to or from a hidden name is not found; an unknown key 404; no key 400", async () => {
     const ok = get("/ui/search/context?key=chat:dev:b-1"); await settle();
     expect([ok.status(), ok.json().doc.key]).toEqual([200, "chat:dev:b-1"]);
@@ -210,6 +224,45 @@ describe("the fleet feeds the index", () => {
       expect(backfilled.role).toBe("broadcast");
     }
     tick.mockRestore();
+  });
+  /** The outbox's admission as it decides duplicates: one row per operation and target; a retry gets the first. */
+  function admissions() {
+    const rows = new Map<string, any>();
+    const admit = vi.fn((input: any) => {
+      const k = `${input.operationId}\u0000${input.targetSession}`;
+      const duplicate = rows.has(k);
+      if (!duplicate) rows.set(k, input);
+      return { deliveryId: k, state: "queued", duplicate };
+    });
+    const backfilled = () => [...rows.values()].map(a => xmsgDoc(xmsgFromOutbox(a.targetSession, "2026-01-01T00:00:00.000Z", JSON.stringify(a.payload), a.kind)!)!);
+    return { admit, backfilled };
+  }
+  it("broadcast retried with the same operation: indexed once, as the outbox's one row — not under the retry's new id", async () => {
+    const indexed: any[] = [];
+    const { admit, backfilled } = admissions();
+    const ctx = outboundCtx(indexed, []); ctx.admitDurableDelivery = admit;
+    let clock = Date.UTC(2026, 9, 1);
+    const tick = vi.spyOn(Date, "now").mockImplementation(() => clock++);
+    for (let i = 0; i < 2; i++) await outboundHandlers.get("broadcast")!(ctx, { message: "nginx for all", targets: ["t1", "t2"] }, () => {}, meta as never);
+    tick.mockRestore();
+    expect(admit).toHaveBeenCalledTimes(4);
+    expect(backfilled()).toHaveLength(2);
+    expect(indexed.map(r => xmsgDoc(r))).toEqual(backfilled());
+  });
+  it("two broadcasts in the same millisecond: different ids, nothing overwritten; one broadcast's targets share its id", async () => {
+    const indexed: any[] = [];
+    const { admit, backfilled } = admissions();
+    const ctx = outboundCtx(indexed, []); ctx.admitDurableDelivery = admit;
+    const frozen = vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 9, 1));
+    await outboundHandlers.get("broadcast")!(ctx, { message: "first", targets: ["t1", "t2"] }, () => {}, meta as never);
+    await outboundHandlers.get("broadcast")!(ctx, { message: "second", targets: ["t1", "t2"] }, () => {}, { ...meta, operationId: "op-2" } as never);
+    frozen.mockRestore();
+    const docs = indexed.map(r => xmsgDoc(r)!);
+    expect(new Set(docs.map(d => d.key)).size).toBe(4);
+    expect(docs).toEqual(backfilled());
+    expect(indexed[0].messageId).toBe(indexed[1].messageId);
+    expect(indexed[0].messageId).not.toBe(indexed[2].messageId);
+    expect(indexed[0].messageId).toMatch(/^bcast-\d+-[0-9a-z]{1,6}$/);
   });
   it("Task Board: every create and change (claim and done included) reaches onTaskChange after the write; a throwing listener fails nothing", () => {
     const dir = mkdtempSync(join(tmpdir(), "search-tasks-")); dirs.push(dir);
