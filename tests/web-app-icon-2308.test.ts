@@ -8,7 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -99,7 +99,10 @@ describe("the store", () => {
     expect(store.current()).toBeNull();
     writeFileSync(join(dir, "web-app-icon", "current.json"), JSON.stringify({ version: "../../etc/passwd", updatedAt: "x", by: "p" }));
     expect(store.current()).toBeNull();
-    expect(store.file("icon-192.png", "../../etc")).toBeNull();
+    // A version is 16 hex characters, never a path: a file outside the icon folder is not reachable through it.
+    mkdirSync(join(dir, "secret"), { recursive: true });
+    writeFileSync(join(dir, "secret", "icon-192.png"), "outside");
+    expect(store.file("icon-192.png", "../secret")).toBeNull();
   });
 });
 
@@ -203,7 +206,7 @@ describe("the pages' icon links", () => {
 });
 
 /** One request through the real web routes as a session of `tier` (local, or the public link's gateway), or the token. */
-function viaWeb(method: string, path: string, opts: { tier?: "admin" | "read" | "guest"; gateway?: boolean; token?: boolean; csrf?: boolean; body?: Buffer; store?: AppIconStore } = {}) {
+function viaWeb(method: string, path: string, opts: { tier?: "admin" | "read" | "guest"; gateway?: boolean; token?: boolean; csrf?: boolean; body?: Buffer; store?: AppIconStore; noEnd?: boolean } = {}) {
   const sessions = new WebSessionStore(), exposureId = "a".repeat(32), pub = "https://sample.trycloudflare.com", local = "http://127.0.0.1:19280";
   const origin = opts.gateway ? pub : local;
   const headers: Record<string, string> = { host: new URL(origin).host, origin, "sec-fetch-site": "same-origin", "content-type": "image/png" };
@@ -223,7 +226,7 @@ function viaWeb(method: string, path: string, opts: { tier?: "admin" | "read" | 
       end: (t = "") => resolve({ status, body: t ? JSON.parse(String(t)) : null, store }) });
     handleWebRequest(req as never, res as never, new URL(path, origin), { webToken: TOKEN, webSessions: sessions, appIcon: store, fleetConfig: { defaults: {}, instances: {} },
       logger: { debug() {}, info() {}, warn() {}, error() {} } } as never);
-    setImmediate(() => { if (opts.body) req.emit("data", opts.body); req.emit("end"); });
+    setImmediate(() => { if (opts.body) req.emit("data", opts.body); if (!opts.noEnd) req.emit("end"); });
   });
 }
 
@@ -273,7 +276,8 @@ describe("who may change it (/ui/app-icon)", () => {
     const store = new AppIconStore(stateDir());
     store.set(sourcePng(), "p");
     const before = store.current();
-    expect([(await viaWeb("PUT", "/ui/app-icon", { body: Buffer.alloc(APP_ICON_MAX_BYTES + 1, 1), store })).status]).toEqual([413]);
+    // Refused as the body passes 5 MiB — before it has all arrived (no "end" is ever sent here).
+    expect([(await viaWeb("PUT", "/ui/app-icon", { body: Buffer.alloc(APP_ICON_MAX_BYTES + 1, 1), store, noEnd: true })).status]).toEqual([413]);
     const jpg = await viaWeb("PUT", "/ui/app-icon", { body: Buffer.from("\xff\xd8\xff\xe0JFIF", "latin1"), store });
     expect([jpg.status, jpg.body.error]).toEqual([415, "app_icon_not_png"]);
     const broken = Buffer.from(sourcePng()); broken[40] ^= 0xff;

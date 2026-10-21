@@ -174,6 +174,7 @@ describe("resampling, flattening, the ICO", () => {
   it("alpha is premultiplied: a transparent neighbour does not darken the colour", () => {
     const out = resize({ width: 2, height: 1, data: new Uint8Array([0, 0, 0, 0, 0, 0, 255, 255]) }, 1, 1);
     expect(px(out, 0, 0)).toEqual([0, 0, 255, 128]);
+    expect(px(resize({ width: 2, height: 1, data: new Uint8Array([255, 0, 0, 255, 0, 0, 0, 0]) }, 1, 1), 0, 0)).toEqual([255, 0, 0, 128]);   // not 128 red
     expect(px(resize({ width: 1, height: 1, data: new Uint8Array([9, 9, 9, 0]) }, 1, 1), 0, 0)).toEqual([0, 0, 0, 0]);
   });
 
