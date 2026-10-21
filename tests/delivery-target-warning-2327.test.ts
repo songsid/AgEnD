@@ -101,7 +101,7 @@ describe("send_to_instance's recipient warning says only what is known (#2327)",
 
   it("provider-limit and auth messages on a running recipient are not called a pause either", async () => {
     const limited = grokDaemon();
-    expect(scan(limited, `Request failed (429) Too Many Requests\n${WORKING}`)).toEqual([expect.objectContaining({ type: "rate_limit" })]);
+    expect(scan(limited, `  ┃  Retry failed: rate_limit_error: Rate limit exceeded\n${WORKING}`)).toEqual([expect.objectContaining({ type: "rate_limit" })]);
     const limit = await send(makeContext(limited));
     expect(limit.warning).toBe("target showed a provider rate-limit or timeout message and is waiting to recover. The message is queued and may be delayed.");
 
