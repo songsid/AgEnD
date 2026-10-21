@@ -360,7 +360,9 @@ in the General chat ("Waiting for confirmation", **Withdraw**) — unless the br
 account that is a fleet admin of every connection the change affects, on their platform, confirms it by its own Apply
 ("Confirmed by your account"; General gets a notice; every check runs again at execution). Not for a guest, the public
 link, an unverified browser or a change that needs the host CLI. After a failure, unapplied changes are staged again
-(secrets must be re-entered). **Restart AgEnD** restarts every agent. Preferences and Web appearance save directly.
+(secrets must be re-entered). **Restart AgEnD** restarts every agent
+(never automatic); until then every page shows **N saved change(s) take effect after AgEnD restarts** · **Restart now** ·
+**Later**. Preferences and Web appearance save directly.
 
 **Preferences** — follows you across devices unless marked:
 | Control | What it does | Stored |
