@@ -434,7 +434,7 @@ describe("#2319 review R1: a reset is the latest wish; the claim lasts until the
     const first = store.prepare(sourcePng()).then((r) => { settled = true; return r; });
     await new Promise((r) => setTimeout(r, 50));
     expect(settled).toBe(false);                                           // answered, but its thread is still there
-    expect((await store.prepare(sourcePng(600))).status).toBe(409);
+    expect(await store.prepare(sourcePng(600))).toMatchObject({ ok: false, status: 409, error: "app_icon_busy" });
     expect(w.alive()).toBe(1);
     w.exitAll();
     expect((await first).ok).toBe(true);
@@ -452,7 +452,7 @@ describe("#2319 review R1: a reset is the latest wish; the claim lasts until the
     const first = store.prepare(sourcePng()).then((r) => { settled = true; return r; });
     await new Promise((r) => setTimeout(r, 80));                          // past the deadline: terminate() asked
     expect(settled).toBe(false);
-    expect((await store.prepare(sourcePng(600))).status).toBe(409);
+    expect(await store.prepare(sourcePng(600))).toMatchObject({ ok: false, status: 409, error: "app_icon_busy" });
     expect(w.alive()).toBe(1);
     w.exitAll();
     expect(await first).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "it took too long to read" });
