@@ -51,7 +51,7 @@ import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js
 import { z } from "zod";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
-import { newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatHistory, type WebChatMessage } from "./web-chat-history.js";
+import { WEB_CHAT_CARDS_OVERFLOW, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatHistory, type WebChatMessage } from "./web-chat-history.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore, SessionRecord } from "./web-session.js";
@@ -230,6 +230,8 @@ function boardHiding(ctx: WebApiContext, gateway: boolean) {
  */
 function visibleMessages<T extends { cards?: string[] }>(ctx: WebApiContext, gateway: boolean, messages: T[]): T[] {
   if (!gateway) return messages;
+  // #2341 review r2: a line that named too many cards to keep them all is withheld whole.
+  messages = messages.filter((m) => !(m.cards ?? []).includes(WEB_CHAT_CARDS_OVERFLOW));
   const named = [...new Set(messages.flatMap((m) => m.cards ?? []))];
   if (!named.length) return messages;
   const board = ctx.scheduler?.db.board;

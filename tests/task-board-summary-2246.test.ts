@@ -20,7 +20,7 @@ import { EventEmitter } from "node:events";
 import { handleWebRequest } from "../src/web-api.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
-import { WebChatHistory, type StoredWebChatMessage } from "../src/web-chat-history.js";
+import { WEB_CHAT_CARDS_MAX, WEB_CHAT_CARDS_OVERFLOW, WebChatHistory, type StoredWebChatMessage } from "../src/web-chat-history.js";
 
 const dirs: string[] = [];
 afterEach(() => { setLocale("en"); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -326,6 +326,43 @@ describe("over the public link, the summary is withheld while it names a card hi
     (scheduler.db.board as any).db.prepare("DELETE FROM tasks WHERE title = ?").run("New visible work");
     expect(summaries(await read(fm, "/ui/poll"))).toHaveLength(1);
     scheduler.db.close();
+  });
+
+  it("#2341 review r2: past the cap of cards a line keeps, the line is withheld whole on the link — never a truncated list that lost a hidden card", async () => {
+    const run = async (visible: number, withHidden: boolean) => {
+      const { fm, scheduler, b, hidden } = fleetWithHidden();
+      if (!withHidden) { b.moveCard(ANN_, hidden.code, "claimed"); b.moveCard(ANN_, hidden.code, "cancelled"); }
+      // `visible` cards waiting for confirmation: the summary lists those before the blocked one.
+      for (let i = 0; i < visible; i += 30) {
+        const made = b.createCards(ANN_, { cards: Array.from({ length: Math.min(30, visible - i) }, (_, k) => ({ title: `Visible ${i + k}`, assignee: "dev-a" })) }).cards;
+        for (const c of made) { b.moveCard(ANN_, c.code, "claimed"); b.moveCard(ANN_, c.code, "review", { result: "ok" }); }
+      }
+      fm.postTaskBoardSummary(new Date("2026-10-20T01:00:00Z"), new Date("2026-10-21T01:00:00Z"));
+      const local = summaries(await read(fm, "/ui/history?instance=general", true));
+      const link = { history: summaries(await read(fm, "/ui/history?instance=general")), poll: summaries(await read(fm, "/ui/poll")) };
+      scheduler.db.close();
+      return { local: local.length, history: link.history.length, poll: link.poll.length, leaked: JSON.stringify(link).includes("HIDDEN_CARD_TITLE_2341") };
+    };
+    // The fixture's own "Visible work" is new in the window too, so a run names `visible` + 1 (+ 1 with the hidden one).
+    // 499 waiting + the hidden one + "Visible work": 501 cards, over the cap — withheld on the link, kept locally.
+    expect(await run(499, true)).toEqual({ local: 1, history: 0, poll: 0, leaked: false });
+    // 498 + the hidden one + "Visible work": 500, at the cap — every code kept, the hidden one among them: withheld.
+    expect(await run(498, true)).toEqual({ local: 1, history: 0, poll: 0, leaked: false });
+    // 499 + "Visible work", nothing hidden: 500, at the cap — readable on the link.
+    expect(await run(499, false)).toMatchObject({ local: 1, history: 1, poll: 1 });
+    // 500 + "Visible work", nothing hidden: 501 — over the cap, withheld though nothing is hidden (fail closed).
+    expect(await run(500, false)).toMatchObject({ local: 1, history: 0, poll: 0 });
+  }, 60_000);
+
+  it("the overflow marker is kept on disk and across a restart: the row stays withheld on the link", () => {
+    let rows: StoredWebChatMessage[] = [];
+    const h = new WebChatHistory({ boot: "aa", store: { schedule: (_i, snap) => { rows = snap(); }, remove: async () => {} } });
+    h.record({ instance: "general", sender: "general", role: "status", text: "big summary", ts: "2026-10-21T01:00:00Z",
+      cards: Array.from({ length: WEB_CHAT_CARDS_MAX + 1 }, (_, i) => `M-${i + 1}`) });
+    expect(rows.map((r) => r.cards)).toEqual([[WEB_CHAT_CARDS_OVERFLOW]]);
+    const next = new WebChatHistory({ boot: "bb" });
+    next.restore("general", rows);
+    expect(next.list("general", 10).map((m) => m.cards)).toEqual([[WEB_CHAT_CARDS_OVERFLOW]]);
   });
 
   it("the cards a summary names stay with it across a restart (the row on disk), and only a status line carries them", () => {

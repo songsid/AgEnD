@@ -164,9 +164,16 @@ export interface WebChatMessage {
 /** #2341: a status line's card numbers (M-3, S-34), each once, at most this many; anything else is dropped. */
 const CARD_CODE = /^[MS]-\d{1,9}$/;
 export const WEB_CHAT_CARDS_MAX = 500;
+/**
+ * #2341 review r2: a line that names more cards than WEB_CHAT_CARDS_MAX keeps this one marker instead — the public link
+ * withholds it whole (it cannot check every card), rather than keeping a truncated list that may drop a hidden one.
+ */
+export const WEB_CHAT_CARDS_OVERFLOW = "*";
 function webCardCodes(v: unknown): string[] | undefined {
   if (!Array.isArray(v)) return undefined;
-  const codes = [...new Set(v.filter((c): c is string => typeof c === "string" && CARD_CODE.test(c)))].slice(0, WEB_CHAT_CARDS_MAX);
+  if (v.includes(WEB_CHAT_CARDS_OVERFLOW)) return [WEB_CHAT_CARDS_OVERFLOW];           // restored from disk as it was saved
+  const codes = [...new Set(v.filter((c): c is string => typeof c === "string" && CARD_CODE.test(c)))];
+  if (codes.length > WEB_CHAT_CARDS_MAX) return [WEB_CHAT_CARDS_OVERFLOW];               // fail closed, never truncate
   return codes.length ? codes : undefined;
 }
 
