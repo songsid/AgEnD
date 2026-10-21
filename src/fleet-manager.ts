@@ -20392,6 +20392,20 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   /** Non-null when startup found the running config and fleet.yaml disagreeing. */
+  /**
+   * #2346 (settings schema): whether a connection added now would start at once — what canHotAddConnections would decide
+   * for the current config with one more connection appended: another one is running, and nothing else this process took
+   * at startup has changed since (a pending locale or access change, say, needs AgEnD restarted anyway).
+   */
+  connectionsStartLive(): boolean {
+    if (!this.fleetConfig) return false;
+    const current = this.fleetConfig.channels ?? (this.fleetConfig.channel ? [this.fleetConfig.channel] : []);
+    const probe = { id: "\u0000probe", type: "telegram", mode: "topic", bot_token_env: "\u0000PROBE" } as unknown as ChannelConfig;
+    const next = { ...this.fleetConfig, channels: [...current, probe] } as FleetConfig;
+    delete (next as { channel?: unknown }).channel;
+    return this.canHotAddConnections(next);
+  }
+
   fleetSignatureMismatchKeys(): string[] | null {
     return this.fleetSignatureMismatch;
   }

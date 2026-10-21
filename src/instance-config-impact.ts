@@ -113,15 +113,21 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
     "instance_quota.files", "instance_quota.mib"].map((k) => [`web.appearance.${k}`, "now" as const])),
   "web_terminal.enabled": "now",
   "web_terminal.ttl_minutes": "now",
-  "defaults.locale": "now",
+  // #2346: guests and web authority are read at each sign-in, message and check (`web` is read at the point of use);
+  // the page asked for nothing and wrote "now" itself.
+  "web.guests": "now",
+  "web.verified_authority": "now",
+  // #2346: read once at startup (fleet-level-config.ts STARTUP_ONLY_FLEET_KEYS: setLocale(detectLocale(fleet))).
+  "defaults.locale": "fleet",
   "fleet.channels": "fleet",
   "fleet.channel.access.mode": "fleet",
   "fleet.channel.access.allowed_users": "fleet",
   // #1056: each stamp resolves the connection's status emojis from the live config (an agent's "avoid these" list
   // follows at its next start), so this applies now; the rest of a connection still needs the fleet restart.
   "fleet.channel.options.status_emojis": "now",
-  "fleet.spawn_concurrency": "fleet",
-  "fleet.spawn_stagger_ms": "fleet",
+  // #2346: read at each spawn by the SpawnGate (fleet-level-config.ts RUNTIME_READ_FLEET_KEYS): the next start uses it.
+  "fleet.spawn_concurrency": "now",
+  "fleet.spawn_stagger_ms": "now",
   "classic.admin_users": "fleet",
   "classic.allowed_guilds": "fleet",
   // #2168: a confirmed delete stops and removes the agent at once (removeInstance) — no AgEnD restart.

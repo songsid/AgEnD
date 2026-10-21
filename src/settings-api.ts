@@ -123,6 +123,8 @@ export interface SettingsApiContext extends AppShellContext {
   /** Non-null when the running config and fleet.yaml disagree on a
    * startup-only key, in which case a restart cannot clear the fleet row. */
   fleetSignatureMismatchKeys?(): string[] | null;
+  /** #2346: whether a connection added now starts at once (another one is running), or needs AgEnD restarted. */
+  connectionsStartLive?(): boolean;
   /** #1005/#1021: a Discord connection's server emojis, from each server its
    * bot can draw on, fetched with its bot token and cached. */
   listGuildEmojis?(channelId: string, refresh?: boolean): Promise<
@@ -334,6 +336,8 @@ export function handleSettingsRequest(
       fleet_signature_mismatch: ctx.fleetSignatureMismatchKeys?.() ?? null,
       // Whether the provider-secret routes exist on this fleet: the page reads them only then (no 404 on every load).
       provider_secrets: ctx.providerSecretsEnabled?.() === true,
+      // #2346: a new connection starts without a restart while another one runs (#1519 P6); the first one needs one.
+      connections_start_live: ctx.connectionsStartLive?.() === true,
     });
     return true;
   }

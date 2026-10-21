@@ -220,7 +220,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `retention_days` | number | `30` | How many days to keep terminal deliveries (`delivered`/`failed`) in `delivery-outbox.db` and `done`/`cancelled` tasks on the Task Board. `uncertain` and non-terminal rows are never pruned. Pruning runs once at fleet startup and daily after that, in chunks of 500 rows so it never stalls the event loop. A `delivery_status` query for a pruned delivery_id returns "older than the retention window; record pruned" instead of "Delivery not found". |
 | `tips` | boolean | `true` | Daily General-topic tips. Independent of `daily_summary.enabled`. |
 | `task_board.summary_at` | string | `"09:00"` | The task board's daily summary for the person, in each platform's General and the web chat: `"HH:MM"` (24 h, in `scheduler.default_timezone`, else the host's zone) or `"off"`. Read at every minute's check (no restart). See [features](features.md#the-task-boards-daily-summary). |
-| `locale` | `"en"` \| `"zh-TW"` | auto-detects from timezone | UI/notification language for user-facing text. |
+| `locale` | `"en"` \| `"zh-TW"` | auto-detects from timezone | UI/notification language for user-facing text. Read when AgEnD starts: restart AgEnD after changing it. |
 
 Restart deduplication keeps a separate owner/boot checkpoint (IDs and timestamp only), independent of notification retention. Cleaning old delivered notices does not allow the same boot to remind or stamp the requests again.
 

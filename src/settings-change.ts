@@ -13,12 +13,20 @@ const immediate = new Set([
   "tips", "tips_enabled", "auto_pause_after", "context_lines", "tool_progress", "reply_completion_guard", "web_echo",
   "echo_to_channel", "status_emojis", "persona", "emoji", "hang_detector", "guardian", "watchdog", "timeout_minutes",
   "enabled", "startup_concurrency", "spawn_concurrency", "spawn_stagger_ms", "warm_cap", "idle_timeout",
+  // #2346: offered by Settings (General → Defaults / Advanced, the agent dialog) and refused here before — a small set of
+  // values that changes how an agent logs or talks to its tools, not who may reach it. (Bot-to-bot visibility is judged by
+  // direction below, #2346 review: it decides what the public link's board and search show.)
+  "log_level", "agent_mode",
+  // #2346: defaults.startup.{concurrency, stagger_delay_ms} (its children, below), read at each spawn.
+  "startup",
 ]);
 /** A config key whose value is a credential: confirmed by fingerprint, never shown (and redacted on read, #1490). */
 export const SETTINGS_SECRET_KEY = /^(?:token|secret|password|api_key|bot_token|web_token|tunnel_token)$/i;
 const publicKeys = new Set(["id", "type", "group_id", "general_channel_id", "bot_token_env", "token_env", "mode",
   "working_directory", "project_roots", "adapter_id", "adapterId", "channelId", "instanceName", "createdBy", "createdAt",
-  "hostname", "tunnel_token_env", "origin_port", "allowed_hosts", "protocol", "name", "directory", "topic_name", "topic_id", "channel_id", "systemPrompt", "workflow", "primary", "pre_task_command", "instructions", "tool_permissions", "mcp_tools", "skip_permissions"]);
+  "hostname", "tunnel_token_env", "origin_port", "allowed_hosts", "protocol", "name", "directory", "topic_name", "topic_id", "channel_id", "systemPrompt", "workflow", "primary", "pre_task_command", "instructions", "tool_permissions", "mcp_tools", "skip_permissions",
+  // #2346: which tools an agent gets (full: the fleet's own) — shown and confirmed, never applied quietly.
+  "tool_set"]);
 const idLists = new Set(["allowed_users", "admin_users", "allowed_groups", "allowed_guilds"]);
 /** Literal text, never an ANSI/control sequence or a clickable mention. */
 export function settingsDisplay(value: unknown): string {
@@ -40,7 +48,13 @@ function object(value: unknown): value is Record<string, unknown> { return !!val
 const IMMEDIATE_CHILDREN: Readonly<Record<string, ReadonlySet<string>>> = {
   status_emojis: new Set<string>(STATUS_EMOJI_CONFIG_KEYS),
   hang_detector: new Set(["enabled", "timeout_minutes"]),
+  startup: new Set(["concurrency", "stagger_delay_ms"]),
 };
+/**
+ * #2346: lists of plain labels the agent dialog edits (tags, fallback models) apply directly, like the immediate scalars
+ * — never under an access, credential or control key, and only while every item is a string.
+ */
+const PLAIN_LISTS = new Set(["tags", "model_failover"]);
 const SENSITIVE_SEGMENT = /access|permission|admin|credential|secret|public_link|mcp|auth|pre_task|instruction|project_roots/i;
 const scalar = (value: unknown): boolean => value === undefined || value === null || typeof value !== "object";
 /**
@@ -169,6 +183,52 @@ function ordinary(path: readonly string[], old: unknown, next: unknown): boolean
   if (parent !== undefined && !namedEntry(path, -2) && immediate.has(parent)) return IMMEDIATE_CHILDREN[parent]?.has(key) ?? false;
   return immediate.has(key);
 }
+function plainList(path: readonly string[], old: unknown, next: unknown): boolean {
+  if (!PLAIN_LISTS.has(path.at(-1) ?? "") || namedEntry(path, -1) || path.some(key => SENSITIVE_SEGMENT.test(key))) return false;
+  // Only an agent's own list or the defaults' (#2346 review: never a child of an immediate key, e.g. startup.tags).
+  if (!(path.at(-2) === "defaults" || path.at(-3) === "instances")) return false;
+  const strings = (v: unknown): boolean => v === undefined || v === null || (Array.isArray(v) && v.every(item => typeof item === "string"));
+  return strings(old) && strings(next);
+}
+const VISIBILITY_RANK: Readonly<Record<string, number>> = { hidden: 0, summary: 1, full: 2 };
+const VISIBILITY = "cross_instance_visibility";
+/** The defaults' or an agent's bot-to-bot visibility: judged by visibilityWidening, not key by key. */
+const visibilityPath = (path: readonly string[]): boolean => path.at(-1) === VISIBILITY && (path.at(-2) === "defaults" || path.at(-3) === "instances");
+/** The fleet in a diff's root: `{ fleet }`, or a fleet (or the part of one a caller compares) itself. */
+function fleetIn(root: unknown): Record<string, any> | null {
+  if (!object(root)) return null;
+  return object(root.fleet) ? root.fleet : root;
+}
+/** What a change to bot-to-bot visibility widens, as summary lines (none: it only narrows, or leaves it). */
+function visibilityWidening(before: unknown, after: unknown): string[] {
+  const b = fleetIn(before), a = fleetIn(after), out: string[] = [];
+  if (!a) return out;
+  const valid = (v: unknown): v is string => typeof v === "string" && Object.hasOwn(VISIBILITY_RANK, v);
+  const fallback = (f: Record<string, any> | null): string => (valid(f?.defaults?.[VISIBILITY]) ? f!.defaults[VISIBILITY] : "full");
+  const own = (f: Record<string, any> | null, name: string): unknown => (object(f?.instances) && object(f!.instances[name]) ? f!.instances[name][VISIBILITY] : undefined);
+  const effective = (f: Record<string, any> | null, name: string): string => { const v = own(f, name); return valid(v) ? v : fallback(f); };
+  const line = (label: string, from: string, to: string) => out.push(`${settingsDisplay(label)}: ${settingsDisplay(from)} → ${settingsDisplay(to)}`);
+  // A value the validator would refuse is never applied quietly (the resolver would read it as unset).
+  // An agent whose own setting changed is named on its own line; the agents a wider default opens up only through
+  // inheritance are counted on the default's line (#2346 review: one line each would pass SETTINGS_DIFF_RECORDS).
+  const inheritors: string[] = [];
+  for (const name of Object.keys(object(a.instances) ? a.instances : {})) {
+    if (!b || !object(b.instances) || !object(b.instances[name])) continue;          // a new agent is confirmed whole
+    const raw = own(a, name), ownChanged = !same(raw, own(b, name));
+    if (raw !== undefined && raw !== null && !valid(raw) && ownChanged) { line(`instances.${name}.${VISIBILITY}`, String(own(b, name) ?? "default"), String(raw)); continue; }
+    if (VISIBILITY_RANK[effective(a, name)]! <= VISIBILITY_RANK[effective(b, name)]!) continue;
+    if (ownChanged) line(`instances.${name}.${VISIBILITY} (in effect)`, effective(b, name), effective(a, name));
+    else inheritors.push(name);
+  }
+  const rawDefault = object(a.defaults) ? a.defaults[VISIBILITY] : undefined, wasDefault = object(b?.defaults) ? b!.defaults[VISIBILITY] : undefined;
+  const shown = 5, more = inheritors.length > shown ? ` +${inheritors.length - shown} more` : "";
+  const who = inheritors.length ? ` — ${inheritors.length} agent(s) inherit it: ${settingsDisplay(inheritors.slice(0, shown).join(", "))}${more}` : "";
+  if (rawDefault !== undefined && rawDefault !== null && !valid(rawDefault) && !same(rawDefault, wasDefault)) out.unshift(`${settingsDisplay(`defaults.${VISIBILITY}`)}: ${settingsDisplay(String(wasDefault ?? "default"))} → ${settingsDisplay(String(rawDefault))}${who}`);
+  else if (VISIBILITY_RANK[fallback(a)]! > VISIBILITY_RANK[fallback(b)]! || inheritors.length) {
+    out.unshift(`${settingsDisplay(`defaults.${VISIBILITY} (in effect)`)}: ${settingsDisplay(fallback(b))} → ${settingsDisplay(fallback(a))}${who}`);
+  }
+  return out;
+}
 /** A child of an immediate key that is not one of its known children (see IMMEDIATE_CHILDREN). */
 function unknownImmediateChild(path: readonly string[]): boolean {
   const key = path.at(-1), parent = path.at(-2);
@@ -227,7 +287,8 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     const direction = loosens(path, old, next);
     if (direction === false) return;                             // #1620: tightening applies directly
     if (direction === true) { section = section === "secret" ? section : "access"; add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "default")} → ${settingsDisplay(next ?? "default")}`); return; }
-    if (ordinary(path, old, next)) return;
+    if (visibilityPath(path)) return;                                // judged as a whole, by direction (below)
+    if (ordinary(path, old, next) || plainList(path, old, next)) return;
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));
     // Under an immediate key, only its known children are settings; a secret or an id list is still confirmed below.
@@ -284,6 +345,12 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
   };
   if (options.secret) add(`${settingsDisplay(options.secret.key)}: fingerprint ${fingerprint(options.secret.before)} → ${fingerprint(options.secret.after)}`);
   walk(before, after, []);
+  // #2346 review: bot-to-bot visibility decides what an agent's topic, the dashboard's search and the public link's board
+  // show of it. Judged as the mode each agent gets (its own, else the default, else full) and the default's own (it covers
+  // every name with no setting): narrowing applies directly; widening — or a value the validator would refuse — waits.
+  const widened = visibilityWidening(before, after);
+  if (widened.length && section !== "secret") section = "access";
+  for (const line of widened) add(line);
   if (!summary.length && options.force) add(`${settingsDisplay(options.operation)}: confirmed operation`);
   if (!summary.length) return null;
   summary.unshift(settingsDisplay(options.operation));

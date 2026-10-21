@@ -162,7 +162,7 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | `startup.stagger_delay_ms` | number | `500` | 啟動、喚醒、恢復、重啟共用的外層生命週期入場與獨立 spawn 最小間隔（毫秒）。壓力正常時，巢狀 CLI spawn 沿用外層名額，可能同時開始；壓力升高時，實體 spawn 仍一次一個且至少相隔五秒，壓力嚴重時暫停新增 spawn；範圍 `0`–`30000` |
 | `warm_cap` | number | `0`（無上限） | 執行中 instance 的暖機上限；超過時暫停最近最少活動的 idle instance，General 與持有 work lease 的 instance 不被淘汰。與按時間計算的 `auto_pause_after` 互補 |
 | `progress_min_elapsed` | number | `30` | 進度行／取消按鈕開始顯示經過時間之前的秒數 |
-| `locale` | `"en"` \| `"zh-TW"` | 依時區推算 | 使用者可見介面與通知的語言 |
+| `locale` | `"en"` \| `"zh-TW"` | 依時區推算 | 使用者可見介面與通知的語言。AgEnD 啟動時讀取：變更後需重新啟動 AgEnD。 |
 | `max_cross_instance_message_bytes` | number | `12288` | 跨 instance 訊息內容的 UTF-8 byte 上限。超限時會明確拒絕，並提示精簡內容或改傳檔案路徑。 |
 | `reply_overdue_minutes` | number | `15` | 距上次詢問／提醒多少分鐘後，通知寄件者一次：`requires_reply` 請求仍未回答，且負責的 instance 並非 working。`0` 只停用這則閒置逾期通知，不停用對負責者的提醒或 TTL 到期的最後通知 |
 | `reply_obligation_ttl_hours` | number | `24` | 開放中的回覆義務距上次詢問多久後到期，必須是有限正數（小時）；提醒不延長期限。到期會記錄 log，若尚未通知過逾期則通知寄件者一次，即使 `reply_overdue_minutes` 是 `0` 也一樣。重啟只發一則提醒，最多列十筆請求及「+N 個其他請求」；回合結束的提醒保留既有寬限及每次詢問一次的規則。 |
