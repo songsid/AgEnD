@@ -482,7 +482,8 @@ function SettingsSearch() {
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const hits = useMemo(() => searchSettings(q).slice(0, 40), [q]);
-  const groups = useMemo(() => SETTINGS_SECTIONS.map((s) => ({ section: s, items: hits.filter((e) => e.section === s) })).filter((g) => g.items.length), [hits]);
+  // Grouped by section, the group of the best match first (its order is the ranking's): Enter takes the best.
+  const groups = useMemo(() => [...new Set(hits.map((e) => e.section))].map((s) => ({ section: s, items: hits.filter((e) => e.section === s) })), [hits]);
   const flat = groups.flatMap((g) => g.items);
   const groupOf = (s) => SETTINGS_GROUPS.find((g) => g.sections.includes(s));
   const go = (entry) => { if (!entry) return; setQ(""); setActive(0); goToSetting(entry); };

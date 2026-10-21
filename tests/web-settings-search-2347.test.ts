@@ -135,6 +135,17 @@ describe("#2347 §6: the search box", () => {
   });
 });
 
+describe("#2347 §6: the best match first", () => {
+  it("\"token\": the group of the best match (Access & security: the Cloudflare token) comes first, and Enter goes there", async () => {
+    await open("agents");
+    const box: any = p.root.querySelector("#settingsSearch");
+    box.value = "token"; fire(box, "input"); await settle(4);
+    const heads = p.root.querySelectorAll(".s-find-head").map((x: any) => x.textContent);
+    const e = new MiniEvent("keydown", { bubbles: true, cancelable: true }); (e as any).key = "Enter"; box.dispatchEvent(e); await settle(4);
+    expect([heads[0], nav.navStore.get().route.section]).toEqual(["Fleet › Access & security", "access"]);
+  });
+});
+
 describe("#2382 review: a field to fix elsewhere is named and reached from the bar", () => {
   it("an invalid public-link minutes in Access & security: in Agent defaults the bar says where, and goes there (the field focused)", async () => {
     await open("access");
