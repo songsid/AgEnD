@@ -2229,7 +2229,7 @@ program
         // Path 2 (#1450 C6): a proven new plist waits on disk with its plan — exactly one bootout + bootstrap.
         const { pendingPlan, admitPlan, planPath } = await import("./service-plan.js");
         // #1871: a plan whose job launchd already runs (an interrupted update, then `agend start`) is done: restart that
-        // job as an unchanged one (path 1) instead of refusing it for its new pid. #2375: pendingPlan removes it, quietly.
+        // job as an unchanged one (path 1) instead of refusing it for its new pid. #2375: quietly (no note on every restart).
         const plan = opts.force ? null : pendingPlan(DATA_DIR, target, deps);
         if (plan && expectation.ok) {
           const pkgDir = dirname(dirname(expectation.expected.entry));

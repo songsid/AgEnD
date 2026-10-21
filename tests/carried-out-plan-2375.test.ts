@@ -2,7 +2,8 @@
  * #2375: an update's launchd plan whose job launchd already runs counts as carried out (#1871), and `agend restart`
  * then restarts that job as an unchanged one. The plan was never removed, so every later restart judged it again and
  * printed "launchd already runs the job an interrupted update planned" (seen after beta.22's update to beta.23).
- * pendingPlan() removes a carried-out plan, quietly; a plan still to carry out is returned and kept.
+ * pendingPlan() treats a carried-out plan as nothing to activate, quietly, and never removes the shared record: a refresh
+ * may publish a newer plan while launchd is being asked (Prism, #2376 R1). A plan still to carry out is returned.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -41,19 +42,43 @@ function planned() {
   const out = refreshLaunchdWithoutActivating({ label: "com.agend.fleet", target: TARGET, plistPath: PLIST, newPlist: plist(NEW), expected: { node: RT, entry: ENTRY }, pkgDir: PKG, agendHome: HOME }, deps);
   expect(out).toMatchObject({ ok: true, planned: true });
   removed.length = 0;
-  const restartDeps = { readFile: deps.readFile, run: deps.run, removeFile: deps.removeFile };
-  return { files, removed, restartDeps, load: (next: Partial<CommandResult>) => { loaded = next; } };
+  // Only a read and a print: pendingPlan may not write, delete or move anything.
+  const restartDeps = { readFile: deps.readFile, run: deps.run };
+  return { files, removed, deps, restartDeps, load: (next: Partial<CommandResult>) => { loaded = next; } };
 }
 
 describe("pendingPlan (#2375)", () => {
-  it("carried out (launchd already runs the planned job): removed, and the next restart finds nothing", () => {
+  it("carried out (launchd already runs the planned job): nothing to activate, every time — the record is left alone", () => {
     const w = planned();
     w.load(printed(NEW, 41363));
+    const record = w.files[PLAN];
     expect(pendingPlan(HOME, TARGET, w.restartDeps)).toBeNull();
-    expect(w.removed).toEqual([PLAN]);
-    expect(w.files[PLAN]).toBeUndefined();
-    expect(pendingPlan(HOME, TARGET, w.restartDeps)).toBeNull();         // the next restart: no plan, nothing to say
-    expect(w.removed).toEqual([PLAN]);
+    expect(pendingPlan(HOME, TARGET, w.restartDeps)).toBeNull();         // the next restart: the same answer, no note
+    expect([w.files[PLAN], w.removed]).toEqual([record, []]);
+  });
+
+  it("a newer plan published by a real refresh while launchd is asked survives, and is the next restart's plan (Prism, #2376 R1)", () => {
+    const w = planned();
+    w.load(printed(NEW, 41363));                                       // plan A is carried out: launchd runs its job
+    const OTHER = "/Users/u/other-prefix/lib/node_modules/@songsid/agend";
+    const RT2 = `${OTHER}/node_modules/@songsid/agend-node-darwin-arm64/bin/node`, ENTRY2 = `${OTHER}/dist/cli.js`;
+    let published = "";
+    const interleaved = {
+      readFile: w.restartDeps.readFile,
+      run: (c: string, a: string[]) => {
+        if (!published) {                                              // during pendingPlan's launchctl print: install B
+          const out = refreshLaunchdWithoutActivating({ label: "com.agend.fleet", target: TARGET, plistPath: PLIST, newPlist: plist([RT2, ENTRY2, "fleet", "start"]), expected: { node: RT2, entry: ENTRY2 }, pkgDir: OTHER, agendHome: HOME },
+            { ...w.deps, realpath: (p: string) => ([RT, ENTRY, RT2, ENTRY2].includes(p) ? p : null) });
+          expect(out).toMatchObject({ ok: true, planned: true });
+          published = w.files[PLAN]!;
+        }
+        return w.restartDeps.run(c, a);
+      },
+    };
+    expect(pendingPlan(HOME, TARGET, interleaved)).toBeNull();          // A's answer, judged on what it read
+    expect(w.files[PLAN]).toBe(published);                              // B's record is still there…
+    expect(pendingPlan(HOME, TARGET, w.restartDeps)).toMatchObject({ plistPath: PLIST, sha256: expect.any(String) });   // …and pending
+    expect(JSON.parse(published).sha256).not.toBe(undefined);
   });
 
   it("still to carry out (the planned-from job runs): returned and kept for admitPlan to activate", () => {
@@ -77,13 +102,12 @@ describe("pendingPlan (#2375)", () => {
     }
   });
 
-  it("no plan at all: null, nothing removed", () => {
-    const removed: string[] = [];
-    expect(pendingPlan(HOME, TARGET, { readFile: () => null, run: () => { throw new Error("no print without a plan"); }, removeFile: p => { removed.push(p); } })).toBeNull();
-    expect(removed).toEqual([]);
+  it("no plan at all: null, and launchd is not even asked", () => {
+    expect(pendingPlan(HOME, TARGET, { readFile: () => null, run: () => { throw new Error("no print without a plan"); } })).toBeNull();
   });
 
   it("`agend restart` takes its plan from pendingPlan (not with --force), and no longer prints the note", () => {
+    // pendingPlan's deps have no removeFile: its type alone keeps it from deleting the shared record.
     const source = readFileSync(join(process.cwd(), "src", "cli.ts"), "utf8");
     expect(source).toContain("const plan = opts.force ? null : pendingPlan(DATA_DIR, target, deps);");
     expect(source).not.toContain("an interrupted update planned; restarting it as it is");

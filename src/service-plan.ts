@@ -147,13 +147,13 @@ export function planCarriedOut(plan: ServicePlan, target: string, deps: Pick<Pla
 
 /**
  * The plan `agend restart` still has to carry out, or null (#2375). A plan whose job launchd already runs — #1871's
- * interrupted update after `agend start`, or an update whose planned plist is the job already loaded — is done: it is
- * removed here, quietly, so no later restart judges it again (each one used to print a note about it).
+ * interrupted update after `agend start`, or an update whose planned plist is the job already loaded — is done:
+ * nothing to activate, and nothing to say about it (every restart used to print a note). Read-only like
+ * planCarriedOut: the record stays for the next refresh to revoke. Removing it here could remove a newer plan another
+ * refresh published while launchd was being asked (Prism, #2376 R1).
  */
-export function pendingPlan(agendHome: string, target: string, deps: Pick<PlanDeps, "readFile" | "run" | "removeFile">): ServicePlan | null {
+export function pendingPlan(agendHome: string, target: string, deps: Pick<PlanDeps, "readFile" | "run">): ServicePlan | null {
   const recorded = readPlan(agendHome, deps);
   if (!recorded) return null;
-  if (!planCarriedOut(recorded, target, deps)) return recorded;
-  deps.removeFile(planPath(agendHome));
-  return null;
+  return planCarriedOut(recorded, target, deps) ? null : recorded;
 }
