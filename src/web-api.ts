@@ -434,10 +434,21 @@ async function parseBody(req: IncomingMessage): Promise<Record<string, unknown>>
 
 /** Send JSON response. */
 function json(res: ServerResponse, status: number, data: unknown): void {
+  jsonText(res, status, JSON.stringify(data));
+}
+
+/** A JSON answer already serialized (a body kept for reuse). */
+function jsonText(res: ServerResponse, status: number, body: string): void {
   res.setHeader("Content-Type", "application/json");
   res.writeHead(status);
-  res.end(JSON.stringify(data));
+  res.end(body);
 }
+
+/**
+ * #2296: the last dashboard board read, serialized, per board: its key (revision, done=all, minute) and body. One per
+ * board (the newest revision replaces the previous), so it holds one board's JSON at most.
+ */
+const boardBodies = new WeakMap<object, { key: string; body: string }>();
 
 /**
  * #1630 (#1635 review): an answer that waited on something (a list, a download) is sent only if the request is still
@@ -2081,8 +2092,17 @@ export function handleWebRequest(
         // A page that has this revision already is told so, not sent the board again.
         const rev = board.revision();
         if (url.searchParams.get("rev") === String(rev)) { json(res, 200, { rev, unchanged: true }); return true; }
-        const cards = board.boardCards(undefined, url.searchParams.get("done") === "all").filter((c) => !hidden(c));
-        json(res, 200, { rev, cards: board.views(cards), projects: board.listProjects(true), stats: board.projectStats() });
+        const allDone = url.searchParams.get("done") === "all";
+        // #2296: every open Tasks tab reads the board again after each change; on the dashboard they all get the same
+        // board for a revision, so it is built once per (revision, done=all, minute) — the minute for the 14-day
+        // window. The public link's reads are filtered per request (hidden instances) and are built each time.
+        const key = gateway ? null : `${rev}:${allDone ? 1 : 0}:${Math.floor(Date.now() / 60_000)}`;
+        const kept = key ? boardBodies.get(board) : undefined;
+        if (kept && kept.key === key) { jsonText(res, 200, kept.body); return true; }
+        const cards = board.boardCards(undefined, allDone).filter((c) => !hidden(c));
+        const body = JSON.stringify({ rev, cards: board.views(cards), projects: board.listProjects(true), stats: board.projectStats() });
+        if (key) boardBodies.set(board, { key, body });
+        jsonText(res, 200, body);
         return true;
       }
       if (method === "GET" && path === "/ui/tasks/search") {

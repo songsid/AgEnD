@@ -114,7 +114,10 @@ events; the prune then drops entries and events whose task is gone.
 
 **The board's revision** is a counter (`task_counters` 'R') moved by every committed change. The `tasks` stream event
 carries it with the card numbers touched; a board read returns it, and a read that sends the revision it has
-(`?rev=`) gets `{ unchanged: true }` instead of the board.
+(`?rev=`) gets `{ unchanged: true }` instead of the board. On the dashboard a board built for a revision serves every tab that reads it (#2296): every
+open Tasks page reads the board again after each change, and they all get the same board, so it is built once per
+(revision, `done=all`, minute — the 14-day window moves). Over the public link a read is filtered per request (instances
+kept out of sight) and is built each time.
 
 ## The page (Fleet › Tasks)
 
