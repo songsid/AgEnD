@@ -1,4 +1,4 @@
-import { PUBLIC_TUNNEL_TOKEN_ENV, validPublicTunnelToken } from "./public-tunnel-config.js";
+import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
 import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
 import { SettingsConfirmationStore, type SettingsPendingView } from "./settings-confirmation.js";
@@ -20672,9 +20672,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     const tunnel = spec.kind === "tunnel_token";
     if (!tunnel && !spec.verifier) return { ok: false, status: "unsupported_verifier", error: "this provider has no supported verifier" };
-    if (input.clear && (!tunnel || input.secret !== "") || tunnel && !(input.clear === true && input.secret === "" || validPublicTunnelToken(input.secret))
-      || !input.clear && (!input.secret || input.secret.length > 4096 || /[\r\n\0]/.test(input.secret) || /[^\x20-\x7e]/.test(input.secret))) {
-      return { ok: false, status: "invalid", error: "secret is invalid" };
+    const secret = tunnel && !input.clear ? normalizePublicTunnelToken(input.secret) : input.secret;
+    if (input.clear && (!tunnel || input.secret !== "")
+      || !input.clear && (!secret || secret.length > 4096 || /[\r\n\0]/.test(secret) || /[^\x20-\x7e]/.test(secret))) {
+      return { ok: false, status: "invalid", error: tunnel ? PUBLIC_TUNNEL_TOKEN_HINT : "secret is invalid" };
     }
     const challengeKey = `${input.sessionBinding}:api_key:${spec.id}:${spec.envKey}:${input.idempotencyKey}`;
     const existingId = this.providerSecretChallengesByKey.get(challengeKey);
@@ -20702,7 +20703,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       operation: "provider-secret.apply",
       idempotencyKey: input.idempotencyKey,
       expiresAt, deadline: performance.now() + SECRET_CHALLENGE_TTL_MS,
-      secret: input.secret,
+      secret: secret!,
     };
     this.providerSecretChallenges.set(challenge.id, challenge);
     this.providerSecretChallengesByKey.set(challengeKey, challenge.id);

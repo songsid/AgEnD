@@ -56,6 +56,10 @@ token。重新開啟連結時仍使用同一個網域，手機「加到主畫面
    要求，請確認。不需要先按「檢視變更」。
 3. 在遮蔽的「Cloudflare 連接器 token」欄貼入 token，按「設定 token」並
    確認。儲存時只檢查格式，實際憑證與路由會在開啟時驗證。
+   貼上時會移除前後空白與成對引號；只接受單一 base64/base64url 連接器
+   token，不接受完整指令或 `--token` 旗標。解碼後的 JSON 必須包含帳號、
+   tunnel UUID 與編碼的 tunnel secret。格式不符時會提示：
+   「請只貼上以 eyJ 開頭的長字串。」
 4. 從 AgEnD 選單開啟公開連結。AgEnD 必須經由固定 HTTPS 網域取得本次
    exposure 的專屬 marker，才會提供登入網址。接著用手機登入並加到主畫面。
 
