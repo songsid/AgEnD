@@ -9,6 +9,7 @@ import { ColorDialogHost } from "./identity-color.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
 import { appStore, createStore, guestBadge, guestPage, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
+import { toast } from "./ui-toast.js";
 import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, fleetEntryPath } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
 import { onPrefsChanged, savePref } from "./app-prefs.js";
@@ -62,6 +63,34 @@ export function useCanCreate() {
 /** An app-level dialog (New instance): rendered by the shell until closed, whatever panel is showing. */
 export function showDialog(Component, props = {}) { shellStore.set({ dialog: { Component, props } }); }
 export function closeDialog() { shellStore.set({ dialog: null }); }
+
+// ── #2293: global search — an admin's. The dialog lives behind the session gate (/ui/js/search-dialog.js) and loads the
+// first time it opens; the sidebar row, the header's button and the shortcuts only open it. ──
+export const isMacLike = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || "");
+/** What the row and tooltips show: ⌘K on a Mac, Ctrl K elsewhere. */
+export const searchShortcut = () => (isMacLike() ? "⌘K" : "Ctrl K");
+let searchModule = null;
+/** Open search; `preset.instance`: narrowed to that agent (Ctrl+F in its chat). */
+export function openSearch(preset = {}) {
+  closeDrawer();
+  (searchModule ??= import("/ui/js/search-dialog.js")).then(
+    (m) => showDialog(m.SearchDialog, { preset }),
+    () => { searchModule = null; toast(t("app.loadFailed"), false); });
+}
+/**
+ * Ctrl+K (⌘K) anywhere opens search; Ctrl+F (⌘F) in an agent's chat opens it narrowed to that agent — elsewhere the
+ * browser's own find stays. Not while another dialog is open (search, open already, has its input focused).
+ */
+export function handleSearchKey(e) {
+  if (e.isComposing || e.altKey || e.shiftKey || !(isMacLike() ? e.metaKey : e.ctrlKey)) return;
+  const key = (e.key || "").toLowerCase();
+  if (key !== "k" && key !== "f") return;
+  if (typeof document !== "undefined" && document.querySelector("dialog[open]")) return;
+  const route = navStore.get().route;
+  if (key === "f" && !(route && route.panel === "chat" && route.instance)) return;
+  e.preventDefault();
+  openSearch(key === "f" ? { instance: route.instance } : {});
+}
 
 function readCollapsed() { try { return localStorage.getItem("agend_sidebar") === "hidden"; } catch { return false; } }
 const narrow = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
@@ -320,6 +349,8 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${overview}
       ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
+      ${canCreate ? html`<button type="button" class="side-row side-search" onClick=${() => openSearch()} title=${t("app.searchTitle", searchShortcut())}
+        aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${t("app.search")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>` : null}
       ${canCreate && onNewInstance ? html`<button type="button" class="side-row side-new" onClick=${onNewInstance}><${Icon} name="plus" /><span class="grow">${t("app.newAgent")}</span></button>` : null}
     </nav>
     ${shell.side ? html`<${shell.side.Component} />` : html`<${InstanceNav} route=${route} items=${app.instances} loaded=${app.ready !== false}
@@ -394,11 +425,13 @@ function PrefsPopover() {
  */
 export function PanelHeader({ title, sub, children, headingRef, nav, notice }) {
   const shell = useStore(shellStore);
-  const canCreate = useCanCreate() && !!newInstanceOpener;
+  const admin = useCanCreate();
+  const canCreate = admin && !!newInstanceOpener;
   return html`<header data-trust="header" class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
     <button type="button" id="sbOpen" class="icon-btn sb-open" onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
       aria-label=${narrow() ? t("app.openMenu") : t("app.expand")} title=${narrow() ? t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" /></button>
     ${canCreate && shell.collapsed ? html`<button type="button" class="icon-btn sb-new" onClick=${requestNewInstance} aria-label=${t("app.newAgent")} title=${t("app.newAgent")}><${Icon} name="plus" /></button>` : null}
+    ${admin && !guestPage() ? html`<button type="button" class="icon-btn sb-search" onClick=${() => openSearch()} aria-label=${t("app.search")} title=${t("app.searchTitle", searchShortcut())}><${Icon} name="search" /></button>` : null}
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1">${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
     ${nav || null}
     <div class="panel-actions">${children}</div>

@@ -498,7 +498,15 @@ function Thread({ name, th }) {
     // A copied message link (#m=<boot>-<id>): show that message, flashed.
     const linked = /^#m=([0-9a-f]{1,32}-\d{1,15})$/.exec(location.hash);
     if (linked) void thread.jumpTo(linked[1]);
+    // #2293: search opening a message of this chat while it is shown — the address's #m= changes, the route does not.
+    // Only this chat's address: during a jump to another chat this one is still mounted for a moment.
+    const onHash = () => {
+      const m = /^#m=([0-9a-f]{1,32}-\d{1,15})$/.exec(location.hash);
+      if (m && location.pathname === `/ui/chat/${encodeURIComponent(name)}`) void thread.jumpTo(m[1]);
+    };
+    window.addEventListener("hashchange", onHash);
     return () => {
+      window.removeEventListener("hashchange", onHash);
       unfollow();
       offActions();
       sc.removeEventListener("scroll", onScroll);

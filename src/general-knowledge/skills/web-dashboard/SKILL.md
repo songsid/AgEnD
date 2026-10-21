@@ -20,6 +20,7 @@ For how *you* look on the dashboard (theme, identity card, colour, widgets, ambi
 | getting in, `/web`, codes, "Send me a new code", the public link, sessions, signing out, `/view`, guests | [Sign-in and access](#sign-in-and-access) |
 | sending, files, buttons, polls, HTML previews, code, tables, slash commands, Stop, history, copies in Discord/Telegram | [Chat](#chat) |
 | the red badge, prompts, failed deliveries, desktop notifications | [Needs you](#needs-you) |
+| "which agent did I ask about X", Ctrl+K, Ctrl+F in a chat, search results, filters | [Search](#search) |
 | tasks, schedules, teams, org chart, live traffic lines, cache, Config tab | [Fleet](#fleet) |
 | the sidebar list, filters, favorites, Chat / View / Log / Details, the Details page | [Finding an instance](#finding-an-instance) |
 | subscription meters, plan badges, profiles, keep-warm, prompt cache | [Usage and the cache report](#usage-and-the-cache-report) |
@@ -171,6 +172,21 @@ A prompt shows its own answer buttons (first answer wins); a delivery has **Ackn
 "Paused: sign-in needed" has **Sign in** when the dashboard can run that login (#2233); every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
 `needs_you.dm` (default off).
+
+## Search
+
+The sidebar row **Search** (under Needs you, with "Ctrl K" / "⌘K"), **Ctrl+K** / **⌘K** anywhere, the header's 🔍 when
+the sidebar is hidden or on a phone; **Ctrl+F** in an agent's chat opens it narrowed to that agent (elsewhere Ctrl+F is
+the browser's find). Not the sidebar's **Filter** box (that filters the agent list). It searches every agent's chat as
+the fleet recorded it, messages between agents (send_to_instance, delegate_task, report_result, broadcast) and Task
+Board tasks — never a CLI's own transcript (that is the Log). Results come as you type, grouped by agent, newest
+first, badged Chat / Message / Task; 1–2 character words work (alone: the newest 5,000 entries, said in the dialog).
+↑↓ / Enter / Esc / click outside; **Filters**: agent, team, time, kinds, **Only mine**; recent searches when empty.
+A chat result opens the chat at the message (flashed); a message between agents, a task or a chat row the history no
+longer keeps opens as the index's copy. Admins only (no guests, not over the public link). Config: `web.search.enabled`
+(default on), `web.search.retention_days` (default 90). Secrets are masked; a hidden `cross_instance_visibility`
+agent's messages are not found. "Search is off or not available": `web.search.enabled: false`, or the index could not
+open (the fleet log says why); "Still indexing": the first fill after an upgrade.
 
 ## Fleet
 

@@ -1204,6 +1204,10 @@ The fleet runs on one event loop, so anything slow there holds up everything els
 
 A single live **Needs you** message in each world's General topic surfaces attention items for that world's instances — delivery acknowledgements, hang alerts, permission prompts. Each General shows only its own world's instances (owner-scoped); the `/ui` web feed shows items fleet-wide. Every item is one tap from where it is acted on: the instance's own thread or the message's existing buttons. The only new interaction is **Acknowledge** for delivery items that have no button today. Items resolved on any surface disappear everywhere. In `/ui`, **Needs you** (`/ui/needs`) is a panel with a sidebar badge and optional desktop notifications (#1408 step 4). Design: [docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md).
 
+## Global search (#2293)
+
+**Search** in the dashboard's sidebar, or **Ctrl+K** / **⌘K**, finds which agent you asked about something. It searches every agent's chat, the messages agents send each other and the Task Board, in one Spotlight-style dialog. Results are grouped by agent, and opening one jumps to the message in its chat. The fleet keeps its own index for this, built off the fleet's loop, with secrets masked. Fleet admins only, never over the public link. Details: [web dashboard](web-dashboard.md#search-ctrlk); `web.search` in [configuration](configuration.md).
+
 ## Links to where a message sends you (2.2.5)
 
 On Discord and Telegram, a message that sends you to another topic links to it (#1990).

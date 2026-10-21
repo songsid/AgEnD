@@ -1156,6 +1156,10 @@ fleet 在單一事件迴圈上運作，迴圈上任何慢的事都會拖住其�
 
 每個世界的 General topic 都有一則持續更新的**「需要你處理」**訊息，彙整該世界的 instance 所有等待操作者處理的事項——投遞確認、掛起警告、權限請求。每個 General 只顯示自己世界的 instance（owner-scoped）；`/ui` 的網頁動態消息則是全艦隊可見。訊息中的每個項目都能一鍵前往對應的地方操作：instance 的獨立 topic 或訊息本身的現有按鈕。唯一新增的互動是對目前沒有按鈕的投遞項目加上**確認（Acknowledge）**功能。任何介面上解決的項目都會在所有介面上消失。在 `/ui` 中，**等你處理**（`/ui/needs`）是一個附側欄標記與可選桌面通知的面板（#1408 第 4 步）。設計文件：[docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md)。
 
+## 全域搜尋（#2293）
+
+在 dashboard 側欄按 **搜尋**，或按 **Ctrl+K** / **⌘K**，就能找回某件事當初交給哪個 agent。它在同一個 Spotlight 風格的對話框裡，搜尋每個 agent 的聊天、agent 之間的訊息與 Task Board。結果依 agent 分組，開啟後會跳到聊天中的那則訊息。Fleet 為此保留自己的索引，在 fleet 主迴圈之外建立，並遮蔽密鑰。只有 fleet 管理員能用，公開連結一律不行。詳見 [網頁 dashboard](web-dashboard.zh-TW.md#搜尋ctrlk)；設定見 [configuration](configuration.zh-TW.md) 的 `web.search`。
+
 ## 連到訊息要你去的地方 (Links to where a message sends you, 2.2.5)
 
 在 Discord 與 Telegram 上，要你去另一個 topic 的訊息會附上連結（#1990）：要你改到 General 的回覆，結尾會有連到 General 的「→ General」；instance 指向 General 的通知也有同樣的連結；General 提到某個 instance 的通知，會把名稱連到那個 instance 的 topic；跨 instance 的狀態行會連到另一端。Telegram 的連結放在文字本身上，Discord 則是頻道提及。ClassicBot 聊天室、別的 bot 的 instance，以及來自 agent 或 pane 的文字，都不會有連結。等你處理的私訊只會對群組成員附上連到群組的連結（用 fleet 自己的 bot 確認，快取 10 分鐘）；公開 Telegram 群組的連結使用它的 @username。

@@ -12,7 +12,7 @@ AgEnD's web dashboard is three panels on one small web server that the fleet run
 | **`/view`** | A read-mostly view of every agent: live terminal, roster, usage, and editing each agent's profile and avatar |
 | **`/settings`** | Fleet settings — your preferences, web appearance, agents, connections, ClassicBot, defaults, `fleet.yaml` — with apply and restart. Each section has its own address: `/settings/device` (Preferences), `…/appearance`, `…/bots`, `…/classic`, `…/general`, `…/web`, `…/advanced` (`/settings` is Agents) |
 
-`/ui`, `/view` and `/settings` are one app with a sidebar: **Fleet**, **Needs you**, the instances, **Settings** and the **Session** menu. An agent's **View**, **Log** and **Details** are the tabs under its header. Moving around inside it does not reload the page, and Back/Forward work. `/` opens `/ui`, which goes back to the chat you had open last. Old links of the form `/ui#instance=<name>` still work, also through signing in.
+`/ui`, `/view` and `/settings` are one app with a sidebar: **Fleet**, **Needs you**, **Search**, the instances, **Settings** and the **Session** menu. An agent's **View**, **Log** and **Details** are the tabs under its header. Moving around inside it does not reload the page, and Back/Forward work. `/` opens `/ui`, which goes back to the chat you had open last. Old links of the form `/ui#instance=<name>` still work, also through signing in.
 
 The server listens on **`127.0.0.1`**, on `health_port` (default **19280**). It is reachable from the machine itself unless you set up a way in: see [Reaching it from elsewhere](#reaching-it-from-elsewhere).
 
@@ -277,6 +277,16 @@ Everything waiting on you, from every bot's world, in one list: a fleet prompt (
 - **Needs you** in the sidebar (and a tab on a phone) shows how many things are waiting; the browser tab's title starts with `(N)`.
 - The list is grouped by agent, oldest first. A prompt has its own buttons; a delivery has **Acknowledge**; an agent paused for sign-in has **Sign in** when the dashboard can run its login (#2233); every item has **Open chat**.
 - **Notify me on this device** shows a desktop notification when something new needs you while the tab is in the background (a terminal wait only once it has lasted 5 seconds). It is per browser, asks for permission when you turn it on, and needs a secure address: `127.0.0.1`/`localhost` or the HTTPS public link, not a plain-HTTP LAN address. It is not offered on phones: there, the Discord notification (a new post in General, and the optional DM) is the one to rely on.
+
+## Search (Ctrl+K)
+
+Find who you asked about something: one search over every agent's chat (Discord, Telegram and the web, as the fleet recorded them), the messages agents send each other (send_to_instance, delegate_task, report_result, broadcasts) and the Task Board. An agent's own terminal transcript is not searched; that is its **Log**.
+- **Opening it:** **Search** in the sidebar (under **Needs you**, with its shortcut), **Ctrl+K** (**⌘K** on a Mac) anywhere, or the 🔍 button in the header when the sidebar is hidden and on a phone. **Ctrl+F** (**⌘F**) in an agent's chat opens it narrowed to that agent; everywhere else Ctrl+F stays the browser's find. The sidebar's **Filter** box is something else: it filters the agent list by name, model or backend.
+- **Typing:** results come as you type (after a short pause), grouped by agent, newest first, each with **Chat**, **Message** (between agents, shown as sender → target) or **Task**, and the words you typed marked. Words of 1–2 characters work too (Chinese included); on their own they search the newest 5,000 entries, and the dialog says so. With nothing typed it shows your recent searches (this browser only).
+- **Keys:** ↑↓ move, **Enter** opens, **Esc** or a click outside closes. **Filters** folds out: an agent, a team, a time (24 hours, 7 days, 30 days), which kinds, and **Only mine** (messages you wrote).
+- **Opening a result:** a chat message opens its agent's chat at that message, flashed. A chat message the chat no longer keeps, a message between agents and a task open as the copy search kept (a chat message with the ones around it), with the chats to go to or the Task Board.
+- **What it keeps:** its own index (`search.db` in the AgEnD home), filled from what the fleet already has the first time and then as things happen, kept `web.search.retention_days` (90 by default). Secret values are masked before anything is kept. A message's verification ids, working directory and branch are never kept. A message to or from an agent whose `cross_instance_visibility` is `hidden` is not found.
+- **Who can use it:** fleet admins signed in to the dashboard. Never a guest, and never over the public link. `web.search.enabled: false` turns it off ([configuration](configuration.md)).
 
 ## Log (`/ui/log/<name>`)
 

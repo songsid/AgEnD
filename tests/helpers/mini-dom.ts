@@ -44,6 +44,13 @@ class Target {
     if (type) return this._listeners.get(type)?.length ?? 0;
     let n = 0; for (const l of this._listeners.values()) n += l.length; return n;
   }
+  /** A target outside the tree (the window): its own listeners only. Nodes override this with the full path. */
+  dispatchEvent(e: MiniEvent): boolean {
+    e.target = this as any;
+    e.eventPhase = 2;
+    this._fire(e, false);
+    return !e.defaultPrevented;
+  }
   _fire(e: MiniEvent, capture: boolean) {
     const list = [...(this._listeners.get(e.type) ?? [])].filter(l => l.capture === capture || e.eventPhase === 2);
     for (const l of list) {
