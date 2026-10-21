@@ -321,6 +321,42 @@ describe("5. revisions, refusals and notes the page can say in its language", ()
     expect([after.body.rev, after.body.cards.map((c: any) => c.id)]).toEqual([1, ["M-1"]]);
   });
 
+  // #2296: every open Tasks tab reads the board after each change — on the dashboard one build per revision serves them all.
+  it("the dashboard's board read is built once per revision (and done=all, and minute); a write, done=all or the next minute build it again", async () => {
+    const db = scratchDb();
+    db.board.createCards(ANN, { cards: [{ title: "One" }] });
+    const views = vi.spyOn(db.board, "views");
+    const a = await viaLink(db, "GET", "/ui/tasks/board", undefined, { local: true });
+    const b = await viaLink(db, "GET", "/ui/tasks/board", undefined, { local: true });
+    expect(views).toHaveBeenCalledTimes(1);
+    expect(b.body).toEqual(a.body);
+    expect(a.body.cards.map((c: any) => c.id)).toEqual(["M-1"]);
+    await viaLink(db, "GET", "/ui/tasks/board?done=all", undefined, { local: true });
+    expect(views, "done=all is a board of its own").toHaveBeenCalledTimes(2);
+    db.board.createCards(ANN, { cards: [{ title: "Two" }] });
+    const c = await viaLink(db, "GET", "/ui/tasks/board", undefined, { local: true });
+    expect(views, "a write moved the revision").toHaveBeenCalledTimes(3);
+    expect([c.body.rev, c.body.cards.map((x: any) => x.id)]).toEqual([2, ["M-1", "M-2"]]);
+    vi.setSystemTime(Date.now() + 61_000);
+    await viaLink(db, "GET", "/ui/tasks/board", undefined, { local: true });
+    expect(views, "the next minute (the 14-day window moves)").toHaveBeenCalledTimes(4);
+  });
+
+  it("over the public link the board is built for each read — it is filtered per request (instances kept out of sight)", async () => {
+    const db = scratchDb();
+    const fleetConfig = { defaults: {}, instances: { quiet: { cross_instance_visibility: "hidden" } } };
+    db.board.createCards(ANN, { cards: [{ title: "Seen" }, { title: "Quiet's", assignee: "quiet" }] });
+    const local = await viaLink(db, "GET", "/ui/tasks/board", undefined, { local: true, fleetConfig });
+    expect(local.body.cards.map((c: any) => c.title).sort()).toEqual(["Quiet's", "Seen"]);
+    const views = vi.spyOn(db.board, "views");
+    const l1 = await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig });
+    const l2 = await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig });
+    expect(views).toHaveBeenCalledTimes(2);
+    for (const r of [l1, l2]) expect(r.body.cards.map((c: any) => c.title)).toEqual(["Seen"]);
+    const again = await viaLink(db, "GET", "/ui/tasks/board", undefined, { local: true, fleetConfig });
+    expect(again.body.cards.map((c: any) => c.title).sort(), "the dashboard still sees every card").toEqual(["Quiet's", "Seen"]);
+  });
+
   it("a refusal names its key and values; a malformed card address is a 400; the old route takes only real statuses", async () => {
     const db = scratchDb();
     db.board.createProject(ANN, { name: "Game" });
