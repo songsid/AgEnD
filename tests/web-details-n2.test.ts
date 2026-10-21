@@ -37,6 +37,9 @@ async function fakeFetch(url: string, init: { method?: string } = {}) {
     "/api/settings/classic": { defaults: {}, channels: { "555:discord": { instanceName: "classic-ops-1", name: "ops", adapterId: "discord", channelId: "555", backend: "codex" } } }, "/api/settings/connections": [],
     "/api/settings/status-emojis": { keys: [], builtins: { discord: {}, telegram: {} }, telegram_allowed: [], suggestions: [] }, "/api/fleet": { version: "2.2.0", instances: [{ name: "web-dev", status: "running" }] },
     "/api/profiles": [{ instance_name: "web-dev", status: "running", backend: "claude-code", tags: [] }], "/api/settings/pending": [],
+    // #2246 step 3: web-dev's work on the task board (its `task mine`).
+    "/ui/tasks/work?instance=web-dev": { instances: [{ name: "web-dev", doing: [{ id: "S-3", title: "Build the API", assignee: "web-dev", unmetDeps: [] }], blocked: [], review: [],
+      ready: [], waiting: [{ id: "S-4", title: "The page", assignee: "web-dev", unmetDeps: ["S-3"] }], mains: [], sentBack: [], newComments: [] }] },
     "/api/card/loner": CARD,
   };
   if (m === "GET" && Object.prototype.hasOwnProperty.call(SETTINGS, url)) return { ok: true, status: 200, json: async () => structuredClone(SETTINGS[url]), text: async () => "" };
@@ -158,6 +161,16 @@ describe("Details (Q1 = B)", () => {
     expect(pg.root.querySelector(".p-details .activity")?.textContent ?? "").toContain("hello");
     expect(pg.root.querySelectorAll(".p-details input, .p-details textarea, .p-details select").length, "read only").toBe(0);
     expect(calls.filter(c => c.startsWith("GET /ui/instance/")), "one read when it opens").toEqual(["GET /ui/instance/web-dev"]);
+  });
+  it("#2246 step 3: its work on the task board, read once; a card opens on the board", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev");
+    await settle(4);
+    const lines = pg.root.querySelectorAll(".p-details .d-board .tw-line");
+    expect(lines.map((l: any) => [l.querySelector(".tw-kind").textContent, l.querySelector(".tb-code").textContent, l.querySelector(".tw-note")?.textContent ?? ""]))
+      .toEqual([["In progress", "S-3", ""], ["Waiting on", "S-4", "waits for S-3"]]);
+    expect(calls.filter(c => c.startsWith("GET /ui/tasks/work")), "one read").toEqual(["GET /ui/tasks/work?instance=web-dev"]);
+    lines[0].click(); await settle(4);
+    expect(location.pathname + location.search).toBe("/ui/fleet?card=S-3");
   });
   it("the actions are the state's, through the existing calls: running → restart / stop / pause; stopped → start; paused → wake", async () => {
     const pg = await app("/ui/fleet/agent/web-dev");

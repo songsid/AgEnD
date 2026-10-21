@@ -8,7 +8,7 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
-import { StatusPill, answerBlocked, askText, boardApi, currentWork, errorText, followsSubs, moveCard, notesForPeople, relTime, wrapUpText } from "./fleet-task-common.js";
+import { StatusPill, Who, answerBlocked, askText, boardApi, currentWork, errorText, followsSubs, moveCard, notesForPeople, relTime, wrapUpText } from "./fleet-task-common.js";
 
 register("taskcard", {
   en: {
@@ -132,7 +132,7 @@ export function CardDialog({ id, tick, projects, writable = true, place = null, 
   }
 
   if (missing || !detail) {
-    return html`<${Dialog} title=${id} onClose=${onClose} wide><p class="muted">${missing ? t("taskcard.missing", id) : t("taskcard.loading")}</p></${Dialog}>`;
+    return html`<${Dialog} title=${id} onClose=${onClose} wide drawer><p class="muted">${missing ? t("taskcard.missing", id) : t("taskcard.loading")}</p></${Dialog}>`;
   }
 
   const { card, parent, children } = detail;
@@ -166,7 +166,7 @@ export function CardDialog({ id, tick, projects, writable = true, place = null, 
     } catch { /* no clipboard */ }
   }
 
-  return html`<${Dialog} title=${`${card.id} · ${t(`tasks.${card.kind}`)}`} onClose=${onClose} wide label=${`${card.id} ${card.title}`}>
+  return html`<${Dialog} title=${`${card.id} · ${t(`tasks.${card.kind}`)}`} onClose=${onClose} wide drawer label=${`${card.id} ${card.title}`}>
     <div class="tc">
       <div class="tc-head">
         ${writable ? html`<${InlineTitle} value=${card.title} version=${card.version} onSave=${(title, base) => save({ title }, base)} />` : html`<h3 class="tc-title">${card.title}</h3>`}
@@ -195,7 +195,7 @@ export function CardDialog({ id, tick, projects, writable = true, place = null, 
 
       <dl class="tc-meta">
         <dt>${t("taskcard.assignee")}</dt>
-        <dd><span class="tb-who">${card.assignee || t("taskcard.nobody")}</span>
+        <dd><${Who} name=${card.assignee} empty=${t("taskcard.nobody")} />
           ${writable ? html`<select class="tb-select" value="\u0000pick" aria-label=${t("taskcard.assignee")} onChange=${(e) => { const v = e.target.value; e.target.value = "\u0000pick"; void chooseAssignee(v); }}>
             <option value="\u0000pick" disabled hidden>${t("taskcard.change")}</option>
             ${card.assignee ? html`<option value="\u0000none">${t("taskcard.unassign")}</option>` : null}
@@ -207,7 +207,7 @@ export function CardDialog({ id, tick, projects, writable = true, place = null, 
           if (!now) return html`<span class="muted">${card.status === "review" ? t("tasks.review") : t("taskcard.nowNone")}</span>`;
           return now.cards.map((c) => html`<button key=${c.id} type="button" class="tc-now" onClick=${() => onOpen(c.id)} title=${c.title}>
             <span class=${`tb-now-label st-${now.tone}`}>${t(now.label)}</span><span class="tb-code">${c.id}</span><span class="tc-child-title">${c.title}</span>
-            <span class="tb-who">${c.assignee || t("tasks.nobody")}</span></button>`);
+            <${Who} name=${c.assignee} empty=${t("tasks.nobody")} /></button>`);
         })()}</dd>` : null}
         <dt>${t("taskcard.dispatcher")}</dt>
         <dd><span class="tb-who" title=${t("taskcard.dispatcherHint")}>${!card.dispatcher ? t("taskcard.dispatcherNone")

@@ -149,7 +149,7 @@ kept out of sight) and is built each time.
 
 ## The page (Fleet › Tasks)
 
-`fleet-tasks.js` (Home and a project's board), `fleet-task-card.js` (one card in the app's dialog),
+`fleet-tasks.js` (Home and a project's board), `fleet-task-card.js` (one card in the app's dialog, as a drawer),
 `fleet-task-common.js` (words, requests, moves, marks). Home: what waits for the person (confirm, send back, answer),
 then the projects (with % done) and No project. A board read carries live cards and the last 14 days' finished ones
 (`?done=all`: every done main task, for the Done column's "All"), each project's numbers over all its cards, and is a
@@ -165,6 +165,17 @@ opens a card. Bars are SVG rects (the CSP allows no style attribute); a bar fill
 - **Without a mouse.** A tile's title is its button (the tile is not a button around buttons): Enter opens the card,
   Alt+←/→ moves it to the status before or after, Alt+↑/↓ within its column. The card's dialog has Move to… and a
   Position row (up, down) — reordering on a phone, where HTML5 dragging does not fire.
+- **taskhall's looks.** On a desk a card opens as a drawer from the right edge (the app's dialog with `drawer`: focus,
+  Esc and the backdrop as before), its fields in a grey block; a phone keeps the bottom sheet. The columns reach the
+  bottom of the page (a card drops anywhere down a column). Tiles are white with a shadow and a bold title; a bar on the
+  left only while a card is under way (in progress, blocked, waiting for you); a size in a box. Who works on a card has
+  a round initial: an instance's in its identity colour (#1958), a person's grey.
+- **Who works on what (step 3).** `GET /ui/tasks/work` (`?instance=` for one): each instance's `myWork` — what its
+  `task mine` reads — for the fleet's instances and anyone else holding a live card, drawn in one `views()` read. Over the
+  public link an instance kept out of sight is not listed, nor a card that names one. The board's **Instances** drawer
+  (`fleet-task-work.js`, taskhall's): by team as the sidebar groups them, working ones first, then those with cards;
+  each line says what the card is to it (sent back, in progress, blocked, waiting for you, owns, can start, waiting on)
+  and opens it. It is read again on each board change. An instance's Details page reads its own once.
 - **The public link** shows the board with a read-only note and no write controls (see above): a card's project, priority, size and review are text, not disabled controls (#2299).
 - **Toasts** are a manual popover (the top layer): a toast raised while a card's dialog is open is above its backdrop, not dimmed under it. On a phone the board's toasts come in above the tabs (an older confirmation gives way to two newer toasts; an error stays), not over its title and search; while a card's sheet is open, at the top (#2299).
 - **Wrapped up before you confirm (step 2).** A main task goes to review by itself when its last sub task is done —

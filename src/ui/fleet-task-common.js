@@ -1,9 +1,10 @@
 // The task board's shared pieces (Fleet › Tasks): its words, the numbers a project shows, the requests, asking for a
-// reason, moving a card, and the small marks (status pill, progress bar). fleet-tasks.js draws the board and
+// reason, moving a card, and the small marks (status pill, progress bar, who). fleet-tasks.js draws the board and
 // fleet-task-card.js one card; both use these. No style attribute anywhere (the CSP): bars are SVG rects.
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { t, register, lang } from "/assets/app-i18n.js";
-import { createStore, useStore } from "/assets/app-store.js";
+import { appStore, createStore, useStore } from "/assets/app-store.js";
+import { identityOf, paintIdentity, useIdentityColors } from "/assets/identity-color.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { toast } from "/assets/ui-toast.js";
 
@@ -72,6 +73,13 @@ register("tasks", {
     "note.review_waiting": "{0} “{1}”: every sub task is done — it waits for your confirmation",
     "note.back_to": "{0} has unfinished sub tasks again: it is back to {1}", "note.deps_done": "{0}'s dependencies are all done: it can start",
     "note.deps_unmet": "Note: {0} not done yet",
+    // #2246 step 3: who works on what (fleet-task-work.js)
+    instances: "Instances", instancesTip: "The fleet's instances and what each works on", instancesHead: "{0} instance(s) · {1} working",
+    workSentBack: "Sent back", workDoing: "In progress", workBlocked: "Blocked", workReview: "Waiting for you", workMain: "Owns",
+    workReady: "Can start", workWaiting: "Waiting on", workSubs: "sub tasks {0}/{1}", workClaimable: "nobody's: can be taken",
+    workWaitsFor: "waits for {0}", workNone: "Nothing on the board", workNewComments: "Comments it has not read yet",
+    workOutside: "Not in the fleet", workFailed: "Could not read who works on what: {0}", workJoin: ", ",
+    detailsBoard: "Task board",
   },
   "zh-TW": {
     open: "待辦", claimed: "進行中", blocked: "卡住", review: "待確認", done: "完成", cancelled: "取消",
@@ -137,6 +145,13 @@ register("tasks", {
     "note.review_waiting": "{0}「{1}」的子任務都完成了，等你確認",
     "note.back_to": "{0} 又有沒完成的子任務，已回到{1}", "note.deps_done": "{0} 的相依都完成了，可以開始",
     "note.deps_unmet": "提醒：{0} 還沒完成",
+    // #2246 step 3：誰在做什麼（fleet-task-work.js）
+    instances: "Instance", instancesTip: "fleet 有哪些 instance、各在做什麼", instancesHead: "{0} 個 · 工作中 {1}",
+    workSentBack: "被退回", workDoing: "進行中", workBlocked: "卡住", workReview: "待確認", workMain: "負責",
+    workReady: "可以開始", workWaiting: "等前置", workSubs: "子任務 {0}/{1}", workClaimable: "沒人負責，可領",
+    workWaitsFor: "等 {0}", workNone: "看板上沒有它的卡", workNewComments: "有它還沒看過的留言",
+    workOutside: "不在 fleet 裡", workFailed: "讀不到工作清單：{0}", workJoin: "、",
+    detailsBoard: "任務看板",
   },
 });
 
@@ -312,6 +327,8 @@ export const boardApi = {
   move: (id, to, input = {}) => boardCall("POST", `/ui/tasks/cards/${enc(id)}/move`, { to, ...input }),
   reorder: (id, after, before) => boardCall("POST", `/ui/tasks/cards/${enc(id)}/reorder`, { after, before }),
   search: (q) => boardCall("GET", `/ui/tasks/search?q=${enc(q)}`),
+  /** #2246 step 3: each instance's work (its `task mine`), or one instance's. */
+  work: (instance) => boardCall("GET", `/ui/tasks/work${instance ? `?instance=${enc(instance)}` : ""}`),
   createProject: (name, description) => boardCall("POST", "/ui/tasks/projects", { name, description }),
   updateProject: (id, patch) => boardCall("POST", `/ui/tasks/projects/${id}`, patch),
 };
@@ -438,6 +455,21 @@ export function ProgressBar({ progress, wide = false }) {
 export function StatusPill({ status }) {
   return html`<span class=${`tb-pill st-${status}`}>${t(`tasks.${status}`)}</span>`;
 }
+
+/**
+ * Who a card is with, as taskhall shows it: a round initial, then the name. An instance's initial takes its identity
+ * colour (#1958, the sidebar's), painted through the CSSOM; a person's, or anyone not in the fleet, stays grey.
+ */
+export function Who({ name, title, empty = "—" }) {
+  const { instances } = useStore(appStore);
+  useIdentityColors();
+  if (!name) return html`<span class="tb-person none"><span class="tb-who">${empty}</span></span>`;
+  const it = (instances || []).find((i) => i.name === name);
+  const id = it ? identityOf(it) : null;
+  return html`<span class="tb-person" title=${title || name}>
+    <span class="tb-av idc" aria-hidden="true" ref=${(el) => paintIdentity(el, id)}>${initialOf(name)}</span><span class="tb-who">${name}</span></span>`;
+}
+const initialOf = (name) => (Array.from(name.trim())[0] || "?").toLocaleUpperCase();
 
 /** A per-device preference (localStorage may be unavailable: then nothing is remembered). */
 export function readStored(key, fallback) {

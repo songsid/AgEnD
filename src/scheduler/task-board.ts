@@ -1028,6 +1028,12 @@ export class TaskBoard {
    * (its own open cards, and the unassigned sub tasks of main tasks it coordinates, dependencies done) and what waits
    * on dependencies; comments it has not seen and work sent back; the main tasks it coordinates and how far along.
    */
+  /** Who holds a live card (open, in progress, blocked, waiting for the person): the instances, and any other name. */
+  liveAssignees(): string[] {
+    return (this.db.prepare("SELECT DISTINCT assignee FROM tasks WHERE assignee IS NOT NULL AND status IN ('open', 'claimed', 'blocked', 'review') ORDER BY assignee").all() as Row[])
+      .map((r) => r.assignee as string);
+  }
+
   myWork(name: string): MyWork {
     const mine = (this.db.prepare(`SELECT * FROM tasks WHERE assignee = ? AND status IN ('open', 'claimed', 'blocked', 'review') ORDER BY ${STATUS_ORDER}, ${PRIORITY_ORDER}, sort`)
       .all(name) as Row[]).map(toCard);
@@ -1079,6 +1085,79 @@ export class TaskBoard {
     for (let i = 0; i < codes.length; i += 500) {
       const chunk = codes.slice(i, i + 500);
       out.push(...(this.db.prepare(`SELECT * FROM tasks WHERE code IN (${chunk.map(() => "?").join(", ")})`).all(...chunk) as Row[]).map(toCard));
+    }
+    return out;
+  }
+
+  /**
+   * myWork() for many names in one read (the dashboard's Instances list, GET /ui/tasks/work): the live cards, every
+   * card's light row (sub tasks, dependencies) and the live cards' unseen entries, each read once — three statements
+   * however many names and cards (#2316 review: N myWork() calls cost tens of ms on the fleet's event loop). Same
+   * answers as myWork() name by name; tests/task-board-work-2316.test.ts pins both.
+   */
+  workOf(names: string[]): Map<string, MyWork> {
+    const out = new Map<string, MyWork>();
+    if (!names.length) return out;
+    const live = (this.db.prepare(`SELECT * FROM tasks WHERE status IN ('open', 'claimed', 'blocked', 'review') ORDER BY ${STATUS_ORDER}, ${PRIORITY_ORDER}, sort`).all() as Row[]).map(toCard);
+    type Light = { code: string; status: CardStatus; deps: string[]; parent: string | null };
+    const all = new Map<string, Light>();
+    const subs = new Map<string, Progress>();
+    for (const r of this.db.prepare("SELECT id, code, status, depends_on, parent_id FROM tasks").all() as Row[]) {
+      const light: Light = { code: (r.code as string | null) ?? (r.id as string).slice(0, 8), status: r.status as CardStatus, deps: parseJsonArray<string>(r.depends_on, []), parent: (r.parent_id as string | null) ?? null };
+      all.set(r.id as string, light);
+      if (light.parent && light.status !== "cancelled") {
+        const p = subs.get(light.parent) ?? { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 };
+        p.total++;
+        p[light.status]++;
+        subs.set(light.parent, p);
+      }
+    }
+    // Unseen entries of the live cards: comments and rejections by anyone but the card's assignee, after what it saw.
+    const fresh = new Map<string, Entry[]>();
+    for (const r of this.db.prepare(
+      `SELECT e.* FROM task_entries e JOIN tasks t ON e.task_id = t.id
+       WHERE t.status IN ('open', 'claimed', 'blocked', 'review') AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.author IS NOT t.assignee ORDER BY e.id`,
+    ).all() as Row[]) {
+      const list = fresh.get(r.task_id as string) ?? [];
+      list.push({ id: Number(r.id), cardId: all.get(r.task_id as string)?.code ?? (r.task_id as string).slice(0, 8), kind: r.kind as EntryKind, author: r.author as string,
+        authorKind: r.author_kind as Actor["kind"], text: r.text as string, at: r.at as string });
+      fresh.set(r.task_id as string, list);
+    }
+    /** unmetDeps(), on the light rows: own dependencies that exist and are not done, then the main task's not yet named. */
+    const unmet = (deps: string[], parent: string | null): string[] => {
+      const own = deps.filter((d) => { const dep = all.get(d); return !!dep && dep.status !== "done"; });
+      const main = parent ? all.get(parent) : undefined;
+      return main ? [...own, ...unmet(main.deps, main.parent).filter((d) => !own.includes(d))] : own;
+    };
+    const rank: Record<string, number> = { urgent: 0, high: 1, normal: 2 };
+    const byPriority = (a: Card, b: Card) => (rank[a.priority] ?? 3) - (rank[b.priority] ?? 3) || a.sort - b.sort;
+    const openUnassigned = live.filter((c) => c.assignee === null && c.status === "open");
+    for (const name of new Set(names)) {
+      const mine = live.filter((c) => c.assignee === name);
+      const coordinating = mine.filter((c) => c.kind === "main" && (subs.get(c.uuid)?.total ?? 0) > 0);
+      const work = mine.filter((c) => !coordinating.includes(c));
+      const theirs = new Set(coordinating.map((c) => c.uuid));
+      const unassigned = coordinating.length ? openUnassigned.filter((c) => c.parent !== null && theirs.has(c.parent)).sort(byPriority) : [];
+      const candidates = [...work.filter((c) => c.status === "open"), ...unassigned].map((card) => ({ card, waitsFor: unmet(card.deps, card.parent).map((d) => all.get(d)!.code) }));
+      const newComments: MyWork["newComments"] = [];
+      const sentBack: MyWork["sentBack"] = [];
+      for (const card of mine) {
+        const entries = fresh.get(card.uuid) ?? [];
+        const reject = [...entries].reverse().find((e) => e.kind === "reject");
+        if (reject) sentBack.push({ card, entry: reject });
+        const comments = entries.filter((e) => e.kind === "comment");
+        if (comments.length) newComments.push({ card, entries: comments });
+      }
+      out.set(name, {
+        doing: work.filter((c) => c.status === "claimed"),
+        blocked: work.filter((c) => c.status === "blocked"),
+        review: work.filter((c) => c.status === "review"),
+        ready: candidates.filter((x) => !x.waitsFor.length).map((x) => x.card),
+        waiting: candidates.filter((x) => x.waitsFor.length),
+        newComments,
+        sentBack,
+        mains: coordinating.map((card) => ({ card, progress: { ...(subs.get(card.uuid) as Progress) } })),
+      });
     }
     return out;
   }

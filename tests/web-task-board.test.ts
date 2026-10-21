@@ -419,6 +419,47 @@ describe("4d. Needs you over the public link leaves out the cards the board hide
   });
 });
 
+describe("4c. who works on what: each instance's `task mine`, by /ui/tasks/work", () => {
+  const ids = (w: any) => Object.fromEntries(["doing", "blocked", "review", "ready", "waiting", "mains"].map((k) => [k, w[k].map((c: any) => c.id)]).concat([["sentBack", w.sentBack], ["newComments", w.newComments]]));
+  it("the fleet's instances, then anyone else holding a live card, each with its cards as task mine sorts them; one by ?instance=", async () => {
+    const db = scratchDb();
+    const dev = { kind: "instance" as const, name: "dev-a" };
+    db.board.createCards(ANN, { cards: [{ title: "Leaderboard", assignee: "lead" }] });                       // M-1
+    db.board.createCards(ANN, { parent: "M-1", cards: [{ title: "API", assignee: "dev-a" }, { title: "Page", assignee: "dev-a", dependsOn: ["S-1"] }, { title: "Review" }] });
+    db.board.createCards(ANN, { cards: [{ title: "Rewards", assignee: "dev-a" }, { title: "Tuning", assignee: "Ann" }] });   // M-2, M-3
+    db.board.moveCard(dev, "S-1", "claimed");
+    db.board.moveCard(ANN, "M-2", "claimed"); db.board.moveCard(ANN, "M-2", "review", { result: "POST /rewards" });
+    db.board.updateCard(ANN, "S-1", { comment: "cache it" });
+    const fleetConfig = { defaults: {}, instances: { "dev-a": {}, lead: {}, idle: {} } };
+    const { status, body } = await viaLink(db, "GET", "/ui/tasks/work", undefined, { local: true, fleetConfig });
+    expect(status).toBe(200);
+    expect(body.instances.map((i: any) => i.name)).toEqual(["dev-a", "lead", "idle", "Ann"]);
+    const of = (n: string) => body.instances.find((i: any) => i.name === n);
+    expect(ids(of("dev-a"))).toEqual({ doing: ["S-1"], blocked: [], review: ["M-2"], ready: [], waiting: ["S-2"], mains: [], sentBack: [], newComments: ["S-1"] });
+    expect(of("dev-a").waiting[0].unmetDeps).toEqual(["S-1"]);
+    expect(ids(of("lead"))).toMatchObject({ mains: ["M-1"], ready: ["S-3"] });                             // nobody's sub task of its main task
+    expect(of("lead").mains[0].progress).toMatchObject({ total: 3, claimed: 1, open: 2 });
+    expect(ids(of("idle"))).toEqual({ doing: [], blocked: [], review: [], ready: [], waiting: [], mains: [], sentBack: [], newComments: [] });
+    expect(ids(of("Ann"))).toMatchObject({ ready: ["M-3"] });
+    const one = await viaLink(db, "GET", "/ui/tasks/work?instance=lead", undefined, { local: true, fleetConfig });
+    expect(one.body.instances.map((i: any) => i.name)).toEqual(["lead"]);
+  });
+
+  it("over the public link, an instance kept out of sight is not listed, nor a card that names one; the local page has both", async () => {
+    const db = scratchDb();
+    db.board.createCards(ANN, { cards: [{ title: "Open work", assignee: "dev-a" }, { title: "Secret work", assignee: "spy" },
+      { title: "Handed out by the spy", assignee: "dev-a", dispatcher: { kind: "instance", name: "spy" } }] });
+    const fleetConfig = { defaults: {}, instances: { "dev-a": {}, spy: { cross_instance_visibility: "hidden" } } };
+    const link = (await viaLink(db, "GET", "/ui/tasks/work", undefined, { fleetConfig })).body;
+    expect(link.instances.map((i: any) => [i.name, i.ready.map((c: any) => c.id)])).toEqual([["dev-a", ["M-1"]]]);
+    expect((await viaLink(db, "GET", "/ui/tasks/work?instance=spy", undefined, { fleetConfig })).body.instances).toEqual([]);
+    const local = (await viaLink(db, "GET", "/ui/tasks/work", undefined, { fleetConfig, local: true })).body;
+    expect(local.instances.map((i: any) => [i.name, i.ready.map((c: any) => c.id)])).toEqual([["dev-a", ["M-1", "M-3"]], ["spy", ["M-2"]]]);
+    expect(isPublicWebRoute("GET", "/ui/tasks/work")).toBe(true);
+    expect(isPublicWebRoute("POST", "/ui/tasks/work")).toBe(false);
+  });
+});
+
 describe("4b. who handed a card out, from the dashboard", () => {
   it("an instance, the person writing, or nobody; anything else is a 400", async () => {
     const db = scratchDb();

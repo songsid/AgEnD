@@ -512,6 +512,8 @@ function jsonText(res: ServerResponse, status: number, body: string): void {
  * board (the newest revision replaces the previous), so it holds one board's JSON at most.
  */
 const boardBodies = new WeakMap<object, { key: string; body: string }>();
+/** #2316 review: the same for who works on what (GET /ui/tasks/work), per (revision, names asked for). */
+const workBodies = new WeakMap<object, { key: string; body: string }>();
 
 /**
  * #1630 (#1635 review): an answer that waited on something (a list, a download) is sent only if the request is still
@@ -2242,7 +2244,7 @@ export function handleWebRequest(
   // ── Task board (scheduler/task-board.ts) ──────────────
   // Reads are the session's; every write is the signed-in person's, through the same rules an instance's tools use.
 
-  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects")) {
+  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/work" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects")) {
     const board = ctx.scheduler?.db.board;
     if (!board) { json(res, 503, { error: "The task board is not available" }); return true; }
     // The temporary public link reads the board and changes nothing on it: confirming, sending back, cancelling and
@@ -2283,6 +2285,35 @@ export function handleWebRequest(
         const cards = board.boardCards(undefined, allDone).filter((c) => !hidden(c));
         const body = JSON.stringify({ rev, cards: board.views(cards, scope), projects: board.listProjects(true), stats: board.projectStats() });
         if (key) boardBodies.set(board, { key, body });
+        jsonText(res, 200, body);
+        return true;
+      }
+      if (method === "GET" && path === "/ui/tasks/work") {
+        // #2246 step 3: each instance's work on the board — what its `task mine` reads (myWork) — for the board's
+        // Instance list and an instance's Details page (`?instance=`): the fleet's instances and anyone else a live
+        // card is assigned to. Over the public link, not those kept out of sight, nor a card that names one. Every
+        // name's work is one workOf() read and the cards one views() read, whatever the number of instances (#2316
+        // review); on the dashboard the answer is built once per board revision and the names asked for, and shared
+        // by every open drawer (the public link's is filtered per request, as the board's).
+        const only = url.searchParams.get("instance");
+        const names = (only ? [only] : [...new Set([...Object.keys(ctx.fleetConfig?.instances ?? {}), ...board.liveAssignees()])]).filter((n) => !hiddenName(n));
+        const key = gateway ? null : `${board.revision()}:${only === null ? "*" : `=${only}`}:${names.join("\u0000")}`;
+        const kept = key ? workBodies.get(board) : undefined;
+        if (kept && kept.key === key) { jsonText(res, 200, kept.body); return true; }
+        const byName = board.workOf(names);
+        const works = names.map((name) => ({ name, w: byName.get(name)! }));
+        const all = new Map<string, Parameters<typeof board.views>[0][number]>();
+        for (const { w } of works) for (const c of [...w.doing, ...w.blocked, ...w.review, ...w.ready, ...w.waiting.map((x) => x.card), ...w.mains.map((x) => x.card)]) if (!hidden(c)) all.set(c.uuid, c);
+        const viewOf = new Map(board.views([...all.values()], scope).map((v) => [v.uuid, v]));
+        const drawn = (cards: Array<{ uuid: string }>) => cards.flatMap((c) => (viewOf.has(c.uuid) ? [viewOf.get(c.uuid)!] : []));
+        const codes = (cards: Array<{ card: { uuid: string; code: string } }>) => cards.filter((x) => all.has(x.card.uuid)).map((x) => x.card.code);
+        const body = JSON.stringify({ instances: works.map(({ name, w }) => ({
+          name,
+          doing: drawn(w.doing), blocked: drawn(w.blocked), review: drawn(w.review), ready: drawn(w.ready),
+          waiting: drawn(w.waiting.map((x) => x.card)), mains: drawn(w.mains.map((x) => x.card)),
+          sentBack: codes(w.sentBack), newComments: codes(w.newComments),
+        })) });
+        if (key) workBodies.set(board, { key, body });
         jsonText(res, 200, body);
         return true;
       }
