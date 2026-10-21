@@ -184,7 +184,7 @@ if [ "$IS_WSL" = true ] && [ -d "${NVM_DIR:-$HOME/.nvm}" ]; then
 fi
 
 # ── Step 3: tmux ─────────────────────────────────────────
-
+# >>> tmux install (tests/install-sh-tmux-sudo-2337.test.ts runs this block)
 step 3 "Checking tmux"
 
 if command_exists tmux; then
@@ -193,9 +193,16 @@ else
   echo "  Installing tmux..."
   case "$PKG_MGR" in
     brew)   brew install tmux ;;
-    apt)    sudo apt-get update -qq && sudo apt-get install -y -qq tmux ;;
-    dnf)    sudo dnf install -y tmux ;;
-    pacman) sudo pacman -S --noconfirm tmux ;;
+    apt|dnf|pacman)
+      if [ "$(id -u)" -ne 0 ] && ! command_exists sudo; then
+        error "Cannot install tmux automatically (sudo is not available). Please install tmux and re-run."
+      fi
+      case "$PKG_MGR" in
+        apt)    $SUDO apt-get update -qq && $SUDO apt-get install -y -qq tmux ;;
+        dnf)    $SUDO dnf install -y tmux ;;
+        pacman) $SUDO pacman -S --noconfirm tmux ;;
+      esac
+      ;;
     *)      error "Cannot install tmux automatically. Please install manually." ;;
   esac
 
@@ -204,6 +211,7 @@ else
   fi
   info "tmux $(tmux -V) installed"
 fi
+# <<< tmux install
 
 # ── Step 4: Install AgEnD ────────────────────────────────
 
@@ -227,12 +235,32 @@ if command_exists agend; then
 fi
 
 # Detect if npm global dir needs sudo
+# >>> npm-prefix sudo (tests/install-sh-prefix-sudo-2294.test.ts runs this block)
+# #2294: a prefix that does not exist yet (for example ~/.npm-global with no lib/)
+# is not unwritable. Judge from the nearest existing parent; if that is writable,
+# or the prefix is under $HOME, create the missing directories. After that, pick
+# sudo from whether lib/node_modules or lib is writable. A writable prefix must
+# not override an existing unwritable lib (mkdir -p does not chmod it).
 NPM_PREFIX=$(npm config get prefix 2>/dev/null || echo "/usr/local")
+npm_prefix_existing="$NPM_PREFIX"
+while [ ! -e "$npm_prefix_existing" ]; do
+  npm_prefix_parent=$(dirname "$npm_prefix_existing")
+  [ "$npm_prefix_parent" = "$npm_prefix_existing" ] && break
+  npm_prefix_existing="$npm_prefix_parent"
+done
+npm_prefix_under_home=false
+case "$NPM_PREFIX" in
+  "$HOME"|"$HOME"/*) npm_prefix_under_home=true ;;
+esac
+if [ "$npm_prefix_under_home" = true ] || [ -w "$npm_prefix_existing" ]; then
+  mkdir -p "$NPM_PREFIX/lib" "$NPM_PREFIX/bin" 2>/dev/null || true
+fi
 if [ -w "$NPM_PREFIX/lib/node_modules" ] 2>/dev/null || [ -w "$NPM_PREFIX/lib" ] 2>/dev/null; then
   SUDO=""
 else
   SUDO="sudo"
 fi
+# <<< npm-prefix sudo
 
 # Remove old @suzuke/agend if present (bin name conflict)
 if npm list -g @suzuke/agend >/dev/null 2>&1; then

@@ -101,8 +101,11 @@ async function until(p: FreshPage, test: (m: M) => boolean, ms = 10000) {
   while (!test(m) && Date.now() < end) { await wait(200); m = await measure(p); }
   return { ok: test(m), m };
 }
-/** The line ends `name` → `name` (or a folded box "box:<team>"), from what its two ends sit on. */
-const near = (a: number, b: number) => Math.abs(a - b) < 1.5;
+/**
+ * The line ends `name` → `name` (or a folded box "box:<team>"), from what its two ends sit on. #2329: a drawn line
+ * stops short of its cards (its source dot's room, its head's tip and the stroke under the head): within 9 px.
+ */
+const near = (a: number, b: number) => Math.abs(a - b) < 9;
 const onRect = (p: Pt, r: any) => ((near(p.x, r.x) || near(p.x, r.x + r.w)) && p.y >= r.y - 1 && p.y <= r.y + r.h + 1) || ((near(p.y, r.y) || near(p.y, r.y + r.h)) && p.x >= r.x - 1 && p.x <= r.x + r.w + 1);
 const endOn = (m: M, p: Pt) => m.cards.find((c) => onRect(p, c))?.name ?? (m.boxes.find((b) => b.folded && onRect(p, b)) ? `box:${m.boxes.find((b) => b.folded && onRect(p, b)).team}` : null);
 const ends = (m: M) => m.lines.map((l) => [endOn(m, l.pts[0]), endOn(m, l.pts[l.pts.length - 1])]);

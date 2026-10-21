@@ -308,6 +308,30 @@ describe("the page", () => {
     expect([f.getAttribute("marker-start"), f.getAttribute("marker-end")]).toEqual(["url(#oc-src-task)", "url(#oc-ah-task)"]);
     expect(["oc-src-task", "oc-ah-task"].every((id) => !!p.root.querySelector(`#${id}`))).toBe(true);
   });
+  it("#2329 the heads: markers in stroke widths (HEAD), the line's stroke width its own attribute, its ends off its cards", async () => {
+    await mount();
+    emit("traffic", it_(1, "atlas", "quill", "delivering")); await settle(2);
+    const ah = p.root.querySelector("#oc-ah-task"), src = p.root.querySelector("#oc-src-task");
+    expect([ah.getAttribute("markerWidth"), ah.getAttribute("markerHeight"), Number(ah.getAttribute("refX")), src.getAttribute("markerWidth")])
+      .toEqual([String(T.HEAD.LEN), String(T.HEAD.LEN), 10 - (10 * T.HEAD.BACK) / T.HEAD.LEN, String(T.HEAD.DOT)]);
+    const f = p.root.querySelector(".oc-flow");
+    expect(f.getAttribute("stroke-width")).toBe("2.5");
+    const card = (name: string) => { const g = p.root.querySelector(`.oc-node[data-name="${name}"]`), m = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(g.getAttribute("transform"))!, r = g.querySelector(".oc-card");
+      return { x: +m[1], y: +m[2], w: +r.getAttribute("width"), h: +r.getAttribute("height") }; };
+    const gap = (q: { x: number; y: number }, c: any) => Math.hypot(Math.max(c.x - q.x, 0, q.x - c.x - c.w), Math.max(c.y - q.y, 0, q.y - c.y - c.h));
+    const n = f.getAttribute("d").match(/-?[\d.]+/g).map(Number);
+    const head = f.getAttribute("marker-end") === "url(#oc-ah-task)";
+    expect([gap({ x: n[0], y: n[1] }, card("atlas")), gap({ x: n[n.length - 2], y: n[n.length - 1] }, card("quill"))].map((v) => Math.round(v * 100) / 100))
+      .toEqual([T.HEAD.START, T.HEAD.GAP + (head ? T.HEAD.BACK * 2.5 : 0)]);
+    // Many lines into one card: on their lanes some last runs are too short for a head — those draw none, and stop GAP short.
+    ["send", "report", "broadcast"].forEach((k, i) => ["queued", "delivering"].forEach((st, j) => emit("traffic", it_(10 + i * 2 + j, "atlas", "quill", st, k))));
+    emit("traffic", it_(20, "atlas", "quill", "queued")); await settle(3);
+    const flows = [...p.root.querySelectorAll(".oc-flow")].map((x: any) => { const v = x.getAttribute("d").match(/-?[\d.]+/g).map(Number);
+      return [x.getAttribute("marker-end") !== null, Math.round(gap({ x: v[v.length - 2], y: v[v.length - 1] }, card("quill")) * 100) / 100]; });
+    expect(flows.length).toBe(8);
+    expect(flows.some(([h]) => h) && flows.some(([h]) => !h)).toBe(true);
+    for (const [h, g] of flows) expect(g).toBe(T.HEAD.GAP + (h ? T.HEAD.BACK * 2.5 : 0));
+  });
   it("the stream hands the page its traffic events (app-stream's named events)", async () => {
     const { createStream } = await import("/assets/app-stream.js");
     const handlers = new Map<string, (e: { data: string }) => void>();

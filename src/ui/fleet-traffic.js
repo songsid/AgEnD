@@ -178,8 +178,15 @@ function endOf(L, name) {
 
 // ── Routing: lanes the layout keeps empty ──
 
-/** A side lane's offset from the middle of the box's padding: at least 6 px from the box's border and from its cards. */
+/**
+ * A side lane's offset from the middle of the box's padding: at least 6 px from the box's border and from its cards.
+ * Negative: toward the border, on either side (#2329) — the first lines (o < 0) leave the cards a long last run for a head.
+ */
 const laneOffset = (o, PAD = OC.PAD) => Math.max(-PAD / 2 + 6, Math.min(PAD / 2 - 6, o * 0.5));
+const leftLaneOf = (b, io, PAD) => b.x + PAD / 2 + io;
+const rightLaneOf = (b, io, PAD) => b.x + b.w - PAD / 2 - io;
+/** Where a line meets a card's side, from the side's middle (#2329): its full offset, a head's width from its neighbours. */
+const sideOffset = (o) => Math.max(-OC.NH / 2 + 7, Math.min(OC.NH / 2 - 7, o));
 /** The layout's own box padding and gutter (a phone's are narrower). */
 const spacing = (L) => ({ PAD: L.pad ?? OC.PAD, GAP: L.gap ?? OC.GAP });
 
@@ -199,14 +206,14 @@ function outward(L, end, o) {
   const { NW, NH } = OC, { PAD, GAP } = spacing(L);
   const card = end.c, col = end.i % b.cols, rowI = Math.floor(end.i / b.cols), lines = Math.ceil(b.cells.length / b.cols);
   const io = laneOffset(o, PAD);
-  const leftLane = b.x + PAD / 2 + io, rightLane = b.x + b.w - PAD / 2 + io;
+  const leftLane = leftLaneOf(b, io, PAD), rightLane = rightLaneOf(b, io, PAD);
   let pts;
   if (col === 0 || col === b.cols - 1) {
-    const left = col === 0, lane = left ? leftLane : rightLane, cy = card.y + NH / 2 + io;
+    const left = col === 0, lane = left ? leftLane : rightLane, cy = card.y + NH / 2 + sideOffset(o);
     pts = [{ x: left ? card.x : card.x + NW, y: cy }, { x: lane, y: cy }, { x: lane, y: b.y }];
   } else {
     // A middle column: down into the gutter below its row, across to the nearer side lane.
-    const gy = card.y + NH + (rowI === lines - 1 ? PAD : GAP) / 2 + io / 2, cx = card.x + NW / 2 + o;
+    const gy = card.y + NH + (rowI === lines - 1 ? PAD : GAP) / 2 - io / 2, cx = card.x + NW / 2 + o;
     const lane = cx - b.x < b.w / 2 ? leftLane : rightLane;
     pts = [{ x: cx, y: card.y + NH }, { x: cx, y: gy }, { x: lane, y: gy }, { x: lane, y: b.y }];
   }
@@ -224,10 +231,10 @@ function toLane(L, end, lane, o) {
   const io = laneOffset(o, PAD);
   const left = lane < b.x + b.w / 2;
   if ((left && col === 0) || (!left && col === b.cols - 1)) {
-    const cy = card.y + NH / 2 + io;
+    const cy = card.y + NH / 2 + sideOffset(o);
     return [{ x: left ? card.x : card.x + NW, y: cy }, { x: lane, y: cy }];
   }
-  const gy = card.y + NH + (rowI === lines - 1 ? PAD : GAP) / 2 + io / 2, cx = card.x + NW / 2 + o;
+  const gy = card.y + NH + (rowI === lines - 1 ? PAD : GAP) / 2 - io / 2, cx = card.x + NW / 2 + o;
   return [{ x: cx, y: card.y + NH }, { x: cx, y: gy }, { x: lane, y: gy }];
 }
 /** Two cards in one open box: joined inside it, through the side lane nearer to them both (never out to the bus). */
@@ -235,7 +242,7 @@ function inBox(L, a, z, o) {
   const b = a.b, { PAD } = spacing(L);
   const io = laneOffset(o, PAD);
   const mid = ((a.i % b.cols) + (z.i % b.cols)) / 2;
-  const lane = mid <= (b.cols - 1) / 2 ? b.x + PAD / 2 + io : b.x + b.w - PAD / 2 + io;
+  const lane = mid <= (b.cols - 1) / 2 ? leftLaneOf(b, io, PAD) : rightLaneOf(b, io, PAD);
   return [...toLane(L, a, lane, o), ...toLane(L, z, lane, o).reverse()];
 }
 /** Two of General's cards: under them, through the gap above the first row (or the canvas's empty space below). */
@@ -280,6 +287,42 @@ export function badgeAt(pts) {
   return best;
 }
 
+// ── Arrowheads (#2329) ──
+
+/** A line's stroke width (px) by its kind and phase: the work's and its report's are heavier, a team pair's the most. */
+export const strokeOf = (hue, phase) => (phase === "work" || phase === "return" ? 3 : hue === "team" ? 3.5 : 2.5);
+/**
+ * The arrowhead and the ends. In stroke widths (the markers' units, fleet-canvas.js): a head LEN long and WIDE across,
+ * the line's own stroke ending BACK inside it (its round cap under the head, never out past the tip); the source dot
+ * DOT across. In px: the tip GAP short of the card, the dot's centre START off its card; a head only on a last straight
+ * run that holds it and ROOM of line before it — else the line ends GAP short with none (its dot and pulse show the way).
+ */
+export const HEAD = { LEN: 2.8, WIDE: 2.3, BACK: 1.4, DOT: 2, GAP: 3.5, START: 5, ROOM: 1 };
+/** Whether a line of stroke `w` px whose last straight run is `run` px long gets a head. */
+export const headFits = (run, w) => run >= HEAD.GAP + HEAD.LEN * w + HEAD.ROOM;
+/** An orthogonal polyline without repeated points or points in the middle of a straight run. */
+function corners(pts) {
+  const q = pts.filter((pt, i) => !i || pt.x !== pts[i - 1].x || pt.y !== pts[i - 1].y).map((pt) => ({ x: pt.x, y: pt.y }));
+  return q.filter((pt, i) => i === 0 || i === q.length - 1 || !((q[i - 1].x === pt.x && pt.x === q[i + 1].x) || (q[i - 1].y === pt.y && pt.y === q[i + 1].y)));
+}
+/** Route `pts` as drawn: its start moved `a` px along its first run, its end `b` px back along its last (each keeps 1 px). */
+export function trimEnds(pts, a, b) {
+  const q = corners(pts);
+  if (q.length < 2) return q;
+  const pull = (i, j, by) => {
+    const l = Math.hypot(q[j].x - q[i].x, q[j].y - q[i].y), t = Math.max(0, Math.min(by, l - 1)) / l;
+    q[i] = { x: q[i].x + (q[j].x - q[i].x) * t, y: q[i].y + (q[j].y - q[i].y) * t };
+  };
+  pull(0, 1, a);
+  pull(q.length - 1, q.length - 2, b);
+  return q;
+}
+/** The length of a route's last straight run. */
+export function lastRun(pts) {
+  const q = corners(pts);
+  return q.length < 2 ? 0 : Math.hypot(q[q.length - 1].x - q[q.length - 2].x, q[q.length - 1].y - q[q.length - 2].y);
+}
+
 // ── Edges ──
 
 /** The colour family of a kind: task, report, broadcast, and the rest (send, query, update). */
@@ -291,8 +334,10 @@ const settled = (phase) => (phase === "fading" || phase === "stale" ? "fading" :
 
 /**
  * The lines to draw from the store's items on layout `L`. `far`: zoomed out (one line per team pair). Each edge:
- * { key, hue, phase, n, from, to, d, pts, badge, a, z, routed } — `from`/`to` the instance (or team) names it joins, for
- * search; `a`/`z` its two ends (fleet-route-scene.js routes the ones on cards). `routed` (#2182): the router's points by
+ * { key, hue, phase, n, from, to, d, pts, w, head, badge, a, z, routed } — `from`/`to` the instance (or team) names it
+ * joins, for search; `pts` its route, end to end (on the cards); `d` the path drawn, its ends trimmed off the cards for
+ * the dot and the head (#2329); `w` its stroke width; `head` whether it has a head (headFits);
+ * `a`/`z` its two ends (fleet-route-scene.js routes the ones on cards). `routed` (#2182): the router's points by
  * line key (fleet-route.js); a line it has none for keeps its lane route — or, while a new answer is on its way, the
  * points the same two ends and kind had in the last one (a line changing phase keeps its place).
  */
@@ -339,7 +384,9 @@ export function trafficEdges(items, L, { far = false, max = MAX_EDGES, routed = 
     const o = ((i % 7) - 3) * 7;                                                    // neighbours 7 px apart (within the ±22 px bus lane)
     const viaRouter = routedBy(key);
     const pts = viaRouter ?? route(L, g.a, g.z, o);
-    return { key, hue: g.hue, phase: g.phase, n: g.n, names: [...new Set(g.names)], d: pathOf(pts), pts, badge: g.n > 1 ? badgeAt(pts) : null,
+    const w = strokeOf(g.hue, g.phase), head = headFits(lastRun(pts), w);
+    const d = pathOf(trimEnds(pts, HEAD.START, HEAD.GAP + (head ? HEAD.BACK * w : 0)));
+    return { key, hue: g.hue, phase: g.phase, n: g.n, names: [...new Set(g.names)], d, pts, w, head, badge: g.n > 1 ? badgeAt(pts) : null,
       a: g.a, z: g.z, routed: !!viaRouter };
   });
 }
