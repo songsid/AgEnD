@@ -1,3 +1,4 @@
+import { PUBLIC_TUNNEL_TOKEN_ENV, validPublicTunnelToken } from "./public-tunnel-config.js";
 import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
 import { SettingsConfirmationStore, type SettingsPendingView } from "./settings-confirmation.js";
@@ -328,6 +329,7 @@ import {
 import { verifyDiscordToken, verifyTelegramToken } from "./provider-probe.js";
 import {
   PROVIDER_SECRET_SPECS,
+  PUBLIC_TUNNEL_SECRET_SPEC,
   providerSecretSpec,
   providerRegistryEnvKeys,
   isReservedProviderEnvKey,
@@ -6095,7 +6097,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       dataDir: this.dataDir, web: () => this.fleetConfig?.web,
       permitted: owner => this.publicOwnerCurrent(owner),
       reserve: id => this.getTunnelLane().reserve("dashboard", id),
-      createGateway: (exposureId, current, open, failed) => createPublicWebGateway({ exposureId, isCurrent: current, isOpen: open, onError: failed,
+      createGateway: (exposureId, current, open, failed, named) => createPublicWebGateway({ ...named, exposureId, isCurrent: current, isOpen: open, onError: failed,
         dispatch: (req, res) => this.dispatchWebHttp(req, res, this.fleetConfig?.health_port ?? 19280) }),
       revoke: id => {
         this.webLoginCodes?.revokeAudience(id);
@@ -20331,12 +20333,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   listProviderSecrets(): ProviderSecretStatus[] {
-    return PROVIDER_SECRET_SPECS.map(spec => ({
+    return [...PROVIDER_SECRET_SPECS, PUBLIC_TUNNEL_SECRET_SPEC].map(spec => ({
       id: spec.id,
       display_name: spec.displayName,
       kind: spec.kind,
       token_present: !!process.env[spec.envKey],
-      verifier: spec.verifier ? "available" : "unsupported",
+      verifier: spec.kind === "tunnel_token" ? "local_format" : spec.verifier ? "available" : "unsupported",
       activation: spec.activation,
       stale_consumers: this.providerSecretStaleConsumers(spec.envKey),
     }));
@@ -20347,7 +20349,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // a child process's private environment safely, so report the conservative
     // set of already-running children; the UI can then say "restart these"
     // rather than claiming an existing process reloaded.
-    if (envKey === "GROQ_API_KEY") return [];
+    if (envKey === "GROQ_API_KEY" || envKey === PUBLIC_TUNNEL_TOKEN_ENV) return [];
     return [...this.children.keys()].sort();
   }
 
@@ -20365,6 +20367,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   async verifyProviderSecret(input: {
     specId: string;
     secret: string;
+    clear?: boolean;
     sessionBinding: string;
     idempotencyKey: string;
   }): Promise<
@@ -20375,8 +20378,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!spec || !this.providerSecretEnvAllowed(spec.envKey)) {
       return { ok: false, status: "invalid", error: "provider secret is not configured" };
     }
-    if (!spec.verifier) return { ok: false, status: "unsupported_verifier", error: "this provider has no supported verifier" };
-    if (!input.secret || input.secret.length > 4096 || /[\r\n\0]/.test(input.secret) || /[^\x20-\x7e]/.test(input.secret)) {
+    const tunnel = spec.kind === "tunnel_token";
+    if (!tunnel && !spec.verifier) return { ok: false, status: "unsupported_verifier", error: "this provider has no supported verifier" };
+    if (input.clear && (!tunnel || input.secret !== "") || tunnel && !(input.clear === true && input.secret === "" || validPublicTunnelToken(input.secret))
+      || !input.clear && (!input.secret || input.secret.length > 4096 || /[\r\n\0]/.test(input.secret) || /[^\x20-\x7e]/.test(input.secret))) {
       return { ok: false, status: "invalid", error: "secret is invalid" };
     }
     const challengeKey = `${input.sessionBinding}:api_key:${spec.id}:${spec.envKey}:${input.idempotencyKey}`;
@@ -20387,7 +20392,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     if (existingId) this.providerSecretChallengesByKey.delete(challengeKey);
 
-    const result = await verifyProviderSecret(spec, input.secret, this.providerSecretHttpClient);
+    const result = tunnel ? { ok: true as const } : await verifyProviderSecret(spec, input.secret, this.providerSecretHttpClient);
     if (!result.ok) {
       // Do not log provider detail: the HTTP verifier already redacted it and
       // this endpoint has no need to disclose whether a key was close to valid.
@@ -20481,6 +20486,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   private async runProviderSecretApply(job: ProviderSecretApplyJob, secret: string, execution?: SettingsExecution): Promise<void> {
     const spec = providerSecretSpec(job.specId);
     const allowed = new Set([
+      PUBLIC_TUNNEL_TOKEN_ENV,
       ...PROVIDER_SECRET_SPECS.map(item => item.envKey),
       ...(this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).map(channel => channel.bot_token_env),
     ]);
@@ -20493,7 +20499,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // Construct inside the transaction: symlink/permission refusal must
       // settle the job as a safe failure, not escape the queued microtask.
       store = new SecretStore(join(this.dataDir, ".env"), allowed, { owner: execution?.owner });
-      const write = (): void => { before = store!.write(job.envKey, secret); wrote = true; process.env[job.envKey] = secret; };
+      const write = (): void => { before = spec.kind === "tunnel_token" && !secret ? store!.clear(job.envKey) : store!.write(job.envKey, secret); wrote = true;
+        if (secret) process.env[job.envKey] = secret; else delete process.env[job.envKey]; };
       if (execution) execution.mutate(write); else write();
       if (spec.activation === "reload_hook" && spec.reloadHookId) {
         await this.runProviderSecretReloadHook(spec.reloadHookId, secret, previousProcessValue);
@@ -20507,12 +20514,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       job.status = "done";
       job.finishedAt = Date.now();
     } catch (err) {
-      const safe = safeSecretError(err, secret);
+      const safe = spec?.kind === "tunnel_token" ? "connector token change failed" : safeSecretError(err, secret);
       this.logger.warn({ specId: job.specId, reason: safe }, "Provider API-key apply failed");
       try {
         // Memory and disk have separate receipts: a host-edited file must
         // remain, but cannot strand our owned process value or hook snapshot.
-        if (wrote && process.env[job.envKey] === secret) {
+        if (wrote && (process.env[job.envKey] ?? "") === secret) {
           if (previousProcessValue === undefined) delete process.env[job.envKey]; else process.env[job.envKey] = previousProcessValue;
         }
         if (spec?.reloadHookId && this.providerSecretHotSnapshots.get(spec.reloadHookId) === secret) {
@@ -20543,6 +20550,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * hot activation contract explicit and gives tests a failure seam; no generic
    * SIGHUP or caller-provided hook is ever executed. */
   private async runProviderSecretReloadHook(hookId: string, _next: string, _previous: string | undefined): Promise<void> {
+    if (hookId === "cloudflare.public_link") { await this.publicWebLink?.close("connector token changed"); return; }
     if (hookId !== "groq.voice") throw new Error("unknown provider secret reload hook");
     const before = this.providerSecretHotSnapshots.get(hookId);
     this.providerSecretHotSnapshots.set(hookId, _next);

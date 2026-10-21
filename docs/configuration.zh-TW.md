@@ -71,7 +71,9 @@ health_port: 19280
 
 ### 臨時公開 dashboard 連結
 
-`web.public_link.allow_public` 預設 `true`（僅提供選項，必須由 General 管理員主動點選）、`ttl_minutes` 預設 `120`（1–480，從同意起固定期限）、`protocol` 預設 `http2`（也接受 `quic`／`auto`）。Settings 修改時不因無關編輯寫入預設值；停用會關現有入口。公開 Host 不持久化，該入口的 `/view` 需登入。預覽改由連結自己的第二條 quick tunnel 提供，在背景啟動、隨連結關閉（`web.preview_on_public_link`，預設 `true`）。私送、session 隔離與風險見 [web dashboard](web-dashboard.zh-TW.md#手機使用臨時公開連結)。
+`web.public_link.allow_public` 預設 `true`（僅提供選項，必須由 General 管理員主動點選）、`ttl_minutes` 預設 `120`（1–480，從同意起固定期限）、`protocol` 預設 `http2`（也接受 `quic`／`auto`）。Settings 修改時不因無關編輯寫入預設值；停用會關現有入口。Quick tunnel 的公開 Host 不持久化，該入口的 `/view` 需登入。預覽改由連結自己的第二條 quick tunnel 提供，在背景啟動、隨連結關閉（`web.preview_on_public_link`，預設 `true`）。私送、session 隔離與風險見 [web dashboard](web-dashboard.zh-TW.md#手機使用臨時公開連結)。
+
+選用固定 Cloudflare 網域時，可設定 `web.public_link.hostname`、`tunnel_token_env: AGEND_CLOUDFLARE_TUNNEL_TOKEN` 與 `origin_port`（預設 19282），再從設定 → Web 設定不可讀回的連接器 token。仍保留原本的開啟、到期與關閉規則，重新開啟後可使用相同網址。完整步驟與驗收見 [named tunnel 教學](named-tunnel.zh-TW.md)；後台路由不要指向主網頁 port。
 
 ### 同一個 Discord guild 裡有多個 fleet
 

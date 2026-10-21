@@ -1,3 +1,4 @@
+import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_SECRET_ID } from "./public-tunnel-config.js";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
 import { request as httpsRequest, type RequestOptions } from "node:https";
@@ -24,7 +25,7 @@ export interface ProviderSecretVerifier {
 
 export interface ProviderSecretSpec {
   id: string;
-  kind: "api_key";
+  kind: "api_key" | "tunnel_token";
   envKey: string;
   displayName: string;
   allowedHosts: readonly string[];
@@ -36,9 +37,9 @@ export interface ProviderSecretSpec {
 export interface ProviderSecretStatus {
   id: string;
   display_name: string;
-  kind: "api_key";
+  kind: "api_key" | "tunnel_token";
   token_present: boolean;
-  verifier: "available" | "unsupported";
+  verifier: "available" | "unsupported" | "local_format";
   activation: ProviderSecretActivation;
   /** The browser may render this as a hint, but never receives the key. */
   stale_consumers: string[];
@@ -111,11 +112,17 @@ export const PROVIDER_SECRET_SPECS: readonly ProviderSecretSpec[] = Object.freez
   verifier: spec.verifier ? Object.freeze({ ...spec.verifier }) : undefined,
 })) as ProviderSecretSpec[]);
 
+/** Connector credentials reuse secret transactions, not remote API-key probes. */
+export const PUBLIC_TUNNEL_SECRET_SPEC: ProviderSecretSpec = Object.freeze({
+  id: PUBLIC_TUNNEL_SECRET_ID, envKey: PUBLIC_TUNNEL_TOKEN_ENV, displayName: "Cloudflare connector token",
+  kind: "tunnel_token", allowedHosts: Object.freeze([]), activation: "reload_hook", reloadHookId: "cloudflare.public_link",
+});
+
 const RESERVED_ENV_KEYS = new Set(["PATH", "HOME", "PWD", "SHELL", "ENV", "BASH_ENV", "NODE_OPTIONS", "LD_PRELOAD"]);
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
 
 export function providerSecretSpec(id: string): ProviderSecretSpec | undefined {
-  return PROVIDER_SECRET_SPECS.find(spec => spec.id === id);
+  return id === PUBLIC_TUNNEL_SECRET_ID ? PUBLIC_TUNNEL_SECRET_SPEC : PROVIDER_SECRET_SPECS.find(spec => spec.id === id);
 }
 
 /** Validate immutable registry data at module load and in focused tests. */
@@ -377,7 +384,7 @@ function safeProviderDetail(detail?: string, secret?: string): string | undefine
 }
 
 export function providerRegistryEnvKeys(): Set<string> {
-  return new Set(PROVIDER_SECRET_SPECS.map(spec => spec.envKey));
+  return new Set([...PROVIDER_SECRET_SPECS.map(spec => spec.envKey), PUBLIC_TUNNEL_TOKEN_ENV]);
 }
 
 export function isReservedProviderEnvKey(key: string): boolean {

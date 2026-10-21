@@ -35,7 +35,10 @@ stay as you wrote them. A save that would still change anything else is refused 
 
 ### Temporary public dashboard link
 
-`web.public_link.allow_public` defaults to `true` (offer only; explicit General admin click required), `ttl_minutes` to `120` (1–480, fixed from consent), and `protocol` to `http2` (`quic`/`auto` also accepted). Settings edits these without writing defaults on unrelated changes. Disabling closes an active link. The public host is ephemeral and `/view` requires sign-in. Previews come from a second quick tunnel of the link's own, started in the background and closed with it (`web.preview_on_public_link`, default `true`). See [web dashboard](web-dashboard.md#temporary-public-link-from-a-phone) for private delivery, session scope and risks.
+`web.public_link.allow_public` defaults to `true` (offer only; explicit General admin click required), `ttl_minutes` to `120` (1–480, fixed from consent), and `protocol` to `http2` (`quic`/`auto` also accepted). Settings edits these without writing defaults on unrelated changes. Disabling closes an active link. Quick-tunnel hosts are ephemeral and `/view` requires sign-in. Previews come from a second quick tunnel of the link's own, started in the background and closed with it (`web.preview_on_public_link`, default `true`). See [web dashboard](web-dashboard.md#temporary-public-link-from-a-phone) for private delivery, session scope and risks.
+
+For a fixed optional Cloudflare hostname, set `web.public_link.hostname`, `tunnel_token_env: AGEND_CLOUDFLARE_TUNNEL_TOKEN` and `origin_port` (default 19282), then set the write-only connector token in Settings → Web. The existing finite opening/closing policy still applies; the same URL works after reopening. See the [named tunnel setup and acceptance guide](named-tunnel.md). Never point the Cloudflare route at the main dashboard port.
+
 
 ### Several fleets in one Discord guild
 

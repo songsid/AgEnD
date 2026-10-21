@@ -1,3 +1,4 @@
+import { PUBLIC_TUNNEL_SECRET_ID } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
 import { settingsRequestExecution, settingsWrite } from "./settings-request-capability.js";
@@ -151,6 +152,7 @@ export interface SettingsApiContext extends AppShellContext {
   verifyProviderSecret?(input: {
     specId: string;
     secret: string;
+    clear?: boolean;
     sessionBinding: string;
     idempotencyKey: string;
   }): Promise<{ ok: true; verification_id: string; expires_at: number; spec_id: string; activation: "next_use" | "reload_hook" } | { ok: false; status: string; error: string }>;
@@ -435,11 +437,14 @@ export function handleSettingsRequest(
   // auth header and verifier are resolved server-side.  The body is consumed
   // once and no secret-bearing value is ever placed in a URL, job, SSE frame,
   // or response.
-  const providerSecretsEnabled = ctx.providerSecretsEnabled?.() === true;
-  if (method === "GET" && (path === "/api/settings/provider-secrets" || path === "/api/settings/secrets")) {
+  const tunnelSecretRoute = /^\/api\/settings\/public-tunnel-token(?:\/(?:verify|apply)(?:\/[A-Za-z0-9_-]+)?)?$/.test(path);
+  const providerPath = tunnelSecretRoute ? path === "/api/settings/public-tunnel-token" ? "/api/settings/secrets"
+    : path.replace("/api/settings/public-tunnel-token", `/api/settings/secrets/${PUBLIC_TUNNEL_SECRET_ID}`) : path;
+  const providerSecretsEnabled = tunnelSecretRoute || ctx.providerSecretsEnabled?.() === true;
+  if (method === "GET" && (providerPath === "/api/settings/provider-secrets" || providerPath === "/api/settings/secrets")) {
     if (!providerSecretsEnabled) { json(res, 404, { error: "not found" }, true); return true; }
     if (!ctx.listProviderSecrets) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
-    json(res, 200, ctx.listProviderSecrets().map(item => ({
+    json(res, 200, ctx.listProviderSecrets().filter(item => tunnelSecretRoute ? item.id === PUBLIC_TUNNEL_SECRET_ID : item.id !== PUBLIC_TUNNEL_SECRET_ID).map(item => ({
       id: item.id,
       display_name: item.display_name,
       kind: item.kind,
@@ -451,7 +456,7 @@ export function handleSettingsRequest(
     return true;
   }
 
-  const providerSecretVerifyMatch = path.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/verify$/);
+  const providerSecretVerifyMatch = providerPath.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/verify$/);
   if (method === "POST" && providerSecretVerifyMatch) {
     if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
     if (!providerSecretsEnabled) { json(res, 404, { error: "not found" }, true); return true; }
@@ -465,19 +470,19 @@ export function handleSettingsRequest(
       const secret = typeof body.secret === "string" ? body.secret : "";
       const key = typeof req.headers["idempotency-key"] === "string"
         ? req.headers["idempotency-key"] : typeof body.idempotency_key === "string" ? body.idempotency_key : "";
-      if (!secret) return json(res, 400, { error: "secret required" }, true);
+      if (!secret && !(tunnelSecretRoute && body.clear === true)) return json(res, 400, { error: "secret required" }, true);
       if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) return json(res, 400, { error: "Idempotency-Key required" }, true);
-      const result = await ctx.verifyProviderSecret!({ specId, secret, sessionBinding: requestSessionBinding(req), idempotencyKey: key });
+      const result = await ctx.verifyProviderSecret!({ specId, secret, ...(tunnelSecretRoute ? { clear: body.clear === true } : {}), sessionBinding: requestSessionBinding(req), idempotencyKey: key });
       if (!result.ok) {
         const code = result.status === "unsupported_verifier" ? 422 : result.status === "provider_unavailable" ? 503 : 422;
         return json(res, code, { ok: false, result: result.status, error: result.status === "unsupported_verifier" ? "unsupported verifier" : "provider secret verification failed" }, true);
       }
-      json(res, 200, { ok: true, result: "verified", verification_id: result.verification_id, expires_at: result.expires_at, spec_id: result.spec_id, activation: result.activation }, true);
+      json(res, 200, { ok: true, result: tunnelSecretRoute || specId === PUBLIC_TUNNEL_SECRET_ID ? "prepared" : "verified", verification_id: result.verification_id, expires_at: result.expires_at, spec_id: result.spec_id, activation: result.activation }, true);
     }).catch(() => json(res, 400, { error: "bad request" }, true));
     return true;
   }
 
-  const providerSecretApplyMatch = path.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
+  const providerSecretApplyMatch = providerPath.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   if (method === "POST" && providerSecretApplyMatch) {
     if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
     if (!providerSecretsEnabled) { json(res, 404, { error: "not found" }, true); return true; }
@@ -501,7 +506,7 @@ export function handleSettingsRequest(
     return true;
   }
 
-  const providerSecretStatusMatch = path.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/[^/]+\/apply\/([A-Za-z0-9_-]+)$/);
+  const providerSecretStatusMatch = providerPath.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/[^/]+\/apply\/([A-Za-z0-9_-]+)$/);
   if (method === "GET" && providerSecretStatusMatch) {
     if (!providerSecretsEnabled) { json(res, 404, { error: "not found" }, true); return true; }
     if (!ctx.getProviderSecretApply) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }

@@ -155,6 +155,20 @@ export class SecretStore {
     this.restore(snapshot);
   }
 
+  /** Empty override prevents an inherited launcher secret returning after restart. */
+  clear(key: string): SecretSnapshot {
+    assertSettingsLease(settingsFileResource(this.path), this.owner);
+    this.validateKey(key);
+    const before = this.snapshot();
+    const content = before.content.split(/\r?\n/).filter(line => {
+      const assignment = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+      return assignment?.[1] !== key;
+    }).join("\n");
+    try { this.replace(upsertSecretEnvLine(content, key, "")); }
+    catch (err) { try { this.restore(before); } catch { /* caller reports rollback failure */ } throw err; }
+    return before;
+  }
+
   write(key: string, value: string): SecretSnapshot {
     assertSettingsLease(settingsFileResource(this.path), this.owner);
     this.validateKey(key);
