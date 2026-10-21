@@ -549,6 +549,8 @@ function extractTgzWithTar(archive: string, intoDir: string): Promise<void> {
     const child = spawn("tar", ["-xzf", archive, "-C", intoDir, "cloudflared"], { stdio: ["ignore", "ignore", "pipe"], shell: false });
     let stderr = "";
     child.stderr?.on("data", chunk => { stderr += String(chunk).slice(0, 500); });
+    // #2243: the pipe is its own emitter; unheard, its error would be uncaught and stop the fleet.
+    child.stderr?.on("error", err => { child.kill(); reject(err); });
     child.on("error", reject);
     child.on("exit", code => code === 0 ? resolve() : reject(new Error(`tar exited ${code}: ${stderr.trim()}`)));
   });
