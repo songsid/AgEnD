@@ -388,7 +388,7 @@ export function SettingsPanel({ route, navKey }) {
       const el = document.querySelector(wanted.current);
       if (!el) { if (++tries < 40) timer = setTimeout(find, 50); else wanted.current = null; return; }
       wanted.current = null;
-      if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center" });
+      if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", inline: "nearest" });
       const field = el.matches && el.matches("input, select, textarea, button") ? el : el.querySelector && el.querySelector("input, select, textarea, button");
       if (field && typeof field.focus === "function") field.focus({ preventScroll: true });
       const row = (el.closest && el.closest(".field, label.check, .card")) || el;
@@ -413,7 +413,11 @@ export function SettingsPanel({ route, navKey }) {
   useEffect(() => {
     const item = typeof document !== "undefined" ? document.querySelector(".s-nav .seg-item.active") : null;
     const row = item && item.closest ? item.closest(".s-nav-groups") : null;
-    if (row && row.scrollWidth > row.clientWidth && typeof item.scrollIntoView === "function") item.scrollIntoView({ block: "nearest", inline: "center" });
+    // That row only (scrollIntoView would also scroll the page sideways, and the nav column on a wide screen).
+    if (row && row.scrollWidth > row.clientWidth) {
+      const ir = item.getBoundingClientRect(), rr = row.getBoundingClientRect();
+      if (ir.left < rr.left || ir.right > rr.right) row.scrollLeft += ir.left - rr.left - (rr.width - ir.width) / 2;
+    }
   }, [section]);
   // #2347: a place in a section (`/settings/chat#classicbot`, an old /settings/classic link): there, once it is drawn.
   useEffect(() => {

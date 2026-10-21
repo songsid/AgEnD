@@ -33,6 +33,9 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
     const seen = await p.page.evaluate(`(() => { const a = document.querySelector(".s-nav .seg-item.active"), n = document.querySelector(".s-nav");
       const ar = a.getBoundingClientRect(), nr = n.getBoundingClientRect(); return ar.left >= nr.left - 1 && ar.right <= nr.right + 1; })()`);
     ok(`activeInView:${s}`, seen === true);
+    // …without moving the page or the nav column sideways (only the phone's row of sections scrolls).
+    const still = await p.page.evaluate(`(() => [document.querySelector(".main").scrollLeft, document.querySelector(".s-nav").scrollLeft])()`) as number[];
+    ok(`pageStill:${s}`, still[0] === 0 && still[1] === 0);
   }
   await go("/settings/access");
   await p.page.screenshot({ path: shotPath("2347g", c as any, "2-access") });

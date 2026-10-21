@@ -445,16 +445,20 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .s-anchor { scroll-margin-top: var(--s-4); }
 /* #2347 §6: settings search — on top of the section nav; results grouped by section, the config key small; a setting
    opened from it flashes for 2 s (a tint, no coloured edge). */
-.s-nav { flex-direction: column; align-items: stretch; flex-wrap: nowrap; row-gap: var(--s-2); }
+/* One column (`.p-settings .seg` wraps, which in a column would start a second one beside it). */
+.p-settings > .s-nav { flex-direction: column; align-items: stretch; flex-wrap: nowrap; row-gap: var(--s-2); }
 .s-nav-groups { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--s-3); row-gap: var(--s-1); }
-.s-find .s-search { width: 100%; }
+/* The search never makes the nav wider than its column or row (a flex item's min-content would: a long config key). */
+.s-find, .s-find-results, .s-find-group { min-width: 0; max-width: 100%; }
+.s-find .s-search { width: 100%; box-sizing: border-box; min-width: 0; }
 .s-find-results { max-height: min(60vh, 420px); overflow-y: auto; margin-top: var(--s-1);
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s-1) 0; }
 .s-find-head { padding: var(--s-2) var(--s-3) var(--s-1); font-size: var(--fs-xs); color: var(--text-2); }
-.s-find-item { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2); padding: var(--s-2) var(--s-3); cursor: pointer; }
+.s-find-item { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; column-gap: var(--s-2); padding: var(--s-2) var(--s-3); cursor: pointer; min-width: 0; }
+.s-find-label { min-width: 0; overflow-wrap: anywhere; }
 .s-find-item.on { background: var(--surface-2); }
 .s-find-item mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 2px; }
-.s-find-key { font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.s-find-key { font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .s-find-none, .s-find-foot { padding: var(--s-2) var(--s-3); margin: 0; font-size: var(--fs-xs); color: var(--text-2); }
 .s-find-foot { border-top: 1px solid var(--border); }
 /* #2382 review: "Fix N field(s) in <section> to save" goes there. */
@@ -471,7 +475,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 @media (min-width: 1100px) {
   .p-settings { display: grid; grid-template-columns: 220px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
   .p-settings > :not(.s-nav):not(.panel-body) { grid-column: 1 / -1; }
-  .p-settings > .s-nav { grid-column: 1; grid-row: 2; margin: 0; max-width: none; padding: var(--s-2) var(--s-2) var(--s-4) var(--s-4); overflow-y: auto; }
+  .p-settings > .s-nav { grid-column: 1; grid-row: 2; margin: 0; max-width: none; min-width: 0; padding: var(--s-2) var(--s-2) var(--s-4) var(--s-4); overflow-x: hidden; overflow-y: auto; }
   .p-settings > .s-nav .s-nav-groups { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: var(--s-3); }
   .p-settings > .s-nav .s-nav-group { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
   .p-settings > .s-nav .s-nav-head { padding: var(--s-1) var(--s-3); }
