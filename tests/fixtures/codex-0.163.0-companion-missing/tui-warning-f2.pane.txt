@@ -1,0 +1,45 @@
+
+  >_ OpenAI Codex (v0.163.0)
+     ~/.cxcm/miss/work
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› call the tool
+
+
+• ok
+
+  Worked for <1s • 00:01
+
+  Warnings · 1 of 4 · Startup
+
+  Code Mode is unavailable because failed to spawn code-mode host /tmp/claude-1000/-home-han--agend-workspaces-claude-fable-
+  t1532671461406277715/33226202-98fe-4aa0-960b-6f13d560280a/scratchpad/cx163/missing163/bin/codex-code-mode-host: host executable was not found.
+  Code mode will fail closed; enable `features.code_mode_host` and install `codex-code-mode-host`.
+
+
+
+
+
+
+  k keep & next · esc dismiss & close · ^o copy · ←/→ warning · ↓ scroll
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

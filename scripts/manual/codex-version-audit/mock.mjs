@@ -47,6 +47,19 @@ createServer((req, res) => {
       res.end(sse("response.failed", { response: { id: "resp_audit", error: { code: "server_is_overloaded", message: "overloaded" } } }));
       return;
     }
+    // tool / toolshell / toolexec: the model calls one tool (an MCP tool in AgEnD's namespace, or the shell), then answers once the
+    // tool's output comes back. Used for the missing-companion repro (codex-code-mode-host), where every call fails.
+    // toolexec: the code-mode `exec` tool (a custom tool whose input is JavaScript), the only tool code_mode_only declares.
+    if (["tool", "toolshell", "toolexec"].includes(m) && !/"(?:custom_tool_call|function_call)_output"/.test(body)) {
+      const item = m === "tool"
+        ? { type: "function_call", id: "fc_audit", call_id: "call_audit", namespace: "mcp__agend", name: "reply", arguments: JSON.stringify({ text: "probe" }) }
+        : m === "toolshell"
+          ? { type: "function_call", id: "fc_audit", call_id: "call_audit", name: "exec_command", arguments: JSON.stringify({ cmd: "echo probe" }) }
+          : { type: "custom_tool_call", id: "ctc_audit", call_id: "call_audit", name: "exec", input: 'text("probe")' };
+      res.write(sse("response.output_item.done", { item }));
+      res.end(sse("response.completed", { response: { id: "resp_audit", usage } }));
+      return;
+    }
     const finish = () => {
       res.write(sse("response.output_item.done", { item: { type: "message", role: "assistant", id: "msg_audit", content: [{ type: "output_text", text: "ok" }] } }));
       res.end(sse("response.completed", { response: { id: "resp_audit", usage } }));

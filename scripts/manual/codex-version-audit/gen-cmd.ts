@@ -16,6 +16,8 @@ writeFileSync(join(shared, "config.toml"), [
   `model = "mock-model"`, `model_provider = "mock"`,
   `[model_providers.mock]`, `name = "mock"`, `base_url = "http://127.0.0.1:${port}/v1"`,
   `wire_api = "responses"`, `requires_openai_auth = false`, ``,
+  // GEN_EXTRA_TOML: more shared config, copied into the instance home like the rest (e.g. a [features] table).
+  ...(process.env.GEN_EXTRA_TOML ? [process.env.GEN_EXTRA_TOML, ``] : []),
 ].join("\n"));
 const b = new CodexBackend(instDir);
 const config = { workingDirectory: workDir, instanceDir: instDir, instanceName: "audit", mcpServers: {}, skipPermissions: true, skipResume: resume !== "resume" };

@@ -884,6 +884,17 @@ instances:
 
 The instance is launched with `-c model_provider="glm"`. The provider itself (`[model_providers.glm]`, its base URL and key variable) is defined in the shared Codex `config.toml`, which each instance's private config copies. The name may only contain letters, digits, `_` and `-`. `create_instance` takes the same `backend_options.codex.provider`, and `list_models` with `instance_name` reads the model list through that instance's own config, since a custom provider can offer a different set than the account.
 
+## Codex install check
+
+The official Codex package (the standalone install's `releases/<version>/`, or npm's platform package `vendor/<target>/`) ships helpers next to `bin/codex`. One of them, `bin/codex-code-mode-host`, runs Codex's code-mode tool calls. A codex binary copied without it still starts and still takes messages. On an account where code mode is the only tool path, though, every tool call fails, AgEnD's reply included. The only thing on the pane is Codex's `⚠ N warnings · f2 to view`, so the instance looks silent (#2357).
+
+AgEnD checks the codex it launches. It reads the layout and never runs codex: it follows the binary's realpath (through npm's `bin/codex.js` wrapper into its platform package) to the package root, the directory with `codex-package.json`. There, `bin/codex-code-mode-host` must exist and be executable:
+- **`agend doctor`** shows a **Codex package** row: `complete (<root>)`, or an error with the fix.
+- **Each launch** of a codex instance sends one notification to its channel if the helper is missing or not executable. The launch goes ahead.
+- **A failed tool call.** When Codex records the exact failure in the session rollout (`failed to spawn code-mode host <root>/bin/codex-code-mode-host: No such file or directory (os error 2)`), the same notification is sent once per launch, however often the model retries. Text that only quotes it, a model reply for example, is not matched.
+
+The fix is to reinstall Codex with the full official package. A build without `codex-package.json` (older or unofficial) is not a layout AgEnD knows, so nothing is reported for it.
+
 ## Rate limit failover cooldown
 
 A 5-minute cooldown prevents repeated model failover triggering. After a failover occurs, subsequent rate limit errors within the cooldown window are suppressed. This prevents cascading failovers when error text persists in the terminal buffer.

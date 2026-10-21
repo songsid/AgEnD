@@ -12,6 +12,8 @@ import { getSystemServicePath, serviceLeftovers } from "./service-installer.js";
 import { homedir } from "node:os";
 import type { ServiceInfo } from "./service-installer.js";
 import { t } from "./locale.js";
+import { resolveBinary } from "./backend/types.js";
+import { codexPackageProblemMessage, inspectCodexPackage, type CodexPackageReport } from "./backend/codex-package.js";
 import { collectResourceReport, resourceChecks, type ResourceReport } from "./resource-report.js";
 import {
   AGEND_NETWORK_FAMILY_ATTEMPT_TIMEOUT_MS,
@@ -44,6 +46,8 @@ interface DoctorDeps {
   /** #2331: the legacy system unit, when one runs the fleet (it wins over a user unit, as `agend restart` picks it). */
   systemUnitPath: () => string | null;
   collectResources: (dataDir: string) => Promise<ResourceReport>;
+  /** #2357: the package layout of the codex AgEnD launches (read from disk; codex is never run). */
+  codexPackage: () => CodexPackageReport | null;
   fetchFleetHealth: (port: number) => Promise<{
     adapters?: { details?: Record<string, { status?: string; isReady?: boolean; reconnectCount?: number; heartbeatAgeMs?: number | null; shards?: Array<{ heartbeatAgeMs?: number | null }> }> };
   }>;
@@ -65,6 +69,7 @@ const defaultDeps: DoctorDeps = {
   connectSocket: connectUnixSocket,
   networkFamily: getNetworkFamilyState,
   collectResources: collectResourceReport,
+  codexPackage: () => inspectCodexPackage(resolveBinary("codex")),
   fetchFleetHealth: async port => {
     const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(3000) });
     return await response.json() as any;
@@ -157,6 +162,14 @@ export async function collectDoctorReport(
     } else {
       add("Prerequisites", "error", backend.label, t("doctor.binary_missing", backend.binary));
     }
+  }
+
+  // #2357: a codex binary copied without its package companions starts and takes messages, then fails every tool call
+  // of a code-mode-only account (AgEnD's reply included) with nothing on its pane.
+  if (backendIds.has("codex")) {
+    const report = deps.codexPackage();
+    if (report && report.problems.length === 0) add("Prerequisites", "ok", t("doctor.codex_package"), t("doctor.codex_package_ok", report.root));
+    for (const problem of report?.problems ?? []) add("Prerequisites", "error", t("doctor.codex_package"), codexPackageProblemMessage(report!.root, problem));
   }
 
   const tmuxVersion = deps.run("tmux", ["-V"]);

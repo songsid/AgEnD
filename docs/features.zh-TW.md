@@ -853,6 +853,17 @@ instances:
 
 instance 啟動時會帶上 `-c model_provider="glm"`。provider 本身（`[model_providers.glm]`、它的 base URL 和金鑰變數）定義在共用的 Codex `config.toml` 裡，每個 instance 的私有設定會複製過去。名稱只能包含英文字母、數字、`_` 和 `-`。`create_instance` 也接受同樣的 `backend_options.codex.provider`；`list_models` 帶 `instance_name` 時，會透過那個 instance 自己的設定讀取模型清單，因為自訂 provider 提供的模型可能和帳號的不同。
 
+## Codex 安裝檢查 (Codex install check)
+
+官方的 Codex 套件會在 `bin/codex` 旁附上輔助程式：standalone 安裝在 `releases/<版本>/`，npm 的平台套件在 `vendor/<target>/`。其中的 `bin/codex-code-mode-host` 負責執行 Codex 的 code mode 工具呼叫。只複製 codex 執行檔、少了這個檔案時，codex 仍能啟動，也照樣收得到訊息。但如果帳號只能透過 code mode 使用工具，每一次工具呼叫都會失敗，AgEnD 的 reply 也一樣。畫面上只看得到 Codex 的 `⚠ N warnings · f2 to view`，所以 instance 看起來就是沒有回應（#2357）。
+
+AgEnD 會檢查它要啟動的 codex。它只讀檔案配置，絕不執行 codex：沿著執行檔的實際路徑（npm 的 `bin/codex.js` 包裝程式會跟進它的平台套件）找到套件根目錄，也就是有 `codex-package.json` 的那一層，確認那裡的 `bin/codex-code-mode-host` 存在而且可以執行：
+- **`agend doctor`** 會列出 **Codex 套件** 一列，內容是「完整（<根目錄>）」，或是一則錯誤並附上修正方式。
+- **每次啟動** codex instance 時，如果缺少這個輔助程式或它無法執行，就會在該 instance 的頻道通知一次。啟動照常進行。
+- **工具呼叫失敗時：**Codex 會在 session 的 rollout 記下確切的失敗訊息（`failed to spawn code-mode host <根目錄>/bin/codex-code-mode-host: No such file or directory (os error 2)`）。每次啟動同樣只通知一次，模型重試幾次都一樣。只是引用這段文字的內容（例如模型的回覆）不會被比對到。
+
+修正方式是用完整的官方套件重新安裝 Codex。沒有 `codex-package.json` 的版本（較舊或非官方）不是 AgEnD 認得的配置，不會回報任何問題。
+
 ## 頻率限制備援切換冷卻 (Rate limit failover cooldown)
 
 5 分鐘的冷卻期可以避免模型備援切換被反覆觸發。發生切換後，冷卻期間內再出現的頻率限制錯誤都會被壓下，避免終端機緩衝區裡殘留的錯誤文字引發連鎖切換。

@@ -32,6 +32,7 @@ import { open as openFile, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { sharedRolloutIndex, type RolloutIndex } from "./rollout-index.js";
+import { codexCodeModeHostMissingRoot } from "./backend/codex-package.js";
 import Database from "better-sqlite3";
 import { sharedKiroTranscriptLane, type KiroDbLane, type KiroDbLease } from "./kiro-transcript-lane.js";
 import type { KiroDbCursor } from "./kiro-db-reader.js";
@@ -49,6 +50,8 @@ export interface TranscriptEvents {
   assistantTexts: string[];
   /** #1510: turn boundaries, from a source that records them (codex). */
   turns?: TranscriptTurnEvent[];
+  /** #2357: package roots codex reported a tool call could not run under (its code-mode host is missing). */
+  codexPackageMissingHost?: string[];
 }
 
 export interface TranscriptCheckpoint {
@@ -472,6 +475,8 @@ export class CodexRolloutSource implements TranscriptSource {
         events.toolUses.push({ name: "shell", input: { command: action?.command } });
       } else if (p.type === "function_call_output" || p.type === "custom_tool_call_output") {
         events.toolResults.push({ name: String(p.name ?? "unknown") });
+        const root = codexCodeModeHostMissingRoot(p.output);
+        if (root) (events.codexPackageMissingHost ??= []).push(root);
       } else if (p.type === "message" && p.role === "assistant") {
         const content = p.content as Array<Record<string, unknown>> | undefined;
         for (const block of content ?? []) {
