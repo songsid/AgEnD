@@ -409,13 +409,13 @@ export function DevicePrefs({ labels = false } = {}) {
   useEffect(() => onLang(setL), []);
   return html`<div class=${`prefs${labels ? " labelled" : ""}`}>
     <label class="pref"><${Icon} name="sun" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.theme")}</span>
-      <select value=${theme} aria-label=${t("app.theme")} onChange=${(e) => { setTheme(e.target.value); if (typeof AgendTheme !== "undefined") AgendTheme.set(e.target.value); savePref("theme", e.target.value); }}>
+      <select id=${labels ? "pref-theme" : undefined} value=${theme} aria-label=${t("app.theme")} onChange=${(e) => { setTheme(e.target.value); if (typeof AgendTheme !== "undefined") AgendTheme.set(e.target.value); savePref("theme", e.target.value); }}>
         <option value="system">${t("app.themeSystem")}</option><option value="light">${t("app.themeLight")}</option><option value="dark">${t("app.themeDark")}</option></select></label>
     <label class="pref"><${Icon} name="globe" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.language")}</span>
-      <select value=${l} aria-label=${t("app.language")} onChange=${(e) => { setL(e.target.value); setLang(e.target.value); savePref("lang", e.target.value); }}>
+      <select id=${labels ? "pref-lang" : undefined} value=${l} aria-label=${t("app.language")} onChange=${(e) => { setL(e.target.value); setLang(e.target.value); savePref("lang", e.target.value); }}>
         <option value="en">English</option><option value="zh-TW">中文</option></select></label>
     <label class="pref"><${Icon} name="user" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.names")}</span>
-      <select value=${names.primary} aria-label=${t("app.names")} onChange=${(e) => setNamesPrimary(e.target.value)}>
+      <select id=${labels ? "pref-names" : undefined} value=${names.primary} aria-label=${t("app.names")} onChange=${(e) => setNamesPrimary(e.target.value)}>
         <option value="nickname">${t("app.namesNickname")}</option><option value="instance">${t("app.namesInstance")}</option></select></label>
   </div>`;
 }

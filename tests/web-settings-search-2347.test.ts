@@ -1,0 +1,143 @@
+/**
+ * #2347 §6: settings search. The registry (settings-registry.js) against what each section really draws: every field
+ * with an id drawn there has an entry, and every entry's element is drawn in its section. Matching by name, config key
+ * and words in both languages ("token", "語言", "port", "固定網址"). The search box: results grouped by section with
+ * where they are, ↑↓ Enter Esc, "/" focuses it; a result goes to its section, focuses the field and flashes it.
+ */
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
+import { fire, MiniEvent } from "./helpers/mini-dom.js";
+import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
+
+const schema = buildSettingsImpactSchema();
+let p: AppPage;
+const realFetch = (globalThis as any).fetch;
+const fakeFetch = async (path: string, init: { method?: string } = {}) => {
+  const method = init.method ?? "GET";
+  const body = (() => {
+    if (method !== "GET") return { ok: true };
+    if (path === "/api/settings/schema") return { ...schema, provider_secrets: true };
+    if (path === "/api/settings/fleet/raw") return { defaults: { locale: "en" }, instances: {}, channels: [{ id: "main", type: "discord", bot_token_env: "T", group_id: "1" }], web: {} };
+    if (path === "/api/settings/classic") return { defaults: {}, channels: { "c1": { name: "ops", instanceName: "ops-t1", channelId: "1" } } };
+    if (path === "/api/settings/provider-secrets") return [{ id: "openai", display_name: "OpenAI", verifier: "available", token_present: false }];
+    if (path === "/api/settings/connections") return [{ id: "main", token_present: true }];
+    if (path === "/api/settings/web-authority") return { state: { enabled: true, loopbackOnly: false, epoch: 1 }, configured: {}, hours: { min: 1, max: 48, default: 48 }, lanHosts: [], authorized: [] };
+    if (path === "/api/settings/guests") return { enabled: false, chat: true, explicit: true, instances: [], connections: [], guests: [] };
+    if (path === "/api/fleet") return { version: "2.4.0", instances: [] };
+    if (path === "/ui/owner-css/state") return { active: null, pending: null, text: "", versions: [], assets: [], limits: { maxAssets: 16 } };
+    if (path.startsWith("/ui/")) return {};
+    return [];
+  })();
+  return { ok: true, status: 200, json: async () => body };
+};
+let nav: any, reg: any;
+beforeAll(async () => {
+  p = page({ url: "http://127.0.0.1:19285/settings", storage: { agend_tour_done: "1" } });
+  (globalThis as any).fetch = fakeFetch;
+  (globalThis as any).AgendPreview = { optedIn: () => false, onChange: () => () => {}, setOptIn: () => {} };
+  (globalThis as any).AgendAuth = { trialSession: async () => ({ localAdmin: true }) };
+  p.document.body.dataset.mode = "full";
+  nav = await import("/assets/app-nav.js");
+  reg = await import("/ui/js/settings-registry.js");
+  nav.startRouter(p.window);
+});
+afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; delete (globalThis as any).AgendPreview; delete (globalThis as any).AgendAuth; });
+beforeEach(() => { (globalThis as any).confirm = () => true; });
+afterEach(async () => { await p.unmount(); });
+
+const open = async (section: string) => {
+  const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+  await p.mount(h(SettingsPanel, { route: { panel: "settings", section }, navKey: `settings:${section}|${Math.random()}` }));
+  await settle(20);
+};
+const SECTIONS = ["preferences", "look", "agents", "agent-defaults", "chat", "web-dashboard", "access", "advanced"];
+
+describe("#2347 §6: the registry is what Settings draws", () => {
+  it("every field with an id in a section has an entry, and every entry's element is drawn in its section", async () => {
+    const missing: string[] = [], absent: string[] = [];
+    for (const section of SECTIONS) {
+      await open(section);
+      const body = p.root.querySelector(".p-settings .panel-body");
+      const mine = reg.SETTINGS_REGISTRY.filter((e: any) => e.section === section);
+      const covered = (el: any) => mine.some((e: any) => {
+        const target = body.querySelector(e.target);
+        if (!target) return false;
+        for (let n = el; n; n = n.parentElement) if (n === target) return true;
+        return false;
+      });
+      for (const el of body.querySelectorAll("input[id], select[id], textarea[id]")) if (!covered(el)) missing.push(`${section}: #${el.id}`);
+      for (const e of mine) if (!body.querySelector(e.target)) absent.push(`${section}: ${e.id} (${e.target})`);
+    }
+    expect([missing, absent]).toEqual([[], []]);
+  }, 30_000);
+  it("every entry has a name in both languages, a known section, and a unique id", async () => {
+    const { SETTINGS_SECTIONS } = await import("/assets/app-route.js");
+    const ids = reg.SETTINGS_REGISTRY.map((e: any) => e.id);
+    const bad = reg.SETTINGS_REGISTRY.filter((e: any) => !SETTINGS_SECTIONS.includes(e.section)
+      || [reg.settingLabel(e, "en"), reg.settingLabel(e, "zh-TW")].some((l: string) => !l || l.startsWith("settings.") || l.startsWith("app.") || l.startsWith("chat.")));
+    expect([bad.map((e: any) => e.id), ids.length === new Set(ids).size]).toEqual([[], true]);
+  });
+});
+
+describe("#2347 §6: what a search finds", () => {
+  const ids = (q: string) => reg.searchSettings(q).map((e: any) => e.id);
+  it("\"token\": the Cloudflare token, a connection's bot token and the provider API keys", () => {
+    expect(ids("token")).toEqual(expect.arrayContaining(["access.cloudflare-token", "chat.new-connection", "agents.provider-keys"]));
+  });
+  it("\"語言\": the dashboard's language and the bots' reply language", () => {
+    expect(ids("語言")).toEqual(expect.arrayContaining(["prefs.lang", "defaults.locale"]));
+  });
+  it("\"port\", \"https\", \"domain\" and \"固定網址\" find the fixed address", () => {
+    for (const q of ["port", "https", "domain", "固定網址"]) expect(ids(q), q).toEqual(expect.arrayContaining(["access.hostname"].concat(q === "port" || q === "固定網址" ? ["access.origin-port"] : [])));
+  });
+  it("by config key, by its name in the other language, every word of several; nothing for nonsense", () => {
+    expect([ids("web.log_tab")[0], ids("自動暫停")[0], ids("public link minutes")[0], ids("zzqx")]).toEqual(["dash.log-tab", "defaults.auto-pause", "access.public-ttl", []]);
+  });
+  it("a name that starts with the query comes first", () => {
+    expect(ids("theme")[0]).toBe("prefs.theme");
+  });
+});
+
+describe("#2347 §6: the search box", () => {
+  const box = () => p.root.querySelector("#settingsSearch") as any;
+  const key = (el: any, k: string) => { const e = new MiniEvent("keydown", { bubbles: true, cancelable: true }); (e as any).key = k; el.dispatchEvent(e); };
+  it("results grouped by section with where they are and the config key; ↑↓ moves; Enter goes there — the field focused and flashed", async () => {
+    await open("agents");
+    box().value = "session idle"; fire(box(), "input"); await settle(4);
+    const heads = p.root.querySelectorAll(".s-find-head").map((x: any) => x.textContent);
+    const first = p.root.querySelector(".s-find-item.on");
+    expect([heads, first.querySelector(".s-find-label").textContent, first.querySelector(".s-find-key").textContent, !!first.querySelector("mark")])
+      .toEqual([["Fleet › Access & security"], "Idle time limit (hours)", "web.session.local.idle_hours", true]);
+    key(box(), "Enter"); await settle(4);
+    await open("access");
+    const field = p.root.querySelector("#webSessionIdle");
+    let row = field; while (row && !/\bfield\b/.test(row.getAttribute?.("class") || "")) row = row.parentElement;
+    expect([nav.navStore.get().route, p.document.activeElement === field, /s-flash/.test(row.getAttribute("class"))])
+      .toEqual([{ panel: "settings", section: "access" }, true, true]);
+  });
+  it("nothing found says so; Esc clears; \"/\" anywhere in Settings focuses the box", async () => {
+    await open("look");
+    box().value = "zzqx"; fire(box(), "input"); await settle(4);
+    const none = p.root.querySelector(".s-find-none")?.textContent;
+    key(box(), "Escape"); await settle(4);
+    const cleared = [box().value, !!p.root.querySelector(".s-find-results")];
+    box().blur?.();
+    key(p.document.body, "/"); await settle(2);
+    expect([none, cleared, p.document.activeElement === box()]).toEqual(["No setting matches.", ["", false], true]);
+  });
+});
+
+describe("#2347 §6: Ctrl K has a Settings group", () => {
+  it("the settings come first, from the registry (no request); opening one goes to it", async () => {
+    const m = await import("/ui/js/search-dialog.js");
+    let closed = 0;
+    await p.mount(h(m.SearchDialog, { preset: {}, onClose: () => { closed++; } }));
+    const input: any = p.root.querySelector(".search-input");
+    input.value = "cloudflare"; fire(input, "input"); await settle(4);
+    const group = p.root.querySelector(".search-settings");
+    expect([group?.querySelector(".search-group-head span").textContent, group?.querySelectorAll(".search-row").length > 0,
+      group?.querySelector(".search-who").textContent]).toEqual(["Settings", true, "Settings › Access & security"]);
+    group.querySelector(".search-row").click(); await settle(4);
+    expect([closed, nav.navStore.get().route]).toEqual([1, { panel: "settings", section: "access" }]);
+  });
+});

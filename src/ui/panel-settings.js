@@ -16,6 +16,7 @@ import { DevicePrefs, PanelHeader, PendingChanges, setTitle } from "/assets/app-
 import { navigate, navStore, setLeaveGuard } from "/assets/app-nav.js";
 import { discardHeldPrefs, heldPrefsCount, holdPrefs, onHeldPrefs, savePrefsHeld } from "/assets/app-prefs.js";
 import { chatPath, LEGACY_SETTINGS, settingsPath, SETTINGS_GROUPS, SETTINGS_SECTIONS } from "/assets/app-route.js";
+import { goToSetting, searchSettings, settingLabel, takePendingSetting } from "./settings-registry.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -375,6 +376,39 @@ export function SettingsPanel({ route, navKey }) {
     : section === "web-dashboard" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="dashboard" /><${AppearanceSection} ...${you} part="dashboard" />`
     : section === "access" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="access" />`
     : html`<${Developer} ctx=${ctx} /><${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="readonly" />`;
+  // #2347 §6: the setting a search result opened — brought into view once its section is drawn (its data may still be
+  // on its way), focused, and flashed for 2 s.
+  const wanted = useRef(null);
+  useEffect(() => { const t = takePendingSetting(); if (t) wanted.current = t; }, [navKey]);
+  useEffect(() => {
+    if (!wanted.current) return undefined;
+    let tries = 0, timer = null, live = true;
+    const find = () => {
+      if (!live || !wanted.current) return;
+      const el = document.querySelector(wanted.current);
+      if (!el) { if (++tries < 40) timer = setTimeout(find, 50); else wanted.current = null; return; }
+      wanted.current = null;
+      if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center" });
+      const field = el.matches && el.matches("input, select, textarea, button") ? el : el.querySelector && el.querySelector("input, select, textarea, button");
+      if (field && typeof field.focus === "function") field.focus({ preventScroll: true });
+      const row = (el.closest && el.closest(".field, label.check, .card")) || el;
+      row.classList.add("s-flash");
+      setTimeout(() => row.classList.remove("s-flash"), 2000);
+    };
+    find();
+    return () => { live = false; clearTimeout(timer); };
+  }, [section, navKey, !!data, draftEpoch]);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+      const tgt = e.target;
+      if (tgt && (tgt.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tgt.tagName || ""))) return;
+      const box = document.getElementById("settingsSearch");
+      if (box) { e.preventDefault(); box.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
   // #2347: on a phone the sections are one row that scrolls sideways: the one shown is brought into it.
   useEffect(() => {
     const item = typeof document !== "undefined" ? document.querySelector(".s-nav .seg-item.active") : null;
@@ -398,10 +432,11 @@ export function SettingsPanel({ route, navKey }) {
       <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx} onClick=${() => setDialog({ kind: "wizard", key: navKey })}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
       <button type="button" class="icon-btn" aria-label=${tn("helpButton")} title=${tn("helpButton")} onClick=${() => setDialog({ kind: "help", key: navKey })}><${Icon} name="info" /></button>
     </${PanelHeader}>
+    <div class="s-side"><${SettingsSearch} />
     <nav data-trust="panel-navigation" class="seg s-nav" aria-label=${tn("title")}>${SETTINGS_GROUPS.map((g) => html`<div key=${g.id} class="s-nav-group" role="group" aria-labelledby=${`s-grp-${g.id}`}>
       <span class="s-nav-head" id=${`s-grp-${g.id}`}>${tn(`grp_${g.id}`)}</span>
       ${g.sections.map((k) => html`<a key=${k} href=${settingsPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
-        aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</div>`)}</nav>
+        aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</div>`)}</nav></div>
     <div data-trust="panel-content" class="panel-body"><div class="col">
       ${searchable ? html`<div class="s-toolbar"><label class="s-search"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("searchAll")}</span>
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}
@@ -423,6 +458,63 @@ export function SettingsPanel({ route, navKey }) {
  * read-only: a change there stays in that browser, and it says so. This device only: the chat tour (replayed on the
  * chat it points at), and the layout choices named there (their controls are where they always were).
  */
+/** The words of `text` that `query` names, marked (for a result's name). */
+function marked(text, query) {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return text;
+  const lower = text.toLowerCase(), out = [];
+  let i = 0;
+  while (i < text.length) {
+    let best = -1, len = 0;
+    for (const term of terms) { const at = lower.indexOf(term, i); if (at !== -1 && (best === -1 || at < best)) { best = at; len = term.length; } }
+    if (best === -1) { out.push(text.slice(i)); break; }
+    if (best > i) out.push(text.slice(i, best));
+    out.push(html`<mark>${text.slice(best, best + len)}</mark>`);
+    i = best + len;
+  }
+  return out;
+}
+
+/**
+ * #2347 §6: search every setting — by its name, its config key, or the words people use (both languages: "token",
+ * "語言", "port") — results grouped by section with where they are; Enter or a click goes there. "/" focuses it.
+ */
+function SettingsSearch() {
+  const [q, setQ] = useState("");
+  const [active, setActive] = useState(0);
+  const hits = useMemo(() => searchSettings(q).slice(0, 40), [q]);
+  const groups = useMemo(() => SETTINGS_SECTIONS.map((s) => ({ section: s, items: hits.filter((e) => e.section === s) })).filter((g) => g.items.length), [hits]);
+  const flat = groups.flatMap((g) => g.items);
+  const groupOf = (s) => SETTINGS_GROUPS.find((g) => g.sections.includes(s));
+  const go = (entry) => { if (!entry) return; setQ(""); setActive(0); goToSetting(entry); };
+  const onKey = (e) => {
+    if (e.isComposing) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive((i) => (flat.length ? (i + 1) % flat.length : 0)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive((i) => (flat.length ? (i - 1 + flat.length) % flat.length : 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); go(flat[Math.min(active, flat.length - 1)]); }
+    else if (e.key === "Escape") { if (q) { e.preventDefault(); e.stopPropagation(); setQ(""); } else e.target.blur(); }
+  };
+  const open = q.trim() !== "";
+  const at = Math.min(active, Math.max(flat.length - 1, 0));
+  let n = -1;
+  return html`<div class="s-find" role="search">
+    <label class="s-search"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("searchSettings")}</span>
+      <input id="settingsSearch" type="search" value=${q} placeholder=${tn("searchSettings")} autocomplete="off" spellcheck=${false}
+        role="combobox" aria-expanded=${open ? "true" : "false"} aria-controls="s-find-results" aria-autocomplete="list"
+        aria-activedescendant=${open && flat.length ? `s-find-${at}` : undefined}
+        onInput=${(e) => { setQ(e.target.value); setActive(0); }} onKeyDown=${onKey} /></label>
+    ${open ? html`<div id="s-find-results" class="s-find-results" role="listbox" aria-label=${tn("searchSettings")}>
+      ${flat.length ? groups.map((g) => html`<div key=${g.section} role="group" class="s-find-group" aria-label=${tn(`sec_${g.section}`)}>
+        <div class="s-find-head" aria-hidden="true">${tn(`grp_${groupOf(g.section).id}`)} › ${tn(`sec_${g.section}`)}</div>
+        ${g.items.map((entry) => { n++; const i = n; return html`<div key=${entry.id} id=${`s-find-${i}`} role="option" aria-selected=${i === at ? "true" : "false"}
+          class=${`s-find-item${i === at ? " on" : ""}`} onMouseDown=${(e) => e.preventDefault()} onMouseMove=${i === at ? undefined : () => setActive(i)} onClick=${() => go(entry)}>
+          <span class="s-find-label">${marked(settingLabel(entry), q)}</span>${entry.key ? html`<code class="s-find-key">${entry.key}</code>` : null}</div>`; })}
+      </div>`) : html`<p class="s-find-none" role="status">${tn("searchNone")}</p>`}
+      <p class="s-find-foot" aria-hidden="true">${tn("searchFoot")}</p>
+    </div>` : null}
+  </div>`;
+}
+
 /** #2347: the staged change that stands for every held "You" preference (app-prefs.js holdPrefs). */
 const YOU_PREFS = "you:prefs";
 /** Put back this person's and this device's own choices among `changes` (a Discard, or leaving Settings with them). */
@@ -468,7 +560,7 @@ export function DeviceSection() {
   <section class="card s-device s-synced"><h3>${tn("syncedTitle")}</h3>
     <p class="sub">${publicLink ? tn("syncedPublicLink") : tn("syncedLead")}</p>
     <${DevicePrefs} labels=${true} />
-    ${P() ? html`<label class="check"><input type="checkbox" checked=${on} onChange=${(e) => { const want = e.target.checked; setPreviewOptIn(want).then(setOn); }} />
+    ${P() ? html`<label class="check"><input id="pref-previews" type="checkbox" checked=${on} onChange=${(e) => { const want = e.target.checked; setPreviewOptIn(want).then(setOn); }} />
       <span>${t("chat.previews")}</span></label>` : null}
   </section>
   <section class="card s-device s-local"><h3>${tn("deviceTitle")}</h3>
@@ -631,7 +723,7 @@ function Agents({ ctx, search, openDialog }) {
     try { await work(); } finally { setBusy((b) => { const n = new Map(b); n.delete(name); return n; }); }
   };
   const head = html`<div class="list-head"><span>${Object.keys(insts).length === 1 ? tn("countAgent") : tn("countAgents", Object.keys(insts).length)}</span>
-    <button type="button" class="btn btn-primary" onClick=${() => openDialog({ kind: "create" })}><${Icon} name="plus" size=${16} />${tn("newAgent")}</button></div>`;
+    <button type="button" id="newAgentBtn" class="btn btn-primary" onClick=${() => openDialog({ kind: "create" })}><${Icon} name="plus" size=${16} />${tn("newAgent")}</button></div>`;
   // #2233: after the agents, each login on this machine with Sign in (backend-signin.js).
   const signIns = html`<${SignInList} />`;
   if (!Object.keys(insts).length) return html`${head}<${Empty} icon="bot" title=${tn("noAgents")} />${signIns}`;
@@ -698,7 +790,7 @@ function Bots({ ctx, search, openDialog }) {
   const needle = search.trim().toLowerCase();
   const rows = all.map((ch, i) => ({ ch, i })).filter(({ ch }) => !needle || [ch.id, ch.type, ch.group_id, ch.bot_token_env].some((v) => String(v ?? "").toLowerCase().includes(needle)));
   const head = html`<div class="list-head"><span>${all.length === 1 ? tn("countBot") : tn("countBots", all.length)}</span>
-    <button type="button" class="btn btn-primary" onClick=${() => openDialog({ kind: "newBot" })}><${Icon} name="plus" size=${16} />${tn("newBot")}</button></div>`;
+    <button type="button" id="newBotBtn" class="btn btn-primary" onClick=${() => openDialog({ kind: "newBot" })}><${Icon} name="plus" size=${16} />${tn("newBot")}</button></div>`;
   return html`${head}
     ${!rows.length ? html`<${Empty} icon="plug" title=${needle ? tn("noAgentMatch", search.trim()) : tn("noBots")} />` : html`<div class="s-list">${rows.map(({ ch, i }) => {
       const users = (ch.access && ch.access.allowed_users) || [];
@@ -775,7 +867,7 @@ function ProviderKeys({ ctx }) {
     } catch { say(spec.id, { error: tn("failed") }); }
     finally { inFlight.current.delete(spec.id); if (lease.current()) setBusy(new Set(inFlight.current)); }
   };
-  return html`<section class="card"><h3>${tn("providerKeys")}</h3>
+  return html`<section class="card s-provider-keys"><h3>${tn("providerKeys")}</h3>
     ${!ctx.providerSecrets.length ? html`<p class="note">${tn("noProviderVerifiers")}</p>` : ctx.providerSecrets.map((spec) => html`<div key=${spec.id} class="s-key">
       <div class="s-key-row"><strong>${spec.display_name}</strong><span class="tag">${spec.token_present ? tn("keyConfigured") : tn("keyNotConfigured")}</span>
         ${spec.verifier === "available" ? html`<input type="password" autocomplete="new-password" aria-label=${tn("providerKeyInput", spec.display_name)}
@@ -917,7 +1009,7 @@ function General({ ctx, part = "all" }) {
         <div class=${fc("field", "tool_progress")}>${L(tn("toolProgress"), "defaults.tool_progress", "g-tp")}<${Select} id="g-tp" value=${f.tool_progress} onChange=${set("tool_progress")} options=${TOOL_PROGRESS} /></div>
         <div class=${fc("field", "visibility")}>${L(tn("crossInstanceVisibility"), "defaults.cross_instance_visibility", "g-vis")}<${Select} id="g-vis" value=${f.visibility} onChange=${set("visibility")} options=${VISIBILITY_MODES} />
           <p class="note">${tn("crossInstanceVisibilityHint")}</p></div>
-        <div class=${fc("field", "reply")}><label class="check"><input type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span><${Impact} schema=${schema} field="defaults.reply_completion_guard" /></label>
+        <div class=${fc("field", "reply")}><label class="check"><input id="g-reply" type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span><${Impact} schema=${schema} field="defaults.reply_completion_guard" /></label>
           <p class="note">${fleetReply}</p></div>
       </div>
     </section>` : null}
@@ -929,13 +1021,13 @@ function General({ ctx, part = "all" }) {
             <${Select} id="g-ctp" disabled=${f.classicToolProgressInherit} value=${f.classicToolProgressInherit ? (d.tool_progress ?? "off") : f.classicToolProgress} onChange=${set("classicToolProgress")} options=${TOOL_PROGRESS} /></${Override}></div>
         <div class=${fc("field", "classicReply", "classicReplyInherit")}>${L(tn("replyCompletionGuard"), "classic_defaults.reply_completion_guard")}
           <${Override} inherit=${f.classicReplyInherit} onInherit=${set("classicReplyInherit")}>
-            <label class="check"><input type="checkbox" disabled=${f.classicReplyInherit} checked=${f.classicReplyInherit ? (d.reply_completion_guard ?? true) : f.classicReply} onChange=${(e) => set("classicReply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span></label></${Override}>
+            <label class="check"><input id="g-creply" type="checkbox" disabled=${f.classicReplyInherit} checked=${f.classicReplyInherit ? (d.reply_completion_guard ?? true) : f.classicReply} onChange=${(e) => set("classicReply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span></label></${Override}>
           <p class="note">${classicReply}</p></div>
       </div>
       <h4>${tn("whoUsesClassic")}</h4>
       <div class="grid2">
-        <div class=${fc("field", "admins")}>${L(tn("classicAdmins"), "classic.admin_users")}<${ChipList} items=${f.admins} onChange=${set("admins")} placeholder=${tn("userIdPlaceholder")} label=${tn("classicAdmins")} /></div>
-        <div class=${fc("field", "guilds")}>${L(tn("allowedGuilds"), "classic.allowed_guilds")}<${ChipList} items=${f.guilds} onChange=${set("guilds")} placeholder=${tn("guildIdPlaceholder")} label=${tn("allowedGuilds")} /></div>
+        <div id="g-admins" class=${fc("field", "admins")}>${L(tn("classicAdmins"), "classic.admin_users")}<${ChipList} items=${f.admins} onChange=${set("admins")} placeholder=${tn("userIdPlaceholder")} label=${tn("classicAdmins")} /></div>
+        <div id="g-guilds" class=${fc("field", "guilds")}>${L(tn("allowedGuilds"), "classic.allowed_guilds")}<${ChipList} items=${f.guilds} onChange=${set("guilds")} placeholder=${tn("guildIdPlaceholder")} label=${tn("allowedGuilds")} /></div>
       </div>
     </section>` : null}
     ${fleetPart ? html`<${Drawer} title=${tn("advancedSection")}>
@@ -945,7 +1037,7 @@ function General({ ctx, part = "all" }) {
         <div class=${fc("field", "agent_mode")}>${L(tn("agentMode"), "defaults.agent_mode", "g-am")}<${Select} id="g-am" value=${f.agent_mode} onChange=${set("agent_mode")} options=${AGENT_MODES} /></div>
       </div></section>
       <section class="card"><h3>${tn("detection")}</h3><div class="grid2">
-        <label class=${fc("check", "hangOn")}><input type="checkbox" checked=${f.hangOn} onChange=${(e) => set("hangOn")(e.target.checked)} /><span>${tn("hangEnabled")}</span><${Impact} schema=${schema} field="defaults.hang_detector" /></label>
+        <label class=${fc("check", "hangOn")}><input id="g-hang-on" type="checkbox" checked=${f.hangOn} onChange=${(e) => set("hangOn")(e.target.checked)} /><span>${tn("hangEnabled")}</span><${Impact} schema=${schema} field="defaults.hang_detector" /></label>
         <div class=${fc("field", "hang")}>${L(`${tn("hangTimeout")} (${tn("minutes")})`, "defaults.hang_detector", "g-hang")}<input id="g-hang" type="number" min="0.1" step="0.5" class=${errors.hang ? "invalid" : ""} value=${f.hang} onInput=${(e) => set("hang")(e.target.value)} /><${Feedback} error=${errors.hang} /></div>
       </div></section>
       <section class="card"><h3>${tn("startup")}</h3><div class="grid2">

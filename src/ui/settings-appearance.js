@@ -185,7 +185,7 @@ function RestoreDefaultsCard(props = {}) {
 function CardSizeCard() {
   useStore(cardSizeStore);
   const size = cardSizeDefault();
-  return html`<section class="card s-appearance s-synced"><${CardTitle} title=${tn("cardSizeTitle")} topic="cards" />
+  return html`<section class="card s-appearance s-synced s-card-size"><${CardTitle} title=${tn("cardSizeTitle")} topic="cards" />
     <div class="card-size" role="group" aria-label=${tn("cardSizeTitle")}>
       ${CARD_SIZES.map((s) => html`<button key=${s} type="button" class=${`seg-item${s === size ? " active" : ""}`} aria-pressed=${s === size ? "true" : "false"}
         onClick=${() => setCardSizeDefault(s)}>${t(`card.size${s.toUpperCase()}Name`)}</button>`)}
@@ -343,7 +343,7 @@ function CardLimitsCard() {
   };
   useEffect(() => { load(); }, []);
   if (!view) return null;
-  if (view.error) return html`<section class="card s-appearance"><${CardTitle} title=${tn("cardLimitsTitle")} topic="limits" /><p class="sub">${tn("cardLimitsUnavailable")}</p></section>`;
+  if (view.error) return html`<section class="card s-appearance s-card-limits"><${CardTitle} title=${tn("cardLimitsTitle")} topic="limits" /><p class="sub">${tn("cardLimitsUnavailable")}</p></section>`;
   const configured = (g, k) => (view.configured && view.configured[g] && typeof view.configured[g][k] === "number" ? view.configured[g][k] : null);
   const save = async () => {
     const body = {};
@@ -382,8 +382,8 @@ function CardLimitsCard() {
 /** #1629 r2 (d): whether this person's screens show agents' themes (and, as they come, effects) — synced. */
 function ThemesCard() {
   const s = useStore(themesStore);
-  return html`<section class="card s-appearance s-synced"><${CardTitle} title=${tn("themesTitle")} topic="themes" />
-    <label class="check"><input type="checkbox" checked=${s.shown} disabled=${safeMode()} onChange=${(e) => setThemesShown(e.target.checked)} />
+  return html`<section class="card s-appearance s-synced s-themes"><${CardTitle} title=${tn("themesTitle")} topic="themes" />
+    <label class="check"><input id="fx-show-themes" type="checkbox" checked=${s.shown} disabled=${safeMode()} onChange=${(e) => setThemesShown(e.target.checked)} />
       <span>${tn("themesShow")}</span></label>
     <p class="sub">${safeMode() ? tn("themesSafeMode") : tn("themesShowLead")}</p>
   </section>`;
@@ -546,7 +546,7 @@ function DeviceCard(props = {}) {
   const [off, setOff] = useState(ownerCssOffHere());
   const setOffHere = deviceChoice(props, DEVICE_CHOICES[1], tn("cssDeviceOff"), ownerCssOffHere, (v) => { setOwnerCssOffHere(v); setOff(ownerCssOffHere()); });
   return html`<section class="card s-appearance s-local"><h3>${tn("cssDeviceTitle")}</h3>
-    <label class="check"><input type="checkbox" checked=${off} onChange=${(e) => setOffHere(e.target.checked)} />
+    <label class="check"><input id="css-off-here" type="checkbox" checked=${off} onChange=${(e) => setOffHere(e.target.checked)} />
       <span>${tn("cssDeviceOff")}</span></label>
     <p class="sub">${tn("cssSafe")}</p>
   </section>`;

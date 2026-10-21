@@ -51,6 +51,12 @@ export function setLang(next, opts = {}) {
 }
 export function onLang(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
+/** #2347: a string in a given language (settings search matches the labels of both), English when it has none. */
+export function tIn(language, key) {
+  const table = tables[language] || tables.en;
+  return table[key] ?? tables.en[key] ?? key;
+}
+
 /** "{0} is working…" with its values filled in. Text only: callers render it as text, never as markup. */
 export function t(key, ...values) {
   let s = tables[current][key] ?? tables.en[key] ?? key;

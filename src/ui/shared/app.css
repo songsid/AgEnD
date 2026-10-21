@@ -443,20 +443,39 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .s-nav-group { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1); }
 .s-nav-head { font-size: var(--fs-xs); color: var(--text-3, var(--text-2)); text-transform: uppercase; letter-spacing: 0.04em; padding: 0 var(--s-2); }
 .s-anchor { scroll-margin-top: var(--s-4); }
+/* #2347 §6: settings search — on top of the section nav; results grouped by section, the config key small; a setting
+   opened from it flashes for 2 s (a tint, no coloured edge). */
+.s-side { display: flex; flex-direction: column; gap: var(--s-2); padding: 0 var(--s-4) var(--s-2); max-width: calc(var(--col) + 2 * var(--s-5)); margin: 0 auto; width: 100%; }
+.s-side > .s-nav { padding: 0; max-width: none; margin: 0; }
+.s-find { position: relative; }
+.s-find .s-search { width: 100%; }
+.s-find-results { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); max-height: min(60vh, 420px); overflow-y: auto;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); box-shadow: var(--shadow-2); padding: var(--s-1) 0; }
+.s-find-head { padding: var(--s-2) var(--s-3) var(--s-1); font-size: var(--fs-xs); color: var(--text-2); }
+.s-find-item { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2); padding: var(--s-2) var(--s-3); cursor: pointer; }
+.s-find-item.on { background: var(--surface-2); }
+.s-find-item mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 2px; }
+.s-find-key { font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.s-find-none, .s-find-foot { padding: var(--s-2) var(--s-3); margin: 0; font-size: var(--fs-xs); color: var(--text-2); }
+.s-find-foot { border-top: 1px solid var(--border); }
+@keyframes s-flash { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } to { background: transparent; } }
+.s-flash { animation: s-flash 2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .s-flash { animation: none; background: color-mix(in srgb, var(--accent) 12%, transparent); } }
 /* #2347: on a phone the sections keep their names (bare icons could not be told apart), on one row that scrolls
    sideways, each group after its name. */
 @media (max-width: 479px) {
-  .p-settings > .s-nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  .p-settings > .s-nav .s-nav-group { flex-wrap: nowrap; flex-shrink: 0; }
+  .p-settings > .s-side > .s-nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .p-settings > .s-side .s-nav-group { flex-wrap: nowrap; flex-shrink: 0; }
 }
 @media (min-width: 1100px) {
   .p-settings { display: grid; grid-template-columns: 220px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
-  .p-settings > :not(.s-nav):not(.panel-body) { grid-column: 1 / -1; }
-  .p-settings > .s-nav { grid-column: 1; grid-row: 2; flex-direction: column; align-items: stretch; flex-wrap: nowrap; margin: 0; max-width: none;
-    padding: var(--s-2) var(--s-2) var(--s-4) var(--s-4); overflow-y: auto; gap: var(--s-3); }
-  .p-settings > .s-nav .s-nav-group { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
-  .p-settings > .s-nav .s-nav-head { padding: var(--s-1) var(--s-3); }
-  .p-settings > .s-nav .seg-item { border-radius: var(--r-sm); }
+  .p-settings > :not(.s-side):not(.panel-body) { grid-column: 1 / -1; }
+  .p-settings > .s-side { grid-column: 1; grid-row: 2; margin: 0; max-width: none; padding: var(--s-2) var(--s-2) var(--s-4) var(--s-4); overflow-y: auto; }
+  .p-settings > .s-side > .s-nav { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: var(--s-3); overflow: visible; }
+  .p-settings > .s-side .s-nav-group { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
+  .p-settings > .s-side .s-nav-head { padding: var(--s-1) var(--s-3); }
+  .p-settings > .s-side .seg-item { border-radius: var(--r-sm); }
+  .p-settings > .s-side .s-find-results { right: auto; width: 360px; }
   .p-settings > .panel-body { grid-column: 2; grid-row: 2; }
   .p-settings > .s-pending { grid-column: 1 / -1; grid-row: 3; }
 }
@@ -1801,12 +1820,14 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .agend-effect-poster { object-fit: cover !important; object-position: center !important; user-select: none; }
 
 /* #1629: full-app bounded stock surfaces. Panel roots stay neutral; effects never raise the whole app. */
-.p-fleet > .seg, .p-settings > .seg,
+.p-fleet > .seg, .p-settings > .s-side,
 .p-fleet > .panel-body, .p-needs > .panel-body, .p-settings > .panel-body,
 .p-log > .panel-body, .p-details > .panel-body, .p-view > .panel-body,
 .p-log > .log-bar, .p-view > .v-term, .p-view > .v-id, .p-view > .v-card { position: relative; z-index: 1; }
 /* Keep the existing Apply bar's sticky behavior, in its own bounded stock band. */
 .p-settings > .s-pending { z-index: 1; }
+/* #2347: the settings search's results open over the content beside or below it. */
+.p-settings > .s-side { z-index: 2; }
 
 /* #1629: host-owned local Trial panel. Only its canvas frame lives inside the paint-contained stage. */
 .effect-trial-head, .effect-trial-controls, .effect-trial-note { position: relative; z-index: 1; background: var(--bg); padding: var(--s-3); margin: 0; }

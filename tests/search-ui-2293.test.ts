@@ -224,8 +224,8 @@ describe("the dialog", () => {
     input.value = "old"; fire(input, "input"); await new Promise(r => setTimeout(r, m.DEBOUNCE_MS + 20));
     input.value = "new"; fire(input, "input"); await new Promise(r => setTimeout(r, m.DEBOUNCE_MS + 20)); await settle();
     release!(); await settle();
-    expect((p.document as any).querySelector(".search-badge").textContent).toBe("Chat");
-    expect((p.document as any).querySelectorAll(".search-row").length).toBe(1);
+    expect((p.document as any).querySelector(".search-group:not(.search-settings) .search-badge").textContent).toBe("Chat");
+    expect((p.document as any).querySelectorAll(".search-group:not(.search-settings) .search-row").length).toBe(1);
   });
   it("the kinds can't all be turned off: the last one on stays on", async () => {
     const d = await open({ instance: "dev" });
@@ -251,8 +251,8 @@ describe("the dialog", () => {
     input.value = "old"; fire(input, "input"); await new Promise(r => setTimeout(r, m.DEBOUNCE_MS + 20));
     input.value = "new"; fire(input, "input"); await new Promise(r => setTimeout(r, m.DEBOUNCE_MS + 20)); await settle();
     release!(); await settle();
-    expect((p.document as any).querySelectorAll(".search-row").length).toBe(1);
-    expect((p.document as any).querySelector(".search-badge").textContent).toBe("Chat");
+    expect((p.document as any).querySelectorAll(".search-group:not(.search-settings) .search-row").length).toBe(1);
+    expect((p.document as any).querySelector(".search-group:not(.search-settings) .search-badge").textContent).toBe("Chat");
   });
 });
 
