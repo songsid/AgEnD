@@ -55,8 +55,11 @@ async function seedTraffic(tag: string) {
   await wait(13500);
   for (const [i, [a, z, k]] of LIVE.entries()) fm.publishTraffic(row(a, z, k, null, "delivering", `l-${tag}-${i}`));
 }
-function clearTraffic(tag: string) {
+/** The case's messages delivered and its delegations reported (the next case starts from the same traffic, no ×N). */
+async function clearTraffic(tag: string) {
   for (const t of [tag, `${tag}-again`]) for (const [i, [a, z, k]] of LIVE.entries()) fm.publishTraffic(row(a, z, k, null, "delivered", `l-${t}-${i}`), "consumed");
+  for (const [i, [a, z]] of WORK.entries()) for (const st of ["delivering", "delivered"]) { fm.publishTraffic(row(z, a, "report", `cid-${tag}-${i}`, st, `r-${tag}-${i}`)); await wait(30); }
+  for (const [i, [a, z]] of WORK.entries()) fm.publishTraffic(row(z, a, "report", `cid-${tag}-${i}`, "delivered", `r-${tag}-${i}`), "consumed");
 }
 
 // ── The page ──
@@ -192,7 +195,7 @@ for (const k of CASES) {
   const on = await until(p, (x) => x.lines.length === N, 8000);
   c.liveOnAgain = back.ok && on.ok;
   const again = on.m.lines.length;
-  clearTraffic(name);
+  await clearTraffic(name);
   c.noErrors = ownErrors(p, navEnd).length === 0;
   record(name, BEFORE ? {} : c, { failed: Object.entries(c).filter(([, v]) => !v).map(([x]) => x), problems: h.out, headLens: h.lens, tipGaps: h.tipGaps, headless: h.headless, dots: h.dots,
     strokes: [...new Set(m.lines.map((l) => l.sw))], linesAgain: again, errors: ownErrors(p, navEnd) });
