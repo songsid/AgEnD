@@ -19656,6 +19656,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.topicArchiver.stop();
 
     this.taskBoardWaker?.stop();
+    this.appIconStore?.close();
     this.scheduler?.shutdown();
     // What it was sent is written first (bounded: search-index.ts close()).
     const search = this.searchIndex;

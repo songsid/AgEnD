@@ -499,17 +499,29 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   const state = () => { const s = store.current(); return s ? { custom: true, version: s.version, updatedAt: s.updatedAt } : { custom: false, version: "default", updatedAt: null }; };
   if (reading) { json(res, 200, state()); return true; }
   if (method === "DELETE") {
-    store.reset();
+    const reset = store.reset();
+    if (!reset.ok) { json(res, reset.status, { error: reset.error, ...(reset.detail ? { detail: reset.detail } : {}) }); return true; }
     json(res, 200, state());
     return true;
   }
+  // Still allowed, still answering, the store still open: asked after each await (the body; the conversion).
+  const again = (): string | null => {
+    if (!permitWebContinuation(req, res, ctx)) return null;
+    if (res.destroyed) return null;
+    const now = who();
+    if ("status" in now) { json(res, now.status, { error: now.error }); return null; }
+    return now.person;
+  };
   (async () => {
     let bytes: Buffer;
     try { bytes = await readBoundedWebBody(req, APP_ICON_MAX_BYTES); } catch { json(res, 413, { error: "app_icon_too_large", detail: "at most 5 MiB" }); return; }
-    if (!permitWebContinuation(req, res, ctx)) return;
-    const now = who();
-    if ("status" in now) { json(res, now.status, { error: now.error }); return; }
-    const saved = store.set(bytes, now.person);
+    if (!again()) return;
+    // #2308 review: decoding and making the sizes is seconds of CPU at worst — a worker thread's, not the fleet loop's.
+    const prepared = await store.prepare(bytes);
+    if (!prepared.ok) { json(res, prepared.status, { error: prepared.error, ...(prepared.detail ? { detail: prepared.detail } : {}) }); return; }
+    const person = again();
+    if (!person) return;
+    const saved = store.commit(prepared.prepared, person);
     if (!saved.ok) { json(res, saved.status, { error: saved.error, ...(saved.detail ? { detail: saved.detail } : {}) }); return; }
     json(res, 200, state());
   })().catch((err) => {

@@ -8,11 +8,11 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { AppIconStore, APP_ICON_MAX_BYTES } from "../src/web-app-icon.js";
+import { AppIconStore, APP_ICON_MAX_BYTES, convertInProcess, type AppIconConvert } from "../src/web-app-icon.js";
 import { appManifest, handleWebIconRequest, isWebIconPath, useAppIconStore, withAppIconLinks } from "../src/web-icons.js";
 import { decodePng, encodePng, resize } from "../src/web-png.js";
 import { handleWebRequest } from "../src/web-api.js";
@@ -36,12 +36,12 @@ function sourcePng(side = 512, w = side, h = side): Buffer {
 }
 
 describe("the store", () => {
-  it("makes the sizes from one PNG, under a version folder named by its sha, the pointer last", () => {
+  it("makes the sizes from one PNG, under a version folder named by its sha, the pointer last", async () => {
     const dir = stateDir();
-    const store = new AppIconStore(dir, () => new Date("2026-10-21T08:00:00Z"));
+    const store = new AppIconStore(dir, () => new Date("2026-10-21T08:00:00Z"), convertInProcess);
     expect(store.current()).toBeNull();
     const src = sourcePng();
-    const r = store.set(src, "person:discord:1");
+    const r = await store.set(src, "person:discord:1");
     const version = createHash("sha256").update(src).digest("hex").slice(0, 16);
     expect(r).toEqual({ ok: true, state: { version, updatedAt: "2026-10-21T08:00:00.000Z", by: "person:discord:1" } });
     expect(store.current()).toEqual(r.ok && r.state);
@@ -58,10 +58,10 @@ describe("the store", () => {
     expect([ico.readUInt16LE(4), ico[6], ico[22]]).toEqual([2, 32, 48]);
   });
 
-  it("a second icon replaces the first (its folder removed); reset goes back to the bundled one and clears the files", () => {
+  it("a second icon replaces the first (its folder removed); reset goes back to the bundled one and clears the files", async () => {
     const dir = stateDir();
-    const store = new AppIconStore(dir);
-    const a = store.set(sourcePng(512), "p"), b = store.set(sourcePng(600), "p");
+    const store = new AppIconStore(dir, undefined, convertInProcess);
+    const a = await store.set(sourcePng(512), "p"), b = await store.set(sourcePng(600), "p");
     if (!a.ok || !b.ok) throw new Error("set failed");
     expect(a.state.version).not.toBe(b.state.version);
     expect(store.current()?.version).toBe(b.state.version);
@@ -73,27 +73,27 @@ describe("the store", () => {
     expect(readdirSync(join(dir, "web-app-icon"))).toEqual([]);
   });
 
-  it("refuses with a reason and leaves the icon in force alone: not a PNG, too large, not square, too small, unreadable", () => {
+  it("refuses with a reason and leaves the icon in force alone: not a PNG, too large, not square, too small, unreadable", async () => {
     const dir = stateDir();
-    const store = new AppIconStore(dir);
-    const kept = store.set(sourcePng(), "p");
+    const store = new AppIconStore(dir, undefined, convertInProcess);
+    const kept = await store.set(sourcePng(), "p");
     if (!kept.ok) throw new Error("set failed");
     const big = Buffer.alloc(APP_ICON_MAX_BYTES + 1);
-    expect(store.set(big, "p")).toEqual({ ok: false, status: 413, error: "app_icon_too_large", detail: "at most 5 MiB" });
-    expect(store.set(Buffer.from("\xff\xd8\xff\xe0JFIF", "latin1"), "p")).toMatchObject({ ok: false, status: 415, error: "app_icon_not_png" });
-    expect(store.set(Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"), "p")).toMatchObject({ status: 415 });
-    expect(store.set(sourcePng(512, 600, 512), "p")).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "not square (600×512)" });
-    expect(store.set(sourcePng(256), "p")).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "smaller than 512×512" });
+    expect(await store.set(big, "p")).toEqual({ ok: false, status: 413, error: "app_icon_too_large", detail: "at most 5 MiB" });
+    expect(await store.set(Buffer.from("\xff\xd8\xff\xe0JFIF", "latin1"), "p")).toMatchObject({ ok: false, status: 415, error: "app_icon_not_png" });
+    expect(await store.set(Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"), "p")).toMatchObject({ status: 415 });
+    expect(await store.set(sourcePng(512, 600, 512), "p")).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "not square (600×512)" });
+    expect(await store.set(sourcePng(256), "p")).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "smaller than 512×512" });
     const broken = Buffer.from(sourcePng()); broken[40] ^= 0xff;
-    expect(store.set(broken, "p")).toMatchObject({ ok: false, status: 400, error: "app_icon_unreadable" });
+    expect(await store.set(broken, "p")).toMatchObject({ ok: false, status: 400, error: "app_icon_unreadable" });
     expect(store.current()?.version).toBe(kept.state.version);
     expect(readdirSync(join(dir, "web-app-icon")).sort()).toEqual([kept.state.version, "current.json"].sort());
   });
 
-  it("an unreadable pointer is the bundled icon; a pointer changed on disk is read again", () => {
+  it("an unreadable pointer is the bundled icon; a pointer changed on disk is read again", async () => {
     const dir = stateDir();
-    const store = new AppIconStore(dir);
-    const r = store.set(sourcePng(), "p");
+    const store = new AppIconStore(dir, undefined, convertInProcess);
+    const r = await store.set(sourcePng(), "p");
     if (!r.ok) throw new Error("set failed");
     writeFileSync(join(dir, "web-app-icon", "current.json"), "{not json");
     expect(store.current()).toBeNull();
@@ -120,7 +120,7 @@ const bundled = (file: string) => readFileSync(new URL(`../src/ui/icons/${file}`
 
 describe("the icon and manifest routes", () => {
   it("bundled icons without a custom one; the version in force cached for good, anything else checked each time", async () => {
-    useAppIconStore(new AppIconStore(stateDir()));
+    useAppIconStore(new AppIconStore(stateDir(), undefined, convertInProcess));
     for (const [path, file, type] of [["/favicon.ico", "favicon.ico", "image/vnd.microsoft.icon"], ["/favicon.svg", "favicon.svg", "image/svg+xml"],
       ["/apple-touch-icon.png", "apple-touch-icon.png", "image/png"], ["/icon-192.png", "icon-192.png", "image/png"], ["/icon-512.png", "icon-512.png", "image/png"]] as const) {
       const r = await icon(path);
@@ -132,9 +132,9 @@ describe("the icon and manifest routes", () => {
   });
 
   it("the custom icon once set (the SVG stays the bundled one); its version cached for good, an old one not", async () => {
-    const store = new AppIconStore(stateDir());
+    const store = new AppIconStore(stateDir(), undefined, convertInProcess);
     useAppIconStore(store);
-    const r = store.set(sourcePng(), "p");
+    const r = await store.set(sourcePng(), "p");
     if (!r.ok) throw new Error("set failed");
     const v = r.state.version;
     for (const name of ["favicon.ico", "apple-touch-icon.png", "icon-192.png", "icon-512.png"] as const) {
@@ -149,13 +149,13 @@ describe("the icon and manifest routes", () => {
   });
 
   it("the manifest: the fixed name, standalone at /, the 192/512 icons of the version in force", async () => {
-    const store = new AppIconStore(stateDir());
+    const store = new AppIconStore(stateDir(), undefined, convertInProcess);
     useAppIconStore(store);
     const m = await icon("/manifest.webmanifest");
     expect([m.status, m.headers["Content-Type"]]).toEqual([200, "application/manifest+json"]);
     expect(JSON.parse(m.body.toString())).toEqual({ name: "AgEnD", short_name: "AgEnD", start_url: "/", scope: "/", display: "standalone", background_color: "#212121", theme_color: "#212121",
       icons: [{ src: "/icon-192.png?v=default", sizes: "192x192", type: "image/png" }, { src: "/icon-512.png?v=default", sizes: "512x512", type: "image/png" }] });
-    const r = store.set(sourcePng(), "p");
+    const r = await store.set(sourcePng(), "p");
     if (!r.ok) throw new Error("set failed");
     expect(JSON.parse(appManifest()).icons.map((i: { src: string }) => i.src)).toEqual([`/icon-192.png?v=${r.state.version}`, `/icon-512.png?v=${r.state.version}`]);
   });
@@ -167,7 +167,7 @@ describe("the icon and manifest routes", () => {
     expect(withAppIconLinks("<!--app-icon-->x<!--/app-icon-->\n")).toContain("/favicon.ico?v=default");
   });
 
-  it("the public link may read every icon route (and nothing of /ui/app-icon)", () => {
+  it("the public link may read every icon route (and nothing of /ui/app-icon)", async () => {
     for (const p of ["/favicon.ico", "/favicon.svg", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png", "/manifest.webmanifest"]) {
       expect([isWebIconPath(p), isPublicWebRoute("GET", p), isPublicWebRoute("HEAD", p)], p).toEqual([true, true, true]);
     }
@@ -178,8 +178,8 @@ describe("the icon and manifest routes", () => {
 describe("the pages' icon links", () => {
   const page = (name: string) => readFileSync(new URL(`../src/ui/${name}`, import.meta.url), "utf8");
 
-  it("app.html and signin.html: versioned bundled links with the SVG, the manifest and the theme colours", () => {
-    useAppIconStore(new AppIconStore(stateDir()));
+  it("app.html and signin.html: versioned bundled links with the SVG, the manifest and the theme colours", async () => {
+    useAppIconStore(new AppIconStore(stateDir(), undefined, convertInProcess));
     for (const name of ["app.html", "signin.html"]) {
       const html = withAppIconLinks(page(name));
       expect(html, name).not.toContain("<!--app-icon-->");
@@ -192,10 +192,10 @@ describe("the pages' icon links", () => {
     }
   });
 
-  it("with a custom icon: its version on every link, and no SVG (a browser would prefer it over the new icon)", () => {
-    const store = new AppIconStore(stateDir());
+  it("with a custom icon: its version on every link, and no SVG (a browser would prefer it over the new icon)", async () => {
+    const store = new AppIconStore(stateDir(), undefined, convertInProcess);
     useAppIconStore(store);
-    const r = store.set(sourcePng(), "p");
+    const r = await store.set(sourcePng(), "p");
     if (!r.ok) throw new Error("set failed");
     const html = withAppIconLinks(page("app.html"));
     expect(html).toContain(`<link rel="icon" href="/favicon.ico?v=${r.state.version}" sizes="32x32 48x48">`);
@@ -206,8 +206,8 @@ describe("the pages' icon links", () => {
 });
 
 /** One request through the real web routes as a session of `tier` (local, or the public link's gateway), or the token. */
-function viaWeb(method: string, path: string, opts: { tier?: "admin" | "read" | "guest"; gateway?: boolean; token?: boolean; csrf?: boolean; body?: Buffer; store?: AppIconStore; noEnd?: boolean } = {}) {
-  const sessions = new WebSessionStore(), exposureId = "a".repeat(32), pub = "https://sample.trycloudflare.com", local = "http://127.0.0.1:19280";
+function viaWeb(method: string, path: string, opts: { tier?: "admin" | "read" | "guest"; gateway?: boolean; token?: boolean; csrf?: boolean; body?: Buffer; store?: AppIconStore; noEnd?: boolean; sessions?: WebSessionStore; signedIn?: (sessionId: string) => void } = {}) {
+  const sessions = opts.sessions ?? new WebSessionStore(), exposureId = "a".repeat(32), pub = "https://sample.trycloudflare.com", local = "http://127.0.0.1:19280";
   const origin = opts.gateway ? pub : local;
   const headers: Record<string, string> = { host: new URL(origin).host, origin, "sec-fetch-site": "same-origin", "content-type": "image/png" };
   if (opts.token) headers["x-agend-token"] = TOKEN;                   // the CLI's header token (valid, but not a person)
@@ -215,9 +215,10 @@ function viaWeb(method: string, path: string, opts: { tier?: "admin" | "read" | 
     const s = sessions.create({ tier: opts.tier ?? "admin", surface: opts.gateway ? "gateway" : "local", exposureId: opts.gateway ? exposureId : undefined, label: "t", tokenEpoch: tokenEpoch(TOKEN),
       owner: { adapterId: "discord", userId: "1", name: "Ann" } } as never);
     headers.cookie = `${opts.gateway ? "__Host-" : ""}agend_session=${s.sessionId}`;
+    opts.signedIn?.(s.sessionId);
     if (opts.csrf !== false) headers["x-agend-csrf"] = csrfTokenFor(s.sessionId);
   }
-  const store = opts.store ?? new AppIconStore(stateDir());
+  const store = opts.store ?? new AppIconStore(stateDir(), undefined, convertInProcess);
   return new Promise<{ status: number; body: any; store: AppIconStore }>((resolve) => {
     const req = Object.assign(new EventEmitter(), { method, url: path, headers, destroy: vi.fn() });
     if (opts.gateway) bindGatewayRequest(req as never, { surface: "gateway", exposureId, expectedOrigin: pub, isCurrent: () => true });
@@ -232,7 +233,7 @@ function viaWeb(method: string, path: string, opts: { tier?: "admin" | "read" | 
 
 describe("who may change it (/ui/app-icon)", () => {
   it("an admin's session: PUT a PNG sets it, GET says so, DELETE restores the default", async () => {
-    const store = new AppIconStore(stateDir());
+    const store = new AppIconStore(stateDir());                            // through the worker thread, end to end
     const put = await viaWeb("PUT", "/ui/app-icon", { body: sourcePng(), store });
     expect(put.status).toBe(200);
     expect(put.body).toMatchObject({ custom: true, version: store.current()!.version });
@@ -244,8 +245,8 @@ describe("who may change it (/ui/app-icon)", () => {
   });
 
   it("a read-only session reads it and changes nothing; a guest, the token and the public link get nothing", async () => {
-    const store = new AppIconStore(stateDir());
-    store.set(sourcePng(), "p");
+    const store = new AppIconStore(stateDir(), undefined, convertInProcess);
+    await store.set(sourcePng(), "p");
     const before = store.current();
     expect((await viaWeb("GET", "/ui/app-icon", { tier: "read", store })).status).toBe(200);
     for (const [label, opts, status, error] of [
@@ -266,15 +267,15 @@ describe("who may change it (/ui/app-icon)", () => {
   });
 
   it("a write without the CSRF header is refused", async () => {
-    const store = new AppIconStore(stateDir());
+    const store = new AppIconStore(stateDir(), undefined, convertInProcess);
     const r = await viaWeb("PUT", "/ui/app-icon", { csrf: false, body: sourcePng(), store });
     expect(r.status).toBe(401);
     expect(store.current()).toBeNull();
   });
 
   it("an upload: over 5 MiB is 413 (not read whole), not a PNG 415, unreadable 400 — the icon in force kept; other methods 405", async () => {
-    const store = new AppIconStore(stateDir());
-    store.set(sourcePng(), "p");
+    const store = new AppIconStore(stateDir(), undefined, convertInProcess);
+    await store.set(sourcePng(), "p");
     const before = store.current();
     // Refused as the body passes 5 MiB — before it has all arrived (no "end" is ever sent here).
     expect([(await viaWeb("PUT", "/ui/app-icon", { body: Buffer.alloc(APP_ICON_MAX_BYTES + 1, 1), store, noEnd: true })).status]).toEqual([413]);
@@ -285,5 +286,97 @@ describe("who may change it (/ui/app-icon)", () => {
     expect([bad.status, bad.body.error, bad.body.detail]).toEqual([400, "app_icon_unreadable", "bad chunk CRC"]);
     expect((await viaWeb("POST", "/ui/app-icon", { store })).status).toBe(405);
     expect(store.current()).toEqual(before);
+  });
+});
+
+/** A conversion held until the test lets it finish (what happens while it runs). */
+function held(): { convert: AppIconConvert; started: Promise<void>; release(): void } {
+  let release!: () => void, began!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const started = new Promise<void>((r) => { began = r; });
+  return { started, release: () => release(), convert: async (bytes) => { began(); await gate; return convertInProcess(bytes); } };
+}
+
+describe("#2308 review: the conversion is off the fleet loop, one at a time, checked again before it is used", () => {
+  it("in a worker thread: the event loop keeps turning while a 2048 px source is made into its sizes", async () => {
+    const store = new AppIconStore(stateDir());                            // the fleet's default: a worker thread
+    const src = sourcePng(2048);
+    let ticks = 0;
+    const timer = setInterval(() => { ticks++; }, 5);
+    const t0 = performance.now();
+    const r = await store.prepare(src);
+    const took = performance.now() - t0;
+    clearInterval(timer);
+    expect(r.ok).toBe(true);
+    // Every 5 ms of the conversion the loop ran a tick (a blocked loop runs none until it ends): most of them, at least.
+    expect(ticks, `${ticks} ticks in ${Math.round(took)} ms`).toBeGreaterThanOrEqual(Math.floor(took / 5 / 3));
+    expect(took).toBeGreaterThan(30);
+    // The same work on this thread runs no tick at all until it is done (the control).
+    let blocked = 0;
+    const t2 = setInterval(() => { blocked++; }, 5);
+    const inProcess = new AppIconStore(stateDir(), undefined, convertInProcess);
+    const p = inProcess.prepare(src);
+    const before = blocked;
+    await p;
+    clearInterval(t2);
+    expect(before).toBe(0);
+  }, 30_000);
+
+  it("a second upload while one is being made is told to wait (409); the first is unaffected", async () => {
+    const h = held();
+    const store = new AppIconStore(stateDir(), undefined, h.convert);
+    const first = store.prepare(sourcePng());
+    await h.started;
+    expect(await store.prepare(sourcePng(600))).toEqual({ ok: false, status: 409, error: "app_icon_busy", detail: "another icon is being made" });
+    h.release();
+    expect((await first).ok).toBe(true);
+    expect((await store.prepare(sourcePng(600))).ok).toBe(true);           // free again
+  });
+
+  it("over the route: a session revoked while the icon is made switches nothing", async () => {
+    const h = held();
+    const store = new AppIconStore(stateDir(), undefined, h.convert);
+    const sessions = new WebSessionStore();
+    let id = "";
+    const r = viaWeb("PUT", "/ui/app-icon", { body: sourcePng(), store, sessions, signedIn: (s) => { id = s; } });
+    await h.started;
+    sessions.revokeById(id);
+    h.release();
+    expect((await r).status).toBe(401);
+    expect(store.current()).toBeNull();
+  });
+
+  it("over the route: the fleet stopping while the icon is made switches nothing (503)", async () => {
+    const h = held();
+    const store = new AppIconStore(stateDir(), undefined, h.convert);
+    const r = viaWeb("PUT", "/ui/app-icon", { body: sourcePng(), store });
+    await h.started;
+    store.close();
+    h.release();
+    expect([(await r).status, (await r).body.error]).toEqual([503, "app_icon_unavailable"]);
+    expect(store.current()).toBeNull();
+  });
+});
+
+describe("#2308 review: resetting fails out loud", () => {
+  it("no pointer is the default already: ok; a pointer that cannot be removed: 500, and the icon in force keeps its files", async () => {
+    const dir = stateDir();
+    const store = new AppIconStore(dir, undefined, convertInProcess);
+    expect(store.reset()).toEqual({ ok: true });
+    const r = await store.set(sourcePng(), "p");
+    if (!r.ok) throw new Error("set failed");
+    if (process.getuid?.() === 0) return;                                  // root ignores the directory's mode
+    chmodSync(join(dir, "web-app-icon"), 0o500);
+    try {
+      expect(store.reset()).toEqual({ ok: false, status: 500, error: "app_icon_not_reset", detail: "EACCES" });
+      expect(store.current()?.version).toBe(r.state.version);
+      expect(store.file("icon-192.png")).not.toBeNull();
+      const del = await viaWeb("DELETE", "/ui/app-icon", { store });
+      expect([del.status, del.body.error]).toEqual([500, "app_icon_not_reset"]);
+    } finally {
+      chmodSync(join(dir, "web-app-icon"), 0o700);
+    }
+    expect(store.reset()).toEqual({ ok: true });
+    expect(store.current()).toBeNull();
   });
 });
