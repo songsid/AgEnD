@@ -160,7 +160,7 @@ export class SearchStore {
       for (const d of docs) {
         if (!valid(d)) continue;
         put.run({ key: d.key, source: d.source, instance: d.instance, peer: d.peer ?? null, sender: d.sender.slice(0, 256), role: d.role ?? null,
-          mine: d.mine ?? null, ts: Math.trunc(d.ts), ref: JSON.stringify(d.ref ?? {}), text: maskOpenSecretTail(maskSecrets(d.text.slice(0, TEXT_MAX + MASK_MARGIN)).slice(0, TEXT_MAX)).trim() });
+          mine: d.mine ?? null, ts: Math.trunc(d.ts), ref: JSON.stringify(d.ref ?? {}), text: indexedText(d.text) });
         n++;
       }
     })();
@@ -245,6 +245,14 @@ export class SearchStore {
   close(): void { try { this.db.close(); } catch { /* already */ } }
 }
 
+/**
+ * What the index stores of a text: masked, then cut. An open tail is masked first too — the end of what arrived may
+ * already be a cut (the history's), and the rules for closed values would otherwise take part of its opener (a lone
+ * backslash of \" read as a bare value) — and again after the cut to TEXT_MAX.
+ */
+function indexedText(text: string): string {
+  return maskOpenSecretTail(maskSecrets(maskOpenSecretTail(text.slice(0, TEXT_MAX + MASK_MARGIN))).slice(0, TEXT_MAX)).trim();
+}
 interface Row { rowid: number; key: string; source: SearchSource; instance: string; peer: string | null; sender: string; role: string | null; mine: string | null; ts: number; ref: string; text: string }
 function hitOf(r: Row): Omit<SearchHit, "snippet" | "marks"> {
   let ref: Record<string, unknown> = {};

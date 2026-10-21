@@ -120,9 +120,14 @@ export function maskSecrets(text: string): string {
  * web chat's history at 16000 characters): `password="horse battery` with its closing quote gone, which no rule above
  * can see. Masked from the quote to the end — on the safe side even when the quote was never meant to close.
  */
-const OPEN_TAIL = new RegExp(`((?:^|[^A-Za-z0-9_.-])(?:--?)?"?${NAME}"?(?:\\s*[=:]\\s*|\\s+)\\\\?["'])[^"'\\n]*$`, "i");
+// The value runs to the end without the delimiter that opened it: another kind of quote inside it is part of it
+// (password="horse's battery, password='a "b" c, an escaped \"…: anything but \").
+const OPEN_TAIL = new RegExp(`((?:^|[^A-Za-z0-9_.-])(?:--?)?"?${NAME}"?(?:\\s*[=:]\\s*|\\s+))(?:(")[^"\\n]*|(')[^'\\n]*|(\\\\")(?:[^\\\\\\n]|\\\\(?!")[^\\n])*)$`, "i");
 export function maskOpenSecretTail(text: string): string {
-  return text.replace(OPEN_TAIL, (m, head: string) => (m.length > head.length ? `${head}[REDACTED]` : m));
+  return text.replace(OPEN_TAIL, (m, head: string, dq?: string, sq?: string, esc?: string) => {
+    const open = dq ?? sq ?? esc ?? "";
+    return m.length > head.length + open.length ? `${head}${open}[REDACTED]` : m;
+  });
 }
 
 /** Characters past the limit that are masked with the rest: a secret that crosses the limit is masked whole. */

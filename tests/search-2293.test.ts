@@ -460,6 +460,20 @@ describe("#2295 review r2: boundaries", () => {
     expect(s.search({ q: "hello" }).hits.map(h => h.key)).toEqual([`chat:dev:b1-${prose.id}`]);
     expect(s.search({ q: "rotate" }).hits[0]!.snippet).toMatch(/^rotate token: "?\[REDACTED\]"? today$/);
   });
+  it("the open tail ends only at its own delimiter: the other quote inside the value is the value's (r3)", () => {
+    const s = store();
+    const history = new WebChatHistory({ boot: "b2" });
+    const ts = new Date(T0).toISOString();
+    const pad = "x".repeat(15974) + " ";
+    const rows = [`password="horse's battery staple"`, `password='horse "battery" staple'`, `PASSWORD=\\"horse's "battery" staple\\"`]
+      .map(v => history.record({ instance: "dev", sender: "han", text: pad + v, ts, role: "user" }));
+    for (const m of rows) expect(m.text.length).toBe(16000);               // cut inside the value: the precondition
+    const prose = history.record({ instance: "dev", sender: "han", text: `deploy nginx, he said "it's fine`, ts, role: "user" });
+    s.add([...rows, prose].map(m => chatDoc(m)!));
+    for (const q of ["horse", "battery"]) expect(s.search({ q }).hits, q).toEqual([]);
+    for (const m of rows) expect(s.context(`chat:dev:b2-${m.id}`)!.doc.text, m.text.slice(15975)).not.toMatch(/horse|battery/);
+    expect(s.search({ q: "it's fine" }).hits.map(h => h.key)).toEqual([`chat:dev:b2-${prose.id}`]);
+  });
   it("a removal's ack confirms only its own: removed, re-created, removed again — the old ack leaves the new removal pending", () => {
     vi.useFakeTimers();
     const { index, workers, w } = lane();
