@@ -58,7 +58,7 @@ describe("the projections (pure)", () => {
     }
   });
   it("guestPollBody: the projected status; no messages, ticks, buttons, prompts, Needs you or cursor", () => {
-    expect(guestPollBody(FULL, new Set(["a"]), 42)).toEqual({ status: guestStatus(FULL, new Set(["a"])), messages: [], deliveries: [], reply_buttons: [], prompts: [], needs: [], cursor: null, now: 42 });
+    expect(guestPollBody(FULL, new Set(["a"]), 42)).toEqual({ status: guestStatus(FULL, new Set(["a"])), messages: [], deliveries: [], reply_buttons: [], reactions: [], prompts: [], needs: [], cursor: null, now: 42 });
   });
   it("the stream, the poll and a file are now on the guest table", () => {
     for (const p of ["/ui/events", "/ui/poll", "/ui/file/x"]) expect(GUEST_ROUTES.find((r) => r.pattern.test(p))?.state, p).toBe("on");
@@ -329,7 +329,7 @@ describe("live: the stream, the poll and a file for a guest scoped to `a`", () =
     vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
     fm.emitSseEvent("message", { instance: "a", sender: "a", text: "another private note", ts: new Date().toISOString(), role: "agent" });
     const g = JSON.parse((await get("/ui/poll", cookieOf(session("guest", ALICE)))).body);
-    expect(Object.keys(g).sort()).toEqual(["cursor", "deliveries", "messages", "needs", "now", "prompts", "reply_buttons", "status"]);
+    expect(Object.keys(g).sort()).toEqual(["cursor", "deliveries", "messages", "needs", "now", "prompts", "reactions", "reply_buttons", "status"]);
     expect([g.prompts, g.needs, g.status.instances.map((i: { name: string }) => i.name)]).toEqual([[], [], ["a"]]);
     // Only what it may see: never the agent's web-only note, never another person's web message or its tick.
     const texts = g.messages.map((m: { text: string }) => m.text);

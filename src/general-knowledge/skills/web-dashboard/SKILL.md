@@ -109,7 +109,9 @@ queued messages. Text is capped at 16,384 characters; a paste over 4,000 charact
 attachment (its chip has **As text** to undo that).
 
 **Ticks** under your message: ◷ waiting behind another message · ✓ handed to the agent · ✓✓ the agent has it ·
-! not delivered · ⊘ dropped by Stop. There is no "read" tick.
+! not delivered · ⊘ dropped by Stop. There is no "read" tick. **Reactions** (#2305): an agent may answer a message that
+only acknowledges ("OK", "thanks") with an emoji under the person's bubble instead of a reply — live, kept after a
+reload, also on the message's Discord/Telegram copy when the fleet posted one; it counts as the turn's answer.
 
 **Files.** 📎, drag and drop ("Drop files to attach them") or paste. Up to 5 files, 50 MB each, 100 MB per message
 (`web.upload_max_file_mb` / `web.upload_max_total_mb`, 1–500; over a public link at most 95 MB per file). The type is
