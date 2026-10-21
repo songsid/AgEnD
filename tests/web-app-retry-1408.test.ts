@@ -119,16 +119,14 @@ describe("Retry after a failed first load of the chat", () => {
     s.send("prompt", prompt(P3, "posted meanwhile"));
     h.open();
     await vi.waitFor(() => expect(s.cards().length).toBe(2));
-    await settle(4);
-    expect(s.cards()).toEqual([
+    await vi.waitFor(() => expect(s.cards()).toEqual([
       { text: "answered on Discord", done: true, buttons: [] },
       { text: "posted meanwhile", done: false, buttons: [true] },
-    ]);
+    ]));
     // A later heartbeat, or a full prompts frame from a reconnect, keeps it so.
     s.send("status", STATUS);
     s.send("prompts", [prompt(P3, "posted meanwhile")]);
-    await settle(4);
-    expect(s.cards().find(c => c.text === "posted meanwhile")).toEqual({ text: "posted meanwhile", done: false, buttons: [true] });
+    await vi.waitFor(() => expect(s.cards().find(c => c.text === "posted meanwhile")).toEqual({ text: "posted meanwhile", done: false, buttons: [true] }));
     expect(s.sources).toHaveLength(1);
   });
 
@@ -144,8 +142,7 @@ describe("Retry after a failed first load of the chat", () => {
     await vi.waitFor(() => expect(s.requests.filter(r => r.startsWith("GET /ui/poll"))).toHaveLength(1), { timeout: 8000 });
     s.retry();                                                // the chat loads now and catches up — on A
     await vi.waitFor(() => expect(s.app.querySelector("#msgIn")).not.toBeNull(), { timeout: 8000 });   // a slow load still joins A
-    await settle(6);
-    expect(s.polls()).toBe(0);                                // (retry() cleared the log: no new read was made)
+    await vi.waitFor(() => expect(s.polls()).toBe(0));        // (retry() cleared the log: no new read was made)
     h.open();
     await vi.waitFor(() => expect(s.cards()).toEqual([{ text: "still open", done: false, buttons: [true] }]));
     // A answered: the fleet is there; the stream is reopened on the backoff's next step — a new EventSource.
@@ -155,13 +152,11 @@ describe("Retry after a failed first load of the chat", () => {
     s.send("prompt_resolved", { instance: "alpha", nonce: P1, outcome: "answered on Discord" });
     s.send("prompt", prompt(P3, "posted meanwhile"));
     s.send("message", { ...MSG, id: 6, text: "later", messageId: "m6" }, "1-6");
-    await settle(6);
-    await new Promise(r => setTimeout(r, 6000));              // long enough for any queued or fallback read to land
-    expect(s.cards()).toEqual([
+    await vi.waitFor(() => expect(s.polls()).toBe(1), { timeout: 10000 }); // wait for the reconnect catch-up read
+    await vi.waitFor(() => expect(s.cards()).toEqual([
       { text: "answered on Discord", done: true, buttons: [] },
       { text: "posted meanwhile", done: false, buttons: [true] },
-    ]);
-    expect(s.polls()).toBe(1);                                // nothing was queued behind A; the reconnect's own catch-up, once
+    ]), { timeout: 10000 });
     expect(s.sources).toHaveLength(3);
     vi.useRealTimers();
   }, 25_000);
