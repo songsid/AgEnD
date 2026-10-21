@@ -2003,6 +2003,10 @@ export class DeliveryOutbox extends EventEmitter {
   private insertFailureNotice(parent: OutboxRow, outcome: "failed" | "uncertain", reason: string, now: string): void {
     if (parent.kind === "delivery_outcome_notice" || parent.kind === "post_restart_outcome_notice"
       || parent.kind === REPLY_OBLIGATION_NOTICE_KIND || parent.kind === SYSTEM_NOTICE_KIND) return;
+    // A self-scheduled silent heartbeat has no other sender to inform. Keep
+    // its terminal state/evidence and fleet log without creating a new turn.
+    if (parent.source_instance === parent.target_instance
+      && isSilentScheduleDelivery({ kind: parent.kind, sourceKey: parent.source_key })) return;
     const noticeId = randomUUID();
     const operationId = `notice:${parent.operation_id}:${parent.delivery_id}`;
     // Keep raw phase/proof in last_error and attempt evidence; render a safe summary here.

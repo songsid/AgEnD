@@ -1,0 +1,86 @@
+[
+  {
+    "seconds": 0.107,
+    "requestedSeconds": 0.1,
+    "rawTextInViewport": false,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": [
+      {
+        "timestamp": "2026-10-21T04:37:30.870Z",
+        "file": "rollout-2026-10-21T04-37-30-01a15cc0-04d0-74f3-a745-d7cfdb62849f.jsonl"
+      }
+    ]
+  },
+  {
+    "seconds": 0.508,
+    "requestedSeconds": 0.5,
+    "rawTextInViewport": false,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": [
+      {
+        "timestamp": "2026-10-21T04:37:30.870Z",
+        "file": "rollout-2026-10-21T04-37-30-01a15cc0-04d0-74f3-a745-d7cfdb62849f.jsonl"
+      }
+    ]
+  },
+  {
+    "seconds": 1.007,
+    "requestedSeconds": 1,
+    "rawTextInViewport": false,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": [
+      {
+        "timestamp": "2026-10-21T04:37:30.870Z",
+        "file": "rollout-2026-10-21T04-37-30-01a15cc0-04d0-74f3-a745-d7cfdb62849f.jsonl"
+      }
+    ]
+  },
+  {
+    "seconds": 3.009,
+    "requestedSeconds": 3,
+    "rawTextInViewport": false,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": [
+      {
+        "timestamp": "2026-10-21T04:37:30.870Z",
+        "file": "rollout-2026-10-21T04-37-30-01a15cc0-04d0-74f3-a745-d7cfdb62849f.jsonl"
+      }
+    ]
+  },
+  {
+    "seconds": 5.01,
+    "requestedSeconds": 5,
+    "rawTextInViewport": false,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": [
+      {
+        "timestamp": "2026-10-21T04:37:30.870Z",
+        "file": "rollout-2026-10-21T04-37-30-01a15cc0-04d0-74f3-a745-d7cfdb62849f.jsonl"
+      }
+    ]
+  },
+  {
+    "seconds": 10.012,
+    "requestedSeconds": 10,
+    "rawTextInViewport": false,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": [
+      {
+        "timestamp": "2026-10-21T04:37:30.870Z",
+        "file": "rollout-2026-10-21T04-37-30-01a15cc0-04d0-74f3-a745-d7cfdb62849f.jsonl"
+      }
+    ]
+  },
+  {
+    "seconds": 65.063,
+    "requestedSeconds": 65,
+    "rawTextInViewport": false,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": [
+      {
+        "timestamp": "2026-10-21T04:37:30.870Z",
+        "file": "rollout-2026-10-21T04-37-30-01a15cc0-04d0-74f3-a745-d7cfdb62849f.jsonl"
+      }
+    ]
+  }
+]

@@ -1,0 +1,6 @@
+
+  >_ OpenAI Codex (v0.162.1)
+     /tmp/silent-codex-2287/work
+
+
+› Ask Codex to do anything

@@ -1,0 +1,66 @@
+[
+  {
+    "seconds": 0.11,
+    "requestedSeconds": 0.1,
+    "rawTextInViewport": true,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": []
+  },
+  {
+    "seconds": 0.51,
+    "requestedSeconds": 0.5,
+    "rawTextInViewport": true,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": []
+  },
+  {
+    "seconds": 1.012,
+    "requestedSeconds": 1,
+    "rawTextInViewport": true,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": []
+  },
+  {
+    "seconds": 3.01,
+    "requestedSeconds": 3,
+    "rawTextInViewport": true,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": []
+  },
+  {
+    "seconds": 5.011,
+    "requestedSeconds": 5,
+    "rawTextInViewport": false,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": [
+      {
+        "timestamp": "2026-10-21T04:34:13.065Z",
+        "file": "rollout-2026-10-21T04-34-12-01a15cbd-0168-7c60-ab40-85d69da54b56.jsonl"
+      }
+    ]
+  },
+  {
+    "seconds": 10.01,
+    "requestedSeconds": 10,
+    "rawTextInViewport": false,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": [
+      {
+        "timestamp": "2026-10-21T04:34:13.065Z",
+        "file": "rollout-2026-10-21T04-34-12-01a15cbd-0168-7c60-ab40-85d69da54b56.jsonl"
+      }
+    ]
+  },
+  {
+    "seconds": 65.061,
+    "requestedSeconds": 65,
+    "rawTextInViewport": false,
+    "rawTextInHistory": true,
+    "rolloutUserEntries": [
+      {
+        "timestamp": "2026-10-21T04:34:13.065Z",
+        "file": "rollout-2026-10-21T04-34-12-01a15cbd-0168-7c60-ab40-85d69da54b56.jsonl"
+      }
+    ]
+  }
+]

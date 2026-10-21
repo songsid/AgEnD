@@ -2108,7 +2108,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             : t(`delivery.fleet_${row.state}`, row.targetInstance, row.operationId, row.deliveryId);
           this.logger.error({ deliveryId: row.deliveryId, operationId: row.operationId, target: row.targetInstance, state: row.state,
             cause: row.lastError, ...(silent ? { silentSchedule: true } : {}) }, notice);
-          this.notifyFleetError(notice);
+          // A self-scheduled silent heartbeat stays log-only, including the
+          // operator alert; another source still receives the normal notice.
+          if (!silent || row.sourceInstance !== row.targetInstance) this.notifyFleetError(notice);
         }
       }
     });
