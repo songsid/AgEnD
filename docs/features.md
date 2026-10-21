@@ -1358,7 +1358,14 @@ web:
 - **Notices:** every guest sign-in is posted in General.
 - **Signing out:** a guest's own `/web revoke` ends only its sessions, code and remembered devices.
 
-**What a guest reaches.** It is worked out on every request and never stored:
+**Explicit grants (2.4, #2348).** **Settings → Access & security → Guests** lets an admin choose each guest and their agents:
+- **People with access:** one row per person, with their agents, whether they are signed in, and **Edit agents**, **Send sign-in code**, **Remove access** and **Sign out**.
+- **Add a person:** search the people AgEnD has seen writing to an agent (never a bot, never a fleet admin). Choosing one pre-ticks the agents they wrote to.
+- **Saving:** every edit is unsaved until **Save**. Adding a person, or an agent to someone, waits for a fleet admin's OK in General; taking away applies at once, and removing someone ends their sessions, code and remembered browsers right away.
+- **Send sign-in code** is an action, not part of Save. It DMs a saved grant's account its code (once a minute per person; never posted anywhere else). If the DM fails, the row says why — on Telegram, with the bot's start link to pass on. The code works on the dashboard reached directly and, if it is open when the code is sent, on the public link. Each send is in the event log.
+- **In `fleet.yaml`:** `web.guests.grants: { "<connection id>:<user id>": { name?, instances: [agent, …] } }`. Once `grants` exists it is the whole scope — default deny: connection access, rooms, `open_instances` and `narrow` give nothing then. **Start from today's guests** stages each current guest's reach as a grant.
+
+**What a guest reaches.** It is worked out on every request and never stored. With `grants`, only the agents granted to that account (of those that still exist). Without them (#1920's derived access):
 - **Its connection's agents:** the fleet topics and General, when that connection's access lets the account in (allowed or paired). On an `open` connection, only the agents named in `open_instances`.
 - **Its own Telegram private ClassicBot room.**
 - **A ClassicBot group room on its connection, while membership is verified:**
@@ -1367,7 +1374,7 @@ web:
   - Answers are read in the background (at sign-in, when the guest's page connects, and again every 10 minutes). A room shows only on a "member" answer at most 15 minutes old. While a room is still being checked the page waits instead of signing the guest out.
 - **Then `narrow`,** which only takes away.
 
-A fleet admin is never a guest.
+Either way the server enforces it on every read a guest can make: chat, history, files and the event stream are limited to those agents; search, the task board, the org chart and usage are never a guest's. A fleet admin is never a guest.
 
 **What a guest can do.**
 - **Chat:** with those agents only. That means the history its channel showed, files, reply buttons and Cancel, unless `chat: false` makes guests read-only.
