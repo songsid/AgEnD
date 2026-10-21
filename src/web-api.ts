@@ -9,6 +9,8 @@ import type { PaneContextSource } from "./pane-context-cache.js";
 import { settingsRequestExecution, settingsWrite, isSettingsReplay } from "./settings-request-capability.js";
 import { readBoundedWebBody } from "./web-body.js";
 import type { OwnerCssStore } from "./web-owner-css-store.js";
+import { APP_ICON_MAX_BYTES, type AppIconStore } from "./web-app-icon.js";
+import { withAppIconLinks } from "./web-icons.js";
 import type { ModStore } from "./web-mod-store.js";
 import { MOD_MAX_BYTES } from "./web-mod-bundle.js";
 import { buildModBundle, type ModExportParts } from "./web-mod-export.js";
@@ -353,6 +355,8 @@ export interface WebApiContext {
   readonly webPrefs?: WebPrefsStore;
   /** #1629 r4 §3: each person's own CSS (human sessions only; never the public link, never an agent). */
   readonly ownerCss?: OwnerCssStore;
+  /** #2308: the person's own app icon; changed by a signed-in admin only (never the public link, a guest or the token). */
+  readonly appIcon?: AppIconStore;
   /** #1629: every instance's theme (web-themes.json), read by the page; a person's reset and lock. */
   readonly themeStore?: ThemeStore;
   readonly webAppearance?: WebAppearance;
@@ -470,6 +474,61 @@ function stillAuthorized(req: IncomingMessage, res: ServerResponse, url: URL, ct
   if (isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false })) return true;
   json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
   return false;
+}
+
+/**
+ * #2308: the app icon. GET: its state, for the settings card (a signed-in person's session). PUT (one PNG, at most
+ * 5 MiB) and DELETE (back to the bundled icon): a signed-in admin's session only — never the CLI's token, a read-only
+ * session, a guest or the public link; checked again once the body has arrived.
+ */
+function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, method: string): boolean {
+  const store = ctx.appIcon;
+  if (!store) { json(res, 404, { error: "The app icon is not kept on this fleet" }); return true; }
+  const reading = method === "GET" || method === "HEAD";
+  if (!reading && method !== "PUT" && method !== "DELETE") { res.setHeader("Allow", "GET, PUT, DELETE"); json(res, 405, { error: "method not allowed" }); return true; }
+  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "app_icon_not_over_public_link" }); return true; }
+  const who = (): { person: string } | { status: number; error: string } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
+    if (verdict.via !== "session" || !verdict.session || verdict.session.tier === "guest") return { status: 403, error: "app_icon_needs_a_signed_in_person" };
+    if (!reading && verdict.session.tier !== "admin") return { status: 403, error: "app_icon_admin_only" };
+    return { person: webPersonKey(verdict.session.owner) };
+  };
+  const first = who();
+  if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
+  const state = () => { const s = store.current(); return s ? { custom: true, version: s.version, updatedAt: s.updatedAt } : { custom: false, version: "default", updatedAt: null }; };
+  if (reading) { json(res, 200, state()); return true; }
+  if (method === "DELETE") {
+    const reset = store.reset();
+    if (!reset.ok) { json(res, reset.status, { error: reset.error, ...(reset.detail ? { detail: reset.detail } : {}) }); return true; }
+    json(res, 200, state());
+    return true;
+  }
+  // Still allowed, still answering, the store still open: asked after each await (the body; the conversion).
+  const again = (): string | null => {
+    if (!permitWebContinuation(req, res, ctx)) return null;
+    if (res.destroyed) return null;
+    const now = who();
+    if ("status" in now) { json(res, now.status, { error: now.error }); return null; }
+    return now.person;
+  };
+  (async () => {
+    let bytes: Buffer;
+    try { bytes = await readBoundedWebBody(req, APP_ICON_MAX_BYTES); } catch { json(res, 413, { error: "app_icon_too_large", detail: "at most 5 MiB" }); return; }
+    if (!again()) return;
+    // #2308 review: decoding and making the sizes is seconds of CPU at worst — a worker thread's, not the fleet loop's.
+    const prepared = await store.prepare(bytes);
+    if (!prepared.ok) { json(res, prepared.status, { error: prepared.error, ...(prepared.detail ? { detail: prepared.detail } : {}) }); return; }
+    const person = again();
+    if (!person) return;
+    const saved = store.commit(prepared.prepared, person);
+    if (!saved.ok) { json(res, saved.status, { error: saved.error, ...(saved.detail ? { detail: saved.detail } : {}) }); return; }
+    json(res, 200, state());
+  })().catch((err) => {
+    ctx.logger.error({ err: (err as Error).message }, "App icon request failed");
+    try { json(res, 500, { error: "App icon request failed" }); } catch { /* already answered */ }
+  });
+  return true;
 }
 
 /**
@@ -1767,6 +1826,9 @@ export function handleWebRequest(
   if (path === "/ui/owner-css.css" || path === "/ui/owner-css" || path.startsWith("/ui/owner-css/")) {
     return handleOwnerCss(req, res, url, ctx, path, method);
   }
+
+  // #2308: the app icon (handleAppIcon: its state for a signed-in person; changing it, an admin's session only).
+  if (path === "/ui/app-icon") return handleAppIcon(req, res, url, ctx, method);
 
   // #1629 r4-5: mods — a person's import, uninstall and export (handleMods: sessions only, never the public link).
   if (path === "/ui/mods" || path.startsWith("/ui/mods/")) return handleMods(req, res, url, ctx, path, method);
@@ -3113,7 +3175,7 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     const effectOrigin = gatewayRequestContext(req)?.expectedOrigin ?? dashboardOriginFor(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req));
     const effectFrame = shellEffect(req, ctx, mode) && effectOrigin ? `${effectOrigin}/effect-bootstrap` : null;
     const frameSrc = [previewFrames, effectFrame].filter(Boolean).join(" ");
-    sendPanelHtml(res, html.replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
+    sendPanelHtml(res, withAppIconLinks(html).replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });
   }

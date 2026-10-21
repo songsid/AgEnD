@@ -38,6 +38,23 @@ dirs), and the rate-limit picker with AgEnD's nudge flag removed, at 150x45 and 
 `classify.ts summary <dirs…>` (or `each <dirs…>`) runs the production CodexBackend predicates over the frames: ready,
 busy, deliverable, stable-idle, the resume-loading transient, runtime and startup dialogs, and error patterns.
 
+## Process readiness and missed kill scans (#2320)
+
+The namespace test's fake emits `ready` from user code after its **final** exec. It then checks both cmdline and
+`CODEX_HOME` before invoking `kill`. A matching cmdline alone is insufficient: Linux's
+[`create_elf_tables`](https://github.com/torvalds/linux/blob/v6.6/fs/binfmt_elf.c#L314-L344) publishes the argument
+boundaries before it finishes the environment boundaries. `/proc/<pid>/cmdline` can therefore name the new
+executable while `/proc/<pid>/environ` is still empty. The held-final-exec test widens this missing-identity interval
+without relying on kernel scheduling. It preserves the foreign-run control and verifies the owned child exits.
+
+To observe the actual kernel window, run `python3 scripts/manual/codex-version-audit/repro-exec-readiness.py`.
+It starts only owned fake sleeps with a scratch HOME and a large, inert environment; it kills and reaps them all.
+Its count is observational, not a CI pass threshold. No Codex binary, account, tmux or fleet is used.
+
+If `kill` selects no process, stderr now records the pgrep candidate PIDs and each candidate's `CODEX_HOME`
+(or `<unset>` / `<unavailable>`), without dumping other environment variables. A miss stays a no-op: the rig
+never broadens the namespace predicate or retries a paste/turn. Namespace comparison uses a literal path prefix.
+
 ## codex 0.162.0 (2026-10-09, host on 0.160.0)
 
 Both versions ran side by side (ports 18762 and 18760). The 0.162.0 frames were compared with the 0.160.0 frames

@@ -13,6 +13,7 @@ export const LEARN_ANCHORS = {
   colors: ["identity-colours", "識別色"], css: ["custom-css-settings--web-appearance", "自訂-css設定--網頁外觀"], themes: ["agents-themes", "agent-的主題"],
   cards: ["identity-cards", "身分卡"], limits: ["card-upload-limits", "身分卡上傳限制"], widgets: ["widgets", "小工具"], mods: ["mods", "mod"],
   effects: ["effects", "效果"], restore: ["restore-defaults", "還原預設值"],
+  "app-icon": ["app-icon", "app-圖示"],
 };
 export function learnHref(topic, language = lang()) {
   const zh = language === "zh-TW";

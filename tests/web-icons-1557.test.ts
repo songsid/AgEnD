@@ -15,6 +15,9 @@ const iconTypes = {
   "/favicon.svg": "image/svg+xml",
   "/favicon.ico": "image/vnd.microsoft.icon",
   "/apple-touch-icon.png": "image/png",
+  // #2308: the manifest's bundled icons.
+  "/icon-192.png": "image/png",
+  "/icon-512.png": "image/png",
 };
 
 function exchange(path: string, method = "GET", headers: Record<string, string> = {}) {
@@ -64,9 +67,11 @@ function publicDispatcher(d: ReturnType<typeof dispatcher>) {
  *  the public link and the view-only page; other pages carry no media-src. Nothing else in the policy changes. */
 function assertLinks(h: ReturnType<typeof exchange>, media?: string, frame?: string) {
   expect(h.headers["content-type"]).toBe("text/html; charset=utf-8");
-  expect(h.text()).toContain('<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 64x64">');
-  expect(h.text()).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">');
-  expect(h.text()).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">');
+  // #2308: each link carries the icon's version (the bundled set: "default"), plus the manifest.
+  expect(h.text()).toContain('<link rel="icon" href="/favicon.ico?v=default" sizes="16x16 32x32 64x64">');
+  expect(h.text()).toContain('<link rel="icon" href="/favicon.svg?v=default" type="image/svg+xml" sizes="any">');
+  expect(h.text()).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=default" sizes="180x180">');
+  expect(h.text()).toContain('<link rel="manifest" href="/manifest.webmanifest?v=default">');
   const csp = String(h.headers["content-security-policy"]).replace(/'nonce-[^']+'/g, "'nonce-fixture'");
   expect(csp).toBe(BASE_CSP.replace("script-src 'self'", "script-src 'self' 'nonce-fixture'")
     .replace("style-src 'self'", "style-src 'self' 'nonce-fixture'")
@@ -88,7 +93,8 @@ describe("Silver Ag dashboard icons", () => {
       expect(h.headers["content-security-policy"]).toBe(BASE_CSP);
       expect(h.headers["x-content-type-options"]).toBe("nosniff");
       expect(h.headers["x-frame-options"]).toBe("DENY");
-      expect(h.headers["cache-control"]).toBe("no-store");
+      // #2308: asked without the version in force, an icon is checked each time (a versioned one is cached for good).
+      expect(h.headers["cache-control"]).toBe("no-cache");
       expect(h.headers["set-cookie"]).toBeUndefined(); expect(d.sessions.size).toBe(0);
     }
   });
@@ -155,6 +161,7 @@ describe("Silver Ag dashboard icons", () => {
     const png = icon("apple-touch-icon.png");
     expect(png.subarray(0, 8)).toEqual(Buffer.from([137,80,78,71,13,10,26,10]));
     expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([180, 180]);
+    for (const size of [192, 512]) { const p = icon(`icon-${size}.png`); expect([p.readUInt32BE(16), p.readUInt32BE(20)]).toEqual([size, size]); }
     const ico = icon("favicon.ico");
     expect([ico.readUInt16LE(0), ico.readUInt16LE(2), ico.readUInt16LE(4)]).toEqual([0, 1, 3]);
     for (const [index, size] of [16, 32, 64].entries()) {

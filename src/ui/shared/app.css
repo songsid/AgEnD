@@ -139,6 +139,14 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .s-ap-group { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text); margin: var(--s-4) 0 var(--s-2); }
 .s-ap-group:first-child { margin-top: 0; }
 .s-ap-title { display: flex; align-items: center; gap: var(--s-2); }
+/* #2308: the app icon card — the icon now (home-screen size, and tab size) beside the one chosen, before it is used. */
+.s-app-icon-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s-4); margin: var(--s-2) 0; }
+.s-app-icon-row figure { margin: 0; display: grid; justify-items: center; gap: var(--s-1); }
+.s-app-icon-row figure.s-app-icon-now { grid-template-columns: auto auto; align-items: end; column-gap: var(--s-3); }
+.s-app-icon-row figure.s-app-icon-now figcaption { grid-column: 1 / -1; }
+.s-app-icon-row figcaption { font-size: var(--fs-sm); color: var(--text-2); }
+.s-app-icon-big { width: 96px; height: 96px; border-radius: 22%; border: 1px solid var(--border); background: var(--surface-2); object-fit: cover; }
+.s-app-icon-small { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; }
 /* The fields' placeholders show the defaults: readable, not the browser's faint grey (dark mode). */
 .s-appearance input::placeholder { color: var(--text-3); opacity: 1; }
 /* A card title in Chinese is never upper-cased ("AGENT 的主題"): the small caps are a Latin convention. */

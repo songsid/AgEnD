@@ -9,7 +9,8 @@ import { performance } from "node:perf_hooks";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { createPublicWebGateway, PUBLIC_GATEWAY_RECEIVE_MS } from "./public-web-gateway.js";
-import { handleWebIconRequest } from "./web-icons.js";
+import { handleWebIconRequest, useAppIconStore } from "./web-icons.js";
+import { AppIconStore } from "./web-app-icon.js";
 import { trackWebServer, type WebServerDrain } from "./web-server-drain.js";
 import { renderPublicLinkProgress, ThrottledMessageEditor, type PublicLinkProgress } from "./public-link-progress.js";
 import { PublicWebLink, publicLinkSettings } from "./public-web-link.js";
@@ -1563,6 +1564,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   modCardText(name: string): { tagline?: string; bio?: string } {
     const card = resolveCard(name, humanCards(this.dataDir).get(name), this.themeStore.get(name).theme.card);
     return { ...(card.tagline ? { tagline: card.tagline.text } : {}), ...(card.bio ? { bio: card.bio.text } : {}) };
+  }
+
+  private appIconStore?: AppIconStore;
+  /** #2308: the person's own app icon (Settings → Web appearance), under the state dir; none set: the bundled one. */
+  get appIcon(): AppIconStore {
+    return (this.appIconStore ??= new AppIconStore(this.dataDir));
   }
 
   private ownerCssStore?: OwnerCssStore;
@@ -19659,6 +19666,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.topicArchiver.stop();
 
     this.taskBoardWaker?.stop();
+    this.appIconStore?.close();
     this.scheduler?.shutdown();
     // What it was sent is written first (bounded: search-index.ts close()).
     const search = this.searchIndex;
@@ -21778,6 +21786,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
       // Branding is public, after Host admission: automatic favicon requests
       // must not become noisy web-token 401s in the browser console.
+      // #2308: the icon routes and the pages' icon links follow the app icon set in Settings.
+      useAppIconStore(this.appIcon);
       if (handleWebIconRequest(req, res, requestPath)) return;
 
       // Public: the health probe, /agent (instance-token auth of its own), the

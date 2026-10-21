@@ -265,3 +265,24 @@ describe("validateFleetConfig context_guardian no-op fields (#1296)", () => {
     }
   });
 });
+
+describe("validateFleetConfig instances.X.startup warning (#2322)", () => {
+  it("warns when an instance entry has a startup key", () => {
+    const result = validateFleetConfig({
+      instances: {
+        "my-agent": { working_directory: "/tmp/w", startup: { stagger_delay_ms: 2000 } },
+      },
+    });
+    const w = result.warnings.find((x: { path: string }) => x.path === "instances.my-agent.startup");
+    expect(w, "expected warning for instances.my-agent.startup").toBeDefined();
+    expect(w?.message).toContain("fleet-level key");
+  });
+
+  it("does not warn when only defaults.startup is set (correct usage)", () => {
+    const result = validateFleetConfig({
+      defaults: { startup: { stagger_delay_ms: 500 } },
+      instances: { "my-agent": { working_directory: "/tmp/w" } },
+    });
+    expect(result.warnings.some((x: { path: string }) => x.path.includes("startup"))).toBe(false);
+  });
+});
