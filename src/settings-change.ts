@@ -118,7 +118,7 @@ const GUESTS = ["fleet", "web", "guests"] as const;
 /** At the gate's root (fleet.web.guests) and at the fleet's (web.guests — settings-authority.ts walks a fleet alone). */
 const atGuests = (path: readonly string[]): boolean => (path.length === 3 && GUESTS.every((k, i) => path[i] === k))
   || (path.length === 2 && path[0] === "web" && path[1] === "guests");
-const GUEST_JUDGED: readonly string[] = ["enabled", "chat", "open_instances", "narrow"];
+const GUEST_JUDGED: readonly string[] = ["enabled", "chat", "open_instances", "narrow", "grants"];
 /**
  * #1920 phase 3: guest sign-in is judged by what it lets guests reach. Confirmed: turning it on, letting guests chat,
  * naming more agents for an open connection, and widening or lifting one guest's narrowing. Applied directly: the
@@ -152,6 +152,25 @@ function guestsChange(old: unknown, next: unknown): Array<[string, unknown, unkn
       const added = (an ?? []).some(n => !(bn ?? []).includes(n));
       const looser = key === "open_instances" ? added : (after === undefined && before !== undefined) || (before !== undefined && added);
       if (looser) out.push([`${key}.${entry}`, before, after]);
+    }
+  }
+  // #2348: grants. Adding one, or an agent to one, widens; removing one, an agent from one, or renaming applies at once.
+  // Taking the key away altogether brings the derived scope back: a widening. Adding the key (even empty) is default
+  // deny for everyone it does not name.
+  if (changed.includes("grants")) {
+    const ga = a.grants, gb = b.grants;
+    if ((ga !== undefined && !object(ga)) || (gb !== undefined && !object(gb))) out.push(["grants", ga, gb]);
+    else if (ga !== undefined && gb === undefined) out.push(["grants", ga, gb]);
+    else {
+      const x = lists(ga), y = lists(gb);
+      const grantNames = (v: unknown): string[] | null => (object(v) ? names(v.instances) : null);
+      for (const entry of new Set([...Object.keys(x), ...Object.keys(y)])) {
+        const before = Object.hasOwn(x, entry) ? x[entry] : undefined, after = Object.hasOwn(y, entry) ? y[entry] : undefined;
+        if (same(before, after) || after === undefined) continue;                     // unchanged, or removed: narrows
+        const bn = before === undefined ? [] : grantNames(before), an = grantNames(after);
+        if (bn === null || an === null) { out.push([`grants.${entry}`, before, after]); continue; }   // not of its kind: never quietly
+        if (an.some(n => !bn.includes(n))) out.push([`grants.${entry}`, before, after]);
+      }
     }
   }
   return out;

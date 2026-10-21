@@ -677,7 +677,7 @@ function validateUploadLimits(web: Record<string, unknown>, warn: (path: string,
 function validateWebGuests(guests: unknown, config: Record<string, any>, err: (path: string, message: string) => void, warn: (path: string, message: string) => void): void {
   if (!isObj(guests)) { err("web.guests", "must be a mapping"); return; }
   const g = guests as Record<string, unknown>;
-  const KEYS = ["enabled", "chat", "open_instances", "narrow", "session"];
+  const KEYS = ["enabled", "chat", "open_instances", "narrow", "grants", "session"];
   for (const key of Object.keys(g)) if (!KEYS.includes(key)) err(`web.guests.${key}`, `unknown key (${KEYS.join(", ")})`);
   for (const key of ["enabled", "chat"]) if (g[key] !== undefined && typeof g[key] !== "boolean") err(`web.guests.${key}`, "must be a boolean");
   const known = new Set(isObj(config.instances) ? Object.keys(config.instances) : []);
@@ -693,7 +693,25 @@ function validateWebGuests(guests: unknown, config: Record<string, any>, err: (p
   };
   const ID = /^[A-Za-z0-9_.-]{1,64}$/;
   lists("open_instances", (k) => ID.test(k), "a connection id");
-  lists("narrow", (k) => { const i = k.indexOf(":"); return i > 0 && ID.test(k.slice(0, i)) && /^[0-9A-Za-z_-]{1,64}$/.test(k.slice(i + 1)); }, "<connection id>:<user id>");
+  const accountKey = (k: string) => { const i = k.indexOf(":"); return i > 0 && ID.test(k.slice(0, i)) && /^[0-9A-Za-z_-]{1,64}$/.test(k.slice(i + 1)); };
+  lists("narrow", accountKey, "<connection id>:<user id>");
+  // #2348: explicit grants — { "<connection id>:<user id>": { name?, instances: [instance…] } }.
+  if (g.grants !== undefined) {
+    if (!isObj(g.grants)) err("web.guests.grants", "must be a mapping");
+    else {
+      for (const [k, grant] of Object.entries(g.grants as Record<string, unknown>)) {
+        const at = `web.guests.grants.${k}`;
+        if (!accountKey(k)) { err(at, "the key must be <connection id>:<user id>"); continue; }
+        if (!isObj(grant)) { err(at, "must be { name?, instances: [instance…] }"); continue; }
+        const gr = grant as Record<string, unknown>;
+        for (const key of Object.keys(gr)) if (key !== "name" && key !== "instances") err(`${at}.${key}`, "unknown key (name, instances)");
+        if (gr.name !== undefined && (typeof gr.name !== "string" || gr.name.length > 100)) err(`${at}.name`, "must be a text of at most 100 characters");
+        const names = gr.instances;
+        if (!Array.isArray(names) || names.length > 200 || !names.every((n) => typeof n === "string" && n.length > 0 && n.length <= 128)) { err(`${at}.instances`, "must be a list of instance names"); continue; }
+        for (const n of names as string[]) if (!known.has(n)) warn(`${at}.instances`, `"${n}" is not an instance of this fleet: it gives nothing`);
+      }
+    }
+  }
   const session = g.session;
   if (session === undefined) return;
   if (!isObj(session)) { err("web.guests.session", "must be a mapping"); return; }
