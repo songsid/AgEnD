@@ -53,7 +53,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
     if (!f || !original || !overview || disabled || ctx.readOnly) return;
     keepDraft(ctx, "verified_authority", editsOf(f, original), f);
     const bad = f.hours !== null && (!Number.isFinite(f.hours) || f.hours < overview.hours.min || f.hours > overview.hours.max);
-    if (bad) { syncStage(ctx, "verified_authority", { label: tn("vaTitle"), invalid: tn("vaHoursRange") }); return; }
+    if (bad) { syncStage(ctx, "verified_authority", { label: tn("vaTitle"), invalid: tn("vaHoursRange"), section: "access", target: "#vaHours" }); return; }
     const body = verifiedAuthorityBody(original, f);
     syncStage(ctx, "verified_authority", body ? { label: tn("vaTitle"), count: Object.keys(body).length,
       impact: impactOf(ctx.schema || DEFAULT_SCHEMA, "web.verified_authority"), request: { method: "PUT", url: "/api/settings/fleet/web", body: { verified_authority: body } } } : null);

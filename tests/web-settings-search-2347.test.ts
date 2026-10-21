@@ -39,6 +39,8 @@ beforeAll(async () => {
   p.document.body.dataset.mode = "full";
   nav = await import("/assets/app-nav.js");
   reg = await import("/ui/js/settings-registry.js");
+  // Effects (Look) are drawn with Canvas Worker effects on: every card is there to check against the registry.
+  (await import("/assets/app-store.js")).appStore.set({ canvasWorker: true });
   nav.startRouter(p.window);
 });
 afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; delete (globalThis as any).AgendPreview; delete (globalThis as any).AgendAuth; });
@@ -49,6 +51,7 @@ const open = async (section: string) => {
   const { SettingsPanel } = await import("/ui/js/panel-settings.js");
   await p.mount(h(SettingsPanel, { route: { panel: "settings", section }, navKey: `settings:${section}|${Math.random()}` }));
   await settle(20);
+  if (section === "look") for (let i = 0; i < 40 && !p.root.querySelector(".s-effects"); i++) await new Promise((r) => setTimeout(r, 25));
 };
 const SECTIONS = ["preferences", "look", "agents", "agent-defaults", "chat", "web-dashboard", "access", "advanced"];
 
@@ -88,7 +91,9 @@ describe("#2347 §6: what a search finds", () => {
     expect(ids("語言")).toEqual(expect.arrayContaining(["prefs.lang", "defaults.locale"]));
   });
   it("\"port\", \"https\", \"domain\" and \"固定網址\" find the fixed address", () => {
-    for (const q of ["port", "https", "domain", "固定網址"]) expect(ids(q), q).toEqual(expect.arrayContaining(["access.hostname"].concat(q === "port" || q === "固定網址" ? ["access.origin-port"] : [])));
+    const want: Record<string, string[]> = { port: ["access.origin-port"], https: ["access.hostname"], domain: ["access.hostname"],
+      固定網址: ["access.hostname", "access.origin-port", "access.cloudflare-token"] };
+    for (const [q, found] of Object.entries(want)) expect(ids(q), q).toEqual(expect.arrayContaining(found));
   });
   it("by config key, by its name in the other language, every word of several; nothing for nonsense", () => {
     expect([ids("web.log_tab")[0], ids("自動暫停")[0], ids("public link minutes")[0], ids("zzqx")]).toEqual(["dash.log-tab", "defaults.auto-pause", "access.public-ttl", []]);
@@ -103,11 +108,11 @@ describe("#2347 §6: the search box", () => {
   const key = (el: any, k: string) => { const e = new MiniEvent("keydown", { bubbles: true, cancelable: true }); (e as any).key = k; el.dispatchEvent(e); };
   it("results grouped by section with where they are and the config key; ↑↓ moves; Enter goes there — the field focused and flashed", async () => {
     await open("agents");
-    box().value = "session idle"; fire(box(), "input"); await settle(4);
+    box().value = "unused hours"; fire(box(), "input"); await settle(4);
     const heads = p.root.querySelectorAll(".s-find-head").map((x: any) => x.textContent);
     const first = p.root.querySelector(".s-find-item.on");
     expect([heads, first.querySelector(".s-find-label").textContent, first.querySelector(".s-find-key").textContent, !!first.querySelector("mark")])
-      .toEqual([["Fleet › Access & security"], "Idle time limit (hours)", "web.session.local.idle_hours", true]);
+      .toEqual([["Fleet › Access & security"], "Sign out after unused for, hours (1–720)", "web.session.local.idle_hours", true]);
     key(box(), "Enter"); await settle(4);
     await open("access");
     const field = p.root.querySelector("#webSessionIdle");
@@ -124,6 +129,23 @@ describe("#2347 §6: the search box", () => {
     box().blur?.();
     key(p.document.body, "/"); await settle(2);
     expect([none, cleared, p.document.activeElement === box()]).toEqual(["No setting matches.", ["", false], true]);
+  });
+});
+
+describe("#2382 review: a field to fix elsewhere is named and reached from the bar", () => {
+  it("an invalid public-link minutes in Access & security: in Agent defaults the bar says where, and goes there (the field focused)", async () => {
+    await open("access");
+    const ttl: any = p.root.querySelector("#publicWebTtl");
+    ttl.value = "999"; fire(ttl, "input"); await settle(6);
+    const here = p.root.querySelector(".s-pending .s-fix")?.textContent;
+    await open("agent-defaults");
+    const fix: any = p.root.querySelector(".s-pending button.s-fix");
+    const there = fix?.textContent;
+    fix.click(); await settle(4);
+    await open("access");
+    expect([here, there, nav.navStore.get().route.section, p.document.activeElement === p.root.querySelector("#publicWebTtl")])
+      .toEqual(["Fix 1 field(s) to save", "Fix 1 field(s) in Access & security to save", "access", true]);
+    p.root.querySelectorAll(".s-pending button").find((b: any) => b.textContent === "Discard").click(); await settle(6);
   });
 });
 

@@ -80,7 +80,8 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     await open("device");
     await pick($("select[aria-label=Theme]"), "dark");
     await wait(450);
-    const before = [theme.mock.calls.at(-1), bar()?.textContent.includes("1 unsaved change(s)"), prefPosts()];
+    // #2380 review: the cost of one's own choices is the impact table's cheapest kind: Immediately.
+    const before = [theme.mock.calls.at(-1), bar()?.textContent.includes("1 unsaved change(s)") && bar()?.textContent.includes("Immediately"), prefPosts()];
     await (button("Save", bar()).click(), settle(12));
     await wait(50); await settle(6);
     expect([before, prefPosts(), !!bar(), sent.some((s) => s.path === "/api/settings/apply")])

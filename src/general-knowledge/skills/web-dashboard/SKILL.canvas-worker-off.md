@@ -349,7 +349,9 @@ running; kiro shows fleet events only; other backends say they have no readable 
 
 Sections (`/settings/<section>`, #2347), in two groups. **You**: **Preferences**, **Look**. **Fleet**: **Agents**,
 **Agent defaults**, **Chat & connections**, **Web dashboard**, **Access & security**, **Advanced**. Old addresses (`device`,
-`appearance`, `general`, `bots`, `classic`, `web`) lead to the new sections. Header: version, **Setup wizard**, **Help**.
+`appearance`, `general`, `bots`, `classic`, `web`) lead to the new sections. **Search settings** (top of the sections, **/**;
+also Ctrl K → Settings) finds a setting by name, `fleet.yaml` key or synonym in either language and goes to the field.
+Header: version, **Setup wizard**, **Help**.
 
 **How changes apply (#2347).** Every Fleet section's edits are unsaved until
 **Save**: a field edit (Agent defaults, Chat & connections, Web dashboard, Access & security) is unsaved at once (a straight bar on its left); a dialog's **Done**

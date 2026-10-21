@@ -126,5 +126,10 @@ export function goToSetting(entry) {
   pending = entry ? entry.target : null;
   navigate(settingsPath(entry.section));
 }
+/** Go to a section and, once it is drawn, to one element in it (a field the bar says to fix). */
+export function goToTarget(section, target) {
+  pending = target || null;
+  navigate(settingsPath(section));
+}
 /** The element a search result asked for, once (null: none). */
 export function takePendingSetting() { const p = pending; pending = null; return p; }

@@ -457,6 +457,8 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .s-find-key { font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
 .s-find-none, .s-find-foot { padding: var(--s-2) var(--s-3); margin: 0; font-size: var(--fs-xs); color: var(--text-2); }
 .s-find-foot { border-top: 1px solid var(--border); }
+/* #2382 review: "Fix N field(s) in <section> to save" goes there. */
+.s-pending button.s-fix { border: 0; background: none; padding: 0; cursor: pointer; text-decoration: underline; font: inherit; }
 @keyframes s-flash { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } to { background: transparent; } }
 .s-flash { animation: s-flash 2s ease-out; }
 @media (prefers-reduced-motion: reduce) { .s-flash { animation: none; background: color-mix(in srgb, var(--accent) 12%, transparent); } }

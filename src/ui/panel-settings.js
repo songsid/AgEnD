@@ -16,7 +16,7 @@ import { DevicePrefs, PanelHeader, PendingChanges, setTitle } from "/assets/app-
 import { navigate, navStore, setLeaveGuard } from "/assets/app-nav.js";
 import { discardHeldPrefs, heldPrefsCount, holdPrefs, onHeldPrefs, savePrefsHeld } from "/assets/app-prefs.js";
 import { chatPath, LEGACY_SETTINGS, settingsPath, SETTINGS_GROUPS, SETTINGS_SECTIONS } from "/assets/app-route.js";
-import { goToSetting, searchSettings, settingLabel, takePendingSetting } from "./settings-registry.js";
+import { goToSetting, goToTarget, searchSettings, settingLabel, takePendingSetting } from "./settings-registry.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -445,7 +445,7 @@ export function SettingsPanel({ route, navKey }) {
       ${ctx && (section === "agents" || section === "chat") ? html`<${FirstRunCard} onConnect=${() => setDialog({ kind: "wizard", key: navKey })} />` : null}
       ${sectionBody}
     </div></div>
-    ${staged.size && (!readOnly || [...staged.values()].every((c) => c.local)) ? html`<${PendingBar} staged=${staged} busy=${opBusy(op)} onApply=${apply} onDiscard=${discard} />` : null}
+    ${staged.size && (!readOnly || [...staged.values()].every((c) => c.local)) ? html`<${PendingBar} staged=${staged} busy=${opBusy(op)} onApply=${apply} onDiscard=${discard} section=${section} />` : null}
     ${open && ctx ? renderDialog(open, ctx, close) : null}
     ${open && open.kind === "help" ? html`<${HelpDialog} onClose=${close} />` : null}
   </div>`;
@@ -954,7 +954,9 @@ function General({ ctx, part = "all" }) {
   useEffect(() => {
     if (ctx.readOnly) return;
     if (!ready) {
-      syncStage(ctx, "defaults:invalid", { label: tn("updateDefaults"), invalid: tn(firstError) });
+      // Where it is (#2382 review): the bar in another section names it and goes there.
+      const at = { auto: "#g-auto", hang: "#g-hang", concurrency: "#g-conc", stagger: "#g-stag" }[Object.keys(errors).find((k) => errors[k])];
+      syncStage(ctx, "defaults:invalid", { label: tn("updateDefaults"), invalid: tn(firstError), section: "agent-defaults", target: at });
       return;
     }
     ctx.unstage("defaults:invalid");
@@ -1117,7 +1119,9 @@ function WebSection({ ctx, staged, part = "all" }) {
     // #2347: invalid text keeps the draft unsaved and Save waiting ("Fix 1 field to save"); no older valid draft is sent.
     if (overPublicLink) return;
     if (!ready) {
-      syncStage(ctx, "web", { label: tn("webSettingsLabel"), invalid: tn(Object.values(errors).find(Boolean)) });
+      const at = { hostname: "#publicWebHostname", originPort: "#publicWebOriginPort", ttl: "#publicWebTtl", abs: "#webSessionAbsolute", idle: "#webSessionIdle",
+        termTtl: "#webTerminalTtl" }[Object.keys(errors).find((k) => errors[k])];
+      syncStage(ctx, "web", { label: tn("webSettingsLabel"), invalid: tn(Object.values(errors).find(Boolean)), section: "access", target: at });
       return;
     }
     // Keep an existing secret reference, including a custom one. Only a newly supplied hostname without any
@@ -1263,16 +1267,19 @@ function Developer({ ctx }) {
  * #2347: the section's Save. Shown while anything is unsaved: how many changes, what they will cost, Discard and Save —
  * Save waits while a field is invalid ("Fix 1 field to save").
  */
-function PendingBar({ staged, busy, onApply, onDiscard }) {
+function PendingBar({ staged, busy, onApply, onDiscard, section }) {
   const changes = [...staged.values()];
   const kinds = [...new Set(changes.filter((c) => !c.invalid).map((c) => c.impact))];
   const invalid = changes.filter((c) => c.invalid).length;
+  // #2382 review: a field to fix in another section is named, and the message goes there (its field focused).
+  const elsewhere = changes.find((c) => c.invalid && c.section && c.section !== section);
   const count = changes.reduce((n, c) => n + (Number.isInteger(c.count) && c.count > 0 ? c.count : 1), 0);
   return html`<div data-trust="panel-controls" class="s-pending" role="region" aria-label=${tn("pendingRegion")}>
     <strong>${tn("changesPending", count)}</strong>
     <span class="note">${kinds.map(impactText).join(" · ")}</span>
     <span class="s-pending-actions">
-      ${invalid ? html`<span class="feedback error s-fix" role="status">${tn("fixToSave", invalid)}</span>` : null}
+      ${!invalid ? null : elsewhere ? html`<button type="button" class="link-btn feedback error s-fix" role="status" onClick=${() => goToTarget(elsewhere.section, elsewhere.target)}>${tn("fixToSaveIn", invalid, tn(`sec_${elsewhere.section}`))}</button>`
+        : html`<span class="feedback error s-fix" role="status">${tn("fixToSave", invalid)}</span>`}
       <button type="button" class="btn" onClick=${onDiscard} disabled=${busy}>${tn("discard")}</button>
       <button type="button" class="btn btn-primary" onClick=${onApply} disabled=${busy || invalid > 0} title=${busy ? tn("applyBusyLocal") : undefined}>${tn("applyChanges")}</button>
     </span>

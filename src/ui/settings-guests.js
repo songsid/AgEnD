@@ -114,7 +114,7 @@ export function GuestsSection({ ctx, staged }) {
     const change = (diff) => (diff ? {
       label: tn("guestsTitle"), impact: impactOf(ctx.schema || DEFAULT_SCHEMA, "web.guests"), count: diff.count, draft: cloneDraft(f),
       request: { method: "PUT", url: "/api/settings/fleet/web", body: { guests: diff.body } },
-      ...(empty ? { invalid: tn("grantsNoAgents") } : {}),
+      ...(empty ? { invalid: tn("grantsNoAgents"), section: "access", target: "#guests" } : {}),
       onResult: (outcome) => {
         if (!outcome || outcome.status === "applied") { setStatus(null); load(); }
         else if (outcome.status === "waiting") setStatus({ kind: "waiting" });
