@@ -8,6 +8,7 @@ import { mbText, PUBLIC_LINK_MAX_FILE_BYTES, UPLOAD_LIMITS, UPLOAD_MB_RANGE } fr
 import { previewOriginProblem } from "./web-preview.js";
 import { DEFAULT_SESSION_POLICY, GUEST_SESSION_BOUNDS, GUEST_SESSION_POLICY, LOCAL_SESSION_HOURS } from "./web-session.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
+import { summaryTime } from "./task-board-summary.js";
 import { VERIFIED_SESSION_HOURS } from "./authority/web-authority.js";
 import { existsSync } from "node:fs";
 import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
@@ -515,6 +516,12 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     if (config.defaults.tips !== undefined && typeof config.defaults.tips !== "boolean") {
       err("defaults.tips", "must be a boolean");
+    }
+    if (config.defaults.task_board !== undefined) {
+      if (!isObj(config.defaults.task_board)) err("defaults.task_board", "must be a mapping");
+      else if (summaryTime(config.defaults.task_board.summary_at) === undefined) {
+        err("defaults.task_board.summary_at", 'must be a time like "09:00" (24 h, the fleet\'s zone) or "off"');
+      }
     }
     if (config.defaults.startup !== undefined) {
       if (!isObj(config.defaults.startup)) err("defaults.startup", "must be a mapping");

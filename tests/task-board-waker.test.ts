@@ -86,6 +86,11 @@ describe("the message", () => {
       .toBe('[Task board] 2 things on your cards:\n- S-1 "Build the API": new comment from Ann.\n- S-2 "Build the API": you handed it out; the person confirmed it.\nYour work: task mine');
   });
 
+  it("the dispatcher is asked to tell the person a card waits for them, and what it lacks", () => {
+    expect(wakeMessage([wake({ instance: "lead", reasons: ["to_confirm"], who: "dev-a" } as Partial<Wake>)], () => ({ assignee: "dev-a", kind: "sub", acceptance: [{ text: "a", done: false }], result: "" }) as never))
+      .toBe('[Task board] S-1 "Build the API": you handed it out and it waits for the person\'s confirmation (@dev-a), though 1 acceptance item unchecked, no result — tell the person to confirm it. Read it with: task get S-1');
+  });
+
   it("a card cancelled by someone else, alone or with its main task", () => {
     expect(wakeMessage([wake({ reasons: ["cancelled"], texts: { cancelled: "with its main task M-1: the feature is dropped" } })]))
       .toBe('[Task board] S-1 "Build the API": cancelled by Ann with its main task M-1: the feature is dropped — stop working on it. Read it with: task get S-1');

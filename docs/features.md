@@ -311,7 +311,7 @@ Working together on the board:
 
 - **One card at a time.** An instance has one board card in progress; starting another while one is (claiming, resuming a blocked one, taking one back from review) is refused — finish it, or block it with the question first. The `task` tool's own tasks are not limited, and neither are cards an instance opened for itself (its own reviews, its notes). `board_cards_at_once` in an instance's config lets a role work on more handed-out cards at once ([configuration](configuration.md)). A dispatcher's answer to a card whose assignee is at its limit is kept on the card as a comment; the card stays blocked until the assignee resumes it.
 - **Who handed it out.** A card opened for another instance records its opener as the **dispatcher** (`dispatcher` on create or update names one; a sub task takes its main task's). When the card gets blocked, its dispatcher is told first: it asks the person and answers on the card — `move` back to `claimed` with the decision as the `comment` (or `reason`), which wakes the assignee. A dispatcher may edit the card.
-- **News on your cards.** An instance hears, as a `[Task board]` notice from AgEnD, when someone else assigns it a board card (once the card can start; the `task` tool's own tasks come with their own message), starts it, sends it back, answers its blocked question, comments, finishes the last card it waited for, confirms it, or cancels it (also when its main task's cancel takes it down); a dispatcher hears about questions on, and confirmations of, the cards it handed out; a main task's owner, when the task went to the person by itself before it was wrapped up. News within 10 s is one notice (a whole plan assigned at once is a count); what no longer stands when it goes out is left out (a card no longer ready, started or answered; a comment it already read). The delivery outbox holds the notice until the instance can take it.
+- **News on your cards.** An instance hears, as a `[Task board]` notice from AgEnD, when someone else assigns it a board card (once the card can start; the `task` tool's own tasks come with their own message), starts it, sends it back, answers its blocked question, comments, finishes the last card it waited for, confirms it, or cancels it (also when its main task's cancel takes it down); a dispatcher hears when a card it handed out gets blocked on a question, waits for the person's confirmation (it tells them), or is confirmed; a main task's owner, when the task went to the person by itself before it was wrapped up. News within 10 s is one notice (a whole plan assigned at once is a count); what no longer stands when it goes out is left out (a card no longer ready, started or answered; a comment it already read). The delivery outbox holds the notice until the instance can take it.
 
 Creating, claiming and completing a task are written to the activity log. Every tool profile except `minimal` has `task`.
 
@@ -322,7 +322,8 @@ The Tasks tab is the board itself (design: [task-board](design/task-board.md), p
 - **Projects** group work. The tab opens on them, each with how far along it is (finished sub tasks out of all of them; a main task without sub tasks counts once you confirm it; the bar fills with finished work only, and what is blocked or waits for you is named beside it), and above them what waits for you: finished work to **Confirm** or **Send back**, and blocked cards to **Answer**. Tasks opened outside any project — every `task` tool task, for now — are under **No project**.
 - A project is a board of its **main tasks** (M-1, M-2, …) by status: To do, In progress, Blocked, Waiting for you, Done (the last 7 days, or all — the project's numbers always count everything). Filter it by assignee; drag a card to another column or to another place in its column. A main task opens up its **sub tasks** (S-1, …), the steps an instance splits it into.
 - A card opens in a dialog. Every field edits in place — goal, scope, definition of done (or a sub task's acceptance checklist), context, state, result — with its assignee, project, priority, size, dependencies and **Stop at review for my confirmation**; then its sub tasks (type a title to add one), its comments, its progress log and its history. **Search cards** finds a phrase in titles, fields, checklists and comments.
-- **Your confirmation.** A main task opened on the dashboard stops at review when it is finished; a sub task only when flagged. Only a person signed in on the dashboard takes a card from review to done, sends it back (with what needs to change, which its assignee reads), clears the flag or reopens finished work: an instance's `done` on such a card is `review`, and a request with the web token alone is held to an instance's rules. A main task with sub tasks follows them — in progress once one starts, waiting for you once all are done; you can also block it, and adding a sub task to a confirmed one (only you can) reopens it.
+- **In the chat too.** Cards waiting for your confirmation, and blocked cards, are in **Needs you** — each bot's live message in General lists its own agents' cards, with **Confirm** and **Send back** on a card to confirm and **Answer** on a blocked one (for three cards at a time; a fleet admin's buttons). Send back and Answer ask for the words: reply to the message the bot posts, and your reply is the reason or the answer. A card an agent handed out (its dispatcher) is not repeated there — that agent tells you — and is in the web's Needs you list, which opens each card.
+- **Your confirmation.** A main task opened on the dashboard stops at review when it is finished; a sub task only when flagged. Only a person takes a card from review to done or sends it back (with what needs to change, which its assignee reads): signed in on the dashboard, or a fleet admin from the chat's Needs you (Confirm, and Send back by replying to the bot's prompt); only one signed in on the dashboard clears the flag or reopens finished work: an instance's `done` on such a card is `review`, and a request with the web token alone is held to an instance's rules. A main task with sub tasks follows them — in progress once one starts, waiting for you once all are done; you can also block it, and adding a sub task to a confirmed one (only you can) reopens it.
 - **Versions.** Each card has a version. An edit started before an instance's newer write is refused; the newer card is shown with your edit still open, and saving again overwrites it.
 - **Without dragging.** A card's title is a button: Enter opens it, Alt+← / Alt+→ moves it to the column before or after, Alt+↑ / Alt+↓ within its column. In the card, **Move to…** and the **Position** row (up, down) do the same on a phone.
 - **The public link** shows the board read-only, without the cards of instances set to `cross_instance_visibility: hidden`. Changes are made on the dashboard itself.
@@ -506,6 +507,38 @@ proj-c: $0.00 ⚠️ 1 hang
 
 Total: $10.30
 ```
+
+## The task board's daily summary
+
+Once a day (`defaults.task_board.summary_at`, default 09:00 in the fleet's zone) each platform's General gets a summary of the task board, and the web chat shows the same in General:
+
+```
+📋 Task board — daily summary, 10/20 09:00 – 10/21 09:00
+
+Waiting for your confirmation (1)
+• M-2 "Rewards API" · Fishing
+
+Blocked (1)
+• M-3 "Event page" · Fishing @dev-b: keep the page after the event?
+
+Done (2)
+• M-5 "Login fix" · Fishing
+• 1 sub task(s): S-1
+
+New (1)
+• M-6 "Weekly leaderboard" · Fishing
+
+Projects
+• Fishing 40% (2/5), 1 waiting for you, 1 blocked
+
+The board: Fleet › Tasks on the dashboard.
+```
+
+- What waits for you and what is blocked are as they are now; done and new cover the time since the last summary (at most a week).
+- Each platform lists the cards of its own instances; a card no platform's instance holds (nobody's, a person's) goes to the first one.
+- A day when nothing waits and nothing moved sends nothing. A summary missed while AgEnD was down goes out when it is back that day. The first one after an upgrade comes the next morning.
+- `"off"` turns it off; the change applies at the next minute's check.
+- Over the public link, a summary that names a card hidden there (an instance with `cross_instance_visibility: hidden` as its assignee, creator or dispatcher), or a card no longer on the board, is not shown.
 
 ## Hang detection
 
@@ -1236,7 +1269,7 @@ The fleet runs on one event loop, so anything slow there holds up everything els
 
 ## "Needs you" inbox (#1386 / #1398)
 
-A single live **Needs you** message in each world's General topic surfaces attention items for that world's instances — delivery acknowledgements, hang alerts, permission prompts. Each General shows only its own world's instances (owner-scoped); the `/ui` web feed shows items fleet-wide. Every item is one tap from where it is acted on: the instance's own thread or the message's existing buttons. The only new interaction is **Acknowledge** for delivery items that have no button today. Items resolved on any surface disappear everywhere. In `/ui`, **Needs you** (`/ui/needs`) is a panel with a sidebar badge and optional desktop notifications (#1408 step 4). Design: [docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md).
+A single live **Needs you** message in each world's General topic surfaces attention items for that world's instances — delivery acknowledgements, hang alerts, permission prompts, and task board cards waiting for you (#2246 step 3). Each General shows only its own world's instances (owner-scoped); the `/ui` web feed shows items fleet-wide. Every item is one tap from where it is acted on: the instance's own thread or the message's existing buttons. The only new interaction is **Acknowledge** for delivery items that have no button today. Items resolved on any surface disappear everywhere. In `/ui`, **Needs you** (`/ui/needs`) is a panel with a sidebar badge and optional desktop notifications (#1408 step 4). Design: [docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md).
 
 ## Global search (#2293)
 

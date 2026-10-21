@@ -278,7 +278,7 @@ The fleet's shared work and its overview, one tab each. Every tab has its own ad
 
 ## Needs you (`/ui/needs`)
 
-Everything waiting on you, from every bot's world, in one list: a fleet prompt (not responding, exited, waiting at its terminal), an agent stopped at a permission, a dangerous command, a sign-in or another dialog, an agent paused for sign-in or crashed, and a delivery the fleet could not confirm or deliver. It is the same list as each bot's live **Needs you** message in General (there, each bot shows only its own agents). Something handled anywhere, in Discord, Telegram or here, leaves every list.
+Everything waiting on you, from every bot's world, in one list: a fleet prompt (not responding, exited, waiting at its terminal), an agent stopped at a permission, a dangerous command, a sign-in or another dialog, an agent paused for sign-in or crashed, a delivery the fleet could not confirm or deliver, and a task board card waiting for your confirmation or blocked on a question (**Open the card**). It is the same list as each bot's live **Needs you** message in General (there, each bot shows only its own agents). Something handled anywhere, in Discord, Telegram or here, leaves every list.
 
 - **Needs you** in the sidebar (and a tab on a phone) shows how many things are waiting; the browser tab's title starts with `(N)`.
 - The list is grouped by agent, oldest first. A prompt has its own buttons; a delivery has **Acknowledge**; an agent paused for sign-in has **Sign in** when the dashboard can run its login (#2233); every item has **Open chat**.

@@ -58,6 +58,24 @@ beforeEach(async () => {
 const mount = (key = "needs:|1|en") => p.mount(h(N.NeedsPanel, { route: { panel: "needs" }, navKey: key }));
 const btn = (scope: any, text: string) => scope.querySelectorAll("button, a").find((b: any) => b.textContent.includes(text));
 
+describe("#2246 step 3: task board cards in Needs you", () => {
+  it("a card to confirm and a blocked one, in the server's words, each opening its card; a card nobody has is under the board", async () => {
+    app.appStore.set({ needs: [
+      { id: "task:u1:review:1", type: "task", instance: "api-server", reason: "task_review", detail: "(the fleet's words)", since: Date.now() - 60_000,
+        card: { code: "M-3", version: 4, title: "Weekly leaderboard", gap: { unchecked: 2, noResult: true } } },
+      { id: "task:u2:blocked:1", type: "task", instance: "", reason: "task_blocked", detail: "S-5 Build the API — Ties?", since: Date.now() - 60_000, card: { code: "S-5", version: 2 } },
+    ] });
+    await mount(); await settle(4);
+    // A card's line in the page's language (its fields), else the server's words.
+    expect(p.root.querySelectorAll(".n-detail").map((e: any) => e.textContent)).toEqual(["M-3 Weekly leaderboard — not wrapped up: 2 checklist item(s) unchecked, no result", "S-5 Build the API — Ties?"]);
+    expect(p.root.querySelectorAll(".n-title strong").map((e: any) => e.textContent)).toEqual(["Waiting for your confirmation", "Blocked: asks you"]);
+    expect(p.root.querySelectorAll(".n-group-head").map((e: any) => e.textContent)).toEqual(["api-server", "Task board (nobody assigned)"]);
+    expect(p.root.querySelectorAll(".n-item a").map((a: any) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["Open the card", "/ui/fleet?card=M-3"], ["Open chat", "/ui/chat/api-server"], ["Open the card", "/ui/fleet?card=S-5"]]);
+    expect(reqs).toEqual([]);
+  });
+});
+
 describe("the panel renders the server's list and reads nothing itself (#1374)", () => {
   it("no request on mount, and none in two minutes open (only a display tick)", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval"] });

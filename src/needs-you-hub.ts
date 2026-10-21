@@ -2,7 +2,9 @@
  * #1386: the fleet side of "Needs you". One derivation (needs-you.ts), recomputed on change, rendered to:
  * - each world's live message in its General and, optionally, its admins' DMs — only that world's items (§5.0, §5);
  * - the web, globally: SSE `needs` and a `needs` field on /ui/poll (§6).
- * Plus Acknowledge for delivery items, from a world's live message (its admins, its items) or from the web (any).
+ * Plus Acknowledge for delivery items, from a world's live message (its admins, its items) or from the web (any); and
+ * for task board cards (#2246 step 3), Confirm, Send back and Answer from the live message — the two that need words
+ * ask for them as a reply to a prompt the bot posts, which only the admin who clicked may answer.
  *
  * The Acknowledge capabilities live in this hub's own registry, not in the fleet's prompt map: the map's walkers
  * (per-instance clear, shutdown retire, prompt expiry) edit the message an entry points at, and the live message must
@@ -17,13 +19,17 @@ import type { ChannelAdapter } from "./channel/types.js";
 import { isMessageEditLoss } from "./channel/message-edit-errors.js";
 import {
   deriveNeedsYou, itemsForWorld, renderLiveMessage, renderSignature, messageLink, instanceLink,
-  type DeliveryInput, type InstanceInput, type NeedsYouItem, type PromptInput, type WorldPlace,
+  type DeliveryInput, type InstanceInput, type NeedsYouItem, type PromptInput, type TaskInput, type WorldPlace,
 } from "./needs-you.js";
 import { GroupMembership, topicUrl } from "./topic-link.js";
-import { NeedsYouLiveMessage, canonicalTarget, type LiveAcks, type LivePointer, type LiveTarget } from "./needs-you-live.js";
+import { NeedsYouLiveMessage, canonicalTarget, samePlace, type LiveAcks, type LivePointer, type LiveTarget } from "./needs-you-live.js";
 
 export const NEEDS_ACK_PREFIX = "needs-ack:";
-const ACK_RE = /^needs-ack:([0-9a-f]{32}):ack$/;
+const ACK_RE = /^needs-ack:([0-9a-f]{32}):(ack|confirm|back|answer)$/;
+/** A Send back or Answer prompt waits this long for its reply (monotonic). */
+export const TASK_REPLY_TTL_MS = 10 * 60_000;
+/** Send back / Answer prompts open at once, being sent or waiting for their reply, over every card and person (#2306 review). */
+export const TASK_REPLY_MAX = 32;
 const BACKSTOP_MS = 10_000;
 const ATTENTION_WINDOW_MS = 24 * 60 * 60_000;
 /** awaiting_input pings (DM, browser) only once it has lasted this long; the list itself is never delayed (§6.3). */
@@ -61,10 +67,62 @@ export interface NeedsYouHubContext {
   emitSse(event: string, data: unknown): void;
   /** outbox.acknowledge: true when this call acknowledged it; throws on a write error. */
   acknowledge(deliveryId: string, by: string): boolean;
+  /** Task board cards waiting for the person (#2246 step 3); none when the board is not open. */
+  tasks?(): TaskInput[];
+  /**
+   * The person's move on a card from the chat: confirm it, send it back with `text` (the reason), or answer its blocked
+   * question with `text`. Checked against the version the button showed; the answer is said to the clicker.
+   */
+  taskAction?(action: TaskAction): { ok: boolean; message: string };
   settings(): { liveMessage: boolean; dm: boolean };
   stopping(): boolean;
   t(key: string, ...args: Array<string | number>): string;
   log(level: "info" | "warn" | "debug", message: string, extra?: Record<string, unknown>): void;
+}
+
+export type TaskVerb = "confirm" | "back" | "answer";
+export interface TaskAction {
+  verb: TaskVerb;
+  code: string;
+  version: number;
+  /** The reason (back) or the answer (answer). */
+  text?: string;
+  /** The person, as the platform names them. */
+  by: { platform: string; userId: string; username?: string };
+}
+
+/**
+ * A Send back or Answer prompt, waiting for its reply in the place it was posted. It keeps whose card it is and the
+ * world as it was (its connection, its place): the reply is taken only while they still hold (#2306 review).
+ */
+interface PendingReply {
+  world: string;
+  instance: string;
+  adapter: ChannelAdapter;
+  placeKey: string;
+  /** Its reservation: one prompt per world, card, person and verb at a time. */
+  askKey: string;
+  chatId: string;
+  threadId?: string;
+  messageId: string;
+  userId: string;
+  username?: string;
+  verb: "back" | "answer";
+  code: string;
+  version: number;
+  deadline: number;
+}
+
+/** A reply to a message, as the inbound handler sees it (InboundMessage's fields). */
+export interface ReplyMessage {
+  adapterId: string;
+  chatId: string;
+  threadId?: string;
+  replyTo?: string;
+  messageId: string;
+  userId: string;
+  username?: string;
+  text: string;
 }
 
 interface AckEntry {
@@ -77,7 +135,10 @@ interface AckEntry {
   chatId: string;
   threadId?: string;
   messageId?: string;
-  deliveryId: string;
+  /** What the button does: Acknowledge a delivery, or a person's move on a task card. */
+  verb: "ack" | TaskVerb;
+  deliveryId?: string;
+  card?: { code: string; version: number };
   instance: string;
 }
 
@@ -87,6 +148,7 @@ export interface AckCallback {
   threadId?: string;
   messageId: string;
   userId?: string;
+  username?: string;
   ack?(notice?: string): void;
 }
 
@@ -107,6 +169,11 @@ export class NeedsYouHub {
    *  moved place gets a new renderer, and the old one can no longer publish. */
   private readonly live = new Map<string, { renderer: NeedsYouLiveMessage; adapter: ChannelAdapter; placeKey: string }>();
   private readonly acks = new Map<string, AckEntry>();
+  /** Send back / Answer prompts waiting for the clicker's reply, by `${world}|${chatId}|${messageId}`. */
+  /** Pending replies by where their prompt is (`<chatId>|<messageId>`), whichever bot receives the reply. */
+  private readonly replies = new Map<string, PendingReply>();
+  /** Prompts on their way: reserved before the send, released when it is posted or fails (#2306 review). */
+  private readonly asking = new Set<string>();
   private readonly dmSeen = new Map<string, Set<string>>();
   private readonly dmLastAt = new Map<string, number>();
   /** Per world: the ids waiting to be DMed, and the one timer that will send them. */
@@ -145,13 +212,18 @@ export class NeedsYouHub {
   recompute(): void {
     if (this.stopped) return;
     const now = this.ctx.now();
+    for (const [key, r] of this.replies) if (this.ctx.mono() >= r.deadline) this.replies.delete(key);
     let deliveries: DeliveryInput[] = [];
     try {
       deliveries = this.ctx.deliveries(new Date(now - ATTENTION_WINDOW_MS).toISOString());
     } catch (err) {
       this.ctx.log("warn", "Needs you: could not read the delivery outbox", { err: String((err as Error)?.message ?? err) });
     }
-    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, ownerOf: i => this.ctx.ownerOf(i) });
+    let tasks: TaskInput[] = [];
+    try { tasks = this.ctx.tasks?.() ?? []; } catch (err) {
+      this.ctx.log("warn", "Needs you: could not read the task board", { err: String((err as Error)?.message ?? err) });
+    }
+    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, ownerOf: i => this.ctx.ownerOf(i) });
 
     const webSig = renderSignature(this.items, now);
     if (webSig !== this.webSignature) {
@@ -229,7 +301,11 @@ export class NeedsYouHub {
     catch (err) { this.ctx.log("warn", "Needs you: could not save where the live message is", { world, err: String((err as Error)?.message ?? err) }); }
   }
 
-  private lineTitle(item: NeedsYouItem): string { return this.ctx.t(`needs.reason.${item.reason}`); }
+  /** A line's words: why it waits — and for a card, which card and what it asks or lacks (the chat shows no detail). */
+  private lineTitle(item: NeedsYouItem): string {
+    const reason = this.ctx.t(`needs.reason.${item.reason}`);
+    return item.type === "task" && item.detail ? `${reason}: ${item.detail}` : reason;
+  }
 
   private makeLive(world: NeedsYouWorld): NeedsYouLiveMessage {
     const ctx = this.ctx;
@@ -276,15 +352,24 @@ export class NeedsYouHub {
 
   private mintAcks(world: string, owner: symbol, generation: number, place: LiveTarget & { messageId?: string }, items: NeedsYouItem[]): LiveAcks {
     const minted: AckEntry[] = [];
-    const choices = items.filter(i => i.deliveryId).map(item => {
+    const mint = (item: NeedsYouItem, verb: AckEntry["verb"], label: string) => {
       const nonce = randomBytes(16).toString("hex");
       const entry: AckEntry = {
         world, owner, generation, deadline: this.ctx.mono() + ACK_TTL_MS, chatId: place.chatId, ...(place.threadId !== undefined ? { threadId: place.threadId } : {}),
-        ...(place.messageId ? { messageId: place.messageId } : {}), deliveryId: item.deliveryId!, instance: item.instance,
+        ...(place.messageId ? { messageId: place.messageId } : {}), verb, instance: item.instance,
+        ...(item.deliveryId ? { deliveryId: item.deliveryId } : {}), ...(item.card ? { card: { ...item.card } } : {}),
       };
       this.acks.set(nonce, entry);
       minted.push(entry);
-      return { id: `${NEEDS_ACK_PREFIX}${nonce}:ack`, label: this.ctx.t("needs.ack_button", item.instance) };
+      return { id: `${NEEDS_ACK_PREFIX}${nonce}:${verb}`, label };
+    };
+    const choices = items.flatMap(item => {
+      if (item.deliveryId) return [mint(item, "ack", this.ctx.t("needs.ack_button", item.instance))];
+      if (item.type !== "task" || !item.card) return [];
+      const code = item.card.code;
+      return item.reason === "task_review"
+        ? [mint(item, "confirm", this.ctx.t("needs.task_confirm_button", code)), mint(item, "back", this.ctx.t("needs.task_back_button", code))]
+        : [mint(item, "answer", this.ctx.t("needs.task_answer_button", code))];
     });
     return { choices, bind: pointer => { for (const e of minted) e.messageId = pointer.messageId; } };
   }
@@ -303,7 +388,8 @@ export class NeedsYouHub {
   handleCallback(data: AckCallback, adapterId: string): boolean {
     if (!data.callbackData.startsWith(NEEDS_ACK_PREFIX)) return false;
     const m = ACK_RE.exec(data.callbackData);
-    const entry = m ? this.acks.get(m[1]) : undefined;
+    const found = m ? this.acks.get(m[1]) : undefined;
+    const entry = found && found.verb === m![2] ? found : undefined;
     if (entry && this.ctx.mono() >= entry.deadline) this.acks.delete(m![1]);
     // Unknown, revoked, lapsed — or not yet bound to the message its post returned: no authority yet.
     if (!m || !entry || this.ctx.mono() >= entry.deadline || entry.messageId === undefined) {
@@ -317,7 +403,113 @@ export class NeedsYouHub {
     // §5.0: the item must still belong to this world.
     if (this.ctx.ownerOf(entry.instance) !== adapterId) { data.ack?.(this.ctx.t("needs.ack_not_this_world")); return true; }
     const platform = this.ctx.worlds().find(w => w.id === adapterId)?.place.type ?? "chat";
-    data.ack?.(this.ctx.t(`needs.ack_${this.acknowledge(entry.deliveryId, `${platform}:${data.userId}`)}`));
+    if (entry.verb === "ack") {
+      data.ack?.(this.ctx.t(`needs.ack_${this.acknowledge(entry.deliveryId!, `${platform}:${data.userId}`)}`));
+      return true;
+    }
+    const card = entry.card!;
+    const by = { platform, userId: data.userId, ...(data.username ? { username: data.username } : {}) };
+    if (entry.verb === "confirm") {
+      const outcome = this.ctx.taskAction?.({ verb: "confirm", code: card.code, version: card.version, by }) ?? { ok: false, message: this.ctx.t("needs.task_board_closed") };
+      data.ack?.(outcome.message);
+      this.poke();
+      return true;
+    }
+    // Send back and Answer take words: a prompt the clicker answers by replying to it (handleReply). One prompt per
+    // world, card, person and verb at a time, reserved before the send (#2306 review): a second press while one is on
+    // its way or still waits is told so, and the prompts open over everything are capped.
+    const askKey = `${adapterId}|${card.code}|${data.userId}|${entry.verb}`;
+    if (this.asking.has(askKey) || this.pendingFor(askKey)) { data.ack?.(this.ctx.t("needs.task_reply_already", card.code)); return true; }
+    if (this.asking.size + this.livePending() >= TASK_REPLY_MAX) { data.ack?.(this.ctx.t("needs.task_reply_busy")); return true; }
+    this.asking.add(askKey);
+    data.ack?.(this.ctx.t("needs.task_reply_asked"));
+    void this.askForReply(entry, entry.verb, by, askKey);
+    return true;
+  }
+
+  /** A prompt for this reservation still waits for its reply. */
+  private pendingFor(askKey: string): boolean {
+    const now = this.ctx.mono();
+    for (const r of this.replies.values()) if (r.askKey === askKey && now < r.deadline) return true;
+    return false;
+  }
+
+  /** Prompts still waiting for their reply (lapsed ones go). */
+  private livePending(): number {
+    const now = this.ctx.mono();
+    for (const [key, r] of this.replies) if (now >= r.deadline) this.replies.delete(key);
+    return this.replies.size;
+  }
+
+  /**
+   * The card's instance is still this world's, the world still the same connection in the same place, and its notice
+   * place still where the prompt is: else a reply there is not this world's to take (#2306 review — an instance that
+   * moved to another world, a replaced connection, a new notice room).
+   */
+  private stillHere(p: { world: string; instance: string; adapter: ChannelAdapter; placeKey: string; chatId: string; threadId?: string }): boolean {
+    if (this.ctx.ownerOf(p.instance) !== p.world) return false;
+    const now = this.ctx.worlds().find(w => w.id === p.world);
+    if (!now || now.adapter !== p.adapter || placeKey(now.place) !== p.placeKey) return false;
+    const target = this.ctx.noticeTarget(p.world);
+    return !!target && samePlace(target, { chatId: p.chatId, ...(p.threadId !== undefined ? { threadId: p.threadId } : {}) });
+  }
+
+  /** Post the prompt for a Send back's reason or an answer, and wait for the clicker's reply to it. */
+  private async askForReply(entry: AckEntry, verb: "back" | "answer", by: TaskAction["by"], askKey: string): Promise<void> {
+    const card = entry.card!;
+    try {
+      const world = this.ctx.worlds().find(w => w.id === entry.world);
+      if (!world || this.stopped) return;
+      const target = { world: entry.world, instance: entry.instance, adapter: world.adapter, placeKey: placeKey(world.place),
+        chatId: entry.chatId, ...(entry.threadId !== undefined ? { threadId: entry.threadId } : {}) };
+      const who = by.username ? ` (@${by.username})` : "";
+      const text = this.ctx.t(verb === "back" ? "needs.task_back_prompt" : "needs.task_answer_prompt", card.code, who, Math.round(TASK_REPLY_TTL_MS / 60_000));
+      const sent = await world.adapter.sendText(entry.chatId, text, entry.threadId !== undefined ? { threadId: entry.threadId } : undefined);
+      // While it was on its way the fleet may have stopped, or the card's instance, the connection or the room moved.
+      if (this.stopped || !this.stillHere(target)) return;
+      const pending: PendingReply = {
+        ...target, askKey, messageId: sent.messageId,
+        userId: by.userId, ...(by.username ? { username: by.username } : {}), verb, code: card.code, version: card.version,
+        deadline: this.ctx.mono() + TASK_REPLY_TTL_MS,
+      };
+      this.replies.set(`${entry.chatId}|${sent.messageId}`, pending);
+    } catch (err) {
+      this.ctx.log("warn", "Needs you: could not ask for a reply", { code: card.code, err: String((err as Error)?.message ?? err) });
+    } finally {
+      this.asking.delete(askKey);
+    }
+  }
+
+  /**
+   * An inbound message that replies to one of our Send back / Answer prompts, by the admin who clicked: its text is
+   * the reason or the answer, and the message goes no further (true). Anything else — another message, another
+   * person, a lapsed prompt — is not ours (false) and flows on as usual.
+   */
+  handleReply(msg: ReplyMessage): boolean {
+    if (!msg.replyTo) return false;
+    // #2306 review: found by where the prompt is, whichever bot received the reply (in a shared Discord guild a
+    // sibling bot's copy may come first), and judged by the prompt's world — its admins, its instance, its connection
+    // and room as they are now — so the answer is taken once, and only with that world's authority.
+    const key = `${msg.chatId}|${msg.replyTo}`;
+    const pending = this.replies.get(key);
+    if (!pending) return false;
+    if (this.ctx.mono() >= pending.deadline) { this.replies.delete(key); return false; }
+    if (msg.userId !== pending.userId || (pending.threadId !== undefined && msg.threadId !== undefined && msg.threadId !== pending.threadId)) return false;
+    if (!this.ctx.isFleetAdmin(msg.userId, pending.world)) return false;
+    if (!this.stillHere(pending)) { this.replies.delete(key); return false; }
+    this.replies.delete(key);
+    const text = msg.text.trim();
+    const world = this.ctx.worlds().find(w => w.id === pending.world);
+    const platform = world?.place.type ?? "chat";
+    const outcome = text
+      ? this.ctx.taskAction?.({ verb: pending.verb, code: pending.code, version: pending.version, text,
+        by: { platform, userId: msg.userId, ...(msg.username ? { username: msg.username } : {}) } }) ?? { ok: false, message: this.ctx.t("needs.task_board_closed") }
+      : { ok: false, message: this.ctx.t("needs.task_reply_empty", pending.code) };
+    this.poke();
+    if (world) {
+      void world.adapter.sendText(msg.chatId, outcome.message, { ...(msg.threadId !== undefined ? { threadId: msg.threadId } : {}), replyTo: msg.messageId })
+        .catch(err => this.ctx.log("warn", "Needs you: could not answer a reply", { code: pending.code, err: String((err as Error)?.message ?? err) }));
+    }
     return true;
   }
 
@@ -428,6 +620,8 @@ export class NeedsYouHub {
     for (const id of [...this.dmPending.keys(), ...this.dmTimer.keys()]) this.cancelDms(id);
     await Promise.all([...this.live.values()].map(p => p.renderer.retire()));
     this.acks.clear();
+    this.replies.clear();
+    this.asking.clear();
   }
 }
 

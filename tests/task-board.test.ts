@@ -847,14 +847,41 @@ describe("15. whom a write wakes (step 2)", () => {
     board.moveCard(LEAD, card.code, "claimed", { comment: "the person says codes" });
     expect(h.take()).toEqual([{ to: "dev-a", code: card.code, reasons: ["answered"], by: "lead", texts: { answered: "the person says codes" } }]);
     board.moveCard(DEV, card.code, "review", { result: "r", reason: "no checklist" });
+    // It handed it out: it tells the person the card waits for them.
+    expect(h.take()).toEqual([{ to: "lead", code: card.code, reasons: ["to_confirm"], by: "dev-a", texts: {} }]);
     board.moveCard(ANN, card.code, "claimed", { reason: "ties share a rank" });
     expect(h.take()).toEqual([{ to: "dev-a", code: card.code, reasons: ["sent_back"], by: "Ann", texts: { sent_back: "ties share a rank" } }]);
     board.moveCard(DEV, card.code, "review", { result: "r2", reason: "no checklist" });
+    h.take();
     board.moveCard(ANN, card.code, "done", { reason: "nice" });
     expect(h.take()).toEqual([
       { to: "dev-a", code: card.code, reasons: ["approved"], by: "Ann", texts: { approved: "nice" } },
       { to: "lead", code: card.code, reasons: ["approved"], by: "Ann", texts: { approved: "nice" } },
     ]);
+  });
+
+  it("a card going to the person for confirmation: the instance that handed it out tells them", () => {
+    const { board } = withProject();
+    const card = main(board, LEAD, { assignee: "dev-a" });
+    const h = heard(board);
+    board.moveCard(DEV, card.code, "claimed");
+    h.take();
+    board.moveCard(DEV, card.code, "review", { result: "r" });
+    expect(h.take()).toEqual([{ to: "lead", code: card.code, reasons: ["to_confirm"], by: "dev-a", texts: {} }]);
+    const own = main(board, ANN, { assignee: "dev-a" });       // the person handed it out: nobody relays it
+    h.take();
+    board.moveCard(DEV, own.code, "claimed");
+    board.moveCard(DEV, own.code, "review", { result: "r" });
+    expect(h.take()).toEqual([]);
+    const wake = { instance: "lead", uuid: card.uuid, code: card.code, title: card.title, parent: null, reasons: ["to_confirm"] as WakeReason[], by: { to_confirm: "dev-a" }, texts: {} };
+    expect(board.wakeHolds(wake)?.reasons).toEqual(["to_confirm"]);
+    board.updateCard(ANN, card.code, { needsReview: false });
+    expect(board.waitingForPerson().map((w) => w.card.code)).toEqual([own.code]);   // not the person's to confirm any more
+    expect(board.wakeHolds(wake)).toBeNull();                   // #2341 review: its confirmation switched off meanwhile
+    board.updateCard(ANN, card.code, { needsReview: true });
+    expect(board.wakeHolds(wake)?.reasons).toEqual(["to_confirm"]);
+    board.moveCard(ANN, card.code, "done");
+    expect(board.wakeHolds(wake)).toBeNull();                   // confirmed meanwhile: nothing to relay
   });
 
   it("a main task sent to the person by its last sub task, not wrapped up, wakes its owner to fill it in", () => {

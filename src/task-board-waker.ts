@@ -27,7 +27,7 @@ export interface TaskBoardWakerDeps {
 /** More assignments than this in one message are told as a count, not a line each. */
 const MANY_ASSIGNED = 3;
 /** The order a card's news is told in. */
-const ORDER: WakeReason[] = ["cancelled", "sent_back", "decide", "answered", "approved", "wrap_up", "assigned", "start", "ready", "comment"];
+const ORDER: WakeReason[] = ["cancelled", "sent_back", "decide", "to_confirm", "answered", "approved", "wrap_up", "assigned", "start", "ready", "comment"];
 
 const quote = (text: string | undefined) => (text ? `: "${oneLine(text, 160)}"` : "");
 
@@ -42,6 +42,10 @@ function say(w: Wake, r: WakeReason, card: Card | undefined): string {
     case "comment": return `new comment from ${by}${quote(w.texts.comment)}`;
     case "ready": return "everything it waited for is done — you can start it";
     case "decide": return `you handed it out and it is blocked${card?.assignee ? ` (@${card.assignee})` : ""}${quote(w.texts.decide)} — ask the person, then answer it: move it back to claimed with the decision as the comment`;
+    case "to_confirm": {
+      const gap = card ? wrapUpGap(card) : null;
+      return `you handed it out and it waits for the person's confirmation${card?.assignee ? ` (@${card.assignee})` : ""}${gap ? `, though ${gapText(gap, card!.kind === "main")}` : ""} — tell the person to confirm it`;
+    }
     case "approved": return card?.assignee === w.instance ? `the person confirmed it${quote(w.texts.approved)}` : `you handed it out; the person confirmed it${quote(w.texts.approved)}`;
     case "cancelled": return `cancelled by ${by}${w.texts.cancelled?.startsWith("with its main task") ? ` ${oneLine(w.texts.cancelled, 160)}` : quote(w.texts.cancelled)} — stop working on it`;
     case "wrap_up": {

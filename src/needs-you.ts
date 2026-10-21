@@ -7,7 +7,7 @@
  * a file or a clock of its own.
  */
 
-export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery";
+export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task";
 
 export interface NeedsYouItem {
   /** Stable per occurrence: a new episode, crash or delivery is a new id (§3). */
@@ -31,13 +31,21 @@ export interface NeedsYouItem {
   deliveryId?: string;
   /** auth_paused (#2233): the login the dashboard can sign in for it (its backend, and its credential profile). */
   signIn?: { backend: string; profile?: string };
+  /**
+   * task (#2246 step 3): the board card that waits — its number and the version the person sees; its title, its
+   * question (blocked) and what it lacks (to confirm), for a page to say in its own language.
+   */
+  card?: { code: string; version: number; title?: string; question?: string; gap?: { unchecked: number; noResult: boolean } };
+  /** Listed on the web only: an instance that handed the card out tells the person in the chat (taskhall 78ad9eb). */
+  webOnly?: boolean;
 }
 
 export type NeedsYouReason =
   | "hang" | "exited" | "assist"                                    // prompt
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
   | "auth_paused" | "crashed"                                       // instance
-  | "delivery_uncertain" | "delivery_failed";                       // delivery
+  | "delivery_uncertain" | "delivery_failed"                        // delivery
+  | "task_review" | "task_blocked";                                 // task
 
 /** A fleet prompt offered on the dashboard (hang / exit-restart / interactive-assist), as the fleet holds it. */
 export interface PromptInput {
@@ -79,10 +87,30 @@ export interface DeliveryInput {
   finishedAt: number;
 }
 
+/** A task board card waiting for the person (#2246 step 3): to confirm, or blocked on a question. */
+export interface TaskInput {
+  uuid: string;
+  code: string;
+  title: string;
+  status: "review" | "blocked";
+  version: number;
+  /** Its assignee: the instance the item sits under, whose chat world lists it. */
+  assignee: string | null;
+  /** The question, for a blocked card; what it still lacks, for one to confirm ("" when wrapped up) — in the fleet's words. */
+  note: string;
+  /** What it lacks, as numbers (a card to confirm that is not wrapped up). */
+  gap?: { unchecked: number; noResult: boolean };
+  /** An instance handed it out and tells the person itself: the chat leaves it to that instance. */
+  relayed: boolean;
+  /** Epoch ms since it has waited (its move to review or to blocked). */
+  since: number;
+}
+
 export interface NeedsYouInputs {
   prompts: PromptInput[];
   instances: InstanceInput[];
   deliveries: DeliveryInput[];
+  tasks?: TaskInput[];
   /** The live world that owns an instance, or undefined (no channel, or its world is gone). */
   ownerOf: (instance: string) => string | undefined;
 }
@@ -155,7 +183,19 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     });
   }
 
+  // Task board cards waiting for the person (#2246 step 3), under their assignee.
+  for (const c of inputs.tasks ?? []) {
+    items.push({
+      id: `task:${c.uuid}:${c.status}:${c.since}`, type: "task", instance: c.assignee ?? "",
+      reason: c.status === "review" ? "task_review" : "task_blocked",
+      detail: oneLine(`${c.code} ${c.title}${c.note ? ` — ${c.note}` : ""}`), since: c.since,
+      card: { code: c.code, version: c.version, title: c.title, ...(c.status === "blocked" && c.note ? { question: c.note } : {}), ...(c.gap ? { gap: c.gap } : {}) },
+      ...(c.relayed ? { webOnly: true } : {}),
+    });
+  }
+
   for (const item of items) {
+    if (item.webOnly || !item.instance) continue;                   // the web's only: no chat world lists it
     const owner = inputs.ownerOf(item.instance);
     if (owner !== undefined) item.owner = owner;
   }
@@ -190,6 +230,8 @@ export function renderSignature(items: readonly NeedsYouItem[], nowMs: number): 
   return JSON.stringify(items.map(i => [
     i.id, i.reason, i.detail, ageLabel(i.since, nowMs), i.owner ?? null,
     i.promptAt ? [i.promptAt.adapterId, i.promptAt.chatId, i.promptAt.threadId ?? null, i.promptAt.messageId ?? null] : null,
+    // A card's buttons carry the version it was shown at: a newer card renders (and mints) again.
+    i.card ? i.card.version : null,
   ]));
 }
 
@@ -208,6 +250,8 @@ export interface LiveLine {
 
 export const LIVE_MAX_LINES = 10;
 export const LIVE_MAX_ACKS = 5;
+/** Task cards that get buttons on one render (Confirm and Send back, or Answer): the oldest shown. */
+export const LIVE_MAX_TASKS = 3;
 
 /**
  * The live message for one world: header, at most LIVE_MAX_LINES lines (then "… and N more"), and which delivery
@@ -228,5 +272,6 @@ export function renderLiveMessage(
   if (lines.length > shown.length) body.push(t("needs.live_more", lines.length - shown.length));
   const ackable = shown.filter(l => l.item.type === "delivery").map(l => l.item)
     .sort((a, b) => b.since - a.since).slice(0, LIVE_MAX_ACKS);
-  return { text: [t("needs.live_header", lines.length), ...body].join("\n"), ackable };
+  const tasks = shown.filter(l => l.item.type === "task" && l.item.card).map(l => l.item).slice(0, LIVE_MAX_TASKS);
+  return { text: [t("needs.live_header", lines.length), ...body].join("\n"), ackable: [...ackable, ...tasks] };
 }

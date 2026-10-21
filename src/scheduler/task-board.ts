@@ -225,10 +225,11 @@ export interface CardEvent {
  * Why an instance hears about one of its cards (step 2's wakes, task-board-waker.ts): someone else assigned it,
  * started it, sent it back, answered its blocked question, commented, or finished the last card it waited for; the
  * person confirmed it (its assignee and its dispatcher hear); it is blocked and the instance handed it out (decide);
+ * it went to the person for confirmation and the instance handed it out, so it tells them (to_confirm);
  * a main task went to the person by itself before its owner wrapped it up (wrap_up); or someone else cancelled it — a
  * main task's cancel takes its unfinished sub tasks down with it, and their assignees hear (cancelled).
  */
-export type WakeReason = "assigned" | "start" | "sent_back" | "answered" | "comment" | "ready" | "decide" | "approved" | "wrap_up" | "cancelled";
+export type WakeReason = "assigned" | "start" | "sent_back" | "answered" | "comment" | "ready" | "decide" | "to_confirm" | "approved" | "wrap_up" | "cancelled";
 
 /** One card's news for one instance from one committed write. Never sent to a page (it carries titles and text). */
 export interface Wake {
@@ -1059,6 +1060,44 @@ export class TaskBoard {
     };
   }
 
+  /**
+   * What waits for the person (step 3: Needs you): cards in review that need their confirmation, and blocked cards —
+   * oldest first, each with when it started waiting (its last move to that status).
+   */
+  waitingForPerson(): Array<{ card: Card; since: string }> {
+    const rows = (this.db.prepare("SELECT * FROM tasks WHERE (status = 'review' AND needs_review = 1) OR status = 'blocked' ORDER BY updated_at").all() as Row[]).map(toCard);
+    const moved = this.db.prepare("SELECT at FROM task_events WHERE task_id = ? AND type = 'moved' AND json_extract(data, '$.to') = ? ORDER BY id DESC LIMIT 1");
+    return rows.map((card) => {
+      const at = (moved.get(card.uuid, card.status) as { at: string } | undefined)?.at;
+      return { card, since: at ?? card.submittedAt ?? card.updatedAt };
+    }).sort((a, b) => a.since.localeCompare(b.since));
+  }
+
+  /** Cards by their numbers, in one read (the ones that exist; #2341 review: the cards a summary line named). */
+  cardsByCode(codes: string[]): Card[] {
+    const out: Card[] = [];
+    for (let i = 0; i < codes.length; i += 500) {
+      const chunk = codes.slice(i, i + 500);
+      out.push(...(this.db.prepare(`SELECT * FROM tasks WHERE code IN (${chunk.map(() => "?").join(", ")})`).all(...chunk) as Row[]).map(toCard));
+    }
+    return out;
+  }
+
+  /**
+   * Step 3, the daily summary (task-board-summary.ts): what waits for the person now, what got done and what was
+   * opened in [since, until) (not cancelled), and every live main task's project and assignee.
+   */
+  summaryRead(since: string, until: string): { waiting: Card[]; done: Card[]; created: Card[]; mains: Array<{ projectId: number | null; assignee: string | null }> } {
+    const between = (sql: string) => (this.db.prepare(sql).all(since, until) as Row[]).map(toCard);
+    return {
+      waiting: this.waitingForPerson().map((w) => w.card),
+      done: between("SELECT * FROM tasks WHERE status = 'done' AND done_at >= ? AND done_at < ? ORDER BY sort"),
+      created: between("SELECT * FROM tasks WHERE status != 'cancelled' AND created_at >= ? AND created_at < ? ORDER BY sort"),
+      mains: (this.db.prepare("SELECT project_id, assignee FROM tasks WHERE kind = 'main' AND status != 'cancelled'").all() as Row[])
+        .map((r) => ({ projectId: (r.project_id as number | null) ?? null, assignee: (r.assignee as string | null) ?? null })),
+    };
+  }
+
   // ── Writing: the board ──────────────────────────────────
 
   createCards(actor: Actor, input: { project?: string | number | null; parent?: string | null; cards: NewCard[] }): { cards: Card[]; notes: string[]; said: Note[] } {
@@ -1875,6 +1914,8 @@ export class TaskBoard {
           add(card, card.assignee, "cancelled", e.actor, why);
           continue;
         }
+        // Its dispatcher tells the person it waits for them (not the board).
+        if (d.to === "review" && !isPerson(e.actor) && requiresReview(card)) add(card, dispatcherOf(), "to_confirm", e.actor);
         if (d.auto) {
           if (d.to === "review" && card.kind === "main" && wrapUpGap(card)) add(card, card.assignee, "wrap_up", e.actor);
           continue;
@@ -1919,6 +1960,8 @@ export class TaskBoard {
       if (r === "cancelled") return card.status === "cancelled" && own;
       if (isFinished(card)) return false;
       if (r === "decide") return handedOut && card.status === "blocked";
+      // #2341 review: and still waiting for the person — its confirmation not switched off during the gather.
+      if (r === "to_confirm") return handedOut && card.status === "review" && requiresReview(card);
       if (!own) return false;
       if (r === "wrap_up") return card.status === "review" && wrapUpGap(card) !== null;
       if (r === "assigned") return !waiting;

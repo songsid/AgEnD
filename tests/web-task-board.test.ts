@@ -29,6 +29,7 @@ import { handleWebRequest } from "../src/web-api.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { setLocale } from "../src/locale.js";
 import { SchedulerDb } from "../src/scheduler/db.js";
+import { deriveNeedsYou } from "../src/needs-you.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 
@@ -233,7 +234,7 @@ describe("3. refusals", () => {
  * One request through the real web routes as the temporary public link's page (a gateway session) or a local page, with
  * a minimal context (schedules-1724's pattern): the board's routes only need the scheduler and the fleet's config.
  */
-function viaLink(db: SchedulerDb, method: string, path: string, body?: unknown, opts: { local?: boolean; fleetConfig?: unknown } = {}) {
+function viaLink(db: SchedulerDb, method: string, path: string, body?: unknown, opts: { local?: boolean; fleetConfig?: unknown; needs?: unknown[] } = {}) {
   const sessions = new WebSessionStore(), exposureId = "a".repeat(32), pub = "https://sample.trycloudflare.com", local = "http://127.0.0.1:19280";
   const s = sessions.create({ tier: "admin", surface: opts.local ? "local" : "gateway", exposureId: opts.local ? undefined : exposureId, label: "t", tokenEpoch: tokenEpoch(TOKEN) } as never);
   const origin = opts.local ? local : pub;
@@ -246,7 +247,8 @@ function viaLink(db: SchedulerDb, method: string, path: string, body?: unknown, 
     const res = Object.assign(new EventEmitter(), { headersSent: false, destroyed: false, setHeader() {}, writeHead: (c: number) => { status = c; },
       end: (t = "") => resolve({ status, body: t ? JSON.parse(String(t)) : null }) });
     handleWebRequest(req as never, res as never, new URL(path, origin), { webToken: TOKEN, webSessions: sessions, scheduler: { db },
-      fleetConfig: opts.fleetConfig ?? { defaults: {}, instances: {} }, logger: { debug() {}, info() {}, warn() {}, error() {} } } as never);
+      fleetConfig: opts.fleetConfig ?? { defaults: {}, instances: {} }, logger: { debug() {}, info() {}, warn() {}, error() {} },
+      getUiStatus: () => ({ instances: [] }), listWebPrompts: () => [], needsYouItems: () => opts.needs ?? [] } as never);
     if (body !== undefined) { req.emit("data", Buffer.from(JSON.stringify(body))); req.emit("end"); } else { req.emit("end"); }
   });
 }
@@ -392,6 +394,31 @@ describe("4a. a hidden instance's comments on a visible card, over the link", ()
   });
 });
 
+describe("4d. Needs you over the public link leaves out the cards the board hides there (#2306 review)", () => {
+  it("a blocked card a hidden instance handed out: not in the link's poll (title, question and all), while the local page lists it; a visible one is in both", async () => {
+    const h = rig();
+    h.fm.fleetConfig = { ...h.fm.fleetConfig, instances: { ...(h.fm.fleetConfig as any).instances, "dev-a": {}, secret_lead: { cross_instance_visibility: "hidden" } } } as never;
+    const fleetConfig = h.fm.fleetConfig;
+    const lead = { kind: "instance" as const, name: "secret_lead" };
+    h.db.board.createCards(lead, { cards: [{ title: "HIDDEN_CARD_TITLE", assignee: "dev-a" }] });                // M-1, by the hidden lead
+    h.db.board.createCards(ANN, { cards: [{ title: "Open title", assignee: "dev-a" }] });                        // M-2
+    for (const [code, why] of [["M-1", "PRIVATE_BLOCKED_REASON"], ["M-2", "which season?"]]) { h.db.board.moveCard(ANN, code, "claimed"); h.db.board.moveCard(ANN, code, "blocked", { reason: why }); }
+    const needs = deriveNeedsYou({ prompts: [], instances: [], deliveries: [], ownerOf: () => undefined, tasks: h.s.needsYouTasks() });
+    expect(needs.map((i) => i.card?.code).sort()).toEqual(["M-1", "M-2"]);
+    const link = (await viaLink(h.db, "GET", "/ui/poll", undefined, { fleetConfig, needs })).body;
+    expect(link.needs.map((i: any) => i.card?.code)).toEqual(["M-2"]);
+    expect(JSON.stringify(link)).not.toMatch(/HIDDEN_CARD_TITLE|PRIVATE_BLOCKED_REASON/);
+    const local = (await viaLink(h.db, "GET", "/ui/poll", undefined, { fleetConfig, needs, local: true })).body;
+    expect(local.needs.map((i: any) => i.card?.code).sort()).toEqual(["M-1", "M-2"]);
+    // The board says the same over the link, and the link's page has no stream for Needs you to leak through.
+    expect((await viaLink(h.db, "GET", "/ui/tasks/board", undefined, { fleetConfig })).body.cards.map((c: any) => c.id)).toEqual(["M-2"]);
+    expect((await viaLink(h.db, "GET", "/ui/events", undefined, { fleetConfig })).status).toBe(404);
+    // Visibility is read when asked: the lead shown again, its card is listed again.
+    (fleetConfig as any).instances.secret_lead = {};
+    expect((await viaLink(h.db, "GET", "/ui/poll", undefined, { fleetConfig, needs })).body.needs.map((i: any) => i.card?.code).sort()).toEqual(["M-1", "M-2"]);
+  });
+});
+
 describe("4b. who handed a card out, from the dashboard", () => {
   it("an instance, the person writing, or nobody; anything else is a 400", async () => {
     const db = scratchDb();
@@ -487,5 +514,64 @@ describe("6. the agent learns why its work came back", () => {
     const next = await tool({ action: "update", id: card.uuid, result: "added the changelog entry" }) as { status: string; notes?: string[] };
     expect(next).toMatchObject({ status: "claimed", notes: ["sent back (admin): the changelog entry is missing"] });
     expect((await tool({ action: "update", id: card.uuid, priority: "high" }) as { notes?: string[] }).notes).toBeUndefined();
+  });
+});
+
+describe("7. a reply to a Needs you prompt is the card's words, not an instance's input (step 3)", () => {
+  it("the admin's reply to the prompt stops there; any other message in the topic flows on to the instance", async () => {
+    const h = rig();
+    const replies: Array<{ replyTo?: string; userId: string; text: string }> = [];
+    h.s.needsYou = { handleReply: vi.fn((m: { replyTo?: string; userId: string; text: string }) => { replies.push(m); return m.replyTo === "prompt-1"; }), poke() {}, stop: async () => {} };
+    const routed: string[] = [];
+    h.s.topicCommands.handleInstanceCommand = vi.fn(async (msg: { text: string }) => { routed.push(msg.text); return true; });
+    const say = (over: Record<string, unknown>) => h.s.handleInboundMessage({ source: "telegram", adapterId: "owner", chatId: "G", threadId: "T0", messageId: `in-${Math.random()}`,
+      userId: "admin", username: "admin", text: "x", timestamp: new Date(), ...over });
+    await say({ replyTo: "prompt-1", text: "ties share a rank" });
+    await say({ replyTo: "some-other-message", text: "just chatting" });
+    await say({ text: "no reply at all" });
+    expect(replies.map((r) => [r.replyTo, r.text])).toEqual([["prompt-1", "ties share a rank"], ["some-other-message", "just chatting"]]);
+    expect(routed).toEqual(["just chatting", "no reply at all"]);
+  });
+});
+
+describe("7b. two bots in one group: the prompt's answer is taken once, whichever bot's copy comes first (#2306 review)", () => {
+  /** A second bot "sibling" in the same group: each bot gets its own copy of every message (the same message id). */
+  function twoBots() {
+    const h = rig();
+    const sibling = { id: "sibling", type: "telegram", sendText: vi.fn(async () => ({ messageId: "x" })), stop: vi.fn(async () => {}) };
+    const cfg = { id: "sibling", type: "telegram", group_id: "G", bot_token_env: "NONE", access: { mode: "open", allowed_users: ["admin"] } };
+    (h.fm.fleetConfig as any).channels.push(cfg);
+    h.s.adapters.set("sibling", sibling);
+    h.s.worlds.set("sibling", { adapter: sibling, groupId: "G", channelConfig: cfg, accessManager: { isAllowed: () => true }, stop: async () => {} });
+    // The hub's side (needs-you-tasks-2306 tests it): the prompt "prompt-1" waits for one answer, wherever it arrives.
+    let open = true;
+    const taken: string[] = [];
+    h.s.needsYou = { handleReply: vi.fn((m: { replyTo?: string; adapterId: string; text: string }) => {
+      if (m.replyTo !== "prompt-1" || !open) return false;
+      open = false; taken.push(`${m.adapterId}: ${m.text}`); return true;
+    }), poke() {}, stop: async () => {} };
+    const routed: string[] = [];
+    h.s.topicCommands.handleInstanceCommand = vi.fn(async (msg: { text: string; adapterId: string }) => { routed.push(`${msg.adapterId}: ${msg.text}`); return true; });
+    const copy = (adapterId: string, over: Record<string, unknown> = {}) => h.s.handleInboundMessage({ source: "telegram", adapterId, chatId: "G", threadId: "T0", messageId: "in-1",
+      userId: "admin", username: "admin", replyTo: "prompt-1", text: "ties share a rank", timestamp: new Date(), ...over });
+    return { copy, taken, routed };
+  }
+
+  it("the owner's copy first: one answer, nothing to the instance; the sibling's copy is a duplicate", async () => {
+    const b = twoBots();
+    await b.copy("owner"); await b.copy("sibling");
+    expect([b.taken, b.routed]).toEqual([["owner: ties share a rank"], []]);
+  });
+
+  it("the sibling's copy first: still one answer and nothing to the instance — the owner's copy no longer slips through as input", async () => {
+    const b = twoBots();
+    await b.copy("sibling"); await b.copy("owner");
+    expect([b.taken, b.routed]).toEqual([["sibling: ties share a rank"], []]);
+  });
+
+  it("control: a reply that is not the answer goes to the instance once, from whichever copy came first", async () => {
+    const b = twoBots();
+    await b.copy("sibling", { replyTo: "another-message", text: "just chatting" }); await b.copy("owner", { replyTo: "another-message", text: "just chatting" });
+    expect([b.taken, b.routed.length]).toEqual([[], 1]);
   });
 });

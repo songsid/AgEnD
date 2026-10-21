@@ -199,7 +199,8 @@ describe("4. a comment its assignee acted on within the window is not sent", () 
     board.updateCard(LEAD, a.code, { comment: "please look" });
     const r = board.moveCard(DEV, a.code, "review", { result: "r" });
     expect(r.said.map((n) => n.key)).toContain("new_comment");      // it read the comment with its own write
-    expect(take()).toEqual([]);
+    // Not the comment again; the lead, who handed it out, hears it waits for the person (taskhall 78ad9eb).
+    expect(take()).toEqual([{ to: "lead", text: expect.stringContaining("you handed it out and it waits for the person's confirmation (@dev-a)") }]);
     board.updateCard(LEAD, a.code, { comment: "one more thing" });
     expect(take()).toEqual([{ to: "dev-a", text: expect.stringContaining('new comment from lead: "one more thing"') }]);
   });
