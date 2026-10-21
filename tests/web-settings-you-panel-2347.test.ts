@@ -78,6 +78,20 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     expect([before, prefPosts(), !!bar(), sent.some((s) => s.path === "/api/settings/apply")])
       .toEqual([[["dark"], true, []], [{ theme: "dark" }], false, false]);
   });
+  it("over the temporary public link the bar still saves this person's own choices (this browser only, as before)", async () => {
+    p.document.body.setAttribute("data-public-link", "1");
+    try {
+      await open("device");
+      const was = (globalThis as any).AgendTheme.get();
+      await pick($("select[aria-label=Theme]"), was === "dark" ? "light" : "dark");
+      const shown = !!bar();
+      button("Save", bar()).click(); await settle(12);
+      await wait(450);
+      expect([shown, !!bar(), prefPosts(), (globalThis as any).AgendTheme.get() !== was]).toEqual([true, false, [], true]);
+      // Kept in this browser only: put this browser's copy back for the next test (the host still has `was`).
+      (globalThis as any).AgendTheme.set(was); (globalThis as any).localStorage.setItem("agend_theme", was);
+    } finally { p.document.body.removeAttribute("data-public-link"); }
+  });
   it("Discard puts the theme back and sends nothing", async () => {
     await open("device");
     const was = (globalThis as any).AgendTheme.get();
