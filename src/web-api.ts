@@ -147,12 +147,22 @@ const CardMoveSchema = z.object({
 
 const CardReorderSchema = z.object({ after: CardRef.nullable().optional(), before: CardRef.nullable().optional() }).strict();
 
-const ProjectCreateSchema = z.object({ name: z.string().max(256), description: z.string().max(BOARD_TEXT).optional() }).strict();
+const ProjectCreateSchema = z.object({ name: z.string().max(256), description: z.string().max(BOARD_TEXT).optional(), leadInstance: z.string().max(256).nullable().optional() }).strict();
+
+/** #2352: a project's lead must be one of the fleet's instances now (the board keeps any name, as for an assignee). */
+function checkLeadIsInstance(ctx: WebApiContext, lead: string | null | undefined): void {
+  const name = lead?.trim();
+  if (name && !(ctx.fleetConfig?.instances && Object.hasOwn(ctx.fleetConfig.instances, name))) {
+    throw new TaskBoardError("invalid", `"${name.slice(0, 64)}" is not one of the fleet's instances`, "lead_not_instance");
+  }
+}
 
 const ProjectPatchSchema = z.object({
   name: z.string().max(256).optional(),
   description: z.string().max(BOARD_TEXT).optional(),
   archived: z.boolean().optional(),
+  /** #2352: the instance whose channel lists the project's waiting cards (null or "": General). */
+  leadInstance: z.string().max(256).nullable().optional(),
 }).strict();
 
 const TeamCreateSchema = z.object({
@@ -2262,7 +2272,9 @@ export function handleWebRequest(
         const kept = key ? boardBodies.get(board) : undefined;
         if (kept && kept.key === key) { jsonText(res, 200, kept.body); return true; }
         const cards = board.boardCards(undefined, allDone).filter((c) => !hidden(c));
-        const body = JSON.stringify({ rev, cards: board.views(cards, scope), projects: board.listProjects(true), stats: board.projectStats() });
+        // #2352: over the public link a hidden lead is not named (the project reads as having none).
+        const projects = board.listProjects(true).map((p) => (p.leadInstance && hiddenName(p.leadInstance) ? { ...p, leadInstance: null } : p));
+        const body = JSON.stringify({ rev, cards: board.views(cards, scope), projects, stats: board.projectStats() });
         if (key) boardBodies.set(board, { key, body });
         jsonText(res, 200, body);
         return true;
@@ -2310,11 +2322,11 @@ export function handleWebRequest(
         return true;
       }
       if (method === "POST" && path === "/ui/tasks/projects") {
-        boardWrite(req, res, url, ctx, board, ProjectCreateSchema, (input, person) => ({ project: board.createProject(person, input) }));
+        boardWrite(req, res, url, ctx, board, ProjectCreateSchema, (input, person) => { checkLeadIsInstance(ctx, input.leadInstance); return { project: board.createProject(person, input) }; });
         return true;
       }
       if (method === "POST" && project) {
-        boardWrite(req, res, url, ctx, board, ProjectPatchSchema, (patch, person) => ({ project: board.updateProject(person, Number(project[1]), patch) }));
+        boardWrite(req, res, url, ctx, board, ProjectPatchSchema, (patch, person) => { checkLeadIsInstance(ctx, patch.leadInstance); return { project: board.updateProject(person, Number(project[1]), patch) }; });
         return true;
       }
     } catch (err) {

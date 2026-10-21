@@ -161,6 +161,7 @@ function ProjectTile({ project, stats, onOpen, onDialog, reload }) {
         ${stats.waiting ? html`<span class="tb-flag st-review">${t("tasks.waiting", stats.waiting)}</span>` : null}
         ${stats.blocked ? html`<span class="tb-flag st-blocked">${t("tasks.blockedN", stats.blocked)}</span>` : null}
         ${stats.lastActivity ? html`<span class="muted">${t("tasks.lastActivity", relTime(stats.lastActivity))}</span>` : null}
+        ${project && project.leadInstance ? html`<span class="muted tb-project-lead-chip">${t("tasks.projectLeadChip", project.leadInstance)}</span>` : null}
       </span>
     </button>
     ${project && onDialog ? html`<${Menu} cls="tb-project-menu" items=${[
@@ -496,13 +497,17 @@ function CreateMainDialog({ projects, project, onClose, onCreated }) {
 }
 
 function ProjectDialog({ project, onClose, onSaved }) {
-  const [f, setF] = useState({ name: project ? project.name : "", description: project ? project.description : "" });
+  const { instances } = useStore(appStore);
+  const [f, setF] = useState({ name: project ? project.name : "", description: project ? project.description : "", leadInstance: (project && project.leadInstance) || "" });
+  // #2352: a lead no longer in the fleet stays listed (marked) until it is changed.
+  const leadGone = !!f.leadInstance && !instances.some((i) => i.name === f.leadInstance);
   const [busy, setBusy] = useState(false);
   async function submit() {
     if (!f.name.trim()) return;
     setBusy(true);
     try {
-      const r = project ? await boardApi.updateProject(project.id, f) : await boardApi.createProject(f.name, f.description);
+      const body = { ...f, leadInstance: f.leadInstance || null };
+      const r = project ? await boardApi.updateProject(project.id, body) : await boardApi.createProject(f.name, f.description, body.leadInstance);
       toast(t(project ? "tasks.projectSaved" : "tasks.projectCreated"));
       onSaved(r.project);
     } catch (err) { toast(errorText(err), false); setBusy(false); }
@@ -513,6 +518,11 @@ function ProjectDialog({ project, onClose, onSaved }) {
     <form class="form" onSubmit=${(e) => { e.preventDefault(); submit(); }}><fieldset class="form" disabled=${busy}>
       <label class="field"><span>${t("tasks.projectName")} *</span><input value=${f.name} maxlength="60" onInput=${(e) => { const v = e.target.value; setF((c) => ({ ...c, name: v })); }} required /></label>
       <label class="field"><span>${t("tasks.projectDesc")}</span><input value=${f.description} maxlength="300" onInput=${(e) => { const v = e.target.value; setF((c) => ({ ...c, description: v })); }} /></label>
+      <label class="field"><span>${t("tasks.projectLead")}</span><select class="tb-project-lead" value=${f.leadInstance} onChange=${(e) => { const v = e.target.value; setF((c) => ({ ...c, leadInstance: v })); }}>
+        <option value="">${t("tasks.projectLeadNone")}</option>
+        ${leadGone ? html`<option value=${f.leadInstance}>${t("tasks.projectLeadGone", f.leadInstance)}</option>` : null}
+        ${instances.map((i) => html`<option key=${i.name} value=${i.name}>${i.name}</option>`)}</select>
+        <small class="note">${t("tasks.projectLeadHint")}</small></label>
     </fieldset></form></${Dialog}>`;
 }
 

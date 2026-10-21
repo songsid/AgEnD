@@ -84,6 +84,11 @@ export interface Project {
   name: string;
   description: string;
   archived: boolean;
+  /**
+   * #2352: the instance whose channel lists the project's cards that wait for the person (Needs you's Confirm / Send
+   * back / Answer), when no instance dispatched them; null: General. Any name — the fleet checks it is an instance.
+   */
+  leadInstance: string | null;
   sort: number;
   createdAt: string;
 }
@@ -490,12 +495,25 @@ function toCard(r: Row): Card {
   };
 }
 
+/**
+ * #2352: a lead is a name, or none ("" and null alike). Whether it is one of the fleet's instances is the fleet's to
+ * check (the board keeps names, as for an assignee); a lead no longer in fleet.yaml reads as none.
+ */
+function checkLeadInstance(raw: string | null): string | null {
+  const name = (raw ?? "").trim();
+  if (!name) return null;
+  // eslint-disable-next-line no-control-regex
+  if (name.length > 256 || /[\s\u0000-\u001f\u007f]/.test(name)) throw new TaskBoardError("invalid", "a lead is an instance's name", "lead_not_instance");
+  return name;
+}
+
 function toProject(r: Row): Project {
   return {
     id: Number(r.id),
     name: r.name as string,
     description: r.description as string,
     archived: Number(r.archived) === 1,
+    leadInstance: typeof r.lead_instance === "string" && r.lead_instance ? r.lead_instance : null,
     sort: Number(r.sort),
     createdAt: r.created_at as string,
   };
@@ -586,6 +604,11 @@ export class TaskBoard {
       CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id, id);
       CREATE TABLE IF NOT EXISTS task_counters (prefix TEXT PRIMARY KEY, next INTEGER NOT NULL);
     `);
+    // #2352: a project's lead instance, added in place (null: its waiting cards' buttons stay in General).
+    const projectCols = new Set((this.db.prepare("PRAGMA table_info(task_projects)").all() as Array<{ name: string }>).map((c) => c.name));
+    if (!projectCols.has("lead_instance")) {
+      try { this.db.exec("ALTER TABLE task_projects ADD COLUMN lead_instance TEXT"); } catch (err) { if (!/duplicate column/i.test(String(err))) throw err; }
+    }
     // Every open (the CLI opens this file for each command) only reads: the write lock is taken only when a counter
     // is missing or a row needs a number. (CREATE … IF NOT EXISTS of what exists takes no lock; an INSERT does.)
     if ((this.db.prepare("SELECT COUNT(*) AS n FROM task_counters WHERE prefix IN ('M', 'S', 'R')").get() as { n: number }).n < 3) {
@@ -639,28 +662,30 @@ export class TaskBoard {
     return toProject(row);
   }
 
-  createProject(actor: Actor, input: { name: string; description?: string }): Project {
+  createProject(actor: Actor, input: { name: string; description?: string; leadInstance?: string | null }): Project {
     this.personOnly(actor, "create a project");
     return this.tx(() => {
       const name = this.checkProjectName(input.name, null);
       const description = checkText("the description", input.description ?? "", CARD_LIMITS.projectDescription);
       const { s } = this.db.prepare("SELECT COALESCE(MAX(sort), 0) + 1 AS s FROM task_projects").get() as { s: number };
-      const row = this.db.prepare("INSERT INTO task_projects (name, description, sort, created_at) VALUES (?, ?, ?, ?) RETURNING *")
-        .get(name, description, s, this.nowIso()) as Row;
+      const lead = checkLeadInstance(input.leadInstance ?? null);
+      const row = this.db.prepare("INSERT INTO task_projects (name, description, sort, created_at, lead_instance) VALUES (?, ?, ?, ?, ?) RETURNING *")
+        .get(name, description, s, this.nowIso(), lead) as Row;
       this.projectsChanged = true;
       return toProject(row);
     });
   }
 
-  updateProject(actor: Actor, id: number, patch: { name?: string; description?: string; archived?: boolean }): Project {
+  updateProject(actor: Actor, id: number, patch: { name?: string; description?: string; archived?: boolean; leadInstance?: string | null }): Project {
     this.personOnly(actor, "change a project");
     return this.tx(() => {
       const project = this.getProject(id);
       if (patch.name !== undefined) project.name = this.checkProjectName(patch.name, project.id);
       if (patch.description !== undefined) project.description = checkText("the description", patch.description, CARD_LIMITS.projectDescription);
       if (patch.archived !== undefined) project.archived = patch.archived;
-      this.db.prepare("UPDATE task_projects SET name = ?, description = ?, archived = ? WHERE id = ?")
-        .run(project.name, project.description, project.archived ? 1 : 0, project.id);
+      if (patch.leadInstance !== undefined) project.leadInstance = checkLeadInstance(patch.leadInstance);
+      this.db.prepare("UPDATE task_projects SET name = ?, description = ?, archived = ?, lead_instance = ? WHERE id = ?")
+        .run(project.name, project.description, project.archived ? 1 : 0, project.leadInstance, project.id);
       this.projectsChanged = true;
       return project;
     });
