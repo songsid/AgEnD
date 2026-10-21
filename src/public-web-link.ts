@@ -250,9 +250,9 @@ export class PublicWebLink {
       const binary = await (this.deps.ensure ?? ensureCloudflared)({ dataDir: this.deps.dataDir, pinnedOnly: true, signal: e.abort.signal,
         onProgress: p => applyInstallProgress(e.progress, p) });
       if (!this.current(e)) throw new Error("closed");
-      // #1723/#1767: the preview's quick tunnel is asked for only once the link's own tunnel has its address — the link
-      // always asks Cloudflare first (under a rate limit the preview can never take the request the link needed), a
-      // link that fails never spends one on a preview, and nothing below waits on the preview or reads it.
+      // #1723/#1767: preview starts only after the dashboard candidate is known. A quick dashboard tunnel requests
+      // its address first; named mode already knows its configured address. Either can still fail readiness after
+      // preview starts, in which case both close. Nothing below waits on the preview or reads it.
       const startPreview = (): void => {
         if (e.preview !== undefined || !this.current(e)) return;
         e.preview = this.deps.createPreview?.({ id: e.id, expiresAt: e.expiresAt, binary: binary.path, protocol,
