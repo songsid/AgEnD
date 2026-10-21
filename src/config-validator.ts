@@ -222,6 +222,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (value.cross_instance_visibility !== undefined && !isCrossInstanceVisibility(value.cross_instance_visibility)) {
       err(`${path}.cross_instance_visibility`, `must be one of: ${CROSS_INSTANCE_VISIBILITY_MODES.join(", ")}`);
     }
+    if (value.board_cards_at_once !== undefined && !(Number.isInteger(value.board_cards_at_once) && (value.board_cards_at_once as number) >= 1)) {
+      err(`${path}.board_cards_at_once`, "must be a whole number of at least 1");
+    }
 
     // #1296: context rotation was removed. max_age_hours and grace_period_ms
     // are retained in the schema for backwards compatibility but have no effect.

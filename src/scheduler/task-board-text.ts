@@ -88,8 +88,11 @@ export function myWorkText(board: TaskBoard, name: string, work: MyWork): string
   const parentOf = (c: Card) => (c.parent ? ` (${board.codeOf(c.parent)})` : "");
   section("sent back to you", work.sentBack.map(({ card, entry }) => `${card.code} ${card.title} — ${entry.author}: ${oneLine(entry.text, 160)}`));
   section("in progress", work.doing.map((c) => `${c.code} ${c.title}${parentOf(c)}`));
-  const busy = work.doing.filter((c) => board.isOnBoard(c)).length;
-  if (busy > 1) out.push(` ⚠ ${busy} cards in progress: one at a time — finish one (or block it with a reason) before the next`);
+  // Over its limit (a person moved them there); cards it opened for itself do not count (#2303).
+  const over = board.overLimit(name);
+  if (over) out.push(over.limit === 1
+    ? ` ⚠ ${over.count} cards in progress: one at a time — finish one (or block it with a reason) before the next`
+    : ` ⚠ ${over.count} cards in progress: at most ${over.limit} at a time — finish one (or block it with a reason) before the next`);
   section("blocked", work.blocked.map((c) => `${c.code} ${c.title} — on: ${oneLine(c.blockedReason, 120)}`));
   section("waiting for the person's confirmation", work.review.map((c) => {
     const gap = wrapUpGap(c);

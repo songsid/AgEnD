@@ -87,6 +87,8 @@ describe("the task tool's board actions", () => {
     expect(db.board.getCard("M-2").dispatcher).toEqual({ kind: "instance", name: "lead" });
     expect(await call("dev-a", { action: "update", id: "M-2", dispatcher: null })).toBe("ok M-2 Archive [to do] @dev-a (v2)");
     expect(db.board.getCard("M-2").dispatcher).toBeNull();
+    // Handed out, it counts toward the limit; opened for itself with nobody handing it out, it would not (#2303).
+    await call("dev-a", { action: "update", id: "M-2", dispatcher: "lead" });
     await call("dev-a", { action: "move", id: "M-1", to: "claimed" });
     expect(await call("dev-a", { action: "move", id: "M-2", to: "claimed" }))
       .toEqual({ error: "you already have M-1 \"Leaderboard\" in progress. One card at a time: finish it first; if you cannot go on, move it to blocked with a reason, then start M-2" });

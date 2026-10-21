@@ -147,3 +147,12 @@ export function boardActivity(args: Record<string, unknown>): string | null {
   const to = typeof args.to === "string" ? args.to : typeof args.status === "string" ? args.status : "";
   return { claimed: `claimed: ${id}`, done: `completed: ${id}`, review: `submitted for review: ${id}`, blocked: `blocked: ${id}`, cancelled: `cancelled: ${id}`, open: `put back: ${id}` }[STATUS_ALIAS[to] ?? to] ?? null;
 }
+
+/**
+ * #2303: how many handed-out board cards an instance may have in progress at once — its `board_cards_at_once`, else
+ * 1 (the validator holds it to a whole number of at least 1; anything else here counts as 1).
+ */
+export function boardCardLimit(fleet: { instances?: Record<string, { board_cards_at_once?: unknown } | undefined> } | null | undefined, name: string): number {
+  const own = fleet?.instances && Object.prototype.hasOwnProperty.call(fleet.instances, name) ? fleet.instances[name]?.board_cards_at_once : undefined;
+  return typeof own === "number" && Number.isInteger(own) && own >= 1 ? own : 1;
+}

@@ -75,6 +75,15 @@ or the board itself.
   question). Blocked cards and main tasks that follow their sub tasks do not count; the `task` tool's own tasks are not
   limited, nor is a person, and `task done` of an open card (claimed on its way to done) passes. `mine` warns when
   several are in progress (a person moved them there).
+  - *Cards an instance opened for itself* (it created it, it is the assignee, nobody handed it out) neither count nor
+    are limited: a reviewer opens one per review and runs several (#2303's busy-fleet check: 142 refusals in a week,
+    79 of them a reviewer's, if the fleet's work had been board cards). A sub task it splits off a card handed to it
+    takes that card's dispatcher, so it counts.
+  - *`board_cards_at_once`* (per instance, a whole number of at least 1, default 1; docs/configuration.md) raises the
+    limit for a role that works on several handed-out cards. The fleet reads it at each claim.
+  - *A dispatcher's answer* to a blocked card whose assignee is at its limit does not start the card: the answer is
+    kept on it as a comment (the assignee is told), the card stays blocked, and the assignee resumes it when it has
+    room (#2303 review).
 - **Taking a card back out of review.** An instance that withdraws its own card from `review` says why: the reason is
   a comment on the card ("withdrawn from review: …"), so the card never leaves the person's queue silently.
 - **Comments an assignee has not seen.** Comments and send-backs by others after the assignee's last write are new to
@@ -99,9 +108,10 @@ reaches the board anyway is refused (403 `not_over_public_link`) — the old tas
 (`POST /ui/tasks`, `/ui/tasks/<id>`) too, since they write the board's rows — and a request through the gateway is
 never the person (actor `script`, "public-link"). The page says it is read-only there and shows no write controls.
 
-**Instances kept out of sight.** Over the public link the board leaves out the cards whose assignee or creator is an
-instance with `cross_instance_visibility: hidden` (in lists, search and by number); a project's numbers still count
-them. On the dashboard itself the person sees every card: hiding is about what instances and outsiders see, and the
+**Instances kept out of sight.** Over the public link the board leaves out the cards whose assignee, creator or
+dispatcher is an instance with `cross_instance_visibility: hidden` (in lists, search and by number); a project's numbers
+still count them. A visible card follows the same rule for what it shows around it (#2303 review): its sub tasks, its
+main task (also a search hit's main task title), and the comments, logs and history such an instance left on it. On the dashboard itself the person sees every card: hiding is about what instances and outsiders see, and the
 board is the person's record.
 
 ## Storage and other releases
@@ -117,6 +127,11 @@ A release without the board reads and writes the same rows and ignores the new c
 not know. Its prune knows no projects: after a rollback it deletes finished board cards past `retention_days`, leaving
 their entries and events. Before rolling back, raise `retention_days`; the next prune here clears what an old one left.
 `scripts/data-downgrade-phase.mjs` runs 2.1.12 against board data (docs/downgrade-compatibility.md).
+
+Step 2's `dispatcher` / `dispatcher_kind` columns: a release from before step 2 neither reads nor writes them (its
+`UPDATE` leaves them as they are), so dispatchers survive a downgrade and the upgrade after it. A card opened while
+downgraded has none: back on step 2, its blocked question goes to nobody first (the person sees it on Home), until a
+dispatcher is set on it.
 
 **Retention** (`retention_days`) is the board's too. It prunes old finished work with no project (the tool's own tasks
 among it, and a no-project main task with its sub tasks once all of them are finished and old), and in an archived
@@ -195,7 +210,7 @@ instance hears what someone else did to a card that is its own, or that it hande
 
 | News | Who | When |
 |---|---|---|
-| assigned | the assignee | opened for it, or given to it (once the card can start) |
+| assigned | the assignee | a board card opened for it, or given to it (once the card can start); not the `task` tool's own tasks, which are handed over with a message of their own (`delegate_task`) |
 | start | the assignee | someone else moved its open card to in progress |
 | sent back | the assignee | the person sent it back from review, with the reason |
 | answered | the assignee | its blocked question answered (by the person or its dispatcher), with the answer |
@@ -209,6 +224,10 @@ instance hears what someone else did to a card that is its own, or that it hande
 Never its own write, never a finished card (but for a confirmation or a cancel), never a name that is not one of the
 fleet's instances. `TaskBoard.wakeHolds` drops what no longer stands — at the end of the write and again when it goes
 out: a card finished meanwhile, no longer the instance's, a question already answered, a card wrapped up meanwhile.
+What asks the instance to act holds only while it can (#2303 review): `ready` while the card is open with nothing
+left to wait for, `start` and `answered` while it is in progress, `sent back` while it is back with the instance; a
+comment only while its assignee has not read it (any write of its own on the card since shows it the comment, as the
+`task` tool's answer, and counts it as seen).
 
 **Sending** (`src/task-board-waker.ts`). The fleet gathers an instance's news for 10 s into one `[Task board]` notice:
 a line per card, each reason with its own words and who did it; a main task assigned with its sub tasks is one line;

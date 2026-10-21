@@ -886,6 +886,7 @@ describe("15. whom a write wakes (step 2)", () => {
   it("what no longer stands is dropped: a finished card, one now someone else's, a question already answered", () => {
     const { board } = withProject();
     const card = main(board, LEAD, { assignee: "dev-a" });
+    board.updateCard(ANN, card.code, { comment: "a word" });          // a comment holds while it is unread (#2303)
     const wake = { instance: "dev-a", uuid: card.uuid, code: card.code, title: card.title, parent: null, reasons: ["comment"] as WakeReason[], by: { comment: "Ann" }, texts: {} };
     expect(board.wakeHolds(wake)?.reasons).toEqual(["comment"]);
     board.updateCard(ANN, card.code, { assignee: "dev-b" });

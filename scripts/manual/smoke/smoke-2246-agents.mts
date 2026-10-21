@@ -116,6 +116,9 @@ for (const c of matrix()) {
 
     // The developer finishes; the reviewer takes the review: the tile shows who works on it now.
     tool(db, DEV, { action: "move", id: "S-1", to: "done", result: "GET /leaderboard/weekly" });
+    // The reviewer starts once told it can (#2303 review: a "ready" that is no longer open by the time it goes out is
+    // left out — started already, it is not news).
+    if (first) await until(() => notices().some((n) => n.to === REVIEWER && /everything it waited for is done/.test(n.content)), 5000);
     tool(db, REVIEWER, { action: "move", id: "S-2", to: "claimed" });
     await clickVisible(p.page, ".tb-project-open");
     const tile = `[data-tile="${main.code}"]`;

@@ -309,6 +309,48 @@ describe("4. the public link reads the board and changes nothing on it", () => {
     expect((await viaLink(db, "GET", "/ui/tasks/search?q=work", undefined, { fleetConfig })).body.results.map((r: any) => r.card.id)).toEqual(["M-1"]);
     expect((await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig, local: true })).body.cards.map((c: any) => c.id)).toEqual(["M-1", "M-2", "M-3"]);
   });
+
+  // #2303 review: what a visible card shows of the cards around it follows the same rule — its children, its main
+  // task, a search hit's main task title — and what an instance kept out of sight wrote on it.
+  it("over the link a visible card does not show hidden related cards (children, main task, a hit's main task) or a hidden instance's words", async () => {
+    const db = scratchDb();
+    const fleetConfig = { defaults: {}, instances: { "dev-a": {}, spy: { cross_instance_visibility: "hidden" } } };
+    db.board.createCards(ANN, { cards: [{ title: "Open work", assignee: "dev-a" }, { title: "Secret plan", assignee: "dev-a", dispatcher: { kind: "instance", name: "spy" } }] });
+    db.board.createCards(ANN, { parent: "M-1", cards: [{ title: "Open step", assignee: "dev-a" }, { title: "Secret step", assignee: "spy" }] });
+    db.board.createCards(ANN, { parent: "M-2", cards: [{ title: "Step under the secret plan", assignee: "dev-a", dispatcher: null }] });
+    db.board.updateCard({ kind: "instance", name: "spy" }, "M-1", { comment: "spy was here" });
+    db.board.updateCard(ANN, "M-1", { comment: "Ann's note" });
+    db.board.updateCard(ANN, "M-1", { log: "Ann's log line" });
+    db.board.updateCard({ kind: "instance", name: "spy" }, "M-1", { log: "spy's log line" });
+    db.board.updateCard(ANN, "S-1", { dispatcher: { kind: "instance", name: "dev-a" } });
+    db.board.updateCard(ANN, "S-1", { dispatcher: null });               // its history names only visible ones
+    db.board.createCards(ANN, { parent: "M-1", cards: [{ title: "Visible step, handed back", assignee: "dev-a" }] });
+    db.board.updateCard(ANN, "S-4", { dispatcher: { kind: "instance", name: "spy" } });
+    db.board.updateCard(ANN, "S-4", { dispatcher: null });               // hidden in its history, not on the card
+    const link = (path: string) => viaLink(db, "GET", path, undefined, { fleetConfig });
+    const local = (path: string) => viaLink(db, "GET", path, undefined, { fleetConfig, local: true });
+    const m1 = (await link("/ui/tasks/cards/M-1")).body;
+    expect(m1.children.map((c: any) => c.id)).toEqual(["S-1", "S-4"]);
+    expect(m1.comments.map((c: any) => c.author)).toEqual(["Ann"]);
+    expect(m1.logs.map((c: any) => c.author)).toEqual(["Ann"]);
+    expect(JSON.stringify(m1)).not.toMatch(/spy|Secret/);
+    const s1 = (await link("/ui/tasks/cards/S-1")).body;
+    expect(s1.history.filter((e: any) => e.type === "updated")).toHaveLength(2);
+    const s4 = (await link("/ui/tasks/cards/S-4")).body;
+    expect(JSON.stringify(s4.history)).not.toMatch(/spy/);
+    expect(JSON.stringify((await local("/ui/tasks/cards/S-4")).body.history)).toMatch(/spy/);
+    const s3 = (await link("/ui/tasks/cards/S-3")).body;
+    expect(s3.parent).toBeNull();
+    expect(JSON.stringify(s3)).not.toMatch(/spy|Secret plan/);
+    const hits = (await link("/ui/tasks/search?q=step")).body.results;
+    expect(hits.map((r: any) => [r.card.id, r.parentTitle])).toEqual(expect.arrayContaining([["S-1", "Open work"], ["S-3", null]]));
+    expect(hits.map((r: any) => r.card.id)).not.toContain("S-2");
+    // The local page shows it all.
+    const all = (await local("/ui/tasks/cards/M-1")).body;
+    expect([all.children.map((c: any) => c.id), all.comments.map((c: any) => c.author), all.logs.map((c: any) => c.author)]).toEqual([["S-1", "S-2", "S-4"], ["spy", "Ann"], ["Ann", "spy"]]);
+    expect((await local("/ui/tasks/cards/S-3")).body.parent.title).toBe("Secret plan");
+    expect((await local("/ui/tasks/search?q=step")).body.results.find((r: any) => r.card.id === "S-3").parentTitle).toBe("Secret plan");
+  });
 });
 
 describe("4b. who handed a card out, from the dashboard", () => {

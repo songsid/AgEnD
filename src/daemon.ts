@@ -6591,6 +6591,8 @@ export class Daemon extends EventEmitter {
     else if (update.tags === null) delete this.config.tags;
     if (isCrossInstanceVisibility(update.cross_instance_visibility)) this.config.cross_instance_visibility = update.cross_instance_visibility;
     else if (update.cross_instance_visibility === null) delete this.config.cross_instance_visibility;
+    if (Number.isInteger(update.board_cards_at_once) && (update.board_cards_at_once as number) >= 1) this.config.board_cards_at_once = update.board_cards_at_once as number;
+    else if (update.board_cards_at_once === null) delete this.config.board_cards_at_once;
     if (["trace", "debug", "info", "warn", "error"].includes(String(update.log_level))) {
       const level = update.log_level as InstanceConfig["log_level"];
       if (this.config.log_level !== level) {

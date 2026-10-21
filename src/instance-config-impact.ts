@@ -40,6 +40,8 @@ export const HOT_INSTANCE_CONFIG_KEYS: ReadonlySet<keyof InstanceConfig> = new S
   "log_level",
   // #1302: the fleet reads it when it posts a notice; the daemon only keeps it current.
   "cross_instance_visibility",
+  // #2303: the fleet reads it at each task board claim; the daemon only keeps it current.
+  "board_cards_at_once",
 ]);
 
 /**
@@ -77,6 +79,8 @@ const INSTANCE_FIELDS = [
   // list is built at spawn, so the honest cost is an agent restart.
   "status_emojis",
   "cross_instance_visibility",
+  // #2303: read by the fleet at each task board claim.
+  "board_cards_at_once",
 ] as const;
 
 /** ClassicBot channel fields the settings page renders. */

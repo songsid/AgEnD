@@ -131,4 +131,23 @@ describe("in the fleet: a write's wakes reach the delivery outbox as AgEnD's not
     fm.deliveryOutbox?.close?.();
     scheduler.db.close();
   });
+
+  it("the board's cards-at-once limit is each instance's board_cards_at_once, read at every claim (#2303)", () => {
+    const d = mkdtempSync(join(tmpdir(), "task-board-waker-")); dirs.push(d);
+    writeFileSync(join(d, "fleet.yaml"), "defaults: {}\ninstances: {}\n");
+    const fm = new FleetManager(d) as unknown as Record<string, any>;
+    fm.fleetConfig = { defaults: {}, instances: { "dev-a": { board_cards_at_once: 2 } } };
+    const scheduler = new Scheduler(join(d, "scheduler.db"), () => {}, { max_schedules: 100, default_timezone: "UTC", retry_count: 3, retry_interval_ms: 1000 }, () => false);
+    fm.attachTaskBoard(scheduler.db);
+    const board = scheduler.db.board;
+    const dev = { kind: "instance" as const, name: "dev-a" };
+    const [a, b, c] = [1, 2, 3].map((n) => board.createCards({ kind: "instance", name: "lead" }, { cards: [{ title: `Card ${n}`, assignee: "dev-a" }] }).cards[0]!);
+    board.moveCard(dev, a.code, "claimed");
+    board.moveCard(dev, b.code, "claimed");
+    expect(() => board.moveCard(dev, c.code, "claimed")).toThrow(/at most 2 cards at a time/);
+    fm.fleetConfig = { defaults: {}, instances: { "dev-a": { board_cards_at_once: 3 } } };   // a fleet.yaml edit: the next claim
+    expect(board.moveCard(dev, c.code, "claimed").card.status).toBe("claimed");
+    fm.taskBoardWaker.stop();
+    scheduler.db.close();
+  });
 });

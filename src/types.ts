@@ -177,6 +177,12 @@ export interface InstanceConfig {
    */
   cross_instance_visibility?: "full" | "summary" | "hidden";
   /**
+   * #2303: how many task board cards handed to this instance it may have in progress at once (claiming another at the
+   * limit is refused). A whole number of at least 1; unset is 1. Cards it opened for itself never count. The fleet
+   * reads it at each claim; the daemon only keeps it current.
+   */
+  board_cards_at_once?: number;
+  /**
    * Detect a human-channel turn that ended without a delivered reply and ask
    * the agent to send one bounded recovery reply. Only capable backends use
    * this switch; evidence tracking remains active for reply/tool correctness.

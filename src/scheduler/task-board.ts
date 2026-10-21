@@ -401,6 +401,12 @@ function toDispatcher(input: DispatcherInput, actor: Actor): Dispatcher | null {
   const name = normalizeAssignee(input.name);
   return name ? { kind: "instance", name } : null;
 }
+/**
+ * A card an instance opened for itself and nobody handed out (its own review, its own notes): its own business, so it
+ * neither counts toward nor is held to the cards-at-once limit (#2303's busy-fleet check: a reviewer opens one per
+ * review and runs several). A sub task it splits off a card handed to it takes that card's dispatcher, so it counts.
+ */
+const openedForItself = (c: Card) => c.assignee !== null && c.createdBy === c.assignee && c.dispatcher === null;
 const isDispatcher = (card: Card, actor: Actor) => card.dispatcher?.kind === "instance" && !isPerson(actor) && card.dispatcher.name === actor.name;
 
 function normalizeAssignee(raw: string | null | undefined): string | null {
@@ -488,6 +494,7 @@ function toProject(r: Row): Project {
 
 export class TaskBoard {
   private listeners: Array<(change: BoardChange) => void> = [];
+  private cardLimit: (name: string) => number = () => 1;
   private pending: Array<{ code: string; uuid: string; actor: Actor; type: CardEventType; data: Record<string, unknown> }> = [];
   private projectsChanged = false;
   private notes: Note[] = [];
@@ -1253,7 +1260,25 @@ export class TaskBoard {
 
       // Back from blocked a reason has nothing else to be: it is the answer, a comment its assignee reads.
       const comment = options.comment ?? (from === "blocked" && to === "claimed" && reason ? reason : undefined);
-      if (card.kind === "main" && this.activeSubs(card.uuid).length) this.checkDerivedMove(card, actor, to, reason, { comment });
+      const derived = card.kind === "main" && this.activeSubs(card.uuid).length > 0;
+      // A dispatcher's answer does not start work its assignee has no room for (#2303 review): the answer is kept on the
+      // card as a comment the assignee reads, and the card waits, blocked, until the assignee resumes it.
+      if (from === "blocked" && to === "claimed" && !derived && card.assignee && card.assignee !== actor.name && isDispatcher(card, actor) && this.isOnBoard(card)) {
+        this.checkAnswer(card, comment);
+        const busy = this.busyWith(card, card.assignee);
+        if (busy.length) {
+          const text = checkText("the comment", comment!, CARD_LIMITS.comment);
+          this.entry(card, "comment", actor, text);
+          this.event(actor, card, "commented", { text });
+          card.version++;
+          card.updatedAt = this.nowIso();
+          this.save(card);
+          const codes = busy.map((c) => c.code).join(", ");
+          this.say("answer_kept", [card.assignee, codes, card.code], `${card.assignee} is working on ${codes}: your answer is on ${card.code} as a comment, and it stays blocked until ${card.assignee} resumes it`);
+          return { card, from, ...this.spoken() };
+        }
+      }
+      if (derived) this.checkDerivedMove(card, actor, to, reason, { comment });
       else this.checkManualMove(card, actor, to, reason, { comment });
 
       this.applyMove(card, actor, to, reason, comment);
@@ -1613,15 +1638,44 @@ export class TaskBoard {
   }
 
   /**
-   * An instance works on one card of the board at a time: starting another (claiming, resuming a blocked one, taking
-   * one back from review) while one is in progress is refused. Blocked cards and main tasks that follow their sub tasks
-   * do not count; the `task` tool's own tasks are not limited, nor is a person.
+   * An instance works on one card of the board at a time — or as many as its `board_cards_at_once` allows: starting
+   * another (claiming, resuming a blocked one, taking one back from review) at its limit is refused. Blocked cards,
+   * main tasks that follow their sub tasks and cards it opened for itself do not count; the `task` tool's own tasks and
+   * cards it opened for itself are not limited, nor is a person.
    */
   private checkOneAtATime(card: Card, actor: Actor): void {
-    const busy = this.inProgress(actor.name).filter((c) => c.uuid !== card.uuid);
+    if (openedForItself(card)) return;
+    const busy = this.busyWith(card, actor.name);
     if (!busy.length) return;
     const list = busy.map((c) => `${c.code} "${c.title.length > 30 ? `${c.title.slice(0, 30)}…` : c.title}"`).join(", ");
-    throw new TaskBoardError("one_at_a_time", `you already have ${list} in progress. One card at a time: finish it first; if you cannot go on, move it to blocked with a reason, then start ${card.code}`);
+    const limit = this.limitOf(actor.name);
+    throw new TaskBoardError("one_at_a_time", limit === 1
+      ? `you already have ${list} in progress. One card at a time: finish it first; if you cannot go on, move it to blocked with a reason, then start ${card.code}`
+      : `you already have ${list} in progress: at most ${limit} cards at a time. Finish one first; if you cannot go on, move one to blocked with a reason, then start ${card.code}`);
+  }
+
+  /** The cards that keep `name` from starting `card` now: those it has in progress, once they reach its limit. */
+  private busyWith(card: Card, name: string): Card[] {
+    const counted = this.inProgress(name).filter((c) => c.uuid !== card.uuid && !openedForItself(c));
+    return counted.length >= this.limitOf(name) ? counted : [];
+  }
+
+  /** The fleet's `board_cards_at_once` for an instance: a whole number of at least 1, else 1. */
+  private limitOf(name: string): number {
+    const n = this.cardLimit(name);
+    return Number.isInteger(n) && n >= 1 ? n : 1;
+  }
+
+  /** For `mine`: the cards that count toward an instance's limit, when there are more than it allows (a person moved them). */
+  overLimit(name: string): { count: number; limit: number } | null {
+    const count = this.inProgress(name).filter((c) => !openedForItself(c)).length;
+    const limit = this.limitOf(name);
+    return count > limit ? { count, limit } : null;
+  }
+
+  /** How many handed-out cards each instance may have in progress (the fleet reads its config; default 1). */
+  setCardLimit(limit: (name: string) => number): void {
+    this.cardLimit = limit;
   }
 
   /** The board cards an instance works on itself right now (main tasks that follow their sub tasks aside). */
@@ -1790,8 +1844,9 @@ export class TaskBoard {
       if (!card) continue;
       const d = e.data as { from?: CardStatus; to?: CardStatus; auto?: boolean; reason?: string; assignee?: string | null; text?: string; cascade?: string };
       const dispatcherOf = () => (card.dispatcher?.kind === "instance" && card.dispatcher.name !== card.assignee ? card.dispatcher.name : null);
-      if (e.type === "created") add(card, d.assignee ?? null, "assigned", e.actor);
-      else if (e.type === "assigned") add(card, (d.to as string | null) ?? null, "assigned", e.actor);
+      // The `task` tool's own tasks are handed over with a message of their own (delegate_task): no notice besides.
+      if (e.type === "created") { if (this.isOnBoard(card)) add(card, d.assignee ?? null, "assigned", e.actor); }
+      else if (e.type === "assigned") { if (this.isOnBoard(card)) add(card, (d.to as string | null) ?? null, "assigned", e.actor); }
       else if (e.type === "commented") add(card, card.assignee, "comment", e.actor, d.text);
       else if (e.type === "moved") {
         if (d.to === "done") this.wakeReady(card, e.actor, add);
@@ -1830,7 +1885,10 @@ export class TaskBoard {
    * What of a wake still stands now (at the end of its write, and again when the fleet sends it): a finished card is
    * news only as a confirmation; a card that is no longer the instance's is not; a question only while the card is
    * blocked and the instance still handed it out; a wrap-up only while it waits unfinished; and an assignment or a
-   * comment only once the card can start (its "ready" wakes it then). null when nothing is left.
+   * comment only once the card can start (its "ready" wakes it then). What asks the instance to act holds only while
+   * it still can (#2303 review): "ready" while the card is open with nothing left to wait for, "start" and "answered"
+   * while it is in progress, "sent back" while it is back with the instance; a comment only while its assignee has not
+   * read it (its own write since showed it, as the `task` tool's answer). null when nothing is left.
    */
   wakeHolds(wake: Wake): Wake | null {
     const card = this.byUuid(wake.uuid);
@@ -1845,7 +1903,11 @@ export class TaskBoard {
       if (r === "decide") return handedOut && card.status === "blocked";
       if (!own) return false;
       if (r === "wrap_up") return card.status === "review" && wrapUpGap(card) !== null;
-      if (r === "assigned" || r === "comment") return !waiting;
+      if (r === "assigned") return !waiting;
+      if (r === "comment") return !waiting && this.newComments(card).length > 0;
+      if (r === "ready") return card.status === "open" && !waiting;
+      if (r === "start" || r === "answered") return card.status === "claimed";
+      if (r === "sent_back") return card.status === "claimed" || card.status === "open";
       return true;
     });
     // One piece of news says it all: the answer is the comment, a send-back outweighs the rest.

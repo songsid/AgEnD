@@ -2135,8 +2135,20 @@ export function handleWebRequest(
     if (gateway && method !== "GET") { json(res, 403, { error: "task_board_not_over_public_link", code: "forbidden", key: "not_over_public_link" }); return true; }
     // …nor shows the cards of instances kept out of sight (cross_instance_visibility: hidden).
     const fleet = ctx.fleetConfig as Parameters<typeof crossInstanceVisibility>[0];
-    const hidden = (c: { assignee: string | null; createdBy: string; dispatcher: { name: string } | null }) => !!gateway
-      && [c.assignee, c.createdBy, c.dispatcher?.name].some((n) => !!n && !!ctx.fleetConfig?.instances?.[n] && crossInstanceVisibility(fleet, n) === "hidden");
+    const hiddenName = (n: unknown) => !!gateway && typeof n === "string" && !!n && !!ctx.fleetConfig?.instances?.[n] && crossInstanceVisibility(fleet, n) === "hidden";
+    const hidden = (c: { assignee: string | null; createdBy: string; dispatcher: { name: string } | null }) => [c.assignee, c.createdBy, c.dispatcher?.name].some(hiddenName);
+    // #2303 review: what a visible card shows of the cards around it follows the same rule — its children, its main
+    // task (a search hit's too) — and so do the words and the history a hidden instance left on it.
+    const hiddenRef = (ref: string | null) => { const c = ref ? board.findCard(ref) : undefined; return !!c && hidden(c); };
+    const mentionsHidden = (v: unknown): boolean => (typeof v === "string" ? hiddenName(v) : !!v && typeof v === "object" && Object.values(v).some(mentionsHidden));
+    const shown = (d: ReturnType<typeof board.detail>): typeof d => !gateway ? d : {
+      ...d,
+      parent: d.card.parentId && hiddenRef(d.card.parentId) ? null : d.parent,
+      children: d.children.filter((c) => !hidden(c)),
+      comments: d.comments.filter((e) => !hiddenName(e.author)),
+      logs: d.logs.filter((e) => !hiddenName(e.author)),
+      history: d.history.filter((e) => !hiddenName(e.actor) && !mentionsHidden(e.data)),
+    };
     const card = /^\/ui\/tasks\/cards\/([^/]+)(?:\/(move|reorder))?$/.exec(path);
     const project = /^\/ui\/tasks\/projects\/(\d+)$/.exec(path);
     try {
@@ -2166,7 +2178,7 @@ export function handleWebRequest(
           card: views[i],
           match,
           project: c.projectId === null ? null : names.get(c.projectId) ?? null,
-          parentTitle: c.parent ? board.findCard(c.parent)?.title ?? null : null,
+          parentTitle: c.parent && !hiddenRef(c.parent) ? board.findCard(c.parent)?.title ?? null : null,
         }));
         json(res, 200, { results });
         return true;
@@ -2174,7 +2186,7 @@ export function handleWebRequest(
       if (method === "GET" && card && !card[2]) {
         const found = board.getCard(ref);
         if (hidden(found)) { json(res, 404, { error: "no such card", code: "not_found" }); return true; }
-        json(res, 200, board.detail(ref));
+        json(res, 200, shown(board.detail(ref)));
         return true;
       }
       if (method === "POST" && path === "/ui/tasks/cards") {
