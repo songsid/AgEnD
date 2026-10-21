@@ -9,8 +9,9 @@
 //   (UNDO.PAUSE_MS), a space, a different kind of edit (typing ↔ deleting), a paste, a line break or the caret moving
 //   elsewhere; an IME composition is one step, recorded when it ends.
 // - the browser's own Undo and Redo commands (its Edit menu, a context menu: a trusted beforeinput historyUndo /
-//   historyRedo) go through the same history: cancelled and done here. Where a browser cannot cancel them, its own undo
-//   goes ahead and what it leaves resets the field's history (never a step that would undo the undo).
+//   historyRedo) go through the same history: cancelled and done here. Where a browser cannot cancel them (or a script
+//   runs execCommand("undo"), with no beforeinput at all), its own undo goes ahead and what it leaves resets the field's
+//   history (never a step that would undo the undo).
 // - a script's change to a field's value the person should be able to undo (a completion, a pick, putting text back)
 //   calls recordEdit(field) first: the change becomes a step. Any other change (a clear after send, a reload after
 //   save) resets the field's history, as the browser's own undo does — a sent message is never undone back into the box.
@@ -152,7 +153,9 @@ export function installTextUndo({ doc = document, win = typeof window !== "undef
     if (!el) return;
     const h = historyFor(el);
     if (h.applying) return;
-    if (h.native) { h.native = false; h.undo = []; h.redo = []; h.kind = null; }   // the browser's own undo went ahead
+    // The browser's own undo or redo went ahead (one it could not cancel, or a script's execCommand("undo"), which has no
+    // beforeinput): what it left is a change of its own — the history starts afresh.
+    if (h.native || e.inputType === "historyUndo" || e.inputType === "historyRedo") { h.native = false; h.undo = []; h.redo = []; h.kind = null; }
     h.last = snap(el);                              // mid-composition too: the value the next edit starts from
   };
   const onCompStart = (e) => {

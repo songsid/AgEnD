@@ -82,6 +82,28 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
       await cmd("Undo"); seen.push(await val());
       ok(res, "nativeMenuMixed", JSON.stringify(seen) === JSON.stringify(["alpha ", "", "", "alpha ", "alpha one", "alpha "]), seen);
     } else res.nativeMenuMixed = "n/a (no CDP in WebKit)";
+    // 1c. A script's document.execCommand("undo"): the browser's own undo. Chromium sends only its input (no
+    // beforeinput): its undo goes ahead and the field's history starts afresh. WebKit sends a cancelable beforeinput:
+    // the field's own step runs. Either way Ctrl+Z after it never brings back text that undo took out.
+    {
+      await keys("Control+a", "Delete");
+      await page.waitForTimeout(1100);
+      await page.keyboard.type("alpha one");
+      // A string: tsx would add a helper to a named function the page does not have.
+      const events = await page.evaluate(`(() => {
+        const el = document.querySelector("#msgIn"), seen = [];
+        const on = (e) => { if (/^history/.test(e.inputType || "")) seen.push(e.type + ":" + e.inputType); };
+        el.addEventListener("beforeinput", on, true); el.addEventListener("input", on, true);
+        document.execCommand("undo");
+        el.removeEventListener("beforeinput", on, true); el.removeEventListener("input", on, true);
+        return seen;
+      })()`) as string[];
+      const afterNative = await val();
+      await keys(UNDO);
+      const afterKey = await val();
+      res.execCommandEvents = events;
+      ok(res, "execCommandUndo", afterNative !== "alpha one" && afterKey.length <= afterNative.length && afterNative.startsWith(afterKey), [events, afterNative, afterKey]);
+    }
     // 2. A slash completion and an argument fill.
     await keys("Control+a", "Delete");
     await page.keyboard.type("/co");

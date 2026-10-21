@@ -199,6 +199,17 @@ describe("the browser's own Undo and Redo (Edit menu, context menu)", () => {
   });
 });
 
+describe("the browser's own undo with no beforeinput (a script's execCommand(\"undo\"))", () => {
+  for (const kind of ["historyUndo", "historyRedo"]) it(`an input of ${kind} alone: the history starts afresh`, () => {
+    const { els: [a] } = setup();
+    type(a, "alpha one");
+    write(a, kind === "historyUndo" ? "alpha " : "alpha one!"); fire(a, "input", { inputType: kind });
+    const before = a.value;
+    const e = undo(a);
+    expect([e.defaultPrevented, a.value, historyOf(a).undo, historyOf(a).redo]).toEqual([true, before, [], []]);
+  });
+});
+
 describe("the keys mid-composition", () => {
   it("a browser that does not flag its composition events: still one step, and the history is not reset", () => {
     const { els: [a] } = setup();
