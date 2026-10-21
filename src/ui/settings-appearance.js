@@ -210,7 +210,7 @@ function AppIconCard() {
   const answered = (r, done) => {
     setBusy(false);
     if (!r.ok) {
-      const known = ["app_icon_too_large", "app_icon_not_png", "app_icon_unreadable", "app_icon_admin_only", "app_icon_needs_a_signed_in_person"];
+      const known = ["app_icon_too_large", "app_icon_not_png", "app_icon_unreadable", "app_icon_admin_only", "app_icon_needs_a_signed_in_person", "app_icon_busy", "app_icon_superseded", "app_icon_not_reset"];
       setError(known.includes(r.body && r.body.error) ? tn(`appIconError_${r.body.error}`, (r.body && r.body.detail) || "") : tn("appIconError_other", (r.body && r.body.error) || String(r.status)));
       return;
     }

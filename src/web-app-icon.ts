@@ -31,7 +31,7 @@ export interface AppIconState {
 
 export type AppIconResult = { ok: true; state: AppIconState } | { ok: false; status: 400 | 409 | 413 | 415 | 500 | 503; error: string; detail?: string };
 /** A source checked and made into its files (prepare), not yet in force (commit). */
-export interface AppIconPrepared { version: string; source: Uint8Array; files: Record<AppIconFile, Buffer> }
+export interface AppIconPrepared { version: string; source: Uint8Array; files: Record<AppIconFile, Buffer>; epoch: number }
 export type AppIconPrepareResult = { ok: true; prepared: AppIconPrepared } | Extract<AppIconResult, { ok: false }>;
 
 /** The conversion's bounds off the event loop: its time, and its worker's heap. */
@@ -41,35 +41,53 @@ const CONVERT_HEAP_MB = 256;
 /** Make the files from a source somewhere: a worker thread in the fleet (the default), in-process where a test says so. */
 export type AppIconConvert = (bytes: Uint8Array) => Promise<{ ok: true; files: Record<AppIconFile, Buffer> } | { ok: false; detail: string }>;
 
-/** The conversion in a one-off worker thread: its own heap, a deadline (terminated past it), never the fleet's loop. */
-export const convertInWorker: AppIconConvert = (bytes) => new Promise((resolve) => {
-  const copy = new Uint8Array(bytes).buffer;
-  const worker = import.meta.url.endsWith(".ts")
+/** What the conversion needs of a worker thread (a test gives one that ends when it says). */
+export interface IconWorker {
+  on(event: "message" | "error" | "exit", listener: (...args: any[]) => void): unknown;
+  terminate(): Promise<number>;
+}
+/** The fleet's worker: its own heap; TypeScript sources through tsx, the built .js otherwise. */
+export function spawnIconWorker(source: ArrayBuffer): IconWorker {
+  return import.meta.url.endsWith(".ts")
     ? new Worker(`const { workerData } = require("node:worker_threads"); import("tsx/esm/api").then(({ tsImport }) => tsImport(workerData.entry, workerData.entry));`,
-      { eval: true, execArgv: [], resourceLimits: { maxOldGenerationSizeMb: CONVERT_HEAP_MB }, workerData: { entry: new URL("./web-app-icon-worker.ts", import.meta.url).href, source: copy } })
-    : new Worker(new URL("./web-app-icon-worker.js", import.meta.url), { execArgv: [], resourceLimits: { maxOldGenerationSizeMb: CONVERT_HEAP_MB }, workerData: { source: copy }, transferList: [copy] });
-  let done = false;
-  const finish = (r: Awaited<ReturnType<AppIconConvert>>) => {
-    if (done) return;
-    done = true;
-    clearTimeout(timer);
-    void worker.terminate();
-    resolve(r);
-  };
-  const timer = setTimeout(() => finish({ ok: false, detail: "it took too long to read" }), APP_ICON_CONVERT_MS);
-  worker.on("message", (m: { ok: boolean; files?: Record<AppIconFile, Uint8Array>; detail?: string }) => {
-    if (!m || !m.ok || !m.files) { finish({ ok: false, detail: (m && m.detail) || "the image could not be read" }); return; }
-    const files = {} as Record<AppIconFile, Buffer>;
-    for (const name of APP_ICON_FILES) {
-      const f = m.files[name];
-      if (!f) { finish({ ok: false, detail: "the image could not be read" }); return; }
-      files[name] = Buffer.from(f.buffer, f.byteOffset, f.byteLength);
-    }
-    finish({ ok: true, files });
+      { eval: true, execArgv: [], resourceLimits: { maxOldGenerationSizeMb: CONVERT_HEAP_MB }, workerData: { entry: new URL("./web-app-icon-worker.ts", import.meta.url).href, source } })
+    : new Worker(new URL("./web-app-icon-worker.js", import.meta.url), { execArgv: [], resourceLimits: { maxOldGenerationSizeMb: CONVERT_HEAP_MB }, workerData: { source }, transferList: [source] });
+}
+
+/**
+ * The conversion in a one-off worker thread: its own heap, a deadline (terminated past it), never the fleet's loop.
+ * It settles only once the worker has exited (#2319 review): a timed-out or finished conversion whose thread is still
+ * winding down keeps its claim, so the store never runs two threads at once.
+ */
+export function convertWithWorker(spawn: (source: ArrayBuffer) => IconWorker = spawnIconWorker, deadlineMs = APP_ICON_CONVERT_MS): AppIconConvert {
+  return (bytes) => new Promise((resolve) => {
+    const worker = spawn(new Uint8Array(bytes).buffer);
+    let result: Awaited<ReturnType<AppIconConvert>> | null = null;
+    let exited = false;
+    const settle = () => { if (result && exited) resolve(result); };
+    const finish = (r: Awaited<ReturnType<AppIconConvert>>) => {
+      if (result) return;
+      result = r;
+      clearTimeout(timer);
+      if (!exited) void worker.terminate().catch(() => { /* its exit still settles */ });
+      settle();
+    };
+    const timer = setTimeout(() => finish({ ok: false, detail: "it took too long to read" }), deadlineMs);
+    worker.on("message", (m: { ok: boolean; files?: Record<AppIconFile, Uint8Array>; detail?: string }) => {
+      if (!m || !m.ok || !m.files) { finish({ ok: false, detail: (m && m.detail) || "the image could not be read" }); return; }
+      const files = {} as Record<AppIconFile, Buffer>;
+      for (const name of APP_ICON_FILES) {
+        const f = m.files[name];
+        if (!f) { finish({ ok: false, detail: "the image could not be read" }); return; }
+        files[name] = Buffer.from(f.buffer, f.byteOffset, f.byteLength);
+      }
+      finish({ ok: true, files });
+    });
+    worker.on("error", () => finish({ ok: false, detail: "the image could not be read" }));
+    worker.on("exit", () => { exited = true; finish({ ok: false, detail: "the image could not be read" }); settle(); });
   });
-  worker.on("error", () => finish({ ok: false, detail: "the image could not be read" }));
-  worker.on("exit", () => finish({ ok: false, detail: "the image could not be read" }));
-});
+}
+export const convertInWorker: AppIconConvert = convertWithWorker();
 
 /** The conversion on this thread (tests, tools): the same code, without the worker. */
 export const convertInProcess: AppIconConvert = async (bytes) => {
@@ -104,6 +122,8 @@ export class AppIconStore {
   /** One conversion at a time: a second upload meanwhile is told to wait (409). */
   private converting = false;
   private closed = false;
+  /** Moved by every reset: an icon prepared before it is no longer the person's latest wish, and is not used. */
+  private epoch = 0;
 
   constructor(private readonly dataDir: string, private readonly now: () => Date = () => new Date(), private readonly convert: AppIconConvert = convertInWorker) {}
 
@@ -147,10 +167,11 @@ export class AppIconStore {
     if (!isPng(bytes)) return { ok: false, status: 415, error: "app_icon_not_png", detail: "a PNG image (the page converts JPG and WebP)" };
     if (this.converting) return { ok: false, status: 409, error: "app_icon_busy", detail: "another icon is being made" };
     this.converting = true;
+    const epoch = this.epoch;
     try {
       const made = await this.convert(bytes);
       if (!made.ok) return { ok: false, status: 400, error: "app_icon_unreadable", detail: made.detail };
-      return { ok: true, prepared: { version: createHash("sha256").update(bytes).digest("hex").slice(0, 16), source: bytes, files: made.files } };
+      return { ok: true, prepared: { version: createHash("sha256").update(bytes).digest("hex").slice(0, 16), source: bytes, files: made.files, epoch } };
     } finally {
       this.converting = false;
     }
@@ -159,6 +180,8 @@ export class AppIconStore {
   /** Switch to a prepared icon: its files under its version, then the pointer (last, atomically), then old versions go. */
   commit(prepared: AppIconPrepared, by: string): AppIconResult {
     if (this.closed) return { ok: false, status: 503, error: "app_icon_unavailable" };
+    // #2319 review: restored to the default while this one was being made — the later wish wins.
+    if (prepared.epoch !== this.epoch) return { ok: false, status: 409, error: "app_icon_superseded", detail: "the icon was reset meanwhile" };
     const { version } = prepared;
     const state: AppIconState = { version, updatedAt: this.now().toISOString(), by };
     try {
@@ -186,6 +209,7 @@ export class AppIconStore {
    * cannot be removed is a failure — nothing is pruned, so the icon in force keeps its files (#2308 review).
    */
   reset(): { ok: true } | { ok: false; status: 500; error: string; detail?: string } {
+    this.epoch++;
     try { unlinkSync(this.pointer); } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") return { ok: false, status: 500, error: "app_icon_not_reset", detail: (err as NodeJS.ErrnoException).code ?? "error" };
     }

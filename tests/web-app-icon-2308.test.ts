@@ -12,7 +12,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { AppIconStore, APP_ICON_MAX_BYTES, convertInProcess, type AppIconConvert } from "../src/web-app-icon.js";
+import { AppIconStore, APP_ICON_MAX_BYTES, appIconSet, convertInProcess, convertWithWorker, type AppIconConvert } from "../src/web-app-icon.js";
 import { appManifest, handleWebIconRequest, isWebIconPath, useAppIconStore, withAppIconLinks } from "../src/web-icons.js";
 import { decodePng, encodePng, resize } from "../src/web-png.js";
 import { handleWebRequest } from "../src/web-api.js";
@@ -378,5 +378,83 @@ describe("#2308 review: resetting fails out loud", () => {
     }
     expect(store.reset()).toEqual({ ok: true });
     expect(store.current()).toBeNull();
+  });
+});
+
+describe("#2319 review R1: a reset is the latest wish; the claim lasts until the worker has gone", () => {
+  it("an upload being made when the icon is reset is not used afterwards; one not overtaken is (control)", async () => {
+    const h = held();
+    const store = new AppIconStore(stateDir(), undefined, h.convert);
+    const late = store.prepare(sourcePng());
+    await h.started;
+    expect(store.reset()).toEqual({ ok: true });
+    h.release();
+    const p = await late;
+    if (!p.ok) throw new Error("prepare failed");
+    expect(store.commit(p.prepared, "p")).toEqual({ ok: false, status: 409, error: "app_icon_superseded", detail: "the icon was reset meanwhile" });
+    expect(store.current()).toBeNull();
+    const q = await store.prepare(sourcePng(600));
+    if (!q.ok) throw new Error("prepare failed");
+    expect(store.commit(q.prepared, "p").ok).toBe(true);
+  });
+
+  it("over the route: Restore default while an upload is being made wins; the upload answers 409", async () => {
+    const h = held();
+    const store = new AppIconStore(stateDir(), undefined, h.convert);
+    const put = viaWeb("PUT", "/ui/app-icon", { body: sourcePng(), store });
+    await h.started;
+    const del = await viaWeb("DELETE", "/ui/app-icon", { store });
+    expect(del.status).toBe(200);
+    h.release();
+    expect([(await put).status, (await put).body.error]).toEqual([409, "app_icon_superseded"]);
+    expect(store.current()).toBeNull();
+  });
+
+  /** A worker that answers at once but exits only when the test says (its terminate() resolves later). */
+  function slowExit(opts: { answer: boolean }) {
+    const exits: Array<() => void> = [];
+    let alive = 0;
+    const spawn = (source: ArrayBuffer) => {
+      alive++;
+      const listeners: Record<string, Array<(...a: any[]) => void>> = { message: [], error: [], exit: [] };
+      const w = {
+        on: (e: string, l: (...a: any[]) => void) => { listeners[e]!.push(l); return w; },
+        terminate: () => new Promise<number>((resolve) => { exits.push(() => { alive--; for (const l of listeners.exit!) l(1); resolve(1); }); }),
+      };
+      if (opts.answer) setImmediate(() => { for (const l of listeners.message!) l({ ok: true, files: appIconSet(new Uint8Array(source)) }); });
+      return w;
+    };
+    return { spawn, exitAll: () => { for (const e of exits.splice(0)) e(); }, alive: () => alive };
+  }
+
+  it("finished: still busy until the worker has exited; then free (the claim follows the thread, not the answer)", async () => {
+    const w = slowExit({ answer: true });
+    const store = new AppIconStore(stateDir(), undefined, convertWithWorker(w.spawn, 60_000));
+    let settled = false;
+    const first = store.prepare(sourcePng()).then((r) => { settled = true; return r; });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(settled).toBe(false);                                           // answered, but its thread is still there
+    expect((await store.prepare(sourcePng(600))).status).toBe(409);
+    expect(w.alive()).toBe(1);
+    w.exitAll();
+    expect((await first).ok).toBe(true);
+    expect(w.alive()).toBe(0);
+    const next = store.prepare(sourcePng(600));
+    await new Promise((r) => setTimeout(r, 20));
+    w.exitAll();
+    expect((await next).ok).toBe(true);
+  });
+
+  it("timed out: the caller is told only once the worker has exited; no second worker meanwhile", async () => {
+    const w = slowExit({ answer: false });
+    const store = new AppIconStore(stateDir(), undefined, convertWithWorker(w.spawn, 20));
+    let settled = false;
+    const first = store.prepare(sourcePng()).then((r) => { settled = true; return r; });
+    await new Promise((r) => setTimeout(r, 80));                          // past the deadline: terminate() asked
+    expect(settled).toBe(false);
+    expect((await store.prepare(sourcePng(600))).status).toBe(409);
+    expect(w.alive()).toBe(1);
+    w.exitAll();
+    expect(await first).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "it took too long to read" });
   });
 });
