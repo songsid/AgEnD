@@ -614,7 +614,11 @@ function RestartLine() {
     let res;
     try { res = await restartRunner(pending.jobId); } catch { res = { ok: false }; }
     setBusy(false);
-    if (res && !res.ok && !res.stale && !res.busy) toast(t("app.restartRefused", (res.body && res.body.error) || t("app.failed")), false);
+    if (res && !res.ok && !res.stale && !res.busy) {
+      toast(t("app.restartRefused", (res.body && res.body.error) || t("app.failed")), false);
+      // #2378 review: a refusal may mean it is done already (restarted from another tab or the host): ask again.
+      refreshRestartPending();
+    }
   };
   return html`<div data-trust="status" class="conn restart-line lbar" role="status">
     <span>${t("app.restartWaiting", Math.max(1, pending.keys.length))}</span>

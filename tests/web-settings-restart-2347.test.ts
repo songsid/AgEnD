@@ -5,7 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 
 type Req = { method: string; url: string; key: string | null; body: any };
-type Answer = { status?: number; body?: unknown };
+type Answer = { status?: number; body?: unknown } | Promise<{ status?: number; body?: unknown }>;
 let reqs: Req[] = [];
 let routes: Array<(r: Req) => Answer | undefined> = [];
 const FLEET_ROW = (status: string) => ({ target: "fleet", kind: "restart", status });
@@ -17,7 +17,7 @@ async function fetchFake(url: string, init: any = {}) {
   reqs.push(r);
   let a: Answer | undefined;
   for (const route of routes) { a = route(r); if (a) break; }
-  const ans = a ?? (r.method === "GET" && url === "/api/settings/restart-pending" ? { body: { pending: false } } : { status: 404, body: {} });
+  const ans = await (a ?? (r.method === "GET" && url === "/api/settings/restart-pending" ? { body: { pending: false } } : { status: 404, body: {} }));
   const status = ans.status ?? 200;
   return { ok: status >= 200 && status < 300, status, json: async () => ans.body, text: async () => JSON.stringify(ans.body) };
 }
@@ -127,6 +127,22 @@ describe("#2347: saved changes waiting for an AgEnD restart", () => {
     expect(!!button("Restart now")).toBe(true);
   });
 
+  it("#2378 review: a refusal is asked about again — restarted elsewhere meanwhile, the line goes", async () => {
+    let refused = false;
+    routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: refused ? { pending: false } : PENDING } : undefined));
+    routes.push(r => (r.url === "/api/settings/restart-fleet" ? (refused = true, { status: 409, body: { error: "no fleet-level change is pending any more" } }) : undefined));
+    await mountShell();
+    await pressAndAnswer("Restart now", true);
+    await vi.waitFor(() => expect(line()).toBeNull());
+    expect(app.appStore.get().restartPending).toBeNull();
+  });
+  it("#2378 review: Restart now while an operation is in hand does nothing (busy) and asks the server nothing", async () => {
+    routes.push(r => (r.method === "PUT" && r.url === "/api/settings/fleet/defaults" ? new Promise<never>(() => {}) : undefined));
+    apply.startOperation([{ label: "Locale", impact: "fleet", request: { method: "PUT", url: "/api/settings/fleet/defaults", body: { locale: "zh-TW" } } }]);
+    await settle(4);
+    const res = await apply.restartPendingChanges("job9");
+    expect([res, posts()]).toEqual([{ ok: false, busy: true }, []]);
+  });
   it("a guest's page never asks", async () => {
     p.document.body.setAttribute("data-tier", "guest");
     routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: PENDING } : undefined));
