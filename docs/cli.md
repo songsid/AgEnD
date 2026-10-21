@@ -36,7 +36,8 @@ All other operations (create/delete/start instances, delegate tasks) are handled
 ```bash
 agend start                     # Start installed service; with no service, start a detached fleet
 agend stop                      # Stop AgEnD service
-agend restart                   # Restart AgEnD service
+agend restart                   # Restart AgEnD service through its manager (systemd unit, launchd job, or detached)
+agend restart <name>            # Restart one instance now; the fleet keeps running
 agend update                    # Update on the installed channel (an alpha stays on alpha, a beta on beta) and restart
 agend update --alpha            # Install from the alpha channel (previews of the next minor)
 agend update --beta             # Install from the beta channel
@@ -50,7 +51,7 @@ agend reload                    # Hot-reload config (sends SIGHUP to fleet proce
 
 ### Who stopped the fleet
 
-`agend stop`, `agend restart`, `agend update`, `agend fleet stop` and `agend fleet restart` (without an instance name) affect every instance, so each one writes a line to `restart-audit.log` in the AgEnD home **before** it acts: the time, the command, the chain of parent processes with their command lines, the working directory, whether stdin was a terminal, and `AGEND_INSTANCE_NAME` when it ran inside a fleet agent's session. Instance-level `fleet stop <name>` / `fleet restart <name>` are recorded too. When the fleet receives the resulting signal it names that request in its own log, so an unexpected restart can be traced even though `fleet.log` is rewritten by the restart.
+`agend stop`, `agend restart`, `agend update` and `agend fleet stop` (without an instance name) affect every instance, so each one writes a line to `restart-audit.log` in the AgEnD home **before** it acts: the time, the command, the chain of parent processes with their command lines, the working directory, whether stdin was a terminal, and `AGEND_INSTANCE_NAME` when it ran inside a fleet agent's session. Instance-level `fleet stop <name>` / `restart <name>` are recorded too. When the fleet receives the resulting signal it names that request in its own log, so an unexpected restart can be traced even though `fleet.log` is rewritten by the restart.
 
 Started from a fleet agent's session (`AGEND_INSTANCE_NAME` is set, and is inherited by everything the agent runs — including a `$(...)` or backtick inside a quoted argument), those commands are refused unless you add `--yes`; the refusal is recorded as well. From a test runner (`VITEST` / `NODE_ENV=test`) they are refused outright; `AGEND_ALLOW_TEST_FLEET_CONTROL=1` lifts that for a test that really targets a scratch fleet. `/update` and `/restart` sent by a fleet admin are recorded with who sent them.
 
@@ -61,9 +62,7 @@ agend fleet start               # Start all instances (manual mode)
 agend fleet start <name>        # Start a specific instance
 agend fleet stop                # Stop all instances
 agend fleet stop <name>         # Stop a specific instance
-agend fleet restart             # Graceful restart (wait for idle, same code)
-agend fleet restart <name>      # Restart a specific instance
-agend fleet restart --reload    # Full process restart to load new code
+agend fleet restart [<name>]    # Deprecated, removed in 2.4: runs `agend restart [<name>]` (--reload is ignored)
 agend fleet status              # Show instance status overview
 agend fleet status --json       # JSON output
 agend fleet logs                # (alias — prints "Use agend logs instead")

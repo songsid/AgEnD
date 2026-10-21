@@ -152,8 +152,9 @@ describe("(b) the fleet start-up step", () => {
     const text = readFileSync(cli, "utf8");
     const body = /function claimFleetSingleton\(\) \{([\s\S]*?)\n\}/.exec(text)?.[1] ?? "";
     expect(body).toMatch(/setProcessFleetLock\(acquireFleetLock[\s\S]*limitFleetCoreDumps\([\s\S]*return true;/);
-    // Both fleet entry points (fleet start, and the restart-with-new-code path) claim first.
-    expect(text.match(/if \(!claimFleetSingleton\(\)\)\s*return;\s*const \{ FleetManager \}/g)?.length).toBe(2);
+    // The one in-process fleet entry point (fleet start) claims first. #2356 removed the other one, the in-process
+    // takeover of `fleet restart --reload`: every full restart is `agend restart` now.
+    expect(text.match(/if \(!claimFleetSingleton\(\)\)\s*return;\s*const \{ FleetManager \}/g)?.length).toBe(1);
   });
 });
 

@@ -393,6 +393,7 @@ import {
   type RestartProgressTarget,
 } from "./restart-progress.js";
 import { launchFullRestartHelper, type FullRestartHelperHandle } from "./full-restart.js";
+import { fullReloadExitCode } from "./service-owner.js";
 import { SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE } from "./service-restart-selection.js";
 import { collectRedundantInstanceDefaultPaths } from "./fleet-yaml-slim.js";
 import { StormWindow, type StormSnapshot } from "./storm-window.js";
@@ -3202,8 +3203,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info(`Received SIGUSR1, initiating full restart (process reload)... ${describeSignalSource(this.dataDir, "SIGUSR1")}`);
     this.gracefulShutdownForReload()
       .then(() => {
-        this.logger.info("Full restart: shutdown complete, exiting for reload");
-        process.exit(0);
+        // #2356: under an AgEnD systemd unit a clean exit is a stop (Restart=on-failure); exit so the unit comes back.
+        let ownCgroup: string | null = null;
+        try { ownCgroup = readFileSync("/proc/self/cgroup", "utf-8"); } catch { /* not Linux */ }
+        const code = fullReloadExitCode(ownCgroup);
+        this.logger.info(code === 0
+          ? "Full restart: shutdown complete, exiting for reload"
+          : `Full restart: shutdown complete, exiting ${code} so the systemd unit restarts the fleet (#2356)`);
+        process.exit(code);
       })
       .catch(err => {
         this.logger.error({ err }, "Full restart: graceful shutdown failed");
@@ -7768,7 +7775,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onRestart = () => this.onGracefulRestartSignal(() => process.once("SIGUSR2", onRestart));
     process.once("SIGUSR2", onRestart);
 
-    // SIGUSR1: full process reload (graceful stop → exit → CLI restarts)
+    // SIGUSR1: full process reload (graceful stop → exit). Nothing in this AgEnD sends it any more (#2356); an older
+    // CLI or a hand-sent signal still may, and the exit code then lets the owning manager start the next fleet.
     process.once("SIGUSR1", () => this.onFullRestartSignal());
 
     // A SIGHUP may arrive after the PID/general is available but before the

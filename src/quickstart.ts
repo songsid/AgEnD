@@ -16,9 +16,10 @@ import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry, delayedSelfCommand } from "./cli-entry.js";
 import { dashboardLines, dashboardPort } from "./next-steps.js";
 
-/** `fleet restart --reload` in 2 s, on this Node and this CLI (C5: never `sh -c agend …` through PATH). */
+/** `agend restart` in 2 s, on this Node and this CLI (C5: never `sh -c agend …` through PATH): the service-aware
+ *  restart — systemd unit, launchd job or detached hand-off (#2356; never the in-process `fleet restart --reload`). */
 const delayedRestart = (): [string, string[]] => {
-  const c = delayedSelfCommand(2, ["fleet", "restart", "--reload"]);
+  const c = delayedSelfCommand(2, ["restart"]);
   return [c.command, c.args];
 };
 export { SETUP_GUIDE_URLS, setupGuideUrl } from "./setup-guide.js";
@@ -404,7 +405,7 @@ export function buildChannelConfig(p: PlatformResult): Record<string, any> {
 // ── Persona bot (secondary Discord bot in the same guild) ───
 
 /** Restart a running fleet to pick up config changes (systemd first, else a
- * detached `agend fleet restart --reload`). No-op if the fleet isn't running. */
+ * detached `agend restart`). No-op if the fleet isn't running. */
 async function restartFleetIfRunning(): Promise<void> {
   const pidPath = join(DATA_DIR, "fleet.pid");
   if (!existsSync(pidPath)) return;

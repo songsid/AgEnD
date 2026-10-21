@@ -382,135 +382,49 @@ fleet
 
 fleet
   .command("restart")
-  .description("Graceful restart: wait for instances to idle, then restart")
-  .argument("[instance]", "Specific instance to restart (immediate, no idle wait)")
-  .option("--reload", "Full process restart to load new code")
+  .description("Deprecated: use `agend restart` (removed in 2.4)")
+  .argument("[instance]", "Restart only this instance (now `agend restart <instance>`)")
+  .option("--reload", "Ignored: every full restart goes through `agend restart`")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .action(async (instance?: string, opts?: { reload?: boolean; yes?: boolean }) => {
     if (instance && opts?.reload) {
       console.error("--reload restarts the entire fleet process. Cannot combine with instance name.");
       process.exit(1);
     }
-    if (instance) recordInstanceControl(DATA_DIR, "instance-restart", instance);
-    else if (!gateFleetControl(DATA_DIR, opts?.reload ? "fleet-restart-reload" : "fleet-restart", { yes: opts?.yes })) process.exit(1);
-
-    if (instance) {
-      // Single instance restart via fleet's HTTP API
-      const { loadFleetConfig } = await import("./config.js");
-      const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
-      const port = fleet.health_port ?? 19280;
-      let token = "";
-      try { token = readFileSync(join(DATA_DIR, "web.token"), "utf-8").trim(); } catch { /* fleet may not be running */ }
-      try {
-        const resp = await fetch(`http://127.0.0.1:${port}/restart/${encodeURIComponent(instance)}`, {
-          method: "POST",
-          headers: token ? { "X-Agend-Token": token } : {},
-        });
-        const body = await resp.json() as Record<string, unknown>;
-        if (resp.ok) {
-          console.log(`Instance "${instance}" restarted (immediate)`);
-        } else {
-          console.error(`Restart failed: ${body.error ?? resp.statusText}`);
-          process.exit(1);
-        }
-      } catch (err) {
-        console.error(`Cannot connect to fleet (port ${port}). Is the fleet running?`);
-        process.exit(1);
-      }
-      return;
-    }
-
-    const pidPath = join(DATA_DIR, "fleet.pid");
-    if (!existsSync(pidPath)) {
-      console.error("Fleet is not running (no PID file found)");
-      process.exit(1);
-    }
-    const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
-    if (!Number.isInteger(pid) || pid <= 0) {
-      console.error(`Fleet PID file at ${pidPath} is corrupted`);
-      process.exit(1);
-    }
-
-    if (opts?.reload) {
-      // Check if managed by launchd — if so, just signal and let launchd restart
-      let managedByLaunchd = false;
-      try {
-        const ppid = parseInt(execFileSync("ps", ["-o", "ppid=", "-p", String(pid)]).toString().trim(), 10);
-        managedByLaunchd = ppid === 1;
-      } catch { /* ignore */ }
-
-      try {
-        process.kill(pid, "SIGUSR1");
-      } catch {
-        console.error("Failed to send reload signal (process may have exited)");
-        process.exit(1);
-      }
-
-      if (managedByLaunchd) {
-        console.log("Fleet is managed by launchd — sent reload signal.");
-        console.log("launchd will automatically restart with new code.");
-        // Wait briefly for old process to exit, then confirm new one started
-        const deadline = Date.now() + 6 * 60 * 1000;
-        while (Date.now() < deadline) {
-          try { process.kill(pid, 0); await new Promise(r => setTimeout(r, 500)); }
-          catch { break; }
-        }
-        // Wait for launchd to start new process
-        await new Promise(r => setTimeout(r, 2000));
-        if (existsSync(pidPath)) {
-          const newPid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
-          if (newPid !== pid) {
-            console.log(`New fleet process started (PID ${newPid})`);
-          }
-        }
-        return;
-      }
-
-      console.log("Full restart signal sent — waiting for fleet to stop...");
-
-      // Wait for old process to exit (up to 6 minutes: 5 min idle wait + buffer)
-      const deadline = Date.now() + 6 * 60 * 1000;
-      while (Date.now() < deadline) {
-        try {
-          process.kill(pid, 0); // check if alive
-          await new Promise(r => setTimeout(r, 500));
-        } catch {
-          break; // process exited
-        }
-      }
-      // Verify it actually exited
-      try {
-        process.kill(pid, 0);
-        console.error("Old fleet process still running after timeout — aborting");
-        process.exit(1);
-      } catch {
-        // Good, it exited
-      }
-
-      console.log("Old fleet stopped. Starting with new code...");
-
-      // Start new fleet in this process (new Node.js process = new code loaded)
-      if (!claimFleetSingleton()) return;
-      const { FleetManager } = await import("./fleet-manager.js");
-      const fm = new FleetManager(DATA_DIR);
-      const handlers = installFleetProcessHandlers({
-        dataDir: DATA_DIR, manager: fm, runtime: process, console,
-        describeSignal: () => describeSignalSource(DATA_DIR, "SIGTERM"),
-      });
-      if (handlers.stopping) return;
-      await fm.startAll(FLEET_CONFIG_PATH);
-      console.log("Fleet restarted with new code");
-    } else {
-      // Instance-only restart (existing behavior)
-      try {
-        process.kill(pid, "SIGUSR2");
-        console.log("Graceful restart signal sent — fleet will restart when all instances are idle");
-      } catch {
-        console.error("Failed to send restart signal (process may have exited)");
-        process.exit(1);
-      }
-    }
+    // #2356: no restart of its own any more. Its SIGUSR1 reload exited the fleet with 0 and took over in this process,
+    // so under a Restart=on-failure unit the fleet stayed down (and this process died with the unit's cgroup).
+    console.error(instance
+      ? `⚠ \`agend fleet restart <instance>\` is deprecated and goes away in 2.4 — running \`agend restart ${instance}\`.`
+      : "⚠ `agend fleet restart` is deprecated and goes away in 2.4 — running `agend restart` (the service-aware full restart).");
+    if (instance) await restartOneInstance(instance);
+    else await restartService({ yes: opts?.yes });
   });
+
+/** One instance, at once, through the running fleet's HTTP API; the fleet process keeps running. */
+async function restartOneInstance(instance: string): Promise<void> {
+  recordInstanceControl(DATA_DIR, "instance-restart", instance);
+  const { loadFleetConfig } = await import("./config.js");
+  const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
+  const port = fleet.health_port ?? 19280;
+  let token = "";
+  try { token = readFileSync(join(DATA_DIR, "web.token"), "utf-8").trim(); } catch { /* fleet may not be running */ }
+  try {
+    const resp = await fetch(`http://127.0.0.1:${port}/restart/${encodeURIComponent(instance)}`, {
+      method: "POST",
+      headers: token ? { "X-Agend-Token": token } : {},
+    });
+    const body = await resp.json() as Record<string, unknown>;
+    if (resp.ok) {
+      console.log(`Instance "${instance}" restarted (immediate)`);
+    } else {
+      console.error(`Restart failed: ${body.error ?? resp.statusText}`);
+      process.exit(1);
+    }
+  } catch {
+    console.error(`Cannot connect to fleet (port ${port}). Is the fleet running?`);
+    process.exit(1);
+  }
+}
 
 fleet
   .command("status")
@@ -1102,7 +1016,7 @@ async function doctorMcp(): Promise<void> {
     }
     if (!ipcOk) {
       issues.push("IPC ✗ (socket not responding)");
-      suggestions.push("agend fleet restart");
+      suggestions.push("agend restart");
     }
 
     // 2. MCP config check
@@ -2042,362 +1956,377 @@ program
 
 program
   .command("restart")
-  .description("Restart the AgEnD service (auto-detects systemd/launchd/detached)")
+  .description("Restart the AgEnD service (auto-detects systemd/launchd/detached), or one instance at once")
+  .argument("[instance]", "Restart only this instance, immediately (the fleet keeps running)")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .option("--force", "Restart even when the loaded service does not start this install on its selected Node (operators only)")
-  .action(async (opts: { yes?: boolean; force?: boolean }) => {
-    // --force overrides the C6 guard: an operator's own decision, never a fleet agent's or a fleet-internal spawn's.
-    if (opts.force && !forceAllowed()) {
-      console.error("  ✗ Not restarting: --force is for an operator's own shell, not a fleet agent session or the fleet's own commands. Nothing was stopped.");
-      process.exit(1);
+  .action(async (instance: string | undefined, opts: { yes?: boolean; force?: boolean }) => {
+    if (instance) {
+      if (opts.force) { console.error("--force applies to the whole service, not one instance."); process.exit(1); }
+      await restartOneInstance(instance);
+      return;
     }
-    if (!gateFleetControl(DATA_DIR, "restart", { yes: opts.yes })) process.exit(1);
-    // #1450 C6: what the restarted fleet must run, by this package's own selection (C2) — decided before anything stops.
-    const guard = await import("./restart-guard.js");
-    const guardDeps = {
-      realpath: (path: string) => { try { return realpathSync(path); } catch { return null; } },
-      isExecutable: (path: string) => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
-    };
-    const captureRun = (command: string, args: string[]) => {
-      const r = spawnSync(command, args, { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
-      return { status: r.status, signal: r.signal, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
-    };
-    const expectation = guard.expectedTuple();
-    /** Refuse (nothing stopped) unless the definition about to run is proven; `--force` overrides for an operator. */
-    const refuses = (judged: { ok: true } | { ok: false; reason: string; recovery?: string }): boolean => {
-      if (judged.ok) return false;
-      if (opts.force) { console.log(`  ⚠ --force: ${judged.reason}; restarting anyway.`); return false; }
-      console.error(`  ✗ Not restarting: ${judged.reason}. Nothing was stopped.`);
-      if (judged.recovery) console.error(`  To repair: ${judged.recovery}`);
-      process.exitCode = 1;
-      return true;
-    };
-    if (!expectation.ok && refuses(expectation)) return;
-    // Try each runtime environment in order and stop at the first that succeeds.
-    // Don't gate on fleet.pid: a fleet under systemd/launchd writes its pid in the
-    // service's own HOME, which may differ from what this command resolves (sudo,
-    // AGEND_HOME) — an absent pid file does NOT mean it's stopped. Ask the service
-    // manager first. This is the canonical restart the `update` flow spawns.
-    const {
-      detectPlatform,
-      getServicePath,
-      getSystemServicePath,
-      getSystemdServiceState,
-      systemdRestartOutcome,
-      ensureSystemdUnitHardening,
-      effectiveUnitDropIns,
-      unitCoredumpFilterState,
-      loadedUnitCheck,
-    } = await import("./service-installer.js");
-    const { spawn, spawnSync } = await import("node:child_process");
-    const plat = detectPlatform();
-    const pidPath = join(DATA_DIR, "fleet.pid");
+    await restartService(opts);
+  });
 
-    const run = (cmd: string): boolean => {
-      try { execSync(cmd, { stdio: "inherit", timeout: 15000 }); return true; }
-      catch { return false; }
-    };
+/**
+ * The one full restart (#2356): the service manager that owns the fleet restarts it — a systemd unit, the launchd job,
+ * or, with neither, a detached hand-off. `agend fleet restart` and quickstart come here too; nothing replaces the fleet
+ * in-process (a SIGUSR1 reload exits 0, which a Restart=on-failure unit leaves down).
+ */
+async function restartService(opts: { yes?: boolean; force?: boolean }): Promise<void> {
+  // --force overrides the C6 guard: an operator's own decision, never a fleet agent's or a fleet-internal spawn's.
+  if (opts.force && !forceAllowed()) {
+    console.error("  ✗ Not restarting: --force is for an operator's own shell, not a fleet agent session or the fleet's own commands. Nothing was stopped.");
+    process.exit(1);
+  }
+  if (!gateFleetControl(DATA_DIR, "restart", { yes: opts.yes })) process.exit(1);
+  // #1450 C6: what the restarted fleet must run, by this package's own selection (C2) — decided before anything stops.
+  const guard = await import("./restart-guard.js");
+  const guardDeps = {
+    realpath: (path: string) => { try { return realpathSync(path); } catch { return null; } },
+    isExecutable: (path: string) => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
+  };
+  const captureRun = (command: string, args: string[]) => {
+    const r = spawnSync(command, args, { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
+    return { status: r.status, signal: r.signal, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  };
+  const expectation = guard.expectedTuple();
+  /** Refuse (nothing stopped) unless the definition about to run is proven; `--force` overrides for an operator. */
+  const refuses = (judged: { ok: true } | { ok: false; reason: string; recovery?: string }): boolean => {
+    if (judged.ok) return false;
+    if (opts.force) { console.log(`  ⚠ --force: ${judged.reason}; restarting anyway.`); return false; }
+    console.error(`  ✗ Not restarting: ${judged.reason}. Nothing was stopped.`);
+    if (judged.recovery) console.error(`  To repair: ${judged.recovery}`);
+    process.exitCode = 1;
+    return true;
+  };
+  if (!expectation.ok && refuses(expectation)) return;
+  // Try each runtime environment in order and stop at the first that succeeds.
+  // Don't gate on fleet.pid: a fleet under systemd/launchd writes its pid in the
+  // service's own HOME, which may differ from what this command resolves (sudo,
+  // AGEND_HOME) — an absent pid file does NOT mean it's stopped. Ask the service
+  // manager first. This is the canonical restart the `update` flow spawns.
+  const {
+    detectPlatform,
+    getServicePath,
+    getSystemServicePath,
+    getSystemdServiceState,
+    systemdRestartOutcome,
+    ensureSystemdUnitHardening,
+    effectiveUnitDropIns,
+    unitCoredumpFilterState,
+    loadedUnitCheck,
+  } = await import("./service-installer.js");
+  const { spawn, spawnSync } = await import("node:child_process");
+  const plat = detectPlatform();
+  const pidPath = join(DATA_DIR, "fleet.pid");
 
-    // 1–2. Installed systemd service. Selection is centralized and tested so
-    // a service-owned fleet can never fall through to a detached duplicate.
-    const systemServiceInstalled = plat !== "macos" && getSystemServicePath() !== null;
-    const systemState = plat !== "macos" ? getSystemdServiceState("agend", false) : "stopped";
-    const userServiceInstalled = plat !== "macos" && !systemServiceInstalled && getServicePath() !== null;
-    const userState = plat !== "macos" && !systemServiceInstalled
-      ? getSystemdServiceState("com.agend.fleet", true)
-      : "stopped";
-    const systemdTarget = selectSystemdRestartTarget({
-      platform: plat,
-      systemServiceInstalled,
-      systemState,
-      userServiceInstalled,
-      userState,
-    });
-    if (systemdTarget) {
-      const scope = systemdTarget.user ? "user service" : "system service";
-      const statusCommand = systemdTarget.user
-        ? "systemctl --user status com.agend.fleet"
-        : "systemctl status agend";
-      if (systemdTarget.state === "unavailable") {
-        console.error(`Cannot reach the ${scope} manager; refusing a detached restart that could duplicate the fleet.`);
-        console.error(`Check: ${statusCommand}`);
-        process.exitCode = 1;
-        return;
-      }
-      // #908: before this restart's stop, so it already lets the fleet quit
-      // each CLI itself instead of systemd SIGTERMing them all at once. A
-      // restart that would still run on control-group (the line could not be
-      // read, written or loaded) is refused: it is exactly the restart that
-      // aborts kiro-cli into a core dump.
-      const unitPath = systemdTarget.user ? getServicePath() : getSystemServicePath();
-      const reloadCmd = systemdTarget.user ? "systemctl --user daemon-reload" : "systemctl daemon-reload";
-      // #1113 rides the same migration: crash-dump, start-limit and
-      // start-timeout directives are filled in alongside KillMode. KillMode
-      // and the loaded #1071 stop grace gate the restart; the others are informational.
-      // The drop-ins systemd applies to this unit, by its own account
-      // (DropInPaths), plus any on disk it has not loaded yet. Guessing the
-      // directories alone misses type-wide service.d and other load paths.
-      const scopeFlag = systemdTarget.user ? " --user" : "";
-      const loadedDropIns = (): string[] | null => {
-        try {
-          return execSync(`systemctl${scopeFlag} show -p DropInPaths --value ${systemdTarget.unit}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 })
-            .trim().split(/\s+/).filter(Boolean);
-        } catch { return null; }
-      };
-      const dropInsFor = (path: string, loaded: string[] | null) => effectiveUnitDropIns(path, loaded ?? []);
-      let hardening: Record<string, string> = {};
-      let outcome: "added" | "upgraded" | "present" | "custom" | "unreadable" | "unwritable" = "present";
-      if (unitPath) {
-        try {
-          const result = ensureSystemdUnitHardening(unitPath, { dropInPaths: dropInsFor(unitPath, loadedDropIns()) });
-          if (result.kind === "unreadable") outcome = "unreadable";
-          else {
-            hardening = result.directives;
-            outcome = result.directives.KillMode === "upgraded" ? "added" : result.directives.KillMode ?? "present";
-          }
-        } catch { outcome = "unwritable"; }
-      }
-      if (outcome === "unreadable" || outcome === "unwritable") {
-        console.error(`  ✗ Could not ${outcome === "unreadable" ? "read" : "update"} ${unitPath}, so this restart would still let systemd SIGTERM every CLI at once (kiro-cli core dumps, #908).`);
-        console.error(`    Not restarting. Add KillMode=mixed under [Service] in ${unitPath}, run \`${reloadCmd}\`, then \`agend restart\`.`);
-        process.exitCode = 1;
-        return;
-      }
-      if (outcome === "custom") console.log(`  ⚠ ${unitPath} sets its own KillMode; left as is. KillMode=mixed avoids kiro-cli core dumps on restart (#908).`);
-      const reloaded = run(reloadCmd);
-      if (outcome !== "custom") {
-        // Gate on what systemd has LOADED, not on what this run wrote: `agend
-        // update` runs the new binary's `install --no-activate` first, which
-        // already puts KillMode=mixed in the file, so a failed reload here
-        // would otherwise go unnoticed and stop the fleet with control-group.
-        const showCmd = `systemctl${systemdTarget.user ? " --user" : ""} show -p KillMode --value ${systemdTarget.unit}`;
-        let loaded = "";
-        try { loaded = execSync(showCmd, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }).trim(); } catch { /* unknown → refused below */ }
-        if (loaded !== "mixed") {
-          console.error(`  ✗ systemd has ${loaded ? `KillMode=${loaded}` : "an unknown KillMode"} loaded for ${systemdTarget.unit}${reloaded ? "" : ` (\`${reloadCmd}\` failed)`}, so it would still SIGTERM every CLI at once (kiro-cli core dumps, #908).`);
-          console.error(`    Not restarting. Make sure ${unitPath ?? "the unit"} has KillMode=mixed under [Service], run \`${reloadCmd}\`, then \`agend restart\`.`);
-          process.exitCode = 1;
-          return;
-        }
-      }
-      // Migration preserves operator overrides. Admission independently requires
-      // the actual loaded budget for EVERY selected systemd target, even if its
-      // unit file disappeared or no migration/classification was possible.
-      if (hardening.TimeoutStopSec === "custom") {
-        console.log(`  ⚠ ${unitPath} sets its own TimeoutStopSec; left as is. A short grace can cut off busy CLI batches (#1071).`);
-      }
-      let loadedStopGrace = "";
-      try { loadedStopGrace = execSync(`systemctl${scopeFlag} show -p TimeoutStopUSec --value ${systemdTarget.unit}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }).trim(); } catch { /* unknown refuses */ }
-      const milliseconds = systemdStopTimeoutMs(loadedStopGrace);
-      if (milliseconds === null || milliseconds < FLEET_STOP_TIMEOUT_MS) {
-        console.error(`  ✗ Not restarting: systemd has ${loadedStopGrace || "unknown"} stop grace loaded; this fleet needs ${FLEET_STOP_TIMEOUT_MS / 1000}s. Set TimeoutStopSec to at least ${FLEET_STOP_TIMEOUT_MS / 1000}s in ${unitPath ?? systemdTarget.unit}, run \`${reloadCmd}\`, and retry (#1071).`);
-        process.exitCode = 1;
-        return;
-      }
-      if (outcome === "added") {
-        console.log(`  ✓ ${unitPath}: added KillMode=mixed (the fleet stops its CLIs; systemd no longer signals them all at once)`);
-      }
-      const updated = Object.entries(hardening)
-        .filter(([key, state]) => key !== "KillMode" && (state === "added" || state === "upgraded"))
-        .map(([key]) => key);
-      if (updated.length > 0) console.log(`  ✓ ${unitPath}: updated ${updated.join(", ")} (#908/#1071/#1113/#2331: graceful stop, small crash dumps, bounded start, start limit, the fleet's ready signal)`);
-      // #2331: what systemd LOADED — a drop-in that refuses the fleet's READY is overridden by AgEnD's own, leftovers
-      // are named. Not a gate: the fleet still restarts, and the line says what will happen and what to remove.
-      for (const line of loadedUnitCheck({ user: systemdTarget.user, unit: systemdTarget.unit, unitPath })) console.log(line);
-      // Re-judged after the reload, against what systemd now applies: an
-      // operator's own mask (anywhere — main file, unit or type drop-in, or a
-      // trailing empty assignment that restores the inherited one) is warned
-      // about. Nothing about CoredumpFilter gates the restart.
-      let filterCustom = hardening.CoredumpFilter === "custom";
-      if (unitPath && hardening.CoredumpFilter) {
-        try { filterCustom = unitCoredumpFilterState(readFileSync(unitPath, "utf8"), dropInsFor(unitPath, loadedDropIns())) === "custom"; } catch { /* keep the pre-reload answer */ }
-      }
-      if (hardening.CoredumpFilter && !filterCustom) {
-        // Informational only — NOT a gate (#1113 hotfix). systemd 249 silently
-        // ignores CoredumpFilter= in a unit file (a transient `systemd-run -p`
-        // honours it, a reloaded unit file does not), so a loaded-value gate
-        // refused every restart there and stranded `agend update` on the old
-        // fleet. The fleet now sets /proc/self/coredump_filter to 0 itself at
-        // startup and in every CLI launch command; the unit line
-        // stays for systemd versions that do apply it.
-        let filter = "";
-        try { filter = execSync(`systemctl${scopeFlag} show -p CoredumpFilter --value ${systemdTarget.unit}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }).trim(); } catch { /* unknown */ }
-        if (!/^(?:0x)?0+$/i.test(filter)) {
-          console.log(`  ℹ systemd has ${filter ? `CoredumpFilter=${filter}` : "no CoredumpFilter"} loaded for ${systemdTarget.unit} (some systemd versions ignore it in unit files); the fleet sets coredump_filter=0 itself at startup (#1113).`);
-        }
-      }
-      if (filterCustom) console.log(`  ⚠ ${unitPath} sets its own CoredumpFilter; left as is. CoredumpFilter=0 keeps crash dumps to a few KB (#1113).`);
-      const { systemdPeerBus } = await import("./service-activation.js");
-      if (expectation.ok && refuses(guard.guardSystemd(captureRun, systemdTarget.user, systemdTarget.unit, expectation.expected, guardDeps, systemdPeerBus))) return;
-      // Clears the failed state AND the start-limit counter (#1113:
-      // StartLimitBurst=4 in 30min) for whichever unit this restart targets,
-      // so an operator's restart is never refused by the limit.
-      try {
-        execSync(`systemctl${systemdTarget.user ? " --user" : ""} reset-failed ${systemdTarget.unit}`, { stdio: "pipe", timeout: 5000 });
-      } catch { /* best effort */ }
-      const restartOutcome = systemdRestartOutcome(systemdTarget.unit, systemdTarget.user);
-      if (restartOutcome === "restarted") {
-        console.log(systemdTarget.user ? "Service restarted (user)." : "Service restarted (system).");
-        return;
-      }
-      // An installed service remains authoritative even when this invocation
-      // fails. Falling through would create a second detached fleet.
-      if (restartOutcome === "timed-out") {
-        // The job may still finish: the replacement fleet settles the update marker, not this command.
-        console.log(`  ⚠ ${scope} restart is still running after ${Math.round(SYSTEMD_RESTART_TIMEOUT_MS / 60_000)} minutes; systemd keeps the job going.`);
-        console.log(`  Check: ${statusCommand}`);
-        process.exitCode = SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE;
-        return;
-      }
-      console.error(`  ✗ ${scope} restart failed (systemctl reported an error). systemd may retry it on its own.`);
-      console.error(`  Check: ${statusCommand}`);
+  const run = (cmd: string): boolean => {
+    try { execSync(cmd, { stdio: "inherit", timeout: 15000 }); return true; }
+    catch { return false; }
+  };
+
+  // 1–2. Installed systemd service. Selection is centralized and tested so
+  // a service-owned fleet can never fall through to a detached duplicate.
+  const systemServiceInstalled = plat !== "macos" && getSystemServicePath() !== null;
+  const systemState = plat !== "macos" ? getSystemdServiceState("agend", false) : "stopped";
+  const userServiceInstalled = plat !== "macos" && !systemServiceInstalled && getServicePath() !== null;
+  const userState = plat !== "macos" && !systemServiceInstalled
+    ? getSystemdServiceState("com.agend.fleet", true)
+    : "stopped";
+  const systemdTarget = selectSystemdRestartTarget({
+    platform: plat,
+    systemServiceInstalled,
+    systemState,
+    userServiceInstalled,
+    userState,
+  });
+  if (systemdTarget) {
+    const scope = systemdTarget.user ? "user service" : "system service";
+    const statusCommand = systemdTarget.user
+      ? "systemctl --user status com.agend.fleet"
+      : "systemctl status agend";
+    if (systemdTarget.state === "unavailable") {
+      console.error(`Cannot reach the ${scope} manager; refusing a detached restart that could duplicate the fleet.`);
+      console.error(`Check: ${statusCommand}`);
       process.exitCode = 1;
       return;
     }
-    // 3. launchd (macOS). "Loaded" is launchctl print's own answer (113 = not loaded); nothing here may fall through
-    // to the detached restart once a job is known to be loaded.
-    if (plat === "macos") {
-      const uid = process.getuid?.() ?? 501;
-      const label = "com.agend.fleet";
-      const target = `gui/${uid}/${label}`;
-      const deps = planDeps();
-      const printed = deps.run("launchctl", ["print", target]);
-      if (printed.status === 0) {
-        const plistPath = getServicePath() ?? join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
-        // Path 2 (#1450 C6): a proven new plist waits on disk with its plan — exactly one bootout + bootstrap.
-        const { readPlan, admitPlan, planPath, planCarriedOut } = await import("./service-plan.js");
-        const recorded = opts.force ? null : readPlan(DATA_DIR, deps);
-        // #1871: an interrupted update's plan whose job launchd already runs (after `agend start`) is done: restart that
-        // job as an unchanged one (path 1) instead of refusing it for its new pid.
-        const plan = recorded && planCarriedOut(recorded, target, deps) ? null : recorded;
-        if (recorded && !plan) console.log("  ℹ launchd already runs the job an interrupted update planned; restarting it as it is.");
-        if (plan && expectation.ok) {
-          const pkgDir = dirname(dirname(expectation.expected.entry));
-          const admitted = admitPlan(plan, { target, expected: expectation.expected, pkgDir }, deps);
-          if (!admitted.ok) {
-            console.error(`  ✗ Not activating the planned launchd job: ${admitted.reason}. Nothing was stopped.`);
-            process.exitCode = 1;
-            return;
-          }
-          if (await handOffLaunchdActivation("restart")) return;
-          const { activateService } = await import("./service-activation.js");
-          const outcome = activateService({ kind: "launchd", label, plistPath: plan.plistPath, domain: `gui/${uid}` },
-            { bin: expectation.expected.entry, entry: expectation.expected.entry, node: expectation.expected.node, dir: pkgDir }, {
-              ...deps,
-              readFirstLine: path => deps.readFile(path)?.split("\n", 1)[0] ?? null,
-              isExecutable: path => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
-              refresh: () => ({ status: 0, signal: null, stdout: "", stderr: "" }),
-              restart: () => { throw new Error("planned launchd activation does not invoke restart"); },
-              log: message => console.log(message),
-              launchdPreimage: plan.preimage.plist,
-            });
-          deps.removeFile(planPath(DATA_DIR));
-          if (outcome.ok) { console.log("Service restarted (launchd loaded the planned job)."); return; }
-          console.error(outcome.message);
-          process.exitCode = 1;
-          return;
+    // #908: before this restart's stop, so it already lets the fleet quit
+    // each CLI itself instead of systemd SIGTERMing them all at once. A
+    // restart that would still run on control-group (the line could not be
+    // read, written or loaded) is refused: it is exactly the restart that
+    // aborts kiro-cli into a core dump.
+    const unitPath = systemdTarget.user ? getServicePath() : getSystemServicePath();
+    const reloadCmd = systemdTarget.user ? "systemctl --user daemon-reload" : "systemctl daemon-reload";
+    // #1113 rides the same migration: crash-dump, start-limit and
+    // start-timeout directives are filled in alongside KillMode. KillMode
+    // and the loaded #1071 stop grace gate the restart; the others are informational.
+    // The drop-ins systemd applies to this unit, by its own account
+    // (DropInPaths), plus any on disk it has not loaded yet. Guessing the
+    // directories alone misses type-wide service.d and other load paths.
+    const scopeFlag = systemdTarget.user ? " --user" : "";
+    const loadedDropIns = (): string[] | null => {
+      try {
+        return execSync(`systemctl${scopeFlag} show -p DropInPaths --value ${systemdTarget.unit}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 })
+          .trim().split(/\s+/).filter(Boolean);
+      } catch { return null; }
+    };
+    const dropInsFor = (path: string, loaded: string[] | null) => effectiveUnitDropIns(path, loaded ?? []);
+    let hardening: Record<string, string> = {};
+    let outcome: "added" | "upgraded" | "present" | "custom" | "unreadable" | "unwritable" = "present";
+    if (unitPath) {
+      try {
+        const result = ensureSystemdUnitHardening(unitPath, { dropInPaths: dropInsFor(unitPath, loadedDropIns()) });
+        if (result.kind === "unreadable") outcome = "unreadable";
+        else {
+          hardening = result.directives;
+          outcome = result.directives.KillMode === "upgraded" ? "added" : result.directives.KillMode ?? "present";
         }
-        // Path 1: an unchanged loaded job.
-        if (expectation.ok && refuses(guard.guardLaunchd(captureRun, target, plistPath, deps.readFile, expectation.expected, guardDeps))) return;
-        if (run(`launchctl kickstart -k ${target}`)) { console.log("Service restarted."); return; }
-        console.error(`  ✗ launchctl kickstart -k ${target} failed.`);
-        process.exitCode = 1;
-        return;
-      }
-      const { LAUNCHD_NOT_LOADED } = await import("./service-plan.js");
-      if (!LAUNCHD_NOT_LOADED.includes(printed.status ?? -1) || printed.signal !== null) {
-        console.error(`  ✗ Could not tell whether ${label} is loaded (launchctl print ${printed.signal ? `killed by ${printed.signal}` : `exited ${printed.status}`}); refusing a detached restart that could duplicate the fleet.`);
+      } catch { outcome = "unwritable"; }
+    }
+    if (outcome === "unreadable" || outcome === "unwritable") {
+      console.error(`  ✗ Could not ${outcome === "unreadable" ? "read" : "update"} ${unitPath}, so this restart would still let systemd SIGTERM every CLI at once (kiro-cli core dumps, #908).`);
+      console.error(`    Not restarting. Add KillMode=mixed under [Service] in ${unitPath}, run \`${reloadCmd}\`, then \`agend restart\`.`);
+      process.exitCode = 1;
+      return;
+    }
+    if (outcome === "custom") console.log(`  ⚠ ${unitPath} sets its own KillMode; left as is. KillMode=mixed avoids kiro-cli core dumps on restart (#908).`);
+    const reloaded = run(reloadCmd);
+    if (outcome !== "custom") {
+      // Gate on what systemd has LOADED, not on what this run wrote: `agend
+      // update` runs the new binary's `install --no-activate` first, which
+      // already puts KillMode=mixed in the file, so a failed reload here
+      // would otherwise go unnoticed and stop the fleet with control-group.
+      const showCmd = `systemctl${systemdTarget.user ? " --user" : ""} show -p KillMode --value ${systemdTarget.unit}`;
+      let loaded = "";
+      try { loaded = execSync(showCmd, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }).trim(); } catch { /* unknown → refused below */ }
+      if (loaded !== "mixed") {
+        console.error(`  ✗ systemd has ${loaded ? `KillMode=${loaded}` : "an unknown KillMode"} loaded for ${systemdTarget.unit}${reloaded ? "" : ` (\`${reloadCmd}\` failed)`}, so it would still SIGTERM every CLI at once (kiro-cli core dumps, #908).`);
+        console.error(`    Not restarting. Make sure ${unitPath ?? "the unit"} has KillMode=mixed under [Service], run \`${reloadCmd}\`, then \`agend restart\`.`);
         process.exitCode = 1;
         return;
       }
     }
-    // 4. Detached process tracked by fleet.pid (no service manager)
-    if (existsSync(pidPath)) {
-      const originalPidFile = readFileSync(pidPath, "utf-8");
-      const oldPid = Number(originalPidFile.trim());
-      let claimedStart: string | null = null;
-      const absence = (): DetachedOwnerState | null => {
-        try { process.kill(oldPid, 0); }
-        catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH" ? "gone" : "unknown"; }
-        return detachedProcessExited(oldPid) ? "gone" : null;
-      };
-      const inspect = (): DetachedOwnerState => {
-        try {
-          if (existsSync(pidPath) && readFileSync(pidPath, "utf-8") !== originalPidFile) return "unknown";
-        } catch { return "unknown"; }
-        const missing = absence();
-        if (missing) return missing;
-        const start = detachedProcessStart(oldPid);
-        if (start === null) return absence() ?? "unknown";
-        const command = readProcessCommandLine(oldPid);
-        if (!command) return absence() ?? (claimedStart !== null && start === claimedStart ? "waiting" : "unknown");
-        const fleet = isFleetStartCommandLine(command);
-        if (claimedStart !== null && start !== claimedStart) return fleet ? "unknown" : "other";
-        // The claimed process is still alive: rewritten argv is not exit proof.
-        if (claimedStart !== null && !fleet) return "unknown";
-        claimedStart ??= start;
-        return fleet ? "fleet" : "other";
-      };
-      if (!Number.isSafeInteger(oldPid) || oldPid <= 1) {
-        console.error("  ✗ Invalid detached fleet PID; nothing was stopped or started.");
-        process.exitCode = 1;
-        return;
-      }
-      const state = inspect();
-      if (state === "unknown") {
-        console.error("  ✗ Cannot confirm the detached fleet owner; nothing was stopped or started.");
-        process.exitCode = 1;
-        return;
-      }
-      if (state === "fleet") {
-        if (expectation.ok && refuses(guard.guardDetached(process.execPath, expectation.expected, guardDeps))) return;
-        console.log(`Stopping detached fleet (up to ${FLEET_STOP_TIMEOUT_MS / 60_000} minutes for graceful shutdown)...`);
-        try {
-          await stopDetachedOwner({
-            inspect,
-            signal: signal => {
-              if (signal === "SIGKILL") console.log("  ⚠ Grace expired; forcing the confirmed fleet owner to exit.");
-              // stdout can block. The helper's earlier proof cannot authorize a
-              // signal after that write; prove the exact owner again now.
-              const owner = inspect();
-              if (owner === "gone" || owner === "other") return;
-              if (owner !== "fleet") throw new Error("Detached fleet ownership changed before signalling; refusing the signal");
-              try { process.kill(oldPid, signal); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
-            },
-            now: () => performance.now(),
-            sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
-          });
-        } catch (error) {
-          console.error(`  ✗ ${(error as Error).message}`);
-          process.exitCode = 1;
-          return;
-        }
-        if (expectation.ok && refuses(guard.guardDetached(process.execPath, expectation.expected, guardDeps))) return;
-        const start = selfCommand(["fleet", "start"]);
-        // The runtime guard and command preparation can read files. Recheck
-        // publication AFTER both, immediately before cleanup/spawn. Unreadable
-        // publication cannot authorize deleting a newly published owner's file.
-        let publicationCurrent = false;
-        try { publicationCurrent = readFileSync(pidPath, "utf-8") === originalPidFile; }
-        catch (error) { publicationCurrent = (error as NodeJS.ErrnoException | null)?.code === "ENOENT"; }
-        if (!publicationCurrent) {
-          console.error("  ✗ Fleet owner changed or its publication is unreadable; refusing a duplicate restart.");
-          process.exitCode = 1;
-          return;
-        }
-        try { unlinkSync(pidPath); } catch { /* old owner already removed it */ }
-        const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
-        child.unref();
-        console.log("Fleet restarting in background.");
-        return;
-      }
-      // Stale pid file (process gone) — clean it up before declaring stopped.
-      try { unlinkSync(pidPath); } catch { /* best effort */ }
+    // Migration preserves operator overrides. Admission independently requires
+    // the actual loaded budget for EVERY selected systemd target, even if its
+    // unit file disappeared or no migration/classification was possible.
+    if (hardening.TimeoutStopSec === "custom") {
+      console.log(`  ⚠ ${unitPath} sets its own TimeoutStopSec; left as is. A short grace can cut off busy CLI batches (#1071).`);
     }
-    // 5. Nothing running anywhere
-    console.log("Fleet not running. Start with: agend start");
+    let loadedStopGrace = "";
+    try { loadedStopGrace = execSync(`systemctl${scopeFlag} show -p TimeoutStopUSec --value ${systemdTarget.unit}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }).trim(); } catch { /* unknown refuses */ }
+    const milliseconds = systemdStopTimeoutMs(loadedStopGrace);
+    if (milliseconds === null || milliseconds < FLEET_STOP_TIMEOUT_MS) {
+      console.error(`  ✗ Not restarting: systemd has ${loadedStopGrace || "unknown"} stop grace loaded; this fleet needs ${FLEET_STOP_TIMEOUT_MS / 1000}s. Set TimeoutStopSec to at least ${FLEET_STOP_TIMEOUT_MS / 1000}s in ${unitPath ?? systemdTarget.unit}, run \`${reloadCmd}\`, and retry (#1071).`);
+      process.exitCode = 1;
+      return;
+    }
+    if (outcome === "added") {
+      console.log(`  ✓ ${unitPath}: added KillMode=mixed (the fleet stops its CLIs; systemd no longer signals them all at once)`);
+    }
+    const updated = Object.entries(hardening)
+      .filter(([key, state]) => key !== "KillMode" && (state === "added" || state === "upgraded"))
+      .map(([key]) => key);
+    if (updated.length > 0) console.log(`  ✓ ${unitPath}: updated ${updated.join(", ")} (#908/#1071/#1113/#2331: graceful stop, small crash dumps, bounded start, start limit, the fleet's ready signal)`);
+    // #2331: what systemd LOADED — a drop-in that refuses the fleet's READY is overridden by AgEnD's own, leftovers
+    // are named. Not a gate: the fleet still restarts, and the line says what will happen and what to remove.
+    for (const line of loadedUnitCheck({ user: systemdTarget.user, unit: systemdTarget.unit, unitPath })) console.log(line);
+    // Re-judged after the reload, against what systemd now applies: an
+    // operator's own mask (anywhere — main file, unit or type drop-in, or a
+    // trailing empty assignment that restores the inherited one) is warned
+    // about. Nothing about CoredumpFilter gates the restart.
+    let filterCustom = hardening.CoredumpFilter === "custom";
+    if (unitPath && hardening.CoredumpFilter) {
+      try { filterCustom = unitCoredumpFilterState(readFileSync(unitPath, "utf8"), dropInsFor(unitPath, loadedDropIns())) === "custom"; } catch { /* keep the pre-reload answer */ }
+    }
+    if (hardening.CoredumpFilter && !filterCustom) {
+      // Informational only — NOT a gate (#1113 hotfix). systemd 249 silently
+      // ignores CoredumpFilter= in a unit file (a transient `systemd-run -p`
+      // honours it, a reloaded unit file does not), so a loaded-value gate
+      // refused every restart there and stranded `agend update` on the old
+      // fleet. The fleet now sets /proc/self/coredump_filter to 0 itself at
+      // startup and in every CLI launch command; the unit line
+      // stays for systemd versions that do apply it.
+      let filter = "";
+      try { filter = execSync(`systemctl${scopeFlag} show -p CoredumpFilter --value ${systemdTarget.unit}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }).trim(); } catch { /* unknown */ }
+      if (!/^(?:0x)?0+$/i.test(filter)) {
+        console.log(`  ℹ systemd has ${filter ? `CoredumpFilter=${filter}` : "no CoredumpFilter"} loaded for ${systemdTarget.unit} (some systemd versions ignore it in unit files); the fleet sets coredump_filter=0 itself at startup (#1113).`);
+      }
+    }
+    if (filterCustom) console.log(`  ⚠ ${unitPath} sets its own CoredumpFilter; left as is. CoredumpFilter=0 keeps crash dumps to a few KB (#1113).`);
+    const { systemdPeerBus } = await import("./service-activation.js");
+    if (expectation.ok && refuses(guard.guardSystemd(captureRun, systemdTarget.user, systemdTarget.unit, expectation.expected, guardDeps, systemdPeerBus))) return;
+    // Clears the failed state AND the start-limit counter (#1113:
+    // StartLimitBurst=4 in 30min) for whichever unit this restart targets,
+    // so an operator's restart is never refused by the limit.
+    try {
+      execSync(`systemctl${systemdTarget.user ? " --user" : ""} reset-failed ${systemdTarget.unit}`, { stdio: "pipe", timeout: 5000 });
+    } catch { /* best effort */ }
+    const restartOutcome = systemdRestartOutcome(systemdTarget.unit, systemdTarget.user);
+    if (restartOutcome === "restarted") {
+      console.log(systemdTarget.user ? "Service restarted (user)." : "Service restarted (system).");
+      return;
+    }
+    // An installed service remains authoritative even when this invocation
+    // fails. Falling through would create a second detached fleet.
+    if (restartOutcome === "timed-out") {
+      // The job may still finish: the replacement fleet settles the update marker, not this command.
+      console.log(`  ⚠ ${scope} restart is still running after ${Math.round(SYSTEMD_RESTART_TIMEOUT_MS / 60_000)} minutes; systemd keeps the job going.`);
+      console.log(`  Check: ${statusCommand}`);
+      process.exitCode = SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE;
+      return;
+    }
+    console.error(`  ✗ ${scope} restart failed (systemctl reported an error). systemd may retry it on its own.`);
+    console.error(`  Check: ${statusCommand}`);
     process.exitCode = 1;
-  });
+    return;
+  }
+  // 3. launchd (macOS). "Loaded" is launchctl print's own answer (113 = not loaded); nothing here may fall through
+  // to the detached restart once a job is known to be loaded.
+  if (plat === "macos") {
+    const uid = process.getuid?.() ?? 501;
+    const label = "com.agend.fleet";
+    const target = `gui/${uid}/${label}`;
+    const deps = planDeps();
+    const printed = deps.run("launchctl", ["print", target]);
+    if (printed.status === 0) {
+      const plistPath = getServicePath() ?? join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
+      // Path 2 (#1450 C6): a proven new plist waits on disk with its plan — exactly one bootout + bootstrap.
+      const { readPlan, admitPlan, planPath, planCarriedOut } = await import("./service-plan.js");
+      const recorded = opts.force ? null : readPlan(DATA_DIR, deps);
+      // #1871: an interrupted update's plan whose job launchd already runs (after `agend start`) is done: restart that
+      // job as an unchanged one (path 1) instead of refusing it for its new pid.
+      const plan = recorded && planCarriedOut(recorded, target, deps) ? null : recorded;
+      if (recorded && !plan) console.log("  ℹ launchd already runs the job an interrupted update planned; restarting it as it is.");
+      if (plan && expectation.ok) {
+        const pkgDir = dirname(dirname(expectation.expected.entry));
+        const admitted = admitPlan(plan, { target, expected: expectation.expected, pkgDir }, deps);
+        if (!admitted.ok) {
+          console.error(`  ✗ Not activating the planned launchd job: ${admitted.reason}. Nothing was stopped.`);
+          process.exitCode = 1;
+          return;
+        }
+        if (await handOffLaunchdActivation("restart")) return;
+        const { activateService } = await import("./service-activation.js");
+        const outcome = activateService({ kind: "launchd", label, plistPath: plan.plistPath, domain: `gui/${uid}` },
+          { bin: expectation.expected.entry, entry: expectation.expected.entry, node: expectation.expected.node, dir: pkgDir }, {
+            ...deps,
+            readFirstLine: path => deps.readFile(path)?.split("\n", 1)[0] ?? null,
+            isExecutable: path => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
+            refresh: () => ({ status: 0, signal: null, stdout: "", stderr: "" }),
+            restart: () => { throw new Error("planned launchd activation does not invoke restart"); },
+            log: message => console.log(message),
+            launchdPreimage: plan.preimage.plist,
+          });
+        deps.removeFile(planPath(DATA_DIR));
+        if (outcome.ok) { console.log("Service restarted (launchd loaded the planned job)."); return; }
+        console.error(outcome.message);
+        process.exitCode = 1;
+        return;
+      }
+      // Path 1: an unchanged loaded job.
+      if (expectation.ok && refuses(guard.guardLaunchd(captureRun, target, plistPath, deps.readFile, expectation.expected, guardDeps))) return;
+      if (run(`launchctl kickstart -k ${target}`)) { console.log("Service restarted."); return; }
+      console.error(`  ✗ launchctl kickstart -k ${target} failed.`);
+      process.exitCode = 1;
+      return;
+    }
+    const { LAUNCHD_NOT_LOADED } = await import("./service-plan.js");
+    if (!LAUNCHD_NOT_LOADED.includes(printed.status ?? -1) || printed.signal !== null) {
+      console.error(`  ✗ Could not tell whether ${label} is loaded (launchctl print ${printed.signal ? `killed by ${printed.signal}` : `exited ${printed.status}`}); refusing a detached restart that could duplicate the fleet.`);
+      process.exitCode = 1;
+      return;
+    }
+  }
+  // 4. Detached process tracked by fleet.pid (no service manager)
+  if (existsSync(pidPath)) {
+    const originalPidFile = readFileSync(pidPath, "utf-8");
+    const oldPid = Number(originalPidFile.trim());
+    let claimedStart: string | null = null;
+    const absence = (): DetachedOwnerState | null => {
+      try { process.kill(oldPid, 0); }
+      catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH" ? "gone" : "unknown"; }
+      return detachedProcessExited(oldPid) ? "gone" : null;
+    };
+    const inspect = (): DetachedOwnerState => {
+      try {
+        if (existsSync(pidPath) && readFileSync(pidPath, "utf-8") !== originalPidFile) return "unknown";
+      } catch { return "unknown"; }
+      const missing = absence();
+      if (missing) return missing;
+      const start = detachedProcessStart(oldPid);
+      if (start === null) return absence() ?? "unknown";
+      const command = readProcessCommandLine(oldPid);
+      if (!command) return absence() ?? (claimedStart !== null && start === claimedStart ? "waiting" : "unknown");
+      const fleet = isFleetStartCommandLine(command);
+      if (claimedStart !== null && start !== claimedStart) return fleet ? "unknown" : "other";
+      // The claimed process is still alive: rewritten argv is not exit proof.
+      if (claimedStart !== null && !fleet) return "unknown";
+      claimedStart ??= start;
+      return fleet ? "fleet" : "other";
+    };
+    if (!Number.isSafeInteger(oldPid) || oldPid <= 1) {
+      console.error("  ✗ Invalid detached fleet PID; nothing was stopped or started.");
+      process.exitCode = 1;
+      return;
+    }
+    const state = inspect();
+    if (state === "unknown") {
+      console.error("  ✗ Cannot confirm the detached fleet owner; nothing was stopped or started.");
+      process.exitCode = 1;
+      return;
+    }
+    if (state === "fleet") {
+      if (expectation.ok && refuses(guard.guardDetached(process.execPath, expectation.expected, guardDeps))) return;
+      console.log(`Stopping detached fleet (up to ${FLEET_STOP_TIMEOUT_MS / 60_000} minutes for graceful shutdown)...`);
+      try {
+        await stopDetachedOwner({
+          inspect,
+          signal: signal => {
+            if (signal === "SIGKILL") console.log("  ⚠ Grace expired; forcing the confirmed fleet owner to exit.");
+            // stdout can block. The helper's earlier proof cannot authorize a
+            // signal after that write; prove the exact owner again now.
+            const owner = inspect();
+            if (owner === "gone" || owner === "other") return;
+            if (owner !== "fleet") throw new Error("Detached fleet ownership changed before signalling; refusing the signal");
+            try { process.kill(oldPid, signal); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+          },
+          now: () => performance.now(),
+          sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+        });
+      } catch (error) {
+        console.error(`  ✗ ${(error as Error).message}`);
+        process.exitCode = 1;
+        return;
+      }
+      if (expectation.ok && refuses(guard.guardDetached(process.execPath, expectation.expected, guardDeps))) return;
+      const start = selfCommand(["fleet", "start"]);
+      // The runtime guard and command preparation can read files. Recheck
+      // publication AFTER both, immediately before cleanup/spawn. Unreadable
+      // publication cannot authorize deleting a newly published owner's file.
+      let publicationCurrent = false;
+      try { publicationCurrent = readFileSync(pidPath, "utf-8") === originalPidFile; }
+      catch (error) { publicationCurrent = (error as NodeJS.ErrnoException | null)?.code === "ENOENT"; }
+      if (!publicationCurrent) {
+        console.error("  ✗ Fleet owner changed or its publication is unreadable; refusing a duplicate restart.");
+        process.exitCode = 1;
+        return;
+      }
+      try { unlinkSync(pidPath); } catch { /* old owner already removed it */ }
+      const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
+      child.unref();
+      console.log("Fleet restarting in background.");
+      return;
+    }
+    // Stale pid file (process gone) — clean it up before declaring stopped.
+    try { unlinkSync(pidPath); } catch { /* best effort */ }
+  }
+  // 5. Nothing running anywhere
+  console.log("Fleet not running. Start with: agend start");
+  process.exitCode = 1;
+}
 
 program
   .command("setup")

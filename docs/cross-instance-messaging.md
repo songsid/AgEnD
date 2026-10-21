@@ -105,6 +105,6 @@ Fleet manager 維護 `sessionRegistry: Map<sessionName, instanceName>`；`mcp_re
 
 ## 重啟
 
-二進制是 `agend`（不是 `ccd`）。開發 daemon 功能改完 code：`npm run build`，再 `agend fleet restart --reload` 載入新代碼（`--reload` 不能與實例名併用；不加則是在進程內等閒置重啟）。
+二進制是 `agend`（不是 `ccd`）。開發 daemon 功能改完 code：`npm run build`，再 `agend restart` 載入新代碼（透過 systemd／launchd 重啟服務；`agend fleet restart --reload` 已淘汰，會改執行 `agend restart`，#2356）。
 
-`agend fleet restart`（全 fleet）會等每個 instance idle（各等最多 10 秒），整體最多等 **5 分鐘**，超時就強制重啟、不再無限等。Telegram/Discord 會收到開始與完成通知。
+聊天的 `/restart`（全 fleet、不加 `full`）會等每個 instance idle（各等最多 10 秒），整體最多等 **5 分鐘**，超時就強制重啟、不再無限等。Telegram/Discord 會收到開始與完成通知。

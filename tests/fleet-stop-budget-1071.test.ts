@@ -135,7 +135,8 @@ it("real stopAll + real busy-Kiro stop takes three batches, within the rendered 
 // and spawn are inert; it cannot launch a fleet or inspect the host's processes.
 function detachedCliRig(stop: (deps: import("../src/fleet-stop-budget.js").DetachedStopDeps) => Promise<void>, changedPidFile = false) {
   const source = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
-  const begin = source.indexOf("    // 4. Detached process tracked"), end = source.indexOf('\n  });', begin);
+  // #2356: the branch is the tail of restartService(), the body of `agend restart`.
+  const begin = source.indexOf("  // 4. Detached process tracked"), end = source.indexOf("\n}\n", begin);
   const branch = source.slice(begin, end);
   const ast = ts.createSourceFile("cli.ts", source, ts.ScriptTarget.ES2022, true);
   let refuses: ts.Expression | undefined;

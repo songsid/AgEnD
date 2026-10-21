@@ -37,7 +37,8 @@ Telegram fleet 選單列出 23 個指令，ClassicBot 選單列出 11 個；Disc
 ```bash
 agend start                     # 啟動已安裝的服務；沒有服務時啟動背景 fleet
 agend stop                      # 停止 AgEnD 服務
-agend restart                   # 重啟 AgEnD 服務
+agend restart                   # 透過服務管理器重啟 AgEnD（systemd unit、launchd job，或 detached）
+agend restart <name>            # 立即重啟單一實例；fleet 照常運作
 agend update                    # 依已安裝的頻道更新（alpha 留在 alpha、beta 留在 beta）並重啟服務
 agend update --alpha            # 從 alpha 頻道安裝（下一個次版本的預覽）
 agend update --beta             # 從 beta 頻道安裝
@@ -51,7 +52,7 @@ agend reload                    # 熱讀取配置（重新讀取 fleet.yaml，�
 
 ### 誰停了 fleet
 
-`agend stop`、`agend restart`、`agend update`、`agend fleet stop`、`agend fleet restart`（不指定實例時）會影響所有實例，所以每一個在動作**之前**都會在 AgEnD home 的 `restart-audit.log` 寫一行：時間、指令、父行程鏈與各自的指令列、工作目錄、stdin 是否為終端機，以及在 fleet agent session 內執行時的 `AGEND_INSTANCE_NAME`。指定實例的 `fleet stop <name>` / `fleet restart <name>` 也會記錄。fleet 收到隨後的訊號時，會在自己的 log 裡寫出這筆請求，所以即使 `fleet.log` 被重啟覆蓋，也查得到意外重啟的來源。
+`agend stop`、`agend restart`、`agend update`、`agend fleet stop`（不指定實例時）會影響所有實例，所以每一個在動作**之前**都會在 AgEnD home 的 `restart-audit.log` 寫一行：時間、指令、父行程鏈與各自的指令列、工作目錄、stdin 是否為終端機，以及在 fleet agent session 內執行時的 `AGEND_INSTANCE_NAME`。指定實例的 `fleet stop <name>` / `restart <name>` 也會記錄。fleet 收到隨後的訊號時，會在自己的 log 裡寫出這筆請求，所以即使 `fleet.log` 被重啟覆蓋，也查得到意外重啟的來源。
 
 從 fleet agent 的 session 內執行時（`AGEND_INSTANCE_NAME` 有值，且會被 agent 執行的所有東西繼承——包括被引號包住的參數裡的 `$(...)` 或反引號），這些指令會被拒絕，除非加上 `--yes`；拒絕本身也會記錄。從測試執行器（`VITEST` / `NODE_ENV=test`）執行則一律拒絕；真的要對測試用 fleet 執行的測試可設 `AGEND_ALLOW_TEST_FLEET_CONTROL=1`。fleet 管理員送出的 `/update`、`/restart` 會連同發送者一起記錄。
 
@@ -62,9 +63,7 @@ agend fleet start               # 啟動所有實例（手動模式）
 agend fleet start <name>        # 啟動指定實例
 agend fleet stop                # 停止所有實例
 agend fleet stop <name>         # 停止指定實例
-agend fleet restart             # 優雅重啟（等閒置，用相同代碼）
-agend fleet restart <name>      # 重啟指定實例（立即，不等閒置）
-agend fleet restart --reload    # 完整重啟進程以載入新代碼（不能與實例名併用）
+agend fleet restart [<name>]    # 已淘汰，2.4 移除：改執行 `agend restart [<name>]`（--reload 會被忽略）
 agend fleet status              # 顯示實例狀態概覽
 agend fleet status --json       # JSON 輸出
 agend fleet logs                # 別名——會提示改用 agend logs

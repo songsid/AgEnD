@@ -232,10 +232,9 @@ describe("through the real CLI (scratch AGEND_HOME, nothing to stop)", () => {
   }
   const outOfTestRunner = { VITEST: undefined, VITEST_WORKER_ID: undefined, VITEST_POOL_ID: undefined, NODE_ENV: undefined };
 
+  // `fleet restart` (#2356: now `agend restart`, which reaches a service manager) is refused behind inert stubs below.
   it.each([
     ["fleet", "stop"],
-    ["fleet", "restart"],
-    ["fleet", "restart", "--reload"],
   ])("`agend %s %s` from a fleet agent's session is refused before it does anything", async (...args) => {
     const result = await runCli(args, { ...outOfTestRunner, AGEND_INSTANCE_NAME: "agend-leader" });
     expect(result.code).toBe(1);
@@ -331,6 +330,14 @@ describe("the service-level commands, behind inert stubs", () => {
     const result = await run([command], "agend-leader");
     expect(result.code).toBe(1);
     expect(result.stderr).toContain(`Refusing \`agend ${command}\``);
+    expect(calls()).toBe("");
+  });
+
+  it.each([[["fleet", "restart"]], [["fleet", "restart", "--reload"]]])("`agend %j` from a fleet agent's session is refused before it reaches a service manager (#2356)", async args => {
+    const result = await run(args, "agend-leader");
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("Refusing `agend restart`");
+    expect(result.stderr).toContain("agend-leader");
     expect(calls()).toBe("");
   });
 

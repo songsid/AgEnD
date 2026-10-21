@@ -550,7 +550,7 @@ instances:
 
 ## 平順重啟 (Graceful restart)
 
-`agend fleet restart` 會對 fleet manager 送出 SIGUSR2。它會等所有 instance 都進入閒置（對話紀錄 10 秒沒有活動），再逐一重啟。另有 5 分鐘的逾時，避免被卡住的 instance 拖住。
+聊天裡的 `/restart`（不加 `full`）會在執行中的 fleet 進程內重啟各 instance：它會等所有 instance 都進入閒置（對話紀錄 10 秒沒有活動），再逐一重啟。另有 5 分鐘的逾時，避免被卡住的 instance 拖住。CLI 的整個 fleet 重啟是 `agend restart`，會透過服務管理器執行（#2356）；`agend fleet restart` 現在只是改執行 `agend restart`，2.4 會移除。
 
 ## Topic 圖示與閒置封存 (Topic icon + idle archive)
 
@@ -859,7 +859,7 @@ instance 啟動時會帶上 `-c model_provider="glm"`。provider 本身（`[mode
 
 ## CLI 使用體驗改善 (CLI UX improvements)
 
-- `agend fleet restart <name>` — 只重啟特定 instance，而不是整個 fleet
+- `agend restart <name>` — 只重啟特定 instance，而不是整個 fleet
 - `agend attach` — 模糊比對，有多個符合時顯示互動式的編號選單
 - `agend logs` — 獨立的日誌檢視器，會去除 ANSI 控制碼，支援 `-n/--lines` 和 `-f/--follow` 選項
 
