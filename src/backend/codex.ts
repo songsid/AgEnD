@@ -21,6 +21,7 @@ import { homedir } from "node:os";
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { basename, dirname, join, resolve } from "node:path";
+import { codexPackageWarning } from "./codex-package.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputUnavailableTransient, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import {
   credentialHomeSpec,
@@ -909,6 +910,8 @@ export class CodexBackend implements CliBackend {
   private lastLaunchResumes = true;
   /** Set by writeConfig when the status_line could not be made verifiable (#931). */
   private statusLineWarning: string | null = null;
+  /** #2357: set by buildCommand when the codex being launched lacks a package companion (codex-code-mode-host). */
+  private packageWarning: string | null = null;
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("codex");
@@ -1161,6 +1164,8 @@ export class CodexBackend implements CliBackend {
     let cmd: string;
     this.launchWarning = null;
     this.lastLaunchResumes = false;
+    // #2357: read-only (codex is never run here); a launch is not held for it — the operator is told once per launch.
+    this.packageWarning = codexPackageWarning(this.binaryPath);
     if (config.skipResume) {
       cmd = `${this.binaryPath} ${approvalFlag}`;
     } else {
@@ -2197,7 +2202,8 @@ export class CodexBackend implements CliBackend {
   }
 
   consumeLaunchWarning(): string | null {
-    const warnings = [this.statusLineWarning, this.launchWarning].filter((w): w is string => !!w);
+    const warnings = [this.packageWarning, this.statusLineWarning, this.launchWarning].filter((w): w is string => !!w);
+    this.packageWarning = null;
     this.statusLineWarning = null;
     this.launchWarning = null;
     return warnings.length ? warnings.join("\n") : null;

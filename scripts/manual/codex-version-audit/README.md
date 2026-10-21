@@ -38,6 +38,20 @@ dirs), and the rate-limit picker with AgEnD's nudge flag removed, at 150x45 and 
 `classify.ts summary <dirs…>` (or `each <dirs…>`) runs the production CodexBackend predicates over the frames: ready,
 busy, deliverable, stable-idle, the resume-loading transient, runtime and startup dialogs, and error patterns.
 
+## A package without codex-code-mode-host (#2357)
+
+`companion-missing.sh <package-dir> <label> [toolexec|tool|toolshell]` launches a codex package layout through
+AgEnD's production `writeConfig` + `buildCommand`. That is the directory holding `codex-package.json` and `bin/codex`,
+unpacked in scratch. The launch turns on code mode (`[features] code_mode`, `code_mode_host`, `code_mode_only`, through
+`gen-cmd.ts`'s `GEN_EXTRA_TOML`) and runs in a private tmux server inside `unshare -rn`. The mock's tool modes answer
+the first turn with one tool call, then text:
+- `toolexec`: the code-mode `exec` tool;
+- `tool`: AgEnD's MCP `reply`;
+- `toolshell`: `exec_command`.
+
+Delete `bin/codex-code-mode-host` from a hard-linked copy of the package to reproduce the incident. Captures and what
+they show are in `tests/fixtures/codex-0.163.0-companion-missing/SOURCES.md`.
+
 ## Process readiness and missed kill scans (#2320)
 
 The namespace test's fake emits `ready` from user code after its **final** exec. It then checks both cmdline and
