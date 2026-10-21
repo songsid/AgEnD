@@ -807,7 +807,7 @@ export function writeNotifyDropIn(unitPath: string): string {
 /**
  * #2331: a Type=notify unit must LOAD NotifyAccess=all, or systemd refuses the fleet's READY and restarts it when the
  * start times out. The main file is fixed by the hardening above; what is still wrong after a reload comes from a
- * drop-in AgEnD never wrote. Rather than touch the operator's file, AgEnD adds its own last-sorting drop-in, reloads
+ * drop-in AgEnD did not write. Rather than touch the operator's file, AgEnD adds its own last-sorting drop-in, reloads
  * and asks systemd again. `reload` reloads the manager; `write` writes the drop-in (tests).
  */
 export function ensureLoadedNotifyAccess(
@@ -851,7 +851,8 @@ export interface ServiceLeftover { path: string; detail: string }
 /**
  * #2331: service files AgEnD did not write, or no longer uses, that can change how the fleet starts: drop-ins that set
  * the directives above, a user unit beside the system unit that runs the fleet, units and plists under AgEnD's old
- * labels. Reported, never removed: AgEnD never writes drop-ins, and the others may be someone's on purpose.
+ * labels. Reported, never removed: AgEnD writes no drop-in but its own zz-agend-notify.conf, and the others may be
+ * someone's on purpose. They are named on every install, start and restart until they are gone (facts about the host).
  */
 export function serviceLeftovers(o: { home: string; dropIns: readonly string[]; systemUnit: string | null; userUnitPath?: string }): ServiceLeftover[] {
   const out: ServiceLeftover[] = [];
@@ -860,7 +861,7 @@ export function serviceLeftovers(o: { home: string; dropIns: readonly string[]; 
     let text: string;
     try { text = readFileSync(path, "utf8"); } catch { continue; }
     const set = LEFTOVER_KEYS.flatMap((key) => serviceAssignments(text, key).slice(-1).map((v) => `${key}=${v}`));
-    if (set.length) out.push({ path, detail: `a drop-in (AgEnD never writes one) sets ${set.join(", ")}; keep it only if you added it on purpose` });
+    if (set.length) out.push({ path, detail: `a drop-in sets ${set.join(", ")} (AgEnD writes none but its own ${NOTIFY_DROPIN}); keep it only if you added it on purpose` });
   }
   const userUnit = o.userUnitPath ?? join(o.home, ".config", "systemd", "user", `${SERVICE_LABEL}.service`);
   if (o.systemUnit && existsSync(userUnit)) {

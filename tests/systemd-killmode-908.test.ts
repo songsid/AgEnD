@@ -501,7 +501,9 @@ syncBuiltinESMExports();
     expect(readFileSync(join(`${unit}.d`, "override.conf"), "utf8")).toBe("[Service]\nNotifyAccess=main\n");   // the operator's, untouched
     expect(r.stdout).toContain("zz-agend-notify.conf: NotifyAccess=all — systemd had NotifyAccess=main loaded");
     // Reloaded after AgEnD's drop-in, before the restart.
-    const wrote = calls.findLastIndex(c => c.includes("daemon-reload"));
+    const reloads = calls.map((c: string, i: number) => (c.includes("daemon-reload") ? i : -1)).filter((i: number) => i >= 0);
+    const wrote = reloads[reloads.length - 1] ?? -1;
+    expect(wrote).toBeGreaterThanOrEqual(0);
     expect(wrote).toBeLessThan(calls.findIndex(c => /^--user restart/.test(c)));
   });
 

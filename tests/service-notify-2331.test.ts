@@ -143,8 +143,8 @@ describe("3. leftovers, named and never removed", () => {
     writeFileSync(join(d, "exec.conf"), "[Service]\nExecStart=\nExecStart=/old/agend fleet start\n");
     const dropIns = ["override.conf", "cpu.conf", NOTIFY_DROPIN, "exec.conf", "gone.conf"].map((n) => join(d, n));
     expect(serviceLeftovers({ home, dropIns, systemUnit: null })).toEqual([
-      { path: join(d, "override.conf"), detail: "a drop-in (AgEnD never writes one) sets NotifyAccess=main, TimeoutStartSec=infinity; keep it only if you added it on purpose" },
-      { path: join(d, "exec.conf"), detail: "a drop-in (AgEnD never writes one) sets ExecStart=/old/agend fleet start; keep it only if you added it on purpose" },
+      { path: join(d, "override.conf"), detail: "a drop-in sets NotifyAccess=main, TimeoutStartSec=infinity (AgEnD writes none but its own zz-agend-notify.conf); keep it only if you added it on purpose" },
+      { path: join(d, "exec.conf"), detail: "a drop-in sets ExecStart=/old/agend fleet start (AgEnD writes none but its own zz-agend-notify.conf); keep it only if you added it on purpose" },
     ]);
     writeFileSync(join(home, ".config", "systemd", "user", "com.agend.fleet.service"), service("Type=notify"));
     mkdirSync(join(home, "Library", "LaunchAgents"), { recursive: true });
@@ -184,7 +184,7 @@ describe("4. agend doctor: the unit as loaded, its files, the leftovers", () => 
     const by = (label: string) => report.checks.filter((c) => c.section === "Service" && c.label === label);
     expect(by("Loaded unit")).toEqual([expect.objectContaining({ status: "error", detail: expect.stringMatching(/^Type=notify NotifyAccess=main TimeoutStartSec=15min — systemd refuses the fleet's ready signal/) })]);
     expect(by("Unit files")[0]!.detail).toBe(`${home}/.config/systemd/user/com.agend.fleet.service, ${d}/override.conf`);
-    expect(by("Leftover")).toEqual([expect.objectContaining({ status: "warn", detail: expect.stringContaining(`${d}/override.conf: a drop-in (AgEnD never writes one) sets NotifyAccess=main`) })]);
+    expect(by("Leftover")).toEqual([expect.objectContaining({ status: "warn", detail: expect.stringContaining(`${d}/override.conf: a drop-in sets NotifyAccess=main (AgEnD writes none but its own zz-agend-notify.conf)`) })]);
   });
 
   it("a healthy unit: ok, no leftovers; systemctl unreadable: no loaded-unit lines (nothing guessed)", async () => {
