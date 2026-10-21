@@ -20523,8 +20523,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const next = this.nextFleetConfig();
     if (this.appliedFleetLevel === this.fleetLevelSignature(next)) return null;
     let job: ApplyJob | null = null;
+    // A job whose restart was asked for already has its row in flight ("running"), so it is never offered again.
     for (const candidate of this.applyJobs.all()) {
-      if (candidate.restart_key) continue;
       const row = candidate.targets.find(item => item.target === APPLY_FLEET_TARGET);
       if (row?.status === "restart-required" && (!job || candidate.startedAt >= job.startedAt)) job = candidate;
     }
