@@ -14,8 +14,9 @@ const immediate = new Set([
   "echo_to_channel", "status_emojis", "persona", "emoji", "hang_detector", "guardian", "watchdog", "timeout_minutes",
   "enabled", "startup_concurrency", "spawn_concurrency", "spawn_stagger_ms", "warm_cap", "idle_timeout",
   // #2346: offered by Settings (General → Defaults / Advanced, the agent dialog) and refused here before — a small set of
-  // values that changes how an agent logs, talks to its tools or shows bot-to-bot messages, not who may reach it.
-  "log_level", "agent_mode", "cross_instance_visibility",
+  // values that changes how an agent logs or talks to its tools, not who may reach it. (Bot-to-bot visibility is judged by
+  // direction below, #2346 review: it decides what the public link's board and search show.)
+  "log_level", "agent_mode",
   // #2346: defaults.startup.{concurrency, stagger_delay_ms} (its children, below), read at each spawn.
   "startup",
 ]);
@@ -183,8 +184,40 @@ function ordinary(path: readonly string[], old: unknown, next: unknown): boolean
 }
 function plainList(path: readonly string[], old: unknown, next: unknown): boolean {
   if (!PLAIN_LISTS.has(path.at(-1) ?? "") || namedEntry(path, -1) || path.some(key => SENSITIVE_SEGMENT.test(key))) return false;
+  // Only an agent's own list or the defaults' (#2346 review: never a child of an immediate key, e.g. startup.tags).
+  if (!(path.at(-2) === "defaults" || path.at(-3) === "instances")) return false;
   const strings = (v: unknown): boolean => v === undefined || v === null || (Array.isArray(v) && v.every(item => typeof item === "string"));
   return strings(old) && strings(next);
+}
+const VISIBILITY_RANK: Readonly<Record<string, number>> = { hidden: 0, summary: 1, full: 2 };
+const VISIBILITY = "cross_instance_visibility";
+/** The defaults' or an agent's bot-to-bot visibility: judged by visibilityWidening, not key by key. */
+const visibilityPath = (path: readonly string[]): boolean => path.at(-1) === VISIBILITY && (path.at(-2) === "defaults" || path.at(-3) === "instances");
+/** The fleet in a diff's root: `{ fleet }`, or a fleet (or the part of one a caller compares) itself. */
+function fleetIn(root: unknown): Record<string, any> | null {
+  if (!object(root)) return null;
+  return object(root.fleet) ? root.fleet : root;
+}
+/** What a change to bot-to-bot visibility widens, as summary lines (none: it only narrows, or leaves it). */
+function visibilityWidening(before: unknown, after: unknown): string[] {
+  const b = fleetIn(before), a = fleetIn(after), out: string[] = [];
+  if (!a) return out;
+  const valid = (v: unknown): v is string => typeof v === "string" && Object.hasOwn(VISIBILITY_RANK, v);
+  const fallback = (f: Record<string, any> | null): string => (valid(f?.defaults?.[VISIBILITY]) ? f!.defaults[VISIBILITY] : "full");
+  const own = (f: Record<string, any> | null, name: string): unknown => (object(f?.instances) && object(f!.instances[name]) ? f!.instances[name][VISIBILITY] : undefined);
+  const effective = (f: Record<string, any> | null, name: string): string => { const v = own(f, name); return valid(v) ? v : fallback(f); };
+  const line = (label: string, from: string, to: string) => out.push(`${settingsDisplay(label)}: ${settingsDisplay(from)} → ${settingsDisplay(to)}`);
+  // A value the validator would refuse is never applied quietly (the resolver would read it as unset).
+  const rawDefault = object(a.defaults) ? a.defaults[VISIBILITY] : undefined, wasDefault = object(b?.defaults) ? b!.defaults[VISIBILITY] : undefined;
+  if (rawDefault !== undefined && rawDefault !== null && !valid(rawDefault) && !same(rawDefault, wasDefault)) line(`defaults.${VISIBILITY}`, String(wasDefault ?? "default"), String(rawDefault));
+  else if (VISIBILITY_RANK[fallback(a)]! > VISIBILITY_RANK[fallback(b)]!) line(`defaults.${VISIBILITY} (in effect)`, fallback(b), fallback(a));
+  for (const name of Object.keys(object(a.instances) ? a.instances : {})) {
+    if (!b || !object(b.instances) || !object(b.instances[name])) continue;          // a new agent is confirmed whole
+    const raw = own(a, name);
+    if (raw !== undefined && raw !== null && !valid(raw) && !same(raw, own(b, name))) { line(`instances.${name}.${VISIBILITY}`, String(own(b, name) ?? "default"), String(raw)); continue; }
+    if (VISIBILITY_RANK[effective(a, name)]! > VISIBILITY_RANK[effective(b, name)]!) line(`instances.${name}.${VISIBILITY} (in effect)`, effective(b, name), effective(a, name));
+  }
+  return out;
 }
 /** A child of an immediate key that is not one of its known children (see IMMEDIATE_CHILDREN). */
 function unknownImmediateChild(path: readonly string[]): boolean {
@@ -244,6 +277,7 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     const direction = loosens(path, old, next);
     if (direction === false) return;                             // #1620: tightening applies directly
     if (direction === true) { section = section === "secret" ? section : "access"; add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "default")} → ${settingsDisplay(next ?? "default")}`); return; }
+    if (visibilityPath(path)) return;                                // judged as a whole, by direction (below)
     if (ordinary(path, old, next) || plainList(path, old, next)) return;
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));
@@ -301,6 +335,12 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
   };
   if (options.secret) add(`${settingsDisplay(options.secret.key)}: fingerprint ${fingerprint(options.secret.before)} → ${fingerprint(options.secret.after)}`);
   walk(before, after, []);
+  // #2346 review: bot-to-bot visibility decides what an agent's topic, the dashboard's search and the public link's board
+  // show of it. Judged as the mode each agent gets (its own, else the default, else full) and the default's own (it covers
+  // every name with no setting): narrowing applies directly; widening — or a value the validator would refuse — waits.
+  const widened = visibilityWidening(before, after);
+  if (widened.length && section !== "secret") section = "access";
+  for (const line of widened) add(line);
   if (!summary.length && options.force) add(`${settingsDisplay(options.operation)}: confirmed operation`);
   if (!summary.length) return null;
   summary.unshift(settingsDisplay(options.operation));

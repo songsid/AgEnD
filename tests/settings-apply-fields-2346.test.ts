@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { prepareSettingsEffect } from "../src/settings-effect.js";
 import { SettingsConfirmationError } from "../src/settings-confirmation.js";
+import { settingsChangeDiff } from "../src/settings-change.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 import { handleSettingsRequest } from "../src/settings-api.js";
 // @ts-expect-error — a JS module of the app, with no types
@@ -34,7 +35,7 @@ const agent = (patch: unknown) => gate("PATCH", "/api/settings/fleet/instances/d
 const defaults = (patch: unknown) => gate("PUT", "/api/settings/fleet/defaults", patch);
 
 describe("the six fields the gate refused", () => {
-  it("an agent's log level, agent mode, bot-to-bot visibility, tags and fallback models apply directly", () => {
+  it("an agent's log level, agent mode, tags and fallback models apply directly; hiding its bot-to-bot messages too", () => {
     expect([
       agent({ log_level: "debug" }), agent({ agent_mode: "cli" }), agent({ cross_instance_visibility: "hidden" }),
       agent({ tags: ["web", "review"] }), agent({ tags: [] }), agent({ model_failover: ["sonnet", "haiku"] }), agent({ model_failover: null }),
@@ -46,7 +47,7 @@ describe("the six fields the gate refused", () => {
   });
   it("the same fields as fleet defaults (General → Defaults / Advanced)", () => {
     expect([defaults({ log_level: "warn" }), defaults({ agent_mode: "cli" }), defaults({ cross_instance_visibility: "summary" })])
-      .toEqual(["direct", "direct", "direct"]);
+      .toEqual(["direct", "direct", "direct"]);                    // summary narrows the default's full
     const res = defaults({ tool_set: "minimal" });
     expect(Array.isArray(res) && res.some((l) => /tool\\?_set/.test(l) && /minimal/.test(l))).toBe(true);
   });
@@ -57,9 +58,52 @@ describe("the six fields the gate refused", () => {
   it("a plain list stays plain: an item that is not a string, or a list under an access key, is never applied quietly", () => {
     expect(String(agent({ tags: [{ name: "x" }] }))).toMatch(/^refused:/);
     expect(String(agent({ model_failover: [1, 2] }))).toMatch(/^refused:/);
+    // Only an agent's own list or the defaults': never a child of an immediate key (review P3).
+    expect([String(defaults({ startup: { tags: ["x"] } })), String(defaults({ startup: { model_failover: ["sonnet"] } }))].every((r) => r.startsWith("refused:"))).toBe(true);
     // An allowed-users list is an id list: confirmed, as before (not a plain list).
     const access = gate("PUT", "/api/settings/fleet/channels", [{ ...config().channels[0], access: { mode: "locked", allowed_users: ["1", "2"] } }]);
     expect(Array.isArray(access)).toBe(true);
+  });
+});
+
+describe("bot-to-bot visibility is judged by what each agent gets (review P2-1)", () => {
+  const modes = [undefined, "hidden", "summary", "full"] as const;
+  const fleetWith = (dflt: string | undefined, own: string | undefined) => {
+    const c: any = config();
+    if (dflt !== undefined) c.defaults.cross_instance_visibility = dflt;
+    if (own !== undefined) c.instances.dev.cross_instance_visibility = own; else delete c.instances.dev.cross_instance_visibility;
+    return c;
+  };
+  const rank = { hidden: 0, summary: 1, full: 2 } as Record<string, number>;
+  it("every change of the default and an agent's own mode: direct exactly when neither the agent's mode in effect nor the default's widens", async () => {
+    const { crossInstanceVisibility } = await import("../src/cross-instance-notice.js");
+    const wrong: string[] = [];
+    for (const d0 of modes) for (const o0 of modes) for (const d1 of modes) for (const o1 of modes) {
+      if (d0 === d1 && o0 === o1) continue;
+      const before = fleetWith(d0, o0), after = fleetWith(d1, o1);
+      const widens = rank[crossInstanceVisibility(after, "dev")]! > rank[crossInstanceVisibility(before, "dev")]!
+        || rank[d1 ?? "full"]! > rank[d0 ?? "full"]!;
+      // The whole fleet as the gate compares it (prepareSettingsEffect's last step): defaults and agent changed together.
+      let res: unknown;
+      try { res = settingsChangeDiff({ fleet: before, classic: {} }, { fleet: after, classic: {} }, { operation: "matrix" }) ? "confirm" : "direct"; }
+      catch { res = "refused"; }
+      if (res === "refused" || (res === "direct") === widens) wrong.push(`${d0}/${o0} → ${d1}/${o1}: ${res}${widens ? " (widens)" : ""}`);
+    }
+    expect(wrong).toEqual([]);
+  });
+  it("the agent dialog: hidden → full, and hidden → inherit (the default full), wait; full → hidden applies; a value the validator refuses waits", () => {
+    const hiddenDev = () => { const c: any = config(); c.instances.dev.cross_instance_visibility = "hidden"; return c; };
+    const toFull = gate("PATCH", "/api/settings/fleet/instances/dev", { cross_instance_visibility: "full" }, hiddenDev());
+    const toInherit = gate("PATCH", "/api/settings/fleet/instances/dev", { cross_instance_visibility: null }, hiddenDev());
+    expect([Array.isArray(toFull), Array.isArray(toInherit), agent({ cross_instance_visibility: "hidden" }), String(agent({ cross_instance_visibility: "everyone" }))])
+      .toEqual([true, true, "direct", "refused:invalid_settings_effect"]);
+    // Where no validator ran first (a caller comparing parts of a fleet), the diff itself never lets one through quietly.
+    const odd = settingsChangeDiff({ instances: { dev: {} } }, { instances: { dev: { cross_instance_visibility: "everyone" } } }, { operation: "part" });
+    expect(odd?.summary.some((l) => /everyone/.test(l))).toBe(true);
+  });
+  it("the defaults: hidden → full waits (it shows every agent that inherits it, and every name with no setting)", () => {
+    const hiddenDefault = () => { const c: any = config(); c.defaults.cross_instance_visibility = "hidden"; return c; };
+    expect(Array.isArray(gate("PUT", "/api/settings/fleet/defaults", { cross_instance_visibility: "full" }, hiddenDefault()))).toBe(true);
   });
 });
 
@@ -75,6 +119,21 @@ describe("the impact badges", () => {
     const schema = buildSettingsImpactSchema();
     expect([newConnectionImpact({ ...schema, connections_start_live: true }), newConnectionImpact({ ...schema, connections_start_live: false }),
       newConnectionImpact(undefined), impactOf(DEFAULT_SCHEMA, "fleet.channels")]).toEqual(["now", impacts["fleet.channels"], "instance", "instance"]);
+  });
+  it("the fleet answers as a live add would (review P2-2): a connection running and nothing else waiting for a restart", async () => {
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const P = FleetManager.prototype as any;
+    const fleet = (over: Record<string, unknown> = {}) => ({ ...config(), ...over }) as any;
+    const fm = (startup: any, current: any, adapters: number) => ({
+      startupFleetConfig: startup, fleetConfig: current, adapters: new Map(Array.from({ length: adapters }, (_, i) => [`a${i}`, {}])),
+      canHotAddConnections: P.canHotAddConnections,
+    });
+    const live = (f: any) => P.connectionsStartLive.call(f) as boolean;
+    const base = fleet();
+    const pendingLocale = fleet({ defaults: { ...base.defaults, locale: "zh-TW" } });
+    const pendingAccess = fleet({ channels: [{ ...base.channels[0], access: { mode: "open", allowed_users: [] } }] });
+    expect([live(fm(base, structuredClone(base), 1)), live(fm(base, pendingLocale, 1)), live(fm(base, pendingAccess, 1)), live(fm(base, structuredClone(base), 0))])
+      .toEqual([true, false, false, false]);
   });
   it("the schema says whether a new connection starts at once (from the fleet)", async () => {
     const ask = async (live: boolean | undefined) => {
