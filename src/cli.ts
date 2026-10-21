@@ -61,7 +61,7 @@ import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceCon
 import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { limitFleetCoreDumps } from "./coredump-filter.js";
-import { SYSTEMD_RESTART_TIMEOUT_MS } from "./service-installer.js";
+import { SYSTEMD_RESTART_TIMEOUT_MS, getServicePath, getSystemServicePath } from "./service-installer.js";
 import {
   selectSystemdRestartTarget,
   SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE,
@@ -74,6 +74,7 @@ import type { CpuProfile } from "./cpu-profile.js";
 import { requestCpuProfile } from "./profile-control.js";
 import { requestSettingsConfirmation, type SettingsInspection } from "./settings-control.js";
 import { canonicalCliEntry, selfCommand } from "./cli-entry.js";
+import { DIRECT_FLEET_START_ENV, redirectsToService, startedByServiceManager } from "./service-owner.js";
 import { handOff, shouldHandOff } from "./launchd-handoff.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
@@ -230,6 +231,9 @@ fleet
     if (process.getuid?.() === 0 && !process.env.IS_SANDBOX) {
       process.env.IS_SANDBOX = "1";
     }
+    const direct = process.env[DIRECT_FLEET_START_ENV] === "1";
+    delete process.env[DIRECT_FLEET_START_ENV];
+    if (!instance && redirectToService("start", [], direct)) return;
 
     if (instance) {
       // If fleet daemon is already running, delegate via HTTP API
@@ -319,6 +323,7 @@ fleet
   .argument("[instance]", "Specific instance to stop")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .action(async (instance?: string, opts?: { yes?: boolean }) => {
+    if (!instance && redirectToService("stop", opts?.yes ? ["--yes"] : [], false)) return;
     if (instance) recordInstanceControl(DATA_DIR, "instance-stop", instance);
     else if (!gateFleetControl(DATA_DIR, "fleet-stop", { yes: opts?.yes })) process.exit(1);
     if (instance) {
@@ -1874,7 +1879,14 @@ program
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .action(async (opts: { yes?: boolean }) => {
     if (!gateFleetControl(DATA_DIR, "stop", { yes: opts.yes })) process.exit(1);
-    const { getServicePath, stopService } = await import("./service-installer.js");
+    const { getServicePath, getSystemServicePath, stopService, stopSystemService } = await import("./service-installer.js");
+    // #2356: the system unit first, as `agend start` and `agend restart` choose it; a SIGTERM would only stop the process.
+    if (getSystemServicePath()) {
+      if (stopSystemService()) { console.log("Service stopped (system)."); return; }
+      console.error("Failed to stop the system service: systemctl stop agend (run it as root).");
+      process.exitCode = 1;
+      return;
+    }
     if (!getServicePath()) {
       // No service — try killing by PID
       const pidPath = join(DATA_DIR, "fleet.pid");
@@ -1912,7 +1924,7 @@ program
       const { spawn } = await import("node:child_process");
       // This Node on this CLI, not `sh -c "agend fleet start"` through PATH (#1450 C5).
       const start = selfCommand(["fleet", "start"]);
-      const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
+      const child = spawn(start.command, start.args, { detached: true, stdio: "ignore", env: { ...process.env, [DIRECT_FLEET_START_ENV]: "1" } });
       child.unref();
       console.log("Fleet starting in background.");
       return;
@@ -1928,6 +1940,25 @@ program
       process.exitCode = 1;
     }
   });
+
+/**
+ * #2356 (user decision): on a host with an AgEnD service installed, a hand-run `fleet start` / `fleet stop` would run or
+ * kill a fleet the service manager does not own — a duplicate beside the unit, or a stop systemd undoes. Run `agend
+ * start` / `agend stop` instead (this Node, this CLI; their own gate and exit code). The manager's own `fleet start`
+ * (the unit's ExecStart, the launchd job) and AgEnD's marked detached start go ahead directly; so does every host
+ * without a service (Docker, manual setups). Exits when it redirected; false to go on.
+ */
+function redirectToService(command: "start" | "stop", extra: string[], directMarker: boolean): boolean {
+  let ownCgroup: string | null = null;
+  try { ownCgroup = readFileSync("/proc/self/cgroup", "utf-8"); } catch { /* not Linux */ }
+  const byServiceManager = startedByServiceManager({ platform: process.platform, env: process.env, ownCgroup, ppid: process.ppid, launchdLabel: "com.agend.fleet" });
+  const installed = getSystemServicePath() ?? getServicePath();
+  if (!redirectsToService({ command, directMarker, byServiceManager, installedServicePath: installed })) return false;
+  console.error(`ℹ An AgEnD service is installed here (${installed}): running \`agend ${[command, ...extra].join(" ")}\` so the service manager owns the fleet.`);
+  const self = selfCommand([command, ...extra]);
+  const result = spawnSync(self.command, self.args, { stdio: "inherit" });
+  process.exit(result.status ?? 1);
+}
 
 /** One instance, at once, through the running fleet's HTTP API; the fleet process keeps running. */
 async function restartOneInstance(instance: string): Promise<void> {
@@ -2307,7 +2338,7 @@ program
           return;
         }
         try { unlinkSync(pidPath); } catch { /* old owner already removed it */ }
-        const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
+        const child = spawn(start.command, start.args, { detached: true, stdio: "ignore", env: { ...process.env, [DIRECT_FLEET_START_ENV]: "1" } });
         child.unref();
         console.log("Fleet restarting in background.");
         return;

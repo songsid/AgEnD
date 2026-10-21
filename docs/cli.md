@@ -58,11 +58,16 @@ Started from a fleet agent's session (`AGEND_INSTANCE_NAME` is set, and is inher
 ## Fleet management
 
 ```bash
-agend fleet start               # Start all instances (manual mode)
+agend fleet start               # Start all instances (manual mode); with a service installed, runs `agend start`
 agend fleet start <name>        # Start a specific instance
-agend fleet stop                # Stop all instances
+agend fleet stop                # Stop all instances; with a service installed, runs `agend stop`
 agend fleet stop <name>         # Stop a specific instance
 agend fleet restart [<name>]    # Deprecated, removed in 2.4: runs `agend restart [<name>]` (--reload is ignored)
+```
+
+On a host with an AgEnD service installed (a systemd user or system unit, or the launchd job), `agend fleet start` and `agend fleet stop` run by hand hand over to `agend start` / `agend stop` and say so, so the service manager keeps owning the fleet: no second, unmanaged fleet beside the service, and no stop that systemd undoes (#2356). The service manager's own `fleet start` (the unit's `ExecStart`, the launchd job) and hosts without a service (Docker, manual setups) start the fleet directly as before. With an instance name (`fleet start <name>`, `fleet stop <name>`) nothing changes. `agend stop` also stops a system unit (`agend.service`).
+
+```bash
 agend fleet status              # Show instance status overview
 agend fleet status --json       # JSON output
 agend fleet logs                # (alias — prints "Use agend logs instead")

@@ -1050,6 +1050,17 @@ export function startService(): boolean {
   }
 }
 
+/** #2356: `agend stop` on a system unit (root or a legacy install). */
+export function stopSystemService(): boolean {
+  if (detectPlatform() === "macos" || !getSystemServicePath()) return false;
+  try {
+    execSync("systemctl stop agend", { stdio: "inherit" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function startSystemService(): boolean {
   if (detectPlatform() === "macos" || !getSystemServicePath()) return false;
   try {

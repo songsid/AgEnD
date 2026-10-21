@@ -59,11 +59,16 @@ agend reload                    # 熱讀取配置（重新讀取 fleet.yaml，�
 ## Fleet 管理 (Fleet Management)
 
 ```bash
-agend fleet start               # 啟動所有實例（手動模式）
+agend fleet start               # 啟動所有實例（手動模式）；已安裝服務時改執行 `agend start`
 agend fleet start <name>        # 啟動指定實例
-agend fleet stop                # 停止所有實例
+agend fleet stop                # 停止所有實例；已安裝服務時改執行 `agend stop`
 agend fleet stop <name>         # 停止指定實例
 agend fleet restart [<name>]    # 已淘汰，2.4 移除：改執行 `agend restart [<name>]`（--reload 會被忽略）
+```
+
+在已安裝 AgEnD 服務的主機上（systemd 使用者或系統 unit，或 launchd job），手動執行 `agend fleet start`、`agend fleet stop` 會改交給 `agend start` / `agend stop` 並提示一行，讓服務管理器繼續管理 fleet：不會在服務旁邊多出一個沒人管的 fleet，也不會出現被 systemd 復原的停止（#2356）。服務管理器自己的 `fleet start`（unit 的 `ExecStart`、launchd job）以及沒有安裝服務的主機（Docker、手動設定）照舊直接啟動。指定實例名稱（`fleet start <name>`、`fleet stop <name>`）的用法不變。`agend stop` 也會停止系統 unit（`agend.service`）。
+
+```bash
 agend fleet status              # 顯示實例狀態概覽
 agend fleet status --json       # JSON 輸出
 agend fleet logs                # 別名——會提示改用 agend logs

@@ -57,7 +57,7 @@ describe("fleet process errors (#2191)", () => {
     expect(h.runtime.exit).toHaveBeenCalledWith(1);
   });
 
-  it("installs the same policy before startAll in both start and reload callbacks", () => {
+  it("installs the same policy before startAll in the fleet start callback", () => {
     const source = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
     const parsed = ts.createSourceFile("cli.ts", source, ts.ScriptTarget.Latest, true);
     const callbacks: ts.ArrowFunction[] = [];
@@ -66,7 +66,8 @@ describe("fleet process errors (#2191)", () => {
       ts.forEachChild(node, walk);
     }
     walk(parsed);
-    expect(callbacks).toHaveLength(2);
+    // #2356: `fleet start` is the only in-process start; the `fleet restart --reload` takeover is gone.
+    expect(callbacks).toHaveLength(1);
     for (const callback of callbacks) {
       const body = callback.getText(parsed);
       expect(body.indexOf("installFleetProcessHandlers({")).toBeLessThan(body.indexOf("await fm.startAll("));

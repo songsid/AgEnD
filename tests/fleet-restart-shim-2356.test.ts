@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AUDIT_FILE, type AuditEntry } from "../src/fleet-control-audit.js";
-import { FULL_RELOAD_UNDER_SYSTEMD_EXIT_CODE, agendSystemdUnitOf, fullReloadExitCode } from "../src/service-owner.js";
+import { FULL_RELOAD_UNDER_SYSTEMD_EXIT_CODE, agendSystemdUnitOf, fullReloadExitCode, redirectsToService, startedByServiceManager } from "../src/service-owner.js";
 
 describe("agendSystemdUnitOf / fullReloadExitCode", () => {
   const USER = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/com.agend.fleet.service\n";
@@ -41,6 +41,50 @@ describe("agendSystemdUnitOf / fullReloadExitCode", () => {
     expect(fullReloadExitCode(SYSTEM)).toBe(FULL_RELOAD_UNDER_SYSTEMD_EXIT_CODE);
     expect(fullReloadExitCode("0::/user.slice/user-1000.slice/session-3.scope\n")).toBe(0);
     expect(fullReloadExitCode(null)).toBe(0);
+  });
+});
+
+describe("fleet start / fleet stop by hand (#2356): who started it, and when they hand over", () => {
+  const UNIT = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/com.agend.fleet.service\n";
+  const SHELL = "0::/user.slice/user-1000.slice/session-3.scope\n";
+  const by = (o: Partial<Parameters<typeof startedByServiceManager>[0]>) =>
+    startedByServiceManager({ platform: "linux", env: {}, ownCgroup: SHELL, ppid: 4242, launchdLabel: "com.agend.fleet", ...o });
+
+  it("the unit's ExecStart (its own cgroup) and the launchd job (XPC_SERVICE_NAME, or launchd as parent) are the manager's", () => {
+    expect(by({ ownCgroup: UNIT })).toBe(true);
+    expect(by({ ownCgroup: "0::/system.slice/agend.service\n" })).toBe(true);
+    expect(by({ platform: "darwin", ownCgroup: null, env: { XPC_SERVICE_NAME: "com.agend.fleet" } })).toBe(true);
+    expect(by({ platform: "darwin", ownCgroup: null, ppid: 1 })).toBe(true);
+  });
+
+  it("a shell, a terminal, another job or an unreadable cgroup is a hand-run", () => {
+    expect(by({})).toBe(false);
+    expect(by({ ownCgroup: null })).toBe(false);
+    expect(by({ env: { XPC_SERVICE_NAME: "com.agend.fleet" } })).toBe(false);          // a launchd variable means nothing on Linux
+    expect(by({ ppid: 1 })).toBe(false);                                                // nor does init as parent
+    expect(by({ platform: "darwin", ownCgroup: null, env: { XPC_SERVICE_NAME: "com.apple.Terminal" } })).toBe(false);
+    expect(by({ platform: "darwin", ownCgroup: UNIT })).toBe(false);                    // a cgroup means nothing on macOS
+  });
+
+  it("hands over only with a service installed; the manager's own start and AgEnD's marked start go ahead", () => {
+    const go = (o: Partial<Parameters<typeof redirectsToService>[0]>) =>
+      redirectsToService({ command: "start", directMarker: false, byServiceManager: false, installedServicePath: "/u/com.agend.fleet.service", ...o });
+    expect(go({})).toBe(true);
+    expect(go({ byServiceManager: true })).toBe(false);
+    expect(go({ directMarker: true })).toBe(false);
+    expect(go({ installedServicePath: null })).toBe(false);                             // Docker, manual, detached hosts
+    expect(go({ command: "stop" })).toBe(true);
+    expect(go({ command: "stop", byServiceManager: true, directMarker: true })).toBe(true);   // no manager ever runs `fleet stop`
+    expect(go({ command: "stop", installedServicePath: null })).toBe(false);
+  });
+
+  it("AgEnD's own detached starts carry the marker, and fleet start drops it before anything it launches", () => {
+    const source = readFileSync(join(process.cwd(), "src", "cli.ts"), "utf8");
+    expect(source.match(/spawn\(start\.command, start\.args, \{ detached: true, stdio: "ignore", env: \{ \.\.\.process\.env, \[DIRECT_FLEET_START_ENV\]: "1" \} \}\)/g)).toHaveLength(2);
+    expect(source.match(/selfCommand\(\["fleet", "start"\]\)/g)).toHaveLength(2);
+    const at = source.indexOf("const direct = process.env[DIRECT_FLEET_START_ENV]");
+    expect(source.slice(at, at + 200)).toContain("delete process.env[DIRECT_FLEET_START_ENV];");
+    expect(at).toBeLessThan(source.indexOf("if (!claimFleetSingleton()) return;", at));
   });
 });
 
@@ -169,6 +213,77 @@ describe("`agend fleet restart` runs `agend restart` (inert stubs)", () => {
     const result = await run(["restart", "worker", "--force"], null);
     expect(result.code).toBe(1);
     expect(result.stderr).toContain("--force applies to the whole service");
+    expect(calls()).toBe("");
+  });
+});
+
+describe("`fleet start` / `fleet stop` by hand with a user unit installed (inert stubs)", () => {
+  let inert: string;
+  let home: string;
+  beforeEach(() => {
+    inert = mkdtempSync(join(tmpdir(), "agend-2356-svc-"));
+    home = join(inert, "home", ".agend");
+    mkdirSync(join(inert, "bin")); mkdirSync(home, { recursive: true });
+    // A user unit (Linux) and a LaunchAgent plist (macOS): `agend` finds "a service is installed" on either platform.
+    mkdirSync(join(inert, "home", ".config", "systemd", "user"), { recursive: true });
+    writeFileSync(join(inert, "home", ".config", "systemd", "user", "com.agend.fleet.service"), "[Service]\nExecStart=/x/agend fleet start\n");
+    mkdirSync(join(inert, "home", "Library", "LaunchAgents"), { recursive: true });
+    writeFileSync(join(inert, "home", "Library", "LaunchAgents", "com.agend.fleet.plist"), "<plist/>\n");
+    for (const command of ["systemctl", "launchctl", "loginctl", "journalctl", "sudo", "npm", "agend", "tmux"]) {
+      const path = join(inert, "bin", command);
+      writeFileSync(path, `#!/bin/sh\necho "${command} $@" >> "${join(inert, "calls")}"\nexit 1\n`);
+      chmodSync(path, 0o755);
+    }
+  });
+  afterEach(() => { rmSync(inert, { recursive: true, force: true }); });
+  const calls = (): string => existsSync(join(inert, "calls")) ? readFileSync(join(inert, "calls"), "utf8") : "";
+  const run = (args: string[], instance: string | null) => new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
+    execFile(process.execPath, ["--import", "tsx", join(process.cwd(), "src", "cli.ts"), ...args], {
+      env: { HOME: join(inert, "home"), AGEND_HOME: home, PATH: join(inert, "bin"), NOTIFY_SOCKET: "", ...(instance ? { AGEND_INSTANCE_NAME: instance } : {}) },
+      timeout: 30_000,
+    }, (error, stdout, stderr) => {
+      if (!error) resolve({ code: 0, stdout, stderr });
+      else if (typeof error.code === "number") resolve({ code: error.code, stdout, stderr });
+      else reject(error);
+    });
+  });
+  const service = process.platform === "darwin" ? "launchctl" : "systemctl";
+
+  // `fleet start` itself cannot be run from a test (the test process guard refuses any `agend fleet start`): its hand-over
+  // is the same redirectToService() as `fleet stop` below, decided by redirectsToService() above, and rehearsed live.
+  it("both hand-overs are the same helper, only without an instance name", () => {
+    const source = readFileSync(join(process.cwd(), "src", "cli.ts"), "utf8");
+    expect(source).toContain('if (!instance && redirectToService("start", [], direct)) return;');
+    expect(source).toContain('if (!instance && redirectToService("stop", opts?.yes ? ["--yes"] : [], false)) return;');
+  });
+
+  it("`fleet stop` runs `agend stop` with its gate: refused without --yes from an agent session, the service stopped with it", async () => {
+    const refused = await run(["fleet", "stop"], "agend-leader");
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain("Refusing `agend stop`");
+    expect(calls()).toBe("");
+    const confirmed = await run(["fleet", "stop", "--yes"], "agend-leader");
+    expect(confirmed.stderr).toContain("running `agend stop --yes`");
+    expect(calls()).toContain(process.platform === "darwin" ? "launchctl bootout" : "systemctl --user stop com.agend.fleet");
+    const audit = readFileSync(join(home, AUDIT_FILE), "utf8").trim().split("\n").map(line => JSON.parse(line) as AuditEntry);
+    expect(audit.map(entry => [entry.action, entry.outcome])).toEqual([["stop", "refused"], ["stop", "allowed"]]);
+  });
+
+  it("`fleet stop <name>` still goes to the running fleet's API, never to the service", async () => {
+    const hits: string[] = [];
+    const server: Server = createServer((req, res) => { hits.push(`${req.method} ${req.url}`); res.writeHead(200, { "Content-Type": "application/json" }).end("{}"); });
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", () => resolve()));
+    try {
+      const port = (server.address() as { port: number }).port;
+      writeFileSync(join(home, "fleet.yaml"), `health_port: ${port}\ninstances: {}\n`);
+      const stopped = await run(["fleet", "stop", "worker"], "agend-leader");
+      expect(stopped.stdout).toContain('Instance "worker" stopped');
+      expect(stopped.stderr).not.toContain("An AgEnD service is installed");
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+    expect(hits).toEqual(["POST /stop/worker"]);
     expect(calls()).toBe("");
   });
 });

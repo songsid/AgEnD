@@ -25,3 +25,33 @@ export const FULL_RELOAD_UNDER_SYSTEMD_EXIT_CODE = 75;
 export function fullReloadExitCode(ownCgroupText: string | null): number {
   return ownCgroupText !== null && agendSystemdUnitOf(ownCgroupText) ? FULL_RELOAD_UNDER_SYSTEMD_EXIT_CODE : 0;
 }
+
+/**
+ * #2356: AgEnD's own detached `fleet start` (from `agend start` with no service, or a detached `agend restart`) is
+ * marked so it starts directly; the fleet deletes the marker at once, so nothing it launches (an agent's shell) has it.
+ */
+export const DIRECT_FLEET_START_ENV = "AGEND_FLEET_START_DIRECT";
+
+/**
+ * This `fleet start` is the service manager's own: the AgEnD unit's ExecStart (the process is in that unit's cgroup),
+ * or the launchd job (launchd names the job in XPC_SERVICE_NAME, and is the parent). Anything else is a hand-run.
+ */
+export function startedByServiceManager(o: {
+  platform: NodeJS.Platform; env: NodeJS.ProcessEnv; ownCgroup: string | null; ppid: number; launchdLabel: string;
+}): boolean {
+  if (o.platform === "darwin") return o.env.XPC_SERVICE_NAME === o.launchdLabel || o.ppid === 1;
+  return o.ownCgroup !== null && agendSystemdUnitOf(o.ownCgroup) !== null;
+}
+
+/**
+ * #2356: does a no-instance `fleet start` / `fleet stop` hand over to `agend start` / `agend stop`? Only on a host with
+ * an AgEnD service installed, and never for the manager's own start or AgEnD's marked detached start. Nothing runs
+ * `fleet stop` for the manager (the units have no ExecStop), so a stop with a service installed always hands over.
+ */
+export function redirectsToService(o: {
+  command: "start" | "stop"; directMarker: boolean; byServiceManager: boolean; installedServicePath: string | null;
+}): boolean {
+  if (!o.installedServicePath) return false;
+  if (o.command === "stop") return true;
+  return !o.directMarker && !o.byServiceManager;
+}
