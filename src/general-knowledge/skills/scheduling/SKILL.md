@@ -36,6 +36,10 @@ background nudges the user shouldn't see:
 ```
 create_schedule({ cron: "*/30 * * * *", message: "check CI and self-report if red", silent: true })
 ```
+If you schedule silent work for yourself, failed or unconfirmed delivery is log-only:
+no `[system:delivery-outcome]` prompt or operator alert is sent. For an important
+heartbeat, check `delivery_status` or the logs yourself. Schedules from another
+instance retain their normal delivery notifications.
 
 ## Notes
 
