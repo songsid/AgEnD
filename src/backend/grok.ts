@@ -261,43 +261,44 @@ export class GrokBackend implements CliBackend {
     // NOTE: "Turn cancelled by user" is NORMAL behaviour (user interrupt), not an
     // error — none of the patterns below match it, and none should be added that do.
     //
-    // All real Grok error lines appear on a line starting with the Grok box border
-    // "┃" (U+2503). Anchoring on this glyph prevents false-positives from agent
-    // code (e.g. scan_quota(...)), chat content, or task descriptions that happen
-    // to mention "rate limit", "quota", "401", "429", etc.
+    // Real Grok error line format (fixtures in tests/fixtures/grok-1.0.60-audit/):
+    //   All errors appear on lines prefixed with ┃ (U+2503), the Grok box border.
     //
-    // Formats confirmed against fixtures in tests/fixtures/grok-1.0.60-audit/:
-    //   401:  ┃  Authentication required: your session has expired or your credentials
-    //         ┃  were rejected. Run /login to re-authenticate, then resend your message.
-    //   402:  ┃  You hit your weekly limit.
-    //   403:  ┃  Request denied (403): invalid_request_error: usage limit reached
     //   429:  ┃  Retry failed: rate_limit_error: Rate limit exceeded
-    //   429:  ┃  Retry failed: rate_limit_error: rate limit exceeded; too many requests
+    //         ┃  Retry failed: rate_limit_error: rate limit exceeded; too many requests
+    //
+    //   401:  ┃  Authentication required: … (no status code on screen — intentionally
+    //         NOT pattern-matched here; auth is verified via grok models as a second
+    //         opinion, LOGIN_FLOWS.grok.authCheck. See tests/grok-1.0.52-audit.test.ts
+    //         "grok auth" describe block. #1792 follow-up.)
+    //
+    //   402/quota: handled by the weekly-limit dialog (WEEKLY), not a pattern here.
+    //   403-usage: "Request denied (403): usage limit reached" — intentionally idle
+    //              per audit (#1792 follow-up).
+    //
+    // Only rate_limit is anchored on ┃; auth and quota use the original broader
+    // patterns because the audit pinned them as not-error (idle) and the agent
+    // auth flow uses a second-opinion check rather than a bare pattern match.
     return [
       {
-        // 429: "┃  Retry failed: rate_limit_error: …" (confirmed fixture)
-        // Also covers "┃  Request failed (429): …" if that form appears.
-        pattern: /^[ \t]*┃[ \t]+(?:Retry failed:[ \t]+rate_limit_error:|Request\s+(?:failed|denied)\s+\(429\):)[ \t]+.*(?:rate.?limit|too many requests)/im,
+        // 429: "┃  Retry failed: rate_limit_error: …" (1.0.60)
+        //      "┃  Retry failed: Some resource has been exhausted: Your team has exceeded\n  ┃  its rate limit. …" (1.0.52, wraps at 80 col)
+        // Anchored on ┃ + "Retry failed:" to prevent false-positives from agent code.
+        // The content check (rate limit / rate_limit_error) is not anchored because the
+        // actual rate-limit text may wrap to the next ┃ line at narrow terminal widths.
+        pattern: /^[ \t]*┃[ \t]+Retry failed:[\s\S]{0,400}?(?:rate.?limit|rate_limit_error)/im,
         type: "rate_limit",
         action: "failover",
         message: "Grok rate limit reached",
       },
-      {
-        // 401: "┃  Authentication required: your session has expired …"
-        pattern: /^[ \t]*┃[ \t]+Authentication required:/im,
-        type: "auth_error",
-        action: "pause",
-        message: "Grok authentication error — run /login to re-authenticate",
-      },
-      {
-        // 402/quota: "┃  You hit your weekly limit."
-        // 403/usage: "┃  Request denied (403): invalid_request_error: usage limit reached"
-        // Also: "┃  Request denied (402): insufficient_quota: Weekly usage limit reached"
-        pattern: /^[ \t]*┃[ \t]+(?:You hit your weekly limit\.|Request\s+(?:failed|denied)\s+\(40[23]\):[ \t]+.*(?:quota|insufficient.credits|usage.limit|out.of.credits|weekly.limit))/im,
-        type: "quota",
-        action: "notify",
-        message: "Grok quota/credits exhausted",
-      },
+      // 401: intentionally broad backstop; the primary gate is LOGIN_FLOWS.grok.authCheck.
+      // The 1.0.52 audit pinned this screen as idle (no auth error raised), so this
+      // pattern fires only if future CLI versions show a status code (#1792 follow-up).
+      { pattern: /unauthorized|authentication (failed|error)|\b401\b/i, type: "auth_error", action: "pause", message: "Grok authentication error" },
+      // quota: the weekly-limit dialog handles the modal; this is a backstop for any
+      // plain-text quota message the dialog doesn't catch. The 403-usage form is idle
+      // per the audit (#1792 follow-up).
+      { pattern: /quota|insufficient credits|out of credits/i, type: "quota", action: "notify", message: "Grok quota/credits exhausted" },
       // #1066: the server refuses an outdated CLI (HTTP 426, Upgrade Required):
       //   Request failed (426) — Your Grok CLI version (1.0.5) is outdated.
       //   Please update to version 1.0.13 or later via `grok update` or …

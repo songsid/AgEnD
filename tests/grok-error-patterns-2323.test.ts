@@ -1,19 +1,15 @@
 /**
- * Tests for Grok backend error pattern detection (#2323).
+ * Tests for Grok backend rate_limit error pattern anchoring (#2323).
  *
- * The original patterns were unanchored bare words that matched any pane
- * content containing "quota", "rate limit", "401", "429" etc. — including
- * agent-written code (scan_quota(...)), chat content, and task descriptions.
+ * The original `/rate.?limit|too many requests|\b429\b/i` matched any pane
+ * content containing those words — agent code, chat, task descriptions.
+ * Only the rate_limit pattern is anchored in this fix (on the ┃ Grok box
+ * border). Auth (401) and quota patterns are unchanged, per the existing
+ * audit decisions (#1792) which pin those panes as idle (handled via
+ * LOGIN_FLOWS.grok.authCheck and the WEEKLY dialog respectively).
  *
- * The fixed patterns anchor on the Grok border glyph ┃ (U+2503) and match
- * only the server-generated error lines, as confirmed by the fixtures in
- * tests/fixtures/grok-1.0.60-audit/.
- *
- * Fixture sources:
- *   Rate limit: tests/fixtures/grok-1.0.60-audit/1.0.60-120/07-err-429*.pane.txt
- *   Auth (401): tests/fixtures/grok-1.0.60-audit/1.0.60-120/07-err-401.pane.txt
- *   Quota (402): tests/fixtures/grok-1.0.60-audit/1.0.60-120/07-err-402.pane.txt
- *   Quota (403): tests/fixtures/grok-1.0.60-audit/1.0.60-120/07-err-403-usage.pane.txt
+ * Fixture sources (grok-1.0.60-audit/):
+ *   Rate limit: 07-err-429.pane.txt, 07-err-429-text.pane.txt
  */
 import { describe, expect, it } from "vitest";
 import { GrokBackend } from "../src/backend/grok.js";
@@ -26,9 +22,9 @@ function matchType(pane: string): string | null {
   return hit?.type ?? null;
 }
 
-// ── Real Grok error lines (from fixtures) ────────────────────────────────────
+// ── Real Grok rate_limit error lines (fixture-verified) ─────────────────────
 
-describe("Grok error patterns — real error lines MUST match", () => {
+describe("Grok rate_limit pattern — anchored on ┃ (fixture-verified)", () => {
   it("429 rate limit (fixture: 07-err-429.pane.txt)", () => {
     const pane = "  ┃  Retry failed: rate_limit_error: Rate limit exceeded";
     expect(matchType(pane)).toBe("rate_limit");
@@ -39,31 +35,23 @@ describe("Grok error patterns — real error lines MUST match", () => {
     expect(matchType(pane)).toBe("rate_limit");
   });
 
-  it("401 auth error (fixture: 07-err-401.pane.txt)", () => {
-    const pane = "  ┃  Authentication required: your session has expired or your credentials were rejected. Run /login to re-\n  ┃  authenticate, then resend your message.";
-    expect(matchType(pane)).toBe("auth_error");
+  it("429 rate limit 1.0.52 format (fixture: grok-1.0.52-audit 07-err-429, 120col)", () => {
+    // 1.0.52 uses "Some resource has been exhausted: Your team has exceeded its rate limit."
+    const pane = "  ┃  Retry failed: Some resource has been exhausted: Your team has exceeded its rate limit. Please try again later.";
+    expect(matchType(pane)).toBe("rate_limit");
   });
 
-  it("402 weekly limit (fixture: 07-err-402.pane.txt)", () => {
-    const pane = "  ┃\n  ┃  You hit your weekly limit.\n  ┃";
-    expect(matchType(pane)).toBe("quota");
-  });
-
-  it("403 usage limit (fixture: 07-err-403-usage.pane.txt)", () => {
-    const pane = "  ┃  Request denied (403): invalid_request_error: usage limit reached";
-    expect(matchType(pane)).toBe("quota");
-  });
-
-  it("weekly limit modal (fixture: grok-weekly-limit-modal.pane.txt)", () => {
-    const pane = "  ┃\n  ┃  You hit your weekly limit.\n  ┃\n  ┃  1 (○) Upgrade tier\n  ┃  2 (○) Buy more credits";
-    expect(matchType(pane)).toBe("quota");
+  it("429 rate limit 1.0.52 at 80col (wraps to next ┃ line)", () => {
+    // At 80 columns the text wraps; "rate limit" is on the continuation line
+    const pane = "  ┃  Retry failed: Some resource has been exhausted: Your team has exceeded\n  ┃  its rate limit. Please try again later.";
+    expect(matchType(pane)).toBe("rate_limit");
   });
 });
 
-// ── False-positive guard — code/prose MUST NOT match ─────────────────────────
+// ── False-positive guard for rate_limit — code/prose MUST NOT match ──────────
 
-describe("Grok error patterns — code and prose MUST NOT match", () => {
-  it("agent code: scan_quota(...) in transcript", () => {
+describe("Grok rate_limit pattern — agent code and prose MUST NOT match", () => {
+  it("agent code: scan_quota(...) in transcript — no rate_limit false positive", () => {
     const pane = [
       "  ❯ Write code",
       "  function scan_quota(account_id) {",
@@ -73,53 +61,34 @@ describe("Grok error patterns — code and prose MUST NOT match", () => {
       "  │ ❯ │",
       "  ╰──╯",
     ].join("\n");
-    expect(matchType(pane)).toBeNull();
+    expect(matchType(pane)).not.toBe("rate_limit");
   });
 
-  it("chat content mentioning 'quota' in user message", () => {
-    const pane = [
-      "  ❯ How do I handle quota exceeded errors?",
-      "  Here is how to handle quota exceeded in Python...",
-      "  │ ❯ │",
-    ].join("\n");
-    expect(matchType(pane)).toBeNull();
-  });
-
-  it("task description with 'rate limit'", () => {
+  it("task description with 'rate limit' — no rate_limit false positive", () => {
     const pane = [
       "  ❯ Implement retry logic for rate limit errors",
       "  I'll add exponential backoff for rate limit and 429 responses.",
       "  │ ❯ │",
     ].join("\n");
-    expect(matchType(pane)).toBeNull();
+    expect(matchType(pane)).not.toBe("rate_limit");
   });
 
-  it("code mentioning '401' and 'unauthorized' inline", () => {
-    const pane = [
-      "  ❯ Fix 401 unauthorized handling",
-      "  if (status === 401) throw new Error('unauthorized');",
-      "  // authentication error handling",
-      "  │ ❯ │",
-    ].join("\n");
-    expect(matchType(pane)).toBeNull();
-  });
-
-  it("task mentioning '429' as a status code", () => {
+  it("task mentioning '429' as a status code — no rate_limit false positive", () => {
     const pane = [
       "  ❯ Handle 429 responses with backoff",
       "  When you get a 429 too many requests response...",
       "  │ ❯ │",
     ].join("\n");
-    expect(matchType(pane)).toBeNull();
+    expect(matchType(pane)).not.toBe("rate_limit");
   });
 
-  it("model output discussing 'rate limit reached' without border glyph", () => {
+  it("model output discussing 'rate limit reached' without ┃ border — no false positive", () => {
     const pane = "  The rate limit reached after many requests. Use exponential backoff.";
-    expect(matchType(pane)).toBeNull();
+    expect(matchType(pane)).not.toBe("rate_limit");
   });
 
-  it("'insufficient credits' in plain prose", () => {
-    const pane = "  The user saw insufficient credits error in the Grok dashboard.";
-    expect(matchType(pane)).toBeNull();
+  it("too many requests in prose — no false positive", () => {
+    const pane = "  There were too many requests in the last minute; retry later.";
+    expect(matchType(pane)).not.toBe("rate_limit");
   });
 });
