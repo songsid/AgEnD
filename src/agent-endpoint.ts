@@ -94,7 +94,7 @@ type CrudHandler = (ctx: OutboundContext, instance: string, args: Record<string,
 
 export interface AgentEndpointContext extends OutboundContext {
   /** #2305: an instance's reaction to a web chat message (FleetManager.reactToWebMessage). */
-  reactToWebMessage?(instance: string, messageId: string, emoji: unknown): Promise<{ ok: true; mirrored: number } | { ok: false; error: string }>;
+  reactToWebMessage?(instance: string, messageId: string, emoji: unknown): Promise<{ ok: true; mirrored: Promise<number> } | { ok: false; error: string }>;
   /** Absolute data directory (e.g. ~/.agend). Used to locate per-instance token files. */
   readonly dataDir: string;
   /** Duplicate-reply suppression shared with the MCP path (see reply-dedup.ts). */
