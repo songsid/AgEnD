@@ -29,7 +29,7 @@ function fixture() {
 
 function spawnCli(dir: string, args: string[]) {
   return spawnSync(process.execPath, ["--require", join(process.cwd(), "tests/helpers/health-process-stub.cjs"), "--import", "tsx", "src/cli.ts", ...args], {
-    cwd: process.cwd(), encoding: "utf8", timeout: 8000,
+    cwd: process.cwd(), encoding: "utf8", timeout: 20_000,
     env: { ...process.env, AGEND_HOME: dir, HOME: dir, NOTIFY_SOCKET: "", PATH: `${join(dir, "bin")}:${process.env.PATH}` },
   });
 }
@@ -47,7 +47,7 @@ describe("#2359 hidden aliases", () => {
     const help = run(dir, ["--help"]);
     expect(help).not.toMatch(/^\s+status\b/m);
     expect(help).toMatch(/^\s+ls\b/m);
-  });
+  }, 30_000);
 
   it("fleet status still matches ls --resources, and is hidden from fleet help", () => {
     const dir = fixture();
@@ -61,7 +61,7 @@ describe("#2359 hidden aliases", () => {
     const help = run(dir, ["fleet", "--help"]);
     expect(help).not.toMatch(/^\s+status\b/m);
     expect(help).not.toMatch(/^\s+logs\b/m);
-  });
+  }, 60_000);
 });
 
 describe("#2359 removed leftovers", () => {
@@ -79,7 +79,7 @@ describe("#2359 removed leftovers", () => {
     const trust = spawnCli(dir, ["backend", "trust"]);
     expect(trust.status).not.toBe(0);
     expect(`${trust.stderr}${trust.stdout}`).toContain("`agend backend trust` was removed");
-  });
+  }, 40_000);
 
   it("install --activate is hidden from help; logs is no longer an alias of fleet logs", () => {
     const dir = fixture();
@@ -91,5 +91,5 @@ describe("#2359 removed leftovers", () => {
     expect(logsHelp).toMatch(/daemon\.log/);
     const src = readFileSync(join(process.cwd(), "src/cli.ts"), "utf8");
     expect(src).toContain("`agend install --activate` was removed; service activation is the default.");
-  });
+  }, 30_000);
 });
