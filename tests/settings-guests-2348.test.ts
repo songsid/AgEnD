@@ -140,6 +140,27 @@ describe("Settings → Guests, as rendered (#2348)", () => {
     await w.apply();
     expect(w.writes().map((s) => s.body)).toEqual([{ guests: { grants: { "dc:111": { name: "Alice", instances: ["alpha"] }, "tg:222": { name: "Bob", instances: ["beta"] } } } }]);
   });
+  it("#2365 review: leaving the section with unsaved changes and coming back keeps them (the real panel's navigation)", async () => {
+    const w = await open();
+    await w.check(w.$("#guestsChat"), false);
+    await w.click(w.button("Edit agents", w.row("dc:111")));
+    await w.check(w.name(w.row("dc:111"), "beta"), true);
+    const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "device" }, navKey: "settings:device" })); await settle(8);
+    expect(w.$("#guestsChat"), "another section").toBeNull();
+    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "web" }, navKey: "settings:web" })); await settle(8);
+    expect(w.$("#guestsChat").checked, "the draft, not the saved state").toBe(false);
+    expect(w.row("dc:111").classList.contains("s-dirty")).toBe(true);
+    await w.apply();
+    expect(w.writes().map((s) => s.body)).toEqual([{ guests: { chat: false, grants: { "dc:111": { name: "Alice", instances: ["alpha", "beta"] } } } }]);
+  });
+  it("#2365 review: starting grants from an empty guest list stages grants: {} — explicit access with no one in it", async () => {
+    const w = await open({ enabled: true }, { explicit: false, guests: [] });
+    await w.click(w.$("#grantsConvert"));
+    expect(w.$("#grantsNone").textContent).toBe("No one has guest access yet.");
+    await w.apply();
+    expect(w.writes().map((s) => s.body)).toEqual([{ guests: { grants: {} } }]);
+  });
   it("Send sign-in code: only for saved access; it posts at once (outside Save) and the row says it was sent", async () => {
     const w = await open();
     await w.click(w.button("Edit agents", w.row("dc:111")));

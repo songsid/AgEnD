@@ -47,7 +47,9 @@ export function guestsBody(original, f) {
       diff[k] = b ? { ...(b.name ? { name: b.name } : {}), instances: [...b.instances] } : null;
       count++;
     }
-    if (Object.keys(diff).length) out.grants = diff;
+    // #2365 review: turning grants on is a change by itself, even with no one in them yet (default deny): `grants: {}`.
+    if (Object.keys(diff).length || !original.grants) out.grants = diff;
+    if (!original.grants && !Object.keys(diff).length) count++;
   }
   return Object.keys(out).length ? { body: out, count } : null;
 }
@@ -62,10 +64,15 @@ function Names({ id, all, value, wrote = [], onChange }) {
 const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const COOLDOWN_MS = 60_000;
 
-export function GuestsSection({ ctx }) {
+/** A draft as staged (#2365 review: carried in the staged change, so leaving the section and coming back keeps it). */
+const cloneDraft = (d) => ({ enabled: !!d.enabled, chat: d.chat !== false, grants: d.grants ? copyGrants(d.grants) : null });
+
+export function GuestsSection({ ctx, staged }) {
   const readOnly = !!ctx.readOnly;
   const [original, setOriginal] = useState(() => savedGuests(ctx.fleet));
-  const [f, setF] = useState(() => ({ ...original, grants: original.grants ? copyGrants(original.grants) : null }));
+  // A draft already staged (this section was left with unsaved changes, and is shown again): pick it up, never drop it.
+  const prior = (staged && typeof staged.get === "function" && staged.get("guests")) || (ctx.staged && typeof ctx.staged.get === "function" && ctx.staged.get("guests")) || null;
+  const [f, setF] = useState(() => (prior && prior.draft ? cloneDraft(prior.draft) : { ...original, grants: original.grants ? copyGrants(original.grants) : null }));
   const [overview, setOverview] = useState(null), [failed, setFailed] = useState(false);
   const [people, setPeople] = useState(null), [query, setQuery] = useState(""), [editing, setEditing] = useState(null);
   const [sendState, setSendState] = useState({}), [now, setNow] = useState(() => Date.now());
@@ -104,7 +111,7 @@ export function GuestsSection({ ctx }) {
     const diff = guestsBody(original, f);
     if (!diff) { ctx.unstage("guests"); return; }
     ctx.stage("guests", {
-      label: tn("guestsTitle"), impact: impactOf(ctx.schema || DEFAULT_SCHEMA, "web.guests"), count: diff.count,
+      label: tn("guestsTitle"), impact: impactOf(ctx.schema || DEFAULT_SCHEMA, "web.guests"), count: diff.count, draft: cloneDraft(f),
       request: { method: "PUT", url: "/api/settings/fleet/web", body: { guests: diff.body } },
       ...(empty ? { invalid: tn("grantsNoAgents") } : {}),
       onResult: (outcome) => {
@@ -146,7 +153,7 @@ export function GuestsSection({ ctx }) {
     try { r = await api("/api/settings/guests/send-code", { method: "POST", body: JSON.stringify({ adapterId: person.adapterId, userId: person.userId }) }); } catch { r = null; }
     const b = (r && r.body) || {};
     const until = b.outcome === "sent" ? Date.now() + COOLDOWN_MS : b.outcome === "wait" ? Date.now() + (b.retryAfterMs || COOLDOWN_MS) : 0;
-    setSendState((s) => ({ ...s, [person.key]: { result: b, until } }));
+    setSendState((s) => ({ ...s, [person.key]: { result: { ...b, at: Date.now() }, until } }));
     setNow(Date.now());
     if (b.outcome === "wait") toast(tn("grantsWait"), false);
     else if (b.outcome === "admin_limit") toast(tn("grantsAdminLimit"), false);
@@ -156,7 +163,8 @@ export function GuestsSection({ ctx }) {
   /** The state pill: what happened last with this person's code, or whether they are signed in. */
   const pill = (person) => {
     const mine = sendState[person.key];
-    const code = (mine && mine.result && mine.result.outcome) ? { ...mine.result, at: Date.now() } : person.guest && person.guest.code;
+    // #2365 review (P3): the time it was sent, captured once — never "now" on every render.
+    const code = (mine && mine.result && mine.result.outcome) ? mine.result : person.guest && person.guest.code;
     if (code && code.outcome === "dm_failed") {
       const text = code.platform === "telegram" && code.startUrl ? tn("grantsDmFailedTg", person.name, code.startUrl)
         : code.platform === "discord" && /cannot send messages/i.test(code.reason || "") ? tn("grantsDmFailedDiscord", person.name)

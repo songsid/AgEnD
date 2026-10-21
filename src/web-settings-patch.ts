@@ -125,7 +125,8 @@ export function guestsPatch(raw: unknown): GuestsPatch | null | "invalid" {
         if (grant === "invalid") return "invalid";
         grants[key] = grant;
       }
-      if (Object.keys(grants).length) out.grants = grants;
+      // #2365 review: `{}` is meaningful — it makes grants the scope with no one in it (default deny), so it is kept.
+      out.grants = grants;
       continue;
     }
     return "invalid";
@@ -165,6 +166,7 @@ export function applyGuestsPatch(current: WebGuestsConfig | undefined, patch: Gu
       else { merged[k] = grant; changes.push({ path: ["web", "guests", "grants", k], value: grant }); }
     }
     next.grants = { ...merged };
+    // Written when the map ends up empty — the last one removed, or grants turned on with no one in them yet.
     if (!Object.keys(merged).length) changes.push({ path: ["web", "guests", "grants"], value: {} });
   }
   return { next: Object.keys(next).length ? next : undefined, changes };

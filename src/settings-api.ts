@@ -95,7 +95,7 @@ export interface SettingsApiContext extends AppShellContext {
   /** #2348: why an account may not be granted (not seen in chat, a fleet admin, an unknown connection), or null. */
   guestGrantRefusal?(adapterId: string, userId: string): string | null;
   /** #2348: an admin's "Send sign-in code": DM only; the outcome as the Settings card shows it. */
-  sendGuestCodeByAdmin?(owner: { adapterId: string; userId: string }, by: string): Promise<{ status: number; body: Record<string, unknown> }>;
+  sendGuestCodeByAdmin?(owner: { adapterId: string; userId: string }, by: string, current?: () => boolean): Promise<{ status: number; body: Record<string, unknown> }>;
   /** #1939 S2a: Settings → Web → Web authority — what is in force, the actions to pick from, and the revocation. */
   webAuthorityOverview?(): unknown;
   revokeWebAuthority?(): { epoch: number; durable: boolean };
@@ -735,7 +735,8 @@ export function handleSettingsRequest(
       let body: { adapterId?: unknown; userId?: unknown };
       try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body?.adapterId !== "string" || !body.adapterId || typeof body.userId !== "string" || !body.userId) return json(res, 400, { error: "adapterId and userId required" });
-      const out = await ctx.sendGuestCodeByAdmin!({ adapterId: body.adapterId, userId: body.userId }, caller);
+      // #2365 review: the initiating admin's session, asked again after every wait inside the issuance.
+      const out = await ctx.sendGuestCodeByAdmin!({ adapterId: body.adapterId, userId: body.userId }, caller, () => guestSettingsCaller(req, url, ctx) === caller);
       json(res, out.status, out.body);
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;

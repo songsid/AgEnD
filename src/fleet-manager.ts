@@ -6600,7 +6600,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * code store's caps and breaker, the public link's audience when it is open) and the same once-a-minute limit per
    * account, plus a per-admin cap. Refused without guest sign-in, for a fleet admin, or with nothing granted. Audited.
    */
-  async sendGuestCodeByAdmin(owner: { adapterId: string; userId: string }, by: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  async sendGuestCodeByAdmin(owner: { adapterId: string; userId: string }, by: string,
+    /** #2365 review: the initiating admin is still signed in and still an admin (settings-api re-checks the session). */
+    current: () => boolean = () => true): Promise<{ status: number; body: Record<string, unknown> }> {
     const guests = this.fleetConfig?.web?.guests;
     if (guests?.enabled !== true) return { status: 409, body: { ok: false, outcome: "guests_off", error: "Guest sign-in is off" } };
     if (this.isFleetAdmin(owner.userId, owner.adapterId)) return { status: 409, body: { ok: false, outcome: "admin", error: "A fleet admin signs in as an admin" } };
@@ -6620,9 +6622,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let outcome: GuestCodeOutcome = { kind: "busy" };
     this.guestCodeInFlight.add(key);
     try {
-      await this.issueGuestCode({ replyHere: async () => undefined }, owner, key, adapter, token, (o) => { outcome = o; });
+      await this.issueGuestCode({ replyHere: async () => undefined }, owner, key, adapter, token, (o) => { outcome = o; }, current);
     } finally { this.guestCodeInFlight.delete(key); }
     const done = outcome as GuestCodeOutcome;
+    // #2365 review: the admin's session ended (or stopped being an admin's) while the code was on its way: nothing was
+    // sent, or what was made is withdrawn — the answer says so, as to anyone no longer signed in.
+    if (done.kind === "revoked" && !current()) return { status: 401, body: { ok: false, outcome: "revoked", error: "no longer authorized" } };
     this.guestCodeSent.set(`${owner.adapterId}:${owner.userId}`, { at: Date.now(), outcome: done });
     while (this.guestCodeSent.size > 512) this.guestCodeSent.delete(this.guestCodeSent.keys().next().value as string);
     // Audited: who asked, for whom, what happened (never the code).
@@ -6700,10 +6705,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async issueGuestCode(ask: { username?: string; replyHere: (text: string) => Promise<unknown>; replyPrivately?: (text: string) => Promise<unknown> },
     owner: { adapterId: string; userId: string }, key: string, adapter: ChannelAdapter, token: string,
     /** #2348: how it ended, for a caller with no chat to answer in (Settings → Guests' Send sign-in code). */
-    report: (outcome: GuestCodeOutcome) => void = () => {}): Promise<void> {
+    report: (outcome: GuestCodeOutcome) => void = () => {},
+    /**
+     * #2365 review: the one who asked may still ask — for an admin's Send sign-in code, that admin's session as it is
+     * now. Asked with the revocation checks, after every wait: false ends the issuance, and withdraws its code if one was made.
+     */
+    stillAllowed: () => boolean = () => true): Promise<void> {
     const say = (text: string) => ask.replyHere(text).catch(() => undefined);
     const revokes = this.guestRevokes, accountRevokes = this.guestAccountRevokes.get(key) ?? 0;
-    const unrevoked = (): boolean => this.guestRevokes === revokes && (this.guestAccountRevokes.get(key) ?? 0) === accountRevokes;
+    const unrevoked = (): boolean => this.guestRevokes === revokes && (this.guestAccountRevokes.get(key) ?? 0) === accountRevokes && stillAllowed();
     // §3.2: its rooms are read at sign-in (bounded; never longer than the reads' own deadline).
     await withinBudget(this.refreshGuestRooms(owner, { mode: "force" }), performance.now() + 6_000).catch(() => undefined);
     if (!unrevoked()) { report({ kind: "revoked" }); return; }   // revoked while its rooms were read: no code

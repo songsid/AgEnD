@@ -121,7 +121,7 @@ function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: strin
   const save = vi.fn(() => { noteSettingsWrite(path, yaml.load(readFileSync(path, "utf8")), config); writeFileSync(path, yaml.dump(config)); revision++; });
   const revoke = vi.fn((_owner: { adapterId: string; userId: string }) => ({ count: 1, durable: true }));
   const people = vi.fn(() => ({ people: [{ adapterId: "dc", userId: "111", username: "ada" }] }));
-  const sendCode = vi.fn(async (_o: unknown, _by: string) => ({ status: 200, body: { ok: true, outcome: "sent" } }));
+  const sendCode = vi.fn(async (_o: unknown, _by: string, _current?: () => boolean) => ({ status: 200, body: { ok: true, outcome: "sent" } }));
   const refusal = vi.fn(opts.refuse ?? ((_a: string, u: string) => (u === "111" ? null : "only someone AgEnD has seen in chat can be given guest access")));
   const TOKEN = "c".repeat(48), sessions = new WebSessionStore();
   const sid = sessions.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
@@ -152,7 +152,7 @@ function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: strin
     });
   }
   const raw = () => yaml.load(readFileSync(path, "utf8")) as any;
-  return { config, save, store, request, raw, revoke, people, sendCode, refusal };
+  return { config, save, store, request, raw, revoke, people, sendCode, refusal, sessions };
 }
 const confirmer = () => ({ label: "F", current: () => true });
 
@@ -168,6 +168,14 @@ describe("through the real gate and handler", () => {
     expect(narrow.status).toBe(200);
     expect(h.raw().web.guests.grants["dc:111"].instances).toEqual(["a"]);
     expect(h.revoke, "narrowed: sessions stay (they see less)").not.toHaveBeenCalled();
+  });
+  it("#2365 review: turning grants on with no one in them is kept — grants: {} on disk, at once (it only takes away)", async () => {
+    expect(guestsPatch({ grants: {} })).toEqual({ grants: {} });
+    const h = harness({ web: { guests: { enabled: true } } });
+    const on = await h.request("PUT", WEB, { guests: { grants: {} } });
+    expect(on.status).toBe(200);
+    expect(h.raw().web.guests).toEqual({ enabled: true, grants: {} });
+    expect(h.config.web.guests.grants).toEqual({});
   });
   it("taken away (or emptied): applied at once, and that person's access ends now; grants: {} stays", async () => {
     const h = harness({ web: { guests: { enabled: true, grants: { "dc:111": { instances: ["a"] }, "dc:222": { instances: ["b"] } } } } });
@@ -205,6 +213,11 @@ describe("through the real gate and handler", () => {
     expect((await h.request("GET", "/api/settings/guests/people", undefined, { publicLink: true })).status).toBe(403);
     expect((await h.request("POST", "/api/settings/guests/send-code", { adapterId: "dc", userId: "111" }, { publicLink: true })).status).toBe(403);
     expect(h.sendCode).toHaveBeenCalledTimes(1);
+    // #2365 review: the route hands down a check of that admin's session as it is now.
+    const still = (h.sendCode.mock.calls[0] as unknown[])[2] as () => boolean;
+    expect(still()).toBe(true);
+    h.sessions.revokeAll(() => true);
+    expect(still()).toBe(false);
   });
 });
 
@@ -302,6 +315,41 @@ describe("on a real FleetManager", () => {
     expect([failed.status, failed.body.outcome, failed.body.platform, failed.body.reason]).toEqual([502, "dm_failed", "discord", "Cannot send messages to this user"]);
     expect(revoked, "the undelivered code is withdrawn").toHaveBeenCalledTimes(1);
     expect(fleetAdapter(s).sendText, "and nothing is posted anywhere instead").not.toHaveBeenCalled();
+  });
+  it("#2365 review: the admin's session ended while the room read was held — no code is made, none sent; control: still signed in, sent", async () => {
+    for (const stays of [false, true]) {
+      const { s, dms } = fleet();
+      let release!: () => void;
+      s.refreshGuestRooms = () => new Promise<void>((r) => { release = r; });
+      s.initializeWebSessions();
+      const issued = vi.spyOn(s.webGuestLoginCodes, "issue");
+      let allowed = true;
+      const pending = s.sendGuestCodeByAdmin({ adapterId: "dc", userId: "111" }, "session:A", () => allowed);
+      await new Promise((r) => setTimeout(r, 0));
+      if (!stays) allowed = false;                                              // the admin signed out meanwhile
+      release();
+      const out = await pending;
+      if (stays) expect([out.status, out.body.outcome, dms.length]).toEqual([200, "sent", 2]);
+      else expect([out.status, out.body.outcome, dms.length, issued.mock.calls.length]).toEqual([401, "revoked", 0, 0]);
+    }
+  });
+  it("#2365 review: the admin's session ended while the DM was held — the code is withdrawn, the code-alone message never sent", async () => {
+    for (const stays of [false, true]) {
+      const { s, dms, adapter } = fleet();
+      let release!: () => void;
+      const real = adapter.sendDirect.getMockImplementation()!;
+      adapter.sendDirect.mockImplementationOnce(async (user: string, text: string) => { await new Promise<void>((r) => { release = r; }); return real(user, text); });
+      s.initializeWebSessions();
+      const withdrawn = vi.spyOn(s.webGuestLoginCodes, "revokeIfCurrent");
+      let allowed = true;
+      const pending = s.sendGuestCodeByAdmin({ adapterId: "dc", userId: "111" }, "session:A", () => allowed);
+      await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+      if (!stays) allowed = false;
+      release();
+      const out = await pending;
+      if (stays) expect([out.status, out.body.outcome, dms.length, withdrawn.mock.calls.length]).toEqual([200, "sent", 2, 0]);
+      else expect([out.status, out.body.outcome, dms.length, withdrawn.mock.calls.length]).toEqual([401, "revoked", 1, 1]);
+    }
   });
   it("one admin may send at most 10 codes in 10 minutes", async () => {
     const { s, fm } = fleet();
