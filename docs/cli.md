@@ -36,7 +36,8 @@ All other operations (create/delete/start instances, delegate tasks) are handled
 ```bash
 agend start                     # Start installed service; with no service, start a detached fleet
 agend stop                      # Stop AgEnD service
-agend restart                   # Restart AgEnD service
+agend restart                   # Restart AgEnD service through its manager (systemd unit, launchd job, or detached)
+agend restart <name>            # Restart one instance now; the fleet keeps running
 agend update                    # Update on the installed channel (an alpha stays on alpha, a beta on beta) and restart
 agend update --alpha            # Install from the alpha channel (previews of the next minor)
 agend update --beta             # Install from the beta channel
@@ -50,20 +51,23 @@ agend reload                    # Hot-reload config (sends SIGHUP to fleet proce
 
 ### Who stopped the fleet
 
-`agend stop`, `agend restart`, `agend update`, `agend fleet stop` and `agend fleet restart` (without an instance name) affect every instance, so each one writes a line to `restart-audit.log` in the AgEnD home **before** it acts: the time, the command, the chain of parent processes with their command lines, the working directory, whether stdin was a terminal, and `AGEND_INSTANCE_NAME` when it ran inside a fleet agent's session. Instance-level `fleet stop <name>` / `fleet restart <name>` are recorded too. When the fleet receives the resulting signal it names that request in its own log, so an unexpected restart can be traced even though `fleet.log` is rewritten by the restart.
+`agend stop`, `agend restart`, `agend update` and `agend fleet stop` (without an instance name) affect every instance, so each one writes a line to `restart-audit.log` in the AgEnD home **before** it acts: the time, the command, the chain of parent processes with their command lines, the working directory, whether stdin was a terminal, and `AGEND_INSTANCE_NAME` when it ran inside a fleet agent's session. Instance-level `fleet stop <name>` / `restart <name>` are recorded too. When the fleet receives the resulting signal it names that request in its own log, so an unexpected restart can be traced even though `fleet.log` is rewritten by the restart.
 
 Started from a fleet agent's session (`AGEND_INSTANCE_NAME` is set, and is inherited by everything the agent runs — including a `$(...)` or backtick inside a quoted argument), those commands are refused unless you add `--yes`; the refusal is recorded as well. From a test runner (`VITEST` / `NODE_ENV=test`) they are refused outright; `AGEND_ALLOW_TEST_FLEET_CONTROL=1` lifts that for a test that really targets a scratch fleet. `/update` and `/restart` sent by a fleet admin are recorded with who sent them.
 
 ## Fleet management
 
 ```bash
-agend fleet start               # Start all instances (manual mode)
+agend fleet start               # Start all instances (manual mode); with a service installed, runs `agend start`
 agend fleet start <name>        # Start a specific instance
-agend fleet stop                # Stop all instances
+agend fleet stop                # Stop all instances; with a service installed, runs `agend stop`
 agend fleet stop <name>         # Stop a specific instance
-agend fleet restart             # Graceful restart (wait for idle, same code)
-agend fleet restart <name>      # Restart a specific instance
-agend fleet restart --reload    # Full process restart to load new code
+agend fleet restart [<name>]    # Deprecated, removed in 2.4: runs `agend restart [<name>]` (--reload is ignored)
+```
+
+On a host with an AgEnD service installed (a systemd user or system unit, or the launchd job), `agend fleet start` and `agend fleet stop` run by hand hand over to `agend start` / `agend stop` and say so, so the service manager keeps owning the fleet: no second, unmanaged fleet beside the service, and no stop that systemd undoes (#2356). The service manager's own `fleet start` (the unit's `ExecStart`, the launchd job) and hosts without a service (Docker, manual setups) start the fleet directly as before. With an instance name (`fleet start <name>`, `fleet stop <name>`) nothing changes. `agend stop` also stops a system unit (`agend.service`). When the installed service cannot run on this host (it was written but never activated, or launchd has no session for it), `agend start` refuses to start a fleet beside it and says so; `agend fleet start --direct`, from your own shell (never an agent session), starts the fleet without the service. The fleet's own lock still refuses a second fleet on the same AgEnD home.
+
+```bash
 agend fleet history             # Show event history (cost, rotations, hangs)
 agend fleet history --instance <name> --type <type> --since <date> --limit <n> --json
 agend fleet activity            # Show activity log (collaboration, tool calls, messages)

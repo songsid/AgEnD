@@ -37,7 +37,8 @@ Telegram fleet 選單列出 23 個指令，ClassicBot 選單列出 11 個；Disc
 ```bash
 agend start                     # 啟動已安裝的服務；沒有服務時啟動背景 fleet
 agend stop                      # 停止 AgEnD 服務
-agend restart                   # 重啟 AgEnD 服務
+agend restart                   # 透過服務管理器重啟 AgEnD（systemd unit、launchd job，或 detached）
+agend restart <name>            # 立即重啟單一實例；fleet 照常運作
 agend update                    # 依已安裝的頻道更新（alpha 留在 alpha、beta 留在 beta）並重啟服務
 agend update --alpha            # 從 alpha 頻道安裝（下一個次版本的預覽）
 agend update --beta             # 從 beta 頻道安裝
@@ -51,20 +52,23 @@ agend reload                    # 熱讀取配置（重新讀取 fleet.yaml，�
 
 ### 誰停了 fleet
 
-`agend stop`、`agend restart`、`agend update`、`agend fleet stop`、`agend fleet restart`（不指定實例時）會影響所有實例，所以每一個在動作**之前**都會在 AgEnD home 的 `restart-audit.log` 寫一行：時間、指令、父行程鏈與各自的指令列、工作目錄、stdin 是否為終端機，以及在 fleet agent session 內執行時的 `AGEND_INSTANCE_NAME`。指定實例的 `fleet stop <name>` / `fleet restart <name>` 也會記錄。fleet 收到隨後的訊號時，會在自己的 log 裡寫出這筆請求，所以即使 `fleet.log` 被重啟覆蓋，也查得到意外重啟的來源。
+`agend stop`、`agend restart`、`agend update`、`agend fleet stop`（不指定實例時）會影響所有實例，所以每一個在動作**之前**都會在 AgEnD home 的 `restart-audit.log` 寫一行：時間、指令、父行程鏈與各自的指令列、工作目錄、stdin 是否為終端機，以及在 fleet agent session 內執行時的 `AGEND_INSTANCE_NAME`。指定實例的 `fleet stop <name>` / `restart <name>` 也會記錄。fleet 收到隨後的訊號時，會在自己的 log 裡寫出這筆請求，所以即使 `fleet.log` 被重啟覆蓋，也查得到意外重啟的來源。
 
 從 fleet agent 的 session 內執行時（`AGEND_INSTANCE_NAME` 有值，且會被 agent 執行的所有東西繼承——包括被引號包住的參數裡的 `$(...)` 或反引號），這些指令會被拒絕，除非加上 `--yes`；拒絕本身也會記錄。從測試執行器（`VITEST` / `NODE_ENV=test`）執行則一律拒絕；真的要對測試用 fleet 執行的測試可設 `AGEND_ALLOW_TEST_FLEET_CONTROL=1`。fleet 管理員送出的 `/update`、`/restart` 會連同發送者一起記錄。
 
 ## Fleet 管理 (Fleet Management)
 
 ```bash
-agend fleet start               # 啟動所有實例（手動模式）
+agend fleet start               # 啟動所有實例（手動模式）；已安裝服務時改執行 `agend start`
 agend fleet start <name>        # 啟動指定實例
-agend fleet stop                # 停止所有實例
+agend fleet stop                # 停止所有實例；已安裝服務時改執行 `agend stop`
 agend fleet stop <name>         # 停止指定實例
-agend fleet restart             # 優雅重啟（等閒置，用相同代碼）
-agend fleet restart <name>      # 重啟指定實例（立即，不等閒置）
-agend fleet restart --reload    # 完整重啟進程以載入新代碼（不能與實例名併用）
+agend fleet restart [<name>]    # 已淘汰，2.4 移除：改執行 `agend restart [<name>]`（--reload 會被忽略）
+```
+
+在已安裝 AgEnD 服務的主機上（systemd 使用者或系統 unit，或 launchd job），手動執行 `agend fleet start`、`agend fleet stop` 會改交給 `agend start` / `agend stop` 並提示一行，讓服務管理器繼續管理 fleet：不會在服務旁邊多出一個沒人管的 fleet，也不會出現被 systemd 復原的停止（#2356）。服務管理器自己的 `fleet start`（unit 的 `ExecStart`、launchd job）以及沒有安裝服務的主機（Docker、手動設定）照舊直接啟動。指定實例名稱（`fleet start <name>`、`fleet stop <name>`）的用法不變。`agend stop` 也會停止系統 unit（`agend.service`）。若已安裝的服務在這台主機上無法執行（檔案寫好了但從未啟用，或 launchd 沒有可用的 session），`agend start` 會拒絕在它旁邊啟動 fleet 並說明原因；從你自己的 shell（不是 agent session）執行 `agend fleet start --direct`，就會不經服務直接啟動 fleet。fleet 自己的鎖仍會拒絕同一個 AgEnD home 上的第二個 fleet。
+
+```bash
 agend fleet history             # 顯示事件歷史（成本、輪轉、懸掛）
 agend fleet history --instance <name> --type <type> --since <date> --limit <n> --json
 agend fleet activity            # 顯示活動日誌（協作、工具呼叫、訊息）

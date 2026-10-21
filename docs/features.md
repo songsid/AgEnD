@@ -575,7 +575,7 @@ The daemon notifies you in Telegram when a failover occurs and switches back to 
 
 ## Graceful restart
 
-`agend fleet restart` sends SIGUSR2 to the fleet manager. It waits for all instances to go idle (no transcript activity for 10s), then restarts them one by one. A 5-minute timeout prevents hanging on stuck instances.
+`/restart` in the chat (without `full`) restarts the instances inside the running fleet process: it waits for all instances to go idle (no transcript activity for 10s), then restarts them one by one. A 5-minute timeout prevents hanging on stuck instances. The CLI's whole-fleet restart is `agend restart`, which goes through the service manager (#2356); `agend fleet restart` only runs `agend restart` now and goes away in 2.4.
 
 ## Topic icon + idle archive
 
@@ -901,7 +901,7 @@ A 5-minute cooldown prevents repeated model failover triggering. After a failove
 
 ## CLI UX improvements
 
-- `agend fleet restart <name>` — restart a specific instance instead of the entire fleet
+- `agend restart <name>` — restart a specific instance instead of the entire fleet
 - `agend attach` — fuzzy match with interactive numbered menu when ambiguous
 - `agend logs` — standalone log viewer with ANSI stripping, `-n/--lines` and `-f/--follow` options
 
