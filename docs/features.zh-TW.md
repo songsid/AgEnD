@@ -427,7 +427,7 @@ State 欄把暫停、停止或當機和執行狀態合併顯示（見 [Instance 
 
 - **`/usage`**（所有人）— 這台機器上已登入之 CLI 的 AI 訂閱用量：Claude、Codex、Muse、Grok、Kiro 和 Antigravity。設定了[憑證 profile](#憑證-profile-與第二份訂閱-credential-profiles-and-a-second-subscription) 的後端，每份訂閱各佔一列。agent 可以用 `get_usage` 讀取同樣的資料。
 
-  **讀取失敗時保留上次的數字（#2236，2.3 beta）。** 讀取失敗時（token 過期、rate limit、網路問題等），該列仍會顯示，並保留上次成功讀取的數字（最多保留一週）。數字會變灰，並附上說明：**已過期 · 快取於 14:05**、**未更新** 或 **無法讀取**；如果是 token 過期或其他錯誤，第二行會告訴你怎麼做（例如「執行 `agy` 一次」）。已過了重置時間的視窗，會顯示**重置於 …** 而不是舊的百分比。從未成功讀取過的 provider，仍然顯示錯誤；讀取成功後就會清除標示。重新啟動後，上次的數字從 `AGEND_HOME` 的 `usage-last-good.json` 讀取。`get_usage` 的過期列會帶有 `stale`、`cachedAt`、`staleCause`；已過重置時間的指標帶有 `resetPassed`。
+  **讀取失敗時保留上次的數字（#2236，2.3 beta）。** 讀取失敗時（token 過期、rate limit、網路問題等），該列仍會顯示，並保留上次成功讀取的數字（最多保留一週）。數字會變灰，並附上說明：**已過期 · 快取於 14:05**、**暫時無法更新** 或 **讀取失敗**；如果是 token 過期或其他錯誤，第二行會告訴你怎麼做（例如「執行 `agy` 一次」）。已過了重置時間的視窗，會顯示**已於 … 重置** 而不是舊的百分比。從未成功讀取過的 provider，仍然顯示錯誤；讀取成功後就會清除標示。重新啟動後，上次的數字從 `AGEND_HOME` 的 `usage-last-good.json` 讀取。`get_usage` 標為 stale 的列會帶有 `stale`、`cachedAt`、`staleCause`；已過重置時間的指標帶有 `resetPassed`。
 - **`/doctor`**（fleet 管理員）— 健康診斷，分成六個區塊：Prerequisites、Service、Fleet、Channel gateways、MCP IPC 和 Resources，每項檢查的結果是 `ok`、`warn` 或 `error`。
 - **`/sysinfo`**（所有人）— fleet 的運行時間和記憶體、instance 數量、系統記憶體，以及每個後端 CLI 的版本。
 - **`/model`**（頻道管理員）— 從選單切換 instance 的模型（Telegram 上也可以用 `/model <name>`）。2.2.5 起，選單列的是 instance 所用帳號的模型清單（Claude Code 的[憑證 profile](#憑證-profile-與第二份訂閱-credential-profiles-and-a-second-subscription) 各有自己的一份），而 instance 正在用的模型一定在選項裡：CLI 清單裡沒有的會排在最前面，標示「目前使用中 — 不在這個 CLI 的清單裡」。詳見[後端可用性與模型清單](#後端可用性與模型清單-backend-availability-and-model-lists-225)。
