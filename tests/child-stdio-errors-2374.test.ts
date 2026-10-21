@@ -47,16 +47,55 @@ describe.skipIf(process.platform === "win32")("#2374 guarded child processes, re
     expect(uncaught).not.toHaveBeenCalled();
   });
 
-  it("execFile: the callback gets the failure, with what was read before it, never a success", async () => {
+  it("spawn: a caller listening for the child's error gets the pipe error", async () => {
+    const child = spawn("sh", ["-c", "echo hi; exec sleep 30"], { stdio: ["ignore", "pipe", "ignore"] });
+    const failed = new Promise<NodeJS.ErrnoException>(r => child.on("error", r));
+    await new Promise(r => child.stdout!.once("data", r));
+    child.stdout!.destroy(pipeError());
+    expect((await failed).code).toBe("EIO");
+    await settle();
+    expect(uncaught).not.toHaveBeenCalled();
+  });
+
+  it("execFile: the callback gets the pipe error, with what was read before it, never a success", async () => {
     let child!: ReturnType<typeof execFile>;
-    const result = new Promise<{ err: (Error & { killed?: boolean }) | null; stdout: string }>(r => {
+    const result = new Promise<{ err: { code?: unknown } | null; stdout: string }>(r => {
       child = execFile("sh", ["-c", "echo hi; exec sleep 30"], { encoding: "utf8" }, (err, stdout) => r({ err, stdout }));
     });
     await new Promise(r => child.stdout!.once("data", r));
     child.stdout!.destroy(pipeError());
     const { err, stdout } = await result;
-    expect(err?.killed).toBe(true);
+    expect(err?.code).toBe("EIO");
     expect(stdout).toBe("hi\n");
+    await settle();
+    expect(uncaught).not.toHaveBeenCalled();
+  });
+
+  // Prism on #2377: the kill alone cannot fail a call whose child exits 0 on SIGTERM, or has already exited 0.
+  it("execFile: a child that exits 0 on SIGTERM still fails the call with the pipe error", async () => {
+    let child!: ReturnType<typeof execFile>;
+    const result = new Promise<{ err: { code?: unknown } | null; stdout: string }>(r => {
+      child = execFile(process.execPath, ["-e", "process.on('SIGTERM', () => process.exit(0)); process.stdout.write('partial'); setInterval(() => {}, 1000);"],
+        { encoding: "utf8" }, (err, stdout) => r({ err, stdout }));
+    });
+    await new Promise(r => child.stdout!.once("data", r));
+    child.stdout!.destroy(pipeError());
+    const { err, stdout } = await result;
+    expect([err?.code, stdout]).toEqual(["EIO", "partial"]);
+    await vi.waitFor(() => expect(child.exitCode).toBe(0));        // it did exit 0: the error is what failed the call
+    expect(uncaught).not.toHaveBeenCalled();
+  });
+
+  it("execFile: the shell already exited 0 while a descendant holds the pipe: the call fails, not a short answer", async () => {
+    let child!: ReturnType<typeof execFile>;
+    const result = new Promise<{ err: { code?: unknown } | null; stdout: string }>(r => {
+      child = execFile("sh", ["-c", "(printf head; sleep 1; printf tail) &"], { encoding: "utf8" }, (err, stdout) => r({ err, stdout }));
+    });
+    await new Promise(r => child.stdout!.once("data", r));
+    await vi.waitFor(() => expect(child.exitCode).toBe(0));
+    child.stdout!.destroy(pipeError());
+    const { err, stdout } = await result;
+    expect([err?.code, stdout]).toEqual(["EIO", "head"]);
     await settle();
     expect(uncaught).not.toHaveBeenCalled();
   });
@@ -68,7 +107,7 @@ describe.skipIf(process.platform === "win32")("#2374 guarded child processes, re
     const child = (pending as unknown as { child: ReturnType<typeof execFile> }).child;
     await new Promise(r => child.stdout!.once("data", r));
     child.stdout!.destroy(pipeError());
-    await expect(pending).rejects.toMatchObject({ killed: true, signal: "SIGTERM" });
+    await expect(pending).rejects.toMatchObject({ code: "EIO", stdout: "hi\n" });
     await settle();
     expect(uncaught).not.toHaveBeenCalled();
   });
@@ -80,7 +119,7 @@ describe.skipIf(process.platform === "win32")("#2374 guarded child processes, re
     const child = (pending as unknown as { child: ReturnType<typeof exec> }).child;
     await new Promise(r => child.stdout!.once("data", r));
     child.stdout!.destroy(pipeError());
-    await expect(pending).rejects.toMatchObject({ killed: true });
+    await expect(pending).rejects.toMatchObject({ code: "EIO" });
     await settle();
     expect(uncaught).not.toHaveBeenCalled();
   });
@@ -108,6 +147,20 @@ describe("#2374 guardStdio", () => {
     stream.on("error", () => {});                   // the caller's own listener
     listeners[0]!(pipeError());
     expect(kill).toHaveBeenCalledTimes(1);          // heard: the caller's handling is the response
+  });
+
+  it("the pipe error goes on as the child's error only to a listener (unheard, it would be uncaught again)", () => {
+    const listeners: Array<(e: Error) => void> = [];
+    const stream = { on: (_e: string, l: (e: Error) => void) => { listeners.push(l); }, listenerCount: () => 1 };
+    let childListeners = 0;
+    const emit = vi.fn(() => true);
+    guardStdio({ stdout: stream, kill: vi.fn(), emit, listenerCount: () => childListeners });
+    listeners[0]!(pipeError());
+    expect(emit).not.toHaveBeenCalled();
+    childListeners = 1;
+    const err = pipeError();
+    listeners[0]!(err);
+    expect(emit).toHaveBeenCalledWith("error", err);
   });
 
   it("test doubles without pipes, or no child at all, pass through untouched", () => {
