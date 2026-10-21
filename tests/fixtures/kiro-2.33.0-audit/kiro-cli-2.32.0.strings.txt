@@ -1,0 +1,16 @@
+## ", let's get you signed in!": count 1
+:302q_cli::utilcrates/q_cli/src/util/mod.rscalled welcome_login_prompt while stdout is not a terminalWelcome to ················································, let's get you signed in!
+Press enter to continue to the browser or esc to cancel··mOpening browser... | Press ·[38;5;m(^) + C·[38;5;m to cancel·[0mevent crates/q_cli/src/util/mod.rs:35
+
+## ' to continue to the browser or ': count 1
+od.rscalled welcome_login_prompt while stdout is not a terminalWelcome to ················································, let's get you signed in!
+Press enter to continue to the browser or esc to cancel··mOpening browser... | Press ·[38;5;m(^) + C·[38;5;m to cancel·[0mevent crates/q_cli/src/util/mod.rs:351called input while stdout is not a termina
+
+## 'Press enter to continue to the browser or esc to cancel': count 1
+/src/util/mod.rscalled welcome_login_prompt while stdout is not a terminalWelcome to ················································, let's get you signed in!
+Press enter to continue to the browser or esc to cancel··mOpening browser... | Press ·[38;5;m(^) + C·[38;5;m to cancel·[0mevent crates/q_cli/src/util/mod.rs:351called input while stdout is not a terminalevent crates
+
+## 'esc to cancel': count 1
+t while stdout is not a terminalWelcome to ················································, let's get you signed in!
+Press enter to continue to the browser or esc to cancel··mOpening browser... | Press ·[38;5;m(^) + C·[38;5;m to cancel·[0mevent crates/q_cli/src/util/mod.rs:351called input while stdout is not a terminalevent crates
+

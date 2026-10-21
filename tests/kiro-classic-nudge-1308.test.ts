@@ -132,10 +132,10 @@ describe("anything else is held for a human, never answered", () => {
   });
 });
 
-describe("2.31.0 keeps AgEnD's pins", () => {
-  it("is above the tested maximum, so its flags come from its own --help, and they are the same pins as 2.27–2.30", () => {
-    expect(KIRO_TESTED_MAX).toBe("2.30.0");
-    const compat = probe("2.31.0", HELP_228); // 2.31's --help not yet published; use 2.28 as proxy (same flags)
+describe("2.34.0 keeps AgEnD's pins", () => {
+  it("is above the tested maximum, so its flags come from its own --help, and they are the same pins as 2.27–2.33", () => {
+    expect(KIRO_TESTED_MAX).toBe("2.33.0");
+    const compat = probe("2.34.0", HELP_228); // 2.34's --help not yet published; use 2.28 as proxy (same flags)
     expect(compat.source).toBe("help");
     expect(compat.agentEngines).toEqual(["v2", "v1", "v3"]);
     expect(planKiroLaunch("legacy", compat)).toEqual({ kind: "launch", ui: "legacy", flags: ["--legacy-ui", "--agent-engine=v1"] });

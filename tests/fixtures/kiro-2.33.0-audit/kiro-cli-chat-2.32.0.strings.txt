@@ -1,0 +1,58 @@
+## ' ⚠️  Kiro rate limit reached:': count 1
+on history has overflowed.
+/compact --helpThe context window has overflowed, summarizing the history...    q login
+
+Your conversation is too large to continue.
+ ⚠️  Kiro rate limit reached:Monthly request limit reached
+Your login session has expired. Please log in again using:
+
+event crates/chat-cli/src/cli/chat/mod.rs:3205event crates/chat-cli/sr
+
+## 'Request quota exceeded. Please wait a moment and try again.': count 1
+]*[ -\/]*[@-~])|([^\x00-\x7F]+)state must always be Somectrlc receivedAn error occurred processing the current stateAuthentication expired - please log in againRequest quota exceeded. Please wait a moment and try again.Kiro is having trouble responding right now·The limits reset on � ··i···/01.·The conversation history has overflowedThe user interrupted the tool execution.Prom
+
+## 'Monthly request limit reached': count 1
+ct --helpThe context window has overflowed, summarizing the history...    q login
+
+Your conversation is too large to continue.
+ ⚠️  Kiro rate limit reached:Monthly request limit reached
+Your login session has expired. Please log in again using:
+
+event crates/chat-cli/src/cli/chat/mod.rs:3205event crates/chat-cli/src/cli/chat/mod.rs:3203Shuttin
+
+## 'The limits reset on': count 1
+current stateAuthentication expired - please log in againRequest quota exceeded. Please wait a moment and try again.Kiro is having trouble responding right now·The limits reset on � ··i···/01.·The conversation history has overflowedThe user interrupted the tool execution.Prompt too longTool uses were interrupted, waiting for the next use
+
+## 'Kiro is having trouble responding right now': count 1
+lc receivedAn error occurred processing the current stateAuthentication expired - please log in againRequest quota exceeded. Please wait a moment and try again.Kiro is having trouble responding right now·The limits reset on � ··i···/01.·The conversation history has overflowedThe user interrupted the tool execution.Prompt too longTool uses were interrupted, wait
+
+## 'Your prompt is too long even after truncation.': count 1
+now using overages.
+Upgrade your plan to get more included requests and avoid overage charges. 
+See �·
+
+�·
+
+·Authentication Error
+Please try a shorter message.
+Your prompt is too long even after truncation.
+/clearThe conversation history has overflowed.
+/compact --helpThe context window has overflowed, summarizing the history...    q login
+
+Your conversation is to
+
+## 'ThrottlingException': count 10
+lueAllowApplicationPropertiestenant_idapplication_arntenant_urluser_idFAILEDGetProfileResponseDeserializerPOOLINGPOWERPROPRO_MAXAdminJustInTimeThrottlingError [ThrottlingException]ValidationError [ValidationException]IdempotencyTokenRuntimePluginTransientErrorClassifierListAvailableProfilesAuthSchemeAndEndpointOrchestrationV2issuer_urlcl
+
+## 'TooManyRequestsException': count 11
+vailableProfilesResponseDeserializerkms_key_arnreference_tracker_configurationGetProfileThrottlingThrottlingExceptionThrottledExceptionRequestThrottledExceptionTooManyRequestsExceptionProvisionedThroughputExceededExceptionTransactionInProgressExceptionRequestLimitExceededBandwidthLimitExceededLimitExceededExceptionPriorRequestNotCompleteEC2Th
+
+## 'RequestThrottledException': count 8
+intParamsInterceptorListAvailableProfilesResponseDeserializerkms_key_arnreference_tracker_configurationGetProfileThrottlingThrottlingExceptionThrottledExceptionRequestThrottledExceptionTooManyRequestsExceptionProvisionedThroughputExceededExceptionTransactionInProgressExceptionRequestLimitExceededBandwidthLimitExceededLimitExceededExceptionPrio
+
+## 'SlowDownException': count 4
+ty_resolversinterceptorsretry_classifiersretry_strategysleep_implconfig_validatorsRuntimeComponentscorrect typex-aws-ec2-metadata-tokenSharedCredentialsProviderSlowDownExceptionerrorerror_descriptionmessageMissingEndpointConfigBadAuthSchemeEndpointConfigFailedToResolveEndpointrole_session_nametransitive_tag_keysexternal_idserial_number
+
+## 'ExpiredTokenException': count 5
+eErrorEndpointMustHaveSchemeFailedToConstructAuthorityauthorityFailedToConstructUriSharedConfigValidatorrequest_checksum_calculationresponse_checksum_validationExpiredTokenExceptionHttpStatusCodeClassifierretryable_status_codesa time source required by SsoTokenProvidercannot be called twiceSharedRetryClassifierEnvironmentVariableCredential
+
