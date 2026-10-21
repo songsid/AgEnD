@@ -18,6 +18,7 @@ register("taskcard", {
     reopen: "Reopen", cancelCard: "Cancel this card", confirmMain: "Confirm the main task",
     assignee: "Assignee", nobody: "Unassigned", unassign: "(unassign)", other: "Other…", otherTitle: "Assign to another instance", otherLabel: "The instance's name",
     change: "Change…", project: "Project", priority: "Priority", size: "Size", review: "Your confirmation", reviewBox: "Stop at review for my confirmation",
+    reviewOn: "Stops at review for your confirmation", reviewOff: "Finishes without your confirmation",
     parent: "Main task", deps: "Waits for", none: "None", edit: "Edit", depsTitle: "What {0} waits for", depsLabel: "Card numbers to finish first, separated by commas or spaces (empty: nothing)",
     depWaiting: "Not done yet", depDone: "Done", opened: "Opened by {0} {1} · changed {2}",
     blockedReason: "Blocked on", goal: "Goal", goalHint: "Why, and what done looks like", scope: "Scope", scopeHint: "In: … / Out: …",
@@ -40,6 +41,7 @@ register("taskcard", {
     reopen: "重新打開", cancelCard: "取消這張卡", confirmMain: "確認主任務",
     assignee: "負責人", nobody: "沒人負責", unassign: "（不指派）", other: "其他…", otherTitle: "指派給其他 instance", otherLabel: "instance 名稱",
     change: "改…", project: "專案", priority: "優先度", size: "大小", review: "你確認", reviewBox: "做完要停在待確認，等我確認",
+    reviewOn: "做完會停在待確認，等你確認", reviewOff: "做完直接完成，不等你確認",
     parent: "主任務", deps: "相依", none: "沒有", edit: "編輯", depsTitle: "{0} 的相依", depsLabel: "要先完成的卡號，用逗號或空白分開（留空＝沒有相依）",
     depWaiting: "還沒完成", depDone: "已完成", opened: "{0} 開的・{1}・最後更新 {2}",
     blockedReason: "卡住原因", goal: "目標", goalHint: "為什麼做、做完是什麼樣子", scope: "範圍", scopeHint: "做：…／不做：…",
@@ -193,19 +195,23 @@ export function CardDialog({ id, tick, projects, writable = true, place = null, 
             <option value="\u0000other">${t("taskcard.other")}</option>
           </select>` : null}</dd>
         ${isMain ? html`<dt>${t("taskcard.project")}</dt>
-          <dd><select class="tb-select" disabled=${!writable} value=${card.projectId === null ? "" : String(card.projectId)} aria-label=${t("taskcard.project")}
+          <dd>${writable ? html`<select class="tb-select" value=${card.projectId === null ? "" : String(card.projectId)} aria-label=${t("taskcard.project")}
             onChange=${(e) => void save({ projectId: e.target.value === "" ? null : Number(e.target.value) })}>
             <option value="">${t("tasks.noProject")}</option>
             ${projects.filter((p) => !p.archived || p.id === card.projectId).map((p) => html`<option key=${p.id} value=${String(p.id)}>${p.name}</option>`)}
-          </select></dd>` : null}
+          </select>` : html`<span class="tc-value">${card.projectId === null ? t("tasks.noProject") : (projects.find((p) => p.id === card.projectId) || {}).name || "—"}</span>`}</dd>` : null}
         <dt>${t("taskcard.priority")}</dt>
-        <dd><select class="tb-select" disabled=${!writable} value=${card.priority} aria-label=${t("taskcard.priority")} onChange=${(e) => void save({ priority: e.target.value })}>
-          ${["urgent", "high", "normal", "low"].map((p) => html`<option key=${p} value=${p}>${t(`tasks.${p}`)}</option>`)}</select></dd>
+        <dd>${writable ? html`<select class="tb-select" value=${card.priority} aria-label=${t("taskcard.priority")} onChange=${(e) => void save({ priority: e.target.value })}>
+          ${["urgent", "high", "normal", "low"].map((p) => html`<option key=${p} value=${p}>${t(`tasks.${p}`)}</option>`)}</select>`
+          : html`<span class="tc-value">${t(`tasks.${card.priority}`)}</span>`}</dd>
         <dt>${t("taskcard.size")}</dt>
-        <dd><select class="tb-select" disabled=${!writable} value=${card.size || ""} aria-label=${t("taskcard.size")} onChange=${(e) => void save({ size: e.target.value || null })}>
-          <option value="">${t("tasks.sizeNone")}</option>${["S", "M", "L"].map((s) => html`<option key=${s} value=${s}>${t(`tasks.size${s}`)}</option>`)}</select></dd>
+        <dd>${writable ? html`<select class="tb-select" value=${card.size || ""} aria-label=${t("taskcard.size")} onChange=${(e) => void save({ size: e.target.value || null })}>
+          <option value="">${t("tasks.sizeNone")}</option>${["S", "M", "L"].map((s) => html`<option key=${s} value=${s}>${t(`tasks.size${s}`)}</option>`)}</select>`
+          : html`<span class="tc-value">${card.size ? t(`tasks.size${card.size}`) : t("tasks.sizeNone")}</span>`}</dd>
         <dt>${t("taskcard.review")}</dt>
-        <dd><label class="tb-check"><input type="checkbox" disabled=${!writable} checked=${card.needsReview} onChange=${(e) => void save({ needsReview: e.target.checked })} />${t("taskcard.reviewBox")}</label></dd>
+        <dd>${writable ? html`<label class="tb-check"><input type="checkbox" checked=${card.needsReview} onChange=${(e) => void save({ needsReview: e.target.checked })} />${t("taskcard.reviewBox")}</label>`
+          // #2299: read-only (the public link): the values as text, not controls that look usable and are not.
+          : html`<span class="tc-value">${t(card.needsReview ? "taskcard.reviewOn" : "taskcard.reviewOff")}</span>`}</dd>
         ${parent ? html`<dt>${t("taskcard.parent")}</dt><dd><button type="button" class="tb-link" onClick=${() => onOpen(parent.id)}><span class="tb-code">${parent.id}</span> ${parent.title}</button></dd>` : null}
         <dt>${t("taskcard.deps")}</dt>
         <dd>${card.dependsOn.length ? card.dependsOn.map((d) => html`<button key=${d} type="button" class=${`tc-dep${card.unmetDeps.includes(d) ? " waiting" : ""}`}

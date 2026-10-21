@@ -141,6 +141,15 @@ export class SchedulerDb {
     `);
     this.board = new TaskBoard(this.db);
     this.board.migrate();
+    // #2293: each committed board write, as the tasks it touched (the search index keeps a doc per task).
+    this.board.onChange(({ ids }) => {
+      if (!this.onTaskChange) return;
+      for (const id of ids) {
+        const card = this.board.findCard(id);
+        const task = card ? this.getTask(card.uuid) : null;
+        if (task) this.changed(task);
+      }
+    });
   }
 
   /**
@@ -590,6 +599,16 @@ export class SchedulerDb {
       created_at: row.created_at as string,
       updated_at: row.updated_at as string,
     };
+  }
+
+  /**
+   * #2293: told of every task a committed board write touched (created, changed, claimed, done — the task tool's and
+   * the board's own), after the write; see the constructor.
+   */
+  onTaskChange: ((task: Task) => void) | null = null;
+  private changed(task: Task): Task {
+    try { this.onTaskChange?.(task); } catch { /* a listener never fails the write */ }
+    return task;
   }
 
   /**

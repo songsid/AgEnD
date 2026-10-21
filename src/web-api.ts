@@ -62,6 +62,8 @@ import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { resolveTz } from "./tz-utils.js";
 import { filesPlayInChat } from "./web-effect.js";
+import { QUERY_MAX_CHARS, RESULT_MAX, SEARCH_SOURCES } from "./search/search-store.js";
+import { xmsgShown } from "./search/search-docs.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -282,7 +284,7 @@ export interface WebApiContext {
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
     health_port?: number;
-    web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number };
+    web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean } };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
@@ -326,6 +328,10 @@ export interface WebApiContext {
   emitSseEvent(event: string, data: unknown): void;
   /** The web chat's recent messages (history + SSE replay); absent in contexts that have no chat. */
   readonly webChatHistory?: WebChatHistory;
+  /** #2293: the global search index (null or absent: off — web.search.enabled false — or not started). */
+  readonly searchIndex?: Pick<import("./search/search-index.js").SearchIndex, "query" | "context" | "status"> | null;
+  /** #2293: whose cross-instance messages search leaves out now (cross_instance_visibility "hidden"; see searchVisibility). */
+  searchVisibility?(): import("./search/search-docs.js").XmsgVisibility;
   /** Uploads and the files the dashboard may fetch back (web track C2); absent: no file routes. */
   readonly webFiles?: WebFileLedger;
   /** #1630: a cached avatar (an own bot's, or the picture uploaded in View) — never a fetch; null when there is none. */
@@ -985,6 +991,49 @@ function webAuthorityOf(req: IncomingMessage, url: URL, ctx: WebApiContext, inst
  * header token; null when nothing does any more (the gate also refuses a public link that is no longer the current
  * one). Equal before and after an await: the same admission still holds. Never touches the session.
  */
+/** #2293: an admin's admission — the header token or an admin session — else null (a guest's or a read-only session's). */
+function adminAdmissionOf(req: IncomingMessage, url: URL, ctx: WebApiContext): string | null {
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  if (v.kind !== "allow" || (v.via === "session" && v.session.tier !== "admin")) return null;
+  return admissionOf(req, url, ctx);
+}
+const SEARCH_LIMIT_DEFAULT = 50;
+/**
+ * #2293: GET /ui/search's parameters: q (1–QUERY_MAX_CHARS), instance (repeated), team (its members join `instance`),
+ * source (repeated: chat, xmsg, task), since / until (epoch ms), mine=1, limit (1–RESULT_MAX).
+ */
+function parseSearchQuery(url: URL, ctx: WebApiContext): { filters: import("./search/search-store.js").SearchFilters; mine: boolean } | { error: string } {
+  const p = url.searchParams;
+  const q = (p.get("q") ?? "").trim();
+  if (!q || q.length > QUERY_MAX_CHARS) return { error: `q required (1-${QUERY_MAX_CHARS} chars)` };
+  const instances = new Set(p.getAll("instance").filter(n => n.length > 0 && n.length <= 128));
+  const team = p.get("team");
+  if (team) {
+    const def = ctx.fleetConfig?.teams && Object.hasOwn(ctx.fleetConfig.teams, team) ? ctx.fleetConfig.teams[team] : undefined;
+    if (!def) return { error: "unknown team" };
+    for (const member of def.members ?? []) instances.add(member);
+    if (!instances.size) return { error: "team has no members" };
+  }
+  const sources = p.getAll("source");
+  if (sources.some(s => !(SEARCH_SOURCES as readonly string[]).includes(s))) return { error: `source must be one of: ${SEARCH_SOURCES.join(", ")}` };
+  const time = (name: string): number | undefined | null => {
+    const raw = p.get(name);
+    if (raw === null || raw === "") return undefined;
+    const n = Number(raw);
+    return Number.isSafeInteger(n) && n >= 0 ? n : null;
+  };
+  const since = time("since"), until = time("until");
+  if (since === null || until === null) return { error: "since/until must be epoch milliseconds" };
+  const limitRaw = p.get("limit");
+  const limit = limitRaw === null ? SEARCH_LIMIT_DEFAULT : Number(limitRaw);
+  if (!Number.isInteger(limit) || limit < 1 || limit > RESULT_MAX) return { error: `limit must be 1-${RESULT_MAX}` };
+  return {
+    filters: { q, limit, ...(instances.size ? { instances: [...instances] } : {}), ...(sources.length ? { sources: sources as import("./search/search-store.js").SearchSource[] } : {}),
+      ...(since !== undefined ? { since } : {}), ...(until !== undefined ? { until } : {}) },
+    mine: p.get("mine") === "1",
+  };
+}
+
 function admissionOf(req: IncomingMessage, url: URL, ctx: WebApiContext): string | null {
   const gateway = gatewayRequestContext(req);
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
@@ -2275,6 +2324,64 @@ export function handleWebRequest(
       ctx.scheduler.delete(decodeURIComponent(schedDelMatch[1]));
       json(res, 200, { deleted: true });
     } catch (err) { json(res, 400, { error: (err as Error).message }); }
+    return true;
+  }
+
+  // #2293: global search — an admin's only: the header token or an admin session. Never over the public link (the gateway
+  // does not list it either), never a guest (not in GUEST_ROUTES). Asked on arrival and again before the answer is sent.
+  if (method === "GET" && (path === "/ui/search" || path === "/ui/search/context")) {
+    const refusal = (): [number, string] | null => {
+      if (gatewayRequestContext(req)) return [404, "search_not_over_public_link"];
+      if (guestRequestOf(req)) return [403, "guest_forbidden"];
+      if (ctx.fleetConfig?.web?.search?.enabled === false || !ctx.searchIndex || ctx.searchIndex.status() === "unavailable") return [404, "search_unavailable"];
+      return null;
+    };
+    const first = refusal();
+    if (first) { json(res, first[0], { error: first[1] }); return true; }
+    const admitted = adminAdmissionOf(req, url, ctx);
+    if (!admitted) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return true; }
+    const index = ctx.searchIndex!;
+    // cross_instance_visibility "hidden" (fleet-traffic's rule): a message to or from such a name is not found.
+    const visibility = () => ctx.searchVisibility?.() ?? { hidden: [] };
+    const shown = (doc: { source: string; instance: string; peer: string | null }) => xmsgShown(doc, visibility());
+    const finish = (status: number, body: unknown) => {
+      const now = refusal();
+      if (now) return json(res, now[0], { error: now[1] });
+      if (adminAdmissionOf(req, url, ctx) !== admitted) return json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
+      json(res, status, body);
+    };
+    const failed = (reason: string) => finish(reason === "timeout" || reason === "busy" ? 503 : 404, { error: `search_${reason}` });
+    if (path === "/ui/search/context") {
+      const key = url.searchParams.get("key") ?? "";
+      if (!key || key.length > 300) { json(res, 400, { error: "key required" }); return true; }
+      void index.context(key).then(r => {
+        if (!r.ok) return failed(r.reason);
+        const doc = r.value?.doc;
+        // A message to or from an instance that is hidden now is not shown, as in the search itself.
+        if (!doc || !shown(doc)) return finish(404, { error: "not_found" });
+        finish(200, { ...r.value, building: r.building });
+      }, () => failed("unavailable"));
+      return true;
+    }
+    const parsed = parseSearchQuery(url, ctx);
+    if ("error" in parsed) { json(res, 400, { error: parsed.error }); return true; }
+    if (parsed.mine) {
+      const person = webPersonOf(req, url, ctx);
+      if (!person) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return true; }
+      parsed.filters.mine = [person.voterKey];
+    }
+    const v = visibility();
+    if ("hidden" in v) parsed.filters.hidden = v.hidden; else parsed.filters.xmsgAmong = v.among;
+    void index.query(parsed.filters).then(r => {
+      if (!r.ok) return failed(r.reason);
+      // A chat row still in the history opens in place (#m=); one that has left it opens as the index's copy.
+      const history = ctx.webChatHistory;
+      // The visibility as it is now (#2295 review): a name hidden while the query ran is left out too.
+      const now = visibility();
+      const hits = r.value.hits.filter(h => xmsgShown(h, now)).map(h => h.source !== "chat" ? h
+        : { ...h, live: !!history?.find(h.instance, String(h.ref.boot ?? ""), Number(h.ref.id)) });
+      finish(200, { hits, limited: r.value.limited, building: r.building });
+    }, () => failed("unavailable"));
     return true;
   }
 

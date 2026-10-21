@@ -128,7 +128,7 @@ then the projects (with % done) and No project. A board read carries live cards 
 handful of statements whatever its size (`views()`, `projectStats()`). A project: its main tasks by status, a filter by
 assignee, drag to move or reorder, a main task's sub tasks inside its tile. A card: every field edits in place with the
 version it started from; a 409 shows the newer card with the draft still open, and saving again overwrites. `?card=M-3`
-opens a card. Bars are SVG rects (the CSP allows no style attribute).
+opens a card. Bars are SVG rects (the CSP allows no style attribute); a bar fills with done work only — the percentage beside it (#2299: a project whose only card was blocked drew a full red bar at 0 %) — and the chips name what is blocked or waiting.
 
 - **Live.** A `tasks` stream event older than the board on screen is ignored; otherwise the page asks again (once per
   burst, 250 ms) with its revision, and is sent the board only when it moved. Same on a stream reconnect.
@@ -137,7 +137,8 @@ opens a card. Bars are SVG rects (the CSP allows no style attribute).
 - **Without a mouse.** A tile's title is its button (the tile is not a button around buttons): Enter opens the card,
   Alt+←/→ moves it to the status before or after, Alt+↑/↓ within its column. The card's dialog has Move to… and a
   Position row (up, down) — reordering on a phone, where HTML5 dragging does not fire.
-- **The public link** shows the board with a read-only note and no write controls (see above).
+- **The public link** shows the board with a read-only note and no write controls (see above): a card's project, priority, size and review are text, not disabled controls (#2299).
+- **Toasts** are a manual popover (the top layer): a toast raised while a card's dialog is open is above its backdrop, not dimmed under it. On a phone the board's toasts come in above the tabs (an older confirmation gives way to two newer toasts; an error stays), not over its title and search; while a card's sheet is open, at the top (#2299).
 
 ## Agents: the `task` tool on the board
 
