@@ -21,6 +21,7 @@
 import { randomBytes } from "node:crypto";
 import { effectTrialOffer, type EffectTrialOffer } from "./web-effect-trials.js";
 import { webTextLinks, type TextLink } from "./topic-link.js";
+import { WEB_REACTIONS_MAX, webReactionsOf } from "./web-reactions.js";
 
 /** A file shown with a message: an id the dashboard can fetch, never a path. */
 export interface WebChatAttachment { id: string; kind: "photo" | "document"; name: string; size: number; mime: string; width?: number; height?: number }
@@ -148,6 +149,11 @@ export interface WebChatMessage {
    * row with files and no text. A person's messages only.
    */
   replyTo?: WebChatReplyRef;
+  /**
+   * #2305: the instance's reactions to this message — its minimal reply ("OK" answered with 👍), as on the platforms.
+   * Distinct emojis of the web set (web-reactions.ts), at most WEB_REACTIONS_MAX, in the order they were added.
+   */
+  reactions?: string[];
 }
 
 /** #2272: a reply's reference to an earlier message of the same chat (see WebChatMessage.replyTo). */
@@ -244,6 +250,8 @@ export interface StoredWebChatMessage {
   seenSeq?: number;
   /** #2272: what a person's reply quotes (see WebChatMessage). */
   replyTo?: WebChatReplyRef;
+  /** #2305: the instance's reactions (see WebChatMessage). */
+  reactions?: string[];
 }
 
 /** #1565: what the history needs of the file ledger (web-upload.ts). */
@@ -314,7 +322,7 @@ export class WebChatHistory {
   private stored(m: WebChatMessage): StoredWebChatMessage {
     const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.click ? { click: { label: m.click.label } } : {}), ...(m.links ? { links: m.links } : {}),
       ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.channel && m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}),
-      ...(m.replyTo ? { replyTo: m.replyTo } : {}) };
+      ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.reactions?.length ? { reactions: [...m.reactions] } : {}) };
     if (m.attachments?.length) {
       row.attachments = m.attachments.map((a) => {
         const base = { kind: a.kind, name: a.name, size: a.size, mime: a.mime };
@@ -487,6 +495,28 @@ export class WebChatHistory {
    * #1920: a web message's channel copy was sent — it is now what the channel saw. Returns the message when this changed
    * it (the caller tells the guests), null otherwise.
    */
+  /**
+   * #2305: the instance reacted to one of its web chat's messages (by the id it was handed). Returns the message and
+   * whether this added the emoji (an emoji it already has, or a full list, changes nothing); null when the chat has
+   * no such message. `emoji` is already the web set's spelling (web-reactions.ts webReactionEmoji).
+   */
+  addReaction(instance: string, messageId: string, emoji: string): { message: WebChatMessage; added: boolean } | null {
+    const m = this.findByMessageId(instance, messageId);
+    if (!m) return null;
+    const list = m.reactions ?? [];
+    if (list.includes(emoji) || list.length >= WEB_REACTIONS_MAX) return { message: m, added: false };
+    m.reactions = [...list, emoji];
+    this.persist(instance);
+    return { message: m, added: true };
+  }
+
+  /** #2305: every kept message's reactions (what a poll sends, as it sends the ticks): its row, and the list. */
+  reactionStates(): Array<{ instance: string; boot: string; id: number; reactions: string[] }> {
+    const out: Array<{ instance: string; boot: string; id: number; reactions: string[] }> = [];
+    for (const [instance, slot] of this.byInstance) for (const m of slot.messages) if (m.reactions?.length) out.push({ instance, boot: m.boot, id: m.id, reactions: [...m.reactions] });
+    return out;
+  }
+
   markChannel(instance: string, messageId: string): WebChatMessage | null {
     const m = this.findByMessageId(instance, messageId);
     if (!m || m.channel) return null;
@@ -669,7 +699,8 @@ interface RestoredFile { id?: string; path?: string; kind: "photo" | "document";
 
 /**
  * #1565: one stored row as a restored message (and its files, to serve again), or null when it is not ours in shape.
- * Only what was said comes back: no buttons, no delivery tick, no message id — whatever a row carries of those.
+ * Only what was said comes back: no buttons, no delivery tick, no message id — whatever a row carries of those. #2305:
+ * and the instance's reactions (what was answered). With no id, a message from before the restart takes no new one.
  */
 function restoredRow(raw: unknown, instance: string, thisBoot: string): { message: WebChatMessage; files: RestoredFile[] } | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -691,6 +722,8 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   if (message.channel && typeof r.seenSeq === "number" && Number.isSafeInteger(r.seenSeq) && r.seenSeq > r.id) message.seenSeq = r.seenSeq;
   const replyTo = role === "user" ? webChatReplyRefOf(r.replyTo) : undefined;
   if (replyTo) message.replyTo = replyTo;
+  const reactions = webReactionsOf(r.reactions);
+  if (reactions) message.reactions = reactions;
   const files = !Array.isArray(r.attachments) ? [] : r.attachments.slice(0, 20).flatMap((a): RestoredFile[] => {
     if (!a || typeof a !== "object" || Array.isArray(a)) return [];
     const f = a as Record<string, unknown>;

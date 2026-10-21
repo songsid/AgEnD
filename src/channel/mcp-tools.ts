@@ -42,7 +42,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["reply", schemas.ReplyArgs,
     "Reply on the channel. Routing is handled automatically — do not pass chat_id or thread_id. Add `buttons` to offer choices people can click."],
   ["react", schemas.ReactArgs,
-    "Add an emoji reaction to a channel message."],
+    "Add an emoji reaction to a message — a Discord/Telegram message or a web chat message (its message_id starts with web-). A reaction is a complete answer to a message that only acknowledges or thanks (\"OK\", \"thanks\", \"收到\"), on every platform including the web chat; a task that needs a conclusion still needs reply. On the web chat use one emoji from the reaction set (e.g. 👍 👌 ❤ 🙏 🎉 🔥 💯) and never AgEnD's delivery marks; another emoji is refused with an error naming allowed ones."],
   ["edit_message", schemas.EditMessageArgs,
     "Edit a message the bot previously sent. Useful for interim progress updates."],
   ["download_attachment", schemas.DownloadAttachmentArgs,

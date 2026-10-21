@@ -432,6 +432,44 @@
     return msgs;
   }
 
+  /**
+   * #2305: the list after a reactions update for the row `boot`/`id` (the instance's reactions — its minimal reply): the
+   * same list when nothing changed, else a copy. At most 8 distinct short strings are taken; the server sent them.
+   */
+  function applyReactions(list, boot, id, reactions) {
+    var msgs = list || [];
+    if (!Array.isArray(reactions)) return msgs;
+    var clean = [];
+    for (var j = 0; j < reactions.length && clean.length < 8; j++) {
+      var e = reactions[j];
+      if (typeof e === "string" && e.length > 0 && e.length <= 16 && clean.indexOf(e) < 0) clean.push(e);
+    }
+    for (var i = msgs.length - 1; i >= 0; i--) {
+      if (!msgs[i] || msgs[i].boot !== boot || msgs[i].id !== id) continue;
+      var had = msgs[i].reactions || [];
+      var same = had.length === clean.length;
+      for (var k = 0; same && k < had.length; k++) if (had[k] !== clean[k]) same = false;
+      if (same) return msgs;
+      var out = msgs.slice();
+      out[i] = Object.assign({}, msgs[i], { reactions: clean });
+      return out;
+    }
+    return msgs;
+  }
+  /** #2305: an emoji drawn as one — a heart, ☃, ✍ and the like have a text form unless U+FE0F follows. */
+  function emojiForm(e) { return /\p{Emoji_Presentation}/u.test(e) ? e : e + "\uFE0F"; }
+  /** #2305: a message's reactions under its bubble, labelled for a screen reader (`label`: who reacted); "" when none. */
+  function reactionsHtml(reactions, label) {
+    if (!Array.isArray(reactions) || !reactions.length) return "";
+    var items = "";
+    for (var i = 0; i < reactions.length; i++) {
+      if (typeof reactions[i] !== "string") continue;
+      items += '<span class="reaction" role="img" aria-label="' + escapeHtml(reactions[i]) + '">' + escapeHtml(emojiForm(reactions[i])) + "</span>";
+    }
+    var l = escapeHtml(label || "");
+    return items ? '<div class="msg-reactions" role="group" aria-label="' + l + '" title="' + l + '">' + items + "</div>" : "";
+  }
+
   var TICK_GLYPH = { queued: "◷", processing: "✓", delivered: "✓✓", failed: "!", cancelled: "⊘" };
   /** The ticks for one state, labelled for a screen reader as well as a pointer; "" when there is none. */
   function deliveryHtml(state, labels) {
@@ -631,6 +669,7 @@
     settleFailedSend: settleFailedSend, putBack: putBack,
     FILE_LIMITS: FILE_LIMITS, fileLimits: fileLimits, fileRejection: fileRejection, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml, isHtmlAttachment: isHtmlAttachment,
     nextDeliveryState: nextDeliveryState, applyDelivery: applyDelivery, deliveryHtml: deliveryHtml, isBusy: isBusy,
+    applyReactions: applyReactions, reactionsHtml: reactionsHtml,
     isNearBottom: isNearBottom, CODE_FOLD_LINES: CODE_FOLD_LINES, lineCount: lineCount,
     LONG_PASTE_CHARS: LONG_PASTE_CHARS, isLongPaste: isLongPaste, formatElapsed: formatElapsed,
     htmlFences: htmlFences, attachmentPreviewType: attachmentPreviewType, highlight: highlight,

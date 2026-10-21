@@ -115,7 +115,9 @@ describe("classic web echo opt-in (#1320 B)", () => {
     expect(r.status).toBe(200);
     await flush(); await flush();
     expect(h.sentA).toHaveLength(1);
-    expect(h.s.webMessageInChannel.mock.calls, "#1920: the room saw it").toEqual([["classic-a", r.body.messageId]]);
+    expect(h.s.webMessageInChannel.mock.calls.map((c: unknown[]) => c.slice(0, 2)), "#1920: the room saw it").toEqual([["classic-a", r.body.messageId]]);
+    // #2305: and where its copy is (the room, the copy's own id), for a reaction to the web message.
+    expect(h.s.webMessageInChannel.mock.calls[0][2]).toEqual([expect.objectContaining({ chatId: CHANNEL, messageId: "1" })]);
     expect(h.sentA[0].chatId).toBe(CHANNEL);
     expect(h.sentA[0].text.startsWith(WEB_ECHO_PREFIX)).toBe(true);
     expect(h.sentA[0].text).toContain("[mention: 222]");

@@ -315,9 +315,10 @@ export interface WebApiContext {
    * (#1320 part B). Resolves the entries and adapters itself; returns how
    * many channels were posted to. Never rejects the web send on failure.
    */
-  sendClassicWebEcho?(instance: string, text: string, sender?: string): Promise<number>;
+  sendClassicWebEcho?(instance: string, text: string, sender?: string, copies?: import("./web-reactions.js").WebEchoCopy[]): Promise<number>;
   /** #1920 §5.2: a web message's channel copy was sent — guests of that channel may see it now. */
-  webMessageInChannel?(instance: string, messageId: string): void;
+  /** #2305: `copies`, the copies' own message ids, so a reaction to the web message is put on them too. */
+  webMessageInChannel?(instance: string, messageId: string, copies?: readonly import("./web-reactions.js").WebEchoCopy[]): void;
   /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
   deliverToInstance(instanceName: string, payload: Record<string, unknown>, options?: { stillCurrent?: () => boolean }): Promise<boolean | void>;
   deliverHumanToInstance?(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin, originalBody: string, options?: { stillCurrent?: () => boolean }): Promise<boolean | void>;
@@ -1314,6 +1315,8 @@ export function handleWebRequest(
       deliveries: history ? history.deliveries() : [],
       // #1266: a reply's buttons that ended after the page saw the reply (the message itself is not sent again).
       reply_buttons: history ? history.buttonStates() : [],
+      // #2305: the instance's reactions, likewise (a reaction is no new message).
+      reactions: history ? history.reactionStates() : [],
       // And the fleet prompts open on the dashboard (C4): prompt events are stream-only too.
       prompts: ctx.listWebPrompts?.() ?? [],
       // #1386: "Needs you" rides the passive channels only — no endpoint of its own to poll.
@@ -2729,8 +2732,9 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // the fleet-wide switch is off for a room that is unset) resolved at send time inside sendClassicWebEcho.
       const canClassicEcho = ctx.isClassicInstance?.(instance) === true && !!ctx.sendClassicWebEcho;
       const settleClassicEcho = canClassicEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
-        const posted = await ctx.sendClassicWebEcho!(instance, formatWebChannelEcho(person.name, preview, t("web.echo_full_text"), { guest: !!guest }), person.name);
-        if (posted > 0) ctx.webMessageInChannel?.(instance, messageId);       // #1920 §5.2: the room saw it
+        const copies: import("./web-reactions.js").WebEchoCopy[] = [];
+        const posted = await ctx.sendClassicWebEcho!(instance, formatWebChannelEcho(person.name, preview, t("web.echo_full_text"), { guest: !!guest }), person.name, copies);
+        if (posted > 0) ctx.webMessageInChannel?.(instance, messageId, copies); // #1920 §5.2: the room saw it (#2305: its copies)
       }) : undefined;
       const settleEcho = canEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
         // A replacement adapter or edited binding is not the route we reserved.
@@ -2738,7 +2742,11 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
           || (ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "")) !== groupId
           || ctx.fleetConfig?.instances[instance]?.topic_id !== topicId) return;
         const sent = await syncAdapter.sendText(String(groupId), formatWebChannelEcho(person.name, preview, t("web.echo_full_text"), { guest: !!guest }), { threadId: String(topicId), format: "text", allowedMentions: { parse: [] } });
-        ctx.webMessageInChannel?.(instance, messageId);                          // #1920 §5.2: the topic saw it
+        const copyId = sent && typeof sent === "object" && typeof (sent as { messageId?: unknown }).messageId === "string" ? (sent as { messageId: string }).messageId : "";
+        // #1920 §5.2: the topic saw it. #2305: and where it is, for a reaction to the web message.
+        const reacting = syncAdapter as unknown as Partial<import("./web-reactions.js").WebEchoCopy["adapter"]>;
+        ctx.webMessageInChannel?.(instance, messageId, copyId && typeof reacting.react === "function"
+          ? [{ adapter: reacting as import("./web-reactions.js").WebEchoCopy["adapter"], chatId: String(groupId), threadId: String(topicId), messageId: copyId }] : []);
         return sent;
       }) : undefined;
       let delivered: boolean | void;

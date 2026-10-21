@@ -2006,3 +2006,9 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   .tb-tile.flash { animation: none; }
   .tb-chev { transition: none; }
 }
+
+/* #2305: the agent's reactions to a message (its minimal reply), under the bubble — on the person's side for theirs. */
+.msg-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.msg.user .msg-reactions { justify-content: flex-end; }
+.msg-reactions .reaction { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 24px; padding: 0 6px;
+  border: 1px solid var(--border); border-radius: var(--r-full); background: var(--surface-2); font-family: var(--font-emoji); font-size: 15px; line-height: 1; }

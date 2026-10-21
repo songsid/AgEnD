@@ -58,7 +58,7 @@ describe("the projections (pure)", () => {
     }
   });
   it("guestPollBody: the projected status; no messages, ticks, buttons, prompts, Needs you or cursor", () => {
-    expect(guestPollBody(FULL, new Set(["a"]), 42)).toEqual({ status: guestStatus(FULL, new Set(["a"])), messages: [], deliveries: [], reply_buttons: [], prompts: [], needs: [], cursor: null, now: 42 });
+    expect(guestPollBody(FULL, new Set(["a"]), 42)).toEqual({ status: guestStatus(FULL, new Set(["a"])), messages: [], deliveries: [], reply_buttons: [], reactions: [], prompts: [], needs: [], cursor: null, now: 42 });
   });
   it("the stream, the poll and a file are now on the guest table", () => {
     for (const p of ["/ui/events", "/ui/poll", "/ui/file/x"]) expect(GUEST_ROUTES.find((r) => r.pattern.test(p))?.state, p).toBe("on");
@@ -328,8 +328,12 @@ describe("live: the stream, the poll and a file for a guest scoped to `a`", () =
   it("the poll: the projected status, and only the chat it may see (an agent's web-only note is not); an admin's poll unchanged", async () => {
     vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
     fm.emitSseEvent("message", { instance: "a", sender: "a", text: "another private note", ts: new Date().toISOString(), role: "agent" });
+    // #2305: the agent reacted to alice's own message — in her poll and the admin's (a reaction is no new message).
+    const reacted = fm.webChatHistory.addReaction("a", "web-alice", "👍");
+    expect(reacted?.added).toBe(true);
     const g = JSON.parse((await get("/ui/poll", cookieOf(session("guest", ALICE)))).body);
-    expect(Object.keys(g).sort()).toEqual(["cursor", "deliveries", "messages", "needs", "now", "prompts", "reply_buttons", "status"]);
+    expect(Object.keys(g).sort()).toEqual(["cursor", "deliveries", "messages", "needs", "now", "prompts", "reactions", "reply_buttons", "status"]);
+    expect(g.reactions).toEqual([{ instance: "a", boot: reacted!.message.boot, id: reacted!.message.id, reactions: ["👍"] }]);
     expect([g.prompts, g.needs, g.status.instances.map((i: { name: string }) => i.name)]).toEqual([[], [], ["a"]]);
     // Only what it may see: never the agent's web-only note, never another person's web message or its tick.
     const texts = g.messages.map((m: { text: string }) => m.text);
@@ -339,6 +343,7 @@ describe("live: the stream, the poll and a file for a guest scoped to `a`", () =
     expect(g.cursor, "#1920 phase 2: the poll's cursor, as everyone's").toBe(fm.webChatHistory.pollCursor());
     const a = JSON.parse((await get("/ui/poll", cookieOf(session("admin")))).body);
     expect(a.messages.some((m: { text: string }) => m.text === "another private note")).toBe(true);
+    expect(a.reactions).toEqual(g.reactions);
     expect(a.status).toHaveProperty("uptime");
   });
   it("a file: served when its stored instance is in scope; another instance's id is 'no such file' for the guest, served for the admin", async () => {

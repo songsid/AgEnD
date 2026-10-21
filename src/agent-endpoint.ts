@@ -30,6 +30,7 @@ import {
   resolveToolSet,
   toolRefusedMessage,
 } from "./tool-permissions.js";
+import { isWebMessageId } from "./web-chat-history.js";
 
 export interface PersistedReplyContext {
   chatId: string;
@@ -92,6 +93,8 @@ const OP_MAP: Record<string, string> = {
 type CrudHandler = (ctx: OutboundContext, instance: string, args: Record<string, unknown>) => Promise<unknown>;
 
 export interface AgentEndpointContext extends OutboundContext {
+  /** #2305: an instance's reaction to a web chat message (FleetManager.reactToWebMessage). */
+  reactToWebMessage?(instance: string, messageId: string, emoji: unknown): Promise<{ ok: true; mirrored: number } | { ok: false; error: string }>;
   /** Absolute data directory (e.g. ~/.agend). Used to locate per-instance token files. */
   readonly dataDir: string;
   /** Duplicate-reply suppression shared with the MCP path (see reply-dedup.ts). */
@@ -424,6 +427,15 @@ export async function dispatchAgentOperation(
   // Channel tools (reply, react, edit, download)
   const channelTools = new Set(["reply", "react", "edit_message", "download_attachment"]);
   if (channelTools.has(tool)) {
+    // #2305: a reaction to a web chat message is the web chat's own (as on the MCP path): never an adapter's.
+    const reactId = tool === "react" ? (args as Record<string, unknown>).message_id : undefined;
+    if (typeof reactId === "string" && isWebMessageId(reactId)) {
+      return (async (): Promise<unknown> => {
+        if (!ctx.reactToWebMessage) return { error: "react: the web chat is not available" };
+        const r = await ctx.reactToWebMessage(instance, reactId, (args as Record<string, unknown>).emoji);
+        return r.ok ? "ok" : { error: r.error };
+      })();
+    }
     return (async (): Promise<unknown> => {
       const persisted = readPersistedReplyContext(ctx.dataDir, instance);
       const configuredThreadId = ctx.fleetConfig?.instances[instance]?.topic_id != null
