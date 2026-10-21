@@ -144,3 +144,16 @@ export function planCarriedOut(plan: ServicePlan, target: string, deps: Pick<Pla
   const loaded = parseLaunchctlPrint(printed.stdout);
   return !!loaded.tuple && sameJob(loaded.tuple, planned);
 }
+
+/**
+ * The plan `agend restart` still has to carry out, or null (#2375). A plan whose job launchd already runs — #1871's
+ * interrupted update after `agend start`, or an update whose planned plist is the job already loaded — is done: it is
+ * removed here, quietly, so no later restart judges it again (each one used to print a note about it).
+ */
+export function pendingPlan(agendHome: string, target: string, deps: Pick<PlanDeps, "readFile" | "run" | "removeFile">): ServicePlan | null {
+  const recorded = readPlan(agendHome, deps);
+  if (!recorded) return null;
+  if (!planCarriedOut(recorded, target, deps)) return recorded;
+  deps.removeFile(planPath(agendHome));
+  return null;
+}
