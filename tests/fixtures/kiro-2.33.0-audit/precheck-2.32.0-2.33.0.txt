@@ -1,0 +1,36 @@
+precheck kiro-cli (manifest scripts/manual/cli-upstream-precheck/sources.json, 86 literals)
+  old: /tmp/claude-1000/-home-han-Projects-AgEnD/49347c54-abf7-4d58-a5ab-928deaf3af33/scratchpad/uw-1021/kiro-cli/2.32.0 — 8 file(s), 285.5 MB
+  new: /tmp/claude-1000/-home-han-Projects-AgEnD/49347c54-abf7-4d58-a5ab-928deaf3af33/scratchpad/uw-1021/kiro-cli/2.33.0 — 8 file(s), 284.6 MB
+
+literals in the old artifact: 57 of 86 (the rest are AgEnD's own text, or this CLI never had them)
+
+MISSING (in old, not in new): 2
+  [trust] 1 -> 0  "esc to cancel"   (src/backend/kiro.ts:227 kiroTrustPromptState)
+  [onboarding] 1 -> 0  "Press enter to continue to the browser or esc to cancel"   (src/login-flows.ts:176 KIRO_EXPIRED_LOGIN_SCREEN)
+
+COUNT CHANGED: 5
+  [error] 68 -> 69  "not available"   (src/backend/kiro.ts:1454 KiroBackend.getErrorPatterns.pattern)
+  [error] 36 -> 34  "ExpiredTokenException"   (src/backend/kiro.ts:1497 KiroBackend.getErrorPatterns.pattern)
+  [error] 33 -> 31  "RequestThrottledException"   (src/backend/kiro.ts:1598 KiroBackend.getErrorPatterns.pattern)
+  [error] 28 -> 26  "SlowDownException"   (src/backend/kiro.ts:1598 KiroBackend.getErrorPatterns.pattern)
+  [error] 50 -> 48  "TooManyRequestsException"   (src/backend/kiro.ts:1598 KiroBackend.getErrorPatterns.pattern)
+
+APPEARED (not in old, in new): 0
+
+NEW PROMPT-LIKE STRINGS near a known detector literal: 1
+  [error,trust] "rate limit reached:Your prompt is too long even after truncation."   near "to navigate"; "to select"; "Kiro rate limit reached"   hint: the old release has "rate limit reached:"… (only a neighbouring string changed?)
+
+NEW PROMPT-LIKE STRINGS elsewhere: 0
+
+PROMPT-LIKE STRINGS gone in the new artifact: 4
+  "Are you sure want to continue uninstalling ?"
+  "Do you want to modify your shell config (you will have to manually do this otherwise)?"
+  "Press enter to continue to the browser or esc to cancel"
+  "rate limit reached:Monthly request limit reached"
+
+REASON: 2 detector literal(s) missing: [trust] "esc to cancel"; [onboarding] "Press enter to continue to the browser or esc to cancel"
+REASON: 1 new prompt-like string(s) on a known surface: [error,trust] "rate limit reached:Your prompt is too long even after trunca"
+REASON: 5 literal count(s) changed
+BASIS-DETAIL: missing 2, incomplete 0, coverage 0, unhinted new prompts 0, hinted new prompts 1
+BASIS: hard=2; hinted=1
+PRECHECK: MAJOR

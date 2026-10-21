@@ -1,0 +1,12 @@
+## ", let's get you signed in!": count 1
+ou run this...event crates/q_cli/src/util/mod.rs:302q_cli::utilcrates/q_cli/src/util/mod.rscalled welcome_login_prompt while stdout is not a terminalWelcome to , let's get you signed in!
+ to continue to the browser or ··event crates/q_cli/src/util/mod.rs:351called input while stdout is not a terminalevent crates/q_cli/src/util/mod.rs:268no opti
+
+## ' to continue to the browser or ': count 1
+q_cli/src/util/mod.rs:302q_cli::utilcrates/q_cli/src/util/mod.rscalled welcome_login_prompt while stdout is not a terminalWelcome to , let's get you signed in!
+ to continue to the browser or ··event crates/q_cli/src/util/mod.rs:351called input while stdout is not a terminalevent crates/q_cli/src/util/mod.rs:268no options passed to choosecalled choos
+
+## 'Press enter to continue to the browser or esc to cancel': count 0
+
+## 'esc to cancel': count 0
+
