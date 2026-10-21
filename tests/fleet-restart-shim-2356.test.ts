@@ -73,16 +73,36 @@ describe("fleet start / fleet stop by hand (#2356): who started it, and when the
     expect(go({ byServiceManager: true })).toBe(false);
     expect(go({ directMarker: true })).toBe(false);
     expect(go({ installedServicePath: null })).toBe(false);                             // Docker, manual, detached hosts
+    // A service file the manager cannot run (written, never activated): `fleet start --direct` is the operator's way out.
+    expect(go({ installedServicePath: "/u/com.agend.fleet.service", directMarker: true })).toBe(false);
     expect(go({ command: "stop" })).toBe(true);
     expect(go({ command: "stop", byServiceManager: true, directMarker: true })).toBe(true);   // no manager ever runs `fleet stop`
     expect(go({ command: "stop", installedServicePath: null })).toBe(false);
+  });
+
+  it("`fleet start --direct` is an operator's override: refused from an agent session or the fleet's own commands, before the hand-over", () => {
+    const source = readFileSync(join(process.cwd(), "src", "cli.ts"), "utf8");
+    const at = source.indexOf("if (opts?.direct && !forceAllowed()) {");
+    expect(at).toBeGreaterThan(0);
+    expect(source.slice(at, at + 300)).toContain("process.exit(1);");
+    expect(at).toBeLessThan(source.indexOf("const direct = marked || !!opts?.direct;"));
+    expect(source.indexOf("const direct = marked || !!opts?.direct;")).toBeLessThan(source.indexOf('if (!instance && redirectToService("start", [], direct)) return;'));
+  });
+
+  it("quickstart's failed service install names the way out, not a bare `agend start` that refuses", () => {
+    const source = readFileSync(join(process.cwd(), "src", "quickstart.ts"), "utf8");
+    const at = source.indexOf("Could not install the service automatically");
+    const branch = source.slice(at, source.indexOf("printDashboard();", at));
+    expect(branch).toContain('bold("agend fleet start --direct")');
+    expect(branch).toContain("serviceFailed = true;");
+    expect(branch).toContain("if (!serviceRunning && !serviceFailed) {");
   });
 
   it("AgEnD's own detached starts carry the marker, and fleet start drops it before anything it launches", () => {
     const source = readFileSync(join(process.cwd(), "src", "cli.ts"), "utf8");
     expect(source.match(/spawn\(start\.command, start\.args, \{ detached: true, stdio: "ignore", env: \{ \.\.\.process\.env, \[DIRECT_FLEET_START_ENV\]: "1" \} \}\)/g)).toHaveLength(2);
     expect(source.match(/selfCommand\(\["fleet", "start"\]\)/g)).toHaveLength(2);
-    const at = source.indexOf("const direct = process.env[DIRECT_FLEET_START_ENV]");
+    const at = source.indexOf("const marked = process.env[DIRECT_FLEET_START_ENV]");
     expect(source.slice(at, at + 200)).toContain("delete process.env[DIRECT_FLEET_START_ENV];");
     expect(at).toBeLessThan(source.indexOf("if (!claimFleetSingleton()) return;", at));
   });
@@ -255,6 +275,14 @@ describe("`fleet start` / `fleet stop` by hand with a user unit installed (inert
     const source = readFileSync(join(process.cwd(), "src", "cli.ts"), "utf8");
     expect(source).toContain('if (!instance && redirectToService("start", [], direct)) return;');
     expect(source).toContain('if (!instance && redirectToService("stop", opts?.yes ? ["--yes"] : [], false)) return;');
+  });
+
+  it("a service file the manager cannot run: `agend start` refuses a fleet beside it and names `fleet start --direct`", async () => {
+    const result = await run(["start"], null);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("refusing to start a detached duplicate");
+    expect(result.stderr).toContain("If the service cannot run on this host, start the fleet without it: agend fleet start --direct");
+    expect(existsSync(join(home, "fleet.pid"))).toBe(false);
   });
 
   it("`fleet stop` runs `agend stop` with its gate: refused without --yes from an agent session, the service stopped with it", async () => {

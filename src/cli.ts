@@ -225,14 +225,22 @@ fleet
   .command("start")
   .description("Start fleet or specific instance")
   .argument("[instance]", "Specific instance to start")
-  .action(async (instance?: string) => {
+  .option("--direct", "Start here even though an AgEnD service is installed (operators only: the service cannot run on this host)")
+  .action(async (instance?: string, opts?: { direct?: boolean }) => {
     // Root running fleet = sandbox environment (e.g. Docker, WSL root service)
     // Set IS_SANDBOX so child processes (claude-code) don't refuse to run
     if (process.getuid?.() === 0 && !process.env.IS_SANDBOX) {
       process.env.IS_SANDBOX = "1";
     }
-    const direct = process.env[DIRECT_FLEET_START_ENV] === "1";
+    const marked = process.env[DIRECT_FLEET_START_ENV] === "1";
     delete process.env[DIRECT_FLEET_START_ENV];
+    // #2356: the way out when the installed service cannot run here (never activated, no GUI session for launchd) — an
+    // operator's own decision, as `restart --force` is; the fleet's singleton lock still refuses a second fleet.
+    if (opts?.direct && !forceAllowed()) {
+      console.error("  ✗ --direct is for an operator's own shell, not a fleet agent session or the fleet's own commands. Nothing was started.");
+      process.exit(1);
+    }
+    const direct = marked || !!opts?.direct;
     if (!instance && redirectToService("start", [], direct)) return;
 
     if (instance) {
@@ -1936,7 +1944,9 @@ program
       // A service file means the service manager owns this fleet. Falling back
       // to a detached process here creates a second fleet when the bus recovers.
       console.error("Failed to start the installed AgEnD service; refusing to start a detached duplicate.");
-      console.error("Check your service manager, then retry: systemctl --user status com.agend.fleet");
+      console.error(`Check your service manager, then retry: ${process.platform === "darwin" ? "launchctl print gui/$(id -u)/com.agend.fleet" : systemServicePath ? "systemctl status agend" : "systemctl --user status com.agend.fleet"}`);
+      // #2356: a service file that cannot run here (never activated, no session for it) would otherwise leave no start.
+      console.error("If the service cannot run on this host, start the fleet without it: agend fleet start --direct");
       process.exitCode = 1;
     }
   });

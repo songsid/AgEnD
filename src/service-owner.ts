@@ -33,8 +33,10 @@ export function fullReloadExitCode(ownCgroupText: string | null): number {
 export const DIRECT_FLEET_START_ENV = "AGEND_FLEET_START_DIRECT";
 
 /**
- * This `fleet start` is the service manager's own: the AgEnD unit's ExecStart (the process is in that unit's cgroup),
- * or the launchd job (launchd names the job in XPC_SERVICE_NAME, and is the parent). Anything else is a hand-run.
+ * This `fleet start` runs under the service manager: the AgEnD unit's ExecStart (the process is in that unit's
+ * cgroup), or the launchd job (launchd names the job in XPC_SERVICE_NAME, and is the parent). Whatever that fleet runs
+ * shares the answer (an agent's pane inherits the cgroup and the variable): a `fleet start` typed there is not handed
+ * over, and the fleet's singleton lock refuses it while that fleet runs. Anything else is a hand-run.
  */
 export function startedByServiceManager(o: {
   platform: NodeJS.Platform; env: NodeJS.ProcessEnv; ownCgroup: string | null; ppid: number; launchdLabel: string;

@@ -907,6 +907,7 @@ export async function runQuickstart(): Promise<void> {
 
     // Ask to install as system service
     let serviceRunning = false;
+    let serviceFailed = false;
     const installAnswer = await rl.question("  Install as system service? [Y/n] ");
     if (!installAnswer || installAnswer.toLowerCase() === "y" || installAnswer.toLowerCase() === "yes") {
       try {
@@ -925,11 +926,13 @@ export async function runQuickstart(): Promise<void> {
         serviceRunning = true;
       } catch (err) {
         console.log(`\n  ${yellow("⚠")}  Could not install the service automatically (${(err as Error).message}).`);
-        console.log(`     Start the fleet manually: ${bold("agend start")}`);
+        // #2356: the service file may already be written, and `agend start` then refuses a fleet beside it.
+        console.log(`     Start the fleet without the service: ${bold("agend fleet start --direct")} (or retry the service later: ${bold("agend start")})`);
+        serviceFailed = true;
       }
     }
 
-    if (!serviceRunning) {
+    if (!serviceRunning && !serviceFailed) {
       console.log(`  Start the fleet: ${bold("agend start")}`);
     }
     printDashboard();

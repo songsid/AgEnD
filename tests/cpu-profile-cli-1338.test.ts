@@ -8,7 +8,7 @@ import { installFleetProcessHandlers } from "../src/fleet-process-handlers.js";
 // Never import the self-executing CLI or construct the real FleetManager.
 function harness() {
   const source = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
-  const prefix = "  .action(async (instance?: string) => {";
+  const prefix = "  .action(async (instance?: string, opts?: { direct?: boolean }) => {";
   const begin = source.indexOf(prefix, source.indexOf(".description(\"Start fleet or specific instance\")"));
   const end = source.indexOf("\n  });\n\nfleet\n  .command(\"stop\")", begin);
   if (begin < 0 || end < 0) throw new Error("CLI callback boundary changed; update the harness");
