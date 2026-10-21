@@ -254,7 +254,22 @@ export class GrokBackend implements CliBackend {
    * `I waited… 30s for the build` are both rejected.
    */
   getBusyPattern(): RegExp {
-    return /^[ \t]*[\u2800-\u28FF]\s+\p{L}[^\n]*…\s*\d+(\.\d+)?s\b/mu;
+    // The turn-status spinner line always ends with [stop] (and sometimes [↓][stop]).
+    // Confirmed from all fixtures in grok-1.0.52-audit/ and grok-1.0.60-audit/:
+    //   ⠴ Waiting for response… 3.0s         3.0s ⇣1.33k [stop]
+    //   ⠦ Compacting…                          4.9s ⇣1.20k [stop]
+    //   ⠹ Server error (500) | Retrying…       7.0s ⇣1.45k [stop]
+    //   ⠼ Run Read `/…/install-sh…`… 0.1s     3m19s ⇣24.4k [↓][stop]
+    //
+    // The Watchers panel uses braille glyphs too, but its lines do NOT end with [stop]:
+    //   ⠴ Monitor Watch PR 2315 merge…        45.2s        ← no [stop]
+    //   ⠸ Waiting for PR 2315 merge…          2h01m        ← no [stop]
+    //
+    // Using [stop] as the discriminator is more robust than a verb whitelist:
+    // it works for any present or future Grok status verb (including tool names
+    // like "Run", "Read", "Write" that start with common English words that could
+    // also appear in watcher titles).
+    return /^[ \t]*[\u2800-\u28FF]\s+\S[^\n]*…[^\n]*\[stop\]/mu;
   }
 
   getErrorPatterns(): ErrorPattern[] {

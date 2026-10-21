@@ -48,10 +48,11 @@ describe("GrokBackend busy pattern", () => {
   it("matches the spinner whatever glyph and verb it shows", () => {
     const busy = backend.getBusyPattern();
     for (const line of [
-      "    ⠹ Waiting for response… 5s",
-      "  ⠼ Thinking… 3.0s",
-      "  ⠸ Waiting for response… 12.3s",
-      "  ⠧ Waiting for response… 1s",
+      "    ⠹ Waiting for response… 5s                                    5s ⇣2k [stop]",
+      "  ⠼ Thinking… 3.0s                                               3.0s ⇣1k [stop]",
+      "  ⠸ Waiting for response… 12.3s                                  12.3s ⇣1k [stop]",
+      "  ⠧ Waiting for response… 1s                                     1.0s ⇣1k [stop]",
+      "    ⠼ Run Read `/home/han/…`… 0.1s                3m19s ⇣24.4k [↓][stop]",
     ]) {
       expect(busy.test(line), line).toBe(true);
     }
