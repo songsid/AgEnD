@@ -45,7 +45,7 @@ export function AppearanceSection() {
   const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
   if (publicLink) return html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>`;
   const group = (key) => html`<h2 class="s-ap-group">${tn(key)}</h2>`;
-  return html`${group("groupLook")}<${ThemesCard} /><${IdentityColorCard} /><${CardSizeCard} />
+  return html`${group("groupLook")}<${ThemesCard} /><${IdentityColorCard} /><${CardSizeCard} /><${AppIconCard} />
     ${group("groupLayout")}<${SidebarWidgetCard} />
     ${group("groupCss")}<${OwnerCssCard} /><${DeviceCard} />
     ${group("groupMods")}<${ModsCard} /><${EffectsCard} />
@@ -124,6 +124,131 @@ function CardSizeCard() {
         onClick=${() => setCardSizeDefault(s)}>${t(`card.size${s.toUpperCase()}Name`)}</button>`)}
     </div>
     <p class="sub">${tn("cardSizeLead")}</p>
+  </section>`;
+}
+
+/**
+ * #2308: the image as one square PNG the host makes the icon sizes from — centre-cropped, drawn at 512 px if smaller
+ * (marked low-resolution), as it is up to 1024 px, else 1024. The browser decodes whatever it can show (PNG, JPG, WebP);
+ * the host takes only that PNG.
+ */
+export async function appIconPng(file) {
+  const bmp = await createImageBitmap(file);
+  try {
+    const side = Math.min(bmp.width, bmp.height);
+    const out = Math.min(1024, Math.max(512, side));
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = out;
+    const g = canvas.getContext("2d");
+    g.imageSmoothingQuality = "high";
+    g.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, out, out);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("no PNG");
+    return { blob, low: side < 512 };
+  } finally {
+    if (bmp.close) bmp.close();
+  }
+}
+
+/** #2308: this page's icon links follow a change at once (the next pages carry the version from the host). */
+export function refreshAppIconLinks(version, custom) {
+  if (typeof document === "undefined") return;
+  const v = encodeURIComponent(version);
+  const head = document.head;
+  const links = [...head.querySelectorAll("link")];
+  const byPath = (path) => links.find((l) => (l.getAttribute("href") || "").split("?")[0] === path);
+  for (const [path, rel] of [["/favicon.ico", "icon"], ["/apple-touch-icon.png", "apple-touch-icon"], ["/manifest.webmanifest", "manifest"]]) {
+    const el = byPath(path);
+    if (el && el.getAttribute("rel") === rel) el.setAttribute("href", `${path}?v=${v}`);
+  }
+  const svg = byPath("/favicon.svg");
+  if (custom && svg) svg.remove();
+  else if (!custom && !svg) {
+    const link = document.createElement("link");
+    for (const [k, val] of [["rel", "icon"], ["href", `/favicon.svg?v=${v}`], ["type", "image/svg+xml"], ["sizes", "any"]]) link.setAttribute(k, val);
+    head.appendChild(link);
+  }
+}
+
+/**
+ * #2308: the app icon — what a browser tab and a home screen show. One picture for every page (sign-in and the public
+ * link too); an admin changes it, everyone else sees it.
+ */
+function AppIconCard() {
+  const [state, setState] = useState(null);
+  const [canWrite, setCanWrite] = useState(false);
+  const [picked, setPicked] = useState(null);           // { blob, url, low }
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const file = useRef(null);
+  const load = async () => {
+    const r = await call("/ui/app-icon");
+    setState(r.ok && r.body && typeof r.body.version === "string" ? r.body : { failed: true });
+  };
+  useEffect(() => {
+    load();
+    const auth = typeof window !== "undefined" ? window.AgendAuth : null;
+    if (auth && auth.canWrite) Promise.resolve(auth.canWrite()).then((v) => setCanWrite(v === true), () => {});
+  }, []);
+  useEffect(() => () => { if (picked) URL.revokeObjectURL(picked.url); }, [picked]);
+  const title = html`<${CardTitle} title=${tn("appIconTitle")} topic="app-icon" />`;
+  if (!state) return html`<section class="card s-appearance s-app-icon">${title}<p class="sub">…</p></section>`;
+  if (state.failed) return html`<section class="card s-appearance s-app-icon">${title}<p class="err">${tn("appIconLoadFailed")}</p></section>`;
+
+  const choose = async () => {
+    const f = file.current && file.current.files && file.current.files[0];
+    if (file.current) file.current.value = "";
+    if (!f) return;
+    setError("");
+    try {
+      const made = await appIconPng(f);
+      setPicked({ ...made, url: URL.createObjectURL(made.blob) });
+    } catch {
+      setError(tn("appIconNotAnImage"));
+    }
+  };
+  const answered = (r, done) => {
+    setBusy(false);
+    if (!r.ok) {
+      const known = ["app_icon_too_large", "app_icon_not_png", "app_icon_unreadable", "app_icon_admin_only", "app_icon_needs_a_signed_in_person", "app_icon_busy", "app_icon_superseded", "app_icon_not_reset"];
+      setError(known.includes(r.body && r.body.error) ? tn(`appIconError_${r.body.error}`, (r.body && r.body.detail) || "") : tn("appIconError_other", (r.body && r.body.error) || String(r.status)));
+      return;
+    }
+    setState(r.body);
+    setPicked(null);
+    refreshAppIconLinks(r.body.version, r.body.custom);
+    toast(done);
+  };
+  const use = async () => {
+    setBusy(true); setError("");
+    answered(await call("/ui/app-icon", { method: "PUT", headers: { "Content-Type": "image/png" }, body: picked.blob }), tn("appIconSaved"));
+  };
+  const reset = async () => {
+    setBusy(true); setError("");
+    answered(await call("/ui/app-icon", { method: "DELETE" }), tn("appIconResetDone"));
+  };
+  const v = encodeURIComponent(state.version);
+  return html`<section class="card s-appearance s-app-icon">${title}
+    <p class="sub">${tn("appIconLead")}</p>
+    <div class="s-app-icon-row">
+      <figure class="s-app-icon-now"><img class="s-app-icon-big" src=${`/apple-touch-icon.png?v=${v}`} width="96" height="96" alt=${tn("appIconCurrent")} />
+        <img class="s-app-icon-small" src=${`/icon-192.png?v=${v}`} width="32" height="32" alt="" />
+        <figcaption>${state.custom ? tn("appIconCustom") : tn("appIconDefault")}</figcaption></figure>
+      ${picked ? html`<figure class="s-app-icon-new"><img class="s-app-icon-big" src=${picked.url} width="96" height="96" alt=${tn("appIconPreview")} />
+        <figcaption>${tn("appIconPreview")}</figcaption></figure>` : null}
+    </div>
+    ${picked && picked.low ? html`<p class="sub s-app-icon-low">${tn("appIconLow")}</p>` : null}
+    ${error ? html`<p class="err" role="alert">${error}</p>` : null}
+    ${canWrite ? html`<div class="s-css-actions">
+      <input ref=${file} type="file" class="sr-only" id="s-app-icon-file" accept="image/png,image/jpeg,image/webp" onChange=${choose} />
+      ${picked ? html`
+        <button type="button" class="btn btn-primary" disabled=${busy} onClick=${use}><${Icon} name="check" size=${16} />${tn("appIconUse")}</button>
+        <button type="button" class="btn" disabled=${busy} onClick=${() => setPicked(null)}>${tn("appIconCancel")}</button>`
+      : html`<button type="button" class="btn" disabled=${busy} onClick=${() => file.current && file.current.click()}>${tn("appIconChoose")}</button>`}
+      ${state.custom && !picked ? html`<button type="button" class="btn" disabled=${busy} onClick=${reset}>${tn("appIconReset")}</button>` : null}
+    </div>` : html`<p class="sub">${tn("appIconReadOnly")}</p>`}
+    <p class="sub">${tn("appIconWho")}</p>
+    <p class="sub">${tn("appIconIos")}</p>
   </section>`;
 }
 

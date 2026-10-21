@@ -202,6 +202,7 @@ describe("cross-instance tools are fire-and-queue", () => {
     ctx.lifecycle.daemons.set("target", {
       isErrorState: true,
       isCrashLoop: false,
+      errorStateCause: "error_detected",
       lastErrorType: "auth_error",
     });
 
@@ -459,7 +460,7 @@ describe.each(["en", "zh-TW"] as const)("delivery replies in %s", locale => {
   it("localizes steer and recipient warnings without claiming confirmed delivery", async () => {
     const ctx = makeContext({ deliver: neverSettles() });
     ctx.fleetConfig.instances.target.backend = "kiro-cli";
-    ctx.lifecycle.daemons.set("target", { isErrorState: true, isCrashLoop: false, lastErrorType: "auth_error" });
+    ctx.lifecycle.daemons.set("target", { isErrorState: true, isCrashLoop: false, errorStateCause: "error_detected", lastErrorType: "auth_error" });
     const { result, error } = await callTool("send_to_instance", ctx, { instance_name: "target", message: "hello", steer: true });
     expect(error).toBeUndefined();
     expect(result).toMatchObject({ sent: true, queued: true });

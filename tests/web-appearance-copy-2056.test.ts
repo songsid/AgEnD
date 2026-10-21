@@ -12,6 +12,7 @@ import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 
 let limitsOk = true;
 const fetchFake = async (url: string, init: any = {}) => {
+  if (url === "/ui/app-icon") return { ok: true, status: 200, json: async () => ({ custom: false, version: "default", updatedAt: null }) };
   if (url === "/ui/mods") return { ok: true, status: 200, json: async () => ({ mods: [], proposals: [] }) };
   if (url === "/api/settings/fleet/appearance" && !limitsOk) return { ok: false, status: 403, json: async () => ({ error: "forbidden" }) };
   if (url === "/ui/prefs") return { ok: true, status: 200, json: async () => ({ values: {}, rev: 1 }) };
@@ -55,7 +56,7 @@ function slugs(md: string) {
 
 describe("Settings → Web appearance in plain words", () => {
   it("five plain headings, each over its cards, in both languages", async () => {
-    expect(titles(await mount("en"))).toEqual(["# Look", "Agents' themes", "Identity colours", "Identity cards", "# Your layout", "Your sidebar widget",
+    expect(titles(await mount("en"))).toEqual(["# Look", "Agents' themes", "Identity colours", "Identity cards", "App icon", "# Your layout", "Your sidebar widget",
       "# Styles you write", "Custom CSS (yours only)", "# Add-ons", "Mods", "Effects", "# Advanced", "Identity card upload limits", "Restore defaults"]);
     await pg!.unmount(); pg!.restore(); pg = null;
     const zh = titles(await mount("zh-TW"));
@@ -74,7 +75,7 @@ describe("Settings → Web appearance in plain words", () => {
     for (const lang of ["en", "zh-TW"] as const) {
       const root = await mount(lang);
       const links = [...root.querySelectorAll("a.s-learn")] as any[];
-      expect(links.length, `${lang}: one per card but "On this device"`).toBe(9);
+      expect(links.length, `${lang}: one per card but "On this device" (#2308: the app icon's too)`).toBe(10);
       for (const a of links) {
         expect(a.getAttribute("href")).toMatch(lang === "en" ? /^https:\/\/github\.com\/songsid\/AgEnD\/blob\/main\/docs\/web-dashboard\.md#/
           : /^https:\/\/github\.com\/songsid\/AgEnD\/blob\/main\/docs\/web-dashboard\.zh-TW\.md#/);
