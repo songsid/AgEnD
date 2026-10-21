@@ -183,7 +183,7 @@ Board tasks — never a CLI's own transcript (that is the Log). Results come as 
 first, badged Chat / Message / Task; 1–2 character words work (alone: the newest 5,000 entries, said in the dialog).
 ↑↓ / Enter / Esc / click outside; **Filters**: agent, team, time, kinds, **Only mine**; recent searches when empty.
 A chat result opens the chat at the message (flashed); a message between agents, a task or a chat row the history no
-longer keeps opens as the index's copy. Admins only (no guests, not over the public link). Config: `web.search.enabled`
+longer keeps opens as the index's copy. Admins only (no guests; over the public link there is no row, button or shortcut). Config: `web.search.enabled`
 (default on), `web.search.retention_days` (default 90). Secrets are masked; a hidden `cross_instance_visibility`
 agent's messages are not found. "Search is off or not available": `web.search.enabled: false`, or the index could not
 open (the fleet log says why); "Still indexing": the first fill after an upgrade.

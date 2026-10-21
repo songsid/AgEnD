@@ -225,13 +225,14 @@ export function SearchDialog({ preset = {}, onClose }) {
     const key = hit.source === "chat" ? messageKeyOf(hit) : null;
     if (key && hit.live) { onClose(); jumpToMessage(hit.instance, key); return; }
     setDetail({ hit, status: "loading" });
-    fetch(`/ui/search/context?key=${encodeURIComponent(hit.key)}`, { headers: { Accept: "application/json" } }).then(
-      async (r) => {
+    // Any failure — the request, or a body that is not JSON — ends as an error, never "Loading…" for good.
+    fetch(`/ui/search/context?key=${encodeURIComponent(hit.key)}`, { headers: { Accept: "application/json" } })
+      .then(async (r) => {
         if (!r.ok) { setDetail(d => (d && d.hit === hit ? { hit, status: "error", error: r.status === 404 ? t("search.notFound") : errorText(r.status) } : d)); return; }
         const body = await r.json();
         setDetail(d => (d && d.hit === hit ? { hit, status: "ok", ctx: body } : d));
-      },
-      () => setDetail(d => (d && d.hit === hit ? { hit, status: "error", error: t("search.failed") } : d)));
+      })
+      .catch(() => setDetail(d => (d && d.hit === hit ? { hit, status: "error", error: t("search.failed") } : d)));
   };
   const onKey = (e) => {
     if (e.isComposing) return;

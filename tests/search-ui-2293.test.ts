@@ -161,6 +161,24 @@ describe("the dialog", () => {
     fire(d.doc.querySelector(".search-detail-head .chip-btn"), "click"); await settle();
     expect([d.doc.querySelectorAll(".search-row").length, d.input.value]).toEqual([4, "nginx"]);
   });
+  it("a copy whose answer is not JSON ends as an error, not \"Loading…\" for good (#2298 review)", async () => {
+    p = page();
+    const m = await load();
+    ((await import("/assets/app-nav.js" as string)) as Served).startRouter(window);
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => (url.startsWith("/ui/search/context")
+      ? { ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected token <"); } }
+      : { ok: true, status: 200, json: async () => ({ hits, limited: false, building: false }) })));
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => unhandled.push(e);
+    process.on("unhandledRejection", onUnhandled);
+    await p.mount(h(m.SearchDialog, { preset: {}, onClose: () => {} }));
+    const input: any = (p.document as any).querySelector(".search-input");
+    input.value = "nginx"; fire(input, "input"); await new Promise(r => setTimeout(r, m.DEBOUNCE_MS + 20)); await settle();
+    fire((p.document as any).querySelectorAll(".search-row")[2], "click"); await settle(); await settle();
+    process.off("unhandledRejection", onUnhandled);
+    expect((p.document as any).querySelector(".search-detail .search-status.bad").textContent).toBe("Search failed — try again.");
+    expect(unhandled).toEqual([]);
+  });
   it("Esc (the dialog's cancel) and a click on the backdrop close it; a click inside does not", async () => {
     const d = await open();
     const dlg = d.doc.querySelector("dialog.search-dlg");
@@ -261,6 +279,63 @@ describe("how it opens", () => {
     const other: any = p!.document.createElement("dialog"); other.setAttribute("open", ""); p!.document.body.appendChild(other);
     const blocked = ev("k"); shell.handleSearchKey(blocked);
     expect(blocked.preventDefault).not.toHaveBeenCalled();
+  });
+  it("the public link and a guest's page: no shortcut — Ctrl+K and Ctrl+F (in a chat) are left to the browser (#2298 review)", async () => {
+    p = page({ url: "http://127.0.0.1:19280/ui/chat/dev" });
+    const shell = await import("/assets/app-shell.js" as string) as Served;
+    const nav = await import("/assets/app-nav.js" as string) as Served;
+    nav.startRouter(window);
+    const ev = (key: string) => ({ key, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, isComposing: false, preventDefault: vi.fn() });
+    const body = (p.document as any).body;
+    body.dataset.publicLink = "1";
+    for (const k of ["k", "f"]) { const e = ev(k); shell.handleSearchKey(e); expect(e.preventDefault, k).not.toHaveBeenCalled(); }
+    expect(shell.searchOffered(true)).toBe(false);
+    delete body.dataset.publicLink;
+    body.dataset.tier = "guest";
+    const g = ev("k"); shell.handleSearchKey(g);
+    expect(g.preventDefault).not.toHaveBeenCalled();
+    delete body.dataset.tier;
+    expect([shell.searchOffered(true), shell.searchOffered(false)]).toEqual([true, false]);
+    shell.closeDialog();
+  });
+  it("the sidebar's Search row (with its shortcut) on an admin's page reached directly — opens search; not over the public link", async () => {
+    for (const onLink of [false, true]) {
+      p = page({ url: "http://127.0.0.1:19280/ui/chat/dev", storage: { agend_tour_done: "1" } });
+      if (onLink) (p.document as any).body.dataset.publicLink = "1";
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => [] })));
+      (window as any).AgendAuth = { canWrite: () => true, onSessionEnd() {}, sessionEnded: () => false };
+      const nav = await import("/assets/app-nav.js" as string) as Served;
+      const store = await import("/assets/app-store.js" as string) as Served;
+      const shell = await import("/assets/app-shell.js" as string) as Served;
+      store.appStore.set({ viewOnly: false });
+      nav.startRouter(window);
+      store.applyStatus({ instances: [{ name: "dev", status: "running", backend: "claude-code" }] });
+      await p.mount(h(shell.Shell, { panels: new Map([["chat", { Component: () => h("div", null, "chat") }]]), onNewInstance() {}, viewOnly: false }));
+      await settle();
+      const row = (p.document as any).querySelector("#sidebar .side-nav .side-search");
+      expect([onLink, !!row]).toEqual([onLink, !onLink]);
+      if (row) {
+        expect(row.textContent).toMatch(/Search\s*Ctrl K$/);
+        fire(row, "click");
+        await vi.waitFor(() => expect(shell.shellStore.get().dialog?.props?.preset).toEqual({}));
+        shell.closeDialog();
+      }
+      delete (window as any).AgendAuth;
+      await p.unmount(); p.restore(); p = null;
+    }
+  });
+  it("the header's search button: an admin's page reached directly — not over the public link", async () => {
+    const shell = await import("/assets/app-shell.js" as string) as Served;
+    for (const onLink of [false, true]) {
+      p = page({ url: "http://127.0.0.1:19280/ui/fleet" });
+      if (onLink) (p.document as any).body.dataset.publicLink = "1";
+      (window as any).AgendAuth = { canWrite: () => true, onSessionEnd() {}, sessionEnded: () => false };
+      await p.mount(h(shell.PanelHeader, { title: "Fleet" }));
+      await settle();
+      expect([onLink, !!(p.document as any).querySelector(".sb-search")]).toEqual([onLink, !onLink]);
+      delete (window as any).AgendAuth;
+      await p.unmount(); p.restore(); p = null;
+    }
   });
   it("the chat follows a #m= change to its own address only (search opening a message of the chat on screen)", async () => {
     const src = (await import("node:fs")).readFileSync(new URL("../src/ui/panel-chat.js", import.meta.url), "utf8");

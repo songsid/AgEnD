@@ -69,6 +69,14 @@ export function closeDialog() { shellStore.set({ dialog: null }); }
 export const isMacLike = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || "");
 /** What the row and tooltips show: ⌘K on a Mac, Ctrl K elsewhere. */
 export const searchShortcut = () => (isMacLike() ? "⌘K" : "Ctrl K");
+/**
+ * Whether this page offers search: an admin's page reached directly. A guest's never, and never over the public link —
+ * the server refuses it there (#2298 review), so no entry, no shortcut, and Ctrl+F stays the browser's.
+ */
+export function searchOffered(admin) {
+  const onLink = typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
+  return !!admin && !guestPage() && !onLink;
+}
 let searchModule = null;
 /** Open search; `preset.instance`: narrowed to that agent (Ctrl+F in its chat). */
 export function openSearch(preset = {}) {
@@ -82,6 +90,7 @@ export function openSearch(preset = {}) {
  * browser's own find stays. Not while another dialog is open (search, open already, has its input focused).
  */
 export function handleSearchKey(e) {
+  if (!searchOffered(true)) return;
   if (e.isComposing || e.altKey || e.shiftKey || !(isMacLike() ? e.metaKey : e.ctrlKey)) return;
   const key = (e.key || "").toLowerCase();
   if (key !== "k" && key !== "f") return;
@@ -349,7 +358,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${overview}
       ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
-      ${canCreate ? html`<button type="button" class="side-row side-search" onClick=${() => openSearch()} title=${t("app.searchTitle", searchShortcut())}
+      ${searchOffered(canCreate) ? html`<button type="button" class="side-row side-search" onClick=${() => openSearch()} title=${t("app.searchTitle", searchShortcut())}
         aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${t("app.search")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>` : null}
       ${canCreate && onNewInstance ? html`<button type="button" class="side-row side-new" onClick=${onNewInstance}><${Icon} name="plus" /><span class="grow">${t("app.newAgent")}</span></button>` : null}
     </nav>
@@ -431,7 +440,7 @@ export function PanelHeader({ title, sub, children, headingRef, nav, notice }) {
     <button type="button" id="sbOpen" class="icon-btn sb-open" onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
       aria-label=${narrow() ? t("app.openMenu") : t("app.expand")} title=${narrow() ? t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" /></button>
     ${canCreate && shell.collapsed ? html`<button type="button" class="icon-btn sb-new" onClick=${requestNewInstance} aria-label=${t("app.newAgent")} title=${t("app.newAgent")}><${Icon} name="plus" /></button>` : null}
-    ${admin && !guestPage() ? html`<button type="button" class="icon-btn sb-search" onClick=${() => openSearch()} aria-label=${t("app.search")} title=${t("app.searchTitle", searchShortcut())}><${Icon} name="search" /></button>` : null}
+    ${searchOffered(admin) ? html`<button type="button" class="icon-btn sb-search" onClick=${() => openSearch()} aria-label=${t("app.search")} title=${t("app.searchTitle", searchShortcut())}><${Icon} name="search" /></button>` : null}
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1">${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
     ${nav || null}
     <div class="panel-actions">${children}</div>
