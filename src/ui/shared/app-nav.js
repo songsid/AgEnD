@@ -28,7 +28,9 @@ const mayLeave = (route, path) => !guard || guard(route, path) !== false;
 /** Start following the address bar. An old /ui#instance=<name> link becomes /ui/chat/<name> before the first render. */
 export function startRouter(w = window) {
   win = w;
-  const legacy = legacyHashTarget(w.location.pathname, w.location.hash) || legacySettingsTarget(w.location.pathname);
+  let legacy = legacyHashTarget(w.location.pathname, w.location.hash) || legacySettingsTarget(w.location.pathname);
+  // An old Settings address with a place of its own (/settings/web#guests) keeps it when its new one names none.
+  if (legacy && w.location.hash && !legacy.includes("#") && legacySettingsTarget(w.location.pathname)) legacy += w.location.hash;
   if (legacy) w.history.replaceState(null, "", legacy);
   here = w.location.pathname + w.location.search;
   navStore.set({ route: parseRoute(w.location.pathname), seq: 1 });
@@ -47,7 +49,7 @@ export function navigate(path, opts = {}) {
   let url = new URL(path, win.location.href);
   // #2347: an old Settings address goes to its section's new one.
   const moved = url.origin === win.location.origin ? legacySettingsTarget(url.pathname) : null;
-  if (moved) url = new URL(moved, win.location.href);
+  if (moved) { const hash = url.hash; url = new URL(moved, win.location.href); if (!url.hash && hash) url.hash = hash; }
   const route = parseRoute(url.pathname);
   if (!route || url.origin !== win.location.origin) { win.location.assign(url.href); return; }
   if (!opts.force && !mayLeave(route, url.pathname + url.search)) return;
