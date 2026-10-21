@@ -15,17 +15,30 @@ token。重新開啟連結時仍使用同一個網域，手機「加到主畫面
 仍可照常安裝其固定版本。不需要提供 Cloudflare API key 或 DNS 編輯權限。
 
 1. 在 Cloudflare 後台開啟 **Networking → Tunnels → Create a tunnel**，
-   建立遠端管理的 Cloudflared tunnel 並命名。部分帳號的入口在
+   建立遠端管理的 Cloudflared tunnel。在名稱欄位**自行輸入任意名稱**，
+   例如 `agend-home`，不需要從清單選取。部分帳號的入口在
    Cloudflare One → Networks → Connectors。
-2. 從連接器安裝指令中，僅複製 `--token` 後面的 **token 本身**。不要把整行
-   安裝指令貼入 AgEnD，也不要另外安裝此 tunnel 的 cloudflared 系統服務；
-   連接器程序由 AgEnD 管理。請為這台主機使用獨立 tunnel。
-3. 在 tunnel 的 **Routes** 頁選 **Add route → Published application**，
+2. 從連接器安裝指令中，僅複製**以 `eyJ` 開頭的長字串 token**。Windows
+   顯示的指令可能是 `cloudflared.exe service install eyJ…`：token 在
+   `service install` 後面，沒有 `--token`。其他指令範例則可能把 token 放在
+   `--token` 後面。無論哪一種，都只把該長字串貼入 AgEnD，不含指令、旗標、
+   空白或引號。不要執行這行安裝指令，也不要另外安裝此 tunnel 的 cloudflared
+   系統服務；連接器程序由 AgEnD 管理。請為這台主機使用獨立 tunnel。
+3. 回到 **Networking → Tunnels**，點開剛建立的 tunnel（本例為
+   `agend-home`），再進入**這個 tunnel 自己的 Routes 分頁**，選
+   **Add route → Published application**。不要進入帳號層級的
+   **Networks → Routes**；那一頁是私人 IP／CIDR 路由，不是這次設定的位置。
    選擇子網域與網域，例如 `agend.example.com`。
-4. Service URL 選 **HTTP**、填 **127.0.0.1:19282**，Path 留空，HTTP Host
-   Header 不要覆寫，然後儲存。這是有路由限制的公開 gateway，**不要指向
-   主網頁的 19280 port**。若 19282 已被使用，請在後台與 AgEnD 一起改用
-   另一個連接埠。
+4. 在 **Add published application** 視窗的單一 **Service URL** 欄位，
+   完整填入 **`http://127.0.0.1:19282`**，包含前面的 `http://`，不需要另找
+   Type 下拉選單。**尾端不可加 `/`，也不可加路徑。** 路由的 Path 欄位留空，
+   HTTP Host Header 不要覆寫，最後按 **Add route** 儲存。這是有路由限制的
+   公開 gateway，**不要指向主網頁的 19280 port**。若 19282 已被使用，請在
+   後台與 AgEnD 一起改用另一個連接埠。
+
+若填入 `http://127.0.0.1:19282/` 後出現
+「Validation failed: http://127.0.0.1:19282/ is an invalid address, ingress rules don't support proxying to a different path on the origin service」，
+請刪掉最後的 `/`，讓 Service URL 恰好是 `http://127.0.0.1:19282`。
 
 後台名稱可能調整，請參考 Cloudflare 官方的
 [建立教學](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel/)
@@ -38,8 +51,9 @@ token。重新開啟連結時仍使用同一個網域，手機「加到主畫面
 1. 在「固定公開網域」填 `agend.example.com`，亦可填
    `https://agend.example.com/`。不可使用萬用字元、IP、連接埠、路徑、
    查詢參數、帳密或 fragment。
-2. 「Named tunnel 本機連接埠」填 19282，或前一步使用的連接埠。檢視並套用
-   變更；若出現確認要求，請確認。
+2. 「Named tunnel 本機連接埠」填 19282，或前一步使用的連接埠。有效的修改
+   會立即列在底部固定的「尚未套用」提示列，按「套用變更」；若出現確認
+   要求，請確認。不需要先按「檢視變更」。
 3. 在遮蔽的「Cloudflare 連接器 token」欄貼入 token，按「設定 token」並
    確認。儲存時只檢查格式，實際憑證與路由會在開啟時驗證。
 4. 從 AgEnD 選單開啟公開連結。AgEnD 必須經由固定 HTTPS 網域取得本次
@@ -60,7 +74,8 @@ web:
 Token 存於既有的 `~/.agend/.env`（或目前的 AGEND_HOME），使用原子寫入，
 Unix 權限為 0600。設定頁只能設定、清除及查詢是否已設定，無法讀回內容。
 Token 只透過該 cloudflared 子程序的 `TUNNEL_TOKEN` 環境變數傳入，不放進
-命令列；named 模式不轉送可能回顯憑證的子程序診斷文字。同一 OS 帳號的
+命令列。Named 模式的原始子程序診斷文字不會對外顯示；AgEnD 只將它分類
+為固定的安全原因，不回顯廠商輸出或憑證。同一 OS 帳號的
 程序仍可能讀取私密檔案或環境變數；這不是共用 OS 帳號之間的隔離機制。
 
 變更或清除 token、變更 named 設定時，都會關閉目前的公開連結，之後請
@@ -70,6 +85,25 @@ Port 被占用、token 錯誤、路由錯誤或取得其他頁面的 marker 時�
 公開存取。請檢查後台路由、port 與 token 後再試。Cloudflare Access 可作為
 額外保護，但若 `/signin` 被 Access 驗證頁攔截，AgEnD 的 marker 驗證會
 失敗；配置此類規則時須考慮這個限制。
+
+## 開啟失敗時
+
+`/web` 與網頁設定中的公開連結控制會顯示失敗步驟及原因。固定 tunnel 的
+訊息只使用預先定義的文字，不顯示連接器原始輸出、token 或識別資訊。
+請依原因檢查後重新開啟：
+
+| 原因 | 下一步 |
+| --- | --- |
+| 連接器 token 被拒絕 | 只複製以 `eyJ…` 開頭的長字串，再按「設定 token」。 |
+| 沒有連到公開應用程式 | 檢查該 tunnel 自己的 Routes 分頁、網域與 DNS。 |
+| 傳回了其他頁面 | 將公開應用程式指向 `http://127.0.0.1:19282`，並檢查重新導向或 Cloudflare Access 驗證頁。 |
+| 本機來源無法連線 | 檢查 Service URL，確認路由與 AgEnD 使用相同的本機連接埠。 |
+| 無法連上 Cloudflare | 檢查網路、DNS 與防火牆後重試。 |
+| 本機來源連接埠已占用 | 關閉衝突的程式，或同時修改 AgEnD 與 Cloudflare 路由的連接埠。 |
+
+Readiness 驗證失敗時不會開放連結。無法分類的錯誤只顯示通用的檢查步驟，
+不洩漏任意連接器輸出。儲存 token 只做本機格式檢查，不代表 Cloudflare
+已接受憑證；開啟連結時才會確認憑證與路由。
 
 ## 使用自己的 Cloudflare 帳號驗收
 

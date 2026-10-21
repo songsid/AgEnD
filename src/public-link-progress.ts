@@ -8,6 +8,7 @@
  * only static words, numbers and durations — never the link, the code, a path or a platform's error text.
  * Durations are monotonic (performance.now), so a wall-clock jump cannot make a step take negative time.
  */
+import type { NamedTunnelFailureKind } from "./tunnel/named-diagnostics.js";
 import { t } from "./locale.js";
 import type { CloudflaredInstallErrorKind } from "./tunnel/cloudflared-install.js";
 
@@ -17,6 +18,8 @@ const NUMBERS: Record<PublicLinkStep, string> = { check: "①", download: "②",
 
 /** Why a step failed, as one of a fixed set: each has its own static sentence. */
 export type PublicLinkFailure =
+  | NamedTunnelFailureKind
+  | "origin-port-in-use"
   | "unsupported-platform" | "download-failed" | "checksum-mismatch" | "install-failed" | "cancelled"
   | "spawn-failed" | "no-address" | "unreachable" | "lease-held" | "gateway-failed" | "delivery-failed" | "closed" | "unknown"
   // #1767: what cloudflared's exit before an address really was — never worded as a timeout.
@@ -45,6 +48,7 @@ export function failureOf(kind: CloudflaredInstallErrorKind | string | undefined
     // #1767: only a real timeout is "no address in time"; an exit before the address says what it was.
     case "timeout":
       return "no-address";
+    case "named-auth-failed": case "named-route-missing": case "named-hostname-mismatch": case "named-origin-unreachable": case "named-connection-failed":
     case "rate-limited": case "provisioning-failed":
       return kind;
     case "no-url":

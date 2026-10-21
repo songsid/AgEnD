@@ -215,3 +215,79 @@ describe("#2307 fixed public link settings and write-only token", () => {
     expect(sent.filter(s => s.path.startsWith("/api/settings/public-tunnel-token"))).toHaveLength(0);
   });
 });
+
+
+describe("#2344 Web edits join the existing Apply draft automatically", () => {
+  const pending = () => p.root.querySelector("[role=region]");
+  it("mounting an existing named tunnel makes no draft; a valid edit shows Apply immediately without HTTP writes", async () => {
+    const w = await open({ web: { public_link: { hostname: "chat.example.com", tunnel_token_env: "MY_CUSTOM_CONNECTOR" } } });
+    expect(pending()).toBeNull(); expect(w.webWrites()).toEqual([]);
+    await w.type(w.$("publicWebTtl"), "90");
+    expect(pending()?.textContent).toContain("Apply changes"); expect(w.webWrites()).toEqual([]);
+    await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ public_link: { ttl_minutes: 90 } }]);
+  });
+  it("each valid keystroke replaces the same draft with the latest values; Apply alone sends it", async () => {
+    const w = await open();
+    await w.type(w.$("publicWebHostname"), "chat.example.com");
+    await w.type(w.$("publicWebTtl"), "9"); await w.type(w.$("publicWebTtl"), "90");
+    expect(pending()?.textContent).toContain("Apply changes"); expect(w.webWrites()).toEqual([]);
+    await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ public_link: { hostname: "chat.example.com", tunnel_token_env: "AGEND_CLOUDFLARE_TUNNEL_TOKEN", ttl_minutes: 90 } }]);
+  });
+  it("putting every edited value back removes the draft and Apply bar", async () => {
+    const w = await open(); await w.check(w.$("webLogTab"), true);
+    expect(pending()?.textContent).toContain("Apply changes");
+    await w.check(w.$("webLogTab"), false); expect(pending()).toBeNull();
+    await w.apply(); expect(w.webWrites()).toEqual([]);
+  });
+  it("an invalid edit removes the older valid draft, remains inline, and recovers when corrected", async () => {
+    const w = await open(); await w.type(w.$("publicWebTtl"), "90"); expect(pending()).not.toBeNull();
+    await w.type(w.$("publicWebTtl"), "999"); expect(w.$("publicWebTtl").getAttribute("class")).toBe("invalid");
+    expect(pending()).toBeNull(); await w.apply(); expect(w.webWrites()).toEqual([]);
+    await w.type(w.$("publicWebTtl"), "60"); expect(pending()?.textContent).toContain("Apply changes"); await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ public_link: { ttl_minutes: 60 } }]);
+  });
+  it("returning from another Settings section shows the pending hostname and later edits preserve it", async () => {
+    const w = await open(); await w.type(w.$("publicWebHostname"), "chat.example.com"); expect(pending()).not.toBeNull();
+    const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "general" }, navKey: "settings:general" })); await settle();
+    expect(pending()).not.toBeNull();
+    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "web" }, navKey: "settings:web" })); await settle();
+    expect(pending()?.textContent).toContain("Apply changes"); expect(w.$("publicWebHostname").value).toBe("chat.example.com"); expect(w.webWrites()).toEqual([]);
+    await w.type(w.$("publicWebOriginPort"), "19300"); await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ public_link: { hostname: "chat.example.com", tunnel_token_env: "AGEND_CLOUDFLARE_TUNNEL_TOKEN", origin_port: 19300 } }]);
+  });
+  it("remounted Web fields retain false values and null session/terminal resets before another edit", async () => {
+    const w = await open({ web: { session: { local: { absolute_hours: 48, idle_hours: 6 } } }, web_terminal: { enabled: false, ttl_minutes: 15 } });
+    await w.type(w.$("webSessionAbsolute"), ""); await w.type(w.$("webSessionIdle"), "");
+    await w.check(w.$("webTerminalEnabled"), true); await w.type(w.$("webTerminalTtl"), ""); await w.check(w.$("webEchoToChannel"), false);
+    const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "general" }, navKey: "settings:general" })); await settle();
+    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "web" }, navKey: "settings:web" })); await settle();
+    expect([w.$("webSessionAbsolute").value, w.$("webSessionIdle").value, w.$("webTerminalTtl").value, w.$("webTerminalEnabled").checked, w.$("webEchoToChannel").checked]).toEqual(["", "", "", true, false]);
+    await w.type(w.$("publicWebOriginPort"), "19300"); expect(w.webWrites()).toEqual([]); await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ echo_to_channel: false, session: { local: { absolute_hours: null, idle_hours: null } }, web_terminal: { enabled: null, ttl_minutes: null }, public_link: { origin_port: 19300 } }]);
+  });
+  it("public-link fields cannot auto-stage even if an input event is forged", async () => {
+    p.document.body.setAttribute("data-public-link", "1"); const w = await open();
+    await w.type(w.$("publicWebHostname"), "chat.example.com"); await w.check(w.$("webLogTab"), true);
+    expect(pending()).toBeNull(); await w.apply(); expect(w.webWrites()).toEqual([]);
+  });
+  it("typing a secret never joins the Web draft or sends token material before Set token", async () => {
+    const w = await open({ web: { public_link: { hostname: "chat.example.com", tunnel_token_env: "MY_CUSTOM_CONNECTOR" } } });
+    const token = "private-test-connector-2344"; await w.type(w.$("publicTunnelToken"), token);
+    expect(pending()).toBeNull(); expect(sent.filter(s => s.method !== "GET")).toEqual([]);
+    await w.type(w.$("publicWebTtl"), "90"); expect(pending()?.textContent).toContain("Apply changes"); await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ public_link: { ttl_minutes: 90 } }]);
+    expect(JSON.stringify(w.webWrites())).not.toContain(token); expect(sent.filter(s => s.method !== "GET" && s.path.includes("public-tunnel-token"))).toEqual([]);
+  });
+  it("a custom connector reference survives hostname edits; a blank unchanged hostname does not create a mount draft", async () => {
+    let w = await open({ web: { public_link: { hostname: "chat.example.com", tunnel_token_env: "MY_CUSTOM_CONNECTOR" } } });
+    await w.type(w.$("publicWebHostname"), "other.example.com"); await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ public_link: { hostname: "other.example.com" } }]);
+    w = await open({ web: { public_link: { tunnel_token_env: "MY_CUSTOM_CONNECTOR" } } });
+    expect(pending()).toBeNull(); await w.type(w.$("publicWebTtl"), "90"); await w.apply();
+    expect(w.webWrites().at(-1)?.body).toEqual({ public_link: { ttl_minutes: 90 } });
+  });
+});

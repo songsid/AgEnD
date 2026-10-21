@@ -58,13 +58,14 @@ describe("named connector credentials and exact host policy", () => {
   });
   it("discards vendor stdout/stderr and spawn errors that echo the token", async () => {
     const f = provider({ fetchPage: async () => { f.child.stderr.push(`invalid token ${TOKEN}`); throw Error(TOKEN); } });
-    await expect(f.p.start(context())).rejects.toThrow(/named tunnel failed/);
+    const rejected = await f.p.start(context()).then(() => null, err => err);
+    expect(rejected).toMatchObject({ errorKind: "named-auth-failed" }); expect(String(rejected)).not.toContain(TOKEN);
     const error = await provider({ spawnProcess: () => { throw Error(TOKEN); } }).p.start(context()).then(() => null, err => err);
     expect(error).not.toBeNull(); expect(String(error)).not.toContain(TOKEN); expect(String(error)).toContain("could not start named");
   });
   it("requires this exposure's marker and refuses a wrong page", async () => {
     const f = provider({ fetchPage: async () => ({ status: 200, contentType: "text/html", body: "another exposure" }) });
-    await expect(f.p.start(context())).rejects.toMatchObject({ errorKind: "readiness-failed" });
+    await expect(f.p.start(context())).rejects.toMatchObject({ errorKind: "named-hostname-mismatch" });
     expect(f.child.kill).toHaveBeenCalled();
   });
   it.each(["foreign.example.com", "agend.example.com.evil.invalid", "*.example.com", "127.0.0.1", "https://agend.example.com:443", "https://agend.example.com/signin"])("does not broaden host trust for %s", value => {
