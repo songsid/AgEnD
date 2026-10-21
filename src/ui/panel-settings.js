@@ -379,14 +379,21 @@ export function SettingsPanel({ route, navKey }) {
   // #2347 §6: the setting a search result opened — brought into view once its section is drawn (its data may still be
   // on its way), focused, and flashed for 2 s.
   const wanted = useRef(null);
-  useEffect(() => { const t = takePendingSetting(); if (t) wanted.current = t; }, [navKey]);
+  // Each navigation's own: one made since (without a setting to find) cancels it (#2383 review).
+  useEffect(() => { wanted.current = takePendingSetting(); }, [navKey]);
   useEffect(() => {
     if (!wanted.current) return undefined;
     let tries = 0, timer = null, live = true;
     const find = () => {
       if (!live || !wanted.current) return;
       const el = document.querySelector(wanted.current);
-      if (!el) { if (++tries < 40) timer = setTimeout(find, 50); else wanted.current = null; return; }
+      if (!el) {
+        // A section that draws from the configuration waits for it however long its read takes (#2383 review: a slow
+        // link); once it is drawn, the setting gets ~2 s to appear (a card loading its own data), then is given up.
+        if (section !== "preferences" && section !== "look" && !data) return;     // run again when the data is in
+        if (++tries < 40) timer = setTimeout(find, 50); else wanted.current = null;
+        return;
+      }
       wanted.current = null;
       if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", inline: "nearest" });
       const field = el.matches && el.matches("input, select, textarea, button") ? el : el.querySelector && el.querySelector("input, select, textarea, button");

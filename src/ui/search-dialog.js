@@ -310,12 +310,14 @@ function Results({ q, res, groups, settings = [], active, setActive, open, label
         <button type="button" class="chip-btn" onClick=${clearRecent}>${t("search.clearRecent")}</button></div>
         <ul>${recent.map(s => html`<li><button type="button" class="search-recent-item" onClick=${() => pick(s)}><${Icon} name="clock" size=${14} /><span>${s}</span></button></li>`)}</ul></div>` : null}</div>`;
   }
-  if (res.status === "error") return html`<p class="search-status bad" role="alert">${res.error}</p>`;
-  const hits = res.hits || [];
+  // #2383 review: the settings are this page's own — shown (and reachable) whatever the message search answered.
+  const failed = res.status === "error";
+  const hits = failed ? [] : res.hits || [];
   return html`
     ${res.building ? html`<p class="search-note" role="status">${t("search.building")}</p>` : null}
     ${res.limited ? html`<p class="search-note" role="status">${t("search.limited")}</p>` : null}
     ${res.status === "loading" && !hits.length ? html`<p class="search-status" role="status">${t("search.searching")}</p>` : null}
+    ${failed ? html`<p class="search-status bad" role="alert">${res.error}</p>` : null}
     ${res.status === "ok" && !hits.length && !settings.length ? html`<p class="search-status" role="status">${filtered ? t("search.noneFiltered") : t("search.none")}</p>` : null}
     <div id="search-results" role="listbox" aria-label=${t("search.results")} class=${`search-results${res.status === "loading" ? " stale" : ""}`}>
       ${settings.length ? html`<div role="group" class="search-group search-settings" aria-label=${t("search.settingsGroup")}>

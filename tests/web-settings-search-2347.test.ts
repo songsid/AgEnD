@@ -12,8 +12,16 @@ import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 const schema = buildSettingsImpactSchema();
 let p: AppPage;
 const realFetch = (globalThis as any).fetch;
+/** #2383 review: the message search's answer (null: an empty one), and a configuration read held until it opens. */
+let searchAnswer: "404" | "throw" | null = null;
+let rawHold: Promise<void> | null = null;
 const fakeFetch = async (path: string, init: { method?: string } = {}) => {
   const method = init.method ?? "GET";
+  if (path.startsWith("/ui/search")) {
+    if (searchAnswer === "throw") throw new TypeError("network");
+    if (searchAnswer === "404") return { ok: false, status: 404, json: async () => ({ error: "not found" }) };
+  }
+  if (path === "/api/settings/fleet/raw" && rawHold) { const held = rawHold; rawHold = null; await held; }
   const body = (() => {
     if (method !== "GET") return { ok: true };
     if (path === "/api/settings/schema") return { ...schema, provider_secrets: true };
@@ -163,7 +171,50 @@ describe("#2382 review: a field to fix elsewhere is named and reached from the b
   });
 });
 
+describe("#2383 review: a setting asked for is reached however long the configuration takes", () => {
+  for (const ms of [2400, 50]) {
+    it(`the configuration read answers after ${ms} ms: the field is still focused and flashed`, async () => {
+      await p.unmount();
+      let release!: () => void;
+      rawHold = new Promise<void>((r) => { release = r; });
+      reg.goToSetting(reg.SETTINGS_REGISTRY.find((e: any) => e.id === "access.hostname"));
+      const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+      await p.mount(h(SettingsPanel, { route: nav.navStore.get().route, navKey: `settings:access|held${ms}` }));
+      await new Promise((r) => setTimeout(r, ms)); release(); await settle(20);
+      const field = p.root.querySelector("#publicWebHostname");
+      expect([!!field, p.document.activeElement === field]).toEqual([true, true]);
+    });
+  }
+  it("a navigation made since, with no setting to find, cancels the one asked for", async () => {
+    await p.unmount();
+    let release!: () => void;
+    rawHold = new Promise<void>((r) => { release = r; });
+    reg.goToSetting(reg.SETTINGS_REGISTRY.find((e: any) => e.id === "access.hostname"));
+    const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "access" }, navKey: "settings:access|first" }));
+    nav.navigate("/settings/access");                                  // the person went on (no search result)
+    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "access" }, navKey: "settings:access|second" }));
+    release(); await settle(20);
+    expect(p.document.activeElement === p.root.querySelector("#publicWebHostname")).toBe(false);
+  });
+});
+
 describe("#2347 §6: Ctrl K has a Settings group", () => {
+  for (const answer of ["404", "throw"] as const) {
+    it(`#2383 review: the message search failing (${answer === "404" ? "search off: 404" : "a dropped connection"}) leaves the settings shown, and Enter opens one`, async () => {
+      searchAnswer = answer;
+      try {
+        const m = await import("/ui/js/search-dialog.js");
+        await p.mount(h(m.SearchDialog, { preset: {}, onClose: () => {} }));
+        const input: any = p.root.querySelector(".search-input");
+        input.value = "cloudflare"; fire(input, "input");
+        await new Promise((r) => setTimeout(r, 400)); await settle(6);
+        const shown = [!!p.root.querySelector(".search-settings .search-row"), !!p.root.querySelector(".search-status.bad")];
+        const e = new MiniEvent("keydown", { bubbles: true, cancelable: true }); (e as any).key = "Enter"; input.dispatchEvent(e); await settle(4);
+        expect([shown, nav.navStore.get().route]).toEqual([[true, true], { panel: "settings", section: "access" }]);
+      } finally { searchAnswer = null; }
+    });
+  }
   it("the settings come first, from the registry (no request); opening one goes to it", async () => {
     const m = await import("/ui/js/search-dialog.js");
     let closed = 0;
