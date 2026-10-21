@@ -260,11 +260,44 @@ export class GrokBackend implements CliBackend {
   getErrorPatterns(): ErrorPattern[] {
     // NOTE: "Turn cancelled by user" is NORMAL behaviour (user interrupt), not an
     // error — none of the patterns below match it, and none should be added that do.
-    // Error strings below are best-effort generic API shapes; tune once observed live.
+    //
+    // All real Grok error lines appear on a line starting with the Grok box border
+    // "┃" (U+2503). Anchoring on this glyph prevents false-positives from agent
+    // code (e.g. scan_quota(...)), chat content, or task descriptions that happen
+    // to mention "rate limit", "quota", "401", "429", etc.
+    //
+    // Formats confirmed against fixtures in tests/fixtures/grok-1.0.60-audit/:
+    //   401:  ┃  Authentication required: your session has expired or your credentials
+    //         ┃  were rejected. Run /login to re-authenticate, then resend your message.
+    //   402:  ┃  You hit your weekly limit.
+    //   403:  ┃  Request denied (403): invalid_request_error: usage limit reached
+    //   429:  ┃  Retry failed: rate_limit_error: Rate limit exceeded
+    //   429:  ┃  Retry failed: rate_limit_error: rate limit exceeded; too many requests
     return [
-      { pattern: /rate.?limit|too many requests|\b429\b/i, type: "rate_limit", action: "failover", message: "Grok rate limit reached" },
-      { pattern: /unauthorized|authentication (failed|error)|\b401\b/i, type: "auth_error", action: "pause", message: "Grok authentication error" },
-      { pattern: /quota|insufficient credits|out of credits/i, type: "quota", action: "notify", message: "Grok quota/credits exhausted" },
+      {
+        // 429: "┃  Retry failed: rate_limit_error: …" (confirmed fixture)
+        // Also covers "┃  Request failed (429): …" if that form appears.
+        pattern: /^[ \t]*┃[ \t]+(?:Retry failed:[ \t]+rate_limit_error:|Request\s+(?:failed|denied)\s+\(429\):)[ \t]+.*(?:rate.?limit|too many requests)/im,
+        type: "rate_limit",
+        action: "failover",
+        message: "Grok rate limit reached",
+      },
+      {
+        // 401: "┃  Authentication required: your session has expired …"
+        pattern: /^[ \t]*┃[ \t]+Authentication required:/im,
+        type: "auth_error",
+        action: "pause",
+        message: "Grok authentication error — run /login to re-authenticate",
+      },
+      {
+        // 402/quota: "┃  You hit your weekly limit."
+        // 403/usage: "┃  Request denied (403): invalid_request_error: usage limit reached"
+        // Also: "┃  Request denied (402): insufficient_quota: Weekly usage limit reached"
+        pattern: /^[ \t]*┃[ \t]+(?:You hit your weekly limit\.|Request\s+(?:failed|denied)\s+\(40[23]\):[ \t]+.*(?:quota|insufficient.credits|usage.limit|out.of.credits|weekly.limit))/im,
+        type: "quota",
+        action: "notify",
+        message: "Grok quota/credits exhausted",
+      },
       // #1066: the server refuses an outdated CLI (HTTP 426, Upgrade Required):
       //   Request failed (426) — Your Grok CLI version (1.0.5) is outdated.
       //   Please update to version 1.0.13 or later via `grok update` or …
