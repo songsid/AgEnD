@@ -9,6 +9,7 @@
 // Public (/assets/): an anonymous View reader gets the same list, fed by View's roster read instead of status frames.
 import { html, useLayoutEffect, useRef, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
+import { recordEdit } from "./text-undo.js";
 import { appStore, createStore, guestPage, useStore } from "./app-store.js";
 import { chatPath, detailsPath, logPath, viewPath } from "./app-route.js";
 import { Icon } from "./ui-icons.js";
@@ -648,9 +649,9 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
       <label class="v-filter-box"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("filterPh")}</span>
         <input ref=${filterRef} id="filterInput" type="text" autocomplete="off" spellcheck=${false} placeholder=${tn("filterPh")} value=${f.q}
           onInput=${(e) => setNavFilter({ q: e.target.value })}
-          onKeyDown=${(e) => { if (e.key === "Escape" && f.q) { e.preventDefault(); e.stopPropagation(); setNavFilter({ q: "" }); } }} />
+          onKeyDown=${(e) => { if (e.key === "Escape" && f.q) { e.preventDefault(); e.stopPropagation(); recordEdit(e.target); setNavFilter({ q: "" }); } }} />
         ${f.q ? html`<button type="button" class="icon-btn v-filter-clear" aria-label=${tn("filterClear")} title=${tn("filterClear")}
-          onClick=${() => { setNavFilter({ q: "" }); filterRef.current && filterRef.current.focus(); }}><${Icon} name="close" size=${14} /></button>` : null}
+          onClick=${() => { recordEdit(filterRef.current); setNavFilter({ q: "" }); filterRef.current && filterRef.current.focus(); }}><${Icon} name="close" size=${14} /></button>` : null}
       </label>
       <div class="nav-facets">
         <div class="nav-facet-groups">

@@ -21,6 +21,7 @@ For how *you* look on the dashboard (theme, identity card, colour, widgets, ambi
 | sending, files, buttons, polls, HTML previews, code, tables, slash commands, Stop, history, copies in Discord/Telegram | [Chat](#chat) |
 | the red badge, prompts, failed deliveries, desktop notifications | [Needs you](#needs-you) |
 | "which agent did I ask about X", Ctrl+K, Ctrl+F in a chat, search results, filters | [Search](#search) |
+| Ctrl+Z / undo / redo in a text box, "undo did nothing", "undo changed another box" | [Undo and redo](#undo-and-redo) |
 | tasks, schedules, teams, org chart, live traffic lines, cache, Config tab | [Fleet](#fleet) |
 | the sidebar list, filters, favorites, Chat / View / Log / Details, the Details page | [Finding an instance](#finding-an-instance) |
 | subscription meters, plan badges, profiles, keep-warm, prompt cache | [Usage and the cache report](#usage-and-the-cache-report) |
@@ -189,6 +190,16 @@ longer keeps opens as the index's copy. Admins only (no guests; over the public 
 (default on), `web.search.retention_days` (default 90). Secrets are masked; a hidden `cross_instance_visibility`
 agent's messages are not found. "Search is off or not available": `web.search.enabled: false`, or the index could not
 open (the fleet log says why); "Still indexing": the first fill after an upgrade.
+
+## Undo and redo
+
+Every text box has its own undo history (#2342): **Ctrl+Z** undoes, **Ctrl+Shift+Z** or **Ctrl+Y** redoes (**⌘Z** / **⌘⇧Z** on a
+Mac), only while typing in a box. Undo never changes another box (the browser's own stack is page-wide). Typing undoes a
+word (or a pause) at a time; an IME composition is one step. Undoable too: a Tab-completed `/command`, Put back, As
+text, a recent search picked, the filter's Esc/× clear, a status-emoji pick, a widget example, a restored CSS version
+(a colour swatch is a choice, not text: it starts the hex box afresh). The browser's own Edit-menu Undo goes through the
+same history; its Redo is offered only after its own undo (use the keys). Not undoable on purpose: a sent message (never back into the composer), text cleared after Add/Send,
+values reloaded after Save. Password fields keep the browser's behaviour.
 
 ## Fleet
 

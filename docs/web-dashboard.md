@@ -294,6 +294,15 @@ Find who you asked about something: one search over every agent's chat (Discord,
 - **What it keeps:** its own index (`search.db` in the AgEnD home), filled from what the fleet already has the first time and then as things happen, kept `web.search.retention_days` (90 by default). Secret values are masked before anything is kept. A message's verification ids, working directory and branch are never kept. A message to or from an agent whose `cross_instance_visibility` is `hidden` is not found.
 - **Who can use it:** fleet admins signed in to the dashboard reached directly. Never a guest, and never over the public link: there is no Search row, button or shortcut there, and Ctrl+F stays the browser's find. `web.search.enabled: false` turns it off ([configuration](configuration.md)).
 
+## Undo and redo in text fields
+
+Every box you type in (the composer, search, the sidebar filter, Settings, the Task Board, the CSS and YAML editors) has its own undo history.
+- **Keys:** **Ctrl+Z** undoes, and **Ctrl+Shift+Z** or **Ctrl+Y** redoes. On a Mac use **⌘Z** and **⌘⇧Z**. The keys only work while you are typing in a box; anywhere else they do what the browser does.
+- **One box at a time:** undo in one box never changes another. (The browser's own undo is one stack for the whole page.) Typing is undone a word at a time, or back to a pause. While an input method (IME) is composing, the keys are left to it.
+- **What the page puts in a box can be undone too:** a completed `/command` (Tab) or a filled-in argument, a failed send's **Put back**, a long paste brought back with **As text**, a recent search picked, the sidebar filter cleared with Esc or ×, a status emoji picked or reset, a widget example, and a restored CSS version. A colour swatch is a choice, not text: picking one starts the hex box's history afresh.
+- **The browser's own Undo** (its Edit menu or a right-click) goes through the same history. Its own Redo is only offered after its own undo, so use the keys to redo.
+- **What cannot be undone:** a sent message never comes back into the composer, so there is no accidental resend. Text cleared after Add or Send, and values reloaded after Save, start a fresh history. Password fields keep the browser's own behaviour.
+
 ## Log (`/ui/log/<name>`)
 
 What an agent did, step by step: what it was asked, its replies (never its thinking), each tool call (Read, Edit, Search, Run, Web, MCP, Sub-agent, …, with **Show output**), errors, the end of each turn, compactions, and fleet events such as a crash and restart.

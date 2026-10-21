@@ -4,6 +4,7 @@
 // progress, deadline and restart recovery as every other change.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
+import { useTypedText } from "/assets/text-undo.js";
 import { useLease } from "/assets/app-ctx.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { api } from "./settings-confirm.js";
@@ -26,6 +27,11 @@ export function SetupWizard({ ctx, onClose }) {
   const bump = () => { rev.current++; };
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
+  // #2342: the typed fields keep what was typed (a space in a path, the undo history); the form gets them trimmed.
+  const [dirText, onDirText] = useTypedText(w ? w.working_directory : "");
+  const [nameText, onNameText] = useTypedText(w ? w.instance_name : "");
+  const [userText, onUserText] = useTypedText(w ? w.admin_user_id : "");
+  const [groupText, onGroupText] = useTypedText(w ? w.group_id : "");
   useEffect(() => {
     (async () => {
       const env = await api("/api/settings/quickstart/environment").catch(() => null);
@@ -134,8 +140,8 @@ export function SetupWizard({ ctx, onClose }) {
         <p class="note">${tn("wizardAgentExistingNote")}</p></div>` : html`${which}<div class="field"><label for="wz-be">${tn("wizardBackend")}</label>
         <${Select} id="wz-be" value=${w.backend} onChange=${set("backend")} options=${w.env.backends && w.env.backends.length ? w.env.backends : BACKENDS} />
         <p class="note">${w.env.backends && w.env.backends.length ? tn("wizardBackendFound", w.env.backends.join(", ")) : tn("wizardBackendNone")}</p></div>
-      <div class="field"><label for="wz-wd">${tn("workingDir")}</label><input id="wz-wd" type="text" placeholder="/home/you/projects/app" value=${w.working_directory} onInput=${(e) => set("working_directory")(e.target.value.trim())} /></div>
-      <div class="field"><label for="wz-name">${agents.length ? tn("wizardAgentNewName") : tn("wizardAgentName")}</label><input id="wz-name" type="text" value=${w.instance_name} onInput=${(e) => set("instance_name")(e.target.value.trim())} /></div>`;
+      <div class="field"><label for="wz-wd">${tn("workingDir")}</label><input id="wz-wd" type="text" placeholder="/home/you/projects/app" value=${dirText} onInput=${(e) => set("working_directory")(onDirText(e.target.value))} /></div>
+      <div class="field"><label for="wz-name">${agents.length ? tn("wizardAgentNewName") : tn("wizardAgentName")}</label><input id="wz-name" type="text" value=${nameText} onInput=${(e) => set("instance_name")(onNameText(e.target.value))} /></div>`;
   } else if (w.step === 2) {
     body = html`<div class="seg-inline" role="group" aria-label=${tn("wizardPlatform")}>
         ${["telegram", "discord"].map((p) => html`<button key=${p} type="button" class=${`btn${w.platform === p ? " btn-primary" : ""}`} aria-pressed=${w.platform === p ? "true" : "false"}
@@ -148,12 +154,12 @@ export function SetupWizard({ ctx, onClose }) {
         <${DiscordServerPicker} idPrefix="wz" token=${w.identity && w.identity.valid ? w.token : ""} bot=${w.identity && botHandle(w.identity.username)}
           invite=${w.identity && w.identity.invite} portal=${w.identity && w.identity.portal} guilds=${w.guilds} onGuilds=${(g) => setW((x) => ({ ...x, guilds: g }))}
           guild=${w.guild_id} onGuild=${set("guild_id")} channel=${w.general_channel_id} onChannel=${set("general_channel_id")} />
-        <div class="field"><label for="wz-user">${tn("wizardAdminUser")}</label><input id="wz-user" type="text" required=${true} inputmode="numeric" pattern=${adminUserIdPattern(w.platform)} placeholder=${tn("discordUserPlaceholder")} value=${w.admin_user_id} onInput=${(e) => set("admin_user_id")(e.target.value.trim())} /></div>`
+        <div class="field"><label for="wz-user">${tn("wizardAdminUser")}</label><input id="wz-user" type="text" required=${true} inputmode="numeric" pattern=${adminUserIdPattern(w.platform)} placeholder=${tn("discordUserPlaceholder")} value=${userText} onInput=${(e) => set("admin_user_id")(onUserText(e.target.value))} /></div>`
       : html`
-        <div class="field"><label for="wz-group">${tn("groupIdField")}</label><input id="wz-group" type="text" placeholder="-1001234567890" value=${w.group_id} onInput=${(e) => set("group_id")(e.target.value.trim())} />
+        <div class="field"><label for="wz-group">${tn("groupIdField")}</label><input id="wz-group" type="text" placeholder="-1001234567890" value=${groupText} onInput=${(e) => set("group_id")(onGroupText(e.target.value))} />
           <p class="note">${tn("wizardDetectHint")}</p></div>
         <div class="dlg-inline-actions"><button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${detect}>${tn("wizardDetect")}</button></div>
-        <div class="field"><label for="wz-user">${tn("wizardAdminUser")}</label><input id="wz-user" type="text" required=${true} inputmode="numeric" pattern=${adminUserIdPattern(w.platform)} placeholder=${tn("telegramUserPlaceholder")} value=${w.admin_user_id} onInput=${(e) => set("admin_user_id")(e.target.value.trim())} /></div>`}`;
+        <div class="field"><label for="wz-user">${tn("wizardAdminUser")}</label><input id="wz-user" type="text" required=${true} inputmode="numeric" pattern=${adminUserIdPattern(w.platform)} placeholder=${tn("telegramUserPlaceholder")} value=${userText} onInput=${(e) => set("admin_user_id")(onUserText(e.target.value))} /></div>`}`;
   } else {
     body = !w.plan ? html`<p class="note">${tn("wizardPlanLoading")}</p>` : html`
       <p><strong>${tn("wizardWillWrite")}</strong></p>

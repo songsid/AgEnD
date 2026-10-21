@@ -196,6 +196,8 @@ function ColorDialog({ name, it, onClose }) {
   }, [name]);
   // The preview: the instance as it would be drawn with the choice here.
   const preview = identityOf({ ...(it || {}), color: { ...((it && it.color) || {}), person: color || undefined }, color_show: { ...((it && it.color_show) || {}), person: places || undefined } }, { off: false });
+  // #2342: a swatch (or "no pick") is a choice, not text: it starts the hex field's undo history afresh (undoing the
+  // text back to a typed colour would leave the box and the chosen colour apart — Save would send the other one).
   const pick = (c) => { setColor(c); setHex(c && HEX.test(c) ? c : ""); setError(""); };
   const togglePlace = (p) => {
     const base = places || preview.show;
@@ -211,7 +213,8 @@ function ColorDialog({ name, it, onClose }) {
       onClose();
     } catch (err) { setError(t("color.failed", (err && err.message) || "network")); setBusy(false); }
   }
-  const onHex = (v) => { setHex(v); const c = /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : null; if (c) { setColor(c); setError(""); } };
+  // The text as typed (#2342: trimming it in the box would rewrite it, losing its undo); spaces around it are ignored.
+  const onHex = (v) => { setHex(v); const w = v.trim(), c = /^#[0-9a-fA-F]{6}$/.test(w) ? w.toLowerCase() : null; if (c) { setColor(c); setError(""); } };
   const off = colorsOff();
   return html`<${Dialog} title=${t("color.title", name)} onClose=${onClose} busy=${busy}
       actions=${html`<button type="button" class="btn" disabled=${busy || !loaded} onClick=${() => save({ color: null, color_show: null })}>${t("color.reset")}</button>
@@ -226,8 +229,8 @@ function ColorDialog({ name, it, onClose }) {
         ref=${(el) => { if (el && el.style) { el.style.setProperty("--sw-light", p.light); el.style.setProperty("--sw-dark", p.dark); } }}
         onClick=${() => pick(`preset:${p.id}`)}></button>`)}
       <label class="idc-custom">${t("color.custom")}
-        <input type="color" value=${HEX.test(hex) ? hex : "#808080"} onInput=${(e) => onHex(e.currentTarget.value)} aria-label=${t("color.custom")} />
-        <input type="text" class="idc-hex" inputmode="text" spellcheck=${false} maxlength="7" placeholder="#rrggbb" value=${hex} onInput=${(e) => onHex(e.currentTarget.value.trim())} aria-label=${t("color.hex")} /></label>
+        <input type="color" value=${HEX.test(hex.trim()) ? hex.trim() : "#808080"} onInput=${(e) => onHex(e.currentTarget.value)} aria-label=${t("color.custom")} />
+        <input type="text" class="idc-hex" inputmode="text" spellcheck=${false} maxlength="7" placeholder="#rrggbb" value=${hex} onInput=${(e) => onHex(e.currentTarget.value)} aria-label=${t("color.hex")} /></label>
       <button type="button" class="btn btn-sm" disabled=${!color} onClick=${() => pick(null)}>${t("color.noPick")}</button>
     </fieldset>
     <fieldset class="idc-places"><legend>${t("color.places")}</legend>

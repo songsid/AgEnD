@@ -4,6 +4,7 @@
 // provider key): each goes through confirmedWrite, so a change an admin must confirm waits for it (#1423).
 import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
+import { recordEdit } from "/assets/text-undo.js";
 import { useLease } from "/assets/app-ctx.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -21,6 +22,8 @@ import {
   chLabel, hasOwn, impactOf, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
   classicWebEchoEffective, worstImpact,
 } from "./settings-model.js";
+/** #2342: a field by id, for recordEdit before a pick or a reset writes it. */
+const byId = (id) => (typeof document !== "undefined" ? document.getElementById(id) : null);
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 export const impactText = (kind) => tn(kind === "now" ? "impactNow" : kind === "fleet" ? "impactFleet" : "impactAgent");
@@ -184,9 +187,9 @@ export function StatusEmojiEditor({ own, platform, channel, previewBody, onChang
       <label for=${`se-${key}`}>${tn(`se_${key}`)}</label>
       <input id=${`se-${key}`} type="text" autocomplete="off" value=${values[key] || ""} placeholder=${builtins[key] || ""} onInput=${(e) => set(key, e.target.value)} />
       <button type="button" class="btn btn-sm" onClick=${() => setPicker(picker === key ? null : key)} aria-expanded=${picker === key ? "true" : "false"}>${tn("se_pick")}</button>
-      <button type="button" class="icon-btn" aria-label=${tn("se_useDefault")} title=${tn("se_useDefault")} onClick=${() => set(key, "")}><${Icon} name="close" size=${14} /></button>
+      <button type="button" class="icon-btn" aria-label=${tn("se_useDefault")} title=${tn("se_useDefault")} onClick=${() => { recordEdit(byId(`se-${key}`)); set(key, ""); }}><${Icon} name="close" size=${14} /></button>
       ${picker === key ? html`<${EmojiPicker} cat=${cat} keyName=${key} platform=${platform} channel=${channel}
-        onPick=${(v) => { set(key, v); setPicker(null); }} onClose=${() => setPicker(null)} />` : null}
+        onPick=${(v) => { recordEdit(byId(`se-${key}`)); set(key, v); setPicker(null); }} onClose=${() => setPicker(null)} />` : null}
     </div>`)}</div>
     <p class="note">${tn("se_hint")}</p>
   </div>`;
@@ -503,6 +506,7 @@ export function NewBotDialog({ ctx, onClose }) {
   // The form's revision (#1529 review): any change to the token, platform, id or group moves it; a Verify or a plan
   // that began before is dropped when it lands — never restoring an old token, naming it, or planning for it.
   const rev = useRef(0);
+  // The fields keep what was typed (#2342: trimming the box would rewrite it, losing its undo); trimmed here.
   const body = (x) => ({ platform: x.type, connection_only: true, admin_user_id: x.admin.trim(), ...(x.id.trim() ? { channel_id: x.id.trim() } : {}),
     ...(x.group.trim() ? (x.type === "discord" ? { guild_id: x.group.trim() } : { group_id: x.group.trim() }) : {}),
     ...(x.type === "discord" && x.general.trim() ? { general_channel_id: x.general.trim() } : {}) });
@@ -560,9 +564,9 @@ export function NewBotDialog({ ctx, onClose }) {
             invite=${f.identity && f.identity.invite} portal=${f.identity && f.identity.portal} guilds=${f.guilds} onGuilds=${(g) => setF((x) => ({ ...x, guilds: g }))}
             guild=${f.group} onGuild=${set("group")} channel=${f.general} onChannel=${set("general")} />`
         : html`<div class="field"><label for="nb-group">${tn("groupIdField")}</label>
-            <input id="nb-group" type="text" value=${f.group} onInput=${(e) => set("group")(e.target.value.trim())} /></div>`}
+            <input id="nb-group" type="text" value=${f.group} onInput=${(e) => set("group")(e.target.value)} /></div>`}
       <div class="field"><label for="nb-user">${tn("wizardAdminUser")}</label>
-        <input id="nb-user" type="text" required=${true} inputmode="numeric" pattern=${adminUserIdPattern(f.type)} value=${f.admin} onInput=${(e) => set("admin")(e.target.value.trim())} /></div>
+        <input id="nb-user" type="text" required=${true} inputmode="numeric" pattern=${adminUserIdPattern(f.type)} value=${f.admin} onInput=${(e) => set("admin")(e.target.value)} /></div>
       <${Drawer} title=${tn("advancedSection")}>
         <div class="field"><label for="nb-id">${tn("connectionIdOptional")}</label><input id="nb-id" type="text" placeholder=${plan ? plan.channel_id : f.type}
           value=${f.id} onInput=${(e) => set("id")(e.target.value)} onBlur=${() => { if (f.identity && f.identity.valid) planFor(f); }} /></div>

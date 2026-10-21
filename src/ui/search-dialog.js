@@ -5,6 +5,7 @@
 // agents, a task — opens here as the index's copy (GET /ui/search/context). Text only: no innerHTML, no style attribute.
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
+import { recordEdit } from "/assets/text-undo.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { navigate } from "/assets/app-nav.js";
 import { chatPath, fleetPath } from "/assets/app-route.js";
@@ -286,7 +287,7 @@ export function SearchDialog({ preset = {}, onClose }) {
       <div class="search-body" ref=${list}>
         ${detail ? html`<${Detail} detail=${detail} q=${q} label=${label} onBack=${() => { setDetail(null); input.current && input.current.focus(); }} onClose=${onClose} />`
           : html`<${Results} q=${q} res=${res} groups=${groups} active=${active} setActive=${setActive} open=${open} label=${label} filtered=${activeFilters > 0}
-              recent=${recent} pick=${(s) => { setQ(s); input.current && input.current.focus(); }} clearRecent=${() => { forgetRecent(); setRecent([]); }} />`}
+              recent=${recent} pick=${(s) => { recordEdit(input.current); setQ(s); input.current && input.current.focus(); }} clearRecent=${() => { forgetRecent(); setRecent([]); }} />`}
       </div>
       <div class="search-foot" aria-hidden="true">${t("search.keys")}</div>
     </div></dialog>`;

@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **Web: Ctrl/⌘+Z undo and Ctrl+Shift+Z / Ctrl+Y / ⌘⇧Z redo in every text field, one history per field (#2342).** The browser's own undo is one stack for the whole page, so undo in one box could change another, and any text the page put in a box wiped it. Now each box keeps its own history: typing undoes a word at a time, an IME composition is one step, and what the page puts in can be undone too (a completed `/command`, Put back, As text, a recent search, the filter's Esc clear, an emoji pick, a CSS restore), and the browser's own Edit-menu Undo goes through the same history. A sent message is never undone back into the composer. Fields that trimmed what you typed (the bot token, Discord IDs, the setup wizard, the session-hours number) now keep a typed space, so a path with a space can be entered.

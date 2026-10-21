@@ -5,6 +5,7 @@
 // them grants anything by itself — a session still needs its account's Confirm in Discord or Telegram).
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
+import { useTypedText } from "/assets/text-undo.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { api } from "./settings-confirm.js";
@@ -26,6 +27,8 @@ export function verifiedAuthorityBody(original, f) {
 export function WebAuthorityCard({ ctx, staged, disabled = false }) {
   const [overview, setOverview] = useState(null), [failed, setFailed] = useState(false);
   const [original, setOriginal] = useState(null), [f, setF] = useState(null), [msg, setMsg] = useState(null);
+  // #2342: the hours box keeps what was typed ("01", "1.50"; its undo history); the form gets the number.
+  const [hoursText, onHoursText] = useTypedText(f ? f.hours : null, (v) => (v.trim() === "" ? null : Number(v)));
   const load = async () => {
     // What changes here (a revoke, the switch) changes this browser's own line: the chat reads it again when it shows.
     resetWebAuthorization();
@@ -46,7 +49,6 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
   if (!overview || !f) return card(html`<p class="note">${t("app.loading")}</p>`);
 
   const set = (patch) => setF((x) => ({ ...x, ...patch }));
-  const hoursText = f.hours === null ? "" : String(f.hours);
   const hoursError = f.hours !== null && (!Number.isFinite(f.hours) || f.hours < overview.hours.min || f.hours > overview.hours.max) ? "vaHoursRange" : "";
   const stuckOff = f.enabled && original.enabled && !overview.state.enabled;
   const warnHosts = !f.loopbackOnly && overview.lanHosts.length > 0;
@@ -77,7 +79,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
       ${warnHosts ? html`<p class="note s-va-warn" role="status" id="vaLanWarning">${tn("vaLanWarning", overview.lanHosts.join(", "))}</p>` : null}
       <div class="field"><label for="vaHours">${tn("vaHours", overview.hours.min, overview.hours.max)}</label>
         <input id="vaHours" type="number" min=${overview.hours.min} max=${overview.hours.max} step="any" placeholder=${tn("defaultHours", overview.hours.default)}
-          class=${hoursError ? "invalid" : ""} value=${hoursText} onInput=${(e) => set({ hours: e.target.value.trim() === "" ? null : Number(e.target.value) })} />
+          class=${hoursError ? "invalid" : ""} value=${hoursText} onInput=${(e) => set({ hours: onHoursText(e.target.value) })} />
         <${Feedback} error=${hoursError} /></div>
       <h4>${tn("vaSessionsTitle")}</h4>
       ${overview.authorized.length
