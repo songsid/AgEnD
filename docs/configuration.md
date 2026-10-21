@@ -193,7 +193,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `startup.concurrency` | number | derived, `2`–`10` | Shared spawn-gate concurrency, based on free RAM and CPU count when omitted. An explicit value must be `1`–`20`. |
-| `startup.stagger_delay_ms` | number | `500` | Minimum spacing between spawn admissions (ms), across startup, wake, recovery and restart; not a delay between groups. Valid range: `0`–`30000`. |
+| `startup.stagger_delay_ms` | number | `500` | Minimum spacing between outer lifecycle admissions and standalone spawns (ms), shared by startup, wake, recovery and restart. At normal pressure, nested CLI spawns reuse the outer reservation and may coincide. Under elevated pressure, physical spawns remain serialized and at least 5 seconds apart; critical pressure holds new spawns. Valid range: `0`–`30000`. |
 | `cost_guard.daily_limit_usd` | number | `0` (disabled) | Fleet-wide daily cost limit |
 | `cost_guard.warn_at_percentage` | number | `80` | Warn threshold (% of limit) |
 | `cost_guard.timezone` | string | system TZ | IANA timezone for daily reset |

@@ -31,15 +31,15 @@ The completion log `Fleet startup batch completed` records:
 This batch helper also serves full restart. Separately started General/classic
 boot phases are outside its totals. A rejected batch does not claim completion.
 
-Controlled simulation: 40 distinct workdirs, concurrency 6,2 s preparation and 6 s
+Controlled simulation: 40 distinct workdirs, concurrency 6, 2 s preparation and 6 s
 physical readiness per instance, normal pressure, no storm or other work:
 
 | Stagger | Old duration / peak | Fixed duration / peak |
 | --- | --- | --- |
-|2000ms|164s /2|86s /4|
-|500ms|57.5s /6|57.5s /6|
+| 2000 ms | 164 s / 2 | 86 s / 4 |
+| 500 ms | 57.5 s / 6 | 57.5 s / 6 |
 
-The500ms setting reaches the configured limit in this workload even on old
+The 500 ms setting reaches the configured limit in this workload even on old
 source; the fix removes the extra spacing when nested admissions would shift
 outer deadlines. These are scheduler simulations, not measured host boot times.
 Long CLI startup, shared workdirs, pressure, storm and other boot phases can add

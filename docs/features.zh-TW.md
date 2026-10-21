@@ -884,10 +884,10 @@ instances:
 defaults:
   startup:
     concurrency: 3        # 同時啟動的 instance 上限
-    stagger_delay_ms: 2000 # 每批之間的間隔
+    stagger_delay_ms: 2000 # 外層啟動入場的間隔（毫秒）
 ```
 
-在同一批裡，共用同一個工作目錄的 instance 會依序啟動，避免設定檔的競爭狀況。
+共用同一工作目錄的 instance 會依序啟動，以避免設定檔競爭。啟動間隔適用於外層生命週期入場與獨立 spawn；壓力正常時，巢狀 CLI spawn 沿用外層名額，因此實體啟動可能同時發生。記憶體壓力與 storm 限制仍然適用。
 
 ## 同一個工作目錄裡的 kiro instance
 

@@ -23,7 +23,7 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-21T00:
 afterEach(() => { for (const { gate, storm } of owned.splice(0)) { gate.shutdown(); storm.shutdown(); } vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe("#2288 stagger belongs to outer admissions", () => {
-  it.each([500, 1700, 2000])("nested spawn after %ims preparation does not postpone the next outer admission", async preparation => {
+  it.each([500, 1700, 2000])("nested spawn after %i ms preparation does not postpone the next outer admission", async preparation => {
     const { gate } = rig(); const epoch = Date.now(); const starts: number[] = [];
     const a = gate.run({ ...task("a"), stage: "lifecycle" }, async () => {
       starts.push(Date.now() - epoch); await sleep(preparation);
@@ -44,7 +44,7 @@ describe("#2288 stagger belongs to outer admissions", () => {
     expect(starts).toEqual([0, 500, 2000, 2500]); expect(peak).toBe(2);
   });
 
-  it.each([[500, 57_500], [2000, 86_000]])("simulates40 instances, concurrency6, stagger%i, preparation2s and physical startup6s", async (stagger, expectedMs) => {
+  it.each([[500, 57_500], [2000, 86_000]])("simulates 40 instances, concurrency 6, stagger %i ms, preparation 2 s and physical startup 6 s", async (stagger, expectedMs) => {
     const { gate } = rig(stagger, 6); const epoch = Date.now(); const starts: number[] = []; let active = 0, peak = 0, completedAt = 0;
     const runs = Array.from({ length: 40 }, (_, i) => gate.run({ ...task(String(i)), stage: "lifecycle" }, async () => {
       starts.push(Date.now() - epoch); peak = Math.max(peak, ++active);
@@ -57,7 +57,7 @@ describe("#2288 stagger belongs to outer admissions", () => {
 });
 
 describe("#2288 pressure and storm boundaries", () => {
-  it.each([[1000, 7000], [10000, 12000]])("normal physical spawn history survives rising pressure (duration%i)", async (duration, secondAt) => {
+  it.each([[1000, 7000], [10000, 12000]])("normal physical spawn history survives rising pressure (duration %i ms)", async (duration, secondAt) => {
     const { gate, setPressure } = rig(0); const epoch = Date.now(); const starts: number[] = [];
     let physicalActive = 0, peak = 0;
     const physical = async (ms: number) => { starts.push(Date.now() - epoch); peak = Math.max(peak, ++physicalActive); await sleep(ms); physicalActive--; };
@@ -66,6 +66,20 @@ describe("#2288 pressure and storm boundaries", () => {
     await vi.advanceTimersByTimeAsync(secondAt - 1); expect(starts).toEqual([2000]);
     await vi.advanceTimersByTimeAsync(1); expect(starts).toEqual([2000, secondAt]); expect(peak).toBe(1);
     await vi.advanceTimersByTimeAsync(20_000); await Promise.all([a, b]);
+  });
+  it("elevated nested admission still paces the next outer after pressure recovers", async () => {
+    const { gate, setPressure } = rig(2000); const epoch = Date.now();
+    const outerStarts: number[] = [], physicalStarts: number[] = [];
+    const a = gate.run({ ...task("a"), stage: "lifecycle" }, async () => {
+      outerStarts.push(Date.now() - epoch); await sleep(1000); setPressure("elevated");
+      await gate.run(task("a"), async () => { physicalStarts.push(Date.now() - epoch); await sleep(100); });
+      setPressure("normal");
+    });
+    const b = gate.run({ ...task("b"), stage: "lifecycle" }, async () => { outerStarts.push(Date.now() - epoch); });
+    await vi.advanceTimersByTimeAsync(6999);
+    expect(physicalStarts).toEqual([5000]); expect(outerStarts).toEqual([0]);
+    await vi.advanceTimersByTimeAsync(1); expect(outerStarts).toEqual([0, 7000]);
+    await Promise.all([a, b]);
   });
   it("critical holds a nested spawn and recovery retains slow physical admission", async () => {
     const { gate, setPressure } = rig(0); const epoch = Date.now(); const starts: number[] = [];

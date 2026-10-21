@@ -157,7 +157,7 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | `scheduler` | object | — | 排程設定 |
 | `webhooks` | object[] | `[]` | Webhook 通知 |
 | `startup.concurrency` | number | 自動推算，`2`–`10` | 依空閒 RAM 與 CPU 數推算共用 spawn gate 的併發上限；明確設定時範圍為 `1`–`20` |
-| `startup.stagger_delay_ms` | number | `500` | startup、wake、recovery、restart 各次 spawn admission 的最小間隔（毫秒），不是每批之間的延遲；範圍 `0`–`30000` |
+| `startup.stagger_delay_ms` | number | `500` | 啟動、喚醒、恢復、重啟共用的外層生命週期入場與獨立 spawn 最小間隔（毫秒）。壓力正常時，巢狀 CLI spawn 沿用外層名額，可能同時開始；壓力升高時，實體 spawn 仍一次一個且至少相隔五秒，壓力嚴重時暫停新增 spawn；範圍 `0`–`30000` |
 | `warm_cap` | number | `0`（無上限） | 執行中 instance 的暖機上限；超過時暫停最近最少活動的 idle instance，General 與持有 work lease 的 instance 不被淘汰。與按時間計算的 `auto_pause_after` 互補 |
 | `progress_min_elapsed` | number | `30` | 進度行／取消按鈕開始顯示經過時間之前的秒數 |
 | `locale` | `"en"` \| `"zh-TW"` | 依時區推算 | 使用者可見介面與通知的語言 |

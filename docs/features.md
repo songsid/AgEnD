@@ -915,10 +915,10 @@ Configure parallel instance startup with concurrency limits:
 defaults:
   startup:
     concurrency: 3        # max instances starting simultaneously
-    stagger_delay_ms: 2000 # delay between groups
+    stagger_delay_ms: 2000 # spacing between outer admissions (ms)
 ```
 
-Instances sharing the same working directory are serialized within a group to avoid config file races.
+Instances sharing the same working directory are serialized to avoid config file races. The stagger spaces outer lifecycle admissions and standalone spawns. At normal pressure, a nested CLI spawn reuses its outer reservation, so physical spawns may coincide. Memory-pressure and storm limits still apply.
 
 ## Kiro instances in one working directory
 
