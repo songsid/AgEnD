@@ -368,18 +368,25 @@ describe("4a. a hidden instance's comments on a visible card, over the link", ()
     const local = (path: string) => viaLink(db, "GET", path, undefined, { fleetConfig, local: true });
     expect((await link("/ui/tasks/search?q=vault")).body.results).toEqual([]);
     expect((await local("/ui/tasks/search?q=vault")).body.results.map((r: any) => [r.card.id, r.match.field])).toEqual([["M-1", "log"]]);
-    expect((await link("/ui/tasks/search?q=work")).body.results.map((r: any) => r.card.id).sort()).toEqual(["M-1", "M-2"]);
+    const works = (await link("/ui/tasks/search?q=work")).body.results;
+    expect(works.map((r: any) => r.card.id).sort()).toEqual(["M-1", "M-2"]);
+    expect(works.map((r: any) => [r.card.id, r.card.commentCount, r.card.lastComment?.author ?? null]).sort()).toEqual([["M-1", 1, "Ann"], ["M-2", 0, null]]);
+    // Found by a visible comment, the match quotes it — never a hidden instance's newer one.
+    db.board.updateCard(ANN, "M-2", { comment: "rollout on Monday" });
+    db.board.updateCard({ kind: "instance", name: "spy" }, "M-2", { comment: "rollout secret: skip the checks" });
+    expect((await link("/ui/tasks/search?q=rollout")).body.results.map((r: any) => r.match.text)).toEqual(["rollout on Monday"]);
+    expect((await local("/ui/tasks/search?q=rollout")).body.results.map((r: any) => r.match.text)).toEqual(["rollout secret: skip the checks"]);
     const pick = (body: any, id: string) => body.cards.find((c: any) => c.id === id);
     const [b, l] = [(await link("/ui/tasks/board")).body, (await local("/ui/tasks/board")).body];
     expect([pick(b, "M-1").commentCount, pick(b, "M-1").newCommentCount, pick(b, "M-1").lastComment?.author]).toEqual([1, 1, "Ann"]);
-    expect([pick(b, "M-2").commentCount, pick(b, "M-2").newCommentCount, pick(b, "M-2").lastComment]).toEqual([0, 0, null]);
+    expect([pick(b, "M-2").commentCount, pick(b, "M-2").newCommentCount, pick(b, "M-2").lastComment?.author]).toEqual([1, 1, "Ann"]);
     expect([pick(l, "M-1").commentCount, pick(l, "M-1").newCommentCount, pick(l, "M-1").lastComment?.author]).toEqual([2, 2, "spy"]);
     expect(JSON.stringify(b)).not.toMatch(/spy|vault/);
     // The card's own read and its sub tasks' views follow the same rule.
     db.board.createCards(ANN, { parent: "M-2", cards: [{ title: "A step", assignee: "dev-a" }] });
     db.board.updateCard({ kind: "instance", name: "spy" }, "S-1", { comment: "spy on the step" });
     const d = (await link("/ui/tasks/cards/M-2")).body;
-    expect([d.card.commentCount, d.card.lastComment, d.children[0].commentCount, d.children[0].lastComment]).toEqual([0, null, 0, null]);
+    expect([d.card.commentCount, d.card.lastComment?.author, d.children[0].commentCount, d.children[0].lastComment]).toEqual([1, "Ann", 0, null]);
     expect(JSON.stringify(d)).not.toMatch(/spy/);
     expect((await local("/ui/tasks/cards/M-2")).body.children[0].lastComment.author).toBe("spy");
   });
