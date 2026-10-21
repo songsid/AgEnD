@@ -460,6 +460,28 @@ describe("#2295 review r2: boundaries", () => {
     expect(s.search({ q: "hello" }).hits.map(h => h.key)).toEqual([`chat:dev:b1-${prose.id}`]);
     expect(s.search({ q: "rotate" }).hits[0]!.snippet).toMatch(/^rotate token: "?\[REDACTED\]"? today$/);
   });
+  it("every cut point inside a quoted secret, for each syntax, through the history: nothing of the value is kept (r4)", () => {
+    const syntaxes = [["double", '"', '"', "horse's battery staple"], ["single", "'", "'", 'horse "battery" staple'], ["escaped", '\\"', '\\"', "horse's battery staple"]] as const;
+    let cases = 0;
+    for (const [name, open, close, value] of syntaxes) {
+      const head = `password=${open}`, segment = `${head}${value}${close} end`;
+      expect(maskSecrets(`run ${segment}`), name).not.toMatch(/horse|battery|staple/);   // the whole text: masked (precondition)
+      for (let cut = head.length; cut < head.length + value.length + close.length; cut++) {
+        const s = store();
+        const history = new WebChatHistory({ boot: "c" });
+        const m = history.record({ instance: "dev", sender: "han", text: `${"x".repeat(16000 - 1 - cut)} ${segment}`, ts: new Date(T0).toISOString(), role: "user" });
+        expect(m.text.length).toBe(16000);
+        expect(m.text.endsWith(segment.slice(0, cut)), `${name} @${cut}`).toBe(true);
+        s.add([chatDoc(m)!]);
+        const kept = s.context(`chat:dev:c-${m.id}`)!.doc.text.slice(15900);
+        expect(kept, `${name} @${cut}: ${JSON.stringify(segment.slice(0, cut))}`).not.toMatch(/hor|ors|bat|att|tte|ter|sta|tap|apl|ple/);
+        for (const q of ["horse", "batt", "stap"]) expect(s.search({ q }).hits, `${name} @${cut} ${q}`).toEqual([]);
+        s.close(); stores.splice(stores.indexOf(s), 1);
+        cases++;
+      }
+    }
+    expect(cases).toBe(23 + 23 + 24);
+  });
   it("the open tail ends only at its own delimiter: the other quote inside the value is the value's (r3)", () => {
     const s = store();
     const history = new WebChatHistory({ boot: "b2" });

@@ -121,8 +121,9 @@ export function maskSecrets(text: string): string {
  * can see. Masked from the quote to the end — on the safe side even when the quote was never meant to close.
  */
 // The value runs to the end without the delimiter that opened it: another kind of quote inside it is part of it
-// (password="horse's battery, password='a "b" c, an escaped \"…: anything but \").
-const OPEN_TAIL = new RegExp(`((?:^|[^A-Za-z0-9_.-])(?:--?)?"?${NAME}"?(?:\\s*[=:]\\s*|\\s+))(?:(")[^"\\n]*|(')[^'\\n]*|(\\\\")(?:[^\\\\\\n]|\\\\(?!")[^\\n])*)$`, "i");
+// (password="horse's battery, password='a "b" c, an escaped \"…: anything but \" — and a lone backslash at the very end is
+// the closing \" cut in two, still open).
+const OPEN_TAIL = new RegExp(`((?:^|[^A-Za-z0-9_.-])(?:--?)?"?${NAME}"?(?:\\s*[=:]\\s*|\\s+))(?:(")[^"\\n]*|(')[^'\\n]*|(\\\\")(?:[^\\\\\\n]|\\\\(?!")[^\\n])*\\\\?)$`, "i");
 export function maskOpenSecretTail(text: string): string {
   return text.replace(OPEN_TAIL, (m, head: string, dq?: string, sq?: string, esc?: string) => {
     const open = dq ?? sq ?? esc ?? "";
