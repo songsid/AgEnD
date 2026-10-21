@@ -1,4 +1,4 @@
 ---
 section: Fixed
 ---
-- On macOS, a read error on `tar`'s output while `/login` unpacks its downloaded cloudflared now fails that public link with "cloudflared could not be installed" instead of crashing the fleet (#2243).
+- A read error on a helper's output pipe no longer crashes the fleet. If `tar` fails while `/login` unpacks the downloaded cloudflared on macOS, that public link now fails with "cloudflared could not be installed". If the login-shell lookup for a backend CLI fails, that lookup now counts as not found (#2243).
