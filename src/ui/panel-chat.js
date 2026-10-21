@@ -420,7 +420,7 @@ function threadEntry(name, doc) {
       else if (reason === "busy") getAppEffects()?.stopTrial();
       else if (reason === "transport") location.reload();
       else if (reason === "localAdmin") location.href = "/signin?next=" + encodeURIComponent(location.pathname + location.search);
-      else navigate("/settings/appearance");
+      else navigate("/settings/look");
     },
     canTryEffect: x => getAppEffects()?.canTry(x) === true,
     startEffectTrial: x => { const seq = navStore.get().seq; void getAppEffects()?.startTrial(x).then(ok => { if (!ok && e.sink && navStore.get().seq === seq && document.hasFocus?.() === true && document.visibilityState === "visible") toast(t("chat.effectTrialUnavailable")); }); },

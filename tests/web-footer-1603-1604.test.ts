@@ -86,11 +86,13 @@ describe("#1604: the sidebar footer is one row", () => {
 });
 
 describe("#1604: Settings → This device", () => {
-  it("is a Settings section of its own, first; the page and the server both route /settings/device", async () => {
+  it("is a Settings section of its own, first (#2347: Preferences); the page and the server route it, and the old /settings/device", async () => {
     const { SETTINGS_SECTIONS, parseRoute } = await import("/assets/app-route.js");
-    expect(SETTINGS_SECTIONS[0]).toBe("device");
-    expect(parseRoute("/settings/device")).toEqual({ panel: "settings", section: "device" });
-    expect(shellRoute("GET", "/settings/device")).toEqual({ kind: "shell", route: { panel: "settings", section: "device" } });
+    expect(SETTINGS_SECTIONS[0]).toBe("preferences");
+    for (const path of ["/settings/preferences", "/settings/device"]) {
+      expect(parseRoute(path)).toEqual({ panel: "settings", section: "preferences" });
+      expect(shellRoute("GET", path)).toEqual({ kind: "shell", route: { panel: "settings", section: "preferences" } });
+    }
   });
   it("theme, language, HTML previews (through the app's confirm) and the tour — shown without waiting for the configuration", async () => {
     const pg = page({ url: "http://127.0.0.1:19280/settings/device", storage: { agend_tour_done: "1" } });

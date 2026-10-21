@@ -15,7 +15,7 @@ import { useLease } from "/assets/app-ctx.js";
 import { DevicePrefs, PanelHeader, PendingChanges, setTitle } from "/assets/app-shell.js";
 import { navigate, navStore, setLeaveGuard } from "/assets/app-nav.js";
 import { discardHeldPrefs, heldPrefsCount, holdPrefs, onHeldPrefs, savePrefsHeld } from "/assets/app-prefs.js";
-import { chatPath, settingsPath, SETTINGS_SECTIONS } from "/assets/app-route.js";
+import { chatPath, LEGACY_SETTINGS, settingsPath, SETTINGS_GROUPS, SETTINGS_SECTIONS } from "/assets/app-route.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -54,7 +54,7 @@ const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const APPLY_ERRORS = new Set(["unsupported_sensitive_effect", "confirmation_diff_too_large", "session_required", "admin_required", "settings_changed",
   "request_no_longer_current", "too_many_pending_changes", "fleet_unavailable", "invalid_settings_effect", "settings_confirmation_unavailable", "failed"]);
 export const applyErrorText = (code) => (APPLY_ERRORS.has(code) ? tn(`applyError_${code}`) : tn("applyErrorOther", String(code)));
-const ICONS = { device: "user", appearance: "palette", agents: "bot", bots: "plug", classic: "room", general: "sliders", web: "globe", advanced: "code" };
+const ICONS = { preferences: "user", look: "palette", agents: "bot", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", advanced: "code" };
 const RELEASES = "https://github.com/songsid/AgEnD/releases";
 
 /** GET under the panel's lease → { ok, status, body }. */
@@ -109,7 +109,9 @@ async function loadLive(lease) {
 }
 
 export function SettingsPanel({ route, navKey }) {
-  const section = SETTINGS_SECTIONS.includes(route.section) ? route.section : "agents";
+  // #2347: an old section name (a route made before the regrouping) is its new section.
+  const moved = Object.prototype.hasOwnProperty.call(LEGACY_SETTINGS, route.section) ? LEGACY_SETTINGS[route.section].split("#")[0] : null;
+  const section = SETTINGS_SECTIONS.includes(route.section) ? route.section : moved || "agents";
   const mount = useLease("settings");                 // the panel's life on screen: its data, its guard
   const [data, setData] = useState(null);
   const [staged, setStaged] = useState(() => new Map());
@@ -163,7 +165,7 @@ export function SettingsPanel({ route, navKey }) {
     setData((d) => (d && !d.error ? { ...d, ...live } : d));
   };
 
-  // #2347: the "You" group — a preference chosen here (Preferences, Web appearance) is shown at once and saved by the bar's
+  // #2347: the "You" group — a preference chosen here (Preferences, Look) is shown at once and saved by the bar's
   // Save with everything else: held in app-prefs while Settings is open, and staged here as one change.
   const syncHeld = (n) => (n ? stage(YOU_PREFS, { label: tn("youPrefs"), impact: ownChoiceImpact(data && data.schema), count: n,
     local: { commit: savePrefsHeld, revert: discardHeldPrefs } }, true) : unstage(YOU_PREFS));
@@ -355,35 +357,52 @@ export function SettingsPanel({ route, navKey }) {
   }, [!!ctx, navKey]);
   // #1604: This device needs no configuration: shown at once, whatever the configuration read does.
   // #2347: drawn again from what is in force after a Discard or a Save (draftEpoch), like every section.
-  const sectionBody = section === "device" ? html`<${DeviceSection} key=${`you:${draftEpoch}`} />`
-    // #1629 r4 §3: Appearance is the person's own (no configuration read): shown at once, like Preferences.
-    : section === "appearance" ? html`<${AppearanceSection} key=${`you:${draftEpoch}`} stage=${stage} unstage=${unstage} staged=${staged} schema=${data && data.schema} />`
+  const toDialog = (d) => setDialog({ ...d, key: navKey });
+  const you = { key: `you:${draftEpoch}`, stage, unstage, staged, schema: data && data.schema };
+  const formKey = data && !data.error ? `${data.loadedAt}:${draftEpoch}` : "";
+  // #2347 regrouping: each card where the person looks for it (the IA in #2347 §3); a form split across sections (the
+  // defaults, Web) is one form with one draft, shown a part at a time.
+  const sectionBody = section === "preferences" ? html`<${DeviceSection} key=${you.key} /><${AppearanceSection} ...${you} part="device" />`
+    : section === "look" ? html`<${AppearanceSection} ...${you} part="look" />`
     : !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
-    : section === "agents" ? html`<${Agents} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
-    : section === "bots" ? html`<${Bots} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
-    : section === "classic" ? html`<${Classic} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
-    : section === "general" ? html`<${General} key=${`${data.loadedAt}:${draftEpoch}`} ctx=${ctx} />`
-    : section === "web" ? html`<${WebSection} key=${`${data.loadedAt}:${draftEpoch}`} ctx=${ctx} staged=${staged} />`
-    : html`<${Developer} ctx=${ctx} />`;
+    : section === "agents" ? html`<${Agents} ctx=${ctx} search=${search} openDialog=${toDialog} />${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : null}`
+    : section === "agent-defaults" ? html`<${General} key=${formKey} ctx=${ctx} part="fleet" />`
+    : section === "chat" ? html`<${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} />
+        <${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="chat" />
+        <div id="classicbot" class="s-anchor"><h2 class="s-ap-group">ClassicBot</h2><${Classic} ctx=${ctx} search=${search} openDialog=${toDialog} />
+          <${General} key=${formKey} ctx=${ctx} part="classic" /></div>`
+    : section === "web-dashboard" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="dashboard" /><${AppearanceSection} ...${you} part="dashboard" />`
+    : section === "access" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="access" />`
+    : html`<${Developer} ctx=${ctx} /><${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="readonly" />`;
+  // #2347: a place in a section (`/settings/chat#classicbot`, an old /settings/classic link): there, once it is drawn.
+  useEffect(() => {
+    const id = (typeof location !== "undefined" && location.hash ? location.hash.slice(1) : "");
+    if (!id) return;
+    let el = null;
+    try { el = document.getElementById(decodeURIComponent(id)); } catch { el = null; }
+    if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "start" });
+  }, [section, navKey, !!data]);
   // A dialog belongs to the navigation that opened it (its draft names one object, never another).
   const open = dialog && dialog.key === navKey ? dialog : null;
   const close = () => setDialog(null);
-  const searchable = section === "agents" || section === "bots" || section === "classic";
+  const searchable = section === "agents" || section === "chat";
   return html`<div data-effect-panel="settings" class="panel p-settings">
     <${PanelHeader} title=${tn("title")} sub=${data && data.version ? html`<a class="pill ver" href=${data.version.includes("-") ? `${RELEASES}/latest` : `${RELEASES}/tag/v${data.version}`} target="_blank" rel="noopener">v${data.version}</a>` : null}>
       <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx} onClick=${() => setDialog({ kind: "wizard", key: navKey })}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
       <button type="button" class="icon-btn" aria-label=${tn("helpButton")} title=${tn("helpButton")} onClick=${() => setDialog({ kind: "help", key: navKey })}><${Icon} name="info" /></button>
     </${PanelHeader}>
-    <nav data-trust="panel-navigation" class="seg" aria-label=${tn("title")}>${SETTINGS_SECTIONS.map((k) => html`<a key=${k} href=${settingsPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
-      aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</nav>
+    <nav data-trust="panel-navigation" class="seg s-nav" aria-label=${tn("title")}>${SETTINGS_GROUPS.map((g) => html`<div key=${g.id} class="s-nav-group" role="group" aria-labelledby=${`s-grp-${g.id}`}>
+      <span class="s-nav-head" id=${`s-grp-${g.id}`}>${tn(`grp_${g.id}`)}</span>
+      ${g.sections.map((k) => html`<a key=${k} href=${settingsPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
+        aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</div>`)}</nav>
     <div data-trust="panel-content" class="panel-body"><div class="col">
       ${searchable ? html`<div class="s-toolbar"><label class="s-search"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("searchAll")}</span>
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}
-      ${readOnly && section !== "device" && section !== "appearance" ? html`<p class="note s-readonly" role="status">${tn("fleetReadOnlyPublic")}</p>` : null}
+      ${readOnly && section !== "preferences" && section !== "look" ? html`<p class="note s-readonly" role="status">${tn("fleetReadOnlyPublic")}</p>` : null}
       ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} />` : null}
       <${PendingChanges} inline=${true} />
-      ${ctx && (section === "agents" || section === "bots") ? html`<${FirstRunCard} onConnect=${() => setDialog({ kind: "wizard", key: navKey })} />` : null}
+      ${ctx && (section === "agents" || section === "chat") ? html`<${FirstRunCard} onConnect=${() => setDialog({ kind: "wizard", key: navKey })} />` : null}
       ${sectionBody}
     </div></div>
     ${staged.size && (!readOnly || [...staged.values()].every((c) => c.local)) ? html`<${PendingBar} staged=${staged} busy=${opBusy(op)} onApply=${apply} onDiscard=${discard} />` : null}
@@ -700,8 +719,7 @@ function Bots({ ctx, search, openDialog }) {
           ${!overPublicLink && ctx.fleetUp && meta.status !== "connected" ? html`<${ConnectionRetry} id=${channelId(ch, i)} ctx=${ctx} />` : null}
           <button type="button" class="btn btn-sm" onClick=${() => openDialog({ kind: "bot", id: channelId(ch, i) })}>${tn("settingsButton")}</button></span>
       </div>`;
-    })}</div>`}
-    ${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : null}`;
+    })}</div>`}`;
 }
 
 /**
@@ -815,7 +833,7 @@ function generalForm(d, c) {
  * defaults, ClassicBot defaults), each only with what differs from what is saved, so changing one hot default never also
  * stages untouched settings as a fleet restart; the sticky bar saves them. A changed field carries the straight bar.
  */
-function General({ ctx }) {
+function General({ ctx, part = "all" }) {
   const { schema } = ctx;
   const d = ctx.fleet.defaults || {}, c = (ctx.classic && ctx.classic.defaults) || {};
   const hang = d.hang_detector || {}, startup = d.startup || {};
@@ -879,8 +897,10 @@ function General({ ctx }) {
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
   const fleetReply = replyGuardSupported(f.backend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.backend, f.agent_mode);
   const classicReply = replyGuardSupported(f.classicBackend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.classicBackend, f.agent_mode);
-  return html`<div class="form s-general">
-    <section class="card"><h3>${tn("defaultsTitle")}</h3>
+  // #2347: Agent defaults show the fleet's part; Chat & connections ClassicBot's. One form, one draft either way.
+  const fleetPart = part !== "classic", classicPart = part !== "fleet";
+  return html`<div class=${`form s-general s-part-${part}`}>
+    ${fleetPart ? html`<section class="card"><h3>${tn("defaultsTitle")}</h3>
       <div class="grid2">
         <div class=${fc("field", "locale")}>${L(tn("language"), "defaults.locale", "g-locale")}<${Select} id="g-locale" value=${f.locale} onChange=${set("locale")}
           options=${localeOptions(f.locale).map((o) => (o.auto ? { value: "", label: tn("localeAuto") } : o))} /></div>
@@ -894,8 +914,8 @@ function General({ ctx }) {
         <div class=${fc("field", "reply")}><label class="check"><input type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span><${Impact} schema=${schema} field="defaults.reply_completion_guard" /></label>
           <p class="note">${fleetReply}</p></div>
       </div>
-    </section>
-    <section class="card"><h3>ClassicBot</h3>
+    </section>` : null}
+    ${classicPart ? html`<section class="card"><h3>${tn("classicDefaultsTitle")}</h3>
       <div class="grid2">
         <div class=${fc("field", "classicBackend")}>${L(tn("classicBackend"), "classic_defaults.backend", "g-cbe")}<${BackendSelect} id="g-cbe" value=${f.classicBackend} onChange=${set("classicBackend")} /></div>
         <div class=${fc("field", "classicToolProgress", "classicToolProgressInherit")}>${L(tn("toolProgress"), "classic_defaults.tool_progress", "g-ctp")}
@@ -911,8 +931,8 @@ function General({ ctx }) {
         <div class=${fc("field", "admins")}>${L(tn("classicAdmins"), "classic.admin_users")}<${ChipList} items=${f.admins} onChange=${set("admins")} placeholder=${tn("userIdPlaceholder")} label=${tn("classicAdmins")} /></div>
         <div class=${fc("field", "guilds")}>${L(tn("allowedGuilds"), "classic.allowed_guilds")}<${ChipList} items=${f.guilds} onChange=${set("guilds")} placeholder=${tn("guildIdPlaceholder")} label=${tn("allowedGuilds")} /></div>
       </div>
-    </section>
-    <${Drawer} title=${tn("advancedSection")}>
+    </section>` : null}
+    ${fleetPart ? html`<${Drawer} title=${tn("advancedSection")}>
       <section class="card"><h3>${tn("runtimeResources")}</h3><div class="grid2">
         <div class=${fc("field", "tool_set")}>${L(tn("toolSet"), "defaults.tool_set", "g-ts")}<${Select} id="g-ts" value=${f.tool_set} onChange=${set("tool_set")} options=${TOOL_SETS} /></div>
         <div class=${fc("field", "log_level")}>${L(tn("logLevel"), "defaults.log_level", "g-ll")}<${Select} id="g-ll" value=${f.log_level} onChange=${set("log_level")} options=${LOG_LEVELS} /></div>
@@ -928,7 +948,7 @@ function General({ ctx }) {
       </div></section>
       <section class="card"><h3>${tn("accessTitle")}</h3>
         <p class="note">${primary ? tn("accessMovedHint", primary.id || chLabel(0)) : tn("noBots")}</p></section>
-    </${Drawer}>
+    </${Drawer}>` : null}
   </div>`;
 }
 
@@ -944,7 +964,7 @@ export const WEB_READ_ONLY = [
   "web.allowed_hosts", "web.view_access", "web.notify_login", "web.preview", "web.preview_port", "web.preview_origin", "web.preview_on_public_link",
   "web.usage_panel", "web.provider_secrets", "web.upload_max_file_mb", "web.upload_max_total_mb", "web_terminal.bind", "web_terminal.tunnel",
 ];
-function WebSection({ ctx, staged }) {
+function WebSection({ ctx, staged, part = "all" }) {
   const { schema } = ctx;
   const web = ctx.fleet.web || {}, local = (web.session && web.session.local) || {}, term = ctx.fleet.web_terminal || {};
   // Over the public link the fields read only; the Guests and Web authority cards are not offered (the server never
@@ -1000,7 +1020,7 @@ function WebSection({ ctx, staged }) {
     // #2347: invalid text keeps the draft unsaved and Save waiting ("Fix 1 field to save"); no older valid draft is sent.
     if (overPublicLink) return;
     if (!ready) {
-      syncStage(ctx, "web", { label: tn("sec_web"), invalid: tn(Object.values(errors).find(Boolean)) });
+      syncStage(ctx, "web", { label: tn("webSettingsLabel"), invalid: tn(Object.values(errors).find(Boolean)) });
       return;
     }
     // Keep an existing secret reference, including a custom one. Only a newly supplied hostname without any
@@ -1029,7 +1049,7 @@ function WebSection({ ctx, staged }) {
       ...Object.keys(terminalPatch).map((k) => `web_terminal.${k}`),
     ];
     if (fields.length) {
-      ctx.stage("web", { label: tn("sec_web"), count: fields.length, impact: batchImpact(schema, fields, (k) => impactOf(schema, k)),
+      ctx.stage("web", { label: tn("webSettingsLabel"), count: fields.length, impact: batchImpact(schema, fields, (k) => impactOf(schema, k)),
         request: { method: "PUT", url: "/api/settings/fleet/web", body } }, quiet);
     } else if (staged.has("web")) ctx.unstage("web");
   };
@@ -1044,11 +1064,15 @@ function WebSection({ ctx, staged }) {
     const v = (top === "web" ? web : term)[key];
     return v === undefined ? tn("notSet") : typeof v === "object" ? JSON.stringify(v) : String(v);
   };
-  return html`<div class="form s-web">
-    <p class="sub">${tn("webLead")}</p>
-    ${overPublicLink ? html`<p class="note" role="status" id="webPublicRefused">${tn("webPublicRefused")}</p>` : null}
-    <fieldset class="s-web-fields" disabled=${overPublicLink}>
-    <section class="card"><h3>${tn("webSessionTitle")}</h3>
+  // #2347: one form, one draft, shown where each part belongs — Access & security (sessions, the browser terminal, the
+  // public link and its fixed address, guests, web authority), Chat & connections (web echo), Web dashboard (the Log tab,
+  // usage over the public link), Advanced (what only fleet.yaml sets).
+  const has = (p) => part === "all" || part === p;
+  const lock = (body) => html`<fieldset class="s-web-fields" disabled=${overPublicLink}>${body}</fieldset>`;
+  return html`<div class=${`form s-web s-part-${part}`}>
+    ${has("access") ? html`<p class="sub">${tn("webLead")}</p>` : null}
+    ${overPublicLink && part !== "readonly" ? html`<p class="note" role="status" id="webPublicRefused">${tn("webPublicRefused")}</p>` : null}
+    ${has("access") ? lock(html`<section class="card"><h3>${tn("webSessionTitle")}</h3>
       <p class="note">${tn("webSessionHint")}</p>
       <div class="grid2">
         <div class=${fc("field", "abs")}><label for="webSessionAbsolute">${tn("sessionAbsolute")}</label><input id="webSessionAbsolute" type="number" min="1" max="720" step="any" placeholder=${tn("defaultHours", 48)}
@@ -1065,13 +1089,7 @@ function WebSection({ ctx, staged }) {
           class=${errors.termTtl ? "invalid" : ""} value=${f.termTtl} onInput=${(e) => set("termTtl")(e.target.value)} /><${Feedback} error=${errors.termTtl} /></div>
       </div>
     </section>
-    <section class="card"><h3>${tn("webChat")}</h3>
-      <label class=${fc("check", "echo")}><input id="webEchoToChannel" type="checkbox" checked=${f.echo} onChange=${(e) => set("echo")(e.target.checked)} /><span>${tn("webEcho")}</span><${Impact} schema=${schema} field="web.echo_to_channel" /></label>
-      <p class="note">${tn("webEchoHint")}</p>
-      <label class=${fc("check", "log")}><input id="webLogTab" type="checkbox" checked=${f.log} onChange=${(e) => set("log")(e.target.checked)} /><span>${tn("webLogTab")}</span><${Impact} schema=${schema} field="web.log_tab" /></label>
-      <p class="note">${tn("webLogTabHint")}</p>
-      <label class=${fc("check", "usagePub")}><input id="webUsagePublic" type="checkbox" checked=${f.usagePub} onChange=${(e) => set("usagePub")(e.target.checked)} /><span>${tn("webUsagePublic")}</span><${Impact} schema=${schema} field="web.usage_report_on_public_link" /></label>
-      <p class="note">${tn("webUsagePublicHint")}</p>
+    <section class="card"><h3>${tn("publicLinkTitle")}</h3>
       <label class=${fc("check", "pub")}><input id="publicWebLink" type="checkbox" checked=${f.pub} onChange=${(e) => set("pub")(e.target.checked)} /><span>${tn("publicLink")}</span><${Impact} schema=${schema} field="web.public_link.allow_public" /></label>
       <p class="note">${tn("publicLinkHint")}</p>
       <div class="grid2">
@@ -1083,13 +1101,22 @@ function WebSection({ ctx, staged }) {
         <div class=${fc("field", "ttl")}><label for="publicWebTtl">${tn("publicTtl")}</label><input id="publicWebTtl" type="number" min="1" max="480" class=${errors.ttl ? "invalid" : ""} value=${f.ttl} onInput=${(e) => set("ttl")(e.target.value)} /><${Feedback} error=${errors.ttl} /></div>
         <div class=${fc("field", "protocol")}><label for="publicWebProtocol">${tn("publicProtocol")}</label><${Select} id="publicWebProtocol" value=${f.protocol} onChange=${set("protocol")} options=${["http2", "quic", "auto"]} /></div>
       </div>
-    </section>
-    </fieldset>
-    ${overPublicLink ? null : html`<${PublicTunnelToken} /><${GuestsCard} ctx=${ctx} staged=${staged} /><${WebAuthorityCard} ctx=${ctx} staged=${staged} />`}
-    <section class="card s-web-readonly"><h3>${tn("webReadOnlyTitle")}</h3>
+    </section>`) : null}
+    ${has("access") && !overPublicLink ? html`<${PublicTunnelToken} /><${GuestsCard} ctx=${ctx} staged=${staged} /><${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
+    ${has("chat") ? lock(html`<section class="card"><h3>${tn("webChat")}</h3>
+      <label class=${fc("check", "echo")}><input id="webEchoToChannel" type="checkbox" checked=${f.echo} onChange=${(e) => set("echo")(e.target.checked)} /><span>${tn("webEcho")}</span><${Impact} schema=${schema} field="web.echo_to_channel" /></label>
+      <p class="note">${tn("webEchoHint")}</p>
+    </section>`) : null}
+    ${has("dashboard") ? lock(html`<section class="card"><h3>${tn("webDashboardTitle")}</h3>
+      <label class=${fc("check", "log")}><input id="webLogTab" type="checkbox" checked=${f.log} onChange=${(e) => set("log")(e.target.checked)} /><span>${tn("webLogTab")}</span><${Impact} schema=${schema} field="web.log_tab" /></label>
+      <p class="note">${tn("webLogTabHint")}</p>
+      <label class=${fc("check", "usagePub")}><input id="webUsagePublic" type="checkbox" checked=${f.usagePub} onChange=${(e) => set("usagePub")(e.target.checked)} /><span>${tn("webUsagePublic")}</span><${Impact} schema=${schema} field="web.usage_report_on_public_link" /></label>
+      <p class="note">${tn("webUsagePublicHint")}</p>
+    </section>`) : null}
+    ${has("readonly") ? html`<section class="card s-web-readonly"><h3>${tn("webReadOnlyTitle")}</h3>
       <p class="note">${tn("webReadOnlyLead")}</p>
       <dl class="s-web-ro">${WEB_READ_ONLY.map((k) => html`<div key=${k}><dt><code>${k}</code></dt><dd>${shown(k)}</dd></div>`)}</dl>
-    </section>
+    </section>` : null}
   </div>`;
 }
 

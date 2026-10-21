@@ -438,6 +438,22 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .seg-item.active { background: var(--surface-2); color: var(--text); font-weight: var(--fw-semibold); }
 /* #1629: Settings has eight sections (Appearance added): they wrap to a second row rather than hide behind a scroll. */
 .p-settings .seg { flex-wrap: wrap; row-gap: var(--s-1); overflow-x: visible; }
+/* #2347: the sections in two groups, "You" and "Fleet", each with its name; a column on the left on a wide screen. */
+.s-nav { align-items: center; column-gap: var(--s-3); }
+.s-nav-group { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1); }
+.s-nav-head { font-size: var(--fs-xs); color: var(--text-3, var(--text-2)); text-transform: uppercase; letter-spacing: 0.04em; padding: 0 var(--s-2); }
+.s-anchor { scroll-margin-top: var(--s-4); }
+@media (min-width: 1100px) {
+  .p-settings { display: grid; grid-template-columns: 220px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
+  .p-settings > :not(.s-nav):not(.panel-body) { grid-column: 1 / -1; }
+  .p-settings > .s-nav { grid-column: 1; grid-row: 2; flex-direction: column; align-items: stretch; flex-wrap: nowrap; margin: 0; max-width: none;
+    padding: var(--s-2) var(--s-2) var(--s-4) var(--s-4); overflow-y: auto; gap: var(--s-3); }
+  .p-settings > .s-nav .s-nav-group { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
+  .p-settings > .s-nav .s-nav-head { padding: var(--s-1) var(--s-3); }
+  .p-settings > .s-nav .seg-item { border-radius: var(--r-sm); }
+  .p-settings > .panel-body { grid-column: 2; grid-row: 2; }
+  .p-settings > .s-pending { grid-column: 1 / -1; grid-row: 3; }
+}
 .list-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); margin: var(--s-2) 0 var(--s-3); color: var(--text-2); font-size: var(--fs-sm); }
 .rows { display: flex; flex-direction: column; gap: var(--s-1); }
 .row-item { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface); font-size: var(--fs-sm); }

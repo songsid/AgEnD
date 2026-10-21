@@ -1,0 +1,14 @@
+---
+section: Changed
+---
+- **Web Settings: the sections are regrouped where you would look for each setting (#2347).**
+  - **You** changes only you or this browser: **Preferences**, including this device's own switches, and **Look**: agents' themes, identity colours and cards, your sidebar widget, custom CSS, mods and effects.
+  - **Fleet** changes AgEnD for everyone:
+    - **Agents**, with sign-ins and provider API keys;
+    - **Agent defaults**;
+    - **Chat & connections**: connections, web echo, ClassicBot rooms and ClassicBot defaults;
+    - **Web dashboard**: the Log tab, usage over the public link, the app icon, card upload limits, Canvas Worker effects;
+    - **Access & security**: sign-in sessions, the browser terminal, the public link and its fixed address, guests, web authority;
+    - **Advanced**: `fleet.yaml`, and what only it sets.
+  - On a wide screen the sections are a column on the left.
+  - Old addresses lead to the new sections: `/settings/device`, `…/appearance`, `…/general`, `…/bots`, `…/web`, and `…/classic`, which opens Chat & connections at ClassicBot.

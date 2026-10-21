@@ -251,7 +251,7 @@ describe("#1561 review", () => {
     expect(rowsOf(pg)).toEqual({ "Display name": "Ops", Description: "the ops room", "Bound to": "ClassicBot room #ops (discord)", Tags: "classic" });
     expect(await menuItems(pg)).toEqual(["Edit in Settings", "Pause", "Colour…", "Lock theme", "Reset theme…"]);   // #1629: a Classic room's agent has a theme too; #1958 a colour
     pg.root.querySelector(".p-details .d-edit-settings").click(); await settle(4);
-    expect([await route(), req.takeAgentRequest()]).toEqual([{ panel: "settings", section: "classic" }, { name: "classic-ops-1", kind: "classic" }]);
+    expect([await route(), req.takeAgentRequest()]).toEqual([{ panel: "settings", section: "chat" }, { name: "classic-ops-1", kind: "classic" }]);   // #2347: ClassicBot is in Chat & connections
   });
   it("bound by default to the first connection says so; web only only when the fleet has no connection", async () => {
     const pg = await app("/ui/fleet/agent/api-server");

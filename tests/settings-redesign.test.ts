@@ -246,7 +246,7 @@ describe("Settings P0 redesign shell", () => {
     w = world({ classic: { channels: { "c1": { name: "ops", instanceName: "ops-t9", backend: "claude-code", model: "claude-opus-5-5", channelId: "1" } }, defaults: {} },
       instances: { "ops-t9": { status: "running", classic: true } } });
     answer = succeed;
-    await mountSettings("general");
+    await mountSettings("chat");                    // #2347: ClassicBot's defaults are in Chat & connections
     const general = p.root.querySelector(".s-general")!;
     expect(general.textContent).toContain("Who can use ClassicBot");
     expect(general.textContent).toContain("ClassicBot default backend");
@@ -281,7 +281,8 @@ describe("Settings P0 redesign shell", () => {
     await mountSettings("bots");
     await click(button("Settings"));
     await choose(p.root.querySelector("#bot-mode")!, "locked");
-    await click(p.root.querySelector(".chips-box")!.querySelector("button.chip-x"));
+    // The dialog's own list (#2347: the page behind it, Chat & connections, has ClassicBot's lists too).
+    await click(p.root.querySelector("dialog .chips-box")!.querySelector("button.chip-x"));
     expect(p.root.querySelector("dialog")!.textContent).toContain("Locked mode has no allowed users; add at least one administrator to avoid lockout.");
     await click(button("Done"));
     await applyStaged();
@@ -342,7 +343,7 @@ describe("Settings P0 redesign shell", () => {
         { id: "vendor-b", display_name: "Vendor B", verifier: "available", token_present: true },
       ],
     });
-    await mountSettings("bots");
+    await mountSettings("agents");                  // #2347: provider API keys are with the agents' sign-ins
     const cards = [...p.root.querySelectorAll("section.card")].filter((s: any) => s.textContent.includes("Provider API keys"));
     expect(cards).toHaveLength(1);
     const [a, b] = [...cards[0]!.querySelectorAll(".s-key")];

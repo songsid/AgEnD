@@ -27,7 +27,7 @@ For how *you* look on the dashboard (theme, identity card, colour, widgets, ambi
 | subscription meters, plan badges, profiles, keep-warm, prompt cache | [Usage and the cache report](#usage-and-the-cache-report) |
 | what an agent did step by step | [The Log tab](#the-log-tab) |
 | any Settings control | [Settings](#settings) |
-| themes, cards, widgets, ambient effects (petals, click stars), effects, mods | [Web appearance](#web-appearance) |
+| themes, cards, widgets, ambient effects (petals, click stars), effects, mods | [Look](#look) |
 | blank page, preview refused, link fails, signed out, "live" missing | [Troubleshooting](#troubleshooting) |
 
 Addresses: the dashboard is served on the host at `http://localhost:<health_port>` (default 19280), on 127.0.0.1
@@ -56,7 +56,7 @@ days). The code arrives by DM. Limits: one a minute and five an hour per browser
 `health_port`). Public: **🌐 Other device (temporary public)** starts a Cloudflare quick tunnel (an address under
 `trycloudflare.com`), default 120 minutes (`web.public_link.ttl_minutes`, at most 480; `protocol` http2/quic/auto).
 Close it with **Close public link** → **Close link (signs public browsers out)**, `/web revoke`, or let it expire.
-A public link is limited on purpose: no live stream (the page polls), no custom CSS, and Settings → Web, appearance,
+A public link is limited on purpose: no live stream (the page polls), no custom CSS, and Settings → Access & security, Look,
 mods, effect-library/personal-selection management, schedule edits and preference writes are refused. Current in-scope
 Chat effect metadata/code reads are allowed, with session/epoch/exposure checks; the public viewer’s show switch is browser-local. HTML previews work over it through a second tunnel
 of their own (`web.preview_on_public_link`, default on).
@@ -76,7 +76,7 @@ the local address sees every instance's live terminal and the roster (status, co
 tags, name, description, avatars, cards) and the usage meters — read only; editing says "Sign in to edit". Over a
 public link `/view` always needs sign-in.
 
-**Guests (#1920, 2.3 beta).** Off by default: `web.guests.enabled` (or Settings → Web → Guests). Then someone who is
+**Guests (#1920, 2.3 beta).** Off by default: `web.guests.enabled` (or Settings → Access & security → Guests). Then someone who is
 not a fleet admin sends `/web` and gets a code privately, signing in as their own Discord or Telegram account. A guest
 sees only the agents they can already use in chat: their connection's fleet topics and General (an `open` connection:
 only `web.guests.open_instances`), their own Telegram private ClassicBot room, and ClassicBot group rooms while their
@@ -95,7 +95,7 @@ just **✓ Verified**, with the until-when in its tooltip, its accessible name a
 browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
 Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
 per account. Never on the public link or for a guest; when a browser can't be authorized, the line says why (with a
-link to Settings when the switch or "Only this computer" is the reason). Settings → Web → **Web authority**
+link to Settings when the switch or "Only this computer" is the reason). Settings → Access & security → **Web authority**
 (`web.verified_authority`, on by default) has the switch, **Only this computer can authorize** (`loopback_only`), the
 hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change there applies at once.
 Agents then see that browser's messages as `via web (verified)` and check their receipt like a Discord or Telegram message.
@@ -157,8 +157,8 @@ restored; files that can't be served again show as unavailable.
 
 **Copies in Discord/Telegram (web echo).** For a fleet topic instance, each web message is also posted to its topic as
 `🌐 web · <name>: …` (the first 500 characters plus attachment names; longer text says "(full text in web chat)").
-Turn it off with Settings → Web → **Web echo** (`web.echo_to_channel`). ClassicBot rooms: per room,
-`classicBot.yaml` `channels.<key>.web_echo` (Settings → ClassicBot → the room → **Web echo**). From 2.3.0-beta.3
+Turn it off with Settings → Chat & connections → **Web echo** (`web.echo_to_channel`). ClassicBot rooms: per room,
+`classicBot.yaml` `channels.<key>.web_echo` (Settings → Chat & connections → ClassicBot → the room → **Web echo**). From 2.3.0-beta.3
 (#2054) a room echoes by default: an unset room follows `web.echo_to_channel`, `web_echo: false` keeps it off and
 `web_echo: true` keeps it on. Before that, a room echoed only with `web_echo: true` — check the running version.
 
@@ -325,7 +325,7 @@ they are never a $0 row, and what such an instance measured before still shows. 
 by backend they go under its backend now. Coverage only says "read" for a catch-up that listed and read every source
 (an unreadable directory or transcript is not covered, never a 0). Scope as
 `get_cache_report`. The dashboard reaches it over the public link only with `web.usage_report_on_public_link: true`
-(Settings → Web → **Usage report over the public link**, applies at once; otherwise the page says "Not offered over
+(Settings → Web dashboard → **Usage report over the public link**, applies at once; otherwise the page says "Not offered over
 the public link" and links to that switch on the dashboard reached directly); guests never. The page adds a daily trend (top 5 and
 others), a heatmap that tells a day read with nothing used from a day not collected, and **Download CSV** (the shown
 answer's daily rows, with the basis). Claude subagent (sidechain) turns aren't counted yet. A long range whose daily rows
@@ -342,19 +342,20 @@ still being designed). If the report says **Switch to 1-hour cache**, the remedy
 What an agent was asked, its replies (never its thinking), each tool call (Read, Edit, Search, Run, Web, MCP,
 Sub-agent…, with **Show output**), errors, turn ends, compactions and fleet events, on one timeline. Filters **All /
 Tools / Errors**; **Live** while it updates. Opens with the newest 200 steps; **Load older steps** adds 100 at a time
-(the page keeps 1000). Off by default: `web.log_tab` (Settings → Web → **Log tab: each agent's steps**; turning it on
+(the page keeps 1000). Off by default: `web.log_tab` (Settings → Web dashboard → **Log tab: each agent's steps**; turning it on
 from the tab itself needs a fleet admin's confirmation). Full for Claude Code (also after it stopped) and Codex while
 running; kiro shows fleet events only; other backends say they have no readable transcript. Secrets are masked.
 
 ## Settings
 
-**Connections → Retry now** retries a disconnected connection without a fleet restart; a running login is reused. Startup retries continue with a five-minute cap. Local admin only, unavailable over public links. It changes no token or binding; refresh to read the later result.
+**Chat & connections → Retry now** retries a disconnected connection without a fleet restart; a running login is reused. Startup retries continue with a five-minute cap. Local admin only, unavailable over public links. It changes no token or binding; refresh to read the later result.
 
-Tabs (`/settings/<tab>`): **Preferences**, **Web appearance**, **Agents**, **Connections**, **ClassicBot**,
-**General**, **Web**, **Developer**. Header: version, **Setup wizard**, **Help**.
+Sections (`/settings/<section>`, #2347), in two groups. **You**: **Preferences**, **Look**. **Fleet**: **Agents**,
+**Agent defaults**, **Chat & connections**, **Web dashboard**, **Access & security**, **Advanced**. Old addresses (`device`,
+`appearance`, `general`, `bots`, `classic`, `web`) lead to the new sections. Header: version, **Setup wizard**, **Help**.
 
-**How changes apply (#2347).** Agents, Connections, ClassicBot, General, Web and Developer edits are unsaved until
-**Save**: a field edit in General/Web/Web authority is unsaved at once (a straight bar on its left); a dialog's **Done**
+**How changes apply (#2347).** Every Fleet section's edits are unsaved until
+**Save**: a field edit (Agent defaults, Chat & connections, Web dashboard, Access & security) is unsaved at once (a straight bar on its left); a dialog's **Done**
 adds its changes. The bar **N unsaved change(s)** shows the cost — **Immediately**, **Restart this Agent** or **Restart
 AgEnD** — then **Save** or **Discard**; an invalid field keeps Save waiting (**Fix 1 field(s) to save**). Over a public
 link the fleet's settings are read-only.
@@ -365,7 +366,7 @@ account that is a fleet admin of every connection the change affects, on their p
 link, an unverified browser or a change that needs the host CLI. After a failure, unapplied changes are staged again
 (secrets must be re-entered). **Restart AgEnD** restarts every agent
 (never automatic); until then every page shows **N saved change(s) take effect after AgEnD restarts** · **Restart now** ·
-**Later**. Preferences and Web appearance save with the same bar (**Your preferences**; device-only switches count on their own; Restore defaults saves at once).
+**Later**. Preferences and Look save with the same bar (**Your preferences**; device-only switches count on their own; Restore defaults saves at once).
 
 **Preferences** — follows you across devices unless marked:
 | Control | What it does | Stored |
@@ -377,7 +378,7 @@ link, an unverified browser or a change that needs the host CLI. After a failure
 | Allow HTML previews | the preview opt-in | host prefs `preview.optIn` |
 | Chat tour (this device) | replays the chat tour | browser |
 
-**Web appearance** — see [Web appearance](#web-appearance) for the cards and what they mean.
+**Look** — see [Look](#look) for the cards and what they mean.
 
 **Signing a backend in (#2233)** — local admin sessions only (never a guest or the public link): Settings → Agents →
 **Sign-ins** (each backend's login and each credential profile an agent uses: state, **Sign in** / **Sign in again**,
@@ -408,7 +409,7 @@ opencode: no dashboard sign-in. Config: `web_terminal.*` (as `/login`).
 | General topic (fleet dispatcher) | `general_topic` | AgEnD |
 | Status emojis (Received, Queued, Processing, Delivered, Failed, …) | `status_emojis` | agent |
 
-**Connections** (the bots) — **New connection**: type, bot token (**Verify**), Discord server or Telegram group,
+**Chat & connections** — connections (the bots): **New connection**: type, bot token (**Verify**), Discord server or Telegram group,
 your user ID. It starts without a restart when AgEnD already runs another connection and nothing else at fleet level
 changed; a fleet's first connection (or a change to an existing one) offers **Restart AgEnD**. Per bot: **Access mode** (locked / open / pairing) and **Allowed users** —
 `channels[i].access.*`, staged, restarts AgEnD, asks before opening access; **Guild/Group id** and General channel /
@@ -416,17 +417,17 @@ forum topic with **Verify the new binding** (applies directly after a confirmati
 **Replace** the token (saved to `~/.agend/.env`); **Delete this bot** (the token stays in `.env`). **Provider API keys**:
 **Verify & apply**, used by new processes.
 
-**ClassicBot** — per room **Settings**, **Pause / Wake**. The room dialog writes `classicBot.yaml`
+ClassicBot (in **Chat & connections**, `/settings/chat#classicbot`) — per room **Settings**, **Pause / Wake**. The room dialog writes `classicBot.yaml`
 `channels.<key>.*`: Backend, Model, Auto-pause after, **Collaboration mode** (`collab`), **Web echo** (`web_echo`),
 Advanced **Context lines** (these restart the room's agent); Tool progress and Require a delivered reply (now).
 
-**General** — fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW; read at startup: restart AgEnD), default
+**Agent defaults** — fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW; read at startup: restart AgEnD), default
 backend and model, auto-pause, tool progress, bot-to-bot visibility, reply guard; Advanced: tool set, agent mode, log
 level, **Hang detector enabled** / **Stuck timeout** (`hang_detector.*`), **Startup concurrency** (1–20) and
-**Stagger delay** (`startup.*`, used from the next agent start, no restart). ClassicBot card (`classicBot.yaml defaults.*`): default backend, tool
+**Stagger delay** (`startup.*`, used from the next agent start, no restart). ClassicBot defaults (in Chat & connections; `classicBot.yaml defaults.*`): default backend, tool
 progress, reply guard, **ClassicBot admins**, **Allowed guilds**.
 
-**Web** — all apply at once; loosening waits for an admin; disabled over a public link.
+**Access & security** (sessions, browser terminal, public link and fixed address, guests, web authority; web echo is in Chat & connections, the Log tab and usage over the link in **Web dashboard**) — all apply at once; loosening waits for an admin; disabled over a public link.
 | Label | Key |
 |---|---|
 | Session length, hours (1–720) | `web.session.local.absolute_hours` |
@@ -442,16 +443,16 @@ Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `noti
 `preview_origin`, `preview_on_public_link`, `usage_panel`, `provider_secrets`, `upload_max_file_mb`,
 `upload_max_total_mb`, `web_terminal.bind`, `web_terminal.tunnel`.
 
-**Developer** — fleet.yaml as **YAML / JSON**, **Edit / View**, **Copy**, **Download fleet.yaml**; **Apply & save**
+**Advanced** — fleet.yaml as **YAML / JSON**, **Edit / View**, **Copy**, **Download fleet.yaml**; **Apply & save**
 (edit mode) applies at once, without the bar.
 
 **Setup wizard** — agent (backend, directory, name) → platform → token and server/group, your user ID → preview →
 **Create and start**.
 
-## Web appearance
+## Look
 
 For an agent changing its *own* look, the `web-appearance` skill has the tools and limits. What a person sees in
-Settings → **Web appearance**, card by card:
+Settings → **Look**, card by card (the app icon, card upload limits and Canvas Worker effects are in **Web dashboard**; following reduced motion and custom CSS off here are in **Preferences**):
 - **Agents' themes** — **Show agents' themes, effects and widgets**; off, every chat looks the same and pictures and
   ring colours fall back to the bots' own (all devices). **Effects: follow the system's reduced-motion setting** (this
   device only, off by default): on, both ambient and Canvas Worker effects stay still while the system asks for reduced
@@ -484,7 +485,7 @@ Settings → **Web appearance**, card by card:
   click, with no extra consent. The show switch, safe mode, hidden tab, browser support and live performance guard remain.
   No startup FPS calibration; data saver does not block. Reduced motion blocks only if this device chose to follow it.
   A blocked placement keeps an exact named notice. On ordinary dashboard sessions, Show/custom-CSS actions open
-  **Web appearance**. Public/guest Show-off has **Turn effects on here**; a guest CSS refusal offers Reload.
+  **Look**. Public/guest Show-off has **Turn effects on here**; a guest CSS refusal offers Reload.
   An unavailable
   isolated transport offers Reload, never an HTML-preview setup step. A motion refusal offers **Play effects anyway**;
   safe mode offers **Leave safe mode**. The dialog names loading, safety and raw unknown codes. Codes stay local; agents get only closed recent blocked reasons without viewer identifiers or counts.

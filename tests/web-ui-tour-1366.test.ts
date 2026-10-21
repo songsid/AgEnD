@@ -85,10 +85,10 @@ describe("the chat tour (#1366, #1854)", () => {
   it("#1854: step 2 promises no mirroring — web echo decides (EN and zh-TW)", async () => {
     const p = await load();
     p.click(p.button("Next"));
-    expect(p.text()).toBe("This is the agent's conversation. If it also has a Telegram or Discord chat, web echo (Settings → Web) decides whether what you send here shows there too.");
+    expect(p.text()).toBe("This is the agent's conversation. If it also has a Telegram or Discord chat, web echo (Settings → Chat & connections) decides whether what you send here shows there too.");
     const z = await load({ lang: "zh-TW" });
     z.click(z.button("下一步"));
-    expect(z.text()).toBe("這是這個 Agent 的對話。如果它也有 Telegram 或 Discord 聊天，在這裡送出的訊息是否也出現在那裡，由「設定 → 網頁」的網頁轉發決定。");
+    expect(z.text()).toBe("這是這個 Agent 的對話。如果它也有 Telegram 或 Discord 聊天，在這裡送出的訊息是否也出現在那裡，由「設定 → 聊天與連線」的網頁轉發決定。");
   });
 
   it("started: step 1 of 5, the instance list outlined, focus on Next", async () => {
@@ -104,7 +104,7 @@ describe("the chat tour (#1366, #1854)", () => {
   it("walks the five points — same conversation, files, Stop, needs you — and Back goes back", async () => {
     const p = await load();
     p.click(p.button("Next"));
-    expect([p.text(), p.spotted()]).toEqual([expect.stringMatching(/web echo \(Settings → Web\) decides/), ["main"]]);
+    expect([p.text(), p.spotted()]).toEqual([expect.stringMatching(/web echo \(Settings → Chat & connections\) decides/), ["main"]]);
     p.click(p.button("Next"));
     expect([p.text(), p.spotted()]).toEqual([expect.stringMatching(/📎/), ["attachBtn"]]);
     p.click(p.button("Back"));

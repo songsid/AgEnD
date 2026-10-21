@@ -2591,7 +2591,7 @@ export function handleWebRequest(
     // Over the public link, where to turn it on: Settings → Web on the dashboard reached directly (this computer's own
     // address — the public link's Settings only reads). Never the public origin's own Settings, which cannot change it.
     const answer = ([status, error]: [number, string]) => json(res, status, {
-      error, ...(status === 403 ? { settings: `http://localhost:${ctx.fleetConfig?.health_port ?? 19280}/settings/web` } : {}) });
+      error, ...(status === 403 ? { settings: `http://localhost:${ctx.fleetConfig?.health_port ?? 19280}/settings/web-dashboard` } : {}) });
     const first = refusal();
     if (first) { answer(first); return true; }
     const admitted = admissionOf(req, url, ctx);

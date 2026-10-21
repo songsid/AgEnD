@@ -13,9 +13,13 @@
 
 export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage", "config"] as const;
 export type FleetTab = typeof FLEET_TABS[number];
-// #1604: "device" — this browser's own choices (theme, language, HTML previews, the tour); no configuration behind it.
-export const SETTINGS_SECTIONS = ["device", "appearance", "agents", "bots", "classic", "general", "web", "advanced"] as const;
+// #2347: the sections in two groups (You: preferences, look; Fleet: the rest), as the page's (src/ui/shared/app-route.js).
+export const SETTINGS_SECTIONS = ["preferences", "look", "agents", "agent-defaults", "chat", "web-dashboard", "access", "advanced"] as const;
 export type SettingsSection = typeof SETTINGS_SECTIONS[number];
+/** #2347: the names before the regrouping, still served (the page moves to the new address); where each one went. */
+export const LEGACY_SETTINGS: Readonly<Record<string, SettingsSection>> = Object.freeze({
+  device: "preferences", appearance: "look", general: "agent-defaults", bots: "chat", classic: "chat", web: "access",
+});
 
 export type ShellRoute =
   | { panel: "chat"; instance: string | null }
@@ -85,8 +89,9 @@ export function shellRoute(method: string, path: string): ShellMatch {
   if (path === "/settings") return { kind: "shell", route: { panel: "settings", section: "agents" } };
   const settings = /^\/settings\/([^/]+)$/.exec(path);
   if (settings) {
-    return (SETTINGS_SECTIONS as readonly string[]).includes(settings[1]!)
-      ? { kind: "shell", route: { panel: "settings", section: settings[1] as SettingsSection } } : null;
+    if ((SETTINGS_SECTIONS as readonly string[]).includes(settings[1]!)) return { kind: "shell", route: { panel: "settings", section: settings[1] as SettingsSection } };
+    const moved = Object.prototype.hasOwnProperty.call(LEGACY_SETTINGS, settings[1]!) ? LEGACY_SETTINGS[settings[1]!] : undefined;
+    return moved ? { kind: "shell", route: { panel: "settings", section: moved } } : null;
   }
   // `/ui/chat` with nothing after it, or more than one segment: not a page (404 like any unknown path).
   return null;

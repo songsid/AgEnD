@@ -51,14 +51,19 @@ function refusal(body) {
  * saves at once, as before.
  */
 export function AppearanceSection(props = {}) {
+  const part = props.part || "look";
   const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
-  if (publicLink) return html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>`;
+  // #2347 regrouping: Look (the person's own), this device's switches (in Preferences) and the host-wide cards (in Web
+  // dashboard) are drawn where each belongs. None of it is offered over the public link (Look says so).
+  if (publicLink) return part === "look" ? html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>` : null;
+  if (part === "device") return html`<${MotionCard} ...${props} /><${DeviceCard} ...${props} />`;
+  if (part === "dashboard") return html`<${AppIconCard} /><${CardLimitsCard} /><${ExperimentalEffectsCard} ...${props} />`;
   const group = (key) => html`<h2 class="s-ap-group">${tn(key)}</h2>`;
-  return html`${group("groupLook")}<${ThemesCard} ...${props} /><${IdentityColorCard} /><${CardSizeCard} /><${AppIconCard} />
+  return html`${group("groupLook")}<${ThemesCard} ...${props} /><${IdentityColorCard} /><${CardSizeCard} />
     ${group("groupLayout")}<${SidebarWidgetCard} />
-    ${group("groupCss")}<${OwnerCssCard} /><${DeviceCard} ...${props} />
+    ${group("groupCss")}<${OwnerCssCard} />
     ${group("groupMods")}<${ModsCard} /><${EffectsCard} />
-    ${group("groupAdvanced")}<${ExperimentalEffectsCard} ...${props} /><${CardLimitsCard} /><${RestoreDefaultsCard} ...${props} />`;
+    <${RestoreDefaultsCard} ...${props} />`;
 }
 
 /** #2347: the staged keys of this device's own switches (Restore defaults sets them, so their staged change goes). */
@@ -375,19 +380,12 @@ function CardLimitsCard() {
 }
 
 /** #1629 r2 (d): whether this person's screens show agents' themes (and, as they come, effects) — synced. */
-function ThemesCard(props = {}) {
+function ThemesCard() {
   const s = useStore(themesStore);
-  // #2117: this device's own switch (not synced): effects play unless it follows the system's reduced-motion setting.
-  const [follow, setFollow] = useState(followsReducedMotion);
-  useEffect(() => onMotionChange(() => setFollow(followsReducedMotion())), []);
-  const setFollowHere = deviceChoice(props, DEVICE_CHOICES[0], tn("themesFollowMotion"), followsReducedMotion, setFollowsReducedMotion);
   return html`<section class="card s-appearance s-synced"><${CardTitle} title=${tn("themesTitle")} topic="themes" />
     <label class="check"><input type="checkbox" checked=${s.shown} disabled=${safeMode()} onChange=${(e) => setThemesShown(e.target.checked)} />
       <span>${tn("themesShow")}</span></label>
     <p class="sub">${safeMode() ? tn("themesSafeMode") : tn("themesShowLead")}</p>
-    <label class="check"><input type="checkbox" id="fx-follow-reduced-motion" checked=${follow} onChange=${(e) => setFollowHere(e.target.checked)} />
-      <span>${tn("themesFollowMotion")}</span></label>
-    <p class="sub">${tn("themesFollowMotionLead")}</p>
   </section>`;
 }
 
@@ -529,6 +527,18 @@ function OwnerCssCard() {
     </li>`)}</ul>` : null}
     <label class="field"><span>${tn("cssAssetAdd")}</span>
       <input ref=${file} type="file" accept="image/png,image/webp,image/jpeg,image/gif,font/woff2,.woff2" disabled=${busy} onChange=${addAsset} /></label>
+  </section>`;
+}
+
+/** #2117: this device's own switch (not synced): effects play unless it follows the system's reduced-motion setting. */
+function MotionCard(props = {}) {
+  const [follow, setFollow] = useState(followsReducedMotion);
+  useEffect(() => onMotionChange(() => setFollow(followsReducedMotion())), []);
+  const setFollowHere = deviceChoice(props, DEVICE_CHOICES[0], tn("themesFollowMotion"), followsReducedMotion, setFollowsReducedMotion);
+  return html`<section class="card s-appearance s-local s-motion"><h3>${tn("motionTitle")}</h3>
+    <label class="check"><input type="checkbox" id="fx-follow-reduced-motion" checked=${follow} onChange=${(e) => setFollowHere(e.target.checked)} />
+      <span>${tn("themesFollowMotion")}</span></label>
+    <p class="sub">${tn("themesFollowMotionLead")}</p>
   </section>`;
 }
 

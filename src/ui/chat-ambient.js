@@ -278,7 +278,7 @@ export function AmbientMotionNote({ name, canvasPlaying = false }) {
 /**
  * The fix for a block, done right here: both switches are this viewer's own (the show switch is a local choice on the
  * public link; the reduced-motion one is per device), so it works on the public link too; safe mode is the URL. Both
- * stay in Settings → Web appearance as well.
+ * stay in Settings → Look as well.
  */
 const FIX = {
   hidden: () => setThemesShown(true),

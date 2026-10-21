@@ -1,6 +1,6 @@
 ---
 name: web-appearance
-description: How you look on the AgEnD web dashboard — check it, change your own theme, identity card, identity colour and widgets, set an ambient effect (falling petals, click stars), play Canvas Worker effects in your chat (and offer a Try), preview the result, share it as a mod; and, for General, changing Settings → Web appearance for the user
+description: How you look on the AgEnD web dashboard — check it, change your own theme, identity card, identity colour and widgets, set an ambient effect (falling petals, click stars), play Canvas Worker effects in your chat (and offer a Try), preview the result, share it as a mod; and, for General, changing Settings → Look for the user
 roles: [general, worker, classic]
 ---
 
@@ -26,9 +26,9 @@ can shape how you look there — **only your own look, and only on the surfaces 
 None of these tools takes a target: they always act on you. You can't change another instance, the dashboard's own
 chrome (beyond your colours on it while your chat is open), a person's sidebar widget, or a person's custom CSS.
 
-## For the user: Settings → Web appearance (General, coordinators, full)
+## For the user: Settings → Look (General, coordinators, full)
 
-If you are General (or a coordinator or full profile), you can change the user's **Settings → Web appearance** for
+If you are General (or a coordinator or full profile), you can change the user's **Settings → Look** for
 them, exactly as the page changes it: the same checks, the same refusals. Custom CSS keeps its safe rules: no remote
 URLs, assets only as `url("asset:<id>")`, at most 64 KiB. Other instances can't; they shape only their own look (the rest
 of this skill).
@@ -185,7 +185,7 @@ your picture. Set yours with `set_web_theme({ set: { identity: { color, show } }
   themes) > your own bot's Discord **role** colour > an **automatic** soft colour chosen from your name (two instances
   may share one).
 - **Where it shows**: a person's choice for you > yours (`identity.show`; again only while themes are shown) > the
-  host's default (Settings → Web appearance; name, bar and ring unless changed).
+  host's default (Settings → Look; name, bar and ring unless changed).
 - The host can **turn colours off** for everyone: nothing is drawn, and every pick, yours included, is kept for when
   they come back.
 - `get_web_appearance`'s `identity_color` shows what is in force: `color`, `source` (`person`, `agent`, `role`, `auto`),
@@ -274,7 +274,7 @@ Then stars on a click, alongside: `set_web_ambient { "preset": "burst-on-click",
 ## Mods
 
 A mod is one file, `<name>-<version>.agendmod.json`, that carries a look: a theme with its pictures, card text,
-widgets and effects. People import mods in **Settings → Web appearance → Mods**. **You never import**: a person reviews
+widgets and effects. People import mods in **Settings → Look → Mods**. **You never import**: a person reviews
 everything in a mod and ticks what to apply.
 
 - `export_web_mod { name, version, title? }` writes **your own** look to `.agend/mods/<name>-<version>.agendmod.json`
@@ -462,7 +462,7 @@ from being collected until cleared. This is deliberately stricter than chat plac
 a personal choice keeps following its person's current own/shared access, while a chat preserves the exact effect
 placed there. A reference is not a sharing or export grant. Do not keep retrying a denied personal selection.
 
-Owner selectors are available in Settings → Web appearance. With effects enabled, personal page/header/sidebar/box choices play across supported stock pages in the same pool
+Owner selectors are available in Settings → Look. With effects enabled, personal page/header/sidebar/box choices play across supported stock pages in the same pool
 as signed-in Chat. HTML-preview consent and its service are not involved.
 Web appearance offers slot Pause/Resume and unavailable/Clear controls. The personal cursor uses a static PNG on the host shell without HTML-preview consent: no Worker/code read or frame slot. It preserves explicit pointer/text/resize cursors, falls back while dragging or on failure, and has status/Clear rather than Worker Pause/Resume. Before revealing paint, the host must prove stock content
 ordering and trust paint coverage. Agent front effects must remain paused when custom CSS is active, loading or

@@ -64,13 +64,16 @@ async function open(extra: Record<string, unknown> = {}, section = "web") {
 const saveButton = () => (p.root.querySelector("[role=region]")?.querySelectorAll("button") ?? []).find((b: any) => b.textContent.trim() === "Save") ?? null;
 
 describe("Settings → Web, as rendered", () => {
-  it("is a section of its own; the web chat card moved here from General", async () => {
+  it("#2347: its parts are where each belongs — Access & security, Chat & connections (web echo), Web dashboard; none in Agent defaults", async () => {
     const { SETTINGS_SECTIONS } = await import("/assets/app-route.js");
-    expect(SETTINGS_SECTIONS).toEqual(["device", "appearance", "agents", "bots", "classic", "general", "web", "advanced"]);   // #1629: Appearance
-    const w = await open();
-    expect([!!w.$("webEchoToChannel"), !!w.$("publicWebLink"), !!w.$("webSessionAbsolute"), !!w.$("webTerminalEnabled")]).toEqual([true, true, true, true]);
-    const g = await open({}, "general");
-    expect([!!g.$("webEchoToChannel"), !!g.$("publicWebLink"), !!g.$("webSessionAbsolute")]).toEqual([false, false, false]);
+    expect(SETTINGS_SECTIONS).toEqual(["preferences", "look", "agents", "agent-defaults", "chat", "web-dashboard", "access", "advanced"]);
+    const ids = ["webEchoToChannel", "publicWebLink", "webSessionAbsolute", "webTerminalEnabled", "webLogTab", "webUsagePublic"];
+    const where: Record<string, boolean[]> = {};
+    for (const section of ["access", "chat", "web-dashboard", "agent-defaults"]) { const w = await open({}, section); where[section] = ids.map((id) => !!w.$(id)); }
+    expect(where).toEqual({ access: [false, true, true, true, false, false], chat: [true, false, false, false, false, false],
+      "web-dashboard": [false, false, false, false, true, true], "agent-defaults": [false, false, false, false, false, false] });
+    // The old address (/settings/web) is Access & security.
+    expect(!!(await open({}, "web")).$("webSessionAbsolute")).toBe(true);
   });
 
   it("nothing set: the fields are empty with the defaults shown, the terminal on; Review writes nothing", async () => {
@@ -93,7 +96,7 @@ describe("Settings → Web, as rendered", () => {
   });
 
   it("#2122: Usage report over the public link — off by default; ticking it stages exactly that key; it says it applies at once", async () => {
-    const w = await open();
+    const w = await open({}, "web-dashboard");
     expect(w.$("webUsagePublic").checked).toBe(false);
     expect(w.text()).toContain("Fleet → Usage (up to 400 days of each agent's tokens, requests, messages and API-equivalent amounts) is offered over the temporary public link too. Off by default; guests never see it. Applies at once.");
     await w.check(w.$("webUsagePublic"), true);
@@ -151,7 +154,7 @@ describe("Settings → Web, as rendered", () => {
   });
 
   it("lists every other web setting read-only, with its value from fleet.yaml or 'not set (default)'", async () => {
-    const w = await open({ web: { view_access: "session", allowed_hosts: ["box.lan"], preview: false }, web_terminal: { bind: "0.0.0.0" } });
+    const w = await open({ web: { view_access: "session", allowed_hosts: ["box.lan"], preview: false }, web_terminal: { bind: "0.0.0.0" } }, "advanced");
     const rows = p.root.querySelectorAll(".s-web-ro > div").map((d: any) => [d.querySelector("dt").textContent, d.querySelector("dd").textContent]);
     expect(rows).toEqual([
       ["web.allowed_hosts", "[\"box.lan\"]"], ["web.view_access", "session"], ["web.notify_login", "not set (default)"], ["web.preview", "false"],
@@ -239,7 +242,7 @@ describe("#2344 Web edits join the existing Apply draft automatically", () => {
     expect(w.webWrites().map(s => s.body)).toEqual([{ public_link: { hostname: "chat.example.com", tunnel_token_env: "AGEND_CLOUDFLARE_TUNNEL_TOKEN", ttl_minutes: 90 } }]);
   });
   it("putting every edited value back removes the draft and Apply bar", async () => {
-    const w = await open(); await w.check(w.$("webLogTab"), true);
+    const w = await open({}, "web-dashboard"); await w.check(w.$("webLogTab"), true);
     expect(pending()?.textContent).toContain("Save");
     await w.check(w.$("webLogTab"), false); expect(pending()).toBeNull();
     await w.apply(); expect(w.webWrites()).toEqual([]);
@@ -264,17 +267,25 @@ describe("#2344 Web edits join the existing Apply draft automatically", () => {
   it("remounted Web fields retain false values and null session/terminal resets before another edit", async () => {
     const w = await open({ web: { session: { local: { absolute_hours: 48, idle_hours: 6 } } }, web_terminal: { enabled: false, ttl_minutes: 15 } });
     await w.type(w.$("webSessionAbsolute"), ""); await w.type(w.$("webSessionIdle"), "");
-    await w.check(w.$("webTerminalEnabled"), true); await w.type(w.$("webTerminalTtl"), ""); await w.check(w.$("webEchoToChannel"), false);
+    await w.check(w.$("webTerminalEnabled"), true); await w.type(w.$("webTerminalTtl"), "");
     const { SettingsPanel } = await import("/ui/js/panel-settings.js");
-    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "general" }, navKey: "settings:general" })); await settle();
-    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "web" }, navKey: "settings:web" })); await settle();
-    expect([w.$("webSessionAbsolute").value, w.$("webSessionIdle").value, w.$("webTerminalTtl").value, w.$("webTerminalEnabled").checked, w.$("webEchoToChannel").checked]).toEqual(["", "", "", true, false]);
+    const go = async (section: string) => { await p.mount(h(SettingsPanel, { route: { panel: "settings", section }, navKey: `settings:${section}` })); await settle(); };
+    // #2347: web echo is in Chat & connections — the same form, the same draft.
+    await go("chat"); await w.check(w.$("webEchoToChannel"), false);
+    await go("agent-defaults"); await go("access");
+    const access = [w.$("webSessionAbsolute").value, w.$("webSessionIdle").value, w.$("webTerminalTtl").value, w.$("webTerminalEnabled").checked];
+    await go("chat"); const echo = w.$("webEchoToChannel").checked;
+    await go("access");
+    expect([...access, echo]).toEqual(["", "", "", true, false]);
     await w.type(w.$("publicWebOriginPort"), "19300"); expect(w.webWrites()).toEqual([]); await w.apply();
     expect(w.webWrites().map(s => s.body)).toEqual([{ echo_to_channel: false, session: { local: { absolute_hours: null, idle_hours: null } }, web_terminal: { enabled: null, ttl_minutes: null }, public_link: { origin_port: 19300 } }]);
   });
   it("public-link fields cannot auto-stage even if an input event is forged", async () => {
     p.document.body.setAttribute("data-public-link", "1"); const w = await open();
-    await w.type(w.$("publicWebHostname"), "chat.example.com"); await w.check(w.$("webLogTab"), true);
+    await w.type(w.$("publicWebHostname"), "chat.example.com");
+    const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+    await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "web-dashboard" }, navKey: "settings:web-dashboard" })); await settle();
+    await w.check(w.$("webLogTab"), true);
     expect(pending()).toBeNull(); await w.apply(); expect(w.webWrites()).toEqual([]);
   });
   it("typing a secret never joins the Web draft or sends token material before Set token", async () => {

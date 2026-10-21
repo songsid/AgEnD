@@ -1,4 +1,4 @@
-// #2056 B: a card title with a small "?" that opens the card's section of the docs, so Settings → Web appearance
+// #2056 B: a card title with a small "?" that opens the card's section of the docs, so Settings → Look
 // keeps one short line per control and the long explanations live in docs/web-dashboard(.zh-TW).md.
 import { html } from "/assets/app-html.js";
 import { lang, t } from "/assets/app-i18n.js";
@@ -10,7 +10,7 @@ import "./settings-strings.js";
  */
 const DOCS = { en: "https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md", "zh-TW": "https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md" };
 export const LEARN_ANCHORS = {
-  colors: ["identity-colours", "識別色"], css: ["custom-css-settings--web-appearance", "自訂-css設定--網頁外觀"], themes: ["agents-themes", "agent-的主題"],
+  colors: ["identity-colours", "識別色"], css: ["custom-css-settings--look", "自訂-css設定--外觀"], themes: ["agents-themes", "agent-的主題"],
   cards: ["identity-cards", "身分卡"], limits: ["card-upload-limits", "身分卡上傳限制"], widgets: ["widgets", "小工具"], mods: ["mods", "mod"],
   effects: ["effects", "效果"], restore: ["restore-defaults", "還原預設值"],
   "app-icon": ["app-icon", "app-圖示"],

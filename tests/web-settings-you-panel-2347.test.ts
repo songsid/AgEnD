@@ -61,7 +61,9 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     const { resetOperation } = await import("/ui/js/settings-apply.js");
     resetOperation();
   });
-  const open = async (section: "device" | "appearance") => {
+  // #2347 regrouping: Preferences (with this device's switches), Look, Web dashboard (the Canvas Worker switch); the old
+  // names (device, appearance) still lead there.
+  const open = async (section: string) => {
     const { SettingsPanel } = await import("/ui/js/panel-settings.js");
     await p.mount(h(SettingsPanel, { route: { panel: "settings", section }, navKey: `settings:${section}` }));
     await settle(12);
@@ -109,8 +111,9 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
   it("Web appearance: colours off (synced) and following reduced motion (this device) are two unsaved changes; Discard puts both back", async () => {
     const motion = await import("/assets/fx-motion.js");
     const colors = await import("/assets/identity-color.js");
-    await open("appearance");
+    await open("look");
     await check($(".s-colors-off"), true);
+    await open("preferences");
     await check($("#fx-follow-reduced-motion"), true);
     const during = [colors.colorsOff(), motion.followsReducedMotion(), bar()?.textContent.includes("2 unsaved change(s)")];
     button("Discard", bar()).click(); await settle(8);
@@ -118,7 +121,7 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     expect([during, colors.colorsOff(), motion.followsReducedMotion(), !!bar(), prefPosts()]).toEqual([[true, true, true], false, false, false, []]);
   });
   it("the fleet's Canvas Worker switch is a staged fleet change: nothing written until Save, then its PUT and the apply", async () => {
-    await open("appearance");
+    await open("web-dashboard");
     const box = $(".s-experimental-effects input[type=checkbox]");
     await check(box, !box.checked);
     const before = sent.filter((s) => s.method === "PUT").length;
@@ -137,9 +140,8 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
   const pagehide = () => { const e = new MiniEvent("pagehide", {}); (e as any).eventPhase = 2; (e as any).target = p.window; (p.window as any)._fire(e, false); };
   it("#2380 review: a reload or a closed tab (pagehide) puts back what was not saved — a device switch and a held theme", async () => {
     const motion = await import("/assets/fx-motion.js");
-    await open("appearance");
+    await open("preferences");
     await check($("#fx-follow-reduced-motion"), true);
-    await open("device");
     const was = (globalThis as any).AgendTheme.get();
     await pick($("select[aria-label=Theme]"), was === "dark" ? "light" : "dark");
     const during = [motion.followsReducedMotion(), bar()?.textContent.includes("2 unsaved change(s)")];
@@ -151,13 +153,13 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     const motion = await import("/assets/fx-motion.js");
     const nav = await import("/assets/app-nav.js");
     nav.startRouter(p.window);
-    nav.navigate("/settings/appearance");
-    await open("appearance");
+    nav.navigate("/settings/preferences");
+    await open("preferences");
     await check($("#fx-follow-reduced-motion"), true);
     const during = motion.followsReducedMotion();
     nav.navigate("/ui/fleet"); await settle(8);                       // the harness answers the question: Discard
     expect([during, motion.followsReducedMotion()]).toEqual([true, false]);
-    nav.navigate("/settings/appearance"); await settle(4);
+    nav.navigate("/settings/preferences"); await settle(4);
   });
   it("#2380 review: a refused preferences write is said even when the same Save carries a fleet change (which goes on)", async () => {
     const T = await import("/assets/ui-toast.js");
@@ -166,7 +168,7 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     await settle(12);
     const was = (globalThis as any).AgendTheme.get();
     await pick($("select[aria-label=Theme]"), was === "dark" ? "light" : "dark");
-    await p.mount(h("div", {}, h(SettingsPanel, { route: { panel: "settings", section: "appearance" }, navKey: "settings:appearance" }), h(T.Toasts, {})));
+    await p.mount(h("div", {}, h(SettingsPanel, { route: { panel: "settings", section: "web-dashboard" }, navKey: "settings:web-dashboard" }), h(T.Toasts, {})));
     await settle(12);
     const box = $(".s-experimental-effects input[type=checkbox]");
     await check(box, !box.checked);

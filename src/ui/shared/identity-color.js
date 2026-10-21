@@ -4,7 +4,7 @@
 // paints the sidebar row through the CSSOM (no style attribute, #1300), and holds the Color dialog.
 //   colour: a person's pick > the agent's (themes shown) > its own bot's role colour > automatic (a few soft colours)
 //   places: a person's choice > the agent's (themes shown) > this host's default (color.show) > all three (#2056)
-//   Settings → Web appearance can turn colours off for the host (color.off): nothing is painted, every pick is kept.
+//   Settings → Look can turn colours off for the host (color.off): nothing is painted, every pick is kept.
 import { html, useEffect, useState } from "./app-html.js";
 import { createStore, useStore } from "./app-store.js";
 import { onPrefsChanged, prefInForce, savePref } from "./app-prefs.js";
@@ -108,7 +108,7 @@ export const colorPrefsStore = createStore({ n: 0 });
 const bump = () => colorPrefsStore.set((s) => ({ n: s.n + 1 }));
 onPrefsChanged((changed) => { if (changed.has("color.show") || changed.has("color.off")) bump(); });
 const readLocal = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
-/** Where colours show by default on this host (Settings → Web appearance). */
+/** Where colours show by default on this host (Settings → Look). */
 export function defaultPlaces() {
   const f = prefInForce("color.show");
   let v = f ? f.value : undefined;
@@ -251,7 +251,7 @@ register("color", {
     src_person: "Shown now: picked by a person.", src_agent: "Shown now: the agent's own colour.", src_role: "Shown now: the colour of its bot's Discord role.",
     src_auto: "Shown now: an automatic colour.", save: "Save", cancel: "Cancel", reset: "Reset",
     saved: "Colour saved for {0}", failed: "Couldn't save the colour: {0}",
-    offNote: "Colours are turned off on this host (Settings → Web appearance). What you pick here is kept for when they're on.",
+    offNote: "Colours are turned off on this host (Settings → Look). What you pick here is kept for when they're on.",
     p_red: "Red", p_orange: "Orange", p_amber: "Amber", p_lime: "Lime", p_green: "Green", p_teal: "Teal", p_cyan: "Cyan", p_blue: "Blue",
     p_indigo: "Indigo", p_violet: "Violet", p_pink: "Pink", p_slate: "Slate",
   },
@@ -261,7 +261,7 @@ register("color", {
     src_person: "目前顯示：有人挑選的顏色。", src_agent: "目前顯示：agent 自己的顏色。", src_role: "目前顯示：它的 bot 在 Discord 身分組的顏色。",
     src_auto: "目前顯示：自動配色。", save: "儲存", cancel: "取消", reset: "重設",
     saved: "已儲存 {0} 的顏色", failed: "無法儲存顏色：{0}",
-    offNote: "這台主機已關閉顏色（設定 → 網頁外觀）。在這裡挑的顏色會保留，重新開啟後就會出現。",
+    offNote: "這台主機已關閉顏色（設定 → 外觀）。在這裡挑的顏色會保留，重新開啟後就會出現。",
     p_red: "紅", p_orange: "橙", p_amber: "琥珀", p_lime: "萊姆", p_green: "綠", p_teal: "青綠", p_cyan: "青", p_blue: "藍",
     p_indigo: "靛", p_violet: "紫", p_pink: "粉紅", p_slate: "石板灰",
   },

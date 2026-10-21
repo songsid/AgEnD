@@ -183,7 +183,7 @@ export function ComposerAuth() {
   }
   const why = REASONS.includes(st.reason) ? tn(`reason_${st.reason}`) : tn("reason_other");
   return html`<span class="webauth-row" data-state="none"><span class="note" title=${why}>${tn("notVerified")}<span class="sr-only">: ${why}</span></span>${st.reason === "disabled" || st.reason === "loopback_only"
-    ? html` · <a href="/settings/web" title=${why}>${tn("settings")}</a>` : null}</span>`;
+    ? html` · <a href="/settings/access" title=${why}>${tn("settings")}</a>` : null}</span>`;
 }
 
 function body(a) {
@@ -194,5 +194,5 @@ function body(a) {
     return html`<span class="note">${tn("notVerified")} ·</span> <button type="button" class="btn btn-sm" onClick=${a.ask}>${tn("authorize")}</button>`;
   const why = REASONS.includes(st.reason) ? tn(`reason_${st.reason}`) : tn("reason_other");
   // The fix, where there is one the person can take here: the switch lives in Settings → Web.
-  return html`<span class="note">${tn("notVerified")}: ${why}</span>${st.reason === "disabled" || st.reason === "loopback_only" ? html` <a href="/settings/web">${tn("settings")}</a>` : null}`;
+  return html`<span class="note">${tn("notVerified")}: ${why}</span>${st.reason === "disabled" || st.reason === "loopback_only" ? html` <a href="/settings/access">${tn("settings")}</a>` : null}`;
 }

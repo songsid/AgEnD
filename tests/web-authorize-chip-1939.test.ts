@@ -112,7 +112,7 @@ describe("this browser's authorization line", () => {
     const c = await chip({ state: "none", reason });
     expect(c.textContent.trim()).toBe(settings ? `${text} Settings` : text);
     expect(c.querySelector("button")).toBeNull();
-    expect(c.querySelector('a[href="/settings/web"]') !== null).toBe(settings);
+    expect(c.querySelector('a[href="/settings/access"]') !== null).toBe(settings);
   });
   it("the temporary public link: says why, never asks the server", async () => {
     p.document.body.setAttribute("data-public-link", "1");

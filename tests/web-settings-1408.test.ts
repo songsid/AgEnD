@@ -263,14 +263,14 @@ describe("#2347: one save model — an edit is unsaved at once, the bar's Save w
     await type("#g-auto", "1");
     save().click(); await settle(4);
     await type("#g-auto", "2");                                   // the form stays editable while the write is held
-    await mount("web", "settings:web|1|en"); await settle(6);
+    await mount("web-dashboard", "settings:web-dashboard|1|en"); await settle(6);
     const log = p.root.querySelector("#webLogTab"); const logWas = log.checked; log.checked = !logWas; fire(log, "change"); await settle(4);
     await mount("general", "settings:general|2|en"); await settle(6);
     g.open({ body: { ok: true } });
     await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 6000 });
     await settle(12);
     const after = [sent, p.root.querySelector("#g-auto").value, rowClass("#g-auto"), bar()?.textContent.includes("2 unsaved change(s)")];
-    await mount("web", "settings:web|2|en"); await settle(6);
+    await mount("web-dashboard", "settings:web-dashboard|2|en"); await settle(6);
     expect([...after, p.root.querySelector("#webLogTab").checked === !logWas]).toEqual([{ auto_pause_after: 1 }, "2", "field s-dirty", true, true]);
     // A kept draft is only its edits: a field never touched shows what is saved now (here another admin's model), and
     // the next Save sends only the edit.
@@ -368,7 +368,7 @@ describe("staged changes and leaving", () => {
     (globalThis as any).confirm = () => { asked++; return false; };
     nav.navigate("/settings/general");
     await mount("general", "settings:general|2|en"); await settle(6);
-    expect(nav.navStore.get().route).toEqual({ panel: "settings", section: "general" });
+    expect(nav.navStore.get().route).toEqual({ panel: "settings", section: "agent-defaults" });
     expect(asked).toBe(0);
     expect(reads().filter(u => u === "/api/settings/fleet/raw").length).toBe(loads);
     expect(p.root.querySelector(".s-pending")?.textContent).toContain("1");
@@ -938,7 +938,7 @@ describe("#1453 review", () => {
       if (r.url === "/api/settings/secrets/p2/verify") return { status: 400, body: { error: "bad key" } };
       return undefined;
     });
-    await mount("bots", "settings:bots|1|en"); await settle(6);
+    await mount("agents", "settings:agents|1|en"); await settle(6);
     const keyRow = (name: string) => p.root.querySelectorAll(".s-key").find((k: any) => k.textContent.includes(name));
     const enter = async (name: string, v: string) => { const i = keyRow(name).querySelector("input"); i.value = v; fire(i, "input"); await settle(2); btn(keyRow(name), "Verify & apply").click(); await settle(4); };
     await enter("One", "fake-one");
@@ -999,7 +999,7 @@ describe("#1453 review r2", () => {
     expect(app.appStore.get().pendingChanges.map((x: any) => x.id)).toEqual(["b".repeat(32)]);
   });
 
-  it("3. a provider key verified after its card was unmounted (Bots → General → Bots) is never applied over the key entered since", async () => {
+  it("3. a provider key verified after its card was unmounted (Agents → Agent defaults → Agents; #2347: the keys are in Agents) is never applied over the key entered since", async () => {
     const verifyA = gate<{ body: unknown }>();
     let verifies = 0;
     routes.push(r => {
@@ -1008,15 +1008,15 @@ describe("#1453 review r2", () => {
       if (r.url === "/api/settings/secrets/p1/apply") return { body: { result: "reloaded" } };
       return undefined;
     });
-    await mount("bots", "settings:bots|1|en"); await settle(6);
+    await mount("agents", "settings:agents|1|en"); await settle(6);
     const enter = async (v: string) => {
       const row = p.root.querySelector(".s-key");
       const i = row.querySelector("input"); i.value = v; fire(i, "input"); await settle(2);
       btn(row, "Verify & apply").click(); await settle(4);
     };
     await enter("fake-key-a");
-    await mount("general", "settings:general|2|en"); await settle(4);
-    await mount("bots", "settings:bots|3|en"); await settle(6);
+    await mount("agent-defaults", "settings:agent-defaults|2|en"); await settle(4);
+    await mount("agents", "settings:agents|3|en"); await settle(6);
     await enter("fake-key-b");
     await vi.waitFor(() => expect(writes().filter(r => r.url === "/api/settings/secrets/p1/apply")).toHaveLength(1));
     verifyA.open({ body: { verification_id: "vA" } });

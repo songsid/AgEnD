@@ -10,7 +10,7 @@ AgEnD's web dashboard is three panels on one small web server that the fleet run
 |---|---|
 | **`/ui`**: the app | Talk to your agents (chat, files, Stop reply), see who is working, and manage instances, tasks, schedules and teams. Each chat has its own address, `/ui/chat/<name>`; Fleet is `/ui/fleet` (`/ui/fleet/schedules`, `…/teams`, `…/org`, `…/cache`, `…/usage`, `…/config`); **Needs you** is `/ui/needs` |
 | **`/view`** | A read-mostly view of every agent: live terminal, roster, usage, and editing each agent's profile and avatar |
-| **`/settings`** | Fleet settings — your preferences, web appearance, agents, connections, ClassicBot, defaults, `fleet.yaml` — with apply and restart. Each section has its own address: `/settings/device` (Preferences), `…/appearance`, `…/bots`, `…/classic`, `…/general`, `…/web`, `…/advanced` (`/settings` is Agents) |
+| **`/settings`** | Settings in two groups — **You** (Preferences, Look) and **Fleet** (Agents, Agent defaults, Chat & connections, Web dashboard, Access & security, Advanced) — saved with one bar, with restart when needed. Each section has its own address: `/settings/preferences`, `…/look`, `/settings` (Agents), `…/agent-defaults`, `…/chat`, `…/web-dashboard`, `…/access`, `…/advanced`; the old ones (`/settings/device`, `…/appearance`, `…/bots`, `…/classic`, `…/general`, `…/web`) lead there |
 
 `/ui`, `/view` and `/settings` are one app with a sidebar: **Fleet**, **Needs you**, **Search**, the instances, **Settings** and the **Session** menu. An agent's **View**, **Log** and **Details** are the tabs under its header. Moving around inside it does not reload the page, and Back/Forward work. `/` opens `/ui`, which goes back to the chat you had open last. Old links of the form `/ui#instance=<name>` still work, also through signing in.
 
@@ -105,7 +105,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
   - A display name set in View (**Edit profile**) wins over one the agent sets itself (`set_display_name`). Clearing it in View shows the agent's own name again (or the instance name).
 - The bottom of the sidebar is one row: **Settings** and **Session**. **Settings → Preferences** holds your name, theme, language, whether nicknames or real names come first, HTML previews and the tour.
 - **Favorites (#1664).** Star an instance to pin it in **Favorites** at the top of the sidebar, in the order you starred them. On a desktop the ☆ appears when you hover over or focus a row, and stays on starred ones. On a phone, tap **Edit** above the list. **Edit** also shows ↑ ↓ to reorder favorites. A deleted instance drops out; a paused or stopped one stays. At most 50.
-- **Preferences follow you across devices (#1665).** Theme, language, the name order, the sidebar's order, folded groups, filter and favorites, HTML previews, and the Web appearance choices (agents' themes shown, card size, your sidebar widget, identity colours) are saved on the AgEnD host, so your phone and your desktop match. A change shows up on your other devices at once, or the next time they load. Each browser keeps a copy and the page arrives with your theme already applied, so nothing flashes. The first time a device loads after the update, it uploads its own choices for anything not saved yet; after that, what is saved on the host wins. The tour, text size, view fit, the sidebar shown or hidden, panel widths, code wrap and desktop notifications stay on each device. A public link can read your preferences but cannot change them.
+- **Preferences follow you across devices (#1665).** Theme, language, the name order, the sidebar's order, folded groups, filter and favorites, HTML previews, and the Look choices (agents' themes shown, card size, your sidebar widget, identity colours) are saved on the AgEnD host, so your phone and your desktop match. A change shows up on your other devices at once, or the next time they load. Each browser keeps a copy and the page arrives with your theme already applied, so nothing flashes. The first time a device loads after the update, it uploads its own choices for anything not saved yet; after that, what is saved on the host wins. The tour, text size, view fit, the sidebar shown or hidden, panel widths, code wrap and desktop notifications stay on each device. A public link can read your preferences but cannot change them.
 - **On a phone** the on-screen keyboard resizes the page, so the composer stays above it, and the layout keeps clear of the notch and the home bar.
 
 ### Keyboard and screen readers
@@ -273,7 +273,7 @@ The fleet's shared work and its overview, one tab each. Every tab has its own ad
   - **CSV:** **Download CSV** saves the shown answer's daily rows (date, zone, agent, backend, model, tier, profile, the token columns, requests, amount, the basis and the marks; messages on rows of their own).
   - **Freshness:** collected from when the fleet started (kept 400 days) and read every 10 minutes; while the reader catches up the page says totals may still grow. It never re-reads on a timer.
   - **Not everything at once:** when a long range has more daily rows than one answer carries, the page says from which date the trend, the heatmap and the CSV start; the rows and totals still cover the whole range. A day used only by a model not in the price table is shown as used ("not priced"), never as a day with nothing used. If the fleet's timezone changed, days keep the zone they were made in and the page says so; a day made in both shows each part.
-  - **Who sees it:** signed-in sessions; never a guest. Over the temporary public link it says "Not offered over the public link" unless **Settings → Web → Usage report over the public link** is on (`web.usage_report_on_public_link: true`, [configuration](configuration.md); it applies at once), with a link to that switch on the dashboard reached directly. `web.usage_panel: false` hides it with the rest of usage. Agents read the same report with `get_usage_report`.
+  - **Who sees it:** signed-in sessions; never a guest. Over the temporary public link it says "Not offered over the public link" unless **Settings → Web dashboard → Usage report over the public link** is on (`web.usage_report_on_public_link: true`, [configuration](configuration.md); it applies at once), with a link to that switch on the dashboard reached directly. `web.usage_panel: false` hides it with the rest of usage. Agents read the same report with `get_usage_report`.
 - **Config**: the fleet's channel, access and defaults.
 
 ## Needs you (`/ui/needs`)
@@ -308,7 +308,7 @@ Every box you type in (the composer, search, the sidebar filter, Settings, the T
 What an agent did, step by step: what it was asked, its replies (never its thinking), each tool call (Read, Edit, Search, Run, Web, MCP, Sub-agent, …, with **Show output**), errors, the end of each turn, compactions, and fleet events such as a crash and restart.
 - **All / Tools / Errors** filter it; **Live** shows while it updates.
 - It opens with the newest 200 steps; **Load older steps** adds 100 at a time, and the page keeps up to 1000.
-- It is off until a fleet admin turns it on: `web.log_tab` (**Settings → Web → Log tab: each agent's steps**), or **Turn on the Log** on the tab itself, which waits for a fleet admin's confirmation.
+- It is off until a fleet admin turns it on: `web.log_tab` (**Settings → Web dashboard → Log tab: each agent's steps**), or **Turn on the Log** on the tab itself, which waits for a fleet admin's confirmation.
 - Claude Code shows everything, also after the instance stopped; Codex while it runs; kiro shows the fleet events only. Other CLIs say they have no transcript AgEnD can read. Secret values are masked.
 
 ## `/view`
@@ -337,11 +337,11 @@ What an agent did, step by step: what it was asked, its replies (never its think
 
 **Connections → Retry now** asks a disconnected connection to try again immediately, without restarting AgEnD. An ongoing attempt is reused. Startup failures keep retrying with a capped five-minute delay while the fleet runs; a long outage no longer exhausts them permanently. This control requires a local admin sign-in and is unavailable over a public link. It does not change the token, permissions or saved binding. Refresh Connections to see a later recovery.
 
-**Preferences**, **Web appearance**, **Agents**, **Connections**, **ClassicBot**, **General**, **Web** and **Developer** (the whole `fleet.yaml` as YAML or JSON; **Edit**, **Copy**, **Download fleet.yaml**, and **Apply & save**, which applies at once without the bar) are tabs, each with its own address. The search box filters agents, connections and ClassicBot rooms; **Setup wizard** runs the same four steps as `agend quickstart`; it always adds a connection, for a new agent or one you already have.
+The sections are in two groups, each with its own address. **You** changes only you or this browser: **Preferences** (your name, theme, language, names, HTML previews, the tour, and this device's own switches) and **Look** (agents' themes, identity colours and cards, your sidebar widget, custom CSS, mods and effects, Restore defaults). **Fleet** changes AgEnD for everyone: **Agents** (with sign-ins and provider API keys), **Agent defaults**, **Chat & connections** (connections, web echo, ClassicBot rooms and ClassicBot defaults), **Web dashboard** (the Log tab, usage over the public link, the app icon, card upload limits, Canvas Worker effects), **Access & security** (sign-in sessions, the browser terminal, the public link and its fixed address with the Cloudflare token, guests, web authority) and **Advanced** (the whole `fleet.yaml` as YAML or JSON; **Edit**, **Copy**, **Download fleet.yaml**, and **Apply & save**, which applies at once without the bar; and what only `fleet.yaml` sets, read-only). The old addresses (`/settings/general`, `/settings/web`, …) lead to the new sections. The search box filters agents, connections and ClassicBot rooms; **Setup wizard** runs the same four steps as `agend quickstart`; it always adds a connection, for a new agent or one you already have.
 
 A fleet with no chat connection yet (web only) shows a card above the Agents and Connections tabs (not on Chat, which has one instruction: choose an agent, or create one): **Connect a chat app** opens the setup wizard, **Use the web only** hides the card in this browser.
 
-- **An edit is unsaved until you press Save.** Changing a field in General, Web or Web authority makes it unsaved at once: the field gets a straight bar on its left, and a bar at the bottom says **N unsaved change(s)** and what saving costs (immediately, a restart of that agent, or a restart of AgEnD), with **Discard** and **Save**. An agent's, a connection's or a ClassicBot room's **Settings** dialog adds its changes when you press **Done**. A value that is not valid keeps **Save** waiting (**Fix 1 field(s) to save**). (A connection's new binding, **Delete this bot**, provider API keys and **New connection** apply directly; a confirmed **Restore defaults** saves at once.) **Preferences** and **Web appearance** save the same way: a theme, language, colour or card-size choice is shown at once and counted as **Your preferences** in the bar, a switch kept on this device only (following reduced motion, custom CSS off here) counts on its own, and **Save** keeps them (on every device you sign in to, or in this browser only over a temporary public link) while **Discard**, or leaving Settings, puts them back. The **Experimental: Canvas Worker effects** switch is a fleet setting and is saved with the others. Unsaved edits stay while you move between tabs; leaving Settings with any asks **Discard N unsaved change(s)?** first. Over a temporary public link, the fleet's settings are read-only.
+- **An edit is unsaved until you press Save.** Changing a field (Agent defaults, Chat & connections, Web dashboard, Access & security) makes it unsaved at once: the field gets a straight bar on its left, and a bar at the bottom says **N unsaved change(s)** and what saving costs (immediately, a restart of that agent, or a restart of AgEnD), with **Discard** and **Save**. An agent's, a connection's or a ClassicBot room's **Settings** dialog adds its changes when you press **Done**. A value that is not valid keeps **Save** waiting (**Fix 1 field(s) to save**). (A connection's new binding, **Delete this bot**, provider API keys and **New connection** apply directly; a confirmed **Restore defaults** saves at once.) **Preferences** and **Look** save the same way: a theme, language, colour or card-size choice is shown at once and counted as **Your preferences** in the bar, a switch kept on this device only (following reduced motion, custom CSS off here) counts on its own, and **Save** keeps them (on every device you sign in to, or in this browser only over a temporary public link) while **Discard**, or leaving Settings, puts them back. The **Experimental: Canvas Worker effects** switch is a fleet setting and is saved with the others. Unsaved edits stay while you move between tabs; leaving Settings with any asks **Discard N unsaved change(s)?** first. Over a temporary public link, the fleet's settings are read-only.
 - **Once you press Save, it carries on without you.** You can open the chat or anything else: the writes, the reload and its progress go on, a line at the top says how it is going, and Settings shows the details when you come back. A second Save waits until the first is done. When a change needs AgEnD itself restarted, **Restart AgEnD** is offered (with its own confirmation); AgEnD never restarts on its own.
 - **Until AgEnD restarts, every page says so.** A line at the top reads **N saved change(s) take effect after AgEnD restarts**, with the settings it means, **Restart now** (asks first, then restarts once for all of them) and **Later** (hides it until something else is waiting). It stays after a reload or in another tab, until AgEnD has restarted. Over a temporary public link it offers no restart; for a change made by editing `fleet.yaml` it says to run `agend restart` on the host.
 - **Web** holds the dashboard's own settings: how long a sign-in lasts here and how long it may sit unused (`web.session.local.*`; empty = the default), the browser terminal `/login` opens (on or off, and its minutes), web echo, the Log tab (`web.log_tab`) and the public link's menu. A change that loosens access — a longer session or idle time, the browser terminal turned back on or given more minutes, the public link — waits for a fleet admin to confirm it in General (or `agend settings confirm <id>`, see [Confirming sensitive changes](#confirming-sensitive-changes)); one that tightens access applies at once. The other web settings are listed read-only: they decide what the dashboard listens on and exposes, so they are edited in `fleet.yaml` (then `agend reload`; `web.preview_port` and `web.preview_origin` take a restart). Over a temporary public link none of this can be changed: the section says so and the server refuses it.
@@ -355,7 +355,7 @@ A fleet with no chat connection yet (web only) shows a card above the Agents and
 
 ### App icon
 
-The picture a browser tab shows for the dashboard, and the icon an "Add to Home Screen" shortcut gets on a phone. **Settings → Web appearance → Look → App icon**:
+The picture a browser tab shows for the dashboard, and the icon an "Add to Home Screen" shortcut gets on a phone. **Settings → Web dashboard → App icon**:
 
 - **Choose image…** a square picture: PNG, JPG or WebP, 512 × 512 or larger. A wider or taller one is cropped to its centre; a smaller one is enlarged (the card warns, since it may look soft). You see the new icon before **Use this icon**; **Cancel** keeps the old one.
 - **Restore default** brings back the AgEnD icon.
@@ -379,14 +379,14 @@ Each agent has a colour you can find it by in the sidebar.
   - Pick one of 12 colours (each readable in light and dark) or your own hex colour, and the places it shows.
   - **Reset** goes back to the agent's, the bot's or the automatic one.
   - This works over a temporary public link too, like profile edits.
-- **This host's settings,** in **Settings → Web appearance → Identity colours:**
+- **This host's settings,** in **Settings → Look → Identity colours:**
   - where colours show by default;
   - **Turn off colours**, which hides every identity colour on this host. The colours people picked are kept and come back when you turn colours on again.
-- **Restore defaults** (Settings → Web appearance): see [Restore defaults](#restore-defaults).
+- **Restore defaults** (Settings → Look): see [Restore defaults](#restore-defaults).
 
-### Custom CSS (Settings → Web appearance)
+### Custom CSS (Settings → Look)
 
-**Web appearance** holds your own stylesheet. It applies only to your screens: every device where you are signed in, never anyone else's. It covers Chat, Fleet, Details, Needs you, Log and View.
+**Look** holds your own stylesheet. It applies only to your screens: every device where you are signed in, never anyone else's. It covers Chat, Fleet, Details, Needs you, Log and View.
 
 - **Never on Settings.** Settings is always drawn without your CSS, so you can always undo a stylesheet that hides something.
 - **Never in these places either:**
@@ -419,7 +419,7 @@ An agent can give its own web chat a look: colours for light and dark, an accent
   - **Lock theme** stops the agent changing it. **Unlock theme** allows it again.
   - **Reset theme…** removes it and keeps a lock in place.
   - Both need a signed-in admin, and neither is offered over a temporary public link.
-- **Your switch.** **Settings → Web appearance → Show agents' themes, effects and widgets** turns them off on all your devices. Every chat then looks the same, and pictures and ring colours are the bots' again. `?safe=1` also loads a page without them.
+- **Your switch.** **Settings → Look → Show agents' themes, effects and widgets** turns them off on all your devices. Every chat then looks the same, and pictures and ring colours are the bots' again. `?safe=1` also loads a page without them.
 - **Reduced motion.** Ambient effects play even when your system asks for reduced motion. To keep them still on a device, tick **Effects: follow the system's reduced-motion setting** under that switch (this device only; off by default). The same device preference controls Canvas Worker effects; an OS request alone does not pause them.
 - **Limits.** An agent's changes are at least 30 seconds apart, at most 10 an hour. Its uploads (pictures, effects, mods) are not counted; each picture's size limits and the agent's picture quota still apply. A picture you uploaded for an agent in its profile wins over its theme's. `web.themes.agent_edit: false` in `fleet.yaml` refuses every agent's changes.
 
@@ -429,7 +429,7 @@ Each agent can have an identity card: a portrait, a banner, a one-line tagline a
 
 - **Who sets it.** The agent sets its own with `set_web_theme` (`card.tagline`, `card.bio`, and `card.portrait` / `card.banner` naming pictures uploaded with `set_web_theme_asset` for those slots). A person sets theirs in View's **Edit profile**. **A person's field wins over the agent's, field by field**: leave a field empty to show the agent's.
 - **Where it shows.** At the top of the agent's **Details**; in **View**, above the profile row while it is expanded; and in the agent's chat, right under the header. The chat's card is hidden until you show it from the **card button** in the chat header (next to ⋯; there for guests and the public link too, and highlighted while the card is shown). It opens a small menu of two checkboxes: **Show card**, and **Show picture and bio**. Unticking the second leaves only the banner (and the agent's widget strip under it) to save height; it is greyed out while the card is hidden, or when the card has no banner. Nothing sits on the card itself. Shown, the banner is flush under the header. Both choices are kept on this device.
-- **Size.** Each card has **S / M / L**. **Settings → Web appearance → Identity cards** sets the size for every card on all your devices, and a card's own control sets that card apart. Over a temporary public link the size is kept on that device only.
+- **Size.** Each card has **S / M / L**. **Settings → Look → Identity cards** sets the size for every card on all your devices, and a card's own control sets that card apart. Over a temporary public link the size is kept on that device only.
 - **Text stays text.** The tagline and bio are never markup or links. Pictures are served by the dashboard itself, with metadata such as GPS removed.
 - **The banner's crop and focus.** A banner is cropped to fit each card. It is never drawn wider than **5 : 1** (on a wider screen it is centred over a blurred copy of itself) nor narrower than **9 : 4**, which crops the sides. So every card, on every screen and layout, shows the **safe area**: the middle **84% of the width** and **53% of the height** of a 1600×600 banner (the default limit) — a **1350×320 area**. **Banner focus** in Edit profile moves it up or down: drag the slider and the preview shows the safe area (dashed) and a phone's medium card (yellow). The agent sets it with `card.bannerFocus` (0 top … 100 bottom), General with `set_web_settings { what: "banner_focus" }`; a person's wins. Keep faces and text inside the safe area.
 - **Pictures that are too large.** Edit profile offers to shrink a portrait or banner that is over the limits ("This picture is 3000×4000; it will be resized to 1024×1365"). The server checks the result like any upload.
@@ -440,7 +440,7 @@ Each agent can have an identity card: a portrait, a banner, a one-line tagline a
 
 ### Card upload limits
 
-**Settings → Web appearance → Identity card upload limits** (or `web.appearance` in `fleet.yaml`) sets the largest portrait and banner anyone may upload and how many pictures each agent may keep.
+**Settings → Web dashboard → Identity card upload limits** (or `web.appearance` in `fleet.yaml`) sets the largest portrait and banner anyone may upload and how many pictures each agent may keep.
 - Fields: portrait width, height (px) and size (KiB); banner width, height and size; pictures per agent; picture space per agent (MiB). Each shows the value in force and the allowed range; empty means the default (shown greyed).
 - Defaults: portrait 1024×1536, 1.5 MiB; banner 1600×600, 768 KiB; 8 pictures, 4 MiB per agent.
 - A lower limit applies at once; a higher one waits for a fleet admin's confirmation. A limit applies to new uploads only; pictures already stored stay.
@@ -454,7 +454,7 @@ A widget is a small panel of facts drawn by the dashboard itself: numbers, progr
 - **Live values.** Besides the values it sets, an agent's widget can show its own state, context use and cost, as the page already shows them. Your sidebar widget can show the fleet's counts: working, needs you, idle, stopped. Nothing else is read for it.
 - **How an agent sets one.** `set_web_widget` with `slot` (`chat_header` or `details`) and a `spec` places or replaces it. With only `data`, it gives the placed widget new values: at most one update every 10 seconds and 180 an hour, apart from its theme changes. `remove_web_widget` takes it out. From a shell: `agend-agent widget set|data|remove`.
 - **People decide.** **Lock theme** stops an agent changing its widgets too. A chat's or Details' **⋯** menu offers **Remove the chat header widget** and **Remove the Details widget**. A widget a person placed (from a mod) takes the agent's values, but the agent can't replace or remove it. **Reset theme…** removes the agent's widgets.
-- **Your sidebar widget.** **Settings → Web appearance → Your sidebar widget** takes the spec and values as JSON. It shows a preview and says what's wrong before saving. **Start from an example** fills in the fleet's counts. It is kept with your preferences on all your devices, and is never shown over a temporary public link or with `?safe=1`.
+- **Your sidebar widget.** **Settings → Look → Your sidebar widget** takes the spec and values as JSON. It shows a preview and says what's wrong before saving. **Start from an example** fills in the fleet's counts. It is kept with your preferences on all your devices, and is never shown over a temporary public link or with `?safe=1`.
 - **Your switch** hides agents' widgets along with their themes. The public link shows agents' widgets, like their cards.
 
 ### Ambient effects
@@ -473,7 +473,7 @@ An ambient effect is a light decoration an agent puts in its own chat: falling p
 
 ### Mods
 
-A mod is one file, `<name>-<version>.agendmod.json`, that carries a look: an agent's theme with its pictures, its card text (tagline and bio, never card pictures), widgets, effects, and custom CSS. It is plain JSON of at most 8 MiB, with no zip and nothing to unpack. **Settings → Web appearance → Mods** imports, lists, downloads, uninstalls and exports them.
+A mod is one file, `<name>-<version>.agendmod.json`, that carries a look: an agent's theme with its pictures, its card text (tagline and bio, never card pictures), widgets, effects, and custom CSS. It is plain JSON of at most 8 MiB, with no zip and nothing to unpack. **Settings → Look → Mods** imports, lists, downloads, uninstalls and exports them.
 
 - **Import is two steps.**
   - **Import a mod file…** checks the whole file and shows everything in it before anything changes: the theme's colours and pictures, the card text, each widget as it will look, each effect with where it draws and what it hears, and **the custom CSS in full**. The author is shown as unverified.
@@ -491,7 +491,7 @@ A mod is one file, `<name>-<version>.agendmod.json`, that carries a look: an age
 
 ### Asking General to change it for you
 
-General (and a coordinator or full-profile instance) can change **Settings → Web appearance** for you: just ask in chat.
+General (and a coordinator or full-profile instance) can change **Settings → Look** for you: just ask in chat.
 - **What it uses:** `get_web_settings` tells it every setting in plain words, and `set_web_settings` changes one through the page's own checks.
 - **What it can change:** agents' themes shown, identity colours and where they show, card sizes, the sidebar widget, one agent's colour, effects on a chat and your effect slots, an agent's proposed mod (it shows you the plan, then installs only what you asked for), and Restore defaults.
 - **Custom CSS:** it keeps its safe rules. General can put it on trial, keep or revert the trial, switch to an earlier saved version, or turn it off. It keeps a trial when you say you like it.
@@ -499,7 +499,7 @@ General (and a coordinator or full-profile instance) can change **Settings → W
 
 ### Effects
 
-A Canvas Worker effect is a small animation drawn by code in an isolated Worker, with no page or DOM of its own. **Settings → Web appearance → Effects** manages them; agents place their own with the `web-appearance` tools.
+A Canvas Worker effect is a small animation drawn by code in an isolated Worker, with no page or DOM of its own. **Settings → Look → Effects** manages them; agents place their own with the `web-appearance` tools.
 - **The library.** **Upload an effect folder**: `effect.json` and `worker.js`, with optional raster pictures, up to 1 MiB after processing. Each effect lists **Your copy** or **Shared with you**. **Share your copy with agents and people on this fleet** lets them use it; **Delete your copy** removes an unused copy (other people's copies stay). **Profile history** shows how it ran on viewers' pages — reported observations, not proof of its cost. **Reload library** reads it again.
 - **For a chat.** Choose the **Chat**, set an effect's **Parameters**, then **Save for this chat** (it replaces that chat's parameters with these values) or **Remove from this chat**.
 - **Your effect choices.** One effect each for the **Sidebar**, **Header**, **Page** and **Box**, each with **Pause / Resume** and **Clear**, and a **Cursor**, which shows its state and has **Clear**. They follow this platform sign-in (a Discord and a Telegram account stay separate); a host-operator sign-in shares **Host-wide effect choices**.
@@ -509,7 +509,7 @@ A Canvas Worker effect is a small animation drawn by code in an isolated Worker,
 - **Nothing set, nothing loaded.** Until the open chat has an effect, you choose one of your own, or an agent offers a Try, the page doesn't load the effect player at all, so it costs nothing. It loads the first time one of those happens, within the same moment the effect would start anyway. Ambient effects and your custom CSS don't need it.
 
 When a placed effect cannot play, a notice stays in its chat and the Effects dialog names the reason. Appearance
-switches link to **Web appearance**; public Show off offers **Turn effects on here** without writing host preferences.
+switches link to **Look**; public Show off offers **Turn effects on here** without writing host preferences.
 An unavailable isolated frame offers Reload, never an HTML-preview setup step. A one-time chat note offers to follow the
 system's reduced motion setting. A chosen motion block offers **Play effects anyway**, including public/guest viewers;
 safe mode offers **Leave safe mode**. Hidden tabs, browser support and safety have named messages. Unknown codes stay local. Agents get only closed
@@ -517,7 +517,7 @@ blocked reasons reported within five minutes, without viewer identifiers/counts/
 
 ### Restore defaults
 
-**Settings → Web appearance → Restore defaults** puts this host's appearance settings back to their defaults. It asks first and says what it resets:
+**Settings → Look → Restore defaults** puts this host's appearance settings back to their defaults. It asks first and says what it resets:
 - whether agents' themes and effects are shown;
 - the card size, and each card's own size;
 - your sidebar widget;
@@ -593,7 +593,7 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | `web_terminal.enabled` | `true` | `false`: `/login` refuses (no browser terminal) |
 | `web_terminal.ttl_minutes` | `10` | How long a `/login` browser terminal stays open, 1–20 minutes |
 
-**Settings → Web** edits `web.echo_to_channel`, `web.log_tab`, `web.public_link.*`, `web.session.local.*` and `web_terminal.enabled` / `ttl_minutes`; it lists the others read-only (with `web.provider_secrets`, `web_terminal.bind` and `web_terminal.tunnel`).
+**Settings → Access & security** edits `web.public_link.*`, `web.session.local.*` and `web_terminal.enabled` / `ttl_minutes`, **Chat & connections** `web.echo_to_channel` and **Web dashboard** `web.log_tab`; **Advanced** lists the others read-only (with `web.provider_secrets`, `web_terminal.bind` and `web_terminal.tunnel`).
 
 Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli.md).
 
@@ -613,7 +613,7 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 | The sign-in page says the code is wrong | Codes are single-use and expire after 5 minutes, and only the newest works. Ask for a new one. |
 | "Your session has ended" | 48 hours without use or since sign-in (the defaults); on a public link 4 hours, 30 minutes unused, or the link closed; or someone used `/web revoke`, **Sign out everywhere** or `agend web-token rotate`. Sign in again. |
 | Updates arrive a few seconds late, with no live stream | The live stream is blocked on your path (or this is the public link), so the page polls every 5 seconds; the Log tab may lag up to 30 seconds. Nothing to do — it is not shown as a problem. |
-| A page looks wrong or something is hidden after you saved custom CSS | Add `?safe=1` to the address to load it without your CSS. Settings → **Web appearance** is never styled by it: fix the CSS there, or turn it off. |
+| A page looks wrong or something is hidden after you saved custom CSS | Add `?safe=1` to the address to load it without your CSS. Settings → **Look** is never styled by it: fix the CSS there, or turn it off. |
 | `/web` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |
 | The browser's developer tools show a red **401** for `/auth/session` on the sign-in page | Expected: the page checks whether you are already signed in, and "no" is a 401. Nothing to do. |
 
@@ -676,7 +676,7 @@ exactly as before: a browser that is not web-verified, a guest, the public link,
 an account on another platform, or a change that needs host CLI confirmation. Know what this rests on: authorizing
 the browser is **one** confirmation in your DM, kept for that session until it is revoked, runs out or signs out — not
 a fresh confirmation for each Apply. Anyone using that verified, signed-in browser (one left unattended, or a copy of
-its session cookie) can confirm such changes the same way. Sign out, or revoke it (Settings → Web → **Revoke web authority**, or **Not
+its session cookie) can confirm such changes the same way. Sign out, or revoke it (Settings → Access & security → **Revoke web authority**, or **Not
 me** on the DM card), when you leave the browser.
 
 First-time Setup also returns a pending request. Confirm it on the host, then explicitly choose **Start AgEnD**. A pending response, an old successful commit or a changed configuration cannot hand over the setup listener to the fleet.

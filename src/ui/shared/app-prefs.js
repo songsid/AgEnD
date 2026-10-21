@@ -79,7 +79,7 @@ const inflight = new Map();    // key → writes sent and not answered yet
 let flushTimer = null;
 let writes = Promise.resolve();   // one write at a time, in the order they were made
 const listeners = new Set();
-// #2347: the "You" group's preferences (Settings → Preferences, Web appearance) are saved by the Settings bar's Save like
+// #2347: the "You" group's preferences (Settings → Preferences, Look) are saved by the Settings bar's Save like
 // every Settings change. While Settings is open (holdPrefs), a choice there is shown on this page at once (cached, and
 // this page's own in prefInForce) but not sent: `held` keeps it until savePrefsHeld sends them all, or discardHeldPrefs
 // puts back what the host has (the same path as another device's change: apply and onPrefsChanged).

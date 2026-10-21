@@ -212,6 +212,6 @@ export function stockEffectTrust(host, { frameRoot = null, ownerCss = "unknown" 
     if (doc.fullscreenElement || doc.pictureInPictureElement) barrier = true;
     // Focus alone does not change protected paint bounds. Composer/controls stay clipped; editable focus
     // separately suppresses pointer delivery in the registry, and keyboard events never enter a Worker.
-    return { ok: true, rects, front: !barrier, reason: barrier ? "stock_overlay" : "stock", agentFront: !barrier && ownerCss === "off", agentReason: barrier ? "stock_overlay" : ownerCss === "off" ? "stock" : "owner_css", settingsHref: "/settings/appearance" };
+    return { ok: true, rects, front: !barrier, reason: barrier ? "stock_overlay" : "stock", agentFront: !barrier && ownerCss === "off", agentReason: barrier ? "stock_overlay" : ownerCss === "off" ? "stock" : "owner_css", settingsHref: "/settings/look" };
   } catch { return fail("stock_trust_unknown"); }
 }

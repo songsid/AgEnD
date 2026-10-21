@@ -23,8 +23,8 @@ register("fusage", {
     notMeasured: "Not measured", nm_credit_billed: "Kiro is credit-billed and records no tokens", nm_unsupported: "AgEnD can't read this CLI's usage yet", nm_no_data: "nothing read yet",
     shared: "shares its working directory with {0}; their transcripts can't be told apart",
     empty: "Nothing recorded yet", emptyHint: "Usage is read from Claude Code and Codex transcripts, from when the fleet started.",
-    blocked: "Not offered over the public link", blockedHint: "Usage is offered over the public link only when \"Usage report over the public link\" is on in Settings → Web — on the dashboard reached directly, on the computer running AgEnD.",
-    openSettings: "Open Settings → Web on that computer",
+    blocked: "Not offered over the public link", blockedHint: "Usage is offered over the public link only when \"Usage report over the public link\" is on in Settings → Web dashboard — on the dashboard reached directly, on the computer running AgEnD.",
+    openSettings: "Open Settings → Web dashboard on that computer",
     partialDays: "Daily detail from {0}: the earlier days in this range are too many rows to send. The rows and totals above cover the whole range; the trend, the heatmap and the CSV start at {0}.",
     csvFrom: "Download CSV (from {0})",
     noDaily: "No daily detail for this range: even its latest day has more rows than one answer carries, and a part of a day is never shown as the day. The rows and totals above are complete; the trend, the heatmap and the CSV need the daily detail and are not shown.",
@@ -50,8 +50,8 @@ register("fusage", {
     notMeasured: "未量測", nm_credit_billed: "Kiro 以 credit 計費，不記錄 token", nm_unsupported: "AgEnD 目前還讀不到這個 CLI 的用量", nm_no_data: "尚未讀到任何資料",
     shared: "與 {0} 共用工作目錄，無法分辨各自的 transcript",
     empty: "還沒有任何紀錄", emptyHint: "用量從 Claude Code 與 Codex 的 transcript 讀取，自 fleet 啟動起計。",
-    blocked: "公開連結上不提供", blockedHint: "只有在設定 → 網頁裡開啟「透過公開連結提供用量報告」時，公開連結才會提供用量；這個設定要在執行 AgEnD 的那台電腦上、直接開啟的儀表板裡變更。",
-    openSettings: "在那台電腦上開啟設定 → 網頁",
+    blocked: "公開連結上不提供", blockedHint: "只有在設定 → 網頁儀表板裡開啟「透過公開連結提供用量報告」時，公開連結才會提供用量；這個設定要在執行 AgEnD 的那台電腦上、直接開啟的儀表板裡變更。",
+    openSettings: "在那台電腦上開啟設定 → 網頁儀表板",
     partialDays: "每日明細從 {0} 起：這段期間更早的日子資料列太多，無法一次送出。上方的各列與總計涵蓋整段期間；趨勢、熱度圖與 CSV 則從 {0} 開始。",
     csvFrom: "下載 CSV（從 {0} 起）",
     noDaily: "這段期間沒有每日明細：連最近的一天，資料列都超過一次回答能帶的數量，而不完整的一天絕不會被當成那一天顯示。上方的各列與總計是完整的；趨勢、熱度圖與 CSV 需要每日明細，所以不顯示。",
@@ -417,8 +417,9 @@ export function UsageTab({ lease }) {
         if (r.status === 403 || r.status === 404) {
           const body = await r.json().catch(() => null);
           if (!lease.current() || mine !== seq.current) return;              // a newer read (or another page) owns the view
-          // Over the public link: where it is turned on — Settings → Web on the dashboard reached directly.
-          setState({ blocked: r.status === 403 ? "blocked" : "off", settings: body && typeof body.settings === "string" && /^http:\/\/localhost:\d+\/settings\/web$/.test(body.settings) ? body.settings : null });
+          // Over the public link: where it is turned on — Settings → Web dashboard on the dashboard reached directly (#2347;
+          // an older AgEnD names /settings/web, which still leads there).
+          setState({ blocked: r.status === 403 ? "blocked" : "off", settings: body && typeof body.settings === "string" && /^http:\/\/localhost:\d+\/settings\/(web|web-dashboard)$/.test(body.settings) ? body.settings : null });
           return;
         }
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
