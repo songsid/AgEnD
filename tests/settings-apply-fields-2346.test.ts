@@ -100,6 +100,8 @@ describe("bot-to-bot visibility is judged by what each agent gets (review P2-1)"
     // Where no validator ran first (a caller comparing parts of a fleet), the diff itself never lets one through quietly.
     const odd = settingsChangeDiff({ instances: { dev: {} } }, { instances: { dev: { cross_instance_visibility: "everyone" } } }, { operation: "part" });
     expect(odd?.summary.some((l) => /everyone/.test(l))).toBe(true);
+    const oddDefault = settingsChangeDiff({ defaults: {} }, { defaults: { cross_instance_visibility: "everyone" } }, { operation: "part" });
+    expect(oddDefault?.summary.some((l) => /everyone/.test(l))).toBe(true);
   });
   it("the defaults: hidden → full waits (it shows every agent that inherits it, and every name with no setting)", () => {
     const hiddenDefault = () => { const c: any = config(); c.defaults.cross_instance_visibility = "hidden"; return c; };
