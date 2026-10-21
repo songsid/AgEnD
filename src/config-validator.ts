@@ -555,6 +555,11 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       validateDeliveryWorker(inst.delivery_worker, `instances.${name}.delivery_worker`);
       validateInstanceOptions(inst, `instances.${name}`);
       warnUnresolvedPromptFiles(inst, `instances.${name}`, isObj(config.defaults) ? config.defaults : {});
+      // startup is a fleet-level key (concurrency, stagger_delay_ms); it has no effect
+      // at the instance level and will cause false "config changed" restarts on SIGHUP.
+      if ((inst as Record<string, unknown>).startup !== undefined) {
+        warn(`instances.${name}.startup`, "`startup` is a fleet-level key and has no effect under an instance entry — move it to `defaults.startup` or remove it");
+      }
     }
   }
   if (generalCount === 0) {
