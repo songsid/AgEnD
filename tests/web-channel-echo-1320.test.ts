@@ -244,7 +244,9 @@ describe("fleet-topic web echo (#1320 A)", () => {
       const h = await harness(type); const r = await send(h.fm); expect(r.status).toBe(200); await flush();
       expect(h.sent).toEqual([{ chatId: h.chatId, topic: h.topic, text: formatWebChannelEcho("web-user", "hello") }]);
       // #1920 §5.2: the message is the channel's once its copy was sent there — this one, by the id the agent got.
-      expect(h.s.webMessageInChannel.mock.calls).toEqual([["worker", r.body.messageId]]);
+      expect(h.s.webMessageInChannel.mock.calls.map((c: unknown[]) => c.slice(0, 2))).toEqual([["worker", r.body.messageId]]);
+      // #2305: with where its copy is (the topic, the copy's own id), for a reaction to the web message.
+      expect(h.s.webMessageInChannel.mock.calls[0][2]).toEqual([expect.objectContaining({ chatId: h.chatId, threadId: h.topic, messageId: expect.any(String) })]);
       expect(h.primary.sendText).not.toHaveBeenCalled();
       await h.s.handleInboundMessage({ source: type, adapterId: "primary", chatId: h.chatId, threadId: h.topic, messageId: "sibling-echo", userId: "777", username: "EchoBot", text: h.sent[0].text, isBotMessage: true, timestamp: new Date() });
       expect(h.received).toHaveLength(1);

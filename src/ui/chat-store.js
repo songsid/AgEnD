@@ -129,6 +129,13 @@ export function createChatStore(deps) {
     s.msgs[u.instance] = R().applyReplyButtons(before, u.buttons);
     if (s.msgs[u.instance] !== before) changed(u.instance, "msgs");
   }
+  /** #2305: the instance reacted to a message — its bubble shows it. */
+  function applyReactions(u) {
+    if (!u || typeof u.instance !== "string" || typeof u.boot !== "string" || typeof u.id !== "number") return;
+    const before = s.msgs[u.instance];
+    s.msgs[u.instance] = R().applyReactions(before, u.boot, u.id, u.reactions);
+    if (s.msgs[u.instance] !== before) changed(u.instance, "msgs");
+  }
   /**
    * #1266: click one of a reply's buttons (the first click anywhere answers for everyone). On a poll (#1823) it is this
    * session's vote: the answer is its ballot, which only this page marks.
@@ -442,6 +449,7 @@ export function createChatStore(deps) {
     stream.on("prompts", applyPrompts);
     stream.on("prompt_resolved", resolvePrompt);
     stream.on("reply_buttons", applyReplyButtons);
+    stream.on("reactions", applyReactions);                              // #2305
     stream.on("clock", noteServerClock);                                  // #1823
   }
 

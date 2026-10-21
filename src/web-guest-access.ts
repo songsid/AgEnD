@@ -223,6 +223,11 @@ export function guestFrameData(event: string, data: unknown, scope: ReadonlySet<
     const own = typeof d.messageId === "string" ? history.findByMessageId(d.instance, d.messageId) : undefined;
     return own && own.from === accountOf(guest.owner) ? { instance: d.instance, messageId: d.messageId, delivery: d.delivery } : undefined;
   }
+  // #2305: a reaction, on a message the guest may see.
+  if (event === "reactions") {
+    const row = typeof d.boot === "string" && typeof d.id === "number" ? history.find(d.instance, d.boot, d.id) : undefined;
+    return row && guestSeesMessage(row, guest, scope) ? { instance: d.instance, boot: d.boot, id: d.id, reactions: d.reactions } : undefined;
+  }
   if (event === "reply_buttons") {
     const id = d.buttons && typeof d.buttons === "object" ? (d.buttons as { id?: unknown }).id : undefined;
     const row = typeof id === "string" ? history.findByButtons(d.instance, id) : undefined;
@@ -254,12 +259,13 @@ export function guestHistory(history: WebChatHistory, instance: string, limit: n
  */
 export function guestPollBody(status: unknown, scope: ReadonlySet<string>, now: number, guest?: GuestRequest, after?: string | null, replay?: (after: string | null) => readonly WebChatMessage[]): Record<string, unknown> {
   const history = guest?.history?.() ?? null;
-  if (!guest || !history || !replay) return { status: guestStatus(status, scope), messages: [], deliveries: [], reply_buttons: [], prompts: [], needs: [], cursor: null, now };
+  if (!guest || !history || !replay) return { status: guestStatus(status, scope), messages: [], deliveries: [], reply_buttons: [], reactions: [], prompts: [], needs: [], cursor: null, now };
   return {
     status: guestStatus(status, scope),
     messages: guestMessages(replay(after ?? null), guest, scope),
     deliveries: guestDeliveries(history, guest, scope),
     reply_buttons: guestButtonStates(history, guest, scope),
+    reactions: history.reactionStates().filter((r) => { const row = history.find(r.instance, r.boot, r.id); return !!row && guestSeesMessage(row, guest, scope); }),
     prompts: [], needs: [],
     cursor: history.pollCursor(),
     now,

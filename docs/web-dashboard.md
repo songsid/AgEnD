@@ -192,6 +192,8 @@ Each message you send shows how far it got, the same steps Telegram shows as rea
 | ! | Not delivered |
 | ⊘ | Dropped by **Stop** before the agent got it |
 
+**Reactions.** A message that only needs an acknowledgement ("OK", "thanks") may get one from the agent: an emoji (👍, 👌, 🙏…) under your bubble instead of a reply, as on Discord and Telegram. It appears at once, and also after a reload or on another device. When your message was copied to the agent's Discord/Telegram topic or room, the copy gets the same reaction. A reaction is a complete answer: the chat does not say the agent ended its turn without replying.
+
 ### "*name* is working…" and Stop
 While the open chat's agent is working, a line above the composer says so, and **Stop reply** appears in the composer in place of **Send**. Type something and **Send** comes back beside it: a message sent while the agent works waits its turn.
 - Stop does what Telegram's cancel button and `/cancel` do: it interrupts the agent's current reply (Esc), and the messages still waiting are dropped. Their ticks turn to ⊘.

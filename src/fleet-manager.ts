@@ -196,6 +196,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 import { handleWebRequest, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment } from "./web-chat-history.js";
+import { WEB_ECHO_COPIES_MAX, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { OPERATOR, WebPrefsStore } from "./web-prefs.js";
@@ -4135,12 +4136,51 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1920 §5.2: a web message's channel copy was sent — it is now what the channel saw. Kept so (and on disk), and sent
    * to the guests' streams only: an admin's page already has it, and nothing about it changed for them.
    */
-  webMessageInChannel(instance: string, messageId: string): void {
+  webMessageInChannel(instance: string, messageId: string, copies: readonly WebEchoCopy[] = []): void {
+    // #2305: the copies' own message ids, so an instance's reaction to the web message is put on them too.
+    if (copies.length) this.rememberWebEchoCopies(messageId, copies);
     const m = this.webChatHistory.markChannel(instance, messageId);
     if (m) broadcastToGuests(this.sseClients, "message", m, (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting"));
   }
 
-  async sendClassicWebEcho(instance: string, text: string, sender = WEB_NAME_FALLBACK): Promise<number> {
+  /** #2305: a web message's channel copies (topic, ClassicBot rooms), newest WEB_ECHO_COPIES_MAX, this process only. */
+  private webEchoCopies = new Map<string, WebEchoCopy[]>();
+  private rememberWebEchoCopies(messageId: string, copies: readonly WebEchoCopy[]): void {
+    const list = [...(this.webEchoCopies.get(messageId) ?? []), ...copies.filter(c => c && typeof c.adapter?.react === "function" && c.messageId)];
+    this.webEchoCopies.delete(messageId);
+    this.webEchoCopies.set(messageId, list);
+    while (this.webEchoCopies.size > WEB_ECHO_COPIES_MAX) this.webEchoCopies.delete(this.webEchoCopies.keys().next().value!);
+  }
+
+  /**
+   * #2305: an instance's reaction to a web chat message (`messageId`, the id it was handed): its minimal reply, as on
+   * the platforms. Kept on the message's row (and on disk), shown live (`reactions` on the stream), and put on the
+   * message's channel copies when this process sent them (best effort: a copy's failure is logged, never the tool's).
+   * The tool's errors: an emoji outside the web set or one of the instance's delivery marks (web-reactions.ts), or a
+   * message the chat does not have. An emoji the message already has is a success that changes nothing.
+   */
+  async reactToWebMessage(instance: string, messageId: string, raw: unknown): Promise<{ ok: true; mirrored: number } | { ok: false; error: string }> {
+    const problem = webReactionProblem(raw, this.statusEmojiAvoidList(instance));
+    if (problem) return { ok: false, error: problem };
+    const emoji = webReactionEmoji(raw)!;
+    const r = this.webChatHistory.addReaction(instance, messageId, emoji);
+    if (!r) return { ok: false, error: `react: ${messageId} is not a message in ${instance}'s web chat now (it left the history, or it is from before AgEnD restarted) — answer with reply instead` };
+    if (!r.added) return { ok: true, mirrored: 0 };
+    this.emitSseEvent("reactions", { instance, boot: r.message.boot, id: r.message.id, reactions: r.message.reactions ?? [] });
+    let mirrored = 0;
+    for (const copy of this.webEchoCopies.get(messageId) ?? []) {
+      try {
+        await copy.adapter.react(copy.chatId, copy.messageId, reactionForm(copy.adapter.type, emoji), copy.threadId);
+        mirrored++;
+      } catch (err) {
+        this.logger.warn({ err, instance, adapter: copy.adapter.type }, "Reaction on a web message's channel copy failed (shown on the web)");
+      }
+    }
+    return { ok: true, mirrored };
+  }
+
+  /** #2305: `copies` collects each room's copy (its message id), for a reaction to the web message. */
+  async sendClassicWebEcho(instance: string, text: string, sender = WEB_NAME_FALLBACK, copies?: WebEchoCopy[]): Promise<number> {
     const guard = this.webChannelEchoGuards.get(instance);
     const handled = new Set<string>();
     let posted = 0;
@@ -4169,7 +4209,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const adapter = worldAdapter ?? this.adapter;
       try {
         if (!adapter?.sendText) continue;
-        await adapter.sendText(entry.channelId, text, { format: "text", allowedMentions: { parse: [] } });
+        const sent = await adapter.sendText(entry.channelId, text, { format: "text", allowedMentions: { parse: [] } });
+        if (copies && sent && typeof sent.messageId === "string" && sent.messageId) copies.push({ adapter, chatId: entry.channelId, messageId: sent.messageId });
         ClassicChannelManager.logMessage(instance, sender, text, new Date());
         posted++;
       } catch (err) {
@@ -9807,6 +9848,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await handler(this, args, respond, {
         instanceName, requestId, fleetRequestId, senderSessionName, operationId, sourceDaemonBootId,
       });
+      return;
+    }
+
+    // #2305: a reaction to a web chat message is the web chat's own (any fleet, web-only included): never an adapter's.
+    if (tool === "react" && typeof args.message_id === "string" && isWebMessageId(args.message_id)) {
+      const owner = senderSessionName && this.webChatHistory.findByMessageId(senderSessionName, args.message_id) ? senderSessionName : instanceName;
+      const r = await this.reactToWebMessage(owner, args.message_id, args.emoji);
+      if (r.ok) respond("ok"); else respond(null, r.error);
       return;
     }
 
