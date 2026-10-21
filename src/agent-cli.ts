@@ -357,6 +357,15 @@ async function main(): Promise<void> {
         case "claim": args = { action, id: rest[1] ?? "" }; break;
         case "done": args = { action, id: rest[1] ?? "", result: rest[2] }; break;
         case "update": args = { action, id: rest[1] ?? "", status: rest[2], priority: rest[3] }; break;
+        // The task board (step 2): your work, a move with its reason or result, a comment, the projects.
+        case "mine": case "projects": args = { action }; break;
+        // move ID STATUS ["text"]: the text is the result for review/done, the reason otherwise (blocked, cancelled…).
+        case "move": {
+          const finishing = rest[2] === "review" || rest[2] === "done";
+          args = { action, id: rest[1] ?? "", to: rest[2], ...(finishing ? { result: rest[3] } : { reason: rest[3] }) };
+          break;
+        }
+        case "comment": args = { action: "update", id: rest[1] ?? "", comment: rest[2] }; break;
         default: args = { action: action ?? "" }; break;
       }
       break;
@@ -408,6 +417,13 @@ async function main(): Promise<void> {
         const parsed = JSON.parse(result) as { formatted?: string; error?: string };
         console.log(parsed.error ? result : parsed.formatted ?? result);
         return;
+      } catch { /* fall through to raw */ }
+    }
+    // The task board answers in text (a card, your work): printed as text, not as one quoted JSON line.
+    if (op === "task") {
+      try {
+        const parsed = JSON.parse(result) as unknown;
+        if (typeof parsed === "string") { console.log(parsed); return; }
       } catch { /* fall through to raw */ }
     }
     console.log(result);

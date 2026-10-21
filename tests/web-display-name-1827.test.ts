@@ -342,9 +342,10 @@ describe("every web surface uses the person: the header, the echo, tasks, activi
     const db = { createTask: vi.fn((t: any) => ({ id: "t1", ...t })), claimTask: vi.fn((id: string, who: string) => ({ id, assignee: who })) };
     h.s.scheduler = { db };
     await web(h, "/ui/tasks", "POST", a, { title: "Do it" });
-    expect(db.createTask).toHaveBeenCalledWith(expect.objectContaining({ created_by: "Hanhan" }));
+    // The task board: a signed-in session acts as the person (its review gate tells a person from a script).
+    expect(db.createTask).toHaveBeenCalledWith(expect.objectContaining({ created_by: "Hanhan" }), { kind: "person", name: "Hanhan" });
     await web(h, "/ui/tasks/t1", "POST", a, { action: "claim" });
-    expect(db.claimTask).toHaveBeenCalledWith("t1", "Hanhan");
+    expect(db.claimTask).toHaveBeenCalledWith("t1", "Hanhan", { kind: "person", name: "Hanhan" });
     const log = vi.fn();
     h.s.eventLog = { logActivity: log, listActivity: () => [] };
     h.s.cancelInstance = () => true;

@@ -21,6 +21,7 @@ import { EFFECT_WIRE_LIMIT } from "./web-effect-upload.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { WebAppearance } from "./web-appearance.js";
 import { gatewayRequestContext } from "./web-request-context.js";
+import { crossInstanceVisibility } from "./cross-instance-notice.js";
 import { permitWebContinuation } from "./web-continuation.js";
 /**
  * Web UI HTTP API handler.
@@ -43,6 +44,7 @@ import { CreateInstanceArgs, CreateScheduleArgs, UpdateScheduleArgs, validateArg
 import { scheduleView } from "./web-schedules.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { Schedule, ScheduleRetry } from "./scheduler/types.js";
+import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, type Actor as BoardActor, type TaskBoard } from "./scheduler/task-board.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
@@ -80,10 +82,71 @@ const TaskUpdateSchema = z.object({
   action: z.enum(["claim", "complete", "update"]).optional(),
   assignee: z.string().max(128).optional(),
   result: z.string().max(MAX_TEXT).optional(),
-  status: z.string().max(64).optional(),
+  // A status the task board knows: each carries its rules now (scheduler/task-board.ts).
+  status: z.enum(CARD_STATUSES).optional(),
   title: z.string().max(512).optional(),
   description: z.string().max(MAX_TEXT).optional(),
   priority: z.string().max(64).optional(),
+}).strict();
+
+// The task board (scheduler/task-board.ts). Coarse bounds here; the board checks each field's own limit.
+const BOARD_TEXT = 8_192;
+const CardRef = z.string().min(1).max(64);
+const CardCreateSchema = z.object({
+  kind: z.enum(["main", "sub"]).optional(),
+  project: z.union([z.number().int(), z.string().max(256)]).nullable().optional(),
+  parent: CardRef.nullable().optional(),
+  title: z.string().max(512),
+  goal: z.string().max(BOARD_TEXT).optional(),
+  scope: z.string().max(BOARD_TEXT).optional(),
+  acceptance: z.array(z.string().max(1024)).max(50).optional(),
+  context: z.string().max(BOARD_TEXT).optional(),
+  size: z.enum(CARD_SIZES).nullable().optional(),
+  priority: z.enum(CARD_PRIORITIES).optional(),
+  dependsOn: z.array(CardRef).max(50).optional(),
+  assignee: z.string().max(128).nullable().optional(),
+  needsReview: z.boolean().optional(),
+}).strict();
+
+const CardPatchSchema = z.object({
+  version: z.number().int().optional(),
+  title: z.string().max(512).optional(),
+  goal: z.string().max(BOARD_TEXT).optional(),
+  scope: z.string().max(BOARD_TEXT).optional(),
+  context: z.string().max(BOARD_TEXT).optional(),
+  state: z.string().max(BOARD_TEXT).optional(),
+  result: z.string().max(BOARD_TEXT).optional(),
+  blockedReason: z.string().max(BOARD_TEXT).optional(),
+  size: z.enum(CARD_SIZES).nullable().optional(),
+  priority: z.enum(CARD_PRIORITIES).optional(),
+  assignee: z.string().max(128).nullable().optional(),
+  needsReview: z.boolean().optional(),
+  dependsOn: z.array(CardRef).max(50).optional(),
+  acceptance: z.array(z.string().max(1024)).max(50).optional(),
+  addAcceptance: z.array(z.string().max(1024)).max(50).optional(),
+  check: z.array(z.number().int()).max(50).optional(),
+  uncheck: z.array(z.number().int()).max(50).optional(),
+  projectId: z.number().int().nullable().optional(),
+  log: z.string().max(BOARD_TEXT).optional(),
+  comment: z.string().max(MAX_TEXT).optional(),
+}).strict();
+
+const CardMoveSchema = z.object({
+  to: z.enum(CARD_STATUSES),
+  reason: z.string().max(BOARD_TEXT).optional(),
+  result: z.string().max(BOARD_TEXT).optional(),
+  comment: z.string().max(MAX_TEXT).optional(),
+  version: z.number().int().optional(),
+}).strict();
+
+const CardReorderSchema = z.object({ after: CardRef.nullable().optional(), before: CardRef.nullable().optional() }).strict();
+
+const ProjectCreateSchema = z.object({ name: z.string().max(256), description: z.string().max(BOARD_TEXT).optional() }).strict();
+
+const ProjectPatchSchema = z.object({
+  name: z.string().max(256).optional(),
+  description: z.string().max(BOARD_TEXT).optional(),
+  archived: z.boolean().optional(),
 }).strict();
 
 const TeamCreateSchema = z.object({
@@ -353,10 +416,12 @@ export interface WebApiContext {
   readonly scheduler: {
     db: {
       listTasks(opts?: { assignee?: string; status?: string }): unknown[];
-      createTask(params: { title: string; description?: string; priority?: string; assignee?: string; created_by: string }): unknown;
-      updateTask(id: string, params: Record<string, unknown>): unknown;
-      claimTask(id: string, assignee: string): unknown;
-      completeTask(id: string, result?: string): unknown;
+      createTask(params: { title: string; description?: string; priority?: string; assignee?: string; created_by: string }, by?: BoardActor): unknown;
+      updateTask(id: string, params: Record<string, unknown>, by?: BoardActor): unknown;
+      claimTask(id: string, assignee: string, by?: BoardActor): unknown;
+      completeTask(id: string, result?: string, by?: BoardActor): unknown;
+      /** The task board on the same table (scheduler/task-board.ts); absent in a hand-built context. */
+      board?: TaskBoard;
     };
     list(target?: string): unknown[];
     create(params: unknown): unknown;
@@ -971,6 +1036,58 @@ function webPersonOr401(req: IncomingMessage, res: ServerResponse, url: URL, ctx
   if (!p) json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
   return p;
 }
+/**
+ * Who a dashboard request acts as on the task board. The person only through a signed-in local session: the header
+ * token is the CLI's or a script's (any agent on this machine can read the token file), and the temporary public link
+ * carries no verified authority (docs/web-dashboard.md) — either is a script, held to the rules an instance is held to,
+ * so neither confirms work waiting for the person.
+ */
+function boardActor(req: IncomingMessage, url: URL, ctx: WebApiContext, p: WebPerson): BoardActor {
+  if (gatewayRequestContext(req)) return { kind: "script", name: "public-link" };
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  return v.kind === "allow" && v.via === "session" ? { kind: "person", name: p.name } : { kind: "script", name: "web-token" };
+}
+
+/**
+ * A board refusal as the dashboard reads it: the board's sentence, its code and the status that fits, and — when the
+ * person can meet it — the key and values the page says it with in its own language.
+ */
+function boardError(res: ServerResponse, err: unknown): void {
+  if (res.headersSent) return;
+  if (err instanceof TaskBoardError) {
+    const status = err.code === "not_found" ? 404 : err.code === "forbidden" ? 403 : err.code === "conflict" ? 409 : 400;
+    json(res, status, { error: err.message, code: err.code, ...(err.key ? { key: err.key, args: err.args } : {}) });
+    return;
+  }
+  json(res, 400, { error: (err as Error).message });
+}
+
+/**
+ * One board write from the dashboard: the body read and checked, the request still allowed, the person asked for
+ * again now the body is in (#1827), then the write as that person. The board's own routes take a signed-in session
+ * only (instances use their task tool, scripts the old /ui/tasks routes).
+ */
+function boardWrite<T>(
+  req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, board: TaskBoard, schema: z.ZodType<T>,
+  write: (body: T, person: BoardActor) => unknown,
+): void {
+  void (async () => {
+    try {
+      const body = await parseBody(req);
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const parsed = parseOrReject(schema, body, res);
+      if (!parsed) return;
+      const person = webPersonOr401(req, res, url, ctx);
+      if (!person) return;
+      const actor = boardActor(req, url, ctx, person);
+      if (actor.kind !== "person") { json(res, 403, { error: "The task board takes changes from a signed-in dashboard", code: "forbidden", key: "signed_in_only" }); return; }
+      json(res, 200, write(parsed, actor));
+    } catch (err) {
+      boardError(res, err);
+    }
+  })();
+}
+
 /** #1827: what the page's profile card reads — the name they chose (or null), the one in use, and how agents know them. */
 function profileBody(p: WebPerson): Record<string, unknown> {
   return { name: p.set ? p.name : null, shown: p.name, id: p.userId, bound: p.bound, ...(p.platformName !== undefined ? { platform_name: p.platformName } : {}) };
@@ -1957,6 +2074,12 @@ export function handleWebRequest(
     return true;
   }
 
+  // #2246: the public link writes no task — the old list's create and update are board writes now (see below).
+  if (method === "POST" && (path === "/ui/tasks" || /^\/ui\/tasks\/[^/]+$/.test(path)) && gatewayRequestContext(req)) {
+    json(res, 403, { error: "task_board_not_over_public_link", code: "forbidden", key: "not_over_public_link" });
+    return true;
+  }
+
   if (method === "POST" && path === "/ui/tasks") {
     if (!ctx.scheduler) {
       json(res, 500, { error: "Scheduler not initialized" });
@@ -1976,12 +2099,98 @@ export function handleWebRequest(
           priority: parsed.priority,
           assignee: parsed.assignee,
           created_by: person.name,                                           // #1827
-        });
+        }, boardActor(req, url, ctx, person));
         json(res, 200, task);
       } catch (err) {
         json(res, 400, { error: (err as Error).message });
       }
     })();
+    return true;
+  }
+
+  // ── Task board (scheduler/task-board.ts) ──────────────
+  // Reads are the session's; every write is the signed-in person's, through the same rules an instance's tools use.
+
+  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects")) {
+    const board = ctx.scheduler?.db.board;
+    if (!board) { json(res, 503, { error: "The task board is not available" }); return true; }
+    // The temporary public link reads the board and changes nothing on it: confirming, sending back, cancelling and
+    // assigning are the person's authority, which the public link never carries (docs/web-dashboard.md).
+    const gateway = gatewayRequestContext(req);
+    if (gateway && method !== "GET") { json(res, 403, { error: "task_board_not_over_public_link", code: "forbidden", key: "not_over_public_link" }); return true; }
+    // …nor shows the cards of instances kept out of sight (cross_instance_visibility: hidden).
+    const fleet = ctx.fleetConfig as Parameters<typeof crossInstanceVisibility>[0];
+    const hidden = (c: { assignee: string | null; createdBy: string }) => !!gateway
+      && [c.assignee, c.createdBy].some((n) => !!n && !!ctx.fleetConfig?.instances?.[n] && crossInstanceVisibility(fleet, n) === "hidden");
+    const card = /^\/ui\/tasks\/cards\/([^/]+)(?:\/(move|reorder))?$/.exec(path);
+    const project = /^\/ui\/tasks\/projects\/(\d+)$/.exec(path);
+    try {
+      const ref = card ? decodeURIComponent(card[1]!) : "";
+      if (method === "GET" && path === "/ui/tasks/board") {
+        // A page that has this revision already is told so, not sent the board again.
+        const rev = board.revision();
+        if (url.searchParams.get("rev") === String(rev)) { json(res, 200, { rev, unchanged: true }); return true; }
+        const cards = board.boardCards(undefined, url.searchParams.get("done") === "all").filter((c) => !hidden(c));
+        json(res, 200, { rev, cards: board.views(cards), projects: board.listProjects(true), stats: board.projectStats() });
+        return true;
+      }
+      if (method === "GET" && path === "/ui/tasks/search") {
+        const names = new Map(board.listProjects(true).map((p) => [p.id, p.name]));
+        const hits = board.search(url.searchParams.get("q") ?? "", Number(url.searchParams.get("limit")) || 20).filter((h) => !hidden(h.card));
+        const views = board.views(hits.map((h) => h.card));
+        const results = hits.map(({ card: c, match }, i) => ({
+          card: views[i],
+          match,
+          project: c.projectId === null ? null : names.get(c.projectId) ?? null,
+          parentTitle: c.parent ? board.findCard(c.parent)?.title ?? null : null,
+        }));
+        json(res, 200, { results });
+        return true;
+      }
+      if (method === "GET" && card && !card[2]) {
+        const found = board.getCard(ref);
+        if (hidden(found)) { json(res, 404, { error: "no such card", code: "not_found" }); return true; }
+        json(res, 200, board.detail(ref));
+        return true;
+      }
+      if (method === "POST" && path === "/ui/tasks/cards") {
+        boardWrite(req, res, url, ctx, board, CardCreateSchema, (spec, person) => {
+          const { cards, said } = board.createCards(person, { cards: [spec] });
+          return { card: board.view(cards[0]!), notes: said };
+        });
+        return true;
+      }
+      if (method === "POST" && card) {
+        if (card[2] === "move") {
+          boardWrite(req, res, url, ctx, board, CardMoveSchema, ({ to, ...move }, person) => {
+            const { card: moved, said } = board.moveCard(person, ref, to, move);
+            return { card: board.view(moved), notes: said };
+          });
+        } else if (card[2] === "reorder") {
+          boardWrite(req, res, url, ctx, board, CardReorderSchema, ({ after, before }, person) => ({ card: board.view(board.reorder(person, ref, after ?? null, before ?? null)) }));
+        } else {
+          boardWrite(req, res, url, ctx, board, CardPatchSchema, (patch, person) => {
+            const { card: updated, said } = board.updateCard(person, ref, patch);
+            return { card: board.view(updated), notes: said };
+          });
+        }
+        return true;
+      }
+      if (method === "POST" && path === "/ui/tasks/projects") {
+        boardWrite(req, res, url, ctx, board, ProjectCreateSchema, (input, person) => ({ project: board.createProject(person, input) }));
+        return true;
+      }
+      if (method === "POST" && project) {
+        boardWrite(req, res, url, ctx, board, ProjectPatchSchema, (patch, person) => ({ project: board.updateProject(person, Number(project[1]), patch) }));
+        return true;
+      }
+    } catch (err) {
+      // A malformed %-escape in the card's address is the caller's mistake, not the server's.
+      if (err instanceof URIError) { json(res, 400, { error: "bad card reference", code: "invalid" }); return true; }
+      boardError(res, err);
+      return true;
+    }
+    json(res, 404, { error: "Not found" });
     return true;
   }
 
@@ -1991,24 +2200,27 @@ export function handleWebRequest(
       json(res, 500, { error: "Scheduler not initialized" });
       return true;
     }
-    const id = decodeURIComponent(taskMatch[1]);
     (async () => {
       try {
+        const id = decodeURIComponent(taskMatch[1]);
         const body = await parseBody(req);
         if (!permitWebContinuation(req, res, ctx)) return;
         const parsed = parseOrReject(TaskUpdateSchema, body, res);
         if (!parsed) return;
         let result: unknown;
+        // #1827: the person, who is also the default assignee of a claim; the task board's review gate needs to know
+        // a person (not an instance) made the move.
+        const person = webPersonOr401(req, res, url, ctx);
+        if (!person) return;
+        const by = boardActor(req, url, ctx, person);
         if (parsed.action === "claim") {
-          const person = parsed.assignee ? null : webPersonOr401(req, res, url, ctx);   // #1827: the default is the person
-          if (!parsed.assignee && !person) return;
-          result = ctx.scheduler!.db.claimTask(id, parsed.assignee || person!.name);
+          result = ctx.scheduler!.db.claimTask(id, parsed.assignee || person.name, by);
         } else if (parsed.action === "complete") {
-          result = ctx.scheduler!.db.completeTask(id, parsed.result);
+          result = ctx.scheduler!.db.completeTask(id, parsed.result, by);
         } else {
           // Strip action before passing remaining fields to updateTask
           const { action: _a, ...rest } = parsed;
-          result = ctx.scheduler!.db.updateTask(id, rest);
+          result = ctx.scheduler!.db.updateTask(id, rest, by);
         }
         json(res, 200, result);
       } catch (err) {

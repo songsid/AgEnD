@@ -11,6 +11,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { SchedulerDb } from "../src/scheduler/db.js";
+
+/** Who acts: the task tool's instance (the board requires one). */
+const AGENT = { kind: "instance" as const, name: "agent" };
 import { Scheduler } from "../src/scheduler/index.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import {
@@ -71,7 +74,7 @@ describe("item 1 — live-only default (real HTTP handler)", () => {
     const { fm, db } = makeFleet();
     const t1 = db.createTask({ title: "open one", created_by: "x" });
     const t2 = db.createTask({ title: "done one", created_by: "x" });
-    db.updateTask(t2.id, { status: "done" });
+    db.updateTask(t2.id, { status: "done" }, AGENT);
     const result = await call(fm, "list");
     const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[] }).tasks;
     const ids = (tasks as Array<{ id: string }>).map(t => t.id);
@@ -82,7 +85,7 @@ describe("item 1 — live-only default (real HTTP handler)", () => {
   it("mutation proof: removing live-only default returns done tasks → test goes red", async () => {
     const { fm, db } = makeFleet();
     const done = db.createTask({ title: "done one", created_by: "x" });
-    db.updateTask(done.id, { status: "done" });
+    db.updateTask(done.id, { status: "done" }, AGENT);
     const result = await call(fm, "list");
     const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[] }).tasks;
     // With live-only: done task not in list. Without it: it would be there.
@@ -92,7 +95,7 @@ describe("item 1 — live-only default (real HTTP handler)", () => {
   it("filter_status=done returns done tasks (explicit override)", async () => {
     const { fm, db } = makeFleet();
     const done = db.createTask({ title: "done one", created_by: "x" });
-    db.updateTask(done.id, { status: "done" });
+    db.updateTask(done.id, { status: "done" }, AGENT);
     const result = await call(fm, "list", { filter_status: "done" });
     const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[] }).tasks;
     expect((tasks as Array<{ id: string }>).some(t => t.id === done.id)).toBe(true);
@@ -107,7 +110,7 @@ describe("item 2 — whitespace/empty filter normalization (real handler)", () =
     // Create 110 open tasks + 2 done tasks
     for (let i = 0; i < 110; i++) db.createTask({ title: `t${i}`, created_by: "x" });
     const doneTask = db.createTask({ title: "done-one", created_by: "x" });
-    db.updateTask(doneTask.id, { status: "done" });
+    db.updateTask(doneTask.id, { status: "done" }, AGENT);
 
     const result = await call(fm, "list", { filter_status: " \t " });
     const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[]; omitted: number }).tasks;
@@ -122,7 +125,7 @@ describe("item 2 — whitespace/empty filter normalization (real handler)", () =
     const { fm, db } = makeFleet();
     for (let i = 0; i < 110; i++) db.createTask({ title: `t${i}`, created_by: "x" });
     const doneTask = db.createTask({ title: "done-one", created_by: "x" });
-    db.updateTask(doneTask.id, { status: "done" });
+    db.updateTask(doneTask.id, { status: "done" }, AGENT);
 
     const result = await call(fm, "list", { filter_status: [" ", "\t"] });
     const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[]; omitted: number }).tasks;
@@ -141,9 +144,11 @@ describe("item 3 — compact rows + verbose + get (real HTTP handler)", () => {
     const result = await call(fm, "list");
     const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[] }).tasks;
     const row = (tasks as TaskCompact[])[0]!;
+    // The task board (#2246 step 2): a row also carries its card number, the name the dashboard and the person use.
     expect(Object.keys(row).sort()).toEqual(
-      ["assignee", "id", "priority", "status", "title", "updated_at"].sort(),
+      ["assignee", "code", "id", "priority", "status", "title", "updated_at"].sort(),
     );
+    expect(row.code).toBe("M-1");
     // Mutation proof: adding description to compact row → this test goes red.
     expect("description" in row).toBe(false);
     expect("result" in row).toBe(false);
@@ -221,7 +226,7 @@ describe("item 5 — small write acks (real HTTP handler)", () => {
   it("done returns exactly {id, status, updated_at}", async () => {
     const { fm, db } = makeFleet();
     const t = db.createTask({ title: "t", created_by: "x" });
-    db.claimTask(t.id, "x");
+    db.claimTask(t.id, "x", AGENT);
     const result = await call(fm, "done", { id: t.id, result: "done" });
     expect(Object.keys(result as object).sort()).toEqual(ACK_KEYS);
     expect((result as { status: string }).status).toBe("done");
@@ -289,28 +294,28 @@ describe("item 7 — done from open (real DB)", () => {
 
   it("completes a task that is open (without claiming first)", () => {
     const t = db.createTask({ title: "x", created_by: "y" });
-    const r = db.completeTask(t.id, "done directly");
+    const r = db.completeTask(t.id, "done directly", AGENT);
     expect(r.status).toBe("done");
     expect(r.result).toBe("done directly");
   });
 
   it("completes a claimed task normally", () => {
     const t = db.createTask({ title: "x", created_by: "y" });
-    db.claimTask(t.id, "agent");
-    const r = db.completeTask(t.id);
+    db.claimTask(t.id, "agent", AGENT);
+    const r = db.completeTask(t.id, undefined, AGENT);
     expect(r.status).toBe("done");
   });
 
   it("rejects completing an already-done task", () => {
     const t = db.createTask({ title: "x", created_by: "y" });
-    db.completeTask(t.id);
-    expect(() => db.completeTask(t.id)).toThrow(/done|cancel|block/i);
+    db.completeTask(t.id, undefined, AGENT);
+    expect(() => db.completeTask(t.id, undefined, AGENT)).toThrow(/done|cancel|block/i);
   });
 
   it("rejects completing a cancelled task", () => {
     const t = db.createTask({ title: "x", created_by: "y" });
-    db.updateTask(t.id, { status: "cancelled" });
-    expect(() => db.completeTask(t.id)).toThrow(/done|cancel|block/i);
+    db.updateTask(t.id, { status: "cancelled" }, AGENT);
+    expect(() => db.completeTask(t.id, undefined, AGENT)).toThrow(/done|cancel|block/i);
   });
 });
 

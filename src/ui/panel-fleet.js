@@ -1,5 +1,5 @@
-// #1408 step 1: the Fleet panel (/ui/fleet[/<tab>]) — tasks, schedules, teams and the fleet's config — and the
-// "New instance" dialog. Behind the session gate (/ui/js/), loaded the first time it is opened.
+// #1408 step 1: the Fleet panel (/ui/fleet[/<tab>]) — tasks (the task board: fleet-tasks.js), schedules, teams and the
+// fleet's config — and the "New instance" dialog. Behind the session gate (/ui/js/), loaded the first time it is opened.
 //
 // Opening a tab reads its list: a person's navigation, so it counts as use, as the old tab click did (#1374 — no timer
 // here re-reads anything). Every read is under the navigation's lease: a list that arrives after the person moved on
@@ -23,6 +23,7 @@ import { labelOf } from "/assets/instance-nav.js";
 import { CacheReport } from "./fleet-cache.js";
 import { UsageTab } from "./fleet-usage.js";
 import { BackendSelect, ModelSelect } from "./settings-dialogs.js";
+import { TaskBoardTab } from "./fleet-tasks.js";
 
 /** #2015: one of the largest processes as text: "python3 18.1 GB (dev-a)". */
 export function memoryHogText(p) {
@@ -39,13 +40,11 @@ register("fleet", {
     hostMemory_top: "Largest: {0}", hostMemory_ownerFleet: "the fleet", hostMemory_ownerTmux: "tmux", hostMemory_ownerOther: "not an instance",
     title: "Fleet", tasks: "Tasks", schedules: "Schedules", teams: "Teams", org: "Org chart", cache: "Cache", usage: "Usage", config: "Config",
     docs: "Docs", docsNewTab: "Docs (opens in a new tab)",
-    newTask: "New task", newSchedule: "New schedule", newTeam: "New team",
-    noTasks: "No tasks yet", noTasksHint: "Create one to coordinate fleet work.", noSchedules: "No schedules yet", noSchedulesHint: "Automate recurring work with cron.",
-    noTeams: "No teams yet", noTeamsHint: "Group instances for coordinated work.", countTasks: "{0} tasks", countSchedules: "{0} schedules", countTeams: "{0} teams", countTask: "1 task", countSchedule: "1 schedule", countTeam: "1 team",
-    claim: "Claim", done: "Done", delete: "Delete", on: "on", off: "off", cancel: "Cancel", create: "Create", creating: "Creating…", save: "Save changes",
-    taskTitle: "Title", taskDesc: "Description", priority: "Priority", assignee: "Assignee", unassigned: "Unassigned",
-    pNormal: "Normal", pLow: "Low", pHigh: "High", pUrgent: "Urgent",
-    cron: "Cron expression", message: "Message", target: "Target instance", label: "Label", teamName: "Team name", members: "Members",
+    newSchedule: "New schedule", newTeam: "New team",
+    noSchedules: "No schedules yet", noSchedulesHint: "Automate recurring work with cron.",
+    noTeams: "No teams yet", noTeamsHint: "Group instances for coordinated work.", countSchedules: "{0} schedules", countTeams: "{0} teams", countSchedule: "1 schedule", countTeam: "1 team",
+    delete: "Delete", on: "on", off: "off", cancel: "Cancel", create: "Create", creating: "Creating…", save: "Save changes",
+    taskDesc: "Description", cron: "Cron expression", message: "Message", target: "Target instance", label: "Label", teamName: "Team name", members: "Members",
     // #1724: schedules in words; Edit; once or repeating
     schedOnce: "Once · {0}", schedNext: "next {0}", schedRetrying: "retrying", schedDisabled: "disabled", schedSilent: "silent", schedTz: "Timezone: {0}",
     editSchedule: "Edit schedule", edit: "Edit", scheduleSaved: "Schedule saved", schedRepeat: "Repeat", schedOnceMode: "Once",
@@ -53,10 +52,10 @@ register("fleet", {
     schedTzBad: "Unknown timezone: {0}",
     cronEveryMinute: "Every minute", cronEveryMinutes: "Every {0} minutes", cronEveryHours: "Every {0} hours", cronDaily: "Daily {0}",
     cronWeekdays: "Weekdays {0}", cronDays: "{0} {1}", cronMonthly: "Day {0} of each month {1}", dayNames: "Sun,Mon,Tue,Wed,Thu,Fri,Sat", dayJoin: ", ",
-    titleRequired: "Title required", scheduleFieldsRequired: "Cron, message, and target required", teamFieldsRequired: "Name and at least one member required",
-    deleteSchedule: "Delete this schedule?", deleteTeam: "Delete team “{0}”?", taskCreated: "Task created", scheduleCreated: "Schedule created", scheduleDeleted: "Schedule deleted",
+    scheduleFieldsRequired: "Cron, message, and target required", teamFieldsRequired: "Name and at least one member required",
+    deleteSchedule: "Delete this schedule?", deleteTeam: "Delete team “{0}”?", scheduleCreated: "Schedule created", scheduleDeleted: "Schedule deleted",
     teamCreated: "Team created", teamDeleted: "Team deleted", teamUpdated: "Team updated", edit: "Edit", editTeam: "Edit team",
-    teamNoRename: "Renaming isn't supported — create a new team and delete this one.", taskDone: "Task updated", configSaved: "Config saved", configRestart: " (restart the fleet to apply channel changes)",
+    teamNoRename: "Renaming isn't supported — create a new team and delete this one.", configSaved: "Config saved", configRestart: " (restart the fleet to apply channel changes)",
     channel: "Channel", type: "Type", tokenEnv: "Bot token env", groupId: "Group ID", show: "Show", hide: "Hide", access: "Access control", mode: "Mode", locked: "Locked", open: "Open",
     allowedUsers: "Allowed users", allowedUsersNote: "Comma-separated user IDs", defaults: "Defaults", backend: "Backend", roots: "Project roots", addRoot: "Add root", removeRoot: "Remove",
     saveNote: "Saving rewrites fleet.yaml (its comments are lost).",
@@ -71,23 +70,21 @@ register("fleet", {
     hostMemory_top: "最大：{0}", hostMemory_ownerFleet: "fleet 本身", hostMemory_ownerTmux: "tmux", hostMemory_ownerOther: "不屬於任何 instance",
     title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", org: "組織圖", cache: "快取", usage: "用量", config: "設定",
     docs: "文件", docsNewTab: "文件（在新分頁開啟）",
-    newTask: "新增 task", newSchedule: "新增排程", newTeam: "新增 team",
-    noTasks: "還沒有 task", noTasksHint: "建立一個來協調 fleet 的工作。", noSchedules: "還沒有排程", noSchedulesHint: "用 cron 自動執行例行工作。",
-    noTeams: "還沒有 team", noTeamsHint: "把 instance 分組一起工作。", countTasks: "{0} 個 task", countSchedules: "{0} 個排程", countTeams: "{0} 個 team", countTask: "1 個 task", countSchedule: "1 個排程", countTeam: "1 個 team",
-    claim: "認領", done: "完成", delete: "刪除", on: "開", off: "關", cancel: "取消", create: "建立", creating: "建立中…", save: "儲存變更",
-    taskTitle: "標題", taskDesc: "說明", priority: "優先順序", assignee: "負責人", unassigned: "未指派",
-    pNormal: "一般", pLow: "低", pHigh: "高", pUrgent: "緊急",
-    cron: "Cron 表示式", message: "訊息", target: "目標 instance", label: "標籤", teamName: "Team 名稱", members: "成員",
+    newSchedule: "新增排程", newTeam: "新增 team",
+    noSchedules: "還沒有排程", noSchedulesHint: "用 cron 自動執行例行工作。",
+    noTeams: "還沒有 team", noTeamsHint: "把 instance 分組一起工作。", countSchedules: "{0} 個排程", countTeams: "{0} 個 team", countSchedule: "1 個排程", countTeam: "1 個 team",
+    delete: "刪除", on: "開", off: "關", cancel: "取消", create: "建立", creating: "建立中…", save: "儲存變更",
+    taskDesc: "說明", cron: "Cron 表示式", message: "訊息", target: "目標 instance", label: "標籤", teamName: "Team 名稱", members: "成員",
     schedOnce: "一次 · {0}", schedNext: "下次 {0}", schedRetrying: "重試中", schedDisabled: "已停用", schedSilent: "靜默", schedTz: "時區：{0}",
     editSchedule: "編輯排程", edit: "編輯", scheduleSaved: "已儲存排程", schedRepeat: "重複", schedOnceMode: "一次",
     schedWhen: "日期與時間", schedTimezone: "時區", schedEnabled: "啟用", schedWhenIn: "以 {0} 時間", schedWhenRequired: "請選擇日期與時間",
     schedTzBad: "不認得的時區：{0}",
     cronEveryMinute: "每分鐘", cronEveryMinutes: "每 {0} 分鐘", cronEveryHours: "每 {0} 小時", cronDaily: "每天 {0}",
     cronWeekdays: "每週一到五 {0}", cronDays: "每週{0} {1}", cronMonthly: "每月 {0} 日 {1}", dayNames: "日,一,二,三,四,五,六", dayJoin: "、",
-    titleRequired: "必須填寫標題", scheduleFieldsRequired: "必須填寫 Cron、訊息與目標 instance", teamFieldsRequired: "必須填寫名稱並選擇至少一名成員",
-    deleteSchedule: "確定刪除此排程嗎？", deleteTeam: "確定刪除 team「{0}」嗎？", taskCreated: "Task 已建立", scheduleCreated: "排程已建立", scheduleDeleted: "排程已刪除",
+    scheduleFieldsRequired: "必須填寫 Cron、訊息與目標 instance", teamFieldsRequired: "必須填寫名稱並選擇至少一名成員",
+    deleteSchedule: "確定刪除此排程嗎？", deleteTeam: "確定刪除 team「{0}」嗎？", scheduleCreated: "排程已建立", scheduleDeleted: "排程已刪除",
     teamCreated: "Team 已建立", teamDeleted: "Team 已刪除", teamUpdated: "Team 已更新", edit: "編輯", editTeam: "編輯 team",
-    teamNoRename: "不支援重新命名：請建立新的 team，再刪除這個。", taskDone: "Task 已更新", configSaved: "設定已儲存", configRestart: "（請重新啟動 fleet 以套用頻道變更）",
+    teamNoRename: "不支援重新命名：請建立新的 team，再刪除這個。", configSaved: "設定已儲存", configRestart: "（請重新啟動 fleet 以套用頻道變更）",
     channel: "頻道", type: "類型", tokenEnv: "Bot token 環境變數", groupId: "Group ID", show: "顯示", hide: "隱藏", access: "存取控制", mode: "模式", locked: "鎖定", open: "開放",
     allowedUsers: "允許的使用者", allowedUsersNote: "以逗號分隔的使用者 ID", defaults: "預設值", backend: "Backend", roots: "專案根目錄", addRoot: "新增根目錄", removeRoot: "移除",
     saveNote: "儲存會改寫 fleet.yaml（其中的註解會遺失）。",
@@ -143,7 +140,7 @@ export function FleetPanel({ route, navKey }) {
   const tab = route.tab;
   useEffect(() => { setTitle(`${t("fleet.title")} · ${t(`fleet.${tab}`)}`); }, [tab, navKey]);
   useEffect(() => { rememberFleetTab(tab); }, [tab]);   // #2183: the sidebar's and the phone's Fleet reopen it
-  const Body = { tasks: Tasks, schedules: Schedules, teams: Teams, org: Org, cache: Cache, usage: UsageTab, config: Config }[tab] || Tasks;
+  const Body = { tasks: TaskBoardTab, schedules: Schedules, teams: Teams, org: Org, cache: Cache, usage: UsageTab, config: Config }[tab] || TaskBoardTab;
   // #1685: host memory pressure slowing or holding new agents — shown here, where macOS's routine "elevated" is not a chat notice.
   const { hostMemory, hostMemoryTop } = useStore(appStore);
   // #2015: and which processes hold the most, and whose — text only (never chat, #1712).
@@ -153,7 +150,7 @@ export function FleetPanel({ route, navKey }) {
     <${PanelHeader} title=${t("fleet.title")} sub=${sub}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
     <nav data-trust="panel-navigation" class="seg" aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
       aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>
-    <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "org" || tab === "cache" || tab === "usage" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
+    <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "tasks" || tab === "org" || tab === "cache" || tab === "usage" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
   </div>`;
 }
 
@@ -170,28 +167,6 @@ function Loaded({ state, children }) {
   if (!state) return html`<${Skeleton} lines=${4} />`;
   if (state.error) return html`<${ErrorState} onRetry=${renavigate} />`;
   return children(state.data);
-}
-
-function Tasks({ lease }) {
-  const [version, setVersion] = useState(0);
-  const [creating, setCreating] = useState(false);
-  const state = useLoad(lease, "/ui/tasks", version);
-  async function act(id, action) {
-    const r = await api("POST", `/ui/tasks/${encodeURIComponent(id)}`, { action });
-    if (r.error) toast(r.error, false); else { toast(t("fleet.taskDone")); setVersion(v => v + 1); }
-  }
-  return html`<${Loaded} state=${state}>${(d) => {
-    const tasks = d.tasks || [];
-    return html`<${ListHead} count=${tasks.length === 1 ? t("fleet.countTask") : t("fleet.countTasks", tasks.length)} label=${t("fleet.newTask")} action=${{ onClick: () => setCreating(true) }} />
-      ${tasks.length ? html`<ul class="rows">${tasks.map(x => html`<li key=${x.id} class="row-item">
-        <span class=${`pill ${x.status}`}>${x.status}</span><span class="grow">${x.title}</span>
-        ${x.assignee ? html`<a class="link" href=${chatPath(x.assignee)}>${x.assignee}</a>` : null}
-        ${x.status === "open" ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => act(x.id, "claim")}>${t("fleet.claim")}</button>` : null}
-        ${x.status === "claimed" ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => act(x.id, "complete")}>${t("fleet.done")}</button>` : null}
-      </li>`)}</ul>` : html`<${Empty} icon="tasks" title=${t("fleet.noTasks")} hint=${t("fleet.noTasksHint")} />`}
-`;
-  }}</${Loaded}>
-  ${creating ? html`<${CreateTask} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
 }
 
 /** #1724: what a row says about when it runs — words for a cron, "Once · <time>" for a one-shot; never empty or "null". */
@@ -383,25 +358,6 @@ export function FormDialog({ title, onClose, submit, children, ready = true }) {
     <form class="form" onSubmit=${(e) => { e.preventDefault(); go(); }}><fieldset class="form" disabled=${busy}>${children}</fieldset></form></${Dialog}>`;
 }
 const field = (label, input) => html`<label class="field"><span>${label}</span>${input}</label>`;
-
-function CreateTask({ onClose, onDone }) {
-  const { instances } = useStore(appStore);
-  const [f, setF] = useState({ title: "", desc: "", priority: "normal", assignee: "" });
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  const submit = { path: "/ui/tasks", done: t("fleet.taskCreated"), after: onDone, collect: () => {
-    if (!f.title.trim()) { toast(t("fleet.titleRequired"), false); return null; }
-    const body = { title: f.title.trim(), priority: f.priority };
-    if (f.desc.trim()) body.description = f.desc.trim();
-    if (f.assignee) body.assignee = f.assignee;
-    return body;
-  } };
-  return html`<${FormDialog} title=${t("fleet.newTask")} onClose=${onClose} submit=${submit}>
-    ${field(`${t("fleet.taskTitle")} *`, html`<input value=${f.title} onInput=${set("title")} required />`)}
-    ${field(t("fleet.taskDesc"), html`<input value=${f.desc} onInput=${set("desc")} />`)}
-    ${field(t("fleet.priority"), html`<select value=${f.priority} onChange=${set("priority")}><option value="normal">${t("fleet.pNormal")}</option><option value="low">${t("fleet.pLow")}</option><option value="high">${t("fleet.pHigh")}</option><option value="urgent">${t("fleet.pUrgent")}</option></select>`)}
-    ${field(t("fleet.assignee"), html`<select value=${f.assignee} onChange=${set("assignee")}><option value="">${t("fleet.unassigned")}</option>${instances.map(i => html`<option key=${i.name} value=${i.name}>${i.name}</option>`)}</select>`)}
-  </${FormDialog}>`;
-}
 
 /**
  * #1724: a wall-clock date and time ("YYYY-MM-DDTHH:MM", a datetime-local value) read in `tz`, as the ISO time with

@@ -117,27 +117,43 @@ export const DeleteScheduleArgs = z.object({
 // ── Fleet Task Board ────────────────────────────────────────────────────
 
 export const TaskBoardArgs = z.object({
-  action: z.enum(["create", "list", "claim", "done", "update", "get"])
+  action: z.enum(["create", "list", "claim", "done", "update", "get", "mine", "move", "projects"])
     .describe("Operation to perform"),
-  title: z.string().optional().describe("Task title (create)"),
-  description: z.string().optional().describe("Task details (create)"),
+  title: z.string().optional().describe("Task title (create/update)"),
+  description: z.string().optional().describe("Task details; a board card's goal (create/update)"),
   priority: z.enum(["low", "normal", "high", "urgent"]).optional()
     .describe("Priority (create/update)"),
   assignee: z.string().optional().describe("Instance name to assign (create/update)"),
   depends_on: z.array(z.string()).optional()
     .describe("Task IDs this depends on (create)"),
-  id: z.string().optional().describe("Task ID or 8-hex id prefix (claim/done/update/get)"),
+  id: z.string().optional().describe("Task ID, 8-hex id prefix, or card number like M-3 (claim/done/update/get)"),
   result: z.string().optional().describe("Completion summary (done)"),
-  status: z.enum(["open", "claimed", "done", "blocked", "cancelled"]).optional()
+  status: z.enum(["open", "claimed", "review", "done", "blocked", "cancelled"]).optional()
     .describe("New status (update)"),
   filter_assignee: z.string().optional().describe("Filter by assignee (list)"),
   filter_status: z.union([
-    z.enum(["open", "claimed", "done", "blocked", "cancelled"]),
-    z.array(z.enum(["open", "claimed", "done", "blocked", "cancelled"])),
+    z.enum(["open", "claimed", "review", "done", "blocked", "cancelled"]),
+    z.array(z.enum(["open", "claimed", "review", "done", "blocked", "cancelled"])),
   ]).optional()
-    .describe("Filter by status (list) — a single status or an array of statuses. Omit for live-only (open/claimed/blocked)."),
+    .describe("Filter by status (list) — a single status or an array of statuses. Omit for live-only (open/claimed/blocked/review)."),
   verbose: z.boolean().optional()
     .describe("list: return full task records instead of compact rows (default false)"),
+  // The task board (docs/design/task-board.md): naming one of these makes create/update a board card's.
+  project: z.union([z.string(), z.number().int()]).optional().describe("Project name or id: a new main task's (create), a filter (list)"),
+  parent: z.string().optional().describe("Main task number like M-3: a new sub task's (create), its sub tasks (list)"),
+  scope: z.string().optional().describe("Main task: in / out of scope (create/update)"),
+  acceptance: z.array(z.string()).optional().describe("Checklist that defines done, one item each (create/update replaces it)"),
+  check: z.array(z.number().int()).optional().describe("Acceptance items to tick, 1-based (update)"),
+  uncheck: z.array(z.number().int()).optional().describe("Acceptance items to untick, 1-based (update)"),
+  context: z.string().optional().describe("Pointers only: paths, related cards, decisions (create/update)"),
+  state: z.string().optional().describe("Overwritten each time: done / next / watch out, at most 5 lines (update)"),
+  log: z.string().optional().describe("One progress line appended to the card's log (update)"),
+  comment: z.string().optional().describe("A comment on the card (update/move)"),
+  needs_review: z.boolean().optional().describe("Stop at review for the person's confirmation when finished (create/update)"),
+  size: z.enum(["S", "M", "L"]).optional().describe("S small, M one unit, L too big: split it (create/update)"),
+  to: z.enum(["open", "claimed", "review", "done", "blocked", "cancelled"]).optional().describe("New status (move)"),
+  reason: z.string().optional().describe("move: why blocked (who must answer what), cancelled, or acceptance left unchecked"),
+  version: z.number().int().optional().describe("The card version you read; a newer one refuses the write (update/move)"),
 });
 
 // ── Shared Decisions ────────────────────────────────────────────────────

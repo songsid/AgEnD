@@ -45,6 +45,7 @@ afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
   await p.unmount();
   requests.length = 0;
+  (globalThis as any).localStorage.removeItem("agend_tasks_project");     // the board opens on Home, not the last project
   handler = (path) => path.startsWith("/ui/history") ? { messages: [] } : {};
   app.applyStatus({ uptime: 1, instances: [
     { name: "alpha", status: "running", state: "idle", execution_state: "idle" },
@@ -140,45 +141,54 @@ describe("2. a delete that finishes late never takes over the page", () => {
   });
 });
 
+// The Tasks tab is the task board (fleet-tasks.js): a project's tile on Home, the cards waiting for the person.
+const PROJECT = { id: 1, name: "Game", description: "", archived: false, sort: 1, createdAt: "2026-10-20T00:00:00.000Z" };
+const REVIEW_CARD = { id: "M-1", uuid: "u1", kind: "main", projectId: 1, parentId: null, title: "One", status: "review", assignee: "alpha",
+  priority: "normal", size: null, needsReview: true, dependsOn: [], goal: "", scope: "", acceptance: [], context: "", state: "", blockedReason: "",
+  result: "", sort: 1, createdBy: "Ann", version: 3, createdAt: "2026-10-20T00:00:00.000Z", updatedAt: "2026-10-20T00:00:00.000Z",
+  startedAt: null, submittedAt: null, doneAt: null, progress: { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 },
+  unmetDeps: [], commentCount: 0, newCommentCount: 0, lastComment: null };
+const BOARD = { projects: [PROJECT], cards: [REVIEW_CARD] };
+
 describe("alpha.2 sweep: a Fleet read the server refuses is an error, not an empty list", () => {
-  it("/ui/tasks answering 500 { error } shows the error state with Try again — not 'No tasks yet'", async () => {
-    handler = (path) => (path === "/ui/tasks" ? { __status: 500, error: "boom" } : {});
+  it("/ui/tasks/board answering 500 { error } shows the error state with Try again — not an empty board", async () => {
+    handler = (path) => (path === "/ui/tasks/board" ? { __status: 500, error: "boom" } : {});
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|err|en" }));
     await settle(6);
     expect(!!p.root.querySelector(".error-state"), "the error state").toBe(true);
     expect(!!p.root.querySelector(".empty"), "not the empty state").toBe(false);
     expect(!!p.root.querySelector(".error-state button"), "with Try again").toBe(true);
-    handler = (path) => (path === "/ui/tasks" ? { tasks: [] } : {});
+    handler = (path) => (path === "/ui/tasks/board" ? { cards: [], projects: [] } : {});
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|ok|en" }));
     await settle(6);
-    expect(!!p.root.querySelector(".empty"), "an empty list is the empty state").toBe(true);
+    expect(!!p.root.querySelector(".empty"), "an empty board is the empty state").toBe(true);
   });
-  it("one of a thing is singular: '1 task', not '1 tasks'", async () => {
-    handler = (path) => (path === "/ui/tasks" ? { tasks: [{ id: "t1", title: "One", status: "open" }] } : {});
+  it("one of a thing is singular: '1 main task', not '1 main tasks'", async () => {
+    handler = (path) => (path === "/ui/tasks/board" ? BOARD : {});
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|one|en" }));
     await settle(6);
-    expect(p.root.querySelector(".list-head span").textContent).toBe("1 task");
+    expect(p.root.querySelector(".tb-project-meta span").textContent).toBe("1 main task");
   });
 });
 
 describe("3. a Fleet refresh keeps an open form", () => {
-  const TASKS = { tasks: [{ id: "t1", title: "One", status: "open" }] };
-  it("Claim resolves while New task is open with a draft: the same dialog, the same draft", async () => {
-    const claim = gate();
+  it("Confirm resolves while New project is open with a draft: the same dialog, the same draft", async () => {
+    const confirm = gate();
     handler = async (path, init) => {
-      if (path === "/ui/tasks/t1" && init.method === "POST") { await claim.p; return { ok: true }; }
-      if (path === "/ui/tasks") return TASKS;
+      if (path === "/ui/tasks/cards/M-1/move" && init.method === "POST") { await confirm.p; return { card: { ...REVIEW_CARD, status: "done" }, notes: [] }; }
+      if (path === "/ui/tasks/board") return BOARD;
       return {};
     };
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|1|en" }));
     await settle(4);
-    p.root.querySelector(".row-item .btn").click();                 // Claim (held)
-    p.root.querySelector(".list-head .btn").click(); await settle(); // New task
+    p.root.querySelector(".tb-wait-row .btn-primary").click();         // Confirm (held)
+    p.root.querySelector(".list-head .btn").click(); await settle();    // New project
     const dlg = p.root.querySelector("dialog");
-    const title = dlg.querySelector("input");
-    title.value = "my draft"; fire(title, "input"); await settle();
-    claim.open(); await settle(8);
-    expect(requests.filter(r => r === "GET /ui/tasks")).toHaveLength(2);   // the list was refreshed
+    const name = dlg.querySelector("input");
+    name.value = "my draft"; fire(name, "input"); await settle();
+    confirm.open(); await settle(8);
+    expect(requests.filter(r => r.startsWith("POST /ui/tasks/cards/M-1/move"))).toHaveLength(1);
+    expect(requests.filter(r => r === "GET /ui/tasks/board")).toHaveLength(2);   // the board was read again
     expect(p.root.querySelector("dialog")).toBe(dlg);
     expect(p.root.querySelector("dialog input").value).toBe("my draft");
   });
@@ -186,8 +196,8 @@ describe("3. a Fleet refresh keeps an open form", () => {
   it("a form that went away while creating never closes the form that replaced it", async () => {
     const create = gate();
     handler = async (path, init) => {
-      if (path === "/ui/tasks" && init.method === "POST") { await create.p; return { id: "t9" }; }
-      if (path === "/ui/tasks") return TASKS;
+      if (path === "/ui/tasks/projects" && init.method === "POST") { await create.p; return { project: { ...PROJECT, id: 2, name: "first" } }; }
+      if (path === "/ui/tasks/board") return BOARD;
       if (path === "/ui/teams") return { teams: {} };
       return {};
     };
@@ -203,28 +213,136 @@ describe("3. a Fleet refresh keeps an open form", () => {
     const replacement = p.root.querySelector("dialog");
     const t2 = replacement.querySelector("input"); t2.value = "second"; fire(t2, "input"); await settle();
     const gets = requests.filter(r => r === "GET /ui/teams").length;
+    const boards = requests.filter(r => r === "GET /ui/tasks/board").length;
     create.open(); await settle(8);
     expect(p.root.querySelector("dialog")).toBe(replacement);
     expect(replacement.querySelector("input").value).toBe("second");
-    expect(requests.filter(r => r === "GET /ui/teams")).toHaveLength(gets);   // and no refresh it did not ask for
+    expect(requests.filter(r => r === "GET /ui/teams")).toHaveLength(gets);              // and no refresh it did not ask for
+    expect(requests.filter(r => r === "GET /ui/tasks/board")).toHaveLength(boards);
+  });
+});
+
+describe("3a. one answer per card at a time", () => {
+  it("Confirm clicked twice while its move is held sends one move; the button is off meanwhile", async () => {
+    const move = gate();
+    handler = async (path, init) => {
+      if (path === "/ui/tasks/cards/M-1/move" && init.method === "POST") { await move.p; return { card: { ...REVIEW_CARD, status: "done" }, notes: [] }; }
+      if (path === "/ui/tasks/board") return BOARD;
+      return {};
+    };
+    await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|dbl|en" }));
+    await settle(4);
+    const confirm = p.root.querySelector(".tb-wait-row .btn-primary");
+    confirm.click(); confirm.click(); await settle();
+    expect(p.root.querySelector(".tb-wait-row .btn-primary").disabled).toBe(true);
+    move.open(); await settle(8);
+    expect(requests.filter(r => r.startsWith("POST /ui/tasks/cards/M-1/move"))).toHaveLength(1);
+  });
+});
+
+describe("3c. the public link shows the board and changes nothing (the server refuses it too)", () => {
+  afterEach(() => { (globalThis as any).document.body.removeAttribute("data-public-link"); });
+
+  it("a read-only note; no Confirm or Send back, no New project; on a project, no New main task and no dragging", async () => {
+    (globalThis as any).document.body.dataset.publicLink = "1";
+    const open = { ...REVIEW_CARD, id: "M-2", uuid: "u2", status: "open", needsReview: false };
+    handler = (path) => (path === "/ui/tasks/board" ? { ...BOARD, cards: [REVIEW_CARD, open] } : {});
+    await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|link|en" }));
+    await settle(6);
+    expect(p.root.querySelector(".tb-readonly")?.textContent).toContain("read-only");
+    expect(p.root.querySelector(".tb-wait-row")).not.toBeNull();                 // the waiting card is listed…
+    expect(p.root.querySelectorAll(".tb-wait-row .btn")).toHaveLength(0);         // …with nothing to answer it with
+    expect(p.root.querySelector(".list-head .btn")).toBeNull();
+    p.root.querySelector(".tb-project-open").click(); await settle(6);
+    expect(p.root.querySelectorAll(".tb-tile")).toHaveLength(2);
+    expect([...p.root.querySelectorAll(".tb-tile")].map((el: any) => el.getAttribute("draggable"))).toEqual(["false", "false"]);
+    expect([...p.root.querySelectorAll(".btn")].some((b: any) => b.textContent.includes("New main task"))).toBe(false);
+    fire(p.root.querySelector(".tb-tile-title"), "keydown", { key: "ArrowRight", altKey: true }); await settle(4);
+    expect(requests.filter(r => r.startsWith("POST"))).toEqual([]);
+  });
+});
+
+describe("3d. a tile from the keyboard: its title is the button; Alt+arrows move it", () => {
+  const A = { ...REVIEW_CARD, id: "M-1", status: "open", needsReview: false, sort: 1 };
+  const B = { ...REVIEW_CARD, id: "M-2", uuid: "u2", title: "Two", status: "open", needsReview: false, sort: 2 };
+  beforeEach(() => {
+    handler = (path, init) => {
+      if (path === "/ui/tasks/board") return { projects: [PROJECT], cards: [A, B] };
+      if (init.method === "POST" && path.endsWith("/move")) return { card: { ...A, status: "claimed" }, notes: [] };
+      if (init.method === "POST" && path.endsWith("/reorder")) return { card: A };
+      return {};
+    };
+  });
+
+  it("the tile is a group with a real button in it, not a div acting as one", async () => {
+    await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|kb1|en" }));
+    await settle(6);
+    p.root.querySelector(".tb-project-open").click(); await settle(6);
+    const tile = p.root.querySelector(".tb-tile");
+    expect(tile.getAttribute("role")).toBeNull();
+    expect(tile.getAttribute("tabindex")).toBeNull();
+    expect(tile.querySelector(".tb-tile-title").tagName.toLowerCase()).toBe("button");
+  });
+
+  it("Alt+→ moves the card to the next status with the version seen; Alt+↓ puts it after the next card; a plain arrow does nothing", async () => {
+    await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|kb2|en" }));
+    await settle(6);
+    p.root.querySelector(".tb-project-open").click(); await settle(6);
+    const title = () => p.root.querySelector('[data-tile="M-1"] .tb-tile-title');
+    fire(title(), "keydown", { key: "ArrowRight" }); await settle(4);
+    expect(requests.filter(r => r.startsWith("POST"))).toEqual([]);
+    fire(title(), "keydown", { key: "ArrowRight", altKey: true }); await settle(6);
+    expect(requests.filter(r => r.startsWith("POST"))).toEqual(['POST /ui/tasks/cards/M-1/move {"to":"claimed","version":3}']);
+    requests.length = 0;
+    fire(title(), "keydown", { key: "ArrowDown", altKey: true }); await settle(6);
+    expect(requests.filter(r => r.startsWith("POST"))).toEqual(['POST /ui/tasks/cards/M-1/reorder {"after":"M-2","before":null}']);
+  });
+});
+
+describe("3e. a send-back that meets an agent's write keeps what the person typed", () => {
+  it("409: the card is read again, the reason is offered again as typed, and sent with the new version", async () => {
+    let moves = 0;
+    handler = (path, init) => {
+      if (path === "/ui/tasks/board") return BOARD;
+      if (path === "/ui/tasks/cards/M-1" && (init.method ?? "GET") === "GET") return { card: { ...REVIEW_CARD, version: 5 } };
+      if (path === "/ui/tasks/cards/M-1/move") {
+        moves++;
+        return moves === 1 ? { __status: 409, error: "M-1 changed meanwhile", code: "conflict", key: "conflict", args: ["M-1"] } : { card: { ...REVIEW_CARD, status: "claimed" }, notes: [] };
+      }
+      return {};
+    };
+    await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|409|en" }));
+    await settle(6);
+    [...p.root.querySelectorAll(".tb-wait-row .btn")].find((b: any) => b.textContent === "Send back")!.click(); await settle(4);
+    const reason = p.root.querySelector("dialog textarea");
+    reason.value = "the login page 500s"; fire(reason, "input"); await settle();
+    p.root.querySelector("dialog .btn-primary").click(); await settle(8);
+    // Asked again, with the text in place.
+    expect(p.root.querySelector("dialog textarea").value).toBe("the login page 500s");
+    p.root.querySelector("dialog .btn-primary").click(); await settle(8);
+    expect(requests.filter(r => r.startsWith("POST /ui/tasks/cards/M-1/move"))).toEqual([
+      'POST /ui/tasks/cards/M-1/move {"to":"claimed","reason":"the login page 500s","version":3}',
+      'POST /ui/tasks/cards/M-1/move {"to":"claimed","reason":"the login page 500s","version":5}',
+    ]);
+    expect(p.root.querySelector("dialog")).toBeNull();
   });
 });
 
 describe("3b. the list stays while it refreshes, and a form's late success is its own", () => {
-  it("while the refreshed list is on its way, the old one stays on screen (no skeleton)", async () => {
+  it("while the refreshed board is on its way, the old one stays on screen (no skeleton)", async () => {
     const second = gate();
     let gets = 0;
     handler = async (path, init) => {
-      if (path === "/ui/tasks/t1" && init.method === "POST") return { ok: true };
-      if (path === "/ui/tasks") { gets++; if (gets === 2) await second.p; return { tasks: [{ id: "t1", title: "One", status: "open" }] }; }
+      if (path === "/ui/tasks/cards/M-1/move" && init.method === "POST") return { card: { ...REVIEW_CARD, status: "done" }, notes: [] };
+      if (path === "/ui/tasks/board") { gets++; if (gets === 2) await second.p; return BOARD; }
       return {};
     };
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|1|en" }));
     await settle(4);
-    p.root.querySelector(".row-item .btn").click(); await settle(6);
+    p.root.querySelector(".tb-wait-row .btn-primary").click(); await settle(6);
     expect(gets).toBe(2);
     expect(p.root.querySelector(".skeleton")).toBeNull();
-    expect(p.root.querySelector(".row-item")).not.toBeNull();
+    expect(p.root.querySelector(".tb-project")).not.toBeNull();
     second.open(); await settle(4);
   });
 

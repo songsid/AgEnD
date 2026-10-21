@@ -292,11 +292,37 @@ Instance 可看到自己送出、收到，或經 `forwards` 明確授權的紀�
 
 - `task(action: "create")` — 建立新任務，帶 `title`，以及選填的 `description`、`priority`（`low` / `normal` / `high` / `urgent`）、`assignee` 和 `depends_on`（任務 ID）。
 - `task(action: "claim")` — 把一個 `open` 的任務指派給自己。相依的任務還沒全部 `done` 的話，就不能認領。
-- `task(action: "done")` — 把自己認領的任務標成完成，可附上 `result`。只有 `claimed` 的任務能完成。
-- `task(action: "update")` — 變更 `status`（`open` / `claimed` / `done` / `blocked` / `cancelled`）、`priority`、`assignee` 或 `result`。
-- `task(action: "list")` — 列出所有任務，最緊急的排最前面；可用 `filter_assignee` 和 `filter_status` 縮小範圍。
+- `task(action: "done")` — 把自己認領的任務標成完成，可附上 `result`。只有 `claimed` 的任務能完成。等你確認的任務會改成 `review`（見下方）。
+- `task(action: "update")` — 變更 `status`（`open` / `claimed` / `review` / `done` / `blocked` / `cancelled`）、`priority`、`assignee` 或 `result`。
+- `task(action: "list")` — 列出所有任務，最緊急的排最前面；可用 `filter_assignee` 和 `filter_status` 縮小範圍。不加篩選時列出還沒完成的（`open`、`claimed`、`blocked`、`review`）。
+
+`id` 可以是任務 id、8 位 hex 前綴，或網頁上的卡號（`M-3`）；清單的每一列會帶卡號 `code`。
+
+看板自己的動作會回純文字，一張卡一行，讓 agent 在 context 重置後不用讀 JSON 就能接手：
+
+- `task(action: "mine")` — 你的工作：被退回的、進行中、卡住、等使用者確認、可以開始（你自己的待辦卡，以及你統籌的主任務底下沒人負責的子任務）、在等前置卡的、有你還沒看過留言的卡，以及你統籌的主任務和進度。
+- 對看板上的卡 `task(action: "get")` — 那張卡：在哪裡、目標、範圍、驗收條件、背景、目前狀態、卡住原因、產出、主任務的子任務，以及負責人還沒看過的留言（你下一次寫這張卡時會把它們交給你）。
+- `task(action: "move", id, to)` — 改成 `claimed`、`blocked`（附 `reason`：需要誰回答什麼）、`review` 或 `done`（附 `result`）、`open` 或 `cancelled`（附 `reason`），照看板的規則；可以同時帶 `comment` 和 `version`。
+- `task(action: "create")` 帶 `project`（在那個專案開主任務）或 `parent`（在那張主任務底下開子任務），以及 `description`（目標）、`scope`、`acceptance`、`context`、`size`、`needs_review`、`depends_on`（卡號）。
+- `task(action: "update")` 帶看板欄位 — `state`（覆寫：已完成／下一步／注意）、`log`（一行進度紀錄）、`comment`、`acceptance`、`check`／`uncheck`（從 1 開始）、`description`、`scope`、`context`、`size`、`depends_on`、`version`。看板卡的狀態改變要用 `move`。
+- `task(action: "list")` 帶 `project` 或 `parent` — 那些卡，一張一行；`task(action: "projects")` — 所有專案和它們的數字。
 
 建立、認領和完成任務都會寫進活動日誌。除了 `minimal` 以外，每種工具權限組合都有 `task`。
+
+### 在網頁上（Fleet › Tasks）
+
+Tasks 分頁就是看板本身（設計：[task-board](design/task-board.md)，從任務會所 taskhall 移植）：
+
+- **專案**把相關的工作分在一起。分頁一打開是所有專案和各自的完成度（已完成的子任務佔全部的比例；沒有子任務的主任務算一份，你確認後才算完成），上方是待你處理的事：做完等你**確認**或**退回**的卡，以及等你**回覆**的卡住的卡。在專案以外開的任務（目前所有 `task` 工具開的任務）放在**未分類**。
+- 專案頁是它的**主任務**（M-1、M-2…）看板，依狀態分欄：待辦、進行中、卡住、待確認、完成（近 7 天或全部；專案的完成度一律算全部）。可以依負責人篩選，把卡拖到別欄或同一欄的其他位置。主任務可以展開它的**子任務**（S-1…），也就是 instance 拆出來的步驟。
+- 卡片在對話框裡打開，每個欄位都能直接編輯：目標、範圍、完成定義（子任務是驗收條件）、背景、目前狀態、產出，以及負責人、專案、優先度、大小、相依和**做完要停在待確認，等我確認**；下面是子任務（輸入標題就能新增）、留言、進度紀錄和變更歷史。**搜尋卡片**會找標題、各欄位、驗收條件和留言。
+- **你確認。** 在網頁上開的主任務做完會停在待確認；子任務只有勾了才會。只有在網頁登入的人能把卡從待確認改成完成、退回（附上要改什麼，負責人會看到）、取消勾選或重新打開已完成的工作：instance 對這種卡的 `done` 會變成 `review`，只帶 web token 的請求也照 instance 的規則處理。有子任務的主任務會跟著子任務變化：有子任務開始就進行中，全部完成就等你確認；你也可以把它標成卡住，在已確認的主任務底下新增子任務（只有你可以）會把它重新打開。
+- **版本。** 每張卡都有版本。你開始編輯之後 instance 才寫入的話，你的修改會被拒絕；畫面會載入最新內容、保留你的修改，再存一次就會覆蓋。
+- **不用拖曳也能操作。** 卡片標題本身是按鈕：Enter 打開，Alt+← / Alt+→ 移到前一欄或後一欄，Alt+↑ / Alt+↓ 在同一欄裡上下移。手機上可以用卡片裡的**移到…**和**位置**（上移、下移）。
+- **公開連結**上的看板只能看，也不會顯示設成 `cross_instance_visibility: hidden` 的 instance 的卡片。要修改請在儀表板本身操作。
+- instance 做事時看板會即時更新，卡片的網址（`?card=M-3`）會直接打開那張卡。
+
+看板以前就有的任務保留原本的 id，變成未分類底下的主任務，依建立順序編號。`retention_days` 會清掉沒有專案的已完成舊任務；封存專案裡的已完成主任務，要等它的子任務也都完成且一樣舊才會一起清掉。進行中專案的紀錄（卡片、留言、歷史）都會保留。要退回沒有任務板的舊版前，先把 `retention_days` 調高（見 [downgrade-compatibility.zh-TW.md](downgrade-compatibility.zh-TW.md)）。
 
 ## 決策 (Decisions)
 

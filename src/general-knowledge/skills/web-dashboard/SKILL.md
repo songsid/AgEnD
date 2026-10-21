@@ -177,7 +177,13 @@ tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `n
 `/ui/fleet/<tab>`: **Tasks**, **Schedules**, **Teams**, **Org chart**, **Cache**, **Config**, plus a **Docs** link.
 The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet tab open the Fleet tab this device used last
 (`agend_last_fleet_tab`; the Org chart the first time). The sidebar has no separate Fleet (Details) or View row.
-- **Tasks** — the task board: **New task** (title, description, priority, assignee), **Claim**, **Done**. No delete.
+- **Tasks** — the task board: Home lists **projects** (with % done) and what waits for the person (**Confirm** /
+  **Send back** finished work, **Answer** a blocked card); **No project** holds `task`-tool tasks. A project is a board
+  of main tasks (M-n) by status — To do, In progress, Blocked, Waiting for you, Done — with drag to move, an assignee
+  filter and each main task's sub tasks (S-n). A card opens in a dialog: every field editable, its sub tasks, comments,
+  progress log, history. **Search cards** in the header. Only a signed-in person confirms work in review (an
+  instance's `done` on such a card is review). No delete: cancel. Alt+arrows on a card's title move it (no drag
+  needed; the card's Position row on a phone). Read-only over the public link.
 - **Schedules** — every schedule (silent ones included): when it runs in words, "next …", the target. **New
   schedule** (Repeat with a cron expression, or Once at a date and time; message, target, label, timezone),
   **Edit** (with an **Enabled** box — that is how you pause one), **Delete**. There is no "run now", and silent can't

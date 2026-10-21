@@ -70,10 +70,11 @@ describe("#1374: what counts as use", () => {
   });
 
   it("opening a Fleet tab reads its list — a person's navigation, so not on the passive list; panels have no timers that read", async () => {
-    respond = (path) => path === "/ui/tasks" ? { tasks: [] } : path.startsWith("/ui/history") ? { messages: [] } : {};
+    respond = (path) => path === "/ui/tasks/board" ? { rev: 1, cards: [], projects: [] } : path.startsWith("/ui/history") ? { messages: [] } : {};
     await mountFleet("tasks");
-    expect(requests).toEqual(["GET /ui/tasks"]);
-    expect(isPassiveWebRead("GET", "/ui/tasks")).toBe(false);
+    // The task board (#2246): one read of the board; it is live through the stream, never by polling.
+    expect(requests).toEqual(["GET /ui/tasks/board"]);
+    expect(isPassiveWebRead("GET", "/ui/tasks/board")).toBe(false);
     expect(isPassiveWebRead("GET", "/ui/history")).toBe(false);
     requests.length = 0;
     await new Promise(r => setTimeout(r, 1200));     // time passes with no person: nothing is read
@@ -218,18 +219,21 @@ describe("the chat's states", () => {
 });
 
 describe("Fleet: a late answer never lands after the person moved on", () => {
+  // The Tasks tab is the task board (#2246): its list is the board's projects.
+  const board = (name: string) => ({ rev: 1, cards: [], projects: [{ id: 1, name, description: "", archived: false, sort: 1, createdAt: "2026-10-20T00:00:00.000Z" }] });
   it("another tab: the old list's answer is dropped", async () => {
     let releaseTasks!: () => void;
     const tasksGate = new Promise<void>(r => { releaseTasks = r; });
     (globalThis as any).fetch = async (path: string, init: { method?: string } = {}) => {
       requests.push(`${init.method ?? "GET"} ${path}`);
-      if (path === "/ui/tasks") { await tasksGate; return { ok: true, json: async () => ({ tasks: [{ id: "t1", title: "LATE", status: "open" }] }) }; }
+      if (path === "/ui/tasks/board") { await tasksGate; return { ok: true, json: async () => board("LATE") }; }
       return { ok: true, json: async () => ({ teams: { core: { members: ["alpha"] } } }) };
     };
     await mountFleet("tasks", "fleet:tasks|1|en");
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "teams" }, navKey: "fleet:teams|2|en" }));
     releaseTasks();
     await settle(6);
+    expect(requests).toContain("GET /ui/tasks/board");
     expect(p.root.innerHTML).not.toContain("LATE");
     expect(p.root.innerHTML).toContain("core");
     (globalThis as any).fetch = fetchFake;
@@ -241,8 +245,8 @@ describe("Fleet: a late answer never lands after the person moved on", () => {
     let n = 0;
     (globalThis as any).fetch = async (path: string) => {
       n++;
-      if (n === 1) { await firstGate; return { ok: true, json: async () => ({ tasks: [{ id: "t1", title: "STALE", status: "open" }] }) }; }
-      return { ok: true, json: async () => ({ tasks: [{ id: "t2", title: "FRESH", status: "open" }] }) };
+      if (n === 1) { await firstGate; return { ok: true, json: async () => board("STALE") }; }
+      return { ok: true, json: async () => board("FRESH") };
     };
     await mountFleet("tasks", "fleet:tasks|1|en");
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|2|en" }));

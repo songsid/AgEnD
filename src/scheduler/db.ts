@@ -1,9 +1,12 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import type { Schedule, ScheduleRetry, ScheduleRun, CreateScheduleParams, UpdateScheduleParams, Decision, CreateDecisionParams, UpdateDecisionParams, Task, TaskCompact, ListTasksOpts, CreateTaskParams, UpdateTaskParams } from "./types.js";
+import { cardCode, TaskBoard, type Actor } from "./task-board.js";
 
 export class SchedulerDb {
   private db: Database.Database;
+  /** The task board on the `tasks` table: its rules, comments and history (task-board.ts). */
+  readonly board: TaskBoard;
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
@@ -136,6 +139,17 @@ export class SchedulerDb {
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
     `);
+    this.board = new TaskBoard(this.db);
+    this.board.migrate();
+    // #2293: each committed board write, as the tasks it touched (the search index keeps a doc per task).
+    this.board.onChange(({ ids }) => {
+      if (!this.onTaskChange) return;
+      for (const id of ids) {
+        const card = this.board.findCard(id);
+        const task = card ? this.getTask(card.uuid) : null;
+        if (task) this.changed(task);
+      }
+    });
   }
 
   /**
@@ -336,45 +350,70 @@ export class SchedulerDb {
   }
 
   /**
-   * #1335: Prune done/cancelled tasks older than `days`. Open, claimed and
-   * blocked tasks are never pruned regardless of age.
-   * Cancelled tasks that appear in a live task's `depends_on` are also kept:
-   * pruning a cancelled dep would silently un-block a task whose prerequisite
-   * was explicitly cancelled (claimTask treats a missing dep as satisfied).
-   * Runs in async chunks of 500 rows with setImmediate yields (#1340 P4).
+   * #1335: Prune done/cancelled tasks older than `days`. Open, claimed,
+   * blocked and review tasks are never pruned regardless of age.
+   * The task board keeps the person's record: a card in a live project, a
+   * main task with sub tasks and a sub task are not pruned — except in an
+   * archived project, where a finished main task whose sub tasks are all
+   * finished and as old goes with them (the whole family at once).
+   * Cancelled tasks that a live task depends on are kept: pruning a
+   * cancelled dep would silently un-block a task whose prerequisite was
+   * explicitly cancelled (claimTask treats a missing dep as satisfied).
+   * A pruned task's comments and history go with it, and so does history a
+   * release without the board left behind when it pruned on its own terms.
+   * Each chunk of 500 is one immediate transaction — its pick and its delete
+   * — with a setImmediate yield between chunks (#1340 P4).
    */
   async pruneOldTasks(days = 30): Promise<number> {
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
     const CHUNK = 500;
+    const liveDeps = `SELECT DISTINCT je.value FROM tasks AS live CROSS JOIN json_each(live.depends_on) AS je
+      WHERE live.status NOT IN ('done', 'cancelled') AND live.depends_on IS NOT NULL AND live.depends_on != '[]'`;
+    // Tasks with no project and no sub tasks (the tool's own among them), and sub tasks whose main task a release
+    // without the board pruned.
+    const loose = this.db.prepare(`
+      SELECT id FROM tasks
+      WHERE status IN ('done', 'cancelled') AND updated_at < ?
+        AND ((project_id IS NULL AND parent_id IS NULL) OR (parent_id IS NOT NULL AND parent_id NOT IN (SELECT id FROM tasks)))
+        AND id NOT IN (SELECT parent_id FROM tasks WHERE parent_id IS NOT NULL)
+        AND id NOT IN (${liveDeps})
+      ORDER BY updated_at LIMIT ?`);
+    // Families with no project or in an archived one: a finished main task, its sub tasks finished and as old, none a
+    // live dependency. An active project keeps its record.
+    const families = this.db.prepare(`
+      SELECT m.id FROM tasks m
+      WHERE m.kind = 'main' AND m.status IN ('done', 'cancelled') AND m.updated_at < ?
+        AND (m.project_id IS NULL OR m.project_id IN (SELECT id FROM task_projects WHERE archived = 1))
+        AND m.id NOT IN (${liveDeps})
+        AND NOT EXISTS (SELECT 1 FROM tasks k WHERE k.parent_id = m.id
+          AND (k.status NOT IN ('done', 'cancelled') OR k.updated_at >= ? OR k.id IN (${liveDeps})))
+      ORDER BY m.updated_at LIMIT ?`);
+    const children = this.db.prepare("SELECT id FROM tasks WHERE parent_id = ?");
+    const remove = (ids: string[]) => {
+      const marks = ids.map(() => "?").join(",");
+      this.db.prepare(`DELETE FROM tasks WHERE id IN (${marks})`).run(...ids);
+      this.db.prepare(`DELETE FROM task_entries WHERE task_id IN (${marks})`).run(...ids);
+      this.db.prepare(`DELETE FROM task_events WHERE task_id IN (${marks})`).run(...ids);
+    };
     let total = 0;
-
-    for (;;) {
-      // Find a batch of eligible ids: done/cancelled, old, and not a
-      // dependency of any live (non-terminal) task.
-      const rows = this.db.prepare(`
-        SELECT id FROM tasks
-        WHERE status IN ('done', 'cancelled')
-          AND updated_at < ?
-          AND id NOT IN (
-            SELECT DISTINCT je.value
-            FROM tasks AS live
-            CROSS JOIN json_each(live.depends_on) AS je
-            WHERE live.status NOT IN ('done', 'cancelled')
-              AND live.depends_on IS NOT NULL
-              AND live.depends_on != '[]'
-          )
-        ORDER BY updated_at
-        LIMIT ?
-      `).all(cutoff, CHUNK) as Array<{ id: string }>;
-
-      if (rows.length === 0) break;
-      const ids = rows.map(r => r.id);
-      const placeholders = ids.map(() => "?").join(",");
-      this.db.prepare(`DELETE FROM tasks WHERE id IN (${placeholders})`).run(...ids);
-      total += rows.length;
-      if (rows.length < CHUNK) break;
-      await new Promise<void>(resolve => setImmediate(resolve));
+    for (const family of [false, true]) {
+      for (;;) {
+        const picked = this.db.transaction(() => {
+          const rows = (family ? families.all(cutoff, cutoff, CHUNK) : loose.all(cutoff, CHUNK)) as Array<{ id: string }>;
+          if (!rows.length) return { rows: 0, deleted: 0 };
+          const ids = family ? rows.flatMap((r) => [r.id, ...(children.all(r.id) as Array<{ id: string }>).map((k) => k.id)]) : rows.map((r) => r.id);
+          remove(ids);
+          return { rows: rows.length, deleted: ids.length };
+        }).immediate();
+        total += picked.deleted;
+        if (picked.rows < CHUNK) break;
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
     }
+    this.db.transaction(() => {
+      this.db.exec("DELETE FROM task_entries WHERE task_id NOT IN (SELECT id FROM tasks)");
+      this.db.exec("DELETE FROM task_events WHERE task_id NOT IN (SELECT id FROM tasks)");
+    }).immediate();
     return total;
   }
 
@@ -548,6 +587,7 @@ export class SchedulerDb {
   private rowToTask(row: Record<string, unknown>): Task {
     return {
       id: row.id as string,
+      code: (row.code as string | null) ?? null,
       title: row.title as string,
       description: row.description as string | null,
       status: row.status as Task["status"],
@@ -561,23 +601,23 @@ export class SchedulerDb {
     };
   }
 
-  /** #2293: told of every task this process creates or changes (claim and done included), after the write. */
+  /**
+   * #2293: told of every task a committed board write touched (created, changed, claimed, done — the task tool's and
+   * the board's own), after the write; see the constructor.
+   */
   onTaskChange: ((task: Task) => void) | null = null;
   private changed(task: Task): Task {
     try { this.onTaskChange?.(task); } catch { /* a listener never fails the write */ }
     return task;
   }
 
-  createTask(params: CreateTaskParams): Task {
-    const id = randomUUID();
-    const now = new Date().toISOString();
-    this.db.prepare(`
-      INSERT INTO tasks (id, title, description, priority, assignee, created_by, depends_on, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, params.title, params.description ?? null, params.priority ?? "normal",
-      params.assignee ?? null, params.created_by,
-      params.depends_on?.length ? JSON.stringify(params.depends_on) : null, now, now);
-    return this.changed(this.getTask(id)!);
+  /**
+   * The `task` tool's create, through the board (task-board.ts legacyCreate): the row it has always made, plus a card
+   * number and a place on the board. `by` says who opened it when it is not the instance named in `created_by`.
+   */
+  createTask(params: CreateTaskParams, by: Actor = { kind: "instance", name: params.created_by }): Task {
+    const card = this.board.legacyCreate(by, params);
+    return this.getTask(card.uuid)!;
   }
 
   getTask(id: string): Task | null {
@@ -589,6 +629,7 @@ export class SchedulerDb {
   private toCompact(t: Task): TaskCompact {
     return {
       id: t.id,
+      code: t.code,
       title: t.title,
       status: t.status,
       assignee: t.assignee,
@@ -598,13 +639,21 @@ export class SchedulerDb {
   }
 
   /**
-   * #1336: Resolve a task by an 8-hex (or longer) id prefix. A full 36-char
-   * UUID is matched exactly first. Throws on ambiguous or not-found so the
-   * caller surfaces a clear error instead of silently acting on the wrong row.
+   * #1336: Resolve a task by an 8-hex (or longer) id prefix, or by its card
+   * number (M-3). A full 36-char UUID is matched exactly first. Throws on
+   * ambiguous or not-found so the caller surfaces a clear error instead of
+   * silently acting on the wrong row.
    */
   getTaskByPrefix(prefix: string): Task {
     const p = (prefix ?? "").trim();
     if (!p) throw new Error("Task id is required");
+    // The task board's card number (M-3), as the dashboard shows it.
+    const code = cardCode(p);
+    if (code) {
+      const card = this.board.findCard(code);
+      if (!card) throw new Error(`Task "${code}" not found`);
+      return this.getTask(card.uuid)!;
+    }
     // Exact match wins — avoids an "ambiguous" error when one id is a prefix
     // of another and the caller passed the full id.
     const exact = this.getTask(p);
@@ -649,46 +698,29 @@ export class SchedulerDb {
     return [...new Set(arr.map(s => String(s).trim()).filter(s => s.length > 0))];
   }
 
-  updateTask(id: string, params: UpdateTaskParams): Task {
+  /** `by`: who changes it — the instance whose `task` tool it is, the signed-in person, or a script. */
+  updateTask(id: string, params: UpdateTaskParams, by: Actor): Task {
     const existing = this.getTask(id);
     if (!existing) throw new Error(`Task "${id}" not found`);
-    const sets: string[] = ["updated_at = ?"];
-    const values: unknown[] = [new Date().toISOString()];
-    if (params.status !== undefined) { sets.push("status = ?"); values.push(params.status); }
-    if (params.assignee !== undefined) { sets.push("assignee = ?"); values.push(params.assignee); }
-    if (params.result !== undefined) { sets.push("result = ?"); values.push(params.result); }
-    if (params.priority !== undefined) { sets.push("priority = ?"); values.push(params.priority); }
-    values.push(id);
-    this.db.prepare(`UPDATE tasks SET ${sets.join(", ")} WHERE id = ?`).run(...values);
-    return this.changed(this.getTask(id)!);
+    this.board.legacyUpdate(by, id, params);
+    return this.getTask(id)!;
   }
 
-  claimTask(id: string, assignee: string): Task {
-    const task = this.getTask(id);
-    if (!task) throw new Error(`Task "${id}" not found`);
-    if (task.status !== "open") throw new Error(`Task "${id}" is ${task.status}, cannot claim`);
-    // Check dependencies
-    if (task.depends_on.length > 0) {
-      for (const depId of task.depends_on) {
-        const dep = this.getTask(depId);
-        if (dep && dep.status !== "done") {
-          throw new Error(`Task "${id}" is blocked by "${depId}" (status: ${dep?.status ?? "not found"})`);
-        }
-      }
-    }
-    return this.updateTask(id, { status: "claimed", assignee });
+  claimTask(id: string, assignee: string, by: Actor): Task {
+    this.board.legacyClaim(by, id, assignee);
+    return this.getTask(id)!;
   }
 
-  completeTask(id: string, result?: string): Task {
+  /**
+   * #1336: completing straight from `open` (not just `claimed`) is allowed — a worker that finishes without a separate
+   * claim step can still mark it done. Terminal/blocked states are rejected. A card that needs the person's
+   * confirmation goes to `review` instead when an instance completes it (task-board.ts legacyComplete).
+   */
+  completeTask(id: string, result: string | undefined, by: Actor): Task {
     const task = this.getTask(id);
     if (!task) throw new Error(`Task "${id}" not found`);
-    // #1336: allow completing a task straight from `open` (not just `claimed`)
-    // — a worker that finishes without a separate claim step can still mark it
-    // done. Terminal/blocked states are rejected.
-    if (task.status !== "claimed" && task.status !== "open") {
-      throw new Error(`Task "${id}" is ${task.status}, cannot complete (must be open or claimed)`);
-    }
-    return this.updateTask(id, { status: "done", result: result ?? undefined });
+    this.board.legacyComplete(by, id, result);
+    return this.getTask(id)!;
   }
 
   close(): void {

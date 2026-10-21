@@ -20,6 +20,7 @@
 Use the **Task Board** (`task` tool) for multi-step work:
 - Break work into discrete tasks with clear deliverables
 - Update status as you progress (open → claimed → done; or blocked / cancelled)
+- A card that waits for the person's confirmation goes to `review` when you finish it; only the person confirms it. Sent back, it is yours again: `task get` shows why, `task mine` lists your work after a reset
 - Other instances can check your task board for status instead of asking
 
 ## Context Protection
