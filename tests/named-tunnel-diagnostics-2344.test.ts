@@ -1,3 +1,4 @@
+import { syntheticTunnelToken } from "./helpers/named-tunnel-token.js";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -12,7 +13,7 @@ import { PUBLIC_TUNNEL_TOKEN_ENV } from "../src/public-tunnel-config.js";
 import { getLocale, setLocale } from "../src/locale.js";
 import type { TunnelProvider, TunnelStartContext } from "../src/tunnel/types.js";
 
-const TOKEN = "eyJ2344NamedConnectorSecretDoNotExpose";
+const TOKEN = syntheticTunnelToken();
 const OTHER = "sk-other2344SecretDoNotExposeEver";
 const PRIVATE = "PRIVATE_VENDOR_DETAIL_2344";
 const roots: string[] = [];
