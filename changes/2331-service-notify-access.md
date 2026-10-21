@@ -7,5 +7,6 @@ section: Fixed
   the fleet in `activating`; since the start timeout became 15 minutes, systemd killed and restarted it every 15
   minutes. `agend restart` and updates now put `NotifyAccess=all` into the unit, ask systemd what it loaded, add
   AgEnD's own drop-in when another drop-in overrides it, and name leftover service files. `agend doctor` shows the
-  unit as loaded and the files it came from. Updating to this release repairs it in the same update. See
+  unit as loaded (the system unit when one runs the fleet) and the files it came from; an update no longer writes an
+  unused user unit beside a system unit. Updating to this release repairs it in the same update. See
   [cli](cli.md#service-management).

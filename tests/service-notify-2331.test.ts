@@ -160,7 +160,7 @@ describe("3. leftovers, named and never removed", () => {
 
 describe("4. agend doctor: the unit as loaded, its files, the leftovers", () => {
   const result = (status: number, stdout = "") => ({ status, stdout, stderr: "", pid: 1, signal: null, output: [], error: undefined }) as any;
-  async function doctor(show: string, home: string) {
+  async function doctor(show: string, home: string, systemUnit: string | null = null) {
     const dataDir = tmp();
     writeFileSync(join(dataDir, "fleet.yaml"), "instances: {}\n");
     const svc: ServiceInfo = { installed: true, path: join(home, ".config/systemd/user/com.agend.fleet.service"), manager: "systemd --user", enabled: true, active: true } as ServiceInfo;
@@ -168,7 +168,7 @@ describe("4. agend doctor: the unit as loaded, its files, the leftovers", () => 
     const report = await collectDoctorReport(dataDir, svc, {
       env: { HOME: home, TERM: "xterm", DBUS_SESSION_BUS_ADDRESS: "unix:path=/x" }, platform: "linux",
       networkFamily: () => ({ autoSelectFamily: true, attemptTimeoutMs: 2_500 }),
-      fetchFleetHealth: async () => ({}), processAlive: () => false, connectSocket: async () => false,
+      fetchFleetHealth: async () => ({}), processAlive: () => false, connectSocket: async () => false, systemUnitPath: () => systemUnit,
       run: (file, args) => { calls.push([file, ...args]); return file === "systemctl" && args.includes("show") ? result(0, show) : result(1); },
     });
     return { report, calls };
@@ -185,6 +185,14 @@ describe("4. agend doctor: the unit as loaded, its files, the leftovers", () => 
     expect(by("Loaded unit")).toEqual([expect.objectContaining({ status: "error", detail: expect.stringMatching(/^Type=notify NotifyAccess=main TimeoutStartSec=15min — systemd refuses the fleet's ready signal/) })]);
     expect(by("Unit files")[0]!.detail).toBe(`${home}/.config/systemd/user/com.agend.fleet.service, ${d}/override.conf`);
     expect(by("Leftover")).toEqual([expect.objectContaining({ status: "warn", detail: expect.stringContaining(`${d}/override.conf: a drop-in sets NotifyAccess=main (AgEnD writes none but its own zz-agend-notify.conf)`) })]);
+  });
+
+  it("a host whose fleet runs under the system unit: that unit is asked about (the system manager), not the user unit", async () => {
+    const home = tmp();
+    const { report, calls } = await doctor("Type=notify\nNotifyAccess=all\nTimeoutStartUSec=15min\nFragmentPath=/etc/systemd/system/agend.service\nDropInPaths=\n", home, "/etc/systemd/system/agend.service");
+    expect(calls).toContainEqual(["systemctl", "show", "-p", "Type,NotifyAccess,TimeoutStartUSec,FragmentPath,DropInPaths", "agend"]);
+    expect(calls.some((c) => c.includes("--user") && c.includes("show"))).toBe(false);
+    expect(report.checks.filter((c) => c.label === "Unit files")[0]!.detail).toBe("/etc/systemd/system/agend.service");
   });
 
   it("a healthy unit: ok, no leftovers; systemctl unreadable: no loaded-unit lines (nothing guessed)", async () => {

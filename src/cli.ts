@@ -1881,6 +1881,13 @@ program
         process.exitCode = 1;
       }
     }
+    // #2331: a host whose fleet runs under the system unit gets no second, user unit from the refresh — it would only
+    // sit beside it unused, and be named as a leftover on every update after.
+    if (systemUnit) {
+      console.log(t("install.path", systemUnit));
+      console.log(t("install.updated"));
+      return;
+    }
     const svcPath = installService(serviceVars);
     console.log(t("install.path", svcPath));
     if (opts.activate !== false) {
