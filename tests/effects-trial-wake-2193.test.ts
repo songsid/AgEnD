@@ -12,9 +12,12 @@ const M = vi.hoisted(() => ({ starts: 0, status: "ready" as string, trialFns: []
 vi.mock("/ui/js/app-effects.js", () => ({
   startAppEffects: () => {
     M.starts++;
-    M.owner = { dead: false, api: { ok: true }, trialStatus: () => M.status, trialFailure: () => null, canTry: () => M.status === "ready",
-      subscribeTrial: (fn: () => void) => { M.trialFns.push(fn); return () => {}; }, onEnd: () => () => {}, gates: () => ({}), attachChat: () => ({ ok: false }) };
-    return M.owner;
+    const own = new Set<() => void>();
+    const entry: any = { dead: false, api: { ok: true }, trialStatus: () => M.status, trialFailure: () => null, canTry: () => M.status === "ready",
+      subscribeTrial: (fn: () => void) => { own.add(fn); M.trialFns.push(fn); return () => { own.delete(fn); const i = M.trialFns.indexOf(fn); if (i >= 0) M.trialFns.splice(i, 1); }; },
+      dispose() { entry.dead = true; for (const fn of own) { const i = M.trialFns.indexOf(fn); if (i >= 0) M.trialFns.splice(i, 1); } own.clear(); if (M.owner === entry) M.owner = null; },
+      onEnd: () => () => {}, gates: () => ({}), attachChat: () => ({ ok: false }) };
+    M.owner = entry; return entry;
   },
   getAppEffects: () => M.owner,
 }));
@@ -73,4 +76,22 @@ describe("#2193: a Try card wakes the sleeping effects runtime", () => {
     expect(card(c)).toContain("Checking this session");
     expect(c.p.root.querySelector(".effect-trial-offer button.effect-trial-start")).toBeNull();
   });
+});
+
+it.each([false, true])("#2275 a kept thread follows the replacement owner's Try updates after off/on without navigation (already awake=%s)", async alreadyAwake => {
+  const c = await chatPage(); const status = (enabled: boolean) => ({ canvas_worker: enabled, uptime: 1, instances: [{ name: "w", status: "running", state: "idle", backend: "claude-code" }] });
+  c.stream.emit("status", status(true));
+  if (alreadyAwake) await (await import("/assets/feature-flags.js")).wakeEffects();
+  await c.mount("w"); c.stream.emit("message", offer(7));
+  for (let n = 0; n < 10 && M.starts < 1; n++) await settle(); await settle();
+  const first = M.owner, thread = c.p.root.querySelector(".thread"), location = globalThis.location.href;
+  expect(c.p.root.querySelector(".effect-trial-start")).not.toBeNull(); expect(M.trialFns).toHaveLength(1);
+  c.stream.emit("status", status(false)); await settle(); expect(first.dead).toBe(true); expect(M.trialFns).toHaveLength(0);
+  M.status = "checking"; c.stream.emit("status", status(true));
+  for (let n = 0; n < 10 && M.starts < 2; n++) await settle(); await settle();
+  expect(M.starts).toBe(2); expect(M.owner).not.toBe(first); expect(card(c)).toContain("Checking this session"); expect(M.trialFns).toHaveLength(1);
+  M.status = "ready"; for (const fn of [...M.trialFns]) fn(); await settle();
+  expect(card(c)).toContain("A sample on this page"); expect(c.p.root.querySelector(".effect-trial-start")).not.toBeNull(); expect(c.p.root.querySelector(".thread")).toBe(thread); expect(globalThis.location.href).toBe(location);
+  M.status = "inactive"; for (const fn of [...M.trialFns]) fn(); await settle(); expect(card(c)).not.toContain("A sample on this page");
+  const panel = await import("/ui/js/panel-chat.js"); await c.p.unmount(); panel.forgetKeptThreads(); expect(M.trialFns).toHaveLength(0);
 });

@@ -64,9 +64,11 @@ function ExperimentalEffectsCard() {
   if (!writable) return null;
   const change = async value => {
     setBusy(true); setFailed(false);
-    const result = await confirmedWrite("/api/settings/fleet/web", { method: "PUT", body: { experimental: { canvas_worker: value } }, label: t("experimentalEffects.title") });
-    setBusy(false);
-    if (result.ok) appStore.set({ canvasWorker: value }); else setFailed(true);
+    try {
+      const result = await confirmedWrite("/api/settings/fleet/web", { method: "PUT", body: { experimental: { canvas_worker: value } }, label: t("experimentalEffects.title") });
+      if (result.ok) appStore.set({ canvasWorker: value }); else setFailed(true);
+    } catch { setFailed(true); }
+    finally { setBusy(false); }
   };
   return html`<section class="card s-appearance s-experimental-effects"><label class="check"><input type="checkbox" checked=${enabled} disabled=${busy} onChange=${event => change(event.target.checked)} /><span>${t("experimentalEffects.title")}</span></label><p class="sub">${t("experimentalEffects.help")}</p>${failed ? html`<p role="alert">${t("experimentalEffects.failed")}</p>` : null}</section>`;
 }

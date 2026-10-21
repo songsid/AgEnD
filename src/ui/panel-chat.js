@@ -456,11 +456,16 @@ function follow(name, thread) {
   }));
   offs.push(P() ? P().onChange(() => thread.refreshCards()) : () => {});
   // #2193: the runtime may start later (an offer shown wakes it): its trial updates are followed from then.
-  let trialOff = null;
-  const watchTrial = () => { trialOff = getAppEffects()?.subscribeTrial(() => thread.render(store.state.msgs[name] || [])) ?? null; };
+  let trialOff = null, trialOwner = null;
+  const watchTrial = () => {
+    const next = getAppEffects();
+    if (next === trialOwner) return;
+    trialOff?.(); trialOff = null; trialOwner = next;
+    trialOff = next?.subscribeTrial(() => thread.render(store.state.msgs[name] || [])) ?? null;
+  };
   watchTrial();
-  if (!trialOff) offs.push(onEffectsAwake(() => { watchTrial(); thread.render(store.state.msgs[name] || []); }));
-  offs.push(() => trialOff?.());
+  offs.push(onEffectsAwake(() => { watchTrial(); thread.render(store.state.msgs[name] || []); }));
+  offs.push(() => { trialOff?.(); trialOff = null; trialOwner = null; });
   offs.push(panelStore.subscribe(() => thread.refreshCards()));   // a card shows whether the panel has its block
   return () => { for (const off of offs) off(); };
 }

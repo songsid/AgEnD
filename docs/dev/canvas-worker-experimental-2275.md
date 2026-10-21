@@ -50,9 +50,13 @@ CW behavior while keeping the feature switch.
 ## Chromium smoke evidence
 
 The scratch Chromium run observed zero CW requests and zero workers on an off boot
-(including guest and stubbed public-link sessions). Enabling created one real worker;
+(including guest and stubbed public-link sessions). Enabling through the real
+confirmed Settings HTTP path created one real worker;
 disabling removed all CW frames/layers/Try controls; re-enabling created a second
-worker. Ambient remained at eight particles throughout. No page errors or external
+worker and restored a usable Try button in the same mounted chat. The two enables
+were explicitly confirmed in the private smoke store; disabling applied as a narrowing
+write. No cookies or bearer tokens were copied into the server-owned replay. Ambient
+remained at eight particles throughout. No page errors or external
 network requests were observed, and saved placements/preferences were unchanged.
 
 | Off | On |

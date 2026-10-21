@@ -48,11 +48,12 @@ export function effectsAwake() { return waking !== null; }
 /** Whether its module has loaded (started, or found it could not: getAppEffects() then says which). */
 export function effectsLoaded() { return mod !== null && awakeGeneration === generation; }
 
-/** Called once the runtime has started (or immediately when it already has). Returns the unsubscribe. */
+/** Follow every completed runtime episode, including a replacement after an experimental off/on. */
 export function onEffectsAwake(fn) {
   if (typeof fn !== "function") return () => {};
-  if (effectsLoaded()) { try { fn(); } catch { /* a listener's error is its own */ } return () => {}; }
-  awakeListeners.add(fn); return () => awakeListeners.delete(fn);
+  awakeListeners.add(fn);
+  if (effectsLoaded()) { try { fn(); } catch { /* a listener's error is its own */ } }
+  return () => awakeListeners.delete(fn);
 }
 
 /** Load lazily; each explicitly enabled episode owns its startup and cancellation. */
@@ -67,7 +68,6 @@ export function wakeEffects() {
     const owner = chatStore ? m.startAppEffects({ store: chatStore }) : null;
     awakeGeneration = episode;
     for (const fn of [...awakeListeners]) { try { fn(); } catch { /* the rest still hear */ } }
-    awakeListeners.clear();
     return owner;
   }, () => null);
   return waking;

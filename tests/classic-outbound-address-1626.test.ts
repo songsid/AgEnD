@@ -35,6 +35,7 @@ function harness(type: "discord" | "telegram" = "discord", classic = true) {
   fm.worlds.set("owner", { id: "owner", adapter } as never);
   fm.fleetConfig = {
     defaults: {},
+    web: { experimental: { canvas_worker: true } },
     instances: { classic: { working_directory: root, tool_set: "full", topic_id: "fleet-topic" } },
   } as never;
   if (classic) {

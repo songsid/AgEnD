@@ -1686,6 +1686,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (auth.kind !== "ok" || !current()) return null;
         const record = auth.session, sessions = this.webSessions, exposure = gatewayRequestContext(req);
         return { id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session",
+          localAdmin: () => record.tier === "admin" && record.surface === "local" && !exposure,
           current: () => current() && sessions === this.webSessions && !!this.webToken
             && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
       }, baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),

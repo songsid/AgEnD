@@ -1,7 +1,7 @@
 import { PUBLIC_TUNNEL_SECRET_ID } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
-import { settingsRequestExecution, settingsWrite } from "./settings-request-capability.js";
+import { settingsRequestExecution, settingsRequestLocalAdmin, settingsWrite } from "./settings-request-capability.js";
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -759,7 +759,7 @@ export function handleSettingsRequest(
       try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
       const parsed = parseWebSettingsBody(body);
       if ("error" in parsed) return json(res, 400, { error: parsed.error });
-      if (parsed.canvasWorker !== undefined) {
+      if (parsed.canvasWorker !== undefined && !settingsRequestLocalAdmin(req)) {
         const actor = evaluateWebRequest(req as never, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
         if (actor.kind !== "allow" || actor.via !== "session" || actor.session.tier !== "admin" || actor.session.surface !== "local") {
           return json(res, 403, { error: "canvas_worker_setting_needs_local_admin" });

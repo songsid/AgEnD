@@ -18,7 +18,7 @@ async function fixture() {
   mkdirSync(join(state, "instances", "own"), { recursive: true }); mkdirSync(join(workspace, "effect"), { recursive: true });
   writeFileSync(join(state, "instances", "own", "agent.token"), "private-fixture-token"); vi.stubEnv("AGEND_HOME", state);
   const { FleetManager } = await import("../src/fleet-manager.js"); const fm = new FleetManager(state) as any;
-  fm.logger = pino({ level: "silent" }); fm.fleetConfig = { defaults: {}, instances: { own: { working_directory: workspace, tool_set: "standard" } }, web: { themes: { agent_edit: true } } };
+  fm.logger = pino({ level: "silent" }); fm.fleetConfig = { defaults: {}, instances: { own: { working_directory: workspace, tool_set: "standard" } }, web: { experimental: { canvas_worker: true }, themes: { agent_edit: true } } };
   vi.spyOn(fm, "startAll").mockRejectedValue(Error("must not start a fleet")); vi.spyOn(fm, "startInstance").mockRejectedValue(Error("must not spawn an instance"));
   vi.spyOn(fm, "emitSseEvent").mockImplementation(() => {});
   const requests: string[] = [];

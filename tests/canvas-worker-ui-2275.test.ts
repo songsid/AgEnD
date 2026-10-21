@@ -67,3 +67,20 @@ it("off chat/settings static import graph contains no Canvas Worker metadata or 
   }
   expect([...seen].filter(path => /\/(?:effect-[^/]+|app-effects|chat-effects|chat-effect-posters|effects-waker|settings-effects|settings-owner-effects|display-metadata)\.js$/.test(path))).toEqual([]);
 });
+
+it("a rejected experimental switch write releases busy, explains failure, and accepts a retry on the same card", async () => {
+  pg = page({ url: "http://127.0.0.1:19280/settings/appearance" });
+  let puts = 0;
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init: any = {}) => {
+    if (init.method === "PUT") { puts++; if (puts === 1) throw Error("injected transport failure"); }
+    return { ok: true, status: 200, json: async () => url === "/ui/owner-css/state" ? { active: null, pending: null, text: "", versions: [], assets: [], limits: { maxAssets: 16 } } : {} };
+  }));
+  vi.stubGlobal("AgendAuth", { trialSession: async () => ({ localAdmin: true }) });
+  const { appStore } = await import("/assets/app-store.js"); appStore.set({ canvasWorker: false });
+  const { AppearanceSection } = await import("/ui/js/settings-appearance.js"); await pg.mount(h(AppearanceSection, {})); await settle(); await settle();
+  const card = pg.root.querySelector(".s-experimental-effects"), input = card.querySelector("input");
+  input.checked = true; fire(input, "change"); await settle(); await settle();
+  expect(input.disabled).toBe(false); expect(card.querySelector('[role="alert"]')?.textContent).toBe("Could not change this setting. Try again."); expect(appStore.get().canvasWorker).toBe(false);
+  input.checked = true; fire(input, "change"); await settle(); await settle();
+  expect(puts).toBe(2); expect(input.disabled).toBe(false); expect(appStore.get().canvasWorker).toBe(true); expect(card.querySelector('[role="alert"]')).toBeNull(); expect(pg.root.querySelector(".s-experimental-effects")).toBe(card);
+});

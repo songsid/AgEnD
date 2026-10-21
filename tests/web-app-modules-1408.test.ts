@@ -31,6 +31,8 @@ async function listener() {
   const dir = mkdtempSync(join(tmpdir(), "agend-modules-1408-"));
   tempDirs.push(dir);
   const fm = new FleetManager(dir);
+  // This admission contract exercises the explicitly enabled CW private module too.
+  (fm as any).fleetConfig = { instances: {}, web: { experimental: { canvas_worker: true } } };
   const quiet = () => {};
   fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger } as unknown as typeof fm.logger;
   vi.spyOn(fm, "notifyFleetError").mockImplementation(() => true);

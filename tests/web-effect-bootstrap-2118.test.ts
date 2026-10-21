@@ -37,7 +37,7 @@ async function listener() {
   const fm = new FleetManager(dir) as any, quiet = () => {};
   fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger };
   vi.spyOn(fm, "notifyFleetError").mockImplementation(() => true);
-  fm.fleetConfig = { instances: {}, web: { preview: false, allowed_hosts: ["lan.example"] } };
+  fm.fleetConfig = { instances: {}, web: { experimental: { canvas_worker: true }, preview: false, allowed_hosts: ["lan.example"] } };
   fm.initializeWebAuthTokens(); fm.startHealthServer(0);
   const server = fm.healthServer as Server; servers.push(server);
   await vi.waitFor(() => expect(server.listening).toBe(true));

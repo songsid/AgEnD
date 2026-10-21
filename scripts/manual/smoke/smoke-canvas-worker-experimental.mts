@@ -1,5 +1,5 @@
 /** #2275: scratch web-only browser smoke. No fleet.start/loadConfig/reconcile/backend/tmux execution. */
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
@@ -30,6 +30,7 @@ const port = Number(process.env.HP || 48760);
 for (const value of [port, port + 1]) await new Promise<void>((done, fail) => { const s = createServer(); s.once("error", fail); s.listen(value, "127.0.0.1", () => s.close(() => done())); });
 let fm: any, browser: any, publicLink: any, debugPage: any;
 const allRequests: string[] = [], errors: string[] = [], networkViolations: string[] = [], workers: string[] = [], results: any = {};
+const approvedChanges: Array<{ id: string; state: string }> = [];
 const cwPath = (url: string) => /\/(?:assets\/(?:effect-[^/]+|owner-effect-prefs|display-metadata)\.js|ui\/js\/(?:app-effects|chat-effects|chat-effect-posters|effect-trial[^/]*|effects-waker|settings-effects|settings-owner-effects)\.js|effect-bootstrap|ui\/(?:effects|effect-trials))\b/.test(url);
 try {
   fm = new FleetManager(scratch);
@@ -38,6 +39,14 @@ try {
   fm.lifecycle = { daemons: new Map(), isPaused: () => false, hasWorkLease: () => false };
   fm.fleetConfig = { health_port: port, instances: { demo: { working_directory: scratch, backend: "claude-code" } }, web: { preview_port: port + 1, experimental: { canvas_worker: false } } };
   writeFileSync(join(scratch, "fleet.yaml"), `health_port: ${port}\ninstances:\n  demo:\n    working_directory: ${JSON.stringify(scratch)}\n    backend: claude-code\nweb:\n  preview_port: ${port + 1}\n  experimental:\n    canvas_worker: false\n`);
+  fm.configPath = join(scratch, "fleet.yaml"); fm.savedFleetConfigSnapshot = structuredClone(fm.fleetConfig); fm.rawFleetConfig = structuredClone(fm.fleetConfig);
+  // Private authority seam only: no General, human receipt, CLI, or real fleet is involved. The browser still uses
+  // the actual HTTP proposal, captured local-admin capability, baseline/replay, and production settings handler.
+  fm.promptSettingsChange = async (store: any, view: any) => {
+    assert.equal(view.source, "web_session"); assert.equal(view.state, "pending");
+    const decided = await store.decide(view.id, "confirm", { label: "private smoke approval", current: () => true });
+    approvedChanges.push({ id: view.id, state: decided.state }); assert.equal(decided.state, "applied");
+  };
   fm.getUiStatus = () => ({ instances: [{ name: "demo", display_name: "Experimental effects demo", status: "running", state: "idle", backend: "claude-code", effect_chat_v: createHash("sha256").update(JSON.stringify(fm.themeStore.get("demo").placements.effects)).digest("hex").slice(0, 32) }], uptime: 1, connections: 1, themes_rev: fm.themeStore.rev(), prefs_rev: fm.webPrefs.rev(), canvas_worker: fm.canvasWorkerEnabled() });
   fm.initializeWebAuthTokens(); fm.startHealthServer(port);
   await new Promise<void>((done, fail) => { let n = 0; const t = setInterval(() => { if (fm.healthServerListening && fm.previewListening) { clearInterval(t); done(); } else if (++n > 200) { clearInterval(t); fail(Error("private listener did not bind")); } }, 25); });
@@ -63,15 +72,41 @@ try {
   const snapshot = async () => page.evaluate(() => ({ frames: document.querySelectorAll("iframe.agend-effect-frame").length, layers: document.querySelectorAll(".agend-effect-layer").length, posters: document.querySelectorAll(".agend-effect-poster").length, trials: document.querySelectorAll(".effect-trial-offer").length, ambient: document.querySelectorAll(".amb-p").length, parentWorkerConstructions: (window as any).__cwWorkers }));
   results.off = { ...await snapshot(), cwRequests: allRequests.filter(cwPath) }; assert.equal(results.off.cwRequests.length, 0); assert.equal(results.off.parentWorkerConstructions, 0); assert.equal(workers.length, 0); assert.equal(results.off.trials, 0); assert.equal(results.off.frames, 0); assert.ok(results.off.ambient > 0);
   await page.screenshot({ path: join(out, "off-chat.png"), fullPage: true });
-  await page.goto(base + "/settings/appearance"); await page.waitForSelector(".s-experimental-effects input"); assert.equal(await page.locator(".s-effects").count(), 0); await page.screenshot({ path: join(out, "off-settings.png"), fullPage: true }); await page.locator(".s-experimental-effects").scrollIntoViewIfNeeded(); await page.locator(".s-experimental-effects").screenshot({ path: join(out, "off-controls.png") });
-  await page.goto(base + "/ui/chat/demo"); await page.waitForSelector(".p-chat");
-  const toggle = (value: boolean) => { fm.fleetConfig.web.experimental.canvas_worker = value; fm.emitSseEvent("status", fm.getUiStatus()); };
-  toggle(true); await page.waitForSelector(".effect-trial-offer"); await page.waitForFunction(() => document.querySelectorAll("iframe.agend-effect-frame").length > 0, { timeout: 30000 });
+  // Keep the chat page mounted throughout both episodes. A second tab drives the actual Settings control and
+  // server confirmation path; no direct config mutation or artificial status event performs these three toggles.
+  const settingsPage = await context.newPage();
+  settingsPage.on("request", (request: any) => allRequests.push(request.url())); settingsPage.on("pageerror", (error: any) => errors.push(String(error)));
+  await settingsPage.goto(base + "/settings/appearance"); await settingsPage.waitForSelector(".s-experimental-effects input");
+  assert.equal(await settingsPage.locator(".s-effects").count(), 0); await settingsPage.screenshot({ path: join(out, "off-settings.png"), fullPage: true });
+  await settingsPage.locator(".s-experimental-effects").scrollIntoViewIfNeeded(); await settingsPage.locator(".s-experimental-effects").screenshot({ path: join(out, "off-controls.png") });
+  const chatDocument = await page.evaluate(() => { (window as any).__smokeThread = document.querySelector(".thread"); return location.href; });
+  const toggle = async (value: boolean) => {
+    const before = approvedChanges.length, checkbox = settingsPage.locator(".s-experimental-effects input");
+    assert.equal(await checkbox.isChecked(), !value); await checkbox.click(); await settingsPage.waitForFunction(() => !(document.querySelector(".s-experimental-effects input") as HTMLInputElement)?.disabled);
+    if (value) {
+      for (let n = 0; n < 100 && approvedChanges.length === before; n++) await settingsPage.waitForTimeout(50);
+      assert.equal(approvedChanges.length, before + 1); assert.equal(approvedChanges.at(-1)?.state, "applied");
+    } else assert.equal(approvedChanges.length, before); // narrowing applies immediately through the same handler
+    assert.equal(fm.canvasWorkerEnabled(), value); assert.match(readFileSync(fm.configPath, "utf8"), new RegExp(`canvas_worker: ${value}`));
+    assert.equal(await checkbox.isChecked(), value); assert.equal(await settingsPage.locator('.s-experimental-effects [role="alert"]').count(), 0);
+  };
+  await toggle(true); await page.waitForSelector(".effect-trial-offer .effect-trial-start");
+  await page.waitForFunction(() => document.querySelectorAll("iframe.agend-effect-frame").length > 0, { timeout: 30000 });
   for (let n = 0; n < 100 && !workers.length; n++) await page.waitForTimeout(50); assert.ok(workers.length > 0, "on must create a real isolated Worker"); await page.waitForTimeout(300);
-  results.on = { ...await snapshot(), workerEvents: workers.length }; assert.ok(results.on.frames > 0); assert.ok(results.on.ambient > 0); await page.screenshot({ path: join(out, "on-chat.png"), fullPage: true });
-  toggle(false); await page.waitForFunction(() => !document.querySelector("iframe.agend-effect-frame,.agend-effect-layer,.effect-trial-offer")); results.disabled = await snapshot(); assert.ok(results.disabled.ambient > 0);
-  const oldWorkerEvents = workers.length; toggle(true); await page.waitForFunction(() => document.querySelectorAll("iframe.agend-effect-frame").length > 0); for (let n = 0; n < 100 && workers.length <= oldWorkerEvents; n++) await page.waitForTimeout(50); assert.ok(workers.length > oldWorkerEvents, "restoring must create a fresh real Worker"); results.restored = { ...await snapshot(), workerEvents: workers.length };
-  await page.goto(base + "/settings/appearance"); await page.waitForSelector(".s-effects"); await page.screenshot({ path: join(out, "on-settings.png"), fullPage: true }); await page.locator(".s-experimental-effects").scrollIntoViewIfNeeded(); await page.locator(".s-experimental-effects").screenshot({ path: join(out, "on-controls.png") }); await page.locator(".s-effects").scrollIntoViewIfNeeded(); await page.locator(".s-effects").screenshot({ path: join(out, "on-library.png") });
+  results.on = { ...await snapshot(), workerEvents: workers.length, usableTry: await page.locator(".effect-trial-start").isEnabled() };
+  assert.ok(results.on.frames > 0); assert.ok(results.on.ambient > 0); assert.equal(results.on.usableTry, true); await page.screenshot({ path: join(out, "on-chat.png"), fullPage: true });
+  await toggle(false); await page.waitForFunction(() => !document.querySelector("iframe.agend-effect-frame,.agend-effect-layer,.effect-trial-offer")); results.disabled = await snapshot(); assert.ok(results.disabled.ambient > 0);
+  const oldWorkerEvents = workers.length; await toggle(true);
+  await page.waitForSelector(".effect-trial-offer .effect-trial-start"); await page.waitForFunction(() => document.querySelectorAll("iframe.agend-effect-frame").length > 0);
+  for (let n = 0; n < 100 && workers.length <= oldWorkerEvents; n++) await page.waitForTimeout(50); assert.ok(workers.length > oldWorkerEvents, "restoring must create a fresh real Worker");
+  results.restored = { ...await snapshot(), workerEvents: workers.length, usableTry: await page.locator(".effect-trial-start").isEnabled(), sameThread: await page.evaluate(() => (window as any).__smokeThread === document.querySelector(".thread")) };
+  assert.equal(results.restored.usableTry, true); assert.equal(results.restored.sameThread, true); assert.equal(page.url(), chatDocument);
+  assert.doesNotMatch(await page.locator(".effect-trial-offer").innerText(), /Checking this session/);
+  await page.screenshot({ path: join(out, "restored-chat.png"), fullPage: true });
+  await settingsPage.waitForSelector(".s-effects"); await settingsPage.screenshot({ path: join(out, "on-settings.png"), fullPage: true });
+  await settingsPage.locator(".s-experimental-effects").scrollIntoViewIfNeeded(); await settingsPage.locator(".s-experimental-effects").screenshot({ path: join(out, "on-controls.png") });
+  await settingsPage.locator(".s-effects").scrollIntoViewIfNeeded(); await settingsPage.locator(".s-effects").screenshot({ path: join(out, "on-library.png") });
+  assert.equal(approvedChanges.length, 2); results.confirmedChanges = approvedChanges; await settingsPage.close();
   assert.equal(saved, JSON.stringify({ placements: fm.themeStore.get("demo").placements, ownerSlot: fm.webPrefs.read("operator").values["fx.page"] })); assert.deepEqual(errors, []); assert.deepEqual(networkViolations, []);
   // A true guest session, with channel scope inertly supplied by this web-only fixture.
   fm.fleetConfig.web.experimental.canvas_worker = false; fm.fleetConfig.web.guests = { enabled: true };
