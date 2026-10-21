@@ -1,0 +1,45 @@
+
+  >_ OpenAI Codex (v0.163.0)
+     ~/.cxcm/miss/work
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› call the tool
+
+
+• ok
+
+  Worked for <1s • 00:01
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                                                         ⚠ 4 warnings · f2 to view
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

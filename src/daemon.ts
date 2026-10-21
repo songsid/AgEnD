@@ -82,6 +82,7 @@ import {
 } from "./turn-resume.js";
 import type { TurnFingerprint } from "./backend/session-signals.js";
 import { codexLiveRowMatches } from "./backend/codex.js";
+import { codexPackageProblemMessage } from "./backend/codex-package.js";
 import { claudeConfigDirFor, claudeProfileConfigDir, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
 import { InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import { unrecognisedPromptShape, type PromptShape } from "./unrecognised-prompt.js";
@@ -2625,6 +2626,7 @@ export class Daemon extends EventEmitter {
         ackIfPending();
         this.recordRecentEvent({ type: "assistant_text", preview: text.slice(0, 100) });
       });
+      this.transcriptMonitor.on("codex_package_missing_host", (root: string) => this.noteCodexPackageMissingHost(root));
       this.transcriptMonitor.startPolling();
 
       // HangDetector is the notification bridge to the fleet manager; pane state
@@ -8177,6 +8179,21 @@ export class Daemon extends EventEmitter {
     this.footerFallbackEpoch = null;
   }
   private footerFallbackWarnedGeneration: number | null = null;
+  /** #2357: the launch (spawn generation and attempt) the missing code-mode host was last reported for. */
+  private codexPackageNoticeEpoch: string | null = null;
+
+  /**
+   * #2357: codex recorded that a tool call could not start its code-mode host. Every tool call of a code-mode-only
+   * account fails this way (AgEnD's reply too) while the pane shows only `⚠ N warnings · f2 to view`. Told once per
+   * launch however often the model retries; the launch check (CodexBackend.buildCommand) may already have said so.
+   */
+  private noteCodexPackageMissingHost(root: string): void {
+    const epoch = `${this.spawnGeneration}:${this.launchAttempt}`;
+    if (this.codexPackageNoticeEpoch === epoch) return;
+    this.codexPackageNoticeEpoch = epoch;
+    this.logger.warn({ root }, "Codex tool call failed: code-mode host missing");
+    this.emit("backend_launch_warning", { name: this.name, message: codexPackageProblemMessage(root, { file: "bin/codex-code-mode-host", reason: "missing" }) });
+  }
 
   /**
    * The input-row proof used before a paste (#931/#947), with one fallback
