@@ -13,6 +13,7 @@ import type { Theme, ThemeMode } from "./web-theme.js";
 
 type Picture = { bytes: Buffer; mime: string } | null;
 export interface AppearanceDeps {
+  canvasWorkerEnabled?(): boolean;
   frame(name: string): FrameEntry;
   theme(name: string): { theme: Theme; locked: boolean; widgets?: AppearanceInput["widgets"]; ambient?: AppearanceInput["ambient"]; glyphAsset?: (id: string) => Picture };
   card(name: string): ResolvedCard;
@@ -47,7 +48,7 @@ export class AppearanceTools {
     const t = this.deps.theme(name);
     const answer = this.deps.themeAnswer(name);
     return { entry, theme: t.theme, card: this.deps.card(name), locked: t.locked, agentEdit: answer.agent_edit !== false, limits: (answer.limits ?? {}) as Record<string, unknown>, widgets: t.widgets, ambient: t.ambient,
-      effects: this.deps.effects?.(name) ?? [], colorPrefs: this.deps.colorPrefs?.() ?? {} };
+      effects: this.deps.canvasWorkerEnabled?.() === true ? this.deps.effects?.(name) ?? [] : [], colorPrefs: this.deps.colorPrefs?.() ?? {} };
   }
   /** The face drawn, as bytes of this instance's: the theme's picture, the person's upload, or its own bot's. */
   private avatar(name: string, input: AppearanceInput): Picture {
@@ -63,7 +64,11 @@ export class AppearanceTools {
   handle(name: string, tool: string, args: Record<string, unknown>): Record<string, unknown> {
     const now = this.now();
     for (const [k, b] of this.previews) if (now - b.last > PREVIEW_IDLE_MS) this.previews.delete(k);   // nothing stale stays
-    if (tool === "get_web_appearance") return appearanceView(this.input(name));
+    if (tool === "get_web_appearance") {
+      const view = appearanceView(this.input(name));
+      if (this.deps.canvasWorkerEnabled?.() !== true) delete view.effects;
+      return view;
+    }
     if (tool !== "preview_web_appearance") return { error: "unknown_tool" };
     if (args.part !== undefined) return this.part(name, args.part, now);
     const modes = args.modes === undefined ? MODES : args.modes;

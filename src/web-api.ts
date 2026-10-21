@@ -1,3 +1,5 @@
+import { canvasWorkerEnabled, CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
+import { isCanvasWorkerHttpPath } from "./web-experimental-http.js";
 import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { classifyWebPeer, confirmAfterBody, noAuthority, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { guestChatRefusal, guestCommandText, guestDeliveries, guestFrameData, guestHistory, guestMessages, guestPollBody, guestPrefs, guestRequestOf, guestSeesMessage, guestStatus, type GuestRequest } from "./web-guest-access.js";
@@ -290,7 +292,7 @@ export interface WebApiContext {
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
     health_port?: number;
-    web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean } };
+    web?: { experimental?: { canvas_worker?: boolean }; echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean } };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
@@ -710,6 +712,7 @@ function handleEffectTrials(req: IncomingMessage, res: ServerResponse, url: URL,
     try { bytes = await readBoundedWebBody(req, 16 * 1024); } catch { json(res, 413, { error: "trial_body_bound" }); return; }
     if (!permitWebContinuation(req, res, ctx)) return;
     const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
+    if (!canvasWorkerEnabled(ctx.fleetConfig?.web)) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
     if (now.record !== first.record || now.sessions !== first.sessions || now.actor.sessionHash !== first.actor.sessionHash
       || now.actor.person !== first.actor.person || now.actor.epoch !== first.actor.epoch) { json(res, 409, { error: "trials_person_changed" }); return; }
     let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "trial_json" }); return; }
@@ -829,6 +832,7 @@ function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
     catch { json(res, 413, { error: "effect_body_bound" }); return; }
     if (!permitWebContinuation(req, res, ctx)) return;
     const now = who(); if ("status" in now) { json(res, now.status, { error: now.error }); return; }
+    if (!canvasWorkerEnabled(ctx.fleetConfig?.web)) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
     if (now.person !== first.person || now.epoch !== first.epoch) { json(res, 409, { error: "effects_person_changed" }); return; }
     if (path === "/ui/effects/upload") { answer(service.upload(now.person, bytes)); return; }
     let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "effect_json" }); return; }
@@ -897,6 +901,9 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
     // So the export ACL judges what the file carries, not what was installed: it downloads only when this person may
     // read every effect in it (their own claim on that content, or a shared one). A file without effects is any admin's.
     const fx = mods.bundleEffects(fileMatch[1]!);
+    if (!canvasWorkerEnabled(ctx.fleetConfig?.web) && (fx === "unknown" || (fx?.length ?? 0) > 0)) {
+      json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return true;
+    }
     if (fx === "unknown" || (fx ?? []).some(id => !ctx.modPlacedEffect?.(first.person, id))) { json(res, 403, { error: "mod_effects_not_yours", detail: "this mod's file carries effects that are not yours to share: export your own look instead" }); return true; }
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
       "Content-Disposition": `attachment; filename="${rec.name}-${rec.version}.agendmod.json"` });
@@ -973,7 +980,7 @@ export function exportMod(ctx: WebApiContext, person: string, body: Record<strin
       // The effects the theme places travel with it, as the library keeps them (a person may export what is placed).
       // Only effects this person may carry away travel (Sol's ACL); the rest are counted, never packaged.
       // #2017: an older placement of an effect that doesn't play in chat stays out (a mod can't place it): counted.
-      const effects = rec.placements.effects.flatMap(p => { const e = ctx.modPlacedEffect?.(person, p.id); if (!e || !filesPlayInChat(e.files)) { omitted++; return []; } return [{ name: e.name, files: e.files, params: p.params ?? {} }]; });
+      const effects = (canvasWorkerEnabled(ctx.fleetConfig?.web) ? rec.placements.effects : []).flatMap(p => { const e = ctx.modPlacedEffect?.(person, p.id); if (!e || !filesPlayInChat(e.files)) { omitted++; return []; } return [{ name: e.name, files: e.files, params: p.params ?? {} }]; });
       parts.theme = { theme: rec.theme, picture: id => { const a = rec.assets.find(x => x.id === id); const b = store.asset(name!, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; }, effects };
     }
     if (inc.identity === true) parts.identity = ctx.modCardText?.(name) ?? {};
@@ -1232,6 +1239,10 @@ export function handleWebRequest(
 ): boolean {
   const path = url.pathname;
   const method = req.method ?? "GET";
+  if (!canvasWorkerEnabled(ctx.fleetConfig?.web) && isCanvasWorkerHttpPath(path)) {
+    json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE });
+    return true;
+  }
 
   // Auth check for all /ui routes. Defence in depth behind the fleet-manager
   // gate: the same session cookie or header token, and an unset token closes
@@ -1800,6 +1811,7 @@ export function handleWebRequest(
       if (!now?.canWrite) { refuse(now); return; }
       if (now.person !== first.person || now.epoch !== first.epoch || now.via !== first.via) { json(res, 409, { error: "prefs_person_changed" }); return; }
       const personal = [...parsed.patch.keys()].some(isOwnerEffectKey);
+      if (personal && !canvasWorkerEnabled(ctx.fleetConfig?.web)) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
       if (personal && now.person === null) { json(res, 403, { error: "prefs_need_a_signed_in_person" }); return; }
       // A scope marker rejects a queued old page after a different login, including the same person's new session.
       // It supplies neither identity nor authority; the current verified session still chooses the bucket.
@@ -2994,7 +3006,7 @@ export interface AppShellContext {
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
   /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
-  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number } } | null;
+  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; experimental?: { canvas_worker?: boolean } } } | null;
   /** #1665: the host's theme and language go into the page itself, so a device paints them before any script reads. */
   readonly webPrefs?: WebPrefsStore;
   /** #1629 r4 §3: which owner CSS this load's person has in force (data-owner-css), for a signed-in human session only. */
@@ -3144,6 +3156,7 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false || viewer?.guest ? "0" : "1"}"`
     // #1218: whether the Log tab is on (web.log_tab; off by default): the tab says so and offers to turn it on.
     + ` data-log-tab="${ctx.fleetConfig?.web?.log_tab === true ? "1" : "0"}"`
+    + ` data-canvas-worker="${canvasWorkerEnabled(ctx.fleetConfig?.web) ? "1" : "0"}"`
     // #1937: the upload limits in force for this page (the config's; the public link's own cap on it) — what the chat
     // checks before sending a file, and the numbers its words say. The server checks again on every upload.
     + ` data-upload-limits="${attr(JSON.stringify(uploadLimits(ctx.fleetConfig?.web, { publicLink: gatewayRequestContext(req) !== undefined })))}"`

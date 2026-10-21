@@ -42,6 +42,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   try { if (!host?.document || !host.document.body || registries.has(host) || typeof load !== "function" || typeof stockSnapshot !== "function" || typeof onChange !== "function" || typeof onProfile !== "function" || typeof onMount !== "function" || typeof onRetire !== "function" || typeof clock !== "function" || !safety || ["allowed", "begin", "finish", "pause", "resume"].some(k => typeof safety[k] !== "function") || ["requestAnimationFrame", "cancelAnimationFrame", "setTimeout", "clearTimeout", "MutationObserver", "ResizeObserver", "AbortController"].some(k => typeof host[k] !== "function")) return { ok: false, reason: "registry_unsupported" }; } catch { return { ok: false, reason: "registry_unsupported" }; }
   let dead = false, blocked = null, revision = 0, last = null, lastView = null, frameSerial = 0, context = null, descriptors = [], raf = null, timer = null;
   const slots = new Map(), loads = new Set(), paused = new Map(), offs = [], observed = new Set(), failures = new Map(), results = new Map();
+  let finishDisposed; const disposed = new Promise(resolve => { finishDisposed = resolve; });
   let readingStock = false, stockFailure = "stock_evidence_invalid", warned = null;
   let root, geometry, observer, resize, longTasks = null, longTasksSupported = false;
   const time = () => {
@@ -342,7 +343,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       }).catch(() => { if (current(s)) retire(s, "resource_unavailable"); }).finally(() => {
         if (request.timer !== null) host.clearTimeout(request.timer);
         loads.delete(request); if (s.request === request) s.request = null;
-        if (!dead) reconcile(); else if (loads.size === 0 && registries.get(host) === api) registries.delete(host);
+        if (!dead) reconcile(); else if (loads.size === 0) { if (registries.get(host) === api) registries.delete(host); finishDisposed(); }
       });
     }
     schedule(); tell();
@@ -530,11 +531,12 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       }
       return sent;
     },
+    whenDisposed: () => disposed,
     dispose() {
       if (dead) return; dead = true; revision++; stopAll("disposed");
       if (raf !== null) host.cancelAnimationFrame(raf); if (timer !== null) host.clearTimeout(timer);
       observer.disconnect(); resize.disconnect(); longTasks?.disconnect(); for (const off of offs) off();
-      geometry.dispose(); root.remove(); observed.clear(); if (loads.size === 0 && registries.get(host) === api) registries.delete(host);
+      geometry.dispose(); root.remove(); observed.clear(); if (loads.size === 0) { if (registries.get(host) === api) registries.delete(host); finishDisposed(); }
     },
   };
   // Read-only host geometry seam; no selector guessing among poster and live roots.

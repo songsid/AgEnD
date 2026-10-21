@@ -25,9 +25,10 @@ export function createEffectCursor({ window: host, current, readImage, onChange 
   const unavailable = { ok: false, update() {}, snapshot: () => ({ status: "unavailable", id: null }), dispose() {} };
   if (!host?.document || owners.has(host) || ![current, readImage, onChange, host.getComputedStyle, host.Blob, host.URL?.createObjectURL, host.URL?.revokeObjectURL, host.AbortController, host.setTimeout, host.clearTimeout, host.performance?.now].every(x => typeof x === "function")) return unavailable;
   const token = {}; owners.set(host, token);
+  let finishDisposed; const disposed = new Promise(resolve => { finishDisposed = resolve; });
   const doc = host.document; let dead = false, previous = null, wanted = null, pending = null, active = null, blocked = null, generation = 0, checking = false, notifying = false, status = "off";
   const safe = fn => { try { return fn(); } catch { return null; } };
-  const release = () => { if (dead && !pending && owners.get(host) === token) owners.delete(host); };
+  const release = () => { if (dead && !pending) { if (owners.get(host) === token) owners.delete(host); finishDisposed(); } };
   function alive() {
     if (dead || checking) return false;
     checking = true; const value = safe(() => current() === true && host.document === doc); checking = false;
@@ -121,5 +122,5 @@ export function createEffectCursor({ window: host, current, readImage, onChange 
     }
     start(); tell();
   }
-  return { ok: true, update, snapshot, dispose };
+  return { ok: true, update, snapshot, dispose, whenDisposed: () => disposed };
 }

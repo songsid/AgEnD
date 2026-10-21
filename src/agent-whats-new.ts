@@ -79,6 +79,19 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
     text: "The web-chat rule is reworded (#1939): a plain `via web` message is the signed-in person — answer it and do what it asks within your work (questions, reading, analysis, changes in your own scope). Only a go-ahead action — a release or publish, anything destructive or irreversible beyond your own work files and branches, spending beyond normal work, credentials or secrets, granting authority to another instance — needs their account behind it: a Discord or Telegram receipt, or `via web (verified)` with its receipt read (`delivery_status`). A guest only chats. The full text is in your instructions and the cross-instance-messaging skill." },
 ];
 
+/** #2275: old sessions learn only the capabilities currently enabled. Keep the full
+ * enabled entries above intact; ambient and all unrelated entries are unchanged. */
+export function agentWhatsNew(canvasWorker = false): readonly WhatsNewEntry[] {
+  if (canvasWorker === true) return AGENT_WHATS_NEW;
+  return AGENT_WHATS_NEW.map(entry => {
+    if (entry.id === "2.3-web-appearance-topic") return { ...entry,
+      text: "Web appearance — your own look on the web dashboard: theme, identity card and identity colour, widgets and ambient effects (`get_web_appearance`, `set_web_theme`, `set_web_widget`, `set_web_ambient`, …). Load the `web-appearance` skill before using these tools: it has their parameters, limits and rules." };
+    if (entry.id === "2.3-web-settings-for-the-user") return { ...entry,
+      text: "General (and coordinators): `get_web_settings` / `set_web_settings` read and change the user's Settings → Web appearance the way the page does — host settings, an agent's colour, ambient effects, custom CSS and Restore defaults. Load the `web-appearance` skill first." };
+    return entry;
+  });
+}
+
 /**
  * The released AgEnD version this code belongs to, or null. A source checkout (a `.git` beside its package.json) has a
  * placeholder version — the release sets the real one (publish.yml `npm pkg set version=<tag>`) — so it has none:
@@ -168,13 +181,15 @@ export function planWhatsNew(input: {
   record: WhatsNewRecord | null | "unreadable"; fresh: boolean; version: string | null; entries?: readonly WhatsNewEntry[];
   /** #2163: this instance's roles. An entry for none of them is recorded with the others but not shown. Absent: all. */
   roles?: readonly WhatsNewAudience[];
+  /** #2275: absent or any value other than true keeps experimental guidance hidden. */
+  canvasWorker?: boolean;
 }):
   | { notice: string; ids: string[]; version: string }
   | { silent: string[]; version: string }
   | null {
   const { record, fresh, version } = input;
   if (!version || record === "unreadable") return null;
-  const current = (input.entries ?? AGENT_WHATS_NEW).filter(e => { const c = compareVersions(e.since, version); return c !== null && c <= 0; });
+  const current = (input.entries ?? agentWhatsNew(input.canvasWorker)).filter(e => { const c = compareVersions(e.since, version); return c !== null && c <= 0; });
   const known = new Set(record?.announced ?? []);
   const unseen = current.filter(e => !known.has(e.id));
   if (!unseen.length) return null;

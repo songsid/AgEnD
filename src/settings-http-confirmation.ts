@@ -10,6 +10,8 @@ import { gatewayRequestContext } from "./web-request-context.js";
 
 export interface SettingsPrincipal {
   id: string; label: string; source: SettingsPendingView["source"]; current(): boolean;
+  /** Only an authenticated local web administrator supplies this; setup/header/public principals do not. */
+  localAdmin?(): boolean;
 }
 export interface SettingsBaseline extends SettingsEffectContext { fingerprint: string }
 /**
@@ -59,6 +61,7 @@ export class SettingsHttpConfirmation {
     if (res.destroyed || req.aborted) return;
     let body: unknown; try { body = JSON.parse(raw.toString("utf8") || "{}"); } catch { throw new SettingsConfirmationError(400, "invalid_json"); }
     const principal = this.options.principal(req);
+    const localAdmin = principal?.localAdmin ? () => principal.current() && principal.localAdmin?.() === true : undefined;
     const key = typeof req.headers["idempotency-key"] === "string" ? req.headers["idempotency-key"]
       : body && typeof body === "object" && typeof (body as any).idempotency_key === "string" ? (body as any).idempotency_key : undefined;
     const requestFingerprint = settingsFingerprint([method, url.pathname, body]);
@@ -74,11 +77,11 @@ export class SettingsHttpConfirmation {
       const execution = new SettingsExecution({ current: () => principal ? principal.current() : true,
         snapshot: () => this.options.snapshot(), expectedFingerprint: classifiedSnapshot });
       res.once?.("finish", () => execution.close()); res.once?.("close", () => execution.cancel());
-      this.passed.add(req); cacheSettingsBody(req, raw, execution, requestSessionBinding(req)); next(req, res, url); return;
+      this.passed.add(req); cacheSettingsBody(req, raw, execution, requestSessionBinding(req), localAdmin); next(req, res, url); return;
     }
     if (!principal?.current()) throw new SettingsConfirmationError(401, "session_required");
     const binding = requestSessionBinding(req), snapshot = settingsFingerprint(this.options.snapshot());
-    const payload = { method, url: url.pathname + url.search, key, body: Buffer.from(raw), binding };
+    const payload = { method, url: url.pathname + url.search, key, body: Buffer.from(raw), binding, localAdmin };
     const result = this.store.propose({ session: principal.id, key: key ?? `operation:${requestFingerprint}`,
       requestFingerprint, fingerprint: effect.diff.fingerprint, section: effect.diff.section, requestedBy: principal.label,
       source: principal.source, summary: effect.diff.summary, affectedConnections: effect.diff.affectedConnections, authority: effect.diff.authority,

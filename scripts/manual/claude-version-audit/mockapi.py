@@ -7,6 +7,8 @@ Behaviour is chosen by a keyword in the last user text:
   BGWORK   tool_use Bash `sleep 900` with run_in_background (background shell)
   E529     HTTP 529 overloaded            E401  HTTP 401
   E429     HTTP 429 rate limit            E500  HTTP 500
+  E400LONG HTTP 400 invalid_request_error "prompt is too long: … tokens > … maximum" (the API's context-limit error)
+  E400BAD  HTTP 400 invalid_request_error with another message (2.1.306: no longer shown as "prompt is too long")
   BIG      reply with huge usage numbers (to make the session look large)
 otherwise a short text reply. Every request is appended to requests.log.
 """
@@ -71,6 +73,10 @@ class H(BaseHTTPRequestHandler):
             return self._json(200, {"input_tokens": 100})
         if not self.path.startswith("/v1/messages"):
             return self._json(200, {})
+        if "E400LONG" in text and not tool_result:
+            return self._json(400, {"type": "error", "error": {"type": "invalid_request_error", "message": "prompt is too long: 213487 tokens > 200000 maximum"}})
+        if "E400BAD" in text and not tool_result:
+            return self._json(400, {"type": "error", "error": {"type": "invalid_request_error", "message": "messages.1.content.0: unexpected field mock_probe"}})
         for kw, code, etype in (("E529", 529, "overloaded_error"), ("E401", 401, "authentication_error"), ("E429", 429, "rate_limit_error"), ("E500", 500, "api_error")):
             if kw in text and not tool_result:
                 return self._json(code, {"type": "error", "error": {"type": etype, "message": f"mock {etype}"}})

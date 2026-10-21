@@ -24,7 +24,7 @@ export function createStore(initial) {
  *  (app-stream.js catchUp) — "catching" / "retrying" / "failed" / "ok"; `retryHydration` asks for it again.
  *  `connections`: how many chat connections the fleet has (#1519 P7: 0 is web-only — the first-run card); null until known. */
 export const appStore = createStore({ ready: false, instances: [], uptime: 0, exec: {}, awaiting: {}, connection: "connecting", needs: [], connections: null,
-  hydration: "none", retryHydration: null });
+  hydration: "none", retryHydration: null, canvasWorker: typeof document !== "undefined" && document.body?.dataset.canvasWorker === "1" });
 
 /**
  * #1920 phase 3: this page is a guest's — the server says so on <body> (data-tier="guest"). A guest sees only its own
@@ -49,7 +49,7 @@ export function applyStatus(d) {
     exec[i.name] = (i.execution_state !== undefined ? i.execution_state : i.state) ?? null;
     if (i.state === "awaiting_input") awaiting[i.name] = typeof i.interaction_summary === "string" ? i.interaction_summary : "";
   }
-  appStore.set({ ready: true, instances: d.instances, uptime: d.uptime ?? 0, exec, awaiting,
+  appStore.set({ canvasWorker: d.canvas_worker === true, ready: true, instances: d.instances, uptime: d.uptime ?? 0, exec, awaiting,
     connections: typeof d.connections === "number" ? d.connections : null,
     // #1665: the host preferences' revision (app-prefs.js re-reads them when it moves).
     prefsRev: typeof d.prefs_rev === "number" ? d.prefs_rev : null,

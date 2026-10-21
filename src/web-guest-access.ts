@@ -151,10 +151,11 @@ export function guestRequestOf(req: object): GuestRequest | undefined { return g
 /**
  * What a guest's status frame keeps of each in-scope instance: who it is and how it looks, its state — not its model,
  * backend, effort, cost, context, description, tags or what it is waiting for (a prompt's text). And nothing of the
- * fleet: no public link, connections, uptime, host memory, revisions.
+ * fleet identity: no public link, connections, uptime, host memory, revisions. The public CW capability bit is
+ * retained so a guest also stops playback when the administrator disables it.
  */
 const STATUS_FIELDS = ["name", "display_name", "avatar", "accent", "theme_avatar", "theme_accent", "card_v", "effect_chat_v", "color", "color_show", "status", "state", "execution_state"] as const;
-export function guestStatus(status: unknown, scope: ReadonlySet<string>): { instances: Array<Record<string, unknown>> } {
+export function guestStatus(status: unknown, scope: ReadonlySet<string>): { instances: Array<Record<string, unknown>>; canvas_worker: boolean } {
   const list = status && typeof status === "object" && Array.isArray((status as { instances?: unknown }).instances) ? (status as { instances: unknown[] }).instances : [];
   const instances: Array<Record<string, unknown>> = [];
   for (const raw of list) {
@@ -165,7 +166,8 @@ export function guestStatus(status: unknown, scope: ReadonlySet<string>): { inst
     for (const k of STATUS_FIELDS) if (Object.prototype.hasOwnProperty.call(i, k) && i[k] !== undefined) out[k] = i[k];
     instances.push(out);
   }
-  return { instances };
+  // This public capability bit carries no fleet identity; guests need it for live enable/disable too.
+  return { instances, canvas_worker: !!status && typeof status === "object" && (status as { canvas_worker?: unknown }).canvas_worker === true };
 }
 
 // ── Phase 2: the chat, as the channel showed it (#1920 §5.2) ──

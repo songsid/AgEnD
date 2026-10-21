@@ -30,7 +30,7 @@ function fixture(opts: ConstructorParameters<typeof WebPrefsStore>[1] = {}) {
   library.registerReferenceSource("prefs", () => prefs.ownerEffectReferences());
   library.registerReferenceSource("themes", () => themes.placedEffects().flatMap(p => p.ids.map(id => ({ id, holder: `instance:${p.name}` }))));
   const emit = vi.fn(), service = new WebEffectService({ library, prefs, profiles, themes, known: n => n === "worker", changed: emit });
-  const ctx = { webToken: token, webSessions: sessions, webPrefs: prefs, effectService: service, logger: { info() {}, debug() {}, warn() {}, error() {} }, getUiStatus: () => ({}), emitSseEvent: emit } as any;
+  const ctx = { fleetConfig: { web: { experimental: { canvas_worker: true } } }, webToken: token, webSessions: sessions, webPrefs: prefs, effectService: service, logger: { info() {}, debug() {}, warn() {}, error() {} }, getUiStatus: () => ({}), emitSseEvent: emit } as any;
   const session = (user: string | null = "alice", adapterId = "discord", tier: "read" | "admin" = "admin") => {
     const owner = user === null ? undefined : { adapterId, userId: user }, made = sessions.create({ tier, surface: "local", label: "test", tokenEpoch: tokenEpoch(token), ...(owner ? { owner } : {}) });
     return { ...made, person: webPersonKey(owner), headers: { cookie: `agend_session=${made.sessionId}`, origin, "sec-fetch-site": "same-origin", "x-agend-csrf": csrfTokenFor(made.sessionId) } };

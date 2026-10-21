@@ -95,6 +95,7 @@ const CLASSIC_FIELDS = [
  * fleet process or the channel binding rather than to an instance's config.
  */
 const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
+  "web.experimental.canvas_worker": "now",
   "web.echo_to_channel": "now",
   "web.log_tab": "now",
   "web.usage_report_on_public_link": "now",

@@ -50,7 +50,7 @@ async function fixture() {
   const { FleetManager } = await import("../src/fleet-manager.js");
   const fm = new FleetManager(dir) as any;
   fm.logger = pino({ level: "silent" });
-  fm.fleetConfig = { defaults: {}, instances: Object.fromEntries(["own", "other"].map(n => [n, { working_directory: dir, tool_set: "standard" }])), web: { themes: { agent_edit: true } } };
+  fm.fleetConfig = { defaults: {}, instances: Object.fromEntries(["own", "other"].map(n => [n, { working_directory: dir, tool_set: "standard" }])), web: { experimental: { canvas_worker: true }, themes: { agent_edit: true } } };
   vi.spyOn(fm, "startAll").mockRejectedValue(Error("no fleet")); vi.spyOn(fm, "startInstance").mockRejectedValue(Error("no spawn"));
   vi.spyOn(fm, "getUiStatus").mockReturnValue({}); vi.spyOn(fm, "emitSseEvent").mockImplementation(() => {});
   let now = 0;

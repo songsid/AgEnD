@@ -762,6 +762,7 @@ describe("the page: a plan's choices belong to its stage (#1897 review)", () => 
       const P = await import("/assets/app-html.js");
       await import("/ui/js/settings-strings.js");
       const { ThemeDetail } = await import("/ui/js/settings-mods.js");
+      (await import("/assets/app-store.js")).appStore.set({ canvasWorker: true });
       const BG = "b".repeat(32), AV = "c".repeat(32);
       P.render(P.h(ThemeDetail, { theme: { v: 1, colors: { light: { bg: "#fafafa" }, dark: { text: "#eeeeee", agentBubble: "#222222" } }, bubble: { radius: 6, border: "accent" }, workingLabel: "Pondering",
         background: { image: BG, fit: "contain", opacity: 0.35 }, avatar: AV }, pictures: [{ path: "p/bg.png", slot: "background", id: BG, bytes: 2048 }, { path: "p/me.png", slot: "avatar", id: AV, bytes: 1024 }],

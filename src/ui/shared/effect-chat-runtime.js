@@ -1,3 +1,4 @@
+import { chatEffectIdentity } from "./effect-display-metadata.js";
 /** #1629: one committed local Chat lease joins the reviewed host-only effect primitives. */
 import { createEffectRuntimeLoader } from "./effect-runtime-loader.js";
 import { createEffectRegistry } from "./effect-registry.js";
@@ -43,13 +44,7 @@ export function createEffectWriter(host, current) {
 }
 
 /** Frozen, server-rendered session identity only. A header-token/public/View load has no identity. */
-export function chatEffectIdentity(host) {
-  try {
-    const b = host.document.body.dataset, x = JSON.parse(host.document.documentElement.getAttribute("data-prefs") || "null");
-    if (b.mode !== "full" || b.tier === "guest" || b.publicLink === "1" || b.webTransport === "poll" || !["person", "operator"].includes(x?.ownerScope) || x.unreadable === true || typeof x.ownerEpoch !== "string" || !/^[a-f0-9]{16}$/.test(x.ownerEpoch)) return null;
-    return Object.freeze({ epoch: x.ownerEpoch, scope: x.ownerScope });
-  } catch { return null; }
-}
+export { chatEffectIdentity } from "./effect-display-metadata.js";
 /** Chat-only public/guest capability stays separate from personal preferences and management. */
 export function effectPlaybackIdentity(host) {
   try {

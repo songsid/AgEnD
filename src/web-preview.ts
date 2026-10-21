@@ -260,6 +260,8 @@ function shimResponse(html: string, origins: readonly string[], effect = false):
 
 export function createPreviewListener(opts: {
   settings: PreviewSettings; healthPort: number; config: HostGuardConfig | null | undefined; bootId?: string;
+  /** The legacy CW bootstrap shares the live experimental admission; HTML previews are independent. */
+  canvasWorkerEnabled?(): boolean;
   /**
    * #1723: dashboard origins that may frame the preview for now — the open public link's, when a web.preview_origin is
    * configured (it is used instead of a preview tunnel). Asked per request; never cached past the answer.
@@ -292,6 +294,7 @@ export function createPreviewListener(opts: {
     if (!host || !hosts.has(host)) return empty(res, 403);
     if (req.method !== "GET") return empty(res, 404);
     if (req.url === "/effect") {
+      if (opts.canvasWorkerEnabled?.() !== true) return empty(res, 403);
       res.writeHead(200, effect.headers);
       return res.end(effect.body);
     }

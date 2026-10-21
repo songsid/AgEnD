@@ -189,6 +189,8 @@ describe("the chat's states", () => {
 
   it.each(["person", "operator", "public", "poll", "header", "bad-epoch", "view"])("Effects controls follow the actual local runtime identity: %s", async kind => {
     const before = p.document.documentElement.getAttribute("data-prefs"), old = { ...p.document.body.dataset };
+    app.appStore.set({ canvasWorker: true });
+    await (await import("/assets/feature-flags.js")).loadCanvasWorkerMetadata();
     try {
       p.document.body.dataset.mode = kind === "view" ? "view-only" : "full";
       p.document.body.dataset.publicLink = kind === "public" ? "1" : "0";
@@ -199,6 +201,7 @@ describe("the chat's states", () => {
       expect(labels.includes("Effects")).toBe(["person", "operator"].includes(kind));
     } finally {
       await p.unmount();
+      app.appStore.set({ canvasWorker: false });
       for (const key of Object.keys(p.document.body.dataset)) delete p.document.body.dataset[key]; Object.assign(p.document.body.dataset, old);
       if (before === null) p.document.documentElement.removeAttribute("data-prefs"); else p.document.documentElement.setAttribute("data-prefs", before);
     }

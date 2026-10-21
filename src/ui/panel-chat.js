@@ -75,11 +75,12 @@ import { PreviewPanel, claimPanel, openPanel, panelClaims, panelStore, panelVers
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
-import { ChatEffectPosters } from "/ui/js/chat-effect-posters.js";
-import { ChatEffects, chatEffectsMenuAvailable } from "./chat-effects.js";
+import { canvasWorkerMenuAvailable, experimentalComponent, useCanvasWorker } from "/assets/feature-flags.js";
+const ChatEffectPosters = experimentalComponent(() => import("./chat-effect-posters.js"), m => m.ChatEffectPosters);
+const ChatEffects = experimentalComponent(() => import("./chat-effects.js"), m => m.ChatEffects);
 import { setFollowsReducedMotion } from "/assets/fx-motion.js";
 import { AmbientMotionNote, ChatAmbient, ambientMenuItems } from "./chat-ambient.js";
-import { startEffectsWaker, getAppEffects, wakeEffects, effectsLoaded, onEffectsAwake, chatHasEffects } from "./effects-waker.js";
+import { startEffectsWaker, getAppEffects, wakeEffects, effectsLoaded, onEffectsAwake, chatHasEffects } from "/assets/feature-flags.js";
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
 const composerField = () => (typeof document !== "undefined" ? document.getElementById("msgIn") : null);
 
@@ -300,7 +301,8 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     else toast(t(verb === "start" ? "chat.started" : verb === "stop" ? "chat.stoppedInst" : "chat.restarted", name));
   };
   // #2193: this chat's Canvas Worker placements (its status row's effect_chat_v): none, no effects code runs for it.
-  const fxHere = chatHasEffects(name);
+  const cwEnabled = useCanvasWorker();
+  const fxHere = cwEnabled && chatHasEffects(name);
   const items = [
     // #1523 N2: Details is a page now (the Fleet side of this instance), not a dialog.
     { key: "details", label: t("chat.details"), icon: "info", onSelect: () => navigate(detailsPath(name)) },
@@ -313,7 +315,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ...themeMenuItems(name),
     // #2117: its ambient — why it is not showing here (with the way to change that), and a person's Clear.
     ...ambientMenuItems(name, { publicLink: document.body.dataset.publicLink === "1", clear: clearAmbient }),
-    chatEffectsMenuAvailable() ? { key: "effects", label: t("chatFx.title"), onSelect: () => setDialog("effects") } : null,
+    cwEnabled && canvasWorkerMenuAvailable(window) ? { key: "effects", label: t("cwControls.title"), onSelect: () => setDialog("effects") } : null,
     { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, onSelect: () => setDialog("delete") },
   ];
   const cls = statusClass(inst, exec, awaiting);
@@ -454,11 +456,16 @@ function follow(name, thread) {
   }));
   offs.push(P() ? P().onChange(() => thread.refreshCards()) : () => {});
   // #2193: the runtime may start later (an offer shown wakes it): its trial updates are followed from then.
-  let trialOff = null;
-  const watchTrial = () => { trialOff = getAppEffects()?.subscribeTrial(() => thread.render(store.state.msgs[name] || [])) ?? null; };
+  let trialOff = null, trialOwner = null;
+  const watchTrial = () => {
+    const next = getAppEffects();
+    if (next === trialOwner) return;
+    trialOff?.(); trialOff = null; trialOwner = next;
+    trialOff = next?.subscribeTrial(() => thread.render(store.state.msgs[name] || [])) ?? null;
+  };
   watchTrial();
-  if (!trialOff) offs.push(onEffectsAwake(() => { watchTrial(); thread.render(store.state.msgs[name] || []); }));
-  offs.push(() => trialOff?.());
+  offs.push(onEffectsAwake(() => { watchTrial(); thread.render(store.state.msgs[name] || []); }));
+  offs.push(() => { trialOff?.(); trialOff = null; trialOwner = null; });
   offs.push(panelStore.subscribe(() => thread.refreshCards()));   // a card shows whether the panel has its block
   return () => { for (const off of offs) off(); };
 }
