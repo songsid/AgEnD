@@ -77,8 +77,8 @@ export function startNeedsNotifier({ open, env = globalThis } = {}) {
     seen.add(item.id);
     if (!notifyOn(env)) return;
     try {
-      const n = new env.Notification(item.instance, { body: item.detail ? `${reasonText(item)}: ${item.detail}` : reasonText(item), tag: item.id });
-      n.onclick = () => { try { env.focus && env.focus(); } catch { /* ignore */ } if (open) open(item.instance); n.close(); };
+      const n = new env.Notification(item.instance || reasonText(item), { body: item.detail ? `${reasonText(item)}: ${item.detail}` : reasonText(item), tag: item.id });
+      n.onclick = () => { try { env.focus && env.focus(); } catch { /* ignore */ } if (open && item.instance) open(item.instance); n.close(); };
     } catch { /* a browser that refuses at the last moment: the list still shows it */ }
   };
   const consider = (items) => {

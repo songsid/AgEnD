@@ -11,9 +11,10 @@ import type { WebConfig, WebGuestsConfig, WebVerifiedAuthorityConfig } from "./t
 
 export const WEB_TERMINAL_TTL_MINUTES = { min: 1, max: 20 } as const;
 /** What Settings → Web may write; everything else under web: / web_terminal: is fleet.yaml's. */
-export const WEB_SETTINGS_BODY_KEYS = ["echo_to_channel", "log_tab", "usage_report_on_public_link", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
+export const WEB_SETTINGS_BODY_KEYS = ["experimental", "echo_to_channel", "log_tab", "usage_report_on_public_link", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
 
 export type WebSettingsBody = {
+  canvasWorker?: boolean;
   echo?: boolean;
   /** #1218: the Log tab on (true) or off (false). */
   logTab?: boolean;
@@ -36,6 +37,8 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   if (patch.log_tab !== undefined && typeof patch.log_tab !== "boolean") return { error: "log_tab must be a boolean" };
   if (patch.usage_report_on_public_link !== undefined && typeof patch.usage_report_on_public_link !== "boolean") return { error: "usage_report_on_public_link must be a boolean" };
   if (patch.public_link !== undefined && !validPublicLinkPatch(patch.public_link)) return { error: "invalid public_link settings" };
+  if (patch.experimental !== undefined && (!patch.experimental || typeof patch.experimental !== "object" || Array.isArray(patch.experimental)
+    || Object.keys(patch.experimental).some(k => k !== "canvas_worker") || typeof (patch.experimental as Record<string, unknown>).canvas_worker !== "boolean")) return { error: "experimental must be { canvas_worker: boolean }" };
   const session = webSessionPatch(patch.session);
   if (session === "invalid") return { error: "session must be { local: { absolute_hours?, idle_hours? } } with numbers or null" };
   const terminal = webTerminalPatch(patch.web_terminal);
@@ -51,6 +54,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
     ...(patch.public_link !== undefined ? { publicLink: patch.public_link as NonNullable<WebConfig["public_link"]> } : {}),
     ...(guests ? { guests } : {}),
     ...(verifiedAuthority ? { verifiedAuthority } : {}),
+    ...(patch.experimental !== undefined ? { canvasWorker: (patch.experimental as { canvas_worker: boolean }).canvas_worker } : {}),
     session, terminal,
   };
 }

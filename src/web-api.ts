@@ -1,3 +1,5 @@
+import { canvasWorkerEnabled, CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
+import { isCanvasWorkerHttpPath } from "./web-experimental-http.js";
 import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { classifyWebPeer, confirmAfterBody, noAuthority, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { guestChatRefusal, guestCommandText, guestDeliveries, guestFrameData, guestHistory, guestMessages, guestPollBody, guestPrefs, guestRequestOf, guestSeesMessage, guestStatus, type GuestRequest } from "./web-guest-access.js";
@@ -51,7 +53,7 @@ import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js
 import { z } from "zod";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
-import { newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatHistory, type WebChatMessage } from "./web-chat-history.js";
+import { WEB_CHAT_CARDS_OVERFLOW, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatHistory, type WebChatMessage } from "./web-chat-history.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore, SessionRecord } from "./web-session.js";
@@ -147,12 +149,22 @@ const CardMoveSchema = z.object({
 
 const CardReorderSchema = z.object({ after: CardRef.nullable().optional(), before: CardRef.nullable().optional() }).strict();
 
-const ProjectCreateSchema = z.object({ name: z.string().max(256), description: z.string().max(BOARD_TEXT).optional() }).strict();
+const ProjectCreateSchema = z.object({ name: z.string().max(256), description: z.string().max(BOARD_TEXT).optional(), leadInstance: z.string().max(256).nullable().optional() }).strict();
+
+/** #2352: a project's lead must be one of the fleet's instances now (the board keeps any name, as for an assignee). */
+function checkLeadIsInstance(ctx: WebApiContext, lead: string | null | undefined): void {
+  const name = lead?.trim();
+  if (name && !(ctx.fleetConfig?.instances && Object.hasOwn(ctx.fleetConfig.instances, name))) {
+    throw new TaskBoardError("invalid", `"${name.slice(0, 64)}" is not one of the fleet's instances`, "lead_not_instance");
+  }
+}
 
 const ProjectPatchSchema = z.object({
   name: z.string().max(256).optional(),
   description: z.string().max(BOARD_TEXT).optional(),
   archived: z.boolean().optional(),
+  /** #2352: the instance whose channel lists the project's waiting cards (null or "": General). */
+  leadInstance: z.string().max(256).nullable().optional(),
 }).strict();
 
 const TeamCreateSchema = z.object({
@@ -200,6 +212,56 @@ const safeInstanceSegment = (name: string): boolean => /^[^\\/\x00]+$/.test(name
  */
 /** #1920 phase 1b: the open streams that are a guest's, and whose — each event is projected for them (guestFrameData). */
 const streamGuests = new WeakMap<ServerResponse, GuestRequest>();
+
+/**
+ * The task board's rule over the public link: an instance kept out of sight (cross_instance_visibility: hidden) is not
+ * shown, nor a card that names one as its assignee, creator or dispatcher. Off the link nothing is hidden. Read when
+ * asked: the fleet's config as it is now.
+ */
+function boardHiding(ctx: WebApiContext, gateway: boolean) {
+  const fleet = ctx.fleetConfig as Parameters<typeof crossInstanceVisibility>[0];
+  const hiddenName = (n: unknown) => gateway && typeof n === "string" && !!n && !!ctx.fleetConfig?.instances?.[n] && crossInstanceVisibility(fleet, n) === "hidden";
+  const hidden = (c: { assignee: string | null; createdBy: string; dispatcher: { name: string } | null }) => [c.assignee, c.createdBy, c.dispatcher?.name].some(hiddenName);
+  return { hiddenName, hidden };
+}
+
+/**
+ * Chat history as the public link may see it (#2341 review): a status line that names board cards (the daily summary)
+ * is withheld while one of them is hidden there now — or no longer on the board — read when asked, so a card hidden
+ * after the line was written is withheld too. Off the link, as is. The cards are read in one query per answer.
+ */
+function visibleMessages<T extends { cards?: string[] }>(ctx: WebApiContext, gateway: boolean, messages: T[]): T[] {
+  if (!gateway) return messages;
+  // #2341 review r2: a line that named too many cards to keep them all is withheld whole.
+  messages = messages.filter((m) => !(m.cards ?? []).includes(WEB_CHAT_CARDS_OVERFLOW));
+  const named = [...new Set(messages.flatMap((m) => m.cards ?? []))];
+  if (!named.length) return messages;
+  const board = ctx.scheduler?.db.board;
+  const { hidden } = boardHiding(ctx, true);
+  let found: Map<string, Parameters<typeof hidden>[0]>;
+  try { found = new Map((board ? board.cardsByCode(named) : []).map((c) => [c.code, c])); } catch { found = new Map(); }
+  const withheld = new Set(named.filter((code) => { const c = found.get(code); return !c || hidden(c); }));
+  return messages.filter((m) => !(m.cards ?? []).some((code) => withheld.has(code)));
+}
+
+/**
+ * Needs you as the public link may see it (#2306 review): a task item whose card the board hides there — or a card
+ * the board no longer has — is left out, with its title and question; everything else as listed. Off the link, as is.
+ * The link reads Needs you by /ui/poll only: its page has no stream (/ui/events answers it 404).
+ */
+function visibleNeeds(ctx: WebApiContext, gateway: boolean, items: unknown[]): unknown[] {
+  if (!gateway) return items;
+  const board = ctx.scheduler?.db.board;
+  const { hidden } = boardHiding(ctx, true);
+  return items.filter((i) => {
+    const item = i as { type?: unknown; card?: { code?: unknown } };
+    if (item.type !== "task") return true;
+    const code = item.card?.code;
+    if (!board || typeof code !== "string") return false;
+    try { const card = board.findCard(code); return !!card && !hidden(card); } catch { return false; }
+  });
+}
+
 
 /**
  * #1920 §5.2: one event for the guests' streams only, each as projected for it — a message that has just become what
@@ -290,7 +352,7 @@ export interface WebApiContext {
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
     health_port?: number;
-    web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean } };
+    web?: { experimental?: { canvas_worker?: boolean }; echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean } };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
@@ -464,6 +526,8 @@ function jsonText(res: ServerResponse, status: number, body: string): void {
  * board (the newest revision replaces the previous), so it holds one board's JSON at most.
  */
 const boardBodies = new WeakMap<object, { key: string; body: string }>();
+/** #2316 review: the same for who works on what (GET /ui/tasks/work), per (revision, names asked for). */
+const workBodies = new WeakMap<object, { key: string; body: string }>();
 
 /**
  * #1630 (#1635 review): an answer that waited on something (a list, a download) is sent only if the request is still
@@ -710,6 +774,7 @@ function handleEffectTrials(req: IncomingMessage, res: ServerResponse, url: URL,
     try { bytes = await readBoundedWebBody(req, 16 * 1024); } catch { json(res, 413, { error: "trial_body_bound" }); return; }
     if (!permitWebContinuation(req, res, ctx)) return;
     const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
+    if (!canvasWorkerEnabled(ctx.fleetConfig?.web)) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
     if (now.record !== first.record || now.sessions !== first.sessions || now.actor.sessionHash !== first.actor.sessionHash
       || now.actor.person !== first.actor.person || now.actor.epoch !== first.actor.epoch) { json(res, 409, { error: "trials_person_changed" }); return; }
     let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "trial_json" }); return; }
@@ -829,6 +894,7 @@ function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
     catch { json(res, 413, { error: "effect_body_bound" }); return; }
     if (!permitWebContinuation(req, res, ctx)) return;
     const now = who(); if ("status" in now) { json(res, now.status, { error: now.error }); return; }
+    if (!canvasWorkerEnabled(ctx.fleetConfig?.web)) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
     if (now.person !== first.person || now.epoch !== first.epoch) { json(res, 409, { error: "effects_person_changed" }); return; }
     if (path === "/ui/effects/upload") { answer(service.upload(now.person, bytes)); return; }
     let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "effect_json" }); return; }
@@ -897,6 +963,9 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
     // So the export ACL judges what the file carries, not what was installed: it downloads only when this person may
     // read every effect in it (their own claim on that content, or a shared one). A file without effects is any admin's.
     const fx = mods.bundleEffects(fileMatch[1]!);
+    if (!canvasWorkerEnabled(ctx.fleetConfig?.web) && (fx === "unknown" || (fx?.length ?? 0) > 0)) {
+      json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return true;
+    }
     if (fx === "unknown" || (fx ?? []).some(id => !ctx.modPlacedEffect?.(first.person, id))) { json(res, 403, { error: "mod_effects_not_yours", detail: "this mod's file carries effects that are not yours to share: export your own look instead" }); return true; }
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
       "Content-Disposition": `attachment; filename="${rec.name}-${rec.version}.agendmod.json"` });
@@ -973,7 +1042,7 @@ export function exportMod(ctx: WebApiContext, person: string, body: Record<strin
       // The effects the theme places travel with it, as the library keeps them (a person may export what is placed).
       // Only effects this person may carry away travel (Sol's ACL); the rest are counted, never packaged.
       // #2017: an older placement of an effect that doesn't play in chat stays out (a mod can't place it): counted.
-      const effects = rec.placements.effects.flatMap(p => { const e = ctx.modPlacedEffect?.(person, p.id); if (!e || !filesPlayInChat(e.files)) { omitted++; return []; } return [{ name: e.name, files: e.files, params: p.params ?? {} }]; });
+      const effects = (canvasWorkerEnabled(ctx.fleetConfig?.web) ? rec.placements.effects : []).flatMap(p => { const e = ctx.modPlacedEffect?.(person, p.id); if (!e || !filesPlayInChat(e.files)) { omitted++; return []; } return [{ name: e.name, files: e.files, params: p.params ?? {} }]; });
       parts.theme = { theme: rec.theme, picture: id => { const a = rec.assets.find(x => x.id === id); const b = store.asset(name!, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; }, effects };
     }
     if (inc.identity === true) parts.identity = ctx.modCardText?.(name) ?? {};
@@ -1232,6 +1301,10 @@ export function handleWebRequest(
 ): boolean {
   const path = url.pathname;
   const method = req.method ?? "GET";
+  if (!canvasWorkerEnabled(ctx.fleetConfig?.web) && isCanvasWorkerHttpPath(path)) {
+    json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE });
+    return true;
+  }
 
   // Auth check for all /ui routes. Defence in depth behind the fleet-manager
   // gate: the same session cookie or header token, and an unset token closes
@@ -1368,7 +1441,8 @@ export function handleWebRequest(
     }
     json(res, 200, {
       status: ctx.getUiStatus(),
-      messages: history ? (fresh ? history.after(0) : history.replayFor(parseLastEventId(after))) : [],
+      // #2341 review: over the public link, without a summary line that names a card hidden there.
+      messages: history ? visibleMessages(ctx, !!gatewayRequestContext(req), fresh ? history.after(0) : history.replayFor(parseLastEventId(after))) : [],
       // The ticks too, so polling never has to re-read a chat's history — that read would count as the person's
       // activity; this poll does not (isPassiveWebRead).
       deliveries: history ? history.deliveries() : [],
@@ -1378,8 +1452,9 @@ export function handleWebRequest(
       reactions: history ? history.reactionStates() : [],
       // And the fleet prompts open on the dashboard (C4): prompt events are stream-only too.
       prompts: ctx.listWebPrompts?.() ?? [],
-      // #1386: "Needs you" rides the passive channels only — no endpoint of its own to poll.
-      needs: ctx.needsYouItems?.() ?? [],
+      // #1386: "Needs you" rides the passive channels only — no endpoint of its own to poll. Over the public link,
+      // without the task board's hidden cards (#2306 review).
+      needs: visibleNeeds(ctx, !!gatewayRequestContext(req), ctx.needsYouItems?.() ?? []),
       // #1577: the newest message this answer accounts for — after a restart, the last restored one until this process
       // records its own (`<boot>-0` would be after(0): the whole restored history again on every poll).
       cursor: history ? history.pollCursor() : null,
@@ -1477,7 +1552,8 @@ export function handleWebRequest(
     }
     // #1920 §5.2: a guest gets what the channel showed of it, and its own messages (the gate checked the scope).
     const guest = guestRequestOf(req);
-    const messages = !ctx.webChatHistory ? [] : guest ? guestHistory(ctx.webChatHistory, instance, limit, guest, guest.scope()) : ctx.webChatHistory.list(instance, limit);
+    const messages = !ctx.webChatHistory ? [] : guest ? guestHistory(ctx.webChatHistory, instance, limit, guest, guest.scope())
+      : visibleMessages(ctx, !!gatewayRequestContext(req), ctx.webChatHistory.list(instance, limit));
     json(res, 200, { messages, boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0 });
     return true;
   }
@@ -1800,6 +1876,7 @@ export function handleWebRequest(
       if (!now?.canWrite) { refuse(now); return; }
       if (now.person !== first.person || now.epoch !== first.epoch || now.via !== first.via) { json(res, 409, { error: "prefs_person_changed" }); return; }
       const personal = [...parsed.patch.keys()].some(isOwnerEffectKey);
+      if (personal && !canvasWorkerEnabled(ctx.fleetConfig?.web)) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
       if (personal && now.person === null) { json(res, 403, { error: "prefs_need_a_signed_in_person" }); return; }
       // A scope marker rejects a queued old page after a different login, including the same person's new session.
       // It supplies neither identity nor authority; the current verified session still chooses the bucket.
@@ -2191,7 +2268,7 @@ export function handleWebRequest(
   // ── Task board (scheduler/task-board.ts) ──────────────
   // Reads are the session's; every write is the signed-in person's, through the same rules an instance's tools use.
 
-  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects")) {
+  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/work" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects")) {
     const board = ctx.scheduler?.db.board;
     if (!board) { json(res, 503, { error: "The task board is not available" }); return true; }
     // The temporary public link reads the board and changes nothing on it: confirming, sending back, cancelling and
@@ -2199,9 +2276,7 @@ export function handleWebRequest(
     const gateway = gatewayRequestContext(req);
     if (gateway && method !== "GET") { json(res, 403, { error: "task_board_not_over_public_link", code: "forbidden", key: "not_over_public_link" }); return true; }
     // …nor shows the cards of instances kept out of sight (cross_instance_visibility: hidden).
-    const fleet = ctx.fleetConfig as Parameters<typeof crossInstanceVisibility>[0];
-    const hiddenName = (n: unknown) => !!gateway && typeof n === "string" && !!n && !!ctx.fleetConfig?.instances?.[n] && crossInstanceVisibility(fleet, n) === "hidden";
-    const hidden = (c: { assignee: string | null; createdBy: string; dispatcher: { name: string } | null }) => [c.assignee, c.createdBy, c.dispatcher?.name].some(hiddenName);
+    const { hiddenName, hidden } = boardHiding(ctx, !!gateway);
     // #2303 review: what a visible card shows of the cards around it follows the same rule — its children, its main
     // task (a search hit's too) — and so do the words and the history a hidden instance left on it.
     // …and a hidden instance's words on a visible card are not counted, named or found there (#2304 review).
@@ -2232,8 +2307,42 @@ export function handleWebRequest(
         const kept = key ? boardBodies.get(board) : undefined;
         if (kept && kept.key === key) { jsonText(res, 200, kept.body); return true; }
         const cards = board.boardCards(undefined, allDone).filter((c) => !hidden(c));
-        const body = JSON.stringify({ rev, cards: board.views(cards, scope), projects: board.listProjects(true), stats: board.projectStats() });
+        // #2352: over the public link a hidden lead is not named (the project reads as having none).
+        const projects = board.listProjects(true).map((p) => (p.leadInstance && hiddenName(p.leadInstance) ? { ...p, leadInstance: null } : p));
+        // #2355 review: the names a project's lead may be — the fleet's instances (a Classic-only room is not one); over the
+        // public link, not a hidden one.
+        const leads = Object.keys(ctx.fleetConfig?.instances ?? {}).filter((n) => !hiddenName(n)).sort();
+        const body = JSON.stringify({ rev, cards: board.views(cards, scope), projects, leads, stats: board.projectStats() });
         if (key) boardBodies.set(board, { key, body });
+        jsonText(res, 200, body);
+        return true;
+      }
+      if (method === "GET" && path === "/ui/tasks/work") {
+        // #2246 step 3: each instance's work on the board — what its `task mine` reads (myWork) — for the board's
+        // Instance list and an instance's Details page (`?instance=`): the fleet's instances and anyone else a live
+        // card is assigned to. Over the public link, not those kept out of sight, nor a card that names one. Every
+        // name's work is one workOf() read and the cards one views() read, whatever the number of instances (#2316
+        // review); on the dashboard the answer is built once per board revision and the names asked for, and shared
+        // by every open drawer (the public link's is filtered per request, as the board's).
+        const only = url.searchParams.get("instance");
+        const names = (only ? [only] : [...new Set([...Object.keys(ctx.fleetConfig?.instances ?? {}), ...board.liveAssignees()])]).filter((n) => !hiddenName(n));
+        const key = gateway ? null : `${board.revision()}:${only === null ? "*" : `=${only}`}:${names.join("\u0000")}`;
+        const kept = key ? workBodies.get(board) : undefined;
+        if (kept && kept.key === key) { jsonText(res, 200, kept.body); return true; }
+        const byName = board.workOf(names);
+        const works = names.map((name) => ({ name, w: byName.get(name)! }));
+        const all = new Map<string, Parameters<typeof board.views>[0][number]>();
+        for (const { w } of works) for (const c of [...w.doing, ...w.blocked, ...w.review, ...w.ready, ...w.waiting.map((x) => x.card), ...w.mains.map((x) => x.card)]) if (!hidden(c)) all.set(c.uuid, c);
+        const viewOf = new Map(board.views([...all.values()], scope).map((v) => [v.uuid, v]));
+        const drawn = (cards: Array<{ uuid: string }>) => cards.flatMap((c) => (viewOf.has(c.uuid) ? [viewOf.get(c.uuid)!] : []));
+        const codes = (cards: Array<{ card: { uuid: string; code: string } }>) => cards.filter((x) => all.has(x.card.uuid)).map((x) => x.card.code);
+        const body = JSON.stringify({ instances: works.map(({ name, w }) => ({
+          name,
+          doing: drawn(w.doing), blocked: drawn(w.blocked), review: drawn(w.review), ready: drawn(w.ready),
+          waiting: drawn(w.waiting.map((x) => x.card)), mains: drawn(w.mains.map((x) => x.card)),
+          sentBack: codes(w.sentBack), newComments: codes(w.newComments),
+        })) });
+        if (key) workBodies.set(board, { key, body });
         jsonText(res, 200, body);
         return true;
       }
@@ -2280,11 +2389,11 @@ export function handleWebRequest(
         return true;
       }
       if (method === "POST" && path === "/ui/tasks/projects") {
-        boardWrite(req, res, url, ctx, board, ProjectCreateSchema, (input, person) => ({ project: board.createProject(person, input) }));
+        boardWrite(req, res, url, ctx, board, ProjectCreateSchema, (input, person) => { checkLeadIsInstance(ctx, input.leadInstance); return { project: board.createProject(person, input) }; });
         return true;
       }
       if (method === "POST" && project) {
-        boardWrite(req, res, url, ctx, board, ProjectPatchSchema, (patch, person) => ({ project: board.updateProject(person, Number(project[1]), patch) }));
+        boardWrite(req, res, url, ctx, board, ProjectPatchSchema, (patch, person) => { checkLeadIsInstance(ctx, patch.leadInstance); return { project: board.updateProject(person, Number(project[1]), patch) }; });
         return true;
       }
     } catch (err) {
@@ -2994,7 +3103,7 @@ export interface AppShellContext {
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
   /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
-  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number } } | null;
+  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; experimental?: { canvas_worker?: boolean } } } | null;
   /** #1665: the host's theme and language go into the page itself, so a device paints them before any script reads. */
   readonly webPrefs?: WebPrefsStore;
   /** #1629 r4 §3: which owner CSS this load's person has in force (data-owner-css), for a signed-in human session only. */
@@ -3144,6 +3253,7 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false || viewer?.guest ? "0" : "1"}"`
     // #1218: whether the Log tab is on (web.log_tab; off by default): the tab says so and offers to turn it on.
     + ` data-log-tab="${ctx.fleetConfig?.web?.log_tab === true ? "1" : "0"}"`
+    + ` data-canvas-worker="${canvasWorkerEnabled(ctx.fleetConfig?.web) ? "1" : "0"}"`
     // #1937: the upload limits in force for this page (the config's; the public link's own cap on it) — what the chat
     // checks before sending a file, and the numbers its words say. The server checks again on every upload.
     + ` data-upload-limits="${attr(JSON.stringify(uploadLimits(ctx.fleetConfig?.web, { publicLink: gatewayRequestContext(req) !== undefined })))}"`

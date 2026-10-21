@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createServer, type Server } from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
@@ -22,10 +22,11 @@ async function client() {
   await new Promise<void>((r, j) => { server.once("error", j); server.listen(0, "127.0.0.1", r); });
   const port = (server.address() as { port: number }).port;
   // Real client source transpiled to its own private module tree. Only a loopback stub HTTP server is reachable.
-  for (const name of ["agent-cli", "cli-flags", "agent-token-header", "agent-file-read", "instance-names", "web-asset-parts", "bundled-skills"]) {   // #2163: `skill` reads bundled skills   // #1629: theme asset reads its file here and sends it in parts
+  for (const name of ["agent-cli", "cli-flags", "agent-token-header", "agent-file-read", "instance-names", "web-asset-parts", "bundled-skills", "web-experimental"]) {   // #2163: `skill` reads bundled skills   // #1629: theme asset reads its file here and sends it in parts
     const source = readFileSync(join(import.meta.dirname, "../src/" + name + ".ts"), "utf8");
     writeFileSync(join(root, name + ".js"), ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText);
   }
+  symlinkSync(join(process.cwd(), "node_modules"), join(root, "node_modules"), "dir");
   writeFileSync(join(root, "package.json"), '{"type":"module"}');
   const invoke = async (...args: string[]) => run(process.execPath, [join(root, "agent-cli.js"), ...args], {
     cwd: root, env: { HOME: root, AGEND_HOME: root, AGEND_PORT: String(port), AGEND_INSTANCE_NAME: "leader" }, timeout: 10000,

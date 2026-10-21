@@ -8,7 +8,7 @@ const tools=["upload_web_effect","list_web_effects","preview_web_effect","profil
 const ops=["effect-upload","effect-list","effect-preview","effect-profile","effect-apply","effect-remove","effect-delete"];
 it.each(tools.map((tool,i)=>[tool,ops[i]!]))("maps and enforces %s across the real agent dispatcher",async(tool,op)=>{
  const handle=vi.fn(async(instance:string,name:string,args:Record<string,unknown>)=>({instance,name,args}));
- const context={fleetConfig:{instances:{own:{tool_set:"standard"}}},logger:{warn:vi.fn()},handleWebThemeHttp:handle} as unknown as AgentEndpointContext;
+ const context={canvasWorkerEnabled:()=>true,fleetConfig:{instances:{own:{tool_set:"standard"}}},logger:{warn:vi.fn()},handleWebThemeHttp:handle} as unknown as AgentEndpointContext;
  const args={fixture:true};expect(await dispatchAgentOperation(context,"own",op,args)).toEqual({instance:"own",name:tool,args});
  expect(EARLY_AGENT_OP_TOOLS[op]).toBe(tool);
  expect(IPC_TYPE_TOOLS["fleet_"+tool]).toBe(tool);

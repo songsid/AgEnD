@@ -1,9 +1,10 @@
 // The task board's shared pieces (Fleet › Tasks): its words, the numbers a project shows, the requests, asking for a
-// reason, moving a card, and the small marks (status pill, progress bar). fleet-tasks.js draws the board and
+// reason, moving a card, and the small marks (status pill, progress bar, who). fleet-tasks.js draws the board and
 // fleet-task-card.js one card; both use these. No style attribute anywhere (the CSP): bars are SVG rects.
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { t, register, lang } from "/assets/app-i18n.js";
-import { createStore, useStore } from "/assets/app-store.js";
+import { appStore, createStore, useStore } from "/assets/app-store.js";
+import { identityOf, paintIdentity, useIdentityColors } from "/assets/identity-color.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { toast } from "/assets/ui-toast.js";
 
@@ -14,7 +15,8 @@ register("tasks", {
     sizeS: "Small", sizeM: "Medium", sizeL: "Large", sizeNone: "Not sized",
     projects: "Projects", noProject: "No project", noProjectDesc: "Tasks the fleet opened outside any project",
     newProject: "New project", newMain: "Main task", archived: "Archived", archive: "Archive", restore: "Restore",
-    rename: "Rename or describe", projectName: "Name", projectDesc: "Description", create: "Create", save: "Save", cancel: "Cancel",
+    rename: "Edit project", projectName: "Name", projectDesc: "Description",
+    projectLead: "Lead instance", projectLeadNone: "None — General", projectLeadHint: "Cards of this project that wait for you (to confirm, or blocked) get their buttons in the lead's channel, unless an instance handed them out (then in its channel).", projectLeadGone: "{0} (no longer in the fleet)", projectLeadChip: "lead: {0}", create: "Create", save: "Save", cancel: "Cancel",
     projectCreated: "Project created", projectSaved: "Project saved",
     noProjects: "No projects yet", noProjectsHint: "A project groups related work — create one, then open main tasks in it.",
     mainCount: "{0} main tasks", mainOne: "1 main task", waiting: "{0} waiting for you", blockedN: "{0} blocked", lastActivity: "Last change {0}",
@@ -56,7 +58,7 @@ register("tasks", {
     "err.too_long": "{0} is too long: {1} characters, at most {2}", "err.state_lines": "State is at most {0} lines (it has {1})",
     "err.acceptance_empty": "An acceptance item cannot be empty", "err.acceptance_max": "At most {0} acceptance items",
     "err.acceptance_no_item": "There is no acceptance item {0} (there are {1})", "err.project_not_found": "There is no project “{0}”",
-    "err.project_name_empty": "A project needs a name", "err.project_name_digits": "A project's name cannot be only digits",
+    "err.project_name_empty": "A project needs a name", "err.project_name_digits": "A project's name cannot be only digits", "err.lead_not_instance": "The lead must be one of the fleet's instances",
     "err.project_name_taken": "There is already a project named “{0}”", "err.project_archived": "Project “{0}” is archived: it takes no new main tasks",
     "err.card_not_found": "There is no card {0}", "err.title_empty": "A card needs a title", "err.scope_main_only": "Scope is for main tasks only",
     "err.blocked_reason_not_blocked": "Only a blocked card has a blocked reason", "err.block_reason": "Blocking needs a reason: who has to answer what",
@@ -72,6 +74,13 @@ register("tasks", {
     "note.review_waiting": "{0} “{1}”: every sub task is done — it waits for your confirmation",
     "note.back_to": "{0} has unfinished sub tasks again: it is back to {1}", "note.deps_done": "{0}'s dependencies are all done: it can start",
     "note.deps_unmet": "Note: {0} not done yet",
+    // #2246 step 3: who works on what (fleet-task-work.js)
+    instances: "Instances", instancesTip: "The fleet's instances and what each works on", instancesHead: "{0} instance(s) · {1} working",
+    workSentBack: "Sent back", workDoing: "In progress", workBlocked: "Blocked", workReview: "Waiting for you", workMain: "Owns",
+    workReady: "Can start", workWaiting: "Waiting on", workSubs: "sub tasks {0}/{1}", workClaimable: "nobody's: can be taken",
+    workWaitsFor: "waits for {0}", workNone: "Nothing on the board", workNewComments: "Comments it has not read yet",
+    workOutside: "Not in the fleet", workFailed: "Could not read who works on what: {0}", workJoin: ", ",
+    detailsBoard: "Task board",
   },
   "zh-TW": {
     open: "待辦", claimed: "進行中", blocked: "卡住", review: "待確認", done: "完成", cancelled: "取消",
@@ -79,7 +88,8 @@ register("tasks", {
     sizeS: "小", sizeM: "中", sizeL: "大", sizeNone: "未定",
     projects: "專案", noProject: "未分類", noProjectDesc: "fleet 在專案以外開的 task",
     newProject: "新增專案", newMain: "主任務", archived: "已封存", archive: "封存", restore: "恢復",
-    rename: "改名或改說明", projectName: "名稱", projectDesc: "說明", create: "建立", save: "儲存", cancel: "取消",
+    rename: "編輯專案", projectName: "名稱", projectDesc: "說明",
+    projectLead: "負責的 instance", projectLeadNone: "無（General）", projectLeadHint: "這個專案裡等你處理的卡片（待確認或卡住）會在負責 instance 的頻道顯示按鈕；若卡片是某個 instance 派出的，則顯示在派出者的頻道。", projectLeadGone: "{0}（已不在 fleet 中）", projectLeadChip: "負責：{0}", create: "建立", save: "儲存", cancel: "取消",
     projectCreated: "專案已建立", projectSaved: "專案已儲存",
     noProjects: "還沒有專案", noProjectsHint: "專案是一組相關的工作：先建立專案，再在裡面開主任務。",
     mainCount: "{0} 個主任務", mainOne: "1 個主任務", waiting: "等你確認 {0}", blockedN: "卡住 {0}", lastActivity: "最後動態 {0}",
@@ -121,7 +131,7 @@ register("tasks", {
     "err.too_long": "{0}太長：{1} 字，上限 {2} 字", "err.state_lines": "目前狀態最多 {0} 行（現在 {1} 行）",
     "err.acceptance_empty": "驗收條件不能是空的", "err.acceptance_max": "驗收條件最多 {0} 項",
     "err.acceptance_no_item": "驗收條件沒有第 {0} 項（共 {1} 項）", "err.project_not_found": "找不到專案「{0}」",
-    "err.project_name_empty": "專案名稱不能是空的", "err.project_name_digits": "專案名稱不能只有數字",
+    "err.project_name_empty": "專案名稱不能是空的", "err.project_name_digits": "專案名稱不能只有數字", "err.lead_not_instance": "負責人必須是 fleet 裡的 instance",
     "err.project_name_taken": "已經有專案叫「{0}」", "err.project_archived": "專案「{0}」已封存，不能再開主任務",
     "err.card_not_found": "找不到 {0}", "err.title_empty": "標題不能是空的", "err.scope_main_only": "範圍只用在主任務",
     "err.blocked_reason_not_blocked": "只有卡住的卡才有卡住原因", "err.block_reason": "卡住要寫原因：需要誰回答什麼",
@@ -137,6 +147,13 @@ register("tasks", {
     "note.review_waiting": "{0}「{1}」的子任務都完成了，等你確認",
     "note.back_to": "{0} 又有沒完成的子任務，已回到{1}", "note.deps_done": "{0} 的相依都完成了，可以開始",
     "note.deps_unmet": "提醒：{0} 還沒完成",
+    // #2246 step 3：誰在做什麼（fleet-task-work.js）
+    instances: "Instance", instancesTip: "fleet 有哪些 instance、各在做什麼", instancesHead: "{0} 個 · 工作中 {1}",
+    workSentBack: "被退回", workDoing: "進行中", workBlocked: "卡住", workReview: "待確認", workMain: "負責",
+    workReady: "可以開始", workWaiting: "等前置", workSubs: "子任務 {0}/{1}", workClaimable: "沒人負責，可領",
+    workWaitsFor: "等 {0}", workNone: "看板上沒有它的卡", workNewComments: "有它還沒看過的留言",
+    workOutside: "不在 fleet 裡", workFailed: "讀不到工作清單：{0}", workJoin: "、",
+    detailsBoard: "任務看板",
   },
 });
 
@@ -312,7 +329,9 @@ export const boardApi = {
   move: (id, to, input = {}) => boardCall("POST", `/ui/tasks/cards/${enc(id)}/move`, { to, ...input }),
   reorder: (id, after, before) => boardCall("POST", `/ui/tasks/cards/${enc(id)}/reorder`, { after, before }),
   search: (q) => boardCall("GET", `/ui/tasks/search?q=${enc(q)}`),
-  createProject: (name, description) => boardCall("POST", "/ui/tasks/projects", { name, description }),
+  /** #2246 step 3: each instance's work (its `task mine`), or one instance's. */
+  work: (instance) => boardCall("GET", `/ui/tasks/work${instance ? `?instance=${enc(instance)}` : ""}`),
+  createProject: (name, description, leadInstance) => boardCall("POST", "/ui/tasks/projects", { name, description, ...(leadInstance ? { leadInstance } : {}) }),
   updateProject: (id, patch) => boardCall("POST", `/ui/tasks/projects/${id}`, patch),
 };
 
@@ -438,6 +457,21 @@ export function ProgressBar({ progress, wide = false }) {
 export function StatusPill({ status }) {
   return html`<span class=${`tb-pill st-${status}`}>${t(`tasks.${status}`)}</span>`;
 }
+
+/**
+ * Who a card is with, as taskhall shows it: a round initial, then the name. An instance's initial takes its identity
+ * colour (#1958, the sidebar's), painted through the CSSOM; a person's, or anyone not in the fleet, stays grey.
+ */
+export function Who({ name, title, empty = "—" }) {
+  const { instances } = useStore(appStore);
+  useIdentityColors();
+  if (!name) return html`<span class="tb-person none"><span class="tb-who">${empty}</span></span>`;
+  const it = (instances || []).find((i) => i.name === name);
+  const id = it ? identityOf(it) : null;
+  return html`<span class="tb-person" title=${title || name}>
+    <span class="tb-av idc" aria-hidden="true" ref=${(el) => paintIdentity(el, id)}>${initialOf(name)}</span><span class="tb-who">${name}</span></span>`;
+}
+const initialOf = (name) => (Array.from(name.trim())[0] || "?").toLocaleUpperCase();
 
 /** A per-device preference (localStorage may be unavailable: then nothing is remembered). */
 export function readStored(key, fallback) {

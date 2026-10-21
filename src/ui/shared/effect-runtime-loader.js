@@ -143,7 +143,8 @@ export function createEffectRuntimeLoader({ window: host, ownerEpoch, current, o
   if (!host || typeof host !== "object" || loaders.has(host) || typeof host.fetch !== "function" || typeof host.AbortController !== "function" || typeof host.setTimeout !== "function" || typeof host.clearTimeout !== "function" || typeof ownerEpoch !== "string" || !EPOCH.test(ownerEpoch) || typeof current !== "function" || typeof onRevoke !== "function") return { ok: false };
   const reservation = {}; loaders.set(host, reservation);
   let dead = false, revoked = false, previous = null; const pending = new Set();
-  const releaseWindow = () => { if (dead && pending.size === 0 && loaders.get(host) === reservation) loaders.delete(host); };
+  let finishDisposed; const disposed = new Promise(resolve => { finishDisposed = resolve; });
+  const releaseWindow = () => { if (dead && pending.size === 0) { if (loaders.get(host) === reservation) loaders.delete(host); finishDisposed(); } };
   // Terminal state is latched before callbacks. Abort releases logical callers, never physical reservations.
   function revoke(reason) {
     if (dead || revoked) return;
@@ -215,6 +216,7 @@ export function createEffectRuntimeLoader({ window: host, ownerEpoch, current, o
   }
   const ownerRead = (signal, settled = false) => run("placements", `/ui/effects/owner?ownerEpoch=${ownerEpoch}`, checkEffectOwnerSlots, signal, settled);
   return { ok: true,
+    whenDisposed: () => disposed,
     owner(signal) { return ownerRead(signal); },
     placements(instance, signal) { return placementRead(instance, signal); },
     resource(input, signal) { return resourceRead(input, signal); },

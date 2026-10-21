@@ -52,7 +52,7 @@ for line in open(sys.argv[1]):
 " $f; done
 
 # step 13: 429/529/500/401 via the mock: 6 frames each, 3s apart
-for e in E429 E529 E500 E401; do for v in $OLD $NEW; do paste p$v "trigger $e now"; keys p$v Enter; done; frames p err-$e 6 3; for v in $OLD $NEW; do keys p$v Escape; done; sleep 2; echo "== $e $NEW last:"; sed '/^\s*$/d' $A/cap/frames/err-$e/$NEW/6.txt | tail -9 | head -5; echo "-- $OLD last:"; sed '/^\s*$/d' $A/cap/frames/err-$e/$OLD/6.txt | tail -9 | head -5; done
+for e in E429 E529 E500 E401 E400LONG; do for v in $OLD $NEW; do paste p$v "trigger $e now"; keys p$v Enter; done; frames p err-$e 6 3; for v in $OLD $NEW; do keys p$v Escape; done; sleep 2; echo "== $e $NEW last:"; sed '/^\s*$/d' $A/cap/frames/err-$e/$NEW/6.txt | tail -9 | head -5; echo "-- $OLD last:"; sed '/^\s*$/d' $A/cap/frames/err-$e/$OLD/6.txt | tail -9 | head -5; done
 
 # step 14: production resume command
 for v in $OLD $NEW; do kill1 p$v; done; for v in $OLD $NEW; do (cd $REPO && HOME=$A/h/ky$v CLAUDE_CONFIG_DIR=$A/h/ky$v/.claude ANTHROPIC_API_KEY=$KEY ANTHROPIC_BASE_URL=http://127.0.0.1:$PORT npx tsx $HERE/gen-cmd.ts $A/inst/p$v $A/w/p$v $A/2.1.$v resume 2>/dev/null > $A/cmd-r$v.txt); grep -o -- "--continue\|--resume[^ ]*" $A/cmd-r$v.txt; startcmd r$v $A/h/ky$v $A/w/p$v $A/cmd-r$v.txt; done; sleep 12; step r 50-resumed 0; show 50-resumed 40 | tail -12

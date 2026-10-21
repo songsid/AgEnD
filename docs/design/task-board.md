@@ -149,7 +149,7 @@ kept out of sight) and is built each time.
 
 ## The page (Fleet › Tasks)
 
-`fleet-tasks.js` (Home and a project's board), `fleet-task-card.js` (one card in the app's dialog),
+`fleet-tasks.js` (Home and a project's board), `fleet-task-card.js` (one card in the app's dialog, as a drawer),
 `fleet-task-common.js` (words, requests, moves, marks). Home: what waits for the person (confirm, send back, answer),
 then the projects (with % done) and No project. A board read carries live cards and the last 14 days' finished ones
 (`?done=all`: every done main task, for the Done column's "All"), each project's numbers over all its cards, and is a
@@ -165,6 +165,17 @@ opens a card. Bars are SVG rects (the CSP allows no style attribute); a bar fill
 - **Without a mouse.** A tile's title is its button (the tile is not a button around buttons): Enter opens the card,
   Alt+←/→ moves it to the status before or after, Alt+↑/↓ within its column. The card's dialog has Move to… and a
   Position row (up, down) — reordering on a phone, where HTML5 dragging does not fire.
+- **taskhall's looks.** On a desk a card opens as a drawer from the right edge (the app's dialog with `drawer`: focus,
+  Esc and the backdrop as before), its fields in a grey block; a phone keeps the bottom sheet. The columns reach the
+  bottom of the page (a card drops anywhere down a column). Tiles are white with a shadow and a bold title; a bar on the
+  left only while a card is under way (in progress, blocked, waiting for you); a size in a box. Who works on a card has
+  a round initial: an instance's in its identity colour (#1958), a person's grey.
+- **Who works on what (step 3).** `GET /ui/tasks/work` (`?instance=` for one): each instance's `myWork` — what its
+  `task mine` reads — for the fleet's instances and anyone else holding a live card, drawn in one `views()` read. Over the
+  public link an instance kept out of sight is not listed, nor a card that names one. The board's **Instances** drawer
+  (`fleet-task-work.js`, taskhall's): by team as the sidebar groups them, working ones first, then those with cards;
+  each line says what the card is to it (sent back, in progress, blocked, waiting for you, owns, can start, waiting on)
+  and opens it. It is read again on each board change. An instance's Details page reads its own once.
 - **The public link** shows the board with a read-only note and no write controls (see above): a card's project, priority, size and review are text, not disabled controls (#2299).
 - **Toasts** are a manual popover (the top layer): a toast raised while a card's dialog is open is above its backdrop, not dimmed under it. On a phone the board's toasts come in above the tabs (an older confirmation gives way to two newer toasts; an error stays), not over its title and search; while a card's sheet is open, at the top (#2299).
 - **Wrapped up before you confirm (step 2).** A main task goes to review by itself when its last sub task is done —
@@ -218,6 +229,7 @@ instance hears what someone else did to a card that is its own, or that it hande
 | comment | the assignee | a comment by someone else (once the card can start) |
 | ready | the assignee | every card it waited for is done — by hand or by the board's own move |
 | decide | the dispatcher | its card got blocked on a question: ask the person, answer it on the card |
+| to confirm | the dispatcher | its card went to the person for confirmation: tell them (and what it still lacks) |
 | approved | the assignee and the dispatcher | the person confirmed it, with their note |
 | wrap up | the main task's owner | it went to review by itself, its definition of done or result still missing |
 | cancelled | the assignee | someone else cancelled it — or its main task, taking it down — with why |
@@ -238,8 +250,48 @@ words) and the delivery outbox holds it until the instance can take it, across a
 gathering when the fleet stops is lost; the card keeps it (`mine`, the comments new to its assignee). Blocked cards
 with an instance dispatcher still wait for you on Home, marked as asked first.
 
+## Step 3: the person in the chat
+
+The product rule the board's web actions bent (see "Product direction") is restored for what waits on the person:
+confirming and sending back work, and answering a blocked card, happen in the chat too — where "Needs you" already is
+(docs/design/1386-needs-you-inbox.md).
+
+- **Items.** Cards in review that need the person's confirmation, and blocked cards, are Needs you items of type `task`
+  (`TaskBoard.waitingForPerson`), under the card's assignee — so each chat world lists the cards of its own instances.
+  A line names the card and what it asks (the question) or lacks ("not wrapped up: …"). A card an instance handed out
+  (its dispatcher) is listed on the web only: that instance tells the person in the chat (the `to_confirm` and
+  `decide` wakes), and the list does not say it twice. A card nobody is assigned is the web's only too.
+- **Buttons.** The live message carries, for at most three cards: **Confirm** and **Send back** on a card waiting for
+  confirmation, **Answer** on a blocked one — capabilities minted per render like Acknowledge (bound to the world,
+  chat, thread and message, a fleet admin of that world, the card still that world's, 15 minutes), and carrying the
+  card's version: a newer card renders again, and a stale click is told so.
+- **Words by reply.** Send back and Answer need words, which a button cannot carry: the bot posts a prompt in the same
+  place ("Send back M-3 (@ann): reply to this message with what needs to change"), and the clicker's reply to it — that
+  admin's only, within 10 minutes — is the reason or the answer. The inbound handler hands such a reply to the hub
+  after access control and the dedup claim and before routing; anything else (another person, another message, a
+  lapsed prompt) flows on to the instance as before. The outcome is said as a reply to the reply.
+- **Its boundaries (#2306 review).** One prompt per world, card, person and verb at a time, reserved before the send and
+  released when it fails or lapses; at most 32 open at once. A prompt keeps whose card it is and its world as it was
+  (connection, place, notice room): if the instance moved to another world, the connection was replaced or the room
+  changed — while the prompt was on its way or after — it takes no reply. A reply is found by where its prompt is,
+  whichever bot received it (a sibling bot in a shared Discord guild may get it first), and judged by the prompt's
+  world's admins. Over the public link a task item whose card the board hides there (a hidden assignee, creator or
+  dispatcher) is left out of `/ui/poll`'s Needs you; the link's page has no stream.
+- **Who acts.** The person, named by the platform (`person: <username>`), through the board's rules — the same as a
+  signed-in page; the web's Needs you list links each card to its dialog.
+
+- **The daily summary** (`task-board-summary.ts`, taskhall's): once a day at `defaults.task_board.summary_at`
+  (default 09:00, the fleet's zone; `off`), each world's General gets what waits for the person and what is blocked now,
+  what got done and what was opened since the last summary, and each active project's progress — its own instances'
+  cards (a card no world's instance holds goes to the primary world), and the projects one of them is in; each of its
+  Generals shows the same text in the web chat. The clock looks every minute; the mark (`task-board-summary.json` in
+  the data directory: the local date, the end of the time covered) is written before sending, so a send that fails is
+  not repeated every minute. At most once a calendar day; a missed one goes out when the fleet is back that day,
+  covering since the last one (at most a week); a quiet day sends nothing; the first day only marks. The web chat's
+  line carries the card numbers it names (`cards`, kept on disk with the row): over the public link `/ui/poll` and
+  `/ui/history` withhold it while one of them is hidden there, read when asked, or is no longer on the board (#2341
+  review).
+
 ## Next
 
-- **Step 3 — the person in the chat.** Cards waiting for review or blocked in Needs you and the fleet's notification
-  channel, with Confirm / Send back there (a blocked card with an instance dispatcher goes to it first); a daily
-  summary; importing a taskhall database; each instance's board work on its details page.
+- **Step 3, rest.** Each instance's board work on its details page (and a list of every instance's on the board).

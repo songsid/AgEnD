@@ -5,6 +5,7 @@ import { navStore } from "/assets/app-nav.js";
 import { onPrefsChanged } from "/assets/app-prefs.js";
 import { resolvedMode, themesStore, themesShown } from "/assets/app-themes.js";
 import { ownerCssLifecycle, safeMode } from "/assets/owner-css.js";
+import { canvasWorkerEnabled } from "/assets/feature-flags.js";
 import { constrainedDevice } from "/assets/effect-policy.js";
 import { createAppEffectRuntime } from "/assets/effect-app-runtime.js";
 import { effectBootstrapReady } from "/assets/effect-frame.js";
@@ -19,6 +20,7 @@ export function getAppEffects(host = window) { const value = owners.get(host); r
 
 /** Boot once with the page's Chat store, including when the first visible panel is Fleet. */
 export function startAppEffects({ store, window: host = window, factories = {} } = {}) {
+  if (!canvasWorkerEnabled()) return null;
   const existing = owners.get(host);
   if (existing) { if (!existing.dead) existing.bindStore(store); return getAppEffects(host); }
   const playbackIdentity = effectPlaybackIdentity(host), ownerIdentity = chatEffectIdentity(host);
@@ -26,7 +28,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
   const doc = host.document, releases = [], ended = new Set(), updates = new Set(), trialUpdates = new Set(); let replyOff = null, replyStore = null, regions = null, cursor = null, cursorStamp = null, trialControl = null, trialIntent = null, trialHint = ownerIdentity ? null : false, trialSerial = 0, trialStamp = null, chatBinding = null;
   const safe = fn => { try { return fn(); } catch { return null; } };
   const hold = off => { if (entry.dead) safe(() => off?.()); else releases.push(off); };
-  const entry = { dead: false, api: null,
+  const entry = { dead: false, api: null, disposed: null,
     cursorSnapshot: () => cursor?.snapshot() ?? { status: "unavailable", id: null },
     gates: () => context(),
     subscribe(fn) { if (typeof fn !== "function" || entry.dead) return () => {}; updates.add(fn); return () => updates.delete(fn); },
@@ -74,11 +76,14 @@ export function startAppEffects({ store, window: host = window, factories = {} }
       if (!handle) chatBinding = null;
       return handle;
     },
-    dispose() {
-      if (entry.dead) return; entry.dead = true;
-      safe(() => trialControl?.dispose()); safe(() => entry.api?.dispose()); safe(() => replyOff?.()); replyOff = null; replyStore = null;
+    dispose(restartable = false) {
+      if (entry.dead) return entry.disposed; entry.dead = true;
+      if (restartable && owners.get(host) === entry) owners.delete(host);
+      safe(() => trialControl?.dispose()); const coreDisposed = safe(() => entry.api?.dispose(restartable === true)); safe(() => replyOff?.()); replyOff = null; replyStore = null;
       for (const off of releases.splice(0)) safe(off);
       updates.clear(); trialUpdates.clear(); const listeners = [...ended]; ended.clear(); for (const fn of listeners) safe(fn);
+      entry.disposed = Promise.all([coreDisposed, safe(() => cursor?.whenDisposed?.())]);
+      return entry.disposed;
     },
   };
   owners.set(host, entry); // Reentrant setup never constructs another owner.
@@ -210,6 +215,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     hold(navStore.subscribe(value => { if (entry.dead || value.seq === navSeq) return; navSeq = value.seq; trialControl?.stop(); chatBinding = null; entry.api.detachChat(); syncCursor(); }));
     hold(appStore.subscribe(value => {
       if (entry.dead) return;
+      if (!canvasWorkerEnabled()) { entry.dispose(true); return; }
       if (value.connection === "ended") { entry.dispose(); return; }
       const guestNext = guestChatVersion(value), chatChanged = value.themesRev !== revision || guestNext !== guestRevision, ownerChanged = value.prefsRev !== prefsRevision;
       revision = value.themesRev; prefsRevision = value.prefsRev; guestRevision = guestNext;

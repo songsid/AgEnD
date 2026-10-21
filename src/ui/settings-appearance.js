@@ -2,11 +2,12 @@
 // versions, the pictures and fonts it may name, and this device's off switch. Settings itself is always drawn stock
 // (owner-css.js removes the link here), so a stylesheet that hides things can always be fixed from this page.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
-import { t } from "/assets/app-i18n.js";
+import { register, t } from "/assets/app-i18n.js";
 import { recordEdit } from "/assets/text-undo.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { ModsCard } from "./settings-mods.js";
-import { EffectsCard } from "./settings-effects.js";
+import { experimentalComponent, useCanvasWorker } from "/assets/feature-flags.js";
+const EffectsCard = experimentalComponent(() => import("./settings-effects.js"), m => m.EffectsCard);
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { ownerCssOffHere, ownerCssTrial, safeMode, setOwnerCssActive, setOwnerCssOffHere, startOwnerCssTrial } from "/assets/owner-css.js";
@@ -50,7 +51,26 @@ export function AppearanceSection() {
     ${group("groupLayout")}<${SidebarWidgetCard} />
     ${group("groupCss")}<${OwnerCssCard} /><${DeviceCard} />
     ${group("groupMods")}<${ModsCard} /><${EffectsCard} />
-    ${group("groupAdvanced")}<${CardLimitsCard} /><${RestoreDefaultsCard} />`;
+    ${group("groupAdvanced")}<${ExperimentalEffectsCard} /><${CardLimitsCard} /><${RestoreDefaultsCard} />`;
+}
+
+register("experimentalEffects", {
+  en: { title: "Experimental: Canvas Worker effects", help: "Enable uploaded Canvas Worker effects. Ambient effects are always available. Saved effects stay intact when this is off.", failed: "Could not change this setting. Try again." },
+  "zh-TW": { title: "實驗功能：Canvas Worker 特效", help: "啟用上傳的 Canvas Worker 特效。氛圍特效不受影響；關閉時保留已儲存的特效。", failed: "無法變更此設定，請重試。" },
+});
+function ExperimentalEffectsCard() {
+  const enabled = useCanvasWorker(), [writable, setWritable] = useState(false), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
+  useEffect(() => { let live = true; Promise.resolve(globalThis.AgendAuth?.trialSession?.()).then(value => { if (live) setWritable(value?.localAdmin === true); }, () => {}); return () => { live = false; }; }, []);
+  if (!writable) return null;
+  const change = async value => {
+    setBusy(true); setFailed(false);
+    try {
+      const result = await confirmedWrite("/api/settings/fleet/web", { method: "PUT", body: { experimental: { canvas_worker: value } }, label: t("experimentalEffects.title") });
+      if (result.ok) appStore.set({ canvasWorker: value }); else setFailed(true);
+    } catch { setFailed(true); }
+    finally { setBusy(false); }
+  };
+  return html`<section class="card s-appearance s-experimental-effects"><label class="check"><input type="checkbox" checked=${enabled} disabled=${busy} onChange=${event => change(event.target.checked)} /><span>${t("experimentalEffects.title")}</span></label><p class="sub">${t("experimentalEffects.help")}</p>${failed ? html`<p role="alert">${t("experimentalEffects.failed")}</p>` : null}</section>`;
 }
 
 /** #2056 B: a sample sidebar row in the host's default colour places, so the choice is seen rather than described. */

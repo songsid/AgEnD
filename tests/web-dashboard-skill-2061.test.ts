@@ -35,6 +35,7 @@ describe("the web-dashboard skill", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agend-skill-2061-data-")), work = mkdtempSync(join(tmpdir(), "agend-skill-2061-work-"));
     try {
       const fm = new FleetManager(dataDir);
+      (fm as any).fleetConfig = { web: { experimental: { canvas_worker: true } } };
       (fm as any).syncRoleSkills(work, "claude-code", "worker", join(process.cwd(), "src/general-knowledge"));
       const published = join(work, ".claude/skills/web-dashboard/SKILL.md");
       expect(existsSync(published), "published to the worker").toBe(true);

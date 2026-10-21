@@ -214,7 +214,9 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
   instance's `done` on such a card is review). No delete: cancel. Alt+arrows on a card's title move it (no drag
   needed; the card's Position row on a phone). A main task's tile shows the sub task at work and who is on it; a card
   waiting for review that is not wrapped up says **To fill in** and Confirm asks first. A card's **Dispatched by** row:
-  who handed it out (a blocked question goes to them first). Read-only over the public link.
+  who handed it out (a blocked question goes to them first). Read-only over the public link. Cards waiting for
+  confirmation and blocked cards are also **Needs you** items: on the web they open the card; in each bot's live
+  message in General they have **Confirm** / **Send back** / **Answer** (the words are a reply to the bot's prompt).
 - **Schedules** — every schedule (silent ones included): when it runs in words, "next …", the target. **New
   schedule** (Repeat with a cron expression, or Once at a date and time; message, target, label, timezone),
   **Edit** (with an **Enabled** box — that is how you pause one), **Delete**. There is no "run now", and silent can't
@@ -414,10 +416,10 @@ forum topic with **Verify the new binding** (applies directly after a confirmati
 `channels.<key>.*`: Backend, Model, Auto-pause after, **Collaboration mode** (`collab`), **Web echo** (`web_echo`),
 Advanced **Context lines** (these restart the room's agent); Tool progress and Require a delivered reply (now).
 
-**General** — fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW), default
+**General** — fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW; read at startup: restart AgEnD), default
 backend and model, auto-pause, tool progress, bot-to-bot visibility, reply guard; Advanced: tool set, agent mode, log
 level, **Hang detector enabled** / **Stuck timeout** (`hang_detector.*`), **Startup concurrency** (1–20) and
-**Stagger delay** (`startup.*`, restart AgEnD). ClassicBot card (`classicBot.yaml defaults.*`): default backend, tool
+**Stagger delay** (`startup.*`, used from the next agent start, no restart). ClassicBot card (`classicBot.yaml defaults.*`): default backend, tool
 progress, reply guard, **ClassicBot admins**, **Allowed guilds**.
 
 **Web** — all apply at once; loosening waits for an admin; disabled over a public link.

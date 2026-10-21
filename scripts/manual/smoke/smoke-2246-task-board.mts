@@ -173,7 +173,8 @@ for (const c of matrix()) {
       await p.page.keyboard.press("Alt+ArrowRight");
       chk.altArrowMoves = await until(() => statusOf(db, second) === "claimed");
       await p.page.waitForSelector(`.tb-col.st-claimed [data-tile="${second}"]`, { timeout: 10000 });
-      chk.focusVisibleOnTitle = await p.page.evaluate(() => document.activeElement?.classList.contains("tb-tile-title") ?? false);
+      // The focus goes back to the moved card's title once it is drawn in its new place (an effect after that render).
+      chk.focusVisibleOnTitle = await p.page.waitForFunction(() => document.activeElement?.classList.contains("tb-tile-title") ?? false, null, { timeout: 3000 }).then(() => true, () => false);
       await p.page.screenshot({ path: shotPath(SMOKE, c, "6-keyboard-moved") });
       await clickVisible(p.page, ".tb-bar-head .btn-ghost");
     }

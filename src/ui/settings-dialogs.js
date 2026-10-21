@@ -17,9 +17,9 @@ import { startOperation } from "./settings-apply.js";
 import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
 import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows, useModelCatalog } from "./settings-catalog.js";
 import {
-  ACCESS_MODES, AGENT_FIELDS, AGENT_MODES, BOT_FIELDS, CH_TYPES, CLASSIC_FIELDS, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
+  ACCESS_MODES, AGENT_MODES, CH_TYPES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
   VISIBILITY_MODES, accessConfirmations, agentForm, agentPatch, backendOptions, changedFields, channelId, channelsOf,
-  chLabel, hasOwn, impactOf, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
+  chLabel, hasOwn, impactOf, newConnectionImpact, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
   classicWebEchoEffective, worstImpact,
 } from "./settings-model.js";
 /** #2342: a field by id, for recordEdit before a pick or a reset writes it. */
@@ -106,7 +106,7 @@ export function ChipList({ items, onChange, placeholder, label }) {
 
 const replyHint = (backend, mode, kiroUi) => (replyGuardSupported(backend, mode, kiroUi) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", backend, mode));
 
-/** The dialog every editor uses: Cancel / Stage change; the footer says what the whole dialog will cost. */
+/** The dialog every editor uses: Cancel / Stage change; the footer says what the changes made so far will cost (#2346: only the fields that changed). */
 function EditDialog({ title, subtitle, onClose, onStage, impacts, schema, children, ready = true, wide = true }) {
   const kinds = [...new Set((impacts || []).map((f) => impactOf(schema, f)))];
   return html`<${Dialog} title=${title} label=${subtitle ? `${title} — ${subtitle}` : title} onClose=${onClose} wide=${wide}
@@ -244,16 +244,17 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
   };
   const failoverWarn = !f.inherit.model_failover && !f.model_failover.trim() ? "failoverEmpty" : "";
   const ready = !errors.auto && !errors.hang;
+  const pending = () => agentPatch({ ...f, status_emojis: emojis.value }, inst, defaults, visibilityBaseline, emojis.baseline);
   const stage = () => {
     if (!ready) return;
-    const patch = agentPatch({ ...f, status_emojis: emojis.value }, inst, defaults, visibilityBaseline, emojis.baseline);
+    const patch = pending();
     if (Object.keys(patch).length) ctx.stageAgent(name, inst, patch);
     onClose();
   };
   // What an override shows while it inherits: the default.
   const shown = (k, own, dflt) => (f.inherit[k] ? dflt : own);
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
-  return html`<${EditDialog} title=${ctx.shortName(name, inst)} subtitle=${`ID: ${name}`} onClose=${onClose} onStage=${stage} ready=${ready} impacts=${AGENT_FIELDS} schema=${schema}>
+  return html`<${EditDialog} title=${ctx.shortName(name, inst)} subtitle=${`ID: ${name}`} onClose=${onClose} onStage=${stage} ready=${ready} impacts=${Object.keys(pending()).map((k) => `instance.${k}`)} schema=${schema}>
     <div class="grid2">
       <div class="field">${L(tn("displayName"), "instance.display_name", "ag-dn")}
         <${Override} inherit=${f.inherit.display_name} onInherit=${setInherit("display_name")}>
@@ -409,8 +410,8 @@ export function BotDialog({ id, ctx, onClose }) {
     setToken(""); setTokenId(null); setReplacing(false);
     setTokenNote({ text: tn("tokenQueued") });
   };
-  const stage = () => {
-    if (!ch) return;
+  /** The connections with this dialog's edits, and which parts changed. */
+  const pending = () => {
     const original = structuredClone(chs);
     const next = structuredClone(original);
     next[index] = { ...next[index], access: { ...(next[index].access || {}), mode, allowed_users: [...users] } };
@@ -421,6 +422,16 @@ export function BotDialog({ id, ctx, onClose }) {
       if (emojis.value) options.status_emojis = emojis.value; else delete options.status_emojis;
       next[index] = { ...next[index], options };
     }
+    return { next, accessChanged, emojisChanged };
+  };
+  const pendingImpacts = () => {
+    if (!ch) return [];
+    const p = pending();
+    return [...(p.accessChanged ? ["fleet.channels"] : []), ...(p.emojisChanged ? ["fleet.channel.options.status_emojis"] : [])];
+  };
+  const stage = () => {
+    if (!ch) return;
+    const { next, accessChanged, emojisChanged } = pending();
     if (accessChanged || emojisChanged) {
       ctx.stageChannels(`connections:${ch.id || chLabel(index)}`, next, {
         label: tn(accessChanged && emojisChanged ? "updateAccessEmojis" : accessChanged ? "updateAccess" : "updateEmojis", ch.id || chLabel(index)),
@@ -448,7 +459,7 @@ export function BotDialog({ id, ctx, onClose }) {
   };
   const L = (text, field, htmlFor) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${htmlFor} />`;
   if (!ch) return null;
-  return html`<${EditDialog} title=${type === "telegram" ? "Telegram" : "Discord"} subtitle=${id} onClose=${onClose} onStage=${stage} impacts=${BOT_FIELDS} schema=${schema}>
+  return html`<${EditDialog} title=${type === "telegram" ? "Telegram" : "Discord"} subtitle=${id} onClose=${onClose} onStage=${stage} impacts=${pendingImpacts()} schema=${schema}>
     <div class="grid2">
       <div class="field">${L(tn("accessMode"), "fleet.channel.access.mode", "bot-mode")}<${Select} id="bot-mode" value=${mode} onChange=${setMode} options=${ACCESS_MODES} />
         <${Feedback} warning=${accessWarn} /></div>
@@ -542,7 +553,7 @@ export function NewBotDialog({ ctx, onClose }) {
     setBusy(true);
     const p = await planFor(x);
     if (!p) { if (lease.current()) setBusy(false); return; }
-    const handed = startOperation([{ label: tn("addBotLabel", p.channel_id), impact: impactOf(ctx.schema, "fleet.channels"),
+    const handed = startOperation([{ label: tn("addBotLabel", p.channel_id), impact: newConnectionImpact(ctx.schema),
       request: { method: "POST", url: "/api/settings/quickstart/commit",
         body: { ...body(x), channel_id: p.channel_id, token_env: p.token_env, token_env_generated: true, token: x.token }, sensitive: true } }]);
     if (!handed) { setErr(tn("applyBusyLocal")); setBusy(false); return; }
@@ -601,9 +612,7 @@ export function ClassicDialog({ room, ctx, onClose }) {
   const runtime = ctx.classicRuntime(c.instanceName);
   const classicMode = fd.agent_mode ?? "mcp";
   const lease = useLease("classic-dialog");
-  const stage = async () => {
-    if (!ready) return;
-    const patch = changedFields({
+  const pending = () => changedFields({
       backend: f.backend, model: f.model.trim() || null,
       auto_pause_after: f.inherit.auto_pause_after ? null : Number(f.auto_pause_after),
       tool_progress: f.inherit.tool_progress ? null : f.tool_progress,
@@ -616,13 +625,16 @@ export function ClassicDialog({ room, ctx, onClose }) {
       reply_completion_guard: hasOwn(c, "reply_completion_guard") ? c.reply_completion_guard : null,
       collab: !!c.collab, context_lines: c.context_lines ?? cd.context_lines ?? 5, web_echo: classicWebEchoEffective(c, fleet),
     });
+  const stage = async () => {
+    if (!ready) return;
+    const patch = pending();
     if (!Object.keys(patch).length) { onClose(); return; }
     if (!lease.current()) return;
     ctx.stageClassic(c, patch);
     onClose();
   };
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
-  return html`<${EditDialog} title=${c.name || c.instanceName} subtitle=${`ID: ${c.instanceName} · ${tn(`exec_${runtime.execution}`)}`} onClose=${onClose} onStage=${stage} ready=${ready} impacts=${CLASSIC_FIELDS} schema=${schema}>
+  return html`<${EditDialog} title=${c.name || c.instanceName} subtitle=${`ID: ${c.instanceName} · ${tn(`exec_${runtime.execution}`)}`} onClose=${onClose} onStage=${stage} ready=${ready} impacts=${Object.keys(pending()).map((k) => `classic.${k}`)} schema=${schema}>
     <div class="grid2">
       <div class="field">${L(tn("backend"), "classic.backend", "cl-be")}<${BackendSelect} id="cl-be" value=${f.backend} onChange=${set("backend")} /></div>
       <div class="field">${L(tn("model"), "classic.model", "cl-model")}<${ModelSelect} id="cl-model" value=${f.model} onChange=${set("model")}

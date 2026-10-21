@@ -18,6 +18,11 @@ export interface TaskBoardWakerDeps {
   /** What of a wake still stands now (TaskBoard.wakeHolds), and the card, to say what it lacks. */
   holds(wake: Wake): Wake | null;
   card(uuid: string): Card | undefined;
+  /**
+   * #2352: whether the person has this card's Needs you buttons in `instance`'s own channel (it is the card's lane):
+   * then a dispatcher's wake says so instead of asking it to tell the person.
+   */
+  buttonsHere?(instance: string, uuid: string): boolean;
   log(level: "info" | "warn", message: string, extra?: Record<string, unknown>): void;
   gatherMs?: number;
   timers?: { set(fn: () => void, ms: number): unknown; clear(handle: unknown): void };
@@ -27,12 +32,12 @@ export interface TaskBoardWakerDeps {
 /** More assignments than this in one message are told as a count, not a line each. */
 const MANY_ASSIGNED = 3;
 /** The order a card's news is told in. */
-const ORDER: WakeReason[] = ["cancelled", "sent_back", "decide", "answered", "approved", "wrap_up", "assigned", "start", "ready", "comment"];
+const ORDER: WakeReason[] = ["cancelled", "sent_back", "decide", "to_confirm", "answered", "approved", "wrap_up", "assigned", "start", "ready", "comment"];
 
 const quote = (text: string | undefined) => (text ? `: "${oneLine(text, 160)}"` : "");
 
 /** One reason, as a line about the card says it. */
-function say(w: Wake, r: WakeReason, card: Card | undefined): string {
+function say(w: Wake, r: WakeReason, card: Card | undefined, here = false): string {
   const by = w.by[r] ?? "someone";
   switch (r) {
     case "assigned": return `assigned to you by ${by}`;
@@ -41,7 +46,14 @@ function say(w: Wake, r: WakeReason, card: Card | undefined): string {
     case "answered": return `${by} answered your blocked question${quote(w.texts.answered)} — it is in progress again`;
     case "comment": return `new comment from ${by}${quote(w.texts.comment)}`;
     case "ready": return "everything it waited for is done — you can start it";
-    case "decide": return `you handed it out and it is blocked${card?.assignee ? ` (@${card.assignee})` : ""}${quote(w.texts.decide)} — ask the person, then answer it: move it back to claimed with the decision as the comment`;
+    case "decide": return here
+      ? `you handed it out and it is blocked${card?.assignee ? ` (@${card.assignee})` : ""}${quote(w.texts.decide)} — answer it yourself if you can (move it back to claimed with the decision as the comment); otherwise the person has Answer for it in your channel`
+      : `you handed it out and it is blocked${card?.assignee ? ` (@${card.assignee})` : ""}${quote(w.texts.decide)} — ask the person, then answer it: move it back to claimed with the decision as the comment`;
+    case "to_confirm": {
+      const gap = card ? wrapUpGap(card) : null;
+      const waits = `you handed it out and it waits for the person's confirmation${card?.assignee ? ` (@${card.assignee})` : ""}${gap ? `, though ${gapText(gap, card!.kind === "main")}` : ""}`;
+      return here ? `${waits} — they have Confirm / Send back for it in your channel; add only what they need to decide` : `${waits} — tell the person to confirm it`;
+    }
     case "approved": return card?.assignee === w.instance ? `the person confirmed it${quote(w.texts.approved)}` : `you handed it out; the person confirmed it${quote(w.texts.approved)}`;
     case "cancelled": return `cancelled by ${by}${w.texts.cancelled?.startsWith("with its main task") ? ` ${oneLine(w.texts.cancelled, 160)}` : quote(w.texts.cancelled)} — stop working on it`;
     case "wrap_up": {
@@ -64,7 +76,9 @@ function idList(codes: string[]): string {
  * One message for an instance's gathered news: a line per card (a main task assigned with its sub tasks is one line),
  * or — a whole plan assigned at once — a count, so it does not read as everything to do right now.
  */
-export function wakeMessage(wakes: Wake[], card: (uuid: string) => Card | undefined = () => undefined): string {
+export function wakeMessage(wakes: Wake[], card: (uuid: string) => Card | undefined = () => undefined,
+  /** #2352: the person has this wake's card's buttons in the woken instance's channel. */
+  buttonsHere: (w: Wake) => boolean = () => false): string {
   const assignedMains = new Set(wakes.filter((w) => w.reasons.includes("assigned") && !w.parent).map((w) => w.code));
   const folded = new Map<string, number>();
   const items = wakes.filter((w) => {
@@ -74,7 +88,7 @@ export function wakeMessage(wakes: Wake[], card: (uuid: string) => Card | undefi
   });
   const line = (w: Wake) => {
     const subs = folded.get(w.code);
-    const news = ORDER.filter((r) => w.reasons.includes(r)).map((r) => say(w, r, card(w.uuid))).join("; ");
+    const news = ORDER.filter((r) => w.reasons.includes(r)).map((r) => say(w, r, card(w.uuid), buttonsHere(w))).join("; ");
     return `${w.code} "${oneLine(w.title, 60)}"${subs ? ` (with ${subs} sub task${subs === 1 ? "" : "s"})` : ""}: ${news}.`;
   };
   const assigned = items.filter((w) => w.reasons.length === 1 && w.reasons[0] === "assigned");
@@ -135,7 +149,7 @@ export class TaskBoardWaker {
     const codes = wakes.map((w) => w.code);
     const key = `task-board:${instance}:${(this.deps.now ?? Date.now)()}:${++this.seq}`;
     let taken = false;
-    try { taken = this.deps.deliver(instance, wakeMessage(wakes, (uuid) => this.deps.card(uuid)), key); } catch (err) {
+    try { taken = this.deps.deliver(instance, wakeMessage(wakes, (uuid) => this.deps.card(uuid), (w) => this.deps.buttonsHere?.(instance, w.uuid) === true), key); } catch (err) {
       this.deps.log("warn", "Task board wake failed", { instance, codes, err: (err as Error).message });
       return;
     }

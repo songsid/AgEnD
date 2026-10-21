@@ -20,7 +20,7 @@ const wake = (over: Partial<Wake>): Wake => {
   return { instance: "dev-a", uuid: "u1", code: "S-1", title: "Build the API", parent: "M-1", reasons, texts: {}, ...over, by: Object.fromEntries(reasons.map((r) => [r, (over as { who?: string }).who ?? "Ann"])) };
 };
 
-function waker(opts: { instances?: string[]; holds?: (w: Wake) => Wake | null } = {}) {
+function waker(opts: { instances?: string[]; holds?: (w: Wake) => Wake | null; buttonsHere?: (instance: string, uuid: string) => boolean } = {}) {
   const sent: Array<{ instance: string; message: string }> = [];
   const timers: Array<{ fn: () => void; ms: number; live: boolean }> = [];
   const w = new TaskBoardWaker({
@@ -28,12 +28,29 @@ function waker(opts: { instances?: string[]; holds?: (w: Wake) => Wake | null } 
     isInstance: (n) => (opts.instances ?? ["dev-a", "dev-b", "lead"]).includes(n),
     holds: opts.holds ?? ((x) => x),
     card: () => undefined,
+    ...(opts.buttonsHere ? { buttonsHere: opts.buttonsHere } : {}),
     log: () => {},
     timers: { set: (fn, ms) => { const t = { fn, ms, live: true }; timers.push(t); return t; }, clear: (h) => { (h as { live: boolean }).live = false; } },
   });
   const fire = () => { for (const t of timers.splice(0)) if (t.live) t.fn(); };
   return { w, sent, timers, fire };
 }
+
+describe("#2352: the waker asks, per card and instance, whether the buttons are in that instance's channel", () => {
+  it("the dispatcher whose channel lists the card is told so; another instance, or another card, gets the old words", () => {
+    const asked: string[] = [];
+    const { w, sent, fire } = waker({ buttonsHere: (instance, uuid) => { asked.push(`${instance}/${uuid}`); return instance === "lead" && uuid === "u1"; } });
+    w.note([wake({ instance: "lead", reasons: ["decide"], texts: { decide: "codes?" } }), wake({ instance: "lead", uuid: "u2", code: "S-2", reasons: ["decide"], texts: { decide: "names?" } })]);
+    w.note([wake({ instance: "dev-b", reasons: ["decide"], texts: { decide: "codes?" } })]);
+    fire();
+    const to = (i: string) => sent.find((x) => x.instance === i)!.message;
+    const line = (code: string) => to("lead").split("\n").find((l) => l.includes(`${code} "`))!;
+    expect(line("S-1")).toContain("Answer for it in your channel");
+    expect(line("S-2")).toContain("ask the person, then answer it");
+    expect(to("dev-b")).toMatch(/ask the person, then answer it/);
+    expect(asked.sort()).toEqual(["dev-b/u1", "lead/u1", "lead/u2"]);
+  });
+});
 
 describe("gathering an instance's news", () => {
   it("one message per instance per window; a card's news merged, each reason keeping its own words", () => {
@@ -86,6 +103,11 @@ describe("the message", () => {
       .toBe('[Task board] 2 things on your cards:\n- S-1 "Build the API": new comment from Ann.\n- S-2 "Build the API": you handed it out; the person confirmed it.\nYour work: task mine');
   });
 
+  it("the dispatcher is asked to tell the person a card waits for them, and what it lacks", () => {
+    expect(wakeMessage([wake({ instance: "lead", reasons: ["to_confirm"], who: "dev-a" } as Partial<Wake>)], () => ({ assignee: "dev-a", kind: "sub", acceptance: [{ text: "a", done: false }], result: "" }) as never))
+      .toBe('[Task board] S-1 "Build the API": you handed it out and it waits for the person\'s confirmation (@dev-a), though 1 acceptance item unchecked, no result — tell the person to confirm it. Read it with: task get S-1');
+  });
+
   it("a card cancelled by someone else, alone or with its main task", () => {
     expect(wakeMessage([wake({ reasons: ["cancelled"], texts: { cancelled: "with its main task M-1: the feature is dropped" } })]))
       .toBe('[Task board] S-1 "Build the API": cancelled by Ann with its main task M-1: the feature is dropped — stop working on it. Read it with: task get S-1');
@@ -96,6 +118,20 @@ describe("the message", () => {
   it("the dispatcher is asked to take the question to the person, and how to answer it", () => {
     expect(wakeMessage([wake({ instance: "lead", reasons: ["decide"], who: "dev-a", texts: { decide: "codes or messages?" } } as Partial<Wake>)], () => ({ assignee: "dev-a" }) as never))
       .toBe('[Task board] S-1 "Build the API": you handed it out and it is blocked (@dev-a): "codes or messages?" — ask the person, then answer it: move it back to claimed with the decision as the comment. Read it with: task get S-1');
+  });
+
+  it("#2352: when the person has the card's buttons in the dispatcher's own channel, the wake says so instead of asking it to relay", () => {
+    const here = () => true;
+    expect(wakeMessage([wake({ instance: "lead", reasons: ["decide"], who: "dev-a", texts: { decide: "codes or messages?" } } as Partial<Wake>)], () => ({ assignee: "dev-a" }) as never, here))
+      .toBe('[Task board] S-1 "Build the API": you handed it out and it is blocked (@dev-a): "codes or messages?" — answer it yourself if you can (move it back to claimed with the decision as the comment); otherwise the person has Answer for it in your channel. Read it with: task get S-1');
+    expect(wakeMessage([wake({ instance: "lead", reasons: ["to_confirm"], who: "dev-a" } as Partial<Wake>)], () => ({ assignee: "dev-a", kind: "sub", acceptance: [], result: "done" }) as never, here))
+      .toBe('[Task board] S-1 "Build the API": you handed it out and it waits for the person\'s confirmation (@dev-a) — they have Confirm / Send back for it in your channel; add only what they need to decide. Read it with: task get S-1');
+    // Per wake: only the one whose card is laned here.
+    const two = wakeMessage([wake({ instance: "lead", reasons: ["to_confirm"] }), wake({ uuid: "u2", code: "S-2", instance: "lead", reasons: ["to_confirm"] })],
+      () => ({ assignee: "dev-a", kind: "sub", acceptance: [], result: "done" }) as never, (w) => w.code === "S-2");
+    const at = (code: string) => two.split("\n").find((l) => l.includes(`${code} "`))!;
+    expect(at("S-1")).toContain("tell the person to confirm it");
+    expect(at("S-2")).toContain("Confirm / Send back for it in your channel");
   });
 });
 

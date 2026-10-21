@@ -117,6 +117,8 @@ export function getEffectiveInstanceDefaults(
     retention_days: _retentionDays,
     daily_summary: _dailySummary,
     webhooks: _webhooks,
+    // #2246 step 3: the board's daily summary is the fleet's (task-board-summary.ts), read at every look.
+    task_board: _taskBoard,
     ...instanceDefaults
   } = fleetDefaults;
   return deepMergeGeneric(

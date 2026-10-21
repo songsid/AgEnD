@@ -15,8 +15,9 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { AskHost, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, UNASSIGNED, answerBlocked, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, onPublicLink, projectKey, projectStats, readStored, recentlyDone, relTime, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
+import { AskHost, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, UNASSIGNED, Who, answerBlocked, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, onPublicLink, projectKey, projectStats, readStored, recentlyDone, relTime, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { CardDialog } from "./fleet-task-card.js";
+import { InstancesDrawer } from "./fleet-task-work.js";
 
 const PROJECT_KEY = "agend_tasks_project";
 const FILTER_KEY = "agend_tasks_assignee";
@@ -97,17 +98,22 @@ export function TaskBoardTab({ lease }) {
     try { const u = new URL(globalThis.location.href); u.searchParams.delete("card"); globalThis.history.replaceState(globalThis.history.state, "", u); } catch { /* no address bar */ }
   };
 
+  // #2246 step 3: who works on what — the drawer gives way to a card opened from it (one drawer at a time).
+  const showInstances = () => setDialog({ kind: "instances" });
+
   if (!state) return html`<${Skeleton} lines=${5} />`;
   if (state.error) return html`<${ErrorState} message=${t("tasks.loadFailed")} onRetry=${reload} />`;
   const cards = Array.isArray(state.data.cards) ? state.data.cards : [];
   const projects = Array.isArray(state.data.projects) ? state.data.projects : [];
+  // #2355 review: the names a project's lead may be, as the server accepts them (the fleet's instances).
+  const leads = Array.isArray(state.data.leads) ? state.data.leads : [];
   // The server's numbers cover every card (finished ones are not all on the board); computed here only without them.
   const stats = (key) => (state.data.stats && state.data.stats[String(key)]) || projectStats(key, cards);
   const project = at === null ? null : at === NO_PROJECT ? NO_PROJECT : projects.find((p) => p.id === at) || null;
   const body = project === null
-    ? html`<${Home} cards=${cards} projects=${projects} stats=${stats} writable=${writable} onOpenProject=${setAt} onOpen=${openCard} onDialog=${setDialog} reload=${reload} />`
+    ? html`<${Home} cards=${cards} projects=${projects} stats=${stats} writable=${writable} onOpenProject=${setAt} onOpen=${openCard} onDialog=${setDialog} onInstances=${showInstances} reload=${reload} />`
     : html`<${ProjectBoard} project=${project} cards=${cards} stats=${stats} flashed=${flashed} allDone=${allDone} writable=${writable} onAllDone=${setAllDone} onBack=${() => setAt(null)}
-        onOpen=${openCard} onCreate=${() => setDialog({ kind: "main", project: project === NO_PROJECT ? null : project.id })} reload=${reload} />`;
+        onOpen=${openCard} onCreate=${() => setDialog({ kind: "main", project: project === NO_PROJECT ? null : project.id })} onInstances=${showInstances} reload=${reload} />`;
   return html`<div class="tb">
     ${writable ? null : html`<p class="tb-readonly" role="note"><${Icon} name="eye" size=${16} />${t("tasks.readOnly")}</p>`}
     ${body}
@@ -115,7 +121,8 @@ export function TaskBoardTab({ lease }) {
       onClose=${closeCard} onOpen=${openCard} reloadBoard=${reload} />` : null}
     ${dialog && dialog.kind === "main" ? html`<${CreateMainDialog} projects=${projects} project=${dialog.project} onClose=${() => setDialog(null)}
       onCreated=${(id) => { if (!lease.current()) return; setDialog(null); reload(); openCard(id); }} />` : null}
-    ${dialog && dialog.kind === "project" ? html`<${ProjectDialog} project=${dialog.project} onClose=${() => setDialog(null)}
+    ${dialog && dialog.kind === "instances" ? html`<${InstancesDrawer} tick=${tick} onClose=${() => setDialog(null)} onOpen=${(id) => { setDialog(null); openCard(id); }} />` : null}
+    ${dialog && dialog.kind === "project" ? html`<${ProjectDialog} project=${dialog.project} leads=${leads} onClose=${() => setDialog(null)}
       onSaved=${(p) => { if (!lease.current()) return; setDialog(null); reload(); if (!dialog.project) setAt(p.id); }} />` : null}
     <${AskHost} />
   </div>`;
@@ -123,7 +130,12 @@ export function TaskBoardTab({ lease }) {
 
 // ── Home: the projects, and what waits for the person ─────────
 
-function Home({ cards, projects, stats, writable, onOpenProject, onOpen, onDialog, reload }) {
+/** The board's Instance button (taskhall's): the fleet's instances and what each works on. */
+function InstancesButton({ onClick }) {
+  return html`<button type="button" class="btn" title=${t("tasks.instancesTip")} onClick=${onClick}><${Icon} name="team" size=${16} />${t("tasks.instances")}</button>`;
+}
+
+function Home({ cards, projects, stats, writable, onOpenProject, onOpen, onDialog, onInstances, reload }) {
   const [showArchived, setShowArchived] = useState(false);
   const active = projects.filter((p) => !p.archived);
   const archived = projects.filter((p) => p.archived);
@@ -132,6 +144,7 @@ function Home({ cards, projects, stats, writable, onOpenProject, onOpen, onDialo
     <div class="list-head tb-head"><span>${t("tasks.projects")}</span>
       <span class="tb-grow"></span>
       <${SearchBox} onOpen=${onOpen} />
+      <${InstancesButton} onClick=${onInstances} />
       ${writable ? html`<button type="button" class="btn btn-primary" onClick=${() => onDialog({ kind: "project", project: null })}><${Icon} name="plus" size=${16} />${t("tasks.newProject")}</button>` : null}</div>
     <${Waiting} cards=${cards} writable=${writable} onOpen=${onOpen} reload=${reload} />
     ${active.length || loose ? html`<div class="tb-projects">
@@ -162,6 +175,7 @@ function ProjectTile({ project, stats, onOpen, onDialog, reload }) {
         ${stats.waiting ? html`<span class="tb-flag st-review">${t("tasks.waiting", stats.waiting)}</span>` : null}
         ${stats.blocked ? html`<span class="tb-flag st-blocked">${t("tasks.blockedN", stats.blocked)}</span>` : null}
         ${stats.lastActivity ? html`<span class="muted">${t("tasks.lastActivity", relTime(stats.lastActivity))}</span>` : null}
+        ${project && project.leadInstance ? html`<span class="muted tb-project-lead-chip">${t("tasks.projectLeadChip", project.leadInstance)}</span>` : null}
       </span>
     </button>
     ${project && onDialog ? html`<${Menu} cls="tb-project-menu" items=${[
@@ -252,7 +266,7 @@ function SearchBox({ onOpen }) {
 
 // ── A project's board ─────────────────────────────────────
 
-function ProjectBoard({ project, cards, stats: statsOf, flashed, allDone, writable, onAllDone, onBack, onOpen, onCreate, reload }) {
+function ProjectBoard({ project, cards, stats: statsOf, flashed, allDone, writable, onAllDone, onBack, onOpen, onCreate, onInstances, reload }) {
   const { instances } = useStore(appStore);
   const [assignee, setAssigneeRaw] = useState(() => readStored(FILTER_KEY, ""));
   const [expanded, setExpanded] = useState({});
@@ -357,6 +371,7 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, allDone, writab
         <option value=${UNASSIGNED}>${t("tasks.nobody")}</option>
         ${names.map((n) => html`<option key=${n} value=${n}>${n}</option>`)}
       </select>
+      <${InstancesButton} onClick=${onInstances} />
       ${archived || !writable ? null : html`<button type="button" class="btn btn-primary" onClick=${onCreate}><${Icon} name="plus" size=${16} />${t("tasks.newMain")}</button>`}
     </div>
     ${mains.length === 0 && !drag ? html`<${Empty} icon="tasks" title=${assignee ? t("tasks.emptyFiltered") : t("tasks.emptyBoard")} hint=${assignee || archived ? undefined : t("tasks.emptyBoardHint")} />`
@@ -443,9 +458,9 @@ function Tile({ card, dragging, flash, subs = [], expanded, writable, onToggleSu
       <span class=${`tb-now-label st-${now.tone}`}>${t(now.label)}</span><span class="tb-code">${now.cards[0].id}</span>
       <span class="tb-now-title">${now.cards[0].title}</span>${now.cards.length > 1 ? html`<span class="muted">${t("tasks.moreCards", now.cards.length - 1)}</span>` : null}</div>` : null}
     <div class="tb-tile-foot">
-      ${now ? html`<span class="tb-who" title=${t("tasks.ownerTip", card.assignee || t("tasks.nobody"))}>${workers.map((w) => w || t("tasks.nobody")).join(", ")}</span>`
+      ${now ? html`<span class="tb-people">${workers.map((w) => html`<${Who} key=${w} name=${w} empty=${t("tasks.nobody")} title=${t("tasks.ownerTip", card.assignee || t("tasks.nobody"))} />`)}</span>`
         : hasSubs && card.status === "review" ? html`<span class="tb-who tb-now-label st-review" title=${t("tasks.ownerTip", card.assignee || t("tasks.nobody"))}>${t("tasks.review")}</span>`
-        : html`<span class="tb-who">${card.assignee || "—"}</span>`}
+        : html`<${Who} name=${card.assignee} empty=${t("tasks.nobody")} />`}
       <span class="tb-tile-stats">
         ${card.acceptance.length ? html`<span class=${accepted === card.acceptance.length ? "all" : ""} title=${t(card.kind === "main" ? "tasks.definition" : "tasks.acceptance")}><${Icon} name="check" size=${13} />${accepted}/${card.acceptance.length}</span>` : null}
         ${card.unmetDeps.length ? html`<span title=${t("tasks.waitsFor", card.unmetDeps.join(", "))}><${Icon} name="clock" size=${13} /></span>` : null}
@@ -496,14 +511,27 @@ function CreateMainDialog({ projects, project, onClose, onCreated }) {
     </fieldset></form></${Dialog}>`;
 }
 
-function ProjectDialog({ project, onClose, onSaved }) {
-  const [f, setF] = useState({ name: project ? project.name : "", description: project ? project.description : "" });
+/**
+ * #2355 review: what an edit of a project sends — its fields, and its lead only when it changed (an unchanged retired
+ * lead would be refused on an unrelated rename); "" is no lead.
+ */
+export function projectPatch(was, f) {
+  const { leadInstance, ...rest } = f;
+  return leadInstance !== (was || "") ? { ...rest, leadInstance: leadInstance || null } : rest;
+}
+
+function ProjectDialog({ project, leads = [], onClose, onSaved }) {
+  const was = (project && project.leadInstance) || "";
+  const [f, setF] = useState({ name: project ? project.name : "", description: project ? project.description : "", leadInstance: was });
+  // #2352: a lead no longer in the fleet stays listed (marked) until it is changed; #2355 review: only the server's names.
+  const leadGone = !!f.leadInstance && !leads.includes(f.leadInstance);
   const [busy, setBusy] = useState(false);
   async function submit() {
     if (!f.name.trim()) return;
     setBusy(true);
     try {
-      const r = project ? await boardApi.updateProject(project.id, f) : await boardApi.createProject(f.name, f.description);
+      const body = projectPatch(was, f);
+      const r = project ? await boardApi.updateProject(project.id, body) : await boardApi.createProject(f.name, f.description, f.leadInstance || null);
       toast(t(project ? "tasks.projectSaved" : "tasks.projectCreated"));
       onSaved(r.project);
     } catch (err) { toast(errorText(err), false); setBusy(false); }
@@ -514,6 +542,11 @@ function ProjectDialog({ project, onClose, onSaved }) {
     <form class="form" onSubmit=${(e) => { e.preventDefault(); submit(); }}><fieldset class="form" disabled=${busy}>
       <label class="field"><span>${t("tasks.projectName")} *</span><input value=${f.name} maxlength="60" onInput=${(e) => { const v = e.target.value; setF((c) => ({ ...c, name: v })); }} required /></label>
       <label class="field"><span>${t("tasks.projectDesc")}</span><input value=${f.description} maxlength="300" onInput=${(e) => { const v = e.target.value; setF((c) => ({ ...c, description: v })); }} /></label>
+      <label class="field"><span>${t("tasks.projectLead")}</span><select class="tb-project-lead" value=${f.leadInstance} onChange=${(e) => { const v = e.target.value; setF((c) => ({ ...c, leadInstance: v })); }}>
+        <option value="">${t("tasks.projectLeadNone")}</option>
+        ${leadGone ? html`<option value=${f.leadInstance}>${t("tasks.projectLeadGone", f.leadInstance)}</option>` : null}
+        ${leads.map((n) => html`<option key=${n} value=${n}>${n}</option>`)}</select>
+        <small class="note">${t("tasks.projectLeadHint")}</small></label>
     </fieldset></form></${Dialog}>`;
 }
 

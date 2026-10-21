@@ -25,6 +25,7 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { toast } from "/assets/ui-toast.js";
 import "./chat-strings.js";
 import { api } from "./settings-confirm.js";
+import { InstanceBoardWork } from "./fleet-task-work.js";
 import { requestAgentSettings } from "./settings-request.js";
 
 export function DetailsPanel({ route, navKey }) {
@@ -150,6 +151,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
         ${row(t("chat.dContext"), html`<span class="pct">${ctx != null ? `${Math.round(ctx)}%` : "--"}</span>${ctx != null ? bar(ctx, ctx > 80 ? "warn" : "") : null}`)}
         ${row(t("chat.dRate5"), html`<span class="pct">${Math.round(rl5)}%</span>${bar(rl5, rl5 > 90 ? "error" : rl5 > 70 ? "warn" : "")}`)}
         ${row(t("chat.dRate7"), html`<span class="pct">${Math.round(rl7)}%</span>${bar(rl7, rl7 > 90 ? "error" : rl7 > 70 ? "warn" : "")}`)}</section>
+      <${InstanceBoardWork} name=${name} onOpen=${(id) => navigate(`/ui/fleet?card=${encodeURIComponent(id)}`)} />
       <section class="card"><h3>${t("chat.dActivity")}</h3>${d.recent_activity?.length ? d.recent_activity.map((a, i) => html`<div key=${i} class="activity">
         <span class="mono muted">${a.timestamp ? new Date(`${a.timestamp.replace(" ", "T")}Z`).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</span>
         <span class="ev">${a.event}</span> ${a.summary || ""}</div>`) : html`<p class="note">${t("chat.dNoActivity")}</p>`}</section>`;

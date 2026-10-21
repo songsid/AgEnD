@@ -20,7 +20,8 @@ import { randomUUID } from "node:crypto";
 import { agendVersion } from "../agent-whats-new.js";
 import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { IpcClient } from "./ipc-bridge.js";
-import { TOOLS } from "./mcp-tools.js";
+import { TOOLS, toolsWithCanvasWorker } from "./mcp-tools.js";
+import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE, isCanvasWorkerTool, readCanvasWorkerEnabled, watchCanvasWorkerEnabled } from "../web-experimental.js";
 import { encodeOperationError, encodeOperationSuccess } from "./mcp-operation-response.js";
 import { buildMcpCoreInstructions } from "../instructions.js";
 import { reconnectDelayMs } from "./reconnect-backoff.js";
@@ -269,7 +270,7 @@ const mcp = new Server(
   { name: "agend", version: AGEND_VERSION ?? "unknown" },
   {
     capabilities: {
-      tools: {},
+      tools: { listChanged: true },
     },
     instructions: buildMcpInstructions(),
   },
@@ -290,13 +291,18 @@ if (requestedToolSet && resolvedToolSet !== requestedToolSet) {
   );
 }
 const allowedTools = toolsFor(resolvedToolSet);
-const activeTools = TOOLS.filter(t => allowedTools.has(t.name));
+// The IPC socket identifies the owning home even when the backend did not inherit AGEND_HOME.
+const featureDataDir = SOCKET_PATH ? dirname(dirname(dirname(SOCKET_PATH))) : getAgendHome();
+const currentTools = () => toolsWithCanvasWorker(readCanvasWorkerEnabled(featureDataDir), TOOLS.filter(t => allowedTools.has(t.name)));
 
-mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: activeTools }));
+mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: currentTools() }));
 
 // --- Tool call handler ---
 
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
+  if (isCanvasWorkerTool(req.params.name) && !readCanvasWorkerEnabled(featureDataDir)) {
+    return { content: [{ type: "text", text: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }], isError: true };
+  }
   const args = (req.params.arguments ?? {}) as Record<string, unknown>;
   // This process is the MCP caller's child and survives FleetManager/Daemon
   // IPC round-trips long enough to return the same key on timeout/error.
@@ -335,6 +341,8 @@ async function main(): Promise<void> {
   // the initialize request. IPC connection can happen in parallel.
   const transport = new StdioServerTransport();
   await mcp.connect(transport);
+  // CLI clients that cache tool menus can refresh without restarting the instance. Every call still checks current state.
+  watchCanvasWorkerEnabled(featureDataDir, () => { void mcp.sendToolListChanged().catch(() => {}); });
 
   // Parent death detection.
   // Primary: ppid polling — works on all platforms, immune to libuv/kqueue bugs.

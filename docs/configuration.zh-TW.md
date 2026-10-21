@@ -162,12 +162,13 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | `startup.stagger_delay_ms` | number | `500` | 啟動、喚醒、恢復、重啟共用的外層生命週期入場與獨立 spawn 最小間隔（毫秒）。壓力正常時，巢狀 CLI spawn 沿用外層名額，可能同時開始；壓力升高時，實體 spawn 仍一次一個且至少相隔五秒，壓力嚴重時暫停新增 spawn；範圍 `0`–`30000` |
 | `warm_cap` | number | `0`（無上限） | 執行中 instance 的暖機上限；超過時暫停最近最少活動的 idle instance，General 與持有 work lease 的 instance 不被淘汰。與按時間計算的 `auto_pause_after` 互補 |
 | `progress_min_elapsed` | number | `30` | 進度行／取消按鈕開始顯示經過時間之前的秒數 |
-| `locale` | `"en"` \| `"zh-TW"` | 依時區推算 | 使用者可見介面與通知的語言 |
+| `locale` | `"en"` \| `"zh-TW"` | 依時區推算 | 使用者可見介面與通知的語言。AgEnD 啟動時讀取：變更後需重新啟動 AgEnD。 |
 | `max_cross_instance_message_bytes` | number | `12288` | 跨 instance 訊息內容的 UTF-8 byte 上限。超限時會明確拒絕，並提示精簡內容或改傳檔案路徑。 |
 | `reply_overdue_minutes` | number | `15` | 距上次詢問／提醒多少分鐘後，通知寄件者一次：`requires_reply` 請求仍未回答，且負責的 instance 並非 working。`0` 只停用這則閒置逾期通知，不停用對負責者的提醒或 TTL 到期的最後通知 |
 | `reply_obligation_ttl_hours` | number | `24` | 開放中的回覆義務距上次詢問多久後到期，必須是有限正數（小時）；提醒不延長期限。到期會記錄 log，若尚未通知過逾期則通知寄件者一次，即使 `reply_overdue_minutes` 是 `0` 也一樣。重啟只發一則提醒，最多列十筆請求及「+N 個其他請求」；回合結束的提醒保留既有寬限及每次詢問一次的規則。 |
 | `retention_days` | number | `30` | `delivery-outbox.db` 保留已完成投遞（`delivered`/`failed`）及 Task Board 已完成/已取消任務的天數。`uncertain` 與非終態的 row 永遠不會被清除。fleet 啟動時執行一次，之後每天執行，每次最多刪除 500 筆以免卡住 event loop。被清除的 delivery_id 在 `delivery_status` 工具中會回傳「早於保留期限，已清除」而非「找不到」 |
 | `tips` | boolean | `true` | General 每日提示；不受 `daily_summary.enabled` 控制 |
+| `task_board.summary_at` | string | `"09:00"` | 任務看板給人的每日摘要，發到各平台的 General 和網頁聊天室：`"HH:MM"`（24 小時制，依 `scheduler.default_timezone`，沒設就用主機時區）或 `"off"`。每分鐘檢查時讀取，改了不用重啟。見[功能說明](features.zh-TW.md#任務看板的每日摘要) |
 
 重啟去重另外保存 owner／boot 檢查點（只有識別碼與時間），不跟著通知的保留政策清理。刪除舊的已送達通知，不會讓同一個 boot 重新提醒或重新標記請求。
 
@@ -689,3 +690,19 @@ profile 不顯示。兩個登入若是同一個帳號，會顯示成兩列（AgE
 fleet-topic instance 預設會將 web chat 訊息同步至自己綁定的 Telegram 或 Discord 主題。可設定 `web.echo_to_channel: false` 關閉，或在 **Settings → 網頁 → 網頁聊天** 切換。同步文字使用 `🌐 web · <名字>: …`（網頁使用者的名字，沒有時是 `web-user`，#1827），附件只顯示檔名，長文字會附上請看 web chat 的提示。這只是顯示副本：bot 自己的訊息不會觸發 Agent 新回合。純 web fleet 不做同步。ClassicBot 聊天室（包括群組頻道）也會同步：`classicBot.yaml` 裡沒有設定 `channels.<key>.web_echo` 的聊天室，依照 `web.echo_to_channel`（因此預設開啟，全 fleet 關閉時也跟著關閉）；設為 `false` 讓該聊天室保持關閉，設為 `true` 則不論全 fleet 的開關都保持開啟（#2054）。同步失敗只記錄日誌，不會使 web 投遞失敗或延遲。每筆副本的排序等待總共最多五秒，包含排隊與 admission；平台請求結束或期限到達後，Agent 回覆就繼續。逾時會丟棄尚未開始的副本並記 warn；已在飛的副本可能晚於回覆出現，其晚到結果另記日誌。不自動重送副本。
 
 同步本文與附件名稱的 mention／command token 改成可見 ASCII 標籤，例如 `[mention: 200]`、`[at: botname]`、`[command: cmd at bot]`。先做相容正規化與 format-character 移除；URL、email local part 與一般路徑斜線保留。Discord 另設定 `allowedMentions: { parse: [] }`；Telegram 傳送不含 mention entities 的純文字。共用 ingress 在作者是該平台已設定的 fleet bot 帳號、且本文以固定 `🌐 web · ` 開頭時丟棄副本，不依賴 echo 開關或 send ACK。同平台只要還有任一已設定 world 的 bot 身分未知，也會在 trigger 判斷前丟棄帶平台 bot 作者旗標的前綴候選並記 debug。這段暫時隔離不影響人類貼上的前綴；身分全部就緒後，非 fleet bot 維持原 admission／collab 規則。不將未知作者當成 fleet bot，也不使用近期 message-ID cache。
+
+### 實驗功能：Canvas Worker 特效（#2275）
+
+`web.experimental.canvas_worker` 只接受布林值，**預設為 `false`**：
+
+```yaml
+web:
+  experimental:
+    canvas_worker: false
+```
+
+只有從本機儀表板登入的 fleet 管理者能在 **設定 → 網頁外觀 → 實驗功能：Canvas Worker 特效** 開啟，開啟前需要確認。公開連結與訪客不能更改。切換不需要重新啟動 agent 或重新載入網頁。
+
+關閉時，本機、公開連結與訪客頁面都會隱藏 Canvas Worker 控制項、試播、海報、效果庫與播放，不載入 CW 執行模組或 Worker。CW 專用工具（包含網頁 mod 匯出與提案）不出現在 agent 工具清單，直接呼叫也會拒絕；混合型外觀工具保留非 CW 選項。受管理技能與 agent 公告省略 CW 操作說明。關閉會停止正在播放的 CW 特效，但不刪除磁碟上的 Worker、套用位置、偏好或 mod；重新開啟會恢復，仍遵守原本的同意與信任檢查。
+
+落花、點擊星星等只含資料的環境效果，以及主題、小工具和自訂 CSS，都不受此開關影響。

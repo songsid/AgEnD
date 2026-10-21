@@ -117,6 +117,11 @@ describe("#1629 one app-owned effect pool", () => {
     const h = rig(); h.api.dispose(); const create = () => createAppEffectRuntime({ window: h.host, current: () => true, observe: () => h.observation, factories: h.factories });
     expect(create().ok).toBe(false); expect(h.factories.loader).toHaveBeenCalledOnce(); expect(h.factories.registry).toHaveBeenCalledOnce();
   });
+  it("explicit experimental disable releases only its own pool slot; rejected callers cannot release the live pool", async () => {
+    const h = rig(); const create = () => createAppEffectRuntime({ window: h.host, current: () => true, observe: () => h.observation, factories: h.factories });
+    const rejected = create(); expect(rejected.ok).toBe(false); rejected.dispose(true); expect(create().ok).toBe(false);
+    await h.api.dispose(true); const restored = create(); expect(restored.ok).toBe(true); expect(h.factories.loader).toHaveBeenCalledTimes(2); restored.dispose();
+  });
   it("reentrant route attachment during retirement survives the older sync pass", async () => {
     const h = rig(), a = h.chat("a"); await flush(); const ordinary = h.registry.update.getMockImplementation(); let nested: any = null, once = true;
     h.registry.update.mockImplementation((ds: any[], context: any) => { ordinary(ds, context); if (!ds.length && once) { once = false; nested = h.chat("b"); } });

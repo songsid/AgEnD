@@ -84,6 +84,11 @@ export interface Project {
   name: string;
   description: string;
   archived: boolean;
+  /**
+   * #2352: the instance whose channel lists the project's cards that wait for the person (Needs you's Confirm / Send
+   * back / Answer), when no instance dispatched them; null: General. Any name — the fleet checks it is an instance.
+   */
+  leadInstance: string | null;
   sort: number;
   createdAt: string;
 }
@@ -225,10 +230,11 @@ export interface CardEvent {
  * Why an instance hears about one of its cards (step 2's wakes, task-board-waker.ts): someone else assigned it,
  * started it, sent it back, answered its blocked question, commented, or finished the last card it waited for; the
  * person confirmed it (its assignee and its dispatcher hear); it is blocked and the instance handed it out (decide);
+ * it went to the person for confirmation and the instance handed it out, so it tells them (to_confirm);
  * a main task went to the person by itself before its owner wrapped it up (wrap_up); or someone else cancelled it — a
  * main task's cancel takes its unfinished sub tasks down with it, and their assignees hear (cancelled).
  */
-export type WakeReason = "assigned" | "start" | "sent_back" | "answered" | "comment" | "ready" | "decide" | "approved" | "wrap_up" | "cancelled";
+export type WakeReason = "assigned" | "start" | "sent_back" | "answered" | "comment" | "ready" | "decide" | "to_confirm" | "approved" | "wrap_up" | "cancelled";
 
 /** One card's news for one instance from one committed write. Never sent to a page (it carries titles and text). */
 export interface Wake {
@@ -489,12 +495,25 @@ function toCard(r: Row): Card {
   };
 }
 
+/**
+ * #2352: a lead is a name, or none ("" and null alike). Whether it is one of the fleet's instances is the fleet's to
+ * check (the board keeps names, as for an assignee); a lead no longer in fleet.yaml reads as none.
+ */
+function checkLeadInstance(raw: string | null): string | null {
+  const name = (raw ?? "").trim();
+  if (!name) return null;
+  // eslint-disable-next-line no-control-regex
+  if (name.length > 256 || /[\s\u0000-\u001f\u007f]/.test(name)) throw new TaskBoardError("invalid", "a lead is an instance's name", "lead_not_instance");
+  return name;
+}
+
 function toProject(r: Row): Project {
   return {
     id: Number(r.id),
     name: r.name as string,
     description: r.description as string,
     archived: Number(r.archived) === 1,
+    leadInstance: typeof r.lead_instance === "string" && r.lead_instance ? r.lead_instance : null,
     sort: Number(r.sort),
     createdAt: r.created_at as string,
   };
@@ -585,6 +604,11 @@ export class TaskBoard {
       CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id, id);
       CREATE TABLE IF NOT EXISTS task_counters (prefix TEXT PRIMARY KEY, next INTEGER NOT NULL);
     `);
+    // #2352: a project's lead instance, added in place (null: its waiting cards' buttons stay in General).
+    const projectCols = new Set((this.db.prepare("PRAGMA table_info(task_projects)").all() as Array<{ name: string }>).map((c) => c.name));
+    if (!projectCols.has("lead_instance")) {
+      try { this.db.exec("ALTER TABLE task_projects ADD COLUMN lead_instance TEXT"); } catch (err) { if (!/duplicate column/i.test(String(err))) throw err; }
+    }
     // Every open (the CLI opens this file for each command) only reads: the write lock is taken only when a counter
     // is missing or a row needs a number. (CREATE … IF NOT EXISTS of what exists takes no lock; an INSERT does.)
     if ((this.db.prepare("SELECT COUNT(*) AS n FROM task_counters WHERE prefix IN ('M', 'S', 'R')").get() as { n: number }).n < 3) {
@@ -638,28 +662,30 @@ export class TaskBoard {
     return toProject(row);
   }
 
-  createProject(actor: Actor, input: { name: string; description?: string }): Project {
+  createProject(actor: Actor, input: { name: string; description?: string; leadInstance?: string | null }): Project {
     this.personOnly(actor, "create a project");
     return this.tx(() => {
       const name = this.checkProjectName(input.name, null);
       const description = checkText("the description", input.description ?? "", CARD_LIMITS.projectDescription);
       const { s } = this.db.prepare("SELECT COALESCE(MAX(sort), 0) + 1 AS s FROM task_projects").get() as { s: number };
-      const row = this.db.prepare("INSERT INTO task_projects (name, description, sort, created_at) VALUES (?, ?, ?, ?) RETURNING *")
-        .get(name, description, s, this.nowIso()) as Row;
+      const lead = checkLeadInstance(input.leadInstance ?? null);
+      const row = this.db.prepare("INSERT INTO task_projects (name, description, sort, created_at, lead_instance) VALUES (?, ?, ?, ?, ?) RETURNING *")
+        .get(name, description, s, this.nowIso(), lead) as Row;
       this.projectsChanged = true;
       return toProject(row);
     });
   }
 
-  updateProject(actor: Actor, id: number, patch: { name?: string; description?: string; archived?: boolean }): Project {
+  updateProject(actor: Actor, id: number, patch: { name?: string; description?: string; archived?: boolean; leadInstance?: string | null }): Project {
     this.personOnly(actor, "change a project");
     return this.tx(() => {
       const project = this.getProject(id);
       if (patch.name !== undefined) project.name = this.checkProjectName(patch.name, project.id);
       if (patch.description !== undefined) project.description = checkText("the description", patch.description, CARD_LIMITS.projectDescription);
       if (patch.archived !== undefined) project.archived = patch.archived;
-      this.db.prepare("UPDATE task_projects SET name = ?, description = ?, archived = ? WHERE id = ?")
-        .run(project.name, project.description, project.archived ? 1 : 0, project.id);
+      if (patch.leadInstance !== undefined) project.leadInstance = checkLeadInstance(patch.leadInstance);
+      this.db.prepare("UPDATE task_projects SET name = ?, description = ?, archived = ?, lead_instance = ? WHERE id = ?")
+        .run(project.name, project.description, project.archived ? 1 : 0, project.leadInstance, project.id);
       this.projectsChanged = true;
       return project;
     });
@@ -1027,6 +1053,12 @@ export class TaskBoard {
    * (its own open cards, and the unassigned sub tasks of main tasks it coordinates, dependencies done) and what waits
    * on dependencies; comments it has not seen and work sent back; the main tasks it coordinates and how far along.
    */
+  /** Who holds a live card (open, in progress, blocked, waiting for the person): the instances, and any other name. */
+  liveAssignees(): string[] {
+    return (this.db.prepare("SELECT DISTINCT assignee FROM tasks WHERE assignee IS NOT NULL AND status IN ('open', 'claimed', 'blocked', 'review') ORDER BY assignee").all() as Row[])
+      .map((r) => r.assignee as string);
+  }
+
   myWork(name: string): MyWork {
     const mine = (this.db.prepare(`SELECT * FROM tasks WHERE assignee = ? AND status IN ('open', 'claimed', 'blocked', 'review') ORDER BY ${STATUS_ORDER}, ${PRIORITY_ORDER}, sort`)
       .all(name) as Row[]).map(toCard);
@@ -1056,6 +1088,117 @@ export class TaskBoard {
       newComments,
       sentBack,
       mains: coordinating.map((card) => ({ card, progress: this.progress(card) })),
+    };
+  }
+
+  /**
+   * What waits for the person (step 3: Needs you): cards in review that need their confirmation, and blocked cards —
+   * oldest first, each with when it started waiting (its last move to that status).
+   */
+  waitingForPerson(): Array<{ card: Card; since: string }> {
+    const rows = (this.db.prepare("SELECT * FROM tasks WHERE (status = 'review' AND needs_review = 1) OR status = 'blocked' ORDER BY updated_at").all() as Row[]).map(toCard);
+    const moved = this.db.prepare("SELECT at FROM task_events WHERE task_id = ? AND type = 'moved' AND json_extract(data, '$.to') = ? ORDER BY id DESC LIMIT 1");
+    return rows.map((card) => {
+      const at = (moved.get(card.uuid, card.status) as { at: string } | undefined)?.at;
+      return { card, since: at ?? card.submittedAt ?? card.updatedAt };
+    }).sort((a, b) => a.since.localeCompare(b.since));
+  }
+
+  /** Cards by their numbers, in one read (the ones that exist; #2341 review: the cards a summary line named). */
+  cardsByCode(codes: string[]): Card[] {
+    const out: Card[] = [];
+    for (let i = 0; i < codes.length; i += 500) {
+      const chunk = codes.slice(i, i + 500);
+      out.push(...(this.db.prepare(`SELECT * FROM tasks WHERE code IN (${chunk.map(() => "?").join(", ")})`).all(...chunk) as Row[]).map(toCard));
+    }
+    return out;
+  }
+
+  /**
+   * myWork() for many names in one read (the dashboard's Instances list, GET /ui/tasks/work): the live cards, every
+   * card's light row (sub tasks, dependencies) and the live cards' unseen entries, each read once — three statements
+   * however many names and cards (#2316 review: N myWork() calls cost tens of ms on the fleet's event loop). Same
+   * answers as myWork() name by name; tests/task-board-work-2316.test.ts pins both.
+   */
+  workOf(names: string[]): Map<string, MyWork> {
+    const out = new Map<string, MyWork>();
+    if (!names.length) return out;
+    const live = (this.db.prepare(`SELECT * FROM tasks WHERE status IN ('open', 'claimed', 'blocked', 'review') ORDER BY ${STATUS_ORDER}, ${PRIORITY_ORDER}, sort`).all() as Row[]).map(toCard);
+    type Light = { code: string; status: CardStatus; deps: string[]; parent: string | null };
+    const all = new Map<string, Light>();
+    const subs = new Map<string, Progress>();
+    for (const r of this.db.prepare("SELECT id, code, status, depends_on, parent_id FROM tasks").all() as Row[]) {
+      const light: Light = { code: (r.code as string | null) ?? (r.id as string).slice(0, 8), status: r.status as CardStatus, deps: parseJsonArray<string>(r.depends_on, []), parent: (r.parent_id as string | null) ?? null };
+      all.set(r.id as string, light);
+      if (light.parent && light.status !== "cancelled") {
+        const p = subs.get(light.parent) ?? { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 };
+        p.total++;
+        p[light.status]++;
+        subs.set(light.parent, p);
+      }
+    }
+    // Unseen entries of the live cards: comments and rejections by anyone but the card's assignee, after what it saw.
+    const fresh = new Map<string, Entry[]>();
+    for (const r of this.db.prepare(
+      `SELECT e.* FROM task_entries e JOIN tasks t ON e.task_id = t.id
+       WHERE t.status IN ('open', 'claimed', 'blocked', 'review') AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.author IS NOT t.assignee ORDER BY e.id`,
+    ).all() as Row[]) {
+      const list = fresh.get(r.task_id as string) ?? [];
+      list.push({ id: Number(r.id), cardId: all.get(r.task_id as string)?.code ?? (r.task_id as string).slice(0, 8), kind: r.kind as EntryKind, author: r.author as string,
+        authorKind: r.author_kind as Actor["kind"], text: r.text as string, at: r.at as string });
+      fresh.set(r.task_id as string, list);
+    }
+    /** unmetDeps(), on the light rows: own dependencies that exist and are not done, then the main task's not yet named. */
+    const unmet = (deps: string[], parent: string | null): string[] => {
+      const own = deps.filter((d) => { const dep = all.get(d); return !!dep && dep.status !== "done"; });
+      const main = parent ? all.get(parent) : undefined;
+      return main ? [...own, ...unmet(main.deps, main.parent).filter((d) => !own.includes(d))] : own;
+    };
+    const rank: Record<string, number> = { urgent: 0, high: 1, normal: 2 };
+    const byPriority = (a: Card, b: Card) => (rank[a.priority] ?? 3) - (rank[b.priority] ?? 3) || a.sort - b.sort;
+    const openUnassigned = live.filter((c) => c.assignee === null && c.status === "open");
+    for (const name of new Set(names)) {
+      const mine = live.filter((c) => c.assignee === name);
+      const coordinating = mine.filter((c) => c.kind === "main" && (subs.get(c.uuid)?.total ?? 0) > 0);
+      const work = mine.filter((c) => !coordinating.includes(c));
+      const theirs = new Set(coordinating.map((c) => c.uuid));
+      const unassigned = coordinating.length ? openUnassigned.filter((c) => c.parent !== null && theirs.has(c.parent)).sort(byPriority) : [];
+      const candidates = [...work.filter((c) => c.status === "open"), ...unassigned].map((card) => ({ card, waitsFor: unmet(card.deps, card.parent).map((d) => all.get(d)!.code) }));
+      const newComments: MyWork["newComments"] = [];
+      const sentBack: MyWork["sentBack"] = [];
+      for (const card of mine) {
+        const entries = fresh.get(card.uuid) ?? [];
+        const reject = [...entries].reverse().find((e) => e.kind === "reject");
+        if (reject) sentBack.push({ card, entry: reject });
+        const comments = entries.filter((e) => e.kind === "comment");
+        if (comments.length) newComments.push({ card, entries: comments });
+      }
+      out.set(name, {
+        doing: work.filter((c) => c.status === "claimed"),
+        blocked: work.filter((c) => c.status === "blocked"),
+        review: work.filter((c) => c.status === "review"),
+        ready: candidates.filter((x) => !x.waitsFor.length).map((x) => x.card),
+        waiting: candidates.filter((x) => x.waitsFor.length),
+        newComments,
+        sentBack,
+        mains: coordinating.map((card) => ({ card, progress: { ...(subs.get(card.uuid) as Progress) } })),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Step 3, the daily summary (task-board-summary.ts): what waits for the person now, what got done and what was
+   * opened in [since, until) (not cancelled), and every live main task's project and assignee.
+   */
+  summaryRead(since: string, until: string): { waiting: Card[]; done: Card[]; created: Card[]; mains: Array<{ projectId: number | null; assignee: string | null }> } {
+    const between = (sql: string) => (this.db.prepare(sql).all(since, until) as Row[]).map(toCard);
+    return {
+      waiting: this.waitingForPerson().map((w) => w.card),
+      done: between("SELECT * FROM tasks WHERE status = 'done' AND done_at >= ? AND done_at < ? ORDER BY sort"),
+      created: between("SELECT * FROM tasks WHERE status != 'cancelled' AND created_at >= ? AND created_at < ? ORDER BY sort"),
+      mains: (this.db.prepare("SELECT project_id, assignee FROM tasks WHERE kind = 'main' AND status != 'cancelled'").all() as Row[])
+        .map((r) => ({ projectId: (r.project_id as number | null) ?? null, assignee: (r.assignee as string | null) ?? null })),
     };
   }
 
@@ -1875,6 +2018,8 @@ export class TaskBoard {
           add(card, card.assignee, "cancelled", e.actor, why);
           continue;
         }
+        // Its dispatcher tells the person it waits for them (not the board).
+        if (d.to === "review" && !isPerson(e.actor) && requiresReview(card)) add(card, dispatcherOf(), "to_confirm", e.actor);
         if (d.auto) {
           if (d.to === "review" && card.kind === "main" && wrapUpGap(card)) add(card, card.assignee, "wrap_up", e.actor);
           continue;
@@ -1919,6 +2064,8 @@ export class TaskBoard {
       if (r === "cancelled") return card.status === "cancelled" && own;
       if (isFinished(card)) return false;
       if (r === "decide") return handedOut && card.status === "blocked";
+      // #2341 review: and still waiting for the person — its confirmation not switched off during the gather.
+      if (r === "to_confirm") return handedOut && card.status === "review" && requiresReview(card);
       if (!own) return false;
       if (r === "wrap_up") return card.status === "review" && wrapUpGap(card) !== null;
       if (r === "assigned") return !waiting;

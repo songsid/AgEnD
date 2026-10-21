@@ -280,6 +280,11 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
   daily_summary?: DailySummaryConfig;
   /** Daily General-topic tips and update-completion tip. Default: true. */
   tips?: boolean;
+  /** #2246 step 3: the task board's fleet-level settings. */
+  task_board?: {
+    /** The daily summary's time in the fleet's zone ("HH:MM", 24 h), or "off". Default "09:00". */
+    summary_at?: string;
+  };
   webhooks?: WebhookConfig[];
 }
 
@@ -344,6 +349,8 @@ export interface FleetTemplate {
 
 /** Web UI feature toggles (fleet.yaml `web:` section). */
 export interface WebConfig {
+  /** Canvas Worker effects are experimental and off unless explicitly enabled. Ambient effects are independent. */
+  experimental?: { canvas_worker?: boolean };
   /** Only menu availability; every exposure requires explicit admin consent. */
   public_link?: { allow_public?: boolean; ttl_minutes?: number; protocol?: "http2" | "quic" | "auto"; hostname?: string; tunnel_token_env?: string; origin_port?: number };
   /** Echo web chat to the owning fleet topic (default true); never ClassicBot rooms. */

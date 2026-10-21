@@ -7,7 +7,7 @@
  * - The colour card shows a sample row painted with the host's default places, which follows the checkboxes.
  */
 import { readFileSync } from "node:fs";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 
 let limitsOk = true;
@@ -31,11 +31,13 @@ afterEach(async () => { if (pg) { await pg.unmount(); pg.restore(); pg = null; }
 async function mount(lang: "en" | "zh-TW") {
   pg = page({ url: "http://127.0.0.1:19280/settings/appearance", storage: { agend_tour_done: "1" } });
   pg.document.body.dataset.mode = "full";
+  (await import("/assets/app-store.js")).appStore.set({ canvasWorker: true });
   g.fetch = fetchFake;
   (await import("/assets/app-i18n.js")).setLang(lang, { store: false });
   const { AppearanceSection } = await import("/ui/js/settings-appearance.js");
   await pg.mount(h(AppearanceSection, {}));
   await settle(3);
+  await vi.waitFor(() => expect(pg!.root.querySelector(".s-effects")).not.toBeNull());
   return pg.root;
 }
 const titles = (root: any) => [...root.querySelectorAll("h2.s-ap-group, h3.s-ap-title > span")].map((e: any) => `${e.tagName === "H2" ? "# " : ""}${e.textContent}`);

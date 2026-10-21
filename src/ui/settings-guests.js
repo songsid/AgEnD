@@ -8,6 +8,7 @@ import { t } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { api } from "./settings-confirm.js";
+import { DEFAULT_SCHEMA, impactOf } from "./settings-model.js";
 import "./settings-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -59,7 +60,7 @@ export function GuestsCard({ ctx, staged, disabled = false }) {
   const setList = (key, k, list) => setF((x) => { const m = { ...x[key] }; if (list === undefined) delete m[k]; else m[k] = list; return { ...x, [key]: m }; });
   const review = () => {
     const body = guestsBody(original, f);
-    if (body) ctx.stage("guests", { label: tn("guestsTitle"), impact: "now", request: { method: "PUT", url: "/api/settings/fleet/web", body: { guests: body } } });
+    if (body) ctx.stage("guests", { label: tn("guestsTitle"), impact: impactOf(ctx.schema || DEFAULT_SCHEMA, "web.guests"), request: { method: "PUT", url: "/api/settings/fleet/web", body: { guests: body } } });
     else if (staged.has("guests")) ctx.unstage("guests");
     setMsg(tn("readyApply"));
   };

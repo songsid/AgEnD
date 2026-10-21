@@ -14,6 +14,7 @@
  * a CSS asset, a card picture), this browser's switches (custom CSS off on this device, effect playback pause), downloading
  * an export, and the card upload limits (fleet configuration, whose raises wait for an admin's confirmation).
  */
+import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 import { OPERATOR } from "./web-prefs.js";
 import type { WebPrefsStore } from "./web-prefs.js";
 import type { OwnerCssStore } from "./web-owner-css-store.js";
@@ -25,6 +26,7 @@ const OWNER_SLOTS = ["sidebar", "header", "page", "box", "cursor"] as const;
 type OwnerSlot = typeof OWNER_SLOTS[number];
 
 export interface WebSettingsDeps {
+  canvasWorkerEnabled?(): boolean;
   prefs: WebPrefsStore;
   ownerCss: OwnerCssStore;
   mods: ModStore;
@@ -86,22 +88,23 @@ export class WebSettingsTools {
     const places = (Array.isArray(host["color.show"]) ? host["color.show"] : [...DEFAULT_PLACEMENTS]) as string[];
     const cardSize = (host["card.size"] as string | undefined) ?? "m";
     const css = this.deps.ownerCss.state(person);
-    const mods = this.deps.mods.list(), proposals = this.deps.mods.proposals();
-    const agents = this.deps.instances().map((name) => ({ name, ...this.deps.colour(name), effects: this.deps.placements(name), ambient: this.deps.ambient(name) }));
+    const enabled = this.deps.canvasWorkerEnabled?.() === true;
+    const mods = enabled ? this.deps.mods.list() : { mods: [] }, proposals = enabled ? this.deps.mods.proposals() : [];
+    const agents = this.deps.instances().map((name) => ({ name, ...this.deps.colour(name), ...(enabled ? { effects: this.deps.placements(name) } : {}), ambient: this.deps.ambient(name) }));
     const slots = Object.fromEntries(OWNER_SLOTS.map((s) => [s, (own[`fx.${s}`] as string | undefined) ?? null]));
     const sizeWord = { s: "small", m: "medium", l: "large" } as Record<string, string>;
     const summary = [
-      `Agents' themes, effects and widgets: ${host["fx.show"] === false ? "hidden (every chat looks the same)" : "shown"}.`,
+      `Agents' themes, ${enabled ? "effects and " : ""}widgets: ${host["fx.show"] === false ? "hidden (every chat looks the same)" : "shown"}.`,
       `Identity colours: ${host["color.off"] === true ? "turned off on this host" : `shown on ${places.length ? places.join(", ") : "nowhere"}${host["color.show"] === undefined ? " (the default)" : ""}`}.`,
       `Agents with a person's own colour: ${agents.filter((a) => a.color || a.show).map((a) => `${a.name} (${a.color ?? "their own colour"}${a.show ? `, on ${a.show.join(", ") || "nowhere"}` : ""})`).join("; ") || "none"}.`,
       `Identity cards: ${sizeWord[cardSize] ?? cardSize}${isObj(host["card.sizeByInstance"]) && Object.keys(host["card.sizeByInstance"]).length ? `, set apart: ${Object.entries(host["card.sizeByInstance"]).map(([n, s]) => `${n} ${sizeWord[s as string] ?? s}`).join(", ")}` : ""}.`,
       `Page colours a person chose: ${isObj(host["theme.pageByInstance"]) && Object.keys(host["theme.pageByInstance"]).length ? Object.entries(host["theme.pageByInstance"]).map(([n, v]) => `${n} ${v === "page" ? "on the whole page" : "only its chat"}`).join(", ") : "none (each agent's own choice)"}.`,
       `Sidebar widget: ${isObj(host["widget.sidebar"]) ? `"${String((host["widget.sidebar"] as { spec?: { title?: unknown } }).spec?.title ?? "untitled")}"` : "none"}.`,
       `Custom CSS (${person === OPERATOR ? "the host operator" : person}): ${css.active ? `in force (version ${css.active.slice(0, 8)})` : "off"}${css.pending ? `, on trial (${Math.ceil(css.pending.remaining_ms / 1000)} s left): keep or revert it` : ""}; ${css.versions.length} saved version(s).`,
-      `Mods installed: ${mods.mods.map((m) => `${m.name} ${m.version}`).join(", ") || "none"}; proposed by agents: ${proposals.map((p) => p.instance).join(", ") || "none"}.`,
-      `Effects on chats: ${agents.filter((a) => a.effects.length).map((a) => `${a.name}: ${a.effects.map((e) => e.id.slice(0, 8)).join(", ")}`).join("; ") || "none"}.`,
+      ...(enabled ? [`Mods installed: ${mods.mods.map((m) => `${m.name} ${m.version}`).join(", ") || "none"}; proposed by agents: ${proposals.map((p) => p.instance).join(", ") || "none"}.`,
+      `Effects on chats: ${agents.filter((a) => a.effects?.length).map((a) => `${a.name}: ${a.effects!.map((e) => e.id.slice(0, 8)).join(", ")}`).join("; ") || "none"}.`] : []),
       `Ambient effects: ${agents.filter((a) => Object.keys(a.ambient).length).map((a) => `${a.name}: ${Object.values(a.ambient).map((x) => `${(x.spec as { preset?: string }).preset} (set by ${x.by === "human" ? "a person" : "the agent"})`).join(", ")}`).join("; ") || "none"}.`,
-      `Effect slots (${person === OPERATOR ? "the host operator" : person}): ${OWNER_SLOTS.filter((s) => slots[s]).map((s) => `${s} ${(slots[s] as string).slice(0, 8)}`).join(", ") || "none"}.`,
+      ...(enabled ? [`Effect slots (${person === OPERATOR ? "the host operator" : person}): ${OWNER_SLOTS.filter((s) => slots[s]).map((s) => `${s} ${(slots[s] as string).slice(0, 8)}`).join(", ") || "none"}.`] : []),
     ];
     return {
       ok: true, summary, person, people: this.people(),
@@ -109,10 +112,9 @@ export class WebSettingsTools {
         colour_places_default: host["color.show"] === undefined, colours_off: host["color.off"] === true, sidebar_widget: host["widget.sidebar"] ?? null },
       agents,
       custom_css: { active: css.active, on_trial: css.pending !== null, trial: css.pending?.id ?? null, versions: css.versions.map((v) => ({ sha: v.sha, bytes: v.bytes })) },
-      mods: { installed: mods.mods, proposals },
-      effect_slots: slots,
-      page_only: ["choosing a file from the person's computer (a mod file, an effect folder, a CSS asset, a card picture)",
-        "this browser's switches (custom CSS off on this device; pausing effect playback)",
+      ...(enabled ? { mods: { installed: mods.mods, proposals }, effect_slots: slots } : {}),
+      page_only: [enabled ? "choosing a file from the person's computer (a mod file, an effect folder, a CSS asset, a card picture)" : "choosing a file from the person's computer (a CSS asset, a card picture)",
+        enabled ? "this browser's switches (custom CSS off on this device; pausing effect playback)" : "this browser's custom CSS switch",
         "downloading an export", "the card upload limits"],
     };
   }
@@ -122,6 +124,9 @@ export class WebSettingsTools {
     const person = this.person(rawPerson);
     if (typeof person !== "string") return person;
     if (!isObj(change) || typeof change.what !== "string") return failed("change", "an object with `what`");
+    if (this.deps.canvasWorkerEnabled?.() !== true && ["effect", "effect_slot", "mod"].includes(change.what)) {
+      return failed("experimental_feature_disabled", CANVAS_WORKER_EXPERIMENTAL_MESSAGE);
+    }
     switch (change.what) {
       case "host": return this.host(change.set);
       case "agent_colour": return this.agentColour(change);

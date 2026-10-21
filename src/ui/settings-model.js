@@ -56,6 +56,8 @@ export const chLabel = (i) => (i === 0 ? "primary" : "persona");
 // ── Impacts: the server's (/api/settings/schema, derived from HOT_INSTANCE_CONFIG_KEYS); this page never decides one ──
 export const DEFAULT_SCHEMA = { impacts: {}, order: ["now", "instance", "fleet"] };
 export const impactOf = (schema, field) => (schema.impacts && schema.impacts[field]) || "instance";
+/** #2346: a new connection starts at once while another one runs (the schema says so); the first one needs AgEnD restarted. */
+export const newConnectionImpact = (schema) => (schema && schema.connections_start_live === true ? "now" : impactOf(schema || DEFAULT_SCHEMA, "fleet.channels"));
 /** A batch costs as much as its worst member, in the order the server ships. */
 export function batchImpact(schema, keys, impactFor) {
   const order = schema.order;
@@ -197,17 +199,6 @@ export function agentForm(inst, defaults) {
   };
 }
 
-/** Every field the agent dialog shows, for its footer's impact summary. */
-export const AGENT_FIELDS = [
-  "instance.display_name", "instance.description", "instance.backend", "instance.model", "instance.working_directory",
-  "instance.auto_pause_after", "instance.topic_id", "instance.hang_detector", "instance.agent_mode", "instance.tool_set",
-  "instance.tool_progress", "instance.cross_instance_visibility", "instance.reply_completion_guard", "instance.log_level",
-  "instance.lightweight", "instance.model_failover", "instance.systemPrompt", "instance.tags", "instance.general_topic",
-  "instance.status_emojis",
-];
-export const CLASSIC_FIELDS = ["classic.backend", "classic.model", "classic.auto_pause_after", "classic.tool_progress",
-  "classic.reply_completion_guard", "classic.collab", "classic.context_lines", "classic.web_echo"];
-export const BOT_FIELDS = ["fleet.channel.access.mode", "fleet.channel.access.allowed_users", "fleet.channels", "fleet.channel.options.status_emojis"];
 
 /** Validation messages (keys of the settings namespace), or "" when the value is fine. */
 export const nonNegative = (v) => (!Number.isFinite(Number(v)) || String(v).trim() === "" || Number(v) < 0 ? "mustNonNegative" : "");

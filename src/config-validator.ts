@@ -8,6 +8,7 @@ import { mbText, PUBLIC_LINK_MAX_FILE_BYTES, UPLOAD_LIMITS, UPLOAD_MB_RANGE } fr
 import { previewOriginProblem } from "./web-preview.js";
 import { DEFAULT_SESSION_POLICY, GUEST_SESSION_BOUNDS, GUEST_SESSION_POLICY, LOCAL_SESSION_HOURS } from "./web-session.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
+import { summaryTime } from "./task-board-summary.js";
 import { VERIFIED_SESSION_HOURS } from "./authority/web-authority.js";
 import { existsSync } from "node:fs";
 import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
@@ -28,7 +29,7 @@ export interface ValidationIssue {
 }
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
-const WEB_KEYS = ["public_link", "echo_to_channel", "usage_panel", "usage_report_on_public_link", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
+const WEB_KEYS = ["experimental", "public_link", "echo_to_channel", "usage_panel", "usage_report_on_public_link", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
   "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority", "search"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
@@ -392,6 +393,13 @@ export function validateFleetConfig(config: unknown): ValidationResult {
         ? "web.access is not a setting; fleet admins come from channel(s).access.allowed_users — ignored"
         : `unknown key (known: ${WEB_KEYS.join(", ")}) — ignored`);
     }
+    if (config.web.experimental !== undefined) {
+      if (!isObj(config.web.experimental)) err("web.experimental", "must be a mapping");
+      else {
+        for (const key of Object.keys(config.web.experimental)) if (key !== "canvas_worker") err(`web.experimental.${key}`, "unknown experimental feature");
+        if (config.web.experimental.canvas_worker !== undefined && typeof config.web.experimental.canvas_worker !== "boolean") err("web.experimental.canvas_worker", "must be a boolean");
+      }
+    }
     if (config.web.themes !== undefined) {
       if (!isObj(config.web.themes)) err("web.themes", "must be a mapping");
       else {
@@ -515,6 +523,12 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     if (config.defaults.tips !== undefined && typeof config.defaults.tips !== "boolean") {
       err("defaults.tips", "must be a boolean");
+    }
+    if (config.defaults.task_board !== undefined) {
+      if (!isObj(config.defaults.task_board)) err("defaults.task_board", "must be a mapping");
+      else if (summaryTime(config.defaults.task_board.summary_at) === undefined) {
+        err("defaults.task_board.summary_at", 'must be a time like "09:00" (24 h, the fleet\'s zone) or "off"');
+      }
     }
     if (config.defaults.startup !== undefined) {
       if (!isObj(config.defaults.startup)) err("defaults.startup", "must be a mapping");

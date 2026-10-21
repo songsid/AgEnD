@@ -34,8 +34,16 @@ async function rig(prepare: (h: any) => void = () => {}) {
   const h: any = { host, doc, media, coarse, preview, observer, replies, store, parts, api, runtime, regions, regionFactory, cursor, cursorFactory, options: () => options, startAppEffects, getAppEffects };
   prepare(h); h.entry = startAppEffects({ window: host, store, factories: { runtime, regions: regionFactory, cursor: cursorFactory, trialController: h.trialController } }); return h;
 }
-beforeEach(() => { vi.resetModules(); env.app.reset({ themesRev: 1, prefsRev: 1, connection: "live" }); env.nav.reset({ seq: 1, route: { panel: "fleet" } }); env.css.reset({ state: "off" }); env.themes.reset({}); env.prefs.clear(); env.values = { "fx.show": true, "preview.optIn": true }; env.safe = false; env.mode = "light"; });
+beforeEach(() => { vi.resetModules(); env.app.reset({ canvasWorker: true, themesRev: 1, prefsRev: 1, connection: "live" }); env.nav.reset({ seq: 1, route: { panel: "fleet" } }); env.css.reset({ state: "off" }); env.themes.reset({}); env.prefs.clear(); env.values = { "fx.show": true, "preview.optIn": true }; env.safe = false; env.mode = "light"; });
 describe("#1629 app lifetime effect bridge", () => {
+  it("experimental disable disposes its owner and permits a fresh episode on re-enable", async () => {
+    const h = await rig(); env.app.set({ canvasWorker: false }); expect(h.entry.dead).toBe(true); expect(h.api.dispose).toHaveBeenCalledOnce();
+    expect(h.startAppEffects({ window: h.host, store: h.store })).toBeNull();
+    env.app.set({ canvasWorker: true });
+    const next = h.startAppEffects({ window: h.host, store: h.store, factories: { runtime: h.runtime, regions: h.regionFactory, cursor: h.cursorFactory } });
+    expect(next).not.toBeNull(); expect(next).not.toBe(h.entry); expect(h.runtime).toHaveBeenCalledTimes(2); next.dispose();
+  });
+
   it("termination during target construction immediately releases its late returned helper", async () => {
     const h = await rig(h => h.regionFactory.mockImplementation(() => { h.options().onDispose(); return h.regions; }));
     expect(h.entry).toBeNull(); expect(h.regions.dispose).toHaveBeenCalledOnce(); expect(h.observer.observe).not.toHaveBeenCalled(); expect(env.app.listeners.size).toBe(0);
@@ -258,6 +266,7 @@ describe("#1629 product Trial bridge with protocol core", () => {
     const { createThread } = await import("/ui/js/chat-thread.js"), { t, setLang } = await import("/assets/app-i18n.js"); await import("/ui/js/chat-strings.js"); setLang("en", { store:false });
     const list = dom.document.createElement("div"), scroller = dom.document.createElement("div"); scroller.append(list); dom.document.body.append(scroller);
     const row = { ...trialMessage(), boot:"aa", id:1, ts:"2026-10-17T00:00:00Z", text:"Host offer" };
+    await (await import("/assets/feature-flags.js")).loadCanvasWorkerMetadata();
     const thread = createThread(list,scroller,{t,tf:t,isUser:()=>false,serverNow:()=>0,onJump(){},onEmpty(){},effectTrialStatus:(x:any)=>h.entry.trialStatus(x),canTryEffect:(x:any)=>h.entry.canTry(x),fixEffectTrial:vi.fn()});
     const draw = vi.fn(()=>thread.render([row])), off = h.entry.subscribeTrial(draw);
     try {

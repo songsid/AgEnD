@@ -54,7 +54,7 @@ export const KIRO_INSTANCE_AGENT_MIN = "2.21.0";
  * the binary's own --help instead of the version table, and the operator is
  * told the version is unverified.
  */
-export const KIRO_TESTED_MAX = "2.30.0";
+export const KIRO_TESTED_MAX = "2.33.0";
 
 /**
  * kiro-cli versions, per TUI front-end, whose mid-turn steering AgEnD drives (#1405). Only kiro's TUI steers — typed
@@ -253,6 +253,93 @@ function kiroTrustPromptDialogs(trustAll: boolean): RuntimeDialog[] {
       pattern: KIRO_TRUST_PATTERN, keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true,
       description: "Kiro trust confirmation — unsafe or unverified choice; holding for a human",
       isActive: pane => kiroTrustPromptState(pane).active,
+    },
+  ];
+}
+
+const KIRO_WORKSPACE_TRUST_HEADER = "Trust this workspace?";
+const KIRO_WORKSPACE_TRUST_PATTERN = /^\s*Trust this workspace\?\s*$/m;
+const KIRO_WORKSPACE_TRUST_OPTIONS = ["Trust, continue", "Don't trust, exit"] as const;
+const KIRO_WORKSPACE_TRUST_GRANT = "Trusting lets Kiro use this workspace's configuration. Kiro will be able to read, edit, and execute files here.";
+/** The folder text, or the two home-directory rows (kiro does not save trust for home, so it asks every launch). */
+const KIRO_WORKSPACE_TRUST_FOLDER = "This folder can contain hooks, agents, MCP servers and workflows that run commands on your machine. Only trust folders you know.";
+const KIRO_WORKSPACE_TRUST_HOME = "This is your home directory; its .kiro configuration is your user-level configuration. Trust for home isn't saved; you'll be asked each launch.";
+const KIRO_WORKSPACE_TRUST_TAIL = /^esc to exit\s*·\s*↑↓ to navigate\s*·\s*↵ to select$/;
+const KIRO_WORKSPACE_TRUST_REVOKE = "Revoke later by removing workspaceTrusted from";
+
+/**
+ * #2345: kiro-cli 2.33.0's V3 (kas) engine asks "Trust this workspace?" before its TUI mounts, in every folder without
+ * `workspaceTrusted` in ~/.kiro/workspace-roots/<hash>/permissions.yaml (home: every launch). Only the captured layouts
+ * (tests/fixtures/kiro-2.33.0-audit) have a known cursor: the header between dividers, the folder or home text, the two
+ * options in order, a divider, the key-hint tail, then only the wrapped revoke path (folder layout only). The error,
+ * mid-session "cancel" and notice variants, and any other shape, are active with an unknown cursor — held, never keyed.
+ */
+export function kiroWorkspaceTrustState(pane: string): KiroLaunchPromptState {
+  const none: KiroLaunchPromptState = { active: false, cursor: null };
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.trimEnd());
+  let header = -1;
+  for (let index = rows.length - 1; index >= 0; index--) {
+    if (KIRO_WORKSPACE_TRUST_PATTERN.test(rows[index])) { header = index; break; }
+  }
+  if (header < 0) return none;
+  const body = rows.slice(header + 1);
+  if (body.some(row => KIRO_COMPOSER_ROW.test(row))) return none;
+  // Declined: kiro printed why it quit below the prompt it left on screen.
+  if (new RegExp(wrapTolerant("Kiro exited without loading this folder.")).test(body.join("\n"))) return none;
+  // A question alone is not a prompt: a decline row ("Don't trust, exit|cancel") must be below it.
+  if (!body.some(row => /^\s*(?:\S\s+)?Don't trust, \S+$/.test(row))) return none;
+  const held: KiroLaunchPromptState = { active: true, cursor: null };
+  const divider = (row: string | undefined) => row !== undefined && /^─{3,}$/.test(row.trim());
+  if (rows[header].trim() !== KIRO_WORKSPACE_TRUST_HEADER || !divider(rows[header - 1]) || !divider(body[0])) return held;
+  const choice = (row: string, label: string) => {
+    if (row.trim() === label) return { glyph: null };
+    const hit = /^\s*(\S)\s+(.+)$/.exec(row);
+    return hit?.[2] === label ? { glyph: hit[1] } : null;
+  };
+  const first = body.findIndex(row => choice(row, KIRO_WORKSPACE_TRUST_OPTIONS[0]) !== null);
+  if (first < 0) return held;
+  // The folder path (wrapped as kiro paints it), then the folder or home text, then the grant text.
+  const description = body.slice(1, first).map(row => row.trim()).filter(Boolean).join("\n");
+  const text = (lead: string) => new RegExp(`^[^\\n]+(?:\\n[^\\n]+)*?\\n${wrapTolerant(lead)}\\n${wrapTolerant(KIRO_WORKSPACE_TRUST_GRANT)}$`);
+  const home = text(KIRO_WORKSPACE_TRUST_HOME).test(description);
+  if (!home && !text(KIRO_WORKSPACE_TRUST_FOLDER).test(description)) return held;
+  const rest = body.slice(first).filter(row => row.trim());
+  if (rest.length < 4 || !divider(rest[2]) || !KIRO_WORKSPACE_TRUST_TAIL.test(rest[3].trim())) return held;
+  const after = rest.slice(4).map(row => row.trim());
+  if (home ? after.length > 0 : !kiroWorkspaceTrustRevoke(after)) return held;
+  const hits = KIRO_WORKSPACE_TRUST_OPTIONS.map((label, index) => choice(rest[index], label));
+  if (hits.some(hit => !hit)) return held;
+  const marked = hits.flatMap((hit, index) => hit!.glyph === null ? [] : [index]);
+  if (marked.length !== 1 || !KIRO_PROMPT_CURSOR.test(hits[marked[0]]!.glyph!)) return held;
+  return { active: true, cursor: marked[0] };
+}
+
+/** "Revoke later by removing workspaceTrusted from" and the permissions file it names, hard-wrapped at the pane width. */
+function kiroWorkspaceTrustRevoke(rows: string[]): boolean {
+  const joined = rows.join("\n");
+  if (!joined.startsWith(KIRO_WORKSPACE_TRUST_REVOKE)) return false;
+  const path = joined.slice(KIRO_WORKSPACE_TRUST_REVOKE.length).replace(/^[ \t]+|^\n/, "").replace(/\n/g, "");
+  return /^\S.*\/\.kiro\/workspace-roots\/[0-9a-f]+\/permissions\.(?:yaml|json)$/.test(path);
+}
+
+/**
+ * #2345: under --trust-all-tools the operator already lets kiro run every tool in this folder, and the trust-all
+ * confirmation that follows is answered on the same opt-in — so the captured prompt with the cursor on its default
+ * "Trust, continue" gets Enter. A cursor on "Don't trust, exit" was moved there by someone: held, not overridden. Without
+ * trust-all, or in any other layout, it is held for a human, and no delivery's Enter can answer it.
+ */
+function kiroWorkspaceTrustDialogs(trustAll: boolean): RuntimeDialog[] {
+  return [
+    {
+      pattern: KIRO_WORKSPACE_TRUST_PATTERN, keys: ["Enter"], autoResolutionKey: "kiro-workspace-trust-confirm",
+      blocksDelivery: true, inputBlocked: true, verifyAfterKeys: true, oncePerLaunch: true,
+      description: "Kiro workspace trust (V3) — confirm 'Trust, continue' under --trust-all-tools",
+      isActive: pane => { const state = kiroWorkspaceTrustState(pane); return trustAll && state.active && state.cursor === 0; },
+    },
+    {
+      pattern: KIRO_WORKSPACE_TRUST_PATTERN, keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true,
+      description: "Kiro workspace trust (V3) — answer 'Trust this workspace?' in the instance pane",
+      isActive: pane => kiroWorkspaceTrustState(pane).active,
     },
   ];
 }
@@ -1618,6 +1705,7 @@ export class KiroBackend implements CliBackend {
     return [
       ...KIRO_ENGINE_PROMPT_DIALOGS,
       ...kiroTrustPromptDialogs(this.activeTrustAll),
+      ...kiroWorkspaceTrustDialogs(this.activeTrustAll),
     ];
   }
 
@@ -1651,6 +1739,7 @@ export class KiroBackend implements CliBackend {
         isActive: kiroModelPickerAtTail,
       },
       ...kiroTrustPromptDialogs(this.activeTrustAll),
+      ...kiroWorkspaceTrustDialogs(this.activeTrustAll),
     ];
   }
 

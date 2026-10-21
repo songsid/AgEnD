@@ -154,6 +154,27 @@ export interface WebChatMessage {
    * Distinct emojis of the web set (web-reactions.ts), at most WEB_REACTIONS_MAX, in the order they were added.
    */
   reactions?: string[];
+  /**
+   * #2341 review: a status line that names task board cards (the board's daily summary) — their numbers, so the public
+   * link withholds the line while one of them is hidden there (web-api.ts visibleMessages). Kept on disk with the row.
+   */
+  cards?: string[];
+}
+
+/** #2341: a status line's card numbers (M-3, S-34), each once, at most this many; anything else is dropped. */
+const CARD_CODE = /^[MS]-\d{1,9}$/;
+export const WEB_CHAT_CARDS_MAX = 500;
+/**
+ * #2341 review r2: a line that names more cards than WEB_CHAT_CARDS_MAX keeps this one marker instead — the public link
+ * withholds it whole (it cannot check every card), rather than keeping a truncated list that may drop a hidden one.
+ */
+export const WEB_CHAT_CARDS_OVERFLOW = "*";
+function webCardCodes(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  if (v.includes(WEB_CHAT_CARDS_OVERFLOW)) return [WEB_CHAT_CARDS_OVERFLOW];           // restored from disk as it was saved
+  const codes = [...new Set(v.filter((c): c is string => typeof c === "string" && CARD_CODE.test(c)))];
+  if (codes.length > WEB_CHAT_CARDS_MAX) return [WEB_CHAT_CARDS_OVERFLOW];               // fail closed, never truncate
+  return codes.length ? codes : undefined;
 }
 
 /** #2272: a reply's reference to an earlier message of the same chat (see WebChatMessage.replyTo). */
@@ -252,6 +273,8 @@ export interface StoredWebChatMessage {
   replyTo?: WebChatReplyRef;
   /** #2305: the instance's reactions (see WebChatMessage). */
   reactions?: string[];
+  /** #2341: a status line's card numbers (see WebChatMessage). */
+  cards?: string[];
 }
 
 /** #1565: what the history needs of the file ledger (web-upload.ts). */
@@ -322,7 +345,7 @@ export class WebChatHistory {
   private stored(m: WebChatMessage): StoredWebChatMessage {
     const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.click ? { click: { label: m.click.label } } : {}), ...(m.links ? { links: m.links } : {}),
       ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.channel && m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}),
-      ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.reactions?.length ? { reactions: [...m.reactions] } : {}) };
+      ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.reactions?.length ? { reactions: [...m.reactions] } : {}), ...(m.cards?.length ? { cards: [...m.cards] } : {}) };
     if (m.attachments?.length) {
       row.attachments = m.attachments.map((a) => {
         const base = { kind: a.kind, name: a.name, size: a.size, mime: a.mime };
@@ -418,7 +441,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; effectTrial?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; effectTrial?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown }): WebChatMessage {
     return this.recordEntry(msg, null);
   }
 
@@ -450,6 +473,9 @@ export class WebChatHistory {
     // #1990: only a status line (the server's own text) links; never an agent's or a person's message.
     const links = entry.role === "status" ? webTextLinks(msg.links, entry.text) : undefined;
     if (links) entry.links = links;
+    // #2341: only a status line (the server's own text) names board cards.
+    const cards = entry.role === "status" ? webCardCodes(msg.cards) : undefined;
+    if (cards) entry.cards = cards;
     // #1920: only `true` marks a channel's message; only a person's message names its account.
     if (msg.channel === true) entry.channel = true;
     if (entry.role === "user" && typeof msg.from === "string" && FROM.test(msg.from)) entry.from = msg.from;
@@ -716,6 +742,8 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   if (click) message.click = { label: click.label };
   const links = role === "status" ? webTextLinks(r.links, message.text) : undefined;
   if (links) message.links = links;
+  const cards = role === "status" ? webCardCodes(r.cards) : undefined;
+  if (cards) message.cards = cards;
   // #1920: as recorded — a row from before these were written has neither, so a guest is never shown it.
   if (r.channel === true) message.channel = true;
   if (role === "user" && typeof r.from === "string" && FROM.test(r.from)) message.from = r.from;

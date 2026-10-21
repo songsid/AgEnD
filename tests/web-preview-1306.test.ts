@@ -47,6 +47,11 @@ async function listen(settings: PreviewSettings = SETTINGS, config: object | nul
 // ── 1. The preview listener ──
 
 describe("the preview listener", () => {
+  it("leaves the legacy CW bootstrap off without explicit admission while HTML stays available", async () => {
+    const { port } = await listen();
+    expect((await raw(port, "GET", "/effect")).status).toBe(403);
+    expect((await raw(port, "GET", "/frame")).status).toBe(200);
+  });
   it("GET /frame is the shim with exactly the §5.1 headers — and no X-Frame-Options", async () => {
     const { l, port } = await listen();
     const r = await raw(port, "GET", "/frame", { host: `127.0.0.1:${port}` });
@@ -149,7 +154,7 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
       expect(r.headers["x-frame-options"]).toBe("DENY");
       expect(bodyAttrs(r.body)).toEqual({
         // data-mode: the app's entry reads it (#1408 step 1); the signed-in local page is "full".
-        "data-mode": "full", "data-effect-boot": h.fm.effectBoot, "data-effect-epoch": h.epoch, "data-effect-scope": "owner", "data-dashboard-origin": `http://127.0.0.1:${h.port}`, "data-preview-origin": `http://127.0.0.1:${h.pport.port}`,
+        "data-mode": "full", "data-canvas-worker": "0", "data-effect-boot": h.fm.effectBoot, "data-effect-epoch": h.epoch, "data-effect-scope": "owner", "data-dashboard-origin": `http://127.0.0.1:${h.port}`, "data-preview-origin": `http://127.0.0.1:${h.pport.port}`,
         "data-preview-boot": h.any.previewListener!.bootId, "data-preview-reason": "", "data-preview-reason-code": "", "data-usage-panel": "1", "data-log-tab": "0",
         // #1937: the upload limits in force (the defaults here).
         "data-upload-limits": "{&#34;maxFileBytes&#34;:52428800,&#34;maxFiles&#34;:5,&#34;maxTotalBytes&#34;:104857600}",
