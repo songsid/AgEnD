@@ -1853,6 +1853,17 @@ export class Daemon extends EventEmitter {
   get isErrorState(): boolean {
     return this.errorWaitingForRecovery || (this.healthCheckPaused && !this.isPaused) || this.stormWindow?.isActive() === true;
   }
+  /**
+   * #2327: which of isErrorState's conditions holds, so a warning names the one actually observed. A CLI no longer
+   * supervised outranks a tmux recovery, which outranks a detected error pattern — one match is enough for that last
+   * one, so it proves neither a pause nor a repetition.
+   */
+  get errorStateCause(): "unsupervised" | "tmux_recovering" | "error_detected" | null {
+    if (this.healthCheckPaused && !this.isPaused) return "unsupervised";
+    if (this.stormWindow?.isActive() === true) return "tmux_recovering";
+    if (this.errorWaitingForRecovery) return "error_detected";
+    return null;
+  }
   get isPaused(): boolean { return this.pauseWakeState !== "active"; }
   /** Current CLI process state for status surfaces and recovery commands. */
   getProcessStatus(): "running" | "crashed" | "stopped" {
