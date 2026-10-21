@@ -98,8 +98,11 @@ describe("#2347 §6: what a search finds", () => {
   it("by config key, by its name in the other language, every word of several; nothing for nonsense", () => {
     expect([ids("web.log_tab")[0], ids("自動暫停")[0], ids("public link minutes")[0], ids("zzqx")]).toEqual(["dash.log-tab", "defaults.auto-pause", "access.public-ttl", []]);
   });
-  it("a name that starts with the query comes first", () => {
-    expect(ids("theme")[0]).toBe("prefs.theme");
+  it("a name that starts with the query comes first; a name before a synonym (\"token\": the setting called a token)", () => {
+    expect([ids("theme")[0], ids("token")[0]]).toEqual(["prefs.theme", "access.cloudflare-token"]);
+  });
+  it("by its name in Chinese alone (no synonym says it): \"併發\" is the startup concurrency", () => {
+    expect(ids("併發")).toEqual(["defaults.concurrency"]);
   });
 });
 
