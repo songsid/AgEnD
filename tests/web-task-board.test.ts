@@ -587,10 +587,11 @@ describe("7b. two bots in one group: the prompt's answer is taken once, whicheve
     // The hub's side (needs-you-tasks-2306 tests it): the prompt "prompt-1" waits for one answer, wherever it arrives.
     let open = true;
     const taken: string[] = [];
-    h.s.needsYou = { handleReply: vi.fn((m: { replyTo?: string; adapterId: string; text: string }) => {
+    const takenIds = new Set<string>();
+    h.s.needsYou = { handleReply: vi.fn((m: { replyTo?: string; adapterId: string; text: string; chatId: string; messageId: string }) => {
       if (m.replyTo !== "prompt-1" || !open) return false;
-      open = false; taken.push(`${m.adapterId}: ${m.text}`); return true;
-    }), poke() {}, stop: async () => {} };
+      open = false; takenIds.add(`${m.chatId}|${m.messageId}`); taken.push(`${m.adapterId}: ${m.text}`); return true;
+    }), wasTakenReply: (chatId: string, messageId: string) => takenIds.has(`${chatId}|${messageId}`), poke() {}, stop: async () => {} };
     const routed: string[] = [];
     h.s.topicCommands.handleInstanceCommand = vi.fn(async (msg: { text: string; adapterId: string }) => { routed.push(`${msg.adapterId}: ${msg.text}`); return true; });
     const copy = (adapterId: string, over: Record<string, unknown> = {}) => h.s.handleInboundMessage({ source: "telegram", adapterId, chatId: "G", threadId: "T0", messageId: "in-1",
@@ -691,5 +692,64 @@ describe("#2352 a project's lead instance, and where a waiting card's buttons go
     expect(JSON.stringify(link)).not.toMatch(/spy/);
     const local = (await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig, local: true })).body;
     expect(local.projects.map((p: any) => p.leadInstance)).toEqual(["spy", "dev-a"]);
+  });
+});
+
+describe("#2341 review r2: an answer to a prompt is judged by the prompt's world, before the shared room's own access", () => {
+  /**
+   * Two bots in one group share General (T0, routed to the owner's `general`). The owner's world admits only "admin";
+   * the sibling's admits "bob", its fleet admin, and runs `sib-dev`. A card of sib-dev's waits for an answer: its Needs
+   * you list is the sibling's, so the prompt is the sibling's — in the owner's room. The real hub, the real inbound handler.
+   */
+  async function sharedRoom() {
+    const h = rig();
+    const sibling = { id: "sibling", type: "telegram",
+      sendText: vi.fn(async (chatId: string, _t: string, o?: any) => ({ chatId, threadId: o?.threadId, messageId: `prompt-${sibling.sendText.mock.calls.length}` })),
+      notifyAlert: vi.fn(async (chatId: string, _a: any, o?: any) => ({ chatId, threadId: o?.threadId, messageId: "live-1" })),
+      editAlert: vi.fn(async () => {}), deleteMessage: vi.fn(async () => {}), stop: vi.fn(async () => {}) };
+    const cfg = { id: "sibling", type: "telegram", group_id: "G", bot_token_env: "NONE", access: { mode: "allowlist", allowed_users: ["bob"] } };
+    (h.fm.fleetConfig as any).channels.push(cfg);
+    (h.fm.fleetConfig as any).instances["sib-general"] = { working_directory: h.dir, general_topic: true, topic_id: "T0", channel_id: "sibling" };
+    (h.fm.fleetConfig as any).instances["sib-dev"] = { working_directory: h.dir, topic_id: "T9", channel_id: "sibling" };
+    h.fm.routing.rebuild(h.fm.fleetConfig!);
+    h.s.adapters.set("sibling", sibling);
+    h.s.worlds.set("sibling", { id: "sibling", adapter: sibling, groupId: "G", channelConfig: cfg, accessManager: { isAllowed: (u: string) => u === "bob", getMode: () => "allowlist" }, stop: async () => {} });
+    h.s.worlds.get("owner").accessManager = { isAllowed: (u: string) => u === "admin", getMode: () => "allowlist" };
+    const ann = { kind: "person" as const, name: "Ann" };
+    const card = h.db.board.createCards(ann, { cards: [{ title: "Rank ties", assignee: "sib-dev" }] }).cards[0]!;
+    h.db.board.moveCard(ann, card.code, "claimed"); h.db.board.moveCard(ann, card.code, "blocked", { reason: "same rank?" });
+    const routed: string[] = [];
+    h.s.topicCommands.handleInstanceCommand = vi.fn(async (msg: { text: string; adapterId: string }) => { routed.push(`${msg.adapterId}: ${msg.text}`); return true; });
+    h.s.startNeedsYou();
+    for (let n = 0; n < 6; n++) { await flush(); await vi.advanceTimersByTimeAsync(0); }
+    // bob presses Answer on the sibling's live message (in T0), and the hub asks for the words there.
+    const choices = sibling.notifyAlert.mock.calls.at(-1)![1].choices as Array<{ id: string; label: string }>;
+    const answer = choices.find((c) => /answer/i.test(c.label) || c.id.endsWith(":answer"))!;
+    const acks: string[] = [];
+    h.s.needsYou.handleCallback({ callbackData: answer.id, chatId: "G", threadId: "T0", messageId: "live-1", userId: "bob", username: "bob", ack: (x?: string) => acks.push(x ?? "") }, "sibling");
+    for (let n = 0; n < 6; n++) { await flush(); await vi.advanceTimersByTimeAsync(0); }
+    const prompt = (await sibling.sendText.mock.results.at(-1)!.value).messageId as string;
+    const copy = (adapterId: string, over: Record<string, unknown> = {}) => h.s.handleInboundMessage({ source: "telegram", adapterId, chatId: "G", threadId: "T0", messageId: "in-1",
+      userId: "bob", username: "bob", replyTo: prompt, text: "ties share a rank", timestamp: new Date(), ...over });
+    const status = () => h.db.board.getCard(card.code).status;
+    return { h, copy, routed, status, acks, stop: () => h.s.stopNeedsYou?.() };
+  }
+
+  it.each([["the owner's (room) copy first", ["owner", "sibling"]], ["the sibling's copy first", ["sibling", "owner"]]])(
+    "%s: bob's answer is taken once (the card moves on), and nothing reaches an instance", async (_n, order) => {
+      const r = await sharedRoom();
+      for (const a of order) await r.copy(a);
+      expect([r.status(), r.routed]).toEqual(["claimed", []]);
+      await r.stop();
+    });
+
+  it("controls: someone not the sibling's admin, or bob's reply to another message, is the room's ordinary input — judged by the owner's access", async () => {
+    const r = await sharedRoom();
+    await r.copy("owner", { userId: "eve", username: "eve", messageId: "in-2" });               // not the clicker: not the answer; eve not admitted by the room
+    await r.copy("owner", { replyTo: "something-else", messageId: "in-3" });                     // bob, but not an answer: the room's owner denies bob
+    expect([r.status(), r.routed]).toEqual(["blocked", []]);
+    await r.copy("owner", { userId: "admin", username: "admin", replyTo: "something-else", messageId: "in-4", text: "hi" });   // the room's own admin: flows
+    expect(r.routed).toEqual(["owner: hi"]);
+    await r.stop();
   });
 });

@@ -9137,6 +9137,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
+    // #2246 step 3 (#2341 review r2): a reply to a Needs you Send back / Answer prompt is the card's reason or answer, not
+    // input for an instance — judged by the PROMPT's world (its admins, its instance, its room as it is now; the hub's
+    // handleReply), before the room's generic access below: in a shared group the room may be another bot's, whose
+    // policy has no say over that world's prompt. Only that exact reply, by the admin who clicked, while the prompt
+    // stands. Taken once: another bot's copy of a taken reply is dropped here. All else flows on.
+    if (!msg.isBotMessage && msg.replyTo && this.needsYou) {
+      if (this.needsYou.wasTakenReply(msg.chatId, msg.messageId)) {
+        this.logger.debug({ adapterId: msg.adapterId, messageId: msg.messageId }, "Another bot's copy of a Needs you answer already taken — dropped");
+        return;
+      }
+      if (this.needsYou.handleReply({
+        adapterId: msg.adapterId, chatId: msg.chatId, ...(threadId !== undefined ? { threadId } : {}), replyTo: msg.replyTo,
+        messageId: msg.messageId, userId: msg.userId, ...(msg.username ? { username: msg.username } : {}), text: msg.text ?? "",
+      })) return;
+    }
+
     // Access control — classic channels are open to all, others require an allowed
     // user. This runs before the dedup claim, and is judged by the adapter that
     // owns the topic rather than the one that happened to receive the message:
@@ -9212,13 +9228,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (oldest !== undefined) this.recentMessageIds.delete(oldest);
       }
     }
-
-    // #2246 step 3: a fleet admin's reply to a Needs you Send back / Answer prompt is the card's reason or answer, not
-    // input for an instance. Only that exact reply, by the admin who clicked, while the prompt stands; all else flows on.
-    if (!msg.isBotMessage && msg.replyTo && this.needsYou?.handleReply({
-      adapterId: msg.adapterId, chatId: msg.chatId, ...(threadId !== undefined ? { threadId } : {}), replyTo: msg.replyTo,
-      messageId: msg.messageId, userId: msg.userId, ...(msg.username ? { username: msg.username } : {}), text: msg.text ?? "",
-    })) return;
 
     if (threadId == null) {
       // ── Telegram Classic Mode ──

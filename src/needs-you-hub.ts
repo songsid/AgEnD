@@ -190,6 +190,11 @@ export class NeedsYouHub {
   private readonly replies = new Map<string, PendingReply>();
   /** Prompts on their way: reserved before the send, released when it is posted or fails (#2306 review). */
   private readonly asking = new Set<string>();
+  /**
+   * #2341 review r2: replies already taken, by `<chatId>|<messageId>`, until the prompt's TTL — so another bot's copy of
+   * the same message (a shared group) is dropped by the inbound handler, not handed to an agent as input.
+   */
+  private readonly taken = new Map<string, number>();
   private readonly dmSeen = new Map<string, Set<string>>();
   private readonly dmLastAt = new Map<string, number>();
   /** Per world: the ids waiting to be DMed, and the one timer that will send them. */
@@ -552,6 +557,10 @@ export class NeedsYouHub {
     if (!this.ctx.isFleetAdmin(msg.userId, pending.world)) return false;
     if (!this.stillHere(pending)) { this.replies.delete(key); return false; }
     this.replies.delete(key);
+    if (msg.messageId) {
+      this.taken.set(`${msg.chatId}|${msg.messageId}`, this.ctx.mono() + TASK_REPLY_TTL_MS);
+      for (const [k, until] of this.taken) if (this.taken.size > 256 || this.ctx.mono() >= until) this.taken.delete(k); else break;
+    }
     const text = msg.text.trim();
     const world = this.ctx.worlds().find(w => w.id === pending.world);
     const platform = world?.place.type ?? "chat";
@@ -564,6 +573,18 @@ export class NeedsYouHub {
       void world.adapter.sendText(msg.chatId, outcome.message, { ...(msg.threadId !== undefined ? { threadId: msg.threadId } : {}), replyTo: msg.messageId })
         .catch(err => this.ctx.log("warn", "Needs you: could not answer a reply", { code: pending.code, err: String((err as Error)?.message ?? err) }));
     }
+    return true;
+  }
+
+  /**
+   * #2341 review r2: this message (another bot's copy of it) was already taken as a prompt's answer. The inbound handler
+   * asks it first and drops the copy: it is neither a second answer nor an agent's input.
+   */
+  wasTakenReply(chatId: string, messageId: string | undefined): boolean {
+    if (!messageId) return false;
+    const until = this.taken.get(`${chatId}|${messageId}`);
+    if (until === undefined) return false;
+    if (this.ctx.mono() >= until) { this.taken.delete(`${chatId}|${messageId}`); return false; }
     return true;
   }
 
@@ -676,6 +697,7 @@ export class NeedsYouHub {
     this.acks.clear();
     this.replies.clear();
     this.asking.clear();
+    this.taken.clear();
   }
 }
 
