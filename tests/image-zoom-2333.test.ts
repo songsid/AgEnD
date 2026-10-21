@@ -170,6 +170,18 @@ describe("the controller", () => {
     expect([r.z().s, c2.stopped]).toEqual([1, true]);
   });
 
+  it("a pen is a mouse: its click toggles, and two quick pen taps are two clicks, not also a double tap (Fable, #2340)", () => {
+    r = rig();
+    const f = r.z();
+    r.ptr("pointerdown", 1, 683, 400, "pen"); r.ptr("pointerup", 1, 683, 400, "pen");
+    const c1 = r.stage.emit("click", { target: r.img, clientX: 683, clientY: 400 });
+    expect([r.z().s, c1.stopped]).toEqual([1, true]);
+    r.ptr("pointerdown", 1, 684, 401, "pen"); r.ptr("pointerup", 1, 684, 401, "pen");
+    expect(r.z().s, "the second tap's pointerup alone changes nothing").toBe(1);
+    const c2 = r.stage.emit("click", { target: r.img, clientX: 684, clientY: 401 });
+    expect([r.z().s, c2.stopped]).toEqual([f.s, true]);
+  });
+
   it("touch: two taps far apart are not a double tap", () => {
     r = rig();
     const f = r.z();

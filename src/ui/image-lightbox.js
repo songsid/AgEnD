@@ -135,7 +135,7 @@ function ImageLightbox({ items, index, opener, onClose }) {
       <a class="btn btn-sm lb-orig" href=${item.src} target="_blank" rel="noopener noreferrer"><${Icon} name="external" size=${14} /><span class="lbl">${t("chat.lbOpenOriginal")}</span></a>
       <button type="button" class="icon-btn lb-close" ref=${close} aria-label=${t("chat.lbClose")} title=${t("chat.lbClose")} onClick=${onClose}><${Icon} name="close" /></button>
     </div>
-    <div class="lb-stage" ref=${stage}><img class="lb-img" ref=${img} src=${item.src} alt=${item.name} draggable="false" /></div>
+    <div class="lb-stage" ref=${stage}><img class="lb-img" ref=${img} src=${item.src} alt=${item.name} draggable=${false} /></div>
     ${many ? html`<button type="button" class="icon-btn lb-nav lb-prev" aria-label=${t("chat.lbPrev")} title=${t("chat.lbPrev")} onClick=${() => step(-1)}><${Icon} name="back" /></button>
       <button type="button" class="icon-btn lb-nav lb-next" aria-label=${t("chat.lbNext")} title=${t("chat.lbNext")} onClick=${() => step(1)}><${Icon} name="forward" /></button>` : null}
   </dialog>`;

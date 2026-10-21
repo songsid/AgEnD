@@ -79,7 +79,8 @@ export function createZoom({ stage, img, onChange }) {
   let gesture = null;        // { kind: "drag" | "pinch", ... }
   let moved = false;         // the gesture now ending moved: its click is not a click
   let lastTap = null;        // { t, x, y } of the last touch tap
-  let lastType = "mouse";    // the pointer type of the last press: a touch tap's click never toggles (double tap does)
+  let lastType = "mouse";    // the pointer type of the last press: a touch tap's click never toggles (double tap does);
+                             // a mouse or a pen click does, and neither runs the double-tap logic
 
   const view = () => {
     const r = stage.getBoundingClientRect();
@@ -198,7 +199,8 @@ export function createZoom({ stage, img, onChange }) {
     if (pointers.size > 0) return;
     const tapped = !moved && gesture && gesture.kind === "drag";
     gesture = null;
-    if (!tapped || e.pointerType === "mouse") return;
+    // Only a finger double-taps: a mouse or a pen clicks (onClick toggles), so a pen tap must not also count here.
+    if (!tapped || e.pointerType !== "touch") return;
     // A touch tap: a second one soon and near is a double tap — fit ↔ 100% there.
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
     if (lastTap && now - lastTap.t < DOUBLE_TAP_MS && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < DOUBLE_TAP_PX) {
