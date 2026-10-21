@@ -1,0 +1,285 @@
+/**
+ * #2308: the app icon — the store (checked, decoded, made into the sizes, switched atomically, versioned, reset), the
+ * icon and manifest routes (custom or bundled, cached by version), the pages' icon links, and who may change it: a
+ * signed-in admin's session only — not a read-only session, a guest, the CLI's token or the public link; an upload is
+ * a PNG of at most 5 MiB.
+ *
+ * Isolation: temp state dirs; requests through the real web routes with fake req/res (web-task-board's pattern).
+ */
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { AppIconStore, APP_ICON_MAX_BYTES } from "../src/web-app-icon.js";
+import { appManifest, handleWebIconRequest, isWebIconPath, useAppIconStore, withAppIconLinks } from "../src/web-icons.js";
+import { decodePng, encodePng, resize } from "../src/web-png.js";
+import { handleWebRequest } from "../src/web-api.js";
+import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
+import { bindGatewayRequest } from "../src/web-request-context.js";
+import { isPublicWebRoute } from "../src/public-web-gateway.js";
+
+const TOKEN = "c".repeat(48);
+const dirs: string[] = [];
+afterEach(() => { useAppIconStore(null); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+const stateDir = () => { const d = mkdtempSync(join(tmpdir(), "agend-app-icon-")); dirs.push(d); return d; };
+
+/** A square PNG: a red disc on transparent, `side` px. */
+function sourcePng(side = 512, w = side, h = side): Buffer {
+  const data = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const inside = (x - w / 2) ** 2 + (y - h / 2) ** 2 < (Math.min(w, h) / 2.2) ** 2;
+    data.set(inside ? [220, 30, 30, 255] : [0, 0, 0, 0], (y * w + x) * 4);
+  }
+  return encodePng({ width: w, height: h, data });
+}
+
+describe("the store", () => {
+  it("makes the sizes from one PNG, under a version folder named by its sha, the pointer last", () => {
+    const dir = stateDir();
+    const store = new AppIconStore(dir, () => new Date("2026-10-21T08:00:00Z"));
+    expect(store.current()).toBeNull();
+    const src = sourcePng();
+    const r = store.set(src, "person:discord:1");
+    const version = createHash("sha256").update(src).digest("hex").slice(0, 16);
+    expect(r).toEqual({ ok: true, state: { version, updatedAt: "2026-10-21T08:00:00.000Z", by: "person:discord:1" } });
+    expect(store.current()).toEqual(r.ok && r.state);
+    expect(readdirSync(join(dir, "web-app-icon")).sort()).toEqual([version, "current.json"].sort());
+    expect(readdirSync(join(dir, "web-app-icon", version)).sort()).toEqual(["apple-touch-icon.png", "favicon.ico", "icon-192.png", "icon-512.png", "source.png"]);
+    const touch = decodePng(store.file("apple-touch-icon.png")!, { maxSide: 4096 });
+    expect([touch.width, touch.height]).toEqual([180, 180]);
+    // iOS shows transparency as black: the touch icon is flattened on white, the manifest's keep their alpha.
+    expect([...touch.data.subarray(0, 4)]).toEqual([255, 255, 255, 255]);
+    const i192 = decodePng(store.file("icon-192.png")!, { maxSide: 4096 });
+    expect([i192.width, i192.data[3], i192.data[(96 * 192 + 96) * 4]]).toEqual([192, 0, 220]);
+    expect(decodePng(store.file("icon-512.png")!, { maxSide: 4096 }).width).toBe(512);
+    const ico = store.file("favicon.ico")!;
+    expect([ico.readUInt16LE(4), ico[6], ico[22]]).toEqual([2, 32, 48]);
+  });
+
+  it("a second icon replaces the first (its folder removed); reset goes back to the bundled one and clears the files", () => {
+    const dir = stateDir();
+    const store = new AppIconStore(dir);
+    const a = store.set(sourcePng(512), "p"), b = store.set(sourcePng(600), "p");
+    if (!a.ok || !b.ok) throw new Error("set failed");
+    expect(a.state.version).not.toBe(b.state.version);
+    expect(store.current()?.version).toBe(b.state.version);
+    expect(existsSync(join(dir, "web-app-icon", a.state.version))).toBe(false);
+    expect(store.file("icon-192.png", a.state.version)).toBeNull();
+    store.reset();
+    expect(store.current()).toBeNull();
+    expect(store.file("icon-192.png")).toBeNull();
+    expect(readdirSync(join(dir, "web-app-icon"))).toEqual([]);
+  });
+
+  it("refuses with a reason and leaves the icon in force alone: not a PNG, too large, not square, too small, unreadable", () => {
+    const dir = stateDir();
+    const store = new AppIconStore(dir);
+    const kept = store.set(sourcePng(), "p");
+    if (!kept.ok) throw new Error("set failed");
+    const big = Buffer.alloc(APP_ICON_MAX_BYTES + 1);
+    expect(store.set(big, "p")).toEqual({ ok: false, status: 413, error: "app_icon_too_large", detail: "at most 5 MiB" });
+    expect(store.set(Buffer.from("\xff\xd8\xff\xe0JFIF", "latin1"), "p")).toMatchObject({ ok: false, status: 415, error: "app_icon_not_png" });
+    expect(store.set(Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"), "p")).toMatchObject({ status: 415 });
+    expect(store.set(sourcePng(512, 600, 512), "p")).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "not square (600×512)" });
+    expect(store.set(sourcePng(256), "p")).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "smaller than 512×512" });
+    const broken = Buffer.from(sourcePng()); broken[40] ^= 0xff;
+    expect(store.set(broken, "p")).toMatchObject({ ok: false, status: 400, error: "app_icon_unreadable" });
+    expect(store.current()?.version).toBe(kept.state.version);
+    expect(readdirSync(join(dir, "web-app-icon")).sort()).toEqual([kept.state.version, "current.json"].sort());
+  });
+
+  it("an unreadable pointer is the bundled icon; a pointer changed on disk is read again", () => {
+    const dir = stateDir();
+    const store = new AppIconStore(dir);
+    const r = store.set(sourcePng(), "p");
+    if (!r.ok) throw new Error("set failed");
+    writeFileSync(join(dir, "web-app-icon", "current.json"), "{not json");
+    expect(store.current()).toBeNull();
+    writeFileSync(join(dir, "web-app-icon", "current.json"), JSON.stringify({ version: "../../etc/passwd", updatedAt: "x", by: "p" }));
+    expect(store.current()).toBeNull();
+    expect(store.file("icon-192.png", "../../etc")).toBeNull();
+  });
+});
+
+/** One request to the icon routes. */
+function icon(path: string, method = "GET") {
+  return new Promise<{ status: number; headers: Record<string, string>; body: Buffer }>((resolve) => {
+    let status = 0, headers: Record<string, string> = {};
+    const chunks: Buffer[] = [];
+    const res = { writeHead: (c: number, h: Record<string, string> = {}) => { status = c; headers = h; }, end: (b?: Buffer) => { if (b) chunks.push(Buffer.from(b)); resolve({ status, headers, body: Buffer.concat(chunks) }); } };
+    const handled = handleWebIconRequest({ method, url: path } as never, res as never, path.split("?")[0]!);
+    if (!handled) resolve({ status: -1, headers: {}, body: Buffer.alloc(0) });
+  });
+}
+const bundled = (file: string) => readFileSync(new URL(`../src/ui/icons/${file}`, import.meta.url));
+
+describe("the icon and manifest routes", () => {
+  it("bundled icons without a custom one; the version in force cached for good, anything else checked each time", async () => {
+    useAppIconStore(new AppIconStore(stateDir()));
+    for (const [path, file, type] of [["/favicon.ico", "favicon.ico", "image/vnd.microsoft.icon"], ["/favicon.svg", "favicon.svg", "image/svg+xml"],
+      ["/apple-touch-icon.png", "apple-touch-icon.png", "image/png"], ["/icon-192.png", "icon-192.png", "image/png"], ["/icon-512.png", "icon-512.png", "image/png"]] as const) {
+      const r = await icon(path);
+      expect([r.status, r.headers["Content-Type"], r.body.equals(bundled(file)), r.headers["Cache-Control"]], path).toEqual([200, type, true, "no-cache"]);
+    }
+    expect((await icon("/icon-192.png?v=default")).headers["Cache-Control"]).toBe("public, max-age=31536000, immutable");
+    expect((await icon("/icon-192.png?v=0123456789abcdef")).headers["Cache-Control"]).toBe("no-cache");
+    expect([decodePng(bundled("icon-512.png"), { maxSide: 4096 }).width, decodePng(bundled("icon-192.png"), { maxSide: 4096 }).width]).toEqual([512, 192]);
+  });
+
+  it("the custom icon once set (the SVG stays the bundled one); its version cached for good, an old one not", async () => {
+    const store = new AppIconStore(stateDir());
+    useAppIconStore(store);
+    const r = store.set(sourcePng(), "p");
+    if (!r.ok) throw new Error("set failed");
+    const v = r.state.version;
+    for (const name of ["favicon.ico", "apple-touch-icon.png", "icon-192.png", "icon-512.png"] as const) {
+      const got = await icon(`/${name}?v=${v}`);
+      expect([got.status, got.body.equals(store.file(name)!), got.headers["Cache-Control"]], name).toEqual([200, true, "public, max-age=31536000, immutable"]);
+    }
+    expect((await icon("/favicon.svg")).body.equals(bundled("favicon.svg"))).toBe(true);
+    expect((await icon("/icon-192.png?v=default")).headers["Cache-Control"]).toBe("no-cache");
+    const head = await icon("/icon-512.png", "HEAD");
+    expect([head.status, head.body.length, Number(head.headers["Content-Length"])]).toEqual([200, 0, store.file("icon-512.png")!.length]);
+    expect((await icon("/icon-512.png", "POST")).status).toBe(405);
+  });
+
+  it("the manifest: the fixed name, standalone at /, the 192/512 icons of the version in force", async () => {
+    const store = new AppIconStore(stateDir());
+    useAppIconStore(store);
+    const m = await icon("/manifest.webmanifest");
+    expect([m.status, m.headers["Content-Type"]]).toEqual([200, "application/manifest+json"]);
+    expect(JSON.parse(m.body.toString())).toEqual({ name: "AgEnD", short_name: "AgEnD", start_url: "/", scope: "/", display: "standalone", background_color: "#212121", theme_color: "#212121",
+      icons: [{ src: "/icon-192.png?v=default", sizes: "192x192", type: "image/png" }, { src: "/icon-512.png?v=default", sizes: "512x512", type: "image/png" }] });
+    const r = store.set(sourcePng(), "p");
+    if (!r.ok) throw new Error("set failed");
+    expect(JSON.parse(appManifest()).icons.map((i: { src: string }) => i.src)).toEqual([`/icon-192.png?v=${r.state.version}`, `/icon-512.png?v=${r.state.version}`]);
+  });
+
+  it("no store yet: the bundled icons; a failing store never breaks a page or an icon", async () => {
+    expect((await icon("/icon-192.png")).body.equals(bundled("icon-192.png"))).toBe(true);
+    useAppIconStore({ current: () => { throw new Error("disk"); }, file: () => null });
+    expect((await icon("/favicon.ico")).status).toBe(200);
+    expect(withAppIconLinks("<!--app-icon-->x<!--/app-icon-->\n")).toContain("/favicon.ico?v=default");
+  });
+
+  it("the public link may read every icon route (and nothing of /ui/app-icon)", () => {
+    for (const p of ["/favicon.ico", "/favicon.svg", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png", "/manifest.webmanifest"]) {
+      expect([isWebIconPath(p), isPublicWebRoute("GET", p), isPublicWebRoute("HEAD", p)], p).toEqual([true, true, true]);
+    }
+    for (const m of ["GET", "PUT", "DELETE"]) expect(isPublicWebRoute(m, "/ui/app-icon"), m).toBe(false);
+  });
+});
+
+describe("the pages' icon links", () => {
+  const page = (name: string) => readFileSync(new URL(`../src/ui/${name}`, import.meta.url), "utf8");
+
+  it("app.html and signin.html: versioned bundled links with the SVG, the manifest and the theme colours", () => {
+    useAppIconStore(new AppIconStore(stateDir()));
+    for (const name of ["app.html", "signin.html"]) {
+      const html = withAppIconLinks(page(name));
+      expect(html, name).not.toContain("<!--app-icon-->");
+      expect(html).toContain('<link rel="icon" href="/favicon.ico?v=default" sizes="16x16 32x32 64x64">');
+      expect(html).toContain('<link rel="icon" href="/favicon.svg?v=default" type="image/svg+xml" sizes="any">');
+      expect(html).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=default" sizes="180x180">');
+      expect(html).toContain('<link rel="manifest" href="/manifest.webmanifest?v=default">');
+      expect(html).toContain('<meta name="theme-color" content="#212121" media="(prefers-color-scheme: dark)">');
+      expect(html.match(/rel="icon"/g)).toHaveLength(2);
+    }
+  });
+
+  it("with a custom icon: its version on every link, and no SVG (a browser would prefer it over the new icon)", () => {
+    const store = new AppIconStore(stateDir());
+    useAppIconStore(store);
+    const r = store.set(sourcePng(), "p");
+    if (!r.ok) throw new Error("set failed");
+    const html = withAppIconLinks(page("app.html"));
+    expect(html).toContain(`<link rel="icon" href="/favicon.ico?v=${r.state.version}" sizes="32x32 48x48">`);
+    expect(html).toContain(`<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=${r.state.version}" sizes="180x180">`);
+    expect(html).toContain(`<link rel="manifest" href="/manifest.webmanifest?v=${r.state.version}">`);
+    expect(html).not.toContain("favicon.svg");
+  });
+});
+
+/** One request through the real web routes as a session of `tier` (local, or the public link's gateway), or the token. */
+function viaWeb(method: string, path: string, opts: { tier?: "admin" | "read" | "guest"; gateway?: boolean; token?: boolean; csrf?: boolean; body?: Buffer; store?: AppIconStore } = {}) {
+  const sessions = new WebSessionStore(), exposureId = "a".repeat(32), pub = "https://sample.trycloudflare.com", local = "http://127.0.0.1:19280";
+  const origin = opts.gateway ? pub : local;
+  const headers: Record<string, string> = { host: new URL(origin).host, origin, "sec-fetch-site": "same-origin", "content-type": "image/png" };
+  if (opts.token) headers["x-agend-token"] = TOKEN;                   // the CLI's header token (valid, but not a person)
+  else {
+    const s = sessions.create({ tier: opts.tier ?? "admin", surface: opts.gateway ? "gateway" : "local", exposureId: opts.gateway ? exposureId : undefined, label: "t", tokenEpoch: tokenEpoch(TOKEN),
+      owner: { adapterId: "discord", userId: "1", name: "Ann" } } as never);
+    headers.cookie = `${opts.gateway ? "__Host-" : ""}agend_session=${s.sessionId}`;
+    if (opts.csrf !== false) headers["x-agend-csrf"] = csrfTokenFor(s.sessionId);
+  }
+  const store = opts.store ?? new AppIconStore(stateDir());
+  return new Promise<{ status: number; body: any; store: AppIconStore }>((resolve) => {
+    const req = Object.assign(new EventEmitter(), { method, url: path, headers, destroy: vi.fn() });
+    if (opts.gateway) bindGatewayRequest(req as never, { surface: "gateway", exposureId, expectedOrigin: pub, isCurrent: () => true });
+    let status = 0;
+    const res = Object.assign(new EventEmitter(), { headersSent: false, destroyed: false, setHeader() {}, writeHead: (c: number) => { status = c; },
+      end: (t = "") => resolve({ status, body: t ? JSON.parse(String(t)) : null, store }) });
+    handleWebRequest(req as never, res as never, new URL(path, origin), { webToken: TOKEN, webSessions: sessions, appIcon: store, fleetConfig: { defaults: {}, instances: {} },
+      logger: { debug() {}, info() {}, warn() {}, error() {} } } as never);
+    setImmediate(() => { if (opts.body) req.emit("data", opts.body); req.emit("end"); });
+  });
+}
+
+describe("who may change it (/ui/app-icon)", () => {
+  it("an admin's session: PUT a PNG sets it, GET says so, DELETE restores the default", async () => {
+    const store = new AppIconStore(stateDir());
+    const put = await viaWeb("PUT", "/ui/app-icon", { body: sourcePng(), store });
+    expect(put.status).toBe(200);
+    expect(put.body).toMatchObject({ custom: true, version: store.current()!.version });
+    expect(store.current()!.by).toBe("person:discord:1");
+    expect((await viaWeb("GET", "/ui/app-icon", { store })).body).toMatchObject({ custom: true, version: store.current()!.version });
+    const del = await viaWeb("DELETE", "/ui/app-icon", { store });
+    expect([del.status, del.body]).toEqual([200, { custom: false, version: "default", updatedAt: null }]);
+    expect(store.current()).toBeNull();
+  });
+
+  it("a read-only session reads it and changes nothing; a guest, the token and the public link get nothing", async () => {
+    const store = new AppIconStore(stateDir());
+    store.set(sourcePng(), "p");
+    const before = store.current();
+    expect((await viaWeb("GET", "/ui/app-icon", { tier: "read", store })).status).toBe(200);
+    for (const [label, opts, status, error] of [
+      ["read PUT", { tier: "read" as const, body: sourcePng(600) }, 403, "app_icon_admin_only"],
+      ["read DELETE", { tier: "read" as const }, 403, "app_icon_admin_only"],
+      ["guest GET", { tier: "guest" as const }, 403, "app_icon_needs_a_signed_in_person"],
+      ["guest PUT", { tier: "guest" as const, body: sourcePng(600) }, 403, "app_icon_needs_a_signed_in_person"],
+      ["token PUT", { token: true, body: sourcePng(600) }, 403, "app_icon_needs_a_signed_in_person"],
+      ["public link PUT", { gateway: true, body: sourcePng(600) }, 403, "app_icon_not_over_public_link"],
+      ["public link DELETE", { gateway: true }, 403, "app_icon_not_over_public_link"],
+      ["public link GET", { gateway: true }, 404, "app_icon_not_over_public_link"],
+    ] as const) {
+      const method = label.split(" ").pop()!;
+      const r = await viaWeb(method, "/ui/app-icon", { ...opts, store });
+      expect([r.status, r.body?.error], label).toEqual([status, error]);
+    }
+    expect(store.current()).toEqual(before);
+  });
+
+  it("a write without the CSRF header is refused", async () => {
+    const store = new AppIconStore(stateDir());
+    const r = await viaWeb("PUT", "/ui/app-icon", { csrf: false, body: sourcePng(), store });
+    expect(r.status).toBe(401);
+    expect(store.current()).toBeNull();
+  });
+
+  it("an upload: over 5 MiB is 413 (not read whole), not a PNG 415, unreadable 400 — the icon in force kept; other methods 405", async () => {
+    const store = new AppIconStore(stateDir());
+    store.set(sourcePng(), "p");
+    const before = store.current();
+    expect([(await viaWeb("PUT", "/ui/app-icon", { body: Buffer.alloc(APP_ICON_MAX_BYTES + 1, 1), store })).status]).toEqual([413]);
+    const jpg = await viaWeb("PUT", "/ui/app-icon", { body: Buffer.from("\xff\xd8\xff\xe0JFIF", "latin1"), store });
+    expect([jpg.status, jpg.body.error]).toEqual([415, "app_icon_not_png"]);
+    const broken = Buffer.from(sourcePng()); broken[40] ^= 0xff;
+    const bad = await viaWeb("PUT", "/ui/app-icon", { body: broken, store });
+    expect([bad.status, bad.body.error, bad.body.detail]).toEqual([400, "app_icon_unreadable", "bad chunk CRC"]);
+    expect((await viaWeb("POST", "/ui/app-icon", { store })).status).toBe(405);
+    expect(store.current()).toEqual(before);
+  });
+});
