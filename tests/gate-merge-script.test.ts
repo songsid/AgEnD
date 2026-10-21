@@ -484,11 +484,31 @@ describe("gate-merge: merge-synced and green", () => {
     expect(r.line).toMatch(/^BLOCKED CI on \S+: build=missing/);
   });
 
-  it.each(["feat/2.3-web-mod", "feat/other"])("%s has no CodeQL exemption after landing (#1629)", branch => {
-    const w = world();
+  // ── #2347: a PR into a feature branch (feat/*) is gated like release/** — CodeQL's default setup never runs there ──
+  const baseOn = (w: ReturnType<typeof world>, branch: string) => {
     w.sh(w.dev, "checkout", "-q", "main");
     w.sh(w.dev, "push", "-q", "origin", `HEAD:refs/heads/${branch}`);
     w.state.prs[7]!.baseRefName = branch;
+  };
+  it.each(["feat/2.4-settings", "feat/other"])("%s base + build and scan green, no CodeQL → WOULD_MERGE (#2347)", branch => {
+    const w = world();
+    baseOn(w, branch);
+    w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2)];
+    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
+    expect([r.status, r.lines], r.stderr).toEqual([0, [`WOULD_MERGE ${w.approved}`]]);
+  });
+  it("feat/* base: no build → BLOCKED; a present failed CodeQL still → BLOCKED (#2347)", () => {
+    const w = world();
+    baseOn(w, "feat/2.4-settings");
+    w.state.checkRuns[w.approved] = [w.ok("scan", 2)];
+    expect(w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]).line).toMatch(/^BLOCKED CI on \S+: build=missing/);
+    w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2), { ...w.ok("CodeQL", 3), conclusion: "failure" }];
+    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
+    expect([r.status, r.line]).toEqual([1, expect.stringMatching(/^BLOCKED CI on \S+: .*CodeQL/)]);
+  });
+  it.each(["featured/x", "hotfix/feat/x", "featx"])("%s (not a feat/* base) without CodeQL → still BLOCKED (#2347)", branch => {
+    const w = world();
+    baseOn(w, branch);
     w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2)];
     const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
     expect([r.status, r.line]).toEqual([1, expect.stringMatching(/^BLOCKED CI on \S+: .*CodeQL=missing/)]);
