@@ -102,6 +102,12 @@ describe("decoding every colour type and bit depth", () => {
     for (const f of [1, 2, 3, 4]) expect([...decodePng(png({ w: 2, h: 2, depth: 8, type: 2, rows: filtered(f) }), LIM).data], `filter ${f}`).toEqual(want);
   });
 
+  it("Paeth breaks a tie the spec's way (up before upper-left)", () => {
+    // Row 0: 5, 15. Row 1: 0, then 77 under Paeth — left 0, up 15, upper-left 5: |p-up| ties |p-upper-left| (5), so up.
+    const rows = Buffer.from([0, 5, 15, 4, (0 - 5) & 0xff, (77 - 15) & 0xff]);     // the first pixel: Paeth picks up (5)
+    expect([...decodePng(png({ w: 2, h: 2, depth: 8, type: 0, rows }), LIM).data].filter((_, i) => i % 4 === 0)).toEqual([5, 15, 0, 77]);
+  });
+
   it("ancillary chunks are skipped; IDAT may be split", () => {
     const rows = rows0([[1, 2, 3, 4]]);
     const z = deflateSync(rows);
