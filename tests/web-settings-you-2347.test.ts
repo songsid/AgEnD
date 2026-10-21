@@ -118,6 +118,18 @@ describe("app-prefs: holding the \"You\" preferences while Settings is open", ()
     expect(ls("agend_theme")).toBe("light");
     release();
   });
+  it("#2380 review: a held choice cached here never outlives a reload — the next load shows the host's value", async () => {
+    let m = await boot({ theme: "light" });
+    m.holdPrefs();
+    m.savePref("theme", "dark");
+    const cached = ls("agend_theme");
+    const storage = new Map(pg.storage);
+    pg.restore(); vi.resetModules();
+    pg = installDom({ storage: Object.fromEntries(storage) });
+    pg.document.documentElement.setAttribute("data-prefs", prefsAttr({ theme: "light" }, hostRev));
+    m = await import("/assets/app-prefs.js");
+    expect([cached, ls("agend_theme"), m.prefInForce("theme"), m.heldPrefsCount()]).toEqual(["dark", "light", { value: "light" }, 0]);
+  });
   it("over the public link Save keeps the choice in this browser only, as before (no host write)", async () => {
     const m = await boot({ theme: "light" }, { publicLink: true });
     const release = m.holdPrefs();

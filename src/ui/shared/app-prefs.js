@@ -83,7 +83,8 @@ const listeners = new Set();
 // every Settings change. While Settings is open (holdPrefs), a choice there is shown on this page at once (cached, and
 // this page's own in prefInForce) but not sent: `held` keeps it until savePrefsHeld sends them all, or discardHeldPrefs
 // puts back what the host has (the same path as another device's change: apply and onPrefsChanged).
-export const HELD_KEYS = Object.freeze(new Set(["theme", "lang", "names.primary", "preview.optIn", "fx.show", "color.show", "color.off", "card.size", "card.sizeByInstance"]));
+// Only keys Settings itself changes (a card's own size, card.sizeByInstance, is set from the card, outside Settings).
+export const HELD_KEYS = Object.freeze(new Set(["theme", "lang", "names.primary", "preview.optIn", "fx.show", "color.show", "color.off", "card.size"]));
 let holding = 0;
 const held = new Map();        // key → value chosen in Settings, shown here, not saved yet
 const heldFrom = new Map();    // key → its cached form before it was held (a choice back to it is no change)

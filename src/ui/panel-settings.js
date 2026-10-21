@@ -192,6 +192,14 @@ export function SettingsPanel({ route, navKey }) {
       return false;
     }));
     mount.on(window, "beforeunload", (e) => { if (stagedRef.current.size) { e.preventDefault(); e.returnValue = ""; } });
+    // #2380 review: a reload or a closed tab confirmed past that question keeps nothing unsaved — this person's and this
+    // device's own choices are put back before the page goes (a device switch is in this browser's storage at once).
+    mount.on(window, "pagehide", () => {
+      if (![...stagedRef.current.values()].some((c) => c.local)) return;
+      revertLocal(stagedRef.current);
+      stagedRef.current = new Map([...stagedRef.current].filter(([, c]) => !c.local));
+      setStaged((s) => new Map([...s].filter(([, c]) => !c.local)));
+    });
   }, [mount]);
 
   // Changes a failed Apply did not land come back to be staged again (secrets excepted: they are entered again).
@@ -309,7 +317,9 @@ export function SettingsPanel({ route, navKey }) {
       if (!mount.current()) return;
       setStaged((s) => { const m = new Map(s); for (const c of locals) m.delete(c.stageKey); return m; });
       stagedRef.current = new Map([...stagedRef.current].filter(([, c]) => !c.local));
-      if (!stagedRef.current.size) { toast(tn(failed ? "youSaveFailed" : "youSaved"), !failed); setDraftEpoch((n) => n + 1); return; }
+      // #2380 review: a refusal is said whatever else this Save carries (the host's values are back on the page).
+      if (failed) toast(tn("youSaveFailed"), false);
+      if (!stagedRef.current.size) { if (!failed) toast(tn("youSaved")); setDraftEpoch((n) => n + 1); return; }
     }
     const list = [...stagedRef.current.values()].map(({ label, impact, request, connectionSecret, stageKey, key }) => ({ label, impact, request, connectionSecret, stageKey, key }));
     const handlers = new Map([...stagedRef.current.values()].filter((c) => typeof c.onResult === "function").map((c) => [c.stageKey, c.onResult]));

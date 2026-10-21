@@ -6,7 +6,7 @@
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
-import { fire } from "./helpers/mini-dom.js";
+import { fire, MiniEvent } from "./helpers/mini-dom.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 
 const prefsAttr = (values: Record<string, unknown>, rev = 1) => JSON.stringify({ rev, values });
@@ -18,13 +18,14 @@ const themeStub = (shown: string, record: (v: string) => void) => { let cur = sh
 
 describe("the Settings panel: the \"You\" group saves with the bar", () => {
   const schema = buildSettingsImpactSchema();
-  let p: AppPage, sent: Array<{ method: string; path: string; body: any }> = [], host: Record<string, unknown> = {}, rev = 1;
+  let p: AppPage, sent: Array<{ method: string; path: string; body: any }> = [], host: Record<string, unknown> = {}, rev = 1, prefsFail = false;
   const realFetch = (globalThis as any).fetch;
   const fakeFetch = async (path: string, init: { method?: string; body?: string } = {}) => {
     const method = init.method ?? "GET";
     const body = init.body ? JSON.parse(init.body) : undefined;
     sent.push({ method, path, body });
     const answer = (() => {
+      if (path === "/ui/prefs" && method === "POST" && prefsFail) return { __status: 400, error: "nope" };
       if (path === "/ui/prefs") {
         if (method === "POST") { for (const [k, v] of Object.entries(body.set)) { if (v === null) delete host[k]; else host[k] = v; } rev++; }
         return { values: { ...host }, rev };
@@ -41,7 +42,8 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
       if (path.startsWith("/ui/")) return {};
       return [];
     })();
-    return { ok: true, status: 200, json: async () => answer };
+    const status = (answer as any)?.__status ?? 200;
+    return { ok: status === 200, status, json: async () => answer };
   };
   const theme = vi.fn();
   beforeAll(() => {
@@ -53,7 +55,7 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     (globalThis as any).AgendAuth = { trialSession: async () => ({ localAdmin: true }) };
   });
   afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; delete (globalThis as any).AgendTheme; delete (globalThis as any).AgendAuth; });
-  beforeEach(() => { sent = []; theme.mockClear(); (globalThis as any).confirm = () => true; p.window.confirm = () => true; });
+  beforeEach(() => { sent = []; prefsFail = false; theme.mockClear(); (globalThis as any).confirm = () => true; p.window.confirm = () => true; });
   afterEach(async () => {
     await p.unmount(); await settle(4);
     const { resetOperation } = await import("/ui/js/settings-apply.js");
@@ -130,6 +132,49 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     button("Restore defaults").click(); await settle(12);
     await wait(450); await settle(4);
     expect([!!bar(), prefPosts().some((set) => set["color.off"] === null || set["color.off"] === false)]).toEqual([false, true]);
+  });
+  const pagehide = () => { const e = new MiniEvent("pagehide", {}); (e as any).eventPhase = 2; (e as any).target = p.window; (p.window as any)._fire(e, false); };
+  it("#2380 review: a reload or a closed tab (pagehide) puts back what was not saved — a device switch and a held theme", async () => {
+    const motion = await import("/assets/fx-motion.js");
+    await open("appearance");
+    await check($("#fx-follow-reduced-motion"), true);
+    await open("device");
+    const was = (globalThis as any).AgendTheme.get();
+    await pick($("select[aria-label=Theme]"), was === "dark" ? "light" : "dark");
+    const during = [motion.followsReducedMotion(), bar()?.textContent.includes("2 unsaved change(s)")];
+    pagehide(); await settle(8);
+    await wait(450);
+    expect([during, motion.followsReducedMotion(), (globalThis as any).AgendTheme.get(), !!bar(), prefPosts()]).toEqual([[true, true], false, was, false, []]);
+  });
+  it("#2380 review: leaving Settings with a device switch unsaved puts it back (the leave guard)", async () => {
+    const motion = await import("/assets/fx-motion.js");
+    const nav = await import("/assets/app-nav.js");
+    nav.startRouter(p.window);
+    nav.navigate("/settings/appearance");
+    await open("appearance");
+    await check($("#fx-follow-reduced-motion"), true);
+    const during = motion.followsReducedMotion();
+    nav.navigate("/ui/fleet"); await settle(8);                       // the harness answers the question: Discard
+    expect([during, motion.followsReducedMotion()]).toEqual([true, false]);
+    nav.navigate("/settings/appearance"); await settle(4);
+  });
+  it("#2380 review: a refused preferences write is said even when the same Save carries a fleet change (which goes on)", async () => {
+    const T = await import("/assets/ui-toast.js");
+    const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+    await p.mount(h("div", {}, h(SettingsPanel, { route: { panel: "settings", section: "device" }, navKey: "settings:device" }), h(T.Toasts, {})));
+    await settle(12);
+    const was = (globalThis as any).AgendTheme.get();
+    await pick($("select[aria-label=Theme]"), was === "dark" ? "light" : "dark");
+    await p.mount(h("div", {}, h(SettingsPanel, { route: { panel: "settings", section: "appearance" }, navKey: "settings:appearance" }), h(T.Toasts, {})));
+    await settle(12);
+    const box = $(".s-experimental-effects input[type=checkbox]");
+    await check(box, !box.checked);
+    prefsFail = true;
+    button("Save", bar()).click(); await settle(20);
+    await wait(50); await settle(8);
+    const toasts = p.root.querySelectorAll(".toast").map((x: any) => x.textContent).join("\n");
+    expect([toasts.includes("Some of your preferences were not saved"), sent.some((s) => s.method === "PUT" && s.path === "/api/settings/fleet/web"),
+      (globalThis as any).AgendTheme.get()]).toEqual([true, true, was]);
   });
   it("leaving Settings with a preference unsaved asks; Discard puts it back", async () => {
     const nav = await import("/assets/app-nav.js");
