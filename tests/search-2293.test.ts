@@ -411,7 +411,7 @@ describe("SearchIndex (the fleet's lane)", () => {
     index.removeInstance("gone");
     w().emit("message", { op: "ready", built: true });
     expect(w().sent.filter(m => m.op === "add").flatMap(m => m.docs.map((d: SearchDoc) => d.key))).toEqual(["xmsg:1:z"]);
-    expect(w().sent.find(m => m.op === "removeInstance")).toEqual({ op: "removeInstance", instance: "gone" });
+    expect(w().sent.find(m => m.op === "removeInstance")).toEqual({ op: "removeInstance", instance: "gone", gen: 1 });
     index.record(doc({ text: "last" }));
     index.close();
     expect(w().ops().slice(-2)).toEqual(["add", "close"]);
@@ -441,6 +441,110 @@ describe("SearchIndex (the fleet's lane)", () => {
     await tick();
     expect(s.search({ q: "kept chat" }).hits).toEqual([]);
     index.close();
+  });
+});
+
+describe("#2295 review r2: boundaries", () => {
+  it("a secret cut open by the chat history's 16000 characters: history → chatDoc → store masks it; controls kept", () => {
+    const s = store();
+    const history = new WebChatHistory({ boot: "b1" });
+    const ts = new Date(T0).toISOString();
+    const cut = history.record({ instance: "dev", sender: "han", text: `${"x".repeat(15976)} password="horse battery staple"`, ts, role: "user" });
+    const json = history.record({ instance: "dev", sender: "han", text: `${"x".repeat(15980)} {"api_key": "correct horse stapler"}`, ts, role: "user" });
+    expect([cut.text.length, cut.text.endsWith('password="horse battery')]).toEqual([16000, true]);   // the precondition
+    const prose = history.record({ instance: "dev", sender: "han", text: 'deploy nginx, he said "hello', ts, role: "user" });
+    const closed = history.record({ instance: "dev", sender: "han", text: 'rotate token: "abc def" today', ts, role: "user" });
+    s.add([chatDoc(cut)!, chatDoc(json)!, chatDoc(prose)!, chatDoc(closed)!]);
+    for (const q of ["horse battery", "horse", "correct horse", "abc def"]) expect(s.search({ q }).hits, q).toEqual([]);
+    for (const m of [cut, json]) expect(s.context(`chat:dev:b1-${m.id}`)!.doc.text).toMatch(/\[REDACTED\]$/);
+    expect(s.search({ q: "hello" }).hits.map(h => h.key)).toEqual([`chat:dev:b1-${prose.id}`]);
+    expect(s.search({ q: "rotate" }).hits[0]!.snippet).toMatch(/^rotate token: "?\[REDACTED\]"? today$/);
+  });
+  it("a removal's ack confirms only its own: removed, re-created, removed again — the old ack leaves the new removal pending", () => {
+    vi.useFakeTimers();
+    const { index, workers, w } = lane();
+    index.start(); w().emit("message", { op: "ready", built: true });
+    index.removeInstance("A");                                     // #1
+    index.record(doc({ key: "chat:A:b-new", instance: "A", text: "the new A's chat" }));
+    vi.advanceTimersByTime(BATCH_MS);
+    const batch = w().sent.filter(m => m.op === "add").pop();
+    index.removeInstance("A");                                     // #2, after the new chat
+    const [first, second] = w().sent.filter(m => m.op === "removeInstance");
+    expect([first.gen, second.gen]).toEqual([1, 2]);
+    w().emit("message", { op: "removed", instance: "A", gen: first.gen });   // #1 done
+    w().ack(batch.batch);                                          // the new chat written — #2 was posted after it
+    workers[0]!.emit("exit", 1);
+    vi.advanceTimersByTime(1000);
+    w().emit("message", { op: "ready", built: true });
+    expect(w().sent.filter(m => m.op === "removeInstance")).toEqual([{ op: "removeInstance", instance: "A", gen: 2 }]);
+    // Its own ack: done, not sent again.
+    w().emit("message", { op: "removed", instance: "A", gen: 2 });
+    workers[1]!.emit("exit", 1);
+    vi.advanceTimersByTime(2000);
+    w().emit("message", { op: "ready", built: true });
+    expect(w().ops().filter(o => o !== "prune")).toEqual([]);
+  });
+  it("the backfill stays under QUEUE_MAX uncommitted docs, waits for commits, then finishes; a worker that goes ends the wait", async () => {
+    const chats = Array.from({ length: 10_000 }, (_, i) => doc({ key: `chat:i${i % 20}:b-${i}`, instance: `i${i % 20}`, text: "c", ts: T0 + 99 * 86400_000 }));
+    const { index, workers, w } = lane(() => chats);
+    index.start(); w().emit("message", { op: "ready", built: false });
+    for (let i = 0; i < 60; i++) await tick();
+    const posted = () => w().sent.filter(m => m.op === "add").reduce((n, m) => n + m.docs.length, 0);
+    expect(posted()).toBe(QUEUE_MAX);
+    expect(w().ops()).not.toContain("backfill");
+    for (let round = 0; round < 60 && !w().ops().includes("backfill"); round++) {
+      for (const m of w().sent.filter(x => x.op === "add" && !x.acked)) { m.acked = true; w().ack(m.batch); }
+      for (let i = 0; i < 5; i++) await tick();
+    }
+    expect([posted(), w().ops().includes("backfill")]).toEqual([10_000, true]);
+    // Again, held, and the worker goes mid-wait: that backfill ends; the next worker (not built) backfills anew.
+    const second = lane(() => chats);
+    second.index.start(); second.w().emit("message", { op: "ready", built: false });
+    for (let i = 0; i < 30; i++) await tick();
+    second.workers[0]!.emit("exit", 1);
+    for (let i = 0; i < 5; i++) await tick();
+    expect(second.w().ops()).not.toContain("backfill");
+    await new Promise(r => setTimeout(r, 1100));
+    second.w().emit("message", { op: "ready", built: false });
+    for (let i = 0; i < 30; i++) await tick();
+    expect(second.workers).toHaveLength(2);
+    expect(second.w().sent.filter(m => m.op === "add").reduce((n, m) => n + m.docs.length, 0)).toBe(QUEUE_MAX);
+    // Only the new backfill waits: the old one's wait ended with its worker (no waiter left behind).
+    expect((second.index as any).roomWaiters).toHaveLength(1);
+    void workers; second.index.close(); index.close();
+  });
+  it("close sends everything queued before \"close\" (more than one batch); a single batch too", () => {
+    vi.useFakeTimers();
+    const { index, w } = lane();
+    index.start(); w().emit("message", { op: "ready", built: true });
+    for (let i = 0; i < QUEUE_MAX + 401; i++) index.record(doc({ text: "x" }));
+    vi.advanceTimersByTime(10_000);
+    void index.close();
+    const sent = w().sent.filter(m => m.op === "add").reduce((n, m) => n + m.docs.length, 0);
+    expect([sent, w().ops().at(-1)]).toEqual([QUEUE_MAX + 401, "close"]);
+    const one = lane();
+    one.index.start(); one.w().emit("message", { op: "ready", built: true });
+    one.index.record(doc({ text: "y" }));
+    void one.index.close();
+    expect(one.w().ops().filter(o => o !== "prune")).toEqual(["add", "close"]);
+  });
+  it("close, then the next start on the same file: what was queued is there", async () => {
+    const s = store();
+    const first = new StoreWorker(s);
+    const a = new SearchIndex({ path: "/x", retentionDays: 90, chatDocs: () => [], factory: () => first as never, now: () => T0 });
+    a.start(); first.ready(true);
+    for (let i = 0; i < 450; i++) a.record(doc({ key: `chat:dev:b-q${i}`, text: `queued ${i}` }));
+    const closing = a.close();
+    first.emit("exit", 0);
+    await closing;
+    await tick();
+    const second = new StoreWorker(s);
+    const b = new SearchIndex({ path: "/x", retentionDays: 90, chatDocs: () => [], factory: () => second as never, now: () => T0 });
+    b.start(); second.ready(true);
+    const r = await b.query({ q: "queued", limit: 200 });
+    expect(r.ok && r.value.hits.length).toBe(200);
+    expect(s.count()).toBe(450);
+    void b.close();
   });
 });
 

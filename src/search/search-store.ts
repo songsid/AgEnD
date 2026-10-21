@@ -10,7 +10,7 @@
  * match the filters (newest first) and says so (`limited`).
  */
 import Database from "better-sqlite3";
-import { maskSecrets } from "../log-steps.js";
+import { maskOpenSecretTail, maskSecrets } from "../log-steps.js";
 
 export type SearchSource = "chat" | "xmsg" | "task";
 export const SEARCH_SOURCES: readonly SearchSource[] = ["chat", "xmsg", "task"];
@@ -78,7 +78,8 @@ export const TEXT_MAX = 16_000;
 /**
  * Masking reads this much past TEXT_MAX before the text is cut (#2295 review): a secret cut at the edge loses what makes
  * it recognisable (a closing quote), so the cut comes after the mask. One starting in the kept text and shorter than
- * this is masked whole — a private key block is a few KB.
+ * this is masked whole — a private key block is a few KB. A text cut before it got here (the web chat's history keeps
+ * 16000 characters) can end inside a quoted secret: its open tail is masked too (maskOpenSecretTail).
  */
 export const MASK_MARGIN = 16_000;
 const SCHEMA_VERSION = "1";
@@ -159,7 +160,7 @@ export class SearchStore {
       for (const d of docs) {
         if (!valid(d)) continue;
         put.run({ key: d.key, source: d.source, instance: d.instance, peer: d.peer ?? null, sender: d.sender.slice(0, 256), role: d.role ?? null,
-          mine: d.mine ?? null, ts: Math.trunc(d.ts), ref: JSON.stringify(d.ref ?? {}), text: maskSecrets(d.text.slice(0, TEXT_MAX + MASK_MARGIN)).slice(0, TEXT_MAX).trim() });
+          mine: d.mine ?? null, ts: Math.trunc(d.ts), ref: JSON.stringify(d.ref ?? {}), text: maskOpenSecretTail(maskSecrets(d.text.slice(0, TEXT_MAX + MASK_MARGIN)).slice(0, TEXT_MAX)).trim() });
         n++;
       }
     })();

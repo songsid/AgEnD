@@ -115,6 +115,16 @@ export function maskSecrets(text: string): string {
     .replace(OPAQUE, (m) => (looksOpaque(m) ? "[REDACTED]" : m));
 }
 
+/**
+ * A secret's quoted value that the end of the text cuts open (#2295 review: a text cut before it reached the index, the
+ * web chat's history at 16000 characters): `password="horse battery` with its closing quote gone, which no rule above
+ * can see. Masked from the quote to the end — on the safe side even when the quote was never meant to close.
+ */
+const OPEN_TAIL = new RegExp(`((?:^|[^A-Za-z0-9_.-])(?:--?)?"?${NAME}"?(?:\\s*[=:]\\s*|\\s+)\\\\?["'])[^"'\\n]*$`, "i");
+export function maskOpenSecretTail(text: string): string {
+  return text.replace(OPEN_TAIL, (m, head: string) => (m.length > head.length ? `${head}[REDACTED]` : m));
+}
+
 /** Characters past the limit that are masked with the rest: a secret that crosses the limit is masked whole. */
 const MASK_MARGIN = 512;
 /**

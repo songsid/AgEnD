@@ -19543,8 +19543,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.topicArchiver.stop();
 
     this.scheduler?.shutdown();
-    this.searchIndex?.close();
+    // What it was sent is written first (bounded: search-index.ts close()).
+    const search = this.searchIndex;
     this.searchIndex = null;
+    await search?.close();
 
     // Stop instances in parallel batches to avoid long sequential waits.
     // Concurrency scales with fleet size — larger fleets tolerate more parallel

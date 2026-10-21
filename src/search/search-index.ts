@@ -23,6 +23,8 @@ export const QUERY_BUDGET_MS = 3_000;
 export const PENDING_MAX = 16;
 /** A query the worker still holds this long after it was asked: the worker is stuck, and is restarted. */
 export const STALL_MS = 30_000;
+/** How long close() waits for the worker to write what it was sent and exit. */
+export const CLOSE_WAIT_MS = 3_000;
 export const PRUNE_EVERY_MS = 24 * 3600_000;
 export const BACKFILL_CHUNK = 200;
 /** web.search.retention_days when unset. */
@@ -87,7 +89,10 @@ export class SearchIndex {
    * Instance removals not yet known to be done, with the last batch posted before each: sent again before anything else
    * to a worker that (re)starts. Done when the worker acks it, or acks a later batch (it works in order).
    */
-  private removals = new Map<string, number>();
+  private removals = new Map<string, { gen: number; before: number }>();
+  private removalGen = 0;
+  /** A backfill waiting for room under QUEUE_MAX uncommitted docs: woken by a commit, the worker going, or close. */
+  private roomWaiters: Array<() => void> = [];
   /** Instances removed while a backfill runs: the rest of it leaves their chat out (it read the history before). */
   private removedDuringBackfill: Set<string> | null = null;
   /** Bumped on every (re)start and on close: a backfill of an older worker stops. */
@@ -110,16 +115,17 @@ export class SearchIndex {
     this.worker = worker;
     this.state = "starting";
     worker.unref();
-    worker.on("message", (m: { op: string; id?: number; ok?: boolean; value?: unknown; error?: string; built?: boolean; reason?: string; batch?: number; instance?: string }) => {
+    worker.on("message", (m: { op: string; id?: number; ok?: boolean; value?: unknown; error?: string; built?: boolean; reason?: string; batch?: number; instance?: string; gen?: number }) => {
       if (this.worker !== worker) return;          // an old worker's late reply or ack changes nothing
       if (m.op === "reply" && m.id !== undefined) { this.replied(m.id, m.ok ? { ok: true, value: m.value } : { ok: false, reason: "unavailable" }); return; }
       if (m.op === "added" && m.batch !== undefined) { this.committed(m.batch); return; }
-      if (m.op === "removed" && typeof m.instance === "string") { this.removals.delete(m.instance); return; }
+      // A removal's ack confirms that removal only: a later one of the same name (re-created, removed again) stays.
+      if (m.op === "removed" && typeof m.instance === "string") { if (this.removals.get(m.instance)?.gen === m.gen) this.removals.delete(m.instance); return; }
       if (m.op === "failed") { this.opts.log?.("warn", `search: the index cannot be opened (${m.reason ?? "unknown"}); search is unavailable`); this.state = "unavailable"; this.closed = true; return; }
       if (m.op !== "ready") return;
       this.restartDelay = RESTART_MIN_MS;
       // Whatever this worker's file may be missing: removals first, then the batches no worker committed.
-      for (const instance of this.removals.keys()) this.post({ op: "removeInstance", instance });
+      for (const [instance, { gen }] of this.removals) this.post({ op: "removeInstance", instance, gen });
       for (const [batch, docs] of this.inflight) this.post({ op: "add", batch, docs });
       if (m.built) { this.state = "ready"; this.flush(); this.startPruning(); }
       else void this.backfill(epoch);
@@ -129,6 +135,7 @@ export class SearchIndex {
       if (this.worker !== worker) return;
       this.worker = null;
       this.dropWorkerWork();
+      this.wakeRoom();
       if (this.closed) { if (this.state !== "unavailable") this.state = "unavailable"; return; }
       this.state = "starting";
       this.scheduleRestart();
@@ -162,24 +169,37 @@ export class SearchIndex {
       this.inflight.set(batch, kept);
     }
     this.removedDuringBackfill?.add(instance);
-    this.removals.set(instance, this.nextBatch);
-    this.post({ op: "removeInstance", instance });
+    const gen = ++this.removalGen;
+    this.removals.set(instance, { gen, before: this.nextBatch });
+    this.post({ op: "removeInstance", instance, gen });
   }
 
   query(filters: SearchFilters): Promise<SearchAnswer<SearchResult>> { return this.ask("query", { filters }) as Promise<SearchAnswer<SearchResult>>; }
   context(key: string): Promise<SearchAnswer<SearchContext | null>> { return this.ask("context", { key }) as Promise<SearchAnswer<SearchContext | null>>; }
 
-  close(): void {
-    if (this.closed && !this.worker) return;
+  /**
+   * Stop: everything queued goes to the worker first (bounded: the queue is at most QUEUE_MAX), then "close" — the worker
+   * writes in order and then closes the file. Resolves when the worker has exited, or after CLOSE_WAIT_MS.
+   */
+  close(): Promise<void> {
+    if (this.closed && !this.worker) return Promise.resolve();
     this.closed = true;
     this.epoch++;
     for (const t of [this.flushTimer, this.restartTimer]) if (t) clearTimeout(t);
     if (this.pruneTimer) clearInterval(this.pruneTimer);
     this.flushTimer = this.restartTimer = this.pruneTimer = null;
-    this.flush(true);
+    while (this.queue.length && this.worker) if (!this.postBatch(this.queue.splice(0, BATCH_MAX))) break;
     this.dropWorkerWork();
+    this.wakeRoom();
+    const worker = this.worker;
     this.post({ op: "close" });
     this.state = "unavailable";
+    if (!worker) return Promise.resolve();
+    return new Promise<void>(resolve => {
+      const timer = setTimeout(resolve, CLOSE_WAIT_MS);
+      timer.unref?.();
+      worker.on("exit", () => { clearTimeout(timer); resolve(); });
+    });
   }
 
   private ask(op: "query" | "context", body: Record<string, unknown>): Promise<SearchAnswer<unknown>> {
@@ -234,8 +254,23 @@ export class SearchIndex {
     const docs = this.inflight.get(batch);
     if (docs) { this.inflight.delete(batch); this.inflightDocs -= docs.length; }
     // The worker works in order: a removal posted before this batch is done too.
-    for (const [instance, before] of this.removals) if (before < batch) this.removals.delete(instance);
+    for (const [instance, { before }] of this.removals) if (before < batch) this.removals.delete(instance);
+    this.wakeRoom();
     if (this.queue.length && (this.state === "ready" || this.state === "building")) this.flushTimer ??= setTimeout(() => this.flush(), BATCH_MS);
+  }
+  private wakeRoom(): void { const waiters = this.roomWaiters; this.roomWaiters = []; for (const w of waiters) w(); }
+  /**
+   * A backfill's chunk, admitted under the same QUEUE_MAX as the queue's batches: while that many wait for a commit, it
+   * waits for one. False when this backfill is over (the worker went — the next one backfills again — or close).
+   */
+  private async admitChunk(docs: SearchDoc[], epoch: number, kept: (d: SearchDoc) => boolean): Promise<number | null> {
+    while (this.inflightDocs > 0 && this.inflightDocs + docs.length > QUEUE_MAX) {
+      if (epoch !== this.epoch || !this.worker || this.closed) return null;
+      await new Promise<void>(resolve => this.roomWaiters.push(resolve));
+    }
+    if (epoch !== this.epoch || !this.worker || this.closed) return null;
+    const admitted = docs.filter(kept);                    // an instance removed while it waited, too
+    return this.postBatch(admitted) ? admitted.length : null;
   }
   private post(message: Record<string, unknown>): boolean {
     if (!this.worker) return false;
@@ -281,14 +316,15 @@ export class SearchIndex {
         if (doc.ts < cutoff || !kept(doc)) continue;
         chunk.push(doc);
         if (chunk.length < BACKFILL_CHUNK) continue;
-        if (epoch !== this.epoch || !this.postBatch(chunk)) return;
-        chats += chunk.length; chunk = [];
+        const sent = await this.admitChunk(chunk, epoch, kept);
+        if (sent === null) return;
+        chats += sent; chunk = [];
         await new Promise<void>(resolve => setImmediate(resolve));
       }
       if (epoch !== this.epoch) return;
-      chunk = chunk.filter(kept);
-      if (!this.postBatch(chunk)) return;
-      chats += chunk.length;
+      const sent = await this.admitChunk(chunk, epoch, kept);
+      if (sent === null) return;
+      chats += sent;
       const sql = await this.request("backfill", { outboxPath: this.opts.outboxPath, schedulerPath: this.opts.schedulerPath, cutoff });
       if (epoch !== this.epoch || !sql.ok) return;
       this.post({ op: "markBuilt", now: this.now() });
