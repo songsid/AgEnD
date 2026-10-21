@@ -3379,7 +3379,8 @@ Then reload the shell. Tab-completes instance names for \`agend attach\` and
     // Subcommand names come from commander itself, so the script can't drift
     // out of sync with the CLI the way a hardcoded list would.
     const fleetCmd = program.commands.find(c => c.name() === "fleet");
-    const visible = (cmds: Command[]) => cmds.filter(c => !c.hidden).map(c => c.name());
+    const visible = (cmds: readonly Command[]) =>
+      cmds.filter(c => !(c as Command & { _hidden?: boolean })._hidden).map(c => c.name());
     const spec = {
       topLevel: visible(program.commands),
       fleetSub: visible(fleetCmd?.commands ?? []),
