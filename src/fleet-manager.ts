@@ -20513,6 +20513,25 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   /**
+   * #2347 restart flow: saved changes that take effect only after AgEnD restarts — the startup-only keys fleet.yaml
+   * now differs on, and the newest apply job whose fleet row can carry the restart (`job_id`, null when none can: a
+   * hand edit, or a job past its retention). Null when nothing is pending, and when a restart could not clear it
+   * (the signature mismatch the panel reports instead). The same test requestSettingsSelfRestart makes.
+   */
+  settingsRestartPending(): { keys: string[]; job_id: string | null } | null {
+    if (this.appliedFleetLevel === null || this.fleetSignatureMismatch) return null;
+    const next = this.nextFleetConfig();
+    if (this.appliedFleetLevel === this.fleetLevelSignature(next)) return null;
+    let job: ApplyJob | null = null;
+    // A job whose restart was asked for already has its row in flight ("running"), so it is never offered again.
+    for (const candidate of this.applyJobs.all()) {
+      const row = candidate.targets.find(item => item.target === APPLY_FLEET_TARGET);
+      if (row?.status === "restart-required" && (!job || candidate.startedAt >= job.startedAt)) job = candidate;
+    }
+    return { keys: fleetLevelDifferences(this.startupFleetConfig, next), job_id: job ? job.id : null };
+  }
+
+  /**
    * Restart AgEnD itself on behalf of a Settings apply.
    *
    * Deliberately a separate action from Apply: the panel is reachable from

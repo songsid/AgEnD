@@ -4,15 +4,9 @@
 import { useEffect, useMemo, useState } from "/assets/app-html.js";
 import { sameValue } from "./settings-model.js";
 
-/**
- * #2347 (leader's default, for the user to confirm): over the temporary public link the Fleet sections are read-only —
- * the bar never offers Save there, and the page says why. One switch to flip. It is the page's policy: the server
- * refuses Web, Guests and Web authority writes over the link, and takes the other fleet writes from an admin's session,
- * so every Settings write the page makes checks it (settings-confirm.js api, settings-apply.js startOperation).
- */
-export const FLEET_READ_ONLY_OVER_PUBLIC_LINK = true;
-export const overPublicLink = () => globalThis.document?.body?.dataset?.publicLink === "1";
-export const fleetReadOnly = () => FLEET_READ_ONLY_OVER_PUBLIC_LINK && overPublicLink();
+// #2347: over the temporary public link the Fleet sections are read-only (the switch lives with the app store: the
+// shell's restart banner follows it too).
+export { FLEET_READ_ONLY_OVER_PUBLIC_LINK, fleetReadOnly, overPublicLink } from "/assets/app-store.js";
 
 /** The fields of `form` that differ from `saved` (a draft is only what was edited). */
 export function editsOf(form, saved) {

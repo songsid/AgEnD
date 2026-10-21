@@ -34,6 +34,16 @@ export const appStore = createStore({ ready: false, instances: [], uptime: 0, ex
 export function guestPage() {
   return typeof document !== "undefined" && !!document.body && document.body.dataset.tier === "guest";
 }
+/**
+ * #2347 (leader's default, for the user to confirm): over the temporary public link the fleet's settings are read-only —
+ * Settings never offers Save for them there, and the restart banner says a restart is waiting without offering one. The
+ * one switch for both. It is the page's policy: the server refuses Web, Guests and Web authority writes over the link,
+ * and takes the other fleet writes from an admin's session, so every Settings write the page makes checks it
+ * (settings-confirm.js api, settings-apply.js startOperation).
+ */
+export const FLEET_READ_ONLY_OVER_PUBLIC_LINK = true;
+export const overPublicLink = () => typeof document !== "undefined" && document.body?.dataset?.publicLink === "1";
+export const fleetReadOnly = () => FLEET_READ_ONLY_OVER_PUBLIC_LINK && overPublicLink();
 /** Who a guest's page is signed in as: its web name and its platform (the server's, on <body>). */
 export function guestBadge() {
   const d = typeof document !== "undefined" && document.body ? document.body.dataset : {};

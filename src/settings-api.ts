@@ -129,6 +129,8 @@ export interface SettingsApiContext extends AppShellContext {
   /** Non-null when the running config and fleet.yaml disagree on a
    * startup-only key, in which case a restart cannot clear the fleet row. */
   fleetSignatureMismatchKeys?(): string[] | null;
+  /** #2347: saved changes waiting for an AgEnD restart, and the apply job a restart can be asked for. */
+  settingsRestartPending?(): { keys: string[]; job_id: string | null } | null;
   /** #2346: whether a connection added now starts at once (another one is running), or needs AgEnD restarted. */
   connectionsStartLive?(): boolean;
   /** #1005/#1021: a Discord connection's server emojis, from each server its
@@ -345,6 +347,12 @@ export function handleSettingsRequest(
       // #2346: a new connection starts without a restart while another one runs (#1519 P6); the first one needs one.
       connections_start_live: ctx.connectionsStartLive?.() === true,
     });
+    return true;
+  }
+  // #2347: what the app-wide "Restart now" banner reads — small, so every page can ask after a Save settles.
+  if (method === "GET" && path === "/api/settings/restart-pending") {
+    const pending = ctx.settingsRestartPending?.() ?? null;
+    json(res, 200, pending ? { pending: true, keys: pending.keys, job_id: pending.job_id } : { pending: false });
     return true;
   }
   if (method === "GET" && path === "/api/settings/fleet") {

@@ -4,10 +4,10 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 import { Toasts } from "./ui-toast.js";
-import { ConfirmHost } from "./ui-confirm.js";
+import { ConfirmHost, confirmDialog } from "./ui-confirm.js";
 import { ColorDialogHost } from "./identity-color.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
-import { appStore, createStore, guestBadge, guestPage, useStore } from "./app-store.js";
+import { appStore, createStore, fleetReadOnly, guestBadge, guestPage, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
 import { toast } from "./ui-toast.js";
 import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, fleetEntryPath } from "./app-route.js";
@@ -574,6 +574,57 @@ function OperationLine({ route }) {
 }
 
 /**
+ * #2347: saved changes that wait for an AgEnD restart, as the server says (GET /api/settings/restart-pending), into
+ * appStore.restartPending ({ keys, jobId } or null). A failed read keeps what was known.
+ */
+export async function refreshRestartPending() {
+  let body;
+  try {
+    const r = await fetch("/api/settings/restart-pending");
+    if (!r.ok) return;
+    body = await r.json();
+  } catch { return; }
+  const keys = body && Array.isArray(body.keys) ? body.keys.filter((k) => typeof k === "string") : [];
+  appStore.set({ restartPending: body && body.pending === true
+    ? { keys, jobId: typeof body.job_id === "string" && body.job_id ? body.job_id : null } : null });
+}
+
+/**
+ * #2347: the app-wide line for saved changes that wait for an AgEnD restart — in every panel, until AgEnD restarts.
+ * Restart now asks first and is never automatic (the leader's default: a Save that restarted on its own once took 33
+ * agents down at once). Asked again whenever a Save or a restart settles. Left to the Save in hand while it runs or offers
+ * its own restart (Settings' card, or the line above in another panel). Over a temporary public link it says so and
+ * offers nothing; with no Settings job to carry the restart (a hand edit), it says how to restart on the host.
+ */
+function RestartLine() {
+  const { restartPending: pending, settingsOp: op, restartRunner } = useStore(appStore);
+  const [later, setLater] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const settled = !op || (!["writing", "posting", "watching"].includes(op.phase) && op.restart !== "busy");
+  useEffect(() => { if (settled) refreshRestartPending(); }, [op ? `${op.id}:${op.phase}:${op.restart}` : "none"]);
+  if (!pending || !settled) return null;
+  if (op && op.job && op.job.targets && op.job.targets.some((r) => r.target === "fleet" && r.status === "restart-required")) return null;
+  const seen = `${pending.jobId}|${pending.keys.join(",")}`;
+  if (later === seen) return null;
+  const readOnly = fleetReadOnly();
+  const canRestart = !readOnly && !!pending.jobId && typeof restartRunner === "function";
+  const restart = async () => {
+    if (!(await confirmDialog({ title: t("app.restartNow"), message: t("app.restartConfirm"), confirmLabel: t("app.restartNow"), danger: true }))) return;
+    setBusy(true);
+    let res;
+    try { res = await restartRunner(pending.jobId); } catch { res = { ok: false }; }
+    setBusy(false);
+    if (res && !res.ok && !res.stale && !res.busy) toast(t("app.restartRefused", (res.body && res.body.error) || t("app.failed")), false);
+  };
+  return html`<div data-trust="status" class="conn restart-line lbar" role="status">
+    <span>${t("app.restartWaiting", Math.max(1, pending.keys.length))}</span>
+    ${pending.keys.length ? html`<span class="muted restart-keys">${pending.keys.join(", ")}</span>` : null}
+    ${readOnly ? html`<span class="muted">${t("app.restartNotOverLink")}</span>` : !pending.jobId ? html`<span class="muted">${t("app.restartOnHost")}</span>` : null}
+    ${canRestart ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${restart}>${t("app.restartNow")}</button>` : null}
+    <button type="button" class="btn btn-sm" onClick=${() => setLater(seen)}>${t("app.restartLater")}</button></div>`;
+}
+
+/**
  * A module loader that can be tried again: a failed attempt is forgotten (the next call loads afresh) and `attempt`
  * counts, so a retry can ask for a new URL — a browser may keep a failed module import cached under the old one.
  */
@@ -659,6 +710,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>
       <${ConnectionLine} />
       ${viewOnly || guest ? null : html`<${OperationLine} route=${nav.route} />`}
+      ${viewOnly || guest ? null : html`<${RestartLine} />`}
       ${viewOnly || guest || !shell.banner ? null : html`<${shell.banner} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>
