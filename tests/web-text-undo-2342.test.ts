@@ -86,6 +86,13 @@ describe("typing is grouped into steps", () => {
     for (let i = 0; i < 3; i++) { undo(a); seen.push(a.value); }
     expect(seen).toEqual(["ab", "abcd", ""]);
   });
+  it("typing somewhere else in the box (the caret moved, same kind of edit) is a new step", () => {
+    const { els: [a] } = setup();
+    type(a, "ab");
+    a.selectionStart = a.selectionEnd = 0; type(a, "X");
+    undo(a);
+    expect(a.value).toBe("ab");
+  });
   it("a paste is a step of its own", () => {
     const { els: [a] } = setup();
     type(a, "ab");
@@ -170,6 +177,18 @@ describe("IME composition", () => {
 });
 
 describe("the keys mid-composition", () => {
+  it("a browser that does not flag its composition events: still one step, and the history is not reset", () => {
+    const { els: [a] } = setup();
+    type(a, "ab "); now += UNDO.PAUSE_MS;
+    fire(a, "compositionstart", {});
+    for (const v of ["ab n", "ab 你"]) {
+      fire(a, "beforeinput", { inputType: "insertText", data: v.slice(-1), isComposing: false });
+      write(a, v); fire(a, "input", { inputType: "insertText" });
+    }
+    fire(a, "compositionend", {});
+    undo(a); const one = a.value; undo(a);
+    expect([one, a.value]).toEqual(["ab ", ""]);
+  });
   it("between compositionstart and compositionend the keys are the IME's, even on a keydown not flagged isComposing", () => {
     const { els: [a] } = setup();
     type(a, "ab");
@@ -242,10 +261,10 @@ describe("useTypedText: the trimming fields keep what was typed", () => {
     }
     await pg.mount(h(Parent, {}));
     const input = () => pg.root.querySelector("#tok") as any;
-    for (const v of ["1", "12", "12 ", "12 3"]) { input().value = v; fire(input(), "input", {}); await settle(); }
-    const typed = input().value;
+    const seen: string[] = [];
+    for (const v of ["1", "12", "12 ", "12 3"]) { input().value = v; fire(input(), "input", {}); await settle(); seen.push(input().value); }
     setOuter(""); await settle();
-    expect([got, typed, input().value]).toEqual([["1", "12", "12", "12 3"], "12 3", ""]);
+    expect([got, seen, input().value]).toEqual([["1", "12", "12", "12 3"], ["1", "12", "12 ", "12 3"], ""]);
   });
   it("a number field: \"1.50\" and \"01\" stay as typed, the owner gets the number; the owner's own change shows", async () => {
     const pg = page(); mounted.push(pg);

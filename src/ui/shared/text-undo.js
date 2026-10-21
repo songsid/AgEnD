@@ -128,7 +128,7 @@ export function installTextUndo({ doc = document, win = typeof window !== "undef
     // the one compositionstart began.
     if (!el || e.isComposing || /Composition/.test(e.inputType || "")) return;
     const h = historyFor(el);
-    if (h.applying) return;
+    if (h.applying || h.composing) return;          // a browser that does not flag its composition events
     sync(el, h);
     const kind = kindOf(e), now = Date.now(), at = snap(el);
     // The same run of typing (or deleting) goes on: one step. A space ends a word's step (the next word is a new one).
@@ -136,15 +136,15 @@ export function installTextUndo({ doc = document, win = typeof window !== "undef
     const same = kind === "space" ? h.kind === "type" : kind !== "other" && kind === h.kind;
     const goesOn = same && now - h.at < UNDO.PAUSE_MS && at.s === h.last.s && at.e === h.last.e;
     if (!goesOn) { push(h.undo, at); h.redo = []; }
-    h.kind = kind === "space" ? "word" : kind;
+    h.kind = kind;
     h.at = now;
   };
   const onInput = (e) => {
     const el = field(e);
-    if (!el || e.isComposing) return;
+    if (!el) return;
     const h = historyFor(el);
-    if (h.applying || h.composing) return;
-    h.last = snap(el);
+    if (h.applying) return;
+    h.last = snap(el);                              // mid-composition too: the value the next edit starts from
   };
   const onCompStart = (e) => {
     const el = field(e);
