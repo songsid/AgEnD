@@ -7,7 +7,9 @@ on:
     branches: [main, 'release/**']
     tags: ['v*']
   pull_request:
-    branches: [main, 'release/**']
+    # feat/** are feature branches (feat/2.4-settings): PRs into them get the same checks; each lands on main
+    # through its own PR, which keeps main's full gate.
+    branches: [main, 'release/**', 'feat/**']
   workflow_dispatch:
   schedule:
     - cron: '17 3 * * 1' # Weekly Mac signal; never a PR/main required run.
