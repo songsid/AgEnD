@@ -316,9 +316,9 @@ describe("Settings P0 redesign shell", () => {
     w = world({ fleet: { defaults: { backend: "claude-code", locale: "en", tool_progress: "off", auto_pause_after: 0 }, instances: { "alpha-t1": { backend: "claude-code" } }, channels: [{ id: "dc", type: "discord", bot_token_env: "T", access: { mode: "locked", allowed_users: [] } }] },
       instances: { "alpha-t1": { status: "running" } } });
     await mountSettings("agents");
-    await type(p.root.querySelector(".s-search input"), "zzz");
+    await type(p.root.querySelector(".s-toolbar .s-search input"), "zzz");
     expect(p.root.textContent).toContain("沒有符合「zzz」的 Agent。");
-    await type(p.root.querySelector(".s-search input"), "");
+    await type(p.root.querySelector(".s-toolbar .s-search input"), "");
     await mountSettings("general");
     await type(p.root.querySelector("#g-auto"), "-1");
     expect(p.root.querySelector(".s-general")!.textContent).toContain("必須為 0 或更大的數值");
