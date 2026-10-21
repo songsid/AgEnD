@@ -88,10 +88,10 @@ describe("#1569: the command table — one row, two names", () => {
     expect(canonicalCommand("constructor"), "only own keys are aliases").toBe("constructor");
   });
 
-  it("the Telegram fleet menu offers /web right after /dashboard, with the same lock and its own description", () => {
+  it("the Telegram fleet menu lists /web only; /dashboard stays a typed alias with the same lock", () => {
     const menu = telegramMenu("fleet");
-    const at = menu.findIndex(e => e.name === "dashboard");
-    expect(menu[at + 1]).toEqual({ name: "web", lock: menu[at]!.lock });
+    expect(menu.find(e => e.name === "web")).toEqual({ name: "web", lock: "🔒 " });
+    expect(menu.find(e => e.name === "dashboard")).toBeUndefined();
     expect(t("slash.web")).not.toContain("/dashboard");
     expect(t("slash.dashboard")).toContain("/web");
     setLocale("zh-TW"); expect(t("slash.web")).not.toContain("/dashboard");

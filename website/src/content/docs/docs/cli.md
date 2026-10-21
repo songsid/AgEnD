@@ -235,7 +235,7 @@ See when a schedule last ran:
 agend schedule history <id>
 ```
 
-`agend schedule trigger <id>` currently prints guidance only — it does not execute a schedule.
+`agend schedule trigger` was removed. Enable or disable a schedule from the CLI, or use the Task Board.
 
 ## Settings confirmation
 

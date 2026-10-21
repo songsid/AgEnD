@@ -51,18 +51,19 @@ async function register(setImpl?: (commands: any) => Promise<unknown>) {
   return outcomes[0] as Record<string, unknown>;
 }
 
-describe("/dashboard is registered with its revoke action (#1260)", () => {
+describe("/web is registered with its revoke action (#1260 / #2359)", () => {
   it.each(["en", "zh-TW"] as const)("%s: an optional `action` whose one choice is revoke, described within Discord's 100 characters", async (locale) => {
     const { setLocale } = await import("../src/locale.js");
     setLocale(locale);
     try {
       let sent: Array<{ name: string; options?: Array<{ name: string; description: string; required?: boolean; choices?: unknown[] }> }> = [];
       await register(async (commands: typeof sent) => { sent = commands; return new Map(); });
-      const dashboard = sent.find(c => c.name === "dashboard")!;
-      expect(dashboard.options).toHaveLength(1);
-      expect(dashboard.options![0]).toMatchObject({ name: "action", required: false, choices: [{ name: "revoke", value: "revoke" }] });
-      expect(dashboard.options![0]!.description.length).toBeGreaterThan(0);
-      expect(dashboard.options![0]!.description.length).toBeLessThanOrEqual(100);
+      expect(sent.some(c => c.name === "dashboard")).toBe(false);
+      const web = sent.find(c => c.name === "web")!;
+      expect(web.options).toHaveLength(1);
+      expect(web.options![0]).toMatchObject({ name: "action", required: false, choices: [{ name: "revoke", value: "revoke" }] });
+      expect(web.options![0]!.description.length).toBeGreaterThan(0);
+      expect(web.options![0]!.description.length).toBeLessThanOrEqual(100);
     } finally { setLocale("en"); }
   });
 });

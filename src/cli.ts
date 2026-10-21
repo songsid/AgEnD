@@ -16,7 +16,7 @@ applyNetworkReliabilityDefaults();
 import { checkNodeVersion } from "./node-version-guard.js";
 checkNodeVersion();
 
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { registerBugReportCommand } from "./bug-report-cli.js";
 import { join, dirname } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
@@ -201,7 +201,7 @@ settingsCommand.command("confirm <id>").option("--yes", "Explicit noninteractive
       if (result.pending_change.state !== "applied" && confirmed) process.exitCode = 1;
     } catch (err) { console.error((err as Error).message); process.exitCode = 1; }
   });
-settingsCommand.command("reject <id>").action(async (id: string) => {
+settingsCommand.command("reject <id>").description("Reject a pending Settings change on this host").action(async (id: string) => {
   try {
     const inspected = await requestSettingsConfirmation(DATA_DIR, { action: "inspect", id }) as SettingsInspection;
     console.log(`Source: ${inspected.pending_change.source}\nRequester: ${inspected.pending_change.requested_by}\n${inspected.pending_change.summary.join("\n")}`);
@@ -513,19 +513,19 @@ fleet
   });
 
 fleet
-  .command("status")
-  .description("Show fleet status, workspace disk usage, unregistered instance directories, and host memory/swap")
+  .command("status", { hidden: true })
+  .description("Alias of `agend ls --resources`")
   .option("--json", "Output as JSON")
   .action(async (opts: { json?: boolean }) => {
-    // Delegate to the `ls` command implementation
     await lsAction({ ...opts, resources: true });
   });
 
 fleet
-  .command("logs")
-  .description("Alias for `agend logs`")
+  .command("logs", { hidden: true })
+  .description("Removed; use `agend logs`")
   .action(() => {
-    console.log("Use `agend logs` instead. Run `agend logs --help` for options.");
+    console.error("`agend fleet logs` was removed. Use `agend logs`.");
+    process.exitCode = 1;
   });
 
 fleet
@@ -849,9 +849,6 @@ backend
     if (!info) {
       console.error(`Unknown backend: ${backendName}. Available: ${BACKENDS.map(b => b.id).join(", ")}`);
       process.exit(1);
-    }
-    if (info.deprecated) {
-      console.warn(`⚠️  ${info.label} is deprecated (stops 2026-06-18). Consider switching to backend: antigravity`);
     }
 
     let issues = 0;
@@ -1814,9 +1811,12 @@ program
 program
   .command("install")
   .description("Install the AgEnD system service and start it by default")
-  .option("--activate", "Deprecated; service activation is now the default")
+  .addOption(new Option("--activate").hideHelp())
   .option("--no-activate", "Write the service file without activating it")
   .action(async (opts: { activate?: boolean }) => {
+    if (process.argv.includes("--activate")) {
+      console.error("`agend install --activate` was removed; service activation is the default.");
+    }
     const { installService, activateService, detectPlatform, renderLaunchdPlist, launchdPlistPath, getServicePath, getSystemServicePath, serviceHomeFor } = await import(
       "./service-installer.js"
     );
@@ -2401,7 +2401,7 @@ program
 
 program
   .command("setup")
-  .description("Open the guided setup page in a browser (before a fleet exists)")
+  .description("Browser first-run page, before a fleet exists (not the CLI wizard; see `agend quickstart`)")
   .option("--reset", "Allow setup again after it has already been completed")
   .option("--port <port>", "Port for the setup page (default: the health port)")
   .option("--tunnel", "Expose the setup page through a Cloudflare quick tunnel so a phone can open it")
@@ -2489,7 +2489,7 @@ program
 
 program
   .command("quickstart")
-  .description("Guided setup for a Backend, chat channel, projects, and fleet service")
+  .description("CLI guided setup: backend, chat channel, projects, and fleet service (recommended)")
   .action(async () => {
     const { runQuickstart } = await import("./quickstart.js");
     await runQuickstart();
@@ -2497,7 +2497,7 @@ program
 
 program
   .command("init")
-  .description("Interactive setup wizard (advanced)")
+  .description("Interactive advanced wizard (setup-wizard); for first-run use `agend quickstart` or `agend setup`")
   .action(async () => {
     const { runSetupWizard } = await import("./setup-wizard.js");
     await runSetupWizard();
@@ -2792,11 +2792,11 @@ schedule
   });
 
 schedule
-  .command("trigger")
-  .description("Show how to manually trigger a schedule")
-  .argument("<id>", "Schedule ID")
-  .action((id) => {
-    console.log("Manual trigger requires fleet manager running. Use the Telegram interface instead.");
+  .command("trigger", { hidden: true })
+  .argument("[id]", "Schedule ID")
+  .action(() => {
+    console.error("`agend schedule trigger` was removed. There is no Telegram trigger; use `agend schedule enable` or the Task Board.");
+    process.exitCode = 1;
   });
 
 // === Chat Export ===
@@ -3335,16 +3335,23 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     }
 }
 
-program
-  .command("ls")
-  .description("List all instances with status, backend, team, and last activity")
-  .option("--json", "Output as JSON")
-  .option("--names-only", "Print instance names one per line (for shell completion)")
-  .option("--resources", "Also report workspace disk usage, unregistered instance directories, and host memory/swap (text only)")
-  .option("--running", "Show only running instances")
-  .option("--team <name>", "Filter by team name")
-  .option("--backend <name>", "Filter by backend (exact match)")
-  .option("--display", "Show display names as last column")
+function addLsOptions(cmd: Command) {
+  return cmd
+    .option("--json", "Output as JSON")
+    .option("--names-only", "Print instance names one per line (for shell completion)")
+    .option("--resources", "Also report workspace disk usage, unregistered instance directories, and host memory/swap (text only); `agend fleet status` is a hidden alias of this")
+    .option("--running", "Show only running instances")
+    .option("--team <name>", "Filter by team name")
+    .option("--backend <name>", "Filter by backend (exact match)")
+    .option("--display", "Show display names as last column");
+}
+
+addLsOptions(program.command("ls").description("List all instances with status, backend, team, and last activity"))
+  .action(async (opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string; display?: boolean }) => {
+    await lsAction(opts);
+  });
+
+addLsOptions(program.command("status", { hidden: true }).description("Alias of `agend ls`"))
   .action(async (opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string; display?: boolean }) => {
     await lsAction(opts);
   });
@@ -3372,9 +3379,10 @@ Then reload the shell. Tab-completes instance names for \`agend attach\` and
     // Subcommand names come from commander itself, so the script can't drift
     // out of sync with the CLI the way a hardcoded list would.
     const fleetCmd = program.commands.find(c => c.name() === "fleet");
+    const visible = (cmds: Command[]) => cmds.filter(c => !c.hidden).map(c => c.name());
     const spec = {
-      topLevel: program.commands.map(c => c.name()),
-      fleetSub: fleetCmd?.commands.map(c => c.name()) ?? [],
+      topLevel: visible(program.commands),
+      fleetSub: visible(fleetCmd?.commands ?? []),
       instanceCommands: ["attach"],
       fleetInstanceCommands: ["start", "stop", "restart"],
     };
@@ -3430,7 +3438,7 @@ Then reload the shell. Tab-completes instance names for \`agend attach\` and
   });
 
 program
-  .command("health")  .description("Fleet health check — shows problems and diagnostics")
+  .command("health")  .description("Live fleet health of running instances (HTTP, tmux, IPC); for host/setup diagnostics use `agend doctor`")
   .option("--json", "Output as JSON")
   .option("-q, --quiet", "One-line summary only")
   .action(async (opts: { json?: boolean; quiet?: boolean }) => {
@@ -3675,7 +3683,7 @@ program
 
 program
   .command("logs")
-  .description("Show fleet log (alias for `agend fleet logs`)")
+  .description("Show fleet log (daemon.log, or fleet.log if the daemon log is not there yet)")
   .option("-n, --lines <count>", "Number of lines to show", "50")
   .option("-f, --follow", "Follow log output (like tail -f)")
   .option("--instance <name>", "Filter by instance name")

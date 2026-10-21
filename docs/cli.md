@@ -2,7 +2,7 @@
 
 ## Chat commands (Telegram fleet menu / Discord slash)
 
-The Telegram fleet menu lists 23 commands; the ClassicBot menu lists 11. Discord registers 29 slash names, including both `/web` and its `/dashboard` alias. `/cancel` and `/save` are also handled when typed on Telegram, outside its menus. 🔒 requires an admin for that scope; see [commands.md](commands.md) for the owning fleet/ClassicBot roles and platform details. The menus and locks come from `src/command-table.ts`.
+The Telegram fleet menu lists 22 commands; the ClassicBot menu lists 11. Discord registers 28 slash names. `/web` is the listed name; `/dashboard` stays a typed alias and is not in the Telegram menu or the Discord slash list. `/cancel` and `/save` are also handled when typed on Telegram, outside its menus. 🔒 requires an admin for that scope; see [commands.md](commands.md) for the owning fleet/ClassicBot roles and platform details. The menus and locks come from `src/command-table.ts`.
 
 | Command | Description | Options / args | Permission |
 |---------|-------------|----------------|------------|
@@ -64,9 +64,6 @@ agend fleet stop <name>         # Stop a specific instance
 agend fleet restart             # Graceful restart (wait for idle, same code)
 agend fleet restart <name>      # Restart a specific instance
 agend fleet restart --reload    # Full process restart to load new code
-agend fleet status              # Show instance status overview
-agend fleet status --json       # JSON output
-agend fleet logs                # (alias — prints "Use agend logs instead")
 agend fleet history             # Show event history (cost, rotations, hangs)
 agend fleet history --instance <name> --type <type> --since <date> --limit <n> --json
 agend fleet activity            # Show activity log (collaboration, tool calls, messages)
@@ -76,24 +73,31 @@ agend fleet cleanup             # Remove orphaned instance directories
 agend fleet cleanup --dry-run   # Preview cleanup without deleting
 ```
 
+`agend fleet status` is a hidden alias of `agend ls --resources`. `agend fleet logs` was removed; use `agend logs`.
+
 ## Instance tools
 
 ```bash
 agend ls                        # List instances with status, backend, team, context, activity
 agend ls --json                 # JSON output
 agend ls --names-only           # Names one per line (used by shell completion)
+agend ls --resources            # Also workspace disk, unregistered dirs, and host memory/swap
 agend ls --running              # Running instances only
 agend ls --team <name>          # Filter by team
 agend ls --backend <name>       # Filter by backend
 agend ls --display              # Add display names as last column (hidden by default)
 agend attach [name]             # Attach to instance tmux window (accepts real name, display name, row number, or substring)
-agend logs                      # Show fleet log
+agend logs                      # Show fleet log (daemon.log, or fleet.log if the daemon log is not there yet)
 agend logs -n 100               # Show last 100 lines (default: 50)
 agend logs -f                   # Follow mode (tail -f)
 agend logs --instance <name>    # Filter by instance name
 agend export-chat               # Export fleet activity as HTML chat log
 agend export-chat --from <date> --to <date> -o <path>
+agend profile [seconds]         # Record the running fleet's CPU profile (local operator; default 60, max 1800)
+agend delivery show             # Read a durable delivery status (operator; the query is audited locally)
 ```
+
+`agend status` is a hidden alias of `agend ls` (already-shipped update and Windows-shortcut messages still say `agend status`).
 
 `agend logs` reads `~/.agend/daemon.log`, which holds the fleet's runtime logs.
 Service stdout/stderr remains in `~/.agend/fleet.log` for startup errors and Node
@@ -159,9 +163,9 @@ Each TAB press runs that command (~90ms).
 ## Diagnostics & validation
 
 ```bash
-agend doctor                    # Run fleet health diagnostics
+agend doctor                    # Host/setup diagnostics (backends, tmux, service, D-Bus, fleet, IPC, network)
 agend doctor mcp                # Fleet-wide MCP health check (IPC, config paths, duplicates, binary PATH)
-agend health                    # Fleet health check — shows problems and diagnostics
+agend health                    # Live health of a running fleet (HTTP, tmux, IPC); not a substitute for doctor
 agend validate                  # Validate fleet.yaml and classicBot.yaml
 agend validate --connections    # Print CONNECTIONS=<n>: chat connections in fleet.yaml (for scripts)
 agend backend doctor [backend]  # Check backend environment (binary, auth, tmux, TERM)
@@ -336,7 +340,6 @@ agend schedule delete <id>      # Delete a schedule
 agend schedule enable <id>      # Enable a schedule
 agend schedule disable <id>     # Disable a schedule
 agend schedule history <id>     # Show schedule run history (--limit <n>)
-agend schedule trigger <id>     # Prints how to trigger: the CLI cannot fire a schedule itself — use the Telegram interface with the fleet manager running
 ```
 
 ## Template deployments
@@ -372,8 +375,9 @@ agend access pair <name> <uid>  # Generate pairing code
 ## Setup & installation
 
 ```bash
-agend quickstart                # Simplified setup (recommended for new users)
-agend init                      # Full interactive setup wizard
+agend quickstart                # CLI guided first-run: backend, chat channel, projects, fleet service (recommended)
+agend setup                     # Browser first-run page, before a fleet exists
+agend init                      # Interactive advanced wizard (setup-wizard); for first-run use quickstart or setup
 agend install                   # Install, enable, and start system service (launchd/systemd)
 agend install --no-activate     # Only write/update the service file
 agend uninstall                 # Remove system service
@@ -506,7 +510,7 @@ from host shutdown or logout that stops the user manager.
 ```bash
 agend settings confirm <id>        # Print source/requester/full redacted diff, then ask y/N
 agend settings confirm <id> --yes  # Explicitly confirm that inspected diff without a TTY
-agend settings reject <id>
+agend settings reject <id>         # Reject a pending Settings change on this host
 ```
 
 Run on the host as the same user as the fleet or SetupHost. This never starts a fleet; a private local socket owns confirmation. Agent sessions (`AGEND_INSTANCE_NAME` present) cannot use it. The id, socket owner generation and inspected effect/summary are checked again before applying. A stale/expired request must be submitted again; pending requests are not persisted across restart.

@@ -745,7 +745,7 @@ Sign in with a one-time code: send `/web` (fleet admin) or run `agend web` on th
 
 **From the web dashboard (2.3, #2233).** A fleet admin signed in to the dashboard on this machine or its network (not over the public link, and never as a guest) can do the same without any chat connection: **Settings → Agents → Sign-ins** lists each backend's login and each credential profile an agent uses, with **Sign in**; the web `/backend` picker offers **Sign in to <backend>** for one that is not signed in; and **Needs you** offers **Sign in** on an agent paused for sign-in. The dialog runs the same flow: a device code is shown in the dialog; a browser-terminal login shows **Open the sign-in terminal** and its one-time access code, to that browser session only (no DM is involved, so a web-only fleet needs no bot). The same checks, limits and 10-minute window apply, a public link is still opt-in per sign-in, and while it runs every admin page says so, with **Open** (the browser that started it sees the link and code, the others only who and where, and may cancel it). A sign-in whose browser session ends is cancelled. A CLI that is not installed is not installed from here: the dialog gives its install command.
 
-After a successful login, the backend's running instances are restarted to pick up the new credential. `/install-cli` is a leftover typed alias: it still works, says it moved, and runs `/login` with the same argument; it is in no command menu.
+After a successful login, the backend's running instances are restarted to pick up the new credential. Typing `/install-cli` prints a one-line pointer to `/login` and does not run login; it is in no command menu.
 
 ## Credential profiles and a second subscription
 

@@ -235,7 +235,7 @@ agend schedule delete <id>
 agend schedule history <id>
 ```
 
-`agend schedule trigger <id>` 目前只會印出指引，不會執行排程。
+`agend schedule trigger` 已移除。請用 CLI 啟用或停用排程，或用任務看板。
 
 ## 設定確認
 

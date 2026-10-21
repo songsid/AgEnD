@@ -924,12 +924,12 @@ export async function runQuickstart(): Promise<void> {
         serviceRunning = true;
       } catch (err) {
         console.log(`\n  ${yellow("⚠")}  Could not install the service automatically (${(err as Error).message}).`);
-        console.log(`     Start the fleet manually: ${bold("agend fleet start")}`);
+        console.log(`     Start the fleet manually: ${bold("agend start")}`);
       }
     }
 
     if (!serviceRunning) {
-      console.log(`  Start the fleet: ${bold("agend fleet start")}`);
+      console.log(`  Start the fleet: ${bold("agend start")}`);
     }
     printDashboard();
 

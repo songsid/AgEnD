@@ -123,7 +123,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/insta
 ```bash
 npm install -g @songsid/agend    # 1. 安裝
 agend quickstart                # 2. 設定 — backend、bot token，搞定
-agend fleet start               # 3. 啟動 fleet 🎉（quickstart 已安裝成系統服務就不用）
+agend start                     # 3. 啟動 fleet 🎉（quickstart 已安裝成系統服務就不用）
 ```
 
 打開 Telegram 或 Discord，傳訊息給你的 bot，就能用手機開始工作。也可以打開網頁儀表板 `http://localhost:19280/`。要登入，在這台機器上執行 `agend web --code`，或傳 `/web` 給你的 bot。
@@ -211,7 +211,7 @@ ClassicBot 讓你在任何 Discord 文字頻道用斜線指令啟動 AI agent，
 agend quickstart
 
 # 2. 啟動 fleet（quickstart 已安裝成系統服務就不用）
-agend fleet start
+agend start
 ```
 
 quickstart 會設定 `fleet.yaml`，並詢問是否設定 `classicBot.yaml`。之後要新增使用者或伺服器，再跑一次 `agend quickstart` 就好。

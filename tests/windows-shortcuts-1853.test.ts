@@ -274,3 +274,18 @@ Write-Output ("PARSED=" + (@{ errors = $e.Count; command = $cmd.GetCommandName()
     expect(withHelpers(`Write-Output ("HINT=" + (Get-AgendStartHint 'Ubuntu-24.04' 'han'))`, fakeWsl()).out).toContain("HINT=wsl -d Ubuntu-24.04 -u han -- bash -lc '");
   });
 });
+
+describe("the shortcut's agend status is a real command (#2359)", () => {
+  it("src/cli.ts implements status as a hidden alias of ls", () => {
+    const cli = (args: string[]) => spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", ...args], {
+      cwd: process.cwd(), encoding: "utf8", timeout: 8000,
+      env: { ...process.env, AGEND_HOME: join(process.cwd(), "tests"), NOTIFY_SOCKET: "" },
+    });
+    const help = cli(["--help"]);
+    expect(help.status, help.stderr).toBe(0);
+    expect(help.stdout).not.toMatch(/^\s+status\b/m);
+    const statusHelp = cli(["status", "--help"]);
+    expect(statusHelp.status, statusHelp.stderr).toBe(0);
+    expect(statusHelp.stdout).toMatch(/Alias of `agend ls`|List all instances/);
+  });
+});

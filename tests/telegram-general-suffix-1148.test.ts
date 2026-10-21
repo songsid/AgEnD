@@ -85,7 +85,10 @@ describe("#1148: no-thread General addresses its bot before shared dedup", () =>
       expect(r.any.recentMessageIds.size).toBe(1);
       await r.any.handleInboundMessage(inbound(r.b.id, text, "shared"));
       if (text.startsWith("/status")) expect(r.any.topicCommands.getStatusText).toHaveBeenCalledOnce();
-      else expect(r.any.startLoginSession).toHaveBeenCalledOnce();
+      else {
+        expect(r.any.startLoginSession).not.toHaveBeenCalled();
+        expect(r.b.sendText.mock.calls.some((c: unknown[]) => String(c[1]).includes("`/install-cli` was removed. Use `/login`."))).toBe(true);
+      }
       expect(r.any.deliverToInstance).not.toHaveBeenCalled();
     });
   }

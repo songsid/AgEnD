@@ -51,9 +51,10 @@ describe("Telegram command-menu registration", () => {
     expect(fleetPayloads.map(p => p.scope.type)).toEqual(["chat", "chat_administrators"]);
     for (const payload of fleetPayloads) {
       expect(payload.commands.map((c: { command: string }) => c.command)).toEqual([
-        "status", "sysinfo", "dashboard", "web", "ctx", "compact", "steer", "btw", "clear", "model", "backend", "effort",
+        "status", "sysinfo", "web", "ctx", "compact", "steer", "btw", "clear", "model", "backend", "effort",
         "pause", "wake", "restart", "collab", "update", "profile", "doctor", "login", "usage", "tips", "visibility",
       ]);
+      expect(payload.commands.some((c: { command: string }) => c.command === "dashboard")).toBe(false);
       expect(payload.commands.find((c: { command: string }) => c.command === "login")?.description)
         .toBe("🔒 Sign in or install a CLI backend remotely (beta)");
       // One entry point since #1131: /login installs a missing CLI too.
@@ -67,7 +68,7 @@ describe("Telegram command-menu registration", () => {
         .toEqual(["start", "stop", "compact", "steer", "btw", "clear", "model", "backend", "pause", "wake", "ctx"]);
     }
     expect(info).toHaveBeenCalledWith(
-      expect.objectContaining({ adapterId: "telegram-main", fleetCommandCount: 23, classicCommandCount: 11 }),
+      expect.objectContaining({ adapterId: "telegram-main", fleetCommandCount: 22, classicCommandCount: 11 }),
       expect.stringContaining("Registered Telegram bot commands"),
     );
     expect(warn).not.toHaveBeenCalled();

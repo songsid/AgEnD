@@ -661,6 +661,12 @@ export class TopicCommands {
     if (!text) return false;
     const command = typedCommand(GENERAL_FORMS, text, msg.source);
     if (command === "dashboard" && this.ctx.isGuestWebAsk?.(msg.adapterId, msg.userId)) return this.guestWeb(msg);
+    // #2359: a removed leftover answers with a pointer, not /login's admin gate.
+    if (command === "install-cli") {
+      const adapter = this.getReplyAdapter(msg);
+      if (adapter) await adapter.sendText(msg.chatId, t("login.install_cli_moved"), { threadId: msg.threadId }).catch(() => {});
+      return true;
+    }
     const refusal = this.tableRefusal(msg, command, "general");
     if (refusal) { await this.sendRefusal(msg, refusal); return true; }
 
@@ -704,20 +710,6 @@ export class TopicCommands {
       await this.handleLoginCommand(msg);
       return true;
     }
-
-    // `/install-cli` became part of `/login` (#1131). Typed, it still works for
-    // one release (2.1.10) — with a line saying where it went — and is in no
-    // command menu. Both spellings: Telegram command names cannot contain "-".
-    if (command === "install-cli") {
-      const legacyInstall = text.match(LEGACY_INSTALL_RE)!;
-      const adapter = this.getReplyAdapter(msg);
-      if (adapter) await adapter.sendText(msg.chatId, t("login.install_cli_moved"), { threadId: msg.threadId }).catch(() => {});
-      const rest = (legacyInstall[1] ?? "").trim();
-      const mapped = rest === "" ? "/login" : `/login ${rest}`;
-      await this.handleLoginCommand({ ...msg, text: mapped });
-      return true;
-    }
-
 
     if (command === "update") {
       await this.handleUpdateCommand(msg);
