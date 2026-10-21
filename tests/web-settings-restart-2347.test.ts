@@ -24,7 +24,7 @@ async function fetchFake(url: string, init: any = {}) {
 const posts = () => reqs.filter(r => r.method === "POST").map(r => r.url);
 
 let p: AppPage;
-let apply: any, app: any, nav: any, shell: any, confirm: any;
+let apply: any, app: any, nav: any, shell: any;
 beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19281/ui/fleet", storage: { agend_tour_done: "1" } });
   (globalThis as any).fetch = fetchFake;
@@ -32,7 +32,6 @@ beforeAll(async () => {
   app = await import("/assets/app-store.js");
   nav = await import("/assets/app-nav.js");
   shell = await import("/assets/app-shell.js");
-  confirm = await import("/assets/ui-confirm.js");
   nav.startRouter(p.window);
 });
 beforeEach(async () => {
@@ -48,10 +47,11 @@ const panels = () => new Map([["fleet", { load: async () => () => h("div", { cla
 const mountShell = async () => { await p.mount(h(shell.Shell, { panels: panels() })); await settle(8); };
 const line = () => p.root.querySelector(".restart-line");
 const button = (text: string) => (line()?.querySelectorAll("button") ?? []).find((b: any) => b.textContent === text);
-const answer = async (yes: boolean) => {
-  await vi.waitFor(() => expect(confirm.confirmStore.get().queue).toHaveLength(1));
-  confirm.answerConfirm(confirm.confirmStore.get().queue[0].id, yes);
-  await settle(6);
+/** Press `button` and answer the app's confirmation (the harness answers it with globalThis.confirm). */
+const pressAndAnswer = async (label: string, yes: boolean) => {
+  (globalThis as any).confirm = () => yes; p.window.confirm = () => yes;
+  button(label).click();
+  await settle(8);
 };
 
 describe("#2347: saved changes waiting for an AgEnD restart", () => {
@@ -65,11 +65,9 @@ describe("#2347: saved changes waiting for an AgEnD restart", () => {
     expect(line()?.textContent).toContain("defaults.locale");
     expect(line()?.className).toContain("lbar");                          // the shared straight bar, nothing rounded
 
-    button("Restart now").click();
-    await answer(false);
+    await pressAndAnswer("Restart now", false);
     expect(posts()).toEqual([]);                                          // Cancel restarts nothing
-    button("Restart now").click();
-    await answer(true);
+    await pressAndAnswer("Restart now", true);
     await vi.waitFor(() => expect(posts()).toEqual(["/api/settings/restart-fleet"]));
     const sent = reqs.find(r => r.url === "/api/settings/restart-fleet")!;
     expect([sent.body.job_id, sent.body.confirm, typeof sent.key]).toEqual(["job9", "restart-agend", "string"]);
@@ -92,6 +90,7 @@ describe("#2347: saved changes waiting for an AgEnD restart", () => {
 
   it("a Save that needs a restart: its own card or line offers it (no second line), and no restart is made for it", async () => {
     routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: PENDING } : undefined));
+    routes.push(r => (r.method === "PUT" && r.url === "/api/settings/fleet/defaults" ? { body: { ok: true } } : undefined));
     routes.push(r => (r.method === "POST" && r.url === "/api/settings/apply" ? { body: { ...JOB("restart-required"), status: "running" } } : undefined));
     routes.push(r => (r.url === "/api/settings/apply/job9" ? { body: JOB("restart-required") } : undefined));
     await mountShell();
@@ -123,9 +122,8 @@ describe("#2347: saved changes waiting for an AgEnD restart", () => {
     routes.push(r => (r.url === "/api/settings/apply/job9" ? { body: JOB("restart-required") } : undefined));
     routes.push(r => (r.url === "/api/settings/restart-fleet" ? { status: 409, body: { error: "a configuration reload is running" } } : undefined));
     await mountShell();
-    button("Restart now").click();
-    await answer(true);
-    await vi.waitFor(() => expect(p.root.querySelector(".toast")?.textContent ?? "").toContain("Restart refused: a configuration reload is running"));
+    await pressAndAnswer("Restart now", true);
+    await vi.waitFor(() => expect(p.root.querySelectorAll(".toast").map((x: any) => x.textContent).join("\n")).toContain("Restart refused: a configuration reload is running"));
     expect(!!button("Restart now")).toBe(true);
   });
 

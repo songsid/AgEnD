@@ -92,10 +92,12 @@ describe("module admission (#1408 §4)", () => {
     // under /ui/js/, and View, public, beside it under /assets/.
     const dynamic = [...app.matchAll(/import\(([^)]*)\)/g)].map(m => m[1]!.trim());
     // #2233: the sign-in line, on every admin page (the module is behind the session gate).
-    expect(dynamic.sort()).toEqual(['"/ui/js/backend-signin.js"', 'retryUrl("/assets/panel-view.js", a', 'retryUrl("/ui/js/panel-chat.js", a', 'retryUrl("/ui/js/panel-details.js", a', 'retryUrl("/ui/js/panel-fleet.js", a', 'retryUrl("/ui/js/panel-log.js", a', 'retryUrl("/ui/js/panel-needs.js", a', 'retryUrl("/ui/js/panel-settings.js", a']);
+    expect(dynamic.sort()).toEqual(['"/ui/js/backend-signin.js"', 'retryUrl("/assets/panel-view.js", a', 'retryUrl("/ui/js/panel-chat.js", a', 'retryUrl("/ui/js/panel-details.js", a', 'retryUrl("/ui/js/panel-fleet.js", a', 'retryUrl("/ui/js/panel-log.js", a', 'retryUrl("/ui/js/panel-needs.js", a', 'retryUrl("/ui/js/panel-settings.js", a',
+      // #2347: the restart banner's Restart now runs Settings' runner (behind the session gate), in any panel.
+      'retryUrl("/ui/js/settings-apply.js", a']);
     // The private ones only in "full" mode: nothing under /ui/ is reached from the View-only branch.
     const fullBranch = app.slice(app.indexOf('if (mode === "full") {'), app.indexOf("} else appStore.set"));
-    for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/panel-needs.js", "/ui/js/panel-details.js", "/ui/js/panel-log.js"]) {
+    for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/panel-needs.js", "/ui/js/panel-details.js", "/ui/js/panel-log.js", "/ui/js/settings-apply.js"]) {
       expect(app.indexOf(p), p).toBeGreaterThan(app.indexOf('if (mode === "full") {'));
       expect(fullBranch, p).toContain(p);
     }
