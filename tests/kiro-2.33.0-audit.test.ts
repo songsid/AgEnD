@@ -36,9 +36,9 @@ describe("kiro-cli 2.32.0 and 2.33.0: sign-in screens", () => {
   it.each(VERSIONS)("%s: the expiry fallback and the login menu are both kiro sign-in screens", (version) => {
     const expired = pane(`login-expired-${version}`);
     expect(KIRO_EXPIRED_LOGIN_SCREEN.test(expired)).toBe(true);
-    expect(LOGIN_FLOWS["kiro-cli"]!.loginScreenPattern.test(expired)).toBe(true);
+    expect(LOGIN_FLOWS["kiro-cli"]!.loginScreenPattern!.test(expired)).toBe(true);
     expect(backend().getErrorPatterns().find(p => p.pattern.test(expired))?.type).toBe("auth_error");
-    expect(LOGIN_FLOWS["kiro-cli"]!.loginScreenPattern.test(pane(`login-menu-${version}`))).toBe(true);
+    expect(LOGIN_FLOWS["kiro-cli"]!.loginScreenPattern!.test(pane(`login-menu-${version}`))).toBe(true);
   });
 
   it("2.33.0 paints them exactly as 2.32.0 does, escapes included", () => {
@@ -172,6 +172,16 @@ describe("kiro-cli 2.33.0: other workspace-trust shapes are held", () => {
     held(base.replace(" ❯ Trust, continue", " ● Trust, continue"));
     held(base.replace("   Don't trust, exit", " ❯ Don't trust, exit"));
     held(base.replace(/^( Trust this workspace\?\n) ─+\n/m, "$1"));
+  });
+
+  // One change each, every other row as captured: no later check may be what catches it.
+  it("one row changed: a divider, the key-hint tail, or the decline label", () => {
+    const dividers = [...base.matchAll(/^ ─+$/gm)].map(m => m.index!);
+    expect(dividers.length).toBe(3);   // above the header, below it, above the tail
+    for (const at of dividers) held(`${base.slice(0, at)} ·${base.slice(base.indexOf("\n", at))}`);
+    held(base.replace(" esc to exit ·", " esc to cancel ·"));
+    held(base.replace(" esc to exit · ↑↓ to navigate · ↵ to select", " esc to exit · ↑↓ to navigate"));
+    held(base.replace("Don't trust, exit", "Don't trust, leave"));
   });
 
   it("the folder text replaced, or the home text with a revoke path", () => {
