@@ -122,9 +122,10 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     const box = $(".s-experimental-effects input[type=checkbox]");
     await check(box, !box.checked);
     const before = sent.filter((s) => s.method === "PUT").length;
+    const cost = bar()?.textContent.includes("Immediately");          // the impact table's, not a guess
     button("Save", bar()).click(); await settle(20);
-    expect([before, sent.filter((s) => s.method === "PUT").map((s) => [s.path, s.body]), sent.some((s) => s.method === "POST" && s.path === "/api/settings/apply")])
-      .toEqual([0, [["/api/settings/fleet/web", { experimental: { canvas_worker: box.checked } }]], true]);
+    expect([cost, before, sent.filter((s) => s.method === "PUT").map((s) => [s.path, s.body]), sent.some((s) => s.method === "POST" && s.path === "/api/settings/apply")])
+      .toEqual([true, 0, [["/api/settings/fleet/web", { experimental: { canvas_worker: box.checked } }]], true]);
   });
   it("Restore defaults (a confirmed action) saves at once, Settings open or not: nothing staged", async () => {
     await open("appearance");

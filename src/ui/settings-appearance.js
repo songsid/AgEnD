@@ -17,7 +17,7 @@ import { CARD_SIZES, cardSizeDefault, cardSizeStore, setCardSizeDefault } from "
 import { AgentWidget, checkWidget, fleetBinds, setSidebarWidget, sidebarWidgetRaw, sidebarWidgetStore, widgetProblem } from "/assets/agent-widget.js";
 import { confirmedWrite } from "./settings-confirm.js";
 import { savePref, withoutHold } from "/assets/app-prefs.js";
-import { DEFAULT_SCHEMA, impactOf } from "./settings-model.js";
+import { DEFAULT_SCHEMA, impactOf, ownChoiceImpact } from "./settings-model.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { colorsOff, defaultPlaces, identityClasses, identityOf, PLACEMENTS, paintIdentity, setColorsOff, setDefaultPlaces, useIdentityColors } from "/assets/identity-color.js";
 import { CardTitle } from "./settings-learn.js";
@@ -74,7 +74,7 @@ function deviceChoice(props, key, label, read, write) {
     write(value);
     if (!props.stage) return;
     if (value === from) props.unstage(key);
-    else props.stage(key, { label: tn("youDeviceChoice", label), impact: "now", from, local: { commit: () => {}, revert: () => write(from) } }, true);
+    else props.stage(key, { label: tn("youDeviceChoice", label), impact: ownChoiceImpact(props.schema), from, local: { commit: () => {}, revert: () => write(from) } }, true);
   };
 }
 
@@ -94,7 +94,7 @@ function ExperimentalEffectsCard(props = {}) {
   const stageIt = (value) => {
     setFailed(false);
     if (value === enabled) { props.unstage(CANVAS_WORKER); return; }
-    props.stage(CANVAS_WORKER, { label: t("experimentalEffects.title"), impact: impactOf(DEFAULT_SCHEMA, "web.experimental"), draft: value,
+    props.stage(CANVAS_WORKER, { label: t("experimentalEffects.title"), impact: impactOf(props.schema || DEFAULT_SCHEMA, "web.experimental.canvas_worker"), draft: value,
       request: { method: "PUT", url: "/api/settings/fleet/web", body: { experimental: { canvas_worker: value } } },
       onResult: (outcome) => { if (outcome && outcome.status === "applied") appStore.set({ canvasWorker: value }); else if (outcome && outcome.status === "failed") setFailed(true); } }, true);
   };

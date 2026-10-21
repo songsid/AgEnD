@@ -26,7 +26,7 @@ import "./settings-strings.js";
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
 import {
-  ACCESS_MODES, AGENT_MODES, DEFAULT_SCHEMA, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS, VISIBILITY_MODES, batchImpact,
+  ACCESS_MODES, AGENT_MODES, DEFAULT_SCHEMA, ownChoiceImpact, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS, VISIBILITY_MODES, batchImpact,
   changedFields, channelId, channelsOf, chLabel, connectionState, effectiveSummary, fleetModel, fromYaml, fullModelRequests, groupAgents,
   hasOwn, impactOf, localeOptions, defaultsImpact, requestImpact, nonNegative, positive, replyGuardSupported, sameValue, shortName, STATUS_ORDER, toYaml,
   visibilityDefault, worstImpact,
@@ -165,7 +165,7 @@ export function SettingsPanel({ route, navKey }) {
 
   // #2347: the "You" group — a preference chosen here (Preferences, Web appearance) is shown at once and saved by the bar's
   // Save with everything else: held in app-prefs while Settings is open, and staged here as one change.
-  const syncHeld = (n) => (n ? stage(YOU_PREFS, { label: tn("youPrefs"), impact: "now", count: n,
+  const syncHeld = (n) => (n ? stage(YOU_PREFS, { label: tn("youPrefs"), impact: ownChoiceImpact(data && data.schema), count: n,
     local: { commit: savePrefsHeld, revert: discardHeldPrefs } }, true) : unstage(YOU_PREFS));
   useEffect(() => { const release = holdPrefs(); syncHeld(heldPrefsCount()); const off = onHeldPrefs(syncHeld); return () => { off(); release(); }; }, []);
 
@@ -357,7 +357,7 @@ export function SettingsPanel({ route, navKey }) {
   // #2347: drawn again from what is in force after a Discard or a Save (draftEpoch), like every section.
   const sectionBody = section === "device" ? html`<${DeviceSection} key=${`you:${draftEpoch}`} />`
     // #1629 r4 §3: Appearance is the person's own (no configuration read): shown at once, like Preferences.
-    : section === "appearance" ? html`<${AppearanceSection} key=${`you:${draftEpoch}`} stage=${stage} unstage=${unstage} staged=${staged} />`
+    : section === "appearance" ? html`<${AppearanceSection} key=${`you:${draftEpoch}`} stage=${stage} unstage=${unstage} staged=${staged} schema=${data && data.schema} />`
     : !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
     : section === "agents" ? html`<${Agents} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
