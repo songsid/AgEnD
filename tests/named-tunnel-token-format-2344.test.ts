@@ -42,4 +42,8 @@ describe("named tunnel credential shape (no remote authentication)", () => {
     // Exercise the upper bound on otherwise well-shaped credentials, not just invalid garbage.
     expect(normalizePublicTunnelToken(syntheticTunnelToken({ ...syntheticTunnelFields(), e: "x".repeat(4096) }))).toBeNull();
   });
+  it("does not silently strip a decoded UTF-8 BOM that cloudflared's JSON parser would reject", () => {
+    const token = Buffer.concat([Buffer.from([239, 187, 191]), Buffer.from(JSON.stringify(syntheticTunnelFields()))]).toString("base64");
+    expect(normalizePublicTunnelToken(token)).toBeNull();
+  });
 });

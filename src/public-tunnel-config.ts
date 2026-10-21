@@ -42,7 +42,7 @@ export function normalizePublicTunnelToken(value: unknown): string | null {
   if (!bytes) return null;
   try {
     // Fatal UTF-8 decoding prevents replacement characters from turning malformed bytes into valid JSON.
-    const fields: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    const fields: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes));
     if (!fields || typeof fields !== "object" || Array.isArray(fields)) return null;
     const { a, t, s, e } = fields as Record<string, unknown>;
     if (typeof a !== "string" || !a.trim() || typeof t !== "string"
