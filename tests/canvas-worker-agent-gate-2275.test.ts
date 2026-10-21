@@ -60,7 +60,9 @@ describe("CW agent menus and current configuration", () => {
     expect(scopedFleetConfigEnvironment(owner)).toEqual({ AGEND_FLEET_DATA_DIR: owner, AGEND_FLEET_CONFIG_PATH: custom });
     expect(readCanvasWorkerEnabled(owner)).toBe(true);
     expect(readCanvasWorkerEnabled(foreign)).toBe(false);
-    const daemon = new Daemon("worker", { working_directory: owner, workflow: false }, join(owner, "instances", "worker"), false, undefined, undefined, logger as never);
+    const daemon = new Daemon("worker", { working_directory: owner, workflow: false,
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 }, log_level: "error" },
+      join(owner, "instances", "worker"), false, undefined, undefined, logger as never);
     const build = () => (daemon as unknown as { buildBackendConfig(): { mcpServers: { agend: { env: Record<string, string> } } } }).buildBackendConfig().mcpServers.agend.env;
     expect(build()).toMatchObject({ AGEND_FLEET_DATA_DIR: owner, AGEND_FLEET_CONFIG_PATH: custom });
     vi.stubEnv("AGEND_FLEET_DATA_DIR", foreign);
