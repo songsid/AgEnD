@@ -8,6 +8,8 @@ import { validateFleetConfig } from "./config-validator.js";
 import { hasPausedMarker } from "./pause-marker.js";
 import { getTmuxSessionName, getTmuxSocketName } from "./paths.js";
 import { BACKENDS } from "./setup-wizard.js";
+import { serviceLeftovers } from "./service-installer.js";
+import { homedir } from "node:os";
 import type { ServiceInfo } from "./service-installer.js";
 import { t } from "./locale.js";
 import { collectResourceReport, resourceChecks, type ResourceReport } from "./resource-report.js";
@@ -202,6 +204,29 @@ export async function collectDoctorReport(
       t("doctor.service_active"),
       service.active == null ? managerUnavailable : service.active ? t("doctor.service_running") : t("doctor.inactive_start"),
     );
+  }
+
+  // #2331: the unit as systemd LOADED it (never the file), the files it came from, and leftovers that change how the
+  // fleet starts. A Type=notify unit without NotifyAccess=all refuses the fleet's READY: restarted every 15 minutes.
+  if (deps.platform === "linux" && service.installed && service.path) {
+    const system = !service.path.includes("/.config/systemd/user/");
+    const unit = service.path.split("/").pop()!.replace(/\.service$/, "");
+    const shown = deps.run("systemctl", [...(system ? [] : ["--user"]), "show", "-p", "Type,NotifyAccess,TimeoutStartUSec,FragmentPath,DropInPaths", unit]);
+    const loaded = new Map<string, string>();
+    if (!shown.error && shown.status === 0) {
+      for (const line of String(shown.stdout ?? "").split("\n")) { const at = line.indexOf("="); if (at > 0) loaded.set(line.slice(0, at), line.slice(at + 1).trim()); }
+    }
+    const type = loaded.get("Type"), notifyAccess = loaded.get("NotifyAccess");
+    if (type && notifyAccess) {
+      const refused = type === "notify" && notifyAccess !== "all";
+      add("Service", refused ? "error" : "ok", t("doctor.loaded_unit"),
+        `Type=${type} NotifyAccess=${notifyAccess} TimeoutStartSec=${loaded.get("TimeoutStartUSec") || "?"}${refused ? ` — ${t("doctor.notify_refused")}` : ""}`);
+      const dropIns = (loaded.get("DropInPaths") ?? "").split(/\s+/).filter(Boolean);
+      add("Service", "ok", t("doctor.unit_files"), [loaded.get("FragmentPath") || service.path, ...dropIns].join(", "));
+      for (const l of serviceLeftovers({ home: deps.env.HOME || homedir(), dropIns, systemUnit: system ? unit : null })) {
+        add("Service", "warn", t("doctor.leftover"), `${l.path}: ${l.detail}`);
+      }
+    }
   }
 
   if (deps.platform === "linux") {

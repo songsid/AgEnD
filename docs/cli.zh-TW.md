@@ -277,6 +277,13 @@ Detached restart 使用非同步 polling 與 monotonic deadline。期限到了�
 
 更新時會重寫 user unit，帶上這一行。`agend restart` 會替舊的 unit 補上，更新時的 refresh 也會替舊式的 system unit（`/etc/systemd/system/agend.service`）補上。unit 自己設定了 `OOMPolicy` 的話會保留原值。systemd 243 以前的版本不認得這個設定，會忽略它，並在 journal 留下警告。macOS 沒有對應的設定：launchd 沒有每個服務各自的 cgroup，kernel（jetsam）只會 kill 那一個行程；如果被 kill 的是 fleet，`KeepAlive` 會重新啟動它。
 
+**fleet 的就緒訊號必須送得到 systemd（#2331）。** unit 是 `Type=notify`：fleet 透過一個短暫的 `systemd-notify` 輔助程式告訴 systemd 它已就緒（`READY=1`），不是由主行程自己送，所以 systemd 只有在 `NotifyAccess=all` 時才會收下。設成 `main`、`exec`，或完全沒寫 `NotifyAccess`（`Type=notify` 的預設就是 `main`）時，systemd 會拒收：`Got notification message from PID …, but reception only permitted for main PID …`。fleet 本身照常執行，但 unit 會一直停在 `activating`，直到 `TimeoutStartSec` 用完，systemd 就把它 kill 掉再重啟——自從 `TimeoutStartSec=15min`（#1113）起就是每 15 分鐘一次。以前逾時是 `0` 的時候，同樣的 unit 只會停在 `activating`，沒有人會發現。
+- **unit 檔：**`agend restart` 和更新時的 refresh 會在 `Type=notify` 的 unit（user unit 和舊式的 system unit）裡寫入 `NotifyAccess=all`，取代 `main`、`exec` 或 `none`。AgEnD 自己只有在 0.0.24-beta.5 到 beta.12 用過 `main`。
+- **drop-in：**reload 之後，AgEnD 會問 systemd 實際*載入*的值。如果某個 drop-in（AgEnD 從不寫 drop-in）仍設成別的值，AgEnD 會加上自己的、排在最後的 drop-in `<unit>.d/zz-agend-notify.conf`（`NotifyAccess=all`），再 reload 並重新確認。你的 drop-in 不會被改動，只會被點名；等它不再設定 `NotifyAccess`，AgEnD 的檔案就可以刪掉。如果某個排序更後面的 drop-in 仍然勝出，重啟照常進行，並會印出一行告訴你要改哪個檔案。
+- **殘留設定：**install、start、restart 和更新都會點名會影響 fleet 啟動方式的檔案：設定了 `Type`、`NotifyAccess`、`ExecStart`、`TimeoutStartSec`、`WatchdogSec`、`Restart` 或 `EnvironmentFile` 的 drop-in；system unit 執行 fleet 時旁邊多出來的 user unit；使用 AgEnD 舊名稱（`com.ccd.fleet`、`com.claude-channel-daemon`，改名前的原始碼建置）的 unit 或 plist。只會點名，絕不刪除。
+- **`agend doctor`** 會顯示 systemd 實際載入的 unit（`Type`、`NotifyAccess`、`TimeoutStartSec`）、它來自哪些檔案（unit 檔和每個 drop-in），以及每一項殘留設定。`Type=notify` 卻不是 `NotifyAccess=all` 的 unit 會列為錯誤。
+- **第一次更新就會修好：**`agend update` 會執行新版本自己的 refresh 和 restart，所以更新到含此修正的版本時，就會在那一次更新裡修好 unit。
+
 **服務用哪個 Node 執行，以及 `agend restart` 何時會拒絕（#1450）。**
 - 有 AgEnD 自帶的 Node（或驗證過的 `AGEND_NODE`）時，unit（`ExecStart=`）和 plist（`ProgramArguments`）會先寫那個 Node，接著是套件的 `dist/cli.js`，最後是 `fleet start`。自帶 Node 的路徑只會在 npm 更新 AgEnD 時改變，而 `agend update` 屆時會重寫服務。runtime 的目錄不會出現在任何服務的 PATH 上，各 coding CLI 照舊使用原本的 Node。
 - 沒有自帶 Node 的平台（glibc Linux 與 macOS 11 以上的 x64/arm64 以外），服務改為啟動套件的 launcher（`<套件>/launcher/agend fleet start`），由它在每次啟動時從服務的 PATH 找 Node。所以用 nvm 或 Homebrew 升級 Node（會刪掉舊版目錄）也不會讓服務壞掉；Node 太舊時會在啟動時拒絕，原因寫進服務的 log。

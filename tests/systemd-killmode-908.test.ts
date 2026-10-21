@@ -118,6 +118,8 @@ describe("#1113: crash dumps, start timeout and start limit", () => {
     expect(result).toEqual({ kind: "ok", directives: {
       StartLimitIntervalSec: "added", StartLimitBurst: "added", TimeoutStartSec: "upgraded", TimeoutStopSec: "upgraded",
       KillMode: "added", CoredumpFilter: "added", LimitCORE: "added", OOMPolicy: "added",
+      // #2331: AgEnD's own NotifyAccess=all (2.0.1+) is already there.
+      NotifyAccess: "present",
     } });
     const after = readFileSync(path, "utf8");
     expect(unitSection(after)).toMatch(/^StartLimitIntervalSec=30min\nStartLimitBurst=4$/m);
@@ -266,7 +268,7 @@ describe("`agend restart` (what `agend update` spawns) fixes the unit before rel
    * `show -p KillMode --value` prints the loaded one. `pinLoaded` keeps the
    * loaded value whatever a reload says; `failShow` makes `show` fail.
    */
-  function restart(unitText: string | null, opts: { vanishDuringSelection?: boolean; stopLoaded?: string; failReload?: boolean; unreadable?: boolean; readOnlyDir?: boolean; loaded?: string; pinLoaded?: boolean; failShow?: boolean; systemdVersion?: number; pinFilter?: boolean; system?: boolean; dropIn?: string; typeDropIn?: string; dropInPaths?: string; dropInPathsAfterReload?: boolean; dropInName?: string } = {}) {
+  function restart(unitText: string | null, opts: { vanishDuringSelection?: boolean; stopLoaded?: string; failReload?: boolean; unreadable?: boolean; readOnlyDir?: boolean; loaded?: string; pinLoaded?: boolean; failShow?: boolean; systemdVersion?: number; pinFilter?: boolean; system?: boolean; dropIn?: string; typeDropIn?: string; dropInPaths?: string; dropInPathsAfterReload?: boolean; dropInName?: string; notifyAccess?: string } = {}) {
     const home = tmp();
     const unitDir = join(home, ".config", "systemd", "user");
     mkdirSync(unitDir, { recursive: true });
@@ -310,6 +312,14 @@ case "$*" in *"show -p TimeoutStopUSec --value"*)
   ${opts.stopLoaded !== undefined ? `printf '%s\\n' '${opts.stopLoaded}'` : `v=$(sed -n 's/^TimeoutStopSec=//p' '${unit}' | tail -n1); printf '%ss\\n' "$v"`};;
 esac
 case "$*" in *"show -p CoredumpFilter --value"*) cat '${filterLoaded}';; esac
+# #2331: Type/NotifyAccess as loaded. A drop-in's NotifyAccess wins over the file's, AgEnD's zz-agend-notify.conf over it.
+case "$*" in *"show -p Type,NotifyAccess,"*)
+  if [ -n '${opts.notifyAccess ?? ""}' ]; then
+    echo Type=notify
+    if [ -f '${unit}.d/zz-agend-notify.conf' ]; then echo NotifyAccess=all; else echo 'NotifyAccess=${opts.notifyAccess ?? ""}'; fi
+    echo 'DropInPaths=${opts.dropInPaths ?? ""}'
+  fi;;
+esac
 case "$*" in *"show -p DropInPaths --value"*)
   if [ "${opts.dropInPathsAfterReload ? "1" : "0"}" = 0 ] || grep -q daemon-reload '${log}'; then printf '%s\\n' '${opts.dropInPaths ?? ""}'; fi;;
 esac
@@ -483,6 +493,26 @@ syncBuiltinESMExports();
     expect(r.stderr).not.toContain("Not restarting");
   });
 
+
+  it.skipIf(!existsSync(cli))("#2331: a drop-in that refuses READY (NotifyAccess=main) gets AgEnD's own later drop-in; the restart goes on", () => {
+    const { r, out, restarted, unit, calls } = restart(renderSystemdUnit(vars), { dropIn: "[Service]\nNotifyAccess=main\n", notifyAccess: "main", dropInPaths: "OVERRIDE" });
+    expect(restarted, out).toBe(true);
+    expect(readFileSync(join(`${unit}.d`, "zz-agend-notify.conf"), "utf8")).toContain("[Service]\nNotifyAccess=all\n");
+    expect(readFileSync(join(`${unit}.d`, "override.conf"), "utf8")).toBe("[Service]\nNotifyAccess=main\n");   // the operator's, untouched
+    expect(r.stdout).toContain("zz-agend-notify.conf: NotifyAccess=all — systemd had NotifyAccess=main loaded");
+    // Reloaded after AgEnD's drop-in, before the restart.
+    const wrote = calls.findLastIndex(c => c.includes("daemon-reload"));
+    expect(wrote).toBeLessThan(calls.findIndex(c => /^--user restart/.test(c)));
+  });
+
+  it.skipIf(!existsSync(cli))("#2331: a unit that loads NotifyAccess=all needs nothing; one systemd says nothing about is left alone", () => {
+    for (const notifyAccess of ["all", undefined]) {
+      const { out, restarted, unit } = restart(renderSystemdUnit(vars), notifyAccess ? { notifyAccess } : {});
+      expect(restarted, out).toBe(true);
+      expect(existsSync(join(`${unit}.d`, "zz-agend-notify.conf"))).toBe(false);
+      expect(out).not.toContain("#2331");
+    }
+  });
 
   it.skipIf(!existsSync(cli))("#1113: an operator's own CoredumpFilter is left alone, warned, and not gated", () => {
     const { r, out, restarted, unit } = restart(legacyUnit().replace("TimeoutStopSec=60", "TimeoutStopSec=60\nCoredumpFilter=0x33"));

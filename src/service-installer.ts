@@ -552,6 +552,8 @@ interface UnitDirectivePolicy {
    * file: classify it from all of them, not from its first line.
    */
   allAssignments?: boolean;
+  /** Applies only to a unit whose main file passes this (#2331: NotifyAccess only for Type=notify). */
+  when?: (unitText: string) => boolean;
 }
 
 /** `[Service]` assignments of `key`, in order, from one unit file's text. */
@@ -664,6 +666,11 @@ const UNIT_HARDENING: readonly UnitDirectivePolicy[] = [
   // #2015: an OOM-killed process stops only itself. `stop` (systemd's default) is never something AgEnD wrote, so a
   // unit that sets it is the operator's choice and is left alone.
   { section: "Service", key: "OOMPolicy", value: "continue" },
+  // #2331: the fleet says READY=1 through a short-lived systemd-notify helper, never as the main process. systemd takes
+  // it only with NotifyAccess=all: with main or exec (or none) it refuses the signal, and the start times out — every
+  // 15 minutes since TimeoutStartSec=15min (#1122), silently before, when it was 0. AgEnD only ever shipped `main`
+  // (0.0.24-beta.5–12) and `all`; a Type=notify unit without the line has systemd's default, main.
+  { section: "Service", key: "NotifyAccess", value: "all", legacy: ["main", "exec", "none"], when: serviceTypeIsNotify },
 ];
 
 export type UnitDirectiveOutcome = "added" | "upgraded" | "present" | "custom";
@@ -702,6 +709,7 @@ export function ensureSystemdUnitHardening(
   for (const policy of UNIT_HARDENING) {
     const bounds = sectionBounds(lines, policy.section);
     if (!bounds) continue;
+    if (policy.when && !policy.when(lines.join("\n"))) continue;
     // An explicit override or duplicate is an operator policy, not a legacy
     // AgEnD default. Do not overwrite it or gate it as our managed value.
     if (policy.key === "TimeoutStopSec") {
@@ -743,6 +751,162 @@ export function ensureSystemdUnitHardening(
   if (changed) replaceUnitFile(unitPath, lines.join("\n"));
   return { kind: "ok", directives };
 }
+
+/** #2331: does a unit file's own [Service] say Type=notify (its last assignment)? */
+export function serviceTypeIsNotify(unitText: string): boolean {
+  const types = serviceAssignments(unitText, "Type");
+  return types.length > 0 && types[types.length - 1] === "notify";
+}
+
+/** #2331: AgEnD's own drop-in, named to sort after an operator's, that puts NotifyAccess back to `all`. */
+export const NOTIFY_DROPIN = "zz-agend-notify.conf";
+
+export interface LoadedNotify {
+  type: string;
+  notifyAccess: string;
+  timeoutStart: string;
+  fragment: string;
+  dropIns: string[];
+}
+
+/** What systemd has LOADED for the unit (never the file: #1804), through `show` — `systemctl show -p <prop> --value`. */
+export function readLoadedNotify(show: (property: string) => string | null): LoadedNotify | null {
+  const type = show("Type"), notifyAccess = show("NotifyAccess");
+  if (!type || !notifyAccess) return null;
+  return {
+    type, notifyAccess,
+    timeoutStart: show("TimeoutStartUSec") ?? "",
+    fragment: show("FragmentPath") ?? "",
+    dropIns: (show("DropInPaths") ?? "").split(/\s+/).filter(Boolean),
+  };
+}
+
+export type NotifyRepair =
+  | { kind: "fine" }
+  | { kind: "unknown" }
+  | { kind: "repaired"; path: string; from: string; dropIns: string[] }
+  | { kind: "refused"; notifyAccess: string; dropIns: string[]; detail: string };
+
+/** Write AgEnD's drop-in for a unit file; returns its path. */
+export function writeNotifyDropIn(unitPath: string): string {
+  const dir = `${unitPath}.d`;
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, NOTIFY_DROPIN);
+  writeFileSync(path, [
+    "# Written by AgEnD (#2331). The fleet tells systemd it is ready through a short-lived systemd-notify helper,",
+    "# which systemd accepts only with NotifyAccess=all. Another drop-in here set it to something else, so systemd",
+    "# refused the fleet's ready signal and restarted it every time TimeoutStartSec ran out. This file can go once",
+    "# no other drop-in sets NotifyAccess.",
+    "[Service]",
+    "NotifyAccess=all",
+    "",
+  ].join("\n"), { mode: 0o644 });
+  return path;
+}
+
+/**
+ * #2331: a Type=notify unit must LOAD NotifyAccess=all, or systemd refuses the fleet's READY and restarts it when the
+ * start times out. The main file is fixed by the hardening above; what is still wrong after a reload comes from a
+ * drop-in AgEnD never wrote. Rather than touch the operator's file, AgEnD adds its own last-sorting drop-in, reloads
+ * and asks systemd again. `reload` reloads the manager; `write` writes the drop-in (tests).
+ */
+export function ensureLoadedNotifyAccess(
+  unitPath: string | null,
+  show: (property: string) => string | null,
+  reload: () => boolean,
+  write: (unitPath: string) => string = writeNotifyDropIn,
+): NotifyRepair {
+  const before = readLoadedNotify(show);
+  if (!before) return { kind: "unknown" };
+  if (before.type !== "notify" || before.notifyAccess === "all") return { kind: "fine" };
+  if (!unitPath) return { kind: "refused", notifyAccess: before.notifyAccess, dropIns: before.dropIns, detail: "its unit file is not known here" };
+  let path: string;
+  try { path = write(unitPath); } catch (err) {
+    return { kind: "refused", notifyAccess: before.notifyAccess, dropIns: before.dropIns, detail: `AgEnD could not write ${join(`${unitPath}.d`, NOTIFY_DROPIN)} (${(err as NodeJS.ErrnoException).code ?? "error"})` };
+  }
+  reload();
+  const after = readLoadedNotify(show);
+  if (after && (after.type !== "notify" || after.notifyAccess === "all")) return { kind: "repaired", path, from: before.notifyAccess, dropIns: before.dropIns };
+  return { kind: "refused", notifyAccess: after?.notifyAccess ?? before.notifyAccess, dropIns: after?.dropIns ?? before.dropIns, detail: "it is still set after AgEnD's own drop-in (a later one wins)" };
+}
+
+/** What a repair says, one line each ("" for nothing). */
+export function notifyRepairLines(r: NotifyRepair, unit: string, reloadCmd: string): string[] {
+  if (r.kind === "repaired") {
+    return [`  ✓ ${r.path}: NotifyAccess=all — systemd had NotifyAccess=${r.from} loaded${r.dropIns.length ? ` (from ${r.dropIns.join(", ")})` : ""}, which refuses the fleet's ready signal and restarts it every 15 minutes (#2331)`];
+  }
+  if (r.kind === "refused") {
+    return [`  ⚠ systemd loads NotifyAccess=${r.notifyAccess} for ${unit}${r.dropIns.length ? ` (drop-ins: ${r.dropIns.join(", ")})` : ""}: the fleet's ready signal is refused, and systemd restarts it every time TimeoutStartSec runs out (15 minutes). ${r.detail[0]!.toUpperCase()}${r.detail.slice(1)}. Remove the line that sets NotifyAccess, run \`${reloadCmd}\`, then \`agend restart\` (#2331).`];
+  }
+  return [];
+}
+
+/** Directives a leftover drop-in may set that decide whether the fleet starts and stays up. */
+const LEFTOVER_KEYS = ["Type", "NotifyAccess", "ExecStart", "TimeoutStartSec", "WatchdogSec", "Restart", "EnvironmentFile"] as const;
+/** Labels AgEnD used before its rename (source builds before 2026-03-31; never in a published package). */
+const OLD_LABELS = ["com.ccd.fleet", "com.claude-channel-daemon"] as const;
+
+export interface ServiceLeftover { path: string; detail: string }
+
+/**
+ * #2331: service files AgEnD did not write, or no longer uses, that can change how the fleet starts: drop-ins that set
+ * the directives above, a user unit beside the system unit that runs the fleet, units and plists under AgEnD's old
+ * labels. Reported, never removed: AgEnD never writes drop-ins, and the others may be someone's on purpose.
+ */
+export function serviceLeftovers(o: { home: string; dropIns: readonly string[]; systemUnit: string | null; userUnitPath?: string }): ServiceLeftover[] {
+  const out: ServiceLeftover[] = [];
+  for (const path of o.dropIns) {
+    if (path.endsWith(`/${NOTIFY_DROPIN}`)) continue;
+    let text: string;
+    try { text = readFileSync(path, "utf8"); } catch { continue; }
+    const set = LEFTOVER_KEYS.flatMap((key) => serviceAssignments(text, key).slice(-1).map((v) => `${key}=${v}`));
+    if (set.length) out.push({ path, detail: `a drop-in (AgEnD never writes one) sets ${set.join(", ")}; keep it only if you added it on purpose` });
+  }
+  const userUnit = o.userUnitPath ?? join(o.home, ".config", "systemd", "user", `${SERVICE_LABEL}.service`);
+  if (o.systemUnit && existsSync(userUnit)) {
+    out.push({ path: userUnit, detail: `a user unit beside the system unit ${o.systemUnit}, which runs the fleet; this one is not used — \`systemctl --user disable ${SERVICE_LABEL}\`, then remove it` });
+  }
+  for (const label of OLD_LABELS) {
+    for (const path of [join(o.home, ".config", "systemd", "user", `${label}.service`), join(o.home, "Library", "LaunchAgents", `${label}.plist`)]) {
+      if (existsSync(path)) out.push({ path, detail: "a service from before AgEnD's rename (a source build); it does not run this fleet — disable it and remove it" });
+    }
+  }
+  return out;
+}
+
+/**
+ * #2331: after a reload, the fleet's unit as systemd loaded it — NotifyAccess made right if a drop-in got in the way,
+ * and any leftovers named. One line each, for install, start and restart to print.
+ */
+export function loadedUnitCheck(o: { user: boolean; unit: string; unitPath: string | null; home?: string }): string[] {
+  const scope = o.user ? " --user" : "";
+  // One `systemctl show` per state of the manager (now; after a reload), never one per property.
+  const snapshot = (): Map<string, string> | null => {
+    let out: string;
+    try { out = execSync(`systemctl${scope} show -p ${LOADED_PROPERTIES.join(",")} ${o.unit}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }); } catch { return null; }
+    const values = new Map<string, string>();
+    for (const line of out.split("\n")) { const at = line.indexOf("="); if (at > 0) values.set(line.slice(0, at), line.slice(at + 1).trim()); }
+    return values;
+  };
+  let loaded = snapshot();
+  const show = (property: string): string | null => loaded?.get(property) ?? null;
+  const reloadCmd = `systemctl${scope} daemon-reload`;
+  const reload = (): boolean => {
+    let ok = true;
+    try { execSync(reloadCmd, { stdio: "pipe", timeout: 30_000 }); } catch { ok = false; }
+    loaded = snapshot();
+    return ok;
+  };
+  const lines = notifyRepairLines(ensureLoadedNotifyAccess(o.unitPath, show, reload), o.unit, reloadCmd);
+  const now = readLoadedNotify(show);
+  for (const l of serviceLeftovers({ home: o.home ?? homedir(), dropIns: now?.dropIns ?? [], systemUnit: o.user ? null : o.unit })) {
+    lines.push(`  ℹ ${l.path}: ${l.detail} (#2331)`);
+  }
+  return lines;
+}
+
+/** What #2331 reads of a loaded unit, in one `systemctl show -p …`. */
+export const LOADED_PROPERTIES = ["Type", "NotifyAccess", "TimeoutStartUSec", "FragmentPath", "DropInPaths"] as const;
 
 const SERVICE_LABEL = "com.agend.fleet";
 
@@ -875,6 +1039,8 @@ export function startService(): boolean {
     } else {
       ensureUserSystemd(undefined, { linger: true });   // #2264: without it, root on WSL got "Failed to connect to bus" and no fleet
       try { execSync("systemctl --user daemon-reload", { stdio: "pipe" }); } catch {}
+      // #2331: a Type=notify unit that refuses the fleet's READY would be killed when its start times out.
+      for (const line of loadedUnitCheck({ user: true, unit: SERVICE_LABEL, unitPath: join(homedir(), ".config", "systemd", "user", `${SERVICE_LABEL}.service`) })) console.log(line);
       execSync(`systemctl --user start ${SERVICE_LABEL}`, { stdio: "inherit" });
     }
     return true;
@@ -921,6 +1087,8 @@ export function activateService(plistPath: string, pidPath: string): void {
     const serviceName = plistPath.replace(/.*\//, "").replace(/\.service$/, "");
     ensureUserSystemd(undefined, { linger: true });   // #2264: linger on, so the fleet outlives the login that installed it
     execSync("systemctl --user daemon-reload", { stdio: "inherit" });
+    // #2331: what systemd loaded, before the fleet starts under it.
+    for (const line of loadedUnitCheck({ user: true, unit: serviceName, unitPath: plistPath })) console.log(line);
     execSync(`systemctl --user enable --now ${serviceName}`, { stdio: "inherit" });
   }
 }
