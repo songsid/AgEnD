@@ -195,6 +195,23 @@ describe("the controller", () => {
     expect(r.stage.emit("click", { target: r.img }).stopped, "a pinch is never a tap").toBe(true);
   });
 
+  it("touch: a pinch lifted straight away is no tap: its click does not reach the dark area (which would close)", () => {
+    r = rig();
+    r.ptr("pointerdown", 1, 633, 400, "touch"); r.ptr("pointerdown", 2, 733, 400, "touch");
+    r.ptr("pointermove", 1, 613, 400, "touch"); r.ptr("pointermove", 2, 753, 400, "touch");
+    r.ptr("pointerup", 2, 753, 400, "touch"); r.ptr("pointerup", 1, 613, 400, "touch");
+    expect(r.stage.emit("click", { target: r.stage }).stopped).toBe(true);
+  });
+
+  it("touch: fingers that move together carry the picture with them while pinching", () => {
+    r = rig();
+    r.zoom.actual(683, 400);
+    const z0 = r.z();
+    r.ptr("pointerdown", 1, 633, 400, "touch"); r.ptr("pointerdown", 2, 733, 400, "touch");
+    r.ptr("pointermove", 1, 613, 360, "touch"); r.ptr("pointermove", 2, 713, 360, "touch");   // same spread, 20 left and 40 up
+    expect([r.z().s, r.z().tx - z0.tx, r.z().ty - z0.ty]).toEqual([1, -20, -40]);
+  });
+
   it("buttons and keys: zoomBy steps by STEP around the middle; fit, fit width and actual size", () => {
     r = rig();
     const f = r.z();
