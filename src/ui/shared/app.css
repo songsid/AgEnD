@@ -1377,16 +1377,17 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oc { --fx-task: #b794f6; --fx-send: #2dd4bf; --fx-report: #f472b6; --fx-broadcast: #fb923c; --fx-team: #cbd5e1; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .oc { --fx-task: #7c3aed; --fx-send: #0f766e; --fx-report: #be185d; --fx-broadcast: #c2410c; --fx-team: #475569; } }
 :root[data-theme="light"] .oc { --fx-task: #7c3aed; --fx-send: #0f766e; --fx-report: #be185d; --fx-broadcast: #c2410c; --fx-team: #475569; }
-.oc-flow { fill: none; stroke-width: 2.5; stroke-linecap: round; }
+/* #2329: a line's stroke width is its own attribute (fleet-traffic.js strokeOf): its head and its trimmed ends are sized from it. */
+.oc-flow { fill: none; stroke-linecap: round; }
 .oc-flow-halo { fill: none; stroke: var(--bg); stroke-width: 6; stroke-linecap: round; opacity: 0.85; }
 .oc-flow.h-task { stroke: var(--fx-task); } .oc-flow.h-send { stroke: var(--fx-send); } .oc-flow.h-report { stroke: var(--fx-report); }
-.oc-flow.h-broadcast { stroke: var(--fx-broadcast); } .oc-flow.h-team { stroke: var(--fx-team); stroke-width: 3.5; }
+.oc-flow.h-broadcast { stroke: var(--fx-broadcast); } .oc-flow.h-team { stroke: var(--fx-team); }
 .oc-flow.ph-live { stroke-dasharray: 7 6; animation: oc-dash 0.9s linear infinite; }
 .oc-flow.ph-queued { stroke-dasharray: 2 5; opacity: 0.8; }
 .oc-flow.ph-fading { stroke: var(--text-3); animation: oc-fade 12s ease-out forwards; }
 /* #1918 review: the work — a delegation in progress (a slow dash, kept until its report), its report coming back, none. */
-.oc-flow.ph-work { stroke-dasharray: 10 7; stroke-width: 3; animation: oc-dash 2.4s linear infinite; }
-.oc-flow.ph-return { stroke-width: 3; animation: oc-fade 2.4s ease-out forwards; }
+.oc-flow.ph-work { stroke-dasharray: 10 7; animation: oc-dash 2.4s linear infinite; }
+.oc-flow.ph-return { animation: oc-fade 2.4s ease-out forwards; }
 .oc-flow.ph-stale { stroke: var(--text-3); stroke-dasharray: 3 6; animation: oc-fade 12s ease-out forwards; }
 .oc-ah.h-task { fill: var(--fx-task); } .oc-ah.h-send { fill: var(--fx-send); } .oc-ah.h-report { fill: var(--fx-report); }
 .oc-ah.h-broadcast { fill: var(--fx-broadcast); } .oc-ah.h-team { fill: var(--fx-team); } .oc-ah.h-fading { fill: var(--text-3); }

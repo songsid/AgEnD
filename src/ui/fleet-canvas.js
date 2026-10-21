@@ -28,7 +28,7 @@ import { avatarOf, backendLabel, firstCharacter, namesOf } from "/assets/instanc
 import { identityClasses, identityOf, paintIdentity, useIdentityColors } from "/assets/identity-color.js";
 import { buildOrgView, OrgChart, OrgSummary } from "./fleet-org.js";
 import { OC, REST_KEY, SUM_LINE, canvasLayout, openingRegion, summaryRows } from "./fleet-canvas-layout.js";
-import { createTrafficStore, FAR_K, POLL_MS, sendingBy, trafficEdges } from "./fleet-traffic.js";
+import { createTrafficStore, FAR_K, HEAD, POLL_MS, sendingBy, trafficEdges } from "./fleet-traffic.js";
 import { routeScene } from "./fleet-route-scene.js";
 import { createRouteClient } from "./fleet-route.js";
 
@@ -207,7 +207,8 @@ function TrafficLayer({ edges, q }) {
     const dim = q && !e.names.some((n) => n.toLowerCase().includes(q));
     return html`<g key=${e.key} class=${`oc-fl${dim ? " dim" : ""}`} data-routed=${e.routed ? "1" : undefined}>
       <path class="oc-flow-halo" d=${e.d} />
-      <path class=${`oc-flow h-${e.hue} ph-${e.phase}`} d=${e.d} marker-start=${`url(#oc-src-${MARKER(e)})`} marker-end=${`url(#oc-ah-${MARKER(e)})`} />
+      <path class=${`oc-flow h-${e.hue} ph-${e.phase}`} d=${e.d} stroke-width=${e.w} marker-start=${`url(#oc-src-${MARKER(e)})`}
+        marker-end=${e.head ? `url(#oc-ah-${MARKER(e)})` : undefined} />
       ${e.phase === "live" && !still ? html`<circle class=${`oc-pulse h-${e.hue}`} r="4"><animateMotion dur=${`${Math.max(1.6, e.pts.length * 0.3)}s`} repeatCount="indefinite" path=${e.d} /></circle>` : null}
       ${e.phase === "return" && !still ? html`<circle class=${`oc-pulse h-${e.hue}`} r="5"><animateMotion dur="1.6s" repeatCount="1" fill="freeze" path=${e.d} /></circle>` : null}
       ${e.badge ? html`<g class="oc-badge" transform=${`translate(${e.badge.x - 14} ${e.badge.y - 10})`}><rect width="28" height="20" rx="10" /><text x="14" y="14" text-anchor="middle">${`×${e.n}`}</text></g>` : null}
@@ -215,6 +216,13 @@ function TrafficLayer({ edges, q }) {
   })}</g>`;
 }
 const ARROWS = ["task", "send", "report", "broadcast", "team", "fading"];
+/**
+ * The head (#2329), in a 10-unit box that is HEAD.LEN stroke widths each way: a slim swept triangle HEAD.WIDE across,
+ * its tip at x 10; the path ends HEAD.BACK stroke widths before the tip (refX), so the line's stroke ends inside it.
+ */
+const HEAD_HALF = (5 * HEAD.WIDE) / HEAD.LEN;
+const HEAD_D = `M0 ${5 - HEAD_HALF} L10 5 L0 ${5 + HEAD_HALF} L2.5 5 z`;
+const HEAD_REF_X = 10 - (10 * HEAD.BACK) / HEAD.LEN;
 
 /**
  * The key to the lines (#2052): a **Key** toggle in the toolbar; open, its rows are a strip between the toolbar and the
@@ -439,10 +447,10 @@ function Canvas({ view, folded, onFold, q, jump, traffic }) {
     <svg ref=${svgRef} class="oc-svg" role="application" tabindex="0" aria-label=${tc("label")} onWheel=${onWheel} onPointerDown=${onPointerDown}
       onPointerMove=${onPointerMove} onPointerUp=${onPointerUp} onPointerCancel=${onPointerUp} onKeyDown=${onKeyDown} onFocusIn=${onFocusIn} onClickCapture=${onClickCapture}>
       <defs><clipPath id="oc-clip-av" clipPathUnits="objectBoundingBox"><circle cx="0.5" cy="0.5" r="0.5" /></clipPath>
-        ${ARROWS.map((a) => html`<marker key=${a} id=${`oc-ah-${a}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-          <path d="M0 0 L10 5 L0 10 z" class=${`oc-ah h-${a}`} /></marker>`)}
-        ${ARROWS.map((a) => html`<marker key=${`s-${a}`} id=${`oc-src-${a}`} viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5">
-          <circle cx="5" cy="5" r="4" class=${`oc-ah h-${a}`} /></marker>`)}</defs>
+        ${ARROWS.map((a) => html`<marker key=${a} id=${`oc-ah-${a}`} viewBox="0 0 10 10" refX=${HEAD_REF_X} refY="5" markerWidth=${HEAD.LEN} markerHeight=${HEAD.LEN} orient="auto">
+          <path d=${HEAD_D} class=${`oc-ah h-${a}`} /></marker>`)}
+        ${ARROWS.map((a) => html`<marker key=${`s-${a}`} id=${`oc-src-${a}`} viewBox="0 0 10 10" refX="5" refY="5" markerWidth=${HEAD.DOT} markerHeight=${HEAD.DOT}>
+          <circle cx="5" cy="5" r="5" class=${`oc-ah h-${a}`} /></marker>`)}</defs>
       <g ref=${worldRef} class="oc-world">
         <g class="oc-tree">${L.tree.map((d, i) => html`<path key=${i} d=${d} />`)}</g>
         <g class="oc-teams">${L.boxes.map((b) => html`<${TeamBox} key=${b.key} b=${b} q=${q} />`)}</g>
