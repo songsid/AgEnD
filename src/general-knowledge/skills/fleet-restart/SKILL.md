@@ -10,7 +10,7 @@ roles: [general]
 - `agend fleet restart` — graceful, in the same process: instances restart once idle (does **not** load new code)
 - `agend fleet restart --reload` — full process restart: new code and new connections take effect
 - `agend fleet restart <name>` — restart one instance now
-- `agend reload` — SIGHUP hot-reload, reconciles instances without restarting the fleet process
+- `agend reload` — SIGHUP hot-reload, reconciles instances without restarting the fleet process. **Do not run `agend reload` after `create_instance`** — the fleet reconciles automatically when the instance is created; a redundant reload will restart every instance whose config changed, including ones you did not intend to touch.
 - `restart_instance("<name>")` — single instance restart, reloads fleet.yaml first
 - `agend restart` — restarts the AgEnD service itself (systemd / launchd / detached), not one instance
 

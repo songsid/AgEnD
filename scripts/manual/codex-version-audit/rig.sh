@@ -70,10 +70,25 @@ case "$STEP" in
   key) T send-keys -t "$WIN" "${1:?key}" ;;
   mode) echo "${1:?mode}" > "$RUN/mode" ;;
   kill)
-    # kill this version's app-server daemon (its environ carries CODEX_HOME under $AH) → the reconnect panes
-    for p in $(pgrep -f "app-server" || true); do
-      if tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -q "^CODEX_HOME=$AH/"; then echo "kill $p"; kill "$p"; fi
+    # Only this run's CODEX_HOME may be signalled. Drain environ instead of grep -q (no early consumer/SIGPIPE),
+    # compare the literal prefix (AH can contain regex characters), and retain a namespace-only diagnostic on a miss.
+    candidates="$(pgrep -f "app-server" || true)"
+    matched=0; details=()
+    for p in $candidates; do
+      home="<unavailable>"
+      if [ -r "/proc/$p/environ" ]; then
+        home="<unset>"
+        while IFS= read -r -d '' entry; do
+          case "$entry" in CODEX_HOME=*) home="${entry#CODEX_HOME=}" ;; esac
+        done < "/proc/$p/environ" 2>/dev/null || true
+      fi
+      details+=("pid=$p CODEX_HOME=$home")
+      case "$home" in "$AH/"*) echo "kill $p"; kill "$p"; matched=1 ;; esac
     done
+    if [ "$matched" = 0 ]; then
+      echo "kill scan missed $AH/: pgrep candidates: ${candidates:-<none>}" >&2
+      if [ "${#details[@]}" -gt 0 ]; then printf '%s\n' "${details[@]}" >&2; fi
+    fi
     ;;
   stop) T kill-server 2>/dev/null || true ;;
   *) echo "unknown step $STEP" >&2; exit 2 ;;

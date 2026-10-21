@@ -339,6 +339,19 @@ A fleet with no chat connection yet (web only) shows a card above the Agents and
   - A connection shows **Token set** (with the bot's name while it runs) or **Token missing**, never the token. A new connection starts as soon as Apply runs, without a restart, when AgEnD is already running another connection and nothing else at fleet level changed; the Apply card says "Starting the new connection". A fleet's first connection, or a change to an existing one, still offers **Restart AgEnD**. A token replaced on a connection that is not running starts it the same way; for the first connection it waits for that restart.
 - **A change that needs a fleet admin's confirmation** (see [Confirming sensitive changes](#confirming-sensitive-changes)) shows a card in any panel: what it changes, the time left, and **Withdraw**. Apply waits for it; once it is confirmed the rest goes on, and if it is refused or expires, nothing after it is applied and those changes are staged again (a bot token has to be entered again).
 
+### App icon
+
+The picture a browser tab shows for the dashboard, and the icon an "Add to Home Screen" shortcut gets on a phone. **Settings → Web appearance → Look → App icon**:
+
+- **Choose image…** a square picture: PNG, JPG or WebP, 512 × 512 or larger. A wider or taller one is cropped to its centre; a smaller one is enlarged (the card warns, since it may look soft). You see the new icon before **Use this icon**; **Cancel** keeps the old one.
+- **Restore default** brings back the AgEnD icon.
+- Only an admin's session can change it. A read-only session sees it; guests and the public link do not have the card.
+- **Who sees it:** everyone who can open the dashboard's address — the sign-in page and the public link show the same icon, as they did the AgEnD one. Do not use a private picture.
+- **On an iPhone or iPad** the home screen keeps the icon it had when the shortcut was added: remove the shortcut and add it again to see a new one. Android and desktop browsers pick it up on their next visit.
+- The dashboard has a web app manifest (`/manifest.webmanifest`: the name AgEnD, standalone, the 192 and 512 px icons), so installing it as an app on Android or a desktop uses the same icon.
+
+The host makes the sizes from the one picture (the 180 px touch icon, a 32/48 px favicon, the manifest's 192 and 512 px) and keeps them in its state directory (`web-app-icon/`). Every icon address carries the icon's version, so a browser fetches the new one as soon as it changes.
+
 ### Identity colours
 
 Each agent has a colour you can find it by in the sidebar.

@@ -1,4 +1,5 @@
 import { sameAccount } from "./web-guest-access.js";
+import { withAppIconLinks } from "./web-icons.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { performance } from "node:perf_hooks";
 import { withinBudget } from "./monotonic-budget.js";
@@ -178,7 +179,7 @@ function json(res: ServerResponse, code: number, body: unknown, headers: Record<
 export function serveSigninPage(res: ServerResponse, status = 200): void {
   try {
     const html = readFileSync(join(__dirname, "ui", "signin.html"), "utf-8");
-    sendPanelHtml(res, html, status, { "Cache-Control": "no-store" });
+    sendPanelHtml(res, withAppIconLinks(html), status, { "Cache-Control": "no-store" });
   } catch {
     json(res, 500, { error: "signin.html not found" });
   }

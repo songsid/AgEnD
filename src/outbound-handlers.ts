@@ -289,6 +289,30 @@ function targetState(ctx: OutboundContext, name: string): TargetState {
   return "stopped";
 }
 
+/**
+ * #2327: the sender's warning about a recipient in an error state, naming only what is known. One detected error
+ * pattern puts a daemon in that state, so it is "showed … and is waiting to recover" — "paused" only when the
+ * recipient is actually paused, and never "repeated" (nothing counts occurrences).
+ */
+function recipientWarning(
+  daemon: { isErrorState?: boolean; isCrashLoop?: boolean; errorStateCause?: string | null; lastErrorType?: string | null } | undefined,
+  targetName: string,
+  paused: boolean,
+): string | undefined {
+  if (!daemon?.isErrorState) return undefined;
+  if (daemon.isCrashLoop) return t("delivery.target_crash", targetName);
+  if (daemon.errorStateCause === "unsupervised") return t("delivery.target_unsupervised", targetName);
+  if (daemon.errorStateCause === "tmux_recovering") return t("delivery.target_tmux", targetName);
+  if (daemon.errorStateCause !== "error_detected") return undefined;
+  const type = daemon.lastErrorType;
+  const seen = t(type === "rate_limit" || type === "timeout" ? "delivery.seen_limit"
+    : type === "quota" ? "delivery.seen_quota"
+      : type === "auth_error" ? "delivery.seen_auth"
+        : "delivery.seen_error");
+  const warning = t(paused ? "delivery.target_paused_after" : "delivery.target_detected", targetName, seen);
+  return type === "auth_error" ? `${warning} ${t("delivery.check_credentials")}` : warning;
+}
+
 /** Cross-instance delivery retries: same shape the scheduler already uses. */
 const CROSS_INSTANCE_RETRY_DEFAULTS = { retries: 3, intervalMs: 30_000 } as const;
 let crossInstanceRetry: { retries: number; intervalMs: number } = { ...CROSS_INSTANCE_RETRY_DEFAULTS };
@@ -634,16 +658,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   if (!durableReceipt?.duplicate) ctx.indexCrossInstance?.({ messageId: ipcMeta.message_id, from: senderLabel, to: targetName, kind: ipcMeta.request_kind,
     correlationId: ipcMeta.correlation_id, taskSummary: ipcMeta.task_summary, content: message ?? "", ts: ipcMeta.ts });
   ctx.queueMirrorMessage?.(`${displayLabel(senderLabel)} → ${displayLabel(targetName)}: ${truncatePreview(message ?? "", 500)}`);
-  const targetDaemon = ctx.lifecycle.daemons.get(targetInstanceName);
-  const targetStateWarning = targetDaemon?.isErrorState
-    ? targetDaemon.isCrashLoop
-      ? t("delivery.target_crash", targetName)
-      : targetDaemon.lastErrorType === "rate_limit" || targetDaemon.lastErrorType === "timeout"
-        ? t("delivery.target_limit", targetName)
-        : targetDaemon.lastErrorType === "auth_error"
-          ? t("delivery.target_auth", targetName)
-          : t("delivery.target_error", targetName)
-    : undefined;
+  const targetStateWarning = recipientWarning(ctx.lifecycle.daemons.get(targetInstanceName), targetName, state === "paused");
   const warnings = [steerFallbackWarning, targetStateWarning].filter((value): value is string => !!value);
   respond({ sent: true, queued: true, target: targetName, target_state: state,
     ...(forwards?.length ? { forwards } : {}),
