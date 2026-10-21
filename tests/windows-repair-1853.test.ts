@@ -64,6 +64,24 @@ describe("the probe of a Linux, in real bash", () => {
     writeFileSync(join(d, "s"), "");                                             // a file a bare s/…/ could glob to
     expect(probe()).toBe("AGEND_BROKEN\nAGEND_VERSION=2.3.0-beta.16\n");
   });
+  it("#2286 review: paths with a space are not split (AGEND_HOME, npm's root), and npm's scope alone is not AgEnD", () => {
+    const spaced = scratch("agend-1853repair-sp-");
+    const home = join(spaced, "home dir"), root = join(spaced, "npm root");
+    mkdirSync(join(home, ".agend"), { recursive: true }); mkdirSync(join(spaced, "bin"));
+    mkdirSync(join(root, "@songsid", ".agend-RmEK4vIL"), { recursive: true }); mkdirSync(join(root, "@songsid", "agend"));
+    writeFileSync(join(root, "@songsid", ".agend-RmEK4vIL", "package.json"), '{\n  "name": "@songsid/agend",\n  "version": "2.3.0-beta.16"\n}\n');
+    writeFileSync(join(root, "@songsid", "agend", "partial.tmp"), "");               // npm's half-written new copy
+    for (const [n, b] of [["npm", `echo '${root}'`], ["agend", "exit 127"]]) { writeFileSync(join(spaced, "bin", n), `#!/bin/sh\n${b}\n`); chmodSync(join(spaced, "bin", n), 0o755); }
+    const probe = () => spawnSync("bash", ["-c", PROBE], { encoding: "utf8", env: { HOME: home, PATH: `${join(spaced, "bin")}:/usr/bin:/bin` }, cwd: spaced });
+    expect(probe().stdout).toBe("AGEND_BROKEN\nAGEND_VERSION=2.3.0-beta.16\n");   // npm's root with a space
+    renameSync(join(root, "@songsid"), join(root, "moved"));
+    writeFileSync(join(home, ".agend", "fleet.yaml"), "");
+    const fleet = probe();
+    expect([fleet.stdout, fleet.stderr]).toEqual(["AGEND_BROKEN\n", ""]);            // AGEND_HOME with a space; no "binary operator expected"
+    rmSync(join(home, ".agend", "fleet.yaml"));
+    mkdirSync(join(root, "@songsid", "agend-plugin-discord"), { recursive: true });
+    expect(probe().stdout).toBe("");                                                   // the scope alone, no AgEnD package
+  });
   it("no double quote reaches wsl.exe (Windows PowerShell 5.1 would split the command)", () => {
     expect(PROBE).not.toContain('"');
   });
@@ -113,17 +131,18 @@ describe.skipIf(!pwsh)("with pwsh: finding and repairing a broken AgEnD", { time
     const found = withHelpers(`$r = Find-ExistingAgend; Write-Output ("R=" + $r.Distro + "|" + $r.Broken)`, fakeWsl({ probeAnswer: "AGEND_FOUND\n" }));
     expect(found).toContain("R=AgEnD|False");
   });
-  it("the repair: the official installer in that Linux, pinned to the version on disk, then agend --version", () => {
+  it("the repair: the official installer in that Linux, on the channel of the version on disk (a beta stays on beta), then agend --version", () => {
     const bin = fakeWsl();
     const out = withHelpers(`Write-Output ("OK=" + (Invoke-AgendRepair 'AgEnD' 'root' '2.3.0-beta.16'))`, bin);
     expect(out).toContain("OK=True");
     const log = calls(bin).trim().split("\n");
-    expect(log[0]).toBe(`-d AgEnD -u root -- bash -lc ${PRELUDE}set -o pipefail; curl -fsSL https://songsid.github.io/AgEnD/install.sh | AGEND_VERSION=2.3.0-beta.16 bash`);
+    // #2286 review: never the old version itself — it may predate the installer that repairs (#2264).
+    expect(log[0]).toBe(`-d AgEnD -u root -- bash -lc ${PRELUDE}set -o pipefail; curl -fsSL https://songsid.github.io/AgEnD/install.sh | AGEND_VERSION=beta bash`);
     expect(log[1]).toBe(`-d AgEnD -u root -- bash -lc ${PRELUDE}agend --version`);
     expect(log[0]).not.toContain('"');
   });
-  it("no version found, or one that is not a version: the installer's default, never the text pasted in", () => {
-    for (const v of ["", "1.0; rm -rf ~", "$(id)"]) {
+  it("a stable version, no version found, or one that is not a version: the installer's default (latest), never the text pasted in", () => {
+    for (const v of ["2.2.7", "", "1.0; rm -rf ~", "$(id)", "2.3.0-beta.16; id"]) {
       const bin = fakeWsl();
       withHelpers(`$null = Invoke-AgendRepair 'AgEnD' 'root' '${v.replace(/'/g, "''")}'`, bin);
       expect(calls(bin).split("\n")[0], v).toMatch(/\| bash$/);

@@ -613,9 +613,11 @@ function Install-AgendShortcuts([string]$distro, [string]$user) {
 # （#2228）。安裝紀錄只用來挑 Linux 和使用者，不能代表 WSL 還在：移除 WSL 後紀錄可能還留著（#2252 審查）。
 # 一個 Linux 裡的 AgEnD 是什麼狀態（#2264 的後續：更新中斷後 agend 不見了）。agend --version 能執行：AGEND_FOUND。
 # 執行不了、但還留著 AgEnD 的東西（fleet.yaml，或 npm 全域目錄裡的 @songsid，包括中斷的安裝移到旁邊的 .agend-*）：
-# AGEND_BROKEN，並帶回磁碟上找得到的版本（AGEND_VERSION=…，修復時裝回同一版）。兩者都不是：什麼都不印。
-# 指令裡不放雙引號（Windows PowerShell 5.1）；sed 的程式用單引號，萬用字元才不會被 shell 展開。
-$AGEND_PROBE = 'if agend --version >/dev/null 2>&1; then echo AGEND_FOUND; else r=$(npm root -g 2>/dev/null); r=${r:-/nonexistent}; h=${AGEND_HOME:-$HOME/.agend}; if [ -f $h/fleet.yaml ] || [ -d $r/@songsid ]; then echo AGEND_BROKEN; for f in $r/@songsid/agend/package.json $r/@songsid/.agend-*/package.json; do [ -f $f ] && sed -n ''s/^[[:space:]]*.version.:[[:space:]]*.\([0-9][0-9A-Za-z.+-]*\).,*[[:space:]]*$/AGEND_VERSION=\1/p'' $f; done | head -1; fi; fi'
+# AGEND_BROKEN，並帶回磁碟上找得到的版本（AGEND_VERSION=…，修復時用它選 beta 或正式版的通道）。兩者都不是：什麼都不印。
+# 只有 @songsid 這個資料夾不算：要有 AgEnD 自己的 package.json（#2286 審查）。指令裡不能放雙引號（Windows PowerShell
+# 5.1），所以用 set -f 和 IFS= 讓路徑裡的空白和萬用字元不被拆開，只有找 .agend-* 的那段暫時打開萬用字元；空值用
+# [ x$v = x ] 判斷（不加引號的 [ -n $v ] 在空值時會是真）。
+$AGEND_PROBE = 'set -f; IFS=; if agend --version >/dev/null 2>&1; then echo AGEND_FOUND; else r=$(npm root -g 2>/dev/null); r=${r:-/nonexistent}; h=${AGEND_HOME:-$HOME/.agend}; v=; p=; set +f; for f in $r/@songsid/agend/package.json $r/@songsid/.agend-*/package.json; do if [ -f $f ]; then p=1; [ x$v != x ] || v=$(sed -n ''s/^[[:space:]]*.version.:[[:space:]]*.\([0-9][0-9A-Za-z.+-]*\).,*[[:space:]]*$/\1/p'' $f | head -1); fi; done; set -f; if [ -f $h/fleet.yaml ] || [ x$p = x1 ]; then echo AGEND_BROKEN; [ x$v = x ] || echo AGEND_VERSION=$v; fi; fi'
 # 重新執行安裝指令時：這台電腦是不是已經裝好 AgEnD？先看安裝時記下的，再看 AgEnD 專用的和預設的 Ubuntu。回傳
 # @{ Distro; User; Broken; Version } 或 $null。只有現在真的有 Store/MSI 版 WSL 時才問 WSL（#2228、#2252 審查）。
 function Find-ExistingAgend {
@@ -636,10 +638,10 @@ function Find-ExistingAgend {
     return $null
 }
 # 修復「已安裝但壞掉」的 AgEnD：在那個 Linux 裡重跑官方的安裝指令。它會放回中斷的安裝移走的東西、裝好、證明
-# agend --version、重新設定服務；已經設定好的 fleet 不會重新設定，資料和設定都保留（#2264）。磁碟上找得到原本的
-# 版本就裝回同一版（beta 不會被換成穩定版）。修好、agend --version 能執行才回傳 $true。
+# agend --version、重新設定服務；已經設定好的 fleet 不會重新設定，資料和設定都保留（#2264）。磁碟上找到的版本只用來
+# 選通道：beta 的就裝目前的 beta，否則裝正式版（#2286 審查：舊版可能還沒有會修復的安裝程式）。修好才回傳 $true。
 function Invoke-AgendRepair([string]$distro, [string]$user, [string]$version) {
-    $pin = if ($version -match '^[0-9][0-9A-Za-z.+-]*$') { 'AGEND_VERSION=' + $version + ' ' } else { '' }
+    $pin = if ($version -match '^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$') { 'AGEND_VERSION=beta ' } else { '' }
     $cmd = Get-WslAgendCommand ('set -o pipefail; curl -fsSL https://songsid.github.io/AgEnD/install.sh | ' + $pin + 'bash')
     $code = Invoke-Watched -Label "修復 AgEnD" -Usually "通常需要 1–3 分鐘" -UpperMinutes 15 -File 'wsl.exe' -Arguments @('-d', $distro, '-u', $user, '--', 'bash', '-lc', $cmd)
     if ($code -ne 0) { return $false }

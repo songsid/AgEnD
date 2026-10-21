@@ -258,9 +258,25 @@ fi
 # dist-tag (default: latest; beta: AGEND_VERSION=beta).
 # >>> agend-installer step (tests/install-sh-busy-2284.test.ts runs this block)
 AGEND_SPEC="@songsid/agend@${AGEND_VERSION:-latest}"
-if npm view "$AGEND_SPEC" bin --json 2>/dev/null | grep -q '"agend-install"'; then
+has_installer() { npm view "$1" bin --json 2>/dev/null | grep -q '"agend-install"'; }
+INSTALLER_SPEC=""
+INSTALLER_ARGS=()
+if has_installer "$AGEND_SPEC"; then
+  INSTALLER_SPEC="$AGEND_SPEC"
+else
+  # #2286 review: a target from before the installer (a version pinned to repair a host, an older tag) would be a
+  # plain `npm install -g` — the very install that fails on what an interrupted one left (ENOTEMPTY). The newest
+  # installer repairs first, then installs exactly that version (--spec) and proves it.
+  TARGET_VERSION=$(npm view "$AGEND_SPEC" version 2>/dev/null | tail -1 || true)
+  if [[ "$TARGET_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    for runner in "@songsid/agend@latest" "@songsid/agend@beta"; do
+      if has_installer "$runner"; then INSTALLER_SPEC="$runner"; INSTALLER_ARGS=(--spec "@songsid/agend@$TARGET_VERSION"); break; fi
+    done
+  fi
+fi
+if [ -n "$INSTALLER_SPEC" ]; then
   installer_rc=0
-  $SUDO npm exec --yes --package "$AGEND_SPEC" -- agend-install || installer_rc=$?
+  $SUDO npm exec --yes --package "$INSTALLER_SPEC" -- agend-install ${INSTALLER_ARGS[@]+"${INSTALLER_ARGS[@]}"} || installer_rc=$?
   if [ "$installer_rc" -eq 75 ]; then
     # #2284: the installer could not take the install lock and said why above — most often another AgEnD install that
     # is still running (then: let it finish), sometimes something left behind that it names. Not a failed install.
