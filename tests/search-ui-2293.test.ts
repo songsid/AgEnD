@@ -16,7 +16,7 @@ const T = Date.UTC(2026, 9, 21, 6, 0);
 const hits = [
   { key: "chat:dev:abc-1", source: "chat", instance: "dev", peer: null, sender: "han", role: "user", ts: T, ref: { boot: "abc", id: 1 }, snippet: "請改 nginx 設定", marks: [[3, 8]], live: true },
   { key: "xmsg:xmsg-1:dev", source: "xmsg", instance: "lead", peer: "dev", sender: "lead", role: "task", ts: T - 1000, ref: { messageId: "xmsg-1" }, snippet: "please fix nginx", marks: [[11, 16]] },
-  { key: "chat:dev:old-2", source: "chat", instance: "dev", peer: null, sender: "bot", role: "agent", ts: T - 2000, ref: { boot: "0ld", id: 2 }, snippet: "nginx restarted", marks: [[0, 5]], live: false },
+  { key: "chat:dev:old-2", source: "chat", instance: "dev", peer: null, sender: "bot", role: "agent", ts: T - 2000, ref: { boot: "0bd", id: 2 }, snippet: "nginx restarted", marks: [[0, 5]], live: false },
   { key: "task:t1", source: "task", instance: "ops", peer: null, sender: "lead", role: "open", ts: T - 3000, ref: { taskId: "t1" }, snippet: "Upgrade nginx", marks: [[8, 13]] },
 ];
 function fakeFetch(answer: (url: string) => { status?: number; body?: unknown }) {
@@ -192,14 +192,40 @@ describe("the dialog", () => {
     expect(notes.some((n: string) => n.startsWith("Still indexing")) && notes.some((n: string) => n.includes("5,000"))).toBe(true);
     expect(d.doc.querySelector(".search-status").textContent).toBe("Nothing found");
   });
-  it("an older query's late answer never replaces a newer one", async () => {
+  it("an older query whose body arrives late never replaces a newer one either", async () => {
+    let release: (() => void) | null = null;
+    p = page();
+    const m = await load();
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const body = { hits: url.includes("q=old") ? [hits[3]] : [hits[0]], limited: false, building: false };
+      return { ok: true, status: 200, json: () => (url.includes("q=old") ? new Promise(r => { release = () => r(body); }) : Promise.resolve(body)) };
+    }));
+    await p.mount(h(m.SearchDialog, { preset: {}, onClose: () => {} }));
+    const input = p.document.querySelector(".search-input");
+    input.value = "old"; fire(input, "input"); await new Promise(r => setTimeout(r, m.DEBOUNCE_MS + 20));
+    input.value = "new"; fire(input, "input"); await new Promise(r => setTimeout(r, m.DEBOUNCE_MS + 20)); await settle();
+    release!(); await settle();
+    expect(p.document.querySelector(".search-badge").textContent).toBe("Chat");
+    expect(p.document.querySelectorAll(".search-row").length).toBe(1);
+  });
+  it("the kinds can't all be turned off: the last one on stays on", async () => {
+    const d = await open({ instance: "dev" });
+    await d.type("nginx");
+    const chip = (name: string) => d.doc.querySelectorAll(".search-chips .chip-btn").find((b: any) => b.textContent === name);
+    for (const name of ["Chats", "Agent messages", "Tasks"]) { fire(chip(name), "click"); await settle(); }
+    expect(["Chats", "Agent messages", "Tasks"].map(n => chip(n).getAttribute("aria-pressed"))).toEqual(["false", "false", "true"]);
+    await new Promise(r => setTimeout(r, d.m.DEBOUNCE_MS + 20)); await settle();
+    expect(new URL(d.searches().pop()!, "http://h").searchParams.getAll("source")).toEqual(["task"]);
+  });
+  it("an older query's late answer (an error) never replaces a newer one", async () => {
     let release: (() => void) | null = null;
     p = page();
     const m = await load();
     vi.stubGlobal("fetch", vi.fn((url: string) => new Promise(r => {
       const body = { hits: url.includes("q=old") ? [hits[3]] : [hits[0]], limited: false, building: false };
-      const done = () => r({ ok: true, status: 200, json: async () => body });
-      if (url.includes("q=old")) release = done; else done();
+      // The old query's answer comes late, and is an error: it must not replace the new results with one.
+      if (url.includes("q=old")) release = () => r({ ok: false, status: 503, json: async () => ({}) });
+      else r({ ok: true, status: 200, json: async () => body });
     })));
     await p.mount(h(m.SearchDialog, { preset: {}, onClose: () => {} }));
     const input = p.document.querySelector(".search-input");
