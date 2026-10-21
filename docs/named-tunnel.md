@@ -68,6 +68,10 @@ On the direct, signed-in dashboard (not through the public link), open
 3. Paste the token into the masked **Cloudflare connector token** field and
    select **Set token**. Confirm the change when prompted. It is checked for
    format locally; validity and routing are checked when opening the link.
+   Surrounding whitespace and a matching pair of quotes are removed. Paste a
+   single base64/base64url connector token, not the command or `--token` flag.
+   Its decoded JSON must contain an account tag, tunnel UUID and encoded tunnel
+   secret. Invalid input shows: “Paste only the long string that starts with eyJ.”
 4. Open the public link from AgEnD's dashboard menu. Readiness must return
    this exposure's own marker through the fixed HTTPS hostname before AgEnD
    shares the sign-in URL. Then sign in on the phone and Add to Home Screen.

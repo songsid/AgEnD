@@ -14,10 +14,14 @@ const schema = buildSettingsImpactSchema();
 let p: AppPage;
 let fleet: any;
 let sent: Array<{ method: string; path: string; body: any }> = [];
+let invalidTunnelToken = false;
 const realFetch = (globalThis as any).fetch;
 const fakeFetch = async (path: string, init: { method?: string; body?: string } = {}) => {
   const method = init.method ?? "GET";
   sent.push({ method, path, body: init.body ? JSON.parse(init.body) : undefined });
+  if (invalidTunnelToken && method === "POST" && path === "/api/settings/public-tunnel-token/verify") {
+    return { ok: false, status: 422, json: async () => ({ error_code: "invalid_tunnel_token", error: "private untrusted detail" }) };
+  }
   const body = (() => {
     if (method === "POST" && path === "/api/settings/apply") return { id: "job-1", status: "done", targets: [] };
     if (method !== "GET") return { ok: true };
@@ -33,7 +37,7 @@ const fakeFetch = async (path: string, init: { method?: string; body?: string } 
 
 beforeAll(() => { p = page({ url: "http://127.0.0.1:19280/settings/web" }); (globalThis as any).fetch = fakeFetch; });
 afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
-beforeEach(() => { sent = []; p.window.confirm = () => true; (globalThis as any).confirm = () => true; });
+beforeEach(() => { sent = []; invalidTunnelToken = false; p.window.confirm = () => true; (globalThis as any).confirm = () => true; });
 afterEach(async () => {
   await p.unmount();
   p.document.body.removeAttribute("data-public-link");
@@ -176,6 +180,25 @@ describe("Settings → Web, as rendered", () => {
 
 
 describe("#2307 fixed public link settings and write-only token", () => {
+  it.each([
+    ["en", "Set token", "Paste only the long string that starts with eyJ."],
+    ["zh-TW", "設定 token", "請只貼上以 eyJ 開頭的長字串。"],
+  ])("shows a safe localized token-format hint and permits retry (%s)", async (language, label, hint) => {
+    const { setLang } = await import("/assets/app-i18n.js");
+    setLang(language);
+    try {
+      const w = await open(); invalidTunnelToken = true;
+      await w.type(w.$("publicTunnelToken"), "private wrong command");
+      fire(w.button(label), "click"); await settle(12);
+      expect(p.root.textContent).toContain(hint);
+      expect(p.root.textContent).not.toContain("private wrong command");
+      expect(p.root.textContent).not.toContain("private untrusted detail");
+      expect(w.$("publicTunnelToken").value).toBe("");
+      expect(sent.filter(s => s.path.endsWith("/apply") && s.path.includes("public-tunnel-token"))).toEqual([]);
+      await w.type(w.$("publicTunnelToken"), "retry value");
+      expect(w.button(label).disabled).toBe(false);
+    } finally { setLang("en"); }
+  });
   it("stages a named hostname and its fixed secret reference without token material", async () => {
     const w = await open();
     await w.type(w.$("publicWebHostname"), "agend.example.com");

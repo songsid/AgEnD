@@ -1,3 +1,4 @@
+import { syntheticTunnelToken } from "./helpers/named-tunnel-token.js";
 import { EventEmitter } from "node:events";
 import { expect, it, vi } from "vitest";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
@@ -19,7 +20,7 @@ function request(path: string, ctx: SettingsApiContext, method: string, body?: u
 }
 
 
-const TOKEN = "eyJNamedConnectorPrivateValue2307Token";
+const TOKEN = syntheticTunnelToken();
 function context() {
   return { fleetConfig: { defaults: {}, instances: {}, web: { public_link: { hostname: "agend.example.com", tunnel_token: TOKEN } } },
     logger: { error: vi.fn(), warn: vi.fn() }, providerSecretsEnabled: () => false,
@@ -62,4 +63,15 @@ it("public gateway requests cannot even prepare a token mutation", () => {
   expect(handleSettingsRequest(req, res, new URL("http://localhost/api/settings/public-tunnel-token/verify"), ctx)).toBe(true);
   expect(res.writeHead).toHaveBeenCalledWith(403, expect.any(Object));
   expect(ctx.verifyProviderSecret).not.toHaveBeenCalled();
+});
+it("invalid connector format has a fixed safe code and hint, ignoring verifier details", async () => {
+  const ctx = context();
+  ctx.providerSecretsEnabled = () => true; // Exercise the generic registry alias as well as the dedicated route.
+  vi.mocked(ctx.verifyProviderSecret!).mockResolvedValue({ ok: false, status: "invalid", error: TOKEN });
+  for (const path of ["/api/settings/public-tunnel-token/verify", `/api/settings/secrets/${ID}/verify`]) {
+    const result = await request(path, ctx, "POST", { secret: TOKEN, idempotency_key: "invalid-key" });
+    expect(result.status).toBe(422);
+    expect(result.body).toEqual({ ok: false, result: "invalid", error_code: "invalid_tunnel_token", error: "Paste only the long string that starts with eyJ." });
+    expect(JSON.stringify(result.body)).not.toContain(TOKEN);
+  }
 });

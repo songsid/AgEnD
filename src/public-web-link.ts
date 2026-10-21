@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { publicTunnelHostname, PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_ORIGIN_PORT, validPublicTunnelToken } from "./public-tunnel-config.js";
+import { publicTunnelHostname, PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_ORIGIN_PORT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
 import { performance } from "node:perf_hooks";
 import { newTunnelSid } from "./tunnel/manager.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
@@ -40,10 +40,10 @@ export function namedPublicLinkSettings(web: WebConfig | undefined): { hostname:
   const settings = web?.public_link;
   if (!settings?.hostname && !settings?.tunnel_token_env) return undefined;
   const hostname = publicTunnelHostname(settings.hostname);
-  const token = process.env[PUBLIC_TUNNEL_TOKEN_ENV] ?? "";
+  const token = normalizePublicTunnelToken(process.env[PUBLIC_TUNNEL_TOKEN_ENV]);
   const port = settings?.origin_port ?? PUBLIC_TUNNEL_ORIGIN_PORT;
   if (!hostname || settings?.tunnel_token_env && settings.tunnel_token_env !== PUBLIC_TUNNEL_TOKEN_ENV
-    || !validPublicTunnelToken(token) || !Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("named tunnel configuration is incomplete");
+    || !token || !Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("named tunnel configuration is incomplete");
   return { hostname, token, port };
 }
 function configurationKey(web: WebConfig | undefined): string {
