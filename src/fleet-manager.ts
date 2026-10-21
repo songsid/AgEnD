@@ -9298,6 +9298,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // #1920 step 4b-3: /web typed in a ClassicBot room (a group: `/web@ThisBot`) by someone who is not a fleet admin,
         // while guest sign-in is on: their guest code, privately — as anywhere else. An admin's goes on as before.
         if (/^\/(?:web|dashboard)(?:\s|$)/i.test(text) && msgAdapter && this.isGuestWebAsk(msg.adapterId, msg.userId)) {
+          // #2359: this door must not skip the deprecation notice TopicCommands shows on /dashboard.
+          if (/^\/dashboard(?:\s|$)/i.test(text)) {
+            await msgAdapter.sendText(chatId, t("dashboard.deprecated")).catch(() => {});
+          }
           await this.guestWebCommand({ adapterId: msg.adapterId!, userId: msg.userId, username: msg.username,
             arg: text.replace(/^\/(?:web|dashboard)/i, "").trim().toLowerCase(), replyHere: body => msgAdapter.sendText(chatId, body) });
           return;
