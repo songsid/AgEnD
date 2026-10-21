@@ -184,6 +184,17 @@ describe("kiro-cli 2.33.0: other workspace-trust shapes are held", () => {
     held(base.replace("Don't trust, exit", "Don't trust, leave"));
   });
 
+  it("the grant text reworded or missing, in the folder and the home layout", () => {
+    const grant = "Kiro will be able to read, edit, and execute files here.";
+    const home = pane("v3-workspace-home-80-2.33.0");
+    expect(base).toContain(grant);
+    held(base.replace(grant, "Kiro will be able to read and edit files here."));
+    held(base.replace(/^ Trusting lets Kiro use this workspace's configuration\.[^\n]*\n/m, ""));
+    expect(home).toMatch(/^ Trusting lets Kiro/m);
+    held(home.replace(/^( Trusting lets Kiro use this workspace's) configuration/m, "$1 settings"));
+    held(home.replace(/^ Trusting lets Kiro[\s\S]*?files here\.\n/m, ""));
+  });
+
   it("the folder text replaced, or the home text with a revoke path", () => {
     held(base.replace("Only trust folders\n you know.", "Trust only folders\n you know."));
     const home = pane("v3-workspace-home-80-2.33.0");
