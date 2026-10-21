@@ -234,7 +234,9 @@ import { runOnLoginShell } from "./login-shell.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScope } from "./command-table.js";
-import { crossInstanceVisibility, runVisibilityCommand } from "./cross-instance-notice.js";
+import { crossInstanceVisibility, runVisibilityCommand, xmsgVisibility } from "./cross-instance-notice.js";
+import { SEARCH_RETENTION_DAYS, SearchIndex } from "./search/search-index.js";
+import { chatDoc, taskDoc, xmsgDoc, type CrossInstanceRecord, type XmsgVisibility } from "./search/search-docs.js";
 import { WebSettingsTools } from "./web-settings-tools.js";
 import { bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
@@ -1331,6 +1333,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly webChatHistory = new WebChatHistory();
   /** #1565: the web chat history's files (set at fleet start, once the home and the instances are known). */
   private webChatStore: WebChatDiskStore | null = null;
+  /** #2293: the dashboard's global search (null: web.search.enabled is false, or the fleet has not started). */
+  searchIndex: SearchIndex | null = null;
   /** Uploaded files and the files the dashboard may fetch back (uploads, reply attachments). */
   // #1937: the upload limits are the config's, read on each use (agend reload applies a change to the next upload).
   readonly webFiles = new WebFileLedger({ limits: () => uploadLimits(this.fleetConfig?.web) });
@@ -7184,6 +7188,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #1565: the web chat as it was before this process — the configured instances' only (fleet.yaml and ClassicBot
     // rooms), before the dashboard serves anything; from now on every change is written back (off the loop).
     this.restoreWebChat(fleet);
+    this.startSearchIndex(fleet);
 
     // Poll classicBot.yaml for external changes every 30s
     this.classicReloadTimer = setInterval(() => {
@@ -7349,6 +7354,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger,
       );
       this.scheduler.init();
+      this.scheduler.db.onTaskChange = (task) => this.searchIndex?.record(taskDoc(task));
       this.logger.info("Scheduler initialized");
 
       // Tips share the daily-report clock but remain an independent internal
@@ -11628,6 +11634,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Its web chat goes with it (only after the removal succeeded): a later instance of the same name
     // must not be shown the old one's conversation, and deleted names must not pile up.
     this.webChatHistory.forget(name);
+    this.searchIndex?.removeInstance(name);
     this.webFiles.forget(name);
     this.compactWatchService?.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
@@ -16441,6 +16448,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await data.respond(failure ?? t("login.chooser_posted"));
   }
 
+  /** #2293: whose cross-instance messages search leaves out now (web-api /ui/search). */
+  searchVisibility(): XmsgVisibility { return xmsgVisibility(this.fleetConfig); }
+
+  /** #2293: a cross-instance message for the search index (outbound-handlers, after it was admitted). */
+  indexCrossInstance(record: CrossInstanceRecord): void {
+    this.searchIndex?.record(xmsgDoc(record));
+  }
+
+  /**
+   * #2293: the global search index, at fleet start — after the web chat is restored (the backfill reads it). Its worker
+   * owns search.db; see search-index.ts. Off with web.search.enabled: false.
+   */
+  private startSearchIndex(fleet: FleetConfig): void {
+    const config = fleet.web?.search;
+    if (config?.enabled === false || this.searchIndex) return;
+    const history = this.webChatHistory;
+    this.searchIndex = new SearchIndex({
+      path: join(this.dataDir, "search.db"),
+      retentionDays: config?.retention_days ?? SEARCH_RETENTION_DAYS,
+      outboxPath: join(this.dataDir, "delivery-outbox.db"),
+      schedulerPath: join(this.dataDir, "scheduler.db"),
+      chatDocs: function* () { for (const name of history.instances()) for (const m of history.list(name)) { const doc = chatDoc(m); if (doc) yield doc; } },
+      log: (level, msg) => this.logger[level](msg),
+    });
+    this.searchIndex.start();
+  }
+
   queueMirrorMessage(text: string): void {
     const mirrorTopicId = this.fleetConfig?.channel?.mirror_topic_id;
     if (mirrorTopicId == null || !this.adapter) return;
@@ -16531,6 +16565,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         replyTo: m.replyTo,
       });
       broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
+      this.searchIndex?.record(chatDoc(recorded));
       // #1629: live-only receipt after the recorded agent reply. Never persist/replay it or give it an SSE cursor.
       if (recorded.role === "agent") broadcastSseEvent(this.sseClients, "agent_reply_live", { v: 1, boot: recorded.boot, id: recorded.id, instance: recorded.instance }, onError);
       return;
@@ -19508,6 +19543,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.topicArchiver.stop();
 
     this.scheduler?.shutdown();
+    this.searchIndex?.close();
+    this.searchIndex = null;
 
     // Stop instances in parallel batches to avoid long sequential waits.
     // Concurrency scales with fleet size — larger fleets tolerate more parallel

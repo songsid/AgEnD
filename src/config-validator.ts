@@ -29,7 +29,7 @@ export interface ValidationIssue {
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
 const WEB_KEYS = ["public_link", "echo_to_channel", "usage_panel", "usage_report_on_public_link", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
-  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority"] as const satisfies ReadonlyArray<keyof WebConfig>;
+  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority", "search"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
 
@@ -410,6 +410,16 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     if (config.web.log_tab !== undefined && typeof config.web.log_tab !== "boolean") {
       err("web.log_tab", "must be a boolean");
+    }
+    // #2293: the global search's index.
+    if (config.web.search !== undefined) {
+      if (!isObj(config.web.search)) err("web.search", "must be a mapping");
+      else {
+        for (const k of Object.keys(config.web.search)) if (k !== "enabled" && k !== "retention_days") warn(`web.search.${k}`, "unknown key (known: enabled, retention_days) — ignored");
+        if (config.web.search.enabled !== undefined && typeof config.web.search.enabled !== "boolean") err("web.search.enabled", "must be a boolean");
+        const days = config.web.search.retention_days;
+        if (days !== undefined && (typeof days !== "number" || !Number.isInteger(days) || days < 1 || days > 3650)) err("web.search.retention_days", "must be a whole number of days (1-3650)");
+      }
     }
     if (config.web.provider_secrets !== undefined && typeof config.web.provider_secrets !== "boolean") {
       err("web.provider_secrets", "must be a boolean");

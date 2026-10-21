@@ -364,6 +364,12 @@ export interface WebConfig {
    * admin's change, confirmed like any access change (Settings → Web).
    */
   log_tab?: boolean;
+  /**
+   * #2293: the dashboard's global search (Ctrl+K) over chat messages, cross-instance messages and Task Board tasks — an
+   * index of its own (search.db, kept `retention_days`, default 90; search/search-index.ts). `enabled: false`: no index
+   * from the next fleet start (the file is left as it is), and searches are refused at once.
+   */
+  search?: { enabled?: boolean; retention_days?: number };
   /** Expose provider API-key verify/apply endpoints (default false until dark-shipped). */
   provider_secrets?: boolean;
   /**

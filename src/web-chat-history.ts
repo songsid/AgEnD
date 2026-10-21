@@ -535,6 +535,9 @@ export class WebChatHistory {
     return out;
   }
 
+  /** The instances that have a history (#2293: the search backfill). */
+  instances(): string[] { return [...this.byInstance.keys()]; }
+
   /** The most recent `limit` messages of one instance, oldest first. */
   list(instance: string, limit = this.perInstance): WebChatMessage[] {
     const slot = this.byInstance.get(instance);

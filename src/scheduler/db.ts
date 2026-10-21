@@ -561,6 +561,13 @@ export class SchedulerDb {
     };
   }
 
+  /** #2293: told of every task this process creates or changes (claim and done included), after the write. */
+  onTaskChange: ((task: Task) => void) | null = null;
+  private changed(task: Task): Task {
+    try { this.onTaskChange?.(task); } catch { /* a listener never fails the write */ }
+    return task;
+  }
+
   createTask(params: CreateTaskParams): Task {
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -570,7 +577,7 @@ export class SchedulerDb {
     `).run(id, params.title, params.description ?? null, params.priority ?? "normal",
       params.assignee ?? null, params.created_by,
       params.depends_on?.length ? JSON.stringify(params.depends_on) : null, now, now);
-    return this.getTask(id)!;
+    return this.changed(this.getTask(id)!);
   }
 
   getTask(id: string): Task | null {
@@ -653,7 +660,7 @@ export class SchedulerDb {
     if (params.priority !== undefined) { sets.push("priority = ?"); values.push(params.priority); }
     values.push(id);
     this.db.prepare(`UPDATE tasks SET ${sets.join(", ")} WHERE id = ?`).run(...values);
-    return this.getTask(id)!;
+    return this.changed(this.getTask(id)!);
   }
 
   claimTask(id: string, assignee: string): Task {

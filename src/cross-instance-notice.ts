@@ -12,6 +12,7 @@
 import type { FleetConfig } from "./types.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
 import { t } from "./locale.js";
+import type { XmsgVisibility } from "./search/search-docs.js";
 
 export const CROSS_INSTANCE_VISIBILITY_MODES = ["full", "summary", "hidden"] as const;
 export type CrossInstanceVisibility = typeof CROSS_INSTANCE_VISIBILITY_MODES[number];
@@ -27,6 +28,17 @@ export function crossInstanceVisibility(fleet: Pick<FleetConfig, "defaults" | "i
   if (isCrossInstanceVisibility(own)) return own;
   const fleetDefault = fleet?.defaults?.cross_instance_visibility;
   return isCrossInstanceVisibility(fleetDefault) ? fleetDefault : DEFAULT_CROSS_INSTANCE_VISIBILITY;
+}
+
+/**
+ * #2293: whose cross-instance messages the dashboard's search leaves out (fleet-traffic's rule: none to or from a hidden
+ * name). Per instance; or, the fleet's default being hidden, every name but the instances set to show theirs — another
+ * instance or an external session with no setting of its own follows the default.
+ */
+export function xmsgVisibility(fleet: Pick<FleetConfig, "defaults" | "instances"> | null | undefined): XmsgVisibility {
+  const names = Object.keys(fleet?.instances ?? {});
+  const off = (name: string) => crossInstanceVisibility(fleet, name) === "hidden";
+  return fleet?.defaults?.cross_instance_visibility === "hidden" ? { among: names.filter(n => !off(n)) } : { hidden: names.filter(off) };
 }
 
 const SUMMARY_PREVIEW_CHARS = 100;

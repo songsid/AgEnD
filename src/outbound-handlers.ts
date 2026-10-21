@@ -68,6 +68,7 @@ import {
   UpdateTeamArgs,
   validateArgs,
 } from "./outbound-schemas.js";
+import type { CrossInstanceRecord } from "./search/search-docs.js";
 
 /** Shared context available to all outbound tool handlers. */
 export interface OutboundContext {
@@ -135,6 +136,8 @@ export interface OutboundContext {
   instanceLaunchSupportsSteer?(instanceName: string): boolean | undefined;
   saveFleetConfig(): void;
   queueMirrorMessage?(text: string): void;
+  /** #2293: a cross-instance message to index for the dashboard's search (sender → target; never forwards or paths). */
+  indexCrossInstance?(record: CrossInstanceRecord): void;
   getAdapterForInstance?(name: string): ChannelAdapter | null;
   /** #1990: a message for the group that owns `instanceName`'s topic, its place tokens rendered (links). */
   renderPlacesFor?(instanceName: string, text: string, opts?: import("./channel/types.js").SendOpts): { text: string; opts?: import("./channel/types.js").SendOpts };
@@ -627,6 +630,9 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   ctx.logger.info(`✉ ${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 100)} [msg=${ipcMeta.message_id} sha=${deliveryContentDigest(message ?? "").slice(0, 12)}]`);
   const taskSummary = ipcMeta.task_summary || (message ?? "").slice(0, 200);
   ctx.eventLog?.logActivity("message", senderLabel, taskSummary, targetName, ipcMeta.request_kind);
+  // #2293: indexed for the dashboard's search as the outbox keeps it (a retried call the outbox admitted before: not again).
+  if (!durableReceipt?.duplicate) ctx.indexCrossInstance?.({ messageId: ipcMeta.message_id, from: senderLabel, to: targetName, kind: ipcMeta.request_kind,
+    correlationId: ipcMeta.correlation_id, taskSummary: ipcMeta.task_summary, content: message ?? "", ts: ipcMeta.ts });
   ctx.queueMirrorMessage?.(`${displayLabel(senderLabel)} → ${displayLabel(targetName)}: ${truncatePreview(message ?? "", 500)}`);
   const targetDaemon = ctx.lifecycle.daemons.get(targetInstanceName);
   const targetStateWarning = targetDaemon?.isErrorState
@@ -1796,6 +1802,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   // target's idle gate blocked for as long as the BUSIEST recipient. Connectivity
   // is decided synchronously (that's the real failure), delivery runs in background.
   const sentTo: string[] = [];
+  const sentMeta = new Map<string, Record<string, string>>();
   const failed: string[] = [];
   for (const targetName of targetNames) {
     const hostInstance = ctx.instanceIpcClients.has(targetName) ? targetName : ctx.sessionRegistry.get(targetName);
@@ -1834,12 +1841,16 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
       );
     }
     sentTo.push(targetName);
+    sentMeta.set(targetName, ipcMeta);
   }
 
   ctx.logger.info(`📢 ${senderLabel} broadcast to ${sentTo.length} instances: ${(message).slice(0, 80)}`);
   const summary = task_summary || message.slice(0, 200);
   for (const target of sentTo) {
     ctx.eventLog?.logActivity("message", senderLabel, summary, target);
+    const sent = sentMeta.get(target)!;
+    ctx.indexCrossInstance?.({ messageId: sent.message_id, from: senderLabel, to: target, kind: sent.request_kind ?? "broadcast",
+      correlationId: sent.correlation_id, taskSummary: task_summary, content: message, ts: sent.ts });
   }
   // Mirror Topic is user-facing: display labels, never long ids (#1301),
   // unique across the fleet (#1305 P2-1).
