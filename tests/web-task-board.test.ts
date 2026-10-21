@@ -616,3 +616,80 @@ describe("7b. two bots in one group: the prompt's answer is taken once, whicheve
     expect([b.taken, b.routed.length]).toEqual([[], 1]);
   });
 });
+
+describe("#2352 a project's lead instance, and where a waiting card's buttons go", () => {
+  /** The rig's fleet plus `lead` and `disp` (each with a topic of its own), `notopic` (none) and `dev-a`, on the rig's world. */
+  function withLeads(h: Rig) {
+    const at = (topic?: string) => ({ working_directory: h.dir, channel_id: "owner", ...(topic ? { topic_id: topic } : {}) });
+    (h.fm.fleetConfig as any).instances = { ...(h.fm.fleetConfig as any).instances, lead: at("T5"), disp: at("T6"), notopic: at(), "dev-a": at("T7") };
+    h.fm.routing.rebuild(h.fm.fleetConfig!);
+  }
+  const lanes = (h: Rig) => Object.fromEntries((h.s.needsYouTasks() as Array<{ code: string; lane?: string }>).map((i) => [i.code, i.lane ?? null]));
+
+  it("set on a project by the person: an instance of the fleet, or none; anything else is refused and nothing changes", async () => {
+    const h = rig(); withLeads(h);
+    const me = await h.signIn("admin");
+    const made = await web(h, "/ui/tasks/projects", "POST", me, { name: "Game", leadInstance: "lead" });
+    expect([made.status, made.json().project.leadInstance]).toEqual([200, "lead"]);
+    const id = made.json().project.id;
+    const bad = await web(h, `/ui/tasks/projects/${id}`, "POST", me, { leadInstance: "nobody" });
+    expect([bad.status, bad.json().code, bad.json().key]).toEqual([400, "invalid", "lead_not_instance"]);
+    expect(h.db.board.getProject(id).leadInstance).toBe("lead");
+    expect((await web(h, "/ui/tasks/projects", "POST", me, { name: "Other", leadInstance: "ghost" })).status).toBe(400);
+    expect(h.db.board.listProjects(true).map((p) => p.name)).toEqual(["Game"]);
+    const cleared = await web(h, `/ui/tasks/projects/${id}`, "POST", me, { leadInstance: null });
+    expect([cleared.status, cleared.json().project.leadInstance]).toEqual([200, null]);
+    expect((await web(h, `/ui/tasks/projects/${id}`, "POST", me, { leadInstance: "" })).json().project.leadInstance).toBe(null);
+    // An instance cannot set it (the board takes project changes from the person only).
+    expect(() => h.db.board.updateProject({ kind: "instance", name: "dev-a" }, id, { leadInstance: "lead" })).toThrow();
+  });
+
+  it("a waiting card's lane: the instance that handed it out, else its project's lead (sub tasks by their main), else none", () => {
+    const h = rig(); withLeads(h);
+    const ann = { kind: "person" as const, name: "Ann" }, dev = { kind: "instance" as const, name: "dev-a" };
+    const led = h.db.board.createProject(ann, { name: "Led", leadInstance: "lead" });
+    const plain = h.db.board.createProject(ann, { name: "Plain" });
+    const noTopic = h.db.board.createProject(ann, { name: "NoTopic", leadInstance: "notopic" });
+    const gone = h.db.board.createProject(ann, { name: "Gone", leadInstance: "removed-later" });
+    h.db.board.createCards(ann, { project: led.id, cards: [{ title: "Led main", assignee: "dev-a" }] });                       // M-1
+    h.db.board.createCards(ann, { parent: "M-1", cards: [{ title: "Led sub", assignee: "dev-a" }] });                           // S-1
+    h.db.board.createCards({ kind: "instance", name: "disp" }, { project: led.id, cards: [{ title: "Handed out", assignee: "dev-a" }] });   // M-2
+    h.db.board.createCards(ann, { project: plain.id, cards: [{ title: "Plain", assignee: "dev-a" }] });                         // M-3
+    h.db.board.createCards(ann, { project: noTopic.id, cards: [{ title: "No topic", assignee: "dev-a" }] });                    // M-4
+    h.db.board.createCards(ann, { project: gone.id, cards: [{ title: "Gone lead", assignee: "dev-a" }] });                     // M-5
+    h.db.board.createCards({ kind: "instance", name: "notopic" }, { project: led.id, cards: [{ title: "Dispatcher w/o topic", assignee: "dev-a" }] }); // M-6
+    for (const code of ["S-1", "M-2", "M-3", "M-4", "M-5", "M-6"]) { h.db.board.moveCard(dev, code, "claimed"); h.db.board.moveCard(dev, code, "blocked", { reason: "?" }); }
+    expect(lanes(h)).toEqual({ "S-1": "lead", "M-2": "disp", "M-3": null, "M-4": null, "M-5": null, "M-6": null });
+    // The world goes: no lane can be used there.
+    h.s.worlds.delete("owner");
+    expect(Object.values(lanes(h)).every((l) => l === null)).toBe(true);
+  });
+
+  it("a board from before the lead: the column is added in place, every project reads as having none", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-lead-migrate-"));
+    const Database = (await import("better-sqlite3")).default;
+    const old = new Database(join(dir, "scheduler.db"));
+    old.exec("CREATE TABLE task_projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE, description TEXT NOT NULL DEFAULT '', archived INTEGER NOT NULL DEFAULT 0, sort REAL NOT NULL, created_at TEXT NOT NULL)");
+    old.prepare("INSERT INTO task_projects (name, sort, created_at) VALUES ('Old', 1, '2026-10-01T00:00:00Z')").run();
+    old.close();
+    const db = new SchedulerDb(join(dir, "scheduler.db"));
+    rigs.push({ dir, s: {}, db } as never);
+    expect(db.board.listProjects(true).map((p) => [p.name, p.leadInstance])).toEqual([["Old", null]]);
+    expect(db.board.updateProject(ANN, db.board.getProject("Old").id, { leadInstance: " lead " }).leadInstance).toBe("lead");
+    expect(() => db.board.updateProject(ANN, db.board.getProject("Old").id, { leadInstance: "two words" })).toThrow(/instance's name/);
+    const again = new SchedulerDb(join(dir, "scheduler.db"));                                                  // a second open: no duplicate column
+    try { expect(again.board.getProject("Old").leadInstance).toBe("lead"); } finally { again.close(); }
+  });
+
+  it("over the public link a hidden lead is not named", async () => {
+    const db = scratchDb();
+    db.board.createProject(ANN, { name: "Secret", leadInstance: "spy" });
+    db.board.createProject(ANN, { name: "Open", leadInstance: "dev-a" });
+    const fleetConfig = { defaults: {}, instances: { "dev-a": {}, spy: { cross_instance_visibility: "hidden" } } };
+    const link = (await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig })).body;
+    expect(link.projects.map((p: any) => [p.name, p.leadInstance])).toEqual([["Secret", null], ["Open", "dev-a"]]);
+    expect(JSON.stringify(link)).not.toMatch(/spy/);
+    const local = (await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig, local: true })).body;
+    expect(local.projects.map((p: any) => p.leadInstance)).toEqual(["spy", "dev-a"]);
+  });
+});

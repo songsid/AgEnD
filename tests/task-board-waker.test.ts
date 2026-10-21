@@ -102,6 +102,19 @@ describe("the message", () => {
     expect(wakeMessage([wake({ instance: "lead", reasons: ["decide"], who: "dev-a", texts: { decide: "codes or messages?" } } as Partial<Wake>)], () => ({ assignee: "dev-a" }) as never))
       .toBe('[Task board] S-1 "Build the API": you handed it out and it is blocked (@dev-a): "codes or messages?" — ask the person, then answer it: move it back to claimed with the decision as the comment. Read it with: task get S-1');
   });
+
+  it("#2352: when the person has the card's buttons in the dispatcher's own channel, the wake says so instead of asking it to relay", () => {
+    const here = () => true;
+    expect(wakeMessage([wake({ instance: "lead", reasons: ["decide"], who: "dev-a", texts: { decide: "codes or messages?" } } as Partial<Wake>)], () => ({ assignee: "dev-a" }) as never, here))
+      .toBe('[Task board] S-1 "Build the API": you handed it out and it is blocked (@dev-a): "codes or messages?" — answer it yourself if you can (move it back to claimed with the decision as the comment); otherwise the person has Answer for it in your channel. Read it with: task get S-1');
+    expect(wakeMessage([wake({ instance: "lead", reasons: ["to_confirm"], who: "dev-a" } as Partial<Wake>)], () => ({ assignee: "dev-a", kind: "sub", acceptance: [], result: "done" }) as never, here))
+      .toBe('[Task board] S-1 "Build the API": you handed it out and it waits for the person\'s confirmation (@dev-a) — they have Confirm / Send back for it in your channel; add only what they need to decide. Read it with: task get S-1');
+    // Per wake: only the one whose card is laned here.
+    const two = wakeMessage([wake({ instance: "lead", reasons: ["to_confirm"] }), wake({ uuid: "u2", code: "S-2", instance: "lead", reasons: ["to_confirm"] })],
+      () => ({ assignee: "dev-a", kind: "sub", acceptance: [], result: "done" }) as never, (w) => w.code === "S-2");
+    expect(two).toMatch(/S-1 [^;]*tell the person to confirm it/);
+    expect(two).toMatch(/S-2 [^;]*Confirm \/ Send back for it in your channel/);
+  });
 });
 
 describe("in the fleet: a write's wakes reach the delivery outbox as AgEnD's notice", () => {

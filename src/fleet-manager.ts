@@ -16824,6 +16824,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
       holds: (wake) => db.board.wakeHolds(wake),
       card: (uuid) => db.board.findCard(uuid),
+      // #2352: the card's Needs you buttons are in this instance's own channel (it is the card's lane).
+      buttonsHere: (instance, uuid) => {
+        const card = db.board.findCard(uuid);
+        if (!card) return false;
+        const leads = new Map(db.board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
+        return this.needsYouLane(card, leads) === instance;
+      },
       log: (level, message, extra) => this.logger[level](extra ?? {}, message),
     });
     db.board.onChange(({ rev, ids, projects, wakes }) => {

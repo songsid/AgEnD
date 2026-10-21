@@ -1,8 +1,9 @@
 /**
  * #2246 step 3: the task board in Needs you — cards waiting for the person, in each chat world's live list under their
  * assignee, with Confirm, Send back and Answer; Send back and Answer take words as a reply to the prompt the bot posts,
- * which only the admin who clicked may give. A card an instance handed out is the web's only (that instance tells the
- * person). And in a real FleetManager: the board's cards become items, and a move from the chat is the person's.
+ * which only the admin who clicked may give. #2352: a card with a lane (the instance that handed it out, else its
+ * project's lead) belongs to the lane's world. And in a real FleetManager: the board's cards become items, and a move
+ * from the chat is the person's.
  *
  * Isolation: a fake clock and timers; fake adapters record every call; temp databases.
  */
@@ -19,7 +20,7 @@ const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 const task = (over: Partial<TaskInput>): TaskInput => ({
-  uuid: "u1", code: "M-1", title: "Weekly leaderboard", status: "review", version: 4, assignee: "alpha", note: "", relayed: false, since: 990_000, ...over,
+  uuid: "u1", code: "M-1", title: "Weekly leaderboard", status: "review", version: 4, assignee: "alpha", note: "", since: 990_000, ...over,
 });
 
 function rig() {
@@ -90,18 +91,21 @@ function rig() {
 }
 
 describe("the board's cards as Needs you items", () => {
-  it("under their assignee, with the card and what it asks or lacks; one an instance handed out is the web's only", () => {
-    const items = deriveNeedsYou({ prompts: [], instances: [], deliveries: [], ownerOf: i => (i === "alpha" ? "tg" : undefined), tasks: [
+  it("under their assignee, with the card and what it asks or lacks; a laned card is its lane's world's (#2352)", () => {
+    const worlds: Record<string, string> = { alpha: "tg", lead: "dc" };
+    const items = deriveNeedsYou({ prompts: [], instances: [], deliveries: [], ownerOf: i => worlds[i], tasks: [
       task({ note: "not wrapped up: no result" }),
       task({ uuid: "u2", code: "S-5", title: "Build the API", status: "blocked", note: "Ties: same rank?", since: 980_000 }),
-      task({ uuid: "u3", code: "S-7", relayed: true }),
+      task({ uuid: "u3", code: "S-7", lane: "lead" }),
       task({ uuid: "u4", code: "M-9", assignee: null }),
+      task({ uuid: "u5", code: "M-10", assignee: null, lane: "lead" }),
     ] });
-    expect(items.map(i => [i.id, i.reason, i.detail, i.owner ?? null, i.card?.code])).toEqual([
-      ["task:u2:blocked:980000", "task_blocked", "S-5 Build the API — Ties: same rank?", "tg", "S-5"],
-      ["task:u1:review:990000", "task_review", "M-1 Weekly leaderboard — not wrapped up: no result", "tg", "M-1"],
-      ["task:u3:review:990000", "task_review", "S-7 Weekly leaderboard", null, "S-7"],
-      ["task:u4:review:990000", "task_review", "M-9 Weekly leaderboard", null, "M-9"],          // nobody's: listed under no instance
+    expect(items.map(i => [i.id, i.reason, i.detail, i.owner ?? null, i.card?.code, i.lane ?? null])).toEqual([
+      ["task:u2:blocked:980000", "task_blocked", "S-5 Build the API — Ties: same rank?", "tg", "S-5", null],
+      ["task:u1:review:990000", "task_review", "M-1 Weekly leaderboard — not wrapped up: no result", "tg", "M-1", null],
+      ["task:u3:review:990000", "task_review", "S-7 Weekly leaderboard", "dc", "S-7", "lead"],        // the lane's world, not alpha's
+      ["task:u4:review:990000", "task_review", "M-9 Weekly leaderboard", null, "M-9", null],          // nobody's: listed under no instance
+      ["task:u5:review:990000", "task_review", "M-10 Weekly leaderboard", "dc", "M-10", "lead"],      // nobody's, but its lead lists it
     ]);
   });
 });
@@ -210,9 +214,10 @@ describe("in the fleet: the board's cards in Needs you, and a move from the chat
     board.moveCard(ann, theirs.code, "claimed");
     board.moveCard(ann, theirs.code, "blocked", { reason: "which season?" });
     const items = fm.needsYouTasks() as TaskInput[];
-    expect(items.map(i => [i.code, i.status, i.assignee, i.relayed, i.note])).toEqual([
-      [mine.code, "review", "dev-a", false, "not wrapped up: 1 checklist item(s) unchecked, no result"],
-      [theirs.code, "blocked", "dev-a", true, "which season?"],
+    // #2352: "lead" handed `theirs` out, but it has no channel here (no world, no topic): General, as before.
+    expect(items.map(i => [i.code, i.status, i.assignee, i.lane ?? null, i.note])).toEqual([
+      [mine.code, "review", "dev-a", null, "not wrapped up: 1 checklist item(s) unchecked, no result"],
+      [theirs.code, "blocked", "dev-a", null, "which season?"],
     ]);
     const version = board.getCard(mine.code).version;
     const by = { platform: "telegram", userId: "100", username: "ann_tg" };
