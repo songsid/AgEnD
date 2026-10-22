@@ -37,6 +37,8 @@
 
 ### 任務看板（Fleet › Tasks）
 
+<p align="center"><img src="assets/whats-new-2.3/task-board.webp" width="760" alt="任務看板（示範資料）：Leaderboard 專案，待辦、進行中、卡住各一張卡；卡住的那張顯示它的問題「Which scores count: ranked games only?」。"></p>
+
 - 看板分成專案、主任務（`M-n`）和子任務（`S-n`）。主任務會跟著子任務的進度走。支援依賴關係、留言和歷史紀錄，可以拖拉卡片和篩選。公開連結只能看。
 - 卡片被指派、退回、問題被回答、有新留言、被確認或取消時，相關的 agent 會收到通知。10 秒內的變動會合成一則。
 - 每張卡片都記錄是誰派的。只有你派出去的卡片需要你確認；agent 派的卡片由派工的 agent 確認。派工的 agent 被刪掉時，卡片會改回給你。
@@ -53,12 +55,16 @@
 
 ### Office 檢視
 
+<p align="center"><img src="assets/whats-new-2.3/office.webp" width="760" alt="Office 檢視（示範資料）：名為 Design floor 的像素風辦公室，有 Work、Lounge、Help desk、Nap corner 幾間房，示範 agent 坐在各自的桌前。"></p>
+
 - **Fleet → 組織圖 → Office** 是和 Canvas、List 並列的第三種檢視。它把 fleet 畫成一間像素風的辦公室：每個團隊一間房，每個 agent 一張桌子。
 - 可以看出每個 agent 在做什麼：工作中會打字，閒置會喝茶，暫停會睡覺，需要你處理時會舉手。訊息會沿著走廊在桌子之間飛過去。
 - 有 **Desks** 和 **Studio** 兩種風格。
 - fleet 管理者可以新增、改名、刪除辦公室，並選擇風格和成員。唯讀 session 和公開連結只能看、不能編輯；訪客看不到組織圖和 Office 檢視。如果你編輯時有人先儲存了辦公室，你的儲存會被拒絕，不會覆蓋任何東西；接著由你選擇：保留你的修改（下次儲存會取代對方存的內容），或載入對方的版本。
 
 ### 聊天
+
+<p align="center"><img src="assets/whats-new-2.3/chat-sending.webp" width="460" alt="網頁聊天裡的一則訊息「Deploy the demo build to staging」，送出途中標示「Sending…」。"></p>
 
 - **回覆指定訊息**：滑鼠移上去按 ↩、按右鍵、手機左滑或長按，或按 **R**。
 - **原生回覆**：在網頁回覆一則來自 Discord 或 Telegram 的訊息時，會在那個平台以原生回覆的方式發出。
@@ -77,6 +83,8 @@
 - 沒有自己設定的 agent，工具集選單會列出它實際生效的 profile。
 
 ### 用量面板
+
+<p align="center"><img src="assets/whats-new-2.3/usage-compact.webp" width="300" alt="精簡模式的用量面板（示範資料）：Claude、Codex、Kiro 共五個帳號，各自顯示方案和每個時間窗的長條。"></p>
 
 - 標題旁有 **完整／精簡** 切換。精簡檢視依供應商分組，每個帳號幾行：帳號名稱、方案和重置時間，再加上較短和較長的時間窗（有的話）各一條長條和百分比（不到兩天的，例如 5 小時；兩天以上的，例如一週或一個月）。Antigravity 則是每個額度池一行。選擇會同步到你所有的裝置。
 - 每個 Claude 登入各有一列：預設帳號和每個 credential profile 都會顯示。額度用完時顯示 100% 和重置時間；被限流時顯示「Rate limited」。

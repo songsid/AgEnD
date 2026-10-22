@@ -47,6 +47,8 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram, Discord or browser int
 
 ✨ **New in 2.3:** a task board (Fleet › Tasks) that can remind you in chat, global search with Ctrl+K, an Office view of the fleet, your own domain for the public link, and a one-line Windows installer. See [What's new in 2.3](docs/whats-new-2.3.md), and [Upgrading from 2.2 to 2.3](docs/upgrade-2.3.md).
 
+<p align="center"><img src="docs/assets/whats-new-2.3/task-board.webp" width="760" alt="The task board, with made-up demo data: the Leaderboard project with one card each in To do, In progress and Blocked; the blocked card shows its question, “Which scores count: ranked games only?”."></p>
+
 🚀 **Fleet Management** — One bot, N projects. Each Telegram forum topic or Discord channel is an isolated agent session.
 
 🔄 **Multi-Backend** — Claude Code, Codex, OpenCode, Kiro CLI, Antigravity CLI, Grok Build, Meta Muse Code. Switch or mix freely, or move an agent to another CLI from chat with `/backend`.

@@ -294,6 +294,8 @@ This means instances understand their role in the fleet from the first message, 
 
 ## Task board
 
+<p align="center"><img src="assets/whats-new-2.3/task-board.webp" width="760" alt="The task board, with made-up demo data: the Leaderboard project with one card each in To do, In progress and Blocked; the blocked card shows its question, “Which scores count: ranked games only?”."></p>
+
 A fleet-wide task list, kept in the fleet's SQLite database, through one `task` tool:
 
 - `task(action: "create")` — a new task with `title`, optional `description`, `priority` (`low` / `normal` / `high` / `urgent`), `assignee` and `depends_on` (task IDs).

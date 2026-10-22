@@ -32,7 +32,7 @@ XDG_RUNTIME_DIR=/run/user/$(id -u) agend update
 
 在 General 傳 `/update`。
 
-<!-- TODO(#2277)：root／WSL 主機上從聊天室傳 /update 是否受 #2369 影響；等 #2277 演練結果出來再補上。 -->
+從 2.2.6 升級時，root 或 WSL 類主機也可以直接這樣做：上面那個額外步驟，只在主機的 shell 裡執行 `agend update` 時才需要。
 
 ### 遇到阻礙時
 

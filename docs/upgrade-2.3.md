@@ -32,7 +32,7 @@ Rerunning the official install command also works. The running fleet is not affe
 
 Send `/update` in General.
 
-<!-- TODO(#2277): whether chat /update on root/WSL hosts is affected by #2369. Fill in once the #2277 rehearsal leg reports. -->
+This works from 2.2.6 on root and WSL-style hosts too: the extra step above is only for `agend update` run from a shell on the host.
 
 ### If something gets in the way
 

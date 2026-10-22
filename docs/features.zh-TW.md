@@ -294,6 +294,8 @@ Instance 可看到自己送出、收到，或經 `forwards` 明確授權的紀�
 
 ## 任務看板 (Task board)
 
+<p align="center"><img src="assets/whats-new-2.3/task-board.webp" width="760" alt="任務看板（示範資料）：Leaderboard 專案，待辦、進行中、卡住各一張卡；卡住的那張顯示它的問題「Which scores count: ranked games only?」。"></p>
+
 一份全 fleet 共用的任務清單，存在 fleet 的 SQLite 資料庫裡，透過單一個 `task` 工具操作：
 
 - `task(action: "create")` — 建立新任務，帶 `title`，以及選填的 `description`、`priority`（`low` / `normal` / `high` / `urgent`）、`assignee` 和 `depends_on`（任務 ID）。

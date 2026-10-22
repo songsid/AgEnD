@@ -37,6 +37,8 @@ The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In shor
 
 ### Task board (Fleet › Tasks)
 
+<p align="center"><img src="assets/whats-new-2.3/task-board.webp" width="760" alt="The task board, with made-up demo data: the Leaderboard project with one card each in To do, In progress and Blocked; the blocked card shows its question, “Which scores count: ranked games only?”."></p>
+
 - The board has projects, main tasks (`M-n`) and subtasks (`S-n`). A main task follows its subtasks' progress. You can use dependencies, comments and history, drag cards, and filter. Public links are read-only.
 - Agents are told when a card is assigned, sent back, answered, commented on, confirmed or cancelled. Changes made within 10 seconds are combined into one message.
 - Each card records who handed it out. Only cards you handed out wait for your confirmation. A card an agent handed out is confirmed by that agent. If that agent is removed, the card goes back to you.
@@ -53,12 +55,16 @@ The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In shor
 
 ### Office view
 
+<p align="center"><img src="assets/whats-new-2.3/office.webp" width="760" alt="The Office view, with made-up demo data: a pixel-art office named Design floor, with rooms called Work, Lounge, Help desk and Nap corner, and demo agents at their desks."></p>
+
 - **Fleet → Org chart → Office** is a third view next to Canvas and List. It draws the fleet as a small pixel office: each team is a room and each agent has a desk.
 - You can see what each agent is doing. Working agents type, idle agents drink tea, paused agents sleep, and agents that need you raise a hand. Messages travel along the corridors between desks.
 - Two styles: **Desks** and **Studio**.
 - Fleet admins can add, rename and delete offices, and choose their style and members. Read-only sessions and the public link can look but not edit; guests do not see the org chart or the Office view. If someone else saved the offices while you were editing, your save is refused and nothing is overwritten. You then choose: keep your edits (the next Save replaces what they saved) or load their version.
 
 ### Chat
+
+<p align="center"><img src="assets/whats-new-2.3/chat-sending.webp" width="460" alt="A message in the web chat, “Deploy the demo build to staging”, marked “Sending…” while it is on its way."></p>
 
 - **Reply to a message.** Hover and press ↩, right-click, swipe left or long-press on a phone, or press **R**.
 - **Native replies.** A reply sent from the web to a message that came from Discord or Telegram is posted there as a native reply to that message.
@@ -77,6 +83,8 @@ The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In shor
 - The tool set menu lists the profile each agent actually uses when it has none of its own.
 
 ### Usage panel
+
+<p align="center"><img src="assets/whats-new-2.3/usage-compact.webp" width="300" alt="The usage panel in compact mode, with made-up demo data: five accounts across Claude, Codex and Kiro, each with its plan and one bar per window."></p>
 
 - A **Full / Compact** switch sits by the title. Compact groups rows by provider, a few lines per account: the account name, plan and reset time, then a bar and a percentage for its shorter and longer window where it has them (under two days, such as 5 hours, and two days or more, such as a week or a month). Antigravity gets a line per quota pool. Your choice syncs to all your devices.
 - Each Claude sign-in has its own row: the default account and every credential profile. When a quota is used up, the row shows 100% and the reset time. When the account is rate-limited, it shows "Rate limited".

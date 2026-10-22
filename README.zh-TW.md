@@ -47,6 +47,8 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram、Discord 或瀏覽器
 
 ✨ **2.3 新功能：** 任務看板（Fleet › Tasks），可以在聊天中提醒你；全域搜尋（Ctrl+K）；fleet 的組織圖新增 Office 檢視；公開連結可以使用自己的網域；以及一行指令完成的 Windows 安裝。詳見 [2.3 新功能](docs/whats-new-2.3.zh-TW.md)，以及[從 2.2 升級到 2.3](docs/upgrade-2.3.zh-TW.md)。
 
+<p align="center"><img src="docs/assets/whats-new-2.3/task-board.webp" width="760" alt="任務看板（示範資料）：Leaderboard 專案，待辦、進行中、卡住各一張卡；卡住的那張顯示它的問題「Which scores count: ranked games only?」。"></p>
+
 🚀 **Fleet 管理** — 一個 bot、N 個專案。每個 Telegram forum topic 或 Discord 頻道，就是一個獨立的 agent session。
 
 🔄 **多後端支援** — Claude Code、Codex、OpenCode、Kiro CLI、Antigravity CLI、Grok Build、Meta Muse Code，自由切換或混用，也可以在聊天裡用 `/backend` 把 agent 換到另一個 CLI。
