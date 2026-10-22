@@ -7221,7 +7221,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startUpdateProgressMonitor(initialAdapter?: ChannelAdapter): void {
     if (this.updateProgressTimer) clearInterval(this.updateProgressTimer);
     const tick = async () => {
-      if (this.updateProgressEditRunning) return;
+      if (this.updateProgressEditRunning || this.shuttingDown) return;
       const marker = readUpdateProgress(this.dataDir);
       if (!marker) {
         if (this.updateProgressTimer) clearInterval(this.updateProgressTimer);
@@ -7264,6 +7264,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
       }
+      // #2476: from "starting" onward RestartProgress in the NEW process owns this
+      // message (resume → N/M → ✅ finish). A late CLI-stage edit of "installed" is
+      // what made "✅ 安裝完成" land after "啟動中 N/M". Failure still edits here.
+      if (marker.progress.stage === "starting") return;
       const target = marker.progress.target;
       const adapter = this.adapters.get(target.adapterId) ?? (initialAdapter?.id === target.adapterId ? initialAdapter : undefined);
       if (!adapter) return;
@@ -20069,6 +20073,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    if (this.updateProgressTimer) {
+      clearInterval(this.updateProgressTimer);
+      this.updateProgressTimer = null;
+    }
     this.settingsGeneration++; this.settingsConfirmation?.store.close(); this.settingsConfirmation = null;
     const settingsControl = this.settingsControl; this.settingsControl = null;
     const settingsControlStopped = settingsControl?.close();
