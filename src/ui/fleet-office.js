@@ -33,6 +33,7 @@ import { AUTO_ID, LOBBY, autoLayout, coatOf, createFlights, customLayout, deskAt
 import { CHAR_DEPTH, DEFAULT_PAL, modeOf, skinFor } from "./fleet-office-skin.js";
 import { activeFurniture, bubbleAt, createWalkers, linesFor, zonesLayout } from "./fleet-office-zones.js";
 import { createOfficeStore } from "./fleet-office-store.js";
+import { OfficeEditor } from "./fleet-office-editor.js";
 
 register("orgo", {
   en: {
@@ -126,6 +127,9 @@ function People({ nodes, pinned, onChange }) {
 export function Office({ view, traffic, q = "", lease, onOpen }) {
   const store = useMemo(() => createOfficeStore(lease ? { fetch: (path, o) => lease.fetch(path, o) } : {}), [lease]);
   const [stored, setStored] = useState([]);
+  const [storedRev, setStoredRev] = useState(null);                  // the rev the list was read at (a save sends it)
+  const [canEdit, setCanEdit] = useState(false);                      // an admin session (never a guest or the public link)
+  const [editing, setEditing] = useState(false);
   const [choice, setChoice] = useState(() => store.choice());
   const [filter, setFilter] = useState(() => store.filter());
   const [style, setStyle] = useState(() => store.skin());
@@ -143,12 +147,22 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
   // The host's offices: on opening, and again whenever the stream says they changed.
   useEffect(() => {
     if (!lease) return undefined;
-    const read = async () => { const d = await store.offices(); if (lease.current() && d) setStored(d.offices); };
+    const read = async () => { const d = await store.offices(); if (lease.current() && d) { setStored(d.offices); setStoredRev(d.rev); } };
     void read();
     const sub = appStore.get().streamOn;
     const off = sub ? lease.hold(sub("offices", () => { void read(); })) : null;
     return () => { if (off) off(); };
   }, [lease, store]);
+  // Whether this page may edit the offices: an admin session (the host asks again on every save), never a guest page or
+  // the public link (whose sessions the host refuses outright).
+  useEffect(() => {
+    const body = globalThis.document?.body;
+    if (!body || body.dataset.tier === "guest" || body.dataset.publicLink === "1") return undefined;
+    let live = true;
+    const auth = globalThis.AgendAuth;
+    if (auth && typeof auth.canWrite === "function") Promise.resolve(auth.canWrite()).then((v) => { if (live) setCanEdit(v === true); }, () => {});
+    return () => { live = false; };
+  }, []);
   // The stage's width (the grid wraps at it), and the theme (the tokens the canvas reads).
   useEffect(() => {
     const el = stageRef.current;
@@ -370,7 +384,10 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
         </select></label>
         <${People} nodes=${everyone} pinned=${f.pinned} onChange=${(pinned) => setF({ ...f, pinned })} />` : null}
       ${L.unseated ? html`<span class="muted oo-note">${to("unseated", L.unseated)}</span>` : null}
+      ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => setEditing(true)}>${t("orge.edit")}</button>` : null}
     </div>
+    ${editing ? html`<${OfficeEditor} offices=${stored} rev=${storedRev} view=${view} store=${store}
+      onSaved=${(d) => { setStored(d.offices); setStoredRev(d.rev); }} onClose=${() => setEditing(false)} />` : null}
     ${desks.length || L.rooms.length ? null : html`<p class="note oo-empty">${to("nobody")} ${auto && (f.team || f.pinned.length) ? html`<button type="button" class="btn btn-sm" onClick=${() => setF({ team: "", pinned: [] })}>${to("everyone")}</button>` : null}</p>`}
     <div class="oo-stage" ref=${stageRef}>
       <canvas ref=${canvasRef} class=${`oo-canvas${tipDesk && tipDesk.node.i ? " hot" : ""}`} role="img" aria-label=${to("label")}
