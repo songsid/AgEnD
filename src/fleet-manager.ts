@@ -16909,7 +16909,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         replyTo: m.replyTo,
         cards: m.cards,
       });
-      broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
+      // A sending page's own id for its pending bubble rides on the live copy only: never recorded, never replayed.
+      const clientId = typeof (data as { clientId?: unknown }).clientId === "string" ? (data as { clientId: string }).clientId : "";
+      broadcastSseEvent(this.sseClients, event, clientId ? { ...recorded, clientId } : recorded, onError, this.webChatHistory.cursorOf(recorded));
       this.searchIndex?.record(chatDoc(recorded));
       // #1629: live-only receipt after the recorded agent reply. Never persist/replay it or give it an SSE cursor.
       if (recorded.role === "agent") broadcastSseEvent(this.sseClients, "agent_reply_live", { v: 1, boot: recorded.boot, id: recorded.id, instance: recorded.instance }, onError);

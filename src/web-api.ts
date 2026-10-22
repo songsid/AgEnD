@@ -200,6 +200,9 @@ const SendMessageSchema = z.object({
   attachments: z.array(z.string().regex(/^[0-9a-f]{32}$/)).max(UPLOAD_LIMITS.maxFiles).optional(),
   /** #2272: the message of this chat this one replies to — its row only; the server reads what it quotes. */
   replyTo: z.object({ boot: z.string().regex(/^[0-9a-f]{1,32}$/), id: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER) }).strict().optional(),
+  /** The sending page's own id for its pending bubble: echoed on the live event only (never recorded), so that page
+   *  swaps its "sending" bubble for the real one even when the stream beats this answer. */
+  clientId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional(),
 }).strict().refine(v => v.message.trim().length > 0 || (v.attachments?.length ?? 0) > 0, { message: "a message or at least one file", path: ["message"] });
 
 /** An instance name that is safe as one path segment (no separator, no NUL, not a dot name). */
@@ -2892,7 +2895,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         json(res, 400, { error: `${issue.path.join(".") || "body"}: ${issue.message}` });
         return;
       }
-      const { instance, message: typed, attachments = [], replyTo } = parsed.data;
+      const { instance, message: typed, attachments = [], replyTo, clientId } = parsed.data;
       // #1920 step 2b: a guest writes only to an in-scope instance, while guests may chat, and never a command.
       const guest = guestRequestOf(req);
       const refused = guestChatRefusal(guest, instance);
@@ -3035,7 +3038,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       ctx.eventLog?.logActivity("message", person.name, (message || `[${files.length} file(s)]`).slice(0, 200), instance);
       // #1920: the account that wrote it (a guest sees its own); channel-visible once its copy was sent (above).
       ctx.emitSseEvent("message", { instance, sender: person.name, role: "user", text: message, ts, attachments: files.map(publicAttachment), messageId, ...(person.bound ? { from: person.voterKey } : {}),
-        ...(quoted ? { replyTo: webChatReplyRef(quoted) } : {}) });
+        ...(quoted ? { replyTo: webChatReplyRef(quoted) } : {}), ...(clientId ? { clientId } : {}) });
       json(res, 200, { sent: true, messageId });
     } catch {
       json(res, 400, { error: "Invalid JSON" });

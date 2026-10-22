@@ -4,6 +4,9 @@ import { register } from "/assets/app-i18n.js";
 register("chat", {
   en: {
     waking: "Waking {0}…", retrySend: "Retry send",
+    // A message being sent (its own bubble at once) and its files' uploads.
+    you: "You", sending: "Sending…", uploadingFile: "Uploading {0}", uploadWaiting: "waiting", uploadFailed: "failed",
+    uploadNoConnection: "the upload was cut off — check the connection", notSentBecause: "Not sent: {0}", deleteUnsent: "Delete",
     sendFailure_wake_capacity: "No slot is free to wake this instance. Retry when another instance is idle.",
     sendFailure_wake_credentials: "The instance could not sign in. Check its account on the host, then retry.",
     sendFailure_wake_timeout: "The instance did not become ready in time. Retry, or check its status on the host.",
@@ -143,6 +146,8 @@ register("chat", {
   },
   "zh-TW": {
     waking: "正在喚醒 {0}…", retrySend: "重試傳送",
+    you: "你", sending: "傳送中…", uploadingFile: "正在上傳 {0}", uploadWaiting: "等待中", uploadFailed: "失敗",
+    uploadNoConnection: "上傳中斷了，請檢查網路連線", notSentBecause: "沒有送出：{0}", deleteUnsent: "刪除",
     sendFailure_wake_capacity: "目前沒有空位可喚醒這個實例。請等其他實例閒置後重試。",
     sendFailure_wake_credentials: "實例無法登入。請先在主機檢查它的帳號，再重試。",
     sendFailure_wake_timeout: "實例未能及時就緒。請重試，或在主機檢查它的狀態。",

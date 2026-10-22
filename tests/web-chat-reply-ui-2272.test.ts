@@ -112,26 +112,31 @@ describe("the store", () => {
     const s = createChatStore({ fetch, t, toast, announce: vi.fn(), now: () => 1, setTimeout });
     return { s, bodies, toast };
   }
-  it("a reply sends its row only; a sent message clears it", async () => {
+  it("a reply sends its row only; its bubble shows the quote, and the composer's reply bar clears as it goes", async () => {
     const { s, bodies } = await store(() => ({ sent: true }));
     s.startReply("a", row({ attachments: [{ kind: "photo" }], text: "  multi\nline  " }));
     expect(s.state.replies.a).toEqual({ boot: "ab12", id: 1, sender: "atlas", text: "multi line", media: "photo" });
-    s.setDraft("a", "yes"); await s.send("a");
-    expect(bodies).toEqual([{ instance: "a", message: "yes", replyTo: { boot: "ab12", id: 1 } }]);
-    expect(s.state.replies.a).toBeUndefined();
+    s.setDraft("a", "yes"); const going = s.send("a");
+    expect([s.state.replies.a, s.state.outgoing.a[0].replyTo]).toEqual([undefined, { boot: "ab12", id: 1, sender: "atlas", text: "multi line", media: "photo" }]);
+    await going;
+    const client = expect.stringMatching(/^c[0-9a-f]{24}$/);
+    expect(bodies).toEqual([{ instance: "a", message: "yes", replyTo: { boot: "ab12", id: 1 }, clientId: client }]);
     s.setDraft("a", "plain"); await s.send("a");
-    expect(bodies[1]).toEqual({ instance: "a", message: "plain" });
+    expect(bodies[1]).toEqual({ instance: "a", message: "plain", clientId: client });
   });
-  it("'reply_gone' clears it (the text kept); any other failure keeps it; ✕ clears it", async () => {
+  it("'reply_gone': the failed bubble keeps its text and drops the quote (Retry sends it without); any other failure keeps the quote; ✕ clears the bar", async () => {
     let reason = "reply_gone";
-    const { s } = await store(() => ({ error: "x", reason, status: 409 }));
-    s.setCurrent("a");                                                          // the chat shown: its draft comes back
+    const { s, bodies } = await store(() => ({ error: "x", reason, status: 409 }));
+    s.setCurrent("a");
     s.startReply("a", row()); s.setDraft("a", "yes"); await s.send("a");
-    expect([s.state.replies.a, s.state.drafts.a]).toEqual([undefined, "yes"]);
+    const gone = s.state.outgoing.a[0];
+    expect([gone.text, gone.outgoing.state, gone.replyTo, s.state.replies.a]).toEqual(["yes", "failed", undefined, undefined]);
     reason = "delivery_changed";
-    s.startReply("a", row()); await s.send("a");
-    expect(s.state.replies.a?.id).toBe(1);
-    s.clearReply("a");
+    s.startReply("a", row()); s.setDraft("a", "again"); await s.send("a");
+    expect([s.state.outgoing.a[1].outgoing.state, s.state.outgoing.a[1].replyTo?.id]).toEqual(["failed", 1]);
+    await s.retryOutgoing("a", gone.clientId);
+    expect(bodies.at(-1)).toEqual({ instance: "a", message: "yes", clientId: gone.clientId });   // without the quote that is gone
+    s.startReply("a", row()); s.clearReply("a");
     expect(s.state.replies.a).toBeUndefined();
   });
 });

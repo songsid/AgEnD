@@ -470,6 +470,35 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
    such as 「昨天 下午03:58」, ticks) — and a block body would stretch to it; fit-content keeps a short message short, on
    the right under its meta, and a long one still wraps at the message's max-width. */
 .msg.user .body { background: var(--user-bubble); border-radius: var(--r-xl); padding: 10px var(--s-4); width: fit-content; max-width: 100%; margin-left: auto; }
+/* A message this page is sending (chat-thread.js outgoingHtml): shown at once, its text dimmed with "Sending…" until the
+   server takes it; failed, a straight red bar with Retry and Delete. Each file: a picture as itself (or a document mark),
+   its name, a square-ended bar and its percentage, moved in place. */
+.msg.user.out .meta { align-items: center; gap: var(--s-2); }
+.msg.out.out-queued .body, .msg.out.out-sending .body { color: var(--text-3); }
+.msg.out.out-queued .body .md, .msg.out.out-sending .body .md { opacity: .72; }
+.out-state { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-3); }
+.out-spin { width: 10px; height: 10px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: out-spin .8s linear infinite; }
+@keyframes out-spin { to { transform: rotate(360deg); } }
+.out-files { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
+.msg.out .body .out-files:first-child { margin-top: 0; }
+.out-file { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.out-pic { width: 72px; height: 72px; object-fit: cover; border-radius: var(--r-md); flex: none; background: var(--surface-2); }
+.msg.out.out-queued .out-pic, .msg.out.out-sending .out-pic { opacity: .7; }
+.out-doc { width: 32px; height: 40px; flex: none; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); }
+.out-file-info { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px var(--s-2); min-width: 0; flex: 1; min-width: 140px; }
+.out-name { font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.out-pct { font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.out-bar { grid-column: 1 / -1; height: 3px; background: var(--border); overflow: hidden; }
+.out-fill { display: block; height: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform .2s linear; }
+.out-file[data-state="done"] .out-bar, .out-file[data-state="done"] .out-pct { visibility: hidden; }
+.out-file[data-state="failed"] .out-fill { background: var(--danger); }
+.out-file[data-state="failed"] .out-pct { color: var(--danger); }
+.msg.out.out-sent .out-file .out-bar, .msg.out.out-sent .out-file .out-pct { visibility: hidden; }
+.out-note { --lbar-color: var(--danger); display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--s-2);
+  margin-top: var(--s-2); padding: var(--s-1) 0 var(--s-1) calc(var(--s-2) + 3px); font-size: var(--fs-xs); color: var(--danger); }
+.out-error { overflow-wrap: anywhere; }
+.out-actions { display: inline-flex; gap: var(--s-1); }
+@media (prefers-reduced-motion: reduce) { .out-spin { animation: none; border-right-color: currentColor; opacity: .6; } .out-fill { transition: none; } }
 /* A person's click on a reply button: the bubble shows 🔘 and the button's label (never the value the agent was given);
    live, the label is a button that shows the reply its buttons were on. */
 .click-chip { display: flex; }
