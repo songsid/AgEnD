@@ -4,7 +4,9 @@
 // field has focus and the view is shrunk by a keyboard, both go and the box sits on the keyboard; both come back on blur.
 // The keyboard is emulated the way iOS Safari reports it: the viewport (innerHeight and visualViewport together) shrinks
 // by 336 px after the box is tapped. Cases: phone (390×844, touch) light en on this machine; dark zh-TW over the
-// temporary public link. Measured: the gap between the box's bottom and the view's bottom, the tabs and the row shown.
+// temporary public link; Prism r1's boundaries: turned with the keyboard up (390×508 → 844×200 → back, still focused),
+// and a desk window (a fine pointer, no on-screen keyboard) made narrow and shorter while typing — nothing hidden.
+// Measured: the gap between the box's bottom and the view's bottom, the tabs and the row shown.
 //   PW_DIR=… REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf [LABEL=before] [PW_ENGINE=webkit] \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2478-keyboard.mts
 import { writeFileSync } from "node:fs";
@@ -27,8 +29,9 @@ const MEASURE = `(() => { const box = document.querySelector("#msgIn"), tabs = d
     rowText: row ? row.textContent.trim().slice(0, 60) : null, kb: !!document.querySelector(".shell.kb-open"), focused: document.activeElement === box,
     fontPx: box ? parseFloat(getComputedStyle(box).fontSize) : null }; })()`;
 let link: Awaited<ReturnType<typeof openPublicLink>> | null = null;
-for (const k of [{ c: { device: "phone", theme: "light", lang: "en" }, pub: false }, { c: { device: "phone", theme: "dark", lang: "zh-TW" }, pub: true }] as const) {
-  const tag = `${k.c.device}-${k.c.theme}-${k.c.lang}${k.pub ? "-public" : ""}`, res: any = (r.cases[tag] = {});
+for (const k of [{ c: { device: "phone", theme: "light", lang: "en" }, pub: false }, { c: { device: "phone", theme: "dark", lang: "zh-TW" }, pub: true },
+  { c: { device: "desk", theme: "light", lang: "en" }, pub: false, narrowDesk: true }] as const) {
+  const tag = `${k.c.device}-${k.c.theme}-${k.c.lang}${k.pub ? "-public" : ""}${"narrowDesk" in k ? "-narrow-window" : ""}`, res: any = (r.cases[tag] = {});
   let p: any = null;
   try {
     if (k.pub) { link ??= await openPublicLink(fx); p = await link.publicPage(k.c as any, { path: `/ui/chat/${CHAT}` }); }
@@ -36,6 +39,20 @@ for (const k of [{ c: { device: "phone", theme: "light", lang: "en" }, pub: fals
     const { page } = p;
     ok(res, "mounted", await mounted(page));
     const box = page.locator("#msgIn");
+    if ("narrowDesk" in k) {
+      // Prism r1: a desk window (a fine pointer: no on-screen keyboard) made narrow, then shorter while typing.
+      await page.setViewportSize({ width: 390, height: 844 }); await box.waitFor({ timeout: 10000 }); await page.waitForTimeout(400);
+      await box.click();
+      await page.setViewportSize({ width: 390, height: 844 - KEYBOARD }); await page.waitForTimeout(500);
+      const shorter = await page.evaluate(MEASURE) as any;
+      await page.screenshot({ path: shotPath(SMOKE, tag, `${LABEL}-1-shorter-window`) });
+      res.measured = { shorter };
+      ok(res, "narrowDesk:focused", shorter.focused);
+      ok(res, "narrowDesk:noKeyboard", !shorter.kb && shorter.tabs && shorter.row, [shorter.kb, shorter.tabs, shorter.row]);
+      ok(res, "noPageErrors", pageErrors(p.errors).length === 0, pageErrors(p.errors));
+      await p.ctx.close();
+      continue;
+    }
     await box.waitFor({ timeout: 10000 }); await page.waitForTimeout(400);
     const rest = await page.evaluate(MEASURE) as any;
     await page.screenshot({ path: shotPath(SMOKE, tag, `${LABEL}-1-at-rest`) });
@@ -44,12 +61,20 @@ for (const k of [{ c: { device: "phone", theme: "light", lang: "en" }, pub: fals
     await page.waitForTimeout(500);
     const typing = await page.evaluate(MEASURE) as any;
     await page.screenshot({ path: shotPath(SMOKE, tag, `${LABEL}-2-keyboard-up`) });
+    // Prism r1: turned with the keyboard up and the box still focused, and back.
+    await page.setViewportSize({ width: 844, height: 200 }); await page.waitForTimeout(500);
+    const turned = await page.evaluate(MEASURE) as any;
+    await page.screenshot({ path: shotPath(SMOKE, tag, `${LABEL}-2b-turned-keyboard-up`) });
+    await page.setViewportSize({ width: 390, height: 844 - KEYBOARD }); await page.waitForTimeout(500);
+    const turnedBack = await page.evaluate(MEASURE) as any;
     await page.evaluate(`document.activeElement && document.activeElement.blur()`);   // done typing: the keyboard goes
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(500);
     const back = await page.evaluate(MEASURE) as any;
     await page.screenshot({ path: shotPath(SMOKE, tag, `${LABEL}-3-keyboard-down`) });
-    res.measured = { rest, typing, back };
+    res.measured = { rest, typing, turned, turnedBack, back };
+    ok(res, "turned:keyboardStillUp", turned.focused && turned.kb && !turned.tabs && !turned.row, [turned.focused, turned.kb, turned.tabs, turned.row]);
+    ok(res, "turnedBack:keyboardStillUp", turnedBack.kb && !turnedBack.tabs, [turnedBack.kb, turnedBack.tabs]);
     ok(res, "atRest:tabsAndRowShown", rest.tabs && rest.row, [rest.tabs, rest.row]);
     ok(res, "keyboard:focused", typing.focused);
     ok(res, "keyboard:tabsHidden", !typing.tabs);
@@ -67,5 +92,5 @@ for (const k of [{ c: { device: "phone", theme: "light", lang: "en" }, pub: fals
 await link?.close();
 r.pass = Object.values(r.cases).every((c: any) => !c.failed);
 writeFileSync(shotPath(SMOKE, `result-${LABEL}`, "x").replace(/-x\.png$/, ".json"), JSON.stringify(r, null, 1));
-console.log(JSON.stringify({ pass: r.pass, cases: Object.fromEntries(Object.entries(r.cases).map(([k, v]: any) => [k, { failed: v.failed ?? [], m: v.measured && { rest: v.measured.rest.gap, typing: v.measured.typing.gap, row: v.measured.typing.rowText } }])) }, null, 1));
+console.log(JSON.stringify({ pass: r.pass, cases: Object.fromEntries(Object.entries(r.cases).map(([k, v]: any) => [k, { failed: v.failed ?? [], m: v.measured && (v.measured.rest ? { rest: v.measured.rest.gap, typing: v.measured.typing.gap, turned: v.measured.turned?.kb, row: v.measured.typing.rowText } : v.measured) }])) }, null, 1));
 await fx.close(); process.exit(r.pass ? 0 : 1);

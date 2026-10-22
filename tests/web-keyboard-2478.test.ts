@@ -25,9 +25,11 @@ function fakeViewport(width: number, height: number) {
 const Stub = (name: string) => ({ Component: () => h("div", { class: `stub-${name}` }, h("textarea", { id: "box" }), h("input", { type: "checkbox", id: "tick" })) });
 const PANELS = new Map([["chat", Stub("chat")], ["view", Stub("view")], ["fleet", Stub("fleet")], ["settings", Stub("settings")], ["needs", Stub("needs")]]);
 
-async function phone() {
+async function phone(o: { pointer?: "coarse" | "fine" } = {}) {
   const pg = page({ url: "http://127.0.0.1:19280/ui/chat/web-dev", storage: { agend_tour_done: "1" }, matchNarrow: true });
   mounted.push(pg);
+  const coarse = (o.pointer ?? "coarse") === "coarse";
+  (globalThis as any).matchMedia = (q: string) => ({ matches: /max-width/.test(q) || (coarse && /pointer:\s*coarse/.test(q)), addEventListener() {}, removeEventListener() {} });
   const vv = fakeViewport(390, 844);
   pg.window.visualViewport = vv; pg.window.innerHeight = 844;
   (globalThis as any).fetch = async () => ({ ok: false, status: 404, json: async () => ({}) });
@@ -103,6 +105,40 @@ describe("#2478: the shell on a phone (real Shell, fake visualViewport)", () => 
     expect(p.kb()).toBe(false);
     await p.resize({ height: 200, inner: 390 });
     expect(p.kb(), "the keyboard, in landscape").toBe(true);
+  });
+
+  it("Prism r1: turned with the keyboard up and the box still focused — the keyboard stays up (no tabs over the box)", async () => {
+    const p = await phone();
+    await p.focus("#box");
+    await p.resize({ height: 508, inner: 508 });
+    expect(p.kb()).toBe(true);
+    await p.resize({ width: 844, height: 200, inner: 200 });                     // turned, the keyboard still up
+    expect(p.kb(), "the new width has no height without the keyboard yet: held").toBe(true);
+    await p.resize({ width: 390, height: 508, inner: 508 });                     // back, still typing
+    expect(p.kb()).toBe(true);
+    await p.blur("#box");
+    expect(p.kb(), "left: back").toBe(false);
+  });
+
+  it("Prism r1: turned with the keyboard up, then the keyboard put away while still focused — the tabs come back", async () => {
+    const p = await phone();
+    await p.focus("#box");
+    await p.resize({ height: 508, inner: 508 });
+    await p.resize({ width: 844, height: 200, inner: 200 });
+    expect(p.kb()).toBe(true);
+    await p.resize({ height: 390, inner: 390 });                                 // grew by 190: the keyboard went
+    expect(p.kb()).toBe(false);
+    await p.resize({ height: 200, inner: 200 });                                 // and up again, measured from 390
+    expect(p.kb()).toBe(true);
+  });
+
+  it("Prism r1: a desk (a fine pointer) has no on-screen keyboard — a narrow window made shorter while typing hides nothing", async () => {
+    const p = await phone({ pointer: "fine" });
+    await p.focus("#box");
+    await p.resize({ height: 508, inner: 508 });
+    expect(p.kb()).toBe(false);
+    await p.resize({ height: 508 });
+    expect(p.kb(), "visual viewport only (a pinch or a panel)").toBe(false);
   });
 
   it("the CSS: with the keyboard up the tabs and the line under the composer go (phone widths)", () => {
