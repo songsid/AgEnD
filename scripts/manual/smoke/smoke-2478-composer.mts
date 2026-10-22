@@ -16,9 +16,26 @@ const NICK = "agend-leader-t1503382358143799511", BARE = "agend-dev-claude-t1519
 const nick = String(fx.fm.fleetConfig.instances[NICK]?.display_name ?? "");
 const r: any = { label: LABEL, nick, cases: {} };
 const ok = (c: any, k: string, v: boolean, detail?: unknown) => { c[k] = detail === undefined ? v : { pass: v, detail }; if (!v) c.failed = [...(c.failed ?? []), k]; };
+// The placeholder as drawn: the overlay (after) or the box's own (before, read from the attribute).
 const BOX = `(() => { const el = document.querySelector("#msgIn"); if (!el) return null; const cs = getComputedStyle(el);
-  return { h: Math.round(el.getBoundingClientRect().height), placeholder: el.placeholder, value: el.value, hint: el.getAttribute("enterkeyhint"),
-    lineH: parseFloat(cs.lineHeight) || 0, overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`;
+  const ph = document.querySelector(".composer-ph"), pr = ph ? ph.getBoundingClientRect() : null, br = el.getBoundingClientRect();
+  return { h: Math.round(br.height), placeholder: ph ? ph.textContent : el.placeholder, value: el.value, hint: el.getAttribute("enterkeyhint"),
+    lineH: parseFloat(cs.lineHeight) || 0, fontPx: parseFloat(cs.fontSize),
+    ph: ph ? { h: Math.round(pr.height), overflows: ph.scrollWidth > ph.clientWidth, inBox: pr.left >= br.left - 1 && pr.right <= br.right + 1,
+      fontPx: parseFloat(getComputedStyle(ph).fontSize), lineH: parseFloat(getComputedStyle(ph).lineHeight) || 0 } : null,
+    overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`;
+/** A visible "…": the placeholder drawn with text-overflow: ellipsis and again with clip must differ in pixels. The
+ *  textarea's own placeholder (before) is clipped either way, so it fails here. */
+async function ellipsisVisible(page: any): Promise<{ visible: boolean; target: string }> {
+  const target = (await page.$(".composer-ph")) ? ".composer-ph" : "#msgIn";
+  const el = await page.$(target);
+  const a = await el.screenshot();
+  await page.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(target)}); e.style.textOverflow = "clip"; })()`);   // CSSOM, test-only
+  await page.evaluate(`(() => { const e = document.querySelector("#msgIn"); e.style.setProperty("text-overflow", "clip"); })()`);
+  const b = await el.screenshot();
+  await page.evaluate(`(() => { for (const s of [${JSON.stringify(target)}, "#msgIn"]) { const e = document.querySelector(s); e.style.textOverflow = ""; } })()`);
+  return { visible: !a.equals(b), target };
+}
 for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "phone", theme: "dark", lang: "zh-TW" }, { device: "desk", theme: "light", lang: "en" }] as const) {
   const tag = `${c.device}-${c.theme}-${c.lang}`, res: any = (r.cases[tag] = {});
   const p = await freshPage(fx, c, { path: `/ui/chat/${NICK}` }).catch((err) => { res.failed = [`freshPage: ${String(err).slice(0, 200)}`]; return null; });
@@ -39,12 +56,24 @@ for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "pho
     await box.fill(""); await page.waitForTimeout(100);
     ok(res, "placeholderNamesDisplayName", empty.placeholder.includes(nick) && !empty.placeholder.includes(NICK), empty.placeholder);
     ok(res, "emptyBoxIsOneLine", empty.h <= one.h, [empty.h, one.h]);
+    const nickEllipsis = await ellipsisVisible(page);
+    // Too long for the box (always on a phone): it must end in a visible "…"; one that fits needs none.
+    ok(res, "placeholderEndsInVisibleEllipsis", (c.device === "phone" ? !!empty.ph?.overflows : true) && (!empty.ph?.overflows || nickEllipsis.visible), { ...nickEllipsis, overflows: empty.ph?.overflows });
+    ok(res, "placeholderOneLineInTheBox", !!empty.ph && empty.ph.h <= empty.ph.lineH + 2 && empty.ph.inBox, empty.ph);
+    ok(res, "placeholderSameTypeAsText", !!empty.ph && empty.ph.fontPx === empty.fontPx && empty.ph.lineH === empty.lineH, empty.ph && [empty.ph.fontPx, empty.fontPx]);
+    // Typed text still wraps: a long line grows the box (one line is `one.h`).
+    await box.fill("a long line of typed text that is far wider than the phone's message box, so it must wrap ".repeat(2)); await page.waitForTimeout(100);
+    const long = await page.evaluate(BOX) as any;
+    ok(res, "typedTextWraps", long.h > one.h, [long.h, one.h]);
+    await box.fill(""); await page.waitForTimeout(100);
     // The agent with no display name: its id, still one line.
     await page.goto(`${p.base}/ui/chat/${BARE}`); await box.waitFor({ timeout: 10000 }); await page.waitForTimeout(300);
     const bare = await page.evaluate(BOX) as any;
     await page.locator(".dock").screenshot({ path: shotPath(SMOKE, tag, `${LABEL}-2-id-placeholder`) });
     ok(res, "placeholderFallsBackToId", bare.placeholder.includes(BARE), bare.placeholder);
     ok(res, "idBoxIsOneLine", bare.h <= one.h, [bare.h, one.h]);
+    const idEllipsis = await ellipsisVisible(page);
+    ok(res, "idPlaceholderEndsInVisibleEllipsis", (c.device === "phone" ? !!bare.ph?.overflows : true) && (!bare.ph?.overflows || idEllipsis.visible), { ...idEllipsis, overflows: bare.ph?.overflows });
     // Return / Enter.
     await box.click();
     await page.keyboard.type("first line");

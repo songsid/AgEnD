@@ -657,8 +657,8 @@ function Composer({ name, label = name, lease, busy }) {
   const guest = guestPage();
   const palette = guest || files.length || closedFor === value ? null : paletteFor(value);
   const pick = palette && palette.length ? palette[Math.min(sel, palette.length - 1)] : null;
-  // Grow with the text, up to a limit: set through the CSSOM, never a style attribute (#1300). Empty, it is one line:
-  // the placeholder never sizes it (#2478 — a long name's placeholder made the box two lines tall).
+  // Grow with the text, up to a limit: set through the CSSOM, never a style attribute (#1300). Empty, it is one line
+  // (#2478 — a long name's placeholder made the box two lines tall).
   useLayoutEffect(() => {
     const el = input.current; if (!el) return;
     el.style.height = "auto";
@@ -726,9 +726,12 @@ function Composer({ name, label = name, lease, busy }) {
       <button id="attachBtn" type="button" class="icon-btn" title=${t("chat.attachTitle")} aria-label=${t("chat.attachTitle")} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
       <input ref=${fileIn} type="file" multiple hidden
         onChange=${(e) => { store.addFiles(name, e.target.files); e.target.value = ""; }} />
-      <textarea id="msgIn" ref=${input} rows="1" value=${value} placeholder=${t("chat.composerPlaceholder", label)} aria-label=${t("chat.composerPlaceholder", label)}
+      ${/* #2478: the placeholder is drawn beside the box, one line ending in "…" — a textarea's own placeholder is clipped,
+          never ellipsized, and a long name wrapped it to two lines. The box keeps the words as its accessible name. */ ""}
+      <span class="composer-field"><textarea id="msgIn" ref=${input} rows="1" value=${value} aria-label=${t("chat.composerPlaceholder", label)}
         enterkeyhint=${touchScreen() ? "enter" : undefined} autocomplete="off" aria-controls=${palette ? "cmdPalette" : undefined} aria-expanded=${palette ? "true" : "false"}
-        aria-activedescendant=${pick ? optId(pick) : undefined} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}></textarea>
+        aria-activedescendant=${pick ? optId(pick) : undefined} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}></textarea>${value ? null
+        : html`<span class="composer-ph" aria-hidden="true">${t("chat.composerPlaceholder", label)}</span>`}</span>
       <button id="stopBtn" type="button" class="btn btn-stop" hidden=${!busy} title=${t("chat.stopReplyTitle")}
         disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} /><span class="stop-label">${t("chat.stopReply")}</span></button>
       <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content}

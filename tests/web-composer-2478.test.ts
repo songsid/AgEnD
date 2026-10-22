@@ -50,13 +50,25 @@ describe("#2478: the chat composer (the real page modules)", () => {
     return { p, box, type, key, sends };
   }
 
+  const ph = (c: { p: AppPage }) => c.p.root.querySelector(".composer-field .composer-ph") as any;
   it("1: the placeholder names the display name — its id when there is none (or only spaces)", async () => {
     const named = await chatPage({ over: { display_name: "Release captain" } });
-    expect([named.box().getAttribute("placeholder"), named.box().getAttribute("aria-label")]).toEqual(["Message Release captain…", "Message Release captain…"]);
+    // Drawn beside the box (a textarea's own placeholder is clipped, never ellipsized); the box keeps the words as its name.
+    expect([ph(named)?.textContent, ph(named)?.getAttribute("aria-hidden"), named.box().getAttribute("aria-label"), named.box().getAttribute("placeholder")])
+      .toEqual(["Message Release captain…", "true", "Message Release captain…", null]);
     for (const over of [{}, { display_name: "   " }]) {
       const c = await chatPage({ over });
-      expect(c.box().getAttribute("placeholder"), JSON.stringify(over)).toBe("Message agend-leader-t1503382358143799511…");
+      expect([ph(c)?.textContent, c.box().getAttribute("aria-label")], JSON.stringify(over)).toEqual(["Message agend-leader-t1503382358143799511…", "Message agend-leader-t1503382358143799511…"]);
     }
+  });
+
+  it("1: the drawn placeholder is there only while the box is empty", async () => {
+    const c = await chatPage();
+    expect(!!ph(c)).toBe(true);
+    await c.type("hi");
+    expect(ph(c), "typed: gone").toBeNull();
+    await c.type("");
+    expect(!!ph(c), "empty again: back").toBe(true);
   });
 
   it("1: empty, the box is one line — its placeholder never sizes it; typed text still grows it", async () => {
@@ -68,8 +80,8 @@ describe("#2478: the chat composer (the real page modules)", () => {
     expect(c.box().style.height).toBe("auto");
     const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     const rule = (sel: string) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[1]!.split(",").map((x) => x.trim()).includes(sel)).map((m) => m[2]).join(";");
-    for (const sel of [".composer textarea::placeholder", ".composer textarea:placeholder-shown"])
-      for (const d of [/white-space:\s*nowrap/, /text-overflow:\s*ellipsis/, /overflow:\s*hidden/]) expect(rule(sel), sel).toMatch(d);
+    for (const d of [/white-space:\s*nowrap/, /text-overflow:\s*ellipsis/, /overflow:\s*hidden/, /pointer-events:\s*none/, /position:\s*absolute/]) expect(rule(".composer-ph")).toMatch(d);
+    expect(rule(".composer-field")).toMatch(/position:\s*relative/);
   });
 
   it("3: a touch screen — Return is a new line, nothing is sent; enterkeyhint is \"enter\"; the Send button sends", async () => {
