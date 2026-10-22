@@ -172,10 +172,9 @@ function squashBody(info, op, me) {
 
 function prepare(pr, head, approved, message, base) {
   requireThat(/^[1-9][0-9]*$/.test(pr) && sha(head) && sha(approved), 'invalid receipt input');
-  const info = gh('pr', 'view', pr, '-R', repo, '--json', 'body,commitsCount');
+  const info = gh('pr', 'view', pr, '-R', repo, '--json', 'body');
   requireThat(info.body === undefined || typeof info.body === 'string', 'PR body unreadable');
   info.commits = allPrCommits(pr);
-  requireThat(!Number.isInteger(info.commitsCount) || info.commits.length === info.commitsCount, 'PR commits truncated');
   const me = gh('api', 'user');
   requireThat(me && typeof me.login === 'string', 'merging identity unreadable');
   const op = randomBytes(24).toString('hex');

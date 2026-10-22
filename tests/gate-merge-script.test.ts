@@ -33,9 +33,15 @@ const opt = name => { const i = args.indexOf(name); return i < 0 ? undefined : a
 if (args[0] === "pr" && args[1] === "view") {
   const pr = st.prs[args[2]]; if (!pr) fail("no such PR");
   if ((st.viewFails ?? []).includes(Number(args[2])) || (st.viewFailsAfterMerge && st.merged)) fail("HTTP 502");
+  const json = opt("--json");
+  if (json) {
+    // gh 2.74.0: Unknown JSON field: "commitsCount" (not in gh pr view --json fields).
+    const allowed = new Set("additions,assignees,author,autoMergeRequest,baseRefName,baseRefOid,body,changedFiles,closed,closedAt,closingIssuesReferences,comments,commits,createdAt,deletions,files,fullDatabaseId,headRefName,headRefOid,headRepository,headRepositoryOwner,id,isCrossRepository,isDraft,labels,latestReviews,maintainerCanModify,mergeCommit,mergeStateStatus,mergeable,mergedAt,mergedBy,milestone,number,potentialMergeCommit,projectCards,projectItems,reactionGroups,reviewDecision,reviewRequests,reviews,state,statusCheckRollup,title,updatedAt,url".split(","));
+    for (const f of json.split(",")) if (!allowed.has(f)) fail("Unknown JSON field: " + JSON.stringify(f));
+  }
   const commits = Array.isArray(pr.commits) ? pr.commits : [];
   // gh pr view --json commits is commits(first:100) with no completeness fields.
-  out({ ...pr, commitsCount: pr.commitsCount ?? commits.length, commits: commits.slice(0, 100) });
+  out({ ...pr, commits: commits.slice(0, 100) });
 }
 if (args[0] === "pr" && args[1] === "list") {
   const base = opt("--base"), head = opt("--head");
@@ -140,7 +146,6 @@ fail("unexpected gh " + args.join(" "));
 type Pr = {
   number?: number; url?: string; state: string; isDraft: boolean; headRefOid: string; headRefName: string; baseRefName: string; isCrossRepository: boolean; mergeCommit?: { oid: string };
   body?: string;
-  commitsCount?: number;
   commits?: { authors?: { login?: string; name?: string; email?: string; id?: number | string }[]; messageHeadline?: string; messageBody?: string }[];
 };
 type State = {
@@ -224,7 +229,7 @@ function world() {
   return { dir, dev, work, sh, commit, publish, approved, state, ok, approval, approveText, run, writes, setEnv };
 }
 
-describe("gate-merge: the happy path and the one-line verdict", () => {
+describe("gate-merge: the happy path and the one-line verdict", { timeout: 30_000 }, () => {
   it("head = approved, CI green → squash-merges with --match-head-commit, deletes the branch, prints MERGED <sha>", () => {
     const w = world();
     const r = w.run(["7", w.approved, "xmsg-approve-1"]);
@@ -257,7 +262,7 @@ describe("gate-merge: the happy path and the one-line verdict", () => {
   });
 });
 
-describe("gate-merge: the approval must be verified", () => {
+describe("gate-merge: the approval must be verified", { timeout: 30_000 }, () => {
   const cases: [string, (w: ReturnType<typeof world>) => string, RegExp][] = [
     ["Delivery not found (not JSON)", () => "Delivery not found", /not JSON/],
     ["no delivery with that message_id", w => w.approval(w.approveText(w.approved), { message_id: "xmsg-other" }), /0 deliveries/],
@@ -306,7 +311,7 @@ describe("gate-merge: the approval must be verified", () => {
   });
 });
 
-describe("gate-merge: the PR state", () => {
+describe("gate-merge: the PR state", { timeout: 30_000 }, () => {
   it.each([["CLOSED", false], ["MERGED", false], ["OPEN", true]] as const)("%s%s → BLOCKED", (state, draft) => {
     const w = world();
     Object.assign(w.state.prs[7]!, { state, isDraft: draft });
@@ -325,7 +330,7 @@ describe("gate-merge: the PR state", () => {
   });
 });
 
-describe("gate-merge: a head that moved after the approval", () => {
+describe("gate-merge: a head that moved after the approval", { timeout: 30_000 }, () => {
   const moved = (w: ReturnType<typeof world>, head: string) => {
     w.state.prs[7]!.headRefOid = head;
     w.state.checkRuns[head] = green(w.ok, 11);
@@ -453,7 +458,7 @@ describe("gate-merge: a head that moved after the approval", () => {
   });
 });
 
-describe("gate-merge: merge-synced and green", () => {
+describe("gate-merge: merge-synced and green", { timeout: 30_000 }, () => {
   it("behind main with disjoint paths → admitted without sync", () => {
     const w = world();
     w.sh(w.dev, "checkout", "-q", "main");
@@ -583,7 +588,7 @@ describe("gate-merge: merge-synced and green", () => {
   });
 });
 
-describe("gate-merge: stacked PRs (never delete a branch another PR is based on)", () => {
+describe("gate-merge: stacked PRs (never delete a branch another PR is based on)", { timeout: 30_000 }, () => {
   const stacked = () => {
     const w = world();
     w.state.prs[8] = { state: "OPEN", isDraft: false, headRefOid: "e".repeat(40), headRefName: "feature-2", baseRefName: "feature", isCrossRepository: false };
@@ -696,7 +701,7 @@ describe("gate-merge: stacked PRs (never delete a branch another PR is based on)
 });
 
 // User-approved 4e928ba6: preserve all original auth/carry/CI/write-contract assertions above.
-describe("gate workflow 1480: reviewer prefixes and disjoint bases", () => {
+describe("gate workflow 1480: reviewer prefixes and disjoint bases", { timeout: 30_000 }, () => {
   it.each(["agend-reviewer-t1", "claude-fable-t1"])("default prefix admits %s", source_instance => {
     const w = world();
     const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"], w.approval(w.approveText(w.approved), { source_instance }));
@@ -771,7 +776,7 @@ function mergedWorld() {
   return { ...w, merged, ci, post, receipt: join(w.work, ".git", "agend-gate", `${merged}.json`) };
 }
 
-describe("gate workflow 1480: exact main CI and private single-squash revert", () => {
+describe("gate workflow 1480: exact main CI and private single-squash revert", { timeout: 30_000 }, () => {
   it.each([
     ["first CI", 1, "global"],
     ["final CI global", 2, "global"],
@@ -954,7 +959,7 @@ function interpretTrailers(message: string) {
   return res.stdout;
 }
 
-describe("gate-merge: Co-authored-by trailers on the squash", () => {
+describe("gate-merge: Co-authored-by trailers on the squash", { timeout: 30_000 }, () => {
   // Each case runs the real bash gate (scratch clone + gh stub). 10s is tight when
   // this file's earlier cases have already filled /tmp with git repos.
   it("a carry PR (external author + ours) gets real Co-authored-by trailers; the merger and bots do not", { timeout: 30_000 }, () => {
