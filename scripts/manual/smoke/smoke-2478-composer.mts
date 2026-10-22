@@ -14,7 +14,12 @@ const SMOKE = "2478-composer", LABEL = process.env.LABEL ?? "after";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48822), instances: 6 });
 const NICK = "agend-leader-t1503382358143799511", BARE = "agend-dev-claude-t1519896892392083558";
 const nick = String(fx.fm.fleetConfig.instances[NICK]?.display_name ?? "");
-const r: any = { label: LABEL, nick, cases: {} };
+// WebKit's own messages (smoke-composer-row-2215's list): a viewport key it does not know, the sheet it refuses
+// under style-src 'self' for its own controls, and fetches a navigation cancels. Anything else is an error.
+const ENGINE = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";
+const WEBKIT_OWN = /^(Viewport argument key "interactive-widget" not recognized and ignored\.|Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy\.|(EventSource|Fetch API) cannot load https?:\s*\/+[^\s/]+\/(ui\/[a-z-]+|auth\/session)(\?\S*)? due to access control checks\.)/;
+const pageErrors = (errors: string[]) => errors.filter((e) => !(ENGINE === "webkit" && WEBKIT_OWN.test(e)));
+const r: any = { engine: ENGINE, label: LABEL, nick, cases: {} };
 const ok = (c: any, k: string, v: boolean, detail?: unknown) => { c[k] = detail === undefined ? v : { pass: v, detail }; if (!v) c.failed = [...(c.failed ?? []), k]; };
 // The placeholder as drawn: the overlay (after) or the box's own (before, read from the attribute).
 const BOX = `(() => { const el = document.querySelector("#msgIn"); if (!el) return null; const cs = getComputedStyle(el);
@@ -98,7 +103,7 @@ for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "pho
     }
     ok(res, "noOverflow", !empty.overflow && !bare.overflow);
     res.measured = { empty, one, bare };
-    ok(res, "noPageErrors", p.errors.length === 0, p.errors);
+    ok(res, "noPageErrors", pageErrors(p.errors).length === 0, pageErrors(p.errors));
   } catch (err) {
     res.failed = [...(res.failed ?? []), `threw: ${String(err).slice(0, 240)}`];
     await page.screenshot({ path: shotPath(SMOKE, tag, `${LABEL}-error`) }).catch(() => {});
