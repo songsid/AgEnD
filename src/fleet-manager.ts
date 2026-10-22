@@ -107,7 +107,7 @@ import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
 import { boardActivity, boardCardLimit, boardToolAction } from "./task-board-tool.js";
 import { TaskBoardWaker } from "./task-board-waker.js";
-import { TaskBoardError, wrapUpGap, type Actor } from "./scheduler/task-board.js";
+import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor } from "./scheduler/task-board.js";
 import type { SchedulerDb } from "./scheduler/db.js";
 import type { Schedule, ScheduleRetry, ScheduleRetryDrop, SchedulerConfig } from "./scheduler/index.js";
 import { escapeTelegramHtml, scheduleClock, scheduleRetryLabel } from "./scheduler/retry-label.js";
@@ -393,6 +393,7 @@ import {
   type RestartProgressSummary,
   type RestartProgressTarget,
 } from "./restart-progress.js";
+import { FleetStartup } from "./fleet-startup.js";
 import { launchFullRestartHelper, type FullRestartHelperHandle } from "./full-restart.js";
 import { fullReloadExitCode } from "./service-owner.js";
 import { SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE } from "./service-restart-selection.js";
@@ -1241,6 +1242,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // Adapter isolation: track state per adapter for retry + visibility
   /** #2175: this boot's progress message, whose completion may still be owed by its background retry. */
   private startupProgress: RestartProgress | null = null;
+  private startupDashboard: FleetStartup | null = null;
   private adapterState = new Map<string, { status: "connected" | "retrying" | "failed"; retryCount: number; lastError?: string; retryTimer?: ReturnType<typeof setTimeout> }>();
   private adapterRetryInFlight = new Map<string, Promise<void>>();
   /** Web Settings secret rotation is deliberately separate from reconnect
@@ -3618,7 +3620,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private instancePresentation(name: string) {
     const execution_state = this.getInstanceExecutionState(name);
     const interaction = this.getInstanceInteraction(name);
-    return { state: presentationState(execution_state, interaction), execution_state,
+    const startup_phase = !this.lifecycle.isPaused(name) ? this.startupDashboard?.phase(name) : undefined;
+    return { ...(startup_phase ? { startup_phase } : {}), state: presentationState(execution_state, interaction), execution_state,
       interaction, interaction_summary: interactionSummary(interaction) };
   }
 
@@ -5229,56 +5232,75 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ name }, "Instance already running, skipping");
       return;
     }
-    // An explicit start (CLI/API) begins a fresh idle window; boot and
-    // reconcile starts keep the persisted last-inbound seed (Phase 2a).
-    if (resumePaused) this.lifecycle.markActivitySeedNow(name);
-    const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
-    if (config.general_topic) {
-      this.ensureGeneralInstructions(config.working_directory, backend, name);
-    } else if (kind === "fleet-topic") {
-      // Workers get only role-eligible on-demand skills. Classic instances are
-      // deliberately excluded: their workspace and conversation lifecycle are
-      // managed independently from fleet-topic workers.
-      try {
-        const skillsWorkDir = this.resolveKnowledgeWorkDir(config.working_directory, backend, name);
-        measureSyncWork("fleet.workerSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "worker"));
-      } catch (err) {
-        // Skill publishing is additive. A read-only or temporarily unavailable
-        // workspace must not turn an otherwise valid worker startup into a
-        // fleet outage.
-        this.logger.warn({ err, name, backend }, "Failed to sync worker skills — continuing startup");
+    await this.trackStartupInstance(name, async () => {
+      // An explicit start (CLI/API) begins a fresh idle window; boot and
+      // reconcile starts keep the persisted last-inbound seed (Phase 2a).
+      if (resumePaused) this.lifecycle.markActivitySeedNow(name);
+      const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+      if (config.general_topic) {
+        this.ensureGeneralInstructions(config.working_directory, backend, name);
+      } else if (kind === "fleet-topic") {
+        // Workers get only role-eligible on-demand skills. Classic instances are
+        // deliberately excluded: their workspace and conversation lifecycle are
+        // managed independently from fleet-topic workers.
+        try {
+          const skillsWorkDir = this.resolveKnowledgeWorkDir(config.working_directory, backend, name);
+          measureSyncWork("fleet.workerSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "worker"));
+        } catch (err) {
+          // Skill publishing is additive. A read-only or temporarily unavailable
+          // workspace must not turn an otherwise valid worker startup into a
+          // fleet outage.
+          this.logger.warn({ err, name, backend }, "Failed to sync worker skills — continuing startup");
+        }
+      } else if (kind === "classic") {
+        // #2163: a Classic bot gets only the skills marked `classic` (its own look, the dashboard) — never the fleet's
+        // coordination playbooks (#557 kept those out of end-user bots) — and only into a workspace AgEnD manages: the
+        // room's own folder under <AGEND_HOME>/workspaces/. Anywhere else, nothing is written; `agend-agent skill <name>`
+        // reads any bundled skill on demand.
+        try {
+          const skillsWorkDir = this.resolveKnowledgeWorkDir(config.working_directory, backend, name);
+          if (insideManagedWorkspaces(skillsWorkDir)) measureSyncWork("fleet.classicSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "classic"));
+          else this.logger.debug({ name, skillsWorkDir }, "Classic workspace is not AgEnD-managed — no skills published");
+        } catch (err) {
+          this.logger.warn({ err, name, backend }, "Failed to sync classic skills — continuing startup");
+        }
       }
-    } else if (kind === "classic") {
-      // #2163: a Classic bot gets only the skills marked `classic` (its own look, the dashboard) — never the fleet's
-      // coordination playbooks (#557 kept those out of end-user bots) — and only into a workspace AgEnD manages: the
-      // room's own folder under <AGEND_HOME>/workspaces/. Anywhere else, nothing is written; `agend-agent skill <name>`
-      // reads any bundled skill on demand.
-      try {
-        const skillsWorkDir = this.resolveKnowledgeWorkDir(config.working_directory, backend, name);
-        if (insideManagedWorkspaces(skillsWorkDir)) measureSyncWork("fleet.classicSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "classic"));
-        else this.logger.debug({ name, skillsWorkDir }, "Classic workspace is not AgEnD-managed — no skills published");
-      } catch (err) {
-        this.logger.warn({ err, name, backend }, "Failed to sync classic skills — continuing startup");
-      }
+      const receipt = execution ? this.classicSettingsOwners.get(execution) : undefined;
+      const identity = { kind, backend, model: this.resolveInstanceModel(name).display };
+      if (receipt) {
+        await this.lifecycle.start(name, config, topicMode, identity, transition, execution, daemon => {
+          // Only this transition's actual publication can acquire its replacement.
+          receipt.daemon = daemon;
+        });
+      } else await this.lifecycle.start(name, config, topicMode, identity, transition, execution);
+      execution?.assert();
+      // Only clear a stale process status after a real start succeeded.  Clearing
+      // it before lifecycle.start() can turn a crash-loop daemon's dead pane into
+      // a falsely running instance when lifecycle.start() returns early.
+      this.instanceProcessStatus.delete(name);
+      // Recovery intent belongs to Daemon.start. lifecycle.start can return
+      // before reaching it, so an await here is not proof the marker was read.
+      // Auto-connect IPC — daemon.start() ensures socket is ready before resolving
+      await this.connectIpcToInstance(name); execution?.assert();
+      this.requestDiscordUsagePresenceRefresh();
+    });
+  }
+
+  /** A boot's observation cannot settle a replacement boot or a newer attempt of the same instance. */
+  private async trackStartupInstance(name: string, start: () => Promise<void>): Promise<void> {
+    const boot = this.startupDashboard;
+    const owner = boot?.begin(name);
+    if (owner) this.publishStartupStatus();
+    let ready = false;
+    try { await start(); ready = this.daemons.has(name); }
+    finally {
+      if (boot && owner && this.startupDashboard === boot && boot.finish(name, owner, ready)) this.publishStartupStatus();
     }
-    const receipt = execution ? this.classicSettingsOwners.get(execution) : undefined;
-    const identity = { kind, backend, model: this.resolveInstanceModel(name).display };
-    if (receipt) {
-      await this.lifecycle.start(name, config, topicMode, identity, transition, execution, daemon => {
-        // Only this transition's actual publication can acquire its replacement.
-        receipt.daemon = daemon;
-      });
-    } else await this.lifecycle.start(name, config, topicMode, identity, transition, execution);
-    execution?.assert();
-    // Only clear a stale process status after a real start succeeded.  Clearing
-    // it before lifecycle.start() can turn a crash-loop daemon's dead pane into
-    // a falsely running instance when lifecycle.start() returns early.
-    this.instanceProcessStatus.delete(name);
-    // Recovery intent belongs to Daemon.start. lifecycle.start can return
-    // before reaching it, so an await here is not proof the marker was read.
-    // Auto-connect IPC — daemon.start() ensures socket is ready before resolving
-    await this.connectIpcToInstance(name); execution?.assert();
-    this.requestDiscordUsagePresenceRefresh();
+  }
+
+  private publishStartupStatus(): void {
+    try { this.emitSseEvent("status", this.getUiStatus()); }
+    catch (err) { this.logger.debug({ err }, "Startup status unavailable; the next status frame retries"); }
   }
 
   /** Recreate a daemon for a marker-only paused instance after an explicit wake/delivery. */
@@ -7176,6 +7198,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const startupStartedAt = Date.now();
     FleetManager.signalTarget = this;
     this.startupComplete = false;
+    this.startupDashboard = null;
     // Cleared here, not at the end of doStopAll: a stop has an async tail, and
     // anything arriving during it is still part of the stop.
     this.shuttingDown = false;
@@ -7518,6 +7541,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     );
     this.startupProgress = startupProgress;
 
+    // Auth, restored chat, Classic roster and the task DB are ready. Listening is not service readiness:
+    // the dashboard observes startup, while /health and READY retain their existing completion boundary.
+    this.startupDashboard = new FleetStartup(this.configuredStartupInstanceNames(fleet, topicMode)
+      .filter(name => !this.lifecycle.isPaused(name)));
+    await this.startHealthServer(fleet.health_port ?? 19280);
+    if (this.shuttingDown) return;
+
     if (generals.length > 0) {
       for (const [name, cfg] of generals) {
         try {
@@ -7782,8 +7812,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       void this.announceWebChatOnce(agendVersion);
     }
 
-    // Health HTTP endpoint
-    this.startHealthServer(fleet.health_port ?? 19280);
     // #1266: buttons that ended while AgEnD was down (expired, or chosen before a restart) are shown as ended now.
     // #1823: and polls: a deadline that passed meanwhile closes now (results once); an open one's countdown is redrawn.
     void this.replyButtons()?.sweep().catch(err => this.logger.warn({ err }, "Reply-button sweep failed"));
@@ -7805,6 +7833,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // rest of startup finishes. Replay one coalesced reload only after all
     // startup-owned lifecycle work and signal handlers are in place.
     this.finishStartup(bootUpdateMarker);
+    this.startupDashboard = null;
+    this.publishStartupStatus();
 
     // Tell systemd we are ready only now. This used to fire right after the
     // generals started — before adapters, classic instances, topic creation and the
@@ -13872,7 +13902,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!this.deliveryOutbox?.isOpen) throw new Error("the delivery outbox is not open");
         return this.deliveryOutbox.acknowledge(deliveryId, by);
       },
-      tasks: () => this.needsYouTasks(),
+      tasks: () => this.needsYouTaskItems(),
       taskAction: action => this.taskActionFromChat(action),
       settings: () => ({
         liveMessage: this.fleetConfig?.needs_you?.live_message !== false,
@@ -13922,7 +13952,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private needsYouRoute(code: string): { lane?: string } | null {
     const board = this.scheduler?.db.board;
     const card = board?.findCard(code);
-    if (!board || !card || !(card.status === "blocked" || (card.status === "review" && card.needsReview))) return null;
+    // #2425 (Fable): the same rule as the list — a button rendered before the fix (or before the opt-in went off) for a
+    // card that no longer waits for the person answers "no longer waits".
+    if (!board || !card || this.fleetConfig?.needs_you?.task_board !== true || !waitsForPerson(card)) return null;
     const leads = new Map(board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
     const lane = this.needsYouLane(card, leads);
     return lane ? { lane } : {};
@@ -13932,6 +13964,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2246 step 3: the task board's cards that wait for the person, for Needs you — under each card's assignee, listed in
    * its lane's channel (#2352: the instance that handed it out, else the project's lead), else in General.
    */
+  private needsYouTaskItems(): import("./needs-you.js").TaskInput[] {
+    // #2425: the task board's cards join Needs you only when the fleet asks for them (needs_you.task_board, off by
+    // default since 2.3.0-beta.25); prompts, deliveries and the rest are unchanged.
+    return this.fleetConfig?.needs_you?.task_board === true ? this.needsYouTasks() : [];
+  }
   private needsYouTasks(): import("./needs-you.js").TaskInput[] {
     const board = this.scheduler?.db.board;
     if (!board) return [];
@@ -19798,6 +19835,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   private async doStopAll(): Promise<void> {
     this.startupComplete = false;
+    this.startupDashboard = null;
     this.reloadPending = false;
     // Before anything is stopped: everything that dies from here on dies
     // because we asked it to. Set synchronously — doStopAll runs to its first
@@ -21948,6 +21986,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const owner = record.owner;
     if (this.guestScope(owner).size) return "ok";
     if (owner && this.fleetConfig?.web?.guests?.enabled === true) {
+      // Before adapters initialize, topic scope is unknown, not revoked. Keep the returning cookie but grant no
+      // request until its configured world exists. Removed connections and initialized denied access stay final.
+      const channels = this.fleetConfig.channels ?? (this.fleetConfig.channel ? [this.fleetConfig.channel] : []);
+      if (this.startupDashboard && !this.worlds.has(owner.adapterId)
+        && channels.some(channel => (channel.id ?? channel.type) === owner.adapterId)) return "pending";
       const members = this.guestRooms(), rooms = guestGroupRooms(this.classicChannels?.getAll() ?? [], owner);
       if (rooms.some((room) => members.pending(room, owner.userId))) {
         void this.refreshGuestRooms(owner, { mode: "triggered" });   // rate-limited per room (30 s), single-flight
@@ -22037,7 +22080,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         return;
       }
 
-      if (closing) {
+      if (closing || this.shuttingDown) {
         res.writeHead(503, { Connection: "close", "Retry-After": "10" });
         res.end(JSON.stringify({ error: "fleet stopping" }));
         return;
@@ -22131,6 +22174,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         // green.
         res.writeHead(health.status === "ok" ? 200 : 503);
         res.end(JSON.stringify(health));
+        return;
+      }
+
+      // Threat: lifecycle/config/chat writes racing boot-owned starts and reconciliation. Reads stay live;
+      // authentication keeps its own checks so a browser can sign in or sign out while agents start.
+      if (this.startupDashboard && !["GET", "HEAD", "OPTIONS"].includes(req.method ?? "GET")
+        && !requestPath.startsWith("/auth/")) {
+        res.writeHead(503, { "Retry-After": "2", "Cache-Control": "no-store", Connection: "close" });
+        res.end(JSON.stringify({ code: "fleet_starting", error: t("fleet.starting_retry") }));
         return;
       }
 
@@ -22382,7 +22434,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     } catch { if (!res.headersSent) { res.writeHead(400); res.end(JSON.stringify({ error: "invalid request" })); } else res.destroy(); }
   }
 
-  private startHealthServer(port: number): void {
+  private startHealthServer(port: number): Promise<void> {
+    let settled!: () => void;
+    const listening = new Promise<void>(resolve => { settled = resolve; });
     this.startedAt = Date.now();
     this.healthServerListening = false;
     this.healthPortRetried = false;
@@ -22397,6 +22451,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const drain = trackWebServer(server);
     this.healthServer = server;
     this.healthServerDrain = drain;
+    server.once("close", settled);
 
     const markListening = (afterTakeover = false): void => {
       this.healthServerListening = true;
@@ -22411,6 +22466,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // #1306: the preview listener starts once the web listener is bound — its frame-ancestors name the real port.
       const bound = this.healthServer?.address();
       this.startPreviewListener(port, bound && typeof bound === "object" ? bound.port : port);
+      settled();
     };
 
     this.healthServer.on("error", (err: NodeJS.ErrnoException) => {
@@ -22419,6 +22475,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         if (this.healthPortRetried) {
           this.logger.error({ err, port }, "Health port still in use after takeover — dashboard disabled");
           this.notifyFleetError(t("dashboard.port_in_use", port));
+          settled();
           return;
         }
         this.healthPortRetried = true;
@@ -22452,16 +22509,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           this.logger.debug({ err }, "Old fleet process kill skipped (already gone or no permission)");
         }
         setTimeout(() => {
-          if (!this.healthServer) return;
-          this.healthServer.listen(port, "127.0.0.1", () => markListening(true));
+          if (this.healthServer !== server || this.shuttingDown) { settled(); return; }
+          server.listen(port, "127.0.0.1", () => markListening(true));
         }, 1500);
         return;
       }
       this.logger.error({ err, port }, "Health server error");
       this.notifyFleetError(t("dashboard.server_failed", err.message));
+      settled();
     });
 
     this.healthServer.listen(port, "127.0.0.1", () => markListening());
+    return listening;
   }
 
   /**
@@ -22668,6 +22727,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return {
       canvas_worker: this.canvasWorkerEnabled(),
       instances,
+      startup: this.startupDashboard?.snapshot() ?? null,
       publicLink: this.getPublicWebStatus(),
       uptime: Math.floor((Date.now() - this.startedAt) / 1000),
       // #1519 P7: how many chat connections are configured — 0 is a web-only fleet, which gets the first-run card.

@@ -213,11 +213,15 @@ describe("in the fleet: the board's cards in Needs you, and a move from the chat
     board.moveCard(ann, mine.code, "review");                                 // not wrapped up: no result, the checklist unticked
     board.moveCard(ann, theirs.code, "claimed");
     board.moveCard(ann, theirs.code, "blocked", { reason: "which season?" });
+    // #2425: Ann handed `asked` out; its question is hers. `theirs` was handed out by "lead": its question is lead's to
+    // decide, never the person's Needs you.
+    const asked = board.createCards(ann, { cards: [{ title: "Pick a season", assignee: "dev-a" }] }).cards[0]!;
+    board.moveCard(dev, asked.code, "claimed");
+    board.moveCard(dev, asked.code, "blocked", { reason: "which season?" });
     const items = fm.needsYouTasks() as TaskInput[];
-    // #2352: "lead" handed `theirs` out, but it has no channel here (no world, no topic): General, as before.
     expect(items.map(i => [i.code, i.status, i.assignee, i.lane ?? null, i.note])).toEqual([
       [mine.code, "review", "dev-a", null, "not wrapped up: 1 checklist item(s) unchecked, no result"],
-      [theirs.code, "blocked", "dev-a", null, "which season?"],
+      [asked.code, "blocked", "dev-a", null, "which season?"],
     ]);
     const version = board.getCard(mine.code).version;
     const by = { platform: "telegram", userId: "100", username: "ann_tg" };
@@ -225,8 +229,8 @@ describe("in the fleet: the board's cards in Needs you, and a move from the chat
     expect(fm.taskActionFromChat({ verb: "back", code: mine.code, version, text: "tick the checklist", by }).ok).toBe(true);
     expect(board.getCard(mine.code).status).toBe("claimed");
     expect(board.detail(mine.code).comments.map((e: any) => [e.kind, e.author, e.authorKind, e.text])).toEqual([["reject", "ann_tg", "person", "tick the checklist"]]);
-    expect(fm.taskActionFromChat({ verb: "answer", code: theirs.code, version: board.getCard(theirs.code).version, text: "the current one", by }).ok).toBe(true);
-    expect(board.getCard(theirs.code).status).toBe("claimed");
+    expect(fm.taskActionFromChat({ verb: "answer", code: asked.code, version: board.getCard(asked.code).version, text: "the current one", by }).ok).toBe(true);
+    expect(board.getCard(asked.code).status).toBe("claimed");
     scheduler.db.close();
   });
 });

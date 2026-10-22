@@ -11,6 +11,13 @@ English UI labels (the page also has 中文). Before you state a value the user 
 it: `get_fleet_config` shows fleet.yaml; this skill gives defaults. Never invent a control that is not listed here.
 Never tell anyone to kill `wslrelay` or run `wsl --shutdown` (see Troubleshooting).
 
+During a cold start/full restart, an already signed-in browser can open the dashboard while agents start. **Fleet
+starting N/M** counts successful starts among runnable instances (persisted pauses excluded); queued/starting labels
+are visible in the sidebar, chat header and Org chart. Reads remain available; messages and changes are refused with
+a retry hint until startup finishes. Returning guests may wait for their connection scope without being signed out.
+Needs you may still be empty while its hub initializes. A brief reconnect gap
+is normal while a full restart replaces the process; the starting banner then replaces the unreachable message.
+
 For how *you* look on the dashboard (theme, identity card, colour, widgets, ambient effects, effects, mods), load `web-appearance`.
 
 ## Index
@@ -174,7 +181,9 @@ tab title. Items, grouped by instance, oldest first:
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
 "Paused: sign-in needed" has **Sign in** when the dashboard can run that login (#2233); every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
-`needs_you.dm` (default off).
+`needs_you.dm` (default off), `needs_you.task_board` (default off since 2.3.0-beta.25: the task board's cards waiting
+for you — set `true` to list them). The task board's daily summary is `defaults.task_board.summary_at` (off unless set,
+e.g. `"09:00"`).
 
 ## Search
 

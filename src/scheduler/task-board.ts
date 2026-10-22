@@ -438,6 +438,14 @@ export function cardCode(raw: string): string | null {
 }
 
 /** A card waits for the person's confirmation when it is finished. */
+/**
+ * #2425: whether a card waits for the person — in review needing their confirmation, or blocked on a question the person
+ * owns (they handed it out). The one rule for waitingForPerson's query, Needs you and a button's route.
+ */
+export function waitsForPerson(card: Pick<Card, "status" | "needsReview" | "dispatcher">): boolean {
+  return (card.status === "review" && card.needsReview) || (card.status === "blocked" && card.dispatcher?.kind === "person");
+}
+
 export function requiresReview(card: Pick<Card, "needsReview">): boolean {
   return card.needsReview;
 }
@@ -1093,15 +1101,24 @@ export class TaskBoard {
   }
 
   /**
-   * What waits for the person (step 3: Needs you): cards in review that need their confirmation, and blocked cards —
-   * oldest first, each with when it started waiting (its last move to that status).
+   * What waits for the person (step 3: Needs you, and the daily summary): cards in review that need their confirmation,
+   * and blocked cards whose question is theirs to answer — oldest first, each with when it started waiting (its last
+   * move to that status).
+   *
+   * A blocked card asks the person only when the person handed it out (dispatcher kind "person"). One an instance handed
+   * out is that instance's to decide (step 2's wakes: its question goes there, not here). One with no dispatcher is an
+   * instance's own "I'm waiting" — every card the `task` tool kept before the board, an agent's card for itself, a
+   * reviewer's "waiting on the author" — and is no question to the person: 2.3.0-beta.24 listed 28 such cards, weeks
+   * old, as "stuck, asking you" (#2425). Nothing is changed on the cards; they stay on the board as they are.
    */
   waitingForPerson(): Array<{ card: Card; since: string }> {
-    const rows = (this.db.prepare("SELECT * FROM tasks WHERE (status = 'review' AND needs_review = 1) OR status = 'blocked' ORDER BY updated_at").all() as Row[]).map(toCard);
+    const rows = (this.db.prepare("SELECT * FROM tasks WHERE (status = 'review' AND needs_review = 1) OR (status = 'blocked' AND dispatcher_kind = 'person') ORDER BY updated_at").all() as Row[]).map(toCard);
     const moved = this.db.prepare("SELECT at FROM task_events WHERE task_id = ? AND type = 'moved' AND json_extract(data, '$.to') = ? ORDER BY id DESC LIMIT 1");
     return rows.map((card) => {
       const at = (moved.get(card.uuid, card.status) as { at: string } | undefined)?.at;
-      return { card, since: at ?? card.submittedAt ?? card.updatedAt };
+      // Never updatedAt (#2425): a card edited every minute (a note, a heartbeat) would get a new `since` — and so a new
+      // Needs-you item id, posted again at the bottom as if it were new, once a minute.
+      return { card, since: at ?? card.submittedAt ?? card.createdAt };
     }).sort((a, b) => a.since.localeCompare(b.since));
   }
 

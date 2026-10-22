@@ -900,6 +900,8 @@ export function handleSettingsRequest(
       // #1310: locale:null means "clear the key" (user chose Auto). Mirrors
       // how the instance save handles model ("" → delete) and nullable overrides.
       if (body.locale === null || body.locale === "") delete (merged as Record<string, unknown>).locale;
+      // General → Defaults' "not set" for the tool profile: the key goes (worker for an agent, general for a General).
+      if (body.tool_set === null || body.tool_set === "") delete (merged as Record<string, unknown>).tool_set;
       const before = validateFleetConfig(cfg);
       const after = validateFleetConfig({ ...cfg, defaults: merged });
       if (rejectIfWorse(res, before, after)) return;

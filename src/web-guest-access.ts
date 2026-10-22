@@ -154,7 +154,7 @@ export function guestRequestOf(req: object): GuestRequest | undefined { return g
  * fleet identity: no public link, connections, uptime, host memory, revisions. The public CW capability bit is
  * retained so a guest also stops playback when the administrator disables it.
  */
-const STATUS_FIELDS = ["name", "display_name", "avatar", "accent", "theme_avatar", "theme_accent", "card_v", "effect_chat_v", "color", "color_show", "status", "state", "execution_state"] as const;
+const STATUS_FIELDS = ["name", "display_name", "avatar", "accent", "theme_avatar", "theme_accent", "card_v", "effect_chat_v", "color", "color_show", "status", "state", "execution_state", "startup_phase"] as const;
 export function guestStatus(status: unknown, scope: ReadonlySet<string>): { instances: Array<Record<string, unknown>>; canvas_worker: boolean } {
   const list = status && typeof status === "object" && Array.isArray((status as { instances?: unknown }).instances) ? (status as { instances: unknown[] }).instances : [];
   const instances: Array<Record<string, unknown>> = [];
