@@ -140,7 +140,7 @@ describe("TmuxManager", () => {
       .filter(window => window.name === "dedupe-window");
     expect(replacementId).toBe(firstId);
     expect(matches).toEqual([{ id: replacementId, name: "dedupe-window" }]);
-    expect(await replacement.getPaneStatus()).toEqual({ alive: true });
+    expect(await replacement.getPaneStatus()).toEqual({ alive: true, pid: expect.any(Number) });
   });
 
   it("keeps a per-instance size stable while the control client is attached", async () => {
@@ -309,7 +309,7 @@ describe("TmuxManager", () => {
     const wid = await tm.createWindow("sleep 30", "/tmp", "respawn-test");
     await tm.respawnWindow("sleep 30", "/tmp");
     expect(tm.getWindowId()).toBe(wid);
-    expect(await tm.getPaneStatus()).toEqual({ alive: true });
+    expect(await tm.getPaneStatus()).toEqual({ alive: true, pid: expect.any(Number) });
     expect(await tm.getWindowGeometry()).toEqual({
       columns: 100,
       rows: 30,

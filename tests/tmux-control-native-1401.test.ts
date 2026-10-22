@@ -51,7 +51,7 @@ describe("#1401 native control protocol on an owned private tmux server", () => 
 
   it("matches window/pane reads and isolates a command failure without retiring", async () => {
     expect(await manager.isWindowAlive()).toBe(true);
-    expect(await manager.getPaneStatus()).toEqual({ alive: true });
+    expect(await manager.getPaneStatus()).toEqual({ alive: true, pid: expect.any(Number) });
     const owner = (client as any).attachment;
     await expect(client.read({ kind: "capture", session: fixture.session, window: "@999999" })).rejects.toMatchObject({ kind: "command" });
     expect((client as any).attachment).toBe(owner);

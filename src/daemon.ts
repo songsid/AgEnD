@@ -13,6 +13,7 @@ import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
 import { rotateLogIfNeededAsync, type Logger } from "./logger.js";
 import { coredumpFilterLaunchPrefix } from "./coredump-filter.js";
+import { observeCliOomIdentity, confirmedCliOom, consecutiveSessionOoms, type CliOomIdentity, type SessionOomCount } from "./session-oom.js";
 import { mcpServerState } from "./mcp-liveness.js";
 import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-marker.js";
 import { writeBackgroundWorkEndedMarker } from "./background-work-ended.js";
@@ -1402,6 +1403,19 @@ export class Daemon extends EventEmitter {
   // injected by FleetManager below.
   private healthCheckTimer: ReturnType<typeof setTimeout> | null = null;
   private crashCount = 0;
+  private cliOomObservation: { identity: CliOomIdentity; key: string; owner: InteractionOwner; tmux: TmuxManager } | null = null;
+  private consecutiveOoms: SessionOomCount | null = null;
+
+  private oomSessionKey(): string | null {
+    // Claude's per-instance statusline owns its ID. Other current getters
+    // either return null or select by cwd (Muse/Grok): those are not proof
+    // of this pane's session and must not trigger this destructive decision.
+    if ((this.config.backend ?? "claude-code") !== "claude-code") return null;
+    const session = this.backend?.getSessionId?.();
+    return typeof session === "string" && session.trim() && session.length <= 512
+      ? JSON.stringify([this.config.backend ?? "claude-code", session.trim()]) : null;
+  }
+
   private lastCrashAt = 0;
   private lastSpawnAt = 0;
   private crashTimestamps: number[] = [];
@@ -3157,6 +3171,17 @@ export class Daemon extends EventEmitter {
           // began just before pause must not classify that exit as a crash.
           if (discardStaleHealth()) return;
           if (paneStatus?.alive) {
+            // Capture only a known primary while it lives. No extra tmux call: PID comes
+            // from this same status read. Fast/unobserved deaths remain ordinary crashes.
+            const key = this.oomSessionKey();
+            if (this.cliOomObservation?.key !== key) this.cliOomObservation = null;
+            if (paneStatus.pid && key && !this.cliOomObservation) {
+              const identity = await observeCliOomIdentity(paneStatus.pid, cliLabel);
+              if (discardStaleHealth()) return;
+              if (identity && this.oomSessionKey() === key) {
+                this.cliOomObservation = { identity, key, owner: healthOwner, tmux: healthTmux };
+              }
+            }
             this.windowQueryFailureTicks = 0;
             this.stormWindow?.noteWindowAlive(this.name);
             // Instance output.log is fed by tmux pipe-pane and was previously never
@@ -3307,6 +3332,27 @@ export class Daemon extends EventEmitter {
           this.setProcessStatus("crashed");
           this.logPaneDeath(cliLabel, exitCode, lastOutput);
 
+          const observed = this.cliOomObservation;
+          const key = this.oomSessionKey();
+          const oom = paneStatus && exitCode === 137 && observed && observed.key === key
+            && observed.tmux === healthTmux && sameInteractionOwner(observed.owner, healthOwner)
+            ? await confirmedCliOom(observed.identity, Date.now()) : null;
+          if (discardStaleHealth()) return;
+          this.cliOomObservation = null;
+          const decisionKey = this.oomSessionKey();
+          this.consecutiveOoms = consecutiveSessionOoms(this.consecutiveOoms, decisionKey,
+            decisionKey === key && oom !== null);
+          if (this.consecutiveOoms && this.consecutiveOoms.count >= 2) {
+            // Stop supervision, not an idle pause: queued work must not auto-wake
+            // the same session. An explicit restart is the person's retry choice.
+            this.healthCheckPaused = true;
+            try { this.appendCrashHistory({ exitCode, lastOutput, crashType, reason: "session_oom" }); }
+            catch (error) { this.logger.warn({ error }, "Could not append session OOM history"); }
+            this.logger.error({ pid: oom!.pid, count: this.consecutiveOoms.count }, "Repeated confirmed CLI OOM — automatic resume stopped; session preserved");
+            this.emitSupervisionEnded(t("inst.session_oom_stopped"), t("inst.session_oom_remedy"), exitCode, "session_oom");
+            return;
+          }
+
           // Kill the dead window (remain-on-exit keeps it around) before respawn
           if (paneStatus) {
             await healthTmux.killWindow();
@@ -3437,12 +3483,12 @@ export class Daemon extends EventEmitter {
             // (bounded) session lookup. They only stop LATER ticks; this continuation is already
             // past that check and must not clear the process/window or respawn an instance that
             // was just stopped or paused (#1160 review).
-            if (this.runtimeMonitorsFrozen || this.healthCheckPaused) return;
+            if (discardStaleHealth()) return;
             // Reset is synchronous for file sources, but Kiro's baseline is
             // read off-thread. Finish it before starting the replacement CLI,
             // otherwise its first work could become part of that baseline.
             if (!await this.resetTranscriptBeforeAdmission()) return;
-            if (this.runtimeMonitorsFrozen || this.healthCheckPaused) return;
+            if (discardStaleHealth()) return;
             // Kill orphan MCP server from the crashed CLI session.
             // MCP server writes its PID to channel.mcp.pid on startup.
             try {
@@ -3463,6 +3509,7 @@ export class Daemon extends EventEmitter {
                 }
               }
             } catch { /* tmux server may be dead — ensureSession in trySpawn will recover */ }
+            if (discardStaleHealth()) return;
             // Write snapshot before spawn — consumed only if resume fails
             this.writeRotationSnapshot("crash");
             // Try --resume first; spawnClaudeWindow falls back to fresh session if resume fails
@@ -3555,7 +3602,7 @@ export class Daemon extends EventEmitter {
    * `crash_loop` already had this treatment; this is the same bridge for the other
    * four, carrying a human-readable cause and the operator's next step.
    */
-  private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number, cause?: "cli_unsupported"): void {
+  private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number, cause?: "cli_unsupported" | "session_oom"): void {
     this.emit("supervision_ended", {
       name: this.name,
       reason,
@@ -10682,6 +10729,7 @@ export class Daemon extends EventEmitter {
     this.clearReplyGuardConfirm();
     this.sawBlockedInput = false;
     if (this.spawnDepth === 0) {
+      this.cliOomObservation = null;
       this.spawnGeneration++;
       this.interactionObservation.reset(this.interactionOwner());
       this.clearInteractionConfirmation();
@@ -10965,6 +11013,9 @@ export class Daemon extends EventEmitter {
       this.backendOutage?.clear(this.backendKey());
     }
 
+    // A pre-existing fresh fallback is not another resume of the old session.
+    // Providers may not have rewritten their session reading yet.
+    if (!resumedSuccessfully) this.consecutiveOoms = null;
     this.lastSpawnAt = Date.now();
     // #1217: whatever session this CLI writes from here on is this backend's.
     this.recordSessionOwner();

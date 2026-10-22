@@ -4,7 +4,8 @@
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
 import { useLease } from "./app-ctx.js";
-import { guestPage } from "./app-store.js";
+import { createStore, guestPage, useStore } from "./app-store.js";
+import { onPrefsChanged, prefInForce, savePref } from "./app-prefs.js";
 import { readStream } from "./read-stream.js";
 import { Dialog } from "./ui-dialog.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
@@ -129,6 +130,120 @@ export function updatedAgo(fetchedAt, now = Date.now()) {
   return tn("usageUpdatedAgo", { age: min < 60 ? tn("usageMinutes", { n: min }) : tn("usageHours", { n: Math.floor(min / 60) }) });
 }
 
+// ── Compact: one line per login (a synced preference, "usage.compact"; the dialog and the rail alike) ──
+const COMPACT_KEY = "agend_usage_compact";
+function readCompact() {
+  const p = prefInForce("usage.compact");
+  return (p ? p.value : stored(COMPACT_KEY) === "on" ? true : undefined) === true;
+}
+export const usageViewStore = createStore({ compact: readCompact() });
+export function setUsageCompact(on) {
+  usageViewStore.set({ compact: !!on });
+  savePref("usage.compact", on ? true : null);   // the full cards are the default: switching back clears it
+}
+onPrefsChanged((keys) => { if (keys.has("usage.compact")) usageViewStore.set({ compact: readCompact() }); });
+/** The header's switch between one line per login and the full cards (beside the title: the dialog's and the rail's). */
+export function UsageCompactToggle() {
+  const { compact } = useStore(usageViewStore);
+  const [label, title] = compact ? [tn("usageFull"), tn("usageFullTitle")] : [tn("usageCompact"), tn("usageCompactTitle")];
+  return html`<button type="button" class="btn btn-ghost btn-sm u-compact-toggle" aria-pressed=${compact ? "true" : "false"} title=${title}
+    onClick=${() => setUsageCompact(!compact)}>${label}</button>`;
+}
+const TWO_DAYS = 48 * 3_600_000;
+/**
+ * A login's two columns on its compact line: `short`, its shortest percent window under two days (the session), and
+ * `long`, its longest of two days or more (the week, the month) — null when it has none (a dash in that column). A window
+ * that reset since the numbers were read is left out (its full card shows no number); one of unknown length is a long one.
+ */
+export function compactSlots(p) {
+  const pct = ((p && p.metrics) || []).filter((m) => m && m.type === "percent" && !m.resetPassed);
+  const isShort = (m) => Number(m.windowMs) > 0 && m.windowMs < TWO_DAYS;
+  const short = pct.filter(isShort).sort((a, b) => a.windowMs - b.windowMs)[0] || null;
+  const long = pct.filter((m) => !isShort(m)).map((m, i) => ({ m, i }))
+    .sort((a, b) => ((Number(b.m.windowMs) || -1) - (Number(a.m.windowMs) || -1)) || a.i - b.i)[0]?.m || null;
+  return { short, long };
+}
+/** The windows a compact line shows, short first. */
+export const compactMetrics = (p) => { const { short, long } = compactSlots(p); return [short, long].filter(Boolean); };
+/** A window as a few characters ("5h", "7d"); one whose length is not known says its label. */
+export function windowTag(m) {
+  const ms = Number(m && m.windowMs);
+  if (!(ms > 0)) return usageText(m.label, m.labelI18n);
+  const h = ms / 3_600_000;
+  return h < 48 ? tn("usageWindowHours", { n: Math.round(h) }) : tn("usageWindowDays", { n: Math.round(h / 24) });
+}
+/** A time ahead in one unit, for the narrow column: "45m", "3h", "4d" (rounded down past an hour; the tooltip is exact). */
+function coarseDuration(ms) {
+  const min = Math.max(1, Math.ceil(ms / 60_000));
+  if (min < 60) return tn("usageWindowMinutes", { n: min });
+  const h = Math.floor(min / 60);
+  return h < 48 ? tn("usageWindowHours", { n: h }) : tn("usageWindowDays", { n: Math.floor(h / 24) });
+}
+/** The soonest reset still ahead among `metrics`: { short: "↻ 2h", full: "resets in 2h 5m" }, or null when none is known. */
+export function soonestReset(metrics, now = Date.now()) {
+  const at = metrics.map((m) => new Date(m.resetsAt || "").getTime()).filter((t) => Number.isFinite(t) && t > now).sort((a, b) => a - b)[0];
+  return at === undefined ? null : { short: `↻ ${coarseDuration(at - now)}`, full: resetText(new Date(at).toISOString()) };
+}
+/**
+ * The logins grouped by provider for the compact view (nine logins, five of them Claude's: the provider once, then a
+ * line per login), in the order the person set (↑↓): a group where its first login is, its logins in their order.
+ */
+export function compactGroups(providers) {
+  const groups = new Map();
+  providers.forEach((p, i) => {
+    const base = providerTitle(p).base;
+    if (!groups.has(base)) groups.set(base, { base, items: [] });
+    groups.get(base).items.push({ p, i });
+  });
+  return [...groups.values()];
+}
+const level = (pct) => (pct >= 90 ? "crit" : pct >= 70 ? "warn" : "");
+/** One window on its own line: its few characters ("5h"), a full-width bar and the percent, coloured as the full card. */
+function CompactMeter({ m }) {
+  const bar = useRef(null);
+  const pct = Math.min(100, Math.max(0, m.used ?? 0)), cls = level(pct);
+  useLayoutEffect(() => { if (bar.current) bar.current.style.width = `${pct}%`; }, [pct]);   // CSSOM (#1300)
+  const word = cls === "crit" ? tn("usageNear") : cls === "warn" ? tn("usageHigh") : "";
+  return html`<span class="u-cm" title=${`${usageText(m.label, m.labelI18n)}: ${pct.toFixed(0)}%${word ? ` (${word})` : ""}`}>
+    <span class="u-cm-tag">${windowTag(m)}</span><span class="u-cm-bar"><span ref=${bar} class=${`u-cm-fill ${cls}`}></span></span>
+    <span class=${`u-cm-pct ${cls}`}>${pct.toFixed(0)}%</span></span>`;
+}
+/** What a login says instead of numbers (not logged in, an error), or "" when it has numbers. */
+function rowNote(p) {
+  if (p.status === "error") return usageText(p.error || tn("usage.error_fallback"), p.errorI18n);
+  if (p.status === "no-credentials") return tn("usage.not_logged_in");
+  return "";
+}
+/**
+ * A login in three short lines, under its provider's name (the user's pick, 2026-10-22): its name and plan with the
+ * soonest reset on the right; then its short window and its long one, each a labelled full-width bar and the percent.
+ * Numbers not current, a failed read or no login: one muted line in place of the bars, what is wrong as its tooltip.
+ * Pressed, it opens its full card.
+ */
+export function CompactRow({ p, onExpand }) {
+  const title = providerTitle(p), failed = p.status === "error" || p.status === "no-credentials";
+  const metrics = failed || p.stale ? [] : compactMetrics(p);
+  const note = rowNote(p), stale = p.stale ? staleNote(p) : null;
+  const say = stale ? stale.mark : note || tn("usage.no_data");
+  const detail = stale ? [stale.mark, stale.detail].filter(Boolean).join(" — ") : say;
+  const reset = soonestReset(metrics);
+  const name = title.profile || title.base;
+  return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}`} aria-expanded="false" title=${`${p.name} — ${tn("usageExpand")}`} onClick=${onExpand}>
+    <span class="u-crow-head"><span class="u-crow-name">${name}</span>
+      ${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
+      ${reset ? html`<span class="u-crow-reset" title=${reset.full}>${reset.short}<span class="sr-only"> (${reset.full})</span></span>` : null}</span>
+    ${metrics.length ? metrics.map((m, j) => html`<${CompactMeter} key=${j} m=${m} />`)
+      : html`<span class=${`u-crow-note${(stale || (p.status === "error" && !p.transient)) ? " is-alert" : ""}`} title=${detail}>${say}</span>`}
+  </button>`;
+}
+/** A provider's logins: its name once (×N), in small capitals, then each login (or the full card of one opened). */
+export function CompactGroup({ group, line }) {
+  return html`<section class="u-cgroup">
+    <div class="u-cg-head"><span class="u-cg-name" title=${group.base}>${group.base}</span>${group.items.length > 1 ? html`<span class="u-cg-count">×${group.items.length}</span>` : null}</div>
+    ${group.items.map(line)}
+  </section>`;
+}
+
 /**
  * The usage read and its rows: the dialog's body and the rail's (#1673). `owner`: its lease's key — the reads and the
  * minute's timer live and end with it.
@@ -141,6 +256,11 @@ export function UsageBody({ owner }) {
   const [failed, setFailed] = useState(false);
   const [order, setOrder] = useState(() => { try { const a = JSON.parse(stored(USAGE_ORDER_KEY) || "[]"); return Array.isArray(a) ? a.filter((x) => typeof x === "string") : []; } catch { return []; } });
   const reads = useMemo(() => readStream(lease), [lease]);
+  // Compact (one line per login): a line pressed opens its full card here, until folded or the mode changes.
+  const { compact } = useStore(usageViewStore);
+  const [expanded, setExpanded] = useState(() => new Set());
+  useEffect(() => { setExpanded(new Set()); }, [compact]);
+  const toggleOne = (id) => setExpanded((was) => { const next = new Set(was); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   // Refresh (force) supersedes a read on its way; the minute's tick waits for it.
   const load = async (force) => {
     const token = reads.begin(force);
@@ -188,10 +308,10 @@ export function UsageBody({ owner }) {
   else if (!data || !Array.isArray(data.providers)) content = html`<${ErrorState} message=${tn("usageFail")} onRetry=${() => load(true)} />`;
   else {
     const providers = ordered(data.providers);
-    content = html`${!providers.length ? html`<p class="note">${tn("usage.empty_active")}</p>` : null}
-      ${providers.map((p, i) => html`<section key=${key(p)} class=${p.stale ? "u-provider is-stale" : "u-provider"}>
+    const card = (p, i) => html`<section key=${key(p)} class=${p.stale ? "u-provider is-stale" : "u-provider"}>
         <div class="u-head"><strong title=${p.name}>${providerTitle(p).base}</strong>${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
-          <span class="u-order">
+          <span class="u-order">${compact ? html`<button type="button" class="icon-btn u-collapse" aria-expanded="true" aria-label=${tn("usageCollapse")} title=${tn("usageCollapse")}
+              onClick=${() => toggleOne(key(p))}><${Icon} name="minus" size=${14} /></button>` : null}
             <button type="button" class="icon-btn" disabled=${i === 0} aria-label=${tn("usageMoveUp")} title=${tn("usageMoveUp")} onClick=${() => move(key(p), -1, data.providers)}><${Icon} name="up" size=${14} /></button>
             <button type="button" class="icon-btn" disabled=${i === providers.length - 1} aria-label=${tn("usageMoveDown")} title=${tn("usageMoveDown")} onClick=${() => move(key(p), 1, data.providers)}><${Icon} name="down" size=${14} /></button>
           </span></div>
@@ -202,7 +322,11 @@ export function UsageBody({ owner }) {
           : p.status === "no-credentials" ? html`<p class="note">${tn("usage.not_logged_in")}</p>${p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : null}`
           : html`${(p.metrics || []).map((m, j) => html`<${UsageMetric} key=${j} m=${m} />`)}
             ${!p.stale && p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : !(p.metrics || []).length ? html`<p class="note">${tn("usage.no_data")}</p>` : null}`}
-      </section>`)}
+      </section>`;
+    content = html`${!providers.length ? html`<p class="note">${tn("usage.empty_active")}</p>` : null}
+      ${compact ? compactGroups(providers).map((g) => html`<${CompactGroup} key=${g.base} group=${g}
+          line=${({ p, i }) => (expanded.has(key(p)) ? card(p, i) : html`<${CompactRow} key=${key(p)} p=${p} onExpand=${() => toggleOne(key(p))} />`)} />`)
+        : providers.map((p, i) => card(p, i))}
       <div class="u-foot"><span class="note" title=${new Date(data.fetchedAt).toLocaleString()}>${updatedAgo(data.fetchedAt)}${failed ? html` · <span class="u-refresh-failed" role="status">${tn("usageRefreshFailed")}</span>` : data.refreshing ? html` · <span class="u-refreshing">${tn("usageRefreshing")}</span>` : null}</span>
         ${byAgent() ? html`<a class="btn btn-ghost btn-sm u-by-agent" href="/ui/fleet/usage" title=${tn("usageByAgentTitle")}>${tn("usageByAgent")}</a>` : null}
         <button type="button" class="btn btn-sm" onClick=${() => load(true)}>${tn("usageRefresh")}</button></div>`;
@@ -218,5 +342,5 @@ const byAgent = () => !guestPage() && typeof location !== "undefined" && locatio
 
 /** `owner`: the navigation that opened it — its reads and the minute's timer live and end with it. */
 export function UsageDialog({ onClose, owner = "" }) {
-  return html`<${Dialog} title=${tn("usage.title")} onClose=${onClose} wide=${true}><${UsageBody} owner=${`usage-dialog:${owner}`} /></${Dialog}>`;
+  return html`<${Dialog} title=${tn("usage.title")} tools=${html`<${UsageCompactToggle} />`} onClose=${onClose} wide=${true}><${UsageBody} owner=${`usage-dialog:${owner}`} /></${Dialog}>`;
 }

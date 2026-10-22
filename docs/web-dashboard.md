@@ -122,7 +122,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - **Sending, as on Discord.**
   - Your message shows at once, dimmed, with "Sending…", and the composer is free for the next one. When AgEnD has it, it becomes the normal message: one bubble, never two. Messages sent in a row go out in order.
   - A message that does not get there stays, no longer dimmed, with the reason ("Not sent: …") and three buttons:
-    - **Retry send** sends the same message again. Files already uploaded are not uploaded again. If the first try did reach the agent and only the answer was lost, Retry finds it there: the agent never gets it twice.
+    - **Retry send** sends the same message again. Files already uploaded are not uploaded again. If the first try did reach the agent and only the answer was lost, Retry finds it there: the agent never gets it twice. AgEnD remembers this for 10 minutes, in memory: after a fleet restart, a Retry of a message sent before it is delivered again.
     - **Put back** returns its text, files and reply to the composer, to change it. Ctrl/⌘+Z undoes that.
     - **Delete** drops it.
   - Nothing is retried on its own. A message waiting to send lives in this tab only: reloading the page drops it.
@@ -135,7 +135,10 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
   - **The sent message** shows the quote above it. Click the quote to jump to the original and flash it; if the chat no longer keeps it, the page says so.
   - **What the agent gets:** the same `(reply_to: "…")` line as a Discord or Telegram reply. The server reads it from the quoted message: one line, at most 500 characters.
   - **Who can reply:** you can reply only to a message this chat still keeps. A guest can reply only to messages it can see. A guest who sees a reply to a message it can't see gets "an earlier message" in place of the quote.
-  - **The web echo** to Discord or Telegram starts with "↩ *sender*: *first words*" when the quoted message was already in that channel. A web-only original is only named ("↩ an earlier web chat message"), never copied out.
+  - **The web echo** to Discord or Telegram is a **native reply** there (#2281) when the quoted message is in that same topic or room: a person's message there, the agent's reply that landed there, or an earlier web message's copy. If the original has since been deleted, the echo is sent as a plain message.
+    - **Otherwise** the echo starts with "↩ *sender*: *first words*" when the quoted message was already in that channel. Examples are a message from before this version, or one in another topic.
+    - **A web-only original** is only named ("↩ an earlier web chat message"), never copied out.
+    - **What is kept:** where each message sits on the platform (its connection, chat, topic and message id) is kept beside the chat history, also across a restart. It is never shown to a page, a guest or the public link.
 - **The row under the composer** is one line at the bottom left: this browser's web authority, then the key hint (`✓ Verified · Enter to send · Shift+Enter for a new line`). When it ends ("speaks as you until …") is in the tooltip of **✓ Verified**; on a touch screen, tap it. A guest sees their note there, and the temporary public link says why it can't authorize. On a phone the key hint is left out.
 - Messages render **Markdown**: headings, **bold**, *italics*, ~~strike-through~~, `code`, code blocks, lists, quotes, rules and links. Also:
   - **Tables** (`| a | b |` with a `|---|---|` row under the header, and `:--` / `--:` / `:-:` for alignment). Write `\|` for a pipe inside a cell.

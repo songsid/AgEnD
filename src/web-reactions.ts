@@ -11,7 +11,7 @@ import type { ChannelAdapter } from "./channel/types.js";
 import { TELEGRAM_REACTION_EMOJIS, normalizeEmoji } from "./status-emojis.js";
 
 /** A web message's copy in a channel (the echo): where a reaction to the web message is put too. */
-export interface WebEchoCopy { adapter: Pick<ChannelAdapter, "react" | "type">; chatId: string; threadId?: string; messageId: string }
+export interface WebEchoCopy { adapter: Pick<ChannelAdapter, "react" | "type">; /** #2281: its connection, to reply to it natively. */ adapterId?: string; chatId: string; threadId?: string; messageId: string }
 /** How many web messages' copies the fleet remembers (the newest; this process only). */
 export const WEB_ECHO_COPIES_MAX = 2000;
 /** How long one copy's reaction may take before it is given up (logged): it never holds the tool's answer. */
