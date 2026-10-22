@@ -1468,6 +1468,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-pick .tb-select { max-width: 200px; }
 .oo-people { position: relative; }
 /* #2399: the offices' minimal editor (fleet-office-editor.js) — one row per office, its members unfolded under it. */
+.oe-form { border: 0; margin: 0; padding: 0; min-width: 0; }
 .oe-list { list-style: none; margin: var(--s-3) 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-3); }
 .oe-row { padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); display: flex; flex-direction: column; gap: var(--s-2); }
 .oe-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s-2); }

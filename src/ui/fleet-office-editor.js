@@ -60,7 +60,11 @@ function Members({ office, view, everyone, onChange }) {
  * `onSaved({ rev, offices })` after a save or a re-read; `onClose`.
  */
 export function OfficeEditor({ offices, rev, view, store, onSaved, onClose }) {
-  const [draft, setDraft] = useState(() => offices.map((o) => ({ ...o, members: [...o.members] })));
+  // The draft and the rev it was read at go together (#2424 review): a list the stream re-reads meanwhile never moves
+  // the rev under an older draft (a save would then overwrite what it never showed). Only a 409's re-read replaces both.
+  const [base, setBase] = useState(() => ({ rev, draft: offices.map((o) => ({ ...o, members: [...o.members] })) }));
+  const draft = base.draft;
+  const setDraft = (next) => setBase((b) => ({ ...b, draft: typeof next === "function" ? next(b.draft) : next }));
   const [open, setOpen] = useState(null);                              // the office whose members are shown
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -72,24 +76,29 @@ export function OfficeEditor({ offices, rev, view, store, onSaved, onClose }) {
     setDraft((d) => [...d, { id, name: te("newName"), skin: "pixel", members: [], layout: null }]);
     setOpen(id);
   };
+  // Everything is frozen from Save until its answer (and a 409's re-read) is in (#2424 review): no edit made meanwhile
+  // is lost when the dialog closes, and no second save starts on a draft about to be replaced.
   const save = async () => {
+    if (busy) return;
     if (draft.some((o) => !o.name.trim())) { setMsg(te("nameNeeded")); return; }
     setBusy(true); setMsg("");
-    const r = await store.saveOffices(draft.map(officeForSave), rev);
-    setBusy(false);
-    if (r.ok) { toast(te("saved")); onSaved({ rev: r.rev, offices: r.offices }); onClose(); return; }
-    if (r.status === 409) {
-      const fresh = await store.offices();
-      if (fresh) { onSaved(fresh); setDraft(fresh.offices.map((o) => ({ ...o, members: [...o.members] }))); }
-      setMsg(te("changed"));
-      return;
-    }
-    setMsg(r.status === 429 ? te("rateLimited") : te("failed", r.error || r.status));
+    try {
+      const r = await store.saveOffices(draft.map(officeForSave), base.rev);
+      if (r.ok) { toast(te("saved")); onSaved({ rev: r.rev, offices: r.offices }); onClose(); return; }
+      if (r.status === 409) {
+        const fresh = await store.offices();
+        if (fresh) { onSaved(fresh); setBase({ rev: fresh.rev, draft: fresh.offices.map((o) => ({ ...o, members: [...o.members] })) }); }
+        setMsg(te("changed"));
+        return;
+      }
+      setMsg(r.status === 429 ? te("rateLimited") : te("failed", r.error || r.status));
+    } finally { setBusy(false); }
   };
   const actions = html`<button type="button" class="btn" onClick=${onClose} disabled=${busy}>${te("cancel")}</button>
     <button type="button" class="btn btn-primary" id="oeSave" onClick=${save} disabled=${busy}>${te("save")}</button>`;
   return html`<${Dialog} title=${te("title")} onClose=${onClose} actions=${actions} busy=${busy} wide=${true}>
     <p class="note">${te("lead")}</p>
+    <fieldset class="oe-form" disabled=${busy}>
     ${draft.length ? null : html`<p class="note" id="oeNone">${te("none")}</p>`}
     <ul class="oe-list">${draft.map((o) => html`<li key=${o.id} class="oe-row" data-office=${o.id}>
       <div class="oe-head">
@@ -107,6 +116,7 @@ export function OfficeEditor({ offices, rev, view, store, onSaved, onClose }) {
     </li>`)}</ul>
     <button type="button" class="btn btn-sm" id="oeAdd" onClick=${add} disabled=${draft.length >= MAX_OFFICES}>${te("add")}</button>
     ${draft.length >= MAX_OFFICES ? html`<span class="note">${te("tooMany", MAX_OFFICES)}</span>` : null}
+    </fieldset>
     ${msg ? html`<p class="note oe-msg" role="status">${msg}</p>` : null}
   </${Dialog}>`;
 }

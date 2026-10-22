@@ -576,6 +576,42 @@ describe("the Office view on the page", () => {
       expect(p.root.querySelector(".oe-msg").textContent).toBe("Too many saves. Try again in a minute.");
     });
   });
+  // #2424 review (Prism): the draft and the rev it was read at go together; a save freezes the form until its answer
+  // (and a 409's re-read) is in.
+  describe("the editor's draft and its rev", () => {
+    let E: any;
+    beforeAll(async () => { E = await import("/ui/js/fleet-office-editor.js"); });
+    const deferred = () => { let resolve!: (v: any) => void; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
+    it("the parent's rev moving on (the stream read again) never moves the draft's: Save sends the rev the draft was read at", async () => {
+      const puts: any[] = [];
+      const store = S.createOfficeStore({ fetch: async (_u: string, o: any) => { puts.push(JSON.parse(o.body)); return { ok: false, status: 409, json: async () => ({ error: "offices_changed" }) }; } });
+      const list = [{ id: "ops", name: "Ops", skin: "pixel", members: [], layout: null }];
+      const props = { offices: list, view: view(), store, onSaved: () => {}, onClose: () => {} };
+      await p.mount(h(E.OfficeEditor, { ...props, rev: 4 })); await settle(2);
+      await p.mount(h(E.OfficeEditor, { ...props, rev: 5, offices: [...list, { id: "lab", name: "Lab", skin: "pixel", members: [], layout: null }] })); await settle(2);
+      expect(p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)).toEqual(["Ops"]);   // the draft is the one opened
+      p.root.querySelector("#oeSave").click(); await settle(3);
+      expect(puts.map((b) => b.rev)).toEqual([4]);
+    });
+    it("frozen while a save is on its way and through a 409's re-read: no edit, no second save; editable again after", async () => {
+      const put = deferred(), reread = deferred();
+      let puts = 0;
+      const store = S.createOfficeStore({ fetch: async (_u: string, o: any) => {
+        if (o.method === "PUT") { puts++; return put.promise; }
+        return reread.promise;
+      } });
+      await p.mount(h(E.OfficeEditor, { offices: [{ id: "ops", name: "Ops", skin: "pixel", members: [], layout: null }], rev: 4, view: view(), store, onSaved: () => {}, onClose: () => {} })); await settle(2);
+      p.root.querySelector("#oeSave").click(); await settle(2);
+      const form = () => p.root.querySelector(".oe-form");
+      expect(form().disabled).toBe(true);
+      p.root.querySelector("#oeSave").click(); await settle(2);
+      expect(puts).toBe(1);                                              // no second save on its way
+      put.resolve({ ok: false, status: 409, json: async () => ({ error: "offices_changed" }) }); await settle(3);
+      expect(form().disabled).toBe(true);                                // still frozen: the re-read is on its way
+      reread.resolve({ ok: true, status: 200, json: async () => ({ rev: 6, offices: [{ id: "lab", name: "Lab" }] }) }); await settle(4);
+      expect([form().disabled, p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)]).toEqual([false, ["Lab"]]);
+    });
+  });
   it("the host's offices in the switcher; a stored office shows its members", async () => {
     offices = { rev: 2, offices: [{ id: "ops", name: "Ops room", members: ["team:Web", "quill"] }, { id: "auto", name: "nope" }] };
     await office();
