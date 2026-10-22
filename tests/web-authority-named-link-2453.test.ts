@@ -199,6 +199,55 @@ describe("the fleet: a named-link session authorized, and the link's end", () =>
       expect([tapped.ok, h.s.webAuthority({ session: rec, gateway: true, peer: "named_link" }).authority.kind, ask.includes(HOST), ask.includes("the internet")]).toEqual([true, "web-verified", true, true]);
     } finally { h.close(); }
   });
+  // Fable's #2464 review: the option off then on again with nothing reading authority in between must not bring a
+  // named-link session's authority back. Every configuration change is observed (a Settings save — the PUT, a confirmed
+  // change's apply, the host's confirm — and a reload), and off drops the named-link sessions' authorizations.
+  for (const readWhileOff of [false, true]) it(`off → on through Settings saves, ${readWhileOff ? "read" : "nothing read"} while off: the old session needs a new Confirm`, () => {
+    const h = fleet(NAMED(true));
+    try {
+      const rec = h.gatewaySession();
+      expect(h.s.authorizeWebSession(rec, "named_link", true)).toMatchObject({ ok: true });
+      const before = h.s.webAuthority({ session: rec, gateway: true, peer: "named_link" });
+      h.s.fleetConfig.web.verified_authority.named_link = false; h.s.saveFleetConfig();       // off (immediate)
+      if (readWhileOff) h.s.webAuthority({ session: rec, gateway: true, peer: "named_link" });
+      h.s.fleetConfig.web.verified_authority.named_link = true; h.s.saveFleetConfig();        // on again (after its confirmation)
+      const after = h.s.webAuthority({ session: rec, gateway: true, peer: "named_link" });
+      expect([before.authority.kind, after.authority.kind, after.refusal]).toEqual(["web-verified", "none", "not_authorized"]);
+    } finally { h.close(); }
+  });
+  it("the same gap for the server switch (enabled off → on, nothing read between): every older authority stays revoked", () => {
+    const h = fleet(NAMED(false));
+    try {
+      const local = h.s.webSessions.create({ tier: "admin", surface: "local", label: "desk", tokenEpoch: tokenEpoch("c".repeat(48)), owner: { adapterId: "owner", userId: "admin" } }).record;
+      expect(h.s.authorizeWebSession(local, "loopback", false)).toMatchObject({ ok: true });
+      h.s.fleetConfig.web.verified_authority.enabled = false; h.s.saveFleetConfig();
+      h.s.fleetConfig.web.verified_authority.enabled = true; h.s.saveFleetConfig();
+      expect(h.s.webAuthority({ session: local, gateway: false, peer: "loopback" }).refusal).toBe("not_authorized");
+    } finally { h.close(); }
+  });
+  it("off drops the named-link sessions' authorizations at once (local ones stay)", () => {
+    const h = fleet(NAMED(true));
+    try {
+      const rec = h.gatewaySession();
+      const local = h.s.webSessions.create({ tier: "admin", surface: "local", label: "desk", tokenEpoch: tokenEpoch("c".repeat(48)), owner: { adapterId: "owner", userId: "admin" } }).record;
+      expect([h.s.authorizeWebSession(rec, "named_link", true).ok, h.s.authorizeWebSession(local, "loopback", false).ok]).toEqual([true, true]);
+      h.s.fleetConfig.web.verified_authority.named_link = false; h.s.saveFleetConfig();
+      expect([h.s.sessionAuthorizationStore().get(rec.handle) ?? null, !!h.s.sessionAuthorizationStore().get(local.handle)]).toEqual([null, true]);
+    } finally { h.close(); }
+  });
+  it("…and through a reload (fleet.yaml edited off, then on): the same", () => {
+    const h = fleet(NAMED(true));
+    try {
+      const path = join(h.fm.dataDir as string, "fleet.yaml");
+      const write = (on: boolean) => writeFileSync(path, `channel: { id: owner, type: telegram, group_id: G, bot_token_env: NONE, access: { mode: open, allowed_users: [admin] } }\ninstances: {}\nweb:\n  public_link: { hostname: ${HOST} }\n  verified_authority: { enabled: true, named_link: ${on} }\n`);
+      const rec = h.gatewaySession();
+      expect(h.s.authorizeWebSession(rec, "named_link", true)).toMatchObject({ ok: true });
+      write(false); h.fm.loadConfig(path);
+      write(true); h.fm.loadConfig(path);
+      const after = h.s.webAuthority({ session: rec, gateway: true, peer: "named_link" });
+      expect([after.authority.kind, after.refusal]).toEqual(["none", "not_authorized"]);
+    } finally { h.close(); }
+  });
   it("the link's end (its exposure revoked): its sessions' authorizations go with it; a local one stays", () => {
     const h = fleet(NAMED(true));
     try {

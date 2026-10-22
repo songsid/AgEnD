@@ -3030,6 +3030,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
     this.warnAboutRemovedLoginMode(loaded);
     this.enforceGuestSwitch();
+    this.observeWebAuthority();                      // #2453 review: a reload's web-authority switches are seen at once
     // Child tool/guidance readers must follow this fleet's actual config, including --config.
     // Scope the path to its owning data directory so another inherited home's override cannot enable CW.
     process.env.AGEND_FLEET_DATA_DIR = resolvePath(this.dataDir);
@@ -11627,6 +11628,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   saveFleetConfig(explicitPatches: RawConfigPatch[] = []): void {
     this.publicWebLink?.refresh();
     this.enforceGuestSwitch();                       // #1920: a Settings save turning guests off ends their sessions
+    this.observeWebAuthority();                      // #2453 review: so is a web-authority switch (off is always seen)
     if (!this.fleetConfig || !this.configPath) return;
 
     if (!this.savedFleetConfigSnapshot) this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
@@ -14619,7 +14621,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!this.dataDir) return { enabled: false, loopbackOnly: true, namedLink: false, epoch: 0 };
     this.authorityStateStore ??= new AuthorityStateStore(join(this.dataDir, "web-authority.json"), this.logger, undefined, undefined,
       () => { this.ensureDeliveryOutbox?.(); return this.deliveryOutbox?.maxWebAuthorityEpoch() ?? 0; });
-    return this.authorityStateStore.current(this.fleetConfig?.web?.verified_authority);
+    const state = this.authorityStateStore.current(this.fleetConfig?.web?.verified_authority);
+    // #2453 (§0.2): the named-link option seen going off — the authority of every session over the link ends now, for
+    // good: their authorizations go (a later "on" can never bring one back without its account's Confirm).
+    if (state.namedLinkClosed) this.sessionAuthorizationStore()?.prune(a => this.webSessions?.findByHandle(a.handle)?.surface === "local");
+    return state;
+  }
+
+  /**
+   * #2453 review: the web-authority state read on every configuration change (a Settings save, the host's confirm, a
+   * reload) — so a switch turned off and on again between two requests is still seen off: its epoch moves, and the
+   * named-link sessions' authorizations are dropped. Reads that only happen on a request would miss it.
+   */
+  private observeWebAuthority(): void {
+    // Only once the state is in use: any authorization was given through a read that made it (and a first read at
+    // start-up still sees what changed while the fleet was down). Nothing new is opened during a load.
+    try { if (this.dataDir && this.authorityStateStore) this.webAuthorityState(); }
+    catch (err) { this.logger.warn({ err: (err as Error)?.message }, "Web authority state could not be read after a configuration change"); }
   }
 
   /**
@@ -20304,6 +20322,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.rawFleetConfig = previousRawConfig;
       this.rawFleetDocument = previousRawDocument;
       this.savedFleetConfigSnapshot = previousSavedSnapshot;
+      this.observeWebAuthority();                    // #2453 review: the configuration back in force is the one seen
       this.logger.error({
         oldCount,
         newCount,

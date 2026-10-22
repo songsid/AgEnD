@@ -26,6 +26,8 @@ export interface AuthorityState {
   namedLink: boolean;
   /** The current revocation epoch: authority granted under an older one reads as none. */
   epoch: number;
+  /** #2453: this read saw the named-link option go off (the fleet then drops the named-link sessions' authorizations). */
+  namedLinkClosed?: true;
 }
 
 /**
@@ -101,6 +103,7 @@ export class AuthorityStateStore {
     const enabled = config?.enabled !== false, loopbackOnly = config?.loopback_only === true;            // §0.1: on by default
     const namedLink = config?.named_link === true;                                                       // §0.2: off by default
     const reopened = namedLink && !s.named_link && !!s.named_link_seen;
+    const closed = !!s.named_link && !namedLink;
     const revokes = s.enabled !== enabled || (s.loopback_only && !loopbackOnly) || reopened;
     if (revokes || s.loopback_only !== loopbackOnly || !!s.named_link !== namedLink) {
       this.want = { v: 1, epoch: s.epoch + (revokes ? 1 : 0), enabled, loopback_only: loopbackOnly,
@@ -108,8 +111,9 @@ export class AuthorityStateStore {
     }
     const durable = this.flush();
     // Not written: off, and still "only this computer" if it was (a loosening that did not stick does not apply).
-    return durable ? { enabled, loopbackOnly, namedLink, epoch: this.want!.epoch }
-      : { enabled: false, loopbackOnly: loopbackOnly || (this.disk?.loopback_only ?? true), namedLink: false, epoch: this.want!.epoch };
+    const seenClosed = closed ? { namedLinkClosed: true as const } : {};
+    return durable ? { enabled, loopbackOnly, namedLink, epoch: this.want!.epoch, ...seenClosed }
+      : { enabled: false, loopbackOnly: loopbackOnly || (this.disk?.loopback_only ?? true), namedLink: false, epoch: this.want!.epoch, ...seenClosed };
   }
 
   /** An explicit revocation: every web authority given so far reads as none. `durable`: it is on disk. */
