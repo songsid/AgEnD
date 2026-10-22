@@ -1,5 +1,6 @@
-// #1408 step 1: the Fleet panel (/ui/fleet[/<tab>]) — tasks (the task board: fleet-tasks.js), schedules, teams and the
-// fleet's config — and the "New instance" dialog. Behind the session gate (/ui/js/), loaded the first time it is opened.
+// #1408 step 1: the Fleet panel (/ui/fleet[/<tab>]) — tasks (the task board: fleet-tasks.js), schedules, teams, the org
+// chart, cache and usage (#2347 §10: its config tab moved to Settings) — and the "New instance" dialog. Behind the
+// session gate (/ui/js/), loaded the first time it is opened.
 //
 // Opening a tab reads its list: a person's navigation, so it counts as use, as the old tab click did (#1374 — no timer
 // here re-reads anything). Every read is under the navigation's lease: a list that arrives after the person moved on
@@ -38,7 +39,7 @@ register("fleet", {
     hostMemory_elevated: "Host memory pressure: elevated — new agents start one at a time, at least 5 s apart",
     hostMemory_critical: "Host memory pressure: critical — new agents wait for memory to recover",
     hostMemory_top: "Largest: {0}", hostMemory_ownerFleet: "the fleet", hostMemory_ownerTmux: "tmux", hostMemory_ownerOther: "not an instance",
-    title: "Fleet", tasks: "Tasks", schedules: "Schedules", teams: "Teams", org: "Org chart", cache: "Cache", usage: "Usage", config: "Config",
+    title: "Fleet", tasks: "Tasks", schedules: "Schedules", teams: "Teams", org: "Org chart", cache: "Cache", usage: "Usage",
     docs: "Docs", docsNewTab: "Docs (opens in a new tab)",
     newSchedule: "New schedule", newTeam: "New team",
     noSchedules: "No schedules yet", noSchedulesHint: "Automate recurring work with cron.",
@@ -55,10 +56,8 @@ register("fleet", {
     scheduleFieldsRequired: "Cron, message, and target required", teamFieldsRequired: "Name and at least one member required",
     deleteSchedule: "Delete this schedule?", deleteTeam: "Delete team “{0}”?", scheduleCreated: "Schedule created", scheduleDeleted: "Schedule deleted",
     teamCreated: "Team created", teamDeleted: "Team deleted", teamUpdated: "Team updated", edit: "Edit", editTeam: "Edit team",
-    teamNoRename: "Renaming isn't supported — create a new team and delete this one.", configSaved: "Config saved", configRestart: " (restart the fleet to apply channel changes)",
-    channel: "Channel", type: "Type", tokenEnv: "Bot token env", groupId: "Group ID", show: "Show", hide: "Hide", access: "Access control", mode: "Mode", locked: "Locked", open: "Open",
-    allowedUsers: "Allowed users", allowedUsersNote: "Comma-separated user IDs", defaults: "Defaults", backend: "Backend", roots: "Project roots", addRoot: "Add root", removeRoot: "Remove",
-    saveNote: "Saving rewrites fleet.yaml (its comments are lost).",
+    teamNoRename: "Renaming isn't supported — create a new team and delete this one.",
+    backend: "Backend",
     newInstance: "New instance", directory: "Directory", directoryHint: "Optional — a workspace is created if empty", topic: "Name", topicHint: "From the directory name",
     topicRequired: "Name is required when Directory is empty", description: "Description", descriptionHint: "What this instance does", model: "Model", modelHint: "e.g. sonnet, opus, gpt-5",
     branch: "Branch (git worktree)", branchHint: "e.g. feature-x", tags: "Tags", tagsHint: "comma-separated, e.g. dev, review", systemPrompt: "System prompt", systemPromptHint: "Custom instructions for this instance",
@@ -68,7 +67,7 @@ register("fleet", {
     hostMemory_elevated: "主機記憶體壓力偏高：新的 agent 一次啟動一個，至少間隔 5 秒",
     hostMemory_critical: "主機記憶體壓力嚴重：新的 agent 會等記憶體恢復再啟動",
     hostMemory_top: "最大：{0}", hostMemory_ownerFleet: "fleet 本身", hostMemory_ownerTmux: "tmux", hostMemory_ownerOther: "不屬於任何 instance",
-    title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", org: "組織圖", cache: "快取", usage: "用量", config: "設定",
+    title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", org: "組織圖", cache: "快取", usage: "用量",
     docs: "文件", docsNewTab: "文件（在新分頁開啟）",
     newSchedule: "新增排程", newTeam: "新增 team",
     noSchedules: "還沒有排程", noSchedulesHint: "用 cron 自動執行例行工作。",
@@ -84,10 +83,8 @@ register("fleet", {
     scheduleFieldsRequired: "必須填寫 Cron、訊息與目標 instance", teamFieldsRequired: "必須填寫名稱並選擇至少一名成員",
     deleteSchedule: "確定刪除此排程嗎？", deleteTeam: "確定刪除 team「{0}」嗎？", scheduleCreated: "排程已建立", scheduleDeleted: "排程已刪除",
     teamCreated: "Team 已建立", teamDeleted: "Team 已刪除", teamUpdated: "Team 已更新", edit: "編輯", editTeam: "編輯 team",
-    teamNoRename: "不支援重新命名：請建立新的 team，再刪除這個。", configSaved: "設定已儲存", configRestart: "（請重新啟動 fleet 以套用頻道變更）",
-    channel: "頻道", type: "類型", tokenEnv: "Bot token 環境變數", groupId: "Group ID", show: "顯示", hide: "隱藏", access: "存取控制", mode: "模式", locked: "鎖定", open: "開放",
-    allowedUsers: "允許的使用者", allowedUsersNote: "以逗號分隔的使用者 ID", defaults: "預設值", backend: "Backend", roots: "專案根目錄", addRoot: "新增根目錄", removeRoot: "移除",
-    saveNote: "儲存會改寫 fleet.yaml（其中的註解會遺失）。",
+    teamNoRename: "不支援重新命名：請建立新的 team，再刪除這個。",
+    backend: "Backend",
     newInstance: "新增 instance", directory: "目錄", directoryHint: "可留空——留空會自動建立工作區", topic: "名稱", topicHint: "預設取自目錄名稱",
     topicRequired: "目錄留空時必須填寫名稱", description: "說明", descriptionHint: "這個 instance 做什麼", model: "模型", modelHint: "例如 sonnet、opus、gpt-5",
     branch: "分支（git worktree）", branchHint: "例如 feature-x", tags: "標籤", tagsHint: "以逗號分隔，例如 dev, review", systemPrompt: "System prompt", systemPromptHint: "這個 instance 的自訂指示",
@@ -100,7 +97,7 @@ const DOCS_SITE = "https://songsid.github.io/AgEnD";
 export function docsUrl(language = lang()) {
   return `${DOCS_SITE}${language === "zh-TW" ? "/zh-tw" : ""}/docs/web-guide/`;
 }
-const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "chart", usage: "chart", config: "sliders" };
+const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "chart", usage: "chart" };
 const BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"];
 
 async function api(method, path, body, lease) {
@@ -140,7 +137,7 @@ export function FleetPanel({ route, navKey }) {
   const tab = route.tab;
   useEffect(() => { setTitle(`${t("fleet.title")} · ${t(`fleet.${tab}`)}`); }, [tab, navKey]);
   useEffect(() => { rememberFleetTab(tab); }, [tab]);   // #2183: the sidebar's and the phone's Fleet reopen it
-  const Body = { tasks: TaskBoardTab, schedules: Schedules, teams: Teams, org: Org, cache: Cache, usage: UsageTab, config: Config }[tab] || TaskBoardTab;
+  const Body = { tasks: TaskBoardTab, schedules: Schedules, teams: Teams, org: Org, cache: Cache, usage: UsageTab }[tab] || TaskBoardTab;
   // #1685: host memory pressure slowing or holding new agents — shown here, where macOS's routine "elevated" is not a chat notice.
   const { hostMemory, hostMemoryTop } = useStore(appStore);
   // #2015: and which processes hold the most, and whose — text only (never chat, #1712).
@@ -260,69 +257,6 @@ function Cache({ lease }) {
   return html`<${Loaded} state=${state}>${(report) => (report && Array.isArray(report.instances)
     ? html`<${CacheReport} report=${report} win=${win} setWin=${setWin} refresh=${() => setVersion((v) => v + 1)} />`
     : html`<${ErrorState} onRetry=${renavigate} />`)}</${Loaded}>`;
-}
-
-function Secret({ id, value, onInput, label }) {
-  const [shown, setShown] = useState(false);
-  return html`<div class="field-row"><input id=${id} type=${shown ? "text" : "password"} value=${value} onInput=${onInput} autocomplete="off" />
-    <button type="button" class="icon-btn" aria-label=${shown ? t("fleet.hide") : t("fleet.show")} aria-pressed=${shown ? "true" : "false"} title=${`${shown ? t("fleet.hide") : t("fleet.show")} ${label}`}
-      onClick=${() => setShown(!shown)}><${Icon} name="eye" size=${16} /></button></div>`;
-}
-
-function Config({ lease }) {
-  const state = useLoad(lease, "/ui/config", 0);
-  const [form, setForm] = useState(null);
-  const [saving, setSaving] = useState(false);
-  // Each save owns the form's busy state only while it is the latest: an older save that is decided later (it waited
-  // for an admin's confirmation) never unlocks the form under a newer one still on its way (#1453 review).
-  const saves = useRef(0);
-  // #2342: each project root's row keeps its own key — keyed by position, removing one shifted the texts below into
-  // the boxes above (each box's text rewritten, its undo history lost).
-  const rootKeys = useRef({ n: 0, list: [] });
-  const rootKey = (i) => { const k = rootKeys.current; while (k.list.length <= i) k.list.push(++k.n); return k.list[i]; };
-  useEffect(() => {
-    if (!state || !state.data) return;
-    const c = state.data, ch = c.channel || {}, acc = ch.access || {};
-    setForm({ type: ch.type || "", tokenEnv: ch.bot_token_env || "AGEND_BOT_TOKEN", groupId: ch.group_id || "", mode: acc.mode || "locked",
-      users: (acc.allowed_users || []).join(", "), backend: (c.defaults || {}).backend || "claude-code", roots: [...(c.project_roots || [])] });
-  }, [state]);
-  async function save() {
-    const mine = ++saves.current;
-    const done = () => { if (lease.current() && mine === saves.current) setSaving(false); };
-    setSaving(true);
-    const body = {
-      channel: { group_id: form.groupId.trim(), access: { mode: form.mode, allowed_users: form.users.split(",").map(s => s.trim()).filter(Boolean) } },
-      defaults: { backend: form.backend },
-      project_roots: form.roots.map(r => r.trim()).filter(Boolean),
-    };
-    let r;
-    // A change to access or the connection may need a fleet admin's confirmation (#1423): the shell follows it.
-    try {
-      const res = await confirmedWrite("/ui/config", { method: "POST", body, label: t("fleet.config"),
-        onPending: (_id, view) => { toast(t(selfConfirmed(view) ? "app.pendingSelfSent" : "app.pendingSent")); done(); } });
-      r = res.ok ? res.body || {} : { error: (res.body && res.body.error) || `HTTP ${res.status}` };
-    } catch (err) { r = { error: err.message }; }
-    done();
-    if (r.error) toast(r.error, false); else toast(t("fleet.configSaved") + (r.needs_restart ? t("fleet.configRestart") : ""));
-  }
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  return html`<${Loaded} state=${state}>${() => !form ? html`<${Skeleton} lines=${4} />` : html`
-    <section class="card"><h3>${t("fleet.channel")}</h3>
-      <label class="field"><span>${t("fleet.type")}</span><input value=${form.type} disabled /></label>
-      <label class="field"><span>${t("fleet.tokenEnv")}</span><input value=${form.tokenEnv} disabled /></label>
-      <div class="field"><label for="cfg-gid">${t("fleet.groupId")}</label><${Secret} id="cfg-gid" value=${form.groupId} onInput=${set("groupId")} label=${t("fleet.groupId")} /></div></section>
-    <section class="card"><h3>${t("fleet.access")}</h3>
-      <label class="field"><span>${t("fleet.mode")}</span><select value=${form.mode} onChange=${set("mode")}><option value="locked">${t("fleet.locked")}</option><option value="open">${t("fleet.open")}</option></select></label>
-      <div class="field"><label for="cfg-users">${t("fleet.allowedUsers")}</label><${Secret} id="cfg-users" value=${form.users} onInput=${set("users")} label=${t("fleet.allowedUsers")} />
-        <p class="note">${t("fleet.allowedUsersNote")}</p></div></section>
-    <section class="card"><h3>${t("fleet.defaults")}</h3>
-      <div class="field"><label for="cfg-be">${t("fleet.backend")}</label><${BackendSelect} id="cfg-be" value=${form.backend} onChange=${(v) => setForm({ ...form, backend: v })} /></div></section>
-    <section class="card"><h3>${t("fleet.roots")}</h3>
-      ${form.roots.map((r, i) => html`<div key=${rootKey(i)} class="field-row"><input value=${r} placeholder="/path/to/projects" aria-label=${t("fleet.roots")}
-        onInput=${(e) => { const roots = [...form.roots]; roots[i] = e.target.value; setForm({ ...form, roots }); }} />
-        <button type="button" class="icon-btn" aria-label=${t("fleet.removeRoot")} title=${t("fleet.removeRoot")} onClick=${() => { rootKeys.current.list.splice(i, 1); setForm({ ...form, roots: form.roots.filter((_, j) => j !== i) }); }}><${Icon} name="close" size=${16} /></button></div>`)}
-      <button type="button" class="btn btn-ghost" onClick=${() => setForm({ ...form, roots: [...form.roots, ""] })}><${Icon} name="plus" size=${16} />${t("fleet.addRoot")}</button></section>
-    <div class="save-row"><button type="button" class="btn btn-primary" disabled=${saving} onClick=${save}>${t("fleet.save")}</button><span class="note">${t("fleet.saveNote")}</span></div>`}</${Loaded}>`;
 }
 
 // ── Create dialogs ──

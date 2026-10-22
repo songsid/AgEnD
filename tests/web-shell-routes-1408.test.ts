@@ -47,7 +47,7 @@ const CASES: Array<[string, string]> = [
   ["/ui/fleet/teams", "fleet:teams"],
   ["/ui/fleet/org", "fleet:org"],
   ["/ui/fleet/cache", "fleet:cache"],
-  ["/ui/fleet/config", "fleet:config"],
+  ["/ui/fleet/config", "settings:agent-defaults"],   // #2347 §10: Config moved to Settings; its old address leads there
   ["/ui/fleet/bogus", "none"],
   // #1523 N2: one instance's Details.
   ["/ui/fleet/agent/web-dev", "details:web-dev"],

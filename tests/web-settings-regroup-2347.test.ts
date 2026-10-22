@@ -6,18 +6,21 @@
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
+import { fire } from "./helpers/mini-dom.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 import { shellRoute } from "../src/web-shell-routes.js";
 
 const schema = buildSettingsImpactSchema();
 let p: AppPage;
 const realFetch = (globalThis as any).fetch;
-const fakeFetch = async (path: string, init: { method?: string } = {}) => {
+const sent: Array<{ method: string; path: string; body: any }> = [];
+const fakeFetch = async (path: string, init: { method?: string; body?: string } = {}) => {
   const method = init.method ?? "GET";
+  sent.push({ method, path, body: init.body ? JSON.parse(init.body) : undefined });
   const body = (() => {
     if (method !== "GET") return { ok: true };
     if (path === "/api/settings/schema") return { ...schema, provider_secrets: true };
-    if (path === "/api/settings/fleet/raw") return { defaults: { locale: "en" }, instances: {}, channels: [{ id: "main", type: "discord", bot_token_env: "T", group_id: "1" }], web: {} };
+    if (path === "/api/settings/fleet/raw") return { defaults: { locale: "en" }, instances: {}, channels: [{ id: "main", type: "discord", bot_token_env: "T", group_id: "1" }], web: {}, project_roots: ["/srv/projects"] };
     if (path === "/api/settings/classic") return { defaults: {}, channels: { "c1": { name: "ops", instanceName: "ops-t1", channelId: "1" } } };
     if (path === "/api/settings/provider-secrets") return [{ id: "openai", display_name: "OpenAI", verifier: "available", token_present: false }];
     if (path === "/api/settings/connections") return [{ id: "main", token_present: true }];
@@ -112,6 +115,42 @@ describe("#2347: every card where it belongs", () => {
     (globalThis as any).location = p.window.location;
     try { await open("chat"); } finally { proto.scrollIntoView = was; }
     expect(seen).toContain("classicbot");
+    nav.navigate("/settings");
+  });
+});
+
+describe("#2347 §10: Fleet → Config is gone; its project folders are in Agent defaults", () => {
+  it("Project folders shows what is saved; adding one is one unsaved change; Save writes it where it is written (POST /ui/config)", async () => {
+    sent.length = 0;
+    await open("agent-defaults");
+    const box = p.root.querySelector("#project-roots");
+    const shown = box.querySelectorAll(".chip").map((c: any) => c.textContent.trim());
+    const input: any = box.querySelector("input[type=text]");
+    input.value = "/home/me/code"; fire(input, "input"); await settle(2);
+    box.querySelectorAll("button").find((b: any) => b.textContent.includes("Add")).click(); await settle(6);
+    const bar = p.root.querySelector(".s-pending");
+    const marked = /s-dirty/.test(p.root.querySelector("#g-roots").getAttribute("class"));
+    bar.querySelectorAll("button").find((b: any) => b.textContent === "Save").click(); await settle(12);
+    expect([shown, !!bar, marked, sent.filter((x) => x.method === "POST" && x.path === "/ui/config").map((x) => x.body)])
+      .toEqual([["/srv/projects"], true, true, [{ project_roots: ["/srv/projects", "/home/me/code"] }]]);
+  });
+  it("a folder named only by digits (ChipList keeps it as a number) is sent as the path it is", async () => {
+    sent.length = 0;
+    await open("agent-defaults");
+    const box = p.root.querySelector("#project-roots");
+    const input: any = box.querySelector("input[type=text]");
+    input.value = "2024"; fire(input, "input"); await settle(2);
+    box.querySelectorAll("button").find((b: any) => b.textContent.includes("Add")).click(); await settle(6);
+    p.root.querySelector(".s-pending").querySelectorAll("button").find((b: any) => b.textContent === "Save").click(); await settle(12);
+    expect(sent.filter((x) => x.method === "POST" && x.path === "/ui/config").map((x) => x.body)).toEqual([{ project_roots: ["/srv/projects", "2024"] }]);
+  });
+  it("the old /ui/fleet/config leads to Agent defaults at Project folders, on the page and the server; Fleet has no Config tab", () => {
+    const { FLEET_TABS } = route;
+    nav.navigate("/ui/fleet/config");
+    expect([FLEET_TABS.includes("config"), p.window.location.pathname, p.window.location.hash, nav.navStore.get().route,
+      route.parseRoute("/ui/fleet/config"), shellRoute("GET", "/ui/fleet/config")])
+      .toEqual([false, "/settings/agent-defaults", "#project-roots", { panel: "settings", section: "agent-defaults" },
+        { panel: "settings", section: "agent-defaults" }, { kind: "shell", route: { panel: "settings", section: "agent-defaults" } }]);
     nav.navigate("/settings");
   });
 });
