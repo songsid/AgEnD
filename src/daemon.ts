@@ -12226,7 +12226,7 @@ export class Daemon extends EventEmitter {
     args: Record<string, unknown>,
     respond: (result: unknown, error?: string) => void,
   ): Promise<void> {
-    const { execFile: execFileCb } = await import("node:child_process");
+    const { execFile: execFileCb } = await import("./child-process.js");
     const { promisify } = await import("node:util");
     const execFileAsync = promisify(execFileCb);
 
@@ -12298,7 +12298,7 @@ export class Daemon extends EventEmitter {
     if (!candidate.ok) { respond(null, `Cannot release: ${candidate.reason}`); return; }
     const root = reposRoot(this.instanceDir);
     if (!root.ok) { respond(null, `Cannot release: ${root.reason}`); return; }
-    const { execFile: execFileCb } = await import("node:child_process");
+    const { execFile: execFileCb } = await import("./child-process.js");
     const { promisify } = await import("node:util");
     const execFileAsync = promisify(execFileCb);
     const git = async (gitArgs: string[], cwd: string) => (await execFileAsync("git", gitArgs, { cwd })).stdout;

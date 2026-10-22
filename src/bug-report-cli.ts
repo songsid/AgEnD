@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { execFile } from 'node:child_process';
+import { execFile } from './child-process.js';
 import { promisify } from 'node:util';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';

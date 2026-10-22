@@ -18,7 +18,8 @@
 // would fail though they ran): it gets no more calls, its stdin is ended, and it exits once they have answered.
 // A helper that is not running, or not trusted, is not used: the call goes direct, as before. Only the fleet starts
 // and restarts the helper (start/maintain, from its own lifecycle and timer), never a tool handler.
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { execFile, spawn } from "./child-process.js";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
@@ -139,6 +140,8 @@ export class ExecHelper {
   private proc: ChildProcess | null = null;
   private allow = new Map<string, string>();               // name → absolute path
   private pending = new Map<number, Pending>();
+  /** Helpers whose stdout failed: what they started cannot be known from what was read (#2374 review). */
+  private outputLost = new WeakSet<ChildProcess>();
   private nextId = 1;
   private trusted = false;
   private backoffMs = RESTART_BACKOFF_MIN_MS;
@@ -174,6 +177,8 @@ export class ExecHelper {
     (proc.stdin as unknown as { unref?(): void } | null)?.unref?.();
     (proc.stdout as unknown as { unref?(): void } | null)?.unref?.();
     proc.stdin?.on("error", () => this.retire(proc, "stdin_error"));
+    // #2374 review: a failed read may have lost "started" frames, so a call not seen to start may have run all the same.
+    proc.stdout?.on("error", () => { this.outputLost.add(proc); this.retire(proc, "stdout_error"); });
     const decoder = new StringDecoder("utf8");
     let buf = "";
     proc.stdout?.on("data", (chunk: Buffer) => {
@@ -303,6 +308,13 @@ export class ExecHelper {
     if (p.answerTimer) { clearTimeout(p.answerTimer); p.answerTimer = null; }
   }
 
+  /** A call whose helper's output was lost: whether the command ran is unknown, so it fails rather than running again. */
+  private lostError(p: Pending): ExecError {
+    const err = this.timeoutError(p);
+    err.message = `Command outcome unknown (the exec helper's output was lost): ${err.cmd}`;
+    return err;
+  }
+
   /** What a direct call that timed out would have rejected with. */
   private timeoutError(p: Pending): ExecError {
     const err = new Error(`Command failed: ${[p.file, ...p.args].join(" ")}`) as ExecError;
@@ -334,6 +346,7 @@ export class ExecHelper {
     for (const p of [...this.pending.values()]) {
       this.settle(p);
       if (p.started) p.reject(this.timeoutError(p));             // it may have run: never again
+      else if (this.outputLost.has(proc)) p.reject(this.lostError(p)); // its "started" may be what was lost: never again
       else p.direct();                                           // it never started, and now never will
     }
     this.scheduleRestart();

@@ -1,4 +1,5 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgendHome } from "./paths.js";

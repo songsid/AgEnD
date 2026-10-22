@@ -39,7 +39,8 @@ import {
 } from "node:fs";
 import { homedir, totalmem, freemem, userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
-import { spawn, spawnSync, execSync, execFileSync } from "node:child_process";
+import { spawnSync, execSync, execFileSync } from "node:child_process";
+import { spawn } from "./child-process.js";
 import { getAgendHome, getTmuxSocketName, isDefaultAgendHome } from "./paths.js";
 import { hasPausedMarker } from "./pause-marker.js";
 import { COMPLETION_SHELLS, completionScript, type CompletionShell } from "./completion.js";
@@ -1929,7 +1930,7 @@ program
     const systemServicePath = getSystemServicePath();
     if (!userServicePath && !systemServicePath) {
       console.log("No service installed. Starting fleet directly...");
-      const { spawn } = await import("node:child_process");
+      const { spawn } = await import("./child-process.js");
       // This Node on this CLI, not `sh -c "agend fleet start"` through PATH (#1450 C5).
       const start = selfCommand(["fleet", "start"]);
       const child = spawn(start.command, start.args, { detached: true, stdio: "ignore", env: { ...process.env, [DIRECT_FLEET_START_ENV]: "1" } });
@@ -2051,7 +2052,8 @@ program
       unitCoredumpFilterState,
       loadedUnitCheck,
     } = await import("./service-installer.js");
-    const { spawn, spawnSync } = await import("node:child_process");
+    const { spawnSync } = await import("node:child_process");
+    const { spawn } = await import("./child-process.js");
     const plat = detectPlatform();
     const pidPath = join(DATA_DIR, "fleet.pid");
 
