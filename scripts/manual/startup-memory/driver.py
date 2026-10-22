@@ -144,7 +144,11 @@ if (process.argv[1]?.endsWith('/dist/cli.js') && process.argv.includes('fleet') 
     after=wait('candidate convergence',lambda:(s if (s:=state()).get('ActiveState')=='active' else None),timeout=100)
     check('candidate converges without a restart',after['MainPID']==before['MainPID'] and after['NRestarts']==before['NRestarts'],after)
     http('/control/reset',{}); http('/control/send-message',{'text':'prove sibling after startup','chat_id':-1001234567890,'thread_id':87,'user_id':111222333})
-    def replied(): return any(c.get('method')=='sendMessage' and 'Mock sibling survived' in json.dumps(c) for c in http('/control/calls'))
+    def replied():
+        value = http('/control/calls')
+        rows = value if isinstance(value,list) else value.get('result',value.get('calls'))
+        if not isinstance(rows,list): raise TypeError('mock call log is not a list')
+        return any(c.get('method')=='sendMessage' and 'Mock sibling survived' in json.dumps(c) for c in rows)
     check('sibling answers after pressure release',bool(wait('sibling reply',replied)))
     receipt['legs']['candidate']={'before':before,'held':held,'after':after,'seconds':time.monotonic()-at}
     sd('stop',UNIT,ok=False); capture('candidate')
