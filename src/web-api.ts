@@ -23,7 +23,7 @@ import type { WebEffectService } from "./web-effect-service.js";
 import type { EffectTrialActor } from "./web-effect-trials.js";
 import { EFFECT_WIRE_LIMIT } from "./web-effect-upload.js";
 import type { ThemeStore } from "./web-theme-store.js";
-import type { OfficeStore } from "./web-office-store.js";
+import type { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import type { WebAppearance } from "./web-appearance.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { crossInstanceVisibility } from "./cross-instance-notice.js";
@@ -424,6 +424,8 @@ export interface WebApiContext {
   readonly themeStore?: ThemeStore;
   /** Fleet → Org chart → Office: the offices people made (web-offices.json); absent: /ui/offices is not offered. */
   readonly officeStore?: OfficeStore;
+  /** How often a person may save the offices (absent: no limit, as in a test without it). */
+  readonly officeWrites?: OfficeWriteLimiter;
   readonly webAppearance?: WebAppearance;
   /** #1629 r4-5: installed mods and a person's staged import. */
   readonly mods?: ModStore;
@@ -1721,25 +1723,32 @@ export function handleWebRequest(
     const store = ctx.officeStore;
     if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
     if (gatewayRequestContext(req)) { json(res, 403, { error: "offices_not_over_public_link" }); return true; }
-    const who = (): number => {
+    // The person (an admin session's account), or the status that refuses the request.
+    const who = (): { person: string } | { status: number } => {
       const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-      if (verdict.kind !== "allow") return 401;
-      return verdict.via === "session" && verdict.session?.tier === "admin" ? 200 : 403;
+      if (verdict.kind !== "allow") return { status: 401 };
+      return verdict.via === "session" && verdict.session?.tier === "admin" ? { person: verdict.session.owner ? webPersonKey(verdict.session.owner) : "admin-session" } : { status: 403 };
     };
+    const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "offices_need_an_admin_session" });
     const first = who();
-    if (first !== 200) { json(res, first, { error: first === 401 ? WEB_TOKEN_INVALID_MESSAGE : "offices_need_an_admin_session" }); return true; }
+    if ("status" in first) { refuse(first.status); return true; }
     (async () => {
       let body: Record<string, unknown>;
       try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
       if (!permitWebContinuation(req, res, ctx)) return;
       const now = who();
-      if (now !== 200) { json(res, now, { error: now === 401 ? WEB_TOKEN_INVALID_MESSAGE : "offices_need_an_admin_session" }); return; }
+      if ("status" in now) { refuse(now.status); return; }
       if (!body || typeof body !== "object" || Array.isArray(body)) { json(res, 400, { error: "offices required" }); return; }
       const extra = Object.keys(body).find(k => k !== "offices" && k !== "rev");
       if (extra !== undefined) { json(res, 400, { error: "offices_invalid", detail: `unknown key "${extra}"` }); return; }
-      if (body.rev !== undefined && !Number.isSafeInteger(body.rev)) { json(res, 400, { error: "offices_invalid", detail: "rev: an integer" }); return; }
-      const r = store.replace(body.offices, body.rev as number | undefined);
+      // Office review: the rev the page read is required — a save without one would overwrite another person's unseen.
+      if (body.rev === undefined) { json(res, 428, { error: "offices_rev_required", detail: "send the rev you read (GET /ui/offices)" }); return; }
+      if (!Number.isSafeInteger(body.rev)) { json(res, 400, { error: "offices_invalid", detail: "rev: an integer" }); return; }
+      const limiter = ctx.officeWrites, allowed = limiter ? limiter.check(now.person) : { ok: true as const };
+      if (!allowed.ok) { res.setHeader("Retry-After", String(allowed.retry_after_s)); json(res, 429, { error: "offices_rate_limited", retry_after_s: allowed.retry_after_s }); return; }
+      const r = store.replace(body.offices, body.rev as number);
       if (!r.ok) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
+      limiter?.record(now.person);
       ctx.emitSseEvent("offices", { rev: r.rev });
       json(res, 200, { rev: r.rev, offices: r.offices });
     })().catch(err => {

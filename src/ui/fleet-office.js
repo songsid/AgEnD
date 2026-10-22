@@ -290,24 +290,37 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
     }
     return walking || up.length > 0 || flights.size() > 0;
   }
-  // The loop: one requestAnimationFrame at a time, drawing only when the frame (FPS) changed or something is in the air;
-  // stopped while the tab is hidden, gone with the view.
+  // The loop: drawing only when the frame (FPS) changed or something is in the air; stopped while the tab is hidden,
+  // gone with the view. Office review: while something walks or flies, one requestAnimationFrame per display frame (the
+  // motion is smooth); when nothing moves, the poses change at most FPS times a second, so the loop sleeps (a timer)
+  // until the next frame's start instead of waking at the display's rate only to find nothing to draw.
   useEffect(() => {
     if (still || typeof requestAnimationFrame !== "function") return undefined;
-    let raf = 0, last = -1, air = true, gone = false;
+    let raf = 0, timer = 0, last = -1, air = true, gone = false;
     const tick = () => {
       raf = 0;
       if (gone || globalThis.document?.hidden || !scene.current) return;
       const ms = now(), frame = Math.floor((ms / 1000) * FPS);         // the clock the trips started on
       if (scene.current.dirty || frame !== last || air) { scene.current.dirty = false; last = frame; air = draw(ms); }
-      raf = requestAnimationFrame(tick);
+      if (air) { raf = requestAnimationFrame(tick); return; }
+      const wait = Math.max(1, Math.ceil(((frame + 1) * 1000) / FPS - ms));   // until the next frame starts
+      timer = setTimeout(() => { timer = 0; if (!gone && !raf) raf = requestAnimationFrame(tick); }, wait);
     };
-    const wake = () => { air = true; if (!raf && !gone && !globalThis.document?.hidden) raf = requestAnimationFrame(tick); };
+    const wake = () => {
+      air = true;
+      if (timer) { clearTimeout(timer); timer = 0; }
+      if (!raf && !gone && !globalThis.document?.hidden) raf = requestAnimationFrame(tick);
+    };
     loop.current = { wake };
     const vis = () => { if (!globalThis.document?.hidden) wake(); };
     globalThis.document?.addEventListener?.("visibilitychange", vis);
     wake();
-    return () => { gone = true; loop.current = null; if (raf) cancelAnimationFrame(raf); globalThis.document?.removeEventListener?.("visibilitychange", vis); };
+    return () => {
+      gone = true; loop.current = null;
+      if (raf) cancelAnimationFrame(raf);
+      if (timer) clearTimeout(timer);
+      globalThis.document?.removeEventListener?.("visibilitychange", vis);
+    };
   }, []);
   useEffect(() => { loop.current?.wake(); }, [traffic]);
 

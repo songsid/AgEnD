@@ -25,10 +25,14 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
         return { rev: Number.isSafeInteger(d && d.rev) ? d.rev : 0, offices: officesOk(d && d.offices) };
       } catch { return null; }
     },
-    /** Replace the host's list (an admin session; `rev`: the one read). { ok, rev, offices } or { ok: false, status, error }. */
+    /**
+     * Replace the host's list (an admin session; `rev`: the one read — required: the host refuses a save without it,
+     * so two editors never overwrite each other unseen). { ok, rev, offices } or { ok: false, status, error }.
+     */
     async saveOffices(list, rev) {
+      if (!Number.isSafeInteger(rev)) return { ok: false, status: 0, error: "offices_rev_required" };
       try {
-        const r = await get("/ui/offices", { method: "PUT", headers, body: JSON.stringify({ offices: list, ...(rev === undefined ? {} : { rev }) }) });
+        const r = await get("/ui/offices", { method: "PUT", headers, body: JSON.stringify({ offices: list, rev }) });
         const d = await r.json().catch(() => ({}));
         return r.ok ? { ok: true, rev: d.rev, offices: officesOk(d.offices) } : { ok: false, status: r.status, error: d.error || "offices_failed" };
       } catch { return { ok: false, status: 0, error: "offices_failed" }; }
