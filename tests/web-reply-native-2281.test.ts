@@ -106,16 +106,20 @@ describe("Discord: SendOpts.replyTo is a native reply", () => {
 describe("web history: a message's platform posts, beside the row", () => {
   const post = { adapterId: "tg", chatId: "-100123", threadId: "77", messageId: "555" };
   it("recorded, kept on disk and restored — never a field of the row (nothing projects or broadcasts it)", () => {
+    // The post ids are ones no other text in a row can hold by chance: "555" once turned up in a row's random boot id
+    // (1 run in 100 went red, #2465 follow-up).
+    const POST_ID = "25552555255525552555", REPLY_POST_ID = "25562556255625562556";
+    const post = { adapterId: "tg", chatId: "-100123", threadId: "77", messageId: POST_ID };
     let saved: unknown[] = [];
     const a = new WebChatHistory({ store: { schedule: (_i: string, rows: () => unknown[]) => { saved = rows(); }, remove: async () => {} } });
     const row = a.record({ instance: "w", sender: "Ann", text: "deploy?", ts: "t", posts: [post] });
     const reply = a.record({ instance: "w", sender: "You", text: "yes", ts: "t", messageId: "web-1" });
-    a.addPosts("w", "web-1", [{ adapterId: "tg", chatId: "-100123", threadId: "77", messageId: "556" }]);
+    a.addPosts("w", "web-1", [{ adapterId: "tg", chatId: "-100123", threadId: "77", messageId: REPLY_POST_ID }]);
     const b = new WebChatHistory();
     b.restore("w", JSON.parse(JSON.stringify(saved)));
     const [r1, r2] = b.list("w");
-    expect([a.postsOf(row), Object.hasOwn(row, "posts"), JSON.stringify(row).includes("555"), a.postsOf(reply).map(p => p.messageId), b.postsOf(r1!), b.postsOf(r2!).map(p => p.messageId), JSON.stringify(r1).includes("posts")])
-      .toEqual([[post], false, false, ["556"], [post], ["556"], false]);
+    expect([a.postsOf(row), Object.hasOwn(row, "posts"), JSON.stringify(row).includes(POST_ID), a.postsOf(reply).map(p => p.messageId), b.postsOf(r1!), b.postsOf(r2!).map(p => p.messageId), JSON.stringify(r1).includes("posts")])
+      .toEqual([[post], false, false, [REPLY_POST_ID], [post], [REPLY_POST_ID], false]);
   });
   it("validated on restore: anything not ours in shape is dropped, never repaired; at most WEB_CHAT_POSTS_MAX", () => {
     const h = new WebChatHistory();
