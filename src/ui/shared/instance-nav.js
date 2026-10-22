@@ -658,8 +658,10 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
           ${viewOnly ? null : chips("status", STATUS_FACETS, tn("filterStatus"), statusText)}
           ${backends.length > 1 || f.cli.length ? chips("cli", backends, tn("filterCli"), backendLabel) : null}
         </div>
-        <p class="note nav-shown" aria-live="polite">${shown.shown} / ${shown.total}${shown.active ? ` ${tn("filterShown")}` : ""}</p>
-        <button type="button" class="chip-btn nav-facet-reset" style=${f.status.length || f.cli.length ? "" : "visibility:hidden"} onClick=${() => setNavFilter({ status: [], cli: [] })} aria-hidden=${f.status.length || f.cli.length ? "false" : "true"}>${tn("filterFacetsReset")}</button>
+        <div class="nav-filter-row">
+          <p class="note nav-shown" aria-live="polite">${shown.shown} / ${shown.total}${shown.active ? ` ${tn("filterShown")}` : ""}</p>
+          <button type="button" class="chip-btn nav-facet-reset" style=${f.status.length || f.cli.length ? "" : "visibility:hidden"} onClick=${() => setNavFilter({ status: [], cli: [] })} aria-hidden=${f.status.length || f.cli.length ? "false" : "true"}>${tn("filterFacetsReset")}</button>
+        </div>
       </div>
     </div>`}
   </div>`;

@@ -1030,9 +1030,10 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 /* #1776: the "N / M" count is on the headers' row, at its right end — not a row of its own. The headers (and an open
    group's list, the reset) wrap in their own box beside it, so a filter's summary or a narrow sidebar moves a header
    down, never the count; the count is as tall as a header, so the row does not grow. */
-.nav-facets { display: flex; align-items: flex-start; gap: var(--s-2); padding: var(--s-2) var(--s-1) 0; }
-.nav-facet-groups { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s-1) var(--s-2); flex: 1 1 auto; min-width: 0; }
-.nav-facets .nav-shown { flex: none; margin: 0 0 0 auto; padding: 2px 0; white-space: nowrap; }
+.nav-facets { padding: var(--s-2) var(--s-1) 0; }
+.nav-facet-groups { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s-1) var(--s-2); min-width: 0; }
+.nav-filter-row { display: flex; align-items: center; gap: var(--s-1); padding: var(--s-1) 0 0; }
+.nav-facets .nav-shown { flex: 1; padding: 2px 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .nav-facet { font-size: var(--fs-xs); color: var(--text-2); min-width: 0; max-width: 100%; }
 /* #1700: a facet group's header — the whole row toggles its list; folded with a filter set, a short summary. */
 .nav-facet-head { display: inline-flex; align-items: center; gap: var(--s-1); max-width: 100%; padding: 2px var(--s-2); border: 0; border-radius: var(--r-sm);
@@ -1044,7 +1045,7 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .nav-facet-n { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--on-accent, #fff); text-align: center; font-variant-numeric: tabular-nums; }
 .nav-facet-list { display: flex; flex-direction: column; gap: 2px; padding: var(--s-1) var(--s-2); }
 .nav-chip { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; color: var(--text); }
-.nav-facet-reset { font-size: var(--fs-xs); flex: none; white-space: nowrap; padding: 2px var(--s-1); }
+.nav-facet-reset { font-size: var(--fs-xs); flex: none; padding: 2px var(--s-1); }
 
 /* One gap on every page (View's, #1448): the header's controls are the same size on every tab. */
 .panel-actions .btn { gap: var(--s-1); }
