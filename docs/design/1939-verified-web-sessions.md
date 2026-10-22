@@ -161,25 +161,50 @@ are the issue's. Each gate below names the threat it stops (§0.1's rule).
 **The option.** `web.verified_authority.named_link: true`, off by default. It sits with the other three web-authority
 keys, and in Settings → Web → Web authority as "Also over my named link (<hostname>)". The row is shown only while a
 named link is configured.
-- **Turning it on goes through Settings confirmation** (the Confirm card in an eligible General, or
-  `agend settings confirm <id>`), unlike the other three keys (§0.1).
-  - The threat it stops: a stolen web session (local or public) opening the internet path by itself.
+- **Turning it on needs a fresh, independent confirmation.** That is the Confirm card in an eligible General, or
+  `agend settings confirm <id>` on the host. It is never the requesting session's own authority. This is unlike the
+  other three keys (§0.1).
+  - The threat it stops: a stolen web session (local or public) opening the internet path by itself. A stolen cookie of
+    an **already authorized** local session is the case that matters here.
   - The other keys are reachable only from networks the user already trusts. This one is the only switch that makes a
     session reached from anywhere on the internet able to qualify. That one step needs a second party's yes.
+  - **Never self-confirmed (#2170).**
+    - **The rule.** A held change whose effect turns `named_link` on (from false or unset to true) is never confirmed by
+      its requester, whether alone or among other keys. `settingsSelfConfirmation` returns null for it, so it goes to a
+      General's card, or to the host CLI when no card can be asked.
+    - **What is judged.** The trusted effect: the diff that `prepareSettingsEffect` computes from the config before and
+      after. Never the request body.
+    - **Until then.** Nothing changes: no config write and no epoch bump until that independent decision.
+    - **Everything else is unchanged.** Every other self-confirmable change keeps #2170's behaviour.
+  - **A named-link session is never the self-confirming authority (#2170) either,** for any held change. #2170's own rule
+    already says "a public link never qualifies". Until now that held because `evaluateWebAuthority` refused every
+    public request. With this option on, a named-link session can be `web-verified`, so the exclusion is stated and
+    enforced on its own: `settingsSelfConfirmation` requires a request that is not on the public link (no gateway
+    context) and a session whose peer is not `named_link`. A Fleet or Advanced write an admin makes over the link
+    (allowed since 2026-10-22) still waits for a General's card or the host CLI, as before.
 - **Turning it off applies at once,** with no confirmation, like every narrowing.
-- **It can't be changed over the public link.** The one route that writes `web.*` is `PUT /api/settings/fleet/web`.
-  It is refused over the public link twice: in the confirmation gate, and again in the handler
-  (`web_settings_not_over_public_link`). The Fleet and Advanced writes an admin may make over the link (2026-10-22:
-  defaults, channels, instances, apply) can't reach `web.*`. The implementation adds a test that pins this for
-  `named_link`.
+- **It can't be changed over the public link.** `web.verified_authority` is written only by
+  `PUT /api/settings/fleet/web`. That route is refused over the public link twice: in the confirmation gate, and again
+  in the handler (`web_settings_not_over_public_link`).
+  - `web.appearance` has its own route, which is refused over the link as well.
+  - The Fleet and Advanced writes an admin may make over the link (2026-10-22: defaults, channels, instances, apply)
+    can't reach `web.verified_authority`.
+  - The implementation adds a test that pins this for `named_link`.
 
 **Which requests qualify (§3, item 5 amended).** A request over the public link qualifies only if **all** of these
 hold, in addition to every other §3 check (cookie session, admin tier, current token epoch, bound account still in
 `allowed_users`, same namespace, switch on, authorized by the account's Confirm):
-1. **Named, by listener provenance.** The request's gateway context (`GatewayRequestContext`) says the exposure is
-   **named**. The public gateway sets this when it is created with the named settings, and pins the Host to that
-   hostname. No header can set or change it, as for `surface` today. A quick tunnel's context is never named, so it
-   is refused as before, whatever the option says.
+1. **Named, by listener provenance, on the exact hostname.** The request's gateway context (`GatewayRequestContext`)
+   says **named**. The gateway binds that value to each request it admits, and it is true only when both hold:
+   - the gateway was created with the named settings;
+   - the host it has pinned is exactly the configured hostname (`publicTunnelHostname(web.public_link.hostname)`).
+
+   `setHost` today also accepts any `*.trycloudflare.com` name on a gateway that has a hostname. A request admitted
+   under such a host is **not** named. No header can set or change the value, as for `surface` today: Host,
+   `Origin`, `X-Forwarded-Host` and the other forwarding headers are never read for it, and the gateway already
+   refuses a Host other than the pinned one. A quick tunnel's context is never named, so it is refused as before,
+   whatever the option says. An exposure keeps the mode it was created with: changing the config to named does not
+   make an open quick exposure named.
 2. **The option is on** (`named_link: true`), read at each request.
 3. **`loopback_only` is off.** "Only this computer can authorize" still wins, because a request over a tunnel is never
    `loopback`.
@@ -226,12 +251,22 @@ handles can never match again anyway, so this is housekeeping, not the barrier.
 - **`loopback_only` turned on:** `named_link` receipts read as `none` with `downgraded: "loopback_only"`, as `lan`
   ones do.
 - **`/web revoke`, the switch off, any epoch bump:** unchanged (§10).
-- **Close, the link's expiry, fleet stop:** these end the sessions, so their **next** messages carry `none`, the same
-  way a local session ends by sign-out or expiry. Receipts already written keep their authority as evidence (§0,
-  item 3).
-  - Revocation after a suspected theft is `/web revoke` or turning the option off, and both downgrade at once.
-  - Downgrading on every routine Close or TTL expiry would refuse a person's legitimate go-ahead that was still being
-    verified, for no threat that `/web revoke` doesn't already cover.
+- **Close, the link's expiry (TTL), fleet stop or restart:** these end the sessions and delete their authorizations,
+  so their **next** messages carry `none`, the same way a local session ends by sign-out or expiry. **Receipts already
+  written keep their authority as evidence** (§0, item 3), and `delivery_status` reads them as they were written.
+  - **This amends #2453's acceptance line** "Close/revoke/option-off each downgrade it". By the leader's decision
+    (2026-10-22, `xmsg-1792678618124-kvibrl` on `cid-1792678122608-75y4rj`: "Close/expiry end the sessions without
+    downgrading receipts already written … /web revoke and option-off downgrade at once. No per-Close epoch"), only
+    `/web revoke` and option-off downgrade existing receipts. Close downgrades the session. The issue carries the
+    amended line.
+  - **Nothing comes back.** A reopen, or #2450's `auto_open` after a restart, is a new exposure: the old sessions
+    never authenticate again, and their authorizations are gone. Receipts are not affected by Close either way, so
+    there is nothing to revive.
+  - **After a suspected theft, revoke.** `/web revoke` or turning the option off downgrades at once. The Close
+    notice in the docs says so.
+  - **Why not downgrade on Close.** Downgrading on every routine Close or TTL expiry would refuse a person's
+    legitimate go-ahead that was still being verified, and would stop no threat that `/web revoke` doesn't already
+    cover.
 
 **The refusal the person sees.** Over a named link with the option off, the chip reads "Not verified: over your named
 link (turn on 'Also over my named link' in Settings on this computer)". Its reason is the new `named_link_off`. A quick
@@ -251,8 +286,10 @@ link keeps `public_link`.
     pins the hostname, and AgEnD's own sign-in still applies.
 
 **Implementation (after #2450 merges, on top of it; its code is not forked):**
-- `GatewayRequestContext` gains `named: boolean`, set by `public-web-gateway.ts` from the settings the gateway was
-  created with.
+- `GatewayRequestContext` gains `named: boolean`, set by `public-web-gateway.ts` for each admitted request: the
+  gateway was created with the named settings **and** its pinned host is exactly the configured hostname.
+- `settingsSelfConfirmation` (#2170) returns null for a held change whose effect turns `named_link` on, and for any
+  request on the public link or from a `named_link` session.
 - `WebPeer` gains `"named_link"`.
 - `evaluateWebAuthority` takes `named` and `policy.namedLink`. It refuses with `public_link` (a quick link),
   `named_link_off` (the option off), or `loopback_only`. Otherwise it continues through the same checks, with
@@ -272,14 +309,28 @@ link keeps `public_link`.
   - with `loopback_only` on, it is refused (`loopback_only`).
 - **Authorized:** with the option on and after the Confirm card, the named-link session's message gets
   `web-verified` with `session.peer: "named_link"`, and `delivery_status` returns it.
+- **Provenance, through the real gateway:**
+  - Spoofed `Host`, `Origin` and `X-Forwarded-Host` / `Forwarded` never make a request named. A wrong Host is the
+    gateway's 403, as today.
+  - A named gateway whose pinned host is a `trycloudflare` name admits requests as **not** named, so they are refused
+    with `public_link`.
+  - A quick exposure stays quick after the config changes to named, until a new exposure opens.
+  - Only the exact configured hostname is named.
 - **Ends:**
-  - **Close:** the session's next message is `none`.
+  - **Close:** the session's next message is `none`, and the receipt written before Close still reads `web-verified`
+    through `delivery_status` (this pins the leader's amendment).
+  - **Reopen and `auto_open` after a restart:** the old session cookie is refused, and its authorization is gone.
   - **`/web revoke`:** that receipt reads `none` with `downgraded: "revoked"`.
   - **Option off:** it reads `none` with `downgraded: "named_link_off"`; turning the option back on (confirmed) doesn't
     restore it.
   - **Fleet restart with `auto_open`:** the old session is gone.
 - **Settings:**
   - turning the option on returns a pending confirmation, not an applied change;
+  - **an already web-verified local admin** turning it on, alone or together with an ordinary key, stays pending. It
+    is not self-confirmed, and there is no config or epoch change until a General's card or the host CLI decides. The
+    control: an ordinary self-confirmable change from the same session is still self-confirmed (#2170 unchanged);
+  - **a `named_link` session** is never the self-confirming authority. Its held Fleet write over the link waits for a
+    card or the CLI;
   - turning it off applies at once;
   - the write over the public link is refused.
 - **Real smoke:** with a named hostname (a stubbed tunnel in tests; the real smoke on the admin's own hostname). No
@@ -768,7 +819,8 @@ No code, cookie, CSRF value or message text is logged; the receipt keeps the tex
 | Public link, the admin's named tunnel, option off (the default) | Recognition only | Never authority: `named_link_off` (§0.2) |
 | A cookie stolen from a browser that used the named link, option on | It can chat | It can be replayed from anywhere on the internet. A session not yet authorized still needs the account's Confirm (the card says "over your named link <hostname>"). An authorized one speaks as the person until the earliest of: the 30-min idle limit, the 4 h absolute limit, `max_session_hours`, Not me, `/web revoke` or the option off. Turning the option off downgrades its receipts at once (`named_link_off`). **The risk the admin accepts by turning the option on** (§0.2) |
 | Cloudflare, which terminates TLS for the named link | It sees the traffic and the cookies | Unchanged, but those cookies can now carry authority while the option is on: the trust already placed in the admin's Cloudflare account extends to it. Cloudflare Access or mTLS in front of the hostname is compatible and out of scope (§0.2) |
-| A stolen web session turning the named-link option on | — | Turning it on needs Settings confirmation from an eligible General or the host CLI (§0.2), and it can't be changed over the public link |
+| A stolen web session turning the named-link option on | — | Turning it on needs a fresh confirmation from an eligible General or the host CLI (§0.2). It is never self-confirmed (#2170), even by an already web-verified local session or when mixed with other keys, and it can't be changed over the public link |
+| A named-link session confirming held Settings changes itself (#2170) | — | Never: self-confirmation needs a request off the public link and a session whose peer isn't `named_link` (§0.2) |
 | A reverse proxy in front of the health listener (forwarding headers or not) | Same as local | Classified `lan`, with or without forwarding headers (a header-stripping local proxy reads as loopback; see the next row). It qualifies by default, which is right only if everyone who can reach that proxy is trusted (the previous row). Under "Only this computer can authorize" it doesn't qualify, except for the case in the next row (a local proxy that strips forwarding headers), which can't be told apart from a local browser and is out of scope |
 | A local reverse proxy that strips forwarding headers | Same as local | Not supported for authority. Indistinguishable from a local browser, so out of scope like other local processes (§3.4) |
 | An agent asks the person to "just click" | Same on any platform | A reply button can never step up. A step-up needs the `/authorize` page plus the person's own click or DM code, and shows the exact action, target and executors |
