@@ -36,7 +36,7 @@ only. Pages: `/ui` chat, `/ui/fleet`, `/ui/needs`, `/view`, `/settings`.
 ## Sign-in and access
 
 **Getting a code (`/web`).** Only a fleet admin can — someone in the bot connection's `access.allowed_users`.
-- Discord: send `/web` (alias of `/dashboard`) in the General channel. A menu offers **💻 AgEnD computer: get a
+- Discord: send `/web` in the General channel (`/dashboard` still answers but is deprecated: it says so, then opens `/web`). A menu offers **💻 AgEnD computer: get a
   code** and, when `web.public_link.allow_public` is not `false`, **🌐 Other device (temporary public)**. Sent
   anywhere else, `/web` answers privately (DM, else an ephemeral reply) with the local link and a code only.
 - Telegram: `/web` works only in the General topic ("/web works in the General topic — please use it there"). In a
@@ -78,7 +78,7 @@ the local address sees every instance's live terminal and the roster (status, co
 tags, name, description, avatars, cards) and the usage meters — read only; editing says "Sign in to edit". Over a
 public link `/view` always needs sign-in.
 
-**Guests (#1920, 2.3 beta).** Off by default: `web.guests.enabled` (or Settings → Web → Guests). Then someone who is
+**Guests (#1920).** Off by default: `web.guests.enabled` (or Settings → Web → Guests). Then someone who is
 not a fleet admin sends `/web` and gets a code privately, signing in as their own Discord or Telegram account. A guest
 sees only the agents they can already use in chat: their connection's fleet topics and General (an `open` connection:
 only `web.guests.open_instances`), their own Telegram private ClassicBot room, and ClassicBot group rooms while their
@@ -87,7 +87,7 @@ a command (text starting with `/` is refused), and the agent sees them as `via w
 View, Settings or Needs you. To invite someone: turn it on, then tell them to send `/web`. The Guests card is not in
 Settings over the public link.
 
-**Web authority (#1939, 2.3 beta).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
+**Web authority (#1939).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
 account. The one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
 session menu says **Not verified · Authorize this browser**. Pressing it
 sends a card to that account's DM, saying which browser (device, on this computer or the network, when, until when), with
@@ -164,9 +164,9 @@ restored; files that can't be served again show as unavailable.
 **Copies in Discord/Telegram (web echo).** For a fleet topic instance, each web message is also posted to its topic as
 `🌐 web · <name>: …` (the first 500 characters plus attachment names; longer text says "(full text in web chat)").
 Turn it off with Settings → Web → **Web echo** (`web.echo_to_channel`). ClassicBot rooms: per room,
-`classicBot.yaml` `channels.<key>.web_echo` (Settings → ClassicBot → the room → **Web echo**). From 2.3.0-beta.3
+`classicBot.yaml` `channels.<key>.web_echo` (Settings → ClassicBot → the room → **Web echo**). Since 2.2.5
 (#2054) a room echoes by default: an unset room follows `web.echo_to_channel`, `web_echo: false` keeps it off and
-`web_echo: true` keeps it on. Before that, a room echoed only with `web_echo: true` — check the running version.
+`web_echo: true` keeps it on. Before 2.2.5, a room echoed only with `web_echo: true`.
 
 ## Needs you
 
@@ -180,7 +180,7 @@ tab title. Items, grouped by instance, oldest first:
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
 "Paused: sign-in needed" has **Sign in** when the dashboard can run that login (#2233); every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
-`needs_you.dm` (default off), `needs_you.task_board` (default off since 2.3.0-beta.25: the task board's cards waiting
+`needs_you.dm` (default off), `needs_you.task_board` (default off: the task board's cards waiting
 for you — set `true` to list them). The task board's daily summary is `defaults.task_board.summary_at` (off unless set,
 e.g. `"09:00"`).
 
@@ -494,12 +494,12 @@ Settings → **Web appearance**, card by card:
 - **Restore defaults** — resets this host's appearance settings (it lists what it resets first).
 
 **What an agent can change for the user.** A worker changes only its own look (the `web-appearance` tools); before
-#2064 everything on this page was the person's. Since #2064 (2.3.0-beta.3; check the running version) General, coordinators and
+#2064 everything on this page was the person's. Since #2064 (2.2.5) General, coordinators and
 full-profile instances get `get_web_settings` / `set_web_settings`, which go through the same checks as the page;
 workers don't. The `web-appearance` skill's **For the user** section has the details. In short: General can change
 the host's appearance settings, one agent's identity colour, ambient effects and Restore defaults; for custom CSS it can save a version **on trial**, keep or revert
 the trial, switch to an earlier saved version, or turn CSS off — and it keeps a trial only once the user says they like
-it (the user's decision, 2.3.0-beta.3). Still the person's own click on the page: choosing files from their computer
+it (the user's decision). Still the person's own click on the page: choosing files from their computer
 (upload CSS assets), the per-browser switches (custom CSS off on this device, Pause/Resume), and the
 card upload limits. The docs' "Asking General to change it for you" says the same for people.
 
