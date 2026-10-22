@@ -429,6 +429,7 @@ function threadEntry(name, doc) {
     clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
     retryOutgoing: (clientId) => store.retryOutgoing(name, clientId),              // a failed send's Retry and Delete
     deleteOutgoing: (clientId) => store.deleteOutgoing(name, clientId),
+    putBackOutgoing: (clientId) => { recordEdit(composerField()); store.putBackOutgoing(name, clientId); },   // undoable, as typing
     // #2272: reply to a message (the bar above the composer), and show the one a reply quotes.
     startReply: (x) => { store.startReply(name, x); doc.getElementById("msgIn")?.focus(); },
     findQuoted: (key) => store.findQuoted(name, key),

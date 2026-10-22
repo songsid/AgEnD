@@ -494,8 +494,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .out-file[data-state="failed"] .out-fill { background: var(--danger); }
 .out-file[data-state="failed"] .out-pct { color: var(--danger); }
 .msg.out.out-sent .out-file .out-bar, .msg.out.out-sent .out-file .out-pct { visibility: hidden; }
-.out-note { --lbar-color: var(--danger); display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--s-2);
-  margin-top: var(--s-2); padding: var(--s-1) 0 var(--s-1) calc(var(--s-2) + 3px); font-size: var(--fs-xs); color: var(--danger); }
+/* Hugs its words under the bubble's right edge, as the bubble does: the bar stays beside them, never across the row. */
+.out-note { --lbar-color: var(--danger); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); width: fit-content; max-width: 100%;
+  margin: var(--s-2) 0 0 auto; padding: var(--s-1) 0 var(--s-1) calc(var(--s-2) + 3px); font-size: var(--fs-xs); color: var(--danger); }
 .out-error { overflow-wrap: anywhere; }
 .out-actions { display: inline-flex; gap: var(--s-1); }
 @media (prefers-reduced-motion: reduce) { .out-spin { animation: none; border-right-color: currentColor; opacity: .6; } .out-fill { transition: none; } }

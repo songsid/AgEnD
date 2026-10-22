@@ -165,6 +165,7 @@ export function createThread(list, scroller, opts) {
     }).join("");
     const failed = st === "failed" ? `<div data-trust="thread-control" class="out-note lbar" role="alert"><span class="out-error">${escAttr(trf("chat.notSentBecause", x.outgoing.error || ""))}</span>`
       + `<span class="out-actions"><button type="button" class="btn btn-sm btn-primary" data-act="retryOut" data-arg="${escAttr(x.clientId)}">${escAttr(tr("chat.retrySend"))}</button>`
+      + `<button type="button" class="btn btn-sm" data-act="putBackOut" data-arg="${escAttr(x.clientId)}">${escAttr(tr("chat.putBack"))}</button>`
       + `<button type="button" class="btn btn-sm" data-act="deleteOut" data-arg="${escAttr(x.clientId)}">${escAttr(tr("chat.deleteUnsent"))}</button></span></div>` : "";
     const state = going ? `<span class="out-state" role="status"><span class="out-spin" aria-hidden="true"></span>${escAttr(tr("chat.sending"))}</span>` : "";
     return `<div class="msg user out out-${st}" data-out="${escAttr(x.clientId)}"${going ? ' aria-busy="true"' : ""} tabindex="-1"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${state}</div>`
@@ -821,6 +822,7 @@ export function createThread(list, scroller, opts) {
     else if (act === "reply") { const x = msgs.find(y => msgKey(y) === el.dataset.arg); if (x) opts.startReply?.(x); }
     else if (act === "jumpQuote") void jumpTo(el.dataset.arg);
     else if (act === "retryOut") opts.retryOutgoing?.(el.dataset.arg);                 // a failed send, again
+    else if (act === "putBackOut") opts.putBackOutgoing?.(el.dataset.arg);              // back in the composer, to change it
     else if (act === "deleteOut") opts.deleteOutgoing?.(el.dataset.arg);
   }
   /**

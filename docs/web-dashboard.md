@@ -116,9 +116,16 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 
 ### Writing
 
-**Paused agents.** Sending a message wakes a paused instance, including a ClassicBot room. The composer shows “Waking…” until delivery. If waking is refused (for example, no warm slot is free), the page explains why, keeps your text and files, and offers **Retry send**. Retry never runs automatically. A stopped instance still needs to be started; opening history or attaching a file does not wake it. Guest and public-link send permissions are unchanged.
+**Paused agents.** Sending a message wakes a paused instance, including a ClassicBot room. The composer shows “Waking…” until delivery. If waking is refused (for example, no warm slot is free), your message stays in the chat as not sent, with the reason and **Retry send**. Retry never runs automatically. A stopped instance still needs to be started; opening history or attaching a file does not wake it. Guest and public-link send permissions are unchanged.
 
-- **Enter** sends; **Shift+Enter** adds a line. If sending fails, your text is given back.
+- **Enter** sends; **Shift+Enter** adds a line.
+- **Sending, as on Discord.**
+  - Your message shows at once, dimmed, with "Sending…", and the composer is free for the next one. When AgEnD has it, it becomes the normal message: one bubble, never two. Messages sent in a row go out in order.
+  - A message that does not get there stays, no longer dimmed, with the reason ("Not sent: …") and three buttons:
+    - **Retry send** sends the same message again. Files already uploaded are not uploaded again.
+    - **Put back** returns its text, files and reply to the composer, to change it. Ctrl/⌘+Z undoes that.
+    - **Delete** drops it.
+  - Nothing is retried on its own. A message waiting to send lives in this tab only: reloading the page drops it.
 - **Reply to a message (#2272).**
   - **Starting a reply:**
     - **Desktop:** hover a message and press **↩** at its top right, or right-click it for **Reply / Copy text / Copy link**. Shift+right-click, or right-click over selected text, still gives the browser's own menu.
@@ -141,6 +148,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 ### Files and images
 - Attach with **📎**, by pasting, or by dropping files onto the chat (it shows where they will go while you drag). Each file waits above the composer as a chip with its name and size, and **✕** removes it.
 - A paste longer than **4,000 characters** is attached as a text file instead of filling the composer. **As text** on its chip puts it back into the composer.
+- **While the files upload**, each shows in the message's bubble with its own bar and percentage, a picture as a thumbnail. They go one after another, and a file whose turn hasn't come says "waiting". An upload that is cut off marks that file **failed**, and **Retry send** uploads only the files still missing.
 - Limits: up to **5 files per message**, **50 MB each**, **100 MB together** by default.
   - Change the two sizes with `web.upload_max_file_mb` and `web.upload_max_total_mb` in `fleet.yaml`: whole MB, 1–500. One file is never allowed more than a whole message. `agend reload` applies a change to the next upload; a page that is already open uses the new numbers after it reloads. `agend doctor` and the fleet's start warn about a value it cannot use.
   - **Over the public link** a file is at most **95 MB**, whatever the config says: a Cloudflare quick tunnel carries about 100 MB per request, and each file is one upload. The refusal says so.

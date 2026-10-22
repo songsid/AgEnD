@@ -364,7 +364,9 @@ export function createChatStore(deps) {
     } catch (err) {
       const f = e.files.find((x) => x.state === "uploading");
       if (f) f.state = "failed";
-      r = { error: err && err.message ? err.message : t("chat.disconnected") };
+      // The browser's own words for a request that never reached the server (Chrome, Firefox, Safari): the page's.
+      const offline = err && err.name === "TypeError" && /failed to fetch|networkerror|load failed/i.test(err.message || "");
+      r = { error: offline ? t("chat.sendNoConnection") : err && err.message ? err.message : t("chat.disconnected") };
     }
     if (!(s.outgoing[target] || []).includes(e)) return;                // deleted meanwhile
     if (r && !r.error && r.sent !== false) {
@@ -402,6 +404,22 @@ export function createChatStore(deps) {
     for (const f of e.files) freeUrl(f.url);
     s.outgoing[target] = list.filter((x) => x !== e);
     changed(target, "msgs"); changed(target);
+  }
+  /**
+   * A failed send, back in the composer to change it: its text before what is typed there now, its files (within the
+   * limits) and its reply, if none is started; the bubble goes. The page records the composer's undo step first.
+   */
+  function putBackOutgoing(target, clientId) {
+    const list = s.outgoing[target] || [];
+    const e = list.find((x) => x.clientId === clientId);
+    if (!e || e.outgoing.state !== "failed") return;
+    const draft = s.drafts[target] || "";
+    s.drafts[target] = e.text ? (draft ? e.text + "\n" + draft : e.text) : draft;
+    for (const f of e.files) freeUrl(f.url);
+    s.outgoing[target] = list.filter((x) => x !== e);
+    if (e.quote && !s.replies[target]) s.replies[target] = e.quote;
+    changed(target, "msgs");
+    if (e.files.length) addFiles(target, e.files.map((f) => f.file)); else changed(target);
   }
   function addFiles(target, list) {
     if (!target) return;
@@ -553,7 +571,7 @@ export function createChatStore(deps) {
     attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory,
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
     applyReplyButtons, clickReplyButton,
-    uploadFile, send, retryOutgoing, deleteOutgoing, threadRows, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, setDraft,
+    uploadFile, send, retryOutgoing, deleteOutgoing, putBackOutgoing, threadRows, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, setDraft,
     startReply, clearReply, findQuoted,
     cancelReply, isUser, runCommand, dismissCommand, commandFree,
   };

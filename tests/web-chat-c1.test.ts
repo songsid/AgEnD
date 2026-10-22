@@ -650,13 +650,17 @@ describe("chat page: the composer and the history", () => {
 
   it("a send shows as its own bubble in the thread (the server's rows, then the pending ones); its Retry and Delete are the bubble's", () => {
     const store = readFileSync(join(process.cwd(), "src", "ui", "chat-store.js"), "utf8");
-    // A send never writes into a composer: the composer is emptied when it goes, and a failed text stays in its bubble.
+    // A send never writes into a composer: the composer is emptied when it goes, and a failed text stays in its bubble —
+    // back in the composer only by the person's Put back (putBackOutgoing, the one writer).
     const sendFn = store.slice(store.indexOf("  function send(target) {"), store.indexOf("  /** Take this chat's waiting sends"));
-    expect([sendFn.match(/s\.drafts\[target\] = [^;]+;/g), /s\.drafts\[target\] = (txt|e\.text)/.test(store)]).toEqual([['s.drafts[target] = "";'], false]);
+    const putBack = store.slice(store.indexOf("  function putBackOutgoing("), store.indexOf("  function addFiles("));
+    expect([sendFn.match(/s\.drafts\[target\] = [^;]+;/g), /s\.drafts\[target\] = (txt|e\.text)/.test(store.replace(putBack, "")), /s\.drafts\[target\] = e\.text/.test(putBack)])
+      .toEqual([['s.drafts[target] = "";'], false, true]);
     const panel = readFileSync(join(process.cwd(), "src", "ui", "panel-chat.js"), "utf8");
     expect(panel).not.toMatch(/store\.state\.msgs\[name\] \|\| \[\]\)\)?;?\s*$|thread\.render\(store\.state\.msgs/m);
     expect(panel).toContain("retryOutgoing: (clientId) => store.retryOutgoing(name, clientId)");
     expect(panel).toContain("deleteOutgoing: (clientId) => store.deleteOutgoing(name, clientId)");
+    expect(panel).toContain("putBackOutgoing: (clientId) => { recordEdit(composerField()); store.putBackOutgoing(name, clientId); }");
   });
 });
 

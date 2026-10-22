@@ -92,7 +92,7 @@ describe("the store: one bubble at once, then the server's copy — never both",
   });
 });
 
-describe("the store: a failed send stays, with Retry and Delete", () => {
+describe("the store: a failed send stays, with Retry, Put back and Delete", () => {
   it("failed with the reason (said once); Retry is the same bubble, the same clientId; Delete lets it go", async () => {
     let answer: any = { status: 503, body: { error: "offline" } };
     const { s, calls, toasts } = await store((path) => (path === "/ui/send" ? answer : { body: {} }));
@@ -109,6 +109,25 @@ describe("the store: a failed send stays, with Retry and Delete", () => {
     s.deleteOutgoing("w", e.clientId);                                       // only a failed one can be deleted
     s.deleteOutgoing("w", failed.clientId);
     expect(texts(s)).toEqual(["pending:sent:hi"]);
+  });
+  it("Put back: the bubble goes; its text before what is typed now, its files and its reply back in the composer (failed only)", async () => {
+    const { s } = await store((path) => (path === "/ui/send" ? { status: 503, body: { error: "offline" } } : { body: {} }));
+    const quote = { boot: "b1", id: 3, sender: "Ann", text: "deploy?" };
+    s.state.replies.w = quote;
+    s.setDraft("w", "fix the typo"); s.state.pendingFiles.w = [file("a.png", 10)];
+    s.send("w");
+    const [e] = s.state.outgoing.w;
+    s.putBackOutgoing("w", e.clientId);                                      // still going: nothing to put back
+    await flush(); await flush();
+    expect(e.outgoing.state).toBe("failed");
+    s.setDraft("w", "and this");
+    s.putBackOutgoing("w", e.clientId);
+    expect([texts(s), s.state.drafts.w, s.state.pendingFiles.w.map((f: any) => f.name), s.state.replies.w]).toEqual([[], "fix the typo\nand this", ["a.png"], quote]);
+  });
+  it("a request that never reached the server is said in the page's words, not the browser's ('Failed to fetch')", async () => {
+    const { s } = await store((path) => { if (path === "/ui/send") throw new TypeError("Failed to fetch"); return { body: {} }; });
+    s.setDraft("w", "hi"); await s.send("w");
+    expect(s.state.outgoing.w[0].outgoing.error).toBe("it did not reach AgEnD — check the connection");
   });
   it("a localized reason is said in the page's words (chat.sendFailure_<reason>)", async () => {
     const { s } = await store((path) => (path === "/ui/send" ? { status: 503, body: { error: "raw", reason: "delivery_changed" } } : { body: {} }));
@@ -206,14 +225,17 @@ describe("the thread: the pending bubble", () => {
     expect([el.className, el.getAttribute("aria-busy"), el.getAttribute("data-key"), el.querySelector(".out-state").textContent, el.querySelector(".md").innerHTML.includes("<b>")])
       .toEqual(["msg user out out-sending", "true", null, "Sending…", false]);
   });
-  it("failed: the reason on a straight bar (.lbar), Retry and Delete, which go to the store by clientId", async () => {
-    const retryOutgoing = vi.fn(), deleteOutgoing = vi.fn();
-    const { list, thread } = await threadWith([pending("failed")], { retryOutgoing, deleteOutgoing });
+  it("failed: the reason on a straight bar (.lbar), Retry, Put back and Delete, which go to the store by clientId", async () => {
+    const retryOutgoing = vi.fn(), deleteOutgoing = vi.fn(), putBackOutgoing = vi.fn();
+    const { list, thread } = await threadWith([pending("failed")], { retryOutgoing, deleteOutgoing, putBackOutgoing });
     const bar = list.querySelector(".out-note");
     expect([bar.className, bar.getAttribute("role"), bar.querySelector(".out-error").textContent]).toEqual(["out-note lbar", "alert", "Not sent: offline"]);
     thread.onClick({ target: bar.querySelector('[data-act="retryOut"]') });
     thread.onClick({ target: bar.querySelector('[data-act="deleteOut"]') });
-    expect([retryOutgoing.mock.calls, deleteOutgoing.mock.calls]).toEqual([[["c" + "a".repeat(24)]], [["c" + "a".repeat(24)]]]);
+    thread.onClick({ target: bar.querySelector('[data-act="putBackOut"]') });
+    const id = [["c" + "a".repeat(24)]];
+    expect([[...bar.querySelectorAll("button")].map((b: any) => b.textContent), retryOutgoing.mock.calls, deleteOutgoing.mock.calls, putBackOutgoing.mock.calls])
+      .toEqual([["Retry send", "Put back", "Delete"], id, id, id]);
   });
   it("each file: its own bar and percentage, moved in place by progress() — the node is not redrawn", async () => {
     const files = [{ name: "a.png", size: 100, type: "image/png", url: "blob:a", loaded: 0, total: 100, state: "uploading" }, { name: "b.pdf", size: 50, type: "application/pdf", url: null, loaded: 0, total: 50, state: "waiting" }];
@@ -228,6 +250,6 @@ describe("the thread: the pending bubble", () => {
   });
   it("zh-TW: its words in the page's language", async () => {
     const { list } = await threadWith([pending("failed")], {}, "zh-TW");
-    expect([list.querySelector(".out-error").textContent, list.querySelector('[data-act="deleteOut"]').textContent]).toEqual(["沒有送出：offline", "刪除"]);
+    expect([list.querySelector(".out-error").textContent, [...list.querySelectorAll(".out-note button")].map((b: any) => b.textContent)]).toEqual(["沒有送出：offline", ["重試傳送", "放回輸入框", "刪除"]]);
   });
 });
