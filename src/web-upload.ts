@@ -629,10 +629,14 @@ export class WebFileLedger {
     return file;
   }
 
-  /** Forget an instance's files (it was deleted). The files themselves are its workspace's to remove. */
+  /**
+   * Forget an instance's files (it was deleted). The files themselves are its workspace's to remove — except the copies
+   * of its replies' files (#1770 snapshots), which are the web chat's own and go with its chat (#1774): checked as
+   * dropServed checks them (still that file), never a link.
+   */
   forget(instance: string): void {
     for (const [id, e] of this.uploads) if (e.instance === instance) this.uploads.delete(id);
-    for (const [id, f] of this.served) if (f.instance === instance) this.served.delete(id);
+    this.dropServed([...this.served].filter(([, f]) => f.instance === instance).map(([id]) => id));
   }
 
   /**

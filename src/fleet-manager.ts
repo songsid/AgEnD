@@ -1363,6 +1363,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly webFiles = new WebFileLedger({ limits: () => uploadLimits(this.fleetConfig?.web) });
   /** #1770: per instance, its last web reply still copying its files — the next one is shown after it, in order. */
   private readonly webReplyOrder = new Map<string, Promise<void>>();
+  /** #1774: bumped when an instance is removed — a reply still copying its files for the old one is then not its. */
+  private readonly webChatGenerations = new Map<string, number>();
+  private webChatGeneration(name: string): number { return this.webChatGenerations.get(name) ?? 0; }
   /** #1770: an instance's web-files byte cap (a field, so a test can make it small). */
   private webReplyMaxBytes = REPLY_FILES_MAX_BYTES;
   /** #1682: the people seen on inbound messages (id → name), for the web chat's mention pills; bounded, in memory. */
@@ -10256,7 +10259,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // copies are done, and an instance's replies wait for the one before them: they reach the chat in order.
     const replyFiles = Array.isArray(args.files) ? (args.files as unknown[]).filter((f): f is string => typeof f === "string") : [];
     const ts = new Date().toISOString();
-    const show = (attachments: WebChatAttachment[]) => {
+    // #1774: the instance this reply is for — removed (and maybe made again) while its files were being copied, the
+    // reply is no longer its to show: nothing recreates its chat, and the copies made for it go.
+    const generation = this.webChatGeneration(instanceName);
+    const current = () => this.webChatGeneration(instanceName) === generation;
+    const show = (attachments: WebChatAttachment[], reserved?: number) => {
+      if (!current()) { this.webFiles.dropServed(attachments.map(a => a.id)); return; }
       // The one place a delivered agent reply reaches the web chat: the server marks it `agent` (#1306) — the only
       // role that may get HTML preview cards. Never inferred from the sender name or the text.
       this.emitSseEvent("message", {
@@ -10267,14 +10275,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(buttons ? { buttons } : {}),                 // #1266
         ...(inChannel ? { channel: true } : {}),         // #1920 §5.2
         ...(post ? { posts: [post] } : {}),              // #2281
+        ...(reserved !== undefined ? { reserved } : {}), // #1774
       });
     };
     const before = this.webReplyOrder.get(instanceName);
     if (!replyFiles.length && !before) { show([]); return Promise.resolve(); }
+    // #1774: its place in the chat is now — a person's message sent while the files are copied comes after it.
+    const reserved = this.webChatHistory.reserve();
     const done: Promise<void> = (before ?? Promise.resolve())
-      .then(() => this.webReplyAttachments(instanceName, replyFiles))
+      .then(() => this.webReplyAttachments(instanceName, replyFiles, current))
       .catch((err: unknown) => { this.logger.warn({ err, instanceName }, "Reply files could not be prepared for the web chat"); return []; })
-      .then((attachments) => { try { show(attachments); } catch (err) { this.logger.warn({ err, instanceName }, "Reply could not be shown in the web chat"); } })
+      .then((attachments) => { try { show(attachments, reserved); } catch (err) { this.logger.warn({ err, instanceName }, "Reply could not be shown in the web chat"); } })
       .finally(() => { if (this.webReplyOrder.get(instanceName) === done) this.webReplyOrder.delete(instanceName); });
     this.webReplyOrder.set(instanceName, done);
     return done;
@@ -10285,11 +10296,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the copy. One the copy refuses (a symlink, not a regular file, over 50 MB, a state file, missing) is not shown;
    * one that could not be copied (I/O) is served from the agent's own path, as before — until the fleet restarts.
    */
-  private async webReplyAttachments(instanceName: string, paths: readonly string[]): Promise<WebChatAttachment[]> {
+  private async webReplyAttachments(instanceName: string, paths: readonly string[], current: () => boolean = () => true): Promise<WebChatAttachment[]> {
     const home = getAgendHome();
     const dir = webFilesDir(home, instanceName);
     const out: WebChatAttachment[] = [];
     for (const path of paths) {
+      if (!current()) break;                                   // #1774: removed meanwhile — copy no more for it
       const id = randomBytes(16).toString("hex");
       const got = dir ? await snapshotReplyFile(path, dir, id, { stateDir: home, maxDirBytes: this.webReplyMaxBytes }) : null;
       if (got && "evicted" in got && got.evicted.length) this.webFiles.dropServed(got.evicted);
@@ -11864,6 +11876,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Its web chat goes with it (only after the removal succeeded): a later instance of the same name
     // must not be shown the old one's conversation, and deleted names must not pile up.
     this.webChatHistory.forget(name);
+    // #1774: a reply of it still copying its files finds out at its end, and shows nothing (no chat made again).
+    this.webChatGenerations.set(name, this.webChatGeneration(name) + 1);
     this.searchIndex?.removeInstance(name);
     this.webFiles.forget(name);
     this.compactWatchService?.forget(name);
@@ -16929,7 +16943,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -16943,6 +16957,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         replyTo: m.replyTo,
         cards: m.cards,
         posts: m.posts,                                  // #2281: kept beside the row, never broadcast (not a row field)
+        reserved: m.reserved,                            // #1774: an agent reply's place, taken when it was sent
       });
       // A sending page's own id for its pending bubble rides on the live copy only: never recorded, never replayed.
       const clientId = typeof (data as { clientId?: unknown }).clientId === "string" ? (data as { clientId: string }).clientId : "";
