@@ -68,7 +68,7 @@ import {
   SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE,
 } from "./service-restart-selection.js";
 import { loadRawFleetConfig } from "./config.js";
-import { setLocale, t } from "./locale.js";
+import { detectLocale, setLocale, t } from "./locale.js";
 import { settingsSourceLabel } from "./settings-confirmation.js";
 import { DeliveryOutbox, deliveryStatusSelector, type DeliveryStatusSelector } from "./delivery-outbox.js";
 import { DeliveryStatusArgs } from "./outbound-schemas.js";
@@ -128,12 +128,12 @@ async function handOffLaunchdActivation(action: string): Promise<boolean> {
 }
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
 
-// CLI commands run outside FleetManager. Honor an explicit fleet locale while
-// keeping the historical English CLI default when config is missing/unset.
-try {
-  const configuredLocale = loadRawFleetConfig(FLEET_CONFIG_PATH).defaults?.locale;
-  if (configuredLocale === "en" || configuredLocale === "zh-TW") setLocale(configuredLocale);
-} catch { /* malformed or missing config: keep the English CLI default */ }
+// CLI commands run outside FleetManager, in the fleet's language as the fleet decides it (#2390 follow-up): an explicit
+// defaults.locale, else the host's zone (UTC+8 → zh-TW), else English. A line another program reads (the updater, the
+// Windows installer and shortcuts, the rehearsal scripts) is never a locale string: tests/cli-machine-lines-2390 pins them.
+let configForLocale: { defaults?: { locale?: string } } | undefined;
+try { configForLocale = loadRawFleetConfig(FLEET_CONFIG_PATH); } catch { /* malformed or missing config: the zone decides */ }
+setLocale(detectLocale(configForLocale));
 
 const program = new Command();
 
