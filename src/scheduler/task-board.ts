@@ -1384,8 +1384,14 @@ export class TaskBoard {
       if (patch.dispatcher !== undefined) {
         const next = toDispatcher(patch.dispatcher, actor);
         // #2434: the person's card stays theirs — an instance re-dispatching it would take it out of their confirmation.
-        if (ai && personConfirms(card) && JSON.stringify(next) !== JSON.stringify(card.dispatcher)) {
+        const moved = JSON.stringify(next) !== JSON.stringify(card.dispatcher);
+        if (ai && personConfirms(card) && moved) {
           throw new TaskBoardError("forbidden", `${card.code} was handed out by the person; only they hand it to someone else`);
+        }
+        // #2436 review: nor an agent's card that waits for its dispatcher's confirmation — dropping or replacing the
+        // dispatcher would let its assignee confirm it itself. Only that dispatcher (or a person) hands it on.
+        if (ai && moved && card.needsReview && card.dispatcher?.kind === "instance" && card.dispatcher.name !== actor.name) {
+          throw new TaskBoardError("forbidden", `${card.code} waits for ${card.dispatcher.name}'s confirmation; only they hand it to someone else`);
         }
         set("dispatcher", next, "dispatcher", (d) => d?.name ?? null);
       }

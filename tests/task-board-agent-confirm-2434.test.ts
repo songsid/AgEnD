@@ -91,6 +91,24 @@ describe("2. an agent's card that asks for review", () => {
     expect(board.detail(a.code).comments.map((e) => [e.kind, e.text])).toContainEqual(["approve", "looks right"]);
   });
 
+  it("#2436 review: its assignee cannot drop or replace its dispatcher to confirm it itself; the dispatcher (or the person) can hand it on", () => {
+    const { board } = open();
+    const a = card(board, LEAD, { needsReview: true });
+    for (const to of [null, { kind: "instance" as const, name: "dev-a" }, { kind: "instance" as const, name: "dev-b" }]) {
+      expect(refusal(() => board.updateCard(DEV, a.code, { dispatcher: to }))).toBe("forbidden: M-1 waits for lead's confirmation; only they hand it to someone else");
+    }
+    expect(refusal(() => board.updateCard(OTHER, a.code, { dispatcher: null }))).toMatch(/^forbidden: /);
+    expect(board.getCard(a.code).dispatcher).toEqual({ kind: "instance", name: "lead" });
+    board.moveCard(DEV, a.code, "claimed");
+    board.moveCard(DEV, a.code, "review", { result: "r" });
+    expect(() => board.legacyComplete(DEV, a.uuid, "did it")).toThrow(/waits for lead's confirmation/);
+    // The dispatcher hands it on; the person may too. With no review, the assignee may change it as before.
+    expect(board.updateCard(LEAD, a.code, { dispatcher: { kind: "instance", name: "dev-b" } }).card.dispatcher).toEqual({ kind: "instance", name: "dev-b" });
+    expect(board.updateCard(ANN, a.code, { dispatcher: { kind: "instance", name: "lead" } }).card.dispatcher).toEqual({ kind: "instance", name: "lead" });
+    const plain = card(board, LEAD);
+    expect(board.updateCard(DEV, plain.code, { dispatcher: null }).card.dispatcher).toBeNull();
+  });
+
   it("the person may still confirm an agent's card", () => {
     const { board } = open();
     const a = card(board, LEAD, { needsReview: true });
