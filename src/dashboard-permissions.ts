@@ -50,12 +50,24 @@ export function dashboardFeaturesOff(access: unknown): DashboardFeature[] {
   return DASHBOARD_FEATURES.filter((f) => (access as Record<string, unknown>)[f] === false);
 }
 
-/** The refusal for `tool` when its feature is switched off for this instance, else null. */
-export function dashboardRefusal(access: unknown, tool: string): string | null {
+/** The refusal for `tool` when its feature is in `off`, else null. */
+function refusalFor(off: readonly DashboardFeature[], tool: string): string | null {
   const feature = dashboardFeatureOf(tool);
-  if (!feature || !dashboardFeaturesOff(access).includes(feature)) return null;
+  if (!feature || !off.includes(feature)) return null;
   return `${tool} is not available to this instance: the person switched its dashboard feature "${feature}" off (dashboard.${feature}: false). `
     + "Do not retry it; tell the person if you need it.";
+}
+/** The refusal for `tool` when its feature is switched off in this resolved `dashboard` mapping, else null. */
+export function dashboardRefusal(access: unknown, tool: string): string | null {
+  return refusalFor(dashboardFeaturesOff(access), tool);
+}
+/**
+ * The refusal for `tool` called by `name` under this fleet config (dashboardFeaturesOffIn: its own switches, else the
+ * defaults') — what the fleet's call-time checks use, for a configured agent and for a ClassicBot identity alike (#2391
+ * review: a ClassicBot room is in no `instances` entry, and its daemon runs on the defaults).
+ */
+export function dashboardRefusalIn(fleet: unknown, name: string, tool: string): string | null {
+  return refusalFor(dashboardFeaturesOffIn(fleet, name), tool);
 }
 
 /** A tool menu without the switched-off features' tools (mcp-server, from AGEND_DASHBOARD_OFF). */
@@ -80,11 +92,26 @@ export function dashboardAccessProblem(value: unknown): string | null {
   return null;
 }
 
-/** The features switched off in a fleet config for `name`: `defaults.dashboard` merged with the instance's own. */
+/**
+ * A `dashboard:` mapping with only its switches that say something (true or false). Null, or anything else, follows
+ * the default — the same as absent (#2391 review: a literal `task_board: null` must not hide the default's `false`).
+ */
+export function dashboardSwitches(value: unknown): DashboardAccess {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: DashboardAccess = {};
+  for (const f of DASHBOARD_FEATURES) { const v = (value as Record<string, unknown>)[f]; if (typeof v === "boolean") out[f] = v; }
+  return out;
+}
+
+/**
+ * The features switched off in a fleet config for `name`: each feature's own switch where the instance has one, else
+ * the default's, else allowed. `name` with no own `instances` entry (a ClassicBot identity) gets the defaults'.
+ */
 export function dashboardFeaturesOffIn(fleet: unknown, name: string): DashboardFeature[] {
   const f = fleet && typeof fleet === "object" ? fleet as { defaults?: { dashboard?: unknown }; instances?: Record<string, { dashboard?: unknown } | undefined> } : {};
-  const own = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {});
-  return dashboardFeaturesOff({ ...own(f.defaults?.dashboard), ...own(f.instances?.[name]?.dashboard) });
+  const instances = f.instances && typeof f.instances === "object" ? f.instances : {};
+  const inst = Object.hasOwn(instances, name) ? instances[name] : undefined;            // a name is a key of its own, never an inherited one
+  return dashboardFeaturesOff({ ...dashboardSwitches(f.defaults?.dashboard), ...dashboardSwitches(inst?.dashboard) });
 }
 
 /**

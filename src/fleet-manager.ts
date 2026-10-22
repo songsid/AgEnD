@@ -291,8 +291,7 @@ import { CompactWatch, launchIdentity } from "./compact-watch.js";
 import { agyLegacyAgentsFile, danglingSymlink, migrateAgyAgentsFile } from "./backend/antigravity.js";
 import { claudeConfigDirFor, claudeProjectKey } from "./backend/claude-code.js";
 import { sharedRolloutIndex } from "./rollout-index.js";
-import { TASK_BOARD_ON_NOTICE, dashboardRefusal, taskBoardSwitchedOn } from "./dashboard-permissions.js";
-import { settleTaskBoardDefault } from "./task-board-default.js";
+import { TASK_BOARD_ON_NOTICE, dashboardRefusalIn, taskBoardSwitchedOn } from "./dashboard-permissions.js";
 import {
   mayUseTool,
   resolveToolSet,
@@ -7190,14 +7189,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.rotateFleetLogs();
 
-    // The task board's default, once per home (task-board-default.ts): kept where it was used, off where it never was.
-    try {
-      const decided = settleTaskBoardDefault({ dataDir: this.dataDir, configPath });
-      if (decided === "off") this.logger.info("Task board: never used here, so it is off by default (defaults.dashboard.task_board: false) — switch it on in Settings → General → Defaults");
-      else if (decided === "used") this.logger.info("Task board: already in use here, so it stays on");
-    } catch (err) {
-      this.logger.warn({ err }, "Task board: could not settle its default; it stays as fleet.yaml says");
-    }
     const fleet = this.loadConfig(configPath);
     this.slimFleetConfigAtStartup();
     this.logConfigWarningsAtStartup();
@@ -9887,7 +9878,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return { allowed: false, message: toolRefusedMessage(profile, tool) };
     }
     // The person's dashboard switches (dashboard-permissions.ts), on top of the profile, as configured now.
-    const switchedOff = dashboardRefusal(this.fleetConfig?.instances[instanceName]?.dashboard, tool);
+    // Its own switches, else the defaults' — a ClassicBot identity has no instances entry and runs on the defaults (#2391 review).
+    const switchedOff = dashboardRefusalIn(this.fleetConfig, instanceName, tool);
     if (switchedOff) {
       this.logger.warn({ sink, instance: instanceName, profile, tool, enforced: true, dashboard: true }, "tool-permissions: refused");
       return { allowed: false, message: switchedOff };
