@@ -5,10 +5,12 @@
  * pendingPlan() treats a carried-out plan as nothing to activate, quietly, and never removes the shared record: a refresh
  * may publish a newer plan while launchd is being asked (Prism, #2376 R1). A plan still to carry out is returned.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { consumeCarriedOutPlan, consumeUnchangedPlan, pendingPlan, refreshLaunchdWithoutActivating } from "../src/service-plan.js";
+import { consumeCarriedOutPlan, consumeUnchangedPlan, pendingPlan, refreshLaunchdWithoutActivating, SERVICE_PLAN_FILE, SERVICE_PLAN_LOCK, withFsPlanLock } from "../src/service-plan.js";
 import type { CommandResult } from "../src/update-install.js";
 
 const HOME = "/Users/u/.agend";
@@ -35,6 +37,7 @@ function planned() {
     readFile: (p: string) => files[p] ?? null,
     writeFile: (p: string, c: string) => { files[p] = c; },
     removeFile: (p: string) => { removed.push(p); delete files[p]; },
+    withPlanLock: (fn: () => void) => fn(),
     realpath: (p: string) => ([RT, ENTRY].includes(p) ? p : null),
     isExecutable: () => false,
     now: () => new Date("2026-10-22T02:00:00Z"),
@@ -45,6 +48,23 @@ function planned() {
   // The deps `agend restart` really has (planDeps: it can write and delete): any removal pendingPlan made would show.
   const restartDeps = deps;
   return { files, removed, deps, restartDeps, load: (next: Partial<CommandResult>) => { loaded = next; } };
+}
+
+/** Another CLI waits: a nested withPlanLock is queued until the holder releases (not re-entrant). */
+function queuedPlanLock(): (fn: () => void) => void {
+  const wait: Array<() => void> = [];
+  let held = false;
+  const run = (fn: () => void) => {
+    if (held) { wait.push(fn); return; }
+    held = true;
+    try { fn(); }
+    finally {
+      held = false;
+      const next = wait.shift();
+      if (next) run(next);
+    }
+  };
+  return run;
 }
 
 describe("pendingPlan (#2375)", () => {
@@ -114,6 +134,10 @@ describe("pendingPlan (#2375)", () => {
     expect(source).not.toContain("an interrupted update planned; restarting it as it is");
     expect(source).toContain("consumeCarriedOutPlan(DATA_DIR, target, deps)");
     expect(source).toContain("consumeUnchangedPlan(DATA_DIR, published, deps)");
+    const planSrc = readFileSync(join(process.cwd(), "src", "service-plan.ts"), "utf8");
+    expect(planSrc).toContain('Pick<PlanDeps, "readFile" | "run">');
+    expect(planSrc).toContain("deps.withPlanLock(() => {");
+    expect(planSrc).toContain("if (deps.readFile(path) === snapshot) deps.removeFile(path);");
   });
 });
 
@@ -168,5 +192,146 @@ describe("consumeCarriedOutPlan (#2439)", () => {
     expect(w.removed).toEqual([]);
     consumeUnchangedPlan(HOME, w.files[PLAN]!, w.restartDeps);
     expect(w.files[PLAN]).toBeUndefined();
+  });
+
+  it("a newer plan published after the comparison read is left (final-read/publication)", () => {
+    const w = planned();
+    w.load(printed(NEW, 41363));
+    const snapshot = w.files[PLAN]!;
+    const OTHER = "/Users/u/other-prefix/lib/node_modules/@songsid/agend";
+    const RT2 = `${OTHER}/node_modules/@songsid/agend-node-darwin-arm64/bin/node`, ENTRY2 = `${OTHER}/dist/cli.js`;
+    const withPlanLock = queuedPlanLock();
+    const refreshDeps = {
+      ...w.deps,
+      withPlanLock,
+      realpath: (p: string) => ([RT, ENTRY, RT2, ENTRY2].includes(p) ? p : null),
+    };
+    const publishB = () => {
+      const out = refreshLaunchdWithoutActivating({
+        label: "com.agend.fleet", target: TARGET, plistPath: PLIST, newPlist: plist([RT2, ENTRY2, "fleet", "start"]),
+        expected: { node: RT2, entry: ENTRY2 }, pkgDir: OTHER, agendHome: HOME,
+      }, refreshDeps);
+      expect(out).toMatchObject({ ok: true, planned: true });
+    };
+    const interleaved = {
+      ...w.restartDeps,
+      withPlanLock,
+      readFile: (p: string) => {
+        const v = w.restartDeps.readFile(p);
+        if (p === PLAN && v === snapshot) publishB();
+        return v;
+      },
+    };
+    consumeUnchangedPlan(HOME, snapshot, interleaved);
+    expect(w.files[PLAN]).toBeDefined();
+    expect(JSON.parse(w.files[PLAN]!).pkgDir).toBe(OTHER);
+    expect(pendingPlan(HOME, TARGET, w.restartDeps)).toMatchObject({ plistPath: PLIST, pkgDir: OTHER });
+  });
+
+  it("consumeCarriedOutPlan: a newer plan published after the comparison read is left", () => {
+    const w = planned();
+    w.load(printed(NEW, 41363));
+    const snapshot = w.files[PLAN]!;
+    const OTHER = "/Users/u/other-prefix/lib/node_modules/@songsid/agend";
+    const RT2 = `${OTHER}/node_modules/@songsid/agend-node-darwin-arm64/bin/node`, ENTRY2 = `${OTHER}/dist/cli.js`;
+    const withPlanLock = queuedPlanLock();
+    let planReads = 0;
+    const refreshDeps = {
+      ...w.deps,
+      withPlanLock,
+      realpath: (p: string) => ([RT, ENTRY, RT2, ENTRY2].includes(p) ? p : null),
+    };
+    const interleaved = {
+      ...w.restartDeps,
+      withPlanLock,
+      readFile: (p: string) => {
+        const v = w.restartDeps.readFile(p);
+        if (p === PLAN) {
+          planReads++;
+          if (planReads === 2 && v === snapshot) {
+            const out = refreshLaunchdWithoutActivating({
+              label: "com.agend.fleet", target: TARGET, plistPath: PLIST, newPlist: plist([RT2, ENTRY2, "fleet", "start"]),
+              expected: { node: RT2, entry: ENTRY2 }, pkgDir: OTHER, agendHome: HOME,
+            }, refreshDeps);
+            expect(out).toMatchObject({ ok: true, planned: true });
+          }
+        }
+        return v;
+      },
+    };
+    consumeCarriedOutPlan(HOME, TARGET, interleaved);
+    expect(JSON.parse(w.files[PLAN]!).pkgDir).toBe(OTHER);
+    expect(pendingPlan(HOME, TARGET, w.restartDeps)).toMatchObject({ pkgDir: OTHER });
+  });
+});
+
+describe("withFsPlanLock (#2441)", () => {
+  it("uncontended consume removes the snapshot and drops the lock dir", () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-2439-"));
+    try {
+      writeFileSync(join(home, SERVICE_PLAN_FILE), "A\n");
+      consumeUnchangedPlan(home, "A\n", {
+        readFile: p => { try { return readFileSync(p, "utf8"); } catch { return null; } },
+        removeFile: p => { try { rmSync(p); } catch { /* absent */ } },
+        withPlanLock: fn => withFsPlanLock(home, fn),
+      });
+      expect(existsSync(join(home, SERVICE_PLAN_FILE))).toBe(false);
+      expect(existsSync(join(home, SERVICE_PLAN_LOCK))).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("an independent writer after the comparison read keeps its replacement", async () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-2439-"));
+    const plan = join(home, SERVICE_PLAN_FILE);
+    const lock = join(home, SERVICE_PLAN_LOCK);
+    const seen = join(home, "writer-waiting");
+    writeFileSync(plan, "A\n");
+    const script = `
+      const { mkdirSync, rmdirSync, writeFileSync } = require("node:fs");
+      const lock = process.argv[1], plan = process.argv[2], seen = process.argv[3];
+      const t = Date.now() + 10000;
+      let marked = false;
+      for (;;) {
+        try {
+          mkdirSync(lock);
+          writeFileSync(plan, "B\\n");
+          try { rmdirSync(lock); } catch {}
+          process.exit(0);
+        } catch (e) {
+          if (e.code !== "EEXIST") { console.error(e); process.exit(1); }
+          if (!marked) { writeFileSync(seen, "1"); marked = true; }
+          if (Date.now() > t) process.exit(2);
+        }
+      }
+    `;
+    let child: ReturnType<typeof spawn> | undefined;
+    try {
+      consumeUnchangedPlan(home, "A\n", {
+        readFile: p => {
+          const v = readFileSync(p, "utf8");
+          if (p === plan && v === "A\n" && !child) {
+            child = spawn(process.execPath, ["-e", script, lock, plan, seen], { stdio: "ignore" });
+            const wait = Date.now() + 5000;
+            while (!existsSync(seen) && Date.now() < wait) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+            expect(existsSync(seen)).toBe(true);
+          }
+          return v;
+        },
+        removeFile: p => { try { rmSync(p); } catch { /* absent */ } },
+        withPlanLock: fn => withFsPlanLock(home, fn),
+      });
+      const code = await new Promise<number | null>((resolve, reject) => {
+        if (!child) { reject(new Error("writer was not started")); return; }
+        child.once("exit", (c, s) => resolve(s ? 1 : c));
+        child.once("error", reject);
+      });
+      expect(code).toBe(0);
+      expect(readFileSync(plan, "utf8")).toBe("B\n");
+    } finally {
+      child?.kill();
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

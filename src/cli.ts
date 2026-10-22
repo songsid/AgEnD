@@ -63,6 +63,7 @@ import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detache
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { limitFleetCoreDumps } from "./coredump-filter.js";
 import { SYSTEMD_RESTART_TIMEOUT_MS, getServicePath, getSystemServicePath } from "./service-installer.js";
+import { withFsPlanLock } from "./service-plan.js";
 import {
   selectSystemdRestartTarget,
   SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE,
@@ -100,6 +101,7 @@ function planDeps() {
     readFile: (path: string) => { try { return readFileSync(path, "utf-8"); } catch { return null; } },
     writeFile: (path: string, content: string) => writeFileSync(path, content),
     removeFile: (path: string) => { try { unlinkSync(path); } catch { /* absent */ } },
+    withPlanLock: (fn: () => void) => withFsPlanLock(DATA_DIR, fn),
     realpath: (path: string) => { try { return realpathSync(path); } catch { return null; } },
     isExecutable: (path: string) => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
     now: () => new Date(),
@@ -1750,9 +1752,9 @@ program
     // #1450 C6: on launchd, writing a new plist without activating is a PLANNED activation — proven, recorded, and
     // left for `agend restart` (a reload there would itself start the job). See service-plan.ts.
     if (opts.activate === false && detectPlatform() === "macos") {
-      const { refreshLaunchdWithoutActivating, planPath } = await import("./service-plan.js");
+      const { refreshLaunchdWithoutActivating, revokePlan } = await import("./service-plan.js");
       // A refresh revokes any earlier plan first, whatever it comes to (a failed refresh leaves nothing to activate).
-      planDeps().removeFile(planPath(DATA_DIR));
+      revokePlan(DATA_DIR, planDeps());
       const { expectedTuple } = await import("./restart-guard.js");
       const expectation = expectedTuple();
       if (!expectation.ok) { console.error(`  ✗ ${expectation.reason}`); process.exitCode = 1; return; }

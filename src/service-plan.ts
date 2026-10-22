@@ -11,12 +11,16 @@
  * the record.
  */
 import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseLaunchctlPrint, parsePlist, sameJob, type ActivationTuple, type TupleDeps } from "./service-activation.js";
 import { judgeTuple, type ExpectedTuple } from "./restart-guard.js";
 import type { CommandResult } from "./update-install.js";
 
 export const SERVICE_PLAN_FILE = "service-plan.json";
+/** Exclusive lock directory for every publish, revoke and consume of `SERVICE_PLAN_FILE`. */
+export const SERVICE_PLAN_LOCK = "service-plan.lock";
+const PLAN_LOCK_MS = 15_000;
 
 export interface ServicePlan {
   kind: "launchd-activation";
@@ -35,9 +39,66 @@ export interface PlanDeps extends Pick<TupleDeps, "realpath" | "isExecutable"> {
   writeFile(path: string, content: string): void;
   removeFile(path: string): void;
   now(): Date;
+  /**
+   * Exclusive section covering this home's plan file. Every publisher, revoker and consumer of
+   * `service-plan.json` must take it; a nested caller from another CLI waits. `pendingPlan` does not.
+   */
+  withPlanLock(fn: () => void): void;
 }
 
 export const planPath = (agendHome: string) => join(agendHome, SERVICE_PLAN_FILE);
+export const planLockPath = (agendHome: string) => join(agendHome, SERVICE_PLAN_LOCK);
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function pidAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; }
+  catch (e) { return (e as NodeJS.ErrnoException).code !== "ESRCH"; }
+}
+
+function stealDeadLock(dir: string): void {
+  let pid = 0;
+  try { pid = Number(readFileSync(join(dir, "pid"), "utf8").trim()); }
+  catch { return; } // holder has mkdir'd but not written pid yet — wait
+  if (!Number.isInteger(pid) || pid <= 0 || pidAlive(pid)) return;
+  try { unlinkSync(join(dir, "pid")); } catch { /* gone */ }
+  try { rmdirSync(dir); } catch { /* holder raced us */ }
+}
+
+/**
+ * Cross-process exclusive lock for this home's plan file (mkdir). Same-process nested acquires wait
+ * until timeout — do not call a publisher from inside a consumer's section; another CLI blocks.
+ */
+export function withFsPlanLock(agendHome: string, fn: () => void): void {
+  const dir = planLockPath(agendHome);
+  const deadline = Date.now() + PLAN_LOCK_MS;
+  for (;;) {
+    try {
+      mkdirSync(dir, { mode: 0o700 });
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${dir}`);
+      stealDeadLock(dir);
+      sleepSync(20);
+      continue;
+    }
+    try {
+      writeFileSync(join(dir, "pid"), `${process.pid}\n`, { mode: 0o600 });
+      fn();
+      return;
+    } finally {
+      try { unlinkSync(join(dir, "pid")); } catch { /* */ }
+      try { rmdirSync(dir); } catch { /* */ }
+    }
+  }
+}
+
+/** Locked unlink of this home's plan. Install `--no-activate` revokes any earlier record first. */
+export function revokePlan(agendHome: string, deps: Pick<PlanDeps, "removeFile" | "withPlanLock">): void {
+  deps.withPlanLock(() => deps.removeFile(planPath(agendHome)));
+}
 /**
  * `launchctl print` exits that CONFIRM nothing is loaded: 113, no such service; 125, this session has no such domain
  * (an SSH login on a Mac nobody is logged in to has no gui/<uid>, so nothing can be loaded there). Anything else that
@@ -73,7 +134,7 @@ export function refreshLaunchdWithoutActivating(
   deps: PlanDeps,
 ): RefreshOutcome {
   // An older plan never outlives a refresh, whatever this one comes to: removed before anything can fail.
-  deps.removeFile(planPath(o.agendHome));
+  revokePlan(o.agendHome, deps);
   const preimage = deps.readFile(o.plistPath);
   const printed = deps.run("launchctl", ["print", o.target]);
   let loaded: ReturnType<typeof parseLaunchctlPrint> | null = null;
@@ -106,7 +167,7 @@ export function refreshLaunchdWithoutActivating(
     kind: "launchd-activation", label: o.label, plistPath: o.plistPath, sha256: sha256(o.newPlist),
     preimage: { plist: preimage, tuple: loaded.tuple, pid: loaded.pid }, pkgDir: o.pkgDir, createdAt: deps.now().toISOString(),
   };
-  deps.writeFile(planPath(o.agendHome), JSON.stringify(plan, null, 2) + "\n");
+  deps.withPlanLock(() => deps.writeFile(planPath(o.agendHome), JSON.stringify(plan, null, 2) + "\n"));
   return { ok: true, planned: true, message: `${o.plistPath} written and proven; launchd still runs the previous job until \`agend restart\` activates it` };
 }
 
@@ -163,19 +224,24 @@ export function pendingPlan(agendHome: string, target: string, deps: Pick<PlanDe
 
 /**
  * Delete the plan file only if it is still `snapshot` (#2439). After slow work (`launchctl print`, bootout) a refresh
- * may have published a newer plan; those bytes must stay.
+ * may have published a newer plan; those bytes must stay. Read and unlink share `withPlanLock` with every publisher
+ * and revoker: a second CLI that writes B after this comparison read waits, then publishes onto the empty path
+ * (Prism #2441 P2). A second stat-then-unlink without that lock still loses B.
  */
-export function consumeUnchangedPlan(agendHome: string, snapshot: string | null, deps: Pick<PlanDeps, "readFile" | "removeFile">): void {
+export function consumeUnchangedPlan(agendHome: string, snapshot: string | null, deps: Pick<PlanDeps, "readFile" | "removeFile" | "withPlanLock">): void {
   if (snapshot === null) return;
   const path = planPath(agendHome);
-  if (deps.readFile(path) === snapshot) deps.removeFile(path);
+  deps.withPlanLock(() => {
+    if (deps.readFile(path) === snapshot) deps.removeFile(path);
+  });
 }
 
 /**
  * After a plan is applied (or already carried out): snapshot, confirm launchd runs it, then compare-and-delete.
- * A newer plan published during the print is a different snapshot and is left (#2376).
+ * A newer plan published during the print is a different snapshot and is left (#2376). The final read/unlink is
+ * locked with publishers so a publication after that read cannot be the unlink's target (#2441).
  */
-export function consumeCarriedOutPlan(agendHome: string, target: string, deps: Pick<PlanDeps, "readFile" | "run" | "removeFile">): void {
+export function consumeCarriedOutPlan(agendHome: string, target: string, deps: Pick<PlanDeps, "readFile" | "run" | "removeFile" | "withPlanLock">): void {
   const snapshot = deps.readFile(planPath(agendHome));
   const plan = parsePlan(snapshot);
   if (!plan || !planCarriedOut(plan, target, deps)) return;
