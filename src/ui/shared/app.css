@@ -779,7 +779,9 @@ img.amb-p { object-fit: contain; }
   flex: 1; min-width: 0; background: transparent; color: var(--text); border: 0; padding: 7px var(--s-1); outline: none;
   font-size: var(--fs-md); line-height: var(--lh-md); resize: none; min-height: 24px; max-height: 240px; overflow-y: auto;
 }
-.composer textarea::placeholder { color: var(--text-3); }
+.composer textarea::placeholder { color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* #2478: empty, the box is one line and its placeholder ends in "…" rather than wrapping. */
+.composer textarea:placeholder-shown { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btn-send { width: 36px; padding: 0; }
 .btn-send .send-label { display: none; }
 /* A narrow phone: Stop reply beside Send leaves the message box no room — the label is for screen readers there. */
