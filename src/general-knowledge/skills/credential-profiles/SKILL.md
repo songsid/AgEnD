@@ -102,6 +102,32 @@ restarted for you** and the reply says `restarted: true`. A paused or stopped on
 is not started: the reply says `restarted: false`, and the switch applies at its
 next start.
 
+Set `credential_profile` with `update_instance_config` or web Settings. Never
+hand-edit `fleet.yaml`.
+
+**What to do / what not to do, per backend**
+
+**Codex — copy nothing.** A profile swaps only `auth.json`. The instance's
+private `CODEX_HOME` (`~/.agend/cx/<hash>/`) links `auth.json` to the profile's
+copy; the conversation stores (`sessions/`, `archived_sessions/`,
+`state_5.sqlite` and the other thread/state DBs) stay shared and carry no
+account. Procedure: (1) the target profile has a Codex login (`auth.json` with a
+token) — if the switch is refused, relay that refusal's login command; (2) set
+the profile through tooling, as above; (3) restart. The agent resumes the same
+thread (`conversation_carried_over: true`). **Never** copy `state_5.sqlite`, the
+`cx/` hash dirs or rollout JSONL by hand. That can fork or corrupt the thread
+index.
+
+**Claude Code — copy nothing yourself.** AgEnD copies the transcript and its
+folder into the new profile and resumes it there with `--continue`. The
+originals stay; the switch copies, never moves. Do not copy `.jsonl` by hand.
+
+**Kiro — copy nothing.** Login and conversations share one database, so a
+different subscription is a different set of them. Do not copy `data.sqlite3`.
+A switch is always a new conversation (`conversation_carried_over: false`);
+AgEnD hands the new session a summary of the work (`handover_chars`), not the
+transcript.
+
 **For kiro**, a switch is always a **new conversation**
 (`conversation_carried_over: false`). Kiro keeps its conversations in the same
 database as its login, so a different subscription has a different set of them
@@ -140,13 +166,9 @@ left untouched; the switch copies, never moves.
 `carry_failed` from the actual response.** Do not predict the outcome.
 
 **For codex** the reply says `conversation_carried_over: true` and carries a
-`conversation_note`. Relay it as what it is — a statement about where the
-history lives, not a promise about what happens next. The accurate sentence is
-"codex keeps its history outside the login, so both subscriptions share it".
-**Do not promise the agent will pick the thread back up**: whether codex reopens
-a conversation recorded under a different account has not been tested yet. If it
-does not, the agent starts a fresh conversation and carries on — nothing breaks,
-it just does not continue.
+`conversation_note`. Relay both. The accurate sentence is "codex keeps its
+history outside the login, so both subscriptions share it, and the agent
+resumes the same thread". There is nothing to copy.
 
 `backend_options` merges per backend, so setting a kiro option leaves a codex
 option on the same instance alone.
@@ -221,14 +243,16 @@ and log it in, so report it as such rather than as a missing subscription.
   verbatim in the channel before switching. For claude-code, AgEnD copies the
   conversation automatically; relay `conversation_carried_over` and, if it is
   false, the `carry_failed` reason and the cold-cache note from
-  `conversation_note` when carry succeeds.
+  `conversation_note` when carry succeeds. For Codex, copy nothing: the history
+  is already shared and the agent resumes the same thread.
+
 ## Do not
 
 - Do not invent a profile that has never been logged in and report success —
   the switch is refused, and the refusal tells you what to relay.
 - Do not set `credential_profile` for a backend other than `kiro-cli`, `codex`
   or `claude-code`; it is ignored, and the config validator warns about it.
-- Do not tell a codex user their conversation will definitely continue across a
-  switch. Say the history is shared; that part is verified.
+- Do not copy a Codex agent's `state_5.sqlite`, `cx/` hash dirs or rollout JSONL
+  by hand. Set the profile through tooling and restart; the thread stays.
 - Do not use a profile name with slashes or spaces — it becomes a directory
   name and is rejected.

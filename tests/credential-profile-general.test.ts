@@ -449,4 +449,20 @@ describe("the General skill", () => {
   it("says how to go back to the default login", () => {
     expect(skill).toContain("credential_profile\": null");
   });
+
+  it("says moving a Codex agent copies no files, and not to copy its state by hand", () => {
+    const move = skill.slice(skill.indexOf("## Move an existing agent"), skill.indexOf("## Move an agent back"));
+    expect(move).toMatch(/Codex — copy nothing/);
+    expect(move).toContain("auth.json");
+    expect(move).toContain("state_5.sqlite");
+    expect(move).toMatch(/cx\//);
+    expect(move).toMatch(/JSONL/);
+    expect(move).toContain("conversation_carried_over: true");
+    expect(move).toMatch(/Never[\s\S]{0,40}copy `state_5\.sqlite`/);
+    expect(move).not.toMatch(/has not been tested yet/);
+    expect(move).toMatch(/Claude Code — copy nothing yourself/);
+    expect(move).toMatch(/Kiro — copy nothing/);
+    expect(move).toContain("data.sqlite3");
+    expect(move).toMatch(/Never\s+hand-edit `fleet\.yaml`/);
+  });
 });
