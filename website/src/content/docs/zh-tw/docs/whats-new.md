@@ -60,7 +60,7 @@ AgEnD 2.3 是正式版。這一頁寫給從 2.2.x（尤其是 2.2.5 與 2.2.6）
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/task-board.webp" width="760" alt="任務看板（示範資料）：Leaderboard 專案，待辦、進行中、卡住各一張卡；卡住的那張顯示它的問題。">
-  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/office.webp" width="760" alt="Office 檢視（示範資料）：有 Work、Lounge、Help desk、Nap corner 幾間房的像素風辦公室，示範 agent 坐在各自的桌前。">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/office.webp" width="760" alt="Office 檢視（示範資料）：有 Work、Lounge、Help desk、Nap corner 幾間房的像素風辦公室；桌子都空著，三個示範 agent 在 Lounge 等著。">
 </p>
 
 - **任務看板**（`Fleet → Tasks`）：以專案、主任務（M-n）和子任務（S-n）組成的看板。主任務會跟著子任務的進度走。卡片支援依賴關係、留言和歷史紀錄，可以拖拉與篩選。公開連結只能看。

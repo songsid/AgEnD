@@ -60,7 +60,7 @@ Typing a removed command prints the new one.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/task-board.webp" width="760" alt="The task board, with made-up demo data: the Leaderboard project with one card each in To do, In progress and Blocked; the blocked card shows its question.">
-  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/office.webp" width="760" alt="The Office view, with made-up demo data: a pixel-art office with rooms called Work, Lounge, Help desk and Nap corner, and demo agents at their desks.">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/office.webp" width="760" alt="The Office view, with made-up demo data: a pixel-art office with rooms called Work, Lounge, Help desk and Nap corner; the desks are free and three demo agents wait in the Lounge.">
 </p>
 
 - **Task board** (`Fleet → Tasks`): a board of projects, main tasks (M-n) and subtasks (S-n). A main task follows its subtasks' progress. Cards support dependencies, comments and history, and you can drag and filter them. The public link shows the board read-only.
