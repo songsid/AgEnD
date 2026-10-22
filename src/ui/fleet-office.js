@@ -28,10 +28,10 @@ import { t, lang, register } from "/assets/app-i18n.js";
 import { identityOf } from "/assets/identity-color.js";
 import { nodeText } from "./fleet-org.js";
 import { hits, needle } from "./fleet-canvas-layout.js";
-import { AUTO_ID, LOBBY, autoLayout, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
+import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
   officePose, officeRooms, signOf, workOn } from "./fleet-office-model.js";
 import { CHAR_DEPTH, DEFAULT_PAL, modeOf, skinFor } from "./fleet-office-skin.js";
-import { activeFurniture, bubbleAt, createWalkers, linesFor, zonesLayout } from "./fleet-office-zones.js";
+import { activeFurniture, bubbleAt, createWalkers, linesFor, personAt, zonesLayout } from "./fleet-office-zones.js";
 import { createOfficeStore } from "./fleet-office-store.js";
 import { OfficeEditor } from "./fleet-office-editor.js";
 
@@ -146,10 +146,20 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
   const seatsRef = useRef(new Map());                                 // the zones layout's last seats: kept where they can be
   const still = useMemo(reducedMotion, []);
 
-  // The host's offices: on opening, and again whenever the stream says they changed.
+  // The host's offices: on opening, and again whenever the stream says they changed. Answers can arrive out of order
+  // (#2431 review): one with an older rev than the list shown is dropped when it was asked for before that list
+  // arrived; one asked for after it is newer whatever its rev (a host whose store was reset starts again at 0).
+  const asked = useRef(0), shown = useRef(null);                      // a counter; the list shown: { rev, arrived }
+  const adopt = (d, askedAt) => {
+    if (!d) return;
+    const cur = shown.current;
+    if (cur && d.rev < cur.rev && askedAt <= cur.arrived) return;
+    shown.current = { rev: d.rev, arrived: ++asked.current };
+    setStored(d.offices); setStoredRev(d.rev);
+  };
   useEffect(() => {
     if (!lease) return undefined;
-    const read = async () => { const d = await store.offices(); if (lease.current() && d) { setStored(d.offices); setStoredRev(d.rev); } };
+    const read = async () => { const at = ++asked.current; const d = await store.offices(); if (lease.current()) adopt(d, at); };
     void read();
     const sub = appStore.get().streamOn;
     const off = sub ? lease.hold(sub("offices", () => { void read(); })) : null;
@@ -229,16 +239,18 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
     const cv = canvasRef.current;
     const ctx = cv && typeof cv.getContext === "function" ? cv.getContext("2d") : null;
     if (!ctx) { scene.current = null; return; }
-    const dpr = Math.max(1, Math.min(3, globalThis.devicePixelRatio || 1));
     const W = Math.ceil(L.width * k), H = Math.max(1, Math.ceil(L.height * k));
-    if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+    // The device's ratio, unless the bitmap would be too big to paint (backingScale): then fewer px per CSS px.
+    const dpr = backingScale(W, H, Math.max(1, Math.min(3, globalThis.devicePixelRatio || 1)));
+    const BW = Math.max(1, Math.floor(W * dpr)), BH = Math.max(1, Math.floor(H * dpr));
+    if (cv.width !== BW || cv.height !== BH) { cv.width = BW; cv.height = BH; }
     cv.style.setProperty("width", `${W}px`);
     cv.style.setProperty("height", `${H}px`);
     const env = { pal, mode, labels: { lobby: to("lobbyRoom"), closed: to("closed"), areas: { desks: to("area_desks"), lounge: to("area_lounge"), alert: to("area_alert"), nap: to("area_nap") } } };
     const scale = dpr * k;
     const layer = (paint) => {
       const c = document.createElement("canvas");
-      c.width = W * dpr; c.height = H * dpr;
+      c.width = BW; c.height = BH;
       const g = c.getContext && c.getContext("2d");
       if (!g) return null;
       g.setTransform(scale, 0, 0, scale, 0, 0);
@@ -256,7 +268,7 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
     });
     const front = zones ? null : layer((g) => { for (const d of all) skin.drawDeskFront(g, d, looks.get(d.key), env); });
     const shown = new Set([...looks.values()].map((l) => l.state));
-    scene.current = { ctx, dpr, scale, W, H, back, front, env, desks: all.filter((d) => d.node), looks, L, skin, zones, dirty: true,
+    scene.current = { ctx, scale, BW, BH, back, front, env, desks: all.filter((d) => d.node), looks, L, skin, zones, dirty: true,
       active: zones ? activeFurniture(skin.pack, shown) : new Set(), lines: bubbleDefaults(), lang: lang() };
     if (still) draw(0); else loop.current?.wake();
   }, [L, looks, skin, pal, k]);
@@ -265,9 +277,9 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
   function draw(ms) {
     const s = scene.current;
     if (!s) return false;
-    const { ctx, dpr, scale, W, H, env, skin: sk } = s;
+    const { ctx, scale, BW, BH, env, skin: sk } = s;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, W * dpr, H * dpr);
+    ctx.clearRect(0, 0, BW, BH);
     if (s.back) ctx.drawImage(s.back, 0, 0);
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
     ctx.imageSmoothingEnabled = false;
@@ -350,7 +362,10 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
   });
   const deskOf = (e) => {
     const r = canvasRef.current ? canvasRef.current.getBoundingClientRect() : null;
-    return r ? deskAt(L, (e.clientX - r.left) / k, (e.clientY - r.top) / k) : null;
+    if (!r) return null;
+    const x = (e.clientX - r.left) / k, y = (e.clientY - r.top) / k;
+    // The zones scene draws people where they walk: they are hit there, not at the seat they are heading for.
+    return zones ? personAt(L.rooms.flatMap((rm) => rm.desks), x, y, (d) => walkers.at(d.node.name, now())) : deskAt(L, x, y);
   };
   const onMove = (e) => { if (e.pointerType === "touch") return; const d = deskOf(e); const k = d ? d.key : null; if (k !== tip) setTip(k); };
   const onClick = (e) => {
@@ -389,7 +404,7 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
       ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => setEditing(true)}>${t("orge.edit")}</button>` : null}
     </div>
     ${editing ? html`<${OfficeEditor} offices=${stored} rev=${storedRev} view=${view} store=${store}
-      onSaved=${(d) => { setStored(d.offices); setStoredRev(d.rev); }} onClose=${() => setEditing(false)} />` : null}
+      onSaved=${(d) => adopt(d, ++asked.current)} onClose=${() => setEditing(false)} />` : null}
     ${desks.length || L.rooms.length ? null : html`<p class="note oo-empty">${to("nobody")} ${auto && (f.team || f.pinned.length) ? html`<button type="button" class="btn btn-sm" onClick=${() => setF({ team: "", pinned: [] })}>${to("everyone")}</button>` : null}</p>`}
     <div class="oo-stage" ref=${stageRef}>
       <canvas ref=${canvasRef} class=${`oo-canvas${tipDesk && tipDesk.node.i ? " hot" : ""}`} role="img" aria-label=${to("label")}

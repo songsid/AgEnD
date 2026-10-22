@@ -220,6 +220,16 @@ export function customLayout(office, nodes) {
   return { rooms: [room], waypoints: lay.waypoints, edges: lay.edges, width: room.x + room.w + M, height: room.y + room.h + M, unseated: rest.length };
 }
 
+/**
+ * The backing store's px per CSS px for a W × H (CSS px) canvas at `dpr` (#2431 review): the device's ratio while the
+ * bitmap stays one a browser can paint (each side at most 16384, at most 32 Mi px in all — Chromium gives a larger one
+ * back blank, without an error); a bigger layout (custom seats far out) is drawn coarser instead of not at all.
+ */
+export const CANVAS_MAX = { side: 16384, area: 32 * 1024 * 1024 };
+export function backingScale(w, h, dpr) {
+  return Math.min(dpr, CANVAS_MAX.side / Math.max(1, w), CANVAS_MAX.side / Math.max(1, h), Math.sqrt(CANVAS_MAX.area / Math.max(1, w * h)));
+}
+
 /** Every desk with someone at it, in reading order. */
 export const desksOf = (L) => L.rooms.flatMap((r) => r.desks).filter((d) => d.node);
 /** The desk at (x, y) in layout px, or null. */

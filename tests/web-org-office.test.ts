@@ -226,6 +226,21 @@ describe("who is shown: the auto office's filter", () => {
 describe("the offices model (the host's list, checked again on the page)", () => {
   const layout = { seats: [{ id: "s1", x: 100, y: 100, instance: "tide" }, { id: "s2", x: 220, y: 100 }, { id: "s3", x: 340, y: 100 }],
     waypoints: [{ id: "w1", x: 100, y: 160 }, { id: "w2", x: 340, y: 160 }], edges: [["w1", "w2"], ["w1", "zz"], ["w1", "w1"]] };
+  it("backingScale: the device's ratio for an ordinary canvas; an accepted far-out layout gets a bitmap a browser paints (#2431 review)", () => {
+    expect([M.backingScale(1366, 900, 3), M.backingScale(958, 539, 2), M.backingScale(1300, 8000, 1)]).toEqual([3, 2, 1]);
+    const o = M.officesOk([{ id: "far", name: "Far", layout: { seats: [{ id: "s", x: 10000, y: 10000 }], waypoints: [], edges: [] } }])[0];
+    const L = M.customLayout(o, []), W = Math.ceil(L.width), H = Math.ceil(L.height);
+    expect(W).toBeGreaterThan(10000);                                                       // accepted, and huge
+    for (const dpr of [1, 2, 3]) {
+      const b = M.backingScale(W, H, dpr), bw = Math.floor(W * b), bh = Math.floor(H * b);
+      expect(bw).toBeLessThanOrEqual(M.CANVAS_MAX.side); expect(bh).toBeLessThanOrEqual(M.CANVAS_MAX.side);
+      expect(bw * bh).toBeLessThanOrEqual(M.CANVAS_MAX.area); expect(bw * bh).toBeGreaterThan(M.CANVAS_MAX.area * 0.9);   // drawn, as fine as allowed
+    }
+    const max = M.officesOk([{ id: "max", name: "Max", layout: { seats: [{ id: "s", x: 20000, y: 20000 }], waypoints: [], edges: [] } }])[0];
+    const L2 = M.customLayout(max, []);
+    const b2 = M.backingScale(Math.ceil(L2.width), Math.ceil(L2.height), 3);
+    expect(Math.floor(Math.ceil(L2.width) * b2) * Math.floor(Math.ceil(L2.height) * b2)).toBeLessThanOrEqual(M.CANVAS_MAX.area);
+  });
   it("officesOk: valid ones kept, ids unique, the auto office's id refused; odd fields dropped or defaulted", () => {
     const list = M.officesOk([{ id: "ops", name: "  Ops room ", members: ["tide", 3], layout, extra: 1 }, { id: "ops", name: "dup" }, { id: "auto", name: "x" },
       { id: "bad id", name: "x" }, null, "x", { id: "two", skin: "../evil" }]);
@@ -424,6 +439,17 @@ describe("zones: seats, walking, bubbles", () => {
     const tiny = { ...p, areas: { ...p.areas, alert: { name: "alert", rect: { x: 700, y: 420, w: 60, h: 60 }, seats: [{ x: 730, y: 450 }] } } };
     expect(Z.zonesLayout(tiny, [node("a", "crashed"), node("b", "crashed"), node("c", "needs")]).crowd.get("alert")).toBe(2);
   });
+  it("personAt: each person's box where they are now, the nearest first (#2431 review)", () => {
+    const d = (name: string, x: number, y: number) => ({ key: `zone/${name}`, node: { name }, x: x - 24, y: y - 52, w: 48, h: 66, seat: { x, y } });
+    const a = d("a", 104, 170), b = d("b", 650, 400), c = d("c", 650, 205);
+    const pos = (x: any) => (x.node.name === "a" ? { x: 650, y: 212, walking: true } : null);
+    expect(Z.personAt([a, b], 650, 192, pos)?.node.name).toBe("a");          // its body, on the way
+    expect(Z.personAt([a, b], 104, 150, pos)).toBeNull();                     // the seat it heads for, empty
+    expect(Z.personAt([a, b], 650, 380, pos)?.node.name).toBe("b");          // sitting still
+    expect(Z.personAt([a, b], 104, 150, () => null)?.node.name).toBe("a");   // there
+    expect(Z.personAt([a, c], 650, 200, pos)?.node.name).toBe("a");          // overlapping: drawn last (lower), hit first
+    expect(Z.personAt([c, a], 650, 200, pos)?.node.name).toBe("a");
+  });
   it("walking: someone new is already there; a new target walks along the waypoints; still jumps; the gone are forgotten", () => {
     const w = Z.createWalkers(), g = pack();
     w.sync(new Map([["x", { x: 100, y: 100 }]]), 0, g);
@@ -614,6 +640,71 @@ describe("the Office view on the page", () => {
       reread.resolve({ ok: true, status: 200, json: async () => ({ rev: 6, offices: [{ id: "lab", name: "Lab" }] }) }); await settle(4);
       expect([form().disabled, p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)]).toEqual([false, ["Lab"]]);
     });
+  });
+  // #2431 review (Prism): reads can answer out of order; an older answer never takes back the list shown.
+  it("an answer asked for before the list shown never replaces it; one asked for after does, whatever its rev", async () => {
+    const handlers: Record<string, () => void> = {}, held: Array<(v: unknown) => void> = [];
+    const base = (globalThis as any).fetch;
+    (globalThis as any).fetch = async (url: string, o: any = {}) => {
+      if (url !== "/ui/offices" || (o.method ?? "GET") !== "GET") return base(url, o);
+      const body = await new Promise((r) => held.push(r));
+      return { ok: true, status: 200, json: async () => body };
+    };
+    const names = () => p.root.querySelector(".oo-bar select").querySelectorAll("option").map((o: any) => o.textContent.trim());
+    try {
+      app.appStore.set({ ...STORE, streamOn: (name: string, fn: () => void) => { handlers[name] = fn; return () => {}; } });
+      await office();                                                     // the opening read, held
+      handlers.offices(); await settle(2);                                // the stream: read again
+      held[1]({ rev: 5, offices: [{ id: "new", name: "NewOffice" }] }); await settle(3);
+      held[0]({ rev: 4, offices: [{ id: "old", name: "OldOffice" }] }); await settle(3);
+      expect(names()).toEqual(["Whole fleet", "NewOffice"]);
+      // A read asked for after that list arrived is newer even with a lower rev (the host's store was reset).
+      handlers.offices(); await settle(2);
+      held[2]({ rev: 0, offices: [{ id: "fresh", name: "Fresh" }] }); await settle(3);
+      expect(names()).toEqual(["Whole fleet", "Fresh"]);
+    } finally { (globalThis as any).fetch = base; }
+  });
+  // #2431 review (Prism): the Studio draws people where they walk; a click finds them there, not at their destination.
+  it("Studio: a walking person is hit where drawn, its empty destination is not; one sitting still is hit at its seat", async () => {
+    const proto = MiniElement.prototype as any;
+    proto.getContext = function () { return (this._ctx ??= fakeCtx()); };
+    try {
+      localStorage.setItem("agend_org_office_skin", "studio");
+      await office(); await settle(4);
+      const pack = K.skinFor("studio").pack, k = 958 / 1280;
+      const nodes = (v: any) => [...new Map(M.officeRooms(v).flatMap((r: any) => r.nodes).map((n: any) => [n.name, n])).values()];
+      const before = Z.zonesLayout(pack, nodes(view()));
+      app.appStore.set({ ...STORE, exec: { ...STORE.exec, atlas: "working" } }); await settle(2);   // atlas: idle → working, walks
+      const after = Z.zonesLayout(pack, nodes(view()), before.seats);
+      const seat = (L: any, n: string) => M.desksOf(L).find((d: any) => d.node.name === n).seat;
+      const from = seat(before, "atlas"), to = seat(after, "atlas"), still = seat(after, "loner");
+      expect(Math.hypot(to.x - from.x, to.y - from.y)).toBeGreaterThan(100);    // a walk, not a step
+      const click = (pt: any) => { fire(p.root.querySelector(".oo-canvas"), "pointerdown", { pointerType: "mouse" }); fire(p.root.querySelector(".oo-canvas"), "click", { clientX: pt.x * k, clientY: (pt.y - 20) * k }); };
+      click(to); await settle(1);
+      expect(location.pathname).toBe("/ui/fleet/org");                   // its destination, still empty: nothing opens
+      click(from); await settle(1);
+      expect(location.pathname).toBe("/ui/chat/atlas");                   // where it is drawn, just set off
+      nav.navigate("/ui/fleet/org"); await settle(3);
+      click(still); await settle(1);
+      expect(location.pathname).toBe("/ui/chat/loner");                   // sitting still: at its seat
+    } finally { delete proto.getContext; }
+  });
+  it("an accepted far-out custom layout at DPR 3: the canvas and its layers stay within a paintable bitmap (#2431 review)", async () => {
+    const proto = MiniElement.prototype as any, made: any[] = [];
+    proto.getContext = function () { made.push(this); return (this._ctx ??= fakeCtx()); };
+    const realDpr = (globalThis as any).devicePixelRatio;
+    (globalThis as any).devicePixelRatio = 3;
+    try {
+      offices = { rev: 1, offices: [{ id: "far", name: "Far", members: ["quill"], layout: { seats: [{ id: "s", x: 10000, y: 10000 }], waypoints: [], edges: [] } }] };
+      localStorage.setItem("agend_org_office", "far");
+      await office(); await settle(4);
+      const cv = p.root.querySelector(".oo-canvas");
+      expect(parseInt(cv.style.width, 10)).toBeGreaterThan(10000);                // drawn at its size (the stage scrolls)
+      for (const c of new Set(made)) {
+        expect([c.width <= M.CANVAS_MAX.side, c.height <= M.CANVAS_MAX.side, c.width * c.height <= M.CANVAS_MAX.area]).toEqual([true, true, true]);
+      }
+      expect(made.length).toBeGreaterThanOrEqual(2);                              // the canvas and its layers
+    } finally { delete proto.getContext; (globalThis as any).devicePixelRatio = realDpr; }
   });
   it("the host's offices in the switcher; a stored office shows its members", async () => {
     offices = { rev: 2, offices: [{ id: "ops", name: "Ops room", members: ["team:Web", "quill"] }, { id: "auto", name: "nope" }] };

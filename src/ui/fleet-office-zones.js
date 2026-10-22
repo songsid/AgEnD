@@ -102,6 +102,20 @@ export function createWalkers() {
   };
 }
 
+/**
+ * The person at (x, y) in layout px as the scene draws them (#2431 review): each desk's box moved to where its person is
+ * now (`posOf(desk)`: a walker's position; null: at the seat), the one drawn last (the nearest) tried first.
+ */
+export function personAt(desks, x, y, posOf) {
+  const people = desks.filter((d) => d.node).map((d) => { const at = posOf(d) || d.seat; return { d, at, dx: at.x - d.seat.x, dy: at.y - d.seat.y }; })
+    .sort((a, b) => a.at.y - b.at.y);
+  for (let i = people.length - 1; i >= 0; i--) {
+    const { d, dx, dy } = people[i];
+    if (x >= d.x + dx && x < d.x + dx + d.w && y >= d.y + dy && y < d.y + dy + d.h) return d;
+  }
+  return null;
+}
+
 // ── Speech bubbles ──
 
 /**
