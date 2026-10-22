@@ -161,6 +161,18 @@ describe("Settings → Web, as rendered", () => {
     expect(saveButton()?.disabled).toBe(false);
   });
 
+  it("#2347 §10 review: an upload limit that is not what applies says what does — capped by the whole message's, or out of range", async () => {
+    const row = (k: string) => p.root.querySelectorAll(".s-web-ro > div").find((d: any) => d.querySelector("dt").textContent === k).querySelector("dd").textContent.replace(/\s+/g, " ").trim();
+    await open({ web: { upload_max_total_mb: 10 } }, "advanced");
+    const capped = [row("web.upload_max_file_mb"), row("web.upload_max_total_mb")];
+    await p.unmount();
+    await open({ web: { upload_max_file_mb: 60, upload_max_total_mb: 10 } }, "advanced");
+    const over = row("web.upload_max_file_mb");
+    await p.unmount();
+    await open({ web: { upload_max_total_mb: 999 } }, "advanced");
+    expect([capped, over, row("web.upload_max_total_mb")])
+      .toEqual([["10 default capped by upload_max_total_mb", "10"], "60 in effect: 10", "999 in effect: 100"]);
+  });
   it("lists every other web setting read-only, with its value from fleet.yaml or the one in effect, marked default (#2347 §10)", async () => {
     const w = await open({ web: { view_access: "session", allowed_hosts: ["box.lan"], preview: false }, web_terminal: { bind: "0.0.0.0" } }, "advanced");
     const rows = p.root.querySelectorAll(".s-web-ro > div").map((d: any) => [d.querySelector("dt").textContent, d.querySelector("dd").textContent,

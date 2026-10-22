@@ -931,7 +931,9 @@ function generalForm(d, c, fleet = {}) {
     agent_mode: d.agent_mode || "mcp", tool_set: d.tool_set || "full", tool_progress: d.tool_progress ?? "off",
     visibility: visibilityDefault(d), reply: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
     hangOn: hang.enabled !== false, hang: String(hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES),
-    concurrency: String(startup.concurrency ?? 10), stagger: String(startup.stagger_delay_ms ?? 500),
+    // #2347 §10 review: unset startup concurrency is automatic (deriveSpawnConcurrency: 2–10 by free memory and cores),
+    // not 10 — an empty field, and a save that leaves it unset (the defaults merge replaces `startup` whole).
+    concurrency: startup.concurrency == null ? "" : String(startup.concurrency), stagger: String(startup.stagger_delay_ms ?? 500),
     classicBackend: c.backend || d.backend || "claude-code",
     classicToolProgress: c.tool_progress ?? d.tool_progress ?? "off", classicToolProgressInherit: !hasOwn(c, "tool_progress"),
     classicReply: c.reply_completion_guard ?? d.reply_completion_guard ?? true, classicReplyInherit: !hasOwn(c, "reply_completion_guard"),
@@ -959,10 +961,10 @@ function General({ ctx, part = "all" }) {
   const num = (v) => Number(v);
   const errors = {
     auto: nonNegative(f.auto), hang: positive(f.hang),
-    concurrency: !Number.isInteger(num(f.concurrency)) || num(f.concurrency) < 1 || num(f.concurrency) > 20 ? "concurrencyRange" : "",
+    concurrency: f.concurrency.trim() !== "" && (!Number.isInteger(num(f.concurrency)) || num(f.concurrency) < 1 || num(f.concurrency) > 20) ? "concurrencyRange" : "",
     stagger: !Number.isFinite(num(f.stagger)) || f.stagger.trim() === "" || num(f.stagger) < 0 || num(f.stagger) > 30000 ? "staggerRange" : "",
   };
-  const warnings = { concurrency: num(f.concurrency) > 4 ? "concurrencyWarning" : "", stagger: num(f.stagger) < 100 ? "staggerWarning" : "" };
+  const warnings = { concurrency: f.concurrency.trim() !== "" && num(f.concurrency) > 4 ? "concurrencyWarning" : "", stagger: num(f.stagger) < 100 ? "staggerWarning" : "" };
   const ready = !Object.values(errors).some(Boolean);
   const firstError = Object.values(errors).find(Boolean);
   // #2347: every edit, staged as it is made (the first render included: a draft kept from before is staged again).
@@ -980,13 +982,13 @@ function General({ ctx, part = "all" }) {
       agent_mode: f.agent_mode, tool_set: f.tool_set, tool_progress: f.tool_progress, cross_instance_visibility: f.visibility,
       reply_completion_guard: f.reply, log_level: f.log_level,
       hang_detector: { enabled: f.hangOn, timeout_minutes: num(f.hang) },
-      startup: { concurrency: num(f.concurrency), stagger_delay_ms: num(f.stagger) },
+      startup: { ...(f.concurrency.trim() === "" ? {} : { concurrency: num(f.concurrency) }), stagger_delay_ms: num(f.stagger) },
     }, {
       backend: d.backend || "claude-code", model: d.model || undefined, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
       agent_mode: d.agent_mode || "mcp", tool_set: d.tool_set || "full", tool_progress: d.tool_progress ?? "off",
       cross_instance_visibility: visibilityDefault(d), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
       hang_detector: { enabled: hang.enabled !== false, timeout_minutes: hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES },
-      startup: { concurrency: startup.concurrency ?? 10, stagger_delay_ms: startup.stagger_delay_ms ?? 500 },
+      startup: { ...(startup.concurrency == null ? {} : { concurrency: startup.concurrency }), stagger_delay_ms: startup.stagger_delay_ms ?? 500 },
     });
     const oc = original.c;
     const classicPatch = changedFields({
@@ -1078,7 +1080,8 @@ function General({ ctx, part = "all" }) {
         <div class=${fc("field", "hang")}>${L(`${tn("hangTimeout")} (${tn("minutes")})`, "defaults.hang_detector", "g-hang", "hang")}<input id="g-hang" type="number" min="0.1" step="0.5" class=${errors.hang ? "invalid" : ""} value=${f.hang} onInput=${(e) => set("hang")(e.target.value)} /><${Feedback} error=${errors.hang} /></div>
       </div></section>
       <section class="card"><h3>${tn("startup")}</h3><div class="grid2">
-        <div class=${fc("field", "concurrency")}>${L(tn("concurrency"), "fleet.spawn_concurrency", "g-conc", "concurrency")}<input id="g-conc" type="number" min="1" max="20" step="1" class=${errors.concurrency ? "invalid" : ""} value=${f.concurrency} onInput=${(e) => set("concurrency")(e.target.value)} /><${Feedback} error=${errors.concurrency} warning=${warnings.concurrency} /></div>
+        <div class=${fc("field", "concurrency")}>${L(tn("concurrency"), "fleet.spawn_concurrency", "g-conc")}<input id="g-conc" type="number" min="1" max="20" step="1" class=${errors.concurrency ? "invalid" : ""} value=${f.concurrency} onInput=${(e) => set("concurrency")(e.target.value)} /><${Feedback} error=${errors.concurrency} warning=${warnings.concurrency} />
+          ${f.concurrency.trim() === "" ? html`<${InEffect} text=${tn("concurrencyAuto")} />` : null}</div>
         <div class=${fc("field", "stagger")}>${L(`${tn("staggerDelay")} (ms)`, "fleet.spawn_stagger_ms", "g-stag", "stagger")}<input id="g-stag" type="number" min="0" max="30000" step="100" class=${errors.stagger ? "invalid" : ""} value=${f.stagger} onInput=${(e) => set("stagger")(e.target.value)} /><${Feedback} error=${errors.stagger} warning=${warnings.stagger} /></div>
       </div></section>
       <section class="card"><h3>${tn("accessTitle")}</h3>
@@ -1104,11 +1107,22 @@ export const WEB_READ_ONLY = [
  * web.preview_port: the web port + 1 (previewSettings); the uploads: UPLOAD_LIMITS (#1937); the terminal: 127.0.0.1.
  */
 export function webReadOnlyDefault(path, fleet) {
+  // previewSettings: a web port of 0 (tests, harnesses) gets an ephemeral one; past 65535 there is no preview listener.
+  const hp = fleet.health_port ?? 19280;
   return {
-    "web.allowed_hosts": [], "web.view_access": "open", "web.notify_login": true, "web.preview": true, "web.preview_port": (fleet.health_port ?? 19280) + 1,
+    "web.allowed_hosts": [], "web.view_access": "open", "web.notify_login": true, "web.preview": true, "web.preview_port": hp === 0 ? 0 : hp + 1 <= 65535 ? hp + 1 : null,
     "web.preview_origin": null, "web.preview_on_public_link": true, "web.usage_panel": true, "web.provider_secrets": false,
-    "web.upload_max_file_mb": 50, "web.upload_max_total_mb": 100, "web_terminal.bind": "127.0.0.1", "web_terminal.tunnel": null,
+    "web.upload_max_file_mb": uploadMbInEffect(fleet.web).file, "web.upload_max_total_mb": 100, "web_terminal.bind": "127.0.0.1", "web_terminal.tunnel": null,
   }[path];
+}
+/**
+ * #2347 §10 review: the upload limits in force, in MB, as uploadLimits (#1937) resolves them: a value that is not a whole
+ * 1–500 is the default (50 / 100), and one file is never allowed more than a whole message.
+ */
+export function uploadMbInEffect(web) {
+  const mb = (v, dflt) => (Number.isInteger(v) && v >= 1 && v <= 500 ? v : dflt);
+  const total = mb(web && web.upload_max_total_mb, 100);
+  return { file: Math.min(mb(web && web.upload_max_file_mb, 50), total), total };
 }
 function WebSection({ ctx, staged, part = "all" }) {
   const { schema } = ctx;
@@ -1209,10 +1223,16 @@ function WebSection({ ctx, staged, part = "all" }) {
   useEffect(() => { if (!formMounted.current) { formMounted.current = true; return; } review(true); }, [f]);
   const roText = (v) => (v === null ? tn("valueNone") : typeof v === "object" ? JSON.stringify(v) : String(v));
   // #2347 §10: a key fleet.yaml leaves out shows the value the host uses, marked "default".
+  const uploads = uploadMbInEffect(web);
   const shown = (path) => {
     const [top, key] = path.split(".");
     const v = (top === "web" ? web : term)[key];
-    return v === undefined ? html`${roText(webReadOnlyDefault(path, ctx.fleet))} <${DefaultMark} />` : roText(v);
+    // An upload limit that is not what applies (out of range, or a file above the whole message's) says what does.
+    const upload = top === "web" ? { upload_max_file_mb: uploads.file, upload_max_total_mb: uploads.total }[key] : undefined;
+    const applies = upload === undefined ? v : upload;
+    const capped = top === "web" && key === "upload_max_file_mb" && uploads.file < 50;   // left out, only the whole message's limit lowers it
+    if (v === undefined) return html`${roText(webReadOnlyDefault(path, ctx.fleet))} <${DefaultMark} />${capped ? html` <span class="tag">${tn("cappedByTotal")}</span>` : null}`;
+    return applies === v ? roText(v) : html`${roText(v)} <span class="tag">${tn("inEffectShort", roText(applies))}</span>`;
   };
   // #2347: one form, one draft, shown where each part belongs — Access & security (sessions, the browser terminal, the
   // public link and its fixed address, guests, web authority), Chat & connections (web echo), Web dashboard (the Log tab,

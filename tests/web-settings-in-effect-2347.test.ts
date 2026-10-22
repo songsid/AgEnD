@@ -20,8 +20,10 @@ const RAW = {
   channels: [{ id: "main", type: "discord", bot_token_env: "T", group_id: "1" }], web: {},
 };
 const CLASSIC = { defaults: { tool_progress: "verbose" }, channels: { c1: { name: "ops", instanceName: "ops-t1", channelId: "1", adapterId: "discord" } } };
-const fakeFetch = async (path: string, init: { method?: string } = {}) => {
+const sent: Array<{ method: string; path: string; body: any }> = [];
+const fakeFetch = async (path: string, init: { method?: string; body?: string } = {}) => {
   const method = init.method ?? "GET";
+  if (method !== "GET") sent.push({ method, path, body: init.body ? JSON.parse(init.body) : null });
   const body = (() => {
     if (method !== "GET") return { ok: true };
     if (path === "/api/settings/schema") return schema;
@@ -74,6 +76,20 @@ describe("#2347 §10: Agent defaults mark what nobody set", () => {
     input.value = "/srv"; fire(input, "input"); await settle(2);
     p.root.querySelector("#g-roots").querySelectorAll("button").find((b: any) => b.textContent.includes("Add")).click(); await settle(4);
     expect([before, line()]).toEqual(["In effect: any folder default", null]);
+  });
+  it("review: startup concurrency left unset is automatic (2–10 by free memory and cores), not 10 — an empty field says so", async () => {
+    await open("agent-defaults", "conc");
+    const conc: any = p.root.querySelector("#g-conc");
+    expect([conc.value, text(conc.closest(".field").querySelector(".s-effect"))])
+      .toEqual(["", "In effect: automatic, 2–10 by free memory and CPU cores default"]);
+  });
+  it("review: saving another startup setting leaves concurrency automatic (the merge replaces startup whole: it is left out)", async () => {
+    sent.length = 0;
+    await open("agent-defaults", "stagger");
+    const stag: any = p.root.querySelector("#g-stag");
+    stag.value = "800"; fire(stag, "input"); await settle(4);
+    p.root.querySelector(".s-pending").querySelectorAll("button").find((b: any) => b.textContent === "Save").click(); await settle(12);
+    expect(sent.filter((x) => x.path === "/api/settings/fleet/defaults").map((x) => x.body)).toEqual([{ startup: { stagger_delay_ms: 800 } }]);
   });
   it("an edited default is no longer \"default\" (it is what the bar will save)", async () => {
     await open("agent-defaults", "edit");
@@ -139,6 +155,20 @@ describe("#2347 §10: a ClassicBot room inherits from ClassicBot defaults first"
 });
 
 describe("#2347 §10: Advanced's read-only list", () => {
+  it("review: the preview port is the host's at every web port — 0 stays ephemeral, past 65535 there is none", async () => {
+    const { webReadOnlyDefault } = await import("/ui/js/panel-settings.js");
+    const { previewSettings } = await import("../src/web-preview.js");
+    const ports = [0, 1024, 19280, 65534, 65535];
+    expect(ports.map((hp) => webReadOnlyDefault("web.preview_port", { health_port: hp }))).toEqual(ports.map((hp) => previewSettings({}, hp).port));
+  });
+  it("review: the upload limits are the ones uploadLimits applies (a file never above the whole message; out of range is the default)", async () => {
+    const { uploadMbInEffect } = await import("/ui/js/panel-settings.js");
+    const { uploadLimits } = await import("../src/web-upload.js");
+    const MB = 1024 * 1024;
+    const cases = [{}, { upload_max_total_mb: 10 }, { upload_max_file_mb: 60, upload_max_total_mb: 10 }, { upload_max_file_mb: 999 }, { upload_max_file_mb: 2.5 },
+      { upload_max_total_mb: 0 }, { upload_max_file_mb: 80, upload_max_total_mb: 500 }, { upload_max_file_mb: "20" }];
+    expect(cases.map((w) => uploadMbInEffect(w))).toEqual(cases.map((w) => { const l = uploadLimits(w as never); return { file: l.maxFileBytes / MB, total: l.maxTotalBytes / MB }; }));
+  });
   it("every key it lists has the value the host uses when fleet.yaml leaves it out", async () => {
     const { WEB_READ_ONLY, webReadOnlyDefault } = await import("/ui/js/panel-settings.js");
     expect(WEB_READ_ONLY.filter((k: string) => webReadOnlyDefault(k, {}) === undefined)).toEqual([]);
