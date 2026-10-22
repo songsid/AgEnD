@@ -5,12 +5,13 @@
  * pendingPlan() treats a carried-out plan as nothing to activate, quietly, and never removes the shared record: a refresh
  * may publish a newer plan while launchd is being asked (Prism, #2376 R1). A plan still to carry out is returned.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { consumeCarriedOutPlan, consumeUnchangedPlan, pendingPlan, refreshLaunchdWithoutActivating, SERVICE_PLAN_FILE, SERVICE_PLAN_LOCK, withFsPlanLock } from "../src/service-plan.js";
+import { consumeCarriedOutPlan, consumeUnchangedPlan, pendingPlan, refreshLaunchdWithoutActivating, revokePlan, SERVICE_PLAN_FILE, SERVICE_PLAN_LOCK, withFsPlanLock } from "../src/service-plan.js";
 import type { CommandResult } from "../src/update-install.js";
 
 const HOME = "/Users/u/.agend";
@@ -265,6 +266,46 @@ describe("consumeCarriedOutPlan (#2439)", () => {
   });
 });
 
+const PLAN_LOCK_MOD = pathToFileURL(join(process.cwd(), "src/service-plan.ts")).href;
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+function waitFor(path: string, ms = 5000): void {
+  const until = Date.now() + ms;
+  while (!existsSync(path) && Date.now() < until) sleepSync(20);
+}
+function childExit(child: ReturnType<typeof spawn>): Promise<number | null> {
+  return new Promise((resolve, reject) => {
+    const finish = (c: number | null, s: NodeJS.Signals | null) => resolve(s ? 1 : c);
+    child.once("exit", finish);
+    child.once("error", reject);
+    if (child.exitCode !== null || child.signalCode) finish(child.exitCode, child.signalCode);
+  });
+}
+function lockChild(home: string, body: string): ReturnType<typeof spawn> {
+  const script = `
+    const { withFsPlanLock } = await import(${JSON.stringify(PLAN_LOCK_MOD)});
+    const fs = await import("node:fs");
+    const home = process.env.AGEND_TEST_HOME;
+    const { writeFileSync, readFileSync, existsSync } = fs;
+    ${body}
+  `;
+  return spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
+    cwd: process.cwd(), stdio: "ignore", env: { ...process.env, AGEND_TEST_HOME: home },
+  });
+}
+function exitedPid(): number {
+  const pid = spawnSync(process.execPath, ["-e", ""]).pid;
+  if (!pid) throw new Error("no pid");
+  return pid;
+}
+function plantDeadLock(home: string, pid = exitedPid()): string {
+  const lock = join(home, SERVICE_PLAN_LOCK);
+  mkdirSync(lock, { mode: 0o700 });
+  writeFileSync(join(lock, String(pid)), `${pid}\n`, { mode: 0o600 });
+  return lock;
+}
+
 describe("withFsPlanLock (#2441)", () => {
   it("uncontended consume removes the snapshot and drops the lock dir", () => {
     const home = mkdtempSync(join(tmpdir(), "agend-2439-"));
@@ -285,36 +326,21 @@ describe("withFsPlanLock (#2441)", () => {
   it("an independent writer after the comparison read keeps its replacement", async () => {
     const home = mkdtempSync(join(tmpdir(), "agend-2439-"));
     const plan = join(home, SERVICE_PLAN_FILE);
-    const lock = join(home, SERVICE_PLAN_LOCK);
     const seen = join(home, "writer-waiting");
     writeFileSync(plan, "A\n");
-    const script = `
-      const { mkdirSync, rmdirSync, writeFileSync } = require("node:fs");
-      const lock = process.argv[1], plan = process.argv[2], seen = process.argv[3];
-      const t = Date.now() + 10000;
-      let marked = false;
-      for (;;) {
-        try {
-          mkdirSync(lock);
-          writeFileSync(plan, "B\\n");
-          try { rmdirSync(lock); } catch {}
-          process.exit(0);
-        } catch (e) {
-          if (e.code !== "EEXIST") { console.error(e); process.exit(1); }
-          if (!marked) { writeFileSync(seen, "1"); marked = true; }
-          if (Date.now() > t) process.exit(2);
-        }
-      }
-    `;
     let child: ReturnType<typeof spawn> | undefined;
+    let childDone: Promise<number | null> | undefined;
     try {
       consumeUnchangedPlan(home, "A\n", {
         readFile: p => {
           const v = readFileSync(p, "utf8");
           if (p === plan && v === "A\n" && !child) {
-            child = spawn(process.execPath, ["-e", script, lock, plan, seen], { stdio: "ignore" });
-            const wait = Date.now() + 5000;
-            while (!existsSync(seen) && Date.now() < wait) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+            child = lockChild(home, `
+              writeFileSync(${JSON.stringify(seen)}, "1");
+              withFsPlanLock(home, () => writeFileSync(${JSON.stringify(plan)}, "B\\n"));
+            `);
+            childDone = childExit(child);
+            waitFor(seen);
             expect(existsSync(seen)).toBe(true);
           }
           return v;
@@ -322,16 +348,167 @@ describe("withFsPlanLock (#2441)", () => {
         removeFile: p => { try { rmSync(p); } catch { /* absent */ } },
         withPlanLock: fn => withFsPlanLock(home, fn),
       });
-      const code = await new Promise<number | null>((resolve, reject) => {
-        if (!child) { reject(new Error("writer was not started")); return; }
-        child.once("exit", (c, s) => resolve(s ? 1 : c));
-        child.once("error", reject);
-      });
-      expect(code).toBe(0);
+      if (!childDone) throw new Error("writer was not started");
+      expect(await childDone).toBe(0);
       expect(readFileSync(plan, "utf8")).toBe("B\n");
     } finally {
       child?.kill();
       rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("competing reclaimers of a dead lock do not enter the section together", async () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-2439-"));
+    const overlap = join(home, "overlap");
+    const holder = join(home, "holder");
+    plantDeadLock(home);
+    const body = `
+      withFsPlanLock(home, () => {
+        writeFileSync(${JSON.stringify(holder)}, String(process.pid));
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
+        if (readFileSync(${JSON.stringify(holder)}, "utf8") !== String(process.pid)) {
+          writeFileSync(${JSON.stringify(overlap)}, "1");
+        }
+      });
+    `;
+    const a = lockChild(home, body), b = lockChild(home, body);
+    const aDone = childExit(a), bDone = childExit(b);
+    try {
+      expect(await aDone).toBe(0);
+      expect(await bDone).toBe(0);
+      expect(existsSync(overlap)).toBe(false);
+      expect(existsSync(join(home, SERVICE_PLAN_LOCK))).toBe(false);
+    } finally {
+      a.kill(); b.kill();
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, 10_000);
+
+  it("a stale reclaim of a dead generation cannot drop a live successor (real lock)", async () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-2439-"));
+    const holding = join(home, "holding");
+    const second = join(home, "second");
+    const release = join(home, "release");
+    const dead = exitedPid();
+    const lock = plantDeadLock(home, dead);
+    const holder = lockChild(home, `
+      withFsPlanLock(home, () => {
+        writeFileSync(${JSON.stringify(holding)}, String(process.pid));
+        const t = Date.now() + 8000;
+        while (!existsSync(${JSON.stringify(release)}) && Date.now() < t) {
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+        }
+      });
+    `);
+    const holderDone = childExit(holder);
+    let waiter: ReturnType<typeof spawn> | undefined;
+    let waiterDone: Promise<number | null> | undefined;
+    try {
+      waitFor(holding);
+      const successor = readFileSync(holding, "utf8").trim();
+      try { rmSync(join(lock, String(dead))); } catch { /* already reclaimed */ }
+      try { rmdirSync(lock); } catch (e) {
+        expect((e as NodeJS.ErrnoException).code).toBe("ENOTEMPTY");
+      }
+      expect(existsSync(lock)).toBe(true);
+      expect(readdirSync(lock)).toContain(successor);
+      waiter = lockChild(home, `
+        withFsPlanLock(home, () => writeFileSync(${JSON.stringify(second)}, String(process.pid)));
+      `);
+      waiterDone = childExit(waiter);
+      sleepSync(400);
+      expect(existsSync(second)).toBe(false);
+      writeFileSync(release, "1");
+      expect(await holderDone).toBe(0);
+      expect(await waiterDone).toBe(0);
+      expect(existsSync(second)).toBe(true);
+    } finally {
+      holder.kill(); waiter?.kill();
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, 10_000);
+
+  it("a live holder is not stolen (control)", async () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-2439-"));
+    const holding = join(home, "holding");
+    const second = join(home, "second");
+    const release = join(home, "release");
+    const holder = lockChild(home, `
+      withFsPlanLock(home, () => {
+        writeFileSync(${JSON.stringify(holding)}, String(process.pid));
+        const t = Date.now() + 8000;
+        while (!existsSync(${JSON.stringify(release)}) && Date.now() < t) {
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+        }
+      });
+    `);
+    const holderDone = childExit(holder);
+    let waiter: ReturnType<typeof spawn> | undefined;
+    let waiterDone: Promise<number | null> | undefined;
+    try {
+      waitFor(holding);
+      waiter = lockChild(home, `
+        withFsPlanLock(home, () => writeFileSync(${JSON.stringify(second)}, String(process.pid)));
+      `);
+      waiterDone = childExit(waiter);
+      sleepSync(400);
+      expect(existsSync(second)).toBe(false);
+      writeFileSync(release, "1");
+      expect(await holderDone).toBe(0);
+      expect(await waiterDone).toBe(0);
+      expect(existsSync(second)).toBe(true);
+    } finally {
+      holder.kill(); waiter?.kill();
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, 10_000);
+
+  it("an empty lock left after mkdir (crash before pid) is recovered without waiting out the timeout", () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-2439-"));
+    try {
+      mkdirSync(join(home, SERVICE_PLAN_LOCK), { mode: 0o700 });
+      let ran = false;
+      const t0 = Date.now();
+      withFsPlanLock(home, () => { ran = true; });
+      expect(ran).toBe(true);
+      expect(Date.now() - t0).toBeLessThan(3_000);
+      expect(existsSync(join(home, SERVICE_PLAN_LOCK))).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("invalid leftover pid content is recovered without waiting out the timeout", () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-2439-"));
+    try {
+      const lock = join(home, SERVICE_PLAN_LOCK);
+      mkdirSync(lock, { mode: 0o700 });
+      writeFileSync(join(lock, "pid"), "\n", { mode: 0o600 });
+      let ran = false;
+      const t0 = Date.now();
+      withFsPlanLock(home, () => { ran = true; });
+      expect(ran).toBe(true);
+      expect(Date.now() - t0).toBeLessThan(3_000);
+      expect(existsSync(lock)).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("revokePlan on a missing AGEND_HOME creates it privately and does not throw", () => {
+    const root = mkdtempSync(join(tmpdir(), "agend-2439-"));
+    const home = join(root, "missing");
+    try {
+      expect(existsSync(home)).toBe(false);
+      revokePlan(home, {
+        removeFile: p => { try { rmSync(p); } catch { /* absent */ } },
+        withPlanLock: fn => withFsPlanLock(home, fn),
+      });
+      expect(existsSync(home)).toBe(true);
+      expect(statSync(home).mode & 0o777).toBe(0o700);
+      expect(existsSync(join(home, SERVICE_PLAN_LOCK))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

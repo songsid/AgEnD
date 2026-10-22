@@ -11,8 +11,9 @@
  * the record.
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { ensureAgendHome } from "./agend-home.js";
 import { parseLaunchctlPrint, parsePlist, sameJob, type ActivationTuple, type TupleDeps } from "./service-activation.js";
 import { judgeTuple, type ExpectedTuple } from "./restart-guard.js";
 import type { CommandResult } from "./update-install.js";
@@ -58,21 +59,53 @@ function pidAlive(pid: number): boolean {
   catch (e) { return (e as NodeJS.ErrnoException).code !== "ESRCH"; }
 }
 
+/** Holder files are named by pid so unlink is generation-specific (a stale reclaim cannot drop a successor). */
+function pidFromName(name: string): number {
+  if (!/^[1-9][0-9]*$/.test(name)) return 0;
+  const pid = Number(name);
+  return Number.isInteger(pid) && pid > 0 ? pid : 0;
+}
+
 function stealDeadLock(dir: string): void {
-  let pid = 0;
-  try { pid = Number(readFileSync(join(dir, "pid"), "utf8").trim()); }
-  catch { return; } // holder has mkdir'd but not written pid yet — wait
-  if (!Number.isInteger(pid) || pid <= 0 || pidAlive(pid)) return;
-  try { unlinkSync(join(dir, "pid")); } catch { /* gone */ }
-  try { rmdirSync(dir); } catch { /* holder raced us */ }
+  let names: string[];
+  try { names = readdirSync(dir); } catch { return; }
+  let liveOther = false;
+  for (const name of names) {
+    const pid = pidFromName(name);
+    if (pid > 0) {
+      if (pid !== process.pid && pidAlive(pid)) { liveOther = true; continue; }
+      try { unlinkSync(join(dir, name)); } catch { /* gone */ }
+      continue;
+    }
+    if (name === "pid") {
+      let old = 0;
+      try { old = Number(readFileSync(join(dir, name), "utf8").trim()); } catch { /* empty / unreadable */ }
+      if (Number.isInteger(old) && old > 0 && old !== process.pid && pidAlive(old)) { liveOther = true; continue; }
+    }
+    try { unlinkSync(join(dir, name)); } catch { /* gone */ }
+  }
+  if (liveOther) return;
+  try { rmdirSync(dir); } catch { /* ENOTEMPTY: a successor published its holder file */ }
+}
+
+function liveOtherHolder(dir: string, self: number): boolean {
+  let names: string[];
+  try { names = readdirSync(dir); } catch { return false; }
+  return names.some(name => {
+    const pid = pidFromName(name);
+    return pid > 0 && pid !== self && pidAlive(pid);
+  });
 }
 
 /**
- * Cross-process exclusive lock for this home's plan file (mkdir). Same-process nested acquires wait
- * until timeout — do not call a publisher from inside a consumer's section; another CLI blocks.
+ * Cross-process exclusive lock for this home's plan file (mkdir; holder file named by pid).
+ * Same-process nested acquires wait until timeout — do not call a publisher from inside a
+ * consumer's section; another CLI blocks.
  */
 export function withFsPlanLock(agendHome: string, fn: () => void): void {
+  ensureAgendHome(agendHome);
   const dir = planLockPath(agendHome);
+  const mine = join(dir, String(process.pid));
   const deadline = Date.now() + PLAN_LOCK_MS;
   for (;;) {
     try {
@@ -84,13 +117,23 @@ export function withFsPlanLock(agendHome: string, fn: () => void): void {
       sleepSync(20);
       continue;
     }
+    let held = false;
     try {
-      writeFileSync(join(dir, "pid"), `${process.pid}\n`, { mode: 0o600 });
+      try {
+        writeFileSync(mine, `${process.pid}\n`, { mode: 0o600 });
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw e;
+      }
+      if (liveOtherHolder(dir, process.pid)) continue;
+      held = true;
       fn();
       return;
     } finally {
-      try { unlinkSync(join(dir, "pid")); } catch { /* */ }
-      try { rmdirSync(dir); } catch { /* */ }
+      try { unlinkSync(mine); } catch { /* */ }
+      if (held) {
+        try { rmdirSync(dir); } catch { /* */ }
+      }
     }
   }
 }
