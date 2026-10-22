@@ -1308,7 +1308,7 @@ A single live **Needs you** message in each world's General topic surfaces atten
 
 ## Global search (#2293)
 
-**Search** in the dashboard's sidebar, or **Ctrl+K** / **⌘K**, finds which agent you asked about something. It searches every agent's chat, the messages agents send each other and the Task Board, in one Spotlight-style dialog. Results are grouped by agent, and opening one jumps to the message in its chat. The fleet keeps its own index for this, built off the fleet's loop, with secrets masked. Fleet admins only, never over the public link. Details: [web dashboard](web-dashboard.md#search-ctrlk); `web.search` in [configuration](configuration.md).
+**Search** in the dashboard's sidebar, or **Ctrl+K** / **⌘K**, finds which agent you asked about something. It searches every agent's chat, the messages agents send each other and the Task Board, in one Spotlight-style dialog. Results are grouped by agent, and opening one jumps to the message in its chat. The fleet keeps its own index for this, built off the fleet's loop, with secrets masked. Fleet admins only, here or over the public link (`web.search.public_link: false` keeps it off the link); never a guest. Details: [web dashboard](web-dashboard.md#search-ctrlk); `web.search` in [configuration](configuration.md).
 
 ## Links to where a message sends you (2.2.5)
 

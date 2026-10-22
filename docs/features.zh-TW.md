@@ -1258,7 +1258,7 @@ fleet 在單一事件迴圈上運作，迴圈上任何慢的事都會拖住其�
 
 ## 全域搜尋（#2293）
 
-在 dashboard 側欄按 **搜尋**，或按 **Ctrl+K** / **⌘K**，就能找回某件事當初交給哪個 agent。它在同一個 Spotlight 風格的對話框裡，搜尋每個 agent 的聊天、agent 之間的訊息與 Task Board。結果依 agent 分組，開啟後會跳到聊天中的那則訊息。Fleet 為此保留自己的索引，在 fleet 主迴圈之外建立，並遮蔽密鑰。只有 fleet 管理員能用，公開連結一律不行。詳見 [網頁 dashboard](web-dashboard.zh-TW.md#搜尋ctrlk)；設定見 [configuration](configuration.zh-TW.md) 的 `web.search`。
+在 dashboard 側欄按 **搜尋**，或按 **Ctrl+K** / **⌘K**，就能找回某件事當初交給哪個 agent。它在同一個 Spotlight 風格的對話框裡，搜尋每個 agent 的聊天、agent 之間的訊息與 Task Board。結果依 agent 分組，開啟後會跳到聊天中的那則訊息。Fleet 為此保留自己的索引，在 fleet 主迴圈之外建立，並遮蔽密鑰。只有 fleet 管理員能用，在這台電腦或透過公開連結都可以（`web.search.public_link: false` 可只在公開連結上關閉）；訪客一律不行。詳見 [網頁 dashboard](web-dashboard.zh-TW.md#搜尋ctrlk)；設定見 [configuration](configuration.zh-TW.md) 的 `web.search`。
 
 ## 連到訊息要你去的地方 (Links to where a message sends you, 2.2.5)
 

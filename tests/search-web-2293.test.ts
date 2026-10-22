@@ -73,12 +73,35 @@ describe("GET /ui/search: who may search", () => {
       expect([r.status(), r.json()]).toEqual([200, { hits: [], limited: false, building: false }]);
     }
   });
-  it("the public link: 404 at its gateway (not on its list) and in the handler; nothing searched", async () => {
-    expect([isPublicWebRoute("GET", "/ui/search"), isPublicWebRoute("GET", "/ui/search/context")]).toEqual([false, false]);
+  it("#2478: the public link — an admin session searches there too (on its gateway's list, by default)", async () => {
+    expect([isPublicWebRoute("GET", "/ui/search"), isPublicWebRoute("GET", "/ui/search/context"), isPublicWebRoute("POST", "/ui/search")]).toEqual([true, true, false]);
+    for (const web of [undefined, { search: { public_link: true } }]) {
+      const r = get("/ui/search?q=nginx", { publicLink: true, ...(web ? { web } : {}) }); await settle();
+      expect([r.status(), r.json(), r.index.query.mock.calls.length], JSON.stringify(web)).toEqual([200, { hits: [], limited: false, building: false }, 1]);
+      const c = get("/ui/search/context?key=chat:dev:b-1", { publicLink: true, ...(web ? { web } : {}) }); await settle();
+      expect([c.status(), c.index.context.mock.calls.length]).toEqual([200, 1]);
+    }
+    const read = get("/ui/search?q=nginx", { publicLink: true, tier: "read" }); await settle();
+    expect([read.status(), read.index.query.mock.calls.length], "a read-only session over the link: still admins only").toEqual([401, 0]);
+  });
+  it("#2478: web.search.public_link: false keeps it off the public link — 404 there, nothing searched; this machine unchanged", async () => {
     for (const path of ["/ui/search?q=nginx", "/ui/search/context?key=chat:dev:b-1"]) {
-      const r = get(path, { publicLink: true }); await settle();
+      const r = get(path, { publicLink: true, web: { search: { public_link: false } } }); await settle();
       expect([r.status(), r.json().error, r.index.query.mock.calls.length + r.index.context.mock.calls.length]).toEqual([404, "search_not_over_public_link", 0]);
     }
+    const local = get("/ui/search?q=nginx", { web: { search: { public_link: false } } }); await settle();
+    expect(local.status()).toBe(200);
+    // web.search.enabled: false is off everywhere, the public link included.
+    const off = get("/ui/search?q=nginx", { publicLink: true, web: { search: { enabled: false } } }); await settle();
+    expect([off.status(), off.json().error]).toEqual([404, "search_unavailable"]);
+  });
+  it("#2478: turned off over the link while a search runs — nothing sent", async () => {
+    const web: Record<string, unknown> = {};
+    const held = fakeIndex(); held.hold();
+    const r = get("/ui/search?q=x", { publicLink: true, index: held, web });
+    web.search = { public_link: false };
+    held.release(); await settle(); await settle();
+    expect([r.status(), r.json().error]).toEqual([404, "search_not_over_public_link"]);
   });
   it("a guest: 403 at the gate every request passes (not on GUEST_ROUTES), and again in the handler", async () => {
     for (const q of ["/ui/search?q=x", "/ui/search/context?key=k"]) {

@@ -70,12 +70,14 @@ export const isMacLike = () => typeof navigator !== "undefined" && /Mac|iPhone|i
 /** What the row and tooltips show: ⌘K on a Mac, Ctrl K elsewhere. */
 export const searchShortcut = () => (isMacLike() ? "⌘K" : "Ctrl K");
 /**
- * Whether this page offers search: an admin's page reached directly. A guest's never, and never over the public link —
- * the server refuses it there (#2298 review), so no entry, no shortcut, and Ctrl+F stays the browser's.
+ * Whether this page offers search: an admin's page. A guest's never. #2478 (the user's request): over the public link
+ * too, unless the fleet keeps it off there (web.search.public_link: false — the page says data-search-link="0", the
+ * server refuses it), so then no entry, no shortcut, and Ctrl+F stays the browser's.
  */
 export function searchOffered(admin) {
-  const onLink = typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
-  return !!admin && !guestPage() && !onLink;
+  const body = typeof document !== "undefined" ? document.body : null;
+  const offLink = !!body && body.dataset.publicLink === "1" && body.dataset.searchLink === "0";
+  return !!admin && !guestPage() && !offLink;
 }
 let searchModule = null;
 /** Open search; `preset.instance`: narrowed to that agent (Ctrl+F in its chat). */
