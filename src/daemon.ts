@@ -5093,6 +5093,7 @@ export class Daemon extends EventEmitter {
         this.pauseWakeState = "paused";
         this.autoPauseController.markPaused();
         writePausedMarker(this.instanceDir, this.lastPausedAt ?? Date.now(), reason);
+        this.publishWorkingState("execution");
         this.logger.info({ pausedAt: this.lastPausedAt }, "Instance auto-paused");
         this.ipcServer?.broadcast({
           type: "instance_state", instanceName: this.name, state: "paused", pausedAt: this.lastPausedAt,
@@ -5176,6 +5177,7 @@ export class Daemon extends EventEmitter {
         this.clearErrorRecoveryGate();
         clearPausedMarker(this.instanceDir);
         this.resumeRuntimeMonitors();
+        this.publishWorkingState("execution");
         this.logger.info("Instance auto-woke");
         this.ipcServer?.broadcast({
           type: "instance_state", instanceName: this.name, state: this.instanceState, pausedAt: null,

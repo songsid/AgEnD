@@ -40,7 +40,7 @@ function rig() {
     const dir = fm.getInstanceDir(name); mkdirSync(dir, { recursive: true, mode: 0o700 });
     const d = new Daemon(name, { backend: "mock", working_directory: root, log_level: "silent" } as any, dir, true, backend,
       undefined, pino({ level: "silent" }) as unknown as Logger) as any;
-    // No start/wake/paste/CLI is permitted. stop() is safe because tmux remains null.
+    // No native start/wake/paste/CLI is permitted; transition tests call the real prototype with inert effects.
     d.start = d.wake = d.trySpawn = d.pushChannelMessage = io.forbidden;
     d.ipcServer = { broadcast: vi.fn(), send: vi.fn(() => true), close: vi.fn(async () => {}) };
     d.mcpServerAlive = vi.fn(() => ({ alive: true, source: "connection" }));
@@ -55,7 +55,34 @@ function rig() {
   return { root, fm, d, make, entry, arm };
 }
 
+/** Real pause/wake transitions; only native checkpoint/quit/spawn/monitor effects are inert. */
+function inertPauseWake(d: any) {
+  d.tmux = { getPaneStatus: vi.fn(async () => ({ alive: false, exitCode: 0 })) };
+  d.checkpointSessionId = vi.fn(async () => {});
+  d.sendQuitSequence = vi.fn(async () => {});
+  d.trySpawn = vi.fn(async () => true);
+  d.resumeRuntimeMonitors = vi.fn();
+}
+
 describe("#2473 stage1 production wiring", () => {
+  it("records an accepted pause without another pane state edge or explicit journal refresh", async () => {
+    const { d, entry } = rig(); inertPauseWake(d);
+    const pausing = d.pause(); await vi.advanceTimersByTimeAsync(200); await pausing;
+    expect(d.isPaused).toBe(true);
+    expect(d.getWorkingStateObservation().executionState).toBe("paused");
+    expect(entry().current.observation.executionState).toBe("paused");
+    expect(d.sendQuitSequence).toHaveBeenCalledTimes(1);
+  });
+  it("records an accepted wake to the same idle state without another pane edge", async () => {
+    const { d, entry } = rig(); inertPauseWake(d);
+    const pausing = d.pause(); await vi.advanceTimersByTimeAsync(200); await pausing;
+    await Daemon.prototype.wake.call(d);
+    expect(d.isPaused).toBe(false);
+    expect(d.getWorkingStateObservation().executionState).toBe("idle");
+    expect(entry().current.observation.executionState).toBe("idle");
+    expect(entry().current.observation.owner).toEqual(d.getInteractionSnapshot().owner);
+    expect(d.trySpawn).toHaveBeenCalledTimes(1);
+  });
   it("records published/working/idle edges but not heartbeat writes, without backend discovery", () => {
     const { fm, d, entry } = rig();
     expect(entry().current.observation.executionState).toBe("idle");
