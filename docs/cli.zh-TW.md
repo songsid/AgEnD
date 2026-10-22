@@ -308,6 +308,8 @@ OOM 判定採保守原則：Linux 必須取得啟動期間的核心紀錄，且�
 - **`agend doctor`** 會顯示 systemd 實際載入的 unit（有 system unit 執行 fleet 時就看它）（`Type`、`NotifyAccess`、`TimeoutStartSec`）、它來自哪些檔案（unit 檔和每個 drop-in），以及每一項殘留設定。`Type=notify` 卻不是 `NotifyAccess=all` 的 unit 會列為錯誤。
 - **第一次更新就會修好：**`agend update` 會執行新版本自己的 refresh 和 restart，所以更新到含此修正的版本時，就會在那一次更新裡修好 unit。
 
+**記憶體壓力下的啟動等待（#2461）。** 啟動佇列因記憶體保護而等待時，會立即向 systemd 延長啟動期限 15 分鐘，並每 30 秒續期，避免把已啟動一半的團隊反覆重啟。仍然等到啟動完成才送出就緒訊號；網頁與 systemd 狀態會顯示正在等待。一般並行限制、故障退避或其他啟動卡住的情況不會續期。事件迴圈監測在 General 啟動前開始，但仍須主迴圈能正常執行。記憶體壓力偏高或嚴重時，整批停止與重啟會每批最多停止五個實例；停止本身不等待記憶體恢復。詳見[記憶體壓力說明](memory-pressure.md)。
+
 **服務用哪個 Node 執行，以及 `agend restart` 何時會拒絕（#1450）。**
 - 有 AgEnD 自帶的 Node（或驗證過的 `AGEND_NODE`）時，unit（`ExecStart=`）和 plist（`ProgramArguments`）會先寫那個 Node，接著是套件的 `dist/cli.js`，最後是 `fleet start`。自帶 Node 的路徑只會在 npm 更新 AgEnD 時改變，而 `agend update` 屆時會重寫服務。runtime 的目錄不會出現在任何服務的 PATH 上，各 coding CLI 照舊使用原本的 Node。
 - 沒有自帶 Node 的平台（glibc Linux 與 macOS 11 以上的 x64/arm64 以外），服務改為啟動套件的 launcher（`<套件>/launcher/agend fleet start`），由它在每次啟動時從服務的 PATH 找 Node。所以用 nvm 或 Homebrew 升級 Node（會刪掉舊版目錄）也不會讓服務壞掉；Node 太舊時會在啟動時拒絕，原因寫進服務的 log。

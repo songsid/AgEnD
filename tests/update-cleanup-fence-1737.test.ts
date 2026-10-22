@@ -40,8 +40,8 @@ async function completion(fm:any, adapter:any, pending:any, resume=true){
  const source=fs.readFileSync(join(process.cwd(),"src/fleet-manager.ts"),"utf8");
  const ast=ts.createSourceFile("fleet-manager.ts",source,ts.ScriptTarget.ES2022,true);
  let method:ts.MethodDeclaration|undefined, block:ts.Block|undefined;
- function visit(n:ts.Node):void{if(ts.isMethodDeclaration(n)&&n.name.getText(ast)==="startAll")method=n;ts.forEachChild(n,visit);}visit(ast);
- if(!method?.body)throw Error("startAll missing");
+ function visit(n:ts.Node):void{if(ts.isMethodDeclaration(n)&&n.name.getText(ast)==="startAllWithinDeadline")method=n;ts.forEachChild(n,visit);}visit(ast);
+ if(!method?.body)throw Error("startup implementation missing");
  function find(n:ts.Node):void{if(ts.isBlock(n)&&n.statements.some(st=>ts.isVariableStatement(st)&&st.declarationList.declarations.some(d=>d.name.getText(ast)==="completionSummary")))block=n;ts.forEachChild(n,find);}find(method.body);
  if(!block)throw Error("completion moved");const statements=(block as ts.Block).statements;
  const first=statements.findIndex(st=>ts.isVariableStatement(st)&&st.declarationList.declarations.some(d=>d.name.getText(ast)==="configuredNames"));

@@ -59,6 +59,7 @@ import {
 } from "./update-marker.js";
 import { formatUpdateProgress } from "./update-progress.js";
 import { sdNotify, sdNotifyBlocking, setSdNotifyWarn } from "./sd-notify.js";
+import { StartupMemoryDeadline, fleetStopConcurrency } from "./startup-memory-deadline.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
 import { MemoryPressure, type MemoryPressureSnapshot } from "./memory-pressure.js";
 import { replyDedupText, ReplyDeduper } from "./reply-dedup.js";
@@ -198,7 +199,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
   }
   return tasks;
 }
-import { handleWebRequest, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
+import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
@@ -1331,6 +1332,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Days of event/activity history to keep. */
   private static readonly EVENT_LOG_RETENTION_DAYS = 30;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private startupMemoryDeadline: StartupMemoryDeadline | null = null;
   private eventLoopWatch: EventLoopWatch | null = null;
   private startedAt = 0;
   private stormOpenNotifyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1764,7 +1766,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private settingsSelfConfirmation(store: SettingsConfirmationStore, req: IncomingMessage, id: string): SettingsSelfConfirmation | null {
     const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
     if (auth.kind !== "ok") return null;
-    const record = auth.session, gateway = !!gatewayRequestContext(req), peer = classifyWebPeer(req);
+    // #2453 (§0.2): never over the public link — not even a named-link session that is web-verified there.
+    if (gatewayRequestContext(req)) return null;
+    // …and never a change that turns the named-link option on: that one needs a General's card or the host.
+    if (!store.selfConfirmable(id)) return null;
+    const record = auth.session, gateway = !!gatewayRequestContext(req), peer = webPeerOf(req);
     const verified = (): { adapter_id: string; user_id: string } | null => {
       const now = this.webAuthority({ session: record, gateway, peer });
       // A refusal carries no authority (kind "none"); the handle pins the session, and with it its one account.
@@ -1994,6 +2000,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.spawnGate = new SpawnGate({
       storm: this.stormWindow,
       memoryPressure: this.memoryPressure,
+      onStartupMemoryWait: () => this.startupMemoryDeadline?.check(),
       concurrency: () => this.spawnConcurrency(),
       staggerMs: () => this.fleetConfig?.defaults?.startup?.stagger_delay_ms ?? 500,
     });
@@ -3051,6 +3058,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
     this.warnAboutRemovedLoginMode(loaded);
     this.enforceGuestSwitch();
+    this.observeWebAuthority();                      // #2453 review: a reload's web-authority switches are seen at once
     // Child tool/guidance readers must follow this fleet's actual config, including --config.
     // Scope the path to its owning data directory so another inherited home's override cannot enable CW.
     process.env.AGEND_FLEET_DATA_DIR = resolvePath(this.dataDir);
@@ -6262,6 +6270,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       revoke: id => {
         this.webLoginCodes?.revokeAudience(id);
         this.webGuestLoginCodes?.revokeAudience(id);
+        // #2453 (§0.2): the link's sessions end, and the authorizations kept for them go with them (housekeeping: their
+        // handles can never match again).
+        const ended = new Set(this.webSessions?.list(undefined, r => r.exposureId === id).map(r => r.handle) ?? []);
+        if (ended.size) this.sessionAuthorizationStore()?.prune(a => !ended.has(a.handle));
         const result = this.webSessions?.revokeExposure(id);
         if (result && !result.durable) this.logger.warn("Public session revocation could not be saved; exposure remains closed");
       },
@@ -7283,6 +7295,38 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Start all instances from fleet config */
   async startAll(configPath: string): Promise<void> {
+    this.startupMemoryDeadline?.stop();
+    const deadline = new StartupMemoryDeadline({
+      current: () => this.startupMemoryDeadline === deadline && !this.shuttingDown,
+      waiting: () => this.spawnGate.isStartupMemoryDeferred(),
+      notify: sdNotify,
+      log: message => this.logger.info(message),
+    });
+    this.startupMemoryDeadline = deadline;
+    // A held first General must not postpone event-loop liveness monitoring.
+    // No independent heartbeat: a genuinely frozen main loop still stops pinging.
+    setSdNotifyWarn((fields, message) => this.logger.warn(fields, message));
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+    this.watchdogTimer = setInterval(() => sdNotify("WATCHDOG=1"), 30_000);
+    this.eventLoopWatch?.stop();
+    this.eventLoopWatch = startEventLoopWatch({ logger: this.logger });
+    try {
+      await this.startAllWithinDeadline(configPath, deadline);
+    } finally {
+      deadline.stop();
+      if (this.startupMemoryDeadline === deadline) {
+        this.startupMemoryDeadline = null;
+        if (!this.startupComplete) {
+          if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+          this.watchdogTimer = null;
+          this.eventLoopWatch?.stop();
+          this.eventLoopWatch = null;
+        }
+      }
+    }
+  }
+
+  private async startAllWithinDeadline(configPath: string, deadline: StartupMemoryDeadline): Promise<void> {
     this.loginWindow.reopen();                          // a stopAll → startAll restart must accept login windows again
     this.loginController?.reopen();
     const startupStartedAt = Date.now();
@@ -7701,23 +7745,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       });
     }
 
-    // The systemd watchdog answers exactly one question: is this process still
-    // turning its event loop? Pinging from a timer proves that, and after the
-    // blocking child-process calls were made async it is a meaningful signal —
-    // a deadlocked or frozen fleet stops pinging and systemd restarts it.
-    //
-    // It deliberately does NOT gate on fleet health. "No adapter connected" or
-    // "an instance crashed" must not kill the process: the fleet would be restarted
-    // into the same broken state, and a user who has legitimately stopped every
-    // instance would get a restart loop. Those conditions surface through /health
-    // (which now returns 503) and through the General-topic notifications instead.
-    setSdNotifyWarn((fields, message) => this.logger.warn(fields, message));
-    this.watchdogTimer = setInterval(() => sdNotify("WATCHDOG=1"), 30_000);
-    // #1231: a stalled loop is what turns a slash command into "did not respond";
-    // put each long stall in the log instead of leaving it to be guessed at.
-    this.eventLoopWatch?.stop();
-    this.eventLoopWatch = startEventLoopWatch({ logger: this.logger });
-
     // EventLog.prune() existed but was never called, so `events` and `activity`
     // grew without bound for the life of the install. Prune once at startup and
     // daily after that; the timer is unref'd so it never holds the loop open.
@@ -7924,6 +7951,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // A SIGHUP may arrive after the PID/general is available but before the
     // rest of startup finishes. Replay one coalesced reload only after all
     // startup-owned lifecycle work and signal handlers are in place.
+    if (this.shuttingDown || this.startupMemoryDeadline !== deadline) return;
     this.finishStartup(bootUpdateMarker);
     this.startupDashboard = null;
     this.publishStartupStatus();
@@ -11661,6 +11689,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   saveFleetConfig(explicitPatches: RawConfigPatch[] = []): void {
     this.publicWebLink?.refresh();
     this.enforceGuestSwitch();                       // #1920: a Settings save turning guests off ends their sessions
+    this.observeWebAuthority();                      // #2453 review: so is a web-authority switch (off is always seen)
     if (!this.fleetConfig || !this.configPath) return;
 
     if (!this.savedFleetConfigSnapshot) this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
@@ -14625,7 +14654,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...(input.instance !== undefined ? { target: { adapterId: this.getInstanceAdapterId(input.instance) } } : {}),
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
       authorization: input.session ? this.sessionAuthorizationStore()?.get(input.session.handle) ?? null : null,
-      policy: { ...webAuthorityPolicy(this.fleetConfig?.web), enabled: state.enabled, loopbackOnly: state.loopbackOnly }, epoch: state.epoch, now: Date.now(),
+      policy: { ...webAuthorityPolicy(this.fleetConfig?.web), enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink }, epoch: state.epoch, now: Date.now(),
     });
   }
 
@@ -14650,7 +14679,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       session, gateway, peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
       authorization: { handle: session.handle, owner: session.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch },
-      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly }, epoch: state.epoch, now,
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink }, epoch: state.epoch, now,
     });
     if (check.refusal) return { ok: false, refusal: check.refusal };
     const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
@@ -14664,10 +14693,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * it is now (a change since last seen moves the epoch first; authority-state.ts). No data directory: off.
    */
   webAuthorityState(): AuthorityState {
-    if (!this.dataDir) return { enabled: false, loopbackOnly: true, epoch: 0 };
+    if (!this.dataDir) return { enabled: false, loopbackOnly: true, namedLink: false, epoch: 0 };
     this.authorityStateStore ??= new AuthorityStateStore(join(this.dataDir, "web-authority.json"), this.logger, undefined, undefined,
       () => { this.ensureDeliveryOutbox?.(); return this.deliveryOutbox?.maxWebAuthorityEpoch() ?? 0; });
-    return this.authorityStateStore.current(this.fleetConfig?.web?.verified_authority);
+    const state = this.authorityStateStore.current(this.fleetConfig?.web?.verified_authority);
+    // #2453 (§0.2): the named-link option seen going off — the authority of every session over the link ends now, for
+    // good: their authorizations go (a later "on" can never bring one back without its account's Confirm).
+    if (state.namedLinkClosed) this.sessionAuthorizationStore()?.prune(a => this.webSessions?.findByHandle(a.handle)?.surface === "local");
+    return state;
+  }
+
+  /**
+   * #2453 review: the web-authority state read on every configuration change (a Settings save, the host's confirm, a
+   * reload) — so a switch turned off and on again between two requests is still seen off: its epoch moves, and the
+   * named-link sessions' authorizations are dropped. Reads that only happen on a request would miss it.
+   */
+  private observeWebAuthority(): void {
+    // Only once the state is in use: any authorization was given through a read that made it (and a first read at
+    // start-up still sees what changed while the fleet was down). Nothing new is opened during a load.
+    try { if (this.dataDir && this.authorityStateStore) this.webAuthorityState(); }
+    catch (err) { this.logger.warn({ err: (err as Error)?.message }, "Web authority state could not be read after a configuration change"); }
   }
 
   /**
@@ -14677,7 +14722,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   webAuthorityOverview(): {
     state: AuthorityState; configured: WebVerifiedAuthorityConfig; hours: typeof VERIFIED_SESSION_HOURS; lanHosts: string[];
-    authorized: Array<{ handle: string; label: string; account: string; authorizedAt: number; until: number }>;
+    authorized: Array<{ handle: string; label: string; account: string; authorizedAt: number; until: number; named?: true }>;
+    /** #2453 (§0.2): the admin's named-tunnel hostname, while one is configured (the named-link row shows only then). */
+    namedHost: string | null;
   } {
     const configured = this.fleetConfig?.web?.verified_authority ?? {};
     const lanHosts = (this.fleetConfig?.web?.allowed_hosts ?? []).filter(h => { const name = hostnameOf(String(h)); return name !== null && !LOOPBACK_HOST_NAMES.includes(name); });
@@ -14686,8 +14733,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const authorized = state.enabled ? (this.sessionAuthorizationStore()?.list() ?? [])
       .filter(a => a.epoch === state.epoch && sessions.has(a.handle) && now <= Math.min(a.until, a.authorizedAt + maxMs))
       .map(a => ({ handle: a.handle, label: sessions.get(a.handle)!.label, account: `${a.owner.adapterId}:${a.owner.userId}`, authorizedAt: a.authorizedAt,
-        until: Math.min(a.until, a.authorizedAt + maxMs, sessions.get(a.handle)!.absoluteExpiry) })) : [];
-    return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized };
+        until: Math.min(a.until, a.authorizedAt + maxMs, sessions.get(a.handle)!.absoluteExpiry),
+        ...(sessions.get(a.handle)!.surface === "gateway" ? { named: true as const } : {}) })) : [];
+    const host = this.fleetConfig?.web?.public_link?.hostname;
+    return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized, namedHost: typeof host === "string" && host ? host : null };
   }
 
   private authorizationRequests: SessionAuthorizationRequests | null = null;
@@ -14700,7 +14749,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const adapterOf = (adapterId: string): ChannelAdapter | undefined => this.adapters.get(adapterId) ?? this.worlds.get(adapterId)?.adapter;
     // The host's clock, with its zone: the person may read the DM on a phone in another one.
     const when = (ms: number) => new Date(ms).toLocaleString(undefined, { timeZoneName: "short" });
-    const where = (peer: WebPeer) => t(peer === "loopback" ? "web_auth.peer_loopback" : "web_auth.peer_lan");
+    const where = (peer: WebPeer) => peer === "named_link"
+      ? t("web_auth.peer_named_link", String(this.fleetConfig?.web?.public_link?.hostname ?? "?"))   // §0.2: the internet
+      : t(peer === "loopback" ? "web_auth.peer_loopback" : "web_auth.peer_lan");
     return this.authorizationRequests = new SessionAuthorizationRequests({
       now: () => performance.now(), wallNow: () => Date.now(),
       maxSessionMs: () => webAuthorityPolicy(this.fleetConfig?.web).maxSessionMs,
@@ -14726,7 +14777,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       authorize: (handle, peer) => {
         const record = this.webSessions?.findByHandle(handle);
         if (!record) return { ok: false, refusal: "session_gone" };
-        const r = this.authorizeWebSession(record, peer, false);
+        // §0.2: a named-link session is judged as the gateway request it is (its exposure still the current one).
+        const r = this.authorizeWebSession(record, peer, peer === "named_link");
         // What the card says: the end of the authorization, or the session's own end when that comes first.
         return r.ok ? { ok: true, until: Math.min(r.authorization.until, record.absoluteExpiry) } : { ok: false, refusal: r.refusal };
       },
@@ -14770,7 +14822,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       session: s, gateway: input.gateway, peer: input.peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
       authorization: s?.owner ? { handle: s.handle, owner: s.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch } : null,
-      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly }, epoch: state.epoch, now,
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink }, epoch: state.epoch, now,
     });
     return r.refusal;
   }
@@ -19990,7 +20042,26 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   private stopAllInFlight: Promise<void> | null = null;
 
+  /** Stops release memory. Reassess between batches without waiting for recovery. */
+  private async stopInstancesInBatches<T>(entries: readonly T[], stop: (entry: T) => Promise<unknown>): Promise<void> {
+    let index = 0;
+    while (index < entries.length) {
+      // Linux procfs can still be read after the periodic sampler is stopped.
+      // Do not revive a stopped Darwin probe/worker just to size a quit batch;
+      // its full shutdown uses the conservative batch size instead.
+      const level = this.memoryPressure.platform === "darwin"
+        ? this.shuttingDown ? "elevated" : this.memoryPressure.snapshot().level
+        : this.memoryPressure.sample().level;
+      const size = fleetStopConcurrency(entries.length, level);
+      const batch = entries.slice(index, index + size);
+      index += batch.length;
+      await Promise.allSettled(batch.map(stop));
+    }
+  }
+
   private async doStopAll(): Promise<void> {
+    this.startupMemoryDeadline?.stop();
+    this.startupMemoryDeadline = null;
     this.startupComplete = false;
     this.startupDashboard = null;
     this.reloadPending = false;
@@ -20117,19 +20188,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // tmux ops, while small fleets stay conservative to avoid overwhelming the
     // tmux server.
     const entries = [...this.daemons.entries()];
-    const STOP_CONCURRENCY = entries.length > 30 ? 15 : entries.length >= 10 ? 10 : 5;
     for (const [name] of entries) this.ipcStoppingInstances.add(name);
-    for (let i = 0; i < entries.length; i += STOP_CONCURRENCY) {
-      const batch = entries.slice(i, i + STOP_CONCURRENCY);
-      await Promise.all(batch.map(async ([name, daemon]) => {
-        try {
-          await daemon.stop();
-        } catch (err) {
-          this.logger.warn({ name, err }, "Stop failed");
-        }
-        this.daemons.delete(name);
-      }));
-    }
+    await this.stopInstancesInBatches(entries, async ([name, daemon]) => {
+      try {
+        await daemon.stop();
+      } catch (err) {
+        this.logger.warn({ name, err }, "Stop failed");
+      }
+      this.daemons.delete(name);
+    });
 
     // Close IPC clients in parallel — serial close over a large fleet adds
     // noticeable latency.
@@ -20346,6 +20413,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.rawFleetConfig = previousRawConfig;
       this.rawFleetDocument = previousRawDocument;
       this.savedFleetConfigSnapshot = previousSavedSnapshot;
+      this.observeWebAuthority();                    // #2453 review: the configuration back in force is the one seen
       this.logger.error({
         oldCount,
         newCount,
@@ -21836,9 +21904,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     this.instanceIpcClients.clear();
 
-    await Promise.allSettled(
-      instanceNames.map(name => this.stopInstance(name))
-    );
+    await this.stopInstancesInBatches(instanceNames, name => this.stopInstance(name));
 
     // Kill remaining orphan windows to prevent stale state on restart
     try {

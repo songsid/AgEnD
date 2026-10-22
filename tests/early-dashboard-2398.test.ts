@@ -1,9 +1,11 @@
 /** Real boot ordering and ephemeral HTTP, with every process/tmux/provider boundary inert. */
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request, type Server } from "node:http";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { runInNewContext } from "node:vm";
+import ts from "typescript";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls = vi.hoisted(() => ({ children: [] as string[], notify: [] as string[], readyStates: [] as unknown[], readyProbe: null as null | (() => unknown) }));
 vi.mock("node:child_process", async original => {
@@ -31,6 +33,10 @@ const { setUsageFetcherForTests } = await import("../src/usage/usage-api.js");
 
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return { promise, resolve }; }
 const fleets: Array<{ fm: any; dir: string; release: () => void; boot: Promise<void> }> = [];
+const savedSignals = new Map<NodeJS.Signals, Array<(...args: any[]) => void>>();
+beforeEach(() => {
+  for (const signal of ["SIGUSR1", "SIGUSR2"] as const) savedSignals.set(signal, process.listeners(signal));
+});
 afterEach(async () => {
   for (const f of fleets.splice(0)) {
     f.release(); await f.boot.catch(() => {});
@@ -39,6 +45,10 @@ afterEach(async () => {
     rmSync(f.dir, { recursive: true, force: true });
   }
   setUsageFetcherForTests(null);
+  for (const [signal, previous] of savedSignals) {
+    for (const listener of process.listeners(signal)) if (!previous.includes(listener)) process.removeListener(signal, listener);
+  }
+  savedSignals.clear();
   vi.restoreAllMocks(); vi.unstubAllEnvs();
   const unexpected = calls.children.splice(0); calls.notify.length = 0; calls.readyStates.length = 0; calls.readyProbe = null;
   expect(unexpected).toEqual([]);
@@ -140,7 +150,116 @@ function initializeVisitorWorld(fm: any, allowed = true) {
       max_pending_codes: 3, code_expiry_minutes: 5 }, join(fm.dataDir, "synthetic-access.json")) });
 }
 
+/** Execute only the real restart stop stage; orphan/tmux/start effects remain outside this boundary. */
+function restartStopStage(fm: any, instanceNames: string[]): Promise<void> {
+  const source = readFileSync(join(process.cwd(), "src/fleet-manager.ts"), "utf8");
+  const ast = ts.createSourceFile("fleet-manager.ts", source, ts.ScriptTarget.ES2022, true);
+  let method: ts.MethodDeclaration | undefined;
+  const visit = (node: ts.Node): void => {
+    if (ts.isMethodDeclaration(node) && node.name.getText(ast) === "restartInstances") method = node;
+    ts.forEachChild(node, visit);
+  };
+  visit(ast);
+  const statements = method!.body!.statements;
+  const begin = statements.findIndex(st => st.getText(ast) === "this.instanceIpcClients.clear();");
+  const end = statements.findIndex((st, i) => i > begin && ts.isTryStatement(st));
+  expect(begin).toBeGreaterThan(0); expect(end).toBeGreaterThan(begin + 1);
+  const body = statements.slice(begin + 1, end).map(st => st.getText(ast)).join("\n");
+  const script = ts.transpileModule(`(async function(){ ${body} }).call(fm)`,
+    { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+  return runInNewContext(script, { fm, instanceNames });
+}
+
 describe("dashboard before agents (#2398)", () => {
+  it("renews a real gate memory wait before General finishes and cleans up a failed startup (#2461)", async () => {
+    const { fm, boot, release } = await heldBoot();
+    const MiB = 1024 * 1024;
+    vi.spyOn(fm.memoryPressure, "read").mockReturnValue({ totalBytes: 16_000 * MiB,
+      availableBytes: 10 * MiB, availableKind: "available", swapTotalBytes: 0, swapFreeBytes: 0 });
+    const physical = vi.fn(async () => {});
+    const queued = fm.spawnGate.run({ instanceName: "queued", workingDirectory: "/synthetic-queued", reason: "startup" }, physical).catch(() => {});
+    try {
+      expect(calls.notify.some(state => state.startsWith("EXTEND_TIMEOUT_USEC=900000000\n"))).toBe(true);
+      expect(calls.notify).not.toContain("READY=1");
+      expect(physical).not.toHaveBeenCalled();
+      expect(fm.watchdogTimer).not.toBeNull();
+    } finally {
+      fm.spawnGate.shutdown(); release(); await queued; await boot.catch(() => {});
+    }
+    expect(fm.startupMemoryDeadline).toBeNull();
+    expect(fm.watchdogTimer).toBeNull();
+    expect(calls.notify).not.toContain("READY=1");
+  });
+
+  it("a late old startup neither declares READY nor retires the replacement's lease (#2461)", async () => {
+    const { fm, boot, release } = await heldBoot();
+    const next = deferred();
+    vi.spyOn(fm, "startAllWithinDeadline").mockImplementation(async () => { await next.promise; fm.startupComplete = true; });
+    const replacement = fm.startAll(fm.configPath);
+    const owner = fm.startupMemoryDeadline;
+    release(); await boot;
+    expect(calls.notify).not.toContain("READY=1");
+    expect(fm.startupMemoryDeadline).toBe(owner);
+    next.resolve(); await replacement;
+    expect(fm.startupMemoryDeadline).toBeNull();
+  });
+
+  it.each(["normal", "critical", "transition"].flatMap(mode => ["shutdown", "restart"].map(path => ({ mode, path }))))("bounds shared $path stop batches: $mode (#2461)", async ({ mode, path }) => {
+    const { fm, boot, release } = await heldBoot(); release(); await boot;
+    const barrier = deferred(), firstBatch = deferred(); let active = 0, peak = 0, stopped = 0, laterPeak = 0, later = false;
+    let level = mode === "critical" ? "critical" : "normal";
+    const firstLimit = level === "critical" ? 5 : 15;
+    fm.daemons.clear();
+    for (let i = 0; i < 40; i++) fm.daemons.set(`stop-${i}`, { stop: async () => {
+      peak = Math.max(peak, ++active); if (later) laterPeak = Math.max(laterPeak, active);
+      if (active === firstLimit) firstBatch.resolve();
+      await barrier.promise; active--; stopped++;
+    } });
+    vi.spyOn(fm.memoryPressure, "snapshot").mockImplementation(() => ({ level, memory: null,
+      sampledAt: null, recovering: false, samples: 0, trend: null }));
+    vi.spyOn(fm, "stopInstance").mockImplementation(async (name: unknown) => {
+      await fm.daemons.get(name).stop(); fm.daemons.delete(name);
+    });
+    const stopping = path === "shutdown" ? fm.stopAll() : restartStopStage(fm, [...fm.daemons.keys()]);
+    await firstBatch.promise;
+    try { expect(active).toBe(firstLimit); }
+    finally { if (mode === "transition") level = "critical"; later = true; barrier.resolve(); await stopping; }
+    expect(peak).toBe(firstLimit); expect(stopped).toBe(40);
+    expect(laterPeak).toBe(mode === "normal" ? 15 : 5);
+  });
+
+  it("resamples Linux memory after awaited shutdown cleanup without restarting the sampler (#2461)", async () => {
+    const { fm, boot, release } = await heldBoot(); release(); await boot;
+    let available = 8_000, active = 0, peak = 0;
+    const MiB = 1024 * 1024;
+    vi.spyOn(fm.memoryPressure, "read").mockImplementation(() => ({ totalBytes: 16_000 * MiB,
+      availableBytes: available * MiB, availableKind: "available", swapTotalBytes: 0, swapFreeBytes: 0 }));
+    fm.memoryPressure.sample();
+    const cleanup = deferred(), entered = deferred(), stops = deferred(), first = deferred();
+    vi.spyOn(fm, "shutdownLoginWindows").mockImplementation(async () => { entered.resolve(); await cleanup.promise; });
+    fm.daemons.clear();
+    for (let i = 0; i < 40; i++) fm.daemons.set(`stop-${i}`, { stop: async () => {
+      peak = Math.max(peak, ++active); if (active === 5) first.resolve(); await stops.promise; active--;
+    } });
+    const stopping = fm.stopAll(); await entered.promise; available = 10; cleanup.resolve(); await first.promise;
+    try { expect(active).toBe(5); expect(fm.memoryPressure.timer).toBeNull(); }
+    finally { stops.resolve(); await stopping; }
+    expect(peak).toBe(5);
+  });
+
+  it.each([true, false])("uses stopped-Darwin safe batching without reviving a probe: shutdown=%s", async shuttingDown => {
+    const { fm, boot, release } = await heldBoot(); release(); await boot;
+    Object.defineProperty(fm.memoryPressure, "platform", { value: "darwin" });
+    fm.shuttingDown = shuttingDown;
+    vi.spyOn(fm.memoryPressure, "snapshot").mockReturnValue({ level: "normal" });
+    const sample = vi.spyOn(fm.memoryPressure, "sample").mockImplementation(() => { throw Error("no new native probes to size stop batches"); });
+    let active = 0, peak = 0;
+    await expect(fm.stopInstancesInBatches(Array.from({ length: 40 }, (_, i) => i), async () => {
+      peak = Math.max(peak, ++active); await Promise.resolve(); active--;
+    })).resolves.toBeUndefined();
+    expect(peak).toBe(shuttingDown ? 5 : 15); expect(sample).not.toHaveBeenCalled();
+  });
+
   it("waits for listener admission before entering the first instance", async () => {
     const { fm, boot, release, releaseListen, generalEntered } = await heldBoot(true);
     expect(fm.healthServer.listening).toBe(true);
@@ -154,6 +273,7 @@ describe("dashboard before agents (#2398)", () => {
 
   it("binds before the held General, serves early reads, and keeps READY last", async () => {
     const { fm, boot, releaseGeneral, workerEntered, releaseWorker } = await heldBoot();
+    expect(fm.watchdogTimer).not.toBeNull(); // A held first General must not postpone liveness monitoring (#2461).
     expect(fm.healthServer, "listener must exist before General startup").not.toBeNull();
     expect(fm.healthServer.listening).toBe(true);
     expect(calls.notify).not.toContain("READY=1");
