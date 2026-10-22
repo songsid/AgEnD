@@ -6,7 +6,7 @@
  * terminal's minutes are checked here (the loader clamps an out-of-range value to 1..20, so the validator never sees
  * one — Settings must not write one).
  */
-import { validPublicLinkPatch } from "./public-web-link.js";
+import { publicLinkPatchShape } from "./public-web-link.js";
 import type { WebConfig, WebGuestsConfig, WebVerifiedAuthorityConfig } from "./types.js";
 
 export const WEB_TERMINAL_TTL_MINUTES = { min: 1, max: 20 } as const;
@@ -36,7 +36,9 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   if (patch.echo_to_channel !== undefined && typeof patch.echo_to_channel !== "boolean") return { error: "echo_to_channel must be a boolean" };
   if (patch.log_tab !== undefined && typeof patch.log_tab !== "boolean") return { error: "log_tab must be a boolean" };
   if (patch.usage_report_on_public_link !== undefined && typeof patch.usage_report_on_public_link !== "boolean") return { error: "usage_report_on_public_link must be a boolean" };
-  if (patch.public_link !== undefined && !validPublicLinkPatch(patch.public_link)) return { error: "invalid public_link settings" };
+  // Its shape only: whether the merged result fits its mode (a quick tunnel's 1..480, auto_open only with a hostname) is
+  // the validator's, run on the whole result by the gate's projection and by the handler.
+  if (patch.public_link !== undefined && !publicLinkPatchShape(patch.public_link)) return { error: "invalid public_link settings" };
   if (patch.experimental !== undefined && (!patch.experimental || typeof patch.experimental !== "object" || Array.isArray(patch.experimental)
     || Object.keys(patch.experimental).some(k => k !== "canvas_worker") || typeof (patch.experimental as Record<string, unknown>).canvas_worker !== "boolean")) return { error: "experimental must be { canvas_worker: boolean }" };
   const session = webSessionPatch(patch.session);

@@ -75,6 +75,11 @@ export interface UsageMetric {
   expiresAt?: string | null;
   windowMs?: number | null;
   /**
+   * #2240: the quota this metric is one window of, when a provider has several (agy: Gemini, Claude & others, Gemini 4
+   * Argon, each with its session and weekly limit). The compact view shows a line per pool. Absent: the account's own.
+   */
+  pool?: { label: string; labelI18n?: UsageI18nRef };
+  /**
    * On a row showing its last known numbers (`stale`): this metric's window has reset since they were read, so its
    * number (`used`, `value`) is dropped — it was for a window that has ended. Shown as "reset since <resetsAt>".
    */
@@ -730,6 +735,8 @@ function agyBucketId(b: AgyBucket): string | undefined {
 }
 
 type AgyWindow = "session" | "weekly";
+/** agy's limits: a five-hour session and a week (the buckets' own `window`: "5h", "weekly"). */
+const AGY_WINDOW_MS: Record<AgyWindow, number> = { session: 5 * 3_600_000, weekly: 7 * 24 * 3_600_000 };
 const AGY_POOLED: Record<string, { pool: string; window: AgyWindow }> = {
   "gemini-5h": { pool: "Gemini", window: "session" },
   "gemini-weekly": { pool: "Gemini", window: "weekly" },
@@ -848,8 +855,10 @@ export function agyPoolMetrics(buckets: AgyBucket[]): UsageMetric[] {
     .filter(e => e.window || !limited.has(e.pool))
     .sort((a, b) => pools.indexOf(a.pool) - pools.indexOf(b.pool) || order(a.window) - order(b.window))
     .map(e => {
-      const label = agyLabel(e.pool, e.window);
-      const metric: UsageMetric = { label: label.text, labelI18n: label.i18n, type: "percent", used: (1 - e.fraction) * 100, resetsAt: e.resetsAt };
+      const label = agyLabel(e.pool, e.window), pool = agyLabel(e.pool, null);
+      const metric: UsageMetric = { label: label.text, labelI18n: label.i18n, type: "percent", used: (1 - e.fraction) * 100, resetsAt: e.resetsAt,
+        // #2240: its window's length and its pool — the compact view shows a line per pool (Argon among them).
+        ...(e.window ? { windowMs: AGY_WINDOW_MS[e.window] } : {}), pool: { label: pool.text, labelI18n: pool.i18n } };
       // Which number this is: the highest usage across the pool's models. Without
       // it a flat 0% right after a weekly rollover is indistinguishable from a
       // broken reading — which is exactly how it was reported.

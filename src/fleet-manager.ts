@@ -13,7 +13,9 @@ import { handleWebIconRequest, useAppIconStore } from "./web-icons.js";
 import { AppIconStore } from "./web-app-icon.js";
 import { trackWebServer, type WebServerDrain } from "./web-server-drain.js";
 import { renderPublicLinkProgress, ThrottledMessageEditor, type PublicLinkProgress } from "./public-link-progress.js";
-import { PublicWebLink, publicLinkSettings } from "./public-web-link.js";
+import { PublicWebLink, publicLinkNamedHostname, publicLinkSettings } from "./public-web-link.js";
+import { PublicLinkAutoOpen } from "./public-link-auto-open.js";
+import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from "./public-link-owner.js";
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
@@ -6255,7 +6257,54 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
     });
   }
-  getPublicWebStatus(): { state: string; expiresAt?: number; remainingSeconds?: number } {
+  private publicLinkAutoOpen: PublicLinkAutoOpen | null = null;
+  /**
+   * #named-link-ttl: the admin who last opened a named-tunnel link from /web, with the live binding — only while they
+   * still may own one (publicOwnerCurrent: a fleet admin of a live bot, the same General). Else null.
+   */
+  private rememberedPublicOwner(): LoginCodeOwner | null {
+    const saved = readPublicLinkOwner(this.dataDir);
+    if (!saved) return null;
+    const owner: LoginCodeOwner = { ...saved, binding: this.adapters.get(saved.adapterId) };
+    return this.publicOwnerCurrent(owner) ? owner : null;
+  }
+  /** A named-tunnel link was privately delivered: auto_open reopens it for this owner after a restart. */
+  private rememberPublicLinkOwner(owner: LoginCodeOwner): void {
+    if (!publicLinkNamedHostname(this.fleetConfig?.web)) return;
+    try { writePublicLinkOwner(this.dataDir, owner); }
+    catch (err) { this.logger.warn({ err: (err as Error)?.message }, "Could not remember the public link's owner; auto_open will not reopen it"); }
+  }
+  /** Closed on purpose (Close, /web revoke): a restart must not reopen it. The next /web remembers again. */
+  private forgetPublicLinkOwner(): void {
+    try { clearPublicLinkOwner(this.dataDir); }
+    catch (err) { this.logger.warn({ err: (err as Error)?.message }, "Could not forget the public link's owner"); }
+  }
+  /**
+   * #named-link-ttl: `web.public_link.auto_open` — once per start, after the web listener and the chat connections are
+   * up. Opens the named link with nothing posted (sign-in still needs a code from /web or a returning device); a final
+   * failure goes to its owner once, by DM, drawn as a failed /web is.
+   */
+  private startPublicLinkAutoOpen(): void {
+    this.publicLinkAutoOpen?.stop();
+    const runner: PublicLinkAutoOpen = this.publicLinkAutoOpen = new PublicLinkAutoOpen({
+      web: () => this.fleetConfig?.web,
+      ready: (): boolean => !this.shuttingDown && this.healthServerListening && this.publicLinkAutoOpen === runner,
+      owner: () => this.rememberedPublicOwner(),
+      open: (owner, onProgress) => this.getPublicWebLink().openUnattended(owner, onProgress),
+      notifyFailed: async (owner, last) => {
+        const adapter = owner.binding as ChannelAdapter | undefined;
+        if (this.shuttingDown || !adapter?.sendDirect || !this.publicOwnerCurrent(owner)) return;
+        const outcome = t("dashboard.public_auto_failed");
+        try {
+          await withinBudget(adapter.sendDirect(owner.userId, last ? renderPublicLinkProgress(last, performance.now(), outcome) : outcome, { disablePreview: true }),
+            performance.now() + 5_000);
+        } catch (err) { this.logDashboardDmFailure(err); }
+      },
+      log: (event, fields) => this.logger.info({ event, ...fields }, "Public web link"),
+    });
+    runner.start();
+  }
+  getPublicWebStatus(): { state: string; expiresAt?: number; remainingSeconds?: number; noExpiry?: true } {
     return this.publicWebLink?.status() ?? { state: "closed" };
   }
   async confirmPublicWebLogin(info: { label: string; handle: string; owner: LoginCodeOwner }, current: () => boolean): Promise<void> {
@@ -6414,8 +6463,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Show the action before any link exists. TG's Start instructions belong to confirmed DM refusal below.
     const menuText = this.topicCommands.getDashboardMenuText()
       + (publicAllowed ? "\n" + t("dashboard.public_risk") : "")
-      + (status.state !== "closed" ? "\n" + t("dashboard.public_status", status.state, status.remainingSeconds ?? 0)
-        + (status.expiresAt ? t("dashboard.public_until", formatFleetTime(status.expiresAt)) : "") : "");
+      + (status.state === "closed" ? "" : status.noExpiry ? "\n" + t("dashboard.public_status_no_expiry", status.state)
+        : "\n" + t("dashboard.public_status", status.state, status.remainingSeconds ?? 0)
+        + (status.expiresAt ? t("dashboard.public_until", formatFleetTime(status.expiresAt)) : ""));
     const choices = [{ action: "local", label: t("dashboard.local_signin") },
       ...(publicLinkSettings(this.fleetConfig?.web).allowed ? [{ action: "public", label: t("dashboard.public_open") }] : []),
       ...(status.state !== "closed" ? [{ action: "close", label: t("dashboard.public_close") }] : [])];
@@ -6455,6 +6505,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (action === "confirm") {
       if (!entry.publicExposureId) return true;
       const result = await this.publicWebLink?.close("admin close", entry.publicExposureId);
+      this.forgetPublicLinkOwner();
       if (result?.confirmed === false) data.ack?.(t("dashboard.public_cleanup"));
       await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("dashboard.public_closed"), data.editClicked); return true;
     }
@@ -6477,15 +6528,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let deliveredByDm = false;
     // #1742: a DM was tried and did not go — only then is "open the private chat" the way out.
     let dmRefused = false;
-    const send = async (url: string, exposureId?: string, expiresAt?: number, current: () => boolean = () => this.publicOwnerCurrent(owner)): Promise<boolean> => {
+    const send = async (url: string, exposureId?: string, expiresAt?: number | null, current: () => boolean = () => this.publicOwnerCurrent(owner)): Promise<boolean> => {
       const token = this.webToken;
       if (!token || !current()) return false;
       this.initializeWebSessions();
       const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: exposureId, owner });
-      // Only a public link has a link expiry; the code's five-minute lifetime applies to either packet.
+      // Only a public link has a link expiry (null: none — a named tunnel's ttl_minutes 0); the code's five-minute
+      // lifetime applies to either packet.
       const minutes = Math.round(LOGIN_CODE_TTL_MS / 60_000);
       const text = expiresAt !== undefined
-        ? t("dashboard.private_public", url, issued.display, minutes, formatFleetTime(expiresAt))
+        ? t("dashboard.private_public", url, issued.display, minutes, expiresAt === null ? t("dashboard.public_no_expiry") : formatFleetTime(expiresAt))
         : t("dashboard.private_local", url, issued.display, minutes);
       const deadline = performance.now() + 10_000;
       const direct = owner.binding as ChannelAdapter;
@@ -6539,6 +6591,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Still closes the step editor below and tells the clicker: a throw must not leave the menu refreshing.
       this.logger.warn({ err }, "Dashboard sign-in delivery failed");
     }
+    if (ok && action === "public") this.rememberPublicLinkOwner(owner);
     // Only safe, static words enter General; never link, code or platform error text.
     // #1742: Telegram's failure walks through opening the DM (never a bare /start, which starts a ClassicBot agent),
     // with the "先開私訊 →" button when the bot's username is known; and for a while a bare /start there counts as
@@ -6564,6 +6617,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   revokeWebSessions(): { count: number; durable: boolean } {
     this.initializeWebSessions();
     void this.publicWebLink?.close("dashboard revoke");
+    this.forgetPublicLinkOwner();
     this.webLoginCodes!.revoke();
     this.webGuestLoginCodes!.revokeAll();
     this.guestRevokes++;                              // and every guest /web still on its way
@@ -7839,6 +7893,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       // After "fleet ready", so the notice is not the first thing people see of a restart.
       void this.announceWebChatOnce(agendVersion);
+      // #named-link-ttl: a named link with auto_open comes back now — after the web listener and the chat connections.
+      this.startPublicLinkAutoOpen();
     }
 
     // #1266: buttons that ended while AgEnD was down (expired, or chosen before a restart) are shown as ended now.
@@ -19926,6 +19982,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.settingsGeneration++; this.settingsConfirmation?.store.close(); this.settingsConfirmation = null;
     const settingsControl = this.settingsControl; this.settingsControl = null;
     const settingsControlStopped = settingsControl?.close();
+    this.publicLinkAutoOpen?.stop();
     const publicStopped = this.publicWebLink?.close("fleet shutdown");
     // #1386: every live "Needs you" message says the fleet stopped (capabilities revoked first) — while the
     // adapters can still edit. Bounded: a platform that does not answer must not hold the shutdown.

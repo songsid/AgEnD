@@ -362,8 +362,12 @@ export interface FleetTemplate {
 export interface WebConfig {
   /** Canvas Worker effects are experimental and off unless explicitly enabled. Ambient effects are independent. */
   experimental?: { canvas_worker?: boolean };
-  /** Only menu availability; every exposure requires explicit admin consent. */
-  public_link?: { allow_public?: boolean; ttl_minutes?: number; protocol?: "http2" | "quic" | "auto"; hostname?: string; tunnel_token_env?: string; origin_port?: number };
+  /**
+   * Only menu availability; every exposure requires explicit admin consent. `ttl_minutes`: 1..480 for a quick tunnel;
+   * with a fixed `hostname` (named tunnel) 1..10080, or 0 = no expiry. `auto_open` (named only, default false): reopen
+   * the link after the fleet starts, for the admin who last opened it — no sign-in code is sent by that.
+   */
+  public_link?: { allow_public?: boolean; ttl_minutes?: number; protocol?: "http2" | "quic" | "auto"; hostname?: string; tunnel_token_env?: string; origin_port?: number; auto_open?: boolean };
   /** Echo web chat to the owning fleet topic (default true); never ClassicBot rooms. */
   echo_to_channel?: boolean;
   /** Show the AI subscription usage panel on /view and serve /api/ai-usage (default true). */
