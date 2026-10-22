@@ -7,7 +7,7 @@ This page is what to do, in order. For the full list of changes, see the [CHANGE
 ## 1. Before you upgrade
 
 **Node.**
-- On **Linux (glibc 2.28 or newer) and macOS 11 or newer, x64 or arm64**, AgEnD 2.2 brings its own Node 22.23.3 (`@songsid/agend-node-<os>-<cpu>`, installed with it) and runs on that, whatever Node is on your PATH. You do not need to upgrade Node yourself.
+- On **Linux (glibc 2.28 or newer) and macOS 11 or newer, x64 or arm64**, AgEnD 2.2 and later include a private Node (`@songsid/agend-node-<os>-<cpu>`, installed with AgEnD) and use it regardless of the Node on your PATH. The current development pin is **22.23.4**; published releases keep their own pin. You do not need to upgrade Node yourself.
 - **Anywhere else** (32-bit, other systems), AgEnD 2.2 needs Node **22.14 or newer** (or 23.6+, or 24+) on your PATH, and refuses to install on an older one.
 
 **Not supported: musl Linux such as Alpine, and Linux hosts without systemd.** AgEnD may still install there (on a PATH Node 22.14+), but it is not tested and not promised to work.
