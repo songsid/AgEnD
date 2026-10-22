@@ -2,7 +2,7 @@
  * #1620 part 2: Settings → Web, as rendered (the panel in the mini DOM, a fake fetch for the server). The session
  * limits and the browser terminal are edited and staged as ONE PUT /api/settings/fleet/web with only what changed
  * (empty = the default: null, the key leaves fleet.yaml); the form refuses what the server would; the rest of the web
- * settings are listed read-only; over the temporary public link nothing can be edited. The web chat card moved here
+ * settings are listed read-only; over the temporary public link these are not edited (the server refuses Web writes). The web chat card moved here
  * from General.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -165,10 +165,12 @@ describe("Settings → Web, as rendered", () => {
     expect(p.root.querySelectorAll(".s-web-ro input, .s-web-ro select, .s-web-ro textarea").length).toBe(0);
   });
 
-  it("over the temporary public link: the form is disabled and says why; nothing can be staged", async () => {
+  it("over the temporary public link: the web form is disabled and says why (the server refuses Web writes there); nothing can be staged", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     const w = await open();
-    expect([p.root.querySelector(".s-web-fields").hasAttribute("disabled"), !!w.$("webPublicRefused"), !!p.root.querySelector(".s-readonly")]).toEqual([true, true, true]);
+    // The user's decision (2026-10-22): an admin may change the fleet's settings over the link — but not these, which the
+    // server keeps refusing there; so no general "read-only" note either.
+    expect([p.root.querySelector(".s-web-fields").hasAttribute("disabled"), !!w.$("webPublicRefused"), !!p.root.querySelector(".s-readonly")]).toEqual([true, true, false]);
     await w.type(w.$("webSessionAbsolute"), "6");
     await w.review(); await w.apply();
     expect([p.root.querySelector("[role=region]"), w.webWrites()]).toEqual([null, []]);   // #2347: no Save bar over the link

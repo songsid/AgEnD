@@ -46,7 +46,7 @@ import { startTour } from "./chat-tour.js";
 import "./chat-strings.js";
 import { AppearanceSection } from "./settings-appearance.js";
 import { GuestsCard } from "./settings-guests.js";
-import { fleetReadOnly, syncStage, useDraft } from "./settings-draft.js";
+import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
 import { SignInList } from "./backend-signin.js";
 
@@ -127,7 +127,6 @@ export function SettingsPanel({ route, navKey }) {
   const [draftEpoch, setDraftEpoch] = useState(0);
   // A staged change's onResult hears how its Save settled: "applied", "waiting" (for a fleet admin's OK) or "failed".
   const results = useRef(new Map());
-  const readOnly = fleetReadOnly();
   // The drafts as they were when a Save began. #2367 review: the form stays editable while it runs, so a Save that went
   // through drops only the drafts it saved — one edited since (in any section) stays, and stays staged.
   const submitted = useRef(null);
@@ -296,7 +295,6 @@ export function SettingsPanel({ route, navKey }) {
   const applying = useRef(false);
   const apply = async () => {
     if (applying.current || operationActive() || !staged.size) return;
-    if (readOnly && [...stagedRef.current.values()].some((c) => !c.local)) return;
     if ([...stagedRef.current.values()].some((c) => c.invalid)) return;    // #2347: Save waits for every field to be valid
     // Every confirmation before the first write: a cancelled one must not leave earlier changes applied and later
     // ones pending (a surprising partial apply).
@@ -335,7 +333,7 @@ export function SettingsPanel({ route, navKey }) {
   // #2347: sections read `staged` (each change as staged, its extra fields kept: Guests carries its whole draft) and
   // `drafts` to come back to their edits; `draftEpoch` moves on Discard and after a Save to start them from what is saved.
   const ctx = data && !data.error ? makeCtx(data, setData, stage, unstage, reload, reloadLive, () => mount.current(),
-    { drafts: drafts.current, draftEpoch, readOnly, staged, savingDrafts: () => submitted.current,
+    { drafts: drafts.current, draftEpoch, staged, savingDrafts: () => submitted.current,
       savingStaged: () => (submitted.current || operationActive() ? submittedStaged.current : null) }) : null;
   // #1519 P7: "Connect a chat app" on the first-run card elsewhere came here for the wizard: it opens once the data is in.
   useEffect(() => { if (ctx && takeWizardRequest()) setDialog({ kind: "wizard", key: navKey }); }, [!!ctx, navKey]);
@@ -450,13 +448,12 @@ export function SettingsPanel({ route, navKey }) {
     <div data-trust="panel-content" class="panel-body"><div class="col">
       ${searchable ? html`<div class="s-toolbar"><label class="s-search"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("searchAll")}</span>
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}
-      ${readOnly && section !== "preferences" && section !== "look" ? html`<p class="note s-readonly" role="status">${tn("fleetReadOnlyPublic")}</p>` : null}
       ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} />` : null}
       <${PendingChanges} inline=${true} />
       ${ctx && (section === "agents" || section === "chat") ? html`<${FirstRunCard} onConnect=${() => setDialog({ kind: "wizard", key: navKey })} />` : null}
       ${sectionBody}
     </div></div>
-    ${staged.size && (!readOnly || [...staged.values()].every((c) => c.local)) ? html`<${PendingBar} staged=${staged} busy=${opBusy(op)} onApply=${apply} onDiscard=${discard} section=${section} />` : null}
+    ${staged.size ? html`<${PendingBar} staged=${staged} busy=${opBusy(op)} onApply=${apply} onDiscard=${discard} section=${section} />` : null}
     ${open && ctx ? renderDialog(open, ctx, close) : null}
     ${open && open.kind === "help" ? html`<${HelpDialog} onClose=${close} />` : null}
   </div>`;
@@ -964,7 +961,6 @@ function General({ ctx, part = "all" }) {
   const firstError = Object.values(errors).find(Boolean);
   // #2347: every edit, staged as it is made (the first render included: a draft kept from before is staged again).
   useEffect(() => {
-    if (ctx.readOnly) return;
     if (!ready) {
       // Where it is (#2382 review): the bar in another section names it and goes there.
       const at = { auto: "#g-auto", hang: "#g-hang", concurrency: "#g-conc", stagger: "#g-stag" }[Object.keys(errors).find((k) => errors[k])];
@@ -1264,11 +1260,11 @@ function Developer({ ctx }) {
     <div class="s-dev-bar">
       <div class="seg-inline" role="group" aria-label=${tn("format")}>
         ${["yaml", "json"].map((k) => html`<button key=${k} type="button" class=${`btn btn-sm${fmt === k ? " on" : ""}`} aria-pressed=${fmt === k ? "true" : "false"} onClick=${() => setFmt(k)}>${k.toUpperCase()}</button>`)}</div>
-      ${ctx.readOnly ? null : html`<button type="button" class="btn btn-sm" onClick=${() => setEditing(!editing)}>${editing ? tn("viewMode") : tn("editMode")}</button>`}
+      <button type="button" class="btn btn-sm" onClick=${() => setEditing(!editing)}>${editing ? tn("viewMode") : tn("editMode")}</button>
       <button type="button" class="btn btn-sm" title=${tn("copy")} onClick=${copy}><${Icon} name="copy" size=${14} /><span class="lbl">${tn("copy")}</span></button>
       <button type="button" class="btn btn-sm" title=${tn("devDownload")} onClick=${download}><${Icon} name="download" size=${14} /><span class="lbl">${tn("devDownload")}</span></button>
     </div>
-    ${editing && !ctx.readOnly ? html`<textarea class="s-yaml" aria-label=${tn("devEditor")} spellcheck=${false} wrap="off" value=${draft} onInput=${(e) => setDraft(e.target.value)}></textarea>
+    ${editing ? html`<textarea class="s-yaml" aria-label=${tn("devEditor")} spellcheck=${false} wrap="off" value=${draft} onInput=${(e) => setDraft(e.target.value)}></textarea>
         <div class="save-row"><button type="button" class="btn btn-primary" onClick=${save}>${tn("devApply")}</button><span class="note">${tn("devApplyHint")}</span></div>`
       : html`<pre class="s-yaml">${text}</pre>`}
     ${msg ? html`<p class=${`feedback${msg.error ? " error" : ""}`} role="status">${msg.error || msg.text}</p>` : null}

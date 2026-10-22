@@ -303,50 +303,46 @@ describe("#2347: one save model — an edit is unsaved at once, the bar's Save w
     expect([...after, writes().filter((r) => r.url === "/api/settings/fleet/defaults")[1].body])
       .toEqual(["0", { auto_pause_after: 1 }, "0", "field s-dirty", true, { auto_pause_after: 0 }]);
   });
-  it("#2367 r2: over the public link the older /ui routes that change fleet.yaml are refused too; operations stay", async () => {
+  // The user's decision (2026-10-22): an admin signed in over the temporary public link may change the fleet's settings
+  // — the page keeps no policy of its own there; the server judges each write (it refuses Web, Guests and Web authority).
+  it("over the public link the page refuses no write itself: New agent, Fleet's config, a delete, a fleet write all reach the server", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     try {
-      const refused = [];
-      for (const [url, method] of [["/ui/instances", "POST"], ["/ui/config", "POST"], ["/ui/instances/alpha/delete", "POST"]] as const) {
-        refused.push((await confirmMod.api(url, { method, body: "{}" })).status);
+      for (const [url, method] of [["/ui/instances", "POST"], ["/ui/config", "POST"], ["/ui/instances/alpha/delete", "POST"], ["/api/settings/fleet/channels", "PUT"]] as const) {
+        await confirmMod.api(url, { method, body: "{}" });
       }
-      await confirmMod.api("/api/settings/instances/alpha/pause", { method: "POST" });
-      await confirmMod.api("/ui/stop/alpha", { method: "POST" });
-      await confirmMod.api("/api/settings/status-emojis/preview", { method: "POST", body: "{}" });
-      expect([refused, writes().map((r) => r.url)])
-        .toEqual([[403, 403, 403], ["/api/settings/instances/alpha/pause", "/ui/stop/alpha", "/api/settings/status-emojis/preview"]]);
+      expect(writes().map((r) => r.url)).toEqual(["/ui/instances", "/ui/config", "/ui/instances/alpha/delete", "/api/settings/fleet/channels"]);
     } finally { p.document.body.removeAttribute("data-public-link"); }
   });
-  it("#2367 review: over the public link Advanced offers no JSON edit, and no other control writes (startOperation, api)", async () => {
+  it("over the public link Advanced offers the JSON edit, and a fleet change made there is handed to the runner", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     try {
       await mount("advanced", "settings:advanced|1|en"); await settle(6);
-      const edit = btn(p.root, "Edit");
       const handed = apply.startOperation([{ label: "x", impact: "fleet", request: { method: "PUT", url: "/api/settings/fleet/defaults", body: { model: "m" } } }]);
-      const direct = await confirmMod.api("/api/settings/fleet/channels", { method: "PUT", body: "[]" });
-      const reads = await confirmMod.api("/api/settings/schema");
-      expect([edit, handed, direct.status, direct.body.error, reads.ok, writes()])
-        .toEqual([undefined, false, 403, "Fleet settings can't be changed over a temporary public link.", true, []]);
+      await vi.waitFor(() => expect(writes().some((r) => r.url === "/api/settings/fleet/defaults")).toBe(true));
+      expect([!!btn(p.root, "Edit"), handed, !!p.root.querySelector(".s-readonly")]).toEqual([true, true, false]);
     } finally { p.document.body.removeAttribute("data-public-link"); }
   });
   it("#2367 review control: on the dashboard itself Advanced's JSON edit is there and saves", async () => {
     await mount("advanced", "settings:advanced|1|en"); await settle(6);
     expect(!!btn(p.root, "Edit")).toBe(true);
   });
-  it("over the temporary public link: no Save bar, a note says why, and nothing is written (one switch: FLEET_READ_ONLY_OVER_PUBLIC_LINK)", async () => {
+  it("over the temporary public link an admin changes Agent defaults as anywhere: the bar offers Save, and Save writes it", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     try {
       await general();
       await pick("#g-ll", "warn");
-      expect([!!bar(), !!p.root.querySelector(".s-readonly"), writes()]).toEqual([false, true, []]);
+      const shown = [!!bar(), !!p.root.querySelector(".s-readonly"), writes()];
+      save().click(); await settle(10);
+      expect([shown, writes().filter((r) => r.url === "/api/settings/fleet/defaults").map((r) => r.body)]).toEqual([[true, false, []], [{ log_level: "warn" }]]);
     } finally { p.document.body.removeAttribute("data-public-link"); }
   });
-  it("over the public link a dialog's Done stages nothing that could be saved: no bar", async () => {
+  it("over the public link an agent's dialog Done stages its change and the bar offers Save", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     try {
       await mount(); await settle(6);
       await stageDescription("alpha", "A2");
-      expect([!!bar(), !!p.root.querySelector(".s-readonly"), writes()]).toEqual([false, true, []]);
+      expect([!!bar(), !!p.root.querySelector(".s-readonly"), writes()]).toEqual([true, false, []]);
     } finally { p.document.body.removeAttribute("data-public-link"); }
   });
   it("the edited-field marker is the shared straight bar (.lbar's rule), never a border", async () => {

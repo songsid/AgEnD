@@ -4,10 +4,6 @@
 import { useEffect, useMemo, useState } from "/assets/app-html.js";
 import { sameValue } from "./settings-model.js";
 
-// #2347: over the temporary public link the Fleet sections are read-only (the switch lives with the app store: the
-// shell's restart banner follows it too).
-export { FLEET_READ_ONLY_OVER_PUBLIC_LINK, fleetReadOnly, overPublicLink } from "/assets/app-store.js";
-
 /** The fields of `form` that differ from `saved` (a draft is only what was edited). */
 export function editsOf(form, saved) {
   const out = {};
