@@ -98,6 +98,7 @@ export const CODE_REQUEST_REFUSED_MESSAGE = "A new code could not be sent. Ask f
 const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "agend-auth.js": { file: join("shared", "agend-auth.js"), type: "text/javascript; charset=utf-8" },
   "signin.js": { file: join("shared", "signin.js"), type: "text/javascript; charset=utf-8" },
+  "guest-refused.js": { file: join("shared", "guest-refused.js"), type: "text/javascript; charset=utf-8" },
   "theme.js": { file: join("shared", "theme.js"), type: "text/javascript; charset=utf-8" },
   // #1408: the design tokens every panel shares, and the font they name (Inter, SIL OFL 1.1: shared/fonts/OFL.txt).
   "tokens.css": { file: join("shared", "tokens.css"), type: "text/css; charset=utf-8" },
@@ -190,6 +191,19 @@ export function serveSigninPage(res: ServerResponse, status = 200): void {
     sendPanelHtml(res, withAppIconLinks(html), status, { "Cache-Control": "no-store" });
   } catch {
     json(res, 500, { error: "signin.html not found" });
+  }
+}
+
+/**
+ * What a guest's browser gets for a page it cannot open (#2399 smoke: the gate's bare JSON before): "members" for a page
+ * that is not a guest's, "ended" when no chat is shared with it any more. Its words are the browser's language.
+ */
+export function serveGuestRefusedPage(res: ServerResponse, status: number, why: "members" | "ended"): void {
+  try {
+    const html = readFileSync(join(__dirname, "ui", "guest-refused.html"), "utf-8").replace("__WHY__", why);
+    sendPanelHtml(res, withAppIconLinks(html), status, { "Cache-Control": "no-store" });
+  } catch {
+    json(res, status, { error: why === "ended" ? "guest_scope_empty" : "guest_forbidden" });
   }
 }
 

@@ -26,7 +26,7 @@
 // @property {(ctx, desk, look, ms, env) => void} drawCharacter   the occupant in its pose at time `ms` (0: still); in
 //   zones `desk` is the character's box at its current position (its feet at desk.seat)
 // @property {(ctx, prop, ms, env) => void} drawProp      a traffic item in the air: { kind, hue, x, y, t }
-// @property {(ctx, x, y, text, env) => void} drawBubble  a speech bubble whose tail points at (x, y)
+// @property {(ctx, x, y, text, env, lift?) => void} drawBubble  a speech bubble whose tail points at (x, y), its box `lift` px higher
 // The desks layout's back and front layers change only when the fleet does: the renderer keeps them as pictures and
 // draws the characters, props and bubbles each frame. In zones the background is kept; furniture, people (walking
 // along the pack's waypoints), tags, props and bubbles are drawn each frame, furniture by depth around the people.
@@ -242,13 +242,26 @@ function drawProp(ctx, it, ms, env) {
 export const FRAMES = { working: 4, idle: 4, paused: 3, needs: 2, walk: 2 };
 export const FPS = 4;
 
-/** A speech bubble, its tail at (x, y): short words on light paper in either theme. */
-function drawBubble(ctx, x, y, text, env) {
-  if (!text) return;
+const BUBBLE_FONT = "600 11px system-ui, sans-serif";
+/**
+ * The box a speech bubble with its tail at (x, y) takes for `text` (its tail excluded): what drawBubble draws, and what
+ * the Office places so no two overlap (#2431: two neighbours' bubbles covered each other on a phone).
+ */
+export function bubbleBox(ctx, x, y, text, lift = 0) {
   ctx.save();
-  ctx.font = "600 11px system-ui, sans-serif";
+  ctx.font = BUBBLE_FONT;
   const t = fitText(ctx, text, 150), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + 14), h = 19;
-  const bx = Math.round(x - 10), by = Math.round(y - h - 6);
+  ctx.restore();
+  const bx = Math.round(x - 10), by = Math.round(y - h - 6 - lift);
+  return { x: bx, y: by, w, h, text: t };
+}
+
+/** A speech bubble, its tail at (x, y): short words on light paper in either theme; `lift` raises the box (its tail longer). */
+function drawBubble(ctx, x, y, text, env, lift = 0) {
+  if (!text) return;
+  const { x: bx, y: by, w, h, text: t } = bubbleBox(ctx, x, y, text, lift);
+  ctx.save();
+  ctx.font = BUBBLE_FONT;
   ctx.fillStyle = "#fffdf6"; ctx.strokeStyle = env.mode === "light" ? "rgba(0, 0, 0, 0.35)" : "rgba(0, 0, 0, 0.6)"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(bx + 4, by); ctx.lineTo(bx + w - 4, by); ctx.lineTo(bx + w, by + 4); ctx.lineTo(bx + w, by + h - 4); ctx.lineTo(bx + w - 4, by + h);
   ctx.lineTo(x + 6, by + h); ctx.lineTo(x, y); ctx.lineTo(x + 1, by + h); ctx.lineTo(bx + 4, by + h); ctx.lineTo(bx, by + h - 4); ctx.lineTo(bx, by + 4); ctx.closePath();

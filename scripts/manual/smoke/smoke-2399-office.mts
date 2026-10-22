@@ -14,7 +14,9 @@
 //   reach Fleet or GET /ui/offices (401 with guest sign-in off, the default).
 // - no console error, no CSP violation, no horizontal overflow; no real fleet name in any visible text.
 // - an accepted far-out custom layout (a seat at 10000, 10000) paints (run with PW_DPR=3 for the review's case).
-// Pictures: <case>-1-office, -2-editor-new, -3-saved, -4-conflict, -4b-far-seat, -5-read-only, -6-public-link, -7-guest.
+// - #2431 polish: after a 409 the draft is kept and the person chooses (desk: keep mine and save; phone: load theirs);
+//   an office of an unknown style says so; the guest gets a page in its browser's language, not the gate's JSON.
+// Pictures: <case>-1-office, -2-editor-new, -3-saved, -4-conflict, -4a-loaded-theirs (phone), -4b-far-seat, -4c-unknown-style, -5-read-only, -6-public-link, -7-guest.
 //   PW_DIR=… REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf [ONLY=desk-light-en,…] \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2399-office.mts
 import { writeFileSync } from "node:fs";
@@ -51,6 +53,8 @@ const W = {
   saved: (c: MatrixCase) => (zh(c) ? "辦公室已儲存。" : "Offices saved."),
   changed: (c: MatrixCase) => (zh(c) ? "有人在這期間修改了辦公室" : "Someone changed the offices meanwhile"),
   office: (c: MatrixCase) => (zh(c) ? "辦公室" : "Office"),
+  unknownStyle: (c: MatrixCase) => (zh(c) ? "以辦公桌顯示" : "drawn as Desks"),
+  guestEnded: (c: MatrixCase) => (zh(c) ? "目前沒有分享給你的聊天" : "No chats are shared with you"),
 };
 
 // ── Visible navigation ──
@@ -163,13 +167,26 @@ for (const k of CASES) {
   await p.page.locator("#oeSave").click();
   const msg = p.page.locator(".oe-msg");
   ck.conflictMessage = await msg.waitFor({ timeout: 5000 }).then(() => true, () => false) && (await msg.innerText()).includes(W.changed(c));
-  ck.conflictShowsCurrent = (await p.page.locator(".oe-row .oe-name").first().inputValue()) === otherName;
   ck.notOverwritten = fm.officeStore.list().offices[0]?.name === otherName;
-  ck.editableAgain = await p.page.locator("#oeSave").isEnabled({ timeout: 5000 }).catch(() => false) && await p.page.waitForFunction(() => !document.querySelector("fieldset.oe-form")?.hasAttribute("disabled"), null, { timeout: 5000 }).then(() => true, () => false);
+  // #2431: the draft is kept, and the person chooses — Save waits for the choice.
+  ck.conflictKeepsDraft = (await p.page.locator(".oe-row .oe-name").first().inputValue()) === `${officeName} (this tab)`;
+  ck.saveWaitsForChoice = await p.page.locator("#oeSave").isDisabled() && await p.page.locator("#oeKeepMine").isVisible() && await p.page.locator("#oeLoadTheirs").isVisible();
+  ck.editableAgain = await p.page.waitForFunction(() => !document.querySelector("fieldset.oe-form")?.hasAttribute("disabled"), null, { timeout: 5000 }).then(() => true, () => false);
   await p.page.screenshot({ path: shotPath(SMOKE, name, "4-conflict") });
   texts.push(await visibleText(p.page));
-  await p.page.keyboard.press("Escape");
-  await p.page.locator("#oeSave").waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  if (k.device === "desk") {
+    // Keep my edits: Save then replaces the other tab's, knowingly.
+    await p.page.locator("#oeKeepMine").click();
+    await p.page.locator("#oeSave").click();
+    ck.choiceTaken = await p.page.locator("#oeSave").waitFor({ state: "detached", timeout: 5000 }).then(() => true, () => false) && fm.officeStore.list().offices[0]?.name === `${officeName} (this tab)`;
+  } else {
+    // Load theirs: the other tab's list, nothing saved.
+    await p.page.locator("#oeLoadTheirs").click();
+    ck.choiceTaken = (await p.page.locator(".oe-row .oe-name").first().inputValue()) === otherName && fm.officeStore.list().offices[0]?.name === otherName;
+    await p.page.screenshot({ path: shotPath(SMOKE, name, "4a-loaded-theirs") });
+    await p.page.keyboard.press("Escape");
+    await p.page.locator("#oeSave").waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  }
   ck.noOverflow = !(await overflow(p.page));
   // #2431 review: an accepted far-out custom layout (a seat at 10000, 10000) still paints — at PW_DPR=3 the bitmap would
   // be 30216 × 30264, which Chromium hands back blank. Picked in the switcher; a pixel read back from the canvas.
@@ -186,6 +203,15 @@ for (const k of CASES) {
   });
   ck.farPaints = farPaint.alpha > 0 && farPaint.cssW > 10000;
   await p.page.screenshot({ path: shotPath(SMOKE, name, "4b-far-seat") });
+  // #2431: an office whose stored style this page does not know says so (drawn as Desks).
+  const odd = { id: "odd", name: "Odd style", skin: "neon-arcade", members: [MEMBERS[1]] };
+  const now = fm.officeStore.list();
+  fm.officeStore.replace([...now.offices, odd], now.rev);
+  await p.page.reload(); await p.page.waitForSelector(".oo-canvas", { timeout: 15000 });
+  await p.page.locator(".oo-bar select").first().selectOption({ label: odd.name });
+  ck.unknownStyleSaid = await p.page.locator(".oo-note", { hasText: "neon-arcade" }).isVisible({ timeout: 5000 }).catch(() => false)
+    && (await p.page.locator(".oo-note", { hasText: "neon-arcade" }).innerText()).includes(W.unknownStyle(c));
+  await p.page.screenshot({ path: shotPath(SMOKE, name, "4c-unknown-style") });
   // The conflict's own 409 is logged by the browser as a failed resource: expected, kept apart, never dropped.
   const conflict409 = (e: string) => /status of 409/.test(e) && /\/ui\/offices$/.test(e);
   const expected409 = p.errors.slice(navEnd).filter(conflict409);
@@ -211,7 +237,7 @@ for (const k of CASES) {
   ck.publicNoEdit = await pub.page.locator(".oo-canvas").isVisible() && (await pub.page.locator(".oo-edit").count()) === 0;
   const publicPut = await put(pub.page, { offices: [], rev: fm.officeStore.list().rev });
   // The gateway has no PUT route for it (404) — or the route refuses (403): either way nothing is written.
-  ck.publicPutRefused = (publicPut === 403 || publicPut === 404) && fm.officeStore.list().offices.length === 2;
+  ck.publicPutRefused = (publicPut === 403 || publicPut === 404) && fm.officeStore.list().offices.length === 3;
   const probe = (e: string) => new RegExp(`status of ${publicPut} .*\\/ui\\/offices$`).test(e);   // the probe's own refusal, logged
   const publicErrors = [...pub.errors.slice(pubNav).filter((e, i, a) => !(probe(e) && a.findIndex(probe) === i)), ...(await csp(pub.page))];
   ck.publicNoErrors = publicErrors.length === 0;
@@ -226,6 +252,9 @@ for (const k of CASES) {
   const guestGet = await get(guest.page);
   ck.guestNoOffices = guestGet === 401 || guestGet === 403;
   ck.guestNoOffice = (await guest.page.locator(".oo-canvas").count()) === 0 && (await guest.page.locator(".oo-edit").count()) === 0;
+  // #2431: a page in the browser's language, not the gate's JSON (this fixture's guest has no chat shared: "ended").
+  const guestText = await visibleText(guest.page);
+  ck.guestPage = guestText.includes(W.guestEnded(c)) && !/guest_scope_empty|"error"/.test(guestText);
   await guest.page.screenshot({ path: shotPath(SMOKE, name, "7-guest") });
   texts.push(await visibleText(guest.page));
   await guest.ctx.close();

@@ -303,7 +303,7 @@ import {
   type ToolSink,
 } from "./tool-permissions.js";
 import { authorizeSession, decideWebGate, loadOrCreateWebToken, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
-import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
+import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
@@ -22141,6 +22141,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         // #1920: a guest reaches only GUEST_ROUTES, within the scope derived for it now — default deny, before any
         // handler, on this listener and the public link's gateway alike (both come through here).
         if (decision.via === "session" && decision.session.tier === "guest") {
+          // A browser opening a page gets a page in its language, not the JSON an API caller gets (#2399 smoke).
+          const navigating = req.method === "GET" && String(req.headers.accept ?? "").includes("text/html") && isWebPageNavigation(requestPath);
           const owner = decision.session.owner!;
           const admitted = decision.session;
           const admission = this.guestAdmission(admitted);
@@ -22151,12 +22153,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
             return;
           }
           if (admission === "gone") {
+            if (navigating) { serveGuestRefusedPage(res, 401, "ended"); return; }
             res.writeHead(401);
             res.end(JSON.stringify({ error: "guest_scope_empty" }));
             return;
           }
           const verdict = guestRouteDecision(req.method ?? "GET", parsedUrl, this.guestScope(owner));
           if (verdict.kind === "deny") {
+            if (navigating) { serveGuestRefusedPage(res, verdict.status, "members"); return; }
             res.writeHead(verdict.status);
             res.end(JSON.stringify({ error: verdict.error }));
             return;
