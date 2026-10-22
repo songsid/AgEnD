@@ -294,6 +294,50 @@ describe("#named-link-ttl: no expiry and auto_open in the real dispatcher", () =
     h.s.startPublicLinkAutoOpen(); await flush();
     expect(h.manager.start).toHaveBeenCalledTimes(1); expect(h.s.publicWebLink.status().state).toBe("closed");
   });
+  // ── carry of #2450 (Fable's review P2-1, P2-2) ──────────────────────────────────────────────────────────────────────
+  /** A named link opened by /web (so its admin is remembered), then closed as a restart leaves it. */
+  async function remembered() {
+    const h = rig(); h.fm.fleetConfig!.web = NAMED({ auto_open: true });
+    await h.typed(); await h.click();
+    await h.s.publicWebLink.close("fleet shutdown");
+    expect(existsSync(ownerFile(h))).toBe(true);
+    return h;
+  }
+  /** The two ways a remembered admin stops owning the link: no longer an admin; the General moved (another topic). */
+  const demotions: Array<[string, (h: any) => void]> = [
+    ["no longer a fleet admin", (h) => { h.owner.access.allowed_users = ["admin2"]; }],
+    ["the General's topic changed", (h) => { h.fm.fleetConfig!.instances.general.topic_id = "T9"; h.fm.routing.rebuild(h.fm.fleetConfig!); }],
+  ];
+  it.each(demotions)("P2-1: a remembered admin %s — after a start nothing is opened, nothing is attempted, and nobody is told", async (_why, demote) => {
+    const h = await remembered();
+    demote(h);
+    const dms = h.adapter.sendDirect.mock.calls.length, posted = h.adapter.sendText.mock.calls.length + h.adapter.notifyAlert.mock.calls.length;
+    h.s.healthServerListening = true; h.s.startPublicLinkAutoOpen(); await flush();
+    await vi.advanceTimersByTimeAsync(30_000); await flush();
+    await vi.advanceTimersByTimeAsync(120_000); await flush();
+    expect([h.manager.start.mock.calls.length, h.s.publicWebLink.status().state, h.adapter.sendDirect.mock.calls.length - dms,
+      h.adapter.sendText.mock.calls.length + h.adapter.notifyAlert.mock.calls.length - posted]).toEqual([1, "closed", 0, 0]);
+  });
+  it("P2-1, each guard on its own: the remembered owner is none, the unattended start refuses (no lane), and no failure DM", async () => {
+    const h = await remembered();
+    const saved = h.s.rememberedPublicOwner();
+    expect(saved, "control: before the demotion it is the admin").toEqual(expect.objectContaining({ userId: "admin", adapterId: "owner" }));
+    h.owner.access.allowed_users = ["admin2"];
+    const lane = vi.spyOn(h.s.tunnelPurposeLane, "reserve");
+    const opened = await h.s.publicWebLink.openUnattended(saved);
+    h.s.healthServerListening = true; h.s.startPublicLinkAutoOpen();
+    const dms = h.adapter.sendDirect.mock.calls.length;
+    await h.s.publicLinkAutoOpen.deps.notifyFailed(saved, undefined);
+    expect([h.s.rememberedPublicOwner(), opened, lane.mock.calls.length, h.manager.start.mock.calls.length, h.adapter.sendDirect.mock.calls.length - dms])
+      .toEqual([null, "failed", 0, 1, 0]);
+  });
+  it("P2-2: only a public opening is remembered — a local /web sign-in with a hostname configured leaves no owner", async () => {
+    const h = rig(); h.fm.fleetConfig!.web = NAMED({ auto_open: true });
+    await h.typed(); await h.click("local");
+    const local = [h.adapter.sendDirect.mock.calls.length > 0, existsSync(ownerFile(h))];
+    await h.typed(); await h.click("public");                          // control: the public opening is remembered
+    expect([local, existsSync(ownerFile(h))]).toEqual([[true, false], true]);
+  });
   it("a start that keeps failing is retried twice, then its admin hears once by DM, drawn as a failed /web", async () => {
     const h = rig(); h.fm.fleetConfig!.web = NAMED({ auto_open: true });
     await h.typed(); await h.click(); await h.s.publicWebLink.close("fleet shutdown");
