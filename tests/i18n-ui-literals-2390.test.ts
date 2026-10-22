@@ -32,68 +32,82 @@ const ALLOWED = new Map<string, string>([
   ["backend-signin.js\tlabel\tURL", "an acronym, the same in both languages"],
 ]);
 
-/** Each html`…` template's static parts, with every ${…} (balanced, nested templates included) replaced by "\u0000". */
-function templates(src: string): string[] {
+const parse = (code: string, at = "inline.js") => ts.createSourceFile(at, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+/**
+ * Each html`…` template's static parts, with every ${…} replaced by "\u0000" — read with the TypeScript parser, so a
+ * comment, a string or a regular expression inside ${…} (a backtick in it included) is code, never template text
+ * (#2397 review). A template nested in an expression is a template of its own.
+ */
+function templates(code: string): string[] {
   const out: string[] = [];
-  let i = 0;
-  while ((i = src.indexOf("html`", i)) !== -1) {
-    let j = i + 5, text = "";
-    const skipExpr = (k: number): number => { // k at char after "${"; returns index after matching "}"
-      let depth = 1;
-      while (k < src.length && depth) {
-        const c = src[k];
-        if (c === "`") { k = skipTpl(k + 1); continue; }
-        if (c === '"' || c === "'") { const q = c; k++; while (k < src.length && src[k] !== q) { if (src[k] === "\\") k++; k++; } k++; continue; }
-        if (c === "{") depth++; else if (c === "}") depth--;
-        k++;
-      }
-      return k;
-    };
-    const skipTpl = (k: number): number => { while (k < src.length && src[k] !== "`") { if (src[k] === "\\") k += 2; else if (src[k] === "$" && src[k + 1] === "{") k = skipExpr(k + 2); else k++; } return k + 1; };
-    while (j < src.length && src[j] !== "`") {
-      if (src[j] === "\\") { text += src[j + 1]; j += 2; continue; }
-      if (src[j] === "$" && src[j + 1] === "{") { j = skipExpr(j + 2); text += "\u0000"; continue; }
-      text += src[j++];
+  const visit = (n: ts.Node): void => {
+    if (ts.isTaggedTemplateExpression(n) && ts.isIdentifier(n.tag) && n.tag.text === "html") {
+      const tpl = n.template;
+      out.push(ts.isNoSubstitutionTemplateLiteral(tpl) ? tpl.text : [tpl.head.text, ...tpl.templateSpans.map((sp) => sp.literal.text)].join("\u0000"));
     }
-    out.push(text); i += 5;
-  }
+    ts.forEachChild(n, visit);
+  };
+  visit(parse(code));
   return out;
 }
 const english = (s: string) => /[A-Za-z]{3,}/.test(s.replace(/&[a-z]+;/g, ""));
 
-export function uiLiterals(root = ROOT): string[] {
+/** English written in place in one module's source: text nodes and literal attributes of its html`` templates, and the calls. */
+function literalsIn(code: string, at: string): string[] {
   const out: string[] = [];
-  for (const f of files(root)) {
-    if (/-strings\.js$/.test(f)) continue;
-    const src = readFileSync(f, "utf8"), at = relative(root, f);
-    for (const body of templates(src)) {
-      for (const t of body.matchAll(/>([^<>]*)</g)) for (const piece of t[1]!.split("\u0000")) { const text = piece.trim(); if (text && english(text)) out.push(`${at}\ttext\t${text}`); }
-      for (const a of body.matchAll(/\b(aria-label|title|placeholder|alt|label|message|confirmLabel|subtitle|text)="([^"\u0000]*)"/g)) if (english(a[2]!)) out.push(`${at}\t${a[1]}\t${a[2]}`);
-    }
-    for (const c of src.matchAll(/\b(toast|confirmDialog|alert|setError|setMsg|setMessage)\(\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g)) if (english(c[2]!)) out.push(`${at}\t${c[1]}\t${c[2]}`);
+  for (const body of templates(code)) {
+    for (const t of body.matchAll(/>([^<>]*)</g)) for (const piece of t[1]!.split("\u0000")) { const text = piece.trim(); if (text && english(text)) out.push(`${at}\ttext\t${text}`); }
+    for (const a of body.matchAll(/\b(aria-label|title|placeholder|alt|label|message|confirmLabel|subtitle|text)="([^"\u0000]*)"/g)) if (english(a[2]!)) out.push(`${at}\t${a[1]}\t${a[2]}`);
   }
+  for (const c of code.matchAll(/\b(toast|confirmDialog|alert|setError|setMsg|setMessage)\(\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g)) if (english(c[2]!)) out.push(`${at}\t${c[1]}\t${c[2]}`);
   return out;
 }
+export function uiLiterals(root = ROOT): string[] {
+  return files(root).filter((f) => !/-strings\.js$/.test(f)).flatMap((f) => literalsIn(readFileSync(f, "utf8"), relative(root, f)));
+}
 
-/** Every register("ns", { en: {…}, "zh-TW": {…} }) in src/ui: the keys each language has. */
-function registerTables(): Array<{ at: string; ns: string; en: string[]; zh: string[] }> {
-  const tables: Array<{ at: string; ns: string; en: string[]; zh: string[] }> = [];
-  for (const f of files(ROOT)) {
-    const sf = ts.createSourceFile(f, readFileSync(f, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-    const keys = (o: ts.Expression | undefined): string[] | null => (o && ts.isObjectLiteralExpression(o)
-      ? o.properties.flatMap((p) => (p.name && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) ? [p.name.text] : [])) : null);
-    const visit = (n: ts.Node): void => {
-      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "register" && n.arguments.length === 2
-        && ts.isStringLiteral(n.arguments[0]!) && ts.isObjectLiteralExpression(n.arguments[1]!)) {
-        const byLang = new Map(n.arguments[1].properties.flatMap((p) => (ts.isPropertyAssignment(p) && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) ? [[p.name.text, p.initializer] as const] : [])));
-        const en = keys(byLang.get("en")), zh = keys(byLang.get("zh-TW"));
-        if (en && zh) tables.push({ at: `${relative(ROOT, f)}:${sf.getLineAndCharacterOfPosition(n.getStart()).line + 1}`, ns: n.arguments[0].text, en, zh });
+const LANGS = ["en", "zh-TW"] as const;
+/**
+ * Every register("ns", {…}) call in one module: its gaps — a key one language has and the other lacks, a language whose
+ * table is missing, or a call whose tables this check cannot read (#2397 review: such a call is a finding, never
+ * skipped). `tables` counts the calls read in full.
+ */
+function registerGaps(code: string, at: string): { tables: number; gaps: string[] } {
+  const sf = parse(code, at), gaps: string[] = [];
+  let tables = 0;
+  const keysOf = (o: ts.Expression): string[] | null => (ts.isObjectLiteralExpression(o)
+    && o.properties.every((p) => ts.isPropertyAssignment(p) && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)))
+    ? o.properties.map((p) => ((p as ts.PropertyAssignment).name as ts.Identifier | ts.StringLiteral).text) : null);
+  const visit = (n: ts.Node): void => {
+    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "register") {
+      const where = `${at}:${sf.getLineAndCharacterOfPosition(n.getStart()).line + 1}`;
+      const [nsArg, byLangArg] = n.arguments;
+      if (n.arguments.length !== 2 || !nsArg || !ts.isStringLiteral(nsArg) || !byLangArg || !ts.isObjectLiteralExpression(byLangArg)) { gaps.push(`${where}: register() this check cannot read`); return; }
+      const byLang = new Map<string, ts.Expression>();
+      for (const p of byLangArg.properties) {
+        if (ts.isPropertyAssignment(p) && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))) byLang.set(p.name.text, p.initializer);
+        else gaps.push(`${where} ${nsArg.text}: a language table this check cannot read`);
       }
-      ts.forEachChild(n, visit);
-    };
-    visit(sf);
-  }
-  return tables;
+      for (const l of byLang.keys()) if (!(LANGS as readonly string[]).includes(l)) gaps.push(`${where} ${nsArg.text}: unknown language ${l}`);
+      const keys = new Map<string, string[]>();
+      for (const l of LANGS) {
+        const table = byLang.get(l);
+        if (!table) { gaps.push(`${where} ${nsArg.text}: no ${l} table`); continue; }
+        const k = keysOf(table);
+        if (!k) { gaps.push(`${where} ${nsArg.text}: the ${l} table is not plain key: "text" entries`); continue; }
+        keys.set(l, k);
+      }
+      const en = keys.get("en"), zh = keys.get("zh-TW");
+      if (en && zh) {
+        tables++;
+        gaps.push(...en.filter((k) => !zh.includes(k)).map((k) => `${where} ${nsArg.text}.${k}: no zh-TW`));
+        gaps.push(...zh.filter((k) => !en.includes(k)).map((k) => `${where} ${nsArg.text}.${k}: no en`));
+      }
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return { tables, gaps };
 }
 
 describe("#2390 the web UI's words go through the locale layer", () => {
@@ -106,20 +120,34 @@ describe("#2390 the web UI's words go through the locale layer", () => {
     expect([...ALLOWED.keys()].filter((a) => !found.has(a))).toEqual([]);
   });
 
-  it("every register() table has the same keys in en and zh-TW", () => {
-    const tables = registerTables();
-    expect(tables.length).toBeGreaterThan(20);
-    const gaps = tables.flatMap((t) => [
-      ...t.en.filter((k) => !t.zh.includes(k)).map((k) => `${t.at} ${t.ns}.${k}: no zh-TW`),
-      ...t.zh.filter((k) => !t.en.includes(k)).map((k) => `${t.at} ${t.ns}.${k}: no en`),
-    ]);
-    expect(gaps).toEqual([]);
+  it("every register() call in src/ui has an en and a zh-TW table with the same keys", () => {
+    const all = files(ROOT).map((f) => registerGaps(readFileSync(f, "utf8"), relative(ROOT, f)));
+    expect(all.reduce((n, r) => n + r.tables, 0)).toBeGreaterThanOrEqual(26);
+    expect(all.flatMap((r) => r.gaps)).toEqual([]);
   });
 
-  it("the scan sees each shape (so a pass means something)", () => {
-    const sample = (code: string) => templates(code).some((b) => /[A-Za-z]{3,}/.test(b.replace(/\u0000/g, "").replace(/<[^>]*>/g, "")));
-    expect(templates("html`<p>${tn(\"x\")}</p>`")).toEqual(["<p>\u0000</p>"]);
+  it("the scan sees each shape, through code that only looks like a template (so a pass means something)", () => {
+    expect(templates('html`<p>${tn("x")}</p>`')).toEqual(["<p>\u0000</p>"]);
     expect(templates("html`<a>${ok ? html`<b>Done</b>` : null}</a>`")).toEqual(["<a>\u0000</a>", "<b>Done</b>"]);
-    expect([sample("html`<p>Hello there</p>`"), sample("html`<p>${t(\"x\")}</p>`")]).toEqual([true, false]);
+    const after = '</p><button title="Translate me">Save now</button>`;';
+    // #2397 review: a backtick in a comment or a regular expression inside ${…} must not hide the static English after it.
+    for (const code of [
+      'const v = html`<p>${ t("ok") }' + after,                                  // control
+      'const v = html`<p>${ /* ` code sample */ t("ok") }' + after,
+      'const v = html`<p>${ /`/.test(value) ? t("yes") : t("no") }' + after,
+      'const v = html`<p>${ "`" + t("ok") }' + after,
+    ]) expect(literalsIn(code, "x.js"), code).toEqual(["x.js\ttext\tSave now", "x.js\ttitle\tTranslate me"]);
+    expect(literalsIn('const v = html`<p>${t("a")}</p><button title=${t("b")}>${t("c")}</button>`;', "x.js")).toEqual([]);
+    expect(literalsIn('toast("Saved"); toast(t("saved"));', "x.js")).toEqual(['x.js\ttoast\t"Saved"']);
+  });
+
+  it("parity reads every register() call: a language missing whole is a finding, never a skip", () => {
+    expect(registerGaps('register("demo", { en: { hello: "Hello" }, "zh-TW": { hello: "你好" } });', "x.js")).toEqual({ tables: 1, gaps: [] });
+    expect(registerGaps('register("demo", { en: { hello: "Hello" } });', "x.js").gaps).toEqual(["x.js:1 demo: no zh-TW table"]);
+    expect(registerGaps('register("demo", { "zh-TW": { hello: "你好" } });', "x.js").gaps).toEqual(["x.js:1 demo: no en table"]);
+    expect(registerGaps('register("demo", { en: { a: "A", b: "B" }, "zh-TW": { a: "甲" } });', "x.js").gaps).toEqual(["x.js:1 demo.b: no zh-TW"]);
+    expect(registerGaps('register("demo", { en: { a: "A" }, "zh-TW": { a: "甲" }, fr: { a: "A" } });', "x.js").gaps).toEqual(["x.js:1 demo: unknown language fr"]);
+    expect(registerGaps('register("demo", { en: { ...base, a: "A" }, "zh-TW": { a: "甲" } });', "x.js").gaps).toEqual(['x.js:1 demo: the en table is not plain key: "text" entries']);
+    expect(registerGaps("register(name, tables);", "x.js").gaps).toEqual(["x.js:1: register() this check cannot read"]);
   });
 });
