@@ -239,6 +239,36 @@ describe("#1774 removal: an instance removed while its reply's files are copied"
     await new Promise((r) => setTimeout(r, 20));
     expect(texts(fm, "pal")).toEqual(["NEW INSTANCE REPLY"]);
   });
+  it("Prism r3: identity is taken before the handler's first await — a held sticker check (Discord list) is no window either", async () => {
+    const fm = fleet();
+    const cfg = { id: "dc", type: "discord", group_id: "G", access: { mode: "open", allowed_users: [] } };
+    fm.fleetConfig = { defaults: {}, channels: [cfg], instances: { stk: { working_directory: "/x", topic_id: "T" } } };
+    const list = gate();
+    let firstList = true;
+    const adapter = { id: "dc", type: "discord",
+      sendText: vi.fn(async (chatId: string, _t: string, opts: any) => ({ messageId: `m${Math.random()}`, chatId, threadId: opts?.threadId })),
+      sendStickers: vi.fn(async (chatId: string) => ({ messageId: "st", chatId })),
+      listStickers: vi.fn(async () => { if (firstList) { firstList = false; await list.promise; } return { scope: "G", stickers: [{ id: "s1", name: "ok", emoji_or_tags: "", format: "png", available: true }] }; }) };
+    fm.adapter = adapter; fm.adapters.set("dc", adapter); fm.worlds.set("dc", { id: "dc", adapter, channelConfig: cfg, groupId: "G" });
+    fm.routing.rebuild(fm.fleetConfig);
+    const daemons = new Map<string, unknown>([["stk", { name: "old daemon" }]]);
+    fm.lifecycle = { daemons, isPaused: () => false, hasWorkLease: () => false, remove: async () => {
+      daemons.set("stk", { name: "new daemon" });
+      fm.fleetConfig.instances.stk = { working_directory: "/y", topic_id: "T" };
+    } };
+    fm.statuslineWatcher = { unwatch() {} };
+    fm.instanceIpcClients.set("stk", { connected: true, send: () => true });
+    const reply = (text: string, requestId: number, extra: Record<string, unknown> = {}) =>
+      fm.handleOutboundFromInstance("stk", { type: "fleet_outbound", tool: "reply", args: { chat_id: "G", text, ...extra }, requestId, adapterId: "dc" });
+    const old = reply("OLD PLATFORM REPLY", 1, { stickers: ["s1"] });   // its sticker check waits for the list
+    await vi.waitFor(() => expect(adapter.listStickers).toHaveBeenCalledTimes(1));
+    await fm.removeInstance("stk", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
+    await reply("NEW INSTANCE REPLY", 2);
+    await vi.waitFor(() => expect(texts(fm, "stk")).toContain("NEW INSTANCE REPLY"));
+    list.open(); await old;
+    await new Promise((r) => setTimeout(r, 20));
+    expect(texts(fm, "stk")).toEqual(["NEW INSTANCE REPLY"]);
+  });
   it("control — not removed: the same slow reply is shown with its file", async () => {
     const fm = fleet();
     const hold = gate();

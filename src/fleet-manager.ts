@@ -9968,6 +9968,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.touchActivity(instanceName);
     this.setTopicIcon(instanceName, "green");
     const tool = msg.tool as string;
+    // #1774: who sends this — taken before anything here awaits (sticker checks, the platform send): a reply that waits
+    // must never be read as a same-name replacement's (removed and re-registered meanwhile).
+    const sentBy = this.webChatIdentity(instanceName);
     const args = (msg.args ?? {}) as Record<string, unknown>;
     const requestId = msg.requestId as number | undefined;
     const fleetRequestId = msg.fleetRequestId as string | undefined;
@@ -10145,9 +10148,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           args.text = `${String(args.text)}\n\n${replyButtonsFallbackText(parsedButtons.buttons)}`;
         }
       }
-      // #1774: who sends this reply — taken now, not when the platform answers: a slow send must not be read as a
-      // same-name replacement's (removed and re-registered meanwhile).
-      const replyIdentity = this.webChatIdentity(instanceName);
+      const replyIdentity = sentBy;                                          // #1774: taken at the handler's entry
       const original = respond;
       const respondAndRecord = (result: unknown, error?: string) => {
         let buttonsView: ReplyButtonsView | null = null;
