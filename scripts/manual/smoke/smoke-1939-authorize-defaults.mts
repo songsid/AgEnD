@@ -1,10 +1,12 @@
-// #1939 S2b/S2c from defaults (fleet decision a78ebdc5): "Authorize this browser" and Settings → Web → Web authority, each
+// #1939 S2b/S2c from defaults (fleet decision a78ebdc5): "Authorize this browser" and Settings → Access & security → Web authority, each
 // case a fresh profile with nothing seeded, signed in through the visible /signin as its own synthetic Discord account,
 // driven only through visible UI. The account's DM is a stub adapter (what is outside the product): the card it receives
 // is recorded, drawn on a neutral page and shot, and its buttons are tapped through the product's own callback dispatch.
 // The card's buttons are the only step outside the page.
+// The chat's composer row (#2215: .webauth-row, a few words; the full sentence in its tooltip and title) is what the cases
+// drive; the session menu keeps the full line (.webauth-chip) and is checked once.
 // - confirm (desk light, loopback): Not verified → Authorize → the card (this computer) → someone else's tap is refused →
-//   Confirm → Verified, in the composer line and the session menu; Settings → Web from defaults (on, not only-this-
+//   Confirm → Verified, in the composer row and the session menu; Settings → Access & security from defaults (on, not only-this-
 //   computer, default hours) lists the session; Revoke empties it and the line reads Not verified again; then Not me
 //   after Confirm signs the browser out (the next page is the sign-in).
 // - not-me (phone dark zh-TW, LAN origin, reduced motion): the card says "on your network"; Not me before Confirm signs
@@ -108,16 +110,33 @@ async function openChat(p: FreshPage): Promise<void> {
 async function openSettingsWeb(p: FreshPage): Promise<void> {
   await clickVisible(p.page, 'a[href="/settings"]');
   await p.page.waitForURL("**/settings", { timeout: 10000 });
-  await clickVisible(p.page, 'a[href="/settings/web"]');
-  await p.page.waitForURL("**/settings/web", { timeout: 10000 });
+  await clickVisible(p.page, 'a[href="/settings/access"]');   // #2347: Web authority is in Access & security
+  await p.page.waitForURL("**/settings/access", { timeout: 10000 });
 }
+/** The session menu's full line (AuthorizeChip). */
 const chip = (p: FreshPage, scope = "") => p.page.locator(`${scope} .webauth-chip`.trim()).first();
 async function chipState(p: FreshPage, state: string, timeout = 10000, scope = ""): Promise<string> {
   await p.page.waitForSelector(`${scope} .webauth-chip[data-state="${state}"]`.trim(), { timeout });
   return ((await chip(p, scope).textContent()) ?? "").replace(/\s+/g, " ").trim();
 }
+/** The chat composer's row (#2215: ComposerAuth). */
+const row = (p: FreshPage) => p.page.locator(".webauth-row").first();
+/** The row in this state, read as a person sees it: its words one by one, not its screen-reader text nor its closed tooltip. */
+async function rowState(p: FreshPage, state: string, timeout = 10000): Promise<string> {
+  await p.page.waitForSelector(`.webauth-row[data-state="${state}"]`, { timeout });
+  // A string, as the other smokes pass (tsx would wrap a function's inner helpers in its own __name, absent in the page).
+  return p.page.evaluate(`(() => {
+    const copy = document.querySelector(".webauth-row").cloneNode(true);
+    copy.querySelectorAll(".sr-only, [hidden], [role=tooltip]").forEach((x) => x.remove());
+    const words = [], walker = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) { const t = walker.currentNode.textContent.trim(); if (t) words.push(t); }
+    return words.join(" ").replace(/\\s+/g, " ");
+  })()`) as Promise<string>;
+}
+/** What the row says at length: the title on its words (why it can't be authorized, what it waits for). */
+const rowWhy = (p: FreshPage) => row(p).locator(".note").first().getAttribute("title");
 async function shootChip(p: FreshPage, name: string, scope = ""): Promise<void> {
-  await chip(p, scope).scrollIntoViewIfNeeded();
+  await (scope ? chip(p, scope) : row(p)).scrollIntoViewIfNeeded();
   await p.page.screenshot({ path: shotPath(SMOKE, name, "page") });
 }
 const sessionOf = (a: DemoAccount) => fm.webSessions.list(undefined, (r: any) => r.owner?.adapterId === a.adapterId && r.owner?.userId === a.userId)[0] ?? null;
@@ -141,12 +160,13 @@ if (only("confirm")) {
   const p = await freshPage(fx, DESK_LIGHT, { account: a });
   const c: Record<string, boolean> = { mounted: await mounted(p.page) };
   await openChat(p);
-  const before = await chipState(p, "none");
-  c.notVerified = before === "Not verified · Authorize this browser";
+  const before = await rowState(p, "none");
+  c.notVerified = before === "Not verified · Authorize";
   await shootChip(p, "confirm-1-not-verified");
-  await clickVisible(p.page, ".webauth-chip button");
-  const waiting = await chipState(p, "pending");
-  c.sent = /Waiting for your Confirm in Discord or Telegram \(\d:\d\d\)/.test(waiting) && waiting.includes("Sent — confirm it in your DM within 5 minutes.");
+  await clickVisible(p.page, ".webauth-row .webauth-ask");
+  const waiting = await rowState(p, "pending");
+  c.sent = /^Waiting for your Confirm \(\d:\d\d\) Sent — confirm it in your DM within 5 minutes\.$/.test(waiting)
+    && /^Waiting for your Confirm in Discord or Telegram \(\d:\d\d\) — Sent — confirm it in your DM within 5 minutes\.$/.test((await rowWhy(p)) ?? "");
   await shootChip(p, "confirm-2-waiting");
   const card = cardsOf(a)[0]!;
   const ask = await shootCard("confirm-3-ask", card);
@@ -164,9 +184,10 @@ if (only("confirm")) {
     && ask.text.includes(`it would last until ${zoned(s0.absoluteExpiry)}`);                                         // the ask says the same end
   const auth = authorizationOf(a);
   c.stored = !!auth && typeof auth.until === "number" && auth.until > Date.now();
-  const verified = await chipState(p, "verified");
-  // 48 h ahead: the day is said too; "Sent —" went with the card.
-  c.verified = /^✓ Verified · speaks as you until \w{3}, \w{3} \d{1,2}, \d\d:\d\d( [AP]M)?$/.test(verified);
+  const verified = await rowState(p, "verified");
+  // 48 h ahead: the day is said too (in the tooltip a tap opens); "Sent —" went with the card.
+  c.verified = verified === "✓ Verified"
+    && /^Verified · speaks as you until \w{3}, \w{3} \d{1,2}, \d\d:\d\d( [AP]M)?$/.test((await row(p).locator(".webauth-tip").textContent()) ?? "");
   await shootChip(p, "confirm-5-verified");
   await clickVisible(p.page, ".session > button");
   c.menuVerified = /Verified · speaks as you until/.test(await chipState(p, "verified", 5000, ".session .pop"));
@@ -176,9 +197,9 @@ if (only("confirm")) {
   await openSettingsWeb(p);
   await p.page.waitForSelector(".s-web-authority #vaEnabled", { timeout: 10000 });
   const s = await p.page.evaluate(`(() => ({ enabled: document.querySelector("#vaEnabled").checked, loopbackOnly: document.querySelector("#vaLoopbackOnly").checked,
-    hours: document.querySelector("#vaHours").value, placeholder: document.querySelector("#vaHours").placeholder,
+    hours: document.querySelector("#vaHours").value, inEffect: document.querySelector("#vaHours").parentNode.querySelector(".s-effect")?.textContent ?? "",
     rows: [...document.querySelectorAll("#vaSessions li")].map((li) => li.textContent) }))()`) as any;
-  c.settingsDefaults = s.enabled && !s.loopbackOnly && s.hours === "" && /48/.test(s.placeholder);
+  c.settingsDefaults = s.enabled && !s.loopbackOnly && s.hours === "" && /In effect: 48 h/.test(s.inEffect);
   c.settingsLists = s.rows.length === 1 && s.rows[0].includes(`demo:${a.userId}`);
   await p.page.setViewportSize({ width: 1366, height: 3000 });
   await p.page.locator(".s-web-authority").screenshot({ path: shotPath(SMOKE, "confirm-7-settings", "card") });
@@ -190,7 +211,7 @@ if (only("confirm")) {
   await p.page.waitForSelector("#vaSessionsNone", { timeout: 5000 });
   c.revoked = fm.webAuthorityState().epoch === epoch + 1;
   await openChat(p);
-  c.lineAfterRevoke = (await chipState(p, "none")) === "Not verified · Authorize this browser";
+  c.lineAfterRevoke = (await rowState(p, "none")) === "Not verified · Authorize";
   await shootChip(p, "confirm-8-after-revoke");
   // Not me after Confirm: the card still offers it; the browser is signed out.
   await tap(card, "notme");
@@ -216,10 +237,10 @@ if (only("notme")) {
   const p = await freshPage(fx, { device: "phone", theme: "dark", lang: "zh-TW" }, { account: a, origin: "lan", reducedMotion: true });
   const c: Record<string, boolean> = { mounted: await mounted(p.page) };
   await openChat(p);
-  c.notVerified = (await chipState(p, "none")) === "未驗證 · 授權這個瀏覽器";
+  c.notVerified = (await rowState(p, "none")) === "未驗證 · 授權";
   await shootChip(p, "notme-1-not-verified");
-  await clickVisible(p.page, ".webauth-chip button");
-  const waiting = await chipState(p, "pending");
+  await clickVisible(p.page, ".webauth-row .webauth-ask");
+  const waiting = await rowState(p, "pending");
   c.sent = waiting.includes("已送出——請在 5 分鐘內到私訊確認。");
   c.noOverflow = !(await overflow(p));
   await shootChip(p, "notme-2-waiting");
@@ -232,7 +253,7 @@ if (only("notme")) {
   c.signedOut = sessionOf(a) === null && authorizationOf(a) === null;
   // The page's next read (its poll while the card waited) finds it signed out.
   c.banner = await p.page.waitForSelector(".agend-session-ended", { timeout: 10000 }).then(() => true, () => false);
-  c.lineGone = await p.page.waitForSelector(".webauth-chip", { state: "detached", timeout: 5000 }).then(() => true, () => false);
+  c.lineGone = await p.page.waitForSelector(".webauth-row", { state: "detached", timeout: 5000 }).then(() => true, () => false);
   await p.page.screenshot({ path: shotPath(SMOKE, "notme-5-signed-out", "page") });
   c.noErrors = p.errors.filter(e => !/status of 401/.test(e)).length === 0;
   record("notme-phone-dark-zh-TW-lan-reduced", c, { errors: p.errors });
@@ -245,15 +266,15 @@ if (only("expiry")) {
   const p = await freshPage(fx, { device: "desk", theme: "dark", lang: "en" }, { account: a });
   const c: Record<string, boolean> = { mounted: await mounted(p.page) };
   await openChat(p);
-  await chipState(p, "none");
-  await clickVisible(p.page, ".webauth-chip button");
-  await chipState(p, "pending");
+  await rowState(p, "none");
+  await clickVisible(p.page, ".webauth-row .webauth-ask");
+  await rowState(p, "pending");
   const card = cardsOf(a)[0]!;
   const sentButtons = [...card.choices];                                                 // what a stale client could still send
   if (process.env.REAL_EXPIRY === "1") await p.page.waitForTimeout(5 * 60_000 + 5_000);
   else skew += 5 * 60_000 + 1_000;
   // The page's next poll (every 3 s) finds the card gone: the line offers Authorize again; the card is marked in place.
-  c.lineAgain = (await chipState(p, "none", 15000)).startsWith("Not verified · Authorize this browser");
+  c.lineAgain = (await rowState(p, "none", 15000)).startsWith("Not verified · Authorize");
   await shootChip(p, "expiry-1-line-again");
   const expired = await shootCard("expiry-2-expired", card);
   c.cardExpired = /^⌛ This request for .+ expired\. Ask again from the dashboard if you still want it\.$/.test(expired.text) && expired.buttons.length === 0;
@@ -262,15 +283,15 @@ if (only("expiry")) {
   // A Confirm after the deadline, before the timer and any poll: judged expired at the tap.
   await p.page.reload();
   await mounted(p.page);
-  await chipState(p, "none");
-  await clickVisible(p.page, ".webauth-chip button");
-  await chipState(p, "pending");
+  await rowState(p, "none");
+  await clickVisible(p.page, ".webauth-row .webauth-ask");
+  await rowState(p, "pending");
   const second = cardsOf(a)[1]!;
   skew += 5 * 60_000 + 1_000;
   const atTap = await tap(second, "confirm");
   const judged = await shootCard("expiry-3-tapped-late", second);
   c.tapJudgedExpired = atTap.present && authorizationOf(a) === null && /^⌛ This request for .+ expired\./.test(judged.text) && judged.buttons.length === 0;
-  c.lineAgain2 = (await chipState(p, "none", 15000)).startsWith("Not verified · Authorize this browser");
+  c.lineAgain2 = (await rowState(p, "none", 15000)).startsWith("Not verified · Authorize");
   c.noErrors = p.errors.length === 0;
   record(`expiry-desk-dark-en${process.env.REAL_EXPIRY === "1" ? "-real-5min" : ""}`, c, { errors: p.errors });
   await p.ctx.close();
@@ -282,30 +303,30 @@ if (only("refusals")) {
   const p = await freshPage(fx, DESK_LIGHT, { account: a });
   const c: Record<string, boolean> = { mounted: await mounted(p.page) };
   await openChat(p);
-  await chipState(p, "none");
+  await rowState(p, "none");
   // A second tab of the same browser, opened before the ask: its button is stale.
   const tab2 = await p.ctx.newPage();
   await tab2.goto(p.page.url());
-  await tab2.waitForSelector('.webauth-chip[data-state="none"] button', { timeout: 10000 });
-  await clickVisible(p.page, ".webauth-chip button");
-  await chipState(p, "pending");
-  await tab2.click(".webauth-chip button");
-  await tab2.waitForSelector(".webauth-chip [role=status]", { timeout: 5000 });
-  c.pending = (await tab2.locator(".webauth-chip [role=status]").textContent()) === "A request is already waiting in your DM.";
+  await tab2.waitForSelector('.webauth-row[data-state="none"] .webauth-ask', { timeout: 10000 });
+  await clickVisible(p.page, ".webauth-row .webauth-ask");
+  await rowState(p, "pending");
+  await tab2.click(".webauth-row .webauth-ask");
+  await tab2.waitForSelector(".webauth-row [role=status]", { timeout: 5000 });
+  c.pending = (await tab2.locator(".webauth-row [role=status]").textContent()) === "A request is already waiting in your DM.";
   await tab2.screenshot({ path: shotPath(SMOKE, "refusal-1-pending", "page") });
   await tab2.close();
   // Two more asks (each card left to expire), then the 4th in the hour is refused.
   for (let i = 0; i < 2; i++) {
     skew += 5 * 60_000 + 1_000;
-    await chipState(p, "none", 15000);
-    await clickVisible(p.page, ".webauth-chip button");
-    await chipState(p, "pending");
+    await rowState(p, "none", 15000);
+    await clickVisible(p.page, ".webauth-row .webauth-ask");
+    await rowState(p, "pending");
   }
   skew += 5 * 60_000 + 1_000;
-  await chipState(p, "none", 15000);
-  await clickVisible(p.page, ".webauth-chip button");
-  await p.page.waitForSelector(".webauth-chip [role=status]", { timeout: 5000 });
-  c.rateLimited = /^Three requests this hour — try again in \d+ min\.$/.test((await p.page.locator(".webauth-chip [role=status]").textContent()) ?? "");
+  await rowState(p, "none", 15000);
+  await clickVisible(p.page, ".webauth-row .webauth-ask");
+  await p.page.waitForSelector(".webauth-row [role=status]", { timeout: 5000 });
+  c.rateLimited = /^Three requests this hour — try again in \d+ min\.$/.test((await p.page.locator(".webauth-row [role=status]").textContent()) ?? "");
   c.threeCards = cardsOf(a).length === 3;
   await shootChip(p, "refusal-2-rate-limited");
   c.noErrors = p.errors.length === 0;
@@ -317,10 +338,10 @@ if (only("refusals")) {
   const q = await freshPage(fx, DESK_LIGHT, { account: closed });
   const d: Record<string, boolean> = { mounted: await mounted(q.page) };
   await openChat(q);
-  await chipState(q, "none");
-  await clickVisible(q.page, ".webauth-chip button");
-  await q.page.waitForSelector(".webauth-chip [role=status]", { timeout: 5000 });
-  d.dmUnavailable = (await q.page.locator(".webauth-chip [role=status]").textContent()) === "Couldn't send you a DM. Open your DMs with the bot, then try again.";
+  await rowState(q, "none");
+  await clickVisible(q.page, ".webauth-row .webauth-ask");
+  await q.page.waitForSelector(".webauth-row [role=status]", { timeout: 5000 });
+  d.dmUnavailable = (await q.page.locator(".webauth-row [role=status]").textContent()) === "Couldn't send you a DM. Open your DMs with the bot, then try again.";
   d.noCard = cardsOf(closed).length === 0;
   await shootChip(q, "refusal-3-dm-closed");
   d.noErrors = q.errors.length === 0;
@@ -331,8 +352,8 @@ if (only("refusals")) {
   const r = await freshPage(fx, DESK_LIGHT, { account: notAdmin });
   const e: Record<string, boolean> = { mounted: await mounted(r.page) };
   await openChat(r);
-  const line = await chipState(r, "none");
-  e.notAdmin = line === "Not verified: Your account is not a fleet admin here." && (await r.page.locator(".webauth-chip button").count()) === 0;
+  const line = await rowState(r, "none");
+  e.notAdmin = line === "Not verified" && (await rowWhy(r)) === "Your account is not a fleet admin here." && (await r.page.locator(".webauth-row .webauth-ask").count()) === 0;
   await shootChip(r, "refusal-4-not-admin");
   e.noErrors = r.errors.length === 0;
   record("not-admin-desk-light-en", e, { errors: r.errors });
@@ -348,8 +369,7 @@ if (only("switch")) {
   await p.page.waitForSelector(".s-web-authority #vaEnabled", { timeout: 10000 });
   c.onByDefault = await p.page.isChecked("#vaEnabled");
   const setSwitch = async (on: boolean) => {
-    await p.page.setChecked("#vaEnabled", on);
-    await p.page.click("#vaReview");
+    await p.page.setChecked("#vaEnabled", on);                                          // #2347: unsaved at once; the bar's Save writes it
     await p.page.waitForSelector(".s-pending", { timeout: 5000 });
     await p.page.locator(".s-pending button.btn-primary").click();
     await p.page.waitForFunction(`!document.querySelector(".s-pending")`, null, { timeout: 15000 });
@@ -360,16 +380,16 @@ if (only("switch")) {
   c.appliedOff = fm.fleetConfig.web?.verified_authority?.enabled === false && fm.webAuthorityState().enabled === false;
   c.noConfirmAsked = (await p.page.locator("dialog[open]").count()) === 0;
   await openChat(p);
-  const off = await chipState(p, "none");
-  c.lineOff = off === "Not verified: Web authority is turned off. Settings";
+  const off = await rowState(p, "none");
+  c.lineOff = off === "Not verified · Settings" && (await rowWhy(p)) === "Web authority is turned off.";
   await shootChip(p, "switch-1-off");
-  await clickVisible(p.page, '.webauth-chip a[href="/settings/web"]');
+  await clickVisible(p.page, '.webauth-row a[href="/settings/access"]');
   await p.page.waitForSelector(".s-web-authority #vaEnabled", { timeout: 10000 });
-  c.linkLandsOnCard = p.page.url().endsWith("/settings/web") && !(await p.page.isChecked("#vaEnabled"));
+  c.linkLandsOnCard = p.page.url().endsWith("/settings/access") && !(await p.page.isChecked("#vaEnabled"));
   c.applyOnLanded = await setSwitch(true);
   c.appliedOn = fm.fleetConfig.web?.verified_authority?.enabled !== false && fm.webAuthorityState().enabled === true;
   await openChat(p);
-  c.lineOn = (await chipState(p, "none")) === "Not verified · Authorize this browser";
+  c.lineOn = (await rowState(p, "none")) === "Not verified · Authorize";
   await shootChip(p, "switch-2-on-again");
   c.noErrors = p.errors.length === 0;
   record("switch-desk-light-en", c, { errors: p.errors });
@@ -385,7 +405,7 @@ if (only("public")) {
     beforeNavigate: (_ctx: any, page: any) => { page.on("request", (r: any) => { if (new URL(r.url()).pathname === "/ui/authorization") asked.push(r.method()); }); } });
   const c: Record<string, boolean> = { mounted: await mounted(p.page) };
   await openChat(p);
-  c.says = (await chipState(p, "public")) === "Not on the temporary public link: open the dashboard directly to authorize.";
+  c.says = (await rowState(p, "public")) === "Not on the temporary public link: open the dashboard directly to authorize.";
   c.noOverflow = !(await overflow(p));
   await shootChip(p, "public-1-line");
   c.neverAsked = asked.length === 0;

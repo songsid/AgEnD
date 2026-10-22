@@ -141,6 +141,21 @@ describe("#2262 review", () => {
     } finally { p.document.body.removeAttribute("data-public-link"); }
   });
 
+  it("over the public link Settings' sign-in list neither reads /ui/backend-login (the link does not serve it) nor shows", async () => {
+    await p.unmount();
+    S.signInStore.set({ loaded: true, login: null, targets: [{ backend: "codex", state: "not_signed_in", signIn: true }] });
+    reqs = [];
+    p.document.body.setAttribute("data-public-link", "1");
+    try {
+      await p.mount(h(S.SignInList, {})); await settle(6);
+      expect([reqs.filter(r => r.url.startsWith("/ui/backend-login")), p.root.querySelectorAll(".signin-list").length]).toEqual([[], 0]);
+    } finally { p.document.body.removeAttribute("data-public-link"); }
+    await p.unmount();
+    answer = r => r.url === "/ui/backend-login" ? { login: null, targets: [{ backend: "codex", state: "not_signed_in", signIn: true }] } : {};
+    await p.mount(h(S.SignInList, {})); await settle(6);                  // control: on the dashboard itself it reads and shows
+    expect([reqs.some(r => r.url === "/ui/backend-login"), p.root.querySelectorAll(".signin-list").length]).toEqual([true, 1]);
+  });
+
   it("an event that lands while a read is on its way is not lost: one more read follows, and its answer is what shows", async () => {
     let release!: (v: unknown) => void, reads = 0;
     answer = () => { reads++; return reads === 1 ? new Promise(r => { release = r; }) : { login: { ...TERMINAL, mine: false }, targets: [] }; };

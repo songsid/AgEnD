@@ -20,7 +20,7 @@ const enc = encodeURIComponent;
 for (const c of matrix(process.env.MATRIX ?? "quick")) {
   const { ctx, page, csp } = await fx.page(c);
   const shots: Array<[string, string]> = [["chat", `/ui/chat/${enc(card[0])}`], ["chat-cjk", `/ui/chat/${enc(card[2])}`], ["details", `/ui/fleet/agent/${enc(card[0])}`],
-    ["org", "/ui/fleet/org"], ["appearance", "/settings/appearance"], ["view", `/view/${enc(card[1])}`], ["needs", "/ui/needs"]];
+    ["org", "/ui/fleet/org"], ["look", "/settings/look"], ["view", `/view/${enc(card[1])}`], ["needs", "/ui/needs"]];
   for (const [name, path] of shots) {
     await page.goto(fx.base + path); await page.waitForTimeout(1500);
     await page.screenshot({ path: shotPath("probe", c, name), fullPage: false });

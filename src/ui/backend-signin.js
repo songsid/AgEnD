@@ -277,8 +277,11 @@ const STATE_KEY = { usable: "stUsable", not_signed_in: "stNotSignedIn", not_inst
 /** Settings → Agents: each login on this machine, with Sign in where the dashboard can do it. */
 export function SignInList() {
   const { targets, loaded, login } = useStore(signInStore);
-  useEffect(() => { void refreshSignIn(); }, []);
-  if (!loaded || !targets.length) return null;
+  // Not over the temporary public link: only the dashboard reached directly signs a backend in, and the link does not
+  // serve this read (it was a 404 in the console there, found by smoke-1939-authorize-defaults).
+  const offered = signInOffered();
+  useEffect(() => { if (offered) void refreshSignIn(); }, []);
+  if (!offered || !loaded || !targets.length) return null;
   const running = login && login.phase === "running";
   return html`<section class="s-group signin-list" aria-label=${tn("listTitle")}>
     <div class="list-head"><span>${tn("listTitle")}</span></div>
