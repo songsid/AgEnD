@@ -26,7 +26,7 @@ Telegram fleet 選單列出 23 個指令，ClassicBot 選單列出 11 個；Disc
 | `/collab` | 切換 bot／webhook 訊息接收 | — | 🔒 管理員（Telegram ClassicBot 不處理） |
 | `/update` | 依已安裝的頻道更新到最新版 | — | 🔒 管理員 |
 | `/doctor` | 執行 fleet 健康診斷 | — | 🔒 管理員 |
-| `/login` | （beta）遠端 CLI 登入，缺 CLI 時先幫你裝好 | `[backend] [cancel]`；隨時可用 `/login cancel` | 🔒 管理員 |
+| `/login` | 遠端 CLI 登入，缺 CLI 時先幫你裝好 | `[backend] [cancel]`；隨時可用 `/login cancel` | 🔒 管理員 |
 | `/usage` | 顯示 AI 訂閱用量 | — | 所有人 |
 | `/tips` | 在你執行處抽一則使用小提示 | `[mode]`——`on\|off` 開關每日自動推送，`advanced on` 解鎖進階層（皆需管理員） | 抽提示所有人 |
 
