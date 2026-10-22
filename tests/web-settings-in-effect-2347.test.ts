@@ -66,6 +66,15 @@ describe("#2347 §10: Agent defaults mark what nobody set", () => {
       .toEqual({ "g-be": false, "g-model": false, "g-auto": false, "g-tp": false,
         "g-locale": true, "g-vis": true, "g-reply": true, "g-ts": true, "g-ll": true, "g-am": true, "g-hang": true, "g-conc": true, "g-stag": true });
   });
+  it("Project folders left empty says new agents may work in any folder; listing one removes that line", async () => {
+    await open("agent-defaults", "roots");
+    const line = () => text(p.root.querySelector("#g-roots .s-effect"));
+    const before = line();
+    const input: any = p.root.querySelector("#g-roots input[type=text]");
+    input.value = "/srv"; fire(input, "input"); await settle(2);
+    p.root.querySelector("#g-roots").querySelectorAll("button").find((b: any) => b.textContent.includes("Add")).click(); await settle(4);
+    expect([before, line()]).toEqual(["In effect: any folder default", null]);
+  });
   it("an edited default is no longer \"default\" (it is what the bar will save)", async () => {
     await open("agent-defaults", "edit");
     const input: any = p.root.querySelector("#g-hang");

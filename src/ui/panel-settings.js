@@ -1064,7 +1064,8 @@ function General({ ctx, part = "all" }) {
     </section>` : null}
     ${fleetPart ? html`<section class="card" id="project-roots"><h3>${tn("projectRootsTitle")}</h3>
       <p class="note">${tn("projectRootsHint")}</p>
-      <div id="g-roots" class=${fc("field", "roots")}>${L(tn("projectRootsTitle"), "fleet.project_roots")}<${ChipList} items=${f.roots} onChange=${set("roots")} placeholder="/path/to/projects" label=${tn("projectRootsTitle")} /></div>
+      <div id="g-roots" class=${fc("field", "roots")}>${L(tn("projectRootsTitle"), "fleet.project_roots")}<${ChipList} items=${f.roots} onChange=${set("roots")} placeholder="/path/to/projects" label=${tn("projectRootsTitle")} />
+        ${f.roots.length ? null : html`<${InEffect} text=${tn("projectRootsAnywhere")} />`}</div>
     </section>` : null}
     ${fleetPart ? html`<${Drawer} title=${tn("advancedSection")}>
       <section class="card"><h3>${tn("runtimeResources")}</h3><div class="grid2">
