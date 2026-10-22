@@ -460,6 +460,18 @@ describe("zones: seats, walking, bubbles", () => {
       { key: "e", calling: false, shown: 5, box: box(250) },
     ]);
     expect(placed.map((p: any) => [p.key, p.dy])).toEqual([["d", 0], ["a", 0], ["e", 0], ["b", -22]]);
+    // #2431 smoke: a tail is kept clear too — a bubble over another's tail is lifted (or waits).
+    const tailed = Z.placeBubbles([
+      { key: "low", calling: false, shown: 9, box: box(0, 100, 50), tail: { x: 45, y: 140 } },
+      { key: "over", calling: false, shown: 1, box: box(51, 121, 100) },    // clear of low's box, on its tail
+    ]);
+    expect(tailed.map((p: any) => [p.key, p.dy])).toEqual([["low", 0], ["over", -22]]);
+    // …and a bubble whose own tail would cross a placed one waits (lifted, its tail is only longer).
+    const crossing = Z.placeBubbles([
+      { key: "placed", calling: false, shown: 9, box: box(0, 120, 80) },
+      { key: "above", calling: false, shown: 1, box: box(65, 90, 100), tail: { x: 75, y: 150 } },   // box clear; tail through "placed"
+    ]);
+    expect(crossing.map((p: any) => p.key)).toEqual(["placed"]);
     // A calling bubble takes its place before one that started earlier.
     expect(Z.placeBubbles([{ key: "x", calling: false, shown: 9, box: box(0) }, { key: "y", calling: true, shown: 1, box: box(10) }]).map((p: any) => [p.key, p.dy]))
       .toEqual([["y", 0], ["x", -22]]);

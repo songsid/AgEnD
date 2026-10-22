@@ -320,7 +320,7 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
     for (const sp of speakers) {
       if (sp.look.dim || sp.look.pose === "away") continue;
       const b = bubbleAt(sp.look.name, sp.look.state, ms, linesFor(sp.look.state, s.lang, sk.pack, s.lines));
-      if (b) bubbles.push({ key: sp.look.name, calling: CALLING.has(sp.look.state), shown: b.shown, box: bubbleBox(ctx, sp.x, sp.y, b.text), sp, b });
+      if (b) bubbles.push({ key: sp.look.name, calling: CALLING.has(sp.look.state), shown: b.shown, box: bubbleBox(ctx, sp.x, sp.y, b.text), tail: { x: sp.x, y: sp.y }, sp, b });
     }
     for (const { sp, b, dy } of placeBubbles(bubbles)) sk.drawBubble(ctx, sp.x, sp.y, [...b.text].slice(0, b.shown).join(""), env, -dy);
     return walking || up.length > 0 || flights.size() > 0;
