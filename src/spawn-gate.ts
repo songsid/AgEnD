@@ -25,6 +25,8 @@ export interface SpawnGateOptions {
   random?: () => number;
   lowMemoryBytes?: number;
   memoryPressure?: MemoryPressure;
+  /** Notification only: never changes admission or invokes queued work. */
+  onStartupMemoryWait?: () => void;
 }
 
 /** Persistent fleet-wide concurrency/workdir gate shared by startup and recovery. */
@@ -95,11 +97,18 @@ export class SpawnGate {
     for (const item of this.nestedQueue.splice(0)) item.reject(err);
   }
 
+  /** An actual queued startup wait, not global pressure or a hung active callback. */
+  isStartupMemoryDeferred(): boolean {
+    return !this.stopped && this.memoryWait
+      && [...this.queue, ...this.nestedQueue].some(item => item.task.reason === "startup");
+  }
+
   private wait(ms: number, capacityWait = false, memoryWait = false): void {
     this.capacityWait = capacityWait;
     this.memoryWait = memoryWait;
     this.timer = setTimeout(() => { this.timer = null; this.capacityWait = this.memoryWait = false; this.pump(); }, ms);
     this.timer.unref?.();
+    if (this.isStartupMemoryDeferred()) this.options.onStartupMemoryWait?.();
   }
 
   private pump(): void {

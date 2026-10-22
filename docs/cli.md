@@ -433,6 +433,8 @@ OOM classification is conservative: Linux needs a matching kernel victim record 
 - **`agend doctor`** shows the unit as systemd loaded it (the system unit when one runs the fleet) (`Type`, `NotifyAccess`, `TimeoutStartSec`), the files it came from (the unit file and each drop-in), and each leftover. A `Type=notify` unit without `NotifyAccess=all` is an error there.
 - **The first update does it:** `agend update` runs the new release's own refresh and restart, so updating to a release with this fix repairs the unit in the same update.
 
+**Memory-deferred startup (#2461).** A queued startup spawn waiting for memory renews systemd's startup deadline by 15 minutes, immediately and every 30 seconds, instead of restarting the partly started fleet. READY still waits for startup completion; the dashboard and systemd STATUS show the wait. Normal concurrency/storm waits and unrelated startup hangs do not renew the deadline. Watchdog monitoring starts before General but still depends on a responsive main loop. Bulk shutdown/restart stops use batches of at most five under elevated/critical memory pressure; stops never wait for memory recovery. See [memory pressure](memory-pressure.md).
+
 **Which Node the service runs, and when `agend restart` refuses (#1450).**
 - With AgEnD's bundled Node (or a validated `AGEND_NODE`), the unit (`ExecStart=`) and the plist (`ProgramArguments`)
   name that Node first, then the package's `dist/cli.js`, then `fleet start`. The bundled Node's path changes only when

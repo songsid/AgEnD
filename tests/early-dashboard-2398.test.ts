@@ -141,6 +141,54 @@ function initializeVisitorWorld(fm: any, allowed = true) {
 }
 
 describe("dashboard before agents (#2398)", () => {
+  it("renews a real gate memory wait before General finishes and cleans up a failed startup (#2461)", async () => {
+    const { fm, boot, release } = await heldBoot();
+    const MiB = 1024 * 1024;
+    vi.spyOn(fm.memoryPressure, "read").mockReturnValue({ totalBytes: 16_000 * MiB,
+      availableBytes: 10 * MiB, availableKind: "available", swapTotalBytes: 0, swapFreeBytes: 0 });
+    const physical = vi.fn(async () => {});
+    const queued = fm.spawnGate.run({ instanceName: "queued", workingDirectory: "/synthetic-queued", reason: "startup" }, physical).catch(() => {});
+    try {
+      expect(calls.notify.some(state => state.startsWith("EXTEND_TIMEOUT_USEC=900000000\n"))).toBe(true);
+      expect(calls.notify).not.toContain("READY=1");
+      expect(physical).not.toHaveBeenCalled();
+      expect(fm.watchdogTimer).not.toBeNull();
+    } finally {
+      fm.spawnGate.shutdown(); release(); await queued; await boot.catch(() => {});
+    }
+    expect(fm.startupMemoryDeadline).toBeNull();
+    expect(fm.watchdogTimer).toBeNull();
+    expect(calls.notify).not.toContain("READY=1");
+  });
+
+  it("a late old startup neither declares READY nor retires the replacement's lease (#2461)", async () => {
+    const { fm, boot, release } = await heldBoot();
+    const next = deferred();
+    vi.spyOn(fm, "startAllWithinDeadline").mockImplementation(async () => { await next.promise; fm.startupComplete = true; });
+    const replacement = fm.startAll(fm.configPath);
+    const owner = fm.startupMemoryDeadline;
+    release(); await boot;
+    expect(calls.notify).not.toContain("READY=1");
+    expect(fm.startupMemoryDeadline).toBe(owner);
+    next.resolve(); await replacement;
+    expect(fm.startupMemoryDeadline).toBeNull();
+  });
+
+  it("bounds actual full-fleet stop batches under critical pressure (#2461)", async () => {
+    const { fm, boot, release } = await heldBoot(); release(); await boot;
+    const barrier = deferred(), firstBatch = deferred(); let active = 0, peak = 0, stopped = 0;
+    fm.daemons.clear();
+    for (let i = 0; i < 40; i++) fm.daemons.set(`stop-${i}`, { stop: async () => {
+      peak = Math.max(peak, ++active); if (active === 5) firstBatch.resolve();
+      await barrier.promise; active--; stopped++;
+    } });
+    vi.spyOn(fm.memoryPressure, "snapshot").mockReturnValue({ level: "critical", memory: null,
+      sampledAt: null, recovering: false, samples: 0, trend: null });
+    const stopping = fm.stopAll(); await firstBatch.promise;
+    try { expect(active).toBe(5); } finally { barrier.resolve(); await stopping; }
+    expect(peak).toBe(5); expect(stopped).toBe(40);
+  });
+
   it("waits for listener admission before entering the first instance", async () => {
     const { fm, boot, release, releaseListen, generalEntered } = await heldBoot(true);
     expect(fm.healthServer.listening).toBe(true);
@@ -154,6 +202,7 @@ describe("dashboard before agents (#2398)", () => {
 
   it("binds before the held General, serves early reads, and keeps READY last", async () => {
     const { fm, boot, releaseGeneral, workerEntered, releaseWorker } = await heldBoot();
+    expect(fm.watchdogTimer).not.toBeNull(); // A held first General must not postpone liveness monitoring (#2461).
     expect(fm.healthServer, "listener must exist before General startup").not.toBeNull();
     expect(fm.healthServer.listening).toBe(true);
     expect(calls.notify).not.toContain("READY=1");
