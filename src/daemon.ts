@@ -1407,7 +1407,10 @@ export class Daemon extends EventEmitter {
   private consecutiveOoms: SessionOomCount | null = null;
 
   private oomSessionKey(): string | null {
-    // A cwd-selected rollout or an old session-id file is not proof of this launch's session.
+    // Claude's per-instance statusline owns its ID. Other current getters
+    // either return null or select by cwd (Muse/Grok): those are not proof
+    // of this pane's session and must not trigger this destructive decision.
+    if ((this.config.backend ?? "claude-code") !== "claude-code") return null;
     const session = this.backend?.getSessionId?.();
     return typeof session === "string" && session.trim() && session.length <= 512
       ? JSON.stringify([this.config.backend ?? "claude-code", session.trim()]) : null;
@@ -11010,6 +11013,9 @@ export class Daemon extends EventEmitter {
       this.backendOutage?.clear(this.backendKey());
     }
 
+    // A pre-existing fresh fallback is not another resume of the old session.
+    // Providers may not have rewritten their session reading yet.
+    if (!resumedSuccessfully) this.consecutiveOoms = null;
     this.lastSpawnAt = Date.now();
     // #1217: whatever session this CLI writes from here on is this backend's.
     this.recordSessionOwner();

@@ -80,6 +80,23 @@ describe("definitive evidence rather than pressure or an arbitrary SIGKILL", () 
     proc(100, "claude", "", "999");
     expect(await confirmedCliOom(identity, Date.now())).toBeNull();
   });
+  it("rejects a matching PID with another comm inside the observation window", async () => {
+    proc(100, "claude"); const identity = await observeCliOomIdentity(100, "claude");
+    unlinkSync(join(io.root, "100/stat"));
+    io.journal = record(100, "other-cli");
+    expect(await confirmedCliOom(identity, Date.now())).toBeNull();
+    io.journal = record(100, "claude");
+    expect(await confirmedCliOom(identity, Date.now())).toMatchObject({ pid: 100 });
+  });
+  it("a reused PID that is itself a zombie does not prove the observed process is dead", async () => {
+    proc(100, "claude"); const identity = await observeCliOomIdentity(100, "claude");
+    const stat = join(io.root, "100/stat");
+    proc(100, "claude", "", "999"); writeFileSync(stat, readFileSync(stat, "utf8").replace(") S ", ") Z "));
+    io.journal = record(100);
+    expect(await confirmedCliOom(identity, Date.now())).toBeNull();
+    proc(100, "claude", "", "123"); writeFileSync(stat, readFileSync(stat, "utf8").replace(") S ", ") Z "));
+    expect(await confirmedCliOom(identity, Date.now())).toMatchObject({ pid: 100 });
+  });
   it("unknown namespaces, unreadable journals and unsupported macOS preserve ordinary behavior", async () => {
     proc(100, "claude");
     writeFileSync(join(io.root, "100/status"), "NSpid:\t100 1\n");
@@ -167,6 +184,44 @@ describe("bounded same-session recovery with a fake OOM-killed child", () => {
     await h.die(false); await h.die(false);
     expect(h.launches).toEqual(["inert --resume old-session", "inert --resume old-session"]);
     expect(h.notices).toEqual([]); expect(h.daemon.consecutiveOoms).toBeNull();
+    h.daemon.healthCheckPaused = true;
+  });
+  it("an existing fresh launch clears the old streak before a delayed provider session update", async () => {
+    const h = harness(); await vi.advanceTimersByTimeAsync(1000); await h.die();
+    expect(h.daemon.consecutiveOoms?.count).toBe(1);
+    h.daemon.skipResume = true;
+    expect(await h.daemon.spawnClaudeWindow()).toBe(false);
+    expect(h.session.id).toBe("old-session"); // provider has not rewritten it yet
+    expect(h.daemon.consecutiveOoms).toBeNull();
+    await vi.advanceTimersByTimeAsync(1000); await h.die();
+    expect(h.notices).toEqual([]);
+    expect(h.daemon.consecutiveOoms?.count).toBe(1);
+    h.daemon.healthCheckPaused = true;
+  });
+  it("does not treat a cwd-selected backend getter as an owned session identity", async () => {
+    const h = harness(); h.daemon.config.backend = "muse";
+    const read = vi.fn(() => "cwd-selected-session"); h.daemon.backend.getSessionId = read;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(read).not.toHaveBeenCalled();
+    expect(h.daemon.cliOomObservation).toBeNull();
+    expect(h.daemon.consecutiveOoms).toBeNull();
+    h.daemon.healthCheckPaused = true;
+  });
+  it.each([1, 139])("exit %i with a matching-looking kernel record still uses ordinary recovery", async code => {
+    const h = harness(); await vi.advanceTimersByTimeAsync(1000); await h.die();
+    await h.die(true, code);
+    expect(h.launches).toHaveLength(2); expect(h.notices).toEqual([]);
+    expect(h.daemon.consecutiveOoms).toBeNull(); h.daemon.healthCheckPaused = true;
+  });
+  it.each(["owner", "tmux"])("an observation from a previous %s cannot count towards the current launch", async previous => {
+    const h = harness(); await vi.advanceTimersByTimeAsync(1000);
+    const old = h.daemon.cliOomObservation; expect(old).not.toBeNull();
+    if (previous === "owner") { h.daemon.beginSpawn(); h.daemon.endSpawn(); }
+    else h.daemon.tmux = { ...h.daemon.tmux };
+    h.daemon.cliOomObservation = old;
+    await h.die();
+    expect(h.daemon.consecutiveOoms).toBeNull();
+    expect(h.notices).toEqual([]); expect(h.launches).toHaveLength(1);
     h.daemon.healthCheckPaused = true;
   });
   it("a session change starts a new streak; unknown session ownership does not guess from the old session-id file", async () => {

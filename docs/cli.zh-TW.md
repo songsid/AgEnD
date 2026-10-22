@@ -297,6 +297,8 @@ Detached restart 使用非同步 polling 與 monotonic deadline。期限到了�
 
 更新時會重寫 user unit，帶上這一行。`agend restart` 會替舊的 unit 補上，更新時的 refresh 也會替舊式的 system unit（`/etc/systemd/system/agend.service`）補上。unit 自己設定了 `OOMPolicy` 的話會保留原值。systemd 243 以前的版本不認得這個設定，會忽略它，並在 journal 留下警告。macOS 沒有對應的設定：launchd 沒有每個服務各自的 cgroup，kernel（jetsam）只會 kill 那一個行程；如果被 kill 的是 fleet，`KeepAlive` 會重新啟動它。
 
+同一工作階段的 OOM 防護目前僅使用 Claude Code 專屬於 instance 的 statusline 工作階段識別。Codex／Kiro 沒有這個識別，Muse／Grok 依工作目錄挑選的識別不代表 pane 所有權，因此均沿用一般恢復。
+
 OOM 判定採保守原則：Linux 必須取得啟動期間的核心紀錄，且受害者是存活時已觀測的主 CLI PID，位於最初的 PID 命名空間。只有退出碼 137、共用 cgroup 計數器、記憶體壓力或對話大小均不足以判定。工作階段不明、未觀測到的快速退出、無法讀取證據、容器的巢狀 PID 命名空間與 macOS，均沿用一般崩潰恢復。工具或 MCP 子程序不等於主 CLI。不新增因記憶體用量而主動終止程序的功能或統一的指令上限；手動重啟 Agent 或 fleet 會開始新的恢復嘗試。
 
 **fleet 的就緒訊號必須送得到 systemd（#2331）。** unit 是 `Type=notify`：fleet 透過一個短暫的 `systemd-notify` 輔助程式告訴 systemd 它已就緒（`READY=1`），不是由主行程自己送，所以 systemd 只有在 `NotifyAccess=all` 時才會收下。設成 `main`、`exec`，或完全沒寫 `NotifyAccess`（`Type=notify` 的預設就是 `main`）時，systemd 會拒收：`Got notification message from PID …, but reception only permitted for main PID …`。fleet 本身照常執行，但 unit 會一直停在 `activating`，直到 `TimeoutStartSec` 用完，systemd 就把它 kill 掉再重啟——自從 `TimeoutStartSec=15min`（#1113）起就是每 15 分鐘一次。以前逾時是 `0` 的時候，同樣的 unit 只會停在 `activating`，沒有人會發現。
