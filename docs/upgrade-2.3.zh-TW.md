@@ -47,7 +47,16 @@ agend restart
 
 然後請到 GitHub 開 issue 回報。Mac 升上 2.3 之後，之後的更新會自己確認新的 fleet 真的在跑，沒有的話會自動退回。
 
-<!-- TODO(#2481 B)：等 2.3 的自我檢查（2.2.x → 2.3 之後會直接告訴使用者）那個 PR 合併後，在這裡說明。 -->
+你不必自己發現：2.3 會檢查。當已安裝版本的 fleet 一直起不來時，每個 `agend` 指令（`agend ls`、`agend status`……）都會先印出來，`agend doctor` 也會把它列為失敗的檢查，並附上 `~/.agend/fleet.log` 的最後幾行（錯誤訊息在那裡）：
+
+```
+⚠ AgEnD v2.3.0 已安裝，但 fleet 無法啟動（launchd: exit 1, started 6 times）。
+  回到 v2.2.6：npm install -g @songsid/agend@2.2.6 && agend restart
+  更新程式保留了 v2.2.6 的副本：~/.npm-global/.agend-rollback/2.2.6-…/agend（不會自動還原）。
+  錯誤訊息在 ~/.agend/fleet.log 的最後幾行。請回報（agend doctor 會列出要附上的內容）：https://github.com/songsid/AgEnD/issues/new
+```
+
+在 Mac 上還會跳出一次通知。要退回的版本，是這台主機上最後一次成功執行的版本，或 2.2.x 更新程式保留了副本的那個版本。不會替你自動還原。正常但較慢的啟動、剛安裝還在啟動中，以及你自己停掉的 fleet，都不會被回報。
 
 ### 遇到阻礙時
 

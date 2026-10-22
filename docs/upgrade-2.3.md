@@ -47,7 +47,16 @@ agend restart
 
 Then please report it in a GitHub issue. Once a Mac is on 2.3, later updates check that the new fleet is really running, and roll back if it is not.
 
-<!-- TODO(#2481 B): describe the 2.3 self-check that tells the user plainly after a 2.2.x → 2.3 hop, once that PR lands. -->
+You do not have to find this out yourself: 2.3 checks it. When the installed version's fleet keeps failing to start, every `agend` command (`agend ls`, `agend status`, …) prints it first, and `agend doctor` shows it as a failed check with the last lines of `~/.agend/fleet.log`, which hold the error:
+
+```
+⚠ AgEnD v2.3.0 is installed, but the fleet fails to start (launchd: exit 1, started 6 times).
+  To go back to v2.2.6: npm install -g @songsid/agend@2.2.6 && agend restart
+  The updater kept a copy of v2.2.6: ~/.npm-global/.agend-rollback/2.2.6-…/agend (nothing is restored automatically).
+  The error is at the end of ~/.agend/fleet.log. Please report it (agend doctor shows what to include): https://github.com/songsid/AgEnD/issues/new
+```
+
+On a Mac there is also one notification. The version to go back to is the last one that ran on this host, or the one whose copy 2.2.x's updater kept. Nothing is restored for you. A normal slow start, a fresh install still starting, and a fleet you stopped yourself are never reported.
 
 ### If something gets in the way
 
