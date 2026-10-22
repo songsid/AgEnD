@@ -185,7 +185,7 @@ try:
     sibling_reply('after main OOM sibling replies')
     receipt['legs']['main-oom'] = {'before':before,'after':after}
     sd('stop', UNIT)
-    tests = as_user(f'cd {PKG} && systemd-run --user --wait --pipe --collect --working-directory={PKG} --unit=oom-guard-tests -p MemoryMax=768M -p MemorySwapMax=0 -p CPUQuota=200% node node_modules/vitest/vitest.mjs run tests/session-oom-stop-2035.test.ts tests/oom-policy-loaded-2015.test.ts --maxWorkers=1', timeout=90)
+    tests = as_user(f'cd {PKG} && systemd-run --user --wait --pipe --collect --working-directory={PKG} --unit=oom-guard-tests -p MemoryMax=768M -p MemorySwapMax=0 -p CPUQuota=200% node node_modules/vitest/vitest.mjs run tests/session-oom-stop-2035.test.ts tests/oom-policy-loaded-2015.test.ts tests/child-stdio-errors-2374.test.ts --maxWorkers=1', timeout=90)
     (ROOT/'guard-tests.log').write_text(tests.stdout)
     check('real Daemon guard suites inside isolated container', tests.returncode == 0, tests.stdout[-3000:])
     receipt['guard_test_boundary'] = 'Actual Daemon decisions; fake proc/journal evidence. Nested-container PID attribution is deliberately unknown in production.'

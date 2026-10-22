@@ -1,5 +1,5 @@
 /** Definitive, conservative Linux OOM attribution. Never signals a workload for memory. */
-import { execFile } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { readFile, readlink } from "node:fs/promises";
 import { basename } from "node:path";
 
