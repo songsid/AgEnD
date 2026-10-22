@@ -198,14 +198,33 @@ export function compactGroups(providers) {
   return [...groups.values()];
 }
 const level = (pct) => (pct >= 90 ? "crit" : pct >= 70 ? "warn" : "");
-/** One window on its own line: its few characters ("5h"), a full-width bar and the percent, coloured as the full card. */
-function CompactMeter({ m }) {
+/**
+ * #2240: an account whose percent windows come from several pools (agy: Gemini, Claude & others, Gemini 4 Argon) — each
+ * pool with its windows and the tighter one (the most used); null for an account of one pool (its 5h / 7d lines).
+ */
+export function compactPools(p) {
+  const pct = ((p && p.metrics) || []).filter((m) => m && m.type === "percent" && !m.resetPassed);
+  const pools = new Map();
+  for (const m of pct) {
+    if (!m.pool || typeof m.pool.label !== "string") return null;
+    if (!pools.has(m.pool.label)) pools.set(m.pool.label, { pool: m.pool, metrics: [] });
+    pools.get(m.pool.label).metrics.push(m);
+  }
+  if (pools.size < 2) return null;
+  return [...pools.values()].map((x) => ({ ...x, worst: x.metrics.reduce((a, b) => ((b.used ?? 0) > (a.used ?? 0) ? b : a)) }));
+}
+const pctOf = (m) => Math.min(100, Math.max(0, m.used ?? 0));
+/**
+ * One window on its own line: its few characters ("5h"), a full-width bar and the percent, coloured as the full card.
+ * A pool's line (#2240): the pool's name in place of the window, its every window in the tooltip.
+ */
+function CompactMeter({ m, tag, title }) {
   const bar = useRef(null);
   const pct = Math.min(100, Math.max(0, m.used ?? 0)), cls = level(pct);
   useLayoutEffect(() => { if (bar.current) bar.current.style.width = `${pct}%`; }, [pct]);   // CSSOM (#1300)
   const word = cls === "crit" ? tn("usageNear") : cls === "warn" ? tn("usageHigh") : "";
-  return html`<span class="u-cm" title=${`${usageText(m.label, m.labelI18n)}: ${pct.toFixed(0)}%${word ? ` (${word})` : ""}`}>
-    <span class="u-cm-tag">${windowTag(m)}</span><span class="u-cm-bar"><span ref=${bar} class=${`u-cm-fill ${cls}`}></span></span>
+  return html`<span class="u-cm" title=${title || `${usageText(m.label, m.labelI18n)}: ${pct.toFixed(0)}%${word ? ` (${word})` : ""}`}>
+    <span class="u-cm-tag">${tag || windowTag(m)}</span><span class="u-cm-bar"><span ref=${bar} class=${`u-cm-fill ${cls}`}></span></span>
     <span class=${`u-cm-pct ${cls}`}>${pct.toFixed(0)}%</span></span>`;
 }
 /** What a login says instead of numbers (not logged in, an error), or "" when it has numbers. */
@@ -222,17 +241,20 @@ function rowNote(p) {
  */
 export function CompactRow({ p, onExpand }) {
   const title = providerTitle(p), failed = p.status === "error" || p.status === "no-credentials";
-  const metrics = failed || p.stale ? [] : compactMetrics(p);
+  const pools = failed || p.stale ? null : compactPools(p);
+  const metrics = failed || p.stale ? [] : pools ? pools.flatMap((x) => x.metrics) : compactMetrics(p);
   const note = rowNote(p), stale = p.stale ? staleNote(p) : null;
   const say = stale ? stale.mark : note || tn("usage.no_data");
   const detail = stale ? [stale.mark, stale.detail].filter(Boolean).join(" — ") : say;
   const reset = soonestReset(metrics);
   const name = title.profile || title.base;
-  return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}`} aria-expanded="false" title=${`${p.name} — ${tn("usageExpand")}`} onClick=${onExpand}>
+  return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}${pools ? " is-pooled" : ""}`} aria-expanded="false" title=${`${p.name} — ${tn("usageExpand")}`} onClick=${onExpand}>
     <span class="u-crow-head"><span class="u-crow-name">${name}</span>
       ${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
       ${reset ? html`<span class="u-crow-reset" title=${reset.full}>${reset.short}<span class="sr-only"> (${reset.full})</span></span>` : null}</span>
-    ${metrics.length ? metrics.map((m, j) => html`<${CompactMeter} key=${j} m=${m} />`)
+    ${pools ? pools.map((x) => html`<${CompactMeter} key=${x.pool.label} m=${x.worst} tag=${usageText(x.pool.label, x.pool.labelI18n)}
+        title=${x.metrics.map((m) => `${usageText(m.label, m.labelI18n)}: ${pctOf(m).toFixed(0)}%`).join(" · ")} />`)
+      : metrics.length ? metrics.map((m, j) => html`<${CompactMeter} key=${j} m=${m} />`)
       : html`<span class=${`u-crow-note${(stale || (p.status === "error" && !p.transient)) ? " is-alert" : ""}`} title=${detail}>${say}</span>`}
   </button>`;
 }

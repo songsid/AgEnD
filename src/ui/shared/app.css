@@ -1156,7 +1156,9 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
   padding-block: 0; line-height: 16px; font-size: 10.5px; }
 .u-crow-reset { margin-left: auto; flex: none; padding-left: 6px; font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .u-cm { display: grid; grid-template-columns: 2.6em minmax(0, 1fr) 3.4em; align-items: center; gap: 7px; min-width: 0; }
-.u-cm-tag { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; overflow: hidden; }
+.u-cm-tag { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* #2240: an account of several pools (agy) names each pool's line: a wider label, ending in an ellipsis if it must. */
+.u-crow.is-pooled .u-cm { grid-template-columns: minmax(0, 7.5em) minmax(0, 1fr) 3.4em; }
 .u-cm-bar { height: 6px; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
 .u-cm-fill { display: block; height: 100%; width: 0; min-width: 2px; border-radius: var(--r-full); background: var(--accent); }
 .u-cm-fill.warn { background: var(--warn); } .u-cm-fill.crit { background: var(--danger); }
