@@ -653,7 +653,7 @@ describe("#1716: the stop reply and topic notice name the ended background work"
       const ast = ts.createSourceFile("fleet-manager.ts", source, ts.ScriptTarget.ES2022, true);
       let method: any, block: any;
       const visit = (n: any): void => {
-        if (ts.isMethodDeclaration(n) && n.name.getText(ast) === "startAll") method = n;
+        if (ts.isMethodDeclaration(n) && n.name.getText(ast) === "startAllWithinDeadline") method = n;
         ts.forEachChild(n, visit);
       };
       visit(ast);
