@@ -37,11 +37,17 @@ interface RigOpts {
   previous?: boolean;
   /** What a settled stop leaves: a unit whose fleet exited on its own stays `failed` (default inactive). */
   stopLeaves?: "inactive" | "failed";
+  /** launchd: the previous job, bootstrapped again, crash-loops too. */
+  previousCrashes?: boolean;
+  /** /health never answers (the fleet's port is taken). */
+  noHealth?: boolean;
   /** The restored `agend` does not answer --version. */
   restoredMute?: boolean;
 }
 interface Manager {
   state: "active" | "inactive" | "failed" | "activating"; pid: number; loaded: boolean; nextPid: number; printsLoadedAfterBootout: number;
+  /** launchd: how often the job was started; `crashLoop` = its fleet exits at once and KeepAlive starts it again. */
+  runs: number; crashLoop: boolean;
   /** The fleet the manager runs now (0: none) — the one before it exits. */
   setFleet(pid: number): void;
 }
@@ -82,10 +88,10 @@ function rig(o: RigOpts) {
     m.pid = pid;
     if (pid) { live.add(pid); writeFileSync(join(home, "fleet.pid"), String(pid)); }
   };
-  const m: Manager = { state: o.running ? "active" : "inactive", pid: 0, loaded: o.kind === "launchd", nextPid: 7000, printsLoadedAfterBootout: 0, setFleet };
+  const m: Manager = { state: o.running ? "active" : "inactive", pid: 0, loaded: o.kind === "launchd", nextPid: 7000, printsLoadedAfterBootout: 0, setFleet, runs: 1, crashLoop: false };
   if (o.running) setFleet(9191);
   writeFileSync(join(home, "fleet.yaml"), "instances: {}\n");
-  const calls: string[] = [], log: string[] = [];
+  const calls: string[] = [], log: string[] = [], healthAsked: number[] = [];
   const ok = (stdout = "") => ({ status: 0, signal: null, stdout, stderr: "" });
   const run = (cmd: string, args: string[]) => {
     const line = `${cmd} ${args.join(" ")}`;
@@ -130,16 +136,19 @@ function rig(o: RigOpts) {
         if (o.unreadable) return { status: 5, signal: null, stdout: "", stderr: "" };
         if (m.printsLoadedAfterBootout > 0) { m.printsLoadedAfterBootout--; return ok(`state = running\n\tpid = ${m.pid}\n`); }
         if (!m.loaded) return { status: 113, signal: null, stdout: "", stderr: "Could not find service" };
-        return ok(m.pid ? `\tstate = running\n\tpid = ${m.pid}\n` : "\tstate = not running\n");
+        if (m.crashLoop) { m.runs++; return ok(`\tstate = spawn scheduled\n\truns = ${m.runs}\n`); }
+        return ok(m.pid ? `\tstate = running\n\truns = ${m.runs}\n\tpid = ${m.pid}\n` : `\tstate = not running\n\truns = ${m.runs}\n`);
       }
       if (args[0] === "bootout") {
         if (o.stopSticks) return ok();
         // launchd answers before the job is gone (macOS 15): the next print still finds it.
-        m.printsLoadedAfterBootout = 1; m.loaded = false; setFleet(0); return ok();
+        m.printsLoadedAfterBootout = 1; m.loaded = false; m.crashLoop = false; setFleet(0); return ok();
       }
       if (args[0] === "bootstrap") {
         if (o.startFails) return { status: 5, signal: null, stdout: "", stderr: "Input/output error" };
-        m.loaded = true; setFleet(m.nextPid++); return ok();
+        m.loaded = true; m.runs = 1; setFleet(m.nextPid++);
+        if (o.previousCrashes) { setFleet(0); m.crashLoop = true; }
+        return ok();
       }
       return ok();
     }
@@ -150,13 +159,15 @@ function rig(o: RigOpts) {
     pid: 4242, uid: 501, now: () => Date.now(), log: (l: string) => log.push(l), alive: (pid: number) => live.has(pid),
     env: { HOME: userHome, AGEND_HOME: home, XDG_RUNTIME_DIR: "/run/user/501" }, systemUnit,
     lockReaders: { ...lockReaders, processStart: () => null, startTicks: () => null, bootId: () => null },
-    run, sleep: () => { clock += 100; }, monotonicNow: () => clock,
+    run, sleep: (ms: number) => { clock += ms; }, monotonicNow: () => clock,
+    // The fleet's /health: answers while a job runs, unless the rig says its port is taken.
+    health: (port: number) => { healthAsked.push(port); return !o.noHealth && m.loaded && m.pid > 0; },
   };
   const version = () => { try { return readFileSync(realpathSync(join(prefix, "bin", "agend")), "utf8").trim(); } catch { return null; } };
   const links = () => Object.fromEntries(readdirSync(join(prefix, "bin")).map(n => [n, lstatSync(join(prefix, "bin", n)).isSymbolicLink() ? readlinkSync(join(prefix, "bin", n)) : "file"]));
   const rollbackDir = () => { const d = join(prefix, ".agend-rollback"); return existsSync(d) ? readdirSync(d) : []; };
   const main = () => installer.main(["--upgrade", "--spec", `@songsid/agend@${NEW}`], deps);
-  return { root, prefix, pkgDir, home, file, oldDefinition, m, calls, log, deps, version, links, rollbackDir, main, live };
+  return { root, prefix, pkgDir, home, file, oldDefinition, m, calls, log, deps, version, links, rollbackDir, main, live, healthAsked, clock: () => clock };
 }
 
 /** Fable's shim: the first restart of the unit becomes a stop, and systemctl exits 1 (what `agend restart` reports as 1). */
@@ -208,7 +219,8 @@ describe("#2420 a new service that does not come up: the previous package, unit 
       "launchctl print gui/501/com.agend.fleet",   // still there: launchd answers before the job is gone
       "launchctl print gui/501/com.agend.fleet",
       `launchctl bootstrap gui/501 ${r.file}`,
-      "launchctl print gui/501/com.agend.fleet",
+      "launchctl print gui/501/com.agend.fleet",   // the previous fleet came up (fleet.pid = the job's pid, /health answers)
+      "launchctl print gui/501/com.agend.fleet",   // its pid, for the report
     ]);
     expect(r.version()).toBe(OLD);
     expect(readFileSync(r.file!, "utf8")).toBe(r.oldDefinition);
@@ -271,6 +283,69 @@ describe("#2420 a new service that does not come up: the previous package, unit 
   });
 });
 
+describe("#2420 launchd: an exit 0 of `agend restart` / `agend start` is not the fleet running — it must come up", () => {
+  it("a release whose fleet exits at start (KeepAlive starts it again): the restart said 0, the job's runs grow — rolled back", () => {
+    const r = rig({ kind: "launchd", running: true, agend: (args, m) => { if (args[0] !== "restart") return 0; m.setFleet(0); m.crashLoop = true; return 0; } });
+    expect(r.main()).toBe(1);
+    expect(r.version()).toBe(OLD);
+    expect(readFileSync(r.file!, "utf8")).toBe(r.oldDefinition);
+    expect(failure(r)).toContain(`the launchd job did not come up on v${NEW}: the fleet exited and launchd started it again (runs 2 → 3). Rolled back: the previous package (v${OLD}) and the launchd job com.agend.fleet were restored; the previous service is running (pid 7000)`);
+  });
+  it("the service was stopped and `agend start` said 0, but the fleet never came up: rolled back, left stopped as it was", () => {
+    const r = rig({ kind: "launchd", running: false, agend: (args, m) => { if (args[0] !== "start") return 0; m.loaded = true; m.crashLoop = true; return 0; } });
+    expect(r.main()).toBe(1);
+    expect(r.version()).toBe(OLD);
+    expect(failure(r)).toContain("the service was stopped before this update and is left stopped");
+  });
+  it("its /health never answers (the port is taken), but the same pid runs steadily for a minute: up, nothing rolled back", () => {
+    const r = rig({ kind: "launchd", running: true, noHealth: true });
+    expect(r.main()).toBe(0);
+    expect(r.version()).toBe(NEW);
+    expect(r.clock()).toBeGreaterThanOrEqual(60_000);
+    expect(r.clock()).toBeLessThan(65_000);
+  });
+  it("a job that never runs the fleet fleet.pid names, for five minutes: not up — rolled back", () => {
+    const r = rig({ kind: "launchd", running: true, agend: (args, m) => { if (args[0] !== "restart") return 0; m.setFleet(0); m.pid = 0; return 0; } });
+    expect(r.main()).toBe(1);
+    expect(failure(r)).toMatch(/did not come up on v.*: the fleet did not come up within 300s \(launchd: not running\)\. Rolled back/);
+    expect(r.version()).toBe(OLD);
+  });
+  it("`agend restart` said 0 but no job is loaded: not up at once (no five-minute wait) — rolled back", () => {
+    const r = rig({ kind: "launchd", running: true, agend: (args, m) => { if (args[0] !== "restart") return 0; m.setFleet(0); m.loaded = false; return 0; } });
+    expect(r.main()).toBe(1);
+    expect(failure(r)).toContain("did not come up on v" + NEW + ": the job is not loaded. Rolled back");
+    expect(r.clock()).toBeLessThan(30_000);
+  });
+  it("the previous job, bootstrapped again, does not come up either: said, never claimed running", () => {
+    const r = rig({ kind: "launchd", running: true, previousCrashes: true, agend: (args, m) => { if (args[0] !== "restart") return 0; m.setFleet(0); m.crashLoop = true; return 0; } });
+    expect(r.main()).toBe(1);
+    expect(failure(r)).toMatch(/were restored, but the previous service did not start \(the fleet exited and launchd started it again/);
+  });
+  it("/health is asked on the port fleet.yaml sets", () => {
+    const r = rig({ kind: "launchd", running: true });
+    writeFileSync(join(r.home, "fleet.yaml"), "health_port: 19391   # rehearsal\ninstances: {}\n");
+    expect(r.main()).toBe(0);
+    expect(r.healthAsked).toEqual([19391]);
+  });
+  it("/health answers, but from a fleet that is not the job's (fleet.pid names another live process): not the new fleet — rolled back", () => {
+    const r = rig({ kind: "launchd", running: true, agend: (args, m) => { if (args[0] === "restart") m.pid = 6100; return 0; } });
+    r.live.add(9191);
+    expect(r.main()).toBe(1);
+    expect(failure(r)).toMatch(/did not come up on v.*: the fleet did not come up within 300s/);
+  });
+  it("a restart still pending (75) under launchd: not judged, nothing asked", () => {
+    const r = rig({ kind: "launchd", running: true, agend: args => (args[0] === "restart" ? 75 : 0) });
+    expect(r.main()).toBe(0);
+    expect(manager(r)).toEqual([]);
+  });
+  it("a fleet that came up: one look, nothing else", () => {
+    const r = rig({ kind: "launchd", running: true, agend: (args, m) => { if (args[0] === "restart") m.setFleet(6100); return 0; } });
+    expect(r.main()).toBe(0);
+    expect(manager(r)).toEqual(["launchctl print gui/501/com.agend.fleet"]);
+    expect(r.clock()).toBe(0);
+  });
+});
+
 describe("#2420 nothing is rolled back unless it is proven safe; what is kept is named", () => {
   it("the manager cannot be read: nothing stopped or restored; the copy is kept and named", () => {
     const r = rig({ kind: "user", running: true, agend: shimRestart, unreadable: true });
@@ -301,7 +376,9 @@ describe("#2420 the success path is unchanged", () => {
   it.each(["user", "system", "launchd"] as const)("%s: refresh + restart, no manager call of the installer's own, the copy removed", kind => {
     const r = rig({ kind, running: true });
     expect(r.main()).toBe(0);
-    expect(r.calls).toEqual([`npm install -g @songsid/agend@${NEW}`, "agend install --no-activate", "agend restart --yes"]);
+    // launchd alone: the job is asked once whether the fleet came up (it did: /health answered).
+    expect(r.calls).toEqual([`npm install -g @songsid/agend@${NEW}`, "agend install --no-activate", "agend restart --yes", ...(kind === "launchd" ? ["launchctl print gui/501/com.agend.fleet"] : [])]);
+    expect(r.healthAsked).toEqual(kind === "launchd" ? [19280] : []);
     expect(r.version()).toBe(NEW);
     expect(r.rollbackDir()).toEqual([]);
   });

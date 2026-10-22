@@ -523,8 +523,9 @@ function serviceState(svc, deps) {
     if (p.status !== 0) return { known: false };
     var pid = /^\s*pid = (\d+)\s*$/m.exec(p.stdout);
     var state = /^\s*state = (.+?)\s*$/m.exec(p.stdout);
+    var runs = /^\s*runs = (\d+)\s*$/m.exec(p.stdout);
     var running = !!pid && !!state && state[1] === "running";
-    return { known: true, running: running, stopped: false, pid: running ? Number(pid[1]) : 0, state: state ? state[1] : "" };
+    return { known: true, running: running, stopped: false, pid: running ? Number(pid[1]) : 0, state: state ? state[1] : "", runs: runs ? Number(runs[1]) : -1 };
   }
   var r = manage(svc, ["show", "-p", "ActiveState", "-p", "SubState", "-p", "MainPID", "-p", "NeedDaemonReload", svc.unit], deps);
   if (r.status !== 0 || r.signal) return { known: false };
@@ -535,15 +536,56 @@ function serviceState(svc, deps) {
   return { known: true, running: props.ActiveState === "active" && main > 0, stopped: props.ActiveState === "inactive" || props.ActiveState === "failed",
     pid: main, state: props.ActiveState + "/" + (props.SubState || ""), needReload: props.NeedDaemonReload === "yes" };
 }
+function clockOf(deps) { return deps.monotonicNow || function () { return Number(process.hrtime.bigint() / BigInt(1000000)); }; }
+function sleepOf(deps) { return deps.sleep || function (ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }; }
 /** Poll launchd (bounded, monotonic) until `done(state)` — a bootout returns before the job is gone (macOS 15). */
 function awaitLaunchd(svc, deps, done) {
-  var clock = deps.monotonicNow || function () { return Number(process.hrtime.bigint() / BigInt(1000000)); };
-  var sleep = deps.sleep || function (ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
+  var clock = clockOf(deps), sleep = sleepOf(deps);
   var deadline = clock() + 10000;
   for (;;) {
     var s = serviceState(svc, deps);
     if (done(s) || clock() >= deadline) return s;
     sleep(100);
+  }
+}
+/** The fleet's web/health port: fleet.yaml's top-level `health_port:`, else the fleet's default. */
+function healthPort(home) {
+  var m = /^health_port:[ \t]*(\d+)[ \t]*(?:#.*)?$/m.exec(readText(path.join(home, "fleet.yaml")) || "");
+  return m ? Number(m[1]) : 19280;
+}
+/** Does a fleet that finished starting answer GET /health there (200, or 503 with its problems listed)? */
+function healthAnswers(port, deps) {
+  if (deps.health) return deps.health(port);
+  var script = "require('http').get({host:'127.0.0.1',port:" + Number(port) + ",path:'/health',timeout:3000},function(r){var b='';r.on('data',function(d){b+=d});" +
+    "r.on('end',function(){try{process.exit(JSON.parse(b).startupComplete===true?0:3)}catch(e){process.exit(4)}})}).on('error',function(){process.exit(5)}).on('timeout',function(){process.exit(6)})";
+  return deps.run(process.execPath, ["-e", script], { timeoutMs: 10000 }).status === 0;
+}
+var LAUNCHD_READY_MS = 5 * 60 * 1000;
+var LAUNCHD_STEADY_MS = 60 * 1000;
+/**
+ * #2420: launchd starts a job without waiting for it (nothing like systemd's READY): `agend restart` / `agend start`
+ * return before the fleet runs, and a fleet that exits at start is started again by KeepAlive, forever. So under launchd
+ * the fleet proves itself: the job runs the pid fleet.pid names (the fleet writes it as it starts), and /health answers
+ * with its startup complete — or, with no answer there (its port taken: the fleet then runs without it), that same pid
+ * has run for a minute. The job started again (its runs count grew) is a fleet that exited. null: up; else why not.
+ */
+function launchdReady(svc, home, deps) {
+  var clock = clockOf(deps), sleep = sleepOf(deps);
+  var deadline = clock() + LAUNCHD_READY_MS, port = healthPort(home), firstRuns = null, steadyPid = 0, steadySince = 0;
+  for (;;) {
+    var s = serviceState(svc, deps);
+    if (s.known && s.stopped) return "the job is not loaded";
+    if (s.known) {
+      if (firstRuns === null) firstRuns = s.runs;
+      else if (s.runs > firstRuns) return "the fleet exited and launchd started it again (runs " + firstRuns + " → " + s.runs + ")";
+      if (s.running && fleetPid(home, deps) === s.pid) {
+        if (healthAnswers(port, deps)) return null;
+        if (steadyPid !== s.pid) { steadyPid = s.pid; steadySince = clock(); }
+        else if (clock() - steadySince >= LAUNCHD_STEADY_MS) return null;
+      } else steadyPid = 0;
+    }
+    if (clock() >= deadline) return "the fleet did not come up within " + LAUNCHD_READY_MS / 1000 + "s (launchd: " + (s.known ? s.state || "no state" : "state unknown") + ")";
+    sleep(1000);
   }
 }
 function stopService(svc, deps) {
@@ -555,11 +597,13 @@ function stopService(svc, deps) {
   manage(svc, ["stop", svc.unit], deps, MANAGER_MS);
   return serviceState(svc, deps);
 }
-function startService(svc, deps) {
+function startService(svc, home, deps) {
   if (svc.kind === "launchd") {
     var boot = manage(svc, ["bootstrap", svc.domain, svc.file], deps);
     if (boot.status !== 0) return { known: true, running: false, stopped: true, pid: 0, why: "launchctl bootstrap exited " + (boot.status === null ? boot.signal : boot.status) };
-    return awaitLaunchd(svc, deps, function (s) { return s.known && (s.running || (s.state !== "spawn scheduled" && s.state !== "xpcproxy" && !s.stopped)); });
+    var notUp = launchdReady(svc, home, deps);
+    if (notUp) return { known: true, running: false, pid: 0, why: notUp };
+    return serviceState(svc, deps);
   }
   // The failed start may have used up the unit's start limit: cleared, as `agend restart` does.
   manage(svc, ["reset-failed", svc.unit], deps);
@@ -716,7 +760,7 @@ function main(argv, injected) {
       var outcome;
       if (untouched) outcome = what + "; the previous service was never stopped and still runs (pid " + fleetBefore + ")";
       else if (fleetBefore > 0) {
-        var started = startService(svc, deps);
+        var started = startService(svc, home, deps);
         outcome = started.running ? what + "; the previous service is running (pid " + started.pid + ")"
           : what + ", but the previous service did not start (" + (started.why || (started.known ? started.state : "its state cannot be told")) + ") — run `agend start`";
       } else outcome = what + "; the service was stopped before this update and is left stopped — `agend start` starts it";
@@ -734,6 +778,12 @@ function main(argv, injected) {
     } else if (kind) {
       var started = deps.run(bin, ["start"], { inherit: true, env: env });
       if (started.status !== 0) return rollBack("starting", "the " + kind + " service did not start (exit " + started.status + ")", "AgEnD v" + version + " is installed — run `agend start`");
+    }
+    // Under launchd an exit 0 is not the fleet running (above): it must come up on the new release first.
+    var activated = restarted ? restarted.status === 0 : !!started;
+    if (svc && svc.kind === "launchd" && activated) {
+      var notUp = launchdReady(svc, home, deps);
+      if (notUp) return rollBack(restarted ? "stopping" : "starting", "the launchd job did not come up on v" + version + ": " + notUp, "run `agend restart`");
     }
     return 0;
   } finally {
