@@ -77,7 +77,7 @@ foreign rejection and per-port localStorage, with no external requests. Its
 separate cookie-only matrix checks HTTP/HTTPS port collisions and distinct hosts
 without making network requests to those hosts.
 
-Fourteen independent mutations are caught; source is hash-restored. Local heavy
+Fifteen independent mutations are caught; source is hash-restored. Local heavy
 jobs run in private MemoryMax=4G/CPUQuota=200% units. Existing auth, public, guest,
 setup and session regression suites retain their semantic assertions.
 

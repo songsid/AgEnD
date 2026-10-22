@@ -22118,10 +22118,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         }
         if (decision.via === "session" && this.webToken) {
           const upgrade = sessionCookieUpgrade(req, this.webToken, decision.session);
-          if (upgrade) {
-            const prior = res.getHeader("Set-Cookie");
-            res.setHeader("Set-Cookie", [...(Array.isArray(prior) ? prior : prior ? [String(prior)] : []), upgrade]);
-          }
+          // No cookie header is set before this gate; auth routes own their headers separately.
+          if (upgrade) res.setHeader("Set-Cookie", upgrade);
         }
       }
 
