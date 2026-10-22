@@ -47,6 +47,8 @@ agend update --force            # Force reinstall and restart even when already 
 agend reload                    # Hot-reload config (sends SIGHUP to fleet process)
 ```
 
+When the new release's service does not come up after an update (its restart or start fails, or, on macOS, its fleet does not start running under launchd), the update rolls back: the previous package, its systemd unit or launchd plist and the previous service come back, and the update says so and exits 1 (#2420).
+
 `agend reload` re-reads `fleet.yaml` and reconciles instances: new instances are started, removed instances are stopped, and changed configs are applied — without restarting the fleet process.
 
 ### Who stopped the fleet
