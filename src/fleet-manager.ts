@@ -107,7 +107,7 @@ import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
 import { boardActivity, boardCardLimit, boardToolAction } from "./task-board-tool.js";
 import { TaskBoardWaker } from "./task-board-waker.js";
-import { TaskBoardError, wrapUpGap, type Actor } from "./scheduler/task-board.js";
+import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor } from "./scheduler/task-board.js";
 import type { SchedulerDb } from "./scheduler/db.js";
 import type { Schedule, ScheduleRetry, ScheduleRetryDrop, SchedulerConfig } from "./scheduler/index.js";
 import { escapeTelegramHtml, scheduleClock, scheduleRetryLabel } from "./scheduler/retry-label.js";
@@ -13866,7 +13866,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!this.deliveryOutbox?.isOpen) throw new Error("the delivery outbox is not open");
         return this.deliveryOutbox.acknowledge(deliveryId, by);
       },
-      tasks: () => this.needsYouTasks(),
+      tasks: () => this.needsYouTaskItems(),
       taskAction: action => this.taskActionFromChat(action),
       settings: () => ({
         liveMessage: this.fleetConfig?.needs_you?.live_message !== false,
@@ -13916,7 +13916,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private needsYouRoute(code: string): { lane?: string } | null {
     const board = this.scheduler?.db.board;
     const card = board?.findCard(code);
-    if (!board || !card || !(card.status === "blocked" || (card.status === "review" && card.needsReview))) return null;
+    // #2425 (Fable): the same rule as the list — a button rendered before the fix (or before the opt-in went off) for a
+    // card that no longer waits for the person answers "no longer waits".
+    if (!board || !card || this.fleetConfig?.needs_you?.task_board !== true || !waitsForPerson(card)) return null;
     const leads = new Map(board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
     const lane = this.needsYouLane(card, leads);
     return lane ? { lane } : {};
@@ -13926,6 +13928,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2246 step 3: the task board's cards that wait for the person, for Needs you — under each card's assignee, listed in
    * its lane's channel (#2352: the instance that handed it out, else the project's lead), else in General.
    */
+  private needsYouTaskItems(): import("./needs-you.js").TaskInput[] {
+    // #2425: the task board's cards join Needs you only when the fleet asks for them (needs_you.task_board, off by
+    // default since 2.3.0-beta.25); prompts, deliveries and the rest are unchanged.
+    return this.fleetConfig?.needs_you?.task_board === true ? this.needsYouTasks() : [];
+  }
   private needsYouTasks(): import("./needs-you.js").TaskInput[] {
     const board = this.scheduler?.db.board;
     if (!board) return [];

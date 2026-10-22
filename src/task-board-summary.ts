@@ -16,14 +16,13 @@ import type { Card, Project, ProjectStats } from "./scheduler/task-board.js";
 export const SUMMARY_LISTED = 10;
 const WEEK_MS = 7 * 86_400_000;
 
-export const DEFAULT_SUMMARY_AT = "09:00";
-
 /**
- * `defaults.task_board.summary_at`: `"HH:MM"` (24 h) → itself, `"off"` (any case) → null, not set → the default;
- * anything else → undefined (the validator refuses it; the clock then sends nothing).
+ * `defaults.task_board.summary_at`: `"HH:MM"` (24 h) → itself, `"off"` (any case) or not set → null (off); anything
+ * else → undefined (the validator refuses it; the clock then sends nothing). Off unless set (2.3.0-beta.25, the
+ * user's call after beta.24's task-board flood, #2425): a fleet that wants the summary names its time.
  */
 export function summaryTime(value: unknown): string | null | undefined {
-  if (value === undefined || value === null) return DEFAULT_SUMMARY_AT;
+  if (value === undefined || value === null) return null;
   if (typeof value !== "string") return undefined;
   const v = value.trim().toLowerCase();
   if (v === "off") return null;
@@ -121,7 +120,7 @@ export interface BoardSummary {
 }
 
 export interface SummaryRead {
-  /** What waits for the person now (TaskBoard.waitingForPerson): review cards that need them, blocked cards. */
+  /** What waits for the person now (TaskBoard.waitingForPerson): review cards that need them, blocked cards they handed out. */
   waiting: Card[];
   done: Card[];
   created: Card[];

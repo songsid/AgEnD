@@ -174,7 +174,9 @@ tab title. Items, grouped by instance, oldest first:
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
 "Paused: sign-in needed" has **Sign in** when the dashboard can run that login (#2233); every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
-`needs_you.dm` (default off).
+`needs_you.dm` (default off), `needs_you.task_board` (default off since 2.3.0-beta.25: the task board's cards waiting
+for you — set `true` to list them). The task board's daily summary is `defaults.task_board.summary_at` (off unless set,
+e.g. `"09:00"`).
 
 ## Search
 

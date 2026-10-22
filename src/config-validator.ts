@@ -378,7 +378,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     err("needs_you", "must be a mapping");
   } else if (isObj(config.needs_you)) {
     for (const key of Object.keys(config.needs_you)) {
-      if (key !== "live_message" && key !== "dm") err(`needs_you.${key}`, "unknown key (live_message, dm)");
+      if (key !== "live_message" && key !== "dm" && key !== "task_board") err(`needs_you.${key}`, "unknown key (live_message, dm, task_board)");
       else if (typeof (config.needs_you as Record<string, unknown>)[key] !== "boolean") err(`needs_you.${key}`, "must be a boolean");
     }
   }

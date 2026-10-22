@@ -238,12 +238,13 @@ export function loadFleetConfig(configPath: string): FleetConfig {
   };
 }
 
-/** #1386: only the two known booleans; anything else is dropped (the validator reports it). */
+/** #1386 / #2425: only the known booleans (live_message, dm, task_board); anything else is dropped (the validator reports it). */
 function needsYouConfig(raw: unknown): FleetConfig["needs_you"] {
   if (!isPlainObject(raw)) return undefined;
   const out: NonNullable<FleetConfig["needs_you"]> = {};
   if (typeof raw.live_message === "boolean") out.live_message = raw.live_message;
   if (typeof raw.dm === "boolean") out.dm = raw.dm;
+  if (typeof raw.task_board === "boolean") out.task_board = raw.task_board;
   return out;
 }
 
