@@ -284,6 +284,8 @@ appStore.subscribe((s) => {
 
 function statusLabel(i, exec, awaiting) {
   if (awaiting != null) return t("app.needsYou");
+  if (i.startup_phase === "queued") return t("app.statusQueued");
+  if (i.startup_phase === "starting") return t("app.statusStarting");
   if (i.status !== "running") return i.status === "crashed" ? t("app.statusCrashed") : t("app.statusStopped");
   if (exec === "working") return t("app.statusWorking");
   if (exec === "stuck") return t("app.statusStuck");
@@ -291,6 +293,8 @@ function statusLabel(i, exec, awaiting) {
 }
 export function statusClass(i, exec, awaiting) {
   if (awaiting != null) return "warn";
+  if (i?.startup_phase === "starting") return "busy";
+  if (i?.startup_phase === "queued") return "off";
   if (!i || i.status !== "running") return i && i.status === "crashed" ? "bad" : "off";
   return exec === "working" ? "busy" : exec === "stuck" ? "warn" : "ok";
 }
@@ -500,6 +504,13 @@ function ConnectionLine() {
   // (agend-auth's banner says that) draw nothing either; only reconnecting and a failed catch-up are shown.
   return null;
 }
+
+/** A connected fleet is still bringing up agents; this is distinct from the reconnect banner. */
+export function StartupLine() {
+  const { startup } = useStore(appStore);
+  if (!startup) return null;
+  return html`<div data-trust="status" class="conn fleet-starting" role="status">${t("app.fleetStarting", startup.ready, startup.total)}</div>`;
+}
 /** #1580: the fleet is not answering (a restart): said, with when the next try is — never a silent stale page. */
 function Reconnecting() {
   const { retryAt } = useStore(appStore);
@@ -658,6 +669,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <div class="scrim" onClick=${closeDrawer} aria-hidden="true"></div>
     <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>
       <${ConnectionLine} />
+      <${StartupLine} />
       ${viewOnly || guest ? null : html`<${OperationLine} route=${nav.route} />`}
       ${viewOnly || guest || !shell.banner ? null : html`<${shell.banner} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
