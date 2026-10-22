@@ -41,11 +41,16 @@ for (const c of matrix()) {
   const scope = kind === "rail" ? ".u-rail" : "dialog[open]";
   const measure = () => page.evaluate(`(() => { const s = document.querySelector(${JSON.stringify(scope)}); if (!s) return null; return [...s.querySelectorAll(".u-provider")].map((h) => {
     const head = h.querySelector(".u-head"), st = h.querySelector(".u-head strong"), pr = h.querySelector(".u-profile"), pl = h.querySelector(".u-head .u-plan");
-    const clipped = (el) => el ? el.scrollWidth > el.clientWidth + 1 : null;
+    // Sub-pixel (#2415 review: 130 px of text in a 129.89 px box paints an ellipsis; scrollWidth rounds it away).
+    const clipped = (el) => { if (!el) return null; const range = document.createRange();
+      range.selectNodeContents(el.querySelector('[aria-hidden="true"]') || el);   // the badge's visible text, not its screen-reader copy
+      const cs = getComputedStyle(el), inner = el.getBoundingClientRect().width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      return range.getBoundingClientRect().width > inner + 0.01; };
     const w = (el) => el ? Math.round(el.getBoundingClientRect().width) : null;
     return { title: st && st.getAttribute("title"), name: st && st.textContent, profile: pr && pr.textContent, plan: pl && pl.textContent.trim(), planTitle: pl && pl.getAttribute("title"),
       nameClipped: clipped(st), profileClipped: clipped(pr), profileTip: pr && pr.getAttribute("title"), planClipped: clipped(pl), headW: w(head), nameW: w(st), planW: w(pl),
       // Prism on #2415: everything in the head stays inside it (↑↓ included), whatever the width.
+      orderW: w(h.querySelector(".u-order")), gap: getComputedStyle(head).columnGap, nameMax: st && getComputedStyle(st).maxWidth,
       overflowPx: Math.max(0, ...[...head.children].map((el) => Math.round(el.getBoundingClientRect().right - head.getBoundingClientRect().right))) };
   }); })()`) as Promise<any[] | null>;
   const rows = await measure();

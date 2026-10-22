@@ -308,8 +308,10 @@ describe("#1749: the plan badge is one short line; the full plan stays on it for
     const css = readFileSync("src/ui/shared/app.css", "utf8");
     const rule = (sel: string) => new RegExp(`(^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`).exec(css)?.[2] ?? "";
     const has = (sel: string, ...decls: string[]) => decls.every((d) => rule(sel).includes(d));
-    expect([has(".u-plan", "white-space: nowrap", "text-overflow: ellipsis", "overflow: hidden", "flex: 0 1000 auto", "min-width: 3.5em"),
+    // #2415 review: the badge starts at its minimum and grows into the room left (never shrinks below it); the name
+    // shrinks only when name + minimum badge + ↑↓ cannot fit — no weighted shared shrink (that took a fraction of a pixel).
+    expect([has(".u-plan", "white-space: nowrap", "text-overflow: ellipsis", "overflow: hidden", "flex: 1 0 40px", "max-width: max-content"),
       has(".u-head strong", "white-space: nowrap", "text-overflow: ellipsis", "overflow: hidden", "flex: 0 1 auto", "min-width: 0"),
-      has(".u-order", "flex: none"), rule(".u-plan").includes("max-width: 55%")]).toEqual([true, true, true, false]);
+      has(".u-order", "flex: none"), rule(".u-plan").includes("max-width: 55%"), /\.u-plan \{[^}]*flex: 0 1000/.test(css)]).toEqual([true, true, true, false, false]);
   });
 });
