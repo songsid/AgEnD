@@ -10,7 +10,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -23,6 +23,8 @@ const helpers = script.split("\n").filter(l => /^(?:RED|GREEN|YELLOW|NC)=|^(?:in
 
 const dir = mkdtempSync(join(tmpdir(), "agend-2284-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
+// The live installer has already bootstrapped Node before entering this block.
+symlinkSync(process.execPath, join(dir, "node"));
 const prefix = join(dir, "prefix");
 mkdirSync(join(prefix, "lib", "node_modules"), { recursive: true });
 writeFileSync(join(dir, "npm"), `#!/bin/sh

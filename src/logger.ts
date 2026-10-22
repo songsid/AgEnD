@@ -1,6 +1,7 @@
+import { ensureAgendHome } from "./agend-home.js";
 import pino from "pino";
 import { join } from "node:path";
-import { mkdirSync, statSync, fstatSync, existsSync, unlinkSync, renameSync, copyFileSync, truncateSync, promises as fsp } from "node:fs";
+import { statSync, fstatSync, existsSync, unlinkSync, renameSync, copyFileSync, truncateSync, promises as fsp } from "node:fs";
 import { getAgendHome } from "./paths.js";
 
 const DATA_DIR = getAgendHome();
@@ -198,7 +199,7 @@ function transportStream() {
 }
 
 export function createLogger(level: string = "info") {
-  mkdirSync(DATA_DIR, { recursive: true });
+  ensureAgendHome(DATA_DIR);
   rotateLogIfNeeded(LOG_FILE);
   return pino({ level }, transportStream());
 }

@@ -1,5 +1,6 @@
+import { ensureAgendHome } from "./agend-home.js";
 /** #1629: bounded reported host observations. This store grants no effect or admission authority. */
-import { constants, openSync, fstatSync, readSync, closeSync, mkdirSync } from "node:fs";
+import { constants, openSync, fstatSync, readSync, closeSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { atomicWriteFileSync } from "./atomic-write.js";
@@ -115,7 +116,7 @@ export class WebEffectProfiles {
       buckets[cls] = [...buckets[cls], profile].slice(-EFFECT_PROFILE_LIMIT); state.entries.set(id, buckets);
       const text = JSON.stringify({ version: 1, rev: state.rev + 1, entries: Object.fromEntries(state.entries) });
       if (Buffer.byteLength(text, "utf8") > EFFECT_PROFILE_FILE_BYTES) return fail("profiles_bound");
-      try { mkdirSync(this.dataDir, { recursive: true }); atomicWriteFileSync(this.path, text, { mode: 0o600 }); }
+      try { ensureAgendHome(this.dataDir); atomicWriteFileSync(this.path, text, { mode: 0o600 }); }
       catch { return fail("profiles_write_failed"); }
       return { ok: true, profile: JSON.parse(JSON.stringify(profile)) as StoredEffectProfile };
     } finally { writes.delete(this.path); }

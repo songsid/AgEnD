@@ -1,3 +1,4 @@
+import { ensureAgendHome } from "./agend-home.js";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -192,8 +193,9 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     ) as Partial<InstanceConfig>;
 
     if (!merged.working_directory) {
+      ensureAgendHome(getAgendHome());
       const defaultDir = join(getAgendHome(), "workspaces", name);
-      mkdirSync(defaultDir, { recursive: true });
+      mkdirSync(defaultDir, { recursive: true, mode: 0o700 });
       ensureWorkspaceGit(defaultDir);
       merged.working_directory = defaultDir;
     }

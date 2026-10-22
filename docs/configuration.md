@@ -697,3 +697,12 @@ A local fleet administrator can enable it in **Settings → Web appearance → E
 While off, Canvas Worker controls, Try offers, posters, libraries and playback are hidden on local, public and guest pages. No Canvas Worker runtime modules or workers load. CW-only tools, including web mod export/proposal, disappear from agent tool lists and refuse direct calls; mixed appearance tools retain their non-CW options. Managed skills and agent notices omit CW instructions. Turning it off stops running CW effects. Saved workers, placements, preferences and mods remain on disk; enabling it restores them, subject to the existing consent and trust checks.
 
 Ambient effects (falling petals, click stars and other data-only presets), themes, widgets and custom CSS are independent of this switch and keep working.
+
+## Data directory permissions
+
+AgEnD creates its home (`~/.agend`, or `AGEND_HOME`) with mode `0700`, including on hosts with umask `0002`.
+If an existing real directory belongs to the current user and permits group/other writes, AgEnD tightens that
+root to `0700` and logs one line. Existing files and non-writable roots are left unchanged. A foreign-owned home
+or a path containing a symlink is refused; use a real directory owned by the account running AgEnD. The local
+operator directory and sockets retain their separate private-permission checks. The live shell/WSL installer
+prepares this boundary before running older releases' setup code too.

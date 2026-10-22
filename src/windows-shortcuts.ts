@@ -163,7 +163,7 @@ export function realShortcutsDeps(dataDir: string, user: string, run: ShortcutsD
   return {
     host: realHost(), user, dataDir, run,
     shared: () => sharedShortcutsPs(),
-    writeMarker: (path, content) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, content); },
+    writeMarker: (path, content) => { mkdirSync(dirname(path), { recursive: true, mode: 0o700 }); writeFileSync(path, content); },
     log: line => console.log(line),
     now: () => new Date(),
     confirm: async (question) => {

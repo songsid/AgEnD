@@ -2389,7 +2389,7 @@ export class InstanceLifecycle {
       if (!directory) {
         workDir = join(getAgendHome(), "workspaces", newInstanceName);
         const existed = existsSync(workDir);
-        mkdirSync(workDir, { recursive: true });
+        mkdirSync(workDir, { recursive: true, mode: 0o700 });
         if (!existed) acquiredDirectory = statSync(workDir);
         ensureWorkspaceGit(workDir);
       }

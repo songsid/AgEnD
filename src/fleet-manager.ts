@@ -7471,7 +7471,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (fleet.instances[name]) continue;
       this.logger.warn({ adapter: need.adapterId, name }, "No general instance for adapter — auto-creating");
       const generalDir = join(getAgendHome(), name);
-      mkdirSync(generalDir, { recursive: true });
+      mkdirSync(generalDir, { recursive: true, mode: 0o700 });
       const backendName = fleet.defaults.backend ?? "claude-code";
       this.ensureGeneralInstructions(generalDir, backendName, name);
       fleet.instances[name] = {
@@ -8243,7 +8243,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const accessDir = join(this.dataDir, "access");
-    mkdirSync(accessDir, { recursive: true });
+    mkdirSync(accessDir, { recursive: true, mode: 0o700 });
     const accessStatePath = join(accessDir, "access.json");
     const accessManager = new AccessManager(
       channelConfig.access ?? DEFAULT_OPEN_ACCESS,
@@ -8252,7 +8252,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.warnIfAccessModeOverridden(accessManager, accessStatePath);
 
     const inboxDir = join(this.dataDir, "inbox");
-    mkdirSync(inboxDir, { recursive: true });
+    mkdirSync(inboxDir, { recursive: true, mode: 0o700 });
 
     const adapterId = channelConfig.id ?? channelConfig.type;
     const adapter = await createAdapter(channelConfig, {
@@ -8392,7 +8392,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const accessDir = join(this.dataDir, "access");
-    mkdirSync(accessDir, { recursive: true });
+    mkdirSync(accessDir, { recursive: true, mode: 0o700 });
     const accessStatePath = join(accessDir, `access-${adapterId}.json`);
     const accessManager = new AccessManager(
       channelConfig.access ?? DEFAULT_OPEN_ACCESS,
@@ -8400,7 +8400,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     );
     this.warnIfAccessModeOverridden(accessManager, accessStatePath);
     const inboxDir = join(this.dataDir, "inbox");
-    mkdirSync(inboxDir, { recursive: true });
+    mkdirSync(inboxDir, { recursive: true, mode: 0o700 });
 
     const adapter = await createAdapter(channelConfig, {
       id: adapterId,
@@ -12460,7 +12460,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** A preview under the inbox, named by a hash of the id (a Telegram file_id is long), pruned after a day. */
   private storeStickerPreview(id: string, picture: StickerPreview): string {
     const dir = join(this.dataDir, "inbox", "sticker-previews");
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
     const now = Date.now();
     for (const name of readdirSync(dir)) {
       try { if (now - statSync(join(dir, name)).mtimeMs > FleetManager.EMOJI_PREVIEW_TTL_MS) unlinkSync(join(dir, name)); } catch { /* raced */ }
@@ -12515,7 +12515,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async fetchEmojiPreview(id: string): Promise<string> {
     if (!/^\d{15,25}$/.test(id)) throw new Error("not a Discord emoji id");
     const dir = join(this.dataDir, "inbox", "emoji-previews");
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
     const now = Date.now();
     for (const name of readdirSync(dir)) {
       try { if (now - statSync(join(dir, name)).mtimeMs > FleetManager.EMOJI_PREVIEW_TTL_MS) unlinkSync(join(dir, name)); } catch { /* raced */ }
@@ -17730,7 +17730,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       try {
         const tmpPath = await dlAdapter.downloadAttachment(att.fileId);
         const inboxDir = join(getAgendHome(), "workspaces", instanceName, "inbox");
-        mkdirSync(inboxDir, { recursive: true });
+        mkdirSync(inboxDir, { recursive: true, mode: 0o700 });
         const dest = join(inboxDir, basename(tmpPath));
         // Copy to destination — failure means this attachment is skipped
         try {
@@ -18151,7 +18151,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
     }
     const path = this.cliEnvPath(backend, profile);
-    mkdirSync(dirname(path), { recursive: true });
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     writeFileSync(path, JSON.stringify(env, null, 2));
     return env;
   }

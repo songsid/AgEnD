@@ -536,5 +536,5 @@ export async function rolloutMeta(path: string): Promise<{ ino: number; cwd: str
 
 async function writeAtomic(path: string, text: string): Promise<boolean> {
   const tmp = `${path}.${process.pid}.tmp`;
-  try { await mkdir(dirname(path), { recursive: true }); await writeFile(tmp, text); await rename(tmp, path); return true; } catch { return false; }
+  try { await mkdir(dirname(path), { recursive: true, mode: 0o700 }); await writeFile(tmp, text); await rename(tmp, path); return true; } catch { return false; }
 }

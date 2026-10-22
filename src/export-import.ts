@@ -1,9 +1,9 @@
+import { ensureAgendHome } from "./agend-home.js";
 import { execFileSync } from "node:child_process";
 import { t } from "./locale.js";
 import {
   existsSync,
   statSync,
-  mkdirSync,
   copyFileSync,
   readdirSync,
   readFileSync,
@@ -87,7 +87,7 @@ export async function importConfig(
     process.exit(1);
   }
 
-  mkdirSync(dataDir, { recursive: true });
+  ensureAgendHome(dataDir);
 
   // Zip-slip / absolute-path protection: list every entry in the archive and
   // verify the resolved path stays under dataDir's parent. Reject absolute

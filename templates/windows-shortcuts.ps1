@@ -175,7 +175,7 @@ function Install-AgendShortcuts([string]$distro, [string]$user) {
         New-Item -ItemType Directory -Path (Get-AgendShortcutDir) -Force | Out-Null
         $record = @{ distro = $distro; user = $user } | ConvertTo-Json -Compress
         [IO.File]::WriteAllText((Join-Path (Get-AgendShortcutDir) 'install.json'), $record, (New-Object System.Text.UTF8Encoding $false))
-        if ($made.Count -eq 2) { $null = Invoke-AgendInWsl $distro $user 'd=${AGEND_HOME:-$HOME/.agend}; mkdir -p $d && date -u +%FT%TZ > $d/windows-shortcuts' }
+        if ($made.Count -eq 2) { $null = Invoke-AgendInWsl $distro $user 'set -f; IFS=; d=${AGEND_HOME:-$HOME/.agend}; umask 077; mkdir -p -m 700 -- $d && date -u +%FT%TZ > $d/windows-shortcuts' }
     } catch { }
     return $made
 }

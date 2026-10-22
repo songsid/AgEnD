@@ -12273,7 +12273,7 @@ export class Daemon extends EventEmitter {
       return;
     }
 
-    mkdirSync(join(this.instanceDir, "repos"), { recursive: true });
+    mkdirSync(join(this.instanceDir, "repos"), { recursive: true, mode: 0o700 });
     // Only a fresh direct child of a real repos/ directory (never through a symlinked repos/, never an existing path).
     const target = checkoutTarget(this.instanceDir, source, branch);
     if (!target.ok) { respond(null, `checkout_repo: ${target.reason}`); return; }

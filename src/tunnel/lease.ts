@@ -1,3 +1,4 @@
+import { ensureAgendHome } from "../agend-home.js";
 /**
  * The record that says "a tunnel process may exist right now".
  *
@@ -11,7 +12,7 @@
  * has to run the reaper too, and it runs in a process where no FleetManager
  * exists. Everything here takes a data directory and nothing else.
  */
-import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from "node:fs";
+import { closeSync, fsyncSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { probeProcess } from "../web-terminal.js";
@@ -50,7 +51,7 @@ export function leasePath(dataDir: string): string {
  * matter, and a rename that is only in page cache does not.
  */
 export function writeLease(dataDir: string, lease: TunnelLease): void {
-  mkdirSync(dataDir, { recursive: true });
+  ensureAgendHome(dataDir);
   const path = leasePath(dataDir);
   const temp = `${path}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
   const fd = openSync(temp, "wx", 0o600);
