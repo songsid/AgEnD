@@ -1,0 +1,40 @@
+
+  /tmp/untrusted-1.0.62 [Choose Ctrl+l]
+
+  + New Agent                                                                  Open Previous /resume │ Worktree Ctrl+w
+
+
+   No agents yet, type a prompt to start one.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰────────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ╯
+
+  Enter:create  │  ?:shortcuts
+

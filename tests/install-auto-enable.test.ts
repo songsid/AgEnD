@@ -89,7 +89,7 @@ describe("agend install service activation", () => {
     // #2331: reload, ask systemd what it loaded, then enable.
     expect(readFileSync(log, "utf8").trim().split("\n")).toEqual([
       "--user daemon-reload",
-      "--user show -p Type,NotifyAccess,TimeoutStartUSec,FragmentPath,DropInPaths com.agend.fleet",
+      "--user show -p Type,NotifyAccess,TimeoutStartUSec,FragmentPath,DropInPaths,OOMPolicy com.agend.fleet",
       "--user enable --now com.agend.fleet",
     ]);
     expect(existsSync(join(home, ".config/systemd/user/com.agend.fleet.service"))).toBe(true);
@@ -103,9 +103,9 @@ describe("agend install service activation", () => {
     expect(result.stdout).toContain("zz-agend-notify.conf: NotifyAccess=all — systemd had NotifyAccess=main loaded");
     expect(readFileSync(log, "utf8").trim().split("\n")).toEqual([
       "--user daemon-reload",
-      "--user show -p Type,NotifyAccess,TimeoutStartUSec,FragmentPath,DropInPaths com.agend.fleet",
+      "--user show -p Type,NotifyAccess,TimeoutStartUSec,FragmentPath,DropInPaths,OOMPolicy com.agend.fleet",
       "--user daemon-reload",
-      "--user show -p Type,NotifyAccess,TimeoutStartUSec,FragmentPath,DropInPaths com.agend.fleet",
+      "--user show -p Type,NotifyAccess,TimeoutStartUSec,FragmentPath,DropInPaths,OOMPolicy com.agend.fleet",
       "--user enable --now com.agend.fleet",
     ]);
     expect(readFileSync(join(home, ".config/systemd/user/com.agend.fleet.service.d/zz-agend-notify.conf"), "utf8")).toContain("[Service]\nNotifyAccess=all\n");

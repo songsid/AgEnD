@@ -187,6 +187,23 @@ function threadOptions(threadId: string | null | undefined): { message_thread_id
   return id === undefined ? {} : { message_thread_id: id };
 }
 
+/**
+ * #2281: `SendOpts.replyTo` as a native Telegram reply (`reply_parameters`), for a message's first part only. A message
+ * id that is not Telegram's (digits) is no reply. `allow_sending_without_reply`: the message is still sent, unthreaded,
+ * when the one it replies to has been deleted.
+ */
+function replyOptions(replyTo: string | undefined): { reply_parameters?: { message_id: number; allow_sending_without_reply: true } } {
+  return replyTo && /^\d{1,15}$/.test(replyTo) ? { reply_parameters: { message_id: Number(replyTo), allow_sending_without_reply: true } } : {};
+}
+/**
+ * #2281: Telegram refused the send over the message it replies to (a 400 naming that message — "message to be replied
+ * not found", REPLY_MESSAGE_ID_INVALID …): nothing was sent, so the plain send is safe. A refused reply markup (a
+ * keyboard) is not one: the plain send would be refused the same way.
+ */
+function isReplyRefusal(err: unknown): boolean {
+  return err instanceof GrammyError && err.error_code === 400 && /message to be replied|replied message|reply_message|reply_parameters|reply_to_message/i.test(err.description ?? "");
+}
+
 /** Extract plain text from Rich Message blocks (Bot API 10.1) */
 function extractRichText(blocks: unknown[]): string {
   if (!Array.isArray(blocks)) return "";
@@ -870,9 +887,9 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     // nothing in the text needs escaping). A longer text is sent as below, without them.
     const links = plainTextLinks(text, opts);
     if (links && text.length <= (opts?.chunkLimit ?? 4096)) {
-      const msg = await this.bot.api.sendMessage(Number(chatId), text, {
-        ...threadOptions(opts?.threadId), entities: links, link_preview_options: { is_disabled: true },
-      });
+      const msg = await this.replyOrPlain(opts?.replyTo, (reply) => this.bot.api.sendMessage(Number(chatId), text, {
+        ...threadOptions(opts?.threadId), entities: links, link_preview_options: { is_disabled: true }, ...reply,
+      }));
       return { messageId: String(msg.message_id), chatId, threadId: opts?.threadId };
     }
     // Try rich message for content with tables, code blocks, headings, etc.
@@ -882,11 +899,12 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         console.warn("[telegram] sendRichMessage is unavailable; falling back to sendMessage");
       } else {
         try {
-          const result = await sendRichMessage.call((this.bot.api as any).raw, {
+          const result: any = await this.replyOrPlain(opts?.replyTo, (reply) => sendRichMessage.call((this.bot.api as any).raw, {
             chat_id: Number(chatId),
             rich_message: { markdown: text },
             ...threadOptions(opts?.threadId),
-          });
+            ...reply,
+          }));
           return { messageId: String(result.message_id), chatId, threadId: opts?.threadId };
         } catch (err) {
           if (!isDefiniteTelegramRejection(err)) {
@@ -923,10 +941,11 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       }
 
       // Send first chunk directly to get the messageId; enqueue the rest
-      this.sendFormattedChunk(chatId, chunks[0], opts?.format, {
+      this.replyOrPlain(opts?.replyTo, (reply) => this.sendFormattedChunk(chatId, chunks[0], opts?.format, {
         ...threadOptions(threadId),
         ...(opts?.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
-      })
+        ...reply,
+      }))
         .then((msg) => {
           const result: SentMessage = {
             messageId: String(msg.message_id),
@@ -948,6 +967,21 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
    * escape-first to Telegram HTML per chunk — Telegram's length limit counts the text after parsing, so the raw chunk
    * size still holds — and if Telegram refuses the markup, the same chunk is sent once more as plain text.
    */
+  /**
+   * #2281: one send as a native reply to `replyTo`, else plain. Telegram sends it unthreaded by itself when the original
+   * is gone (allow_sending_without_reply); a refusal naming the reply is retried once without it — a definite 400, so
+   * nothing was posted and the retry is no duplicate.
+   */
+  private async replyOrPlain<T>(replyTo: string | undefined, send: (reply: ReturnType<typeof replyOptions>) => Promise<T>): Promise<T> {
+    const reply = replyOptions(replyTo);
+    if (!reply.reply_parameters) return send({});
+    try { return await send(reply); } catch (err) {
+      if (!isReplyRefusal(err)) throw err;
+      console.warn(`[telegram] reply refused; sending without it: ${errorMessage(err)}`);
+      return send({});
+    }
+  }
+
   private async sendFormattedChunk(chatId: string, chunk: string, format: SendOpts["format"], extra: Parameters<Bot["api"]["sendMessage"]>[2]) {
     if (format !== "markdown") {
       return this.bot.api.sendMessage(Number(chatId), chunk, { ...extra, parse_mode: format === "html" ? "HTML" : undefined });
@@ -974,17 +1008,19 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     for (let offset = 0; offset < text.length; offset += chunkLimit) chunks.push(text.slice(offset, offset + chunkLimit));
     if (!chunks.length) throw new Error("Empty text");
     for (let i = 0; i < chunks.length - 1; i++) {
-      await this.sendFormattedChunk(chatId, chunks[i], opts.format, {
+      await this.replyOrPlain(i === 0 ? opts.replyTo : undefined, (reply) => this.sendFormattedChunk(chatId, chunks[i], opts.format, {
         ...threadOptions(opts.threadId),
         ...(opts.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
-      });
+        ...reply,
+      }));
     }
     const last = chunks[chunks.length - 1]!;
-    const msg = await this.bot.api.sendMessage(Number(chatId), last, {
+    const msg = await this.replyOrPlain(chunks.length === 1 ? opts.replyTo : undefined, (reply) => this.bot.api.sendMessage(Number(chatId), last, {
       ...threadOptions(opts.threadId),
       ...(opts.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
       reply_markup: { inline_keyboard: keyboard },
-    });
+      ...reply,
+    }));
     return { messageId: String(msg.message_id), chatId, threadId: opts.threadId };
   }
 
@@ -995,11 +1031,12 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     if (!chunks.length) throw new Error("Empty text");
     let first: string | undefined, last = "";
     for (const [i, chunk] of chunks.entries()) {
-      const msg = await this.sendFormattedChunk(chatId, chunk, opts.format, {
+      const msg = await this.replyOrPlain(i === 0 ? opts.replyTo : undefined, (reply) => this.sendFormattedChunk(chatId, chunk, opts.format, {
         ...threadOptions(opts.threadId),
         ...(opts.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
         ...(i === chunks.length - 1 ? { reply_markup: { inline_keyboard: keyboard } } : {}),
-      });
+        ...reply,
+      }));
       first ??= String(msg.message_id);
       last = String(msg.message_id);
     }

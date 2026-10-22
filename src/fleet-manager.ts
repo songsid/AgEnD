@@ -198,7 +198,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 }
 import { handleWebRequest, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
-import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment } from "./web-chat-history.js";
+import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
@@ -4176,6 +4176,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   webMessageInChannel(instance: string, messageId: string, copies: readonly WebEchoCopy[] = []): void {
     // #2305: the copies' own message ids, so an instance's reaction to the web message is put on them too.
     if (copies.length) this.rememberWebEchoCopies(messageId, copies);
+    // #2281: and where they are, for a later web reply to this message to be a native reply there.
+    const posts = copies.flatMap(c => c.adapterId ? [{ adapterId: c.adapterId, chatId: c.chatId, ...(c.threadId ? { threadId: c.threadId } : {}), messageId: c.messageId }] : []);
+    if (posts.length) this.webChatHistory.addPosts(instance, messageId, posts);
     const m = this.webChatHistory.markChannel(instance, messageId);
     if (m) broadcastToGuests(this.sseClients, "message", m, (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting"));
   }
@@ -4224,7 +4227,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** #2305: `copies` collects each room's copy (its message id), for a reaction to the web message. */
-  async sendClassicWebEcho(instance: string, text: string, sender = WEB_NAME_FALLBACK, copies?: WebEchoCopy[]): Promise<number> {
+  /**
+   * `reply` (#2281): where the message a web reply quotes is on a platform. A room that has it gets the reply as a
+   * native reply to it (`reply.text`: without the quoted line); every other room gets `text`, as before.
+   */
+  async sendClassicWebEcho(instance: string, text: string, sender = WEB_NAME_FALLBACK, copies?: WebEchoCopy[], reply?: { posts: readonly WebChatPost[]; text: string }): Promise<number> {
     const guard = this.webChannelEchoGuards.get(instance);
     const handled = new Set<string>();
     let posted = 0;
@@ -4253,8 +4260,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const adapter = worldAdapter ?? this.adapter;
       try {
         if (!adapter?.sendText) continue;
-        const sent = await adapter.sendText(entry.channelId, text, { format: "text", allowedMentions: { parse: [] } });
-        if (copies && sent && typeof sent.messageId === "string" && sent.messageId) copies.push({ adapter, chatId: entry.channelId, messageId: sent.messageId });
+        // A Telegram room is its chat; a Discord room is the guild's channel (an inbound's thread there).
+        const native = reply?.posts.find(p => p.adapterId === adapter.id && (p.chatId === entry.channelId || p.threadId === entry.channelId));
+        const sent = await adapter.sendText(entry.channelId, native ? reply!.text : text,
+          { format: "text", allowedMentions: { parse: [] }, ...(native ? { replyTo: native.messageId } : {}) });
+        if (copies && sent && typeof sent.messageId === "string" && sent.messageId) copies.push({ adapter, adapterId: adapter.id, chatId: entry.channelId, messageId: sent.messageId });
         ClassicChannelManager.logMessage(instance, sender, text, new Date());
         posted++;
       } catch (err) {
@@ -9808,10 +9818,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * A person's platform message as the web chat shows it — the user's own words, as a user (#1306), in the instance's
    * history (#1565). #1920 §5.2: said in the instance's topic, General or room, so it is that channel's, by that account.
    */
-  private emitPlatformInbound(instance: string, msg: { username: string; adapterId?: string; userId?: string }, text: string): void {
+  private emitPlatformInbound(instance: string, msg: { username: string; adapterId?: string; userId?: string; chatId?: string; threadId?: string; transportThreadId?: string; messageId?: string }, text: string): void {
+    // #2281: where it is on the platform — a web reply to it is then a native reply there. The platform thread it came
+    // from (#1085: a ClassicBot's `threadId` may be its registry key).
+    const thread = msg.transportThreadId ?? msg.threadId;
+    const posts = msg.adapterId && msg.chatId && msg.messageId
+      ? [{ adapterId: msg.adapterId, chatId: msg.chatId, ...(thread && thread !== msg.chatId ? { threadId: thread } : {}), messageId: msg.messageId }] : undefined;
     this.emitSseEvent("message", {
       instance, sender: msg.username, role: "user", text: text.slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
-      channel: true, from: webChatFrom(msg.adapterId, msg.userId),
+      channel: true, from: webChatFrom(msg.adapterId, msg.userId), ...(posts ? { posts } : {}),
     });
   }
 
@@ -10134,11 +10149,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           try {
             // #1920 §5.2: shown to the instance's guests only when it landed in the instance's own topic or room.
             let inChannel = false;
+            const replyAdapterId = contextAdapterId ?? this.getInstanceAdapterId(instanceName);
             try {
               inChannel = outAdapter !== WEB_ONLY_REPLY_SINK
-                && this.landedInOwnChannel(instanceName, contextAdapterId ?? this.getInstanceAdapterId(instanceName), result);
+                && this.landedInOwnChannel(instanceName, replyAdapterId, result);
             } catch { /* not known: not the channel's (fail closed), and the bookkeeping below still runs */ }
-            void this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView, inChannel);
+            void this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView, inChannel, replyAdapterId ? { adapterId: replyAdapterId, result } : undefined);
           } catch (err) {
             this.logger.warn({ err, instanceName }, "Reply delivered but post-delivery bookkeeping failed");
           }
@@ -10209,7 +10225,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { return this.landedInOwnChannel(set.instance, set.adapterId, { chatId: set.chatId, threadId: set.threadId || undefined }); } catch { return false; }
   }
 
-  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false): Promise<void> {
+  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false, sentAs?: { adapterId: string; result: unknown }): Promise<void> {
+    // #2281: where the reply is, when it landed in the instance's own place — a web reply to it is then a native reply
+    // there. A reply elsewhere (another chat, the web-only sink) records none.
+    const sent = (sentAs?.result && typeof sentAs.result === "object" ? sentAs.result : {}) as { messageId?: unknown; chatId?: unknown; threadId?: unknown };
+    const post: WebChatPost | undefined = inChannel && sentAs && typeof sent.messageId === "string" && typeof sent.chatId === "string"
+      ? { adapterId: sentAs.adapterId, chatId: sent.chatId, ...(typeof sent.threadId === "string" && sent.threadId ? { threadId: sent.threadId } : {}), messageId: sent.messageId } : undefined;
     // A reply is NOT proof the turn is over (#410) — but it is not proof of
     // more work either. Split the difference: an instance that is clearly
     // idle loses the button now; one that looks busy keeps it (re-posted
@@ -10245,6 +10266,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(attachments.length ? { attachments } : {}),
         ...(buttons ? { buttons } : {}),                 // #1266
         ...(inChannel ? { channel: true } : {}),         // #1920 §5.2
+        ...(post ? { posts: [post] } : {}),              // #2281
       });
     };
     const before = this.webReplyOrder.get(instanceName);
@@ -13142,7 +13164,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private postTaskBoardSummary(since: Date, until: Date): void {
     const board = this.scheduler?.db.board;
     if (!board) return;
-    const read = board.summaryRead(since.toISOString(), until.toISOString());
+    const read = board.summaryRead(since.toISOString(), until.toISOString(), this.dispatcherGone);
     const projects = board.listProjects(true);
     const stats = board.projectStats();
     const names = new Map(projects.map((p) => [p.id, p.name]));
@@ -13955,12 +13977,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2355 review: where a card's Needs you buttons belong now — read from the board and the fleet at the moment of a click
    * or a reply, never from the last render. null: it no longer waits for the person.
    */
+  /**
+   * #2425 follow-up: an instance that handed out a card and is no longer in the fleet — neither a configured instance nor
+   * a ClassicBot identity (deleted). Its blocked and in-review cards fall back to the person (Needs you, the summary).
+   * Not known before the config and the ClassicBot rooms are loaded: then no one is gone (a live dispatcher's cards never
+   * flash into the person's list at startup).
+   */
+  readonly dispatcherGone = (name: string): boolean => {
+    const instances = this.fleetConfig?.instances, classic = this.classicChannels;
+    if (!instances || !classic) return false;
+    return !Object.hasOwn(instances, name) && !classic.getAll().some((ch) => ch.instanceName === name);
+  };
+
   private needsYouRoute(code: string): { lane?: string } | null {
     const board = this.scheduler?.db.board;
     const card = board?.findCard(code);
     // #2425 (Fable): the same rule as the list — a button rendered before the fix (or before the opt-in went off) for a
     // card that no longer waits for the person answers "no longer waits".
-    if (!board || !card || this.fleetConfig?.needs_you?.task_board !== true || !waitsForPerson(card)) return null;
+    if (!board || !card || this.fleetConfig?.needs_you?.task_board !== true || !waitsForPerson(card, this.dispatcherGone)) return null;
     const leads = new Map(board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
     const lane = this.needsYouLane(card, leads);
     return lane ? { lane } : {};
@@ -13968,7 +14002,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /**
    * #2246 step 3: the task board's cards that wait for the person, for Needs you — under each card's assignee, listed in
-   * its lane's channel (#2352: the instance that handed it out, else the project's lead), else in General.
+   * its lane's channel (#2352: its project's lead; #2434: never the instance that handed it out), else in General.
    */
   private needsYouTaskItems(): import("./needs-you.js").TaskInput[] {
     // #2425: the task board's cards join Needs you only when the fleet asks for them (needs_you.task_board, off by
@@ -13979,7 +14013,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const board = this.scheduler?.db.board;
     if (!board) return [];
     const leads = new Map(board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
-    return board.waitingForPerson().map(({ card, since }) => {
+    return board.waitingForPerson(this.dispatcherGone).map(({ card, since }) => {
       const gap = card.status === "review" ? wrapUpGap(card) : null;
       const lane = this.needsYouLane(card, leads);
       return {
@@ -16895,7 +16929,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -16908,6 +16942,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         from: m.from,
         replyTo: m.replyTo,
         cards: m.cards,
+        posts: m.posts,                                  // #2281: kept beside the row, never broadcast (not a row field)
       });
       // A sending page's own id for its pending bubble rides on the live copy only: never recorded, never replayed.
       const clientId = typeof (data as { clientId?: unknown }).clientId === "string" ? (data as { clientId: string }).clientId : "";
@@ -16947,7 +16982,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (this.fleetConfig?.needs_you?.live_message === false) return false;
         const card = db.board.findCard(uuid);
         // #2434: only while it waits for the person — a card that does not is in no Needs you, so no buttons anywhere.
-        if (!card || !waitsForPerson(card)) return false;
+        if (!card || !waitsForPerson(card, this.dispatcherGone)) return false;
         const leads = new Map(db.board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
         return this.needsYouLane(card, leads) === instance;
       },

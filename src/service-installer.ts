@@ -901,14 +901,28 @@ export function loadedUnitCheck(o: { user: boolean; unit: string; unitPath: stri
   };
   const lines = notifyRepairLines(ensureLoadedNotifyAccess(o.unitPath, show, reload), o.unit, reloadCmd);
   const now = readLoadedNotify(show);
+  lines.push(...loadedOomPolicyLines(show("OOMPolicy"), o.unit, {
+    fragment: show("FragmentPath"), dropIns: now?.dropIns ?? [], user: o.user,
+  }));
   for (const l of serviceLeftovers({ home: o.home ?? homedir(), dropIns: now?.dropIns ?? [], systemUnit: o.user ? null : o.unit })) {
     lines.push(`  ℹ ${l.path}: ${l.detail} (#2331)`);
   }
   return lines;
 }
 
+/** Report effective policy, never replace an operator override or add a restart refusal. */
+export function loadedOomPolicyLines(policy: string | null, unit: string,
+  details: { fragment: string | null; dropIns: readonly string[]; user: boolean }): string[] {
+  if (policy === "continue") return [t("service.oom_loaded_continue", unit)];
+  if (policy === "stop" || policy === "kill") {
+    return [t("service.oom_loaded_override", unit, policy,
+      [details.fragment, ...details.dropIns].filter(Boolean).join(", ") || "unknown")];
+  }
+  return [t("service.oom_loaded_unknown", unit, `systemctl${details.user ? " --user" : ""} show ${unit} -p OOMPolicy -p FragmentPath -p DropInPaths`)];
+}
+
 /** What #2331 reads of a loaded unit, in one `systemctl show -p …`. */
-export const LOADED_PROPERTIES = ["Type", "NotifyAccess", "TimeoutStartUSec", "FragmentPath", "DropInPaths"] as const;
+export const LOADED_PROPERTIES = ["Type", "NotifyAccess", "TimeoutStartUSec", "FragmentPath", "DropInPaths", "OOMPolicy"] as const;
 
 const SERVICE_LABEL = "com.agend.fleet";
 

@@ -54,7 +54,7 @@ import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js
 import { z } from "zod";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
-import { WEB_CHAT_CARDS_OVERFLOW, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatHistory, type WebChatMessage } from "./web-chat-history.js";
+import { WEB_CHAT_CARDS_OVERFLOW, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatHistory, type WebChatMessage, type WebChatPost } from "./web-chat-history.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore, SessionRecord } from "./web-session.js";
@@ -69,6 +69,7 @@ import { resolveTz } from "./tz-utils.js";
 import { filesPlayInChat } from "./web-effect.js";
 import { QUERY_MAX_CHARS, RESULT_MAX, SEARCH_SOURCES } from "./search/search-store.js";
 import { xmsgShown } from "./search/search-docs.js";
+import { WebSendDedupe, type WebSendClaim } from "./web-send-dedupe.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -383,7 +384,7 @@ export interface WebApiContext {
    * (#1320 part B). Resolves the entries and adapters itself; returns how
    * many channels were posted to. Never rejects the web send on failure.
    */
-  sendClassicWebEcho?(instance: string, text: string, sender?: string, copies?: import("./web-reactions.js").WebEchoCopy[]): Promise<number>;
+  sendClassicWebEcho?(instance: string, text: string, sender?: string, copies?: import("./web-reactions.js").WebEchoCopy[], reply?: { posts: readonly WebChatPost[]; text: string }): Promise<number>;
   /** #1920 §5.2: a web message's channel copy was sent — guests of that channel may see it now. */
   /** #2305: `copies`, the copies' own message ids, so a reaction to the web message is put on them too. */
   webMessageInChannel?(instance: string, messageId: string, copies?: readonly import("./web-reactions.js").WebEchoCopy[]): void;
@@ -2872,6 +2873,14 @@ function webDeliveryFailure(err: unknown): { reason: string; error: string } {
 }
 
 /** Handle POST /ui/send — extracted for readability. */
+/** Each web server's own memory of the sends it accepted by clientId (web-send-dedupe.ts). */
+const webSendDedupes = new WeakMap<object, WebSendDedupe>();
+function webSendDedupeOf(ctx: WebApiContext): WebSendDedupe {
+  let d = webSendDedupes.get(ctx);
+  if (!d) webSendDedupes.set(ctx, d = new WebSendDedupe());
+  return d;
+}
+
 function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebApiContext): void {
   const arrival = webAuthorityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);   // #1939 §3: again after the body
   let body = "";
@@ -2887,6 +2896,9 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
   });
   req.on("end", async () => {
       if (!permitWebContinuation(req, res, ctx)) return;
+    // A claimed clientId is settled however this ends: with the messageId once accepted, else forgotten.
+    let claim: Extract<WebSendClaim, { kind: "new" }> | undefined;
+    let acceptedId: string | null = null;
     try {
       const raw = JSON.parse(body);
       const parsed = SendMessageSchema.safeParse(raw);
@@ -2916,6 +2928,22 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         json(res, 404, { error: `Instance not found: ${instance}` });
         return;
       }
+      // #1827: who is writing — the name agents and chats see, and the id they tell people apart by. Asked now that the
+      // body is in: a session revoked meanwhile sends nothing (not as the operator).
+      const person = webPersonOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);
+      if (!person) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+      // #2438 follow-up: the page's Retry of a send that already went (its answer and the live copy lost) is that send:
+      // answered with its messageId, delivered once. One still going is waited for; one that failed is sent anew.
+      if (clientId) {
+        const key = WebSendDedupe.key(person.key, instance, clientId);
+        for (;;) {
+          const seen = webSendDedupeOf(ctx).claim(key);
+          if (seen.kind === "going") { await seen.settled; if (res.destroyed) return; continue; }
+          if (seen.kind === "accepted") { json(res, 200, { sent: true, messageId: seen.messageId, repeated: true }); return; }
+          claim = seen;
+          break;
+        }
+      }
       let files: UploadEntry[] = [];
       if (attachments.length > 0) {
         const taken = ctx.webFiles?.takeForMessage(instance, attachments);
@@ -2939,10 +2967,6 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         && (!guest || (guest.current() && !guestChatRefusal(guest, instance)))
         && (registered ? registeredChatInstance(ctx, instance) : ctx.instanceIpcClients.has(instance));
       const message = typed;
-      // #1827: who is writing — the name agents and chats see, and the id they tell people apart by. Asked now that the
-      // body is in: a session revoked meanwhile sends nothing (not as the operator).
-      const person = webPersonOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);
-      if (!person) { ctx.webFiles?.release(files); json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
       // #1939 S1: what the receipt records about who authorized it (observe only: agents still read web as recognition).
       const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx, instance));
       const ts = new Date().toISOString();
@@ -2960,13 +2984,18 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // Add no runtime credentials or local attachment paths to the display copy. A reply opens with the line it
       // answers (#2272) — quoted only if that message reached the channel; a web-only one is named, never copied out.
       const quoteLine = quoted ? webReplyEchoLine(quoted) : "";
-      const preview = (quoteLine ? `${quoteLine}\n` : "") + webEchoPreview(message, files.map(f => f.name));
+      const plainPreview = webEchoPreview(message, files.map(f => f.name));
+      const preview = (quoteLine ? `${quoteLine}\n` : "") + plainPreview;
+      // #2281: where the quoted message is on a platform. An echo to the same place is a native reply to it there, and
+      // then needs no quoted line; anywhere else (or a message with no known post) keeps the line, as before.
+      const quotedPosts = quoted ? ctx.webChatHistory?.postsOf(quoted) ?? [] : [];
+      const echoText = (p: string) => formatWebChannelEcho(person.name, p, t("web.echo_full_text"), { guest: !!guest });
       // ClassicBot echo (#1320 part B): same ordering lane, each room's setting (#2054: on unless it says false, or
       // the fleet-wide switch is off for a room that is unset) resolved at send time inside sendClassicWebEcho.
       const canClassicEcho = ctx.isClassicInstance?.(instance) === true && !!ctx.sendClassicWebEcho;
       const settleClassicEcho = canClassicEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
         const copies: import("./web-reactions.js").WebEchoCopy[] = [];
-        const posted = await ctx.sendClassicWebEcho!(instance, formatWebChannelEcho(person.name, preview, t("web.echo_full_text"), { guest: !!guest }), person.name, copies);
+        const posted = await ctx.sendClassicWebEcho!(instance, echoText(preview), person.name, copies, quotedPosts.length ? { posts: quotedPosts, text: echoText(plainPreview) } : undefined);
         if (posted > 0) ctx.webMessageInChannel?.(instance, messageId, copies); // #1920 §5.2: the room saw it (#2305: its copies)
       }) : undefined;
       const settleEcho = canEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
@@ -2974,12 +3003,14 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         if ((ctx.getAdapterForInstance ? ctx.getAdapterForInstance(instance) : ctx.adapter) !== syncAdapter
           || (ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "")) !== groupId
           || ctx.fleetConfig?.instances[instance]?.topic_id !== topicId) return;
-        const sent = await syncAdapter.sendText(String(groupId), formatWebChannelEcho(person.name, preview, t("web.echo_full_text"), { guest: !!guest }), { threadId: String(topicId), format: "text", allowedMentions: { parse: [] } });
+        const native = quotedPosts.find(p => p.adapterId === syncAdapter.id && p.chatId === String(groupId) && (p.threadId ?? "") === String(topicId));
+        const sent = await syncAdapter.sendText(String(groupId), echoText(native ? plainPreview : preview),
+          { threadId: String(topicId), format: "text", allowedMentions: { parse: [] }, ...(native ? { replyTo: native.messageId } : {}) });
         const copyId = sent && typeof sent === "object" && typeof (sent as { messageId?: unknown }).messageId === "string" ? (sent as { messageId: string }).messageId : "";
-        // #1920 §5.2: the topic saw it. #2305: and where it is, for a reaction to the web message.
-        const reacting = syncAdapter as unknown as Partial<import("./web-reactions.js").WebEchoCopy["adapter"]>;
-        ctx.webMessageInChannel?.(instance, messageId, copyId && typeof reacting.react === "function"
-          ? [{ adapter: reacting as import("./web-reactions.js").WebEchoCopy["adapter"], chatId: String(groupId), threadId: String(topicId), messageId: copyId }] : []);
+        // #1920 §5.2: the topic saw it. #2305: and where it is, for a reaction to the web message (#2281: and a reply).
+        const reacting = syncAdapter as unknown as import("./web-reactions.js").WebEchoCopy["adapter"];
+        ctx.webMessageInChannel?.(instance, messageId, copyId
+          ? [{ adapter: reacting, adapterId: syncAdapter.id, chatId: String(groupId), threadId: String(topicId), messageId: copyId }] : []);
         return sent;
       }) : undefined;
       let delivered: boolean | void;
@@ -3024,6 +3055,9 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         json(res, 503, { reason: "delivery_changed", error: "The session or instance changed before this message was sent. Sign in again if needed, then retry." });
         return;
       }
+      // The agent has it: from here on a repeat of this clientId is this send, whatever fails after (the echo, the
+      // stream's copy) — a Retry then gets this messageId, never a second delivery.
+      acceptedId = messageId;
       settleEcho?.(true);
       settleClassicEcho?.(true);
       // #1666: the same cancel/progress bubble a platform inbound starts, in the topic the echo went to — a second turn
@@ -3041,7 +3075,12 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         ...(quoted ? { replyTo: webChatReplyRef(quoted) } : {}), ...(clientId ? { clientId } : {}) });
       json(res, 200, { sent: true, messageId });
     } catch {
-      json(res, 400, { error: "Invalid JSON" });
+      // A failure after the agent has it is no failed send: the page is told it went (a Retry would only find it).
+      if (res.headersSent) { /* answered already: the failure was in or after the answer */ }
+      else if (acceptedId) json(res, 200, { sent: true, messageId: acceptedId });
+      else json(res, 400, { error: "Invalid JSON" });
+    } finally {
+      claim?.settle(acceptedId);
     }
   });
 }

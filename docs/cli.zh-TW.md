@@ -290,10 +290,16 @@ Detached restart 使用非同步 polling 與 monotonic deadline。期限到了�
 
 **單一行程因記憶體不足被 kill，不再讓整個 fleet 停掉（#2015）。** instance 執行的一切（它的 CLI、tmux、agent 啟動的每個指令）都在這個服務的 cgroup 裡。systemd 預設是 `OOMPolicy=stop`：kernel 因記憶體不足 kill 掉其中任何一個行程，就會停掉整個 unit，所有 instance 都跟著停。現在 unit 設定 `OOMPolicy=continue`，只有被 kill 的那個行程會結束：
 - **被 kill 的工具指令**（agent 執行的腳本）只是它的 CLI 看到的一個錯誤。
-- **被 kill 的 CLI** 是一次 crash，fleet 會照常重啟它。
+- **被 kill 的 CLI** 通常走既有崩潰恢復流程。同一個已確認的後端／工作階段連續兩次確認遭記憶體不足終止時，會停止自動重啟（#2035），由 General 與網頁日誌說明原因，並在「需要你」列出崩潰的 Agent。原工作階段與對話紀錄保留；請先釋放記憶體，再手動重啟以重試，或選擇新的工作階段。不會自動建立新工作階段。
 - **被 kill 的 fleet 行程**是服務失敗，由 `Restart=on-failure` 重新啟動。
 
+安裝、啟動與重啟也會在重新載入管理器後，回報**實際載入**的 `OOMPolicy`。若管理者的設定令生效值為 `stop`／`kill`，或無法讀取，會如實提醒，不會當作已確認隔離，也不新增重啟拒絕條件。
+
 更新時會重寫 user unit，帶上這一行。`agend restart` 會替舊的 unit 補上，更新時的 refresh 也會替舊式的 system unit（`/etc/systemd/system/agend.service`）補上。unit 自己設定了 `OOMPolicy` 的話會保留原值。systemd 243 以前的版本不認得這個設定，會忽略它，並在 journal 留下警告。macOS 沒有對應的設定：launchd 沒有每個服務各自的 cgroup，kernel（jetsam）只會 kill 那一個行程；如果被 kill 的是 fleet，`KeepAlive` 會重新啟動它。
+
+同一工作階段的 OOM 防護目前僅使用 Claude Code 專屬於 instance 的 statusline 工作階段識別。Codex／Kiro 沒有這個識別，Muse／Grok 依工作目錄挑選的識別不代表 pane 所有權，因此均沿用一般恢復。
+
+OOM 判定採保守原則：Linux 必須取得啟動期間的核心紀錄，且受害者是存活時已觀測的主 CLI PID，位於最初的 PID 命名空間。只有退出碼 137、共用 cgroup 計數器、記憶體壓力或對話大小均不足以判定。工作階段不明、未觀測到的快速退出、無法讀取證據、容器的巢狀 PID 命名空間與 macOS，均沿用一般崩潰恢復。工具或 MCP 子程序不等於主 CLI。不新增因記憶體用量而主動終止程序的功能或統一的指令上限；手動重啟 Agent 或 fleet 會開始新的恢復嘗試。
 
 **fleet 的就緒訊號必須送得到 systemd（#2331）。** unit 是 `Type=notify`：fleet 透過一個短暫的 `systemd-notify` 輔助程式告訴 systemd 它已就緒（`READY=1`），不是由主行程自己送，所以 systemd 只有在 `NotifyAccess=all` 時才會收下。設成 `main`、`exec`，或完全沒寫 `NotifyAccess`（`Type=notify` 的預設就是 `main`）時，systemd 會拒收：`Got notification message from PID …, but reception only permitted for main PID …`。fleet 本身照常執行，但 unit 會一直停在 `activating`，直到 `TimeoutStartSec` 用完，systemd 就把它 kill 掉再重啟——自從 `TimeoutStartSec=15min`（#1113）起就是每 15 分鐘一次。以前逾時是 `0` 的時候，同樣的 unit 只會停在 `activating`，沒有人會發現。
 - **unit 檔：**`agend restart` 和更新時的 refresh 會在 `Type=notify` 的 unit（user unit 和舊式的 system unit）裡寫入 `NotifyAccess=all`，取代 `main`、`exec` 或 `none`。AgEnD 自己只有在 0.0.24-beta.5 到 beta.12 用過 `main`。

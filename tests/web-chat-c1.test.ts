@@ -487,8 +487,11 @@ describe("SSE frames", () => {
 // ── FleetManager: every chat message goes through the history ──────────────────────────────────────────────────
 
 describe("FleetManager.emitSseEvent", () => {
+  // The fleet's first import costs 4–9 s on a loaded host: paid here, on the hook's own clock, never inside a test's
+  // 10 s (the first test here timed out 1 in 8 runs alone, 3 in 9 under load).
+  let FleetManager: typeof import("../src/fleet-manager.js").FleetManager;
+  beforeAll(async () => { ({ FleetManager } = await import("../src/fleet-manager.js")); }, 60_000);
   it("records a chat message and broadcasts it with its id; other events are untouched", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
     const { mkdtempSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const dir = mkdtempSync(join(tmpdir(), "c1-"));
@@ -507,7 +510,6 @@ describe("FleetManager.emitSseEvent", () => {
   });
 
   it("deleting an instance forgets its chat — only once the removal succeeded", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
     const { authorizeExplicitInstanceRemoval } = await import("../src/instance-removal.js");
     const { mkdtempSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");

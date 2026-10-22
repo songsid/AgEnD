@@ -1,0 +1,50 @@
+ ▝▝   ▝▝   /tmp/claude-1000/-home-han--agend-workspaces-claude-fable-t1532671461406277715/33226202-98fe-4aa0-960b-6f13d560280a/scratchpad/cc308/w/p308
+
+
+✻ Conversation compacted (ctrl+o for the summary)
+  Earlier messages are saved in ~/.claude/projects/-tmp-claude-1000--home-han--agend-workspaces-claude-fable-t1532671461406277715-33226202-98fe-4aa0-960b-6f13d5
+  60280a-scratchpad-cc308-w-p308/b1b471c7-c4bb-44a9-9c13-466154f31854.jsonl
+
+
+● mock reply 14
+
+✻ Sautéed for 0s · done 9:17 PM · 1 shell still running
+
+❯ same words start this paste
+  middle line
+  end with same words start this paste
+
+● mock reply 18
+
+✻ Worked for 0s · done 9:17 PM · 1 shell still running
+
+❯ trigger E429 nowtrigger E529 now
+
+● API Error: Repeated 529 Overloaded errors. The API is at capacity — this is usually temporary. Try again in a moment. If it persists, check your
+  inference gateway (127.0.0.1:18308).
+
+✻ Sautéed for 1s · done 9:17 PM · 1 shell still running
+
+❯ trigger E500 nowtrigger E401 nowtrigger E400LONG now
+  ⎿  Context limit reached · /compact or /clear to continue
+
+✻ Brewed for 6s · done 9:18 PM · 1 shell still running
+
+❯ BGWORK start it
+
+  Ran 1 shell command
+
+● tool finished
+
+✻ Brewed for 2s · done 9:20 PM · 1 shell still running
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+   Background work is running
+   The following will stop when you exit:
+
+   shell · sleep 900
+
+   ❯ 1. Exit and stop tasks
+     2. Move to background and exit
+     3. Stay
+
+   Enter to confirm · Esc to cancel

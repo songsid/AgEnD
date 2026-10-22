@@ -417,7 +417,7 @@ export class TmuxManager {
    * When remain-on-exit is enabled, a dead pane has alive=false with exitCode.
    * exitCode is undefined if tmux version doesn't support pane_dead_status (< 3.1).
    */
-  async getPaneStatus(): Promise<{ alive: boolean; exitCode?: number } | null> {
+  async getPaneStatus(): Promise<{ alive: boolean; exitCode?: number; pid?: number } | null> {
     if (!this.windowId) return null;
     // Kiro CLI 2.8.0 can coincide with a transient tmux `list-panes` failure
     // while its TUI is redrawing. A single failed query must not be treated as
@@ -434,7 +434,8 @@ export class TmuxManager {
           const code = parseInt(parts[1], 10);
           return { alive: false, exitCode: Number.isNaN(code) ? undefined : code };
         }
-        return { alive: true };
+        const pid = Number(parts[2]);
+        return { alive: true, ...(Number.isSafeInteger(pid) && pid > 0 ? { pid } : {}) };
       } catch {
         if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 100));
       }
