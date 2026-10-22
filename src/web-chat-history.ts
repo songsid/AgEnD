@@ -219,6 +219,33 @@ function webChatReplyRefOf(raw: unknown): WebChatReplyRef | undefined {
 
 /** #1920: an account as a row names it — the connection id and the user id, one line. */
 const FROM = /^[^\s:]{1,64}:[^\s:]{1,128}$/;
+
+/**
+ * #2281: where a message is on a platform — the connection it went through, its chat, its topic or thread, and its own
+ * message id there: a person's message in the topic, an agent's reply that landed in it, a web message's channel copy.
+ * What a later web reply to it needs to be a native reply there. Kept beside the row, never in it: no projection of a
+ * row (a page, a guest, the public link, the stream) can carry one. Discord and Telegram ids are digits.
+ */
+export interface WebChatPost { adapterId: string; chatId: string; threadId?: string; messageId: string }
+/** At most this many posts per message (a topic copy, ClassicBot rooms). */
+export const WEB_CHAT_POSTS_MAX = 8;
+const POST_ADAPTER = /^[^\s:]{1,64}$/;
+/** Posts checked field by field; one that fails is dropped, never repaired. */
+export function webChatPosts(raw: unknown): WebChatPost[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WebChatPost[] = [];
+  for (const p of raw) {
+    if (out.length >= WEB_CHAT_POSTS_MAX) break;
+    if (!p || typeof p !== "object") continue;
+    const v = p as Record<string, unknown>;
+    if (typeof v.adapterId !== "string" || !POST_ADAPTER.test(v.adapterId)) continue;
+    if (typeof v.chatId !== "string" || !/^-?\d{1,32}$/.test(v.chatId) || typeof v.messageId !== "string" || !/^\d{1,32}$/.test(v.messageId)) continue;
+    if (v.threadId !== undefined && (typeof v.threadId !== "string" || !/^\d{1,32}$/.test(v.threadId))) continue;
+    const post: WebChatPost = { adapterId: v.adapterId, chatId: v.chatId, ...(v.threadId ? { threadId: v.threadId as string } : {}), messageId: v.messageId };
+    if (!out.some(o => o.adapterId === post.adapterId && o.chatId === post.chatId && o.messageId === post.messageId)) out.push(post);
+  }
+  return out;
+}
 export function webChatFrom(adapterId: unknown, userId: unknown): string | undefined {
   if (typeof adapterId !== "string" || typeof userId !== "string") return undefined;
   const v = `${adapterId}:${userId}`;
@@ -275,6 +302,8 @@ export interface StoredWebChatMessage {
   reactions?: string[];
   /** #2341: a status line's card numbers (see WebChatMessage). */
   cards?: string[];
+  /** #2281: where it is on a platform (see WebChatPost) — on disk only, never in a row. */
+  posts?: WebChatPost[];
 }
 
 /** #1565: what the history needs of the file ledger (web-upload.ts). */
@@ -320,6 +349,8 @@ export class WebChatHistory {
   private files: WebChatFiles | null;
   /** #1565: the boots of restored messages, by the time of their first message — older processes, in order. */
   private readonly restoredBoots = new Map<string, string>();
+  /** #2281: each row's platform posts, beside it (never a field of it). Gone with the row. */
+  private readonly posts = new WeakMap<WebChatMessage, WebChatPost[]>();
 
   constructor(opts: WebChatHistoryOptions = {}) {
     this.perInstance = opts.perInstance ?? 500;
@@ -346,6 +377,8 @@ export class WebChatHistory {
     const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.click ? { click: { label: m.click.label } } : {}), ...(m.links ? { links: m.links } : {}),
       ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.channel && m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}),
       ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.reactions?.length ? { reactions: [...m.reactions] } : {}), ...(m.cards?.length ? { cards: [...m.cards] } : {}) };
+    const posts = this.posts.get(m);
+    if (posts?.length) row.posts = posts.map(p => ({ ...p }));
     if (m.attachments?.length) {
       row.attachments = m.attachments.map((a) => {
         const base = { kind: a.kind, name: a.name, size: a.size, mime: a.mime };
@@ -387,7 +420,7 @@ export class WebChatHistory {
   restore(instance: string, rows: unknown[] | null): number {
     if (!Array.isArray(rows) || this.byInstance.has(instance)) return 0;
     const seen = new Set<string>();
-    const out: Array<{ message: WebChatMessage; files: RestoredFile[] }> = [];
+    const out: Array<{ message: WebChatMessage; files: RestoredFile[]; posts: WebChatPost[] }> = [];
     for (const raw of rows) {
       const r = restoredRow(raw, instance, this.boot);
       if (!r) continue;
@@ -399,7 +432,11 @@ export class WebChatHistory {
     // The newest within the bounds, in their order.
     let chars = 0, from = out.length;
     while (from > 0 && out.length - from < this.perInstance && chars + out[from - 1]!.message.text.length <= this.perInstanceChars) chars += out[--from]!.message.text.length;
-    const kept = out.slice(from).map((r) => this.restoreFiles(r, instance));
+    const kept = out.slice(from).map((r) => {
+      const message = this.restoreFiles(r, instance);
+      if (r.posts.length) this.posts.set(message, r.posts);
+      return message;
+    });
     if (!kept.length) return 0;
     this.byInstance.set(instance, { messages: kept, chars });
     for (const m of kept) {
@@ -441,7 +478,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; effectTrial?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; effectTrial?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown }): WebChatMessage {
     return this.recordEntry(msg, null);
   }
 
@@ -482,6 +519,9 @@ export class WebChatHistory {
     // #2272: only a person's message replies to another.
     const replyTo = entry.role === "user" ? webChatReplyRefOf(msg.replyTo) : undefined;
     if (replyTo) entry.replyTo = replyTo;
+    // #2281: where it is on a platform, beside the row (the caller that sent or received it knows).
+    const posts = webChatPosts(msg.posts);
+    if (posts.length) this.posts.set(entry, posts);
     let slot = this.byInstance.get(entry.instance);
     if (!slot) { slot = { messages: [], chars: 0 }; this.byInstance.set(entry.instance, slot); }
     slot.messages.push(entry);
@@ -566,6 +606,20 @@ export class WebChatHistory {
   /** #2272: one kept message of an instance's chat by its row (`boot`, `id`), or undefined (never sent, or no longer kept). */
   find(instance: string, boot: string, id: number): WebChatMessage | undefined {
     return this.byInstance.get(instance)?.messages.find(m => m.boot === boot && m.id === id);
+  }
+
+  /** #2281: where this message is on a platform (empty when nowhere known). Never sent to a page. */
+  postsOf(row: WebChatMessage): readonly WebChatPost[] {
+    return this.posts.get(row) ?? [];
+  }
+  /** #2281: a web message's channel copies, once sent (by its message id); kept on disk with it. */
+  addPosts(instance: string, messageId: string, raw: readonly WebChatPost[]): void {
+    const m = this.findByMessageId(instance, messageId);
+    if (!m) return;
+    const posts = webChatPosts([...(this.posts.get(m) ?? []), ...raw]);
+    if (!posts.length) return;
+    this.posts.set(m, posts);
+    this.persist(instance);
   }
 
   findByMessageId(instance: string, messageId: string): WebChatMessage | undefined {
@@ -728,7 +782,7 @@ interface RestoredFile { id?: string; path?: string; kind: "photo" | "document";
  * Only what was said comes back: no buttons, no delivery tick, no message id — whatever a row carries of those. #2305:
  * and the instance's reactions (what was answered). With no id, a message from before the restart takes no new one.
  */
-function restoredRow(raw: unknown, instance: string, thisBoot: string): { message: WebChatMessage; files: RestoredFile[] } | null {
+function restoredRow(raw: unknown, instance: string, thisBoot: string): { message: WebChatMessage; files: RestoredFile[]; posts: WebChatPost[] } | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.boot !== "string" || !/^[0-9a-f]{1,32}$/.test(r.boot) || r.boot === thisBoot) return null;
@@ -762,7 +816,7 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
       size: typeof f.size === "number" && Number.isSafeInteger(f.size) && f.size >= 0 ? f.size : 0, mime: typeof f.mime === "string" ? f.mime.slice(0, 128) : "",
     }];
   });
-  return { message, files };
+  return { message, files, posts: webChatPosts(r.posts) };
 }
 
 /** A photo's drawn size as the page gets it (both positive integers), or nothing. Measured from the file, never kept. */

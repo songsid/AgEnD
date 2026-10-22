@@ -198,7 +198,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 }
 import { handleWebRequest, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
-import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment } from "./web-chat-history.js";
+import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
@@ -4176,6 +4176,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   webMessageInChannel(instance: string, messageId: string, copies: readonly WebEchoCopy[] = []): void {
     // #2305: the copies' own message ids, so an instance's reaction to the web message is put on them too.
     if (copies.length) this.rememberWebEchoCopies(messageId, copies);
+    // #2281: and where they are, for a later web reply to this message to be a native reply there.
+    const posts = copies.flatMap(c => c.adapterId ? [{ adapterId: c.adapterId, chatId: c.chatId, ...(c.threadId ? { threadId: c.threadId } : {}), messageId: c.messageId }] : []);
+    if (posts.length) this.webChatHistory.addPosts(instance, messageId, posts);
     const m = this.webChatHistory.markChannel(instance, messageId);
     if (m) broadcastToGuests(this.sseClients, "message", m, (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting"));
   }
@@ -4224,7 +4227,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** #2305: `copies` collects each room's copy (its message id), for a reaction to the web message. */
-  async sendClassicWebEcho(instance: string, text: string, sender = WEB_NAME_FALLBACK, copies?: WebEchoCopy[]): Promise<number> {
+  /**
+   * `reply` (#2281): where the message a web reply quotes is on a platform. A room that has it gets the reply as a
+   * native reply to it (`reply.text`: without the quoted line); every other room gets `text`, as before.
+   */
+  async sendClassicWebEcho(instance: string, text: string, sender = WEB_NAME_FALLBACK, copies?: WebEchoCopy[], reply?: { posts: readonly WebChatPost[]; text: string }): Promise<number> {
     const guard = this.webChannelEchoGuards.get(instance);
     const handled = new Set<string>();
     let posted = 0;
@@ -4253,8 +4260,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const adapter = worldAdapter ?? this.adapter;
       try {
         if (!adapter?.sendText) continue;
-        const sent = await adapter.sendText(entry.channelId, text, { format: "text", allowedMentions: { parse: [] } });
-        if (copies && sent && typeof sent.messageId === "string" && sent.messageId) copies.push({ adapter, chatId: entry.channelId, messageId: sent.messageId });
+        // A Telegram room is its chat; a Discord room is the guild's channel (an inbound's thread there).
+        const native = reply?.posts.find(p => p.adapterId === adapter.id && (p.chatId === entry.channelId || p.threadId === entry.channelId));
+        const sent = await adapter.sendText(entry.channelId, native ? reply!.text : text,
+          { format: "text", allowedMentions: { parse: [] }, ...(native ? { replyTo: native.messageId } : {}) });
+        if (copies && sent && typeof sent.messageId === "string" && sent.messageId) copies.push({ adapter, adapterId: adapter.id, chatId: entry.channelId, messageId: sent.messageId });
         ClassicChannelManager.logMessage(instance, sender, text, new Date());
         posted++;
       } catch (err) {
@@ -9808,10 +9818,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * A person's platform message as the web chat shows it — the user's own words, as a user (#1306), in the instance's
    * history (#1565). #1920 §5.2: said in the instance's topic, General or room, so it is that channel's, by that account.
    */
-  private emitPlatformInbound(instance: string, msg: { username: string; adapterId?: string; userId?: string }, text: string): void {
+  private emitPlatformInbound(instance: string, msg: { username: string; adapterId?: string; userId?: string; chatId?: string; threadId?: string; transportThreadId?: string; messageId?: string }, text: string): void {
+    // #2281: where it is on the platform — a web reply to it is then a native reply there. The platform thread it came
+    // from (#1085: a ClassicBot's `threadId` may be its registry key).
+    const thread = msg.transportThreadId ?? msg.threadId;
+    const posts = msg.adapterId && msg.chatId && msg.messageId
+      ? [{ adapterId: msg.adapterId, chatId: msg.chatId, ...(thread && thread !== msg.chatId ? { threadId: thread } : {}), messageId: msg.messageId }] : undefined;
     this.emitSseEvent("message", {
       instance, sender: msg.username, role: "user", text: text.slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
-      channel: true, from: webChatFrom(msg.adapterId, msg.userId),
+      channel: true, from: webChatFrom(msg.adapterId, msg.userId), ...(posts ? { posts } : {}),
     });
   }
 
@@ -10134,11 +10149,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           try {
             // #1920 §5.2: shown to the instance's guests only when it landed in the instance's own topic or room.
             let inChannel = false;
+            const replyAdapterId = contextAdapterId ?? this.getInstanceAdapterId(instanceName);
             try {
               inChannel = outAdapter !== WEB_ONLY_REPLY_SINK
-                && this.landedInOwnChannel(instanceName, contextAdapterId ?? this.getInstanceAdapterId(instanceName), result);
+                && this.landedInOwnChannel(instanceName, replyAdapterId, result);
             } catch { /* not known: not the channel's (fail closed), and the bookkeeping below still runs */ }
-            void this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView, inChannel);
+            // #2281: where the reply is in the instance's own place — a web reply to it is then a native reply there.
+            const sent = result as { messageId?: unknown; chatId?: unknown; threadId?: unknown };
+            const post = inChannel && replyAdapterId && typeof sent.messageId === "string" && typeof sent.chatId === "string"
+              ? { adapterId: replyAdapterId, chatId: sent.chatId, ...(typeof sent.threadId === "string" && sent.threadId ? { threadId: sent.threadId } : {}), messageId: sent.messageId } : undefined;
+            void this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView, inChannel, post);
           } catch (err) {
             this.logger.warn({ err, instanceName }, "Reply delivered but post-delivery bookkeeping failed");
           }
@@ -10209,7 +10229,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { return this.landedInOwnChannel(set.instance, set.adapterId, { chatId: set.chatId, threadId: set.threadId || undefined }); } catch { return false; }
   }
 
-  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false): Promise<void> {
+  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false, post?: WebChatPost): Promise<void> {
     // A reply is NOT proof the turn is over (#410) — but it is not proof of
     // more work either. Split the difference: an instance that is clearly
     // idle loses the button now; one that looks busy keeps it (re-posted
@@ -10245,6 +10265,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(attachments.length ? { attachments } : {}),
         ...(buttons ? { buttons } : {}),                 // #1266
         ...(inChannel ? { channel: true } : {}),         // #1920 §5.2
+        ...(post ? { posts: [post] } : {}),              // #2281
       });
     };
     const before = this.webReplyOrder.get(instanceName);
@@ -16907,7 +16928,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -16920,6 +16941,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         from: m.from,
         replyTo: m.replyTo,
         cards: m.cards,
+        posts: m.posts,                                  // #2281: kept beside the row, never broadcast (not a row field)
       });
       // A sending page's own id for its pending bubble rides on the live copy only: never recorded, never replayed.
       const clientId = typeof (data as { clientId?: unknown }).clientId === "string" ? (data as { clientId: string }).clientId : "";
