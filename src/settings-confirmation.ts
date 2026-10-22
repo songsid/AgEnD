@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { SettingsExecution, settingsFingerprint } from "./settings-transaction.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { performance } from "node:perf_hooks";
+import { t } from "./locale.js";
 
 export const SETTINGS_CONFIRMATION_TTL_MS = 5 * 60_000;
 const RETAIN_TERMINAL_MS = 10 * 60_000;
@@ -121,7 +122,7 @@ export class SettingsConfirmationStore {
     if (this.keys.get(index) === entry.view.id) this.keys.delete(index);
   }
   private expire(entry: RecordEntry): void {
-    if (entry.view.state === "pending" && this.now() >= entry.deadline) this.finish(entry, "expired", "expired", "Confirmation expired. Review and apply again.");
+    if (entry.view.state === "pending" && this.now() >= entry.deadline) this.finish(entry, "expired", "expired", t("settings_confirm.result.expired"));
   }
   private arm(entry: RecordEntry): void {
     clearTimeout(entry.timer);
@@ -189,7 +190,7 @@ export class SettingsConfirmationStore {
   withdraw(id: string, session: string): SettingsPendingView | null {
     const entry = this.records.get(id); if (entry?.session !== session) return null;
     this.expire(entry);
-    if (entry.view.state === "pending") this.finish(entry, "rejected", "withdrawn", "Change withdrawn.");
+    if (entry.view.state === "pending") this.finish(entry, "rejected", "withdrawn", t("settings_confirm.result.withdrawn"));
     return this.snapshot(entry);
   }
   async decide(id: string, decision: "confirm" | "reject", actor: { label: string; current(): boolean; via?: "web" }): Promise<SettingsPendingView> {
@@ -198,8 +199,8 @@ export class SettingsConfirmationStore {
     if (!entry || this.closed || entry.view.state !== "pending") throw new SettingsConfirmationError(409, "confirmation_not_pending");
     const proposal = entry.proposal!;
     if (!actor.current()) throw new SettingsConfirmationError(403, "admin_required");
-    if (!proposal.current()) { this.finish(entry, "stale", "request_no_longer_current", "The requesting session or fleet changed. Review and apply again."); return this.snapshot(entry); }
-    if (decision === "reject") { this.finish(entry, "rejected", "rejected", "Change rejected.", actor.label); return this.snapshot(entry); }
+    if (!proposal.current()) { this.finish(entry, "stale", "request_no_longer_current", t("settings_confirm.result.request_no_longer_current")); return this.snapshot(entry); }
+    if (decision === "reject") { this.finish(entry, "rejected", "rejected", t("settings_confirm.result.rejected"), actor.label); return this.snapshot(entry); }
     // Both surfaces claim before the first await, so neither can execute twice.
     entry.view.state = "applying"; clearTimeout(entry.timer); entry.retire?.(); entry.retire = undefined;
     if (actor.via === "web") entry.view.confirmation = { kind: "web" };
@@ -208,7 +209,7 @@ export class SettingsConfirmationStore {
       && this.now() < entry.deadline && actor.current() && proposal.current();
     try {
       const unchanged = await proposal.unchanged();
-      if (!current() || !unchanged || entry.snapshotFingerprint !== settingsFingerprint(proposal.snapshot?.() ?? null)) this.finish(entry, "stale", "settings_changed", "Settings changed since this request. Review and apply again.", actor.label);
+      if (!current() || !unchanged || entry.snapshotFingerprint !== settingsFingerprint(proposal.snapshot?.() ?? null)) this.finish(entry, "stale", "settings_changed", t("settings_confirm.result.settings_changed"), actor.label);
       else {
         const execution = new SettingsExecution({ current, snapshot: () => proposal.snapshot?.() ?? null,
           now: () => this.now(), expectedFingerprint: entry.snapshotFingerprint, progress: (phase, reason_code) => { entry.view.execution = { phase, ...(reason_code ? { reason_code } : {}) }; } });
@@ -216,11 +217,11 @@ export class SettingsConfirmationStore {
         try {
           const result = await proposal.apply(() => execution.current(), execution);
           if (!execution.completed) execution.complete();
-          this.finish(entry, "applied", "applied", "Change applied.", actor.label, result);
+          this.finish(entry, "applied", "applied", t("settings_confirm.result.applied"), actor.label, result);
         } finally { execution.close(); entry.execution = undefined; }
       }
     } catch {
-      if (entry.view.state === "applying") this.finish(entry, this.closed ? "stale" : this.now() >= entry.deadline ? "expired" : "failed", this.closed ? "fleet_stopped" : this.now() >= entry.deadline ? "expired" : "apply_failed", "Change could not be applied. Review the configuration and try again.", actor.label);
+      if (entry.view.state === "applying") this.finish(entry, this.closed ? "stale" : this.now() >= entry.deadline ? "expired" : "failed", this.closed ? "fleet_stopped" : this.now() >= entry.deadline ? "expired" : "apply_failed", t("settings_confirm.result.apply_failed"), actor.label);
     }
     return this.snapshot(entry);
   }
@@ -236,7 +237,7 @@ export class SettingsConfirmationStore {
     this.closed = true;
     for (const entry of this.records.values()) if (entry.proposal) {
       if (entry.view.state === "applying") { entry.execution?.cancel(); entry.retire?.(); entry.retire = undefined; }
-      else this.finish(entry, "stale", "fleet_stopped", "Fleet stopped. Review and apply again.");
+      else this.finish(entry, "stale", "fleet_stopped", t("settings_confirm.result.fleet_stopped"));
     }
   }
 }
