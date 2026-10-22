@@ -48,13 +48,92 @@ function writePrivate(file, data) {
 }
 const marker = op => `AgEnD-Gate-Operation: ${op}`;
 const operationFile = op => { requireThat(/^[a-f0-9]{48}$/.test(op), 'invalid operation'); return join(store(), `operation-${op}.json`); };
+
+function isBotLogin(login) {
+  return typeof login === 'string' && /\[bot\]$/i.test(login);
+}
+
+/** GitHub's noreply address for a PR commit author (id+login when GitHub already gave it). */
+function githubNoreply(author) {
+  const login = typeof author?.login === 'string' ? author.login : '';
+  const email = typeof author?.email === 'string' ? author.email.trim() : '';
+  if (/@users\.noreply\.github\.com$/i.test(email)) return email;
+  if (Number.isInteger(author?.id) && login) return `${author.id}+${login}@users.noreply.github.com`;
+  if (login) return `${login}@users.noreply.github.com`;
+  return /@/.test(email) ? email : '';
+}
+
+function coAuthorLines(text) {
+  const out = [];
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    const m = /^Co-authored-by:\s*(.+?)\s*<([^>]+)>\s*$/i.exec(line);
+    if (m) out.push({ name: m[1].trim(), email: m[2].trim() });
+  }
+  return out;
+}
+
+function isMerger(login, email, me) {
+  if (!me) return false;
+  const mlogin = String(me.login || '').toLowerCase();
+  const el = String(email || '').toLowerCase();
+  if (login && mlogin && login.toLowerCase() === mlogin) return true;
+  if (mlogin && el.includes(`+${mlogin}@users.noreply.github.com`)) return true;
+  if (mlogin && el === `${mlogin}@users.noreply.github.com`) return true;
+  if (Number.isInteger(me.id) && el.startsWith(`${me.id}+`)) return true;
+  return false;
+}
+
+function trailerName(name, fallback) {
+  const n = String(name || fallback || '').replace(/[\r\n<>]/g, '').trim();
+  return n || 'unknown';
+}
+
+/**
+ * Distinct Co-authored-by trailers for a squash: PR commit authors (GitHub noreply),
+ * Co-authored-by already on those commits, then explicit Co-authored-by lines in the PR body.
+ * Merger and `*[bot]` logins are omitted. Order is first-seen; emails are unique (case-insensitive).
+ */
+function collectCoAuthors(info, me) {
+  const seen = new Set();
+  const list = [];
+  const add = (name, email, login) => {
+    if (!email || !/@/.test(email)) return;
+    if (isBotLogin(login) || /\[bot\]/i.test(name) || /\[bot\]@/i.test(email)) return;
+    if (isMerger(login, email, me)) return;
+    const key = email.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    list.push({ name: trailerName(name, login), email });
+  };
+  for (const c of Array.isArray(info.commits) ? info.commits : []) {
+    for (const a of Array.isArray(c?.authors) ? c.authors : []) {
+      add(a.name || a.login, githubNoreply(a), a.login);
+    }
+    for (const t of coAuthorLines(`${c?.messageHeadline || ''}\n${c?.messageBody || ''}`)) {
+      add(t.name, t.email, null);
+    }
+  }
+  for (const t of coAuthorLines(info.body)) add(t.name, t.email, null);
+  return list;
+}
+
+function squashBody(info, op, me) {
+  const trailers = collectCoAuthors(info, me).map(a => `Co-authored-by: ${a.name} <${a.email}>`);
+  trailers.push(marker(op));
+  const text = typeof info.body === 'string' ? info.body.replace(/\s+$/, '') : '';
+  return `${text}\n\n${trailers.join('\n')}\n`;
+}
+
 function prepare(pr, head, approved, message, base) {
   requireThat(/^[1-9][0-9]*$/.test(pr) && sha(head) && sha(approved), 'invalid receipt input');
-  const info = gh('pr', 'view', pr, '-R', repo, '--json', 'body');
+  const info = gh('pr', 'view', pr, '-R', repo, '--json', 'body,commits');
   requireThat(info.body === undefined || typeof info.body === 'string', 'PR body unreadable');
+  requireThat(info.commits === undefined || Array.isArray(info.commits), 'PR commits unreadable');
+  const me = gh('api', 'user');
+  requireThat(me && typeof me.login === 'string', 'merging identity unreadable');
   const op = randomBytes(24).toString('hex');
   const file = operationFile(op), body = join(store(), `body-${op}.txt`);
-  writeFileSync(body, `${info.body || ''}\n\n${marker(op)}\n`, { flag: 'wx', mode: 0o600 });
+  writeFileSync(body, squashBody(info, op, me), { flag: 'wx', mode: 0o600 });
   writePrivate(file, { version: 1, kind: 'gate-squash', repo, pr: Number(pr), head, approved, message, base, op, body });
   return op;
 }
