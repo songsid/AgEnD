@@ -657,9 +657,8 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
         <div class="nav-facet-groups">
           ${viewOnly ? null : chips("status", STATUS_FACETS, tn("filterStatus"), statusText)}
           ${backends.length > 1 || f.cli.length ? chips("cli", backends, tn("filterCli"), backendLabel) : null}
-          ${f.status.length || f.cli.length ? html`<button type="button" class="chip-btn nav-facet-reset" onClick=${() => setNavFilter({ status: [], cli: [] })}>${tn("filterFacetsReset")}</button>` : null}
         </div>
-        <p class="note nav-shown" aria-live="polite">${shown.shown} / ${shown.total}${shown.active ? ` ${tn("filterShown")}` : ""}</p>
+        <p class="note nav-shown" aria-live="polite">${shown.shown} / ${shown.total}${shown.active ? ` ${tn("filterShown")}` : ""}${f.status.length || f.cli.length ? html` <button type="button" class="chip-btn nav-facet-reset" onClick=${() => setNavFilter({ status: [], cli: [] })}>${tn("filterFacetsReset")}</button>` : null}</p>
       </div>
     </div>`}
   </div>`;

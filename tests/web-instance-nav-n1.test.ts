@@ -124,7 +124,7 @@ describe("the filter: text, status and CLI, the same on every page and kept by t
     // Three clicks before the list renders again: each one counts.
     fire(chip(pg, "Status", "needs you"), "change"); fire(chip(pg, "Status", "working"), "change"); fire(chip(pg, "Status", "idle"), "change"); await settle();
     // #1936: web-dev (open, working) is pinned on top, not repeated in the results; the count still counts it.
-    expect([pinnedNames(pg), rowNames(pg), pg.root.querySelector(".v-filter .note")!.textContent]).toEqual([["web-dev"], ["docs-writer"], "2 / 5 shown"]);
+    expect([pinnedNames(pg), rowNames(pg), pg.root.querySelector(".v-filter .note")!.textContent]).toEqual([["web-dev"], ["docs-writer"], "2 / 5 shown Clear"]);
     fire(chip(pg, "Status", "working"), "change"); fire(chip(pg, "Status", "idle"), "change"); fire(chip(pg, "Status", "stopped"), "change"); fire(chip(pg, "Status", "crashed"), "change"); await settle();
     expect(rowNames(pg)).toEqual(["room-1", "qa-bot"]);
   });
@@ -296,9 +296,12 @@ describe("#1776: the count is on the facet headers' row", () => {
     expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "note nav-shown"], groups: ["nav-facet", "nav-facet"], count: "5 / 5", live: "polite", ownRow: false });
     (pg.root.querySelector(".nav-facet-head") as any).click(); await settle();
     fire(chip(pg, "Status", "needs you"), "change"); await settle();
-    expect(shape(pg), "a group open, a filter set: its list stays in the box; the count is still the row's last").toEqual({
-      children: ["nav-facet-groups", "note nav-shown"], groups: ["nav-facet", "nav-facet", "chip-btn"], count: "1 / 5 shown", live: "polite", ownRow: false });
+    // After the fix the reset button is inside nav-shown (inline), not in nav-facet-groups.
+    // nav-facet-groups no longer grows a new row when a facet is active.
+    expect(shape(pg), "a group open, a filter set: reset is inline in nav-shown; groups box has no extra child").toEqual({
+      children: ["nav-facet-groups", "note nav-shown"], groups: ["nav-facet", "nav-facet"], count: "1 / 5 shown Clear", live: "polite", ownRow: false });
     expect(facetsRow(pg).querySelector(".nav-facet-groups .nav-facet-list"), "the open list is under its header, in the box").not.toBeNull();
+    expect(facetsRow(pg).querySelector(".nav-shown .nav-facet-reset"), "reset button is inside nav-shown").not.toBeNull();
   });
 
   it("one CLI (no CLI group): the count beside the Status header, still in that row", async () => {
@@ -317,5 +320,22 @@ describe("#1776: the count is on the facet headers' row", () => {
     expect(decl(".nav-facets .nav-shown")).toMatch(/flex:\s*none/);
     expect(decl(".nav-facets .nav-shown")).toMatch(/margin:\s*0 0 0 auto/);
     expect(decl(".nav-facets .nav-shown")).toMatch(/white-space:\s*nowrap/);
+  });
+
+  it("the filter panel height doesn't change when Clear appears or disappears", async () => {
+    const pg = await app("/ui/chat/web-dev", { agend_nav_facets: '{"status":false,"cli":false}' });
+    const filterEl = pg.root.querySelector(".v-filter") as any;
+    // Measure direct children count of .v-filter before any facet is active
+    const childrenBefore = filterEl.children.length;
+    // Open the Status facet, then activate a chip — Clear should appear inline
+    (pg.root.querySelector(".nav-facet-head") as any).click(); await settle();
+    fire(chip(pg, "Status", "needs you"), "change"); await settle();
+    expect(filterEl.children.length).toBe(childrenBefore);  // .v-filter has same child count
+    expect(pg.root.querySelector(".nav-shown .nav-facet-reset")).not.toBeNull();   // Clear is inside nav-shown
+    expect(pg.root.querySelector(".nav-facet-groups .nav-facet-reset")).toBeNull(); // not in the chips group
+    // Clear it: nav-facet-reset disappears but height stays the same
+    (pg.root.querySelector(".nav-facet-reset") as any).click(); await settle();
+    expect(filterEl.children.length).toBe(childrenBefore);  // still same children
+    expect(pg.root.querySelector(".nav-facet-reset")).toBeNull();
   });
 });

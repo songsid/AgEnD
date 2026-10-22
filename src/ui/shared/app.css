@@ -1044,7 +1044,7 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .nav-facet-n { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--on-accent, #fff); text-align: center; font-variant-numeric: tabular-nums; }
 .nav-facet-list { display: flex; flex-direction: column; gap: 2px; padding: var(--s-1) var(--s-2); }
 .nav-chip { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; color: var(--text); }
-.nav-facet-reset { font-size: var(--fs-xs); }
+.nav-facet-reset { font-size: var(--fs-xs); vertical-align: middle; padding: 1px var(--s-1); }
 
 /* One gap on every page (View's, #1448): the header's controls are the same size on every tab. */
 .panel-actions .btn { gap: var(--s-1); }
