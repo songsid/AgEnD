@@ -182,6 +182,21 @@ describe("#1774 removal: an instance removed while its reply's files are copied"
     await old; await fresh; await oldNoFiles;
     expect([texts(fm, "mid"), snapshots("mid")]).toEqual([["NEW INSTANCE REPLY"], []]);
   });
+  it("a file-less reply of the removed one landing mid-removal (nothing else pending) waits too, and goes", async () => {
+    const fm = fleet();
+    fm.fleetConfig = { instances: { bare: { working_directory: "/x" } } };
+    const oldIdentity = fm.webChatIdentity("bare");
+    let late: Promise<void> | undefined;
+    fm.lifecycle = { daemons: new Map(), isPaused: () => false, hasWorkLease: () => false, remove: async () => {
+      fm.fleetConfig.instances.bare = { working_directory: "/y" };         // the replacement
+      late = fm.afterReplyRouted("bare", { text: "OLD, NO FILES" }, undefined, null, false, undefined, oldIdentity);
+      await new Promise((r) => setTimeout(r, 20));
+    } };
+    fm.statuslineWatcher = { unwatch() {} };
+    await fm.removeInstance("bare", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
+    await late;
+    expect(texts(fm, "bare")).toEqual([]);
+  });
   it("control — the removal fails after the old copy settled during it: the reply is still its own, shown", async () => {
     const fm = fleet();
     const hold = gate();
