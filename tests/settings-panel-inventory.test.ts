@@ -38,8 +38,11 @@ function literalKeys(source: string, marker: string): string[] {
 function badgedFields(): string[] {
   // #1620: Settings → Web lists the web settings it does NOT edit (WEB_READ_ONLY) by path; they are not form fields.
   const readOnly = /export const WEB_READ_ONLY = \[[^\]]*\];/;
+  // #2347 §10: …nor the defaults it shows for them (webReadOnlyDefault, keyed by the same paths).
+  const readOnlyDefaults = /export function webReadOnlyDefault\([^)]*\) \{[\s\S]*?\n\}/;
   expect(ui, "the Web section's read-only list").toMatch(readOnly);
-  const edited = ui.replace(readOnly, "");
+  expect(ui, "the read-only list's defaults").toMatch(readOnlyDefaults);
+  const edited = ui.replace(readOnly, "").replace(readOnlyDefaults, "");
   const literal = [
     ...[...edited.matchAll(/impact(?:Of)?\(\s*(?:schema,\s*)?"([^"]+)"\)/g)].map(m => m[1]!),
     // A field's label carries its path: L(tn("…"), "classic.admin_users"), field="instance.backend", and so on.

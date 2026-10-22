@@ -33,8 +33,8 @@ import {
   visibilityDefault, worstImpact,
 } from "./settings-model.js";
 import {
-  AgentDialog, BackendSelect, BotDialog, ChipList, ClassicDialog, Drawer, Feedback, Impact, Label, ModelSelect, NewBotDialog, Override,
-  Select, ask, impactText,
+  AgentDialog, BackendSelect, BotDialog, ChipList, ClassicDialog, DefaultMark, Drawer, Feedback, Impact, InEffect, Inherited, Label, ModelSelect,
+  NewBotDialog, Override, Select, ask, impactText, inAgentDefaults, valueText,
 } from "./settings-dialogs.js";
 import { SetupWizard } from "./settings-wizard.js";
 import { CreateInstanceDialog } from "./panel-fleet.js";
@@ -395,6 +395,8 @@ export function SettingsPanel({ route, navKey }) {
         return;
       }
       wanted.current = null;
+      // #2347 §10: a setting in a closed drawer (Advanced) is shown — every drawer around it opens first.
+      for (let d = el.closest && el.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true;
       if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", inline: "nearest" });
       const field = el.matches && el.matches("input, select, textarea, button") ? el : el.querySelector && el.querySelector("input, select, textarea, button");
       if (field && typeof field.focus === "function") field.focus({ preventScroll: true });
@@ -1005,7 +1007,17 @@ function General({ ctx, part = "all" }) {
       impact: cKeys.every((k) => impactOf(schema, `classic_defaults.${k}`) === "now") ? "now" : "fleet",
       request: { method: "PUT", url: "/api/settings/classic/defaults", body: classicPatch } } : null);
   }, [f, ready]);
-  const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
+  // #2347 §10: a default nobody set in fleet.yaml shows the built-in value it holds, marked "default" until it is edited;
+  // ClassicBot's inherited ones say what they inherit from Agent defaults.
+  const unset = {
+    locale: !d.locale, backend: !d.backend, model: !d.model, auto: !hasOwn(d, "auto_pause_after"), tool_progress: !hasOwn(d, "tool_progress"),
+    visibility: !VISIBILITY_MODES.includes(d.cross_instance_visibility), reply: !hasOwn(d, "reply_completion_guard"), tool_set: !d.tool_set,
+    log_level: !d.log_level, agent_mode: !d.agent_mode, hangOn: !hasOwn(hang, "enabled"), hang: !hasOwn(hang, "timeout_minutes"),
+    concurrency: !hasOwn(startup, "concurrency"), stagger: !hasOwn(startup, "stagger_delay_ms"),
+  };
+  const dm = (k) => (unset[k] && sameValue(f[k], base[k]) ? html`<${DefaultMark} />` : null);
+  const fromDefaults = (k, value, target) => ({ text: valueText(value), builtin: !hasOwn(d, k), from: inAgentDefaults(target) });
+  const L = (text, field, id, k) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} mark=${k ? dm(k) : null} />`;
   const fleetReply = replyGuardSupported(f.backend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.backend, f.agent_mode);
   const classicReply = replyGuardSupported(f.classicBackend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.classicBackend, f.agent_mode);
   // #2347: Agent defaults show the fleet's part; Chat & connections ClassicBot's. One form, one draft either way.
@@ -1013,27 +1025,28 @@ function General({ ctx, part = "all" }) {
   return html`<div class=${`form s-general s-part-${part}`}>
     ${fleetPart ? html`<section class="card"><h3>${tn("defaultsTitle")}</h3>
       <div class="grid2">
-        <div class=${fc("field", "locale")}>${L(tn("language"), "defaults.locale", "g-locale")}<${Select} id="g-locale" value=${f.locale} onChange=${set("locale")}
+        <div class=${fc("field", "locale")}>${L(tn("language"), "defaults.locale", "g-locale", "locale")}<${Select} id="g-locale" value=${f.locale} onChange=${set("locale")}
           options=${localeOptions(f.locale).map((o) => (o.auto ? { value: "", label: tn("localeAuto") } : o))} /></div>
-        <div class=${fc("field", "backend")}>${L(tn("defaultBackend"), "defaults.backend", "g-be")}<${BackendSelect} id="g-be" value=${f.backend} onChange=${set("backend")} /></div>
-        <div class=${fc("field", "model")}>${L(tn("defaultModel"), "defaults.model", "g-model")}<${ModelSelect} id="g-model" value=${f.model} onChange=${set("model")}
+        <div class=${fc("field", "backend")}>${L(tn("defaultBackend"), "defaults.backend", "g-be", "backend")}<${BackendSelect} id="g-be" value=${f.backend} onChange=${set("backend")} /></div>
+        <div class=${fc("field", "model")}>${L(tn("defaultModel"), "defaults.model", "g-model", "model")}<${ModelSelect} id="g-model" value=${f.model} onChange=${set("model")}
           backend=${f.backend || "claude-code"} inherit=${tn("modelCliDefault")} /></div>
-        <div class=${fc("field", "auto")}>${L(`${tn("autoPause")} (${tn("minutes")})`, "defaults.auto_pause_after", "g-auto")}<input id="g-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} value=${f.auto} onInput=${(e) => set("auto")(e.target.value)} /><${Feedback} error=${errors.auto} /></div>
-        <div class=${fc("field", "tool_progress")}>${L(tn("toolProgress"), "defaults.tool_progress", "g-tp")}<${Select} id="g-tp" value=${f.tool_progress} onChange=${set("tool_progress")} options=${TOOL_PROGRESS} /></div>
-        <div class=${fc("field", "visibility")}>${L(tn("crossInstanceVisibility"), "defaults.cross_instance_visibility", "g-vis")}<${Select} id="g-vis" value=${f.visibility} onChange=${set("visibility")} options=${VISIBILITY_MODES} />
+        <div class=${fc("field", "auto")}>${L(`${tn("autoPause")} (${tn("minutes")})`, "defaults.auto_pause_after", "g-auto", "auto")}<input id="g-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} value=${f.auto} onInput=${(e) => set("auto")(e.target.value)} /><${Feedback} error=${errors.auto} /></div>
+        <div class=${fc("field", "tool_progress")}>${L(tn("toolProgress"), "defaults.tool_progress", "g-tp", "tool_progress")}<${Select} id="g-tp" value=${f.tool_progress} onChange=${set("tool_progress")} options=${TOOL_PROGRESS} /></div>
+        <div class=${fc("field", "visibility")}>${L(tn("crossInstanceVisibility"), "defaults.cross_instance_visibility", "g-vis", "visibility")}<${Select} id="g-vis" value=${f.visibility} onChange=${set("visibility")} options=${VISIBILITY_MODES} />
           <p class="note">${tn("crossInstanceVisibilityHint")}</p></div>
-        <div class=${fc("field", "reply")}><label class="check"><input id="g-reply" type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span><${Impact} schema=${schema} field="defaults.reply_completion_guard" /></label>
+        <div class=${fc("field", "reply")}><label class="check"><input id="g-reply" type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span>${dm("reply")}<${Impact} schema=${schema} field="defaults.reply_completion_guard" /></label>
           <p class="note">${fleetReply}</p></div>
       </div>
     </section>` : null}
     ${classicPart ? html`<section class="card"><h3>${tn("classicDefaultsTitle")}</h3>
       <div class="grid2">
-        <div class=${fc("field", "classicBackend")}>${L(tn("classicBackend"), "classic_defaults.backend", "g-cbe")}<${BackendSelect} id="g-cbe" value=${f.classicBackend} onChange=${set("classicBackend")} /></div>
+        <div class=${fc("field", "classicBackend")}>${L(tn("classicBackend"), "classic_defaults.backend", "g-cbe")}<${BackendSelect} id="g-cbe" value=${f.classicBackend} onChange=${set("classicBackend")} />
+          ${!c.backend && f.classicBackend === base.classicBackend ? html`<${Inherited} text=${valueText(f.classicBackend, "backend")} builtin=${!d.backend} from=${inAgentDefaults("#g-be")} />` : null}</div>
         <div class=${fc("field", "classicToolProgress", "classicToolProgressInherit")}>${L(tn("toolProgress"), "classic_defaults.tool_progress", "g-ctp")}
-          <${Override} inherit=${f.classicToolProgressInherit} onInherit=${set("classicToolProgressInherit")}>
+          <${Override} inherit=${f.classicToolProgressInherit} onInherit=${set("classicToolProgressInherit")} inherited=${fromDefaults("tool_progress", d.tool_progress ?? "off", "#g-tp")}>
             <${Select} id="g-ctp" disabled=${f.classicToolProgressInherit} value=${f.classicToolProgressInherit ? (d.tool_progress ?? "off") : f.classicToolProgress} onChange=${set("classicToolProgress")} options=${TOOL_PROGRESS} /></${Override}></div>
         <div class=${fc("field", "classicReply", "classicReplyInherit")}>${L(tn("replyCompletionGuard"), "classic_defaults.reply_completion_guard")}
-          <${Override} inherit=${f.classicReplyInherit} onInherit=${set("classicReplyInherit")}>
+          <${Override} inherit=${f.classicReplyInherit} onInherit=${set("classicReplyInherit")} inherited=${fromDefaults("reply_completion_guard", d.reply_completion_guard ?? true, "#g-reply")}>
             <label class="check"><input id="g-creply" type="checkbox" disabled=${f.classicReplyInherit} checked=${f.classicReplyInherit ? (d.reply_completion_guard ?? true) : f.classicReply} onChange=${(e) => set("classicReply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span></label></${Override}>
           <p class="note">${classicReply}</p></div>
       </div>
@@ -1045,17 +1058,17 @@ function General({ ctx, part = "all" }) {
     </section>` : null}
     ${fleetPart ? html`<${Drawer} title=${tn("advancedSection")}>
       <section class="card"><h3>${tn("runtimeResources")}</h3><div class="grid2">
-        <div class=${fc("field", "tool_set")}>${L(tn("toolSet"), "defaults.tool_set", "g-ts")}<${Select} id="g-ts" value=${f.tool_set} onChange=${set("tool_set")} options=${TOOL_SETS} /></div>
-        <div class=${fc("field", "log_level")}>${L(tn("logLevel"), "defaults.log_level", "g-ll")}<${Select} id="g-ll" value=${f.log_level} onChange=${set("log_level")} options=${LOG_LEVELS} /></div>
-        <div class=${fc("field", "agent_mode")}>${L(tn("agentMode"), "defaults.agent_mode", "g-am")}<${Select} id="g-am" value=${f.agent_mode} onChange=${set("agent_mode")} options=${AGENT_MODES} /></div>
+        <div class=${fc("field", "tool_set")}>${L(tn("toolSet"), "defaults.tool_set", "g-ts", "tool_set")}<${Select} id="g-ts" value=${f.tool_set} onChange=${set("tool_set")} options=${TOOL_SETS} /></div>
+        <div class=${fc("field", "log_level")}>${L(tn("logLevel"), "defaults.log_level", "g-ll", "log_level")}<${Select} id="g-ll" value=${f.log_level} onChange=${set("log_level")} options=${LOG_LEVELS} /></div>
+        <div class=${fc("field", "agent_mode")}>${L(tn("agentMode"), "defaults.agent_mode", "g-am", "agent_mode")}<${Select} id="g-am" value=${f.agent_mode} onChange=${set("agent_mode")} options=${AGENT_MODES} /></div>
       </div></section>
       <section class="card"><h3>${tn("detection")}</h3><div class="grid2">
-        <label class=${fc("check", "hangOn")}><input id="g-hang-on" type="checkbox" checked=${f.hangOn} onChange=${(e) => set("hangOn")(e.target.checked)} /><span>${tn("hangEnabled")}</span><${Impact} schema=${schema} field="defaults.hang_detector" /></label>
-        <div class=${fc("field", "hang")}>${L(`${tn("hangTimeout")} (${tn("minutes")})`, "defaults.hang_detector", "g-hang")}<input id="g-hang" type="number" min="0.1" step="0.5" class=${errors.hang ? "invalid" : ""} value=${f.hang} onInput=${(e) => set("hang")(e.target.value)} /><${Feedback} error=${errors.hang} /></div>
+        <label class=${fc("check", "hangOn")}><input id="g-hang-on" type="checkbox" checked=${f.hangOn} onChange=${(e) => set("hangOn")(e.target.checked)} /><span>${tn("hangEnabled")}</span>${dm("hangOn")}<${Impact} schema=${schema} field="defaults.hang_detector" /></label>
+        <div class=${fc("field", "hang")}>${L(`${tn("hangTimeout")} (${tn("minutes")})`, "defaults.hang_detector", "g-hang", "hang")}<input id="g-hang" type="number" min="0.1" step="0.5" class=${errors.hang ? "invalid" : ""} value=${f.hang} onInput=${(e) => set("hang")(e.target.value)} /><${Feedback} error=${errors.hang} /></div>
       </div></section>
       <section class="card"><h3>${tn("startup")}</h3><div class="grid2">
-        <div class=${fc("field", "concurrency")}>${L(tn("concurrency"), "fleet.spawn_concurrency", "g-conc")}<input id="g-conc" type="number" min="1" max="20" step="1" class=${errors.concurrency ? "invalid" : ""} value=${f.concurrency} onInput=${(e) => set("concurrency")(e.target.value)} /><${Feedback} error=${errors.concurrency} warning=${warnings.concurrency} /></div>
-        <div class=${fc("field", "stagger")}>${L(`${tn("staggerDelay")} (ms)`, "fleet.spawn_stagger_ms", "g-stag")}<input id="g-stag" type="number" min="0" max="30000" step="100" class=${errors.stagger ? "invalid" : ""} value=${f.stagger} onInput=${(e) => set("stagger")(e.target.value)} /><${Feedback} error=${errors.stagger} warning=${warnings.stagger} /></div>
+        <div class=${fc("field", "concurrency")}>${L(tn("concurrency"), "fleet.spawn_concurrency", "g-conc", "concurrency")}<input id="g-conc" type="number" min="1" max="20" step="1" class=${errors.concurrency ? "invalid" : ""} value=${f.concurrency} onInput=${(e) => set("concurrency")(e.target.value)} /><${Feedback} error=${errors.concurrency} warning=${warnings.concurrency} /></div>
+        <div class=${fc("field", "stagger")}>${L(`${tn("staggerDelay")} (ms)`, "fleet.spawn_stagger_ms", "g-stag", "stagger")}<input id="g-stag" type="number" min="0" max="30000" step="100" class=${errors.stagger ? "invalid" : ""} value=${f.stagger} onInput=${(e) => set("stagger")(e.target.value)} /><${Feedback} error=${errors.stagger} warning=${warnings.stagger} /></div>
       </div></section>
       <section class="card"><h3>${tn("accessTitle")}</h3>
         <p class="note">${primary ? tn("accessMovedHint", primary.id || chLabel(0)) : tn("noBots")}</p></section>
@@ -1075,6 +1088,17 @@ export const WEB_READ_ONLY = [
   "web.allowed_hosts", "web.view_access", "web.notify_login", "web.preview", "web.preview_port", "web.preview_origin", "web.preview_on_public_link",
   "web.usage_panel", "web.provider_secrets", "web.upload_max_file_mb", "web.upload_max_total_mb", "web_terminal.bind", "web_terminal.tunnel",
 ];
+/**
+ * #2347 §10: what each of them is when fleet.yaml leaves it out, as the host applies it (null: nothing — none is used).
+ * web.preview_port: the web port + 1 (previewSettings); the uploads: UPLOAD_LIMITS (#1937); the terminal: 127.0.0.1.
+ */
+export function webReadOnlyDefault(path, fleet) {
+  return {
+    "web.allowed_hosts": [], "web.view_access": "open", "web.notify_login": true, "web.preview": true, "web.preview_port": (fleet.health_port ?? 19280) + 1,
+    "web.preview_origin": null, "web.preview_on_public_link": true, "web.usage_panel": true, "web.provider_secrets": false,
+    "web.upload_max_file_mb": 50, "web.upload_max_total_mb": 100, "web_terminal.bind": "127.0.0.1", "web_terminal.tunnel": null,
+  }[path];
+}
 function WebSection({ ctx, staged, part = "all" }) {
   const { schema } = ctx;
   const web = ctx.fleet.web || {}, local = (web.session && web.session.local) || {}, term = ctx.fleet.web_terminal || {};
@@ -1115,7 +1139,7 @@ function WebSection({ ctx, staged, part = "all" }) {
   // Empty = the default (null in the write: the key is removed from fleet.yaml).
   const value = (v) => (v.trim() === "" ? null : Number(v));
   const hours = (v) => { const n = value(v); return n !== null && (!Number.isFinite(n) || n < 1 || n > 720) ? "sessionRange" : ""; };
-  // The defaults (#1670: 48 h / 48 h, DEFAULT_SESSION_POLICY); an idle time left blank follows a shorter session, as
+  // The defaults (#1670: 48 h / 48 h, DEFAULT_SESSION_POLICY; the terminal's 10 min); an idle time left blank follows a shorter session, as
   // the store and the validator apply it — so only an idle time that is typed can exceed the session length.
   const abs = value(f.abs) ?? 48, idle = value(f.idle) ?? Math.min(48, abs);
   const errors = {
@@ -1172,10 +1196,12 @@ function WebSection({ ctx, staged, part = "all" }) {
   // parent's already-staged Web draft. Only an actual field edit replaces or removes that draft.
   const formMounted = useRef(false);
   useEffect(() => { if (!formMounted.current) { formMounted.current = true; return; } review(true); }, [f]);
+  const roText = (v) => (v === null ? tn("valueNone") : typeof v === "object" ? JSON.stringify(v) : String(v));
+  // #2347 §10: a key fleet.yaml leaves out shows the value the host uses, marked "default".
   const shown = (path) => {
     const [top, key] = path.split(".");
     const v = (top === "web" ? web : term)[key];
-    return v === undefined ? tn("notSet") : typeof v === "object" ? JSON.stringify(v) : String(v);
+    return v === undefined ? html`${roText(webReadOnlyDefault(path, ctx.fleet))} <${DefaultMark} />` : roText(v);
   };
   // #2347: one form, one draft, shown where each part belongs — Access & security (sessions, the browser terminal, the
   // public link and its fixed address, guests, web authority), Chat & connections (web echo), Web dashboard (the Log tab,
@@ -1188,18 +1214,21 @@ function WebSection({ ctx, staged, part = "all" }) {
     ${has("access") ? lock(html`<section class="card"><h3>${tn("webSessionTitle")}</h3>
       <p class="note">${tn("webSessionHint")}</p>
       <div class="grid2">
-        <div class=${fc("field", "abs")}><label for="webSessionAbsolute">${tn("sessionAbsolute")}</label><input id="webSessionAbsolute" type="number" min="1" max="720" step="any" placeholder=${tn("defaultHours", 48)}
-          class=${errors.abs ? "invalid" : ""} value=${f.abs} onInput=${(e) => set("abs")(e.target.value)} /><${Feedback} error=${errors.abs} /></div>
-        <div class=${fc("field", "idle")}><label for="webSessionIdle">${tn("sessionIdle")}</label><input id="webSessionIdle" type="number" min="1" max="720" step="any" placeholder=${tn("defaultHours", 48)}
-          class=${errors.idle ? "invalid" : ""} value=${f.idle} onInput=${(e) => set("idle")(e.target.value)} /><${Feedback} error=${errors.idle} /></div>
+        <div class=${fc("field", "abs")}><label for="webSessionAbsolute">${tn("sessionAbsolute")}</label><input id="webSessionAbsolute" type="number" min="1" max="720" step="any"
+          class=${errors.abs ? "invalid" : ""} value=${f.abs} onInput=${(e) => set("abs")(e.target.value)} /><${Feedback} error=${errors.abs} />
+          ${value(f.abs) === null ? html`<${InEffect} text=${tn("hoursValue", 48)} />` : null}</div>
+        <div class=${fc("field", "idle")}><label for="webSessionIdle">${tn("sessionIdle")}</label><input id="webSessionIdle" type="number" min="1" max="720" step="any"
+          class=${errors.idle ? "invalid" : ""} value=${f.idle} onInput=${(e) => set("idle")(e.target.value)} /><${Feedback} error=${errors.idle} />
+          ${value(f.idle) === null && !errors.abs ? html`<${InEffect} text=${tn("hoursValue", idle)} why=${idle < 48 ? tn("cappedBySession") : null} />` : null}</div>
       </div>
     </section>
     <section class="card"><h3>${tn("webTerminalTitle")}</h3>
       <p class="note">${tn("webTerminalHint")}</p>
       <label class=${fc("check", "termOn")}><input id="webTerminalEnabled" type="checkbox" checked=${f.termOn} onChange=${(e) => set("termOn")(e.target.checked)} /><span>${tn("webTerminalEnabled")}</span><${Impact} schema=${schema} field="web_terminal.enabled" /></label>
       <div class="grid2">
-        <div class=${fc("field", "termTtl")}><label for="webTerminalTtl">${tn("webTerminalTtl")}</label><input id="webTerminalTtl" type="number" min="1" max="20" step="1" placeholder=${tn("defaultHours", 10)}
-          class=${errors.termTtl ? "invalid" : ""} value=${f.termTtl} onInput=${(e) => set("termTtl")(e.target.value)} /><${Feedback} error=${errors.termTtl} /></div>
+        <div class=${fc("field", "termTtl")}><label for="webTerminalTtl">${tn("webTerminalTtl")}</label><input id="webTerminalTtl" type="number" min="1" max="20" step="1"
+          class=${errors.termTtl ? "invalid" : ""} value=${f.termTtl} onInput=${(e) => set("termTtl")(e.target.value)} /><${Feedback} error=${errors.termTtl} />
+          ${value(f.termTtl) === null ? html`<${InEffect} text=${tn("minutesValue", 10)} />` : null}</div>
       </div>
     </section>
     <section class="card"><h3>${tn("publicLinkTitle")}</h3>

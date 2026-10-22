@@ -391,7 +391,8 @@ opencode: no dashboard sign-in. Config: `web_terminal.*` (as `/login`).
 
 **Agents** — **New agent**; per agent **Settings**, **Pause / Wake**, **Start / Stop** (direct), ⋯ **Delete agent**
 (staged; on Apply it waits for a fleet admin's confirmation in General, then the agent is stopped and removed, as
-`delete_instance` does — no restart). The agent dialog writes `instances.<name>.*` (an "Inherit" box removes the key):
+`delete_instance` does — no restart). The agent dialog writes `instances.<name>.*` (an "Inherit" box removes the key, and the field then says what it inherits:
+"Inherited: 30 min · change in Agent defaults"; a value nobody set anywhere is marked "default"):
 | Label | Key | Applies |
 |---|---|---|
 | Display name, Description | `display_name`, `description` | now |

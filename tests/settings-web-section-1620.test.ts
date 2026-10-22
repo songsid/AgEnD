@@ -79,10 +79,18 @@ describe("Settings → Web, as rendered", () => {
   it("nothing set: the fields are empty with the defaults shown, the terminal on; Review writes nothing", async () => {
     const w = await open();
     expect([w.$("webSessionAbsolute").value, w.$("webSessionIdle").value, w.$("webTerminalTtl").value, w.$("webTerminalEnabled").checked]).toEqual(["", "", "", true]);
-    expect([w.$("webSessionAbsolute").getAttribute("placeholder"), w.$("webSessionIdle").getAttribute("placeholder"), w.$("webTerminalTtl").getAttribute("placeholder")])
-      .toEqual(["48 (default)", "48 (default)", "10 (default)"]);   // #1670: 48 h / 48 h
+    // #2347 §10: the value in effect in plain text with a "default" mark (#1670: 48 h / 48 h; the terminal's 10 min), no grey placeholder.
+    const effect = (id: string) => w.$(id).parentNode.querySelector(".s-effect")?.textContent.replace(/\s+/g, " ").trim() ?? null;
+    expect([["webSessionAbsolute", "webSessionIdle", "webTerminalTtl"].map(effect), ["webSessionAbsolute", "webSessionIdle", "webTerminalTtl"].map((id) => w.$(id).getAttribute("placeholder"))])
+      .toEqual([["In effect: 48 h default", "In effect: 48 h default", "In effect: 10 min default"], [null, null, null]]);
     await w.review(); await w.apply();
     expect(w.webWrites()).toEqual([]);
+  });
+  it("#2347 §10: a blank idle time under a shorter session says it follows it; a typed value shows no in-effect line", async () => {
+    const w = await open();
+    await w.type(w.$("webSessionAbsolute"), "24");
+    const effect = (id: string) => w.$(id).parentNode.querySelector(".s-effect")?.textContent.replace(/\s+/g, " ").trim() ?? null;
+    expect([effect("webSessionAbsolute"), effect("webSessionIdle")]).toEqual([null, "In effect: 24 h capped by the session length"]);
   });
 
   it("an edit is staged as one write with only what changed", async () => {
@@ -153,14 +161,16 @@ describe("Settings → Web, as rendered", () => {
     expect(saveButton()?.disabled).toBe(false);
   });
 
-  it("lists every other web setting read-only, with its value from fleet.yaml or 'not set (default)'", async () => {
+  it("lists every other web setting read-only, with its value from fleet.yaml or the one in effect, marked default (#2347 §10)", async () => {
     const w = await open({ web: { view_access: "session", allowed_hosts: ["box.lan"], preview: false }, web_terminal: { bind: "0.0.0.0" } }, "advanced");
-    const rows = p.root.querySelectorAll(".s-web-ro > div").map((d: any) => [d.querySelector("dt").textContent, d.querySelector("dd").textContent]);
+    const rows = p.root.querySelectorAll(".s-web-ro > div").map((d: any) => [d.querySelector("dt").textContent, d.querySelector("dd").textContent,
+      !!d.querySelector("dd .s-default")]);
     expect(rows).toEqual([
-      ["web.allowed_hosts", "[\"box.lan\"]"], ["web.view_access", "session"], ["web.notify_login", "not set (default)"], ["web.preview", "false"],
-      ["web.preview_port", "not set (default)"], ["web.preview_origin", "not set (default)"], ["web.preview_on_public_link", "not set (default)"],
-      ["web.usage_panel", "not set (default)"],
-      ["web.provider_secrets", "not set (default)"], ["web.upload_max_file_mb", "not set (default)"], ["web.upload_max_total_mb", "not set (default)"], ["web_terminal.bind", "0.0.0.0"], ["web_terminal.tunnel", "not set (default)"],
+      ["web.allowed_hosts", "[\"box.lan\"]", false], ["web.view_access", "session", false], ["web.notify_login", "true default", true], ["web.preview", "false", false],
+      ["web.preview_port", "19281 default", true], ["web.preview_origin", "none default", true], ["web.preview_on_public_link", "true default", true],
+      ["web.usage_panel", "true default", true],
+      ["web.provider_secrets", "false default", true], ["web.upload_max_file_mb", "50 default", true], ["web.upload_max_total_mb", "100 default", true],
+      ["web_terminal.bind", "0.0.0.0", false], ["web_terminal.tunnel", "none default", true],
     ]);
     expect(p.root.querySelectorAll(".s-web-ro input, .s-web-ro select, .s-web-ro textarea").length).toBe(0);
   });

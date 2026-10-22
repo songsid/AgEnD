@@ -1210,6 +1210,10 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-3) var(--s-4); }
 .override { display: flex; flex-direction: column; gap: var(--s-1); }
 .inherit-row { font-size: var(--fs-xs); color: var(--text-3); }
+/* #2347 §10: the value in effect (an empty field's, an inherited one's) in plain text; "default" marks what nobody set. */
+.s-effect, .s-inherited { margin: 0; font-size: var(--fs-xs); color: var(--text-2); }
+.s-inherited a { color: var(--accent); }
+.tag.s-default { font-weight: var(--fw-regular); }
 .impact { font-size: 11px; font-weight: var(--fw-regular); color: var(--text-3); margin-left: var(--s-1); }
 .check .impact { margin-left: auto; }
 .feedback { font-size: var(--fs-xs); color: var(--text-2); }

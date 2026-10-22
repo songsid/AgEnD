@@ -9,7 +9,7 @@ import { useTypedText } from "/assets/text-undo.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { api } from "./settings-confirm.js";
-import { Feedback } from "./settings-dialogs.js";
+import { Feedback, InEffect } from "./settings-dialogs.js";
 import { DEFAULT_SCHEMA, impactOf, sameValue } from "./settings-model.js";
 import { editsOf, keepDraft, syncStage } from "./settings-draft.js";
 import { resetWebAuthorization } from "/assets/web-authorize.js";
@@ -86,9 +86,10 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
       <p class="note">${tn("vaLoopbackOnlyHint")}</p>
       ${warnHosts ? html`<p class="note s-va-warn" role="status" id="vaLanWarning">${tn("vaLanWarning", overview.lanHosts.join(", "))}</p>` : null}
       <div class=${fc("field", "hours")}><label for="vaHours">${tn("vaHours", overview.hours.min, overview.hours.max)}</label>
-        <input id="vaHours" type="number" min=${overview.hours.min} max=${overview.hours.max} step="any" placeholder=${tn("defaultHours", overview.hours.default)}
+        <input id="vaHours" type="number" min=${overview.hours.min} max=${overview.hours.max} step="any"
           class=${hoursError ? "invalid" : ""} value=${hoursText} onInput=${(e) => set({ hours: onHoursText(e.target.value) })} />
-        <${Feedback} error=${hoursError} /></div>
+        <${Feedback} error=${hoursError} />
+        ${hoursText.trim() === "" ? html`<${InEffect} text=${tn("hoursValue", overview.hours.default)} />` : null}</div>
       <h4>${tn("vaSessionsTitle")}</h4>
       ${overview.authorized.length
         ? html`<ul class="s-va-sessions" id="vaSessions">${overview.authorized.map((a) => html`<li key=${a.handle} data-handle=${a.handle}>
