@@ -17,7 +17,7 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram、Discord 或瀏覽器
   <code>你 → Telegram/Discord/網頁 → AgEnD → AI Agent 團隊 → 結果回到你手上</code>
 </p>
 
-[English](README.md) · [功能文件](docs/features.zh-TW.md) · [CLI 參考](docs/cli.zh-TW.md) · [2.2 新功能](docs/release-notes/2.2.0.zh-TW.md)
+[English](README.md) · [功能文件](docs/features.zh-TW.md) · [CLI 參考](docs/cli.zh-TW.md) · [2.3 新功能](docs/whats-new-2.3.zh-TW.md)
 
 ---
 
@@ -45,7 +45,7 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram、Discord 或瀏覽器
 
 ## 功能亮點
 
-✨ **2.2 新功能：** 在瀏覽器和 agent 聊天、集中列出所有等你處理的事、第二個 Claude 帳號，以及自帶的 Node。詳見 [2.2 更新重點](docs/release-notes/2.2.0.zh-TW.md) 與[升級指南](docs/upgrade-2.2.zh-TW.md)。
+✨ **2.3 新功能：** 任務看板（Fleet › Tasks），可以在聊天中提醒你；全域搜尋（Ctrl+K）；fleet 的組織圖新增 Office 檢視；公開連結可以使用自己的網域；以及一行指令完成的 Windows 安裝。詳見 [2.3 新功能](docs/whats-new-2.3.zh-TW.md)，包括[升級前注意事項](docs/whats-new-2.3.zh-TW.md#升級前)。
 
 🚀 **Fleet 管理** — 一個 bot、N 個專案。每個 Telegram forum topic 或 Discord 頻道，就是一個獨立的 agent session。
 
@@ -77,7 +77,7 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram、Discord 或瀏覽器
 
 🔌 **可擴充** — 轉接器外掛、webhook 通知、health endpoint、外部 session 透過 IPC 連入。
 
-👥 **團隊與任務看板** — 用具名群組做定向廣播；共用的任務看板讓多個 instance 一起追蹤多步驟的工作。
+👥 **團隊與任務看板** — 用具名群組做定向廣播；共用的任務看板（Fleet › Tasks）讓多個 instance 一起追蹤多步驟的工作，支援依賴關係與留言。要在聊天中收到提醒，請設定 `needs_you.task_board: true`。
 
 📋 **Fleet 範本** — 把常用的 fleet 設定存成範本，一個指令就能部署多個 instance；指定 `branch` 才會為各角色建立獨立的 git worktree。
 

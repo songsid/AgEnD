@@ -17,7 +17,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram, Discord or browser int
   <code>You → Telegram/Discord/Web → AgEnD → Fleet of AI Agents → Results back to you</code>
 </p>
 
-[繁體中文](README.zh-TW.md) · [Documentation](docs/features.md) · [CLI Reference](docs/cli.md) · [2.2 what’s new](docs/release-notes/2.2.0.md)
+[繁體中文](README.zh-TW.md) · [Documentation](docs/features.md) · [CLI Reference](docs/cli.md) · [2.3 what’s new](docs/whats-new-2.3.md)
 
 ---
 
@@ -45,7 +45,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram, Discord or browser int
 
 ## Feature Highlights
 
-✨ **New in 2.2:** chat with your agents in the browser, one list of everything that needs you, a second Claude account, and a bundled Node. See [What's new in 2.2](docs/release-notes/2.2.0.md) and the [upgrade guide](docs/upgrade-2.2.md).
+✨ **New in 2.3:** a task board (Fleet › Tasks) that can remind you in chat, global search with Ctrl+K, an Office view of the fleet, your own domain for the public link, and a one-line Windows installer. See [What's new in 2.3](docs/whats-new-2.3.md), including the [upgrade notes](docs/whats-new-2.3.md#before-you-upgrade).
 
 🚀 **Fleet Management** — One bot, N projects. Each Telegram forum topic or Discord channel is an isolated agent session.
 
@@ -77,7 +77,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram, Discord or browser int
 
 🔌 **Extensible** — Adapter plugins, webhook notifications, health endpoint, external session support via IPC.
 
-👥 **Teams & Task Board** — Named groups for targeted broadcasting. Shared task board for multi-step work tracking across instances.
+👥 **Teams & Task Board** — Named groups for targeted broadcasting. Shared task board (Fleet › Tasks) for multi-step work across instances, with dependencies and comments. Turn on the chat reminders with `needs_you.task_board: true`.
 
 📋 **Fleet Templates** — Define reusable fleet configurations. Deploy multi-instance setups with one command; supply `branch` to give each role its own git worktree.
 

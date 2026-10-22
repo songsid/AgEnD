@@ -328,7 +328,7 @@ The Tasks tab is the board itself (design: [task-board](design/task-board.md), p
 - **Projects** group work. The tab opens on them, each with how far along it is (finished sub tasks out of all of them; a main task without sub tasks counts once you confirm it; the bar fills with finished work only, and what is blocked or waits for you is named beside it), and above them what waits for you: finished work to **Confirm** or **Send back**, and blocked cards to **Answer**. Tasks opened outside any project — every `task` tool task, for now — are under **No project**.
 - A project is a board of its **main tasks** (M-1, M-2, …) by status: To do, In progress, Blocked, Waiting for you, Done (the last 7 days, or all — the project's numbers always count everything). Filter it by assignee; drag a card to another column or to another place in its column. A main task opens up its **sub tasks** (S-1, …), the steps an instance splits it into.
 - A card opens in a dialog. Every field edits in place — goal, scope, definition of done (or a sub task's acceptance checklist), context, state, result — with its assignee, project, priority, size, dependencies and **Stop at review for my confirmation**; then its sub tasks (type a title to add one), its comments, its progress log and its history. **Search cards** finds a phrase in titles, fields, checklists and comments.
-- **In the chat too (opt-in).** With `needs_you.task_board: true` (off by default since 2.3.0-beta.25), cards waiting for your confirmation, and blocked cards you handed out (a card's question to you), are in **Needs you** — each bot's live message in General lists its own agents' cards, with **Confirm** and **Send back** on a card to confirm and **Answer** on a blocked one (for three cards at a time; a fleet admin's buttons). Send back and Answer ask for the words: reply to the message the bot posts, and your reply is the reason or the answer. Only the cards you handed out wait for you (#2434): a card an agent handed out is that agent's to confirm or answer, in no Needs you.
+- **In the chat too (opt-in).** With `needs_you.task_board: true` (off by default since 2.3.0), cards waiting for your confirmation, and blocked cards you handed out (a card's question to you), are in **Needs you** — each bot's live message in General lists its own agents' cards, with **Confirm** and **Send back** on a card to confirm and **Answer** on a blocked one (for three cards at a time; a fleet admin's buttons). Send back and Answer ask for the words: reply to the message the bot posts, and your reply is the reason or the answer. Only the cards you handed out wait for you (#2434): a card an agent handed out is that agent's to confirm or answer, in no Needs you.
 - **Your confirmation.** A main task opened on the dashboard stops at review when it is finished; a sub task only when flagged. A main task an agent opens needs no confirmation (#2434): agents finish their own internal work — reviews, carries, fixes — and one an agent flags for review is confirmed by the agent that handed it out (or, when nobody did, its assignee); you can still confirm it. Only a person takes a card from review to done or sends it back (with what needs to change, which its assignee reads): signed in on the dashboard, or a fleet admin from the chat's Needs you (Confirm, and Send back by replying to the bot's prompt); only one signed in on the dashboard clears the flag or reopens finished work: an instance's `done` on such a card is `review`, and a request with the web token alone is held to an instance's rules. A main task with sub tasks follows them — in progress once one starts, waiting for you once all are done; you can also block it, and adding a sub task to a confirmed one (only you can) reopens it.
 - **Versions.** Each card has a version. An edit started before an instance's newer write is refused; the newer card is shown with your edit still open, and saving again overwrites it.
 - **Without dragging.** A card's title is a button: Enter opens it, Alt+← / Alt+→ moves it to the column before or after, Alt+↑ / Alt+↓ within its column. In the card, **Move to…** and the **Position** row (up, down) do the same on a phone.
@@ -493,7 +493,9 @@ Besides `/status`, these work from chat (on Discord as slash commands; on Telegr
 
 - **`/usage`** (anyone) — AI subscription usage for the CLIs logged in on this machine: Claude, Codex, Muse, Grok, Kiro and Antigravity. A backend with [credential profiles](#credential-profiles-and-a-second-subscription) gets one row per subscription. Agents read the same data with `get_usage`.
 
-  **A failed read keeps the last known numbers (#2236, 2.3 beta).** When a read fails — an expired token, a rate limit, a network blip or any other error — the row stays visible with the numbers from the last successful read (up to a week old). The numbers are greyed and a line explains: **expired · cached at 14:05**, **not updated** or **couldn't read**; for an expiry or error, what to do (for example "run `agy` once") is on a second line. A window whose reset time has already passed shows **reset since …** instead of a stale percentage. A provider that has never been read successfully still shows its error; a good read clears the mark. After a restart the last-good numbers come from `usage-last-good.json` in `AGEND_HOME`. `get_usage` rows carry `stale`, `cachedAt` and `staleCause` on a stale row; a metric whose window reset carries `resetPassed`.
+  **Full or Compact (2.3).** The usage panel's title has a **Full / Compact** switch. Compact groups the rows by provider and gives each account three lines: its name, plan and reset time, then a bar and a percentage for the 5-hour window and for the 7-day window. Your choice is synced to all your devices (`usage.compact`). Each Claude sign-in, the default account and every credential profile, has its own row: a used-up quota reads 100% with its reset time, and a rate limit reads "Rate limited". Antigravity shows its plan name, the Gemini quota of a paid plan, and a row for Gemini 4 Argon.
+
+  **A failed read keeps the last known numbers (#2236, 2.3).** When a read fails — an expired token, a rate limit, a network blip or any other error — the row stays visible with the numbers from the last successful read (up to a week old). The numbers are greyed and a line explains: **expired · cached at 14:05**, **not updated** or **couldn't read**; for an expiry or error, what to do (for example "run `agy` once") is on a second line. A window whose reset time has already passed shows **reset since …** instead of a stale percentage. A provider that has never been read successfully still shows its error; a good read clears the mark. After a restart the last-good numbers come from `usage-last-good.json` in `AGEND_HOME`. `get_usage` rows carry `stale`, `cachedAt` and `staleCause` on a stale row; a metric whose window reset carries `resetPassed`.
 - **`/doctor`** (fleet admin) — health diagnostics in six sections: Prerequisites, Service, Fleet, Channel gateways, MCP IPC and Resources, each check `ok`, `warn` or `error`.
 - **`/sysinfo`** (anyone) — fleet uptime and memory, instance counts, system memory, and each backend CLI's version.
 - **`/model`** (channel admin) — switch the instance's model from a menu (on Telegram also `/model <name>`). From 2.2.5 the menu is the catalog of the account the instance runs on (a Claude Code [credential profile](#credential-profiles-and-a-second-subscription) has its own), and the model it runs is always a choice: one its CLI does not list comes first, marked "current — not in this CLI's list". See [Backend availability and model lists](#backend-availability-and-model-lists-225).
@@ -516,7 +518,7 @@ Total: $10.30
 
 ## The task board's daily summary
 
-Once a day at `defaults.task_board.summary_at` (`"HH:MM"` in the fleet's zone; **off unless set**, since 2.3.0-beta.25 — e.g. `summary_at: "09:00"` turns it on) each platform's General gets a summary of the task board, and the web chat shows the same in General:
+Once a day at `defaults.task_board.summary_at` (`"HH:MM"` in the fleet's zone; **off unless set**, since 2.3.0 — e.g. `summary_at: "09:00"` turns it on) each platform's General gets a summary of the task board, and the web chat shows the same in General:
 
 ```
 📋 Task board — daily summary, 10/20 09:00 – 10/21 09:00
@@ -721,6 +723,10 @@ Kiro's `--resume` needs a round trip to its backend before it paints anything, s
 
 The resume budget, resume retry and outage short-circuit are kiro-only (they are backend capabilities). The delayed automatic startup retry applies to **every** backend and every unattended start path (fleet startup incl. General, full restart, config reconcile): a failed start that stayed `stopped` forever was never kiro-specific. Explicit `agend start` / API starts still report their error synchronously. An auto-paused kiro instance's wake uses the same 60s resume budget.
 
+### Workspace trust (kiro-cli V3)
+
+kiro-cli's V3 engine asks **Trust this workspace?** before its TUI starts: in a folder that is not yet trusted, and in your home directory on every launch. When the instance runs with `--trust-all-tools`, AgEnD answers the default **Trust, continue** with Enter. If the cursor has been moved to **Don't trust, exit**, AgEnD does not press anything. Without `--trust-all-tools`, the prompt stays in the instance's pane until you answer it there.
+
 ### UI and engine pinning (`kiro_ui`, `kiro_engine_status`)
 
 `kiro_ui` picks how a kiro instance is launched: `legacy` (the default) runs kiro's legacy UI on its v1 agent engine (`--legacy-ui --agent-engine=v1`), `tui` its terminal UI on the v2 engine (`--tui --agent-engine=v2`). Both are pinned on every launch, so a kiro-cli default or saved setting cannot move an instance to another engine — its conversation would not come along. When the installed kiro-cli can no longer run what an instance is pinned to, AgEnD refuses to start it and says why rather than letting kiro pick (#1109). `kiro_ui: v3` is refused by validation until kiro's v3 interface can run unattended (#849).
@@ -904,6 +910,10 @@ AgEnD checks the codex it launches. It reads the layout and never runs codex: it
 - **A failed tool call.** When Codex records the exact failure in the session rollout (`failed to spawn code-mode host <root>/bin/codex-code-mode-host: No such file or directory (os error 2)`), the same notification is sent once per launch, however often the model retries. Text that only quotes it, a model reply for example, is not matched.
 
 The fix is to reinstall Codex with the full official package. A build without `codex-package.json` (older or unofficial) is not a layout AgEnD knows, so nothing is reported for it.
+
+## Codex rate-limit retries and quota
+
+When Codex hits a 429 (too many requests) and gives up on its retry round, AgEnD does not leave the instance stopped. It asks Codex to keep going after 30 seconds, then after 60 seconds, then after 120 seconds: at most three automatic continues. When those are used up, AgEnD pauses the unchanged failed turn and tells the instance's topic. A used-up quota (for example `insufficient_quota` or "exceeded your current quota") pauses the instance instead of retrying it.
 
 ## Rate limit failover cooldown
 
@@ -1281,16 +1291,16 @@ Healthy RAM with cold swap remains normal under the Linux policy.
 
 Details: [memory-pressure.md](memory-pressure.md).
 
-## Fewer fleet stalls (2.3 beta, #1956)
+## Fewer fleet stalls (2.3, #1956)
 
-The fleet runs on one event loop, so anything slow there holds up everything else: message delivery, tool calls and the dashboard. 2.3 beta removes the largest repeated costs. There is nothing to configure.
+The fleet runs on one event loop, so anything slow there holds up everything else: message delivery, tool calls and the dashboard. 2.3 removes the largest repeated costs. There is nothing to configure.
 
 - **The dashboard's status:** codex's models cache is read once per version of the file instead of once per codex agent per update; each agent's statusline.json is read once per build; and the status is built once per 10-second heartbeat for every open tab, instead of once per tab.
 - **tmux and stty commands** (message delivery, `/view`, window and session changes) are started by a small helper process, so the fleet no longer forks its own large process for each one: at 550 MB, about 26 ms on the loop per command became about 0.4 ms. A command is never run twice: if the helper is stuck or gone, a command it never started runs directly, and one it started fails the way a timed-out command always has.
 
 ## "Needs you" inbox (#1386 / #1398)
 
-A single live **Needs you** message in each world's General topic surfaces attention items for that world's instances — delivery acknowledgements, hang alerts, permission prompts, and task board cards waiting for you (#2246 step 3). Each General shows only its own world's instances (owner-scoped); the `/ui` web feed shows items fleet-wide. Every item is one tap from where it is acted on: the instance's own thread or the message's existing buttons. The only new interaction is **Acknowledge** for delivery items that have no button today. Items resolved on any surface disappear everywhere. In `/ui`, **Needs you** (`/ui/needs`) is a panel with a sidebar badge and optional desktop notifications (#1408 step 4). Design: [docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md).
+A single live **Needs you** message in each world's General topic surfaces attention items for that world's instances — delivery acknowledgements, hang alerts, permission prompts, and, with `needs_you.task_board: true`, task board cards waiting for you (#2246 step 3). Each General shows only its own world's instances (owner-scoped); the `/ui` web feed shows items fleet-wide. Every item is one tap from where it is acted on: the instance's own thread or the message's existing buttons. The only new interaction is **Acknowledge** for delivery items that have no button today. Items resolved on any surface disappear everywhere. In `/ui`, **Needs you** (`/ui/needs`) is a panel with a sidebar badge and optional desktop notifications (#1408 step 4). Design: [docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md).
 
 ## Global search (#2293)
 
@@ -1315,7 +1325,7 @@ On Discord and Telegram, a message that sends you to another topic links to it (
 Since then:
 - **Fleet → Org chart** (`/ui/fleet/org`, #1389; a canvas from 2.2.5, #1918): General on top, then the teams in `fleet.yaml` order, then instances in no team, each card with its picture, identity colour, state and backend. A card opens its chat, and the sidebar's **Fleet** opens the chart the first time (then the Fleet tab used last on that device). **Office**, beside Canvas and List, draws the same fleet as a pixel office: a room per team, a desk per instance (General and the instances in no team in the lobby), a little person whose pose is its state, and live traffic carried from desk to desk along the corridors; a **Style** picker switches between Desks and **Studio** (one scene where each instance walks to the area for its state, with short status bubbles); a team picker and pinned people narrow it (kept per browser), and an office switcher lists the offices kept on the host (`web-offices.json` in the AgEnD home, `GET`/`PUT /ui/offices`; a change takes an admin session and is refused over the public link).
   - **Moving around:** drag to pan; zoom with the wheel, a pinch, the +/−/Fit buttons or `+ - 0`; an overview map jumps there. Clicking a team folds it to a count of its members by state. Find dims what does not match. **List** says the same in words. Nothing is edited here.
-  - **Live traffic:** a line for each message between instances (`delegate_task`, `send_to_instance`, `report_result`, `request_information`, `broadcast`). It is dotted while queued, a moving dash while delivering, and fades over 12 s once delivered or read. A `delegate_task` stays drawn as work **in progress** until its `report_result` (same correlation id) comes back, then one line returns; with no report after 4 h it fades as **no report yet**. A broadcast to more than 8 (or any broadcast while zoomed out) becomes one line per team, ×N. It carries only the names, never message text, and leaves out instances with `cross_instance_visibility: hidden`. The public link shows it too, polled every 5 s. Since #2182 (2.3 beta) each line is routed from card to card around the cards and through gaps in the team borders by libavoid (`libavoid-js` 0.4.5, LGPL-2.1-or-later), in a worker that alone may run WebAssembly and can reach nothing; lines sharing a stretch are drawn apart.
+  - **Live traffic:** a line for each message between instances (`delegate_task`, `send_to_instance`, `report_result`, `request_information`, `broadcast`). It is dotted while queued, a moving dash while delivering, and fades over 12 s once delivered or read. A `delegate_task` stays drawn as work **in progress** until its `report_result` (same correlation id) comes back, then one line returns; with no report after 4 h it fades as **no report yet**. A broadcast to more than 8 (or any broadcast while zoomed out) becomes one line per team, ×N. It carries only the names, never message text, and leaves out instances with `cross_instance_visibility: hidden`. The public link shows it too, polled every 5 s. Since #2182 (2.3) each line is routed from card to card around the cards and through gaps in the team borders by libavoid (`libavoid-js` 0.4.5, LGPL-2.1-or-later), in a worker that alone may run WebAssembly and can reach nothing; lines sharing a stretch are drawn apart.
 - **Fleet → Cache** (`/ui/fleet/cache`, #1468): a per-instance prompt-cache expiry analysis with a keep-warm recommendation. It is read from local transcripts and priced at list price, and the check date is shown.
   - **From 2.2.5 (#2010):** it shows the mix of 5-minute and 1-hour cache writes and measures what a 5-minute cache really lasts. Each instance's gaps of 5 to 60 minutes over the last 7 days are counted, and with at least 10 such gaps:
     - where at most 10% rewrote the cache, it is simulated as 1 hour;
@@ -1327,9 +1337,9 @@ Since then:
 - **Names that open an instance** (2.2.5, #1990): in a chat's cross-instance status lines the other instance's name opens its chat, and in a prompt card the instance's name opens its View. An agent's or a person's message never gets such a link.
 - **The chat's commands and quick actions** (#1269): typing `/` runs the instance's own topic commands through the same handlers and command table. A paste over 4,000 characters is attached as a text file, and the thread stays at the newest message as content grows.
 - **Log tab** (#1218): a per-instance **Log** panel shows each prompt, the agent's replies (never its thinking), every tool call with arguments and result, errors, and fleet events such as crashes or restarts. Steps are read on demand from the agent's transcript while the tab is open, and update live; secret values are masked and long text is truncated. Off by default (`web.log_tab`); a fleet admin enables it in Settings → Web, and it then appears over the public link too. Supported fully on claude-code and codex; other backends show fleet events only; kiro shows fleet events with a note explaining why its own steps are not yet available.
-- **The composer's row** (2.3 beta, #2215): one row under the composer, at the bottom left: this browser's web authority, then the key hint (`✓ Verified · Enter to send · Shift+Enter for a new line`). When "Verified" ends is in its tooltip (on a touch screen, a tap shows it); not verified reads `Not verified · Authorize`. A guest's note and the public link's sentence share the same row.
-- **The chat's identity card** (2.3 beta, #2217): nothing sits on the card. One card button in the chat header opens a menu with **Show card** and **Show picture and bio** (unticked, only the banner stays); both are kept on this device. Guests and the public link have the same button.
-- **Apply from a verified browser** (2.3 beta, #2170): a web-verified browser's own **Apply** confirms a held Settings change when its account is on the change's platform and a fleet admin of every connection the change affects. No chat card is posted, General gets a notice, and every check runs again when the change executes. Guests, the public link, unverified browsers and changes that need the host CLI are unchanged.
+- **The composer's row** (2.3, #2215): one row under the composer, at the bottom left: this browser's web authority, then the key hint (`✓ Verified · Enter to send · Shift+Enter for a new line`). When "Verified" ends is in its tooltip (on a touch screen, a tap shows it); not verified reads `Not verified · Authorize`. A guest's note and the public link's sentence share the same row.
+- **The chat's identity card** (2.3, #2217): nothing sits on the card. One card button in the chat header opens a menu with **Show card** and **Show picture and bio** (unticked, only the banner stays); both are kept on this device. Guests and the public link have the same button.
+- **Apply from a verified browser** (2.3, #2170): a web-verified browser's own **Apply** confirms a held Settings change when its account is on the change's platform and a fleet admin of every connection the change affects. No chat card is posted, General gets a notice, and every check runs again when the change executes. Guests, the public link, unverified browsers and changes that need the host CLI are unchanged.
 - **Chat image viewer: zoom and pan (#2333):** opening a picture zooms with the wheel around the pointer (the wheel scrolls once the picture is larger than the window; Ctrl/⌘+wheel or a trackpad pinch zooms). A click toggles fit ↔ 100% at that spot, and a drag pans. **Fit width** reads a tall picture by scrolling. The toolbar shows the zoom level between − and +, and the keys are `+`, `-`, `0`, `1` and `W`. On a phone: pinch, a one-finger drag, and a double tap for 100%. Smooth (a transform, no re-decode), and it works on the public link too.
 - **Undo and redo in every text field (#2342):** Ctrl/⌘+Z undoes and Ctrl+Shift+Z / Ctrl+Y / ⌘⇧Z redo, with one history per field. The browser's own undo is one stack for the whole page, so undo in one box could change another, and any text the page put in a box wiped it. Each box now keeps its own history: typing undoes a word at a time, an IME composition is one step, and what the page puts in can be undone too (a completed `/command`, Put back, As text, a recent search, the filter's Esc clear, an emoji pick, a CSS restore). The browser's own Edit-menu Undo goes through the same history. A sent message is never undone back into the composer. Fields that trimmed what you typed (the bot token, Discord IDs, the setup wizard, the session-hours number) now keep a typed space, so a path with a space can be entered.
 
@@ -1408,24 +1418,24 @@ Clearing the display name in View's **Edit profile** now removes the override �
 
 Four things change how the dashboard looks, each with its own owner:
 
-- **An agent's theme** (its own chat; from 2.3 beta, optionally the whole page while it is open: see [Page colours](#page-colours-23-beta-2196)): colours for light and dark, an accent, bubble corners and border, a font, a background picture, its own picture and ring colour, and the words it shows while working. The agent sets it with `set_web_theme` and `set_web_theme_asset`; a person can **Lock** or **Reset** it from the chat's or Details' **⋯** menu. While a viewer shows agents' themes, an agent's theme picture comes right after a picture uploaded in **View** in the identity order above.
+- **An agent's theme** (its own chat; from 2.3, optionally the whole page while it is open: see [Page colours](#page-colours-23-2196)): colours for light and dark, an accent, bubble corners and border, a font, a background picture, its own picture and ring colour, and the words it shows while working. The agent sets it with `set_web_theme` and `set_web_theme_asset`; a person can **Lock** or **Reset** it from the chat's or Details' **⋯** menu. While a viewer shows agents' themes, an agent's theme picture comes right after a picture uploaded in **View** in the identity order above.
 - **An identity card** per instance: a portrait, a banner, a tagline and a bio, on Details, in View and folded into the chat. The agent sets its own; a person's field from **Edit profile** wins over the agent's, field by field.
 - **Widgets**: small panels of facts (numbers, progress, a line of text, a list, a badge, a sparkline) drawn by the dashboard's own components from a short spec and values — never HTML, script or CSS. An agent places one in its own chat header and one on its own Details page with `set_web_widget`. Your own goes in the sidebar (Settings → Web appearance), with the fleet's counts.
 - **Your own custom CSS** (Settings → Web appearance): a stylesheet for your own screens only.
 
 What a viewer sees is theirs to choose: **Settings → Web appearance → Show agents' themes, effects and widgets** turns agents' themes and widgets off on all their devices, and `?safe=1` loads any page without themes or custom CSS. Agents can check how they appear with `get_web_appearance` and draw it with `preview_web_appearance`; the `web-appearance` skill walks them through it.
 
-A **mod** is one file that carries such a look: a theme with its pictures, card text, widgets, effects (Canvas Worker effects are still 2.3 beta) and custom CSS. **Settings → Web appearance → Mods** imports one in two steps, showing everything in it first and applying only the parts you tick, all at once. Custom CSS from a file is never ticked for you. The same card exports a look as a file.
+A **mod** is one file that carries such a look: a theme with its pictures, card text, widgets, effects (Canvas Worker effects are experimental and off by default) and custom CSS. **Settings → Web appearance → Mods** imports one in two steps, showing everything in it first and applying only the parts you tick, all at once. Custom CSS from a file is never ticked for you. The same card exports a look as a file.
 
 `web.themes.agent_edit: false` refuses every agent's appearance change; `web.appearance` sets the card's upload limits. An agent's changes are at least 30 s apart and at most 10 an hour.
 
-**Uploads are not counted (2.2.5, #2083).** An agent's uploads (pictures, effects, proposed mods; effects are Canvas Worker, still 2.3 beta) are not counted. Each picture slot's size limits, the agent's picture quota and each file's own caps still apply.
+**Uploads are not counted (2.2.5, #2083).** An agent's uploads (pictures, effects, proposed mods; effects are Canvas Worker, experimental and off by default) are not counted. Each picture slot's size limits, the agent's picture quota and each file's own caps still apply.
 
 **The Web appearance page (2.2.5, #2071)** groups its cards under five headings, each card with a **?** that opens its section of the guide. Over a public link it shows only a notice.
 - **Look:** agents' themes on or off; identity colours, with a sample row; card size.
 - **Your layout:** your sidebar widget.
 - **Styles you write:** custom CSS, and turning it off on this device.
-- **Add-ons:** mods, effects and your effect choices (Canvas Worker effects are still 2.3 beta).
+- **Add-ons:** mods, effects and your effect choices (Canvas Worker effects are experimental and off by default).
 - **Advanced:** card upload limits, and Restore defaults.
 
 ### App icon (#2308)
@@ -1436,7 +1446,7 @@ A **mod** is one file that carries such a look: a theme with its pictures, card 
 - **Safe band:** a card's banner is never drawn wider than 5:1 (a wider screen centres it over a blurred copy) nor narrower than 9:4 (which crops the sides), so on a 1600×600 banner an area of about 1350×320, centred across the width, shows on every card size and layout. That area moves with the focus below; at the default focus, 50, it sits in the middle of the picture.
 - **Focus:** 0 (top) to 100 (bottom), 50 by default, chooses which part of a tall picture shows. The agent sets `card.bannerFocus`, a person the slider in View's **Edit profile** (theirs wins), and General `set_web_settings`. The details are in [Web dashboard](web-dashboard.md): "Custom CSS", "Agents' themes", "Identity cards", "Widgets" and "Mods".
 
-### Page colours (2.3 beta, #2196)
+### Page colours (2.3, #2196)
 
 An agent's theme can colour the whole page, not only its chat, while that agent's chat, View, Log or Details is open: the sidebar, the header and the usage rail (on a phone, the drawer, the header and the bottom tabs). Open another agent and the page takes its look; open one without page colours, or anything else, and the page is in your own look again. Switching is instant, with no flash and nothing moving.
 
@@ -1479,7 +1489,7 @@ An agent can decorate its own chat with an **ambient effect**: falling petals, s
 
 **Elsewhere:** mods carry it, `get_web_appearance` lists it, and `preview_web_appearance` draws it still. The `web-appearance` skill has the full spec.
 
-### Owner effect preferences (2.3 beta)
+### Owner effect preferences (2.3)
 
 The backend now keeps five owner effect selections (`fx.sidebar`, `fx.header`, `fx.page`, `fx.box`, `fx.cursor`) for
 the signed-in web identity. Discord and Telegram identities stay separate; accounts are not merged. A web-only
@@ -1496,10 +1506,10 @@ agent front effects stay paused while custom CSS is active, loading or unknown (
 
 Menus, dialogs and Keep/tour notices suppress foreground effects. Editable focus stops pointer signals, not unrelated drawing; protected controls remain clipped out, and keyboard events never reach a Worker. Behind effects still require
 proven stock ordering; human placements do not bypass those gates. The Chat foreground status links to Appearance
-to show the custom-CSS setting. See the [2.3 preview](whats-new-2.3.md); a trusted foreground plane is
+to show the custom-CSS setting. See the [What's new in 2.3](whats-new-2.3.md); a trusted foreground plane is
 a later 2.3.x follow-up (#1940).
 
-### Chat effects and static posters (2.3 beta)
+### Chat effects and static posters (2.3)
 
 Canvas Worker layout refusals retain a local diagnostic code in Chat and the Effects dialog, and failed Try offers retain their stop code. The browser console also names them. Long conversations no longer exhaust the 128 paint-hole limit merely by containing off-screen controls; every marker is still inventoried and paint checks remain bounded. Agent summaries keep their closed reasons.
 
@@ -1542,7 +1552,7 @@ General, coordinators and full-profile instances can read and change Settings �
 - **A banner's focus.**
 - **A person's custom CSS** (`person`; the host operator by default): save (it goes on trial), keep, revert, switch to an earlier saved version, or off. The 64 KiB, no-remote-URL and `asset:` rules still apply (#2081).
 - **A mod an agent proposed:** review, install the parts ticked (custom CSS is never ticked by itself), cancel, dismiss or uninstall. A mod the person imported from a file is theirs, and is refused.
-- **Effects** (Canvas Worker effects, still 2.3 beta): apply or remove one on a chat, and a person's effect slots (sidebar, header, page, box, cursor).
+- **Effects** (Canvas Worker effects, experimental and off by default): apply or remove one on a chat, and a person's effect slots (sidebar, header, page, box, cursor).
 - **An agent's ambient effect** (`what: "ambient"`): set one (it becomes the person's) or clear it.
 - **Restore defaults:** the host settings and that person's custom CSS. This device's custom-CSS switch is left to the person.
 
