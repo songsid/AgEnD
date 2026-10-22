@@ -122,7 +122,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - **Sending, as on Discord.**
   - Your message shows at once, dimmed, with "Sending…", and the composer is free for the next one. When AgEnD has it, it becomes the normal message: one bubble, never two. Messages sent in a row go out in order.
   - A message that does not get there stays, no longer dimmed, with the reason ("Not sent: …") and three buttons:
-    - **Retry send** sends the same message again. Files already uploaded are not uploaded again.
+    - **Retry send** sends the same message again. Files already uploaded are not uploaded again. If the first try did reach the agent and only the answer was lost, Retry finds it there: the agent never gets it twice.
     - **Put back** returns its text, files and reply to the composer, to change it. Ctrl/⌘+Z undoes that.
     - **Delete** drops it.
   - Nothing is retried on its own. A message waiting to send lives in this tab only: reloading the page drops it.
