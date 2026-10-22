@@ -22,8 +22,10 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
     return { w: b.width, content: b.content, radius: b.borderTopLeftRadius, bl: getComputedStyle(n).borderLeftWidth, r: getComputedStyle(n).borderTopLeftRadius }; })()`) as any;
   ok("straightBar", bar.w === "3px" && bar.content !== "none" && bar.radius === "0px" && bar.bl === "0px" && bar.r === "0px");
   await p.page.screenshot({ path: shotPath("2347r", c as any, "1-fleet") });
-  await p.page.goto(new URL("/settings/general", p.page.url()).href);
+  await p.page.goto(new URL("/settings/agent-defaults", p.page.url()).href);
   ok("lineInSettings", await line.waitFor({ timeout: 10000 }).then(() => true, () => false));
+  // The line shows before the section draws: wait for it, so the picture is of the page and not of its first frame.
+  ok("sectionDrawn", await p.page.locator("#g-locale").waitFor({ timeout: 15000 }).then(() => true, () => false));
   await p.page.screenshot({ path: shotPath("2347r", c as any, "2-settings") });
   await line.locator("button").last().click();
   await p.page.waitForTimeout(400);
