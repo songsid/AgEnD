@@ -3,11 +3,13 @@
  * line per card in lists, a card in a dozen short lines — what an instance needs to pick up work after a reset,
  * without JSON keys or empty fields eating its context.
  */
-import { wrapUpGap, type Card, type CardStatus, type MyWork, type Project, type ProjectStats, type TaskBoard } from "./task-board.js";
+import { confirmerOf, personConfirms, wrapUpGap, type Card, type CardStatus, type MyWork, type Project, type ProjectStats, type TaskBoard } from "./task-board.js";
 
 export const STATUS_WORD: Record<CardStatus, string> = {
   open: "to do", claimed: "in progress", blocked: "blocked", review: "waiting for the person", done: "done", cancelled: "cancelled",
 };
+/** A card's status in words: an agent's card in review waits for its dispatcher, not the person (#2434). */
+const statusOf = (card: Pick<Card, "status" | "dispatcher">) => (card.status === "review" && !personConfirms(card) ? "waiting for confirmation" : STATUS_WORD[card.status]);
 
 /** Text on one line, at most `max` characters. */
 export function oneLine(text: string, max: number): string {
@@ -17,14 +19,14 @@ export function oneLine(text: string, max: number): string {
 
 /** "S-34 [in progress] Build the login API @dev-a" */
 export function cardLine(card: Card, opts: { status?: boolean } = {}): string {
-  return `${card.code}${opts.status === false ? "" : ` [${STATUS_WORD[card.status]}]`} ${card.title}${card.assignee ? ` @${card.assignee}` : ""}`;
+  return `${card.code}${opts.status === false ? "" : ` [${statusOf(card)}]`} ${card.title}${card.assignee ? ` @${card.assignee}` : ""}`;
 }
 
 /** One card: header, where it sits, its fields, its checklist, its sub tasks (a main task) and the comments new to its assignee. */
 export function cardText(board: TaskBoard, card: Card): string {
   const lines: string[] = [];
   const kind = card.kind === "main" ? "main task" : "sub task";
-  lines.push(`${card.code} ${kind} · ${card.title} [${STATUS_WORD[card.status]}]${card.assignee ? ` @${card.assignee}` : ""}${card.size ? ` size ${card.size}` : ""} v${card.version}`);
+  lines.push(`${card.code} ${kind} · ${card.title} [${statusOf(card)}]${card.assignee ? ` @${card.assignee}` : ""}${card.size ? ` size ${card.size}` : ""} v${card.version}`);
   const where: string[] = [];
   if (card.parent) {
     const main = board.findCard(card.parent);
@@ -37,10 +39,12 @@ export function cardText(board: TaskBoard, card: Card): string {
     where.push(`waits for ${card.deps.map((d) => board.codeOf(d)).map((c) => `${c}${unmet.has(c) ? "" : " (done)"}`).join(", ")}`);
   }
   if (card.dispatcher && card.dispatcher.name !== card.assignee) where.push(`dispatched by ${card.dispatcher.kind === "person" ? `the person (${card.dispatcher.name})` : card.dispatcher.name}`);
-  where.push(card.needsReview ? "the person confirms it" : "finish it yourself");
+  // #2434: the person confirms the cards they handed out; an agent's card its dispatcher (or, nobody's, its assignee).
+  const confirmer = confirmerOf(card);
+  where.push(!card.needsReview ? "finish it yourself" : `${confirmer} confirms it`);
   lines.push(where.join(" · "));
   const gap = card.status === "review" ? wrapUpGap(card) : null;
-  if (gap) lines.push(`before the person confirms it: ${gapText(gap, card.kind === "main")} (fill in with update)`);
+  if (gap) lines.push(`before ${confirmer} confirms it: ${gapText(gap, card.kind === "main")} (fill in with update)`);
   if (card.goal) lines.push(`goal: ${card.goal}`);
   if (card.scope) lines.push(`scope: ${card.scope}`);
   if (card.acceptance.length) {
@@ -94,10 +98,11 @@ export function myWorkText(board: TaskBoard, name: string, work: MyWork): string
     ? ` ⚠ ${over.count} cards in progress: one at a time — finish one (or block it with a reason) before the next`
     : ` ⚠ ${over.count} cards in progress: at most ${over.limit} at a time — finish one (or block it with a reason) before the next`);
   section("blocked", work.blocked.map((c) => `${c.code} ${c.title} — on: ${oneLine(c.blockedReason, 120)}`));
-  section("waiting for the person's confirmation", work.review.map((c) => {
-    const gap = wrapUpGap(c);
-    return `${c.code} ${c.title}${gap ? ` — fill in before they confirm: ${gapText(gap, c.kind === "main")}` : ""}`;
-  }));
+  const waiting = (c: Card) => { const gap = wrapUpGap(c); return `${c.code} ${c.title}${gap ? ` — fill in before they confirm: ${gapText(gap, c.kind === "main")}` : ""}`; };
+  section("waiting for the person's confirmation", work.review.filter(personConfirms).map(waiting));
+  section("waiting for confirmation", work.review.filter((c) => !personConfirms(c)).map((c) => `${waiting(c)} — ${confirmerOf(c) === name ? "yours to confirm: move it to done" : `by ${confirmerOf(c)}`}`));
+  // #2434: the cards it handed out that wait for its own confirmation (finish them: move to done, or back with a reason).
+  section("for you to confirm", board.toConfirm(name).map((c) => `${c.code} ${c.title}${c.assignee ? ` @${c.assignee}` : ""} — move it to done, or back to claimed with what is missing`));
   section("ready to start", work.ready.map((c) => `${c.code} ${c.title}${parentOf(c)}${c.assignee ? "" : " (unassigned)"}`));
   section("waiting on dependencies", work.waiting.map(({ card, waitsFor }) => `${card.code} ${card.title} — waits for ${waitsFor.join(", ")}`));
   section("new comments", work.newComments.map(({ card, entries }) => `${card.code} ${card.title} — ${entries.length} from ${[...new Set(entries.map((e) => e.author))].join(", ")}`));
@@ -118,8 +123,8 @@ export function projectsText(projects: Project[], stats: Record<string, ProjectS
 /** A write's answer: "ok M-3 in progress → waiting for the person (v8)", then what the board has to say. */
 export function writeText(card: Card, notes: string[], from?: CardStatus): string {
   const head = from && from !== card.status
-    ? `ok ${card.code} ${STATUS_WORD[from]} → ${STATUS_WORD[card.status]} (v${card.version})`
-    : `ok ${card.code} ${card.title} [${STATUS_WORD[card.status]}]${card.assignee ? ` @${card.assignee}` : ""} (v${card.version})`;
+    ? `ok ${card.code} ${from === "review" ? statusOf({ ...card, status: from }) : STATUS_WORD[from]} → ${statusOf(card)} (v${card.version})`
+    : `ok ${card.code} ${card.title} [${statusOf(card)}]${card.assignee ? ` @${card.assignee}` : ""} (v${card.version})`;
   const said = notes.filter((n) => n !== "no change");
   return [head, ...said].join("\n");
 }

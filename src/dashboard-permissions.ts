@@ -136,7 +136,7 @@ export function withoutTaskCommands(cli: string): string {
 /** (b) What an agent is told when the person switches the task board on for it (its tool list follows at once). */
 export const TASK_BOARD_ON_NOTICE = "[Task board] The person switched the task board on for you: the `task` tool is in your tool list now. "
   + "Start with `task mine` (your work on the board); open a main task for multi-step work you are asked for, split it into sub tasks, "
-  + "keep its state current, and finish a main task by moving it to review — only the person confirms it. "
+  + "keep its state current, and finish a card with done — one that waits for confirmation goes to review: the person confirms the cards they handed out, an agent the cards it handed out. "
   + "A later [Task board] notice is news on your cards: act on it with the `task` tool.";
 
 /** (b) The task board went from switched off to allowed between two resolved configs of one instance. */

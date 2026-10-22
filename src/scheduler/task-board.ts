@@ -125,6 +125,11 @@ export interface Card {
   priority: CardPriority;
   size: CardSize | null;
   needsReview: boolean;
+  /**
+   * #2434: opened on the board (createCards), not the `task` tool's own plain task. Before #2434 a main task's default
+   * "needs review" marked it; an agent's main task no longer waits for review, so the board says so on its own.
+   */
+  onBoard: boolean;
   /** uuids of the cards to finish first (what the fleet's `task` tool has always stored). */
   deps: string[];
   goal: string;
@@ -423,6 +428,24 @@ function toDispatcher(input: DispatcherInput, actor: Actor): Dispatcher | null {
  */
 const openedForItself = (c: Card) => c.assignee !== null && c.createdBy === c.assignee && c.dispatcher === null;
 const isDispatcher = (card: Card, actor: Actor) => card.dispatcher?.kind === "instance" && !isPerson(actor) && card.dispatcher.name === actor.name;
+/**
+ * #2434: who confirms a card in review. The person confirms the cards they handed out (#2426's rule for a blocked card,
+ * for review too); an agent's card is the agents' own business: its instance dispatcher confirms it, and one nobody
+ * handed out its assignee (or the instance that opened it). A person may still confirm any card.
+ */
+export const personConfirms = (card: Pick<Card, "dispatcher">) => card.dispatcher?.kind === "person";
+function confirms(card: Card, actor: Actor): boolean {
+  if (isPerson(actor)) return true;
+  if (personConfirms(card)) return false;
+  if (card.dispatcher?.kind === "instance") return card.dispatcher.name === actor.name;
+  return card.assignee === actor.name || (card.assignee === null && card.createdBy === actor.name);
+}
+/** Who that is, in words (an error, the card's text). */
+export function confirmerOf(card: Pick<Card, "dispatcher" | "assignee">): string {
+  if (card.dispatcher?.kind === "person") return "the person";
+  if (card.dispatcher?.kind === "instance") return card.dispatcher.name;
+  return card.assignee ?? "its assignee";
+}
 
 function normalizeAssignee(raw: string | null | undefined): string | null {
   const v = raw?.trim() ?? "";
@@ -437,13 +460,13 @@ export function cardCode(raw: string): string | null {
   return m ? `${m[1]!.toUpperCase()}-${Number(m[2])}` : null;
 }
 
-/** A card waits for the person's confirmation when it is finished. */
 /**
  * #2425: whether a card waits for the person — in review needing their confirmation, or blocked on a question the person
- * owns (they handed it out). The one rule for waitingForPerson's query, Needs you and a button's route.
+ * owns; both only when they handed it out (#2434: an agent's card in review is its dispatcher's to confirm). The one rule
+ * for waitingForPerson's query, Needs you and a button's route.
  */
 export function waitsForPerson(card: Pick<Card, "status" | "needsReview" | "dispatcher">): boolean {
-  return (card.status === "review" && card.needsReview) || (card.status === "blocked" && card.dispatcher?.kind === "person");
+  return personConfirms(card) && ((card.status === "review" && card.needsReview) || card.status === "blocked");
 }
 
 export function requiresReview(card: Pick<Card, "needsReview">): boolean {
@@ -484,6 +507,7 @@ function toCard(r: Row): Card {
     priority: (r.priority as CardPriority) ?? "normal",
     size: (r.size as CardSize | null) ?? null,
     needsReview: Number(r.needs_review) === 1,
+    onBoard: Number(r.on_board) === 1,
     deps: parseJsonArray<string>(r.depends_on, []).filter((d): d is string => typeof d === "string"),
     goal: (r.description as string | null) ?? "",
     scope: (r.scope as string | null) ?? "",
@@ -579,6 +603,7 @@ export class TaskBoard {
     add("seen_entry_id", "INTEGER NOT NULL DEFAULT 0");
     add("dispatcher", "TEXT");
     add("dispatcher_kind", "TEXT");
+    add("on_board", "INTEGER NOT NULL DEFAULT 0");                      // #2434; a row before it: its needs_review says so
     this.db.exec(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_code ON tasks(code);
       CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
@@ -1052,9 +1077,12 @@ export class TaskBoard {
     return { cards: rows.map(toCard), total: n };
   }
 
-  /** On the board's terms: in a project, a sub task, one with sub tasks, or one that waits for the person. */
+  /**
+   * On the board's terms: opened on it (#2434), in a project, a sub task, one with sub tasks, or one that waits for
+   * review (every main task opened on the board before #2434 did).
+   */
   isOnBoard(card: Card): boolean {
-    return card.projectId !== null || card.kind === "sub" || card.needsReview || this.activeSubs(card.uuid).length > 0;
+    return card.onBoard || card.projectId !== null || card.kind === "sub" || card.needsReview || this.activeSubs(card.uuid).length > 0;
   }
 
   /**
@@ -1100,6 +1128,15 @@ export class TaskBoard {
     };
   }
 
+  /** #2434: whether `actor` confirms `card` (finishes it from review): the person their cards, an agent's its dispatcher. */
+  confirms(card: Card, actor: Actor): boolean { return confirms(card, actor); }
+
+  /** #2434: the cards an instance handed out that wait in review for its confirmation (its `task mine`). */
+  toConfirm(name: string): Card[] {
+    return (this.db.prepare("SELECT * FROM tasks WHERE status = 'review' AND needs_review = 1 AND (dispatcher_kind IS NULL OR dispatcher_kind != 'person') AND dispatcher = ? AND (assignee IS NULL OR assignee != ?) ORDER BY updated_at")
+      .all(name, name) as Row[]).map(toCard);
+  }
+
   /**
    * What waits for the person (step 3: Needs you, and the daily summary): cards in review that need their confirmation,
    * and blocked cards whose question is theirs to answer — oldest first, each with when it started waiting (its last
@@ -1112,7 +1149,7 @@ export class TaskBoard {
    * old, as "stuck, asking you" (#2425). Nothing is changed on the cards; they stay on the board as they are.
    */
   waitingForPerson(): Array<{ card: Card; since: string }> {
-    const rows = (this.db.prepare("SELECT * FROM tasks WHERE (status = 'review' AND needs_review = 1) OR (status = 'blocked' AND dispatcher_kind = 'person') ORDER BY updated_at").all() as Row[]).map(toCard);
+    const rows = (this.db.prepare("SELECT * FROM tasks WHERE dispatcher_kind = 'person' AND ((status = 'review' AND needs_review = 1) OR status = 'blocked') ORDER BY updated_at").all() as Row[]).map(toCard);
     const moved = this.db.prepare("SELECT at FROM task_events WHERE task_id = ? AND type = 'moved' AND json_extract(data, '$.to') = ? ORDER BY id DESC LIMIT 1");
     return rows.map((card) => {
       const at = (moved.get(card.uuid, card.status) as { at: string } | undefined)?.at;
@@ -1248,12 +1285,14 @@ export class TaskBoard {
           if (kind === "sub" && spec.scope) throw new TaskBoardError("invalid", "scope is for main tasks only", "scope_main_only");
           const acceptance = checkAcceptance(spec.acceptance ?? []);
           if (acceptance.length > CARD_LIMITS.acceptanceItems) throw new TaskBoardError("too_long", `at most ${CARD_LIMITS.acceptanceItems} acceptance items`, "acceptance_max", [CARD_LIMITS.acceptanceItems]);
-          const needsReview = spec.needsReview ?? kind === "main";
-          if (!needsReview && kind === "main" && !isPerson(actor)) throw new TaskBoardError("forbidden", "only a person can open a main task that skips their confirmation");
           const now = this.nowIso();
           const assignee = spec.assignee !== undefined ? normalizeAssignee(spec.assignee) : isPerson(actor) ? null : actor.name;
           const opener: Dispatcher | null = isPerson(actor) ? { kind: "person", name: actor.name }
             : actor.kind === "instance" && assignee && assignee !== actor.name ? { kind: "instance", name: actor.name } : null;
+          const dispatcher = spec.dispatcher !== undefined ? toDispatcher(spec.dispatcher, actor) : (parent?.dispatcher ?? opener);
+          // #2434: a main task waits for the person's confirmation when the person handed it out; an agent's needs none
+          // unless it asks for one (its dispatcher then confirms it).
+          const needsReview = spec.needsReview ?? (kind === "main" && dispatcher?.kind === "person");
           const card: Card = {
             uuid: randomUUID(),
             code: this.nextCode(kind === "main" ? "M" : "S"),
@@ -1263,10 +1302,11 @@ export class TaskBoard {
             title,
             status: "open",
             assignee,
-            dispatcher: spec.dispatcher !== undefined ? toDispatcher(spec.dispatcher, actor) : (parent?.dispatcher ?? opener),
+            dispatcher,
             priority: spec.priority ?? "normal",
             size: spec.size ?? null,
             needsReview,
+            onBoard: true,
             deps: this.checkDeps({ uuid: null, kind, parent: parent?.uuid ?? null }, (spec.dependsOn ?? []).map((d) => this.resolveRef(d, created))),
             goal: checkText("the goal", spec.goal ?? "", CARD_LIMITS.goal),
             scope: checkText("the scope", spec.scope ?? "", CARD_LIMITS.scope),
@@ -1341,9 +1381,18 @@ export class TaskBoard {
       }
       if (patch.size !== undefined) set("size", patch.size);
       if (patch.priority !== undefined) set("priority", patch.priority);
-      if (patch.dispatcher !== undefined) set("dispatcher", toDispatcher(patch.dispatcher, actor), "dispatcher", (d) => d?.name ?? null);
+      if (patch.dispatcher !== undefined) {
+        const next = toDispatcher(patch.dispatcher, actor);
+        // #2434: the person's card stays theirs — an instance re-dispatching it would take it out of their confirmation.
+        if (ai && personConfirms(card) && JSON.stringify(next) !== JSON.stringify(card.dispatcher)) {
+          throw new TaskBoardError("forbidden", `${card.code} was handed out by the person; only they hand it to someone else`);
+        }
+        set("dispatcher", next, "dispatcher", (d) => d?.name ?? null);
+      }
       if (patch.needsReview !== undefined) {
-        if (ai && card.needsReview && !patch.needsReview) throw new TaskBoardError("forbidden", "only a person can clear \"needs review\"");
+        if (ai && card.needsReview && !patch.needsReview && !confirms(card, actor)) {
+          throw new TaskBoardError("forbidden", personConfirms(card) ? "only a person can clear \"needs review\"" : `only ${confirmerOf(card)} can clear "needs review" on ${card.code}`);
+        }
         set("needsReview", patch.needsReview);
       }
       if (patch.dependsOn !== undefined) {
@@ -1501,7 +1550,7 @@ export class TaskBoard {
       const now = this.nowIso();
       const card: Card = {
         uuid: randomUUID(), code: this.nextCode("M"), kind: "main", projectId: null, parent: null, title: params.title, status: "open",
-        assignee: params.assignee ?? null, priority: params.priority ?? "normal", size: null, needsReview: false,
+        assignee: params.assignee ?? null, priority: params.priority ?? "normal", size: null, needsReview: false, onBoard: false,
         // Opened for another instance: the opener handed it out (its blocked question goes to it).
         dispatcher: actor.kind === "instance" && params.assignee && params.assignee !== actor.name ? { kind: "instance", name: actor.name } : null,
         deps: this.checkDeps({ uuid: null, kind: "main", parent: null }, params.depends_on ?? []),
@@ -1550,16 +1599,18 @@ export class TaskBoard {
   }
 
   /**
-   * `task done`: from open or claimed. A card that needs the person's confirmation goes to review instead, so no
-   * instance can finish one alone. On the board, an instance finishes as it would there: its own card, with a result
+   * `task done`: from open or claimed. A card that needs confirmation goes to review instead, so no instance finishes
+   * one it does not confirm alone; the one who confirms it finishes it, from review too (#2434). On the board, an instance finishes as it would there: its own card, with a result
    * (an open one is claimed first, under the same rules).
    */
   legacyComplete(actor: Actor, uuid: string, result?: string): Card {
     return this.tx(() => {
       const card = this.byUuid(uuid);
       if (!card) throw new Error(`Task "${uuid}" not found`);
-      if (card.status !== "claimed" && card.status !== "open") {
-        throw new Error(`Task "${uuid}" is ${card.status}, cannot complete (must be open or claimed)`);
+      // #2434: a card in review is finished by whoever confirms it (an agent's card: its dispatcher).
+      const confirming = card.status === "review" && confirms(card, actor);
+      if (card.status !== "claimed" && card.status !== "open" && !confirming) {
+        throw new Error(`Task "${uuid}" is ${card.status}, cannot complete (must be open or claimed${card.status === "review" ? `; it waits for ${confirmerOf(card)}'s confirmation` : ""})`);
       }
       const open = this.children(card.uuid).filter((k) => !isFinished(k));
       if (open.length) throw new Error(`Task "${card.code}" still has unfinished sub tasks: ${open.map((k) => k.code).join(", ")}`);
@@ -1567,7 +1618,7 @@ export class TaskBoard {
         this.event(actor, card, "updated", { changes: { result: { from: card.result, to: result } } });
         card.result = result;
       }
-      const to: CardStatus = requiresReview(card) && !isPerson(actor) ? "review" : "done";
+      const to: CardStatus = requiresReview(card) && !confirms(card, actor) ? "review" : "done";
       if (this.heldToBoardRules(card, actor)) {
         if (card.status === "open") {
           this.checkManualMove(card, actor, "claimed", "", { finishing: true });
@@ -1618,8 +1669,8 @@ export class TaskBoard {
           if (derived && !held) throw new Error(`Task "${card.code}" has sub tasks; its status follows them`);
           if (derived) this.checkDerivedMove(card, actor, to, "");
           else {
-            if (card.status === "review" && to === "done") throw new Error(`Task "${card.code}" is waiting for the person's confirmation`);
-            if (to === "done" && requiresReview(card)) to = "review";
+            if (card.status === "review" && to === "done" && !confirms(card, actor)) throw new Error(`Task "${card.code}" is waiting for ${confirmerOf(card)}'s confirmation`);
+            if (to === "done" && card.status !== "review" && requiresReview(card) && !confirms(card, actor)) to = "review";
             if (held && to !== card.status) this.checkManualMove(card, actor, to, "");
           }
         }
@@ -1677,7 +1728,11 @@ export class TaskBoard {
             this.checkAnswer(card, opts.comment);
           } else if (startsWork) this.checkOneAtATime(card, actor);
         } else if (from === "review") {
-          if (ai) {
+          if (ai && !own && confirms(card, actor)) {
+            // #2434: an agent's card sent back by the instance that confirms it, as the person sends theirs back.
+            if (!reason) throw new TaskBoardError("invalid", "sending work back needs a reason", "sendback_reason");
+            this.entry(card, "reject", actor, reason);
+          } else if (ai) {
             if (!own) throw notOwner();
             if (startsWork) this.checkOneAtATime(card, actor);
             // Out of the person's queue: they read why.
@@ -1710,10 +1765,20 @@ export class TaskBoard {
       }
       case "done": {
         if (ai) {
-          if (from === "review") throw new TaskBoardError("forbidden", `${card.code} is waiting for the person's confirmation: only they finish it`);
-          if (from !== "claimed") throw new TaskBoardError("invalid", `only a card in progress can be done (${card.code} is ${from})`);
-          if (!own) throw notOwner();
-          if (requiresReview(card)) throw new TaskBoardError("needs_review", `${card.code} needs the person's confirmation; move it to review`);
+          if (from === "review") {
+            if (!confirms(card, actor)) {
+              throw new TaskBoardError("forbidden", personConfirms(card) ? `${card.code} is waiting for the person's confirmation: only they finish it`
+                : `${card.code} is waiting for ${confirmerOf(card)}'s confirmation: only they finish it`);
+            }
+            if (reason) this.entry(card, "approve", actor, reason);
+          } else {
+            if (from !== "claimed") throw new TaskBoardError("invalid", `only a card in progress can be done (${card.code} is ${from})`);
+            if (!own) throw notOwner();
+            if (requiresReview(card) && !confirms(card, actor)) {
+              throw new TaskBoardError("needs_review", personConfirms(card) ? `${card.code} needs the person's confirmation; move it to review`
+                : `${card.code} needs ${confirmerOf(card)}'s confirmation; move it to review`);
+            }
+          }
         } else if (from === "review" && reason) {
           this.entry(card, "approve", actor, reason);
         }
@@ -1899,8 +1964,8 @@ export class TaskBoard {
 
   /**
    * A main task with sub tasks follows them: open until something starts, in progress while they run, and when they
-   * are all done, review (or done, for one that skips the person's confirmation). Only a person moves it from review
-   * to done. A blocked or cancelled main task is left alone, and so is one without sub tasks (it is moved by hand).
+   * are all done, review (or done, for one that needs no confirmation). Only whoever confirms it (#2434) moves it
+   * from review to done. A blocked or cancelled main task is left alone, and so is one without sub tasks (it is moved by hand).
    */
   /** What a main task's sub tasks make its status (its own, when it is blocked, cancelled or has none). */
   private derivedStatus(main: Card): CardStatus {
@@ -1927,7 +1992,7 @@ export class TaskBoard {
     main.updatedAt = now;
     this.save(main);
     this.event(actor, main, "moved", { from, to: next, auto: true });
-    if (next === "review") this.say("review_waiting", [main.code, main.title], `${main.code} "${main.title}": every sub task is done; it is waiting for the person's confirmation`);
+    if (next === "review") this.say("review_waiting", [main.code, main.title], `${main.code} "${main.title}": every sub task is done; it is waiting for ${confirmerOf(main)}'s confirmation`);
     else if (from === "done" || from === "review") this.say("back_to", [main.code, next], `${main.code} has unfinished sub tasks again; it is back to ${next}`);
     if (next === "done") this.noteUnblocked(main);
   }
@@ -2036,7 +2101,8 @@ export class TaskBoard {
           add(card, card.assignee, "cancelled", e.actor, why);
           continue;
         }
-        // Its dispatcher tells the person it waits for them (not the board).
+        // An agent's card waits for its instance dispatcher to confirm it (#2434: its own to confirm, nobody to ask). A
+        // person's card has no instance dispatcher, so no notice: the person has it in Needs you.
         if (d.to === "review" && !isPerson(e.actor) && requiresReview(card)) add(card, dispatcherOf(), "to_confirm", e.actor);
         if (d.auto) {
           if (d.to === "review" && card.kind === "main" && wrapUpGap(card)) add(card, card.assignee, "wrap_up", e.actor);
@@ -2044,8 +2110,8 @@ export class TaskBoard {
         }
         if (d.from === "open" && d.to === "claimed") add(card, card.assignee, "start", e.actor);
         else if (d.from === "blocked" && d.to === "claimed") add(card, card.assignee, "answered", e.actor, comments.get(card.uuid));
-        else if (d.from === "review" && (d.to === "claimed" || d.to === "open") && isPerson(e.actor)) add(card, card.assignee, "sent_back", e.actor, d.reason);
-        else if (d.from === "review" && d.to === "done" && isPerson(e.actor)) {
+        else if (d.from === "review" && (d.to === "claimed" || d.to === "open")) add(card, card.assignee, "sent_back", e.actor, d.reason);
+        else if (d.from === "review" && d.to === "done") {
           add(card, card.assignee, "approved", e.actor, d.reason);
           add(card, dispatcherOf(), "approved", e.actor, d.reason);
         }
@@ -2254,13 +2320,13 @@ export class TaskBoard {
   private insert(card: Card): void {
     this.db.prepare(
       `INSERT INTO tasks (id, code, kind, project_id, parent_id, title, description, status, priority, assignee, dispatcher, dispatcher_kind, created_by, depends_on, result,
-        scope, acceptance, context, state, blocked_reason, size, needs_review, version, sort, created_at, updated_at, started_at, submitted_at, done_at, seen_entry_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        scope, acceptance, context, state, blocked_reason, size, needs_review, version, sort, created_at, updated_at, started_at, submitted_at, done_at, seen_entry_id, on_board)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       card.uuid, card.code, card.kind, card.projectId, card.parent, card.title, card.goal === "" ? null : card.goal, card.status, card.priority,
       card.assignee, card.dispatcher?.name ?? null, card.dispatcher?.kind ?? null, card.createdBy, card.deps.length ? JSON.stringify(card.deps) : null, card.result === "" ? null : card.result,
       card.scope, JSON.stringify(card.acceptance), card.context, card.state, card.blockedReason, card.size, card.needsReview ? 1 : 0,
-      card.version, card.sort, card.createdAt, card.updatedAt, card.startedAt, card.submittedAt, card.doneAt, card.seenEntryId,
+      card.version, card.sort, card.createdAt, card.updatedAt, card.startedAt, card.submittedAt, card.doneAt, card.seenEntryId, card.onBoard ? 1 : 0,
     );
   }
 

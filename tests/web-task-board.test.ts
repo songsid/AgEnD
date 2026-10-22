@@ -396,14 +396,14 @@ describe("4a. a hidden instance's comments on a visible card, over the link", ()
 });
 
 describe("4d. Needs you over the public link leaves out the cards the board hides there (#2306 review)", () => {
-  // #2425: a blocked card an instance handed out is that instance's to decide, never the person's Needs you — so the
-  // hidden lead's card waits for the person's confirmation instead (review), which is still the person's.
-  it("a card a hidden instance handed out, waiting for the person: not in the link's poll (title and all), while the local page lists it; a visible one is in both", async () => {
+  // #2425/#2434: a card an instance handed out — blocked or in review — is that instance's own, never the person's Needs
+  // you; so the hidden instance's card that waits for the person is one the person handed to it.
+  it("a card a hidden instance holds, waiting for the person: not in the link's poll (title and all), while the local page lists it; a visible one is in both", async () => {
     const h = rig();
     h.fm.fleetConfig = { ...h.fm.fleetConfig, instances: { ...(h.fm.fleetConfig as any).instances, "dev-a": {}, secret_lead: { cross_instance_visibility: "hidden" } } } as never;
     const fleetConfig = h.fm.fleetConfig;
     const lead = { kind: "instance" as const, name: "secret_lead" };
-    h.db.board.createCards(lead, { cards: [{ title: "HIDDEN_CARD_TITLE", assignee: "dev-a" }] });                // M-1, by the hidden lead
+    h.db.board.createCards(ANN, { cards: [{ title: "HIDDEN_CARD_TITLE", assignee: "secret_lead" }] });          // M-1, the person's, to the hidden lead
     h.db.board.createCards(ANN, { cards: [{ title: "Open title", assignee: "dev-a" }] });                        // M-2
     h.db.board.createCards(lead, { cards: [{ title: "HIDDEN_BLOCKED_TITLE", assignee: "dev-a" }] });             // M-3, by the hidden lead
     h.db.board.moveCard(ANN, "M-1", "claimed"); h.db.board.moveCard(ANN, "M-1", "review");
@@ -411,6 +411,9 @@ describe("4d. Needs you over the public link leaves out the cards the board hide
     h.db.board.moveCard(ANN, "M-3", "claimed"); h.db.board.moveCard(ANN, "M-3", "blocked", { reason: "PRIVATE_BLOCKED_REASON" });
     const needs = deriveNeedsYou({ prompts: [], instances: [], deliveries: [], ownerOf: () => undefined, tasks: h.s.needsYouTasks() });
     expect(needs.map((i) => i.card?.code).sort()).toEqual(["M-1", "M-2"]);                                     // M-3: the lead's to decide
+    h.db.board.createCards(lead, { cards: [{ title: "Lead's own review", assignee: "dev-a", needsReview: true }] });   // M-4: the lead confirms it
+    h.db.board.moveCard(ANN, "M-4", "claimed"); h.db.board.moveCard(ANN, "M-4", "review");
+    expect((h.s.needsYouTasks() as Array<{ code: string }>).map((t) => t.code).sort()).toEqual(["M-1", "M-2"]);
     const link = (await viaLink(h.db, "GET", "/ui/poll", undefined, { fleetConfig, needs })).body;
     expect(link.needs.map((i: any) => i.card?.code)).toEqual(["M-2"]);
     expect(JSON.stringify(link)).not.toMatch(/HIDDEN_CARD_TITLE|HIDDEN_BLOCKED_TITLE|PRIVATE_BLOCKED_REASON/);
@@ -651,7 +654,7 @@ describe("#2352 a project's lead instance, and where a waiting card's buttons go
     expect(() => h.db.board.updateProject({ kind: "instance", name: "dev-a" }, id, { leadInstance: "lead" })).toThrow();
   });
 
-  it("a waiting card's lane: the instance that handed it out, else its project's lead (sub tasks by their main), else none", () => {
+  it("a waiting card's lane: its project's lead (sub tasks by their main), else none; an instance's handed-out card waits for no one there (#2434)", () => {
     const h = rig(); withLeads(h);
     const ann = { kind: "person" as const, name: "Ann" }, dev = { kind: "instance" as const, name: "dev-a" };
     const led = h.db.board.createProject(ann, { name: "Led", leadInstance: "lead" });
@@ -665,11 +668,11 @@ describe("#2352 a project's lead instance, and where a waiting card's buttons go
     h.db.board.createCards(ann, { project: noTopic.id, cards: [{ title: "No topic", assignee: "dev-a" }] });                    // M-4
     h.db.board.createCards(ann, { project: gone.id, cards: [{ title: "Gone lead", assignee: "dev-a" }] });                     // M-5
     h.db.board.createCards({ kind: "instance", name: "notopic" }, { project: led.id, cards: [{ title: "Dispatcher w/o topic", assignee: "dev-a" }] }); // M-6
-    // #2425: a blocked card waits for the person only when the person handed it out (S-1, by its main's Ann); the main
-    // cards wait for the person's confirmation (review), whoever handed them out — each in its lane.
+    // #2425/#2434: a card waits for the person only when the person handed it out (S-1, by its main's Ann; M-3–M-5); the
+    // ones an instance handed out (M-2, M-6) are that instance's own to confirm, in no Needs you and no lane.
     h.db.board.moveCard(dev, "S-1", "claimed"); h.db.board.moveCard(dev, "S-1", "blocked", { reason: "?" });
     for (const code of ["M-2", "M-3", "M-4", "M-5", "M-6"]) { h.db.board.moveCard(dev, code, "claimed"); h.db.board.moveCard(ann, code, "review"); }
-    expect(lanes(h)).toEqual({ "S-1": "lead", "M-2": "disp", "M-3": null, "M-4": null, "M-5": null, "M-6": null });
+    expect(lanes(h)).toEqual({ "S-1": "lead", "M-3": null, "M-4": null, "M-5": null });
     // The world goes: no lane can be used there.
     h.s.worlds.delete("owner");
     expect(Object.values(lanes(h)).every((l) => l === null)).toBe(true);
@@ -850,15 +853,21 @@ describe("#2355 review: a click or a reply is judged by where the card routes NO
     expect(r.status(r.review.code)).toBe("done");
   });
 
-  it("with needs_you.live_message off, the dispatcher's wake keeps the ordinary words (no buttons exist)", () => {
+  it("with needs_you.live_message off, the lane's wake keeps the ordinary words (no buttons exist)", () => {
     const h = rig();
     (h.fm.fleetConfig as any).instances = { ...(h.fm.fleetConfig as any).instances, lead: { working_directory: h.dir, channel_id: "owner", topic_id: "T5" } };
     h.fm.routing.rebuild(h.fm.fleetConfig!);
-    const card = h.db.board.createCards({ kind: "instance", name: "lead" }, { cards: [{ title: "Ties", assignee: "dev-a" }] }).cards[0]!;
-    const here = () => h.s.taskBoardWaker ? (h.s.taskBoardWaker as any).deps.buttonsHere("lead", card.uuid) : undefined;
+    const ann = { kind: "person" as const, name: "Ann" }, dev = { kind: "instance" as const, name: "dev-a" };
+    const led = h.db.board.createProject(ann, { name: "Led", leadInstance: "lead" });
+    const card = h.db.board.createCards(ann, { project: led.id, cards: [{ title: "Ties", assignee: "dev-a" }] }).cards[0]!;
+    h.db.board.moveCard(dev, card.code, "claimed"); h.db.board.moveCard(ann, card.code, "review");
+    // #2434: the lead's own handed-out card waits for no one: no buttons, in its channel or anywhere (before: "here").
+    const own = h.db.board.createCards({ kind: "instance", name: "lead" }, { project: led.id, cards: [{ title: "Lead's", assignee: "dev-a", needsReview: true }] }).cards[0]!;
+    h.db.board.moveCard(dev, own.code, "claimed"); h.db.board.moveCard(ann, own.code, "review");
+    const here = (uuid: string) => h.s.taskBoardWaker ? (h.s.taskBoardWaker as any).deps.buttonsHere("lead", uuid) : undefined;
     h.s.attachTaskBoard?.(h.db);
-    expect(here()).toBe(true);
+    expect([here(card.uuid), here(own.uuid)]).toEqual([true, false]);
     (h.fm.fleetConfig as any).needs_you = { live_message: false };
-    expect(here()).toBe(false);
+    expect(here(card.uuid)).toBe(false);
   });
 });

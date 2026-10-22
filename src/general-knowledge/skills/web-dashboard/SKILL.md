@@ -219,13 +219,14 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
   **Send back** finished work, **Answer** a blocked card); **No project** holds `task`-tool tasks. A project is a board
   of main tasks (M-n) by status — To do, In progress, Blocked, Waiting for you, Done — with drag to move, an assignee
   filter and each main task's sub tasks (S-n). A card opens in a dialog: every field editable, its sub tasks, comments,
-  progress log, history. **Search cards** in the header. Only a signed-in person confirms work in review (an
-  instance's `done` on such a card is review). No delete: cancel. Alt+arrows on a card's title move it (no drag
-  needed; the card's Position row on a phone). A main task's tile shows the sub task at work and who is on it; a card
-  waiting for review that is not wrapped up says **To fill in** and Confirm asks first. A card's **Dispatched by** row:
-  who handed it out (a blocked question goes to them first). Read-only over the public link. Cards waiting for
-  confirmation and blocked cards are also **Needs you** items: on the web they open the card; in each bot's live
-  message in General they have **Confirm** / **Send back** / **Answer** (the words are a reply to the bot's prompt).
+  progress log, history. **Search cards** in the header. Only a signed-in person confirms the work they handed out
+  (an instance's `done` on such a card is review); a card an agent handed out, that agent confirms (#2434). No
+  delete: cancel. Alt+arrows on a card's title move it (no drag needed; the card's Position row on a phone). A main
+  task's tile shows the sub task at work and who is on it; a card waiting for review that is not wrapped up says
+  **To fill in** and Confirm asks first. A card's **Dispatched by** row: who handed it out (a blocked question goes
+  to them first). Read-only over the public link. The cards you handed out that wait for your confirmation, or are
+  blocked, are also **Needs you** items: on the web they open the card; in each bot's live message in General they
+  have **Confirm** / **Send back** / **Answer** (the words are a reply to the bot's prompt).
 - **Schedules** — every schedule (silent ones included): when it runs in words, "next …", the target. **New
   schedule** (Repeat with a cron expression, or Once at a date and time; message, target, label, timezone),
   **Edit** (with an **Enabled** box — that is how you pause one), **Delete**. There is no "run now", and silent can't

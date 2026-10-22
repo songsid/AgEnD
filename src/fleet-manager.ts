@@ -13931,9 +13931,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * #2352: the instance whose own channel lists a waiting card — the instance that handed it out, else its project's
-   * lead — when that channel can be used now (a fleet instance of a live world, with a topic or room). undefined: its
-   * assignee's world's General, as before.
+   * #2352: the instance whose own channel lists a waiting card — its project's lead — when that channel can be used now
+   * (a fleet instance of a live world, with a topic or room). undefined: its assignee's world's General, as before.
+   * #2434: only a card the person handed out waits for them, so the instance that handed one out is never its lane.
    */
   private needsYouLane(card: import("./scheduler/task-board.js").Card, leads: ReadonlyMap<number, string | null>): string | undefined {
     const usable = (name: string | null | undefined): name is string => {
@@ -13941,8 +13941,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const world = this.getInstanceAdapterId(name);
       return world !== undefined && this.worlds.has(world) && this.instanceChannelTarget(name) !== null;
     };
-    const dispatcher = card.dispatcher?.kind === "instance" && card.dispatcher.name !== card.assignee ? card.dispatcher.name : null;
-    if (dispatcher) return usable(dispatcher) ? dispatcher : undefined;
     const lead = card.projectId != null ? leads.get(card.projectId) : null;
     return usable(lead) ? lead : undefined;
   }
@@ -16940,7 +16938,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // #2355 review: no live message, no buttons — the old words then.
         if (this.fleetConfig?.needs_you?.live_message === false) return false;
         const card = db.board.findCard(uuid);
-        if (!card) return false;
+        // #2434: only while it waits for the person — a card that does not is in no Needs you, so no buttons anywhere.
+        if (!card || !waitsForPerson(card)) return false;
         const leads = new Map(db.board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
         return this.needsYouLane(card, leads) === instance;
       },
