@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { pendingPlan, refreshLaunchdWithoutActivating } from "../src/service-plan.js";
+import { consumeCarriedOutPlan, consumeUnchangedPlan, pendingPlan, refreshLaunchdWithoutActivating } from "../src/service-plan.js";
 import type { CommandResult } from "../src/update-install.js";
 
 const HOME = "/Users/u/.agend";
@@ -112,6 +112,61 @@ describe("pendingPlan (#2375)", () => {
     const source = readFileSync(join(process.cwd(), "src", "cli.ts"), "utf8");
     expect(source).toContain("const plan = opts.force ? null : pendingPlan(DATA_DIR, target, deps);");
     expect(source).not.toContain("an interrupted update planned; restarting it as it is");
-    expect(source).not.toMatch(/planCarriedOut\(/);
+    expect(source).toContain("consumeCarriedOutPlan(DATA_DIR, target, deps)");
+    expect(source).toContain("consumeUnchangedPlan(DATA_DIR, published, deps)");
+  });
+});
+
+describe("consumeCarriedOutPlan (#2439)", () => {
+  it("a carried-out plan is removed after the job already runs (the leftover a normal launchd update left)", () => {
+    const w = planned();
+    w.load(printed(NEW, 41363));
+    expect(pendingPlan(HOME, TARGET, w.restartDeps)).toBeNull();
+    expect(w.files[PLAN]).toBeDefined();
+    consumeCarriedOutPlan(HOME, TARGET, w.restartDeps);
+    expect(w.files[PLAN]).toBeUndefined();
+    expect(w.removed).toEqual([PLAN]);
+  });
+
+  it("a newer plan published while launchd is asked is left (Prism, #2376)", () => {
+    const w = planned();
+    w.load(printed(NEW, 41363));
+    const OTHER = "/Users/u/other-prefix/lib/node_modules/@songsid/agend";
+    const RT2 = `${OTHER}/node_modules/@songsid/agend-node-darwin-arm64/bin/node`, ENTRY2 = `${OTHER}/dist/cli.js`;
+    let published = "";
+    const interleaved = {
+      ...w.restartDeps,
+      run: (c: string, a: string[]) => {
+        if (!published) {
+          const out = refreshLaunchdWithoutActivating({ label: "com.agend.fleet", target: TARGET, plistPath: PLIST, newPlist: plist([RT2, ENTRY2, "fleet", "start"]), expected: { node: RT2, entry: ENTRY2 }, pkgDir: OTHER, agendHome: HOME },
+            { ...w.deps, realpath: (p: string) => ([RT, ENTRY, RT2, ENTRY2].includes(p) ? p : null) });
+          expect(out).toMatchObject({ ok: true, planned: true });
+          published = w.files[PLAN]!;
+        }
+        return w.restartDeps.run(c, a);
+      },
+    };
+    consumeCarriedOutPlan(HOME, TARGET, interleaved);
+    expect(w.files[PLAN]).toBe(published);
+    expect(pendingPlan(HOME, TARGET, w.restartDeps)).toMatchObject({ plistPath: PLIST });
+  });
+
+  it("a plan still to carry out is not removed", () => {
+    const w = planned();
+    const record = w.files[PLAN];
+    consumeCarriedOutPlan(HOME, TARGET, w.restartDeps);
+    expect(w.files[PLAN]).toBe(record);
+    expect(w.removed).toEqual([]);
+  });
+
+  it("consumeUnchangedPlan leaves a replacement published after the snapshot", () => {
+    const w = planned();
+    const snapshot = w.files[PLAN]!;
+    w.files[PLAN] = snapshot.replace(PKG, "/other");
+    consumeUnchangedPlan(HOME, snapshot, w.restartDeps);
+    expect(w.files[PLAN]).toBe(snapshot.replace(PKG, "/other"));
+    expect(w.removed).toEqual([]);
+    consumeUnchangedPlan(HOME, w.files[PLAN]!, w.restartDeps);
+    expect(w.files[PLAN]).toBeUndefined();
   });
 });

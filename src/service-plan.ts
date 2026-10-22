@@ -47,14 +47,17 @@ export const LAUNCHD_NOT_LOADED = [113, 125];
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 const completed = (r: CommandResult) => r.status !== null && r.signal === null;
 
-export function readPlan(agendHome: string, deps: Pick<PlanDeps, "readFile">): ServicePlan | null {
-  const text = deps.readFile(planPath(agendHome));
+function parsePlan(text: string | null): ServicePlan | null {
   if (text === null) return null;
   try {
     const p = JSON.parse(text) as ServicePlan;
     return p && p.kind === "launchd-activation" && typeof p.plistPath === "string" && typeof p.sha256 === "string"
       && p.preimage && typeof p.preimage.plist === "string" && p.preimage.tuple && typeof p.pkgDir === "string" ? p : null;
   } catch { return null; }
+}
+
+export function readPlan(agendHome: string, deps: Pick<PlanDeps, "readFile">): ServicePlan | null {
+  return parsePlan(deps.readFile(planPath(agendHome)));
 }
 
 export type RefreshOutcome =
@@ -131,8 +134,8 @@ export function admitPlan(plan: ServicePlan, o: { target: string; expected: Expe
  * proven one and launchd runs its job. `agend restart` then restarts that job as an unchanged one (path 1, whose
  * guard proves it again); a plan that changes nothing about the job comes to the same restart.
  *
- * Read-only on purpose: the record stays where it is, and the next refresh revokes it as it revokes every plan. A
- * consumer that deleted or moved it would race with a refresh publishing or revoking at the same path.
+ * Read-only on purpose: a consumer that deleted after `launchctl print` would race with a refresh publishing at the
+ * same path (Prism, #2376). Removal is compare-and-delete of a snapshot taken before that print (`consumeUnchangedPlan`).
  */
 export function planCarriedOut(plan: ServicePlan, target: string, deps: Pick<PlanDeps, "readFile" | "run">): boolean {
   const onDisk = deps.readFile(plan.plistPath);
@@ -149,11 +152,32 @@ export function planCarriedOut(plan: ServicePlan, target: string, deps: Pick<Pla
  * The plan `agend restart` still has to carry out, or null (#2375). A plan whose job launchd already runs — #1871's
  * interrupted update after `agend start`, or an update whose planned plist is the job already loaded — is done:
  * nothing to activate, and nothing to say about it (every restart used to print a note). Read-only like
- * planCarriedOut: the record stays for the next refresh to revoke. Removing it here could remove a newer plan another
- * refresh published while launchd was being asked (Prism, #2376 R1).
+ * planCarriedOut: removing it here could remove a newer plan another refresh published while launchd was being asked
+ * (Prism, #2376 R1). The publication path consumes the leftover with `consumeCarriedOutPlan`.
  */
 export function pendingPlan(agendHome: string, target: string, deps: Pick<PlanDeps, "readFile" | "run">): ServicePlan | null {
   const recorded = readPlan(agendHome, deps);
   if (!recorded) return null;
   return planCarriedOut(recorded, target, deps) ? null : recorded;
+}
+
+/**
+ * Delete the plan file only if it is still `snapshot` (#2439). After slow work (`launchctl print`, bootout) a refresh
+ * may have published a newer plan; those bytes must stay.
+ */
+export function consumeUnchangedPlan(agendHome: string, snapshot: string | null, deps: Pick<PlanDeps, "readFile" | "removeFile">): void {
+  if (snapshot === null) return;
+  const path = planPath(agendHome);
+  if (deps.readFile(path) === snapshot) deps.removeFile(path);
+}
+
+/**
+ * After a plan is applied (or already carried out): snapshot, confirm launchd runs it, then compare-and-delete.
+ * A newer plan published during the print is a different snapshot and is left (#2376).
+ */
+export function consumeCarriedOutPlan(agendHome: string, target: string, deps: Pick<PlanDeps, "readFile" | "run" | "removeFile">): void {
+  const snapshot = deps.readFile(planPath(agendHome));
+  const plan = parsePlan(snapshot);
+  if (!plan || !planCarriedOut(plan, target, deps)) return;
+  consumeUnchangedPlan(agendHome, snapshot, deps);
 }

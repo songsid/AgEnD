@@ -1432,11 +1432,12 @@ program
           console.log("  Note: the old system install was kept, since the new one is not running yet.");
         }
       }
-      // The refresh above (`install --no-activate`) records a launchd plan; this activation consumed it, whatever it
-      // came to — never leave one for a later `agend restart` to act on.
+      // The refresh above (`install --no-activate`) records a launchd plan; this activation consumed it. Compare-and-
+      // delete so a newer plan published during the slow bootout is left (#2376 / #2439).
       if (manager.kind === "launchd") {
-        const { planPath } = await import("./service-plan.js");
-        planDeps().removeFile(planPath(DATA_DIR));
+        const { consumeCarriedOutPlan } = await import("./service-plan.js");
+        const uid = process.getuid?.() ?? 501;
+        consumeCarriedOutPlan(DATA_DIR, `gui/${uid}/com.agend.fleet`, planDeps());
       }
       // #1853: in a WSL terminal without the Windows desktop shortcuts, say once how to make them (never makes them).
       if (outcome.ok) await import("./windows-shortcuts.js").then(m => m.printUpdateShortcutsHint(DATA_DIR)).catch(() => { /* a hint never fails an update */ });
@@ -2230,9 +2231,10 @@ program
       if (printed.status === 0) {
         const plistPath = getServicePath() ?? join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
         // Path 2 (#1450 C6): a proven new plist waits on disk with its plan — exactly one bootout + bootstrap.
-        const { pendingPlan, admitPlan, planPath } = await import("./service-plan.js");
+        const { pendingPlan, admitPlan, planPath, consumeUnchangedPlan, consumeCarriedOutPlan } = await import("./service-plan.js");
         // #1871: a plan whose job launchd already runs (an interrupted update, then `agend start`) is done: restart that
         // job as an unchanged one (path 1) instead of refusing it for its new pid. #2375: quietly (no note on every restart).
+        const published = deps.readFile(planPath(DATA_DIR));
         const plan = opts.force ? null : pendingPlan(DATA_DIR, target, deps);
         if (plan && expectation.ok) {
           const pkgDir = dirname(dirname(expectation.expected.entry));
@@ -2254,13 +2256,15 @@ program
               log: message => console.log(message),
               launchdPreimage: plan.preimage.plist,
             });
-          deps.removeFile(planPath(DATA_DIR));
+          consumeUnchangedPlan(DATA_DIR, published, deps);
           if (outcome.ok) { console.log("Service restarted (launchd loaded the planned job)."); return; }
           console.error(outcome.message);
           process.exitCode = 1;
           return;
         }
-        // Path 1: an unchanged loaded job.
+        // Path 1: an unchanged loaded job, or a leftover carried-out plan. Compare-and-delete that leftover (#2439);
+        // pendingPlan itself stays read-only (#2376).
+        consumeCarriedOutPlan(DATA_DIR, target, deps);
         if (expectation.ok && refuses(guard.guardLaunchd(captureRun, target, plistPath, deps.readFile, expectation.expected, guardDeps))) return;
         if (run(`launchctl kickstart -k ${target}`)) { console.log("Service restarted."); return; }
         console.error(`  ✗ launchctl kickstart -k ${target} failed.`);
