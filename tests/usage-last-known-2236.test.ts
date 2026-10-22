@@ -178,6 +178,7 @@ describe("kept across a restart", () => {
         ["a time in the future", { at: t0 + 8 * 24 * HOUR, provider: { ...good(t0), id: "codex" } }],
         ["a plan of the wrong type", { at: t0, provider: { ...good(t0), id: "codex", plan: 5 } }],
         ["a pool of the wrong shape (#2240)", { at: t0, provider: { ...good(t0), id: "codex", metrics: [{ type: "percent", label: "S", used: 1, pool: { label: 5 } }] } }],
+        ["a pool whose words are junk (#2460 review)", { at: t0, provider: { ...good(t0), id: "codex", metrics: [{ type: "percent", label: "S", used: 1, pool: { label: "Gemini", labelI18n: { key: 5 } } }] } }],
       ] as const) {
         writeFileSync(file, JSON.stringify({ v: 1, rows: { claude: valid, codex: bad } }));
         setUsageFetcherForTests(async () => ({ fetchedAt: iso(Date.now()), providers: [expired, { ...expired, id: "codex", name: "Codex" }] }));

@@ -43,10 +43,11 @@ const AGY = () => ({ id: "antigravity", name: "Antigravity", status: "ok", plan:
 const CLAUDE = { id: "claude", name: "Claude", status: "ok", plan: "Max (20x)", metrics: [
   { type: "percent", label: "Session", labelI18n: { key: "usage.metric.session" }, used: 40, windowMs: 5 * H, resetsAt: new Date(Date.now() + 2 * H).toISOString() },
   { type: "percent", label: "Weekly", labelI18n: { key: "usage.metric.weekly" }, used: 70, windowMs: 168 * H, resetsAt: new Date(Date.now() + 90 * H).toISOString() }] };
-async function mount(compact: boolean, lang: "en" | "zh-TW" = "en") {
+async function mount(compact: boolean, lang: "en" | "zh-TW" = "en") { await mountWith([AGY(), CLAUDE], compact, lang); }
+async function mountWith(providers: unknown[], compact: boolean, lang: "en" | "zh-TW" = "en") {
   pg = page({ storage: { agend_tour_done: "1" } });
   i18n.setLang(lang);
-  (globalThis as any).fetch = async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ fetchedAt: new Date().toISOString(), providers: [AGY(), CLAUDE] }) });
+  (globalThis as any).fetch = async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ fetchedAt: new Date().toISOString(), providers }) });
   usage.usageViewStore.set({ compact });
   await pg.mount(htm.html`<div><${usage.UsageBody} owner="agy-argon-views" /></div>`);
   await settle(3);
@@ -66,6 +67,21 @@ describe("both views show Gemini 4 Argon", () => {
     expect(bars(agy)).toEqual(["Gemini 21%", "Claude & others 2%", "Gemini 4 Argon 0%"]);   // each pool's tighter window
     expect(agy.querySelectorAll(".u-cm")[0].getAttribute("title")).toBe("Gemini (session): 0% · Gemini (weekly): 21%");
     expect(bars(claude)).toEqual(["5h 40%", "7d 70%"]);
+  });
+  // #2460 review (Fable): a pooled view only when every percent window has a pool, and more than one pool.
+  it("compact: one window without a pool (mixed metrics) falls back to 5h / 7d — never half pooled", async () => {
+    const mixed = AGY();
+    delete mixed.metrics[2].pool;                                         // Claude & others (session): no pool
+    await mountWith([mixed], true);
+    const row = pg!.root.querySelector(".u-crow");
+    expect([row.getAttribute("class").includes("is-pooled"), row.querySelectorAll(".u-cm-tag").map(text)]).toEqual([false, ["5h", "7d"]]);
+  });
+  it("compact: an agy account with one pool (Gemini only) keeps 5h / 7d, not a line named after its pool", async () => {
+    const gemini = AGY();
+    gemini.metrics = gemini.metrics.filter((m: any) => m.pool.label === "Gemini");
+    await mountWith([gemini], true);
+    const row = pg!.root.querySelector(".u-crow");
+    expect([row.getAttribute("class").includes("is-pooled"), row.querySelectorAll(".u-cm-tag").map(text)]).toEqual([false, ["5h", "7d"]]);
   });
   it("compact in zh-TW: the pools' own words", async () => {
     await mount(true, "zh-TW");
