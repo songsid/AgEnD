@@ -87,8 +87,9 @@ describe("what a login's line shows", () => {
     expect([usage.windowTag({ windowMs: 5 * H }), usage.windowTag({ windowMs: 168 * H }), usage.windowTag({ label: "Extra" })]).toEqual(["5h", "7d", "Extra"]);
     const now = Date.now();
     expect(usage.soonestReset([{ resetsAt: new Date(now - H).toISOString() }, { resetsAt: new Date(now + 3 * H + 60_000).toISOString() }, { resetsAt: new Date(now + 90 * H).toISOString() }], now))
-      .toEqual({ short: "↻ 3h 1m", full: expect.stringMatching(/^resets in 3h [01]m$/) });
-    expect(usage.soonestReset([{ resetsAt: new Date(now + 90 * H).toISOString() }, { resetsAt: new Date(now + 2 * H).toISOString() }], now)?.short).toBe("↻ 2h 0m");
+      .toEqual({ short: "↻ 3h", full: expect.stringMatching(/^resets in 3h [01]m$/) });   // one unit in the column, exact in the tooltip
+    expect(usage.soonestReset([{ resetsAt: new Date(now + 90 * H).toISOString() }, { resetsAt: new Date(now + 2 * H).toISOString() }], now)?.short).toBe("↻ 2h");
+    expect([45 * 60_000, 50 * H, 30_000].map((ms) => usage.soonestReset([{ resetsAt: new Date(now + ms).toISOString() }], now)?.short)).toEqual(["↻ 45m", "↻ 2d", "↻ 1m"]);
     expect(usage.soonestReset([{}], now)).toBeNull();
   });
 
@@ -124,7 +125,7 @@ describe("the switch, the groups and a line opened", () => {
     expect(lines.map((r: any) => text(r.querySelector(".u-crow-profile")))).toEqual(["", "work", "research", "ops"]);
     expect(lines.map(cells)).toEqual([["42%", "75%~"], ["93%!", "20%"], ["5%", "30%"], ["71%~", "91%!"]]);
     expect(lines[0].querySelector(".u-crow-reset").getAttribute("title")).toMatch(/^resets in (?:2h 5\d|3h 0)m$/);
-    expect(text(lines[0].querySelector(".u-crow-reset"))).toMatch(/^↻ (?:2h 5\d|3h 0)m \(resets in (?:2h 5\d|3h 0)m\)$/);   // and the words for a screen reader
+    expect(text(lines[0].querySelector(".u-crow-reset"))).toMatch(/^↻ [23]h \(resets in (?:2h 5\d|3h 0)m\)$/);   // and the words for a screen reader
     expect(text(lines[0])).not.toMatch(/coupons|Credits/);
     const codex = cx.querySelectorAll(".u-crow")[0];
     expect(cells(codex)).toEqual(["—", "10%"]);                                                     // a week only: a dash under 5h

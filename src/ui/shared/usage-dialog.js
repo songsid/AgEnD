@@ -172,10 +172,17 @@ export function windowTag(m) {
   const h = ms / 3_600_000;
   return h < 48 ? tn("usageWindowHours", { n: Math.round(h) }) : tn("usageWindowDays", { n: Math.round(h / 24) });
 }
-/** The soonest reset still ahead among `metrics`: { short: "↻ 2h 5m", full: "resets in 2h 5m" }, or null when none is known. */
+/** A time ahead in one unit, for the narrow column: "45m", "3h", "4d" (rounded down past an hour; the tooltip is exact). */
+function coarseDuration(ms) {
+  const min = Math.max(1, Math.ceil(ms / 60_000));
+  if (min < 60) return tn("usageWindowMinutes", { n: min });
+  const h = Math.floor(min / 60);
+  return h < 48 ? tn("usageWindowHours", { n: h }) : tn("usageWindowDays", { n: Math.floor(h / 24) });
+}
+/** The soonest reset still ahead among `metrics`: { short: "↻ 2h", full: "resets in 2h 5m" }, or null when none is known. */
 export function soonestReset(metrics, now = Date.now()) {
   const at = metrics.map((m) => new Date(m.resetsAt || "").getTime()).filter((t) => Number.isFinite(t) && t > now).sort((a, b) => a - b)[0];
-  return at === undefined ? null : { short: `↻ ${usageDuration(at - now)}`, full: resetText(new Date(at).toISOString()) };
+  return at === undefined ? null : { short: `↻ ${coarseDuration(at - now)}`, full: resetText(new Date(at).toISOString()) };
 }
 /**
  * The logins grouped by provider for the compact view (nine logins, five of them Claude's: the provider once, then a

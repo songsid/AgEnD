@@ -87,6 +87,7 @@ const measure = (p: FreshPage, c: MatrixCase) => p.page.evaluate(`(() => {
     lines: g.querySelectorAll(".u-crow").length }));
   const rows = [...root.querySelectorAll(".u-crow")].map((r) => ({
     group: r.closest(".u-cgroup")?.querySelector(".u-cg-name strong")?.textContent, profile: r.querySelector(".u-crow-profile")?.textContent ?? "",
+    profileW: Math.round(r.querySelector(".u-crow-profile")?.getBoundingClientRect().width ?? 0), profileClipped: clipped(r.querySelector(".u-crow-profile")),
     pcts: [...r.querySelectorAll(".u-cm")].map((x) => x.textContent.replace(/\\s+/g, "") + (x.querySelector(".crit") ? "!" : x.querySelector(".warn") ? "~" : "")),
     mark: r.querySelector(".u-crow-mark [title]")?.getAttribute("title") ?? null, h: Math.round(r.getBoundingClientRect().height),
     out: Math.max(0, ...[...r.querySelectorAll("*")].map((el) => Math.round(el.getBoundingClientRect().right - r.getBoundingClientRect().right))),
@@ -123,6 +124,8 @@ for (const c of CASES) {
   ck.allFit = compact.fits;
   ck.dense = compact.rows.every((r: any) => r.h <= 40);
   ck.namesWhole = compact.groups.every((g: any) => g.clipped === false);
+  // A profile names its login: it keeps room to be read (whole, or at least 56 px of it before its ellipsis).
+  ck.profilesReadable = compact.rows.every((r: any) => !r.profile || r.profileClipped === false || r.profileW >= 56);
   ck.nothingOut = compact.rows.every((r: any) => r.out <= 0);
   const by = (profile: string) => compact.rows.find((r: any) => r.profile === profile);
   ck.colours = compact.rows[0]?.pcts.join(",") === "42%,75%~" && by("research-team")?.pcts.join(",") === "93%!,20%" && by("release-notes-and-changelog-drafting")?.pcts.join(",") === "71%~,91%!";
@@ -162,7 +165,7 @@ for (const c of CASES) {
   ck.demoNamesOnly = real.length === 0;
   ck.noErrors = p.errors.slice(navEnd).length === 0;
   ck.noCsp = (await csp(p.page)).length === 0;
-  record(name, ck, { full: { scrollH: full.scrollH, clientH: full.clientH }, compact: { scrollH: compact.scrollH, clientH: compact.clientH, heights: compact.rows.map((r: any) => r.h) },
+  record(name, ck, { full: { scrollH: full.scrollH, clientH: full.clientH }, compact: { scrollH: compact.scrollH, clientH: compact.clientH, heights: compact.rows.map((r: any) => r.h), profileW: compact.rows.map((r: any) => r.profileW) },
     rows: compact.rows.map((r: any) => `${r.group}/${r.profile}: ${r.pcts.join(" ")}${r.mark ? " [mark]" : ""}`), errors: p.errors.slice(navEnd), real: real.slice(0, 5) });
   await p.ctx.close();
   // The next case starts from defaults: switching back to the full cards cleared the value (the default is not stored).
