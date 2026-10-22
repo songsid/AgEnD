@@ -161,7 +161,10 @@ export interface InstanceConfig {
    * default UI; "v3" opts into the experimental next-generation agent.
    */
   kiro_ui?: "legacy" | "tui" | "v3";
-  /** MCP tool profile: "full" (20 tools), "standard" (8), "minimal" (3). Default: "full" */
+  /**
+   * MCP tool profile (src/tool-permissions.ts): "worker", "coordinator", "standard", "minimal" or "full". Unset: the
+   * fleet default's, else "general" for a General, else "worker".
+   */
   tool_set?: string;
   /**
    * Tool-progress detail shown in the channel processing bubble.

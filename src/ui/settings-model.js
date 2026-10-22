@@ -9,7 +9,22 @@ export const CH_TYPES = ["discord", "telegram"];
 export const LOCALES = [["en", "English"], ["zh-TW", "繁體中文 (zh-TW)"]];
 export const VISIBILITY_MODES = ["full", "summary", "hidden"];
 export const LOG_LEVELS = ["trace", "debug", "info", "warn", "error"];
-export const TOOL_SETS = ["full", "standard", "minimal"];
+/**
+ * The tool profiles a person may choose (src/tool-permissions.ts; the validator's list). `general` is not one: AgEnD
+ * gives it to a General that sets none.
+ */
+export const TOOL_SETS = ["worker", "coordinator", "standard", "minimal", "full"];
+/**
+ * The profile an agent runs under while it sets none (resolveToolSet, on the config as loaded: the defaults merged
+ * under the agent's own): the fleet default's, else `general` for a General — its own `general_topic`, else the
+ * default's (#2407 review: `defaults.general_topic: true` makes every agent without its own a General), or the instance
+ * named general — else `worker`; never `full`, which the page used to show.
+ */
+export function toolSetDefault(defaults, inst, name = "") {
+  if (TOOL_SETS.includes(defaults && defaults.tool_set)) return defaults.tool_set;
+  const general = hasOwn(inst, "general_topic") ? inst.general_topic === true : !!defaults && defaults.general_topic === true;
+  return general || name === "general" ? "general" : "worker";
+}
 export const TOOL_PROGRESS = ["off", "standard", "verbose"];
 export const AGENT_MODES = ["mcp", "cli"];
 export const ACCESS_MODES = ["locked", "open", "pairing"];
@@ -166,7 +181,7 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
 }
 
 /** The agent form's starting values (an override shows the inherited value while "inherit" is on). */
-export function agentForm(inst, defaults) {
+export function agentForm(inst, defaults, name = "") {
   const hang = inst.hang_detector || {};
   const inherit = (key) => !hasOwn(inst, key);
   return {
@@ -177,7 +192,9 @@ export function agentForm(inst, defaults) {
     auto_pause_after: String(inst.auto_pause_after ?? defaults.auto_pause_after ?? 0),
     hang: String(hang.timeout_minutes ?? (defaults.hang_detector && defaults.hang_detector.timeout_minutes) ?? HANG_TIMEOUT_DEFAULT_MINUTES),
     agent_mode: inst.agent_mode || defaults.agent_mode || "mcp",
-    tool_set: inst.tool_set || defaults.tool_set || "full",
+    // What the picker offers when the agent sets its own: a profile a person may choose (a General's inherited
+    // `general` is shown while inheriting, but not offered to write back).
+    tool_set: TOOL_SETS.includes(inst.tool_set) ? inst.tool_set : TOOL_SETS.includes(toolSetDefault(defaults, inst, name)) ? toolSetDefault(defaults, inst, name) : "worker",
     tool_progress: inst.tool_progress ?? defaults.tool_progress ?? "off",
     // #1302: a value the fleet does not know (a typo) is read as unset — the picker shows "full", as the old page did,
     // and the baseline is that same "full", so an unrelated edit never writes the typo back (the server refuses it).

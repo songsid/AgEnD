@@ -28,7 +28,7 @@ import {
   ACCESS_MODES, AGENT_MODES, DEFAULT_SCHEMA, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS, VISIBILITY_MODES, batchImpact,
   changedFields, channelId, channelsOf, chLabel, connectionState, effectiveSummary, fleetModel, fromYaml, fullModelRequests, groupAgents,
   hasOwn, impactOf, localeOptions, defaultsImpact, requestImpact, nonNegative, positive, replyGuardSupported, shortName, STATUS_ORDER, toYaml,
-  visibilityDefault, worstImpact,
+  toolSetDefault, visibilityDefault, worstImpact,
 } from "./settings-model.js";
 import {
   AgentDialog, BackendSelect, BotDialog, ChipList, ClassicDialog, Drawer, Feedback, Impact, Label, ModelSelect, NewBotDialog, Override,
@@ -676,7 +676,7 @@ function General({ ctx }) {
   const original = useMemo(() => ({ c: structuredClone(c) }), []);
   const [f, setF] = useState(() => ({
     backend: d.backend || "claude-code", model: d.model || "", locale: d.locale || "", auto: String(d.auto_pause_after ?? 0),
-    agent_mode: d.agent_mode || "mcp", tool_set: d.tool_set || "full", tool_progress: d.tool_progress ?? "off",
+    agent_mode: d.agent_mode || "mcp", tool_set: TOOL_SETS.includes(d.tool_set) ? d.tool_set : "", tool_progress: d.tool_progress ?? "off",
     visibility: visibilityDefault(d), reply: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
     hangOn: hang.enabled !== false, hang: String(hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES),
     concurrency: String(startup.concurrency ?? 10), stagger: String(startup.stagger_delay_ms ?? 500),
@@ -699,13 +699,13 @@ function General({ ctx }) {
     if (!ready) return;
     const defaultsPatch = changedFields({
       backend: f.backend, model: f.model || undefined, locale: f.locale || null, auto_pause_after: num(f.auto),
-      agent_mode: f.agent_mode, tool_set: f.tool_set, tool_progress: f.tool_progress, cross_instance_visibility: f.visibility,
+      agent_mode: f.agent_mode, tool_set: f.tool_set || null, tool_progress: f.tool_progress, cross_instance_visibility: f.visibility,
       reply_completion_guard: f.reply, log_level: f.log_level,
       hang_detector: { enabled: f.hangOn, timeout_minutes: num(f.hang) },
       startup: { concurrency: num(f.concurrency), stagger_delay_ms: num(f.stagger) },
     }, {
       backend: d.backend || "claude-code", model: d.model || undefined, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
-      agent_mode: d.agent_mode || "mcp", tool_set: d.tool_set || "full", tool_progress: d.tool_progress ?? "off",
+      agent_mode: d.agent_mode || "mcp", tool_set: TOOL_SETS.includes(d.tool_set) ? d.tool_set : null, tool_progress: d.tool_progress ?? "off",
       cross_instance_visibility: visibilityDefault(d), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
       hang_detector: { enabled: hang.enabled !== false, timeout_minutes: hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES },
       startup: { concurrency: startup.concurrency ?? 10, stagger_delay_ms: startup.stagger_delay_ms ?? 500 },
@@ -771,7 +771,8 @@ function General({ ctx }) {
     </section>
     <${Drawer} title=${tn("advancedSection")}>
       <section class="card"><h3>${tn("runtimeResources")}</h3><div class="grid2">
-        <div class="field">${L(tn("toolSet"), "defaults.tool_set", "g-ts")}<${Select} id="g-ts" value=${f.tool_set} onChange=${set("tool_set")} options=${TOOL_SETS} /></div>
+        <div class="field">${L(tn("toolSet"), "defaults.tool_set", "g-ts")}<${Select} id="g-ts" value=${f.tool_set} onChange=${set("tool_set")}
+          options=${[{ value: "", label: tn("toolSetUnset", toolSetDefault({}, {}), toolSetDefault({}, { general_topic: true })) }, ...TOOL_SETS]} /></div>
         <div class="field">${L(tn("logLevel"), "defaults.log_level", "g-ll")}<${Select} id="g-ll" value=${f.log_level} onChange=${set("log_level")} options=${LOG_LEVELS} /></div>
         <div class="field">${L(tn("agentMode"), "defaults.agent_mode", "g-am")}<${Select} id="g-am" value=${f.agent_mode} onChange=${set("agent_mode")} options=${AGENT_MODES} /></div>
       </div></section>
