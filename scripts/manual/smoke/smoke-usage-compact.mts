@@ -11,7 +11,7 @@
 // - remembered: the host holds "usage.compact" for this person, and a reload shows the lines again;
 // - a line pressed opens its full card in place; its − folds it back; the switch goes back to the full cards;
 // - no console error, no CSP violation, no horizontal overflow; no real fleet name in any visible text.
-// Pictures: <case>-1-full, -2-compact, -3-expanded, -4-after-reload.
+// Pictures: <case>-1-full, -2-compact, -2b-compact-all (taller, every account), -3-expanded, -4-after-reload.
 //   PW_DIR=… REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf [ONLY=desk-light-en,…] \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-usage-compact.mts
 import { writeFileSync } from "node:fs";
@@ -136,6 +136,13 @@ for (const c of CASES) {
   ck.toggleSaysFull = (await toggle.innerText()).trim() === W.full(c) && (await toggle.getAttribute("aria-pressed")) === "true";
   ck.noPageOverflow = !compact.pageOverflow;
   await p.page.screenshot({ path: shotPath(SMOKE, name, "2-compact") });
+  // Every account at once (the list scrolls a little at this height): the same page, taller, for a picture of it all.
+  const vp = p.page.viewportSize();
+  await p.page.setViewportSize({ width: vp.width, height: vp.height + compact.scrollH - compact.clientH + 40 });
+  await p.page.waitForTimeout(300);
+  await p.page.screenshot({ path: shotPath(SMOKE, name, "2b-compact-all") });
+  await p.page.setViewportSize(vp);
+  await p.page.waitForTimeout(300);
   // Remembered as the person's synced preference.
   await p.page.waitForTimeout(1200);                                  // the pref write's debounce
   ck.hostRemembers = fm.webPrefs.readForViewer(p.personKey).values?.["usage.compact"] === true;
