@@ -7961,6 +7961,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // health server — so `systemctl start` returned success while the fleet was
     // still deaf: no path existed for a user message to arrive.
     sdNotify("READY=1");
+    // #2481: this version runs — the CLI's start-failure banner stops, and this is the version to go back to later.
+    try {
+      const { ownPackage, recordStarted } = await import("./start-failure.js");
+      const version = ownPackage().version;
+      if (version) recordStarted(this.dataDir, version, process.pid, Date.now());
+    } catch (err) { this.logger.debug({ err }, "fleet-started record not written"); }
     const health = this.getFleetHealth();
     if (health.status !== "ok") {
       this.logger.warn({ health }, "Fleet started with problems — see /health");
