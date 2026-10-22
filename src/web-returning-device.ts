@@ -15,6 +15,7 @@
  * Deliberately has no idea what an HTTP request is, beyond reading and building the cookie.
  */
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { fleetCookieName } from "./web-cookie-names.js";
 import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -206,19 +207,26 @@ export class ReturningDevices {
 }
 
 /** The device cookie a request presents: the `__Host-` one first; the plain one only off the public link. */
-export function readDeviceCookie(cookieHeader: string | undefined, publicLink: boolean): string | undefined {
+export function readDeviceCookie(cookieHeader: string | undefined, publicLink: boolean, webToken?: string | null): string | undefined {
+  return readDeviceCookies(cookieHeader, publicLink, webToken)[0];
+}
+
+/** Candidates are NOT credentials until the fleet validates its own signature and registry. */
+export function readDeviceCookies(cookieHeader: string | undefined, publicLink: boolean, webToken?: string | null): string[] {
   const jar = new Map<string, string>();
   for (const part of (cookieHeader ?? "").split(";")) {
     const eq = part.indexOf("=");
     if (eq < 1) continue;
     jar.set(part.slice(0, eq).trim(), part.slice(eq + 1).trim());
   }
-  return jar.get(DEVICE_COOKIE_SECURE) ?? (publicLink ? undefined : jar.get(DEVICE_COOKIE));
+  const names = [fleetCookieName(DEVICE_COOKIE_SECURE, webToken), ...(!publicLink ? [fleetCookieName(DEVICE_COOKIE, webToken)] : []),
+    DEVICE_COOKIE_SECURE, ...(!publicLink ? [DEVICE_COOKIE] : [])];
+  return names.map(name => jar.get(name)).filter((value, i, all): value is string => !!value && all.indexOf(value) === i);
 }
 
-export function buildDeviceCookie(value: string, secure: boolean): string {
-  return [`${secure ? DEVICE_COOKIE_SECURE : DEVICE_COOKIE}=${value}`, "Path=/", "HttpOnly", "SameSite=Strict",
-    `Max-Age=${Math.floor(DEVICE_MAX_AGE_MS / 1000)}`, ...(secure ? ["Secure"] : [])].join("; ");
+export function buildDeviceCookie(value: string, secure: boolean, webToken?: string | null, maxAgeSeconds = DEVICE_MAX_AGE_MS / 1000): string {
+  return [`${fleetCookieName(secure ? DEVICE_COOKIE_SECURE : DEVICE_COOKIE, webToken)}=${value}`, "Path=/", "HttpOnly", "SameSite=Strict",
+    `Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`, ...(secure ? ["Secure"] : [])].join("; ");
 }
 
 /** Per device: one request a minute and five an hour. For the whole fleet: one every 20 s and twenty an hour. */

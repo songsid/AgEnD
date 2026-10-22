@@ -16,9 +16,10 @@ import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry, delayedSelfCommand } from "./cli-entry.js";
 import { dashboardLines, dashboardPort } from "./next-steps.js";
 
-/** `fleet restart --reload` in 2 s, on this Node and this CLI (C5: never `sh -c agend …` through PATH). */
+/** `agend restart` in 2 s, on this Node and this CLI (C5: never `sh -c agend …` through PATH): the service-aware
+ *  restart — systemd unit, launchd job or detached hand-off (#2356; never the in-process `fleet restart --reload`). */
 const delayedRestart = (): [string, string[]] => {
-  const c = delayedSelfCommand(2, ["fleet", "restart", "--reload"]);
+  const c = delayedSelfCommand(2, ["restart"]);
   return [c.command, c.args];
 };
 export { SETUP_GUIDE_URLS, setupGuideUrl } from "./setup-guide.js";
@@ -404,14 +405,15 @@ export function buildChannelConfig(p: PlatformResult): Record<string, any> {
 // ── Persona bot (secondary Discord bot in the same guild) ───
 
 /** Restart a running fleet to pick up config changes (systemd first, else a
- * detached `agend fleet restart --reload`). No-op if the fleet isn't running. */
+ * detached `agend restart`). No-op if the fleet isn't running. */
 async function restartFleetIfRunning(): Promise<void> {
   const pidPath = join(DATA_DIR, "fleet.pid");
   if (!existsSync(pidPath)) return;
   try { process.kill(parseInt(readFileSync(pidPath, "utf-8").trim(), 10), 0); }
   catch { return; } // stale pid / not running
   console.log(`\n  Fleet is running. Restarting to apply changes...`);
-  const { execSync, spawn } = await import("node:child_process");
+  const { execSync } = await import("node:child_process");
+  const { spawn } = await import("./child-process.js");
   try {
     execSync("systemctl --user is-active com.agend.fleet", { stdio: "pipe" });
     execSync("systemctl --user restart com.agend.fleet", { stdio: "pipe" });
@@ -705,7 +707,8 @@ export async function runQuickstart(): Promise<void> {
           try {
             process.kill(pid, 0); // check alive
             console.log(`\n  Fleet is running. Restarting to apply new channel...`);
-            const { execSync, spawn } = await import("node:child_process");
+            const { execSync } = await import("node:child_process");
+            const { spawn } = await import("./child-process.js");
             let usedSystemd = false;
             try {
               execSync("systemctl --user is-active com.agend.fleet", { stdio: "pipe" });
@@ -906,6 +909,7 @@ export async function runQuickstart(): Promise<void> {
 
     // Ask to install as system service
     let serviceRunning = false;
+    let serviceFailed = false;
     const installAnswer = await rl.question("  Install as system service? [Y/n] ");
     if (!installAnswer || installAnswer.toLowerCase() === "y" || installAnswer.toLowerCase() === "yes") {
       try {
@@ -923,13 +927,15 @@ export async function runQuickstart(): Promise<void> {
         console.log(`\n  ${green("✅")} Fleet service installed and running.`);
         serviceRunning = true;
       } catch (err) {
-        console.log(`\n  ${yellow("⚠")}  Could not install the service automatically (${(err as Error).message}).`);
-        console.log(`     Start the fleet manually: ${bold("agend fleet start")}`);
+        console.log(`\n  ${yellow("⚠")}  ${t("qs.service_install_failed", (err as Error).message)}`);
+        // #2356: the service file may already be written, and `agend start` then refuses a fleet beside it.
+        console.log(`     ${t("qs.start_direct", bold("agend fleet start --direct"), bold("agend start"))}`);
+        serviceFailed = true;
       }
     }
 
-    if (!serviceRunning) {
-      console.log(`  Start the fleet: ${bold("agend fleet start")}`);
+    if (!serviceRunning && !serviceFailed) {
+      console.log(`  ${t("qs.start_fleet", bold("agend start"))}`);
     }
     printDashboard();
 

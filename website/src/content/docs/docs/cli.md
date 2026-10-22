@@ -47,23 +47,19 @@ agend fleet stop
 agend fleet stop <name>
 ```
 
-Restart gracefully — it waits for the agent to go idle first:
+Restart AgEnD — through systemd or launchd when they run it, so it also picks up a new version of AgEnD itself:
 
 ```bash
-agend fleet restart
+agend restart
 ```
 
-Restart a specific instance immediately (no idle wait — may interrupt a busy turn):
+Restart a specific instance immediately (no idle wait — may interrupt a busy turn); the fleet keeps running:
 
 ```bash
-agend fleet restart <name>
+agend restart <name>
 ```
 
-That reuses the running code. To pick up a new version of AgEnD itself, restart the process:
-
-```bash
-agend fleet restart --reload
-```
+`agend fleet restart` still works until 2.4, by running `agend restart`.
 
 See what is running:
 
@@ -235,7 +231,7 @@ See when a schedule last ran:
 agend schedule history <id>
 ```
 
-`agend schedule trigger <id>` currently prints guidance only — it does not execute a schedule.
+`agend schedule trigger` was removed. Enable or disable a schedule from the CLI, or use the Task Board.
 
 ## Settings confirmation
 

@@ -800,7 +800,7 @@ export async function runSetupWizard(): Promise<void> {
   console.log();
   if (!serviceRunning) {
     console.log(`  Start the fleet:`);
-    console.log(`    ${dim("agend fleet start")}`);
+    console.log(`    ${dim("agend start")}`);
   }
   const [where, signIn] = dashboardLines(dashboardPort(FLEET_CONFIG_PATH));
   console.log(`  ${bold(where)}`);

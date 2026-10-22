@@ -2103,7 +2103,7 @@ export class InstanceLifecycle {
         this.ctx.logger.info({ worktree: config.working_directory }, "Worktree directory already gone, skipping removal");
       } else {
         try {
-          const { execFile: execFileCb } = await import("node:child_process");
+          const { execFile: execFileCb } = await import("./child-process.js");
           const { promisify } = await import("node:util");
           check(); const execFileAsync = promisify(execFileCb);
           await execFileAsync("git", ["worktree", "remove", "--force", config.working_directory], {
@@ -2126,7 +2126,7 @@ export class InstanceLifecycle {
       }
       // Prune stale worktree records (e.g. if directory was manually deleted)
       try {
-        const { execFile: execFileCb } = await import("node:child_process");
+        const { execFile: execFileCb } = await import("./child-process.js");
         const { promisify } = await import("node:util");
         check(); const execFileAsync = promisify(execFileCb);
         await execFileAsync("git", ["worktree", "prune"], { cwd: config.worktree_source });
@@ -2248,7 +2248,7 @@ export class InstanceLifecycle {
         catch { return false; }
       };
       if (acquiredWorktree) {
-        const { execFile } = await import("node:child_process"); const { promisify } = await import("node:util");
+        const { execFile } = await import("./child-process.js"); const { promisify } = await import("node:util");
         if (!ownsPath()) return;
         await promisify(execFile)("git", ["worktree", "remove", "--force", workDir], { cwd: directory });
       } else {
@@ -2261,7 +2261,7 @@ export class InstanceLifecycle {
     }
     if (branch) {
       try {
-        const { execFile: execFileCb } = await import("node:child_process");
+        const { execFile: execFileCb } = await import("./child-process.js");
         const { promisify } = await import("node:util");
         const nativeExec = promisify(execFileCb);
         const execFileAsync = async (file: string, args: string[], options: { cwd?: string; timeout?: number }, acquired?: () => void) => {

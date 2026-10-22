@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   compareSemver,
@@ -115,6 +117,21 @@ describe("a restart systemd is still running (#1446 item 4)", () => {
     expect(output.log).not.toHaveBeenCalledWith("  ✓ Service restarted");
     expect(output.log).toHaveBeenCalledWith(expect.stringContaining("still running"));
     expect(output.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("agend status is a real command (#2359)", () => {
+  it("the shipped 'agend status' check is `agend ls`, hidden from top-level help", () => {
+    const cli = (args: string[]) => spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", ...args], {
+      cwd: process.cwd(), encoding: "utf8", timeout: 8000,
+      env: { ...process.env, AGEND_HOME: join(process.cwd(), "tests"), NOTIFY_SOCKET: "" },
+    });
+    const help = cli(["--help"]);
+    expect(help.status).toBe(0);
+    expect(help.stdout).not.toMatch(/^\s+status\b/m);
+    const statusHelp = cli(["status", "--help"]);
+    expect(statusHelp.status).toBe(0);
+    expect(statusHelp.stdout).toMatch(/Alias of `agend ls`|List all instances/);
   });
 });
 

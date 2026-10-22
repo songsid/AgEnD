@@ -545,9 +545,13 @@ function stillAuthorized(req: IncomingMessage, res: ServerResponse, url: URL, ct
  * 5 MiB) and DELETE (back to the bundled icon): a signed-in admin's session only — never the CLI's token, a read-only
  * session, a guest or the public link; checked again once the body has arrived.
  */
+/** An app icon refusal as the page reads it: its code, the English detail and, when named, the detail's key (#2390). */
+function appIconRefusal(r: { error: string; detail?: string; detail_key?: string; detail_args?: Array<string | number> }): Record<string, unknown> {
+  return { error: r.error, ...(r.detail ? { detail: r.detail } : {}), ...(r.detail_key ? { detail_key: r.detail_key } : {}), ...(r.detail_args ? { detail_args: r.detail_args } : {}) };
+}
 function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, method: string): boolean {
   const store = ctx.appIcon;
-  if (!store) { json(res, 404, { error: "The app icon is not kept on this fleet" }); return true; }
+  if (!store) { json(res, 404, { error: "app_icon_not_kept", detail: "The app icon is not kept on this fleet" }); return true; }
   const reading = method === "GET" || method === "HEAD";
   if (!reading && method !== "PUT" && method !== "DELETE") { res.setHeader("Allow", "GET, PUT, DELETE"); json(res, 405, { error: "method not allowed" }); return true; }
   if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "app_icon_not_over_public_link" }); return true; }
@@ -564,7 +568,7 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   if (reading) { json(res, 200, state()); return true; }
   if (method === "DELETE") {
     const reset = store.reset();
-    if (!reset.ok) { json(res, reset.status, { error: reset.error, ...(reset.detail ? { detail: reset.detail } : {}) }); return true; }
+    if (!reset.ok) { json(res, reset.status, appIconRefusal(reset)); return true; }
     json(res, 200, state());
     return true;
   }
@@ -578,19 +582,19 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   };
   (async () => {
     let bytes: Buffer;
-    try { bytes = await readBoundedWebBody(req, APP_ICON_MAX_BYTES); } catch { json(res, 413, { error: "app_icon_too_large", detail: "at most 5 MiB" }); return; }
+    try { bytes = await readBoundedWebBody(req, APP_ICON_MAX_BYTES); } catch { json(res, 413, { error: "app_icon_too_large", detail: "at most 5 MiB", detail_key: "max_size", detail_args: [5] }); return; }
     if (!again()) return;
     // #2308 review: decoding and making the sizes is seconds of CPU at worst — a worker thread's, not the fleet loop's.
     const prepared = await store.prepare(bytes);
-    if (!prepared.ok) { json(res, prepared.status, { error: prepared.error, ...(prepared.detail ? { detail: prepared.detail } : {}) }); return; }
+    if (!prepared.ok) { json(res, prepared.status, appIconRefusal(prepared)); return; }
     const person = again();
     if (!person) return;
     const saved = store.commit(prepared.prepared, person);
-    if (!saved.ok) { json(res, saved.status, { error: saved.error, ...(saved.detail ? { detail: saved.detail } : {}) }); return; }
+    if (!saved.ok) { json(res, saved.status, appIconRefusal(saved)); return; }
     json(res, 200, state());
   })().catch((err) => {
     ctx.logger.error({ err: (err as Error).message }, "App icon request failed");
-    try { json(res, 500, { error: "App icon request failed" }); } catch { /* already answered */ }
+    try { json(res, 500, { error: "app_icon_failed", detail: "App icon request failed" }); } catch { /* already answered */ }
   });
   return true;
 }
@@ -2270,7 +2274,7 @@ export function handleWebRequest(
 
   if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/work" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects")) {
     const board = ctx.scheduler?.db.board;
-    if (!board) { json(res, 503, { error: "The task board is not available" }); return true; }
+    if (!board) { json(res, 503, { error: "The task board is not available", code: "unavailable", key: "unavailable" }); return true; }
     // The temporary public link reads the board and changes nothing on it: confirming, sending back, cancelling and
     // assigning are the person's authority, which the public link never carries (docs/web-dashboard.md).
     const gateway = gatewayRequestContext(req);

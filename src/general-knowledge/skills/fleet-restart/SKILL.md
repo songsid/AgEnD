@@ -7,19 +7,19 @@ roles: [general]
 ## Fleet Restart & Recovery
 
 **Restart types:**
-- `agend fleet restart` — graceful, in the same process: instances restart once idle (does **not** load new code)
-- `agend fleet restart --reload` — full process restart: new code and new connections take effect
-- `agend fleet restart <name>` — restart one instance now
+- `agend restart` — the one full restart: the AgEnD service restarts through whatever runs it (systemd unit, launchd job, or a detached hand-off), so new code and new connections take effect
+- `agend restart <name>` — restart one instance now; the fleet keeps running
+- `/restart` in the General chat — instances restart inside the running fleet once idle (does **not** load new code); `/restart full` is `agend restart`
+- `agend fleet restart` is deprecated (removed in 2.4): it only runs `agend restart`. Never use it — before 2.3 its `--reload` left a systemd fleet stopped
 - `agend reload` — SIGHUP hot-reload, reconciles instances without restarting the fleet process. **Do not run `agend reload` after `create_instance`** — the fleet reconciles automatically when the instance is created; a redundant reload will restart every instance whose config changed, including ones you did not intend to touch.
 - `restart_instance("<name>")` — single instance restart, reloads fleet.yaml first
-- `agend restart` — restarts the AgEnD service itself (systemd / launchd / detached), not one instance
 
-**From a fleet agent session**, `agend stop`, `agend restart`, `agend update`, `agend fleet stop` and `agend fleet restart` (without a name) affect every instance and are refused unless you pass `--yes`. Each is written to `restart-audit.log` first. `--force` is for an operator's own shell only.
+**From a fleet agent session**, `agend stop`, `agend restart`, `agend update` and `agend fleet stop` (without a name) affect every instance and are refused unless you pass `--yes`. Each is written to `restart-audit.log` first. `--force` is for an operator's own shell only.
 
 **After tmux crash:**
 - Fleet detects the tmux server's death and opens a recovery window: spawns and deliveries are held 30 s, then 2 min and 10 min if it crashes again (losing single windows while the server lives holds nothing)
 - Some instances may fail to restart due to rate limits from simultaneous startup
-- Fix: manually restart failed instances, or do another `agend fleet restart`
+- Fix: `restart_instance` the failed instances, or `agend restart --yes`
 - Check failed instances: `agend ls` shows "stopped" status
 
 **Rate limit recovery:**
@@ -39,8 +39,7 @@ It installs the selected release, checks the install, and restarts the fleet ser
 
 **Manual restart (if update isn't needed):**
 ```bash
-agend fleet restart --yes           # graceful (SIGUSR2) — keeps sessions, reloads config
-agend fleet restart --reload --yes  # full process restart — new code takes effect
+agend restart --yes                 # full restart through systemd/launchd — new code takes effect
 ```
 
 **NEVER do:**

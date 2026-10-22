@@ -26,7 +26,7 @@ import { setLocale, t } from "../src/locale.js";
 /** Exact production CLI callback, never import/execute the self-starting CLI. */
 function cli(manager: FleetManager) {
   const source = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
-  const begin = source.indexOf("  .action(async (instance?: string) => {", source.indexOf('.description("Start fleet or specific instance")'));
+  const begin = source.indexOf("  .action(async (instance?: string, opts?: { direct?: boolean }) => {", source.indexOf('.description("Start fleet or specific instance")'));
   const end = source.indexOf('\n  });\n\nfleet\n  .command("stop")', begin);
   if (begin < 0 || end < 0) throw Error("CLI callback boundary changed");
   const callback = source.slice(begin + "  .action(".length, end) + "\n  }";
@@ -40,7 +40,7 @@ function cli(manager: FleetManager) {
   const context = createContext({ process, console: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
     installFleetProcessHandlers: (options: Parameters<typeof installFleetProcessHandlers>[0]) => installFleetProcessHandlers({ ...options, writeFatal: vi.fn() }),
     DATA_DIR: "/private-unused", FLEET_CONFIG_PATH: "/private-unused/fleet.yaml",
-    claimFleetSingleton: () => true, describeSignalSource: () => "fake signal", Promise,
+    DIRECT_FLEET_START_ENV: "AGEND_FLEET_START_DIRECT", redirectToService: () => false, claimFleetSingleton: () => true, describeSignalSource: () => "fake signal", Promise,
     loadFleetManager: async () => ({ FleetManager: class { constructor() { return manager; } } }),
   });
   runInContext(script, context);

@@ -116,6 +116,30 @@ describe("exactly once", () => {
     await new Promise((r) => setTimeout(r, 700));                                          // the command finishes on its own
     expect([err.killed, direct.mock.calls.length, ran()]).toEqual([true, 0, ["slow 0.5"]]);
   });
+  // #2374 review (Prism): a failed read of the helper's stdout may have lost the "started" it wrote, so a call not seen
+  // to start may have run. It fails as "outcome unknown" and is never run again directly.
+  it("the helper's stdout fails before its 'started' is read: the command ran once, the call fails, nothing runs again", async () => {
+    const { h, direct } = helper(); h.start();
+    const proc = (h as any).proc as ChildProcess;
+    proc.stdout!.pause();                                                                  // "started" stays unread
+    const call = h.exec("tmux", [...SOCK, "slow", "0.3"], { env: env() }).catch((e) => e);
+    await vi.waitFor(() => expect(ran()).toEqual(["slow 0.3"]));                           // it ran
+    proc.stdout!.destroy(Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }));
+    const err = await call;
+    await new Promise((r) => setTimeout(r, 500));                                          // a direct rerun would show by now
+    expect(String(err.message)).toContain("outcome unknown");
+    expect([direct.mock.calls.length, ran()]).toEqual([0, ["slow 0.3"]]);
+  });
+  it("control: the same paused stdout read on — the command ran once and answers through the helper", async () => {
+    const { h, direct } = helper(); h.start();
+    const proc = (h as any).proc as ChildProcess;
+    proc.stdout!.pause();
+    const call = h.exec("tmux", [...SOCK, "slow", "0.3"], { env: env() });
+    await vi.waitFor(() => expect(ran()).toEqual(["slow 0.3"]));
+    proc.stdout!.resume();
+    expect((await call).stdout).toBe("slow");
+    expect([direct.mock.calls.length, ran()]).toEqual([0, ["slow 0.3"]]);
+  });
   it("calls the helper never started when it died go direct, once each", async () => {
     const { h, direct } = helper({ spawnHelper: fakeHelper("never"), startTimeoutMs: 5_000 }); h.start();
     const a = h.exec("tmux", [...SOCK, "a"], { env: env() }), b = h.exec("tmux", [...SOCK, "b"], { env: env() });

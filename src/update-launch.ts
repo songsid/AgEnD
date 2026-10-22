@@ -1,5 +1,6 @@
 /** Chat updates must survive the fleet's service cgroup being stopped (#1490 row 37). */
-import { execFile, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { randomBytes } from "node:crypto";
 import { appendFileSync, closeSync, existsSync, fchmodSync, openSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";

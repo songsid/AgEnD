@@ -35,13 +35,13 @@ describe("the View-only page (the real entry, a fake DOM)", () => {
     options.requestAnimationFrame = (cb: () => void) => setTimeout(cb, 0);
     try {
       await import("/assets/app.js");
-      await vi.waitFor(() => expect(app.querySelector(".v-card")).not.toBeNull());
+      await vi.waitFor(() => expect(app.querySelector(".v-id")).not.toBeNull());
       const sidebar = app.querySelector("#sidebar")!;
       const navLinks = sidebar.querySelectorAll("a").map((a: any) => a.getAttribute("href")).filter((h: string) => !h.startsWith("/view/"));
       expect(navLinks).toEqual(["/view", "/view", "/signin?next=%2Fview%2Falpha"]);   // brand, the View row, Sign in
       expect(sidebar.innerHTML).not.toMatch(/\/ui|\/settings|Session|New instance/);
       expect(app.querySelector(".tabs")!.querySelectorAll("a").map((a: any) => a.getAttribute("href"))).toEqual(["/view/alpha", "/signin?next=%2Fview%2Falpha"]);
-      expect(app.querySelector(".v-card a.btn")!.getAttribute("href")).toBe("/signin?next=%2Fview%2Falpha");   // "Sign in to edit"
+      expect(app.querySelector(".v-id a.btn")!.getAttribute("href")).toBe("/signin?next=%2Fview%2Falpha");   // "Sign in to edit"
       await new Promise(r => setTimeout(r, 1000));
       expect(sources).toEqual([]);
       expect(imported).toEqual([]);

@@ -21,7 +21,7 @@ function fixture(kind = "fleet", ready = true) {
   const header = add(panel, "panel-head", "header", { position: "relative", zIndex: "2" });
   const child = (cls: string, trust = "panel-content", position = "relative") => add(panel, cls, trust, { position, zIndex: "1" });
   if (["fleet", "settings"].includes(kind)) child("seg", "panel-navigation");
-  if (kind === "view" && ready) { child("v-term"); child("v-id"); child("v-card"); } else child("panel-body");
+  if (kind === "view" && ready) { child("v-term"); child("v-id"); } else child("panel-body");
   const host = { document: d, innerWidth: 1366, getComputedStyle: (el: any) => styles.get(el) || neutral() };
   return { p, d, shell, main, panel, header, child, styles, add, snapshot: (css = "off") => stockEffectTrust(host, { ownerCss: css }) };
 }
@@ -33,7 +33,7 @@ describe("#1629 closed full-app stock producer topology", () => {
   });
   it.each([false, true])("View has a closed loading/ready topology (%s)", ready => {
     const f = fixture("view", ready); expect(f.snapshot().ok).toBe(true);
-    f.child(ready ? "panel-body" : "v-card"); expect(f.snapshot()).toMatchObject({ ok: false, reason: "stock_route_unknown" });
+    f.child(ready ? "panel-body" : "v-term"); expect(f.snapshot()).toMatchObject({ ok: false, reason: "stock_route_unknown" });
   });
   it.each(kinds)("%s missing/wrong producer marker refuses; generic Outlet fallback never grants a route", kind => {
     const f = fixture(kind); for (const marker of [null, "chat", "future", "__proto__"]) {
@@ -43,7 +43,7 @@ describe("#1629 closed full-app stock producer topology", () => {
     f.panel.setAttribute("data-effect-panel", kind); f.panel.className = "panel"; expect(f.snapshot().ok).toBe(false);
   });
   it.each(kinds)("%s refuses a removed required parent", kind => {
-    for (const selector of [".panel-head", ...(kind === "view" ? [".v-term", ".v-card"] : [".panel-body"]), ...(["fleet", "settings"].includes(kind) ? [".seg"] : [])]) {
+    for (const selector of [".panel-head", ...(kind === "view" ? [".v-term", ".v-id"] : [".panel-body"]), ...(["fleet", "settings"].includes(kind) ? [".seg"] : [])]) {
       const f = fixture(kind); f.panel.querySelector(selector).remove(); expect(f.snapshot()).toMatchObject({ ok: false, reason: "stock_route_unknown" });
     }
   });

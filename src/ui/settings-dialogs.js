@@ -288,7 +288,7 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
   const inh = (k, value, target, kind, set = hasOwn(defaults, k)) => ({ text: valueText(value, kind), builtin: !set, from: target ? inAgentDefaults(target) : null });
   const inheritedBackend = !inst.backend && f.backend === (defaults.backend || "claude-code");
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
-  return html`<${EditDialog} title=${ctx.shortName(name, inst)} subtitle=${`ID: ${name}`} onClose=${onClose} onStage=${stage} ready=${ready} impacts=${Object.keys(pending()).map((k) => `instance.${k}`)} schema=${schema}>
+  return html`<${EditDialog} title=${ctx.shortName(name, inst)} subtitle=${tn("idLine", name)} onClose=${onClose} onStage=${stage} ready=${ready} impacts=${Object.keys(pending()).map((k) => `instance.${k}`)} schema=${schema}>
     <div class="grid2">
       <div class="field">${L(tn("displayName"), "instance.display_name", "ag-dn")}
         <${Override} inherit=${f.inherit.display_name} onInherit=${setInherit("display_name")} inherited=${inh("display_name", defaults.display_name || name, null, "", !!defaults.display_name)}>
@@ -679,7 +679,7 @@ export function ClassicDialog({ room, ctx, onClose }) {
       from: own ? { section: "chat", target: classicTarget, label: "changeInClassic" } : inAgentDefaults(agentTarget) };
   };
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
-  return html`<${EditDialog} title=${c.name || c.instanceName} subtitle=${`ID: ${c.instanceName} · ${tn(`exec_${runtime.execution}`)}`} onClose=${onClose} onStage=${stage} ready=${ready} impacts=${Object.keys(pending()).map((k) => `classic.${k}`)} schema=${schema}>
+  return html`<${EditDialog} title=${c.name || c.instanceName} subtitle=${`${tn("idLine", c.instanceName)} · ${tn(`exec_${runtime.execution}`)}`} onClose=${onClose} onStage=${stage} ready=${ready} impacts=${Object.keys(pending()).map((k) => `classic.${k}`)} schema=${schema}>
     <div class="grid2">
       <div class="field">${L(tn("backend"), "classic.backend", "cl-be")}<${BackendSelect} id="cl-be" value=${f.backend} onChange=${set("backend")} />
         ${!c.backend && f.backend === inherited.backend ? html`<${Inherited} ...${roomInh("backend", "backend", "#g-cbe", "#g-be")} />` : null}</div>

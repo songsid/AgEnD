@@ -491,13 +491,12 @@ describe("General topic: hyphenated aliases obey the @suffix gate", () => {
     }
   });
 
-  it("/install-cli@ownerbot (any case) still runs login through the owner", async () => {
+  it("/install-cli@ownerbot (any case) still answers through the owner, without running login", async () => {
     const { fm, dir, deliver, ownerSent, sibSent, startLogin } = tgGeneralSetup();
     try {
       await fm.handleInboundMessage(tgGenCopy("/install-cli@oWnErBoT claude", TG_OWNER, "g-3"));
-      expect(ownerSent.length, "migration notice posted").toBeGreaterThan(0);
-      expect(startLogin, "login starts for claude").toHaveBeenCalledTimes(1);
-      expect(startLogin.mock.calls[0]![0]).toBe("claude");
+      expect(ownerSent.join("\n"), "removed notice posted").toContain("`/install-cli` was removed. Use `/login`.");
+      expect(startLogin, "login does not start").not.toHaveBeenCalled();
       expect(sibSent).toHaveLength(0);
       expect(deliver).not.toHaveBeenCalled();
     } finally {
@@ -513,8 +512,8 @@ describe("General topic: hyphenated aliases obey the @suffix gate", () => {
       expect(startLogin).not.toHaveBeenCalled();
       expect(fm.recentMessageIds.size, "key unconsumed").toBe(0);
       await fm.handleInboundMessage(tgGenCopy("/install-cli claude", TG_OWNER, "g-4"));
-      expect(startLogin).toHaveBeenCalledTimes(1);
-      expect(ownerSent.length).toBeGreaterThan(0);
+      expect(startLogin).not.toHaveBeenCalled();
+      expect(ownerSent.join("\n")).toContain("`/install-cli` was removed. Use `/login`.");
       expect(deliver).not.toHaveBeenCalled();
     } finally {
       rmSync(dir, { recursive: true, force: true });

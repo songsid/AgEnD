@@ -1,0 +1,4 @@
+---
+section: Changed
+---
+- **Obsolete and duplicate CLI/chat commands (#2359).** `agend status` is a hidden alias of `agend ls`, so already-shipped update and Windows-shortcut messages keep working. `agend fleet status` is a hidden alias of `agend ls --resources`. Removed leftovers print a one-line pointer: `agend schedule trigger` (there is no Telegram trigger), `agend fleet logs` (use `agend logs`), `agend install --activate` (activation is the default), and typed `/install-cli` / `/install_cli` (use `/login`; they no longer run login). `/web` is the primary web command; `/dashboard` stays listed on Telegram and Discord as deprecated (“Deprecated — use /web”) and still runs `/web` after a one-line notice. `agend health` and `agend doctor` stay separate (live fleet vs host/setup). `agend quickstart`, `setup`, and `init` stay three first-run paths. First-run copy now says `agend start`.

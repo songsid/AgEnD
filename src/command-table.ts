@@ -230,7 +230,7 @@ export const TELEGRAM_MENUS = {
   /** The fleet's forum group (its `chat` and `chat_administrators` scopes): the General topic and the instance topics. */
   fleet: {
     scopes: ["general", "fleet"],
-    names: ["status", "sysinfo", "dashboard", "web", "ctx", "compact", "steer", "btw", "clear", "model", "backend", "effort",
+    names: ["status", "sysinfo", "web", "dashboard", "ctx", "compact", "steer", "btw", "clear", "model", "backend", "effort",
       "pause", "wake", "restart", "collab", "update", "profile", "doctor", "login", "usage", "tips", "visibility"],
   },
   /**

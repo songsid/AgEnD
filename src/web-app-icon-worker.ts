@@ -10,5 +10,6 @@ try {
   const files = appIconSet(new Uint8Array((workerData as { source: ArrayBuffer }).source));
   parentPort!.postMessage({ ok: true, files });
 } catch (err) {
-  parentPort!.postMessage({ ok: false, detail: err instanceof PngError ? err.message : "the image could not be read" });
+  parentPort!.postMessage(err instanceof PngError ? { ok: false, detail: err.message, detail_key: err.key, detail_args: err.args }
+    : { ok: false, detail: "the image could not be read", detail_key: "unreadable" });
 }

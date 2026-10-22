@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { totalmem } from "node:os";
 import type { HostMemory } from "./host-memory.js";
 

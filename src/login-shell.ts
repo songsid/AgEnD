@@ -12,7 +12,7 @@
  * something still holds the pipe after the shell is gone. A background child that let go of the pipe is left alone,
  * as it always was.
  */
-import { spawn } from "node:child_process";
+import { spawn } from "./child-process.js";
 
 /** How long the login shell may take, as before. */
 export const LOGIN_SHELL_TIMEOUT_MS = 10_000;
@@ -84,6 +84,8 @@ export function runOnLoginShell(
       if (kept > maxOutputBytes) { finish(null, false, true); return; }
       chunks.push(chunk);
     });
+    // #2243: the pipe is its own emitter; unheard, its error would be uncaught and stop the fleet. A failed read is no answer.
+    child.stdout?.on("error", () => { chunks.length = 0; finish(null, false); });
     child.on("error", () => finish(null, false));
     child.on("exit", (code) => {
       // The shell is done. Its output normally ends with it; give the last bytes a moment, never a background holder.

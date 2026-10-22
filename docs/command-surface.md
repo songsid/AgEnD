@@ -2,7 +2,7 @@
 
 [繁體中文](command-surface.zh-TW.md) · [Command reference](commands.md) · [Admission and credentials](permissions.md)
 
-Counts checked against main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`: 28 command rules, 23/11 Telegram fleet/Classic menu entries, and 29 Discord slash names (including the web alias). The pinned links below preserve the original authorization audit; current registration counts supersede its old 27 and 21/10 counts.
+Counts checked against main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`: 28 command rules, 23/11 Telegram fleet/Classic menu entries, and 29 Discord slash names (`/web` primary; `/dashboard` listed as deprecated). The pinned links below preserve the original authorization audit; current registration counts supersede its old 27 and 21/10 counts.
 
 ## Reading a cell
 
@@ -18,7 +18,7 @@ Counts checked against main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`: 28 comma
 - `R(C)` / `R(F)`: the real unregistered-chat handler checks C / F first, then finds no agent. C alone does not pass the F-or-C helper without a registration.
 - `*`: `/tips` without a mode is informational; settings-changing modes require F.
 
-✓ is the configured menu entry, not a runtime grant. Backend support, arguments, lifecycle state and source checks still apply to every H cell. Telegram G/T menus are registered on the whole forum chat, so General and instance topics share their suggestions. Discord registers 29 slash names globally for each bot, including the `/web` alias; platform registration failure may leave an older menu.
+✓ is the configured menu entry, not a runtime grant. Backend support, arguments, lifecycle state and source checks still apply to every H cell. Telegram G/T menus are registered on the whole forum chat, so General and instance topics share their suggestions. Discord registers 29 slash names globally for each bot (`/web` and deprecated `/dashboard`); platform registration failure may leave an older menu.
 
 ## Discord native slash
 
@@ -92,7 +92,7 @@ Counts checked against main `e1445e51d7f4f0b83b568a4082e21ccccc86fd69`: 28 comma
 - Discord typed `/xxx` in fleet/General produces a use-slash-menu notice from the owner and is consumed; Classic typed slash text is silent. A foreign bot suffix is silent when the receiving username is known.
 - Telegram Classic groups require `/cmd@ThisBot`; **bare slash commands are silent**, including `/start`. A suffix for another bot is silent when the receiving username is known. Private chats accept bare forms. Existing Classic/present-thread handling permits a suffix when that username is unknown. At a configured Telegram forum root, bare command-like input uses the primary connection's same-group General, or the first configured same-group General if the primary has none there. The selected bot's admin list governs; stopped or unresolved targets never switch to siblings. Use `/restart@ThisBot full`, `/update@ThisBot` or that bot's own topic for another General. Explicit suffixes require a known, unambiguous username before shared dedup: wrong or unknown receivers are silent, even without a message ID. Ordinary root conversation keeps its routing. A command suffix is not a conversational mention.
 - Recognizers are exact: `/STATUS`, `/status report`, `/update now`, `/pause one two`, etc. remain ordinary agent text in fleet/General. `/restart` and `/visibility` are case-insensitive. This is pinned existing behavior, not the old bug where a recognized `/status` in a worker topic was forwarded.
-- Telegram `/sys-info` and `/sys_info` alias General `/sysinfo`; `/install-cli` and `/install_cli` alias General `/login`. They have no menu entries. `/sys-info` and `/sys_info` match only their **unsuffixed exact forms**; adding `@bot` leaves ordinary text. The install aliases accept suffixes. Recognized General aliases in worker topics point to General.
+- Telegram `/sys-info` and `/sys_info` alias General `/sysinfo`. `/install-cli` and `/install_cli` are removed typed leftovers: they print a one-line pointer to `/login` and do not run login. They have no menu entries. `/sys-info` and `/sys_info` match only their **unsuffixed exact forms**; adding `@bot` leaves ordinary text. The install leftovers accept suffixes. Recognized General aliases in worker topics point to General.
 - Telegram fleet `/raw <text>` is hidden and F-gated, then enters the raw delivery path. `/raw@bot ...` is ordinary wrapped text, not a raw bypass. Classic `/raw <text>` denies non-C; even C has no successful native raw path today, as the generic `/chat /raw ...` helper drops it. Group mention-shaped variants can instead become ordinary wrapped messages. This capability is unchanged; follow-up [#1458](https://github.com/songsid/AgEnD/issues/1458) records the deferred decision.
 - In a configured Telegram forum, an unregistered topic gets the unbound-topic notice. It is not the unregistered Classic-chat column. Missing General may leave no-thread input silently unhandled.
 - General `/pause` and `/wake` need an explicit instance owned by that General's bot. General itself cannot be paused. Authorized fleet-wide restart/status/login/diagnostics and settings still affect shared fleet/host state; owner authorization is not world-limited execution.
@@ -119,7 +119,7 @@ Source: `src/fleet-manager.ts:10443`, `:11592`, `:14413`, `:14719`, `:11126`. St
 
 ## Aliases
 
-`/web` is the recommended name; `/dashboard` remains an alias (#1569). They share one command-table row, shown as `/web` in both tables above: the same gate, the same disabled reply, the same refusals and the same `revoke` subcommand. Discord registers both slash names; the Telegram fleet menu still lists `/web` right after `/dashboard`.
+`/web` is the primary name; `/dashboard` stays listed as deprecated (#1569 / #2359). They share one command-table row, shown as `/web` in both tables above: the same gate, the same disabled reply, the same refusals and the same `revoke` subcommand. Discord registers both slash names; Telegram's fleet menu lists both. `/dashboard`'s menu/slash description is “Deprecated — use /web”. Running `/dashboard` prints that notice, then does what `/web` does.
 
 ## Maintaining the matrix
 

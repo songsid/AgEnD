@@ -147,7 +147,7 @@ function detachedCliRig(stop: (deps: import("../src/fleet-stop-budget.js").Detac
   const start = vi.fn(() => ({ unref: vi.fn() })), unlink = vi.fn();
   const process = { execPath: "/private/node", exitCode: 0, kill: vi.fn() }, guard = { guardDetached: vi.fn<() => { ok: true } | { ok: false; reason: string }>(() => ({ ok: true })) };
   let reads = 0; let birth: string | null = "birth-1", command = "node /private/cli.js fleet start", exited = () => false; const console = { log: vi.fn(), error: vi.fn() };
-  const context = createContext({ process, console, performance, FLEET_STOP_TIMEOUT_MS, stopDetachedOwner: stop,
+  const context = createContext({ process, console, performance, FLEET_STOP_TIMEOUT_MS, stopDetachedOwner: stop, DIRECT_FLEET_START_ENV: "AGEND_FLEET_START_DIRECT",
     pidPath: "/private/fleet.pid", existsSync: () => true, readFileSync: () => ++reads > 2 && changedPidFile ? "999" : "123",
     detachedProcessStart: () => birth, detachedProcessExited: () => exited(), readProcessCommandLine: () => command, isFleetStartCommandLine: (value: string) => value === "node /private/cli.js fleet start",
     guard, expectation: { ok: true, expected: {} }, guardDeps: {}, opts: { force: false }, unlinkSync: unlink,
