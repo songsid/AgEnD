@@ -62,7 +62,7 @@ describe("#2175: the final update step lands on Telegram", () => {
     expect(await finishing).toBe(true);
     expect(log.warn).not.toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/429/));
     for (const at of tg.sentAt) expect(tg.sentAt.filter(t => t > at - 60_000 && t <= at).length).toBeLessThanOrEqual(11);
-    expect(tg.editMessage).toHaveBeenLastCalledWith("fleet", "update-1", expect.stringContaining("✅ AgEnD updated to v2.3.0-beta.10"), "1");
+    expect(tg.editMessage).toHaveBeenLastCalledWith("fleet", "update-1", expect.stringContaining("✅ Update complete — v2.3.0-beta.10"), "1");
     expect(tg.sendText).not.toHaveBeenCalled();
   });
 
@@ -177,7 +177,7 @@ describe("#2175: the final update step lands on Telegram", () => {
     await expect(progress.finish(SUMMARY)).resolves.toBe(true);
     await vi.advanceTimersByTimeAsync(40_000);
     expect(sendText).toHaveBeenCalledTimes(1);
-    expect(sendText).toHaveBeenCalledWith("fleet", expect.stringContaining("✅ AgEnD updated to v2.3.0-beta.10"), { threadId: "1" });
+    expect(sendText).toHaveBeenCalledWith("fleet", expect.stringContaining("✅ Update complete — v2.3.0-beta.10"), { threadId: "1" });
     expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ err: expect.any(Error) }), expect.stringMatching(/new message/));
     expect(progress.terminalDeferred).toBe(false);
   });
@@ -315,7 +315,7 @@ describe("#2175: the final update step lands on Telegram", () => {
     await vi.advanceTimersByTimeAsync(44_000);
     expect(tg.editMessage).toHaveBeenCalledTimes(1);         // nothing into the window
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(tg.applied).toContain("✅ AgEnD updated to v2.3.0-beta.10");
+    expect(tg.applied).toContain("✅ Update complete — v2.3.0-beta.10");
     expect(log.error).not.toHaveBeenCalled();
   });
 
@@ -358,7 +358,7 @@ describe("#2175: the final update step lands on Telegram", () => {
   it("P2-2: a newer text while background edit A is in flight is written after A — even when A lands late", async () => {
     const tg = heldTelegram();
     const { progress } = await deferredWithAttemptHeld(tg);
-    const withWarning = "✅ AgEnD updated to v2.3.0-beta.10; 14/14 agents running.\n\n⚠️ old copy left";
+    const withWarning = "✅ Update complete — v2.3.0-beta.10; 14/14 agents running.\n\n⚠️ old copy left";
     expect(progress.replaceTerminalText(withWarning)).toBe(true);
     tg.pass();
     tg.held[0].resolve();                                    // A lands (applied) after the newer text arrived
