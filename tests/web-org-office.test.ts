@@ -513,6 +513,69 @@ describe("the Office view on the page", () => {
     await p.unmount(); await mount();
     expect(desks()).toEqual(["atlas", "tide"]);
   });
+  // #2399 carry: the write surface's minimal editor — an admin session only; add, rename, style, members, delete;
+  // saved with the rev read; a change made meanwhile (409) re-reads and saves nothing; too many saves (429) says so.
+  describe("the offices' editor", () => {
+    const realFetch = () => (globalThis as any).fetch;
+    let puts: any[] = [], answer: { status: number; body: unknown } = { status: 200, body: {} };
+    const auth = (canWrite: boolean) => { (globalThis as any).AgendAuth = { canWrite: async () => canWrite }; (p.window as any).AgendAuth = (globalThis as any).AgendAuth; };
+    let base: any;
+    beforeEach(() => {
+      puts = []; answer = { status: 200, body: {} }; base = realFetch();
+      (globalThis as any).fetch = async (url: string, o: any = {}) => {
+        if (url === "/ui/offices" && o.method === "PUT") { puts.push(JSON.parse(o.body)); return { ok: answer.status === 200, status: answer.status, json: async () => answer.body }; }
+        return base(url, o);
+      };
+    });
+    afterEach(() => { (globalThis as any).fetch = base; delete (globalThis as any).AgendAuth; delete (p.window as any).AgendAuth; delete document.body.dataset.tier; delete document.body.dataset.publicLink; });
+    const editBtn = () => p.root.querySelector(".oo-edit");
+    it("offered to an admin session only: not to a read-only one, a guest page or the public link", async () => {
+      auth(false); await office(); expect(editBtn()).toBeNull();
+      await p.unmount(); auth(true); document.body.dataset.tier = "guest"; await office(); expect(editBtn()).toBeNull();
+      await p.unmount(); delete document.body.dataset.tier; document.body.dataset.publicLink = "1"; await office(); expect(editBtn()).toBeNull();
+      await p.unmount(); delete document.body.dataset.publicLink; await office(); expect(editBtn()?.textContent.trim()).toBe("Edit offices");
+    });
+    it("add an office, name it, pick a team and one instance, choose Studio: saved with the rev read, and shown in the switcher", async () => {
+      offices = { rev: 4, offices: [{ id: "ops", name: "Ops room", members: [], layout: { seats: [{ id: "s1", x: 10, y: 10 }], waypoints: [], edges: [] } }] };
+      auth(true); await office();
+      editBtn().click(); await settle(3);
+      p.root.querySelector("#oeAdd").click(); await settle(2);
+      const rows = p.root.querySelectorAll(".oe-row");
+      expect(rows).toHaveLength(2);
+      const name = rows[1].querySelector(".oe-name"); name.value = "Web crew"; fire(name, "input"); await settle(1);
+      const style = rows[1].querySelector(".oe-style"); style.value = "studio"; fire(style, "change"); await settle(1);
+      const picks = rows[1].querySelectorAll(".oe-members input");
+      const labelOf = (i: any) => i.parentNode.textContent.trim();
+      fire(picks.find((i: any) => labelOf(i) === "Web"), "change"); await settle(1);
+      fire(p.root.querySelectorAll(".oe-row")[1].querySelectorAll(".oe-members input").find((i: any) => labelOf(i) === "quill"), "change"); await settle(1);
+      answer = { status: 200, body: { rev: 5, offices: [] } };
+      p.root.querySelector("#oeSave").click(); await settle(4);
+      expect(puts).toHaveLength(1);
+      expect(puts[0].rev).toBe(4);
+      expect(puts[0].offices[0]).toEqual({ id: "ops", name: "Ops room", skin: "pixel", members: [], layout: { seats: [{ id: "s1", x: 10, y: 10 }], waypoints: [], edges: [] } });   // its layout kept
+      expect(puts[0].offices[1]).toMatchObject({ name: "Web crew", skin: "studio", members: ["team:Web", "quill"] });
+      expect(puts[0].offices[1].id).toMatch(/^office-[0-9a-z]{6}$/);
+      expect(puts[0].offices[1]).not.toHaveProperty("layout");
+    });
+    it("a change made meanwhile (409): nothing saved, the list read again, said so; 429 says to wait; a nameless office is not sent", async () => {
+      offices = { rev: 4, offices: [{ id: "ops", name: "Ops room", members: [] }] };
+      auth(true); await office();
+      editBtn().click(); await settle(3);
+      const name = p.root.querySelector(".oe-row .oe-name"); name.value = "  "; fire(name, "input"); await settle(1);
+      p.root.querySelector("#oeSave").click(); await settle(3);
+      expect([puts.length, p.root.querySelector(".oe-msg").textContent]).toEqual([0, "Each office needs a name."]);
+      name.value = "Ops"; fire(name, "input"); await settle(1);
+      offices = { rev: 6, offices: [{ id: "lab", name: "Lab", members: [] }] };
+      answer = { status: 409, body: { error: "offices_changed" } };
+      p.root.querySelector("#oeSave").click(); await settle(4);
+      expect(p.root.querySelector(".oe-msg").textContent).toContain("Someone changed the offices meanwhile");
+      expect(p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)).toEqual(["Lab"]);   // the current list
+      answer = { status: 429, body: { error: "offices_rate_limited" } };
+      p.root.querySelector("#oeSave").click(); await settle(4);
+      expect(puts.at(-1).rev).toBe(6);                                     // the rev read again
+      expect(p.root.querySelector(".oe-msg").textContent).toBe("Too many saves. Try again in a minute.");
+    });
+  });
   it("the host's offices in the switcher; a stored office shows its members", async () => {
     offices = { rev: 2, offices: [{ id: "ops", name: "Ops room", members: ["team:Web", "quill"] }, { id: "auto", name: "nope" }] };
     await office();

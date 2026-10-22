@@ -1467,6 +1467,17 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-pick { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-2); }
 .oo-pick .tb-select { max-width: 200px; }
 .oo-people { position: relative; }
+/* #2399: the offices' minimal editor (fleet-office-editor.js) — one row per office, its members unfolded under it. */
+.oe-list { list-style: none; margin: var(--s-3) 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-3); }
+.oe-row { padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); display: flex; flex-direction: column; gap: var(--s-2); }
+.oe-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s-2); }
+.oe-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.oe-label { font-size: var(--fs-xs); color: var(--text-2); }
+.oe-name { min-width: 0; width: 16em; max-width: 100%; }
+.oe-remove { margin-left: auto; }
+.oe-members { display: flex; flex-wrap: wrap; gap: var(--s-3); }
+.oe-group { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-width: 12em; max-height: 240px; overflow-y: auto; }
+.oe-group legend { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); padding: 0; margin-bottom: 4px; }
 .oo-people > .btn.on { border-color: var(--accent); }
 .oo-people-pop { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; width: min(280px, calc(100vw - 32px)); max-height: 340px; overflow-y: auto;
   display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-2); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-2); }
