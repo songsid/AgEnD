@@ -25,3 +25,5 @@ No original message, task title, pane output, transcript/config path, full confi
 This is a record, not a resume decision. A prior snapshot can be stale, cancelled, completed or reassigned; it must never authorize recovery on its own. This stage leaves `in-flight-turn.json`, #1209's consume-before-gate logic, #926 reminders, crash-loop recovery and #2446 supervision unchanged. No new prompt, automatic start, queue item or General summary is produced. The next stages add terminal authority and recovery reconciliation separately.
 
 Rollback is a normal revert. Unused additive rows can remain in the outbox; ordinary delivery tables retain their previous schema/semantics. Do not reuse this stage's rollback statement for the later durable OOM blockers, which must not be bypassed by a downgrade.
+
+The data-downgrade compatibility workflow populates both journal snapshots, checks their exact stored JSON bytes after the published 2.1.12/Node 20 outbox opens, recovers and writes deliveries, then checks that the current build can read and update the retained row while preserving its prior snapshot.
