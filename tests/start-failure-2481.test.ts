@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  ATTEMPTS_FILE, STARTED_FILE, clearStartAttempts, judgeStartFailure, keptCopies, managerShowsLoop, notifyOnce, npmPrefixOf,
+  ATTEMPTS_FILE, STARTED_FILE, checkStartFailure, clearStartAttempts, judgeStartFailure, keptCopies, managerShowsLoop, notifyOnce, npmPrefixOf,
   parseLaunchctlPrint, parseSystemctlShow, previousVersion, readAttempts, readManager, readStarted, recordStartAttempt, recordStarted,
   type ManagerView, type StartedRecord,
 } from "../src/start-failure.js";
@@ -305,5 +305,20 @@ describe("#2481 `agend stop` is a deliberate stop: the attempts so far are not a
     expect(r.error).toBeUndefined();
     expect(r.stderr).not.toContain("Refusing");
     expect(readAttempts(home)).toBeNull();
+  });
+});
+
+describe("#2481 no attempt of the installed version: nothing to judge, and no service manager is asked (Fable r2)", () => {
+  it("a fresh or never-started home makes no call — every command's own call sequence stays as it was", () => {
+    const VERSION = (JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { version: string }).version;
+    const home = scratch("gate");
+    const run = vi.fn((_cmd: string, _args: string[]) => ({ status: 0, stdout: "" }));
+    expect(checkStartFailure(home, Date.now(), run)).toEqual({ failing: false });
+    recordStartAttempt(home, "0.0.1-other", Date.now() - 300_000);
+    expect(checkStartFailure(home, Date.now(), run)).toEqual({ failing: false });
+    expect(run).not.toHaveBeenCalled();
+    // With an attempt of this version on record, the check goes on (its answer depends on this host's service).
+    recordStartAttempt(home, VERSION, Date.now() - 300_000);
+    expect(() => checkStartFailure(home, Date.now(), run)).not.toThrow();
   });
 });
