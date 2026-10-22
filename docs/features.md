@@ -224,6 +224,10 @@ Which backends have it:
 
 Other backends do not have it.
 
+### Web chat reactions (#2305)
+
+An agent can answer a web chat message with an emoji under the person's bubble instead of a reply — the same minimal acknowledgement Discord and Telegram already had ("OK", "thanks"). The reaction appears at once and is kept with the chat history, so it survives a reload, another device and a restart. A guest sees it on the messages they may see. When the web message was copied to the agent's Discord/Telegram topic or ClassicBot room, the copy gets the same reaction. A reaction completes the turn, so the chat no longer says the agent ended without replying, and AgEnD no longer asks for a conclusion. Emojis are Telegram's fixed reaction set on every platform, never AgEnD's delivery marks; another emoji is refused with an error naming the allowed ones. The agent's instructions and the `react` tool say when a reaction is enough.
+
 ## Peer-to-peer agent collaboration
 
 Instances collaborate through the tools their profiles allow. Ordinary workers can discover and message peers; creating, starting or waking instances requires the appropriate orchestration permission. See [tool profiles](features.md#tool-profiles).
@@ -732,6 +736,10 @@ The fleet serves a web dashboard on `127.0.0.1` (`health_port`, default 19280). 
 Sign in with a one-time code: send `/web` (fleet admin) or run `agend web` on the host. With [guest sign-in](#guest-web-sign-in-225) on (2.2.5, off by default), anyone else's `/web` signs them in as a guest who sees only the agents they already use in chat. To use it from a phone or another computer, see [Reaching it from elsewhere](web-dashboard.md#reaching-it-from-elsewhere). The full guide is [web-dashboard.md](web-dashboard.md).
 
 **ClassicBot rooms echo the web chat too (2.2.5, #2054).** What you send to a ClassicBot agent from the web is posted in its room (`🌐 web · <name>: …`), group channels included, following `web.echo_to_channel` unless the room sets `web_echo` in `classicBot.yaml` (or **Web echo** in the room's Settings). After upgrading, a room that never set it starts echoing while the fleet's `web.echo_to_channel` is not off; set `web_echo: false` to keep that room quiet.
+
+### Named Cloudflare tunnel for the public link (#2307)
+
+**Settings → Web** can store or clear a write-only Cloudflare named-tunnel connector token and select an exact hostname and loopback origin port. The dashboard public link then keeps that hostname when you reopen it, so a phone's Add to Home Screen shortcut keeps its address. Leaving the hostname unset keeps the random quick tunnel. The token is set or cleared only (it cannot be read back); credentials stay out of command lines, API responses and logs. Token entry validates the decoded Cloudflare credential structure, trims surrounding whitespace and quotes, and explains a malformed paste without exposing credentials (#2344). The existing opening, expiry, Close, sign-in and session-revocation rules remain; this does not start an always-on public service. Login terminals and preview tunnels keep their own behaviour. Setup: [named-tunnel.md](named-tunnel.md).
 
 ## Remote CLI sign-in (`/login`)
 
@@ -1320,6 +1328,8 @@ Since then:
 - **The composer's row** (2.3 beta, #2215): one row under the composer, at the bottom left: this browser's web authority, then the key hint (`✓ Verified · Enter to send · Shift+Enter for a new line`). When "Verified" ends is in its tooltip (on a touch screen, a tap shows it); not verified reads `Not verified · Authorize`. A guest's note and the public link's sentence share the same row.
 - **The chat's identity card** (2.3 beta, #2217): nothing sits on the card. One card button in the chat header opens a menu with **Show card** and **Show picture and bio** (unticked, only the banner stays); both are kept on this device. Guests and the public link have the same button.
 - **Apply from a verified browser** (2.3 beta, #2170): a web-verified browser's own **Apply** confirms a held Settings change when its account is on the change's platform and a fleet admin of every connection the change affects. No chat card is posted, General gets a notice, and every check runs again when the change executes. Guests, the public link, unverified browsers and changes that need the host CLI are unchanged.
+- **Chat image viewer: zoom and pan (#2333):** opening a picture zooms with the wheel around the pointer (the wheel scrolls once the picture is larger than the window; Ctrl/⌘+wheel or a trackpad pinch zooms). A click toggles fit ↔ 100% at that spot, and a drag pans. **Fit width** reads a tall picture by scrolling. The toolbar shows the zoom level between − and +, and the keys are `+`, `-`, `0`, `1` and `W`. On a phone: pinch, a one-finger drag, and a double tap for 100%. Smooth (a transform, no re-decode), and it works on the public link too.
+- **Undo and redo in every text field (#2342):** Ctrl/⌘+Z undoes and Ctrl+Shift+Z / Ctrl+Y / ⌘⇧Z redo, with one history per field. The browser's own undo is one stack for the whole page, so undo in one box could change another, and any text the page put in a box wiped it. Each box now keeps its own history: typing undoes a word at a time, an IME composition is one step, and what the page puts in can be undone too (a completed `/command`, Put back, As text, a recent search, the filter's Esc clear, an emoji pick, a CSS restore). The browser's own Edit-menu Undo goes through the same history. A sent message is never undone back into the composer. Fields that trimmed what you typed (the bot token, Discord IDs, the setup wizard, the session-hours number) now keep a typed space, so a path with a space can be entered.
 
 See [web-dashboard.md](web-dashboard.md).
 
@@ -1415,6 +1425,10 @@ A **mod** is one file that carries such a look: a theme with its pictures, card 
 - **Styles you write:** custom CSS, and turning it off on this device.
 - **Add-ons:** mods, effects and your effect choices (Canvas Worker effects are still 2.3 beta).
 - **Advanced:** card upload limits, and Restore defaults.
+
+### App icon (#2308)
+
+**Settings → Web appearance → App icon** takes a square picture (PNG, JPG or WebP) for the browser tab and a phone's home screen, with a preview and **Restore default**; an admin's session changes it. The dashboard has a web app manifest, so installing it as an app (Add to Home Screen) uses the same icon. Icon addresses carry a version, so a new icon shows at once (an iPhone home screen keeps the old one until the shortcut is added again).
 
 **Banner focus (2.2.5, #2086).**
 - **Safe band:** a card's banner is never drawn wider than 5:1 (a wider screen centres it over a blurred copy) nor narrower than 9:4 (which crops the sides), so on a 1600×600 banner an area of about 1350×320, centred across the width, shows on every card size and layout. That area moves with the focus below; at the default focus, 50, it sits in the middle of the picture.
