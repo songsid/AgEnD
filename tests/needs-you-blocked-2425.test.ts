@@ -38,7 +38,10 @@ function fixture() {
   board.moveCard(dev, asked.code, "claimed"); board.moveCard(dev, asked.code, "blocked", { reason: "which season?" });
   const confirm = board.createCards(ann, { cards: [{ title: "Leaderboard", assignee: "dev-a" }] }).cards[0]!;
   board.moveCard(dev, confirm.code, "claimed"); board.moveCard(ann, confirm.code, "review");
-  return { d, scheduler, board, raw, legacy, review, handed, asked, confirm };
+  // A card in review that needs no confirmation (needs_review 0): nothing for the person (Fable's surviving mutant).
+  const noReview = board.createCards(ann, { cards: [{ title: "Quick fix", assignee: "dev-a", needsReview: false }] }).cards[0]!;
+  board.moveCard(dev, noReview.code, "claimed"); board.moveCard(ann, noReview.code, "review");
+  return { d, scheduler, board, raw, legacy, review, handed, asked, confirm, noReview };
 }
 
 describe("#2425 only what asks the person waits for the person", () => {
@@ -77,6 +80,26 @@ describe("#2425 only what asks the person waits for the person", () => {
       expect(tasksOf({ needs_you: { task_board: true } })).toEqual([f.asked.code, f.confirm.code].sort());
       const errs = (needs_you: unknown) => validateFleetConfig({ defaults: {}, instances: {}, needs_you }).errors.filter((e: any) => e.path.startsWith("needs_you")).map((e: any) => e.path);
       expect([errs({ task_board: true }), errs({ task_board: "yes" }), errs({ tasks: true })]).toEqual([[], ["needs_you.task_board"], ["needs_you.tasks"]]);
+    } finally { f.scheduler.db.close(); }
+  });
+
+  // Fable on #2426: the documented re-enable goes through the real loader (a key it dropped did nothing).
+  it("needs_you.task_board survives loadFleetConfig; the route of a stale button follows the same rule", async () => {
+    const { loadFleetConfig } = await import("../src/config.js");
+    const d = mkdtempSync(join(tmpdir(), "needs-blocked-2425-cfg-")); dirs.push(d);
+    writeFileSync(join(d, "fleet.yaml"), "needs_you:\n  task_board: true\n  live_message: false\ninstances: {}\n");
+    expect(loadFleetConfig(join(d, "fleet.yaml")).needs_you).toEqual({ live_message: false, task_board: true });
+    writeFileSync(join(d, "fleet.yaml"), "instances: {}\n");
+    expect(loadFleetConfig(join(d, "fleet.yaml")).needs_you?.task_board).toBeUndefined();
+    const f = fixture();
+    try {
+      const fm = new FleetManager(f.d) as unknown as Record<string, any>;
+      fm.scheduler = f.scheduler;
+      fm.fleetConfig = { defaults: {}, instances: { "dev-a": {} }, needs_you: { task_board: true } };
+      const routed = (code: string) => fm.needsYouRoute(code) !== null;
+      expect([f.asked.code, f.confirm.code, f.handed.code, f.review.code, f.legacy[0]!.code, f.noReview.code].map(routed)).toEqual([true, true, false, false, false, false]);
+      fm.fleetConfig = { defaults: {}, instances: { "dev-a": {} } };                                      // opted out
+      expect(routed(f.asked.code)).toBe(false);
     } finally { f.scheduler.db.close(); }
   });
 

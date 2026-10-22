@@ -120,7 +120,7 @@ export interface BoardSummary {
 }
 
 export interface SummaryRead {
-  /** What waits for the person now (TaskBoard.waitingForPerson): review cards that need them, blocked cards. */
+  /** What waits for the person now (TaskBoard.waitingForPerson): review cards that need them, blocked cards they handed out. */
   waiting: Card[];
   done: Card[];
   created: Card[];

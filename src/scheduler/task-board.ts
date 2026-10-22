@@ -438,6 +438,14 @@ export function cardCode(raw: string): string | null {
 }
 
 /** A card waits for the person's confirmation when it is finished. */
+/**
+ * #2425: whether a card waits for the person — in review needing their confirmation, or blocked on a question the person
+ * owns (they handed it out). The one rule for waitingForPerson's query, Needs you and a button's route.
+ */
+export function waitsForPerson(card: Pick<Card, "status" | "needsReview" | "dispatcher">): boolean {
+  return (card.status === "review" && card.needsReview) || (card.status === "blocked" && card.dispatcher?.kind === "person");
+}
+
 export function requiresReview(card: Pick<Card, "needsReview">): boolean {
   return card.needsReview;
 }

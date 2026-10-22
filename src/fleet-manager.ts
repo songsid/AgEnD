@@ -107,7 +107,7 @@ import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
 import { boardActivity, boardCardLimit, boardToolAction } from "./task-board-tool.js";
 import { TaskBoardWaker } from "./task-board-waker.js";
-import { TaskBoardError, wrapUpGap, type Actor } from "./scheduler/task-board.js";
+import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor } from "./scheduler/task-board.js";
 import type { SchedulerDb } from "./scheduler/db.js";
 import type { Schedule, ScheduleRetry, ScheduleRetryDrop, SchedulerConfig } from "./scheduler/index.js";
 import { escapeTelegramHtml, scheduleClock, scheduleRetryLabel } from "./scheduler/retry-label.js";
@@ -13916,7 +13916,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private needsYouRoute(code: string): { lane?: string } | null {
     const board = this.scheduler?.db.board;
     const card = board?.findCard(code);
-    if (!board || !card || !(card.status === "blocked" || (card.status === "review" && card.needsReview))) return null;
+    // #2425 (Fable): the same rule as the list — a button rendered before the fix (or before the opt-in went off) for a
+    // card that no longer waits for the person answers "no longer waits".
+    if (!board || !card || this.fleetConfig?.needs_you?.task_board !== true || !waitsForPerson(card)) return null;
     const leads = new Map(board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
     const lane = this.needsYouLane(card, leads);
     return lane ? { lane } : {};
