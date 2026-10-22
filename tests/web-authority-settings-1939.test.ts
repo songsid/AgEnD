@@ -175,7 +175,7 @@ describe("the overview (a real FleetManager)", () => {
     const firefox = h.session("Firefox on Mac"), phone = h.session("Safari on iPhone");
     expect(h.s.authorizeWebSession(firefox, "loopback", false)).toMatchObject({ ok: true });
     const o = h.s.webAuthorityOverview();
-    expect(o.state).toEqual({ enabled: true, loopbackOnly: false, epoch: 1 });
+    expect(o.state).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, epoch: 1 });
     expect(o.configured).toEqual({ enabled: true, max_session_hours: 6 });
     expect(o.hours).toEqual({ min: 1, max: 48, default: 48 });
     expect(o.lanHosts).toEqual(["agend.example.com", "192.168.1.5:19280"]);

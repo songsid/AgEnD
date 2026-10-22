@@ -1130,7 +1130,14 @@ function webAuthorityOf(req: IncomingMessage, url: URL, ctx: WebApiContext, inst
   if (!ctx.webAuthority) return { authority: noAuthority(0), refusal: "not_session" };
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
   return ctx.webAuthority({ session: v.kind === "allow" && v.via === "session" ? v.session : null, gateway: !!gatewayRequestContext(req),
-    peer: classifyWebPeer(req), ...(instance !== undefined ? { instance } : {}) });
+    peer: webPeerOf(req), ...(instance !== undefined ? { instance } : {}) });
+}
+/**
+ * #1939 §3.4 / #2453 §0.2: where this request came from — the admin's named link by the gateway's own provenance (its
+ * exact hostname), else what the TCP peer and Host say (a quick tunnel's request is `lan`, and refused as public_link).
+ */
+export function webPeerOf(req: IncomingMessage): WebPeer {
+  return gatewayRequestContext(req)?.named === true ? "named_link" : classifyWebPeer(req);
 }
 /**
  * #2122: what let this request in, asked now — its session (by handle, under the token it was signed in with) or the
@@ -2013,7 +2020,7 @@ export function handleWebRequest(
   if (path === "/ui/authorization" && (method === "GET" || method === "POST")) {
     const judge = () => {
       const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-      return { session: v.kind === "allow" && v.via === "session" ? v.session : null, gateway: !!gatewayRequestContext(req), peer: classifyWebPeer(req) };
+      return { session: v.kind === "allow" && v.via === "session" ? v.session : null, gateway: !!gatewayRequestContext(req), peer: webPeerOf(req) };
     };
     res.setHeader("Cache-Control", "no-store");
     if (method === "GET") {
