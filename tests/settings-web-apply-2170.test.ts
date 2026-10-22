@@ -185,6 +185,19 @@ describe("#2453 (§0.2): the named-link option is never confirmed by its asker",
     const f = fleet(), s = f.session({ adapterId: "a", userId: "a-F" }), p = f.propose();
     expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)?.label).toMatch(/\(web-verified\)$/);
   });
+  it("a named-link session web-verified over the gateway (option on) is still never the self-confirming authority", () => {
+    const f = fleet();
+    (f.fm.fleetConfig as any).web = { public_link: { hostname: "agend.example.com" }, verified_authority: { enabled: true, named_link: true } };
+    const X = "e".repeat(32);
+    const c = f.any.webSessions.create({ tier: "admin", surface: "gateway", exposureId: X, label: "phone", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "a", userId: "a-F" } });
+    expect(f.any.authorizeWebSession(c.record, "named_link", true)).toMatchObject({ ok: true });
+    const req = { method: "PUT", socket: { remoteAddress: "127.0.0.1" }, headers: { host: "agend.example.com", origin: "https://agend.example.com", "sec-fetch-site": "same-origin",
+      cookie: `__Host-agend_session=${c.sessionId}; agend_session=${c.sessionId}`, [WEB_CSRF_HEADER]: csrfTokenFor(c.sessionId) } };
+    bindGatewayRequest(req, { surface: "gateway", named: true, exposureId: X, expectedOrigin: "https://agend.example.com", isCurrent: () => true });
+    expect(f.any.webAuthority({ session: c.record, gateway: true, peer: "named_link" }).authority.kind, "control: it is web-verified there").toBe("web-verified");
+    const p = f.propose();
+    expect(f.any.settingsSelfConfirmation(f.store, req, p.view.id)).toBeNull();
+  });
   it("a request over the public link is never the self-confirming authority — named link or not", () => {
     const f = fleet(), p = f.propose();
     for (const named of [true, false]) {

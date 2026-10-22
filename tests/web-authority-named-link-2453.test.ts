@@ -99,6 +99,8 @@ describe("admission (§3 with §0.2)", () => {
     expect(evaluateWebAuthority(input({ gateway: false })).refusal).toBe("public_link");                       // peer named_link, not on the gateway
     expect(evaluateWebAuthority(input({ session: session("local") })).refusal).toBe("public_link");           // a local session over the gateway
     expect(evaluateWebAuthority(input({ gateway: false, peer: "loopback", session: session("gateway") })).refusal).toBe("public_link");
+    // A local session that claims the named peer off the gateway: never named, never verified as such.
+    expect(evaluateWebAuthority(input({ gateway: false, peer: "named_link", session: session("local") })).refusal).toBe("public_link");
   });
   it("the policy: off by default; only `true` turns it on", () => {
     expect([webAuthorityPolicy(undefined).namedLink, webAuthorityPolicy({ verified_authority: { named_link: "yes" as never } }).namedLink,

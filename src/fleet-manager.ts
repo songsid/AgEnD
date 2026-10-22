@@ -198,7 +198,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
   }
   return tasks;
 }
-import { handleWebRequest, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
+import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
@@ -1743,7 +1743,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (gatewayRequestContext(req)) return null;
     // …and never a change that turns the named-link option on: that one needs a General's card or the host.
     if (!store.selfConfirmable(id)) return null;
-    const record = auth.session, gateway = false, peer = classifyWebPeer(req);
+    const record = auth.session, gateway = !!gatewayRequestContext(req), peer = webPeerOf(req);
     const verified = (): { adapter_id: string; user_id: string } | null => {
       const now = this.webAuthority({ session: record, gateway, peer });
       // A refusal carries no authority (kind "none"); the handle pins the session, and with it its one account.
