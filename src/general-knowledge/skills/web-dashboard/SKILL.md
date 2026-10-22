@@ -61,7 +61,10 @@ days). The code arrives by DM. Limits: one a minute and five an hour per browser
 
 **Local vs public link.** Local: the dashboard on the host itself (127.0.0.1; the address cannot be changed, only
 `health_port`). Public: **🌐 Other device (temporary public)** starts a Cloudflare quick tunnel (an address under
-`trycloudflare.com`), default 120 minutes (`web.public_link.ttl_minutes`, at most 480; `protocol` http2/quic/auto).
+`trycloudflare.com`), default 120 minutes (`web.public_link.ttl_minutes`, at most 480; `protocol` http2/quic/auto). With a fixed
+hostname (named tunnel, `web.public_link.hostname`) the minutes go up to 10080, or `0` = no expiry, and
+`web.public_link.auto_open` reopens the link after AgEnD starts for the admin who last opened it (nothing posted; sign-in
+still needs a code).
 Close it with **Close public link** → **Close link (signs public browsers out)**, `/web revoke`, or let it expire.
 A public link is limited on purpose: no live stream (the page polls), no custom CSS, and Settings → Web, appearance,
 mods, effect-library/personal-selection management, schedule edits and preference writes are refused. Current in-scope
@@ -455,7 +458,8 @@ progress, reply guard, **ClassicBot admins**, **Allowed guilds**.
 | Web echo | `web.echo_to_channel` |
 | Log tab: each agent's steps | `web.log_tab` |
 | Offer temporary public web links | `web.public_link.allow_public` |
-| Public link minutes (1–480) | `web.public_link.ttl_minutes` |
+| Public link minutes (1–480; with a fixed hostname 0–10080, 0 = no expiry) | `web.public_link.ttl_minutes` |
+| Reopen the public link when AgEnD starts (fixed hostname only) | `web.public_link.auto_open` |
 | Tunnel protocol (http2 / quic / auto) | `web.public_link.protocol` |
 Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `notify_login`, `preview`, `preview_port`,
 `preview_origin`, `preview_on_public_link`, `usage_panel`, `provider_secrets`, `upload_max_file_mb`,

@@ -555,7 +555,7 @@ While it starts, the menu you clicked shows each step with its seconds, updated 
 
 Steps 1–3 appear only when AgEnD's copy must be fetched; after the first time it is steps 4–6. A step that fails is marked with its reason, and running `/web` again retries. The menu shows only these words and numbers, never the link or the code.
 
-It uses AgEnD's pinned, checksum-verified cloudflared, never an arbitrary executable on PATH. On Linux it is fetched from pkg.cloudflare.com first and from GitHub when that fails or is too slow; step ② says when it switches. macOS uses GitHub only. Only one tunnel can run; a public `/login` terminal shares that slot. The fixed lifetime is **two hours**, including startup; reuse does not renew it. Settings can set 1–480 minutes or disable the option. A private close button (two taps: Close link, then confirm; Cancel puts it back), a fresh menu, `/web revoke`, expiry and fleet shutdown close access. Unconfirmed child cleanup blocks another tunnel, but web access is already closed.
+It uses AgEnD's pinned, checksum-verified cloudflared, never an arbitrary executable on PATH. On Linux it is fetched from pkg.cloudflare.com first and from GitHub when that fails or is too slow; step ② says when it switches. macOS uses GitHub only. Only one tunnel can run; a public `/login` terminal shares that slot. The fixed lifetime is **two hours**, including startup; reuse does not renew it. Settings can set 1–480 minutes or disable the option; with a [fixed hostname](named-tunnel.md#longer-lifetime-and-reopening-after-a-restart), up to 10080 minutes or `0` for no expiry, and an optional reopen after a restart. A private close button (two taps: Close link, then confirm; Cancel puts it back), a fresh menu, `/web revoke`, expiry and fleet shutdown close access. Unconfirmed child cleanup blocks another tunnel, but web access is already closed.
 
 The separate gateway accepts only its current tunnel Host and reviewed panel routes. `/view` always requires sign-in there; SSE, `/health`, `/agent` and code issuance are excluded, and the preview frame is never served from it (previews have their own tunnel, see [HTML previews](#html-previews)). Chat polls immediately. Closing revokes that exposure's codes and sessions; local sessions stay separate. The host is ephemeral, never persisted in `allowed_hosts`.
 
@@ -594,7 +594,8 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | `web.preview_origin` | — | A separate host name, mapped to the preview port, for previews through a tunnel or proxy |
 | `web.preview_on_public_link` | `true` | `false`: no previews over the temporary public link (no second tunnel) |
 | `web.public_link.allow_public` | `true` | Offer the opt-in action; disabling also closes an existing link |
-| `web.public_link.ttl_minutes` | `120` | Fixed lifetime from consent, 1–480 minutes; no renewal of an existing link |
+| `web.public_link.ttl_minutes` | `120` | Fixed lifetime from consent, 1–480 minutes; with `hostname` 1–10080, or `0` = no expiry; no renewal of an existing link: a changed lifetime applies at the next opening; Close the link to end the current one |
+| `web.public_link.auto_open` | `false` | With `hostname` only: reopen the link after AgEnD starts, for the admin who last opened it; nothing posted, sign-in still needs a code |
 | `web.public_link.protocol` | `http2` | cloudflared `http2`, `quic` or `auto` |
 | `web.echo_to_channel` | `true` | Copy web chat messages to the instance's own Telegram or Discord topic |
 | `web.log_tab` | `false` | Show each agent's steps in its **Log** tab |

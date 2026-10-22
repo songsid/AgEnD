@@ -5,12 +5,14 @@ the dashboard public link. Its hostname stays the same when you reopen the
 link, so a phone's Add to Home Screen shortcut keeps its address. Leaving the
 hostname unset retains the existing random quick tunnel.
 
-This fixes the address, not the exposure lifetime: open the public link from
-AgEnD's dashboard menu as usual. The configured 1–480 minute lifetime, Close,
-sign-in verification and session revocation still apply. After expiry or a
-fleet restart, reopen the link at the same address. It does not start an
-always-on public service. Login terminals and preview tunnels retain their
-existing separate behavior.
+Open the public link from AgEnD's dashboard menu as usual. Close, sign-in
+verification and session revocation still apply. With a fixed hostname the
+lifetime may be longer than a quick tunnel's 1–480 minutes: up to 10080
+minutes (7 days), or `0` for no expiry. After expiry or a fleet restart, reopen
+the link at the same address — or let AgEnD reopen it after a restart with
+`auto_open` (see [Longer lifetime and reopening after a
+restart](#longer-lifetime-and-reopening-after-a-restart)). Login terminals and
+preview tunnels retain their existing separate behavior.
 
 ## Create the tunnel
 
@@ -84,8 +86,9 @@ web:
     hostname: agend.example.com
     tunnel_token_env: AGEND_CLOUDFLARE_TUNNEL_TOKEN
     origin_port: 19282
-    ttl_minutes: 120
+    ttl_minutes: 120      # 1–10080 with a hostname, or 0 = no expiry
     protocol: http2
+    auto_open: false      # true: reopen after AgEnD starts (hostname only)
 ```
 
 The token is stored in the existing private `~/.agend/.env` (or the current
@@ -107,6 +110,43 @@ page also leaves public access closed. Check the route, port and connector
 token, then reopen. Cloudflare Access can add another layer, but an Access
 challenge in front of `/signin` prevents AgEnD's marker probe from succeeding;
 configure any such policy with that limitation in mind.
+
+## Longer lifetime and reopening after a restart
+
+Only with a fixed hostname (a quick tunnel's random address changes on every
+opening, so it keeps 1–480 minutes and is never opened automatically):
+
+- **`ttl_minutes`** accepts 1–10080 (7 days), or **`0` = no expiry**: the link
+  stays open until it is closed (Close, `/web revoke`), a named setting or the
+  token changes, public links are turned off, or AgEnD stops. `/web` and the
+  private sign-in message then say "no expiry" instead of a time. The lifetime
+  is fixed when the link opens: a changed lifetime applies at the next opening;
+  Close the link to end the current one.
+- **`auto_open: true`** (default `false`) reopens the link once after AgEnD
+  starts — after the web server is listening and the chat connections are up —
+  for the admin who last opened a named link with `/web`, with the same
+  readiness check as a manual open. Nothing is posted and no sign-in code is
+  sent: the link's sign-in page still requires a code. Get one with `/web`
+  (it joins the open link and sends its address and a code privately), or ask
+  for one on the sign-in page from a browser that signed in before — a phone's
+  home-screen shortcut, for example; the code goes to you by DM.
+- Nothing is reopened until an admin has opened the named link at least once
+  with `/web`, or when that admin is no longer a fleet admin of that General.
+  **Close** and **`/web revoke`** also stop it until the next `/web`, so a
+  restart never undoes a deliberate close.
+- A failed reopen is logged and retried twice (after 30 seconds and 2
+  minutes, for a network still coming up). If it still fails, that admin gets
+  one DM showing the failed step, as `/web` would; run `/web` to try again.
+
+In Settings → Web, the minutes field allows 0–10080 and the **Reopen the
+public link when AgEnD starts** box appears once a hostname is filled in.
+Blanking the hostname with more than 480 minutes, `0` or `auto_open` set is
+refused until those fit a quick tunnel.
+
+A link without expiry is reachable on the internet for as long as it is open:
+anyone with the address sees the sign-in page. Signing in still needs a
+single-use code that only reaches an admin privately, and every sign-in through
+the link is announced in General, as before.
 
 ## If opening fails
 
@@ -138,7 +178,10 @@ account, verify:
 2. Close and reopen: the hostname is identical, old exposure sessions are
    revoked, and the saved shortcut opens the new sign-in page.
 3. After TTL expiry or restart, verify it is closed; reopen and use the same
-   shortcut. There should be no requirement to save a new URL.
+   shortcut. There should be no requirement to save a new URL. With
+   `ttl_minutes: 0`, `/web` says "no expiry"; with `auto_open: true`, restart
+   AgEnD and check the shortcut's sign-in page loads without a `/web`, and
+   still asks for a code.
 4. Try a wrong hostname/route or invalid token: opening fails and no URL is
    published as ready. Restore the correct values and reopen.
 5. Check Settings reads, chat and logs: no token value. On Linux, check the
