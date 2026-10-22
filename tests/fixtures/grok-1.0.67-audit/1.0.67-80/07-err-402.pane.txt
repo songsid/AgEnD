@@ -1,0 +1,40 @@
+
+  master /t/work-1.0.67-80/repo                      1.4K / 256K │ [Dashboard]
+
+
+     ❯ error turn b                                                  1:09 PM
+
+
+
+
+
+
+
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+
+  ┃
+  ┃  You hit your weekly limit.
+  ┃
+  ┃
+  ┃  1 (○) Upgrade tier      Upgrade to a higher tier for more usage
+  ┃  2 (○) Buy more credits  Purchase credits to keep using Grok Build
+  ┃  3 (○) Try Again         Resubmit the last prompt once you have usage…
+  ┃
+  ┃  ↑/↓ navigate · y copy                                    Enter:submit
+  ┃
+
+  Tab:next answer  │  Esc:scrollback  │  Shift+x:dismiss
+

@@ -1,0 +1,57 @@
+precheck grok (manifest scripts/manual/cli-upstream-precheck/sources.json, 30 literals)
+  old: <download>/grok-1.0.62 — 1 file(s), 191.7 MB
+  new: <download>/grok-1.0.67 — 1 file(s), 194.2 MB
+
+literals in the old artifact: 18 of 30 (the rest are AgEnD's own text, or this CLI never had them)
+
+MISSING (in old, not in new): 0
+
+COUNT CHANGED: 2
+  [idle-busy] 75 -> 78  "Grok Build"   (src/backend/grok.ts:231 GrokBackend.getReadyPattern)
+  [error] 73 -> 72  "rate_limit"   (src/backend/grok.ts:309 GrokBackend.getErrorPatterns.type)
+
+APPEARED (not in old, in new): 0
+
+NEW PROMPT-LIKE STRINGS near a known detector literal: 5
+  [idle-busy,onboarding] "Yes, proceedNo, cancel│─╭╮╰╯Do you trust the contents of thi"   near "Grok Build"; "Do you trust the contents"   hint: the old release has "Yes, proceed"… (only a neighbouring string changed?)
+  [error] "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstResultOkErr"   near "rate limit"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  [error] "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstassertion f"   near "rate limit"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  [error] "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstcorrect err"   near "rate limit"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  [error] "usage limit reachedstatus 401unauthorizedinvalid_request_errordetailCompaction failed: Compa"   near "out of credits"
+
+NEW PROMPT-LIKE STRINGS elsewhere: 11
+  "Press Enter to apply and save your choice, or press Escape to revert. Leavi"
+  "Press Esc to closefwdsclear searchkeep filter[Open][Copy]"
+  "Press h to show all.No tasks or agents.▲▼❯Add feedback text or an"   hint: the old release has "Press h to show all."… (only a neighbouring string changed?)
+  "Resume the paused goal<objective> | status | pause | resume (active)groknightgrokdaytokyoni"
+  "continue the actual work.[Image extracted from tool result above]<system-reminder></system-re"   hint: the old release has "continue the actual work."… (only a neighbouring string changed?)
+  "press Enter to insert a newline., sandbox.tomlBGrok is using the user profi"   hint: the old release has "press Enter to insert a newline."… (only a neighbouring string changed?)
+  "press Enter to retry.The turn was stopped; send the prompt again to retry.e"   hint: the old release has "press Enter to retry."… (only a neighbouring string changed?)
+  "press Enter to save, Esc to discardevent crates/codegen/xai-grok-pager/src/"
+  "press Enter to send it here without a worktree.Not inside a git repository."
+  "press t to turn memory on or off and s for status...page must have been"   hint: the old release has "press t to turn memory on or off and s f"… (only a neighbouring string changed?)
+  "usage limit upsellmodel switch/doctor fixOpened question view from ext_methodask_user_questi"   hint: the old release has "usage limit upsellmodel switch/doctor fi"… (only a neighbouring string changed?)
+
+PROMPT-LIKE STRINGS gone in the new artifact: 15
+  "Press Enter to apply and save your choice, or press Escape to revert. Typin"
+  "Press Esc to closefwdsclear searchkeep filter[Open]"
+  "Press h to show all.No tasks or agents.▲▼@:Ask: Not responding… ["
+  "Resume the paused goal<objective> | status | pause | resume/memory takes no arguments. Open"
+  "Yes, proceedNo, cancelDo you trust the contents of this directory?Grok B"
+  "continue the actual work.[Image extracted from tool result above]<system-reminder>user:assist"
+  "press Enter to insert a newline.sandbox.tomlBGrok is using the user profile"
+  "press Enter to retry.The turn was stopped; send the prompt again to retry.T"
+  "press Enter to save, Esc to discardx.ai/replayedFollowUpsParamsresponse_ids"
+  "press t to turn memory on or off and s for status.--autoUsage: /rename"
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstDeadlineExp"
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstUnsupported"
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstworker_dirm"
+  "usage limit reachedstatus 401unauthorizedinvalid_request_errorevent crates/codegen/xai-grok-"
+  "usage limit upsellmodel switch/doctor fix/deleteOpened question view from ext_methodask_user"
+
+REASON: 5 new prompt-like string(s) on a known surface: [idle-busy,onboarding] "Yes, proceedNo, cancel│─╭╮╰╯Do you trust the contents of thi"; [error] "rate limit exceeded; sleeping.service not ready; poll_ready "; [error] "rate limit exceeded; sleeping.service not ready; poll_ready "; [error] "rate limit exceeded; sleeping.service not ready; poll_ready "; [error] "usage limit reachedstatus 401unauthorizedinvalid_request_err"
+REASON: 2 literal count(s) changed
+REASON: 11 new prompt-like string(s) away from known literals
+BASIS-DETAIL: missing 0, incomplete 0, coverage 0, unhinted new prompts 1, hinted new prompts 4
+BASIS: hard=1; hinted=4
+PRECHECK: MAJOR
