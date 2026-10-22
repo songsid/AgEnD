@@ -114,6 +114,34 @@ describe("#1774 removal: an instance removed while its reply's files are copied"
     await removed(fm, "gone3");
     expect([snapshots("gone3"), existsSync(own)]).toEqual([[], true]);
   });
+  it("Prism r1: a same-name replacement registered during the removal — the old reply goes (its copy too), the new one's own reply stays", async () => {
+    const fm = fleet();
+    fm.fleetConfig = { instances: { twin: { working_directory: "/x" } } };
+    const hold = gate();
+    slowCopies(fm, hold.promise, "after");
+    const old = fm.afterReplyRouted("twin", { text: "OLD INSTANCE REPLY", files: [agentFile("old.md")] });
+    await vi.waitFor(() => expect(snapshots("twin").length).toBe(1));      // the old one's copy is made, not yet shown
+    let fresh: Promise<void> | undefined;
+    fm.lifecycle = { daemons: new Map(), isPaused: () => false, hasWorkLease: () => false, remove: async () => {
+      fm.fleetConfig.instances.twin = { working_directory: "/y" };          // the replacement, while the old one goes
+      fresh = fm.afterReplyRouted("twin", { text: "NEW INSTANCE REPLY", files: [agentFile("new.md")] });
+    } };
+    fm.statuslineWatcher = { unwatch() {} };
+    await fm.removeInstance("twin", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
+    hold.open(); await old; await fresh;
+    const rows = fm.webChatHistory.list("twin");
+    expect([rows.map((m: any) => m.text), rows[0].attachments.length, snapshots("twin").length]).toEqual([["NEW INSTANCE REPLY"], 1, 1]);
+  });
+  it("control — a removal that fails takes nothing: the held reply is still the instance's, shown", async () => {
+    const fm = fleet();
+    const hold = gate();
+    slowCopies(fm, hold.promise, "before");
+    const done = fm.afterReplyRouted("stays", { text: "still mine", files: [agentFile("f.md")] });
+    fm.lifecycle = { daemons: new Map(), remove: async () => { throw new Error("lifecycle refused"); } };
+    await expect(fm.removeInstance("stays", authorizeExplicitInstanceRemoval("dashboard-confirmed"))).rejects.toThrow("lifecycle refused");
+    hold.open(); await done;
+    expect([texts(fm, "stays"), snapshots("stays").length]).toEqual([["still mine"], 1]);
+  });
   it("control — not removed: the same slow reply is shown with its file", async () => {
     const fm = fleet();
     const hold = gate();
@@ -125,6 +153,34 @@ describe("#1774 removal: an instance removed while its reply's files are copied"
 });
 
 describe("#1774 WebChatHistory: a reserved place", () => {
+  it("Prism r1: a quiet poll while the copy is held (nothing else recorded) still gets the reply on its next poll", () => {
+    const h = new WebChatHistory({ boot: "aa" });
+    h.record({ instance: "w", sender: "Ann", text: "before", ts: "t" });
+    const prior = { boot: "aa", id: Number(h.pollCursor().split("-")[1]) };   // control: a cursor from before the reply
+    const place = h.reserve();
+    const quiet = { boot: "aa", id: Number(h.pollCursor().split("-")[1]) };   // a poll while the copy is held
+    h.record({ instance: "w", sender: "w", role: "agent", text: "reply", ts: "t", reserved: place });
+    const after = { boot: "aa", id: Number(h.pollCursor().split("-")[1]) };
+    expect([quiet.id >= place, h.replayFor(quiet).map(m => m.text), h.replayFor(prior).map(m => m.text), h.replayFor(after)]).toEqual([true, ["reply"], ["reply"], []]);
+  });
+  it("Prism r1: a replay's cursors only rise — a stream cut after any frame loses nothing; bounded, it keeps the newest published; restored too", () => {
+    let saved: any[] = [];
+    const build = (replayMax?: number) => {
+      const h = new WebChatHistory({ boot: "aa", ...(replayMax ? { replayMax } : {}), store: { schedule: (_i: string, rows: () => unknown[]) => { saved = rows() as any[]; }, remove: async () => {} } });
+      const place = h.reserve();
+      h.record({ instance: "w", sender: "Ann", text: "person", ts: "t" });
+      h.record({ instance: "w", sender: "w", role: "agent", text: "reply", ts: "t", reserved: place });
+      return h;
+    };
+    const h = build();
+    const frames = h.after(0).map(m => [m.text, Number(h.cursorOf(m).split("-")[1])] as const);
+    const resumed = h.replayFor({ boot: "aa", id: frames[0]![1] }).map(m => m.text);    // cut after the first frame
+    const one = build(1).after(0).map(m => m.text);
+    const back = new WebChatHistory({ boot: "bb" });
+    back.restore("w", JSON.parse(JSON.stringify(saved)));
+    expect([frames, resumed, one, back.replayFor({ boot: "aa", id: 0 }).map(m => m.text), back.replayFor({ boot: "aa", id: frames[0]![1] }).map(m => m.text), h.list("w").map(m => m.text)])
+      .toEqual([[["person", 2], ["reply", 3]], ["reply"], ["reply"], ["person", "reply"], ["reply"], ["reply", "person"]]);
+  });
   it("taken once: recorded there (late: seenSeq), kept on disk and restored; a place already used is not reused", () => {
     let saved: any[] = [];
     const h = new WebChatHistory({ boot: "b1", store: { schedule: (_i: string, rows: () => unknown[]) => { saved = rows() as any[]; }, remove: async () => {} } });

@@ -1363,8 +1363,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly webFiles = new WebFileLedger({ limits: () => uploadLimits(this.fleetConfig?.web) });
   /** #1770: per instance, its last web reply still copying its files — the next one is shown after it, in order. */
   private readonly webReplyOrder = new Map<string, Promise<void>>();
-  /** #1774: bumped when an instance is removed — a reply still copying its files for the old one is then not its. */
+  /**
+   * #1774: an instance name's reply generation — moved on when a removal of it starts, so replies sent from then on (a
+   * same-name replacement's) are told from the removed instance's. `webChatRemovals`: once a removal succeeded, the
+   * generations and the daemon whose replies are no longer anyone's to show.
+   */
   private readonly webChatGenerations = new Map<string, number>();
+  private readonly webChatRemovals = new Map<string, { below: number; daemon?: unknown }>();
   private webChatGeneration(name: string): number { return this.webChatGenerations.get(name) ?? 0; }
   /** #1770: an instance's web-files byte cap (a field, so a test can make it small). */
   private webReplyMaxBytes = REPLY_FILES_MAX_BYTES;
@@ -10259,10 +10264,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // copies are done, and an instance's replies wait for the one before them: they reach the chat in order.
     const replyFiles = Array.isArray(args.files) ? (args.files as unknown[]).filter((f): f is string => typeof f === "string") : [];
     const ts = new Date().toISOString();
-    // #1774: the instance this reply is for — removed (and maybe made again) while its files were being copied, the
-    // reply is no longer its to show: nothing recreates its chat, and the copies made for it go.
-    const generation = this.webChatGeneration(instanceName);
-    const current = () => this.webChatGeneration(instanceName) === generation;
+    // #1774: the instance this reply is for — removed while its files were being copied (a same-name replacement
+    // registered meanwhile included), the reply is no longer its to show: no chat made again, none of the new one's
+    // touched, and the copies made for it go. A replacement's own replies are its own.
+    const generation = this.webChatGeneration(instanceName), owner = this.daemons.get(instanceName);
+    const current = () => {
+      const removed = this.webChatRemovals.get(instanceName);
+      return !removed || (generation >= removed.below && (removed.daemon === undefined || owner !== removed.daemon));
+    };
     const show = (attachments: WebChatAttachment[], reserved?: number) => {
       if (!current()) { this.webFiles.dropServed(attachments.map(a => a.id)); return; }
       // The one place a delivered agent reply reaches the web chat: the server marks it `agent` (#1306) — the only
@@ -11859,9 +11868,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Capture instance dir BEFORE lifecycle.remove, which deletes the instance
     // from fleetConfig. (The backend would be unresolvable afterwards.)
     const instanceDirToClean = this.getInstanceDir(name);
+    // #1774: replies sent from here on are a later instance's (a replacement registered while this one goes).
+    const removedBelow = this.webChatGeneration(name) + 1, removedDaemon = this.daemons.get(name);
+    this.webChatGenerations.set(name, removedBelow);
 
     if (execution) await this.lifecycle.remove(name, authorization, execution, transition);
     else await this.lifecycle.remove(name, authorization);
+    // #1774: removed — its replies still copying their files are no one's to show, replaced or not (a failed removal
+    // throws above: its replies stay its own).
+    this.webChatRemovals.set(name, { below: removedBelow, ...(removedDaemon !== undefined ? { daemon: removedDaemon } : {}) });
     // A later same-name registration owns its files and caches.
     // Own keys only: an instance named "constructor" is removed as any other (its inherited namesake is not a
     // re-registration) — #1677 review.
@@ -11876,8 +11891,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Its web chat goes with it (only after the removal succeeded): a later instance of the same name
     // must not be shown the old one's conversation, and deleted names must not pile up.
     this.webChatHistory.forget(name);
-    // #1774: a reply of it still copying its files finds out at its end, and shows nothing (no chat made again).
-    this.webChatGenerations.set(name, this.webChatGeneration(name) + 1);
     this.searchIndex?.removeInstance(name);
     this.webFiles.forget(name);
     this.compactWatchService?.forget(name);

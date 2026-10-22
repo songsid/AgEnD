@@ -535,7 +535,8 @@ export class WebChatHistory {
     if (posts.length) this.posts.set(entry, posts);
     let slot = this.byInstance.get(entry.instance);
     if (!slot) { slot = { messages: [], chars: 0 }; this.byInstance.set(entry.instance, slot); }
-    if (reserved !== null && reserved < this.nextId - 1) {
+    // Always seen now, even with nothing recorded meanwhile: a poll's cursor may already have counted the reserved id.
+    if (reserved !== null) {
       entry.seenSeq = this.nextId++;
       let at = slot.messages.length;
       while (at > 0 && slot.messages[at - 1]!.boot === this.boot && slot.messages[at - 1]!.id > reserved) at--;
@@ -674,14 +675,18 @@ export class WebChatHistory {
     return this.collect((m) => (m.boot === this.boot ? this.at(m) > lastId : lastId === 0));
   }
 
-  /** The retained messages that pass `keep`, across instances, in boot order then id order, at most replayMax (newest). */
+  /**
+   * The retained messages that pass `keep`, across instances, in boot order then in the order they were published
+   * (#1774: `at` — a late row where it was seen), at most replayMax (the newest published). A replay's cursors so only
+   * rise: a stream cut after any frame resumes from it without losing one. Pages show them in id order.
+   */
   private collect(keep: (m: WebChatMessage) => boolean): WebChatMessage[] {
     const out: WebChatMessage[] = [];
     for (const slot of this.byInstance.values()) {
       for (const m of slot.messages) if (keep(m)) out.push(m);
     }
     const r = this.bootRanks();
-    out.sort((a, b) => (r(a.boot) - r(b.boot)) || (a.id - b.id));
+    out.sort((a, b) => (r(a.boot) - r(b.boot)) || (this.at(a) - this.at(b)));
     return out.length > this.replayMax ? out.slice(-this.replayMax) : out;
   }
 
