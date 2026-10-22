@@ -4,6 +4,8 @@
 
 ## Before you upgrade
 
+The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In short:
+
 - **How to update.** Send `/update` in General, or run `agend update` on the host. The update runs the new version's own installer. If an install is interrupted, run the install command again to repair it.
 - **Root and WSL-style hosts (#2369).** On 2.2.x, an `agend update` run from a shell without `XDG_RUNTIME_DIR` (a plain `wsl` shell, `docker exec`, cron, or root) cannot reach the systemd user service and falls back to 2.2.x. Use this instead:
 
@@ -12,11 +14,11 @@
   ```
 
   Or rerun the official install command. You do not need this once you are on 2.3. Existing fleets are not affected.
-- **Free space: about 235 MB.** Before it changes anything, the update keeps a copy of the installed version so it can roll back. Keep about 235 MB free on the disk where npm installs AgEnD.
+- **Free space: about 235 MB more than a normal install.** Before it changes anything, the update keeps a copy of the installed version so it can roll back, and keeps it while npm installs the new one. On the disk where npm installs AgEnD, keep about 235 MB free for that copy, on top of what the install itself needs.
 - **Rollback.** If the new service does not start, the update reinstalls the previous package and service settings, restarts the fleet, and reports "Rolled back". On macOS (launchd), an update counts as successful only once the fleet is actually running. A backup left by an interrupted update is removed by the next update.
 - **Two installs at once.** If another AgEnD install or update still holds the install lock, the new one stops before changing anything and says why. Let the other one finish, then run it again.
 - **Service files are repaired on update.** On Linux, the unit gets `NotifyAccess=all`. Without it, systemd never receives the ready signal and the fleet restarts every 15 minutes. The update writes the setting and checks the value systemd actually loaded. It also checks the loaded `OOMPolicy`.
-- **Web sign-in carries over.** Your browser stays signed in after the upgrade. The one exception: if another AgEnD on the same host replaced this browser's sign-in cookie before the upgrade, sign in once more.
+- **Dashboard sign-in carries over.** A browser signed in to the dashboard directly stays signed in after the upgrade. The exception: if another AgEnD on the same host replaced this browser's sign-in cookie before the upgrade, sign in once more. A public-link sign-in does not carry over: it lasts only as long as that link, and a restart opens a new one.
 
 ### Defaults that change after the upgrade
 
@@ -54,14 +56,14 @@
 - **Fleet → Org chart → Office** is a third view next to Canvas and List. It draws the fleet as a small pixel office: each team is a room and each agent has a desk.
 - You can see what each agent is doing. Working agents type, idle agents drink tea, paused agents sleep, and agents that need you raise a hand. Messages travel along the corridors between desks.
 - Two styles: **Desks** and **Studio**.
-- Fleet admins can add, rename and delete offices, and choose their style and members. Guests and public links can only look. If someone else saved the offices while you were editing, your save is refused and nothing is overwritten. You then choose: keep your edits (the next Save replaces what they saved) or load their version.
+- Fleet admins can add, rename and delete offices, and choose their style and members. Read-only sessions and the public link can look but not edit; guests do not see the org chart or the Office view. If someone else saved the offices while you were editing, your save is refused and nothing is overwritten. You then choose: keep your edits (the next Save replaces what they saved) or load their version.
 
 ### Chat
 
 - **Reply to a message.** Hover and press ↩, right-click, swipe left or long-press on a phone, or press **R**.
 - **Native replies.** A reply sent from the web to a message that came from Discord or Telegram is posted there as a native reply to that message.
 - **Reactions.** An agent can react to your web message with an emoji, for a reply that only needs an acknowledgement.
-- **Sending.** Your message appears grey as soon as you send it and turns normal once the agent has it. If sending fails, you can retry, put the text back in the box, or delete it. Uploads show their progress. Retrying never sends the same message twice.
+- **Sending.** Your message appears grey as soon as you send it and turns normal once the agent has it. If sending fails, you can retry, put the text back in the box, or delete it. Uploads show their progress. A retry within 10 minutes is recognised and not delivered twice; AgEnD keeps that record in memory only, so after a restart a retry may arrive again.
 - **Images** in chat can be zoomed and dragged.
 - **Undo and redo** work in every text field: Ctrl/⌘+Z to undo, Ctrl+Shift+Z (⌘⇧Z on a Mac) to redo.
 - The message box is one line shorter on a desktop.
@@ -76,7 +78,7 @@
 
 ### Usage panel
 
-- A **Full / Compact** switch sits by the title. Compact groups rows by provider, with three lines per account: the account name, plan and reset time, then a bar and a percentage for the 5-hour window and the 7-day window. Your choice syncs to all your devices.
+- A **Full / Compact** switch sits by the title. Compact groups rows by provider, a few lines per account: the account name, plan and reset time, then a bar and a percentage for its shorter and longer window where it has them (under two days, such as 5 hours, and two days or more, such as a week or a month). Antigravity gets a line per quota pool. Your choice syncs to all your devices.
 - Each Claude sign-in has its own row: the default account and every credential profile. When a quota is used up, the row shows 100% and the reset time. When the account is rate-limited, it shows "Rate limited".
 - If a figure cannot be read, the last known figure stays on screen and is marked as stale with the time it was cached, instead of showing "unavailable".
 - Antigravity shows the plan name, the Gemini quota for paid plans, and a row for Gemini 4 Argon.
@@ -92,7 +94,7 @@
 - **Lifetime.** A quick tunnel's link lasts 1 to 480 minutes. A named link lasts 1 to 10080 minutes, or 0 for no expiry (`web.public_link.ttl_minutes`).
 - **Reopen after a restart.** `web.public_link.auto_open` (off by default) reopens a named link after the fleet restarts, for the admin who last opened it. The sign-in code is still required.
 - **Authorize this browser over your own domain.** `web.verified_authority.named_link` (off by default) lets a browser signed in over your named link be authorized. Quick tunnels never qualify.
-- You can sign in to a backend from the dashboard: from **Settings → Login**, the `/backend` menu, Needs you, or the banner on each page.
+- You can sign in to a backend from the dashboard: from **Settings → Agents**, the `/backend` menu, Needs you, or the banner on each page.
 - Each fleet's sign-in cookie has its own name, so two AgEnD fleets in one browser no longer sign each other out.
 - A fleet can run from the browser alone. The setup page can create the first agent without connecting a chat bot.
 

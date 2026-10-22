@@ -17,7 +17,7 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram、Discord 或瀏覽器
   <code>你 → Telegram/Discord/網頁 → AgEnD → AI Agent 團隊 → 結果回到你手上</code>
 </p>
 
-[English](README.md) · [功能文件](docs/features.zh-TW.md) · [CLI 參考](docs/cli.zh-TW.md) · [2.3 新功能](docs/whats-new-2.3.zh-TW.md)
+[English](README.md) · [功能文件](docs/features.zh-TW.md) · [CLI 參考](docs/cli.zh-TW.md) · [2.3 新功能](docs/whats-new-2.3.zh-TW.md) · [升級到 2.3](docs/upgrade-2.3.zh-TW.md)
 
 ---
 
@@ -45,7 +45,7 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram、Discord 或瀏覽器
 
 ## 功能亮點
 
-✨ **2.3 新功能：** 任務看板（Fleet › Tasks），可以在聊天中提醒你；全域搜尋（Ctrl+K）；fleet 的組織圖新增 Office 檢視；公開連結可以使用自己的網域；以及一行指令完成的 Windows 安裝。詳見 [2.3 新功能](docs/whats-new-2.3.zh-TW.md)，包括[升級前注意事項](docs/whats-new-2.3.zh-TW.md#升級前)。
+✨ **2.3 新功能：** 任務看板（Fleet › Tasks），可以在聊天中提醒你；全域搜尋（Ctrl+K）；fleet 的組織圖新增 Office 檢視；公開連結可以使用自己的網域；以及一行指令完成的 Windows 安裝。詳見 [2.3 新功能](docs/whats-new-2.3.zh-TW.md)，以及[從 2.2 升級到 2.3](docs/upgrade-2.3.zh-TW.md)。
 
 🚀 **Fleet 管理** — 一個 bot、N 個專案。每個 Telegram forum topic 或 Discord 頻道，就是一個獨立的 agent session。
 
@@ -165,9 +165,9 @@ graph LR
 | Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok`（x.ai OAuth device flow）。CLI 需 1.0.13 以上，舊版會被伺服器拒絕，請執行 `grok update` |
 | Meta Muse Code | `mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"`（launcher 會把 binary 放在自己旁邊，所以要先存檔） | `muse login` |
 
-**也可以在聊天室用 `/login <backend>` 安裝**（beta、僅限 fleet 管理員），不必 SSH 進主機：CLI 還沒安裝時，`/login` 會在 fleet 視窗執行上表的指令，到安裝程式實際放置的位置找到 CLI，把那個目錄加進 fleet 的 PATH，並在支援時提供登入。OpenCode 與 Muse 只能安裝；Antigravity 可安裝，但沒有獨立的遠端登入流程。單獨輸入 `/login` 會列出可用的登入及缺少 CLI 的安裝操作。
+**也可以在聊天室用 `/login <backend>` 安裝**（僅限 fleet 管理員），不必 SSH 進主機：CLI 還沒安裝時，`/login` 會在 fleet 視窗執行上表的指令，到安裝程式實際放置的位置找到 CLI，把那個目錄加進 fleet 的 PATH，並在支援時提供登入。OpenCode 與 Muse 只能安裝；Antigravity 可安裝，但沒有獨立的遠端登入流程。單獨輸入 `/login` 會列出可用的登入及缺少 CLI 的安裝操作。
 
-**已測試的 CLI 版本（AgEnD 2.1.9）**：Codex 0.155 到 0.159；Claude Code 2.1.286（首次啟動、trust、resume 畫面都從真實 CLI 擷取）；Kiro CLI 2.21 到 2.27 實際跑過；更舊的 2.x 仍可啟動，但會提醒更新；比 2.27 更新的版本，要先用它自己的 `--help` 確認 AgEnD 鎖定的參數（legacy UI 搭 kiro 的 v1 engine、terminal UI 搭 v2）還在才會啟動。若 kiro-cli 已無法這樣執行某個 instance，AgEnD 會拒絕啟動，不會換成別的 engine 執行（#1109）。`kiro_ui: v3` 尚未支援（#849）；Grok CLI 1.0.13 以上；Muse 1.3.0。Antigravity 與 OpenCode 沒有釘定版本。其他版本通常也能用，但 CLI 新版可能改動畫面，所以 AgEnD 只在實測過後才宣稱支援某個版本。
+**已測試的 CLI 版本（AgEnD 2.3.0）**：Claude Code 2.1.308、Codex 0.163.0、Kiro CLI 2.33.1、Grok CLI 1.0.67、Antigravity（agy）1.4.5、Muse 1.4.11-R6667.1、OpenCode 1.19.3，每個版本都經過與 AgEnD 的相容性檢查。新的 CLI 版本每天都會檢查，所以更新的版本可能已經可以用；不過新版本可能改變畫面，AgEnD 只在實際測過後才列出支援的版本。
 
 ## 系統需求
 

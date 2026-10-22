@@ -468,7 +468,7 @@ State 欄把暫停、停止或當機和執行狀態合併顯示（見 [Instance 
 
 - **`/usage`**（所有人）— 這台機器上已登入之 CLI 的 AI 訂閱用量：Claude、Codex、Muse、Grok、Kiro 和 Antigravity。設定了[憑證 profile](#憑證-profile-與第二份訂閱-credential-profiles-and-a-second-subscription) 的後端，每份訂閱各佔一列。agent 可以用 `get_usage` 讀取同樣的資料。
 
-  **完整或精簡（2.3）。** 用量面板的標題有 **完整／精簡** 切換。精簡檢視依供應商分組，每個帳號三行：帳號名稱、方案和重置時間，再加上 5 小時和 7 天各一條長條和百分比。選擇會同步到你所有的裝置（`usage.compact`）。每個 Claude 登入（預設帳號和每個 credential profile）各有一列：額度用完時顯示 100% 和重置時間，被限流時顯示「Rate limited」。Antigravity 會顯示方案名稱、付費方案的 Gemini 額度，以及 Gemini 4 Argon 的一列。
+  **完整或精簡（2.3）。** 用量面板的標題有 **完整／精簡** 切換。精簡檢視依供應商分組，每個帳號幾行：帳號名稱、方案和重置時間，再加上較短和較長的時間窗（有的話）各一條長條和百分比（不到兩天的，例如 5 小時；兩天以上的，例如一週或一個月）。Antigravity 帳號則是每個額度池一行。選擇會同步到你所有的裝置（`usage.compact`）。每個 Claude 登入（預設帳號和每個 credential profile）各有一列：額度用完時顯示 100% 和重置時間，被限流時顯示「Rate limited」。Antigravity 會顯示方案名稱、付費方案的 Gemini 額度，以及 Gemini 4 Argon 的一列。
 
   **讀取失敗時保留上次的數字（#2236，2.3）。** 讀取失敗時（token 過期、rate limit、網路問題等），該列仍會顯示，並保留上次成功讀取的數字（最多保留一週）。數字會變灰，並附上說明：**已過期 · 快取於 14:05**、**暫時無法更新** 或 **讀取失敗**；如果是 token 過期或其他錯誤，第二行會告訴你怎麼做（例如「執行 `agy` 一次」）。已過了重置時間的視窗，會顯示**已於 … 重置** 而不是舊的百分比。從未成功讀取過的 provider，仍然顯示錯誤；讀取成功後就會清除標示。重新啟動後，上次的數字從 `AGEND_HOME` 的 `usage-last-good.json` 讀取。`get_usage` 標為 stale 的列會帶有 `stale`、`cachedAt`、`staleCause`；已過重置時間的指標帶有 `resetPassed`。
 - **`/doctor`**（fleet 管理員）— 健康診斷，分成六個區塊：Prerequisites、Service、Fleet、Channel gateways、MCP IPC 和 Resources，每項檢查的結果是 `ok`、`warn` 或 `error`。

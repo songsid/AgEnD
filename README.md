@@ -17,7 +17,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram, Discord or browser int
   <code>You → Telegram/Discord/Web → AgEnD → Fleet of AI Agents → Results back to you</code>
 </p>
 
-[繁體中文](README.zh-TW.md) · [Documentation](docs/features.md) · [CLI Reference](docs/cli.md) · [2.3 what’s new](docs/whats-new-2.3.md)
+[繁體中文](README.zh-TW.md) · [Documentation](docs/features.md) · [CLI Reference](docs/cli.md) · [2.3 what’s new](docs/whats-new-2.3.md) · [Upgrading to 2.3](docs/upgrade-2.3.md)
 
 ---
 
@@ -45,7 +45,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram, Discord or browser int
 
 ## Feature Highlights
 
-✨ **New in 2.3:** a task board (Fleet › Tasks) that can remind you in chat, global search with Ctrl+K, an Office view of the fleet, your own domain for the public link, and a one-line Windows installer. See [What's new in 2.3](docs/whats-new-2.3.md), including the [upgrade notes](docs/whats-new-2.3.md#before-you-upgrade).
+✨ **New in 2.3:** a task board (Fleet › Tasks) that can remind you in chat, global search with Ctrl+K, an Office view of the fleet, your own domain for the public link, and a one-line Windows installer. See [What's new in 2.3](docs/whats-new-2.3.md), and [Upgrading from 2.2 to 2.3](docs/upgrade-2.3.md).
 
 🚀 **Fleet Management** — One bot, N projects. Each Telegram forum topic or Discord channel is an isolated agent session.
 
@@ -165,9 +165,9 @@ graph LR
 | Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok` (x.ai OAuth device flow). Needs CLI 1.0.13 or later; run `grok update` if the server refuses an older one |
 | Meta Muse Code | `mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"` (the launcher keeps its binary beside itself, so it is saved first) | `muse login` |
 
-**Or install from chat with `/login <backend>`** (beta, fleet admins only), without SSH-ing into the host: when the CLI is not installed yet, `/login` runs the command above in a fleet window, finds the CLI where its installer put it, adds that directory to the fleet's PATH, and offers sign-in where supported. OpenCode and Muse are install-only; Antigravity can be installed but has no isolated remote sign-in. A bare `/login` offers the available sign-in and missing-CLI installation actions.
+**Or install from chat with `/login <backend>`** (fleet admins only), without SSH-ing into the host: when the CLI is not installed yet, `/login` runs the command above in a fleet window, finds the CLI where its installer put it, adds that directory to the fleet's PATH, and offers sign-in where supported. OpenCode and Muse are install-only; Antigravity can be installed but has no isolated remote sign-in. A bare `/login` offers the available sign-in and missing-CLI installation actions.
 
-**Tested CLI versions (AgEnD 2.1.9).** Codex 0.155 to 0.159. Claude Code 2.1.286 (first-run, trust and resume screens captured from the real CLI). Kiro CLI 2.21 to 2.27 run live; older 2.x versions still start, with a warning to update, and anything newer than 2.27 is launched only after its own `--help` confirms the flags AgEnD pins (the legacy UI on kiro's v1 engine, the terminal UI on v2). A kiro-cli that can no longer run an instance that way is refused, not started on another engine (#1109). `kiro_ui: v3` is not supported yet (#849). Grok CLI 1.0.13 or later. Muse 1.3.0. Antigravity and OpenCode have no pinned version. Other versions usually work, but a new CLI release can change its screens, so AgEnD only claims a version after testing against it.
+**Tested CLI versions (AgEnD 2.3.0).** Claude Code 2.1.308. Codex 0.163.0. Kiro CLI 2.33.1. Grok CLI 1.0.67. Antigravity (agy) 1.4.5. Muse 1.4.11-R6667.1. OpenCode 1.19.3. Each was audited against AgEnD and found safe. New CLI releases are audited daily, so a newer version may already work. A new release can change its screens, though, so AgEnD only claims a version once it has been tested against it.
 
 ## Requirements
 

@@ -25,7 +25,7 @@ The Telegram fleet menu lists 23 commands; the ClassicBot menu lists 11. Discord
 | `/collab` | Toggle bot/webhook message reception | — | 🔒 admin (not handled in Telegram ClassicBot) |
 | `/update` | Update AgEnD to the latest version on the installed channel | — | 🔒 admin |
 | `/doctor` | Run fleet health diagnostics | — | 🔒 admin |
-| `/login` | (beta) Remote CLI sign-in, installing the CLI first when missing | `[backend] [cancel]`; `/login cancel` anytime | 🔒 admin |
+| `/login` | Remote CLI sign-in, installing the CLI first when missing | `[backend] [cancel]`; `/login cancel` anytime | 🔒 admin |
 | `/usage` | Show AI subscription usage | — | All |
 | `/tips` | Draw a random usage tip where you ran it | `[mode]` — `on\|off` toggles the daily auto-send, `advanced on` unlocks the advanced tier (both admin) | All for a draw |
 
