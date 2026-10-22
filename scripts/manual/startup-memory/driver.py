@@ -10,6 +10,7 @@ PKG = PREFIX / 'lib/node_modules/@songsid/agend'
 UNIT = 'com.agend.fleet.service'
 receipt = {'revision': (ROOT/'revision').read_text().strip(), 'checks': [], 'legs': {}}
 mock = None
+active_leg = None
 
 def run(args, timeout=90, ok=True):
     p = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
@@ -51,6 +52,8 @@ def capture(leg):
     if (DATA/'daemon.log').exists(): shutil.copyfile(DATA/'daemon.log',ROOT/(leg+'-daemon.log'))
 
 def begin(mode):
+    global active_leg
+    active_leg = mode
     sd('stop',UNIT,ok=False); sd('reset-failed',UNIT,ok=False)
     # The mock reset drains disconnected pollers between service generations.
     http('/control/reset',{})
@@ -124,7 +127,7 @@ if (process.argv[1]?.endsWith('/dist/cli.js') && process.argv.includes('fleet') 
     looping=wait('baseline timeout loop',lambda:(s if int((s:=state()).get('NRestarts','0'))>=2 else None),timeout=45)
     check('baseline repeats startup timeout/restart',int(looping['NRestarts'])>=2 and looping['MainPID']!=before['MainPID'],[before,looping])
     receipt['legs']['baseline']={'before':before,'after':looping}; sd('stop',UNIT,ok=False); capture('baseline')
-    check('baseline kernel journal records start timeout','start operation timed out' in (ROOT/'baseline-journal.log').read_text())
+    check('baseline manager journal records start timeout','start operation timed out' in (ROOT/'baseline-journal.log').read_text())
     # Candidate remains activating for >2x the original start deadline, then
     # converges with the same PID and no restarted agents after pressure clears.
     shutil.rmtree(PKG/'dist'); shutil.copytree(ROOT/'candidate-dist',PKG/'dist'); run(['chown','-R','rh:rh',str(PKG/'dist')])
@@ -133,8 +136,10 @@ if (process.argv[1]?.endsWith('/dist/cli.js') && process.argv.includes('fleet') 
     check('candidate survives beyond original deadline in same PID',held['MainPID']==before['MainPID'] and held['ActiveState']=='activating'
       and held['NRestarts']==before['NRestarts'],[before,held])
     check('READY withheld while memory deferred',held['SubState']=='start')
-    with urllib.request.urlopen('http://127.0.0.1:19280/ui/poll',timeout=3) as r:
-        check('early dashboard responds during memory wait',r.status in [200,401])
+    try:
+        with urllib.request.urlopen('http://127.0.0.1:19280/ui/poll',timeout=3) as r: status = r.status
+    except urllib.error.HTTPError as error: status = error.code
+    check('early dashboard responds during memory wait',status in [200,401],status)
     (ROOT/'pressure').write_text('normal')
     after=wait('candidate convergence',lambda:(s if (s:=state()).get('ActiveState')=='active' else None),timeout=100)
     check('candidate converges without a restart',after['MainPID']==before['MainPID'] and after['NRestarts']==before['NRestarts'],after)
@@ -150,6 +155,9 @@ if (process.argv[1]?.endsWith('/dist/cli.js') && process.argv.includes('fleet') 
     check('ordinary startup hang still times out',int(after['NRestarts'])>int(before['NRestarts']),[before,after])
     receipt['legs']['nonmemory']={'before':before,'after':after}; sd('stop',UNIT,ok=False); capture('nonmemory')
 finally:
+    try:
+        if active_leg is not None: capture(active_leg)
+    except Exception: pass
     try: sd('stop',UNIT,ok=False)
     except Exception: pass
     if mock is not None:
