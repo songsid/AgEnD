@@ -16,9 +16,10 @@
  * read. It never fires for a slow start (one attempt, the job running), a deliberate stop (the job not loaded, or
  * systemd inactive with Result=success), or a package installed less than 90 s ago.
  *
- * Only node built-ins: start-attempt.ts imports this before the rest of the CLI.
+ * Only node built-ins (and child-process.ts, itself only built-ins): start-attempt.ts imports this before the rest of the CLI.
  */
-import { spawn, spawnSync, type SpawnOptions } from "node:child_process";
+import { spawnSync, type SpawnOptions } from "node:child_process";
+import { spawn } from "./child-process.js";
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -231,10 +232,14 @@ export function checkStartFailure(home: string, now = Date.now(), run?: Run): St
   if (!own.version) return { failing: false };
   const started = readStarted(home);
   if (started?.version === own.version) return { failing: false };
+  // No attempt of this version recorded: its fleet never reached dist/cli.js's first import — and then this CLI, the same
+  // entry, would not be running either. Nothing to judge, and no service manager is asked (every command stays as it was).
+  const attempts = readAttempts(home);
+  if (attempts?.version !== own.version) return { failing: false };
   let packageAgeMs = 0;
   try { packageAgeMs = now - statSync(own.root).mtimeMs; } catch { return { failing: false }; }
   return judgeStartFailure({
-    installed: own.version, packageAgeMs, now, started, attempts: readAttempts(home),
+    installed: own.version, packageAgeMs, now, started, attempts,
     manager: readManager(run), keptCopies: own.prefix ? keptCopies(own.prefix) : [],
   });
 }
