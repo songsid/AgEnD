@@ -52,6 +52,8 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // page, the old /ui/tasks create and update included: the handlers refuse a write over the public link too
   // (confirming, sending back and assigning are the person's authority, never carried here).
   if (method === "GET" && /^\/ui\/tasks\/cards\/[^/]+$/.test(path)) return true;
+  // #2478 (the user's request): global search, an admin's (the handler refuses a guest, and web.search.public_link: false).
+  if (method === "GET" && (path === "/ui/search" || path === "/ui/search/context")) return true;
   // #1827: the person's own name (a profile edit, which the public link may make).
   if ((method === "GET" || method === "POST") && path === "/ui/profile") return true;
   // #1724: schedules are not created, edited or deleted over the public link (the handlers refuse it too).

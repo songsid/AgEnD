@@ -50,7 +50,7 @@ The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In shor
 - Press **Search** in the sidebar, or **Ctrl+K** (**⌘K** on a Mac), anywhere in the app. In an agent's chat, **Ctrl+F** searches only that agent.
 - It covers chat messages, messages between agents, and tasks. Results are grouped by agent; opening one jumps to the message.
 - Filter by agent or team, by time, by source, or to only what you wrote yourself.
-- Only fleet admins signed in on the dashboard (reached directly) can search. Guests and public links cannot.
+- Fleet admins signed in on the dashboard can search, here or over the temporary public link, on a phone too. Guests cannot. `web.search.public_link: false` keeps it off the public link.
 - The index keeps 90 days by default. Change it with `web.search.retention_days`.
 
 ### Office view

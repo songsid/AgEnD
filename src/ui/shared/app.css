@@ -1908,6 +1908,8 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .chat-fx-notice > span { display: block; }
 
 /* ── #2293: global search — the sidebar row's shortcut, the header's button (collapsed sidebar, phone), the dialog ── */
+/* #2478: a touch screen has no Ctrl/⌘ K — the shortcut's hint is not shown there (the row is). */
+@media (pointer: coarse) { .side-search .kbd-hint { display: none; } }
 .kbd-hint { font: inherit; font-size: var(--fs-xs); color: var(--text-3); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0 var(--s-1); line-height: 18px; white-space: nowrap; }
 .panel-head .sb-search { display: none; }
 .sb-collapsed .panel-head .sb-search { display: inline-flex; }
