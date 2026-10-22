@@ -79,7 +79,14 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - **Signed in otherwise** (an `agend web` code, or a session from before 2.2): `web-user`, as before. You can still set a name for those messages; signing in once with a `/web` code makes this browser your account.
 - **Agents act on your ordinary requests as you** (#1939): questions, looking things up, analysis, and work in their own scope. A **go-ahead action** — a release or publish, anything destructive or irreversible beyond the agent's own work, spending beyond normal work, credentials or secrets, or giving another agent your authority — needs your account behind it, because an open browser doesn't prove who is at it: authorize this browser, or confirm in Discord or Telegram. Until then, a #1756 human-authorization receipt never names a web message as your account.
   - **Authorize this browser** (in the one row under the composer, bottom left: **Not verified · Authorize**; or in the session menu) and confirm the card in your Discord or Telegram DM. Your messages then arrive as `[user:<name> via web (verified), id:<your user id>]`, and their receipts carry your account's authority (`authority.kind: web-verified`): an agent checks and relays them exactly like a message you sent on Discord or Telegram.
-  - It lasts until the authorization runs out (`web.verified_authority.max_session_hours`, default 48), you sign out, or web authority is revoked. Never on the public link or for a guest.
+  - It lasts until the authorization runs out (`web.verified_authority.max_session_hours`, default 48), you sign out, or web authority is revoked. Never for a guest, and never on a temporary (quick-tunnel) public link.
+  - **Over your own named link (#2453), opt-in.** With a fixed hostname (`web.public_link.hostname`, a named tunnel), Settings → Web → Web authority shows **Also over my named link (<hostname>)**, off by default (`web.verified_authority.named_link`).
+    - **Turning it on** is confirmed in a General or on this computer, never by the browser asking.
+    - **Once it's on,** a browser signed in over that hostname can be authorized the same way. The Confirm card says "over your named link <hostname> (the internet)", and the device list marks it.
+    - **Its authority ends with the link:** Close, `/web revoke`, the link's expiry, a fleet restart, or the option turned off. Turning the option off makes every receipt given over the link read as none at once.
+    - **Turning the option off** ends the authority of every session over the link at once, not the sessions themselves: they keep chatting like any public-link session.
+    - **"Only this computer can authorize"** still wins.
+    - **What you accept by turning it on:** the hostname is on the internet, and Cloudflare sees its traffic. A stolen cookie of an authorized session can be replayed from anywhere until one of the ends above.
 - **The same name is used** in the topic echo, a ClassicBot room's log, reply-button choices, poll results, tasks you create or claim, and web `/steer` and `/btw`.
 - **Polls:** your web vote is your account's ballot, the same one as your vote on Discord or Telegram.
 
@@ -555,7 +562,7 @@ While it starts, the menu you clicked shows each step with its seconds, updated 
 
 Steps 1–3 appear only when AgEnD's copy must be fetched; after the first time it is steps 4–6. A step that fails is marked with its reason, and running `/web` again retries. The menu shows only these words and numbers, never the link or the code.
 
-It uses AgEnD's pinned, checksum-verified cloudflared, never an arbitrary executable on PATH. On Linux it is fetched from pkg.cloudflare.com first and from GitHub when that fails or is too slow; step ② says when it switches. macOS uses GitHub only. Only one tunnel can run; a public `/login` terminal shares that slot. The fixed lifetime is **two hours**, including startup; reuse does not renew it. Settings can set 1–480 minutes or disable the option. A private close button (two taps: Close link, then confirm; Cancel puts it back), a fresh menu, `/web revoke`, expiry and fleet shutdown close access. Unconfirmed child cleanup blocks another tunnel, but web access is already closed.
+It uses AgEnD's pinned, checksum-verified cloudflared, never an arbitrary executable on PATH. On Linux it is fetched from pkg.cloudflare.com first and from GitHub when that fails or is too slow; step ② says when it switches. macOS uses GitHub only. Only one tunnel can run; a public `/login` terminal shares that slot. The fixed lifetime is **two hours**, including startup; reuse does not renew it. Settings can set 1–480 minutes or disable the option; with a [fixed hostname](named-tunnel.md#longer-lifetime-and-reopening-after-a-restart), up to 10080 minutes or `0` for no expiry, and an optional reopen after a restart. A private close button (two taps: Close link, then confirm; Cancel puts it back), a fresh menu, `/web revoke`, expiry and fleet shutdown close access. Unconfirmed child cleanup blocks another tunnel, but web access is already closed.
 
 The separate gateway accepts only its current tunnel Host and reviewed panel routes. `/view` always requires sign-in there; SSE, `/health`, `/agent` and code issuance are excluded, and the preview frame is never served from it (previews have their own tunnel, see [HTML previews](#html-previews)). Chat polls immediately. Closing revokes that exposure's codes and sessions; local sessions stay separate. The host is ephemeral, never persisted in `allowed_hosts`.
 
@@ -594,7 +601,8 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | `web.preview_origin` | — | A separate host name, mapped to the preview port, for previews through a tunnel or proxy |
 | `web.preview_on_public_link` | `true` | `false`: no previews over the temporary public link (no second tunnel) |
 | `web.public_link.allow_public` | `true` | Offer the opt-in action; disabling also closes an existing link |
-| `web.public_link.ttl_minutes` | `120` | Fixed lifetime from consent, 1–480 minutes; no renewal of an existing link |
+| `web.public_link.ttl_minutes` | `120` | Fixed lifetime from consent, 1–480 minutes; with `hostname` 1–10080, or `0` = no expiry; no renewal of an existing link: a changed lifetime applies at the next opening; Close the link to end the current one |
+| `web.public_link.auto_open` | `false` | With `hostname` only: reopen the link after AgEnD starts, for the admin who last opened it; nothing posted, sign-in still needs a code |
 | `web.public_link.protocol` | `http2` | cloudflared `http2`, `quic` or `auto` |
 | `web.echo_to_channel` | `true` | Copy web chat messages to the instance's own Telegram or Discord topic |
 | `web.log_tab` | `false` | Show each agent's steps in its **Log** tab |

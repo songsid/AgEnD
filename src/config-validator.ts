@@ -1,4 +1,4 @@
-import { validPublicLinkPatch } from "./public-web-link.js";
+import { publicLinkModeProblem, publicLinkPatchShape } from "./public-web-link.js";
 import { PROMPT_CACHE_TTLS, validateProvider } from "./backend/types.js";
 import { DELIVERY_WORKER_MODES, type WebConfig } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
@@ -412,7 +412,14 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     // #1629 r4.1 Q3 (b): never an error — a value out of its bound is clamped, a wrong one falls back to its default.
     if (config.web.appearance !== undefined) for (const w of effectiveAppearanceLimits(config.web.appearance).warnings) warn(w.path, w.message);
-    if (config.web.public_link !== undefined && !validPublicLinkPatch(config.web.public_link)) err("web.public_link", "expected allow_public boolean, ttl_minutes integer 1..480, protocol http2/quic/auto, optional named hostname/token reference/origin port");
+    if (config.web.public_link !== undefined) {
+      if (!publicLinkPatchShape(config.web.public_link)) err("web.public_link", "expected allow_public boolean, ttl_minutes integer 1..480 (with a hostname: 0..10080, 0 = no expiry), protocol http2/quic/auto, optional named hostname/token reference/origin port, auto_open boolean");
+      else {
+        // #named-link-ttl: the longer lifetime, no expiry and auto_open belong to a fixed hostname (named tunnel) only.
+        const problem = publicLinkModeProblem(config.web.public_link);
+        if (problem) err(`web.public_link.${problem.key}`, problem.message);
+      }
+    }
     if (config.web.echo_to_channel !== undefined && typeof config.web.echo_to_channel !== "boolean") {
       err("web.echo_to_channel", "must be a boolean");
     }
@@ -464,10 +471,11 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       const v = config.web.verified_authority;
       if (!isObj(v)) err("web.verified_authority", "must be a mapping");
       else {
-        const known = ["enabled", "loopback_only", "max_session_hours"];
+        const known = ["enabled", "loopback_only", "max_session_hours", "named_link"];
         for (const k of Object.keys(v)) if (!known.includes(k)) warn(`web.verified_authority.${k}`, `unknown key (known: ${known.join(", ")}) — ignored`);
         if (v.enabled !== undefined && typeof v.enabled !== "boolean") err("web.verified_authority.enabled", "must be a boolean");
         if (v.loopback_only !== undefined && typeof v.loopback_only !== "boolean") err("web.verified_authority.loopback_only", "must be a boolean");
+        if (v.named_link !== undefined && typeof v.named_link !== "boolean") err("web.verified_authority.named_link", "must be a boolean");
         const h = v.max_session_hours;
         if (h !== undefined && (typeof h !== "number" || !Number.isFinite(h) || h < VERIFIED_SESSION_HOURS.min || h > VERIFIED_SESSION_HOURS.max)) {
           err("web.verified_authority.max_session_hours", `must be a number of hours from ${VERIFIED_SESSION_HOURS.min} to ${VERIFIED_SESSION_HOURS.max}`);

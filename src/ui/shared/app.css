@@ -825,6 +825,8 @@ img.amb-p { object-fit: contain; }
 /* #1939 S2a: Settings → Web → Web authority. */
 .s-web-authority .s-va-sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .s-web-authority .s-va-sessions li { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); overflow-wrap: anywhere; }
+/* #2453: "over your named link" stays one phrase (the list item may break anywhere, CJK included). */
+.s-web-authority .s-va-named { white-space: nowrap; }
 .s-web-authority .s-va-warn { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-line); border-radius: var(--r-sm); padding: var(--s-1) var(--s-2); }
 .s-web-authority .save-row { flex-wrap: wrap; }
 /* #1920: a guest's note under the composer — on a phone too, where the key hints are hidden. */

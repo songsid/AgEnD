@@ -81,7 +81,14 @@ dashboard 用**一次性登入碼**登入，絕不使用帶有憑證的連結。
 - **用其他方式登入**（`agend web` 的驗證碼，或 2.2 以前的工作階段）：和以前一樣是 `web-user`。你仍可以為這些訊息設定名字；用 `/web` 的驗證碼登入一次，這個瀏覽器就會成為你的帳號。
 - **一般的請求，agent 會當作是你本人提出的**（#1939）：問問題、查資料、分析，以及它自己範圍內的工作。**需要你點頭的動作**——發布或推出版本、超出 agent 自己工作範圍的刪除等破壞性或無法復原的操作、超出平常工作的花費、憑證或密鑰，或把你的授權交給另一個 agent——則要你的帳號背書，因為一個開著的瀏覽器無法證明是誰在用：授權這個瀏覽器，或在 Discord、Telegram 上確認。在那之前，#1756 的人類授權收據不會把網頁訊息記成你的帳號。
   - 按 **授權這個瀏覽器**（在輸入框下方左側的那一列：**未驗證 · 授權**；或在 session 選單中），再到 Discord 或 Telegram 私訊確認卡片。之後你的訊息會以 `[user:<名字> via web (verified), id:<你的使用者 id>]` 送達，送達收據也帶有你帳號的授權（`authority.kind: web-verified`）：agent 會像對待你在 Discord 或 Telegram 上送出的訊息一樣檢查並轉交它。
-  - 效力持續到授權到期（`web.verified_authority.max_session_hours`，預設 48 小時）、你登出，或網頁授權被撤銷為止。公開連結與訪客永遠不適用。
+  - 效力持續到授權到期（`web.verified_authority.max_session_hours`，預設 48 小時）、你登出，或網頁授權被撤銷為止。訪客與臨時（quick tunnel）公開連結永遠不適用。
+  - **透過你自己的固定網域（#2453），需自行開啟。** 設定了固定網域（`web.public_link.hostname`，named tunnel）時，設定 → 網頁 → 網頁授權 會出現 **也允許透過我的固定網域（<網域>）**，預設關閉（`web.verified_authority.named_link`）。
+    - **開啟時** 需在 General 或這台電腦上確認，提出要求的瀏覽器不能自己確認。
+    - **開啟後，** 透過該網域登入的瀏覽器也能用同樣方式授權。確認卡會寫「透過你的固定網域 <網域>（網際網路）」，裝置清單也會標示。
+    - **授權隨連結結束：** 按「關閉」、`/web revoke`、連結到期、fleet 重新啟動，或關閉這個選項都會結束授權。關閉選項後，透過連結給出的回執會立即視為無。
+    - **關閉選項** 會立即結束透過連結的所有 session 的授權，但不會結束 session 本身：它們仍可像一般公開連結 session 一樣聊天。
+    - **「只有這台電腦可以授權」** 仍然優先。
+    - **開啟代表你接受：** 這個網域在網際網路上，Cloudflare 也看得到流量。已授權 session 的 cookie 若被盜，在上述任一情況發生前都能從任何地方重播。
 - **同一個名字也用在：** topic 同步、ClassicBot 房間的紀錄、回覆按鈕的選擇、投票結果、你建立或認領的任務，以及網頁的 `/steer` 和 `/btw`。
 - **投票：** 你在網頁投的票，和你在 Discord 或 Telegram 投的是同一張選票。
 
@@ -554,7 +561,7 @@ Canvas Worker 效果是一段在隔離的 Worker 裡執行、用程式畫出來�
 
 只有需要下載 AgEnD 自己的 cloudflared 時才會出現第 1–3 步；第一次之後只會看到第 4–6 步。失敗的那一步會標出原因，再執行一次 `/web` 即可重試。選單上只有這些文字和數字，不會出現連結或登入碼。
 
-使用 AgEnD 固定版本、checksum 驗證的 cloudflared，不採用 PATH 上的任意程式。Linux 先從 pkg.cloudflare.com 下載，失敗或太慢時改用 GitHub，第 ② 步會標出改用的來源；macOS 只用 GitHub。一次只能開一條 tunnel，與公開 `/login` 終端共用名額。期限固定 **兩小時**，含啟動時間；再次取得連結不延長。Settings 可改為 1–480 分鐘或停用選項。私送的關閉按鈕（要按兩下：關閉公開連結，再按確定關閉；按取消會恢復原狀）、新選單、`/web revoke`、到期及 fleet 關閉都會關入口。子行程無法確認停止時封鎖下一條 tunnel，但網頁存取已關閉。
+使用 AgEnD 固定版本、checksum 驗證的 cloudflared，不採用 PATH 上的任意程式。Linux 先從 pkg.cloudflare.com 下載，失敗或太慢時改用 GitHub，第 ② 步會標出改用的來源；macOS 只用 GitHub。一次只能開一條 tunnel，與公開 `/login` 終端共用名額。期限固定 **兩小時**，含啟動時間；再次取得連結不延長。Settings 可改為 1–480 分鐘或停用選項；設定[固定網域](named-tunnel.zh-TW.md#更長的期限與重啟後自動重開)時，最多 10080 分鐘或設 `0` 代表不到期，並可選擇重啟後自動重開。私送的關閉按鈕（要按兩下：關閉公開連結，再按確定關閉；按取消會恢復原狀）、新選單、`/web revoke`、到期及 fleet 關閉都會關入口。子行程無法確認停止時封鎖下一條 tunnel，但網頁存取已關閉。
 
 獨立 gateway 只接受當前 tunnel Host 與核准面板路由；`/view` 一律要登入，不暴露 SSE、`/health`、`/agent` 或發碼 API；預覽框架也絕不從它提供（預覽有自己的通道，見 [HTML 預覽](#html-預覽)）。聊天立即輪詢。關閉會撤回該入口的碼與 session，本機 session 另行隔離。Host 只暫時允許，不寫入 `allowed_hosts`。
 
@@ -593,7 +600,8 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `web.preview_origin` | — | 透過 tunnel 或 proxy 預覽時，對應到預覽 port 的另一個主機名稱 |
 | `web.preview_on_public_link` | `true` | `false`：臨時公開連結不提供預覽（不另開通道） |
 | `web.public_link.allow_public` | `true` | 提供需主動選擇的公開選項；停用也關閉現有入口 |
-| `web.public_link.ttl_minutes` | `120` | 從同意起固定期限，1–480 分鐘，不延長現有入口 |
+| `web.public_link.ttl_minutes` | `120` | 從同意起固定期限，1–480 分鐘；設 `hostname` 時 1–10080，或 `0` = 不到期；不延長現有入口：修改後的期限從下次開啟起生效；要結束目前的連結，請按「關閉」 |
+| `web.public_link.auto_open` | `false` | 僅限設定 `hostname`：AgEnD 啟動後替上次開啟的管理員重開連結；不發訊息，登入仍需登入碼 |
 | `web.public_link.protocol` | `http2` | cloudflared 的 `http2`、`quic` 或 `auto` |
 | `web.echo_to_channel` | `true` | 將 web chat 訊息複製到 instance 自己的 Telegram 或 Discord 主題 |
 | `web.log_tab` | `false` | 在 **紀錄** 分頁顯示每個 agent 的步驟 |

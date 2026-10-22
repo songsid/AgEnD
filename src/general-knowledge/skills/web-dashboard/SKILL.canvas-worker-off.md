@@ -54,7 +54,10 @@ days). The code arrives by DM. Limits: one a minute and five an hour per browser
 
 **Local vs public link.** Local: the dashboard on the host itself (127.0.0.1; the address cannot be changed, only
 `health_port`). Public: **🌐 Other device (temporary public)** starts a Cloudflare quick tunnel (an address under
-`trycloudflare.com`), default 120 minutes (`web.public_link.ttl_minutes`, at most 480; `protocol` http2/quic/auto).
+`trycloudflare.com`), default 120 minutes (`web.public_link.ttl_minutes`, at most 480; `protocol` http2/quic/auto). With a fixed
+hostname (named tunnel, `web.public_link.hostname`) the minutes go up to 10080, or `0` = no expiry, and
+`web.public_link.auto_open` reopens the link after AgEnD starts for the admin who last opened it (nothing posted; sign-in
+still needs a code).
 Close it with **Close public link** → **Close link (signs public browsers out)**, `/web revoke`, or let it expire.
 A public link is limited on purpose: no live stream (the page polls), no custom CSS, and Settings → Web, appearance,
 schedule edits and preference writes are refused. HTML previews work over it through a second tunnel
@@ -93,10 +96,14 @@ again. Confirm within 5 minutes and the session menu says **Verified · speaks a
 just **✓ Verified**, with the until-when in its tooltip, its accessible name and a tap. That
 browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
 Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
-per account. Never on the public link or for a guest; when a browser can't be authorized, the line says why (with a
-link to Settings when the switch or "Only this computer" is the reason). Settings → Web → **Web authority**
-(`web.verified_authority`, on by default) has the switch, **Only this computer can authorize** (`loopback_only`), the
-hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change there applies at once.
+per account. Never for a guest or on a quick-tunnel public link. Over the admin's own named link (#2453) only with
+**Also over my named link** (`named_link`, off by default). That authority ends with the link, and the card says "over
+your named link". When a browser can't be authorized, the line says why (with a link to Settings when the switch, "Only
+this computer" or the named-link option is the reason). Settings → Web → **Web authority** (`web.verified_authority`, on
+by default) has the switch, **Only this computer can authorize** (`loopback_only`), **Also over my named link** (shown
+with a fixed hostname), the hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change
+there applies at once, except turning the named-link option on: a General or the host confirms that, never the browser
+asking.
 Agents then see that browser's messages as `via web (verified)` and check their receipt like a Discord or Telegram message.
 
 ## Chat
@@ -445,7 +452,8 @@ progress, reply guard, **ClassicBot admins**, **Allowed guilds**.
 | Web echo | `web.echo_to_channel` |
 | Log tab: each agent's steps | `web.log_tab` |
 | Offer temporary public web links | `web.public_link.allow_public` |
-| Public link minutes (1–480) | `web.public_link.ttl_minutes` |
+| Public link minutes (1–480; with a fixed hostname 0–10080, 0 = no expiry) | `web.public_link.ttl_minutes` |
+| Reopen the public link when AgEnD starts (fixed hostname only) | `web.public_link.auto_open` |
 | Tunnel protocol (http2 / quic / auto) | `web.public_link.protocol` |
 Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `notify_login`, `preview`, `preview_port`,
 `preview_origin`, `preview_on_public_link`, `usage_panel`, `provider_secrets`, `upload_max_file_mb`,

@@ -167,12 +167,15 @@ const atVerified = (path: readonly string[]): boolean => (path.length === 3 && V
  * hours grant nothing by themselves (a session still needs its account's Confirm in Discord or Telegram), so no change
  * to them waits for a confirmation. Returns [] (nothing to confirm), or null when the change touches another key (then
  * walked key by key, as everything else).
+ * #2453 (§0.2): except `named_link` turned on — the one switch that lets a session reached from the internet qualify. It
+ * is confirmed (a stolen session must not open the internet path by itself); off applies at once, as every narrowing.
  */
 function verifiedAuthorityChange(old: unknown, next: unknown): Array<[string, unknown, unknown]> | null {
   if ((old !== undefined && old !== null && !object(old)) || (next !== undefined && next !== null && !object(next))) return null;
   const a: Record<string, any> = object(old) ? old : {}, b: Record<string, any> = object(next) ? next : {};
   const changed = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => !same(a[k], b[k]));
-  return changed.some(k => !["enabled", "loopback_only", "max_session_hours"].includes(k)) ? null : [];
+  if (changed.some(k => !["enabled", "loopback_only", "max_session_hours", "named_link"].includes(k))) return null;
+  return a.named_link !== true && b.named_link === true ? [["named_link", a.named_link, b.named_link]] : [];
 }
 /** A key under a named map (an instance or connection name), not a field: its name says nothing about its kind. */
 const namedEntry = (path: readonly string[], at: number): boolean => ["channels", "instances"].includes(path.at(at - 1) ?? "");
@@ -289,6 +292,11 @@ export interface SettingsChangeDiff {
   affectedConnections: readonly string[];
   /** Private normalized effect scope, populated by prepareSettingsEffect. */
   authority?: SettingsChangeAuthority;
+  /**
+   * #2453 (§0.2): the effect turns `web.verified_authority.named_link` on — never confirmed by the asking session itself
+   * (#2170), whatever else the change holds. Judged from the config before and after (prepareSettingsEffect), never the body.
+   */
+  noSelfConfirm?: true;
 }
 /** Compare the entire normalized effect, including removals and primary/order. */
 export function settingsChangeDiff(before: unknown, after: unknown, options: {

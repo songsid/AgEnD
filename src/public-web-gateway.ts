@@ -115,7 +115,9 @@ export function createPublicWebGateway(opts: {
         }
         return reject(res, 503);
       }
-      bindGatewayRequest(req, { surface: "gateway", exposureId: opts.exposureId, expectedOrigin: `https://${host}`, isCurrent: () => opts.isCurrent() && opts.isOpen() });
+      // #2453: named only on the exact configured hostname (setHost also takes a trycloudflare name: never named).
+      const named = !!opts.hostname && publicTunnelHostname(opts.hostname) === host;
+      bindGatewayRequest(req, { surface: "gateway", named, exposureId: opts.exposureId, expectedOrigin: `https://${host}`, isCurrent: () => opts.isCurrent() && opts.isOpen() });
       opts.dispatch(req, res);
     } catch {
       if (!res.headersSent) reject(res, 400); else res.destroy();
