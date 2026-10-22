@@ -1,8 +1,10 @@
+import { ensureAgendHome } from "./agend-home.js";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { unshareParsed } from "./yaml-shared-nodes.js";
 import { getAgendHome, getTmuxSessionName, ensureWorkspaceGit } from "./paths.js";
+import { dashboardSwitches } from "./dashboard-permissions.js";
 import type { CostGuardConfig, HangDetectorConfig, DailySummaryConfig, FleetConfig, FleetDefaults, FleetTemplate, InstanceConfig, RawFleetConfig } from "./types.js";
 
 export function deepMergeGeneric<T extends object>(target: T, source: Partial<T>): T {
@@ -181,15 +183,19 @@ export function loadFleetConfig(configPath: string): FleetConfig {
   const rawInstances = parsed.instances ?? {};
   const instances: Record<string, InstanceConfig> = {};
 
-  for (const [name, overrides] of Object.entries(rawInstances)) {
+  for (const [name, written] of Object.entries(rawInstances)) {
+    // #2391 review: a dashboard switch written as null follows the default (dashboardSwitches), so it never masks it.
+    const overrides = written && typeof written === "object" && written.dashboard !== undefined
+      ? { ...written, dashboard: dashboardSwitches(written.dashboard) } : written;
     const merged = deepMergeGeneric(
       getEffectiveInstanceDefaults(fleetDefaults),
       overrides,
     ) as Partial<InstanceConfig>;
 
     if (!merged.working_directory) {
+      ensureAgendHome(getAgendHome());
       const defaultDir = join(getAgendHome(), "workspaces", name);
-      mkdirSync(defaultDir, { recursive: true });
+      mkdirSync(defaultDir, { recursive: true, mode: 0o700 });
       ensureWorkspaceGit(defaultDir);
       merged.working_directory = defaultDir;
     }
@@ -238,12 +244,13 @@ export function loadFleetConfig(configPath: string): FleetConfig {
   };
 }
 
-/** #1386: only the two known booleans; anything else is dropped (the validator reports it). */
+/** #1386 / #2425: only the known booleans (live_message, dm, task_board); anything else is dropped (the validator reports it). */
 function needsYouConfig(raw: unknown): FleetConfig["needs_you"] {
   if (!isPlainObject(raw)) return undefined;
   const out: NonNullable<FleetConfig["needs_you"]> = {};
   if (typeof raw.live_message === "boolean") out.live_message = raw.live_message;
   if (typeof raw.dm === "boolean") out.dm = raw.dm;
+  if (typeof raw.task_board === "boolean") out.task_board = raw.task_board;
   return out;
 }
 

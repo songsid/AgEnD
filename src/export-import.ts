@@ -1,8 +1,9 @@
+import { ensureAgendHome } from "./agend-home.js";
 import { execFileSync } from "node:child_process";
+import { t } from "./locale.js";
 import {
   existsSync,
   statSync,
-  mkdirSync,
   copyFileSync,
   readdirSync,
   readFileSync,
@@ -86,7 +87,7 @@ export async function importConfig(
     process.exit(1);
   }
 
-  mkdirSync(dataDir, { recursive: true });
+  ensureAgendHome(dataDir);
 
   // Zip-slip / absolute-path protection: list every entry in the archive and
   // verify the resolved path stays under dataDir's parent. Reject absolute
@@ -173,13 +174,13 @@ export async function importConfig(
     }
 
     if (missing.length > 0) {
-      console.warn(`\n⚠️  The following paths in fleet.yaml do not exist on this device:`);
+      console.warn(`\n${t("import.missing_paths")}`);
       for (const p of missing) {
         console.warn(`   • ${p}`);
       }
-      console.warn(`\nEdit ${fleetPath} to fix these before running 'agend start'.`);
+      console.warn(`\n${t("import.fix_paths", fleetPath)}`);
     } else {
-      console.log("\nAll paths in fleet.yaml verified.");
+      console.log(`\n${t("import.paths_ok")}`);
     }
   }
 }

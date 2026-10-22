@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { ensureAgendHome } from "./agend-home.js";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
@@ -95,7 +96,7 @@ function parseRecord(raw: string): FleetLockRecord | null {
  * unlike fleet.pid, is acquired before FleetManager can mutate tmux or sockets.
  */
 export function acquireFleetLock(dataDir: string, probe: FleetLockProbe = {}): FleetLockHandle {
-  mkdirSync(dataDir, { recursive: true });
+  ensureAgendHome(dataDir);
   const lockPath = join(dataDir, "fleet.lock");
   const pid = probe.pid ?? process.pid;
   const record: FleetLockRecord = {

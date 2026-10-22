@@ -48,6 +48,16 @@ agend update --force            # 即使已是最新也強制重裝並重啟
 agend reload                    # 熱讀取配置（重新讀取 fleet.yaml，啟動新實例）
 ```
 
+更新後若新版本的服務起不來（重啟或啟動失敗，或在 macOS 上 launchd 下的 fleet 沒有真正跑起來），更新會回滾：之前的套件、它的 systemd unit 或 launchd plist 與之前的服務都會回來，更新會說明並以 1 結束（#2420）。
+
+為了能回滾，在有服務的主機上，更新會先把已安裝的 AgEnD 複製一份到旁邊的 `<npm prefix>/.agend-rollback/`。這需要 npm prefix 所在磁碟有與已安裝 AgEnD（含內建 Node）相同的可用空間，約 235 MB。空間不足時，更新不會做任何變更，並顯示：
+
+```
+✗ Not updating: the installed AgEnD could not be copied aside for a rollback (ENOSPC, No space left on device '…/.agend-rollback/…'). Nothing was changed
+```
+
+清出空間後再執行一次即可。更新結束時會移除這份副本；被中斷的更新留下的副本，會由下一次更新移除。無法完成的回滾會刻意保留副本，在訊息中指出位置並在其中放一個 `kept.txt`；不再需要時請自行刪除該目錄。
+
 `agend reload` 會重讀 `fleet.yaml` 並協調實例：新增的啟動、刪除的停掉、改過的套用——fleet 進程本身不重啟。
 
 ### 誰停了 fleet
@@ -280,10 +290,16 @@ Detached restart 使用非同步 polling 與 monotonic deadline。期限到了�
 
 **單一行程因記憶體不足被 kill，不再讓整個 fleet 停掉（#2015）。** instance 執行的一切（它的 CLI、tmux、agent 啟動的每個指令）都在這個服務的 cgroup 裡。systemd 預設是 `OOMPolicy=stop`：kernel 因記憶體不足 kill 掉其中任何一個行程，就會停掉整個 unit，所有 instance 都跟著停。現在 unit 設定 `OOMPolicy=continue`，只有被 kill 的那個行程會結束：
 - **被 kill 的工具指令**（agent 執行的腳本）只是它的 CLI 看到的一個錯誤。
-- **被 kill 的 CLI** 是一次 crash，fleet 會照常重啟它。
+- **被 kill 的 CLI** 通常走既有崩潰恢復流程。同一個已確認的後端／工作階段連續兩次確認遭記憶體不足終止時，會停止自動重啟（#2035），由 General 與網頁日誌說明原因，並在「需要你」列出崩潰的 Agent。原工作階段與對話紀錄保留；請先釋放記憶體，再手動重啟以重試，或選擇新的工作階段。不會自動建立新工作階段。
 - **被 kill 的 fleet 行程**是服務失敗，由 `Restart=on-failure` 重新啟動。
 
+安裝、啟動與重啟也會在重新載入管理器後，回報**實際載入**的 `OOMPolicy`。若管理者的設定令生效值為 `stop`／`kill`，或無法讀取，會如實提醒，不會當作已確認隔離，也不新增重啟拒絕條件。
+
 更新時會重寫 user unit，帶上這一行。`agend restart` 會替舊的 unit 補上，更新時的 refresh 也會替舊式的 system unit（`/etc/systemd/system/agend.service`）補上。unit 自己設定了 `OOMPolicy` 的話會保留原值。systemd 243 以前的版本不認得這個設定，會忽略它，並在 journal 留下警告。macOS 沒有對應的設定：launchd 沒有每個服務各自的 cgroup，kernel（jetsam）只會 kill 那一個行程；如果被 kill 的是 fleet，`KeepAlive` 會重新啟動它。
+
+同一工作階段的 OOM 防護目前僅使用 Claude Code 專屬於 instance 的 statusline 工作階段識別。Codex／Kiro 沒有這個識別，Muse／Grok 依工作目錄挑選的識別不代表 pane 所有權，因此均沿用一般恢復。
+
+OOM 判定採保守原則：Linux 必須取得啟動期間的核心紀錄，且受害者是存活時已觀測的主 CLI PID，位於最初的 PID 命名空間。只有退出碼 137、共用 cgroup 計數器、記憶體壓力或對話大小均不足以判定。工作階段不明、未觀測到的快速退出、無法讀取證據、容器的巢狀 PID 命名空間與 macOS，均沿用一般崩潰恢復。工具或 MCP 子程序不等於主 CLI。不新增因記憶體用量而主動終止程序的功能或統一的指令上限；手動重啟 Agent 或 fleet 會開始新的恢復嘗試。
 
 **fleet 的就緒訊號必須送得到 systemd（#2331）。** unit 是 `Type=notify`：fleet 透過一個短暫的 `systemd-notify` 輔助程式告訴 systemd 它已就緒（`READY=1`），不是由主行程自己送，所以 systemd 只有在 `NotifyAccess=all` 時才會收下。設成 `main`、`exec`，或完全沒寫 `NotifyAccess`（`Type=notify` 的預設就是 `main`）時，systemd 會拒收：`Got notification message from PID …, but reception only permitted for main PID …`。fleet 本身照常執行，但 unit 會一直停在 `activating`，直到 `TimeoutStartSec` 用完，systemd 就把它 kill 掉再重啟——自從 `TimeoutStartSec=15min`（#1113）起就是每 15 分鐘一次。以前逾時是 `0` 的時候，同樣的 unit 只會停在 `activating`，沒有人會發現。
 - **unit 檔：**`agend restart` 和更新時的 refresh 會在 `Type=notify` 的 unit（user unit 和舊式的 system unit）裡寫入 `NotifyAccess=all`，取代 `main`、`exec` 或 `none`。AgEnD 自己只有在 0.0.24-beta.5 到 beta.12 用過 `main`。
@@ -291,6 +307,8 @@ Detached restart 使用非同步 polling 與 monotonic deadline。期限到了�
 - **殘留設定：**install、start、restart 和更新都會點名會影響 fleet 啟動方式的檔案：設定了 `Type`、`NotifyAccess`、`ExecStart`、`TimeoutStartSec`、`WatchdogSec`、`Restart` 或 `EnvironmentFile` 的 drop-in；system unit 執行 fleet 時旁邊多出來的 user unit；使用 AgEnD 舊名稱（`com.ccd.fleet`、`com.claude-channel-daemon`，改名前的原始碼建置）的 unit 或 plist。每次都會點名，直到你自己移除為止；AgEnD 絕不刪除它們。fleet 由 system unit 執行的主機，更新時的 refresh 不再寫入 user unit，所以以前留下的那個只要移除後就不會再出現。
 - **`agend doctor`** 會顯示 systemd 實際載入的 unit（有 system unit 執行 fleet 時就看它）（`Type`、`NotifyAccess`、`TimeoutStartSec`）、它來自哪些檔案（unit 檔和每個 drop-in），以及每一項殘留設定。`Type=notify` 卻不是 `NotifyAccess=all` 的 unit 會列為錯誤。
 - **第一次更新就會修好：**`agend update` 會執行新版本自己的 refresh 和 restart，所以更新到含此修正的版本時，就會在那一次更新裡修好 unit。
+
+**記憶體壓力下的啟動等待（#2461）。** 啟動佇列因記憶體保護而等待時，會立即向 systemd 延長啟動期限 15 分鐘，並每 30 秒續期，避免把已啟動一半的團隊反覆重啟。仍然等到啟動完成才送出就緒訊號；網頁與 systemd 狀態會顯示正在等待。一般並行限制、故障退避或其他啟動卡住的情況不會續期。事件迴圈監測在 General 啟動前開始，但仍須主迴圈能正常執行。記憶體壓力偏高或嚴重時，整批停止與重啟會每批最多停止五個實例；停止本身不等待記憶體恢復。詳見[記憶體壓力說明](memory-pressure.md)。
 
 **服務用哪個 Node 執行，以及 `agend restart` 何時會拒絕（#1450）。**
 - 有 AgEnD 自帶的 Node（或驗證過的 `AGEND_NODE`）時，unit（`ExecStart=`）和 plist（`ProgramArguments`）會先寫那個 Node，接著是套件的 `dist/cli.js`，最後是 `fleet start`。自帶 Node 的路徑只會在 npm 更新 AgEnD 時改變，而 `agend update` 屆時會重寫服務。runtime 的目錄不會出現在任何服務的 PATH 上，各 coding CLI 照舊使用原本的 Node。

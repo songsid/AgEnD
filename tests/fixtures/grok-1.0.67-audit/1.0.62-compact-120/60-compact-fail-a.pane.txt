@@ -1,0 +1,40 @@
+
+  master /t/work-1.0.62-120/repo                                                               13 / 256K │ [Dashboard]
+
+
+     ❯ hello one                                                                                             1:13 PM
+
+
+     mock reply r1                                                                                           1:13 PM
+
+     Worked for 0.1s
+
+     Compacting conversation…
+
+  ┃  Compaction failed - Unauthorized (401) from http://127.0.0.1:18080/v1/chat/completions: invalid_request_error:
+  ┃  Incorrect API key provided
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰───────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

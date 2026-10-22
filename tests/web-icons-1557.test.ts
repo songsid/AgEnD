@@ -146,7 +146,11 @@ describe("Silver Ag dashboard icons", () => {
     const session = d.sessions.create({ tier: "admin", surface: "gateway", exposureId: exposure, label: "fixture", tokenEpoch: tokenEpoch(token) });
     const h = exchange(path, "GET", { host, cookie: `__Host-agend_session=${session.sessionId}` });
     g.dispatch(h); expect(h.status()).toBe(200); assertLinks(h, path === "/signin" ? undefined : "'none'", path === "/signin" ? undefined : `https://${host}/effect-bootstrap`);
-    if (path !== "/signin") expect(h.text()).toContain('data-web-transport="poll"');
+    if (path !== "/signin") {
+      expect(h.text()).toContain('data-web-transport="poll"');
+      // #2396: this real dispatcher admits an owned legacy cookie and upgrades it before serving the page.
+      expect(String(h.headers["set-cookie"] ?? "")).toMatch(new RegExp(`^__Host-agend_session_[0-9a-f]{16}=${session.sessionId};.*; Secure$`));
+    }
     const anonymous = exchange(path, "GET", { host, accept: "text/html" }); g.dispatch(anonymous);
     expect(anonymous.status()).toBe(path === "/signin" ? 200 : 401); assertLinks(anonymous);
   });

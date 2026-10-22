@@ -20,7 +20,9 @@ trust() { local s=$1 i=0; while [ $i -lt 40 ]; do local p; p=$(cap $s)
 sE() { fresh $1$2 $2; printf '{\n  "theme": "dark",\n  "skipDangerousModePermissionPrompt": true\n}\n' > $A/h/$1$2/.claude/settings.json; WITHKEY=1 start $1$2 2.1.$2 $A/h/$1$2 $A/w/$1$2 --dangerously-skip-permissions; }
 DELAYS="0 0.3 0.6 1 2 4"
 i=0; for d in $DELAYS; do i=$((i + 1)); for v in $OLD $NEW; do sE ge$i $v; done; done; sleep 1
-i=0; for d in $DELAYS; do i=$((i + 1)); for v in $OLD $NEW; do trust ge$i$v; done; done; sleep 3
+# 2.1.308 audit: under a dozen concurrent starts the trust dialog can paint after trust() first looks, and trust() then
+# reported "trusted after 0 steps" too early (the DANGER paste landed on the dialog). Wait for the dialog first.
+i=0; for d in $DELAYS; do i=$((i + 1)); for v in $OLD $NEW; do waitfor ge$i$v 'trust this folder' 30 > /dev/null; trust ge$i$v; done; done; sleep 3
 i=0; for d in $DELAYS; do i=$((i + 1)); for v in $OLD $NEW; do paste ge$i$v "DANGER go"; sleep 0.5; keys ge$i$v Enter; done; done
 i=0; for d in $DELAYS; do i=$((i + 1)); for v in $OLD $NEW; do
   ( waitfor ge$i$v 'Do you want to proceed\?' 20 > /dev/null && sleep $d && keys ge$i$v Down && sleep 0.2 && keys ge$i$v Enter

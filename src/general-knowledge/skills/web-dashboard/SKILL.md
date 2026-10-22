@@ -11,6 +11,13 @@ English UI labels (the page also has 中文). Before you state a value the user 
 it: `get_fleet_config` shows fleet.yaml; this skill gives defaults. Never invent a control that is not listed here.
 Never tell anyone to kill `wslrelay` or run `wsl --shutdown` (see Troubleshooting).
 
+During a cold start/full restart, an already signed-in browser can open the dashboard while agents start. **Fleet
+starting N/M** counts successful starts among runnable instances (persisted pauses excluded); queued/starting labels
+are visible in the sidebar, chat header and Org chart. Reads remain available; messages and changes are refused with
+a retry hint until startup finishes. Returning guests may wait for their connection scope without being signed out.
+Needs you may still be empty while its hub initializes. A brief reconnect gap
+is normal while a full restart replaces the process; the starting banner then replaces the unreachable message.
+
 For how *you* look on the dashboard (theme, identity card, colour, widgets, ambient effects, effects, mods), load `web-appearance`.
 
 ## Index
@@ -54,7 +61,10 @@ days). The code arrives by DM. Limits: one a minute and five an hour per browser
 
 **Local vs public link.** Local: the dashboard on the host itself (127.0.0.1; the address cannot be changed, only
 `health_port`). Public: **🌐 Other device (temporary public)** starts a Cloudflare quick tunnel (an address under
-`trycloudflare.com`), default 120 minutes (`web.public_link.ttl_minutes`, at most 480; `protocol` http2/quic/auto).
+`trycloudflare.com`), default 120 minutes (`web.public_link.ttl_minutes`, at most 480; `protocol` http2/quic/auto). With a fixed
+hostname (named tunnel, `web.public_link.hostname`) the minutes go up to 10080, or `0` = no expiry, and
+`web.public_link.auto_open` reopens the link after AgEnD starts for the admin who last opened it (nothing posted; sign-in
+still needs a code).
 Close it with **Close public link** → **Close link (signs public browsers out)**, `/web revoke`, or let it expire.
 A public link is limited on purpose: no live stream (the page polls), no custom CSS, and Settings → Web, appearance,
 mods, effect-library/personal-selection management, schedule edits and preference writes are refused. Current in-scope
@@ -94,10 +104,14 @@ again. Confirm within 5 minutes and the session menu says **Verified · speaks a
 just **✓ Verified**, with the until-when in its tooltip, its accessible name and a tap. That
 browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
 Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
-per account. Never on the public link or for a guest; when a browser can't be authorized, the line says why (with a
-link to Settings when the switch or "Only this computer" is the reason). Settings → Web → **Web authority**
-(`web.verified_authority`, on by default) has the switch, **Only this computer can authorize** (`loopback_only`), the
-hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change there applies at once.
+per account. Never for a guest or on a quick-tunnel public link. Over the admin's own named link (#2453) only with
+**Also over my named link** (`named_link`, off by default). That authority ends with the link, and the card says "over
+your named link". When a browser can't be authorized, the line says why (with a link to Settings when the switch, "Only
+this computer" or the named-link option is the reason). Settings → Web → **Web authority** (`web.verified_authority`, on
+by default) has the switch, **Only this computer can authorize** (`loopback_only`), **Also over my named link** (shown
+with a fixed hostname), the hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change
+there applies at once, except turning the named-link option on: a General or the host confirms that, never the browser
+asking.
 Agents then see that browser's messages as `via web (verified)` and check their receipt like a Discord or Telegram message.
 
 ## Chat
@@ -174,7 +188,9 @@ tab title. Items, grouped by instance, oldest first:
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
 "Paused: sign-in needed" has **Sign in** when the dashboard can run that login (#2233); every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
-`needs_you.dm` (default off).
+`needs_you.dm` (default off), `needs_you.task_board` (default off since 2.3.0-beta.25: the task board's cards waiting
+for you — set `true` to list them). The task board's daily summary is `defaults.task_board.summary_at` (off unless set,
+e.g. `"09:00"`).
 
 ## Search
 
@@ -210,13 +226,14 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
   **Send back** finished work, **Answer** a blocked card); **No project** holds `task`-tool tasks. A project is a board
   of main tasks (M-n) by status — To do, In progress, Blocked, Waiting for you, Done — with drag to move, an assignee
   filter and each main task's sub tasks (S-n). A card opens in a dialog: every field editable, its sub tasks, comments,
-  progress log, history. **Search cards** in the header. Only a signed-in person confirms work in review (an
-  instance's `done` on such a card is review). No delete: cancel. Alt+arrows on a card's title move it (no drag
-  needed; the card's Position row on a phone). A main task's tile shows the sub task at work and who is on it; a card
-  waiting for review that is not wrapped up says **To fill in** and Confirm asks first. A card's **Dispatched by** row:
-  who handed it out (a blocked question goes to them first). Read-only over the public link. Cards waiting for
-  confirmation and blocked cards are also **Needs you** items: on the web they open the card; in each bot's live
-  message in General they have **Confirm** / **Send back** / **Answer** (the words are a reply to the bot's prompt).
+  progress log, history. **Search cards** in the header. Only a signed-in person confirms the work they handed out
+  (an instance's `done` on such a card is review); a card an agent handed out, that agent confirms (#2434). No
+  delete: cancel. Alt+arrows on a card's title move it (no drag needed; the card's Position row on a phone). A main
+  task's tile shows the sub task at work and who is on it; a card waiting for review that is not wrapped up says
+  **To fill in** and Confirm asks first. A card's **Dispatched by** row: who handed it out (a blocked question goes
+  to them first). Read-only over the public link. The cards you handed out that wait for your confirmation, or are
+  blocked, are also **Needs you** items: on the web they open the card; in each bot's live message in General they
+  have **Confirm** / **Send back** / **Answer** (the words are a reply to the bot's prompt).
 - **Schedules** — every schedule (silent ones included): when it runs in words, "next …", the target. **New
   schedule** (Repeat with a cron expression, or Once at a date and time; message, target, label, timezone),
   **Edit** (with an **Enabled** box — that is how you pause one), **Delete**. There is no "run now", and silent can't
@@ -233,6 +250,19 @@ screen**, keys `+` `-` `0` and arrows, Enter opens a chat. **Overview** (bottom 
 Click a team header to fold it. **Find** dims everything that doesn't match. A card shows the state dot, name, state
 and backend; clicking it opens the chat. List mode adds the description, model, a link to the Discord thread or
 Telegram topic, and **Open chat**.
+
+**Office** (the third view, remembered per device) draws the same fleet as a pixel office: a room per team, a desk
+per instance with a name tag, General and "Not in a team" in the **Lobby**. Each little person is its state: typing
+with the lamp on (working), tea break (idle), asleep behind a **Closed** sign (paused/stopped), a hand up under a
+blinking light (needs you, crashed, looks stuck). With **Live** on, each message, delegation and report is carried
+desk to desk along the corridors in the Key's colours; a delegation in progress is a purple folder on the worker's
+desk. Hover (or tap once) a desk for its name, state and backend; click (or tap again) opens the chat. **Find** dims
+the rest. **Show** picks a team or the Lobby and **People** pins chosen instances (both kept per browser); the
+**Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`; changing them takes
+an admin session, never the public link — v1 has no editor). **Style** (per browser): **Desks** (the default) or
+**Studio** — one scene (Work, Lounge, Help desk, Nap corner) where each instance walks to the area for its state.
+Now and then someone says a short line for their state in a bubble (never message content). Reduced motion: still
+poses, nothing in the air, bubbles shown whole.
 
 **Live traffic** (**Live** switch, on by default; **Key** in the toolbar explains it, as a strip above the canvas): a line for each message between instances.
 Colour by kind — task (delegate_task) purple, send/query/update teal, report pink, broadcast orange; between teams
@@ -264,7 +294,7 @@ Order, folding, filter and favorites follow you across devices. A row keeps you 
 to that instance's Log).
 
 **Chat | View | Log | Details** switch at the top of an instance.
-- **View** — the live terminal (read only).
+- **View** — the live terminal (read only), the identity card, and **Edit profile** (or **Sign in to edit** when signed out).
 - **Log** — [the Log tab](#the-log-tab).
 - **Details** — Configuration (display name, description, directory, bound to, tags; "Read only — change it in
   Settings." with **Edit in Settings**), Runtime (backend, model, effort, cost, context, 5 h and 7 d rate), Recent
@@ -432,7 +462,8 @@ progress, reply guard, **ClassicBot admins**, **Allowed guilds**.
 | Web echo | `web.echo_to_channel` |
 | Log tab: each agent's steps | `web.log_tab` |
 | Offer temporary public web links | `web.public_link.allow_public` |
-| Public link minutes (1–480) | `web.public_link.ttl_minutes` |
+| Public link minutes (1–480; with a fixed hostname 0–10080, 0 = no expiry) | `web.public_link.ttl_minutes` |
+| Reopen the public link when AgEnD starts (fixed hostname only) | `web.public_link.auto_open` |
 | Tunnel protocol (http2 / quic / auto) | `web.public_link.protocol` |
 Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `notify_login`, `preview`, `preview_port`,
 `preview_origin`, `preview_on_public_link`, `usage_panel`, `provider_secrets`, `upload_max_file_mb`,

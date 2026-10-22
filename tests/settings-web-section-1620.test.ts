@@ -314,3 +314,44 @@ describe("#2344 Web edits join the existing Apply draft automatically", () => {
     expect(w.webWrites().at(-1)?.body).toEqual({ public_link: { ttl_minutes: 90 } });
   });
 });
+
+describe("#named-link-ttl: the public link's minutes and auto_open follow the mode", () => {
+  const pending = () => p.root.querySelector("[role=region]");
+  const NAMED = { web: { public_link: { hostname: "chat.example.com", tunnel_token_env: "AGEND_CLOUDFLARE_TUNNEL_TOKEN" } } };
+  it("quick tunnel: 1–480, no 'no expiry' hint and no auto-open box; 600 stays inline-invalid with the quick range", async () => {
+    const w = await open();
+    expect([w.$("publicWebTtl").getAttribute("min"), w.$("publicWebTtl").getAttribute("max")]).toEqual(["1", "480"]);
+    expect(w.$("publicTtlNamedHint")).toBeNull(); expect(w.$("publicAutoOpen")).toBeNull();
+    expect(w.text()).toContain("Public link minutes (1–480)");
+    await w.type(w.$("publicWebTtl"), "600");
+    expect(w.$("publicWebTtl").getAttribute("class")).toBe("invalid");
+    expect(w.text()).toContain("A quick tunnel allows 1–480 minutes");
+    await w.type(w.$("publicWebTtl"), "0"); expect(w.$("publicWebTtl").getAttribute("class")).toBe("invalid");
+    expect(pending()).toBeNull(); await w.apply(); expect(w.webWrites()).toEqual([]);
+  });
+  it("fixed hostname: 0–10080 with the 'no expiry' hint; 0 and auto_open stage as one write", async () => {
+    const w = await open(NAMED);
+    expect([w.$("publicWebTtl").getAttribute("min"), w.$("publicWebTtl").getAttribute("max")]).toEqual(["0", "10080"]);
+    expect(w.$("publicTtlNamedHint").textContent).toContain("0 = no expiry");
+    // Carry of #2450 (the maintainers' condition on Fable's P2-4): the hint says when a changed lifetime applies.
+    expect(w.$("publicTtlNamedHint").textContent).toContain("A changed lifetime applies at the next opening; Close the link to end the current one.");
+    expect(w.$("publicAutoOpen").checked).toBe(false);
+    await w.type(w.$("publicWebTtl"), "10081"); expect(w.$("publicWebTtl").getAttribute("class")).toBe("invalid");
+    await w.type(w.$("publicWebTtl"), ""); expect(w.$("publicWebTtl").getAttribute("class")).toBe("invalid");
+    await w.type(w.$("publicWebTtl"), "0"); await w.check(w.$("publicAutoOpen"), true);
+    expect(pending()?.textContent).toContain("Apply changes"); await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ public_link: { ttl_minutes: 0, auto_open: true } }]);
+  });
+  it("blanking the hostname with 600 minutes and auto_open set: both flagged, nothing staged until they fit a quick tunnel", async () => {
+    const w = await open({ web: { public_link: { ...NAMED.web.public_link, ttl_minutes: 600, auto_open: true } } });
+    await w.type(w.$("publicWebHostname"), "");
+    expect(w.$("publicWebTtl").getAttribute("class")).toBe("invalid");
+    expect(w.$("publicAutoOpen").checked).toBe(true);                       // still shown, so it can be unticked
+    expect(w.text()).toContain("Needs a fixed hostname");
+    expect(pending()).toBeNull();
+    await w.type(w.$("publicWebTtl"), "480"); await w.check(w.$("publicAutoOpen"), false);
+    expect(w.$("publicAutoOpen")).toBeNull();
+    await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ public_link: { ttl_minutes: 480, hostname: "", tunnel_token_env: "", auto_open: false } }]);
+  });
+});

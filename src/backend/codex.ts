@@ -964,7 +964,7 @@ export class CodexBackend implements CliBackend {
     const shortExists = existsSync(shortHome);
 
     if (!shortExists) {
-      mkdirSync(shortBase, { recursive: true });
+      mkdirSync(shortBase, { recursive: true, mode: 0o700 });
       if (legacyIsRealDir) {
         // Attempt atomic rename. Requires same device; fails with EXDEV otherwise.
         try {

@@ -100,7 +100,25 @@ its eventual state. The UI displays that reason instead of claiming completion.
 
 Sampling starts before the first CLI and stops before asynchronous fleet shutdown.
 On non-macOS hosts at cold boot, a memory hold can precede adapter/health-listener
-startup: the warning is visible in logs, without a channel broadcast. Startup can remain waiting until the host recovers. This is host pressure
+startup: the warning is visible in logs, without a channel broadcast. Startup can remain waiting until the host recovers.
+
+While queued startup work is actually deferred by memory policy, its owning
+startup sends `EXTEND_TIMEOUT_USEC=900000000` immediately and at most once every
+30 seconds. This renews the finite 15-minute startup budget without sending
+early READY or letting systemd kill the partly started fleet. Logs and systemd
+STATUS explain the wait. An empty queue, ordinary concurrency/storm waits or an
+unrelated hung callback receive no extension. After recovery the last extension
+expires normally; completion, error and shutdown retire the timer.
+
+Watchdog and event-loop monitoring start before General. Pings stay on the main
+loop: a frozen loop or kernel wait can still miss them; no independent worker
+masks that failure. Pressure thresholds, recovery ramps and spawn/storm limits
+are unchanged. Full shutdown and in-process bulk restart use bounded stop
+batches, at most five under elevated/critical pressure, without waiting for
+memory recovery to stop. Linux rechecks current procfs data before each batch,
+even after stopping the periodic sampler; macOS full shutdown conservatively
+uses five without restarting its stopped probe. The dashboard remains reachable during startup;
+service readiness still means startup completed. This is host pressure
 protection, not a per-cgroup memory limit or an OOM predictor. It does not change
 delivery, auth, systemd restart policy, or core dump handling. Rollback is a code
 revert; there is no persisted-state or configuration migration.

@@ -1,8 +1,8 @@
 /**
  * /view is desktop- and phone-friendly: the page fills the viewport, the terminal's font is fitted to the pane's own
  * cell grid (not to the captured text), it refits when its box changes, the font density is a persisted control, and
- * the profile card stays one line unless it is opened. Ported from view.html (#1408 step 2): the fit, density and card
- * are behaviour of ViewPanel, mounted here in the fake DOM with a fake pane; the layout rules are read from app.css.
+ * the identity card and Edit profile sit under the terminal. Ported from view.html (#1408 step 2): the fit, density and
+ * card are behaviour of ViewPanel, mounted here in the fake DOM with a fake pane; the layout rules are read from app.css.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -218,21 +218,16 @@ describe("the text size control (#1523 N3, Q2 = A: S / M / L shared; View keeps 
   });
 });
 
-describe("the profile card gives the terminal its height", () => {
+describe("the identity card sits under the terminal", () => {
   it("the terminal keeps its small padding", () => {
     expect(css).toMatch(/\.v-term \{[^}]*padding: 5px 6px;/);
   });
 
-  it("the card is one line by default: no description; opening it shows the whole profile, and that is remembered", async () => {
+  it("Edit profile is on the identity block; the old profile strip is gone", async () => {
     await mount();
-    const card = () => p.root.querySelector(".v-card")!;
-    const toggle = () => card().querySelector("button")!;
-    expect(card().classList.contains("open")).toBe(false);
-    expect(card().querySelector(".v-card-desc")).toBeNull();
-    expect(toggle().getAttribute("aria-expanded")).toBe("false");
-    toggle().click(); await settle();
-    expect(card().classList.contains("open")).toBe(true);
-    expect(card().querySelector(".v-card-desc")!.textContent).toBe("The first agent.");
-    expect(p.storage.get("agend_view_card_expanded")).toBe("1");
+    expect(p.root.querySelector(".v-card")).toBeNull();
+    expect(p.root.querySelector(".v-id")).not.toBeNull();
+    expect(p.root.querySelector(".v-id .btn")!.textContent).toContain("Edit profile");
+    expect(p.root.querySelector('.v-id button[aria-expanded]')).toBeNull();
   });
 });

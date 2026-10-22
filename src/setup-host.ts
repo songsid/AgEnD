@@ -41,7 +41,8 @@ import { loadFleetConfig } from "./config.js";
 import { acquireFleetLock, releaseFleetLock, type FleetLockHandle, type FleetLockProbe } from "./fleet-lock.js";
 import { handleQuickstartRequest, type QuickstartApiContext } from "./quickstart-api.js";
 import { markSetupComplete } from "./setup-marker.js";
-import { isSameOriginRequest, parseCookieHeader } from "./web-auth.js";
+import { isSameOriginRequest, parseCookieHeader, loadOrCreateWebToken } from "./web-auth.js";
+import { fleetCookieName } from "./web-cookie-names.js";
 import {
   buildSetupCookie,
   formatSetupCode,
@@ -58,6 +59,7 @@ import yaml from "js-yaml";
 import { writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { canonicalCliEntry } from "./cli-entry.js";
 import { dashboardLines, dashboardPort } from "./next-steps.js";
+import { NEW_FLEET_DASHBOARD } from "./dashboard-permissions.js";
 
 /** How long the form may stay open at all. */
 export const SETUP_HOST_TTL_MS = 15 * 60_000;
@@ -117,6 +119,7 @@ function defaultSpawnFleet(): void {
 }
 
 export class SetupHost {
+  private cookieToken: string | null = null;
   private server: Server | null = null;
   private lock: FleetLockHandle | undefined;
   private ttlTimer: ReturnType<typeof setTimeout> | null = null;
@@ -227,8 +230,13 @@ export class SetupHost {
   private get idleMs(): number { return this.opts.idleMs ?? SETUP_HOST_IDLE_MS; }
   private log(message: string): void { (this.opts.log ?? console.log)(message); }
 
-  /** The config the wizard edits: a file if there is one, otherwise a blank. */
+  /**
+   * The config the wizard edits: a file if there is one, otherwise a blank. A blank where there is no file yet is a new
+   * fleet, and says so (NEW_FLEET_DASHBOARD: the task board off until switched on); a file that does not load stays the
+   * plain blank it always was.
+   */
   private readConfig() {
+    if (!existsSync(this.opts.configPath)) return { defaults: { dashboard: { ...NEW_FLEET_DASHBOARD } }, instances: {} };
     try { return loadFleetConfig(this.opts.configPath); }
     catch { return { defaults: {}, instances: {} }; }
   }
@@ -286,7 +294,7 @@ export class SetupHost {
     this.startedAt = this.opts.now?.() ?? performance.now();
     const control = new SettingsControlServer(this.opts.dataDir, this.confirmationGate().store, () => !this.stopping && !this.admittedFinish);
     this.confirmationControl = control;
-    try { await control.listen(); if (this.stopping) throw new Error("setup startup cancelled"); } catch (err) { await this.shutdown(false, "confirmation unavailable"); throw err; }
+    try { this.cookieToken = loadOrCreateWebToken(this.opts.dataDir); await control.listen(); if (this.stopping) throw new Error("setup startup cancelled"); } catch (err) { await this.shutdown(false, "confirmation unavailable"); throw err; }
 
     const server = createServer((req, res) => this.handle(req, res));
     this.server = server;
@@ -432,7 +440,7 @@ export class SetupHost {
   }
 
   private presentedCookie(req: IncomingMessage): string | undefined {
-    return parseCookieHeader(req.headers.cookie).get(SETUP_COOKIE_NAME);
+    return parseCookieHeader(req.headers.cookie).get(fleetCookieName(SETUP_COOKIE_NAME, this.cookieToken));
   }
 
   /** Spend an attempt's worth of consequence: at zero the page is over. */
@@ -552,6 +560,7 @@ export class SetupHost {
           path: this.basePath,
           secure: this.endpointIsHttps,
           maxAgeSeconds: Math.ceil(this.ttlMs / 1000),
+          webToken: this.cookieToken,
         }));
         res.setHeader("Content-Type", "application/json");
         res.writeHead(200);

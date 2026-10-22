@@ -17,6 +17,8 @@ vi.mock("node:net", async original => {
 });
 vi.mock("node:fs/promises", () => ({ lstat: fakes.lstat, chmod: fakes.chmod, unlink: fakes.unlink,
   mkdir: vi.fn(async () => {}), open: vi.fn(async () => ({ stat: async () => ({ isDirectory: () => true, uid: process.getuid!() }), chmod: async () => {}, close: async () => {} })) }));
+// This clock fixture uses an entirely fake filesystem; root permissions have their own real-FS regressions.
+vi.mock("../src/agend-home.js", () => ({ ensureAgendHome: vi.fn() }));
 vi.mock("node:inspector", () => ({ Session: class { constructor() { throw Error("No inspector"); } } }));
 import { ProfileControlServer, requestCpuProfile } from "../src/profile-control.js";
 import type { RuntimeCpuProfiler } from "../src/runtime-cpu-profile.js";

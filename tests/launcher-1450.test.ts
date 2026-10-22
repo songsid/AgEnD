@@ -707,7 +707,7 @@ describe("preinstall guard with a pinned runtime", () => {
   const pinnedFour = () => {
     const f = fixture({ runtime: "none" });
     const manifest = JSON.parse(readFileSync(join(f.pkg, "package.json"), "utf8"));
-    manifest.optionalDependencies = Object.fromEntries(["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"].map(id => [`@songsid/agend-node-${id}`, "22.23.3"]));
+    manifest.optionalDependencies = Object.fromEntries(["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"].map(id => [`@songsid/agend-node-${id}`, "22.23.4"]));
     writeFileSync(join(f.pkg, "package.json"), JSON.stringify(manifest));
     return f;
   };

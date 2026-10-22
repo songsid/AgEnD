@@ -21,7 +21,7 @@ function rehearse(updater: { rc: number; leavesPlan: boolean }) {
   roots.push(root);
   const bin = join(root, "bin"), home = join(root, "home"), pkgs = join(root, "packages"), temp = join(root, "temp");
   for (const d of [bin, home, pkgs, join(temp, "registry")]) mkdirSync(d, { recursive: true });
-  writeFileSync(join(pkgs, "candidate.json"), JSON.stringify({ version: CAND, pin: "22.23.3", tarballs: [] }));
+  writeFileSync(join(pkgs, "candidate.json"), JSON.stringify({ version: CAND, pin: "22.23.4", tarballs: [] }));
   writeFileSync(join(temp, "registry", "npmrc"), "");
   // #1819: the published 2.1.12 comes as a tarball (the CI action restores and checks it); a placeholder here.
   const oldTgz = join(root, "songsid-agend-2.1.12.tgz");

@@ -22,6 +22,8 @@ export function verifiedAuthorityBody(original, f) {
   if (f.enabled !== original.enabled) out.enabled = f.enabled ? null : false;                   // §0.1: on is the default
   if (f.loopbackOnly !== original.loopbackOnly) out.loopback_only = f.loopbackOnly ? true : null;
   if (f.hours !== original.hours) out.max_session_hours = f.hours === null ? null : f.hours;
+  // #2453 (§0.2): off by default; turning it on is confirmed in a General or on the host.
+  if (f.namedLink !== original.namedLink) out.named_link = f.namedLink ? true : null;
   return Object.keys(out).length ? out : null;
 }
 
@@ -39,7 +41,8 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
     const o = r && r.ok ? r.body : null;
     if (!o || typeof o !== "object" || !o.state || !o.hours || !Array.isArray(o.lanHosts) || !Array.isArray(o.authorized)) { setFailed(true); return; }
     const c = o.configured || {};
-    const orig = { enabled: c.enabled !== false, loopbackOnly: c.loopback_only === true, hours: typeof c.max_session_hours === "number" ? c.max_session_hours : null };
+    const orig = { enabled: c.enabled !== false, loopbackOnly: c.loopback_only === true, hours: typeof c.max_session_hours === "number" ? c.max_session_hours : null,
+      namedLink: c.named_link === true };
     setOverview(o); setFailed(false);
     setOriginal((prev) => prev || orig);
     setF((prev) => prev || { ...orig });
@@ -78,6 +81,8 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
       <label class="check"><input id="vaLoopbackOnly" type="checkbox" checked=${f.loopbackOnly} onChange=${(e) => set({ loopbackOnly: e.target.checked })} /><span>${tn("vaLoopbackOnly")}</span></label>
       <p class="note">${tn("vaLoopbackOnlyHint")}</p>
       ${warnHosts ? html`<p class="note s-va-warn" role="status" id="vaLanWarning">${tn("vaLanWarning", overview.lanHosts.join(", "))}</p>` : null}
+      ${overview.namedHost || original.namedLink ? html`<label class="check"><input id="vaNamedLink" type="checkbox" checked=${f.namedLink} onChange=${(e) => set({ namedLink: e.target.checked })} /><span>${tn("vaNamedLink", overview.namedHost || "—")}</span></label>
+      <p class="note">${tn("vaNamedLinkHint")}</p>` : null}
       <div class="field"><label for="vaHours">${tn("vaHours", overview.hours.min, overview.hours.max)}</label>
         <input id="vaHours" type="number" min=${overview.hours.min} max=${overview.hours.max} step="any" placeholder=${tn("defaultHours", overview.hours.default)}
           class=${hoursError ? "invalid" : ""} value=${hoursText} onInput=${(e) => set({ hours: onHoursText(e.target.value) })} />
@@ -85,7 +90,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
       <h4>${tn("vaSessionsTitle")}</h4>
       ${overview.authorized.length
         ? html`<ul class="s-va-sessions" id="vaSessions">${overview.authorized.map((a) => html`<li key=${a.handle} data-handle=${a.handle}>
-            <strong>${a.label}</strong> <span class="note">${a.account}</span><br /><span class="note">${tn("vaSessionUntil", when(a.authorizedAt), when(a.until))}</span></li>`)}</ul>`
+            <strong>${a.label}</strong> <span class="note">${a.account}</span>${a.named ? html` <span class="note s-va-named">${tn("vaSessionNamed")}</span>` : null}<br /><span class="note">${tn("vaSessionUntil", when(a.authorizedAt), when(a.until))}</span></li>`)}</ul>`
         : html`<p class="note" id="vaSessionsNone">${tn("vaSessionsNone")}</p>`}
     </fieldset>
     <div class="save-row"><button type="button" class="btn btn-primary" id="vaReview" disabled=${disabled || !!hoursError} onClick=${review}>${tn("vaReview")}</button>

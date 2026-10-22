@@ -122,7 +122,9 @@ export async function setPreviewOptIn(on, commit = (apply) => apply()) {
 export function boot({ stream, boot: bootData, deps = {} }) {
   if (store) return store;
   store = createChatStore({
-    fetch: (...a) => fetch(...a), toast, announce, t, setTimeout: (fn, ms) => setTimeout(fn, ms), confirm: confirmDialog, ...deps,
+    fetch: (...a) => fetch(...a), toast, announce, t, setTimeout: (fn, ms) => setTimeout(fn, ms), confirm: confirmDialog,
+    XMLHttpRequest: typeof XMLHttpRequest === "function" ? XMLHttpRequest : undefined,   // an upload's progress (chat-store.js)
+    ...deps,
   });
   emojiIndex = createEmojiIndex((url) => (deps.fetch || fetch)(url, { credentials: "same-origin" }));
   mentionIndex = createMentionIndex((url) => (deps.fetch || fetch)(url, { credentials: "same-origin" }));
@@ -425,6 +427,9 @@ function threadEntry(name, doc) {
     canTryEffect: x => getAppEffects()?.canTry(x) === true,
     startEffectTrial: x => { const seq = navStore.get().seq; void getAppEffects()?.startTrial(x).then(ok => { if (!ok && e.sink && navStore.get().seq === seq && document.hasFocus?.() === true && document.visibilityState === "visible") toast(t("chat.effectTrialUnavailable")); }); },
     clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
+    retryOutgoing: (clientId) => store.retryOutgoing(name, clientId),              // a failed send's Retry and Delete
+    deleteOutgoing: (clientId) => store.deleteOutgoing(name, clientId),
+    putBackOutgoing: (clientId) => { recordEdit(composerField()); store.putBackOutgoing(name, clientId); },   // undoable, as typing
     // #2272: reply to a message (the bar above the composer), and show the one a reply quotes.
     startReply: (x) => { store.startReply(name, x); doc.getElementById("msgIn")?.focus(); },
     findQuoted: (key) => store.findQuoted(name, key),
@@ -446,12 +451,13 @@ function follow(name, thread) {
   // #1682: the same for mention names — asked for the ids the messages carry; when names arrive, drawn again.
   const wantEmojis = (msgs) => { if (emojiIndex && emojiIndex.wants(msgs)) emojiIndex.ensure(); if (mentionIndex) mentionIndex.ensure(msgs); };
   const offs = [];
-  if (emojiIndex) offs.push(emojiIndex.subscribe(() => thread.render(store.state.msgs[name] || [])));
-  if (mentionIndex) offs.push(mentionIndex.subscribe(() => thread.render(store.state.msgs[name] || [])));
+  if (emojiIndex) offs.push(emojiIndex.subscribe(() => thread.render(store.threadRows(name))));
+  if (mentionIndex) offs.push(mentionIndex.subscribe(() => thread.render(store.threadRows(name))));
   wantEmojis(store.state.msgs[name]);
   offs.push(store.subscribe((instance, kind) => {
     if (instance !== name) return;
-    if (kind === "msgs") { thread.render(store.state.msgs[name] || []); wantEmojis(store.state.msgs[name]); }
+    if (kind === "msgs") { thread.render(store.threadRows(name)); wantEmojis(store.state.msgs[name]); }
+    else if (kind === "progress") thread.progress();                       // an upload moved: its bar, in place
     else if (kind === "sent") thread.jumpLatest();
   }));
   offs.push(P() ? P().onChange(() => thread.refreshCards()) : () => {});
@@ -461,10 +467,10 @@ function follow(name, thread) {
     const next = getAppEffects();
     if (next === trialOwner) return;
     trialOff?.(); trialOff = null; trialOwner = next;
-    trialOff = next?.subscribeTrial(() => thread.render(store.state.msgs[name] || [])) ?? null;
+    trialOff = next?.subscribeTrial(() => thread.render(store.threadRows(name))) ?? null;
   };
   watchTrial();
-  offs.push(onEffectsAwake(() => { watchTrial(); thread.render(store.state.msgs[name] || []); }));
+  offs.push(onEffectsAwake(() => { watchTrial(); thread.render(store.threadRows(name)); }));
   offs.push(() => { trialOff?.(); trialOff = null; trialOwner = null; });
   offs.push(panelStore.subscribe(() => thread.refreshCards()));   // a card shows whether the panel has its block
   return () => { for (const off of offs) off(); };
@@ -493,7 +499,7 @@ function Thread({ name, th }) {
     thread.attach(sc);
     th.current = thread;
     // Up to date, at the reader's place (the bottom unless they had scrolled up); a kept one's cards say what they can do.
-    thread.render(store.state.msgs[name] || [], { restore: store.state.scrollMemo[name] ?? null });
+    thread.render(store.threadRows(name), { restore: store.state.scrollMemo[name] ?? null });
     if (kept) thread.refreshCards();
     const unfollow = follow(name, thread);
     const onScroll = () => { store.state.scrollMemo[name] = thread.onScroll(); };
@@ -546,12 +552,7 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
     <${WorkBar} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
-    ${s.failedSends[name] ? html`<div class="failed-send" role="alert"><span>${t("chat.notSent")}</span><span class="txt">${s.failedSends[name]}</span>
-      <button type="button" class="btn btn-primary btn-sm" onClick=${() => { recordEdit(composerField()); store.putBack(name); }}>${t("chat.putBack")}</button>
-      <button type="button" class="btn btn-sm" onClick=${() => store.discardFailed(name)}>${t("chat.discard")}</button></div>` : null}
     ${s.waking[name] ? html`<p class="send-waking" role="status">${t("chat.waking", name)}</p>` : null}
-    ${s.sendFailures[name] ? html`<div class="failed-send send-failure" role="alert"><span>${s.sendFailures[name].error}</span>
-      <button type="button" class="btn btn-sm" disabled=${!store.canRetrySend(name)} onClick=${() => store.retrySend(name)}>${t("chat.retrySend")}</button></div>` : null}
     <${Composer} name=${name} lease=${lease} busy=${R().isBusy(exec)} />
     <div class="composer-row">${guestPage() ? html`<span class="guest-note" title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
       class="hint" title=${t(guestPage() ? "chat.guestMore" : "chat.composerMore")}>${t("chat.composerHint")}</span></div>
@@ -721,7 +722,7 @@ function Composer({ name, lease, busy }) {
         aria-activedescendant=${pick ? optId(pick) : undefined} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}></textarea>
       <button id="stopBtn" type="button" class="btn btn-stop" hidden=${!busy} title=${t("chat.stopReplyTitle")}
         disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} /><span class="stop-label">${t("chat.stopReply")}</span></button>
-      <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content || !!s.sending[name]}
+      <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content}
         onMouseDown=${(e) => e.preventDefault()}
         aria-label=${t("chat.send")} title=${t("chat.send")} onClick=${submit}><${Icon} name="send" size=${16} /><span class="send-label">${t("chat.send")}</span></button>
     </div></div>`;

@@ -79,11 +79,11 @@ describe("the store", () => {
     const kept = await store.set(sourcePng(), "p");
     if (!kept.ok) throw new Error("set failed");
     const big = Buffer.alloc(APP_ICON_MAX_BYTES + 1);
-    expect(await store.set(big, "p")).toEqual({ ok: false, status: 413, error: "app_icon_too_large", detail: "at most 5 MiB" });
+    expect(await store.set(big, "p")).toEqual({ ok: false, status: 413, error: "app_icon_too_large", detail: "at most 5 MiB", detail_key: "max_size", detail_args: [5] });
     expect(await store.set(Buffer.from("\xff\xd8\xff\xe0JFIF", "latin1"), "p")).toMatchObject({ ok: false, status: 415, error: "app_icon_not_png" });
     expect(await store.set(Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"), "p")).toMatchObject({ status: 415 });
-    expect(await store.set(sourcePng(512, 600, 512), "p")).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "not square (600×512)" });
-    expect(await store.set(sourcePng(256), "p")).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "smaller than 512×512" });
+    expect(await store.set(sourcePng(512, 600, 512), "p")).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "not square (600×512)", detail_key: "not_square", detail_args: [600, 512] });
+    expect(await store.set(sourcePng(256), "p")).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "smaller than 512×512", detail_key: "too_small", detail_args: [512] });
     const broken = Buffer.from(sourcePng()); broken[40] ^= 0xff;
     expect(await store.set(broken, "p")).toMatchObject({ ok: false, status: 400, error: "app_icon_unreadable" });
     expect(store.current()?.version).toBe(kept.state.version);
@@ -327,7 +327,7 @@ describe("#2308 review: the conversion is off the fleet loop, one at a time, che
     const store = new AppIconStore(stateDir(), undefined, h.convert);
     const first = store.prepare(sourcePng());
     await h.started;
-    expect(await store.prepare(sourcePng(600))).toEqual({ ok: false, status: 409, error: "app_icon_busy", detail: "another icon is being made" });
+    expect(await store.prepare(sourcePng(600))).toEqual({ ok: false, status: 409, error: "app_icon_busy", detail: "another icon is being made", detail_key: "busy" });
     h.release();
     expect((await first).ok).toBe(true);
     expect((await store.prepare(sourcePng(600))).ok).toBe(true);           // free again
@@ -391,7 +391,7 @@ describe("#2319 review R1: a reset is the latest wish; the claim lasts until the
     h.release();
     const p = await late;
     if (!p.ok) throw new Error("prepare failed");
-    expect(store.commit(p.prepared, "p")).toEqual({ ok: false, status: 409, error: "app_icon_superseded", detail: "the icon was reset meanwhile" });
+    expect(store.commit(p.prepared, "p")).toEqual({ ok: false, status: 409, error: "app_icon_superseded", detail: "the icon was reset meanwhile", detail_key: "reset_meanwhile" });
     expect(store.current()).toBeNull();
     const q = await store.prepare(sourcePng(600));
     if (!q.ok) throw new Error("prepare failed");
@@ -455,6 +455,6 @@ describe("#2319 review R1: a reset is the latest wish; the claim lasts until the
     expect(await store.prepare(sourcePng(600))).toMatchObject({ ok: false, status: 409, error: "app_icon_busy" });
     expect(w.alive()).toBe(1);
     w.exitAll();
-    expect(await first).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "it took too long to read" });
+    expect(await first).toEqual({ ok: false, status: 400, error: "app_icon_unreadable", detail: "it took too long to read", detail_key: "too_slow" });
   });
 });

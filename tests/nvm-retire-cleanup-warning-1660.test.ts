@@ -12,6 +12,7 @@ import * as fs from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createContext, runInContext } from "node:vm";
+import { t } from "../src/locale.js";
 import ts from "typescript";
 import { activateService } from "../src/service-activation.js";
 import { FleetManager } from "../src/fleet-manager.js";
@@ -238,7 +239,7 @@ function cliRig(sudoUninstallStatus: number, installedVersion = "2.1.12") {
     "node:fs": fs, "./package-preimage.js": { restorePackagePreimage: vi.fn(preimage.restorePackagePreimage), prunePreimages: vi.fn(preimage.prunePreimages) },
   };
   // #2264 review: the copy this updater runs from — the system copy retired only when it is a 2.1-era release.
-  const context = createContext({ process, console, join, Promise, pkgVersion: installedVersion, DATA_DIR: dataDir, nvmSh: join(root, "unused-nvm.sh"), SYSTEMD_RESTART_TIMEOUT_MS: 1,
+  const context = createContext({ process, console, join, Promise, t, pkgVersion: installedVersion, DATA_DIR: dataDir, nvmSh: join(root, "unused-nvm.sh"), SYSTEMD_RESTART_TIMEOUT_MS: 1,
     spawnSync, readFileSync: fs.readFileSync, writeFileSync: fs.writeFileSync, realpathSync: fs.realpathSync, statSync: fs.statSync,
     withOrigin: () => ({}), setUpdateProgressStage: (dir: string, stage: string, details?: unknown) => { stages.push({ stage, details }); return true; }, clearUpdateMarker: vi.fn(),
     reportUpdateRestart: (value: number | null) => reportUpdateRestart(value, console),

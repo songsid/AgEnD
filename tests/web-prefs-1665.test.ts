@@ -68,7 +68,7 @@ describe("the registry: each key validated on its own, unknown keys refused", ()
     "nav.collapsed": ["Ops"], "nav.filter": { q: "rev", status: ["working"], cli: ["claude-code"] }, "nav.sort": { mode: "recent", favs: "fixed" },
     "nav.favorites": ["alpha"], "preview.optIn": true, "names.primary": "instance", "fx.show": false,
     "card.size": "l", "card.sizeByInstance": { alpha: "s", __proto__x: "m" }, "theme.pageByInstance": { alpha: "page", beta: "chat" },
-    "color.show": ["name", "ring"], "color.off": true,
+    "color.show": ["name", "ring"], "color.off": true, "usage.compact": true,
     "widget.sidebar": { spec: { v: 1, title: "Fleet", items: [{ type: "stat", label: "Idle", bind: "fleet.idle" }] }, data: {} },
   };
   const INVALID: Record<string, unknown[]> = {
@@ -88,6 +88,7 @@ describe("the registry: each key validated on its own, unknown keys refused", ()
     "card.size": ["xl", "M", 1],
     "color.show": ["ring", ["ring", "ring"], ["glow"], [1], ["name", "bar", "ring", "name"]],
     "color.off": [false, "true", 1],
+    "usage.compact": ["on", 1, {}],
     "card.sizeByInstance": [[], { a: "xl" }, { "": "s" }, Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`n${i}`, "s"]))],
     "theme.pageByInstance": [[], "page", { a: "on" }, { a: true }, { "": "page" }, Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`n${i}`, "page"]))],
     "widget.sidebar": ["x", { spec: { v: 1, title: "x", items: [{ type: "stat", label: "Cost", bind: "cost_usd" }] }, data: {} }, { spec: { v: 1, title: "x", items: [] }, data: {} }],

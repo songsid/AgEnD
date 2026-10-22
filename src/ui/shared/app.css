@@ -470,6 +470,36 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
    such as 「昨天 下午03:58」, ticks) — and a block body would stretch to it; fit-content keeps a short message short, on
    the right under its meta, and a long one still wraps at the message's max-width. */
 .msg.user .body { background: var(--user-bubble); border-radius: var(--r-xl); padding: 10px var(--s-4); width: fit-content; max-width: 100%; margin-left: auto; }
+/* A message this page is sending (chat-thread.js outgoingHtml): shown at once, its text dimmed with "Sending…" until the
+   server takes it; failed, a straight red bar with Retry and Delete. Each file: a picture as itself (or a document mark),
+   its name, a square-ended bar and its percentage, moved in place. */
+.msg.user.out .meta { align-items: center; gap: var(--s-2); }
+.msg.out.out-queued .body, .msg.out.out-sending .body { color: var(--text-3); }
+.msg.out.out-queued .body .md, .msg.out.out-sending .body .md { opacity: .72; }
+.out-state { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-3); }
+.out-spin { width: 10px; height: 10px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: out-spin .8s linear infinite; }
+@keyframes out-spin { to { transform: rotate(360deg); } }
+.out-files { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
+.msg.out .body .out-files:first-child { margin-top: 0; }
+.out-file { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.out-pic { width: 72px; height: 72px; object-fit: cover; border-radius: var(--r-md); flex: none; background: var(--surface-2); }
+.msg.out.out-queued .out-pic, .msg.out.out-sending .out-pic { opacity: .7; }
+.out-doc { width: 32px; height: 40px; flex: none; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); }
+.out-file-info { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px var(--s-2); min-width: 0; flex: 1; min-width: 140px; }
+.out-name { font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.out-pct { font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.out-bar { grid-column: 1 / -1; height: 3px; background: var(--border); overflow: hidden; }
+.out-fill { display: block; height: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform .2s linear; }
+.out-file[data-state="done"] .out-bar, .out-file[data-state="done"] .out-pct { visibility: hidden; }
+.out-file[data-state="failed"] .out-fill { background: var(--danger); }
+.out-file[data-state="failed"] .out-pct { color: var(--danger); }
+.msg.out.out-sent .out-file .out-bar, .msg.out.out-sent .out-file .out-pct { visibility: hidden; }
+/* Hugs its words under the bubble's right edge, as the bubble does: the bar stays beside them, never across the row. */
+.out-note { --lbar-color: var(--danger); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); width: fit-content; max-width: 100%;
+  margin: var(--s-2) 0 0 auto; padding: var(--s-1) 0 var(--s-1) calc(var(--s-2) + 3px); font-size: var(--fs-xs); color: var(--danger); }
+.out-error { overflow-wrap: anywhere; }
+.out-actions { display: inline-flex; gap: var(--s-1); }
+@media (prefers-reduced-motion: reduce) { .out-spin { animation: none; border-right-color: currentColor; opacity: .6; } .out-fill { transition: none; } }
 /* A person's click on a reply button: the bubble shows 🔘 and the button's label (never the value the agent was given);
    live, the label is a button that shows the reply its buttons were on. */
 .click-chip { display: flex; }
@@ -795,6 +825,8 @@ img.amb-p { object-fit: contain; }
 /* #1939 S2a: Settings → Web → Web authority. */
 .s-web-authority .s-va-sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .s-web-authority .s-va-sessions li { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); overflow-wrap: anywhere; }
+/* #2453: "over your named link" stays one phrase (the list item may break anywhere, CJK included). */
+.s-web-authority .s-va-named { white-space: nowrap; }
 .s-web-authority .s-va-warn { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-line); border-radius: var(--r-sm); padding: var(--s-1) var(--s-2); }
 .s-web-authority .save-row { flex-wrap: wrap; }
 /* #1920: a guest's note under the composer — on a phone too, where the key hints are hidden. */
@@ -1063,26 +1095,17 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .v-pre .ansi[data-dim] { opacity: .5; }
 .v-term-note { position: absolute; left: var(--s-3); right: var(--s-3); top: var(--s-3); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); background: var(--warn-bg); border: 1px solid var(--warn-line); color: #f0f0f0; font-size: var(--fs-sm); }
 .v-probe { position: absolute; visibility: hidden; white-space: pre; left: -9999px; top: 0; font-size: 100px; }
-.v-card { flex-shrink: 0; display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-4); background: var(--bg); padding-bottom: max(var(--s-2), env(safe-area-inset-bottom)); }
-.v-card.open { align-items: flex-start; padding-top: var(--s-3); padding-bottom: var(--s-3); }
-.v-avatar { width: 28px; height: 28px; flex-shrink: 0; border-radius: 50%; overflow: hidden; background: var(--surface-2); display: flex; align-items: center; justify-content: center; }
-.v-card.open .v-avatar { width: 48px; height: 48px; }
-.v-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.v-initial { color: var(--text-2); font-weight: var(--fw-semibold); text-transform: uppercase; }
-.v-card-body { flex: 1; min-width: 0; }
-.v-card-line { display: flex; align-items: baseline; gap: var(--s-2); font-size: var(--fs-sm); min-width: 0; }
-.v-card-line strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.v-role { color: var(--accent); font-size: var(--fs-xs); white-space: nowrap; }
-.v-card-meta { color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.v-card.open .v-card-meta { white-space: normal; }
-.v-card-desc { margin-top: var(--s-2); color: var(--text-2); font-size: var(--fs-sm); white-space: pre-wrap; }
 .help-list { list-style: disc; padding-left: var(--s-5); display: flex; flex-direction: column; gap: var(--s-2); font-size: var(--fs-sm); }
 .err { color: var(--danger); font-size: var(--fs-sm); }
 .u-provider { padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface); display: flex; flex-direction: column; gap: var(--s-2); }
 .u-head { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
-/* #1749: one line beside ↑↓ — the name gives way first, then the plan badge (each with an ellipsis); ↑↓ never wrap. */
-.u-head strong { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.u-plan { min-width: 0; flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* #1749 / #2412: one line beside ↑↓, by flexing alone (no widths assumed: ↑↓ are larger on a phone). The plan badge
+   starts at its minimum (40 px) and grows up to its own width into the room the name and ↑↓ leave, so a long badge ends
+   in an ellipsis (the full name its tooltip) while the name keeps every pixel (#2415 review: a shared shrink, however
+   weighted, still took a fraction of one and painted "Meta Muse Co…"). Only when the name, that minimum badge and ↑↓
+   cannot all fit (a 320 px phone) does the name shrink and end in an ellipsis — nothing leaves the card. */
+.u-head strong { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-plan { flex: 1 0 40px; max-width: max-content; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* #2014: a credential profile's row — the provider name beside the plan badge, and the profile on its own full-width
    muted line under the head (one line in the rail, whole in the dialog). */
 .u-profile { margin-top: calc(-1 * var(--s-2) + 2px); color: var(--text-3); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1112,13 +1135,48 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 /* #1673: the usage rail beside the page on a wide screen (header-tools.js UsageRail; shown only at min-width 1200px). */
 .u-rail { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border); background: var(--bg); }
 .u-rail-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-3) var(--s-3) var(--s-2) var(--s-4); }
-.u-rail-head h2 { margin: 0; font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.u-rail-head h2 { margin: 0; flex: 1; min-width: 0; font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+/* The usage view's compact mode (usage-dialog.js CompactGroup / CompactRow), the user's pick (2026-10-22): the logins
+   grouped by provider (its name once, in small capitals), each in three short lines — its name and plan with the
+   soonest reset on the right, then each window as a labelled full-width bar and the percent. */
+.dlg-tools { display: inline-flex; align-items: center; flex: none; }
+.u-compact-toggle { flex: none; }
+/* flex: none — a group never shrinks to fit the rail (it would clip its accounts): the rail scrolls instead. */
+.u-cgroup { flex: none; display: flex; flex-direction: column; border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
+.u-cg-head { display: flex; align-items: baseline; gap: 4px; padding: 7px var(--s-3) 3px; font-size: 11px; font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
+.u-cg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-cg-count { flex: none; }
+.u-crow { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 0; padding: 6px var(--s-3); border: 0; border-top: 1px solid var(--border);
+  background: transparent; color: inherit; font: inherit; line-height: 1.3; text-align: left; cursor: pointer; }
+.u-cg-head + .u-crow { border-top: 0; }
+.u-crow:hover { background: var(--surface-2); }
+.u-crow:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus); }
+/* The name never gives way to the plan (#2415); the reset keeps its room on the right. */
+.u-crow-head { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-sm); }
+.u-crow-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-semibold); color: var(--text); }
+.u-crow .u-plan { flex: 0 100 auto; min-width: 22px; max-width: max-content; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding-block: 0; line-height: 16px; font-size: 10.5px; }
+.u-crow-reset { margin-left: auto; flex: none; padding-left: 6px; font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.u-cm { display: grid; grid-template-columns: 2.6em minmax(0, 1fr) 3.4em; align-items: center; gap: 7px; min-width: 0; }
+.u-cm-tag { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* #2240: an account of several pools (agy) names each pool's line: a wider label, ending in an ellipsis if it must. */
+.u-crow.is-pooled .u-cm { grid-template-columns: minmax(0, 7.5em) minmax(0, 1fr) 3.4em; }
+.u-cm-bar { height: 6px; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
+.u-cm-fill { display: block; height: 100%; width: 0; min-width: 2px; border-radius: var(--r-full); background: var(--accent); }
+.u-cm-fill.warn { background: var(--warn); } .u-cm-fill.crit { background: var(--danger); }
+.u-cm-pct { text-align: right; font-size: 13px; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; color: var(--text); }
+.u-cm-pct.warn { color: var(--warn); } .u-cm-pct.crit { color: var(--danger); }
+.u-crow-note { font-size: var(--fs-xs); color: var(--text-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-crow-note.is-alert::before { content: "●"; margin-right: 5px; color: var(--danger); }
+.u-crow.is-stale .u-crow-note.is-alert::before { color: var(--warn); }
+@media (prefers-reduced-motion: no-preference) { .u-crow { transition: background-color 0.15s var(--ease); } }
 .u-rail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--s-3) var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
 @media (max-width: 1199px) { .u-rail { display: none; } }
 @media (max-width: 899px) {
   .hide-narrow { display: none; }
-  .v-card { padding-left: var(--s-3); padding-right: var(--s-3); }
-  .v-card .btn { min-height: var(--tap); }
+  .v-id { padding-left: var(--s-3); padding-right: var(--s-3); }
+  .v-id-actions .btn { min-height: var(--tap); }
 }
 
 /* ── Settings (#1408 step 3): lists, forms, the pending bar, the Apply in hand ── */
@@ -1210,8 +1268,6 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
   .s-dev-bar .lbl { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   /* An agent's row: name and model on the first line, its tags and buttons from the second, on every row alike. */
   .s-br { display: block; flex-basis: 100%; height: 0; }
-  /* View: the profile line wraps to two lines instead of hiding the model and context. */
-  .v-card-meta { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   /* A text button in Needs you lines up with the text above it, first in its row or wrapped onto a line of its own;
      a row's trailing Delete sits at the right. */
   .n-actions > .btn-ghost { padding-left: 0; padding-right: 0; margin-left: -1px; }
@@ -1472,6 +1528,49 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   .oc-tools { margin-left: 0; width: 100%; flex-wrap: wrap; row-gap: var(--s-2); }
   .oc-mini { display: none; }
 }
+/* ── Fleet → Org chart → Office (fleet-office.js): the fleet as a pixel office on one <canvas>. Its size is set through
+   the CSSOM (never a style attribute, #1300); the stage scrolls, the page around it too. ── */
+.oo { display: flex; flex-direction: column; gap: var(--s-2); }
+.oo-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.oo-pick { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-2); }
+.oo-pick .tb-select { max-width: 200px; }
+.oo-people { position: relative; }
+/* #2399: the offices' minimal editor (fleet-office-editor.js) — one row per office, its members unfolded under it. */
+.oe-form { border: 0; margin: 0; padding: 0; min-width: 0; }
+/* #2431: after a 409, the two ways on (keep my edits, load theirs), side by side; they wrap on a phone. */
+.oe-conflict { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.oe-list { list-style: none; margin: var(--s-3) 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-3); }
+.oe-row { padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); display: flex; flex-direction: column; gap: var(--s-2); }
+.oe-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s-2); }
+.oe-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.oe-label { font-size: var(--fs-xs); color: var(--text-2); }
+.oe-name { min-width: 0; width: 16em; max-width: 100%; }
+.oe-remove { margin-left: auto; }
+.oe-members { display: flex; flex-wrap: wrap; gap: var(--s-3); }
+.oe-group { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-width: 12em; max-height: 240px; overflow-y: auto; }
+.oe-group legend { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); padding: 0; margin-bottom: 4px; }
+.oo-people > .btn.on { border-color: var(--accent); }
+.oo-people-pop { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; width: min(280px, calc(100vw - 32px)); max-height: 340px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-2); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-2); }
+.oo-people-pop input[type="search"] { width: 100%; height: 32px; }
+.oo-people-list { list-style: none; margin: 0; padding: 0; }
+.oo-people-list label { display: flex; align-items: center; gap: 8px; padding: 3px 2px; font-size: var(--fs-xs); color: var(--text); cursor: pointer; overflow-wrap: anywhere; }
+.oo-note { font-size: var(--fs-xs); }
+.oo-stage { position: relative; height: clamp(420px, calc(100dvh - 280px), 960px); overflow: auto; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
+.oo-canvas { display: block; margin: 0 auto; image-rendering: pixelated; }
+.oo-canvas.hot { cursor: pointer; }
+.oo-tip { position: absolute; left: 0; top: 0; z-index: 5; max-width: 240px; pointer-events: none; padding: 6px 10px; font-size: var(--fs-xs); line-height: 1.4;
+  color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-2); overflow-wrap: anywhere; }
+/* The desks as a list: for a screen reader, and shown (over the stage's corner) while the keyboard is in it. */
+.oo-desks { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; list-style: none; }
+.oo-desks:focus-within { position: sticky; left: var(--s-2); bottom: var(--s-2); width: auto; height: auto; max-height: 40%; margin: 0; padding: var(--s-1); clip: auto; overflow-y: auto;
+  display: inline-flex; flex-wrap: wrap; gap: 4px; max-width: calc(100% - 2 * var(--s-2)); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); white-space: normal; }
+.oo-desk { font-size: var(--fs-xs); padding: 2px 6px; border-radius: var(--r-sm); background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+.oo-desk:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+@media (max-width: 640px) {
+  .oo-stage { height: calc(100dvh - 300px); min-height: 340px; }
+  .oo-pick .tb-select { max-width: 150px; }
+}
 /* A phone: Fleet's five tabs fit when only the open one shows its label (the others keep theirs for screen readers). */
 @media (max-width: 479px) {
   .p-fleet .seg-item:not(.active) > span, .p-settings .seg-item:not(.active) > span { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
@@ -1727,9 +1826,10 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   .id-card.card-c .id-tagline { -webkit-line-clamp: 2; line-clamp: 2; }
   .id-card.card-c .id-bio { -webkit-line-clamp: 3; line-clamp: 3; }
 }
-/* #1629 r4 §1: the card in View (above the profile row) and its part of Edit profile. */
-.v-id { flex-shrink: 0; padding: var(--s-2) var(--s-4) 0; background: var(--bg); }
+/* #1629 r4 §1: the identity card in View, with Edit profile under it. */
+.v-id { flex-shrink: 0; padding: var(--s-2) var(--s-4); background: var(--bg); padding-bottom: max(var(--s-2), env(safe-area-inset-bottom)); }
 .v-id .id-card { margin: 0; }
+.v-id-actions { display: flex; justify-content: flex-end; padding-top: var(--s-2); }
 .form-sub { margin: var(--s-2) 0 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 /* #1629 r4.1 Q3 (b): Settings → Appearance, the card's upload limits (three to a row; one on a phone). */
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3) var(--s-4); margin-bottom: var(--s-3); }
@@ -1773,7 +1873,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .p-fleet > .seg, .p-settings > .seg,
 .p-fleet > .panel-body, .p-needs > .panel-body, .p-settings > .panel-body,
 .p-log > .panel-body, .p-details > .panel-body, .p-view > .panel-body,
-.p-log > .log-bar, .p-view > .v-term, .p-view > .v-id, .p-view > .v-card { position: relative; z-index: 1; }
+.p-log > .log-bar, .p-view > .v-term, .p-view > .v-id { position: relative; z-index: 1; }
 /* Keep the existing Apply bar's sticky behavior, in its own bounded stock band. */
 .p-settings > .s-pending { z-index: 1; }
 

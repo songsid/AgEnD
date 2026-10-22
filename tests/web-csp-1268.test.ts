@@ -186,7 +186,8 @@ describe("the app builds its markup from templates and props; the thread's strin
     const at = THREAD.indexOf("function onClick(e)");
     const handled = [...THREAD.slice(at, THREAD.indexOf("\n  }\n", at)).matchAll(/act === "(\w+)"/g)].map(m => m[1]!).sort();
     // #1266: replyButton; a click chip's link: showButtons; #2272: reply (a message's Reply) and jumpQuote (a reply's quote)
-    expect(named).toEqual(["copyCode", "copyMsg", "effectTrial", "jumpQuote", "reply", "replyButton", "showButtons", "toggleFold", "toggleWrap"]);
+    // A failed send's Retry, Put back and Delete on its pending bubble: retryOut, putBackOut, deleteOut.
+    expect(named).toEqual(["copyCode", "copyMsg", "deleteOut", "effectTrial", "jumpQuote", "putBackOut", "reply", "replyButton", "retryOut", "showButtons", "toggleFold", "toggleWrap"]);
     expect(handled).toEqual(named);
     expect(THREAD).toContain('e.target.closest("[data-act]")');
   });

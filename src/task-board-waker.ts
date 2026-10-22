@@ -8,7 +8,7 @@
  */
 import type { Wake, WakeReason } from "./scheduler/task-board.js";
 import { gapText, oneLine } from "./scheduler/task-board-text.js";
-import { wrapUpGap, type Card } from "./scheduler/task-board.js";
+import { personConfirms, wrapUpGap, type Card } from "./scheduler/task-board.js";
 
 export interface TaskBoardWakerDeps {
   /** Hand `message` to the instance for good (the fleet's durable delivery); false when it could not be taken. */
@@ -49,12 +49,16 @@ function say(w: Wake, r: WakeReason, card: Card | undefined, here = false): stri
     case "decide": return here
       ? `you handed it out and it is blocked${card?.assignee ? ` (@${card.assignee})` : ""}${quote(w.texts.decide)} — answer it yourself if you can (move it back to claimed with the decision as the comment); otherwise the person has Answer for it in your channel`
       : `you handed it out and it is blocked${card?.assignee ? ` (@${card.assignee})` : ""}${quote(w.texts.decide)} — ask the person, then answer it: move it back to claimed with the decision as the comment`;
+    // #2434: only an agent's card (its instance dispatcher confirms it); the person's own are in their Needs you.
     case "to_confirm": {
       const gap = card ? wrapUpGap(card) : null;
-      const waits = `you handed it out and it waits for the person's confirmation${card?.assignee ? ` (@${card.assignee})` : ""}${gap ? `, though ${gapText(gap, card!.kind === "main")}` : ""}`;
-      return here ? `${waits} — they have Confirm / Send back for it in your channel; add only what they need to decide` : `${waits} — tell the person to confirm it`;
+      const waits = `you handed it out and it is ready for your confirmation${card?.assignee ? ` (@${card.assignee})` : ""}${gap ? `, though ${gapText(gap, card!.kind === "main")}` : ""}`;
+      return `${waits} — check it, then move it to done, or back to claimed with what is missing`;
     }
-    case "approved": return card?.assignee === w.instance ? `the person confirmed it${quote(w.texts.approved)}` : `you handed it out; the person confirmed it${quote(w.texts.approved)}`;
+    case "approved": {
+      const who = card && !personConfirms(card) ? by : "the person";
+      return card?.assignee === w.instance ? `${who} confirmed it${quote(w.texts.approved)}` : `you handed it out; ${who} confirmed it${quote(w.texts.approved)}`;
+    }
     case "cancelled": return `cancelled by ${by}${w.texts.cancelled?.startsWith("with its main task") ? ` ${oneLine(w.texts.cancelled, 160)}` : quote(w.texts.cancelled)} — stop working on it`;
     case "wrap_up": {
       const gap = card ? wrapUpGap(card) : null;

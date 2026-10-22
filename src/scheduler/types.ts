@@ -129,7 +129,7 @@ export interface UpdateDecisionParams {
 
 // ── Fleet Task Board ──────────────────────────────────────────
 
-/** `review`: finished, waiting for the person's confirmation (the task board, task-board.ts). */
+/** `review`: finished, waiting for confirmation — the person's on a card they handed out (the task board, task-board.ts). */
 export type TaskStatus = "open" | "claimed" | "review" | "done" | "blocked" | "cancelled";
 export type TaskPriority = "low" | "normal" | "high" | "urgent";
 

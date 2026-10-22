@@ -172,6 +172,35 @@ describe("the gate, live: a guest scoped to `a`", () => {
     scope.mockReturnValue(new Set(["a"]));
     expect((await raw(port, "GET", "/api/profile/a", { cookie: cookieOf(guest) })).status, "revoked, not paused").toBe(401);
   });
+  // #2399 smoke: a guest opening Fleet → Org chart saw the gate's bare JSON. A browser opening a page gets a page.
+  it("a guest's browser opening a page it cannot open gets a page (not JSON); an API caller still gets JSON", async () => {
+    vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
+    const guest = session("guest", ALICE);
+    const html = { cookie: cookieOf(guest), accept: "text/html,application/xhtml+xml" };
+    for (const [p, status] of [["/ui/fleet/org", 403], ["/settings", 403], ["/ui/chat/b", 404]] as const) {
+      const page = await raw(port, "GET", p, html);
+      expect([page.status, page.body.includes('data-why="members"'), page.body.includes("/assets/guest-refused.js"), page.body.includes("guest_forbidden"), page.body.includes(">Open your chats</a>")], p)
+        .toEqual([status, true, true, false, true]);
+    }
+    // Not a page navigation: the JSON as before (an API path, or no text/html in Accept).
+    expect(await raw(port, "GET", "/ui/org", html)).toEqual({ status: 403, body: JSON.stringify({ error: "guest_forbidden" }) });
+    expect(await raw(port, "GET", "/ui/fleet/org", { cookie: cookieOf(guest) })).toEqual({ status: 403, body: JSON.stringify({ error: "guest_forbidden" }) });
+    // Its own pages still open.
+    expect((await raw(port, "GET", "/ui/chat/a", html)).status).toBe(200);
+    // The page's code is public, like the sign-in page's.
+    expect((await raw(port, "GET", "/assets/guest-refused.js")).status).toBe(200);
+  });
+  it("a guest whose scope emptied gets the 'no chats' page on the navigation that found it", async () => {
+    vi.spyOn(fm, "guestScope").mockReturnValue(new Set());
+    const guest = session("guest", ALICE);
+    const page = await raw(port, "GET", "/ui", { cookie: cookieOf(guest), accept: "text/html" });
+    expect([page.status, page.body.includes('data-why="ended"'), page.body.includes("guest_scope_empty")]).toEqual([401, true, false]);
+    // #2449 review: without scripts, the case's own English, and no way back that leads here again.
+    expect([page.body.includes("<h1 id=\"title\">No chats are shared with you</h1>"), page.body.includes('id="go"'), page.body.includes("Open your chats")]).toEqual([true, false, false]);
+    // Its session ended with it: the next navigation is a signed-out browser's — the sign-in page.
+    const again = await raw(port, "GET", "/ui", { cookie: cookieOf(guest), accept: "text/html" });
+    expect([again.status, again.body.includes("/assets/signin.js")]).toEqual([401, true]);
+  });
   it("#2082 review: /auth/session tells a guest its own idle window (2 h), not an admin's", async () => {
     vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
     const g = JSON.parse((await raw(port, "GET", "/auth/session", { cookie: cookieOf(session("guest", ALICE)) })).body);

@@ -21,15 +21,13 @@ interface Render {
   escapeHtml(text: unknown): string;
   mergeMessages(existing: unknown[] | undefined, incoming: unknown[], cap?: number): Array<{ id: number }>;
   composerKey(ev: unknown): "send" | "newline" | "none";
-  settleFailedSend(target: string, current: string | null, composerPresent: boolean, composerValue: string): "restore" | "keep";
-  putBack(failed: string, draft: string): string;
 }
 const SRC = readFileSync(join(process.cwd(), "src", "ui", "chat-render.js"), "utf8");
 function asScript(): Render { const c = vm.createContext({}); vm.runInContext(SRC, c); return (c as { AgendChatRender: Render }).AgendChatRender; }
 function asModule(): Render { const module = { exports: {} as Render }; vm.runInContext(SRC, vm.createContext({ module })); return module.exports; }
 
 describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])("chat-render.js as %s", (_n, load) => {
-  const { renderMarkdown: md, mergeMessages, composerKey, settleFailedSend, putBack } = load();
+  const { renderMarkdown: md, mergeMessages, composerKey } = load();
 
   describe("no message can produce markup of its own", () => {
     it.each([
@@ -257,23 +255,6 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
 
     it("ignores anything without a numeric id, and an undefined list", () => {
       expect(mergeMessages(undefined, [m(1), { id: "2" }, null, {}]).map(x => x.id)).toEqual([1]);
-    });
-  });
-
-  describe("a failed send", () => {
-    it.each([
-      ["w", "w", true, "", "restore"],           // its own composer, on screen, empty
-      ["w", "w", true, "new draft", "keep"],     // never over what is being typed
-      ["w", "x", true, "", "keep"],              // never into another chat's composer
-      ["w", null, false, "", "keep"],            // the chat view is gone
-      ["w", "w", false, "", "keep"],             // re-rendered: the composer it came from is not there
-    ])("target %s, on screen %s, composer present %s, value %j → %s", (target, current, present, value, expected) => {
-      expect(settleFailedSend(target as string, current as string | null, present as boolean, value as string)).toBe(expected);
-    });
-
-    it("put back goes in front of a draft and never replaces it", () => {
-      expect(putBack("lost", "")).toBe("lost");
-      expect(putBack("lost", "typing")).toBe("lost\ntyping");
     });
   });
 
@@ -506,8 +487,11 @@ describe("SSE frames", () => {
 // ── FleetManager: every chat message goes through the history ──────────────────────────────────────────────────
 
 describe("FleetManager.emitSseEvent", () => {
+  // The fleet's first import costs 4–9 s on a loaded host: paid here, on the hook's own clock, never inside a test's
+  // 10 s (the first test here timed out 1 in 8 runs alone, 3 in 9 under load).
+  let FleetManager: typeof import("../src/fleet-manager.js").FleetManager;
+  beforeAll(async () => { ({ FleetManager } = await import("../src/fleet-manager.js")); }, 60_000);
   it("records a chat message and broadcasts it with its id; other events are untouched", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
     const { mkdtempSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const dir = mkdtempSync(join(tmpdir(), "c1-"));
@@ -526,7 +510,6 @@ describe("FleetManager.emitSseEvent", () => {
   });
 
   it("deleting an instance forgets its chat — only once the removal succeeded", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
     const { authorizeExplicitInstanceRemoval } = await import("../src/instance-removal.js");
     const { mkdtempSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
@@ -667,36 +650,42 @@ describe("chat page: the composer and the history", () => {
     expect(net.calls).toHaveLength(1);
   });
 
-  it("a failed send goes through settleFailedSend for the chat it was sent from, and kept text is offered back", () => {
+  it("a send shows as its own bubble in the thread (the server's rows, then the pending ones); its Retry and Delete are the bubble's", () => {
     const store = readFileSync(join(process.cwd(), "src", "ui", "chat-store.js"), "utf8");
-    expect(store).toContain("const shown = s.current === target;");
-    expect(store).toContain("R().settleFailedSend(target, s.current, shown, shown ? (s.drafts[target] || \"\") : \"\") === \"restore\"");
-    expect(store).toContain("s.failedSends[target] = s.failedSends[target] ? `${s.failedSends[target]}\\n${txt}` : txt;");
-    expect(store).toContain("s.drafts[target] = R().putBack(kept, s.drafts[target] || \"\");");
+    // A send never writes into a composer: the composer is emptied when it goes, and a failed text stays in its bubble —
+    // back in the composer only by the person's Put back (putBackOutgoing, the one writer).
+    const sendFn = store.slice(store.indexOf("  function send(target) {"), store.indexOf("  /** Take this chat's waiting sends"));
+    const putBack = store.slice(store.indexOf("  function putBackOutgoing("), store.indexOf("  function addFiles("));
+    expect([sendFn.match(/s\.drafts\[target\] = [^;]+;/g), /s\.drafts\[target\] = (txt|e\.text)/.test(store.replace(putBack, "")), /s\.drafts\[target\] = e\.text/.test(putBack)])
+      .toEqual([['s.drafts[target] = "";'], false, true]);
     const panel = readFileSync(join(process.cwd(), "src", "ui", "panel-chat.js"), "utf8");
-    expect(panel).toContain("onClick=${() => { recordEdit(composerField()); store.putBack(name); }}");   // #2342: an undoable step
+    expect(panel).not.toMatch(/store\.state\.msgs\[name\] \|\| \[\]\)\)?;?\s*$|thread\.render\(store\.state\.msgs/m);
+    expect(panel).toContain("retryOutgoing: (clientId) => store.retryOutgoing(name, clientId)");
+    expect(panel).toContain("deleteOutgoing: (clientId) => store.deleteOutgoing(name, clientId)");
+    expect(panel).toContain("putBackOutgoing: (clientId) => { recordEdit(composerField()); store.putBackOutgoing(name, clientId); }");
   });
 });
 
 // ── the chat store, driven directly: failed sends ──────────────────────────────────────────────────────────────
 
 describe("chat store: a failed send (chat-store.js, driven directly)", () => {
-  it("the plain failure: the text goes back into the same composer", async () => {
+  const bubbles = (store: any, name: string) => (store.state.outgoing[name] || []).map((e: any) => [e.text, e.outgoing.state]);
+  it("the plain failure: the text stays, in its own bubble marked failed; the composer is not refilled behind the person's back", async () => {
     const { store, net, toasts } = await chatStore();
     const reply = gate();
     net.route = async (path) => (path === "/ui/send" ? reply.promise : { body: {} });
     store.setDraft("w", "hello");
     const send = store.send("w");
-    expect(store.state.drafts.w).toBe("");
+    expect([store.state.drafts.w, bubbles(store, "w")]).toEqual(["", [["hello", "sending"]]]);
     reply.open({ body: { error: "offline" } });
     await send;
-    expect(store.state.drafts.w).toBe("hello");
-    expect(store.state.failedSends.w).toBeUndefined();
+    expect([store.state.drafts.w, bubbles(store, "w"), store.state.outgoing.w[0].outgoing.error]).toEqual(["", [["hello", "failed"]], "offline"]);
     expect(toasts).toEqual(["offline"]);
-    expect(net.calls.at(-1)).toEqual({ path: "/ui/send", method: "POST", headers: { "Content-Type": "application/json" }, body: { instance: "w", message: "hello" } });
+    const sent = net.calls.at(-1)!;
+    expect([sent.path, sent.body]).toEqual(["/ui/send", { instance: "w", message: "hello", clientId: store.state.outgoing.w[0].clientId }]);
   });
 
-  it("a new draft typed meanwhile is kept; the failed text is kept beside it for that chat, not lost", async () => {
+  it("a new draft typed meanwhile is kept; the failed text is kept beside it, in its bubble, not lost", async () => {
     const { store, net } = await chatStore();
     const reply = gate();
     net.route = async (path) => (path === "/ui/send" ? reply.promise : { body: {} });
@@ -705,17 +694,10 @@ describe("chat store: a failed send (chat-store.js, driven directly)", () => {
     store.setDraft("w", "new draft");
     reply.open({ body: { error: "offline" } });
     await send;
-    expect(store.state.drafts.w).toBe("new draft");
-    expect(store.state.failedSends.w).toBe("failed first");
-    // Put Back (the failed-send box's button) puts the kept text in front of the draft, never over it.
-    store.putBack("w");
-    expect(store.state.drafts.w).toBe("failed first\nnew draft");
-    expect(store.state.failedSends.w).toBeUndefined();
+    expect([store.state.drafts.w, bubbles(store, "w")]).toEqual(["new draft", [["failed first", "failed"]]]);
   });
 
-  it("the view was re-rendered meanwhile (the chat left and came back): the text goes into the draft on screen, not lost", async () => {
-    // ADAPTED: the old page held a DOM composer that a re-render could detach. The composer is now a view of the
-    // store's draft, so the question is only whether the chat is on screen when the answer comes.
+  it("the view was re-rendered meanwhile (the chat left and came back): the failed text is still there, in its bubble", async () => {
     const { store, net } = await chatStore();
     const reply = gate();
     net.route = async (path) => (path === "/ui/send" ? reply.promise : { body: {} });
@@ -725,11 +707,10 @@ describe("chat store: a failed send (chat-store.js, driven directly)", () => {
     store.setCurrent("w");
     reply.open({ body: { error: "offline" } });
     await send;
-    expect(store.state.drafts.w).toBe("failed first");
-    expect(store.state.failedSends.w).toBeUndefined();
+    expect(bubbles(store, "w")).toEqual([["failed first", "failed"]]);
   });
 
-  it("another chat was opened meanwhile: the text is not put into ITS composer, it is kept for the chat it was sent to", async () => {
+  it("another chat was opened meanwhile: nothing goes into ITS composer or thread; the bubble stays with the chat it was sent to", async () => {
     const { store, net } = await chatStore();
     const reply = gate();
     net.route = async (path) => (path === "/ui/send" ? reply.promise : { body: {} });
@@ -738,22 +719,20 @@ describe("chat store: a failed send (chat-store.js, driven directly)", () => {
     store.setCurrent("x");
     reply.open({ body: { error: "offline" } });
     await send;
-    expect(store.state.drafts.x ?? "").toBe("");
-    expect(store.state.failedSends.w).toBe("for w");
-    expect(store.state.failedSends.x).toBeUndefined();
+    expect([store.state.drafts.x ?? "", bubbles(store, "x"), bubbles(store, "w")]).toEqual(["", [], [["for w", "failed"]]]);
   });
 
-  it("a successful send keeps nothing and says nothing", async () => {
+  it("a successful send says nothing; it shows as sent until the server's copy replaces it (by messageId)", async () => {
     const { store, net, toasts } = await chatStore();
     const reply = gate();
     net.route = async (path) => (path === "/ui/send" ? reply.promise : { body: {} });
     store.setDraft("w", "ok");
     const send = store.send("w");
-    reply.open({ body: { sent: true } });
+    reply.open({ body: { sent: true, messageId: "m-ok" } });
     await send;
-    expect(store.state.drafts.w).toBe("");
-    expect(store.state.failedSends.w).toBeUndefined();
-    expect(toasts).toEqual([]);
+    expect([store.state.drafts.w, bubbles(store, "w"), toasts]).toEqual(["", [["ok", "sent"]], []]);
+    store.ingest({ instance: "w", boot: "b1", id: 1, sender: "Ann", role: "user", text: "ok", ts: "2026-10-22T00:00:00Z", messageId: "m-ok" });
+    expect([bubbles(store, "w"), store.threadRows("w").map((m: any) => m.text)]).toEqual([[], ["ok"]]);
   });
 });
 
@@ -893,7 +872,11 @@ describe("the composer (panel-chat.js, mounted)", () => {
   const shown = () => ({ stop: !$("stopBtn").hidden, send: !$("sendBtn").hidden });
   const type = async (text: string) => { const ta = $("msgIn"); ta.value = text; fire(ta, "input"); await settle(); };
 
-  it("busy, a text-only send fails: the text comes back with Send beside Stop", async () => {
+  const bubble = () => a.p.document.querySelector(".thread .msg.out");
+  const bubbleText = () => bubble()?.querySelector(".md")?.textContent ?? null;
+  const act = (name: string) => bubble()!.querySelector(`[data-act="${name}"]`) as any;
+
+  it("busy, a text-only send: its bubble shows at once (sending), then failed with Retry and Delete; the composer stays free", async () => {
     const name = "busy-text";
     await a.mount(name);
     a.setExec(name, "working");
@@ -906,14 +889,19 @@ describe("the composer (panel-chat.js, mounted)", () => {
     await settle();
     expect($("stopBtn").textContent, "the composer's Stop is named Stop reply").toBe("Stop reply");
     expect(shown(), "sent: the composer is empty, only Stop").toEqual({ stop: true, send: false });
+    expect([bubbleText(), bubble()!.className, bubble()!.querySelector(".out-state")?.textContent]).toEqual(["hello", "msg user out out-sending", "Sending…"]);
     reply.open({ body: { error: "instance is busy" } });
     await settle(6);
-    expect($("msgIn").value).toBe("hello");
-    expect(shown(), "given back: Send is there again").toEqual({ stop: true, send: true });
+    expect([bubbleText(), bubble()!.className, bubble()!.querySelector(".out-error")!.textContent, act("retryOut").textContent, act("deleteOut").textContent])
+      .toEqual(["hello", "msg user out out-failed", "Not sent: instance is busy", "Retry send", "Delete"]);
+    expect([$("msgIn").value, shown()]).toEqual(["", { stop: true, send: false }]);
+    a.net.route = async (path) => (path === "/ui/send" ? { body: { sent: true, messageId: "m-again" } } : { body: {} });
+    act("retryOut").click();
+    await settle(6);
+    expect(bubble()!.className, "sent: shown as sent until the server's copy replaces it").toBe("msg user out out-sent");
   });
 
-  it("busy, Put Back: the kept text comes back with Send beside Stop", async () => {
-    // The person left the chat before the answer came: the text is kept for that chat, offered back when they return.
+  it("the chat left before the answer came: its failed bubble is there when the person comes back; Delete lets it go", async () => {
     const name = "busy-put";
     await a.mount(name);
     a.setExec(name, "working");
@@ -927,15 +915,14 @@ describe("the composer (panel-chat.js, mounted)", () => {
     reply.open({ body: { error: "instance is busy" } });
     await settle(6);
     await a.mount(name);
-    expect(a.p.document.querySelector(".failed-send .txt")!.textContent).toBe("kept for later");
-    expect(shown()).toEqual({ stop: true, send: false });
-    buttonNamed("Put back").click();
-    await settle();
-    expect($("msgIn").value).toBe("kept for later");
-    expect(shown()).toEqual({ stop: true, send: true });
+    await settle(2);
+    expect([bubbleText(), bubble()!.className]).toEqual(["kept for later", "msg user out out-failed"]);
+    act("deleteOut").click();
+    await settle(2);
+    expect([bubble(), a.chat.state.outgoing[name]]).toEqual([null, []]);
   });
 
-  it("control: text and files given back together — the files first, then the text — and Send is there", async () => {
+  it("files: each shows in the bubble with its own state; a failed upload marks that file, and Retry uploads it again", async () => {
     const name = "busy-files";
     await a.mount(name);
     a.setExec(name, "working");
@@ -946,8 +933,13 @@ describe("the composer (panel-chat.js, mounted)", () => {
     await type("with a file");
     $("sendBtn").click();
     await settle(6);
-    expect(a.chat.state.pendingFiles[name].map((f: { name: string }) => f.name)).toEqual(["a.txt"]);
-    expect($("msgIn").value).toBe("with a file");
-    expect(shown()).toEqual({ stop: true, send: true });
+    const file = () => bubble()!.querySelector(".out-file") as any;
+    expect([a.chat.state.pendingFiles[name], $("msgIn").value, bubbleText(), file().querySelector(".out-name").textContent, file().dataset.state, file().querySelector(".out-pct").textContent])
+      .toEqual([[], "", "with a file", "a.txt", "failed", "failed"]);
+    a.net.route = async (path) => (path.startsWith("/ui/upload") ? { body: { id: "f".repeat(32) } } : path === "/ui/send" ? { body: { sent: true, messageId: "m-file" } } : { body: {} });
+    act("retryOut").click();
+    await settle(6);
+    const sent = a.net.calls.filter((c: any) => c.path === "/ui/send").at(-1)!;
+    expect([bubble()!.className, sent.body.attachments, sent.body.message]).toEqual(["msg user out out-sent", ["f".repeat(32)], "with a file"]);
   });
 });

@@ -25,6 +25,8 @@ export interface SpawnGateOptions {
   random?: () => number;
   lowMemoryBytes?: number;
   memoryPressure?: MemoryPressure;
+  /** Notification only: never changes admission or invokes queued work. */
+  onStartupMemoryWait?: () => void;
 }
 
 /** Persistent fleet-wide concurrency/workdir gate shared by startup and recovery. */
@@ -95,11 +97,18 @@ export class SpawnGate {
     for (const item of this.nestedQueue.splice(0)) item.reject(err);
   }
 
+  /** An actual queued startup wait, not global pressure or a hung active callback. */
+  isStartupMemoryDeferred(): boolean {
+    return !this.stopped && !this.options.storm.isSpawnBlocked() && this.memoryWait
+      && [...this.queue, ...this.nestedQueue].some(item => item.task.reason === "startup");
+  }
+
   private wait(ms: number, capacityWait = false, memoryWait = false): void {
     this.capacityWait = capacityWait;
     this.memoryWait = memoryWait;
     this.timer = setTimeout(() => { this.timer = null; this.capacityWait = this.memoryWait = false; this.pump(); }, ms);
     this.timer.unref?.();
+    if (this.isStartupMemoryDeferred()) this.options.onStartupMemoryWait?.();
   }
 
   private pump(): void {
@@ -134,20 +143,22 @@ export class SpawnGate {
         if (this.pressureHeld && pressure === "normal") pressure = "elevated";
         this.pressureRetryMs = 5_000;
         const configured = Math.max(1, Math.min(20, this.options.concurrency()));
-        const limit = Math.min(pressure === "normal" ? configured : 1, this.options.storm.isActive() ? 4 : configured);
+        const normalLimit = Math.min(configured, this.options.storm.isActive() ? 4 : configured);
+        const limit = pressure === "normal" ? normalLimit : 1;
         const nested = this.nestedQueue.length > 0;
         const physical = (nested ? this.nestedQueue[0] : this.queue[index]).task.stage !== "lifecycle";
         if (pressure !== "normal" && physical && this.physicalActive > 0) {
-          this.wait(5_000, true, true);
+          this.wait(5_000, true, nested || this.active < normalLimit);
           return;
         }
         if (!nested && this.active >= limit) {
           // Recovery must be able to raise the limit without waiting for a
           // long-running outer lifecycle callback to release its slot.
-          if (pressure !== "normal") this.wait(5_000, true, true);
+          if (pressure !== "normal") this.wait(5_000, true, this.active < normalLimit);
           return;
         }
-        const stagger = Math.max(0, Math.min(30_000, this.options.staggerMs()), pressure === "normal" ? 0 : 5_000);
+        const configuredStagger = Math.max(0, Math.min(30_000, this.options.staggerMs()));
+        const stagger = Math.max(configuredStagger, pressure === "normal" ? 0 : 5_000);
         const jitter = this.options.storm.isActive() ? Math.floor(this.random() * 500) : 0;
         // A healthy nested acquisition already owns its outer admission slot.
         // Keep physical history even at normal pressure: if pressure rises,
@@ -155,7 +166,8 @@ export class SpawnGate {
         const lastAdmission = pressure === "normal" ? this.lastStartedAt
           : Math.max(this.lastStartedAt, this.lastPhysicalStartedAt);
         const delay = nested && pressure === "normal" ? 0 : Math.max(0, lastAdmission + stagger + jitter - Date.now());
-        if (delay > 0) { this.wait(delay, false, pressure !== "normal"); return; }
+        const normalDelay = nested ? 0 : Math.max(0, this.lastStartedAt + configuredStagger + jitter - Date.now());
+        if (delay > 0) { this.wait(delay, false, pressure !== "normal" && delay > normalDelay); return; }
         const [item] = nested ? this.nestedQueue.splice(0, 1) : this.queue.splice(index, 1);
         if (this.pressureHeld) {
           this.memoryPressure.startRecoveryWindow();

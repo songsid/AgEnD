@@ -119,6 +119,7 @@ describe("#1871: a plan whose job launchd already runs is carried out (read-only
       readFile: (p: string) => files[p] ?? null,
       writeFile: (p: string, c: string) => { files[p] = c; },
       removeFile: (p: string) => { delete files[p]; },
+      withPlanLock: (fn: () => void) => fn(),
       realpath: (p: string) => ([RT, ENTRY].includes(p) ? p : null),
       isExecutable: () => false,
       now: () => new Date("2026-10-15T08:26:54Z"),

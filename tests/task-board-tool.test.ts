@@ -77,12 +77,12 @@ describe("the task tool's board actions", () => {
     expect(await call("dev-b", { action: "move", id: "M-1", to: "done" })).toEqual({ error: "M-1 is waiting for the person's confirmation: only they finish it" });
   });
 
-  it("who handed it out, one card at a time, and what to fill in before the person confirms", async () => {
+  it("who handed it out, one card at a time, and what to fill in before its dispatcher confirms", async () => {
     const { db, call } = fleet();
     db.board.createProject(ANN, { name: "Game" });
-    expect(await call("lead", { action: "create", title: "Leaderboard", project: "Game", assignee: "dev-a", acceptance: ["resets Monday", "top 100"] }))
+    expect(await call("lead", { action: "create", title: "Leaderboard", project: "Game", assignee: "dev-a", acceptance: ["resets Monday", "top 100"], needs_review: true }))
       .toBe("ok M-1 Leaderboard [to do] @dev-a (v1)");
-    expect((await call("dev-a", { action: "get", id: "M-1" }) as string).split("\n")[1]).toBe("project Game · dispatched by lead · the person confirms it");
+    expect((await call("dev-a", { action: "get", id: "M-1" }) as string).split("\n")[1]).toBe("project Game · dispatched by lead · lead confirms it");   // #2434: an agent's card, its dispatcher's
     expect(await call("dev-a", { action: "create", title: "Archive", project: "Game", dispatcher: "lead" })).toBe("ok M-2 Archive [to do] @dev-a (v1)");
     expect(db.board.getCard("M-2").dispatcher).toEqual({ kind: "instance", name: "lead" });
     expect(await call("dev-a", { action: "update", id: "M-2", dispatcher: null })).toBe("ok M-2 Archive [to do] @dev-a (v2)");
@@ -101,8 +101,10 @@ describe("the task tool's board actions", () => {
     expect(db.board.detail("M-1").comments.map((e) => `${e.author}: ${e.text}`)).toEqual(["lead: weekly, the person says"]);
     // In review before it is wrapped up (the person moved it there): what is missing, in get and in mine.
     db.board.moveCard(ANN, "M-1", "review");
-    expect(await call("dev-a", { action: "get", id: "M-1" })).toContain("before the person confirms it: 2 definition-of-done items unchecked, no result (fill in with update)");
-    expect(await call("dev-a", { action: "mine" })).toContain("M-1 Leaderboard — fill in before they confirm: 2 definition-of-done items unchecked, no result");
+    expect(await call("dev-a", { action: "get", id: "M-1" })).toContain("before lead confirms it: 2 definition-of-done items unchecked, no result (fill in with update)");
+    expect(await call("dev-a", { action: "mine" })).toContain("waiting for confirmation:\n M-1 Leaderboard — fill in before they confirm: 2 definition-of-done items unchecked, no result — by lead");
+    // …and the lead, who confirms it, has it in its own list (#2434).
+    expect(await call("lead", { action: "mine" })).toContain("for you to confirm:\n M-1 Leaderboard @dev-a — move it to done, or back to claimed with what is missing");
   });
 
   it("the tool's own tasks are answered as before", async () => {

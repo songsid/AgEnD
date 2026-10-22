@@ -20,6 +20,7 @@ vi.mock("node:child_process", async original => ({ ...await original<typeof impo
 vi.mock("../src/tmux-manager.js", async original => ({ ...await original<typeof import("../src/tmux-manager.js")>(), TmuxManager: new Proxy({}, { get: () => () => { throw Error("No tmux"); } }) }));
 vi.mock("../src/logger.js", () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn(), child() { return this; } }) }));
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
+import { setLocale } from "../src/locale.js";
 import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "../src/settings-http-confirmation.js";
 import { SettingsBaselines } from "../src/settings-baseline.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
@@ -163,6 +164,50 @@ function fleet(platform: "telegram" | "discord" = "telegram", ids = ["a", "b"], 
   return { fm, any, store, adapters, session, propose };
 }
 
+describe("#2453 (§0.2): the named-link option is never confirmed by its asker", () => {
+  /** A held web change (PUT /api/settings/fleet/web), as the gate proposes it: its mark from the trusted effect. */
+  function proposeWeb(f: ReturnType<typeof fleet>, verified_authority: Record<string, unknown>) {
+    const effect = prepareSettingsEffect("PUT", "/api/settings/fleet/web", { verified_authority }, { config: f.fm.fleetConfig, classic: {} });
+    const apply = vi.fn(async (_c: () => boolean, execution: any) => execution.commit(() => "applied"));
+    const view = f.store.propose({ session: "browser", key: `k${Math.random()}`, bytes: 1, source: "web_session", section: effect.diff!.section, requestedBy: "browser",
+      fingerprint: effect.diff!.fingerprint, summary: effect.diff!.summary, affectedConnections: effect.diff!.affectedConnections, authority: effect.diff!.authority,
+      ...(effect.diff!.noSelfConfirm ? { noSelfConfirm: true as const } : {}),
+      current: () => true, unchanged: async () => true, snapshot: () => null, apply }).view;
+    return { view, apply };
+  }
+  it("a web-verified local admin turning it on — alone or with other keys — gets none: a General's card or the host decides", () => {
+    const f = fleet(), s = f.session({ adapterId: "a", userId: "a-F" });
+    const alone = proposeWeb(f, { named_link: true }), mixed = proposeWeb(f, { named_link: true, loopback_only: true });
+    expect([f.any.settingsSelfConfirmation(f.store, s.req, alone.view.id), f.any.settingsSelfConfirmation(f.store, s.req, mixed.view.id),
+      alone.apply.mock.calls.length, mixed.apply.mock.calls.length]).toEqual([null, null, 0, 0]);
+  });
+  it("control — the same admin's ordinary change is still confirmed by applying it (#2170 unchanged)", () => {
+    const f = fleet(), s = f.session({ adapterId: "a", userId: "a-F" }), p = f.propose();
+    expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)?.label).toMatch(/\(web-verified\)$/);
+  });
+  it("a named-link session web-verified over the gateway (option on) is still never the self-confirming authority", () => {
+    const f = fleet();
+    (f.fm.fleetConfig as any).web = { public_link: { hostname: "agend.example.com" }, verified_authority: { enabled: true, named_link: true } };
+    const X = "e".repeat(32);
+    const c = f.any.webSessions.create({ tier: "admin", surface: "gateway", exposureId: X, label: "phone", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "a", userId: "a-F" } });
+    expect(f.any.authorizeWebSession(c.record, "named_link", true)).toMatchObject({ ok: true });
+    const req = { method: "PUT", socket: { remoteAddress: "127.0.0.1" }, headers: { host: "agend.example.com", origin: "https://agend.example.com", "sec-fetch-site": "same-origin",
+      cookie: `__Host-agend_session=${c.sessionId}; agend_session=${c.sessionId}`, [WEB_CSRF_HEADER]: csrfTokenFor(c.sessionId) } };
+    bindGatewayRequest(req, { surface: "gateway", named: true, exposureId: X, expectedOrigin: "https://agend.example.com", isCurrent: () => true });
+    expect(f.any.webAuthority({ session: c.record, gateway: true, peer: "named_link" }).authority.kind, "control: it is web-verified there").toBe("web-verified");
+    const p = f.propose();
+    expect(f.any.settingsSelfConfirmation(f.store, req, p.view.id)).toBeNull();
+  });
+  it("a request over the public link is never the self-confirming authority — named link or not", () => {
+    const f = fleet(), p = f.propose();
+    for (const named of [true, false]) {
+      const s = f.session({ adapterId: "a", userId: "a-F" });
+      bindGatewayRequest(s.req, { surface: "gateway", named, exposureId: "e1", expectedOrigin: "https://agend.example.com", isCurrent: () => true });
+      expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)).toBeNull();
+    }
+  });
+});
+
 describe("the fleet: who may confirm by applying", () => {
   it("web-verified, an admin of the change's connection: confirmed — applied, no chat card, General told on the other connection", async () => {
     const f = fleet(), s = f.session({ adapterId: "a", userId: "a-F" }), p = f.propose();
@@ -173,7 +218,7 @@ describe("the fleet: who may confirm by applying", () => {
     await tick();
     expect([view.state, p.apply.mock.calls.length, f.any.pendingNonceButtons.size, f.adapters[0]!.notifyAlert.mock.calls.length + f.adapters[1]!.notifyAlert.mock.calls.length]).toEqual(["applied", 1, 0, 0]);
     const [chatId, text, opts] = f.adapters[1]!.sendText.mock.calls[0]!;
-    expect([chatId, /^✅ Settings change confirmed from the web by .+ \(web-verified\)\nSource: web_session\nRequester: browser\n/.test(text), /Outcome: Change applied\.$/.test(text), opts]).toEqual(["-1002", true, true, { threadId: "2", allowedMentions: { parse: [] } }]);
+    expect([chatId, /^✅ Settings change confirmed from the web by .+ \(web-verified\)\nSource: web dashboard\nRequester: browser\n/.test(text), /Outcome: Change applied\.$/.test(text), opts]).toEqual(["-1002", true, true, { threadId: "2", allowedMentions: { parse: [] } }]);
     expect(f.adapters[0]!.sendText).not.toHaveBeenCalled();                                   // never on the connection the change affects
   });
   it.each([
@@ -182,6 +227,19 @@ describe("the fleet: who may confirm by applying", () => {
   ] as const)("%s: none — the chat card, as before", (_n, owner, opts) => {
     const f = fleet(), s = f.session(owner, opts as any), p = f.propose();
     expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)).toBeNull();
+  });
+  // #2390: the card fleet admins answer, in the fleet's language — the English "Confirm" users saw on 2.3.0-beta.22.
+  it("zh-TW: the chat card's title, source and Confirm / Reject read in Chinese, and so does the outcome it is retired with", async () => {
+    setLocale("zh-TW");
+    try {
+      const f = fleet(), p = f.propose();
+      await tick(); await tick();
+      const alert = f.adapters[1]!.notifyAlert.mock.calls[0]![1] as { message: string; choices: Array<{ label: string }> };
+      expect(alert.message.split("\n").slice(0, 3)).toEqual(["🔒 設定變更等待 fleet 管理員確認", "來源：網頁儀表板", "提出者：browser"]);
+      expect(alert.choices.map((c) => c.label)).toEqual(["確認", "拒絕"]);
+      const view = await f.store.decide(p.view.id, "reject", { label: "admin", current: () => true });
+      expect(view.outcome?.message).toBe("變更已被拒絕。");
+    } finally { setLocale("en"); }
   });
   it("an admin of one of the change's two connections only: none", () => {
     const f = fleet(), p = f.propose({ both: true });

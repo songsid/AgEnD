@@ -1,9 +1,10 @@
-import { closeSync, fsyncSync, mkdirSync, openSync, writeSync } from "node:fs";
+import { ensureAgendHome } from "./agend-home.js";
+import { closeSync, fsyncSync, openSync, writeSync } from "node:fs";
 import { join } from "node:path";
 
 /** Synchronous evidence before shutdown: neither a network nor logger worker is required. */
 export function recordFleetFatal(dataDir: string, error: unknown): void {
-  mkdirSync(dataDir, { recursive: true });
+  ensureAgendHome(dataDir);
   const fd = openSync(join(dataDir, "fleet-fatal.log"), "a", 0o600);
   try {
     writeSync(fd, JSON.stringify({ timestamp: new Date().toISOString(), pid: process.pid,

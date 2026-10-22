@@ -32,8 +32,9 @@ const schedulerIn = (d: string, now?: () => Date) => {
 };
 
 describe("defaults.task_board.summary_at", () => {
-  it("09:00 when not set; off turns it off; anything else is refused by the validator", () => {
-    expect(summaryTime(undefined)).toBe("09:00");
+  // #2425: off unless set (2.3.0-beta.25); a fleet that names a time keeps it.
+  it("off when not set; a time named is kept; off turns it off; anything else is refused by the validator", () => {
+    expect([summaryTime(undefined), summaryTime(null)]).toEqual([null, null]);
     expect(summaryTime("18:30")).toBe("18:30");
     expect(summaryTime(" OFF ")).toBeNull();
     for (const bad of ["9am", "24:00", "9:00", 900, true]) expect(summaryTime(bad)).toBeUndefined();

@@ -904,7 +904,7 @@ export class InstanceLifecycle {
       this.notifyIncident(name, "snapshot_failed", t("inst.restarted_no_context", name));
     }, this.ctx.logger, `daemon.snapshot_failed[${name}]`));
 
-    daemon.on("supervision_ended", safeHandler(async (data: { name: string; reason: string; remedy: string; exitCode?: number; cause?: "cli_unsupported" }) => {
+    daemon.on("supervision_ended", safeHandler(async (data: { name: string; reason: string; remedy: string; exitCode?: number; cause?: "cli_unsupported" | "session_oom" }) => {
       // The instance is dead and nothing will restart it. Say so where the operator
       // is looking, and mark the topic — otherwise messages routed here just queue
       // or fail with a bare ❌ and the dashboard still looks normal.
@@ -2389,7 +2389,7 @@ export class InstanceLifecycle {
       if (!directory) {
         workDir = join(getAgendHome(), "workspaces", newInstanceName);
         const existed = existsSync(workDir);
-        mkdirSync(workDir, { recursive: true });
+        mkdirSync(workDir, { recursive: true, mode: 0o700 });
         if (!existed) acquiredDirectory = statSync(workDir);
         ensureWorkspaceGit(workDir);
       }

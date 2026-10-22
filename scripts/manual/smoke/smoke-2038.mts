@@ -31,7 +31,7 @@ for (const label of labels) {
   const set = fx.seedTheme(LONG, { v: 1, card: { portrait: P.id, banner: B.id, tagline: TEXT.taglineCjk, bio: TEXT.bioCjk } });
   results.banners[label] = { set: set?.ok ?? set };
   for (const c of matrix()) {
-    const { ctx, page, csp } = await fx.page(c, { storage: { agend_view_card_expanded: "1" } });
+    const { ctx, page, csp } = await fx.page(c);
     const sheetRows: Array<{ surface: string; size: string; src: string; dims: any }> = [];
     for (const size of ["s", "m", "l"]) {
       fm.webPrefs.write("operator", new Map<string, unknown>([["theme", c.theme], ["lang", c.lang], ["card.size", size]]));

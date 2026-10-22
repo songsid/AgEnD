@@ -648,7 +648,7 @@ export function handleViewRequest(
       if (!permitWebContinuation(req, res, ctx)) return;
         if (buf.length === 0) { json(res, 400, { error: "empty body" }); return; }
         const dir = join(ctx.dataDir, "avatars");
-        mkdirSync(dir, { recursive: true });
+        mkdirSync(dir, { recursive: true, mode: 0o700 });
         // Replace this instance's prior avatar (incl. a different extension): the file its row records, and the one
         // written below — never a prefix match, which took "a.b.png" along with "a"'s (names may hold a ".": the
         // quickstart wizard and hand-edited fleet.yaml allow it; #1630 follow-up).

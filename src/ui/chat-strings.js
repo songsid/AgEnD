@@ -4,6 +4,9 @@ import { register } from "/assets/app-i18n.js";
 register("chat", {
   en: {
     waking: "Waking {0}…", retrySend: "Retry send",
+    // A message being sent (its own bubble at once) and its files' uploads.
+    you: "You", sending: "Sending…", uploadingFile: "Uploading {0}", uploadWaiting: "waiting", uploadFailed: "failed",
+    uploadNoConnection: "the upload was cut off — check the connection", sendNoConnection: "it did not reach AgEnD — check the connection", notSentBecause: "Not sent: {0}", deleteUnsent: "Delete",
     sendFailure_wake_capacity: "No slot is free to wake this instance. Retry when another instance is idle.",
     sendFailure_wake_credentials: "The instance could not sign in. Check its account on the host, then retry.",
     sendFailure_wake_timeout: "The instance did not become ready in time. Retry, or check its status on the host.",
@@ -110,7 +113,7 @@ register("chat", {
     disconnected: "disconnected", tick_queued: "Waiting behind another message", tick_processing: "Handed to the agent", tick_delivered: "The agent has it", tick_failed: "Not delivered", tick_cancelled: "Dropped by Stop", reactedBy: "{0} reacted",
     promptAnswering: "Answering…", promptGone: "This prompt is no longer open", promptFor: "{0}: {1}",
     working: "{0} is working…", stuck: "{0} looks stuck", stopReply: "Stop reply", stopReplyTitle: "Stop the current reply (like Esc) and drop the messages still waiting. The instance keeps running.", stopSent: "Stopped",
-    file_empty: "empty file", file_too_large: "over {0} MB", file_too_large_public: "over {0} MB — the most the public link carries in one upload", file_too_many: "at most {0} files per message", file_too_much: "the files together would be over {0} MB", removeFile: "Remove", notSent: "Not sent:", putBack: "Put back", discard: "Discard",
+    file_empty: "empty file", file_too_large: "over {0} MB", file_too_large_public: "over {0} MB — the most the public link carries in one upload", file_too_many: "at most {0} files per message", file_too_much: "the files together would be over {0} MB", removeFile: "Remove", putBack: "Put back", 
     noMessages: "Type a task below.",
     pick: "Choose an agent to start chatting.", noAgents: "Create an agent to start chatting.", newAgent: "New agent", notFound: "No instance called “{0}”", notFoundHint: "It may have been deleted or renamed.", backToList: "Choose an agent",
     details: "Instance details", start: "Start instance", stopInstance: "Stop instance", restart: "Restart instance", delete: "Delete instance…",
@@ -143,6 +146,8 @@ register("chat", {
   },
   "zh-TW": {
     waking: "正在喚醒 {0}…", retrySend: "重試傳送",
+    you: "你", sending: "傳送中…", uploadingFile: "正在上傳 {0}", uploadWaiting: "等待中", uploadFailed: "失敗",
+    uploadNoConnection: "上傳中斷了，請檢查網路連線", sendNoConnection: "沒有送到 AgEnD，請檢查網路連線", notSentBecause: "沒有送出：{0}", deleteUnsent: "刪除",
     sendFailure_wake_capacity: "目前沒有空位可喚醒這個實例。請等其他實例閒置後重試。",
     sendFailure_wake_credentials: "實例無法登入。請先在主機檢查它的帳號，再重試。",
     sendFailure_wake_timeout: "實例未能及時就緒。請重試，或在主機檢查它的狀態。",
@@ -247,7 +252,7 @@ register("chat", {
     disconnected: "已斷線", tick_queued: "排在前一則訊息之後", tick_processing: "已交給 agent", tick_delivered: "agent 已收到", tick_failed: "未送達", tick_cancelled: "已被中止取消", reactedBy: "{0} 的回應",
     promptAnswering: "回覆中…", promptGone: "這個提示已經結束", promptFor: "{0}：{1}",
     working: "{0} 處理中…", stuck: "{0} 似乎卡住了", stopReply: "中止回覆", stopReplyTitle: "中止目前的回覆（同 Esc），並取消還在排隊的訊息。instance 會繼續運行。", stopSent: "已中止",
-    file_empty: "空檔案", file_too_large: "超過 {0} MB", file_too_large_public: "超過 {0} MB，這是公開連結單次上傳的上限", file_too_many: "每則訊息最多 {0} 個檔案", file_too_much: "檔案合計會超過 {0} MB", removeFile: "移除", notSent: "未送出：", putBack: "放回輸入框", discard: "捨棄",
+    file_empty: "空檔案", file_too_large: "超過 {0} MB", file_too_large_public: "超過 {0} MB，這是公開連結單次上傳的上限", file_too_many: "每則訊息最多 {0} 個檔案", file_too_much: "檔案合計會超過 {0} MB", removeFile: "移除", putBack: "放回輸入框", 
     noMessages: "直接在下方輸入任務。",
     pick: "選一個 Agent 開始聊天。", noAgents: "先建立一個 Agent，再開始聊天。", newAgent: "新增 Agent", notFound: "沒有叫「{0}」的 instance", notFoundHint: "它可能已被刪除或改名。", backToList: "選擇 Agent",
     details: "Instance 詳細資料", start: "啟動 instance", stopInstance: "停止 instance", restart: "重新啟動 instance", delete: "刪除 instance…",

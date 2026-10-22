@@ -25,6 +25,13 @@ const capture = JSON.parse(readFileSync(FIXTURES, "utf8")) as Record<string, { a
 const NO_BUS: CommandResult = { status: 1, signal: null, stdout: "", stderr: "Failed to connect to bus: No such file or directory\n" };
 const ok = (stdout = ""): CommandResult => ({ status: 0, signal: null, stdout, stderr: "" });
 const json = (type: string, data: unknown) => ok(`${JSON.stringify({ type, data })}\n`);
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+/** callPeer Atomics.wait-blocks this thread; the server's connection callback only runs after we yield. */
+const waitAcceptCount = async (accepted: { length: number }, count: number, timeoutMs = 5000) => {
+  const deadline = Date.now() + timeoutMs;
+  while (accepted.length < count && Date.now() < deadline) await sleep(10);
+  expect(accepted).toHaveLength(count);
+};
 
 describe("which busctl failures mean 'no bus'", () => {
   it.each([
@@ -477,7 +484,8 @@ describe("Prism r2 P2-1: only root's or this user's socket is systemd's", () => 
       expect(peerUnreachable(result)).toBe(true);
       chmodSync(open, 0o755);                                              // control: the same socket, protected
       expect(callPeer(true, capture.loadUnit!.args, { socket: join(open, "private"), timeoutMs: 300 }).stderr).not.toMatch(/not systemd's own socket/);
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await waitAcceptCount(accepted, 1);
+      await sleep(50);                                                     // grace: the refused path never sneaks in
       expect(accepted).toHaveLength(1);                                    // only the control connected
     } finally {
       for (const socket of accepted) socket.destroy();
@@ -509,13 +517,14 @@ describe("Prism r3: a symlink retargeted after the check cannot move the connect
       const result = callPeer(true, capture.loadUnit!.args, { socket: join(link, "private"), timeoutMs: 300, endpoint: racing });
       expect(result.stderr).not.toMatch(/not systemd's own socket/);           // A passed the check, and A was dialled
       expect(realpathSync(link)).toBe(b);                                     // the alias really points at B now
-      await new Promise(resolve => setTimeout(resolve, 50));
-      expect(serverA.accepted).toHaveLength(1);
+      await waitAcceptCount(serverA.accepted, 1);
+      await sleep(50);                                                        // grace: B never connects
       expect(serverB.accepted).toHaveLength(0);
       // controls: the protected endpoint directly, and through the (now B) alias without a race
-      callPeer(true, capture.loadUnit!.args, { socket: join(a, "private"), timeoutMs: 300, endpoint: real });
-      callPeer(true, capture.loadUnit!.args, { socket: join(link, "private"), timeoutMs: 300, endpoint: real });
-      await new Promise(resolve => setTimeout(resolve, 50));
+      expect(callPeer(true, capture.loadUnit!.args, { socket: join(a, "private"), timeoutMs: 300, endpoint: real }).stderr).not.toMatch(/not systemd's own socket/);
+      await waitAcceptCount(serverA.accepted, 2);
+      expect(callPeer(true, capture.loadUnit!.args, { socket: join(link, "private"), timeoutMs: 300, endpoint: real }).stderr).not.toMatch(/not systemd's own socket/);
+      await waitAcceptCount(serverB.accepted, 1);
       expect([serverA.accepted.length, serverB.accepted.length]).toEqual([2, 1]);
       // a dangling alias: unresolvable, refused
       unlinkSync(link); symlinkSync(join(dir, "gone"), link);

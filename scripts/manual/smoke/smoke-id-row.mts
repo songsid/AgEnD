@@ -36,7 +36,7 @@ const variants = [{ id: "portrait", card: { banner: banner.id, portrait: portrai
 for (const variant of variants) {
   fx.seedTheme(NAME, { v: 1, card: variant.card } as never);
   for (const width of [390, 430]) for (const theme of variant.id === "portrait" ? ["light", "dark"] as const : ["light"] as const) {
-    const { ctx, page } = await fx.page({ device: "phone", theme, lang: "zh-TW" }, { storage: { agend_view_card_expanded: "1", agend_chat_card: "open" } });
+    const { ctx, page } = await fx.page({ device: "phone", theme, lang: "zh-TW" }, { storage: { agend_chat_card: "open" } });
     await page.setViewportSize({ width, height: 844 });
     const rows: string[] = [];
     for (const size of ["s", "m", "l"]) {

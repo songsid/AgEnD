@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>AgEnD</title>
+<!--app-icon-->
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 64x64">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+<!--/app-icon-->
+<script src="/assets/theme.js"></script>
+<link rel="stylesheet" href="/assets/tokens.css">
+<style>
+  /* What a guest's browser gets for a page it cannot open (#2399 smoke: it was the gate's bare JSON). The sign-in
+     page's look: the app's tokens, light and dark (theme.js before paint). */
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px;
+         background: var(--bg); color: var(--text); font: var(--fw-regular) var(--fs-md)/var(--lh-md) var(--font-ui); -webkit-font-smoothing: antialiased; }
+  main { width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 28px 24px; }
+  .brand { margin: 0 0 18px; font-size: var(--fs-lg); font-weight: var(--fw-bold); }
+  h1 { margin: 0 0 6px; font-size: var(--fs-xl); font-weight: var(--fw-semibold); }
+  p { margin: 0 0 18px; color: var(--text-2); }
+  a.go { display: block; width: 100%; padding: 12px; text-align: center; text-decoration: none; font: var(--fw-semibold) var(--fs-md) var(--font-ui);
+         color: var(--on-accent); background: var(--accent-fill); border-radius: var(--r-full); }
+  a.go:hover { opacity: .88; }
+  a.go:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-dim); }
+</style>
+</head>
+<body>
+<main id="refused" data-why="__WHY__">
+  <div class="brand">AgEnD</div>
+  <h1 id="title">This page is not open to guests</h1>
+  <p id="lead">This page is for the fleet's members. As a guest you can use the chats shared with you.</p>
+  <a id="go" class="go" href="/ui">Open your chats</a>
+</main>
+<script src="/assets/guest-refused.js"></script>
+</body>
+</html>

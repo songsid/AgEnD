@@ -1,0 +1,22 @@
+# OOM recovery rehearsal (#2015 / #2035)
+
+Run `bash scripts/manual/oom-recovery/run.sh` from a built checkout with dependencies. This is an explicit manual rehearsal, not a CI test or a production memory diagnostic. The runner requires Docker and the private `agend-rh-b16-bus` systemd 249 image. `OOM_REHEARSAL_IMAGE` may select an equivalent private image, but the driver verifies systemd 249 and its test account before continuing.
+
+The script creates one disposable container, with private PID/cgroup/network namespaces, no host mounts, a verified 1.5 GiB memory cap, no swap and two CPUs. The persistent user service has a separate verified 640 MiB cap and `memory.oom.group=0`. The script never runs an AgEnD CLI, tmux command or memory hog on the host. Its EXIT handler copies evidence into `.artifacts/oom-rehearsal-*` and removes only the container with its own matching nonce label. Do not remove the caps or run `driver.py` on a host.
+
+Inside the container the candidate uses a private prefix, HOME and AGEND_HOME, two real mock-backend instances and a loopback Telegram mock. No account or external network is used. A fixture-only mock CLI command launches a Python allocator. The real kernel, rather than a synthetic exit code, selects and kills a process. The harness validates `memory.events` increments, child SIGKILL, loaded policy, MainPID, NRestarts, both CLI PIDs, dashboard health and a sibling reply through the real MCP path.
+
+Legs:
+
+1. Fresh persistent user unit: loaded `OOMPolicy=continue`; a tool-child OOM leaves the fleet and both CLI PIDs running.
+2. Remove the policy from the unit, reload to prove loaded `stop`, then run the actual `agend restart --yes`: loaded `continue` is restored.
+3. Target installer refresh: remove the policy again and run `agend-install --upgrade`. Only npm retrieval is stubbed because this exact candidate was already materialized; version verification, install, unit refresh, manager reload and service activation are real. This is not proof of an npm registry download/upgrade.
+4. Explicit operator `stop` drop-in: restart reports and preserves it. The negative-control child OOM restarts the whole fleet, reproducing #2015.
+5. With `continue` restored, raise only the verified private fleet MainPID’s `oom_score_adj` and allocate through its mock child. An actual main-process OOM still triggers `Restart=on-failure`; a sibling replies afterwards.
+6. Stop the service and run the real Daemon/session guard tests in another capped private unit. These inject exact-PID procfs and journal evidence: a first confirmed OOM resumes, the second stops, ordinary deaths still recover and stale owners cannot act. **Nested container PID attribution is deliberately unknown in production.** These tests do not claim the host-namespace collector works inside Docker, or that an actual provider transcript caused the OOM. Afterwards run the three affected native tmux contract cases plus their session-creation prerequisite on their owned private sockets, also inside the container.
+
+`results.json`, `driver.log`, `guard-tests.log`, `native-tests.log`, `daemon.log` and `journal.log` are the evidence. The receipt names the checkout revision; the runner copies its built `dist`, current source, launcher, templates and dependencies. Build after runtime edits and use a clean committed head for a final acceptance run. No release, npm publish or host service change is part of this rehearsal.
+
+Production attribution currently uses Claude Code’s per-instance statusline session ID only; cwd-selected Muse/Grok IDs and missing Codex/Kiro IDs remain unknown. Kernel-journal visibility is also required: on servers a user outside `adm`/`systemd-journal` commonly cannot read it. `journalctl --kernel --boot=0 --no-pager --lines=1` diagnoses visibility without changing the host; unreadable means ordinary recovery, not guessed OOM. The harness does not grant host privileges or test the host journal.
+
+Before every OOM injection, reset the Telegram mock and require an actual sibling reply through the current adapter/MCP route. The shared minimal mock retains a disconnected long-poll resolver until its five-second timer and immediately consumes queued updates; immediately after a restart an injected fault command can otherwise be delivered to that dead resolver. A private isolated probe reproduced the lost update and reset recovery. This is a fixture synchronization barrier, not a sleep, an OOM-command retry or a product Telegram change. Failure receipts also retain mock calls and final unit state.

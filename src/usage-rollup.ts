@@ -152,7 +152,7 @@ export async function readDays(path: string): Promise<UsageDays> {
 export async function writeDays(path: string, days: UsageDays): Promise<boolean> {
   const tmp = `${path}.${process.pid}.tmp`;
   try {
-    await mkdir(dirname(path), { recursive: true });
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     await writeFile(tmp, JSON.stringify(days), { mode: 0o600 });
     await rename(tmp, path);
     return true;

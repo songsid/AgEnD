@@ -516,20 +516,6 @@
     return "send";
   }
 
-  /**
-   * A send that failed: where does its text go? Back into the composer only if that composer is the same
-   * target's, still on screen and empty; otherwise it is kept aside for that target (never put into another
-   * target's composer, never over a draft someone is typing) and offered back when that chat is open.
-   */
-  function settleFailedSend(target, current, composerPresent, composerValue) {
-    return target === current && composerPresent && !composerValue ? "restore" : "keep";
-  }
-
-  /** "Put back" for a kept message: in front of whatever is being typed now, never replacing it. */
-  function putBack(failedText, draft) {
-    return draft ? failedText + "\n" + draft : failedText;
-  }
-
   /** The defaults of the upload limits the server enforces (web-upload.ts UPLOAD_LIMITS), for a page that was given none. */
   var FILE_LIMITS = { maxFileBytes: 50 * 1024 * 1024, maxFiles: 5, maxTotalBytes: 100 * 1024 * 1024 };
   /**
@@ -666,7 +652,7 @@
   return {
     renderMarkdown: renderMarkdown, escapeHtml: escapeHtml, mergeMessages: mergeMessages, applyReplyButtons: applyReplyButtons, composerKey: composerKey,
     pollRemaining: pollRemaining,
-    settleFailedSend: settleFailedSend, putBack: putBack,
+    
     FILE_LIMITS: FILE_LIMITS, fileLimits: fileLimits, fileRejection: fileRejection, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml, isHtmlAttachment: isHtmlAttachment,
     nextDeliveryState: nextDeliveryState, applyDelivery: applyDelivery, deliveryHtml: deliveryHtml, isBusy: isBusy,
     applyReactions: applyReactions, reactionsHtml: reactionsHtml,

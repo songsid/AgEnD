@@ -1,11 +1,14 @@
+import { ensureAgendHome } from "./agend-home.js";
 import { gatewayRequestContext, isWebRequestCurrent } from "./web-request-context.js";
-import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { fleetCookieName } from "./web-cookie-names.js";
+import { chmodSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import {
   csrfTokenFor,
   labelFromUserAgent,
   tokenEpoch,
+  sessionIdHash,
   type SessionRecord,
   type WebSessionStore,
 } from "./web-session.js";
@@ -58,7 +61,7 @@ function tokenPath(dataDir: string): string {
  * A fleet restart must not revoke every previously issued /web URL.
  */
 export function loadOrCreateWebToken(dataDir: string): string {
-  mkdirSync(dataDir, { recursive: true });
+  ensureAgendHome(dataDir);
   const path = tokenPath(dataDir);
   const existing = readValidToken(path);
   if (existing) {
@@ -96,7 +99,7 @@ export function readWebToken(dataDir: string): string | null {
  * and session cookie stops being accepted as soon as the next request is served.
  */
 export function rotateWebToken(dataDir: string): string {
-  mkdirSync(dataDir, { recursive: true });
+  ensureAgendHome(dataDir);
   const path = tokenPath(dataDir);
   const token = randomBytes(24).toString("hex");
   replaceTokenAtomically(path, token);
@@ -191,9 +194,9 @@ export function isSecureRequest(req: WebGateRequest): boolean {
  * `Max-Age` is a courtesy so the browser forgets it when the server would; the
  * server enforces the expiry itself and does not rely on the browser doing so.
  */
-export function buildSessionCookie(sessionId: string, secure: boolean, maxAgeSeconds: number): string {
+export function buildSessionCookie(sessionId: string, secure: boolean, maxAgeSeconds: number, webToken?: string | null): string {
   const attrs = [
-    `${secure ? WEB_SESSION_COOKIE_SECURE : WEB_SESSION_COOKIE}=${sessionId}`,
+    `${fleetCookieName(secure ? WEB_SESSION_COOKIE_SECURE : WEB_SESSION_COOKIE, webToken)}=${sessionId}`,
     "Path=/",
     "HttpOnly",
     // Strict, not Lax: the panel can restart instances, so a cross-site
@@ -207,16 +210,14 @@ export function buildSessionCookie(sessionId: string, secure: boolean, maxAgeSec
 }
 
 /** Expire the cookie under both names: which one was set depends on how the browser reached us. */
-export function buildClearedSessionCookies(): string[] {
-  return [
-    `${WEB_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`,
-    `${WEB_SESSION_COOKIE_SECURE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Secure`,
-  ];
+export function buildClearedSessionCookies(webToken?: string | null): string[] {
+  const names = new Set([fleetCookieName(WEB_SESSION_COOKIE, webToken), fleetCookieName(WEB_SESSION_COOKIE_SECURE, webToken), WEB_SESSION_COOKIE, WEB_SESSION_COOKIE_SECURE]);
+  return [...names].map(name => `${name}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${name.startsWith("__Host-") ? "; Secure" : ""}`);
 }
 
 /** The presented session id, or undefined. A `__Host-` cookie wins: it cannot have been planted by a sibling site. */
-export function readSessionCookie(req: WebGateRequest): string | undefined {
-  return readSessionCookies(req)[0];
+export function readSessionCookie(req: WebGateRequest, webToken?: string | null): string | undefined {
+  return readSessionCookies(req, webToken)[0];
 }
 
 /**
@@ -226,11 +227,23 @@ export function readSessionCookie(req: WebGateRequest): string | undefined {
  * Trying the plain cookie after a `__Host-` one that does not authenticate admits nothing that presenting the plain
  * cookie alone would not.
  */
-export function readSessionCookies(req: WebGateRequest): string[] {
+export function readSessionCookies(req: WebGateRequest, webToken?: string | null): string[] {
   const jar = parseCookieHeader(headerValue(req, "cookie") ?? undefined);
-  const secure = jar.get(WEB_SESSION_COOKIE_SECURE), plain = jar.get(WEB_SESSION_COOKIE);
-  if (gatewayRequestContext(req)) return secure ? [secure] : [];
-  return [secure, plain].filter((c, i, all): c is string => !!c && all.indexOf(c) === i);
+  const names = [fleetCookieName(WEB_SESSION_COOKIE_SECURE, webToken), ...(!gatewayRequestContext(req) ? [fleetCookieName(WEB_SESSION_COOKIE, webToken)] : []),
+    WEB_SESSION_COOKIE_SECURE, ...(!gatewayRequestContext(req) ? [WEB_SESSION_COOKIE] : [])];
+  return names.map(name => jar.get(name)).filter((c, i, all): c is string => !!c && all.indexOf(c) === i);
+}
+
+/** Only call with the record already admitted by this fleet's store/epoch/surface checks.
+ * Preserve its id and absolute expiry; never delete a shared legacy cookie during migration.
+ */
+export function sessionCookieUpgrade(req: WebGateRequest, webToken: string, session: SessionRecord): string | null {
+  if (!isWebRequestCurrent(req) || session.tokenEpoch !== tokenEpoch(webToken)) return null;
+  const id = readSessionCookies(req, webToken).find(value => sessionIdHash(value) === session.idHash);
+  const secure = isSecureRequest(req);
+  const name = fleetCookieName(secure ? WEB_SESSION_COOKIE_SECURE : WEB_SESSION_COOKIE, webToken);
+  if (!id || parseCookieHeader(headerValue(req, "cookie") ?? undefined).get(name) === id) return null;
+  return buildSessionCookie(id, secure, (session.absoluteExpiry - Date.now()) / 1000, webToken);
 }
 
 export function hasValidHeaderToken(req: WebGateRequest, token: string): boolean {
@@ -284,7 +297,7 @@ export function authorizeSession(
 ): SessionAuthResult {
   if (!token || !isWebRequestCurrent(req)) return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE };
   if (!isSameOriginRequest(req)) return { kind: "reject", status: 403, message: WEB_CROSS_SITE_MESSAGE };
-  const presented = readSessionCookies(req);
+  const presented = readSessionCookies(req, token);
   let cookie: string | undefined = presented[0], session: ReturnType<WebSessionStore["authenticate"]> = null;
   for (const candidate of sessions ? presented : []) {
     session = sessions!.authenticate(candidate, tokenEpoch(token), { touch: opts.touch !== false, surface: gatewayRequestContext(req)?.surface, exposureId: gatewayRequestContext(req)?.exposureId });
@@ -327,7 +340,7 @@ function authorize(
   // carrying both is the CLI's, not a forged form's.
   if (hasValidHeaderToken(req, token)) return { kind: "allow", via: "header-token" };
 
-  const presented = readSessionCookies(req);
+  const presented = readSessionCookies(req, token);
   const cookie = presented[0];
   for (const candidate of sessions ? presented : []) {
     const session = sessions!.authenticate(candidate, tokenEpoch(token), { touch: opts.touch, surface: gatewayRequestContext(req)?.surface, exposureId: gatewayRequestContext(req)?.exposureId });
@@ -385,7 +398,7 @@ function authorize(
  * default and then touch nothing at all.
  */
 // #1665: /ui/prefs is read by the page when another device changed a preference — the page's doing, not the person's.
-const PASSIVE_GET_PATHS: ReadonlySet<string> = new Set(["/ui/poll", "/ui/events", "/api/profiles", "/api/ai-usage", "/ui/prefs", "/ui/preview-status", "/ui/steps", "/ui/traffic", "/ui/authorization"]);   // #1918: the public link polls traffic
+const PASSIVE_GET_PATHS: ReadonlySet<string> = new Set(["/ui/poll", "/ui/events", "/api/profiles", "/api/ai-usage", "/ui/prefs", "/ui/preview-status", "/ui/steps", "/ui/traffic", "/ui/authorization", "/ui/offices"]);   // #1918: the public link polls traffic; the Office view reads offices again when the stream says they changed
 const PASSIVE_GET_PANE = /^\/api\/pane\/[^/]+$/;
 /** #1630: the pictures a page draws (avatars, server emoji) and the emoji list are loaded by the page, not done by a person. */
 const PASSIVE_GET_IMAGES = /^\/ui\/(?:img\/(?:bot|avatar|emoji)\/[^/]+|emojis|mentions)$/;   // #1682: mention names too
