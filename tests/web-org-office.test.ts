@@ -63,12 +63,15 @@ const view = () => O.buildOrgView(ORG, app.appStore.get());
 const id16 = (n: number) => n.toString(16).padStart(16, "0");
 
 describe("poses and coats", () => {
-  it("every org chart state has a pose: needs you, crashed and stuck call; paused and stopped sleep; missing is an empty desk", () => {
-    expect(O.ORG_STATES.map((s: string) => [s, M.officePose(s)])).toEqual([["needs", "needs"], ["crashed", "needs"], ["stuck", "needs"], ["working", "working"],
+  it("every org chart state has a pose: needs you, crashed and stuck call; paused and stopped sleep; starting sits, queued dozes; missing is an empty desk", async () => {
+    expect(O.ORG_STATES.map((s: string) => [s, M.officePose(s)])).toEqual([["needs", "needs"], ["crashed", "needs"], ["stuck", "needs"], ["starting", "idle"], ["queued", "paused"], ["working", "working"],
       ["idle", "idle"], ["paused", "paused"], ["stopped", "paused"], ["missing", "away"]]);
-    expect(O.ORG_STATES.map(M.lightOf)).toEqual(["warn", "danger", "warn", null, null, null, null, null]);
+    expect(O.ORG_STATES.map(M.lightOf)).toEqual(["warn", "danger", "warn", null, null, null, null, null, null, null]);
     expect(O.ORG_STATES.filter(M.signOf)).toEqual(["paused", "stopped"]);
     expect(O.ORG_STATES.filter(M.lampOf)).toEqual(["working"]);
+    // #2398's startup states share a pose but say their own words (a queued instance is not asleep).
+    const F = await import("/ui/js/fleet-office.js");
+    expect(["starting", "queued", "paused", "idle"].map((s) => F.caption(M.officePose(s), s))).toEqual(["Just arriving", "Waiting to start", "Asleep", "Tea break"]);
     // From the app store, as the canvas reads it.
     const states = Object.fromEntries([...view().top, ...view().teams.flatMap((t: any) => t.nodes)].map((n: any) => [n.name, M.officePose(n.state)]));
     expect(states).toEqual({ atlas: "idle", pixel: "needs", quill: "working", sage: "paused", orbit: "needs", nova: "paused", tide: "needs" });

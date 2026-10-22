@@ -4,10 +4,11 @@
 // Per case (desk light en, desk dark zh-TW on a LAN origin, phone light zh-TW, phone dark en; reduced motion on the
 // phone):
 // - admin: the Office draws and offers "Edit offices"; the editor starts empty; Add office, name it, Studio, tick the
-//   team, Save → the toast, the dialog closed, the office in the switcher and in the host's store;
+//   team, Save → the toast, the dialog closed, the office in the switcher and in the host's store; picked in the
+//   switcher, it draws exactly the team;
 // - conflict: the editor open in this tab while a second tab of the same person saves a rename through its own editor;
-//   Save here → the "changed meanwhile" message, the other tab's list shown, nothing overwritten (the store holds the
-//   other tab's name);
+//   Save here → the "changed meanwhile" message, the other tab's list shown and editable again, nothing overwritten
+//   (the store holds the other tab's name);
 // - blocked: a read-only session (tier read) and the public link see the Office and no "Edit offices", and their PUT
 //   writes nothing (read-only: 403; the public link's gateway has no PUT route for it: 404); a guest session cannot
 //   reach Fleet or GET /ui/offices (401 with guest sign-in off, the default).
@@ -135,7 +136,12 @@ for (const k of CASES) {
   const stored = fm.officeStore.list();
   ck.stored = stored.offices.length === 1 && stored.offices[0].name === officeName && stored.offices[0].skin === "studio" && stored.offices[0].members.includes(`team:${TEAM}`);
   ck.inSwitcher = await p.page.waitForFunction((n: string) => [...document.querySelectorAll(".oo-bar select option")].some((o) => o.textContent?.trim() === n), officeName, { timeout: 5000 }).then(() => true, () => false);
-  await p.page.waitForTimeout(400);
+  // Saving does not switch offices: the person picks the new one in the switcher, and it draws its team.
+  const switcher = p.page.locator(".oo-bar select").first();
+  if (ck.inSwitcher) await switcher.selectOption({ label: officeName });
+  await p.page.waitForTimeout(600);
+  const drawn = await p.page.$$eval(".oo-desk[data-name]", (d) => d.map((x) => x.getAttribute("data-name")));
+  ck.newOfficeDraws = drawn.length === MEMBERS.length && MEMBERS.every((m) => drawn.includes(m));
   await p.page.screenshot({ path: shotPath(SMOKE, name, "3-saved") });
 
   // ── Conflict: this tab's editor open while another tab of the same person saves ──
@@ -158,6 +164,7 @@ for (const k of CASES) {
   ck.conflictMessage = await msg.waitFor({ timeout: 5000 }).then(() => true, () => false) && (await msg.innerText()).includes(W.changed(c));
   ck.conflictShowsCurrent = (await p.page.locator(".oe-row .oe-name").first().inputValue()) === otherName;
   ck.notOverwritten = fm.officeStore.list().offices[0]?.name === otherName;
+  ck.editableAgain = await p.page.locator("#oeSave").isEnabled({ timeout: 5000 }).catch(() => false) && await p.page.waitForFunction(() => !document.querySelector("fieldset.oe-form")?.hasAttribute("disabled"), null, { timeout: 5000 }).then(() => true, () => false);
   await p.page.screenshot({ path: shotPath(SMOKE, name, "4-conflict") });
   texts.push(await visibleText(p.page));
   await p.page.keyboard.press("Escape");

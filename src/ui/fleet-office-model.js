@@ -19,8 +19,11 @@ import { hue } from "./fleet-traffic.js";
 
 /** The poses a skin draws (a frame strip each, fleet-office-skin.js); "away" (not in the fleet) is an empty desk. */
 export const POSES = ["working", "idle", "paused", "needs", "walk"];
-/** fleet-org.js ORG_STATES → pose. Needs you, crashed and looks stuck call for the person (a light over the head). */
-export const POSE_OF = { needs: "needs", crashed: "needs", stuck: "needs", working: "working", idle: "idle", paused: "paused", stopped: "paused", missing: "away" };
+/**
+ * fleet-org.js ORG_STATES → pose. Needs you, crashed and looks stuck call for the person (a light over the head);
+ * starting sits at the desk, queued (waiting its turn to start, #2398) dozes without the closed sign.
+ */
+export const POSE_OF = { needs: "needs", crashed: "needs", stuck: "needs", starting: "idle", queued: "paused", working: "working", idle: "idle", paused: "paused", stopped: "paused", missing: "away" };
 export const officePose = (state) => POSE_OF[state] || "idle";
 /** The call light's tone: the state colours the canvas's dots use (crashed is danger; needs you and stuck are warn). */
 export const lightOf = (state) => (state === "crashed" ? "danger" : state === "needs" || state === "stuck" ? "warn" : null);

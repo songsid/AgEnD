@@ -41,7 +41,7 @@ register("orgo", {
     office: "Office", allOffice: "Whole fleet", show: "Show", allTeams: "All teams", lobby: "Lobby (General, no team)", lobbyRoom: "Lobby",
     people: "People", peopleN: "People ({0})", findPerson: "Find a person", everyone: "Show everyone", nobody: "No one here matches this filter.",
     unseated: "{0} without a seat", closed: "Closed", desks: "Desks", tapAgain: "Tap again to open the chat",
-    capWorking: "Typing away", capIdle: "Tea break", capPaused: "Asleep", capNeeds: "Calling for you", capAway: "Desk empty",
+    capWorking: "Typing away", capIdle: "Tea break", capPaused: "Asleep", capNeeds: "Calling for you", capAway: "Desk empty", capStarting: "Just arriving", capQueued: "Waiting to start",
     styleLabel: "Style", style_pixel: "Desks", style_studio: "Studio", area_desks: "Work", area_lounge: "Lounge", area_alert: "Help desk", area_nap: "Nap corner",
     b_working: "On it.|Typing…|Almost there|In the zone|One more test", b_idle: "Tea time|Ready when you are|Stretching|Anything for me?",
     b_paused: "Zzz…|Back later", b_stopped: "Off duty|Zzz…", b_needs: "Need you!|A question for you|Over here!",
@@ -52,7 +52,7 @@ register("orgo", {
     office: "辦公室", allOffice: "整個 fleet", show: "顯示", allTeams: "所有 team", lobby: "大廳（General、未加入 team）", lobbyRoom: "大廳",
     people: "成員", peopleN: "成員（{0}）", findPerson: "尋找成員", everyone: "顯示全部", nobody: "沒有符合這個篩選的成員。",
     unseated: "{0} 位沒有座位", closed: "休息中", desks: "桌子", tapAgain: "再點一下開啟聊天",
-    capWorking: "埋頭打字中", capIdle: "喝茶休息", capPaused: "睡著了", capNeeds: "在呼叫你", capAway: "空位",
+    capWorking: "埋頭打字中", capIdle: "喝茶休息", capPaused: "睡著了", capNeeds: "在呼叫你", capAway: "空位", capStarting: "剛到座位", capQueued: "等待啟動",
     styleLabel: "風格", style_pixel: "辦公桌", style_studio: "工作室", area_desks: "工作區", area_lounge: "休息區", area_alert: "求救區", area_nap: "午睡角",
     b_working: "處理中|打字中…|快好了|專心中|再測一次", b_idle: "喝茶中|隨時可以開工|伸個懶腰|有事找我嗎？",
     b_paused: "Zzz…|晚點回來", b_stopped: "下班了|Zzz…", b_needs: "需要你！|有個問題|在這裡！",
@@ -61,8 +61,10 @@ register("orgo", {
 });
 const to = (k, ...v) => t(`orgo.${k}`, ...v);
 const CAPTION = { working: "capWorking", idle: "capIdle", paused: "capPaused", needs: "capNeeds", walk: "capIdle", away: "capAway" };
-/** What a pose says in words (the tooltip, the desk list). */
-export const caption = (pose) => to(CAPTION[pose] || "capIdle");
+/** States whose pose is shared but whose words are their own (a queued instance is not asleep). */
+const CAPTION_OF_STATE = { starting: "capStarting", queued: "capQueued" };
+/** What a pose says in words (the tooltip, the desk list); `state`, when its words differ from its pose's. */
+export const caption = (pose, state) => to(CAPTION_OF_STATE[state] || CAPTION[pose] || "capIdle");
 
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const now = () => (typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now());
@@ -394,11 +396,11 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
         onPointerMove=${onMove} onPointerLeave=${() => setTip(null)} onPointerDown=${(e) => { lastType.current = e.pointerType || "mouse"; }} onClick=${onClick}></canvas>
       ${tipText ? html`<div ref=${tipRef} class="oo-tip" role="tooltip">
         <strong>${tipText.primary}</strong>${tipText.secondary ? html` <span class="muted mono">${tipText.secondary}</span>` : null}
-        <div>${tipText.sub}</div><div class="muted">${caption(officePose(tipDesk.node.state))}</div>
+        <div>${tipText.sub}</div><div class="muted">${caption(officePose(tipDesk.node.state), tipDesk.node.state)}</div>
         ${tipDesk.node.i && lastType.current === "touch" ? html`<div class="muted">${to("tapAgain")}</div>` : null}
       </div>` : null}
       <ul class="oo-desks" aria-label=${to("desks")}>${desks.map((d) => {
-        const nt = nodeText(d.node), cap = caption(officePose(d.node.state));
+        const nt = nodeText(d.node), cap = caption(officePose(d.node.state), d.node.state);
         return html`<li key=${d.key}>${d.node.i
           ? html`<button type="button" class="oo-desk" data-name=${d.node.name} aria-label=${`${nt.full} · ${cap}. ${t("orgc.openChat")}`}
               onFocus=${() => setTip(d.key)} onBlur=${() => setTip(null)} onClick=${() => onOpen(d.node.name)}>${nt.primary}</button>`
