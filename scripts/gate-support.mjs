@@ -49,6 +49,52 @@ function writePrivate(file, data) {
 const marker = op => `AgEnD-Gate-Operation: ${op}`;
 const operationFile = op => { requireThat(/^[a-f0-9]{48}$/.test(op), 'invalid operation'); return join(store(), `operation-${op}.json`); };
 
+// gh pr view --json commits is commits(first:100) with no pageInfo (cli v2.74 query_builder.go).
+const PR_COMMITS_QUERY = 'query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){commits(first:100,after:$cursor){totalCount pageInfo{hasNextPage endCursor} nodes{commit{messageHeadline messageBody authors(first:100){nodes{name email user{id login databaseId}}}}}}}}}';
+
+function graphql(query, vars) {
+  const args = ['api', 'graphql', '-f', `query=${query}`];
+  for (const [k, v] of Object.entries(vars)) {
+    if (v == null || v === '') continue;
+    args.push(typeof v === 'number' ? '-F' : '-f', `${k}=${v}`);
+  }
+  return gh(...args);
+}
+
+/** Every PR commit, paginated. Incomplete metadata is an error, not a silent drop. */
+function allPrCommits(pr) {
+  const slash = repo.indexOf('/');
+  requireThat(slash > 0 && slash < repo.length - 1, 'GATE_REPO unreadable');
+  const owner = repo.slice(0, slash), name = repo.slice(slash + 1);
+  const commits = [];
+  let cursor, total;
+  for (;;) {
+    const conn = graphql(PR_COMMITS_QUERY, { owner, name, number: Number(pr), cursor })?.data?.repository?.pullRequest?.commits;
+    requireThat(conn && Array.isArray(conn.nodes) && Number.isInteger(conn.totalCount) && conn.totalCount >= 0, 'PR commits unreadable');
+    if (total === undefined) total = conn.totalCount;
+    else requireThat(conn.totalCount === total, 'PR commits unreadable');
+    for (const n of conn.nodes) {
+      const c = n?.commit, nodes = c?.authors?.nodes;
+      requireThat(c && Array.isArray(nodes), 'PR commits unreadable');
+      commits.push({
+        messageHeadline: c.messageHeadline,
+        messageBody: c.messageBody,
+        authors: nodes.map(a => ({
+          name: a?.name,
+          email: a?.email,
+          login: a?.user?.login,
+          id: Number.isInteger(a?.user?.databaseId) ? a.user.databaseId : a?.user?.id,
+        })),
+      });
+    }
+    if (!conn.pageInfo?.hasNextPage) break;
+    requireThat(typeof conn.pageInfo.endCursor === 'string' && conn.pageInfo.endCursor && commits.length < total, 'PR commits truncated');
+    cursor = conn.pageInfo.endCursor;
+  }
+  requireThat(commits.length === total, 'PR commits truncated');
+  return commits;
+}
+
 function isBotLogin(login) {
   return typeof login === 'string' && /\[bot\]$/i.test(login);
 }
@@ -126,9 +172,10 @@ function squashBody(info, op, me) {
 
 function prepare(pr, head, approved, message, base) {
   requireThat(/^[1-9][0-9]*$/.test(pr) && sha(head) && sha(approved), 'invalid receipt input');
-  const info = gh('pr', 'view', pr, '-R', repo, '--json', 'body,commits');
+  const info = gh('pr', 'view', pr, '-R', repo, '--json', 'body,commitsCount');
   requireThat(info.body === undefined || typeof info.body === 'string', 'PR body unreadable');
-  requireThat(info.commits === undefined || Array.isArray(info.commits), 'PR commits unreadable');
+  info.commits = allPrCommits(pr);
+  requireThat(!Number.isInteger(info.commitsCount) || info.commits.length === info.commitsCount, 'PR commits truncated');
   const me = gh('api', 'user');
   requireThat(me && typeof me.login === 'string', 'merging identity unreadable');
   const op = randomBytes(24).toString('hex');
