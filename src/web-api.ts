@@ -3048,6 +3048,9 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         json(res, 503, { reason: "delivery_changed", error: "The session or instance changed before this message was sent. Sign in again if needed, then retry." });
         return;
       }
+      // The agent has it: from here on a repeat of this clientId is this send, whatever fails after (the echo, the
+      // stream's copy) — a Retry then gets this messageId, never a second delivery.
+      acceptedId = messageId;
       settleEcho?.(true);
       settleClassicEcho?.(true);
       // #1666: the same cancel/progress bubble a platform inbound starts, in the topic the echo went to — a second turn
@@ -3063,10 +3066,12 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // #1920: the account that wrote it (a guest sees its own); channel-visible once its copy was sent (above).
       ctx.emitSseEvent("message", { instance, sender: person.name, role: "user", text: message, ts, attachments: files.map(publicAttachment), messageId, ...(person.bound ? { from: person.voterKey } : {}),
         ...(quoted ? { replyTo: webChatReplyRef(quoted) } : {}), ...(clientId ? { clientId } : {}) });
-      acceptedId = messageId;
       json(res, 200, { sent: true, messageId });
     } catch {
-      json(res, 400, { error: "Invalid JSON" });
+      // A failure after the agent has it is no failed send: the page is told it went (a Retry would only find it).
+      if (res.headersSent) { /* answered already: the failure was in or after the answer */ }
+      else if (acceptedId) json(res, 200, { sent: true, messageId: acceptedId });
+      else json(res, 400, { error: "Invalid JSON" });
     } finally {
       claim?.settle(acceptedId);
     }
