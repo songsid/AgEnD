@@ -58,6 +58,11 @@ AgEnD 2.3 是正式版。這一頁寫給從 2.2.x（尤其是 2.2.5 與 2.2.6）
 
 ### fleet 與任務
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/task-board.webp" width="760" alt="任務看板（示範資料）：Leaderboard 專案，待辦、進行中、卡住各一張卡；卡住的那張顯示它的問題。">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/office.webp" width="760" alt="Office 檢視（示範資料）：有 Work、Lounge、Help desk、Nap corner 幾間房的像素風辦公室，示範 agent 坐在各自的桌前。">
+</p>
+
 - **任務看板**（`Fleet → Tasks`）：以專案、主任務（M-n）和子任務（S-n）組成的看板。主任務會跟著子任務的進度走。卡片支援依賴關係、留言和歷史紀錄，可以拖拉與篩選。公開連結只能看。
   - **agent 會依看板工作：** 卡片被指派、退回、回答、留言、確認或取消時，相關的 agent 會收到通知。10 秒內的變動會合成一則。每個 agent 同時只做一張卡。
   - **誰確認：** 只有你派出去的卡片需要你確認（#2434）。agent 派出的卡片，由派出的那個 agent 確認。派出卡片的 agent 被刪掉時，卡片會改回給你（#2451）。
@@ -74,6 +79,11 @@ AgEnD 2.3 是正式版。這一頁寫給從 2.2.x（尤其是 2.2.5 與 2.2.6）
 - **儀表板更快：** 狀態更新快約 4 倍；開多個分頁時快約 7 倍（#1956）。
 
 ### 網頁儀表板
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/chat-sending.webp" width="460" alt="網頁聊天裡送出途中、標示「Sending…」的訊息。">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/usage-compact.webp" width="300" alt="精簡模式的用量面板（示範資料）：Claude、Codex、Kiro 共五個帳號。">
+</p>
 
 - **全域搜尋**（Ctrl+K，或 ⌘K）：搜尋聊天訊息、agent 之間的訊息和任務，依 agent 分組。點一下結果就會跳到原訊息。在聊天裡按 Ctrl+F，只搜那一個 agent。可以依 agent 或 team、時間、來源篩選，也可以只看自己說的。只有登入的管理者能搜尋。索引預設保留 90 天（`web.search.retention_days`）。
 - **聊天：**
