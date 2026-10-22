@@ -79,8 +79,9 @@ describe("Discord: SendOpts.replyTo is a native reply", () => {
   const SNOW = "1503382159321464899";
   it("the first part carries reply.messageReference with failIfNotExists: false; later parts are plain", async () => {
     const { a, calls } = dc((_p, n) => ({ id: `m${n}` }));
-    const sent = await a.sendText("1496407196106494055", "abcdefgh", { threadId: "1503382159321460000", replyTo: SNOW, chunkLimit: 4 });
-    expect([calls, sent.messageId]).toEqual([[{ content: "abcd", reply: { messageReference: SNOW, failIfNotExists: false } }, "efgh"], "m1"]);
+    const quiet = { parse: [] as Array<"users"> };                        // every part an object: a stray reply would show
+    const sent = await a.sendText("1496407196106494055", "abcdefgh", { threadId: "1503382159321460000", replyTo: SNOW, chunkLimit: 4, allowedMentions: quiet });
+    expect([calls, sent.messageId]).toEqual([[{ content: "abcd", allowedMentions: quiet, reply: { messageReference: SNOW, failIfNotExists: false } }, { content: "efgh", allowedMentions: quiet }], "m1"]);
   });
   it("an id that is not a snowflake is no reply (sent plain)", async () => {
     const { a, calls } = dc((_p, n) => ({ id: `m${n}` }));
