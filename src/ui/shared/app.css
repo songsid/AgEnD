@@ -1132,7 +1132,40 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 /* #1673: the usage rail beside the page on a wide screen (header-tools.js UsageRail; shown only at min-width 1200px). */
 .u-rail { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border); background: var(--bg); }
 .u-rail-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-3) var(--s-3) var(--s-2) var(--s-4); }
-.u-rail-head h2 { margin: 0; font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.u-rail-head h2 { margin: 0; flex: 1; min-width: 0; font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+/* The usage view's compact mode (usage-dialog.js CompactGroup / CompactRow), the user's pick (2026-10-22): the logins
+   grouped by provider (its name once, in small capitals), each in three short lines — its name and plan with the
+   soonest reset on the right, then each window as a labelled full-width bar and the percent. */
+.dlg-tools { display: inline-flex; align-items: center; flex: none; }
+.u-compact-toggle { flex: none; }
+/* flex: none — a group never shrinks to fit the rail (it would clip its accounts): the rail scrolls instead. */
+.u-cgroup { flex: none; display: flex; flex-direction: column; border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
+.u-cg-head { display: flex; align-items: baseline; gap: 4px; padding: 7px var(--s-3) 3px; font-size: 11px; font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
+.u-cg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-cg-count { flex: none; }
+.u-crow { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 0; padding: 6px var(--s-3); border: 0; border-top: 1px solid var(--border);
+  background: transparent; color: inherit; font: inherit; line-height: 1.3; text-align: left; cursor: pointer; }
+.u-cg-head + .u-crow { border-top: 0; }
+.u-crow:hover { background: var(--surface-2); }
+.u-crow:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus); }
+/* The name never gives way to the plan (#2415); the reset keeps its room on the right. */
+.u-crow-head { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-sm); }
+.u-crow-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-semibold); color: var(--text); }
+.u-crow .u-plan { flex: 0 100 auto; min-width: 22px; max-width: max-content; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding-block: 0; line-height: 16px; font-size: 10.5px; }
+.u-crow-reset { margin-left: auto; flex: none; padding-left: 6px; font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.u-cm { display: grid; grid-template-columns: 2.6em minmax(0, 1fr) 3.4em; align-items: center; gap: 7px; min-width: 0; }
+.u-cm-tag { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; overflow: hidden; }
+.u-cm-bar { height: 6px; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
+.u-cm-fill { display: block; height: 100%; width: 0; min-width: 2px; border-radius: var(--r-full); background: var(--accent); }
+.u-cm-fill.warn { background: var(--warn); } .u-cm-fill.crit { background: var(--danger); }
+.u-cm-pct { text-align: right; font-size: 13px; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; color: var(--text); }
+.u-cm-pct.warn { color: var(--warn); } .u-cm-pct.crit { color: var(--danger); }
+.u-crow-note { font-size: var(--fs-xs); color: var(--text-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-crow-note.is-alert::before { content: "●"; margin-right: 5px; color: var(--danger); }
+.u-crow.is-stale .u-crow-note.is-alert::before { color: var(--warn); }
+@media (prefers-reduced-motion: no-preference) { .u-crow { transition: background-color 0.15s var(--ease); } }
 .u-rail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--s-3) var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
 @media (max-width: 1199px) { .u-rail { display: none; } }
 @media (max-width: 899px) {

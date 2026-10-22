@@ -187,7 +187,7 @@ describe("#1673: a wide screen shows usage as a rail beside the page", () => {
     expect(rail(again.pg), "a reload keeps it hidden").toBe(false);
     usageBtn(again.pg).click(); await settle(8);
     expect([rail(again.pg), again.pg.storage.get("agend_usage_rail")]).toEqual([true, "1"]);
-    again.pg.root.querySelector("aside.u-rail .u-rail-head button").click(); await settle(4);
+    again.pg.root.querySelector("aside.u-rail .u-rail-head .icon-btn").click(); await settle(4);
     expect([rail(again.pg), again.pg.storage.get("agend_usage_rail")]).toEqual([false, "0"]);
   });
 
@@ -241,7 +241,7 @@ describe("#1673: no rail where there is no usage, and the dialog on a narrower s
     const { pg, scr } = await app("/ui/chat/web-dev", { wide: false });
     usageBtn(pg).click(); await settle(8);
     scr.set(true); await settle(8);
-    if (how === "close") pg.root.querySelector("aside.u-rail .u-rail-head button").click(); else usageBtn(pg).click();
+    if (how === "close") pg.root.querySelector("aside.u-rail .u-rail-head .icon-btn").click(); else usageBtn(pg).click();
     await settle(4);
     expect([hasDialog(pg), rail(pg)]).toEqual([false, false]);
     scr.set(false); await settle(8);
