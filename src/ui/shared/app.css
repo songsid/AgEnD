@@ -1062,19 +1062,6 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .v-pre .ansi[data-dim] { opacity: .5; }
 .v-term-note { position: absolute; left: var(--s-3); right: var(--s-3); top: var(--s-3); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); background: var(--warn-bg); border: 1px solid var(--warn-line); color: #f0f0f0; font-size: var(--fs-sm); }
 .v-probe { position: absolute; visibility: hidden; white-space: pre; left: -9999px; top: 0; font-size: 100px; }
-.v-card { flex-shrink: 0; display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-4); background: var(--bg); padding-bottom: max(var(--s-2), env(safe-area-inset-bottom)); }
-.v-card.open { align-items: flex-start; padding-top: var(--s-3); padding-bottom: var(--s-3); }
-.v-avatar { width: 28px; height: 28px; flex-shrink: 0; border-radius: 50%; overflow: hidden; background: var(--surface-2); display: flex; align-items: center; justify-content: center; }
-.v-card.open .v-avatar { width: 48px; height: 48px; }
-.v-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.v-initial { color: var(--text-2); font-weight: var(--fw-semibold); text-transform: uppercase; }
-.v-card-body { flex: 1; min-width: 0; }
-.v-card-line { display: flex; align-items: baseline; gap: var(--s-2); font-size: var(--fs-sm); min-width: 0; }
-.v-card-line strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.v-role { color: var(--accent); font-size: var(--fs-xs); white-space: nowrap; }
-.v-card-meta { color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.v-card.open .v-card-meta { white-space: normal; }
-.v-card-desc { margin-top: var(--s-2); color: var(--text-2); font-size: var(--fs-sm); white-space: pre-wrap; }
 .help-list { list-style: disc; padding-left: var(--s-5); display: flex; flex-direction: column; gap: var(--s-2); font-size: var(--fs-sm); }
 .err { color: var(--danger); font-size: var(--fs-sm); }
 .u-provider { padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface); display: flex; flex-direction: column; gap: var(--s-2); }
@@ -1116,8 +1103,8 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 @media (max-width: 1199px) { .u-rail { display: none; } }
 @media (max-width: 899px) {
   .hide-narrow { display: none; }
-  .v-card { padding-left: var(--s-3); padding-right: var(--s-3); }
-  .v-card .btn { min-height: var(--tap); }
+  .v-id { padding-left: var(--s-3); padding-right: var(--s-3); }
+  .v-id-actions .btn { min-height: var(--tap); }
 }
 
 /* ── Settings (#1408 step 3): lists, forms, the pending bar, the Apply in hand ── */
@@ -1209,8 +1196,6 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
   .s-dev-bar .lbl { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   /* An agent's row: name and model on the first line, its tags and buttons from the second, on every row alike. */
   .s-br { display: block; flex-basis: 100%; height: 0; }
-  /* View: the profile line wraps to two lines instead of hiding the model and context. */
-  .v-card-meta { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   /* A text button in Needs you lines up with the text above it, first in its row or wrapped onto a line of its own;
      a row's trailing Delete sits at the right. */
   .n-actions > .btn-ghost { padding-left: 0; padding-right: 0; margin-left: -1px; }
@@ -1726,9 +1711,10 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   .id-card.card-c .id-tagline { -webkit-line-clamp: 2; line-clamp: 2; }
   .id-card.card-c .id-bio { -webkit-line-clamp: 3; line-clamp: 3; }
 }
-/* #1629 r4 §1: the card in View (above the profile row) and its part of Edit profile. */
-.v-id { flex-shrink: 0; padding: var(--s-2) var(--s-4) 0; background: var(--bg); }
+/* #1629 r4 §1: the identity card in View, with Edit profile under it. */
+.v-id { flex-shrink: 0; padding: var(--s-2) var(--s-4); background: var(--bg); padding-bottom: max(var(--s-2), env(safe-area-inset-bottom)); }
 .v-id .id-card { margin: 0; }
+.v-id-actions { display: flex; justify-content: flex-end; padding-top: var(--s-2); }
 .form-sub { margin: var(--s-2) 0 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 /* #1629 r4.1 Q3 (b): Settings → Appearance, the card's upload limits (three to a row; one on a phone). */
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3) var(--s-4); margin-bottom: var(--s-3); }
@@ -1772,7 +1758,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .p-fleet > .seg, .p-settings > .seg,
 .p-fleet > .panel-body, .p-needs > .panel-body, .p-settings > .panel-body,
 .p-log > .panel-body, .p-details > .panel-body, .p-view > .panel-body,
-.p-log > .log-bar, .p-view > .v-term, .p-view > .v-id, .p-view > .v-card { position: relative; z-index: 1; }
+.p-log > .log-bar, .p-view > .v-term, .p-view > .v-id { position: relative; z-index: 1; }
 /* Keep the existing Apply bar's sticky behavior, in its own bounded stock band. */
 .p-settings > .s-pending { z-index: 1; }
 

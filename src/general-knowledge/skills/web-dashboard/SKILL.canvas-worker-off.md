@@ -261,7 +261,7 @@ Order, folding, filter and favorites follow you across devices. A row keeps you 
 to that instance's Log).
 
 **Chat | View | Log | Details** switch at the top of an instance.
-- **View** — the live terminal (read only).
+- **View** — the live terminal (read only), the identity card, and **Edit profile** (or **Sign in to edit** when signed out).
 - **Log** — [the Log tab](#the-log-tab).
 - **Details** — Configuration (display name, description, directory, bound to, tags; "Read only — change it in
   Settings." with **Edit in Settings**), Runtime (backend, model, effort, cost, context, 5 h and 7 d rate), Recent

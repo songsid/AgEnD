@@ -774,6 +774,12 @@ interface AdapterCallbackData {
 type PrivateSentMessage = import("./channel/types.js").SentMessage & { retire?: (text: string) => Promise<void> };
 
 /** The prefix of a button's callback data, for logs (never the nonce). */
+/** #2390: where a settings change came from, in the fleet's language (an unknown source as it is). */
+function settingsSourceLabel(source: string): string {
+  const key = `settings_confirm.source.${source}`, text = t(key);
+  return text === key ? source : text;
+}
+
 function callbackPrefix(callbackData: string): string {
   const colon = callbackData.indexOf(":");
   return colon === -1 ? "(none)" : callbackData.slice(0, colon + 1);
@@ -1771,7 +1777,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async settingsWebConfirmedNotice(view: SettingsPendingView, affected: readonly string[], who: string, platform: "telegram" | "discord"): Promise<void> {
     const outcome = view.outcome ? view.outcome.message : view.state;
-    const text = `✅ Settings change confirmed from the web by ${who} (web-verified)\nSource: ${view.source}\nRequester: ${view.requested_by}\n${view.summary.join("\n")}\nOutcome: ${outcome}`;
+    const text = [t("settings_confirm.web_confirmed", who), t("settings_confirm.source", settingsSourceLabel(view.source)),
+      t("settings_confirm.requester", view.requested_by), ...view.summary, t("settings_confirm.outcome", outcome)].join("\n");
     for (const { adapterId, adapter, chatId, topic } of this.settingsNoticeGenerals(affected, platform)) {
       try { await adapter.sendText(chatId, text, { threadId: topic, allowedMentions: { parse: [] } }); return; }
       catch { this.logger.info({ id: view.id, adapterId }, "Settings web-confirmation notice unavailable; trying another General"); }
@@ -1843,9 +1850,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try {
         const posted = this.postNonceButtonPromptOrThrow({ prefix: "settings-confirm:", alertType: "clear_confirm",
           instanceName: name, adapterId, adapter, chatId, threadId: topic,
-          message: `🔒 Settings change awaiting fleet-admin confirmation\nSource: ${view.source}\nRequester: ${view.requested_by}\n${view.summary.join("\n")}`,
-          choices: [{ action: "confirm", label: "Confirm" }, { action: "reject", label: "Reject" }],
-          expiredText: "Settings confirmation is no longer pending.", timeoutMs: view.remaining_ms,
+          message: [t("settings_confirm.prompt_title"), t("settings_confirm.source", settingsSourceLabel(view.source)),
+            t("settings_confirm.requester", view.requested_by), ...view.summary].join("\n"),
+          choices: [{ action: "confirm", label: t("settings_confirm.confirm_button") }, { action: "reject", label: t("settings_confirm.reject_button") }],
+          expiredText: t("settings_confirm.no_longer_pending"), timeoutMs: view.remaining_ms,
           extra: { pendingChangeId: view.id, confirmationCurrent: current, confirmationAdmin: userId => current() && authority.admin(userId) },
         });
         void posted.then(nonce => {
@@ -1853,13 +1861,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const entry = this.pendingNonceButtons.get(nonce);
           if (entry?.pendingChangeId !== view.id) return;
           this.pendingNonceButtons.delete(nonce); clearTimeout(entry.timer);
-          void this.retireNonceButtons(entry, entry.messageId ?? "", "Settings confirmation delivery expired.");
+          void this.retireNonceButtons(entry, entry.messageId ?? "", t("settings_confirm.delivery_expired"));
         }, () => {});
         const nonce = await withinBudget(posted, postingDeadline); attached = true;
         const retire = (): void => {
           const entry = this.pendingNonceButtons.get(nonce); if (!entry || entry.pendingChangeId !== view.id) return;
           this.pendingNonceButtons.delete(nonce); clearTimeout(entry.timer);
-          void this.retireNonceButtons(entry, entry.messageId ?? "", "Settings confirmation is no longer pending.");
+          void this.retireNonceButtons(entry, entry.messageId ?? "", t("settings_confirm.no_longer_pending"));
         };
         if (!current()) { retire(); continue; }
         if (store.attachPrompt(view.id, retire)) return;
@@ -1877,12 +1885,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { entry, action } = result;
     try {
       const view = await this.settingsGate().store.decide(entry.pendingChangeId!, action as "confirm" | "reject", {
-        label: `fleet admin ${data.userId}`,
+        label: t("settings_confirm.admin_label", data.userId ?? ""),
         current: () => entry.confirmationCurrent?.() === true && this.getAdapterForInstance(entry.instanceName) === entry.adapter
           && !!data.userId && entry.confirmationAdmin?.(data.userId) === true,
       });
-      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, view.outcome?.message ?? "Settings change is applying.");
-    } catch { await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, "Settings confirmation rejected or expired."); }
+      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, view.outcome?.message ?? t("settings_confirm.applying"));
+    } catch { await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("settings_confirm.rejected_or_expired")); }
     return true;
   }
 
