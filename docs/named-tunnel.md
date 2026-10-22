@@ -148,6 +148,16 @@ anyone with the address sees the sign-in page. Signing in still needs a
 single-use code that only reaches an admin privately, and every sign-in through
 the link is announced in General, as before.
 
+**Authorizing a browser over the link (#2453), opt-in.**
+`web.verified_authority.named_link: true` lets a browser signed in over your
+hostname use **Authorize this browser** (see web-dashboard: Who the agent
+sees).
+- **It is off by default.** Turning it on is confirmed in a General or on this
+  computer.
+- **Only this exact hostname counts.** A quick tunnel never qualifies.
+- **The authority ends with the link:** Close, `/web revoke`, expiry, a
+  restart (an `auto_open` reopening is a new link), or turning the option off.
+
 ## If opening fails
 
 `/web` and the public-link control in Web settings explain the failed step. Named
