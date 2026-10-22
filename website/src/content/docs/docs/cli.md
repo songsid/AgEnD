@@ -33,23 +33,18 @@ New instances start, removed ones stop, changed ones are reconfigured in place.
 
 ## Fleet
 
-Start every instance (through the service when one is installed). `agend fleet start` with no name does the same:
+Start every instance, or one:
 
 ```bash
-agend start
-```
-
-Start or stop one instance:
-
-```bash
+agend fleet start
 agend fleet start <name>
-agend fleet stop <name>
 ```
 
-Stop every instance:
+Stop the same way:
 
 ```bash
-agend stop
+agend fleet stop
+agend fleet stop <name>
 ```
 
 Restart AgEnD — through systemd or launchd when they run it, so it also picks up a new version of AgEnD itself:
@@ -66,13 +61,13 @@ agend restart <name>
 
 `agend fleet restart` still works until 2.4, by running `agend restart`.
 
-See what is running (`agend status` is the same command):
+See what is running:
 
 ```bash
-agend ls
+agend fleet status
 ```
 
-Add `--json` for machine-readable output. `--resources` also reports disk, memory and swap; it replaces `agend fleet status`, which is now only an alias for it.
+Add `--json` for machine-readable output.
 
 Show what the fleet has been doing — costs, session rotations, hangs:
 
@@ -286,9 +281,7 @@ Install as a system service (launchd on macOS, systemd on Linux):
 agend install
 ```
 
-`--no-activate` writes the service file without starting it. Activation is the default, so `--activate` was removed. `agend uninstall` removes the service.
-
-On WSL, `agend shortcuts` makes or updates the Windows desktop shortcuts (the dashboard and restart).
+`--no-activate` writes the service file without starting it. `agend uninstall` removes it.
 
 Move to another machine:
 
@@ -339,7 +332,7 @@ These run in the chat app. On **Discord** they work in any fleet-topic channel. 
 | `/update` | Update AgEnD to the latest version | 🔒 admin |
 | `/doctor` | Fleet health diagnostics | 🔒 admin |
 | `/login [backend]` | Remote CLI sign-in (installs the CLI if missing) | 🔒 admin |
-| `/web` | Sign in to the web dashboard; `/web revoke` signs everyone out. `/dashboard` still works but is deprecated: use `/web` | 🔒 admin |
+| `/web` | Sign in to the web dashboard; `/web revoke` signs everyone out | 🔒 admin |
 | `/collab` | Toggle bot/webhook message reception in a fleet topic | 🔒 admin |
 | `/visibility` | How cross-instance messages appear in topics (full/summary/hidden) | 🔒 admin |
 | `/tips` | Draw a random usage tip | All |

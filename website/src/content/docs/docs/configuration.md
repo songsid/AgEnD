@@ -29,7 +29,7 @@ This page is the short version. Every field, with the edge cases, is in the [ful
 | `fleet_label` | string | host name | How this fleet names itself in `/login`, so several fleets' bots in one Discord server can be told apart |
 | `web` | object | — | Web dashboard options, below |
 | `web_terminal` | object | — | The browser terminal behind `/login`: `enabled` (`true`), `bind` (`127.0.0.1`), `ttl_minutes` (1–20, `10`), and `tunnel.allow_public` |
-| `needs_you` | object | — | The **Needs you** list of things waiting on a person: `live_message` (`true`) keeps one live message in General; `dm` (`false`) also DMs the bot's admins; `task_board` (`false`) adds the Task Board cards that wait on you |
+| `needs_you` | object | — | The **Needs you** list of things waiting on a person: `live_message` (`true`) keeps one live message in General; `dm` (`false`) also DMs the bot's admins |
 
 ### web
 
@@ -45,12 +45,7 @@ The most used keys. The [full reference](https://github.com/songsid/AgEnD/blob/m
 | `web.session.local.absolute_hours` / `.idle_hours` | `48` / `48` | How long a sign-in on the directly reached dashboard lasts (up to 720). A public-link session is fixed at 4 h / 30 min idle |
 | `web.preview` | `true` | `false` turns off HTML previews in web chat |
 | `web.public_link.allow_public` | `true` | `false` removes the temporary public link from `/web` and closes one already open |
-| `web.public_link.ttl_minutes` | `120` | Lifetime of a public link: 1–480 on a quick tunnel; 1–10080, or `0` for no expiry, with your own domain |
-| `web.public_link.hostname` | — | Your own domain for a named Cloudflare tunnel. The link keeps the same address each time. The tunnel token is set in Settings and never shown back |
-| `web.public_link.auto_open` | `false` | With your own domain: reopen the public link after a fleet restart, for the admin who opened it last |
-| `web.verified_authority.named_link` | `false` | Lets a browser you have verified act with your account, through your own domain only. A quick tunnel never qualifies |
-| `web.search.retention_days` | `90` | How many days the global search (Ctrl+K) keeps its index of messages and tasks (1–3650) |
-| `web.experimental.canvas_worker` | `false` | Turns on Canvas Worker effects (uploaded effects that run in an isolated worker). Experimental; the built-in ambient effects are not affected |
+| `web.public_link.ttl_minutes` | `120` | Lifetime of a public link, 1–480 |
 | `web.echo_to_channel` | `true` | `false` stops copying web chat messages into the instance's Telegram or Discord topic |
 
 See the [web dashboard guide](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md) for signing in, sessions and the public link.
@@ -103,7 +98,7 @@ Every `instances.<name>` field can be set here. These are defaults-only:
 
 | Field | Type | Default | What it does |
 |---|---|---|---|
-| `locale` | `en` \| `zh-TW` | `zh-TW` on a host at UTC+8, else `en` | Language of user-facing text, including the CLI's messages. The machine-read lines stay in English |
+| `locale` | `en` \| `zh-TW` | from timezone | Language of user-facing text |
 | `warm_cap` | number | `0` (unlimited) | Cap on instances running at once. Over the cap, the least recently active idle instance is paused. General is never paused for it |
 | `delivery_worker` | `off` \| `wake_only` \| `on` | `wake_only` | `wake_only` wakes a paused instance when work from another instance is queued for it. `off` never does. `on` (canary) also gives it a delivery worker of its own |
 | `warm_overflow` | number | `2` | How far `warm_cap` may be exceeded to wake an instance with queued work |
@@ -111,8 +106,6 @@ Every `instances.<name>` field can be set here. These are defaults-only:
 | `reply_overdue_minutes` | number | `15` | Tell the asker once when a request that needs a reply is unanswered and its owner is idle. `0` turns this notice off |
 | `reply_obligation_ttl_hours` | number | `24` | Hours after which an unanswered request expires |
 | `retention_days` | number | `30` | How long finished deliveries and done Task Board tasks are kept |
-| `task_board.summary_at` | `"HH:MM"` or `"off"` | `off` | When the daily Task Board summary is sent, in the fleet's timezone (24 h). Off until you set a time |
-| `dashboard` | object | — | Which dashboard features an agent may use: `appearance`, `task_board`, `web_settings`. `false` switches one off. New fleets get `task_board: false` |
 | `progress_min_elapsed` | number | `30` | Seconds before the live-progress line starts showing elapsed time |
 | `startup.concurrency` | number | from RAM and CPUs, `2`–`10` | Instances starting at once (`1`–`20` when set) |
 | `startup.stagger_delay_ms` | number | `500` | Minimum gap between two instance starts, for startup, wake and restart alike |

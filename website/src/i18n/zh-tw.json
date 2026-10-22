@@ -16,10 +16,10 @@
     "cta": "快速開始",
     "github": "GitHub",
     "badges": "macOS · Linux · Windows (WSL) · MIT 授權",
-    "whatsNew": "2.3 新功能 →"
+    "whatsNew": "2.2 新功能 →"
   },
   "terminal": {
-    "cmd": "$ agend start",
+    "cmd": "$ agend fleet start",
     "line1": "✓ web-app     — Claude Code  (Telegram)",
     "line2": "✓ api-server  — Codex        (Discord)",
     "line3": "✓ ml-pipeline — Antigravity CLI (Discord)",
@@ -171,7 +171,7 @@
     },
     "step3": {
       "label": "啟動",
-      "cmd": "agend start"
+      "cmd": "agend fleet start"
     },
     "footer": "打開 Telegram、Discord 或網頁儀表板，傳訊息，開始用手機寫 code。"
   },

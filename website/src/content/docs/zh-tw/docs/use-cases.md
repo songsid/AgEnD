@@ -181,7 +181,7 @@ Discord 和 Telegram 可以接到同一個 fleet（用 `agend quickstart` 設定
 | 手動暫停／喚醒 | `/pause`、`/wake`（暫停中的 instance 收到訊息也會自動喚醒） |
 | 看狀態、用量、設定 | `/web`（管理員）、`/usage`、`/sysinfo` |
 
-斜線指令由 AgEnD 程式先處理，不是丟給模型猜。例如 `/web` 會私送登入資訊（已淘汰的 `/dashboard` 仍可用；General 會先顯示登入選單）；`/chat`、`/steer` 則會把內容送進助理。Telegram 在群組中請用 `/指令@bot名`。
+斜線指令由 AgEnD 程式先處理，不是丟給模型猜。例如 `/web` 會私送登入資訊（General 會先顯示登入選單）；`/chat`、`/steer` 則會把內容送進助理。Telegram 在群組中請用 `/指令@bot名`。
 
 ---
 

@@ -89,10 +89,8 @@ To set up from your phone instead of the terminal, see [`agend setup --tunnel`](
 If quickstart installed the service, the fleet is already running. Otherwise:
 
 ```bash
-agend start
+agend fleet start
 ```
-
-`agend start` starts the whole fleet. To start one instance, use `agend fleet start <name>`.
 
 To keep it running across reboots, install it as a service:
 
@@ -135,7 +133,7 @@ Send `/update` in General (fleet admins), or run this on the host:
 agend update
 ```
 
-It stays on the channel you installed from (a beta stays on beta), installs the new version, checks it, and restarts the fleet. Coming from 2.2.x, read [Upgrading from 2.2 to 2.3](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.3.md) and [What's new in 2.3](/AgEnD/docs/whats-new/) first: it has a note for root and WSL-style hosts, where `agend update` needs `XDG_RUNTIME_DIR` set. Coming from 2.1, read [Upgrading from 2.1 to 2.2](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.md) first. From 2.1.0–2.1.11, or on a host without AgEnD's built-in Node, follow its manual steps instead.
+It stays on the channel you installed from (a beta stays on beta), installs the new version, checks it, and restarts the fleet. Coming from 2.1, read [Upgrading from 2.1 to 2.2](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.md) first. From 2.1.0–2.1.11, or on a host without AgEnD's built-in Node, follow its manual steps instead.
 
 On Windows, the desktop shortcuts **AgEnD 儀表板** (the dashboard, its sign-in code filled in) and **AgEnD 重新啟動** (restart, after asking) come with the Windows installer. If you installed earlier, paste the [Windows one-liner](/AgEnD/install-windows/) again: it finds AgEnD already installed and only offers to add or update the shortcuts. Or, inside WSL, run `agend shortcuts`. After `agend update` in a WSL terminal without the shortcuts, one line says so, once; nothing is put on your desktop unless you run one of these. If `agend` itself stopped working (an update cut off half way: `agend: command not found`), the same one-liner repairs it in place, keeping your fleet's settings and data, and asks nothing about setup again.
 

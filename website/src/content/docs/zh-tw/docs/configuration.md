@@ -29,7 +29,7 @@ agend validate
 | `fleet_label` | string | 主機名稱 | 這個 fleet 在 `/login` 裡的名字，讓同一個 Discord server 裡多個 fleet 的 bot 分得出來 |
 | `web` | object | — | 網頁 dashboard 選項，見下 |
 | `web_terminal` | object | — | `/login` 背後的瀏覽器終端：`enabled`（`true`）、`bind`（`127.0.0.1`）、`ttl_minutes`（1–20，`10`）和 `tunnel.allow_public` |
-| `needs_you` | object | — | **「等你處理」**清單，列出所有在等人處理的事：`live_message`（`true`）在 General 維持一則即時訊息；`dm`（`false`）另外私訊該 bot 的管理員；`task_board`（`false`）會加入等你處理的任務看板卡片 |
+| `needs_you` | object | — | **「等你處理」**清單，列出所有在等人處理的事：`live_message`（`true`）在 General 維持一則即時訊息；`dm`（`false`）另外私訊該 bot 的管理員 |
 
 ### web
 
@@ -45,12 +45,7 @@ agend validate
 | `web.session.local.absolute_hours` / `.idle_hours` | `48` / `48` | 直接連到 dashboard 時，一次登入能維持多久（最多 720）。公開連結的 session 固定 4 小時／閒置 30 分鐘 |
 | `web.preview` | `true` | `false` 會關掉網頁聊天裡的 HTML 預覽 |
 | `web.public_link.allow_public` | `true` | `false` 會從 `/web` 拿掉臨時公開連結，並關閉已開啟的連結 |
-| `web.public_link.ttl_minutes` | `120` | 公開連結的有效時間：快速 tunnel 為 1–480；用自己的網域時為 1–10080，或 `0` 代表不過期 |
-| `web.public_link.hostname` | — | 具名 Cloudflare tunnel 用的自己的網域。每次的網址都相同。tunnel token 在設定頁填入，填入後不會再顯示 |
-| `web.public_link.auto_open` | `false` | 用自己的網域時，fleet 重啟後替最後開啟連結的管理員重新打開公開連結 |
-| `web.verified_authority.named_link` | `false` | 讓你已驗證的瀏覽器以你的帳號行事，但只限於自己的網域。快速 tunnel 永遠不符合 |
-| `web.search.retention_days` | `90` | 全域搜尋（Ctrl+K）保留訊息與任務索引的天數（1–3650） |
-| `web.experimental.canvas_worker` | `false` | 開啟 Canvas Worker 特效（上傳的特效在隔離的 worker 裡執行）。實驗功能；內建的環境效果不受影響 |
+| `web.public_link.ttl_minutes` | `120` | 公開連結的有效時間，1–480 |
 | `web.echo_to_channel` | `true` | `false` 就不會把網頁聊天的訊息複製到該 instance 的 Telegram 或 Discord topic |
 
 登入、session 和公開連結，請看[網頁 dashboard 說明](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md)。
@@ -103,7 +98,7 @@ Telegram 吃：
 
 | 欄位 | 型別 | 預設 | 作用 |
 |---|---|---|---|
-| `locale` | `en` \| `zh-TW` | 主機為 UTC+8 時為 `zh-TW`，否則為 `en` | 使用者看到的文字語言，包括 CLI 的訊息。給程式讀的那幾行固定保持英文 |
+| `locale` | `en` \| `zh-TW` | 依時區判斷 | 使用者看到的文字語言 |
 | `warm_cap` | number | `0`（無限） | 同時執行的 instance 上限。超過時，最久沒動作的 idle instance 會被暫停。General 不會因此被暫停 |
 | `delivery_worker` | `off` \| `wake_only` \| `on` | `wake_only` | `wake_only` 會在有其他 instance 的工作排隊時喚醒暫停中的 instance。`off` 永遠不喚醒。`on`（canary）另外給它一個專屬的投遞 worker |
 | `warm_overflow` | number | `2` | 為了喚醒有排隊工作的 instance，`warm_cap` 最多可以超出的數量 |
@@ -111,8 +106,6 @@ Telegram 吃：
 | `reply_overdue_minutes` | number | `15` | 需要回覆的請求沒人回、負責的 instance 又閒著時，通知發問者一次。`0` 關閉這個通知 |
 | `reply_obligation_ttl_hours` | number | `24` | 沒回覆的請求幾小時後到期 |
 | `retention_days` | number | `30` | 已完成的投遞和 Task Board 已完成任務保留幾天 |
-| `task_board.summary_at` | `"HH:MM"` 或 `"off"` | `off` | 每日任務看板摘要的發送時間，以 fleet 的時區計算（24 小時制）。沒設定時為關閉 |
-| `dashboard` | object | — | agent 可以使用的儀表板功能：`appearance`、`task_board`、`web_settings`。設為 `false` 會關掉該項。新建立的 fleet 會設 `task_board: false` |
 | `progress_min_elapsed` | number | `30` | 即時進度列開始顯示經過時間前的秒數 |
 | `startup.concurrency` | number | 依 RAM 與 CPU，`2`–`10` | 同時啟動的 instance 數（自己設時為 `1`–`20`） |
 | `startup.stagger_delay_ms` | number | `500` | 兩次 instance 啟動之間的最小間隔，開機、喚醒、重啟都一樣 |

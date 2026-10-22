@@ -31,7 +31,7 @@ The dashboard listens only on the AgEnD computer (`127.0.0.1`), so a phone canno
 
 - Nothing is exposed until you press it.
 - Cloudflare handles the TLS and can see the traffic. **Anyone who signs in can manage the fleet**: terminals, files, settings. Do not forward the link or the code.
-- The link closes by itself after **2 hours** (Settings can set 1–480 minutes). With your own domain (a named Cloudflare tunnel, `web.public_link.hostname`), the address stays the same every time, and the link can last up to 7 days or until you close it. Close it sooner with **Close public link** in your private message or in a new `/web` menu, or with `/web revoke`.
+- The link closes by itself after **2 hours** (Settings can set 1–480 minutes). Close it sooner with **Close public link** in your private message or in a new `/web` menu, or with `/web revoke`.
 - Every sign-in through it is announced in General.
 
 The button is missing when public links are turned off (`web.public_link.allow_public: false`). Then use a connection you manage yourself, such as an SSH port forward or Tailscale: see [Reaching it from elsewhere](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md#reaching-it-from-elsewhere).
