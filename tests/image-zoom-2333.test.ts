@@ -347,6 +347,45 @@ describe("the lightbox's zoom toolbar and keys", () => {
     expect(level(d)).toBe("100%");
   });
 
+  // The user's report on beta.24: with 7 images, Next "flashes once and then the next image is not visible", the level
+  // "…". A picture the thumbnails already loaded is in the cache: its load comes right after the step's render, before
+  // a passive effect — so the step's hiding has to happen in that same commit, never after the load.
+  it("Next / Prev across 3 images, cached and not: each one shown (lb-ready) with its level a percentage, never '…'", async () => {
+    const C = "c".repeat(32);
+    const doc = await open([photo(A, "a.png"), photo(B, "b.png"), photo(C, "c.png")]);
+    const d = await load(doc);
+    const img = d.querySelector(".lb-img");
+    const state = () => [img.getAttribute("src"), img.classList.contains("lb-ready"), level(d)];
+    /** A cached picture: its load as soon as the step has rendered (a microtask), before the frame effects wait for. */
+    const cached = async (button: string, w: number, hgt: number) => {
+      d.querySelector(button).click();
+      for (let i = 0; i < 3; i++) await Promise.resolve();
+      Object.assign(img, { naturalWidth: w, naturalHeight: hgt });
+      fire(img, "load", { bubbles: false });
+      await settle();
+    };
+    const seen: unknown[] = [state()];
+    await cached(".lb-next", 884, 884);                                     // → b, cached
+    seen.push(state());
+    d.querySelector(".lb-next").click(); await settle();                    // → c, not cached: hidden until it loads
+    seen.push(state());
+    await load(doc, 442, 442);
+    seen.push(state());
+    await cached(".lb-prev", 1768, 884);                                    // ← b, cached again
+    seen.push(state());
+    await cached(".lb-next", 884, 1768);                                    // → c, cached now
+    seen.push(state());
+    expect(seen).toEqual([[`/ui/file/${A}`, true, "16%"], [`/ui/file/${B}`, true, "100%"], [`/ui/file/${C}`, false, "…"], [`/ui/file/${C}`, true, "100%"],
+      [`/ui/file/${B}`, true, "77%"], [`/ui/file/${C}`, true, "50%"]]);
+  });
+  it("a step to a picture that is complete already (the same file again: no load comes) fits it at once", async () => {
+    const doc = await open([photo(A, "a.png"), photo(A, "a-again.png")]);
+    const d = await load(doc, 884, 884);
+    d.querySelector(".lb-img").complete = true;                              // as the browser has it: loaded, and the src unchanged
+    d.querySelector(".lb-next").click(); await settle();
+    expect([d.querySelector(".lb-count").textContent, d.querySelector(".lb-img").classList.contains("lb-ready"), level(d)]).toEqual(["2 / 2", true, "100%"]);
+  });
+
   it("the arrows still step and Esc still closes with zoom keys in place", async () => {
     const doc = await open([photo(A, "a.png"), photo(B, "b.png")]);
     const d = await load(doc);
