@@ -1000,7 +1000,7 @@ function General({ ctx, part = "all" }) {
     });
     // #2347 §10: where new agents may work (fleet.project_roots, from Fleet → Config): its own write, the one route
     // that sets it (POST /ui/config; a change to it waits for a fleet admin's OK, as it did there).
-    const roots = f.roots.map((r) => r.trim()).filter(Boolean);
+    const roots = f.roots.map((r) => String(r).trim()).filter(Boolean);   // ChipList keeps "2024" as a number; paths are text
     syncStage(ctx, "fleet:project_roots", sameValue(roots, base.roots) ? null : { label: tn("projectRootsTitle"), count: 1,
       impact: impactOf(schema, "fleet.project_roots"), request: { method: "POST", url: "/ui/config", body: { project_roots: roots } } });
     const dKeys = Object.keys(defaultsPatch), cKeys = Object.keys(classicPatch);

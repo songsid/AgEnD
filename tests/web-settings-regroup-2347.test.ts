@@ -134,6 +134,16 @@ describe("#2347 §10: Fleet → Config is gone; its project folders are in Agent
     expect([shown, !!bar, marked, sent.filter((x) => x.method === "POST" && x.path === "/ui/config").map((x) => x.body)])
       .toEqual([["/srv/projects"], true, true, [{ project_roots: ["/srv/projects", "/home/me/code"] }]]);
   });
+  it("a folder named only by digits (ChipList keeps it as a number) is sent as the path it is", async () => {
+    sent.length = 0;
+    await open("agent-defaults");
+    const box = p.root.querySelector("#project-roots");
+    const input: any = box.querySelector("input[type=text]");
+    input.value = "2024"; fire(input, "input"); await settle(2);
+    box.querySelectorAll("button").find((b: any) => b.textContent.includes("Add")).click(); await settle(6);
+    p.root.querySelector(".s-pending").querySelectorAll("button").find((b: any) => b.textContent === "Save").click(); await settle(12);
+    expect(sent.filter((x) => x.method === "POST" && x.path === "/ui/config").map((x) => x.body)).toEqual([{ project_roots: ["/srv/projects", "2024"] }]);
+  });
   it("the old /ui/fleet/config leads to Agent defaults at Project folders, on the page and the server; Fleet has no Config tab", () => {
     const { FLEET_TABS } = route;
     nav.navigate("/ui/fleet/config");
