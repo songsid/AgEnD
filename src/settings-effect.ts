@@ -70,6 +70,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
     after.fleet.defaults = { ...cfg.defaults, ...record(body) };
     if (after.fleet.defaults.locale === null || after.fleet.defaults.locale === "") delete after.fleet.defaults.locale;
+    if (after.fleet.defaults.tool_set === null || after.fleet.defaults.tool_set === "") delete after.fleet.defaults.tool_set;
   } else if (path === "/api/settings/fleet/web") {
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
     // #1620: read as the handler reads it (one parser): what it would refuse — a read-only web field, a malformed limit —
