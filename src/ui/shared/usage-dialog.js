@@ -149,17 +149,22 @@ export function UsageCompactToggle() {
   return html`<button type="button" class="btn btn-ghost btn-sm u-compact-toggle" aria-pressed=${compact ? "true" : "false"} title=${title}
     onClick=${() => setUsageCompact(!compact)}>${label}</button>`;
 }
+const TWO_DAYS = 48 * 3_600_000;
 /**
- * A login's windows on its compact line: its shortest percent window and its longest (often the session and the week),
- * one when it has one; a window that reset since the numbers were read is left out (as its full card shows no number).
+ * A login's two columns on its compact line: `short`, its shortest percent window under two days (the session), and
+ * `long`, its longest of two days or more (the week, the month) — null when it has none (a dash in that column). A window
+ * that reset since the numbers were read is left out (its full card shows no number); one of unknown length is a long one.
  */
-export function compactMetrics(p) {
+export function compactSlots(p) {
   const pct = ((p && p.metrics) || []).filter((m) => m && m.type === "percent" && !m.resetPassed);
-  if (!pct.length) return [];
-  const byWindow = pct.map((m, i) => ({ m, i })).sort((a, b) => ((a.m.windowMs ?? Infinity) - (b.m.windowMs ?? Infinity)) || a.i - b.i).map((x) => x.m);
-  const short = byWindow[0], long = byWindow[byWindow.length - 1];
-  return short === long ? [short] : [short, long];
+  const isShort = (m) => Number(m.windowMs) > 0 && m.windowMs < TWO_DAYS;
+  const short = pct.filter(isShort).sort((a, b) => a.windowMs - b.windowMs)[0] || null;
+  const long = pct.filter((m) => !isShort(m)).map((m, i) => ({ m, i }))
+    .sort((a, b) => ((Number(b.m.windowMs) || -1) - (Number(a.m.windowMs) || -1)) || a.i - b.i)[0]?.m || null;
+  return { short, long };
 }
+/** The windows a compact line shows, short first. */
+export const compactMetrics = (p) => { const { short, long } = compactSlots(p); return [short, long].filter(Boolean); };
 /** A window as a few characters ("5h", "7d"); one whose length is not known says its label. */
 export function windowTag(m) {
   const ms = Number(m && m.windowMs);
@@ -172,15 +177,29 @@ export function soonestReset(metrics, now = Date.now()) {
   const at = metrics.map((m) => new Date(m.resetsAt || "").getTime()).filter((t) => Number.isFinite(t) && t > now).sort((a, b) => a - b)[0];
   return at === undefined ? null : { short: `↻ ${usageDuration(at - now)}`, full: resetText(new Date(at).toISOString()) };
 }
+/**
+ * The logins grouped by provider for the compact view (nine logins, five of them Claude's: the provider once, then a
+ * line per login), in the order the person set (↑↓): a group where its first login is, its logins in their order.
+ */
+export function compactGroups(providers) {
+  const groups = new Map();
+  providers.forEach((p, i) => {
+    const base = providerTitle(p).base;
+    if (!groups.has(base)) groups.set(base, { base, items: [] });
+    groups.get(base).items.push({ p, i });
+  });
+  return [...groups.values()];
+}
 const level = (pct) => (pct >= 90 ? "crit" : pct >= 70 ? "warn" : "");
-function CompactMeter({ m }) {
+/** One column: a small bar and the percent, coloured as the full card (high / near limit); a dash when there is none. */
+function CompactCell({ m }) {
   const bar = useRef(null);
-  const pct = Math.min(100, Math.max(0, m.used ?? 0)), cls = level(pct);
+  const pct = m ? Math.min(100, Math.max(0, m.used ?? 0)) : 0, cls = level(pct);
   useLayoutEffect(() => { if (bar.current) bar.current.style.width = `${pct}%`; }, [pct]);   // CSSOM (#1300)
+  if (!m) return html`<span class="u-cm u-cm-none" aria-hidden="true">—</span>`;
   const word = cls === "crit" ? tn("usageNear") : cls === "warn" ? tn("usageHigh") : "";
-  return html`<span class="u-cm" title=${`${usageText(m.label, m.labelI18n)}: ${pct.toFixed(0)}%${word ? ` (${word})` : ""}`}>
-    <span class="u-cm-tag">${windowTag(m)}</span><span class="u-cm-bar"><span ref=${bar} class=${`u-cm-fill ${cls}`}></span></span>
-    <span class=${`u-cm-pct ${cls}`}>${pct.toFixed(0)}%</span></span>`;
+  return html`<span class="u-cm" title=${`${usageText(m.label, m.labelI18n)} (${windowTag(m)}): ${pct.toFixed(0)}%${word ? ` (${word})` : ""}`}>
+    <span class="u-cm-bar"><span ref=${bar} class=${`u-cm-fill ${cls}`}></span></span><span class=${`u-cm-pct ${cls}`}>${pct.toFixed(0)}%</span></span>`;
 }
 /** What a login says instead of numbers (not logged in, an error), or "" when it has numbers. */
 function rowNote(p) {
@@ -189,23 +208,35 @@ function rowNote(p) {
   return "";
 }
 /**
- * A login on one line (two short rows of text): its provider, profile and plan; its shortest and longest windows'
- * percent with a small bar, coloured as the full card; the soonest reset; a mark when the numbers are not current or it
- * failed, with what is wrong as its tooltip. Pressed, it opens its full card.
+ * A login on one line, under its provider's name: its profile and plan; its short and long windows' percent with a
+ * small bar, in the group's columns; the soonest reset; a mark when the numbers are not current or it failed, what is
+ * wrong as its tooltip. Pressed, it opens its full card.
  */
 export function CompactRow({ p, onExpand }) {
-  const title = providerTitle(p), metrics = p.status === "error" || p.status === "no-credentials" ? [] : compactMetrics(p);
+  const title = providerTitle(p), failed = p.status === "error" || p.status === "no-credentials";
+  const slots = failed ? { short: null, long: null } : compactSlots(p), metrics = [slots.short, slots.long].filter(Boolean);
   const note = rowNote(p), stale = p.stale ? staleNote(p) : null;
   const mark = stale ? [stale.mark, stale.detail].filter(Boolean).join(" — ") : note && p.status === "error" && !p.transient ? note : "";
   const reset = soonestReset(metrics);
-  return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}`} aria-expanded="false" title=${tn("usageExpand")} onClick=${onExpand}>
-    <span class="u-crow-head"><strong class="u-crow-name" title=${p.name}>${title.base}</strong>${title.profile ? html`<span class="u-crow-profile">${title.profile}</span>` : null}
+  return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}`} aria-expanded="false" title=${`${p.name} — ${tn("usageExpand")}`} onClick=${onExpand}>
+    <span class="u-crow-head">${title.profile ? html`<span class="u-crow-profile">${title.profile}</span>` : null}
       ${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
-      ${mark ? html`<span class=${`u-crow-mark${stale ? "" : " is-error"}`} title=${mark} aria-label=${`${tn("usageStaleMark")}: ${mark}`}><${Icon} name=${stale ? "clock" : "alert"} size=${12} /></span>` : null}</span>
-    <span class="u-crow-meters">${metrics.length ? metrics.map((m, j) => html`<${CompactMeter} key=${j} m=${m} />`)
+      ${!title.profile && !p.plan ? html`<span class="u-crow-profile">${title.base}</span>` : null}</span>
+    ${metrics.length ? html`<${CompactCell} m=${slots.short} /><${CompactCell} m=${slots.long} />
+        <span class="u-crow-reset" title=${reset ? reset.full : null}>${reset ? html`${reset.short}<span class="sr-only"> (${reset.full})</span>` : null}</span>`
       : html`<span class="u-crow-note">${note || (stale ? stale.mark : tn("usage.no_data"))}</span>`}
-      ${reset ? html`<span class="u-crow-reset" title=${reset.full}>${reset.short}<span class="sr-only"> (${reset.full})</span></span>` : null}</span>
+    <span class=${`u-crow-mark${mark && !stale ? " is-error" : ""}`}>${mark ? html`<span title=${mark} aria-label=${`${tn("usageStaleMark")}: ${mark}`}><${Icon} name=${stale ? "clock" : "alert"} size=${12} /></span>` : null}</span>
   </button>`;
+}
+/** A provider's logins: its name once (×N), the columns' windows, then a line each (or the full card of one opened). */
+export function CompactGroup({ group, line }) {
+  const first = (slot) => group.items.map(({ p }) => compactSlots(p)[slot]).find(Boolean);
+  const [short, long] = [first("short"), first("long")];
+  return html`<section class="u-cgroup">
+    <div class="u-cg-head"><span class="u-cg-name"><strong title=${group.base}>${group.base}</strong>${group.items.length > 1 ? html`<span class="u-cg-count">×${group.items.length}</span>` : null}</span>
+      <span class="u-cg-cols" aria-hidden="true"><span class="u-cg-col">${short ? windowTag(short) : ""}</span><span class="u-cg-col">${long ? windowTag(long) : ""}</span></span></div>
+    ${group.items.map(line)}
+  </section>`;
 }
 
 /**
@@ -288,7 +319,9 @@ export function UsageBody({ owner }) {
             ${!p.stale && p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : !(p.metrics || []).length ? html`<p class="note">${tn("usage.no_data")}</p>` : null}`}
       </section>`;
     content = html`${!providers.length ? html`<p class="note">${tn("usage.empty_active")}</p>` : null}
-      ${providers.map((p, i) => (compact && !expanded.has(key(p)) ? html`<${CompactRow} key=${key(p)} p=${p} onExpand=${() => toggleOne(key(p))} />` : card(p, i)))}
+      ${compact ? compactGroups(providers).map((g) => html`<${CompactGroup} key=${g.base} group=${g}
+          line=${({ p, i }) => (expanded.has(key(p)) ? card(p, i) : html`<${CompactRow} key=${key(p)} p=${p} onExpand=${() => toggleOne(key(p))} />`)} />`)
+        : providers.map((p, i) => card(p, i))}
       <div class="u-foot"><span class="note" title=${new Date(data.fetchedAt).toLocaleString()}>${updatedAgo(data.fetchedAt)}${failed ? html` · <span class="u-refresh-failed" role="status">${tn("usageRefreshFailed")}</span>` : data.refreshing ? html` · <span class="u-refreshing">${tn("usageRefreshing")}</span>` : null}</span>
         ${byAgent() ? html`<a class="btn btn-ghost btn-sm u-by-agent" href="/ui/fleet/usage" title=${tn("usageByAgentTitle")}>${tn("usageByAgent")}</a>` : null}
         <button type="button" class="btn btn-sm" onClick=${() => load(true)}>${tn("usageRefresh")}</button></div>`;

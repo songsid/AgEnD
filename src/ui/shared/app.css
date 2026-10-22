@@ -1133,31 +1133,40 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .u-rail { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border); background: var(--bg); }
 .u-rail-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-3) var(--s-3) var(--s-2) var(--s-4); }
 .u-rail-head h2 { margin: 0; flex: 1; min-width: 0; font-size: var(--fs-md); font-weight: var(--fw-semibold); }
-/* The usage view's compact mode: one line per login (usage-dialog.js CompactRow) — two short rows of text, the name
-   first (#2415: the provider's name keeps its room; the plan badge grows from 40 px; the profile gives way). */
+/* The usage view's compact mode (usage-dialog.js CompactGroup / CompactRow): the logins grouped by provider — its name
+   once, the columns' windows — then one line per login on one grid (nine logins fit the rail without scrolling). The
+   profile and plan give way (ellipsis); the provider's name, in the group's head, keeps the line (#2415). */
 .dlg-tools { display: inline-flex; align-items: center; flex: none; }
 .u-compact-toggle { flex: none; }
-.u-crow { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0; padding: var(--s-2) var(--s-3); border: 0; border-radius: var(--r-md);
-  background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.u-cgroup { display: flex; flex-direction: column; gap: 1px; }
+.u-crow { display: grid; grid-template-columns: minmax(0, 1fr) 58px 58px 56px 14px; column-gap: 6px; align-items: center; }
+/* The head: the provider's name never gives way (#2415); the columns' windows sit over the lines' columns (from the
+   right: the mark's 14 px and the reset's 56 px, with their gaps) and are what is cut when a long name needs the room. */
+.u-cg-head { display: flex; align-items: baseline; padding: 0 var(--s-3); font-size: var(--fs-xs); color: var(--text-3); }
+.u-cg-name { display: flex; align-items: baseline; gap: 4px; flex: 0 0 auto; max-width: 100%; min-width: 0; }
+.u-cg-cols { flex: 1 1 0; min-width: 0; display: flex; justify-content: flex-end; gap: 6px; overflow: hidden; margin-right: calc(6px + 56px + 6px + 14px); }
+.u-cg-name strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); color: var(--text); }
+.u-cg-count { flex: none; }
+.u-cg-col { flex: none; width: 58px; text-align: right; white-space: nowrap; }
+.u-crow { width: 100%; min-width: 0; min-height: 30px; padding: 3px var(--s-3); border: 0; border-radius: var(--r-sm);
+  background: var(--surface); color: inherit; font: inherit; font-size: var(--fs-xs); text-align: left; cursor: pointer; font-variant-numeric: tabular-nums; }
 .u-crow:hover { background: var(--surface-2); }
 .u-crow:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--focus); }
-.u-crow-head { display: flex; align-items: center; gap: var(--s-2); min-width: 0; font-size: var(--fs-sm); }
-.u-crow-name { flex: 0 0 auto; max-width: 62%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.u-crow-profile { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: var(--fs-xs); }
-.u-crow .u-plan { flex: 1 0 40px; max-width: max-content; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.u-crow-mark { margin-left: auto; display: inline-flex; flex: none; color: var(--text-3); }
+.u-crow-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.u-crow-profile { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: var(--fs-sm); }
+.u-crow .u-plan { flex: 0 1 auto; min-width: 24px; max-width: max-content; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-crow-mark { display: inline-flex; justify-content: flex-end; color: var(--text-3); }
 .u-crow-mark.is-error { color: var(--danger); }
-.u-crow-meters { display: flex; align-items: center; flex-wrap: wrap; gap: 2px var(--s-2); min-width: 0; font-size: var(--fs-xs); color: var(--text-2); font-variant-numeric: tabular-nums; }
-.u-cm { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
-.u-cm-tag { color: var(--text-3); max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.u-cm-bar { width: 32px; height: 6px; flex: none; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
+.u-cm { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
+.u-cm-none { color: var(--text-3); }
+.u-cm-bar { width: 22px; height: 5px; flex: none; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
 .u-cm-fill { display: block; height: 100%; width: 0; min-width: 2px; background: var(--accent); }
 .u-cm-fill.warn { background: var(--warn); } .u-cm-fill.crit { background: var(--danger); }
-.u-cm-pct { min-width: 3ch; text-align: right; font-weight: var(--fw-semibold); color: var(--text); }
+.u-cm-pct { min-width: 3.2ch; text-align: right; font-weight: var(--fw-semibold); color: var(--text); }
 .u-cm-pct.warn { color: var(--warn); } .u-cm-pct.crit { color: var(--danger); }
 .u-crow.is-stale .u-cm-pct { color: var(--text-3); } .u-crow.is-stale .u-cm-fill { background: var(--text-3); }
-.u-crow-reset { margin-left: auto; color: var(--text-3); white-space: nowrap; }
-.u-crow-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }
+.u-crow-reset { text-align: right; color: var(--text-3); white-space: nowrap; overflow: hidden; }
+.u-crow-note { grid-column: 2 / 5; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); text-align: right; }
 @media (prefers-reduced-motion: no-preference) { .u-crow { transition: background-color 0.15s var(--ease); } }
 .u-rail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--s-3) var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
 @media (max-width: 1199px) { .u-rail { display: none; } }

@@ -1,11 +1,12 @@
 // The AI usage view's compact mode, from defaults (fleet decision a78ebdc5; user request, Discord 1562814671289983058).
 // Each case is a fresh profile with nothing seeded, signed in through the visible /signin, reaching the usage view
 // through the header's ◔ (desk: the right rail, hidden until asked; phone: the dialog). Demo names only.
-// Seven logins (more than the "5+" the request names): sessions and weeks at normal / high / near-limit levels, a credential
-// profile, long plan names (#2412), one with last known numbers (expired), one failing, one not logged in.
+// Ten logins (the user has nine): Claude ×4 and Codex ×3 with credential profiles, sessions and weeks at normal / high /
+// near-limit levels, long plan names (#2412), one with last known numbers (expired), one failing, one not logged in.
 // Per case (desk light en, desk dark zh-TW, phone light zh-TW, phone dark en; reduced motion on the phone):
-// - full cards first (they overflow); the header's switch (beside the title) → one line per login: all seven fit with
-//   no scrolling; no name clipped; both windows' % coloured as the full card; the stale and error marks;
+// - full cards first (they overflow); the header's switch (beside the title) → the logins grouped by provider (its name
+//   once), one line each: all ten fit with no scrolling, each line at most 40 px; no provider name clipped; both
+//   windows' % coloured as the full card; the stale and error marks;
 // - remembered: the host holds "usage.compact" for this person, and a reload shows the lines again;
 // - a line pressed opens its full card in place; its − folds it back; the switch goes back to the full cards;
 // - no console error, no CSP violation, no horizontal overflow; no real fleet name in any visible text.
@@ -34,18 +35,22 @@ const H = 3_600_000;
 const soon = (h: number) => new Date(Date.now() + h * H).toISOString();
 const pct = (key: string, label: string, used: number, windowMs: number, resetH: number) => ({ type: "percent", label, labelI18n: { key }, used, windowMs, resetsAt: soon(resetH) });
 const both = (s: number, w: number, sReset = 3, wReset = 90) => [pct("usage.metric.session", "Session", s, 5 * H, sReset), pct("usage.metric.weekly", "Weekly", w, 168 * H, wReset)];
+const profiled = (provider: string, profile: string, plan: string, metrics: unknown[]) => ({ id: `${provider.toLowerCase()}:${profile}`, name: `${provider} (${profile})`, profile, status: "ok", plan, metrics });
 setUsageFetcherForTests(async () => ({ fetchedAt: new Date().toISOString(), providers: [
   { id: "claude", name: "Claude", status: "ok", plan: "Max (20x)", metrics: [...both(42, 75), { type: "count", label: "Credits", value: "12", unit: "coupons" }] },
-  { id: "claude:research-team", name: "Claude (research-team)", profile: "research-team", status: "ok", plan: "Team Premium (6.25x)", metrics: both(93, 20, 1, 20) },
-  { id: "codex:design-studio", name: "Codex (design-studio)", profile: "design-studio", status: "ok", plan: "Self Serve Business Usage Based", metrics: both(12, 64, 2, 40) },
+  profiled("Claude", "research-team", "Team Premium (6.25x)", both(93, 20, 1, 20)),
+  profiled("Codex", "design-studio", "Self Serve Business Usage Based", both(12, 64, 2, 40)),
   { id: "codex", name: "Codex", status: "ok", plan: "Pro", metrics: [pct("usage.metric.weekly", "Weekly", 8, 168 * H, 100)] },
+  profiled("Claude", "release-notes-and-changelog-drafting", "Max (5x)", both(71, 91, 4, 30)),
+  profiled("Claude", "研究團隊共用帳號", "Pro", both(5, 30, 2, 60)),
+  profiled("Codex", "nightly-benchmarks", "Plus", both(33, 48, 1, 70)),
   { id: "kiro", name: "Kiro", status: "ok", plan: "Kiro Pro+ Power Monthly Subscription Plan", stale: true, staleCause: "expired", cachedAt: new Date(Date.now() - 2 * H).toISOString(),
     hint: "Sign in again: kiro-cli login", metrics: [pct("usage.metric.monthly", "Monthly", 55, 720 * H, 200)] },
   { id: "grok", name: "Grok", status: "error", error: "HTTP 500 from the vendor", metrics: [] },
   { id: "muse", name: "Meta Muse Code", status: "no-credentials", metrics: [] },
 ] }));
 fm.getActiveUsageProviderIds = () => null;
-const LOGINS = 7;
+const LOGINS = 10, GROUPS = 5;
 
 const results: Array<Record<string, unknown>> = [];
 let failed = 0;
@@ -78,13 +83,15 @@ const measure = (p: FreshPage, c: MatrixCase) => p.page.evaluate(`(() => {
     const cs = getComputedStyle(el), inner = el.getBoundingClientRect().width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     return range.getBoundingClientRect().width > inner + 0.01;
   };
+  const groups = [...root.querySelectorAll(".u-cgroup")].map((g) => ({ name: g.querySelector(".u-cg-name strong")?.textContent, clipped: clipped(g.querySelector(".u-cg-name strong")),
+    lines: g.querySelectorAll(".u-crow").length }));
   const rows = [...root.querySelectorAll(".u-crow")].map((r) => ({
-    name: r.querySelector(".u-crow-name")?.textContent, nameClipped: clipped(r.querySelector(".u-crow-name")),
-    pcts: [...r.querySelectorAll(".u-cm-pct")].map((x) => x.textContent + (x.classList.contains("crit") ? "!" : x.classList.contains("warn") ? "~" : "")),
-    mark: r.querySelector(".u-crow-mark")?.getAttribute("title") ?? null, h: Math.round(r.getBoundingClientRect().height),
+    group: r.closest(".u-cgroup")?.querySelector(".u-cg-name strong")?.textContent, profile: r.querySelector(".u-crow-profile")?.textContent ?? "",
+    pcts: [...r.querySelectorAll(".u-cm")].map((x) => x.textContent.replace(/\\s+/g, "") + (x.querySelector(".crit") ? "!" : x.querySelector(".warn") ? "~" : "")),
+    mark: r.querySelector(".u-crow-mark [title]")?.getAttribute("title") ?? null, h: Math.round(r.getBoundingClientRect().height),
     out: Math.max(0, ...[...r.querySelectorAll("*")].map((el) => Math.round(el.getBoundingClientRect().right - r.getBoundingClientRect().right))),
   }));
-  return { fits: s.scrollHeight <= s.clientHeight + 1, scrollH: s.scrollHeight, clientH: s.clientHeight, cards: root.querySelectorAll(".u-provider").length, rows,
+  return { fits: s.scrollHeight <= s.clientHeight + 1, scrollH: s.scrollHeight, clientH: s.clientHeight, cards: root.querySelectorAll(".u-provider").length, rows, groups,
     pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
 })()`) as Promise<any>;
 const csp = (page: any) => page.evaluate("window.__smokeCsp || []") as Promise<string[]>;
@@ -112,11 +119,15 @@ for (const c of CASES) {
   await p.page.waitForTimeout(300);
   const compact = await measure(p, c);
   ck.oneLinePerLogin = compact.rows.length === LOGINS && compact.cards === 0;
+  ck.grouped = compact.groups.map((g: any) => `${g.name}:${g.lines}`).join(",") === "Claude:4,Codex:3,Kiro:1,Grok:1,Meta Muse Code:1" && compact.groups.length === GROUPS;
   ck.allFit = compact.fits;
-  ck.namesWhole = compact.rows.every((r: any) => r.nameClipped === false);
+  ck.dense = compact.rows.every((r: any) => r.h <= 40);
+  ck.namesWhole = compact.groups.every((g: any) => g.clipped === false);
   ck.nothingOut = compact.rows.every((r: any) => r.out <= 0);
-  ck.colours = compact.rows[0]?.pcts.join(",") === "42%,75%~" && compact.rows[1]?.pcts.join(",") === "93%!,20%";
-  ck.marks = !!compact.rows[4]?.mark && !!compact.rows[5]?.mark && compact.rows[6]?.mark === null;
+  const by = (profile: string) => compact.rows.find((r: any) => r.profile === profile);
+  ck.colours = compact.rows[0]?.pcts.join(",") === "42%,75%~" && by("research-team")?.pcts.join(",") === "93%!,20%" && by("release-notes-and-changelog-drafting")?.pcts.join(",") === "71%~,91%!";
+  const of = (group: string) => compact.rows.find((r: any) => r.group === group);
+  ck.marks = !!of("Kiro")?.mark && !!of("Grok")?.mark && of("Meta Muse Code")?.mark === null;
   ck.toggleSaysFull = (await toggle.innerText()).trim() === W.full(c) && (await toggle.getAttribute("aria-pressed")) === "true";
   ck.noPageOverflow = !compact.pageOverflow;
   await p.page.screenshot({ path: shotPath(SMOKE, name, "2-compact") });
@@ -152,7 +163,7 @@ for (const c of CASES) {
   ck.noErrors = p.errors.slice(navEnd).length === 0;
   ck.noCsp = (await csp(p.page)).length === 0;
   record(name, ck, { full: { scrollH: full.scrollH, clientH: full.clientH }, compact: { scrollH: compact.scrollH, clientH: compact.clientH, heights: compact.rows.map((r: any) => r.h) },
-    rows: compact.rows.map((r: any) => `${r.name}: ${r.pcts.join(" ")}${r.mark ? " [mark]" : ""}`), errors: p.errors.slice(navEnd), real: real.slice(0, 5) });
+    rows: compact.rows.map((r: any) => `${r.group}/${r.profile}: ${r.pcts.join(" ")}${r.mark ? " [mark]" : ""}`), errors: p.errors.slice(navEnd), real: real.slice(0, 5) });
   await p.ctx.close();
   // The next case starts from defaults: switching back to the full cards cleared the value (the default is not stored).
   if (Object.keys(fm.webPrefs.readForViewer(p.personKey).values ?? {}).length) throw new Error(`${name}: switching back to full left a pref set`);
