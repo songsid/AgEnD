@@ -82,6 +82,10 @@ describe("#2478: the chat composer (the real page modules)", () => {
     const rule = (sel: string) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[1]!.split(",").map((x) => x.trim()).includes(sel)).map((m) => m[2]).join(";");
     for (const d of [/white-space:\s*nowrap/, /text-overflow:\s*ellipsis/, /overflow:\s*hidden/, /pointer-events:\s*none/, /position:\s*absolute/]) expect(rule(".composer-ph")).toMatch(d);
     expect(rule(".composer-field")).toMatch(/position:\s*relative/);
+    // On a phone it is the box's 16 px too: its own rule beside #1611's (which stays exactly as it was).
+    const tokens = readFileSync(join(process.cwd(), "src", "ui", "shared", "tokens.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(tokens).toMatch(/@media \(pointer: coarse\), \(max-width: 899px\) \{\s*\.composer-ph \{\s*--fs-md:\s*16px;\s*\}\s*\}/);
+    expect(tokens).toMatch(/@media \(pointer: coarse\), \(max-width: 899px\) \{\s*input, select, textarea \{[^}]*\}\s*\}/);
   });
 
   it("3: a touch screen — Return is a new line, nothing is sent; enterkeyhint is \"enter\"; the Send button sends", async () => {
