@@ -32,6 +32,9 @@ const english = (text: string) => /[A-Za-z]{2}/.test(text.replace(/\$\{…\}/g, 
 const LITERAL = String.raw`("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|` + "`(?:[^`\\\\]|\\\\.)*`)";
 const SHAPES = [
   new RegExp(String.raw`\baction:\s*[^,{}]+,\s*label:\s*` + LITERAL, "g"),       // a prompt choice
+  new RegExp(String.raw`\blabel:\s*` + LITERAL + String.raw`\s*,\s*action:`, "g"),   // …written label first (Fable, #2392)
+  new RegExp(String.raw`\btext:\s*` + LITERAL + String.raw`\s*,\s*callback_data:`, "g"),          // a raw Telegram button
+  new RegExp(String.raw`\bcallback_data:\s*[^,{}]+,\s*text:\s*` + LITERAL, "g"),                  // …data first
   new RegExp(String.raw`\.setLabel\(\s*` + LITERAL, "g"),                        // a Discord button
   new RegExp(String.raw`\.text\(\s*` + LITERAL + String.raw`\s*,`, "g"),         // a Telegram keyboard button
 ];
@@ -64,9 +67,13 @@ describe("#2390 chat buttons go through the locale layer", () => {
       sample(`choices: [{ action: "confirm", label: "Confirm" }]`),
       sample(`new ButtonBuilder().setLabel("Retry")`),
       sample("kb.text(`Open ${name}`, data)"),
+      sample(`choices: [{ label: "Confirm", action: "confirm" }]`),
+      sample(`inline_keyboard: [[{ text: "Cancel", callback_data: "x" }]]`),
+      sample(`inline_keyboard: [[{ callback_data: id, text: \`Retry \${n}\` }]]`),
       sample(`choices: [{ action: "confirm", label: t("settings_confirm.confirm_button") }]`),
+      sample(`inline_keyboard: [[{ text: c.label, callback_data: c.id }]]`),
       sample("kb.text(`${backend} · ${state}`, data)"),
       sample(`kb.text("✅", data)`),
-    ]).toEqual([true, true, true, false, false, false]);
+    ]).toEqual([true, true, true, true, true, true, false, false, false, false]);
   });
 });

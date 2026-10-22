@@ -6,7 +6,10 @@
  */
 import { deflateSync, inflateSync } from "node:zlib";
 
-export class PngError extends Error {}
+/** A short English reason; `key`/`args` name it for a page that says it in its own language (#2390). */
+export class PngError extends Error {
+  constructor(message: string, readonly key = "corrupt", readonly args: Array<string | number> = []) { super(message); }
+}
 
 export interface Rgba {
   width: number;
@@ -74,11 +77,11 @@ export function decodePng(bytes: Uint8Array, limits: DecodeLimits): Rgba {
       if (ihdr || len !== 13) throw new PngError("bad IHDR");
       const width = data.readUInt32BE(0), height = data.readUInt32BE(4), depth = data[8]!, colorType = data[9]!;
       if (!width || !height) throw new PngError("empty image");
-      if (width > limits.maxSide || height > limits.maxSide) throw new PngError(`larger than ${limits.maxSide}×${limits.maxSide}`);
+      if (width > limits.maxSide || height > limits.maxSide) throw new PngError(`larger than ${limits.maxSide}×${limits.maxSide}`, "too_big", [limits.maxSide]);
       const spec = COLOR[colorType];
       if (!spec || !spec.depths.includes(depth)) throw new PngError("unknown colour type or bit depth");
       if (data[10] !== 0 || data[11] !== 0) throw new PngError("unknown compression or filter method");
-      if (data[12] === 1) throw new PngError("interlaced PNGs are not supported");
+      if (data[12] === 1) throw new PngError("interlaced PNGs are not supported", "interlaced");
       if (data[12] !== 0) throw new PngError("unknown interlace method");
       ihdr = { width, height, depth, type: colorType };
     } else if (name === "PLTE") {

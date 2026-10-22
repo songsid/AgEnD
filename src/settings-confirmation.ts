@@ -241,3 +241,9 @@ export class SettingsConfirmationStore {
     }
   }
 }
+
+/** #2390: where a settings change came from, in the fleet's language (an unknown source as it is). */
+export function settingsSourceLabel(source: string): string {
+  const key = `settings_confirm.source.${source}`, text = t(key);
+  return text === key ? source : text;
+}

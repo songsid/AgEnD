@@ -20,6 +20,52 @@
   var ws = null, term = null, fit = null, ttlTimer = null, expiresAt = 0;
   var finished = false, reconnectAttempts = 0;
 
+  // #2390: the page in the device's language (as the dashboard when none is chosen): English as written in
+  // terminal.html, else zh-TW over it. Static words only — never anything the session sends.
+  var ZH = typeof navigator !== "undefined" && /^zh/i.test(navigator.language || "");
+  var WORDS = {
+    stop: ["Stop", "停止"],
+    stopTitle: ["End this session now (the command is stopped and the terminal closes)", "立即結束這個工作階段（停止指令並關閉終端機）"],
+    gateOne: ["", "這個終端機只連到<strong>一個指令</strong>，指令結束或時間到就會關閉；後面沒有 shell。"],
+    gateToken: ["", "請貼上你拿到的<strong>存取權杖</strong>：私訊給你的，或在儀表板的登入對話框中。它和這個連結是分開的；只有連結沒有任何權限。"],
+    tokenPlaceholder: ["access token", "存取權杖"],
+    open: ["Open", "開啟"],
+    codeLabel: ["Sign-in code", "登入代碼"],
+    codePlaceholder: ["paste the code here", "在這裡貼上代碼"],
+    send: ["Send", "送出"],
+    codeHint: ["The terminal does not show what you paste. Paste the code once, then press Enter or Send. Ctrl+C is off on this page — use Stop to cancel.",
+      "終端機不會顯示你貼上的內容。貼上代碼一次，再按 Enter 或「送出」。這個頁面停用了 Ctrl+C，要取消請按「停止」。"],
+    invalid: ["Invalid token. {0} attempt(s) left before this session is destroyed.", "權杖不正確。再錯 {0} 次這個工作階段就會被銷毀。"],
+    used: ["This token was already used. If that was not you, tell the fleet admin: the link may have leaked.", "這個權杖已經用過了。如果不是你，請告訴 fleet 管理員：連結可能已外流。"],
+    ended: ["This session has ended.", "這個工作階段已結束。"],
+    couldNotOpen: ["Could not open: {0}", "無法開啟：{0}"],
+    network: ["Network error.", "網路錯誤。"],
+    truncated: ["[earlier output truncated]", "[較早的輸出已截斷]"],
+    finished: ["Finished: {0}", "已完成：{0}"],
+    endedWith: ["Ended: {0}", "已結束：{0}"],
+    exitCode: [" (exit {0})", "（結束代碼 {0}）"],
+    replaced: ["Replaced by a newer connection.", "已被較新的連線取代。"],
+    closed: ["Connection closed ({0}).", "連線已關閉（{0}）。"],
+    lost: ["Connection lost.", "連線中斷。"],
+    closesIn: ["closes in {0}", "{0} 後關閉"],
+    "notice.empty": ["", "請先從瀏覽器貼上代碼。"],
+    "notice.too-long": ["", "這比登入代碼長太多了，請只複製代碼。"],
+    "notice.not-sent": ["", "沒有送出：連線中斷了。代碼還在框裡，等重新連上後再按一次「送出」。"],
+    "notice.sent": ["", "已送出。終端機不會顯示代碼，請在上方等待結果。"]
+  };
+  function T(key) {
+    var pair = WORDS[key], s = pair ? (ZH && pair[1] ? pair[1] : pair[0]) : key;
+    for (var i = 1; i < arguments.length; i++) s = s.split("{" + (i - 1) + "}").join(String(arguments[i]));
+    return s;
+  }
+  if (ZH) {
+    document.documentElement.lang = "zh-TW";
+    Array.prototype.forEach.call(document.querySelectorAll("[data-i18n]"), function (el) { el.textContent = T(el.getAttribute("data-i18n")); });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-i18n-html]"), function (el) { el.innerHTML = T(el.getAttribute("data-i18n-html")); });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-i18n-title]"), function (el) { el.title = T(el.getAttribute("data-i18n-title")); });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-i18n-placeholder]"), function (el) { el.placeholder = T(el.getAttribute("data-i18n-placeholder")); });
+  }
+
   // A reload or a second tab within the TTL still holds the HttpOnly cookie:
   // try the WebSocket first and only fall back to the token gate on refusal.
   // This GET-free probe keeps the page itself side-effect free.
@@ -47,16 +93,16 @@
       }
       return res.json().catch(function () { return {}; }).then(function (body) {
         if (res.status === 403 && typeof body.remaining === "number") {
-          gateMsg.textContent = "Invalid token. " + body.remaining + " attempt" + (body.remaining === 1 ? "" : "s") + " left before this session is destroyed.";
+          gateMsg.textContent = ZH ? T("invalid", body.remaining) : "Invalid token. " + body.remaining + " attempt" + (body.remaining === 1 ? "" : "s") + " left before this session is destroyed.";
         } else if (res.status === 409) {
-          gateMsg.textContent = "This token was already used. If that was not you, tell the fleet admin: the link may have leaked.";
+          gateMsg.textContent = T("used");
         } else if (res.status === 410) {
-          gateMsg.textContent = "This session has ended.";
+          gateMsg.textContent = T("ended");
         } else {
-          gateMsg.textContent = "Could not open: " + (body.error || res.status);
+          gateMsg.textContent = T("couldNotOpen", body.error || res.status);
         }
       });
-    }).catch(function () { gateMsg.textContent = "Network error."; });
+    }).catch(function () { gateMsg.textContent = T("network"); });
   });
 
   function connect(probe) {
@@ -109,9 +155,9 @@
           expiresAt = Date.now() + msg.ttlRemainingMs;
           if (ttlTimer) clearInterval(ttlTimer);   // exactly one countdown, however many reconnects
           ttlEl.hidden = false; tick(); ttlTimer = setInterval(tick, 1000);
-          if (msg.truncated && term) term.writeln("\x1b[33m[earlier output truncated]\x1b[0m");
+          if (msg.truncated && term) term.writeln("\x1b[33m" + T("truncated") + "\x1b[0m");
         } else if (msg.t === "exit") {
-          finish(msg.ok, (msg.ok ? "Finished" : "Ended") + ": " + msg.detail + (typeof msg.exitCode === "number" ? " (exit " + msg.exitCode + ")" : ""));
+          finish(msg.ok, T(msg.ok ? "finished" : "endedWith", msg.detail) + (typeof msg.exitCode === "number" ? T("exitCode", msg.exitCode) : ""));
         }
         return;
       }
@@ -120,8 +166,8 @@
     conn.onclose = function (ev) {
       if (ws !== conn || finished) return;
       if (!opened && probe) { gate.hidden = false; return; }   // initial cookie probe refused → token gate
-      if (opened && ev.code === 4000) { finish(false, "Replaced by a newer connection."); return; }
-      if (opened && (ev.code === 1000 || ev.code === 1001 || ev.code === 1008)) { finish(false, "Connection closed (" + (ev.reason || ev.code) + ")."); return; }
+      if (opened && ev.code === 4000) { finish(false, T("replaced")); return; }
+      if (opened && (ev.code === 1000 || ev.code === 1001 || ev.code === 1008)) { finish(false, T("closed", ev.reason || ev.code)); return; }
       // Transient drop, or a reconnect attempt that failed before opening: the
       // process is still running; keep trying within the TTL and the budget.
       scheduleReconnect();
@@ -134,7 +180,7 @@
       setTimeout(function () { if (!finished) connect(false); }, 500 * reconnectAttempts);
       return;
     }
-    finish(false, "Connection lost.");
+    finish(false, T("lost"));
   }
 
   /** True only when the bytes were handed to an open socket. */
@@ -146,7 +192,7 @@
   function tick() {
     var left = Math.max(0, expiresAt - Date.now());
     var m = Math.floor(left / 60000), s = Math.floor((left % 60000) / 1000);
-    ttlEl.textContent = "closes in " + m + ":" + (s < 10 ? "0" : "") + s;
+    ttlEl.textContent = T("closesIn", m + ":" + (s < 10 ? "0" : "") + s);
   }
 
   function finish(ok, text) {
@@ -166,7 +212,7 @@
     ev.preventDefault();
     var result = input.submitCode(codeInput.value, function (s) { return send(new TextEncoder().encode(s)); });
     if (result.clear) codeInput.value = "";
-    codeMsg.textContent = input.NOTICES[result.notice] || "";
+    codeMsg.textContent = (ZH && result.notice && T("notice." + result.notice) !== "notice." + result.notice ? T("notice." + result.notice) : input.NOTICES[result.notice]) || "";
     if (term) term.focus();
   });
 

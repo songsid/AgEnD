@@ -81,7 +81,7 @@ describe("agend quickstart", () => {
     expect(qs.match(/printDashboard\(\);/g)?.length ?? 0).toBe(2);
     const fresh = qs.slice(qs.indexOf("═══ Setup Complete ═══"));
     const at = (s: string) => fresh.indexOf(s);
-    const pos = [at("Start the fleet: ${bold(\"agend start\")}"), at("printDashboard();"), at("completion-install.js")];
+    const pos = [at('t("qs.start_fleet", bold("agend start"))'), at("printDashboard();"), at("completion-install.js")];   // #2390: in the fleet's language
     expect([pos.every(p => p >= 0), pos[0] < pos[1], pos[1] < pos[2]], JSON.stringify(pos)).toEqual([true, true, true]);
   });
 });

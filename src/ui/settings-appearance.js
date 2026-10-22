@@ -23,6 +23,15 @@ import { CardTitle } from "./settings-learn.js";
 import "./settings-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
+/** #2390: a refusal's detail in the page's language when the host named it (detail_key), else its English as sent. */
+export function appIconDetail(body) {
+  const key = body && typeof body.detail_key === "string" ? `appIconDetail_${body.detail_key}` : null;
+  const english = (body && body.detail) || "";
+  if (!key) return english;
+  const args = Array.isArray(body.detail_args) ? body.detail_args : [];
+  const said = tn(key, ...(body.detail_key === "corrupt" ? [english] : args));
+  return said === `settings.${key}` ? english : said;
+}
 const short = (sha) => (sha ? sha.slice(0, 8) : "");
 const kib = (n) => `${Math.max(1, Math.round(n / 1024))} KiB`;
 
@@ -231,8 +240,8 @@ function AppIconCard() {
   const answered = (r, done) => {
     setBusy(false);
     if (!r.ok) {
-      const known = ["app_icon_too_large", "app_icon_not_png", "app_icon_unreadable", "app_icon_admin_only", "app_icon_needs_a_signed_in_person", "app_icon_busy", "app_icon_superseded", "app_icon_not_reset"];
-      setError(known.includes(r.body && r.body.error) ? tn(`appIconError_${r.body.error}`, (r.body && r.body.detail) || "") : tn("appIconError_other", (r.body && r.body.error) || String(r.status)));
+      const known = ["app_icon_too_large", "app_icon_not_png", "app_icon_unreadable", "app_icon_admin_only", "app_icon_needs_a_signed_in_person", "app_icon_busy", "app_icon_superseded", "app_icon_not_reset", "app_icon_not_kept", "app_icon_failed"];
+      setError(known.includes(r.body && r.body.error) ? tn(`appIconError_${r.body.error}`, appIconDetail(r.body)) : tn("appIconError_other", (r.body && r.body.error) || String(r.status)));
       return;
     }
     setState(r.body);
