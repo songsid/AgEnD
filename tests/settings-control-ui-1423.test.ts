@@ -1,4 +1,6 @@
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { t } from "../src/locale.js";
+import { settingsSourceLabel } from "../src/settings-confirmation.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createContext, runInContext } from "node:vm";
@@ -55,14 +57,14 @@ function cli() {
   const client = vi.fn(async (_path, request) => request.action === "inspect" ? { pending_change: { source: "web_session", requested_by: "browser", summary: ["add F ID 42"] }, ticket: { id: "same", generation: "original", fingerprint: "effect" } }
     : { pending_change: { state: "applied", outcome: { message: "applied" } } });
   const process = { stdin: { isTTY: false }, exitCode: 0 }, console = { log: vi.fn(), error: vi.fn() };
-  const context = createContext({ process, console, requestSettingsConfirmation: client, DATA_DIR: "/private/test" });
+  const context = createContext({ process, console, requestSettingsConfirmation: client, DATA_DIR: "/private/test", t, settingsSourceLabel });
   const callback = source.slice(begin + '.action('.length, end) + '\n}';
   runInContext(ts.transpileModule(`const action = ${callback}`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
   return { action: runInContext("action", context) as (id: string, options: any) => Promise<void>, client, process, console };
 }
 it("actual CLI callback prints source/requester/full summary and uses the inspected ticket only with explicit --yes", async () => {
   const h = cli(); await h.action("same", {}); expect(h.client).toHaveBeenCalledOnce(); expect(h.process.exitCode).toBe(1);
-  const yes = cli(); await yes.action("same", { yes: true }); expect(yes.console.log.mock.calls[0][0]).toBe("Source: web_session\nRequester: browser\nadd F ID 42");
+  const yes = cli(); await yes.action("same", { yes: true }); expect(yes.console.log.mock.calls[0][0]).toBe("Source: web dashboard\nRequester: browser\nadd F ID 42");   // #2390: the source in words
   expect(yes.client.mock.calls[1][1]).toEqual({ action: "confirm", ticket: { id: "same", generation: "original", fingerprint: "effect" } });
 });
 function form() {

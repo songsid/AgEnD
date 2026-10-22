@@ -1,6 +1,7 @@
 import { constants } from 'node:fs';
 import { open, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { t } from './locale.js';
 import { diagnosticLine, diagnosticRecord, redactDiagnostics, type RedactionOptions } from './diagnostic-redaction.js';
 
 export const ISSUE_URL = 'https://github.com/songsid/AgEnD/issues/new';
@@ -10,9 +11,9 @@ export const MAX_LOG_LINES = 1500;
 export const DEFAULT_SINCE = '30m';
 export function sinceMs(value: string, now = Date.now()): number {
   const match = /^(\d+)(m|h|d)$/.exec(value);
-  if (!match) throw new Error('--since must be a duration such as 30m, 2h or 1d (maximum 7d)');
+  if (!match) throw new Error(t("bugreport.since_format"));
   const duration = Number(match[1]) * ({ m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2]]!);
-  if (!Number.isSafeInteger(duration) || duration <= 0 || duration > 7 * 86_400_000) throw new Error('--since must be between 1m and 7d');
+  if (!Number.isSafeInteger(duration) || duration <= 0 || duration > 7 * 86_400_000) throw new Error(t("bugreport.since_range"));
   return now - duration;
 }
 
@@ -21,7 +22,7 @@ export async function readLogTail(path: string): Promise<{ text: string; truncat
   const handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0));
   try {
     const stat = await handle.stat();
-    if (!stat.isFile()) throw new Error('Not a regular log file');
+    if (!stat.isFile()) throw new Error(t("bugreport.not_log_file"));
     const start = Math.max(0, stat.size - MAX_LOG_BYTES);
     const buffer = Buffer.alloc(Math.min(stat.size, MAX_LOG_BYTES));
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
@@ -37,7 +38,7 @@ export async function readReportInput(path: string): Promise<string> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0));
   try {
     const stat = await handle.stat();
-    if (!stat.isFile() || stat.size > 4 * 1024 * 1024) throw new Error('Report input must be a regular file of at most 4 MiB.');
+    if (!stat.isFile() || stat.size > 4 * 1024 * 1024) throw new Error(t("bugreport.input_file"));
     const buffer = Buffer.alloc(stat.size);
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
     return buffer.subarray(0, bytesRead).toString('utf8');
@@ -97,17 +98,17 @@ export function createReportDraft(input: ReportInput): ReportDraft {
 export function serializeDraft(draft: ReportDraft): string { return JSON.stringify(draft, null, 2) + '\n'; }
 export function draftDigest(serialized: string): string { return createHash('sha256').update(serialized).digest('hex'); }
 export function reviewText(draft: ReportDraft): string {
-  return `Delivery: ${draft.delivery}\nIssue title:\n${draft.title}\n\nExact issue body:\n${draft.body}\n\nExact report file (attach manually${draft.overflow ? '; required for overflow' : ''}):\n${draft.report}\n`;
+  return `${t("bugreport.review_delivery", draft.delivery)}\n${t("bugreport.review_title")}\n${draft.title}\n\n${t("bugreport.review_body")}\n${draft.body}\n\n${t(draft.overflow ? "bugreport.review_file_required" : "bugreport.review_file")}\n${draft.report}\n`;
 }
 export function approveDraft(serialized: string, digest: string, delivery: 'link' | 'gh'): ReportDraft {
-  if (!/^[a-f\d]{64}$/.test(digest) || draftDigest(serialized) !== digest) throw new Error('Draft changed or approval digest does not match; review and approve the exact draft again.');
+  if (!/^[a-f\d]{64}$/.test(digest) || draftDigest(serialized) !== digest) throw new Error(t("bugreport.digest_mismatch"));
   const draft = JSON.parse(serialized) as ReportDraft;
   if (!draft || draft.format !== 'agend-bug-report-v1' || draft.delivery !== delivery || typeof draft.keepIdentifiers !== 'boolean'
-    || typeof draft.title !== 'string' || typeof draft.body !== 'string' || typeof draft.report !== 'string' || typeof draft.overflow !== 'boolean') throw new Error('Invalid draft; collect a new report.');
+    || typeof draft.title !== 'string' || typeof draft.body !== 'string' || typeof draft.report !== 'string' || typeof draft.overflow !== 'boolean') throw new Error(t("bugreport.invalid_draft"));
   // Reject injected extra fields, unredacted edits and ambiguous representations.
-  if (serializeDraft(draft) !== serialized || Object.keys(draft).sort().join(',') !== 'body,delivery,format,keepIdentifiers,overflow,report,title') throw new Error('Invalid draft format.');
-  for (const value of [draft.title, draft.body, draft.report]) if (redactDiagnostics(value, { keepIdentifiers: draft.keepIdentifiers }) !== value) throw new Error('Draft contains unredacted data; collect and review again.');
-  if (encodedLength(draft.title, draft.body) > MAX_ISSUE_URL) throw new Error('Issue text exceeds the safe link limit; collect a new report.');
+  if (serializeDraft(draft) !== serialized || Object.keys(draft).sort().join(',') !== 'body,delivery,format,keepIdentifiers,overflow,report,title') throw new Error(t("bugreport.invalid_format"));
+  for (const value of [draft.title, draft.body, draft.report]) if (redactDiagnostics(value, { keepIdentifiers: draft.keepIdentifiers }) !== value) throw new Error(t("bugreport.unredacted"));
+  if (encodedLength(draft.title, draft.body) > MAX_ISSUE_URL) throw new Error(t("bugreport.link_too_long"));
   return draft;
 }
 /** Only accepts the validated snapshot from the approval boundary. Does not open a browser. */

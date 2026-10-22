@@ -1,7 +1,7 @@
 import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
 import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
-import { SettingsConfirmationStore, type SettingsPendingView } from "./settings-confirmation.js";
+import { SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView } from "./settings-confirmation.js";
 import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
 import { SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
@@ -774,12 +774,6 @@ interface AdapterCallbackData {
 type PrivateSentMessage = import("./channel/types.js").SentMessage & { retire?: (text: string) => Promise<void> };
 
 /** The prefix of a button's callback data, for logs (never the nonce). */
-/** #2390: where a settings change came from, in the fleet's language (an unknown source as it is). */
-function settingsSourceLabel(source: string): string {
-  const key = `settings_confirm.source.${source}`, text = t(key);
-  return text === key ? source : text;
-}
-
 function callbackPrefix(callbackData: string): string {
   const colon = callbackData.indexOf(":");
   return colon === -1 ? "(none)" : callbackData.slice(0, colon + 1);
@@ -1751,7 +1745,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!this.settingsNoticeGenerals(affected, chat.platform).length) return null;
     const name = this.webPerson({ adapterId: actor.adapter_id, userId: actor.user_id }).name;
     return {
-      label: `${name} (web-verified)`,
+      label: t("settings_confirm.web_verified_label", name),
       // admin() asks chat.current() too; a General a card could go to must still be there (else the host CLI's).
       current: () => !!verified() && chat.admin(actor.user_id) && this.settingsNoticeGenerals(affected, chat.platform).length > 0,
       done: view => this.settingsWebConfirmedNotice(view, affected, name, chat.platform),

@@ -69,6 +69,7 @@ import {
 } from "./service-restart-selection.js";
 import { loadRawFleetConfig } from "./config.js";
 import { setLocale, t } from "./locale.js";
+import { settingsSourceLabel } from "./settings-confirmation.js";
 import { DeliveryOutbox, deliveryStatusSelector, type DeliveryStatusSelector } from "./delivery-outbox.js";
 import { DeliveryStatusArgs } from "./outbound-schemas.js";
 import type { CpuProfile } from "./cpu-profile.js";
@@ -190,13 +191,13 @@ settingsCommand.command("confirm <id>").option("--yes", "Explicit noninteractive
   .action(async (id: string, options: { yes?: boolean }) => {
     try {
       const inspected = await requestSettingsConfirmation(DATA_DIR, { action: "inspect", id }) as SettingsInspection;
-      console.log(`Source: ${inspected.pending_change.source}\nRequester: ${inspected.pending_change.requested_by}\n${inspected.pending_change.summary.join("\n")}`);
+      console.log([t("settings_confirm.source", settingsSourceLabel(inspected.pending_change.source)), t("settings_confirm.requester", inspected.pending_change.requested_by), ...inspected.pending_change.summary].join("\n"));
       let confirmed = options.yes === true;
       if (!confirmed) {
-        if (!process.stdin.isTTY) throw new Error("Interactive confirmation required; --yes explicitly confirms the printed diff.");
+        if (!process.stdin.isTTY) throw new Error(t("settings_confirm.cli_interactive"));
         const { createInterface } = await import("node:readline/promises");
         const input = createInterface({ input: process.stdin, output: process.stdout });
-        try { confirmed = (await input.question("Apply this exact change? [y/N] ")).trim().toLowerCase() === "y"; } finally { input.close(); }
+        try { confirmed = (await input.question(t("settings_confirm.cli_question"))).trim().toLowerCase() === "y"; } finally { input.close(); }
       }
       const result = await requestSettingsConfirmation(DATA_DIR, { action: confirmed ? "confirm" : "reject", ticket: inspected.ticket });
       console.log(result.pending_change.outcome?.message ?? result.pending_change.state);
@@ -206,7 +207,7 @@ settingsCommand.command("confirm <id>").option("--yes", "Explicit noninteractive
 settingsCommand.command("reject <id>").description("Reject a pending Settings change on this host").action(async (id: string) => {
   try {
     const inspected = await requestSettingsConfirmation(DATA_DIR, { action: "inspect", id }) as SettingsInspection;
-    console.log(`Source: ${inspected.pending_change.source}\nRequester: ${inspected.pending_change.requested_by}\n${inspected.pending_change.summary.join("\n")}`);
+    console.log([t("settings_confirm.source", settingsSourceLabel(inspected.pending_change.source)), t("settings_confirm.requester", inspected.pending_change.requested_by), ...inspected.pending_change.summary].join("\n"));
     const result = await requestSettingsConfirmation(DATA_DIR, { action: "reject", ticket: inspected.ticket });
     console.log(result.pending_change.outcome?.message ?? result.pending_change.state);
   } catch (err) { console.error((err as Error).message); process.exitCode = 1; }
@@ -238,7 +239,7 @@ fleet
     // #2356: the way out when the installed service cannot run here (never activated, no GUI session for launchd) — an
     // operator's own decision, as `restart --force` is; the fleet's singleton lock still refuses a second fleet.
     if (opts?.direct && !forceAllowed()) {
-      console.error("  ✗ --direct is for an operator's own shell, not a fleet agent session or the fleet's own commands. Nothing was started.");
+      console.error(t("cli.direct_refused"));
       process.exit(1);
     }
     const direct = marked || !!opts?.direct;
@@ -359,7 +360,7 @@ fleet
           process.exit(1);
         }
       } catch {
-        console.error(`Cannot connect to fleet (port ${port}). Is the fleet running?`);
+        console.error(t("cli.fleet_unreachable", port));
         process.exit(1);
       }
       return;
@@ -409,7 +410,7 @@ fleet
     // under a Restart=on-failure unit the fleet stayed down (and this process, in an agent pane, died with the unit's
     // cgroup). It runs `agend restart` itself — this Node, this CLI — with the same gate, guard and exit code.
     const args = instance ? ["restart", instance] : ["restart", ...(opts?.yes ? ["--yes"] : [])];
-    console.error(`⚠ \`agend fleet restart\` is deprecated and goes away in 2.4 — running \`agend ${args.join(" ")}\`.`);
+    console.error(t("cli.fleet_restart_deprecated", args.join(" ")));
     const self = selfCommand(args);
     const result = spawnSync(self.command, self.args, { stdio: "inherit" });
     process.exit(result.status ?? 1);
@@ -427,7 +428,7 @@ fleet
   .command("logs", { hidden: true })
   .description("Removed; use `agend logs`")
   .action(() => {
-    console.error("`agend fleet logs` was removed. Use `agend logs`.");
+    console.error(t("cli.fleet_logs_removed"));
     process.exitCode = 1;
   });
 
@@ -1359,7 +1360,7 @@ program
       // #2264 review: the old system copy is retired only for a confirmed 2.1-era layout — the copy this updater runs
       // from is a 2.1.x release (2.1's updater left it there). Never from "nvm" or "root" alone: a 2.2+ copy stays.
       if (verified.retireSystemCopy && !/^2\.1\./.test(pkgVersion)) {
-        console.log(`  Note: the system install (v${pkgVersion}) is kept; only a 2.1-era copy is retired after a move to nvm.`);
+        console.log(t("cli.system_install_kept", pkgVersion));
         delete verified.retireSystemCopy;
       }
       if (verified.retireSystemCopy) {
@@ -1582,7 +1583,7 @@ program
       } catch { return false; }
     };
     const viaInstaller = !needsSudo && targetVersion !== null && shipsInstaller();
-    if (!needsSudo && !viaInstaller) console.log(`  ℹ ${pkg} has no installer of its own (a release from before #2264); this updater installs it.`);
+    if (!needsSudo && !viaInstaller) console.log(t("cli.no_own_installer", pkg));
     if (viaInstaller) {
       console.log(`\n  Updating AgEnD v${pkgVersion} → v${targetVersion} (its own installer)...\n`);
       markUpdateInProgress(DATA_DIR);
@@ -1718,7 +1719,7 @@ program
   .option("--no-activate", "Write the service file without activating it")
   .action(async (opts: { activate?: boolean }) => {
     if (process.argv.includes("--activate")) {
-      console.error("`agend install --activate` was removed; service activation is the default.");
+      console.error(t("cli.install_activate_removed"));
     }
     const { installService, activateService, detectPlatform, renderLaunchdPlist, launchdPlistPath, getServicePath, getSystemServicePath, serviceHomeFor } = await import(
       "./service-installer.js"
@@ -1891,8 +1892,8 @@ program
     const { getServicePath, getSystemServicePath, stopService, stopSystemService } = await import("./service-installer.js");
     // #2356: the system unit first, as `agend start` and `agend restart` choose it; a SIGTERM would only stop the process.
     if (getSystemServicePath()) {
-      if (stopSystemService()) { console.log("Service stopped (system)."); return; }
-      console.error("Failed to stop the system service: systemctl stop agend (run it as root).");
+      if (stopSystemService()) { console.log(t("cli.system_service_stopped")); return; }
+      console.error(t("cli.system_service_stop_failed"));
       process.exitCode = 1;
       return;
     }
@@ -1945,9 +1946,9 @@ program
       // A service file means the service manager owns this fleet. Falling back
       // to a detached process here creates a second fleet when the bus recovers.
       console.error("Failed to start the installed AgEnD service; refusing to start a detached duplicate.");
-      console.error(`Check your service manager, then retry: ${process.platform === "darwin" ? "launchctl print gui/$(id -u)/com.agend.fleet" : systemServicePath ? "systemctl status agend" : "systemctl --user status com.agend.fleet"}`);
+      console.error(t("cli.service_retry", process.platform === "darwin" ? "launchctl print gui/$(id -u)/com.agend.fleet" : systemServicePath ? "systemctl status agend" : "systemctl --user status com.agend.fleet"));
       // #2356: a service file that cannot run here (never activated, no session for it) would otherwise leave no start.
-      console.error("If the service cannot run on this host, start the fleet without it: agend fleet start --direct");
+      console.error(t("cli.service_direct_hint"));
       process.exitCode = 1;
     }
   });
@@ -1965,7 +1966,7 @@ function redirectToService(command: "start" | "stop", extra: string[], directMar
   const byServiceManager = startedByServiceManager({ platform: process.platform, env: process.env, ownCgroup, ppid: process.ppid, launchdLabel: "com.agend.fleet" });
   const installed = getSystemServicePath() ?? getServicePath();
   if (!redirectsToService({ command, directMarker, byServiceManager, installedServicePath: installed })) return false;
-  console.error(`ℹ An AgEnD service is installed here (${installed}): running \`agend ${[command, ...extra].join(" ")}\` so the service manager owns the fleet.`);
+  console.error(t("cli.service_redirect", String(installed), [command, ...extra].join(" ")));
   const self = selfCommand([command, ...extra]);
   const result = spawnSync(self.command, self.args, { stdio: "inherit" });
   process.exit(result.status ?? 1);
@@ -1986,13 +1987,13 @@ async function restartOneInstance(instance: string): Promise<void> {
     });
     const body = await resp.json() as Record<string, unknown>;
     if (resp.ok) {
-      console.log(`Instance "${instance}" restarted (immediate)`);
+      console.log(t("cli.instance_restarted", instance));
     } else {
-      console.error(`Restart failed: ${body.error ?? resp.statusText}`);
+      console.error(t("cli.restart_failed", String(body.error ?? resp.statusText)));
       process.exit(1);
     }
   } catch {
-    console.error(`Cannot connect to fleet (port ${port}). Is the fleet running?`);
+    console.error(t("cli.fleet_unreachable", port));
     process.exit(1);
   }
 }
@@ -2005,7 +2006,7 @@ program
   .option("--force", "Restart even when the loaded service does not start this install on its selected Node (operators only)")
   .action(async (instance: string | undefined, opts: { yes?: boolean; force?: boolean }) => {
     if (instance) {
-      if (opts.force) { console.error("--force applies to the whole service, not one instance."); process.exit(1); }
+      if (opts.force) { console.error(t("cli.force_whole_service")); process.exit(1); }
       await restartOneInstance(instance);
       return;
     }
@@ -2164,7 +2165,7 @@ program
       const updated = Object.entries(hardening)
         .filter(([key, state]) => key !== "KillMode" && (state === "added" || state === "upgraded"))
         .map(([key]) => key);
-      if (updated.length > 0) console.log(`  ✓ ${unitPath}: updated ${updated.join(", ")} (#908/#1071/#1113/#2331: graceful stop, small crash dumps, bounded start, start limit, the fleet's ready signal)`);
+      if (updated.length > 0) console.log(t("cli.unit_updated", String(unitPath), updated.join(", ")));
       // #2331: what systemd LOADED — a drop-in that refuses the fleet's READY is overridden by AgEnD's own, leftovers
       // are named. Not a gate: the fleet still restarts, and the line says what will happen and what to remove.
       for (const line of loadedUnitCheck({ user: systemdTarget.user, unit: systemdTarget.unit, unitPath })) console.log(line);
@@ -2509,7 +2510,7 @@ program
       code = body.code;
       minutes = Math.max(1, Math.round(((body.expiresAt ?? Date.now()) - Date.now()) / 60_000));
     } catch {
-      console.error(`Cannot connect to fleet (port ${port}). Is the fleet running?`);
+      console.error(t("cli.fleet_unreachable", port));
       process.exit(1);
     }
     const signin = `http://localhost:${port}/signin`;
@@ -2757,7 +2758,7 @@ schedule
   .command("trigger", { hidden: true })
   .argument("[id]", "Schedule ID")
   .action(() => {
-    console.error("`agend schedule trigger` was removed. There is no Telegram trigger; use `agend schedule enable` or the Task Board.");
+    console.error(t("cli.schedule_trigger_removed"));
     process.exitCode = 1;
   });
 
