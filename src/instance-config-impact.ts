@@ -128,6 +128,8 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   // #2346: read at each spawn by the SpawnGate (fleet-level-config.ts RUNTIME_READ_FLEET_KEYS): the next start uses it.
   "fleet.spawn_concurrency": "now",
   "fleet.spawn_stagger_ms": "now",
+  // #2347 §10: checked at each create (instance-lifecycle's project_roots boundary), so the next New agent uses it.
+  "fleet.project_roots": "now",
   "classic.admin_users": "fleet",
   "classic.allowed_guilds": "fleet",
   // #2168: a confirmed delete stops and removes the agent at once (removeInstance) — no AgEnD restart.

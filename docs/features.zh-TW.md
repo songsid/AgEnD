@@ -747,7 +747,7 @@ AgEnD 會保存一份「這台主機能跑什麼」的快照（#2072），每個
 
 會用到它的地方：
 - 聊天裡的 **`/backend`**（見[上方](#診斷與各-agent-的聊天指令-diagnostics-and-per-agent-chat-commands)）：不能用的 backend 會停用並寫出原因，直接打出來也會被拒絕。
-- **網頁的新增 agent 對話框，以及設定頁的每個 backend 欄位**（agent、fleet 預設、ClassicBot 預設與聊天室、Fleet → Config）：「未安裝」、「未登入（請用 /login）」與「需要 X 以上版本」會停用並寫出原因；「尚未檢查」仍可選；目前的值永遠可選，已經移除的 backend 會排在最前面並標示已移除。
+- **網頁的新增 agent 對話框，以及設定頁的每個 backend 欄位**（agent、fleet 預設、ClassicBot 預設與聊天室）：「未安裝」、「未登入（請用 /login）」與「需要 X 以上版本」會停用並寫出原因；「尚未檢查」仍可選；目前的值永遠可選，已經移除的 backend 會排在最前面並標示已移除。
 - ClassicBot 的 `/start` backend 清單與設定精靈也讀同一份快照。`create_instance` 工具本身不檢查它。
 
 模型清單：

@@ -202,7 +202,8 @@ values reloaded after Save. Password fields keep the browser's behaviour.
 
 ## Fleet
 
-`/ui/fleet/<tab>`: **Tasks**, **Schedules**, **Teams**, **Org chart**, **Cache**, **Config**, plus a **Docs** link.
+`/ui/fleet/<tab>`: **Tasks**, **Schedules**, **Teams**, **Org chart**, **Cache**, plus a **Docs** link
+(`/ui/fleet/config` leads to Settings → Agent defaults: each of its settings lives in Settings, #2347).
 The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet tab open the Fleet tab this device used last
 (`agend_last_fleet_tab`; the Org chart the first time). The sidebar has no separate Fleet (Details) or View row.
 - **Tasks** — the task board: Home lists **projects** (with % done) and what waits for the person (**Confirm** /
@@ -221,8 +222,6 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
 - **Teams** — **New team**, **Edit** (members, description; no rename), **Delete**. Read only on a public link.
 - **Org chart** — see below.
 - **Cache** — see [the cache report](#usage-and-the-cache-report).
-- **Config** — the main channel, access (Locked/Open, allowed users), default backend and project roots; **Save
-  changes** rewrites fleet.yaml (its comments are lost).
 
 **Org chart (#1918).** **Canvas** or **List** (remembered per device). The canvas: General at the top, then teams in
 fleet.yaml order, then "Not in a team". Drag to pan, wheel or pinch to zoom (0.2–2.5), **Zoom in / Zoom out / Fit to
@@ -420,7 +419,8 @@ ClassicBot (in **Chat & connections**, `/settings/chat#classicbot`) — per room
 `channels.<key>.*`: Backend, Model, Auto-pause after, **Collaboration mode** (`collab`), **Web echo** (`web_echo`),
 Advanced **Context lines** (these restart the room's agent); Tool progress and Require a delivered reply (now).
 
-**Agent defaults** — fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW), default
+**Agent defaults** — **Project folders** (`project_roots`: where New agent may put an agent; empty = anywhere;
+changing it waits for a fleet admin's OK) and the fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW), default
 backend and model, auto-pause, tool progress, bot-to-bot visibility, reply guard; Advanced: tool set, agent mode, log
 level, **Hang detector enabled** / **Stuck timeout** (`hang_detector.*`), **Startup concurrency** (1–20) and
 **Stagger delay** (`startup.*`, restart AgEnD). ClassicBot defaults (in Chat & connections; `classicBot.yaml defaults.*`): default backend, tool

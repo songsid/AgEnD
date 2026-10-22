@@ -48,19 +48,19 @@ const shape = (a: any) => ({ href: a?.getAttribute("href"), target: a?.getAttrib
 describe("Fleet overview → Docs", () => {
   it("is in the header on every Fleet tab, before Aa and Usage: the docs site, a new tab, no opener", async () => {
     const out: unknown[] = [];
-    for (const path of ["/ui/fleet/org", "/ui/fleet", "/ui/fleet/cache", "/ui/fleet/config"]) {
+    for (const path of ["/ui/fleet/org", "/ui/fleet", "/ui/fleet/cache", "/ui/fleet/usage"]) {
       const { pg } = await shell(path);
       out.push([path, actions(pg).map(e => e.className), shape(docs(pg))]);
       const p = mounted.pop()!; await p.unmount(); p.restore();
     }
     const order = ["btn btn-ghost btn-sm hd-docs", "btn btn-ghost btn-sm hd-text", "btn btn-ghost btn-sm hd-usage"];
     const want = { href: EN, target: "_blank", rel: "noopener noreferrer", label: "Docs (opens in a new tab)", text: "Docs", current: null, active: false };
-    expect(out).toEqual(["/ui/fleet/org", "/ui/fleet", "/ui/fleet/cache", "/ui/fleet/config"].map(p => [p, order, want]));
+    expect(out).toEqual(["/ui/fleet/org", "/ui/fleet", "/ui/fleet/cache", "/ui/fleet/usage"].map(p => [p, order, want]));
   });
-  it("is not a Fleet tab: the tab row is the seven tabs (#2122 added Usage), unchanged", async () => {
+  it("is not a Fleet tab: the tab row is the six tabs (#2122 added Usage; #2347 §10 moved Config to Settings), unchanged", async () => {
     const { pg } = await shell("/ui/fleet/org");
     expect([row(pg).map(a => a.getAttribute("href")), pg.root.querySelectorAll(".p-fleet nav.seg a[target]").length]).toEqual(
-      [["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/cache", "/ui/fleet/usage", "/ui/fleet/config"], 0]);
+      [["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/cache", "/ui/fleet/usage"], 0]);
   });
   it("follows the dashboard's language: zh-TW opens /zh-tw/docs, and back to English", async () => {
     const { pg } = await shell("/ui/fleet/org");

@@ -142,7 +142,7 @@ describe("50 mounts leave nothing behind", () => {
     for (let i = 0; i < 50; i++) {
       await mountChat(i % 2 ? "alpha" : "beta", `k${i}`);
       await p.unmount();
-      await mountFleet(["tasks", "schedules", "teams", "config"][i % 4]!, `f${i}`);
+      await mountFleet(["tasks", "schedules", "teams", "org"][i % 4]!, `f${i}`);
       await p.unmount();
     }
     expect(ctx.leaseCount()).toBe(base.leases);
