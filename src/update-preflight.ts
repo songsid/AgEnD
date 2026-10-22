@@ -92,7 +92,7 @@ export function evaluateUpdateTarget(input: {
   const pin = Object.prototype.hasOwnProperty.call(m.runtimePins, input.host.id) ? m.runtimePins[input.host.id]! : null;
   const support = p.runtimeSupport(input.host);
   if (pin && support.supported) {
-    // The pin keeps its identity (22.23.3-agend.1); the Node it installs is the one judged (postinstall: 22.23.3).
+    // The pin keeps its identity (22.23.4-agend.1); the Node it installs is the one judged (postinstall: 22.23.4).
     const node = RUNTIME_PIN.exec(pin)?.[1];
     if (!node) return { kind: "unknown", note: `  Note: the release pins its bundled Node as ${JSON.stringify(pin)}, which this check cannot read; its own install check still applies.` };
     const fits = satisfiesNodeRange(node, m.engines);

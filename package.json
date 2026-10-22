@@ -77,10 +77,10 @@
     "zod": "^4.3.6"
   },
   "optionalDependencies": {
-    "@songsid/agend-node-darwin-arm64": "22.23.3",
-    "@songsid/agend-node-darwin-x64": "22.23.3",
-    "@songsid/agend-node-linux-arm64": "22.23.3",
-    "@songsid/agend-node-linux-x64": "22.23.3"
+    "@songsid/agend-node-darwin-arm64": "22.23.4",
+    "@songsid/agend-node-darwin-x64": "22.23.4",
+    "@songsid/agend-node-linux-arm64": "22.23.4",
+    "@songsid/agend-node-linux-x64": "22.23.4"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
