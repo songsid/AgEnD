@@ -10026,7 +10026,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const tool = msg.tool as string;
     // #1774: who sends this — taken before anything here awaits (sticker checks, the platform send): a reply that waits
     // must never be read as a same-name replacement's (removed and re-registered meanwhile).
-    const sentBy = this.webChatIdentity(instanceName);
+    const sentBy = tool === "reply" ? this.webChatIdentity(instanceName) : undefined;
     const args = (msg.args ?? {}) as Record<string, unknown>;
     const requestId = msg.requestId as number | undefined;
     const fleetRequestId = msg.fleetRequestId as string | undefined;
