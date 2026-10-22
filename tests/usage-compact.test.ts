@@ -25,8 +25,11 @@ const PROVIDERS = [
 ];
 
 let usage: any, i18n: any, htm: any, pg: AppPage | null = null;
+let posts: unknown[] = [], hostValues: Record<string, unknown> = {};
 beforeAll(async () => {
   const p0 = page({ storage: { agend_tour_done: "1" } });
+  // A signed-in page (<html data-prefs>): the prefs module reads it once, on its first import — its writes go to the host.
+  p0.document.documentElement.setAttribute("data-prefs", JSON.stringify({ rev: 1, values: {} }));
   usage = await import("/assets/usage-dialog.js");
   i18n = await import("/assets/app-i18n.js");
   htm = await import("/assets/app-html.js");
@@ -40,7 +43,16 @@ afterEach(async () => {
 async function mount(lang: "en" | "zh-TW" = "en") {
   pg = page({ storage: { agend_tour_done: "1" } });
   i18n.setLang(lang);
-  (globalThis as any).fetch = async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ fetchedAt: new Date().toISOString(), providers: PROVIDERS }) });
+  posts = []; hostValues = {};
+  (globalThis as any).fetch = async (url: string, o: any = {}) => {
+    if (url === "/ui/prefs" && o.method === "POST") {
+      const body = JSON.parse(o.body);
+      posts.push(body);
+      for (const [k, v] of Object.entries(body.set)) { if (v === null) delete hostValues[k]; else hostValues[k] = v; }   // as the host keeps them
+      return { ok: true, status: 200, json: async () => ({ rev: 1 + posts.length, values: { ...hostValues } }) };
+    }
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ fetchedAt: new Date().toISOString(), providers: PROVIDERS }) };
+  };
   await pg.mount(htm.html`<div><${usage.UsageCompactToggle} /><${usage.UsageBody} owner="usage-compact-test" /></div>`);
   await settle(3);
 }
@@ -68,6 +80,8 @@ describe("what a login's line shows", () => {
     expect(usage.soonestReset([{ resetsAt: new Date(now - H).toISOString() }, { resetsAt: new Date(now + 3 * H + 60_000).toISOString() }, { resetsAt: new Date(now + 90 * H).toISOString() }], now))
       .toEqual({ short: "↻ 3h 1m", full: expect.stringMatching(/^resets in 3h [01]m$/) });
     expect(usage.soonestReset([{}], now)).toBeNull();
+    // Whatever order the windows come in.
+    expect(usage.soonestReset([{ resetsAt: new Date(now + 90 * H).toISOString() }, { resetsAt: new Date(now + 2 * H).toISOString() }], now)?.short).toBe("↻ 2h 0m");
   });
 });
 
@@ -77,9 +91,13 @@ describe("the switch, the lines and a line opened", () => {
     expect([cards().length, rows().length, text(toggle()), toggle().getAttribute("aria-pressed")]).toEqual([6, 0, "Compact", "false"]);
     toggle().click(); await settle(2);
     expect([cards().length, rows().length, text(toggle()), toggle().getAttribute("aria-pressed")]).toEqual([0, 6, "Full", "true"]);
-    expect(pg!.storage.get("agend_usage_compact")).toBe("on");               // the synced preference's cache (back to full: cleared)
+    expect(pg!.storage.get("agend_usage_compact")).toBe("on");               // the synced preference's cache
+    await new Promise((r) => setTimeout(r, 450)); await settle(2);           // the write's debounce
+    expect(posts).toEqual([{ set: { "usage.compact": true } }]);              // sent to the host: it follows the person
     toggle().click(); await settle(2);
     expect([cards().length, rows().length, pg!.storage.has("agend_usage_compact")]).toEqual([6, 0, false]);
+    await new Promise((r) => setTimeout(r, 450)); await settle(2);
+    expect(posts.at(-1)).toEqual({ set: { "usage.compact": null } });        // the full cards are the default: cleared, not false
   });
 
   it("each line: name, profile and a short plan; both windows' percent with the full card's colours; the soonest reset; no coupons", async () => {
