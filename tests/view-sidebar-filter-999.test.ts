@@ -119,7 +119,7 @@ describe("sidebar filter wiring (#999)", () => {
     expect(groupHeads()).toEqual(["AgEnD", "DouPo", "Other"]);
     expect(rowNames()).toEqual(["agend-dev-claude", "leader", "doupo-server-codex", "grok-scout"]);
     expect(p.root.querySelectorAll(".v-inst").map((a: any) => a.getAttribute("href"))).toContain("/view/leader");
-    expect(count()).toBe("4 / 4 Clear");
+    expect(count()).toBe("4 / 4");
   });
 
   it("the filter sits after the groups, inside the roster, with its input, clear button and count", async () => {
@@ -149,10 +149,10 @@ describe("sidebar filter wiring (#999)", () => {
     await typeInto("codex");
     expect(rowNames()).toEqual(["doupo-server-codex"]);
     expect(groupHeads()).toEqual(["DouPo"]);
-    expect(count()).toBe("1 / 4 shown Clear");
+    expect(count()).toBe("1 / 4 shown");
     await typeInto("");
     expect(rowNames()).toHaveLength(4);
-    expect(count()).toBe("4 / 4 Clear");
+    expect(count()).toBe("4 / 4");
   });
 
   it("keeps the query across the roster's 5-second refresh: a new roster renders through the same filter", async () => {
@@ -166,7 +166,7 @@ describe("sidebar filter wiring (#999)", () => {
     await settle(8);
     expect(input().value).toBe("codex");
     expect(rowNames()).toEqual(["doupo-server-codex", "new-codex"]);
-    expect(count()).toBe("2 / 6 shown Clear");
+    expect(count()).toBe("2 / 6 shown");
   });
 
   it("a miss shows the empty state, and clearing the query brings everything back", async () => {
@@ -186,7 +186,7 @@ describe("sidebar filter wiring (#999)", () => {
     fire(input(), "keydown", { key: "Escape" });
     await settle();
     expect(input().value).toBe("");
-    expect(count()).toBe("4 / 4 Clear");
+    expect(count()).toBe("4 / 4");
   });
 
   it("while a filter hides rows, groups and rows are not draggable (a filtered reorder is ambiguous)", async () => {
