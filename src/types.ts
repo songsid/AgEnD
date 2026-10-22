@@ -531,7 +531,8 @@ export interface FleetConfig {
   health_port?: number;
   web?: WebConfig;
   /** #1386 "Needs you": the live list in each world's General (default on) and DMs to that world's admins (default off). */
-  needs_you?: { live_message?: boolean; dm?: boolean };
+  /** `task_board` (default false, #2425): the task board's cards that wait for the person are Needs-you items too. */
+  needs_you?: { live_message?: boolean; dm?: boolean; task_board?: boolean };
   /** Host name used when building URLs handed to users (/dashboard, web terminal). Default "localhost". */
   hostname?: string;
   /**

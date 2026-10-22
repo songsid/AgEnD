@@ -352,6 +352,7 @@ function unitRig(opts: { onInstall?: (n: number) => void; installStatus?: number
   const calls: string[] = [], log: string[] = [];
   const live = new Set([...(opts.live ?? []), 4242]);
   let installs = 0;
+  const read = (f: string) => existsSync(f) ? readFileSync(f, "utf8") : null;
   const deps = {
     pid: 4242, uid: 1000, now: () => Date.now(), log: (line: string) => log.push(line), alive: (pid: number) => live.has(pid),
     env: { HOME: userHome, AGEND_HOME: home }, systemUnit: join(root, "etc-agend.service"), onStep: opts.onStep as ((step: string) => void) | undefined,
@@ -368,12 +369,18 @@ function unitRig(opts: { onInstall?: (n: number) => void; installStatus?: number
         return { status: opts.installStatus?.[installs - 1] ?? 0, stdout: "", stderr: "" };
       }
       if (args[0] === "--version") return { status: 0, stdout: OWN_VERSION + "\n", stderr: "" };
+      // #2420: launchd is asked whether the fleet came up — the job runs the fleet `restart` / `start` brought up.
+      if (cmd === "launchctl" && args[0] === "print") {
+        const pid = Number(read(join(home, "fleet.pid")));
+        return live.has(pid) ? { status: 0, stdout: `\tstate = running\n\truns = 1\n\tpid = ${pid}\n`, stderr: "" } : { status: 113, stdout: "", stderr: "" };
+      }
       calls.push(`agend ${args.join(" ")}`);
+      if (args[0] === "restart" || args[0] === "start") { live.add(9393); writeFileSync(join(home, "fleet.pid"), "9393"); }
       return { status: 0, stdout: "", stderr: "" };
     },
+    health: () => true,
   };
   const lock = join(prefix, ".agend-install.lock");
-  const read = (f: string) => existsSync(f) ? readFileSync(f, "utf8") : null;
   const quarantined = () => { const q = join(prefix, ".agend-quarantine"); return existsSync(q) ? readdirSync(q).flatMap(d => readdirSync(join(q, d)).map(n => readFileSync(join(q, d, n), "utf8").slice(0, 200))) : []; };
   return { root, prefix, nodeModules, home, userHome, deps, calls, log, lock, read, quarantined, live };
 }
