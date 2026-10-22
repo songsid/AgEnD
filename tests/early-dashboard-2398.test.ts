@@ -91,7 +91,7 @@ instances:
   vi.spyOn(TmuxControlClient.prototype, "stop").mockImplementation(() => {});
   vi.spyOn(fm.memoryPressure, "start").mockImplementation(() => {});
   vi.spyOn(fm.lifecycle, "primeAuthVerification").mockImplementation(() => {});
-  vi.spyOn(fm.lifecycle, "isPaused").mockImplementation((name: string) => name === "paused");
+  vi.spyOn(fm.lifecycle, "isPaused").mockImplementation((...args: unknown[]) => args[0] === "paused");
   for (const name of ["startAvailabilityRefresh", "ensureGeneralInstructions", "syncRoleSkills", "startSearchIndex",
     "startDiscordUsagePresence", "requestDiscordUsagePresenceRefresh", "startStatuslineWatcher", "resolveTopicIcons",
     "refreshAllGuestRooms", "announceWebChatOnce", "startNeedsYou", "announceToolPermissionsChange", "sendFleetStartCompletionFallback"]) {
