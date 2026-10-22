@@ -213,7 +213,7 @@ describe("everything that is not this page looks the same", () => {
     for (let i = 0; i < 20; i++) await call(port, "GET", `/s/${"a".repeat(32)}/`);
 
     // Still five attempts and a working code.
-    await expect(signIn(port, path, code)).resolves.toMatch(/agend_setup=/);
+    await expect(signIn(port, path, code)).resolves.toMatch(/agend_setup_[0-9a-f]{16}=/);
   });
 
   it("does not let a wrong sid hold the page open", async () => {
@@ -329,19 +329,29 @@ describe("the cookie is scoped and its Secure flag is not taken on trust", () =>
 // ── Lockout, end to end ─────────────────────────────────────────────────────
 
 describe("five wrong answers ends the page", () => {
+  it("ignores foreign and legacy setup names without spending this setup's attempts", async () => {
+    const { host, port, path, code } = await startHost();
+    const own = await signIn(port, path, code);
+    for (let i = 0; i < 3; i++) {
+      const res = await call(port, "GET", `${path}setup/status`, { headers: { cookie: `agend_setup=${"f".repeat(64)}; agend_setup_foreign=${"e".repeat(64)}` } });
+      expect(res.status).toBe(401);
+    }
+    expect((host as unknown as { credentials: SetupCredentials }).credentials.attemptsLeft).toBe(MAX_SETUP_ATTEMPTS);
+    expect((await call(port, "GET", `${path}setup/status`, { headers: { cookie: own } })).status).toBe(200);
+  });
   it("counts wrong codes and wrong cookies against the same budget", async () => {
     const { port, path, code } = await startHost();
 
     // Sign in first, so the cookie attempts below hit the live-session branch —
     // which is the one an attacker replaying candidate hashes would use.
-    await signIn(port, path, code);
+    const cookieName = (await signIn(port, path, code)).split("=")[0];
 
     for (let i = 0; i < 3; i++) {
-      const res = await call(port, "GET", `${path}setup/status`, { headers: { cookie: `agend_setup=${"f".repeat(64)}` } });
+      const res = await call(port, "GET", `${path}setup/status`, { headers: { cookie: `${cookieName}=${"f".repeat(64)}` } });
       expect(res.status).toBe(401);
     }
     expect((await call(port, "POST", `${path}open`, { json: { code: "ZZZZ7777" } })).status).toBe(401);
-    const last = await call(port, "GET", `${path}setup/status`, { headers: { cookie: `agend_setup=${"e".repeat(64)}` } });
+    const last = await call(port, "GET", `${path}setup/status`, { headers: { cookie: `${cookieName}=${"e".repeat(64)}` } });
     expect(last.status).toBe(410);
 
     // And the real code no longer helps.

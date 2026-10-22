@@ -53,12 +53,13 @@ for (const c of matrix()) {
   r.chatOpen = await probe(".p-chat .id-card");
   await page.screenshot({ path: shotPath(SMOKE, c, "chat-open") });
   await page.goto(`${fx.base}/view/${enc(LONG)}`); await page.waitForTimeout(1500);
-  const exp = await page.$('.v-card button[aria-expanded="false"]'); if (exp) { await exp.click(); await page.waitForTimeout(800); }
   r.view = await probe(".v-id .id-card");
+  r.viewStripGone = await page.evaluate(`!document.querySelector(".v-card")`);
+  if (!r.viewStripGone) throw new Error("old .v-card strip still on View");
   await page.screenshot({ path: shotPath(SMOKE, c, "view") });
-  // Edit profile: a person's tagline wins.
+  // Edit profile: a person's tagline wins. The button sits on the identity block (the old profile strip is gone).
   // Required in every language: a missing control fails the case instead of skipping it.
-  const edit = page.locator(".v-card .btn", { hasText: labelOf(c, { en: "Edit profile", zh: "編輯個人資料" }) }).first();
+  const edit = page.locator(".v-id .btn", { hasText: labelOf(c, { en: "Edit profile", zh: "編輯個人資料" }) }).first();
   await edit.waitFor({ timeout: 5000 });
   {
     await edit.click(); await page.waitForTimeout(800);

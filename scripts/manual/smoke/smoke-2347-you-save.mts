@@ -1,7 +1,7 @@
-// #2347 PR "You" group: Preferences and Web appearance save with Settings' bar, on a fresh profile — desk light and
-// dark (zh-TW), phone light. Preferences: the theme flips the page at once, the bar counts "Your preferences", nothing
-// is sent before Save; Discard puts the theme back; Save sends one /ui/prefs write. Web appearance: colours off and
-// "follow reduced motion" are two unsaved changes; Discard puts both back.
+// #2347 PR "You" group: Preferences and Look save with Settings' bar, on a fresh profile — desk light and dark (zh-TW),
+// phone light. Preferences: the theme flips the page at once, the bar counts "Your preferences", nothing is sent before
+// Save; Discard puts the theme back; Save sends one /ui/prefs write. Colours off (Look) and "follow reduced motion"
+// (Preferences, since the #2382 regroup) are two unsaved changes across a tab change; Discard puts both back.
 //   PW_DIR=… REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf npx tsx scripts/manual/smoke/smoke-2347-you-save.mts
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";
 const results: Array<{ name: string; failed: string[] }> = [];
@@ -15,7 +15,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   const prefWrites: string[] = [];
   p.page.on("request", (r: any) => { if (r.method() === "POST" && /\/ui\/prefs$/.test(r.url())) prefWrites.push(r.postData() ?? ""); });
   await mounted(p.page, 30000);
-  await p.page.goto(new URL("/settings/device", p.page.url()).href);
+  await p.page.goto(new URL("/settings/preferences", p.page.url()).href);
   const sel = p.page.locator(".s-synced select").first();
   await sel.waitFor({ timeout: 15000 });
   const shown = () => p.page.evaluate(`document.documentElement.getAttribute("data-theme") || "system"`) as Promise<string>;
@@ -35,15 +35,23 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   await bar.locator("button.btn-primary").click();
   await p.page.waitForTimeout(1200);
   ok("saveSendsOne", prefWrites.length === 1 && /"theme":"/.test(prefWrites[0]) && (await p.page.locator(".s-pending").count()) === 0);
-  await p.page.goto(new URL("/settings/appearance", p.page.url()).href);
+  await p.page.goto(new URL("/settings/look", p.page.url()).href);
   await p.page.locator(".s-colors-off").waitFor({ timeout: 15000 });
   await p.page.locator(".s-colors-off").check();
-  await p.page.locator("#fx-follow-reduced-motion").click();
+  // In-app to Preferences (a reload would put a held choice back): the motion switch lives there since #2382.
+  await p.page.locator('.s-nav a[href="/settings/preferences"]').click();
+  const motion = p.page.locator("#fx-follow-reduced-motion");
+  await motion.waitFor({ timeout: 15000 });
+  const motionBefore = await motion.isChecked();
+  await motion.click();
   ok("twoChanges", /2/.test(await bar.textContent({ timeout: 5000 }).catch(() => "") ?? ""));
   await p.page.screenshot({ path: shotPath("2347y", c as any, "2-appearance") });
   await bar.locator("button", { hasText: /^(Discard|捨棄)$/ }).click();
   await p.page.waitForTimeout(600);
-  ok("appearanceDiscard", !(await p.page.locator(".s-colors-off").isChecked()) && (await p.page.locator(".s-pending").count()) === 0);
+  const motionBack = (await motion.isChecked()) === motionBefore && (await p.page.locator(".s-pending").count()) === 0;
+  await p.page.locator('.s-nav a[href="/settings/look"]').click();
+  await p.page.locator(".s-colors-off").waitFor({ timeout: 15000 });
+  ok("bothDiscarded", motionBack && !(await p.page.locator(".s-colors-off").isChecked()));
   results.push({ name, failed });
   console.log(`${failed.length ? "FAIL" : "ok  "} ${name}${failed.length ? " " + failed.join(", ") : ""}`);
   await p.ctx.close();

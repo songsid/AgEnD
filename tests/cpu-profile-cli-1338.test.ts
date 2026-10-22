@@ -8,7 +8,7 @@ import { installFleetProcessHandlers } from "../src/fleet-process-handlers.js";
 // Never import the self-executing CLI or construct the real FleetManager.
 function harness() {
   const source = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
-  const prefix = "  .action(async (instance?: string) => {";
+  const prefix = "  .action(async (instance?: string, opts?: { direct?: boolean }) => {";
   const begin = source.indexOf(prefix, source.indexOf(".description(\"Start fleet or specific instance\")"));
   const end = source.indexOf("\n  });\n\nfleet\n  .command(\"stop\")", begin);
   if (begin < 0 || end < 0) throw new Error("CLI callback boundary changed; update the harness");
@@ -37,7 +37,7 @@ function harness() {
   const context = createContext({
     installFleetProcessHandlers: (options: Parameters<typeof installFleetProcessHandlers>[0]) => installFleetProcessHandlers({ ...options, writeFatal: vi.fn() }),
     process, console: { log: vi.fn(), warn: vi.fn(), error: vi.fn() }, DATA_DIR: "/private-unused", FLEET_CONFIG_PATH: "/private-unused/fleet.yaml",
-    claimFleetSingleton: vi.fn(() => true), startCpuProfileFromEnvironment: startProfile,
+    DIRECT_FLEET_START_ENV: "AGEND_FLEET_START_DIRECT", redirectToService: () => false, claimFleetSingleton: vi.fn(() => true), startCpuProfileFromEnvironment: startProfile,
     loadFleetManager: async () => ({ FleetManager: class { constructor() { return manager; } } }),
     loadConfigModule: async () => ({ loadFleetConfig: () => ({ health_port: 1 }) }),
     fetch: vi.fn(async () => { throw new Error("No network (cold startup fixture)"); }), describeSignalSource: () => "test signal", Promise,

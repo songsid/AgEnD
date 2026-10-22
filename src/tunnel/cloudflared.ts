@@ -12,8 +12,9 @@
  * `~/.cloudflared/config.yaml` can stop quick tunnels working, and we cannot
  * assume the operator's home is empty.
  */
-import { publicTunnelHostname, validPublicTunnelToken } from "../public-tunnel-config.js";
-import { spawn, type ChildProcess } from "node:child_process";
+import { publicTunnelHostname, normalizePublicTunnelToken } from "../public-tunnel-config.js";
+import type { ChildProcess } from "node:child_process";
+import { spawn } from "../child-process.js";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 import { probeProcess } from "../web-terminal.js";
@@ -256,7 +257,8 @@ export class CloudflaredProvider implements TunnelProvider {
 
     const named = this.opts.named;
     const namedBase = named ? validateQuickTunnelUrl(`https://${named.hostname}`, named.hostname) : null;
-    if (named && (!namedBase || !validPublicTunnelToken(named.token))) throw new TunnelStartError("bad-url", "invalid named tunnel settings");
+    const namedToken = named ? normalizePublicTunnelToken(named.token) : null;
+    if (named && (!namedBase || !namedToken)) throw new TunnelStartError("bad-url", "invalid named tunnel settings");
     const spawnProcess = this.opts.spawnProcess ?? spawn;
     let child: ChildProcess;
     try {
@@ -270,7 +272,7 @@ export class CloudflaredProvider implements TunnelProvider {
       ], {
         // No shell, ever: the arguments are fixed and one of them is an origin.
         shell: false,
-        env: { ...minimalChildEnv(this.env), ...(named ? { TUNNEL_TOKEN: named.token } : {}) },
+        env: { ...minimalChildEnv(this.env), ...(named ? { TUNNEL_TOKEN: namedToken! } : {}) },
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (err) {

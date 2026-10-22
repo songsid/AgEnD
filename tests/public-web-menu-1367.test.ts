@@ -71,9 +71,10 @@ describe("real dashboard dispatcher/nonce/private delivery, no fleet or tunnel",
     if (platform === "discord") await h.slash(); else await h.typed();
     const copy = platform === "discord" ? h.respondButtons.mock.calls[0]![0] : h.adapter.notifyAlert.mock.calls[0]![1].message;
     const choices = platform === "discord" ? h.respondButtons.mock.calls[0]![1] : h.adapter.notifyAlert.mock.calls[0]![1].choices;
-    expect(copy).toBe(language === "en"
+    const menu = language === "en"
       ? "Press a sign-in button to get your private link and code.\nPublic links use Cloudflare TLS; anyone who signs in can manage the fleet. Do not forward."
-      : "按登入按鈕，取得僅傳給你的連結和登入碼。\n公開連結使用 Cloudflare TLS；登入者可管理艦隊，勿轉傳。");
+      : "按登入按鈕，取得僅傳給你的連結和登入碼。\n公開連結使用 Cloudflare TLS；登入者可管理艦隊，勿轉傳。";
+    expect(copy).toBe(platform === "discord" ? `${t("dashboard.deprecated")}\n\n${menu}` : menu);
     expect(choices.map((c: any) => c.label)).toEqual(language === "en"
       ? ["💻 AgEnD computer: get a code", "🌐 Other device (temporary public)"]
       : ["💻 AgEnD 電腦登入（取碼）", "🌐 其他裝置登入（臨時公開）"]);
@@ -90,7 +91,8 @@ describe("real dashboard dispatcher/nonce/private delivery, no fleet or tunnel",
     if (platform === "discord") await h.slash(); else await h.typed();
     const copy = platform === "discord" ? h.respondButtons.mock.calls[0]![0] : h.adapter.notifyAlert.mock.calls[0]![1].message;
     const choices = platform === "discord" ? h.respondButtons.mock.calls[0]![1] : h.adapter.notifyAlert.mock.calls[0]![1].choices;
-    expect(copy).toBe("Press a sign-in button to get your private link and code.");
+    const menu = "Press a sign-in button to get your private link and code.";
+    expect(copy).toBe(platform === "discord" ? `${t("dashboard.deprecated")}\n\n${menu}` : menu);
     expect(choices.map((c: any) => c.id.split(":").at(-1))).toEqual(["local"]);
     expect(h.s.webLoginCodes.hasOutstandingCode).toBe(false);
   });
@@ -178,7 +180,7 @@ describe("real dashboard dispatcher/nonce/private delivery, no fleet or tunnel",
     expect(h.adapter.sendDirect.mock.calls.map(c => c[0])).toEqual(["admin", "admin"]);
     expect(h.adapter.sendDirect.mock.calls[1][1]).toBe(`\`${/[A-Z0-9]{4}-[A-Z0-9]{4}/.exec(h.adapter.sendDirect.mock.calls[0][1])![0]}\``);   // #1606
     expect(h.respond).toHaveBeenCalledTimes(1);
-    expect(h.respond).toHaveBeenCalledWith(t("dashboard.private_sent_dm"));
+    expect(h.respond).toHaveBeenCalledWith(`${t("dashboard.deprecated")}\n\n${t("dashboard.private_sent_dm")}`);
     expect(h.respond.mock.calls[0][0]).not.toMatch(/[A-Z0-9]{4}-[A-Z0-9]{4}/);
     expect(h.respond.mock.calls[0][0]).not.toContain("http");
     expect(h.nonce()).toBeUndefined();

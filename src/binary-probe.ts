@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn } from "./child-process.js";
 
 /**
  * Whether a backend's executable is on PATH, without blocking the fleet (#1490).

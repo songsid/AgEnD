@@ -405,14 +405,14 @@ describe("/update /doctor /dashboard /collab: the invoking adapter's fleet admin
     expect(shown[0]).not.toBe(t("dashboard.revoked", 2));
     expect([alive(a), alive(b)]).toEqual([true, true]);
 
-    expect(await slash(r, "discord", { command: "dashboard", userId: "admin", options: { action: "revoke" } })).toEqual([t("dashboard.revoked", 2)]);
+    expect(await slash(r, "discord", { command: "dashboard", userId: "admin", options: { action: "revoke" } })).toEqual([`${t("dashboard.deprecated")}\n\n${t("dashboard.revoked", 2)}`]);
     expect([alive(a), alive(b)], "both browsers are signed out").toEqual([false, false]);
 
     // A revocation that could not be saved says so — never "done".
     const c = signIn();
     fm.webSessions.ops.renameSync = () => { throw Object.assign(new Error("EACCES"), { code: "EACCES" }); };
     fm.webSessions.ops.unlinkSync = () => { throw Object.assign(new Error("EACCES"), { code: "EACCES" }); };
-    expect(await slash(r, "discord", { command: "dashboard", userId: "admin", options: { action: "revoke" } })).toEqual([t("dashboard.revoked_not_durable", 1)]);
+    expect(await slash(r, "discord", { command: "dashboard", userId: "admin", options: { action: "revoke" } })).toEqual([`${t("dashboard.deprecated")}\n\n${t("dashboard.revoked_not_durable", 1)}`]);
     expect(alive(c)).toBe(false);
   });
 

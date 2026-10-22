@@ -69,4 +69,4 @@ instance's own topic (`web.echo_to_channel: false` turns that off; a ClassicBot 
 1. Change `channel:` to `channels:` array, add `id` to existing entry
 2. Add new platform entry with its own `id`
 3. Add a general instance for the new platform with `channel_id: <new-adapter-id>`
-4. Restart the whole process — connections are created when it starts: `agend fleet restart --reload` (`--yes` from a fleet session)
+4. Restart the whole process — connections are created when it starts: `agend restart` (`--yes` from a fleet session)

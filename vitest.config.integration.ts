@@ -48,6 +48,9 @@ export default defineConfig({
       AGEND_HOME: testAgendHome,
       NOTIFY_SOCKET: "",
       AGEND_TEST_GUARD_DIR: testAgendHome,
+      // The zone CI runs in. The CLI and the fleet choose zh-TW on a UTC+8 host with no defaults.locale (#2390): a test
+      // reading English output must read the same on a developer's host in Taipei; a test about a zone sets TZ itself.
+      TZ: "UTC",
     },
   },
 });

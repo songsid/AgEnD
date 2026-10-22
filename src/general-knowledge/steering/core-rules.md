@@ -23,7 +23,7 @@ When creating a new instance with `create_instance`:
 ## What NOT to Do (Dangerous Operations)
 
 - **Don't delete `~/.agend/fleet.yaml`** while fleet is running
-- **Don't delete `~/.agend/fleet.pid`** manually — use `agend fleet stop` (from a fleet session it needs `--yes`, and it stops every instance)
+- **Don't delete `~/.agend/fleet.pid`** manually — use `agend stop` (from a fleet session it needs `--yes`, and it stops every instance)
 - **Don't kill tmux server** (`tmux kill-server`) — kills all agent sessions
 - **Don't edit instance output.log** — it's actively written by the daemon
 - **Don't run two fleet processes** on the same AGEND_HOME — port/socket conflicts

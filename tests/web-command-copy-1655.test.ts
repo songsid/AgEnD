@@ -20,7 +20,7 @@ describe("#1655 advertises /web while keeping the old alias", () => {
       "web.login_notice", "web.resend_code", "upgrade.web_chat", "dashboard.disabled"] as const) webCopy(t(key));
     expect(t("slash.web")).not.toContain("/dashboard");
     expect(t("slash.dashboard")).toContain("/web");
-    expect(t("slash.dashboard")).toMatch(/alias|別名/i);
+    expect(t("slash.dashboard")).toMatch(/Deprecated|已棄用/);
     expect(t("slash.web").length).toBeLessThanOrEqual(100);
     expect(t("slash.dashboard").length).toBeLessThanOrEqual(100);
   });

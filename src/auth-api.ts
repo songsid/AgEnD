@@ -43,13 +43,18 @@ import {
   hasValidHeaderToken,
   isSameOriginRequest,
   isSecureRequest,
-  readSessionCookie,
+  readSessionCookies,
+  sessionCookieUpgrade,
+  parseCookieHeader,
+  WEB_SESSION_COOKIE,
+  WEB_SESSION_COOKIE_SECURE,
   WEB_CSRF_MESSAGE,
   type WebGateRequest,
 } from "./web-auth.js";
 import { csrfTokenFor, labelFromUserAgent, sessionIdHash, tokenEpoch, type SessionTier, type WebSessionStore } from "./web-session.js";
 import type { GuestLoginCodes, LoginCodeOwner, LoginCodeRecipient, LoginRedeemResult, WebLoginCodes } from "./web-login.js";
-import { buildDeviceCookie, readDeviceCookie, type ReturningDevice } from "./web-returning-device.js";
+import { buildDeviceCookie, readDeviceCookies, DEVICE_COOKIE, DEVICE_COOKIE_SECURE, type ReturningDevice } from "./web-returning-device.js";
+import { fleetCookieName } from "./web-cookie-names.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -294,8 +299,9 @@ export function handleAuthRequest(
       // A new id every time, whatever the request carried: the browser never
       // gets to choose the value it will be authenticated by, and a cookie it
       // already had is retired rather than upgraded.
-      const previous = readSessionCookie(gateReq);
-      if (previous && sessions.authenticate(previous, tokenEpoch(token), { touch: false, surface: gateway?.surface, exposureId: gateway?.exposureId })) sessions.revokeById(previous);
+      for (const previous of readSessionCookies(gateReq, token)) {
+        if (sessions.authenticate(previous, tokenEpoch(token), { touch: false, surface: gateway?.surface, exposureId: gateway?.exposureId })) sessions.revokeById(previous);
+      }
       const label = labelFromUserAgent(typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined);
       // #1827: the session is bound to the account the code was sent to privately (agents recognise them by its id on
       // the web) — recognition only; no recipient (an `agend web` code): the operator, as before.
@@ -336,9 +342,9 @@ export function handleAuthRequest(
           : result.owner ? ctx.rememberReturningDevice?.(result.owner, { surface: record.surface, label }) ?? null : null;
       } catch (err) { ctx.logger.debug({ err }, "returning device not recorded"); }
       const secure = isSecureRequest(gateReq);
-      const session = buildSessionCookie(sessionId, secure, (record.absoluteExpiry - record.created) / 1000);
+      const session = buildSessionCookie(sessionId, secure, (record.absoluteExpiry - record.created) / 1000, token);
       json(res, 200, { ok: true, csrf: csrfTokenFor(sessionId), tier: record.tier, expiresAt: record.absoluteExpiry }, {
-        "Set-Cookie": device ? [session, buildDeviceCookie(device, secure)] : session,
+        "Set-Cookie": device ? [session, buildDeviceCookie(device, secure, token)] : session,
       });
     }).catch(() => { if (!res.destroyed && !res.headersSent) json(res, 500, { error: "sign-in failed" }); })
       .finally(() => { req.removeListener("aborted", disconnect); res.removeListener?.("close", disconnect); });
@@ -348,10 +354,19 @@ export function handleAuthRequest(
   // ── #1570: a returning device — GET is a boolean and nothing else; POST asks for a code for its owner ──
   if (path === "/auth/device" || path === "/auth/request-code") {
     const cookie = typeof req.headers.cookie === "string" ? req.headers.cookie : undefined;
-    const device = ctx.webToken ? ctx.verifyReturningDevice?.(readDeviceCookie(cookie, !!gatewayRequestContext(req))) ?? null : null;
+    const token = ctx.webToken;
+    let device: ReturningDevice | null = null, deviceValue: string | undefined;
+    for (const value of token ? readDeviceCookies(cookie, !!gatewayRequestContext(req), token) : []) {
+      const candidate = ctx.verifyReturningDevice?.(value);
+      if (candidate) { device = candidate; deviceValue = value; break; }
+    }
     if (path === "/auth/device") {
       if (method !== "GET") { json(res, 405, { error: "method not allowed" }); return true; }
-      json(res, 200, { returning: device !== null }, { "Cache-Control": "no-store" });
+      const secure = isSecureRequest(gateReq);
+      const name = fleetCookieName(secure ? DEVICE_COOKIE_SECURE : DEVICE_COOKIE, token);
+      const upgrade = device && deviceValue && parseCookieHeader(cookie).get(name) !== deviceValue
+        ? buildDeviceCookie(deviceValue, secure, token, (device.expires - Date.now()) / 1000) : null;
+      json(res, 200, { returning: device !== null }, { "Cache-Control": "no-store", ...(upgrade ? { "Set-Cookie": upgrade } : {}) });
       return true;
     }
     if (method !== "POST") { json(res, 405, { error: "method not allowed" }); return true; }
@@ -389,18 +404,29 @@ export function handleAuthRequest(
 
   // ── The session's own endpoints: a session, and nothing else, is the credential ──
   if (path === "/auth/session" || path === "/auth/logout" || path === "/auth/sessions" || path.startsWith("/auth/sessions/")) {
-    const auth = authorizeSession(gateReq, ctx.webToken, ctx.webSessions, { touch: path === "/auth/session" });
+    const token = ctx.webToken;
+    const auth = authorizeSession(gateReq, token, ctx.webSessions, { touch: path === "/auth/session" });
     if (auth.kind === "reject") {
       json(res, auth.status, auth.message === WEB_CSRF_MESSAGE ? { error: auth.message } : { ok: false, error: auth.message });
       return true;
     }
     const sessions = ctx.webSessions!;
     const { session, sessionId } = auth;
+    // A legacy name is shared with other ports. Clear our old credentials (or an absent slot),
+    // but never erase another fleet's still-unmigrated value. Check BEFORE revoking our records.
+    const jar = parseCookieHeader(typeof req.headers.cookie === "string" ? req.headers.cookie : undefined);
+    const cookiesToClear = buildClearedSessionCookies(token).filter(header => {
+      const name = header.slice(0, header.indexOf("="));
+      if (name !== WEB_SESSION_COOKIE && name !== WEB_SESSION_COOKIE_SECURE) return true;
+      const value = jar.get(name);
+      return !value || !!sessions.authenticate(value, tokenEpoch(token!), { touch: false, surface: session.surface, exposureId: session.exposureId });
+    });
     // #1920: a session that is not an admin's sees and ends only its own: itself, and its account's other sessions.
     const own = session.tier === "admin" ? undefined
       : (r: { idHash: string; owner?: { adapterId: string; userId: string } }) => r.idHash === session.idHash || sameAccount(r.owner, session.owner);
 
     if (path === "/auth/session" && method === "GET") {
+      const upgrade = token ? sessionCookieUpgrade(gateReq, token, session) : null;
       json(res, 200, {
         ok: true,
         csrf: csrfTokenFor(sessionId),
@@ -412,15 +438,15 @@ export function handleAuthRequest(
         expiresAt: session.absoluteExpiry,
         idleExpiresAt: session.idleExpiry,
         idleMs: sessions.idleWindowMs(session.surface, session.tier),
-      });
+      }, upgrade ? { "Set-Cookie": upgrade } : {});
       return true;
     }
 
     if (path === "/auth/logout" && method === "POST") {
       const { durable } = sessions.revokeById(sessionId);
-      if (!durable) return notDurable(res, ctx, { handle: session.handle }, "Web sign-out not saved");
+      if (!durable) return notDurable(res, ctx, { handle: session.handle }, "Web sign-out not saved", cookiesToClear);
       ctx.logger.info({ handle: session.handle }, "Web sign-out");
-      json(res, 200, { ok: true }, { "Set-Cookie": buildClearedSessionCookies() });
+      json(res, 200, { ok: true }, { "Set-Cookie": cookiesToClear });
       return true;
     }
 
@@ -431,9 +457,9 @@ export function handleAuthRequest(
 
     if (path === "/auth/sessions" && method === "DELETE") {
       const { count, durable } = sessions.revokeAll(own);
-      if (!durable) return notDurable(res, ctx, { count }, "Web sessions revoked in memory only");
+      if (!durable) return notDurable(res, ctx, { count }, "Web sessions revoked in memory only", cookiesToClear);
       ctx.logger.info({ count, ...(own ? { own: true } : {}) }, own ? "Web sessions revoked (the caller's own)" : "Web sessions revoked (all)");
-      json(res, 200, { ok: true, revoked: count }, { "Set-Cookie": buildClearedSessionCookies() });
+      json(res, 200, { ok: true, revoked: count }, { "Set-Cookie": cookiesToClear });
       return true;
     }
 
@@ -442,9 +468,9 @@ export function handleAuthRequest(
       const wasCurrent = handle === session.handle;
       const { found, durable } = sessions.revokeByHandle(handle, own);
       if (!found) { json(res, 404, { error: "no such session" }); return true; }
-      if (!durable) return notDurable(res, ctx, { handle }, "Web session revoked in memory only", wasCurrent);
+      if (!durable) return notDurable(res, ctx, { handle }, "Web session revoked in memory only", wasCurrent ? cookiesToClear : false);
       ctx.logger.info({ handle }, "Web session revoked");
-      json(res, 200, { ok: true, current: wasCurrent }, wasCurrent ? { "Set-Cookie": buildClearedSessionCookies() } : {});
+      json(res, 200, { ok: true, current: wasCurrent }, wasCurrent ? { "Set-Cookie": cookiesToClear } : {});
       return true;
     }
 
@@ -464,8 +490,8 @@ export const REVOCATION_NOT_DURABLE_MESSAGE =
  * still told to drop its cookie (it is signed out here), but whoever asked must not believe a session is
  * dead that the next start revives.
  */
-function notDurable(res: ServerResponse, ctx: { logger: Logger }, detail: Record<string, unknown>, msg: string, clearCookie = true): true {
+function notDurable(res: ServerResponse, ctx: { logger: Logger }, detail: Record<string, unknown>, msg: string, clearCookies: string[] | false): true {
   ctx.logger.warn({ ...detail, durable: false }, msg);
-  json(res, 500, { ok: false, durable: false, error: REVOCATION_NOT_DURABLE_MESSAGE }, clearCookie ? { "Set-Cookie": buildClearedSessionCookies() } : {});
+  json(res, 500, { ok: false, durable: false, error: REVOCATION_NOT_DURABLE_MESSAGE }, clearCookies ? { "Set-Cookie": clearCookies } : {});
   return true;
 }

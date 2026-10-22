@@ -150,6 +150,48 @@ describe("/web typed in a ClassicBot room", () => {
   });
 });
 
+describe("#2359: /dashboard in a ClassicBot room is not a silent alias", () => {
+  it("a group /dashboard@ThisBot: deprecation notice in the room, then the guest code privately", async () => {
+    const h = rig();
+    h.openDm();
+    await h.inbound(h.classicRoom, `/dashboard@${BOT}`);
+    const dm = h.adapter.sendDirect.mock.calls.find((c: any[]) => CODE.test(String(c[1])));
+    expect(guestCodeIn(h, dm![1])).toMatchObject({ kind: "ok", recipient: { userId: "alice" } });
+    const inRoom = h.adapter.sendText.mock.calls.filter((c: any[]) => c[0] === h.classicRoom).map((c: any[]) => c[1]);
+    expect(inRoom).toEqual([t("dashboard.deprecated"), t("web.guest_sent")]);
+  });
+
+  it("a private chat /dashboard: notice then the guest code; /web still has no notice", async () => {
+    const h = rig();
+    h.openDm();
+    await h.inbound("alice", "/dashboard");
+    expect(h.adapter.sendText.mock.calls.map((c: any[]) => c[1])).toEqual([t("dashboard.deprecated"), t("web.guest_sent")]);
+    expect(h.s.webGuestLoginCodes.hasCodeFor({ adapterId: "owner", userId: "alice" })).toBe(true);
+
+    const w = rig();
+    w.openDm();
+    await w.inbound("alice", "/web");
+    expect(w.adapter.sendText.mock.calls.map((c: any[]) => c[1])).toEqual([t("web.guest_sent")]);
+    expect(JSON.stringify(w.adapter.sendText.mock.calls)).not.toContain(t("dashboard.deprecated"));
+  });
+
+  it("foreign-bot and bare-group /dashboard stay silent; eligibility and private codes unchanged", async () => {
+    const h = rig();
+    h.openDm();
+    const guest = vi.spyOn(h.s, "guestWebCommand");
+    await h.inbound(h.classicRoom, "/dashboard@otherbot");
+    await h.inbound(h.classicRoom, "/dashboard");
+    expect(guest).not.toHaveBeenCalled();
+    expect(h.adapter.sendDirect).not.toHaveBeenCalled();
+    expect(h.adapter.sendText).not.toHaveBeenCalled();
+    expect(h.s.webGuestLoginCodes.size).toBe(0);
+
+    await h.inbound(h.classicRoom, `/dashboard@${BOT}`);
+    expect(guest).toHaveBeenCalledTimes(1);
+    expect(h.s.webGuestLoginCodes.hasCodeFor({ adapterId: "owner", userId: "alice" })).toBe(true);
+  });
+});
+
 describe("Discord ClassicBot rooms", () => {
   it("the slash command in this bot's server: the room's door lets a guest through to its guest code; another server's: not", async () => {
     const h = rig("discord");

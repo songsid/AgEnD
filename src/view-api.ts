@@ -35,7 +35,7 @@ import { serveAppShell, type AppShellContext } from "./web-api.js";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFile } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { promisify } from "node:util";
 import { tmuxExecHelper } from "./tmux-exec-helper.js";
 import type { IncomingMessage, ServerResponse } from "node:http";

@@ -417,7 +417,7 @@ describe("within one navigation, an older answer never lands over a newer one; a
   });
 
   const openEditor = async (s: Awaited<ReturnType<typeof setup>>) => {
-    s.p.root.querySelectorAll(".v-card .btn").find((b: any) => b.textContent.includes("Edit")).click();
+    s.p.root.querySelectorAll(".v-id .btn").find((b: any) => b.textContent.includes("Edit")).click();
     await settle(4);
     return s.p.root.querySelector("dialog");
   };

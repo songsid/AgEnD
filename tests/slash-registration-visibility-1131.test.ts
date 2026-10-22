@@ -51,18 +51,28 @@ async function register(setImpl?: (commands: any) => Promise<unknown>) {
   return outcomes[0] as Record<string, unknown>;
 }
 
-describe("/dashboard is registered with its revoke action (#1260)", () => {
-  it.each(["en", "zh-TW"] as const)("%s: an optional `action` whose one choice is revoke, described within Discord's 100 characters", async (locale) => {
-    const { setLocale } = await import("../src/locale.js");
+describe("/web and /dashboard are registered with revoke; /dashboard is marked deprecated (#1260 / #2359)", () => {
+  it.each(["en", "zh-TW"] as const)("%s: both names, optional `action` revoke, descriptions within Discord's 100 characters", async (locale) => {
+    const { setLocale, t } = await import("../src/locale.js");
     setLocale(locale);
     try {
-      let sent: Array<{ name: string; options?: Array<{ name: string; description: string; required?: boolean; choices?: unknown[] }> }> = [];
+      let sent: Array<{ name: string; description: string; options?: Array<{ name: string; description: string; required?: boolean; choices?: unknown[] }> }> = [];
       await register(async (commands: typeof sent) => { sent = commands; return new Map(); });
+      const web = sent.find(c => c.name === "web")!;
       const dashboard = sent.find(c => c.name === "dashboard")!;
-      expect(dashboard.options).toHaveLength(1);
-      expect(dashboard.options![0]).toMatchObject({ name: "action", required: false, choices: [{ name: "revoke", value: "revoke" }] });
-      expect(dashboard.options![0]!.description.length).toBeGreaterThan(0);
-      expect(dashboard.options![0]!.description.length).toBeLessThanOrEqual(100);
+      expect(web).toBeTruthy();
+      expect(dashboard).toBeTruthy();
+      expect(dashboard.description).toContain(t("slash.dashboard"));
+      expect(dashboard.description).toMatch(/Deprecated|已棄用/);
+      expect(web.description).not.toMatch(/Deprecated|已棄用/);
+      for (const cmd of [web, dashboard]) {
+        expect(cmd.options).toHaveLength(1);
+        expect(cmd.options![0]).toMatchObject({ name: "action", required: false, choices: [{ name: "revoke", value: "revoke" }] });
+        expect(cmd.description.length).toBeGreaterThan(0);
+        expect(cmd.description.length).toBeLessThanOrEqual(100);
+        expect(cmd.options![0]!.description.length).toBeGreaterThan(0);
+        expect(cmd.options![0]!.description.length).toBeLessThanOrEqual(100);
+      }
     } finally { setLocale("en"); }
   });
 });

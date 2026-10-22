@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile } from "../child-process.js";
 import { statSync } from "node:fs";
 import { promisify } from "node:util";
 

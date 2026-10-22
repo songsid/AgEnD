@@ -1,7 +1,7 @@
-import { PUBLIC_TUNNEL_TOKEN_ENV, validPublicTunnelToken } from "./public-tunnel-config.js";
+import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
 import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
-import { SettingsConfirmationStore, type SettingsPendingView } from "./settings-confirmation.js";
+import { SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView } from "./settings-confirmation.js";
 import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
 import { SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
@@ -300,7 +300,7 @@ import {
   type ToolSetName,
   type ToolSink,
 } from "./tool-permissions.js";
-import { authorizeSession, decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
+import { authorizeSession, decideWebGate, loadOrCreateWebToken, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
 import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
@@ -393,6 +393,7 @@ import {
   type RestartProgressTarget,
 } from "./restart-progress.js";
 import { launchFullRestartHelper, type FullRestartHelperHandle } from "./full-restart.js";
+import { fullReloadExitCode } from "./service-owner.js";
 import { SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE } from "./service-restart-selection.js";
 import { collectRedundantInstanceDefaultPaths } from "./fleet-yaml-slim.js";
 import { StormWindow, type StormSnapshot } from "./storm-window.js";
@@ -1750,7 +1751,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!this.settingsNoticeGenerals(affected, chat.platform).length) return null;
     const name = this.webPerson({ adapterId: actor.adapter_id, userId: actor.user_id }).name;
     return {
-      label: `${name} (web-verified)`,
+      label: t("settings_confirm.web_verified_label", name),
       // admin() asks chat.current() too; a General a card could go to must still be there (else the host CLI's).
       current: () => !!verified() && chat.admin(actor.user_id) && this.settingsNoticeGenerals(affected, chat.platform).length > 0,
       done: view => this.settingsWebConfirmedNotice(view, affected, name, chat.platform),
@@ -1776,7 +1777,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async settingsWebConfirmedNotice(view: SettingsPendingView, affected: readonly string[], who: string, platform: "telegram" | "discord"): Promise<void> {
     const outcome = view.outcome ? view.outcome.message : view.state;
-    const text = `✅ Settings change confirmed from the web by ${who} (web-verified)\nSource: ${view.source}\nRequester: ${view.requested_by}\n${view.summary.join("\n")}\nOutcome: ${outcome}`;
+    const text = [t("settings_confirm.web_confirmed", who), t("settings_confirm.source", settingsSourceLabel(view.source)),
+      t("settings_confirm.requester", view.requested_by), ...view.summary, t("settings_confirm.outcome", outcome)].join("\n");
     for (const { adapterId, adapter, chatId, topic } of this.settingsNoticeGenerals(affected, platform)) {
       try { await adapter.sendText(chatId, text, { threadId: topic, allowedMentions: { parse: [] } }); return; }
       catch { this.logger.info({ id: view.id, adapterId }, "Settings web-confirmation notice unavailable; trying another General"); }
@@ -1848,9 +1850,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try {
         const posted = this.postNonceButtonPromptOrThrow({ prefix: "settings-confirm:", alertType: "clear_confirm",
           instanceName: name, adapterId, adapter, chatId, threadId: topic,
-          message: `🔒 Settings change awaiting fleet-admin confirmation\nSource: ${view.source}\nRequester: ${view.requested_by}\n${view.summary.join("\n")}`,
-          choices: [{ action: "confirm", label: "Confirm" }, { action: "reject", label: "Reject" }],
-          expiredText: "Settings confirmation is no longer pending.", timeoutMs: view.remaining_ms,
+          message: [t("settings_confirm.prompt_title"), t("settings_confirm.source", settingsSourceLabel(view.source)),
+            t("settings_confirm.requester", view.requested_by), ...view.summary].join("\n"),
+          choices: [{ action: "confirm", label: t("settings_confirm.confirm_button") }, { action: "reject", label: t("settings_confirm.reject_button") }],
+          expiredText: t("settings_confirm.no_longer_pending"), timeoutMs: view.remaining_ms,
           extra: { pendingChangeId: view.id, confirmationCurrent: current, confirmationAdmin: userId => current() && authority.admin(userId) },
         });
         void posted.then(nonce => {
@@ -1858,13 +1861,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const entry = this.pendingNonceButtons.get(nonce);
           if (entry?.pendingChangeId !== view.id) return;
           this.pendingNonceButtons.delete(nonce); clearTimeout(entry.timer);
-          void this.retireNonceButtons(entry, entry.messageId ?? "", "Settings confirmation delivery expired.");
+          void this.retireNonceButtons(entry, entry.messageId ?? "", t("settings_confirm.delivery_expired"));
         }, () => {});
         const nonce = await withinBudget(posted, postingDeadline); attached = true;
         const retire = (): void => {
           const entry = this.pendingNonceButtons.get(nonce); if (!entry || entry.pendingChangeId !== view.id) return;
           this.pendingNonceButtons.delete(nonce); clearTimeout(entry.timer);
-          void this.retireNonceButtons(entry, entry.messageId ?? "", "Settings confirmation is no longer pending.");
+          void this.retireNonceButtons(entry, entry.messageId ?? "", t("settings_confirm.no_longer_pending"));
         };
         if (!current()) { retire(); continue; }
         if (store.attachPrompt(view.id, retire)) return;
@@ -1882,12 +1885,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { entry, action } = result;
     try {
       const view = await this.settingsGate().store.decide(entry.pendingChangeId!, action as "confirm" | "reject", {
-        label: `fleet admin ${data.userId}`,
+        label: t("settings_confirm.admin_label", data.userId ?? ""),
         current: () => entry.confirmationCurrent?.() === true && this.getAdapterForInstance(entry.instanceName) === entry.adapter
           && !!data.userId && entry.confirmationAdmin?.(data.userId) === true,
       });
-      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, view.outcome?.message ?? "Settings change is applying.");
-    } catch { await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, "Settings confirmation rejected or expired."); }
+      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, view.outcome?.message ?? t("settings_confirm.applying"));
+    } catch { await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("settings_confirm.rejected_or_expired")); }
     return true;
   }
 
@@ -3208,8 +3211,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info(`Received SIGUSR1, initiating full restart (process reload)... ${describeSignalSource(this.dataDir, "SIGUSR1")}`);
     this.gracefulShutdownForReload()
       .then(() => {
-        this.logger.info("Full restart: shutdown complete, exiting for reload");
-        process.exit(0);
+        // #2356: under an AgEnD systemd unit a clean exit is a stop (Restart=on-failure); exit so the unit comes back.
+        let ownCgroup: string | null = null;
+        try { ownCgroup = readFileSync("/proc/self/cgroup", "utf-8"); } catch { /* not Linux */ }
+        const code = fullReloadExitCode(ownCgroup);
+        this.logger.info(code === 0
+          ? "Full restart: shutdown complete, exiting for reload"
+          : `Full restart: shutdown complete, exiting ${code} so the systemd unit restarts the fleet (#2356)`);
+        process.exit(code);
       })
       .catch(err => {
         this.logger.error({ err }, "Full restart: graceful shutdown failed");
@@ -3229,7 +3238,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const chatId = String(this.getChannelConfig(adapterId)?.group_id ?? data.channelId);
       this.beginUpdateProgress(adapter, chatId, data.channelId, messageId);
     }
-    const { spawn } = await import("node:child_process");
+    const { spawn } = await import("./child-process.js");
     // Plain `agend update`: the CLI picks the channel from the version it is about to replace (a beta install
     // stays on beta). Deciding here, from the package.json next to THIS code, read a source checkout's 1.22.0 as
     // "not a beta" and sent a beta install to @latest. #1450 C5: the INSTALLED agend, verified, by absolute path.
@@ -4621,6 +4630,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async dispatchSlashCore(slash: ClassicStartSlashData, adapterId: string, adapter: ChannelAdapter): Promise<void> {
     // #1569: an alias (/web) is its command (/dashboard) from here on — the door, the table and the handler see one name.
     const data: ClassicStartSlashData = { ...slash, command: canonicalCommand(slash.command) };
+    // #2359: /dashboard stays listed; prefix its reply with the deprecation notice, then run /web's handler.
+    const noteDeprecatedDashboard = () => {
+      if (slash.command !== "dashboard") return;
+      const prefix = `${t("dashboard.deprecated")}\n\n`;
+      const respond = data.respond;
+      data.respond = async (text: string) => respond(prefix + text);
+      if (data.respondButtons) {
+        const respondButtons = data.respondButtons;
+        data.respondButtons = async (text, choices) => respondButtons(prefix + text, choices);
+      }
+    };
     const door = this.slashDoor(data, adapterId);
     if ("refusal" in door) {
       await data.respond(t(door.refusal)).catch(() => { /* the interaction may already be gone */ });
@@ -4631,6 +4651,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // — before the table, which keeps /web for fleet admins. Per account: it touches no instance binding.
     // Decided synchronously, so an admin's /web still reaches the table with no await after the door (#1399).
     if (data.command === "dashboard" && this.isGuestWebAsk(adapterId, data.userId)) {
+      noteDeprecatedDashboard();
       await this.guestWebCommand({ adapterId, userId: data.userId, username: data.username,
         arg: String(data.options?.action ?? "").trim().toLowerCase(), replyHere: text => data.respond(text), replyPrivately: text => data.respond(text) });
       return;
@@ -4659,6 +4680,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await data.respond(reply).catch(() => { /* the interaction may already be gone */ });
       return;
     }
+
+    noteDeprecatedDashboard();
 
     if (data.command === "start") {
       await this.handleClassicStartSlash(data, adapterId);
@@ -7870,7 +7893,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onRestart = () => this.onGracefulRestartSignal(() => process.once("SIGUSR2", onRestart));
     process.once("SIGUSR2", onRestart);
 
-    // SIGUSR1: full process reload (graceful stop → exit → CLI restarts)
+    // SIGUSR1: full process reload (graceful stop → exit). Nothing in this AgEnD sends it any more (#2356); an older
+    // CLI or a hand-sent signal still may, and the exit code then lets the owning manager start the next fleet.
     process.once("SIGUSR1", () => this.onFullRestartSignal());
 
     // A SIGHUP may arrive after the PID/general is available but before the
@@ -8723,7 +8747,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             // means we cannot verify the pane, which is treated as dead (the same
             // conclusion the old code reached only by throwing).
             try {
-              const { execFile } = await import("node:child_process");
+              const { execFile } = await import("./child-process.js");
               const { promisify } = await import("node:util");
               const { getTmuxSocketName } = await import("./paths.js");
               // Honour socket isolation: without -L this queried the user's default
@@ -9386,6 +9410,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // #1920 step 4b-3: /web typed in a ClassicBot room (a group: `/web@ThisBot`) by someone who is not a fleet admin,
         // while guest sign-in is on: their guest code, privately — as anywhere else. An admin's goes on as before.
         if (/^\/(?:web|dashboard)(?:\s|$)/i.test(text) && msgAdapter && this.isGuestWebAsk(msg.adapterId, msg.userId)) {
+          // #2359: this door must not skip the deprecation notice TopicCommands shows on /dashboard.
+          if (/^\/dashboard(?:\s|$)/i.test(text)) {
+            await msgAdapter.sendText(chatId, t("dashboard.deprecated")).catch(() => {});
+          }
           await this.guestWebCommand({ adapterId: msg.adapterId!, userId: msg.userId, username: msg.username,
             arg: text.replace(/^\/(?:web|dashboard)/i, "").trim().toLowerCase(), replyHere: body => msgAdapter.sendText(chatId, body) });
           return;
@@ -12942,7 +12970,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
     const backend = this.fleetConfig?.defaults?.backend || "claude-code";
     try {
-      const { execFile } = await import("node:child_process");
+      const { execFile } = await import("./child-process.js");
       const { promisify } = await import("node:util");
       // execFile with an argv array — no shell, so the backend name cannot be
       // interpreted as a command even if config is malformed.
@@ -19853,11 +19881,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    */
   stopAll(): Promise<void> {
     this.stopAllInFlight ??= this.doStopAll().finally(() => {
-      this.stopAllInFlight = null;
       // #1956: after the stop's own tmux work; anything later goes direct. A later startAll starts it again.
       if (this.tmuxExecHelperTimer) { clearInterval(this.tmuxExecHelperTimer); this.tmuxExecHelperTimer = null; }
-      tmuxExecHelper.stop();
-    });
+      // #2364: and the stop waits (bounded) for the helper to leave on its own, before the caller exits the process.
+      return tmuxExecHelper.stop();
+    }).finally(() => { this.stopAllInFlight = null; });
     return this.stopAllInFlight;
   }
   private tmuxExecHelperTimer: ReturnType<typeof setInterval> | null = null;
@@ -20793,9 +20821,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     const tunnel = spec.kind === "tunnel_token";
     if (!tunnel && !spec.verifier) return { ok: false, status: "unsupported_verifier", error: "this provider has no supported verifier" };
-    if (input.clear && (!tunnel || input.secret !== "") || tunnel && !(input.clear === true && input.secret === "" || validPublicTunnelToken(input.secret))
-      || !input.clear && (!input.secret || input.secret.length > 4096 || /[\r\n\0]/.test(input.secret) || /[^\x20-\x7e]/.test(input.secret))) {
-      return { ok: false, status: "invalid", error: "secret is invalid" };
+    const secret = tunnel && !input.clear ? normalizePublicTunnelToken(input.secret) : input.secret;
+    if (input.clear && (!tunnel || input.secret !== "")
+      || !input.clear && (!secret || secret.length > 4096 || /[\r\n\0]/.test(secret) || /[^\x20-\x7e]/.test(secret))) {
+      return { ok: false, status: "invalid", error: tunnel ? PUBLIC_TUNNEL_TOKEN_HINT : "secret is invalid" };
     }
     const challengeKey = `${input.sessionBinding}:api_key:${spec.id}:${spec.envKey}:${input.idempotencyKey}`;
     const existingId = this.providerSecretChallengesByKey.get(challengeKey);
@@ -20823,7 +20852,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       operation: "provider-secret.apply",
       idempotencyKey: input.idempotencyKey,
       expiresAt, deadline: performance.now() + SECRET_CHALLENGE_TTL_MS,
-      secret: input.secret,
+      secret: secret!,
     };
     this.providerSecretChallenges.set(challenge.id, challenge);
     this.providerSecretChallengesByKey.set(challengeKey, challenge.id);
@@ -21867,7 +21896,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // up to 15s each, and on a beta build BOTH ran — 30s with no WATCHDOG ping,
       // past WatchdogSec's half-interval and enough for systemd to SIGABRT the fleet
       // for a background version check.
-      const { execFile } = await import("node:child_process");
+      const { execFile } = await import("./child-process.js");
       const { promisify } = await import("node:util");
       const execFileP = promisify(execFile);
       const npmVersion = async (spec: string): Promise<string> => {
@@ -22216,6 +22245,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
             history: () => this.webChatHistory,
             // #1920 §5.1: guests chat unless the host made them read-only (web.guests.chat: false).
             chat: () => this.fleetConfig?.web?.guests?.chat !== false });
+        }
+        if (decision.via === "session" && this.webToken) {
+          const upgrade = sessionCookieUpgrade(req, this.webToken, decision.session);
+          // No cookie header is set before this gate; auth routes own their headers separately.
+          if (upgrade) res.setHeader("Set-Cookie", upgrade);
         }
       }
 

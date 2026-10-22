@@ -95,5 +95,5 @@ Fix all errors before `agend reload`; warnings are advisory.
 **After editing config:**
 ```bash
 agend reload              # hot-reload (SIGHUP) — behavior switches apply without restart
-agend fleet restart       # if channel or other cold defaults changed
+agend restart             # if channel or other cold defaults changed (--yes from a fleet session)
 ```

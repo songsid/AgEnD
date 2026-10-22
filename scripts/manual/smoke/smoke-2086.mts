@@ -42,7 +42,7 @@ for (const focus of foci) {
   fx.seedTheme(NAME, { v: 1, card } as never);
   for (const width of widths) {
     const phone = width < 600;
-    const { ctx, page } = await fx.page({ ...c, device: phone ? "phone" : "desk" }, { storage: { agend_view_card_expanded: "1", agend_chat_card: "open" } });
+    const { ctx, page } = await fx.page({ ...c, device: phone ? "phone" : "desk" }, { storage: { agend_chat_card: "open" } });
     await page.setViewportSize({ width, height: phone ? 844 : 1000 });
     const rows: string[] = [];
     for (const size of ["s", "m", "l"]) {
@@ -105,7 +105,7 @@ if (TAG !== "before") {
 if (TAG !== "before") {
   results.layouts = [];
   for (const [label, width, storage] of [["900 + 420 sidebar", 900, { agend_sidebar_w: "420" }], ["1366 + usage rail", 1366, { agend_usage_rail: "1" }], ["1280 + 480 sidebar + rail", 1280, { agend_sidebar_w: "480", agend_usage_rail: "1" }]] as const) {
-    const { ctx, page } = await fx.page(c, { storage: { ...storage, agend_view_card_expanded: "1", agend_chat_card: "open" } });
+    const { ctx, page } = await fx.page(c, { storage: { ...storage, agend_chat_card: "open" } });
     await page.setViewportSize({ width, height: 1000 });
     for (const size of ["s", "m", "l"]) {
       fm.webPrefs.write("operator", new Map<string, unknown>([["card.size", size]]));
@@ -122,7 +122,7 @@ if (TAG !== "before") {
 // Edit profile's focus control (after only): the picture whole, the band every screen shows and a phone's, at each focus.
 if (TAG !== "before") {
   for (const width of [1366, 390]) {
-    const { ctx, page } = await fx.page({ ...c, device: width < 600 ? "phone" : "desk" }, { storage: { agend_view_card_expanded: "1" } });
+    const { ctx, page } = await fx.page({ ...c, device: width < 600 ? "phone" : "desk" });
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`${fx.base}/view/${enc(NAME)}`); await page.waitForTimeout(900);
     const edit = await page.$("button:has-text('Edit profile')");

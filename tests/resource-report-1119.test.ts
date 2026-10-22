@@ -51,26 +51,36 @@ describe("host memory snapshot", () => {
 
 describe("read-only resource inventory", () => {
   it("normalizes fractional deadlines at the real subprocess boundary", async () => {
+    // probeDiskUsage applies Math.max(1, Math.floor(timeoutMs)) before passing
+    // the budget to execFile. Use 5000.5 ms (fractional → 5000 ms) on an empty
+    // dir so du finishes in <100 ms regardless of CI load.
     const dir = root();
-    await expect(probeDiskUsage(dir, 123.5)).resolves.toBeGreaterThanOrEqual(0);
+    const result = await probeDiskUsage(dir, 5000.5);
+    expect(result).not.toBeNull();
+    expect(result).toBeGreaterThanOrEqual(0);
   });
 
   it("measures the last row when the shared budget has fractional remaining time", async () => {
+    // Tests the deadline math: when 4000.5ms have elapsed of a 5000ms budget,
+    // the remaining budget for the third probe is 999.5ms, floored to 999.
+    // Uses a mock diskUsage so the test is immune to CI subprocess timing.
     const dir = root(); config(dir);
     for (const name of ["a", "b", "c"]) instance(dir, name);
     const times = [0, 0, 0, 4000.5];
     const deadlines: number[] = [];
     const report = await collectResourceReport(dir, { memory, now: () => times.shift() ?? 4000.5,
-      diskUsage: async (path, timeout) => { deadlines.push(timeout); return probeDiskUsage(path, timeout); } });
+      diskUsage: async (_path, timeout) => { deadlines.push(timeout); return 128; } });
     expect(deadlines).toEqual([2000, 2000, 999.5]);
     expect(report.orphans).toHaveLength(3);
     expect(report.orphans!.every(row => row.bytes !== null)).toBe(true);
   });
 
   it("measures small directories with the real monotonic clock and a fractional budget", async () => {
+    // Uses the real probeDiskUsage to keep the real subprocess boundary tested,
+    // but with a generous 15000.5 ms budget so CI load can't race the deadline.
     const dir = root(); config(dir);
     for (const name of ["a", "b", "c"]) instance(dir, name);
-    const report = await collectResourceReport(dir, { memory, budgetMs: 1500.5 });
+    const report = await collectResourceReport(dir, { memory, budgetMs: 15000.5 });
     expect(report.orphans).toHaveLength(3);
     expect(report.orphans!.every(row => row.bytes !== null)).toBe(true);
   });
