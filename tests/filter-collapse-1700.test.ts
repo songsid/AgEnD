@@ -61,7 +61,7 @@ const shown = (pg: AppPage, i: number) => {
 };
 const toggle = async (pg: AppPage, i: number) => { head(pg, i).click(); await settle(); };
 const chip = (pg: AppPage, i: number, label: string) => facet(pg, i).querySelectorAll(".nav-chip").find((c: any) => c.textContent === label).querySelector("input");
-const STATUS = ["working", "needs you", "idle", "stopped", "crashed"];
+const STATUS = ["working", "needs you", "starting", "idle", "stopped", "crashed"];
 const CLIS = ["Claude Code", "Codex", "Grok Build", "Kiro CLI"];
 
 describe("a filter group folds and opens behind its header", () => {
