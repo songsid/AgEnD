@@ -23,6 +23,7 @@ import type { WebEffectService } from "./web-effect-service.js";
 import type { EffectTrialActor } from "./web-effect-trials.js";
 import { EFFECT_WIRE_LIMIT } from "./web-effect-upload.js";
 import type { ThemeStore } from "./web-theme-store.js";
+import type { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import type { WebAppearance } from "./web-appearance.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { crossInstanceVisibility } from "./cross-instance-notice.js";
@@ -421,6 +422,10 @@ export interface WebApiContext {
   readonly appIcon?: AppIconStore;
   /** #1629: every instance's theme (web-themes.json), read by the page; a person's reset and lock. */
   readonly themeStore?: ThemeStore;
+  /** Fleet → Org chart → Office: the offices people made (web-offices.json); absent: /ui/offices is not offered. */
+  readonly officeStore?: OfficeStore;
+  /** How often a person may save the offices (absent: no limit, as in a test without it). */
+  readonly officeWrites?: OfficeWriteLimiter;
   readonly webAppearance?: WebAppearance;
   /** #1629 r4-5: installed mods and a person's staged import. */
   readonly mods?: ModStore;
@@ -1699,6 +1704,56 @@ export function handleWebRequest(
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Theme reset/lock failed");
       try { json(res, 500, { error: "Theme change failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
+  // ── Fleet → Org chart → Office: the offices people made (web-offices.json, web-office-store.ts) ──
+  // GET /ui/offices: { rev, offices, readable } for whoever may open the org chart (the public link too: it reads the
+  // chart; a guest's routes do not include it). PUT /ui/offices { offices, rev? }: a person's change, as a theme's reset
+  // or lock is — an admin session only, never the CLI token, never the public link (absent from its manifest, and
+  // refused here too); asked again once the body is in. Every page hears `offices` on the stream and reads again.
+  if (method === "GET" && path === "/ui/offices") {
+    const store = ctx.officeStore;
+    if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
+    json(res, 200, store.list());
+    return true;
+  }
+  if (method === "PUT" && path === "/ui/offices") {
+    const store = ctx.officeStore;
+    if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "offices_not_over_public_link" }); return true; }
+    // The person (an admin session's account), or the status that refuses the request.
+    const who = (): { person: string } | { status: number } => {
+      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      if (verdict.kind !== "allow") return { status: 401 };
+      return verdict.via === "session" && verdict.session?.tier === "admin" ? { person: verdict.session.owner ? webPersonKey(verdict.session.owner) : "admin-session" } : { status: 403 };
+    };
+    const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "offices_need_an_admin_session" });
+    const first = who();
+    if ("status" in first) { refuse(first.status); return true; }
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const now = who();
+      if ("status" in now) { refuse(now.status); return; }
+      if (!body || typeof body !== "object" || Array.isArray(body)) { json(res, 400, { error: "offices required" }); return; }
+      const extra = Object.keys(body).find(k => k !== "offices" && k !== "rev");
+      if (extra !== undefined) { json(res, 400, { error: "offices_invalid", detail: `unknown key "${extra}"` }); return; }
+      // Office review: the rev the page read is required — a save without one would overwrite another person's unseen.
+      if (body.rev === undefined) { json(res, 428, { error: "offices_rev_required", detail: "send the rev you read (GET /ui/offices)" }); return; }
+      if (!Number.isSafeInteger(body.rev)) { json(res, 400, { error: "offices_invalid", detail: "rev: an integer" }); return; }
+      const limiter = ctx.officeWrites, allowed = limiter ? limiter.check(now.person) : { ok: true as const };
+      if (!allowed.ok) { res.setHeader("Retry-After", String(allowed.retry_after_s)); json(res, 429, { error: "offices_rate_limited", retry_after_s: allowed.retry_after_s }); return; }
+      const r = store.replace(body.offices, body.rev as number);
+      if (!r.ok) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
+      limiter?.record(now.person);
+      ctx.emitSseEvent("offices", { rev: r.rev });
+      json(res, 200, { rev: r.rev, offices: r.offices });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Saving offices failed");
+      try { json(res, 500, { error: "Saving offices failed" }); } catch { /* already answered */ }
     });
     return true;
   }

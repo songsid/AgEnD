@@ -11,7 +11,7 @@ import { t, register } from "/assets/app-i18n.js";
 import { chatPath } from "/assets/app-route.js";
 import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
-import { modelText } from "/assets/instance-nav.js";
+import { backendLabel, modelText, namesOf } from "/assets/instance-nav.js";
 
 register("org", {
   en: {
@@ -54,6 +54,17 @@ export function orgState(i, exec, awaiting, needs) {
   if (exec === "stuck") return "stuck";
   if (exec === "working") return "working";
   return "idle";
+}
+
+/**
+ * What a node's card says (fleet-canvas.js; the Office view's desk too, fleet-office.js): its names, its state and
+ * backend (`sub`), and all of it in one line (`full`, the card's title and label).
+ */
+export function nodeText(n) {
+  const it = n.i;
+  const names = it ? namesOf(it) : { primary: n.name, secondary: "" };
+  const sub = it ? `${to(n.state)} · ${backendLabel(it.backend)}` : to(n.state);
+  return { primary: names.primary, secondary: names.secondary, sub, full: `${names.primary}${names.secondary ? ` (${names.secondary})` : ""} — ${sub}` };
 }
 
 /**

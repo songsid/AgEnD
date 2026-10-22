@@ -234,6 +234,19 @@ Click a team header to fold it. **Find** dims everything that doesn't match. A c
 and backend; clicking it opens the chat. List mode adds the description, model, a link to the Discord thread or
 Telegram topic, and **Open chat**.
 
+**Office** (the third view, remembered per device) draws the same fleet as a pixel office: a room per team, a desk
+per instance with a name tag, General and "Not in a team" in the **Lobby**. Each little person is its state: typing
+with the lamp on (working), tea break (idle), asleep behind a **Closed** sign (paused/stopped), a hand up under a
+blinking light (needs you, crashed, looks stuck). With **Live** on, each message, delegation and report is carried
+desk to desk along the corridors in the Key's colours; a delegation in progress is a purple folder on the worker's
+desk. Hover (or tap once) a desk for its name, state and backend; click (or tap again) opens the chat. **Find** dims
+the rest. **Show** picks a team or the Lobby and **People** pins chosen instances (both kept per browser); the
+**Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`; changing them takes
+an admin session, never the public link — v1 has no editor). **Style** (per browser): **Desks** (the default) or
+**Studio** — one scene (Work, Lounge, Help desk, Nap corner) where each instance walks to the area for its state.
+Now and then someone says a short line for their state in a bubble (never message content). Reduced motion: still
+poses, nothing in the air, bubbles shown whole.
+
 **Live traffic** (**Live** switch, on by default; **Key** in the toolbar explains it, as a strip above the canvas): a line for each message between instances.
 Colour by kind — task (delegate_task) purple, send/query/update teal, report pink, broadcast orange; between teams
 (zoomed out) slate. Dotted = queued, dashed with a moving pulse = being delivered, grey fading for 12 s = delivered or

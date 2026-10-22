@@ -35,7 +35,7 @@ const sensitiveNames = [
   "claude.md", "agents.md", "mcp-config.json", "claude-settings.json", "credentials.json", "opencode.json", "opencode.jsonc",
   "config.toml", "settings.json", "settings.local.json", "auth.json", "history.jsonl", "agent.token", "session-id", "session-id.backend",
   "fleet.yaml", "classicbot.yaml", "web-sessions.json", "web-devices.json", "web-prefs.json", "web-effects.json", "web-mods.json",
-  "web-themes.json", "web-effect-profiles.json", "kiro-engine-ledger.json", "cache-codex-rollouts.json", "settings-apply-jobs.json",
+  "web-themes.json", "web-offices.json", "web-effect-profiles.json", "kiro-engine-ledger.json", "cache-codex-rollouts.json", "settings-apply-jobs.json",
   "cancel-buttons.json", "forged-envelope-reports.json", "upgrade-notices.json", "fleet.lock", "fleet.pid", "fleet.log", "daemon.log",
   "restart-audit.log", "tunnel.lease", "service-plan.json", "update-in-progress.json", "self-restart.json", "setup-complete.json",
 ];

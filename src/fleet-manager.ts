@@ -206,6 +206,7 @@ import { OPERATOR, WebPrefsStore } from "./web-prefs.js";
 import { agendVersion } from "./agent-whats-new.js";
 import { OwnerCssStore } from "./web-owner-css-store.js";
 import { ThemeStore } from "./web-theme-store.js";
+import { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import { WebAppearance } from "./web-appearance.js";
 import { WebEffectLibrary } from "./web-effect-library.js";
 import { WebEffectTrials } from "./web-effect-trials.js";
@@ -1431,6 +1432,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // r4.1 Q3 (b): the card's limits are read from fleet.yaml at each upload (a change applies without a restart).
     return (this.themeStoreInstance ??= new ThemeStore(this.dataDir, { limits: () => effectiveAppearanceLimits(this.fleetConfig?.web?.appearance).limits, effectsDropped: ids => this.effectLibrary.collectUnreferenced(ids) }));
   }
+  private officeStoreInstance?: OfficeStore;
+  /** Fleet → Org chart → Office: the offices people made (web-offices.json, beside web-themes.json). */
+  get officeStore(): OfficeStore { return (this.officeStoreInstance ??= new OfficeStore(this.dataDir)); }
+  /** How often a person may save the offices (PUT /ui/offices); memory only, as the appearance limiter. */
+  readonly officeWrites = new OfficeWriteLimiter();
   /** #1629: the theme tools, a person's reset and lock, and the one appearance rate limiter (shared with effects). */
   get webAppearance(): WebAppearance {
     return (this.webAppearanceService ??= new WebAppearance(this.themeStore, () => this.fleetConfig?.web ?? null,
