@@ -189,7 +189,7 @@ try:
     (ROOT/'guard-tests.log').write_text(tests.stdout)
     check('real Daemon guard suites inside isolated container', tests.returncode == 0, tests.stdout[-3000:])
     receipt['guard_test_boundary'] = 'Actual Daemon decisions; fake proc/journal evidence. Nested-container PID attribution is deliberately unknown in production.'
-    native = as_user(f'systemd-run --user --wait --pipe --collect --working-directory={PKG} --unit=oom-native-tests -p MemoryMax=512M -p MemorySwapMax=0 -p CPUQuota=200% node node_modules/vitest/vitest.mjs run --config vitest.config.integration.ts tests/tmux-manager.test.ts tests/tmux-control-native-1401.test.ts -t "reuses one window id|respawns a process|matches window/pane reads" --maxWorkers=1', timeout=90)
+    native = as_user(f'systemd-run --user --wait --pipe --collect --working-directory={PKG} --unit=oom-native-tests -p MemoryMax=512M -p MemorySwapMax=0 -p CPUQuota=200% node node_modules/vitest/vitest.mjs run --config vitest.config.integration.ts tests/tmux-manager.test.ts tests/tmux-control-native-1401.test.ts -t "creates and detects session|reuses one window id|respawns a process|matches window/pane reads" --maxWorkers=1', timeout=90)
     (ROOT/'native-tests.log').write_text(native.stdout)
     check('private native tmux pane PID contract', native.returncode == 0, native.stdout[-2000:])
 
