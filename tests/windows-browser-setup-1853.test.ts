@@ -16,6 +16,8 @@ import { afterAll, describe, expect, it } from "vitest";
 
 const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-agend.ps1");
 const text = readFileSync(INSTALLER, "utf8");
+// Stage 5 now prepares the private home before invoking an older release's setup/quickstart.
+const agendEnv = text.match(/^\$AGEND_ENV = '((?:[^']|'')*)'$/m)![1]!.replace(/''/g, "'");
 const code = text.split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
 const stage5 = code.slice(code.indexOf("Write-Step 5 $TOTAL"), code.indexOf('Write-Info "檢查 AgEnD 狀態..."'));
 const setupFn = code.slice(code.indexOf("function Invoke-SetupAndService"), code.indexOf("# ── AI 後端定義") > 0 ? code.indexOf("$ALL_BACKENDS") : undefined);
@@ -142,7 +144,7 @@ describe.skipIf(!pwsh)("with pwsh: stage 5's decisions (#2235 review: done only 
   });
   it("no page: the console quickstart runs on the console (its prompt shown, its input read) and counts only when it exits 0", () => {
     const { out } = stage5Run([[], []], [0], ["", ""], [1, 0], "first\nsecond\n");
-    expect(out).toContain("CHOICE-PROMPT> ANSWER=first ARGS=-d Ubuntu-24.04 -u root -- bash -lc export PATH=/root/.local/bin:$PATH; source /root/.nvm/nvm.sh 2>/dev/null; agend quickstart\n");
+    expect(out).toContain(`CHOICE-PROMPT> ANSWER=first ARGS=-d Ubuntu-24.04 -u root -- bash -lc ${agendEnv}agend quickstart\n`);
     expect(out).toContain("CHOICE-PROMPT> ANSWER=second");
     expect(out).toContain("主控台的設定沒有完成（結束碼 1）。");                // one exit code, never its output
     expect(out).toContain("RESULT=True LOG=setup,ask:,setup,ask:,service:0,quickstart:1,quickstart:0\n");
