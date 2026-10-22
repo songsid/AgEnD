@@ -114,7 +114,7 @@ describe("the filter: text, status and CLI, the same on every page and kept by t
       await go(path);
       expect([rowNames(pg), (pg.root.querySelector("#filterInput") as any).value], path).toEqual([["api-server"], "ap"]);
     }
-    expect(pg.root.querySelector(".v-filter .note")!.textContent).toBe("1 / 5 shown");
+    expect(pg.root.querySelector(".v-filter .note")!.textContent).toBe("1 / 5 shown Clear");
   });
 
   it("status chips: needs you, then working + idle; the count says it is filtered", async () => {
@@ -170,7 +170,7 @@ describe("the open instance stays on top while a filter is on (#1936)", () => {
     const a = block.querySelector("a.inst");
     expect([a.getAttribute("href"), a.getAttribute("aria-current"), a.classList.contains("active"), a.getAttribute("draggable")]).toEqual(["/ui/chat/web-dev", "page", true, null]);
     expect(pg.root.querySelectorAll("#instanceList a.inst")[0], "first in the list").toBe(a);
-    expect([pinnedNames(pg), rowNames(pg), pg.root.querySelector(".v-filter .note")!.textContent]).toEqual([["web-dev"], ["api-server"], "1 / 5 shown"]);
+    expect([pinnedNames(pg), rowNames(pg), pg.root.querySelector(".v-filter .note")!.textContent]).toEqual([["web-dev"], ["api-server"], "1 / 5 shown Clear"]);
     expect(pg.root.querySelector("#instanceList .side-empty"), "not \"no match\"").toBeNull();
   });
   it("a match: pinned once, not repeated in the results, and counted", async () => {
@@ -179,12 +179,12 @@ describe("the open instance stays on top while a filter is on (#1936)", () => {
     expect(pinnedNames(pg)).toEqual(["web-dev"]);
     expect(rowNames(pg)).not.toContain("web-dev");
     expect(pg.root.querySelectorAll("#instanceList a.inst").filter((a: any) => a.getAttribute("href") === "/ui/chat/web-dev").length).toBe(1);
-    expect(pg.root.querySelector(".v-filter .note")!.textContent).toBe(`${rowNames(pg).length + 1} / 5 shown`);
+    expect(pg.root.querySelector(".v-filter .note")!.textContent).toBe(`${rowNames(pg).length + 1} / 5 shown Clear`);
   });
   it("the only match: pinned, and \"no match\" is not shown", async () => {
     const pg = await app("/ui/chat/web-dev");
     await typeFilter(pg, "web-d");
-    expect([pinnedNames(pg), rowNames(pg), pg.root.querySelector("#instanceList .side-empty"), pg.root.querySelector(".v-filter .note")!.textContent]).toEqual([["web-dev"], [], null, "1 / 5 shown"]);
+    expect([pinnedNames(pg), rowNames(pg), pg.root.querySelector("#instanceList .side-empty"), pg.root.querySelector(".v-filter .note")!.textContent]).toEqual([["web-dev"], [], null, "1 / 5 shown Clear"]);
     expect(groups(pg), "its group, empty without it, is not shown").toEqual(["Current"]);
   });
   it("no filter, or no instance open: nothing pinned; clearing the filter puts it back in its group", async () => {
@@ -293,7 +293,7 @@ describe("#1776: the count is on the facet headers' row", () => {
 
   it("folded and open, filtered or not: the headers (and the reset) in their box, the count after it, in the same row", async () => {
     const pg = await app("/ui/chat/web-dev", { agend_nav_facets: '{"status":false,"cli":false}' });
-    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "note nav-shown"], groups: ["nav-facet", "nav-facet"], count: "5 / 5", live: "polite", ownRow: false });
+    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "note nav-shown"], groups: ["nav-facet", "nav-facet"], count: "5 / 5 Clear", live: "polite", ownRow: false });
     (pg.root.querySelector(".nav-facet-head") as any).click(); await settle();
     fire(chip(pg, "Status", "needs you"), "change"); await settle();
     // After the fix the reset button is inside nav-shown (inline), not in nav-facet-groups.
@@ -306,7 +306,7 @@ describe("#1776: the count is on the facet headers' row", () => {
 
   it("one CLI (no CLI group): the count beside the Status header, still in that row", async () => {
     const pg = await app("/ui/chat/web-dev", {}, [live("web-dev"), live("api-server")]);
-    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "note nav-shown"], groups: ["nav-facet"], count: "2 / 2", live: "polite", ownRow: false });
+    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "note nav-shown"], groups: ["nav-facet"], count: "2 / 2 Clear", live: "polite", ownRow: false });
   });
 
   it("the rules: the row does not wrap; the headers' box does, and may shrink; the count keeps its width at the right end", async () => {
@@ -333,9 +333,11 @@ describe("#1776: the count is on the facet headers' row", () => {
     expect(filterEl.children.length).toBe(childrenBefore);  // .v-filter has same child count
     expect(pg.root.querySelector(".nav-shown .nav-facet-reset")).not.toBeNull();   // Clear is inside nav-shown
     expect(pg.root.querySelector(".nav-facet-groups .nav-facet-reset")).toBeNull(); // not in the chips group
-    // Clear it: nav-facet-reset disappears but height stays the same
+    // Clear it: nav-facet-reset becomes invisible but height stays the same (visibility:hidden, not display:none)
     (pg.root.querySelector(".nav-facet-reset") as any).click(); await settle();
     expect(filterEl.children.length).toBe(childrenBefore);  // still same children
-    expect(pg.root.querySelector(".nav-facet-reset")).toBeNull();
+    const resetEl = pg.root.querySelector(".nav-facet-reset") as any;
+    expect(resetEl).not.toBeNull();  // always in DOM
+    expect(resetEl.getAttribute("aria-hidden")).toBe("true");  // invisible but preserving layout width
   });
 });
