@@ -19,6 +19,14 @@ export type DashboardFeature = typeof DASHBOARD_FEATURES[number];
 /** As written in fleet.yaml: each feature true (allowed), false (switched off) or absent (allowed). */
 export type DashboardAccess = Partial<Record<DashboardFeature, boolean>>;
 
+/**
+ * What a NEW fleet.yaml says about the features (the user's decision, 2026-10-22): the task board is off until the
+ * person switches it on (Settings → defaults, or per agent). Written, visibly, by every path that creates the file —
+ * `agend init`, `agend quickstart`, and the setup page (`agend setup`, the web quickstart before there is a fleet).
+ * An existing fleet.yaml is never rewritten: there, unset still allows.
+ */
+export const NEW_FLEET_DASHBOARD: Readonly<DashboardAccess> = Object.freeze({ task_board: false });
+
 /** Each feature's tools. Every appearance tool is the caller's own (no target); tests pin the lists to the profiles'. */
 export const DASHBOARD_FEATURE_TOOLS: Readonly<Record<DashboardFeature, readonly string[]>> = {
   appearance: [

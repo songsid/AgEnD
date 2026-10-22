@@ -9,6 +9,7 @@ import { getAgendHome } from "./paths.js";
 import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry } from "./cli-entry.js";
 import { dashboardLines, dashboardPort } from "./next-steps.js";
+import { NEW_FLEET_DASHBOARD } from "./dashboard-permissions.js";
 
 const DATA_DIR = getAgendHome();
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
@@ -195,6 +196,7 @@ export function buildFleetConfig(answers: WizardAnswers): Record<string, unknown
 
   fleetData.defaults = {
     ...(answers.backend !== "claude-code" ? { backend: answers.backend } : {}),
+    dashboard: { ...NEW_FLEET_DASHBOARD },                      // a new fleet: the task board is off until switched on
     restart_policy: {
       max_retries: 10,
       backoff: "exponential",
