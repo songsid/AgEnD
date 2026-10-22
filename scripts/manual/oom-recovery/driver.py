@@ -79,6 +79,9 @@ def policy(value):
     sd('daemon-reload')
 
 def child_hog(label, expect_restart):
+    # Reset drains the mock's disconnected long-poll resolvers; the reply
+    # proves the current adapter/MCP route before injecting a destructive command.
+    sibling_reply(label+' sibling ready before OOM')
     before = wait('ready before '+label, ready)
     group = P('/sys/fs/cgroup'+before['ControlGroup'])
     check(label+' effective inner cap', (group/'memory.max').read_text().strip() == '671088640', before)
@@ -173,6 +176,7 @@ try:
     check('explicit override reported and preserved', state()['OOMPolicy'] == 'stop' and 'OOMPolicy=stop' in override.stdout, override.stdout[-2000:])
     child_hog('stop-control', True)
     policy('continue'); sd('restart', UNIT); before = wait('main control ready', ready)
+    sibling_reply('main-control sibling ready before OOM')
     prior = events(P('/sys/fs/cgroup'))
     victim = P('/proc')/before['MainPID']
     check('main victim belongs to private fleet', str(PKG).encode() in (victim/'cmdline').read_bytes()
@@ -194,6 +198,10 @@ try:
     check('private native tmux pane PID contract', native.returncode == 0, native.stdout[-2000:])
 
 finally:
+    try:
+        (ROOT/'telegram-calls.json').write_text(json.dumps(calls(), indent=2))
+        (ROOT/'final-unit.json').write_text(json.dumps(state(), indent=2))
+    except Exception: pass
     try:
         (ROOT/'journal.log').write_text(as_user('journalctl --user -u com.agend.fleet --no-pager -n 150', ok=False).stdout)
     except Exception: pass

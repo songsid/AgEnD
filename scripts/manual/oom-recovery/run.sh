@@ -13,6 +13,9 @@ cleanup() {
   docker cp "$container:/opt/rehearsal/native-tests.log" "$output/native-tests.log" 2>/dev/null || true
   docker cp "$container:/opt/rehearsal/journal.log" "$output/journal.log" 2>/dev/null || true
   docker cp "$container:/home/rh/oom/home/daemon.log" "$output/daemon.log" 2>/dev/null || true
+  for evidence in telegram-calls.json final-unit.json telegram.log; do
+    docker cp "$container:/opt/rehearsal/$evidence" "$output/$evidence" 2>/dev/null || true
+  done
   docker logs "$container" > "$output/container.log" 2>&1 || true
   if [ "$(docker inspect -f '{{index .Config.Labels "agend.oom-rehearsal"}}' "$container" 2>/dev/null)" = "$nonce" ]; then
     docker rm -f "$container" > /dev/null
