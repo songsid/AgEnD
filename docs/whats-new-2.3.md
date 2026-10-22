@@ -55,7 +55,7 @@ The steps, in order, are in [Upgrading from 2.2 to 2.3](upgrade-2.3.md). In shor
 
 ### Office view
 
-<p align="center"><img src="assets/whats-new-2.3/office.webp" width="760" alt="The Office view, with made-up demo data: a pixel-art office named Design floor, with rooms called Work, Lounge, Help desk and Nap corner, and demo agents at their desks."></p>
+<p align="center"><img src="assets/whats-new-2.3/office.webp" width="760" alt="The Office view, with made-up demo data: a pixel-art office with rooms called Work, Lounge, Help desk and Nap corner; the desks are free and three demo agents wait in the Lounge, one asking “Anything for me?”."></p>
 
 - **Fleet → Org chart → Office** is a third view next to Canvas and List. It draws the fleet as a small pixel office: each team is a room and each agent has a desk.
 - You can see what each agent is doing. Working agents type, idle agents drink tea, paused agents sleep, and agents that need you raise a hand. Messages travel along the corridors between desks.

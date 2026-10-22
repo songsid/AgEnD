@@ -55,7 +55,7 @@
 
 ### Office 檢視
 
-<p align="center"><img src="assets/whats-new-2.3/office.webp" width="760" alt="Office 檢視（示範資料）：名為 Design floor 的像素風辦公室，有 Work、Lounge、Help desk、Nap corner 幾間房，示範 agent 坐在各自的桌前。"></p>
+<p align="center"><img src="assets/whats-new-2.3/office.webp" width="760" alt="Office 檢視（示範資料）：像素風的辦公室，有 Work、Lounge、Help desk、Nap corner 幾間房；桌子都空著，三個示範 agent 在 Lounge 等著，其中一個問「Anything for me?」。"></p>
 
 - **Fleet → 組織圖 → Office** 是和 Canvas、List 並列的第三種檢視。它把 fleet 畫成一間像素風的辦公室：每個團隊一間房，每個 agent 一張桌子。
 - 可以看出每個 agent 在做什麼：工作中會打字，閒置會喝茶，暫停會睡覺，需要你處理時會舉手。訊息會沿著走廊在桌子之間飛過去。
