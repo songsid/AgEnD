@@ -172,7 +172,7 @@ export function GuestsSection({ ctx, staged }) {
     setNow(Date.now());
     if (b.outcome === "wait") toast(tn("grantsWait"), false);
     else if (b.outcome === "admin_limit") toast(tn("grantsAdminLimit"), false);
-    else if (b.outcome !== "sent" && b.outcome !== "dm_failed") toast(tn("grantsCodeFailed", b.error || b.outcome || "?"), false);
+    else if (b.outcome !== "sent" && b.outcome !== "dm_failed") toast(tn("grantsCodeFailed", guestCodeReason(b)), false);
     load();
   };
   /** The state pill: what happened last with this person's code, or whether they are signed in. */
@@ -253,6 +253,10 @@ export const GuestsCard = GuestsSection;
  * #2347 search: this section's entries, in the registry's shape (web-claude's settings-registry.js merges them in when it
  * lands): id, section, card, label, the words a search finds it by, and the config key.
  */
+/** #2390: the send-code outcomes (fleet-manager sendGuestCodeByAdmin) and their words. */
+export const CODE_REASONS = { guests_off: "codeGuestsOff", admin: "codeAdmin", nothing: "codeNothing", starting: "codeStarting", paused: "codePaused", busy: "codeBusy", revoked: "codeRevoked" };
+/** Why a code was not sent, in this page's language (the server's `error` is English): by its outcome, else as sent. */
+export const guestCodeReason = (b) => (Object.prototype.hasOwnProperty.call(CODE_REASONS, b.outcome) ? tn(CODE_REASONS[b.outcome]) : b.error || b.outcome || "?");
 export const GUESTS_SETTINGS = [
   { id: "guests.enabled", section: "access", card: "guests", key: "web.guests.enabled",
     label: { en: "Guest sign-in", "zh-TW": "訪客登入" }, words: { en: ["guest", "sign in", "visitor", "share"], "zh-TW": ["訪客", "登入", "分享"] } },
