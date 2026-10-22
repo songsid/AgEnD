@@ -69,6 +69,7 @@ import { resolveTz } from "./tz-utils.js";
 import { filesPlayInChat } from "./web-effect.js";
 import { QUERY_MAX_CHARS, RESULT_MAX, SEARCH_SOURCES } from "./search/search-store.js";
 import { xmsgShown } from "./search/search-docs.js";
+import { WebSendDedupe, type WebSendClaim } from "./web-send-dedupe.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -2872,6 +2873,14 @@ function webDeliveryFailure(err: unknown): { reason: string; error: string } {
 }
 
 /** Handle POST /ui/send — extracted for readability. */
+/** Each web server's own memory of the sends it accepted by clientId (web-send-dedupe.ts). */
+const webSendDedupes = new WeakMap<object, WebSendDedupe>();
+function webSendDedupeOf(ctx: WebApiContext): WebSendDedupe {
+  let d = webSendDedupes.get(ctx);
+  if (!d) webSendDedupes.set(ctx, d = new WebSendDedupe());
+  return d;
+}
+
 function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebApiContext): void {
   const arrival = webAuthorityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);   // #1939 §3: again after the body
   let body = "";
@@ -2887,6 +2896,9 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
   });
   req.on("end", async () => {
       if (!permitWebContinuation(req, res, ctx)) return;
+    // A claimed clientId is settled however this ends: with the messageId once accepted, else forgotten.
+    let claim: Extract<WebSendClaim, { kind: "new" }> | undefined;
+    let acceptedId: string | null = null;
     try {
       const raw = JSON.parse(body);
       const parsed = SendMessageSchema.safeParse(raw);
@@ -2916,6 +2928,22 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         json(res, 404, { error: `Instance not found: ${instance}` });
         return;
       }
+      // #1827: who is writing — the name agents and chats see, and the id they tell people apart by. Asked now that the
+      // body is in: a session revoked meanwhile sends nothing (not as the operator).
+      const person = webPersonOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);
+      if (!person) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+      // #2438 follow-up: the page's Retry of a send that already went (its answer and the live copy lost) is that send:
+      // answered with its messageId, delivered once. One still going is waited for; one that failed is sent anew.
+      if (clientId) {
+        const key = WebSendDedupe.key(person.key, instance, clientId);
+        for (;;) {
+          const seen = webSendDedupeOf(ctx).claim(key);
+          if (seen.kind === "going") { await seen.settled; if (res.destroyed) return; continue; }
+          if (seen.kind === "accepted") { json(res, 200, { sent: true, messageId: seen.messageId, repeated: true }); return; }
+          claim = seen;
+          break;
+        }
+      }
       let files: UploadEntry[] = [];
       if (attachments.length > 0) {
         const taken = ctx.webFiles?.takeForMessage(instance, attachments);
@@ -2939,10 +2967,6 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         && (!guest || (guest.current() && !guestChatRefusal(guest, instance)))
         && (registered ? registeredChatInstance(ctx, instance) : ctx.instanceIpcClients.has(instance));
       const message = typed;
-      // #1827: who is writing — the name agents and chats see, and the id they tell people apart by. Asked now that the
-      // body is in: a session revoked meanwhile sends nothing (not as the operator).
-      const person = webPersonOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);
-      if (!person) { ctx.webFiles?.release(files); json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
       // #1939 S1: what the receipt records about who authorized it (observe only: agents still read web as recognition).
       const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx, instance));
       const ts = new Date().toISOString();
@@ -3039,9 +3063,12 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // #1920: the account that wrote it (a guest sees its own); channel-visible once its copy was sent (above).
       ctx.emitSseEvent("message", { instance, sender: person.name, role: "user", text: message, ts, attachments: files.map(publicAttachment), messageId, ...(person.bound ? { from: person.voterKey } : {}),
         ...(quoted ? { replyTo: webChatReplyRef(quoted) } : {}), ...(clientId ? { clientId } : {}) });
+      acceptedId = messageId;
       json(res, 200, { sent: true, messageId });
     } catch {
       json(res, 400, { error: "Invalid JSON" });
+    } finally {
+      claim?.settle(acceptedId);
     }
   });
 }

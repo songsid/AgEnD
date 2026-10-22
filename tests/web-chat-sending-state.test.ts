@@ -67,6 +67,16 @@ describe("the store: one bubble at once, then the server's copy — never both",
     s.ingest(copy());
     expect(texts(s)).toEqual(["server:hi"]);
   });
+  it("a Retry the server knows (it got the first; the answer was lost): its messageId settles the bubble on the copy already shown", async () => {
+    let answer: any = { status: 503, body: { error: "offline" } };
+    const { s } = await store((path) => (path === "/ui/send" ? answer : { body: {} }));
+    s.setDraft("w", "hi"); await s.send("w");
+    s.ingest(copy());                                                        // a poll brings the first one (no clientId)
+    expect(texts(s)).toEqual(["server:hi", "pending:failed:hi"]);
+    answer = { body: { sent: true, messageId: "m1", repeated: true } };
+    await s.retryOutgoing("w", s.state.outgoing.w[0].clientId);
+    expect(texts(s)).toEqual(["server:hi"]);
+  });
   it("…or the history read when the chat opens (by messageId)", async () => {
     const { s } = await store((path) => (path === "/ui/send" ? { body: { sent: true, messageId: "m1" } } : path.startsWith("/ui/history") ? { body: { messages: [copy()] } } : { body: {} }));
     s.setDraft("w", "hi"); await s.send("w");
