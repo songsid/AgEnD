@@ -441,7 +441,7 @@ export interface WebApiContext {
   modPlacedEffect?(person: string, id: string): { name: string; files: ReadonlyMap<string, Uint8Array> } | null;
   /** A fleet.yaml instance (own key) or a ClassicBot room, now. */
   isKnownInstance?(name: string): boolean;
-  startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
+  startInstance(name: string, config: unknown, topicMode: boolean, kind?: "fleet-topic" | "classic", resumePaused?: boolean): Promise<void>;
   stopInstance(name: string): Promise<{ backgroundWorkEnded: boolean }>;
   /** The fleet prompts open on the dashboard (web track C4); absent: none are offered. */
   listWebPrompts?(): unknown[];
@@ -2123,7 +2123,7 @@ export function handleWebRequest(
       let held = false;
       try {
         await withSpawnHoldReply(async message => { held = true; json(res, 202, { held: true, message, instance: name }); },
-          () => ctx.startInstance(name, config, topicMode ?? false));
+          () => ctx.startInstance(name, config, topicMode ?? false, "fleet-topic", true));
         ctx.emitSseEvent("status", ctx.getUiStatus());
         if (!held) json(res, 200, { started: name });
       } catch (err) {

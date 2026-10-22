@@ -3,6 +3,7 @@ import { measureSyncWork } from "./sync-work-attribution.js";
 import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync, statSync } from "node:fs";
 import { ensureInstanceDir } from "./private-dir.js";
+import { assertNoSessionOomStop } from "./session-oom-stop.js";
 import { execFileSync } from "node:child_process";
 import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
@@ -1602,6 +1603,7 @@ export class InstanceLifecycle {
     const epoch = this.epochOf(name);
     const check = (): void => { execution?.assert(); if (this.epochOf(name) !== epoch) throw new SupersededStartError(name); };
     check();
+    assertNoSessionOomStop(this.ctx.getInstanceDir(name));
     const seedNow = this.activitySeedNow.delete(name);
     if (this.daemons.has(name)) {
       this.ctx.logger.info({ name }, "Instance already running, skipping");
@@ -1875,6 +1877,7 @@ export class InstanceLifecycle {
   }
 
   private async wakeInTransition(name: string, timeoutMs: number, transition: TransitionHandle): Promise<void> {
+    assertNoSessionOomStop(this.ctx.getInstanceDir(name));
     const epoch = this.epochOf(name);
     const daemon = this.daemons.get(name);
     if (daemon) {

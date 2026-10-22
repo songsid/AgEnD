@@ -117,7 +117,7 @@ describe("normal CLI exit restart controls", () => {
       "general-topic",
     );
     expect(restartSingleInstance).toHaveBeenCalledOnce();
-    expect(restartSingleInstance).toHaveBeenCalledWith("worker");
+    expect(restartSingleInstance).toHaveBeenCalledWith("worker", { explicit: true });
     expect(editMessage).toHaveBeenCalledWith(
       "fleet-group",
       "exit-message",
