@@ -184,7 +184,8 @@ function isUsageMetric(v: unknown): v is UsageMetric {
     && opt(v.labelI18n, isI18n) && opt(v.scope, x => x === "model") && opt(v.used, isNum) && opt(v.limit, isNum)
     && opt(v.value, x => isNum(x) || isStr(x)) && opt(v.valueI18n, isI18n) && opt(v.unit, isStr) && opt(v.unitI18n, isI18n)
     && opt(v.note, isStr) && opt(v.noteI18n, isI18n) && opt(v.resetsAt, isTime) && opt(v.resetKind, x => x === "expiry")
-    && opt(v.expiresAt, isTime) && opt(v.windowMs, x => x === null || isNum(x)) && opt(v.resetPassed, x => x === true);
+    && opt(v.expiresAt, isTime) && opt(v.windowMs, x => x === null || isNum(x)) && opt(v.resetPassed, x => x === true)
+    && opt(v.pool, x => isObj(x) && isStr(x.label) && opt(x.labelI18n, isI18n));
 }
 
 /**
