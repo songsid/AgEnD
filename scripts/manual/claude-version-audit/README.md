@@ -131,3 +131,29 @@ The trust, Bypass Permissions, Bash permission (4 options), dangerous-rm and MCP
 **Predicate literals:** 265 checked. Seven counts changed, all of them increases. `launch after` went from 0 to 2, but only in a code comment. None is missing.
 
 **Upstream note.** `Auto mode is now Claude Code's default permission mode` appears on both versions. In auto mode the mock's Bash call ran without a prompt (`95-bash-permission`). The 4-option Bash permission prompt needs `--permission-mode default` (`extra2.sh`, `claude-2.1.306-bash-permission-prompt`).
+
+## 2.1.306 → 2.1.308
+
+The binaries were 2.1.306 (sha256 `520bc6c1f40af466bd03a278b5ae1af1a2938bc7de5b9e5cb15526da20d71cfe`) and 2.1.308 (sha256 `356733f185fa988e6bf3aa9a555269fdd167982a2e2a80d3c8a78037bb92ad58`), from the daily upstream watch (2026-10-22). Live fleet instances already ran 2.1.308.
+
+The audit was run as `AUDIT_DIR=… OLD=306 NEW=308 PORT=18308 TMUX_TMPDIR=<short dir> bash pass1.sh`, then `extra.sh` through `extra6.sh`. Fixtures: `tests/fixtures/claude-2.1.308-*.pane.txt` (the same 33 screens as 2.1.306), held by `tests/claude-2.1.308-surfaces.test.ts`.
+
+**LIVE: no change on a screen AgEnD reads.**
+- Of 56 steps, 30 are SAME. The DIFFs are spinner and "Worked for" verbs, the mock's reply counter, session ids, the auto-deny countdown and the footer hints (` · ← for agents`, `◐ medium · /effort`) whose timing varies.
+- All 62 captures classify identically under the production predicates, with one exception, `131-bypass-fast`. There the old version's trust step timed out under load and never reached the Bypass warning. Rerun twice, both versions read the same.
+
+**Rig fix (extra5.sh, extra6.sh).** With a dozen claude starts at once, the trust dialog can paint after `trust()` first looks. `trust()` then reports "trusted after 0 steps" too early, and the next paste lands on the dialog, which exits. Both passes now wait for the dialog to paint first, and `extra6.sh` gets the `waitfor` it lacked. Before the fix, every `140-danger-timing` read OTHER, and `150-E400LONG` stopped at the trust dialog. After it:
+- the dangerous-command menu is declined at AgEnD's cadence (Down, 200 ms, Enter) at every delay (0, 0.3, 0.6, 1, 2 and 4 s) on 2.1.308;
+- 2.1.306 is declined at 5 of 6 delays, with one capture taken mid-turn;
+- Down and Enter written together still leave the cursor on `No` with the Enter dropped, on both versions.
+
+**The upstream watch's flags:**
+- `usage limit that was lifted before its reset` is embedded changelog prose only: 2.1.305's `CLAUDE_CODE_RETRY_WATCHDOG_USAGE_LIMIT_RECHECK_MS` for the opt-in `CLAUDE_CODE_RETRY_WATCHDOG` mode. The variable's code is in both binaries, and AgEnD sets neither.
+- `Yes, and don’t ask again for:` and `press Enter to respawn` are in both binaries at the same counts. The first is written `don’t` in the source.
+
+**Predicate literals:** 265 checked, 73 in the binaries, 5 counts changed:
+- `Esc to cancel` (10 → 9): the `/permissions` "Recently denied" footer now says `Esc to close` (2.1.307). AgEnD never opens `/permissions`.
+- `Bash command` and `` `claude auth login` ``: embedded changelog lines and reordered Remote Control or cloud-session help strings.
+- ` and the `: prose.
+
+**Upstream changelog (2.1.307):** the fix for `/clear` conversations returning is for cloud and self-hosted runners, and the retry fix is for HTTP MCP servers. AgEnD's MCP server is stdio. Nothing on AgEnD's path changed.

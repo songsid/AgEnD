@@ -128,6 +128,20 @@ describe("/ui/send: a repeated clientId is the same send", () => {
       deliver.mockRestore();
     }
   });
+  it("delivered, then something fails before the answer (the stream's copy threw): answered as sent, and a Retry delivers nothing", async () => {
+    const deliver = vi.spyOn(fm, "deliverHumanToInstance").mockImplementation(async () => true);
+    const emit = fm.emitSseEvent.bind(fm);
+    let thrown = false;
+    vi.spyOn(fm, "emitSseEvent").mockImplementation((event: unknown, data: unknown) => {
+      if (event === "message" && !thrown) { thrown = true; throw new Error("stream write failed"); }
+      return emit(event, data);
+    });
+    const sid = session(), id = newClientId();
+    const first = await send(sid, id, "a", "after the handoff");
+    const retry = await send(sid, id, "a", "after the handoff");
+    expect([thrown, first.status, typeof first.body.messageId, retry.status, retry.body.repeated, retry.body.messageId === first.body.messageId, deliver.mock.calls.length])
+      .toEqual([true, 200, "string", 200, true, true, 1]);
+  });
   it("a repeat while the first is still going waits for it, and gets its messageId: one delivery", async () => {
     let open!: (v: boolean) => void;
     const deliver = vi.spyOn(fm, "deliverHumanToInstance").mockImplementation(() => new Promise<boolean>((r) => { open = r; }));

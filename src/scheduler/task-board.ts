@@ -461,12 +461,20 @@ export function cardCode(raw: string): string | null {
 }
 
 /**
- * #2425: whether a card waits for the person — in review needing their confirmation, or blocked on a question the person
- * owns; both only when they handed it out (#2434: an agent's card in review is its dispatcher's to confirm). The one rule
- * for waitingForPerson's query, Needs you and a button's route.
+ * An instance dispatcher that is no longer in the fleet (deleted): `gone(name)`, asked of the fleet. Its cards have no one
+ * left to answer or confirm them but the person. Unknown (no `gone`): every dispatcher is there.
  */
-export function waitsForPerson(card: Pick<Card, "status" | "needsReview" | "dispatcher">): boolean {
-  return personConfirms(card) && ((card.status === "review" && card.needsReview) || card.status === "blocked");
+export type GoneDispatcher = (name: string) => boolean;
+const orphaned = (card: Pick<Card, "dispatcher">, gone?: GoneDispatcher) => !!gone && card.dispatcher?.kind === "instance" && gone(card.dispatcher.name);
+
+/**
+ * #2425: whether a card waits for the person — in review needing their confirmation, or blocked on a question the person
+ * owns; both only when they handed it out (#2434: an agent's card in review is its dispatcher's to confirm), or when the
+ * instance that handed it out was deleted since (`gone`: nobody else is left to answer it). The one rule for
+ * waitingForPerson's query, Needs you and a button's route.
+ */
+export function waitsForPerson(card: Pick<Card, "status" | "needsReview" | "dispatcher">, gone?: GoneDispatcher): boolean {
+  return (personConfirms(card) || orphaned(card, gone)) && ((card.status === "review" && card.needsReview) || card.status === "blocked");
 }
 
 export function requiresReview(card: Pick<Card, "needsReview">): boolean {
@@ -1146,10 +1154,17 @@ export class TaskBoard {
    * out is that instance's to decide (step 2's wakes: its question goes there, not here). One with no dispatcher is an
    * instance's own "I'm waiting" — every card the `task` tool kept before the board, an agent's card for itself, a
    * reviewer's "waiting on the author" — and is no question to the person: 2.3.0-beta.24 listed 28 such cards, weeks
-   * old, as "stuck, asking you" (#2425). Nothing is changed on the cards; they stay on the board as they are.
+   * old, as "stuck, asking you" (#2425). Nothing is changed on the cards; they stay on the board as they are. One an
+   * instance handed out that was deleted since (`gone`) has nobody else to answer or confirm it: it falls back to the
+   * person.
    */
-  waitingForPerson(): Array<{ card: Card; since: string }> {
-    const rows = (this.db.prepare("SELECT * FROM tasks WHERE dispatcher_kind = 'person' AND ((status = 'review' AND needs_review = 1) OR status = 'blocked') ORDER BY updated_at").all() as Row[]).map(toCard);
+  waitingForPerson(gone?: GoneDispatcher): Array<{ card: Card; since: string }> {
+    const waiting = "((status = 'review' AND needs_review = 1) OR status = 'blocked')";
+    const rows = [
+      ...(this.db.prepare(`SELECT * FROM tasks WHERE dispatcher_kind = 'person' AND ${waiting}`).all() as Row[]).map(toCard),
+      ...(gone ? (this.db.prepare(`SELECT * FROM tasks WHERE dispatcher IS NOT NULL AND (dispatcher_kind IS NULL OR dispatcher_kind != 'person') AND ${waiting}`).all() as Row[])
+        .map(toCard).filter((card) => orphaned(card, gone)) : []),
+    ];
     const moved = this.db.prepare("SELECT at FROM task_events WHERE task_id = ? AND type = 'moved' AND json_extract(data, '$.to') = ? ORDER BY id DESC LIMIT 1");
     return rows.map((card) => {
       const at = (moved.get(card.uuid, card.status) as { at: string } | undefined)?.at;
@@ -1246,10 +1261,10 @@ export class TaskBoard {
    * Step 3, the daily summary (task-board-summary.ts): what waits for the person now, what got done and what was
    * opened in [since, until) (not cancelled), and every live main task's project and assignee.
    */
-  summaryRead(since: string, until: string): { waiting: Card[]; done: Card[]; created: Card[]; mains: Array<{ projectId: number | null; assignee: string | null }> } {
+  summaryRead(since: string, until: string, gone?: GoneDispatcher): { waiting: Card[]; done: Card[]; created: Card[]; mains: Array<{ projectId: number | null; assignee: string | null }> } {
     const between = (sql: string) => (this.db.prepare(sql).all(since, until) as Row[]).map(toCard);
     return {
-      waiting: this.waitingForPerson().map((w) => w.card),
+      waiting: this.waitingForPerson(gone).map((w) => w.card),
       done: between("SELECT * FROM tasks WHERE status = 'done' AND done_at >= ? AND done_at < ? ORDER BY sort"),
       created: between("SELECT * FROM tasks WHERE status != 'cancelled' AND created_at >= ? AND created_at < ? ORDER BY sort"),
       mains: (this.db.prepare("SELECT project_id, assignee FROM tasks WHERE kind = 'main' AND status != 'cancelled'").all() as Row[])
