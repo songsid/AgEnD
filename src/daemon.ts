@@ -22,6 +22,7 @@ import { createTranscriptSource, type TranscriptSource } from "./transcript-sour
 import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-turns.js";
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { resolveToolSet } from "./tool-permissions.js";
+import { dashboardAccessProblem, dashboardFeaturesOff } from "./dashboard-permissions.js";
 import { getAgendHome } from "./paths.js";
 import { readCanvasWorkerEnabled, scopedFleetConfigEnvironment } from "./web-experimental.js";
 import { readAgentEffect, sendEffectInParts } from "./web-effect-upload.js";
@@ -6607,6 +6608,9 @@ export class Daemon extends EventEmitter {
     else if (update.cross_instance_visibility === null) delete this.config.cross_instance_visibility;
     if (Number.isInteger(update.board_cards_at_once) && (update.board_cards_at_once as number) >= 1) this.config.board_cards_at_once = update.board_cards_at_once as number;
     else if (update.board_cards_at_once === null) delete this.config.board_cards_at_once;
+    // The fleet reads it at each tool call; kept current here for the next spawn's tool menu.
+    if (update.dashboard && typeof update.dashboard === "object" && !dashboardAccessProblem(update.dashboard)) this.config.dashboard = update.dashboard as InstanceConfig["dashboard"];
+    else if (update.dashboard === null) delete this.config.dashboard;
     if (["trace", "debug", "info", "warn", "error"].includes(String(update.log_level))) {
       const level = update.log_level as InstanceConfig["log_level"];
       if (this.config.log_level !== level) {
@@ -10532,6 +10536,10 @@ export class Daemon extends EventEmitter {
       ? resolveToolSet(this.config, this.name, "general")
       : resolveToolSet(this.config, this.name);
     mcpEnv.AGEND_TOOL_SET = toolSet;
+    // The dashboard features the person switched off: out of the tool menu from this start (the fleet refuses them
+    // at once, whatever the menu still shows).
+    const dashboardOff = dashboardFeaturesOff(this.config.dashboard);
+    if (dashboardOff.length) mcpEnv.AGEND_DASHBOARD_OFF = dashboardOff.join(",");
     if (this.config.display_name) mcpEnv.AGEND_DISPLAY_NAME = this.config.display_name;
     if (this.config.description) mcpEnv.AGEND_DESCRIPTION = this.config.description;
     if (resolvedWorkflow === false) mcpEnv.AGEND_WORKFLOW = "false";
@@ -10556,6 +10564,7 @@ export class Daemon extends EventEmitter {
       } catch { /* fallback to empty */ }
       instructions = buildFleetInstructions({
         instanceName: this.name,
+        taskBoard: !dashboardOff.includes("task_board"),
         workingDirectory: this.config.working_directory,
         runtimeIdentity: this.runtimeIdentity,
         displayName: this.config.display_name,
@@ -10569,6 +10578,7 @@ export class Daemon extends EventEmitter {
     } else {
       instructions = buildFleetInstructions({
         instanceName: this.name,
+        taskBoard: !dashboardOff.includes("task_board"),
         workingDirectory: this.config.working_directory,
         runtimeIdentity: this.runtimeIdentity,
         displayName: this.config.display_name,

@@ -84,6 +84,8 @@ of this skill).
   Don't rely on your theme to say something important.
 - The fleet can turn agent changes off entirely (`web.themes.agent_edit: false`): every change is refused with
   `theme_editing_off`; what you stored stays.
+- A person can switch these tools off for you (`dashboard.appearance: false`; the person's web settings tools with
+  `dashboard.web_settings: false`): a call is refused saying so. Do not retry; tell them if you need it.
 
 ## Change your theme
 

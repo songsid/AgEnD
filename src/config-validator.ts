@@ -14,6 +14,7 @@ import { existsSync } from "node:fs";
 import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { CROSS_INSTANCE_VISIBILITY_MODES, isCrossInstanceVisibility } from "./cross-instance-notice.js";
+import { dashboardAccessProblem } from "./dashboard-permissions.js";
 
 /**
  * Shared config validation for fleet.yaml and classicBot.yaml.
@@ -226,6 +227,8 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (value.board_cards_at_once !== undefined && !(Number.isInteger(value.board_cards_at_once) && (value.board_cards_at_once as number) >= 1)) {
       err(`${path}.board_cards_at_once`, "must be a whole number of at least 1");
     }
+    const dashboardProblem = dashboardAccessProblem(value.dashboard);
+    if (dashboardProblem) err(`${path}.dashboard`, dashboardProblem);
 
     // #1296: context rotation was removed. max_age_hours and grace_period_ms
     // are retained in the schema for backwards compatibility but have no effect.

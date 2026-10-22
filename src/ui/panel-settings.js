@@ -25,8 +25,8 @@ import "./settings-strings.js";
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
 import {
-  ACCESS_MODES, AGENT_MODES, DEFAULT_SCHEMA, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS, VISIBILITY_MODES, batchImpact,
-  changedFields, channelId, channelsOf, chLabel, connectionState, effectiveSummary, fleetModel, fromYaml, fullModelRequests, groupAgents,
+  ACCESS_MODES, AGENT_MODES, DASHBOARD_FEATURES, DEFAULT_SCHEMA, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS, VISIBILITY_MODES, batchImpact,
+  changedFields, channelId, channelsOf, chLabel, connectionState, dashboardDefault, effectiveSummary, fleetModel, fromYaml, fullModelRequests, groupAgents,
   hasOwn, impactOf, localeOptions, defaultsImpact, requestImpact, nonNegative, positive, replyGuardSupported, shortName, STATUS_ORDER, toYaml,
   toolSetDefault, visibilityDefault, worstImpact,
 } from "./settings-model.js";
@@ -678,6 +678,7 @@ function General({ ctx }) {
     backend: d.backend || "claude-code", model: d.model || "", locale: d.locale || "", auto: String(d.auto_pause_after ?? 0),
     agent_mode: d.agent_mode || "mcp", tool_set: TOOL_SETS.includes(d.tool_set) ? d.tool_set : "", tool_progress: d.tool_progress ?? "off",
     visibility: visibilityDefault(d), reply: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
+    dash: Object.fromEntries(DASHBOARD_FEATURES.map((k) => [k, dashboardDefault(d, k)])),
     hangOn: hang.enabled !== false, hang: String(hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES),
     concurrency: String(startup.concurrency ?? 10), stagger: String(startup.stagger_delay_ms ?? 500),
     classicBackend: c.backend || d.backend || "claude-code",
@@ -701,12 +702,15 @@ function General({ ctx }) {
       backend: f.backend, model: f.model || undefined, locale: f.locale || null, auto_pause_after: num(f.auto),
       agent_mode: f.agent_mode, tool_set: f.tool_set || null, tool_progress: f.tool_progress, cross_instance_visibility: f.visibility,
       reply_completion_guard: f.reply, log_level: f.log_level,
+      // The dashboard features every agent may use unless its own setting says otherwise (all three, as shown).
+      dashboard: f.dash,
       hang_detector: { enabled: f.hangOn, timeout_minutes: num(f.hang) },
       startup: { concurrency: num(f.concurrency), stagger_delay_ms: num(f.stagger) },
     }, {
       backend: d.backend || "claude-code", model: d.model || undefined, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
       agent_mode: d.agent_mode || "mcp", tool_set: TOOL_SETS.includes(d.tool_set) ? d.tool_set : null, tool_progress: d.tool_progress ?? "off",
       cross_instance_visibility: visibilityDefault(d), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
+      dashboard: Object.fromEntries(DASHBOARD_FEATURES.map((k) => [k, dashboardDefault(d, k)])),
       hang_detector: { enabled: hang.enabled !== false, timeout_minutes: hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES },
       startup: { concurrency: startup.concurrency ?? 10, stagger_delay_ms: startup.stagger_delay_ms ?? 500 },
     });
@@ -751,6 +755,11 @@ function General({ ctx }) {
         <div class="field"><label class="check"><input type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span><${Impact} schema=${schema} field="defaults.reply_completion_guard" /></label>
           <p class="note">${fleetReply}</p></div>
       </div>
+      <fieldset class="field dash-perms"><legend>${L(tn("dashboardAccess"), "defaults.dashboard")}</legend>
+        <p class="note">${tn("dashboardDefaultsHint")}</p>
+        ${DASHBOARD_FEATURES.map((k) => html`<label key=${k} class="check"><input type="checkbox" checked=${f.dash[k]}
+          onChange=${(e) => setF((x) => ({ ...x, dash: { ...x.dash, [k]: e.target.checked } }))} /><span>${tn(`dashboard_${k}`)}</span></label>`)}
+      </fieldset>
     </section>
     <section class="card"><h3>ClassicBot</h3>
       <div class="grid2">

@@ -15,6 +15,7 @@ import { getAgendHome } from "./paths.js";
 import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry, delayedSelfCommand } from "./cli-entry.js";
 import { dashboardLines, dashboardPort } from "./next-steps.js";
+import { NEW_FLEET_DASHBOARD } from "./dashboard-permissions.js";
 
 /** `agend restart` in 2 s, on this Node and this CLI (C5: never `sh -c agend …` through PATH): the service-aware
  *  restart — systemd unit, launchd job or detached hand-off (#2356; never the in-process `fleet restart --reload`). */
@@ -386,6 +387,25 @@ export async function runDiscordFlow(rl: import("node:readline/promises").Interf
 }
 
 /** Build a channel config object from a PlatformResult */
+/**
+ * The fleet.yaml a quickstart writes for a new fleet (or a fresh start, the old one backed up first): its connections,
+ * project roots and defaults — the task board off until the person switches it on (NEW_FLEET_DASHBOARD).
+ */
+export function newQuickstartFleet(platforms: PlatformResult[], projectRoots: string[], backend: string): Record<string, any> {
+  const fleetObj: Record<string, any> = {};
+  if (platforms.length === 1) {
+    // Single platform: use channel (singular) for simplicity
+    fleetObj.channel = buildChannelConfig(platforms[0]);
+    delete fleetObj.channel.id; // not needed for single
+  } else {
+    // Multi-platform: use channels array
+    fleetObj.channels = platforms.map(p => buildChannelConfig(p));
+  }
+  if (projectRoots.length > 0) fleetObj.project_roots = projectRoots;
+  fleetObj.defaults = { backend, dashboard: { ...NEW_FLEET_DASHBOARD } };
+  return fleetObj;
+}
+
 export function buildChannelConfig(p: PlatformResult): Record<string, any> {
   if (!isAdminUserId(p.type, p.userId)) throw new Error(t(`setup.admin.${p.type}_invalid`));
   const cfg: Record<string, any> = {
@@ -832,18 +852,7 @@ export async function runQuickstart(): Promise<void> {
 
     mkdirSync(DATA_DIR, { recursive: true });
 
-    // Build fleet config object
-    const fleetObj: Record<string, any> = {};
-    if (platforms.length === 1) {
-      // Single platform: use channel (singular) for simplicity
-      fleetObj.channel = buildChannelConfig(platforms[0]);
-      delete fleetObj.channel.id; // not needed for single
-    } else {
-      // Multi-platform: use channels array
-      fleetObj.channels = platforms.map(p => buildChannelConfig(p));
-    }
-    if (projectRoots.length > 0) fleetObj.project_roots = projectRoots;
-    fleetObj.defaults = { backend };
+    const fleetObj = newQuickstartFleet(platforms, projectRoots, backend);
 
     // Backup existing fleet.yaml before overwriting (action === "4" / start fresh).
     // Fail-closed: if the backup cannot be written, abort the overwrite so the

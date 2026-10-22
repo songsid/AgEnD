@@ -1250,7 +1250,9 @@ export function handleSettingsRequest(
   const rawInstancePatches = (name: string, patch: Record<string, unknown>): RawConfigPatch[] => {
     const changes: RawConfigPatch[] = [];
     for (const [key, value] of Object.entries(patch)) {
-      if (key === "hang_detector" && value && typeof value === "object" && !Array.isArray(value)) {
+      // A nested switch set to null follows the default again: its key goes from fleet.yaml, never a literal null (#2391
+      // review: a saved `dashboard.task_board: null` hid the default's false after a reload).
+      if ((key === "hang_detector" || key === "dashboard") && value && typeof value === "object" && !Array.isArray(value)) {
         for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
           changes.push({ path: ["instances", name, key, nestedKey], value: nestedValue, remove: nestedValue === null });
         }

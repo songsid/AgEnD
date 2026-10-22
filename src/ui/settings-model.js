@@ -38,6 +38,23 @@ export function changedFields(next, baseline) {
   return Object.fromEntries(Object.entries(next).filter(([key, value]) => !sameValue(value, baseline[key])));
 }
 
+/**
+ * The dashboard features an agent may use (dashboard-permissions.ts): each "inherit" (the fleet default: `defaults.dashboard`,
+ * else allowed), "on" or "off". The patch names only the features that changed: null follows the default again.
+ */
+export const DASHBOARD_FEATURES = ["appearance", "task_board", "web_settings"];
+export const DASHBOARD_CHOICES = ["inherit", "on", "off"];
+const dashboardOf = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
+/** What a feature is for an agent with no setting of its own: the default's, else allowed. */
+export const dashboardDefault = (defaults, feature) => dashboardOf(defaults && defaults.dashboard)[feature] !== false;
+export function dashboardForm(inst) {
+  const own = dashboardOf(inst.dashboard);
+  return Object.fromEntries(DASHBOARD_FEATURES.map((f) => [f, own[f] === true ? "on" : own[f] === false ? "off" : "inherit"]));
+}
+export function dashboardPatchValue(choices) {
+  return Object.fromEntries(DASHBOARD_FEATURES.map((f) => [f, choices[f] === "on" ? true : choices[f] === "off" ? false : null]));
+}
+
 /** #1302: cross-instance notices. Unset, or a value the fleet does not know, means full. */
 export const visibilityDefault = (defaults) => (VISIBILITY_MODES.includes(defaults && defaults.cross_instance_visibility) ? defaults.cross_instance_visibility : "full");
 
@@ -155,6 +172,7 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     model_failover: form.inherit.model_failover ? null : (form.model_failover.trim() ? [form.model_failover.trim()] : []),
     display_name: form.inherit.display_name ? null : form.display_name.trim(),
     status_emojis: form.status_emojis,
+    dashboard: dashboardPatchValue(form.dashboard),
   };
   return changedFields(next, {
     backend: inst.backend || defaults.backend || "claude-code",
@@ -177,6 +195,7 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     model_failover: hasOwn(inst, "model_failover") ? inst.model_failover : null,
     display_name: hasOwn(inst, "display_name") ? inst.display_name : null,
     status_emojis: statusEmojisBaseline,
+    dashboard: dashboardPatchValue(dashboardForm(inst)),
   });
 }
 
@@ -207,6 +226,7 @@ export function agentForm(inst, defaults, name = "") {
     model_failover: Array.isArray(inst.model_failover) ? (inst.model_failover[0] || "") : ((defaults.model_failover && defaults.model_failover[0]) || ""),
     display_name: inst.display_name ?? defaults.display_name ?? "",
     status_emojis: inst.status_emojis || null,
+    dashboard: dashboardForm(inst),
     inherit: {
       auto_pause_after: inherit("auto_pause_after"), hang: !hasOwn(hang, "timeout_minutes"), agent_mode: inherit("agent_mode"),
       tool_set: inherit("tool_set"), tool_progress: inherit("tool_progress"), cross_instance_visibility: inherit("cross_instance_visibility"),

@@ -17,9 +17,9 @@ import { startOperation } from "./settings-apply.js";
 import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
 import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows, useModelCatalog } from "./settings-catalog.js";
 import {
-  ACCESS_MODES, AGENT_MODES, CH_TYPES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
+  ACCESS_MODES, AGENT_MODES, CH_TYPES, DASHBOARD_CHOICES, DASHBOARD_FEATURES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
   VISIBILITY_MODES, accessConfirmations, agentForm, agentPatch, backendOptions, changedFields, channelId, channelsOf,
-  chLabel, hasOwn, impactOf, newConnectionImpact, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
+  chLabel, dashboardDefault, hasOwn, impactOf, newConnectionImpact, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
   classicWebEchoEffective, toolSetDefault, worstImpact,
 } from "./settings-model.js";
 /** #2342: a field by id, for recordEdit before a pick or a reset writes it. */
@@ -287,6 +287,15 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
             <${Select} id=${`ag-${k}`} value=${shown(k, f[k], dflt)} disabled=${f.inherit[k]} onChange=${set(k)}
               options=${opts.includes(shown(k, f[k], dflt)) || k === "cross_instance_visibility" ? opts : [shown(k, f[k], dflt), ...opts]} /></${Override}>
           ${k === "cross_instance_visibility" ? html`<p class="note">${tn("crossInstanceVisibilityHint")}</p>` : null}</div>`)}
+        <fieldset class="field dash-perms"><legend>${L(tn("dashboardAccess"), "instance.dashboard")}</legend>
+          <p class="note">${tn("dashboardAccessHint")}</p>
+          ${DASHBOARD_FEATURES.map((feature) => html`<div key=${feature} class="field">
+            <label for=${`ag-dash-${feature}`}>${tn(`dashboard_${feature}`)}</label>
+            <select id=${`ag-dash-${feature}`} value=${f.dashboard[feature]} onChange=${(e) => setF((x) => ({ ...x, dashboard: { ...x.dashboard, [feature]: e.target.value } }))}>
+              ${DASHBOARD_CHOICES.map((c) => html`<option key=${c} value=${c}>${c === "inherit"
+                ? tn("dashboardInherit", tn(dashboardDefault(defaults, feature) ? "dashboardOn" : "dashboardOff")) : tn(c === "on" ? "dashboardOn" : "dashboardOff")}</option>`)}
+            </select></div>`)}
+        </fieldset>
         <div class="field">${L(tn("replyCompletionGuard"), "instance.reply_completion_guard")}
           <${Override} inherit=${f.inherit.reply_completion_guard} onInherit=${setInherit("reply_completion_guard")}>
             <label class="check"><input type="checkbox" disabled=${f.inherit.reply_completion_guard} checked=${shown("reply_completion_guard", f.reply_completion_guard, defaults.reply_completion_guard ?? true)}

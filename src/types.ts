@@ -186,6 +186,14 @@ export interface InstanceConfig {
    */
   board_cards_at_once?: number;
   /**
+   * Which dashboard features this instance may use, on top of its `tool_set` (dashboard-permissions.ts): `appearance`
+   * (its own look: theme, pictures, widgets, ambient, effects, mod proposals), `task_board` (the `task` tool) and
+   * `web_settings` (Settings → Web appearance for the person). `false` switches one off; unset allows. `defaults.dashboard`
+   * sets it for every instance and merges key by key with an instance's own. The fleet reads it at each tool call; the
+   * daemon keeps it current, and an agent's tool menu follows from its next start.
+   */
+  dashboard?: import("./dashboard-permissions.js").DashboardAccess;
+  /**
    * Detect a human-channel turn that ended without a delivered reply and ask
    * the agent to send one bounded recovery reply. Only capable backends use
    * this switch; evidence tracking remains active for reply/tool correctness.

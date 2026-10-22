@@ -292,6 +292,7 @@ import { CompactWatch, launchIdentity } from "./compact-watch.js";
 import { agyLegacyAgentsFile, danglingSymlink, migrateAgyAgentsFile } from "./backend/antigravity.js";
 import { claudeConfigDirFor, claudeProjectKey } from "./backend/claude-code.js";
 import { sharedRolloutIndex } from "./rollout-index.js";
+import { TASK_BOARD_ON_NOTICE, dashboardRefusalIn, taskBoardSwitchedOn } from "./dashboard-permissions.js";
 import {
   mayUseTool,
   resolveToolSet,
@@ -9911,6 +9912,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!allowed) {
       this.logger.warn({ sink, instance: instanceName, profile, tool, enforced: true }, "tool-permissions: refused");
       return { allowed: false, message: toolRefusedMessage(profile, tool) };
+    }
+    // The person's dashboard switches (dashboard-permissions.ts), on top of the profile, as configured now.
+    // Its own switches, else the defaults' — a ClassicBot identity has no instances entry and runs on the defaults (#2391 review).
+    const switchedOff = dashboardRefusalIn(this.fleetConfig, instanceName, tool);
+    if (switchedOff) {
+      this.logger.warn({ sink, instance: instanceName, profile, tool, enforced: true, dashboard: true }, "tool-permissions: refused");
+      return { allowed: false, message: switchedOff };
     }
     this.logger.debug({ sink, instance: instanceName, profile, tool, enforced: true }, "tool-permissions: allowed");
     return { allowed: true, message: "" };
@@ -20305,6 +20313,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         const daemon = this.daemons.get(name)!;
         const runtimeConfig = daemon.getConfigSnapshot?.() ?? oldConfig.instances[name];
         const change = classifyInstanceChange(runtimeConfig, config);
+        // (b) The person switched its task board on: tell it (its tool list shows the `task` tool at once).
+        if (taskBoardSwitchedOn(runtimeConfig.dashboard, config.dashboard)) {
+          this.admitTaskBoardNotice(name, TASK_BOARD_ON_NOTICE, `task-board-on:${name}:${Date.now()}`);
+        }
         if (change === "restart") {
           this.logger.info({ name }, "Instance config changed — restarting");
           observe?.(name, "restart", "running");
