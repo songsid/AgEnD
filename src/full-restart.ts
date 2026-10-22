@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { spawn } from "./child-process.js";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { withOrigin } from "./fleet-control-audit.js";

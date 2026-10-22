@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { clampContextPercent, parseContextPercent } from "./context-percent.js";

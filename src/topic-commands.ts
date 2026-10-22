@@ -5,7 +5,8 @@ import { measureSyncWork } from "./sync-work-attribution.js";
 import { LOOPBACK_HOST_NAMES } from "./web-host-guard.js";
 import { WEB_REMOTE_DOCS_URL } from "./upgrade-notices.js";
 import { closeSync, readFileSync, existsSync } from "node:fs";
-import { exec, execFileSync, spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import { exec, spawn } from "./child-process.js";
 import { promisify } from "node:util";
 import { join, basename } from "node:path";
 import { homedir, release } from "node:os";
@@ -1754,7 +1755,7 @@ export class TopicCommands {
       this.ctx.failUpdateProgress?.(`${t("update.failure.shell")} ${t("update.failure.installed", installed.reason)}`);
       return;
     }
-    const { spawn } = await import("node:child_process");
+    const { spawn } = await import("./child-process.js");
     const origin = `command /update by ${msg.adapterId}:${msg.userId}`;
     recordInternalRequest(this.ctx.dataDir, "update", origin);
     const launch = await resolveUpdateLaunch(installed.agend);
@@ -1810,7 +1811,7 @@ export class TopicCommands {
     const backend = this.ctx.fleetConfig?.defaults?.backend || "claude-code";
     let output: string;
     try {
-      const { execFile } = await import("node:child_process");
+      const { execFile } = await import("./child-process.js");
       const { promisify } = await import("node:util");
       // This CLI on this Node, not whichever `agend` is first on PATH (#1450 C5).
       const doctor = selfCommand(["backend", "doctor", backend]);

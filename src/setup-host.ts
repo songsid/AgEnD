@@ -33,7 +33,7 @@ import { settingsFingerprint, settingsRevision, noteSettingsWrite, type Settings
  */
 import { performance } from "node:perf_hooks";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { spawn } from "node:child_process";
+import { spawn } from "./child-process.js";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

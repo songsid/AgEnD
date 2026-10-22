@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { readdir, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { execFile } from "node:child_process";
+import { execFile } from "./child-process.js";
 import yaml from "js-yaml";
 import { classicInstanceName } from "./classic-channel-manager.js";
 import { sanitizeInstanceName } from "./topic-commands.js";

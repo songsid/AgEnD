@@ -13,7 +13,8 @@
  * assume the operator's home is empty.
  */
 import { publicTunnelHostname, normalizePublicTunnelToken } from "../public-tunnel-config.js";
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { spawn } from "../child-process.js";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 import { probeProcess } from "../web-terminal.js";

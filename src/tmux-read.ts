@@ -1,4 +1,5 @@
-import { execFile, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 
 export const TMUX_READ_MAX_BYTES = 1024 * 1024;

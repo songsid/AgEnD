@@ -340,7 +340,7 @@ export function setAuthCheckRunnerForTests(run: AuthCheckRunner | null): void {
 }
 
 async function runAuthCheckProcess(argv: string[], timeoutMs: number, env?: Record<string, string>): Promise<{ code: number | null; output: string }> {
-  const { execFile } = await import("node:child_process");
+  const { execFile } = await import("./child-process.js");
   return new Promise(resolve => {
     execFile(argv[0], argv.slice(1), { timeout: timeoutMs, encoding: "utf8", ...(env ? { env: { ...process.env, ...env } } : {}) }, (err, stdout, stderr) => {
       const anyErr = err as (Error & { code?: number | string; killed?: boolean }) | null;

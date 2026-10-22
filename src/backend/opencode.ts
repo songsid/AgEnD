@@ -1,5 +1,6 @@
 import { join } from "node:path";
-import { execFile, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import { execFile } from "../child-process.js";
 import { promisify } from "node:util";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
