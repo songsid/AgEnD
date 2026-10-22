@@ -65,6 +65,12 @@ describe("#2390 follow-up: lines another program reads stay English", () => {
     { printed: 'this.log("Setup complete — starting AgEnD.")', where: "src/setup-host.ts", reader: "website/public/install-agend.ps1", pattern: "'Setup complete'" },
     { printed: "Setup has already been completed.", where: "src/cli.ts", reader: "website/public/install-agend.ps1", pattern: "'Setup has already been completed'" },
     { printed: "✓ Installed: v${newVersion}", where: "src/cli.ts", reader: "scripts/ci/runtime-acceptance/hop.sh", pattern: "Installed: " },
+    // Fable on #2404: the Mac rehearsal leg (a UTC+8 host) reads the same line, and the restart refusal's variable name.
+    { printed: "✓ Installed: v${newVersion}", where: "src/cli.ts", reader: "scripts/ci/runtime-acceptance/gui-rehearsal.sh", pattern: 'grep -q "Installed: $CAND"' },
+    { printed: '"AGEND_NODE"]', where: "src/service-activation.ts", reader: "scripts/ci/runtime-acceptance/gui-rehearsal.sh", pattern: 'grep -q "AGEND_NODE"' },
+    // npm's install refusals, read back by update-launch for /update's cause (plain .cjs, no locale — pinned all the same).
+    { printed: "AgEnD cannot be installed here: ", where: "launcher/postinstall.cjs", reader: "src/update-launch.ts", pattern: "AgEnD cannot be installed here: .+|AgEnD 2\\.2 needs Node .+" },
+    { printed: "AgEnD 2.2 needs Node >=22.14; npm is aborting this install.", where: "scripts/preinstall-guard.cjs", reader: "src/update-launch.ts", pattern: "AgEnD cannot be installed here: .+|AgEnD 2\\.2 needs Node .+" },
   ];
 
   it.each(MACHINE)("$where prints `$printed` as it is, and $reader still reads it", ({ printed, where, reader, pattern }) => {
@@ -75,7 +81,7 @@ describe("#2390 follow-up: lines another program reads stay English", () => {
   it("none of them is a locale string (a key's English would turn into zh-TW on a Taipei host)", () => {
     // What each reader matches (update-launch's own regexes; the installers' -match texts), against every English value.
     for (const reader of [/Updating AgEnD v\S+ → v(\S+?)\.\.\./, /Updating AgEnD to (\S+?)\.\.\./, /systemd does not know /, /Fleet not running/, /Setup page:/,
-      /Setup code:/, /Setup complete/, /Setup has already been completed/, /Installed: v/]) {
+      /Setup code:/, /Setup complete/, /Setup has already been completed/, /Installed: v/, /AgEnD cannot be installed here: /, /AgEnD 2\.2 needs Node /]) {
       expect(enValues.filter((v) => reader.test(v)), String(reader)).toEqual([]);
     }
     expect(cli).not.toMatch(/t\("[\w.]+"[^)]*\)[^;\n]*(Fleet not running|Setup page:|Setup code:)/);
