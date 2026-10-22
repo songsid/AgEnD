@@ -13142,7 +13142,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private postTaskBoardSummary(since: Date, until: Date): void {
     const board = this.scheduler?.db.board;
     if (!board) return;
-    const read = board.summaryRead(since.toISOString(), until.toISOString());
+    const read = board.summaryRead(since.toISOString(), until.toISOString(), this.dispatcherGone);
     const projects = board.listProjects(true);
     const stats = board.projectStats();
     const names = new Map(projects.map((p) => [p.id, p.name]));
@@ -13955,12 +13955,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2355 review: where a card's Needs you buttons belong now — read from the board and the fleet at the moment of a click
    * or a reply, never from the last render. null: it no longer waits for the person.
    */
+  /**
+   * #2425 follow-up: an instance that handed out a card and is no longer in the fleet — neither a configured instance nor
+   * a ClassicBot identity (deleted). Its blocked and in-review cards fall back to the person (Needs you, the summary).
+   * Not known before the config and the ClassicBot rooms are loaded: then no one is gone (a live dispatcher's cards never
+   * flash into the person's list at startup).
+   */
+  readonly dispatcherGone = (name: string): boolean => {
+    const instances = this.fleetConfig?.instances, classic = this.classicChannels;
+    if (!instances || !classic) return false;
+    return !Object.hasOwn(instances, name) && !classic.getAll().some((ch) => ch.instanceName === name);
+  };
+
   private needsYouRoute(code: string): { lane?: string } | null {
     const board = this.scheduler?.db.board;
     const card = board?.findCard(code);
     // #2425 (Fable): the same rule as the list — a button rendered before the fix (or before the opt-in went off) for a
     // card that no longer waits for the person answers "no longer waits".
-    if (!board || !card || this.fleetConfig?.needs_you?.task_board !== true || !waitsForPerson(card)) return null;
+    if (!board || !card || this.fleetConfig?.needs_you?.task_board !== true || !waitsForPerson(card, this.dispatcherGone)) return null;
     const leads = new Map(board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
     const lane = this.needsYouLane(card, leads);
     return lane ? { lane } : {};
@@ -13968,7 +13980,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /**
    * #2246 step 3: the task board's cards that wait for the person, for Needs you — under each card's assignee, listed in
-   * its lane's channel (#2352: the instance that handed it out, else the project's lead), else in General.
+   * its lane's channel (#2352: its project's lead; #2434: never the instance that handed it out), else in General.
    */
   private needsYouTaskItems(): import("./needs-you.js").TaskInput[] {
     // #2425: the task board's cards join Needs you only when the fleet asks for them (needs_you.task_board, off by
@@ -13979,7 +13991,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const board = this.scheduler?.db.board;
     if (!board) return [];
     const leads = new Map(board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
-    return board.waitingForPerson().map(({ card, since }) => {
+    return board.waitingForPerson(this.dispatcherGone).map(({ card, since }) => {
       const gap = card.status === "review" ? wrapUpGap(card) : null;
       const lane = this.needsYouLane(card, leads);
       return {
@@ -16947,7 +16959,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (this.fleetConfig?.needs_you?.live_message === false) return false;
         const card = db.board.findCard(uuid);
         // #2434: only while it waits for the person — a card that does not is in no Needs you, so no buttons anywhere.
-        if (!card || !waitsForPerson(card)) return false;
+        if (!card || !waitsForPerson(card, this.dispatcherGone)) return false;
         const leads = new Map(db.board.listProjects(true).map((p) => [p.id, p.leadInstance] as const));
         return this.needsYouLane(card, leads) === instance;
       },

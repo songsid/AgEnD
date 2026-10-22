@@ -126,3 +126,68 @@ describe("#2425 only what asks the person waits for the person", () => {
     } finally { f.scheduler.db.close(); }
   });
 });
+
+// #2425 follow-up: a card an instance handed out waits for that instance (#2425, #2434). Once that instance is deleted,
+// nobody else is left to answer or confirm it: it falls back to the person. Nothing changes on the card.
+describe("a card whose instance dispatcher was deleted falls back to the person", () => {
+  function gone() {
+    const f = fixture();
+    const lead = { kind: "instance" as const, name: "lead" }, dev = { kind: "instance" as const, name: "dev-a" };
+    // lead's card in review, waiting for lead's confirmation (it asked for one).
+    const review = f.board.createCards(lead, { cards: [{ title: "Ship the API", assignee: "dev-a", needsReview: true }] }).cards[0]!;
+    f.board.moveCard(dev, review.code, "claimed"); f.board.moveCard(dev, review.code, "review", { result: "r" });
+    // A ClassicBot identity's card: not in `instances`, yet not deleted.
+    const classic = f.board.createCards({ kind: "instance", name: "classic-room-1" }, { cards: [{ title: "Room's ask", assignee: "dev-a" }] }).cards[0]!;
+    f.board.moveCard(dev, classic.code, "claimed"); f.board.moveCard(dev, classic.code, "blocked", { reason: "which room?" });
+    const fm = new FleetManager(f.d) as unknown as Record<string, any>;
+    fm.scheduler = f.scheduler;
+    fm.classicChannels = { getAll: () => [{ instanceName: "classic-room-1" }] };
+    return { ...f, fm, lead: f.handed, leadReview: review, classic };
+  }
+  const codes = (list: Array<{ card?: { code: string }; code?: string }>) => list.map((x) => x.card?.code ?? x.code!).sort();
+
+  it("while lead is in the fleet: its blocked card and its card in review are lead's; deleted: both are the person's", () => {
+    const f = gone();
+    try {
+      f.fm.fleetConfig = { defaults: {}, instances: { "dev-a": {}, lead: {}, reviewer: {} }, needs_you: { task_board: true } };
+      const own = [f.asked.code, f.confirm.code].sort();
+      expect(codes(f.board.waitingForPerson(f.fm.dispatcherGone))).toEqual(own);
+      expect(codes(f.fm.needsYouTasks())).toEqual(own);
+      f.fm.fleetConfig = { defaults: {}, instances: { "dev-a": {}, reviewer: {} }, needs_you: { task_board: true } };   // lead deleted
+      const now = [...own, f.lead.code, f.leadReview.code].sort();
+      expect(codes(f.board.waitingForPerson(f.fm.dispatcherGone))).toEqual(now);
+      expect(codes(f.fm.needsYouTasks())).toEqual(now);
+      expect([f.lead.code, f.leadReview.code, f.classic.code].map((c) => f.fm.needsYouRoute(c) !== null)).toEqual([true, true, false]);
+      expect(codes(f.board.summaryRead("2026-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z", f.fm.dispatcherGone).waiting.map((card) => ({ card })))).toEqual(now);
+      // Never an agent's own card (no dispatcher) or a legacy row: they have no dispatcher to lose.
+      expect(codes(f.fm.needsYouTasks())).not.toContain(f.review.code);
+      expect(codes(f.fm.needsYouTasks())).not.toContain(f.legacy[0]!.code);
+    } finally { f.scheduler.db.close(); }
+  });
+
+  it("the person acts on it as on their own: answers the blocked one, confirms the one in review", () => {
+    const f = gone();
+    try {
+      f.fm.fleetConfig = { defaults: {}, instances: { "dev-a": {} }, needs_you: { task_board: true } };
+      const ann = { kind: "person" as const, name: "Ann" };
+      f.board.moveCard(ann, f.lead.code, "claimed", { comment: "RPC" });
+      expect(f.board.moveCard(ann, f.leadReview.code, "done").card.status).toBe("done");
+      expect(codes(f.fm.needsYouTasks())).toEqual([f.asked.code, f.confirm.code].sort());
+    } finally { f.scheduler.db.close(); }
+  });
+
+  it("not known before the config and the ClassicBot rooms are loaded: then no one is gone (nothing flashes into the person's list)", () => {
+    const f = gone();
+    try {
+      f.fm.fleetConfig = { defaults: {}, instances: { "dev-a": {} }, needs_you: { task_board: true } };
+      expect([f.fm.dispatcherGone("lead"), f.fm.dispatcherGone("classic-room-1"), f.fm.dispatcherGone("dev-a")]).toEqual([true, false, false]);
+      f.fm.classicChannels = null;
+      expect(f.fm.dispatcherGone("lead")).toBe(false);
+      f.fm.classicChannels = { getAll: () => [] }; f.fm.fleetConfig = null;
+      expect(f.fm.dispatcherGone("lead")).toBe(false);
+      // A name that happens to be an Object property is not an instance (own keys only).
+      f.fm.fleetConfig = { defaults: {}, instances: {} };
+      expect(f.fm.dispatcherGone("constructor")).toBe(true);
+    } finally { f.scheduler.db.close(); }
+  });
+});
