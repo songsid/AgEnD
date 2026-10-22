@@ -412,7 +412,7 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
       ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => setEditing(true)}>${t("orge.edit")}</button>` : null}
     </div>
     ${editing ? html`<${OfficeEditor} offices=${stored} rev=${storedRev} view=${view} store=${store}
-      ask=${ask} onSaved=${adopt} onClose=${() => setEditing(false)} />` : null}
+      ask=${ask} current=${() => shown.current} onSaved=${adopt} onClose=${() => setEditing(false)} />` : null}
     ${desks.length || L.rooms.length ? null : html`<p class="note oo-empty">${to("nobody")} ${auto && (f.team || f.pinned.length) ? html`<button type="button" class="btn btn-sm" onClick=${() => setF({ team: "", pinned: [] })}>${to("everyone")}</button>` : null}</p>`}
     <div class="oo-stage" ref=${stageRef}>
       <canvas ref=${canvasRef} class=${`oo-canvas${tipDesk && tipDesk.node.i ? " hot" : ""}`} role="img" aria-label=${to("label")}

@@ -30,6 +30,6 @@
   document.getElementById("lead").textContent = t(`${why}_lead`);
   // Nothing to open when no chat is shared (the chats would answer this page again): no button then.
   const go = document.getElementById("go");
-  if (why === "ended") go.remove(); else go.textContent = t("members_go");
+  if (go) { if (why === "ended") go.remove(); else go.textContent = t("members_go"); }
   document.title = `AgEnD — ${t(`${why}_title`)}`;
 })();

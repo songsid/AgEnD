@@ -37,6 +37,17 @@ describe("the guest's refused page", () => {
     expect(render("members", "zh-CN").lang).toBe("zh-Hant");
   });
 
+  it("#2449: the server's no-script English for \"ended\" is the script's own English", async () => {
+    const { serveGuestRefusedPage } = await import("../src/auth-api.js");
+    let body = "";
+    const res = { setHeader() {}, writeHead() {}, end(b: string) { body = b; } } as any;
+    serveGuestRefusedPage(res, 401, "ended");
+    const ended = render("ended", "en");
+    expect(body).toContain(`<h1 id="title">${ended.h1}</h1>`);
+    expect(body).toContain(`<p id="lead">${ended.lead}</p>`);
+    expect(body).not.toContain('id="go"');
+  });
+
   it("no chat shared any more: says so, and offers nothing to open (the chats would answer this page again)", () => {
     expect(render("ended", "en")).toMatchObject({ h1: "No chats are shared with you", go: null });
     expect(render("ended", "zh-TW")).toMatchObject({ h1: "目前沒有分享給你的聊天", go: null });

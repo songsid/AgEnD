@@ -66,9 +66,10 @@ function Members({ office, view, everyone, onChange }) {
 /**
  * The editor: `offices`/`rev` as read; `view` the org chart (teams, instances); `store` createOfficeStore's;
  * `ask()` a stamp taken as a request is sent; `onSaved({ rev, offices }, stamp)` after a save or a re-read, returning
- * the snapshot in force (the page keeps a newer one it already shows: #2431 review); `onClose`.
+ * the snapshot in force (the page keeps a newer one it already shows: #2431 review); `current()` that snapshot now (null:
+ * not known), read when the person chooses after a 409 (#2449 review); `onClose`.
  */
-export function OfficeEditor({ offices, rev, view, store, ask = () => 0, onSaved, onClose }) {
+export function OfficeEditor({ offices, rev, view, store, ask = () => 0, current = () => null, onSaved, onClose }) {
   // The draft and the rev it was read at go together (#2424 review): a list the stream re-reads meanwhile never moves
   // the rev under an older draft (a save would then overwrite what it never showed). After a 409 the person chooses
   // (#2431): keep their edits (on the newer rev: Save then replaces what was saved meanwhile, knowingly) or load the
@@ -81,8 +82,10 @@ export function OfficeEditor({ offices, rev, view, store, ask = () => 0, onSaved
   const [msg, setMsg] = useState("");
   const [conflict, setConflict] = useState(null);                      // after a 409: the newer list, until they choose
   const copy = (list) => list.map((o) => ({ ...o, members: [...o.members] }));
-  const keepMine = () => { setBase((b) => ({ rev: conflict.rev, draft: b.draft })); setConflict(null); setMsg(te("keptMine")); };
-  const loadTheirs = () => { setBase({ rev: conflict.rev, draft: copy(conflict.offices) }); setOpen(null); setConflict(null); setMsg(""); };
+  // The choice takes the snapshot in force when it is made: the stream may have read a newer one since the 409 (#2449).
+  const inForce = () => current() || conflict;
+  const keepMine = () => { const now = inForce(); setBase((b) => ({ rev: now.rev, draft: b.draft })); setConflict(null); setMsg(te("keptMine")); };
+  const loadTheirs = () => { const now = inForce(); setBase({ rev: now.rev, draft: copy(now.offices) }); setOpen(null); setConflict(null); setMsg(""); };
   const everyone = useMemo(() => { const m = new Map(); for (const n of [...view.top, ...view.teams.flatMap((tm) => tm.nodes), ...view.rest.nodes]) if (!m.has(n.name)) m.set(n.name, n); return [...m.values()]; }, [view]);
   const set = (id, patch) => setDraft((d) => d.map((o) => (o.id === id ? { ...o, ...patch } : o)));
   const add = () => {

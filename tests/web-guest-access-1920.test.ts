@@ -179,8 +179,8 @@ describe("the gate, live: a guest scoped to `a`", () => {
     const html = { cookie: cookieOf(guest), accept: "text/html,application/xhtml+xml" };
     for (const [p, status] of [["/ui/fleet/org", 403], ["/settings", 403], ["/ui/chat/b", 404]] as const) {
       const page = await raw(port, "GET", p, html);
-      expect([page.status, page.body.includes('data-why="members"'), page.body.includes("/assets/guest-refused.js"), page.body.includes("guest_forbidden")], p)
-        .toEqual([status, true, true, false]);
+      expect([page.status, page.body.includes('data-why="members"'), page.body.includes("/assets/guest-refused.js"), page.body.includes("guest_forbidden"), page.body.includes(">Open your chats</a>")], p)
+        .toEqual([status, true, true, false, true]);
     }
     // Not a page navigation: the JSON as before (an API path, or no text/html in Accept).
     expect(await raw(port, "GET", "/ui/org", html)).toEqual({ status: 403, body: JSON.stringify({ error: "guest_forbidden" }) });
@@ -195,6 +195,8 @@ describe("the gate, live: a guest scoped to `a`", () => {
     const guest = session("guest", ALICE);
     const page = await raw(port, "GET", "/ui", { cookie: cookieOf(guest), accept: "text/html" });
     expect([page.status, page.body.includes('data-why="ended"'), page.body.includes("guest_scope_empty")]).toEqual([401, true, false]);
+    // #2449 review: without scripts, the case's own English, and no way back that leads here again.
+    expect([page.body.includes("<h1 id=\"title\">No chats are shared with you</h1>"), page.body.includes('id="go"'), page.body.includes("Open your chats")]).toEqual([true, false, false]);
     // Its session ended with it: the next navigation is a signed-out browser's — the sign-in page.
     const again = await raw(port, "GET", "/ui", { cookie: cookieOf(guest), accept: "text/html" });
     expect([again.status, again.body.includes("/assets/signin.js")]).toEqual([401, true]);

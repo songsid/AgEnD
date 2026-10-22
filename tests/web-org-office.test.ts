@@ -661,6 +661,31 @@ describe("the Office view on the page", () => {
         p.root.querySelector("#oeSave").click(); await settle(2);
         expect(puts[1].body.rev).toBe(6);                                // the draft's rev is the snapshot's
       });
+      // #2449 review (Prism): the choices shown (the 409's re-read at rev 5), THEN the stream reads rev 6: the choice made
+      // takes rev 6 — the snapshot in force when it is made, never the one the 409 found.
+      it("the stream reads a newer list while the choice waits: Load theirs takes it, and Keep my edits its rev", async () => {
+        await open();
+        puts[0].answer({ status: 409, body: { error: "offices_changed" } }); await settle(2);
+        gets[1](ok(5, "Reread")); await settle(4);
+        expect(p.root.querySelector("#oeLoadTheirs")).not.toBeNull();     // the choice is shown
+        handlers.offices(); await settle(2);
+        gets[2](ok(6, "RemoteLatest")); await settle(4);
+        expect(names()).toEqual(["Whole fleet", "RemoteLatest"]);
+        p.root.querySelector("#oeLoadTheirs").click(); await settle(2);
+        expect(p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)).toEqual(["RemoteLatest"]);
+        p.root.querySelector("#oeSave").click(); await settle(2);
+        expect(puts[1].body.rev).toBe(6);
+      });
+      it("…and Keep my edits, the same: the draft kept, on rev 6", async () => {
+        await open();
+        puts[0].answer({ status: 409, body: { error: "offices_changed" } }); await settle(2);
+        gets[1](ok(5, "Reread")); await settle(4);
+        handlers.offices(); await settle(2);
+        gets[2](ok(6, "RemoteLatest")); await settle(4);
+        p.root.querySelector("#oeKeepMine").click(); await settle(2);
+        p.root.querySelector("#oeSave").click(); await settle(2);
+        expect([puts[1].body.rev, puts[1].body.offices.map((o: any) => o.name)]).toEqual([6, ["Opened"]]);
+      });
       it("control: with nothing in between, the 409 re-read is what loading theirs takes", async () => {
         await open();
         puts[0].answer({ status: 409, body: { error: "offices_changed" } }); await settle(2);
