@@ -73,6 +73,12 @@ describe("Settings → Web → Web authority, as rendered", () => {
   it("shows what is in force: the switch on by default (§0.1), only-this-computer off, the hours; no session authorized yet", async () => {
     const w = await open();
     expect([w.$("#vaEnabled").checked, w.$("#vaLoopbackOnly").checked, w.$("#vaHours").value]).toEqual([true, false, ""]);
+    // #2347 §10: the hours left empty say what is in effect, in plain text with a "default" mark (no grey placeholder).
+    const effect = w.$("#vaHours").parentNode.querySelector(".s-effect");
+    expect([effect?.textContent.replace(/\s+/g, " ").trim(), w.$("#vaHours").getAttribute("placeholder")]).toEqual(["In effect: 48 h default", null]);
+    await w.type(w.$("#vaHours"), "12");
+    expect(w.$("#vaHours").parentNode.querySelector(".s-effect")).toBeNull();
+    await w.type(w.$("#vaHours"), "");
     expect(w.$("#vaSessionsNone").textContent).toBe("No session is authorized now.");
     expect(w.$("#vaEnforce"), "§0: no step-up list").toBeNull();
     expect(w.$("#vaLanWarning")).toBeNull();
