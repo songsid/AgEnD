@@ -608,15 +608,6 @@ export class WebChatHistory {
     return m;
   }
 
-  /**
-   * #1920 (#2085 review): the messages that became the channel's after this cursor (same boot) — what a guest's poll
-   * adds to its replay, since their ids are older than the cursor it was given.
-   */
-  seenAfter(cursor: { boot: string; id: number } | null): WebChatMessage[] {
-    if (!cursor) return [];
-    // The cursor's own boot (this one, or one restored from disk): its sequence is the one seenSeq counts in.
-    return this.collect((m) => m.boot === cursor.boot && m.seenSeq !== undefined && m.seenSeq > cursor.id);
-  }
 
   /** #1920: a kept message by the `message_id` the agent was given (a web message, a web click). */
   /** #2272: one kept message of an instance's chat by its row (`boot`, `id`), or undefined (never sent, or no longer kept). */
