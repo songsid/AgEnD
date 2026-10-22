@@ -58,6 +58,11 @@ Typing a removed command prints the new one.
 
 ### Fleet and tasks
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/task-board.webp" width="760" alt="The task board, with made-up demo data: the Leaderboard project with one card each in To do, In progress and Blocked; the blocked card shows its question.">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/office.webp" width="760" alt="The Office view, with made-up demo data: a pixel-art office with rooms called Work, Lounge, Help desk and Nap corner, and demo agents at their desks.">
+</p>
+
 - **Task board** (`Fleet → Tasks`): a board of projects, main tasks (M-n) and subtasks (S-n). A main task follows its subtasks' progress. Cards support dependencies, comments and history, and you can drag and filter them. The public link shows the board read-only.
   - **Agents work from it:** an agent is notified when a card is assigned to it, sent back, answered, commented on, confirmed or cancelled. Changes within 10 seconds are grouped into one message. Each agent works on one card at a time.
   - **Who confirms:** only cards you handed out wait for your confirmation (#2434). A card an agent handed out is confirmed by that agent. If that agent is deleted, its cards go back to you (#2451).
@@ -74,6 +79,11 @@ Typing a removed command prints the new one.
 - **Faster dashboard:** state updates are about 4 times faster, and about 7 times faster with several tabs open (#1956).
 
 ### Web dashboard
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/chat-sending.webp" width="460" alt="A message in the web chat marked “Sending…” while it is on its way.">
+  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/usage-compact.webp" width="300" alt="The usage panel in compact mode, with made-up demo data: five accounts across Claude, Codex and Kiro.">
+</p>
 
 - **Global search** (Ctrl+K, or ⌘K): finds chat messages, messages between agents and tasks, grouped by agent. Click a result to jump to the message. In a chat, Ctrl+F searches only that agent. You can filter by agent or team, time and source, or show only what you said. Only signed-in admins can search. The index keeps 90 days by default (`web.search.retention_days`).
 - **Chat:**
