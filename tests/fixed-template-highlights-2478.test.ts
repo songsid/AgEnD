@@ -36,9 +36,14 @@ describe("#2478: the fixed template — the straight bar and a flat background, 
     }
   });
   it("keyboard focus stays visible: the bar plus a straight underline, not a ring", () => {
-    for (const st of [".search-recent-item:focus-visible", ".tw-line:focus-visible", ".u-crow:focus-visible", ".oo-desk:focus-visible"]) {
+    for (const st of [".search-recent-item:focus-visible", ".tw-line:focus-visible", ".oo-desk:focus-visible"]) {
       expect([st, decl(st, "outline"), decl(st, "box-shadow")]).toEqual([st, "none", "inset 0 -2px 0 var(--focus)"]);
     }
+    // Prism r1: the compact usage rows are inside .u-cgroup (rounded, overflow hidden): the bar alone marks focus, moved
+    // clear of the 12 px corners, with no full-width underline whose ends the corner would round.
+    expect([decl(".u-crow:focus-visible", "outline"), decl(".u-crow:focus-visible", "box-shadow"), decl(".u-crow:focus-visible", "--lbar-left"), decl(".u-crow:focus-visible", "--lbar-inset")])
+      .toEqual(["none", null, "var(--s-1)", "6px"]);
+    expect([decl(".u-cgroup", "overflow"), decl(".u-cgroup", "border-radius")]).toEqual(["hidden", "var(--r-md)"]);
   });
   it("search's selected row: a flat background, no inset accent edge (it curved into the corners)", () => {
     expect([decl(".search-row.on", "background"), decl(".search-row.on", "box-shadow"), decl(".search-ctx-line.here", "box-shadow")]).toEqual(["var(--surface-2)", null, null]);

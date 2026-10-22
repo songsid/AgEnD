@@ -1182,7 +1182,10 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
   background: transparent; color: inherit; font: inherit; line-height: 1.3; text-align: left; cursor: pointer; }
 .u-cg-head + .u-crow { border-top: 0; }
 .u-crow:hover { background: var(--surface-2); }
-.u-crow:focus-visible { outline: none; background: var(--surface-2); box-shadow: inset 0 -2px 0 var(--focus); --lbar-inset: 4px; }
+/* #2478 (Prism r1): the compact rows sit in .u-cgroup, rounded and clipping (overflow: hidden) — the bar keeps clear of
+   its 12 px corners (4 px in, 6 px off the row's ends) and there is no full-width underline to be rounded at the ends:
+   the bar is the focus mark (hover has none). */
+.u-crow:focus-visible { outline: none; background: var(--surface-2); --lbar-left: var(--s-1); --lbar-inset: 6px; }
 /* The name never gives way to the plan (#2415); the reset keeps its room on the right. */
 .u-crow-head { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-sm); }
 .u-crow-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-semibold); color: var(--text); }
