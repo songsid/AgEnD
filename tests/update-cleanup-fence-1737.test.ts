@@ -69,7 +69,7 @@ describe("#1737: the real completion and startup clear — renders a landed outc
   writeCleanupOutcome(dir,receipt,{warning:WARNING,cleanupCommand:COMMAND});if(order==="before boot")pending=readUpdateProgress(dir)!;
   const edit=vi.fn().mockResolvedValue(undefined),{fm,adapter}=inertManager(dir,edit);
   await completion(fm,adapter,pending);
-  const terminal=edit.mock.calls.map(c=>String(c[2])).find(x=>x.includes("✅ AgEnD updated"));
+  const terminal=edit.mock.calls.map(c=>String(c[2])).find(x=>x.includes("✅ Update complete"));
   expect(terminal).toContain(WARNING);expect(terminal).toContain(COMMAND);expect(readUpdateProgress(dir)).toBeNull();expect(fm.updateCleanupWatch).toBeNull();
  });
  it("#1854: the real completion carries no tip, even with tips enabled and one available",async()=>{
@@ -77,8 +77,8 @@ describe("#1737: the real completion and startup clear — renders a landed outc
   const edit=vi.fn().mockResolvedValue(undefined),{fm,adapter}=inertManager(dir,edit);
   Object.assign(fm,{tipsEnabled:()=>true,pickAvailableTip:()=>({id:"tip-x"}),formatTip:()=>"💡 Tip: try /status"});
   await completion(fm,adapter,pending);
-  const terminal=edit.mock.calls.map(c=>String(c[2])).find(x=>x.includes("✅ AgEnD updated"));
-  expect(terminal).toBe("✅ AgEnD updated to v2.2.1; 2/2 agents running (0s).");
+  const terminal=edit.mock.calls.map(c=>String(c[2])).find(x=>x.includes("✅ Update complete"));
+  expect(terminal).toBe("✅ Update complete — v2.2.1 · 2/2 agents ready (0s)");
  });
  it("real completion fallback includes a landed warning",async()=>{
   const dir=scratch(),receipt=seed(dir);writeCleanupOutcome(dir,receipt,{warning:WARNING,cleanupCommand:COMMAND});
@@ -88,11 +88,11 @@ describe("#1737: the real completion and startup clear — renders a landed outc
  });
  it.each([false,true])("pending warning lands during terminal edit=%s: no completion overwrites it",async duringEdit=>{
   const dir=scratch(),receipt=seed(dir),pending=readUpdateProgress(dir)!;
-  const edit=vi.fn(async(_c:string,_m:string,text:string)=>{if(duringEdit&&text.includes("✅ AgEnD updated")&&!text.includes(WARNING))writeCleanupOutcome(dir,receipt,{warning:WARNING,cleanupCommand:COMMAND});});
+  const edit=vi.fn(async(_c:string,_m:string,text:string)=>{if(duringEdit&&text.includes("✅ Update complete")&&!text.includes(WARNING))writeCleanupOutcome(dir,receipt,{warning:WARNING,cleanupCommand:COMMAND});});
   const {fm,adapter}=inertManager(dir,edit);await completion(fm,adapter,pending);
   if(!duringEdit)writeCleanupOutcome(dir,receipt,{warning:WARNING,cleanupCommand:COMMAND});
   await vi.advanceTimersByTimeAsync(1_000);
-  const terminal=edit.mock.calls.filter(c=>String(c[2]).includes("✅ AgEnD updated"));
+  const terminal=edit.mock.calls.filter(c=>String(c[2]).includes("✅ Update complete"));
   expect(String(terminal.at(-1)![2])).toContain(WARNING);expect(readUpdateProgress(dir)).toBeNull();
   if(fm.updateProgressTimer)clearInterval(fm.updateProgressTimer);
  });
@@ -100,7 +100,7 @@ describe("#1737: the real completion and startup clear — renders a landed outc
   const dir=scratch(),receipt=seed(dir,UPDATE_MARKER_MAX_AGE_MS-1_000);
   if(rendered)writeCleanupOutcome(dir,receipt,{warning:WARNING,cleanupCommand:COMMAND});
   const pending=readUpdateProgress(dir)!,hold=deferred(),entered=deferred();
-  const edit=vi.fn(async(_c:string,id:string,text:string)=>{if(id==="A"&&text.includes("✅ AgEnD updated")){entered.resolve();await hold.promise;}});
+  const edit=vi.fn(async(_c:string,id:string,text:string)=>{if(id==="A"&&text.includes("✅ Update complete")){entered.resolve();await hold.promise;}});
   const {fm,adapter}=inertManager(dir,edit);const finishing=completion(fm,adapter,pending);await entered.promise;
   await vi.advanceTimersByTimeAsync(1_001);expect(isUpdateInProgress(dir)).toBe(false);
   const restartGrace=deferred();fm.waitForFullRestartIdleGrace=()=>restartGrace.promise;

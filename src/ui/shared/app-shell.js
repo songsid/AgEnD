@@ -644,6 +644,20 @@ function usePageTheme(ref, route) {
   }, [agent]);
 }
 
+/** #2478: how far short of its tallest the view must be, with a text field focused, to be a keyboard (not a browser bar). */
+export const KEYBOARD_MIN_PX = 150;
+/** #2478: the on-screen keyboard is up — something is being typed into, and the view is well short of its tallest. */
+export function keyboardUp(height, tallest, typing) { return !!typing && tallest - height > KEYBOARD_MIN_PX; }
+const NOT_TYPED = /^(button|checkbox|radio|range|color|file|submit|reset|image|hidden)$/i;
+/** #2478: an element the keyboard types into — a textarea, a text-like input, or an editable region. */
+export function isTextEntry(el) {
+  if (!el || !el.tagName) return false;
+  const tag = String(el.tagName).toUpperCase();
+  if (tag === "TEXTAREA") return !el.readOnly && !el.disabled;
+  if (tag === "INPUT") return !NOT_TYPED.test(el.type || "text") && !el.readOnly && !el.disabled;
+  return el.isContentEditable === true;
+}
+
 export function Shell({ panels, onNewInstance, viewOnly = false }) {
   const nav = useStore(navStore);
   const shell = useStore(shellStore);
@@ -653,13 +667,38 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
   // A language switch re-renders everything and gives the panel a new lease (its key includes the language).
   useEffect(() => onLang(() => relang(n => n + 1)), []);
   useEffect(() => { closeDrawer(); }, [nav.seq]);
-  // The bottom tabs give their room to the keyboard on a phone.
+  // The bottom tabs (and the line under the composer) give their room to the keyboard on a phone (#2478).
   useEffect(() => {
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
-    if (!vv) return undefined;
-    const onResize = () => shellStore.set({ keyboard: window.innerHeight - vv.height > 150 });
-    vv.addEventListener("resize", onResize);
-    return () => vv.removeEventListener("resize", onResize);
+    if (!vv || typeof document === "undefined") return undefined;
+    // The tallest the view has been at this width: what it is with no keyboard. innerHeight is no measure on its own —
+    // it shrinks with the keyboard on iOS Safari and, under interactive-widget=resizes-content, on Android — so
+    // innerHeight − height stayed near 0 and the strips stayed between the composer and the keyboard.
+    // Only a touch screen (a coarse pointer) has an on-screen keyboard: a narrow desk window made shorter is not one.
+    // Turned with the keyboard up and the field still focused, the new width has no height without it yet: the keyboard
+    // stays up until the field is left, or the view grows from its lowest by more than a keyboard (put away).
+    let width = -1, tallest = 0, held = false, lowest = 0;
+    const coarse = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+    const check = () => {
+      const w = Math.round(vv.width), h = vv.height;
+      const typing = coarse() && isTextEntry(document.activeElement);
+      if (w !== width) {                                              // turned, or a new width: measured again
+        held = width !== -1 && typing && shellStore.get().keyboard;
+        width = w; tallest = 0; lowest = h;
+      }
+      if (held) {
+        lowest = Math.min(lowest, h);
+        if (!typing || h - lowest > KEYBOARD_MIN_PX) held = false;    // left the field, or the keyboard was put away
+      }
+      if (!held) tallest = Math.max(tallest, window.innerHeight || 0, typing ? 0 : h);   // the view itself only when not typing
+      const up = held || keyboardUp(h, tallest, typing);
+      if (up !== shellStore.get().keyboard) shellStore.set({ keyboard: up });
+    };
+    check();
+    vv.addEventListener("resize", check);
+    document.addEventListener("focusin", check);
+    document.addEventListener("focusout", check);
+    return () => { vv.removeEventListener("resize", check); document.removeEventListener("focusin", check); document.removeEventListener("focusout", check); };
   }, []);
   const guest = guestPage();             // #1920: a guest's page — no operations, usage, pending changes or owner CSS
   const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");
