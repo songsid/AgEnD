@@ -308,8 +308,8 @@ describe("#1749: the plan badge is one short line; the full plan stays on it for
     const css = readFileSync("src/ui/shared/app.css", "utf8");
     const rule = (sel: string) => new RegExp(`(^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`).exec(css)?.[2] ?? "";
     const has = (sel: string, ...decls: string[]) => decls.every((d) => rule(sel).includes(d));
-    expect([has(".u-plan", "white-space: nowrap", "text-overflow: ellipsis", "overflow: hidden", "flex: 0 1 auto", "min-width: 3.5em"),
-      has(".u-head strong", "white-space: nowrap", "text-overflow: ellipsis", "overflow: hidden", "flex: 0 0 auto"),
+    expect([has(".u-plan", "white-space: nowrap", "text-overflow: ellipsis", "overflow: hidden", "flex: 0 1000 auto", "min-width: 3.5em"),
+      has(".u-head strong", "white-space: nowrap", "text-overflow: ellipsis", "overflow: hidden", "flex: 0 1 auto", "min-width: 0"),
       has(".u-order", "flex: none"), rule(".u-plan").includes("max-width: 55%")]).toEqual([true, true, true, false]);
   });
 });

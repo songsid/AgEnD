@@ -4,7 +4,7 @@
 // rail is 320) and the phone dialog (390), light and dark, English and zh-TW. Per row it reports whether the title,
 // the profile and the badge are clipped, and the badge's text; it fails (exit 1) when a title is clipped, when a
 // profile that fits is clipped, or when a badge takes the row.
-// Output: 2412/<case>-rail-<n>.png | -phone-<n>.png (one per card, nothing around it) and result.json.
+// Output: 2412/<case>-rail-<n>.png | -phone-<n>.png | -phone320-<n>.png (one per card, nothing around it) and result.json.
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2412-usage-head.mts
 import { writeFileSync } from "node:fs";
 import { bootFixture, matrix, caseName, shotPath } from "../smoke-fixture/index.mts";
@@ -39,15 +39,29 @@ for (const c of matrix()) {
   await page.waitForTimeout(1500);
   if (kind === "phone") { await page.click("button.hd-usage").catch(() => errs.push("no button.hd-usage")); await page.waitForTimeout(1200); }
   const scope = kind === "rail" ? ".u-rail" : "dialog[open]";
-  const rows = await page.evaluate(`(() => { const s = document.querySelector(${JSON.stringify(scope)}); if (!s) return null; return [...s.querySelectorAll(".u-provider")].map((h) => {
+  const measure = () => page.evaluate(`(() => { const s = document.querySelector(${JSON.stringify(scope)}); if (!s) return null; return [...s.querySelectorAll(".u-provider")].map((h) => {
     const head = h.querySelector(".u-head"), st = h.querySelector(".u-head strong"), pr = h.querySelector(".u-profile"), pl = h.querySelector(".u-head .u-plan");
     const clipped = (el) => el ? el.scrollWidth > el.clientWidth + 1 : null;
     const w = (el) => el ? Math.round(el.getBoundingClientRect().width) : null;
     return { title: st && st.getAttribute("title"), name: st && st.textContent, profile: pr && pr.textContent, plan: pl && pl.textContent.trim(), planTitle: pl && pl.getAttribute("title"),
-      nameClipped: clipped(st), profileClipped: clipped(pr), profileTip: pr && pr.getAttribute("title"), planClipped: clipped(pl), headW: w(head), nameW: w(st), planW: w(pl) };
-  }); })()`) as any[] | null;
+      nameClipped: clipped(st), profileClipped: clipped(pr), profileTip: pr && pr.getAttribute("title"), planClipped: clipped(pl), headW: w(head), nameW: w(st), planW: w(pl),
+      // Prism on #2415: everything in the head stays inside it (↑↓ included), whatever the width.
+      overflowPx: Math.max(0, ...[...head.children].map((el) => Math.round(el.getBoundingClientRect().right - head.getBoundingClientRect().right))) };
+  }); })()`) as Promise<any[] | null>;
+  const rows = await measure();
   r[`${tag}-rows`] = rows;
+  // The narrowest phone too (320 px): there the name may end in an ellipsis as a last resort, but nothing leaves the head.
+  if (kind === "phone") {
+    await page.setViewportSize({ width: 320, height: 700 }); await page.waitForTimeout(500);
+    const narrow = (await measure()) ?? [];
+    r[`${tag}-rows320`] = narrow;
+    for (const x of narrow) if (x.overflowPx > 0) { bad++; errs.push(`320 px: ${x.title} overflows its head by ${x.overflowPx}px`); }
+    const cards320 = page.locator(`${scope} .u-provider`);
+    for (let i = 0, n = await cards320.count(); i < n; i++) { await cards320.nth(i).scrollIntoViewIfNeeded(); await cards320.nth(i).screenshot({ path: shotPath("2412", c, `phone320-${i}`) }); }
+    await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(300);
+  }
   for (const x of rows ?? []) {
+    if (x.overflowPx > 0) { bad++; errs.push(`${x.title} overflows its head by ${x.overflowPx}px`); }
     if (x.nameClipped) { bad++; errs.push(`title clipped: ${x.title}`); }
     // A profile that fits shows whole: clipped only when it is longer than the row (then its tooltip says it).
     if (x.profileClipped && x.profile && x.profile.length < 24) { bad++; errs.push(`profile clipped though short: ${x.profile}`); }
