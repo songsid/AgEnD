@@ -13866,7 +13866,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!this.deliveryOutbox?.isOpen) throw new Error("the delivery outbox is not open");
         return this.deliveryOutbox.acknowledge(deliveryId, by);
       },
-      tasks: () => this.needsYouTasks(),
+      tasks: () => this.needsYouTaskItems(),
       taskAction: action => this.taskActionFromChat(action),
       settings: () => ({
         liveMessage: this.fleetConfig?.needs_you?.live_message !== false,
@@ -13926,6 +13926,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2246 step 3: the task board's cards that wait for the person, for Needs you — under each card's assignee, listed in
    * its lane's channel (#2352: the instance that handed it out, else the project's lead), else in General.
    */
+  private needsYouTaskItems(): import("./needs-you.js").TaskInput[] {
+    // #2425: the task board's cards join Needs you only when the fleet asks for them (needs_you.task_board, off by
+    // default since 2.3.0-beta.25); prompts, deliveries and the rest are unchanged.
+    return this.fleetConfig?.needs_you?.task_board === true ? this.needsYouTasks() : [];
+  }
   private needsYouTasks(): import("./needs-you.js").TaskInput[] {
     const board = this.scheduler?.db.board;
     if (!board) return [];

@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Scheduler } from "../src/scheduler/index.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { validateFleetConfig } from "../src/config-validator.js";
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -60,6 +61,37 @@ describe("#2425 only what asks the person waits for the person", () => {
       expect((fm.needsYouTasks() as Array<{ code: string; status: string }>).map((i) => [i.code, i.status]).sort())
         .toEqual([[f.asked.code, "blocked"], [f.confirm.code, "review"]].sort());
       expect(f.raw.prepare("SELECT code, status, version, updated_at FROM tasks ORDER BY code").all()).toEqual(before);
+    } finally { f.scheduler.db.close(); }
+  });
+
+  // The user's call for 2.3.0-beta.25: the task board's chat surfaces are off unless asked for.
+  it("Needs you lists the board's cards only with needs_you.task_board: true; prompts and the rest are not gated", () => {
+    const f = fixture();
+    try {
+      const fm = new FleetManager(f.d) as unknown as Record<string, any>;
+      fm.scheduler = f.scheduler;
+      const tasksOf = (config: unknown) => { fm.fleetConfig = { defaults: {}, instances: { "dev-a": {} }, ...(config as object) }; return fm.needsYouTaskItems().map((i: any) => i.code).sort(); };
+      expect(tasksOf({})).toEqual([]);                                                    // not set: off
+      expect(tasksOf({ needs_you: { live_message: true } })).toEqual([]);
+      expect(tasksOf({ needs_you: { task_board: false } })).toEqual([]);
+      expect(tasksOf({ needs_you: { task_board: true } })).toEqual([f.asked.code, f.confirm.code].sort());
+      const errs = (needs_you: unknown) => validateFleetConfig({ defaults: {}, instances: {}, needs_you }).errors.filter((e: any) => e.path.startsWith("needs_you")).map((e: any) => e.path);
+      expect([errs({ task_board: true }), errs({ task_board: "yes" }), errs({ tasks: true })]).toEqual([[], ["needs_you.task_board"], ["needs_you.tasks"]]);
+    } finally { f.scheduler.db.close(); }
+  });
+
+  // The once-a-minute ping on beta.24: a card with no "moved to blocked" event (every `task`-tool row) took its
+  // `since` from updated_at, so an agent touching it gave its Needs-you item a new id — posted again as new.
+  it("a card edited again and again keeps its Needs-you item id: its `since` never follows updated_at", () => {
+    const f = fixture();
+    try {
+      // Ann's question, as a row the `task` tool kept: blocked with no "moved" event, handed out by the person.
+      f.raw.prepare("DELETE FROM task_events WHERE task_id = ? AND type = 'moved'").run(f.asked.uuid);
+      const since = () => f.board.waitingForPerson().find((w) => w.card.code === f.asked.code)!.since;
+      const first = since();
+      f.raw.prepare("UPDATE tasks SET updated_at = ? WHERE id = ?").run("2099-01-01T00:00:00.000Z", f.asked.uuid);
+      expect(since()).toBe(first);
+      expect(first).toBe(f.board.getCard(f.asked.code).createdAt);
     } finally { f.scheduler.db.close(); }
   });
 

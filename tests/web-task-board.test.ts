@@ -51,7 +51,8 @@ function rig() {
     sendDirect: vi.fn(async (user: string, _text: string, _opts?: any) => ({ chatId: user, messageId: "dm" })),
     editMessageRemoveButtons: vi.fn(async () => {}), stop: vi.fn(async () => {}) };
   const owner = { id: "owner", type: "telegram", group_id: "G", bot_token_env: "NONE", access: { mode: "open", allowed_users: ["admin"] } };
-  fm.fleetConfig = { defaults: {}, channel: owner, channels: [owner], health_port: 19280, instances: {
+  // #2425: the board's cards in Needs you are opt-in since 2.3.0-beta.25 — these tests are about them, so asked for.
+  fm.fleetConfig = { defaults: {}, needs_you: { task_board: true }, channel: owner, channels: [owner], health_port: 19280, instances: {
     general: { working_directory: dir, general_topic: true, topic_id: "T0", channel_id: "owner" },
   } } as never;
   fm.routing.rebuild(fm.fleetConfig!); s.adapters.set("owner", adapter); s.adapter = adapter;

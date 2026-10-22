@@ -1108,7 +1108,9 @@ export class TaskBoard {
     const moved = this.db.prepare("SELECT at FROM task_events WHERE task_id = ? AND type = 'moved' AND json_extract(data, '$.to') = ? ORDER BY id DESC LIMIT 1");
     return rows.map((card) => {
       const at = (moved.get(card.uuid, card.status) as { at: string } | undefined)?.at;
-      return { card, since: at ?? card.submittedAt ?? card.updatedAt };
+      // Never updatedAt (#2425): a card edited every minute (a note, a heartbeat) would get a new `since` — and so a new
+      // Needs-you item id, posted again at the bottom as if it were new, once a minute.
+      return { card, since: at ?? card.submittedAt ?? card.createdAt };
     }).sort((a, b) => a.since.localeCompare(b.since));
   }
 
