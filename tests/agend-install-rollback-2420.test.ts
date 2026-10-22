@@ -402,3 +402,43 @@ describe("#2420 the success path is unchanged", () => {
     expect(failure(r)).toBe(`  ✗ the user service did not start (exit 1); AgEnD v${NEW} is installed — run \`agend start\``);
   });
 });
+
+describe("#2420 follow-up (Fable): copies an installer that died left behind are pruned; kept ones and 2.2's are not", () => {
+  const copy = (r: ReturnType<typeof rig>, name: string, kept = false) => {
+    const dir = join(r.prefix, ".agend-rollback", name);
+    mkdirSync(join(dir, "agend"), { recursive: true });
+    writeFileSync(join(dir, "agend", "package.json"), "{}");
+    if (kept) writeFileSync(join(dir, "kept.txt"), "kept\n");
+    return name;
+  };
+  it("at start, while it owns the prefix: a dead installer's copy goes (and is said); a live one's, a kept one and 2.2's stay", () => {
+    const r = rig({ kind: "user", running: true });
+    r.live.add(5151);
+    const dead = copy(r, "2.3.0-rb.1-2026-10-22T09-14-38-597Z-9999");
+    const live = copy(r, "2.3.0-rb.1-2026-10-22T09-14-38-597Z-5151");
+    const kept = copy(r, "2.3.0-rb.1-2026-10-22T09-14-38-597Z-9998", true);
+    const old22 = copy(r, "2.2.6-2026-10-21T08-00-00-000Z");
+    expect(r.main()).toBe(0);
+    expect(r.rollbackDir().sort()).toEqual([live, kept, old22].sort());
+    expect(r.log).toContain(`  ↺ removed a rollback copy left by an installer that is no longer running (${dead})`);
+  });
+  it("refused by another installer's lock: nothing is pruned", () => {
+    const r = rig({ kind: "user", running: true });
+    const dead = copy(r, "2.3.0-rb.1-2026-10-22T09-14-38-597Z-9999");
+    mkdirSync(join(r.prefix, ".agend-install.d"), { recursive: true });
+    writeFileSync(join(r.prefix, ".agend-install.d", "7777-x"), JSON.stringify({ pid: 7777 }) + "\n");
+    r.live.add(7777);
+    expect(r.main()).toBe(75);
+    expect(r.rollbackDir()).toEqual([dead]);
+  });
+  it("a rollback that could not finish keeps its copy marked, so the next installer leaves it", () => {
+    const r = rig({ kind: "user", running: true, agend: shimRestart, unreadable: true });
+    expect(r.main()).toBe(1);
+    const [kept] = r.rollbackDir();
+    expect(readFileSync(join(r.prefix, ".agend-rollback", kept, "kept.txt"), "utf8")).toMatch(/^AgEnD v2\.3\.0-beta\.1, kept by the installer of v.* after a rollback it could not finish/);
+    // The next run (that installer is gone): the kept copy stays.
+    const next = installer.main(["--upgrade", "--spec", `@songsid/agend@${NEW}`], { ...r.deps, pid: 4343, alive: (pid: number) => pid === 4343 || r.live.has(pid) });
+    expect(next).toBe(0);   // a plain start this time: its own copy is spent and removed
+    expect(r.rollbackDir()).toEqual([kept]);
+  });
+});

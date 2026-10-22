@@ -15,7 +15,7 @@ import { modelText } from "/assets/instance-nav.js";
 
 register("org", {
   en: {
-    title: "Org chart", general: "General", unteamed: "Not in a team", members: "{0} members", member: "1 member", instances: "{0} instances", instance: "1 instance",
+    starting: "Starting", queued: "Queued", title: "Org chart", general: "General", unteamed: "Not in a team", members: "{0} members", member: "1 member", instances: "{0} instances", instance: "1 instance",
     needs: "Needs you", working: "Working", idle: "Idle", stuck: "Looks stuck", paused: "Paused", stopped: "Stopped", crashed: "Crashed",
     missing: "Not in the fleet", thread_discord: "Discord thread", thread_telegram: "Telegram topic", openChat: "Open chat",
     classic: "ClassicBot room", empty: "No instances yet", emptyHint: "Instances and teams show here once the fleet has them.",
@@ -23,7 +23,7 @@ register("org", {
     sending: "Sending:", queuedNote: "(queued)", workingNote: "(in progress)",
   },
   "zh-TW": {
-    title: "組織圖", general: "General", unteamed: "未加入 team", members: "{0} 名成員", member: "1 名成員", instances: "{0} 個 instance", instance: "1 個 instance",
+    starting: "啟動中", queued: "等待啟動", title: "組織圖", general: "General", unteamed: "未加入 team", members: "{0} 名成員", member: "1 名成員", instances: "{0} 個 instance", instance: "1 個 instance",
     needs: "等你回應", working: "工作中", idle: "閒置", stuck: "似乎卡住", paused: "已暫停", stopped: "已停止", crashed: "已當掉",
     missing: "不在 fleet 中", thread_discord: "Discord 討論串", thread_telegram: "Telegram topic", openChat: "開啟聊天",
     classic: "ClassicBot 頻道", empty: "還沒有 instance", emptyHint: "fleet 有 instance 和 team 後會顯示在這裡。",
@@ -35,8 +35,8 @@ const to = (k, ...v) => t(`org.${k}`, ...v);
 const count = (one, many, n) => (n === 1 ? to(one) : to(many, n));
 
 /** The states a node can show, most pressing first (a team's summary lists them in this order). */
-export const ORG_STATES = ["needs", "crashed", "stuck", "working", "idle", "paused", "stopped", "missing"];
-const DOT = { needs: "warn", crashed: "bad", stuck: "warn", working: "busy", idle: "ok", paused: "off", stopped: "off", missing: "off" };
+export const ORG_STATES = ["needs", "crashed", "stuck", "starting", "queued", "working", "idle", "paused", "stopped", "missing"];
+const DOT = { starting: "busy", queued: "off", needs: "warn", crashed: "bad", stuck: "warn", working: "busy", idle: "ok", paused: "off", stopped: "off", missing: "off" };
 
 /**
  * One instance's live state, from the app store: `i` its status entry (null: the fleet does not list it), `exec` the
@@ -46,6 +46,8 @@ const DOT = { needs: "warn", crashed: "bad", stuck: "warn", working: "busy", idl
 export function orgState(i, exec, awaiting, needs) {
   if (!i) return "missing";
   if (awaiting != null || needs > 0) return "needs";
+  if (i.startup_phase === "queued") return "queued";
+  if (i.startup_phase === "starting") return "starting";
   if (i.status === "crashed") return "crashed";
   if (i.status === "paused") return "paused";
   if (i.status !== "running") return "stopped";

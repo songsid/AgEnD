@@ -82,11 +82,12 @@ export function backendLabel(backend) { return BACKEND_LABELS[backend] || backen
 export const KNOWN_BACKENDS = new Set(Object.keys(BACKEND_LABELS));
 export const STATUS_KEYS = { running: "statusRunning", paused: "statusPaused", stopped: "statusStopped", crashed: "statusCrashed" };
 
-/** The status chips, in order (design Q5): what the row's dot says, in five words. */
-export const STATUS_FACETS = ["working", "needs", "idle", "stopped", "crashed"];
+/** The status chips, in order: what the row's dot says, including agents queued for this boot. */
+export const STATUS_FACETS = ["working", "needs", "starting", "idle", "stopped", "crashed"];
 /** Which status chip a row falls under: needs you first, then crashed, not running, working (or stuck), idle. */
 export function statusFacet(it, exec, awaiting) {
   if (awaiting != null) return "needs";
+  if (it?.startup_phase === "queued" || it?.startup_phase === "starting") return "starting";
   if (!it || it.status === "crashed") return "crashed";
   if (it.status !== "running") return "stopped";
   return exec === "working" || exec === "stuck" ? "working" : "idle";
@@ -127,7 +128,8 @@ export function filterSidebar(groupNames, instByGroup, rosterByName, query, labe
 }
 export function instanceTooltip(it) {
   const context = it.context_pct != null && Number.isFinite(it.context_pct) ? `${Math.round(Math.min(100, Math.max(0, it.context_pct)))}%` : tn("tooltipUnavailable");
-  const status = STATUS_KEYS[it.status] ? tn(STATUS_KEYS[it.status]) : it.status || tn("statusUnknown");
+  const status = it.startup_phase === "queued" ? t("app.statusQueued") : it.startup_phase === "starting" ? t("app.statusStarting")
+    : STATUS_KEYS[it.status] ? tn(STATUS_KEYS[it.status]) : it.status || tn("statusUnknown");
   const line = (key, value) => tn(key, { value });
   const lines = [];
   const name = nameOf(it);
@@ -361,12 +363,15 @@ export function avatarOf(it) {
 /** The status dot on the avatar: needs you, crashed, paused, stopped, looks stuck, working, idle — colour AND a label. */
 export function dotState(it, exec, awaiting) {
   if (awaiting != null) return "needs";
+  if (it?.startup_phase === "queued") return "queued";
+  if (it?.startup_phase === "starting") return "starting";
   if (!it || it.status === "crashed") return "crashed";
   if (it.status === "paused") return "paused";
   if (it.status !== "running") return "stopped";
   return exec === "stuck" ? "stuck" : exec === "working" ? "working" : "idle";
 }
 const DOT = {
+  queued: ["off", () => t("app.statusQueued")], starting: ["busy", () => t("app.statusStarting")],
   needs: ["warn", () => t("app.needsYou")], crashed: ["bad", () => t("app.statusCrashed")], paused: ["off hollow", () => t("app.statusPaused")],
   stopped: ["off", () => t("app.statusStopped")], stuck: ["warn", () => t("app.statusStuck")], working: ["busy", () => t("app.statusWorking")],
   idle: ["ok", () => t("app.statusIdle")],
@@ -393,7 +398,7 @@ export function InstanceAvatar({ it, state, cli = false }) {
 
 // ── The list ──
 
-const statusText = (facet) => (facet === "needs" ? t("app.needsYou") : facet === "working" ? t("app.statusWorking") : facet === "idle" ? t("app.statusIdle")
+const statusText = (facet) => (facet === "needs" ? t("app.needsYou") : facet === "starting" ? t("app.statusStarting") : facet === "working" ? t("app.statusWorking") : facet === "idle" ? t("app.statusIdle")
   : facet === "crashed" ? t("app.statusCrashed") : t("app.statusStopped"));
 
 // ── #2179: when each instance last replied to a person (the status frame's last_reply) ──

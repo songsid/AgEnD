@@ -87,6 +87,8 @@ instance 啟動時，daemon 會把剛組好的 fleet 指示，和上次告訴 ag
 
 ## Instance 狀態圖示 (Instance status indicators)
 
+冷啟動或完整重啟時，網頁儀表板會在 Agent 全部啟動完成前開放。**Fleet 啟動中 N/M** 會顯示可啟動 instance 中已成功啟動的數量，不包含原本暫停的 instance；側邊欄、聊天標題和組織圖會區分「等待啟動」與「啟動中」。啟動期間可以查看狀態、歷史訊息、用量和任務板；傳送訊息或修改設定時，會明確提示等啟動完成後再試。回訪的訪客可能需要稍候，等連線權限初始化；這不會登出既有登入。替換程序的完整重啟，仍會在舊程序結束、新監聽器初始化時短暫重新連線。服務的就緒判定和啟動逾時維持不變。
+
 `agend ls`（欄位為 Name、Backend、Status、Team、Src、Ctx、Mem、Activity）和聊天裡的 `/status` 指令，每個 instance 都只顯示一種狀態。這個狀態由 daemon 的執行狀態（idle / working / stuck / paused）和生命週期（running / paused / stopped / crashed）合併而成：
 
 | 狀態 | `agend ls` | `/status` |

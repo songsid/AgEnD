@@ -18,7 +18,7 @@ vi.mock("node:net", async original => ({ ...await original<typeof import("node:n
 }));
 vi.mock("node:http", async original => ({ ...await original<typeof import("node:http")>(),
   createServer: (handler: (req: any, res: any) => void) => {
-    hooks.http = handler; return { on: vi.fn(), listen: vi.fn() };
+    hooks.http = handler; return { on: vi.fn(), once: vi.fn(), listen: vi.fn() };
   },
 }));
 vi.mock("../src/backend/factory.js", () => ({ createBackend: hooks.forbidden }));

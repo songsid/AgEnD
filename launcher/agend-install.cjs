@@ -445,6 +445,28 @@ function versionOf(agendBin, deps) {
  * hand-started fleet's restart is not rolled back (2.2 neither: its ownership cannot be proven).
  */
 var ROLLBACK_DIR = ".agend-rollback";
+/** A copy a rollback could not use is kept on purpose (its answer names it): this file in it says why. */
+var KEPT = "kept.txt";
+/**
+ * Copies left by an installer that died before its own clean-up (SIGKILL, a killed cgroup): each is a whole package
+ * with its Node (~235 MB) and nothing else ever removes it. Only this installer's names (`<version>-<time>-<pid>`), only
+ * when that pid no longer runs, and never one a rollback kept on purpose; called while this installer owns the prefix,
+ * so no other installer is writing one. 2.2's updater's copies (`<version>-<time>`, which it prunes itself) are left.
+ */
+function pruneStale(prefix, deps) {
+  var base = path.join(prefix, ROLLBACK_DIR);
+  var names = [];
+  try { names = fs.readdirSync(base); } catch (e) { return []; }
+  var notes = [];
+  names.forEach(function (name) {
+    var m = /-\d{3}Z-(\d+)$/.exec(name);
+    if (!m || Number(m[1]) === deps.pid || deps.alive(Number(m[1]))) return;
+    var dir = path.join(base, name);
+    if (fs.existsSync(path.join(dir, KEPT))) return;
+    try { fs.rmSync(dir, { recursive: true, force: true }); notes.push("removed a rollback copy left by an installer that is no longer running (" + name + ")"); } catch (e) { /* tried again next time */ }
+  });
+  return notes;
+}
 function binNames(pkgDir) {
   var p = readJson(path.join(pkgDir, "package.json"));
   return p && p.bin && typeof p.bin === "object" ? Object.keys(p.bin) : [];
@@ -664,6 +686,7 @@ function main(argv, injected) {
     setStage(home, claimed, "downloading", { version: version }, deps);
     var fixed = repair(root, prefix, deps);
     fixed.notes.forEach(function (n) { log("  ↺ " + n); });
+    pruneStale(prefix, deps).forEach(function (n) { log("  ↺ " + n); });
     var previous = isAgendPackage(path.join(root, "@songsid", "agend"));
     var bin = path.join(prefix, "bin", "agend");
     // #2420: on a host with a service, what an update whose new service does not come up goes back to.
@@ -787,8 +810,12 @@ function main(argv, injected) {
     }
     return 0;
   } finally {
-    // Spent (put back), or not needed: only a rollback that could not finish keeps its copy, and says where.
+    // Spent (put back), or not needed: only a rollback that could not finish keeps its copy, says where, and marks it
+    // so that no later installer prunes it.
     if (preimage && !keepPreimage) { try { fs.rmSync(preimage.dir, { recursive: true, force: true }); } catch (e) { /* best effort */ } }
+    if (preimage && keepPreimage && fs.existsSync(preimage.dir)) {
+      try { fs.writeFileSync(path.join(preimage.dir, KEPT), "AgEnD v" + preimage.version + ", kept by the installer of v" + version + " (pid " + deps.pid + ") after a rollback it could not finish. Remove this directory once you no longer need it.\n"); } catch (e) { /* the answer already named it */ }
+    }
     admitted.release();
   }
 }

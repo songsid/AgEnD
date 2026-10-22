@@ -87,6 +87,8 @@ After an upgrade, each existing instance gets one short notice delivered just be
 
 ## Instance status indicators
 
+On a cold start or a full restart, the web dashboard opens before the agents finish starting. Its **Fleet starting N/M** banner counts successful starts among runnable instances (persisted pauses are excluded); the sidebar, chat header and Org chart distinguish **queued** from **starting**. You can browse status, history, usage and the task board during startup. Sending messages or making changes returns a clear retry response until startup completes. Returning guests may temporarily wait for their connection's access to initialize; this does not sign them out. A process-replacing restart still has a brief reconnect gap while the old process exits and the new listener initializes. Service readiness and the startup timeout are unchanged.
+
 `agend ls` (columns Name, Backend, Status, Team, Src, Ctx, Mem, Activity) and the `/status` chat command show one state per instance. The state comes from the daemon's execution state (idle / working / stuck / paused) combined with the lifecycle (running / paused / stopped / crashed):
 
 | State | `agend ls` | `/status` |
