@@ -18,7 +18,7 @@
  *
  * Only node built-ins: start-attempt.ts imports this before the rest of the CLI.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, type SpawnOptions } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -103,12 +103,18 @@ export function parseSystemctlShow(stdout: string): ManagerView {
 
 const FAILED_RESULTS = new Set(["exit-code", "signal", "core-dump", "start-limit-hit", "timeout", "watchdog"]);
 
-/** Does the manager show this job failing to start, again and again? (`attempts`: this version's, from our record.) */
-export function managerShowsLoop(view: ManagerView, attempts: number): boolean {
+/**
+ * Does the manager show this job failing to start, again and again? `recentAttempts`: this version's, within the window.
+ * launchd keeps `last exit code` and counts `runs` for as long as the job stays loaded: a job running now (a pid) may
+ * just be slow — a #2461 memory-deferred start takes minutes — so for it only our own recent attempts say it restarts.
+ */
+export function managerShowsLoop(view: ManagerView, recentAttempts: number): boolean {
   if (view.kind === "launchd") {
     if (!view.loaded) return false;                                  // not loaded: stopped on purpose
     const exitedBadly = view.lastExit !== null && view.lastExit !== 0;
-    return exitedBadly && (attempts >= 2 || (view.runs ?? 0) >= LOOP_ATTEMPTS);
+    if (!exitedBadly) return false;
+    if (view.state === "running" && view.pid !== null) return recentAttempts >= LOOP_ATTEMPTS;
+    return recentAttempts >= 2 || (view.runs ?? 0) >= LOOP_ATTEMPTS;
   }
   if (view.active === "failed") return view.result !== "success";
   if (view.sub === "auto-restart") return true;
@@ -143,7 +149,7 @@ export function judgeStartFailure(input: {
   const recent = mine.filter(a => { const at = Date.parse(a); return Number.isFinite(at) && input.now - at <= ATTEMPT_WINDOW_MS && at <= input.now; });
   let detail: string | null = null;
   if (input.manager) {
-    if (!managerShowsLoop(input.manager, mine.length)) return { failing: false };
+    if (!managerShowsLoop(input.manager, recent.length)) return { failing: false };
     detail = input.manager.kind === "launchd"
       ? `launchd: exit ${(input.manager as { lastExit: number | null }).lastExit}, started ${(input.manager as { runs: number | null }).runs ?? "?"} times`
       : `systemd: ${input.manager.active}/${input.manager.sub}, result ${input.manager.result || "?"}, restarted ${input.manager.restarts ?? "?"} times`;
@@ -242,7 +248,11 @@ export function fleetLogTail(home: string, lines = 15): string[] {
  * macOS: one notification per version, the 3rd failed attempt in a row (best effort; never blocks, never throws).
  * English only: it runs before any config is read; `agend doctor` says the rest in the fleet's language.
  */
-export function notifyOnce(home: string, record: AttemptsRecord, platform: NodeJS.Platform = process.platform, launch = spawn): boolean {
+/** How the notification is launched (tests pass a fake). */
+export type Launch = (cmd: string, args: string[], opts: SpawnOptions) => { on?: (event: "error", cb: () => void) => unknown; unref?: () => void };
+const defaultLaunch: Launch = (cmd, args, opts) => spawn(cmd, args, opts);
+
+export function notifyOnce(home: string, record: AttemptsRecord, platform: NodeJS.Platform = process.platform, launch: Launch = defaultLaunch): boolean {
   if (platform !== "darwin" || record.notified || record.attempts.length < LOOP_ATTEMPTS) return false;
   try {
     writeJson(join(home, ATTEMPTS_FILE), { ...record, notified: true });

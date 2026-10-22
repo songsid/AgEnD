@@ -59,6 +59,17 @@ describe("#2481 the decision: a crash loop of the installed version, nothing els
     expect(judge({ manager: LOADED({ state: "running", runs: 4, lastExit: 0, pid: 42 }) })).toEqual({ failing: false });
     expect(judge({ manager: SYSTEMD({ active: "activating", sub: "start", result: "success", restarts: 0 }) })).toEqual({ failing: false });
   });
+  it("never: a job running now (a pid) on stale launchd counters — a slow start; only 3 recent attempts say it restarts (Fable r1)", () => {
+    const running = LOADED({ state: "running", pid: 4242, runs: 7, lastExit: 1 });
+    expect(judge({ manager: running, attempts: { version: V, attempts: [ago(120)] } })).toEqual({ failing: false });
+    expect(judge({ manager: LOADED({ state: "running", pid: 4242, runs: 2, lastExit: 1 }), attempts: { version: V, attempts: [ago(150), ago(100)] } })).toEqual({ failing: false });
+    expect(judge({ manager: running, attempts: { version: V, attempts: [ago(300), ago(200), ago(100)] } }).failing).toBe(true);
+    // "running" with no pid is launchd mid-spawn, not a running fleet: its counters count.
+    expect(judge({ manager: LOADED({ state: "running", pid: null, runs: 7, lastExit: 1 }), attempts: { version: V, attempts: [ago(120)] } }).failing).toBe(true);
+  });
+  it("only recent attempts count: an old one (a reboot mid-start) does not make two (Fable r1)", () => {
+    expect(judge({ manager: LOADED({ runs: 1 }), attempts: { version: V, attempts: [ago(3600), ago(100)] } })).toEqual({ failing: false });
+  });
   it("never: a deliberate stop — launchd job not loaded, systemd inactive with success", () => {
     expect(judge({ manager: { kind: "launchd", loaded: false } })).toEqual({ failing: false });
     expect(judge({ manager: SYSTEMD({ active: "inactive", sub: "dead", result: "success", restarts: 0 }) })).toEqual({ failing: false });
@@ -174,7 +185,7 @@ describe("#2481 the service manager, as it answers", () => {
 describe("#2481 the macOS notification: once per version, from the 3rd attempt, never anywhere else", () => {
   it("posts once, records that it did, and never again for that version", () => {
     const home = scratch("notify");
-    const launch = vi.fn(() => ({ on: () => undefined, unref: () => undefined }) as never);
+    const launch = vi.fn((_cmd: string, _args: string[], _opts: unknown) => ({ on: () => undefined, unref: () => undefined }));
     let r = recordStartAttempt(home, V, NOW - 2);
     expect(notifyOnce(home, r, "darwin", launch)).toBe(false);
     recordStartAttempt(home, V, NOW - 1);
