@@ -94,7 +94,7 @@ function rig() {
   /** Sign in with `code`; the device cookie the response set ("name=value"), or undefined. */
   async function signIn(code: string, gateway?: string): Promise<{ status: number; device?: string; cookies: string[] }> {
     const r = await call("/auth/login", "POST", { body: { code }, gateway });
-    const set = r.cookies.find(c => /^(__Host-)?agend_device=/.test(c));
+    const set = r.cookies.find(c => /^(__Host-)?agend_device_[0-9a-f]{16}=/.test(c));
     return { status: r.status, device: set?.split(";")[0], cookies: r.cookies };
   }
 
@@ -119,9 +119,9 @@ describe("① only a browser that signed in before with a /dashboard code is a r
     const h = rig();
     const first = await h.signIn(await h.dashboardCode("local"));
     expect(first.status).toBe(200);
-    const set = first.cookies.find(c => c.startsWith("agend_device="))!;
+    const set = first.cookies.find(c => /^agend_device_[0-9a-f]{16}=/.test(c))!;
     expect(set).toMatch(/; HttpOnly/); expect(set).toMatch(/; SameSite=Strict/); expect(set).toMatch(/; Path=\//);
-    expect(first.cookies.some(c => c.startsWith("agend_session="))).toBe(true);
+    expect(first.cookies.some(c => /^agend_session_[0-9a-f]{16}=/.test(c))).toBe(true);
 
     const cli = await h.signIn(h.fm.issueDashboardLogin()!.display);
     expect(cli.status).toBe(200);
@@ -161,9 +161,9 @@ describe("① only a browser that signed in before with a /dashboard code is a r
     for (const bad of [`agend_device=${id}.${flip(sig![0]!)}${sig!.slice(1)}`, `agend_device=${flip(id![0]!)}${id!.slice(1)}.${sig}`, `agend_device=${id}`, `agend_device=${id}.`]) {
       expect((await h.call("/auth/device", "GET", { cookie: bad })).json(), bad).toEqual({ returning: false });
     }
-    expect(readDeviceCookie(cookie, true)).toBeUndefined();
-    expect(readDeviceCookie(cookie, false)).toBe(cookie.split("=")[1]);
-    expect(readDeviceCookie(`__Host-${cookie}`, true)).toBe(cookie.split("=")[1]);
+    expect(readDeviceCookie(cookie, true, h.s.webToken)).toBeUndefined();
+    expect(readDeviceCookie(cookie, false, h.s.webToken)).toBe(cookie.split("=")[1]);
+    expect(readDeviceCookie(`__Host-${cookie}`, true, h.s.webToken)).toBe(cookie.split("=")[1]);
   });
 
   it("a cross-site or non-JSON request for a code is refused before anything happens", async () => {
@@ -193,7 +193,7 @@ describe("② the code goes privately to the recorded owner only, and only while
     expect(h.adapter.sendText.mock.calls.flat().join(" ")).not.toMatch(CODE);
     // The code works, and it carries its owner again (so this browser stays a returning device).
     const again = await h.signIn(CODE.exec(String(text))![0]);
-    expect(again.status).toBe(200); expect(again.device).toMatch(/^agend_device=/);
+    expect(again.status).toBe(200); expect(again.device).toMatch(/^agend_device_[0-9a-f]{16}=/);
   });
 
   it("an owner who is no longer a fleet admin gets nothing, and no code is outstanding", async () => {
@@ -372,8 +372,8 @@ describe("⑥ the public link: only the open, current exposure; the sign-in stil
     const first = await h.signIn(code, exposure);
     expect(first.status).toBe(200);
     expect(confirm).toHaveBeenCalledTimes(1);
-    expect(first.device).toMatch(/^__Host-agend_device=/);
-    expect(first.cookies.find(c => c.startsWith("__Host-agend_device="))).toMatch(/; Secure/);
+    expect(first.device).toMatch(/^__Host-agend_device_[0-9a-f]{16}=/);
+    expect(first.cookies.find(c => /^__Host-agend_device_[0-9a-f]{16}=/.test(c))).toMatch(/; Secure/);
     return { exposure, cookie: first.device!, confirm };
   }
 

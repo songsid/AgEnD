@@ -103,7 +103,7 @@ describe("install-published-tarball.sh: the install downloads no @songsid/agend 
     expect(r.out).toContain("downloaded a @songsid/agend tarball from a registry");
   });
   it("another package whose name merely starts the same (@songsid/agend-node-…) is a dependency, not ours", () => {
-    const r = install([DEP, "npm http fetch GET 200 https://registry.npmjs.org/@songsid/agend-node-linux-x64/-/agend-node-linux-x64-22.23.3.tgz 9ms"]);
+    const r = install([DEP, "npm http fetch GET 200 https://registry.npmjs.org/@songsid/agend-node-linux-x64/-/agend-node-linux-x64-22.23.4.tgz 9ms"]);
     expect(r.status).toBe(0);
   });
   it("npm fails → the step fails with npm's reason shown", () => {

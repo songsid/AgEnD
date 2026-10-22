@@ -29,7 +29,9 @@ export interface AppIconState {
   by: string;
 }
 
-export type AppIconResult = { ok: true; state: AppIconState } | { ok: false; status: 400 | 409 | 413 | 415 | 500 | 503; error: string; detail?: string };
+/** `detail_key`/`detail_args` (#2390): the detail named, for the page to say in its own language; `detail` stays English. */
+export type AppIconDetail = { detail?: string; detail_key?: string; detail_args?: Array<string | number> };
+export type AppIconResult = { ok: true; state: AppIconState } | ({ ok: false; status: 400 | 409 | 413 | 415 | 500 | 503; error: string } & AppIconDetail);
 /** A source checked and made into its files (prepare), not yet in force (commit). */
 export interface AppIconPrepared { version: string; source: Uint8Array; files: Record<AppIconFile, Buffer>; epoch: number }
 export type AppIconPrepareResult = { ok: true; prepared: AppIconPrepared } | Extract<AppIconResult, { ok: false }>;
@@ -39,7 +41,7 @@ export const APP_ICON_CONVERT_MS = 30_000;
 const CONVERT_HEAP_MB = 256;
 
 /** Make the files from a source somewhere: a worker thread in the fleet (the default), in-process where a test says so. */
-export type AppIconConvert = (bytes: Uint8Array) => Promise<{ ok: true; files: Record<AppIconFile, Buffer> } | { ok: false; detail: string }>;
+export type AppIconConvert = (bytes: Uint8Array) => Promise<{ ok: true; files: Record<AppIconFile, Buffer> } | { ok: false; detail: string; detail_key: string; detail_args?: Array<string | number> }>;
 
 /** What the conversion needs of a worker thread (a test gives one that ends when it says). */
 export interface IconWorker {
@@ -59,6 +61,7 @@ export function spawnIconWorker(source: ArrayBuffer): IconWorker {
  * It settles only once the worker has exited (#2319 review): a timed-out or finished conversion whose thread is still
  * winding down keeps its claim, so the store never runs two threads at once.
  */
+const UNREADABLE = { ok: false as const, detail: "the image could not be read", detail_key: "unreadable" };
 export function convertWithWorker(spawn: (source: ArrayBuffer) => IconWorker = spawnIconWorker, deadlineMs = APP_ICON_CONVERT_MS): AppIconConvert {
   return (bytes) => new Promise((resolve) => {
     const worker = spawn(new Uint8Array(bytes).buffer);
@@ -72,19 +75,22 @@ export function convertWithWorker(spawn: (source: ArrayBuffer) => IconWorker = s
       if (!exited) void worker.terminate().catch(() => { /* its exit still settles */ });
       settle();
     };
-    const timer = setTimeout(() => finish({ ok: false, detail: "it took too long to read" }), deadlineMs);
-    worker.on("message", (m: { ok: boolean; files?: Record<AppIconFile, Uint8Array>; detail?: string }) => {
-      if (!m || !m.ok || !m.files) { finish({ ok: false, detail: (m && m.detail) || "the image could not be read" }); return; }
+    const timer = setTimeout(() => finish({ ok: false, detail: "it took too long to read", detail_key: "too_slow" }), deadlineMs);
+    worker.on("message", (m: { ok: boolean; files?: Record<AppIconFile, Uint8Array>; detail?: string; detail_key?: string; detail_args?: Array<string | number> }) => {
+      if (!m || !m.ok || !m.files) {
+        finish(m && m.detail ? { ok: false, detail: m.detail, detail_key: m.detail_key || "corrupt", ...(m.detail_args ? { detail_args: m.detail_args } : {}) } : UNREADABLE);
+        return;
+      }
       const files = {} as Record<AppIconFile, Buffer>;
       for (const name of APP_ICON_FILES) {
         const f = m.files[name];
-        if (!f) { finish({ ok: false, detail: "the image could not be read" }); return; }
+        if (!f) { finish(UNREADABLE); return; }
         files[name] = Buffer.from(f.buffer, f.byteOffset, f.byteLength);
       }
       finish({ ok: true, files });
     });
-    worker.on("error", () => finish({ ok: false, detail: "the image could not be read" }));
-    worker.on("exit", () => { exited = true; finish({ ok: false, detail: "the image could not be read" }); settle(); });
+    worker.on("error", () => finish(UNREADABLE));
+    worker.on("exit", () => { exited = true; finish(UNREADABLE); settle(); });
   });
 }
 export const convertInWorker: AppIconConvert = convertWithWorker();
@@ -92,7 +98,7 @@ export const convertInWorker: AppIconConvert = convertWithWorker();
 /** The conversion on this thread (tests, tools): the same code, without the worker. */
 export const convertInProcess: AppIconConvert = async (bytes) => {
   try { return { ok: true, files: appIconSet(bytes) }; } catch (err) {
-    return { ok: false, detail: err instanceof PngError ? err.message : "the image could not be read" };
+    return err instanceof PngError ? { ok: false, detail: err.message, detail_key: err.key, detail_args: err.args } : UNREADABLE;
   }
 };
 
@@ -105,8 +111,8 @@ function writeBytesAtomic(path: string, bytes: Uint8Array): void {
 /** The sizes made from one decoded source. */
 export function appIconSet(bytes: Uint8Array): Record<AppIconFile, Buffer> {
   const src = decodePng(bytes, { maxSide: APP_ICON_MAX_SIDE });
-  if (src.width !== src.height) throw new PngError(`not square (${src.width}×${src.height})`);
-  if (src.width < APP_ICON_MIN_SIDE) throw new PngError(`smaller than ${APP_ICON_MIN_SIDE}×${APP_ICON_MIN_SIDE}`);
+  if (src.width !== src.height) throw new PngError(`not square (${src.width}×${src.height})`, "not_square", [src.width, src.height]);
+  if (src.width < APP_ICON_MIN_SIDE) throw new PngError(`smaller than ${APP_ICON_MIN_SIDE}×${APP_ICON_MIN_SIDE}`, "too_small", [APP_ICON_MIN_SIDE]);
   const at = (n: number) => resize(src, n, n);
   return {
     "apple-touch-icon.png": encodePng(flatten(at(180), [255, 255, 255])),
@@ -163,14 +169,14 @@ export class AppIconStore {
    */
   async prepare(bytes: Uint8Array): Promise<AppIconPrepareResult> {
     if (this.closed) return { ok: false, status: 503, error: "app_icon_unavailable" };
-    if (bytes.length > APP_ICON_MAX_BYTES) return { ok: false, status: 413, error: "app_icon_too_large", detail: "at most 5 MiB" };
-    if (!isPng(bytes)) return { ok: false, status: 415, error: "app_icon_not_png", detail: "a PNG image (the page converts JPG and WebP)" };
-    if (this.converting) return { ok: false, status: 409, error: "app_icon_busy", detail: "another icon is being made" };
+    if (bytes.length > APP_ICON_MAX_BYTES) return { ok: false, status: 413, error: "app_icon_too_large", detail: "at most 5 MiB", detail_key: "max_size", detail_args: [5] };
+    if (!isPng(bytes)) return { ok: false, status: 415, error: "app_icon_not_png", detail: "a PNG image (the page converts JPG and WebP)", detail_key: "png_only" };
+    if (this.converting) return { ok: false, status: 409, error: "app_icon_busy", detail: "another icon is being made", detail_key: "busy" };
     this.converting = true;
     const epoch = this.epoch;
     try {
       const made = await this.convert(bytes);
-      if (!made.ok) return { ok: false, status: 400, error: "app_icon_unreadable", detail: made.detail };
+      if (!made.ok) return { ok: false, status: 400, error: "app_icon_unreadable", detail: made.detail, detail_key: made.detail_key, ...(made.detail_args ? { detail_args: made.detail_args } : {}) };
       return { ok: true, prepared: { version: createHash("sha256").update(bytes).digest("hex").slice(0, 16), source: bytes, files: made.files, epoch } };
     } finally {
       this.converting = false;
@@ -181,7 +187,7 @@ export class AppIconStore {
   commit(prepared: AppIconPrepared, by: string): AppIconResult {
     if (this.closed) return { ok: false, status: 503, error: "app_icon_unavailable" };
     // #2319 review: restored to the default while this one was being made — the later wish wins.
-    if (prepared.epoch !== this.epoch) return { ok: false, status: 409, error: "app_icon_superseded", detail: "the icon was reset meanwhile" };
+    if (prepared.epoch !== this.epoch) return { ok: false, status: 409, error: "app_icon_superseded", detail: "the icon was reset meanwhile", detail_key: "reset_meanwhile" };
     const { version } = prepared;
     const state: AppIconState = { version, updatedAt: this.now().toISOString(), by };
     try {

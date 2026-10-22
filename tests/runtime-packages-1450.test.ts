@@ -17,9 +17,9 @@ describe("manifests and SHASUMS parsing", () => {
   it("one package per shipped platform; libc only on linux; no bin field, ever", () => {
     expect(PLATFORMS.map((p: any) => p.id)).toEqual(["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"]);
     for (const platform of PLATFORMS) {
-      const m = runtimeManifest(platform, "22.23.3");
+      const m = runtimeManifest(platform, "22.23.4");
       expect(m.name).toBe(`@songsid/agend-node-${platform.id}`);
-      expect(m.version).toBe("22.23.3");
+      expect(m.version).toBe("22.23.4");
       expect(m.os).toEqual([platform.os]);
       expect(m.cpu).toEqual([platform.cpu]);
       expect(m.libc).toEqual(platform.os === "linux" ? ["glibc"] : undefined);
@@ -27,9 +27,9 @@ describe("manifests and SHASUMS parsing", () => {
       expect("bin" in m, "npm must never link this node into a global bin").toBe(false);
       expect("scripts" in m).toBe(false);
     }
-    expect(runtimeManifest(PLATFORMS[0], "22.23.3", "2").version).toBe("22.23.3-agend.2");
-    expect(() => runtimeManifest(PLATFORMS[0], "v22.23.3")).toThrow(/not a Node release version/);
-    expect(() => runtimeManifest(PLATFORMS[0], "22.23.3", "0")).toThrow(/repack/);
+    expect(runtimeManifest(PLATFORMS[0], "22.23.4", "2").version).toBe("22.23.4-agend.2");
+    expect(() => runtimeManifest(PLATFORMS[0], "v22.23.4")).toThrow(/not a Node release version/);
+    expect(() => runtimeManifest(PLATFORMS[0], "22.23.4", "0")).toThrow(/repack/);
   });
 
   it("SHASUMS256: two-space format only; anything else is an error, not a skipped line", () => {
@@ -216,7 +216,7 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
   };
 
   it.each([["true", "--dry-run "], ["false", ""]])("dry_run=%s: a plain version and a repack both publish with --tag latest", (dry, flag) => {
-    const { r, calls } = run(["22.23.3", "22.23.3-agend.2"], dry);
+    const { r, calls } = run(["22.23.4", "22.23.4-agend.2"], dry);
     expect(r.status, r.stderr).toBe(0);
     const publishes = calls.filter(c => c.startsWith("publish"));
     expect(publishes).toEqual([`publish ${flag}--access public --provenance --tag latest`, `publish ${flag}--access public --provenance --tag latest`]);
@@ -224,39 +224,39 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
 
   // #1488 / first publish: a re-run after a partial success skips what npm already has, and never guesses.
   it.each([["true", "--dry-run "], ["false", ""]])("dry_run=%s: a version already on the registry is skipped; the rest publish", (dry, flag) => {
-    const { r, calls } = run(["22.23.3", "22.23.3-agend.2"], dry, { published: ["@songsid/agend-node-linux-x64@22.23.3"] });
+    const { r, calls } = run(["22.23.4", "22.23.4-agend.2"], dry, { published: ["@songsid/agend-node-linux-x64@22.23.4"] });
     expect(r.status, r.stderr).toBe(0);
-    expect(r.stdout).toContain("@songsid/agend-node-linux-x64@22.23.3: already on the registry, skipped");
+    expect(r.stdout).toContain("@songsid/agend-node-linux-x64@22.23.4: already on the registry, skipped");
     expect(calls.filter(c => c.startsWith("publish"))).toEqual([`publish ${flag}--access public --provenance --tag latest`]);
   });
   it("only the EXACT version counts: a name holding just its 0.0.0 placeholder is published to", () => {
-    const { r, calls } = run(["22.23.3"], "false", { published: ["@songsid/agend-node-linux-x64@0.0.0"], otherwise: "empty" });
+    const { r, calls } = run(["22.23.4"], "false", { published: ["@songsid/agend-node-linux-x64@0.0.0"], otherwise: "empty" });
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout).not.toContain("already on the registry");
-    expect(calls).toContain("view @songsid/agend-node-linux-x64@22.23.3 version --json");
+    expect(calls).toContain("view @songsid/agend-node-linux-x64@22.23.4 version --json");
     expect(calls.filter(c => c.startsWith("publish"))).toHaveLength(1);
   });
   // Run 37944296787: `require("runtime-packages/…/package.json")` resolved as a module name and nothing was published.
   it.each([["true", "--dry-run "], ["false", ""]])("dry_run=%s: called with a RELATIVE package directory, as publish-runtime.yml does", (dry, flag) => {
-    const { r, calls } = run(["22.23.3"], dry, { otherwise: "404" }, true);
+    const { r, calls } = run(["22.23.4"], dry, { otherwise: "404" }, true);
     expect(r.status, r.stderr).toBe(0);
-    expect(calls).toContain("view @songsid/agend-node-linux-x64@22.23.3 version --json");
+    expect(calls).toContain("view @songsid/agend-node-linux-x64@22.23.4 version --json");
     expect(calls.filter(c => c.startsWith("publish"))).toEqual([`publish ${flag}--access public --provenance --tag latest`]);
   });
   // #1495 review: a successful answer that is not the exact version proves nothing — the run stops, publishing nothing.
   it.each([["another version", '"0.0.0"'], ["an object", "{}"], ["not JSON", "garbage"]])("npm view answers %s: refused, nothing published", (_n, prints) => {
-    const { r, calls } = run(["22.23.3"], "false", { otherwise: { prints } }, true);
+    const { r, calls } = run(["22.23.4"], "false", { otherwise: { prints } }, true);
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("not this version and not \"absent\"");
     expect(calls.filter(c => c.startsWith("publish"))).toEqual([]);
   });
   it("the package name exists but not this version (npm view prints nothing): published", () => {
-    const { r, calls } = run(["22.23.3"], "false", { otherwise: "empty" });
+    const { r, calls } = run(["22.23.4"], "false", { otherwise: "empty" });
     expect(r.status, r.stderr).toBe(0);
     expect(calls.filter(c => c.startsWith("publish"))).toHaveLength(1);
   });
   it("a lookup that fails another way (not 404) stops the run: nothing is published", () => {
-    const { r, calls } = run(["22.23.3"], "false", { otherwise: "error" });
+    const { r, calls } = run(["22.23.4"], "false", { otherwise: "error" });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("cannot be told");
     expect(calls.filter(c => c.startsWith("publish"))).toEqual([]);
@@ -269,7 +269,7 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
   });
 
   it("refuses an unknown dry-run value and an empty package directory", () => {
-    expect(run(["22.23.3"], "maybe").r.status).toBe(2);
+    expect(run(["22.23.4"], "maybe").r.status).toBe(2);
     expect(run([], "true").r.status).toBe(1);
   });
 });

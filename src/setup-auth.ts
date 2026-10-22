@@ -22,6 +22,7 @@
  * See `docs/design/setup-host-tunnel.zh-TW.md` §3.8 and envelope rule 28.
  */
 import { createHash, randomBytes } from "node:crypto";
+import { fleetCookieName } from "./web-cookie-names.js";
 import {
   constantTimeMatches,
   formatOneTimeCode,
@@ -55,9 +56,9 @@ export function setupCookieValue(secret: string): string {
   return createHash("sha256").update(`agend-setup-session-v1:${secret}`).digest("hex");
 }
 
-export function buildSetupCookie(secret: string, opts: { path: string; secure: boolean; maxAgeSeconds: number }): string {
+export function buildSetupCookie(secret: string, opts: { path: string; secure: boolean; maxAgeSeconds: number; webToken?: string | null }): string {
   const attrs = [
-    `${SETUP_COOKIE_NAME}=${setupCookieValue(secret)}`,
+    `${fleetCookieName(SETUP_COOKIE_NAME, opts.webToken)}=${setupCookieValue(secret)}`,
     `Path=${opts.path}`,
     "HttpOnly",
     // Strict: this page writes a config file and starts a fleet, so a

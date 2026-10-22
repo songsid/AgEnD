@@ -37,6 +37,8 @@ function download(text, name) {
 function why(body) {
   if (!body) return tn("modFailed", "?");
   if (Array.isArray(body.problems) && body.problems.length) return body.problems.slice(0, 5).map((p) => `${p.path || "file"}: ${p.problem}`).join("\n");
+  // #2390: a refusal the page has words for, in its language (the host's detail is English).
+  if (body.error === "canvas_worker_experimental") return tn("modCanvasWorkerOff");
   return tn("modFailed", body.detail ? `${body.error}: ${body.detail}` : body.error || "?");
 }
 

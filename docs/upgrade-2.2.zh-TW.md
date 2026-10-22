@@ -7,7 +7,7 @@
 ## 1. 升級前
 
 **Node。**
-- 在 **Linux（glibc 2.28 以上）和 macOS 11 以上的 x64 或 arm64** 上，AgEnD 2.2 自帶 Node 22.23.3（`@songsid/agend-node-<os>-<cpu>`，會隨 AgEnD 一起安裝），不管 PATH 上是哪個 Node，都用自帶的那個執行。你不需要自己升級 Node。
+- 在 **Linux（glibc 2.28 以上）和 macOS 11 以上的 x64 或 arm64** 上，AgEnD 2.2 及後續版本會安裝並使用私有的 Node（`@songsid/agend-node-<os>-<cpu>`），不受 PATH 上的 Node 影響。目前開發版本釘選 **22.23.4**；已發佈版本各自保留其釘選版本。你不需要自己升級 Node。
 - **其他平台**（32 位元、其他系統）需要 PATH 上的 Node 是 **22.14 以上**（或 23.6+、24+），版本太舊時會拒絕安裝。
 
 **不支援：musl Linux（例如 Alpine），以及沒有 systemd 的 Linux 主機。** 在這些環境上 AgEnD 也許還裝得起來（PATH 上有 Node 22.14+ 時），但沒有測試過，也不保證能用。

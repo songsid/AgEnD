@@ -27,7 +27,7 @@ afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true 
  * registry. `steps(until)` runs the next steps up to (not including) the named one; `steps()` runs to Publish.
  */
 /** What `npm pack` packs: by default a manifest that pins the bundled runtime (#1488), as a 2.2 release must. */
-const PINNED = { name: "@songsid/agend", optionalDependencies: Object.fromEntries(["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"].map(id => [`@songsid/agend-node-${id}`, "22.23.3"])) };
+const PINNED = { name: "@songsid/agend", optionalDependencies: Object.fromEntries(["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"].map(id => [`@songsid/agend-node-${id}`, "22.23.4"])) };
 function release(tag: string, registry: string, ref = `refs/tags/${tag}`, packed: object = PINNED) {
   const dir = mkdtempSync(join(tmpdir(), "agend-publish-1259-"));
   dirs.push(dir);
@@ -113,7 +113,7 @@ describe("publish.yml: tag → npm dist-tag, by running the workflow's steps (#1
   // #1488: a package that would ship without its bundled Node is never published.
   it.each([
     ["no pins at all", { name: "@songsid/agend" }],
-    ["a pin missing", { name: "@songsid/agend", optionalDependencies: { "@songsid/agend-node-linux-x64": "22.23.3" } }],
+    ["a pin missing", { name: "@songsid/agend", optionalDependencies: { "@songsid/agend-node-linux-x64": "22.23.4" } }],
   ])("the packed manifest has %s → the job fails at the pin check; npm publish never runs", (_n, packed) => {
     const run = publish("v2.2.0-alpha.2", "2.1.12", packed);
     expect(run.failedStep).toBe("The packed package pins its bundled Node, as published runtime packages");

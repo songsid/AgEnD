@@ -1,4 +1,4 @@
-// #1408 step 2: the View panel (/view, /view/<name>) — every agent's live terminal, its profile card, the AI usage
+// #1408 step 2: the View panel (/view, /view/<name>) — every agent's live terminal, its identity card, the AI usage
 // panel, in the app shell. Public (/assets/): under `web.view_access: open` an anonymous reader opens it in the
 // View-only shell, so nothing here needs a session to show, and the one write (Edit profile) asks for one.
 //
@@ -6,7 +6,7 @@
 // Everything recurring is a passive read (#1374) taken through the navigation's lease: the pane every 800 ms and the
 // roster every 5 s while the panel is mounted and the tab is visible, usage every 60 s while its dialog is open. They
 // stop when the panel goes.
-import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "./app-html.js";
+import { html, useEffect, useRef, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
 import { useLease } from "./app-ctx.js";
@@ -16,7 +16,7 @@ import { HeaderTools, VIEW_SCALE, textSizeStore } from "./header-tools.js";
 import { readStream } from "./read-stream.js";
 // The usage dialog's metric row lives with the dialog now (usage-dialog.js); re-exported for what imported it here.
 export { UsageMetric } from "./usage-dialog.js";
-import { backendLabel, modelText, STATUS_KEYS } from "./instance-nav.js";
+import { STATUS_KEYS } from "./instance-nav.js";
 import { viewStore } from "./view-roster-store.js";
 
 /** #1580: the app's stream says the fleet is not answering (a restart): the View's polls skip their turn until it is. */
@@ -189,7 +189,7 @@ export function ViewPanel({ route, navKey }) {
   else if (!name) body = html`<div data-trust="panel-content" class="panel-body"><${Skeleton} lines=${6} /></div>`;
   else if (!it) body = html`<div data-trust="panel-content" class="panel-body center"><${Empty} icon="alert" title=${tn("notFound", { name })} hint=${tn("notFoundHint")} /></div>`;
   else body = html`<${Terminal} key=${name} name=${name} lease=${lease} density=${density} />
-    <${Card} it=${it} viewOnly=${viewOnly} onEdit=${() => setDialog("edit")} />`;
+    <${ViewIdentity} it=${it} viewOnly=${viewOnly} onEdit=${() => setDialog("edit")} />`;
 
   return html`<div data-effect-panel="view" class="panel p-view">
     <${PanelHeader} title=${it ? (it.display_name || it.instance_name) : tn("title")}
@@ -287,33 +287,18 @@ function glyphRatio(pre) {
   return cellRatio || 0.6;
 }
 
-/** The profile card under the terminal: one line by default, the whole profile when opened. */
-function Card({ it, viewOnly, onEdit }) {
-  const [open, setOpen] = useState(stored("agend_view_card_expanded") === "1");
-  const avatar = useRef(null);
-  // The avatar is fetched once per instance (cache-busted then), not on every 5-second roster refresh.
-  useLayoutEffect(() => {
-    if (!avatar.current || !it.has_avatar) return;
-    avatar.current.src = `/api/avatar/${encodeURIComponent(it.instance_name)}?t=${Date.now()}`;
-  }, [it.instance_name, it.has_avatar]);
-  const initial = (it.display_name || it.instance_name || "?").trim().charAt(0) || "?";
-  const ctx = it.context_pct != null ? ` · ctx ${Math.round(it.context_pct)}%` : "";
-  const toggle = () => { const next = !open; setOpen(next); store("agend_view_card_expanded", next ? "1" : "0"); };
-  // #1629 r4 §1: the identity card, above the profile row while it is expanded.
+/** The identity card under the terminal, with Edit profile (or Sign in to edit) below it. Always on: the old one-line
+ *  strip is gone, and IdentityCard itself is null when the card is empty, so the button lives here rather than inside it. */
+function ViewIdentity({ it, viewOnly, onEdit }) {
   const card = useCard(it.instance_name, it.card_v);
-  return html`${open && card ? html`<div data-trust="panel-content" class="v-id"><${IdentityCard} name=${it.instance_name} card=${card} /></div>` : null}<section data-trust="panel-content" class=${`v-card${open ? " open" : ""}`} aria-label=${it.display_name || it.instance_name}>
-    <div class="v-avatar">${it.has_avatar ? html`<img ref=${avatar} alt="" />` : html`<span class="v-initial" aria-hidden="true">${initial}</span>`}</div>
-    <div class="v-card-body">
-      <div class="v-card-line"><strong>${it.display_name || it.instance_name}</strong>${it.role ? html`<span class="v-role">${it.role}</span>` : null}</div>
-      <div class="v-card-meta">${it.instance_name} · ${backendLabel(it.backend)}${it.model ? ` · ${modelText(it)}` : ""}${ctx}</div>
-      ${open && it.description ? html`<p class="v-card-desc">${it.description}</p>` : null}
+  return html`<div data-trust="panel-content" class="v-id">
+    ${card ? html`<${IdentityCard} name=${it.instance_name} card=${card} />` : null}
+    <div class="v-id-actions">
+      ${viewOnly
+        ? html`<a class="btn btn-sm" href=${signInHref()}><${Icon} name="edit" size=${14} />${tn("signInToEdit")}</a>`
+        : html`<button type="button" class="btn btn-sm" onClick=${onEdit}><${Icon} name="edit" size=${14} />${tn("editProfile")}</button>`}
     </div>
-    <button type="button" class="icon-btn" onClick=${toggle} aria-expanded=${open ? "true" : "false"} aria-label=${tn(open ? "collapseProfile" : "expandProfile")} title=${tn(open ? "collapseProfile" : "expandProfile")}>
-      <${Icon} name="chevron" size=${16} cls=${open ? "caret" : "caret flipped"} /></button>
-    ${viewOnly
-      ? html`<a class="btn btn-sm" href=${signInHref()}><${Icon} name="edit" size=${14} />${tn("signInToEdit")}</a>`
-      : html`<button type="button" class="btn btn-sm" onClick=${onEdit}><${Icon} name="edit" size=${14} />${tn("editProfile")}</button>`}
-  </section>`;
+  </div>`;
 }
 
 /** Edit profile: display name, role, description, avatar. A write: it needs a session (CSRF via agend-auth.js). */

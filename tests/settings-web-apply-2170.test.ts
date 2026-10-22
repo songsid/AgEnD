@@ -20,6 +20,7 @@ vi.mock("node:child_process", async original => ({ ...await original<typeof impo
 vi.mock("../src/tmux-manager.js", async original => ({ ...await original<typeof import("../src/tmux-manager.js")>(), TmuxManager: new Proxy({}, { get: () => () => { throw Error("No tmux"); } }) }));
 vi.mock("../src/logger.js", () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn(), child() { return this; } }) }));
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
+import { setLocale } from "../src/locale.js";
 import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "../src/settings-http-confirmation.js";
 import { SettingsBaselines } from "../src/settings-baseline.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
@@ -173,7 +174,7 @@ describe("the fleet: who may confirm by applying", () => {
     await tick();
     expect([view.state, p.apply.mock.calls.length, f.any.pendingNonceButtons.size, f.adapters[0]!.notifyAlert.mock.calls.length + f.adapters[1]!.notifyAlert.mock.calls.length]).toEqual(["applied", 1, 0, 0]);
     const [chatId, text, opts] = f.adapters[1]!.sendText.mock.calls[0]!;
-    expect([chatId, /^✅ Settings change confirmed from the web by .+ \(web-verified\)\nSource: web_session\nRequester: browser\n/.test(text), /Outcome: Change applied\.$/.test(text), opts]).toEqual(["-1002", true, true, { threadId: "2", allowedMentions: { parse: [] } }]);
+    expect([chatId, /^✅ Settings change confirmed from the web by .+ \(web-verified\)\nSource: web dashboard\nRequester: browser\n/.test(text), /Outcome: Change applied\.$/.test(text), opts]).toEqual(["-1002", true, true, { threadId: "2", allowedMentions: { parse: [] } }]);
     expect(f.adapters[0]!.sendText).not.toHaveBeenCalled();                                   // never on the connection the change affects
   });
   it.each([
@@ -182,6 +183,19 @@ describe("the fleet: who may confirm by applying", () => {
   ] as const)("%s: none — the chat card, as before", (_n, owner, opts) => {
     const f = fleet(), s = f.session(owner, opts as any), p = f.propose();
     expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)).toBeNull();
+  });
+  // #2390: the card fleet admins answer, in the fleet's language — the English "Confirm" users saw on 2.3.0-beta.22.
+  it("zh-TW: the chat card's title, source and Confirm / Reject read in Chinese, and so does the outcome it is retired with", async () => {
+    setLocale("zh-TW");
+    try {
+      const f = fleet(), p = f.propose();
+      await tick(); await tick();
+      const alert = f.adapters[1]!.notifyAlert.mock.calls[0]![1] as { message: string; choices: Array<{ label: string }> };
+      expect(alert.message.split("\n").slice(0, 3)).toEqual(["🔒 設定變更等待 fleet 管理員確認", "來源：網頁儀表板", "提出者：browser"]);
+      expect(alert.choices.map((c) => c.label)).toEqual(["確認", "拒絕"]);
+      const view = await f.store.decide(p.view.id, "reject", { label: "admin", current: () => true });
+      expect(view.outcome?.message).toBe("變更已被拒絕。");
+    } finally { setLocale("en"); }
   });
   it("an admin of one of the change's two connections only: none", () => {
     const f = fleet(), p = f.propose({ both: true });
