@@ -1449,11 +1449,13 @@ export function handleWebRequest(
     const after = url.searchParams.get("after");
     const fresh = after === null || after === "";              // a cursor that is not ours in shape still gets nothing
     if (guest) {
-      // #2085 review: with what became the channel's after its cursor (an older row, its copy sent since), once each —
-      // replayFor counts a row where it was seen (seenSeq), as for every reader (#1774).
+      // #2085 review: and what became the channel's after its cursor (an older row, its copy sent since), once each.
       json(res, 200, guestPollBody(ctx.getUiStatus(), guest.scope(), Date.now(), guest, after, () => {
         if (!history) return [];
-        return fresh ? history.after(0) : history.replayFor(parseLastEventId(after));
+        if (fresh) return history.after(0);
+        const cursor = parseLastEventId(after);
+        const rows = [...history.replayFor(cursor), ...history.seenAfter(cursor)];
+        return rows.filter((m, i) => rows.findIndex((x) => x.boot === m.boot && x.id === m.id) === i);
       }));
       return true;
     }
