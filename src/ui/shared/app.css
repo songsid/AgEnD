@@ -1066,9 +1066,13 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .err { color: var(--danger); font-size: var(--fs-sm); }
 .u-provider { padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface); display: flex; flex-direction: column; gap: var(--s-2); }
 .u-head { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
-/* #1749: one line beside ↑↓ — the name gives way first, then the plan badge (each with an ellipsis); ↑↓ never wrap. */
-.u-head strong { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.u-plan { min-width: 0; flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* #1749 / #2412: one line beside ↑↓, by flexing alone (no widths assumed: ↑↓ are larger on a phone). The plan badge
+   starts at its minimum (40 px) and grows up to its own width into the room the name and ↑↓ leave, so a long badge ends
+   in an ellipsis (the full name its tooltip) while the name keeps every pixel (#2415 review: a shared shrink, however
+   weighted, still took a fraction of one and painted "Meta Muse Co…"). Only when the name, that minimum badge and ↑↓
+   cannot all fit (a 320 px phone) does the name shrink and end in an ellipsis — nothing leaves the card. */
+.u-head strong { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-plan { flex: 1 0 40px; max-width: max-content; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* #2014: a credential profile's row — the provider name beside the plan badge, and the profile on its own full-width
    muted line under the head (one line in the rail, whole in the dialog). */
 .u-profile { margin-top: calc(-1 * var(--s-2) + 2px); color: var(--text-3); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
