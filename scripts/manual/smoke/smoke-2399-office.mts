@@ -13,7 +13,8 @@
 //   writes nothing (read-only: 403; the public link's gateway has no PUT route for it: 404); a guest session cannot
 //   reach Fleet or GET /ui/offices (401 with guest sign-in off, the default).
 // - no console error, no CSP violation, no horizontal overflow; no real fleet name in any visible text.
-// Pictures: <case>-1-office, -2-editor-new, -3-saved, -4-conflict, -5-read-only, -6-public-link, -7-guest.
+// - an accepted far-out custom layout (a seat at 10000, 10000) paints (run with PW_DPR=3 for the review's case).
+// Pictures: <case>-1-office, -2-editor-new, -3-saved, -4-conflict, -4b-far-seat, -5-read-only, -6-public-link, -7-guest.
 //   PW_DIR=… REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf [ONLY=desk-light-en,…] \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2399-office.mts
 import { writeFileSync } from "node:fs";
@@ -170,6 +171,21 @@ for (const k of CASES) {
   await p.page.keyboard.press("Escape");
   await p.page.locator("#oeSave").waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
   ck.noOverflow = !(await overflow(p.page));
+  // #2431 review: an accepted far-out custom layout (a seat at 10000, 10000) still paints — at PW_DPR=3 the bitmap would
+  // be 30216 × 30264, which Chromium hands back blank. Picked in the switcher; a pixel read back from the canvas.
+  const far = { id: "far", name: "Far seat", skin: "pixel", members: [MEMBERS[0]], layout: { seats: [{ id: "s", x: 10000, y: 10000 }], waypoints: [], edges: [] } };
+  const kept = fm.officeStore.list();
+  ck.farStored = fm.officeStore.replace([...kept.offices, far], kept.rev).ok === true;
+  await p.page.reload(); await p.page.waitForSelector(".oo-canvas", { timeout: 15000 });
+  await p.page.locator(".oo-bar select").first().selectOption({ label: far.name });
+  await p.page.waitForTimeout(800);
+  const farPaint = await p.page.evaluate(() => {
+    const cv = document.querySelector(".oo-canvas") as HTMLCanvasElement;
+    const a = cv.getContext("2d")!.getImageData(2, 2, 1, 1).data[3];
+    return { w: cv.width, h: cv.height, cssW: cv.clientWidth, alpha: a, dpr: devicePixelRatio };
+  });
+  ck.farPaints = farPaint.alpha > 0 && farPaint.cssW > 10000;
+  await p.page.screenshot({ path: shotPath(SMOKE, name, "4b-far-seat") });
   // The conflict's own 409 is logged by the browser as a failed resource: expected, kept apart, never dropped.
   const conflict409 = (e: string) => /status of 409/.test(e) && /\/ui\/offices$/.test(e);
   const expected409 = p.errors.slice(navEnd).filter(conflict409);
@@ -195,7 +211,7 @@ for (const k of CASES) {
   ck.publicNoEdit = await pub.page.locator(".oo-canvas").isVisible() && (await pub.page.locator(".oo-edit").count()) === 0;
   const publicPut = await put(pub.page, { offices: [], rev: fm.officeStore.list().rev });
   // The gateway has no PUT route for it (404) — or the route refuses (403): either way nothing is written.
-  ck.publicPutRefused = (publicPut === 403 || publicPut === 404) && fm.officeStore.list().offices.length === 1;
+  ck.publicPutRefused = (publicPut === 403 || publicPut === 404) && fm.officeStore.list().offices.length === 2;
   const probe = (e: string) => new RegExp(`status of ${publicPut} .*\\/ui\\/offices$`).test(e);   // the probe's own refusal, logged
   const publicErrors = [...pub.errors.slice(pubNav).filter((e, i, a) => !(probe(e) && a.findIndex(probe) === i)), ...(await csp(pub.page))];
   ck.publicNoErrors = publicErrors.length === 0;
@@ -216,7 +232,7 @@ for (const k of CASES) {
 
   const real = texts.flatMap((t) => t.split("\n")).filter((l) => REAL.test(l));
   ck.demoNamesOnly = real.length === 0;
-  record(name, ck, { origin: p.base, stored: fm.officeStore.list().offices.map((o: any) => o.name), guestGet, publicPut, publicErrors, expected409, adminErrors, real: real.slice(0, 5) });
+  record(name, ck, { farPaint, origin: p.base, stored: fm.officeStore.list().offices.map((o: any) => o.name), guestGet, publicPut, publicErrors, expected409, adminErrors, real: real.slice(0, 5) });
 }
 
 await link.close();
