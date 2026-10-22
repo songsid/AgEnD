@@ -594,7 +594,7 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | `web.preview_origin` | — | A separate host name, mapped to the preview port, for previews through a tunnel or proxy |
 | `web.preview_on_public_link` | `true` | `false`: no previews over the temporary public link (no second tunnel) |
 | `web.public_link.allow_public` | `true` | Offer the opt-in action; disabling also closes an existing link |
-| `web.public_link.ttl_minutes` | `120` | Fixed lifetime from consent, 1–480 minutes; with `hostname` 1–10080, or `0` = no expiry; no renewal of an existing link |
+| `web.public_link.ttl_minutes` | `120` | Fixed lifetime from consent, 1–480 minutes; with `hostname` 1–10080, or `0` = no expiry; no renewal of an existing link: a changed lifetime applies at the next opening; Close the link to end the current one |
 | `web.public_link.auto_open` | `false` | With `hostname` only: reopen the link after AgEnD starts, for the admin who last opened it; nothing posted, sign-in still needs a code |
 | `web.public_link.protocol` | `http2` | cloudflared `http2`, `quic` or `auto` |
 | `web.echo_to_channel` | `true` | Copy web chat messages to the instance's own Telegram or Discord topic |

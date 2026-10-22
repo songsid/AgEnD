@@ -593,7 +593,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `web.preview_origin` | — | 透過 tunnel 或 proxy 預覽時，對應到預覽 port 的另一個主機名稱 |
 | `web.preview_on_public_link` | `true` | `false`：臨時公開連結不提供預覽（不另開通道） |
 | `web.public_link.allow_public` | `true` | 提供需主動選擇的公開選項；停用也關閉現有入口 |
-| `web.public_link.ttl_minutes` | `120` | 從同意起固定期限，1–480 分鐘；設 `hostname` 時 1–10080，或 `0` = 不到期；不延長現有入口 |
+| `web.public_link.ttl_minutes` | `120` | 從同意起固定期限，1–480 分鐘；設 `hostname` 時 1–10080，或 `0` = 不到期；不延長現有入口：修改後的期限從下次開啟起生效；要結束目前的連結，請按「關閉」 |
 | `web.public_link.auto_open` | `false` | 僅限設定 `hostname`：AgEnD 啟動後替上次開啟的管理員重開連結；不發訊息，登入仍需登入碼 |
 | `web.public_link.protocol` | `http2` | cloudflared 的 `http2`、`quic` 或 `auto` |
 | `web.echo_to_channel` | `true` | 將 web chat 訊息複製到 instance 自己的 Telegram 或 Discord 主題 |

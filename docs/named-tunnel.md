@@ -120,7 +120,8 @@ opening, so it keeps 1–480 minutes and is never opened automatically):
   stays open until it is closed (Close, `/web revoke`), a named setting or the
   token changes, public links are turned off, or AgEnD stops. `/web` and the
   private sign-in message then say "no expiry" instead of a time. The lifetime
-  is fixed when the link opens; changing it applies to the next opening.
+  is fixed when the link opens: a changed lifetime applies at the next opening;
+  Close the link to end the current one.
 - **`auto_open: true`** (default `false`) reopens the link once after AgEnD
   starts — after the web server is listening and the chat connections are up —
   for the admin who last opened a named link with `/web`, with the same

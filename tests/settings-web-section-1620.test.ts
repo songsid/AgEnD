@@ -333,6 +333,8 @@ describe("#named-link-ttl: the public link's minutes and auto_open follow the mo
     const w = await open(NAMED);
     expect([w.$("publicWebTtl").getAttribute("min"), w.$("publicWebTtl").getAttribute("max")]).toEqual(["0", "10080"]);
     expect(w.$("publicTtlNamedHint").textContent).toContain("0 = no expiry");
+    // Carry of #2450 (the maintainers' condition on Fable's P2-4): the hint says when a changed lifetime applies.
+    expect(w.$("publicTtlNamedHint").textContent).toContain("A changed lifetime applies at the next opening; Close the link to end the current one.");
     expect(w.$("publicAutoOpen").checked).toBe(false);
     await w.type(w.$("publicWebTtl"), "10081"); expect(w.$("publicWebTtl").getAttribute("class")).toBe("invalid");
     await w.type(w.$("publicWebTtl"), ""); expect(w.$("publicWebTtl").getAttribute("class")).toBe("invalid");
