@@ -20,7 +20,7 @@ import {
   ACCESS_MODES, AGENT_MODES, CH_TYPES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
   VISIBILITY_MODES, accessConfirmations, agentForm, agentPatch, backendOptions, changedFields, channelId, channelsOf,
   chLabel, hasOwn, impactOf, newConnectionImpact, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
-  classicWebEchoEffective, worstImpact,
+  classicWebEchoEffective, toolSetDefault, worstImpact,
 } from "./settings-model.js";
 /** #2342: a field by id, for recordEdit before a pick or a reset writes it. */
 const byId = (id) => (typeof document !== "undefined" ? document.getElementById(id) : null);
@@ -230,7 +230,7 @@ function EmojiPicker({ cat, keyName, platform, channel, onPick, onClose }) {
 export function AgentDialog({ name, inst, ctx, onClose }) {
   const { fleet, schema } = ctx;
   const defaults = fleet.defaults || {};
-  const [f, setF] = useState(() => agentForm(inst, defaults));
+  const [f, setF] = useState(() => agentForm(inst, defaults, name));
   const [emojis, setEmojis] = useState({ value: inst.status_emojis || null, baseline: inst.status_emojis || null });
   // #1302: the baseline is what the picker shows before anyone touches it.
   const visibilityBaseline = useMemo(() => (hasOwn(inst, "cross_instance_visibility") ? (VISIBILITY_MODES.includes(inst.cross_instance_visibility) ? inst.cross_instance_visibility : VISIBILITY_MODES[0]) : null), []);
@@ -278,14 +278,14 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
             <input id="ag-hang" type="number" min="0.1" step="0.5" class=${errors.hang ? "invalid" : ""} disabled=${f.inherit.hang}
               value=${shown("hang", f.hang, String((defaults.hang_detector && defaults.hang_detector.timeout_minutes) ?? HANG_TIMEOUT_DEFAULT_MINUTES))} onInput=${(e) => set("hang")(e.target.value)} /></${Override}>
           <${Feedback} error=${errors.hang} /></div>
-        ${[["agent_mode", "agentMode", AGENT_MODES, defaults.agent_mode || "mcp"], ["tool_set", "toolSet", TOOL_SETS, defaults.tool_set || "full"],
+        ${[["agent_mode", "agentMode", AGENT_MODES, defaults.agent_mode || "mcp"], ["tool_set", "toolSet", TOOL_SETS, toolSetDefault(defaults, inst, name)],
           ["tool_progress", "toolProgress", TOOL_PROGRESS, defaults.tool_progress ?? "off"],
           ["cross_instance_visibility", "crossInstanceVisibility", VISIBILITY_MODES, visibilityDefault(defaults)],
           ["log_level", "logLevel", LOG_LEVELS, defaults.log_level || "info"]].map(([k, label, opts, dflt]) => html`<div key=${k} class="field">
           ${L(tn(label), `instance.${k}`, `ag-${k}`)}
           <${Override} inherit=${f.inherit[k]} onInherit=${setInherit(k)}>
             <${Select} id=${`ag-${k}`} value=${shown(k, f[k], dflt)} disabled=${f.inherit[k]} onChange=${set(k)}
-              options=${opts.includes(f[k]) || k === "cross_instance_visibility" ? opts : [f[k], ...opts]} /></${Override}>
+              options=${opts.includes(shown(k, f[k], dflt)) || k === "cross_instance_visibility" ? opts : [shown(k, f[k], dflt), ...opts]} /></${Override}>
           ${k === "cross_instance_visibility" ? html`<p class="note">${tn("crossInstanceVisibilityHint")}</p>` : null}</div>`)}
         <div class="field">${L(tn("replyCompletionGuard"), "instance.reply_completion_guard")}
           <${Override} inherit=${f.inherit.reply_completion_guard} onInherit=${setInherit("reply_completion_guard")}>
