@@ -88,6 +88,21 @@ describe("#2385 a failed read keeps the numbers already shown", () => {
     expect(reads.length, "no 4 s loop on a failed refresh").toBe(after);
   }, 15_000);
 
+  // Fable on #2386: a read superseded by Refresh is dropped — its later failure (its fetch aborted) is no failed read.
+  it("a read superseded by Refresh that then fails shows no note over the newer numbers", async () => {
+    script(ok(snapshot(42)));
+    await mount("t2385-superseded");
+    let rejectOld!: (e: Error) => void;
+    (globalThis as any).fetch = async () => new Promise((_res, rej) => { rejectOld = rej; });   // read A, left hanging
+    await refresh();
+    script(ok(snapshot(57)));                                  // Refresh again: read B supersedes A and lands
+    await refresh();
+    expect([pct(), note()]).toEqual(["57%", null]);
+    rejectOld(Object.assign(new Error("The operation was aborted."), { name: "AbortError" }));
+    await settle(3);
+    expect([pct(), note(), errorShown()]).toEqual(["57%", null, false]);
+  });
+
   it("in Traditional Chinese the note reads 無法更新，顯示上次的數據", async () => {
     i18n.setLang("zh-TW");
     script(ok(snapshot(42)), "throw");
