@@ -1,3 +1,4 @@
+import { ensureAgendHome } from "../agend-home.js";
 import { CANONICAL_EFFORT, EFFORT_CAPABILITIES, agyEffortLevels, readAgyCliEnv } from "./effort-metadata.js";
 import { flagEffort, readHelpText, resolveAgyLaunch } from "./launch-effort.js";
 import { dirname, join } from "node:path";
@@ -397,7 +398,7 @@ export class AntigravityBackend implements CliBackend {
 exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
 `;
       try {
-        mkdirSync(this.agendHome, { recursive: true });
+        ensureAgendHome(this.agendHome);
         writeFileSync(scriptPath, script, { mode: 0o755 });
         chmodSync(scriptPath, 0o755);  // writeFileSync mode only applies on create
       } catch { /* best effort — a bad script write shouldn't block settings */ }

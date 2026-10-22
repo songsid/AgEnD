@@ -24,6 +24,7 @@ var childProcess = require("child_process");
 
 var LOCK = ".agend-install.lock";
 var MARKER = "update-in-progress.json";
+var ensurePrivateHome = require("./private-home.cjs").ensurePrivateHome;
 
 function defaultDeps() {
   return {
@@ -664,6 +665,9 @@ function main(argv, injected) {
     setStage(home, claimed, "failed", { error: message }, deps);
     return stage === "lock" ? 75 : 1;
   };
+
+  try { ensurePrivateHome(home, { log: log }); }
+  catch (error) { return fail("install", error.message); }
 
   log("  AgEnD installer v" + version + (upgrade ? " (upgrade)" : ""));
   var root = last(deps.run("npm", ["root", "-g"], { timeoutMs: 30000 }).stdout);

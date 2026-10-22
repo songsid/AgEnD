@@ -41,6 +41,7 @@ exit 0
 `);
   chmodSync(join(pkg, "bin", "agend"), 0o755);
   cpSync(join(REPO, "launcher", "agend-install.cjs"), join(pkg, "launcher", "agend-install.cjs"));
+  cpSync(join(REPO, "launcher", "private-home.cjs"), join(pkg, "launcher", "private-home.cjs"));
   cpSync(join(REPO, "launcher", "install-admission.cjs"), join(pkg, "launcher", "install-admission.cjs"));   // the lock's process readers
   chmodSync(join(pkg, "launcher", "agend-install.cjs"), 0o755);
   const packed = spawnSync("npm", ["pack", "--silent", "--pack-destination", dir], { cwd: pkg, encoding: "utf8", env: npmEnv(dir) });

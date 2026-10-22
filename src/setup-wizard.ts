@@ -1,5 +1,6 @@
+import { ensureAgendHome } from "./agend-home.js";
 import { createInterface } from "node:readline/promises";
-import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
+import { writeFileSync, existsSync, readFileSync } from "node:fs";
 import { writeSecretFile } from "./secret-file.js";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -723,7 +724,7 @@ export async function runSetupWizard(): Promise<void> {
   }
 
   // ── Write files ──
-  mkdirSync(DATA_DIR, { recursive: true });
+  ensureAgendHome(DATA_DIR);
 
   // .env — merge with existing, don't clobber other vars
   let envContent = "";

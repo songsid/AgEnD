@@ -309,7 +309,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     if (opts.apiRoot) validateTelegramApiRoot(opts.apiRoot);
     this.apiRoot = (opts.apiRoot ?? "https://api.telegram.org").replace(/\/+$/, "");
 
-    mkdirSync(this.inboxDir, { recursive: true });
+    mkdirSync(this.inboxDir, { recursive: true, mode: 0o700 });
 
     this.bot = new Bot(opts.botToken, {
       client: {

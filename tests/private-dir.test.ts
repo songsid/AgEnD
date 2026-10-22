@@ -297,8 +297,9 @@ describe("FleetManager runs the repair at startup and says so once", () => {
   it("warns, once, about what it could not fix — and does not throw", () => {
     const dataDir = tmp();
     const a = loose(join(loose(join(dataDir, "instances"), 0o755), "a"));
-    vi.spyOn(process, "getuid").mockReturnValue(statSync(a).uid + 1);
     const { manager, warn } = fm(dataDir);
+    // Only the instance-directory repair sees foreign ownership; root admission uses the real uid.
+    vi.spyOn(process, "getuid").mockReturnValue(statSync(a).uid + 1);
     expect(() => (manager as unknown as { tightenInstanceDirectories(): void }).tightenInstanceDirectories()).not.toThrow();
     expect(warn).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(warn.mock.calls[0])).toContain("chmod 700");

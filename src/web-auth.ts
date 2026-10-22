@@ -1,6 +1,7 @@
+import { ensureAgendHome } from "./agend-home.js";
 import { gatewayRequestContext, isWebRequestCurrent } from "./web-request-context.js";
 import { fleetCookieName } from "./web-cookie-names.js";
-import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import {
@@ -60,7 +61,7 @@ function tokenPath(dataDir: string): string {
  * A fleet restart must not revoke every previously issued /web URL.
  */
 export function loadOrCreateWebToken(dataDir: string): string {
-  mkdirSync(dataDir, { recursive: true });
+  ensureAgendHome(dataDir);
   const path = tokenPath(dataDir);
   const existing = readValidToken(path);
   if (existing) {
@@ -98,7 +99,7 @@ export function readWebToken(dataDir: string): string | null {
  * and session cookie stops being accepted as soon as the next request is served.
  */
 export function rotateWebToken(dataDir: string): string {
-  mkdirSync(dataDir, { recursive: true });
+  ensureAgendHome(dataDir);
   const path = tokenPath(dataDir);
   const token = randomBytes(24).toString("hex");
   replaceTokenAtomically(path, token);

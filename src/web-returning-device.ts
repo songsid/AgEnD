@@ -190,7 +190,7 @@ export class ReturningDevices {
     if (!this.path) return true;
     const temp = `${this.path}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
     try {
-      mkdirSync(join(this.path, ".."), { recursive: true });
+      mkdirSync(join(this.path, ".."), { recursive: true, mode: 0o700 });
       writeFileSync(temp, JSON.stringify({ version: 1, devices: [...this.byHash.values()] }), { encoding: "utf8", mode: 0o600, flag: "wx" });
       renameSync(temp, this.path);
       try { chmodSync(this.path, 0o600); } catch { /* best effort */ }

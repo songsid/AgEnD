@@ -1,5 +1,6 @@
+import { ensureAgendHome } from "./agend-home.js";
 import { createInterface } from "node:readline/promises";
-import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { discordInviteUrl } from "./discord-permissions.js";
 import { writeSecretFile, type SecretWriteResult } from "./secret-file.js";
 // The same probes the Settings wizard makes — one copy, one behaviour.
@@ -850,7 +851,7 @@ export async function runQuickstart(): Promise<void> {
 
     // ── Write config ─────────────────────────────────────
 
-    mkdirSync(DATA_DIR, { recursive: true });
+    ensureAgendHome(DATA_DIR);
 
     const fleetObj = newQuickstartFleet(platforms, projectRoots, backend);
 

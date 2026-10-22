@@ -300,7 +300,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.registerCommands = opts.registerCommands !== false;
     this.fleetLabel = opts.fleetLabel;
 
-    mkdirSync(this.inboxDir, { recursive: true });
+    mkdirSync(this.inboxDir, { recursive: true, mode: 0o700 });
 
     this.clientFactory = opts.clientFactory ?? (() => this.buildClient());
     this.now = opts.now ?? Date.now;
