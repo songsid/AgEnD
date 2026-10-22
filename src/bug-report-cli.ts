@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { tmpdir, platform, release, arch } from 'node:os';
 import { getAgendHome } from './paths.js';
 import { redactDiagnostics } from './diagnostic-redaction.js';
+import { t } from './locale.js';
 import { approveDraft, approvedIssueLink, createReportDraft, DEFAULT_SINCE, draftDigest, MAX_LOG_BYTES, readLogTail, readReportInput, reviewText, serializeDraft, sinceMs, writePrivate } from './bug-report.js';
 
 export interface BugReportOptions {
@@ -39,7 +40,7 @@ export function defaultBugReportDeps(version: string): BugReportDeps {
         await writePrivate(bodyPath, body);
         const { stdout } = await run('gh', ['issue', 'create', '-R', 'github.com/songsid/AgEnD', '--title', title, '--body-file', bodyPath], { timeout: 30_000, maxBuffer: 16_384 });
         const url = stdout.trim();
-        if (!/^https:\/\/github\.com\/songsid\/AgEnD\/issues\/\d+$/.test(url)) throw new Error('Issue submission result was unclear; check GitHub before trying again.');
+        if (!/^https:\/\/github\.com\/songsid\/AgEnD\/issues\/\d+$/.test(url)) throw new Error(t("bugreport.submit_unclear"));
         return url;
       } finally { await rm(temporary, { recursive: true, force: true }); }
     },
@@ -66,22 +67,22 @@ async function cachedBackendVersions(deps: BugReportDeps): Promise<string> {
 }
 export async function runBugReport(options: BugReportOptions, deps: BugReportDeps): Promise<void> {
   if (options.approve || options.draft) {
-    if (!options.approve || !options.draft) throw new Error('Approval requires both --draft and --approve SHA256.');
-    if (options.out || options.since || options.title || options.description || options.steps || options.descriptionFile || options.stepsFile || options.keepIdentifiers) throw new Error('Approval cannot change collection options; collect and review a new draft.');
+    if (!options.approve || !options.draft) throw new Error(t("bugreport.approve_needs_both"));
+    if (options.out || options.since || options.title || options.description || options.steps || options.descriptionFile || options.stepsFile || options.keepIdentifiers) throw new Error(t("bugreport.approve_no_options"));
     const serialized = await deps.readText(options.draft);
     const draft = approveDraft(serialized, options.approve, options.submit ? 'gh' : 'link');
     if (options.submit) {
       // Overflow report stays local: gh has no implicit attachment upload.
-      if (draft.overflow) throw new Error('This report needs a manual attachment. Collect a link-mode draft and approve it instead.');
+      if (draft.overflow) throw new Error(t("bugreport.needs_attachment"));
       deps.print(await deps.submit(draft.title, draft.body));
     } else deps.print(approvedIssueLink(serialized, options.approve));
     return;
   }
   const until = deps.now(), since = sinceMs(options.since ?? DEFAULT_SINCE, until);
   const narrative = async (inline: string | undefined, file: string | undefined) => {
-    if (inline && file) throw new Error('Choose inline text or a text file, not both.');
+    if (inline && file) throw new Error(t("bugreport.inline_or_file"));
     const text = file ? await deps.readText(file) : inline ?? '';
-    if (text.length > 64 * 1024) throw new Error('Description/steps exceed 64 KiB; shorten them before collection.');
+    if (text.length > 64 * 1024) throw new Error(t("bugreport.too_long"));
     return text;
   };
   const description = await narrative(options.description, options.descriptionFile);
@@ -94,13 +95,13 @@ export async function runBugReport(options: BugReportOptions, deps: BugReportDep
   try { logs.push({ source: 'journalctl user unit com.agend.fleet', text: await deps.journal(since, until) }); }
   catch { logs.push({ source: 'journalctl user unit com.agend.fleet (unavailable or exceeded bounded read)', text: '' }); }
   const draft = createReportDraft({ title: options.title ?? 'AgEnD bug report', description, steps, environment: deps.environment() + '\n' + await cachedBackendVersions(deps), since, until, logs, keepIdentifiers: options.keepIdentifiers, delivery: options.submit ? 'gh' : 'link' });
-  if (options.submit && draft.overflow) throw new Error('Report requires a manual attachment. Collect without --submit.');
+  if (options.submit && draft.overflow) throw new Error(t("bugreport.requires_attachment"));
   const serialized = serializeDraft(draft), digest = draftDigest(serialized);
   const out = options.out ?? `agend-bug-report-${until}.json`;
   await deps.write(out, serialized);
   await deps.write(out + '.md', draft.report);
   deps.print(reviewText(draft));
-  deps.print(`Local review snapshot: ${redactDiagnostics(out)}\nShareable redacted report file: ${redactDiagnostics(out + ".md")}\nNo report sent. Review the exact text above, then approve SHA256 ${digest}.\nTo ${options.submit ? 'submit with existing host gh login' : 'generate the prefilled link'}: agend bug-report --draft <draft-file> --approve ${digest}${options.submit ? ' --submit' : ''}\nIf you do not use GitHub, share the report Markdown file yourself. No upload is performed.`);
+  deps.print(t(options.submit ? "bugreport.next_submit" : "bugreport.next_link", redactDiagnostics(out), redactDiagnostics(out + ".md"), digest));
 }
 export function registerBugReportCommand(program: Command, version: string, dependencies?: BugReportDeps): void {
   program.command('bug-report')
@@ -120,7 +121,7 @@ export function registerBugReportCommand(program: Command, version: string, depe
       try { await runBugReport(options, dependencies ?? defaultBugReportDeps(version)); }
       catch (error) {
         // child-process errors may embed args/stderr. Never echo them into chat/console.
-        const reason = error instanceof Error && !('cmd' in error) ? redactDiagnostics(error.message) : 'Diagnostic collection/submission failed; no automatic retry. Check GitHub before retrying an uncertain submission.';
+        const reason = error instanceof Error && !('cmd' in error) ? redactDiagnostics(error.message) : t("bugreport.failed");
         console.error(reason); process.exitCode = 1;
       }
     });

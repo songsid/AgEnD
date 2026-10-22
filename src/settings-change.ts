@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { t } from "./locale.js";
 import { SettingsConfirmationError, type SettingsChangeSection } from "./settings-confirmation.js";
 import { settingsFingerprint } from "./settings-transaction.js";
 import { STATUS_EMOJI_CONFIG_KEYS } from "./status-emojis.js";
@@ -215,17 +216,17 @@ function visibilityWidening(before: unknown, after: unknown): string[] {
   for (const name of Object.keys(object(a.instances) ? a.instances : {})) {
     if (!b || !object(b.instances) || !object(b.instances[name])) continue;          // a new agent is confirmed whole
     const raw = own(a, name), ownChanged = !same(raw, own(b, name));
-    if (raw !== undefined && raw !== null && !valid(raw) && ownChanged) { line(`instances.${name}.${VISIBILITY}`, String(own(b, name) ?? "default"), String(raw)); continue; }
+    if (raw !== undefined && raw !== null && !valid(raw) && ownChanged) { line(`instances.${name}.${VISIBILITY}`, String(own(b, name) ?? t("settings_confirm.summary.default")), String(raw)); continue; }
     if (VISIBILITY_RANK[effective(a, name)]! <= VISIBILITY_RANK[effective(b, name)]!) continue;
-    if (ownChanged) line(`instances.${name}.${VISIBILITY} (in effect)`, effective(b, name), effective(a, name));
+    if (ownChanged) line(t("settings_confirm.summary.in_effect", `instances.${name}.${VISIBILITY}`), effective(b, name), effective(a, name));
     else inheritors.push(name);
   }
   const rawDefault = object(a.defaults) ? a.defaults[VISIBILITY] : undefined, wasDefault = object(b?.defaults) ? b!.defaults[VISIBILITY] : undefined;
-  const shown = 5, more = inheritors.length > shown ? ` +${inheritors.length - shown} more` : "";
-  const who = inheritors.length ? ` — ${inheritors.length} agent(s) inherit it: ${settingsDisplay(inheritors.slice(0, shown).join(", "))}${more}` : "";
-  if (rawDefault !== undefined && rawDefault !== null && !valid(rawDefault) && !same(rawDefault, wasDefault)) out.unshift(`${settingsDisplay(`defaults.${VISIBILITY}`)}: ${settingsDisplay(String(wasDefault ?? "default"))} → ${settingsDisplay(String(rawDefault))}${who}`);
+  const shown = 5, more = inheritors.length > shown ? t("settings_confirm.summary.more", inheritors.length - shown) : "";
+  const who = inheritors.length ? `${t("settings_confirm.summary.inherit", inheritors.length, settingsDisplay(inheritors.slice(0, shown).join(", ")))}${more}` : "";
+  if (rawDefault !== undefined && rawDefault !== null && !valid(rawDefault) && !same(rawDefault, wasDefault)) out.unshift(`${settingsDisplay(`defaults.${VISIBILITY}`)}: ${settingsDisplay(String(wasDefault ?? t("settings_confirm.summary.default")))} → ${settingsDisplay(String(rawDefault))}${who}`);
   else if (VISIBILITY_RANK[fallback(a)]! > VISIBILITY_RANK[fallback(b)]! || inheritors.length) {
-    out.unshift(`${settingsDisplay(`defaults.${VISIBILITY} (in effect)`)}: ${settingsDisplay(fallback(b))} → ${settingsDisplay(fallback(a))}${who}`);
+    out.unshift(`${settingsDisplay(t("settings_confirm.summary.in_effect", `defaults.${VISIBILITY}`))}: ${settingsDisplay(fallback(b))} → ${settingsDisplay(fallback(a))}${who}`);
   }
   return out;
 }
@@ -293,7 +294,7 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));
     // Under an immediate key, only its known children are settings; a secret or an id list is still confirmed below.
     if (unknownImmediateChild(path) && !SETTINGS_SECRET_KEY.test(key) && !idLists.has(key)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
-    if (SETTINGS_SECRET_KEY.test(key)) { section = "secret"; add(`${label}: fingerprint ${fingerprint(old)} → ${fingerprint(next)}`); return; }
+    if (SETTINGS_SECRET_KEY.test(key)) { section = "secret"; add(`${label}: ${t("settings_confirm.summary.fingerprint")} ${fingerprint(old)} → ${fingerprint(next)}`); return; }
     if (idLists.has(key)) {
       section = "access";
       if ((old !== undefined && !Array.isArray(old)) || (next !== undefined && !Array.isArray(next))) {
@@ -343,7 +344,7 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
       throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
     add(`${label}: ${settingsDisplay(old)} → ${settingsDisplay(next)}`);
   };
-  if (options.secret) add(`${settingsDisplay(options.secret.key)}: fingerprint ${fingerprint(options.secret.before)} → ${fingerprint(options.secret.after)}`);
+  if (options.secret) add(`${settingsDisplay(options.secret.key)}: ${t("settings_confirm.summary.fingerprint")} ${fingerprint(options.secret.before)} → ${fingerprint(options.secret.after)}`);
   walk(before, after, []);
   // #2346 review: bot-to-bot visibility decides what an agent's topic, the dashboard's search and the public link's board
   // show of it. Judged as the mode each agent gets (its own, else the default, else full) and the default's own (it covers

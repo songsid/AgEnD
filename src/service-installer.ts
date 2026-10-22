@@ -8,6 +8,7 @@ import ejs from "ejs";
 const { render } = ejs;
 import { homedir, platform } from "node:os";
 import { canonicalCliEntry } from "./cli-entry.js";
+import { t } from "./locale.js";
 import { FLEET_STOP_TIMEOUT_MS } from "./fleet-stop-budget.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -819,24 +820,24 @@ export function ensureLoadedNotifyAccess(
   const before = readLoadedNotify(show);
   if (!before) return { kind: "unknown" };
   if (before.type !== "notify" || before.notifyAccess === "all") return { kind: "fine" };
-  if (!unitPath) return { kind: "refused", notifyAccess: before.notifyAccess, dropIns: before.dropIns, detail: "its unit file is not known here" };
+  if (!unitPath) return { kind: "refused", notifyAccess: before.notifyAccess, dropIns: before.dropIns, detail: t("service.notify_no_unit") };
   let path: string;
   try { path = write(unitPath); } catch (err) {
-    return { kind: "refused", notifyAccess: before.notifyAccess, dropIns: before.dropIns, detail: `AgEnD could not write ${join(`${unitPath}.d`, NOTIFY_DROPIN)} (${(err as NodeJS.ErrnoException).code ?? "error"})` };
+    return { kind: "refused", notifyAccess: before.notifyAccess, dropIns: before.dropIns, detail: t("service.notify_write_failed", join(`${unitPath}.d`, NOTIFY_DROPIN), (err as NodeJS.ErrnoException).code ?? "error") };
   }
   reload();
   const after = readLoadedNotify(show);
   if (after && (after.type !== "notify" || after.notifyAccess === "all")) return { kind: "repaired", path, from: before.notifyAccess, dropIns: before.dropIns };
-  return { kind: "refused", notifyAccess: after?.notifyAccess ?? before.notifyAccess, dropIns: after?.dropIns ?? before.dropIns, detail: "it is still set after AgEnD's own drop-in (a later one wins)" };
+  return { kind: "refused", notifyAccess: after?.notifyAccess ?? before.notifyAccess, dropIns: after?.dropIns ?? before.dropIns, detail: t("service.notify_still_set") };
 }
 
 /** What a repair says, one line each ("" for nothing). */
 export function notifyRepairLines(r: NotifyRepair, unit: string, reloadCmd: string): string[] {
   if (r.kind === "repaired") {
-    return [`  ✓ ${r.path}: NotifyAccess=all — systemd had NotifyAccess=${r.from} loaded${r.dropIns.length ? ` (from ${r.dropIns.join(", ")})` : ""}, which refuses the fleet's ready signal and restarts it every 15 minutes (#2331)`];
+    return [t("service.notify_repaired", r.path, r.from, r.dropIns.length ? t("service.notify_from", r.dropIns.join(", ")) : "")];
   }
   if (r.kind === "refused") {
-    return [`  ⚠ systemd loads NotifyAccess=${r.notifyAccess} for ${unit}${r.dropIns.length ? ` (drop-ins: ${r.dropIns.join(", ")})` : ""}: the fleet's ready signal is refused, and systemd restarts it every time TimeoutStartSec runs out (15 minutes). ${r.detail[0]!.toUpperCase()}${r.detail.slice(1)}. Remove the line that sets NotifyAccess, run \`${reloadCmd}\`, then \`agend restart\` (#2331).`];
+    return [t("service.notify_refused", r.notifyAccess, unit, r.dropIns.length ? t("service.notify_dropins", r.dropIns.join(", ")) : "", `${r.detail[0]!.toUpperCase()}${r.detail.slice(1)}`, reloadCmd)];
   }
   return [];
 }
@@ -861,15 +862,15 @@ export function serviceLeftovers(o: { home: string; dropIns: readonly string[]; 
     let text: string;
     try { text = readFileSync(path, "utf8"); } catch { continue; }
     const set = LEFTOVER_KEYS.flatMap((key) => serviceAssignments(text, key).slice(-1).map((v) => `${key}=${v}`));
-    if (set.length) out.push({ path, detail: `a drop-in sets ${set.join(", ")} (AgEnD writes none but its own ${NOTIFY_DROPIN}); keep it only if you added it on purpose` });
+    if (set.length) out.push({ path, detail: t("service.leftover_dropin", set.join(", "), NOTIFY_DROPIN) });
   }
   const userUnit = o.userUnitPath ?? join(o.home, ".config", "systemd", "user", `${SERVICE_LABEL}.service`);
   if (o.systemUnit && existsSync(userUnit)) {
-    out.push({ path: userUnit, detail: `a user unit beside the system unit ${o.systemUnit}, which runs the fleet; this one is not used — \`systemctl --user disable ${SERVICE_LABEL}\`, then remove it` });
+    out.push({ path: userUnit, detail: t("service.leftover_user_unit", o.systemUnit, SERVICE_LABEL) });
   }
   for (const label of OLD_LABELS) {
     for (const path of [join(o.home, ".config", "systemd", "user", `${label}.service`), join(o.home, "Library", "LaunchAgents", `${label}.plist`)]) {
-      if (existsSync(path)) out.push({ path, detail: "a service from before AgEnD's rename (a source build); it does not run this fleet — disable it and remove it" });
+      if (existsSync(path)) out.push({ path, detail: t("service.leftover_old_label") });
     }
   }
   return out;

@@ -107,9 +107,20 @@ export function providerTitle(p) {
  * tooltip and for a screen reader.
  */
 export function planBadge(plan) {
-  const m = /^(\S+)(?: [^()]+)? \((\d+(?:\.\d+)?)x\)$/i.exec(String(plan || "").trim());
-  return m ? `${m[1]} ×${m[2]}` : String(plan || "");
+  const text = String(plan || "").trim();
+  const m = /^(\S+)(?: [^()]+)? \((\d+(?:\.\d+)?)x\)$/i.exec(text);
+  if (m) return `${m[1]} ×${m[2]}`;
+  // #2412: a long name ("Self Serve Business Usage Based", Codex's plan_type spelled out) says only its kind, so the badge
+  // never takes the row from the provider's name; the full name is the badge's tooltip.
+  if (text.length > PLAN_BADGE_MAX) {
+    for (const [word, short] of PLAN_KINDS) if (word.test(text)) return short;
+  }
+  return text;
 }
+const PLAN_BADGE_MAX = 14;
+/** The kinds a long plan name is shortened to, the most specific first. */
+const PLAN_KINDS = [[/\benterprise\b/i, "Enterprise"], [/\bbusiness\b/i, "Business"], [/\bteam\b/i, "Team"], [/\bedu(?:cation)?\b/i, "Edu"],
+  [/\bpro\+/i, "Pro+"], [/\bpro\b/i, "Pro"], [/\bplus\b/i, "Plus"], [/\bmax\b/i, "Max"], [/\bfree\b/i, "Free"]];
 /** "Updated 3 min ago" (#1585): how old the numbers are — the panel may show the last snapshot while a fresh one comes. */
 export function updatedAgo(fetchedAt, now = Date.now()) {
   const ms = now - new Date(fetchedAt).getTime();
@@ -124,7 +135,10 @@ export function updatedAgo(fetchedAt, now = Date.now()) {
  */
 export function UsageBody({ owner }) {
   const lease = useLease(owner);
-  const [data, setData] = useState(undefined);       // undefined: loading; null: failed
+  const [data, setData] = useState(undefined);       // undefined: loading; null: failed, with nothing read before
+  // The last read failed while numbers were already shown: they stay, with a quiet note (#2236/#2289 for the server's
+  // rows; here for the read itself — a dropped or failed read must not flash the error over numbers already on screen).
+  const [failed, setFailed] = useState(false);
   const [order, setOrder] = useState(() => { try { const a = JSON.parse(stored(USAGE_ORDER_KEY) || "[]"); return Array.isArray(a) ? a.filter((x) => typeof x === "string") : []; } catch { return []; } });
   const reads = useMemo(() => readStream(lease), [lease]);
   // Refresh (force) supersedes a read on its way; the minute's tick waits for it.
@@ -134,19 +148,26 @@ export function UsageBody({ owner }) {
     try {
       const r = await lease.fetch(`/api/ai-usage${force ? "?force=1" : ""}`);
       if (!reads.live(token)) return;
+      // A refused or failed answer (a 500, a proxy's 502 page, a session that lapsed) is a failed read, not numbers.
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = await r.json();
-      if (reads.live(token)) setData(d);
-    } catch { if (reads.live(token)) setData(null); }
+      if (!d || !Array.isArray(d.providers)) throw new Error("no providers");
+      if (reads.live(token)) { setData(d); setFailed(false); }
+    } catch {
+      if (!reads.live(token)) return;
+      setData((had) => (had && Array.isArray(had.providers) ? had : null));   // the last numbers stay; none: the error
+      setFailed(true);
+    }
     finally { reads.end(token); }
   };
   useEffect(() => { load(false); lease.interval(() => load(false), 60_000); }, [lease]);
   // #1585: the server answered with the last snapshot while it fetches a fresh one — read again shortly (the same
   // cache: no vendor call of its own) so the fresh numbers replace it without waiting for the minute's tick.
   useEffect(() => {
-    if (!data || !data.refreshing) return undefined;
+    if (!data || !data.refreshing || failed) return undefined;
     const timer = setTimeout(() => load(false), 4_000);
     return () => clearTimeout(timer);
-  }, [data]);
+  }, [data, failed]);
   const key = (p) => String(p.id || p.name || "");
   const ordered = (providers) => {
     const rank = new Map(order.map((id, i) => [id, i]));
@@ -182,7 +203,7 @@ export function UsageBody({ owner }) {
           : html`${(p.metrics || []).map((m, j) => html`<${UsageMetric} key=${j} m=${m} />`)}
             ${!p.stale && p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : !(p.metrics || []).length ? html`<p class="note">${tn("usage.no_data")}</p>` : null}`}
       </section>`)}
-      <div class="u-foot"><span class="note" title=${new Date(data.fetchedAt).toLocaleString()}>${updatedAgo(data.fetchedAt)}${data.refreshing ? html` · <span class="u-refreshing">${tn("usageRefreshing")}</span>` : null}</span>
+      <div class="u-foot"><span class="note" title=${new Date(data.fetchedAt).toLocaleString()}>${updatedAgo(data.fetchedAt)}${failed ? html` · <span class="u-refresh-failed" role="status">${tn("usageRefreshFailed")}</span>` : data.refreshing ? html` · <span class="u-refreshing">${tn("usageRefreshing")}</span>` : null}</span>
         ${byAgent() ? html`<a class="btn btn-ghost btn-sm u-by-agent" href="/ui/fleet/usage" title=${tn("usageByAgentTitle")}>${tn("usageByAgent")}</a>` : null}
         <button type="button" class="btn btn-sm" onClick=${() => load(true)}>${tn("usageRefresh")}</button></div>`;
   }

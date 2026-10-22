@@ -1,4 +1,5 @@
 import { operatorUid, assertOperatorRoot, assertOperatorClientPath } from "./operator-control-paths.js";
+import { t } from "./locale.js";
 import { createServer, createConnection, type Server, type Socket } from "node:net";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, chmod, unlink } from "node:fs/promises";
@@ -129,7 +130,7 @@ export class SettingsControlServer {
           if (action === "inspect" && Object.keys(input).length === 2) write({ status: "ok", ...inspected });
           else if ((action === "confirm" || action === "reject") && Object.keys(input).length === 2
             && settingsFingerprint(input.ticket) === settingsFingerprint(inspected.ticket)) {
-            const result = await this.store.decide(id, action, { label: "host operator", current: () => !this.closed && this.current() });
+            const result = await this.store.decide(id, action, { label: t("settings_confirm.host_operator"), current: () => !this.closed && this.current() });
             write({ status: "ok", pending_change: result });
           } else throw new Error("Inspection is stale; inspect the authoritative diff again.");
         } catch {

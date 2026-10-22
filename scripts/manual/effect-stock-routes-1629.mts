@@ -88,7 +88,7 @@ try{
     for(const [kind,sub,state]of routes){
      await page.evaluate(([k,s,v])=>(window as any).stock.route(k,s,v),[kind,sub,state]);await page.locator('.main > .p-'+kind).waitFor();await page.waitForTimeout(80);
      if(kind==='view'&&['loading','error','empty'].includes(state)){await page.evaluate(state=>(window as any).stock.viewStore.set({loaded:state!=='loading',error:state==='error'?'Inert error':null,roster:[]}),state);await page.locator('.p-view > .panel-body').waitFor()}
-     if(kind==='view'&&state==='ready'){await page.locator('.v-card').waitFor();await page.locator('.v-card button[aria-expanded]').click();await page.locator('.v-id').waitFor()}
+     if(kind==='view'&&state==='ready'){await page.locator('.v-id').waitFor()}
      if(kind==='log'&&state==='ready')await page.locator('.log-bar').waitFor();
      if(kind==='settings'&&sub==='general'&&state==='ready'){
       await page.locator('#g-model').fill('inert-model');await page.locator('.s-general button[type=button]').last().click();await page.locator('.s-pending').waitFor();await page.waitForFunction(()=>!document.querySelector('.toast'));
@@ -105,7 +105,7 @@ try{
      const selected=kind==='settings'&&sub==='general'||kind==='view'&&state==='ready'||kind==='log'&&state==='ready'||!painted.has(kind);
      if(selected&&snapshot.front){
       await page.mouse.move(0,0);await page.waitForTimeout(250);
-      const baseline=await page.screenshot({caret:'initial'}),points=await page.evaluate(()=>[...document.querySelectorAll('.main>.panel>.panel-head button,.main>.panel>.seg a,.main>.panel>.panel-body button,.main>.panel>.v-card button,.main>.panel>.log-bar button,.main>.panel>.s-pending button,.main>.panel>.v-id')].filter(el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0&&r.x>=0&&r.y>=0&&r.right<=innerWidth&&r.bottom<=innerHeight}).slice(0,16).map(el=>{const r=el.getBoundingClientRect();return{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2),cls:el.className}}));
+      const baseline=await page.screenshot({caret:'initial'}),points=await page.evaluate(()=>[...document.querySelectorAll('.main>.panel>.panel-head button,.main>.panel>.seg a,.main>.panel>.panel-body button,.main>.panel>.v-id button,.main>.panel>.log-bar button,.main>.panel>.s-pending button,.main>.panel>.v-id')].filter(el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0&&r.x>=0&&r.y>=0&&r.right<=innerWidth&&r.bottom<=innerHeight}).slice(0,16).map(el=>{const r=el.getBoundingClientRect();return{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2),cls:el.className}}));
       assert.ok(points.length>0);assert.equal(await page.evaluate(()=>(window as any).stock.paint()),true);const front=await page.screenshot({caret:'initial'});for(const p of points)assert.deepEqual(pixel(front,p.x,p.y),pixel(baseline,p.x,p.y),'protected '+kind+'/'+sub+' '+p.cls);await page.evaluate(()=>(window as any).stock.removePaint());painted.add(kind);
      }
      const controls=[];
