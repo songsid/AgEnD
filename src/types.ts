@@ -472,6 +472,12 @@ export interface WebVerifiedAuthorityConfig {
   loopback_only?: boolean;
   /** A session's authorization lasts this many hours after it was given, 1–48 (default 48). */
   max_session_hours?: number;
+  /**
+   * #2453 (§0.2): sessions over the admin's own named tunnel (`web.public_link.hostname`) may be authorized too — off by
+   * default. Turning it on is confirmed in a General or on the host (never by the asking session); off applies at once
+   * and every receipt from a named-link session reads as none. A quick tunnel never qualifies.
+   */
+  named_link?: boolean;
 }
 
 /** #1920: fleet.yaml `web.guests`. */

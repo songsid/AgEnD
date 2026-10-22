@@ -50,6 +50,8 @@ export interface SettingsChangeProposal {
   requestFingerprint?: string;
   affectedConnections?: readonly string[];
   authority?: SettingsChangeAuthority;
+  /** #2453: never confirmed by its own requester (#2170) — it turns the named-link option on. */
+  noSelfConfirm?: true;
   /** Session, token epoch, exposure and fleet lifecycle; never extends expiry. */
   current(): boolean;
   /** Recheck the original configuration before admitting the effect. */
@@ -166,6 +168,8 @@ export class SettingsConfirmationStore {
     return this.snapshot(entry);
   }
   affectedConnections(id: string): readonly string[] { return this.records.get(id)?.proposal?.affectedConnections ?? []; }
+  /** #2453: whether its requester may confirm it by applying it (#2170) — not a change that opens the named link. */
+  selfConfirmable(id: string): boolean { const p = this.records.get(id)?.proposal; return !!p && p.noSelfConfirm !== true; }
   authorityOf(id: string): SettingsChangeAuthority | null {
     const entry = this.records.get(id); return entry ? structuredClone(entry.authority) : null;
   }

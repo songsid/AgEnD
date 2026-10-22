@@ -471,10 +471,11 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       const v = config.web.verified_authority;
       if (!isObj(v)) err("web.verified_authority", "must be a mapping");
       else {
-        const known = ["enabled", "loopback_only", "max_session_hours"];
+        const known = ["enabled", "loopback_only", "max_session_hours", "named_link"];
         for (const k of Object.keys(v)) if (!known.includes(k)) warn(`web.verified_authority.${k}`, `unknown key (known: ${known.join(", ")}) — ignored`);
         if (v.enabled !== undefined && typeof v.enabled !== "boolean") err("web.verified_authority.enabled", "must be a boolean");
         if (v.loopback_only !== undefined && typeof v.loopback_only !== "boolean") err("web.verified_authority.loopback_only", "must be a boolean");
+        if (v.named_link !== undefined && typeof v.named_link !== "boolean") err("web.verified_authority.named_link", "must be a boolean");
         const h = v.max_session_hours;
         if (h !== undefined && (typeof h !== "number" || !Number.isFinite(h) || h < VERIFIED_SESSION_HOURS.min || h > VERIFIED_SESSION_HOURS.max)) {
           err("web.verified_authority.max_session_hours", `must be a number of hours from ${VERIFIED_SESSION_HOURS.min} to ${VERIFIED_SESSION_HOURS.max}`);

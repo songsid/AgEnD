@@ -62,6 +62,19 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 
 公開 cookie 為 Secure `__Host-`，綁定單次入口。 Gateway 拒絕本機 header token、cookie 與碼；公開碼與 session 都綁定單次入口。公開 session 限四小時／閒置 30 分鐘，入口較早關閉也會使其失效。每次公開登入都須在五秒內確認所屬 General 收到 🔐 公開通知，不受 `notify_login` 影響；確認前候選 session 不可用也不持久化。登入碼外洩仍可授予完整 web-admin 權限。Cloudflare 終止 TLS；光轉傳連結不會登入，但會暴露端點供猜碼、耗盡共用 breaker。完整 Origin 與 CSRF 保護瀏覽器寫入；Host 檢查不是身分認證。到期、停用、私送關閉、revoke、owner／binding 失效與 shutdown 都先關存取、撤回公開憑證，再清子行程；無法確認停止時封鎖下一條 tunnel。
 
+**透過管理員固定網域的網頁授權（#2453），需自行開啟，預設關閉。** `web.verified_authority.named_link: true` 讓管理員自己 named tunnel 網域上的 session 也能透過帳號的確認卡授權（#1939 §0.2）。
+- **哪些請求算數。** 只有 gateway 鎖定的主機正好是設定的網域時，請求才會標為 named。任何 header 都無法設定或改變這一點，quick tunnel 一律不行。
+- **開啟**是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能透過公開連結修改。
+- **關閉**立即生效，所有 named-link session 的回執都會視為無（`downgraded: named_link_off`）。再開啟會推進撤銷 epoch，那些回執不會回來。
+- **`loopback_only`** 仍然優先。
+- **開啟即接受的風險。** Cloudflare 終止 TLS，看得到流量，包括 session cookie。已授權的 named-link session 的 cookie 若被盜，在以下任一情況前都能從任何地方重播：
+  - 30 分鐘閒置或 4 小時的公開 session 上限；
+  - `max_session_hours`；
+  - 通知卡上的「不是我」；
+  - `/web revoke`；
+  - 關閉選項。
+- **named-link session 永遠不能作為自行確認待處理設定變更的授權。**
+
 **登入並未保護所有本機 HTTP 讀取。** 任何能連到 listener 並帶允許 `Host` 的人，都能讀取 `/view` 及其 GET API，包括 `/api/pane/<instance>`、個人資料、頭像與排序。Listener 只綁定 `127.0.0.1`，但這仍然包括：
 - 本機的其他使用者與程式；
 - 反向代理、tailnet 分享或 port 轉送所放行的對象（`web.allowed_hosts`）；
