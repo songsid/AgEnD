@@ -164,7 +164,7 @@ describe("the routes", () => {
       expect([token.status, JSON.parse(token.body).error]).toEqual([403, "offices_need_an_admin_session"]);
       expect(f.fm.officeStore.list().offices).toEqual([]);
       const admin = f.session("admin").write;
-      const bad = await put(admin, { offices: [{ ...OPS, layout: { seats: [{ id: "s", x: -5, y: 0 }] } }] });
+      const bad = await put(admin, { offices: [{ ...OPS, layout: { seats: [{ id: "s", x: -5, y: 0 }] } }], rev: 0 });
       expect([bad.status, JSON.parse(bad.body)]).toEqual([400, { error: "offices_invalid", detail: "offices[0].layout.seats[0].x: a number from 0 to 20000" }]);
       expect(JSON.parse((await put(admin, { offices: [], extra: 1 })).body)).toEqual({ error: "offices_invalid", detail: 'unknown key "extra"' });
       expect((await put(admin, { offices: [], rev: "1" })).status).toBe(400);
@@ -175,6 +175,51 @@ describe("the routes", () => {
       expect(f.fm.officeStore.list().offices).toEqual([OPS]);
     } finally { await f.stop(); }
   }, 30_000);
+  // Office review (#2399 carry, Fable): a save without the rev it read would overwrite another person's unseen.
+  it("PUT without rev: 428, nothing written; with the rev read: saved", async () => {
+    const f = await fleet();
+    try {
+      const put = (body: unknown) => raw(f.port, "PUT", "/ui/offices", f.session("admin").write, JSON.stringify(body));
+      const missing = await put({ offices: [OPS] });
+      expect([missing.status, JSON.parse(missing.body).error, f.fm.officeStore.list().offices]).toEqual([428, "offices_rev_required", []]);
+      expect((await put({ offices: [OPS], rev: 0 })).status).toBe(200);
+    } finally { await f.stop(); }
+  }, 30_000);
+  it("PUT is rate limited per person: past 20 accepted saves a minute, 429 with Retry-After; refused or invalid ones cost nothing", async () => {
+    const { OfficeWriteLimiter } = await import("../src/web-office-store.js");
+    let t = 0;
+    const lim = new OfficeWriteLimiter(() => t, { perWindow: 3, windowMs: 60_000 });
+    for (let i = 0; i < 3; i++) { expect(lim.check("a")).toEqual({ ok: true }); lim.record("a"); t += 1000; }
+    expect(lim.check("a")).toEqual({ ok: false, retry_after_s: 57 });
+    expect(lim.check("b")).toEqual({ ok: true });                       // per person
+    t = 60_001;                                                          // the first save left the window
+    expect(lim.check("a")).toEqual({ ok: true });
+    const f = await fleet();
+    try {
+      (f.fm as any).officeWrites = new OfficeWriteLimiter(() => 0, { perWindow: 2, windowMs: 60_000 });
+      const admin = f.session("admin").write;
+      const put = (body: unknown) => raw(f.port, "PUT", "/ui/offices", admin, JSON.stringify(body));
+      expect((await put({ offices: [{ ...OPS, name: "" }], rev: 0 })).status).toBe(400);   // invalid: not counted
+      expect((await put({ offices: [OPS], rev: 0 })).status).toBe(200);
+      expect((await put({ offices: [], rev: 0 })).status).toBe(409);                      // stale: not counted
+      expect((await put({ offices: [], rev: 1 })).status).toBe(200);
+      const third = await new Promise<{ status: number; retry: string | undefined; body: string }>((resolve, reject) => {
+        const r = request({ host: "127.0.0.1", port: f.port, method: "PUT", path: "/ui/offices", headers: admin }, (res) => {
+          let b = ""; res.on("data", (c) => { b += c; }); res.on("end", () => resolve({ status: res.statusCode ?? 0, retry: res.headers["retry-after"] as string | undefined, body: b }));
+        });
+        r.on("error", reject); r.end(JSON.stringify({ offices: [OPS], rev: 2 }));
+      });
+      expect([third.status, third.retry, JSON.parse(third.body).error, f.fm.officeStore.list().rev]).toEqual([429, "60", "offices_rate_limited", 2]);
+    } finally { await f.stop(); }
+  }, 30_000);
+  it("a guest never reads the offices: no guest route to /ui/offices or /ui/org, and the stream drops `offices` for a guest", async () => {
+    const { guestRouteDecision, guestFrameData } = await import("../src/web-guest-access.js");
+    const scope = new Set(["alpha"]);                                   // even a guest granted the office's member
+    for (const path of ["/ui/offices", "/ui/org"]) for (const method of ["GET", "PUT"]) {
+      expect(guestRouteDecision(method, new URL(`http://h${path}`), scope), `${method} ${path}`).toEqual({ kind: "deny", status: 403, error: "guest_forbidden" });
+    }
+    expect(guestFrameData("offices", { rev: 3 }, new Set(["alpha"]), { owner: { adapterId: "a", userId: "u" } } as never)).toBeUndefined();
+  });
   it("a session revoked while the body was on its way changes nothing", async () => {
     const f = await fleet();
     try {

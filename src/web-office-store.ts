@@ -162,3 +162,27 @@ export class OfficeStore {
     return { ok: true, rev, offices: clone(checked.offices) };
   }
 }
+
+/**
+ * Office review (#2399 carry): how often one person may save the offices (PUT /ui/offices). An editor saves on an explicit
+ * Save, so a person needs a few a minute at most; a page or a script looping on PUT is refused (429, with when to try
+ * again) instead of rewriting web-offices.json and announcing it to every page each time. Only accepted saves count
+ * (`record` after the write is on disk); the clock is monotonic; a fleet restart clears it.
+ */
+export const OFFICE_WRITES = { perWindow: 20, windowMs: 60_000 } as const;
+export class OfficeWriteLimiter {
+  private readonly saves = new Map<string, number[]>();
+  constructor(private readonly now: () => number = () => performance.now(), private readonly limits: { perWindow: number; windowMs: number } = OFFICE_WRITES) {}
+  private recent(person: string, now: number): number[] {
+    const kept = (this.saves.get(person) ?? []).filter(t => now - t < this.limits.windowMs);
+    if (kept.length) this.saves.set(person, kept); else this.saves.delete(person);
+    return kept;
+  }
+  /** Whether `person` may save now; else the seconds until one of its saves leaves the window. Changes nothing. */
+  check(person: string): { ok: true } | { ok: false; retry_after_s: number } {
+    const now = this.now(), kept = this.recent(person, now);
+    return kept.length < this.limits.perWindow ? { ok: true } : { ok: false, retry_after_s: Math.max(1, Math.ceil((this.limits.windowMs - (now - kept[0]!)) / 1000)) };
+  }
+  /** Count an accepted save. */
+  record(person: string): void { const now = this.now(); this.saves.set(person, [...this.recent(person, now), now]); }
+}

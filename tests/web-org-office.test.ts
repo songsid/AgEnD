@@ -270,6 +270,10 @@ describe("the store: this browser's choices, the host's offices", () => {
     expect(await S.createOfficeStore({ fetch: async () => { throw new Error("offline"); } }).offices()).toBeNull();
     expect(await S.createOfficeStore({ fetch: answer(409, { error: "offices_changed" }) }).saveOffices([{ id: "a", name: "A" }], 3)).toEqual({ ok: false, status: 409, error: "offices_changed" });
     expect(calls.at(-1)).toEqual(["/ui/offices", "PUT", { offices: [{ id: "a", name: "A" }], rev: 3 }]);
+    // Office review: no save without the rev that was read — never sent.
+    const before = calls.length;
+    expect(await S.createOfficeStore({ fetch: answer(200, {}) }).saveOffices([{ id: "a", name: "A" }])).toEqual({ ok: false, status: 0, error: "offices_rev_required" });
+    expect(calls.length).toBe(before);
   });
 });
 
@@ -564,4 +568,27 @@ describe("the Office view on the page", () => {
       expect(main.calls.length).toBe(n);
     } finally { delete proto.getContext; }
   });
+  // Office review (#2399 carry): the poses change at most 12 times a second; with nothing walking or flying the loop must
+  // not wake at the display's rate (60+ frames a second) only to find nothing to draw.
+  it("idle (nothing in the air): the loop wakes about once per drawn frame, not at the display's rate", async () => {
+    const proto = MiniElement.prototype as any;
+    proto.getContext = function () { return (this._ctx ??= fakeCtx()); };
+    const realRaf = (globalThis as any).requestAnimationFrame, realCancel = (globalThis as any).cancelAnimationFrame;
+    let frames = 0;
+    (globalThis as any).requestAnimationFrame = (cb: (t: number) => void) => { frames++; return setTimeout(() => cb(performance.now()), 4) as unknown as number; };   // a 250 Hz display
+    (globalThis as any).cancelAnimationFrame = (id: number) => clearTimeout(id);
+    try {
+      await office();
+      await settle(4);
+      frames = 0;
+      await new Promise((r) => setTimeout(r, 1000));
+      // 12 drawn frames a second, a few wakes to spare; at the display's rate it would be ~250.
+      expect(frames).toBeGreaterThan(5);
+      expect(frames).toBeLessThanOrEqual(20);
+      await p.unmount(); await settle(4);
+      const after = frames;
+      await new Promise((r) => setTimeout(r, 300));
+      expect(frames).toBe(after);                                       // gone with the view: no timer left behind
+    } finally { delete proto.getContext; (globalThis as any).requestAnimationFrame = realRaf; (globalThis as any).cancelAnimationFrame = realCancel; }
+  }, 15_000);
 });
