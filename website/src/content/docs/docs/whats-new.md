@@ -12,6 +12,8 @@ AgEnD 2.3 is the stable release. This page is for people coming from 2.2.x (2.2.
 
 ## Upgrade from 2.2.x
 
+The steps, in order, are in the [upgrade guide](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.3.md). In short:
+
 - **How to update:** send `/update` in General, or run `agend update` on the host. The update installs 2.3, checks it, and restarts the fleet. The chat shows each step, and a failure says which step failed.
 - **Root or WSL-style hosts (#2369):** if you run `agend update` from a shell with no `XDG_RUNTIME_DIR` (a plain `wsl` shell, `docker exec`, cron, or root), 2.2.x cannot reach the systemd user service and rolls itself back to 2.2.x. Run this instead:
 
@@ -21,10 +23,10 @@ AgEnD 2.3 is the stable release. This page is for people coming from 2.2.x (2.2.
 
   Or re-run the official install command. Once you are on 2.3 you no longer need this step.
 - **Automatic rollback (#2420):** if the new service does not start, the update puts back the previous package and service settings, starts them again, and says "Rolled back…". On macOS (launchd), an update counts as done only once the fleet is really running. A backup left by an interrupted update is removed by the next update.
-- **Disk space:** keep about 235 MB free. The rollback keeps a copy of the version you are upgrading from, and a copy with its Node is about that size. Without that space the update refuses before it changes anything, and says why (#2420).
-- **Later updates use the new version's own installer (#2264):** `/update` and `agend update` run the target version's `agend-install --upgrade`, so install, upgrade and repair take the same path. An interrupted install is repaired by running the install command again. If another update is still running, the new one waits for it.
+- **Disk space:** keep about 235 MB free on top of what the install itself needs. The rollback keeps a copy of the version you are upgrading from while the new one installs, and a copy with its Node is about that size. Without that space the update refuses before it changes anything, and says why (#2420).
+- **Later updates use the new version's own installer (#2264):** `/update` and `agend update` run the target version's `agend-install --upgrade`, so install, upgrade and repair take the same path. An interrupted install is repaired by running the install command again. If another install or update holds the install lock, the new one stops before changing anything and says why: let the other one finish, then run it again.
 - **Service settings are fixed on upgrade:** on Linux, the unit gets `NotifyAccess=all` (#2331), without which the fleet was restarted every 15 minutes. `OOMPolicy` is checked too (#2446). The update reports the values systemd actually loaded.
-- **Web sign-in carries over (#2403):** your browser stays signed in. The one exception: if another AgEnD on the same host replaced this browser's sign-in cookie before you upgraded, sign in once more.
+- **Dashboard sign-in carries over (#2403):** a browser signed in to the dashboard directly stays signed in. The exception: if another AgEnD on the same host replaced this browser's sign-in cookie before you upgraded, sign in once more. A public-link sign-in does not carry over: it lasts only as long as that link, and a restart opens a new one.
 - **Defaults that change after the upgrade:**
   - **Task board in chat:** cards that need you are not shown in General's Needs you list until you set `needs_you.task_board: true` (#2425). The daily summary is sent only when you set `defaults.task_board.summary_at`.
   - **New fleets:** a new `fleet.yaml` gets `defaults.dashboard.task_board: false` (#2391). Your existing file is not rewritten, and the task board works as before.
@@ -61,7 +63,7 @@ Typing a removed command prints the new one.
   - **Who confirms:** only cards you handed out wait for your confirmation (#2434). A card an agent handed out is confirmed by that agent. If that agent is deleted, its cards go back to you (#2451).
   - **In chat:** set `needs_you.task_board: true` and the cards waiting on you (to confirm, or stuck) appear in General's Needs you list, where you can confirm, send back or reply.
   - **Daily summary:** set `defaults.task_board.summary_at` (for example `"09:00"`, in the fleet's timezone) to get it. It is off until you set it.
-- **Office view** (`Fleet → Org chart → Office`, #2399): the fleet drawn as a pixel-art office. Each team is a room and each agent has a desk. Working agents type, idle ones drink tea, paused ones sleep, and an agent waiting on you flashes a light. Messages between agents fly down the corridor. Two styles, Desks and Studio. Admins can add, rename, delete and furnish offices. Guests and the public link can only look.
+- **Office view** (`Fleet → Org chart → Office`, #2399): the fleet drawn as a pixel-art office. Each team is a room and each agent has a desk. Working agents type, idle ones drink tea, paused ones sleep, and an agent waiting on you raises a hand. Messages between agents fly down the corridor. Two styles, Desks and Studio. Admins can add, rename, delete and furnish offices. Read-only sessions and the public link can only look; guests do not see the org chart or the Office view.
 - **Restart and startup:**
   - `agend restart` is the one full restart. It goes through systemd, launchd or the detached fleet, whichever runs AgEnD. `agend restart <name>` restarts one instance now (#2356).
   - The dashboard opens while agents are still starting, and shows each agent's progress (#2398).
@@ -77,14 +79,14 @@ Typing a removed command prints the new one.
 - **Chat:**
   - **Reply to a message:** hover and press ↩, right-click, swipe left on a phone, long-press, or press R. A reply sent from the web is a native reply on Discord and Telegram too (#2281).
   - **Reactions:** an agent can react to a web message with an emoji, for example when a message needs only an acknowledgement (#2305).
-  - **Send states:** a message appears grey as soon as you send it, and turns normal when the agent receives it. If sending fails, you can retry, put the text back in the box, or delete it. Images and files show their own upload progress. A retry never sends the same message twice.
+  - **Send states:** a message appears grey as soon as you send it, and turns normal when the agent receives it. If sending fails, you can retry, put the text back in the box, or delete it. Images and files show their own upload progress. A retry within 10 minutes is recognised and not delivered twice; AgEnD keeps that record in memory only, so after a restart a retry may arrive again.
   - **Images** can be zoomed and dragged (#2333). **Undo and redo** work in every text field (Ctrl/⌘+Z, Ctrl+Shift+Z) (#2342). On a desktop, the input box is one line shorter (#2215).
 - **Appearance:**
   - An agent's theme can colour the whole page, its sidebar, title bar and right column. Override it in **⋯ → page colours** (#2196).
   - The identity card is one button in the chat header (#2217).
   - **Custom app icon:** **Settings → Web appearance → App icon** (#2308). Your picture is the one that **Add to Home Screen** shows.
 - **Usage panel:**
-  - A **Compact / Full** switch next to the title. Compact groups accounts by provider, with three lines per account: name, plan and reset time, then a bar and a percentage for the 5-hour and 7-day windows. Your choice follows you to each device.
+  - A **Compact / Full** switch next to the title. Compact groups accounts by provider, a few lines per account: name, plan and reset time, then a bar and a percentage for its shorter and longer window where it has them (under two days, such as 5 hours, and two days or more, such as a week or a month). Antigravity gets a line per quota pool. Your choice follows you to each device.
   - Each Claude login has its own row, including the default account and every profile (#2236). An account that is used up shows 100% and its reset time. A rate-limited account shows "Rate limited".
   - If numbers cannot be read, the panel keeps the last ones and marks them "stale · cached at HH:MM", instead of flashing "could not load" (#2236, #2385).
   - Antigravity shows its plan name, and the right Gemini quota for paid plans. Gemini 4 Argon has its own line (#2240).
