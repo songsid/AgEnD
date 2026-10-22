@@ -6,7 +6,7 @@ This page lists what to do, in order, when you move from 2.2.x (2.2.5 or 2.2.6) 
 
 ## 1. Before you upgrade
 
-- **Free space: about 235 MB more than a normal install.** Before it changes anything, the update saves a copy of the installed version, with its Node, so that it can roll back. It keeps that copy while npm installs the new version. On the disk where npm installs AgEnD, keep about 235 MB free for the copy, on top of what the install itself needs. If the space is not there, the update refuses before it changes anything, and says why.
+- **Free space: about 235 MB more than a normal install.** Before it changes anything, the update saves a copy of the installed version, with its Node, so that it can roll back. It keeps that copy while npm installs the new version. On the disk where npm installs AgEnD, keep about 235 MB free for the copy, on top of what the install itself needs. If that copy cannot be made, the update stops before it changes anything. The space for the install itself is not checked in advance, so leave room for it too.
 - **Node.** Nothing changes from 2.2. On Linux (glibc) and macOS, x64 or arm64, AgEnD brings its own Node. 2.3 pins Node 22.23.4.
 - **Supported hosts.** Also unchanged from 2.2: macOS, or Linux with glibc and systemd.
 
@@ -41,12 +41,14 @@ Send `/update` in General.
 
 ## 3. If the new version does not start: rollback
 
-If the new service does not come up, the update brings everything back, says "Rolled back", and exits with an error:
+If the new service does not come up, the update tries to put the previous version back:
 - the previous package, with its bundled Node;
 - the previous systemd unit (user or system) or launchd plist;
-- the previous service.
+- the previous service, if it was running before. A service that was stopped stays stopped.
 
-On macOS (launchd), an update counts as done only once the new fleet is actually running. A backup left by an interrupted update is removed by the next update.
+It restores only what it can prove was there before. When it cannot, it keeps the recovery copies and prints what to check. Either way, the update ends with an error, and its message says whether the previous version is running again. If the recovery was incomplete, follow the steps it prints.
+
+On macOS (launchd), an update counts as done only once the new fleet is actually running.
 
 ## 4. What changes on the first start of 2.3
 
