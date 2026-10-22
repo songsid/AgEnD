@@ -586,6 +586,62 @@ describe("the Office view on the page", () => {
       expect(puts[0].offices[1].id).toMatch(/^office-[0-9a-z]{6}$/);
       expect(puts[0].offices[1]).not.toHaveProperty("layout");
     });
+    // #2431 review r2 (Prism): the editor's answers are ordered by when their requests were sent, not when they answer.
+    describe("a held editor answer and a newer list the stream read meanwhile", () => {
+      let gets: Array<(a: { status: number; body: unknown }) => void>, puts: Array<{ body: any; answer: (a: { status: number; body: unknown }) => void }>;
+      const handlers: Record<string, () => void> = {};
+      beforeEach(() => {
+        gets = []; puts = [];
+        const inner = (globalThis as any).fetch;
+        (globalThis as any).fetch = async (url: string, o: any = {}) => {
+          if (url !== "/ui/offices") return inner(url, o);
+          const a: { status: number; body: unknown } = await new Promise((r) => (o.method === "PUT" ? puts.push({ body: JSON.parse(o.body), answer: r }) : gets.push(r)));
+          return { ok: a.status === 200, status: a.status, json: async () => a.body };
+        };
+        app.appStore.set({ ...STORE, streamOn: (name: string, fn: () => void) => { handlers[name] = fn; return () => {}; } });
+      });
+      const ok = (rev: number, name: string) => ({ status: 200, body: { rev, offices: [{ id: name.toLowerCase(), name, members: [] }] } });
+      const names = () => p.root.querySelector(".oo-bar select").querySelectorAll("option").map((o: any) => o.textContent.trim());
+      const open = async () => {
+        auth(true); await office();
+        gets[0](ok(4, "Opened")); await settle(3);
+        editBtn().click(); await settle(3);
+        p.root.querySelector("#oeSave").click(); await settle(2);
+      };
+      it("a save sent before the stream's rev 6 answers rev 5 after it: the page keeps rev 6", async () => {
+        await open();
+        handlers.offices(); await settle(2);
+        gets[1](ok(6, "RemoteLatest")); await settle(3);
+        puts[0].answer(ok(5, "OlderEditorAnswer")); await settle(4);
+        expect([names(), p.root.querySelector("#oeSave")]).toEqual([["Whole fleet", "RemoteLatest"], null]);
+      });
+      it("control: with nothing in between, the save's answer is shown", async () => {
+        await open();
+        puts[0].answer(ok(5, "Saved")); await settle(4);
+        expect(names()).toEqual(["Whole fleet", "Saved"]);
+      });
+      it("a 409 re-read sent before the stream's rev 6 answers rev 5 after it: the page and the editor's draft and rev stay on rev 6", async () => {
+        await open();
+        puts[0].answer({ status: 409, body: { error: "offices_changed" } }); await settle(2);
+        handlers.offices(); await settle(2);
+        expect(gets).toHaveLength(3);                                    // the editor's re-read (held), then the stream's
+        gets[2](ok(6, "RemoteLatest")); await settle(3);
+        gets[1](ok(5, "OlderReread")); await settle(4);
+        expect(names()).toEqual(["Whole fleet", "RemoteLatest"]);
+        expect(p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)).toEqual(["RemoteLatest"]);
+        expect(p.root.querySelector(".oe-msg").textContent).toContain("Someone changed the offices meanwhile");
+        p.root.querySelector("#oeSave").click(); await settle(2);
+        expect(puts[1].body.rev).toBe(6);                                // the draft's rev is the snapshot's
+      });
+      it("control: with nothing in between, the 409 re-read is the draft", async () => {
+        await open();
+        puts[0].answer({ status: 409, body: { error: "offices_changed" } }); await settle(2);
+        gets[1](ok(5, "Reread")); await settle(4);
+        expect([names(), p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)]).toEqual([["Whole fleet", "Reread"], ["Reread"]]);
+        p.root.querySelector("#oeSave").click(); await settle(2);
+        expect(puts[1].body.rev).toBe(5);
+      });
+    });
     it("a change made meanwhile (409): nothing saved, the list read again, said so; 429 says to wait; a nameless office is not sent", async () => {
       offices = { rev: 4, offices: [{ id: "ops", name: "Ops room", members: [] }] };
       auth(true); await office();

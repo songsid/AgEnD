@@ -57,9 +57,10 @@ function Members({ office, view, everyone, onChange }) {
 
 /**
  * The editor: `offices`/`rev` as read; `view` the org chart (teams, instances); `store` createOfficeStore's;
- * `onSaved({ rev, offices })` after a save or a re-read; `onClose`.
+ * `ask()` a stamp taken as a request is sent; `onSaved({ rev, offices }, stamp)` after a save or a re-read, returning
+ * the snapshot in force (the page keeps a newer one it already shows: #2431 review); `onClose`.
  */
-export function OfficeEditor({ offices, rev, view, store, onSaved, onClose }) {
+export function OfficeEditor({ offices, rev, view, store, ask = () => 0, onSaved, onClose }) {
   // The draft and the rev it was read at go together (#2424 review): a list the stream re-reads meanwhile never moves
   // the rev under an older draft (a save would then overwrite what it never showed). Only a 409's re-read replaces both.
   const [base, setBase] = useState(() => ({ rev, draft: offices.map((o) => ({ ...o, members: [...o.members] })) }));
@@ -83,11 +84,15 @@ export function OfficeEditor({ offices, rev, view, store, onSaved, onClose }) {
     if (draft.some((o) => !o.name.trim())) { setMsg(te("nameNeeded")); return; }
     setBusy(true); setMsg("");
     try {
+      const sent = ask();
       const r = await store.saveOffices(draft.map(officeForSave), base.rev);
-      if (r.ok) { toast(te("saved")); onSaved({ rev: r.rev, offices: r.offices }); onClose(); return; }
+      if (r.ok) { toast(te("saved")); onSaved({ rev: r.rev, offices: r.offices }, sent); onClose(); return; }
       if (r.status === 409) {
+        const reread = ask();
         const fresh = await store.offices();
-        if (fresh) { onSaved(fresh); setBase({ rev: fresh.rev, draft: fresh.offices.map((o) => ({ ...o, members: [...o.members] })) }); }
+        // The draft and its rev from the snapshot in force: this re-read, or a newer one the page read meanwhile.
+        const kept = fresh ? onSaved(fresh, reread) || fresh : null;
+        if (kept) setBase({ rev: kept.rev, draft: kept.offices.map((o) => ({ ...o, members: [...o.members] })) });
         setMsg(te("changed"));
         return;
       }

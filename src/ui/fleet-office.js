@@ -149,17 +149,21 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
   // The host's offices: on opening, and again whenever the stream says they changed. Answers can arrive out of order
   // (#2431 review): one with an older rev than the list shown is dropped when it was asked for before that list
   // arrived; one asked for after it is newer whatever its rev (a host whose store was reset starts again at 0).
-  const asked = useRef(0), shown = useRef(null);                      // a counter; the list shown: { rev, arrived }
+  // The editor's save and its 409 re-read are stamped when sent (`ask`), never when answered; `adopt` returns the
+  // snapshot in force, so a re-read the stream overtook leaves the editor's draft on the newer one.
+  const asked = useRef(0), shown = useRef(null);                      // a counter; shown: { rev, offices, arrived }
+  const ask = () => ++asked.current;
   const adopt = (d, askedAt) => {
-    if (!d) return;
     const cur = shown.current;
-    if (cur && d.rev < cur.rev && askedAt <= cur.arrived) return;
-    shown.current = { rev: d.rev, arrived: ++asked.current };
+    if (!d) return cur;
+    if (cur && d.rev < cur.rev && askedAt <= cur.arrived) return cur;
+    shown.current = { rev: d.rev, offices: d.offices, arrived: ++asked.current };
     setStored(d.offices); setStoredRev(d.rev);
+    return shown.current;
   };
   useEffect(() => {
     if (!lease) return undefined;
-    const read = async () => { const at = ++asked.current; const d = await store.offices(); if (lease.current()) adopt(d, at); };
+    const read = async () => { const at = ask(); const d = await store.offices(); if (lease.current()) adopt(d, at); };
     void read();
     const sub = appStore.get().streamOn;
     const off = sub ? lease.hold(sub("offices", () => { void read(); })) : null;
@@ -404,7 +408,7 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
       ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => setEditing(true)}>${t("orge.edit")}</button>` : null}
     </div>
     ${editing ? html`<${OfficeEditor} offices=${stored} rev=${storedRev} view=${view} store=${store}
-      onSaved=${(d) => adopt(d, ++asked.current)} onClose=${() => setEditing(false)} />` : null}
+      ask=${ask} onSaved=${adopt} onClose=${() => setEditing(false)} />` : null}
     ${desks.length || L.rooms.length ? null : html`<p class="note oo-empty">${to("nobody")} ${auto && (f.team || f.pinned.length) ? html`<button type="button" class="btn btn-sm" onClick=${() => setF({ team: "", pinned: [] })}>${to("everyone")}</button>` : null}</p>`}
     <div class="oo-stage" ref=${stageRef}>
       <canvas ref=${canvasRef} class=${`oo-canvas${tipDesk && tipDesk.node.i ? " hot" : ""}`} role="img" aria-label=${to("label")}
