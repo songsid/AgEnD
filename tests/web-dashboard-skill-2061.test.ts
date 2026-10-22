@@ -53,7 +53,7 @@ describe("the web-dashboard skill", () => {
     expect(anchors.length).toBeGreaterThan(8);
     expect(anchors.filter(a => !slugs.includes(a))).toEqual([]);
     for (const tab of ["Preferences", "Look", "Agents", "Agent defaults", "Chat & connections", "Web dashboard", "Access & security", "Advanced"]) expect(SKILL, tab).toContain(`**${tab}**`);
-    for (const t of ["Tasks", "Schedules", "Teams", "Org chart", "Cache", "Config"]) expect(SKILL, t).toContain(`**${t}**`);
+    for (const t of ["Tasks", "Schedules", "Teams", "Org chart", "Cache"]) expect(SKILL, t).toContain(`**${t}**`);
   });
 
   it("its numbers are the code's", () => {

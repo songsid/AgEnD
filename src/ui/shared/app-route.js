@@ -1,7 +1,8 @@
 // #1408 §3: the app's routes on the client. The same table as the server's classifier (src/web-shell-routes.ts;
 // a test runs both over one list of cases). Pure: no DOM, no history.
 
-export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage", "config"];
+// #2347 §10: Config is gone from Fleet — each of its settings has one home in Settings (/ui/fleet/config leads there).
+export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage"];
 // #2347: two groups — "You" changes only you or this browser; "Fleet" changes AgEnD for everyone.
 export const SETTINGS_GROUPS = Object.freeze([
   Object.freeze({ id: "you", sections: Object.freeze(["preferences", "look"]) }),
@@ -33,7 +34,7 @@ export function parseRoute(pathname) {
   let m = /^\/ui\/fleet\/agent\/([^/]+)$/.exec(pathname);
   if (m) return named("details", m[1]);
   m = /^\/ui\/fleet\/([^/]+)$/.exec(pathname);
-  if (m) return FLEET_TABS.includes(m[1]) ? { panel: "fleet", tab: m[1] } : null;
+  if (m) return FLEET_TABS.includes(m[1]) ? { panel: "fleet", tab: m[1] } : m[1] === "config" ? { panel: "settings", section: "agent-defaults" } : null;
   m = /^\/ui\/chat\/([^/]+)$/.exec(pathname);
   if (m) return named("chat", m[1]);
   // #1218: one instance's Log.
@@ -88,6 +89,8 @@ export function settingsPath(name) {
 }
 /** #2347: an old /settings/<name> address as its new one (with the place in it), or null. */
 export function legacySettingsTarget(pathname) {
+  // #2347 §10: Fleet → Config's settings live in Settings now; its project folders are in Agent defaults.
+  if (pathname === "/ui/fleet/config") return "/settings/agent-defaults#project-roots";
   const m = /^\/settings\/([^/]+)$/.exec(pathname || "");
   const moved = m && legacySection(m[1]);
   return moved ? settingsPath(moved) : null;

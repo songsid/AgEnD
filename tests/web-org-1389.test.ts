@@ -198,7 +198,7 @@ const team = (name: string) => p.root.querySelectorAll(".org-team").find((s: any
 describe("the page: General → teams → instances", () => {
   it("the tab is in Fleet's tab bar, after Teams", async () => {
     await mount(); await settle(4);
-    expect(p.root.querySelectorAll(".seg-item").map((a: any) => a.getAttribute("href"))).toEqual(["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/cache", "/ui/fleet/usage", "/ui/fleet/config"]);
+    expect(p.root.querySelectorAll(".seg-item").map((a: any) => a.getAttribute("href"))).toEqual(["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/cache", "/ui/fleet/usage"]);
     expect(p.root.querySelector(".seg-item.active").getAttribute("href")).toBe("/ui/fleet/org");
     expect(p.root.querySelector(".col.col-wide")).not.toBeNull();
   });
@@ -282,7 +282,7 @@ describe("the page reads once; the stream moves it (#1374)", () => {
     (globalThis as any).fetch = async (url: string, init: any = {}) => { reqs.push({ method: init.method || "GET", url }); await held; return { ok: true, status: 200, json: async () => ORG }; };
     try {
       await mount("fleet:org|1|en"); await settle(2);
-      await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "config" }, navKey: "fleet:config|2|en" })); await settle(2);
+      await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "usage" }, navKey: "fleet:usage|2|en" })); await settle(2);
       release(); await settle(8);
       expect(p.root.querySelector(".org")).toBeNull();
     } finally { (globalThis as any).fetch = fetchFake; }

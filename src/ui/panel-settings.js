@@ -922,7 +922,7 @@ function Classic({ ctx, search, openDialog }) {
 }
 
 /** General's form, from the saved defaults (`d`) and ClassicBot's (`c`). */
-function generalForm(d, c) {
+function generalForm(d, c, fleet = {}) {
   const hang = d.hang_detector || {}, startup = d.startup || {};
   return {
     backend: d.backend || "claude-code", model: d.model || "", locale: d.locale || "", auto: String(d.auto_pause_after ?? 0),
@@ -934,6 +934,7 @@ function generalForm(d, c) {
     classicToolProgress: c.tool_progress ?? d.tool_progress ?? "off", classicToolProgressInherit: !hasOwn(c, "tool_progress"),
     classicReply: c.reply_completion_guard ?? d.reply_completion_guard ?? true, classicReplyInherit: !hasOwn(c, "reply_completion_guard"),
     admins: [...(c.admin_users || [])], guilds: [...(c.allowed_guilds || [])],
+    roots: [...(fleet.project_roots || [])],
   };
 }
 
@@ -948,7 +949,7 @@ function General({ ctx, part = "all" }) {
   const hang = d.hang_detector || {}, startup = d.startup || {};
   const primary = channelsOf(ctx.fleet)[0];
   const original = useMemo(() => ({ c: structuredClone(c) }), []);
-  const base = useMemo(() => generalForm(d, c), []);
+  const base = useMemo(() => generalForm(d, c, ctx.fleet), []);
   const [f, setF] = useDraft(ctx, "general", () => base);
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   /** The class of a field's row: `field`, and `s-dirty` while one of its keys differs from what is saved. */
@@ -997,6 +998,11 @@ function General({ ctx, part = "all" }) {
       reply_completion_guard: hasOwn(oc, "reply_completion_guard") ? oc.reply_completion_guard : null,
       admin_users: oc.admin_users || [], allowed_guilds: oc.allowed_guilds || [],
     });
+    // #2347 §10: where new agents may work (fleet.project_roots, from Fleet → Config): its own write, the one route
+    // that sets it (POST /ui/config; a change to it waits for a fleet admin's OK, as it did there).
+    const roots = f.roots.map((r) => r.trim()).filter(Boolean);
+    syncStage(ctx, "fleet:project_roots", sameValue(roots, base.roots) ? null : { label: tn("projectRootsTitle"), count: 1,
+      impact: impactOf(schema, "fleet.project_roots"), request: { method: "POST", url: "/ui/config", body: { project_roots: roots } } });
     const dKeys = Object.keys(defaultsPatch), cKeys = Object.keys(classicPatch);
     syncStage(ctx, "defaults:fleet", dKeys.length ? { label: tn("updateDefaults"), count: dKeys.length,
       impact: batchImpact(schema, dKeys, (k) => defaultsImpact(schema, k)),
@@ -1042,6 +1048,10 @@ function General({ ctx, part = "all" }) {
         <div id="g-admins" class=${fc("field", "admins")}>${L(tn("classicAdmins"), "classic.admin_users")}<${ChipList} items=${f.admins} onChange=${set("admins")} placeholder=${tn("userIdPlaceholder")} label=${tn("classicAdmins")} /></div>
         <div id="g-guilds" class=${fc("field", "guilds")}>${L(tn("allowedGuilds"), "classic.allowed_guilds")}<${ChipList} items=${f.guilds} onChange=${set("guilds")} placeholder=${tn("guildIdPlaceholder")} label=${tn("allowedGuilds")} /></div>
       </div>
+    </section>` : null}
+    ${fleetPart ? html`<section class="card" id="project-roots"><h3>${tn("projectRootsTitle")}</h3>
+      <p class="note">${tn("projectRootsHint")}</p>
+      <div id="g-roots" class=${fc("field", "roots")}>${L(tn("projectRootsTitle"), "fleet.project_roots")}<${ChipList} items=${f.roots} onChange=${set("roots")} placeholder="/path/to/projects" label=${tn("projectRootsTitle")} /></div>
     </section>` : null}
     ${fleetPart ? html`<${Drawer} title=${tn("advancedSection")}>
       <section class="card"><h3>${tn("runtimeResources")}</h3><div class="grid2">

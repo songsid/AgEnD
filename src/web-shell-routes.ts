@@ -11,7 +11,8 @@
  * Settings panel (step 3; settings-api.ts serves them, signed in only).
  */
 
-export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage", "config"] as const;
+// #2347 §10: no Config tab — /ui/fleet/config is served as Settings → Agent defaults (the page moves the address).
+export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage"] as const;
 export type FleetTab = typeof FLEET_TABS[number];
 // #2347: the sections in two groups (You: preferences, look; Fleet: the rest), as the page's (src/ui/shared/app-route.js).
 export const SETTINGS_SECTIONS = ["preferences", "look", "agents", "agent-defaults", "chat", "web-dashboard", "access", "advanced"] as const;
@@ -68,7 +69,10 @@ export function shellRoute(method: string, path: string): ShellMatch {
     return name !== null && isSafeInstanceName(name) ? { kind: "shell", route: { panel: "details", instance: name } } : { kind: "malformed" };
   }
   const fleet = /^\/ui\/fleet\/([^/]+)$/.exec(path);
-  if (fleet) return (FLEET_TABS as readonly string[]).includes(fleet[1]!) ? { kind: "shell", route: { panel: "fleet", tab: fleet[1] as FleetTab } } : null;
+  if (fleet) {
+    if ((FLEET_TABS as readonly string[]).includes(fleet[1]!)) return { kind: "shell", route: { panel: "fleet", tab: fleet[1] as FleetTab } };
+    return fleet[1] === "config" ? { kind: "shell", route: { panel: "settings", section: "agent-defaults" } } : null;
+  }
   // #1218: one instance's Log.
   const log = /^\/ui\/log\/([^/]+)$/.exec(path);
   if (log) {

@@ -777,7 +777,7 @@ AgEnD keeps a snapshot of what this host can run (#2072). Each backend is **usab
 Where it shows:
 
 - **`/backend`** in chat (see [above](#diagnostics-and-per-agent-chat-commands)): an unusable backend is disabled with the reason and refused when typed.
-- **The web Create agent dialog and every Settings backend field** (an agent, the fleet default, the ClassicBot default and a room, Fleet → Config): "not installed", "not signed in (use /login)" and "needs X or newer" are disabled with that reason; "not checked yet" stays selectable; the current value is always selectable, and a backend AgEnD no longer has shows first, marked removed.
+- **The web Create agent dialog and every Settings backend field** (an agent, the fleet default, the ClassicBot default and a room): "not installed", "not signed in (use /login)" and "needs X or newer" are disabled with that reason; "not checked yet" stays selectable; the current value is always selectable, and a backend AgEnD no longer has shows first, marked removed.
 - **ClassicBot's `/start`** backend list and the setup wizard read the same snapshot. The `create_instance` tool does not check it.
 
 Model lists:

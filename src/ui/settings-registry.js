@@ -47,6 +47,7 @@ const ROWS = [
   ["defaults.hang-on", "agent-defaults", "#g-hang-on", "settings.hangEnabled", "defaults.hang_detector.enabled", ["hang detector", "stuck", "frozen"], ["卡住偵測", "卡住", "當機"]],
   ["defaults.hang-timeout", "agent-defaults", "#g-hang", "settings.hangTimeout", "defaults.hang_detector.timeout_minutes", ["hang timeout", "stuck", "minutes"], ["卡住逾時", "逾時"]],
   ["defaults.concurrency", "agent-defaults", "#g-conc", "settings.concurrency", "startup.concurrency", ["startup", "concurrency", "parallel", "spawn"], ["啟動", "並行"]],
+  ["defaults.project-roots", "agent-defaults", "#g-roots", "settings.projectRootsTitle", "project_roots", ["project roots", "folders", "directory", "where agents work", "working directory"], ["專案資料夾", "資料夾", "目錄", "工作目錄"]],
   ["defaults.stagger", "agent-defaults", "#g-stag", "settings.staggerDelay", "startup.stagger_delay_ms", ["startup", "stagger", "delay"], ["啟動", "間隔", "延遲"]],
   // Fleet · Chat & connections
   ["chat.new-connection", "chat", "#newBotBtn", "settings.newBot", "channels", ["new connection", "bot", "telegram", "discord", "bot token", "token"], ["新增連線", "bot", "Telegram", "Discord", "bot token", "token"]],
