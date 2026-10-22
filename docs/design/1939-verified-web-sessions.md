@@ -336,6 +336,101 @@ link keeps `public_link`.
 - **Real smoke:** with a named hostname (a stubbed tunnel in tests; the real smoke on the admin's own hostname). No
   trycloudflare quick-tunnel smokes from the host (the decision on 429s).
 
+### 0.3 The temporary public link (2026-10-23, #2478 follow-up): opt-in, the default pending the user
+
+**The request.** The user asked (2026-10-23, relayed by the leader) for **Authorize this browser** over the temporary
+quick-tunnel link too (`*.trycloudflare.com`, what `/web` opens), with the same ceremony and limits as the named link,
+ending with the link. Today a quick-tunnel request never qualifies (`public_link`, §3.5): the composer's line reads
+"臨時公開連結上無法授權：請直接開啟儀表板再授權" (the strip the user saw on their phone). This section is a delta on
+§0.2: everything there holds for the quick link with the names changed, except what is said here.
+
+**The option.** `web.verified_authority.quick_link: true`, beside `named_link`, and in Settings → Web → Web authority as
+"Also over the temporary public link". The row is always shown (any fleet can open a quick link).
+- **Default: off is the leader's recommendation; the user's answer is pending.** The design is written for either.
+  - **Off by default (recommended).** Turning it on is a looser change: it needs a fresh, independent confirmation (a
+    General's Confirm card, or `agend settings confirm <id>` on the host), is **never self-confirmed (#2170)** — the
+    same trusted-effect rule as `named_link` (§0.2): a held change whose effect turns `quick_link` on is never
+    confirmed by its requester, alone or among other keys — and bumps the revocation epoch in the same write.
+  - **On by default.** Every fleet that upgrades gets internet-reachable authority without anyone saying yes to it:
+    the confirmation gate above is skipped by the default itself. If the user chooses this, the release notes and the
+    first `/web` of each fleet say so once, and turning it **off** stays immediate. Nothing else in this section
+    changes.
+- **Turning it off applies at once,** with no confirmation, like every narrowing.
+- **It can't be changed over the public link,** quick or named: `web.verified_authority` is written only by `PUT
+  /api/settings/fleet/web`, refused over the link twice (§0.2). The implementation pins this for `quick_link`.
+
+**Which requests qualify (§3 item 5, amended again).** A request over the public link qualifies as **quick** only if
+**all** of these hold, in addition to every other §3 check:
+1. **Quick, by listener provenance.** The request's `GatewayRequestContext` exists and is **not named** (§0.2 item 1).
+   That is every quick exposure, and a named gateway's request admitted under a `trycloudflare` host. No header sets
+   or changes it. A named request is never quick: it is governed by `named_link` alone.
+2. **The option is on** (`quick_link: true`), read at each request.
+3. **`loopback_only` is off.**
+4. **The session belongs to the current exposure** (today's gateway check). A quick URL is new on every open; a
+   session from an exposure that ended never authenticates again.
+
+**The peer value.** A qualifying quick request's `session.peer` is **`quick_link`**, a fourth value beside `loopback`,
+`lan` and `named_link`. It shows in the receipt (`authority.session.peer`), the audit events (§7, with the host), the
+device list ("over the temporary public link") and on the Confirm card and notice DM: "this browser, **over the
+temporary public link <host>** (the internet)".
+
+**The same ceremony, with no shortcuts** (§0.2's list, unchanged): the account's own Confirm card in its DM, one pending
+request per session, 3 an hour, 5-minute cards, Not me signs the session out; the token epoch, the revocation epoch and
+the server switch; authority ends at the earliest of `max_session_hours`, the gateway session's own 4 h absolute / 30
+min idle, and the ends below. **Self-confirmation:** a `quick_link` session is never the self-confirming authority for
+any held change (`settingsSelfConfirmation` already requires no gateway context; the peer is excluded as well).
+
+**It ends with the link.** Close, `/web revoke` (which also bumps the epoch), the link's expiry (TTL), fleet stop or
+restart (a new quick URL, a new exposure), and the option turned off each end the public sessions and delete their
+authorization records. **Receipts already written** read as for `named_link` (§0.2): option off → `none` with
+**`downgraded: "quick_link_off"`** at once (turning it back on is confirmed and bumps the epoch, so they never come
+back); `loopback_only` on → `downgraded: "loopback_only"`; `/web revoke`, the switch off, any epoch bump → unchanged
+(§10); Close, expiry, stop or restart → the sessions end, the receipts keep their authority as evidence (the leader's
+2026-10-22 decision, §0.2).
+
+**The refusal the person sees.** Over a quick link with the option off, the reason becomes **`quick_link_off`** and the
+line "Not verified: over the temporary public link (turn on 'Also over the temporary public link' in Settings on this
+computer)". `public_link` is no longer a reason anyone sees; it stays a reason code for an old receipt only.
+
+**Threats this adds** (§8 has the rows):
+- **Anyone with the URL reaches the sign-in page.** The quick URL is random and new per open, but it is a public
+  internet address (it is pasted into chats, it can be shoulder-read). It is not a barrier: the barrier is the same as
+  the named link's — a sign-in code sent privately to an allowed account, then that account's Confirm per session.
+- **A stolen cookie of an already authorized quick session** replays from anywhere on the internet until the 30-minute
+  idle limit, the 4 h absolute limit, `max_session_hours`, Not me, `/web revoke`, Close or the option off ends it. This
+  is the risk the admin accepts by turning the option on; the Settings row and the docs say so.
+- **Cloudflare terminates TLS**, as for the named link — but here with **no account**: a quick tunnel is anonymous, so
+  there is nothing like Cloudflare Access to put in front of it, and the trust is in Cloudflare's quick-tunnel service
+  itself. The docs say so beside the option.
+- **A stolen web session turning the option on:** stopped by the confirmation (off by default) — never self-confirmed,
+  even by an already web-verified local session.
+
+**Implementation (after the user's default):**
+- `WebPeer` gains `"quick_link"`; `evaluateWebAuthority` takes `policy.quickLink`. A gateway request that is not named
+  refuses with `quick_link_off` (option off) or `loopback_only`; otherwise it continues through the same checks with
+  `peer: "quick_link"`. The session-surface check accepts a quick gateway session only then.
+- `authorityNow` adds the `quick_link_off` downgrade; `AuthorityDowngrade` and `isHumanAuthority` accept the values.
+- `settings-change.ts`: `quick_link` on is a looser change (confirmed unless the user's default makes it so, epoch
+  bump), off is immediate; `settingsSelfConfirmation` returns null for a held change whose effect turns it on.
+- The end-of-exposure deletion of authorizations (#2453's `namedLinkClosed`) covers quick exposures too.
+- The validator, Settings → Web authority (the row and its risk sentence), the Confirm card and notice text, the device
+  list, the composer's line, and the docs: SECURITY, web-dashboard and the public-link docs, EN and zh-TW.
+
+**Acceptance tests.** As §0.2's list, for the quick link:
+- **Refusals:** option off → `quick_link_off`; `loopback_only` on → `loopback_only`; a named request is never quick
+  (its `named_link` alone decides).
+- **Authorized:** option on, after the Confirm card: the quick session's message gets `web-verified` with
+  `session.peer: "quick_link"`, and `delivery_status` returns it.
+- **Provenance through the real gateway:** spoofed `Host` / `Origin` / `X-Forwarded-Host` / `Forwarded` never make a
+  request named or change its class; a quick exposure stays quick after the config changes to named.
+- **Ends:** Close (next message `none`, the earlier receipt still `web-verified`); reopen and `auto_open` after a restart
+  (old cookie refused, authorization gone); `/web revoke` (`downgraded: "revoked"`); option off (`quick_link_off`,
+  not restored by turning it back on).
+- **Settings:** on → pending (with the off default), never self-confirmed, even from a web-verified local admin; off →
+  at once; the write over the public link refused.
+- **Smoke:** a stubbed quick gateway (the fixture's `openPublicLink`), phone width. No trycloudflare quick-tunnel
+  smokes from the host (the decision on 429s).
+
 ## 1. Summary
 
 A web session that qualifies (§3) is authorized once by the Discord or Telegram account that signed it in: a Confirm
@@ -440,10 +535,11 @@ do), and again when the session is authorized (§0). Nothing about locality is r
        to the internet, the same holds for the internet (§8).
      - **The warning.** Settings → Web sign-ins warns when `web.allowed_hosts` names a host that isn't loopback while
        the switch is off.
-5. **Never the public link, with one opt-in exception (§0.2).** A `gateway` session never qualifies over a quick
-   tunnel, whatever the configuration. Over the admin's own **named** tunnel it qualifies only while
-   `web.verified_authority.named_link` is on (turned on through Settings confirmation) and `loopback_only` is off. Its
-   peer is then `named_link`.
+5. **Never the public link, with two opt-in exceptions (§0.2, §0.3).** Over the admin's own **named** tunnel a
+   `gateway` session qualifies only while `web.verified_authority.named_link` is on (turned on through Settings
+   confirmation) and `loopback_only` is off; its peer is then `named_link`. Over the temporary **quick** tunnel it
+   qualifies only while `web.verified_authority.quick_link` is on (§0.3: confirmed to turn on when off by default) and
+   `loopback_only` is off; its peer is then `quick_link`.
 6. **Freshness.**
    - **Authority lasts** `web.verified_authority.max_session_hours` (1–48, default 48) **after the session's
      authorization** (§0), not after sign-in. The sign-in time is not limited separately: the session store's own
@@ -815,7 +911,10 @@ No code, cookie, CSRF value or message text is logged; the receipt keeps the tex
 | A stolen or unlocked browser on this machine | It can chat; it authorizes nothing | It can give ordinary authority for up to 48 h (the default age). It can step up only with the account's click, or a DM code the person reveals (codes are phishable, §6.2). Revocation: `/web revoke`, the device list, `agend web-token rotate`, or the server switch (§10) |
 | A stolen cookie used from another machine on the same network (LAN, tailnet) | It can chat | **Accepted risk by default** (the user's decision, 2026-10-17): it can give ordinary authority, and step-ups only with the account's click or a revealed code. Turning on "Only this computer can authorize" (§3.4) stops it for new messages, and makes existing `lan` receipts and step-ups read as `none` (§10). The receipt and the audit log record `peer: lan` |
 | A stolen cookie used from outside the network | It can chat | **A deployment assumption, not an AgEnD barrier.** If the health listener is reachable only through the public link, outside requests arrive on the `gateway` surface, which never qualifies (§3.5). If the listener itself is exposed (a port forward, a changed bind, an ordinary reverse proxy), the classifier sees only "not loopback", calls it `lan`, and by default it qualifies. Turn on "Only this computer can authorize", or don't expose the health listener |
-| Public link, quick tunnel | Recognition only | Never authority (§3.5) |
+| Public link, quick tunnel, option off | Recognition only | Never authority: `quick_link_off` (§0.3) |
+| A cookie stolen from a browser that used the quick link, option on | It can chat | It can be replayed from anywhere on the internet. A session not yet authorized still needs the account's Confirm (the card says "over the temporary public link <host> (the internet)"); an authorized one speaks as the person until idle 30 min, 4 h, `max_session_hours`, Not me, `/web revoke`, Close or the option off ends it (§0.3) |
+| Cloudflare's anonymous quick-tunnel service, which terminates TLS for the quick link | It sees the traffic and the cookies | Unchanged, but those cookies can now carry authority while `quick_link` is on; no Cloudflare account or Access can sit in front of it (§0.3) |
+| A stolen web session turning the quick-link option on | — | With the off default: a fresh confirmation from an eligible General or the host CLI, never self-confirmed (§0.3) |
 | Public link, the admin's named tunnel, option off (the default) | Recognition only | Never authority: `named_link_off` (§0.2) |
 | A cookie stolen from a browser that used the named link, option on | It can chat | It can be replayed from anywhere on the internet. A session not yet authorized still needs the account's Confirm (the card says "over your named link <hostname>"). An authorized one speaks as the person until the earliest of: the 30-min idle limit, the 4 h absolute limit, `max_session_hours`, Not me, `/web revoke` or the option off. Turning the option off downgrades its receipts at once (`named_link_off`). **The risk the admin accepts by turning the option on** (§0.2) |
 | Cloudflare, which terminates TLS for the named link | It sees the traffic and the cookies | Unchanged, but those cookies can now carry authority while the option is on: the trust already placed in the admin's Cloudflare account extends to it. Cloudflare Access or mTLS in front of the hostname is compatible and out of scope (§0.2) |
