@@ -7,7 +7,7 @@ import { Toasts } from "./ui-toast.js";
 import { ConfirmHost, confirmDialog } from "./ui-confirm.js";
 import { ColorDialogHost } from "./identity-color.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
-import { appStore, createStore, fleetReadOnly, guestBadge, guestPage, useStore } from "./app-store.js";
+import { appStore, createStore, guestBadge, guestPage, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
 import { toast } from "./ui-toast.js";
 import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, fleetEntryPath } from "./app-route.js";
@@ -606,8 +606,7 @@ function RestartLine() {
   if (op && op.job && op.job.targets && op.job.targets.some((r) => r.target === "fleet" && r.status === "restart-required")) return null;
   const seen = `${pending.jobId}|${pending.keys.join(",")}`;
   if (later === seen) return null;
-  const readOnly = fleetReadOnly();
-  const canRestart = !readOnly && !!pending.jobId && typeof restartRunner === "function";
+  const canRestart = !!pending.jobId && typeof restartRunner === "function";
   const restart = async () => {
     if (!(await confirmDialog({ title: t("app.restartNow"), message: t("app.restartConfirm"), confirmLabel: t("app.restartNow"), danger: true }))) return;
     setBusy(true);
@@ -623,7 +622,7 @@ function RestartLine() {
   return html`<div data-trust="status" class="conn restart-line lbar" role="status">
     <span>${t("app.restartWaiting", Math.max(1, pending.keys.length))}</span>
     ${pending.keys.length ? html`<span class="muted restart-keys">${pending.keys.join(", ")}</span>` : null}
-    ${readOnly ? html`<span class="muted">${t("app.restartNotOverLink")}</span>` : !pending.jobId ? html`<span class="muted">${t("app.restartOnHost")}</span>` : null}
+    ${!pending.jobId ? html`<span class="muted">${t("app.restartOnHost")}</span>` : null}
     ${canRestart ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${restart}>${t("app.restartNow")}</button>` : null}
     <button type="button" class="btn btn-sm" onClick=${() => setLater(seen)}>${t("app.restartLater")}</button></div>`;
 }

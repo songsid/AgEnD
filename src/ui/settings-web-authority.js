@@ -50,7 +50,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
   useEffect(() => { load(); }, []);
   // #2347: every edit is unsaved at once — kept as the draft and staged (an invalid hours box: Save waits for it).
   useEffect(() => {
-    if (!f || !original || !overview || disabled || ctx.readOnly) return;
+    if (!f || !original || !overview || disabled) return;
     keepDraft(ctx, "verified_authority", editsOf(f, original), f);
     const bad = f.hours !== null && (!Number.isFinite(f.hours) || f.hours < overview.hours.min || f.hours > overview.hours.max);
     if (bad) { syncStage(ctx, "verified_authority", { label: tn("vaTitle"), invalid: tn("vaHoursRange"), section: "access", target: "#vaHours" }); return; }

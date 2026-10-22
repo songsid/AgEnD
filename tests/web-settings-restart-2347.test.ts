@@ -103,12 +103,11 @@ describe("#2347: saved changes waiting for an AgEnD restart", () => {
     expect(!!button("Restart now")).toBe(true);                                // once its card is gone, the line keeps it
   });
 
-  it("over the temporary public link it says a restart is waiting and offers none (FLEET_READ_ONLY_OVER_PUBLIC_LINK)", async () => {
+  it("over the temporary public link an admin is offered Restart now too (the user's decision: the fleet's settings stay editable there)", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     routes.push(r => (r.url === "/api/settings/restart-pending" ? { body: PENDING } : undefined));
     await mountShell();
-    expect([app.FLEET_READ_ONLY_OVER_PUBLIC_LINK, !!line(), !!button("Restart now")]).toEqual([true, true, false]);
-    expect(line()?.textContent).toContain("not over a temporary public link");
+    expect([!!line(), !!button("Restart now"), line()?.textContent.includes("public link")]).toEqual([true, true, false]);
   });
 
   it("with no Settings job to carry it (a hand edit) it says how to restart on the host", async () => {
