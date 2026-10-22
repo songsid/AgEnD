@@ -50,6 +50,14 @@ agend reload                    # 熱讀取配置（重新讀取 fleet.yaml，�
 
 更新後若新版本的服務起不來（重啟或啟動失敗，或在 macOS 上 launchd 下的 fleet 沒有真正跑起來），更新會回滾：之前的套件、它的 systemd unit 或 launchd plist 與之前的服務都會回來，更新會說明並以 1 結束（#2420）。
 
+為了能回滾，在有服務的主機上，更新會先把已安裝的 AgEnD 複製一份到旁邊的 `<npm prefix>/.agend-rollback/`。這需要 npm prefix 所在磁碟有與已安裝 AgEnD（含內建 Node）相同的可用空間，約 235 MB。空間不足時，更新不會做任何變更，並顯示：
+
+```
+✗ Not updating: the installed AgEnD could not be copied aside for a rollback (ENOSPC, No space left on device '…/.agend-rollback/…'). Nothing was changed
+```
+
+清出空間後再執行一次即可。更新結束時會移除這份副本；被中斷的更新留下的副本，會由下一次更新移除。無法完成的回滾會刻意保留副本，在訊息中指出位置並在其中放一個 `kept.txt`；不再需要時請自行刪除該目錄。
+
 `agend reload` 會重讀 `fleet.yaml` 並協調實例：新增的啟動、刪除的停掉、改過的套用——fleet 進程本身不重啟。
 
 ### 誰停了 fleet

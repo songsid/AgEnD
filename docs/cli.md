@@ -49,6 +49,14 @@ agend reload                    # Hot-reload config (sends SIGHUP to fleet proce
 
 When the new release's service does not come up after an update (its restart or start fails, or, on macOS, its fleet does not start running under launchd), the update rolls back: the previous package, its systemd unit or launchd plist and the previous service come back, and the update says so and exits 1 (#2420).
 
+To roll back, the update first copies the installed AgEnD next to it, under `<npm prefix>/.agend-rollback/`, on a host with a service. That needs as much free space on the npm prefix's disk as the installed AgEnD takes with its bundled Node, about 235 MB. Without it the update changes nothing and says:
+
+```
+✗ Not updating: the installed AgEnD could not be copied aside for a rollback (ENOSPC, No space left on device '…/.agend-rollback/…'). Nothing was changed
+```
+
+Free some space and run it again. The copy is removed when the update ends. One left by an update that was killed is removed by the next one. A rollback that could not finish keeps its copy on purpose, names it in its message and leaves a `kept.txt` in it; remove that directory yourself once you no longer need it.
+
 `agend reload` re-reads `fleet.yaml` and reconciles instances: new instances are started, removed instances are stopped, and changed configs are applied — without restarting the fleet process.
 
 ### Who stopped the fleet

@@ -80,7 +80,11 @@ npm exec --yes --package @songsid/agend@<target> -- agend-install [--upgrade]
    runs) restores the package and definition without touching it. The answer says what is true: "Rolled back: the
    previous package (vX) and <the unit> were restored; the previous service is running (pid N). The update did not
    succeed", or what could not be done. A hand-started fleet is not rolled back (2.2 neither: its ownership cannot be
-   proven). On success the copy is removed;
+   proven). On success the copy is removed. The copy needs free space the size of the installed package with its Node
+   (~235 MB); without it the update refuses before npm ("Not updating: the installed AgEnD could not be copied aside for
+   a rollback (…). Nothing was changed"). A copy whose installer died before its clean-up (`<version>-<time>-<pid>`, that
+   pid gone) is removed by the next installer once it owns the prefix; one a rollback kept on purpose (its answer names
+   it) carries a `kept.txt` and is never pruned, nor are 2.2's updater's copies (it prunes its own);
 7. writes each step to the update marker (`downloading` → `installed` / `failed` with the reason) — **only a marker it
    owns** (Prism r1): the one the `agend update` that started it wrote (`AGEND_UPDATE_OWNER_PID`), or one whose writer is
    gone (the user's stuck "downloading"), claimed only once the prefix is this installer's. A marker a live process
