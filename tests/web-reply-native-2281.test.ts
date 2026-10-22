@@ -193,13 +193,21 @@ describe("the web echo of a reply", () => {
     expect(results).toEqual([[null, true], [null, true], [null, true]]);
   });
   it("no page sees a post: the stream's frame and /ui/history carry none", async () => {
+    // #2465: the post's id is one no other text can hold by chance. "777" was found in another row's random id or
+    // millisecond timestamp (/ui/history holds the file's earlier rows; the frame only this one): main went red with no leak.
+    const POST_ID = "22812281228122812281";
     const writes: string[] = [];
     const res = { write: (s: string) => { writes.push(s); return true; }, writableEnded: false, destroyed: false, on() {}, once() {}, end() {} };
     fm.sseClients.add(res);
     try {
-      quoted("with a post", [{ adapterId: "tg", chatId: "-100123", threadId: "77", messageId: "777" }]);
+      const row = quoted("with a post", [{ adapterId: "tg", chatId: "-100123", threadId: "77", messageId: POST_ID }]);
+      // The post is recorded (beside the row): without it this test would prove nothing.
+      expect(fm.webChatHistory.postsOf(row)).toEqual([{ adapterId: "tg", chatId: "-100123", threadId: "77", messageId: POST_ID }]);
       const history = (await raw(port, "GET", "/ui/history?instance=a&limit=50", { cookie: `${WEB_SESSION_COOKIE}=${session()}` })).body;
-      expect([writes.join("").includes("777"), writes.join("").includes("posts"), history.includes("777"), history.includes("\"posts\"")]).toEqual([false, false, false, false]);
+      const frames = writes.join("").split("\n").filter((l) => l.startsWith("data: ")).map((l) => JSON.parse(l.slice(6)));
+      const hasPosts = (v: unknown): boolean => !!v && typeof v === "object" && (Object.hasOwn(v, "posts") || Object.values(v).some(hasPosts));
+      expect(frames.length, "the frame was written").toBeGreaterThan(0);
+      expect([writes.join("").includes(POST_ID), frames.some(hasPosts), history.includes(POST_ID), hasPosts(JSON.parse(history))]).toEqual([false, false, false, false]);
     } finally { fm.sseClients.delete(res); }
   });
 });
