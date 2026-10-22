@@ -22,6 +22,11 @@ const { FleetManager } = await import("../src/fleet-manager.js");
 const { TmuxManager } = await import("../src/tmux-manager.js");
 const { TmuxControlClient } = await import("../src/tmux-control.js");
 const { FleetStartup } = await import("../src/fleet-startup.js");
+const { WebSessionStore, tokenEpoch } = await import("../src/web-session.js");
+const { loadOrCreateWebToken, WEB_SESSION_COOKIE } = await import("../src/web-auth.js");
+const { fleetCookieName } = await import("../src/web-cookie-names.js");
+const { AccessManager } = await import("../src/channel/access-manager.js");
+const visitor = { adapterId: "telegram", userId: "synthetic-visitor" };
 const { setUsageFetcherForTests } = await import("../src/usage/usage-api.js");
 
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return { promise, resolve }; }
@@ -39,13 +44,13 @@ afterEach(async () => {
   expect(unexpected).toEqual([]);
 });
 
-async function get(fm: any, path: string, method = "GET", authorized = true) {
+async function get(fm: any, path: string, method = "GET", authorized = true, headers: Record<string, string> = {}) {
   const address = (fm.healthServer as Server).address();
   if (!address || typeof address === "string") throw Error("dashboard has not bound its socket");
   return new Promise<{ status: number; headers: Record<string, unknown>; body: any }>((resolve, reject) => {
     const req = request({ host: "127.0.0.1", port: address.port, path, method,
       headers: { "Content-Type": "application/json", Origin: `http://127.0.0.1:${address.port}`,
-        ...(authorized ? { "X-Agend-Token": fm.webToken } : {}) } }, res => {
+        ...(authorized ? { "X-Agend-Token": fm.webToken } : {}), ...headers } }, res => {
       let text = "";
       res.setEncoding("utf8"); res.on("data", chunk => { text += chunk; });
       res.on("end", () => { let body: unknown; try { body = JSON.parse(text); } catch { body = text; } resolve({ status: res.statusCode!, headers: res.headers, body }); });
@@ -54,7 +59,7 @@ async function get(fm: any, path: string, method = "GET", authorized = true) {
   });
 }
 
-async function heldBoot(holdListen = false) {
+async function heldBoot(holdListen = false, guests = false) {
   const dir = mkdtempSync(join(tmpdir(), "early-dashboard-2398-"));
   vi.stubEnv("AGEND_HOME", dir); vi.stubEnv("HOME", dir);
   const general = join(dir, "workspaces/general"), worker = join(dir, "workspaces/worker");
@@ -67,6 +72,8 @@ async function heldBoot(holdListen = false) {
     stagger_delay_ms: 0
 web:
   preview: false
+  guests:
+    enabled: ${guests}
 channel:
   type: telegram
   mode: topic
@@ -83,6 +90,9 @@ instances:
   paused:
     working_directory: ${dir}/workspaces/paused
 `);
+  // Mint on disk before constructing/booting the fleet: this is a returning cookie, not a new login during boot.
+  const guestSession = guests ? new WebSessionStore({ dataDir: dir }).create({ tier: "guest", surface: "local",
+    label: "synthetic visitor", tokenEpoch: tokenEpoch(loadOrCreateWebToken(dir)), owner: visitor }) : null;
   const fm: any = new FleetManager(dir);
   calls.readyProbe = () => ({ complete: fm.startupComplete, startup: fm.startupDashboard, names: [...fm.daemons.keys()] });
   vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
@@ -120,8 +130,14 @@ instances:
   const releaseAll = () => { release.resolve(); workerRelease.resolve(); listenRelease.resolve(); };
   fleets.push({ fm, dir, release: releaseAll, boot });
   await Promise.race([holdListen ? bound.promise : entered.promise, boot.then(() => { throw Error("boot did not reach the held startup boundary"); })]);
-  return { fm, boot, release: releaseAll, releaseGeneral: release.resolve, workerEntered: workerEntered.promise,
+  return { fm, boot, guestSession, release: releaseAll, releaseGeneral: release.resolve, workerEntered: workerEntered.promise,
     releaseWorker: workerRelease.resolve, releaseListen: listenRelease.resolve, generalEntered: entered.promise };
+}
+
+function initializeVisitorWorld(fm: any, allowed = true) {
+  fm.worlds.set(visitor.adapterId, { stop: async () => {}, adapter: { type: "telegram", stop: async () => {}, removeAllListeners() {} },
+    accessManager: new AccessManager({ mode: "locked", allowed_users: allowed ? [visitor.userId] : [],
+      max_pending_codes: 3, code_expiry_minutes: 5 }, join(fm.dataDir, "synthetic-access.json")) });
 }
 
 describe("dashboard before agents (#2398)", () => {
@@ -182,6 +198,41 @@ describe("dashboard before agents (#2398)", () => {
     release(); await boot;
     // It reaches normal validation after boot; no blanket startup refusal survives.
     expect((await get(fm, "/ui/send", "POST")).status).toBe(400);
+  });
+
+  it("retains a persisted guest cookie while its startup world is missing, then admits the same cookie", async () => {
+    const { fm, guestSession } = await heldBoot(false, true);
+    const saved = guestSession!;
+    const cookie = { Cookie: `${fleetCookieName(WEB_SESSION_COOKIE, fm.webToken)}=${saved.sessionId}` };
+    expect(fm.worlds.size).toBe(0);
+    const pending = await get(fm, "/ui/poll", "GET", false, cookie);
+    expect(pending.status).toBe(503);
+    expect(pending.body).toEqual({ error: "guest_scope_pending" });
+    expect(pending.headers["retry-after"]).toBe("5");
+    expect(fm.webSessions.authenticate(saved.sessionId, tokenEpoch(fm.webToken), { touch: false })).not.toBeNull();
+    expect(new WebSessionStore({ dataDir: fm.dataDir }).authenticate(saved.sessionId, tokenEpoch(fm.webToken), { touch: false })).not.toBeNull();
+    initializeVisitorWorld(fm);
+    const admitted = await get(fm, "/ui/poll", "GET", false, cookie);
+    expect(admitted.status).toBe(200);
+    expect(admitted.body.status.instances.map((i: any) => i.name)).toContain("worker");
+    expect(admitted.body.status.startup).toBeUndefined(); // no global counts granted to guests
+    expect(fm.webSessions.authenticate(saved.sessionId, tokenEpoch(fm.webToken), { touch: false })).not.toBeNull();
+  });
+
+  it.each(["disabled", "revoked", "unconfigured", "denied", "narrowed"])("startup does not rescue genuinely %s guest access", async reason => {
+    const { fm, guestSession } = await heldBoot(false, true);
+    const saved = guestSession!;
+    const cookie = { Cookie: `${fleetCookieName(WEB_SESSION_COOKIE, fm.webToken)}=${saved.sessionId}` };
+    if (reason === "disabled") fm.fleetConfig.web.guests.enabled = false;
+    if (reason === "revoked") fm.webSessions.revokeByHandle(saved.record.handle);
+    if (reason === "unconfigured") fm.fleetConfig.channel.id = "replacement";
+    if (reason === "denied") initializeVisitorWorld(fm, false);
+    if (reason === "narrowed") {
+      initializeVisitorWorld(fm);
+      fm.fleetConfig.web.guests.narrow = { [`${visitor.adapterId}:${visitor.userId}`]: [] };
+    }
+    expect((await get(fm, "/ui/poll", "GET", false, cookie)).status).toBe(401);
+    expect(fm.webSessions.authenticate(saved.sessionId, tokenEpoch(fm.webToken), { touch: false })).toBeNull();
   });
 
   it("an old boot cannot finish the replacement boot's progress", async () => {

@@ -17,7 +17,10 @@ the presentation; guest projection carries only the guest's instance phases, nev
 The early dashboard is read-only, apart from authentication. After existing Host/session/guest admission, writes get
 503, `code: fleet_starting`, a localized reason and `Retry-After`. This prevents competing starts, config reconcile,
 task dispatch and chat wake/delivery during boot. Reads use the initialized stores: Needs you safely starts empty,
-the board DB is available, and usage/cache reads retain their existing bounded background behavior. No automatic
+the board DB is available, and usage/cache reads retain their existing bounded background behavior. Returning guest
+sessions with an uninitialized configured adapter world receive 503 pending without being revoked or receiving data;
+the same cookie is checked normally once the world exists. Disabled guests, revoked sessions, removed connections and
+initialized denied/narrowed scopes retain their normal rejection. No automatic
 resubmission is introduced.
 
 A full process replacement retains a brief unreachable interval while the old process exits and the new process
@@ -49,3 +52,10 @@ Six independent reversals were caught at semantic assertions: restore the late l
 notify READY early, remove startup write admission, accept stale attempt completion, and count a failed start as ready.
 After restoring source, all nine new tests passed. Existing spawn-gate/pressure/storm and service-readiness tests
 remain unchanged.
+
+The guest review added a persisted-cookie cold-start regression: missing configured worlds yield only 503 pending,
+the on-disk session remains valid, and the same cookie succeeds after world initialization. Five negative controls
+keep disabled/revoked/removed-connection/denied/narrowed access rejected. The five startup/guest suites pass 49 tests.
+Three further independent reversals are caught: omit pending, ignore initialized worlds, and allow pending for removed
+connections. The restored boot/HTTP suite passes all 10 tests; fixture setup failures during test construction are
+not counted as reversal evidence.

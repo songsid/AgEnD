@@ -14,7 +14,8 @@ Never tell anyone to kill `wslrelay` or run `wsl --shutdown` (see Troubleshootin
 During a cold start/full restart, an already signed-in browser can open the dashboard while agents start. **Fleet
 starting N/M** counts successful starts among runnable instances (persisted pauses excluded); queued/starting labels
 are visible in the sidebar, chat header and Org chart. Reads remain available; messages and changes are refused with
-a retry hint until startup finishes. Needs you may still be empty while its hub initializes. A brief reconnect gap
+a retry hint until startup finishes. Returning guests may wait for their connection scope without being signed out.
+Needs you may still be empty while its hub initializes. A brief reconnect gap
 is normal while a full restart replaces the process; the starting banner then replaces the unreachable message.
 
 For how *you* look on the dashboard (theme, identity card, colour, widgets, ambient effects, effects, mods), load `web-appearance`.

@@ -21973,6 +21973,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const owner = record.owner;
     if (this.guestScope(owner).size) return "ok";
     if (owner && this.fleetConfig?.web?.guests?.enabled === true) {
+      // Before adapters initialize, topic scope is unknown, not revoked. Keep the returning cookie but grant no
+      // request until its configured world exists. Removed connections and initialized denied access stay final.
+      const channels = this.fleetConfig.channels ?? (this.fleetConfig.channel ? [this.fleetConfig.channel] : []);
+      if (this.startupDashboard && !this.worlds.has(owner.adapterId)
+        && channels.some(channel => (channel.id ?? channel.type) === owner.adapterId)) return "pending";
       const members = this.guestRooms(), rooms = guestGroupRooms(this.classicChannels?.getAll() ?? [], owner);
       if (rooms.some((room) => members.pending(room, owner.userId))) {
         void this.refreshGuestRooms(owner, { mode: "triggered" });   // rate-limited per room (30 s), single-flight
