@@ -19896,6 +19896,23 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   private stopAllInFlight: Promise<void> | null = null;
 
+  /** Stops release memory. Reassess between batches without waiting for recovery. */
+  private async stopInstancesInBatches<T>(entries: readonly T[], stop: (entry: T) => Promise<unknown>): Promise<void> {
+    let index = 0;
+    while (index < entries.length) {
+      // Linux procfs can still be read after the periodic sampler is stopped.
+      // Do not revive a stopped Darwin probe/worker just to size a quit batch;
+      // its full shutdown uses the conservative batch size instead.
+      const level = this.memoryPressure.platform === "darwin"
+        ? this.shuttingDown ? "elevated" : this.memoryPressure.snapshot().level
+        : this.memoryPressure.sample().level;
+      const size = fleetStopConcurrency(entries.length, level);
+      const batch = entries.slice(index, index + size);
+      index += batch.length;
+      await Promise.allSettled(batch.map(stop));
+    }
+  }
+
   private async doStopAll(): Promise<void> {
     this.startupMemoryDeadline?.stop();
     this.startupMemoryDeadline = null;
@@ -20024,19 +20041,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // tmux ops, while small fleets stay conservative to avoid overwhelming the
     // tmux server.
     const entries = [...this.daemons.entries()];
-    const STOP_CONCURRENCY = fleetStopConcurrency(entries.length, this.memoryPressure.snapshot().level);
     for (const [name] of entries) this.ipcStoppingInstances.add(name);
-    for (let i = 0; i < entries.length; i += STOP_CONCURRENCY) {
-      const batch = entries.slice(i, i + STOP_CONCURRENCY);
-      await Promise.all(batch.map(async ([name, daemon]) => {
-        try {
-          await daemon.stop();
-        } catch (err) {
-          this.logger.warn({ name, err }, "Stop failed");
-        }
-        this.daemons.delete(name);
-      }));
-    }
+    await this.stopInstancesInBatches(entries, async ([name, daemon]) => {
+      try {
+        await daemon.stop();
+      } catch (err) {
+        this.logger.warn({ name, err }, "Stop failed");
+      }
+      this.daemons.delete(name);
+    });
 
     // Close IPC clients in parallel — serial close over a large fleet adds
     // noticeable latency.
@@ -21743,10 +21756,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     this.instanceIpcClients.clear();
 
-    const stopConcurrency = fleetStopConcurrency(instanceNames.length, this.memoryPressure.snapshot().level);
-    for (let i = 0; i < instanceNames.length; i += stopConcurrency) {
-      await Promise.allSettled(instanceNames.slice(i, i + stopConcurrency).map(name => this.stopInstance(name)));
-    }
+    await this.stopInstancesInBatches(instanceNames, name => this.stopInstance(name));
 
     // Kill remaining orphan windows to prevent stale state on restart
     try {

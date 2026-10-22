@@ -21,6 +21,11 @@ long frozen loop. It is not a cure for unlimited host workload.
 
 Full shutdown and in-process `restartInstances` stop in bounded batches;
 elevated/critical pressure caps them at five. Stops never wait for memory.
+Linux resamples procfs before every batch, including after the periodic sampler
+has stopped and async shutdown cleanup has finished. A stopped macOS probe is
+not revived to size a quit batch: full shutdown uses the conservative five;
+in-process restart uses its still-running sampler. Existing total stop budgets
+remain unchanged.
 Single-instance restart already acquires a lifecycle admission before teardown;
 starts/wakes/recoveries recheck pressure at physical spawn. Direct stop-only
 requests remain available to release memory.

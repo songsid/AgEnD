@@ -97,4 +97,57 @@ describe("startup memory deadline (#2461)", () => {
     const hung = clean.run({ instanceName: "h", workingDirectory: "/h", reason: "startup" }, () => new Promise<void>(r => { done = r; }));
     expect(clean.isStartupMemoryDeferred()).toBe(false); done(); await hung; clean.shutdown();
   });
+
+  it.each([
+    { concurrency: 1, count: 1, stage: "lifecycle" as const, qualifies: false },
+    { concurrency: 1, count: 1, stage: undefined, qualifies: false },
+    { concurrency: 2, count: 1, stage: "lifecycle" as const, qualifies: true },
+    { concurrency: 2, count: 2, stage: "lifecycle" as const, qualifies: false },
+    { concurrency: 2, count: 2, stage: undefined, qualifies: false },
+  ])("distinguishes capacity from pressure: $concurrency slots, $count active, $stage", async ({ concurrency, count, stage, qualifies }) => {
+    const MiB = 1024 * 1024;
+    let available = 8_000;
+    const memory = new MemoryPressure({ platform: "linux", read: () => ({ totalBytes: 16_000 * MiB,
+      availableBytes: available * MiB, availableKind: "available", swapTotalBytes: 8_000 * MiB, swapFreeBytes: 4_000 * MiB }) });
+    const storm = new StormWindow(), notify = vi.fn(); let gate!: SpawnGate;
+    const releases: Array<() => void> = [];
+    const lease = new StartupMemoryDeadline({ current: () => true, waiting: () => gate.isStartupMemoryDeferred(), notify, log: () => {}, now: Date.now });
+    gate = new SpawnGate({ storm, memoryPressure: memory, concurrency: () => concurrency, staggerMs: () => 0,
+      onStartupMemoryWait: () => lease.check() });
+    const active = Array.from({ length: count }, (_, i) => gate.run({ instanceName: `active-${i}`, workingDirectory: `/active-${i}`, reason: "startup", stage },
+      () => new Promise<void>(r => { releases.push(r); })));
+    available = 600;
+    const queued = gate.run({ instanceName: "queued", workingDirectory: "/queued", reason: "startup" }, async () => {}).catch(() => {});
+    try {
+      await vi.advanceTimersByTimeAsync(16 * 60_000);
+      expect(gate.isStartupMemoryDeferred()).toBe(qualifies);
+      expect(notify.mock.calls.length).toBe(qualifies ? 33 : 0);
+    } finally { lease.stop(); gate.shutdown(); releases.forEach(release => release()); await Promise.all(active); await queued; memory.stop(); storm.shutdown(); }
+  });
+
+  it.each([2_000, 10_000])("only renews pressure-added stagger beyond configured %i ms", async stagger => {
+    const MiB = 1024 * 1024; let available = 8_000, gate!: SpawnGate;
+    const memory = new MemoryPressure({ platform: "linux", read: () => ({ totalBytes: 16_000 * MiB,
+      availableBytes: available * MiB, availableKind: "available", swapTotalBytes: 0, swapFreeBytes: 0 }) });
+    const storm = new StormWindow(), notify = vi.fn();
+    const lease = new StartupMemoryDeadline({ current: () => true, waiting: () => gate.isStartupMemoryDeferred(), notify, log: () => {}, now: Date.now });
+    gate = new SpawnGate({ storm, memoryPressure: memory, concurrency: () => 2, staggerMs: () => stagger, onStartupMemoryWait: () => lease.check() });
+    await gate.run({ instanceName: "first", workingDirectory: "/first", reason: "startup" }, async () => {});
+    await vi.advanceTimersByTimeAsync(0); available = 600;
+    const pending = gate.run({ instanceName: "next", workingDirectory: "/next", reason: "startup" }, async () => {}).catch(() => {});
+    try { expect(gate.isStartupMemoryDeferred()).toBe(stagger === 2_000); expect(notify.mock.calls.length).toBe(stagger === 2_000 ? 1 : 0); }
+    finally { lease.stop(); gate.shutdown(); await pending; memory.stop(); storm.shutdown(); }
+  });
+
+  it("does not classify a storm backoff overlapping a memory timer as a memory wait", async () => {
+    const memory = new MemoryPressure({ platform: "linux", read: () => ({ totalBytes: 16e9,
+      availableBytes: 10e6, availableKind: "available", swapTotalBytes: 0, swapFreeBytes: 0 }) });
+    const storm = new StormWindow({ backoffsMs: [120_000] });
+    const gate = new SpawnGate({ storm, memoryPressure: memory, concurrency: () => 2, staggerMs: () => 0 });
+    const pending = gate.run({ instanceName: "held", workingDirectory: "/held", reason: "startup" }, async () => {}).catch(() => {});
+    expect(gate.isStartupMemoryDeferred()).toBe(true);
+    storm.recordServerDead("held", ["held"]);
+    expect(storm.isSpawnBlocked()).toBe(true); expect(gate.isStartupMemoryDeferred()).toBe(false);
+    gate.shutdown(); await pending; memory.stop(); storm.shutdown();
+  });
 });

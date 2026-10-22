@@ -11,6 +11,7 @@ nonce=$(basename "$output")
 container="sentinel-$nonce"
 cleanup() {
   docker cp "$container:/opt/rehearsal/results.json" "$output/results.json" 2>/dev/null || true
+  docker cp "$container:/opt/rehearsal/candidate-replies.json" "$output/candidate-replies.json" 2>/dev/null || true
   for leg in baseline candidate nonmemory; do
     docker cp "$container:/opt/rehearsal/$leg-journal.log" "$output/$leg-journal.log" 2>/dev/null || true
     docker cp "$container:/opt/rehearsal/$leg-daemon.log" "$output/$leg-daemon.log" 2>/dev/null || true

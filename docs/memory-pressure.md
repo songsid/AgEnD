@@ -115,7 +115,9 @@ loop: a frozen loop or kernel wait can still miss them; no independent worker
 masks that failure. Pressure thresholds, recovery ramps and spawn/storm limits
 are unchanged. Full shutdown and in-process bulk restart use bounded stop
 batches, at most five under elevated/critical pressure, without waiting for
-memory recovery to stop. The dashboard remains reachable during startup;
+memory recovery to stop. Linux rechecks current procfs data before each batch,
+even after stopping the periodic sampler; macOS full shutdown conservatively
+uses five without restarting its stopped probe. The dashboard remains reachable during startup;
 service readiness still means startup completed. This is host pressure
 protection, not a per-cgroup memory limit or an OOM predictor. It does not change
 delivery, auth, systemd restart policy, or core dump handling. Rollback is a code

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Real systemd deadlines, controlled memory input; never thrash the host."""
-import json, os, pathlib, shutil, subprocess, time, urllib.request
+import json, os, pathlib, shlex, shutil, subprocess, time, urllib.request
 P = pathlib.Path
 ROOT = P('/opt/rehearsal')
 HOME = P('/home/rh')
@@ -11,6 +11,7 @@ UNIT = 'com.agend.fleet.service'
 receipt = {'revision': (ROOT/'revision').read_text().strip(), 'checks': [], 'legs': {}}
 mock = None
 active_leg = None
+leg_cursors = {}
 
 def run(args, timeout=90, ok=True):
     p = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
@@ -48,13 +49,17 @@ def http(path, data=None):
     with urllib.request.urlopen(req,timeout=3) as r: return json.load(r)
 
 def capture(leg):
-    (ROOT/(leg+'-journal.log')).write_text(user('journalctl --user -u '+UNIT+' --no-pager -n 180',ok=False).stdout)
+    cursor = leg_cursors.get(leg)
+    boundary = ' --after-cursor='+shlex.quote(cursor) if cursor else ''
+    (ROOT/(leg+'-journal.log')).write_text(user('journalctl --user -u '+UNIT+' --no-pager'+boundary,ok=False).stdout)
     if (DATA/'daemon.log').exists(): shutil.copyfile(DATA/'daemon.log',ROOT/(leg+'-daemon.log'))
 
 def begin(mode):
     global active_leg
     active_leg = mode
     sd('stop',UNIT,ok=False); sd('reset-failed',UNIT,ok=False)
+    journal = user('journalctl --user -u '+UNIT+' --no-pager -n 1 --show-cursor',ok=False).stdout
+    leg_cursors[mode] = journal.split('-- cursor: ',1)[1].strip() if '-- cursor: ' in journal else None
     # The mock reset drains disconnected pollers between service generations.
     http('/control/reset',{})
     (ROOT/'pressure').write_text('critical' if mode!='nonmemory' else 'normal')
@@ -127,9 +132,9 @@ if (process.argv[1]?.endsWith('/dist/cli.js') && process.argv.includes('fleet') 
     looping=wait('baseline timeout loop',lambda:(s if int((s:=state()).get('NRestarts','0'))>=2 else None),timeout=45)
     check('baseline repeats startup timeout/restart',int(looping['NRestarts'])>=2 and looping['MainPID']!=before['MainPID'],[before,looping])
     receipt['legs']['baseline']={'before':before,'after':looping}; sd('stop',UNIT,ok=False); capture('baseline')
-    check('baseline manager journal records start timeout','start operation timed out' in (ROOT/'baseline-journal.log').read_text())
+    check('baseline journal records two startup timeouts',(ROOT/'baseline-journal.log').read_text().count('start operation timed out')>=2)
     # Candidate remains activating for >2x the original start deadline, then
-    # converges with the same PID and no restarted agents after pressure clears.
+    # converges with the same fleet PID after pressure clears.
     shutil.rmtree(PKG/'dist'); shutil.copytree(ROOT/'candidate-dist',PKG/'dist'); run(['chown','-R','rh:rh',str(PKG/'dist')])
     before=begin('candidate'); at=time.monotonic(); time.sleep(18)
     held=state()
@@ -148,7 +153,12 @@ if (process.argv[1]?.endsWith('/dist/cli.js') && process.argv.includes('fleet') 
         value = http('/control/calls')
         rows = value if isinstance(value,list) else value.get('result',value.get('calls'))
         if not isinstance(rows,list): raise TypeError('mock call log is not a list')
-        return any(c.get('method')=='sendMessage' and 'Mock sibling survived' in json.dumps(c) for c in rows)
+        matches = [c for c in rows if c.get('method')=='sendMessage'
+          and str(c.get('params',{}).get('chat_id'))=='-1001234567890'
+          and str(c.get('params',{}).get('message_thread_id'))=='87'
+          and 'Mock sibling survived' in str(c.get('params',{}).get('text',''))]
+        if matches: (ROOT/'candidate-replies.json').write_text(json.dumps(matches,indent=2))
+        return bool(matches)
     check('sibling answers after pressure release',bool(wait('sibling reply',replied)))
     receipt['legs']['candidate']={'before':before,'held':held,'after':after,'seconds':time.monotonic()-at}
     sd('stop',UNIT,ok=False); capture('candidate')
@@ -158,6 +168,7 @@ if (process.argv[1]?.endsWith('/dist/cli.js') && process.argv.includes('fleet') 
     after=wait('nonmemory hang timeout',lambda:(s if int((s:=state()).get('NRestarts','0'))>int(before['NRestarts']) else None),timeout=25)
     check('ordinary startup hang still times out',int(after['NRestarts'])>int(before['NRestarts']),[before,after])
     receipt['legs']['nonmemory']={'before':before,'after':after}; sd('stop',UNIT,ok=False); capture('nonmemory')
+    check('nonmemory journal confirms startup timeout','start operation timed out' in (ROOT/'nonmemory-journal.log').read_text())
 finally:
     try:
         if active_leg is not None: capture(active_leg)
