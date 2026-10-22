@@ -132,6 +132,25 @@ describe("#1774 removal: an instance removed while its reply's files are copied"
     const rows = fm.webChatHistory.list("twin");
     expect([rows.map((m: any) => m.text), rows[0].attachments.length, snapshots("twin").length]).toEqual([["NEW INSTANCE REPLY"], 1, 1]);
   });
+  it("the removed instance's own reply sent while it was being removed is not the replacement's either", async () => {
+    const fm = fleet();
+    fm.fleetConfig = { instances: { dup: { working_directory: "/x" } } };
+    const oldDaemon = { name: "old" }, newDaemon = { name: "new" };
+    const daemons = new Map<string, unknown>([["dup", oldDaemon]]);       // the fleet's daemons are the lifecycle's
+    const hold = gate();
+    slowCopies(fm, hold.promise, "before");
+    let late: Promise<void> | undefined, fresh: Promise<void> | undefined;
+    fm.lifecycle = { daemons, isPaused: () => false, hasWorkLease: () => false, remove: async () => {
+      late = fm.afterReplyRouted("dup", { text: "OLD, MID-REMOVAL", files: [agentFile("late.md")] });   // still the old daemon
+      daemons.set("dup", newDaemon);                                       // the replacement registers
+      fm.fleetConfig.instances.dup = { working_directory: "/y" };
+      fresh = fm.afterReplyRouted("dup", { text: "NEW", files: [agentFile("n.md")] });
+    } };
+    fm.statuslineWatcher = { unwatch() {} };
+    await fm.removeInstance("dup", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
+    hold.open(); await late; await fresh;
+    expect([texts(fm, "dup"), snapshots("dup").length]).toEqual([["NEW"], 1]);
+  });
   it("control — a removal that fails takes nothing: the held reply is still the instance's, shown", async () => {
     const fm = fleet();
     const hold = gate();
