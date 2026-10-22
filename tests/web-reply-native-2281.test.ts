@@ -60,7 +60,10 @@ describe("Telegram: SendOpts.replyTo is a native reply", () => {
     const sent = await refused.adapter.sendText("-100123", "hello", { replyTo: "555", format: "text" });
     const other = tg(() => ({ ok: false, error_code: 403, description: "Forbidden: bot was kicked" }));
     await expect(other.adapter.sendText("-100123", "hello", { replyTo: "555", format: "text" })).rejects.toThrow(/kicked/);
-    expect([refused.calls.map(c => c.reply_parameters ? "reply" : "plain"), sent.messageId, other.calls.length]).toEqual([["reply", "plain"], "102", 1]);
+    // A 400 over something else — the keyboard (reply markup) — is refused plain too: not sent again.
+    const markup = tg(() => ({ ok: false, error_code: 400, description: "Bad Request: REPLY_MARKUP_INVALID" }));
+    await expect(markup.adapter.sendText("-100123", "hello", { replyTo: "555", replyButtons: [{ id: "rb:s:0", label: "OK" }] })).rejects.toThrow(/REPLY_MARKUP/);
+    expect([refused.calls.map(c => c.reply_parameters ? "reply" : "plain"), sent.messageId, other.calls.length, markup.calls.length]).toEqual([["reply", "plain"], "102", 1, 1]);
   });
 });
 
@@ -88,8 +91,10 @@ describe("Discord: SendOpts.replyTo is a native reply", () => {
     await a.sendText("1496407196106494055", "hi", { threadId: "1503382159321460000", replyTo: "web-1700000000000" });
     expect(calls).toEqual(["hi"]);
   });
-  it("Discord refusing the reference (50035 / 10008) is sent again once plain; another failure is thrown, sent once", async () => {
+  it("Discord refusing the reference (50035 / 10008 / 160002 no history access) is sent again once plain; another failure is thrown, sent once", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
+    const history = dc((p, n) => { if (n === 1) throw Object.assign(new Error("Cannot reply without permission to read message history"), { code: 160002 }); return { id: "h2" }; });
+    expect((await history.a.sendText("1496407196106494055", "hi", { threadId: "1503382159321460000", replyTo: SNOW })).messageId).toBe("h2");
     const refused = dc((p, n) => { if (n === 1) throw Object.assign(new Error("Invalid Form Body"), { code: 50035 }); return { id: "m2" }; });
     const sent = await refused.a.sendText("1496407196106494055", "hi", { threadId: "1503382159321460000", replyTo: SNOW });
     const other = dc(() => { throw Object.assign(new Error("Missing Permissions"), { code: 50013 }); });
@@ -203,10 +208,13 @@ describe("where a message is: recorded where it is known", () => {
   it("a person's platform message (the thread it really came from, #1085), and an agent's reply that landed in the topic", async () => {
     fm.emitPlatformInbound("a", { username: "Ann", adapterId: "tg", userId: "1", chatId: "-100123", threadId: "-100123", transportThreadId: "77", messageId: "601" }, "hi");
     const inbound = fm.webChatHistory.list("a").at(-1);
-    await fm.afterReplyRouted("a", { text: "done" }, undefined, null, true, { adapterId: "tg", chatId: "-100123", threadId: "77", messageId: "602" });
+    await fm.afterReplyRouted("a", { text: "done" }, undefined, null, true, { adapterId: "tg", result: { chatId: "-100123", threadId: "77", messageId: "602" } });
     const reply = fm.webChatHistory.list("a").at(-1);
-    expect([fm.webChatHistory.postsOf(inbound), reply.role, fm.webChatHistory.postsOf(reply)]).toEqual([
-      [{ adapterId: "tg", chatId: "-100123", threadId: "77", messageId: "601" }], "agent", [{ adapterId: "tg", chatId: "-100123", threadId: "77", messageId: "602" }]]);
+    // A reply that did not land in the instance's own place (another chat, the web-only sink) records nowhere.
+    await fm.afterReplyRouted("a", { text: "elsewhere" }, undefined, null, false, { adapterId: "tg", result: { chatId: "-100999", messageId: "603" } });
+    const elsewhere = fm.webChatHistory.list("a").at(-1);
+    expect([fm.webChatHistory.postsOf(inbound), reply.role, fm.webChatHistory.postsOf(reply), elsewhere.text, fm.webChatHistory.postsOf(elsewhere)]).toEqual([
+      [{ adapterId: "tg", chatId: "-100123", threadId: "77", messageId: "601" }], "agent", [{ adapterId: "tg", chatId: "-100123", threadId: "77", messageId: "602" }], "elsewhere", []]);
   });
 });
 
@@ -219,7 +227,8 @@ describe("a ClassicBot room's echo", () => {
     fm.worlds = new Map([["tg", { adapter: room }]]);
     try {
       const copies: any[] = [];
-      const posted = await fm.sendClassicWebEcho("a", "↩ Ann: deploy?\nyes", "You", copies, { posts: [{ adapterId: "tg", chatId: "-1001", messageId: "5" }], text: "yes" });
+      // -1002 has the same chat id on another connection: not the original's place.
+      const posted = await fm.sendClassicWebEcho("a", "↩ Ann: deploy?\nyes", "You", copies, { posts: [{ adapterId: "tg", chatId: "-1001", messageId: "5" }, { adapterId: "tg2", chatId: "-1002", messageId: "6" }], text: "yes" });
       expect([posted, roomSent.map(s => [s.chatId, s.text, s.opts.replyTo ?? null]), copies.map(c => c.adapterId)]).toEqual([2,
         [["-1001", "yes", "5"], ["-1002", "↩ Ann: deploy?\nyes", null]], ["tg", "tg"]]);
     } finally { fm.classicChannels = saved.classic; fm.worlds = saved.worlds; }

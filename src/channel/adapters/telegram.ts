@@ -195,9 +195,13 @@ function threadOptions(threadId: string | null | undefined): { message_thread_id
 function replyOptions(replyTo: string | undefined): { reply_parameters?: { message_id: number; allow_sending_without_reply: true } } {
   return replyTo && /^\d{1,15}$/.test(replyTo) ? { reply_parameters: { message_id: Number(replyTo), allow_sending_without_reply: true } } : {};
 }
-/** #2281: Telegram refused the send over its reply itself (a 400 naming it): nothing was sent, so the plain send is safe. */
+/**
+ * #2281: Telegram refused the send over the message it replies to (a 400 naming that message — "message to be replied
+ * not found", REPLY_MESSAGE_ID_INVALID …): nothing was sent, so the plain send is safe. A refused reply markup (a
+ * keyboard) is not one: the plain send would be refused the same way.
+ */
 function isReplyRefusal(err: unknown): boolean {
-  return err instanceof GrammyError && err.error_code === 400 && /repl/i.test(err.description ?? "");
+  return err instanceof GrammyError && err.error_code === 400 && /message to be replied|replied message|reply_message|reply_parameters|reply_to_message/i.test(err.description ?? "");
 }
 
 /** Extract plain text from Rich Message blocks (Bot API 10.1) */

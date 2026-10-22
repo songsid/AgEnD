@@ -10154,11 +10154,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               inChannel = outAdapter !== WEB_ONLY_REPLY_SINK
                 && this.landedInOwnChannel(instanceName, replyAdapterId, result);
             } catch { /* not known: not the channel's (fail closed), and the bookkeeping below still runs */ }
-            // #2281: where the reply is in the instance's own place — a web reply to it is then a native reply there.
-            const sent = result as { messageId?: unknown; chatId?: unknown; threadId?: unknown };
-            const post = inChannel && replyAdapterId && typeof sent.messageId === "string" && typeof sent.chatId === "string"
-              ? { adapterId: replyAdapterId, chatId: sent.chatId, ...(typeof sent.threadId === "string" && sent.threadId ? { threadId: sent.threadId } : {}), messageId: sent.messageId } : undefined;
-            void this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView, inChannel, post);
+            void this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView, inChannel, replyAdapterId ? { adapterId: replyAdapterId, result } : undefined);
           } catch (err) {
             this.logger.warn({ err, instanceName }, "Reply delivered but post-delivery bookkeeping failed");
           }
@@ -10229,7 +10225,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { return this.landedInOwnChannel(set.instance, set.adapterId, { chatId: set.chatId, threadId: set.threadId || undefined }); } catch { return false; }
   }
 
-  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false, post?: WebChatPost): Promise<void> {
+  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false, sentAs?: { adapterId: string; result: unknown }): Promise<void> {
+    // #2281: where the reply is, when it landed in the instance's own place — a web reply to it is then a native reply
+    // there. A reply elsewhere (another chat, the web-only sink) records none.
+    const sent = (sentAs?.result && typeof sentAs.result === "object" ? sentAs.result : {}) as { messageId?: unknown; chatId?: unknown; threadId?: unknown };
+    const post: WebChatPost | undefined = inChannel && sentAs && typeof sent.messageId === "string" && typeof sent.chatId === "string"
+      ? { adapterId: sentAs.adapterId, chatId: sent.chatId, ...(typeof sent.threadId === "string" && sent.threadId ? { threadId: sent.threadId } : {}), messageId: sent.messageId } : undefined;
     // A reply is NOT proof the turn is over (#410) — but it is not proof of
     // more work either. Split the difference: an instance that is clearly
     // idle loses the button now; one that looks busy keeps it (re-posted

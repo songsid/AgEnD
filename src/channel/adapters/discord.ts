@@ -61,10 +61,14 @@ import { CROSS_INSTANCE_VISIBILITY_MODES } from "../../cross-instance-notice.js"
 import { POLL_STATUS_CALLBACK, type PollRender } from "../../reply-polls.js";
 import { protectDiscordClientRetirement, retireDiscordClient } from "./discord-client-retirement.js";
 
-/** #2281: Discord refused a message over its reply reference: Invalid Form Body (50035) or Unknown Message (10008). */
+/**
+ * #2281: Discord refused a message over its reply reference: Invalid Form Body (50035), Unknown Message (10008), or
+ * "Cannot reply without permission to read message history" (160002 — a channel that denies the bot its history, where
+ * a plain message still posts).
+ */
 function isDiscordReplyRefusal(err: unknown): boolean {
   const code = (err as { code?: unknown } | null)?.code;
-  return code === 50035 || code === 10008;
+  return code === 50035 || code === 10008 || code === 160002;
 }
 const DISCORD_MAX_LENGTH = 2000;
 const GATEWAY_WATCHDOG_INTERVAL_MS = 30_000;
