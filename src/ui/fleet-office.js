@@ -30,8 +30,8 @@ import { nodeText } from "./fleet-org.js";
 import { hits, needle } from "./fleet-canvas-layout.js";
 import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
   officePose, officeRooms, signOf, workOn } from "./fleet-office-model.js";
-import { CHAR_DEPTH, DEFAULT_PAL, modeOf, skinFor } from "./fleet-office-skin.js";
-import { activeFurniture, bubbleAt, createWalkers, linesFor, personAt, zonesLayout } from "./fleet-office-zones.js";
+import { CHAR_DEPTH, DEFAULT_PAL, bubbleBox, modeOf, skinFor } from "./fleet-office-skin.js";
+import { CALLING, activeFurniture, bubbleAt, createWalkers, linesFor, personAt, placeBubbles, zonesLayout } from "./fleet-office-zones.js";
 import { createOfficeStore } from "./fleet-office-store.js";
 import { OfficeEditor } from "./fleet-office-editor.js";
 
@@ -40,7 +40,7 @@ register("orgo", {
     label: "Office: each team is a room and each instance a desk; General and the instances in no team are in the lobby.",
     office: "Office", allOffice: "Whole fleet", show: "Show", allTeams: "All teams", lobby: "Lobby (General, no team)", lobbyRoom: "Lobby",
     people: "People", peopleN: "People ({0})", findPerson: "Find a person", everyone: "Show everyone", nobody: "No one here matches this filter.",
-    unseated: "{0} without a seat", closed: "Closed", desks: "Desks", tapAgain: "Tap again to open the chat",
+    unseated: "{0} without a seat", skinUnknown: "Its style “{0}” is not available here: drawn as Desks.", closed: "Closed", desks: "Desks", tapAgain: "Tap again to open the chat",
     capWorking: "Typing away", capIdle: "Tea break", capPaused: "Asleep", capNeeds: "Calling for you", capAway: "Desk empty", capStarting: "Just arriving", capQueued: "Waiting to start",
     styleLabel: "Style", style_pixel: "Desks", style_studio: "Studio", area_desks: "Work", area_lounge: "Lounge", area_alert: "Help desk", area_nap: "Nap corner",
     b_working: "On it.|Typing…|Almost there|In the zone|One more test", b_idle: "Tea time|Ready when you are|Stretching|Anything for me?",
@@ -51,7 +51,7 @@ register("orgo", {
     label: "辦公室：每個 team 是一間房間，每個 instance 一張桌子；General 和未加入 team 的 instance 在大廳。",
     office: "辦公室", allOffice: "整個 fleet", show: "顯示", allTeams: "所有 team", lobby: "大廳（General、未加入 team）", lobbyRoom: "大廳",
     people: "成員", peopleN: "成員（{0}）", findPerson: "尋找成員", everyone: "顯示全部", nobody: "沒有符合這個篩選的成員。",
-    unseated: "{0} 位沒有座位", closed: "休息中", desks: "桌子", tapAgain: "再點一下開啟聊天",
+    unseated: "{0} 位沒有座位", skinUnknown: "這裡沒有它的風格「{0}」：以辦公桌顯示。", closed: "休息中", desks: "桌子", tapAgain: "再點一下開啟聊天",
     capWorking: "埋頭打字中", capIdle: "喝茶休息", capPaused: "睡著了", capNeeds: "在呼叫你", capAway: "空位", capStarting: "剛到座位", capQueued: "等待啟動",
     styleLabel: "風格", style_pixel: "辦公桌", style_studio: "工作室", area_desks: "工作區", area_lounge: "休息區", area_alert: "求救區", area_nap: "午睡角",
     b_working: "處理中|打字中…|快好了|專心中|再測一次", b_idle: "喝茶中|隨時可以開工|伸個懶腰|有事找我嗎？",
@@ -314,12 +314,15 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
     }
     const up = still ? [] : flights.frame(ms, s.L);
     for (const it of up) sk.drawProp(ctx, it, ms, env);
-    // Speech bubbles: a short line for the state, now and then (typed out; whole at once when still).
+    // Speech bubbles: a short line for the state, now and then (typed out; whole at once when still), placed so no two
+    // overlap (placeBubbles; #2431).
+    const bubbles = [];
     for (const sp of speakers) {
       if (sp.look.dim || sp.look.pose === "away") continue;
       const b = bubbleAt(sp.look.name, sp.look.state, ms, linesFor(sp.look.state, s.lang, sk.pack, s.lines));
-      if (b) sk.drawBubble(ctx, sp.x, sp.y, [...b.text].slice(0, b.shown).join(""), env);
+      if (b) bubbles.push({ key: sp.look.name, calling: CALLING.has(sp.look.state), shown: b.shown, box: bubbleBox(ctx, sp.x, sp.y, b.text), tail: { x: sp.x, y: sp.y }, sp, b });
     }
+    for (const { sp, b, dy } of placeBubbles(bubbles)) sk.drawBubble(ctx, sp.x, sp.y, [...b.text].slice(0, b.shown).join(""), env, -dy);
     return walking || up.length > 0 || flights.size() > 0;
   }
   // The loop: drawing only when the frame (FPS) changed or something is in the air; stopped while the tab is hidden,
@@ -404,11 +407,12 @@ export function Office({ view, traffic, q = "", lease, onOpen }) {
           ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}
         </select></label>
         <${People} nodes=${everyone} pinned=${f.pinned} onChange=${(pinned) => setF({ ...f, pinned })} />` : null}
+      ${custom && skin.id !== custom.skin ? html`<span class="muted oo-note">${to("skinUnknown", custom.skin)}</span>` : null}
       ${L.unseated ? html`<span class="muted oo-note">${to("unseated", L.unseated)}</span>` : null}
       ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => setEditing(true)}>${t("orge.edit")}</button>` : null}
     </div>
     ${editing ? html`<${OfficeEditor} offices=${stored} rev=${storedRev} view=${view} store=${store}
-      ask=${ask} onSaved=${adopt} onClose=${() => setEditing(false)} />` : null}
+      ask=${ask} current=${() => shown.current} onSaved=${adopt} onClose=${() => setEditing(false)} />` : null}
     ${desks.length || L.rooms.length ? null : html`<p class="note oo-empty">${to("nobody")} ${auto && (f.team || f.pinned.length) ? html`<button type="button" class="btn btn-sm" onClick=${() => setF({ team: "", pinned: [] })}>${to("everyone")}</button>` : null}</p>`}
     <div class="oo-stage" ref=${stageRef}>
       <canvas ref=${canvasRef} class=${`oo-canvas${tipDesk && tipDesk.node.i ? " hot" : ""}`} role="img" aria-label=${to("label")}

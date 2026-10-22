@@ -239,12 +239,18 @@ describe("/ and the shared assets", () => {
 describe("the panels adopt the shell", () => {
   // #1408 step 3: /settings is the app shell on its Settings panel (settings.html is gone, as view.html went in step 2),
   // so no page loads the old shell.js or places its own nav any more.
-  it("no page of the app is its own page any more: no HTML file under src/ui but the shell and sign-in", () => {
+  it("no page of the app is its own page any more: no HTML file under src/ui but the shell and the gate's own pages", () => {
     const pages = readdirSync(join(process.cwd(), "src", "ui")).filter(f => f.endsWith(".html")).sort();
-    expect(pages).toEqual(["app.html", "signin.html"]);
+    // The gate's own pages, not the app's: sign-in, and what a guest's browser gets for a page it cannot open (#2449).
+    expect(pages).toEqual(["app.html", "guest-refused.html", "signin.html"]);
     for (const file of pages) {
       expect(ui(file), file).not.toContain("/assets/shell.js");
       expect(ui(file), file).not.toContain("data-agend-nav");
+    }
+    // The gate's pages never load the app (no panel of their own): their one script each, and no app module.
+    for (const [file, script] of [["signin.html", "/assets/signin.js"], ["guest-refused.html", "/assets/guest-refused.js"]]) {
+      expect(ui(file!), file).toContain(`<script src="${script}"></script>`);
+      expect(ui(file!), file).not.toContain("/assets/app.js");
     }
   });
 

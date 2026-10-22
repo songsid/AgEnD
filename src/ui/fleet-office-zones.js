@@ -138,6 +138,29 @@ export function bubbleAt(name, state, ms, lines) {
   const text = lines[(h + round) % lines.length], all = [...text].length;
   return { text, shown: ms > 0 ? Math.min(all, 1 + Math.floor(into / BUBBLE.CHAR_MS)) : all };
 }
+/**
+ * Where this frame's bubbles go so no two overlap (#2431: neighbours' bubbles covered each other on a phone). `items`:
+ * { key, calling, shown, box, tail? } with `box` the bubble's whole box ({ x, y, w, h }, for its whole line, so it never
+ * moves while typing out) and `tail` the point its tail reaches: the strip from the box down to it is kept clear too. The ones calling for the person go first (they always show), then the one that started earliest
+ * (the most typed out) — one already showing keeps its place. Each takes its spot, or one row up (`lift`) when that is
+ * free; else it waits for another round. Returns the placed ones, each with its `dy` (0 or -lift).
+ */
+export function placeBubbles(items, lift = 22) {
+  const order = [...items].sort((a, b) => (Number(b.calling) - Number(a.calling)) || (b.shown - a.shown) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  const taken = [], out = [];
+  const hits = (r) => taken.some((t) => r.x < t.x + t.w && t.x < r.x + r.w && r.y < t.y + t.h && t.y < r.y + r.h);
+  for (const it of order) {
+    for (const dy of [0, -lift]) {
+      const r = { x: it.box.x, y: it.box.y + dy, w: it.box.w, h: it.box.h };
+      const t = it.tail ? { x: it.tail.x - 1, y: r.y + r.h, w: 9, h: Math.max(0, it.tail.y - (r.y + r.h)) } : null;
+      if (hits(r) || (t && hits(t))) continue;
+      taken.push(r); if (t) taken.push(t); out.push({ ...it, dy });
+      break;
+    }
+  }
+  return out;
+}
+
 /** The lines for a state: the skin's (in the page's language), else the page's own. */
 export function linesFor(state, lang, pack, defaults) {
   const own = pack && pack.bubbles && pack.bubbles[lang] && pack.bubbles[lang][state];

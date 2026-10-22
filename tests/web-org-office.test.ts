@@ -450,6 +450,32 @@ describe("zones: seats, walking, bubbles", () => {
     expect(Z.personAt([a, c], 650, 200, pos)?.node.name).toBe("a");          // overlapping: drawn last (lower), hit first
     expect(Z.personAt([c, a], 650, 200, pos)?.node.name).toBe("a");
   });
+  it("placeBubbles (#2431): no two overlap — calling first, then the one typed out furthest; one row up when free; else it waits", () => {
+    const box = (x: number, y = 100, w = 100) => ({ x, y, w, h: 19 });
+    const placed = Z.placeBubbles([
+      { key: "b", calling: false, shown: 3, box: box(60) },          // overlaps a: lifted
+      { key: "a", calling: false, shown: 9, box: box(0) },           // typed out furthest: keeps its spot
+      { key: "c", calling: false, shown: 1, box: box(30) },          // overlaps a and lifted b: waits
+      { key: "d", calling: true, shown: 0, box: box(400) },          // calling: first, alone
+      { key: "e", calling: false, shown: 5, box: box(250) },
+    ]);
+    expect(placed.map((p: any) => [p.key, p.dy])).toEqual([["d", 0], ["a", 0], ["e", 0], ["b", -22]]);
+    // #2431 smoke: a tail is kept clear too — a bubble over another's tail is lifted (or waits).
+    const tailed = Z.placeBubbles([
+      { key: "low", calling: false, shown: 9, box: box(0, 100, 50), tail: { x: 45, y: 140 } },
+      { key: "over", calling: false, shown: 1, box: box(51, 121, 100) },    // clear of low's box, on its tail
+    ]);
+    expect(tailed.map((p: any) => [p.key, p.dy])).toEqual([["low", 0], ["over", -22]]);
+    // …and a bubble whose own tail would cross a placed one waits (lifted, its tail is only longer).
+    const crossing = Z.placeBubbles([
+      { key: "placed", calling: false, shown: 9, box: box(0, 120, 80) },
+      { key: "above", calling: false, shown: 1, box: box(65, 90, 100), tail: { x: 75, y: 150 } },   // box clear; tail through "placed"
+    ]);
+    expect(crossing.map((p: any) => p.key)).toEqual(["placed"]);
+    // A calling bubble takes its place before one that started earlier.
+    expect(Z.placeBubbles([{ key: "x", calling: false, shown: 9, box: box(0) }, { key: "y", calling: true, shown: 1, box: box(10) }]).map((p: any) => [p.key, p.dy]))
+      .toEqual([["y", 0], ["x", -22]]);
+  });
   it("walking: someone new is already there; a new target walks along the waypoints; still jumps; the gone are forgotten", () => {
     const w = Z.createWalkers(), g = pack();
     w.sync(new Map([["x", { x: 100, y: 100 }]]), 0, g);
@@ -628,19 +654,70 @@ describe("the Office view on the page", () => {
         gets[2](ok(6, "RemoteLatest")); await settle(3);
         gets[1](ok(5, "OlderReread")); await settle(4);
         expect(names()).toEqual(["Whole fleet", "RemoteLatest"]);
-        expect(p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)).toEqual(["RemoteLatest"]);
         expect(p.root.querySelector(".oe-msg").textContent).toContain("Someone changed the offices meanwhile");
+        // #2431: the draft stays; loading theirs takes the snapshot in force (rev 6), not the older re-read.
+        p.root.querySelector("#oeLoadTheirs").click(); await settle(2);
+        expect(p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)).toEqual(["RemoteLatest"]);
         p.root.querySelector("#oeSave").click(); await settle(2);
         expect(puts[1].body.rev).toBe(6);                                // the draft's rev is the snapshot's
       });
-      it("control: with nothing in between, the 409 re-read is the draft", async () => {
+      // #2449 review (Prism): the choices shown (the 409's re-read at rev 5), THEN the stream reads rev 6: the choice made
+      // takes rev 6 — the snapshot in force when it is made, never the one the 409 found.
+      it("the stream reads a newer list while the choice waits: Load theirs takes it, and Keep my edits its rev", async () => {
         await open();
         puts[0].answer({ status: 409, body: { error: "offices_changed" } }); await settle(2);
         gets[1](ok(5, "Reread")); await settle(4);
+        expect(p.root.querySelector("#oeLoadTheirs")).not.toBeNull();     // the choice is shown
+        handlers.offices(); await settle(2);
+        gets[2](ok(6, "RemoteLatest")); await settle(4);
+        expect(names()).toEqual(["Whole fleet", "RemoteLatest"]);
+        p.root.querySelector("#oeLoadTheirs").click(); await settle(2);
+        expect(p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)).toEqual(["RemoteLatest"]);
+        p.root.querySelector("#oeSave").click(); await settle(2);
+        expect(puts[1].body.rev).toBe(6);
+      });
+      it("…and Keep my edits, the same: the draft kept, on rev 6", async () => {
+        await open();
+        puts[0].answer({ status: 409, body: { error: "offices_changed" } }); await settle(2);
+        gets[1](ok(5, "Reread")); await settle(4);
+        handlers.offices(); await settle(2);
+        gets[2](ok(6, "RemoteLatest")); await settle(4);
+        p.root.querySelector("#oeKeepMine").click(); await settle(2);
+        p.root.querySelector("#oeSave").click(); await settle(2);
+        expect([puts[1].body.rev, puts[1].body.offices.map((o: any) => o.name)]).toEqual([6, ["Opened"]]);
+      });
+      it("control: with nothing in between, the 409 re-read is what loading theirs takes", async () => {
+        await open();
+        puts[0].answer({ status: 409, body: { error: "offices_changed" } }); await settle(2);
+        gets[1](ok(5, "Reread")); await settle(4);
+        p.root.querySelector("#oeLoadTheirs").click(); await settle(2);
         expect([names(), p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)]).toEqual([["Whole fleet", "Reread"], ["Reread"]]);
         p.root.querySelector("#oeSave").click(); await settle(2);
         expect(puts[1].body.rev).toBe(5);
       });
+      it("#2431: keeping my edits keeps the draft on the snapshot in force's rev (rev 6 here): Save then sends it, knowingly", async () => {
+        await open();
+        puts[0].answer({ status: 409, body: { error: "offices_changed" } }); await settle(2);
+        handlers.offices(); await settle(2);
+        gets[2](ok(6, "RemoteLatest")); await settle(3);
+        gets[1](ok(5, "OlderReread")); await settle(4);
+        p.root.querySelector("#oeKeepMine").click(); await settle(2);
+        expect(p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)).toEqual(["Opened"]);
+        expect(p.root.querySelector(".oe-msg").textContent).toBe("Your edits are kept. Save replaces what was saved meanwhile.");
+        p.root.querySelector("#oeSave").click(); await settle(2);
+        expect([puts[1].body.rev, puts[1].body.offices.map((o: any) => o.name)]).toEqual([6, ["Opened"]]);
+      });
+    });
+    it("#2431: an office's style this page does not know is shown as itself (not as Desks) and saved unchanged", async () => {
+      offices = { rev: 4, offices: [{ id: "ops", name: "Ops room", skin: "neon-arcade", members: [] }] };
+      auth(true); await office();
+      editBtn().click(); await settle(3);
+      const style = p.root.querySelector(".oe-row .oe-style");
+      expect([style.value, style.querySelectorAll("option").map((o: any) => o.textContent.trim())])
+        .toEqual(["neon-arcade", ["Desks", "Studio", "neon-arcade (not available here: drawn as Desks)"]]);
+      answer = { status: 200, body: { rev: 5, offices: [] } };
+      p.root.querySelector("#oeSave").click(); await settle(4);
+      expect(puts[0].offices[0].skin).toBe("neon-arcade");
     });
     it("a change made meanwhile (409): nothing saved, the list read again, said so; 429 says to wait; a nameless office is not sent", async () => {
       offices = { rev: 4, offices: [{ id: "ops", name: "Ops room", members: [] }] };
@@ -654,6 +731,10 @@ describe("the Office view on the page", () => {
       answer = { status: 409, body: { error: "offices_changed" } };
       p.root.querySelector("#oeSave").click(); await settle(4);
       expect(p.root.querySelector(".oe-msg").textContent).toContain("Someone changed the offices meanwhile");
+      // #2431: the draft is kept until they choose; Save waits for the choice.
+      expect(p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)).toEqual(["Ops"]);
+      expect(p.root.querySelector("#oeSave").disabled).toBe(true);
+      p.root.querySelector("#oeLoadTheirs").click(); await settle(2);
       expect(p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)).toEqual(["Lab"]);   // the current list
       answer = { status: 429, body: { error: "offices_rate_limited" } };
       p.root.querySelector("#oeSave").click(); await settle(4);
@@ -694,7 +775,8 @@ describe("the Office view on the page", () => {
       put.resolve({ ok: false, status: 409, json: async () => ({ error: "offices_changed" }) }); await settle(3);
       expect(form().disabled).toBe(true);                                // still frozen: the re-read is on its way
       reread.resolve({ ok: true, status: 200, json: async () => ({ rev: 6, offices: [{ id: "lab", name: "Lab" }] }) }); await settle(4);
-      expect([form().disabled, p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)]).toEqual([false, ["Lab"]]);
+      // Editable again, the draft as it was (#2431: kept until they choose).
+      expect([form().disabled, p.root.querySelectorAll(".oe-row .oe-name").map((i: any) => i.value)]).toEqual([false, ["Ops"]]);
     });
   });
   // #2431 review (Prism): reads can answer out of order; an older answer never takes back the list shown.
@@ -762,6 +844,24 @@ describe("the Office view on the page", () => {
       expect(made.length).toBeGreaterThanOrEqual(2);                              // the canvas and its layers
     } finally { delete proto.getContext; (globalThis as any).devicePixelRatio = realDpr; }
   });
+  // #2431 (the from-defaults smoke, on a phone): neighbours' bubbles covered each other. Everyone calling (their bubbles
+  // always show): every drawn bubble's box is clear of every other's.
+  it("on the canvas, no two speech bubbles overlap, however many talk at once", async () => {
+    const proto = MiniElement.prototype as any;
+    proto.getContext = function () { return (this._ctx ??= fakeCtx()); };
+    try {
+      app.appStore.set({ ...STORE, awaiting: Object.fromEntries(INSTANCES.map((i) => [i.name, "a prompt"])) });
+      await office(); await settle(4);
+      const all = p.root.querySelector(".oo-canvas")._ctx.calls as Array<[string, any[]]>;
+      const calls = all.slice(all.map(([k]) => k).lastIndexOf("clearRect"));     // the last frame drawn
+      const lines = new Set(["Need you!", "A question for you", "Over here!"]);
+      const boxes = calls.filter(([k, a]) => k === "fillText" && lines.has(a[0])).map(([, a]) => ({ x: a[1] - 7, y: a[2] - 10, w: a[0].length * 6 + 14, h: 19 }));
+      expect(boxes.length).toBeGreaterThanOrEqual(4);
+      const overlap = (r: any, t: any) => r.x < t.x + t.w && t.x < r.x + r.w && r.y < t.y + t.h && t.y < r.y + r.h;
+      const bad = boxes.flatMap((r, i) => boxes.slice(i + 1).filter((t) => overlap(r, t)).map((t) => [r, t]));
+      expect(bad).toEqual([]);
+    } finally { delete proto.getContext; }
+  });
   it("the host's offices in the switcher; a stored office shows its members", async () => {
     offices = { rev: 2, offices: [{ id: "ops", name: "Ops room", members: ["team:Web", "quill"] }, { id: "auto", name: "nope" }] };
     await office();
@@ -771,6 +871,15 @@ describe("the Office view on the page", () => {
     expect(desks()).toEqual(["nova", "tide", "quill"]);
     expect(p.root.querySelectorAll(".oo-bar select")).toHaveLength(1);           // the team filter is the auto office's
     expect(localStorage.getItem("agend_org_office")).toBe("ops");
+  });
+  it("#2431: an office whose stored style this page does not know says so (drawn as Desks), never pretends it is Desks", async () => {
+    offices = { rev: 2, offices: [{ id: "ops", name: "Ops room", skin: "neon-arcade", members: [] }, { id: "lab", name: "Lab", skin: "studio", members: [] }] };
+    localStorage.setItem("agend_org_office", "ops");
+    await office();
+    expect(p.root.querySelector(".oo-note")?.textContent).toBe("Its style “neon-arcade” is not available here: drawn as Desks.");
+    const sw = p.root.querySelector(".oo-bar select");
+    sw.value = "lab"; fire(sw, "change"); await settle(3);
+    expect(p.root.querySelector(".oo-note")).toBeNull();                        // a style it knows: nothing to say
   });
   it("the Studio style (zones): kept per browser; everyone in their state's area, drawn with bubbles and active furniture; a desk opens its chat", async () => {
     const proto = MiniElement.prototype as any;
