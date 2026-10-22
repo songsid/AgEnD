@@ -48,6 +48,8 @@ agend update --force            # 即使已是最新也強制重裝並重啟
 agend reload                    # 熱讀取配置（重新讀取 fleet.yaml，啟動新實例）
 ```
 
+更新後若新版本的服務起不來（重啟或啟動失敗，或在 macOS 上 launchd 下的 fleet 沒有真正跑起來），更新會回滾：之前的套件、它的 systemd unit 或 launchd plist 與之前的服務都會回來，更新會說明並以 1 結束（#2420）。
+
 `agend reload` 會重讀 `fleet.yaml` 並協調實例：新增的啟動、刪除的停掉、改過的套用——fleet 進程本身不重啟。
 
 ### 誰停了 fleet

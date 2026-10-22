@@ -66,7 +66,21 @@ npm exec --yes --package @songsid/agend@<target> -- agend-install [--upgrade]
    the user unit or the launchd job. The new release's `agend install --no-activate` refreshes that definition without
    starting anything (a legacy system unit is refreshed in place — never a second, user unit), then the fleet is
    restarted (`agend restart --yes`) when it runs, or started (`agend start`) when its service is installed but stopped —
-   the user's host, whose session had ended. A hand-started fleet gets no unit (#1631) and only an upgrade restarts it;
+   the user's host, whose session had ended. A hand-started fleet gets no unit (#1631) and only an upgrade restarts it.
+   **When the new service does not come up, it rolls back (#2420)**, as the 2.2 updater's C6 path did: before npm, on a
+   host with a service and a previous AgEnD, the installed package is copied to `<prefix>/.agend-rollback/` (with its
+   node_modules: the bundled Node, the runtime receipt and key) with its bin links, and the unit/plist bytes are kept.
+   If the refresh, the restart or the start fails — and, under launchd, also when they exit 0 but the fleet does not
+   come up (launchd does not wait for it; a fleet that exits at start is restarted by KeepAlive forever): the job must run
+   the pid `fleet.pid` names and `/health` answer with its startup complete (or that pid run steadily for a minute), and
+   a job started again is a fleet that exited — then whatever the manager still runs or starts is stopped and must be
+   proven stopped (else nothing is rolled back and the copy is kept, named), the previous package, bin links and
+   definition go back (`daemon-reload`; launchd's activation plan removed), and the previous service is started again if
+   it ran before (left stopped, and said so, if it did not). A failure that never stopped the fleet (the same pid still
+   runs) restores the package and definition without touching it. The answer says what is true: "Rolled back: the
+   previous package (vX) and <the unit> were restored; the previous service is running (pid N). The update did not
+   succeed", or what could not be done. A hand-started fleet is not rolled back (2.2 neither: its ownership cannot be
+   proven). On success the copy is removed;
 7. writes each step to the update marker (`downloading` → `installed` / `failed` with the reason) — **only a marker it
    owns** (Prism r1): the one the `agend update` that started it wrote (`AGEND_UPDATE_OWNER_PID`), or one whose writer is
    gone (the user's stuck "downloading"), claimed only once the prefix is this installer's. A marker a live process
@@ -116,7 +130,7 @@ Callers:
 | Prefix install lock (#1449, #1950) | **Simplified**: only `agend-install` instances exclude each other; stale or unreadable is taken over; written atomically. | Two installers reifying one prefix at once (npm has no lock of its own; concurrent reify corrupts it). |
 | Postinstall admission + install token (#1450 C1) | **Deleted** (`admit`, `AGEND_INSTALL_TOKEN` gate). | — (it is what turned a corrupt lock into a blocked install) |
 | 2.1.12 note (old-updater-note.cjs, #1487) | **Deleted** (file and its uses in postinstall/preinstall). | — (2.1's updater is out of support; the generic repair covers it) |
-| Package preimage copy + restore (#1450 C6) | **Replaced** on the new path by "reinstall the previous version" (npm already keeps the old package when its own install fails). Still used by the compat path. | A release that installs but does not run must not leave the host without `agend`. |
+| Package preimage copy + restore (#1450 C6) | **Replaced** on the new path by "reinstall the previous version" (npm already keeps the old package when its own install fails). Still used by the compat path. **Brought back for the service (#2420)**: a new service that does not come up restores the copy, the unit/plist and the previous service (step 6). | A release that installs but does not run must not leave the host without `agend`; one whose service does not come up must not leave the fleet down on it. |
 | Verify depth (identity / PATH / launcher / native DB ×2) | **Simplified** on the new path to `<prefix>/bin/agend --version`; the bundled-Node + DB proof stays where it already runs on every install: the postinstall. | A release that cannot open its database on this host (Node/ABI) must not replace a working one. |
 | Bundled Node + sh launcher (#1450) | **Kept** (untouched). | nvm/system Node switching under the fleet (the reason #1450 exists); not part of this failure. |
 | Service unit rewrite on every update (#1743, #1804, OOMPolicy) | **Kept, moved**: it is the new release's own `agend install --no-activate` under the manager the service has (a legacy system unit stays one), then `agend restart`/`start`, which turn linger on. | A unit that still names the old program/home after an update (#1743). |

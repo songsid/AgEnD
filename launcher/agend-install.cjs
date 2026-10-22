@@ -424,15 +424,193 @@ function serviceKind(deps) {
   if (fs.existsSync(path.join(home, "Library", "LaunchAgents", "com.agend.fleet.plist"))) return "launchd";
   return null;
 }
-/** A fleet runs now: fleet.pid names a live process. */
-function fleetRunning(home, deps) {
+/** The fleet that runs now: the live process fleet.pid names, else 0. */
+function fleetPid(home, deps) {
   var pid = Number(String(readText(path.join(home, "fleet.pid")) || "").trim());
-  return pid > 0 && deps.alive(pid);
+  return pid > 0 && deps.alive(pid) ? pid : 0;
 }
+function fleetRunning(home, deps) { return fleetPid(home, deps) > 0; }
 
 function versionOf(agendBin, deps) {
   var r = deps.run(agendBin, ["--version"], { timeoutMs: 60000 });
   return r.status === 0 ? last(r.stdout).replace(/^v/i, "") : null;
+}
+
+/**
+ * #2420: what an update whose new service does not come up goes back to — the 2.2 updater's C6 rollback
+ * (src/package-preimage.ts, src/service-activation.ts), here for every update this installer runs. Before npm, the
+ * installed package (with its node_modules: its bundled Node, the runtime receipt and key) is copied to
+ * `<prefix>/.agend-rollback/<version>-<time>/agend` — the same filesystem, so putting it back is a rename — with where
+ * each of its bin links points; and the service definition's bytes are kept. Only on a host with a service: a
+ * hand-started fleet's restart is not rolled back (2.2 neither: its ownership cannot be proven).
+ */
+var ROLLBACK_DIR = ".agend-rollback";
+function binNames(pkgDir) {
+  var p = readJson(path.join(pkgDir, "package.json"));
+  return p && p.bin && typeof p.bin === "object" ? Object.keys(p.bin) : [];
+}
+function takePreimage(root, prefix, deps) {
+  var pkg = path.join(root, "@songsid", "agend");
+  var version = isAgendPackage(pkg);
+  if (!version) return { preimage: null };
+  var dir = path.join(prefix, ROLLBACK_DIR, version + "-" + new Date(deps.now()).toISOString().replace(/[:.]/g, "-") + "-" + deps.pid);
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 448 });
+    fs.cpSync(pkg, path.join(dir, "agend"), { recursive: true, verbatimSymlinks: true, preserveTimestamps: true });
+  } catch (e) {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e2) { /* nothing to keep */ }
+    return { refuse: "the installed AgEnD could not be copied aside for a rollback (" + (e && e.message ? e.message : String(e)) + ")" };
+  }
+  var links = {};
+  binNames(pkg).forEach(function (name) {
+    var link = path.join(prefix, "bin", name);
+    try { links[name] = fs.lstatSync(link).isSymbolicLink() ? fs.readlinkSync(link) : null; } catch (e) { links[name] = null; }
+  });
+  return { preimage: { dir: dir, version: version, links: links } };
+}
+/** The preimage back in place of what npm installed, and its bin links (a bin only the new release has goes). */
+function restorePreimage(root, prefix, p) {
+  var pkg = path.join(root, "@songsid", "agend");
+  var aside = path.join(p.dir, "replaced");
+  var names = binNames(pkg);
+  try {
+    if (fs.existsSync(pkg)) fs.renameSync(pkg, aside);
+    fs.renameSync(path.join(p.dir, "agend"), pkg);
+  } catch (e) {
+    return "the previous package could not be put back from " + p.dir + " (" + (e && e.message ? e.message : String(e)) + ")";
+  }
+  Object.keys(p.links).forEach(function (n) { if (names.indexOf(n) < 0) names.push(n); });
+  for (var k = 0; k < names.length; k++) {
+    var link = path.join(prefix, "bin", names[k]);
+    var isLink = false;
+    try { isLink = fs.lstatSync(link).isSymbolicLink(); } catch (e) { isLink = false; }
+    if (isLink) { try { fs.unlinkSync(link); } catch (e) { /* gone */ } }
+    if (p.links[names[k]]) {
+      try { fs.symlinkSync(p.links[names[k]], link); } catch (e) { return link + " could not be restored (" + (e && e.message ? e.message : String(e)) + ")"; }
+    }
+  }
+  try { fs.rmSync(p.dir, { recursive: true, force: true }); } catch (e) { /* the copy is spent either way */ }
+  return null;
+}
+
+/** The service as its manager names it: the system unit `agend`, the user unit `com.agend.fleet`, the launchd job. */
+function serviceOf(kind, deps) {
+  var home = deps.env.HOME || os.homedir();
+  if (kind === "system") return { kind: kind, unit: "agend", scope: [], file: deps.systemUnit || "/etc/systemd/system/agend.service" };
+  if (kind === "user") return { kind: kind, unit: "com.agend.fleet", scope: ["--user"], file: path.join(home, ".config", "systemd", "user", "com.agend.fleet.service") };
+  if (kind === "launchd") return { kind: kind, label: "com.agend.fleet", domain: "gui/" + deps.uid, file: path.join(home, "Library", "LaunchAgents", "com.agend.fleet.plist") };
+  return null;
+}
+var MANAGER_MS = 15 * 60 * 1000;   // a stop waits out the fleet's own stop grace; a start, its READY
+function manage(svc, args, deps, timeoutMs) {
+  if (svc.kind === "launchd") return deps.run("launchctl", args, { timeoutMs: timeoutMs || 15000 });
+  var env = deps.env;
+  // `systemctl --user` reaches the user's manager through XDG_RUNTIME_DIR (its private socket: no D-Bus needed).
+  if (svc.kind === "user" && !env.XDG_RUNTIME_DIR && deps.uid >= 0) env = Object.assign({}, env, { XDG_RUNTIME_DIR: "/run/user/" + deps.uid });
+  return deps.run("systemctl", svc.scope.concat(args), { timeoutMs: timeoutMs || 15000, env: env });
+}
+/**
+ * What the manager says of the service: { known, running, stopped, pid }. systemd: active with a main pid is running;
+ * inactive or failed is stopped (anything else — activating, an auto-restart, deactivating — is neither). launchd: a
+ * loaded job in state running with a pid is running; launchctl print's "not loaded" (113, or 125: no such domain) is
+ * stopped. A query that does not complete is not known.
+ */
+function serviceState(svc, deps) {
+  if (svc.kind === "launchd") {
+    var p = manage(svc, ["print", svc.domain + "/" + svc.label], deps);
+    if (p.signal || p.status === null) return { known: false };
+    if (p.status === 113 || p.status === 125) return { known: true, running: false, stopped: true, pid: 0 };
+    if (p.status !== 0) return { known: false };
+    var pid = /^\s*pid = (\d+)\s*$/m.exec(p.stdout);
+    var state = /^\s*state = (.+?)\s*$/m.exec(p.stdout);
+    var runs = /^\s*runs = (\d+)\s*$/m.exec(p.stdout);
+    var running = !!pid && !!state && state[1] === "running";
+    return { known: true, running: running, stopped: false, pid: running ? Number(pid[1]) : 0, state: state ? state[1] : "", runs: runs ? Number(runs[1]) : -1 };
+  }
+  var r = manage(svc, ["show", "-p", "ActiveState", "-p", "SubState", "-p", "MainPID", "-p", "NeedDaemonReload", svc.unit], deps);
+  if (r.status !== 0 || r.signal) return { known: false };
+  var props = {};
+  String(r.stdout).split("\n").forEach(function (line) { var at = line.indexOf("="); if (at > 0) props[line.slice(0, at)] = line.slice(at + 1).trim(); });
+  if (!props.ActiveState) return { known: false };
+  var main = Number(props.MainPID) || 0;
+  return { known: true, running: props.ActiveState === "active" && main > 0, stopped: props.ActiveState === "inactive" || props.ActiveState === "failed",
+    pid: main, state: props.ActiveState + "/" + (props.SubState || ""), needReload: props.NeedDaemonReload === "yes" };
+}
+function clockOf(deps) { return deps.monotonicNow || function () { return Number(process.hrtime.bigint() / BigInt(1000000)); }; }
+function sleepOf(deps) { return deps.sleep || function (ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }; }
+/** Poll launchd (bounded, monotonic) until `done(state)` — a bootout returns before the job is gone (macOS 15). */
+function awaitLaunchd(svc, deps, done) {
+  var clock = clockOf(deps), sleep = sleepOf(deps);
+  var deadline = clock() + 10000;
+  for (;;) {
+    var s = serviceState(svc, deps);
+    if (done(s) || clock() >= deadline) return s;
+    sleep(100);
+  }
+}
+/** The fleet's web/health port: fleet.yaml's top-level `health_port:`, else the fleet's default. */
+function healthPort(home) {
+  var m = /^health_port:[ \t]*(\d+)[ \t]*(?:#.*)?$/m.exec(readText(path.join(home, "fleet.yaml")) || "");
+  return m ? Number(m[1]) : 19280;
+}
+/** Does a fleet that finished starting answer GET /health there (200, or 503 with its problems listed)? */
+function healthAnswers(port, deps) {
+  if (deps.health) return deps.health(port);
+  var script = "require('http').get({host:'127.0.0.1',port:" + Number(port) + ",path:'/health',timeout:3000},function(r){var b='';r.on('data',function(d){b+=d});" +
+    "r.on('end',function(){try{process.exit(JSON.parse(b).startupComplete===true?0:3)}catch(e){process.exit(4)}})}).on('error',function(){process.exit(5)}).on('timeout',function(){process.exit(6)})";
+  return deps.run(process.execPath, ["-e", script], { timeoutMs: 10000 }).status === 0;
+}
+var LAUNCHD_READY_MS = 5 * 60 * 1000;
+var LAUNCHD_STEADY_MS = 60 * 1000;
+/**
+ * #2420: launchd starts a job without waiting for it (nothing like systemd's READY): `agend restart` / `agend start`
+ * return before the fleet runs, and a fleet that exits at start is started again by KeepAlive, forever. So under launchd
+ * the fleet proves itself: the job runs the pid fleet.pid names (the fleet writes it as it starts), and /health answers
+ * with its startup complete — or, with no answer there (its port taken: the fleet then runs without it), that same pid
+ * has run for a minute. The job started again (its runs count grew) is a fleet that exited. null: up; else why not.
+ */
+function launchdReady(svc, home, deps) {
+  var clock = clockOf(deps), sleep = sleepOf(deps);
+  var deadline = clock() + LAUNCHD_READY_MS, port = healthPort(home), firstRuns = null, steadyPid = 0, steadySince = 0;
+  for (;;) {
+    var s = serviceState(svc, deps);
+    if (s.known && s.stopped) return "the job is not loaded";
+    if (s.known) {
+      if (firstRuns === null) firstRuns = s.runs;
+      else if (s.runs > firstRuns) return "the fleet exited and launchd started it again (runs " + firstRuns + " → " + s.runs + ")";
+      if (s.running && fleetPid(home, deps) === s.pid) {
+        if (healthAnswers(port, deps)) return null;
+        if (steadyPid !== s.pid) { steadyPid = s.pid; steadySince = clock(); }
+        else if (clock() - steadySince >= LAUNCHD_STEADY_MS) return null;
+      } else steadyPid = 0;
+    }
+    if (clock() >= deadline) return "the fleet did not come up within " + LAUNCHD_READY_MS / 1000 + "s (launchd: " + (s.known ? s.state || "no state" : "state unknown") + ")";
+    sleep(1000);
+  }
+}
+function stopService(svc, deps) {
+  if (svc.kind === "launchd") {
+    manage(svc, ["bootout", svc.domain + "/" + svc.label], deps);
+    return awaitLaunchd(svc, deps, function (s) { return s.known && s.stopped; });
+  }
+  // A stop cancels a queued restart job and ends an auto-restart: what systemd then reports is settled.
+  manage(svc, ["stop", svc.unit], deps, MANAGER_MS);
+  return serviceState(svc, deps);
+}
+function startService(svc, home, deps) {
+  if (svc.kind === "launchd") {
+    var boot = manage(svc, ["bootstrap", svc.domain, svc.file], deps);
+    if (boot.status !== 0) return { known: true, running: false, stopped: true, pid: 0, why: "launchctl bootstrap exited " + (boot.status === null ? boot.signal : boot.status) };
+    var notUp = launchdReady(svc, home, deps);
+    if (notUp) return { known: true, running: false, pid: 0, why: notUp };
+    return serviceState(svc, deps);
+  }
+  // The failed start may have used up the unit's start limit: cleared, as `agend restart` does.
+  manage(svc, ["reset-failed", svc.unit], deps);
+  var started = manage(svc, ["start", svc.unit], deps, MANAGER_MS);
+  var s = serviceState(svc, deps);
+  if (started.status !== 0 && !s.running) s.why = "systemctl start exited " + (started.status === null ? started.signal : started.status);
+  return s;
 }
 
 function main(argv, injected) {
@@ -480,6 +658,7 @@ function main(argv, injected) {
     claimed = claimMarker(home, deps, { ownOnly: true });
     return fail("lock", admitted.refuse);
   }
+  var preimage = null, definition = null, keepPreimage = false;
   try {
     claimed = claimMarker(home, deps, {});
     setStage(home, claimed, "downloading", { version: version }, deps);
@@ -487,6 +666,14 @@ function main(argv, injected) {
     fixed.notes.forEach(function (n) { log("  ↺ " + n); });
     var previous = isAgendPackage(path.join(root, "@songsid", "agend"));
     var bin = path.join(prefix, "bin", "agend");
+    // #2420: on a host with a service, what an update whose new service does not come up goes back to.
+    var svc = serviceOf(serviceKind(deps), deps);
+    if (svc && previous) {
+      var taken = takePreimage(root, prefix, deps);
+      if (taken.refuse) return fail("install", "Not updating: " + taken.refuse + ". Nothing was changed");
+      preimage = taken.preimage;
+      definition = readText(svc.file);
+    }
     // #2286 review: the lock's token, for a release from before #2264 (its postinstall refuses any other install).
     var npmEnv = Object.assign({}, deps.env);
     npmEnv[lockReaders.TOKEN_ENV] = admitted.token;
@@ -531,20 +718,77 @@ function main(argv, injected) {
     // (a legacy system unit is refreshed in place — never a second, user unit), then the fleet moves onto the new release:
     // restarted when it runs, started when its service is installed but stopped (the user's: the session that ran it
     // ended). A hand-started fleet gets no unit (#1631) and is restarted only by an upgrade.
+    // #2420: the fleet the service ran before this update (its fleet.pid, alive): a failure that never stopped it
+    // keeps it, one that did brings the previous service back.
+    var fleetBefore = fleetPid(home, deps);
+    /**
+     * #2420: the new release's service did not come up (its refresh failed, or its restart or start did). With a
+     * preimage, the previous package and service definition go back and the previous service runs again — the 2.2
+     * updater's C6 rollback. What the manager is still running or starting is stopped first and must be proven
+     * stopped, or nothing is rolled back; a fleet the failure never stopped (the same pid still runs) is left running.
+     * Without a preimage (no service before this update, no previous AgEnD), it says what to run, as before.
+     */
+    var rollBack = function (stage, why, hint) {
+      if (!preimage || !svc) return fail(stage, why + "; " + hint);
+      var name = svc.kind === "launchd" ? "the launchd job " + svc.label : "the " + (svc.kind === "user" ? "user" : "system") + " unit " + svc.unit;
+      var kept = "; the previous package is kept in " + preimage.dir;
+      log("  ↩ " + why + " — rolling back to v" + preimage.version);
+      var untouched = fleetBefore > 0 && fleetPid(home, deps) === fleetBefore;
+      if (!untouched) {
+        var now = serviceState(svc, deps);
+        if (!now.known) { keepPreimage = true; return fail(stage, why + ". What runs " + name + " now cannot be told, so nothing was rolled back" + kept + " — check it, then run `agend restart`"); }
+        var stopped = stopService(svc, deps);
+        if (!stopped.known || !stopped.stopped) { keepPreimage = true; return fail(stage, why + ". " + name + " could not be stopped (" + (stopped.known ? stopped.state : "its state cannot be told") + "), so nothing was rolled back" + kept); }
+      }
+      var notBack = restorePreimage(root, prefix, preimage);
+      if (notBack) { keepPreimage = true; return fail(stage, why + ". " + notBack + " — reinstall it: npm install -g @songsid/agend@" + preimage.version); }
+      var restored = [];
+      if (definition !== null && readText(svc.file) !== definition) {
+        try { fs.writeFileSync(svc.file, definition); } catch (e) { return fail(stage, why + ". v" + preimage.version + " is back, but " + svc.file + " could not be restored (" + (e && e.code ? e.code : String(e)) + ") — run `agend install --no-activate`, then `agend start`"); }
+      }
+      if (svc.kind === "launchd") {
+        // The refresh's activation plan names the new plist: never left for a later `agend restart` to act on.
+        try { fs.unlinkSync(path.join(home, "service-plan.json")); } catch (e) { /* none */ }
+      } else {
+        var reload = manage(svc, ["daemon-reload"], deps);
+        var loaded = reload.status === 0 ? serviceState(svc, deps) : { known: false };
+        if (!loaded.known || loaded.needReload) restored.push("run `systemctl" + (svc.kind === "user" ? " --user" : "") + " daemon-reload`: systemd may still have the new definition loaded");
+      }
+      var back = versionOf(bin, deps);
+      var what = "the previous package (v" + preimage.version + ") and " + name + " were restored";
+      if (back !== preimage.version) restored.push(bin + " reports " + (back || "nothing") + ", not v" + preimage.version);
+      var outcome;
+      if (untouched) outcome = what + "; the previous service was never stopped and still runs (pid " + fleetBefore + ")";
+      else if (fleetBefore > 0) {
+        var started = startService(svc, home, deps);
+        outcome = started.running ? what + "; the previous service is running (pid " + started.pid + ")"
+          : what + ", but the previous service did not start (" + (started.why || (started.known ? started.state : "its state cannot be told")) + ") — run `agend start`";
+      } else outcome = what + "; the service was stopped before this update and is left stopped — `agend start` starts it";
+      return fail(stage, why + ". Rolled back: " + outcome + (restored.length ? "; " + restored.join("; ") : "") + ". The update did not succeed");
+    };
     if (kind) {
       var service = deps.run(bin, ["install", "--no-activate"], { inherit: true });
-      if (service.status !== 0) return fail("starting", "`agend install --no-activate` could not refresh the " + kind + " service (exit " + service.status + "); AgEnD v" + version + " is installed — run `agend install --no-activate`, then `agend restart`");
+      if (service.status !== 0) return rollBack("starting", "`agend install --no-activate` could not refresh the " + kind + " service (exit " + service.status + ")", "AgEnD v" + version + " is installed — run `agend install --no-activate`, then `agend restart`");
     }
     var env = Object.assign({}, deps.env, { AGEND_RESTART_ORIGIN: upgrade ? "agend-update" : "agend-install" });
     if (fleetRunning(home, deps) && (kind || upgrade)) {
       var restarted = deps.run(bin, ["restart", "--yes"], { inherit: true, env: env });
-      if (restarted.status !== 0 && restarted.status !== 75) return fail("stopping", "the fleet did not restart onto v" + version + " (exit " + restarted.status + "); run `agend restart`");
+      // 75: the restart job is still running (systemd goes on with it); the new fleet settles the marker.
+      if (restarted.status !== 0 && restarted.status !== 75) return rollBack("stopping", "the fleet did not restart onto v" + version + " (exit " + restarted.status + ")", "run `agend restart`");
     } else if (kind) {
       var started = deps.run(bin, ["start"], { inherit: true, env: env });
-      if (started.status !== 0) return fail("starting", "the " + kind + " service did not start (exit " + started.status + "); AgEnD v" + version + " is installed — run `agend start`");
+      if (started.status !== 0) return rollBack("starting", "the " + kind + " service did not start (exit " + started.status + ")", "AgEnD v" + version + " is installed — run `agend start`");
+    }
+    // Under launchd an exit 0 is not the fleet running (above): it must come up on the new release first.
+    var activated = restarted ? restarted.status === 0 : !!started;
+    if (svc && svc.kind === "launchd" && activated) {
+      var notUp = launchdReady(svc, home, deps);
+      if (notUp) return rollBack(restarted ? "stopping" : "starting", "the launchd job did not come up on v" + version + ": " + notUp, "run `agend restart`");
     }
     return 0;
   } finally {
+    // Spent (put back), or not needed: only a rollback that could not finish keeps its copy, and says where.
+    if (preimage && !keepPreimage) { try { fs.rmSync(preimage.dir, { recursive: true, force: true }); } catch (e) { /* best effort */ } }
     admitted.release();
   }
 }
