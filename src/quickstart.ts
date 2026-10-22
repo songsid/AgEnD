@@ -927,15 +927,15 @@ export async function runQuickstart(): Promise<void> {
         console.log(`\n  ${green("✅")} Fleet service installed and running.`);
         serviceRunning = true;
       } catch (err) {
-        console.log(`\n  ${yellow("⚠")}  Could not install the service automatically (${(err as Error).message}).`);
+        console.log(`\n  ${yellow("⚠")}  ${t("qs.service_install_failed", (err as Error).message)}`);
         // #2356: the service file may already be written, and `agend start` then refuses a fleet beside it.
-        console.log(`     Start the fleet without the service: ${bold("agend fleet start --direct")} (or retry the service later: ${bold("agend start")})`);
+        console.log(`     ${t("qs.start_direct", bold("agend fleet start --direct"), bold("agend start"))}`);
         serviceFailed = true;
       }
     }
 
     if (!serviceRunning && !serviceFailed) {
-      console.log(`  Start the fleet: ${bold("agend start")}`);
+      console.log(`  ${t("qs.start_fleet", bold("agend start"))}`);
     }
     printDashboard();
 

@@ -369,7 +369,8 @@ type Row = Record<string, unknown>;
 
 const STATUS_ORDER = `CASE status WHEN 'claimed' THEN 0 WHEN 'blocked' THEN 1 WHEN 'review' THEN 2 WHEN 'open' THEN 3 WHEN 'done' THEN 4 ELSE 5 END`;
 const PRIORITY_ORDER = `CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`;
-const CODE_RE = /^\s*([MS])\s*-?\s*(\d+)\s*$/i;
+// Keep the second whitespace run inside the hyphen branch: without a hyphen, adjacent runs backtrack quadratically.
+const CODE_RE = /^\s*([MS])\s*(?:-\s*)?(\d+)\s*$/i;
 
 const length = (s: string) => [...s].length;
 const isFinished = (c: Card) => c.status === "done" || c.status === "cancelled";

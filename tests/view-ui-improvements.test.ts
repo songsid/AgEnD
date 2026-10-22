@@ -1,5 +1,5 @@
 /**
- * View's roster and card, as the app shell renders them (#1408 step 2; ported from view.html's UI-improvement checks):
+ * View's roster and identity card, as the app shell renders them (#1408 step 2; ported from view.html's UI-improvement checks):
  * the backend icon after the context figure, 0% shown as 0% (not hidden), the backend labels in tooltips and icons, the
  * sidebar order saved in this browser only, the usage providers reordered with no token, the localized failure text,
  * and the classic-to-configured wording in tooltips.
@@ -68,7 +68,6 @@ const rows = () => p.root.querySelectorAll("a.v-inst");
 // The instance a row opens (#1630: the row shows its display name; the name is in the link).
 const rowName = (a: any) => decodeURIComponent(a.getAttribute("href").split("/").pop());
 const rowOf = (name: string) => rows().find((a: any) => rowName(a) === name)!;
-const card = () => p.root.querySelector(".v-card")!;
 const usageButton = () => p.root.querySelectorAll(".panel-actions .btn").find((b: any) => b.textContent.includes("Usage"))!;
 
 describe("the roster row: the CLI on the avatar (#1722), the context figure", () => {
@@ -99,14 +98,12 @@ describe("the roster row: the CLI on the avatar (#1722), the context figure", ()
     expect(rowOf("beta").querySelector(".v-meta").textContent).toBe("");
   });
 
-  it("the profile card shows ctx 0% when it is 0, and no ctx part when unavailable", async () => {
+  it("Edit profile sits under the identity card; the old profile strip is gone", async () => {
     roster = [base({ instance_name: "alpha", context_pct: 0 })];
     await mountView();
-    expect(card().querySelector(".v-card-meta")!.textContent).toContain("· ctx 0%");
-    await p.unmount();
-    roster = [base({ instance_name: "alpha", context_pct: null })];
-    await mountView();
-    expect(card().querySelector(".v-card-meta")!.textContent).not.toContain("ctx");
+    expect(p.root.querySelector(".v-card")).toBeNull();
+    expect(p.root.querySelector(".v-id .btn")!.textContent).toContain("Edit profile");
+    expect(rowOf("alpha").querySelector(".v-meta").textContent).toBe("0%");
   });
 });
 

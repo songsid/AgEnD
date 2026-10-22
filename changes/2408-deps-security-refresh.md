@@ -1,0 +1,25 @@
+---
+section: Security
+---
+- **Dependency security refresh, within the current major versions (#2408).** `npm audit --omit=dev` goes from 1 critical and 8 high (16 packages, 76 advisories) to **0**.
+  - **Direct:**
+    - `@modelcontextprotocol/sdk` 1.27.1 → 1.32.1;
+    - `undici` 6.24.1 → 6.29.1, kept as an exact pin, so the global install no longer forces a vulnerable undici on every user;
+    - `discord.js` 14.26.4 → 14.27.0;
+    - `js-yaml` 4.1.1 → 4.3.2.
+  - **Transitive:** `ws` 8.22.0, `proxy-addr` 2.0.8, `path-to-regexp` 8.4.2, `hono` 4.13.13, `@hono/node-server` 2.1.5, `fast-uri` 3.1.9, `ip-address` 10.7.4, `qs` 6.16.1, `express-rate-limit` 8.7.1, `body-parser` 2.3.0, `fast-copy` 4.2.0.
+  - **Critical:** proxy-addr GHSA-jqcg-44mw-7w3h.
+  - **High:**
+    - @modelcontextprotocol/sdk GHSA-6qxp-vccf-f47h, GHSA-22jm-h49p-29qw, GHSA-46jr-4wx8-v453;
+    - fast-uri GHSA-v2hh-gcrm-f6hx, GHSA-7p8r-x3mc-p8w7, GHSA-q3j6-qgpj-74h6, GHSA-v39h-62p7-jpjc, GHSA-f65p-4m7j-42xc, GHSA-jqff-g426-hqxp, GHSA-4c8g-83qw-93j6, GHSA-qw65-cvwx-89v3;
+    - hono GHSA-88fw-hqm2-52qc;
+    - ip-address GHSA-mwp4-54f8-5fhr;
+    - js-yaml GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh;
+    - path-to-regexp GHSA-j3q9-mxjg-w52f;
+    - undici GHSA-vxpw-j846-p89q, GHSA-rfgv-xxqx-mfg5;
+    - ws GHSA-96hv-2xvq-fx4p.
+  - **Moderate and low**, also fixed: 49 more advisories in hono (29), undici (7), ip-address (4), qs (3), the MCP SDK (2), path-to-regexp, ws, js-yaml, fast-uri, fast-copy and body-parser.
+  - **Behaviour AgEnD relies on is unchanged.**
+    - The fleet's MCP server is the SDK's low-level `Server` on stdio, which lists its own tools. The SDK's new rules hit only `McpServer.registerTool`, HTTP transports and OAuth.
+    - The new 10 MiB stdio read limit is far above any AgEnD tool call, since files go by path.
+    - discord.js 14.27 renames `ready` to `clientReady`; AgEnD already listens on `Events.ClientReady`. It also fixes DMs in uncached DM channels.

@@ -14,7 +14,7 @@ const SPECS = [
   ["thread-control", ".shell .chat-main > .amb-note, .shell .p-chat .jump-latest, .shell .thread .msg-tools, .shell .thread .msg > div.msg-actions, .shell .thread .msg > button.msg-quote, .shell .thread .st-more, .shell .thread .cb-head, .shell .thread .cb-more, .shell .thread .tc-head, .shell .thread .tc-more, .shell .thread .pv-head, .shell .thread .pv-note, .shell .thread .pv-banner, .shell .thread .effect-trial-offer, .shell .thread .click-chip"],
   ["link", ".shell .thread .md a, .shell .thread .st-text > a.st-link, .shell .dock .prompts .txt > a.st-link"], ["attachment", ".shell .thread .atts"], ["media", ".shell .thread .att-media"],
   ["panel-navigation", ".shell .p-fleet > .seg, .shell .p-settings > .seg"],
-  ["panel-content", ".shell .p-fleet > .panel-body, .shell .p-needs > .panel-body, .shell .p-settings > .panel-body, .shell .p-log > .panel-body, .shell .p-details > .panel-body, .shell .p-view > .panel-body, .shell .p-view > .v-term, .shell .p-view > .v-id, .shell .p-view > .v-card"],
+  ["panel-content", ".shell .p-fleet > .panel-body, .shell .p-needs > .panel-body, .shell .p-settings > .panel-body, .shell .p-log > .panel-body, .shell .p-details > .panel-body, .shell .p-view > .panel-body, .shell .p-view > .v-term, .shell .p-view > .v-id"],
   ["panel-controls", ".shell .p-log > .log-bar, .shell .p-settings > .s-pending"],
   ["session-ended", "body > .agend-session-ended[role=alert]"],
 ];
@@ -28,7 +28,7 @@ const PANELS = Object.freeze({
   settings: { required: [".panel-head", ".seg", ".panel-body"], optional: [".s-pending"] },
   log: { required: [".panel-head", ".panel-body"], optional: [".log-bar"] },
   details: { required: [".panel-head", ".panel-body"], optional: [] },
-  view: { required: [".panel-head"], optional: [".panel-body", ".v-term", ".v-id", ".v-card"] },
+  view: { required: [".panel-head"], optional: [".panel-body", ".v-term", ".v-id"] },
 });
 function panelSurface(doc, chat) {
   if (chat) return { panel: chat, structural: STRUCTURAL, content: CONTENT, kind: "chat" };
@@ -37,8 +37,8 @@ function panelSurface(doc, chat) {
   const children = [...panel.children], count = selector => children.filter(el => el.matches(selector)).length;
   if (spec.required.some(selector => count(selector) !== 1) || spec.optional.some(selector => count(selector) > 1)
     || children.some(el => !el.matches([...spec.required, ...spec.optional, "dialog.dlg", "dialog.lb"].join(",")))) return null;
-  if (kind === "view" && !(count(".panel-body") === 1 && !count(".v-term") && !count(".v-id") && !count(".v-card")
-    || !count(".panel-body") && count(".v-term") === 1 && count(".v-card") === 1)) return null;
+  if (kind === "view" && !(count(".panel-body") === 1 && !count(".v-term") && !count(".v-id")
+    || !count(".panel-body") && count(".v-term") === 1 && count(".v-id") === 1)) return null;
   const prefix = `.p-${kind} > `;
   return { panel, kind, structural: [...STRUCTURAL.slice(0, 5), `.main > .p-${kind}`],
     content: [...CONTENT.filter(selector => !selector.startsWith(".p-chat") && !selector.startsWith(".chat-main")),

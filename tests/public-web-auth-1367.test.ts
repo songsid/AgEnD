@@ -116,7 +116,7 @@ describe("public credential scopes, real auth handlers", () => {
     const h = request("/auth/login", "POST", { origin, "content-type": "application/json", "x-forwarded-proto": "http" }); bind(h.req);
     handleAuthRequest(h.req as never, h.res as never, new URL(h.req.url, origin), { webToken: token, webSessions: store, webLoginCodes: codes, logger: logger as never, confirmPublicWebLogin: notice, onWebLogin: localNotice });
     h.feed({ code: issued.display }); await flush(); expect(h.status()).toBe(200); expect(notice).toHaveBeenCalled(); expect(localNotice).not.toHaveBeenCalled();
-    expect(h.out["Set-Cookie"]).toMatch(/^__Host-agend_session=.*; Secure$/); expect(store.list()[0]?.surface).toBe("gateway");
+    expect(h.out["Set-Cookie"]).toMatch(/^__Host-agend_session_[0-9a-f]{16}=.*; Secure$/); expect(store.list()[0]?.surface).toBe("gateway");
   });
   it("never-settling notice fails at 5 seconds and late ACK cannot activate", async () => {
     vi.useFakeTimers(); let mono = 0; vi.spyOn(performance, "now").mockImplementation(() => mono);

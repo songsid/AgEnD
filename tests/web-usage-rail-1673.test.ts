@@ -269,8 +269,17 @@ describe("#1749: the plan badge is one short line; the full plan stays on it for
   it("planBadge: \"Name [Tier] (N×)\" → \"Name ×N\"; any other label as it is", async () => {
     const { planBadge } = await import("/assets/usage-dialog.js");
     expect(["Team Premium (6.25x)", "Team Standard (1.25x)", "Max (20x)", "Max (5x)", "Max", "Pro", "Plus", "Enterprise Plan", "", null]
-      .map((p) => planBadge(p))).toEqual(["Team ×6.25", "Team ×1.25", "Max ×20", "Max ×5", "Max", "Pro", "Plus", "Enterprise Plan", "", ""]);
+      .map((p) => planBadge(p))).toEqual(["Team ×6.25", "Team ×1.25", "Max ×20", "Max ×5", "Max", "Pro", "Plus", "Enterprise", "", ""]);
   });
+
+  // #2412: Codex's plan_type spelled out ("Self Serve Business Usage Based") took half the head and crushed "Codex".
+  it("planBadge: a long name says only its kind (the most specific first); a short one, or one with no kind, as it is", async () => {
+    const { planBadge } = await import("/assets/usage-dialog.js");
+    expect(["Self Serve Business Usage Based", "Enterprise Plan", "ChatGPT Team Workspace", "Education Annual Plan", "Kiro Pro+ Power Monthly Subscription Plan",
+      "Pro Monthly Subscription", "Business Enterprise Bundle", "Business", "Usage Based Self Serve Custom Arrangement", "Pro 20x"].map((p) => planBadge(p)))
+      .toEqual(["Business", "Enterprise", "Team", "Edu", "Pro+", "Pro", "Enterprise", "Business", "Usage Based Self Serve Custom Arrangement", "Pro 20x"]);
+  });
+
 
   it("each row: the short badge on screen, the full plan as its title and for a screen reader; the name keeps its own title", async () => {
     const saved = USAGE.providers;
@@ -292,13 +301,17 @@ describe("#1749: the plan badge is one short line; the full plan stays on it for
     } finally { USAGE.providers = saved; }
   });
 
-  it("the head stays one line: the badge and the name never wrap (each ends in an ellipsis; the name gives way first), ↑↓ never shrink", async () => {
+  // #2412: the name no longer gives way first — a long badge crushed "Codex" to "Co…". The name keeps its width (one
+  // line, ellipsis only past the ↑↓), the badge gives way down to a few letters.
+  it("the head stays one line: the badge and the name never wrap (each ends in an ellipsis; the badge gives way, never the name), ↑↓ never shrink", async () => {
     const { readFileSync } = await import("node:fs");
     const css = readFileSync("src/ui/shared/app.css", "utf8");
     const rule = (sel: string) => new RegExp(`(^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`).exec(css)?.[2] ?? "";
     const has = (sel: string, ...decls: string[]) => decls.every((d) => rule(sel).includes(d));
-    expect([has(".u-plan", "white-space: nowrap", "text-overflow: ellipsis", "overflow: hidden", "flex: none", "max-width: 55%"),
-      has(".u-head strong", "white-space: nowrap", "text-overflow: ellipsis", "overflow: hidden", "min-width: 0"),
-      has(".u-order", "flex: none")]).toEqual([true, true, true]);
+    // #2415 review: the badge starts at its minimum and grows into the room left (never shrinks below it); the name
+    // shrinks only when name + minimum badge + ↑↓ cannot fit — no weighted shared shrink (that took a fraction of a pixel).
+    expect([has(".u-plan", "white-space: nowrap", "text-overflow: ellipsis", "overflow: hidden", "flex: 1 0 40px", "max-width: max-content"),
+      has(".u-head strong", "white-space: nowrap", "text-overflow: ellipsis", "overflow: hidden", "flex: 0 1 auto", "min-width: 0"),
+      has(".u-order", "flex: none"), rule(".u-plan").includes("max-width: 55%"), /\.u-plan \{[^}]*flex: 0 1000/.test(css)]).toEqual([true, true, true, false, false]);
   });
 });

@@ -91,7 +91,7 @@ describe("fleet start / fleet stop by hand (#2356): who started it, and when the
 
   it("quickstart's failed service install names the way out, not a bare `agend start` that refuses", () => {
     const source = readFileSync(join(process.cwd(), "src", "quickstart.ts"), "utf8");
-    const at = source.indexOf("Could not install the service automatically");
+    const at = source.indexOf('t("qs.service_install_failed"');   // #2390: the line in the fleet's language
     const branch = source.slice(at, source.indexOf("printDashboard();", at));
     expect(branch).toContain('bold("agend fleet start --direct")');
     expect(branch).toContain("serviceFailed = true;");

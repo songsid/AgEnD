@@ -90,6 +90,7 @@ describe("#2359 removed leftovers", () => {
     expect(logsHelp).not.toMatch(/alias for `agend fleet logs`/i);
     expect(logsHelp).toMatch(/daemon\.log/);
     const src = readFileSync(join(process.cwd(), "src/cli.ts"), "utf8");
-    expect(src).toContain("`agend install --activate` was removed; service activation is the default.");
+    expect(src).toContain('console.error(t("cli.install_activate_removed"));');   // #2390: in the fleet's language
+    expect(readFileSync(join(process.cwd(), "src", "locale.ts"), "utf8")).toContain('"cli.install_activate_removed": "`agend install --activate` was removed; service activation is the default."');
   }, 30_000);
 });

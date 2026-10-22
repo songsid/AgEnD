@@ -85,7 +85,7 @@ function rig() {
     req.emit("data", Buffer.from(JSON.stringify({ code }))); req.emit("end");
     await flush(); await vi.advanceTimersByTimeAsync(0); await flush();
     expect(status).toBe(200);
-    const c = ([] as string[]).concat(out["Set-Cookie"] ?? []).find((x) => /^(__Host-)?agend_session=/.test(x))!.split(";")[0]!;
+    const c = ([] as string[]).concat(out["Set-Cookie"] ?? []).find((x) => /^(__Host-)?agend_session_[0-9a-f]{16}=/.test(x))!.split(";")[0]!;
     return { cookie: c, sessionId: c.split("=")[1]! };
   }
 
