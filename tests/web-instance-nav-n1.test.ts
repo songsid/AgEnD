@@ -293,11 +293,10 @@ describe("#1776: the count is on the facet headers' row", () => {
 
   it("folded and open, filtered or not: the headers (and the reset) in their box, the count after it, in the same row", async () => {
     const pg = await app("/ui/chat/web-dev", { agend_nav_facets: '{"status":false,"cli":false}' });
-    // nav-facets has 3 direct children: nav-facet-groups, nav-shown, nav-facet-reset (fixed-width sibling)
+    // #2401: two children — the headers' box, and the end column (the count, its "shown", Clear)
     expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "nav-facet-end"], groups: ["nav-facet", "nav-facet"], count: "5 / 5", live: "polite", ownRow: false });
     (pg.root.querySelector(".nav-facet-head") as any).click(); await settle();
     fire(chip(pg, "Status", "needs you"), "change"); await settle();
-    // nav-facet-reset is a fixed-width flex sibling of nav-shown; nav-facet-groups sees stable remaining space.
     expect(shape(pg), "a group open, a filter set: count+reset in nav-filter-row; groups box unchanged").toEqual({
       children: ["nav-facet-groups", "nav-facet-end"], groups: ["nav-facet", "nav-facet"], count: "1 / 5 shown", live: "polite", ownRow: false });
     expect(facetsRow(pg).querySelector(".nav-facet-groups .nav-facet-list"), "the open list is under its header, in the box").not.toBeNull();
@@ -317,28 +316,31 @@ describe("#1776: the count is on the facet headers' row", () => {
     const decl = (sel: string) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(m => m[1]!.split(",").map(s => s.trim()).includes(sel)).map(m => m[2]!).join(";");
     expect(decl(".nav-facet-groups")).toMatch(/flex-wrap:\s*wrap/);
     expect(decl(".nav-facet-groups")).toMatch(/min-width:\s*0/);
-    // nav-facet-end: count+clear in a fixed-min-width flex container at the right of the header row
-    expect(decl(".nav-facet-end")).toMatch(/display:\s*flex/);    
+    // #2401: the end column — the count, "shown" under it, Clear under that — at the row's right end, never shrunk
+    expect(decl(".nav-facet-end")).toMatch(/display:\s*flex/);
+    expect(decl(".nav-facet-end")).toMatch(/flex-direction:\s*column/);
     expect(decl(".nav-facet-end")).toMatch(/flex:\s*none/);
+    expect(decl(".nav-shown-word")).toMatch(/display:\s*block/);
+    // the word's width held by ::before, idle Clear's by itself: at no height, unseen and out of reach
+    expect(decl(".nav-facet-end::before")).toMatch(/content:\s*attr\(data-reserve\)/);
+    for (const sel of [".nav-facet-end::before", ".nav-facet-end .is-idle"])
+      for (const rule of [/visibility:\s*hidden/, /(^|;)\s*height:\s*0/, /overflow:\s*hidden/]) expect(decl(sel), sel).toMatch(rule);
   });
 
-  it("the filter panel height doesn't change when Clear appears or disappears", async () => {
+  it("#2401: Clear is always there — idle by a class (never a style attribute, #1300); the column holds the word's width", async () => {
     const pg = await app("/ui/chat/web-dev", { agend_nav_facets: '{"status":false,"cli":false}' });
-    const filterEl = pg.root.querySelector(".v-filter") as any;
-    // Measure direct children count of .v-filter before any facet is active
-    const childrenBefore = filterEl.children.length;
-    // Open the Status facet, then activate a chip — Clear should appear inline
+    const end = () => pg.root.querySelector(".nav-facets .nav-facet-end") as any;
+    const seen = () => {
+      const reset = end().querySelector(".nav-facet-reset");
+      return { reset: reset && { idle: reset.classList.contains("is-idle"), style: reset.getAttribute("style") },
+        word: end().querySelector(".nav-shown-word")?.textContent ?? null, reserve: end().getAttribute("data-reserve"), style: end().getAttribute("style") };
+    };
+    expect(seen(), "no facet set").toEqual({ reset: { idle: true, style: null }, word: null, reserve: "shown", style: null });
     (pg.root.querySelector(".nav-facet-head") as any).click(); await settle();
     fire(chip(pg, "Status", "needs you"), "change"); await settle();
-    expect(filterEl.children.length).toBe(childrenBefore);  // .v-filter has same child count
-    // Clear is inside nav-filter-row, never in nav-facet-groups
-    expect(pg.root.querySelector(".nav-facet-end .nav-facet-reset"), "reset in nav-facet-end").not.toBeNull();
-    expect(pg.root.querySelector(".nav-facet-groups .nav-facet-reset"), "reset NOT in groups").toBeNull();
-    // Clear it: nav-facet-reset becomes invisible (visibility:hidden) but keeps layout space
+    expect(seen(), "a facet set").toEqual({ reset: { idle: false, style: null }, word: " shown", reserve: "shown", style: null });
+    expect(pg.root.querySelector(".nav-facet-groups .nav-facet-reset"), "Clear is not in the headers' box").toBeNull();
     (pg.root.querySelector(".nav-facet-reset") as any).click(); await settle();
-    expect(filterEl.children.length).toBe(childrenBefore);  // still same children
-    const resetEl = pg.root.querySelector(".nav-facet-reset") as any;
-    expect(resetEl).not.toBeNull();  // always in DOM
-    expect(resetEl.getAttribute("aria-hidden")).toBe("true");
+    expect(seen(), "cleared").toEqual({ reset: { idle: true, style: null }, word: null, reserve: "shown", style: null });
   });
 });

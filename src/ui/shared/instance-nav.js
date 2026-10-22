@@ -663,9 +663,13 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
           ${viewOnly ? null : chips("status", STATUS_FACETS, tn("filterStatus"), statusText)}
           ${backends.length > 1 || f.cli.length ? chips("cli", backends, tn("filterCli"), backendLabel) : null}
         </div>
-        <div class="nav-facet-end">
-          <p class="note nav-shown" aria-live="polite">${shown.shown} / ${shown.total}${shown.active ? ` ${tn("filterShown")}` : ""}</p>
-          <button type="button" class="chip-btn nav-facet-reset" style=${f.status.length || f.cli.length ? "" : "visibility:hidden"} onClick=${() => setNavFilter({ status: [], cli: [] })} aria-hidden=${f.status.length || f.cli.length ? "false" : "true"}>${tn("filterFacetsReset")}</button>
+        ${/* #2401: the count, its "shown" and Clear stack at the row's right end — beside an open list there is room under
+            the count, so setting a facet adds no row (a word beside the count, or Clear beside it, wrapped CLI under the
+            list). The column keeps the word's width (data-reserve, drawn unseen at no height) and Clear's (idle, there unseen
+            at no height: .is-idle, a class — never a style attribute, #1300), so the headers' box beside it never narrows. */ ""}
+        <div class="nav-facet-end" data-reserve=${tn("filterShown")}>
+          <p class="note nav-shown" aria-live="polite">${shown.shown} / ${shown.total}${shown.active ? html`<span class="nav-shown-word"> ${tn("filterShown")}</span>` : ""}</p>
+          <button type="button" class=${`chip-btn nav-facet-reset${f.status.length || f.cli.length ? "" : " is-idle"}`} onClick=${() => setNavFilter({ status: [], cli: [] })}>${tn("filterFacetsReset")}</button>
         </div>
       </div>
     </div>`}
