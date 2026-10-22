@@ -645,8 +645,8 @@ html.lb-open .scroller { overflow: hidden; }
 .p-chat > .panel-head { --bg: var(--chrome-bg); --surface: var(--chrome-surface); --text: var(--chrome-text); --text-2: var(--chrome-text-2); --accent: var(--chrome-accent); background: var(--bg); color: var(--text); }
 .p-chat.th { background: var(--bg); color: var(--text); }
 .p-chat.th .msg.user .body { border-radius: var(--bubble-radius, var(--r-xl)); }
-.p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea { font-family: system-ui, -apple-system, "Segoe UI", sans-serif, var(--font-emoji); }
-.p-chat.th-font-mono .thread, .p-chat.th-font-mono .composer textarea { font-family: var(--font-mono); }
+.p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea, .p-chat.th-font-system .composer-ph { font-family: system-ui, -apple-system, "Segoe UI", sans-serif, var(--font-emoji); }
+.p-chat.th-font-mono .thread, .p-chat.th-font-mono .composer textarea, .p-chat.th-font-mono .composer-ph { font-family: var(--font-mono); }
 .p-chat.th-bubble-thin .msg.user .body { box-shadow: inset 0 0 0 1px var(--border); }
 .p-chat.th-bubble-accent .msg.user .body { box-shadow: inset 0 0 0 1px var(--accent); }
 .p-chat.th-agent-bubble .msg.agent .body { background: var(--agent-bubble); border-radius: var(--bubble-radius, var(--r-xl)); padding: 10px var(--s-4); }
@@ -780,6 +780,11 @@ img.amb-p { object-fit: contain; }
   font-size: var(--fs-md); line-height: var(--lh-md); resize: none; min-height: 24px; max-height: 240px; overflow-y: auto;
 }
 .composer textarea::placeholder { color: var(--text-3); }
+/* #2478: the placeholder, drawn over the empty box at its text's place: one line ending in "…" (a textarea's own is
+   clipped, never ellipsized). The same size and line as the box's text; it never takes a tap. */
+.composer-field { position: relative; flex: 1; min-width: 0; display: flex; }
+.composer-ph { position: absolute; left: var(--s-1); right: var(--s-1); top: 7px; pointer-events: none; color: var(--text-3);
+  font-size: var(--fs-md); line-height: var(--lh-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btn-send { width: 36px; padding: 0; }
 .btn-send .send-label { display: none; }
 /* A narrow phone: Stop reply beside Send leaves the message box no room — the label is for screen readers there. */

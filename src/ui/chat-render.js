@@ -509,9 +509,13 @@
   /** Whether the chat shows "working" and its Stop button for an instance in this execution state. */
   function isBusy(state) { return state === "working" || state === "stuck"; }
 
-  /** What a key in the composer does: Enter sends, Shift+Enter is a new line, nothing happens mid-IME-composition. */
-  function composerKey(ev) {
+  /**
+   * What a key in the composer does: Enter sends, Shift+Enter is a new line, nothing happens mid-IME-composition.
+   * #2478 (the user's request): on a touch screen (a coarse pointer) Return is a new line — the Send button sends.
+   */
+  function composerKey(ev, opts) {
     if (!ev || ev.key !== "Enter" || ev.isComposing || ev.keyCode === 229) return "none";
+    if (opts && opts.touch) return "newline";
     if (ev.shiftKey || ev.altKey || ev.ctrlKey || ev.metaKey) return "newline";
     return "send";
   }
