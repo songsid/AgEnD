@@ -89,8 +89,9 @@ describe("#1774 removal: an instance removed while its reply's files are copied"
     slowCopies(fm, hold.promise, "before");
     const done = fm.afterReplyRouted("gone", { text: "late reply", files: [agentFile("a.md")] });
     await removed(fm, "gone");
+    const registered = vi.spyOn(fm.webFiles, "registerServed");            // copying stops: nothing even made, then dropped
     hold.open(); await done;
-    expect([fm.webChatHistory.list("gone"), snapshots("gone")]).toEqual([[], []]);
+    expect([fm.webChatHistory.list("gone"), snapshots("gone"), registered.mock.calls.length]).toEqual([[], [], 0]);
   });
   it("removed after the copy, before it is shown: the copy is deleted and not served; no chat again", async () => {
     const fm = fleet();
