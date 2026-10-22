@@ -389,7 +389,7 @@ describe("chat /update shows success plus the cleanup lines", () => {
     const cmd = `sudo '/home/u/${"x".repeat(150)}/.nvm/versions/node/v22.23.3/bin/npm' uninstall -g @songsid/agend`;
     const withWarning = formatRestartProgressCompletion(
       "update", { ...base, warningText: "Old system install was not removed (sudo refused); remove it by hand.", warningCommand: cmd }, 0, 25_000);
-    expect(withWarning).toContain("✅ Update complete — v2.2.1 · 2 agents ready");
+    expect(withWarning).toContain("✅ Update complete — v2.2.1 · 2/2 agents ready");
     expect(withWarning).toContain("⚠️ Old system install was not removed");
     expect(withWarning).toContain(`\`$ ${cmd}\``);
     const plain = formatRestartProgressCompletion("update", base, 0, 25_000);

@@ -106,7 +106,7 @@ export function formatRestartProgressCompletion(
 ): string {
   const elapsed = formatElapsed(now - startedAt);
   const lines = mode === "update"
-    ? [t("update.progress.complete", summary.version, summary.running, updateElapsedSeconds(startedAt, now))]
+    ? [t("update.progress.complete", summary.version, summary.running, summary.total, updateElapsedSeconds(startedAt, now))]
     : mode === "reload"
       ? [t("restart.progress.complete_summary", summary.version, summary.running, summary.total, updateElapsedSeconds(startedAt, now))]
       : [`✅ Fleet ready — ${summary.running}/${summary.total} instances running (${elapsed}) · v${summary.version}`];

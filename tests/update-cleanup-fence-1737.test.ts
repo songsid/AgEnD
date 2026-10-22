@@ -78,7 +78,7 @@ describe("#1737: the real completion and startup clear — renders a landed outc
   Object.assign(fm,{tipsEnabled:()=>true,pickAvailableTip:()=>({id:"tip-x"}),formatTip:()=>"💡 Tip: try /status"});
   await completion(fm,adapter,pending);
   const terminal=edit.mock.calls.map(c=>String(c[2])).find(x=>x.includes("✅ Update complete"));
-  expect(terminal).toBe("✅ Update complete — v2.2.1 · 2 agents ready (0s)");
+  expect(terminal).toBe("✅ Update complete — v2.2.1 · 2/2 agents ready (0s)");
  });
  it("real completion fallback includes a landed warning",async()=>{
   const dir=scratch(),receipt=seed(dir);writeCleanupOutcome(dir,receipt,{warning:WARNING,cleanupCommand:COMMAND});

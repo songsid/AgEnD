@@ -25,9 +25,9 @@ describe("the copy from the approved proposal", () => {
   it("healthy completion: one line, EN and zh-TW", () => {
     const healthy = { running: 3, total: 3, version: "2.2.0", pausedNames: [] as string[] };
     setLocale("en");
-    expect(formatRestartProgressCompletion("update", healthy, 0, 42_000)).toBe("✅ Update complete — v2.2.0 · 3 agents ready (42s)");
+    expect(formatRestartProgressCompletion("update", healthy, 0, 42_000)).toBe("✅ Update complete — v2.2.0 · 3/3 agents ready (42s)");
     setLocale("zh-TW");
-    expect(formatRestartProgressCompletion("update", healthy, 0, 42_000)).toBe("✅ 更新完成 — v2.2.0 · 3 個 Agent 已就緒 (42s)");
+    expect(formatRestartProgressCompletion("update", healthy, 0, 42_000)).toBe("✅ 更新完成 — v2.2.0 · 3/3 個 Agent 已就緒 (42s)");
   });
 
   it("every warning line is still there", () => {
@@ -37,7 +37,7 @@ describe("the copy from the approved proposal", () => {
       warningText: "Old copy left behind", warningCommand: "sudo rm x",
     }, 0, 1_000);
     expect(text.split("\n")).toEqual([
-      "✅ Update complete — v2.2.0 · 1 agents ready (1s)",
+      "✅ Update complete — v2.2.0 · 1/4 agents ready (1s)",
       "⏸ Paused (1): p",
       "⚠️ Failed (1): f",
       "⚠️ Background work was running and was ended: b",
