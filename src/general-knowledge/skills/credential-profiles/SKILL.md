@@ -107,16 +107,26 @@ hand-edit `fleet.yaml`.
 
 **What to do / what not to do, per backend**
 
-**Codex — copy nothing.** A profile swaps only `auth.json`. The instance's
-private `CODEX_HOME` (`~/.agend/cx/<hash>/`) links `auth.json` to the profile's
-copy; the conversation stores (`sessions/`, `archived_sessions/`,
-`state_5.sqlite` and the other thread/state DBs) stay shared and carry no
-account. Procedure: (1) the target profile has a Codex login (`auth.json` with a
-token) — if the switch is refused, relay that refusal's login command; (2) set
-the profile through tooling, as above; (3) restart. The agent resumes the same
-thread (`conversation_carried_over: true`). **Never** copy `state_5.sqlite`, the
-`cx/` hash dirs or rollout JSONL by hand. That can fork or corrupt the thread
-index.
+**Codex — copy nothing.** A profile swaps only `auth.json`. Changing the profile
+does not relocate or copy conversation stores (`sessions/`, `archived_sessions/`,
+`state_5.sqlite` and the other thread/state DBs). They stay in the instance's
+private `CODEX_HOME` (`~/.agend/cx/<hash>/`); that home links `auth.json` to the
+profile's copy. An instance that already has its own `state_5.sqlite` keeps using
+that file — it is not always the shared one.
+
+Procedure: (1) the target profile has a Codex login (`auth.json` with a token) —
+if the switch is refused, relay that refusal's login command; (2) set the profile
+through tooling, as above. A running instance is restarted for you
+(`restarted: true`); do not restart it again. A paused or stopped one applies
+the switch at its next start (`restarted: false`).
+
+The switch keeps the existing home and history and uses the normal resume path.
+Relay `conversation_carried_over` and `conversation_note` from the actual
+response. For Codex that flag is true because AgEnD did not force a fresh start —
+it is not a check that the new process opened the same thread. If there is no
+suitable session (or the DB is unreadable), Codex starts fresh as it would on any
+other launch. **Never** copy `state_5.sqlite`, the `cx/` hash dirs or rollout
+JSONL by hand. That can fork or corrupt the thread index.
 
 **Claude Code — copy nothing yourself.** AgEnD copies the transcript and its
 folder into the new profile and resumes it there with `--continue`. The
@@ -166,9 +176,10 @@ left untouched; the switch copies, never moves.
 `carry_failed` from the actual response.** Do not predict the outcome.
 
 **For codex** the reply says `conversation_carried_over: true` and carries a
-`conversation_note`. Relay both. The accurate sentence is "codex keeps its
-history outside the login, so both subscriptions share it, and the agent
-resumes the same thread". There is nothing to copy.
+`conversation_note`. Relay both as they are. The accurate sentence is "codex
+keeps its history outside the login, so both subscriptions still see it". That
+flag is not a check that the new process opened the same thread. There is
+nothing to copy.
 
 `backend_options` merges per backend, so setting a kiro option leaves a codex
 option on the same instance alone.
@@ -244,7 +255,8 @@ and log it in, so report it as such rather than as a missing subscription.
   conversation automatically; relay `conversation_carried_over` and, if it is
   false, the `carry_failed` reason and the cold-cache note from
   `conversation_note` when carry succeeds. For Codex, copy nothing: the history
-  is already shared and the agent resumes the same thread.
+  stays where it is and the normal resume path runs. Relay the actual
+  `conversation_carried_over` and `conversation_note`.
 
 ## Do not
 
@@ -253,6 +265,8 @@ and log it in, so report it as such rather than as a missing subscription.
 - Do not set `credential_profile` for a backend other than `kiro-cli`, `codex`
   or `claude-code`; it is ignored, and the config validator warns about it.
 - Do not copy a Codex agent's `state_5.sqlite`, `cx/` hash dirs or rollout JSONL
-  by hand. Set the profile through tooling and restart; the thread stays.
+  by hand. Set the profile through tooling; a running instance is restarted for
+  you. Do not tell the user the agent has resumed the same thread just because
+  `conversation_carried_over` is true — relay the actual reply.
 - Do not use a profile name with slashes or spaces — it becomes a directory
   name and is rejected.

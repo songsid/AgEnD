@@ -457,8 +457,12 @@ describe("the General skill", () => {
     expect(move).toContain("state_5.sqlite");
     expect(move).toMatch(/cx\//);
     expect(move).toMatch(/JSONL/);
-    expect(move).toContain("conversation_carried_over: true");
-    expect(move).toMatch(/Never[\s\S]{0,40}copy `state_5\.sqlite`/);
+    expect(move).toMatch(/does not relocate or copy/);
+    expect(move).toMatch(/already has its own `state_5\.sqlite`/);
+    expect(move).toMatch(/do not restart it again/);
+    expect(move).toMatch(/not a check that the new process opened the same thread/);
+    expect(move).not.toMatch(/resumes the same thread/);
+    expect(move).toMatch(/Never[\s\S]{0,80}copy `state_5\.sqlite`/);
     expect(move).not.toMatch(/has not been tested yet/);
     expect(move).toMatch(/Claude Code — copy nothing yourself/);
     expect(move).toMatch(/Kiro — copy nothing/);
