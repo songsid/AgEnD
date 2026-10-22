@@ -1064,21 +1064,7 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
    down, never the count; the count is as tall as a header, so the row does not grow. */
 .nav-facets { display: flex; align-items: flex-start; gap: var(--s-2); padding: var(--s-2) var(--s-1) 0; }
 .nav-facet-groups { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s-1) var(--s-2); flex: 1 1 auto; min-width: 0; }
-/* #2401: the count, "shown" under it and Clear under that. The word's width is held by ::before (its text from
-   data-reserve) and idle Clear's by the button itself, both at no height, unseen and out of reach (visibility): the column —
-   and the headers' box beside it — is as wide with a facet set as without. */
-.nav-facet-end { flex: none; margin: 0 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; }
-.nav-facets .nav-shown { margin: 0; padding: 2px 0; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
-.nav-shown-word { display: block; }
-.nav-facet-end::before { content: attr(data-reserve); display: block; height: 0; overflow: hidden; visibility: hidden; font-size: var(--fs-xs); white-space: nowrap; }
-.nav-facet-end .is-idle { visibility: hidden; height: 0; min-height: 0; margin: 0; padding-top: 0; padding-bottom: 0; border-top-width: 0; border-bottom-width: 0; overflow: hidden; }
-/* No open list beside it (.compact): one cell of one line, as wide as the count or Clear; a facet set, Clear in the count's
-   place (the count transparent, still read; the word for a screen reader only, so its width is not held here). */
-.nav-facets.compact .nav-facet-end { display: grid; justify-items: end; align-items: center; }
-.nav-facets.compact .nav-facet-end > * { grid-area: 1 / 1; margin: 0; }
-.nav-facets.compact .nav-facet-end::before { display: none; }
-.nav-facets.compact .nav-shown.is-set { opacity: 0; pointer-events: none; }
-.nav-facets.compact .nav-shown-word { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.nav-facets .nav-shown { flex: none; margin: 0 0 0 auto; padding: 2px 0; white-space: nowrap; }
 .nav-facet { font-size: var(--fs-xs); color: var(--text-2); min-width: 0; max-width: 100%; }
 /* #1700: a facet group's header — the whole row toggles its list; folded with a filter set, a short summary. */
 .nav-facet-head { display: inline-flex; align-items: center; gap: var(--s-1); max-width: 100%; padding: 2px var(--s-2); border: 0; border-radius: var(--r-sm);
@@ -1087,15 +1073,10 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .nav-facet-head:focus-visible { outline: 2px solid var(--accent); }
 .nav-facet-head .caret { color: var(--text-3); flex: none; }
 .nav-facet-sum { min-width: 0; max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
-/* #2401: the summary takes only the room its line has left — never counted when the headers wrap (contain: inline-size,
-   its gap taken back), so a facet set never sends a header to a line of its own; the header holding it grows into the rest. */
-.nav-facet.has-sum { flex-grow: 1; }
-.nav-facet.has-sum .nav-facet-head { width: 100%; }
-.nav-facet-sum { contain: inline-size; flex: 1 1 0; margin-left: calc(-1 * var(--s-1)); padding-left: var(--s-1); }
 .nav-facet-n { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--on-accent, #fff); text-align: center; font-variant-numeric: tabular-nums; }
 .nav-facet-list { display: flex; flex-direction: column; gap: 2px; padding: var(--s-1) var(--s-2); }
 .nav-chip { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; color: var(--text); }
-.nav-facet-reset { font-size: var(--fs-xs); flex: none; white-space: nowrap; margin-top: 2px; padding: 2px var(--s-1); }
+.nav-facet-reset { font-size: var(--fs-xs); }
 
 /* One gap on every page (View's, #1448): the header's controls are the same size on every tab. */
 .panel-actions .btn { gap: var(--s-1); }
