@@ -1133,41 +1133,38 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .u-rail { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border); background: var(--bg); }
 .u-rail-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-3) var(--s-3) var(--s-2) var(--s-4); }
 .u-rail-head h2 { margin: 0; flex: 1; min-width: 0; font-size: var(--fs-md); font-weight: var(--fw-semibold); }
-/* The usage view's compact mode (usage-dialog.js CompactGroup / CompactRow): the logins grouped by provider — its name
-   once, the columns' windows — then one line per login on one grid (nine logins fit the rail without scrolling). The
-   profile and plan give way (ellipsis; the plan first: the profile names the login); the provider's name, in the
-   group's head, keeps the line (#2415). */
+/* The usage view's compact mode (usage-dialog.js CompactGroup / CompactRow), the user's pick (2026-10-22): the logins
+   grouped by provider (its name once, in small capitals), each in three short lines — its name and plan with the
+   soonest reset on the right, then each window as a labelled full-width bar and the percent. */
 .dlg-tools { display: inline-flex; align-items: center; flex: none; }
 .u-compact-toggle { flex: none; }
-.u-cgroup { display: flex; flex-direction: column; gap: 1px; }
-.u-crow { display: grid; grid-template-columns: minmax(0, 1fr) 48px 48px 44px 12px; column-gap: 5px; align-items: center; }
-/* The head: the provider's name never gives way (#2415); the columns' windows sit over the lines' columns (from the
-   right: the mark's 12 px and the reset's 44 px, with their gaps) and are what is cut when a long name needs the room. */
-.u-cg-head { display: flex; align-items: baseline; padding: 0 var(--s-3); font-size: var(--fs-xs); color: var(--text-3); }
-.u-cg-name { display: flex; align-items: baseline; gap: 4px; flex: 0 0 auto; max-width: 100%; min-width: 0; }
-.u-cg-cols { flex: 1 1 0; min-width: 0; display: flex; justify-content: flex-end; gap: 5px; overflow: hidden; margin-right: calc(5px + 44px + 5px + 12px); }
-.u-cg-name strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); color: var(--text); }
+/* flex: none — a group never shrinks to fit the rail (it would clip its accounts): the rail scrolls instead. */
+.u-cgroup { flex: none; display: flex; flex-direction: column; border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
+.u-cg-head { display: flex; align-items: baseline; gap: 4px; padding: 7px var(--s-3) 3px; font-size: 11px; font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
+.u-cg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .u-cg-count { flex: none; }
-.u-cg-col { flex: none; width: 48px; text-align: right; white-space: nowrap; }
-.u-crow { width: 100%; min-width: 0; min-height: 30px; padding: 3px var(--s-3); border: 0; border-radius: var(--r-sm);
-  background: var(--surface); color: inherit; font: inherit; font-size: var(--fs-xs); text-align: left; cursor: pointer; font-variant-numeric: tabular-nums; }
+.u-crow { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 0; padding: 6px var(--s-3); border: 0; border-top: 1px solid var(--border);
+  background: transparent; color: inherit; font: inherit; line-height: 1.3; text-align: left; cursor: pointer; }
+.u-cg-head + .u-crow { border-top: 0; }
 .u-crow:hover { background: var(--surface-2); }
-.u-crow:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--focus); }
-.u-crow-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.u-crow-profile { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: var(--fs-sm); }
-.u-crow .u-plan { flex: 0 100 auto; min-width: 22px; max-width: max-content; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.u-crow-mark { display: inline-flex; justify-content: flex-end; color: var(--text-3); }
-.u-crow-mark.is-error { color: var(--danger); }
-.u-cm { display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; min-width: 0; }
-.u-cm-none { color: var(--text-3); }
-.u-cm-bar { width: 18px; height: 5px; flex: none; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
-.u-cm-fill { display: block; height: 100%; width: 0; min-width: 2px; background: var(--accent); }
+.u-crow:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus); }
+/* The name never gives way to the plan (#2415); the reset keeps its room on the right. */
+.u-crow-head { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-sm); }
+.u-crow-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-semibold); color: var(--text); }
+.u-crow .u-plan { flex: 0 100 auto; min-width: 22px; max-width: max-content; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding-block: 0; line-height: 16px; font-size: 10.5px; }
+.u-crow-reset { margin-left: auto; flex: none; padding-left: 6px; font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.u-cm { display: grid; grid-template-columns: 2.6em minmax(0, 1fr) 3.4em; align-items: center; gap: 7px; min-width: 0; }
+.u-cm-tag { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; overflow: hidden; }
+.u-cm-bar { height: 6px; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
+.u-cm-fill { display: block; height: 100%; width: 0; min-width: 2px; border-radius: var(--r-full); background: var(--accent); }
 .u-cm-fill.warn { background: var(--warn); } .u-cm-fill.crit { background: var(--danger); }
-.u-cm-pct { min-width: 3ch; text-align: right; font-weight: var(--fw-semibold); color: var(--text); }
+.u-cm-pct { text-align: right; font-size: 13px; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; color: var(--text); }
 .u-cm-pct.warn { color: var(--warn); } .u-cm-pct.crit { color: var(--danger); }
-.u-crow.is-stale .u-cm-pct { color: var(--text-3); } .u-crow.is-stale .u-cm-fill { background: var(--text-3); }
-.u-crow-reset { text-align: right; color: var(--text-3); white-space: nowrap; overflow: hidden; }
-.u-crow-note { grid-column: 2 / 5; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); text-align: right; }
+.u-crow-note { font-size: var(--fs-xs); color: var(--text-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-crow-note.is-alert::before { content: "●"; margin-right: 5px; color: var(--danger); }
+.u-crow.is-stale .u-crow-note.is-alert::before { color: var(--warn); }
 @media (prefers-reduced-motion: no-preference) { .u-crow { transition: background-color 0.15s var(--ease); } }
 .u-rail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--s-3) var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
 @media (max-width: 1199px) { .u-rail { display: none; } }

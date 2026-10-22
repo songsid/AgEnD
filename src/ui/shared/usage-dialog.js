@@ -198,15 +198,15 @@ export function compactGroups(providers) {
   return [...groups.values()];
 }
 const level = (pct) => (pct >= 90 ? "crit" : pct >= 70 ? "warn" : "");
-/** One column: a small bar and the percent, coloured as the full card (high / near limit); a dash when there is none. */
-function CompactCell({ m }) {
+/** One window on its own line: its few characters ("5h"), a full-width bar and the percent, coloured as the full card. */
+function CompactMeter({ m }) {
   const bar = useRef(null);
-  const pct = m ? Math.min(100, Math.max(0, m.used ?? 0)) : 0, cls = level(pct);
+  const pct = Math.min(100, Math.max(0, m.used ?? 0)), cls = level(pct);
   useLayoutEffect(() => { if (bar.current) bar.current.style.width = `${pct}%`; }, [pct]);   // CSSOM (#1300)
-  if (!m) return html`<span class="u-cm u-cm-none" aria-hidden="true">—</span>`;
   const word = cls === "crit" ? tn("usageNear") : cls === "warn" ? tn("usageHigh") : "";
-  return html`<span class="u-cm" title=${`${usageText(m.label, m.labelI18n)} (${windowTag(m)}): ${pct.toFixed(0)}%${word ? ` (${word})` : ""}`}>
-    <span class="u-cm-bar"><span ref=${bar} class=${`u-cm-fill ${cls}`}></span></span><span class=${`u-cm-pct ${cls}`}>${pct.toFixed(0)}%</span></span>`;
+  return html`<span class="u-cm" title=${`${usageText(m.label, m.labelI18n)}: ${pct.toFixed(0)}%${word ? ` (${word})` : ""}`}>
+    <span class="u-cm-tag">${windowTag(m)}</span><span class="u-cm-bar"><span ref=${bar} class=${`u-cm-fill ${cls}`}></span></span>
+    <span class=${`u-cm-pct ${cls}`}>${pct.toFixed(0)}%</span></span>`;
 }
 /** What a login says instead of numbers (not logged in, an error), or "" when it has numbers. */
 function rowNote(p) {
@@ -215,33 +215,31 @@ function rowNote(p) {
   return "";
 }
 /**
- * A login on one line, under its provider's name: its profile and plan; its short and long windows' percent with a
- * small bar, in the group's columns; the soonest reset; a mark when the numbers are not current or it failed, what is
- * wrong as its tooltip. Pressed, it opens its full card.
+ * A login in three short lines, under its provider's name (the user's pick, 2026-10-22): its name and plan with the
+ * soonest reset on the right; then its short window and its long one, each a labelled full-width bar and the percent.
+ * Numbers not current, a failed read or no login: one muted line in place of the bars, what is wrong as its tooltip.
+ * Pressed, it opens its full card.
  */
 export function CompactRow({ p, onExpand }) {
   const title = providerTitle(p), failed = p.status === "error" || p.status === "no-credentials";
-  const slots = failed ? { short: null, long: null } : compactSlots(p), metrics = [slots.short, slots.long].filter(Boolean);
+  const metrics = failed || p.stale ? [] : compactMetrics(p);
   const note = rowNote(p), stale = p.stale ? staleNote(p) : null;
-  const mark = stale ? [stale.mark, stale.detail].filter(Boolean).join(" — ") : note && p.status === "error" && !p.transient ? note : "";
+  const say = stale ? stale.mark : note || tn("usage.no_data");
+  const detail = stale ? [stale.mark, stale.detail].filter(Boolean).join(" — ") : say;
   const reset = soonestReset(metrics);
+  const name = title.profile || title.base;
   return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}`} aria-expanded="false" title=${`${p.name} — ${tn("usageExpand")}`} onClick=${onExpand}>
-    <span class="u-crow-head">${title.profile ? html`<span class="u-crow-profile">${title.profile}</span>` : null}
+    <span class="u-crow-head"><span class="u-crow-name">${name}</span>
       ${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
-      ${!title.profile && !p.plan ? html`<span class="u-crow-profile">${title.base}</span>` : null}</span>
-    ${metrics.length ? html`<${CompactCell} m=${slots.short} /><${CompactCell} m=${slots.long} />
-        <span class="u-crow-reset" title=${reset ? reset.full : null}>${reset ? html`${reset.short}<span class="sr-only"> (${reset.full})</span>` : null}</span>`
-      : html`<span class="u-crow-note">${note || (stale ? stale.mark : tn("usage.no_data"))}</span>`}
-    <span class=${`u-crow-mark${mark && !stale ? " is-error" : ""}`}>${mark ? html`<span title=${mark} aria-label=${`${tn("usageStaleMark")}: ${mark}`}><${Icon} name=${stale ? "clock" : "alert"} size=${12} /></span>` : null}</span>
+      ${reset ? html`<span class="u-crow-reset" title=${reset.full}>${reset.short}<span class="sr-only"> (${reset.full})</span></span>` : null}</span>
+    ${metrics.length ? metrics.map((m, j) => html`<${CompactMeter} key=${j} m=${m} />`)
+      : html`<span class=${`u-crow-note${(stale || (p.status === "error" && !p.transient)) ? " is-alert" : ""}`} title=${detail}>${say}</span>`}
   </button>`;
 }
-/** A provider's logins: its name once (×N), the columns' windows, then a line each (or the full card of one opened). */
+/** A provider's logins: its name once (×N), in small capitals, then each login (or the full card of one opened). */
 export function CompactGroup({ group, line }) {
-  const first = (slot) => group.items.map(({ p }) => compactSlots(p)[slot]).find(Boolean);
-  const [short, long] = [first("short"), first("long")];
   return html`<section class="u-cgroup">
-    <div class="u-cg-head"><span class="u-cg-name"><strong title=${group.base}>${group.base}</strong>${group.items.length > 1 ? html`<span class="u-cg-count">×${group.items.length}</span>` : null}</span>
-      <span class="u-cg-cols" aria-hidden="true"><span class="u-cg-col">${short ? windowTag(short) : ""}</span><span class="u-cg-col">${long ? windowTag(long) : ""}</span></span></div>
+    <div class="u-cg-head"><span class="u-cg-name" title=${group.base}>${group.base}</span>${group.items.length > 1 ? html`<span class="u-cg-count">×${group.items.length}</span>` : null}</div>
     ${group.items.map(line)}
   </section>`;
 }

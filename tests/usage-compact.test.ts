@@ -1,10 +1,11 @@
 /**
- * The AI usage view's compact mode (user request, Discord 1562814671289983058; then nine logins): a header switch beside
- * the title (the dialog's and the rail's) turns the full cards (230–290 px each) into the logins grouped by provider —
- * its name once (×N) and the columns' windows (5h, 7d) — and one line per login: profile and plan; its short and long
- * windows' percent with a small bar, coloured as the full card (high / near limit); the soonest reset; a mark when the
- * numbers are not current or it failed. Coupons, credits and notes stay in the full card: a line pressed opens it in
- * place, its − folds it back. Groups and lines keep the person's ↑↓ order. Remembered as a synced preference
+ * The AI usage view's compact mode (user request, Discord 1562814671289983058; then nine logins; then the user's pick
+ * of layout A, 2026-10-22): a header switch beside the title (the dialog's and the rail's) turns the full cards
+ * (230–290 px each) into the logins grouped by provider — its name once (×N) — each account in three short lines: its
+ * name and plan with the soonest reset on the right, then its short and long window, each a labelled full-width bar
+ * and the percent, coloured as the full card (high / near limit). Numbers not current, a failed read or no login: one
+ * muted line in place of the bars. Coupons, credits and notes stay in the full card: an account pressed opens it in
+ * place, its − folds it back. Groups and accounts keep the person's ↑↓ order. Remembered as a synced preference
  * ("usage.compact"). /api/ai-usage is a scripted fake: no server, no vendor call.
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -114,33 +115,33 @@ describe("the switch, the groups and a line opened", () => {
     expect(posts.at(-1)).toEqual({ set: { "usage.compact": null } });        // the full cards are the default: cleared
   });
 
-  it("a group: the provider once (×N) and its columns' windows; a line: profile, short plan, both columns coloured as the full card, the soonest reset", async () => {
+  it("a group: the provider once (×N); an account: name, short plan and the soonest reset, then a labelled bar per window coloured as the full card", async () => {
     await mount();
     toggle().click(); await settle(2);
     const [cl, cx] = groups();
-    expect([text(cl.querySelector(".u-cg-name")), cl.querySelectorAll(".u-cg-col").map(text)]).toEqual(["Claude×4", ["5h", "7d"]]);
-    expect([text(cx.querySelector(".u-cg-name")), cx.querySelectorAll(".u-cg-col").map(text)]).toEqual(["Codex×2", ["5h", "7d"]]);   // the 5h of its second login
+    expect([text(cl.querySelector(".u-cg-head")), text(cx.querySelector(".u-cg-head"))]).toEqual(["Claude×4", "Codex×2"]);
     const lines = cl.querySelectorAll(".u-crow");
+    expect(lines.map((r: any) => text(r.querySelector(".u-crow-name")))).toEqual(["Claude", "work", "research", "ops"]);   // no profile: the provider
     expect(lines.map((r: any) => text(r.querySelector(".u-crow-head [aria-hidden]")))).toEqual(["Max ×20", "Team ×6.25", "Max ×5", "Pro"]);
-    expect(lines.map((r: any) => text(r.querySelector(".u-crow-profile")))).toEqual(["", "work", "research", "ops"]);
-    expect(lines.map(cells)).toEqual([["42%", "75%~"], ["93%!", "20%"], ["5%", "30%"], ["71%~", "91%!"]]);
+    const meters = (r: any) => r.querySelectorAll(".u-cm").map((m: any) => `${text(m.querySelector(".u-cm-tag"))} ${text(m.querySelector(".u-cm-pct"))}${tone(m)}`);
+    expect(lines.map(meters)).toEqual([["5h 42%", "7d 75%~"], ["5h 93%!", "7d 20%"], ["5h 5%", "7d 30%"], ["5h 71%~", "7d 91%!"]]);
     expect(lines[0].querySelector(".u-crow-reset").getAttribute("title")).toMatch(/^resets in (?:2h 5\d|3h 0)m$/);
     expect(text(lines[0].querySelector(".u-crow-reset"))).toMatch(/^↻ [23]h \(resets in (?:2h 5\d|3h 0)m\)$/);   // and the words for a screen reader
     expect(text(lines[0])).not.toMatch(/coupons|Credits/);
-    const codex = cx.querySelectorAll(".u-crow")[0];
-    expect(cells(codex)).toEqual(["—", "10%"]);                                                     // a week only: a dash under 5h
+    expect(meters(cx.querySelectorAll(".u-crow")[0])).toEqual(["7d 10%"]);                         // a week only: one bar
   });
 
-  it("not current, failed, not logged in: a mark (what is wrong is its tooltip), and a word where numbers would be", async () => {
+  it("not current, failed, not logged in: one muted line in place of the bars (what is wrong is its tooltip)", async () => {
     await mount();
     toggle().click(); await settle(2);
     const [, , kiro, grok, muse] = groups().map((g: any) => g.querySelector(".u-crow"));
     expect(kiro.getAttribute("class")).toBe("u-crow is-stale");
-    expect(kiro.querySelector(".u-crow-mark [title]").getAttribute("title")).toMatch(/^expired · cached at \d\d:\d\d — Sign in again: kiro-cli login$/);
-    expect(cells(kiro)).toEqual(["—", "55%"]);
-    expect([grok.querySelector(".u-crow-mark").getAttribute("class"), grok.querySelector(".u-crow-mark [title]").getAttribute("title"), text(grok.querySelector(".u-crow-note"))])
-      .toEqual(["u-crow-mark is-error", "HTTP 500 from the vendor", "HTTP 500 from the vendor"]);
-    expect([muse.querySelector(".u-crow-mark [title]"), text(muse.querySelector(".u-crow-note")), text(muse.querySelector(".u-crow-profile"))]).toEqual([null, "not logged in", "Muse"]);
+    expect([kiro.querySelectorAll(".u-cm").length, kiro.querySelector(".u-crow-note").getAttribute("class")]).toEqual([0, "u-crow-note is-alert"]);
+    expect(text(kiro.querySelector(".u-crow-note"))).toMatch(/^expired · cached at \d\d:\d\d$/);
+    expect(kiro.querySelector(".u-crow-note").getAttribute("title")).toMatch(/^expired · cached at \d\d:\d\d — Sign in again: kiro-cli login$/);
+    expect([text(grok.querySelector(".u-crow-note")), grok.querySelector(".u-crow-note").getAttribute("class")]).toEqual(["HTTP 500 from the vendor", "u-crow-note is-alert"]);
+    expect([text(muse.querySelector(".u-crow-note")), muse.querySelector(".u-crow-note").getAttribute("class"), text(muse.querySelector(".u-crow-name"))])
+      .toEqual(["not logged in", "u-crow-note", "Muse"]);
   });
 
   it("a line pressed opens its full card in place, in its group (coupons and all); its − folds it back; the switch closes them all", async () => {
@@ -155,11 +156,11 @@ describe("the switch, the groups and a line opened", () => {
     expect([cards().length, rows().length]).toEqual([0, 9]);                                      // a new compact view: all lines
   });
 
-  it("in zh-TW: the switch's words and the columns'", async () => {
+  it("in zh-TW: the switch's words and the windows'", async () => {
     await mount("zh-TW");
     expect(text(toggle())).toBe("精簡");
     toggle().click(); await settle(2);
-    expect([text(toggle()), groups()[0].querySelectorAll(".u-cg-col").map(text)]).toEqual(["完整", ["5小時", "7天"]]);
-    expect(groups()[0].querySelectorAll(".u-crow")[0].querySelectorAll(".u-cm")[1].getAttribute("title")).toBe("每週 (7天): 75% (偏高)");
+    expect([text(toggle()), groups()[0].querySelectorAll(".u-crow")[0].querySelectorAll(".u-cm-tag").map(text)]).toEqual(["完整", ["5小時", "7天"]]);
+    expect(groups()[0].querySelectorAll(".u-crow")[0].querySelectorAll(".u-cm")[1].getAttribute("title")).toBe("每週: 75% (偏高)");
   });
 });

@@ -5,8 +5,9 @@
 // near-limit levels, long plan names (#2412), one with last known numbers (expired), one failing, one not logged in.
 // Per case (desk light en, desk dark zh-TW, phone light zh-TW, phone dark en; reduced motion on the phone):
 // - full cards first (they overflow); the header's switch (beside the title) → the logins grouped by provider (its name
-//   once), one line each: all ten fit with no scrolling, each line at most 40 px; no provider name clipped; both
-//   windows' % coloured as the full card; the stale and error marks;
+//   once), each in three short lines (the user's pick: name, plan and reset; a labelled bar per window): each account
+//   at most 76 px; whether all ten fit without scrolling is reported; no name clipped; both windows' % coloured as the
+//   full card; a stale or failed account's one muted line;
 // - remembered: the host holds "usage.compact" for this person, and a reload shows the lines again;
 // - a line pressed opens its full card in place; its − folds it back; the switch goes back to the full cards;
 // - no console error, no CSP violation, no horizontal overflow; no real fleet name in any visible text.
@@ -83,13 +84,14 @@ const measure = (p: FreshPage, c: MatrixCase) => p.page.evaluate(`(() => {
     const cs = getComputedStyle(el), inner = el.getBoundingClientRect().width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     return range.getBoundingClientRect().width > inner + 0.01;
   };
-  const groups = [...root.querySelectorAll(".u-cgroup")].map((g) => ({ name: g.querySelector(".u-cg-name strong")?.textContent, clipped: clipped(g.querySelector(".u-cg-name strong")),
+  const groups = [...root.querySelectorAll(".u-cgroup")].map((g) => ({ name: g.querySelector(".u-cg-name")?.textContent, clipped: clipped(g.querySelector(".u-cg-name")),
     lines: g.querySelectorAll(".u-crow").length }));
   const rows = [...root.querySelectorAll(".u-crow")].map((r) => ({
-    group: r.closest(".u-cgroup")?.querySelector(".u-cg-name strong")?.textContent, profile: r.querySelector(".u-crow-profile")?.textContent ?? "",
-    profileW: Math.round(r.querySelector(".u-crow-profile")?.getBoundingClientRect().width ?? 0), profileClipped: clipped(r.querySelector(".u-crow-profile")),
-    pcts: [...r.querySelectorAll(".u-cm")].map((x) => x.textContent.replace(/\\s+/g, "") + (x.querySelector(".crit") ? "!" : x.querySelector(".warn") ? "~" : "")),
-    mark: r.querySelector(".u-crow-mark [title]")?.getAttribute("title") ?? null, h: Math.round(r.getBoundingClientRect().height),
+    group: r.closest(".u-cgroup")?.querySelector(".u-cg-name")?.textContent, profile: r.querySelector(".u-crow-name")?.textContent ?? "",
+    profileW: Math.round(r.querySelector(".u-crow-name")?.getBoundingClientRect().width ?? 0), profileClipped: clipped(r.querySelector(".u-crow-name")),
+    barW: Math.round(r.querySelector(".u-cm-bar")?.getBoundingClientRect().width ?? 0),
+    pcts: [...r.querySelectorAll(".u-cm-pct")].map((x) => x.textContent.replace(/\\s+/g, "") + (x.classList.contains("crit") ? "!" : x.classList.contains("warn") ? "~" : "")),
+    mark: r.querySelector(".u-crow-note.is-alert")?.getAttribute("title") ?? null, h: Math.round(r.getBoundingClientRect().height),
     out: Math.max(0, ...[...r.querySelectorAll("*")].map((el) => Math.round(el.getBoundingClientRect().right - r.getBoundingClientRect().right))),
   }));
   return { fits: s.scrollHeight <= s.clientHeight + 1, scrollH: s.scrollHeight, clientH: s.clientHeight, cards: root.querySelectorAll(".u-provider").length, rows, groups,
@@ -121,11 +123,11 @@ for (const c of CASES) {
   const compact = await measure(p, c);
   ck.oneLinePerLogin = compact.rows.length === LOGINS && compact.cards === 0;
   ck.grouped = compact.groups.map((g: any) => `${g.name}:${g.lines}`).join(",") === "Claude:4,Codex:3,Kiro:1,Grok:1,Meta Muse Code:1" && compact.groups.length === GROUPS;
-  ck.allFit = compact.fits;
-  ck.dense = compact.rows.every((r: any) => r.h <= 40);
+  ck.dense = compact.rows.every((r: any) => r.h <= 76);
+  ck.barsWide = compact.rows.filter((r: any) => r.pcts.length).every((r: any) => r.barW >= 150);   // the user: "too small to see"
   ck.namesWhole = compact.groups.every((g: any) => g.clipped === false);
   // A profile names its login: it keeps room to be read (whole, or at least 56 px of it before its ellipsis).
-  ck.profilesReadable = compact.rows.every((r: any) => !r.profile || r.profileClipped === false || r.profileW >= 56);
+  ck.profilesReadable = compact.rows.every((r: any) => !r.profile || r.profileClipped === false || r.profileW >= 120);
   ck.nothingOut = compact.rows.every((r: any) => r.out <= 0);
   const by = (profile: string) => compact.rows.find((r: any) => r.profile === profile);
   ck.colours = compact.rows[0]?.pcts.join(",") === "42%,75%~" && by("research-team")?.pcts.join(",") === "93%!,20%" && by("release-notes-and-changelog-drafting")?.pcts.join(",") === "71%~,91%!";
@@ -165,7 +167,7 @@ for (const c of CASES) {
   ck.demoNamesOnly = real.length === 0;
   ck.noErrors = p.errors.slice(navEnd).length === 0;
   ck.noCsp = (await csp(p.page)).length === 0;
-  record(name, ck, { full: { scrollH: full.scrollH, clientH: full.clientH }, compact: { scrollH: compact.scrollH, clientH: compact.clientH, heights: compact.rows.map((r: any) => r.h), profileW: compact.rows.map((r: any) => r.profileW) },
+  record(name, ck, { full: { scrollH: full.scrollH, clientH: full.clientH }, compact: { fits: compact.fits, scrollH: compact.scrollH, clientH: compact.clientH, heights: compact.rows.map((r: any) => r.h), nameW: compact.rows.map((r: any) => r.profileW), barW: compact.rows.map((r: any) => r.barW) },
     rows: compact.rows.map((r: any) => `${r.group}/${r.profile}: ${r.pcts.join(" ")}${r.mark ? " [mark]" : ""}`), errors: p.errors.slice(navEnd), real: real.slice(0, 5) });
   await p.ctx.close();
   // The next case starts from defaults: switching back to the full cards cleared the value (the default is not stored).
