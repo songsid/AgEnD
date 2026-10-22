@@ -100,7 +100,7 @@ function rig() {
   /** Sign in with `code`; the device cookie the response set ("name=value"), or undefined. */
   async function signIn(code: string, gateway?: string): Promise<{ status: number; device?: string; cookies: string[] }> {
     const r = await call("/auth/login", "POST", { body: { code }, gateway });
-    const set = r.cookies.find(c => /^(__Host-)?agend_device=/.test(c));
+    const set = r.cookies.find(c => /^(__Host-)?agend_device_[0-9a-f]{16}=/.test(c));
     return { status: r.status, device: set?.split(";")[0], cookies: r.cookies };
   }
 
@@ -138,7 +138,7 @@ async function signInAs(h: Rig, user = "admin"): Promise<Who> {
   const code = await h.dashboardCode("local", user);
   const r = await h.call("/auth/login", "POST", { body: { code } });
   expect(r.status).toBe(200);
-  const c = r.cookies.find((x: string) => /^(__Host-)?agend_session=/.test(x))!.split(";")[0]!;
+  const c = r.cookies.find((x: string) => /^(__Host-)?agend_session_[0-9a-f]{16}=/.test(x))!.split(";")[0]!;
   return { cookie: c, sessionId: c.split("=")[1]! };
 }
 
@@ -253,7 +253,7 @@ describe("a session signed in with a code DMed to an account is that account (re
     const h = rig1827();
     const issued = h.fm.issueDashboardLogin()!;
     const r = await h.call("/auth/login", "POST", { body: { code: issued.display } });
-    const c = r.cookies.find((x: string) => /agend_session=/.test(x))!.split(";")[0]!;
+    const c = r.cookies.find((x: string) => /agend_session_[0-9a-f]{16}=/.test(x))!.split(";")[0]!;
     const who = { cookie: c, sessionId: c.split("=")[1]! };
     expect((h.s.webSessions.byHash.values().next().value as any).owner).toBeUndefined();
     expect((await web(h, "/ui/profile", "GET", who)).json()).toEqual({ name: null, shown: "web-user", id: "web-user", bound: false });
@@ -515,7 +515,7 @@ describe("P2-2: every path that DMs a sign-in code to an account carries it (rec
     await flush();
     const sent = [...h.adapter.sendDirect.mock.calls.slice(before), ...h.adapter.sendText.mock.calls].map((c: any[]) => String(c[1])).find((t: string) => CODE.test(t))!;
     const r = await h.call("/auth/login", "POST", { body: { code: CODE.exec(sent)![0] } });
-    const c = r.cookies.find((x: string) => /agend_session=/.test(x))!.split(";")[0]!;
+    const c = r.cookies.find((x: string) => /agend_session_[0-9a-f]{16}=/.test(x))!.split(";")[0]!;
     expect((await web(h, "/ui/profile", "GET", { cookie: c, sessionId: c.split("=")[1]! })).json()).toEqual({ name: null, shown: "Alice", id: "admin", bound: true, platform_name: "Alice" });
   });
   it("Discord `/web` outside the owning General (its DM, or its ephemeral answer): recognised as that account, owning nothing", async () => {
@@ -524,10 +524,10 @@ describe("P2-2: every path that DMs a sign-in code to an account carries it (rec
     await h.s.sendLocalDashboard({ userId: "admin", username: "Dee", channelId: "elsewhere", respond: vi.fn(async (t: string) => { responses.push(t); return "r"; }) }, "owner");
     const sent = h.adapter.sendDirect.mock.calls.map((c: any[]) => String(c[1])).find((t: string) => CODE.test(t))!;
     const r = await h.call("/auth/login", "POST", { body: { code: CODE.exec(sent)![0] } });
-    const c = r.cookies.find((x: string) => /agend_session=/.test(x))!.split(";")[0]!;
+    const c = r.cookies.find((x: string) => /agend_session_[0-9a-f]{16}=/.test(x))!.split(";")[0]!;
     expect((await web(h, "/ui/profile", "GET", { cookie: c, sessionId: c.split("=")[1]! })).json()).toEqual({ name: null, shown: "Dee", id: "admin", bound: true, platform_name: "Dee" });
     // Recognition only: no returning device was remembered (that needs an owner), and no device cookie was set.
-    expect(r.cookies.some((x: string) => /agend_device=/.test(x))).toBe(false);
+    expect(r.cookies.some((x: string) => /(?:^|;)\s*(?:__Host-)?agend_device(?:_[0-9a-f]{16})?=/.test(x))).toBe(false);
   });
   it("a code re-sent to a returning device (#1570) keeps the name from the person's last sign-in", async () => {
     const h = rig1827();
@@ -536,7 +536,7 @@ describe("P2-2: every path that DMs a sign-in code to an account carries it (rec
     await h.call("/auth/request-code", "POST", { cookie: first.device });
     const dm = h.adapter.sendDirect.mock.calls.map((c: any[]) => String(c[1])).filter((t: string) => CODE.test(t)).at(-1)!;
     const r = await h.call("/auth/login", "POST", { body: { code: CODE.exec(dm)![0] } });
-    const c = r.cookies.find((x: string) => /agend_session=/.test(x))!.split(";")[0]!;
+    const c = r.cookies.find((x: string) => /agend_session_[0-9a-f]{16}=/.test(x))!.split(";")[0]!;
     expect((await web(h, "/ui/profile", "GET", { cookie: c, sessionId: c.split("=")[1]! })).json()).toMatchObject({ shown: "admin", id: "admin", bound: true });
   });
 });

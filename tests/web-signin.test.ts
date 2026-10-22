@@ -158,7 +158,7 @@ describe("POST /auth/login", () => {
     const { res, sessionId } = await signIn(h);
 
     const setCookie = String(res.headers["set-cookie"]);
-    expect(setCookie).toMatch(/^agend_session=[0-9a-f]{64};/);
+    expect(setCookie).toMatch(/^agend_session_[0-9a-f]{16}=[0-9a-f]{64};/);
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("SameSite=Strict");
     expect(setCookie).toContain("Path=/");
@@ -177,7 +177,7 @@ describe("POST /auth/login", () => {
     const issued = h.fm.issueDashboardLogin()!;
     const res = await login(h, issued.display, { "x-forwarded-proto": "https" });
     const setCookie = String(res.headers["set-cookie"]);
-    expect(setCookie).toMatch(/^__Host-agend_session=[0-9a-f]{64};/);
+    expect(setCookie).toMatch(/^__Host-agend_session_[0-9a-f]{16}=[0-9a-f]{64};/);
     expect(setCookie).toContain("Secure");
     expect(setCookie).toContain("Path=/");
     expect(setCookie).not.toMatch(/Domain=/i);
