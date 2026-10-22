@@ -161,6 +161,69 @@ describe("#1774 removal: an instance removed while its reply's files are copied"
     hold.open(); await done;
     expect([texts(fm, "stays"), snapshots("stays").length]).toEqual([["still mine"], 1]);
   });
+  it("Prism r2 (a): the old copy settles while the removal is still going (replacement registered) — it waits, then goes", async () => {
+    const fm = fleet();
+    fm.fleetConfig = { instances: { mid: { working_directory: "/x" } } };
+    const hold = gate();
+    slowCopies(fm, hold.promise, "before");
+    const old = fm.afterReplyRouted("mid", { text: "OLD INSTANCE REPLY", files: [agentFile("o.md")] });
+    const oldIdentity = fm.webChatIdentity("mid");                          // a file-less reply of the old one, sent now…
+    let fresh: Promise<void> | undefined, oldNoFiles: Promise<void> | undefined;
+    fm.lifecycle = { daemons: new Map(), isPaused: () => false, hasWorkLease: () => false, remove: async () => {
+      fm.fleetConfig.instances.mid = { working_directory: "/y" };          // the replacement
+      oldNoFiles = fm.afterReplyRouted("mid", { text: "OLD, NO FILES" }, undefined, null, false, undefined, oldIdentity);   // …landing mid-removal
+      fresh = fm.afterReplyRouted("mid", { text: "NEW INSTANCE REPLY" });
+      hold.open();                                                          // the old copy finishes now, removal not yet
+      await vi.waitFor(() => expect(snapshots("mid").length).toBe(1));
+      await new Promise((r) => setTimeout(r, 20));
+    } };
+    fm.statuslineWatcher = { unwatch() {} };
+    await fm.removeInstance("mid", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
+    await old; await fresh; await oldNoFiles;
+    expect([texts(fm, "mid"), snapshots("mid")]).toEqual([["NEW INSTANCE REPLY"], []]);
+  });
+  it("control — the removal fails after the old copy settled during it: the reply is still its own, shown", async () => {
+    const fm = fleet();
+    const hold = gate();
+    slowCopies(fm, hold.promise, "before");
+    const old = fm.afterReplyRouted("kept2", { text: "still mine", files: [agentFile("k.md")] });
+    fm.lifecycle = { daemons: new Map(), remove: async () => {
+      hold.open(); await vi.waitFor(() => expect(snapshots("kept2").length).toBe(1)); await new Promise((r) => setTimeout(r, 20));
+      throw new Error("lifecycle refused");
+    } };
+    await expect(fm.removeInstance("kept2", authorizeExplicitInstanceRemoval("dashboard-confirmed"))).rejects.toThrow("lifecycle refused");
+    await old;
+    expect([texts(fm, "kept2"), snapshots("kept2").length]).toEqual([["still mine"], 1]);
+  });
+  it("Prism r2 (b): a reply's sender is who sent it — an old daemon's slow platform send lands after its removal and a same-name replacement: not shown", async () => {
+    const fm = fleet();
+    const cfg = { id: "tg", type: "telegram", group_id: "G", access: { mode: "open", allowed_users: [] } };
+    fm.fleetConfig = { defaults: {}, channels: [cfg], instances: { pal: { working_directory: "/x", topic_id: "T" } } };
+    const held = gate();
+    let first = true;
+    const adapter = { id: "tg", type: "telegram", sendText: vi.fn(async (chatId: string, _t: string, opts: any) => {
+      if (first) { first = false; await held.promise; return { messageId: "old-1", chatId, threadId: opts?.threadId }; }
+      return { messageId: "new-1", chatId, threadId: opts?.threadId };
+    }) };
+    fm.adapter = adapter; fm.adapters.set("tg", adapter); fm.worlds.set("tg", { id: "tg", adapter, channelConfig: cfg, groupId: "G" });
+    fm.routing.rebuild(fm.fleetConfig);
+    const daemons = new Map<string, unknown>([["pal", { name: "old daemon" }]]);
+    fm.lifecycle = { daemons, isPaused: () => false, hasWorkLease: () => false, remove: async () => {
+      daemons.set("pal", { name: "new daemon" });                           // the replacement registers
+      fm.fleetConfig.instances.pal = { working_directory: "/y", topic_id: "T" };
+    } };
+    fm.statuslineWatcher = { unwatch() {} };
+    fm.instanceIpcClients.set("pal", { connected: true, send: () => true });
+    const reply = (text: string, requestId: number) => fm.handleOutboundFromInstance("pal", { type: "fleet_outbound", tool: "reply", args: { chat_id: "G", text }, requestId, adapterId: "tg" });
+    const old = reply("OLD PLATFORM REPLY", 1);                             // its platform send is held
+    await vi.waitFor(() => expect(adapter.sendText).toHaveBeenCalledTimes(1));
+    await fm.removeInstance("pal", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
+    await reply("NEW INSTANCE REPLY", 2);
+    await vi.waitFor(() => expect(texts(fm, "pal")).toContain("NEW INSTANCE REPLY"));
+    held.open(); await old;
+    await new Promise((r) => setTimeout(r, 20));
+    expect(texts(fm, "pal")).toEqual(["NEW INSTANCE REPLY"]);
+  });
   it("control — not removed: the same slow reply is shown with its file", async () => {
     const fm = fleet();
     const hold = gate();
