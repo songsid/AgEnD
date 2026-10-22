@@ -1,10 +1,10 @@
-// #1939 S2b/S2c from defaults (fleet decision a78ebdc5): "Authorize this browser" and Settings → Web → Web authority, each
+// #1939 S2b/S2c from defaults (fleet decision a78ebdc5): "Authorize this browser" and Settings → Access & security → Web authority, each
 // case a fresh profile with nothing seeded, signed in through the visible /signin as its own synthetic Discord account,
 // driven only through visible UI. The account's DM is a stub adapter (what is outside the product): the card it receives
 // is recorded, drawn on a neutral page and shot, and its buttons are tapped through the product's own callback dispatch.
 // The card's buttons are the only step outside the page.
 // - confirm (desk light, loopback): Not verified → Authorize → the card (this computer) → someone else's tap is refused →
-//   Confirm → Verified, in the composer line and the session menu; Settings → Web from defaults (on, not only-this-
+//   Confirm → Verified, in the composer line and the session menu; Settings → Access & security from defaults (on, not only-this-
 //   computer, default hours) lists the session; Revoke empties it and the line reads Not verified again; then Not me
 //   after Confirm signs the browser out (the next page is the sign-in).
 // - not-me (phone dark zh-TW, LAN origin, reduced motion): the card says "on your network"; Not me before Confirm signs
@@ -108,8 +108,8 @@ async function openChat(p: FreshPage): Promise<void> {
 async function openSettingsWeb(p: FreshPage): Promise<void> {
   await clickVisible(p.page, 'a[href="/settings"]');
   await p.page.waitForURL("**/settings", { timeout: 10000 });
-  await clickVisible(p.page, 'a[href="/settings/web"]');
-  await p.page.waitForURL("**/settings/web", { timeout: 10000 });
+  await clickVisible(p.page, 'a[href="/settings/access"]');   // #2347: Web authority is in Access & security
+  await p.page.waitForURL("**/settings/access", { timeout: 10000 });
 }
 const chip = (p: FreshPage, scope = "") => p.page.locator(`${scope} .webauth-chip`.trim()).first();
 async function chipState(p: FreshPage, state: string, timeout = 10000, scope = ""): Promise<string> {
@@ -363,9 +363,9 @@ if (only("switch")) {
   const off = await chipState(p, "none");
   c.lineOff = off === "Not verified: Web authority is turned off. Settings";
   await shootChip(p, "switch-1-off");
-  await clickVisible(p.page, '.webauth-chip a[href="/settings/web"]');
+  await clickVisible(p.page, '.webauth-chip a[href="/settings/access"]');
   await p.page.waitForSelector(".s-web-authority #vaEnabled", { timeout: 10000 });
-  c.linkLandsOnCard = p.page.url().endsWith("/settings/web") && !(await p.page.isChecked("#vaEnabled"));
+  c.linkLandsOnCard = p.page.url().endsWith("/settings/access") && !(await p.page.isChecked("#vaEnabled"));
   c.applyOnLanded = await setSwitch(true);
   c.appliedOn = fm.fleetConfig.web?.verified_authority?.enabled !== false && fm.webAuthorityState().enabled === true;
   await openChat(p);

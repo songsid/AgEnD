@@ -1,7 +1,8 @@
 // #2347 regrouping on a fresh profile — desk light (en), desk dark (zh-TW), phone light (en). Checks: the nav has the
-// two named groups (You, Fleet) with the eight sections; on a wide screen it is a column on the left of the content; an
-// old address (/settings/general) lands on Agent defaults, /settings/classic on Chat & connections at ClassicBot; every
-// section draws without a page error.
+// two named groups (You, Fleet) with the eight sections; on a wide screen it is a column on the left of the content;
+// every section draws without a page error. It is THE smoke that visits the old addresses on purpose (the others use the
+// new ones): each of the six lands on its section, loaded from scratch as a bookmark would be — /settings/device →
+// preferences, appearance → look, general → agent-defaults, bots → chat, classic → chat#classicbot, web → access.
 //   PW_DIR=… REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf npx tsx scripts/manual/smoke/smoke-2347-regroup.mts
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48853), instances: 2 });
@@ -39,11 +40,12 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   }
   await go("/settings/access");
   await p.page.screenshot({ path: shotPath("2347g", c as any, "2-access") });
-  await go("/settings/general");
-  ok("oldGeneral", new URL(p.page.url()).pathname === "/settings/agent-defaults");
-  await go("/settings/classic");
-  const u = new URL(p.page.url());
-  ok("oldClassic", u.pathname === "/settings/chat" && u.hash === "#classicbot");
+  for (const [old, path, hash] of [["device", "/settings/preferences", ""], ["appearance", "/settings/look", ""], ["general", "/settings/agent-defaults", ""],
+    ["bots", "/settings/chat", ""], ["web", "/settings/access", ""], ["classic", "/settings/chat", "#classicbot"]] as const) {
+    await go(`/settings/${old}`);
+    const u = new URL(p.page.url());
+    ok(`old:${old}`, u.pathname === path && u.hash === hash && (await p.page.locator(".s-nav .seg-item.active").getAttribute("href")) === path);
+  }
   await p.page.screenshot({ path: shotPath("2347g", c as any, "3-chat-classicbot") });
   ok("noPageErrors", errors.length === 0);
   results.push({ name, failed });
