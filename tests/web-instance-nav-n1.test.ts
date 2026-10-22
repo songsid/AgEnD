@@ -294,20 +294,20 @@ describe("#1776: the count is on the facet headers' row", () => {
   it("folded and open, filtered or not: the headers (and the reset) in their box, the count after it, in the same row", async () => {
     const pg = await app("/ui/chat/web-dev", { agend_nav_facets: '{"status":false,"cli":false}' });
     // nav-facets has 3 direct children: nav-facet-groups, nav-shown, nav-facet-reset (fixed-width sibling)
-    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "nav-filter-row"], groups: ["nav-facet", "nav-facet"], count: "5 / 5", live: "polite", ownRow: false });
+    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "nav-facet-end"], groups: ["nav-facet", "nav-facet"], count: "5 / 5", live: "polite", ownRow: false });
     (pg.root.querySelector(".nav-facet-head") as any).click(); await settle();
     fire(chip(pg, "Status", "needs you"), "change"); await settle();
     // nav-facet-reset is a fixed-width flex sibling of nav-shown; nav-facet-groups sees stable remaining space.
     expect(shape(pg), "a group open, a filter set: count+reset in nav-filter-row; groups box unchanged").toEqual({
-      children: ["nav-facet-groups", "nav-filter-row"], groups: ["nav-facet", "nav-facet"], count: "1 / 5 shown", live: "polite", ownRow: false });
+      children: ["nav-facet-groups", "nav-facet-end"], groups: ["nav-facet", "nav-facet"], count: "1 / 5 shown", live: "polite", ownRow: false });
     expect(facetsRow(pg).querySelector(".nav-facet-groups .nav-facet-list"), "the open list is under its header, in the box").not.toBeNull();
-    expect(facetsRow(pg).querySelector(".nav-filter-row .nav-facet-reset"), "reset button is inside nav-filter-row").not.toBeNull();
+    expect(facetsRow(pg).querySelector(".nav-facet-end .nav-facet-reset"), "reset button is inside nav-facet-end").not.toBeNull();
     expect(facetsRow(pg).querySelector(".nav-facet-groups .nav-facet-reset"), "reset button NOT in nav-facet-groups").toBeNull();
   });
 
   it("one CLI (no CLI group): the count beside the Status header, still in that row", async () => {
     const pg = await app("/ui/chat/web-dev", {}, [live("web-dev"), live("api-server")]);
-    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "nav-filter-row"], groups: ["nav-facet"], count: "2 / 2", live: "polite", ownRow: false });
+    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "nav-facet-end"], groups: ["nav-facet"], count: "2 / 2", live: "polite", ownRow: false });
   });
 
   it("the rules: the row does not wrap; the headers' box does, and may shrink; the count keeps its width at the right end", async () => {
@@ -317,8 +317,9 @@ describe("#1776: the count is on the facet headers' row", () => {
     const decl = (sel: string) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(m => m[1]!.split(",").map(s => s.trim()).includes(sel)).map(m => m[2]!).join(";");
     expect(decl(".nav-facet-groups")).toMatch(/flex-wrap:\s*wrap/);
     expect(decl(".nav-facet-groups")).toMatch(/min-width:\s*0/);
-    // nav-filter-row: the count+clear live below the chip groups, always the same height
-    expect(decl(".nav-filter-row")).toMatch(/display:\s*flex/);
+    // nav-facet-end: count+clear in a fixed-min-width flex container at the right of the header row
+    expect(decl(".nav-facet-end")).toMatch(/display:\s*flex/);    
+    expect(decl(".nav-facet-end")).toMatch(/flex:\s*none/);
   });
 
   it("the filter panel height doesn't change when Clear appears or disappears", async () => {
@@ -331,7 +332,7 @@ describe("#1776: the count is on the facet headers' row", () => {
     fire(chip(pg, "Status", "needs you"), "change"); await settle();
     expect(filterEl.children.length).toBe(childrenBefore);  // .v-filter has same child count
     // Clear is inside nav-filter-row, never in nav-facet-groups
-    expect(pg.root.querySelector(".nav-filter-row .nav-facet-reset"), "reset in nav-filter-row").not.toBeNull();
+    expect(pg.root.querySelector(".nav-facet-end .nav-facet-reset"), "reset in nav-facet-end").not.toBeNull();
     expect(pg.root.querySelector(".nav-facet-groups .nav-facet-reset"), "reset NOT in groups").toBeNull();
     // Clear it: nav-facet-reset becomes invisible (visibility:hidden) but keeps layout space
     (pg.root.querySelector(".nav-facet-reset") as any).click(); await settle();
