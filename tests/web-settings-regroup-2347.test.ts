@@ -184,5 +184,22 @@ describe("#2347 §7: the list of sections and a section on its own (phone)", () 
       /\.p-settings\[data-view="index"\] > \.s-nav\s*\{\s*flex:\s*1 1 auto;\s*min-height:\s*0;\s*overflow-y:\s*auto/]) expect(phone).toMatch(rule);
     expect(css.slice(css.indexOf(".p-settings .s-back { display: none; }") - 40, css.indexOf(".p-settings .s-back { display: none; }") + 200)).toMatch(/@media \(max-width: 899px\)/);
   });
+  it("the CSS (§7): on a phone Settings' dialogs are full-screen sheets; its title stays whole, the version takes what room is left", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const at = css.indexOf(".p-settings .dlg {");
+    // Inside the phone block (the nearest media query before it is the phone one, and no block closed between).
+    const before = css.slice(0, at), media = before.lastIndexOf("@media");
+    expect(before.slice(media, media + 30)).toMatch(/^@media \(max-width: 899px\)/);
+    expect(css.slice(at, css.indexOf("}", at))).toMatch(/width:\s*100vw;\s*max-width:\s*100vw;\s*height:\s*100dvh;\s*max-height:\s*100dvh;\s*margin:\s*0;\s*border-radius:\s*0/);
+    expect(css).toMatch(/\.p-settings \.dlg-box\s*\{\s*height:\s*100%;\s*max-height:\s*100dvh/);
+    // A line under the title and one over the actions: the fields scroll between them.
+    expect(css).toMatch(/\.p-settings \.dlg-head\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)/);
+    expect(css).toMatch(/\.p-settings \.dlg-actions\s*\{\s*border-top:\s*1px solid var\(--border\)/);
+    // The title never shrinks; the version shortens, and goes under 56 px of room.
+    expect(css).toMatch(/\.p-settings \.panel-title h1\s*\{\s*flex:\s*none/);
+    expect(css).toMatch(/\.p-settings \.panel-sub\s*\{\s*flex:\s*1 1 0;\s*min-width:\s*0;\s*container:\s*settings-ver \/ inline-size/);
+    expect(css).toMatch(/@container settings-ver \(max-width: 56px\)\s*\{\s*\.p-settings \.panel-sub \.pill\.ver\s*\{\s*display:\s*none/);
+  });
 });
 
