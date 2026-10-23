@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createPublicWebGateway } from "../src/public-web-gateway.js";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { MEDIA_RANGE_MAX, WebFileLedger } from "../src/web-upload.js";
 import { handleWebRequest, serveAppShell } from "../src/web-api.js";
@@ -265,9 +266,27 @@ describe("media and text show inline in the chat (#1589)", () => {
     release(); await settle(); await settle(); await settle();
     expect(card.querySelector("code") === null).toBe(true);
   });
-  it("the public link shows downloads only: no media, no text card", async () => {
+  // #2547 (the user's report): over the public link a text attachment gets the same card — the same capped read and the
+  // same safe rendering — while media stays local (media-src 'none' there).
+  it("the public link: no media, but a text file's card — Show renders it the same safe way; the download link stays", async () => {
+    serve({ [ID(3)]: "# Title\n\n<script>alert(1)</script> [bad](javascript:alert(3))" });
     const doc = await chat([att(1, "clip.mp4"), att(3, "notes.md")], true);
-    expect([doc.querySelector("video"), doc.querySelector(".text-card"), doc.querySelectorAll("a.att-file").length]).toEqual([null, null, 2]);
+    expect([doc.querySelector("video"), !!doc.querySelector(".text-card"), doc.querySelectorAll("a.att-file").length]).toEqual([null, true, 2]);
+    await click(doc.querySelector(".text-card .tc-show"));
+    const body = doc.querySelector(".text-card .tc-body");
+    expect([body.querySelector("script"), body.querySelector("h3,h2,h1,h4")?.textContent, body.querySelectorAll("a").length]).toEqual([null, "Title", 0]);
+  });
+  it("the public gateway passes GET /ui/file/<id> to the file route (its own session, guest-scope and id checks: #1920's tests); nothing else of it", () => {
+    let handler!: (req: any, res: any) => void;
+    const seen: string[] = [];
+    const g = createPublicWebGateway({ exposureId: "e1", isCurrent: () => true, isOpen: () => true, dispatch: (req: any) => { seen.push(`${req.method} ${req.url}`); },
+      create: ((cb: any) => { handler = cb; return { on() {}, setTimeout() {}, listen() {}, close() {}, closeAllConnections() {} }; }) as never });
+    g.setHost("abc-def.trycloudflare.com");
+    const send = (method: string, url: string) => { let status = 0;
+      handler({ url, method, headers: { host: "abc-def.trycloudflare.com" }, socket: { remoteAddress: "127.0.0.1" } }, { setHeader() {}, writeHead(c: number) { status = c; }, end() {} }); return status; };
+    const id = ID(3);
+    expect([send("GET", `/ui/file/${id}`), send("POST", `/ui/file/${id}`), send("DELETE", `/ui/file/${id}`), send("GET", `/ui/file/${id}/raw`)]).toEqual([0, 404, 404, 404]);
+    expect(seen).toEqual([`GET /ui/file/${id}`]);
   });
   it("a gone attachment (#1565), an image, an .html file and a PDF get no inline preview", async () => {
     const doc = await chat([{ gone: true, kind: "document", name: "old.mp4", size: 1, mime: "video/mp4" }, att(2, "page.html"), att(3, "doc.pdf"), { ...att(4, "pic.png"), kind: "photo" }]);

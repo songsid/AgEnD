@@ -62,7 +62,7 @@ import type { SpawnGate } from "./spawn-gate.js";
 import { agendMessageInInput, bottomRowIsReady, inputAreaText, inputShowsPastedText, lastNonBlankRow, pastedTextSignature, pasteLeftInInput, strandedAgendMessageInInput } from "./pane-input-residue.js";
 import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageView } from "./backend-outage.js";
-import { TurnReplyGuard, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
+import { TurnReplyGuard, formatReplyDropDetection, turnExpectsPersonReply, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
 import { t } from "./locale.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
@@ -5455,13 +5455,21 @@ export class Daemon extends EventEmitter {
     // Cancel may have interrupted an in-flight paste before its promise settled.
     // Its late success must not re-arm the turn that the user just cancelled.
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
-    // Channel turns only. A cross-instance inbound (from_instance, empty
-    // chat_id) does not update lastChatId, so its proxy reply would land in
-    // whatever USER topic spoke to this instance last — the wrong audience for
-    // a task result, and a stale one (sol's review of #515).
-    // A web message on a fleet with no chat platform has no chat_id (its reply goes to the web chat through the fleet's
-    // web-only sink), but it is a person waiting for an answer all the same: the guard arms for it (alpha.2).
-    if (meta.from_instance || (!meta.chat_id && meta.source !== "web")) return;
+    // Channel turns started by a person. Cross-instance, schedules (silent or
+    // not), and AgEnD system notices must not expect a reply to a person (#2544):
+    // a proxy or recovery notice would land in the last USER topic, or flag a
+    // heartbeat that was told not to report. A web message on a fleet with no
+    // chat platform has no chat_id (its reply goes to the web chat through the
+    // fleet's web-only sink), but it is a person waiting for an answer all the
+    // same: the guard arms for it (alpha.2).
+    if (!turnExpectsPersonReply(meta)) {
+      this.logger.debug({
+        source: meta.source || null,
+        user: meta.user || null,
+        from_instance: meta.from_instance || null,
+      }, "Reply guard skipped — turn was not started by a person");
+      return;
+    }
     // The last non-empty line of what we pasted: everything on screen after it
     // is the agent's own output.
     const inboundMarker = deliveredText.split(/\r?\n/).map(l => l.trim()).filter(Boolean).pop();
@@ -5478,7 +5486,8 @@ export class Daemon extends EventEmitter {
       deliveredText,
       deliveredAt,
     }, this.pendingWork.lastInboundTimestamp());
-    this.workingTurnDelivery = { generation: this.turnReplyGuard.snapshot()!.generation, deliveryId: meta.delivery_id || null };
+    const armed = this.turnReplyGuard.snapshot()!;
+    this.workingTurnDelivery = { generation: armed.generation, deliveryId: meta.delivery_id || null };
     this.publishWorkingState("turn_started");
     // #1209: persist the in-flight turn with a seam checkpoint. A marker
     // that survives a restart is an interrupted turn by construction —
@@ -5487,7 +5496,9 @@ export class Daemon extends EventEmitter {
     // the interruption. Reads are windowed/bounded (see turn-resume.ts).
     // A resumed continuation never re-arms (P3a): episode-once means a crash
     // during the continuation boots clean instead of chaining resumes.
-    if (!meta.resumedContinuationOf) {
+    // #2544: a reply that settled before this arm already answered the person —
+    // writing a marker would re-inject a continuation for a finished turn.
+    if (!meta.resumedContinuationOf && !armed.completionDelivered) {
       const resumeBackend = this.config.backend ?? this.backend?.binaryName ?? this.runtimeIdentity?.backend;
       const resumeCwd = this.config.working_directory ?? "";
       writeInFlightTurnMarker(this.instanceDir, {
@@ -5910,13 +5921,7 @@ export class Daemon extends EventEmitter {
       reason,
       recoveryStarted: true,
     });
-    void this.deliverDaemonReply(
-      t("inst.reply_drop_retrying"),
-      "replydrop",
-      "Reply-drop status",
-      turn.target,
-      true,
-    );
+    this.deliverReplyDropNotice("inst.reply_drop_retrying", "replydrop", "Reply-drop status", turn, reason, false);
     this.queueReplyRecoveryPrompt(turn);
   }
 
@@ -5931,13 +5936,7 @@ export class Daemon extends EventEmitter {
       reason,
       recoveryStarted: false,
     });
-    void this.deliverDaemonReply(
-      t("inst.reply_drop_unknown"),
-      "replydrop",
-      "Unconfirmed reply status",
-      turn.target,
-      true,
-    );
+    this.deliverReplyDropNotice("inst.reply_drop_unknown", "replydrop", "Unconfirmed reply status", turn, reason, true);
   }
 
   private queueReplyRecoveryPrompt(turn: TurnReplySnapshot): void {
@@ -6036,14 +6035,38 @@ export class Daemon extends EventEmitter {
       generation: turn.generation,
       reason,
     });
-    const now = Date.now();
-    if (this.lastReplyDropWarningAt !== 0
-      && now - this.lastReplyDropWarningAt < REPLY_DROP_WARNING_COOLDOWN_MS) return;
-    this.lastReplyDropWarningAt = now;
-    void this.deliverDaemonReply(
-      t("inst.reply_drop_unrecovered"),
+    this.deliverReplyDropNotice(
+      "inst.reply_drop_unrecovered",
       "replydropwarn",
       "Reply-drop recovery warning",
+      turn,
+      reason,
+      true,
+    );
+  }
+
+  /** Channel notice for a reply-drop. `rateLimit` shares the per-instance cooldown (#2544). */
+  private deliverReplyDropNotice(
+    key: "inst.reply_drop_retrying" | "inst.reply_drop_unknown" | "inst.reply_drop_unrecovered",
+    kind: string,
+    title: string,
+    turn: TurnReplySnapshot,
+    reason: string,
+    rateLimit: boolean,
+  ): void {
+    if (rateLimit) {
+      const now = Date.now();
+      if (this.lastReplyDropWarningAt !== 0
+        && now - this.lastReplyDropWarningAt < REPLY_DROP_WARNING_COOLDOWN_MS) {
+        this.logger.debug({ reason, kind }, "Reply-drop channel notice rate-limited");
+        return;
+      }
+      this.lastReplyDropWarningAt = now;
+    }
+    void this.deliverDaemonReply(
+      t(key, formatReplyDropDetection(turn, reason)),
+      kind,
+      title,
       turn.target,
       true,
     );
@@ -10287,7 +10310,9 @@ export class Daemon extends EventEmitter {
         // false and must not clear the window either.
         if (replyAttempt?.completionAction) {
           const snap = this.turnReplyGuard.snapshot();
-          if (snap?.generation === replyAttempt.generation && snap.phase === "awaiting"
+          // generation 0 is a pre-arm token applied to the live generation (#2544).
+          if (snap && (snap.generation === replyAttempt.generation || replyAttempt.generation === 0)
+            && snap.phase === "awaiting"
             && snap.completionDelivered && !snap.cancelledByUser) {
             this.clearReplyGuardConfirm();
           }

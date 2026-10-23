@@ -11,6 +11,7 @@ import type { CliBackend, CliBackendConfig } from "../src/backend/types.js";
 import { Daemon, PaneStateMachine } from "../src/daemon.js";
 import { setLocale, t, type Locale } from "../src/locale.js";
 import type { Logger } from "../src/logger.js";
+import { formatReplyDropDetection } from "../src/turn-reply-guard.js";
 
 // These fixture tests must not probe an installed CLI while constructing it.
 vi.mock("../src/backend/types.js", async importOriginal => ({
@@ -167,7 +168,12 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     expect(h.daemon.getInstanceState()).toBe("idle");
     await h.confirmIdle();
     expect(h.detected).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ reason: "no_valid_call", recoveryStarted: true }));
-    expect(h.daemon.deliverDaemonReply).toHaveBeenCalledExactlyOnceWith(t("inst.reply_drop_retrying"), "replydrop", "Reply-drop status", expect.objectContaining({
+    expect(h.daemon.deliverDaemonReply).toHaveBeenCalledExactlyOnceWith(
+      t("inst.reply_drop_retrying", formatReplyDropDetection({
+        replyAttempted: false, replyDelivered: false, completionDelivered: false,
+        target: { chatId: "guild-1", threadId: "channel-1" },
+      }, "no_valid_call")),
+      "replydrop", "Reply-drop status", expect.objectContaining({
       adapterId: "discord-persona", chatId: "guild-1", threadId: "channel-1", messageId: "message-1",
     }), true);
     expect(recoveryWrites(h)).toHaveLength(1);
@@ -227,7 +233,10 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     tool(h.daemon, "reply")(null, "provider timed out");
     await h.capture(idlePane());
     expect(h.detected).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ reason: "reply_failed_or_unknown", recoveryStarted: false }));
-    expect(h.daemon.deliverDaemonReply.mock.calls[0][0]).toBe(t("inst.reply_drop_unknown"));
+    expect(h.daemon.deliverDaemonReply.mock.calls[0][0]).toBe(t("inst.reply_drop_unknown", formatReplyDropDetection({
+      replyAttempted: true, replyDelivered: false, completionDelivered: false,
+      target: { chatId: "guild-1", threadId: "channel-1" },
+    }, "reply_failed_or_unknown")));
     expect(recoveryWrites(h)).toHaveLength(0);
     expect(h.daemon.turnReplyGuard.snapshot()).toBeNull();
   });
@@ -301,7 +310,10 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     expect(h.unrecovered).toHaveBeenCalledTimes(3);
     const warnings = h.daemon.deliverDaemonReply.mock.calls.filter((args: any[]) => args[1] === "replydropwarn");
     expect(warnings).toHaveLength(2);
-    expect(warnings[0][0]).toBe(t("inst.reply_drop_unrecovered"));
+    expect(warnings[0][0]).toBe(t("inst.reply_drop_unrecovered", formatReplyDropDetection({
+      replyAttempted: false, replyDelivered: false, completionDelivered: false,
+      target: { chatId: "guild-1", threadId: "channel-1" },
+    }, "recovery_turn_missing_reply")));
   });
 
   it("a queued recovery prompt is fenced by cancellation", async () => {
